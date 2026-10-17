@@ -395,15 +395,43 @@ describe('groupPanoFrames', () => {
     ]);
   });
 
-  it('takes 2:1 and GPano frames as ready-made panoramas when they have a position', () => {
+  it('takes 2:1 and GPano frames as ready-made panoramas, with or without a position', () => {
     const base = { bytes: 30_000_000, takenAt: '2026-09-10T10:00:00', lat: LAT, lon: LON };
     const twoToOne = { ...base, file: 'D:/Pano/a.jpg', width: 14400, height: 7200 };
     const gpano = { ...base, file: 'D:/Pano/b.jpg', width: 8000, height: 3000, gpano: true };
     const lost = { file: 'D:/Pano/c.jpg', bytes: 1, width: 4000, height: 2000 };
     const g = groupPanoFrames([twoToOne, gpano, lost]);
-    expect(g.ready.map((f) => f.file)).toEqual(['D:/Pano/a.jpg', 'D:/Pano/b.jpg']);
-    expect(g.skipped).toEqual([{ file: 'D:/Pano/c.jpg', reason: 'no-position' }]);
+    expect(g.ready.map((f) => f.file)).toEqual(['D:/Pano/a.jpg', 'D:/Pano/b.jpg', 'D:/Pano/c.jpg']);
+    expect(g.skipped).toEqual([]);
     expect(isReadyMadePano({ file: 'x', bytes: 1, width: 5472, height: 3648 })).toBe(false);
+  });
+
+  it('keeps a ground 360 without GPS as an unplaced ready-made panorama', () => {
+    const g = groupPanoFrames([{ file: 'g.jpg', bytes: 1, width: 2560, height: 1280 }]);
+    expect(g.ready).toHaveLength(1);
+    expect(g.ready[0]?.lat).toBeUndefined();
+    expect(g.skipped).toEqual([]);
+  });
+
+  it('treats a 360 with only half a position as unplaced (no lat without lon)', () => {
+    const g = groupPanoFrames([
+      { file: 'a.jpg', bytes: 1, width: 2560, height: 1280, lat: LAT },
+      { file: 'b.jpg', bytes: 1, width: 2560, height: 1280, lon: LON },
+    ]);
+    expect(g.ready.map((f) => [f.file, f.lat, f.lon])).toEqual([
+      ['a.jpg', undefined, undefined],
+      ['b.jpg', undefined, undefined],
+    ]);
+    expect(g.ready.every((f) => !('lat' in f) && !('lon' in f))).toBe(true);
+  });
+
+  it('skips a dual-fisheye Insta360 still instead of taking it as a 360 (Review Focus 1)', () => {
+    const g = groupPanoFrames([
+      { file: 'IMG_1.insp', bytes: 1, width: 6080, height: 3040, dualFisheye: true },
+      { file: 'IMG_2.insp', bytes: 1, width: 6080, height: 3040 },
+    ]);
+    expect(g.ready.map((f) => f.file)).toEqual(['IMG_2.insp']);
+    expect(g.skipped).toEqual([{ file: 'IMG_1.insp', reason: 'dual-fisheye' }]);
   });
 
   it('places a sphere at the median of its frames and starts it at its first frame', () => {

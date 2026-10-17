@@ -164,6 +164,8 @@ describe('panoOfferFrom', () => {
       body: '1 of these files is a ready-made 360 panorama. Import it as a panorama?',
       extra: null,
       skip: 'Skip these panoramas',
+      unplaced: null,
+      fisheye: null,
     });
   });
 
@@ -173,7 +175,26 @@ describe('panoOfferFrom', () => {
       body: '25 of these frames are 1 drone panorama. Import it as a panorama?',
       extra: '1 ready-made panorama in this drop is included.',
       skip: 'Skip these frames',
+      unplaced: null,
+      fisheye: null,
     });
+  });
+
+  it('says which 360s have no GPS and import unplaced, and names a dual-fisheye skip', () => {
+    const noGps = { key: 'r2', file: 'D:/Pano/ground.jpg', bytes: 1 };
+    const fisheye = { file: 'D:\\Pano\\IMG_0001.insp', reason: 'dual-fisheye' as const };
+    const offer = panoOfferFrom(['D:/Pano'], {
+      ...readyOnly,
+      ready: [...readyOnly.ready, noGps],
+      skipped: [fisheye, { file: 'D:/Pano/x.JPG', reason: 'few-frames' }],
+    });
+    const copy = offer && panoOfferCopy(offer);
+    expect(copy?.unplaced).toBe(
+      '1 360 has no GPS: it imports as not placed, ready to pin on the site.',
+    );
+    expect(copy?.fisheye).toBe(
+      'IMG_0001.insp: Two fisheye circles, not a 360 yet: export it as a 360 photo from Insta360 Studio first.',
+    );
   });
 });
 

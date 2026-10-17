@@ -139,14 +139,63 @@ describe('importPanoGroups', () => {
     ]);
     const [p1] = layer.items;
     expect(p1?.src).toEqual({ path: 'panoramas/panos-2026-09-10/p01/pano.jpg' });
-    expect(p1?.pos[0]).toBeCloseTo(100, 1);
-    expect(p1?.pos[1]).toBeCloseTo(70, 1); // relative altitude over the origin height
-    expect(p1?.pos[2]).toBeCloseTo(-50, 1);
+    expect(p1?.pos?.[0]).toBeCloseTo(100, 1);
+    expect(p1?.pos?.[1]).toBeCloseTo(70, 1); // relative altitude over the origin height
+    expect(p1?.pos?.[2]).toBeCloseTo(-50, 1);
     const at = gps(100, 50);
     expect(p1?.headingDeg).toBeCloseTo(-gridConvergenceDeg(at.lon, at.lat, 32639), 3); // true north in the grid
     expect(p1?.capturedAt).toMatch(/^2026-09-10T10:00:00[+-]\d\d:\d\d$/);
     // raw frames are never layer items or manifest entries
     expect(JSON.stringify(m)).not.toContain('SYN_0001');
+  });
+
+  it('keeps a ready-made 360 without GPS, and one with half a position, unplaced', () => {
+    const g = keyGrouping({
+      spheres: [],
+      ready: [
+        { file: 'g.jpg', bytes: 1, width: 2560, height: 1280 },
+        { file: 'h.jpg', bytes: 1, width: 2560, height: 1280, lat: 28.9 },
+      ],
+      skipped: [],
+    });
+    expect(g.ready.map((r) => [r.key, r.lat, r.lon])).toEqual([
+      ['r1', undefined, undefined],
+      ['r2', undefined, undefined],
+    ]);
+  });
+
+  it('writes an unplaced 360 without pos and heading 0; a placed one keeps its pos', async () => {
+    const g = await grouping();
+    const lone = join(card, 'ground.jpg');
+    await writeFile(lone, 'ground');
+    g.ready.push({ file: lone, bytes: 6, width: 2560, height: 1280 });
+    const r = await importPanoGroups(
+      root,
+      keyGrouping(g),
+      { ...choice, keys: ['r1', 'r2'] },
+      deps(),
+    );
+    const layer = (await readManifestFile(root)).layers.find((l) => l.id === r.layerId);
+    if (layer?.kind !== 'panoramas') throw new Error('expected a panoramas layer');
+    const [placed, unplaced] = layer.items;
+    expect(placed?.pos?.[0]).toBeCloseTo(0, 1);
+    expect(placed?.pos?.[2]).toBeCloseTo(0, 1);
+    expect(unplaced).toBeDefined();
+    expect(unplaced && 'pos' in unplaced).toBe(false);
+    expect(unplaced?.headingDeg).toBe(0);
+    expect(r.stitch).toEqual([]);
+  });
+
+  it('writes a sphere whose frames give no camera place without pos, not at the origin', async () => {
+    const g = await grouping();
+    const [s1] = g.spheres;
+    if (!s1) throw new Error('expected a sphere');
+    // a sphere group always carries a place; one that is no number gives the camera no pos
+    g.spheres = [{ ...s1, lat: Number.NaN, lon: Number.NaN }];
+    const r = await importPanoGroups(root, keyGrouping(g), { ...choice, keys: ['s1'] }, deps());
+    const layer = (await readManifestFile(root)).layers.find((l) => l.id === r.layerId);
+    if (layer?.kind !== 'panoramas') throw new Error('expected a panoramas layer');
+    expect(layer.items[0] && 'pos' in layer.items[0]).toBe(false);
   });
 
   it('refuses before copying when the drive is too full (Review Focus 2)', async () => {

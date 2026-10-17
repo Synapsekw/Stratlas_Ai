@@ -183,9 +183,23 @@ export function panoOfferExcluded(o: PanoOffer): string[] {
   return [...o.frames, ...o.scan.ready.map((r) => r.file)];
 }
 
-/** The offer card's sentences. A drop of only stitched 360s is not described as raw frames. */
-export function panoOfferCopy(o: PanoOffer): { body: string; extra: string | null; skip: string } {
+/**
+ * The offer card's sentences. A drop of only stitched 360s is not described as raw frames.
+ * `unplaced` counts the 360s without GPS (they import as not placed); `fisheye` names the
+ * Insta360 stills skipped as two unstitched fisheye circles.
+ */
+export function panoOfferCopy(o: PanoOffer): {
+  body: string;
+  extra: string | null;
+  skip: string;
+  unplaced: string | null;
+  fisheye: string | null;
+} {
   const ready = o.scan.ready.length;
+  const unplaced = o.scan.ready.filter((r) => r.lat === undefined || r.lon === undefined).length;
+  const fisheye = o.scan.skipped
+    .filter((s) => s.reason === 'dual-fisheye')
+    .map((s) => s.file.split(/[\\/]/).pop() ?? s.file);
   return {
     body:
       o.spheres > 0
@@ -193,6 +207,9 @@ export function panoOfferCopy(o: PanoOffer): { body: string; extra: string | nul
         : t('pano.offer.ready', { count: ready }),
     extra: o.spheres > 0 && ready > 0 ? t('pano.offer.readyAlso', { count: ready }) : null,
     skip: o.spheres > 0 ? t('pano.offer.no') : t('pano.offer.noReady'),
+    unplaced: unplaced > 0 ? t('pano.offer.unplaced', { count: unplaced }) : null,
+    // the skip reason `dual-fisheye` has its sentence under `pano.skip.dualFisheye`
+    fisheye: fisheye.length > 0 ? `${fisheye.join(', ')}: ${t('pano.skip.dualFisheye')}` : null,
   };
 }
 
@@ -209,6 +226,8 @@ export const IMPORT_FILTERS = [
       'srt',
       'insv',
       'lrv',
+      // an Insta360 360 still
+      'insp',
       'glb',
       'obj',
       'tif',

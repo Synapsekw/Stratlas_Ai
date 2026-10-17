@@ -269,6 +269,16 @@ function PanoOfferCard({ o }: { o: PanoOffer }) {
     <PanoCardShell>
       <p className="small">{copy.body}</p>
       {copy.extra ? <p className="small">{copy.extra}</p> : null}
+      {copy.unplaced ? (
+        <p className="small" data-testid="pano-offer-unplaced">
+          {copy.unplaced}
+        </p>
+      ) : null}
+      {copy.fisheye ? (
+        <p className="small faint" data-testid="pano-offer-fisheye">
+          {copy.fisheye}
+        </p>
+      ) : null}
       <PanoNote />
       <div className="b-heights-actions">
         <button

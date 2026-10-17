@@ -20,8 +20,9 @@ import {
   type ProjectManifest,
 } from '@aio/schema';
 import { randomUUID } from 'node:crypto';
-import { statfs } from 'node:fs/promises';
+import { readFile, statfs } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
+import { FISHEYE_GREY, greyFromBgra, looksDualFisheye } from './fisheye';
 import { createImportRuns } from './importRuns';
 import { compareVersions } from './jobs/pack';
 
@@ -50,13 +51,57 @@ export interface PanoScanDeps {
   newId?: () => string;
   /** The clock for the progress throttle (ms). */
   now?: () => number;
+  /**
+   * An Insta360 `.insp` still shrunk to 64 x 32 grey, to tell two fisheye circles from an
+   * equirect (`fisheye.ts`), or undefined when it cannot be decoded. Defaults to Electron's codec.
+   */
+  grey?(file: string): Promise<{ data: Uint8Array; width: number; height: number } | undefined>;
 }
 
 /** Scan progress goes out at most every `PROGRESS_MS` or every `PROGRESS_FILES` files, and once at the end. */
 export const PROGRESS_MS = 100;
 export const PROGRESS_FILES = 50;
 
-const JPEG = /\.jpe?g$/i;
+/** JPEGs, and Insta360 `.insp` stills (a JPEG with the camera's trailer after it). */
+const JPEG = /\.(jpe?g|insp)$/i;
+const INSP = /\.insp$/i;
+
+/**
+ * Electron's codec: the whole still is decoded once (only `.insp` files come here) and shrunk.
+ * Loaded on use, so the scan stays testable without Electron.
+ */
+async function nativeGrey(
+  file: string,
+): Promise<{ data: Uint8Array; width: number; height: number } | undefined> {
+  try {
+    const { nativeImage } = await import('electron');
+    const img = nativeImage.createFromBuffer(await readFile(file));
+    if (img.isEmpty()) return undefined;
+    const { width, height } = FISHEYE_GREY;
+    const small = img.resize({ width, height, quality: 'good' });
+    const s = small.getSize();
+    if (s.width !== width || s.height !== height) return undefined;
+    const bgra = small.toBitmap();
+    return {
+      data: greyFromBgra(
+        new Uint8Array(bgra.buffer, bgra.byteOffset, bgra.byteLength),
+        width,
+        height,
+      ),
+      width,
+      height,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Review Focus 1: an `.insp` that is two fisheye circles (not stitched yet) is no 360. */
+async function isDualFisheye(file: string, deps: PanoScanDeps): Promise<boolean> {
+  if (!INSP.test(file)) return false;
+  const g = await (deps.grey ?? nativeGrey)(file).catch(() => undefined);
+  return g ? looksDualFisheye(g.data, g.width, g.height) : false;
+}
 
 /** The day most spheres start on, the earlier one on a tie. */
 function dayOf(g: KeyedGrouping): string | null {
@@ -82,7 +127,11 @@ export async function scanPanoPaths(
 ): Promise<{ scan: PanoScan; grouping: KeyedGrouping } | { error: string }> {
   const l = await lib();
   const limit = deps.limit ?? l.MAX_FOLDER_FILES;
-  const ex = await l.expandImportPaths(paths, (ext) => ext === '.jpg' || ext === '.jpeg', limit);
+  const ex = await l.expandImportPaths(
+    paths,
+    (ext) => ext === '.jpg' || ext === '.jpeg' || ext === '.insp',
+    limit,
+  );
   if (ex.tooMany !== null)
     return {
       error: `${basename(ex.tooMany)} holds more than ${String(limit)} files. Choose a smaller folder.`,
@@ -105,7 +154,10 @@ export async function scanPanoPaths(
   const now = deps.now ?? Date.now;
   let sentAt = now();
   for (const [i, f] of jpegs.entries()) {
-    metas.push(await l.readPanoFrameMeta(f));
+    const meta = await l.readPanoFrameMeta(f);
+    metas.push(
+      !meta.unreadable && (await isDualFisheye(f, deps)) ? { ...meta, dualFisheye: true } : meta,
+    );
     const done = i + 1;
     const t = now();
     if (done === jpegs.length || done % PROGRESS_FILES === 0 || t - sentAt >= PROGRESS_MS) {
@@ -151,8 +203,8 @@ export async function scanPanoPaths(
       key: r.key,
       file: r.file,
       bytes: r.bytes,
-      lat: r.lat,
-      lon: r.lon,
+      // both or neither (keyGrouping): a 360 without GPS imports unplaced
+      ...(r.lat !== undefined && r.lon !== undefined ? { lat: r.lat, lon: r.lon } : {}),
       ...(r.absAlt !== undefined ? { absAlt: r.absAlt } : {}),
       ...(r.relAlt !== undefined ? { relAlt: r.relAlt } : {}),
       ...(r.takenAt ? { takenAt: r.takenAt } : {}),

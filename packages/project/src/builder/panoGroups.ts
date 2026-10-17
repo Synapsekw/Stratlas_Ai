@@ -20,6 +20,8 @@ export interface PanoFrameMeta {
   height?: number;
   /** XMP `GPano:ProjectionType` is equirectangular. */
   gpano?: boolean;
+  /** An unstitched Insta360 still (`.insp`): two fisheye circles, not an equirect (`fisheye.ts`). */
+  dualFisheye?: boolean;
   unreadable?: boolean;
 }
 
@@ -172,6 +174,18 @@ function splitByImageSize(c: readonly PanoFrameMeta[]): {
   return { same, odd };
 }
 
+/**
+ * A ready-made 360 keeps its place only when it has both `lat` and `lon`: without GPS (a ground 360
+ * camera, a phone) or with half a position it imports unplaced, to be pinned on the site.
+ */
+function placedOrNot(f: PanoFrameMeta): PanoFrameMeta {
+  if (f.lat !== undefined && f.lon !== undefined) return f;
+  const out = { ...f };
+  delete out.lat;
+  delete out.lon;
+  return out;
+}
+
 export function groupPanoFrames(
   frames: readonly PanoFrameMeta[],
   t: PanoGroupingThresholds = PANO_GROUPING,
@@ -181,11 +195,9 @@ export function groupPanoFrames(
   const usable: { f: PanoFrameMeta; s: number; i: number }[] = [];
   frames.forEach((f, i) => {
     if (f.unreadable) skipped.push({ file: f.file, reason: 'unreadable' });
-    else if (isReadyMadePano(f, t)) {
-      if (f.lat === undefined || f.lon === undefined)
-        skipped.push({ file: f.file, reason: 'no-position' });
-      else ready.push(f);
-    } else if (
+    else if (f.dualFisheye) skipped.push({ file: f.file, reason: 'dual-fisheye' });
+    else if (isReadyMadePano(f, t)) ready.push(placedOrNot(f));
+    else if (
       f.takenAt === undefined ||
       f.lat === undefined ||
       f.lon === undefined ||

@@ -4,6 +4,7 @@ import type { JobEvent, JobRecord, PanoStitchFile, ProjectManifest } from '@aio/
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PANO_IMPORT_BUSY,
@@ -112,6 +113,59 @@ describe('scanPanoPaths', () => {
     if ('error' in a || 'error' in b) throw new Error('scan failed');
     expect(a.scan.scanId).not.toBe(b.scan.scanId);
     expect(a.scan.scanId.length).toBeLessThanOrEqual(64);
+  });
+
+  it('takes an Insta360 .insp equirect as an unplaced 360, and skips a dual-fisheye one', async () => {
+    const folder = join(dir, 'insta');
+    await mkdir(folder);
+    const trailer = Buffer.from('INSTA360-TRAILER');
+    // an equirect: sky over ground, picture all the way to the corners
+    const sky = await sharp({
+      create: { width: 512, height: 256, channels: 3, background: { r: 120, g: 160, b: 220 } },
+    })
+      .composite([
+        {
+          input: { create: { width: 512, height: 128, channels: 3, background: '#5a4a30' } },
+          top: 128,
+          left: 0,
+        },
+      ])
+      .jpeg()
+      .toBuffer();
+    // two fisheye circles on black, as the camera writes them before stitching
+    const discs = await sharp(
+      Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="256">' +
+          '<rect width="512" height="256" fill="black"/>' +
+          '<circle cx="128" cy="128" r="124" fill="#b0b0b0"/>' +
+          '<circle cx="384" cy="128" r="124" fill="#b0b0b0"/></svg>',
+      ),
+    )
+      .jpeg()
+      .toBuffer();
+    await writeFile(join(folder, 'a.insp'), Buffer.concat([sky, trailer]));
+    await writeFile(join(folder, 'b.insp'), Buffer.concat([discs, trailer]));
+    const grey = async (file: string) => ({
+      data: new Uint8Array(
+        await sharp(await readFile(file))
+          .resize(64, 32, { fit: 'fill' })
+          .greyscale()
+          .raw()
+          .toBuffer(),
+      ),
+      width: 64,
+      height: 32,
+    });
+    const r = await scanPanoPaths(root, [folder], { ...noThumb, grey });
+    if ('error' in r) throw new Error(r.error);
+    expect(r.scan.files).toBe(2);
+    expect(r.scan.ready).toHaveLength(1);
+    expect(r.scan.ready[0]?.file).toMatch(/a\.insp$/);
+    expect(r.scan.ready[0]?.lat).toBeUndefined();
+    expect(r.scan.ready[0]?.lon).toBeUndefined();
+    expect(r.scan.skipped).toEqual([
+      { file: expect.stringMatching(/b\.insp$/) as unknown, reason: 'dual-fisheye' },
+    ]);
   });
 
   it('answers an empty scan when there are no JPEGs', async () => {

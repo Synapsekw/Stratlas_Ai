@@ -29,18 +29,23 @@ export type PanoLayer = Extract<Layer, { kind: 'panoramas' }>;
 
 export interface KeyedGrouping {
   spheres: (PanoSphereGroup & { key: string })[];
-  ready: (PanoFrameMeta & { key: string; lat: number; lon: number })[];
+  /** Without `lat` and `lon` (a 360 with no GPS) it imports unplaced. */
+  ready: (PanoFrameMeta & { key: string })[];
 }
 
 /** Scan keys: `s1`, `s2` ... for spheres and wide panoramas, `r1`, `r2` ... for ready-made ones. */
 export function keyGrouping(g: PanoGrouping): KeyedGrouping {
   return {
     spheres: g.spheres.map((s, i) => ({ ...s, key: `s${String(i + 1)}` })),
-    ready: g.ready.flatMap((r, i) =>
-      r.lat === undefined || r.lon === undefined
-        ? []
-        : [{ ...r, lat: r.lat, lon: r.lon, key: `r${String(i + 1)}` }],
-    ),
+    ready: g.ready.map((r, i) => {
+      const key = `r${String(i + 1)}`;
+      const out = { ...r, key };
+      if (r.lat !== undefined && r.lon !== undefined) return out;
+      // half a position is no position: never place it at a made-up longitude or latitude
+      delete out.lat;
+      delete out.lon;
+      return out;
+    }),
   };
 }
 
@@ -105,8 +110,9 @@ function freeName(name: string, used: Set<string>): string {
 }
 
 interface Where {
-  lat: number;
-  lon: number;
+  /** Both or neither: without them the item is written unplaced (no `pos`). */
+  lat?: number;
+  lon?: number;
   absAlt?: number;
   relAlt?: number;
   takenAt?: string;
@@ -139,7 +145,10 @@ function provisionalCov(s: PanoSphereGroup): PanoCov | undefined {
   return { top: 90, bottom: 90, left: r(left), right: r(left + span) };
 }
 
-/** A pano item: position like a photo's camera; centre column true north, so heading = -convergence. */
+/**
+ * A pano item: position like a photo's camera; centre column true north, so heading = -convergence.
+ * Without a place (a 360 with no GPS) it has no `pos` and heading 0 until it is pinned on the site.
+ */
 function panoRef(
   id: string,
   layerId: string,
@@ -150,25 +159,32 @@ function panoRef(
   cov?: PanoCov,
 ): PanoRef {
   const path = `${panoFolder(layerId, id)}/pano.jpg`;
+  const lat = w.lat !== undefined && Number.isFinite(w.lat) ? w.lat : undefined;
+  const lon = w.lon !== undefined && Number.isFinite(w.lon) ? w.lon : undefined;
+  const placed = lat !== undefined && lon !== undefined;
   const cam = photoRef(
     id,
     path,
     {
       ...(w.takenAt ? { takenAt: w.takenAt } : {}),
-      dji: {
-        lat: w.lat,
-        lon: w.lon,
-        ...(w.absAlt !== undefined ? { absAlt: w.absAlt } : {}),
-        ...(w.relAlt !== undefined ? { relAlt: w.relAlt } : {}),
-      },
+      ...(placed
+        ? {
+            dji: {
+              lat,
+              lon,
+              ...(w.absAlt !== undefined ? { absAlt: w.absAlt } : {}),
+              ...(w.relAlt !== undefined ? { relAlt: w.relAlt } : {}),
+            },
+          }
+        : {}),
     },
     f,
   );
   return {
     id,
     src: { path },
-    pos: cam.pos ?? [0, 0, 0],
-    headingDeg: Math.round(-gridConvergenceDeg(w.lon, w.lat, f.epsg) * 1000) / 1000,
+    ...(cam.pos ? { pos: cam.pos } : {}),
+    headingDeg: placed ? Math.round(-gridConvergenceDeg(lon, lat, f.epsg) * 1000) / 1000 : 0,
     name: `Pano ${String(n)}`,
     ...(cam.takenAt ? { capturedAt: cam.takenAt } : {}),
     ...(stitched ? { stitch: { status: 'queued' as const } } : {}),
