@@ -4397,6 +4397,8 @@ export const en = {
   'island.liveReading': '{name} {value}',
   'island.percent': '{pct}%',
   'island.telemetry': 'ALT {alt} m · SPD {speed} m/s',
+  // the workbench drawer over the stage while the sidebar is hidden (workspace/workbench/Drawer.tsx)
+  'wb.drawer': 'Workbench: {tab}',
   'wb.showIt': 'Show it',
   // the right sidebar's tab bar (workspace/workbench/TabBar.tsx)
   'wb.label': 'Workbench',

@@ -1115,6 +1115,33 @@ button.chip-status:hover {
   padding-inline: 6px calc(8px + var(--caption-inline-end));
   border-bottom: 1px solid var(--line-soft);
 }
+/* The window's buttons over the stage sit on a dark backing (D28; shell/RightHeader.tsx
+   CaptionBacking). The room is the buttons' own, physical (I-R14: --caption-right on Windows, the
+   OS draws them at the window's right in either direction); it is placed by the logical sides it
+   falls on. Left to right it shows with the right panel folded away, at the main area's end;
+   right to left it is the part of the buttons that reaches past the left sidebar's rail onto the
+   main area's start (I-R23). */
+.caption-backing {
+  display: none;
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  z-index: var(--z-panel);
+  block-size: 40px;
+  inline-size: var(--caption-inline-end, 0px);
+  background: var(--bg-0);
+  border-block-end: 1px solid var(--line-soft);
+  pointer-events: none;
+}
+.ws.right-off > .caption-backing {
+  display: block;
+}
+[dir='rtl'] .ws > .caption-backing {
+  display: block;
+  inset-inline-end: auto;
+  inset-inline-start: 0;
+  inline-size: max(0px, calc(var(--caption-inline-start, 0px) - var(--sb-col, 0px)));
+}
 /* cloud AI in the agent's header (shell/ConnectionStatus.tsx CloudChip) */
 .ag-cloud {
   height: 20px;

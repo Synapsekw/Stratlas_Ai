@@ -52,7 +52,8 @@ describe('right-to-left readiness', () => {
     expect(physical).toEqual([]);
     const users = lines.filter((l) => /var\(--caption-inline-(end|start)/.test(l));
     expect(users.length).toBeGreaterThanOrEqual(4);
-    for (const line of users) expect(line).toMatch(/^\s*(padding-inline|inset-inline-end):/);
+    for (const line of users)
+      expect(line).toMatch(/^\s*(padding-inline|inset-inline-end|inline-size):/);
   });
 
   it('isolates numbers and codes inside mixed-direction text', () => {

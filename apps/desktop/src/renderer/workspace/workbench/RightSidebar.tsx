@@ -303,7 +303,7 @@ function BenchHead({ bench }: { bench: TabId }) {
 }
 
 /** What the front tab shows: today's context content for the fixed tabs. */
-function FrontBody({ front, road }: { front: TabId; road: boolean }) {
+export function FrontBody({ front, road }: { front: TabId; road: boolean }) {
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
   if (front === 'volumes') return <VolumesBench />;
   if (front === 'changes') return <ChangesTab className="ctx-fill" />;

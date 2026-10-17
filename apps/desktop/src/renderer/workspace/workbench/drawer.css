@@ -1,0 +1,55 @@
+/* The workbench drawer over the stage's end edge (Drawer.tsx): it slides with a transform only,
+   so the 3D view and the map keep their size. Reduced motion is the global rule (mission.css). */
+.wb-drawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: var(--z-drawer);
+  inline-size: min(var(--rp-w, 360px), 100%);
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  /* the panel's own size, as `.right`, for the benches' container units */
+  container-type: size;
+  background: var(--bg-1);
+  color: var(--fg-1);
+  border-inline-start: 1px solid var(--line);
+  box-shadow: var(--el-3);
+  /* closed: out past the end edge (the Scene's --rp-fold-x flips it right to left) */
+  transform: translateX(calc(var(--rp-fold-x, 1) * 100%));
+  transition: transform var(--d-3) var(--ease);
+}
+.wb-drawer[data-open] {
+  transform: none;
+}
+@starting-style {
+  .wb-drawer[data-open] {
+    transform: translateX(calc(var(--rp-fold-x, 1) * 100%));
+  }
+}
+.wb-drawer-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  block-size: 40px;
+  /* under the window's own buttons (the caption backing keeps them dark) */
+  padding-inline: var(--sp-5) calc(var(--sp-3) + var(--caption-inline-end, 0px));
+  border-block-end: 1px solid var(--line-soft);
+}
+.wb-drawer-title {
+  margin: 0;
+  font-size: var(--t-13);
+  font-weight: 500;
+  color: var(--fg-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wb-drawer-body {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  border-block-end: 0;
+}

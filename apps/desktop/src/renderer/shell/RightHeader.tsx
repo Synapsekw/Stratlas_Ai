@@ -99,3 +99,21 @@ export function RightHeader() {
     </div>
   );
 }
+
+/**
+ * The dark strip behind the window's own buttons where they sit over the stage (D28): the right
+ * panel folded away, so the stage runs to the window's edge, and, right to left, the main area's
+ * start when the left sidebar is only a rail (I-R23: the buttons then reach about 86 px past it).
+ * Its place and size are physical, as the buttons are (I-R14); styles.css gives it its width
+ * (`--caption-right`, nothing where the window draws no buttons) and when it shows.
+ */
+export function CaptionBacking() {
+  return (
+    <div
+      className="caption-backing"
+      data-testid="caption-backing"
+      data-surface="dark"
+      aria-hidden="true"
+    />
+  );
+}

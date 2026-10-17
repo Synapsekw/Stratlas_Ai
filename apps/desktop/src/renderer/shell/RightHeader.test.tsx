@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { shell } from '../shell';
 import { PANEL_ID } from './PanelHandle';
-import { openAgent, RightHeader } from './RightHeader';
+import { CaptionBacking, openAgent, RightHeader } from './RightHeader';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -106,5 +106,23 @@ describe('openAgent (Ctrl+J, Ask the agent)', () => {
     });
     expect(shell.getState().rightCollapsed).toBe(true);
     expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe('CaptionBacking', () => {
+  it('is a decorative dark strip: out of the accessibility tree, on the dark surface', () => {
+    const spot = document.createElement('div');
+    document.body.append(spot);
+    const r = createRoot(spot);
+    act(() => {
+      r.render(<CaptionBacking />);
+    });
+    const el = spot.querySelector('[data-testid="caption-backing"]');
+    expect(el?.getAttribute('aria-hidden')).toBe('true');
+    expect(el?.getAttribute('data-surface')).toBe('dark');
+    act(() => {
+      r.unmount();
+    });
+    spot.remove();
   });
 });

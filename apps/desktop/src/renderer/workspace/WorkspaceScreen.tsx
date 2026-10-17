@@ -1,6 +1,7 @@
 import { formatDate, neighbourClip, Timeline, type TimelineModel, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
+import { CaptionBacking } from '../shell/RightHeader';
 import { shell, useShell } from '../shell';
 import { ChainageRuler } from '../road/ChainageRuler';
 import { useIsRoad } from '../road/useRoadMap';
@@ -13,6 +14,7 @@ import { useTimeline } from './timeline';
 import { timelineActions, useTimelineBinding } from './timelineBinding';
 import { useTimelineShown } from './timelinePref';
 import { LaneFocusFollow, WorkspaceLanes } from './WorkspaceLanes';
+import { Drawer } from './workbench/Drawer';
 import { RightSidebar, useSidebarSplit } from './workbench/RightSidebar';
 
 const EMPTY_MODEL: TimelineModel = {
@@ -117,6 +119,8 @@ export function WorkspaceScreen() {
         onToggle={shell.getState().toggleRight}
       />
       <RightSidebar />
+      <CaptionBacking />
+      <Drawer />
     </section>
   );
 }
