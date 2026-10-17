@@ -67,6 +67,7 @@ import {
   type Signer,
 } from '@aio/journal';
 import {
+  ANTENNAS_FILE,
   checkpointFileName,
   ipc,
   JOURNAL_CHECKPOINTS_DIR,
@@ -214,6 +215,12 @@ const WRITERS: Partial<
   'survey:writeMeasurements': (r: IpcRequest<'survey:writeMeasurements'>) => ({
     projectId: r.projectId,
     rel: 'survey/measurements.json',
+    after: r.file,
+  }),
+  // telecom antenna inventory: one record.external op per save
+  'telecom:writeAntennas': (r: IpcRequest<'telecom:writeAntennas'>) => ({
+    projectId: r.projectId,
+    rel: ANTENNAS_FILE,
     after: r.file,
   }),
   // M10 3D Tiles list and ground control: one record.external op per save, labelled

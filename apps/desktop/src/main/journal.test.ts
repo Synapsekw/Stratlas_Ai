@@ -477,6 +477,22 @@ describe('journal service', () => {
       expect(e[0]?.via).toBeUndefined();
     });
 
+    it('journals telecom:writeAntennas against telecom/antennas.json', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const write = s.journal.wrap('telecom:writeAntennas', ({ file }) => {
+        put(root, 'telecom/antennas.json', file);
+        return { ok: true as const };
+      });
+      const file = { schema: 'aio.antennas/1', units: [] } as never;
+      expect(await write({ projectId: 'p', file })).toEqual({ ok: true });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]).toMatchObject({ kind: 'record.external' });
+      expect(JSON.stringify(e[0])).toContain('telecom/antennas.json');
+    });
+
     it('records a photo:writeGcp as one op on the run gcp.json', async () => {
       const { root, userData } = setup();
       const s = service(root, userData);

@@ -175,6 +175,8 @@ import type { DraftOp } from '@aio/journal';
 import { registerGeodesyIpc } from './geodesy';
 import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geoid';
 import { registerSurveyIpc } from './survey';
+import { registerTelecomIpc } from './telecom';
+import { antennaPackRefusal } from './telecomPack';
 import { registerSurveyAiIpc } from './surveyAi';
 import { createSegmenter } from './inference/segment';
 import { qaJobEvents, registerSurveyQaIpc } from './surveyQa';
@@ -1324,7 +1326,8 @@ function registerIpc(): void {
       pipeline === 'walk.process' ||
       pipeline === 'pano.stitch' ||
       pipeline === 'model.evidence' ||
-      pipeline === 'pointcloud.clean'
+      pipeline === 'pointcloud.clean' ||
+      pipeline === 'telecom.antennas'
     ) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
@@ -1336,6 +1339,7 @@ function registerIpc(): void {
         walkPackRefusal(pipeline, version) ??
         panoPackRefusal(pipeline, version) ??
         evidencePackRefusal(pipeline, version) ??
+        antennaPackRefusal(pipeline, version) ??
         cleanPackRefusal(pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
@@ -1863,6 +1867,8 @@ function registerIpc(): void {
     journal: (root: string, drafts: readonly DraftOp[]) => journal.appendEdits(root, drafts),
   };
   registerSurveyIpc({ handle, ...survey, userData: () => app.getPath('userData') });
+  // telecom antenna detection (files and pack gate: telecom.ts, telecomPack.ts)
+  registerTelecomIpc({ handle, projects: registry });
   registerSurveyOverlaysIpc({ handle, ...survey });
   registerGeodesyIpc({ handle, ...survey });
   registerSurveyQaIpc({ handle, ...survey });

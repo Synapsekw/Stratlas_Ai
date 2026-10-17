@@ -85,7 +85,7 @@ const READ_ONLY_MEASUREMENTS =
 const READ_ONLY_TEMPLATES = 'This project is a read-only package. Its templates cannot be changed.';
 const READ_ONLY_DESIGNS = 'This project is a read-only package. Its designs cannot be changed.';
 
-function why(e: unknown): string {
+export function why(e: unknown): string {
   const code = (e as NodeJS.ErrnoException).code;
   if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return 'the folder is read only';
   return e instanceof Error ? e.message : String(e);
@@ -101,7 +101,7 @@ function invalid(
 }
 
 /** Parse a JSON value read from disk or an archive as `schema`, refusing a newer build's file. */
-function parseAs<S extends z.ZodType>(
+export function parseAs<S extends z.ZodType>(
   raw: unknown,
   schema: S,
   family: string,
@@ -116,7 +116,7 @@ function parseAs<S extends z.ZodType>(
 }
 
 /** A member of a package as JSON, or undefined when the package has none. */
-async function readArchiveJson(archive: SurveyArchive, rel: string): Promise<unknown> {
+export async function readArchiveJson(archive: SurveyArchive, rel: string): Promise<unknown> {
   if (!archive.entries.has(rel)) return undefined;
   const text = (await archive.read(rel)).toString('utf8');
   return JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as unknown;
