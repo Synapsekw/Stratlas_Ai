@@ -161,11 +161,17 @@ export function AntennaDetails(props: AntennaDetailsProps): ReactElement {
             value={weight}
             disabled={readOnly}
             aria-invalid={weightBad ? true : undefined}
+            aria-describedby={weightBad ? 'antenna-weight-err' : undefined}
             onChange={(e) => {
               setWeight(e.target.value);
             }}
             onBlur={commitWeight}
           />
+          {weightBad ? (
+            <small id="antenna-weight-err" role="alert">
+              {t('telecom.antennas.field.weight.invalid')}
+            </small>
+          ) : null}
         </label>
         <label style={{ display: 'grid', gap: 'var(--sp-1)' }}>
           {t('telecom.antennas.field.frequencies')}
@@ -228,7 +234,7 @@ export function AntennaDetails(props: AntennaDetailsProps): ReactElement {
         <Button
           data-testid="antenna-accept"
           pressed={unit.status === 'accepted'}
-          {...(readOnly ? { disabledReason: t('telecom.antennas.accept') } : {})}
+          {...(readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {})}
           onClick={() => {
             props.onSetStatus('accepted');
           }}
@@ -238,7 +244,7 @@ export function AntennaDetails(props: AntennaDetailsProps): ReactElement {
         <Button
           data-testid="antenna-reject"
           pressed={unit.status === 'rejected'}
-          {...(readOnly ? { disabledReason: t('telecom.antennas.reject') } : {})}
+          {...(readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {})}
           onClick={() => {
             props.onSetStatus('rejected');
           }}

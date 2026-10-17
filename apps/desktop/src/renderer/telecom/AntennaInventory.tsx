@@ -56,7 +56,7 @@ function UnitRow({
       onSelect: () => {
         onSetStatus(unit.id, 'accepted');
       },
-      ...(readOnly ? { disabledReason: t('telecom.antennas.accept') } : {}),
+      ...(readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {}),
     },
     {
       id: 'reject',
@@ -65,7 +65,7 @@ function UnitRow({
       onSelect: () => {
         onSetStatus(unit.id, 'rejected');
       },
-      ...(readOnly ? { disabledReason: t('telecom.antennas.reject') } : {}),
+      ...(readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {}),
     },
     'separator',
     {

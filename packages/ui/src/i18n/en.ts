@@ -4517,6 +4517,8 @@ export const en = {
     'Mechanical tilt only. Electrical tilt is inside the antenna and is not measured.',
   'telecom.antennas.field.model': 'Model',
   'telecom.antennas.field.weight': 'Weight (kg)',
+  'telecom.antennas.field.weight.invalid': 'Enter a weight in kilograms, 0 or more',
+  'telecom.antennas.readOnly': 'Read-only package: review is not available',
   'telecom.antennas.field.frequencies': 'Frequencies',
   'telecom.antennas.field.active': 'In service',
   'telecom.antennas.photos': 'Best photos',

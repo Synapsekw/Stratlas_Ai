@@ -133,6 +133,9 @@ describe('AntennaDetails', () => {
     blur(input('Weight'));
     expect(h.onPatchUser).not.toHaveBeenCalled();
     expect(input('Weight').getAttribute('aria-invalid')).toBe('true');
+    const err = host.querySelector('#antenna-weight-err');
+    expect(err?.textContent).toBe('Enter a weight in kilograms, 0 or more');
+    expect(input('Weight').getAttribute('aria-describedby')).toBe('antenna-weight-err');
     type(input('Weight'), '501');
     blur(input('Weight'));
     expect(h.onPatchUser).not.toHaveBeenCalled();
@@ -141,6 +144,7 @@ describe('AntennaDetails', () => {
     blur(input('Weight'));
     expect(h.onPatchUser).toHaveBeenCalledWith({ weightKg: 12.5 });
     expect(input('Weight').getAttribute('aria-invalid')).toBeNull();
+    expect(host.querySelector('#antenna-weight-err')).toBeNull();
   });
 
   it('saves the in-service flag on change', () => {
@@ -192,6 +196,9 @@ describe('AntennaDetails', () => {
   it('disables edits when read-only', () => {
     const h = show(unit(), { readOnly: true });
     expect(input('Model').disabled).toBe(true);
+    expect(host.querySelector('[data-testid="antenna-accept"]')?.textContent).toContain(
+      'Read-only package: review is not available',
+    );
     act(() => {
       host.querySelector<HTMLElement>('[data-testid="antenna-accept"]')!.click();
     });
