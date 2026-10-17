@@ -8,9 +8,13 @@ scored on how much of the box is in the frame, how squarely it looks at the face
 is (no occlusion test in v1); a camera that is not on the unit's front side (a dish: its reflector
 side) does not count. The top three are kept.
 
-The crop is the projected box plus a margin, cut from the upright photo and written as a JPEG with
-no metadata, at most `CROP_MAX_PX` on its longest side: the AI labelling's cost estimate and its
-request size assume 512 px (packages/ai/src/antennaLabel.ts `CROP_PX`).
+The crop is the projected box plus a margin, cut from the upright photo. The margin on each side is
+the larger of `CROP_MARGIN` of the box and the angle `CROP_POSE_DEG`: a drone photo's recorded pose
+can be off by a few degrees (gimbal and compass), which at 8 to 20 m moves a box by 0.4 m or more,
+a whole panel's width, so a margin proportional to the box alone cuts a narrow unit in half. The
+crop is written as a JPEG with no metadata, at most `CROP_MAX_PX` on its longest side: the AI
+labelling's cost estimate and its request size assume 512 px (packages/ai/src/antennaLabel.ts
+`CROP_PX`).
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from .measure import from_project
 
 CROP_MAX_PX = 512
 CROP_MARGIN = 0.15
+CROP_POSE_DEG = 4.0  # least margin on each side, as an angle: the pose error of a drone photo
 TOP_PHOTOS = 3
 MIN_IN_FRAME = 0.25
 CROP_MIN_PX = 16  # a projected box smaller than this on both sides is not worth a crop
@@ -163,13 +168,17 @@ def _origin(manifest: dict) -> tuple[float, float, float]:
 
 
 def best_photos(
-    units: list[dict], manifest: dict, project: Path, check: Callable[[], None] | None = None
+    units: list[dict],
+    manifest: dict,
+    project: Path,
+    check: Callable[[], None] | None = None,
+    posed: list[dict] | None = None,
 ) -> dict[str, list[dict]]:
     """Unit id -> its best photos, best first: up to `TOP_PHOTOS` of {layer, id, score}; photos
     that do not see the unit (score 0) are left out."""
     origin = _origin(manifest)
     out: dict[str, list[dict]] = {u["id"]: [] for u in units}
-    photos = posed_photos(manifest, project)
+    photos = posed if posed is not None else posed_photos(manifest, project)
     if not photos or not units:
         return out
     boxes = [_local_box(u, origin) for u in units]
@@ -197,16 +206,27 @@ def best_photos(
     return out
 
 
-def write_crop(project: Path, unit: dict, photo: dict, manifest: dict, out: Path) -> Path | None:
-    """A JPEG of the unit's projected box plus `CROP_MARGIN` on each side, cut from the photo
+def crop_margin(w_px: float, h_px: float, size: tuple[int, int], lens: dict | None) -> tuple[float, float]:
+    """Margins (x, y) in pixels around a projected box `w_px` x `h_px`: `CROP_MARGIN` of each side,
+    at least the pixels that `CROP_POSE_DEG` spans at the photo's focal length."""
+    f = (size[0] / 2) / math.tan(math.radians(_hfov(lens)) / 2)
+    pose = f * math.tan(math.radians(CROP_POSE_DEG))
+    return max(CROP_MARGIN * w_px, pose), max(CROP_MARGIN * h_px, pose)
+
+
+def write_crop(
+    project: Path, unit: dict, photo: dict, manifest: dict, out: Path, posed: list[dict] | None = None
+) -> Path | None:
+    """A JPEG of the unit's projected box plus a margin on each side (`crop_margin`), cut from the photo
     `photo` ({layer, id}) and at most `CROP_MAX_PX` on its longest side. None when the photo is
-    not found, not posed, or does not see the box."""
+    not found, not posed, or does not see the box. `posed` is `posed_photos` of the project when
+    the caller already has it (it opens every photo's header)."""
     from PIL import Image, ImageOps
 
     item = next(
         (
             p
-            for p in posed_photos(manifest, project)
+            for p in (posed if posed is not None else posed_photos(manifest, project))
             if p["_layer"] == photo.get("layer") and str(p["id"]) == photo.get("id")
         ),
         None,
@@ -219,7 +239,7 @@ def write_crop(project: Path, unit: dict, photo: dict, manifest: dict, out: Path
     W, H = item["_size"]
     x0, y0 = px.min(axis=0)
     x1, y1 = px.max(axis=0)
-    mx, my = CROP_MARGIN * (x1 - x0), CROP_MARGIN * (y1 - y0)
+    mx, my = crop_margin(x1 - x0, y1 - y0, item["_size"], item.get("lens"))
     left, top = max(0, math.floor(x0 - mx)), max(0, math.floor(y0 - my))
     right, bottom = min(W, math.ceil(x1 + mx)), min(H, math.ceil(y1 + my))
     if (right - left < CROP_MIN_PX and bottom - top < CROP_MIN_PX) or right <= left or bottom <= top:

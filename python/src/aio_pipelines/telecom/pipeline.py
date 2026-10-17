@@ -168,6 +168,7 @@ GROUND_PERCENTILE = 2.0
 GROUND_MIN_POINTS = 20
 GROUND_BELOW_BULK_M = 1.0  # points this far under the annulus's 25th percentile height are strays
 GROUND_READ_POINTS = 200_000
+GROUND_BELOW_BASE_M = 50.0  # how far under the axis base the ground read reaches
 
 
 def ground_near_base(ctx: Any, project: Path, manifest: dict, crown: Any) -> float | None:
@@ -186,10 +187,17 @@ def ground_near_base(ctx: Any, project: Path, manifest: dict, crown: Any) -> flo
     axis = crown.axis
     base = np.asarray(axis.point, dtype=float)
     r_out = max(GROUND_R_MAX_M, float(crown.shaft_r(np.array([0.0]))[0]) + 1.0)
+    # only up to half the height: the annulus test keeps nothing higher, and the crown above
+    # holds most of the points of a column around the axis (and most of the reading time)
+    top = float(axis.from_frame(0.0, 0.0, 0.5 * float(crown.height))[1])
+    region = {
+        "min": [float(base[0]) - r_out, float(base[1]) - GROUND_BELOW_BASE_M, float(base[2]) - r_out],
+        "max": [float(base[0]) + r_out, top, float(base[2]) + r_out],
+    }
     pts = read_region(
         path,
         str(layer.get("format") or "las"),
-        {"centre": [float(base[0]), float(base[2])], "radiusM": r_out},
+        region,
         GROUND_READ_POINTS,
         ctx,
         _origin(manifest),
@@ -328,13 +336,14 @@ class TelecomAntennas:
 
         def photos_step(ctx: StepContext) -> dict[str, Any]:
             from .merge import merge_with_sources
-            from .photos import best_photos, write_crop
+            from .photos import best_photos, posed_photos, write_crop
 
             ctx.progress(0.0, "Picking the best photos")
             manifest = _manifest(ctx.project)
             measured = ctx.outputs("boxes").get("units") or []
             temp = [{**m, "id": f"new-{k}"} for k, m in enumerate(measured)]
-            best = best_photos(temp, manifest, ctx.project, ctx.check)
+            posed = posed_photos(manifest, ctx.project)  # every photo header, read once
+            best = best_photos(temp, manifest, ctx.project, ctx.check, posed)
             photos = [best.get(f"new-{k}", []) for k in range(len(measured))]
             created = now_iso()
             units = _run_units(measured, photos, run_id, created)
@@ -347,7 +356,7 @@ class TelecomAntennas:
                 if src is None or not photos[src] or not UNIT_ID.match(u["id"]):
                     continue
                 staged = f"crops/{u['id']}.jpg"
-                if write_crop(ctx.project, u, photos[src][0], manifest, ctx.stage(staged)) is not None:
+                if write_crop(ctx.project, u, photos[src][0], manifest, ctx.stage(staged), posed) is not None:
                     crops[str(src)] = u["id"]
                 ctx.progress((j + 1) / n)
             seen = sum(1 for p in photos if p)

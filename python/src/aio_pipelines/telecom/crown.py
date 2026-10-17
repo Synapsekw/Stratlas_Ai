@@ -23,7 +23,6 @@ from scipy import ndimage
 from ..change.sources import height_offset_m
 from ..engineer.axis import Axis, estimate_axis
 from ..engineer.cloud import read_region
-from ..engineer.members import fit_shaft_envelope
 from ..inspection.frame import asset_path
 from ..runtime import JobError
 
@@ -47,6 +46,9 @@ CROWN_MARGIN_M = 3.0
 GRID_M = 1.0
 OVERVIEW_POINTS = 400_000
 FULL_POINTS = 2_000_000
+# the evidence read: the shaft from 0.1 of the height up plus the crown, sampled so the crown keeps
+# about FULL_POINTS (it holds most of the points); the band is cut from it, with no second read
+LOCAL_POINTS = 2_500_000
 MIN_TOWER_HEIGHT_M = 5.0  # a structure lower than this is not a tower
 MAX_FOOTPRINT_M = 12.0  # a wider cell cluster is a building or a tree line, not a slender tower
 SEPARATE_MASTS_M = 5.0
@@ -57,6 +59,7 @@ BAND_CLEARANCE_M = 0.25
 FLOOR_LIFT_M = 0.3
 MIN_UPRIGHT = 0.5  # the upright check of `engineer.pipeline` and `model.evidence`
 MIN_BAND_POINTS = 50
+SHAFT_SLICES = 12
 
 
 class ShaftRadius:
@@ -184,15 +187,30 @@ def pick_cloud_layer(project: Path, manifest: dict, requested: str | None) -> tu
 # ---------------------------------------------------------------------------------------------
 
 
-def shaft_radius_fn(xyz: np.ndarray, axis: Axis, height: float) -> ShaftRadius:
+def shaft_radius_fn(xyz: np.ndarray, axis: Axis, height: float, top: float | None = None) -> ShaftRadius:
     """The shaft radius against height along the axis: the 98th percentile radius in 1 m slices
-    from 0.1 to 0.6 of `height`, fitted by a line (`members.fit_shaft_envelope`) and extrapolated.
+    from 0.1 of `height` up to `top` (default 0.6 of `height`; at least 20 points each), fitted by
+    a robust line and extrapolated. The line is Theil-Sen (the median of the pairwise slopes, then the median
+    intercept), so a few slices that hold something beside the shaft (a shelter, a fence or a
+    parked vehicle by the base, a platform) do not tilt it: a least-squares fit through such a
+    slice can drive the radius below zero at the crown and put the bare shaft in the band.
     With too few slices the radius is the 98th percentile of the lower 60 percent, constant."""
     u, w, h = axis.to_frame(xyz)
     r = np.hypot(u, w)
-    coef = fit_shaft_envelope(h, r, height)
-    if coef is not None:
-        return ShaftRadius(coef[0], coef[1])
+    order = np.argsort(h)
+    hs = h[order]
+    ys, vals = [], []
+    top = 0.6 * height if top is None else top
+    for y in np.arange(0.1 * height, top + 1e-9, max((top - 0.1 * height) / (SHAFT_SLICES - 1), 1.0)):
+        lo, hi = np.searchsorted(hs, [y - 0.5, y + 0.5])
+        if hi - lo > 20:
+            ys.append(float(y))
+            vals.append(float(np.percentile(r[order[lo:hi]], 98)))
+    if len(ys) >= 4:
+        y, v = np.asarray(ys), np.asarray(vals)
+        i, j = np.triu_indices(len(y), k=1)
+        slope = float(np.median((v[j] - v[i]) / (y[j] - y[i])))
+        return ShaftRadius(slope, float(np.median(v - slope * y)))
     low = r[(h > 0.1 * height) & (h <= 0.6 * height)]
     return ShaftRadius(0.0, float(np.percentile(low, 98)) if len(low) else 0.5)
 
@@ -314,7 +332,23 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
         source = "evidence"
         axis = _axis_of(evidence)
         height = float(evidence["height"])
-        local = region_pts((axis.point[0], axis.point[2]), HINT_RADIUS_M)
+        # the shaft fit starts at 0.1 of the height and the axis is known: leave the ground out of
+        # the read (around the base it holds most of the points and most of the reading time)
+        lo = axis.from_frame(0.0, 0.0, 0.1 * height - 1.0)
+        hi = axis.from_frame(0.0, 0.0, height + 1.0)
+        reach = HINT_RADIUS_M + float(np.hypot(hi[0] - lo[0], hi[2] - lo[2]))
+        local = _read(
+            ctx,
+            layer_path,
+            layer,
+            {
+                "min": [float(lo[0]) - reach, float(lo[1]), float(lo[2]) - reach],
+                "max": [float(lo[0]) + reach, float(hi[1]), float(lo[2]) + reach],
+            },
+            LOCAL_POINTS,
+            origin,
+            offset,
+        )
     else:
         source = "auto"
         overview = _read(ctx, layer_path, layer, None, OVERVIEW_POINTS, origin, offset)
@@ -332,6 +366,11 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
     near = r <= HINT_RADIUS_M  # other structures in the crop do not enter the shaft or the band
     shaft_r = shaft_radius_fn(local[near], axis, height)
     floor_h = _floor_h(h[near], r[near], shaft_r, height)
+    if floor_h is not None and floor_h - 0.5 > 0.6 * height:
+        # the bare shaft right under the equipment sets the radius at the crown better than a
+        # line from the lower shaft carried several metres up: fit again up to the floor
+        shaft_r = shaft_radius_fn(local[near], axis, height, top=floor_h - 0.5)
+        floor_h = _floor_h(h[near], r[near], shaft_r, height)
     if floor_h is None:
         fraction = params.get("floorFraction")
         fraction = (
@@ -351,7 +390,10 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
         "min": [float(foot[0] - radius), floor_y, float(foot[2] - radius)],
         "max": [float(foot[0] + radius), top_y + 1.0, float(foot[2] + radius)],
     }
-    band = _read(ctx, layer_path, layer, box, FULL_POINTS, origin, offset)
+    if source == "evidence":
+        band = local[np.all((local >= box["min"]) & (local <= box["max"]), axis=1)]
+    else:
+        band = _read(ctx, layer_path, layer, box, FULL_POINTS, origin, offset)
     if len(band):
         bu, bw, _ = axis.to_frame(band)
         band = band[np.hypot(bu, bw) <= radius]

@@ -214,3 +214,41 @@ def test_newest_evidence_takes_the_latest_with_a_pack(tmp_path):
 def test_constants():
     assert (CROP_RADIUS_M, HINT_RADIUS_M, DEFAULT_FLOOR_FRACTION) == (30.0, 8.0, 0.7)
     assert TOWER_HINT_NEEDED.startswith("Could not tell which structure is the tower.")
+
+
+def _lowest_equipment_y(truth) -> float:
+    """The bottom of the lowest unit box (the brackets and pipes below it reach about 1 m lower)."""
+    return min(u["centre"][1] - u["heightM"] / 2 for u in truth["units"])
+
+
+@pytest.mark.parametrize("source", ["evidence", "auto"])
+def test_shelter_by_the_base_does_not_put_the_bare_shaft_in_the_band(tmp_path, source):
+    # a shelter by the base reaches into the lowest slices of the shaft fit; a least-squares line
+    # through it drove the radius below zero at the crown, so the band began at half the height
+    xyz, truth = tower_cloud("monopole", seed=1, clutter=True)
+    evidence = (TRUE_AXIS, truth["height"]) if source == "evidence" else None
+    c = crown_for(tmp_path, xyz, evidence=evidence)
+    low = _lowest_equipment_y(truth)
+    assert low - 2.0 < c.floor_y <= low
+    assert not c.warnings
+    if source == "auto":  # the automatic axis leans a little toward the shelter: no exact radius
+        return
+    # the radius at the crown is the shaft's, not a line carried up from the shelter
+    (y0, r0), (y1, r1) = truth["shaftRadiusAt"]
+    r_crown = r0 + (r1 - r0) * (c.floor_y - y0) / (y1 - y0)
+    assert float(c.shaft_r(np.array([c.floor_y]))[0]) == pytest.approx(r_crown, abs=0.06)
+
+
+def test_shaft_fit_ignores_a_few_cluttered_slices():
+    axis = Axis((0.0, 0.0, 0.0), (0.0, 1.0, 0.0), 0.0)
+    rng = np.random.default_rng(2)
+    y = rng.uniform(0.0, 30.0, 60_000)
+    r = 0.6 - 0.25 * y / 30.0
+    a = rng.uniform(0, 2 * np.pi, len(y))
+    shaft = np.column_stack([r * np.sin(a), y, r * np.cos(a)])
+    clutter = np.column_stack(
+        [rng.uniform(3.0, 6.0, 4000), rng.uniform(2.0, 3.6, 4000), rng.uniform(-1, 1, 4000)]
+    )
+    fn = shaft_radius_fn(np.vstack([shaft, clutter]), axis, 30.0)
+    for h in (5.0, 15.0, 27.0):
+        assert float(fn(np.array([h]))[0]) == pytest.approx(0.6 - 0.25 * h / 30.0, abs=0.03)

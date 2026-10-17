@@ -28,12 +28,17 @@ PAIR_DOT = 0.97
 PAIR_ALONG_M = 0.35
 PAIR_LATERAL_M = 0.2
 PAIR_Z_OVERLAP_M = 0.1
+PAIR_WIDTH_SHARE = 0.6  # a box's front and back are about as wide: a pole behind a radio is neither
 DUP_M = 0.15
 
 FRONT_MIN_HEIGHT_SHARE = 0.6
 FRONT_MARGIN_M = 0.05  # a unit's height counts its faces' points this far past the front's
 SIDE_MARGIN_M = 0.05  # a face whose centre lies this close to a bigger unit's box is its side
 EDGE_STRIP_M = 0.03  # inferred depth: crown points this close inside the front's side edges
+DEPTH_BIN_M = 0.01
+DEPTH_GAP_M = 0.05  # an empty stretch this deep behind a front ends its side faces
+MIN_FRONT_COVERAGE = 0.7  # occupied share of a front's rectangle (a unit's front is solid)
+MIN_LONE_COVERAGE = 0.85  # the same for a front with no back face: one face is all the evidence
 DISH_CIRCLE_M = 0.01
 DISH_RMS_SHARE = 0.02
 DISH_ROUNDNESS = 0.15
@@ -48,6 +53,9 @@ TUBE_LINEARITY = 0.75
 DISH_HULL_SHARE = 0.8  # outline points that must sit on the circle
 DISH_SHELL_M = 0.02  # points this close to the fitted reflector profile belong to it
 PANEL_MIN_H = 1.2
+ANTENNA_MIN_W = 0.2  # a narrower upright face is a pole, a bracket or a cable bundle, not an antenna
+ANTENNA_MIN_D = 0.08  # two parallel faces closer than this are a plate or a bracket, not an antenna
+MEMBER_SLENDERNESS = 4.0  # a face narrower than ANTENNA_MIN_W and this many times taller is a member
 SHORT_MIN_H = 0.6
 FACING_MIN = 0.5
 _UP = np.array([0.0, 1.0, 0.0])
@@ -70,22 +78,46 @@ def _interval(f: Face, axis: np.ndarray) -> tuple[float, float]:
     return span(f.points @ axis, 0.5)
 
 
-def _inferred_depth(front: Face, w: float, h: float, crown: np.ndarray) -> float:
-    """Depth behind a front with no back face: the 99th percentile reach of the crown points just
-    inside its two side edges (its side faces), else of all points in its footprint; capped."""
-    rel = crown - front.centre
-    near = np.einsum("ij,ij->i", rel, rel) < (max(w, h) / 2 + MAX_D) ** 2
-    rel = rel[near]
+def _inferred_depth(front: Face, w: float, h: float, crown: np.ndarray, tree: cKDTree | None = None) -> float:
+    """Depth behind a front with no back face: how far its side faces reach back, read from the
+    crown points just inside its two side edges (else all points in its footprint). The points
+    are binned by depth from the front plane and the depth ends at the first empty stretch of
+    `DEPTH_GAP_M`: a pipe, a bracket or another unit behind the box, separated from it by air, no
+    longer counts. `MAX_D` when nothing ends before it (the front is not a box's: see
+    `pair_faces`); `MIN_D` with almost no points behind."""
+    reach = max(w, h) / 2 + MAX_D
+    if tree is not None:
+        rel = crown[tree.query_ball_point(front.centre, reach)] - front.centre
+    else:
+        rel = crown - front.centre
+        rel = rel[np.einsum("ij,ij->i", rel, rel) < reach**2]
     a, b, c = rel @ front.side, rel @ front.up, rel @ front.normal
-    behind = (np.abs(b) < 0.45 * h) & (c < -RANSAC_THR_M) & (c > -MAX_D)
+    behind = (np.abs(b) < 0.45 * h) & (c < -RANSAC_THR_M) & (c > -MAX_D - DEPTH_GAP_M)
     edge = behind & (np.abs(a) > w / 2 - EDGE_STRIP_M) & (np.abs(a) < w / 2 + VOXEL_M)
     pick = edge if edge.sum() >= 20 else behind & (np.abs(a) < w / 2)
     if pick.sum() < 5:
         return MIN_D
-    return float(min(MAX_D, np.percentile(-c[pick], 99) / 0.99))
+    t = -c[pick]
+    bins = int(np.ceil((MAX_D + DEPTH_GAP_M) / DEPTH_BIN_M)) + 1
+    occupied = np.bincount(np.floor(t / DEPTH_BIN_M).astype(int), minlength=bins) > 0
+    run = max(1, round(DEPTH_GAP_M / DEPTH_BIN_M))
+    last = -1
+    for i, v in enumerate(occupied):
+        if v:
+            last = i
+        elif i - last >= run:
+            break
+    else:
+        return MAX_D
+    if last < 0:
+        return MIN_D
+    t = t[t < (last + 1) * DEPTH_BIN_M]
+    return float(min(MAX_D, np.percentile(t, 99) / 0.99))
 
 
-def _group_unit(group: list[Face], axis_point: np.ndarray, crown: np.ndarray) -> Unit:
+def _group_unit(
+    group: list[Face], axis_point: np.ndarray, crown: np.ndarray, tree: cKDTree | None = None
+) -> Unit:
     tallest = max(f.height for f in group)
     n0 = group[0].normal
     fronts = [f for f in group if f.height >= FRONT_MIN_HEIGHT_SHARE * tallest]
@@ -104,7 +136,7 @@ def _group_unit(group: list[Face], axis_point: np.ndarray, crown: np.ndarray) ->
         d = max(offs) - min(offs)
         measured = True
     else:
-        d = _inferred_depth(front, w, h, crown)
+        d = _inferred_depth(front, w, h, crown, tree)
         measured = False
     centre = front.centre - out * d / 2 + up * (b0 + b1) / 2
     return Unit(
@@ -168,9 +200,16 @@ def _reflector_dishes(
     if len(pts) < DISH_MIN_POINTS:
         return []
     keep = np.ones(len(pts), dtype=bool)
+    near_tree = cKDTree(pts)
     for u in units:
-        local = (pts - u.centre) @ u.axes.T
-        keep &= ~np.all(np.abs(local) <= u.extents / 2 + SIDE_MARGIN_M, axis=1)
+        idx = np.asarray(
+            near_tree.query_ball_point(u.centre, float(np.linalg.norm(u.extents / 2 + SIDE_MARGIN_M))),
+            dtype=int,
+        )
+        if len(idx) == 0:
+            continue
+        local = (pts[idx] - u.centre) @ u.axes.T
+        keep[idx[np.all(np.abs(local) <= u.extents / 2 + SIDE_MARGIN_M, axis=1)]] = False
     pts = pts[keep]
     if len(pts) < DISH_MIN_POINTS:
         return []
@@ -187,6 +226,8 @@ def _reflector_dishes(
     out: list[Unit] = []
     for c in np.where(counts >= DISH_MIN_POINTS)[0]:
         x = sheet[lab == c]
+        if float(np.linalg.norm(np.ptp(x, axis=0))) > 2 * DISH_D_RANGE[1]:
+            continue  # the regrowth only adds points: a cluster this big already is no dish
         for _ in range(DISH_REGROW_STEPS):
             x = pts[np.unique(np.concatenate(tree.query_ball_point(x, DISH_LINK_M)))]
         size = float(np.linalg.norm(np.ptp(x, axis=0)))
@@ -303,10 +344,31 @@ def _reflector(x: np.ndarray, axis_point: np.ndarray, rng: np.random.Generator) 
     )
 
 
+def _is_box(u: Unit) -> bool:
+    """Whether a unit is one plausible box: sizes in range, a solid front (`MIN_FRONT_COVERAGE`,
+    `MIN_LONE_COVERAGE` without a back face; faces stitched across several units or the frame
+    between them are mostly holes, and a bracket or clamp plate seldom fills its outline), a front
+    wider than the box is deep (a narrower one is a side face: the front of a unit is its widest
+    upright face), and an inferred depth that ended before `MAX_D` (one that did not found no
+    back to the face, which is then a side face or a face of the frame). A narrow face many times
+    taller than wide (`MEMBER_SLENDERNESS`) is a member of the frame, a pole or a cable bundle."""
+    lo, hi = np.array([MIN_W, MIN_H, MIN_D]), np.array([MAX_W, MAX_H, MAX_D])
+    w, h, d = (float(v) for v in u.extents)
+    if not (np.all(u.extents >= lo) and np.all(u.extents <= hi)):
+        return False
+    if w < ANTENNA_MIN_W and h > MEMBER_SLENDERNESS * w:  # a pole, a bar or a cable bundle
+        return False
+    least = MIN_FRONT_COVERAGE if u.depth_measured else MIN_LONE_COVERAGE
+    if u.front.coverage < least or w < d:
+        return False
+    return u.depth_measured or d < MAX_D - DEPTH_BIN_M
+
+
 def pair_faces(faces: list[Face], axis_point: np.ndarray, crown_xyz: np.ndarray) -> list[Unit]:
     """Units (oriented boxes with a kind) from the crown's planar faces and its points."""
     axis_point = np.asarray(axis_point, dtype=float)
     crown = np.asarray(crown_xyz, dtype=float)
+    tree = cKDTree(crown) if len(crown) else None
     rng = np.random.default_rng(0)
     big = sorted(
         (f for f in faces if f.height >= MIN_H and MIN_W <= f.width <= MAX_W),
@@ -327,15 +389,15 @@ def pair_faces(faces: list[Face], axis_point: np.ndarray, crown_xyz: np.ndarray)
             gi = _interval(g, f.up)
             overlap = min(fi[1], gi[1]) - max(fi[0], gi[0])
             if (
-                abs(delta @ f.normal) < PAIR_ALONG_M
+                min(f.width, g.width) >= PAIR_WIDTH_SHARE * max(f.width, g.width)
+                and abs(delta @ f.normal) < PAIR_ALONG_M
                 and abs(delta @ f.side) < PAIR_LATERAL_M
                 and overlap > PAIR_Z_OVERLAP_M
             ):
                 group.append(g)
                 used.add(j)
-        units.append(_group_unit(group, axis_point, crown))
-    lo, hi = np.array([MIN_W, MIN_H, MIN_D]), np.array([MAX_W, MAX_H, MAX_D])
-    units = [u for u in units if np.all(u.extents >= lo) and np.all(u.extents <= hi)]
+        units.append(_group_unit(group, axis_point, crown, tree))
+    units = [u for u in units if _is_box(u)]
     units.sort(key=lambda u: -u.support)
     kept: list[Unit] = []
     for u in units:
@@ -343,8 +405,11 @@ def pair_faces(faces: list[Face], axis_point: np.ndarray, crown_xyz: np.ndarray)
             np.linalg.norm(u.centre - k.centre) < DUP_M and abs(u.axes[2] @ k.axes[2]) > PAIR_DOT
             for k in kept
         )
+        # a face of a better supported unit (its side), or a box around one (spanning two units,
+        # the ring between them): either way not a unit of its own
         side = any(_inside(u.front.centre, k, SIDE_MARGIN_M) for k in kept)
-        if not dup and not side:
+        spans = any(_inside(k.front.centre, u, 0.0) for k in kept)
+        if not dup and not side and not spans:
             kept.append(u)
     for u in kept:
         u.dish = _flat_dish(u, rng)
@@ -359,14 +424,18 @@ def pair_faces(faces: list[Face], axis_point: np.ndarray, crown_xyz: np.ndarray)
 
 def classify(unit: Unit, radial: np.ndarray) -> str:
     """The kind of a unit: "dish" when round, "other" when it faces sideways or inward (its outward
-    axis within 60 degrees of the radial direction is required), else by height: "panel" from
-    1.2 m, "short" from 0.6 m, "other" below."""
+    axis within 60 degrees of the radial direction is required), is narrower than 0.2 m or
+    measures under 0.08 m deep (a plate, a bracket), else by height: "panel" from 1.2 m, "short" from 0.6 m, "other" below."""
     if unit.dish is not None:
         return "dish"
     out_h = unit.axes[2] * np.array([1.0, 0.0, 1.0])
     r_h = np.asarray(radial, dtype=float) * np.array([1.0, 0.0, 1.0])
     ln = np.linalg.norm(out_h) * np.linalg.norm(r_h)
     if ln == 0 or (out_h @ r_h) / ln < FACING_MIN:
+        return "other"
+    if float(unit.extents[0]) < ANTENNA_MIN_W or (
+        unit.depth_measured and float(unit.extents[2]) < ANTENNA_MIN_D
+    ):
         return "other"
     h = float(unit.extents[1])
     if h >= PANEL_MIN_H:

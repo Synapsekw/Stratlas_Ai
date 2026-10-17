@@ -15,6 +15,7 @@ from aio_pipelines.telecom.measure import to_project, to_project_dir
 from aio_pipelines.telecom.photos import (
     CROP_MARGIN,
     CROP_MAX_PX,
+    CROP_POSE_DEG,
     TOP_PHOTOS,
     best_photos,
     box_corners,
@@ -167,15 +168,43 @@ def test_crop_is_bounded(tmp_path):
         assert not im.getexif()  # no metadata of the photo
         a = np.asarray(im.convert("L"), dtype=float)
     w_box, h_box = x1 - x0, y1 - y0
+    f = (size[0] / 2) / math.tan(math.radians(LENS["hfovDeg"]) / 2)
+    pose = f * math.tan(math.radians(CROP_POSE_DEG))
+    mx, my = max(CROP_MARGIN * w_box, pose), max(CROP_MARGIN * h_box, pose)
+    assert mx == pytest.approx(pose)  # a narrow unit: the pose margin is wider than 15 percent
     # the whole box plus the margin: the crop's aspect is the padded box's, the border is grey
-    assert a.shape[1] / a.shape[0] == pytest.approx(w_box / h_box, rel=0.03)
+    assert a.shape[1] / a.shape[0] == pytest.approx((w_box + 2 * mx) / (h_box + 2 * my), rel=0.03)
     assert max(a.shape) == CROP_MAX_PX  # 1.3 x a ~490 px tall box is more than 512: scaled down
     for edge in (a[0], a[-1], a[:, 0], a[:, -1]):
         assert float(np.mean(np.abs(edge - 128))) < 12
     h, w = a.shape
     assert float(a[h // 2, w // 2]) > 240
     white = float((a > 192).mean())
-    assert white == pytest.approx(1 / (1 + 2 * CROP_MARGIN) ** 2, abs=0.04)
+    assert white == pytest.approx(w_box * h_box / ((w_box + 2 * mx) * (h_box + 2 * my)), abs=0.04)
+
+
+def test_crop_keeps_a_narrow_panel_whole_under_a_pose_error(tmp_path):
+    # the photo's recorded heading is 3 degrees off its true one: the painted box (where the
+    # panel really is in the image) must still lie whole inside the crop
+    size = (4000, 3000)
+    unit = project_unit(extents=(0.42, 2.6, 0.29))
+    pos = around(0.0, dist=15.0)
+    true_q = look_at_q(pos, CENTRE)
+    px, _ = project_points({"pos": pos.tolist(), "q": true_q}, LENS, size, box_corners(unit, ORIGIN))
+    (x0, y0), (x1, y1) = px.min(axis=0), px.max(axis=0)
+    item = camera(tmp_path, "off", pos, size=size, paint=(x0, y0, x1, y1))
+    yaw = Rotation.from_euler("y", 3.0, degrees=True)
+    item["q"] = [float(v) for v in (yaw * Rotation.from_quat(true_q)).as_quat()]
+    out = tmp_path / "out" / "ant-a-1.jpg"
+    assert write_crop(tmp_path, unit, {"layer": "ph", "id": "off"}, manifest_with([item]), out) == out
+    with Image.open(out) as im:
+        a = np.asarray(im.convert("L"), dtype=float)
+    white = a > 192
+    cols = np.flatnonzero(white.any(axis=0))
+    rows = np.flatnonzero(white.any(axis=1))
+    # the panel does not touch the crop's sides: none of it was cut off
+    assert cols.min() > 2 and cols.max() < a.shape[1] - 3
+    assert rows.min() > 2 and rows.max() < a.shape[0] - 3
 
 
 def test_crop_none_when_photo_missing_or_blind(tmp_path):

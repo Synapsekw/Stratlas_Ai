@@ -291,6 +291,97 @@ def _lattice(rng, ppm2, occlude, attached=False):
     return [*parts, *crown], units, height, [[0.0, half(0)], [height, half(height)]]
 
 
+RADIO_PAIR = (0.40, 0.70, 0.20)  # each of the two radios side by side
+RADIO_GAP_M = 0.05
+
+
+def _radio_pair(rng, ppm2, ring_y, occlude):
+    """Two radio units side by side on the 180 side of the ring, facing out, their sides
+    `RADIO_GAP_M` apart: a sparse cloud's in-plane flood fill reaches across such a slit."""
+    parts, truth = [], []
+    for name, sign in (("radio-pair-a", -1.0), ("radio-pair-b", 1.0)):
+        c = toward(180.0, BACK_R + RADIO_PAIR[2] / 2, ring_y + 1.0)
+        c = c + toward(270.0, sign * (RADIO_PAIR[0] + RADIO_GAP_M) / 2)
+        spec = _spec(name, "short", c, 180.0, 0.0, 0.0, RADIO_PAIR)
+        parts.append(_box_unit(rng, ppm2, spec, occlude))
+        truth.append({k: v for k, v in spec.items() if k != "dropBack"})
+    return parts, truth
+
+
+FRAME = (1.6, 2.8)  # a flat-bar frame in the headframe: across, tall
+FRAME_BAR_M = 0.05
+TRAY = (0.25, 1.6)  # a vertical cable tray: across, tall
+TRAY_CABLES = 9  # cables behind the tray, from 2 cm to 0.85 m behind it
+BAR = (0.18, 2.2)  # a flat bar behind short-120: across, tall
+BAR_BEHIND_M = 0.15  # from the short's back face
+
+
+def _sheet(rng, ppm2, centre, across, up, w, h):
+    n = max(1, round(w * h * ppm2))
+    a = rng.uniform(-0.5, 0.5, (n, 1)) * w
+    b = rng.uniform(-0.5, 0.5, (n, 1)) * h
+    return np.asarray(centre) + a * across + b * up
+
+
+def _interior(rng, ppm2, ring_y):
+    """Headframe parts that are no unit, facing out from the axis.
+
+    A flat-bar frame (`FRAME`, bars `FRAME_BAR_M` wide, one plane) at azimuth 90 and 1.55 m out:
+    its plane outlines a 1.6 x 2.8 m rectangle that is mostly air. A cable tray (`TRAY`, a sheet)
+    at azimuth 200 and 1.5 m out with `TRAY_CABLES` vertical cables behind it, one after another
+    out to 0.85 m: no air behind the sheet to end a depth reading. A flat bar (`BAR`) right behind
+    short-120, narrower than it but taller and better supported."""
+    parts = []
+    up = np.array([0.0, 1.0, 0.0])
+    w, h = FRAME
+    across = _rot_y(np.array([1.0, 0, 0]), 90.0)
+    c = toward(90.0, 1.55, ring_y + 1.0)
+    bar = FRAME_BAR_M
+    for dy in (-(h - bar) / 2, (h - bar) / 2):
+        parts.append(_sheet(rng, ppm2, c + dy * up, across, up, w, bar))
+    for dx in (-(w - bar) / 2, (w - bar) / 2):
+        parts.append(_sheet(rng, ppm2, c + dx * across, across, up, bar, h - 2 * bar))
+    frame = {"centre": c.tolist(), "azimuthDeg": 90.0, "widthM": w, "heightM": h}
+    tw, th = TRAY
+    across = _rot_y(np.array([1.0, 0, 0]), 200.0)
+    normal = toward(200.0, 1.0)
+    t = toward(200.0, 1.5, ring_y + 1.0)
+    parts.append(_sheet(rng, ppm2, t, across, up, tw, th))
+    for k in range(TRAY_CABLES):
+        back = 0.02 + (0.85 - 0.02) * k / (TRAY_CABLES - 1)
+        lateral = (k % 3 - 1) * 0.1
+        base = t - normal * back + across * lateral
+        parts.append(_tube(rng, ppm2, base - up * th / 2, base + up * th / 2, CABLE_R * 2))
+    tray = {"centre": t.tolist(), "azimuthDeg": 200.0, "widthM": tw, "heightM": th}
+    # a flat bar standing right behind short-120, taller than it and better supported
+    bw, bh = BAR
+    across = _rot_y(np.array([1.0, 0, 0]), 120.0)
+    b = toward(120.0, BACK_R - BAR_BEHIND_M, ring_y + 1.0) + toward(210.0, 0.65)
+    parts.append(_sheet(rng, ppm2, b, across, up, bw, bh))  # its front: the back hides in the scan
+    bar = {"centre": b.tolist(), "azimuthDeg": 120.0, "widthM": bw, "heightM": bh}
+    return parts, {"frame": frame, "tray": tray, "bar": bar}
+
+
+SHELTER = (3.0, 3.2, 2.5)  # across, tall, deep: an equipment shelter by the base
+SHELTER_AT = (150.0, 4.5)  # azimuth and distance of its centre from the axis
+CLUTTER_DENSITY = 0.2
+
+
+def _base_clutter(rng, ppm2):
+    """An equipment shelter standing by the tower base: a box sampled on its five visible faces
+    (no floor), at a fifth of the face density. It reaches into the lowest slices of the shaft
+    radius fit, as a shelter, a fence or a parked vehicle does on a real site."""
+    w, h, d = SHELTER
+    pts = _box_points(rng, ppm2 * CLUTTER_DENSITY, (w, h, d), False, False)
+    pts = pts[pts[:, 1] > -h / 2 + 1e-9]
+    az, r = SHELTER_AT
+    across, up, normal = (
+        _rot_y(v, az) for v in (np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, -1.0]))
+    )
+    centre = toward(az, r, h / 2)
+    return centre + pts[:, 0:1] * across + pts[:, 1:2] * up + pts[:, 2:3] * normal
+
+
 def tower_cloud(
     kind: str = "monopole",
     seed: int = 1,
@@ -299,6 +390,9 @@ def tower_cloud(
     points_per_m2: float = 4000.0,
     ground: bool = True,
     attached: bool = False,
+    clutter: bool = False,
+    radios: bool = False,
+    interior: bool = False,
 ) -> tuple[np.ndarray, dict]:
     """A synthetic tower with a crown of antennas, in the local frame (x east, y up, z south).
 
@@ -309,12 +403,30 @@ def tower_cloud(
     or plumb. The shaft radius is the circumradius of the twelve-sided monopole and the half width
     of the lattice. Same seed, same cloud. `attached=True` clamps the unit backs and the dish onto
     mount pipes and lays a cable across panel-0 (see `_crown`); the default cloud is unchanged.
+    `clutter=True` stands an equipment shelter by the tower base, 3.2 m tall (`_base_clutter`).
+    `radios=True` mounts two radio units side by side, 5 cm apart, facing 180 (`_radio_pair`).
+    `interior=True` fills the headframe with what is no unit: a flat-bar frame and a cable tray
+    with cables behind it, a flat bar behind short-120 (`_interior`); `truth["interior"]` lists them.
+    Opt-in parts are drawn with their own seeds after everything else, so turning one on leaves
+    the rest of the cloud as it was.
     """
     if kind not in ("monopole", "lattice"):
         raise ValueError(f"unknown tower kind {kind!r}")
     rng = np.random.default_rng(seed)
     build = _monopole if kind == "monopole" else _lattice
     parts, units, height, profile = build(rng, points_per_m2, occlude, attached)
+    if clutter:
+        parts.append(_base_clutter(np.random.default_rng([seed, 11]), points_per_m2))
+    if radios:
+        ring_y = 27.0 if kind == "monopole" else 36.5
+        pair, pair_truth = _radio_pair(np.random.default_rng([seed, 12]), points_per_m2, ring_y, occlude)
+        parts += pair
+        units = [*units, *pair_truth]
+    extra: dict = {}
+    if interior:
+        ring_y = 27.0 if kind == "monopole" else 36.5
+        inner, extra = _interior(np.random.default_rng([seed, 13]), points_per_m2, ring_y)
+        parts += inner
     if ground:
         parts.append(_disc(rng, GROUND_POINTS, 0.0, GROUND_RADIUS, 0.0, 0.0))
     cloud = np.vstack(parts).astype(np.float64)
@@ -326,6 +438,8 @@ def tower_cloud(
         "shaftRadiusAt": profile,
         "units": units,
     }
+    if extra:
+        truth["interior"] = extra
     return np.ascontiguousarray(cloud), truth
 
 

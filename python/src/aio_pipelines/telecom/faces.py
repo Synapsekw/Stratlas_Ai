@@ -41,6 +41,10 @@ EDGE_PASSES = 6
 MAX_FLOOD_STEPS = 40  # in-plane flood fill steps of `reach` each (2 m and more)
 CORE_CELL_M = 0.03  # grid cell of the full-rectangle cut (at least half the flood reach)
 CORE_SHARE = 0.5
+SLIT_MIN_POINTS = 20  # points in a face's median core band for a sparse band to be a real slit
+SLIT_SHARE = 0.4  # a band with fewer points than this share of the median band is a slit
+MAX_PIECES = 4  # faces one flood fill may split into
+OCCLUDER_M = 0.5  # points this far in front of a face can shade it
 SAME_FACE_M = 0.05  # two faces of one plane with centres this close are one face
 UP_SEARCH_DEG = 20.0  # a face's up axis is searched this far either side of the in-plane vertical
 _UP = np.array([0.0, 1.0, 0.0])
@@ -267,11 +271,13 @@ def planar_faces(
     tree = cKDTree(pts)
     faces: list[Face] = []
     for part in _merge_coplanar(parts, reach):
-        face = _with_edges(part, pts, tree, reach, axis_point, axis_dir)
-        if face is None:
-            continue
-        if face.rms < KEEP_RMS_M and face.width >= MIN_FACE_WIDTH_M and abs(face.normal[1]) < UPRIGHT_MAX_NY:
-            faces.append(face)
+        for face in _with_edges(part, pts, tree, reach, axis_point, axis_dir):
+            if (
+                face.rms < KEEP_RMS_M
+                and face.width >= MIN_FACE_WIDTH_M
+                and abs(face.normal[1]) < UPRIGHT_MAX_NY
+            ):
+                faces.append(face)
     return _distinct(faces)
 
 
@@ -326,8 +332,8 @@ def _with_edges(
     reach: float,
     axis_point: np.ndarray,
     axis_dir: np.ndarray,
-) -> Face | None:
-    """The face of one grown plane, after taking back its plane inliers (within `RANSAC_THR_M`)
+) -> list[Face]:
+    """The faces of one grown plane (one, or one per piece where a slit splits it), after taking back its plane inliers (within `RANSAC_THR_M`)
     connected to it at `reach`: the curvature filter drops the points along every box edge, and in
     a sparse cloud whole stretches of a face, which this flood fill in the plane recovers. The fill
     also runs into anything touching the plane (the tangent strip of a pipe a unit clamps onto, a
@@ -335,7 +341,7 @@ def _with_edges(
     fill by the grown region instead would lose the stretches a sparse cloud never grew."""
     m, n, _ = _plane(part)
     if abs(n[1]) >= UPRIGHT_MAX_NY:
-        return None
+        return []
     inplane = np.abs((pts - m) @ n) < RANSAC_THR_M
     taken = np.zeros(len(pts), dtype=bool)
     frontier = part
@@ -347,53 +353,94 @@ def _with_edges(
         taken[near] = True
         frontier = pts[near]
     if taken.sum() < MIN_FACE_POINTS:
-        return None
-    # first cut with rows level and columns upright in the plane (a leak can tilt any fitted
-    # axes, and an antenna leans a few degrees at most), then again along the axes of that cut
-    up = _UP - (_UP @ n) * n
-    up /= np.linalg.norm(up)
-    centre, side = m, np.cross(up, n)
+        return []
     flooded = pts[taken]
-    face: Face | None = None
-    for _ in range(2):
-        core = flooded[_core(flooded, centre, side, up, max(CORE_CELL_M, reach / 2))]
-        if len(core) < MIN_FACE_POINTS:
-            return None
-        face = make_face(core, axis_point, axis_dir)
-        centre, side, up = face.centre, face.side, face.up
-    return face
+    seed = np.zeros(len(pts), dtype=bool)
+    seed[np.unique(tree.query(part, k=1)[1])] = True
+    seed = seed[taken]
+    cell = max(CORE_CELL_M, reach / 2)
+    # what stands in front of the plane over the fill: the occluders whose shadows are no slits
+    lo_, hi_ = flooded.min(axis=0) - OCCLUDER_M, flooded.max(axis=0) + OCCLUDER_M
+    box = np.all((pts >= lo_) & (pts <= hi_), axis=1)
+    out_n = n if _horizontal(n, axis_dir) @ _horizontal(m - axis_point, axis_dir) >= 0 else -n
+    off = (pts[box] - m) @ out_n
+    ahead = pts[box][(off > RANSAC_THR_M) & (off < OCCLUDER_M)]
+    # first cut with rows level and columns upright in the plane (a leak can tilt any fitted
+    # axes, and an antenna leans a few degrees at most), then again along the axes of that cut.
+    # A slit splits the fill into pieces (`_core`): each piece with enough grown points of its
+    # own becomes a face, so two units side by side that grew into one region both come out.
+    up0 = _UP - (_UP @ n) * n
+    up0 /= np.linalg.norm(up0)
+    out: list[Face] = []
+    left = seed.copy()
+    for _ in range(MAX_PIECES):
+        if left.sum() < MIN_PIECE_POINTS:
+            break
+        centre, side, up = m, np.cross(up0, n), up0
+        face: Face | None = None
+        cut = np.zeros(len(flooded), dtype=bool)
+        for _ in range(2):
+            cut = _core(flooded, centre, side, up, cell, left, ahead)
+            if cut.sum() < MIN_FACE_POINTS:
+                face = None
+                break
+            face = make_face(flooded[cut], axis_point, axis_dir)
+            centre, side, up = face.centre, face.side, face.up
+        if not (cut & left).any():
+            break
+        left &= ~cut
+        if face is not None:
+            out.append(face)
+    return out
 
 
-def _run(full: np.ndarray) -> tuple[int, int] | None:
-    """First and last index of the longest run of True, bridging single-cell gaps."""
-    best, start, gap = None, None, 0
-    for i, v in enumerate([*full.tolist(), False, False]):
+def _runs(full: np.ndarray, slit: np.ndarray) -> list[tuple[int, int]]:
+    """First and last index of every run of True in `full`, bridging single-cell gaps; a `slit`
+    cell (almost no points) always ends a run."""
+    out: list[tuple[int, int]] = []
+    start, end, gap = None, 0, 0
+    flags = [*(full & ~slit).tolist(), False, False]
+    cuts = [*slit.tolist(), True, True]
+    for i, v in enumerate(flags):
         if v:
             if start is None:
                 start = i
             gap, end = 0, i
         elif start is not None:
             gap += 1
-            if gap > 1:
-                if best is None or end - start > best[1] - best[0]:
-                    best = (start, end)
+            if gap > 1 or cuts[i]:
+                out.append((start, end))
                 start, gap = None, 0
-    return best
+    return out
 
 
 def _core(
-    points: np.ndarray, centre: np.ndarray, side: np.ndarray, up: np.ndarray, cell: float
+    points: np.ndarray,
+    centre: np.ndarray,
+    side: np.ndarray,
+    up: np.ndarray,
+    cell: float,
+    seed: np.ndarray | None = None,
+    front: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Mask of the face points inside its full rectangle: the longest run of rows (bands of `cell`
-    along up) whose points span at least `CORE_SHARE` of the median row across (rows weighted by their points), then of
-    columns as tall within those rows. A thin strip in the plane (the tangent strip of a pipe the
-    face touches, a cable lying across it) spans only its own few centimetres and is cut off,
-    while a sliver band at the face's edge still spans the whole face. Rows run along `side`,
-    columns along `up`."""
+    """Mask of the face points inside its full rectangle: a run of rows (bands of `cell` along
+    up) whose points span at least `CORE_SHARE` of the median row across (rows weighted by their
+    points), then of columns as tall within those rows. A thin strip in the plane (the tangent
+    strip of a pipe the face touches, a cable lying across it) spans only its own few centimetres
+    and is cut off, while a sliver band at the face's edge still spans the whole face. A band with
+    under `SLIT_SHARE` of the median band's points, where the face is dense enough that a band of
+    it never comes out that thin by chance (`SLIT_MIN_POINTS` in the median band), ends a run: two units side by side or one above the
+    other with a slit between them stay apart even when the flood fill reached across. Of the
+    runs, the one holding most of the `seed` points (the grown region, default all) is kept, so
+    each unit of a pair keeps its own. A thin band with something in front of it (`front`: points
+    off the plane on its outer side) is the shadow of a pipe or cable across the face, not a slit.
+    Rows run along `side`, columns along `up`."""
     rel = points - centre
     a, b = rel @ side, rel @ up
+    fa, fb = (np.zeros(0), np.zeros(0)) if front is None else ((front - centre) @ side, (front - centre) @ up)
+    weight = np.ones(len(a)) if seed is None else seed.astype(float)
     keep = np.ones(len(a), dtype=bool)
-    for along, across in ((b, a), (a, b)):  # rows first, then columns within the kept rows
+    for along, across, f_along, f_across in ((b, a, fb, fa), (a, b, fa, fb)):  # rows, then columns
         idx = np.floor((along - along[keep].min()) / cell).astype(int)
         n = max(int(idx[keep].max()) + 1, 1)
         lo, hi = np.full(n, np.inf), np.full(n, -np.inf)
@@ -404,8 +451,19 @@ def _core(
         order = np.argsort(width)  # the median band width, each band weighted by its points
         ref = width[order][np.searchsorted(np.cumsum(count[order]), count.sum() / 2)]
         full = width >= CORE_SHARE * ref
-        run = _run(full)
-        if run is None:
+        occupied = count[count > 0]
+        dense = float(np.median(occupied)) >= SLIT_MIN_POINTS
+        thin = (count < SLIT_SHARE * float(np.median(occupied))) & dense
+        if thin.any() and len(f_along):
+            inside = (f_across >= across[keep].min()) & (f_across <= across[keep].max())
+            fi = np.floor((f_along[inside] - along[keep].min()) / cell).astype(int)
+            fi = fi[(fi >= 0) & (fi < n)]
+            shade = np.bincount(fi, minlength=n)
+            thin &= shade < SLIT_SHARE * float(np.median(occupied))
+        runs = _runs(full, thin)
+        if not runs:
             return np.zeros(len(a), dtype=bool)
-        keep = keep & (idx >= run[0]) & (idx <= run[1])
+        seeds = np.bincount(idx[keep], weights=weight[keep], minlength=n)
+        best = max(runs, key=lambda r: (float(seeds[r[0] : r[1] + 1].sum()), r[1] - r[0]))
+        keep = keep & (idx >= best[0]) & (idx <= best[1])
     return keep
