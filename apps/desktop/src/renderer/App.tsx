@@ -96,6 +96,7 @@ import { startCardFocus } from './issueCard/state';
 import { AgentDock, useAgentDockOpen } from './agent/AgentDock';
 import { isDockScreen } from './agent/dockScreens';
 import { startAgentSession } from './agent/session';
+import { startWorkbenchReset } from './workspace/workbench/workbenchStore';
 
 /** The Globe (M10 G6) is its own chunk: CesiumJS loads only when the Globe opens. */
 const GlobeScreen = lazy(() => import('./globe/GlobeScreen'));
@@ -451,6 +452,8 @@ export function App() {
       if (sh.screen === 'scene' && ((fromScene && ev.enabled) || ev.open)) openEvidence(id);
     });
     const stopEvidence = startEvidenceSplit();
+    // the workbench tabs start again with each project (pins stay)
+    const stopWorkbench = startWorkbenchReset();
     const stopOpenPath = openPackagesHandedOver();
     const stopMenu = followMenu();
     // M9: merges, imports and outside edits reload the records, keeping selection and camera
@@ -489,6 +492,7 @@ export function App() {
     return () => {
       setPhotoRotator(null);
       stopOpenPath();
+      stopWorkbench();
       stopMenu();
       stopJournal();
       stopPeople();

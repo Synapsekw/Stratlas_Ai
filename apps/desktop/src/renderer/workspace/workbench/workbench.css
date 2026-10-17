@@ -1,0 +1,26 @@
+/* The right sidebar as workbench (RightSidebar.tsx): one row of tabs under the header row, the
+   front tab's body in the upper pane of the scene.ctxAgent split. */
+.wb-bar {
+  flex: none;
+  padding-inline: var(--sp-5);
+  min-width: 0;
+}
+/* the bar is one row (Tabs overflow="menu"); its "More tabs" button keeps to the row's end */
+.wb-bar > .tabs {
+  position: relative;
+}
+.wb-bar .tabs-more {
+  margin-inline-start: auto;
+  align-self: center;
+}
+/* the road's own panel fills the Selection tab instead of sizing itself (a road keeps 72%) */
+.ws .right .wb-body.ctx-wrap > .ctx-wrap.tall.rr-panel {
+  flex: 1 1 auto;
+  border-bottom: 0;
+}
+/* a workbench's header row: Collapse all or Expand all at its end */
+.wb-bench-head {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--sp-2) var(--sp-4) 0;
+}

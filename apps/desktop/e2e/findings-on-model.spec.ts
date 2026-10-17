@@ -98,10 +98,8 @@ const issues = (win: Page) =>
 
 /** Right-click the issue in the scene's issue list and place it on `layer`. */
 async function placeFromList(win: Page, code: string, layer: string): Promise<void> {
-  await win
-    .getByRole('tablist', { name: 'Context' })
-    .getByRole('tab', { name: /Issues/ })
-    .click();
+  // the workbench tablist owns its tabs through aria-owns: find the tab on the page
+  await win.getByRole('tab', { name: /^Issues/ }).click();
   // the list is virtual (only rows in view exist): search for the code to bring its row up
   const register = win.getByTestId('issue-register');
   await register.getByRole('searchbox', { name: 'Search issues' }).fill(code);

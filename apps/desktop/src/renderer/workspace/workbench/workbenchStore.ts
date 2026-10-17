@@ -18,7 +18,16 @@ import {
 const KEY = 'quadrion.workbench';
 
 const FIXED: readonly TabId[] = ['selection', 'issues', 'volumes', 'changes'];
-const fixedTabs = (): Tab[] => FIXED.map((id) => ({ id, live: false, pinned: false, fixed: true }));
+/** Volumes and Changes open at least this wide (D17, founder 16 Oct). */
+export const WIDE_TAB_PX = 470;
+const fixedTabs = (): Tab[] =>
+  FIXED.map((id) => ({
+    id,
+    live: false,
+    pinned: false,
+    fixed: true,
+    ...(id === 'volumes' || id === 'changes' ? { minWidth: WIDE_TAB_PX } : {}),
+  }));
 
 export interface WorkbenchState {
   tabs: Tab[];

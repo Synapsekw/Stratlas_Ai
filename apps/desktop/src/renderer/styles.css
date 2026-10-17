@@ -2329,10 +2329,6 @@ svg.flip {
   font-size: var(--t-12);
 }
 
-/* volumetric projects: a wider right panel for the pile register */
-.ws-vol {
-  --rp-w: 400px;
-}
 /* the annotator's tools sit under the clip chip, clear of the telemetry chips */
 .vframe .ann-video .bar {
   top: 38px;

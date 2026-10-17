@@ -112,6 +112,14 @@ describe('Tabs', () => {
     expect(onChange).toHaveBeenLastCalledWith('b');
   });
 
+  it('puts a test id on the tab that asks for one', () => {
+    render(
+      <Harness items={[{ id: 'a', label: 'Alpha', testId: 'tab-alpha' }, ...base.slice(1)]} />,
+    );
+    expect(tab(0).dataset.testid).toBe('tab-alpha');
+    expect(tab(1).hasAttribute('data-testid')).toBe(false);
+  });
+
   it('shows a count in a mono span', () => {
     render(<Harness items={[{ id: 'a', label: 'Alpha', count: 7 }, ...base.slice(1)]} />);
     expect(tab(0).querySelector('span.mono')?.textContent).toBe('7');

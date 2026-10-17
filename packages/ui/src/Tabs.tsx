@@ -19,6 +19,7 @@ export interface TabItem<K extends string> {
   pinned?: boolean;
   onPinChange?: (pinned: boolean) => void; // shows a pin toggle
   onClose?: () => void; // shows a close button; click or middle-click only, no shortcut
+  testId?: string; // the tab's data-testid, for specs that name it
 }
 
 export interface TabsProps<K extends string> {
@@ -187,6 +188,7 @@ export function Tabs<K extends string>({
                 role="tab"
                 className="tab"
                 id={`${idPrefix}-tab-${it.id}`}
+                data-testid={it.testId}
                 aria-selected={selected}
                 aria-controls={`${idPrefix}-panel-${it.id}`}
                 tabIndex={selected ? 0 : -1}

@@ -234,7 +234,7 @@ test('each side panel folds away and comes back, and the views take the room', a
     await expect(right).toBeInViewport();
     // nothing in the folded panel shows, takes focus or takes a click
     await expect(win.locator('.right')).toHaveAttribute('inert', '');
-    await expect(win.locator('.right .ctx-tabs')).toBeHidden();
+    await expect(win.locator('.right .wb-bar')).toBeHidden();
     // the strip is inside the window from top to bottom: reaching for it never scrolls the page
     await right.hover();
     await right.focus();

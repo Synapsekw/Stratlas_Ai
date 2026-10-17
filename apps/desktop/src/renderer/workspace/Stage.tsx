@@ -83,6 +83,7 @@ import {
   useCutawayState,
 } from './useCutaway';
 import { Island } from './island/Island';
+import { useIslandLinked } from './workbench/RightSidebar';
 import { MeasureMount } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
 import { useGroundFollowsLayers, useSiteBasemapLayer } from './siteBasemap';
@@ -334,6 +335,8 @@ export function Stage() {
   const engine = useEngineStage();
   const index = split.index;
   const linked = !sides.unlinked;
+  // the sidebar shows the island's live item in front: the island says so (D10)
+  const islandLinked = useIslandLinked();
   // the main 3D view and map show their side's date (null: as the layer tree says)
   const side3d = sides3d[0];
   const sideMap = sidesMap[0];
@@ -619,7 +622,7 @@ export function Stage() {
         mode={mode}
         tools={show3d ? (showMap ? 'split' : '3d') : 'map'}
         split={split}
-        linked={false}
+        linked={islandLinked}
       />
       <RightPanelToggle />
       <MeasureMount stage={engine} />
