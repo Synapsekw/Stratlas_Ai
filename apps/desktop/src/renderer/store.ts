@@ -446,7 +446,8 @@ export function createShellStore(
       if (!samePathText(root, path)) await get().loadLibrary();
       // Every package is opened in place and never written: no annotation, no issue edits.
       setReadOnly(pkg !== null);
-      if (workspace.getState().project?.id !== id) leaveScene(null);
+      const another = workspace.getState().project?.id !== id;
+      if (another) leaveScene(null);
       workspace.getState().openProject({ id, root, manifest }, issues);
       // drone video first, nothing 3D yet: the flights on the map beside the 3D view
       const first = videoFirst(manifest);
@@ -459,7 +460,8 @@ export function createShellStore(
         pkg,
         // A project extracted from a package says where it came from.
         origin: pkg ? null : (r.value.origin ?? null),
-        annotating: pkg ? false : get().annotating,
+        // annotating is for the project it started in: another project opens without the tools
+        annotating: pkg || another ? false : get().annotating,
         screen: get().screen !== from ? get().screen : player ? 'welcome' : 'scene',
       });
       if (pkg) void get().loadLibrary();

@@ -12,7 +12,7 @@ import { useEffect, useRef } from 'react';
 import { shell, useShell } from '../../../shell';
 import { primaryScene } from '../../compare';
 import { Section } from '../Section';
-import { workbench } from '../workbenchStore';
+import { linkLiveTab, workbench } from '../workbenchStore';
 import { useAnnotateStage, useMapDrawHandle } from './annotateStage';
 import './benches.css';
 
@@ -24,11 +24,23 @@ const MAP_MODES: { mode: MapDrawMode; label: string; tip: string }[] = [
 
 /**
  * A on, the tools' tab opens as a live tab in front, and a folded sidebar unfolds (the tools are
- * in it); A off, the tab goes away if the tools opened it. Mounted with the sidebar.
+ * in it); A off, the tab goes away if the tools opened it. The live tab closed with its X (or
+ * dropped for another project) closes the tools. Mounted with the sidebar.
  */
 export function useAnnotateFollow(): void {
   const annotating = useShell((s) => s.annotating);
   const was = useRef(false);
+  useEffect(
+    () =>
+      linkLiveTab(
+        'annotate',
+        () => shell.getState().annotating,
+        () => {
+          shell.getState().setAnnotating(false);
+        },
+      ),
+    [],
+  );
   useEffect(() => {
     if (annotating === was.current) return;
     was.current = annotating;

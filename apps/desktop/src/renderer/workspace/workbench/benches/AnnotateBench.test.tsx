@@ -124,6 +124,19 @@ describe('A opens Annotate', () => {
     expect(workbench.getState().front).toBe('selection');
   });
 
+  it('closes the tools when the live tab is closed with its X, so the next A opens them', () => {
+    render(false);
+    press('a');
+    act(() => {
+      workbench.getState().close('annotate');
+    });
+    expect(shell.getState().annotating).toBe(false);
+    expect(workbench.getState().front).toBe('selection');
+    press('a');
+    expect(shell.getState().annotating).toBe(true);
+    expect(workbench.getState().front).toBe('annotate');
+  });
+
   it('opens a folded sidebar, because the tools live there now', () => {
     act(() => {
       shell.getState().setRight(true);

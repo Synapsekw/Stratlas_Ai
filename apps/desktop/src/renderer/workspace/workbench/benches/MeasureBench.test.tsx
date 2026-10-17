@@ -235,6 +235,25 @@ describe('the Measure tab follows the tool', () => {
     }
   });
 
+  it('closing the live Measure tab with its X stops the drawing', () => {
+    const wb = createWorkbenchStore(null);
+    const off = followMeasureTool(measureStore, wb);
+    try {
+      startTool('distance');
+      expect(wb.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(true);
+      wb.getState().close('measure');
+      expect(measureStore.getState().tool).toBeNull();
+      expect(measureStore.getState().draw).toBeNull();
+      expect(wb.getState().front).toBe('selection');
+      // the next tool opens its tab again
+      startTool('area');
+      expect(wb.getState().front).toBe('measure');
+      stopTool();
+    } finally {
+      off();
+    }
+  });
+
   it('a drawing for another panel leaves that panel in front', () => {
     const wb = createWorkbenchStore(null);
     const off = followMeasureTool(measureStore, wb);

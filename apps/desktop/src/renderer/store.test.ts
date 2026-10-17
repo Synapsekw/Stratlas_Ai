@@ -782,6 +782,23 @@ describe('shell store', () => {
     expect(left).toEqual(['hcl', 'hcl', 'hcl', 'hcl', 'river']);
   });
 
+  it('ends annotating when another project opens, not when the same one opens again', async () => {
+    const other = { ...manifest, id: 'river', name: 'River Bridge' };
+    const { bridge } = fakeBridge({
+      'project:open': (req) =>
+        (req as { path: string }).path === 'E:/river'
+          ? { ok: true, id: 'river', root: 'E:/river', manifest: other, issues: [] }
+          : { ok: true, id: 'hcl', root: entry.path, manifest, issues: [] },
+    });
+    const s = createShellStore(bridge, createWorkspace(), { storage: null });
+    await s.getState().openProject(entry.path);
+    s.getState().setAnnotating(true);
+    await s.getState().openProject(entry.path);
+    expect(s.getState().annotating).toBe(true);
+    await s.getState().openProject('E:/river');
+    expect(s.getState().annotating).toBe(false);
+  });
+
   it('leaves the scene even when taking the picture throws', async () => {
     const { bridge } = fakeBridge({
       'project:open': () => ({ ok: true, id: 'hcl', root: entry.path, manifest, issues: [] }),

@@ -15,7 +15,7 @@ import { measureStore, type MeasureState } from '../../survey/measureStore';
 import { overlays, setOverlaysOpen } from '../../survey/overlaysStore';
 import { openQaPanel, qaStore } from '../../survey/qaStore';
 import type { TabId } from './tabsModel';
-import { workbench, type WorkbenchState } from './workbenchStore';
+import { linkLiveTab, workbench, type WorkbenchState } from './workbenchStore';
 
 const BENCH: TabId = 'measure';
 
@@ -46,7 +46,8 @@ export function showMeasureBench(bench: StoreApi<WorkbenchState> = workbench): v
  * front unless an issue is being edited); stopping one that opened the tab closes it again. A
  * drawing for another panel (a one-shot shape, or one started from a survey panel's tab) leaves
  * that panel in front. Opening the measurements list, or picking a measurement while no tool
- * draws, brings the Measure tab forward. Returns unsubscribe.
+ * draws, brings the Measure tab forward. Closing the live tab with its X stops the drawing
+ * (`linkLiveTab`). Returns unsubscribe.
  */
 export function followMeasureTool(
   measure: StoreApi<MeasureState> = measureStore,
@@ -57,7 +58,16 @@ export function followMeasureTool(
   const follow = () => {
     if (!isIssueEditing()) reveal(bench);
   };
-  return measure.subscribe((s, prev) => {
+  const offTab = linkLiveTab(
+    BENCH,
+    () => measure.getState().tool !== null,
+    () => {
+      // as stopTool does
+      measure.setState({ tool: null, draw: null });
+    },
+    bench,
+  );
+  const offTool = measure.subscribe((s, prev) => {
     if (s.tool && !prev.tool) {
       if (!s.tool.then && !PANEL_TABS.includes(bench.getState().front)) {
         started = true;
@@ -73,6 +83,10 @@ export function followMeasureTool(
     if (s.listOpen && !prev.listOpen) follow();
     if (!s.tool && s.focus && s.focus !== prev.focus) follow();
   });
+  return () => {
+    offTab();
+    offTool();
+  };
 }
 
 /**

@@ -1,7 +1,12 @@
 import { workspace } from '@aio/workspace';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { beginIssueEdit, clearIssueEditing } from '../../issueCard/state';
-import { createWorkbenchStore, startWorkbenchReset, type WorkbenchState } from './workbenchStore';
+import {
+  createWorkbenchStore,
+  linkLiveTab,
+  startWorkbenchReset,
+  type WorkbenchState,
+} from './workbenchStore';
 
 function memory(seed: Record<string, string> = {}) {
   const m = new Map(Object.entries(seed));
@@ -104,6 +109,50 @@ describe('workbench store', () => {
     const store = createWorkbenchStore(blocked);
     store.getState().open('display', { pinned: true });
     expect(ids(store.getState())).toContain('display');
+  });
+
+  it('a live tab closed with its X stops its tool (D14: closing returns to Selection)', () => {
+    const store = createWorkbenchStore(memory());
+    let running = true;
+    const stop = vi.fn(() => {
+      running = false;
+    });
+    const off = linkLiveTab('measure', () => running, stop, store);
+    store.getState().toolStarted('measure');
+    store.getState().close('measure');
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(store.getState().front).toBe('selection');
+    expect(store.getState().openedByTool.has('measure')).toBe(false);
+    off();
+  });
+
+  it('a tool that stops itself is not stopped again, and a bench tab closed stops nothing', () => {
+    const store = createWorkbenchStore(memory());
+    let running = true;
+    const stop = vi.fn();
+    const off = linkLiveTab('annotate', () => running, stop, store);
+    store.getState().toolStarted('annotate');
+    running = false;
+    store.getState().toolStopped('annotate');
+    expect(ids(store.getState())).not.toContain('annotate');
+    store.getState().open('annotate');
+    running = true;
+    store.getState().close('annotate');
+    expect(stop).not.toHaveBeenCalled();
+    off();
+  });
+
+  it('a project change stops the live tools with their tabs', () => {
+    const store = createWorkbenchStore(memory());
+    const stopReset = startWorkbenchReset(store);
+    const stop = vi.fn();
+    const off = linkLiveTab('annotate', () => true, stop, store);
+    store.getState().toolStarted('annotate');
+    workspace.setState({ project: { id: 'another', root: '/a', manifest: {} } as never });
+    expect(stop).toHaveBeenCalledTimes(1);
+    off();
+    stopReset();
+    workspace.setState({ project: null });
   });
 
   it('a project change resets tabs to the fixed set', () => {

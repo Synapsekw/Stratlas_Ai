@@ -96,8 +96,11 @@ export function createWorkbenchStore(
       close: (id) => {
         set((s) => {
           if (s.tabs.find((t) => t.id === id)?.fixed) return {};
+          const openedByTool = new Set(s.openedByTool);
+          openedByTool.delete(id);
           return {
             tabs: s.tabs.filter((t) => t.id !== id),
+            openedByTool,
             front: s.front === id ? 'selection' : s.front,
             waiting: s.waiting.filter((w) => w !== id),
             attention: s.waiting.find((w) => w !== id) ?? null,
@@ -155,6 +158,24 @@ export const workbench = createWorkbenchStore();
 
 export function useWorkbench<T>(selector: (s: WorkbenchState) => T): T {
   return useStore(workbench, selector);
+}
+
+/**
+ * A live tab and its tool end together (D13, D14): the tab closed with its X, or dropped when
+ * another project opens, stops the tool still `running` (Measure stops drawing, Annotate closes
+ * its tools), as closing a panel's tab closes the panel. A tool that stops itself closes its tab
+ * the usual way (`toolStopped`) and is not stopped again. Returns unsubscribe.
+ */
+export function linkLiveTab(
+  id: TabId,
+  running: () => boolean,
+  stop: () => void,
+  bench: StoreApi<WorkbenchState> = workbench,
+): () => void {
+  return bench.subscribe((s, prev) => {
+    const was = prev.tabs.find((t) => t.id === id);
+    if (was?.live && !s.tabs.some((t) => t.id === id) && running()) stop();
+  });
 }
 
 /** Reset the tabs whenever another project opens (or the project closes). Returns unsubscribe. */
