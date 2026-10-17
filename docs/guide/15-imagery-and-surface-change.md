@@ -34,10 +34,35 @@ On the demo, the grown stockpile shows as fill and the new pit as cut. For stock
 
 Before comparing, {product} checks how well the two dates line up. Otherwise the whole site would show as changed. It does not run, and says by how much, when:
 
-- the two dates are shifted sideways by more than 2 pixels (or 2 cells of a surface), for example "The two dates are 4.3 px (0.21 m) apart; the largest shift allowed is 2 px. Align the layers first, or allow a larger shift.";
+- the two dates are shifted sideways by more than 2 pixels (or 2 cells of a surface), for example "The two dates are 4.3 px (0.21 m) apart; the largest shift allowed is 2 px. Line up the dates first.". The **Changes** tab then shows the gap with **Line up dates** (see [Line up dates](#line-up-dates));
 - one surface is more than 5 cm higher or lower than the other over unchanged ground. Check that both surfaces use the same height datum.
 
 It compares only where both dates have data. "The two orthos do not overlap" means there is nothing to compare.
+
+## Line up dates
+
+Two surveys of one site often sit a little apart, because each was placed on its own. **Line up dates** saves a sideways correction for one date so that it lies on the other. Every view and every job then uses it: the map, the 3D view, swipe and blend, and the change runs. Your files are never changed.
+
+There are two ways in:
+
+- **A notice.** When a new survey arrives and its ortho or DSM sits too far from another date's, a notice says so with **Line up dates** and **Not now**.
+- **On demand.** Click **Line up dates** in the **Changes** tab (it also appears when a change run is refused for a gap), or in the menu of a survey date.
+
+In the step:
+
+1. Under **Keep in place**, choose the date that stays where it is. The other date moves onto it.
+2. Quadrion measures the gap and shows it as a shift to the east or west and to the north or south, with the total. A line says how confident the measurement is. If it cannot be trusted, the step says why and does not line up.
+3. A line lists what moves with the date: its datasets and the items drawn on it.
+4. Drag the divider in the preview to compare **Before** and **After**.
+5. Click **Line up**. A notice confirms it.
+
+After a change run was refused for a gap, it starts again by itself once the line-up is saved.
+
+**Undo.** The notice has **Undo**, or press Ctrl+Z. Ctrl+Y does it again.
+
+**Remove line-up.** The lined-up date shows "Lined up with ..." in its folder. Use **Remove line-up** there to put the date back at its file position.
+
+**What never moves:** common layers (those with no survey date), basemaps, terrain, and change results made before the line-up. Those results are marked out of date; click **Run again** to make them in the lined-up frame.
 
 ## Read the heat map legend
 
