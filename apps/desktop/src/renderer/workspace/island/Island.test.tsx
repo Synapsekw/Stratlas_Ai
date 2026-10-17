@@ -620,7 +620,19 @@ describe('Island: the groups open their workbench', () => {
     act(() => {
       after.focus();
     });
+    // a program's focus from there keeps the line at rest (I-R44)
+    const reading = host.querySelector<HTMLButtonElement>('button.isl-live-open');
+    act(() => {
+      reading?.focus();
+    });
+    expect(island()?.dataset.state).toBe('rest');
+    act(() => {
+      after.focus();
+    });
     // Shift+Tab from the control after the island lands on the line's last control at rest
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }));
+    });
     act(() => {
       host.querySelector<HTMLButtonElement>('button.isl-live-open')?.focus();
     });

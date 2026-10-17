@@ -192,6 +192,17 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const returning = useRef(false);
   // Shift+Tab woke the island from a control of the line at rest (onFocus): focus its end
   const wakeToEnd = useRef(false);
+  // when Shift+Tab was last pressed: focus it moves is the person's, not a program's
+  const shiftTabAt = useRef(-Infinity);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Tab' && e.shiftKey) shiftTabAt.current = performance.now();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, []);
   useLayoutEffect(() => {
     if (!wakeToEnd.current || s.open !== 'ready') return;
     wakeToEnd.current = false;
@@ -494,7 +505,13 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
           // Shift+Tab from after the island lands there too: it wakes, and focus goes on to the
           // woken line's last control, as Shift+Tab would reach it (T20 M7)
           const from = e.relatedTarget;
-          if (s.open === 'rest' && from instanceof Node && !e.currentTarget.contains(from)) {
+          const back = performance.now() - shiftTabAt.current < 500;
+          if (
+            back &&
+            s.open === 'rest' &&
+            from instanceof Node &&
+            !e.currentTarget.contains(from)
+          ) {
             wakeToEnd.current = true;
             dispatch({ type: 'near' });
           }
