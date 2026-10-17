@@ -52,6 +52,15 @@ describe('snapsToCollapse', () => {
     expect(snapsToCollapse(231, limits)).toBe(true);
     expect(snapsToCollapse(232, limits)).toBe(false);
   });
+
+  it('counts from collapseMin when a pane is held wider than its usual minimum', () => {
+    const held = { ...limits, min: 470, collapseMin: 280 };
+    expect(snapsToCollapse(300, held)).toBe(false);
+    expect(snapsToCollapse(232, held)).toBe(false);
+    expect(snapsToCollapse(231, held)).toBe(true);
+    // the drag stops at the held minimum until then
+    expect(clampSplit(300, 1100, held)).toBe(470);
+  });
 });
 
 describe('keyStep', () => {

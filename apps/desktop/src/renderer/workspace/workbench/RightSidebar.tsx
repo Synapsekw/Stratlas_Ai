@@ -108,6 +108,8 @@ export function useSidebarSplit(collapsed: boolean, hasProject: boolean) {
     unit: 'px',
     defaultSize: 360,
     min: Math.max(RIGHT_MIN, front.minWidth ?? 0),
+    // a wide tab holds the drag at its minimum; the panel still folds where it always does
+    collapseMin: RIGHT_MIN,
     max: '50%',
     otherMin: 360,
     collapsedSize: RIGHT_STRIP,

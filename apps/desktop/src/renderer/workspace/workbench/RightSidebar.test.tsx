@@ -213,6 +213,40 @@ describe('RightSidebar', () => {
     expect(splitPrefs.getState().byId['scene.right']?.size).toBeUndefined();
   });
 
+  it('stops a drag at 470 px while Volumes is in front, and folds only past the usual point', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains('ws') ? new DOMRect(0, 0, 1000, 700) : new DOMRect();
+    });
+    const pointer = (type: string, clientX: number) => {
+      act(() => {
+        handle()?.dispatchEvent(
+          new PointerEvent(type, { bubbles: true, cancelable: true, clientX, button: 0 }),
+        );
+      });
+    };
+    // the panel is the end pane: its edge moving right makes it narrower
+    const drag = (by: number) => {
+      pointer('pointerdown', 530);
+      pointer('pointermove', 530 + by);
+      pointer('pointerup', 530 + by);
+    };
+    withVolumesAndDates();
+    render();
+    act(() => {
+      workbench.getState().show('volumes');
+    });
+    // 470 less 100 is 370: held at 470, not folded (it once folded below 422)
+    drag(100);
+    expect(handle()?.getAttribute('aria-valuenow')).toBe('470');
+    expect(shell.getState().rightCollapsed).toBe(false);
+    drag(220); // 250: still above the usual fold point, 280 less 48
+    expect(shell.getState().rightCollapsed).toBe(false);
+    drag(240); // 230: past it
+    expect(shell.getState().rightCollapsed).toBe(true);
+  });
+
   it('opens a volumetric project on Volumes', () => {
     render();
     expect(workbench.getState().front).toBe('selection');

@@ -16,6 +16,12 @@ export interface SplitLimits {
    * small for both minimums, so the other pane keeps room; absent: the sized pane keeps `min`.
    */
   minShare?: number;
+  /**
+   * The minimum a drag snaps to collapsed from (less SNAP_MARGIN); absent: `min`. A pane held
+   * wider than its usual minimum for a while (a wide tab in front) stops at `min` and still
+   * collapses where it always does.
+   */
+  collapseMin?: number;
 }
 
 /** The sized pane's maximum in px for a container of `container` px. */
@@ -41,7 +47,7 @@ export function clampSplit(size: number, container: number, l: SplitLimits): num
 
 /** Whether a dragged size is far enough below the minimum to snap to collapsed. */
 export function snapsToCollapse(size: number, l: SplitLimits): boolean {
-  return size < l.min - SNAP_MARGIN;
+  return size < (l.collapseMin ?? l.min) - SNAP_MARGIN;
 }
 
 /**
