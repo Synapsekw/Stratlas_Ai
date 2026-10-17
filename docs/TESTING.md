@@ -1247,3 +1247,36 @@ Use the build of this branch with the processing tools 0.12.0 installed (**Setti
 - [ ] **Export**: **Site data**, **Export survey data**, **Point cloud**, pick the original cloud: **Apply cleanup** is ticked with a line saying what it removes. Export as LAZ and open it in another viewer: the deleted and clipped points are not in it.
 - [ ] Close and reopen the project: the cleanup is still there (the undo history starts fresh). Right-click the cloud, **Reset cleanup**: everything shows again, with **Undo** in the notice.
 - [ ] With older processing tools, **Remove noise** says the processing tools need 0.12.0 or later; the clip box, height range and selections still work.
+
+## Stage Pinned media: photos and 360s without GPS
+
+Use the build of this branch and a test project (or a copy) with a coordinate system, a model and some ground photos. Have a 360 photo without GPS ready (an equirectangular JPEG, or an Insta360 `.insp` exported from Insta360 Studio) and, if you can, one unstitched `.insp` straight from the camera. The end to end specs `apps/desktop/e2e/pinned-media.spec.ts` and `apps/desktop/e2e/pinned-media-import.spec.ts` run the same steps on a synthetic project.
+
+### Import
+
+- [ ] **Add data** with the 360s: the offer says how many 360s have no GPS and that they import as not placed. The unstitched `.insp` is named as left out, with the advice to export it from Insta360 Studio first.
+- [ ] Import: **Media** shows each new 360 with **Not placed**. Nothing is drawn for them in 3D or on the map yet.
+
+### Place a 360
+
+- [ ] Right-click a **Not placed** 360 tile, **Place on site**: the scene opens with a strip at the bottom centre. It does not cover the middle of the view, and a click in the middle reaches the scene.
+- [ ] Click a spot on the model: a pin appears there with a stem up to eye height (1.6 m), and the 360 opens beside the view. The tile now says **Not lined up yet**.
+- [ ] Click a landmark in the 360, then the same landmark in the 3D view: the strip says it is lined up. Add a second landmark, or click **Done**.
+- [ ] Hover the 360's marker: a preview shows. Click it: you are inside the 360, facing the way the landmarks set.
+- [ ] Change **Eye height** on the strip during **Move pin** or **Set direction**: the marker moves up or down.
+
+### Place a photo
+
+- [ ] **Place on site** on a photo with no GPS, and click a spot on the map away from the model: the strip says the height is unknown and the pin sits at 0 m. Click the direction it looks, then **Done**.
+- [ ] Click the photo's marker on the map: it opens beside the map. A photo that came with GPS is a marker plate on the map too (not a black dot): hover shows its thumbnail, a click opens it.
+- [ ] In 3D, drag the pin's arrow on a pinned photo: its direction turns.
+
+### Move and remove
+
+- [ ] Right-click a pin in 3D and on the map: **Move pin**, **Set direction** and **Remove pin** are there. **Remove pin**: the tile says **Not placed** again.
+- [ ] **Remove pin** on a photo that had GPS and was moved: it goes back to its GPS place and direction.
+
+### Treat as 360, Treat as photo
+
+- [ ] A photo twice as wide as it is high shows **Looks like a 360** in **Media**. **Treat as 360**: it moves to the 360s of its date. Right-click it, **Treat as photo**: it goes back to the photos.
+- [ ] **Treat as 360** on a photo with marks on it is greyed with the reason. In a package neither is offered.

@@ -187,6 +187,38 @@ Projects without video, and road surveys, have the single timeline, and their da
 - Hover a marker for the count and the time span. Click it to open the photo; click a merged marker for a list with thumbnails.
 - A panorama opens in an immersive view. The arrow keys look around; **Esc** or **Back to 3D** leaves.
 - **Media** lists every flight, clip, photo set and panorama set. See [Media and findings](05-annotation-and-issues.md#media-and-findings).
+- On the map, photos and 360s show as the same markers as in 3D. Hover one for its thumbnail. Click a photo to open it beside the map, or click a 360 to enter it with the 3D view beside the map.
+
+## Photos and 360s without GPS
+
+A ground photo or a 360 taken without GPS still comes in. Its Media tile says **Not placed** until you pin it on the site.
+
+### Import
+
+- **Add data** finds 360s by their shape (an image twice as wide as it is high). If some have no GPS, the offer says so: they import as not placed, ready to pin. The project needs a coordinate system given as an EPSG code for this import.
+- Insta360 `.insp` stills import like JPEGs. A still the camera has not stitched yet is two fisheye circles, not a 360. It is left out, and the offer says why: export it as a 360 photo from Insta360 Studio first, then add the exported file.
+
+### Place on site
+
+1. Right-click the photo or 360 (its Media tile, its row, or its marker) and choose **Place on site**. A strip at the bottom of the scene says what to click next.
+2. Click where it was taken: on the model, the point cloud or the map. The pin sits on the surface you clicked, and the camera sits **Eye height** above it (1.6 m unless you change it on the strip). On the map with no model under the point, the strip says the height is unknown and the pin sits at 0 m.
+3. For a 360, line it up with landmarks. The 360 opens beside the view. Click a landmark in the 360, then the same landmark in the 3D view or on the map. One pair lines it up. A second pair refines it (the two are averaged). If the two pairs disagree by a lot, the first one is kept and the strip says so.
+4. For a photo, click the direction it looks, or press **Done** to leave it without one. In 3D you can also drag the pin's arrow to turn it.
+5. **Done** ends placing. Each click saves straight away. **Cancel** or **Esc** keeps what is saved.
+
+A pinned 360 that is not lined up yet says **Not lined up yet** on its tile. Once placed, a photo or 360 has a marker like any other: hover for a preview, click to open.
+
+### Move, turn or remove a pin
+
+Right-click the pin (in 3D or on the map) or the tile:
+
+- **Move pin**: click the new place. The heading stays.
+- **Set direction**: line a 360 up again, or aim a photo again.
+- **Remove pin**: the item is **Not placed** again. A photo or 360 that came with GPS goes back to its GPS place and direction.
+
+### Treat as 360, Treat as photo
+
+A photo whose image is twice as wide as it is high shows **Looks like a 360** on its tile. **Treat as 360** (on the tile or in the photo's menu) moves it to the 360s of its survey date. **Treat as photo** on a 360 moves it back. The file stays where it is, and a pin goes with it. Neither is offered in a package. A photo with marks on it must have them removed first, and a stitched drone panorama cannot become a photo.
 
 ## The right panel
 
