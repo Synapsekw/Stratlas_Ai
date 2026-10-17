@@ -28,6 +28,7 @@
   "e2e/detect-local.spec.ts": 17,
   "e2e/detections.spec.ts": 1,
   "e2e/diagnostics.spec.ts": 11,
+  "e2e/drawer.spec.ts": 14,
   "e2e/ebsm-media.spec.ts": 1,
   "e2e/environment.spec.ts": 1,
   "e2e/exchange.spec.ts": 28,
