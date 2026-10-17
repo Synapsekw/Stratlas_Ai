@@ -1,5 +1,5 @@
 import type { LineUpMeasure } from '@aio/schema';
-import { Icon, useFocusTrap, useT } from '@aio/ui';
+import { Button, Icon, IconButton, useFocusTrap, useT } from '@aio/ui';
 import { dateTags, workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -229,14 +229,7 @@ function Dialog({
         <div className="dlg-h">
           <Icon name="crosshair" size={16} />
           <h2 id="lineup-title">{t('lineUp.title')}</h2>
-          <button
-            type="button"
-            className="btn ghost icon sm"
-            aria-label={t('lineUp.cancel')}
-            onClick={close}
-          >
-            <Icon name="x" size={12} />
-          </button>
+          <IconButton icon="x" label={t('lineUp.cancel')} onClick={close} />
         </div>
         <div className="dlg-b">
           <section className="dlg-sec lu-keep">
@@ -322,13 +315,13 @@ function Dialog({
         </div>
         <div className="dlg-f">
           <span className="grow" />
-          <button type="button" className="btn ghost" data-testid="lineup-cancel" onClick={close}>
+          <Button variant="quiet" data-testid="lineup-cancel" onClick={close}>
             {t('lineUp.cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn primary"
+          </Button>
+          <Button
+            variant="primary"
             data-testid="lineup-confirm"
+            busy={saving}
             disabled={!canSave}
             onClick={() => {
               setSaving(true);
@@ -341,7 +334,7 @@ function Dialog({
             }}
           >
             {t('lineUp.confirm')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { Icon, useT } from '@aio/ui';
+import { Button, Icon, IconButton, useT } from '@aio/ui';
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
@@ -36,26 +36,22 @@ function Notice({ store }: { store: StoreApi<LineUpStore> }) {
         <b>{t('lineUp.title')}</b>
         <span className="toast-grow" />
         {notice.action && (
-          <button
-            type="button"
-            className="btn ghost sm"
+          <Button
+            variant="quiet"
+            icon="undo"
             data-testid={`lineup-${notice.action.kind}`}
             onClick={() => void store.getState().apply()}
           >
-            <Icon name="undo" size={12} />
             {notice.action.kind === 'undo' ? t('align.direction.undo') : t('align.direction.redo')}
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
-          className="btn ghost icon sm"
-          aria-label={t('syncNotice.dismiss')}
+        <IconButton
+          icon="x"
+          label={t('syncNotice.dismiss')}
           onClick={() => {
             store.getState().dismiss();
           }}
-        >
-          <Icon name="x" size={12} />
-        </button>
+        />
       </div>
       <div className="toast-p" data-testid="lineup-text" dir="auto">
         {notice.text}

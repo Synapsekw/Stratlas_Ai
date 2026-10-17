@@ -51,6 +51,8 @@ describe('photo pins', () => {
     const moved = at(workspace(true));
     expect(moved[0] - base[0]).toBeCloseTo(2, 3);
     expect(moved[2]).toBeCloseTo(base[2], 3);
+  });
+});
 
 describe('photosFromClusterLeaves', () => {
   it('keeps the leaves that name a photo', () => {

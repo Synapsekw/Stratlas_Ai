@@ -1,4 +1,4 @@
-import { Icon, useT } from '@aio/ui';
+import { Button, Icon, useT } from '@aio/ui';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import { lineUpApp, type LineUpStore } from './lineUpStore';
@@ -17,24 +17,21 @@ function Offer({ store }: { store: StoreApi<LineUpStore> }) {
         {offer.text}
       </div>
       <div className="toast-p pm-acts">
-        <button
-          type="button"
-          className="btn sm primary"
+        <Button
+          variant="primary"
           data-testid="lineup-offer-go"
           onClick={() => void store.getState().acceptOffer()}
         >
           {t('lineUp.action')}
-        </button>
-        <button
-          type="button"
-          className="btn sm"
+        </Button>
+        <Button
           data-testid="lineup-offer-later"
           onClick={() => {
             store.getState().notNow();
           }}
         >
           {t('lineUp.notNow')}
-        </button>
+        </Button>
       </div>
     </div>
   );
