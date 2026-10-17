@@ -20,4 +20,9 @@ export {
   type ResizableSplitState,
   type SplitOptions,
 } from './useResizableSplit';
-export { ResizableSplit, type ResizableSplitProps } from './ResizableSplit';
+export {
+  ResizableSplit,
+  SplitHandle,
+  type ResizableSplitProps,
+  type SplitHandleProps,
+} from './ResizableSplit';

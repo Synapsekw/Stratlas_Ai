@@ -1,11 +1,33 @@
-import type { ReactElement, ReactNode } from 'react';
-import { useResizableSplit, type SplitOptions } from './useResizableSplit';
+import type { HTMLAttributes, ReactElement, ReactNode } from 'react';
+import {
+  useResizableSplit,
+  type ResizableSplitState,
+  type SplitOptions,
+} from './useResizableSplit';
 
 export interface ResizableSplitProps extends SplitOptions {
   label: string; // the separator's accessible name, e.g. "Resize the library"
   start: ReactNode;
   end: ReactNode;
   className?: string;
+}
+
+export interface SplitHandleProps extends HTMLAttributes<HTMLDivElement> {
+  separatorProps: ResizableSplitState['separatorProps'];
+  label: string; // the separator's accessible name
+}
+
+/**
+ * The handle on a split's shared edge, with its size readout: what `ResizableSplit` draws, for a
+ * layout that places the panes itself. Props after `separatorProps` (`hidden`, `onDoubleClick`)
+ * override the hook's.
+ */
+export function SplitHandle({ separatorProps, label, ...rest }: SplitHandleProps): ReactElement {
+  return (
+    <div {...separatorProps} {...rest} aria-label={label}>
+      <span className="kbd split-readout" aria-hidden="true" />
+    </div>
+  );
 }
 
 /**
@@ -26,9 +48,7 @@ export function ResizableSplit({
       <div className="split-pane" id={options.sized === 'start' ? paneId : undefined}>
         {start}
       </div>
-      <div {...separatorProps} aria-label={label}>
-        <span className="kbd split-readout" aria-hidden="true" />
-      </div>
+      <SplitHandle separatorProps={separatorProps} label={label} />
       <div className="split-pane" id={options.sized === 'end' ? paneId : undefined}>
         {end}
       </div>

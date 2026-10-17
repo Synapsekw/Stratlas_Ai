@@ -41,6 +41,7 @@ export {
 export { contrastRatio } from './contrast';
 export {
   ResizableSplit,
+  SplitHandle,
   SNAP_MARGIN,
   SPLIT_STEP,
   SPLIT_PREFS_KEY,
@@ -57,6 +58,7 @@ export {
   type SplitOptions,
   type SplitPref,
   type SplitPrefsState,
+  type SplitHandleProps,
 } from './split';
 export * from './format';
 export { isMacPlatform, platformKeys } from './shortcut';

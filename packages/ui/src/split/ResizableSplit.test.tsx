@@ -3,7 +3,7 @@ import { act, useImperativeHandle, useState, type Ref } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { splitPrefs } from './prefs';
-import { ResizableSplit, type ResizableSplitProps } from './ResizableSplit';
+import { ResizableSplit, SplitHandle, type ResizableSplitProps } from './ResizableSplit';
 import { useResizableSplit, type SplitOptions } from './useResizableSplit';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -381,5 +381,48 @@ describe('useResizableSplit', () => {
     splitPrefs.setState({ byId: { 'test.hook': { size: 300 } } });
     mount({ ...options, unit: 'fraction', defaultSize: 0.4, max: '80%' });
     expect(size()).toBe('40%');
+  });
+});
+
+describe('SplitHandle', () => {
+  /** A split laid out by hand around the shared handle, as the Scene's agent pane does. */
+  function Manual({ hidden, onReset }: { hidden: boolean; onReset: () => void }) {
+    const { containerRef, separatorProps } = useResizableSplit({
+      ...base,
+      orientation: 'vertical',
+      unit: 'fraction',
+      defaultSize: 0.6,
+    });
+    return (
+      <div ref={containerRef} className="split">
+        <div className="split-pane" />
+        <SplitHandle
+          separatorProps={separatorProps}
+          label="Resize the agent"
+          hidden={hidden}
+          onDoubleClick={onReset}
+        />
+        <div className="split-pane" />
+      </div>
+    );
+  }
+
+  it('draws the same handle as ResizableSplit, and its own props win over the hook', () => {
+    const onReset = vi.fn();
+    root = createRoot(host);
+    act(() => {
+      root?.render(<Manual hidden onReset={onReset} />);
+    });
+    const handle = host.querySelector<HTMLElement>('[role="separator"]');
+    expect(handle?.className).toBe('split-handle');
+    expect(handle?.getAttribute('aria-label')).toBe('Resize the agent');
+    expect(handle?.querySelector('.kbd.split-readout')?.getAttribute('aria-hidden')).toBe('true');
+    expect(handle?.hidden).toBe(true);
+    act(() => {
+      handle?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+    expect(onReset).toHaveBeenCalledOnce();
+    // the hook's own reset did not run: nothing saved
+    expect(splitPrefs.getState().byId['test.split']).toBeUndefined();
   });
 });
