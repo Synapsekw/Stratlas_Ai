@@ -18,6 +18,7 @@ import { useMeasureFollow } from '../workspace/workbench/measureFollow';
 import { CompareLayer } from './Comparison';
 import { DesignRolePrompt } from './DesignRolePrompt';
 import { ExportDialogMount } from './ExportDialog';
+import { useMagicController } from './MagicPolygon';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
 import {
   isDirty,
@@ -69,6 +70,8 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const dialog = useMeasure((s) => s.dialog);
   useOverlaysLoad();
   useMeasureFollow();
+  // Suggest boundaries holds the drawing while the measurements are on the stage, not its tab
+  useMagicController();
 
   useEffect(() => {
     void loadMeasurements(projectId);

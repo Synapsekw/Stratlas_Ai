@@ -385,20 +385,13 @@ const MODES: readonly [MagicMode, string, string][] = [
   ],
 ];
 
-/** The Suggest boundaries button and, while it is on, its draft controls (in the drawing bar). */
-export function MagicPolygon() {
-  const on = useMagic((s) => s.on);
-  const busy = useMagic((s) => s.busy);
-  const message = useMagic((s) => s.message);
-  const score = useMagic((s) => s.score);
-  const bufferPx = useMagic((s) => s.bufferPx);
-  const vertices = useMagic((s) => s.vertices);
-  const fullVertices = useMagic((s) => s.fullVertices);
-  const hasDraft = useMagic((s) => s.last !== null);
-  const mode = useMagic((s) => s.mode);
-  const status = useMagic((s) => s.status);
-  useWorkspace((s) => s.project?.id);
-
+/**
+ * Suggest boundaries' hold on the drawing, for as long as the measurements are on the stage
+ * (`MeasureLayer`), not only while its buttons show: the click interceptor, the draft's keys
+ * (U, I, J, K) and the reset when the drawing ends. The Measure tab can be away (another tab in
+ * front, the sidebar folded) while a draft is refined or the area is finished.
+ */
+export function useMagicController(): void {
   useEffect(() => {
     setDrawInterceptor(intercept);
     const onKey = (e: KeyboardEvent) => {
@@ -437,6 +430,24 @@ export function MagicPolygon() {
       off();
     };
   }, []);
+}
+
+/**
+ * The Suggest boundaries button and, while it is on, its draft controls (in the Measure tab's
+ * live card). Buttons only: what it does to the drawing is `useMagicController`'s.
+ */
+export function MagicPolygon() {
+  const on = useMagic((s) => s.on);
+  const busy = useMagic((s) => s.busy);
+  const message = useMagic((s) => s.message);
+  const score = useMagic((s) => s.score);
+  const bufferPx = useMagic((s) => s.bufferPx);
+  const vertices = useMagic((s) => s.vertices);
+  const fullVertices = useMagic((s) => s.fullVertices);
+  const hasDraft = useMagic((s) => s.last !== null);
+  const mode = useMagic((s) => s.mode);
+  const status = useMagic((s) => s.status);
+  useWorkspace((s) => s.project?.id);
 
   return (
     <>
