@@ -13,6 +13,7 @@ import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { captionArea } from './caption';
 import {
   CHANGE_DEMO,
   createDataRoot,
@@ -923,37 +924,38 @@ test.describe('the agent column in the smallest window', () => {
 
   /**
    * The page header (no title bar any more), measured as connection.spec.ts measures the headers:
-   * its controls end before the window's caption buttons (--caption-end), the search sits in the
+   * its controls end before the window's caption buttons (--caption-right), the search sits in the
    * sidebar's top row and help beside Settings, with the Agent chip in the header.
    */
-  const pageHeader = (win: Page) =>
-    win.evaluate(() => {
-      const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
-      const app = document.querySelector('.app');
-      const caption = app
-        ? parseFloat(getComputedStyle(app).getPropertyValue('--caption-end')) || 0
-        : 0;
-      const head = box('.pg-head');
-      const acts = box('.pg-head .pg-acts');
-      const search = box('.sb-search');
-      const top = box('.sb-top');
-      const settings = box('.sb-foot-row > .nav-item');
-      const help = box('[data-testid="help-open"]');
-      const chip = box('[data-testid="agent-toggle"]');
-      return {
-        caption,
-        // where the window's own buttons begin
-        room: window.innerWidth - caption,
-        actsRight: acts?.right ?? 0,
-        searchInTop: !!search && !!top && search.width > 0 && search.right <= top.right + 0.5,
-        helpBesideSettings: (settings?.right ?? Infinity) <= (help?.left ?? -1),
-        sideways: document.documentElement.scrollWidth > window.innerWidth,
-        chip: chip
-          ? { left: chip.left, right: chip.right, top: chip.top, bottom: chip.bottom }
-          : null,
-        height: head?.bottom ?? 0,
-      };
-    });
+  const pageHeader = async (win: Page) => {
+    const area = await captionArea(win);
+    return win.evaluate(
+      ({ caption, free }) => {
+        const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
+        const head = box('.pg-head');
+        const acts = box('.pg-head .pg-acts');
+        const search = box('.sb-search');
+        const top = box('.sb-top');
+        const settings = box('.sb-foot-row > .nav-item');
+        const help = box('[data-testid="help-open"]');
+        const chip = box('[data-testid="agent-toggle"]');
+        return {
+          caption,
+          // where the window's own buttons begin: the room the app keeps, and the buttons drawn
+          room: Math.min(window.innerWidth - caption, free),
+          actsRight: acts?.right ?? 0,
+          searchInTop: !!search && !!top && search.width > 0 && search.right <= top.right + 0.5,
+          helpBesideSettings: (settings?.right ?? Infinity) <= (help?.left ?? -1),
+          sideways: document.documentElement.scrollWidth > window.innerWidth,
+          chip: chip
+            ? { left: chip.left, right: chip.right, top: chip.top, bottom: chip.bottom }
+            : null,
+          height: head?.bottom ?? 0,
+        };
+      },
+      { caption: area.kept.right, free: area.free.right },
+    );
+  };
 
   /**
    * The Agent chip as drawn, and the page header's title (the name of the screen) with how much of

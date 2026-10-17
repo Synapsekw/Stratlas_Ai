@@ -5,15 +5,25 @@ import { useState } from 'react';
 import { welcomeTips } from '../player';
 import { shell, useShell } from '../shell';
 import { ExtractPackage } from '../shell/ExtractPackage';
+import { PageHeader } from '../shell/PageHeader';
 import { NoProject } from './NoProject';
 
-/** Customer welcome for a read-only package: what this is, when it was captured, what to try. */
+/**
+ * Customer welcome for a read-only package: what this is, when it was captured, what to try. Its
+ * page header (as on every screen but the Scene) drags the window and keeps clear of its buttons.
+ */
 export function WelcomeScreen() {
   const project = useWorkspace((s) => s.project);
   const issueCount = useWorkspace((s) => s.issues.length);
   const pkg = useShell((s) => s.pkg);
   const [thumbFailed, setThumbFailed] = useState(false);
-  if (!project || !pkg) return <NoProject view="Welcome" />;
+  if (!project || !pkg)
+    return (
+      <>
+        <PageHeader heading="nav.welcome" />
+        <NoProject view="Welcome" />
+      </>
+    );
 
   const m = project.manifest;
   const dates = m.captures.map((c) => c.date).sort();
@@ -33,109 +43,112 @@ export function WelcomeScreen() {
   };
 
   return (
-    <section className="screen welcome" aria-label="Welcome" data-testid="welcome">
-      <div className="welcome-in">
-        <div>
-          <span className="kicker">
-            <Icon name="lock" size={12} />
-            Read-only package
-          </span>
-          <h1>{m.name}</h1>
-          <p className="lead">
-            A survey delivered for review. You can explore every view and export what the package
-            allows; nothing in it can be changed.
-          </p>
-          {pkg.header.welcome?.message && <p className="msg">{pkg.header.welcome.message}</p>}
-          <dl className="kv">
-            {m.customer && (
-              <>
-                <dt>Customer</dt>
-                <dd>{m.customer}</dd>
-              </>
-            )}
-            {m.site && (
-              <>
-                <dt>Site</dt>
-                <dd>{m.site}</dd>
-              </>
-            )}
-            {captured && (
-              <>
-                <dt>Captured</dt>
-                <dd>{captured}</dd>
-              </>
-            )}
-            <dt>Issues</dt>
-            <dd>{issueCount}</dd>
-          </dl>
-          <h2 className="caps">What to try</h2>
-          <ol className="tips">
-            {tips.map((tip, i) => (
-              <li key={tip}>
-                <span>{String(i + 1).padStart(2, '0')}</span>
-                {tip}
-              </li>
-            ))}
-          </ol>
-          <div className="acts">
-            <button
-              type="button"
-              className="btn primary"
-              onClick={start}
-              data-testid="welcome-start"
-            >
-              Start exploring
-            </button>
-            {issueCount > 0 && (
+    <>
+      <PageHeader heading="nav.welcome" />
+      <section className="screen welcome" aria-label="Welcome" data-testid="welcome">
+        <div className="welcome-in">
+          <div>
+            <span className="kicker">
+              <Icon name="lock" size={12} />
+              Read-only package
+            </span>
+            <h1>{m.name}</h1>
+            <p className="lead">
+              A survey delivered for review. You can explore every view and export what the package
+              allows; nothing in it can be changed.
+            </p>
+            {pkg.header.welcome?.message && <p className="msg">{pkg.header.welcome.message}</p>}
+            <dl className="kv">
+              {m.customer && (
+                <>
+                  <dt>Customer</dt>
+                  <dd>{m.customer}</dd>
+                </>
+              )}
+              {m.site && (
+                <>
+                  <dt>Site</dt>
+                  <dd>{m.site}</dd>
+                </>
+              )}
+              {captured && (
+                <>
+                  <dt>Captured</dt>
+                  <dd>{captured}</dd>
+                </>
+              )}
+              <dt>Issues</dt>
+              <dd>{issueCount}</dd>
+            </dl>
+            <h2 className="caps">What to try</h2>
+            <ol className="tips">
+              {tips.map((tip, i) => (
+                <li key={tip}>
+                  <span>{String(i + 1).padStart(2, '0')}</span>
+                  {tip}
+                </li>
+              ))}
+            </ol>
+            <div className="acts">
               <button
                 type="button"
-                className="btn ghost"
-                onClick={() => {
-                  shell.getState().go('issues');
-                }}
+                className="btn primary"
+                onClick={start}
+                data-testid="welcome-start"
               >
-                Open the issue register
+                Start exploring
               </button>
-            )}
-          </div>
-          {packageEditAllowed(pkg.header) && (
-            <div className="welcome-extract">
-              <h2 className="caps">{t('package.extract.title')}</h2>
-              <p className="muted">{t('package.extract.text')}</p>
-              <ExtractPackage projectId={project.id} pkg={pkg} />
+              {issueCount > 0 && (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => {
+                    shell.getState().go('issues');
+                  }}
+                >
+                  Open the issue register
+                </button>
+              )}
             </div>
-          )}
-        </div>
-        <div className="welcome-media">
-          {!thumbFailed && (
-            <img
-              src={`aio://project/${project.id}/thumbnail.jpg`}
-              alt=""
-              draggable={false}
-              onError={() => {
-                setThumbFailed(true);
-              }}
-            />
-          )}
-          <div className="welcome-facts">
-            <span>
-              <Icon name="offline" size={12} />
-              Works offline
-            </span>
-            <span>
-              <Icon name="shield" size={12} />
-              {pkg.header.aiPolicy === 'allow' ? 'Cloud AI allowed' : 'No cloud AI'}
-            </span>
-            {pkg.encrypted && (
-              <span>
-                <Icon name="key" size={12} />
-                Encrypted
-              </span>
+            {packageEditAllowed(pkg.header) && (
+              <div className="welcome-extract">
+                <h2 className="caps">{t('package.extract.title')}</h2>
+                <p className="muted">{t('package.extract.text')}</p>
+                <ExtractPackage projectId={project.id} pkg={pkg} />
+              </div>
             )}
-            <span className="mono">{formatBytes(pkg.sizeBytes)}</span>
+          </div>
+          <div className="welcome-media">
+            {!thumbFailed && (
+              <img
+                src={`aio://project/${project.id}/thumbnail.jpg`}
+                alt=""
+                draggable={false}
+                onError={() => {
+                  setThumbFailed(true);
+                }}
+              />
+            )}
+            <div className="welcome-facts">
+              <span>
+                <Icon name="offline" size={12} />
+                Works offline
+              </span>
+              <span>
+                <Icon name="shield" size={12} />
+                {pkg.header.aiPolicy === 'allow' ? 'Cloud AI allowed' : 'No cloud AI'}
+              </span>
+              {pkg.encrypted && (
+                <span>
+                  <Icon name="key" size={12} />
+                  Encrypted
+                </span>
+              )}
+              <span className="mono">{formatBytes(pkg.sizeBytes)}</span>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }

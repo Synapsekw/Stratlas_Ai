@@ -1,23 +1,42 @@
 /**
  * The room the window's own buttons take now that the app has no title bar (main/index.ts keeps
  * `titleBarStyle: 'hidden'`). On Windows the caption buttons drawn by `titleBarOverlay` (40 px
- * high) cover about 138 px at the top end; on macOS the traffic lights (`trafficLightPosition`)
- * cover about 72 px at the start of the left sidebar's top row. App.tsx writes these as
- * `--caption-end` and `--caption-start` on `.app`. The OS draws them on the same physical side in
- * either direction, so styles.css keeps the room with physical padding (right for the end, left
- * for the start). Linux window controls are out of scope.
+ * high) cover about 138 px at the window's right; on macOS the traffic lights
+ * (`trafficLightPosition`) cover about 72 px at its left. The OS draws them on the same physical
+ * side in either direction. App.tsx writes the room as `--caption-left` and `--caption-right` on
+ * `.app`, and styles.css hands each to the component at that edge (`--caption-inline-start` and
+ * `--caption-inline-end`, swapped right to left). Linux window controls are out of scope.
  */
 export type CaptionPlatform = NodeJS.Platform | 'web';
 
 export interface CaptionInset {
-  inlineEnd: number;
-  inlineStart: number;
+  /** px at the window's physical left. */
+  left: number;
+  /** px at the window's physical right. */
+  right: number;
 }
 
+/** The room as fixed numbers: what the buttons take at the default zoom and caption size. */
 export function captionInset(platform: CaptionPlatform): CaptionInset {
-  if (platform === 'win32') return { inlineEnd: 138, inlineStart: 0 };
-  if (platform === 'darwin') return { inlineEnd: 0, inlineStart: 72 };
-  return { inlineEnd: 0, inlineStart: 0 };
+  if (platform === 'win32') return { left: 0, right: 138 };
+  if (platform === 'darwin') return { left: 72, right: 0 };
+  return { left: 0, right: 0 };
+}
+
+/**
+ * The room as CSS: where the window draws its controls overlay, its `env(titlebar-area-*)` values
+ * track the real buttons (page zoom, another caption width; gate/gate.css does the same), and the
+ * fixed numbers stand in where it does not. Elsewhere no room is kept.
+ */
+export function captionVars(
+  platform: CaptionPlatform,
+): Record<'--caption-left' | '--caption-right', string> {
+  if (platform !== 'win32' && platform !== 'darwin')
+    return { '--caption-left': '0px', '--caption-right': '0px' };
+  const { left, right } = captionInset(platform);
+  const x = `env(titlebar-area-x, ${String(left)}px)`;
+  const width = `env(titlebar-area-width, calc(100vw - ${String(left + right)}px))`;
+  return { '--caption-left': x, '--caption-right': `calc(100vw - ${x} - ${width})` };
 }
 
 /**

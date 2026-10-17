@@ -29,18 +29,30 @@ describe('right-to-left readiness', () => {
     });
   }
 
-  it('keeps the window caption insets on the physical side, whatever the direction', () => {
+  it('gives the room of the window buttons to the component at their edge, in either direction', () => {
     // the OS draws the Windows caption buttons on the right and the macOS traffic lights on the
-    // left in every direction, so the room kept for them is physical (shell/caption.ts)
-    const lines = readFileSync(FILES['styles.css'], 'utf8')
-      .split('\n')
-      .filter((line) => /var\(--caption-(end|start)/.test(line));
-    expect(lines.length).toBeGreaterThanOrEqual(3);
-    for (const line of lines) {
-      if (line.includes('--caption-end')) expect(line).toMatch(/^\s*padding-right:/);
-      else expect(line).toMatch(/^\s*padding-left:/);
-      expect(line).toMatch(/\/\* physical: OS caption buttons \*\//);
-    }
+    // left in every direction (shell/caption.ts): .app hands that physical room to the main
+    // area's end and the sidebar's start, swapped right to left, and components take it on their
+    // logical sides only
+    const css = readFileSync(FILES['styles.css'], 'utf8');
+    const block = (selector: string) => {
+      const at = css.indexOf(`\n${selector} {`);
+      return at < 0 ? '' : css.slice(at, css.indexOf('}', at));
+    };
+    expect(block('.app')).toContain('--caption-inline-end: var(--caption-right, 0px);');
+    expect(block('.app')).toContain('--caption-inline-start: var(--caption-left, 0px);');
+    expect(block("[dir='rtl'] .app")).toContain('--caption-inline-end: var(--caption-left, 0px);');
+    expect(block("[dir='rtl'] .app")).toContain(
+      '--caption-inline-start: var(--caption-right, 0px);',
+    );
+    const lines = css.split('\n');
+    const physical = lines.filter(
+      (l) => /var\(--caption-(left|right)/.test(l) && !/^\s*--caption-inline-(end|start):/.test(l),
+    );
+    expect(physical).toEqual([]);
+    const users = lines.filter((l) => /var\(--caption-inline-(end|start)/.test(l));
+    expect(users.length).toBeGreaterThanOrEqual(4);
+    for (const line of users) expect(line).toMatch(/^\s*(padding-inline|inset-inline-end):/);
   });
 
   it('isolates numbers and codes inside mixed-direction text', () => {

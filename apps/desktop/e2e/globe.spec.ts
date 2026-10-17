@@ -37,6 +37,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { APP_CSP, metaPolicy } from '../src/main/csp';
 import { expectAccessible } from './a11y';
+import { captionArea } from './caption';
 import { expect, processingChip, test, tinyGlb, TINY_PROJECT_ID, type DataRoot } from './fixtures';
 import { SITE_RASTERS } from './m10Fixtures';
 
@@ -548,14 +549,13 @@ async function expectClearOfTitleBar(win: Page) {
     bar.push([`the header's ${name}`, box]);
   }
   // the caption buttons' room at the header's end (Windows), as a box of its own
-  const caption = await win.evaluate(() => {
+  const { kept } = await captionArea(win);
+  const caption = await win.evaluate((end) => {
     const head = document.querySelector('.pg-head')?.getBoundingClientRect();
-    const app = document.querySelector('.app');
-    const end = app ? parseFloat(getComputedStyle(app).getPropertyValue('--caption-end')) || 0 : 0;
     return head && end > 0
       ? { x: window.innerWidth - end, y: 0, width: end, height: head.height }
       : null;
-  });
+  }, kept.right);
   if (caption) bar.push(["the window's caption buttons", caption]);
   // the page title, the logo, search, the connection and the cloud AI chip are always there
   expect(bar.length).toBeGreaterThanOrEqual(5);

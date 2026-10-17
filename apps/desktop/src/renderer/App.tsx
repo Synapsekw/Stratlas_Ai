@@ -64,7 +64,7 @@ import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
 import { useFold } from './shell/useFold';
 import { isSidebarFolded } from './store';
-import { captionInset, railWidth, rendererPlatform } from './shell/caption';
+import { captionVars, railWidth, rendererPlatform } from './shell/caption';
 import { SyncHost } from './team/SyncStatus';
 import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
@@ -251,11 +251,7 @@ function Screen() {
  * under them keep clear through these (shell/caption.ts, styles.css).
  */
 const PLATFORM = rendererPlatform();
-const CAPTION = captionInset(PLATFORM);
-const CAPTION_VARS = {
-  '--caption-end': `${String(CAPTION.inlineEnd)}px`,
-  '--caption-start': `${String(CAPTION.inlineStart)}px`,
-} as CSSProperties;
+const CAPTION_VARS = captionVars(PLATFORM) as CSSProperties;
 
 /** The icon rail the sidebar folds to (tokens.css `--sb-w-c`; wider on macOS, styles.css). */
 const SIDEBAR_RAIL = railWidth(PLATFORM);

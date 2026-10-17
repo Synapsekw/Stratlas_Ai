@@ -17,6 +17,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { captionArea } from './caption';
 import { createDataRoot, expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
 
 test.setTimeout(180_000);
@@ -229,7 +230,7 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
     await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
     await expect(win.getByTestId('sync-chip')).toBeVisible();
     // The smallest window is 1100 x 700 (main/index.ts). There is no title bar: on Windows the
-    // caption buttons (titleBarOverlay) sit over the top rows, and the rows keep --caption-end
+    // caption buttons (titleBarOverlay) sit over the top rows, and the rows keep --caption-right
     // clear for them (shell/caption.ts); on macOS the traffic lights take the sidebar's start.
     const width = 1100;
     const height = 700;
@@ -238,38 +239,39 @@ test('the connection fits the sidebar foot at the smallest window, in its longes
     await expect(mode(win)).toHaveText('Offline only');
     await expect(cloud(win)).toHaveText('Cloud AI blocked');
 
-    const fit = () =>
-      win.evaluate(() => {
-        const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
-        const app = document.querySelector('.app');
-        const caption = app
-          ? parseFloat(getComputedStyle(app).getPropertyValue('--caption-end')) || 0
-          : 0;
-        const sidebar = box('.sidebar');
-        const row = [...document.querySelectorAll('.sb-status-row > *')].map((el) =>
-          el.getBoundingClientRect(),
-        );
-        const header = [...document.querySelectorAll('.right-head > *, .pg-head .pg-acts > *')]
-          .map((el) => el.getBoundingClientRect())
-          .filter((r) => r.width > 0);
-        const search = box('.sb-search');
-        const top = box('.sb-top');
-        const settings = box('.sb-foot-row > .nav-item');
-        const help = box('[data-testid="help-open"]');
-        const pop = box('.conn-pop');
-        return {
-          caption,
-          // where the window's own buttons begin
-          room: window.innerWidth - caption,
-          rowRight: Math.max(...row.map((r) => r.right)),
-          sidebarRight: sidebar?.right ?? 0,
-          headerRight: Math.max(0, ...header.map((r) => r.right)),
-          searchInTop: !!search && !!top && search.width > 0 && search.right <= top.right + 0.5,
-          helpBesideSettings: (settings?.right ?? Infinity) <= (help?.left ?? -1),
-          sideways: document.documentElement.scrollWidth > window.innerWidth,
-          pop: pop ? { left: pop.left, right: pop.right, bottom: pop.bottom } : null,
-        };
-      });
+    const fit = async () => {
+      const area = await captionArea(win);
+      return win.evaluate(
+        ({ caption, free }) => {
+          const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
+          const sidebar = box('.sidebar');
+          const row = [...document.querySelectorAll('.sb-status-row > *')].map((el) =>
+            el.getBoundingClientRect(),
+          );
+          const header = [...document.querySelectorAll('.right-head > *, .pg-head .pg-acts > *')]
+            .map((el) => el.getBoundingClientRect())
+            .filter((r) => r.width > 0);
+          const search = box('.sb-search');
+          const top = box('.sb-top');
+          const settings = box('.sb-foot-row > .nav-item');
+          const help = box('[data-testid="help-open"]');
+          const pop = box('.conn-pop');
+          return {
+            caption,
+            // where the window's own buttons begin: the room the app keeps, and the buttons drawn
+            room: Math.min(window.innerWidth - caption, free),
+            rowRight: Math.max(...row.map((r) => r.right)),
+            sidebarRight: sidebar?.right ?? 0,
+            headerRight: Math.max(0, ...header.map((r) => r.right)),
+            searchInTop: !!search && !!top && search.width > 0 && search.right <= top.right + 0.5,
+            helpBesideSettings: (settings?.right ?? Infinity) <= (help?.left ?? -1),
+            sideways: document.documentElement.scrollWidth > window.innerWidth,
+            pop: pop ? { left: pop.left, right: pop.right, bottom: pop.bottom } : null,
+          };
+        },
+        { caption: area.kept.right, free: area.free.right },
+      );
+    };
     const closed = await fit();
     if (process.platform === 'win32') expect(closed.caption).toBeGreaterThan(40);
     expect(closed.rowRight).toBeLessThanOrEqual(closed.sidebarRight + 0.5);

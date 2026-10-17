@@ -15,6 +15,7 @@ import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { expectAccessible, expectFocusMeaningful, focusInfo } from './a11y';
+import { captionArea } from './caption';
 import {
   closeProcessing,
   expect,
@@ -494,6 +495,30 @@ test('a package opens in player mode and is accessible', async ({ app, win, data
     await pw.waitForLoadState('domcontentloaded');
     await expect(pw.getByTestId('welcome')).toContainText('E2E tiny project');
     await expectAccessible(pw, 'Package player, welcome');
+    // no title bar: the welcome's page header drags the window, and its content ends before the
+    // window's own buttons
+    const head = pw.getByTestId('page-header');
+    await expect(head).toContainText('Welcome');
+    expect(
+      await head.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return cs.getPropertyValue('app-region') || cs.getPropertyValue('-webkit-app-region');
+      }),
+    ).toBe('drag');
+    const area = await captionArea(pw);
+    const ends = await head.evaluate((el) =>
+      Math.max(
+        0,
+        ...[...el.querySelectorAll('.pg-title, .pg-acts > *')]
+          .map((c) => c.getBoundingClientRect())
+          .filter((r) => r.width > 0)
+          .map((r) => r.right),
+      ),
+    );
+    expect(ends).toBeLessThanOrEqual(area.free.right + 0.5);
+    expect(await head.evaluate((el) => el.getBoundingClientRect().bottom)).toBeLessThanOrEqual(
+      (await pw.getByTestId('welcome').boundingBox())?.y ?? 0,
+    );
     await pw.locator('.sb-nav .nav-item', { hasText: 'Scene' }).first().click();
     await expect(pw.locator('[data-scene-view] canvas').first()).toBeVisible();
     await expectAccessible(pw, 'Package player, scene');
