@@ -530,13 +530,14 @@ function expectByPin(card: Box, [x, y]: readonly [number, number]) {
 }
 
 /**
- * The field and the Map button keep out of the title bar above the Globe: its breadcrumbs, its
- * search and help buttons and every status chip it shows (Processing, Share, the connection).
+ * The field and the Map button keep out of the page header above the Globe (there is no title
+ * bar): its title, the Share chip and the room kept for the window's caption buttons; and out of
+ * the sidebar's top row (logo, search) and its status row (connection, cloud AI, processing).
  */
 async function expectClearOfTitleBar(win: Page) {
   const bar: [string, Box][] = [];
   const items = win.locator(
-    '.titlebar > .brand, .titlebar > .crumbs, .titlebar > button, .titlebar .tb-status > *',
+    '.pg-head > .pg-title, .pg-head .pg-acts > *, .sb-top > *, .sb-status-row > *',
   );
   for (const item of await items.all()) {
     const box = await item.boundingBox();
@@ -544,9 +545,19 @@ async function expectClearOfTitleBar(win: Page) {
     const name = await item.evaluate(
       (el) => el.getAttribute('data-testid') ?? el.getAttribute('class') ?? el.tagName,
     );
-    bar.push([`the title bar's ${name}`, box]);
+    bar.push([`the header's ${name}`, box]);
   }
-  // the brand, the breadcrumbs, search, help and the connection menu are always there
+  // the caption buttons' room at the header's end (Windows), as a box of its own
+  const caption = await win.evaluate(() => {
+    const head = document.querySelector('.pg-head')?.getBoundingClientRect();
+    const app = document.querySelector('.app');
+    const end = app ? parseFloat(getComputedStyle(app).getPropertyValue('--caption-end')) || 0 : 0;
+    return head && end > 0
+      ? { x: window.innerWidth - end, y: 0, width: end, height: head.height }
+      : null;
+  });
+  if (caption) bar.push(["the window's caption buttons", caption]);
+  // the page title, the logo, search, the connection and the cloud AI chip are always there
   expect(bar.length).toBeGreaterThanOrEqual(5);
   const mine = {
     'the field': await boxOf(win.locator('.globe-search-in'), 'the Find a site field'),

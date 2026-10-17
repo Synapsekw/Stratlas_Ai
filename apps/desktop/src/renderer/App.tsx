@@ -64,7 +64,7 @@ import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
 import { useFold } from './shell/useFold';
 import { isSidebarFolded } from './store';
-import { captionInset, rendererPlatform } from './shell/caption';
+import { captionInset, railWidth, rendererPlatform } from './shell/caption';
 import { SyncHost } from './team/SyncStatus';
 import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
@@ -248,12 +248,6 @@ function Screen() {
 }
 
 /**
- * The left sidebar on the `shell.sidebar` split: its width is the `.app` grid's first column,
- * dragged on its inner edge and remembered; folded, it is the 52 px rail. The fold is the
- * person's (`sidebarCollapsed`) or the window's (shell/autoFold.ts). The panel slides out with a
- * transform and the grid snaps once at the end; opening, the grid snaps first (useFold.ts).
- */
-/**
  * No title bar: the window's own buttons sit over the app's top rows (main/index.ts), and the rows
  * under them keep clear through these (shell/caption.ts, styles.css).
  */
@@ -264,9 +258,15 @@ const CAPTION_VARS = {
   '--caption-start': `${String(CAPTION.inlineStart)}px`,
 } as CSSProperties;
 
-/** The icon rail the sidebar folds to (tokens.css `--sb-w-c`). */
-const SIDEBAR_RAIL = 52;
+/** The icon rail the sidebar folds to (tokens.css `--sb-w-c`; wider on macOS, styles.css). */
+const SIDEBAR_RAIL = railWidth(PLATFORM);
 
+/**
+ * The left sidebar on the `shell.sidebar` split: its width is the `.app` grid's first column,
+ * dragged on its inner edge and remembered; folded, it is the rail (52 px, 76 on macOS). The fold
+ * is the person's (`sidebarCollapsed`) or the window's (shell/autoFold.ts). The panel slides out
+ * with a transform and the grid snaps once at the end; opening, the grid snaps first (useFold.ts).
+ */
 function useSidebarSplit() {
   const folded = useShell(isSidebarFolded);
   const fold = useFold(folded);

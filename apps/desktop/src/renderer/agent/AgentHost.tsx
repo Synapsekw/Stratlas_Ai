@@ -41,7 +41,7 @@ export function AgentHost({
     return (
       <>
         <div className="agent-blocked-h">
-          <CloudChip store={shell} />
+          <CloudChip store={shell} testId="agent-cloud-chip" />
         </div>
         <p className="faint small" style={{ padding: 12 }} data-testid="agent-blocked">
           This package does not allow cloud AI. Nothing from it is sent to any provider.
@@ -58,7 +58,7 @@ export function AgentHost({
       className={className ? `agent-host ${className}` : 'agent-host'}
       renderFix={(controls) => <AgentFixCard {...controls} />}
       // cloud AI as it is now, in the header (the title bar showed it before it went)
-      status={<CloudChip store={shell} />}
+      status={<CloudChip store={shell} testId="agent-cloud-chip" />}
     />
   );
 }

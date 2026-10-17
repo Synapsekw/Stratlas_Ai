@@ -42,6 +42,7 @@ import { useEffect, useMemo, useState, type HTMLAttributes } from 'react';
 import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
+import { help } from '../help/store';
 import { useMedia } from '../media';
 import { watchPanoStitches } from '../panos/panoJobs';
 import { pickAndScanPanos } from '../panos/panos';
@@ -70,7 +71,6 @@ import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
 import { SidebarStatus } from './SidebarStatus';
 import { SidebarTop } from './SidebarTop';
-import { help } from '../help/store';
 import './surveyDates.css';
 
 watchPanoStitches();

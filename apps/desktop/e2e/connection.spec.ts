@@ -1,6 +1,6 @@
 /**
- * The title bar's connection pair: the mode chip says the real mode (Online or Offline only, the
- * offline-only setting main checks) and the cloud AI chip beside it never contradicts it.
+ * The connection in the sidebar's status row: the mode chip says the real mode (Online or Offline
+ * only, the offline-only setting main checks) and the cloud AI chip beside it never contradicts it.
  *
  * - The mode chip opens the Connection menu: the switch, what the mode means, Download maps and
  *   Cloud AI. Keyboard: Enter opens, Space switches, Escape closes and returns focus.
@@ -8,8 +8,8 @@
  *   greys its Download button; main refuses a download. Online: all of it is offered again. No
  *   download is started.
  * - The mode survives a relaunch, and the command search has Go online / Work offline only.
- * - At the smallest window the chips stay clear of the window's own buttons and the search
- *   button stays.
+ * - At the smallest window the chips fit the sidebar's foot, the headers keep clear of the
+ *   window's own buttons, and the search button and help stay.
  *
  * Everything runs behind the zero-network guard: no request leaves in either mode.
  * QUADRION_E2E_SHOTS=<folder> saves a screenshot of each chip state and of the open menu.
@@ -23,15 +23,15 @@ test.setTimeout(180_000);
 
 const SHOTS = process.env.QUADRION_E2E_SHOTS;
 
-/** The whole window, or only its title bar strip (`bar`). */
+/** The whole window, or only the sidebar's foot with its status row (`bar`). */
 async function shot(win: Page, name: string, bar = false) {
   if (!SHOTS) return;
-  const size = await win.evaluate(() => ({ width: window.innerWidth, height: 48 }));
+  const size = await win.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
   await win.screenshot({
     path: join(SHOTS, `${name}.png`),
     // the menu fades in; an off-screen window draws too few frames to finish that on its own
     animations: 'disabled',
-    ...(bar ? { clip: { x: Math.max(0, size.width - 900), y: 0, width: 900, height: 48 } } : {}),
+    ...(bar ? { clip: { x: 0, y: Math.max(0, size.height - 140), width: 320, height: 140 } } : {}),
   });
 }
 
@@ -70,7 +70,7 @@ const cloudIsGreen = (win: Page) =>
     .count()
     .then((n) => n > 0);
 
-test('the title bar shows the real mode, its menu switches it, and the mode survives a relaunch', async () => {
+test('the status row shows the real mode, its menu switches it, and the mode survives a relaunch', async () => {
   const data = await createDataRoot();
   let app: ElectronApplication | undefined;
   try {
@@ -218,29 +218,22 @@ test('the title bar shows the real mode, its menu switches it, and the mode surv
   }
 });
 
-test('the connection pair fits the title bar at the smallest window, in its longest wording', async () => {
+test('the connection fits the sidebar foot at the smallest window, in its longest wording', async () => {
   const data = await createDataRoot();
   const { app, win, network } = await start(data);
   try {
-    // the longest pair, "Offline only" and "Cloud AI blocked", beside a project's Share chip
+    // the longest pair, "Offline only" and "Cloud AI blocked", with a project's Share chip open
     await command(win, 'Turn cloud AI on');
     await command(win, 'Work offline only');
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
     await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
     await expect(win.getByTestId('sync-chip')).toBeVisible();
-    // The smallest window is 1100 wide (main/index.ts), and on Windows the title bar keeps clear
-    // of the caption buttons on its right. A resized test viewport has no such buttons, so their
-    // room comes off. On macOS the traffic lights sit on the left and the bar reserves nothing on
-    // the right beyond its own padding, so the pair must fit the full 1100.
-    const padRight = await win.evaluate(() => {
-      const bar = document.querySelector('.titlebar');
-      return bar ? Math.ceil(parseFloat(getComputedStyle(bar).paddingRight)) : 0;
-    });
-    const BASE_PAD = 10; // the bar's own right padding (styles.css)
-    if (process.platform === 'win32') expect(padRight).toBeGreaterThan(40);
-    const buttons = padRight > BASE_PAD ? padRight : 0;
-    const width = 1100 - buttons;
-    await win.setViewportSize({ width, height: 700 });
+    // The smallest window is 1100 x 700 (main/index.ts). There is no title bar: on Windows the
+    // caption buttons (titleBarOverlay) sit over the top rows, and the rows keep --caption-end
+    // clear for them (shell/caption.ts); on macOS the traffic lights take the sidebar's start.
+    const width = 1100;
+    const height = 700;
+    await win.setViewportSize({ width, height });
     await expect.poll(() => win.evaluate(() => window.innerWidth)).toBe(width);
     await expect(mode(win)).toHaveText('Offline only');
     await expect(cloud(win)).toHaveText('Cloud AI blocked');
@@ -248,28 +241,41 @@ test('the connection pair fits the title bar at the smallest window, in its long
     const fit = () =>
       win.evaluate(() => {
         const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
-        const bar = document.querySelector('.titlebar');
-        const pad = bar ? parseFloat(getComputedStyle(bar).paddingRight) : 0;
-        const search = box('.search-btn');
-        const help = box('.help-btn');
-        const status = box('.tb-status');
+        const app = document.querySelector('.app');
+        const caption = app
+          ? parseFloat(getComputedStyle(app).getPropertyValue('--caption-end')) || 0
+          : 0;
+        const sidebar = box('.sidebar');
+        const row = [...document.querySelectorAll('.sb-status-row > *')].map((el) =>
+          el.getBoundingClientRect(),
+        );
+        const header = [...document.querySelectorAll('.right-head > *, .pg-head .pg-acts > *')]
+          .map((el) => el.getBoundingClientRect())
+          .filter((r) => r.width > 0);
+        const search = box('.sb-search');
+        const top = box('.sb-top');
+        const settings = box('.sb-foot-row > .nav-item');
+        const help = box('[data-testid="help-open"]');
         const pop = box('.conn-pop');
         return {
+          caption,
           // where the window's own buttons begin
-          room: window.innerWidth - pad,
-          statusRight: status?.right ?? 0,
-          searchWidth: search?.width ?? 0,
-          searchBeforeHelp: (search?.right ?? 0) <= (help?.left ?? 0),
-          helpBeforeStatus: (help?.right ?? 0) <= (status?.left ?? 0),
+          room: window.innerWidth - caption,
+          rowRight: Math.max(...row.map((r) => r.right)),
+          sidebarRight: sidebar?.right ?? 0,
+          headerRight: Math.max(0, ...header.map((r) => r.right)),
+          searchInTop: !!search && !!top && search.width > 0 && search.right <= top.right + 0.5,
+          helpBesideSettings: (settings?.right ?? Infinity) <= (help?.left ?? -1),
           sideways: document.documentElement.scrollWidth > window.innerWidth,
           pop: pop ? { left: pop.left, right: pop.right, bottom: pop.bottom } : null,
         };
       });
     const closed = await fit();
-    expect(closed.statusRight).toBeLessThanOrEqual(closed.room + 0.5);
-    expect(closed.searchWidth).toBeGreaterThanOrEqual(140);
-    expect(closed.searchBeforeHelp).toBe(true);
-    expect(closed.helpBeforeStatus).toBe(true);
+    if (process.platform === 'win32') expect(closed.caption).toBeGreaterThan(40);
+    expect(closed.rowRight).toBeLessThanOrEqual(closed.sidebarRight + 0.5);
+    expect(closed.headerRight).toBeLessThanOrEqual(closed.room + 0.5);
+    expect(closed.searchInTop).toBe(true);
+    expect(closed.helpBesideSettings).toBe(true);
     expect(closed.sideways).toBe(false);
     await shot(win, 'conn-10-smallest-window');
 
@@ -280,7 +286,7 @@ test('the connection pair fits the title bar at the smallest window, in its long
     expect(open.pop).not.toBeNull();
     expect(open.pop?.left ?? -1).toBeGreaterThanOrEqual(0);
     expect(open.pop?.right ?? Infinity).toBeLessThanOrEqual(width);
-    expect(open.pop?.bottom ?? Infinity).toBeLessThanOrEqual(700);
+    expect(open.pop?.bottom ?? Infinity).toBeLessThanOrEqual(height);
     expect(open.sideways).toBe(false);
     await shot(win, 'conn-11-smallest-window-menu');
 

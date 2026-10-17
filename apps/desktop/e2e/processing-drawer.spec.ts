@@ -1,5 +1,5 @@
 /**
- * Processing belongs to the project: the title bar chip and the drawer it opens show the open
+ * Processing belongs to the project: the sidebar's jobs chip and the drawer it opens show the open
  * project's processing and nothing else; **Create maps from photos** starts from the drawer; the
  * raw pipeline forms and every job on this computer are under Settings, Processing tools,
  * **Advanced**. The first tests start no job and need no pipeline Python.
@@ -43,7 +43,7 @@ test('the chip opens the open project processing, and closing gives the focus ba
 
   await openTiny(win);
   const chip = processingChip(win);
-  await expect(chip).toHaveText('Processing');
+  await expect(chip).toHaveText('0 jobs');
   await expect(chip).toHaveAttribute('aria-expanded', 'false');
 
   const drawer = await openProcessing(win);
@@ -70,7 +70,7 @@ test('the chip opens the open project processing, and closing gives the focus ba
 
   // the drawer stays with the project across screens
   await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
-  await expect(chip).toHaveText('Processing');
+  await expect(chip).toHaveText('0 jobs');
 });
 
 test('Create maps from photos starts from the drawer, which makes way for it', async ({ win }) => {
@@ -245,7 +245,8 @@ test.describe('with the runtime', () => {
       await win.getByLabel('Wait (s)').fill('60');
       await win.getByTestId('job-start').click();
       const chip = processingChip(win);
-      await expect(chip).toHaveText(/^Processing \d+%$/, { timeout: 60_000 });
+      await expect(chip).toHaveText('1 job', { timeout: 60_000 });
+      await expect(chip).toHaveAttribute('aria-label', /^Processing \d+%$/);
       await expect(chip).toHaveAttribute('data-state', 'one');
 
       // the project's drawer lists it, with its kind, and opens its details
@@ -278,7 +279,7 @@ test.describe('with the runtime', () => {
       await expect(detail.locator('.jd-h .job-state')).toHaveText('Cancelled', {
         timeout: 15_000,
       });
-      await expect(chip).toHaveText('Processing');
+      await expect(chip).toHaveText('0 jobs');
       await detail.getByRole('button', { name: 'Resume' }).click();
       await expect(wait).toHaveAttribute('data-state', 'running', { timeout: 30_000 });
       await detail.getByTestId('job-log-fold').locator('summary').click();
@@ -292,7 +293,7 @@ test.describe('with the runtime', () => {
       await win.locator('.proj-switch').focus();
       await win.keyboard.press('Enter');
       await win.locator('.proj-menu').getByRole('menuitem', { name: 'Close project' }).click();
-      await expect(chip).toHaveText('Processing · 1 running elsewhere');
+      await expect(chip).toHaveText('1 job');
 
       drawer = await openProcessing(win);
       await expect(drawer.getByTestId('create-maps')).toHaveCount(0);

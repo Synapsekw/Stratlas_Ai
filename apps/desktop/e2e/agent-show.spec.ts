@@ -921,62 +921,73 @@ test.describe('the agent column in the smallest window', () => {
     await stop(run);
   });
 
-  /** The title bar, measured as connection.spec.ts measures it, with the Agent chip in it. */
-  const titleBar = (win: Page) =>
+  /**
+   * The page header (no title bar any more), measured as connection.spec.ts measures the headers:
+   * its controls end before the window's caption buttons (--caption-end), the search sits in the
+   * sidebar's top row and help beside Settings, with the Agent chip in the header.
+   */
+  const pageHeader = (win: Page) =>
     win.evaluate(() => {
       const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
-      const bar = document.querySelector('.titlebar');
-      const pad = bar ? parseFloat(getComputedStyle(bar).paddingRight) : 0;
-      const search = box('.search-btn');
-      const help = box('.help-btn');
-      const status = box('.tb-status');
+      const app = document.querySelector('.app');
+      const caption = app
+        ? parseFloat(getComputedStyle(app).getPropertyValue('--caption-end')) || 0
+        : 0;
+      const head = box('.pg-head');
+      const acts = box('.pg-head .pg-acts');
+      const search = box('.sb-search');
+      const top = box('.sb-top');
+      const settings = box('.sb-foot-row > .nav-item');
+      const help = box('[data-testid="help-open"]');
       const chip = box('[data-testid="agent-toggle"]');
       return {
+        caption,
         // where the window's own buttons begin
-        room: window.innerWidth - pad,
-        statusRight: status?.right ?? 0,
-        searchWidth: search?.width ?? 0,
-        searchBeforeHelp: (search?.right ?? 0) <= (help?.left ?? 0),
-        helpBeforeStatus: (help?.right ?? 0) <= (status?.left ?? 0),
+        room: window.innerWidth - caption,
+        actsRight: acts?.right ?? 0,
+        searchInTop: !!search && !!top && search.width > 0 && search.right <= top.right + 0.5,
+        helpBesideSettings: (settings?.right ?? Infinity) <= (help?.left ?? -1),
         sideways: document.documentElement.scrollWidth > window.innerWidth,
         chip: chip
           ? { left: chip.left, right: chip.right, top: chip.top, bottom: chip.bottom }
           : null,
-        height: window.innerHeight,
+        height: head?.bottom ?? 0,
       };
     });
 
   /**
-   * The Agent chip as drawn, and the last breadcrumb (the name of the screen) with how much of it
-   * its row cuts off.
+   * The Agent chip as drawn, and the page header's title (the name of the screen) with how much of
+   * it its row cuts off.
    */
   const chipAndCrumb = (win: Page) =>
     win.evaluate(() => {
       const chip = document.querySelector('[data-testid="agent-toggle"]');
       const label = chip?.querySelector('.lbl')?.getBoundingClientRect();
-      const crumbs = document.querySelector('.crumbs');
-      const last = crumbs?.querySelector('b');
-      const row = crumbs?.getBoundingClientRect();
-      const name = last?.getBoundingClientRect();
+      const title = document.querySelector<HTMLElement>('.pg-head .pg-title');
       return {
         width: window.innerWidth,
         chipWidth: chip?.getBoundingClientRect().width ?? 0,
         // the label is in the button at every width; drawn in a pixel it shows nothing
         labelWidth: label?.width ?? 0,
         icon: chip?.querySelector('svg')?.getBoundingClientRect().width ?? 0,
-        crumb: last?.textContent ?? '',
-        crumbCut: row && name ? Math.max(0, name.right - row.right, row.left - name.left) : -1,
-        crumbEllipsis: last ? getComputedStyle(last).textOverflow === 'ellipsis' : false,
+        crumb: title?.textContent ?? '',
+        crumbCut: title ? Math.max(0, title.scrollWidth - title.clientWidth) : -1,
+        crumbEllipsis: title ? getComputedStyle(title).textOverflow === 'ellipsis' : false,
       };
     });
 
   /**
-   * Below 1280 px the chip is its icon alone, still named "Agent", and the breadcrumbs keep the
+   * Below 1280 px the chip is its icon alone, still named "Agent", and the page header keeps the
    * name of the screen: whole, or ending in an ellipsis, never cut mid letter.
    */
   async function expectNarrowChip(win: Page, screen?: string) {
     await expect(toggle(win)).toHaveAccessibleName('Agent');
-    await expect(toggle(win)).toHaveAttribute('title', 'Show or hide the agent');
+    // its tip (the shared Tip, no native title) says what it does; the pointer comes from
+    // elsewhere, so the hover is a new one
+    await win.mouse.move(0, 400);
+    await toggle(win).hover();
+    await expect(win.getByRole('tooltip')).toContainText('Show or hide the agent');
+    await win.mouse.move(0, 400);
     await expect(toggle(win)).toHaveAttribute('aria-controls', 'agent-dock');
     const now = await chipAndCrumb(win);
     expect(now.width).toBeLessThan(1280);
@@ -1000,11 +1011,11 @@ test.describe('the agent column in the smallest window', () => {
 
   async function expectTitleBarFits(win: Page, screen?: string) {
     if ((await win.evaluate(() => innerWidth)) < 1280) await expectNarrowChip(win, screen);
-    const bar = await titleBar(win);
-    expect(bar.statusRight).toBeLessThanOrEqual(bar.room + 0.5);
-    expect(bar.searchWidth).toBeGreaterThanOrEqual(140);
-    expect(bar.searchBeforeHelp).toBe(true);
-    expect(bar.helpBeforeStatus).toBe(true);
+    const bar = await pageHeader(win);
+    if (process.platform === 'win32') expect(bar.caption).toBeGreaterThan(40);
+    expect(bar.actsRight).toBeLessThanOrEqual(bar.room + 0.5);
+    expect(bar.searchInTop).toBe(true);
+    expect(bar.helpBesideSettings).toBe(true);
     expect(bar.sideways).toBe(false);
     // the Agent chip is whole, left of the window's own buttons
     expect(bar.chip).not.toBeNull();

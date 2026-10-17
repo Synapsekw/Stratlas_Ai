@@ -357,9 +357,12 @@ export default function GlobeScreen() {
 
   if (!loaded)
     return (
-      <section className="globe-screen" aria-busy="true" data-surface="dark">
-        <BrandLoader className="globe-loader" />
-      </section>
+      <>
+        <PageHeader heading="globe.nav" />
+        <section className="globe-screen" aria-busy="true" data-surface="dark">
+          <BrandLoader className="globe-loader" />
+        </section>
+      </>
     );
 
   const site = pick ? loaded.sites.find((s) => s.projectId === pick.projectId) : undefined;

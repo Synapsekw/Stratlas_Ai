@@ -14,16 +14,19 @@ function useCloudStatus(store: StoreApi<Shell>) {
 }
 
 /**
- * The cloud AI chip on its own, for the agent's header: what cloud AI is now, opening its setting
- * (Settings, Privacy and cloud).
+ * The cloud AI chip on its own: what cloud AI is now, opening its setting (Settings, Privacy and
+ * cloud). The sidebar's status row shows it on every screen (`cloud-chip`), and the agent's
+ * header again (`agent-cloud-chip`, so the row's stays the one `cloud-chip`).
  */
 export function CloudChip({
   store,
   className = 'ag-cloud',
+  testId = 'cloud-chip',
   onOpen,
 }: {
   store: StoreApi<Shell>;
   className?: string;
+  testId?: string;
   /** Before the setting opens (the pair closes its menu). */
   onOpen?: () => void;
 }) {
@@ -35,7 +38,7 @@ export function CloudChip({
       className={`chip-status conn-cloud ${className}`}
       title={t(status.cloudTip)}
       data-state={status.cloud}
-      data-testid="cloud-chip"
+      data-testid={testId}
       onClick={() => {
         onOpen?.();
         store.getState().openSettingsPage('privacy');

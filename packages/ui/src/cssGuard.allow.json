@@ -1,7 +1,4 @@
 {
-  "apps/desktop/src/renderer/agent/AgentToggle.tsx": {
-    "title": 1
-  },
   "apps/desktop/src/renderer/audit/AuditScreen.tsx": {
     "title": 1
   },
@@ -267,14 +264,11 @@
   "apps/desktop/src/renderer/shell/Sidebar.tsx": {
     "title": 3
   },
-  "apps/desktop/src/renderer/shell/TitleBar.tsx": {
-    "title": 3
-  },
   "apps/desktop/src/renderer/styles.css": {
     "fontPx": 26,
     "colour": 25,
     "shadow": 15,
-    "zIndex": 17
+    "zIndex": 16
   },
   "apps/desktop/src/renderer/survey/Cleanup.tsx": {
     "title": 1
@@ -346,7 +340,7 @@
     "title": 6
   },
   "apps/desktop/src/renderer/team/SyncStatus.tsx": {
-    "title": 2
+    "title": 1
   },
   "apps/desktop/src/renderer/team/team.css": {
     "fontPx": 2

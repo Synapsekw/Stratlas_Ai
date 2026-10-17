@@ -20,7 +20,7 @@ vi.mock('@aio/workspace', () => {
   };
 });
 
-import { ChipView, chipText, ProcessingChip } from './ProcessingChip';
+import { ChipView, chipText, chipWords, ProcessingChip } from './ProcessingChip';
 import { processing } from './store';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -56,6 +56,14 @@ describe('what the chip says', () => {
     expect(chipText({ kind: 'attention', count: 2 })).toBe('2 need attention');
     expect(chipText({ kind: 'elsewhere', count: 1 })).toBe('Processing · 1 running elsewhere');
   });
+
+  it('shows the jobs as the sidebar status row counts them ("1 job")', () => {
+    expect(chipWords({ kind: 'idle' })).toBe('0 jobs');
+    expect(chipWords({ kind: 'one', pct: 40 })).toBe('1 job');
+    expect(chipWords({ kind: 'many', count: 3 })).toBe('3 jobs');
+    expect(chipWords({ kind: 'elsewhere', count: 1 })).toBe('1 job');
+    expect(chipWords({ kind: 'attention', count: 2 })).toBe('2 need attention');
+  });
 });
 
 describe('the chip', () => {
@@ -73,7 +81,7 @@ describe('the chip', () => {
       root = createRoot(host);
       root.render(<ChipView state={{ kind: 'one', pct: 40 }} open={false} onToggle={onToggle} />);
     });
-    expect(chip()?.textContent).toBe('Processing 40%');
+    expect(chip()?.textContent).toBe('1 job');
     expect(chip()?.getAttribute('aria-expanded')).toBe('false');
     expect(chip()?.getAttribute('aria-controls')).toBe('processing-drawer');
     expect(chip()?.dataset.state).toBe('one');
@@ -112,8 +120,8 @@ describe('the chip', () => {
       });
       expect(chip()?.getAttribute('aria-label')).toBe(label);
     }
-    // the visible words stay as they were
-    expect(chip()?.textContent).toBe('Processing · 1 running elsewhere');
+    // the visible words are the status row's count
+    expect(chip()?.textContent).toBe('1 job');
     act(() => {
       root?.render(
         <ChipView
@@ -175,7 +183,7 @@ describe('the chip of the open project', () => {
     app.root = A;
     mount();
     expect(chip()?.dataset.state).toBe('idle');
-    expect(chip()?.textContent).toBe('Processing');
+    expect(chip()?.textContent).toBe('0 jobs');
   });
 
   it('counts a failure after the session started, and the drawer open clears it', () => {
@@ -221,7 +229,8 @@ describe('the chip of the open project', () => {
     app.root = A;
     app.jobs = [job({ status: 'running', progress: 0.4 })];
     mount();
-    expect(chip()?.textContent).toBe('Processing 40%');
+    expect(chip()?.textContent).toBe('1 job');
+    expect(chip()?.getAttribute('aria-label')).toBe('Processing 40%');
   });
 });
 
@@ -255,6 +264,7 @@ describe('the chip with no project of its own', () => {
     ];
     mount();
     expect(chip()?.dataset.state).toBe('elsewhere');
-    expect(chip()?.textContent).toBe('Processing · 2 running elsewhere');
+    expect(chip()?.textContent).toBe('2 jobs');
+    expect(chip()?.getAttribute('aria-label')).toBe('Processing · 2 running elsewhere');
   });
 });

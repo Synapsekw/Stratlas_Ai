@@ -148,8 +148,9 @@ test.describe('with the runtime', () => {
       const detail = win.locator('.job-detail');
       const waitStep = detail.locator('.jd-steps li', { hasText: 'Wait' });
       await expect(waitStep).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
-      // no project is open: the title bar says something is running, elsewhere
-      await expect(processingChip(win)).toHaveText('Processing · 1 running elsewhere');
+      // no project is open: the sidebar's status row says something is running, elsewhere
+      await expect(processingChip(win)).toHaveText('1 job');
+      await expect(processingChip(win)).toHaveAttribute('data-state', 'elsewhere');
       await detail.getByRole('button', { name: 'Cancel' }).click();
       await expect(detail.locator('.jd-h .job-state')).toHaveText('Cancelled', { timeout: 15_000 });
       await expect(waitStep).toHaveAttribute('data-state', 'cancelled');

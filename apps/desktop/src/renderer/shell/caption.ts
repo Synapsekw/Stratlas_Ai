@@ -19,6 +19,14 @@ export function captionInset(platform: CaptionPlatform): CaptionInset {
 }
 
 /**
+ * The width of the icon rail the left sidebar folds to: 52 px (tokens.css `--sb-w-c`), and 76 px
+ * on macOS, where the rail's top holds the traffic lights (x 16 to about 70) with a margin.
+ */
+export function railWidth(platform: CaptionPlatform): number {
+  return platform === 'darwin' ? 76 : 52;
+}
+
+/**
  * The platform from the renderer's `navigator.platform` ("Win32", "MacIntel", "Linux x86_64");
  * without the desktop bridge (a browser, unit tests) there are no window buttons: `web`.
  */

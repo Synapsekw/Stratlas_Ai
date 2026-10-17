@@ -1,7 +1,7 @@
 /**
- * The Processing chip of the sidebar status row (shell/SidebarStatus.tsx): what the open project is processing, in a word, and the
- * button that opens its drawer. With no project of its own (none open, or a read-only package)
- * it shows only while another project is running something.
+ * The jobs chip of the sidebar's status row (shell/SidebarStatus.tsx): how many jobs the open
+ * project runs ("1 job"), and the button that opens the processing drawer. With no project of its
+ * own (none open, or a read-only package) it shows only while another project runs something.
  */
 import { Icon, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
@@ -24,6 +24,25 @@ export function chipText(state: ChipState): string {
     case 'idle':
     case 'hidden':
       return t('processing.title');
+  }
+}
+
+/**
+ * What the chip shows in the sidebar's status row ("● Online · 1 job"): how many jobs run, or
+ * what needs attention. The full state is its accessible name (chipLabel).
+ */
+export function chipWords(state: ChipState): string {
+  switch (state.kind) {
+    case 'one':
+      return t('status.jobs', { count: 1 });
+    case 'many':
+    case 'elsewhere':
+      return t('status.jobs', { count: state.count });
+    case 'attention':
+      return t('processing.chip.attention', { count: state.count });
+    case 'idle':
+    case 'hidden':
+      return t('status.jobs', { count: 0 });
   }
 }
 
@@ -58,7 +77,7 @@ export function ChipView({
       onClick={onToggle}
     >
       <Icon name={state.kind === 'attention' ? 'warn' : 'clock'} size={14} />
-      {chipText(state)}
+      {chipWords(state)}
     </button>
   );
 }
