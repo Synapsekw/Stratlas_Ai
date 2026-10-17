@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BANDS, bandById, nRb } from './bands';
+import { BANDS, bandById, bandOfName, nRb } from './bands';
 
 describe('nRb', () => {
   it('LTE 20 MHz is 100 RB', () => {
@@ -45,5 +45,20 @@ describe('BANDS', () => {
   it('looks up by id', () => {
     expect(bandById('n78')?.centreMHz).toBe(3500);
     expect(bandById('nope')).toBeUndefined();
+  });
+});
+
+describe('bandOfName', () => {
+  it('finds a band by id, LTE name or NR name, ignoring case and spaces', () => {
+    expect(bandOfName('b3-n3')?.id).toBe('b3-n3');
+    expect(bandOfName(' B3 ')?.id).toBe('b3-n3');
+    expect(bandOfName('n78')?.id).toBe('n78');
+    expect(bandOfName('N77')?.id).toBe('n77');
+    expect(bandOfName('B20')?.centreMHz).toBe(806);
+  });
+  it('answers undefined for an unknown band', () => {
+    expect(bandOfName('B99')).toBeUndefined();
+    expect(bandOfName('n999')).toBeUndefined();
+    expect(bandOfName('foo')).toBeUndefined();
   });
 });

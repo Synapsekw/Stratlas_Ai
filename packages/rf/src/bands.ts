@@ -125,6 +125,17 @@ export function bandById(id: string): Band | undefined {
   return BANDS.find((b) => b.id === id);
 }
 
+/** A band row from a carrier's band name: `B3`, `n78` or a band id such as `b3-n3` (the job's `band_of`). */
+export function bandOfName(name: string): Band | undefined {
+  const key = name.trim().toLowerCase();
+  const byId = bandById(key);
+  if (byId) return byId;
+  const lte = /^b(\d+)$/.exec(key);
+  if (lte) return BANDS.find((b) => b.lteBands.includes(Number(lte[1])));
+  if (/^n\d+$/.test(key)) return BANDS.find((b) => b.nrBand === key);
+  return undefined;
+}
+
 /** TS 36.101 Table 5.6-1: channel bandwidth (MHz) to transmission bandwidth N_RB. */
 const LTE_N_RB: Readonly<Record<number, number>> = {
   1.4: 6,

@@ -1,4 +1,5 @@
 export * from './bands';
+export * from './ground';
 // T4: pattern, geometry, link budget
 export * from './geometry';
 export * from './pattern';
