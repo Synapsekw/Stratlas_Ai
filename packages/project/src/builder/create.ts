@@ -13,6 +13,7 @@ import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawingStemOf, markDrawingPlaced, type PlacedDrawing } from './drawingPlacement';
 import { updateManifestFile, writeManifestFile } from './manifestFile';
+import { applyMediaPin } from './mediaPin';
 import { newProjectManifest } from './templates';
 import {
   commitWalkPoses,
@@ -192,6 +193,7 @@ function patchLayers(
   for (const id of want)
     if (!m.layers.some((l) => l.id === id))
       throw new Error(`Layer "${id}" is not in this project.`);
+  if ('mediaPin' in patch && want.size > 1) throw new Error('Pin one item at a time.');
   const placed: PlacedDrawing[] = [];
   const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
   const layers = m.layers.map((l) => {
@@ -268,6 +270,7 @@ function patchLayers(
       }
       return next;
     }
+    if ('mediaPin' in patch) return applyMediaPin(l, patch.mediaPin);
     if ('heightOffsetM' in patch) {
       if (l.kind !== 'pointcloud')
         throw new Error(
