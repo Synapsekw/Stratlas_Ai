@@ -533,7 +533,7 @@ export function IssueRegister({
             </option>
           ))}
         </select>
-        <MineFilter />
+        <MineFilter headingLevel={titleLevel === 2 ? 3 : 4} />
         <select
           className="ann-select"
           aria-label="Sort"

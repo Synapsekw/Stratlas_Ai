@@ -254,6 +254,18 @@ describe('Mine filter', () => {
       /Assigned to me \(1\)F05/,
     );
   });
+
+  // one below the title My work opens from: a panel's h3 by default, the Issues screen's h2
+  it.each([
+    { level: 'default', tag: 'H4' },
+    { level: 3, tag: 'H3' },
+  ] as const)("heads My work's sections at level $level as $tag", async ({ level, tag }) => {
+    await mount(level === 'default' ? <MineFilter /> : <MineFilter headingLevel={level} />);
+    await click(el.querySelector('[data-testid="my-work-button"]'));
+    const heads = [...el.querySelectorAll('[data-testid="my-work"] section > :first-child')];
+    expect(heads.length).toBeGreaterThan(0);
+    expect(new Set(heads.map((h) => h.tagName))).toEqual(new Set([tag]));
+  });
 });
 
 describe('loadCollab', () => {

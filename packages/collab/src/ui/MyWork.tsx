@@ -26,9 +26,19 @@ export function openWork(item: WorkItem): void {
   if (item.kind === 'mention' && item.comment.view) flyToView(item.comment.view);
 }
 
+/** The heading level of My work's sections: one below the heading of the panel it opens from. */
+export type WorkHeadingLevel = 3 | 4;
+
 /** My work: assigned to me, mentions, awaiting my approval. In app only. */
-export function MyWork({ onOpen }: { onOpen?: () => void }) {
+export function MyWork({
+  onOpen,
+  headingLevel = 4,
+}: {
+  onOpen?: () => void;
+  headingLevel?: WorkHeadingLevel;
+}) {
   const t = useT();
+  const Heading = headingLevel === 3 ? 'h3' : 'h4';
   const c = useCollab();
   const label = useLabel();
   const issues = useWorkspace((s) => s.issues);
@@ -55,9 +65,9 @@ export function MyWork({ onOpen }: { onOpen?: () => void }) {
   };
   const section = (title: string, items: WorkItem[], line: (i: WorkItem) => ReactNode) => (
     <section>
-      <h4>
+      <Heading>
         {title} ({items.length})
-      </h4>
+      </Heading>
       {items.length === 0 ? (
         <p className="clb-faint">{t('collab.work.empty')}</p>
       ) : (
@@ -112,6 +122,7 @@ export function MyWork({ onOpen }: { onOpen?: () => void }) {
         <b>{label(i.target)}</b>
       ))}
       <InboxSection
+        heading={Heading}
         title={t('collab.work.conflicts')}
         testId="my-work-conflicts"
         lines={c.conflicts.map((x) => ({
@@ -124,6 +135,7 @@ export function MyWork({ onOpen }: { onOpen?: () => void }) {
         }}
       />
       <InboxSection
+        heading={Heading}
         title={t('collab.work.quarantined')}
         testId="my-work-quarantined"
         lines={c.quarantined.map((q) => ({
@@ -141,17 +153,19 @@ export function MyWork({ onOpen }: { onOpen?: () => void }) {
 
 /** Conflicts or quarantined changes in My work: each line opens the Conflicts inbox. */
 function InboxSection(props: {
+  heading: 'h3' | 'h4';
   title: string;
   testId: string;
   lines: { key: string; label: string }[];
   onOpen: () => void;
 }) {
   const t = useT();
+  const Heading = props.heading;
   return (
     <section data-testid={props.testId}>
-      <h4>
+      <Heading>
         {props.title} ({props.lines.length})
-      </h4>
+      </Heading>
       {props.lines.length === 0 ? (
         <p className="clb-faint">{t('collab.work.empty')}</p>
       ) : (
@@ -183,8 +197,11 @@ export function useMineIssueIds(): ReadonlySet<string> | null {
   }, [on, me, state]);
 }
 
-/** The Mine filter and the My work list, for the Issues filter row. */
-export function MineFilter() {
+/**
+ * The Mine filter and the My work list, for the Issues filter row. `headingLevel` is My work's
+ * section level: one below the title of the register the row sits in.
+ */
+export function MineFilter({ headingLevel = 4 }: { headingLevel?: WorkHeadingLevel }) {
   const t = useT();
   const c = useCollab();
   const [open, setOpen] = useState(false);
@@ -237,6 +254,7 @@ export function MineFilter() {
       </button>
       {open && (
         <MyWork
+          headingLevel={headingLevel}
           onOpen={() => {
             setOpen(false);
           }}

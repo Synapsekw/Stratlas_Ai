@@ -35,7 +35,7 @@ textarea.clb-input { height: auto; min-height: 52px; padding: 6px 8px; line-heig
 .clb-pick { display: flex; flex-wrap: wrap; gap: 4px; }
 .clb-appr { display: flex; flex-direction: column; gap: 6px; }
 .clb-work { display: flex; flex-direction: column; gap: 10px; padding: 10px; min-width: 280px; max-width: 380px; max-height: 60vh; overflow-y: auto; background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-6, 6px); box-shadow: 0 8px 24px rgb(0 0 0 / .25); }
-.clb-work h4 { margin: 0; font: 600 var(--t-11)/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
+.clb-work h3, .clb-work h4 { margin: 0; font: 600 var(--t-11)/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
 .clb-work ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
 .clb-work li button { width: 100%; text-align: start; display: flex; gap: 8px; align-items: baseline; padding: 4px 6px; border: 0; border-radius: var(--r-4); background: transparent; color: var(--fg-1); font: 400 var(--t-12)/1.35 var(--f-ui); cursor: pointer; }
 .clb-work li button:hover, .clb-work li button:focus-visible { background: var(--bg-2); outline: none; }
