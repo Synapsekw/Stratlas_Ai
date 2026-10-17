@@ -145,6 +145,20 @@ export function IslandTools({
             </button>
           ))}
         </div>
+        {/* Jobs is always reachable (I-R47), from every group: its workbench, with jobs running,
+            quiet ones or none (a running job's reading also opens it) */}
+        <Button
+          variant="quiet"
+          className="isl-jobs"
+          data-testid="island-jobs"
+          aria-label={t('island.tile.jobsName')}
+          tip={t('island.tile.jobsName')}
+          onClick={() => {
+            ctx.openBench('jobs');
+          }}
+        >
+          <Icon name="clock" size={14} />
+        </Button>
         <Button
           variant="quiet"
           className="isl-x"

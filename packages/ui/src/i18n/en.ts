@@ -4705,6 +4705,8 @@ export const en = {
 
   // Batch-H integration: the workbench's heading in the right sidebar (I-R45)
   'wb.heading': 'Workbench',
+  // the island's way to the Jobs workbench, with or without jobs running (I-R47)
+  'island.tile.jobsName': 'Show the jobs',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

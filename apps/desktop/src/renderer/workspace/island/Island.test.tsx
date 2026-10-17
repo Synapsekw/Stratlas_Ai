@@ -526,6 +526,14 @@ describe('Island: the groups open their workbench', () => {
     expect(front()).toBe('display');
   });
 
+  it('opens the Jobs workbench from any group with no job running (I-R47)', async () => {
+    await render();
+    openTools();
+    act(() => button('Show the jobs')?.click());
+    expect(front()).toBe('jobs');
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
   it('keeps the tools open on View, which has no workbench', async () => {
     await render();
     openTools();

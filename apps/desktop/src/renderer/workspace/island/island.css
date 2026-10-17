@@ -408,6 +408,16 @@
   font-size: var(--t-11);
   padding: 1px 4px;
 }
+/* Jobs (I-R47) sits at the row's end beside Close, which then needs no push of its own */
+.island .btn.isl-jobs {
+  margin-inline-start: auto;
+  block-size: 26px;
+  padding-inline: var(--sp-1);
+  color: var(--fg-3);
+}
+.island .btn.isl-jobs + .btn.isl-x {
+  margin-inline-start: 0;
+}
 
 .isl-r2 {
   display: flex;
