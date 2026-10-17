@@ -227,7 +227,6 @@ test('offline-only: a local model on this machine still answers, one elsewhere d
     // the panel checks its route when it opens (the setting was changed past the Settings screen)
     await win.locator('.nav-item', { hasText: 'Issues' }).click();
     await win.locator('.nav-item', { hasText: 'Scene' }).click();
-    await openAgentOff(win);
     await expect(agent(win)).toContainText(MESSAGES.offlineOnly);
     await expect(box(win)).toBeDisabled();
     expect(fake.requests.length).toBe(before);

@@ -3,10 +3,6 @@
    bar; minimised, or with the AI off, it is one line and the bench has the rest. In those three
    the panes step aside and the column is a flex column, the divider hidden. Sizes snap, as the
    split's do. */
-.right > .rp-split > [hidden],
-.agent > .agent-body[hidden] {
-  display: none;
-}
 .agent > .agent-body {
   flex: 1;
   min-height: 0;
@@ -64,4 +60,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* last, and above the layouts above: what a mode hides is gone (the bench while maximised, the
+   divider outside normal, the conversation behind its one line) */
+.right > .rp-split[data-orientation] > .split-pane[hidden],
+.right > .rp-split[data-orientation] > .split-handle[hidden],
+.right > .rp-split .agent > .agent-body[hidden] {
+  display: none;
 }
