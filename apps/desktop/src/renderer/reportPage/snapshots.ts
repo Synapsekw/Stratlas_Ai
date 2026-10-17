@@ -1,6 +1,12 @@
 // 3D views of issues for the report: the project's meshes in a small offscreen three.js scene.
-import type { ProjectManifest, Vec3 } from '@aio/schema';
-import { assetUrl } from '@aio/workspace';
+import {
+  drawnTransform,
+  type Layer,
+  type Mat4,
+  type ProjectManifest,
+  type Vec3,
+} from '@aio/schema';
+import { assetUrl, dateShiftOf } from '@aio/workspace';
 import {
   AmbientLight,
   Box3,
@@ -35,6 +41,17 @@ export interface Snapshotter {
 export const VIEW_W = 800;
 export const VIEW_H = 600;
 
+/**
+ * Where a mesh layer is drawn: its transform with its date's line-up, as in the 3D view, so the
+ * views of two lined-up dates line up and an issue's (lined-up) position falls on its model.
+ */
+export function snapshotTransform(
+  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  layer: Extract<Layer, { kind: 'mesh' }>,
+): Mat4 {
+  return drawnTransform(layer.transform, dateShiftOf(manifest, layer.id));
+}
+
 /** Load the visible mesh layers once; null when the project has no mesh. */
 export async function createSnapshotter(
   projectId: string,
@@ -59,7 +76,7 @@ export async function createSnapshotter(
       const gltf = await loader.loadAsync(assetUrl(projectId, layer.src));
       const g = new Group();
       g.matrixAutoUpdate = false;
-      g.matrix.copy(new Matrix4().fromArray(layer.transform));
+      g.matrix.copy(new Matrix4().fromArray(snapshotTransform(manifest, layer)));
       g.add(gltf.scene);
       gltf.scene.traverse((o) => {
         if (!(o instanceof Mesh)) return;

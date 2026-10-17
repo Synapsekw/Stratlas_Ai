@@ -18,6 +18,7 @@ import {
   ZipWriter,
 } from '@aio/project/export/node';
 import type { ExportFormat } from '@aio/schema';
+import { dateShiftOf } from '@aio/workspace';
 import { open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { readIssues, readManifest } from '../project';
@@ -116,9 +117,12 @@ async function load(job: ExportJob): Promise<ExportContext> {
   const issues = await readIssues(job.root);
   if (!issues.ok) throw new Error(issues.error);
   const wanted = job.issueIds ? new Set(job.issueIds) : null;
+  const m = manifest.value;
   return {
-    manifest: manifest.value,
+    manifest: m,
     issues: wanted ? issues.value.filter((i) => wanted.has(i.id)) : issues.value,
+    // issue exports write the lined-up frame, where the app draws each sighting
+    shiftOf: (layerId) => dateShiftOf(m, layerId),
   };
 }
 

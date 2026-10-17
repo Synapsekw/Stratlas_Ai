@@ -39,7 +39,7 @@ import {
   type ReportSectionId,
 } from '@aio/schema';
 import { t } from '@aio/ui';
-import { assetUrl } from '@aio/workspace';
+import { assetUrl, dateShiftOf } from '@aio/workspace';
 import { z } from 'zod';
 import { longDate, templateNarrative } from '../../report/narrativeTemplate';
 import { brandingFromQuery } from '../layout';
@@ -281,6 +281,8 @@ async function run(): Promise<void> {
   const h: HouseModel = houseReportModel({
     manifest,
     issues,
+    // issue positions in the lined-up frame, where the app draws each sighting
+    shiftOf: (layerId) => dateShiftOf(manifest, layerId),
     branding,
     contents,
     volumes: parsed(VolumesFile, volumesRaw, 'volumes.json'),

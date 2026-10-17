@@ -11,7 +11,7 @@ import {
   type ReportRow,
 } from '@aio/project/export';
 import { Issue, parseManifest, type ProjectManifest } from '@aio/schema';
-import { assetUrl } from '@aio/workspace';
+import { assetUrl, dateShiftOf } from '@aio/workspace';
 import { z } from 'zod';
 import { brandingFromQuery, cropRect, reportHtml, type IssueImages } from './layout';
 import { createSnapshotter, type Snapshotter } from './snapshots';
@@ -102,7 +102,9 @@ async function run(): Promise<void> {
     brandingFromQuery(params.get('branding')),
     brand.productName,
   );
-  const model = reportModel({ manifest, issues }, { branding });
+  // the register writes the lined-up frame, where the app draws each sighting
+  const shiftOf = (layerId: string) => dateShiftOf(manifest, layerId);
+  const model = reportModel({ manifest, issues, shiftOf }, { branding });
   document.title = `${model.title} issue register`;
 
   set({ phase: 'Loading the 3D model', total: model.rows.length });
