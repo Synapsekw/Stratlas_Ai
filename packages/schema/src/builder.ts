@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
 import { Georef, Placement } from './georef';
-import { CameraOrientation, LensModel } from './layers';
+import { CameraOrientation, LensModel, MediaPin } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 import { WalkCalibration } from './walks';
 
@@ -253,6 +253,11 @@ export const LayerPatch = z.union([
   z.object({ walk: WalkCalibration.nullable() }).strict(),
   /** Forget the GPS places of a photos layer (a camera whose GPS is wrong): they stay in Media. */
   z.object({ photoPositions: z.literal('clear') }).strict(),
+  /**
+   * Pin a photo or a 360 of a photos or panoramas layer on the site; `null` puts its GPS place
+   * back, or leaves it unplaced.
+   */
+  z.object({ mediaPin: z.object({ itemId: Id, pin: MediaPin.nullable() }).strict() }).strict(),
 ]);
 
 /**

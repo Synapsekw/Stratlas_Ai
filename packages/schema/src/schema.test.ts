@@ -7,10 +7,12 @@ import {
   exportKindForFile,
   ipc,
   ipcEvents,
+  LayerPatch,
   LocalModelSettings,
   MapPackInfo,
   needsApproval,
   PackJob,
+  PanoScanReady,
   Settings,
   parseManifest,
   Issue,
@@ -479,4 +481,26 @@ describe('agent history and usage contracts', () => {
       }).success,
     ).toBe(true);
   });
+});
+
+it('LayerPatch takes a media pin and its removal', () => {
+  expect(
+    LayerPatch.safeParse({ mediaPin: { itemId: 'p1', pin: { ground: [1, 0, 2] } } }).success,
+  ).toBe(true);
+  expect(LayerPatch.safeParse({ mediaPin: { itemId: 'p1', pin: null } }).success).toBe(true);
+  expect(LayerPatch.safeParse({ mediaPin: { itemId: 'p1', pin: null, extra: 1 } }).success).toBe(
+    false,
+  );
+});
+it('a ready-made 360 in a scan may have no lat and lon', () => {
+  expect(PanoScanReady.safeParse({ key: 'r1', file: 'C:/a.jpg', bytes: 10 }).success).toBe(true);
+});
+it('builder:convertMedia is strict', () => {
+  const req = ipc['builder:convertMedia'].request;
+  expect(req.safeParse({ projectId: 'x', layerId: 'l', itemId: 'i', to: 'pano' }).success).toBe(
+    true,
+  );
+  expect(req.safeParse({ projectId: 'x', layerId: 'l', itemId: 'i', to: 'video' }).success).toBe(
+    false,
+  );
 });

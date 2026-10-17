@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LayerPatch } from './builder';
-import { Layer } from './layers';
+import { Layer, MediaPin, PanoRef, PhotoRef } from './layers';
 import { parseManifest } from './manifest';
 
 describe('point cloud height offset', () => {
@@ -102,5 +102,32 @@ describe('sharing flags', () => {
     const off = parseManifest(base);
     expect(off.ok && off.value.aiCloudPhotos).toBeUndefined();
     expect(parseManifest({ ...base, aiCloudPhotos: 'yes' }).ok).toBe(false);
+  });
+});
+
+describe('pinned media', () => {
+  it('reads a 360 without pos (not placed)', () => {
+    const r = PanoRef.safeParse({ id: 'p1', src: { path: 'panoramas/a/p1/pano.jpg' } });
+    expect(r.success).toBe(true);
+    expect(r.data?.pos).toBeUndefined();
+    expect(r.data?.headingDeg).toBe(0);
+  });
+  it('defaults the eye height to 1.6 m and bounds it to 0..10', () => {
+    expect(MediaPin.parse({ ground: [1, 2, 3] }).eyeM).toBe(1.6);
+    expect(MediaPin.safeParse({ ground: [0, 0, 0], eyeM: 10.5 }).success).toBe(false);
+    expect(MediaPin.safeParse({ ground: [0, 0, 0], eyeM: -0.1 }).success).toBe(false);
+  });
+  it('keeps headingDeg in [0, 360)', () => {
+    expect(MediaPin.safeParse({ ground: [0, 0, 0], headingDeg: 360 }).success).toBe(false);
+    expect(MediaPin.safeParse({ ground: [0, 0, 0], headingDeg: 359.9 }).success).toBe(true);
+  });
+  it('a later field on a pin does not refuse the item (not strict)', () => {
+    expect(
+      PhotoRef.safeParse({
+        id: 'a',
+        src: { path: 'photos/a.jpg' },
+        pin: { ground: [0, 0, 0], video: { t: 3 } },
+      }).success,
+    ).toBe(true);
   });
 });

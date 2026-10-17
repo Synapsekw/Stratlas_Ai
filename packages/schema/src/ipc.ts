@@ -1395,6 +1395,29 @@ export const ipc = {
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
+  /**
+   * Move one ready-made image between a photos layer and a panoramas layer of its date (created
+   * when missing), keeping its file. Refused on a package and on a photo with image sightings.
+   */
+  'builder:convertMedia': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        layerId: z.string().min(1),
+        itemId: z.string().min(1),
+        to: z.enum(['pano', 'photo']),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        manifest: ProjectManifest,
+        layerId: z.string(),
+        itemId: z.string(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
   'builder:photoGps': {
     request: z.object({ path: z.string().min(1) }).strict(),
     response: z.discriminatedUnion('ok', [

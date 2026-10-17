@@ -59,6 +59,23 @@ export const AssetTag = z.object({
   area: z.string().optional(),
 });
 
+/**
+ * A place the person pinned on the site for a photo or a 360 (pinned media). The writer sets the
+ * item's `pos` to `ground` plus `eyeM` up, a photo's `q` (level camera) or a 360's `headingDeg`
+ * from `headingDeg`, and keeps the GPS place it replaced in `gps`. Not strict: a field a later
+ * build adds does not refuse the item.
+ */
+export const MediaPin = z.object({
+  /** The clicked surface point, in project-local metres. */
+  ground: Vec3,
+  /** Camera height above `ground`, metres. */
+  eyeM: z.number().min(0).max(10).default(1.6),
+  /** Compass heading of the view, degrees clockwise from grid north. */
+  headingDeg: z.number().min(0).lt(360).optional(),
+  /** The GPS place the pin replaced; Remove pin puts it back. */
+  gps: z.object({ pos: Vec3, q: Quat.optional() }).optional(),
+});
+
 export const PhotoRef = z.object({
   id: Id,
   src: AssetRef,
@@ -66,12 +83,15 @@ export const PhotoRef = z.object({
   pos: Vec3.optional(),
   q: Quat.optional(),
   lens: LensModel.optional(),
+  pin: MediaPin.optional(),
 });
 
 export const PanoRef = z.object({
   id: Id,
   src: AssetRef,
-  pos: Vec3,
+  /** Absent: a 360 with no GPS that is not placed yet ("Not placed"). */
+  pos: Vec3.optional(),
+  pin: MediaPin.optional(),
   headingDeg: z.number().default(0),
   /** Display name, "Pano 1, 2 ..." in capture order (drone panoramas). */
   name: z.string().min(1).max(120).optional(),
@@ -271,6 +291,8 @@ export type LensModel = z.infer<typeof LensModel>;
 export type CameraOrientation = z.infer<typeof CameraOrientation>;
 export type PoseSample = z.infer<typeof PoseSample>;
 export type FlightRef = z.infer<typeof FlightRef>;
+export type MediaPin = z.infer<typeof MediaPin>;
+export type MediaPinInput = z.input<typeof MediaPin>;
 export type PhotoRef = z.infer<typeof PhotoRef>;
 export type PanoRef = z.infer<typeof PanoRef>;
 export type VectorStyle = z.infer<typeof VectorStyle>;

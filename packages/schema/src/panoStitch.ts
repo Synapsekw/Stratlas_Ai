@@ -127,6 +127,8 @@ export const PanoSkipReason = z.enum([
   'narrow-yaw',
   'one-pitch-row',
   'different-size',
+  /** An unstitched Insta360 still: two fisheye circles, not an equirectangular image. */
+  'dual-fisheye',
 ]);
 export type PanoSkipReason = z.infer<typeof PanoSkipReason>;
 
@@ -160,8 +162,9 @@ export const PanoScanReady = z.object({
   key: z.string().min(1).max(40),
   file: z.string().min(1).max(2048),
   bytes: z.number().int().nonnegative(),
-  lat: z.number().min(-90).max(90),
-  lon: z.number().min(-180).max(180),
+  /** Absent for a 360 with no GPS: it imports unplaced. */
+  lat: z.number().min(-90).max(90).optional(),
+  lon: z.number().min(-180).max(180).optional(),
   absAlt: z.number().optional(),
   relAlt: z.number().optional(),
   takenAt: z.string().max(40).optional(),
