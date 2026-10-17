@@ -182,6 +182,17 @@ describe('the stage corners', () => {
     expect(slotOf('vol-hint')).toBe('br');
   });
 
+  it('leaves the readout shown beside the hint when the 3D view is on the left of a wide split', () => {
+    volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+    render({ video: [], splitting: true, showMap: true, cursor: 'bl', readoutClear: true });
+    // the hint still takes the 3D pane's foot; the readout beside the divider stays
+    expect(slotOf('vol-hint')).toBe('bl');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+    // the clip resting in that corner still hides it
+    render({ video: ['bl'], splitting: true, showMap: true, cursor: 'bl', readoutClear: true });
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
+  });
+
   it('keeps the top corners free while the open island reaches past the middle', () => {
     render({ video: [], topTaken: ['tl', 'tr'] });
     expect(slots().map((s) => s.corner)).not.toContain('tl');

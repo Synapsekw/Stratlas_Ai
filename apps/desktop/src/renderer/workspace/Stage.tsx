@@ -279,6 +279,12 @@ export interface StageCornersInput {
   video: readonly Corner[];
   /** The stage corner the 3D view's coordinates readout stands in (null: not at a corner). */
   cursor: Corner | null;
+  /**
+   * The readout stands clear of that corner's volumes hint: the 3D view on the left of a split,
+   * in a pane wide enough, has it at the pane's end beside the divider, so the hint at the pane's
+   * foot does not hide it (anything else in the corner still does).
+   */
+  readoutClear?: boolean;
   /** The corners the Map menu chip wants: at the map's side of a split (default: the end). */
   basemapAt?: readonly Corner[];
   /**
@@ -363,9 +369,16 @@ export function useStageCorners(o: StageCornersInput): {
     );
   };
   return {
-    cursorHidden: o.cursor !== null && slots.get('cursor') === 'hidden',
-    // nothing in the other bottom corner: the readout need not keep to its half
-    cursorWide: ![...slots.values()].includes(o.cursor === 'bl' ? 'br' : 'bl'),
+    // (the volumes hint in its corner leaves a readout that stands clear of it shown)
+    cursorHidden:
+      o.cursor !== null &&
+      slots.get('cursor') === 'hidden' &&
+      !(o.readoutClear && slots.get('volHint') === o.cursor),
+    // nothing in the other bottom corner: the readout need not keep to its half (beside the
+    // hint in its own corner it does)
+    cursorWide:
+      !(o.readoutClear && slots.get('volHint') === o.cursor) &&
+      ![...slots.values()].includes(o.cursor === 'bl' ? 'br' : 'bl'),
     corners: (
       <>
         {at(
@@ -397,6 +410,32 @@ const START: readonly Corner[] = ['tl', 'bl'];
 
 /** A right-to-left UI (the corners are named by the reading direction). */
 const rtlUi = () => typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
+
+/**
+ * A 3D pane on the left of a split at least this wide keeps its readout clear of the volumes hint
+ * at its foot: the hint takes up to 300 px from the corner (12 px in, @aio/volumetric), the
+ * readout at most the pane's end half (styles.css .cursor-ro), with a gap between.
+ */
+const READOUT_PANE_MIN = 2 * (12 + 300 + 8);
+
+/** Whether the 3D pane is at least READOUT_PANE_MIN wide; measured while `on`. */
+function usePaneWide(panes: RefObject<HTMLDivElement | null>, on: boolean): boolean {
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    const pane = on ? panes.current?.querySelector('.pane-3d:not(.pane-compare)') : null;
+    if (!pane || typeof ResizeObserver === 'undefined') return;
+    const read = () => {
+      setWide(pane.getBoundingClientRect().width >= READOUT_PANE_MIN);
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(pane);
+    return () => {
+      ro.disconnect();
+    };
+  }, [panes, on]);
+  return wide;
+}
 
 /** Room kept below the open island for a top overlay: a chip and its gap. */
 const TOP_SLOT_ROOM = 48;
@@ -635,6 +674,9 @@ export function Stage() {
   const { containerRef: panesRef, handle: splitHandle } = useSplitDivider(divided);
   const roadMeasuring = useRoad((s) => Boolean(s.measure.mode));
   const islandReach = useIslandReach(stageRef, engine);
+  // the 3D view on the left of a split has its readout beside the divider, clear of the hint
+  // at the corner, unless its pane is narrow
+  const pane3dWide = usePaneWide(panesRef, splitting && side3d === 'left');
   // the Map menu chip stands at the map's side of a split (physical sides: the panes are
   // left to right)
   const mapAtStart = splitting && sideMap !== undefined && (sideMap === 'left') !== rtlUi();
@@ -649,6 +691,7 @@ export function Stage() {
     roadMeasure: roadMap !== null && showMap && roadMeasuring,
     video: showVideo && !docked ? videoCorners : NO_CORNERS,
     cursor: readoutCorner(show3d, splitting ? side3d : undefined, rtl),
+    readoutClear: splitting && side3d === 'left' && pane3dWide,
     basemapAt: mapAtStart ? START : END,
     topTaken: islandReach.taken,
   });

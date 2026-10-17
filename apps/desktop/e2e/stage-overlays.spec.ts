@@ -348,6 +348,45 @@ test.describe('a wider stage', () => {
     await win.keyboard.press('Escape');
     await expect(stage).not.toHaveAttribute('data-isl-clear');
   });
+
+  test('in a wide Split, the readout stays beside the divider while the volumes hint shows', async ({
+    win,
+  }, info) => {
+    await openTankFarm(win);
+    await foldRight(win);
+    // the video window put away, so it rests in no corner
+    await win.evaluate(() => {
+      (
+        window as unknown as {
+          __stratlas: { shell: { setState(s: { videoHidden: boolean }): void } };
+        }
+      ).__stratlas.shell.setState({ videoHidden: true });
+    });
+    await expect(win.getByTestId('video-window')).toHaveCount(0);
+    await stageMode(win, 'Split');
+    await closeIslandTools(win);
+    const pane3d = win.locator('.stage-panes > .pane-3d[data-side="left"]');
+    await expect(pane3d).toHaveCount(1);
+    const hint = win.getByTestId('vol-hint');
+    const readout = win.locator('.pane-3d:not(.is-hidden) .cursor-ro');
+    await expect(hint).toBeVisible(VIEW_READY);
+    // widen the 3D side until it has room for both
+    const width = async () => Math.round((await pane3d.boundingBox())?.width ?? 0);
+    const divider = win.getByRole('separator', { name: 'Resize the two sides' });
+    await divider.focus();
+    for (let i = 0; i < 30 && (await width()) < 660; i++) await win.keyboard.press('ArrowRight');
+    expect(await width()).toBeGreaterThanOrEqual(660);
+    await expect(readout).toBeVisible();
+    await expect(hint).toBeVisible();
+    const ro = await readout.boundingBox();
+    const hb = await hint.boundingBox();
+    expect(ro && hb).toBeTruthy();
+    if (ro && hb) expect(ro.x).toBeGreaterThan(hb.x + hb.width);
+    await shot(win, info, 'split-readout-beside-hint-1400.png');
+    // narrowed again, the readout gives way to the hint
+    for (let i = 0; i < 30 && (await width()) >= 600; i++) await win.keyboard.press('ArrowLeft');
+    await expect(readout).toHaveCount(0);
+  });
 });
 
 test('a click through the volumes hint picks the pile under it', async ({ win }, info) => {
@@ -536,6 +575,11 @@ test('in Split, the pane headers keep clear of the corners and the video, and ea
   const splitDivider = win.getByRole('separator', { name: 'Resize the two sides' });
   await expect(dockDivider).toHaveAttribute('aria-orientation', 'vertical');
   await expect(splitDivider).toBeVisible();
+  // the volumes hint takes the 3D pane's foot; the 3D view on the left keeps its readout beside
+  // the divider, hidden while the pane is too narrow for both (a wide one: the 1400 px test)
+  await expect(win.getByTestId('vol-hint')).toBeVisible();
+  await expect(win.locator('.stage-panes > .pane-3d[data-side="left"]')).toHaveCount(1);
+  await expect(win.locator('.pane-3d:not(.is-hidden) .cursor-ro')).toHaveCount(0);
   const panes = win.locator('.stage-panes');
   const left = win.locator('.stage-panes > [data-side="left"]').first();
   const dock = win.locator('.stage-dock');
