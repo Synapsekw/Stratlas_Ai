@@ -96,7 +96,14 @@ export function Drawer() {
   }, [open, opened]);
   useFocusTrap(panel, open && opened === 'click', {
     onEscape: hide,
-    initial: () => panel.current?.querySelector<HTMLElement>('button, [href], input, textarea'),
+    // focused here without scrolling: the drawer is still sliding in from past the window's edge,
+    // and a plain focus() scrolls the whole document sideways to reveal it (the trap then leaves
+    // the focus where it is)
+    initial: () => {
+      const first = panel.current?.querySelector<HTMLElement>('button, [href], input, textarea');
+      first?.focus({ preventScroll: true });
+      return first;
+    },
     returnTo: islandWrap,
   });
 
