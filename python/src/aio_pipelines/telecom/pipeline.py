@@ -12,7 +12,9 @@ Steps (each resumable; state between steps is plain arrays in the job's staging 
 5. commit: reads `telecom/antennas.json` again (the person may have reviewed during the run),
    merges, writes the file to staging and moves the crops in first and the inventory last.
 
-Coordinates in the file are project E, N, Z with the layer's `heightOffsetM` applied. A manifest
+Coordinates in the file are project E, N, Z with the layer's `heightOffsetM` applied, in the
+cloud date's own frame (no line-up shift, like survey measurements; the run names the date as
+`captureId` and the 3D view draws the units shifted by its line-up). A manifest
 without a `crs` has no CRS: convergence is null and azimuths are project north (the LAS header's
 EPSG is not used).
 """
@@ -285,9 +287,15 @@ class TelecomAntennas:
                 )
             ground_z = oz + ground_y
             ctx.log(f"Tower axis from {crown.source}; {len(crown.xyz):,} points in the antenna band.")
+            sampled = crown.read_points > crown.read_cap
+            ctx.log(
+                f"The band read held {crown.read_points:,} points against a cap of {crown.read_cap:,}"
+                + ("; it was sampled." if sampled else "; every point was kept.")
+            )
             return {
                 "source": crown.source,
                 "layer": crown.layer_id,
+                "captureId": crown.capture_id,
                 "heightM": round(float(crown.height), 3),
                 "floorZ": round(oz + crown.floor_y, 3),
                 "topZ": round(oz + crown.top_y, 3),
@@ -314,10 +322,17 @@ class TelecomAntennas:
 
             ctx.progress(0.0, "Fitting antenna boxes")
             manifest = _manifest(ctx.project)
-            xyz, point, _, _ = _load_crown(ctx)
+            xyz, point, _, shaft = _load_crown(ctx)
             faces = _load_faces(ctx.stage("faces.npz"))
-            units = pair_faces(faces, point, xyz) if faces else []
+            drops: dict[str, int] = {}
+            units = pair_faces(faces, point, xyz, shaft, drops) if faces else []
             ctx.check()
+            if drops:
+                ctx.log(
+                    "Candidate boxes left out: "
+                    + ", ".join(f"{n} {reason}" for reason, n in sorted(drops.items(), key=lambda d: -d[1]))
+                    + "."
+                )
             convergence = _convergence(manifest, point)
             origin = _origin(manifest)
             out = []
@@ -326,7 +341,7 @@ class TelecomAntennas:
                 m["convergenceDeg"] = convergence
                 out.append(m)
             ctx.log(f"{len(out)} units boxed and measured.")
-            return {"units": out, "convergenceDeg": convergence}
+            return {"units": out, "convergenceDeg": convergence, "drops": drops}
 
         def new_units(ctx: StepContext) -> list[dict[str, Any]]:
             out = ctx.outputs("photos")
@@ -364,6 +379,7 @@ class TelecomAntennas:
             return {"photos": photos, "crops": crops, "createdAt": created}
 
         def commit_step(ctx: StepContext) -> dict[str, Any]:
+            from .boxes import drop_warning
             from .measure import to_project, to_project_dir
             from .merge import merge_with_sources
 
@@ -406,6 +422,9 @@ class TelecomAntennas:
                 )
             if not units:
                 warnings.append("No antenna or other equipment was found on the crown.")
+            dropped = drop_warning(ctx.outputs("boxes").get("drops") or {})
+            if dropped:
+                warnings.append(dropped)
             counts = {k: 0 for k in KINDS}
             for u in units:
                 counts[u["kind"]] = counts.get(u["kind"], 0) + 1
@@ -416,6 +435,7 @@ class TelecomAntennas:
                 "at": now_iso(),
                 "params": params,
                 "cloudLayer": str(crown["layer"])[:LAYER_ID_MAX],
+                **({"captureId": str(crown["captureId"])} if crown.get("captureId") else {}),
                 "axis": {
                     "point": [round(float(v), 3) + 0.0 for v in to_project(point, origin)],
                     "dir": [round(float(v), 6) + 0.0 for v in axis_dir],

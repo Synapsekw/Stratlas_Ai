@@ -136,14 +136,15 @@ def test_to_project_round_trip():
     ]
 
 
-def _assert_accuracy(units, truth):
+def _assert_accuracy(units, truth, dish_azimuth_deg=1.0, plumb_deg=1.5):
     for t in [u for u in truth["units"] if u["kind"] != "other"]:
         m = match(units, t, radius=0.3)
         assert m["kind"] == t["kind"], t["name"]
-        assert ang(m["azimuthGridDeg"]["value"], t["azimuthDeg"]) <= 1.0, t["name"]
+        az_tol = dish_azimuth_deg if t["kind"] == "dish" else 1.0
+        assert ang(m["azimuthGridDeg"]["value"], t["azimuthDeg"]) <= az_tol, t["name"]
         if t["kind"] != "dish":
             assert abs(m["downtiltDeg"]["value"] - t["downtiltDeg"]) <= 1.5, t["name"]
-            assert abs(m["plumbDeg"]["value"] - t["plumbDeg"]) <= 1.5, t["name"]
+            assert abs(m["plumbDeg"]["value"] - t["plumbDeg"]) <= plumb_deg, t["name"]
             for k in ("widthM", "heightM", "depthM"):
                 assert abs(m[k]["value"] - t[k]) <= 0.03, (t["name"], k)
         else:  # ruling P6: the diameter and elevation stand for a dish's size
@@ -162,6 +163,22 @@ def test_synthetic_crown_accuracy_at_e2e_density():
     # ruling P9: the end to end fixture samples 1500 points per square metre
     units, truth = detect_on_truth_axis("monopole", seed=1, ppm2=1500.0)
     _assert_accuracy(units, truth)
+
+
+@pytest.mark.parametrize(
+    ("kind", "attached"), [("monopole", False), ("lattice", False), ("monopole", True), ("lattice", True)]
+)
+def test_sparse_crown_keeps_every_unit(kind, attached):
+    # R-cov: at about 600 points per square metre every unit is still found, classified and
+    # measured to the synthetic targets, except two documented tolerances there: a dish's azimuth
+    # holds to 1.5 degrees (its reflector has some 300 points) and plumb to 2 degrees (the edge
+    # fits of a 0.4 m face rest on a few dozen points); both hold their targets from 1500 points
+    # per square metre up
+    units, truth = detect_on_truth_axis(kind, seed=1, ppm2=600.0, attached=attached)
+    assert len([u for u in units if u["kind"] != "other"]) == len(
+        [t for t in truth["units"] if t["kind"] != "other"]
+    )
+    _assert_accuracy(units, truth, dish_azimuth_deg=1.5, plumb_deg=2.0)
 
 
 # Attached variant (ruling T4-R1): unit backs clamp onto their mount pipes, the dish is bolted to a

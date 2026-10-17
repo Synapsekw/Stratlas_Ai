@@ -252,3 +252,97 @@ def test_shaft_fit_ignores_a_few_cluttered_slices():
     fn = shaft_radius_fn(np.vstack([shaft, clutter]), axis, 30.0)
     for h in (5.0, 15.0, 27.0):
         assert float(fn(np.array([h]))[0]) == pytest.approx(0.6 - 0.25 * h / 30.0, abs=0.03)
+
+
+# ---- order of the read, and the line-up of dates (R-det, R-lineup) ------------------------------
+
+CAPTURE = "capture-2026-05-01"
+
+
+def line_up(root: Path, east: float, north: float) -> None:
+    """Give the project's cloud a survey date that is lined up by (east, north) metres."""
+    p = root / "manifest.json"
+    m = json.loads(p.read_text("utf-8"))
+    lineup = {"eastM": east, "northM": north, "with": "capture-2026-01-01", "at": "2026-10-17T00:00:00Z"}
+    m["captures"] = [
+        {"id": "capture-2026-01-01", "label": "Survey", "date": "2026-01-01"},
+        {"id": CAPTURE, "label": "Survey", "date": "2026-05-01", "lineUp": lineup},
+    ]
+    for layer in m["layers"]:
+        if layer.get("kind") in ("pointcloud", "photos"):
+            layer["capture"] = CAPTURE
+    p.write_text(json.dumps(m, indent=1), encoding="utf-8")
+
+
+def lined_up_axis(east: float, north: float) -> dict:
+    """TRUE_AXIS as engineering evidence measured on the lined-up date stores it."""
+    return {**TRUE_AXIS, "point": [east, 0.0, -north]}
+
+
+def _locate(root: Path, tmp_path: Path, **params):
+    job_dir = tmp_path / "job"
+    job_dir.mkdir(exist_ok=True)
+    ctx = SimpleNamespace(check=lambda: None, job=SimpleNamespace(dir=job_dir), project=root)
+    return locate_crown(ctx, root, read_manifest(root), {"run": "run-t", **params})
+
+
+def test_band_does_not_depend_on_the_order_of_the_points(tmp_path):
+    xyz, truth = tower_cloud("monopole", seed=1)
+    shuffled = xyz[np.random.default_rng(9).permutation(len(xyz))]
+    a = crown_for(tmp_path / "a", xyz, evidence=(TRUE_AXIS, truth["height"]))
+    b = crown_for(tmp_path / "b", shuffled, evidence=(TRUE_AXIS, truth["height"]))
+    assert len(a.xyz) > MIN_CROWN_POINTS and np.array_equal(a.xyz, b.xyz)
+    # the band is in coordinate order, and the read kept every point (under the cap)
+    key = np.round(a.xyz, 4)
+    assert np.all(np.diff(key[:, 0]) >= 0)
+    assert a.read_points <= a.read_cap
+    # so the faces downstream (the voxel thinning keeps the first point of each voxel) agree too
+    from aio_pipelines.telecom.faces import planar_faces
+
+    fa = planar_faces(a.xyz, np.zeros(3), np.array([0.0, 1.0, 0.0]), a.shaft_r)
+    fb = planar_faces(b.xyz, np.zeros(3), np.array([0.0, 1.0, 0.0]), b.shaft_r)
+    assert len(fa) == len(fb) > 0
+    assert all(np.allclose(f.centre, g.centre) for f, g in zip(fa, fb, strict=True))
+
+
+def test_lined_up_evidence_is_taken_back_to_the_date_frame(tmp_path):
+    xyz, truth = tower_cloud("monopole", seed=1)
+    plain = crown_for(tmp_path / "a", xyz, evidence=(TRUE_AXIS, truth["height"]))
+    root = make_tower_project(tmp_path / "b" / "proj", xyz)
+    line_up(root, 3.0, -2.0)  # the date is drawn 3 m east and 2 m south of its file
+    write_evidence(root, "run-e", lined_up_axis(3.0, -2.0), truth["height"])
+    c = _locate(root, tmp_path / "b")
+    assert c.source == "evidence" and c.capture_id == CAPTURE
+    # the axis is where the tower is in the cloud's own file, and the band is the same points
+    assert off_axis(c, (0.0, 0.0)) < 1e-9
+    assert np.array_equal(c.xyz, plain.xyz)
+    assert plain.capture_id is None
+
+
+def test_lined_up_tower_hint_is_taken_back_to_the_date_frame(tmp_path):
+    xyz, truth = two_masts_cloud(seed=1)
+    root = make_tower_project(tmp_path / "proj", xyz)
+    line_up(root, 20.0, 0.0)
+    mast = truth["masts"][1]["xz"]
+    # the click lands on the mast where the 3D view draws it: 20 m east of its file position
+    c = _locate(root, tmp_path, towerHint=[mast[0] + 20.0, mast[1]])
+    assert c.source == "hint" and off_axis(c, mast) < 0.15
+
+
+def test_to_date_frame_moves_points_not_directions():
+    ev = {
+        "axis": {"point": [5.0, 1.0, -3.0], "dir": [0.0, 1.0, 0.0], "tiltDeg": 0.0},
+        "height": 30.0,
+        "base": [5.0, 0.5, -3.0],
+        "crop": {"centre": [5.0, -3.0], "radiusM": 20.0},
+        "cloud": "tower-cloud",
+    }
+    out = crown_mod.to_date_frame(ev, (2.0, 1.0))  # x -= east, z += north
+    assert out["axis"]["point"] == [3.0, 1.0, -2.0] and out["axis"]["dir"] == [0.0, 1.0, 0.0]
+    assert out["base"] == [3.0, 0.5, -2.0] and out["crop"] == {"centre": [3.0, -2.0], "radiusM": 20.0}
+    assert out["height"] == 30.0 and ev["axis"]["point"] == [5.0, 1.0, -3.0]  # the input stays
+    box = crown_mod.to_date_frame(
+        {**ev, "crop": {"min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 1.0]}}, (2.0, 1.0)
+    )
+    assert box["crop"] == {"min": [-2.0, 0.0, 1.0], "max": [-1.0, 1.0, 2.0]}
+    assert crown_mod.to_date_frame(ev, (0.0, 0.0)) is ev

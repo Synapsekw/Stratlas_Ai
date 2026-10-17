@@ -33,7 +33,10 @@ KEEP_RMS_M = 0.012
 SHAFT_MARGIN_M = 0.05  # points closer than shaft_r(h) + this to the axis are shaft or brackets
 MIN_FACE_WIDTH_M = 0.08
 EDGE_REACH_M = 0.05  # least reach past the grown region for a plane to take back its edge inliers
-COVERAGE_CELL_M = 0.05
+COVERAGE_CELL_M = 0.05  # the least coverage cell; sparser faces get bigger cells (`coverage`)
+COVERAGE_SPACINGS = 2.0  # a coverage cell spans this many mean point spacings (4 points expected)
+COVERAGE_MAX_CELL_M = 0.15  # a hole this big always counts, however sparse the face
+MIN_SEEN_SHARE = 0.5  # shaded cells leave the judged area only while this share of it stays seen
 # grown regions smaller than this are noise; pieces join coplanar neighbours before the size test
 MIN_PIECE_POINTS = 30
 EDGE_STRIP_M = 0.04  # width of the edge strips that set a face's in-plane rotation
@@ -41,12 +44,24 @@ EDGE_PASSES = 6
 MAX_FLOOD_STEPS = 40  # in-plane flood fill steps of `reach` each (2 m and more)
 CORE_CELL_M = 0.03  # grid cell of the full-rectangle cut (at least half the flood reach)
 CORE_SHARE = 0.5
+CORE_BAND_POINTS = 12  # the fewest points a band of the full-rectangle cut holds on average
 SLIT_MIN_POINTS = 20  # points in a face's median core band for a sparse band to be a real slit
 SLIT_SHARE = 0.4  # a band with fewer points than this share of the median band is a slit
 MAX_PIECES = 4  # faces one flood fill may split into
+REFIT_SHARE = 0.5  # a grown seed under this share of its fill refits the plane and fills again
+JOIN_GAP_M = 0.3  # coplanar faces at most this far apart may be one face behind an occluder
+JOIN_ALIGN_SHARE = 0.8  # ... when they line up over this share of the smaller one's extent
+HIDDEN_SHARE = 0.7  # ... and points in front hide this share of the gap's cells
+JOIN_EDGE_M = 0.03  # the strip of the gap along each face's edge that is not judged
 OCCLUDER_M = 0.5  # points this far in front of a face can shade it
 SAME_FACE_M = 0.05  # two faces of one plane with centres this close are one face
 UP_SEARCH_DEG = 20.0  # a face's up axis is searched this far either side of the in-plane vertical
+# a sparse crown (Sparse): the median distance to the 8th neighbour, past which the counts and
+# radii above scale with the point spacing (about 1500 points per square metre of face)
+SPACING_K = 8
+REF_SPACING_M = 0.045
+MIN_NORMAL_K = 8
+MIN_FACE_POINTS_SPARSE = 60  # a face needs this many points however sparse the cloud
 _UP = np.array([0.0, 1.0, 0.0])
 
 
@@ -62,6 +77,47 @@ class Face:
     rms: float
     support: int
     coverage: float
+
+
+@dataclass(frozen=True)
+class Sparse:
+    """The counts and radii of the face search for the crown's point spacing. At the reference
+    spacing (`REF_SPACING_M`, about 1500 points per square metre of face) and denser they are the
+    module constants. Sparser, the density ratio q = (REF_SPACING_M / spacing)^2 shrinks the k-NN
+    count (so the normal neighbourhood, which erodes every face edge, stays as wide; at least
+    `MIN_NORMAL_K`) and the point counts a piece and a face need (at least `MIN_FACE_POINTS_SPARSE`
+    for a face), and the growth radius and the bands of the full-rectangle cut widen by
+    1 / sqrt(q), so neighbours stay in reach and a band holds as many points as at the reference."""
+
+    normal_k: int = NORMAL_K
+    grow_m: float = GROW_RADIUS_M
+    face_points: int = MIN_FACE_POINTS
+    piece_points: int = MIN_PIECE_POINTS
+    core_m: float = CORE_CELL_M
+
+    @classmethod
+    def of(cls, spacing: float) -> Sparse:
+        if not np.isfinite(spacing) or spacing <= REF_SPACING_M:
+            return cls()
+        q = (REF_SPACING_M / spacing) ** 2
+        widen = 1.0 / float(np.sqrt(q))
+        least_piece = MIN_PIECE_POINTS * MIN_FACE_POINTS_SPARSE // MIN_FACE_POINTS
+        return cls(
+            normal_k=max(MIN_NORMAL_K, round(NORMAL_K * q)),
+            grow_m=GROW_RADIUS_M * widen,
+            face_points=max(MIN_FACE_POINTS_SPARSE, round(MIN_FACE_POINTS * q)),
+            piece_points=max(least_piece, round(MIN_PIECE_POINTS * q)),
+            core_m=CORE_CELL_M * widen,
+        )
+
+
+def point_spacing(pts: np.ndarray, tree: cKDTree | None = None) -> float:
+    """The median distance to the `SPACING_K`th neighbour over a sample of about 2000 points."""
+    if len(pts) <= SPACING_K:
+        return float("inf")
+    tree = cKDTree(pts) if tree is None else tree
+    sample = pts[:: max(1, len(pts) // 2000)]
+    return float(np.median(tree.query(sample, k=SPACING_K + 1)[0][:, -1]))
 
 
 def voxel_down(xyz: np.ndarray, size: float = VOXEL_M) -> np.ndarray:
@@ -199,18 +255,58 @@ def span(values: np.ndarray, pct: float) -> tuple[float, float]:
     return float(lo - pad), float(hi + pad)
 
 
-def coverage(a: np.ndarray, b: np.ndarray, w: float, h: float, a0: float, b0: float) -> float:
-    """Occupied share of a `COVERAGE_CELL_M` grid over the w x h rectangle starting at (a0, b0)."""
-    nu = max(1, round(w / COVERAGE_CELL_M))
-    nv = max(1, round(h / COVERAGE_CELL_M))
-    iu = np.clip(((a - a0) / w * nu).astype(int), 0, nu - 1)
-    iv = np.clip(((b - b0) / h * nv).astype(int), 0, nv - 1)
+def coverage(
+    a: np.ndarray,
+    b: np.ndarray,
+    w: float,
+    h: float,
+    a0: float,
+    b0: float,
+    shade: tuple[np.ndarray, np.ndarray] | None = None,
+) -> float:
+    """Occupied share of a grid over the w x h rectangle starting at (a0, b0).
+
+    The cell follows the face's own point spacing: `COVERAGE_SPACINGS` mean spacings if its points
+    spread over the whole rectangle (sqrt(w h / n)), at least `COVERAGE_CELL_M` and at most
+    `COVERAGE_MAX_CELL_M`. A uniformly sampled face then expects about 4 points a cell and leaves
+    under 2 percent of its cells empty by chance at any density (Poisson), where fixed 5 cm cells
+    left a fifth of a 600 points per square metre face empty; striped clouds, whose stripes lower
+    the point count, get cells that bridge the stripes. Holes of a frame or an outline (mostly air)
+    still show: they are many cells wide.
+
+    `shade` (in-plane coordinates of points just in front of the face, see `_with_edges`) marks
+    the empty cells that something in front hides: they are not judged (left out of the area)
+    while at least `MIN_SEEN_SHARE` of the rectangle stays seen, so a pipe in front of a unit
+    does not make its front look patchy."""
     inside = (a >= a0) & (a <= a0 + w) & (b >= b0) & (b <= b0 + h)
-    return float(len(np.unique(iu[inside] * nv + iv[inside])) / (nu * nv))
+    n = int(inside.sum())
+    if n == 0 or w <= 0 or h <= 0:
+        return 0.0
+    cell = float(np.clip(COVERAGE_SPACINGS * np.sqrt(w * h / n), COVERAGE_CELL_M, COVERAGE_MAX_CELL_M))
+    nu = max(1, round(w / cell))
+    nv = max(1, round(h / cell))
+
+    def cells(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        iu = np.clip(((x - a0) / w * nu).astype(int), 0, nu - 1)
+        iv = np.clip(((y - b0) / h * nv).astype(int), 0, nv - 1)
+        return np.unique(iu * nv + iv)
+
+    occupied = cells(a[inside], b[inside])
+    total = nu * nv
+    if shade is not None and len(shade[0]):
+        sa, sb = shade
+        hit = (sa >= a0) & (sa <= a0 + w) & (sb >= b0) & (sb <= b0 + h)
+        hidden = np.setdiff1d(cells(sa[hit], sb[hit]), occupied) if hit.any() else np.zeros(0)
+        if total - len(hidden) >= MIN_SEEN_SHARE * total:
+            total -= len(hidden)
+    return float(len(occupied) / total)
 
 
-def make_face(pts: np.ndarray, axis_point: np.ndarray, axis_dir: np.ndarray) -> Face:
-    """A face from the points of one plane, its normal turned away from the axis."""
+def make_face(
+    pts: np.ndarray, axis_point: np.ndarray, axis_dir: np.ndarray, ahead: np.ndarray | None = None
+) -> Face:
+    """A face from the points of one plane, its normal turned away from the axis. `ahead` are
+    points that may stand in front of it (they shade its coverage, see `coverage`)."""
     m, n, rms = _plane(pts)
     if _horizontal(n, axis_dir) @ _horizontal(m - axis_point, axis_dir) < 0:
         n = -n
@@ -221,7 +317,13 @@ def make_face(pts: np.ndarray, axis_point: np.ndarray, axis_dir: np.ndarray) -> 
     b0, b1 = span(b, 0.5)
     w, h = a1 - a0, b1 - b0
     centre = m + side * (a0 + a1) / 2 + up * (b0 + b1) / 2
-    cov = coverage(a, b, w, h, a0, b0) if w > 0 and h > 0 else 0.0
+    shade = None
+    if ahead is not None and len(ahead):
+        rel_f = ahead - m
+        off = rel_f @ n
+        front = rel_f[(off > RANSAC_THR_M) & (off < OCCLUDER_M)]
+        shade = (front @ side, front @ up)
+    cov = coverage(a, b, w, h, a0, b0, shade) if w > 0 and h > 0 else 0.0
     return Face(pts, centre, n, up, side, float(h), float(w), rms, len(pts), cov)
 
 
@@ -241,14 +343,16 @@ def planar_faces(
     h = rel @ axis_dir
     r = np.linalg.norm(_horizontal(rel, axis_dir), axis=1)
     pts = pts[r >= np.asarray(shaft_r(h), dtype=float) + SHAFT_MARGIN_M]
-    if len(pts) < MIN_FACE_POINTS:
+    if len(pts) < MIN_FACE_POINTS_SPARSE:
         return []
-    nrm, curv = normals(pts)
+    tree = cKDTree(pts)
+    sp = Sparse.of(point_spacing(pts, tree))
+    nrm, curv = normals(pts, sp.normal_k)
     flat = np.where((np.abs(nrm[:, 1]) < UPRIGHT_MAX_NY) & (curv < MAX_CURVATURE))[0]
-    if len(flat) < MIN_FACE_POINTS:
+    if len(flat) < sp.face_points:
         return []
     pv, nv = pts[flat], nrm[flat]
-    pairs = cKDTree(pv).query_pairs(GROW_RADIUS_M, output_type="ndarray")
+    pairs = cKDTree(pv).query_pairs(sp.grow_m, output_type="ndarray")
     i, j = pairs[:, 0], pairs[:, 1]
     ok = (np.abs(np.einsum("ij,ij->i", nv[i], nv[j])) > GROW_DOT) & (
         np.abs(np.einsum("ij,ij->i", pv[j] - pv[i], nv[i])) < GROW_OFFSET_M
@@ -257,28 +361,107 @@ def planar_faces(
     _, lab = connected_components(graph, directed=False)
     counts = np.bincount(lab)
     parts: list[np.ndarray] = []
-    for c in np.where(counts >= MIN_PIECE_POINTS)[0]:
+    for c in np.where(counts >= sp.piece_points)[0]:
         region = pv[lab == c]
         _, _, rms = _plane(region)
-        if rms > SPLIT_RMS_M and len(region) >= MIN_FACE_POINTS:
-            parts += [region[k] for k in ransac_planes(region, rng)]
+        if rms > SPLIT_RMS_M and len(region) >= sp.face_points:
+            parts += [region[k] for k in ransac_planes(region, rng, min_points=sp.face_points)]
         else:
             parts.append(region)
     # the curvature filter erodes every face by about the k-NN radius: reach past that
     sample = pts[:: max(1, len(pts) // 2000)]
-    knn_r = float(np.median(cKDTree(pts).query(sample, k=min(NORMAL_K, len(pts)))[0][:, -1]))
+    knn_r = float(np.median(tree.query(sample, k=min(sp.normal_k, len(pts)))[0][:, -1]))
     reach = max(EDGE_REACH_M, 1.5 * knn_r)
-    tree = cKDTree(pts)
     faces: list[Face] = []
-    for part in _merge_coplanar(parts, reach):
-        for face in _with_edges(part, pts, tree, reach, axis_point, axis_dir):
+    for part in _merge_coplanar(parts, reach, sp.face_points):
+        for face in _with_edges(part, pts, tree, reach, axis_point, axis_dir, sp):
             if (
                 face.rms < KEEP_RMS_M
                 and face.width >= MIN_FACE_WIDTH_M
                 and abs(face.normal[1]) < UPRIGHT_MAX_NY
             ):
                 faces.append(face)
-    return _distinct(faces)
+    return _join_hidden(_distinct(faces), pts, tree, axis_point, axis_dir)
+
+
+def _hidden_gap(f: Face, g: Face) -> tuple[float, float, float, float] | None:
+    """The gap between two coplanar faces side by side or one above the other, as a rectangle
+    (a0, a1, b0, b1) in `f`'s (side, up) coordinates from its centre; None when they overlap,
+    are not aligned (`JOIN_ALIGN_SHARE` of the smaller one's extent across the gap) or are more
+    than `JOIN_GAP_M` apart."""
+    d = g.centre - f.centre
+    ga, gb = float(d @ f.side), float(d @ f.up)
+    fa, fb = (-f.width / 2, f.width / 2), (-f.height / 2, f.height / 2)
+    ra, rb = (ga - g.width / 2, ga + g.width / 2), (gb - g.height / 2, gb + g.height / 2)
+    over_a = min(fa[1], ra[1]) - max(fa[0], ra[0])
+    over_b = min(fb[1], rb[1]) - max(fb[0], rb[0])
+    # the gap without a strip along each face's edge: a unit's own side faces stand in front of
+    # its plane right at the edge, and hide nothing
+    e = JOIN_EDGE_M
+    if over_b >= JOIN_ALIGN_SHARE * min(f.height, g.height) and over_a < 0 <= JOIN_GAP_M + over_a:
+        lo, hi = (fa[1], ra[0]) if ga > 0 else (ra[1], fa[0])
+        return lo + e, hi - e, max(fb[0], rb[0]), min(fb[1], rb[1])
+    if over_a >= JOIN_ALIGN_SHARE * min(f.width, g.width) and over_b < 0 <= JOIN_GAP_M + over_b:
+        lo, hi = (fb[1], rb[0]) if gb > 0 else (rb[1], fb[0])
+        return max(fa[0], ra[0]), min(fa[1], ra[1]), lo + e, hi - e
+    return None
+
+
+def _in_front(f: Face, centre: np.ndarray, radius: float, pts: np.ndarray, tree: cKDTree) -> np.ndarray:
+    """The points within `radius` of `centre` that stand in front of `f`'s plane, up to `OCCLUDER_M`."""
+    near = pts[tree.query_ball_point(centre, radius)]
+    off = (near - f.centre) @ f.normal
+    return near[(off > RANSAC_THR_M) & (off < OCCLUDER_M)]
+
+
+def _join_hidden(
+    faces: list[Face], pts: np.ndarray, tree: cKDTree, axis_point: np.ndarray, axis_dir: np.ndarray
+) -> list[Face]:
+    """Join two coplanar faces side by side (or one above the other) when what lies between them
+    is hidden by something in front (a pipe or a cable along the face casts a shadow wider than
+    the flood fill can reach across): at least `HIDDEN_SHARE` of the gap's cells have points in
+    front of them. A gap with nothing in front is a slit between two units and stays."""
+    out = sorted(faces, key=lambda f: -f.support)
+    joined = True
+    while joined:
+        joined = False
+        for i, f in enumerate(out):
+            for j in range(i + 1, len(out)):
+                g = out[j]
+                if (
+                    abs(f.normal @ g.normal) <= GROW_DOT
+                    or abs((g.centre - f.centre) @ f.normal) >= RANSAC_THR_M
+                ):
+                    continue
+                gap = _hidden_gap(f, g)
+                if gap is None:
+                    continue
+                a0, a1, b0, b1 = gap
+                if a1 - a0 <= 0 or b1 - b0 <= 0:
+                    continue
+                mid = f.centre + f.side * (a0 + a1) / 2 + f.up * (b0 + b1) / 2
+                ahead = _in_front(f, mid, float(np.hypot(a1 - a0, b1 - b0)) / 2 + OCCLUDER_M, pts, tree)
+                rel = ahead - f.centre
+                sa, sb = rel @ f.side, rel @ f.up
+                cell = max(COVERAGE_CELL_M, min(a1 - a0, b1 - b0) / 2)
+                nu, nv = max(1, round((a1 - a0) / cell)), max(1, round((b1 - b0) / cell))
+                hit = (sa >= a0) & (sa <= a1) & (sb >= b0) & (sb <= b1)
+                iu = np.clip(((sa[hit] - a0) / (a1 - a0) * nu).astype(int), 0, nu - 1)
+                iv = np.clip(((sb[hit] - b0) / (b1 - b0) * nv).astype(int), 0, nv - 1)
+                if len(np.unique(iu * nv + iv)) < HIDDEN_SHARE * nu * nv:
+                    continue
+                both = np.vstack([f.points, g.points])
+                m = both.mean(axis=0)
+                reach = float(np.linalg.norm(np.ptp(both, axis=0))) / 2 + OCCLUDER_M
+                face = make_face(both, axis_point, axis_dir, _in_front(f, m, reach, pts, tree))
+                if face.rms >= KEEP_RMS_M:
+                    continue
+                out = [face, *(h for k, h in enumerate(out) if k not in (i, j))]
+                joined = True
+                break
+            if joined:
+                break
+    return out
 
 
 def _distinct(faces: list[Face]) -> list[Face]:
@@ -297,7 +480,9 @@ def _distinct(faces: list[Face]) -> list[Face]:
     return out
 
 
-def _merge_coplanar(parts: list[np.ndarray], gap: float) -> list[np.ndarray]:
+def _merge_coplanar(
+    parts: list[np.ndarray], gap: float, min_points: int = MIN_FACE_POINTS
+) -> list[np.ndarray]:
     """Join planar regions that lie on one plane and come within `gap` of each other: a sparse
     cloud breaks one face into pieces where its points are too far apart to grow across."""
     planes = [_plane(p) for p in parts]
@@ -322,7 +507,7 @@ def _merge_coplanar(parts: list[np.ndarray], gap: float) -> list[np.ndarray]:
     groups: dict[int, list[np.ndarray]] = {}
     for i, p in enumerate(parts):
         groups.setdefault(find(i), []).append(p)
-    return [np.vstack(g) for g in groups.values() if sum(len(p) for p in g) >= MIN_FACE_POINTS]
+    return [np.vstack(g) for g in groups.values() if sum(len(p) for p in g) >= min_points]
 
 
 def _with_edges(
@@ -332,6 +517,7 @@ def _with_edges(
     reach: float,
     axis_point: np.ndarray,
     axis_dir: np.ndarray,
+    sp: Sparse | None = None,
 ) -> list[Face]:
     """The faces of one grown plane (one, or one per piece where a slit splits it), after taking back its plane inliers (within `RANSAC_THR_M`)
     connected to it at `reach`: the curvature filter drops the points along every box edge, and in
@@ -339,26 +525,39 @@ def _with_edges(
     also runs into anything touching the plane (the tangent strip of a pipe a unit clamps onto, a
     cable across its front), so the result is cut to its full rectangle (`_core`). Bounding the
     fill by the grown region instead would lose the stretches a sparse cloud never grew."""
+    sp = Sparse() if sp is None else sp
     m, n, _ = _plane(part)
     if abs(n[1]) >= UPRIGHT_MAX_NY:
         return []
-    inplane = np.abs((pts - m) @ n) < RANSAC_THR_M
-    taken = np.zeros(len(pts), dtype=bool)
-    frontier = part
-    for _ in range(MAX_FLOOD_STEPS):
-        near = np.unique(np.concatenate(tree.query_ball_point(frontier, reach)))
-        near = near[inplane[near] & ~taken[near]]
-        if len(near) == 0:
-            break
-        taken[near] = True
-        frontier = pts[near]
-    if taken.sum() < MIN_FACE_POINTS:
+
+    def flood(m: np.ndarray, n: np.ndarray) -> np.ndarray:
+        inplane = np.abs((pts - m) @ n) < RANSAC_THR_M
+        taken = np.zeros(len(pts), dtype=bool)
+        frontier = part
+        for _ in range(MAX_FLOOD_STEPS):
+            near = np.unique(np.concatenate(tree.query_ball_point(frontier, reach)))
+            near = near[inplane[near] & ~taken[near]]
+            if len(near) == 0:
+                break
+            taken[near] = True
+            frontier = pts[near]
+        return taken
+
+    taken = flood(m, n)
+    if len(part) < REFIT_SHARE * taken.sum():
+        # a small grown seed (a sparse cloud grows only part of a face) tilts its plane enough
+        # that the fill leaves the far end of the face out: fill again on the plane of the fill
+        m2, n2, _ = _plane(pts[taken])
+        if abs(n2 @ n) > GROW_DOT and abs(n2[1]) < UPRIGHT_MAX_NY:
+            m, n = m2, n2
+            taken = flood(m, n)
+    if taken.sum() < sp.face_points:
         return []
     flooded = pts[taken]
     seed = np.zeros(len(pts), dtype=bool)
     seed[np.unique(tree.query(part, k=1)[1])] = True
     seed = seed[taken]
-    cell = max(CORE_CELL_M, reach / 2)
+    cell = max(sp.core_m, reach / 2)
     # what stands in front of the plane over the fill: the occluders whose shadows are no slits
     lo_, hi_ = flooded.min(axis=0) - OCCLUDER_M, flooded.max(axis=0) + OCCLUDER_M
     box = np.all((pts >= lo_) & (pts <= hi_), axis=1)
@@ -374,17 +573,17 @@ def _with_edges(
     out: list[Face] = []
     left = seed.copy()
     for _ in range(MAX_PIECES):
-        if left.sum() < MIN_PIECE_POINTS:
+        if left.sum() < sp.piece_points:
             break
         centre, side, up = m, np.cross(up0, n), up0
         face: Face | None = None
         cut = np.zeros(len(flooded), dtype=bool)
         for _ in range(2):
             cut = _core(flooded, centre, side, up, cell, left, ahead)
-            if cut.sum() < MIN_FACE_POINTS:
+            if cut.sum() < sp.face_points:
                 face = None
                 break
-            face = make_face(flooded[cut], axis_point, axis_dir)
+            face = make_face(flooded[cut], axis_point, axis_dir, ahead)
             centre, side, up = face.centre, face.side, face.up
         if not (cut & left).any():
             break
@@ -441,7 +640,10 @@ def _core(
     weight = np.ones(len(a)) if seed is None else seed.astype(float)
     keep = np.ones(len(a), dtype=bool)
     for along, across, f_along, f_across in ((b, a, fb, fa), (a, b, fa, fb)):  # rows, then columns
-        idx = np.floor((along - along[keep].min()) / cell).astype(int)
+        # a sparse face gets bands wide enough to hold `CORE_BAND_POINTS` each: a band of a few
+        # points spans a fraction of the face by chance, and two in a row would cut it short
+        band = max(cell, CORE_BAND_POINTS * float(np.ptp(along[keep])) / max(int(keep.sum()), 1))
+        idx = np.floor((along - along[keep].min()) / band).astype(int)
         n = max(int(idx[keep].max()) + 1, 1)
         lo, hi = np.full(n, np.inf), np.full(n, -np.inf)
         np.minimum.at(lo, idx[keep], across[keep])
@@ -454,12 +656,20 @@ def _core(
         occupied = count[count > 0]
         dense = float(np.median(occupied)) >= SLIT_MIN_POINTS
         thin = (count < SLIT_SHARE * float(np.median(occupied))) & dense
-        if thin.any() and len(f_along):
+        if len(f_along):
             inside = (f_across >= across[keep].min()) & (f_across <= across[keep].max())
-            fi = np.floor((f_along[inside] - along[keep].min()) / cell).astype(int)
-            fi = fi[(fi >= 0) & (fi < n)]
+            fi = np.floor((f_along[inside] - along[keep].min()) / band).astype(int)
+            ok = (fi >= 0) & (fi < n)
+            fi, fx = fi[ok], f_across[inside][ok]
             shade = np.bincount(fi, minlength=n)
             thin &= shade < SLIT_SHARE * float(np.median(occupied))
+            # a band that something in front spans as fully as the face's own bands (a pipe
+            # along it) is hidden, not a gap: the face goes on behind it
+            s_lo, s_hi = np.full(n, np.inf), np.full(n, -np.inf)
+            np.minimum.at(s_lo, fi, fx)
+            np.maximum.at(s_hi, fi, fx)
+            hidden = np.where(np.isfinite(s_lo), s_hi - s_lo, 0.0) >= CORE_SHARE * ref
+            full = full | (hidden & ~thin)
         runs = _runs(full, thin)
         if not runs:
             return np.zeros(len(a), dtype=bool)

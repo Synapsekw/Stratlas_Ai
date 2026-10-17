@@ -32,7 +32,8 @@ Units are grouped as **Panel antennas**, **Short antennas**, **Microwave dishes*
 - **Electrical tilt** is not measured. The downtilt is the mechanical one. Magnetic north is not available.
 - **Type.** The type comes from the size of the unit unless you use **Label with AI**. **Type from geometry**, **Type labelled by AI** and **Type set by you** tell which.
 - **Other equipment.** Small radio units and similar equipment are listed as **Other equipment** with size and position but without angles.
-- **Warnings** lists anything the run wants you to check.
+- **Warnings** lists anything the run wants you to check, such as how many candidate boxes were not listed and why.
+- **Survey dates.** Positions are stored where the scanned survey date has them. When dates are lined up (see Line up dates), the boxes are drawn where that date is drawn, like its measurements.
 
 ## Review
 
@@ -65,7 +66,9 @@ The antennas in an engineering model (see Engineering models) are still approxim
 - On lattice towers, antennas facing more than 60 degrees away from straight out are listed as other equipment.
 - Small radio units are listed as other equipment without angles and may be missed.
 - Units side by side with no gap between them can come out as one wide unit.
-- Faces narrower than 0.2 m or thinner than 0.08 m are never listed as antennas.
+- Units narrower than 0.2 m or thinner than 0.08 m are listed as other equipment, without angles. A narrow part longer than 1.5 m, or one fixed to the shaft, is taken for the structure (a pole, a frame member, a cable run) and not listed.
+- Candidate boxes that are left out (side faces, patchy fronts, boxes with no back found, boxes overlapping other units) are counted in a warning for the run, so nothing is left out without a word.
+- On sparse clouds (about 600 points per square metre of face) plumb and a dish's azimuth are less certain: within 2 and 1.5 degrees on synthetic towers, against 1.5 and 1 degree on denser clouds.
 - Crops allow for a few degrees of error in a photo's recorded pose; a larger error can still cut a unit off at the crop edge.
 - A dish bolted to a thick member (radius 0.1 m or more) may be missed.
 - Plumb on narrow faces is less certain than azimuth.

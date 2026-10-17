@@ -8,6 +8,15 @@ frame (x east, y up, z south) with the layer's `heightOffsetM` applied.
 State that later steps keep is plain data: the axis is `point` and `dir` (3 floats each) and the
 shaft radius is `ShaftRadius.coef` (slope and intercept against height along the axis), which
 `ShaftRadius.from_coef` turns back into the function.
+
+Frames: everything here is in the cloud's own date frame (the file's coordinates, no line-up
+shift), like survey measurements, so lining a date up again never moves an inventory. Engineering
+evidence and a click on the tower are in the lined-up frame the 3D view draws (`captures.date_shift`
+of the cloud layer, x += east, z -= north): the shift is taken off them before use. Cloud reads
+and photo poses are raw.
+
+The band is sorted by its rounded coordinates, so the later steps (the voxel thinning keeps the
+first point of each voxel) depend only on which points the read kept, never on their order.
 """
 
 from __future__ import annotations
@@ -20,6 +29,7 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 
+from ..captures import date_shift, layer_captures, local_delta
 from ..change.sources import height_offset_m
 from ..engineer.axis import Axis, estimate_axis
 from ..engineer.cloud import read_region
@@ -60,6 +70,7 @@ FLOOR_LIFT_M = 0.3
 MIN_UPRIGHT = 0.5  # the upright check of `engineer.pipeline` and `model.evidence`
 MIN_BAND_POINTS = 50
 SHAFT_SLICES = 12
+SORT_DECIMALS = 4  # the band is ordered by its coordinates rounded to 0.1 mm
 
 
 class ShaftRadius:
@@ -89,6 +100,9 @@ class Crown:
     xyz: np.ndarray  # crown cylinder points, local frame, heightOffsetM applied
     layer_id: str
     warnings: list[str] = field(default_factory=list)
+    capture_id: str | None = None  # the survey date the cloud layer belongs to
+    read_cap: int = 0  # the most points the read that gave the band could keep
+    read_points: int = 0  # the points in that read's region (more than the cap: it was sampled)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -287,10 +301,61 @@ def _find_seed(xyz: np.ndarray) -> tuple[float, float] | None:
 # ---------------------------------------------------------------------------------------------
 
 
-def _read(ctx: Any, layer_path: Path, layer: dict, region: dict | None, cap: int, origin, offset: float):
+def _read_info(
+    ctx: Any, layer_path: Path, layer: dict, region: dict | None, cap: int, origin, offset: float
+) -> tuple[np.ndarray, dict]:
+    """The points of `region` (raw: the date's own frame) and the read's counts."""
     return read_region(
         layer_path, str(layer.get("format") or "las"), region, cap, ctx, origin, seed=0, offset_m=offset
-    )[0]
+    )
+
+
+def _read(ctx: Any, layer_path: Path, layer: dict, region: dict | None, cap: int, origin, offset: float):
+    return _read_info(ctx, layer_path, layer, region, cap, origin, offset)[0]
+
+
+def _sorted(xyz: np.ndarray) -> np.ndarray:
+    """The points in the order of their coordinates rounded to `SORT_DECIMALS` (x, then y, then z)."""
+    if len(xyz) == 0:
+        return xyz
+    key = np.round(xyz, SORT_DECIMALS)
+    return xyz[np.lexsort((key[:, 2], key[:, 1], key[:, 0]))]
+
+
+def _unshift_xz(p: Any, dx: float, dz: float) -> Any:
+    """A local point [x, y, z] (or a plan point [x, z]) with a line-up shift taken off."""
+    v = [float(c) for c in p]
+    if len(v) == 3:
+        return [v[0] - dx, v[1], v[2] - dz]
+    if len(v) == 2:
+        return [v[0] - dx, v[1] - dz]
+    return v
+
+
+def to_date_frame(evidence: dict, shift: tuple[float, float]) -> dict:
+    """Engineering evidence (measured in the lined-up frame) in the cloud's own date frame: the
+    shift (east, north) taken off its axis point, base and crop. The axis direction and the height
+    do not change."""
+    dx, dz = local_delta(shift)
+    if not dx and not dz:
+        return evidence
+    out = dict(evidence)
+    axis = evidence.get("axis")
+    if isinstance(axis, dict) and axis.get("point") is not None:
+        out["axis"] = {**axis, "point": _unshift_xz(axis["point"], dx, dz)}
+    base = evidence.get("base")
+    if isinstance(base, (list, tuple)):
+        out["base"] = _unshift_xz(base, dx, dz)
+    crop = evidence.get("crop")
+    if isinstance(crop, dict):
+        crop = dict(crop)
+        if crop.get("centre") is not None:
+            crop["centre"] = _unshift_xz(crop["centre"], dx, dz)
+        for k in ("min", "max"):
+            if crop.get(k) is not None:
+                crop[k] = _unshift_xz(crop[k], dx, dz)
+        out["crop"] = crop
+    return out
 
 
 def _axis_of(evidence: dict) -> Axis:
@@ -312,7 +377,16 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
     offset = height_offset_m(layer)
     origin = tuple(float(v) for v in (manifest.get("origin") or [0, 0, 0]))
     warnings: list[str] = []
+    layer_id = str(layer.get("id"))
+    # evidence and a click on the tower are where the 3D view draws the date (lined up)
+    shift = date_shift(manifest, layer_id)
+    dx, dz = local_delta(shift)
+    if evidence is not None:
+        evidence = to_date_frame(evidence, shift)
     hint = params.get("towerHint")
+    if hint is not None:
+        hint = _unshift_xz(hint, dx, dz)
+    read_cap, read_points = FULL_POINTS, 0
 
     def region_pts(centre: tuple[float, float], radius: float, cap: int = FULL_POINTS) -> np.ndarray:
         return _read(
@@ -337,7 +411,7 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
         lo = axis.from_frame(0.0, 0.0, 0.1 * height - 1.0)
         hi = axis.from_frame(0.0, 0.0, height + 1.0)
         reach = HINT_RADIUS_M + float(np.hypot(hi[0] - lo[0], hi[2] - lo[2]))
-        local = _read(
+        local, info = _read_info(
             ctx,
             layer_path,
             layer,
@@ -349,6 +423,7 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
             origin,
             offset,
         )
+        read_cap, read_points = LOCAL_POINTS, int(info["read"])
     else:
         source = "auto"
         overview = _read(ctx, layer_path, layer, None, OVERVIEW_POINTS, origin, offset)
@@ -393,10 +468,11 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
     if source == "evidence":
         band = local[np.all((local >= box["min"]) & (local <= box["max"]), axis=1)]
     else:
-        band = _read(ctx, layer_path, layer, box, FULL_POINTS, origin, offset)
+        band, info = _read_info(ctx, layer_path, layer, box, FULL_POINTS, origin, offset)
+        read_cap, read_points = FULL_POINTS, int(info["read"])
     if len(band):
         bu, bw, _ = axis.to_frame(band)
-        band = band[np.hypot(bu, bw) <= radius]
+        band = _sorted(band[np.hypot(bu, bw) <= radius])
     if len(band) < MIN_BAND_POINTS:
         raise JobError(EMPTY_BAND)
     if len(band) < MIN_CROWN_POINTS:
@@ -410,6 +486,9 @@ def locate_crown(ctx: Any, project: Path, manifest: dict, params: dict) -> Crown
         radius_m=radius,
         shaft_r=shaft_r,
         xyz=band,
-        layer_id=str(layer.get("id")),
+        layer_id=layer_id,
         warnings=warnings,
+        capture_id=layer_captures(manifest).get(layer_id),
+        read_cap=read_cap,
+        read_points=read_points,
     )

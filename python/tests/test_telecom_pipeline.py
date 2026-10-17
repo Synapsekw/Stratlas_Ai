@@ -21,6 +21,7 @@ from aio_pipelines.telecom.measure import grid_convergence_deg
 from aio_pipelines.telecom.photos import CROP_MAX_PX
 from antenna_synth import make_tower_project, tower_cloud
 from conftest import Recorder, run_job
+from test_telecom_crown import CAPTURE, line_up, lined_up_axis, write_evidence
 from test_telecom_photos import look_at_q
 
 CONTRACT = Path(__file__).resolve().parents[2] / "packages/schema/src/__fixtures__/antennas-contract.json"
@@ -149,7 +150,8 @@ def test_runs_end_to_end(tmp_path, monopole):
     contract = json.loads(CONTRACT.read_text("utf-8"))
     assert f["schema"] == "aio.antennas/1" and set(f) == {"schema", "run", "units"}
     assert set(contract["example"]["units"][0]) >= REQUIRED and set(f["units"][0]) >= REQUIRED
-    assert set(f["run"]) >= RUN_KEYS and set(f["run"]) <= RUN_KEYS | {"groundZ", "ai"}
+    assert set(f["run"]) >= RUN_KEYS and set(f["run"]) <= RUN_KEYS | {"groundZ", "ai", "captureId"}
+    assert "captureId" not in f["run"]  # the cloud has no survey date
     assert f["run"]["north"] == "grid" and f["run"]["cloudLayer"] == "tower-cloud"
     assert f["run"]["params"] == {"run": "run-a"} and f["run"]["id"] == "run-a"
     assert f["run"]["axis"]["source"] == "auto"
@@ -317,3 +319,51 @@ def test_failure_carries_the_hint_message(tmp_path):
     assert str(e.value) == TOWER_HINT_NEEDED
     assert rec.of("error")[0]["message"] == TOWER_HINT_NEEDED
     assert not (root / "telecom" / "antennas.json").exists()
+
+
+def test_line_up_keeps_the_inventory_in_the_date_frame(tmp_path, monopole):
+    # R-lineup: the cloud's date is lined up 3 m east and 2 m south; engineering evidence was
+    # measured where the date is drawn (lined up), the cloud file and the photo poses are raw.
+    # The inventory stays in the date's own frame: the same units, boxes and photos as unshifted.
+    xyz, truth = monopole
+    panel = panel_truth(truth)
+    runs = {}
+    for name, shift in (("plain", (0.0, 0.0)), ("moved", (3.0, -2.0))):
+        root = make_tower_project(tmp_path / name, xyz)
+        add_photo(root, panel["centre"])
+        if shift != (0.0, 0.0):
+            line_up(root, *shift)
+        write_evidence(root, "run-e", lined_up_axis(*shift), truth["height"])
+        result, _ = run_job(pipeline(), root, {"run": "run-a"})
+        assert result["status"] == "done"
+        runs[name] = read_file(root)
+    plain, moved = runs["plain"], runs["moved"]
+    assert moved["run"]["captureId"] == CAPTURE and "captureId" not in plain["run"]
+    assert moved["run"]["axis"]["source"] == "evidence"
+    assert moved["run"]["axis"]["point"] == plain["run"]["axis"]["point"]
+    assert moved["run"]["axis"]["point"][:2] == pytest.approx([E0, N0], abs=1e-6)
+    assert len(moved["units"]) == len(plain["units"]) > 0
+    for a, b in zip(plain["units"], moved["units"], strict=True):
+        assert a["kind"] == b["kind"] and a["box"] == b["box"]
+        assert a.get("azimuthGridDeg") == b.get("azimuthGridDeg")
+        # the photo projection still matches: raw boxes against raw poses
+        assert [(p["id"], p["score"]) for p in a["photos"]] == [(p["id"], p["score"]) for p in b["photos"]]
+    got = nearest(moved["units"], panel)
+    assert got["box"]["centre"][:2] == pytest.approx(
+        [E0 + panel["centre"][0], N0 - panel["centre"][2]], abs=0.05
+    )
+    assert got["photos"] and got["photos"][0]["id"] == "front"
+
+
+def test_left_out_candidates_are_a_run_warning(tmp_path):
+    xyz, _ = tower_cloud(seed=1, interior=True)
+    root = make_tower_project(tmp_path / "p", xyz)
+    result, rec = run_job(pipeline(), root, {"run": "run-a"})
+    assert result["status"] == "done"
+    warnings = read_file(root)["run"]["warnings"]
+    left = [w for w in warnings if "candidate box" in w]
+    assert len(left) == 1 and re.match(r"^\d+ candidate boxes? (was|were) not listed: .+\.$", left[0])
+    assert "\u2013" not in left[0] and "\u2014" not in left[0]
+    logs = " ".join(str(p.get("message", "")) for p in rec.of("log"))
+    assert "Candidate boxes left out:" in logs and "part of a listed unit" in logs
+    assert "against a cap of" in logs
