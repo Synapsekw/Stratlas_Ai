@@ -54,6 +54,8 @@ interface MapEl extends Element {
   __aioMap: {
     getContainer(): HTMLElement;
     project(ll: [number, number]): { x: number; y: number };
+    jumpTo(o: { center: [number, number]; zoom: number }): void;
+    isMoving(): boolean;
   };
 }
 
@@ -104,6 +106,31 @@ async function mapPoint(win: Page, p: [number, number, number]): Promise<{ x: nu
     const r = el.__aioMap.getContainer().getBoundingClientRect();
     return { x: r.left + at.x, y: r.top + at.y };
   }, ll);
+}
+
+/**
+ * Let the map finish any move it is making (a fit, a flight to the selection), then centre it on
+ * a model point at a fixed zoom, so a point computed for a click is still there when it lands and
+ * plates a few tens of metres apart draw apart.
+ */
+async function settleMap(win: Page, p: [number, number, number], zoom = 19): Promise<void> {
+  const mapEl = () =>
+    [...document.querySelectorAll('*')].find((e) => '__aioMap' in e) as MapEl | undefined;
+  await expect
+    .poll(() => win.evaluate(`(${mapEl.toString()})()?.__aioMap.isMoving() ?? true`), {
+      timeout: 30_000,
+    })
+    .toBe(false);
+  const ll = lonLatOf(p);
+  await win.evaluate(
+    ({ ll, zoom }) => {
+      const el = [...document.querySelectorAll('*')].find((e) => '__aioMap' in e) as
+        MapEl | undefined;
+      if (!el) throw new Error('no map');
+      el.__aioMap.jumpTo({ center: ll, zoom });
+    },
+    { ll, zoom },
+  );
 }
 
 /** Azimuth of the 3D camera's view, degrees clockwise from grid north. */
@@ -324,6 +351,8 @@ test.describe('pinned media on the map', () => {
     await expect(win.getByTestId('pin-strip')).toBeVisible({ timeout: 30_000 });
     await expect(map).toBeVisible({ timeout: 30_000 });
     const ph1At: [number, number, number] = [-25, 0, 0];
+    // the map comes back flying to the selection (ph3): a point taken mid-flight lands elsewhere
+    await settleMap(win, [-15, 0, 15]);
     const a = await mapPoint(win, ph1At);
     await win.mouse.click(a.x, a.y);
     await expect
@@ -354,6 +383,7 @@ test.describe('pinned media on the map', () => {
     await expect(win.getByTestId('pin-strip')).toBeVisible({ timeout: 30_000 });
     await expect(map).toBeVisible({ timeout: 30_000 });
     const p1At: [number, number, number] = [0, 0, 25];
+    await settleMap(win, [-15, 0, 15]);
     const c = await mapPoint(win, p1At);
     await win.mouse.click(c.x, c.y);
     await expect
