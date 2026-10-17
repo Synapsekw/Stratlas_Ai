@@ -4564,6 +4564,20 @@ export const en = {
   'telecom.antennas.csv.drafts': 'Include drafts',
   'telecom.antennas.csv.done': 'Exported to {path}.',
   'telecom.antennas.warnings': 'Warnings',
+  // Road, Volumes and environment benches
+  'wb.tab.environment': 'Environment',
+  'wb.tab.cutaway': 'Cutaway',
+  'roadBench.overlay': 'Overlay',
+  'roadBench.closeup': 'Close-up',
+  'roadBench.layers': 'Layers',
+  'roadBench.measure': 'Measure',
+  'roadBench.closeupButton': 'Close-up of the selected defect',
+  'roadBench.closeupHint': 'Pick a defect to see its photo with the outline beside the map.',
+  'roadBench.measureButton': 'Measure on the map',
+  'roadBench.measureHint': 'Click points on the map for a distance or an area.',
+  'roadBench.mapOnly': 'Works on the map',
+  'stage.env.needs3d': 'Open the 3D view to set the sky, the time of day and the water.',
+  'stage.cutaway.needs3d': 'Open the 3D view to cut the model open.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

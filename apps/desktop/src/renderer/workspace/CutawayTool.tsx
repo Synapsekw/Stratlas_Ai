@@ -1,6 +1,7 @@
 import type { EngineStage } from '@aio/engine';
-import { Icon, useT, type MessageKey } from '@aio/ui';
+import { EmptyState, Icon, useT, type MessageKey } from '@aio/ui';
 import { setCameraMode, videoRig } from '@aio/video';
+import { useEngineStage } from './StageTools';
 import { CUTAWAY_MODES, MAX_OPACITY, MIN_OPACITY, type CutawayMode } from './cutaway';
 import {
   insideView,
@@ -23,12 +24,12 @@ const HINT: Record<CutawayMode, MessageKey> = {
 };
 
 /** The panel of the stage's cut-away tool: Off, Cut or Transparent, opacity and Inside view. */
-export function CutawayPanel({ stage }: { stage: EngineStage | null }) {
+export function CutawayPanel({ stage, tab = false }: { stage: EngineStage | null; tab?: boolean }) {
   const t = useT();
   const { mode, opacity } = useCutawayPref();
   const inside = useCutawayState((s) => s.inside);
   return (
-    <div className="pop-form" data-testid="cutaway-panel">
+    <div className={`pop-form${tab ? ' wb-form' : ''}`} data-testid="cutaway-panel">
       <span className="pop-title">{t('stage.cutaway.title')}</span>
       <div className="seg pop-seg" role="group" aria-label={t('stage.cutaway.modes')}>
         {CUTAWAY_MODES.map((m) => (
@@ -76,6 +77,25 @@ export function CutawayPanel({ stage }: { stage: EngineStage | null }) {
         <Icon name="cutaway" size={14} />
         {t('stage.cutaway.insideView')} <span className="kbd">C</span>
       </button>
+    </div>
+  );
+}
+
+/** The Cutaway panel tab's body: the panel on the live 3D stage (the map has no cut-away). */
+export function CutawayTab() {
+  const t = useT();
+  const stage = useEngineStage();
+  if (!stage) {
+    const empty = {
+      icon: 'cutaway',
+      title: t('stage.cutaway.title'),
+      body: t('stage.cutaway.needs3d'),
+    } as const;
+    return <EmptyState {...empty} />;
+  }
+  return (
+    <div className="wb-scroll">
+      <CutawayPanel stage={stage} tab />
     </div>
   );
 }

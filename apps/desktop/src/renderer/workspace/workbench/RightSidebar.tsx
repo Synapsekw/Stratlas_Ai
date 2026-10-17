@@ -7,7 +7,7 @@
  */
 import { IssueRegister } from '@aio/annotate';
 import { IconButton, ResizableSplit, splitPrefs, useResizableSplit, useT } from '@aio/ui';
-import { useVolumetric, VolumesPanel } from '@aio/volumetric';
+import { useVolumetric } from '@aio/volumetric';
 import { canCompare, useWorkspace } from '@aio/workspace';
 import {
   useEffect,
@@ -22,6 +22,7 @@ import {
 import { useStore } from 'zustand';
 import { AgentHost } from '../../agent/AgentHost';
 import { ChangesTab, useChangesTabSeq } from '../../change';
+import { EnvironmentTab } from '../../environment/EnvironmentTool';
 import { IssueCard } from '../../issueCard/IssueCard';
 import { useCardFocusSeq } from '../../issueCard/state';
 import { useModeller } from '../../modeller';
@@ -34,10 +35,13 @@ import { RightHeader } from '../../shell/RightHeader';
 import { useFold } from '../../shell/useFold';
 import { TelecomTools } from '../../survey/TelecomTools';
 import { agentWindow } from '../agentWindow';
+import { CutawayTab } from '../CutawayTool';
 import { useCaptureIndex } from '../compare';
 import { pickLive, type LiveItem } from '../island/islandModel';
 import { useIslandLive } from '../island/useIslandLive';
 import { SelectionCard } from '../SelectionCard';
+import { RoadBench } from './benches/RoadBench';
+import { VolumesBench } from './benches/VolumesBench';
 import { sectionStore, useSections } from './sectionState';
 import { TabBar } from './TabBar';
 import type { Tab, TabId } from './tabsModel';
@@ -279,7 +283,7 @@ function BenchHead({ bench }: { bench: TabId }) {
 /** What the front tab shows: today's context content for the fixed tabs. */
 function FrontBody({ front, road }: { front: TabId; road: boolean }) {
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
-  if (front === 'volumes') return <VolumesPanel className="ctx-fill" />;
+  if (front === 'volumes') return <VolumesBench />;
   if (front === 'changes') return <ChangesTab className="ctx-fill" />;
   if (front === 'issues') return <IssueRegister className="ctx-fill" />;
   if (front === 'selection') {
@@ -287,6 +291,16 @@ function FrontBody({ front, road }: { front: TabId; road: boolean }) {
     if (issueId) return <IssueCard issueId={issueId} place="scene" className="ctx-fill" />;
     return <SelectionCard />;
   }
+  // Road, Volumes and environment benches
+  if (front === 'road')
+    return (
+      <>
+        <BenchHead bench="road" />
+        <RoadBench />
+      </>
+    );
+  if (front === 'environment') return <EnvironmentTab />;
+  if (front === 'cutaway') return <CutawayTab />;
   // the workbenches and tool panels fill their tab in their own tasks
   return BENCHES.includes(front) ? <BenchHead bench={front} /> : null;
 }

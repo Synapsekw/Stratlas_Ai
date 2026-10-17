@@ -4,10 +4,11 @@ import {
   type EngineStage,
   type EnvironmentMode,
 } from '@aio/engine';
-import { useT } from '@aio/ui';
+import { EmptyState, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useReducer, useState } from 'react';
-import { PopTool } from '../workspace/StageTools';
+import { useEffect, useState } from 'react';
+import { Tool, useEngineStage } from '../workspace/StageTools';
+import { useWorkbench, workbench } from '../workspace/workbench/workbenchStore';
 import { hhmm, siteClock, siteInstant } from './envClock';
 import { envPrefs, type EnvPref } from './envPrefs';
 import './environment.css';
@@ -48,18 +49,44 @@ export function useStageEnvironment(stage: EngineStage | null): void {
   }, [stage]);
 }
 
-/** Backdrop, sun and time of day, and water for the 3D stage, in a stage popover. */
+/**
+ * The button that opens Backdrop, sun and time of day, and water as a View panel tab in the
+ * right sidebar (an unpinned panel, stage island D15); it is pressed while that tab is open.
+ */
 export function EnvironmentTool({ stage }: { stage: EngineStage | null }) {
   const t = useT();
-  const [, bump] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => stage?.onStateChange(bump), [stage]);
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
+  const open = useWorkbench((s) => s.front === 'environment');
   if (!stage || !manifest) return null;
-  const env = stage.environment;
   return (
-    <PopTool icon="sun" label={t('stage.env.button')} pressed={env.mode === 'sky'} wide>
+    <Tool
+      icon="sun"
+      label={t('stage.env.button')}
+      pressed={open || stage.environment.mode === 'sky'}
+      onClick={() => {
+        workbench.getState().open('environment');
+      }}
+    />
+  );
+}
+
+/** The Environment panel tab's body: the panel on the live 3D stage (the map has no sky). */
+export function EnvironmentTab() {
+  const t = useT();
+  const stage = useEngineStage();
+  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
+  if (!stage || !manifest) {
+    const empty = {
+      icon: 'sun',
+      title: t('stage.env.title'),
+      body: t('stage.env.needs3d'),
+    } as const;
+    return <EmptyState {...empty} />;
+  }
+  return (
+    <div className="wb-scroll">
       <EnvironmentPanel stage={stage} originH={manifest.origin[2]} />
-    </PopTool>
+    </div>
   );
 }
 
@@ -93,7 +120,7 @@ function EnvironmentPanel({ stage, originH }: { stage: EngineStage; originH: num
   };
   const tz = `${offset >= 0 ? '+' : ''}${String(offset)}`;
   return (
-    <div className="pop-form env-pop" data-testid="env-panel">
+    <div className="pop-form env-pop wb-form" data-testid="env-panel">
       <span className="pop-title">{t('stage.env.title')}</span>
       <div className="seg pop-seg" role="group" aria-label={t('stage.env.backdrop')}>
         {(['sky', 'studio'] as const).map((m) => (

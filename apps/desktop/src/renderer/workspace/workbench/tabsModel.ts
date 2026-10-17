@@ -17,7 +17,10 @@ export type TabId =
   | 'overlays'
   | 'hydro'
   | 'cleanup'
-  | 'measurements';
+  | 'measurements'
+  // Road, Volumes and environment benches
+  | 'environment'
+  | 'cutaway';
 
 export interface Tab {
   id: TabId;

@@ -1,0 +1,43 @@
+/* The Road and Volumes workbenches and the Environment and Cutaway panel tabs: their body fills
+   the tab and scrolls; the controls keep the popover form's rows (.pop-form, .seg, .pop-row). */
+.wb-scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+.wb-form {
+  padding: var(--sp-2) var(--sp-5) var(--sp-5);
+}
+
+/* the road's legend under the overlay choice: plain rows, not the map's floating box */
+.rr-legend-inline {
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--t-11);
+  color: var(--fg-1);
+}
+.rr-legend-inline b {
+  font-weight: 600;
+  color: var(--fg-0);
+  margin-block-end: var(--sp-1);
+}
+
+/* Volumes: the controls above the inventory, which scrolls on its own */
+.vol-bench {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vol-bench-controls {
+  flex: none;
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border-block-end: 1px solid var(--line);
+}
+.vol-bench-controls .seg {
+  flex-wrap: wrap;
+  max-inline-size: 100%;
+}

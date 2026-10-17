@@ -12,16 +12,10 @@ import { filteredDefects, focusDefect, measureText, useFilteredDefects } from '.
 
 const SIZES = ['10', '20', '50'];
 
-function RoadLayers() {
+/** The orthomosaic and centreline switches and what the defects are coloured by. */
+export function RoadLayerControls() {
   const centreline = useRoad((s) => s.centreline);
-  const overlay = useRoad((s) => s.overlay);
-  const sev = useRoad((s) => s.pciSeverity);
-  const size = useRoad((s) => s.densitySize);
-  const measure = useRoad((s) => s.densityMeasure);
-  const opacity = useRoad((s) => s.opacity);
   const colorBy = useRoad((s) => s.colorBy);
-  const road = useRoad((s) => s.road);
-  const sizes = Object.keys(road?.density.sizes ?? {});
   // joined ids: a stable selector value
   const orthoIds = useWorkspace((s) =>
     (s.project?.manifest.layers ?? [])
@@ -32,7 +26,7 @@ function RoadLayers() {
   const ortho = orthoIds ? orthoIds.split('|') : [];
   const orthoOn = useWorkspace((s) => ortho.some((id) => !s.hidden[id]));
   return (
-    <div className="pop-form rr-layers">
+    <>
       <label className="pop-row">
         <span className="pop-grow">Orthomosaic</span>
         <input
@@ -68,6 +62,21 @@ function RoadLayers() {
           </button>
         ))}
       </div>
+    </>
+  );
+}
+
+/** The area overlay (none, PCI grid or density) with what each needs, and its opacity. */
+export function RoadOverlayControls() {
+  const overlay = useRoad((s) => s.overlay);
+  const sev = useRoad((s) => s.pciSeverity);
+  const size = useRoad((s) => s.densitySize);
+  const measure = useRoad((s) => s.densityMeasure);
+  const opacity = useRoad((s) => s.opacity);
+  const road = useRoad((s) => s.road);
+  const sizes = Object.keys(road?.density.sizes ?? {});
+  return (
+    <>
       <div className="rr-pop-h">Area overlay</div>
       <div className="seg pop-seg" role="group" aria-label="Area overlay">
         {(
@@ -162,6 +171,15 @@ function RoadLayers() {
           />
         </label>
       )}
+    </>
+  );
+}
+
+function RoadLayers() {
+  return (
+    <div className="pop-form rr-layers">
+      <RoadLayerControls />
+      <RoadOverlayControls />
     </div>
   );
 }
@@ -273,23 +291,22 @@ export function MeasureBar() {
   );
 }
 
-/** Legend of the area overlay, bottom left of the map. */
-export function RoadLegend() {
+/** What the area overlay's legend says: the PCI ratings or the density classes. */
+function LegendRows({ kind }: { kind: 'pci' | 'density' }) {
   const road = useRoad((s) => s.road);
-  const overlay = useRoad((s) => s.overlay);
   const sev = useRoad((s) => s.pciSeverity);
   const size = useRoad((s) => s.densitySize);
   const measure = useRoad((s) => s.densityMeasure);
   const legend = useMemo(
-    () => (road && overlay === 'density' ? densityLegend(road, size, measure) : []),
-    [road, overlay, size, measure],
+    () => (road && kind === 'density' ? densityLegend(road, size, measure) : []),
+    [road, kind, size, measure],
   );
-  if (!road || overlay === 'none') return null;
-  if (overlay === 'pci') {
+  if (!road) return null;
+  if (kind === 'pci') {
     const v = road.pci.network[sev];
     const rating = pciRating(road.pci.ratings, v);
     return (
-      <div className="rr-legend overlay-box" aria-label="PCI legend">
+      <>
         <b>
           PCI · {road.pci.standard} · {sev[0]?.toUpperCase()}
           {sev.slice(1)} severity
@@ -310,11 +327,11 @@ export function RoadLegend() {
           Network PCI {v === null ? 'n/a' : Math.round(v)}
           {rating ? ` · ${rating.label}` : ''}
         </span>
-      </div>
+      </>
     );
   }
   return (
-    <div className="rr-legend overlay-box" aria-label="Density legend">
+    <>
       <b>Defect density · {size} m cells</b>
       {legend.map((l) => (
         <span key={l.from} className="rr-leg-row">
@@ -326,6 +343,26 @@ export function RoadLegend() {
         </span>
       ))}
       <span className="faint">{measure === 'pct' ? '% of pavement' : 'defects per cell'}</span>
+    </>
+  );
+}
+
+/**
+ * Legend of the area overlay: bottom left of the map, or (`inline`) in the Road workbench, where
+ * it is a plain block under the overlay choice (the map's own legend carries the label).
+ */
+export function RoadLegend({ inline = false }: { inline?: boolean }) {
+  const road = useRoad((s) => s.road);
+  const overlay = useRoad((s) => s.overlay);
+  if (!road || overlay === 'none') return null;
+  const label = overlay === 'pci' ? 'PCI legend' : 'Density legend';
+  return inline ? (
+    <div className="rr-legend-inline" data-testid="road-legend">
+      <LegendRows kind={overlay} />
+    </div>
+  ) : (
+    <div className="rr-legend overlay-box" aria-label={label}>
+      <LegendRows kind={overlay} />
     </div>
   );
 }
