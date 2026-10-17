@@ -8,6 +8,7 @@
  * The sidebar unfolds when one of them is asked for, as the panel on the stage was always seen.
  */
 import { useEffect, useRef } from 'react';
+import { followTool } from './followTool';
 import { sectionStore } from './sectionState';
 import { cleanup, useCleanup } from '../../pointcloud/cleanupStore';
 import { shell, useShell } from '../../shell';
@@ -17,8 +18,7 @@ export function useBenchFollow(): void {
   const asked = useShell((s) => s.cloudPanelOpen);
   useEffect(() => {
     if (!asked) return;
-    shell.getState().setRight(false);
-    workbench.getState().open('clouds');
+    followTool('clouds', { ask: true, unfold: true });
     // the controls the person asked for are not left folded away
     sectionStore.getState().toggle('clouds', 'cloud-colour', false);
     shell.getState().setCloudPanel(false);
@@ -43,7 +43,6 @@ export function useBenchFollow(): void {
       cleanup.closePanel();
       return;
     }
-    shell.getState().setRight(false);
-    workbench.getState().open('cleanup');
+    followTool('cleanup', { ask: true, unfold: true });
   }, [panelOpen, tabOpen]);
 }

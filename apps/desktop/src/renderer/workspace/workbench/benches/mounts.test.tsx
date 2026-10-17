@@ -10,7 +10,9 @@ import type * as ChangeModule from '../../../change';
 import type * as StageToolsModule from '../../StageTools';
 import type { JobRecord } from '@aio/schema';
 import { roadStore } from '../../../road/store';
-import { jobs } from '../../../shell';
+import { cardFocus } from '../../../issueCard/state';
+import { jobs, shell } from '../../../shell';
+import { annotateStage } from './annotateStage';
 import { threeDates } from '../../__fixtures__/threeDates';
 import { RightSidebar } from '../RightSidebar';
 import { workbench } from '../workbenchStore';
@@ -131,6 +133,29 @@ describe('the benches in the sidebar', () => {
     }
     act(() => {
       jobs.setState({ jobs: [], logs: {} });
+    });
+  });
+
+  it('a picked issue brings Selection forward through the sidebar, and the 3D tool stays on', () => {
+    act(() => {
+      shell.getState().setAnnotating(true);
+    });
+    render();
+    act(() => {
+      annotateStage.getState().setTool('point');
+    });
+    expect(front()?.getAttribute('data-front')).toBe('annotate');
+    // what picking an issue does: the card asks to come to the front (the sidebar's follow)
+    act(() => {
+      cardFocus.setState((s) => ({ seq: s.seq + 1, id: 'f01' }));
+    });
+    expect(front()?.getAttribute('data-front')).toBe('selection');
+    expect(shell.getState().annotating).toBe(true);
+    expect(annotateStage.getState().tool).toBe('point');
+    expect(workbench.getState().tabs.find((t) => t.id === 'annotate')?.live).toBe(true);
+    act(() => {
+      shell.getState().setAnnotating(false);
+      annotateStage.getState().setTool(null);
     });
   });
 

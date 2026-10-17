@@ -11,6 +11,7 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef } from 'react';
 import { shell, useShell } from '../../../shell';
 import { primaryScene } from '../../compare';
+import { followTool } from '../followTool';
 import { Section } from '../Section';
 import { linkLiveTab, workbench } from '../workbenchStore';
 import { useAnnotateStage, useMapDrawHandle } from './annotateStage';
@@ -44,10 +45,9 @@ export function useAnnotateFollow(): void {
   useEffect(() => {
     if (annotating === was.current) return;
     was.current = annotating;
-    if (annotating) {
-      if (shell.getState().rightCollapsed) shell.getState().setRight(false);
-      workbench.getState().toolStarted('annotate');
-    } else workbench.getState().toolStopped('annotate');
+    // a tool start (D14), whose controls are only in the sidebar
+    if (annotating) followTool('annotate', { unfold: true });
+    else workbench.getState().toolStopped('annotate');
   }, [annotating]);
 }
 

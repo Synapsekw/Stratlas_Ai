@@ -4,6 +4,7 @@ import { emptyMeasurements, type PackageInfo, type SitePoint } from '@aio/schema
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beginIssueEdit } from '../../../issueCard/state';
 import { shell } from '../../../shell';
 import { drawEvent, measureStore, startTool, stopTool } from '../../../survey/measureStore';
 import { useStageKeys } from '../../stageKeys';
@@ -231,6 +232,22 @@ describe('the Measure tab follows the tool', () => {
       expect(wb.getState().front).toBe('measure');
       expect(wb.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(false);
     } finally {
+      off();
+    }
+  });
+
+  it('a tool started while an issue is edited waits behind the card, with a dot', () => {
+    const wb = createWorkbenchStore(null);
+    const off = followMeasureTool(measureStore, wb);
+    const done = beginIssueEdit('card');
+    try {
+      startTool('distance');
+      expect(wb.getState().front).toBe('selection');
+      expect(wb.getState().attention).toBe('measure');
+      expect(wb.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(true);
+      stopTool();
+    } finally {
+      done();
       off();
     }
   });

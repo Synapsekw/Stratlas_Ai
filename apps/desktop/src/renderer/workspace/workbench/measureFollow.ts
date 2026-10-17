@@ -8,12 +8,12 @@ import { isTelecomTool } from '@aio/survey';
 import { useEffect } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { isIssueEditing } from '../../issueCard/state';
-import { shell } from '../../shell';
 import { hydro } from '../../survey/hydroStore';
 import { measureFavourites, type FavouritesState } from '../../survey/measureCatalogue';
 import { measureStore, type MeasureState } from '../../survey/measureStore';
 import { overlays, setOverlaysOpen } from '../../survey/overlaysStore';
 import { openQaPanel, qaStore } from '../../survey/qaStore';
+import { followTool } from './followTool';
 import type { TabId } from './tabsModel';
 import { linkLiveTab, workbench, type WorkbenchState } from './workbenchStore';
 
@@ -37,8 +37,7 @@ function reveal(bench: StoreApi<WorkbenchState>): void {
  * sidebar when it is folded away.
  */
 export function showMeasureBench(bench: StoreApi<WorkbenchState> = workbench): void {
-  if (shell.getState().rightCollapsed) shell.getState().setRight(false);
-  reveal(bench);
+  followTool(BENCH, { ask: true, unfold: true }, bench);
 }
 
 /**
@@ -72,7 +71,8 @@ export function followMeasureTool(
       if (!s.tool.then && !PANEL_TABS.includes(bench.getState().front)) {
         started = true;
         focusAtStart = s.focus;
-        bench.getState().toolStarted(BENCH);
+        // a tool start (D14); its drawing is on the stage, so the sidebar stays as it is
+        followTool(BENCH, {}, bench);
       }
     } else if (!s.tool && prev.tool && started) {
       started = false;

@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shell } from '../../../shell';
 import { threeDates } from '../../__fixtures__/threeDates';
+import { beginIssueEdit } from '../../../issueCard/state';
 import { useStageKeys } from '../../stageKeys';
 import { sectionStore } from '../sectionState';
 import { workbench } from '../workbenchStore';
@@ -135,6 +136,19 @@ describe('A opens Annotate', () => {
     press('a');
     expect(shell.getState().annotating).toBe(true);
     expect(workbench.getState().front).toBe('annotate');
+  });
+
+  it('waits behind an issue in edit: the card stays in front and the tab gets a dot', () => {
+    const done = beginIssueEdit('card');
+    try {
+      render(false);
+      press('a');
+      expect(shell.getState().annotating).toBe(true);
+      expect(workbench.getState().front).toBe('selection');
+      expect(workbench.getState().attention).toBe('annotate');
+    } finally {
+      done();
+    }
   });
 
   it('opens a folded sidebar, because the tools live there now', () => {
