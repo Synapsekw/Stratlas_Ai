@@ -37,6 +37,11 @@ describe('photo corrections', () => {
     expect(p.pos).toEqual([11, 38, -2]);
   });
 
+  it('leave a pinned photo at its pin (the pin is the hand placement)', () => {
+    const p = photo('a', { pos: [1, 1.6, 3], pin: { ground: [1, 0, 3], eyeM: 1.6 } });
+    expect(correctedPhoto(p, { yawDeg: 30, pitchDeg: 5, rollDeg: 0, offsetM: [2, 0, 0] })).toBe(p);
+  });
+
   it('leave a photo without a correction as it is', () => {
     const p = photo('a');
     expect(correctedPhoto(p, undefined)).toBe(p);

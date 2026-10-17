@@ -186,6 +186,18 @@ describe('MapMediaMarkers', () => {
     m.dispose();
   });
 
+  it('draws a pinned photo at its pin, not moved by a hand correction', () => {
+    const { map, proj } = fakeMap();
+    const m = new MapMediaMarkers({ map, proj, url });
+    const { s } = state();
+    const fix = { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [50, 0, 0] };
+    m.update({ ...s, orientation: { photos: { ph: { pinned: fix, gps: fix } } } } as never);
+    expect(m.at(200, 100)).toEqual({ kind: 'photo', layerId: 'ph', id: 'pinned' });
+    // a photo with no pin keeps its correction
+    expect(m.at(150, 100)).toEqual({ kind: 'photo', layerId: 'ph', id: 'gps' });
+    m.dispose();
+  });
+
   it('names the item under a point', () => {
     const { map, proj } = fakeMap();
     const m = new MapMediaMarkers({ map, proj, url });

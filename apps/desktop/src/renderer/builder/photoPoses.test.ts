@@ -45,6 +45,30 @@ describe('createCorrectedPhotosAdapter', () => {
     expect(items[1]?.pos).toBeUndefined();
   });
 
+  it('draws a pinned photo at its pin, not moved by a hand correction', async () => {
+    const ws = createWorkspace();
+    ws.getState().setOrientation({
+      ...emptyOrientation(),
+      photos: { ph: { p: { yawDeg: 40, pitchDeg: 0, rollDeg: 0, offsetM: [1, 0, 0] } } },
+    });
+    const pinned = {
+      ...layer,
+      items: [
+        {
+          id: 'p',
+          src: { path: 'p.jpg' },
+          pos: [1, 1.6, 3],
+          q: [0, 0, 0, 1],
+          pin: { ground: [1, 0, 3], eyeM: 1.6 },
+        },
+      ],
+    } as unknown as typeof layer;
+    await createCorrectedPhotosAdapter(ws).create(pinned, {} as unknown as AdapterContext);
+    const item = (seen.at(-1) as typeof layer).items[0];
+    expect(item?.pos).toEqual([1, 1.6, 3]);
+    expect(item?.q).toEqual([0, 0, 0, 1]);
+  });
+
   it('leaves photos alone on a date that does not move', async () => {
     const ws = createWorkspace();
     await createCorrectedPhotosAdapter(ws).create(layer, {} as unknown as AdapterContext);

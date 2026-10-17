@@ -50,10 +50,10 @@ export function photoCorrection(
 
 /**
  * The photo as every view draws it: its pose with its correction (`photoCorrection`; the same
- * object without one).
+ * object without one). A pinned photo stays at its pin: the pin is its hand placement.
  */
 export function correctedPhoto<T extends PhotoRef>(p: T, c: PhotoCorrection | null | undefined): T {
-  if (isNoCorrection(c)) return p;
+  if (isNoCorrection(c) || p.pin !== undefined) return p;
   return {
     ...p,
     ...(p.pos ? { pos: correctPos(p.pos, c) } : {}),
