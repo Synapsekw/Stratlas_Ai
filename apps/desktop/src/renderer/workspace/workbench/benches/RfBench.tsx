@@ -14,9 +14,8 @@
  * Every value lives in the RF store's working copy (`rf/rfStore.ts`) until Save; a run saves first.
  * The coverage layer and its legend are T10.
  */
-import { BANDS, bandOfName, getEntry } from '@aio/rf';
+import { BANDS, PENETRATION_MARGIN_DB, bandOfName, getEntry } from '@aio/rf';
 import {
-  MARGIN_PRESET_DB,
   type MarginPreset,
   type PropagationModel,
   type RfAntennaSettings,
@@ -88,6 +87,7 @@ import {
   REASSIGN_KEY,
   VALUE_BASIS_KEY,
   VIEW_KEY,
+  assumptionsText,
   refusalText,
   warningText,
 } from '../../../rf/rfText';
@@ -453,9 +453,9 @@ function StudySettings() {
               }}
             >
               {t(MARGIN_KEY[m])}
-              {MARGIN_PRESET_DB[m] > 0 && (
+              {PENETRATION_MARGIN_DB[m] > 0 && (
                 <span className="rf-faint">
-                  {t('rf.study.marginDb', { db: MARGIN_PRESET_DB[m] })}
+                  {t('rf.study.marginDb', { db: PENETRATION_MARGIN_DB[m] })}
                 </span>
               )}
             </button>
@@ -1496,16 +1496,7 @@ function ResultsSection() {
         <p>
           <b>{t('rf.results.indicative')}</b> {t('rf.results.indicativeBody')}
         </p>
-        <p>
-          {t('rf.results.assumptions', {
-            margin: t(MARGIN_KEY[study.marginPreset]),
-            db: MARGIN_PRESET_DB[study.marginPreset],
-            body: study.bodyLossDb,
-            ue: study.ueHeightM,
-            edge: Math.round(study.edgeProbability * 100),
-            sigma: study.shadowSigmaDb,
-          })}
-        </p>
+        <p>{assumptionsText(t, study)}</p>
         {generic > 0 && <p>{t('rf.results.generic', { count: generic })}</p>}
         {run?.usedUnreviewed && <p>{t('rf.results.unreviewed')}</p>}
         {run && run.warnings.length > 0 && (

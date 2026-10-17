@@ -5002,8 +5002,9 @@ export const en = {
   'rf.results.indicative': 'Indicative:',
   'rf.results.indicativeBody':
     'flat ground, no buildings, untuned model, about 8 dB either way. Check against a drive test before relying on it.',
+  // the tab and the legend say it the same way (rfText.ts assumptionsText)
   'rf.results.assumptions':
-    'Assumes {margin} ({db} dB margin), body loss {body} dB, phone at {ue} m, {edge}% cell edge probability ({sigma} dB shadowing).',
+    'Assumes {margin}: {pen} dB penetration, {body} dB body loss, {fade} dB fade margin ({edge}% cell edge, {sigma} dB shadowing), {total} dB in all; phone at {ue} m.',
   'rf.results.generic_one':
     '{count} antenna used the generic 3GPP pattern: no pattern file was found for it.',
   'rf.results.generic_other':
@@ -5127,8 +5128,7 @@ export const en = {
   'rf.legend.showFrom.good': 'Good and better',
   'rf.legend.hatch': 'Hatch the classes',
   'rf.legend.indicativeBody': 'flat ground, no buildings, untuned model, about 8 dB either way.',
-  'rf.legend.assumptions': 'Assumes {margin}, {db} dB margin in all, phone at {ue} m.',
-  // where people are, mid-sentence in the legend (the study select keeps its own labels)
+  // where people are, mid-sentence in the assumptions (the study select keeps its own labels)
   'rf.legend.margin.outdoor': 'outdoor use',
   'rf.legend.margin.inCar': 'use in a car',
   'rf.legend.margin.indoor': 'indoor use',

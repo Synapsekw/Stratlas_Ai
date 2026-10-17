@@ -3,7 +3,8 @@
  * exclusion, default warning, save and reassign code has an `en.ts` key here, so a new code fails
  * the type check until it has one.
  */
-import type { PropagationModel, RfEnvironment, MarginPreset } from '@aio/schema';
+import { margins } from '@aio/rf';
+import type { MarginPreset, PropagationModel, RfEnvironment, RfStudy } from '@aio/schema';
 import { RF_COVERAGE_MIN_PACK } from '@aio/schema';
 import type { MessageKey, Vars } from '@aio/ui';
 import type { DefaultWarning, DefaultWarningCode } from './rfDefaults';
@@ -107,6 +108,41 @@ export const MARGIN_KEY: Readonly<Record<MarginPreset, MessageKey>> = {
   indoor: 'rf.study.margin.indoor',
   'deep-indoor': 'rf.study.margin.deepIndoor',
 };
+
+/** Where people are, as a sentence names it (lowercase, not the study select's labels). */
+export const MARGIN_PHRASE: Readonly<Record<MarginPreset, MessageKey>> = {
+  outdoor: 'rf.legend.margin.outdoor',
+  'in-car': 'rf.legend.margin.inCar',
+  indoor: 'rf.legend.margin.indoor',
+  'deep-indoor': 'rf.legend.margin.deepIndoor',
+};
+
+/** A dB or metre figure to one decimal, without a trailing ".0". */
+const one = (x: number): string => String(Math.round(x * 10) / 10);
+
+/**
+ * The assumptions line, the same in the RF tab and the legend: every part of the margin the
+ * preview and the job take off (`margins`, the job's `budget.margins`) and their total.
+ */
+export function assumptionsText(
+  t: T,
+  study: Pick<
+    RfStudy,
+    'marginPreset' | 'bodyLossDb' | 'edgeProbability' | 'shadowSigmaDb' | 'ueHeightM'
+  >,
+): string {
+  const m = margins(study);
+  return t('rf.results.assumptions', {
+    margin: t(MARGIN_PHRASE[study.marginPreset]),
+    pen: one(m.penetrationDb),
+    body: one(m.bodyLossDb),
+    fade: one(m.fadeDb),
+    edge: Math.round(study.edgeProbability * 100),
+    sigma: one(study.shadowSigmaDb),
+    total: one(m.totalDb),
+    ue: one(study.ueHeightM),
+  });
+}
 
 export const VIEW_KEY: Readonly<Record<RfView, MessageKey>> = {
   rsrp: 'rf.results.view.rsrp',

@@ -2,11 +2,14 @@
 import { DEFAULT_RF_STUDY, type RfStudy } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { margins } from '@aio/rf';
+import { t } from '@aio/ui';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CoverageLegend } from './CoverageLegend';
 import { CLASS_HATCH, RSRP_RAMP, swatchBackground } from './coverageRamp';
 import { loadRfLayer, rfLayer, setRfLayerStorage } from './coverageDisplay';
 import type { RfView } from './rfStore';
+import { assumptionsText } from './rfText';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -93,15 +96,23 @@ describe('the coverage legend', () => {
   it('carries the indicative and assumptions line', () => {
     show('rsrp');
     expect(text('rf-legend-indicative')).toBe(
-      'Indicative: flat ground, no buildings, untuned model, about 8 dB either way. Assumes outdoor use, 13.3 dB margin in all, phone at 1.5 m.',
+      'Indicative: flat ground, no buildings, untuned model, about 8 dB either way. Assumes outdoor use: 0 dB penetration, 3 dB body loss, 10.3 dB fade margin (90% cell edge, 8 dB shadowing), 13.3 dB in all; phone at 1.5 m.',
     );
   });
 
   it('names an indoor preset in lowercase with its whole margin', () => {
     show('rsrp', { ...DEFAULT_RF_STUDY, marginPreset: 'deep-indoor' });
     expect(text('rf-legend-indicative')).toContain(
-      'Assumes deep indoor use, 33.3 dB margin in all, phone at 1.5 m.',
+      'Assumes deep indoor use: 20 dB penetration, 3 dB body loss, 10.3 dB fade margin (90% cell edge, 8 dB shadowing), 33.3 dB in all; phone at 1.5 m.',
     );
+  });
+
+  it('says the assumptions as the RF tab does, with the total margin the preview takes off', () => {
+    const study: RfStudy = { ...DEFAULT_RF_STUDY, marginPreset: 'in-car', bodyLossDb: 1 };
+    show('rsrp', study);
+    const line = assumptionsText(t, study);
+    expect(text('rf-legend-indicative')).toContain(line);
+    expect(line).toContain(`${String(Math.round(margins(study).totalDb * 10) / 10)} dB in all`);
   });
 
   it('sets the layer opacity from its slider (the Display row shows the same state)', () => {

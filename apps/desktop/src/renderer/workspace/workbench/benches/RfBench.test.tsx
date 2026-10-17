@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { AntennasFile, PipelinePackStatus, RfSectorsFile } from '@aio/schema';
 import { RF_COVERAGE_MIN_PACK } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -17,6 +18,7 @@ import {
 } from '../../../rf/__fixtures__/rfData';
 import { processingTools } from '../../../processingTools';
 import { RfLayer } from '../../../rf/RfLayer';
+import { assumptionsText } from '../../../rf/rfText';
 import { resetRf, rfStore } from '../../../rf/rfStore';
 import { threeDates } from '../../__fixtures__/threeDates';
 import { sectionStore } from '../sectionState';
@@ -248,6 +250,14 @@ describe('RfBench', () => {
     expect(rfStore.getState().sectors.antennas[0]?.etiltDeg).toBe(6);
     expect(qi('[data-testid="rf-etilt-number"]')?.value).toBe('6');
     expect(h.sectors?.antennas[0]?.etiltDeg).toBe(4);
+  });
+
+  it('states the assumptions as the legend does (one helper, the same total margin)', async () => {
+    await render();
+    const study = rfStore.getState().sectors.study;
+    const line = assumptionsText(t, study);
+    expect(byTest('rf-indicative')?.textContent).toContain(line);
+    expect(line).toMatch(/^Assumes outdoor use: 0 dB penetration, .* dB in all; phone at /);
   });
 
   it('a close and reopen of the same project does not bring back unsaved edits', async () => {

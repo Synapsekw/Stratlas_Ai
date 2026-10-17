@@ -7,7 +7,7 @@
  * TODO(stage-3 T21): mount it on the stage as one `assignSlots()` item wanting `bl` or `br`
  * (`RfLayer.tsx` holds the mount point). Until stage 3 lands it is not mounted.
  */
-import { OVERLAP_WINDOW_DB, margins } from '@aio/rf';
+import { OVERLAP_WINDOW_DB } from '@aio/rf';
 import type { RfStudy } from '@aio/schema';
 import { Switch, useT, type MessageKey, type Vars } from '@aio/ui';
 import type { ReactNode } from 'react';
@@ -28,7 +28,7 @@ import {
 } from './coverageRamp';
 import { setRfLayer, useRfLayer } from './coverageDisplay';
 import type { RfView } from './rfStore';
-import { VIEW_KEY } from './rfText';
+import { VIEW_KEY, assumptionsText } from './rfText';
 import './rf.css';
 
 type T = (key: MessageKey, vars?: Vars) => string;
@@ -37,13 +37,6 @@ const SHOW_FROM_KEY: Record<ShowFrom, MessageKey> = {
   all: 'rf.legend.showFrom.all',
   fair: 'rf.legend.showFrom.fair',
   good: 'rf.legend.showFrom.good',
-};
-/** Where people are, as the legend's sentence names it (lowercase, not the select's labels). */
-const MARGIN_PHRASE: Record<RfStudy['marginPreset'], MessageKey> = {
-  outdoor: 'rf.legend.margin.outdoor',
-  'in-car': 'rf.legend.margin.inCar',
-  indoor: 'rf.legend.margin.indoor',
-  'deep-indoor': 'rf.legend.margin.deepIndoor',
 };
 const HATCH_KEY: Record<Hatch, MessageKey> = {
   none: 'rf.legend.pattern.none',
@@ -239,12 +232,7 @@ export function CoverageLegend({ view, study, sectors, source }: CoverageLegendP
       <p className="rf-legend-note">{note}</p>
       <p className="rf-legend-note" data-testid="rf-legend-indicative">
         <b>{t('rf.results.indicative')}</b> {t('rf.legend.indicativeBody')}{' '}
-        {t('rf.legend.assumptions', {
-          margin: t(MARGIN_PHRASE[study.marginPreset]),
-          // the whole margin the preview and the job take off: penetration, body loss and fade
-          db: margins(study).totalDb.toFixed(1),
-          ue: study.ueHeightM,
-        })}
+        {assumptionsText(t, study)}
       </p>
     </section>
   );
