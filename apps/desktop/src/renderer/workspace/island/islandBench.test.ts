@@ -55,10 +55,10 @@ describe('islandBench', () => {
     expect(bench.getState().tabs.find((t) => t.id === 'video')?.pinned).toBe(true);
   });
 
-  it('unfolds a folded right panel', () => {
+  it('leaves a folded right panel to the workbench (I-R40)', () => {
     shell.setState({ rightCollapsed: true });
     openBench('volumes', bench);
-    expect(shell.getState().rightCollapsed).toBe(false);
+    expect(shell.getState().rightCollapsed).toBe(true);
     expect(bench.getState().front).toBe('volumes');
   });
 

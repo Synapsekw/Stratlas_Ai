@@ -5,7 +5,6 @@
  */
 import type { StoreApi } from 'zustand/vanilla';
 import { roadStore, type RoadState } from '../../road/store';
-import { shell } from '../../shell';
 import type { TabId } from '../workbench/tabsModel';
 import { workbench, type WorkbenchState } from '../workbench/workbenchStore';
 import type { GroupId, LiveItem } from './islandModel';
@@ -37,11 +36,11 @@ export function liveTab(item: LiveItem): TabId | null {
 }
 
 /**
- * Bring a tab to the front of the right sidebar, opening it (as an unpinned panel, D15) when it
- * is not there, and unfolding the sidebar when it is folded away.
+ * Bring a tab to the front of the workbench, opening it (as an unpinned panel, D15) when it is
+ * not there. The island never unfolds the sidebar itself (ruling I-R40): the workbench decides
+ * where a folded sidebar shows its front tab.
  */
 export function openBench(id: TabId, bench: StoreApi<WorkbenchState> = workbench): void {
-  if (shell.getState().rightCollapsed) shell.getState().setRight(false);
   const b = bench.getState();
   if (b.tabs.some((t) => t.id === id)) b.show(id);
   else b.open(id);

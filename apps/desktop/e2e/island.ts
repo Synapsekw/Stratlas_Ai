@@ -223,7 +223,11 @@ async function unfold(section: Locator): Promise<void> {
 async function unfoldAll(bench: Locator): Promise<void> {
   const folded = bench.locator('.wb-section-head[aria-expanded="false"]');
   // (bounded: a bench has a dozen sections at most)
-  for (let i = 0; i < 20 && (await folded.count()) > 0; i++) await folded.first().click();
+  // by key: a long bench runs on under the agent below it, which would take a click
+  for (let i = 0; i < 20 && (await folded.count()) > 0; i++) {
+    await folded.first().focus();
+    await folded.first().press('Enter');
+  }
   await expect(folded).toHaveCount(0);
 }
 

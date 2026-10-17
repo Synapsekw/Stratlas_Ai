@@ -517,12 +517,12 @@ describe('Island: the groups open their workbench', () => {
     }
   });
 
-  it('unfolds the right panel when it opens a workbench', async () => {
+  it('leaves a folded right panel folded: the workbench decides where it shows (I-R40)', async () => {
     shell.setState({ rightCollapsed: true });
     await render();
     openTools();
     act(() => tab('Display')?.click());
-    expect(shell.getState().rightCollapsed).toBe(false);
+    expect(shell.getState().rightCollapsed).toBe(true);
     expect(front()).toBe('display');
   });
 
