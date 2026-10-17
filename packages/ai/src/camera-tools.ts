@@ -6,9 +6,9 @@
  * person's terms (place, easting and northing, height) and can be undone.
  */
 import { fitDistance, headingDeg, isEngineStage } from '@aio/engine';
-import type { Issue, Vec3 } from '@aio/schema';
+import { shiftLocal, type Issue, type Vec3 } from '@aio/schema';
 import { Frustum, Matrix4, Quaternion, Vector3 } from 'three';
-import { assetUrl } from '@aio/workspace';
+import { assetUrl, dateShiftOf } from '@aio/workspace';
 import { parseFlight } from './geometry';
 import {
   boxCentre,
@@ -366,20 +366,26 @@ function moved(
   return arrived(ctx, label, pose, before, extra);
 }
 
-/** A clip's place sized by its flight path (read from its pose file). */
+/**
+ * A clip's place sized by its flight path (read from its pose file), where the path is drawn: the
+ * clip's own position offset, then its date's line-up.
+ */
 async function clipBox(ctx: RendererToolContext, place: Place): Promise<Place> {
   if (place.kind !== 'clip' || place.box || !place.layer) return place;
-  const layer = project(ctx).manifest.layers.find((l) => l.id === place.layer);
+  const m = project(ctx).manifest;
+  const layer = m.layers.find((l) => l.id === place.layer);
   if (layer?.kind !== 'video') return place;
   try {
     const flight = parseFlight(await ctx.fetchJson(assetUrl(project(ctx).id, layer.flight.src)));
     if (!flight) return place;
+    const off = shiftLocal(layer.positionOffsetM ?? [0, 0, 0], dateShiftOf(m, layer.id));
     const min: Vec3 = [Infinity, Infinity, Infinity];
     const max: Vec3 = [-Infinity, -Infinity, -Infinity];
     for (const s of flight.samples) {
       for (let i = 0; i < 3; i++) {
-        min[i] = Math.min(min[i] ?? 0, s.pos[i] ?? 0);
-        max[i] = Math.max(max[i] ?? 0, s.pos[i] ?? 0);
+        const v = (s.pos[i] ?? 0) + (off[i] ?? 0);
+        min[i] = Math.min(min[i] ?? 0, v);
+        max[i] = Math.max(max[i] ?? 0, v);
       }
     }
     const box = { min, max };
