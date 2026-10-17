@@ -45,6 +45,38 @@ describe('planAlign', () => {
     expect(planAlign([src('a', [0, 299, 0])], target, null).shift[1]).toBe(0);
   });
 
+  it('compares a lined-up photo set where it is drawn: already in place stays in place', () => {
+    const m = {
+      captures: [
+        {
+          id: 'd2',
+          label: 'Second',
+          date: '2026-02-10',
+          lineUp: { eastM: 2, northM: 1, with: 'd1', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: [
+        {
+          kind: 'photos',
+          id: 'ph',
+          name: 'Photos',
+          visible: true,
+          capture: 'd2',
+          items: [
+            { id: 'a', src: { path: 'a.jpg' }, pos: [-3, 40, 2] },
+            { id: 'b', src: { path: 'b.jpg' }, pos: [-1, 40, 0] },
+          ],
+        },
+      ],
+    } as unknown as ProjectManifest;
+    const sources = alignSources(m, null, { layerIds: ['ph'] });
+    // drawn 2 m east and 1 m north: the block's centre is on the target's (0, 0)
+    expect(planAlign(sources, target, null).inPlace).toBe(true);
+    // moved onto a target 10 m east: the saved move is the 10 m alone, not the date's shift
+    const east = { min: [0, 0, -10], max: [20, 5, 10] };
+    expect(planAlign(sources, east, null).fixes.ph?.a?.offsetM).toEqual([10, 0, 0]);
+  });
+
   it('a photo or panorama target without a DSM keeps the heights', () => {
     // drone photos at 100 m: their lowest point is no ground to put the source on
     const drone = {
@@ -93,6 +125,7 @@ describe('planAlign', () => {
 
 describe('alignSources', () => {
   const m = {
+    captures: [],
     layers: [
       {
         kind: 'photos',
