@@ -30,6 +30,18 @@ export interface AntennaState {
   hidden: Record<string, true>;
   /** null = automatic (the newest visible cloud). */
   cloudLayer: string | null;
+  /** The AI labelling request waiting for the person's yes (the send preview), if any. */
+  aiPreview: AiPreview | null;
+  /** Why the last AI labelling did not happen, if it did not. */
+  aiNote: string | null;
+  /** Counts the units picked in the 3D view: each pick reveals its row (0: none yet). */
+  reveal: number;
+}
+
+export interface AiPreview {
+  value: Extract<IpcResponse<'ai:antennaLabelPreview'>, { ok: true }>;
+  projectId: string;
+  unitIds: string[];
 }
 
 const initial = (): AntennaState => ({
@@ -45,6 +57,9 @@ const initial = (): AntennaState => ({
   selected: null,
   hidden: {},
   cloudLayer: null,
+  aiPreview: null,
+  aiNote: null,
+  reveal: 0,
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -119,9 +134,12 @@ function onJobs(list: readonly JobRecord[]): void {
   if (!job) return;
   switch (job.status) {
     case 'done': {
-      const { projectId, root } = get();
+      const { projectId, root, file } = get();
       set({ running: false, jobId: null, needsHint: false, message: null });
-      if (projectId && root) void loadAntennas(projectId, root);
+      if (projectId && root)
+        void loadAntennas(projectId, root).then(() => {
+          offerAiLabels(projectId, file?.run.id ?? null);
+        });
       return;
     }
     case 'failed': {
@@ -235,6 +253,11 @@ export function selectAntenna(id: string | null): void {
   set({ selected: id });
 }
 
+/** A unit picked in the 3D view: selected, and its row revealed in the inventory. */
+export function revealAntenna(id: string): void {
+  set({ selected: id, reveal: get().reveal + 1 });
+}
+
 export function toggleAntennaHidden(id: string): void {
   const { hidden } = get();
   if (hidden[id])
@@ -293,6 +316,62 @@ export function applyAiLabels(
     };
     return { ...file, run: { ...file.run, ai }, units };
   });
+}
+
+/** Unwrap a bridge answer to its value, or the text of why not. */
+function unwrap<T extends { ok: boolean }>(
+  r: { ok: true; value: T } | { ok: false; error: string },
+): { ok: true; value: Extract<T, { ok: true }> } | { ok: false; error: string } {
+  if (!r.ok) return { ok: false, error: r.error };
+  if (!r.value.ok) return { ok: false, error: (r.value as { error?: string }).error ?? '' };
+  return { ok: true, value: r.value as Extract<T, { ok: true }> };
+}
+
+const MAX_AI_UNITS = 200;
+
+/**
+ * After a run: when the project has AI labelling on and the file now holds a new run, ask for the
+ * send preview of its unlabelled units. Nothing is sent until the person says yes
+ * (`sendAiLabels`).
+ */
+function offerAiLabels(projectId: string, before: string | null): void {
+  const { file, status } = get();
+  if (get().projectId !== projectId || status !== 'ready' || !file || file.run.id === before)
+    return;
+  if (!getAiLabelPref(projectId)) return;
+  const unitIds = file.units
+    .filter((u) => u.kindBasis !== 'user' && u.status !== 'rejected' && !u.notFoundInLatest)
+    .map((u) => u.id)
+    .slice(0, MAX_AI_UNITS);
+  if (unitIds.length === 0) return;
+  void bridge.call('ai:antennaLabelPreview', { projectId, unitIds }).then((r) => {
+    if (get().projectId !== projectId) return;
+    const v = unwrap(r);
+    if (v.ok) set({ aiPreview: { value: v.value, projectId, unitIds }, aiNote: null });
+    else set({ aiNote: v.error });
+  });
+}
+
+/** The person's yes to the send preview: label the units, with the photo crops when `photos`. */
+export async function sendAiLabels(photos: boolean): Promise<void> {
+  const p = get().aiPreview;
+  set({ aiPreview: null });
+  if (!p) return;
+  const runId = `ai-${String(Date.now())}`;
+  const r = await bridge.call('ai:labelAntennas', {
+    runId,
+    projectId: p.projectId,
+    unitIds: p.unitIds,
+    token: p.value.token,
+    ...(photos ? { photos: true } : {}),
+  });
+  const v = unwrap(r);
+  if (v.ok) await applyAiLabels(v.value, runId, p.projectId);
+  else if (get().projectId === p.projectId) set({ aiNote: v.error });
+}
+
+export function cancelAiLabels(): void {
+  set({ aiPreview: null });
 }
 
 // ---------------------------------------------------------------- AI preference

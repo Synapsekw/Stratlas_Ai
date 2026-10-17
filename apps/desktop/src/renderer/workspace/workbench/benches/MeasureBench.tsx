@@ -75,15 +75,16 @@ import {
   TelecomTools,
   useTelecomUnavailable,
 } from '../../../survey/TelecomTools';
+import { AntennaCsvTool } from '../../../telecom/AntennaCsvTool';
+import { AntennaRunner } from '../../../telecom/AntennaRunner';
+import { AntennaSection, antennaSectionMatches } from '../../../telecom/AntennaSection';
+import { useAntennas } from '../../../telecom/antennaStore';
 import { Tool, useEngineStage } from '../../StageTools';
 import { SectionPanel, toggleMeasure, toggleSection } from '../../tools/measure';
 import { Section } from '../Section';
 import { filterSections, sectionStore, useSections } from '../sectionState';
 import type { TabId } from '../tabsModel';
 import './measureBench.css';
-// telecom (merge 2): the antenna inventory section and its CSV export
-import { AntennaCsvTool } from '../../../telecom/AntennaCsvTool';
-import { AntennaSection } from '../../../telecom/AntennaSection';
 
 const BENCH: TabId = 'measure';
 
@@ -695,7 +696,14 @@ function Catalogue({
   const templatesWhole = !searching || labelMatches(templatesTitle, query);
   const templateHits = bookmarked.filter(({ template: tpl }) => labelMatches(tpl.name, query));
   const templates = !readOnly && (templatesWhole || templateHits.length > 0);
-  const nothing = searching && found?.length === 0 && site.length === 0 && !aids && !templates;
+  const antennas = useAntennas((a) => a.file !== null || a.running);
+  const nothing =
+    searching &&
+    found?.length === 0 &&
+    site.length === 0 &&
+    !aids &&
+    !templates &&
+    !(antennas && antennaSectionMatches(query));
   const label = (id: string) => families.find((f) => f.id === id)?.label ?? id;
   return (
     <div className="meb-cat" data-testid="survey-tools">
@@ -883,8 +891,11 @@ export function MeasureBench() {
       ) : (
         <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />
       )}
-      {/* telecom: the antenna inventory, mounted while the bench shows (its boxes are in 3D) */}
-      <AntennaSection />
+      {/* the antenna inventory; a search shows it only when its title matches */}
+      <AntennaSection query={searching ? query : ''} />
+      {/* TODO(stage 3): mount AntennaRunner once in Stage.tsx so the boxes and the AI preview
+          outlive this bench; until then it lives and dies with it */}
+      <AntennaRunner />
       {/* a search is about the tools: the saved list steps aside until it is cleared */}
       {!searching && <Saved stage={stage} />}
     </div>

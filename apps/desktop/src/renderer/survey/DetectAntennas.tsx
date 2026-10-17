@@ -1,7 +1,8 @@
 /**
  * The "Detect antennas" button in the Measure workbench's Telecom family, with its options (the
- * cloud, AI labelling) and the "click the tower" hint when the tower is not found. The inventory
- * is its own section (`telecom/AntennaSection.tsx`); progress shows in the jobs chip.
+ * cloud, AI labelling), the "click the tower" hint when the tower is not found, and why a run
+ * failed. The inventory is its own section (`telecom/AntennaSection.tsx`);
+ * progress shows in the jobs chip.
  */
 import { getActiveStage, onActiveScene } from '@aio/engine';
 import { Button, IconButton, Popover, t } from '@aio/ui';
@@ -14,7 +15,7 @@ import {
   useSyncExternalStore,
   type ReactElement,
 } from 'react';
-import { useAntennaClouds } from '../telecom/AntennaSection';
+import { useAntennaClouds } from '../telecom/AntennaRunner';
 import { armTowerPick } from '../telecom/antennaScene';
 import {
   cancelHint,

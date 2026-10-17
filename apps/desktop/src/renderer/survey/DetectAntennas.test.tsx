@@ -6,21 +6,12 @@ import { AntennasFile } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AntennaCsvTool } from '../telecom/AntennaCsvTool';
-import { AntennaSection } from '../telecom/AntennaSection';
+import { AntennaRunner } from '../telecom/AntennaRunner';
 import { AntennaSendPreview } from '../telecom/AntennaSendPreview';
-import { antennaStore, setAiLabelPref } from '../telecom/antennaStore';
-import { CSV_COLUMNS } from '../telecom/antennaCsv';
-import { sectionStore } from '../workspace/workbench/sectionState';
+import { antennaStore } from '../telecom/antennaStore';
 import { DetectAntennas } from './DetectAntennas';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-// the CSV tool's panel places itself on the stage
-globalThis.ResizeObserver = class {
-  observe = () => undefined;
-  unobserve = () => undefined;
-  disconnect = () => undefined;
-};
 
 const h = vi.hoisted(
   (): {
@@ -90,6 +81,7 @@ vi.mock('@aio/engine', () => {
 });
 
 vi.mock('../telecom/antennaScene', () => ({
+  antennaShift: () => null,
   attachAntennaLayer: (_stage: unknown, _frame: unknown, opts: { onPick(id: string): void }) => {
     h.layerPick = (id) => {
       opts.onPick(id);
@@ -134,12 +126,11 @@ const flush = () =>
     await Promise.resolve();
     await Promise.resolve();
   });
-/** The button in the Telecom family, the inventory section and the CSV tool, as the bench has them. */
+/** The button, with the runner that reads the inventory in (the bench mounts both). */
 const Bench = () => (
   <>
     <DetectAntennas />
-    <AntennaSection />
-    <AntennaCsvTool />
+    <AntennaRunner />
   </>
 );
 async function mount() {
@@ -149,7 +140,6 @@ async function mount() {
   await flush();
 }
 const q = (sel: string) => host.querySelector<HTMLElement>(sel);
-const text = () => document.body.textContent;
 const channels = (name: string) => h.calls.filter(([c]) => c === name);
 
 beforeEach(() => {
@@ -165,7 +155,6 @@ beforeEach(() => {
   h.layerPick = null;
   localStorage.clear();
   bridgeCall.mockClear();
-  sectionStore.setState({ byBench: {} });
   antennaStore.setState({
     projectId: null,
     root: null,
@@ -179,6 +168,9 @@ beforeEach(() => {
     selected: null,
     hidden: {},
     cloudLayer: null,
+    aiPreview: null,
+    aiNote: null,
+    reveal: 0,
   });
 });
 afterEach(() => {
@@ -188,23 +180,18 @@ afterEach(() => {
   host.remove();
 });
 
-describe('antenna detection in the Measure workbench', () => {
+describe('DetectAntennas', () => {
+  it('reads the inventory in and shows the button', async () => {
+    await mount();
+    expect(channels('telecom:readAntennas')).toHaveLength(1);
+    expect(q('[data-testid="detect-antennas"]')).not.toBeNull();
+  });
+
   it('is hidden without a point cloud', async () => {
     h.layers = [mesh];
     await mount();
     expect(host.innerHTML).toBe('');
     expect(channels('telecom:readAntennas')).toHaveLength(0);
-  });
-
-  it('reads the inventory on mount and shows it as an open section', async () => {
-    await mount();
-    const head = q('[data-testid="wb-section-telecom-antennas"] .wb-section-head')!;
-    expect(head.getAttribute('aria-expanded')).toBe('true');
-    expect(head.textContent).toContain('Antenna inventory');
-    expect(channels('telecom:readAntennas')).toHaveLength(1);
-    expect(antennaStore.getState().root).toBe('C:/proj');
-    expect(q('[data-testid="antenna-panel"]')).not.toBeNull();
-    expect(host.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(3);
   });
 
   it('is disabled with a reason while running and while the cloud loads', async () => {
@@ -256,107 +243,6 @@ describe('antenna detection in the Measure workbench', () => {
     expect(antennaStore.getState().needsHint).toBe(false);
   });
 
-  /** A finished run: the store runs, then holds a new file. */
-  async function finishRun() {
-    setAiLabelPref('p1', true);
-    await mount();
-    act(() => {
-      antennaStore.setState({ running: true });
-    });
-    const next = sample();
-    act(() => {
-      antennaStore.setState({
-        running: false,
-        file: { ...next, run: { ...next.run, id: 'run-b' } },
-        status: 'ready',
-      });
-    });
-    await flush();
-  }
-
-  it('shows the AI refusal and keeps the inventory', async () => {
-    h.replies['ai:antennaLabelPreview'] = { ok: true, value: { ok: false, error: 'offline' } };
-    await finishRun();
-    expect(channels('ai:antennaLabelPreview')).toHaveLength(1);
-    expect(text()).toContain('AI labelling skipped: offline');
-    expect(host.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(3);
-    expect(channels('ai:labelAntennas')).toHaveLength(0);
-  });
-
-  it('previews, sends and applies AI labels', async () => {
-    h.replies['ai:antennaLabelPreview'] = {
-      ok: true,
-      value: {
-        ok: true,
-        provider: 'anthropic',
-        model: 'm1',
-        cloud: true,
-        photosAllowed: true,
-        crops: [{ unitId: 'ant-o1', path: 'telecom/crops/ant-o1.jpg' }],
-        missing: [],
-        estimate: { images: 1, inputTokens: 900, costUsd: 0.02 },
-        token: 'tok-1',
-      },
-    };
-    h.replies['ai:labelAntennas'] = {
-      ok: true,
-      value: {
-        ok: true,
-        provider: 'anthropic',
-        model: 'm1',
-        promptVersion: 'v1',
-        labels: [{ unitId: 'ant-o1', label: 'radio-unit', reason: 'boxy' }],
-        inputTokens: 900,
-        outputTokens: 20,
-        costUsd: 0.02,
-        warnings: [],
-      },
-    };
-    await finishRun();
-    const send = document.querySelector<HTMLElement>('[data-testid="antenna-send"]')!;
-    expect(send.getAttribute('aria-disabled')).toBeNull();
-    act(() => {
-      send.click();
-    });
-    await flush();
-    const label = channels('ai:labelAntennas');
-    expect(label).toHaveLength(1);
-    expect(label[0]![1]).toMatchObject({ projectId: 'p1', token: 'tok-1', photos: true });
-    expect(String(label[0]![1].runId)).toMatch(/^ai-/);
-    const unit = antennaStore.getState().file!.units.find((u) => u.id === 'ant-o1')!;
-    expect(unit.kindBasis).toBe('ai');
-    expect(unit.ai?.provider).toBe('anthropic');
-    expect(channels('telecom:writeAntennas').length).toBeGreaterThan(0);
-    expect(document.querySelector('[data-testid="antenna-send"]')).toBeNull();
-  });
-
-  it('selects a picked unit and scrolls its row into view', async () => {
-    const scroll = vi.fn();
-    HTMLElement.prototype.scrollIntoView = scroll;
-    await mount();
-    act(() => {
-      h.layerPick!('ant-d1');
-    });
-    expect(antennaStore.getState().selected).toBe('ant-d1');
-    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
-  });
-
-  it('opens a folded section for a unit picked in 3D', async () => {
-    const scroll = vi.fn();
-    HTMLElement.prototype.scrollIntoView = scroll;
-    await mount();
-    act(() => {
-      q('[data-testid="wb-section-telecom-antennas"] .wb-section-head')!.click();
-    });
-    const head = q('[data-testid="wb-section-telecom-antennas"] .wb-section-head')!;
-    expect(head.getAttribute('aria-expanded')).toBe('false');
-    act(() => {
-      h.layerPick!('ant-d1');
-    });
-    expect(head.getAttribute('aria-expanded')).toBe('true');
-    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
-  });
-
   it('shows why a run failed next to the button, with no inventory yet', async () => {
     h.disk = null;
     await mount();
@@ -365,29 +251,6 @@ describe('antenna detection in the Measure workbench', () => {
       antennaStore.setState({ message: 'No tower found.' });
     });
     expect(q('[data-testid="antenna-message"]')?.textContent).toBe('No tower found.');
-  });
-
-  it('has no CSV export before there is an inventory', async () => {
-    h.disk = null;
-    await mount();
-    expect(q('[aria-label="Export antenna inventory (CSV)"]')).toBeNull();
-  });
-
-  it('exports the CSV through the save dialog', async () => {
-    h.replies['dialog:saveFile'] = { ok: true, value: { path: 'C:/out/antenna-inventory.csv' } };
-    await mount();
-    act(() => {
-      q('[aria-label="Export antenna inventory (CSV)"]')!.click();
-    });
-    act(() => {
-      q('[data-testid="antenna-csv"]')!.click();
-    });
-    await flush();
-    const save = channels('dialog:saveFile');
-    expect(save).toHaveLength(1);
-    expect(save[0]![1]).toMatchObject({ defaultName: 'antenna-inventory.csv' });
-    expect(String(save[0]![1].data).startsWith(CSV_COLUMNS.join(','))).toBe(true);
-    expect(text()).toContain('Exported to C:/out/antenna-inventory.csv.');
   });
 });
 

@@ -8,7 +8,7 @@ import { useState, type ReactElement } from 'react';
 import { bridge } from '../shell';
 import { PopTool } from '../workspace/StageTools';
 import { antennasToCsv } from './antennaCsv';
-import { useAntennaClouds } from './AntennaSection';
+import { useAntennaClouds } from './AntennaRunner';
 import { useAntennas } from './antennaStore';
 
 export function AntennaCsvTool(): ReactElement | null {
@@ -31,7 +31,7 @@ export function AntennaCsvTool(): ReactElement | null {
 
   return (
     <PopTool
-      icon="download"
+      icon="report"
       label={t('telecom.antennas.csv.tool')}
       onOpenChange={() => {
         setNote(null);
