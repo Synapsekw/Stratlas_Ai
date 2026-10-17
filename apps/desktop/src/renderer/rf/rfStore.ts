@@ -20,6 +20,7 @@ import {
   RF_SECTORS_SCHEMA,
   type AntennasFile,
   type CatalogueOrigin,
+  type JobRecord,
   type PipelinePackStatus,
   type RfAntennaSettings,
   type RfCatalogueEntry,
@@ -29,7 +30,8 @@ import {
   type RfStudy,
 } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
-import { bridge } from '../shell';
+import { bridge, jobs } from '../shell';
+import { applyCellRows, type CellRow } from './cellCsv';
 import {
   checkRun,
   deriveRows,
@@ -49,6 +51,18 @@ export type {
   DsmGroundAt,
   UnitHeight,
 } from './rfModel';
+
+/** The coverage view the Results section shows and the layer draws (D18). */
+export type RfView = 'rsrp' | 'bestServer' | 'overlap';
+
+/** Area of one RSRP class in the selected run, worked out where the grid is read (T10). */
+export interface RfClassStat {
+  /** Class key: excellent, good, fair, poor or none. */
+  cls: 'excellent' | 'good' | 'fair' | 'poor' | 'none';
+  areaM2: number;
+  /** Share of the study area, 0 to 1. */
+  share: number;
+}
 
 export interface PreviewState {
   status: 'idle' | 'computing' | 'ready' | 'error';
@@ -85,6 +99,16 @@ export interface RfState {
   /** The installed pipeline pack, as the renderer's processing tools store knows it. */
   pack: Pick<PipelinePackStatus, 'state' | 'version'> | null;
   preview: PreviewState;
+  /** Why the last coverage job failed or did not start (main's or the job's text); null when fine. */
+  runError: string | null;
+  /** The run the last job this tab started writes, until it ends. */
+  pendingRunId: string | null;
+  /** The view the Results section chose; the coverage layer (T10) draws it. */
+  view: RfView;
+  /** Per-class areas of the selected run, set by whoever reads its grid (T10); null when unknown. */
+  classStats: RfClassStat[] | null;
+  /** The unit the tab shows in its Sector section (an Edit RF action sets it); null: the first. */
+  focusUnitId: string | null;
   // ---- derived (recomputed after every change)
   rows: RfUnitRow[];
   proposed: ProposedSector[];
@@ -131,6 +155,11 @@ const base = (): Base => ({
   jobId: null,
   pack: null,
   preview: idlePreview(),
+  runError: null,
+  pendingRunId: null,
+  view: 'rsrp',
+  classStats: null,
+  focusUnitId: null,
 });
 
 /** The inputs of `check` and the rows, worked out again from the base state. */
@@ -250,7 +279,7 @@ export async function refreshRuns(): Promise<void> {
 
 /** Select a run and read its `run.json` again (it may have been written since the listing). */
 export async function selectRun(runId: string | null): Promise<void> {
-  set({ selectedRunId: runId });
+  set({ selectedRunId: runId, classStats: null });
   const projectId = get().projectId;
   if (!projectId || runId === null) return;
   const r = await bridge.call('rf:readRun', { projectId, runId: runId });
@@ -307,6 +336,15 @@ function edit(fn: (f: RfSectorsFile) => RfSectorsFile): void {
   set({ sectors: fn(get().sectors), dirty: true });
 }
 
+/**
+ * Apply the reviewed CSV rows (`cellCsv.ts`) to the working copy; nothing is written until
+ * `saveRf()`. Read-only projects ignore it.
+ */
+export function applyCellImport(rows: readonly CellRow[]): void {
+  const catalogue = get().catalogue.map((c) => c.entry);
+  edit((f) => applyCellRows(f, rows, catalogue));
+}
+
 const settingsDefaults = (antennaId: string): RfAntennaSettings => ({
   antennaId,
   active: true,
@@ -325,6 +363,20 @@ export function patchSettings(
       : [...f.antennas, { ...settingsDefaults(antennaId), ...patch }];
     return { ...f, antennas };
   });
+}
+
+/** Clear one optional setting of a unit (back to the job's default): the equipment or the e-tilt. */
+export function clearSetting(antennaId: string, key: 'equipment' | 'etiltDeg'): void {
+  edit((f) => ({
+    ...f,
+    antennas: f.antennas.map((a) => {
+      if (a.antennaId !== antennaId) return a;
+      const rest = { ...a };
+      if (key === 'equipment') delete rest.equipment;
+      else delete rest.etiltDeg;
+      return rest;
+    }),
+  }));
 }
 
 /** The person's height above ground; undefined clears it (back to measured or estimated). */
@@ -491,4 +543,166 @@ export function saveRf(): Promise<SaveResult> {
   const next = queue.then(run, run);
   queue = next.catch(() => null);
   return next;
+}
+
+// ---------------------------------------------------------------- view (T9 tab, T10 layer)
+
+export function setView(view: RfView): void {
+  set({ view });
+}
+
+/** The selected run's per-class areas, from whoever reads its grid (T10); null clears them. */
+export function setClassStats(stats: RfClassStat[] | null): void {
+  set({ classStats: stats });
+}
+
+/** Show this unit in the tab's Sector section (an Edit RF action); null: the first unit. */
+export function focusRfUnit(antennaId: string | null): void {
+  set({ focusUnitId: antennaId });
+}
+
+// ---------------------------------------------------------------- catalogue
+
+/** Read the catalogue again (after an import). */
+export async function refreshCatalogue(): Promise<void> {
+  const projectId = get().projectId;
+  const r = await bridge.call('rf:listCatalogue', projectId ? { projectId } : {});
+  if (get().projectId !== projectId || !r.ok || !r.value.ok) return;
+  set({ catalogue: r.value.entries, catalogueWarnings: r.value.warnings });
+}
+
+export type ImportResult =
+  | { ok: true; added: number; warnings: string[] }
+  | { ok: false; cancelled: true }
+  | { ok: false; cancelled: false; message: string };
+
+/**
+ * Import into the person's catalogue through the open dialog: an MSI / Planet pattern attached to
+ * one antenna port, or a catalogue file. The dialog's title and filter names are the caller's.
+ */
+export async function importCatalogue(
+  format: 'msi' | 'catalogue',
+  dialog: { title: string; filterName: string },
+  attach?: { entryId: string; portId: string },
+): Promise<ImportResult> {
+  const pick = await bridge.call('dialog:openFile', {
+    title: dialog.title,
+    filters: [
+      {
+        name: dialog.filterName,
+        extensions: format === 'msi' ? ['msi', 'pln', 'txt'] : ['json'],
+      },
+    ],
+  });
+  if (!pick.ok) return { ok: false, cancelled: false, message: pick.error };
+  const path = pick.value.path;
+  if (path === null) return { ok: false, cancelled: true };
+  const r = await bridge.call('rf:importCatalogue', {
+    path,
+    format,
+    ...(attach ? { attach } : {}),
+  });
+  if (!r.ok || !r.value.ok) {
+    const message = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
+    return { ok: false, cancelled: false, message };
+  }
+  await refreshCatalogue();
+  return { ok: true, added: r.value.entries.length, warnings: r.value.warnings };
+}
+
+// ---------------------------------------------------------------- the coverage job
+
+export type ExportFormat = 'geotiff' | 'geojson' | 'csv';
+
+/** Export the selected run through the save dialog; answers the path, null when cancelled, or why not. */
+export async function exportRun(
+  format: ExportFormat,
+): Promise<{ ok: true; path: string | null } | { ok: false; message: string }> {
+  const { projectId, selectedRunId, view } = get();
+  if (!projectId || !selectedRunId) return { ok: false, message: '' };
+  const r = await bridge.call('rf:export', {
+    projectId,
+    runId: selectedRunId,
+    format,
+    ...(format === 'csv' ? {} : { view }),
+  });
+  if (!r.ok || !r.value.ok) {
+    return { ok: false, message: !r.ok ? r.error : r.value.ok ? '' : r.value.error };
+  }
+  return { ok: true, path: r.value.path };
+}
+
+let watchingJobs = false;
+function watchJobs(): void {
+  // tests of other modules mock the shell with a bridge only
+  const store: Partial<typeof jobs> = jobs;
+  if (watchingJobs || !store.subscribe) return;
+  watchingJobs = true;
+  store.subscribe((s) => {
+    onJobs(s.jobs);
+  });
+}
+
+function onJobs(list: readonly JobRecord[]): void {
+  const { jobId, running, pendingRunId } = get();
+  if (!jobId || !running) return;
+  const job = list.find((j) => j.id === jobId);
+  if (!job) return;
+  if (job.status === 'done') {
+    set({ running: false, jobId: null, pendingRunId: null, runError: null });
+    void refreshRuns().then(() => {
+      if (pendingRunId && get().runs.some((r) => r.runId === pendingRunId))
+        void selectRun(pendingRunId);
+    });
+  } else if (job.status === 'failed') {
+    set({ running: false, jobId: null, pendingRunId: null, runError: job.error ?? '' });
+  } else if (job.status === 'cancelled' || job.status === 'interrupted') {
+    set({ running: false, jobId: null, pendingRunId: null });
+  }
+}
+
+const newRunId = (): string =>
+  `rf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+export type StartResult =
+  | { ok: true; jobId: string; runId: string }
+  /** The run check refused (see `check.refusals`), or a save before the start failed. */
+  | { ok: false; code: 'refused' | 'not-saved' }
+  /** Main refused the job; `message` is its text (also in `runError`). */
+  | { ok: false; code: 'failed'; message: string };
+
+/**
+ * Start `rf.coverage` through the job runner (`jobs:start`), as the antenna detection does. A
+ * working copy with edits is saved first, because the job reads `rf/sectors.json`. A run covers
+ * every eligible sector (sector subsets are deferred). `root` is the project folder.
+ */
+export async function startCoverage(root: string): Promise<StartResult> {
+  if (get().check.refusals.length > 0) return { ok: false, code: 'refused' };
+  const projectId = get().projectId;
+  if (get().dirty) {
+    const saved = await saveRf();
+    if (!saved.ok) return { ok: false, code: 'not-saved' };
+  }
+  if (get().projectId !== projectId || get().check.refusals.length > 0)
+    return { ok: false, code: 'refused' };
+  watchJobs();
+  const runId = newRunId();
+  set({ running: true, pendingRunId: runId, runError: null });
+  const r = await bridge.call('jobs:start', {
+    pipeline: 'rf.coverage',
+    project: root,
+    params: { runId, ...(get().includeUnreviewed ? { includeUnreviewed: true } : {}) },
+  });
+  if (get().projectId !== projectId) return { ok: false, code: 'refused' };
+  if (!r.ok || !r.value.ok) {
+    const message = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
+    set({ running: false, jobId: null, pendingRunId: null, runError: message });
+    return { ok: false, code: 'failed', message };
+  }
+  const jobId = r.value.job.id;
+  set({ jobId });
+  // the job may already have ended by the time the answer arrives
+  const store: Partial<typeof jobs> = jobs;
+  if (store.getState) onJobs(store.getState().jobs);
+  return { ok: true, jobId, runId };
 }

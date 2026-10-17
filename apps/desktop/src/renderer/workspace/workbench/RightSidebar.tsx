@@ -58,6 +58,8 @@ import { VideoBench } from './benches/VideoBench';
 // Agent pane: the agent below the bench, maximised, minimised or off (Task 18)
 import { AgentPane } from '../../agent/AgentPane';
 import { agentPane } from '../../agent/agentPaneStore';
+// RF coverage bench (rf-coverage T9)
+import { RfBench } from './benches/RfBench';
 import './workbench.css';
 
 /** The strip the right panel folds to: its border and the 12 px tab (`--ph-w`), as before. */
@@ -268,6 +270,14 @@ export function FrontBody({ front, road }: { front: TabId; road: boolean }) {
     );
   if (front === 'qa') return <QaSide />;
   if (front === 'overlays') return <OverlaysPanel />;
+  // RF coverage bench (rf-coverage T9): the Site, Sector and Results sections (spec D21)
+  if (front === 'rf')
+    return (
+      <>
+        <BenchHead bench={front} />
+        <RfBench />
+      </>
+    );
   return lastBody(front);
 }
 

@@ -21,6 +21,8 @@ export const TAB_IDS = [
   // Road, Volumes and environment benches
   'environment',
   'cutaway',
+  // RF coverage bench (rf-coverage T9): a panel tab, at least 470 px wide (view.ts, D20)
+  'rf',
 ] as const;
 
 export type TabId = (typeof TAB_IDS)[number];

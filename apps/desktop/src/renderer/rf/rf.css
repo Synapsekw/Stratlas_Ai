@@ -1,0 +1,313 @@
+/* RF coverage: the RF workbench tab (benches/RfBench.tsx), the catalogue picker and the CSV
+   import (spec D21, D22). Foundation tokens and logical properties only; the dialogs use the app's
+   dialog frame (.dlg, package.css) and the segmented look is the foundation's .seg. */
+
+/* ----------------------------------------------------------------------- the tab */
+.rf-bench {
+  gap: var(--sp-3);
+}
+.rf-sec,
+.rf-group {
+  display: grid;
+  gap: var(--sp-3);
+  padding-block: var(--sp-2) var(--sp-4);
+  padding-inline: var(--sp-4);
+  min-inline-size: 0;
+}
+.rf-group {
+  padding: 0;
+}
+.rf-sub {
+  margin: var(--sp-3) 0 0;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* one labelled line: name, value, basis; the hint sits under the value */
+.rf-field {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-4);
+  min-block-size: 28px;
+  font-size: var(--t-12);
+}
+.rf-k {
+  color: var(--fg-3);
+}
+.rf-v {
+  min-inline-size: 0;
+  color: var(--fg-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rf-v > select.input,
+.rf-v > .seg {
+  inline-size: 100%;
+}
+.rf-b {
+  justify-self: end;
+}
+.rf-hint {
+  grid-column: 2 / 4;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.rf-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-inline-size: 0;
+}
+.rf-num {
+  inline-size: 84px;
+  text-align: end;
+}
+.rf-pick {
+  flex: 1;
+  min-inline-size: 0;
+  inline-size: 100%;
+  justify-content: flex-start;
+}
+.rf-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.rf-slider input[type='range'] {
+  inline-size: 100%;
+  accent-color: var(--acc);
+}
+.seg.rf-seg-full {
+  display: flex;
+}
+.seg.rf-seg-full button {
+  flex: 1;
+  justify-content: center;
+  white-space: nowrap;
+}
+.rf-faint {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.rf-off {
+  color: var(--fg-3);
+}
+.rf-note {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+  line-height: 1.5;
+}
+.rf-err {
+  color: var(--danger-ink);
+}
+.rf-warn-ink {
+  color: var(--warn-ink);
+}
+.rf-actions,
+.rf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.rf-defaults {
+  margin: 0;
+  padding-inline-start: var(--sp-6);
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+
+/* unsaved edits and save warnings */
+.rf-savebar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--acc-a20);
+  border-radius: var(--r-4);
+  background: var(--acc-a12);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.rf-savebar > span {
+  flex: 1;
+}
+.rf-warnbox {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px dashed var(--warn-line);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.rf-warnbox ul {
+  margin: var(--sp-2) 0 0;
+  padding-inline-start: var(--sp-6);
+}
+
+/* the sector list */
+.rf-sector {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.rf-sector > .rf-note {
+  grid-column: 1 / -1;
+}
+.rf-sector-name {
+  min-inline-size: 0;
+}
+.rf-sector-meta {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  white-space: nowrap;
+}
+.rf-orphan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--t-12);
+}
+
+/* results */
+.rf-classes {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+}
+.rf-classes th,
+.rf-classes td {
+  padding-block: var(--sp-2);
+  padding-inline: var(--sp-3);
+  border-block-end: 1px solid var(--line-soft);
+  text-align: start;
+}
+.rf-classes thead th {
+  color: var(--fg-3);
+  font-weight: 500;
+  font-size: var(--t-11);
+}
+.rf-classes tbody th {
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.rf-indicative {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-4);
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+.rf-indicative p,
+.rf-indicative ul {
+  margin: 0;
+}
+.rf-indicative ul {
+  padding-inline-start: var(--sp-6);
+}
+.rf-indicative b {
+  color: var(--fg-0);
+  font-weight: 500;
+}
+
+/* ----------------------------------------------------------------------- the picker */
+.rf-cat-body {
+  gap: var(--sp-4);
+}
+.rf-cat-search {
+  inline-size: 100%;
+}
+.rf-cat-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.rf-cat-filters .caps {
+  color: var(--fg-3);
+}
+.rf-cat-list {
+  display: grid;
+  gap: var(--sp-1);
+  min-block-size: 0;
+}
+.rf-cat-row {
+  inline-size: 100%;
+  text-align: start;
+}
+.rf-cat-label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-inline-size: 0;
+}
+.rf-cat-name {
+  display: grid;
+  flex: 1;
+  min-inline-size: 0;
+}
+.rf-cat-name b {
+  color: var(--fg-0);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rf-cat-name span {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.rf-cat-bands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}
+.rf-cat-foot {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+
+/* ----------------------------------------------------------------------- the CSV import */
+.rf-csv-table-wrap {
+  overflow: auto;
+  max-block-size: 50vh;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+}
+.rf-csv-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+}
+.rf-csv-table th,
+.rf-csv-table td {
+  padding-block: var(--sp-2);
+  padding-inline: var(--sp-3);
+  border-block-end: 1px solid var(--line-soft);
+  text-align: start;
+  white-space: nowrap;
+}
+.rf-csv-table thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--bg-1);
+  color: var(--fg-3);
+  font-weight: 500;
+}
+.rf-csv-table tr[data-matched='false'] td {
+  color: var(--fg-3);
+}
+.rf-csv-problems {
+  color: var(--warn-ink);
+  white-space: normal;
+}
