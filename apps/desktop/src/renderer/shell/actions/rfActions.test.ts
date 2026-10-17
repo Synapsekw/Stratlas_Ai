@@ -32,7 +32,7 @@ describe('rf coverage action', () => {
   it('is offered as Coverage... once the project has antennas', () => {
     rfStore.setState({ antennas: { antennas: [] } as never });
     const item = menu();
-    expect(item?.label).toBe('Coverage…');
+    expect(item?.label).toBe(t('actions.rf.coverage'));
     expect(item?.disabled).toBe(false);
   });
 
