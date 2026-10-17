@@ -34,6 +34,7 @@ vi.mock('../compare', () => ({
 // the shell under test, not what each tab shows
 vi.mock('../../shell/RightHeader', () => ({ RightHeader: () => null }));
 vi.mock('./benches/MeasureBench', () => ({ MeasureBench: () => <p>measure bench</p> }));
+vi.mock('./benches/RfBench', () => ({ RfBench: () => <p>rf bench</p> }));
 vi.mock('../../agent/AgentHost', () => ({ AgentHost: () => <p>agent</p> }));
 vi.mock('../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card</p> }));
 vi.mock('../SelectionCard', () => ({ SelectionCard: () => <p>selection</p> }));
@@ -249,6 +250,27 @@ describe('RightSidebar', () => {
     });
     expect(handle()?.getAttribute('aria-valuenow')).toBe('360');
     // the person's width was never overwritten
+    expect(splitPrefs.getState().byId['scene.right']?.size).toBeUndefined();
+  });
+
+  it('opens at least 470 px wide while the RF tab is in front, then returns', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains('ws') ? new DOMRect(0, 0, 1000, 700) : new DOMRect();
+    });
+    render();
+    expect(handle()?.getAttribute('aria-valuenow')).toBe('360');
+    act(() => {
+      workbench.getState().open('rf');
+    });
+    expect(document.body.textContent).toContain('rf bench');
+    expect(ws()?.style.getPropertyValue('--split-min')).toBe('470px');
+    expect(handle()?.getAttribute('aria-valuenow')).toBe('470');
+    act(() => {
+      workbench.getState().show('selection');
+    });
+    expect(handle()?.getAttribute('aria-valuenow')).toBe('360');
     expect(splitPrefs.getState().byId['scene.right']?.size).toBeUndefined();
   });
 

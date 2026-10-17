@@ -10,9 +10,8 @@ import { focusRfUnit, rfStore, startCoverage, type StartResult } from './rfStore
 /** Bring the RF tab to the front (opening it when it is not there), showing `antennaId` if given. */
 export function openRfTab(antennaId?: string, bench: StoreApi<WorkbenchState> = workbench): void {
   if (antennaId !== undefined) focusRfUnit(antennaId);
-  const wb = bench.getState();
-  if (wb.tabs.some((t) => t.id === 'rf')) wb.show('rf');
-  else wb.open('rf');
+  // open() never duplicates a tab and brings it to the front (show() alone adds no tab)
+  bench.getState().open('rf');
 }
 
 /**

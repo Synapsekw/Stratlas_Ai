@@ -31,6 +31,7 @@ const h = vi.hoisted(() => ({
   calls: [] as Call[],
   writeWarnings: undefined as string[] | undefined,
   pack: null as Pick<PipelinePackStatus, 'state' | 'version'> | null,
+  loads: 0,
 }));
 
 vi.mock('../../../shell', async (importOriginal) => ({
@@ -102,10 +103,18 @@ vi.mock('../../../shell', async (importOriginal) => ({
 
 vi.mock('../../../processingTools', async () => {
   const { createStore, useStore } = await import('zustand');
-  const store = createStore(() => ({ status: h.pack, load: () => Promise.resolve() }));
+  const store = createStore(() => ({
+    status: h.pack,
+    error: null as string | null,
+    load: () => {
+      h.loads++;
+      return Promise.resolve();
+    },
+  }));
   return {
     processingTools: store,
-    useProcessingTools: <T,>(sel: (s: { status: typeof h.pack }) => T) => useStore(store, sel),
+    useProcessingTools: <T,>(sel: (s: { status: typeof h.pack; error: string | null }) => T) =>
+      useStore(store, sel),
   };
 });
 
@@ -118,7 +127,7 @@ const byTest = (id: string) => q(`[data-testid="${id}"]`);
 
 /** The mocked processing tools store holds only the pack's state and version. */
 const setPack = (pack: typeof h.pack) => {
-  processingTools.setState({ status: pack as PipelinePackStatus | null });
+  processingTools.setState({ status: pack as PipelinePackStatus | null, error: null });
 };
 const flush = async () => {
   for (let i = 0; i < 5; i++) await act(() => Promise.resolve());
@@ -320,6 +329,31 @@ describe('RfBench', () => {
     await flush();
     expect(h.sectors?.sectors[0]?.name).toBe('North');
     expect(byTest('rf-write-warnings')?.textContent).toContain('p1.msi could not be copied');
+  });
+
+  it('says when the processing tools could not be checked, and checks again on Retry', async () => {
+    h.pack = null;
+    await render();
+    act(() => {
+      processingTools.setState({ error: 'The pack folder could not be read.' });
+    });
+    const failed = byTest('rf-pack-failed');
+    expect(failed?.textContent).toContain('The pack folder could not be read.');
+    expect(byTest('rf-run')?.textContent).toContain('could not be checked');
+    const before = h.loads;
+    click(failed?.querySelector('button') ?? null);
+    expect(h.loads).toBe(before + 1);
+  });
+
+  it('notes the carriers it does not edit', async () => {
+    const two = lteSettings('ant-a1');
+    two.carriers = [
+      ...two.carriers,
+      { id: 'c2', tech: 'lte', band: 'B20', bandwidthMhz: 10, feederLossDb: 0 },
+    ];
+    h.sectors = sectorsFile([{ id: 'sec-s1', antennaIds: ['ant-a1'] }], [two]);
+    await render();
+    expect(byTest('rf-more-carriers')?.textContent).toContain('1 more carrier');
   });
 
   it('shows the empty state when the project has no antenna inventory', async () => {

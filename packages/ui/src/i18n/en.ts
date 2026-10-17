@@ -4796,6 +4796,7 @@ export const en = {
   'rf.refusal.noHeight': 'No antenna has a usable height above ground. Type one in Sector.',
   'rf.refusal.noEquipment': 'Choose the antenna or AAU for at least one antenna.',
   'rf.refusal.noProject': 'Open a project first.',
+  'rf.refusal.packCheckFailed': 'The processing tools could not be checked. Try again below.',
   // why a unit is left out of a run (eligibility and store exclusion codes)
   'rf.excluded.rejected': 'rejected in the antenna inventory',
   'rf.excluded.notFound': 'not found in the latest detection run',
@@ -4919,6 +4920,10 @@ export const en = {
   'rf.sector.tech.lte': 'LTE',
   'rf.sector.tech.nr': 'NR',
   'rf.sector.bandwidth': 'Carrier bandwidth',
+  'rf.sector.moreCarriers_one':
+    'This antenna has {count} more carrier in its settings; only the first is edited here, the others are kept.',
+  'rf.sector.moreCarriers_other':
+    'This antenna has {count} more carriers in its settings; only the first is edited here, the others are kept.',
   'rf.sector.mhz': '{n} MHz',
   'rf.sector.aau': 'AAU',
   'rf.sector.noAau': 'None, separate antenna and radio',
@@ -4990,6 +4995,8 @@ export const en = {
   'rf.results.exported': 'Exported to {path}',
   'rf.results.exportFailed': 'The export did not finish.',
   'rf.results.runFailedPlain': 'The coverage run failed.',
+  'rf.results.packFailed': 'The processing tools could not be checked: {error}',
+  'rf.results.packRetry': 'Check again',
   'rf.results.indicative': 'Indicative:',
   'rf.results.indicativeBody':
     'flat ground, no buildings, untuned model, about 8 dB either way. Check against a drive test before relying on it.',

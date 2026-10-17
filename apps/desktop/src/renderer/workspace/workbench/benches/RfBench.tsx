@@ -38,9 +38,11 @@ import {
 } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { clock } from '../../../processing/JobParts';
 import { processingTools, useProcessingTools } from '../../../processingTools';
 import { CataloguePicker, watts, type PickKind } from '../../../rf/CataloguePicker';
 import { CsvImport } from '../../../rf/CsvImport';
+import { pickPort } from '../../../rf/rfDefaults';
 import {
   bandwidthChoices,
   carrierBandName,
@@ -67,6 +69,7 @@ import {
   rfStore,
   saveRf,
   selectRun,
+  setEquipment,
   setHeightOverride,
   setIncludeUnreviewed,
   setPackStatus,
@@ -664,43 +667,8 @@ function UnitFields({ row }: { row: RfUnitRow }) {
 
   const onPick = (e: RfCatalogueEntry) => {
     setPicking(null);
-    setNote(null);
-    const clampTilt = (
-      r: { minDeg: number; maxDeg: number; stepDeg: number } | null | undefined,
-    ) => (s?.etiltDeg !== undefined && r ? { etiltDeg: clampEtilt(s.etiltDeg, r) } : {});
-    if (e.kind === 'aau') {
-      const carriers = (s?.carriers ?? []).map((c) => {
-        const n = { ...c };
-        delete n.radioUnit;
-        delete n.port;
-        return n;
-      });
-      patchSettings(row.id, {
-        equipment: { kind: 'aau', aau: e.id },
-        carriers,
-        ...clampTilt(e.etilt),
-      });
-    } else if (e.kind === 'antenna') {
-      const keepRadio = eq?.kind === 'separate' ? eq.radio : undefined;
-      const carriers = (s?.carriers ?? []).map((c) => {
-        if (c.port === undefined || e.ports.some((p) => p.id === c.port)) return c;
-        const n = { ...c };
-        delete n.port;
-        return n;
-      });
-      patchSettings(row.id, {
-        equipment: { kind: 'separate', antenna: e.id, ...(keepRadio ? { radio: keepRadio } : {}) },
-        carriers,
-      });
-      const r = etiltRangeFor(
-        { equipment: { kind: 'separate', antenna: e.id }, carriers },
-        catalogue,
-      );
-      if (s?.etiltDeg !== undefined && r)
-        patchSettings(row.id, { etiltDeg: clampEtilt(s.etiltDeg, r) });
-    } else if (eq?.kind === 'separate') {
-      patchSettings(row.id, { equipment: { ...eq, radio: e.id } });
-    } else setNote(t('rf.sector.radioNeedsAntenna'));
+    // one rule for the picker and the CSV import (rfFields.withEquipment)
+    setNote(setEquipment(row.id, e) ? null : t('rf.sector.radioNeedsAntenna'));
   };
 
   const setBand = (id: string) => {
@@ -939,6 +907,11 @@ function UnitFields({ row }: { row: RfUnitRow }) {
               ))}
         </select>
       </Field>
+      {(s?.carriers.length ?? 0) > 1 && (
+        <p className="rf-note" data-testid="rf-more-carriers">
+          {t('rf.sector.moreCarriers', { count: (s?.carriers.length ?? 1) - 1 })}
+        </p>
+      )}
       <Field
         id="aau"
         label={t('rf.sector.aau')}
@@ -957,6 +930,7 @@ function UnitFields({ row }: { row: RfUnitRow }) {
             icon="box"
             disabledReason={ro}
             data-testid="rf-pick-aau"
+            {...(aau ? { tip: entryName(aau, undefined) } : {})}
             onClick={(e) => {
               setPicking({ kinds: ['aau'], initial: 'aau', opener: e.currentTarget });
             }}
@@ -992,6 +966,7 @@ function UnitFields({ row }: { row: RfUnitRow }) {
           icon="target"
           disabledReason={ro ?? builtIn}
           data-testid="rf-pick-antenna"
+          {...(antenna && !isAau ? { tip: entryName(antenna, undefined) } : {})}
           onClick={(e) => {
             setPicking({ kinds: ['antenna'], initial: 'antenna', opener: e.currentTarget });
           }}
@@ -1024,6 +999,7 @@ function UnitFields({ row }: { row: RfUnitRow }) {
             (eq?.kind === 'separate' ? undefined : t('rf.sector.radioNeedsAntenna'))
           }
           data-testid="rf-pick-radio"
+          {...(radio && !isAau ? { tip: entryName(radio, undefined) } : {})}
           onClick={(e) => {
             setPicking({ kinds: ['radio'], initial: 'radio', opener: e.currentTarget });
           }}
@@ -1206,10 +1182,9 @@ function UnitFields({ row }: { row: RfUnitRow }) {
             k === 'radio' && eq?.kind !== 'separate' ? t('rf.sector.radioNeedsAntenna') : undefined
           }
           portFor={(e) => {
-            if (!band) return undefined;
-            return e.ports.find(
-              (p) => p.bandRangeMhz[0] <= band.centreMHz && band.centreMHz <= p.bandRangeMhz[1],
-            )?.id;
+            const freq = carrier ? (carrier.frequencyMhz ?? band?.centreMHz) : undefined;
+            if (!carrier || freq === undefined) return undefined;
+            return pickPort(e.ports, carrier, freq).port?.id;
           }}
           opener={picking.opener}
           onPick={onPick}
@@ -1315,8 +1290,16 @@ function ResultsSection() {
   const [exportNote, setExportNote] = useState<string | null>(null);
   const exportBtn = useRef<HTMLButtonElement>(null);
   const run = runs.find((r) => r.runId === selectedRunId) ?? null;
+  const packError = useProcessingTools((s) => (s.status === null ? s.error : null));
   const first = check.refusals[0];
-  const reason = first ? refusalText(t, first) : root ? undefined : t('rf.refusal.noProject');
+  const reason =
+    first === 'pack-unknown' && packError
+      ? t('rf.refusal.packCheckFailed')
+      : first
+        ? refusalText(t, first)
+        : root
+          ? undefined
+          : t('rf.refusal.noProject');
   const th = study.thresholds;
   const range: Record<(typeof CLASSES)[number], string> = {
     excellent: t('rf.results.range.above', { dbm: th.excellentDbm }),
@@ -1368,7 +1351,7 @@ function ResultsSection() {
             {runs.map((r) => (
               <option key={r.runId} value={r.runId}>
                 {t('rf.results.runValue', {
-                  at: r.createdAt.slice(0, 16).replace('T', ' '),
+                  at: clock(r.createdAt),
                   status: t(r.status === 'done' ? 'rf.results.runDone' : 'rf.results.runFailed'),
                 })}
               </option>
@@ -1488,6 +1471,14 @@ function ResultsSection() {
           ]}
         />
       </div>
+      {packError && (
+        <div className="rf-actions" role="alert" data-testid="rf-pack-failed">
+          <span className="rf-note rf-err">{t('rf.results.packFailed', { error: packError })}</span>
+          <Button icon="refresh" onClick={() => void processingTools.getState().load()}>
+            {t('rf.results.packRetry')}
+          </Button>
+        </div>
+      )}
       {runError !== null && (
         <p className="rf-note rf-err" role="alert">
           {runError || t('rf.results.runFailedPlain')}

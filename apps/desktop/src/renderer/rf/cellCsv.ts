@@ -10,6 +10,7 @@
  * goes in `radio_model`. Pure: no store, no bridge.
  */
 import { bandOfName, getEntry } from '@aio/rf';
+import { clampSettingsEtilt, defaultBandwidth, withEquipment } from './rfFields';
 import type {
   AntennaUnit,
   RfAntennaSettings,
@@ -249,32 +250,20 @@ export function applyCellRows(
   for (const r of rows) {
     const id = r.unitId;
     if (!id || !applicable(r)) continue;
-    let s: RfAntennaSettings | undefined = antennas.find((a) => a.antennaId === id);
-    if (!s) {
-      s = { antennaId: id, active: true, carriers: [] };
-      antennas.push(s);
-    }
-    const radio = r.radioEntry === undefined ? undefined : getEntry(catalogue, r.radioEntry);
-    if (radio?.kind === 'aau') s.equipment = { kind: 'aau', aau: radio.id };
-    else if (r.antennaEntry !== undefined) {
-      const keepRadio = s.equipment?.kind === 'separate' ? s.equipment.radio : undefined;
-      const radioId = radio?.kind === 'radio' ? radio.id : keepRadio;
-      s.equipment = {
-        kind: 'separate',
-        antenna: r.antennaEntry,
-        ...(radioId === undefined ? {} : { radio: radioId }),
-      };
-    } else if (radio?.kind === 'radio' && s.equipment?.kind === 'separate')
-      s.equipment = { ...s.equipment, radio: radio.id };
-    if (r.etiltDeg !== undefined) s.etiltDeg = r.etiltDeg;
-    const aau = s.equipment?.kind === 'aau';
+    let s: RfAntennaSettings = antennas.find((a) => a.antennaId === id) ?? {
+      antennaId: id,
+      active: true,
+      carriers: [],
+    };
+    if (r.etiltDeg !== undefined) s = { ...s, etiltDeg: r.etiltDeg };
     const first = s.carriers[0];
     if (r.band !== undefined || first) {
+      const tech = r.tech ?? first?.tech ?? 'lte';
       const base: RfCarrier = first ?? {
         id: 'c1',
-        tech: r.tech ?? 'lte',
+        tech,
         band: r.band ?? '',
-        bandwidthMhz: r.bandwidthMhz ?? (r.tech === 'nr' ? 100 : 20),
+        bandwidthMhz: r.bandwidthMhz ?? defaultBandwidth(tech, r.band),
         feederLossDb: 0,
       };
       const next: RfCarrier = {
@@ -284,12 +273,22 @@ export function applyCellRows(
         ...(r.powerDbm === undefined ? {} : { powerDbmPerPort: r.powerDbm }),
       };
       if (r.band !== undefined && r.band !== base.band) delete next.scsKhz;
-      if (aau) {
-        delete next.radioUnit;
-        delete next.port;
-      }
-      if (next.band !== '') s.carriers = [next, ...s.carriers.slice(1)];
+      if (next.band !== '') s = { ...s, carriers: [next, ...s.carriers.slice(1)] };
     }
+    // equipment by the tab's own rule (rfFields.withEquipment): an AAU first, else the antenna
+    // and then its radio; a radio without an antenna is left out
+    const radio = r.radioEntry === undefined ? undefined : getEntry(catalogue, r.radioEntry);
+    const antenna = r.antennaEntry === undefined ? undefined : getEntry(catalogue, r.antennaEntry);
+    if (radio?.kind === 'aau') s = withEquipment(s, radio, catalogue) ?? s;
+    else {
+      if (antenna?.kind === 'antenna') s = withEquipment(s, antenna, catalogue) ?? s;
+      if (radio?.kind === 'radio') s = withEquipment(s, radio, catalogue) ?? s;
+    }
+    // a typed or imported e-tilt always lies in the range the tab shows
+    s = clampSettingsEtilt(s, catalogue);
+    const at = antennas.findIndex((a) => a.antennaId === id);
+    if (at < 0) antennas.push(s);
+    else antennas[at] = s;
     if (r.sector !== undefined) {
       const want = r.sector.trim().toLowerCase();
       let target = sectors.find((x) => x.name.trim().toLowerCase() === want);

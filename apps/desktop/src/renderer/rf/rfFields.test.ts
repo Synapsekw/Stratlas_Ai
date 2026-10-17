@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { AAU_ENTRY, ANTENNA_ENTRY, lteSettings, unit } from './__fixtures__/rfData';
-import { parseCellCsv, splitCsv } from './cellCsv';
+import type { RfCatalogueEntry } from '@aio/schema';
+import {
+  AAU_ENTRY,
+  ANTENNA_ENTRY,
+  RADIO_ENTRY,
+  lteSettings,
+  sectorsFile,
+  unit,
+} from './__fixtures__/rfData';
+import { applyCellRows, parseCellCsv, splitCsv } from './cellCsv';
 import {
   bandwidthChoices,
   carrierBandName,
@@ -86,5 +94,51 @@ describe('cell CSV', () => {
       'antenna-model',
     ]);
     expect(r.rows[1]?.problems).toEqual(['duplicate']);
+  });
+});
+
+describe('cell CSV applies equipment by the tab rule', () => {
+  // a second antenna with only one high-band port, "hi2", e-tilt 0 to 8
+  const OTHER = {
+    ...ANTENNA_ENTRY,
+    id: 'ant-y',
+    model: 'P2',
+    ports: [
+      { ...(ANTENNA_ENTRY.kind === 'antenna' ? ANTENNA_ENTRY.ports[1] : undefined), id: 'hi2' },
+    ],
+  } as RfCatalogueEntry;
+  const cat = [ANTENNA_ENTRY, RADIO_ENTRY, AAU_ENTRY, OTHER];
+  const units = [{ id: 'ant-a1', name: 'A1' }];
+  const apply = (csv: string, settings = [lteSettings('ant-a1')]) => {
+    const r = parseCellCsv(csv, units, cat);
+    if (!r.ok) throw new Error('parse');
+    return applyCellRows(sectorsFile([], settings), r.rows, cat).antennas[0];
+  };
+
+  it('an AAU strips the radio and port and clamps the e-tilt to the AAU range', () => {
+    const s = apply('antenna,etilt_deg,radio_model\nA1,20,Maker A1\n');
+    expect(s?.equipment).toEqual({ kind: 'aau', aau: 'aau-x' });
+    expect(s?.carriers[0]?.port).toBeUndefined();
+    expect(s?.carriers[0]?.radioUnit).toBeUndefined();
+    expect(s?.etiltDeg).toBe(9);
+  });
+
+  it('a new antenna keeps the radio, drops a port it lacks and clamps the e-tilt', () => {
+    const s = apply('antenna,etilt_deg,antenna_model\nA1,30,Maker P2\n');
+    expect(s?.equipment).toEqual({ kind: 'separate', antenna: 'ant-y', radio: 'rru-x' });
+    // the old carrier named port "high", which P2 does not have
+    expect(s?.carriers[0]?.port).toBeUndefined();
+    expect(s?.etiltDeg).toBe(8);
+  });
+
+  it('clamps an imported e-tilt even when the equipment stays', () => {
+    expect(apply('antenna,etilt_deg\nA1,-15\n')?.etiltDeg).toBe(0);
+    expect(apply('antenna,etilt_deg\nA1,5.4\n')?.etiltDeg).toBe(5);
+  });
+
+  it('gives a new NR carrier a bandwidth its band allows (FDD n3: 50 MHz, not 100)', () => {
+    const s = apply('antenna,band\nA1,n3\n', []);
+    expect(s?.carriers[0]).toMatchObject({ tech: 'nr', band: 'n3', bandwidthMhz: 50 });
+    expect(apply('antenna,band\nA1,n78\n', [])?.carriers[0]?.bandwidthMhz).toBe(100);
   });
 });

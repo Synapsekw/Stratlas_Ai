@@ -3,7 +3,7 @@
  * AAU's), clamping and snapping a tilt into it, the carrier bandwidths a band offers, and a
  * sector's bearing for its chip.
  */
-import { bandOfName, getEntry, meanBearingDeg } from '@aio/rf';
+import { bandOfName, getEntry, meanBearingDeg, trueAzimuthDeg } from '@aio/rf';
 import type {
   AntennaUnit,
   EtiltRange,
@@ -75,13 +75,13 @@ export function carrierBandName(c: Pick<RfCarrier, 'band' | 'tech'>): string {
   return `B${String(lte)}`;
 }
 
-/** True azimuth of a unit (grid plus convergence); null without azimuth or CRS. */
+/** True azimuth of a unit (grid plus convergence, `@aio/rf`); null without azimuth or CRS. */
 export function trueAzimuth(
   u: Pick<AntennaUnit, 'azimuthGridDeg' | 'convergenceDeg'>,
 ): number | null {
   const grid = u.azimuthGridDeg?.value;
   if (grid === undefined || u.convergenceDeg === null) return null;
-  return (((grid + u.convergenceDeg) % 360) + 360) % 360;
+  return trueAzimuthDeg(grid, u.convergenceDeg);
 }
 
 /** A sector's bearing for its chip: the mean true azimuth of its units, null when none has one. */
@@ -95,4 +95,60 @@ export function sectorBearing(
     return a === null ? [] : [a];
   });
   return azs.length === 0 ? null : meanBearingDeg(azs);
+}
+
+/** The settings' e-tilt clamped into the range of the port (or AAU) they now use; unchanged without one. */
+export function clampSettingsEtilt(
+  s: RfAntennaSettings,
+  catalogue: readonly RfCatalogueEntry[],
+): RfAntennaSettings {
+  if (s.etiltDeg === undefined) return s;
+  const r = etiltRangeFor(s, catalogue);
+  if (!r) return s;
+  const etiltDeg = clampEtilt(s.etiltDeg, r);
+  return etiltDeg === s.etiltDeg ? s : { ...s, etiltDeg };
+}
+
+/**
+ * The one rule for changing a unit's equipment (the tab's picker and the CSV import): an AAU
+ * replaces the antenna and radio and its carriers name neither a radio nor a port; a new antenna
+ * keeps the radio and drops carrier ports it does not have; a radio needs a separate antenna
+ * (null when there is none). The e-tilt is clamped into the new range.
+ */
+export function withEquipment(
+  s: RfAntennaSettings,
+  entry: RfCatalogueEntry,
+  catalogue: readonly RfCatalogueEntry[],
+): RfAntennaSettings | null {
+  const all = catalogue.some((e) => e.id === entry.id) ? catalogue : [...catalogue, entry];
+  const eq = s.equipment;
+  let next: RfAntennaSettings;
+  if (entry.kind === 'aau') {
+    next = {
+      ...s,
+      equipment: { kind: 'aau', aau: entry.id },
+      carriers: s.carriers.map((c) => {
+        const n = { ...c };
+        delete n.radioUnit;
+        delete n.port;
+        return n;
+      }),
+    };
+  } else if (entry.kind === 'antenna') {
+    const radio = eq?.kind === 'separate' ? eq.radio : undefined;
+    next = {
+      ...s,
+      equipment: { kind: 'separate', antenna: entry.id, ...(radio ? { radio } : {}) },
+      carriers: s.carriers.map((c) => {
+        if (c.port === undefined || entry.ports.some((p) => p.id === c.port)) return c;
+        const n = { ...c };
+        delete n.port;
+        return n;
+      }),
+    };
+  } else {
+    if (eq?.kind !== 'separate') return null;
+    next = { ...s, equipment: { ...eq, radio: entry.id } };
+  }
+  return clampSettingsEtilt(next, all);
 }

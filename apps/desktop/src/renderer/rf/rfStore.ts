@@ -32,6 +32,7 @@ import {
 import { createStore, useStore } from 'zustand';
 import { bridge, jobs } from '../shell';
 import { applyCellRows, type CellRow } from './cellCsv';
+import { withEquipment } from './rfFields';
 import {
   checkRun,
   deriveRows,
@@ -363,6 +364,27 @@ export function patchSettings(
       : [...f.antennas, { ...settingsDefaults(antennaId), ...patch }];
     return { ...f, antennas };
   });
+}
+
+/**
+ * Change a unit's equipment by the one rule (`withEquipment`): an AAU strips radios and ports, a
+ * new antenna drops ports it lacks, the e-tilt is clamped into the new range. Answers false when
+ * a radio is chosen without a separate antenna (nothing changes).
+ */
+export function setEquipment(antennaId: string, entry: RfCatalogueEntry): boolean {
+  if (get().readOnly) return false;
+  const catalogue = get().catalogue.map((c) => c.entry);
+  const current =
+    get().sectors.antennas.find((a) => a.antennaId === antennaId) ?? settingsDefaults(antennaId);
+  const next = withEquipment(current, entry, catalogue);
+  if (!next) return false;
+  edit((f) => ({
+    ...f,
+    antennas: f.antennas.some((a) => a.antennaId === antennaId)
+      ? f.antennas.map((a) => (a.antennaId === antennaId ? next : a))
+      : [...f.antennas, next],
+  }));
+  return true;
 }
 
 /** Clear one optional setting of a unit (back to the job's default): the equipment or the e-tilt. */

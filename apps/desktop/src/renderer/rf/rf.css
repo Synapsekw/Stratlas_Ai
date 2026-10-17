@@ -72,6 +72,14 @@
   inline-size: 100%;
   justify-content: flex-start;
 }
+/* a long model name wraps instead of being cut at 470 px */
+.btn.rf-pick {
+  white-space: normal;
+  height: auto;
+  min-block-size: calc(var(--sp-7) + var(--sp-2));
+  padding-block: var(--sp-2);
+  text-align: start;
+}
 .rf-slider {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
