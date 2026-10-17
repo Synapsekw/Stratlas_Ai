@@ -4578,6 +4578,8 @@ export const en = {
   'roadBench.mapOnly': 'Works on the map',
   'stage.env.needs3d': 'Open the 3D view to set the sky, the time of day and the water.',
   'stage.cutaway.needs3d': 'Open the 3D view to cut the model open.',
+  'stage.env.noProject': 'Open a project to set the environment.',
+  'stage.cutaway.noProject': 'Open a project to cut the model open.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

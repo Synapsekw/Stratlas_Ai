@@ -16,9 +16,6 @@ import { useShell } from '../../../shell';
 import { Section } from '../Section';
 import './benches.css';
 
-/** A section's props: the bench's id and its heading. */
-const head = (id: string, title: string) => ({ id, bench: 'road' as const, title });
-
 export function RoadBench() {
   const t = useT();
   const closeup = useRoad((s) => s.closeup);
@@ -29,13 +26,13 @@ export function RoadBench() {
   const mapOnly = onMap ? {} : { disabledReason: t('roadBench.mapOnly') };
   return (
     <div className="wb-scroll" data-testid="road-bench">
-      <Section {...head('overlay', t('roadBench.overlay'))} defaultOpen>
+      <Section id="overlay" bench="road" title={t('roadBench.overlay')} defaultOpen>
         <div className="pop-form wb-form">
           <RoadOverlayControls />
           <RoadLegend inline />
         </div>
       </Section>
-      <Section {...head('closeup', t('roadBench.closeup'))}>
+      <Section id="closeup" bench="road" title={t('roadBench.closeup')}>
         <div className="pop-form wb-form">
           <Button
             icon="photo"
@@ -51,12 +48,12 @@ export function RoadBench() {
           <p className="pop-note">{t('roadBench.closeupHint')}</p>
         </div>
       </Section>
-      <Section {...head('layers', t('roadBench.layers'))}>
+      <Section id="layers" bench="road" title={t('roadBench.layers')}>
         <div className="pop-form wb-form rr-layers">
           <RoadLayerControls />
         </div>
       </Section>
-      <Section {...head('measure', t('roadBench.measure'))}>
+      <Section id="measure" bench="road" title={t('roadBench.measure')}>
         <div className="pop-form wb-form">
           <Button
             icon="ruler"

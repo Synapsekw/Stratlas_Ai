@@ -22,7 +22,6 @@ import {
 import { useStore } from 'zustand';
 import { AgentHost } from '../../agent/AgentHost';
 import { ChangesTab, useChangesTabSeq } from '../../change';
-import { EnvironmentTab } from '../../environment/EnvironmentTool';
 import { IssueCard } from '../../issueCard/IssueCard';
 import { useCardFocusSeq } from '../../issueCard/state';
 import { useModeller } from '../../modeller';
@@ -35,17 +34,19 @@ import { RightHeader } from '../../shell/RightHeader';
 import { useFold } from '../../shell/useFold';
 import { TelecomTools } from '../../survey/TelecomTools';
 import { agentWindow } from '../agentWindow';
-import { CutawayTab } from '../CutawayTool';
 import { useCaptureIndex } from '../compare';
 import { pickLive, type LiveItem } from '../island/islandModel';
 import { useIslandLive } from '../island/useIslandLive';
 import { SelectionCard } from '../SelectionCard';
-import { RoadBench } from './benches/RoadBench';
-import { VolumesBench } from './benches/VolumesBench';
 import { sectionStore, useSections } from './sectionState';
 import { TabBar } from './TabBar';
 import type { Tab, TabId } from './tabsModel';
 import { useWorkbench, workbench } from './workbenchStore';
+// Road, Volumes and environment benches
+import { EnvironmentTab } from '../../environment/EnvironmentTool';
+import { CutawayTab } from '../CutawayTool';
+import { RoadBench } from './benches/RoadBench';
+import { VolumesBench } from './benches/VolumesBench';
 import './workbench.css';
 
 /** The workbenches with collapsible sections, whose header holds Collapse all (D16). */

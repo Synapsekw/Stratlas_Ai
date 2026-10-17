@@ -6,7 +6,7 @@ import {
 } from '@aio/engine';
 import { EmptyState, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import { Tool, useEngineStage } from '../workspace/StageTools';
 import { useWorkbench, workbench } from '../workspace/workbench/workbenchStore';
 import { hhmm, siteClock, siteInstant } from './envClock';
@@ -57,6 +57,9 @@ export function EnvironmentTool({ stage }: { stage: EngineStage | null }) {
   const t = useT();
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const open = useWorkbench((s) => s.front === 'environment');
+  // follows the stage, so `pressed` never goes stale
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => stage?.onStateChange(bump), [stage]);
   if (!stage || !manifest) return null;
   return (
     <Tool
@@ -64,7 +67,8 @@ export function EnvironmentTool({ stage }: { stage: EngineStage | null }) {
       label={t('stage.env.button')}
       pressed={open || stage.environment.mode === 'sky'}
       onClick={() => {
-        workbench.getState().open('environment');
+        if (open) workbench.getState().close('environment');
+        else workbench.getState().open('environment');
       }}
     />
   );
@@ -76,12 +80,13 @@ export function EnvironmentTab() {
   const stage = useEngineStage();
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   if (!stage || !manifest) {
-    const empty = {
-      icon: 'sun',
-      title: t('stage.env.title'),
-      body: t('stage.env.needs3d'),
-    } as const;
-    return <EmptyState {...empty} />;
+    return (
+      <EmptyState
+        icon="sun"
+        title={t('stage.env.title')}
+        body={t(manifest ? 'stage.env.needs3d' : 'stage.env.noProject')}
+      />
+    );
   }
   return (
     <div className="wb-scroll">

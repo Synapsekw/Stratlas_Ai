@@ -87,4 +87,21 @@ describe('Environment as a panel tab', () => {
     expect(host.querySelector('[data-testid="env-panel"]')).toBeNull();
     expect(host.textContent).toContain('Open the 3D view');
   });
+
+  it('toggles: a click while its tab is in front closes the tab', () => {
+    render(<EnvironmentTool stage={stage} />);
+    const open = () =>
+      host.querySelector<HTMLButtonElement>('button[aria-label="Environment and time of day"]');
+    act(() => open()?.click());
+    expect(workbench.getState().front).toBe('environment');
+    act(() => open()?.click());
+    expect(workbench.getState().tabs.some((t) => t.id === 'environment')).toBe(false);
+  });
+
+  it('says to open a project when there is none', () => {
+    workspace.getState().closeProject();
+    render(<EnvironmentTab />);
+    expect(host.textContent).toContain('Open a project');
+    expect(host.textContent).not.toContain('3D view');
+  });
 });

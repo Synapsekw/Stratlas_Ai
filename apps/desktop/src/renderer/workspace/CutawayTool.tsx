@@ -1,6 +1,7 @@
 import type { EngineStage } from '@aio/engine';
 import { EmptyState, Icon, useT, type MessageKey } from '@aio/ui';
 import { setCameraMode, videoRig } from '@aio/video';
+import { useWorkspace } from '@aio/workspace';
 import { useEngineStage } from './StageTools';
 import { CUTAWAY_MODES, MAX_OPACITY, MIN_OPACITY, type CutawayMode } from './cutaway';
 import {
@@ -85,13 +86,15 @@ export function CutawayPanel({ stage, tab = false }: { stage: EngineStage | null
 export function CutawayTab() {
   const t = useT();
   const stage = useEngineStage();
-  if (!stage) {
-    const empty = {
-      icon: 'cutaway',
-      title: t('stage.cutaway.title'),
-      body: t('stage.cutaway.needs3d'),
-    } as const;
-    return <EmptyState {...empty} />;
+  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
+  if (!stage || !manifest) {
+    return (
+      <EmptyState
+        icon="cutaway"
+        title={t('stage.cutaway.title')}
+        body={t(manifest ? 'stage.cutaway.needs3d' : 'stage.cutaway.noProject')}
+      />
+    );
   }
   return (
     <div className="wb-scroll">
