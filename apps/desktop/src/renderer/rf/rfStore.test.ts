@@ -1,0 +1,584 @@
+// @vitest-environment jsdom
+import type { AntennasFile, RfSectorsFile } from '@aio/schema';
+import { RF_COVERAGE_MIN_PACK } from '@aio/schema';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  AAU_ENTRY,
+  ANTENNA_ENTRY,
+  RADIO_ENTRY,
+  antennasFile,
+  lteSettings,
+  sectorsFile,
+  unit,
+} from './rfTestData';
+import {
+  addSector,
+  applyProposal,
+  loadRf,
+  moveUnit,
+  patchSettings,
+  patchStudy,
+  reassignOrphanEntry,
+  removeOrphanEntry,
+  renameSector,
+  resetRf,
+  rfStore,
+  saveRf,
+  selectRun,
+  setHeightOverride,
+  setIncludeUnreviewed,
+  setPackStatus,
+  setRunning,
+  setTerrainProvider,
+} from './rfStore';
+
+type Call = [string, Record<string, unknown>];
+
+const h = vi.hoisted(() => ({
+  antennas: null as AntennasFile | null,
+  sectors: null as RfSectorsFile | null,
+  readOnly: false,
+  calls: [] as Call[],
+  writeError: null as string | null,
+  writeWarnings: undefined as string[] | undefined,
+  delay: null as null | Promise<void>,
+}));
+
+vi.mock('../shell', () => ({
+  bridge: {
+    call: vi.fn(async (channel: string, req: Record<string, unknown>) => {
+      h.calls.push([channel, req]);
+      switch (channel) {
+        case 'telecom:readAntennas':
+          if (h.delay) await h.delay;
+          return {
+            ok: true,
+            value: { ok: true, file: structuredClone(h.antennas), readOnly: false },
+          };
+        case 'rf:readSectors':
+          return {
+            ok: true,
+            value: {
+              ok: true,
+              file: structuredClone(h.sectors),
+              readOnly: h.readOnly,
+              orphans: [],
+            },
+          };
+        case 'rf:listCatalogue':
+          return {
+            ok: true,
+            value: {
+              ok: true,
+              entries: [ANTENNA_ENTRY, RADIO_ENTRY, AAU_ENTRY].map((entry) => ({
+                origin: 'project',
+                entry,
+              })),
+              warnings: [],
+            },
+          };
+        case 'rf:listRuns':
+          return { ok: true, value: { ok: true, runs: [] } };
+        case 'rf:writeSectors':
+          if (h.writeError) return { ok: true, value: { ok: false, error: h.writeError } };
+          h.sectors = structuredClone(req.file) as RfSectorsFile;
+          return {
+            ok: true,
+            value: { ok: true, ...(h.writeWarnings ? { warnings: h.writeWarnings } : {}) },
+          };
+        default:
+          return { ok: false, error: 'unexpected' };
+      }
+    }),
+  },
+}));
+
+const s = () => rfStore.getState();
+const row = (id: string) => {
+  const r = s().rows.find((x) => x.id === id);
+  if (!r) throw new Error(`no row ${id}`);
+  return r;
+};
+
+/** A site with three panels 120 degrees apart, set up for LTE 1800, all in sectors. */
+function site(opts: { groundZ?: number | undefined; conv?: number | null } = {}) {
+  const conv = opts.conv === undefined ? 0.5 : opts.conv;
+  const units = [
+    unit('ant-a', 0, { convergenceDeg: conv }),
+    unit('ant-b', 120, { convergenceDeg: conv }),
+    unit('ant-c', 240, { convergenceDeg: conv }),
+  ];
+  h.antennas = antennasFile(units, 'groundZ' in opts ? (opts.groundZ ?? null) : 100);
+  h.sectors = sectorsFile(
+    [
+      { id: 'sec-s1', antennaIds: ['ant-a'] },
+      { id: 'sec-s2', antennaIds: ['ant-b'] },
+      { id: 'sec-s3', antennaIds: ['ant-c'] },
+    ],
+    units.map((u) => lteSettings(u.id)),
+  );
+}
+
+beforeEach(() => {
+  resetRf();
+  h.calls = [];
+  h.antennas = null;
+  h.sectors = null;
+  h.readOnly = false;
+  h.writeError = null;
+  h.writeWarnings = undefined;
+  h.delay = null;
+});
+afterEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('height above ground', () => {
+  it('is the box centre minus run.groundZ, basis measured', async () => {
+    site({ groundZ: 100 });
+    await loadRf('p1');
+    expect(row('ant-a').height).toMatchObject({ heightM: 31.5, basis: 'measured', groundZ: 100 });
+    expect(s().check.refusals).toEqual([]);
+  });
+
+  it('without groundZ and without terrain the unit has no height and is left out', async () => {
+    site({ groundZ: undefined });
+    await loadRf('p1');
+    expect(row('ant-a').height).toMatchObject({ heightM: null, basis: null, issue: 'no-ground' });
+    expect(row('ant-a').excluded).toBe('no-height');
+    expect(s().check.refusals).toEqual(['no-height']);
+  });
+
+  it('without groundZ the terrain at the base gives an estimated height', async () => {
+    site({ groundZ: undefined });
+    await loadRf('p1');
+    const at = vi.fn(() => 98);
+    setTerrainProvider(at);
+    expect(at).toHaveBeenCalledWith(500000, 2700000);
+    expect(row('ant-a').height).toMatchObject({ heightM: 33.5, basis: 'estimated', groundZ: 98 });
+    expect(s().check.refusals).toEqual([]);
+    setTerrainProvider(null);
+    expect(row('ant-a').excluded).toBe('no-height');
+  });
+
+  it('the typed height wins over measured and estimated', async () => {
+    site({ groundZ: 100 });
+    await loadRf('p1');
+    setHeightOverride('ant-a', 25);
+    expect(row('ant-a').height).toMatchObject({ heightM: 25, basis: 'user' });
+    expect(s().dirty).toBe(true);
+    setHeightOverride('ant-a', undefined);
+    expect(row('ant-a').height).toMatchObject({ heightM: 31.5, basis: 'measured' });
+  });
+
+  it('a typed height saves a unit with no settings yet, and clearing it leaves the rest', async () => {
+    site({ groundZ: undefined });
+    h.sectors = sectorsFile([], []);
+    await loadRf('p1');
+    setHeightOverride('ant-a', 20);
+    expect(s().sectors.antennas).toEqual([
+      { antennaId: 'ant-a', active: true, carriers: [], heightOverrideM: 20 },
+    ]);
+  });
+
+  it('a height at or below the ground is not usable', async () => {
+    site({ groundZ: 140 });
+    await loadRf('p1');
+    expect(row('ant-a').height.issue).toBe('not-above-ground');
+    expect(row('ant-a').excluded).toBe('not-above-ground');
+  });
+});
+
+describe('sectors', () => {
+  it('proposes sectors by true bearing and applies them without touching RF settings', async () => {
+    site();
+    h.sectors = sectorsFile([], [lteSettings('ant-a')]);
+    await loadRf('p1');
+    expect(s().proposed.map((p) => [p.name, p.antennaIds])).toEqual([
+      ['S1', ['ant-a']],
+      ['S2', ['ant-b']],
+      ['S3', ['ant-c']],
+    ]);
+    expect(s().unassigned).toEqual(['ant-a', 'ant-b', 'ant-c']);
+    expect(s().check.refusals).toEqual(['no-sectors']);
+    applyProposal();
+    expect(s().sectors.sectors.map((x) => x.antennaIds)).toEqual([['ant-a'], ['ant-b'], ['ant-c']]);
+    expect(s().sectors.antennas).toHaveLength(1);
+    expect(s().unassigned).toEqual([]);
+  });
+
+  it('groups panels within 30 degrees into one sector', async () => {
+    h.antennas = antennasFile([unit('ant-a', 100), unit('ant-b', 120), unit('ant-c', 300)]);
+    await loadRf('p1');
+    expect(s().proposed.map((p) => p.antennaIds)).toEqual([['ant-a', 'ant-b'], ['ant-c']]);
+  });
+
+  it('a project with no sectors file starts from an empty working copy, not dirty', async () => {
+    site();
+    h.sectors = null;
+    await loadRf('p1');
+    expect(s().hasFile).toBe(false);
+    expect(s().sectors.sectors).toEqual([]);
+    expect(s().dirty).toBe(false);
+  });
+
+  it('moves, renames and adds sectors', async () => {
+    site();
+    await loadRf('p1');
+    moveUnit('ant-b', 'sec-s1');
+    expect(s().sectors.sectors[0]?.antennaIds).toEqual(['ant-a', 'ant-b']);
+    expect(s().sectors.sectors[1]?.antennaIds).toEqual([]);
+    renameSector('sec-s1', ' North ');
+    expect(s().sectors.sectors[0]?.name).toBe('North');
+    const id = addSector();
+    expect(id).toBe('sec-s4');
+    moveUnit('ant-c', id);
+    expect(row('ant-c').sectorId).toBe('sec-s4');
+    moveUnit('ant-c', null);
+    expect(row('ant-c').sectorId).toBeNull();
+  });
+});
+
+describe('eligibility and the run check', () => {
+  it('a unit without a grid convergence cannot take part; all of them lacking it refuses with no CRS', async () => {
+    site({ conv: null });
+    await loadRf('p1');
+    expect(row('ant-a').excluded).toBe('no-crs');
+    expect(s().check.participants).toEqual([]);
+    expect(s().check.refusals).toEqual(['no-crs']);
+  });
+
+  it('one unit without convergence is left out and the others still run', async () => {
+    site();
+    h.antennas = antennasFile([
+      unit('ant-a', 0, { convergenceDeg: null }),
+      unit('ant-b', 120),
+      unit('ant-c', 240),
+    ]);
+    await loadRf('p1');
+    expect(s().check.refusals).toEqual([]);
+    expect(s().check.participants).toEqual(['ant-b', 'ant-c']);
+    expect(s().check.excluded).toEqual([{ antennaId: 'ant-a', reason: 'no-crs' }]);
+  });
+
+  it('a draft unit is left out until unreviewed units are included, then marks the run unreviewed', async () => {
+    site();
+    h.antennas = antennasFile([
+      unit('ant-a', 0, { status: 'draft' }),
+      unit('ant-b', 120),
+      unit('ant-c', 240),
+    ]);
+    await loadRf('p1');
+    expect(row('ant-a')).toMatchObject({ excluded: 'draft', canInclude: true });
+    expect(s().check.unreviewed).toBe(false);
+    setIncludeUnreviewed(true);
+    expect(row('ant-a').excluded).toBeNull();
+    expect(row('ant-a').unreviewed).toBe(true);
+    expect(s().check.participants).toContain('ant-a');
+    expect(s().check.unreviewed).toBe(true);
+  });
+
+  it('rejected units never take part', async () => {
+    site();
+    h.antennas = antennasFile([
+      unit('ant-a', 0, { status: 'rejected' }),
+      unit('ant-b', 120),
+      unit('ant-c', 240),
+    ]);
+    await loadRf('p1');
+    expect(row('ant-a').excluded).toBe('rejected');
+    expect(s().check.unreviewed).toBe(false);
+  });
+
+  it('a short unit takes part once a person puts it in a sector', async () => {
+    h.antennas = antennasFile([unit('ant-a', 0, { kind: 'short' })]);
+    h.sectors = sectorsFile([{ id: 'sec-s1', antennaIds: [] }], [lteSettings('ant-a')]);
+    await loadRf('p1');
+    expect(row('ant-a').excluded).toBe('short');
+    expect(s().proposed).toEqual([]);
+    moveUnit('ant-a', 'sec-s1');
+    expect(row('ant-a').excluded).toBeNull();
+  });
+
+  it('refuses with no accepted panels when only dishes or rejected units are in sectors', async () => {
+    h.antennas = antennasFile([unit('ant-a', 0, { kind: 'other', kindBasis: 'user' })]);
+    h.sectors = sectorsFile([{ id: 'sec-s1', antennaIds: ['ant-a'] }], [lteSettings('ant-a')]);
+    await loadRf('p1');
+    expect(s().check.refusals).toEqual(['no-accepted-panels']);
+  });
+
+  it('refuses with no band when no carrier is set', async () => {
+    site();
+    h.sectors = sectorsFile(
+      [{ id: 'sec-s1', antennaIds: ['ant-a', 'ant-b', 'ant-c'] }],
+      ['ant-a', 'ant-b', 'ant-c'].map((id) => lteSettings(id, { carriers: [] })),
+    );
+    await loadRf('p1');
+    expect(s().check.refusals).toEqual(['no-band']);
+  });
+
+  it('refuses without equipment', async () => {
+    site();
+    h.sectors = sectorsFile(
+      [{ id: 'sec-s1', antennaIds: ['ant-a'] }],
+      [{ antennaId: 'ant-a', active: true, carriers: [] }],
+    );
+    await loadRf('p1');
+    expect(s().check.refusals).toEqual(['no-equipment']);
+  });
+
+  it('the RF active flag turns a unit off', async () => {
+    site();
+    await loadRf('p1');
+    patchSettings('ant-a', { active: false });
+    expect(row('ant-a').excluded).toBe('inactive');
+  });
+
+  it('refuses without an antenna inventory', async () => {
+    await loadRf('p1');
+    expect(s().check.refusals).toEqual(['no-antennas']);
+  });
+
+  it('refuses a read only project and a run in progress', async () => {
+    site();
+    h.readOnly = true;
+    await loadRf('p1');
+    expect(s().check.refusals).toEqual(['read-only']);
+    h.readOnly = false;
+    await loadRf('p1');
+    setRunning(true, 'job-1');
+    expect(s().check.refusals).toEqual(['running']);
+    setRunning(false);
+    expect(s().jobId).toBeNull();
+    expect(s().check.refusals).toEqual([]);
+  });
+
+  it('enforces the pipeline pack version', async () => {
+    site();
+    await loadRf('p1');
+    setPackStatus({ state: 'ok', version: '0.1.0' });
+    expect(s().check.refusals).toEqual(['pack-too-old']);
+    setPackStatus({ state: 'ok', version: RF_COVERAGE_MIN_PACK });
+    expect(s().check.refusals).toEqual([]);
+    setPackStatus({ state: 'too-old', version: '0.9.0' });
+    expect(s().check.refusals).toEqual(['pack-too-old']);
+    setPackStatus({ state: 'missing' });
+    expect(s().check.refusals).toEqual(['pack-missing']);
+    setPackStatus({ state: 'dev' });
+    expect(s().check.refusals).toEqual([]);
+    setPackStatus(null);
+    expect(s().check.refusals).toEqual([]);
+  });
+});
+
+describe('orphans', () => {
+  it('keeps RF settings and sector places for units detection no longer has', async () => {
+    site();
+    h.antennas = antennasFile([unit('ant-b', 120), unit('ant-c', 240, { status: 'rejected' })]);
+    await loadRf('p1');
+    expect(s().orphans).toEqual([
+      { antennaId: 'ant-a', reason: 'removed', sectorId: 'sec-s1' },
+      { antennaId: 'ant-c', reason: 'rejected', sectorId: 'sec-s3' },
+    ]);
+    // still in the working copy and in the file
+    expect(s().sectors.antennas.map((a) => a.antennaId)).toContain('ant-a');
+    expect(s().sectors.sectors[0]?.antennaIds).toEqual(['ant-a']);
+    expect(s().dirty).toBe(false);
+  });
+
+  it('removes and reassigns only when the person says so', async () => {
+    site();
+    h.antennas = antennasFile([unit('ant-b', 120), unit('ant-c', 240), unit('ant-d', 10)]);
+    h.sectors = sectorsFile(
+      [{ id: 'sec-s1', antennaIds: ['ant-a', 'ant-b'] }],
+      [lteSettings('ant-a'), lteSettings('ant-b')],
+    );
+    await loadRf('p1');
+    expect(s().orphans.map((o) => o.antennaId)).toEqual(['ant-a']);
+    expect(reassignOrphanEntry('ant-a', 'ant-b')).toMatch(/already has RF settings/);
+    expect(s().sectors.antennas).toHaveLength(2);
+    expect(reassignOrphanEntry('ant-a', 'ant-d')).toBeNull();
+    expect(s().orphans).toEqual([]);
+    expect(s().sectors.sectors[0]?.antennaIds).toEqual(['ant-d', 'ant-b']);
+    removeOrphanEntry('ant-b');
+    expect(s().sectors.antennas.map((a) => a.antennaId)).toEqual(['ant-d']);
+  });
+
+  it('flags nothing when the project has no inventory', async () => {
+    h.sectors = sectorsFile([{ id: 'sec-s1', antennaIds: ['ant-a'] }], [lteSettings('ant-a')]);
+    await loadRf('p1');
+    expect(s().orphans).toEqual([]);
+  });
+});
+
+describe('mirrored job defaults', () => {
+  it('applies the radio maximum, the port by band and 0 degrees clamped into the port range', async () => {
+    site();
+    h.sectors = sectorsFile(
+      [{ id: 'sec-s1', antennaIds: ['ant-a'] }],
+      [
+        {
+          antennaId: 'ant-a',
+          equipment: { kind: 'separate', antenna: 'ant-x', radio: 'rru-x' },
+          active: true,
+          carriers: [{ id: 'c1', tech: 'lte', band: 'B3', bandwidthMhz: 20, feederLossDb: 0.5 }],
+        },
+      ],
+    );
+    await loadRf('p1');
+    const [c] = row('ant-a').carriers;
+    expect(c).toMatchObject({
+      portId: 'high',
+      gainDbi: 17,
+      etiltDeg: 0,
+      powerDbm: 43,
+      powerBasis: 'radio-max',
+      frequencyMhz: 1842.5,
+      subcarriers: 1200,
+      feederLossDb: 0.5,
+    });
+    expect(row('ant-a').warnings.map((w) => w.code)).toEqual([
+      'etilt-defaulted',
+      'power-radio-max',
+    ]);
+  });
+
+  it('an AAU uses its total power, an NR 3500 carrier 30 kHz, an NR FDD carrier 15 kHz', async () => {
+    site();
+    h.sectors = sectorsFile(
+      [{ id: 'sec-s1', antennaIds: ['ant-a'] }],
+      [
+        {
+          antennaId: 'ant-a',
+          equipment: { kind: 'aau', aau: 'aau-x' },
+          active: true,
+          carriers: [
+            { id: 'c1', tech: 'nr', band: 'n78', bandwidthMhz: 100, feederLossDb: 0 },
+            { id: 'c2', tech: 'nr', band: 'n78', bandwidthMhz: 20, scsKhz: 15, feederLossDb: 0 },
+          ],
+        },
+      ],
+    );
+    await loadRf('p1');
+    const [c1, c2] = row('ant-a').carriers;
+    expect(c1).toMatchObject({
+      powerDbm: 53,
+      powerBasis: 'aau-total',
+      scsKhz: 30,
+      gainDbi: 24,
+      etiltDeg: 3,
+    });
+    expect(c1?.subcarriers).toBe(12 * 273);
+    expect(c2?.scsKhz).toBe(15);
+    expect(row('ant-a').warnings.map((w) => w.code)).toContain('scs-defaulted');
+  });
+
+  it('a set power and tilt are used as typed; a missing radio leaves the carrier out', async () => {
+    site();
+    h.sectors = sectorsFile(
+      [{ id: 'sec-s1', antennaIds: ['ant-a'] }],
+      [
+        lteSettings('ant-a', {
+          equipment: { kind: 'separate', antenna: 'ant-x' },
+          carriers: [
+            {
+              id: 'c1',
+              tech: 'lte',
+              band: 'B3',
+              bandwidthMhz: 20,
+              port: 'high',
+              feederLossDb: 0,
+              powerDbmPerPort: 40,
+            },
+            { id: 'c2', tech: 'lte', band: 'B3', bandwidthMhz: 10, port: 'high', feederLossDb: 0 },
+          ],
+        }),
+      ],
+    );
+    await loadRf('p1');
+    const r = row('ant-a');
+    expect(r.carriers.map((c) => [c.carrierId, c.powerDbm, c.etiltDeg])).toEqual([['c1', 40, 4]]);
+    expect(r.warnings).toEqual([{ code: 'power-missing', carrierId: 'c2' }]);
+  });
+});
+
+describe('saving', () => {
+  it("writes the working copy, keeps main's warnings and clears dirty", async () => {
+    site();
+    h.writeWarnings = ['pattern a.msi was not copied'];
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    expect(s().dirty).toBe(true);
+    expect(await saveRf()).toBeNull();
+    expect(s().dirty).toBe(false);
+    expect(s().writeWarnings).toEqual(['pattern a.msi was not copied']);
+    expect(h.sectors?.study.radiusM).toBe(5000);
+    expect(s().hasFile).toBe(true);
+  });
+
+  it('a refused write keeps the edits and says why', async () => {
+    site();
+    h.writeError = 'Newer on disk.';
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    expect(await saveRf()).toBe('Newer on disk.');
+    expect(s().dirty).toBe(true);
+    expect(s().message).toBe('Newer on disk.');
+    expect(s().saving).toBe(false);
+  });
+
+  it('refuses edits and saves on a read only project', async () => {
+    site();
+    h.readOnly = true;
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    expect(s().dirty).toBe(false);
+    expect(await saveRf()).toMatch(/read only/);
+    expect(h.calls.some(([c]) => c === 'rf:writeSectors')).toBe(false);
+  });
+
+  it('never writes antennas.json', async () => {
+    site();
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    await saveRf();
+    expect(h.calls.map(([c]) => c).filter((c) => c.startsWith('telecom:write'))).toEqual([]);
+  });
+});
+
+describe('loading', () => {
+  it('drops a stale answer when the project changed meanwhile', async () => {
+    site();
+    let release: () => void = () => undefined;
+    h.delay = new Promise<void>((r) => {
+      release = r;
+    });
+    const slow = loadRf('p1');
+    h.delay = null;
+    await loadRf('p2');
+    release();
+    await slow;
+    expect(s().projectId).toBe('p2');
+  });
+
+  it('keeps a pending edit across a reload when asked', async () => {
+    site();
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    await loadRf('p1', { keepEdits: true });
+    expect(s().sectors.study.radiusM).toBe(5000);
+    expect(s().dirty).toBe(true);
+    await loadRf('p1');
+    expect(s().sectors.study.radiusM).toBe(3000);
+  });
+
+  it('reads a selected run again', async () => {
+    site();
+    await loadRf('p1');
+    await selectRun('rf-1');
+    expect(s().selectedRunId).toBe('rf-1');
+    expect(h.calls.some(([c]) => c === 'rf:readRun')).toBe(true);
+    await loadRf('p1');
+    expect(s().selectedRunId).toBeNull();
+  });
+});
