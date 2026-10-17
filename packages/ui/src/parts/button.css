@@ -70,6 +70,16 @@
   background: var(--bg-2);
   color: var(--fg-0);
 }
+/* a quiet toggle that is on keeps the pressed look (the quiet rule above, as specific and later,
+   would otherwise draw it like one that is off) */
+.btn.quiet[aria-pressed='true'] {
+  background: var(--acc-a20);
+  border-color: var(--acc-a40);
+  color: var(--acc-strong);
+}
+.btn.quiet[aria-pressed='true']:hover {
+  border-color: var(--acc);
+}
 .btn.link {
   height: auto;
   padding: 0;
