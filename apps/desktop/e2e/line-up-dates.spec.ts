@@ -285,42 +285,47 @@ async function tankBand(
 
 /**
  * The columns of `band` (page pixels) with the strongest vertical edges (a change of brightness
- * from one column to the next, summed down the strip): the six strongest, a few pixels apart.
+ * from one column to the next, summed down the strip): the `count` strongest, a few pixels apart.
  */
 async function verticalEdges(
   win: Page,
   band: { x: number; y: number; width: number; height: number },
+  count: number,
 ): Promise<number[]> {
   const png = (await win.screenshot({ clip: band })).toString('base64');
-  return win.evaluate(async (data) => {
-    const blob = await (await fetch(`data:image/png;base64,${data}`)).blob();
-    const bmp = await createImageBitmap(blob);
-    const canvas = document.createElement('canvas');
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return [];
-    ctx.drawImage(bmp, 0, 0);
-    const { data: px, width, height } = ctx.getImageData(0, 0, bmp.width, bmp.height);
-    const grey = (x: number, row: number) => {
-      const i = (row * width + x) * 4;
-      return 0.3 * (px[i] ?? 0) + 0.59 * (px[i + 1] ?? 0) + 0.11 * (px[i + 2] ?? 0);
-    };
-    const strength: number[] = [];
-    for (let x = 0; x < width; x++) {
-      let sum = 0;
-      if (x >= 1 && x < width - 1)
-        for (let row = 0; row < height; row++) sum += Math.abs(grey(x + 1, row) - grey(x - 1, row));
-      strength.push(sum);
-    }
-    const out: number[] = [];
-    const order = strength.map((v, x) => [v, x] as const).sort((a, b) => b[0] - a[0]);
-    for (const [v, x] of order) {
-      if (v <= 0 || out.length >= 6) break;
-      if (out.every((c) => Math.abs(c - x) > 6)) out.push(x);
-    }
-    return out;
-  }, png);
+  return win.evaluate(
+    async ({ data, count }) => {
+      const blob = await (await fetch(`data:image/png;base64,${data}`)).blob();
+      const bmp = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = bmp.width;
+      canvas.height = bmp.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return [];
+      ctx.drawImage(bmp, 0, 0);
+      const { data: px, width, height } = ctx.getImageData(0, 0, bmp.width, bmp.height);
+      const grey = (x: number, row: number) => {
+        const i = (row * width + x) * 4;
+        return 0.3 * (px[i] ?? 0) + 0.59 * (px[i + 1] ?? 0) + 0.11 * (px[i + 2] ?? 0);
+      };
+      const strength: number[] = [];
+      for (let x = 0; x < width; x++) {
+        let sum = 0;
+        if (x >= 1 && x < width - 1)
+          for (let row = 0; row < height; row++)
+            sum += Math.abs(grey(x + 1, row) - grey(x - 1, row));
+        strength.push(sum);
+      }
+      const out: number[] = [];
+      const order = strength.map((v, x) => [v, x] as const).sort((a, b) => b[0] - a[0]);
+      for (const [v, x] of order) {
+        if (v <= 0 || out.length >= count) break;
+        if (out.every((c) => Math.abs(c - x) > 6)) out.push(x);
+      }
+      return out;
+    },
+    { data: png, count },
+  );
 }
 
 /** The issues in `issues.json` with where each is seen. */
@@ -589,11 +594,14 @@ test('the lined-up date lines up in 3D, on the map and for pins', async ({ lined
   await dragDivider(win, stage.x + stage.width + 40);
   await expect(divider).toHaveAttribute('aria-valuenow', '98');
   const band = await tankBand(win);
-  const earlier = await verticalEdges(win, band);
+  // the earlier date's four strongest edges each stand at one of the later date's ten strongest:
+  // the dates differ in places, so the weaker edges rank differently, but a 2 m step would move
+  // every edge by about 8 px
+  const earlier = await verticalEdges(win, band, 4);
   await dragDivider(win, stage.x - 40);
   await expect(divider).toHaveAttribute('aria-valuenow', '2');
-  const later = await verticalEdges(win, band);
-  expect(earlier).toHaveLength(6);
+  const later = await verticalEdges(win, band, 10);
+  expect(earlier).toHaveLength(4);
   for (const column of earlier)
     expect(
       Math.min(...later.map((c) => Math.abs(c - column))),
