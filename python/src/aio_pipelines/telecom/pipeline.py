@@ -205,6 +205,7 @@ def ground_near_base(ctx: Any, project: Path, manifest: dict, crown: Any) -> flo
         _origin(manifest),
         seed=0,
         offset_m=height_offset_m(layer),
+        order_free=True,
     )[0]
     if len(pts) == 0:
         return None

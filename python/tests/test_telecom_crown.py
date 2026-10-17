@@ -346,3 +346,40 @@ def test_to_date_frame_moves_points_not_directions():
     )
     assert box["crop"] == {"min": [-2.0, 0.0, 1.0], "max": [-1.0, 1.0, 2.0]}
     assert crown_mod.to_date_frame(ev, (0.0, 0.0)) is ev
+
+
+def test_a_capped_read_keeps_the_same_points_in_any_order(tmp_path, monkeypatch):
+    # the reader may return the points of a region in any order (PDAL does not promise one); a read
+    # over its cap must still keep the same sample, or two runs on one cloud find different units
+    xyz, truth = tower_cloud("monopole", seed=1)
+    shuffled = xyz[np.random.default_rng(9).permutation(len(xyz))]
+    monkeypatch.setattr(crown_mod, "LOCAL_POINTS", 60_000)
+    a = crown_for(tmp_path / "a", xyz, evidence=(TRUE_AXIS, truth["height"]))
+    b = crown_for(tmp_path / "b", shuffled, evidence=(TRUE_AXIS, truth["height"]))
+    assert a.read_points > a.read_cap == 60_000  # the cap was hit: the band is a sample
+    assert len(a.xyz) > MIN_CROWN_POINTS and np.array_equal(a.xyz, b.xyz)
+
+
+def test_order_free_sample_is_uniform_and_order_independent():
+    from aio_pipelines.engineer.cloud import _coord_keys, _Reservoir
+
+    rng = np.random.default_rng(4)
+    pts = rng.uniform(-20, 20, (200_000, 3))
+    keys = _coord_keys(pts, 0)
+    assert keys.min() >= 0.0 and keys.max() < 1.0
+    assert np.histogram(keys, bins=10, range=(0, 1))[0].min() > 0.9 * len(pts) / 10
+    picks = []
+    for order in (np.arange(len(pts)), rng.permutation(len(pts))):
+        res = _Reservoir(5_000, 0, order_free=True)
+        for chunk in np.array_split(pts[order], 37):
+            res.add(chunk)
+        got, _ = res.result()
+        picks.append({tuple(p) for p in got.tolist()})
+    assert len(picks[0]) == 5_000 and picks[0] == picks[1]
+    # a sample of a grid-like cloud is spread evenly, not in stripes
+    grid = np.stack(np.meshgrid(np.arange(200) * 0.01, np.arange(200) * 0.01, [0.0]), -1).reshape(-1, 3)
+    res = _Reservoir(4_000, 0, order_free=True)
+    res.add(grid)
+    sample, _ = res.result()
+    counts = np.histogram2d(sample[:, 0], sample[:, 1], bins=4)[0]
+    assert counts.min() > 0.8 * counts.mean()

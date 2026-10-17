@@ -117,11 +117,35 @@ def las_crs(path: Path) -> dict[str, Any] | None:
     return {"wkt": wkt} if wkt and len(wkt) <= 20000 else None
 
 
-class _Reservoir:
-    """A seeded uniform sample of at most `cap` points from a stream, memory bounded by 2 x cap."""
+_KEY_STEP_M = 1e-4  # order-free sample keys hash the coordinates rounded to 0.1 mm
 
-    def __init__(self, cap: int, seed: int):
+
+def _coord_keys(xyz: np.ndarray, seed: int) -> np.ndarray:
+    """A uniform key in [0, 1) per point from its coordinates alone (rounded to `_KEY_STEP_M`,
+    mixed with a splitmix64 finaliser), so the same point gets the same key in any read order."""
+    q = np.round(np.asarray(xyz, dtype=np.float64) / _KEY_STEP_M).astype(np.int64).view(np.uint64)
+    with np.errstate(over="ignore"):
+        h = np.uint64(seed & 0xFFFFFFFF) * np.uint64(0x9E3779B97F4A7C15)
+        h = h ^ (q[:, 0] * np.uint64(0xBF58476D1CE4E5B9))
+        h = h ^ (q[:, 1] * np.uint64(0x94D049BB133111EB))
+        h = h ^ (q[:, 2] * np.uint64(0xD6E8FEB86659FD93))
+        h = (h ^ (h >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+        h = (h ^ (h >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+        h = h ^ (h >> np.uint64(31))
+    return (h >> np.uint64(11)).astype(np.float64) * (1.0 / (1 << 53))
+
+
+class _Reservoir:
+    """A seeded uniform sample of at most `cap` points from a stream, memory bounded by 2 x cap.
+
+    `order_free` keys each point by its coordinates (`_coord_keys`) instead of drawing the keys in
+    arrival order: the sample is then the same set of points whatever order the stream brings them
+    in (PDAL does not promise one), as the kept set is always the points with the smallest keys."""
+
+    def __init__(self, cap: int, seed: int, order_free: bool = False):
         self.cap = max(1, int(cap))
+        self.seed = int(seed)
+        self.order_free = order_free
         self.rng = np.random.default_rng(seed)
         self.pts: list[np.ndarray] = []
         self.cols: list[np.ndarray] = []  # uint8 colours, parallel to pts, when the source has them
@@ -135,7 +159,7 @@ class _Reservoir:
             return
         if rgb is None:
             self.coloured = False
-        u = self.rng.random(len(xyz))
+        u = _coord_keys(xyz, self.seed) if self.order_free else self.rng.random(len(xyz))
         keep = u < self.threshold
         self.pts.append(xyz[keep])
         if rgb is not None:
@@ -203,6 +227,7 @@ def read_region(
     seed: int = 0,
     offset_m: float = 0.0,
     shift: tuple[float, float] = (0.0, 0.0),
+    order_free: bool = False,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """The points of a cloud inside `region` (local frame, or all when None), at most `max_points`.
 
@@ -210,6 +235,9 @@ def read_region(
     heights) is turned back into file heights for the PDAL query. `shift` is the cloud's date
     line-up (east, north metres): the points are drawn that far over, so the region is where the
     date is lined up and the PDAL query (file coordinates) takes it back.
+
+    `order_free` samples by coordinates (see `_Reservoir`), so a capped read keeps the same points
+    whatever order the reader returns them in.
 
     `origin` is the project origin `[E, N, H]`. Returns the local xyz and
     `{"read": points inside the region, "kept": points returned, "crs": {...} | None,
@@ -223,7 +251,7 @@ def read_region(
         raise JobError(f"A {fmt} cloud has an unsupported format; use COPC, LAS, kit-packed or png-packed.")
     check = getattr(ctx, "check", lambda: None)
     origin = (float(origin[0]), float(origin[1]), float(origin[2]))
-    res = _Reservoir(max_points, seed)
+    res = _Reservoir(max_points, seed, order_free)
     crs: dict[str, Any] | None = None
     if fmt == "las":
         LasHeader(layer_path)  # a clear error for a file that is not an uncompressed LAS

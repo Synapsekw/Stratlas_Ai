@@ -15,8 +15,10 @@ evidence and a click on the tower are in the lined-up frame the 3D view draws (`
 of the cloud layer, x += east, z -= north): the shift is taken off them before use. Cloud reads
 and photo poses are raw.
 
-The band is sorted by its rounded coordinates, so the later steps (the voxel thinning keeps the
-first point of each voxel) depend only on which points the read kept, never on their order.
+Every read samples by coordinates when it holds more points than its cap (`read_region`
+`order_free`), so which points are kept does not depend on the order the reader returns them in,
+and the band is sorted by its rounded coordinates, so the later steps (the voxel thinning keeps
+the first point of each voxel) do not either: a run on the same cloud gives the same units.
 """
 
 from __future__ import annotations
@@ -304,9 +306,18 @@ def _find_seed(xyz: np.ndarray) -> tuple[float, float] | None:
 def _read_info(
     ctx: Any, layer_path: Path, layer: dict, region: dict | None, cap: int, origin, offset: float
 ) -> tuple[np.ndarray, dict]:
-    """The points of `region` (raw: the date's own frame) and the read's counts."""
+    """The points of `region` (raw: the date's own frame) and the read's counts. A read over its
+    cap keeps the same sample whatever order the reader returns the points in (`order_free`)."""
     return read_region(
-        layer_path, str(layer.get("format") or "las"), region, cap, ctx, origin, seed=0, offset_m=offset
+        layer_path,
+        str(layer.get("format") or "las"),
+        region,
+        cap,
+        ctx,
+        origin,
+        seed=0,
+        offset_m=offset,
+        order_free=True,
     )
 
 
