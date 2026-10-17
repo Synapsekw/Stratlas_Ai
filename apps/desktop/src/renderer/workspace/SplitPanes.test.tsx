@@ -63,10 +63,13 @@ const focusPane = (side: 'left' | 'right') => {
       ?.dispatchEvent(new Event('pointerdown', { bubbles: true }));
   });
 };
+/** Alt+Arrow on the page; returns the event, to read whether the island took it. */
 const altArrow = (key: 'ArrowLeft' | 'ArrowRight') => {
+  const e = new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true });
   act(() => {
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key, altKey: true, bubbles: true }));
+    document.body.dispatchEvent(e);
   });
+  return e;
 };
 
 beforeEach(() => {
@@ -115,7 +118,7 @@ describe('the Split view', () => {
     focusPane('left');
     expect(islandDay()).toBe('2 Oct');
     // Alt+Left on the left pane: 4 Sep there, the right keeps 6 Nov
-    altArrow('ArrowLeft');
+    const step = altArrow('ArrowLeft');
     expect(stagePrefs.getState().byProject.p?.split).toMatchObject({
       leftCapture: 'sep',
       rightCapture: 'nov',
@@ -124,7 +127,9 @@ describe('the Split view', () => {
     expect(header('left')?.querySelector('[data-testid="pane-date"]')?.textContent).toBe(
       '4 Sep 2024',
     );
-    // and the date bar's own survey is not stepped
+    // and the date bar's own survey is not stepped: the island took the key, and App's Alt+Arrow
+    // step runs only for a key no one took (App.tsx, !e.defaultPrevented)
+    expect(step.defaultPrevented).toBe(true);
     expect(timeline.getState().focus).toBe('nov');
   });
 
