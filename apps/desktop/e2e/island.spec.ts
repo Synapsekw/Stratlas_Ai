@@ -300,7 +300,8 @@ async function openLayout(win: Page) {
         return tabs ? tabs.scrollWidth - tabs.clientWidth : -1;
       })(),
       notice: box(document.querySelector('[data-testid="t-notice"]')),
-      under: [...document.querySelectorAll('.stage-under > *')].map((el) => ({
+      // the stage's corner overlays (D30): the dates, the status chips, the Map menu chip
+      under: [...document.querySelectorAll('.stage-slot > *')].map((el) => ({
         name: el.className,
         box: box(el),
       })),
@@ -320,7 +321,7 @@ const overlap = (a: Box, b: Box) =>
 test.describe('in the window CI runs, 1100 x 720', () => {
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
 
-  test('the open island fits the stage, keeps clear of the PAUSED chip and never takes the centre click', async ({
+  test('the open island fits the stage, keeps clear of the corner overlays and never takes the centre click', async ({
     win,
   }, info) => {
     const [w, h] = await win.evaluate(() => [innerWidth, innerHeight]);
@@ -329,9 +330,14 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     // the demo with the most groups: point clouds, volumes and a video clip (paused)
     await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
     const bar = island(win);
-    await expect(win.locator('.stage-status')).toContainText('Paused', VIEW_READY);
+    await expect(win.getByTestId('video-window')).toBeVisible(VIEW_READY);
+    // the clip is paused, and no PAUSED chip stands on the stage (D30): the island's live line
+    // and the Video workbench say what the clip does
+    await expect(win.locator('.stage-slot').filter({ hasText: /paused/i })).toHaveCount(0);
     await expect(bar.getByTestId('date-row')).toBeVisible();
     expect(await centreClick(win), 'at rest').toBe('the view');
+    // at rest the Map menu chip stands in a corner of its own
+    await expect(win.locator('.stage-slot > .stage-basemap')).toBeVisible();
 
     // the first T: the tools and the one-time notice
     await win.locator('[data-scene-view] canvas').first().focus();
@@ -361,7 +367,8 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     // the notice and what lies under the island keep apart
     expect(open.notice).not.toBeNull();
     const under = open.under.filter((u) => u.box !== null);
-    expect(under.map((u) => u.name).join(' ')).toContain('stage-status');
+    // (on this narrow stage the open island reaches past the middle, so the top corners are
+    // kept free: what stays in the bottom corners, if anything, keeps clear of it)
     if (open.notice) {
       const notice = open.notice;
       expect(notice.top).toBeGreaterThanOrEqual(capsule.bottom);

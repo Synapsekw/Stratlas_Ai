@@ -1,6 +1,7 @@
 /**
  * Drone telemetry and photo markers on the real fusion projects (Al-Zour, HCl, DAMAC): the
- * tactical trace of the playing clip (flown trail, distance ticks, HUD, D to turn it off and on,
+ * tactical trace of the playing clip (flown trail, distance ticks, its readings in the island's
+ * live line and the Video workbench rather than a HUD on the model, D to turn it off and on,
  * remembered per project) and one photo marker per place with a count. Runs only where the real
  * data holds the projects (realData.ts); skipped elsewhere. Each test runs on a temporary copy of
  * its project (@realdata). QUADRION_SHOTS=<folder> saves screenshots (telemetry-*.png, icons-*.png).
@@ -155,13 +156,14 @@ const hudValue = (win: Page, id: string) =>
 const readout = (win: Page) =>
   win.evaluate(() => (window as unknown as Hooks).__stratlas.videoRig()?.trace.lastReadout ?? null);
 
-/** Play the active clip for about `ms` of video time, then pause. */
-async function playFor(win: Page, ms: number) {
+/** Play the active clip for about `ms` of video time, then pause; `playing` runs meanwhile. */
+async function playFor(win: Page, ms: number, playing?: () => Promise<void>) {
   const t0 = await win.evaluate(() => {
     const ws = (window as unknown as Hooks).__stratlas.workspace.getState();
     ws.play();
     return ws.nowMs;
   });
+  await playing?.();
   await expect
     .poll(
       () => win.evaluate(() => (window as unknown as Hooks).__stratlas.workspace.getState().nowMs),
@@ -186,13 +188,23 @@ const icons = (win: Page, kind: 'photo' | 'pano') =>
     kind,
   );
 
+/** Whether the trace (trail, ticks, start tag) draws on the model. */
+const traceShown = (win: Page) =>
+  win.evaluate(() => (window as unknown as Hooks).__stratlas.videoRig()?.trace.group.visible);
+
+/** "ALT 31 m · SPD 3.2 m/s": the playing clip's telemetry, as the island and the bench read it. */
+const TELEMETRY = /^ALT -?\d+ m · SPD \d+\.\d m\/s$/;
+
 async function telemetryFollowsTheClip(win: Page, clip: string, at: number, labels = true) {
+  // the HUD plate is off the model (D30): the trace still computes its readings into it, and the
+  // island's live line and the Video workbench show the telemetry instead
   const hud = win.locator('[data-trace-hud]');
   // a view of the flown trail, where the ticks come at the right spacing
   await frameTrail(win, clip, at + 5);
   await seekClip(win, clip, at);
-  await expect(hud).toBeVisible();
-  // the HUD reads the pose at the playhead
+  await expect.poll(() => traceShown(win)).toBe(true);
+  await expect(hud).toBeHidden();
+  // the trace reads the pose at the playhead
   await expect.poll(async () => Math.abs((await hudValue(win, 'clip')) - at)).toBeLessThan(0.5);
   // distance ticks along the flown part, with labels
   await expect.poll(async () => (await readout(win))?.ticks ?? 0).toBeGreaterThan(0);
@@ -200,13 +212,20 @@ async function telemetryFollowsTheClip(win: Page, clip: string, at: number, labe
   if (labels) await expect(win.locator('[data-trace-tick]:visible').first()).toBeVisible();
   const d0 = await hudValue(win, 'distance');
   expect(d0).toBeGreaterThan(0);
-  // playing on: the distance flown grows, and the clip time with it
+  // playing on: the distance flown grows, and the clip time with it; the island's live line
+  // says the altitude and speed while the clip plays
   const c0 = await hudValue(win, 'clip');
-  await playFor(win, 4000);
+  const live = win.locator('.isl-live[data-live="playback"] .isl-value');
+  await playFor(win, 4000, async () => {
+    await expect(live).toHaveText(TELEMETRY);
+  });
   await expect.poll(() => hudValue(win, 'clip'), { timeout: 20_000 }).toBeGreaterThan(c0 + 3);
   expect(await hudValue(win, 'distance')).toBeGreaterThan(d0);
   for (const k of ['el', 'speed', 'gimbal'])
     expect(Number.isFinite(await hudValue(win, k))).toBe(true);
+  // paused, the Video workbench's player card still reads it
+  const bench = await islandGroup(win, 'video');
+  await expect(bench.getByTestId('player-card').locator('.vb-tele')).toHaveText(TELEMETRY);
 
   // D turns it off and on (the island's Video button follows), independent of the flight paths
   const telemetryTool = async () =>
@@ -214,20 +233,16 @@ async function telemetryFollowsTheClip(win: Page, clip: string, at: number, labe
   await expect(await telemetryTool()).toHaveAttribute('aria-pressed', 'true');
   await win.locator('[data-scene-view] canvas').click({ position: { x: 5, y: 400 } });
   await win.keyboard.press('d');
-  await expect(hud).toBeHidden();
   const tool = await telemetryTool();
   await expect(tool).toHaveAttribute('aria-pressed', 'false');
-  expect(
-    await win.evaluate(
-      () => (window as unknown as Hooks).__stratlas.videoRig()?.trace.group.visible,
-    ),
-  ).toBe(false);
+  await expect.poll(() => traceShown(win)).toBe(false);
   // remembered for the project
   expect(await win.evaluate(() => localStorage.getItem('stratlas.stagePrefs') ?? '')).toContain(
     '"telemetry":false',
   );
   await tool.click();
-  await expect(hud).toBeVisible();
+  await expect.poll(() => traceShown(win)).toBe(true);
+  await expect(hud).toBeHidden();
 }
 
 test.describe('@realdata alzour', () => {
