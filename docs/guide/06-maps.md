@@ -66,7 +66,7 @@ When everything is covered, the panel says "Nothing to download". A project that
 
 **Download street maps for new projects automatically** is off by default. With it on, the first time you open a project that is placed on the Earth, its missing areas are queued in **Downloads** without asking; a notice says so, and you can cancel them there.
 
-In **Offline only** nothing is downloaded, whatever these switches say. The panel still lists what is missing: switch to **Online** in the title bar (see [Online or offline only](01-install.md#online-or-offline-only)), or bring the packs in with **Import pack file**.
+In **Offline only** nothing is downloaded, whatever these switches say. The panel still lists what is missing: switch to **Online** in the status row at the foot of the left sidebar (see [Online or offline only](01-install.md#online-or-offline-only)), or bring the packs in with **Import pack file**.
 
 If a project leaves the library, the panel says, for example, "2 packs cover areas with no project any more". Click **Review**, then **Remove** on a pack and confirm. The world overview is never offered for removal.
 
@@ -81,7 +81,7 @@ The pack appears under **Installed packs**.
 
 ### Download a region
 
-{product} downloads map data only when you start it (or have turned on **Download street maps for new projects automatically**, above), from build.protomaps.com. The workstation must be **Online**: click the mode in the title bar, switch to **Online**, then **Download maps** (see [Online or offline only](01-install.md#online-or-offline-only)). In **Offline only**, **Download** is greyed and the page says to import a pack file instead.
+{product} downloads map data only when you start it (or have turned on **Download street maps for new projects automatically**, above), from build.protomaps.com. The workstation must be **Online**: click the mode in the status row at the foot of the left sidebar, switch to **Online**, then **Download maps** (see [Online or offline only](01-install.md#online-or-offline-only)). In **Offline only**, **Download** is greyed and the page says to import a pack file instead.
 
 1. Click **Add a region**.
 2. Pick the area: **Country** (choose from the list) or **Draw a box** (drag on the map).

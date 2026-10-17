@@ -15,9 +15,20 @@
 
 {product} remembers the camera for each project when you leave Scene and come back.
 
+## The island: the stage tools and the date
+
+The stage has no toolbar and no date bar. At the top centre of the view sits the island. At rest it shows the survey date you are viewing, for example "13 Apr", in the survey's colour; move the pointer near the top of the view and it grows to the date's arrows, the view and **Tools**.
+
+- Click the date for the calendar: the month with the survey days marked, the survey list and **Compare the two dates**. **Alt ←** and **Alt →** step through the dates.
+- Click the island, or press **T**, to open the stage tools: the **3D**, **Map** and **Split** switch, and a tab per group: **View**, **Measure**, **Display** and **Annotate**, and where the project has them **Point cloud**, **Volumes**, **Video** and **Road**. Pointing at a tab shows the group's quick tiles; clicking it opens the group's full set under the island. **All tools** at the end of a row does the same.
+- The arrow keys move between the tiles, **Tab** moves between the rows, and **Esc** closes the tools.
+- While something is going on, the island says it beside the date: a measurement and its reading, the playing clip with its telemetry, a processing job with its progress, or **Offline** when the network is down. When two things are going on, the second one is a small bubble beside the island; click it to swap them.
+
+**T** no longer shows or hides the timeline: the timeline is the **Timeline** tile in the island's **View** group, and has no key.
+
 ## 3D, Map and Split
 
-The first buttons of the stage toolbar change the view:
+The switch at the start of the open island changes the view:
 
 - **3D** (key **1**): the 3D view.
 - **Map** (key **2**): a flat map with the orthos, plans and the offline street map.
@@ -28,10 +39,10 @@ Projects with more than one survey date also have **Compare dates**. See [Compar
 ## Show and hide layers
 
 - In the sidebar, **Datasets** has an eye per layer, one per group (Models, Point clouds, Maps, Video) and one at the top for everything. A half-filled eye means some layers in the group are hidden.
-- In the stage toolbar, **Layers and issue pins** turns kinds on and off: **Models**, **Point clouds**, **Photo cameras**, **Maps and rasters** and **Video clips**.
-- The 3D view sits on the offline street map wherever an installed map pack covers the site: sharp under the site and running out to the horizon. The street map button in the same toolbar group (**Hide the street map under the site**) takes it away and brings it back; the choice is remembered for the project on this computer. In a narrow window the button is under **More tools**. The **Map** chip at the top right of the 3D view puts an online map (Esri, Mapbox or Sentinel-2) or your imagery and terrain packs on the ground instead. See [The ground in 3D](06-maps.md#the-ground-in-3d).
+- In the island, the **Display** group's full set has **Layers and issue pins**, which turns kinds on and off: **Models**, **Point clouds**, **Photo cameras**, **Maps and rasters** and **Video clips**.
+- The 3D view sits on the offline street map wherever an installed map pack covers the site: sharp under the site and running out to the horizon. The **Street map** tile in the island's **Display** row (**Hide the street map under the site**) takes it away and brings it back; the choice is remembered for the project on this computer. The **Map** chip at the top right of the 3D view puts an online map (Esri, Mapbox or Sentinel-2) or your imagery and terrain packs on the ground instead. See [The ground in 3D](06-maps.md#the-ground-in-3d).
 - If you delete a layer you were looking at, for example photos placed far away by a wrong GPS, and the view is left on empty ground, the 3D view frames the project again.
-- **I** or the pin button turns the issue tags off and back on. **Issue pins** in the same popover shows **All**, only issues at or above a severity, or **Off**, and the **Severity heat map**.
+- **I** or the **Issue pins** tile in **Display** turns the issue tags off and back on. **Issue pins** in the Display group's full set shows **All**, only issues at or above a severity, or **Off**, and the **Severity heat map**.
 - **L** or **Labels** cycles the component labels: **Off**, **Key** (one per group) and **All**.
 
 ## Delete datasets and the project trash
@@ -75,7 +86,7 @@ Re-centring is not offered when the project holds things that cannot move with i
 
 ## Point clouds
 
-Click **Point cloud** in the stage toolbar:
+Click the **Point cloud** tab in the island, then **Point cloud**:
 
 - **Colour by**: **RGB**, **Elevation**, **Intensity**, **Classification** or **Flight**.
 - **Point size**: 1x is the normal size; 2x and 4x make points at least 2 and 4 pixels.
@@ -96,7 +107,7 @@ A cloud whose heights are off (for example a cloud built from photo altitudes th
 
 ## Clean up a point cloud
 
-Click **Clean up the point cloud** in the stage toolbar (in the point cloud group, next to **Point cloud**), or right-click a point cloud in **Datasets** and pick **Clean up...**. The panel opens at the top left of the view and works on the selected cloud; with several clouds, pick one at the top. Cleanup works on COPC clouds only: convert others first.
+Click **Clean up** in the island's **Point cloud** group, or right-click a point cloud in **Datasets** and pick **Clean up...**. The panel opens at the top left of the view and works on the selected cloud; with several clouds, pick one at the top. Cleanup works on COPC clouds only: convert others first.
 
 Nothing is rewritten while you clean up. Every change is one step you can undo with **Undo** (**Ctrl+Z**) and redo with **Redo** (**Ctrl+Y** or **Ctrl+Shift+Z**), and the points come back when you undo.
 
@@ -115,7 +126,7 @@ Exporting a cloud with a cleanup (**Site data**, **Export survey data**) has **A
 
 ## Sky, sun and water
 
-Click **Environment and time of day** at the right end of the toolbar (3D only):
+Click **Sky and time** (**Environment and time of day**) in the island's **View** group (3D only):
 
 - **Backdrop**: **Sky** (daylight from the real sun over the site) or **Studio** (a neutral dark backdrop for a single asset).
 - **Time of day** slider and **Date**. **Capture time** jumps to when the data was captured; **Now** to the present.
@@ -126,7 +137,7 @@ Your choices are remembered per project.
 
 ## See inside the asset
 
-For tanks, vessels and buildings flown inside, click **See inside the asset: cut or transparent**:
+For tanks, vessels and buildings flown inside, click **See inside** in the island's **View** group (**C**):
 
 - **Off**: the asset is solid. Nothing is cut automatically.
 - **Cut**: cuts the asset open toward you, at the drone while it is inside.
@@ -136,7 +147,7 @@ Point clouds hide while Cut or Transparent is on. **Inside view** flies behind t
 
 ## Video and the drone
 
-Projects with video have a **Timeline** at the bottom. **T** shows or hides it.
+Projects with video have a **Timeline** at the bottom. The **Timeline** tile in the island's **View** group shows or hides it; it has no key.
 
 1. Click a clip bar on the timeline: the clip is selected and the playhead goes to that point. It does not play yet: **Space** (or the play button) plays and pauses, and playback runs on to the next clip of the same date. **Previous clip** and **Next clip** step through the clips.
 2. The video window floats over the stage. Drag it by its title bar, resize it from the edges (it keeps 16:9), double-click the title to reset. **Dock beside the stage** puts it next to the view; **W** hides it.
@@ -155,10 +166,10 @@ In a project with video and survey dates (road surveys aside), the timeline has 
 - The date you view and two dates either side are shown. The others fold into **+2 earlier** or **+3 later**; click one to unfold that side.
 - Clips that overlap on one date stack in rows. A date without video keeps a thin lane with its photos and issues.
 - Click a date's label, or drag in its lane, to view that date. The time of day stays: if the new date has a clip at that time, it is selected, ready to play.
-- The date you view sits in the top left corner of the timeline. Click it for the calendar; **Alt ←** and **Alt →** step through the dates as before. These projects have no separate date bar above the views.
-- **T** shrinks the timeline to a one-line date row with the date arrows, the date and **Timeline** to bring it back.
+- The date you view sits in the top left corner of the timeline, and in the island. Click either for the calendar; **Alt ←** and **Alt →** step through the dates as before.
+- The **Timeline** tile in **View** folds the timeline away and brings it back. The date stays in the island.
 
-Projects without video, and road surveys, keep the date bar above the views and the single timeline.
+Projects without video, and road surveys, have the single timeline, and their date is in the island.
 
 <!-- screenshot: timeline-date-lanes.png | Scene in a demo project with video on three or more survey dates: the lane timeline at the bottom with the bright focused lane, dimmed lanes with ghost playheads, a "+N earlier" fold and the date button in the top left corner -->
 
@@ -179,4 +190,4 @@ Projects without video, and road surveys, keep the date bar above the views and 
 
 ## The right panel
 
-The right panel (the right sidebar) holds the **Selection** card, the **Issues** list (and **Volumes** on stockpile projects), and the AI agent at the bottom. The tab on its left edge, **Ctrl Alt B** or the right-panel button in the toolbar folds it away and brings it back; folded, the panel is a thin strip at the edge of the window, and a click on the strip opens it. The 3D view, the map and the video take the room. Picking an issue or clicking **Show changes** opens the panel again, because they show their result there; selecting a layer does not.
+The right panel (the right sidebar) holds the **Selection** card, the **Issues** list (and **Volumes** on stockpile projects), and the AI agent at the bottom. The tab on its left edge, **Ctrl Alt B**, the right-panel button at the top right of the stage or **Right panel** in the island's **View** group folds it away and brings it back; folded, the panel is a thin strip at the edge of the window, a click on the strip opens it, and the right-panel button sits to the left of the window's own buttons. **Ctrl J** opens the panel and puts the cursor in the agent. The 3D view, the map and the video take the room. Picking an issue or clicking **Show changes** opens the panel again, because they show their result there; selecting a layer does not.

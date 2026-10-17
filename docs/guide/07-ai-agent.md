@@ -48,24 +48,26 @@ While the Model builder is open, the agent uses the **Build from drawings** rout
 ## Switch cloud AI on
 
 1. Open **Settings**, **Privacy and cloud**.
-2. Switch on **Cloud AI**. The title bar chip changes from **Cloud AI off** to **Cloud AI**.
+2. Switch on **Cloud AI**. The cloud AI chip in the status row at the foot of the left sidebar, and in the agent's header, changes from **Cloud AI off** to **Cloud AI**.
 
-**Ctrl K**, **Turn cloud AI on** does the same. Clicking the cloud AI chip in the title bar opens **Privacy and cloud**. The workstation must be **Online** (see [Online or offline only](01-install.md#online-or-offline-only)): in **Offline only** the **Cloud AI** switch is greyed. A package can forbid cloud AI: then the chip reads **Cloud AI blocked** and nothing from it is sent.
+**Ctrl K**, **Turn cloud AI on** does the same. Clicking the cloud AI chip opens **Privacy and cloud**. The workstation must be **Online** (see [Online or offline only](01-install.md#online-or-offline-only)): in **Offline only** the **Cloud AI** switch is greyed. A package can forbid cloud AI: then the chip reads **Cloud AI blocked** and nothing from it is sent.
 
 ### On an offline-only workstation
 
-With **Offline-only workstation** on (**Settings**, **Privacy and cloud**, or the switch behind **Offline only** in the title bar), cloud AI is off whatever the **Cloud AI** switch says.
+With **Offline-only workstation** on (**Settings**, **Privacy and cloud**, or the switch behind **Offline only** at the foot of the left sidebar), cloud AI is off whatever the **Cloud AI** switch says.
 
 - Nothing goes to Anthropic, OpenAI or Google Gemini: not from the agent, **Detect with AI**, **Draft with AI** or **Test connection**. This holds from the moment you switch it on. A reply under way stops before its next step.
-- The **Cloud AI** switch shows off and is greyed. The title bar reads **Offline only** and **Cloud AI blocked** (**Cloud AI off** when the switch was off already).
+- The **Cloud AI** switch shows off and is greyed. The status row at the foot of the left sidebar reads **Offline only** and **Cloud AI blocked** (**Cloud AI off** when the switch was off already).
 - The agent reads **The agent is off**: "Cloud AI is off because this workstation is offline-only. A local model on this machine can still be used. To use cloud AI, turn off Offline-only workstation in Settings, Privacy and cloud."
 - A local model on this computer keeps working. See [Set up a local model](20-local-model.md). A model server on another machine counts as cloud AI and is refused.
 
-Switch **Offline-only workstation** off, or click **Offline only** in the title bar and switch to **Online**, to use cloud AI again. The **Cloud AI** switch goes back to what you had set.
+Switch **Offline-only workstation** off, or click **Offline only** at the foot of the left sidebar and switch to **Online**, to use cloud AI again. The **Cloud AI** switch goes back to what you had set.
 
 ## Talk to the agent
 
-The agent sits at the bottom of the right panel on **Scene** (open the panel with **Ctrl Alt B** if it is folded). On **Issues**, **Media**, **Detections** and **Reports** it is a column on the right edge of the screen. It is the same agent with the same conversation, whichever screen you are on.
+The agent sits at the bottom of the right panel on **Scene**. On **Issues**, **Media**, **Detections** and **Reports** it is a column on the right edge of the screen. It is the same agent with the same conversation, whichever screen you are on.
+
+To get to it, press **Ctrl J**: the panel or the column unfolds if it is folded, and the cursor goes into the agent. On **Scene**, **Agent** in the right panel's header and **Ask agent** in the island's **View** group do the same.
 
 1. Type in **Ask about this view, or tell the agent what to do** and press **Enter** (**Shift Enter** for a new line).
 2. Each step the agent takes shows in the panel. **Esc** or **Stop** stops it, on any screen.
@@ -90,7 +92,7 @@ There are no commands to learn: type what you want in plain words. The agent tak
 
 On **Issues**, **Media**, **Detections** and **Reports** the column starts folded, so nothing moves if you do not use the agent.
 
-- Click **Agent** in the title bar to unfold or fold it. On a narrow window the button shows only its icon. **Ctrl Alt B** does the same on these screens (on **Scene** it folds the right panel).
+- Click **Agent** in the screen's header to unfold or fold it, or press **Ctrl J** to unfold it and type. On a narrow window the button shows only its icon. **Ctrl Alt B** does the same on these screens (on **Scene** it folds the right panel).
 - It unfolds by itself when the agent takes you to one of these screens. {product} remembers on this machine whether you left it open.
 - In the smallest window the column takes at most a third of the width, and the screen beside it stays usable.
 - The conversation is kept while you move between screens. It ends when you open another project or click **New conversation**. A reply under way carries on while you move between **Scene** and these screens.

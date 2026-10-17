@@ -4,7 +4,7 @@ An issue is one defect or finding: a code, a title, a class, a severity and a st
 
 ## Mark a new issue in 3D
 
-1. On **Scene**, click **Annotate: pins, lines, areas, cloud regions** (or press **A**). A tool bar opens under the stage toolbar.
+1. On **Scene**, open the island's **Annotate** group and click **Annotate** (**Annotate: pins, lines, areas, cloud regions**), or press **A**. A tool bar opens under the island.
 2. Pick a tool: **Pin**, **Line**, **Area**, **Cloud pt** or **Cloud box** (point clouds).
 3. Click on the model. For a line or an area, click each point and finish with **Enter** or a double click.
 4. In **New issue**, pick the **Class** and the **Severity** (number keys; **U** for uncertain).

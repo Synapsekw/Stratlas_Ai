@@ -45,7 +45,7 @@ Every card has three dots in its top corner. Click them, or right-click the card
 
 ## Find anything: the command palette
 
-Press **Ctrl K**, or click **Search projects, layers, issues** in the title bar.
+Press **Ctrl K**, or click the search icon (**Search projects, layers, issues**) beside the logo at the top of the left sidebar.
 
 1. Type part of a name: a project, a layer, an issue code, or an action such as "map" or "export".
 2. Use the Up and Down keys to pick, **Enter** to run, **Esc** to close.
@@ -60,7 +60,7 @@ The palette also has the screens (**Go to Issues**, **Go to Settings**, ...) and
 - **Datasets** lists the layers of the open project with an eye to show or hide each one.
 - The small tab on the sidebar's right edge, halfway down, folds the sidebar to a rail of icons and brings it back. **Ctrl B** and **Collapse** at the bottom do the same. The arrow on the tab points the way the edge will move.
 
-What the open project is processing is not in the sidebar: it is the **Processing** chip in the title bar. See [Processing](08-building-projects.md#processing).
+What the open project is processing is in the status row at the foot of the sidebar, beside the connection: for example **Online · 1 job**, or a warning mark when a job needs attention. Click it for the **Processing** drawer. While a job runs, the island at the top of the Scene shows it too. Folded to the rail, the row keeps the connection's dot, the jobs mark and, in a package, the lock. See [Processing](08-building-projects.md#processing).
 
 ### Folding the side panels away
 

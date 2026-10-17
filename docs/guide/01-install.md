@@ -48,7 +48,7 @@ To add your own project, copy its folder into `projects` in the data folder, or 
 
 ## Online or offline only
 
-{product} works with no network. The title bar shows the mode this workstation is in, and the cloud AI chip next to it shows what that leaves of cloud AI.
+{product} works with no network. The status row at the foot of the left sidebar shows the mode this workstation is in, and the cloud AI chip next to it shows what that leaves of cloud AI.
 
 - **Online** (the default): nothing goes online on its own. The app uses the network only for what you turn on or start:
   - a map region download ([Maps and offline packs](06-maps.md)),
@@ -60,7 +60,7 @@ To add your own project, copy its folder into `projects` in the data folder, or 
 
 To change the mode:
 
-1. Click **Online** or **Offline only** in the title bar. **Connection** opens.
+1. Click **Online** or **Offline only** in the status row at the foot of the left sidebar. **Connection** opens.
 2. Click the switch between **Offline only** and **Online**. The change is saved at once and kept when you start {product} again.
 
 In **Connection**, **Download maps** opens **Settings**, **Offline maps** (it reads "Go online first" in **Offline only**), and **Cloud AI** shows **On**, **Off** or **Blocked** and opens **Settings**, **Privacy and cloud**. With **Online** chosen and no network on the computer, it says "This computer has no network connection right now."
@@ -71,7 +71,7 @@ The chip shows the mode you chose, not the cable: it stays **Online** when the W
 
 ## Get help
 
-- Press **F1**, or click **?** in the title bar, to open this guide. Type in **Search the guide** to find a topic.
+- Press **F1**, or click **?** beside **Settings** at the foot of the left sidebar, to open this guide. Type in **Search the guide** to find a topic.
 - A **?** beside a setting or a tool opens the matching section.
 - **Ctrl K** opens the command palette. Type "guide" to find **User guide (F1)**.
 
