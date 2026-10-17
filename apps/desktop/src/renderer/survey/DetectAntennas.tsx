@@ -188,7 +188,7 @@ export function DetectAntennas(): ReactElement | null {
       })
       .then(async (r) => {
         const v = unwrap(r);
-        if (v.ok) await applyAiLabels(v.value, runId);
+        if (v.ok) await applyAiLabels(v.value, runId, projectId);
         else setNote(t('telecom.antennas.ai.skipped', { reason: v.error }));
       });
   };

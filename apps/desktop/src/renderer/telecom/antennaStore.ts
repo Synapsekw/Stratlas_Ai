@@ -194,6 +194,8 @@ function change(edit: (file: AntennasFile) => AntennasFile | null): Promise<void
     const r = await bridge.call('telecom:writeAntennas', { projectId, file: updated });
     if (get().projectId !== projectId) return;
     if (r.ok && r.value.ok) {
+      // a read that started before this write would bring back the file it replaced
+      loadSeq++;
       set({ file: updated, message: null });
       return;
     }
@@ -244,13 +246,17 @@ export function toggleAntennaHidden(id: string): void {
 
 /**
  * Merge AI labels into the file. Only `kind`, `kindBasis` and `ai` of a unit change; a kind a
- * person set stays. The run's AI usage is recorded on the run.
+ * person set stays. The run's AI usage is recorded on the run. `projectId` is the project the
+ * request was sent for: after a switch to another project, or when no unit took a label, nothing
+ * is written (and no AI usage is recorded).
  */
 export function applyAiLabels(
   res: Extract<IpcResponse<'ai:labelAntennas'>, { ok: true }>,
   runId: string,
+  projectId: string,
 ): Promise<void> {
   return change((file) => {
+    if (get().projectId !== projectId) return null;
     const byId = new Map(res.labels.map((l) => [l.unitId, l]));
     let applied = 0;
     const units = file.units.map((u) => {
@@ -270,6 +276,7 @@ export function applyAiLabels(
         },
       };
     });
+    if (applied === 0) return null;
     const before = file.run.ai;
     const hasCost = before?.costUsd !== undefined || res.costUsd !== undefined;
     const ai = {

@@ -206,6 +206,25 @@ describe('loading', () => {
     expect(state().projectId).toBe('p2');
     expect(state().file).toBeNull();
   });
+
+  it('keeps a written file when a read that started before the write ends after it', async () => {
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+    const id = unit(0).id;
+    let release!: () => void;
+    h.delayRead = new Promise<void>((r) => {
+      release = r;
+    });
+    const slow = loadAntennas('p1', '/p'); // snapshots the draft file, then waits
+    h.delayRead = null;
+    await setUnitStatus(id, 'accepted');
+    expect(unit(0).status).toBe('accepted');
+    release();
+    await slow;
+    expect(unit(0).status).toBe('accepted');
+    expect(need(need(h.disk.file).units[0]).status).toBe('accepted');
+    expect(state().status).toBe('ready');
+  });
 });
 
 describe('running', () => {
@@ -383,6 +402,7 @@ describe('AI labels', () => {
     await applyAiLabels(
       okLabels([{ unitId: before.id, label: 'radio-unit', reason: 'r' }]),
       'ai-1',
+      'p1',
     );
     const after = unit(0);
     expect(after.kind).toBe('other');
@@ -428,6 +448,7 @@ describe('AI labels', () => {
         { unitId: unit(2).id, label: 'dish', reason: 'c' },
       ]),
       'ai-2',
+      'p1',
     );
     expect(file().units.map((u) => u.kind)).toEqual(['short', 'panel', 'dish']);
   });
@@ -437,17 +458,34 @@ describe('AI labels', () => {
     const f = structuredClone(file());
     f.units[0] = { ...need(f.units[0]), kind: 'dish', kindBasis: 'user' };
     antennaStore.setState({ file: f });
-    await applyAiLabels(okLabels([{ unitId: id, label: 'radio-unit', reason: 'r' }]), 'ai-3');
+    await applyAiLabels(okLabels([{ unitId: id, label: 'radio-unit', reason: 'r' }]), 'ai-3', 'p1');
     const u = unit(0);
     expect(u.kind).toBe('dish');
     expect(u.kindBasis).toBe('user');
     expect(u.ai).toBeUndefined();
   });
 
-  it('ignores labels for units that are not in the file', async () => {
-    const before = structuredClone(file().units);
-    await applyAiLabels(okLabels([{ unitId: 'ant-gone', label: 'dish', reason: 'r' }]), 'ai-4');
-    expect(file().units).toEqual(before);
+  it('ignores labels for units that are not in the file, and records no usage', async () => {
+    const before = structuredClone(file());
+    await applyAiLabels(
+      okLabels([{ unitId: 'ant-gone', label: 'dish', reason: 'r' }]),
+      'ai-4',
+      'p1',
+    );
+    expect(file()).toEqual(before);
+    expect(file().run.ai).toBeUndefined();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('drops labels that arrive after a switch to another project', async () => {
+    const id = unit(0).id;
+    h.disk.file = { ...sampleFile(), units: [] };
+    await loadAntennas('p2', '/q');
+    expect(state().projectId).toBe('p2');
+    await applyAiLabels(okLabels([{ unitId: id, label: 'dish', reason: 'r' }]), 'ai-5', 'p1');
+    expect(writes()).toHaveLength(0);
+    expect(file().units).toEqual([]);
+    expect(file().run.ai).toBeUndefined();
   });
 });
 
