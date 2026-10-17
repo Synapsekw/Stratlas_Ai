@@ -4700,6 +4700,9 @@ export const en = {
   'bench.annotate.mapLineTip': 'Map line (double-click or Enter to finish)',
   'bench.annotate.mapArea': 'Area',
   'bench.annotate.mapAreaTip': 'Map area (double-click or Enter to close)',
+
+  // Island opens the workbench: Display's way to its workbench (D5 "Layers →")
+  'island.tile.layers': 'Layers',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

@@ -19,6 +19,7 @@ import {
   islandGroup,
   islandSettled,
   measureControl,
+  openIslandCalendar,
   openIslandTools,
 } from './island';
 import { openDemo } from './surveyJobs';
@@ -75,7 +76,7 @@ test.describe('the island on a project with two dates', () => {
     await expect(islandDate(win).getByTestId('date-bar-open')).toHaveText('13 Apr');
   });
 
-  test('a click on a group tab picks it and opens its full set', async ({
+  test('a click on a group tab picks it and opens its workbench in the right panel', async ({
     twoDateProject,
     win,
   }) => {
@@ -92,24 +93,40 @@ test.describe('the island on a project with two dates', () => {
       await islandSettled(win);
       expect(await tab(bar, name).boundingBox()).toEqual(before);
       await tab(bar, name).click();
+      // the group's workbench opens in the right sidebar (D4, D12), and the island folds back
       await expect(bar).not.toHaveAttribute('data-state', 'tools');
-      if (name === 'Measure') {
-        // Measure opens its workbench in the right sidebar (D4, D12), and the island folds back
-        await expect(win.getByTestId('survey-tools')).toBeVisible();
-        await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
-        await expect(win.locator('.isl-full')).toHaveCount(0);
-      } else {
-        // the group's full set opens under the island, and the island folds back to its line
-        await expect(win.locator('.isl-full .pop-title')).toHaveText(name);
-        await win.locator('.isl-full').getByRole('button', { name: 'Close', exact: true }).click();
-        await expect(win.locator('.isl-full')).toHaveCount(0);
-      }
+      const id = name.toLowerCase();
+      await expect(win.locator(`#wb-tab-${id}`)).toHaveAttribute('aria-selected', 'true');
+      await expect(
+        win
+          .locator(`#wb-panel-${id}`)
+          .getByTestId(name === 'Measure' ? 'survey-tools' : 'display-bench'),
+      ).toBeVisible();
+      // the island has no full set of its own any more
+      await expect(win.locator('.isl-full')).toHaveCount(0);
       // opened again, the tools show the picked group
       await openIslandTools(win);
       await expect(tab(bar, name)).toHaveAttribute('aria-selected', 'true');
       await expect(bar.getByRole('tabpanel')).toHaveAccessibleName(name);
       await closeIslandTools(win);
     }
+  });
+
+  test('the calendar lines up the dates beside Compare the two dates', async ({
+    twoDateProject,
+    win,
+  }, info) => {
+    await openCard(win, 'E2E two dates', twoDateProject.id);
+    const cal = await openIslandCalendar(win);
+    const list = island(win).locator('.isl-cal-list');
+    await expect(list.getByRole('button', { name: 'Compare the two dates' })).toBeVisible();
+    await expect(list.getByRole('button', { name: 'Line up dates', exact: true })).toBeVisible();
+    // no date of this project is lined up yet
+    await expect(list.getByRole('button', { name: 'Remove line-up' })).toHaveCount(0);
+    await expect(cal).toBeVisible();
+    await shot(win, info, 'island-calendar-line-up.png');
+    await win.keyboard.press('Escape');
+    await expect(island(win)).toHaveAttribute('data-state', 'rest');
   });
 
   test('a live Distance shows its reading beside the date', async ({ twoDateProject, win }) => {
@@ -303,10 +320,12 @@ test.describe('in the window CI runs, 1100 x 720', () => {
       if (u.box) expect(overlap(u.box, capsule), `${u.name} under the capsule`).toBe(false);
     expect(await centreClick(win), 'with the tools open').toBe('the view');
 
-    // the View group's full set, measured while it is open: inside the stage, every control in
-    // it in view, and the centre still the view's
-    await islandGroup(win, 'view');
+    // the Volumes group's full set is the Volumes workbench (I-R19): it lies in the right panel,
+    // inside the window, its one Survey date switch in view, and the centre still the view's
+    const bench = await islandGroup(win, 'volumes');
+    await expect(bench.getByTestId('volumes-bench')).toBeVisible();
     await islandSettled(win);
+    await shot(win, info, 'island-volumes-bench-1100.png');
     const set = await win.evaluate(() => {
       const box = (el: Element | null) => {
         const r = el?.getBoundingClientRect();
@@ -314,38 +333,36 @@ test.describe('in the window CI runs, 1100 x 720', () => {
           ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
           : null;
       };
-      const full = document.querySelector('.isl-full');
+      const panel = document.querySelector('#wb-panel-volumes');
       return {
+        width: innerWidth,
         stage: box(document.querySelector('.ws > .stage')),
-        full: box(full),
-        controls: [...(full?.querySelectorAll('button') ?? [])].map((b) => ({
+        panel: box(panel),
+        dates: panel?.querySelectorAll('[role="group"][aria-label="Survey date"]').length ?? 0,
+        controls: [...(panel?.querySelectorAll('.vol-bench-controls button') ?? [])].map((b) => ({
           name: b.getAttribute('aria-label') ?? b.textContent.trim(),
           box: box(b),
         })),
       };
     });
-    expect(set.full, 'the View set is open').not.toBeNull();
-    expect(set.controls.length, 'controls in the View set').toBeGreaterThan(4);
-    if (set.full && set.stage) {
-      const { full: f, stage: st } = set;
-      expect(f.left, 'the set starts inside the stage').toBeGreaterThanOrEqual(st.left);
-      expect(f.right, 'the set ends inside the stage').toBeLessThanOrEqual(st.right);
+    expect(set.panel, 'the Volumes workbench is open').not.toBeNull();
+    expect(set.dates, 'Survey date switches in the Volumes tab').toBe(1);
+    expect(set.controls.length, 'controls above the inventory').toBeGreaterThan(4);
+    if (set.panel && set.stage) {
+      const p = set.panel;
+      expect(p.left, 'the workbench starts right of the stage').toBeGreaterThanOrEqual(
+        set.stage.right - 1,
+      );
+      expect(p.right, 'the workbench ends inside the window').toBeLessThanOrEqual(set.width);
       expect(
         set.controls
-          .filter(
-            (c) =>
-              !c.box ||
-              c.box.left < Math.max(f.left, st.left) - 0.5 ||
-              c.box.right > Math.min(f.right, st.right) + 0.5,
-          )
+          .filter((c) => !c.box || c.box.left < p.left - 0.5 || c.box.right > p.right + 0.5)
           .map((c) => c.name),
-        'View set controls cut off',
+        'Volumes controls cut off',
       ).toEqual([]);
     }
-    expect(await centreClick(win), 'with the View set open').toBe('the view');
-    await win.keyboard.press('Escape');
+    expect(await centreClick(win), 'with the Volumes workbench open').toBe('the view');
     await expect(win.locator('.isl-full')).toHaveCount(0);
-    expect(await centreClick(win), 'closed again').toBe('the view');
   });
 });
 

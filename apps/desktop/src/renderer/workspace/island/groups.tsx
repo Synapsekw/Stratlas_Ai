@@ -1,6 +1,7 @@
 /**
- * The island's tool groups: the stage view switch, each group's quick row (a few tiles and inline
- * switches, D5) and, until the workbenches land, each group's full set as the stage toolbar had it.
+ * The island's tool groups: the stage view switch and each group's quick row (a few tiles and
+ * inline switches, D5). A group's full set is its workbench in the right sidebar (D4, D12): the
+ * group's tab and the tile at the end of its row open it, and caret tiles open their panel tab.
  */
 import { pinDisplay, usePinDisplay } from '@aio/annotate';
 import type { EngineStage, LabelMode } from '@aio/engine';
@@ -19,7 +20,7 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useReducer, type ReactNode } from 'react';
 import { openCleanupPanel } from '../../pointcloud/cleanupActions';
 import { cleanup, useCleanup } from '../../pointcloud/cleanupStore';
-import { RoadToolGroup, toggleMeasure as toggleRoadMeasure } from '../../road/RoadTools';
+import { toggleMeasure as toggleRoadMeasure } from '../../road/RoadTools';
 import { useIsRoad } from '../../road/useRoadMap';
 import { setRoad, useRoad } from '../../road/store';
 import { shell, useShell } from '../../shell';
@@ -31,18 +32,13 @@ import { PATH_MODES, setPathMode } from '../flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../pathModel';
 import { surveyDateLabel } from '../surveyDateLabel';
 import { siteBasemap, streetMapTool } from '../siteBasemap';
-import { StreetMapTool } from '../StreetMapTool';
 import { useStreetMap3d } from '../streetMap3d';
 import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
 import { toggleTimeline, useTimelineShown } from '../timelinePref';
-import { insideView } from '../useCutaway';
-import { AnnotateToggle } from '../tools/annotate';
-import { CloudTools } from '../tools/cloud';
-import { DisplayTools, LABEL_MODES } from '../tools/display';
+import { LABEL_MODES } from '../tools/display';
 import { toggleMeasure, toggleSection } from '../tools/measure';
-import { VideoTools } from '../tools/video';
-import { ViewTools } from '../tools/view';
-import { VolumeTools } from '../VolumeTools';
+import type { TabId } from '../workbench/tabsModel';
+import { GROUP_TAB } from './islandBench';
 import type { GroupId } from './islandModel';
 
 /** The stage views, keys 1, 2 and 3. */
@@ -91,39 +87,12 @@ export interface GroupCtx {
   stage: EngineStage | null;
   /** The tools work on the map only. */
   map: boolean;
-  /** Open the group's full set (stage 1: a popover under the island). */
-  openFull: (g: GroupId) => void;
+  /** Bring a tab to the front of the right sidebar, and the island back to rest. */
+  openBench: (tab: TabId) => void;
+  /** The island back to rest (a tile that opened its panel some other way). */
+  done: () => void;
   /** Compare dates, for the View tile. */
   compare: CompareDates;
-}
-
-/** A group's full set, as the stage toolbar showed it. */
-export function fullGroup(g: GroupId, ctx: Pick<GroupCtx, 'stage' | 'map'>): ReactNode {
-  const { stage, map } = ctx;
-  switch (g) {
-    case 'view':
-      return <ViewTools stage={stage} map={map} />;
-    case 'measure':
-      // the Measure workbench in the right sidebar (MeasureBench), not a popover
-      return null;
-    case 'display':
-      return (
-        <>
-          <DisplayTools stage={stage} map={map} />
-          {!map && <StreetMapTool />}
-        </>
-      );
-    case 'clouds':
-      return <CloudTools />;
-    case 'volumes':
-      return <VolumeTools />;
-    case 'video':
-      return <VideoTools stage={stage} map={map} />;
-    case 'annotate':
-      return <AnnotateToggle />;
-    case 'road':
-      return <RoadToolGroup />;
-  }
 }
 
 /* ----------------------------------------------------------------------- tiles */
@@ -139,7 +108,7 @@ interface TileProps {
   disabled?: boolean | undefined;
   /** Opens a panel (the corner caret). */
   caret?: boolean;
-  /** Opens the group's full set: the accent tile at the end of a row. */
+  /** Opens the group's workbench: the accent tile at the end of a row. */
   toSide?: boolean;
   flip?: boolean;
   testId?: string;
@@ -232,9 +201,19 @@ export function Choice<V extends string>({
 
 const Sep = () => <span className="isl-vsep" aria-hidden="true" />;
 
-/** The tile that opens the group's full set (the right panel, from stage 2). */
-function AllTools({ g, ctx }: { g: GroupId; ctx: GroupCtx }) {
+/** The tile that opens the group's workbench in the right panel ("All tools", Display's "Layers"). */
+function AllTools({
+  g,
+  ctx,
+  label = 'island.allTools',
+}: {
+  g: GroupId;
+  ctx: GroupCtx;
+  label?: MessageKey;
+}) {
   const t = useT();
+  const tab = GROUP_TAB[g];
+  if (!tab) return null;
   return (
     <>
       <Sep />
@@ -243,10 +222,10 @@ function AllTools({ g, ctx }: { g: GroupId; ctx: GroupCtx }) {
         flip
         caret
         toSide
-        label={t('island.allTools')}
-        name={t('island.groupTile', { group: t(GROUP_NAME[g]), tile: t('island.allTools') })}
+        label={t(label)}
+        name={t('island.groupTile', { group: t(GROUP_NAME[g]), tile: t(label) })}
         onClick={() => {
-          ctx.openFull(g);
+          ctx.openBench(tab);
         }}
       />
     </>
@@ -265,7 +244,6 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
   const { stage, map, compare } = ctx;
   const selection = useWorkspace((s) => s.selection);
-  const activeClip = useWorkspace((s) => s.activeClip);
   const project = useWorkspace((s) => s.project);
   const timelineOn = useTimelineShown(project);
   // a road has the chainage ruler, not the timeline
@@ -317,21 +295,20 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
           name={t('island.tile.skyTimeName')}
           caret
           onClick={() => {
-            ctx.openFull('view');
+            ctx.openBench('environment');
           }}
         />
       )}
-      {/* see inside the asset (I-R17): the inside view with a clip (C), else the Cutaway panel */}
+      {/* see inside the asset (I-R17): the Cutaway tab, with or without a clip; its Inside view
+          is C, there and on the stage */}
       {!map && stage && (
         <Tile
           icon="cutaway"
           label={t('island.tile.seeInside')}
-          name={activeClip ? t('stage.cutaway.insideView') : t('stage.cutaway.tool')}
-          shortcut="scene.inside"
-          caret={!activeClip}
+          name={t('stage.cutaway.tool')}
+          caret
           onClick={() => {
-            if (activeClip) insideView(stage);
-            else ctx.openFull('view');
+            ctx.openBench('cutaway');
           }}
         />
       )}
@@ -465,7 +442,8 @@ function DisplayRow({ ctx }: { ctx: GroupCtx }) {
         />
       )}
       {!map && <StreetMapTile />}
-      <AllTools g="display" ctx={ctx} />
+      {/* "Layers →" (D5): the Display workbench, with the full layer tree */}
+      <AllTools g="display" ctx={ctx} label="island.tile.layers" />
     </>
   );
 }
@@ -521,7 +499,11 @@ function CloudRow({ ctx }: { ctx: GroupCtx }) {
         pressed={cleanupOpen}
         onClick={() => {
           if (cleanupOpen) cleanup.closePanel();
-          else openCleanupPanel();
+          else {
+            // the panel is the sidebar's Clean up tab (workbench/benchFollow.ts)
+            openCleanupPanel();
+            ctx.done();
+          }
         }}
       />
       <AllTools g="clouds" ctx={ctx} />
@@ -739,10 +721,10 @@ function AnnotateRow({ ctx }: { ctx: GroupCtx }) {
 }
 
 /**
- * A group's quick row (D5): a few tiles and switches, then the way to its full set.
- * TODO(stage 2, ruling I-R13): D5 items carried to the workbench tasks: the point cloud colour
- * switch RGB / Elevation / Intensity / Flight (Task 14), the Annotate tiles 3D pin, line, area,
- * cloud point, cloud box and map point, line, area (Task 15), Display's "Layers →" (Task 17).
+ * A group's quick row (D5): a few tiles and switches, then the way to its workbench.
+ * TODO(stage 2, ruling I-R13): D5 items still carried: the point cloud colour switch RGB /
+ * Elevation / Intensity / Flight (Task 14), the Annotate tiles 3D pin, line, area, cloud point,
+ * cloud box and map point, line, area (Task 15). Their workbenches have them meanwhile.
  */
 export function quickRow(g: GroupId, ctx: GroupCtx): ReactNode {
   switch (g) {

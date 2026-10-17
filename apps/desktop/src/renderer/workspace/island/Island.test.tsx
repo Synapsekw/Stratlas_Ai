@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { annotateUi } from '@aio/annotate';
+import type { EngineStage } from '@aio/engine';
 import { announced } from '@aio/ui';
 import { captureIndex, workspace } from '@aio/workspace';
 import { act } from 'react';
@@ -8,8 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
 import { PANEL_ID } from '../../shell/PanelHandle';
+import { lineUpApp } from '../../lineup/lineUpStore';
 import { timeline } from '../timeline';
 import { useSplit } from '../SplitPanes';
+import { workbench } from '../workbench/workbenchStore';
 import { Island, type IslandProps } from './Island';
 import type { LiveItem } from './islandModel';
 import type * as LiveModule from './useIslandLive';
@@ -34,6 +37,13 @@ vi.mock('../CompareControls', () => ({
   CompareButton: () => null,
 }));
 
+// the line-up step is the app's (lineup/lineUpSession.ts); here only that the island asks for it
+const lineUp = vi.hoisted(() => ({
+  openLineUpFor: vi.fn(() => Promise.resolve(null as string | null)),
+  removeLineUp: vi.fn(),
+}));
+vi.mock('../../lineup/lineUpActions', () => lineUp);
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
 let root: Root | undefined;
@@ -46,6 +56,8 @@ beforeEach(() => {
   comparing = false;
   localStorage.clear();
   timeline.setState({ byProject: {} });
+  workbench.getState().reset();
+  shell.setState({ rightCollapsed: false });
   host = document.createElement('div');
   document.body.append(host);
   workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
@@ -68,10 +80,10 @@ function WithSplit(props: Omit<IslandProps, 'split'>) {
 }
 
 // async: the split's pane list loads through a promise
-const render = async (linked = false) => {
+const render = async (linked = false, stage: EngineStage | null = null) => {
   root ??= createRoot(host);
   await act(async () => {
-    root?.render(<WithSplit stage={null} mode="3d" tools="3d" linked={linked} />);
+    root?.render(<WithSplit stage={stage} mode="3d" tools="3d" linked={linked} />);
     await Promise.resolve();
   });
 };
@@ -94,6 +106,11 @@ const openTools = () => {
   near();
   act(() => button('Tools')?.click());
 };
+/** Just enough of a 3D stage for the quick rows' tiles that need one. */
+const fakeStage = () =>
+  ({ section: { enabled: false }, setViewPreset: vi.fn() }) as unknown as EngineStage;
+const front = () => workbench.getState().front;
+const benchTab = (id: string) => workbench.getState().tabs.find((t) => t.id === id);
 
 describe('Island', () => {
   it('rests as the date pill in the survey colour, with no tiles', async () => {
@@ -440,5 +457,189 @@ describe('Island', () => {
     // the island itself is untouched: still at rest,
     expect(island()?.dataset.state).toBe('rest');
     shell.getState().setCloudPanel(false);
+  });
+});
+
+describe('Island: the groups open their workbench', () => {
+  it('opens the Measure workbench from the Measure tab, and the island goes back to rest', async () => {
+    await render();
+    openTools();
+    act(() => tab('Measure')?.click());
+    expect(front()).toBe('measure');
+    expect(island()?.dataset.state).toBe('rest');
+    // opened again, the tools show the picked group
+    openTools();
+    expect(tab('Measure')?.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it("opens the same workbench from the row's All tools tile", async () => {
+    await render();
+    openTools();
+    act(() => {
+      tab('Measure')?.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    });
+    act(() => button('Measure: All tools')?.click());
+    expect(front()).toBe('measure');
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
+  it("opens each group's own workbench: Display and Annotate", async () => {
+    for (const [name, id] of [
+      ['Display', 'display'],
+      ['Annotate', 'annotate'],
+    ] as const) {
+      await render();
+      openTools();
+      act(() => tab(name)?.click());
+      expect(front()).toBe(id);
+      expect(island()?.dataset.state).toBe('rest');
+    }
+  });
+
+  it('opens Environment as an unpinned panel tab from its caret tile', async () => {
+    await render(false, fakeStage());
+    openTools();
+    act(() => button('Environment and time of day')?.click());
+    expect(front()).toBe('environment');
+    expect(benchTab('environment')).toMatchObject({ pinned: false, fixed: false });
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
+  it('opens Cutaway from See inside, with a clip active or not', async () => {
+    for (const clip of [null, 'clip-nov']) {
+      workbench.getState().reset();
+      workspace.setState({ activeClip: clip });
+      await render(false, fakeStage());
+      openTools();
+      act(() => button('See inside the asset: cut or transparent')?.click());
+      expect(front()).toBe('cutaway');
+      expect(island()?.dataset.state).toBe('rest');
+    }
+  });
+
+  it('unfolds the right panel when it opens a workbench', async () => {
+    shell.setState({ rightCollapsed: true });
+    await render();
+    openTools();
+    act(() => tab('Display')?.click());
+    expect(shell.getState().rightCollapsed).toBe(false);
+    expect(front()).toBe('display');
+  });
+
+  it('keeps the tools open on View, which has no workbench', async () => {
+    await render();
+    openTools();
+    act(() => tab('Display')?.click());
+    openTools();
+    act(() => tab('View')?.click());
+    expect(island()?.dataset.state).toBe('tools');
+    expect(tab('View')?.getAttribute('aria-selected')).toBe('true');
+    expect(front()).toBe('display');
+  });
+
+  it('has no full set of its own any more', async () => {
+    await render(false, fakeStage());
+    for (const name of ['View', 'Measure', 'Display', 'Annotate']) {
+      openTools();
+      act(() => tab(name)?.click());
+      expect(document.querySelector('.isl-full')).toBeNull();
+      key('Escape');
+    }
+  });
+
+  it("calls Display's way to its workbench Layers (D5)", async () => {
+    await render();
+    openTools();
+    act(() => {
+      tab('Display')?.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    });
+    act(() => button('Display: Layers')?.click());
+    expect(front()).toBe('display');
+  });
+
+  it("brings the live item's tab to the front on a click on its reading (D10)", async () => {
+    for (const [item, id] of [
+      [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }, 'jobs'],
+      [{ kind: 'playback', clip: 'Flight 3', progress: 0.1, telemetry: null }, 'video'],
+      [{ kind: 'tool', label: 'Distance', reading: null }, 'measure'],
+    ] as const) {
+      workbench.getState().reset();
+      live = [item];
+      await render();
+      act(() => host.querySelector<HTMLElement>('.isl-live')?.click());
+      expect(front()).toBe(id);
+      // the click did not open the tools as well
+      expect(island()?.dataset.state).not.toBe('tools');
+    }
+  });
+
+  it('still opens the tools on a click beside the live reading', async () => {
+    live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }];
+    await render();
+    act(() => host.querySelector<HTMLElement>('.island')?.click());
+    expect(island()?.dataset.state).toBe('tools');
+    expect(front()).toBe('selection');
+  });
+});
+
+describe('Island calendar: line-up', () => {
+  const openCalendar = () => {
+    act(() => host.querySelector<HTMLButtonElement>('[data-testid="date-bar-open"]')?.click());
+  };
+  const calButton = (text: string) =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent === text);
+  beforeEach(() => {
+    lineUp.openLineUpFor.mockClear();
+    lineUp.removeLineUp.mockClear();
+    lineUpApp.setState({ store: {} as never });
+  });
+  afterEach(() => {
+    lineUpApp.setState({ store: null });
+  });
+
+  it('offers Line up dates beside Compare the two dates, for the shown date', async () => {
+    await render();
+    openCalendar();
+    expect(calButton('Compare the two dates')).toBeDefined();
+    const line = calButton('Line up dates');
+    expect(line).toBeDefined();
+    act(() => line?.click());
+    expect(lineUp.openLineUpFor).toHaveBeenCalledWith('nov');
+    expect(island()?.dataset.state).toBe('rest');
+    openCalendar();
+    expect(calButton('Remove line-up')).toBeUndefined();
+  });
+
+  it('offers Remove line-up on a date that is lined up', async () => {
+    const lined = {
+      ...threeDates,
+      captures: threeDates.captures.map((c) =>
+        c.id === 'nov'
+          ? { ...c, lineUp: { eastM: 1, northM: -2, with: 'oct', at: '2026-10-16T08:00:00Z' } }
+          : c,
+      ),
+    };
+    workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: lined });
+    await render();
+    openCalendar();
+    act(() => calButton('Remove line-up')?.click());
+    expect(lineUp.removeLineUp).toHaveBeenCalledWith('nov');
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
+  it('leaves the line-up out of a read-only package and before the step is ready', async () => {
+    lineUpApp.setState({ store: null });
+    await render();
+    openCalendar();
+    expect(calButton('Line up dates')).toBeUndefined();
+    key('Escape');
+    lineUpApp.setState({ store: {} as never });
+    shell.setState({ pkg: {} as never });
+    try {
+      openCalendar();
+      expect(calButton('Line up dates')).toBeUndefined();
+    } finally {
+      shell.setState({ pkg: null });
+    }
   });
 });

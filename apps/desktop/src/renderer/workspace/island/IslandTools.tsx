@@ -1,7 +1,7 @@
 /**
  * The open island: the 3D / Map / Split switch and the group tabs on top, the shown group's quick
- * row under them. Hovering or focusing a tab previews its row; clicking it opens the group's full
- * set. Left and Right move along a row (mirrored right to left, as the foundation's Tabs do), Up
+ * row under them. Hovering or focusing a tab previews its row; clicking it picks the group and
+ * opens its workbench in the right sidebar (D4). Left and Right move along a row (mirrored right to left, as the foundation's Tabs do), Up
  * and Down (and Tab) between the rows.
  */
 import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
@@ -73,6 +73,7 @@ export function IslandTools({
   preview,
   ctx,
   dispatch,
+  onPick,
   onClose,
 }: {
   mode: StageMode;
@@ -83,6 +84,8 @@ export function IslandTools({
   preview: GroupId | null;
   ctx: GroupCtx;
   dispatch: Dispatch<IslandEvent>;
+  /** A group's tab clicked: the group is picked and its workbench opens. */
+  onPick: (g: GroupId) => void;
   /** Close the tools and give focus back to the island. */
   onClose: () => void;
 }) {
@@ -134,7 +137,7 @@ export function IslandTools({
                 if (g !== shown) dispatch({ type: 'hoverGroup', group: g });
               }}
               onClick={() => {
-                ctx.openFull(g);
+                onPick(g);
               }}
             >
               <Icon name={GROUP_ICON[g]} size={14} />

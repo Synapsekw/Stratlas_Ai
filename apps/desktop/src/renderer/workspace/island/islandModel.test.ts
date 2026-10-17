@@ -91,13 +91,13 @@ describe('islandReducer', () => {
     expect(islandReducer(t, { type: 'escape' }).open).toBe('rest');
     expect(islandReducer(t, { type: 'toggleTools' }).open).toBe('rest');
   });
-  it('previews on hover and commits on pick', () => {
+  it('previews on hover and commits on pick, the tools still open', () => {
     const h = islandReducer({ ...rest, open: 'tools' }, { type: 'hoverGroup', group: 'display' });
     expect(h).toMatchObject({ preview: 'display', group: 'view' });
     expect(islandReducer(h, { type: 'pickGroup', group: 'display' })).toMatchObject({
       group: 'display',
       preview: null,
-      open: 'rest',
+      open: 'tools',
     });
   });
   it('leave closes ready but not tools', () => {

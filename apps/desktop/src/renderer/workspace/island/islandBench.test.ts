@@ -1,0 +1,82 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createStore } from 'zustand/vanilla';
+import { shell } from '../../shell';
+import { createWorkbenchStore } from '../workbench/workbenchStore';
+import { followRoadMeasure, GROUP_TAB, liveTab, openBench } from './islandBench';
+
+vi.mock('../../issueCard/state', () => ({ isIssueEditing: () => false }));
+
+const memory = (): Storage => {
+  const m = new Map<string, string>();
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, v),
+    removeItem: (k) => void m.delete(k),
+    clear: () => {
+      m.clear();
+    },
+    key: () => null,
+    get length() {
+      return m.size;
+    },
+  };
+};
+
+describe('islandBench', () => {
+  let bench = createWorkbenchStore(memory());
+  beforeEach(() => {
+    bench = createWorkbenchStore(memory());
+    shell.setState({ rightCollapsed: false });
+  });
+
+  it('has a workbench for every group but View', () => {
+    expect(GROUP_TAB.view).toBeNull();
+    expect(GROUP_TAB.volumes).toBe('volumes');
+    expect(GROUP_TAB.road).toBe('road');
+    expect(GROUP_TAB.video).toBe('video');
+  });
+
+  it('lives a tool in Measure, a clip in Video, a job in Jobs, the connection nowhere', () => {
+    expect(liveTab({ kind: 'tool', label: 'Distance', reading: null })).toBe('measure');
+    expect(liveTab({ kind: 'playback', clip: 'c', progress: 0, telemetry: null })).toBe('video');
+    expect(liveTab({ kind: 'job', id: 'j', label: 'j', progress: 0, more: 0 })).toBe('jobs');
+    expect(liveTab({ kind: 'connection', state: 'offline' })).toBeNull();
+  });
+
+  it('opens a tab that is not there as an unpinned panel, and brings one that is to the front', () => {
+    openBench('jobs', bench);
+    expect(bench.getState().front).toBe('jobs');
+    expect(bench.getState().tabs.find((t) => t.id === 'jobs')).toMatchObject({ pinned: false });
+    bench.getState().open('video', { pinned: true });
+    openBench('jobs', bench);
+    openBench('video', bench);
+    expect(bench.getState().front).toBe('video');
+    expect(bench.getState().tabs.find((t) => t.id === 'video')?.pinned).toBe(true);
+  });
+
+  it('unfolds a folded right panel', () => {
+    shell.setState({ rightCollapsed: true });
+    openBench('volumes', bench);
+    expect(shell.getState().rightCollapsed).toBe(false);
+    expect(bench.getState().front).toBe('volumes');
+  });
+
+  it("makes the Road tab live while the road's measure draws, and closes it after", () => {
+    const road = createStore<{ measure: { mode: 'line' | null; vertices: [] } }>()(() => ({
+      measure: { mode: null, vertices: [] },
+    }));
+    const off = followRoadMeasure(road as never, bench);
+    road.setState({ measure: { mode: 'line', vertices: [] } });
+    expect(bench.getState().front).toBe('road');
+    expect(bench.getState().tabs.find((t) => t.id === 'road')?.live).toBe(true);
+    // a new point is not a new start
+    road.setState({ measure: { mode: 'line', vertices: [] } });
+    road.setState({ measure: { mode: null, vertices: [] } });
+    expect(bench.getState().tabs.some((t) => t.id === 'road')).toBe(false);
+    expect(bench.getState().front).toBe('selection');
+    off();
+    road.setState({ measure: { mode: 'line', vertices: [] } });
+    expect(bench.getState().front).toBe('selection');
+  });
+});

@@ -3,8 +3,14 @@
  * count while the island is open, and the calendar the pill opens (D7). In Split the date is the
  * last focused pane's, and the arrows step that pane.
  */
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { Calendar, formatDate, Icon, IconButton, useT } from '@aio/ui';
-import type { CaptureIndex } from '@aio/workspace';
+import { useWorkspace, type CaptureIndex } from '@aio/workspace';
+import { useStore } from 'zustand';
+import { openLineUpFor, removeLineUp } from '../../lineup/lineUpActions';
+import { lineUpApp } from '../../lineup/lineUpStore';
+import { useShell } from '../../shell';
+import { toastHost } from '../../shell/actions/toastHost';
 import { useCalendarDays } from '../DatePicker';
 import { chooseCapture, type Side } from '../splitModel';
 import { paneCapture, type SplitModel } from '../SplitPanes';
@@ -140,7 +146,24 @@ export function IslandDate({
   );
 }
 
-/** The calendar inside the island: the month, the survey list and Compare the two dates. */
+/**
+ * Line up dates and Remove line-up for the shown date, as its date menu has them
+ * (shell/actions/dateActions.tsx): only where the project can change and once the line-up step is
+ * up, Line up with two dates or more, Remove on a date that is lined up.
+ */
+function useLineUp(captureId: string): { lineUp: boolean; remove: boolean } {
+  const ready = useStore(lineUpApp, (s) => s.store !== null);
+  const pkg = useShell((s) => s.pkg !== null);
+  const lookOnly = useAnnotateReadOnly();
+  const dates = useWorkspace((s) => s.project?.manifest.captures.length ?? 0);
+  const lined = useWorkspace(
+    (s) => s.project?.manifest.captures.find((c) => c.id === captureId)?.lineUp !== undefined,
+  );
+  const editable = ready && !pkg && !lookOnly;
+  return { lineUp: editable && dates > 1, remove: editable && lined };
+}
+
+/** The calendar inside the island: the month, the survey list, Compare and line up the dates. */
 export function IslandCalendar({
   dates,
   onDone,
@@ -153,6 +176,7 @@ export function IslandCalendar({
 }) {
   const t = useT();
   const { days, colour } = useCalendarDays(dates.index);
+  const lineUp = useLineUp(dates.focus);
   const pick = (id: string) => {
     dates.pick(id);
     onDone();
@@ -186,6 +210,36 @@ export function IslandCalendar({
           >
             <Icon name="history" size={14} />
             {t('island.compareDates')}
+          </button>
+        )}
+        {lineUp.lineUp && (
+          <button
+            type="button"
+            className="isl-compare"
+            onClick={() => {
+              const captureId = dates.focus;
+              onDone();
+              // the step picks the date this one overlaps most; without one it says why
+              void openLineUpFor(captureId).then((why) => {
+                if (why) toastHost(t('lineUp.action')).note(why, true);
+              });
+            }}
+          >
+            <Icon name="target" size={14} />
+            {t('lineUp.action')}
+          </button>
+        )}
+        {lineUp.remove && (
+          <button
+            type="button"
+            className="isl-compare"
+            onClick={() => {
+              removeLineUp(dates.focus);
+              onDone();
+            }}
+          >
+            <Icon name="undo" size={14} />
+            {t('lineUp.remove')}
           </button>
         )}
       </div>

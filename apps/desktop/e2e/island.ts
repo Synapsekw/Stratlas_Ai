@@ -95,15 +95,23 @@ export async function toggleCompareDates(win: Page): Promise<void> {
   await closeIslandTools(win);
 }
 
-/** A group's full set (the toolbar's group as it was), opened from the group's tab. */
+/**
+ * A group's full set: its workbench in the right sidebar (D4, D12), opened from the group's tab,
+ * with every folded section of it opened. View has no workbench: its set is its quick row (its
+ * caret tiles open the Environment and Cutaway tabs).
+ */
 export async function islandGroup(win: Page, g: GroupId): Promise<Locator> {
+  if (g === 'view') return islandRow(win, 'view');
   const bar = await openIslandTools(win);
   // by key: the capsule is still morphing to its open size, so a click could land beside the tab
   await bar.getByRole('tab', { name: GROUP_NAME[g], exact: true }).focus();
   await win.keyboard.press('Enter');
-  const full = win.locator('.isl-full');
-  await expect(full).toBeVisible();
-  return full;
+  // the island goes back to rest, its workbench in front
+  await expect(bar).not.toHaveAttribute('data-state', 'tools');
+  const bench = win.locator(`#wb-panel-${g}`);
+  await expect(bench).toBeVisible();
+  await unfoldAll(bench);
+  return bench;
 }
 
 /** A tool button of a group's full set (the set opened, so it shows). */
@@ -209,6 +217,14 @@ async function unfold(section: Locator): Promise<void> {
   const head = section.locator('.wb-section-head').first();
   if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
   await expect(head).toHaveAttribute('aria-expanded', 'true');
+}
+
+/** Open every folded section of a workbench. */
+async function unfoldAll(bench: Locator): Promise<void> {
+  const folded = bench.locator('.wb-section-head[aria-expanded="false"]');
+  // (bounded: a bench has a dozen sections at most)
+  for (let i = 0; i < 20 && (await folded.count()) > 0; i++) await folded.first().click();
+  await expect(folded).toHaveCount(0);
 }
 
 /** A section of the Measure workbench, by its id (`siteData`, `line`, `measurements`...), open. */

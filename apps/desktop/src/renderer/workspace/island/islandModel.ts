@@ -92,8 +92,9 @@ export function islandReducer(s: IslandState, e: IslandEvent): IslandState {
       return { ...s, open: 'date', preview: null };
     case 'hoverGroup':
       return { ...s, preview: e.group };
+    // picked, the group's workbench opens and the island rests (Island.tsx); View's row stays
     case 'pickGroup':
-      return { ...s, group: e.group, preview: null, open: 'rest' };
+      return { ...s, group: e.group, preview: null };
     case 'swap':
       return { ...s, swapped: !s.swapped };
     case 'liveChanged':

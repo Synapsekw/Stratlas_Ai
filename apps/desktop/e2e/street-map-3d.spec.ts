@@ -75,7 +75,7 @@ async function openProject(win: Page): Promise<void> {
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 30_000 });
 }
 
-/** The street map button, in the island's Display set. */
+/** The street map button, in the Display workbench. */
 async function streetButton(win: Page) {
   const full = await islandGroup(win, 'display');
   const button = full.getByTestId('street-map-3d');

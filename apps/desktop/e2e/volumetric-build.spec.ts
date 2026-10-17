@@ -124,7 +124,7 @@ function overlays(win: Page, pile: string) {
   }, pile);
 }
 
-/** The Photo, Elevation or Cut / fill switch of a stockpile project (the island's Volumes set). */
+/** The Photo, Elevation or Cut / fill switch of a stockpile project (the Volumes workbench). */
 async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fill') {
   const full = await islandGroup(win, 'volumes');
   const button = full
@@ -132,8 +132,6 @@ async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fi
     .getByRole('button', { name, exact: true });
   await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
-  await win.keyboard.press('Escape');
-  await expect(full).toHaveCount(0);
 }
 
 test.skip(!existsSync(venvPython), `no Python with aio_pipelines at ${venvPython}`);

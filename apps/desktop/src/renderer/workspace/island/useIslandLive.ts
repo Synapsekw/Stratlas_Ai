@@ -10,7 +10,7 @@ import { t } from '@aio/ui';
 import { telemetryAt } from '@aio/video';
 import { clipStartMs, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { isActive } from '../../jobs';
+import { isActive, type JobEntry } from '../../jobs';
 import { useMedia } from '../../media';
 import { projectJobs } from '../../processing/model';
 import { jobTitle } from '../../processing/pipelines';
@@ -192,22 +192,30 @@ function usePlaybackLive(): LiveInput['clip'] {
   }, [playing, activeClip, nowMs, project, durations, flights]);
 }
 
+/**
+ * The project's running jobs as live items; none in a package. Quiet jobs (background work,
+ * `jobs.startQuiet`) stay off the live line: the Jobs tab still lists them.
+ */
+export function liveJobs(
+  all: readonly JobEntry[],
+  root: string | null,
+  pkg: boolean,
+): LiveInput['jobs'] {
+  return projectJobs(all, pkg ? null : root)
+    .running.filter((j: JobEntry) => isActive(j) && !j.quiet)
+    .map((j) => ({
+      id: j.id,
+      label: jobTitle(j.pipeline),
+      progress: j.progress,
+      startedMs: Date.parse(j.createdAt) || 0,
+    }));
+}
+
 function useJobsLive(): LiveInput['jobs'] {
   const all = useJobs((s) => s.jobs);
   const root = useWorkspace((s) => s.project?.root ?? null);
   const pkg = useShell((s) => s.pkg !== null);
-  return useMemo(
-    () =>
-      projectJobs(all, pkg ? null : root)
-        .running.filter(isActive)
-        .map((j) => ({
-          id: j.id,
-          label: jobTitle(j.pipeline),
-          progress: j.progress,
-          startedMs: Date.parse(j.createdAt) || 0,
-        })),
-    [all, root, pkg],
-  );
+  return useMemo(() => liveJobs(all, root, pkg), [all, root, pkg]);
 }
 
 /** The island's live items, read from the measuring, playback, jobs and connection stores. */

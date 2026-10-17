@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test';
 import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
 import { hasRealProject } from './realData';
-import { islandGroup } from './island';
+import { islandGroup, islandRow } from './island';
 
 const SHOTS = process.env.QUADRION_SHOTS;
 const has = hasRealProject;
@@ -210,7 +210,7 @@ async function telemetryFollowsTheClip(win: Page, clip: string, at: number, labe
 
   // D turns it off and on (the island's Video button follows), independent of the flight paths
   const telemetryTool = async () =>
-    (await islandGroup(win, 'video')).getByRole('button', { name: /drone telemetry/i });
+    (await islandRow(win, 'video')).getByRole('button', { name: /drone telemetry/i });
   await expect(await telemetryTool()).toHaveAttribute('aria-pressed', 'true');
   await win.locator('[data-scene-view] canvas').click({ position: { x: 5, y: 400 } });
   await win.keyboard.press('d');

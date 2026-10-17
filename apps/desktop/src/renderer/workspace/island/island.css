@@ -625,24 +625,6 @@
   color: var(--acc);
 }
 
-/* a group's full set, centred under the island (stage 1) */
-.island-wrap > .isl-full {
-  position: absolute;
-  top: calc(100% + var(--sp-4));
-  inset-inline: 0;
-  margin-inline: auto;
-  inline-size: max-content;
-  padding-block-end: var(--sp-4);
-  pointer-events: auto;
-  animation: isl-in var(--d-3) var(--ease) both;
-}
-.isl-full-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  padding-inline: var(--sp-5);
-}
-
 /* reduced motion (the system's, or the app's own setting on the root): every morph and fade is
    instant */
 :root[data-motion='reduce'] .island-wrap,

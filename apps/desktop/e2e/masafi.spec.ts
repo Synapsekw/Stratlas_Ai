@@ -312,7 +312,7 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
     .locator('.vol-dates button', { hasText: '10 Jan' })
     .click();
 
-  // Elevation colours drape on the shown survey, from the island's Volumes set.
+  // Elevation colours drape on the shown survey, from the Volumes workbench.
   const surfaces = async () =>
     (await islandGroup(win, 'volumes')).getByRole('group', { name: 'Surface colours' });
   await (await surfaces()).getByRole('button', { name: 'Elevation' }).click();

@@ -5,7 +5,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, realDataTest } from './fixtures';
-import { islandTool } from './island';
+import { islandRow } from './island';
 import { hasRealData, missingRealProject } from './realData';
 
 const test = realDataTest(['ringroad']);
@@ -112,7 +112,11 @@ test('@realdata the Ring Road opens in the native road workspace with its map ov
   await expect(win.getByTestId('defect-count')).toHaveText('2,115 of 2,115 defects');
 
   // Measure a distance on the map.
-  await (await islandTool(win, 'road', 'Measure on the map')).click();
+  await (
+    await islandRow(win, 'road')
+  )
+    .getByRole('button', { name: 'Measure on the map', exact: true })
+    .click();
   const canvas = win.locator('.pane-map canvas').first();
   const c = await canvas.boundingBox();
   if (!c) throw new Error('no map canvas');

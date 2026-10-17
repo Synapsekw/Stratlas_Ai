@@ -3,6 +3,7 @@ import {
   BACK_MS,
   createBackOnline,
   liveItems,
+  liveJobs,
   livePairKey,
   playbackClock,
   playbackTelemetry,
@@ -140,5 +141,36 @@ describe('toolLabel', () => {
   it('names a real tool, not its id', () => {
     expect(toolLabel('elevation-difference', null)).toBe('Elevation difference');
     expect(toolLabel('distance', { name: 'Haul road' })).toBe('Haul road');
+  });
+});
+
+describe('liveJobs', () => {
+  const job = (id: string, over: object = {}) =>
+    ({
+      id,
+      pipeline: 'photogrammetry.process',
+      project: '/p',
+      params: {},
+      status: 'running',
+      progress: 0.5,
+      steps: [],
+      artifacts: [],
+      createdAt: '2026-10-16T08:00:00Z',
+      updatedAt: '2026-10-16T08:00:00Z',
+      ...over,
+    }) as never;
+
+  it("the project's running jobs, not the ones that ended or run elsewhere", () => {
+    const jobs = [job('a'), job('b', { status: 'done' }), job('c', { project: '/other' })];
+    expect(liveJobs(jobs, '/p', false).map((j) => j.id)).toEqual(['a']);
+  });
+
+  it('leaves quiet jobs (background work) out of the live line', () => {
+    const jobs = [job('a'), job('q', { quiet: true })];
+    expect(liveJobs(jobs, '/p', false).map((j) => j.id)).toEqual(['a']);
+  });
+
+  it('none in a package', () => {
+    expect(liveJobs([job('a')], '/p', true)).toEqual([]);
   });
 });

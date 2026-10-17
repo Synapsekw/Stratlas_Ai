@@ -2,21 +2,12 @@
  * The stage island (D1 to D10): one capsule at the top centre of the stage. At rest the survey
  * date; near the pointer the date's arrows, the view and Tools; a live reading beside the date;
  * a second live item as a bubble that swaps with it; open, the view switch, the group tabs and a
- * group's quick row. Its size morphs between the states (instant under reduced motion).
+ * group's quick row. Its size morphs between the states (instant under reduced motion). A group's
+ * full set is its workbench in the right sidebar; the island goes back to rest when it opens one.
  */
 import { annotateUi } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
-import {
-  announce,
-  Button,
-  Icon,
-  IconButton,
-  matchShortcut,
-  Popover,
-  shortcutHint,
-  useFocusTrap,
-  useT,
-} from '@aio/ui';
+import { announce, Button, Icon, matchShortcut, shortcutHint, useFocusTrap, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
 import {
@@ -29,7 +20,6 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { EnvironmentTool } from '../../environment/EnvironmentTool';
 import { isTyping } from '../../keys';
 import { useRoad } from '../../road/store';
 import { useShell } from '../../shell';
@@ -39,8 +29,9 @@ import type { Side } from '../splitModel';
 import { paneCapture, type SplitModel } from '../SplitPanes';
 import { takeTNotice } from '../stagePrefs';
 import { useTimeline } from '../timeline';
-import { showMeasureBench } from '../workbench/measureFollow';
-import { fullGroup, GROUP_NAME, MODES, type GroupCtx } from './groups';
+import type { TabId } from '../workbench/tabsModel';
+import { MODES, type GroupCtx } from './groups';
+import { followRoadMeasure, GROUP_TAB, liveTab, openBench } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
 import { IslandTools } from './IslandTools';
@@ -111,7 +102,6 @@ export interface IslandProps {
 export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const t = useT();
   const [s, dispatch] = useReducer(islandReducer, INITIAL);
-  const [full, setFull] = useState<GroupId | null>(null);
   const [side, setSide] = useState<Side>('left');
   // the first T on this computer says the timeline moved to View
   const [notice, setNotice] = useState(false);
@@ -138,12 +128,6 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const road = useRoad((x) => x.status === 'ready');
   const groups = islandGroups({ map, mode: tools, clouds, volumes, video, road, pkg });
   const group = groups.includes(s.group) ? s.group : 'view';
-
-  // (the point cloud panel asked for from the sidebar or the palette is the Point cloud tab now,
-  // brought to the front by workbench/benchFollow.ts)
-  const closeFull = () => {
-    setFull(null);
-  };
 
   // the date: the date bar's, or the last focused pane's in Split (D7)
   const index = useTimeline((x) => x.index);
@@ -179,16 +163,37 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const expanded = s.open === 'ready';
   const view = `${s.open}:${primary?.kind ?? ''}`;
 
-  const openFull = useCallback((g: GroupId) => {
-    dispatch({ type: 'pickGroup', group: g });
-    // Measure bench: the group's workbench opens in the right sidebar (D4, D12)
-    if (g === 'measure') {
-      showMeasureBench();
-      return;
-    }
-    setFull(g);
+  // focus handed back on close does not wake the island again
+  const returning = useRef(false);
+  const close = useCallback(() => {
+    dispatch({ type: 'escape' });
+    returning.current = true;
+    root.current?.focus();
+    returning.current = false;
   }, []);
-  const ctx: GroupCtx = { stage, map, openFull, compare: compareDates };
+  // the island goes back to rest once a tile has opened its panel in the sidebar (D4), focus
+  // back on the island rather than lost with the tile
+  const done = close;
+  const showBench = useCallback(
+    (tab: TabId) => {
+      openBench(tab);
+      done();
+    },
+    [done],
+  );
+  // a group tab: the group is picked, and its workbench opens (View has none: its row stays)
+  const pickGroup = useCallback(
+    (g: GroupId) => {
+      dispatch({ type: 'pickGroup', group: g });
+      const tab = GROUP_TAB[g];
+      if (tab) showBench(tab);
+    },
+    [showBench],
+  );
+  const ctx: GroupCtx = { stage, map, openBench: showBench, done, compare: compareDates };
+
+  // the road's measure on the map makes the Road tab live while it draws (D14)
+  useEffect(() => followRoadMeasure(), []);
 
   // size morph: the capsule takes its content's size (CSS animates width and height)
   useLayoutEffect(() => {
@@ -316,14 +321,6 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       window.removeEventListener('pointerdown', away);
     };
   }, [open]);
-  // focus handed back on close does not wake the island again
-  const returning = useRef(false);
-  const close = () => {
-    dispatch({ type: 'escape' });
-    returning.current = true;
-    root.current?.focus();
-    returning.current = false;
-  };
   // the calendar keeps Tab inside and gives focus back to the island
   useFocusTrap(dateBox, s.open === 'date', { onEscape: close });
 
@@ -340,6 +337,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         preview={s.preview}
         ctx={ctx}
         dispatch={dispatch}
+        onPick={pickGroup}
         onClose={close}
       />
     );
@@ -440,8 +438,13 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         ref={capsule}
         className="island"
         onClick={(e) => {
+          if (open || (e.target as Element).closest('button')) return;
+          // a click on the live reading brings its tab back to the front of the sidebar (D10)
+          const tab =
+            primary && (e.target as Element).closest('.isl-live') ? liveTab(primary) : null;
+          if (tab) openBench(tab);
           // a click on the capsule itself (not one of its buttons) opens the tools
-          if (!open && !(e.target as Element).closest('button')) dispatch({ type: 'toggleTools' });
+          else dispatch({ type: 'toggleTools' });
         }}
       >
         <div ref={layer} className="isl-layer" key={view}>
@@ -471,21 +474,6 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         {/* Compare dates itself is the View tile; while comparing, Leave and its tools show here */}
         <CompareButton split={split} whileComparing />
       </div>
-      <Popover open={full !== null} onClose={closeFull} opener={root} className="isl-full">
-        {full && (
-          <>
-            <div className="pop-head">
-              <h2 className="pop-title">{t(GROUP_NAME[full])}</h2>
-              <IconButton icon="x" label={t('dialog.close')} onClick={closeFull} />
-            </div>
-            <div className="tgroup-h isl-full-row">
-              {fullGroup(full, { stage, map })}
-              {/* the toolbar kept Environment and time of day beside the groups */}
-              {full === 'view' && !map && stage && <EnvironmentTool stage={stage} />}
-            </div>
-          </>
-        )}
-      </Popover>
     </div>
   );
 }

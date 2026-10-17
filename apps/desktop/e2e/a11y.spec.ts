@@ -10,7 +10,7 @@
  * (realData.ts, @realdata).
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -37,6 +37,33 @@ import {
   stageMode,
   stageModeButton,
 } from './island';
+
+/**
+ * Open a group's full set from the island and check it: its workbench in the right sidebar, or
+ * for View the panel tab its caret tile opens (`tile`, the tab `tab`). False when the project has
+ * no such set (the tile is not shown, or is greyed out).
+ */
+async function islandSetAccessible(
+  win: Page,
+  group: GroupId,
+  label: string,
+  panel?: { tile: string; tab: string },
+): Promise<boolean> {
+  const full = await islandGroup(win, group);
+  if (panel) {
+    const tile = full.getByRole('button', { name: panel.tile, exact: true });
+    if ((await tile.count()) === 0 || !(await tile.isEnabled())) {
+      await closeIslandTools(win);
+      return false;
+    }
+    await tile.focus();
+    await win.keyboard.press('Enter');
+    await expect(win.locator(`#wb-panel-${panel.tab}`)).toBeVisible();
+  }
+  await expectAccessible(win, `island set: ${label}`);
+  await expectFocusMeaningful(win, `opening ${label}`);
+  return true;
+}
 import { hasRealProject, missingRealProject } from './realData';
 
 test.setTimeout(240_000);
@@ -142,28 +169,6 @@ async function openProject(win: Page, name: string) {
   await nav(win, 'Projects');
   await win.getByTestId('project-card').filter({ hasText: name }).first().click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
-}
-
-/**
- * A stage popover opened from its tool by keyboard: focus moves inside, Tab stays inside, Esc
- * closes it and focus is back on the tool. Audits the open popover.
- */
-async function popoverByKeyboard(win: Page, label: string, within: Locator) {
-  const tool = within.getByRole('button', { name: label, exact: true });
-  await tool.focus();
-  await win.keyboard.press('Enter');
-  const pop = win.getByRole('dialog', { name: label });
-  await expect(pop).toBeVisible();
-  await expect(tool).toHaveAttribute('aria-expanded', 'true');
-  const inside = () => pop.evaluate((el) => el.contains(document.activeElement));
-  await expect.poll(inside).toBe(true);
-  for (let i = 0; i < 12; i++) await win.keyboard.press('Tab');
-  expect(await inside(), `Tab left the ${label} popover`).toBe(true);
-  await expectAccessible(win, `popover: ${label}`);
-  await win.keyboard.press('Escape');
-  await expect(pop).toBeHidden();
-  await expect(tool).toBeFocused();
-  await expectFocusMeaningful(win, `closing ${label}`);
 }
 
 test('library, import wizard, command search and every Settings section', async ({ win }) => {
@@ -321,33 +326,32 @@ test.describe('a synthetic project', () => {
     await expectAccessible(win, 'Scene, island open');
     await closeIslandTools(win);
 
-    // Every stage popover, from its group's set in the island. The island keeps every tool in
-    // the same place at every width (D6), so the sets are walked at the size the window got and
-    // again in the smallest window the app allows. Esc closes the inner popover first.
-    const POPOVERS: [string, GroupId][] = [
-      ['View presets', 'view'],
-      ['Layers and issue pins', 'display'],
+    // Every set of the island's groups, which is a workbench or a panel tab in the right sidebar
+    // now (D4): the island keeps every tool in the same place at every width (D6), so the sets
+    // are walked at the size the window got and again in the smallest window the app allows.
+    const SETS: [string, GroupId, { tile: string; tab: string }?][] = [
+      ['Display', 'display'],
       ['Point cloud', 'clouds'],
-      ['Environment and time of day', 'view'],
-      ['See inside the asset: cut or transparent', 'view'],
+      [
+        'Environment and time of day',
+        'view',
+        { tile: 'Environment and time of day', tab: 'environment' },
+      ],
+      [
+        'See inside the asset',
+        'view',
+        { tile: 'See inside the asset: cut or transparent', tab: 'cutaway' },
+      ],
     ];
     const walkSets = async () => {
       const opened = new Set<string>();
-      for (const [label, group] of POPOVERS) {
-        const full = await islandGroup(win, group);
-        const tool = full.getByRole('button', { name: label, exact: true });
-        if ((await tool.count()) > 0 && (await tool.isEnabled())) {
-          await popoverByKeyboard(win, label, full);
-          await expect(full, `the ${group} set stays open after closing ${label}`).toBeVisible();
-          opened.add(label);
-        }
-        await win.keyboard.press('Escape');
-        await expect(full).toBeHidden();
+      for (const [label, group, panel] of SETS) {
+        if (await islandSetAccessible(win, group, label, panel)) opened.add(label);
       }
       return [...opened].sort();
     };
-    const all = POPOVERS.map(([label]) => label).sort();
-    expect(await walkSets(), 'popovers opened at the first size').toEqual(all);
+    const all = SETS.map(([label]) => label).sort();
+    expect(await walkSets(), 'sets opened at the first size').toEqual(all);
     const firstWidth = await win.evaluate(() => window.innerWidth);
     const size = await app.evaluate(({ BrowserWindow }) => {
       const w = BrowserWindow.getAllWindows()[0];
@@ -366,7 +370,7 @@ test.describe('a synthetic project', () => {
         }),
       )
       .toBe(true);
-    expect(await walkSets(), 'popovers opened in the smallest window').toEqual(all);
+    expect(await walkSets(), 'sets opened in the smallest window').toEqual(all);
     await app.evaluate(({ BrowserWindow }, s) => {
       if (s) BrowserWindow.getAllWindows()[0]?.setContentSize(s[0] ?? 1440, s[1] ?? 900);
     }, size);
@@ -581,19 +585,11 @@ test.describe('@realdata HCl (real data, local only)', () => {
       });
       await expect(win.locator('.vwin').first()).toBeVisible({ timeout: 60_000 });
       await expectAccessible(win, 'HCl, scene with the video window');
-      for (const [label, group] of [
-        ['Layers and issue pins', 'display'],
-        ['Point cloud', 'clouds'],
-        ['See inside the asset: cut or transparent', 'view'],
-        ['Flight paths', 'video'],
-      ] as const) {
-        const full = await islandGroup(win, group);
-        const tool = full.getByRole('button', { name: label, exact: true });
-        if ((await tool.count()) > 0 && (await tool.isEnabled()))
-          await popoverByKeyboard(win, label, full);
-        await win.keyboard.press('Escape');
-        await expect(full).toBeHidden();
-      }
+      const see = { tile: 'See inside the asset: cut or transparent', tab: 'cutaway' };
+      await islandSetAccessible(win, 'display', 'Display');
+      await islandSetAccessible(win, 'clouds', 'Point cloud');
+      await islandSetAccessible(win, 'view', 'See inside the asset', see);
+      await islandSetAccessible(win, 'video', 'Video');
       await win.getByRole('tab', { name: /Issues/ }).click();
       await win.locator('.ann-list [role="option"]').first().click();
       await expect(win.getByTestId('issue-card')).toBeVisible();

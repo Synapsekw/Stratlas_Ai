@@ -365,7 +365,8 @@ test('@realdata the tank is cut or made transparent only by hand; photos and fli
   expect(await cloudsHidden()).toBe(false);
   await win.keyboard.press('Space');
 
-  // Cut, by hand from the island's View set: the section opens at the drone and the clouds hide.
+  // Cut, by hand from the island's View row (the Cutaway tab): the section opens at the drone
+  // and the clouds hide.
   const view = await islandGroup(win, 'view');
   const tool = view.getByRole('button', { name: 'See inside the asset: cut or transparent' });
   await tool.click();

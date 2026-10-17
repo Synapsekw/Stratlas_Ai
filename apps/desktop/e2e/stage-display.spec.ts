@@ -10,7 +10,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, realDataTest } from './fixtures';
-import { closeIslandTools, islandGroup, islandTool, timelineToggle } from './island';
+import { closeIslandTools, islandGroup, timelineToggle } from './island';
 import { hasRealProject, missingRealProject } from './realData';
 
 const has = hasRealProject;
@@ -80,10 +80,8 @@ async function pathsTest(win: Page, card: string, flights: number, groups = true
   await expect.poll(async () => (await rig(win)).shown).toBe(1);
   await expect.poll(async () => (await rig(win)).drone, { timeout: 20_000 }).toBe(true);
 
-  const tool = await islandTool(win, 'video', 'Flight paths');
-  await expect(tool).toHaveAttribute('aria-keyshortcuts', 'P');
-  await tool.click();
-  const panel = win.getByTestId('path-panel');
+  // the flight paths are a section of the Video workbench (P is checked below)
+  const panel = (await islandGroup(win, 'video')).getByTestId('path-panel');
   await panel.getByRole('button', { name: 'All', exact: true }).click();
   await expect.poll(async () => (await rig(win)).shown).toBe(flights);
   await panel.getByRole('button', { name: 'Off', exact: true }).click();
@@ -200,7 +198,7 @@ const cloudSizes = (win: Page) =>
  */
 async function sizeTest(win: Page, layers: readonly string[]) {
   const panel = win.getByTestId('cloud-panel');
-  if (!(await panel.isVisible())) await (await islandTool(win, 'clouds', 'Point cloud')).click();
+  if (!(await panel.isVisible())) await islandGroup(win, 'clouds');
   const slider = panel.getByRole('slider', { name: 'Point size' });
   await slider.fill('0');
   await expect
@@ -247,7 +245,7 @@ async function sizeTest(win: Page, layers: readonly string[]) {
 
 async function colourTest(win: Page, card: string, rgb: boolean) {
   await open(win, card);
-  await (await islandTool(win, 'clouds', 'Point cloud')).click();
+  await islandGroup(win, 'clouds');
   const panel = win.getByTestId('cloud-panel');
   await expect(panel.getByRole('button', { name: 'Elevation' })).toBeVisible();
   const show = panel.getByRole('checkbox').first();
@@ -412,7 +410,7 @@ test.describe('@realdata DAMAC', () => {
     await expect
       .poll(async () => (await pinLayout(win))?.items ?? 0, { timeout: 30_000 })
       .toBeGreaterThan(0);
-    // the pin toggle and the Layers popover are in the island's Display set
+    // the pin toggle and the pin settings are in the Display workbench
     const display = await islandGroup(win, 'display');
     const hide = display.getByRole('button', { name: 'Hide issue pins', exact: true });
     await expect(hide).toHaveAttribute('aria-keyshortcuts', 'I');
@@ -421,24 +419,21 @@ test.describe('@realdata DAMAC', () => {
     await expect.poll(async () => (await pinLayout(win))?.items).toBe(0);
     const show = display.getByRole('button', { name: 'Show issue pins', exact: true });
     await expect(show).toHaveAttribute('aria-pressed', 'false');
-    // the popover shows the same setting; the heat map stays on with the pins off
-    await display.getByRole('button', { name: 'Layers and issue pins' }).click();
+    // the pin settings show the same setting; the heat map stays on with the pins off
     await expect(win.getByRole('button', { name: 'No pins' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
     await win.getByRole('checkbox', { name: 'Severity heat map' }).check();
     await win.getByRole('button', { name: 'Severity 2 and above' }).click();
-    await win.keyboard.press('Escape');
     await expect(hide).toBeVisible();
-    await win.keyboard.press('Escape');
-    // I turns them off and back on to the popover's last choice
+    // I turns them off and back on to the last choice
     await focusStage(win);
     await win.keyboard.press('i');
     await expect.poll(async () => (await pinLayout(win))?.items).toBe(0);
     await win.keyboard.press('i');
     await expect.poll(async () => (await pinLayout(win))?.items ?? 0).toBeGreaterThan(0);
-    await (await islandTool(win, 'display', 'Layers and issue pins')).click();
+    await islandGroup(win, 'display');
     await expect(win.getByRole('button', { name: 'Severity 2 and above' })).toHaveAttribute(
       'aria-pressed',
       'true',

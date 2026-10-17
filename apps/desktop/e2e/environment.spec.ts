@@ -27,7 +27,7 @@ test.setTimeout(180_000);
 const env = (win: Page) =>
   win.evaluate(() => (window as unknown as Inspect).__stratlas.stage()?.environment ?? null);
 
-/** The environment popover, opened from the island's View set. */
+/** The environment panel tab, opened from the island's View row. */
 async function openPanel(win: Page) {
   const view = await islandGroup(win, 'view');
   await view.getByRole('button', { name: 'Environment and time of day' }).click();
