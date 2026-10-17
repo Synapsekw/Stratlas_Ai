@@ -64,12 +64,31 @@ const along = (from: Vec3, deg: number, d = 10): Vec3 => {
 function setup() {
   const saved: { layerId: string; patch: LayerPatchInput }[] = [];
   const opened: [string, string][] = [];
-  const env = { m: manifest() as ProjectManifest | null, fail: null as string | null };
+  const env = {
+    m: manifest() as ProjectManifest | null,
+    fail: null as string | null,
+    /** Saves wait here until `release()` while set. */
+    defer: false,
+  };
+  const waiting: (() => void)[] = [];
+  /** Lets the waiting saves resolve, one by one, until none waits. */
+  const release = async (): Promise<void> => {
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve();
+      waiting.shift()?.();
+    }
+  };
   const store = createPinStore({
     manifest: () => env.m,
     save: (layerId, patch) => {
       saved.push({ layerId, patch });
-      return Promise.resolve(env.fail);
+      const result = env.fail;
+      if (!env.defer) return Promise.resolve(result);
+      return new Promise((resolve) => {
+        waiting.push(() => {
+          resolve(result);
+        });
+      });
     },
     openPanoBeside: (layerId, panoId) => opened.push([layerId, panoId]),
   });
@@ -77,7 +96,7 @@ function setup() {
     const p = saved[i]?.patch;
     return p && 'mediaPin' in p ? p.mediaPin.pin : undefined;
   };
-  return { store, saved, opened, env, pinOf, s: () => store.getState() };
+  return { store, saved, opened, env, pinOf, release, s: () => store.getState() };
 }
 
 describe('pinStore', () => {
@@ -209,17 +228,84 @@ describe('pinStore', () => {
     expect(s().eyeM).toBe(0);
   });
 
-  it('a move keeps the heading and the GPS place', async () => {
+  it('a move keeps the heading and leaves the GPS place to the writer', async () => {
     const { s, pinOf } = setup();
     s().begin({ kind: 'pano', layerId: 'pa', itemId: 'mv' }, 'move');
     expect(s().step).toBe('pick');
     await s().pickSurface([4, 0, 4], true);
-    expect(pinOf()).toEqual({
-      ground: [4, 0, 4],
-      eyeM: 1.6,
-      headingDeg: 70,
-      gps: { pos: [5, 5, 5] },
-    });
+    expect(pinOf()).toEqual({ ground: [4, 0, 4], eyeM: 1.6, headingDeg: 70 });
+  });
+
+  it('a fresh Place of a lined-up 360 keeps the heading it has', async () => {
+    const { s, pinOf } = setup();
+    s().begin({ kind: 'pano', layerId: 'pa', itemId: 'mv' }, 'place');
+    await s().pickSurface([4, 0, 4], true);
+    expect(pinOf()).toEqual({ ground: [4, 0, 4], eyeM: 1.6, headingDeg: 70 });
+  });
+
+  it('a heading set while a move saves lands with the new ground', async () => {
+    const { s, env, pinOf, release } = setup();
+    env.defer = true;
+    s().begin({ kind: 'pano', layerId: 'pa', itemId: 'mv' }, 'move');
+    const pick = s().pickSurface([4, 0, 4], true);
+    const turn = s().setHeading(10);
+    await release();
+    await Promise.all([pick, turn]);
+    expect(pinOf()).toEqual({ ground: [4, 0, 4], eyeM: 1.6, headingDeg: 10 });
+    expect(s()).toMatchObject({ step: 'pano', saving: false });
+  });
+
+  it('an eye height set while the first place saves lands on disk', async () => {
+    const { s, env, saved, pinOf, release } = setup();
+    env.defer = true;
+    s().begin(PANO, 'place');
+    const pick = s().pickSurface([1, 0, 2], true);
+    await Promise.resolve();
+    const eye = s().setEyeM(2.5);
+    await release();
+    await Promise.all([pick, eye]);
+    expect(pinOf()).toEqual({ ground: [1, 0, 2], eyeM: 2.5 });
+    expect(saved.length).toBeGreaterThanOrEqual(1);
+    expect(s()).toMatchObject({ eyeM: 2.5, step: 'pano', saving: false });
+  });
+
+  it('an eye height then an aim keeps the new eye height', async () => {
+    const { s, env, pinOf, release } = setup();
+    s().begin(PHOTO, 'place');
+    await s().pickSurface([1, 0, 0], true);
+    env.defer = true;
+    const eye = s().setEyeM(3);
+    const aim = s().aim([1, 0, -10]);
+    await release();
+    await Promise.all([eye, aim]);
+    expect(pinOf()).toEqual({ ground: [1, 0, 0], eyeM: 3, headingDeg: 0 });
+  });
+
+  it('a double click on a landmark stores one pair', async () => {
+    const { s, env, saved, release } = setup();
+    s().begin(PANO, 'place');
+    await s().pickSurface([1, 0, 2], true);
+    s().pickPano(0);
+    env.defer = true;
+    const a = s().pickLandmark([11, 0, 2]);
+    const b = s().pickLandmark([11, 0, 2]);
+    await release();
+    await Promise.all([a, b]);
+    expect(s()).toMatchObject({ step: 'more' });
+    expect(s().pairs).toHaveLength(1);
+    expect(saved).toHaveLength(2);
+  });
+
+  it('a failed eye height save shows what is on disk again', async () => {
+    const { s, env } = setup();
+    s().begin(PANO, 'place');
+    await s().pickSurface([1, 0, 2], true);
+    env.fail = 'disk full';
+    await s().setEyeM(4);
+    expect(s()).toMatchObject({ eyeM: 1.6, ground: [1, 0, 2], error: 'disk full' });
+    env.fail = null;
+    await s().setHeading(20);
+    expect(s().error).toBeNull();
   });
 
   it('Set direction starts at the 360 or at the aim, without a surface pick', async () => {
@@ -254,7 +340,10 @@ describe('pinStore', () => {
   it('ends the session when the item goes from the manifest', async () => {
     const { s, env, saved } = setup();
     s().begin(PANO, 'place');
-    env.m = null;
+    const m = manifest();
+    const pa = m.layers.find((l) => l.id === 'pa');
+    if (pa?.kind === 'panoramas') pa.items = pa.items.filter((i) => i.id !== 'u');
+    env.m = m;
     await s().pickSurface([1, 0, 2], true);
     expect(s().target).toBeNull();
     expect(saved).toHaveLength(0);
