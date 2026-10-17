@@ -636,7 +636,11 @@ test('undo puts the date back and keeps a pin drawn after the line-up on its fea
   const canvas = win.locator('[data-scene-view] canvas').first();
   await canvas.click({ position: { x: 5, y: 5 } });
   await win.keyboard.press('a');
-  await win.locator('.ann-subbar').getByRole('button', { name: 'Pin' }).click();
+  // the annotation tools are the Annotate workbench's, which A brings to the front
+  await win
+    .getByRole('group', { name: 'Annotation tools' })
+    .getByRole('button', { name: 'Pin' })
+    .click();
   const at = await screenPoint(win, ROOF);
   await win.mouse.click(at.x, at.y);
   const pop = win.getByRole('dialog', { name: 'New issue' });
