@@ -161,6 +161,56 @@ def _read_previous(project: Path) -> dict | None:
     return doc
 
 
+GROUND_R_MIN_M = 0.5
+GROUND_R_MAX_M = 3.0
+GROUND_SHAFT_CLEARANCE_M = 0.2
+GROUND_PERCENTILE = 2.0
+GROUND_MIN_POINTS = 20
+GROUND_BELOW_BULK_M = 1.0  # points this far under the annulus's 25th percentile height are strays
+GROUND_READ_POINTS = 200_000
+
+
+def ground_near_base(ctx: Any, project: Path, manifest: dict, crown: Any) -> float | None:
+    """Local y of the ground at the tower: the 2nd percentile height of the points in an annulus
+    around the axis base (0.5 to 3 m, kept clear of the shaft and below half the tower height), after
+    dropping points more than 1 m under the annulus's 25th percentile, so a few stray low points or
+    a ditch by the base do not set it. None with fewer than 20 such points."""
+    from ..change.sources import height_offset_m
+    from ..engineer.cloud import read_region
+    from ..inspection.frame import asset_path
+
+    layer = next((x for x in manifest.get("layers", []) if x.get("id") == crown.layer_id), None)
+    path = asset_path(project, layer.get("src")) if layer else None
+    if layer is None or path is None or not path.exists():
+        return None
+    axis = crown.axis
+    base = np.asarray(axis.point, dtype=float)
+    r_out = max(GROUND_R_MAX_M, float(crown.shaft_r(np.array([0.0]))[0]) + 1.0)
+    pts = read_region(
+        path,
+        str(layer.get("format") or "las"),
+        {"centre": [float(base[0]), float(base[2])], "radiusM": r_out},
+        GROUND_READ_POINTS,
+        ctx,
+        _origin(manifest),
+        seed=0,
+        offset_m=height_offset_m(layer),
+    )[0]
+    if len(pts) == 0:
+        return None
+    u, w, h = axis.to_frame(pts)
+    r = np.hypot(u, w)
+    r_in = np.maximum(GROUND_R_MIN_M, crown.shaft_r(np.maximum(h, 0.0)) + GROUND_SHAFT_CLEARANCE_M)
+    sel = (r >= r_in) & (r <= r_out) & (h < 0.5 * float(crown.height))
+    if int(sel.sum()) < GROUND_MIN_POINTS:
+        return None
+    y = pts[sel, 1]
+    # stray points far below the bulk of the ground (a sparse cloud can hold a few percent of them
+    # by the base) are not ground: drop them before taking the low percentile
+    y = y[y >= np.percentile(y, 25.0) - GROUND_BELOW_BULK_M]
+    return float(np.percentile(y, GROUND_PERCENTILE))
+
+
 class TelecomAntennas:
     name = "telecom.antennas"
     title = "Detect antennas"
@@ -203,7 +253,6 @@ class TelecomAntennas:
 
         def crown_step(ctx: StepContext) -> dict[str, Any]:
             from .crown import locate_crown
-            from .measure import to_project
 
             ctx.progress(0.0, "Locating the tower crown")
             manifest = _manifest(ctx.project)
@@ -218,9 +267,15 @@ class TelecomAntennas:
                 shaft=np.asarray(crown.shaft_r.coef, dtype=np.float64),
             )
             oz = _origin(manifest)[2]
-            # the axis point is the tower's base, carried to the lowest point of the tower crop: the
-            # ground at the tower (engineer.axis.estimate_axis, evidence `base`)
-            ground_z = float(to_project(point, _origin(manifest))[2])
+            ground_y = ground_near_base(ctx, ctx.project, manifest, crown)
+            if ground_y is None:
+                # too few ground points by the base: the axis base, carried to the lowest point of the
+                # tower crop (engineer.axis.estimate_axis, evidence `base`)
+                ground_y = float(point[1])
+                ctx.log(
+                    "Few ground points around the tower base; the ground height is the tower's base.", "warn"
+                )
+            ground_z = oz + ground_y
             ctx.log(f"Tower axis from {crown.source}; {len(crown.xyz):,} points in the antenna band.")
             return {
                 "source": crown.source,

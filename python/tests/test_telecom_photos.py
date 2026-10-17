@@ -121,6 +121,22 @@ def test_facing_beats_oblique_and_behind(tmp_path):
     )
 
 
+def test_camera_behind_the_unit_is_never_in_its_photos(tmp_path):
+    front = camera(tmp_path, "front", around(0.0))
+    back = camera(tmp_path, "back", around(180.0))  # behind the unit, looking at its back
+    side = camera(tmp_path, "side", around(95.0))  # just past edge-on, behind the face plane
+    unit = project_unit()
+    got = best_photos([unit], manifest_with([back, side, front]), tmp_path)["ant-a-1"]
+    assert [p["id"] for p in got] == ["front"]
+    corners = box_corners(unit, ORIGIN)
+    px, depth = project_points(back, LENS, SIZE, corners)
+    assert np.all(depth > 0) and np.all((px >= 0) & (px <= SIZE))  # it sees the whole box...
+    assert score_photo(px, depth, SIZE, CENTRE - around(180.0), AXES[2], 10.0) == 0.0  # ...from behind
+    # only a back view: no photos, so no crop either
+    alone = best_photos([unit], manifest_with([back]), tmp_path)["ant-a-1"]
+    assert alone == []
+
+
 def test_box_mostly_out_of_frame_scores_zero():
     corners = np.array([[790.0, 100.0], [1000.0, 100.0], [790.0, 300.0], [1000.0, 300.0]])
     assert score_photo(corners, np.ones(4), SIZE, [0, 0, -1], [0, 0, 1], 5.0) == 0.0  # 5 % in frame

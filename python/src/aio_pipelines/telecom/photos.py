@@ -5,7 +5,8 @@ local frame: it looks along its local -Z, +Y is up in the image, and the focal l
 `(W / 2) / tan(hfov / 2)` (square pixels, principal point in the middle; a photo without a lens
 gets the kit's 70 degree default). A unit's box corners are projected into it and the photo is
 scored on how much of the box is in the frame, how squarely it looks at the face and how near it
-is (no occlusion test in v1). The top three are kept.
+is (no occlusion test in v1); a camera that is not on the unit's front side (a dish: its reflector
+side) does not count. The top three are kept.
 
 The crop is the projected box plus a margin, cut from the upright photo and written as a JPEG with
 no metadata, at most `CROP_MAX_PX` on its longest side: the AI labelling's cost estimate and its
@@ -92,16 +93,19 @@ def score_photo(
     normal: np.ndarray,
     distance_m: float,
 ) -> float:
-    """0 when any corner is behind the camera or under 25 percent of the projected box is in the
-    frame; else 0.4 x in-frame share + 0.4 x frontalness (-view_dir . normal, at least 0) + 0.2 /
+    """0 when any corner is behind the camera, the camera is not on the unit's front side
+    ((camera - centre) . normal <= 0, i.e. view_dir . normal >= 0) or under 25 percent of the
+    projected box is in the frame; else 0.4 x in-frame share + 0.4 x frontalness (-view_dir . normal, at least 0) + 0.2 /
     (1 + distance / 20 m). In [0, 1]."""
     if np.any(np.asarray(depth) <= 0):
+        return 0.0
+    v = np.asarray(view_dir, dtype=float)
+    n = np.asarray(normal, dtype=float)
+    if float(v @ n) >= 0:  # the camera is behind the unit's front (for a dish: its back)
         return 0.0
     share, _ = _bbox_share(np.asarray(corners_px, dtype=float), size)
     if share < MIN_IN_FRAME:
         return 0.0
-    v = np.asarray(view_dir, dtype=float)
-    n = np.asarray(normal, dtype=float)
     v = v / (np.linalg.norm(v) or 1.0)
     n = n / (np.linalg.norm(n) or 1.0)
     facing = max(0.0, float(-(v @ n)))

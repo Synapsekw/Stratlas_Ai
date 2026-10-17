@@ -182,6 +182,10 @@ def test_runs_end_to_end(tmp_path, monopole):
     for u in f["units"]:
         if "crop" in u:
             assert (root / u["crop"]).is_file()
+    # the camera stands north of the tower: units facing away from it have no photo and no crop
+    south = nearest(f["units"], panel_truth(truth, "panel-120"))
+    assert south["photos"] == [] and "crop" not in south
+    assert not (root / "telecom" / "crops" / f"{south['id']}.jpg").exists()
     # progress: plan, then the five step messages, and the staged files did not leak
     msgs = [p.get("message") for p in rec.of("progress")]
     for m in (
@@ -218,6 +222,18 @@ def test_height_offset_applied(tmp_path, monopole):
     panel = panel_truth(truth)
     assert nearest(f["units"], panel)["box"]["centre"][2] == pytest.approx(panel["centre"][1], abs=0.03)
     assert f["run"]["groundZ"] == pytest.approx(0.0, abs=0.05)
+
+
+def test_ground_ignores_low_outliers_by_the_base(tmp_path, monopole):
+    xyz, _ = monopole
+    rng = np.random.default_rng(5)
+    ang = rng.uniform(0, 2 * np.pi, 3)
+    outliers = np.column_stack([1.5 * np.cos(ang), np.full(3, -4.0), 1.5 * np.sin(ang)])
+    root = make_tower_project(tmp_path / "p", np.vstack([xyz, outliers]))
+    run_job(pipeline(), root, {"run": "run-a"})
+    f = read_file(root)
+    assert f["run"]["groundZ"] == pytest.approx(0.0, abs=0.05)  # not dragged to -4 m
+    assert f["units"]
 
 
 def test_height_offset_absent(tmp_path, monopole):
