@@ -365,20 +365,39 @@ export function resolvePreviewRequest(
   };
 }
 
+/**
+ * Path-loss grids the Worker keeps at most (a backstop: the client drops the keys its plan no
+ * longer uses). The least recently used grid goes first.
+ */
+export const MAX_PATH_LOSS_GRIDS = 64;
+
 /** The Worker side: path-loss cache and preview requests. preview.worker.ts only calls this. */
-export function servePreview(port: PreviewPort, now: () => number = () => performance.now()): void {
+export function servePreview(
+  port: PreviewPort,
+  now: () => number = () => performance.now(),
+  maxGrids = MAX_PATH_LOSS_GRIDS,
+): void {
   const cache = new Map<string, Float32Array>();
   const failed = new Map<string, string>();
+  /** Keep a grid as the most recently used, then trim the oldest past the cap. */
+  const keep = (key: string, grid: Float32Array) => {
+    cache.delete(key);
+    cache.set(key, grid);
+    for (const k of cache.keys()) {
+      if (cache.size <= maxGrids) break;
+      cache.delete(k);
+    }
+  };
   port.onmessage = ({ data }) => {
     if (data.type === 'path-loss:set') {
       failed.delete(data.key);
-      cache.set(data.key, data.pathLossDb);
+      keep(data.key, data.pathLossDb);
       return;
     }
     if (data.type === 'path-loss:compute') {
       if (cache.has(data.key)) return;
       try {
-        cache.set(data.key, pathLossGrid(data.grid, data.antenna, data.setup, data.radiusM));
+        keep(data.key, pathLossGrid(data.grid, data.antenna, data.setup, data.radiusM));
         failed.delete(data.key);
       } catch (e) {
         failed.set(data.key, e instanceof Error ? e.message : String(e));
@@ -393,6 +412,11 @@ export function servePreview(port: PreviewPort, now: () => number = () => perfor
     const t0 = now();
     try {
       const output = computePreview(resolvePreviewRequest(data.input, cache, failed));
+      for (const sec of data.input.sectors)
+        for (const src of sec.sources) {
+          const g = cache.get(src.pathLossKey);
+          if (g) keep(src.pathLossKey, g);
+        }
       port.postMessage({ type: 'preview', id: data.id, ok: true, output, elapsedMs: now() - t0 }, [
         output.rsrpDbm.buffer as ArrayBuffer,
         output.bestServer.buffer as ArrayBuffer,

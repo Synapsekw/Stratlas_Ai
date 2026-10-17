@@ -432,3 +432,43 @@ describe('studyGrid', () => {
     expect(Math.abs(mid.north - 2_700_456.7)).toBeLessThan(10);
   });
 });
+
+describe('the Worker path-loss cache', () => {
+  it('keeps at most its cap, dropping the least recently used grid first', () => {
+    const sent: PreviewReply[] = [];
+    const port: PreviewPort = {
+      onmessage: null,
+      postMessage(m) {
+        sent.push(m);
+      },
+    };
+    servePreview(port, () => 0, 2);
+    const grid = makeGrid(8, 10);
+    const [sector] = sectorsFor(grid, [SPECS[1] ?? []]);
+    const src = sector?.sources[0];
+    if (!src) throw new Error('missing');
+    const { pathLossDb, ...settings } = src;
+    const send = (data: PreviewMessage) => port.onmessage?.({ data });
+    const ask = (key: string, id: number) => {
+      send({
+        type: 'preview',
+        id,
+        input: {
+          grid,
+          ueHeightM: UE,
+          marginDb: 0,
+          sectors: [{ id: 'sec-a', sources: [{ ...settings, pathLossKey: key }] }],
+        },
+      });
+      return sent.at(-1)?.ok;
+    };
+    send({ type: 'path-loss:set', key: 'a', pathLossDb });
+    send({ type: 'path-loss:set', key: 'b', pathLossDb });
+    // a is used, so b is now the oldest
+    expect(ask('a', 1)).toBe(true);
+    send({ type: 'path-loss:set', key: 'c', pathLossDb });
+    expect(ask('b', 2)).toBe(false);
+    expect(ask('a', 3)).toBe(true);
+    expect(ask('c', 4)).toBe(true);
+  });
+});
