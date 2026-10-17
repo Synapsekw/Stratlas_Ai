@@ -320,9 +320,9 @@ export function DesignsTool() {
 }
 
 /**
- * The workspace mount of the designs (one per stage, whatever toolbar groups show): loads the
- * site's designs and draws the visible layers in the 3D view and on the map, so they stay drawn
- * when the toolbar folds the Designs button into More tools or the panel is closed.
+ * The workspace mount of the designs (one per stage, whatever the island shows): loads the site's
+ * designs and draws the visible layers in the 3D view and on the map, so they stay drawn while
+ * the island is closed or the panel is.
  */
 export function DesignsMount({ stage }: { stage: EngineStage | null }) {
   const project = useWorkspace((s) => s.project);

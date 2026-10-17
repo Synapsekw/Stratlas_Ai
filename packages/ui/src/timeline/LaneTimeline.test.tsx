@@ -154,7 +154,7 @@ describe('LaneTimeline', () => {
     expect(p.onIssue).toHaveBeenCalledWith('i1');
   });
   it('shows the site clock in the timecode and the hide button only with onHide', () => {
-    render(props({ onHide: vi.fn(), hideKeys: 'T' }));
+    render(props({ onHide: vi.fn() }));
     expect(q('timecode')?.textContent).toBe('09:06:00.00');
     expect(host.querySelector('.tl-hide')).not.toBeNull();
   });

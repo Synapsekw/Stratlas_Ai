@@ -41,7 +41,6 @@ export interface LaneTimelineProps {
   onTogglePlay: () => void;
   onRate: (rate: number) => void;
   onHide?: (() => void) | undefined;
-  hideKeys?: string | undefined;
 }
 
 const vars = (v: Record<string, number>) => v as CSSProperties;
@@ -225,7 +224,7 @@ export function LaneTimeline(props: LaneTimelineProps) {
           {props.clockLabel}
         </span>
         <ZoomControls axis={axis} anchor={headTod ?? (model.range[0] + model.range[1]) / 2} />
-        {props.onHide && <HideButton onHide={props.onHide} hideKeys={props.hideKeys} />}
+        {props.onHide && <HideButton onHide={props.onHide} />}
       </div>
       <div className="tl-body lt-body">
         <div className="tl-labels">

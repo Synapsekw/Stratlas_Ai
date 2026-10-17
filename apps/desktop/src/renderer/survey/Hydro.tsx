@@ -346,9 +346,9 @@ export function HydroTool() {
 }
 
 /**
- * The workspace mount of hydrology (one per stage, whatever toolbar groups show): loads the runs,
+ * The workspace mount of hydrology (one per stage, whatever the island shows): loads the runs,
  * follows the jobs, draws the shown run on the map and ends a map pick on Escape, so the layers
- * stay when the toolbar folds the button into More tools.
+ * stay while the island is closed.
  */
 export function HydroMount() {
   const project = useWorkspace((s) => s.project);

@@ -287,27 +287,17 @@ export function ZoomControls({ axis, anchor }: { axis: TimeAxis; anchor: number 
   );
 }
 
-/** Collapse the timeline; `hideKeys` names its shortcut. */
-export function HideButton({
-  onHide,
-  hideKeys,
-}: {
-  onHide: () => void;
-  hideKeys?: string | undefined;
-}) {
+/** Collapse the timeline (it has no key: the island's View row shows it again). */
+export function HideButton({ onHide }: { onHide: () => void }) {
   return (
     <button
       className="tool tip-up tl-hide"
       type="button"
       onClick={onHide}
       aria-label={t('timeline.hide')}
-      aria-keyshortcuts={hideKeys}
     >
       <Icon name="chevdown" />
-      <span className="tip tip-end">
-        {t('timeline.hide')}
-        {hideKeys && <span className="kbd">{hideKeys}</span>}
-      </span>
+      <span className="tip tip-end">{t('timeline.hide')}</span>
     </button>
   );
 }

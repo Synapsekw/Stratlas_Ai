@@ -460,9 +460,9 @@ export function HaulRoadTool() {
 }
 
 /**
- * The workspace mount of haul roads (one per stage, whatever toolbar groups show): loads the runs,
+ * The workspace mount of haul roads (one per stage, whatever the island shows): loads the runs,
  * follows the jobs and colours the shown centreline in the 3D view and on the map, so the colouring
- * stays when the toolbar folds the button into More tools.
+ * stays while the island is closed.
  */
 export function HaulRoadMount({ stage }: { stage: EngineStage | null }) {
   const project = useWorkspace((s) => s.project);

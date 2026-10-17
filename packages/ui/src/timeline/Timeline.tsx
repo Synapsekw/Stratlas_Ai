@@ -26,9 +26,8 @@ export interface TimelineProps {
   onStep: (dir: 1 | -1) => void;
   /** Right-aligned context line, e.g. capture date and time base. */
   context?: ReactNode;
-  /** Collapse the timeline (a button at the end of the header); `hideKeys` names its shortcut. */
+  /** Collapse the timeline (a button at the end of the header). */
   onHide?: () => void;
-  hideKeys?: string;
   className?: string;
 }
 
@@ -89,7 +88,7 @@ export function Timeline(props: TimelineProps) {
         <span className="sp" />
         {props.context && <span className="ctx">{props.context}</span>}
         <ZoomControls axis={axis} anchor={nowMs} />
-        {props.onHide && <HideButton onHide={props.onHide} hideKeys={props.hideKeys} />}
+        {props.onHide && <HideButton onHide={props.onHide} />}
       </div>
       {hasTime ? (
         <div className="tl-body">
