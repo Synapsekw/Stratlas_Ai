@@ -1,9 +1,16 @@
-import { ChangePanel, layersOf, type ChangePairContext } from '@aio/change';
+import {
+  changeProducers,
+  changeStore,
+  ChangePanel,
+  layersOf,
+  type ChangePairContext,
+} from '@aio/change';
 import { formatDate } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useCaptureIndex } from '../workspace/compare';
 import { useSplit } from '../workspace/SplitPanes';
+import { openLineUp } from '../lineup/lineUpActions';
 import { createChangeActions } from './actions';
 import { useChangeProject, useComparedPair } from './useChangeOverlays';
 
@@ -32,6 +39,18 @@ export function ChangesTab({ className }: { className?: string }) {
     layersFrom: layersOf(index, project.manifest.layers, pair.from),
     layersTo: layersOf(index, project.manifest.layers, pair.to),
   });
+  /** Run a producer again for the panel's pair; `name` is its id or a change set's producer. */
+  const rerun = (name: string) => {
+    const pair = changeStore.getState().pair;
+    const ctx = pair ? context(pair) : null;
+    const producer = changeProducers().find((p) => p.id === name || `change.${p.id}` === name);
+    if (!ctx || !producer) {
+      // an in-app producer (issues, detections, vectors) is part of the panel's own run
+      void changeStore.getState().compute();
+      return;
+    }
+    void producer.run(ctx);
+  };
   return (
     <ChangePanel
       className={className}
@@ -39,6 +58,20 @@ export function ChangesTab({ className }: { className?: string }) {
       defaultPair={compared}
       context={context}
       actions={actions}
+      onLineUp={(from, to) => {
+        // after a saved line-up the refused run starts again by itself
+        const refused = changeStore.getState().misaligned?.producer;
+        openLineUp(
+          from,
+          to,
+          refused
+            ? () => {
+                rerun(refused);
+              }
+            : undefined,
+        );
+      }}
+      onRerun={rerun}
     />
   );
 }

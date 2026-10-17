@@ -233,7 +233,13 @@ export function DateTree(props: DateTreeProps) {
                   className="dname"
                   data-testid={`date-name-${f.id}`}
                   aria-current={focused ? 'date' : undefined}
-                  title={f.capture ? t('tree.dates.focus', { date: f.label }) : undefined}
+                  title={
+                    f.capture
+                      ? [t('tree.dates.focus', { date: f.label }), f.lineUp]
+                          .filter(Boolean)
+                          .join('\n')
+                      : undefined
+                  }
                   onClick={() => {
                     if (f.capture) {
                       // Focusing an already-focused date changes nothing, so re-open it here.

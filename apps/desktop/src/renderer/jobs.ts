@@ -249,6 +249,27 @@ export function isActive(job: Pick<JobRecord, 'status'>): boolean {
   return job.status === 'starting' || job.status === 'running' || job.status === 'cancelling';
 }
 
+/**
+ * The finished record of job `id` once it is no longer at work (done, failed, cancelled or
+ * interrupted), as the store holds it. Null when the store does not know the job.
+ */
+export function waitForJob(store: StoreApi<Jobs>, id: string): Promise<JobRecord | null> {
+  const settled = (): JobRecord | null => {
+    const job = store.getState().jobs.find((j) => j.id === id);
+    return job && !isActive(job) ? job : null;
+  };
+  const now = settled();
+  if (now) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const off = store.subscribe(() => {
+      const job = settled();
+      if (!job) return;
+      off();
+      resolve(job);
+    });
+  });
+}
+
 export function canResume(job: Pick<JobRecord, 'status'>): boolean {
   return job.status === 'failed' || job.status === 'cancelled' || job.status === 'interrupted';
 }

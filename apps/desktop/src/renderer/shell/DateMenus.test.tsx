@@ -12,6 +12,11 @@ import { registerSidebarActions } from './actions';
 import { updateCapture } from './dateFolders';
 import { TreeMenu, type TreeMenuRequest } from './DateMenus';
 import { askRemove } from './removal';
+import { lineUpApp, type LineUpStore } from '../lineup/lineUpStore';
+import type { Box } from './layerBounds';
+import { lineUpTip } from '../lineup/planLineUp';
+import { t } from '@aio/ui';
+import type { StoreApi } from 'zustand/vanilla';
 
 vi.mock('./dateFolders', () => ({
   updateCapture: vi.fn(() => Promise.resolve(null)),
@@ -409,5 +414,95 @@ describe('dataset menu', () => {
     const { onClose } = open({ kind: 'photos', picks: [] }, 'ctx-menu', 'x');
     expect(q('ctx-menu')).toBeNull();
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('date folder menu: line up', () => {
+  const lineUp = { eastM: -2, northM: 0.2, with: 'sep', at: '2026-10-17T10:00:00.000Z' };
+  const ortho = (id: string, capture: string) => ({
+    kind: 'raster',
+    id,
+    name: id,
+    visible: true,
+    role: 'ortho',
+    format: 'cog',
+    src: { path: `${id}.tif` },
+    capture,
+  });
+  const fake = () => {
+    const open = vi.fn(() => Promise.resolve());
+    const remove = vi.fn(() => Promise.resolve());
+    const store = { getState: () => ({ open, remove }) } as unknown as StoreApi<LineUpStore>;
+    return { open, remove, store };
+  };
+  afterEach(() => {
+    lineUpApp.setState({ store: null, preview: null, extents: null });
+  });
+
+  it('shows a lined-up date and removes its line-up', async () => {
+    const withLineUp = {
+      ...manifestOf(),
+      captures: captures.map((c) => (c.id === 'oct' ? { ...c, lineUp } : c)),
+    } as unknown as ProjectManifest;
+    workspace.setState({
+      project: { id: 'p1', root: 'C:/p', manifest: withLineUp },
+    } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+    // the folder's tooltip says what it was lined up with
+    expect(lineUpTip(withLineUp, 'oct', t)).toBe('Lined up with Survey (2.01 m)');
+    expect(lineUpTip(withLineUp, 'nov', t)).toBeNull();
+
+    const { remove, store } = fake();
+    lineUpApp.setState({ store });
+    date('oct', { manifest: withLineUp });
+    await act(async () => {
+      q('date-menu-remove-line-up')?.click();
+      await Promise.resolve();
+    });
+    expect(remove).toHaveBeenCalledWith('oct');
+    act(() => root?.unmount());
+    date('nov', { manifest: withLineUp });
+    expect(q('date-menu-remove-line-up')).toBeNull();
+    expect(q('date-menu-line-up')).not.toBeNull();
+  });
+
+  it('opens the step from the date menu with the other date', async () => {
+    const two = {
+      captures: captures.slice(0, 2),
+      layers: [ortho('o-sep', 'sep'), ortho('o-oct', 'oct')],
+    } as unknown as ProjectManifest;
+    workspace.setState({
+      project: { id: 'p1', root: 'C:/p', manifest: two },
+    } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+    const { open, store } = fake();
+    lineUpApp.setState({ store });
+    date('sep', { manifest: two });
+    await act(async () => {
+      q('date-menu-line-up')?.click();
+      await Promise.resolve();
+    });
+    expect(open).toHaveBeenCalledWith('sep', 'oct');
+  });
+
+  it('opens the step with the date it most overlaps when there are more', async () => {
+    const three = {
+      captures,
+      layers: [ortho('o-sep', 'sep'), ortho('o-oct', 'oct'), ortho('o-nov', 'nov')],
+    } as unknown as ProjectManifest;
+    workspace.setState({
+      project: { id: 'p1', root: 'C:/p', manifest: three },
+    } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+    const box = (x0: number, x1: number): Box => ({ min: [x0, 0, 0], max: [x1, 5, 100] });
+    const { open, store } = fake();
+    lineUpApp.setState({
+      store,
+      extents: () =>
+        Promise.resolve({ 'o-sep': box(0, 100), 'o-oct': box(90, 190), 'o-nov': box(20, 120) }),
+    });
+    date('sep', { manifest: three });
+    await act(async () => {
+      q('date-menu-line-up')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(open).toHaveBeenCalledWith('sep', 'nov');
   });
 });

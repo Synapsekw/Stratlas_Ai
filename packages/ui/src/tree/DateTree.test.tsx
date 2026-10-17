@@ -526,6 +526,18 @@ describe('DateTree: a whole group onto a date folder', () => {
     expect(typeof asked.y).toBe('number');
   });
 
+  it('adds the line-up sentence to the folder tooltip of a lined-up date', () => {
+    renderWith({
+      folders: folders.map((f) =>
+        f.id === 'oct' ? { ...f, lineUp: 'Lined up with Survey A (2.01 m)' } : f,
+      ),
+    });
+    expect(q('date-name-oct')?.getAttribute('title')).toBe(
+      'View 2 Oct 2024\nLined up with Survey A (2.01 m)',
+    );
+    expect(q('date-name-nov')?.getAttribute('title')).toBe('View 6 Nov 2024');
+  });
+
   it('names a group of one in the singular', () => {
     const onItemMenu = vi.fn();
     render('nov', {}, vi.fn(), { onMove: vi.fn(), onItemMenu });

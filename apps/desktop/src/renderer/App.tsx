@@ -34,6 +34,7 @@ import { jobTitle } from './processing/pipelines';
 import { PipelineDialog } from './processing/PipelineDialog';
 import { ProcessingDrawer } from './processing/ProcessingDrawer';
 import { startFarWatch } from './builder/farSession';
+import { startLineUpSession } from './lineup/lineUpStart';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -373,6 +374,8 @@ export function App() {
       return r.value;
     });
     const stopFarWatch = startFarWatch();
+    // line up dates: the step, its notice and the background check
+    const stopLineUp = startLineUpSession();
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
       if (!project || !finishedManifestJob(prev.jobs, s.jobs, project.root)) return;
@@ -489,6 +492,7 @@ export function App() {
       stopPeople();
       stopJobReload();
       stopFarWatch();
+      stopLineUp();
       stopChangeReload();
       stopIssueReload();
       stopRoad();

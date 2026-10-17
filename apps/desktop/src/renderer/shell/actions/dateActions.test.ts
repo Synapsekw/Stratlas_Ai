@@ -62,6 +62,7 @@ describe('date actions', () => {
       'date-menu-hide',
       'ctx-item-date.zoomTo',
       'date-menu-rename',
+      'date-menu-line-up',
       'date-menu-colour',
       'date-menu-icon',
       'ctx-item-date.addData',

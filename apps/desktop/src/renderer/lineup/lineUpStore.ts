@@ -14,6 +14,7 @@ import {
   type Workspace,
 } from '@aio/workspace';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { Box } from '../shell/layerBounds';
 import type { LineUpMemory } from './lineUpMemory';
 import { formatMetres, movesWith, planLineUp } from './planLineUp';
 
@@ -442,4 +443,6 @@ export type LineUpPreview = (layerId: string) => Promise<LineUpImage | null>;
 export const lineUpApp = createStore<{
   store: StoreApi<LineUpStore> | null;
   preview: LineUpPreview | null;
-}>()(() => ({ store: null, preview: null }));
+  /** Each layer's box in the local frame, as placed now (the date menu picks a partner by it). */
+  extents: (() => Promise<Record<string, Box>>) | null;
+}>()(() => ({ store: null, preview: null, extents: null }));

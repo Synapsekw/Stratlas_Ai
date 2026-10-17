@@ -13,12 +13,14 @@ import {
   type ChangePairContext,
   type ChangeProducer,
   type ChangeRunResult,
+  type ChangeState,
 } from '@aio/change';
 import {
   DEFAULT_CHANGE_THRESHOLDS,
   type ChangeRasterParams,
   type ChangeSurfaceParams,
   type ChangeThresholds,
+  type JobRecord,
   type Layer,
   type PipelineName,
 } from '@aio/schema';
@@ -120,6 +122,23 @@ export function surfaceParams(
   };
 }
 
+/** A refused run, as the Changes panel keeps it (offers Line up dates). */
+export type Misaligned = NonNullable<ChangeState['misaligned']>;
+
+/**
+ * The panel state for a job the pipeline refused because the two dates sit apart
+ * (`failure.code === 'misaligned'`, Task 5); null for any other end, which stays the job's own
+ * error text.
+ */
+export function misalignedOf(job: JobRecord, producer: string): Misaligned | null {
+  const f = job.failure;
+  if (job.status !== 'failed' || f?.code !== 'misaligned') return null;
+  const { from, to, shiftM } = f.data;
+  if (typeof from !== 'string' || typeof to !== 'string') return null;
+  if (typeof shiftM !== 'number' || !Number.isFinite(shiftM)) return null;
+  return { from, to, shiftM, producer };
+}
+
 /** What the producers need from the app (injected in tests). */
 export interface ProducerDeps {
   /** The open project's folder, or null. */
@@ -131,17 +150,30 @@ export interface ProducerDeps {
     project: string,
     params: Record<string, unknown>,
   ): Promise<{ jobId: string } | { error: string }>;
+  /** The job's record once it has ended (null when unknown): to see why a run was refused. */
+  finished?: (jobId: string) => Promise<JobRecord | null>;
+  /** Keep (or clear, with null) a refused run for the Changes panel. */
+  setMisaligned?: (m: Misaligned | null) => void;
 }
 
 async function runJob(
   deps: ProducerDeps,
+  producer: 'raster' | 'surface',
   pipeline: PipelineName,
   params: Record<string, unknown>,
 ): Promise<ChangeRunResult> {
   const root = deps.root();
   if (!root) return { ok: false, error: 'Open a project first.' };
+  deps.setMisaligned?.(null);
   const r = await deps.start(pipeline, root, params);
   if ('error' in r) return { ok: false, error: r.error };
+  // a refusal for the dates' gap is the panel's offer to line them up; other ends stay as they are
+  const { finished, setMisaligned } = deps;
+  if (finished && setMisaligned)
+    void finished(r.jobId).then((job) => {
+      const m = job ? misalignedOf(job, producer) : null;
+      if (m) setMisaligned(m);
+    });
   return { ok: true, jobId: r.jobId };
 }
 
@@ -158,7 +190,9 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
       run: (ctx) => {
         const pair = orthoPair(ctx);
         if (typeof pair === 'string') return Promise.resolve({ ok: false, error: pair });
-        return runJob(deps, 'change.raster', { ...rasterParams(ctx, pair, deps.thresholds()) });
+        return runJob(deps, 'raster', 'change.raster', {
+          ...rasterParams(ctx, pair, deps.thresholds()),
+        });
       },
     },
     {
@@ -172,7 +206,9 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
       run: (ctx) => {
         const pair = surfacePair(ctx);
         if (typeof pair === 'string') return Promise.resolve({ ok: false, error: pair });
-        return runJob(deps, 'change.surface', { ...surfaceParams(ctx, pair, deps.thresholds()) });
+        return runJob(deps, 'surface', 'change.surface', {
+          ...surfaceParams(ctx, pair, deps.thresholds()),
+        });
       },
     },
   ];

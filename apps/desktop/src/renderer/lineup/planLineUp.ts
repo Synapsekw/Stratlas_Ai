@@ -199,3 +199,49 @@ export function pairsToMeasure(
   }
   return out;
 }
+
+/**
+ * The date to line `captureId` up with from its menu: the other date when there are two, else
+ * the one whose imagery overlaps its own the most in plan. Null when no other date overlaps it.
+ */
+export function partnerOf(
+  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  extents: Readonly<Record<string, Box>>,
+  captureId: string,
+): string | null {
+  const others = manifest.captures.filter((c) => c.id !== captureId);
+  if (!manifest.captures.some((c) => c.id === captureId)) return null;
+  const only = others[0];
+  if (others.length === 1 && only) return only.id;
+  const index = captureIndex(manifest);
+  const byId = new Map(manifest.layers.map((l) => [l.id, l]));
+  const boxes = (id: string): Box[] =>
+    (index.layers[id] ?? []).flatMap((layerId) => {
+      const l = byId.get(layerId);
+      const box = extents[layerId];
+      return l && (isRole(l, 'ortho') || isRole(l, 'dsm')) && box ? [box] : [];
+    });
+  const mine = boxes(captureId);
+  let best: { id: string; area: number } | null = null;
+  for (const c of others) {
+    let area = 0;
+    for (const a of mine) for (const b of boxes(c.id)) area = Math.max(area, overlap(a, b));
+    if (area > 0 && (!best || area > best.area)) best = { id: c.id, area };
+  }
+  return best?.id ?? null;
+}
+
+/** The folder tooltip line of a lined-up date ("Lined up with ... (2.01 m)"); null for none. */
+export function lineUpTip(
+  manifest: Pick<ProjectManifest, 'captures'>,
+  captureId: string,
+  t: T,
+): string | null {
+  const c = manifest.captures.find((x) => x.id === captureId);
+  if (!c?.lineUp) return null;
+  const kept = manifest.captures.find((x) => x.id === c.lineUp?.with);
+  return t('lineUp.folder', {
+    kept: kept?.label ?? c.lineUp.with,
+    distance: formatMetres(Math.hypot(c.lineUp.eastM, c.lineUp.northM)),
+  });
+}

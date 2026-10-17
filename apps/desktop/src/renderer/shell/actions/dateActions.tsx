@@ -13,6 +13,7 @@ import {
 } from '@aio/ui';
 import { DATE_COLOURS, workspace } from '@aio/workspace';
 import { builder } from '../../builder/state';
+import { openLineUpFor, removeLineUp } from '../../lineup/lineUpActions';
 import { timeline } from '../../workspace/timeline';
 import {
   COMPARE_WITH_ACTIONS,
@@ -201,6 +202,34 @@ const dateItems: Action[] = [
     },
     { edit: true },
   ),
+  defineAction({
+    id: 'date.lineUp',
+    label: 'lineUp.action',
+    icon: 'target',
+    section: 'edit',
+    targets: ['date'],
+    testId: 'date-menu-line-up',
+    appliesTo: (d, ctx) =>
+      captureOf(d.captureId, ctx) !== undefined && ctx.manifest.captures.length > 1,
+    disabled: (_d, ctx) => editBlocked(ctx),
+    run: async (d, ctx) => {
+      const why = d.captureId === null ? null : await openLineUpFor(d.captureId);
+      if (why) ctx.host.note(why, true);
+    },
+  }),
+  defineAction({
+    id: 'date.removeLineUp',
+    label: 'lineUp.remove',
+    icon: 'undo',
+    section: 'edit',
+    targets: ['date'],
+    testId: 'date-menu-remove-line-up',
+    appliesTo: (d, ctx) => captureOf(d.captureId, ctx)?.lineUp !== undefined,
+    disabled: (_d, ctx) => editBlocked(ctx),
+    run: (d) => {
+      if (d.captureId !== null) removeLineUp(d.captureId);
+    },
+  }),
   defineAction({
     id: 'date.colour',
     label: 'tree.dates.menu.colour',
