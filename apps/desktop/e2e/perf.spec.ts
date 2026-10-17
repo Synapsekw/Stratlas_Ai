@@ -158,11 +158,12 @@ for (const id of ['alzour', 'hcl']) {
   test.describe(`@realdata ${id}`, () => {
     test.skip(!hasRealProject(id), missingRealProject(id));
     test.use({ realProjects: [id] });
-    // The workstation budget is for its hardware GPU; with every launch on SwiftShader
-    // (QUADRION_E2E_SWGL=1) the software GPU budget below is the one that applies.
+    // The workstation budget is for its hardware GPU; with every launch on a software GPU
+    // (QUADRION_E2E_SWGL=1 SwiftShader, =warp WARP, as CI runs) the software GPU budget below is
+    // the one that applies.
     test.skip(
-      process.env.QUADRION_E2E_SWGL === '1',
-      'workstation budget needs the hardware GPU (QUADRION_E2E_SWGL=1 forces SwiftShader)',
+      ['1', 'warp'].includes(process.env.QUADRION_E2E_SWGL ?? ''),
+      'workstation budget needs the hardware GPU (QUADRION_E2E_SWGL forces a software GPU)',
     );
     test(`a recorded fly-through holds p95 frame time under ${String(BUDGET_MS)} ms`, async ({
       win,
