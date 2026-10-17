@@ -21,18 +21,23 @@ const MAX_OUTSIDE_MEAN = 12;
 /** ... and the circles brighter than this. */
 const MIN_INSIDE_MEAN = 30;
 /**
- * The gaps where the circles meet the edges and each other (columns 0, 31, 32 and 63, rows 8 to
- * 23) are darker than this. A night equirect (black sky and ground, a lit horizon band) passes the
- * two means above, but its horizon runs through these gaps.
+ * The gaps beside the circles are darker than this. A night equirect (black sky and ground, a lit
+ * horizon band) passes the two means above, but its horizon runs through these gaps.
  */
 const MAX_GAP_MEAN = 30;
 
-/** Mean of the gap columns over the middle rows. */
+/**
+ * Mean of the gaps: columns 0, 31, 32 and 63, rows 9 to 11 and 21 to 23. Those pixel centres sit
+ * at least 4.5 rows off the circles' middle row, so 16.1 px or more from both centres: dark even
+ * when the circles fill the frame and touch at the middle (rows 12 to 20 of the middle columns are
+ * picture then), yet inside a night equirect's horizon band.
+ */
 function gapMean(grey: Uint8Array, w: number, h: number): number {
   const cols = [0, w / 2 - 1, w / 2, w - 1];
+  const rows = [9, 10, 11, 21, 22, 23].map((r) => Math.round((r * h) / 32));
   let sum = 0;
   let n = 0;
-  for (let y = h / 4; y < (3 * h) / 4; y++)
+  for (const y of rows)
     for (const x of cols) {
       sum += grey[y * w + x] ?? 0;
       n++;

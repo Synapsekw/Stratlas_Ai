@@ -15,6 +15,17 @@ const twoDiscs = image((x, y) => {
   const b = Math.hypot(x + 0.5 - 48, y + 0.5 - 16);
   return Math.min(a, b) <= 15 ? 180 : 0;
 });
+/** Circles that fill the frame: radius 16, touching at the middle and at the side edges. */
+const touching = image((x, y) => {
+  const a = Math.hypot(x + 0.5 - 16, y + 0.5 - 16);
+  const b = Math.hypot(x + 0.5 - 48, y + 0.5 - 16);
+  return Math.min(a, b) <= 16 ? 180 : 0;
+});
+/** The same, with a horizon lit across the gaps beside the circles (rows 9 to 11, 21 to 23). */
+const touchingLitGaps = image((x, y) => {
+  const gap = [0, 31, 32, 63].includes(x) && [9, 10, 11, 21, 22, 23].includes(y);
+  return gap ? 90 : (touching[y * W + x] ?? 0);
+});
 const grey = image(() => 128);
 /** An equirect: bright sky on top, darker ground below, nothing black in the corners. */
 const skyOverGround = image((_x, y) => 230 - y * 6);
@@ -26,6 +37,17 @@ describe('looksDualFisheye', () => {
     expect(looksDualFisheye(twoDiscs, W, H)).toBe(true);
   });
 
+  it('takes circles that fill the frame and touch at the middle for an unstitched still', () => {
+    expect(looksDualFisheye(touching, W, H)).toBe(true);
+  });
+
+  it('rejects on the lit gaps alone: the same circles with light beside them are no still', () => {
+    // the means still say two circles on black (24 lit pixels of about 340 outside them) ...
+    expect(looksDualFisheye(touching, W, H)).toBe(true);
+    // ... only the gap check turns it down
+    expect(looksDualFisheye(touchingLitGaps, W, H)).toBe(false);
+  });
+
   it('does not take a uniform grey image, a sky over ground, or a dark scene for one', () => {
     expect(looksDualFisheye(grey, W, H)).toBe(false);
     expect(looksDualFisheye(skyOverGround, W, H)).toBe(false);
@@ -33,6 +55,8 @@ describe('looksDualFisheye', () => {
   });
 
   it('does not take a night equirect (black sky and ground, a lit horizon band) for one', () => {
+    // bands 60 and 90 with 8 black rows pass both means (outside 6.5 and 7.9, inside 37.9 and
+    // 56.1): the gap check alone turns them down
     for (const band of [40, 60, 90])
       for (const blackRows of [5, 8]) {
         const nightBand = image((_x, y) => (y < blackRows || y >= H - blackRows ? 4 : band));
