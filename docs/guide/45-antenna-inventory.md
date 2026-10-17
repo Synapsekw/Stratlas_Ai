@@ -56,6 +56,8 @@ The AI only sets the type label. It never changes a number.
 
 **Export CSV** writes the accepted units. Tick **Include drafts** to add the drafts too. Rejected units are never written.
 
+The E, N and Z in the CSV, and in a unit's details, are in the survey date's own coordinates, before any line-up shift. When dates are lined up, they can differ from where the box is drawn by that date's shift.
+
 ## The engineering model
 
 The antennas in an engineering model (see Engineering models) are still approximate and are separate from this inventory. The inventory is measured; the engineering model does not read it yet.
