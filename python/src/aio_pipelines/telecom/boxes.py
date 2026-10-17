@@ -5,7 +5,8 @@ from the front (across, up, outward) and its depth from the front-to-back offset
 seen, from the crown points behind the front's side edges (inferred). Units outside the plausible
 sizes are dropped, duplicates merged, and faces that are the side of a bigger unit's box folded
 into it. Dishes come two ways: a round flat front (a radome) among the units, or a round, thin,
-curved cluster of crown points that no face explains (a bare reflector).
+curved cluster of crown points that no face explains (a bare reflector), found after the thin
+tubes it is bolted to (pipe, clamps) are cut away.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ PAIR_Z_OVERLAP_M = 0.1
 DUP_M = 0.15
 
 FRONT_MIN_HEIGHT_SHARE = 0.6
+FRONT_MARGIN_M = 0.05  # a unit's height counts its faces' points this far past the front's
 SIDE_MARGIN_M = 0.05  # a face whose centre lies this close to a bigger unit's box is its side
 EDGE_STRIP_M = 0.03  # inferred depth: crown points this close inside the front's side edges
 DISH_CIRCLE_M = 0.01
@@ -39,7 +41,12 @@ DISH_D_RANGE = (0.2, 1.8)
 DISH_LINK_M = 0.04  # leftover crown points closer than this belong to one cluster
 DISH_MIN_POINTS = 200
 DISH_MAX_THICKNESS = 0.35  # thickness over diameter of a reflector cluster
-DISH_RIM_SHARE = 0.8  # the rim: points beyond this share of the radius
+DISH_REGROW_STEPS = 2  # links of DISH_LINK_M that give a reflector back its rim and contact points
+TUBE_CELL_M = 0.03
+TUBE_K = 48  # about 0.25 m of a 3 cm pipe, a 0.12 m radius patch of a sheet
+TUBE_LINEARITY = 0.75
+DISH_HULL_SHARE = 0.8  # outline points that must sit on the circle
+DISH_SHELL_M = 0.02  # points this close to the fitted reflector profile belong to it
 PANEL_MIN_H = 1.2
 SHORT_MIN_H = 0.6
 FACING_MIN = 0.5
@@ -85,8 +92,12 @@ def _group_unit(group: list[Face], axis_point: np.ndarray, crown: np.ndarray) ->
     front = max(fronts, key=lambda f: float((f.centre - axis_point) @ n0))
     across, up, out = front.side, front.up, front.normal
     w = front.width
-    allpts = np.vstack([f.points for f in group])
-    b0, b1 = span((allpts - front.centre) @ up, 0.5)
+    # the unit's height from all its faces, cut to the front's up interval (plus a margin) so a
+    # back face that took in a touching pipe cannot stretch it
+    fb = (front.points - front.centre) @ up
+    lo, hi = span(fb, 0.5)
+    b = np.concatenate([(f.points - front.centre) @ up for f in group])
+    b0, b1 = span(b[(b >= lo - FRONT_MARGIN_M) & (b <= hi + FRONT_MARGIN_M)], 0.5)
     h = b1 - b0
     if len(group) > 1:
         offs = [float((f.centre - front.centre) @ out) for f in group]
@@ -114,10 +125,10 @@ def _inside(p: np.ndarray, u: Unit, margin: float) -> bool:
     return bool(np.all(np.abs(local) <= u.extents / 2 + margin))
 
 
-def _round_outline(ab: np.ndarray, w: float, h: float, rng: np.random.Generator) -> dict | None:
-    """Circle on the convex outline of in-plane points when the outline is round enough for a dish."""
-    if max(w, h) <= 0 or abs(w - h) / max(w, h) >= DISH_ROUNDNESS:
-        return None
+def _round_outline(ab: np.ndarray, rng: np.random.Generator) -> dict | None:
+    """Circle on the convex outline of in-plane points when the outline is round enough for a dish:
+    most outline points on the circle (a stub of the pipe or clamp behind a dish may poke out),
+    a small residual, and the points inside it about as wide as tall."""
     try:
         hull = ab[ConvexHull(ab).vertices]
     except QhullError:
@@ -125,9 +136,17 @@ def _round_outline(ab: np.ndarray, w: float, h: float, rng: np.random.Generator)
     fit = ransac_circle(hull, DISH_CIRCLE_M, rng)
     if fit is None:
         return None
-    cx, cz, r, _ = fit
-    rms = float(np.sqrt(np.mean((np.hypot(hull[:, 0] - cx, hull[:, 1] - cz) - r) ** 2)))
+    cx, cz, r, inl = fit
+    if inl.mean() < DISH_HULL_SHARE:
+        return None
+    rms = float(np.sqrt(np.mean((np.hypot(hull[inl, 0] - cx, hull[inl, 1] - cz) - r) ** 2)))
     if rms >= DISH_RMS_SHARE * r or not DISH_D_RANGE[0] <= 2 * r <= DISH_D_RANGE[1]:
+        return None
+    disc = ab[np.hypot(ab[:, 0] - cx, ab[:, 1] - cz) <= r + 2 * DISH_CIRCLE_M]
+    a0, a1 = span(disc[:, 0], 1.0)
+    b0, b1 = span(disc[:, 1], 1.0)
+    w, h = a1 - a0, b1 - b0
+    if max(w, h) <= 0 or abs(w - h) / max(w, h) >= DISH_ROUNDNESS:
         return None
     return {"cx": cx, "cz": cz, "r": r, "rms": rms}
 
@@ -135,7 +154,7 @@ def _round_outline(ab: np.ndarray, w: float, h: float, rng: np.random.Generator)
 def _flat_dish(u: Unit, rng: np.random.Generator) -> dict | None:
     f = u.front
     rel = f.points - f.centre
-    c = _round_outline(np.column_stack([rel @ f.side, rel @ f.up]), f.width, f.height, rng)
+    c = _round_outline(np.column_stack([rel @ f.side, rel @ f.up]), rng)
     if c is None:
         return None
     return {"diameter": 2 * c["r"], "axis": f.normal.copy(), "rms": c["rms"]}
@@ -153,19 +172,45 @@ def _reflector_dishes(
         local = (pts - u.centre) @ u.axes.T
         keep &= ~np.all(np.abs(local) <= u.extents / 2 + SIDE_MARGIN_M, axis=1)
     pts = pts[keep]
-    pairs = cKDTree(pts).query_pairs(DISH_LINK_M, output_type="ndarray")
-    graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(len(pts), len(pts)))
+    if len(pts) < DISH_MIN_POINTS:
+        return []
+    # a reflector is bolted to its pipe and the pipe to the frame: cut the thin tubes away first,
+    # so the reflector stands alone, then give it back the points next to it (its rim)
+    sheet = pts[~_tubular(pts)]
+    if len(sheet) < DISH_MIN_POINTS:
+        return []
+    pairs = cKDTree(sheet).query_pairs(DISH_LINK_M, output_type="ndarray")
+    graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(len(sheet), len(sheet)))
     _, lab = connected_components(graph, directed=False)
     counts = np.bincount(lab)
+    tree = cKDTree(pts)
     out: list[Unit] = []
     for c in np.where(counts >= DISH_MIN_POINTS)[0]:
-        x = pts[lab == c]
+        x = sheet[lab == c]
+        for _ in range(DISH_REGROW_STEPS):
+            x = pts[np.unique(np.concatenate(tree.query_ball_point(x, DISH_LINK_M)))]
         size = float(np.linalg.norm(np.ptp(x, axis=0)))
         if DISH_D_RANGE[0] <= size <= 2 * DISH_D_RANGE[1]:
             u = _reflector(x, axis_point, rng)
             if u is not None:
                 out.append(u)
     return out
+
+
+def _tubular(pts: np.ndarray) -> np.ndarray:
+    """Mask of points on thin tubes (pipes, clamps, brackets, cables): on a 3 cm grid, cells whose
+    `TUBE_K` nearest cells spread along one line (linearity above `TUBE_LINEARITY`)."""
+    keys = np.floor(pts / TUBE_CELL_M).astype(np.int64)
+    _, first, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
+    cells = pts[first]
+    k = min(TUBE_K, len(cells))
+    if k < 4:
+        return np.zeros(len(pts), dtype=bool)
+    _, nb = cKDTree(cells).query(cells, k=k)
+    q = cells[nb] - cells[nb].mean(axis=1, keepdims=True)
+    w = np.linalg.eigvalsh(np.einsum("nki,nkj->nij", q, q) / k)
+    linear = (w[:, 2] - w[:, 1]) / np.maximum(w[:, 2], 1e-18) > TUBE_LINEARITY
+    return linear[inverse.ravel()]
 
 
 def _dish_outline(x: np.ndarray, m: np.ndarray, axis: np.ndarray, rng: np.random.Generator):
@@ -177,48 +222,73 @@ def _dish_outline(x: np.ndarray, m: np.ndarray, axis: np.ndarray, rng: np.random
     side = np.cross(up, axis)
     rel = x - m
     ab = np.column_stack([rel @ side, rel @ up])
-    a0, a1 = span(ab[:, 0], 1.0)
-    b0, b1 = span(ab[:, 1], 1.0)
-    circle = _round_outline(ab, a1 - a0, b1 - b0, rng)
+    circle = _round_outline(ab, rng)
     if circle is None:
         return None
+    a0, a1 = span(ab[:, 0], 1.0)
+    b0, b1 = span(ab[:, 1], 1.0)
     return side, up, ab, (a0, a1, b0, b1), circle
 
 
+def _on_profile(rho: np.ndarray, t: np.ndarray) -> np.ndarray | None:
+    """Mask of the points on a reflector's profile t = k0 + k1 rho^2 (rho from its centre, t along
+    its axis), fitted robustly: the pipe and clamps behind a dish lie off it."""
+    shell = np.ones(len(t), dtype=bool)
+    for _ in range(3):
+        k = np.polyfit(rho[shell] ** 2, t[shell], 1)
+        shell = np.abs(t - np.polyval(k, rho**2)) < DISH_SHELL_M
+        if shell.sum() < DISH_MIN_POINTS:
+            return None
+    return shell
+
+
 def _reflector(x: np.ndarray, axis_point: np.ndarray, rng: np.random.Generator) -> Unit | None:
-    """A dish from one thin, round cluster: the axis first from PCA, then refined as the normal of
-    the plane through its rim (a dish of revolution has a flat, round rim; a paraboloid's own fit
-    cannot tell a tilt from a shift)."""
+    """A dish from one thin, round cluster. The axis starts from PCA; each pass then finds the rim
+    circle in the plane across the axis, keeps the points inside it on the reflector profile
+    t = k0 + k1 rho^2 (the pipe, clamps and stubs behind or beside it fall away), and corrects
+    the axis tilt from t = k0 + k1 rho^2 + p a + q b with the centre held at the circle's. Every
+    pass judges all the points inside the disc again, so an early wrong frame drops nothing of
+    the reflector for good."""
     m = x.mean(axis=0)
     _, s, vt = np.linalg.svd(x - m, full_matrices=False)
     if s[1] < 2 * s[2]:
         return None
     axis = vt[2]
-    for refine in (True, False):
-        horiz = (m - axis_point) * np.array([1.0, 0.0, 1.0])
+    horiz = (m - axis_point) * np.array([1.0, 0.0, 1.0])
+    for final in (False, False, False, True):
         if axis @ horiz < 0:  # a dish faces away from the tower
             axis = -axis
         got = _dish_outline(x, m, axis, rng)
         if got is None:
             return None
-        side, up, ab, (a0, a1, b0, b1), circle = got
-        if not refine:
+        side, up, ab, _, circle = got
+        da, db = ab[:, 0] - circle["cx"], ab[:, 1] - circle["cz"]
+        rho = np.hypot(da, db)
+        inside = rho <= circle["r"] + 2 * DISH_CIRCLE_M
+        if not inside.all():  # outside the disc: pipe or clamp stubs, never the reflector
+            x, ab, da, db, rho = x[inside], ab[inside], da[inside], db[inside], rho[inside]
+        t = (x - m) @ axis
+        sel = _on_profile(rho, t)
+        if sel is None:
+            return None
+        if final:
             break
-        rho = np.hypot(ab[:, 0] - circle["cx"], ab[:, 1] - circle["cz"])
-        rim = x[rho > DISH_RIM_SHARE * circle["r"]]
-        if len(rim) < 30:
-            break
-        rim_m = rim.mean(axis=0)
-        axis = np.linalg.svd(rim - rim_m, full_matrices=False)[2][2]
+        coef = np.linalg.lstsq(
+            np.column_stack([np.ones(sel.sum()), rho[sel] ** 2, da[sel], db[sel]]), t[sel], rcond=None
+        )[0]
+        axis = axis - coef[2] * side - coef[3] * up
+        axis /= np.linalg.norm(axis)
+    x, ab, t = x[sel], ab[sel], t[sel]
     diameter = 2 * circle["r"]
-    rel = x - m
-    t0, t1 = span(rel @ axis, 0.5)
+    a0, a1 = span(ab[:, 0], 1.0)
+    b0, b1 = span(ab[:, 1], 1.0)
+    t0, t1 = span(t, 0.5)
     depth = t1 - t0
     if depth > DISH_MAX_THICKNESS * diameter:
         return None
     centre = m + side * circle["cx"] + up * circle["cz"] + axis * (t0 + t1) / 2
     cov = coverage(ab[:, 0], ab[:, 1], a1 - a0, b1 - b0, a0, b0)
-    plane_rms = float(np.sqrt(np.mean((rel @ axis - (rel @ axis).mean()) ** 2)))
+    plane_rms = float(np.sqrt(np.mean((t - t.mean()) ** 2)))
     face = Face(x, centre, axis, up, side, b1 - b0, a1 - a0, plane_rms, len(x), cov)
     return Unit(
         kind="dish",

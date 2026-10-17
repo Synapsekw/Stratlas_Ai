@@ -45,8 +45,8 @@ def crop_band(xyz, truth):
 
 
 @cache
-def _detect(kind, seed, ppm2):
-    xyz, truth = tower_cloud(kind, seed=seed, points_per_m2=ppm2)
+def _detect(kind, seed, ppm2, attached):
+    xyz, truth = tower_cloud(kind, seed=seed, points_per_m2=ppm2, attached=attached)
     crown = crop_band(xyz, truth)
     axis_point = np.asarray(truth["axis"]["point"], dtype=float)
     axis_dir = np.asarray(truth["axis"]["dir"], dtype=float)
@@ -61,9 +61,10 @@ def _detect(kind, seed, ppm2):
     return out, truth
 
 
-def detect_on_truth_axis(kind, seed=1, ppm2=4000.0):
-    """Crop the band, find faces, pair them into units, classify and measure (origin `ORIGIN`)."""
-    return _detect(kind, seed, ppm2)
+def detect_on_truth_axis(kind, seed=1, ppm2=4000.0, attached=False):
+    """Crop the band, find faces, pair them into units, classify and measure (origin `ORIGIN`).
+    `attached` uses the generator variant whose units clamp onto their mount pipes."""
+    return _detect(kind, seed, ppm2, attached)
 
 
 def _centre(u):
@@ -161,6 +162,45 @@ def test_synthetic_crown_accuracy_at_e2e_density():
     # ruling P9: the end to end fixture samples 1500 points per square metre
     units, truth = detect_on_truth_axis("monopole", seed=1, ppm2=1500.0)
     _assert_accuracy(units, truth)
+
+
+# Attached variant (ruling T4-R1): unit backs clamp onto their mount pipes, the dish is bolted to a
+# pipe clamped to the frame, and a cable lies across the front of panel-0.
+
+
+@pytest.mark.parametrize(("kind", "ppm2"), [("monopole", 4000.0), ("lattice", 4000.0), ("monopole", 1500.0)])
+def test_attached_crown_accuracy(kind, ppm2):
+    units, truth = detect_on_truth_axis(kind, seed=1, ppm2=ppm2, attached=True)
+    _assert_accuracy(units, truth)
+
+
+@pytest.mark.parametrize("kind", ["monopole", "lattice"])
+def test_dish_bolted_to_its_pipe_is_found(kind):
+    units, truth = detect_on_truth_axis(kind, seed=1, attached=True)
+    m = match(units, _truth(truth, "dish-60"), radius=0.3)
+    assert m["kind"] == "dish"
+    assert abs(m["diameterM"]["value"] - 0.6) <= 0.03
+    assert ang(m["azimuthGridDeg"]["value"], 60.0) <= 1.0
+
+
+@pytest.mark.parametrize("kind", ["monopole", "lattice"])
+def test_panel_clamped_to_its_pipe_keeps_its_size(kind):
+    units, truth = detect_on_truth_axis(kind, seed=1, attached=True)
+    for name in ("panel-120", "short-120", "wide-300"):  # backs touch a pipe that runs 3 m
+        t = _truth(truth, name)
+        m = match(units, t, radius=0.3)
+        assert abs(m["heightM"]["value"] - t["heightM"]) <= 0.03, name
+        assert abs(m["box"]["extents"][1] - t["heightM"]) <= 0.03, name
+
+
+@pytest.mark.parametrize("kind", ["monopole", "lattice"])
+def test_cable_across_a_front_does_not_widen_it(kind):
+    units, truth = detect_on_truth_axis(kind, seed=1, attached=True)
+    t = _truth(truth, "panel-0")  # the cable runs 0.45 m past both sides of the face
+    m = match(units, t, radius=0.3)
+    assert abs(m["widthM"]["value"] - t["widthM"]) <= 0.03
+    assert abs(m["heightM"]["value"] - t["heightM"]) <= 0.03
+    assert abs(m["plumbDeg"]["value"] - t["plumbDeg"]) <= 1.5
 
 
 @pytest.mark.parametrize("kind", ["monopole", "lattice"])

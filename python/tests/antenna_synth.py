@@ -30,6 +30,9 @@ MONO_PROFILE = [{"y": 0.0, "r": 0.6}, {"y": MONO_HEIGHT, "r": 0.35}]
 RING_R = 2.0  # headframe ring radius (pipe radius of the frame)
 INNER_RING_R = 1.2
 BACK_R = 2.12  # radial distance of the unit back faces
+PIPE_R = 0.03  # mount pipe radius; the pipe axes sit at RING_R - 0.02
+ATTACHED_BACK_R = RING_R - 0.02 + PIPE_R  # attached variant: unit backs clamp onto their pipes
+CABLE_R = 0.008
 SHAFT_DENSITY = 0.25  # the shaft and the lattice members are sampled sparser than the faces
 GROUND_POINTS = 30_000
 GROUND_RADIUS = 40.0
@@ -126,16 +129,16 @@ def _torus(rng, ppm2, r, y, tube_r):
     return np.column_stack([rr * np.sin(a), y + tube_r * np.sin(b), -rr * np.cos(a)])
 
 
-def _unit_specs(ring_y: float) -> list[dict]:
+def _unit_specs(ring_y: float, back_r: float = BACK_R) -> list[dict]:
     """The truth of the unit set around a ring headframe whose lower ring sits at `ring_y`."""
     y = ring_y + 1.0
     units: list[dict] = []
     for az, dt, pl in zip(SECTORS, DOWNTILTS, PLUMBS, strict=True):
-        c = toward(az, BACK_R + PANEL[2] / 2, y)
+        c = toward(az, back_r + PANEL[2] / 2, y)
         units.append(_spec(f"panel-{int(az)}", "panel", c, az, dt, pl, PANEL, drop_back=az == 240.0))
-        c = toward(az, BACK_R + SHORT[2] / 2, y) + toward(az + 90.0, 0.65)
+        c = toward(az, back_r + SHORT[2] / 2, y) + toward(az + 90.0, 0.65)
         units.append(_spec(f"short-{int(az)}", "short", c, az, 0.0, 0.0, SHORT))
-    c = toward(300.0, BACK_R + WIDE[2] / 2, y)
+    c = toward(300.0, back_r + WIDE[2] / 2, y)
     units.append(_spec("wide-300", "panel", c, 300.0, 0.0, 0.0, WIDE))
     dish_c = toward(60.0, 2.4, ring_y - 0.4)
     units.append(
@@ -172,8 +175,12 @@ def _spec(name, kind, centre, az, dt, pl, size, drop_back=False):
     }
 
 
-def _crown(rng, ppm2, ring_y, inner_r, occlude):
-    """Headframe, mount pipes, brackets and the antenna units. Returns (parts, unit truth)."""
+def _crown(rng, ppm2, ring_y, inner_r, occlude, attached=False):
+    """Headframe, mount pipes, brackets and the antenna units. Returns (parts, unit truth).
+
+    `attached`: the unit backs clamp onto their mount pipes, the wide unit and the dish get pipes
+    of their own (the dish pipe clamped to both rings), and a cable crosses the front of panel-0.
+    Its extra parts are drawn after everything else, so the default cloud stays the same."""
     parts = []
     upper = ring_y + 2.0
     for yy in (ring_y, upper):
@@ -202,14 +209,38 @@ def _crown(rng, ppm2, ring_y, inner_r, occlude):
                     0.5,
                 )
             )
-    specs = _unit_specs(ring_y)
+    specs = _unit_specs(ring_y, ATTACHED_BACK_R if attached else BACK_R)
     for s in specs:
         parts.append(_dish_unit(rng, ppm2, s) if s["kind"] == "dish" else _box_unit(rng, ppm2, s, occlude))
+    if attached:
+        parts += _attachments(rng, ppm2, ring_y, upper, specs)
     truth = [{k: v for k, v in s.items() if k != "dropBack"} for s in specs]
     return parts, truth
 
 
-def _monopole(rng, ppm2, occlude):
+def _attachments(rng, ppm2, ring_y, upper, specs):
+    """The attached variant's pipes for the wide unit and the dish, the dish pipe's clamps to the
+    rings, and a cable lying across the front face of panel-0."""
+    parts = []
+    lo, hi = np.array([0, ring_y - 0.7, 0]), np.array([0, ring_y + 2.3, 0])
+    base = toward(300.0, RING_R - 0.02)
+    parts.append(_tube(rng, ppm2, base + lo, base + hi, PIPE_R, 0.5))
+    dish = next(s for s in specs if s["kind"] == "dish")
+    # the pipe touches the back of the reflector (its vertex, DISH_DEPTH / 2 plus the shell behind)
+    r_pipe = float(np.hypot(dish["centre"][0], dish["centre"][2])) - DISH_DEPTH / 2 - 0.012 - PIPE_R
+    base = toward(dish["azimuthDeg"], r_pipe)
+    parts.append(_tube(rng, ppm2, base + lo, base + hi, PIPE_R, 0.5))
+    for yy in (ring_y, upper):
+        a = toward(dish["azimuthDeg"], RING_R, yy)
+        parts.append(_tube(rng, ppm2, a, toward(dish["azimuthDeg"], r_pipe, yy), PIPE_R, 0.5))
+    panel = next(s for s in specs if s["name"] == "panel-0")
+    across, _, normal = unit_axes(panel["azimuthDeg"], panel["downtiltDeg"], panel["plumbDeg"])
+    mid = np.asarray(panel["centre"]) + normal * (panel["depthM"] / 2 + CABLE_R)
+    parts.append(_tube(rng, ppm2, mid - 0.6 * across, mid + 0.6 * across, CABLE_R))
+    return parts
+
+
+def _monopole(rng, ppm2, occlude, attached=False):
     perimeter = SIDES * 2 * math.sin(math.pi / SIDES)
     area = perimeter * 0.5 * (MONO_PROFILE[0]["r"] + MONO_PROFILE[1]["r"]) * MONO_HEIGHT
     n = round(area * ppm2 * SHAFT_DENSITY)
@@ -223,12 +254,17 @@ def _monopole(rng, ppm2, occlude):
     )
     ring_y = 27.0
     crown, units = _crown(
-        rng, ppm2, ring_y, lambda yy: float(np.interp(yy, [0, MONO_HEIGHT], [0.6, 0.35])), occlude
+        rng,
+        ppm2,
+        ring_y,
+        lambda yy: float(np.interp(yy, [0, MONO_HEIGHT], [0.6, 0.35])),
+        occlude,
+        attached,
     )
     return [shaft, *crown], units, MONO_HEIGHT, [[p["y"], p["r"]] for p in MONO_PROFILE]
 
 
-def _lattice(rng, ppm2, occlude):
+def _lattice(rng, ppm2, occlude, attached=False):
     L = LATTICE
     height, bays = L["height"], L["bays"]
 
@@ -251,7 +287,7 @@ def _lattice(rng, ppm2, occlude):
             parts.append(
                 _tube(rng, ppm2, [bx * h0, y0, bz * h0], [ax * h1, y1, az * h1], 0.05, SHAFT_DENSITY)
             )
-    crown, units = _crown(rng, ppm2, 36.5, half, occlude)
+    crown, units = _crown(rng, ppm2, 36.5, half, occlude, attached)
     return [*parts, *crown], units, height, [[0.0, half(0)], [height, half(height)]]
 
 
@@ -262,6 +298,7 @@ def tower_cloud(
     occlude: bool = True,
     points_per_m2: float = 4000.0,
     ground: bool = True,
+    attached: bool = False,
 ) -> tuple[np.ndarray, dict]:
     """A synthetic tower with a crown of antennas, in the local frame (x east, y up, z south).
 
@@ -270,13 +307,14 @@ def tower_cloud(
                         "widthM", "heightM", "depthM", "diameterM"?, "elevationDeg"?}]}
     Dishes carry diameterM and elevationDeg (and a bounding widthM/heightM/depthM) but no downtilt
     or plumb. The shaft radius is the circumradius of the twelve-sided monopole and the half width
-    of the lattice. Same seed, same cloud.
+    of the lattice. Same seed, same cloud. `attached=True` clamps the unit backs and the dish onto
+    mount pipes and lays a cable across panel-0 (see `_crown`); the default cloud is unchanged.
     """
     if kind not in ("monopole", "lattice"):
         raise ValueError(f"unknown tower kind {kind!r}")
     rng = np.random.default_rng(seed)
     build = _monopole if kind == "monopole" else _lattice
-    parts, units, height, profile = build(rng, points_per_m2, occlude)
+    parts, units, height, profile = build(rng, points_per_m2, occlude, attached)
     if ground:
         parts.append(_disc(rng, GROUND_POINTS, 0.0, GROUND_RADIUS, 0.0, 0.0))
     cloud = np.vstack(parts).astype(np.float64)

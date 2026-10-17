@@ -76,6 +76,37 @@ def test_planar_faces_finds_an_upright_plate_facing_out():
     assert 0 < f.rms < 0.006 and f.support > 1000 and 0.9 < f.coverage <= 1.0
 
 
+def _pipe(rng, x, z, y0, y1, r=0.03, ppm2=2000.0):
+    n = round(2 * math.pi * r * (y1 - y0) * ppm2)
+    t = rng.uniform(0, 2 * math.pi, n)
+    pts = np.column_stack([x + r * np.cos(t), rng.uniform(y0, y1, n), z + r * np.sin(t)])
+    return pts + rng.normal(0, 0.002, pts.shape)
+
+
+def test_a_pipe_touching_a_plate_does_not_stretch_it():
+    rng = np.random.default_rng(8)
+    # the plate's back (facing the axis) at x = 2.0 clamps onto a 3 m pipe behind its middle
+    plate = _plane(rng, [2.0, 10.0, 0.0], [0, 0, 1.0], [0, 1.0, 0], 0.3, 1.4, noise=0.003)
+    pipe = _pipe(rng, 2.0 - 0.03, 0.0, 8.5, 11.5)
+    faces = planar_faces(np.vstack([plate, pipe]), AXIS_POINT, AXIS_DIR, _shaft_r)
+    big = [f for f in faces if f.height > 1.0]
+    assert len(big) == 1
+    assert abs(big[0].height - 1.4) < 0.03 and abs(big[0].width - 0.3) < 0.03
+
+
+def test_a_cable_across_a_plate_does_not_widen_it():
+    rng = np.random.default_rng(9)
+    plate = _plane(rng, [2.2, 10.0, 0.0], [0, 0, 1.0], [0, 1.0, 0], 0.3, 1.4, noise=0.003)
+    n = round(2 * math.pi * 0.008 * 1.2 * 4000)  # a 1.2 m cable of radius 8 mm lying across the face
+    t = rng.uniform(0, 2 * math.pi, n)
+    cable = np.column_stack([2.208 + 0.008 * np.cos(t), 10.0 + 0.008 * np.sin(t), rng.uniform(-0.6, 0.6, n)])
+    faces = planar_faces(np.vstack([plate, cable]), AXIS_POINT, AXIS_DIR, _shaft_r)
+    assert len(faces) == 1
+    f = faces[0]
+    assert abs(f.width - 0.3) < 0.03 and abs(f.height - 1.4) < 0.03
+    assert abs(f.up @ AXIS_DIR) > 0.999
+
+
 def test_planar_faces_ignores_a_mount_pipe():
     rng = np.random.default_rng(6)
     n = 40_000

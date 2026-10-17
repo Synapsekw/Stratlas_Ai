@@ -39,6 +39,9 @@ MIN_PIECE_POINTS = 30
 EDGE_STRIP_M = 0.04  # width of the edge strips that set a face's in-plane rotation
 EDGE_PASSES = 6
 MAX_FLOOD_STEPS = 40  # in-plane flood fill steps of `reach` each (2 m and more)
+CORE_CELL_M = 0.03  # grid cell of the full-rectangle cut (at least half the flood reach)
+CORE_SHARE = 0.5
+SAME_FACE_M = 0.05  # two faces of one plane with centres this close are one face
 UP_SEARCH_DEG = 20.0  # a face's up axis is searched this far either side of the in-plane vertical
 _UP = np.array([0.0, 1.0, 0.0])
 
@@ -269,7 +272,23 @@ def planar_faces(
             continue
         if face.rms < KEEP_RMS_M and face.width >= MIN_FACE_WIDTH_M and abs(face.normal[1]) < UPRIGHT_MAX_NY:
             faces.append(face)
-    return faces
+    return _distinct(faces)
+
+
+def _distinct(faces: list[Face]) -> list[Face]:
+    """One face per plane patch: pieces the growth kept apart (a cable lying across a face cuts
+    it in two) flood to the same face; the best supported copy stays."""
+    out: list[Face] = []
+    for f in sorted(faces, key=lambda f: -f.support):
+        same = any(
+            abs(f.normal @ g.normal) > GROW_DOT
+            and abs((f.centre - g.centre) @ g.normal) < RANSAC_THR_M
+            and np.linalg.norm(f.centre - g.centre) < SAME_FACE_M
+            for g in out
+        )
+        if not same:
+            out.append(f)
+    return out
 
 
 def _merge_coplanar(parts: list[np.ndarray], gap: float) -> list[np.ndarray]:
@@ -310,7 +329,10 @@ def _with_edges(
 ) -> Face | None:
     """The face of one grown plane, after taking back its plane inliers (within `RANSAC_THR_M`)
     connected to it at `reach`: the curvature filter drops the points along every box edge, and in
-    a sparse cloud whole stretches of a face, which this flood fill in the plane recovers."""
+    a sparse cloud whole stretches of a face, which this flood fill in the plane recovers. The fill
+    also runs into anything touching the plane (the tangent strip of a pipe a unit clamps onto, a
+    cable across its front), so the result is cut to its full rectangle (`_core`). Bounding the
+    fill by the grown region instead would lose the stretches a sparse cloud never grew."""
     m, n, _ = _plane(part)
     if abs(n[1]) >= UPRIGHT_MAX_NY:
         return None
@@ -326,4 +348,64 @@ def _with_edges(
         frontier = pts[near]
     if taken.sum() < MIN_FACE_POINTS:
         return None
-    return make_face(pts[taken], axis_point, axis_dir)
+    # first cut with rows level and columns upright in the plane (a leak can tilt any fitted
+    # axes, and an antenna leans a few degrees at most), then again along the axes of that cut
+    up = _UP - (_UP @ n) * n
+    up /= np.linalg.norm(up)
+    centre, side = m, np.cross(up, n)
+    flooded = pts[taken]
+    face: Face | None = None
+    for _ in range(2):
+        core = flooded[_core(flooded, centre, side, up, max(CORE_CELL_M, reach / 2))]
+        if len(core) < MIN_FACE_POINTS:
+            return None
+        face = make_face(core, axis_point, axis_dir)
+        centre, side, up = face.centre, face.side, face.up
+    return face
+
+
+def _run(full: np.ndarray) -> tuple[int, int] | None:
+    """First and last index of the longest run of True, bridging single-cell gaps."""
+    best, start, gap = None, None, 0
+    for i, v in enumerate([*full.tolist(), False, False]):
+        if v:
+            if start is None:
+                start = i
+            gap, end = 0, i
+        elif start is not None:
+            gap += 1
+            if gap > 1:
+                if best is None or end - start > best[1] - best[0]:
+                    best = (start, end)
+                start, gap = None, 0
+    return best
+
+
+def _core(
+    points: np.ndarray, centre: np.ndarray, side: np.ndarray, up: np.ndarray, cell: float
+) -> np.ndarray:
+    """Mask of the face points inside its full rectangle: the longest run of rows (bands of `cell`
+    along up) whose points span at least `CORE_SHARE` of the median row across (rows weighted by their points), then of
+    columns as tall within those rows. A thin strip in the plane (the tangent strip of a pipe the
+    face touches, a cable lying across it) spans only its own few centimetres and is cut off,
+    while a sliver band at the face's edge still spans the whole face. Rows run along `side`,
+    columns along `up`."""
+    rel = points - centre
+    a, b = rel @ side, rel @ up
+    keep = np.ones(len(a), dtype=bool)
+    for along, across in ((b, a), (a, b)):  # rows first, then columns within the kept rows
+        idx = np.floor((along - along[keep].min()) / cell).astype(int)
+        n = max(int(idx[keep].max()) + 1, 1)
+        lo, hi = np.full(n, np.inf), np.full(n, -np.inf)
+        np.minimum.at(lo, idx[keep], across[keep])
+        np.maximum.at(hi, idx[keep], across[keep])
+        width = np.where(np.isfinite(lo), hi - lo, 0.0)
+        count = np.bincount(idx[keep], minlength=n)
+        order = np.argsort(width)  # the median band width, each band weighted by its points
+        ref = width[order][np.searchsorted(np.cumsum(count[order]), count.sum() / 2)]
+        full = width >= CORE_SHARE * ref
+        run = _run(full)
+        if run is None:
+            return np.zeros(len(a), dtype=bool)
+        keep = keep & (idx >= run[0]) & (idx <= run[1])
+    return keep
