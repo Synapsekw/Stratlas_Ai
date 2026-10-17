@@ -420,6 +420,40 @@
   padding-block-start: 0;
   border-block-start: 0;
 }
+/* In its stage corner (the rfLegend slot, Stage.tsx) the legend keeps to the lower half of the
+   stage and scrolls the rest; a narrow slot (the RF tab or Volumes in front at 1100 px) puts each
+   class's range under its name and each control's label above it. */
+.rf-legend {
+  container: rf-legend / inline-size;
+}
+.stage-slot > .rf-legend {
+  max-block-size: calc(50vh - 64px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@container rf-legend (max-width: 230px) {
+  .rf-legend-head {
+    flex-wrap: wrap;
+  }
+  .rf-legend-src {
+    margin-inline-start: 0;
+  }
+  .rf-legend-row {
+    grid-template-columns: 18px minmax(0, 1fr);
+    row-gap: 0;
+  }
+  .rf-legend-val {
+    grid-column: 2;
+  }
+  .rf-legend-ctl {
+    grid-template-columns: minmax(0, 1fr) 38px;
+    row-gap: var(--sp-2);
+  }
+  .rf-legend-ctl > label,
+  .rf-legend-ctl select.input {
+    grid-column: 1 / -1;
+  }
+}
 .rf-layer-ctl .rf-legend-ctl {
   font-size: var(--t-12);
 }
