@@ -64,6 +64,7 @@ import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
 import { useFold } from './shell/useFold';
 import { isSidebarFolded } from './store';
+import { openAgent } from './shell/RightHeader';
 import { captionVars, railWidth, rendererPlatform } from './shell/caption';
 import { SyncHost } from './team/SyncStatus';
 import { applyAppearance, OS_QUERIES } from './theme';
@@ -116,6 +117,10 @@ function onKeyDown(e: KeyboardEvent) {
   } else if (id === 'global.sidebar') {
     e.preventDefault();
     void s.toggleSidebar();
+  } else if (id === 'global.agent') {
+    // D25: open the agent where the screen has one and put the cursor in it
+    e.preventDefault();
+    openAgent();
   } else if (
     (id === 'global.prevSurvey' || id === 'global.nextSurvey') &&
     !e.defaultPrevented &&

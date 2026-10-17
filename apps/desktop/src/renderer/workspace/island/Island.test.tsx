@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
+import { PANEL_ID } from '../../shell/PanelHandle';
 import { timeline } from '../timeline';
 import { useSplit } from '../SplitPanes';
 import { Island, type IslandProps } from './Island';
@@ -342,6 +343,23 @@ describe('Island', () => {
         ?.querySelector('.island')
         ?.contains(swap ?? null),
     ).toBe(false);
+  });
+
+  it('takes Ask the agent to the agent, whatever its message box is called', async () => {
+    shell.setState({ screen: 'scene', rightCollapsed: true });
+    const panel = document.createElement('aside');
+    panel.id = PANEL_ID.right;
+    panel.innerHTML = '<div class="agent"><textarea aria-label="Agent"></textarea></div>';
+    document.body.append(panel);
+    try {
+      await render();
+      openTools();
+      act(() => button('Ask the agent')?.click());
+      expect(shell.getState().rightCollapsed).toBe(false);
+      expect(document.activeElement).toBe(panel.querySelector('textarea'));
+    } finally {
+      panel.remove();
+    }
   });
 
   it('closes from its close button and gives focus back to the island', async () => {

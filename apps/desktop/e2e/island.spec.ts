@@ -10,6 +10,7 @@
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { captionArea } from './caption';
 import { DEMO_FOLDER, expect, openProject, test, TINY_PROJECT_ID } from './fixtures';
 import {
   closeIslandTools,
@@ -339,6 +340,46 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     await win.keyboard.press('Escape');
     await expect(win.locator('.isl-full')).toHaveCount(0);
     expect(await centreClick(win), 'closed again').toBe('the view');
+  });
+});
+
+test.describe('the right panel folded', () => {
+  test('its toggle sits left of the window buttons, and Ctrl+J brings the agent back', async ({
+    twoDateProject,
+    win,
+  }, info) => {
+    await openCard(win, 'E2E two dates', twoDateProject.id);
+    const toggle = win.locator('.stage-rp button');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await toggle.click();
+    await expect(win.locator('.ws')).toHaveClass(/right-off/);
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    // the panel has finished folding: the toggle is where it stays
+    await expect
+      .poll(() => win.locator('.ws > .right').evaluate((el) => el.getBoundingClientRect().width))
+      .toBeLessThan(20);
+    await shot(win, info, 'right-folded-toggle.png');
+    // D28: the toggle is left of the window's own buttons, never under them (the page cannot
+    // see them, so a click there would close or maximise the window)
+    const area = await captionArea(win);
+    const box = await toggle.boundingBox();
+    expect(box).not.toBeNull();
+    if (box) {
+      const under =
+        box.y < area.height && (box.x + box.width > area.free.right || box.x < area.free.left);
+      expect(under, `toggle ${JSON.stringify(box)} under the buttons ${JSON.stringify(area)}`).toBe(
+        false,
+      );
+    }
+    if (process.platform === 'win32') expect(area.kept.right).toBeGreaterThan(40);
+
+    // Ctrl+J opens the folded panel and puts the cursor in the agent
+    await win.locator('[data-scene-view] canvas').first().focus();
+    await win.keyboard.press('Control+j');
+    await expect(win.locator('.ws')).not.toHaveClass(/right-off/);
+    await expect
+      .poll(() => win.evaluate(() => !!document.activeElement?.closest('.right .agent')))
+      .toBe(true);
   });
 });
 

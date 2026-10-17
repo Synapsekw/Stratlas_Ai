@@ -23,7 +23,7 @@ import { RoadToolGroup, toggleMeasure as toggleRoadMeasure } from '../../road/Ro
 import { useIsRoad } from '../../road/useRoadMap';
 import { setRoad, useRoad } from '../../road/store';
 import { shell, useShell } from '../../shell';
-import { PANEL_ID } from '../../shell/PanelHandle';
+import { openAgent } from '../../shell/RightHeader';
 import type { StageMode } from '../../store';
 import { MeasureToolbar } from '../../survey/MeasureToolbar';
 import { startTool, stopTool, useMeasure } from '../../survey/measureStore';
@@ -251,17 +251,6 @@ const PRESETS: readonly { value: 'iso' | 'top' | 'north'; label: MessageKey }[] 
   { value: 'north', label: 'island.tile.presetNorth' },
 ];
 
-/** The agent sits in the right panel on the Scene: show it and put the cursor in its box. */
-function askAgent(): void {
-  if (shell.getState().rightCollapsed) shell.getState().toggleRight();
-  requestAnimationFrame(() => {
-    document
-      .getElementById(PANEL_ID.right)
-      ?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message the agent"]')
-      ?.focus();
-  });
-}
-
 function ViewRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
   const { stage, map, compare } = ctx;
@@ -367,7 +356,7 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
         label={t('island.tile.askAgent')}
         name={t('island.askAgent')}
         shortcut="global.agent"
-        onClick={askAgent}
+        onClick={openAgent}
       />
       <Sep />
       <Tile

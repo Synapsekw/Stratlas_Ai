@@ -1,6 +1,9 @@
 import { Button, t, useT } from '@aio/ui';
+import { workspace } from '@aio/workspace';
+import { AGENT_DOCK_ID } from '../agent/AgentDock';
 import { AgentToggle } from '../agent/AgentToggle';
-import { useShell } from '../shell';
+import { isDockScreen } from '../agent/dockScreens';
+import { shell, useShell } from '../shell';
 import { SyncStatus } from '../team/SyncStatus';
 import { PANEL_ID } from './PanelHandle';
 
@@ -15,16 +18,53 @@ export function HeaderControls() {
 }
 
 /**
- * Takes the person to the Scene's agent, the lower pane of the right panel (`scene.ctxAgent`):
- * its message box when the agent can be asked, else the first control in the pane.
+ * Puts the cursor in an agent pane: its message box when the agent can be asked, else the first
+ * control in the pane (the agent off, or blocked). By role, never by name, so it holds in every
+ * language. True when the focus took (a pane still folded away takes none).
  */
-export function focusSceneAgent(): void {
-  const pane = document.getElementById(PANEL_ID.right)?.querySelector<HTMLElement>('.agent');
-  if (!pane) return;
+function focusAgentIn(pane: Element | null | undefined): boolean {
+  if (!pane) return false;
   const target =
     pane.querySelector<HTMLElement>('textarea:not(:disabled)') ??
     pane.querySelector<HTMLElement>('button:not(:disabled), [href], input:not(:disabled)');
   target?.focus();
+  return !!target && document.activeElement === target;
+}
+
+const sceneAgent = () => document.getElementById(PANEL_ID.right)?.querySelector('.agent');
+const dockAgent = () => document.getElementById(AGENT_DOCK_ID)?.querySelector('.agent');
+
+/** Takes the person to the Scene's agent, the lower pane of the right panel (`scene.ctxAgent`). */
+export function focusSceneAgent(): void {
+  focusAgentIn(sceneAgent());
+}
+
+/** How many frames a panel that is unfolding gets to show before the focus stops trying. */
+const UNFOLD_FRAMES = 40;
+
+/**
+ * The ways in to the agent (D25: Ctrl+J, the View row's Ask the agent): open it where this screen
+ * has one and put the cursor in it. On the Scene it is the right panel's lower pane, the panel
+ * unfolded first; on Issues, Media, Detections and Reports it is the agent column, unfolded
+ * first. Screens without an agent (Projects, the Globe, Settings, Help) are left as they are.
+ */
+export function openAgent(): void {
+  const s = shell.getState();
+  let pane: () => Element | null | undefined;
+  if (s.screen === 'scene') {
+    if (s.rightCollapsed) s.toggleRight();
+    pane = sceneAgent;
+  } else if (isDockScreen(s.screen) && workspace.getState().project) {
+    if (s.agentDockCollapsed) s.setAgentDock(false);
+    pane = dockAgent;
+  } else return;
+  // an unfolding panel takes the focus once it shows
+  let frames = 0;
+  const go = () => {
+    if (focusAgentIn(pane()) || ++frames > UNFOLD_FRAMES) return;
+    requestAnimationFrame(go);
+  };
+  go();
 }
 
 /** The Scene's Agent button: the agent is in the right panel, so it takes the person there. */
