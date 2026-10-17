@@ -522,6 +522,22 @@ test('a package opens in player mode and is accessible', async ({ app, win, data
     await pw.locator('.sb-nav .nav-item', { hasText: 'Scene' }).first().click();
     await expect(pw.locator('[data-scene-view] canvas').first()).toBeVisible();
     await expectAccessible(pw, 'Package player, scene');
+    // folded to the rail, the sidebar still says this is a read-only package: its lock, named
+    if ((await pw.locator('.app').getAttribute('data-sb')) !== 'collapsed')
+      await pw.keyboard.press('Control+b');
+    await expect(pw.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
+    const chip = pw.getByTestId('readonly-chip');
+    await expect(chip).toHaveText('Read-only package');
+    const lock = await chip.evaluate((el) => {
+      const rail = document.querySelector('.sidebar')?.getBoundingClientRect();
+      const mark = el.querySelector('svg')?.getBoundingClientRect();
+      let seen = true;
+      for (let n: Element | null = el; n; n = n.parentElement)
+        if (getComputedStyle(n).opacity === '0') seen = false;
+      return seen && !!rail && !!mark && mark.width > 0 && mark.right <= rail.right;
+    });
+    expect(lock, 'the lock is drawn in the rail').toBe(true);
+    await expectAccessible(pw, 'Package player, scene with the sidebar folded');
     expect(await network.outbound()).toEqual([]);
   } finally {
     await player.close();

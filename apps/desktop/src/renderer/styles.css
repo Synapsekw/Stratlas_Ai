@@ -884,13 +884,36 @@ button.chip-status:hover {
   /* placed on the window, above the chip (ConnectionStatus.tsx): the sidebar clips */
   transform-origin: bottom;
 }
+/* Folded to the rail (below 1280 px the Scene folds there on its own), the row keeps what must
+   stay in sight as glyphs: the connection's dot, a running job's clock or a job warning, and the
+   package's mark under them. Their words leave the drawing but stay their names; the tips say
+   the rest. */
 .app[data-sb='collapsed'] .sb-status-row .conn-label,
 .app[data-sb='collapsed'] .sb-status-row .foot-cloud,
-.app[data-sb='collapsed'] .sb-status-row .proc-chip {
+.app[data-sb='collapsed'] .sb-status-row .proc-chip:is([data-state='idle'], [data-state='hidden']) {
   display: none;
 }
 .app[data-sb='collapsed'] .sb-status-row {
+  flex-direction: column;
   justify-content: center;
+}
+.app[data-sb='collapsed'] .sb-status-row > .proc-chip > svg {
+  display: inline-block;
+}
+.app[data-sb='collapsed'] .sb-status-row > .proc-chip::before {
+  content: none;
+}
+.app[data-sb='collapsed'] :is(.proc-words, .sb-pkg-lbl) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.app[data-sb='collapsed'] .sb-status-pkg {
+  justify-content: center;
+  padding-inline: 0;
 }
 .sb-status-pkg {
   display: flex;

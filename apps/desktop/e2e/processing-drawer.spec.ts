@@ -173,6 +173,59 @@ test('finished jobs leave the list one by one or all at once, for good, and keep
   }
 });
 
+test('folded to the rail, the sidebar still shows a job that needs attention', async ({
+  dataRoot,
+  network,
+}) => {
+  // an interrupted job of the tiny project waits for Resume: it needs attention
+  await writeFile(
+    join(dataRoot.userData, 'jobs.json'),
+    JSON.stringify([
+      {
+        id: 'e2e-interrupted',
+        pipeline: 'system.selftest',
+        project: dataRoot.projectDir,
+        params: {},
+        status: 'interrupted',
+        progress: 0.5,
+        steps: [],
+        artifacts: [],
+        createdAt: '2026-10-12T09:01:00.000Z',
+        updatedAt: '2026-10-12T09:01:30.000Z',
+      },
+    ]),
+  );
+  const app = await launchApp(dataRoot);
+  await network.attach(app);
+  try {
+    const win = await app.firstWindow();
+    await openTiny(win);
+    const chip = processingChip(win);
+    await expect(chip).toHaveAttribute('data-state', 'attention');
+    if ((await win.locator('.app').getAttribute('data-sb')) !== 'collapsed')
+      await win.keyboard.press('Control+b');
+    await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
+    // the warning glyph is drawn inside the rail, and the chip keeps its whole name
+    const seen = await chip.evaluate((el) => {
+      const rail = document.querySelector('.sidebar')?.getBoundingClientRect();
+      const mark = el.querySelector('svg')?.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return {
+        drawn: !!mark && mark.width > 0 && style.display !== 'none' && style.opacity !== '0',
+        inRail: !!rail && !!mark && mark.left >= rail.left && mark.right <= rail.right,
+        // the words stay in the button for its name, drawn in no room
+        wordsHidden: (el.querySelector('.proc-words')?.getBoundingClientRect().width ?? 99) <= 1,
+      };
+    });
+    expect(seen).toEqual({ drawn: true, inRail: true, wordsHidden: true });
+    await expect(chip).toHaveAccessibleName(/attention/);
+    await chip.click();
+    await expect(win.getByTestId('processing-drawer')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
 test('a project that is not an inspection has no Turn detections into issues', async ({ win }) => {
   await openTiny(win);
   await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();

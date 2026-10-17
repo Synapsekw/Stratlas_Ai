@@ -77,7 +77,7 @@ export function ChipView({
       onClick={onToggle}
     >
       <Icon name={state.kind === 'attention' ? 'warn' : 'clock'} size={14} />
-      {chipWords(state)}
+      <span className="proc-words">{chipWords(state)}</span>
     </button>
   );
 }

@@ -6,8 +6,11 @@ import { CloudChip, ConnectionStatus } from './ConnectionStatus';
 /**
  * The status row at the foot of the left sidebar ("● Online · Cloud AI off · 1 job"): the
  * connection, which opens the connection menu; cloud AI, which opens its setting; and the jobs,
- * which open the processing drawer. Under them, the package the project came from: a package opened in place (read-only or
- * not) or a folder extracted from one. The title bar held these before it went.
+ * which open the processing drawer. Under them, the package the project came from: a package
+ * opened in place (read-only or not) or a folder extracted from one. The title bar held these
+ * before it went. Folded to the rail, the row keeps what must stay in sight as glyphs: the
+ * connection's dot, a running job or a job warning, and the package's mark, each still named
+ * (styles.css).
  */
 export function SidebarStatus() {
   useT();
@@ -27,15 +30,12 @@ export function SidebarStatus() {
             file: pkg.file,
           })}
         >
-          <span
-            className="sb-status-pkg sb-hide"
-            role="note"
-            tabIndex={0}
-            data-testid="readonly-chip"
-          >
+          <span className="sb-status-pkg" role="note" tabIndex={0} data-testid="readonly-chip">
             <Chip kind="tag" tone="acc">
               <Icon name="lock" size={12} />
-              {t(pkg.header.readOnly ? 'titlebar.readOnlyPackage' : 'titlebar.package')}
+              <span className="sb-pkg-lbl">
+                {t(pkg.header.readOnly ? 'titlebar.readOnlyPackage' : 'titlebar.package')}
+              </span>
             </Chip>
           </span>
         </Tip>
@@ -49,15 +49,10 @@ export function SidebarStatus() {
             extracted: formatDate(origin.extractedAt),
           })}
         >
-          <span
-            className="sb-status-pkg sb-hide"
-            role="note"
-            tabIndex={0}
-            data-testid="origin-chip"
-          >
+          <span className="sb-status-pkg" role="note" tabIndex={0} data-testid="origin-chip">
             <Chip kind="tag">
               <Icon name="copy" size={12} />
-              {t('titlebar.copyOf', { file: origin.package })}
+              <span className="sb-pkg-lbl">{t('titlebar.copyOf', { file: origin.package })}</span>
             </Chip>
           </span>
         </Tip>
