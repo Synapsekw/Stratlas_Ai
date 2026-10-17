@@ -12,6 +12,12 @@ export const DEFAULT_EYE_M = 1.6;
 /** A landmark closer than this (horizontally) to the pin gives no usable bearing. */
 export const MIN_BEARING_M = 0.5;
 
+/**
+ * Mean resultant length under which angles have no usable mean direction. 0.1 is two bearings
+ * about 168 degrees apart: near-opposite landmarks disagree, so no heading is claimed.
+ */
+export const MIN_RESULTANT = 0.1;
+
 /** An angle wrapped to `[0, 360)`. */
 export function wrap360(deg: number): number {
   return ((deg % 360) + 360) % 360;
@@ -49,7 +55,7 @@ export function circularMeanDeg(angles: readonly number[]): number | null {
     s += Math.sin(a * D);
     c += Math.cos(a * D);
   }
-  if (angles.length === 0 || Math.hypot(s, c) / angles.length < 1e-6) return null;
+  if (angles.length === 0 || Math.hypot(s, c) / angles.length < MIN_RESULTANT) return null;
   return wrap360(Math.atan2(s, c) / D);
 }
 

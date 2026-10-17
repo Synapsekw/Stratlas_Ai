@@ -8,6 +8,7 @@ import {
   headingFromPairs,
   lookClickBearingDeg,
   photoQuatFromHeading,
+  wrap360,
 } from './mediaPin';
 import { rotateVec } from './walk/horizontal';
 
@@ -46,6 +47,19 @@ describe('heading from landmarks', () => {
     expect(circularMeanDeg([10, 190])).toBeNull();
     expect(circularMeanDeg([])).toBeNull();
   });
+  it('near-opposite headings have no mean, 150 apart still does', () => {
+    expect(circularMeanDeg([0, 170])).toBeNull();
+    expect(circularMeanDeg([0, 179])).toBeNull();
+    expect(circularMeanDeg([0, 150])).toBeCloseTo(75);
+  });
+  it('wrap360 handles negatives below -360', () => {
+    expect(wrap360(-725)).toBeCloseTo(355);
+    expect(wrap360(360)).toBeCloseTo(0);
+  });
+  it('bearing needs 0.5 m horizontally: 0.49 is null, 0.51 is not', () => {
+    expect(bearingDeg([0, 0, 0], [0.49, 0, 0])).toBeNull();
+    expect(bearingDeg([0, 0, 0], [0.51, 0, 0])).toBeCloseTo(90);
+  });
   it('bearingDiffDeg wraps', () => {
     expect(bearingDiffDeg(10, 350)).toBeCloseTo(20);
     expect(bearingDiffDeg(350, 10)).toBeCloseTo(-20);
@@ -72,6 +86,21 @@ describe('lookClickBearingDeg', () => {
     expect(
       lookClickBearingDeg({ yawDeg: 0, pitchDeg: 0, fovDeg: 70 }, 800, 200, 800, 400),
     ).toBeCloseTo(54.47, 1);
+  });
+  it('a negative yaw wraps', () => {
+    expect(
+      lookClickBearingDeg({ yawDeg: -30, pitchDeg: 0, fovDeg: 70 }, 400, 200, 800, 400),
+    ).toBeCloseTo(330);
+  });
+  it('pitched 45 deg, fov 90, square view: right-middle is atan(1 / cos45) east of north', () => {
+    // ray (1, 0, -1) pitched 45 about x is (1, 0.707 * 0, -0.707): azimuth atan2(1, 0.7071)
+    expect(
+      lookClickBearingDeg({ yawDeg: 0, pitchDeg: 45, fovDeg: 90 }, 100, 50, 100, 100),
+    ).toBeCloseTo(54.7356, 3);
+    // top-right corner at pitch 45: ray (1, 1, -1) has forward component 0, so due east
+    expect(
+      lookClickBearingDeg({ yawDeg: 0, pitchDeg: 45, fovDeg: 90 }, 100, 0, 100, 100),
+    ).toBeCloseTo(90, 3);
   });
   it('wraps left of north', () => {
     expect(
