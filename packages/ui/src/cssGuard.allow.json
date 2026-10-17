@@ -31,7 +31,7 @@
     "zIndex": 1
   },
   "apps/desktop/src/renderer/builder/PhotoMenu.tsx": {
-    "title": 2
+    "title": 1
   },
   "apps/desktop/src/renderer/builder/VolumetricSurveys.tsx": {
     "title": 2
@@ -68,9 +68,6 @@
     "colour": 1,
     "shadow": 1,
     "zIndex": 1
-  },
-  "apps/desktop/src/renderer/engineer/EvidencePreview.tsx": {
-    "title": 1
   },
   "apps/desktop/src/renderer/engineer/SetupDialog.tsx": {
     "title": 1
@@ -165,7 +162,7 @@
     "zIndex": 4
   },
   "apps/desktop/src/renderer/pointcloud/CleanupPanel.tsx": {
-    "title": 8
+    "title": 3
   },
   "apps/desktop/src/renderer/processing/JobList.tsx": {
     "title": 1
@@ -207,16 +204,13 @@
     "shadow": 1
   },
   "apps/desktop/src/renderer/screens/LibraryFolders.tsx": {
-    "title": 3
+    "title": 1
   },
   "apps/desktop/src/renderer/screens/Media.tsx": {
     "title": 3
   },
   "apps/desktop/src/renderer/screens/Projects.tsx": {
     "title": 3
-  },
-  "apps/desktop/src/renderer/screens/Reports.tsx": {
-    "title": 1
   },
   "apps/desktop/src/renderer/screens/Settings.tsx": {
     "title": 3
@@ -251,9 +245,6 @@
   },
   "apps/desktop/src/renderer/shell/ConnectionStatus.tsx": {
     "title": 3
-  },
-  "apps/desktop/src/renderer/shell/DateMenus.tsx": {
-    "title": 1
   },
   "apps/desktop/src/renderer/shell/DateNotes.tsx": {
     "title": 1
@@ -325,9 +316,6 @@
   "apps/desktop/src/renderer/survey/WholeSite.tsx": {
     "title": 1
   },
-  "apps/desktop/src/renderer/team/Exchange.tsx": {
-    "title": 2
-  },
   "apps/desktop/src/renderer/team/files.css": {
     "colour": 1,
     "shadow": 1,
@@ -337,7 +325,7 @@
     "title": 3
   },
   "apps/desktop/src/renderer/team/Share.tsx": {
-    "title": 6
+    "title": 1
   },
   "apps/desktop/src/renderer/team/SyncStatus.tsx": {
     "title": 1
@@ -394,7 +382,7 @@
     "title": 2
   },
   "apps/desktop/src/renderer/workspace/SplitPanes.tsx": {
-    "title": 9
+    "title": 8
   },
   "apps/desktop/src/renderer/workspace/spot/spot.css": {
     "fontPx": 2,

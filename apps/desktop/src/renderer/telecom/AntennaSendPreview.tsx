@@ -37,7 +37,7 @@ export function AntennaSendPreview(props: AntennaSendPreviewProps): ReactElement
     <SendDialog
       standalone
       titleId="antenna-send-title"
-      {...{ title: t('telecom.antennas.ai.title') }}
+      title={t('telecom.antennas.ai.title')}
       onCancel={() => {
         props.onCancel();
       }}

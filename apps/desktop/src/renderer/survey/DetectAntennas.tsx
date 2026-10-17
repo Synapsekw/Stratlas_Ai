@@ -234,7 +234,7 @@ export function DetectAntennas(): ReactElement | null {
             setOptions(false);
           }}
           opener={opener}
-          {...{ title: t('telecom.antennas.options') }}
+          title={t('telecom.antennas.options')}
         >
           {clouds.length > 1 && (
             <label style={{ display: 'grid', gap: 'var(--sp-2)' }}>

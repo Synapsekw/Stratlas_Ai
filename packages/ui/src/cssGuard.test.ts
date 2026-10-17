@@ -28,6 +28,56 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const count = (text: string, re: RegExp) => [...text.matchAll(re)].length;
 
+/** Skips a balanced `{ ... }` starting at `i` (strings and template literals included); returns the index after it. */
+function skipBraces(src: string, start: number): number {
+  let depth = 0;
+  let i = start;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === '`') {
+      i++;
+      while (i < src.length && src[i] !== c) i += src[i] === '\\' ? 2 : 1;
+    } else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return i + 1;
+    i++;
+  }
+  return i;
+}
+
+/**
+ * Counts `title=` written as an attribute of an intrinsic (lowercase) JSX element: the native
+ * tooltip the app bans. Component props (`<Section title=`), object keys (`title:`) and comments
+ * do not count.
+ */
+export function countDomTitleAttrs(source: string): number {
+  const src = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[\s;{}(),])\/\/[^\n]*/g, '$1');
+  let total = 0;
+  for (const open of src.matchAll(/<[a-z][\w.:-]*/g)) {
+    let i = open.index + open[0].length;
+    while (i < src.length) {
+      while (i < src.length && /\s/.test(src[i] ?? '')) i++;
+      const c = src[i];
+      if (c === undefined || c === '>' || c === '/') break;
+      if (c === '{') {
+        i = skipBraces(src, i);
+        continue;
+      }
+      const name = /^[\w:-]+/.exec(src.slice(i, i + 64))?.[0];
+      if (!name) break;
+      i += name.length;
+      while (/\s/.test(src[i] ?? '')) i++;
+      if (src[i] !== '=') continue;
+      if (name === 'title') total++;
+      i++;
+      while (/\s/.test(src[i] ?? '')) i++;
+      const v = src[i];
+      if (v === '{') i = skipBraces(src, i);
+      else if (v === '"' || v === "'") i = src.indexOf(v, i + 1) + 1 || src.length;
+    }
+  }
+  return total;
+}
+
 function cssCounts(raw: string, isTokens: boolean): Counts {
   const css = raw.replace(/\/\*[\s\S]*?\*\//g, '');
   const shadows = [...css.matchAll(/box-shadow\s*:\s*([^;}]+)/g)].filter(
@@ -50,7 +100,7 @@ function scan(): Record<string, Counts> {
       if (file.endsWith('.css')) {
         counts = cssCounts(readFileSync(file, 'utf8'), file.endsWith(`${sep}tokens.css`));
       } else if (file.endsWith('.tsx') && !file.endsWith('.test.tsx')) {
-        counts = { title: count(readFileSync(file, 'utf8'), /\btitle=/g) };
+        counts = { title: countDomTitleAttrs(readFileSync(file, 'utf8')) };
       }
       if (!counts) continue;
       const nonZero = Object.fromEntries(Object.entries(counts).filter(([, n]) => n > 0)) as Counts;
@@ -131,5 +181,33 @@ describe('css guard', () => {
     const block = css.slice(start, css.indexOf('}', start));
     expect(block).toContain('outline');
     expect(block).not.toContain('border-radius');
+  });
+});
+
+describe('countDomTitleAttrs', () => {
+  it('counts title= on a lowercase element', () => {
+    expect(countDomTitleAttrs('<button title="Save">x</button>')).toBe(1);
+  });
+  it('does not count component props', () => {
+    expect(countDomTitleAttrs('<Section title="A"><EmptyState title={t} /></Section>')).toBe(0);
+  });
+  it('counts a title= spread over lines, after braced values', () => {
+    const src = [
+      '<div',
+      '  className="a"',
+      '  style={{ top: 1 }}',
+      '  onClick={() => f({ a: 1 })}',
+      '  title={`x ${y}`}',
+      '>',
+    ].join('\n');
+    expect(countDomTitleAttrs(src)).toBe(1);
+  });
+  it('does not count an object key, a comment or another attribute', () => {
+    const src = [
+      "const o = { title: 'x' };",
+      '// <b title="c">',
+      '<i data-title="z" aria-label="t" />',
+    ].join('\n');
+    expect(countDomTitleAttrs(src)).toBe(0);
   });
 });
