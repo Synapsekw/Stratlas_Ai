@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { annotateUi } from '@aio/annotate';
 import { announced } from '@aio/ui';
 import { captureIndex, workspace } from '@aio/workspace';
 import { act } from 'react';
@@ -119,6 +120,27 @@ describe('Island', () => {
     expect(timeline.getState().focus).toBe('oct');
   });
 
+  it('keeps the date bar test ids on the island date (I-R15)', async () => {
+    await render();
+    near();
+    const bar = host.querySelector('[data-testid="date-bar"]');
+    expect(bar?.closest('[data-testid="date-row"]')).not.toBeNull();
+    expect(bar?.querySelector('[data-testid="date-bar-open"]')).not.toBeNull();
+    expect(bar?.querySelector('[data-testid="date-bar-count"]')).not.toBeNull();
+    expect(bar?.querySelector('[data-testid="date-bar-prev"]')).toBe(button('Previous survey'));
+    expect(bar?.querySelector('[data-testid="date-bar-next"]')).toBe(button('Next survey'));
+  });
+
+  it('tells the stage how far down the open island reaches, and forgets it on close', async () => {
+    await render();
+    const stage = host;
+    expect(stage.style.getPropertyValue('--isl-open-b')).toBe('');
+    openTools();
+    expect(stage.style.getPropertyValue('--isl-open-b')).toMatch(/px$/);
+    key('Escape');
+    expect(stage.style.getPropertyValue('--isl-open-b')).toBe('');
+  });
+
   it('opens the tools: the view switch and the group tabs', async () => {
     await render();
     openTools();
@@ -166,6 +188,32 @@ describe('Island', () => {
     await render();
     key('t', document.body);
     expect(island()?.dataset.state).toBe('tools');
+  });
+
+  it('leaves T to the video annotator and to a pending annotation', async () => {
+    await render();
+    const vwin = document.createElement('div');
+    vwin.className = 'vwin';
+    const inner = document.createElement('button');
+    vwin.append(inner);
+    document.body.append(vwin);
+    key('t', inner);
+    expect(island()?.dataset.state).toBe('rest');
+    vwin.remove();
+    annotateUi.setState({ pending: {} as never });
+    key('t', document.body);
+    expect(island()?.dataset.state).toBe('rest');
+    annotateUi.setState({ pending: null });
+  });
+
+  it('keeps the one-time T notice for a T that opens the tools', async () => {
+    await render();
+    openTools();
+    // this T closes the tools: the notice would vanish unseen
+    key('t', document.body);
+    expect(island()?.dataset.state).toBe('rest');
+    key('t', document.body);
+    expect(host.querySelector('[data-testid="t-notice"]')).not.toBeNull();
   });
 
   it('keeps the date beside a live reading, and says the reading politely', async () => {
@@ -336,5 +384,42 @@ describe('Island', () => {
     );
     expect(shell.getState().cloudPanelOpen).toBe(false);
     expect(document.querySelector('[data-testid="cloud-panel"]')).toBeNull();
+  });
+
+  it('opens a point cloud panel asked for on the map once the 3D tools are back', async () => {
+    const cloud = { kind: 'pointcloud', id: 'scan', name: 'Scan', visible: true } as const;
+    const withCloud = {
+      ...threeDates,
+      layers: [
+        ...threeDates.layers,
+        { ...cloud, src: { path: 'c.copc.laz' }, format: 'copc' as const },
+      ],
+    };
+    const noop = () => undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe = noop;
+        unobserve = noop;
+        disconnect = noop;
+      },
+    );
+    workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: withCloud });
+    shell.getState().setCloudPanel(false);
+    root = createRoot(host);
+    const at = async (tools: '3d' | 'map') => {
+      await act(async () => {
+        root?.render(<WithSplit stage={null} mode={tools} tools={tools} linked={false} />);
+        await Promise.resolve();
+      });
+    };
+    await at('map');
+    act(() => {
+      shell.getState().setCloudPanel(true);
+    });
+    expect(document.querySelector('[data-testid="cloud-panel"]')).toBeNull();
+    await at('3d');
+    expect(document.querySelector('[data-testid="cloud-panel"]')).not.toBeNull();
+    shell.getState().setCloudPanel(false);
   });
 });

@@ -6,7 +6,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup } from '../pointcloud/cleanupStore';
 import { CloudTools } from './tools/cloud';
+import { VideoTools } from './tools/video';
 import { ViewTools } from './tools/view';
+import type { EngineStage } from '@aio/engine';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -33,6 +35,24 @@ describe('ViewTools', () => {
     expect(centre?.getAttribute('aria-keyshortcuts')).toBe('G');
     act(() => centre?.click());
     expect(workspace.getState().camera?.target).toEqual({ kind: 'site' });
+  });
+});
+
+describe('Cutaway (I-R17)', () => {
+  // just enough of a 3D stage for the view and video tools to render
+  const stage = {
+    tool: 'select',
+    section: { enabled: false, mode: 'vertical' },
+    setViewPreset: () => undefined,
+  } as unknown as EngineStage;
+  const names = () => [...host.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'));
+
+  it('is in View, which every 3D project has, and not in Video', () => {
+    root = createRoot(host);
+    act(() => root?.render(<ViewTools stage={stage} map={false} />));
+    expect(names()).toContain('See inside the asset: cut or transparent');
+    act(() => root?.render(<VideoTools stage={stage} map={false} />));
+    expect(names()).not.toContain('See inside the asset: cut or transparent');
   });
 });
 

@@ -1,16 +1,17 @@
-/** The Video and camera group: the video window, flight paths, telemetry and camera views. */
+/**
+ * The Video and camera group: the video window, flight paths, telemetry and camera views. Seeing
+ * inside the asset (Cutaway) is in View, which every 3D project has (ruling I-R17).
+ */
 import type { EngineStage } from '@aio/engine';
 import { useT, type IconName } from '@aio/ui';
 import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
 import { useWorkspace } from '@aio/workspace';
 import { useReducer } from 'react';
 import { shell, useShell } from '../../shell';
-import { CutawayPanel } from '../CutawayTool';
 import { PATH_MODES, setPathMode } from '../flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../pathModel';
 import { PopTool, Tool } from '../StageTools';
 import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
-import { useCutawayPref } from '../useCutaway';
 
 /** All, active clip only or no flight paths in 3D (P turns them off and back on). */
 export function FlightPathTool() {
@@ -74,12 +75,10 @@ const CAMERA_MODES: { mode: CameraMode; label: string; icon: IconName }[] = [
   { mode: 'drone', label: 'Drone eye (through the camera)', icon: 'droneeye' },
 ];
 
-/** Video window, free, follow-cam and drone-eye views, and the inside view of the asset. */
+/** Video window, flight paths, telemetry and the free, follow-cam and drone-eye views. */
 export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boolean }) {
   const activeClip = useWorkspace((s) => s.activeClip);
   const videoHidden = useShell((s) => s.videoHidden);
-  const cut = useCutawayPref();
-  const t = useT();
   const showVideo = activeClip !== null && !videoHidden;
   const mode = stage && activeClip ? videoRig(stage).cameraMode : 'free';
   const [, bump] = useReducer((n: number) => n + 1, 0);
@@ -112,17 +111,6 @@ export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boo
             }}
           />
         ))}
-      {!map && (
-        <PopTool
-          icon="cutaway"
-          label={t('stage.cutaway.tool')}
-          pressed={cut.mode !== 'off'}
-          disabled={!stage}
-          wide
-        >
-          <CutawayPanel stage={stage} />
-        </PopTool>
-      )}
     </>
   );
 }

@@ -52,6 +52,19 @@
 .island-wrap[data-state='date'] .island:hover {
   border-color: var(--line);
 }
+/* open, the island is solid and above every stage overlay (I-R18): nothing reads through it */
+.island-wrap[data-state='tools'],
+.island-wrap[data-state='date'] {
+  z-index: var(--z-panel);
+}
+.island-wrap[data-state='tools'] .island,
+.island-wrap[data-state='date'] .island {
+  background: var(--bg-1);
+}
+/* the island's View tile toggles the right panel while its tools are open */
+.stage:has(> .island-wrap[data-state='tools']) > .stage-rp {
+  visibility: hidden;
+}
 /* the sidebar's front tab shows the island's live item (D10) */
 .island-wrap[data-linked] .island,
 .island-wrap[data-linked] .island:hover {
@@ -135,7 +148,8 @@
 }
 
 /* the date */
-.isl-date {
+.isl-date,
+.isl-date-bar {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);

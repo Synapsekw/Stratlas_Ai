@@ -118,7 +118,7 @@ test('lanes show the focused date and its neighbours, the rest folded', async ({
   await openLanes(win);
   const tl = win.getByTestId('lane-timeline');
   await expect(win.getByTestId('date-bar')).toHaveCount(0);
-  await expect(tl.getByTestId('date-bar-open')).toContainText('10 Oct 2026');
+  await expect(tl.getByTestId('lane-date-open')).toContainText('10 Oct 2026');
   await expect(tl.getByTestId('lane-label-d6')).toHaveAttribute('aria-pressed', 'true');
   for (const id of ['d4', 'd5', 'd6'])
     await expect(tl.getByTestId(`lane-label-${id}`)).toBeVisible();
@@ -142,7 +142,9 @@ test('a lane label focuses its date, the playhead follows and the sidebar too', 
   await openLanes(win);
   const before = await state(win);
   await win.getByTestId('lane-label-d5').click();
-  await expect(win.getByTestId('date-bar-open')).toContainText('3 Oct 2026');
+  await expect(win.getByTestId('lane-timeline').getByTestId('lane-date-open')).toContainText(
+    '3 Oct 2026',
+  );
   await expect(win.getByTestId('lane-label-d5')).toHaveAttribute('aria-pressed', 'true');
   await expect(win.getByTestId('date-folder-d5')).toHaveAttribute('aria-expanded', 'true');
   // the same site time of day a week earlier, in that date's own clip, not playing
@@ -155,7 +157,7 @@ test('a lane label focuses its date, the playhead follows and the sidebar too', 
 
 test('the calendar opens from the lanes and picks a date', async ({ win }) => {
   await openLanes(win);
-  await win.getByTestId('lane-timeline').getByTestId('date-bar-open').click();
+  await win.getByTestId('lane-timeline').getByTestId('lane-date-open').click();
   const cal = win.getByTestId('calendar');
   await expect(cal).toBeVisible();
   // wholly inside the window and on top, not clipped by the lanes' scrolling body
@@ -223,13 +225,13 @@ test.describe('at the CI window size', () => {
     const tl = win.getByTestId('lane-timeline');
     // focus a middle date so both folds show
     for (let i = 0; i < 3; i++) await win.keyboard.press('Alt+ArrowLeft');
-    await expect(tl.getByTestId('date-bar-open')).toContainText('19 Sep 2026');
+    await expect(tl.getByTestId('lane-date-open')).toContainText('19 Sep 2026');
     await expect(tl.getByTestId('lane-fold-later')).toBeVisible();
     await expect(tl.getByTestId('lane-fold-earlier')).toBeVisible();
     const m = await tl.evaluate((el) => {
       const h = el.querySelector<HTMLElement>('.tl-h');
       const corner = el.querySelector<HTMLElement>('.lt-corner');
-      const date = el.querySelector<HTMLElement>('[data-testid="date-bar-open"]');
+      const date = el.querySelector<HTMLElement>('[data-testid="lane-date-open"]');
       const clock = el.querySelector<HTMLElement>('[data-testid="lane-clock"]');
       if (!h || !corner || !date || !clock) throw new Error('lane header parts missing');
       const hb = h.getBoundingClientRect();

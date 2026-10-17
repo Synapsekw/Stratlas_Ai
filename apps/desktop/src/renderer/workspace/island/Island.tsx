@@ -4,6 +4,7 @@
  * a second live item as a bubble that swaps with it; open, the view switch, the group tabs and a
  * group's quick row. Its size morphs between the states (instant under reduced motion).
  */
+import { annotateUi } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
 import {
   announce,
@@ -117,6 +118,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const capsule = useRef<HTMLDivElement>(null);
   const layer = useRef<HTMLDivElement>(null);
   const dateBox = useRef<HTMLDivElement>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
   // the app's own Reduce motion setting, or the system's
   const osStill = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);
   const appStill = useShell((x) => x.settings.motion === 'reduce');
@@ -137,11 +139,12 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const group = groups.includes(s.group) ? s.group : 'view';
 
   // the point cloud panel opened from the sidebar or the palette: the Point cloud group's set
-  const cloudPanel = useShell((x) => x.cloudPanelOpen);
+  // (asked while the group is away, on the map, it opens when the group comes back)
+  const cloudPanel = useShell((x) => x.cloudPanelOpen) && groups.includes('clouds');
   const [seenCloudPanel, setSeenCloudPanel] = useState(cloudPanel);
   if (cloudPanel !== seenCloudPanel) {
     setSeenCloudPanel(cloudPanel);
-    if (cloudPanel && groups.includes('clouds')) setFull('clouds');
+    if (cloudPanel) setFull('clouds');
   }
   const closeFull = () => {
     if (full === 'clouds') shell.getState().setCloudPanel(false);
@@ -193,9 +196,18 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     const el = layer.current;
     const box = capsule.current;
     if (!el || !box) return;
+    const stageEl = root.current?.parentElement;
     const fit = () => {
       const w = el.offsetWidth;
       const h = el.offsetHeight;
+      // open, the stage's overlays under it (.stage-under) move below its bottom edge, and below
+      // the T notice under it (I-R18)
+      if (open) {
+        const top = root.current?.offsetTop ?? 0;
+        const note = noticeRef.current;
+        const bottom = Math.max(top + h, note ? top + note.offsetTop + note.offsetHeight : 0);
+        stageEl?.style.setProperty('--isl-open-b', `${String(bottom)}px`);
+      } else stageEl?.style.removeProperty('--isl-open-b');
       if (!w || !h) return;
       box.style.width = `${String(w)}px`;
       box.style.height = `${String(h)}px`;
@@ -209,7 +221,13 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     return () => {
       ro.disconnect();
     };
-  }, [view]);
+  }, [view, open, notice]);
+  useEffect(
+    () => () => {
+      root.current?.parentElement?.style.removeProperty('--isl-open-b');
+    },
+    [],
+  );
 
   // the pointer near the top of the stage wakes the island
   useEffect(() => {
@@ -243,14 +261,22 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     };
   }, []);
 
-  // T opens the tools (D9)
+  // T opens the tools (D9); the video annotator and a pending annotation keep their keys
+  const state = useRef(s.open);
+  useLayoutEffect(() => {
+    state.current = s.open;
+  });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      if (annotateUi.getState().pending) return;
+      if (e.target instanceof Element && e.target.closest('.vwin')) return;
       if (matchShortcut('scene', e) !== 'scene.tools') return;
       e.preventDefault();
+      const opening = state.current !== 'tools';
       dispatch({ type: 'toggleTools' });
-      if (takeTNotice()) setNotice(true);
+      // said on a T that opens the tools, where it can be read
+      if (opening && takeTNotice()) setNotice(true);
     };
     window.addEventListener('keydown', onKey);
     return () => {
@@ -420,7 +446,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         </div>
       </div>
       {notice && (
-        <p className="isl-notice" role="status" data-testid="t-notice">
+        <p ref={noticeRef} className="isl-notice" role="status" data-testid="t-notice">
           {t('island.tNotice')}
         </p>
       )}

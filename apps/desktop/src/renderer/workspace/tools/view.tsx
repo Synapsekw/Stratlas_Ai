@@ -1,7 +1,13 @@
-/** The View group: whole site, centre, fly to the selection and the view presets. */
+/**
+ * The View group: whole site, centre, fly to the selection, the view presets and seeing inside the
+ * asset (Cutaway: cut or transparent, with or without a clip; ruling I-R17).
+ */
 import type { EngineStage, ViewPreset } from '@aio/engine';
+import { useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
+import { CutawayPanel } from '../CutawayTool';
 import { PopTool, Tool } from '../StageTools';
+import { useCutawayPref } from '../useCutaway';
 
 const PRESETS: { preset: ViewPreset; label: string }[] = [
   { preset: 'iso', label: 'Iso' },
@@ -11,7 +17,9 @@ const PRESETS: { preset: ViewPreset; label: string }[] = [
 
 /** Whole site, centre on project, fly to the selection and the view presets (north-up top, north, isometric). */
 export function ViewTools({ stage, map }: { stage: EngineStage | null; map: boolean }) {
+  const t = useT();
   const selection = useWorkspace((s) => s.selection);
+  const cut = useCutawayPref();
   return (
     <>
       <Tool
@@ -56,6 +64,17 @@ export function ViewTools({ stage, map }: { stage: EngineStage | null; map: bool
             ))}
           </div>
           <p className="pop-note">The compass also flips to a north-up top view.</p>
+        </PopTool>
+      )}
+      {!map && (
+        <PopTool
+          icon="cutaway"
+          label={t('stage.cutaway.tool')}
+          pressed={cut.mode !== 'off'}
+          disabled={!stage}
+          wide
+        >
+          <CutawayPanel stage={stage} />
         </PopTool>
       )}
     </>

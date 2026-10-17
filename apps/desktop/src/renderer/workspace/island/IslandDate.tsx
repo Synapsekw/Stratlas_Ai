@@ -85,52 +85,57 @@ export function IslandDate({
   if (!current) return null;
   return (
     <span className="isl-date" data-testid="date-row">
-      {steps && many && (
-        <IconButton
-          icon="chev-r"
-          size="sm"
-          className="isl-arrow prev"
-          label={t('datebar.prev')}
-          shortcut="global.prevSurvey"
-          disabled={at <= 0}
-          onClick={() => {
-            dates.step(-1);
-          }}
-        />
-      )}
-      <button
-        type="button"
-        className="isl-pill"
-        data-testid="date-bar-open"
-        aria-haspopup="dialog"
-        aria-label={t('datebar.open', { date: formatDate(current.date) })}
-        onClick={onOpen}
-      >
-        <span
-          className="isl-swatch"
-          style={{ background: colour(current.id) ?? 'var(--acc)' }}
-          aria-hidden="true"
-        />
-        <span className="isl-day">{shortDate(current.date)}</span>
+      {/* the date control the specs know as the date bar (the island's own row is date-row) */}
+      <span className="isl-date-bar" data-testid="date-bar">
         {steps && many && (
-          <span className="isl-count" data-testid="date-bar-count">
-            {t('island.dateCount', { n: at + 1, total: dates.order.length })}
-          </span>
+          <IconButton
+            icon="chev-r"
+            size="sm"
+            className="isl-arrow prev"
+            label={t('datebar.prev')}
+            data-testid="date-bar-prev"
+            shortcut="global.prevSurvey"
+            disabled={at <= 0}
+            onClick={() => {
+              dates.step(-1);
+            }}
+          />
         )}
-      </button>
-      {steps && many && (
-        <IconButton
-          icon="chev-r"
-          size="sm"
-          className="isl-arrow next"
-          label={t('datebar.next')}
-          shortcut="global.nextSurvey"
-          disabled={at >= dates.order.length - 1}
-          onClick={() => {
-            dates.step(1);
-          }}
-        />
-      )}
+        <button
+          type="button"
+          className="isl-pill"
+          data-testid="date-bar-open"
+          aria-haspopup="dialog"
+          aria-label={t('datebar.open', { date: formatDate(current.date) })}
+          onClick={onOpen}
+        >
+          <span
+            className="isl-swatch"
+            style={{ background: colour(current.id) ?? 'var(--acc)' }}
+            aria-hidden="true"
+          />
+          <span className="isl-day">{shortDate(current.date)}</span>
+          {steps && many && (
+            <span className="isl-count" data-testid="date-bar-count">
+              {t('island.dateCount', { n: at + 1, total: dates.order.length })}
+            </span>
+          )}
+        </button>
+        {steps && many && (
+          <IconButton
+            icon="chev-r"
+            size="sm"
+            className="isl-arrow next"
+            label={t('datebar.next')}
+            data-testid="date-bar-next"
+            shortcut="global.nextSurvey"
+            disabled={at >= dates.order.length - 1}
+            onClick={() => {
+              dates.step(1);
+            }}
+          />
+        )}
+      </span>
     </span>
   );
 }

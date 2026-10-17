@@ -9,6 +9,7 @@ import type { Page } from '@playwright/test';
 import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
 import { hasRealProject } from './realData';
+import { islandGroup } from './island';
 
 const SHOTS = process.env.QUADRION_SHOTS;
 const has = hasRealProject;
@@ -344,6 +345,7 @@ test.describe('@realdata hcl', () => {
   test('telemetry inside the tank, photo places merged with counts', async ({ win }) => {
     await open(win, 'HCl');
     await telemetryFollowsTheClip(win, 'video-101', 120, false);
+    await islandGroup(win, 'view');
     await win.getByRole('button', { name: 'See inside the asset: cut or transparent' }).click();
     await win.getByTestId('cutaway-panel').getByRole('button', { name: 'Transparent' }).click();
     await win.keyboard.press('Escape');

@@ -2007,11 +2007,12 @@ svg.flip {
   opacity: 0.55;
 }
 
-/* under the toolbar: annotation tools, then the playing and cut-away status */
+/* under the island: annotation tools, then the playing and cut-away status; below the open
+   island's bottom edge while it is open (--isl-open-b, set by Island.tsx; I-R18) */
 .stage-under {
   position: absolute;
   inset-inline-start: 12px;
-  top: 54px;
+  top: max(54px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
   display: flex;
   flex-direction: column;
   align-items: flex-start;

@@ -266,6 +266,7 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
   const { stage, map, compare } = ctx;
   const selection = useWorkspace((s) => s.selection);
+  const activeClip = useWorkspace((s) => s.activeClip);
   const project = useWorkspace((s) => s.project);
   const timelineOn = useTimelineShown(project);
   // a road has the chainage ruler, not the timeline
@@ -318,6 +319,20 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
           caret
           onClick={() => {
             ctx.openFull('view');
+          }}
+        />
+      )}
+      {/* see inside the asset (I-R17): the inside view with a clip (C), else the Cutaway panel */}
+      {!map && stage && (
+        <Tile
+          icon="cutaway"
+          label={t('island.tile.seeInside')}
+          name={activeClip ? t('stage.cutaway.insideView') : t('stage.cutaway.tool')}
+          shortcut="scene.inside"
+          caret={!activeClip}
+          onClick={() => {
+            if (activeClip) insideView(stage);
+            else ctx.openFull('view');
           }}
         />
       )}
@@ -659,18 +674,6 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
             if (!stage) return;
             setCameraMode(stage, m);
             bump();
-          }}
-        />
-      )}
-      {!map && stage && (
-        <Tile
-          icon="cutaway"
-          label={t('island.tile.seeInside')}
-          name={t('stage.cutaway.insideView')}
-          shortcut="scene.inside"
-          disabled={activeClip === null}
-          onClick={() => {
-            insideView(stage);
           }}
         />
       )}

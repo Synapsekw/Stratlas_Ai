@@ -400,7 +400,7 @@ export function Stage() {
     if (!root) return [];
     return [
       ...root.querySelectorAll(
-        '.island, .stage-rp, .stage-under > *, .vwin:not(.docked), .cursor-ro, .surface-pop, .elev-legend, .pane-chooser, .vol-legend',
+        '.island, .stage-rp, .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-chooser, .vol-legend',
       ),
     ].map((e) => e.getBoundingClientRect());
   }, []);
