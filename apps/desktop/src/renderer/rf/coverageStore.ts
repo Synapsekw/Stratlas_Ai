@@ -5,7 +5,7 @@
  * table its areas (`setClassStats`). The preview's readiness is the store's `preview` state,
  * which gates Save as new run in the tab.
  *
- * `startCoverage(deps)` follows the stores until its stop function is called (the layer mount).
+ * `followCoverage(deps)` follows the stores until its stop function is called (the layer mount).
  */
 import { msiToTwoCut, parseMsi, type TwoCutPattern } from '@aio/rf';
 import type { RfRun } from '@aio/schema';
@@ -70,7 +70,7 @@ export function refreshPreview(): void {
   refresh?.();
 }
 
-export function startCoverage(deps: CoverageDeps): () => void {
+export function followCoverage(deps: CoverageDeps): () => void {
   let stopped = false;
   let runToken = 0;
   let previewToken = 0;

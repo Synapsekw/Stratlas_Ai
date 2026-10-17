@@ -22,7 +22,7 @@ import {
 } from './coverageDraw';
 import { attachCoverageMap, type CoverageMapView } from './coverageMap';
 import { attachCoverageScene, type CoverageSceneView } from './coverageScene';
-import { refreshPreview, shownGrids, startCoverage, useCoverage } from './coverageStore';
+import { followCoverage, refreshPreview, shownGrids, useCoverage } from './coverageStore';
 import { dsmGroundProvider } from './dsmGround';
 import { startPreviewWorker, type PreviewClient } from './previewClient';
 import { loadRfLayer, useRfLayer } from './coverageDisplay';
@@ -96,7 +96,7 @@ export function RfLayer(): null {
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   useEffect(() => {
     let client: PreviewClient | null = null;
-    const stop = startCoverage({
+    const stop = followCoverage({
       bytes: projectBytes,
       client: () => (client ??= startPreviewWorker()),
     });
