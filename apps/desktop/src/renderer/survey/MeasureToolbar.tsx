@@ -13,7 +13,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useShell } from '../shell';
 import { primaryMap, primaryScene } from '../workspace/compare';
-import { useMeasureFollow } from '../workspace/workbench/benches/MeasureBench';
+import { useMeasureFollow } from '../workspace/workbench/measureFollow';
 import { CompareLayer } from './Comparison';
 import { DesignRolePrompt } from './DesignRolePrompt';
 import { ExportDialogMount } from './ExportDialog';

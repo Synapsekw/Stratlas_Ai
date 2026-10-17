@@ -9,7 +9,9 @@ import { drawEvent, measureStore, startTool, stopTool } from '../../../survey/me
 import { useStageKeys } from '../../stageKeys';
 import { sectionStore } from '../sectionState';
 import { createWorkbenchStore } from '../workbenchStore';
-import { followMeasureTool, MeasureBench } from './MeasureBench';
+import { followMeasureTool, followRecent } from '../measureFollow';
+import { createFavouritesStore } from '../../../survey/measureCatalogue';
+import { MeasureBench } from './MeasureBench';
 
 // the site data tools are their own screens: here only that the bench lists them
 vi.mock('../../../survey/Designs', () => ({
@@ -238,6 +240,26 @@ describe('the Measure tab follows the tool', () => {
       expect(wb.getState().front).toBe('qa');
       stopTool();
       expect(wb.getState().front).toBe('qa');
+    } finally {
+      off();
+    }
+  });
+});
+
+describe('recent tools', () => {
+  it('count every tool start: M, an island tile or the bench, not a drawing for another panel', () => {
+    const favs = createFavouritesStore(null);
+    const off = followRecent(measureStore, favs);
+    try {
+      render();
+      press('m');
+      act(() => {
+        startTool('grade');
+      });
+      act(() => {
+        startTool('area', { forOther: { prompt: 'x', then: () => undefined } });
+      });
+      expect(favs.getState().recent).toEqual(['grade', 'distance']);
     } finally {
       off();
     }

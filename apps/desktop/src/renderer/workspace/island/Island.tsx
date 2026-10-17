@@ -39,7 +39,7 @@ import type { Side } from '../splitModel';
 import { paneCapture, type SplitModel } from '../SplitPanes';
 import { takeTNotice } from '../stagePrefs';
 import { useTimeline } from '../timeline';
-import { showMeasureBench } from '../workbench/benches/MeasureBench';
+import { showMeasureBench } from '../workbench/measureFollow';
 import { fullGroup, GROUP_NAME, MODES, type GroupCtx } from './groups';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';

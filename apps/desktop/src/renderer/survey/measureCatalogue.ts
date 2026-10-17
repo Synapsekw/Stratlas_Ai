@@ -7,6 +7,7 @@ import type { MeasurementTool } from '@aio/schema';
 import { t, type MessageKey, type ShortcutId } from '@aio/ui';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { browserStorage } from '../workspace/stagePrefs';
 
 /**
  * A catalogue tool: a survey tool, or the section plane. The section plane is not a survey
@@ -146,14 +147,6 @@ function readFavourites(storage: Storage | null): readonly CatalogueTool[] {
     return v.filter((x): x is CatalogueTool => typeof x === 'string' && known.has(x));
   } catch {
     return DEFAULT_FAVOURITES;
-  }
-}
-
-function browserStorage(): Storage | null {
-  try {
-    return typeof localStorage === 'undefined' ? null : localStorage;
-  } catch {
-    return null;
   }
 }
 

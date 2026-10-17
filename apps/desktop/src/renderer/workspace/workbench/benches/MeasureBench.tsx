@@ -3,10 +3,7 @@
  * every measuring tool by family, Site data, Drawing aids, Templates, and "Saved in this project".
  * While a tool is live it morphs in place: the live card on top (the reading, the points, Undo,
  * Stop and Save with their keys) and the catalogue shrinks to a strip of tool buttons.
- *
- * `followMeasureTool` keeps the sidebar following the tools (the Measure tab goes live when a
- * tool starts and closes again when one it opened stops); `linkPanelTab` keeps the Survey QA,
- * Terrain overlays and Hydrology tabs open exactly while their panels are.
+ * How the sidebar follows the tools is `workbench/measureFollow.ts`.
  */
 import type { EngineStage } from '@aio/engine';
 import { unitLabel } from '@aio/geo';
@@ -24,16 +21,13 @@ import {
 } from '@aio/survey';
 import { ariaKeys, Button, EmptyState, Icon, IconButton, Row, shortcutHint, useT } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { StoreApi } from 'zustand/vanilla';
-import { isIssueEditing } from '../../../issueCard/state';
-import { shell, useShell } from '../../../shell';
+import { useShell } from '../../../shell';
 import { BulkTotals } from '../../../survey/BulkTotals';
 import { openCompareDialog } from '../../../survey/compareStore';
 import { DesignsTool } from '../../../survey/Designs';
 import { ExportTool } from '../../../survey/ExportDialog';
 import { HaulRoadTool } from '../../../survey/HaulRoad';
 import { HydroTool } from '../../../survey/Hydro';
-import { hydro } from '../../../survey/hydroStore';
 import { MagicPolygon } from '../../../survey/MagicPolygon';
 import {
   entryOf,
@@ -59,11 +53,9 @@ import {
   startTool,
   stopTool,
   useMeasure,
-  type MeasureState,
 } from '../../../survey/measureStore';
-import { overlays, setOverlaysOpen, useOverlays } from '../../../survey/overlaysStore';
+import { setOverlaysOpen, useOverlays } from '../../../survey/overlaysStore';
 import { SurveyQaTool } from '../../../survey/Qa';
-import { openQaPanel, qaStore } from '../../../survey/qaStore';
 import {
   startTelecomTool,
   TelecomTools,
@@ -74,135 +66,9 @@ import { SectionPanel, toggleMeasure, toggleSection } from '../../tools/measure'
 import { Section } from '../Section';
 import { filterSections, sectionStore, useSections } from '../sectionState';
 import type { TabId } from '../tabsModel';
-import { workbench, type WorkbenchState } from '../workbenchStore';
 import './measureBench.css';
 
 const BENCH: TabId = 'measure';
-
-/** The sidebar tabs of the survey panels that a drawing can be for (D18). */
-const PANEL_TABS: readonly TabId[] = ['qa', 'overlays', 'hydro'];
-
-// ---------------------------------------------------------------- following the tools
-
-/** Bring the Measure tab to the front, opening it when it is not there. */
-function reveal(bench: StoreApi<WorkbenchState>): void {
-  const b = bench.getState();
-  if (b.front === BENCH) return;
-  if (b.tabs.some((t) => t.id === BENCH)) b.show(BENCH);
-  else b.open(BENCH);
-}
-
-/**
- * Open the Measure workbench (the island's Measure tab, its All tools tile), unfolding the right
- * sidebar when it is folded away.
- */
-export function showMeasureBench(bench: StoreApi<WorkbenchState> = workbench): void {
-  if (shell.getState().rightCollapsed) shell.getState().setRight(false);
-  reveal(bench);
-}
-
-/**
- * The sidebar follows the survey tools (D13, D14): a tool starting makes the Measure tab live (in
- * front unless an issue is being edited); stopping one that opened the tab closes it again. A
- * drawing for another panel (a one-shot shape, or one started from a survey panel's tab) leaves
- * that panel in front. Opening the measurements list, or picking a measurement while no tool
- * draws, brings the Measure tab forward. Returns unsubscribe.
- */
-export function followMeasureTool(
-  measure: StoreApi<MeasureState> = measureStore,
-  bench: StoreApi<WorkbenchState> = workbench,
-): () => void {
-  let started = false;
-  let focusAtStart: string | null = null;
-  const follow = () => {
-    if (!isIssueEditing()) reveal(bench);
-  };
-  return measure.subscribe((s, prev) => {
-    if (s.tool && !prev.tool) {
-      if (!s.tool.then && !PANEL_TABS.includes(bench.getState().front)) {
-        started = true;
-        focusAtStart = s.focus;
-        bench.getState().toolStarted(BENCH);
-      }
-    } else if (!s.tool && prev.tool && started) {
-      started = false;
-      bench.getState().toolStopped(BENCH);
-      // a telecom tool stops on its last pick: its reading stays in view
-      if (isTelecomTool(prev.tool.tool) && s.focus && s.focus !== focusAtStart) follow();
-    }
-    if (s.listOpen && !prev.listOpen) follow();
-    if (!s.tool && s.focus && s.focus !== prev.focus) follow();
-  });
-}
-
-/**
- * Keep a survey panel's sidebar tab open exactly while the panel is (D18): the panel opening
- * opens its tab, closing it closes the tab, and the tab closed (or replaced) closes the panel.
- * Returns unsubscribe.
- */
-export function linkPanelTab<S>(
-  id: TabId,
-  store: StoreApi<S>,
-  isOpen: (s: S) => boolean,
-  close: () => void,
-  bench: StoreApi<WorkbenchState> = workbench,
-): () => void {
-  const has = () => bench.getState().tabs.some((t) => t.id === id);
-  const sync = () => {
-    const open = isOpen(store.getState());
-    if (open && !has()) bench.getState().open(id);
-    else if (!open && has()) bench.getState().close(id);
-  };
-  sync();
-  const offStore = store.subscribe((s, prev) => {
-    if (isOpen(s) !== isOpen(prev)) sync();
-  });
-  const offBench = bench.subscribe((s, prev) => {
-    const had = prev.tabs.some((t) => t.id === id);
-    const now = s.tabs.some((t) => t.id === id);
-    if (had && !now && isOpen(store.getState())) close();
-  });
-  return () => {
-    offStore();
-    offBench();
-  };
-}
-
-/** While mounted: the Measure tab follows the tools, and the survey panels are tabs. */
-export function useMeasureFollow(): void {
-  useEffect(() => {
-    const off = [
-      followMeasureTool(),
-      linkPanelTab(
-        'overlays',
-        overlays,
-        (s) => s.open,
-        () => {
-          setOverlaysOpen(false);
-        },
-      ),
-      linkPanelTab(
-        'qa',
-        qaStore,
-        (s) => s.panel !== null,
-        () => {
-          openQaPanel(null);
-        },
-      ),
-      linkPanelTab(
-        'hydro',
-        hydro,
-        (s) => s.open,
-        () => {
-          hydro.setState({ open: false });
-        },
-      ),
-    ];
-    return () => {
-      for (const o of off) o();
-    };
-  }, []);
-}
 
 // ---------------------------------------------------------------- tools
 
@@ -220,8 +86,9 @@ function testIdOf(tool: CatalogueTool): string {
 
 /** Start a catalogue tool, or put it away when it is the live one. */
 function startEntry(tool: CatalogueTool, stage: EngineStage | null): void {
-  measureFavourites.getState().used(tool);
   if (tool === 'section-plane') {
+    // not a survey tool: the other starts count in recent through followRecent
+    measureFavourites.getState().used(tool);
     if (stage) toggleSection(stage);
     return;
   }
