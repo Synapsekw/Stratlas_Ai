@@ -6,6 +6,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { isIssueEditing } from '../../issueCard/state';
 import { browserStorage } from '../stagePrefs';
 import {
+  isTabId,
   onToolStart,
   onToolStop,
   openPanel,
@@ -55,7 +56,7 @@ function readPins(storage: Storage | null): TabId[] {
   try {
     const v = JSON.parse(storage?.getItem(KEY) ?? 'null') as unknown;
     const raw = (v as { pinned?: unknown } | null)?.pinned;
-    return Array.isArray(raw) ? (raw.filter((x) => typeof x === 'string') as TabId[]) : [];
+    return Array.isArray(raw) ? raw.filter(isTabId) : [];
   } catch {
     return [];
   }

@@ -60,9 +60,6 @@ import { AgentPane } from '../../agent/AgentPane';
 import { agentPane } from '../../agent/agentPaneStore';
 import './workbench.css';
 
-/** The workbenches with collapsible sections, whose header holds Collapse all (D16). */
-const BENCHES: readonly TabId[] = ['measure', 'display', 'clouds', 'video', 'road', 'annotate'];
-
 /** The strip the right panel folds to: its border and the 12 px tab (`--ph-w`), as before. */
 const RIGHT_STRIP = 13;
 const RIGHT_MIN = 280;
@@ -248,9 +245,12 @@ export function FrontBody({ front, road }: { front: TabId; road: boolean }) {
     );
   if (front === 'qa') return <QaSide />;
   if (front === 'overlays') return <OverlaysPanel />;
-  if (front === 'hydro') return <HydroTab />;
-  // the workbenches and tool panels fill their tab in their own tasks
-  return BENCHES.includes(front) ? <BenchHead bench={front} /> : null;
+  return lastBody(front);
+}
+
+/** The one tab left once every other has its body above: a new TabId without one fails here. */
+function lastBody(front: 'hydro') {
+  return <HydroTab key={front} />;
 }
 
 export function RightSidebar() {

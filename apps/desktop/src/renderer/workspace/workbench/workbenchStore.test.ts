@@ -88,6 +88,15 @@ describe('workbench store', () => {
     expect(ids(createWorkbenchStore(storage).getState())).not.toContain('display');
   });
 
+  it('drops a remembered pin of a tab that is gone (the old Measurements list)', () => {
+    const storage = memory({
+      'quadrion.workbench': JSON.stringify({ pinned: ['measurements', 'video', 7] }),
+    });
+    const tabs = ids(createWorkbenchStore(storage).getState());
+    expect(tabs).toContain('video');
+    expect(tabs).not.toContain('measurements');
+  });
+
   it('pin(id, on) toggles a panel pin', () => {
     const store = createWorkbenchStore(memory());
     store.getState().open('display');

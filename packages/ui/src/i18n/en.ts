@@ -4417,7 +4417,6 @@ export const en = {
   'wb.tab.overlays': 'Terrain overlays',
   'wb.tab.hydro': 'Hydrology',
   'wb.tab.cleanup': 'Point cloud cleanup',
-  'wb.tab.measurements': 'Measurements',
   'wb.collapseAll': 'Collapse all',
   'wb.expandAll': 'Expand all',
   'wb.pin': 'Pin',

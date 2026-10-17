@@ -1,26 +1,34 @@
 // Pure model of the right-sidebar workbench tabs (stage island D11, D13-D15, D17).
 // No React, no DOM: the Tabs part renders what this decides.
 
-export type TabId =
-  | 'measure'
-  | 'display'
-  | 'clouds'
-  | 'volumes'
-  | 'video'
-  | 'road'
-  | 'annotate'
-  | 'jobs'
-  | 'selection'
-  | 'issues'
-  | 'changes'
-  | 'qa'
-  | 'overlays'
-  | 'hydro'
-  | 'cleanup'
-  | 'measurements'
+/** Every workbench tab, in no particular order (the row's order is decided below). */
+export const TAB_IDS = [
+  'measure',
+  'display',
+  'clouds',
+  'volumes',
+  'video',
+  'road',
+  'annotate',
+  'jobs',
+  'selection',
+  'issues',
+  'changes',
+  'qa',
+  'overlays',
+  'hydro',
+  'cleanup',
   // Road, Volumes and environment benches
-  | 'environment'
-  | 'cutaway';
+  'environment',
+  'cutaway',
+] as const;
+
+export type TabId = (typeof TAB_IDS)[number];
+
+/** A known tab id: a remembered pin of a tab that is gone (the old Measurements list) is not. */
+export function isTabId(x: unknown): x is TabId {
+  return typeof x === 'string' && (TAB_IDS as readonly string[]).includes(x);
+}
 
 export interface Tab {
   id: TabId;
