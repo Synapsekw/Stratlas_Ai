@@ -607,3 +607,32 @@ def test_export_carries_the_shift_cloud(tmp_path, monkeypatch, fmt):
     assert np.allclose(xyz["moved"][:, 0] - xyz["plain"][:, 0], 2.0, atol=0.01)
     assert np.allclose(xyz["moved"][:, 1] - xyz["plain"][:, 1], -1.0, atol=0.01)
     assert np.allclose(xyz["moved"][:, 2], xyz["plain"][:, 2], atol=0.01)
+
+
+def test_export_carries_the_shift_measurements(tmp_path):
+    # measurement exports write the lined-up frame (data-conventions section 38): a measurement of
+    # a lined-up date goes out where it is drawn; a site-wide one stays as saved
+    root = full_project(tmp_path)
+    path = root / "survey" / "measurements.json"
+    doc = json.loads(path.read_text("utf-8"))
+    for m in doc["measurements"]:
+        if m["id"] in ("m-pt", "m-line"):
+            m["scope"] = {"kind": "survey", "capture": "d1"}
+    path.write_text(json.dumps(doc), "utf-8")
+    line_up_d1(root)
+    run(root, tmp_path / "m.csv", what="measurements", format="csv", measurements=["m-pt", "m-poly"])
+    pts = read_csv_points(tmp_path / "m.csv").points[0].points
+    ms = {m["id"]: m for m in doc["measurements"]}
+    spot = ms["m-pt"]["points"][0]
+    assert (pts[0].e, pts[0].n, pts[0].z) == (spot[0] + 2.0, spot[1] - 1.0, spot[2])
+    pile = ms["m-poly"]["points"][0]
+    assert (pts[1].e, pts[1].n) == (pile[0], pile[1])
+    # a section is cut along the line where it is drawn
+    run(
+        root, tmp_path / "s.csv", "j2", what="section", format="csv", measurements=["m-line"], surface="plane"
+    )
+    rows = (tmp_path / "s.csv").read_text("utf-8").splitlines()[1:]
+    first = rows[0].split(",")
+    line = ms["m-line"]["points"][0]
+    assert float(first[2]) == pytest.approx(line[0] + 2.0)
+    assert float(first[3]) == pytest.approx(line[1] - 1.0)

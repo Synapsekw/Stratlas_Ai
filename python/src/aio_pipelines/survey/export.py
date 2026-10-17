@@ -971,6 +971,28 @@ def export_contours(ctx: StepContext, params: dict[str, Any], frame: Frame, out:
     return {"files": res.pop("files", [str(path)]), **res, "minor": minor, "major": major}
 
 
+def _drawn(project: Path, ms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Measurements where they are drawn: a survey-scoped one with its date's line-up added (E and
+    N), as the app shows it. Exports write the lined-up frame (data-conventions section 38); the
+    stored points stay the date's own, for Undo."""
+    from ..captures import capture_shift
+
+    if not (project / "manifest.json").is_file():
+        return ms
+    manifest = _manifest(project)
+    out = []
+    for m in ms:
+        scope = m.get("scope")
+        cap = scope.get("capture") if isinstance(scope, dict) and scope.get("kind") == "survey" else None
+        east, north = capture_shift(manifest, str(cap)) if cap else (0.0, 0.0)
+        if east == 0.0 and north == 0.0:
+            out.append(m)
+            continue
+        pts = [[float(p[0]) + east, float(p[1]) + north, *p[2:]] for p in m.get("points") or []]
+        out.append({**m, "points": pts})
+    return out
+
+
 def _measurements(project: Path, ids: list[str] | None) -> list[dict[str, Any]]:
     p = project / "survey" / "measurements.json"
     if not p.is_file():
@@ -985,7 +1007,7 @@ def _measurements(project: Path, ids: list[str] | None) -> list[dict[str, Any]]:
         ms = [by[i] for i in ids]
     if not ms:
         raise JobError("There are no measurements to export.")
-    return ms
+    return _drawn(project, ms)
 
 
 def _label(m: dict[str, Any]) -> str:
