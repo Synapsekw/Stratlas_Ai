@@ -11,7 +11,7 @@ import { isIssueEditing } from '../../issueCard/state';
 import { roadStore, type RoadState } from '../../road/store';
 import { hydro } from '../../survey/hydroStore';
 import { measureFavourites, type FavouritesState } from '../../survey/measureCatalogue';
-import { measureStore, type MeasureState } from '../../survey/measureStore';
+import { measureStore, stopTool, type MeasureState } from '../../survey/measureStore';
 import { overlays, setOverlaysOpen } from '../../survey/overlaysStore';
 import { openQaPanel, qaStore } from '../../survey/qaStore';
 import { followTool, showBench } from './followTool';
@@ -58,15 +58,7 @@ export function followMeasureTool(
   const follow = () => {
     if (!isIssueEditing()) reveal(bench);
   };
-  const offTab = linkLiveTab(
-    BENCH,
-    () => measure.getState().tool !== null,
-    () => {
-      // as stopTool does
-      measure.setState({ tool: null, draw: null });
-    },
-    bench,
-  );
+  const offTab = linkLiveTab(BENCH, () => measure.getState().tool !== null, stopTool, bench);
   const offTool = measure.subscribe((s, prev) => {
     if (s.tool && !prev.tool) {
       if (!s.tool.then && !PANEL_TABS.includes(bench.getState().front)) {
