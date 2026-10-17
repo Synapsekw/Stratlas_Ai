@@ -85,8 +85,16 @@ function UnitRow({
       data-status={unit.status}
       selected={selected}
       style={OUTLINE[unit.status]}
+      tabIndex={0}
       onClick={() => {
         onSelect(unit.id);
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(unit.id);
+        }
       }}
       label={
         <span style={{ display: 'inline-flex', gap: 'var(--sp-4)', alignItems: 'baseline' }}>

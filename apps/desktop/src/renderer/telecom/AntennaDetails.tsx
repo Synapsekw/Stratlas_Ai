@@ -62,6 +62,15 @@ export function AntennaDetails(props: AntennaDetailsProps): ReactElement {
     unit.user.weightKg === undefined ? '' : String(unit.user.weightKg),
   );
   const [weightBad, setWeightBad] = useState(false);
+  // A different unit starts from its own saved values, never the previous unit's text.
+  const [seenId, setSeenId] = useState(unit.id);
+  if (seenId !== unit.id) {
+    setSeenId(unit.id);
+    setModel(unit.user.model ?? '');
+    setFreq(unit.user.frequencies ?? '');
+    setWeight(unit.user.weightKg === undefined ? '' : String(unit.user.weightKg));
+    setWeightBad(false);
+  }
   const az = azimuthLines(unit);
   const provider = props.aiProvider ?? unit.ai?.provider ?? '';
   const c = unit.box.centre;

@@ -204,4 +204,26 @@ describe('AntennaDetails', () => {
     });
     expect(h.onSetStatus).not.toHaveBeenCalled();
   });
+
+  it('shows the new unit values when the unit changes and does not patch on blur', () => {
+    const h = show(unit({ user: { model: 'OLD', frequencies: 'f-old', weightKg: 9 } }));
+    expect(input('Model').value).toBe('OLD');
+    act(() => {
+      root.render(
+        <AntennaDetails
+          unit={unit({ id: 'ant-2', name: 'A2', user: { model: 'NEW' } })}
+          projectId="p1"
+          readOnly={false}
+          {...h}
+        />,
+      );
+    });
+    expect(input('Model').value).toBe('NEW');
+    expect(input('Frequencies').value).toBe('');
+    expect(input('Weight').value).toBe('');
+    blur(input('Model'));
+    blur(input('Frequencies'));
+    blur(input('Weight'));
+    expect(h.onPatchUser).not.toHaveBeenCalled();
+  });
 });

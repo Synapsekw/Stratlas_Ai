@@ -155,4 +155,22 @@ describe('AntennaInventory', () => {
     expect(r[0]!.hasAttribute('data-selected')).toBe(false);
     expect(new Set(r.map((x) => x.style.outline)).size).toBe(3);
   });
+
+  it('selects a row from the keyboard without hijacking the buttons', () => {
+    const h = show({ file: fileOf([mk('ant-1', 'panel')]) });
+    const row = rows()[0]!;
+    expect(row.tabIndex).toBe(0);
+    const key = (el: Element, k: string) => {
+      act(() => {
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+      });
+    };
+    key(row, 'Enter');
+    key(row, ' ');
+    expect(h.onSelect).toHaveBeenCalledTimes(2);
+    expect(h.onSelect).toHaveBeenCalledWith('ant-1');
+    key(row, 'a');
+    key(host.querySelector('button[aria-label="Hide A1 in 3D"]')!, 'Enter');
+    expect(h.onSelect).toHaveBeenCalledTimes(2);
+  });
 });
