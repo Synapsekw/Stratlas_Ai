@@ -1,4 +1,4 @@
-import { isEngineStage, type SceneHandle } from '@aio/engine';
+import { isEngineStage, markersHit, type SceneHandle } from '@aio/engine';
 import { bearingDeg } from '@aio/geo';
 import {
   BufferGeometry,
@@ -244,7 +244,8 @@ export function attachPinScene(scene: SceneHandle, cb: PinSceneCallbacks): PinSc
     end(false);
   }
   const onDown = (e: PointerEvent) => {
-    if (e.button !== 0) return;
+    // a photo or 360 marker over the arrow keeps its click (a pin's 360 marker stands on it)
+    if (e.button !== 0 || markersHit(canvas, e.clientX, e.clientY)) return;
     const p = arrowAt(e);
     if (!p) return;
     drag = { pin: p, deg: null };

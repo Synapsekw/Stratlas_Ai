@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
+import type * as Engine from '@aio/engine';
 import type { SceneHandle } from '@aio/engine';
 import { PerspectiveCamera, Scene, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { DrawnPin } from './pinModel';
-import {
-  attachPinScene,
-  PIN_ARROW_NAME,
-  PIN_RING_NAME,
-  PIN_SCENE_GROUP,
-  PIN_STEM_NAME,
-} from './pinScene';
+
+/** A 360 or photo marker under the press (a test sets it). */
+let onMarker = false;
+vi.mock('@aio/engine', async (importOriginal) => ({
+  ...(await importOriginal<typeof Engine>()),
+  markersHit: () => onMarker,
+}));
+
+const { attachPinScene, PIN_ARROW_NAME, PIN_RING_NAME, PIN_SCENE_GROUP, PIN_STEM_NAME } =
+  await import('./pinScene');
 
 // jsdom has no PointerEvent: a MouseEvent carries every field these tests use
 if (typeof globalThis.PointerEvent === 'undefined') {
@@ -110,6 +114,26 @@ describe('pins in the 3D view', () => {
     window.dispatchEvent(new PointerEvent('pointerup', { clientX: 160, clientY: 50 }));
     expect(onArrowDrop).toHaveBeenCalledWith({ kind: 'photo', layerId: 'l', itemId: 'a' }, 90);
     expect(controls.enabled).toBe(true);
+    view.dispose();
+  });
+
+  it("leaves a press on a marker over the arrow to the marker (a 360's marker enters it)", () => {
+    const { stage, canvas, controls } = fakeStage({ x: 5, y: 0, z: 0 });
+    const view = attachPinScene(stage, { onArrowDrop: vi.fn() });
+    view.update([pin('a', 0, 0)], null);
+    onMarker = true;
+    const down = new PointerEvent('pointerdown', {
+      clientX: 100,
+      clientY: 50,
+      button: 0,
+      bubbles: true,
+    });
+    const after = vi.fn();
+    canvas.addEventListener('pointerdown', after);
+    canvas.dispatchEvent(down);
+    onMarker = false;
+    expect(controls.enabled).toBe(true);
+    expect(after).toHaveBeenCalled();
     view.dispose();
   });
 

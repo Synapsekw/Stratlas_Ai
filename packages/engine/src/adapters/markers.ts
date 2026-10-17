@@ -196,6 +196,15 @@ interface MarkerEl {
  * with a count badge, hover (count and time span) and selected states. Clicks are hit-tested here
  * (28 px targets) and claimed from the stage; a merged icon opens a list of its members.
  */
+/**
+ * True when a pointer at these client coordinates is on an icon of a marker layer over `surface`
+ * (the 3D canvas or the map), so a tool on the same surface can leave that press to the marker.
+ */
+export function markersHit(surface: HTMLElement, clientX: number, clientY: number): boolean {
+  const first = layersOf.get(surface)?.values().next();
+  return first?.value ? first.value.hits(clientX, clientY) : false;
+}
+
 export class MarkerLayer {
   private readonly root: HTMLDivElement | null;
   private readonly tip: HTMLDivElement | null;

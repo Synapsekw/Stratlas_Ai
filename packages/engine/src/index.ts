@@ -32,6 +32,7 @@ export { registerRasterFormat, type RasterFormatHandler } from './adapters/raste
 export { createPanoramasAdapter } from './adapters/panoramas';
 export {
   MarkerLayer,
+  markersHit,
   sceneMarkerView,
   type MarkerLayerOptions,
   type MarkerMember,

@@ -2,7 +2,13 @@
 import { PerspectiveCamera } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SceneHandle } from '../types';
-import { MarkerLayer, sceneMarkerView, type MarkerSite, type MarkerView } from './markers';
+import {
+  MarkerLayer,
+  markersHit,
+  sceneMarkerView,
+  type MarkerSite,
+  type MarkerView,
+} from './markers';
 
 /** A view whose points project to fixed screen spots (x, z of the site are its pixels). */
 function fakeView() {
@@ -84,6 +90,24 @@ describe('MarkerLayer on a MarkerView', () => {
     expect(layer.memberAt(200, 30)).toBeNull();
     layer.dispose();
     expect(host.querySelector('[data-markers=photo]')).toBeNull();
+  });
+
+  it('tells whether a point is on any marker over a surface', () => {
+    const { surface, view, frame } = fakeView();
+    expect(markersHit(surface, 100, 100)).toBe(false);
+    const layer = new MarkerLayer({
+      view,
+      kind: 'pano',
+      sites,
+      member: (i) => members[i] ?? { id: '' },
+      open: () => undefined,
+      selected: () => new Set(),
+    });
+    frame();
+    expect(markersHit(surface, 104, 98)).toBe(true);
+    expect(markersHit(surface, 200, 30)).toBe(false);
+    layer.dispose();
+    expect(markersHit(surface, 104, 98)).toBe(false);
   });
 
   it('shows the thumbnail of a single photo in its hover tip', async () => {
