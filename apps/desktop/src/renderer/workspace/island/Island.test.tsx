@@ -612,6 +612,26 @@ describe('Island: the groups open their workbench', () => {
     expect(document.activeElement).toBe(reading);
   });
 
+  it('wakes when Shift+Tab comes back into it from after it, focus on its last control (T20 M7)', async () => {
+    live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }];
+    await render();
+    const after = document.createElement('button');
+    document.body.append(after);
+    act(() => {
+      after.focus();
+    });
+    // Shift+Tab from the control after the island lands on the line's last control at rest
+    act(() => {
+      host.querySelector<HTMLButtonElement>('button.isl-live-open')?.focus();
+    });
+    expect(island()?.dataset.state).toBe('ready');
+    const buttons = [...host.querySelectorAll<HTMLElement>('.isl-layer button')];
+    expect(buttons.length).toBeGreaterThan(0);
+    expect(document.activeElement).toBe(buttons[buttons.length - 1]);
+    expect(document.activeElement?.closest('.island-wrap')).not.toBeNull();
+    after.remove();
+  });
+
   it('leaves the connection state a plain reading: it has no tab', async () => {
     live = [{ kind: 'connection', state: 'offline' }];
     await render();

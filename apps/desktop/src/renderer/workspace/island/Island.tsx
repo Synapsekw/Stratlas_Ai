@@ -189,6 +189,14 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
 
   // focus handed back on close does not wake the island again
   const returning = useRef(false);
+  // Shift+Tab woke the island from a control of the line at rest (onFocus): focus its end
+  const wakeToEnd = useRef(false);
+  useLayoutEffect(() => {
+    if (!wakeToEnd.current || s.open !== 'ready') return;
+    wakeToEnd.current = false;
+    const all = layer.current?.querySelectorAll<HTMLElement>('button:not([disabled])');
+    all?.[all.length - 1]?.focus();
+  }, [s.open]);
   const close = useCallback(() => {
     dispatch({ type: 'escape' });
     returning.current = true;
@@ -459,12 +467,24 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         dispatch({ type: 'near' });
       }}
       onFocus={(e) => {
-        // focus that lands straight on a control of the line at rest (the live reading, the
-        // date) keeps it: waking would draw the line again without that control (I-R44)
-        if (returning.current || layer.current?.contains(e.target)) return;
+        if (returning.current) return;
+        if (layer.current?.contains(e.target)) {
+          // focus that lands straight on a control of the line at rest (the live reading, the
+          // date) keeps it: waking would draw the line again without that control (I-R44).
+          // Shift+Tab from after the island lands there too: it wakes, and focus goes on to the
+          // woken line's last control, as Shift+Tab would reach it (T20 M7)
+          const from = e.relatedTarget;
+          if (s.open === 'rest' && from instanceof Node && !e.currentTarget.contains(from)) {
+            wakeToEnd.current = true;
+            dispatch({ type: 'near' });
+          }
+          return;
+        }
         dispatch({ type: 'near' });
       }}
       onBlur={(e) => {
+        // the line at rest leaving for the woken one takes its focused control with it
+        if (wakeToEnd.current) return;
         if (!e.currentTarget.contains(e.relatedTarget)) dispatch({ type: 'leave' });
       }}
       onKeyDown={(e) => {
