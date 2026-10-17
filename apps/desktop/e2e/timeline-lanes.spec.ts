@@ -9,7 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test as base, type DataRoot } from './fixtures';
-import { closeIslandTools, island, timelineToggle } from './island';
+import { closeIslandTools, island, stageMode, timelineToggle } from './island';
 import { tinyMp4 } from './tinyVideo';
 
 const ID = 'e2e-date-lanes';
@@ -230,7 +230,13 @@ test.describe('at the CI window size', () => {
   test('the header keeps one row and nothing spills out of the bar', async ({ win }) => {
     await openLanes(win);
     const tl = win.getByTestId('lane-timeline');
-    // focus a middle date so both folds show
+    // focus a middle date so both folds show: in one view, where Alt+Left steps the date bar's
+    // survey (in Split it steps the focused pane's date instead, D7)
+    if ((await win.locator('.stage').getAttribute('data-mode')) !== '3d') {
+      await stageMode(win, '3D');
+      await closeIslandTools(win);
+    }
+    await win.locator('[data-scene-view] canvas').first().focus();
     for (let i = 0; i < 3; i++) await win.keyboard.press('Alt+ArrowLeft');
     await expect(tl.getByTestId('lane-date-open')).toContainText('19 Sep 2026');
     await expect(tl.getByTestId('lane-fold-later')).toBeVisible();
