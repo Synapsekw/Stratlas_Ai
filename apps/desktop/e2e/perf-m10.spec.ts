@@ -20,8 +20,12 @@
  * Ceilings: both started at 400 ms (the Low synthetic budget in perf.spec.ts is 250 ms). Once three
  * CI runs of the shard holding this spec exist, each is set to twice the median CI p95 (never below
  * the worst measured) and the runs are noted here. Globe: 1000 ms, from CI p95 312.5 ms (run
- * 38226929011), 484.5 ms (run 38231054577) and 484.4 ms (run 38243493910). Tiles: still 400 ms,
- * waiting for its three CI runs. Three local runs on 12 Oct 2026 (Windows
+ * 38226929011), 484.5 ms (run 38231054577) and 484.4 ms (run 38243493910). Tiles: 720 ms, twice
+ * the median CI p95 of 359.3 ms over 32 runs from 12 to 17 Oct 2026 (343.7 to 390.7 ms in most,
+ * so 400 ms left under 10 % of headroom), above the worst measured, 593.7 ms (run 39008779597).
+ * That run was the first with no title bar and no date strips: the stage, and with it the WebGL
+ * canvas, grew from 488 x 618 to 488 x 720 px (16.5 % more pixels on the software GPU), and the
+ * CI p50 went from 250.0 to 281.2 ms with it. Three local runs on 12 Oct 2026 (Windows
  * workstation, SwiftShader, 1100 x 720, scale 1): tiles p95 50.0, 33.4 and 33.4 ms (cache peak
  * 3.99 MB of 3.84 MB, one tile over); Globe p95 100.0, 116.6 and 100.1 ms; points peak 2,297.
  *
@@ -49,7 +53,7 @@ import { gridGlb } from './gridGlb';
 import { createGlobeLibrary, GLOBE_SITES } from './m10Fixtures';
 import { QUADTREE_TO_LOCAL, writeQuadtreeTileset } from './quadtreeTileset';
 
-const TILES_P95_MS = Number(process.env.QUADRION_PERF_M10_P95_MS ?? 400);
+const TILES_P95_MS = Number(process.env.QUADRION_PERF_M10_P95_MS ?? 720);
 const GLOBE_P95_MS = Number(process.env.QUADRION_PERF_GLOBE_P95_MS ?? 1000);
 /** The Medium tile cache scaled to 1 %: 3.84 MB, about a fifth of the quadtree. */
 const BUDGET_SCALE = 0.01;
