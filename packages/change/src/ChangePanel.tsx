@@ -56,7 +56,7 @@ const KINDS: readonly ChangeKind[] = [
 const STATUSES: readonly ReviewStatus[] = ['open', 'confirmed', 'dismissed'];
 
 const css = `
-.chg-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--bg-1); color: var(--fg-1); font: 400 var(--t-13)/1.4 var(--f-ui); }
+.chg-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow-y: auto; background: var(--bg-1); color: var(--fg-1); font: 400 var(--t-13)/1.4 var(--f-ui); }
 .chg-h { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line); flex: none; }
 .chg-h h2 { margin: 0; font: 600 var(--t-12)/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-2); }
 .chg-h .sub { font: 400 var(--t-11)/1 var(--f-mono); color: var(--fg-3); }
@@ -76,7 +76,8 @@ textarea.chg-input { height: auto; min-height: 48px; padding: 6px 8px; line-heig
 .chg-chips { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 6px 12px; border-bottom: 1px solid var(--line-soft); font: 400 var(--t-11)/1.3 var(--f-mono); color: var(--fg-2); flex: none; }
 .chg-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
 .chg-dot.ghost { background: transparent !important; border: 1.5px solid var(--fg-3); box-sizing: border-box; }
-.chg-list { flex: 1; min-height: 0; overflow-y: auto; }
+/* in a short pane the list keeps room for a row and the whole panel scrolls, never drawing over its neighbours */
+.chg-list { flex: 1 1 0; min-height: 96px; overflow-y: auto; }
 .chg-row { display: grid; grid-template-columns: 10px 84px minmax(0, 1fr) auto; gap: 2px 8px; padding: 7px 12px; border-bottom: 1px solid var(--line-soft); cursor: pointer; align-items: center; }
 .chg-row:hover { background: var(--bg-2); }
 .chg-row[aria-selected='true'] { background: var(--acc-a12, var(--bg-2)); }
