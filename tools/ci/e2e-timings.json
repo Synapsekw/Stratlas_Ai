@@ -66,6 +66,7 @@
   "e2e/overlays.spec.ts": 12,
   "e2e/package.spec.ts": 8,
   "e2e/packages-packs.spec.ts": 3,
+  "e2e/pano-compare.spec.ts": 17,
   "e2e/perf-trace.spec.ts": 1,
   "e2e/perf.spec.ts": 33,
   "e2e/photo-align.spec.ts": 8,
@@ -87,10 +88,12 @@
   "e2e/shell.spec.ts": 6,
   "e2e/sidebar-autofold.spec.ts": 8,
   "e2e/site-crs.spec.ts": 13,
+  "e2e/small-window.spec.ts": 40,
   "e2e/smoke.spec.ts": 4,
   "e2e/soak.spec.ts": 1,
   "e2e/split-resize.spec.ts": 14,
   "e2e/stage-display.spec.ts": 1,
+  "e2e/stage-overlays.spec.ts": 32,
   "e2e/survey-demo.spec.ts": 13,
   "e2e/survey-export.spec.ts": 17,
   "e2e/survey-gaps.spec.ts": 49,
@@ -110,5 +113,6 @@
   "e2e/video-proxy.spec.ts": 1,
   "e2e/volumes-general.spec.ts": 30,
   "e2e/volumetric-build.spec.ts": 15,
+  "e2e/walk-360.spec.ts": 23,
   "e2e/workbench.spec.ts": 45
 }
