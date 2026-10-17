@@ -12,6 +12,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openCleanupFromMenu, writeNoisyProject } from './cleanupHelpers';
 import { expect, test } from './fixtures';
+import { openAgentOff } from './agentPane';
 
 interface Hooks {
   __stratlas: {
@@ -109,7 +110,9 @@ test('every workbench tab scrolls its own body with the mouse wheel', async ({ w
     await closeBench(win, id);
   }
 
-  // the divider moved up as far as it goes: every long bench is taller than its pane
+  // the divider moved up as far as it goes: every long bench is taller than its pane (with the
+  // AI off the agent is one row with no divider until it is opened)
+  await openAgentOff(win);
   const divider = win.getByRole('separator', { name: 'Resize the agent' });
   await divider.focus();
   await win.keyboard.press('Home');
