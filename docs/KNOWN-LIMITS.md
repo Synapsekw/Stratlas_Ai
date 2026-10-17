@@ -338,6 +338,21 @@ Current limits only; each is removed from this list when fixed.
 - The AI step's request and token limits per run are fixed per detail level; a run that reaches them stops with the best result so far and needs a new run for more.
 - Later AI passes reserve generated model views alongside representative source views and rotate source photos within the existing image cap. They do not see every original photo. A one-image limit cannot support visual comparison of source and draft; the request says so. The separate photo and scan consents cover only the selected images shown in that preview.
 
+## Telecom antenna inventory
+
+- Detection needs a monopole or lattice tower axis; rooftop and water-tower sites are not supported yet.
+- Azimuth is given in grid and true north only (project north without a CRS); magnetic north is not available.
+- Only mechanical downtilt is measured; electrical tilt is not.
+- On lattice towers, antennas facing more than 60 degrees away from straight out are listed as other equipment.
+- Small radio units are listed as other equipment without angles, and they or units merged with neighbours can be missed.
+- A dish bolted to a thick member (radius 0.1 m or more) may be missed.
+- The type comes from the size of the unit unless AI labelling is used; AI labelling sets the type label only and never a number.
+- Plumb on narrow faces is less certain than azimuth.
+- Thresholds are tuned on synthetic crowns and one reference site.
+- Photo occlusion is not checked when the best photos are chosen.
+- Point clouds packed as PNG or as kit packs are read whole.
+- The engineering model's antennas are still approximate and separate from this inventory; the engineering model does not read the inventory yet.
+
 ## Point cloud cleanup
 
 - **Point cloud cleanup: COPC only.** The clip box, height range, selections and noise run work on COPC clouds; `png-packed` and kit clouds show a hint. Convert them to COPC first.
