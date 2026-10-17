@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { SceneHandle } from '@aio/engine';
-import type { ProjectManifest } from '@aio/schema';
+import { emptyOrientation, type ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -96,6 +96,26 @@ describe('the photo menu and pins', () => {
     expect(byId('ctx-item-media.direction')?.textContent).toContain('Set direction');
     expect(byId('ctx-item-media.remove')?.textContent).toContain('Remove pin');
     expect(byId('ctx-item-media.place')).toBeNull();
+  });
+
+  it('lists no hand correction on a pinned photo: no Align, Align to or Reset', () => {
+    open(PINNED);
+    workspace.getState().setOrientation({
+      ...emptyOrientation(),
+      photos: { ph: { a: { yawDeg: 10, pitchDeg: 0, rollDeg: 0 } } },
+    });
+    rightClick();
+    expect(byId('photo-menu-open')).not.toBeNull();
+    expect(byId('photo-menu-align')).toBeNull();
+    expect(byId('photo-menu-alignTo')).toBeNull();
+    expect(byId('photo-menu-reset')).toBeNull();
+  });
+
+  it('lists Align on a GPS photo with no pin', () => {
+    open({ pos: [1, 2, 3], q: [0, 0, 0, 1] });
+    rightClick();
+    expect(byId('photo-menu-align')).not.toBeNull();
+    expect(byId('photo-menu-alignTo')).not.toBeNull();
   });
 
   it('lists Place on site on a photo with no place', () => {

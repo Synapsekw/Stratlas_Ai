@@ -375,6 +375,11 @@ export function PhotoMenu() {
     menu.photoIds.length === 1 &&
     picks.length > 1 &&
     picks.some((p) => p.layerId === menu.layerId && p.photoId === menu.photoIds[0]);
+  // picks that all carry a pin have nothing to align (a pin is their hand placement)
+  const picksPinned = picks.every((p) => {
+    const l = project.manifest.layers.find((x) => x.id === p.layerId);
+    return l?.kind === 'photos' && l.items.find((i) => i.id === p.photoId)?.pin !== undefined;
+  });
   if (pickedHere)
     return createPortal(
       <div
@@ -390,21 +395,23 @@ export function PhotoMenu() {
         }}
       >
         <div className="dmenu-h faint">{t('align.photoMenu.picked', { count: picks.length })}</div>
-        <button
-          type="button"
-          role="menuitem"
-          className="dmenu-item primary"
-          data-testid="photo-menu-alignTo"
-          disabled={alignBlocked !== false}
-          title={alignBlocked || undefined}
-          onClick={() => {
-            setMenu(null);
-            setAlignAt({ x: menu.x, y: menu.y, picks: [...picks] });
-          }}
-        >
-          <Icon name="target" size={14} />
-          <span>{t('align.photoMenu.alignTo')}</span>
-        </button>
+        {!picksPinned && (
+          <button
+            type="button"
+            role="menuitem"
+            className="dmenu-item primary"
+            data-testid="photo-menu-alignTo"
+            disabled={alignBlocked !== false}
+            title={alignBlocked || undefined}
+            onClick={() => {
+              setMenu(null);
+              setAlignAt({ x: menu.x, y: menu.y, picks: [...picks] });
+            }}
+          >
+            <Icon name="target" size={14} />
+            <span>{t('align.photoMenu.alignTo')}</span>
+          </button>
+        )}
         <button
           type="button"
           role="menuitem"
@@ -460,6 +467,8 @@ export function PhotoMenu() {
   if (!photo) return null;
   const posed = !!photo.pos && !!photo.q;
   const readOnly = !!pkg;
+  // a pinned photo's pin is its hand placement: the views ignore a correction for it
+  const correctable = !readOnly && photo.pin === undefined;
   // Place on site, Move pin, Set direction, Remove pin: the shared actions, as every menu has them
   const pinItems = readOnly
     ? []
@@ -509,7 +518,7 @@ export function PhotoMenu() {
       }}
     >
       <div className="dmenu-h faint">{photo.id}</div>
-      {!readOnly &&
+      {correctable &&
         item(
           'align',
           'target',
@@ -519,7 +528,7 @@ export function PhotoMenu() {
           },
           { primary: true, disabled: !posed },
         )}
-      {!readOnly &&
+      {correctable &&
         item('alignTo', 'target', t('align.photoMenu.alignTo'), () => {
           setAlignAt({ x: menu.x, y: menu.y, picks: [photoIdsOf(photo.id)] });
         })}
@@ -561,7 +570,7 @@ export function PhotoMenu() {
           photoAlign.getState().setFootprint(!footprint);
         },
       )}
-      {!readOnly &&
+      {correctable &&
         photoCorrection(orientation, set.id, photo.id) &&
         item('reset', 'undo', t('align.photoMenu.reset'), () => {
           void photoAlign.getState().resetSaved(set.id, photo.id);

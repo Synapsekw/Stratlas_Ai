@@ -37,7 +37,11 @@ const manifest = {
       id: 'setA',
       name: 'Set A',
       capture: 'c1',
-      items: [{ id: 'a1', pos: [1, 2, 3] }, { id: 'a2' }],
+      items: [
+        { id: 'a1', pos: [1, 2, 3] },
+        { id: 'a2' },
+        { id: 'a3', pos: [4, 1.6, 6], pin: { ground: [4, 0, 6], eyeM: 1.6 } },
+      ],
     }),
     L({ kind: 'photos', id: 'setB', name: 'Set B', items: [{ id: 'b1' }] }),
     L({
@@ -238,6 +242,12 @@ describe('actions per kind', () => {
     const t: MenuTarget = { kind: 'photos', picks: [{ layerId: 'setA', photoId: 'a1' }] };
     item(t, 'photos.alignTo')?.run('mesh');
     expect(align).toHaveBeenCalledWith({ picks: [{ layerId: 'setA', photoId: 'a1' }] }, 'mesh');
+  });
+
+  it('Align to is not offered on pinned photos only (a pin is their hand placement)', () => {
+    const pick = (photoId: string) => ({ layerId: 'setA', photoId });
+    expect(ids({ kind: 'photos', picks: [pick('a3')] })).not.toContain('photos.alignTo');
+    expect(ids({ kind: 'photos', picks: [pick('a3'), pick('a1')] })).toContain('photos.alignTo');
   });
 
   it('only actions that suit every marked layer are offered on several', () => {

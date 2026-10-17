@@ -110,6 +110,14 @@ const sourceSets = (tg: Extract<MenuTarget, { kind: 'layers' | 'photos' }>): Set
 const photosOnly = (tg: MenuTarget, ctx: ActionCtx) =>
   everyLayer(tg, ctx, (l) => l.kind === 'photos');
 
+/** Picked photos that all carry a pin: their pin is their hand placement, nothing to align. */
+const allPinned = (tg: MenuTarget, ctx: ActionCtx): boolean =>
+  tg.kind === 'photos' &&
+  tg.picks.every((p) => {
+    const l = ctx.manifest.layers.find((x) => x.id === p.layerId);
+    return l?.kind === 'photos' && l.items.find((i) => i.id === p.photoId)?.pin !== undefined;
+  });
+
 const stitchable = (layer: Panoramas, root: string) =>
   layer.items.filter((item) => {
     const k = panoStatus(item, jobForPano(jobs.getState().jobs, root, layer.id, item.id)).kind;
@@ -424,7 +432,7 @@ const actions: readonly Action[] = [
     targets: ['layers', 'photos'],
     multi: true,
     present: 'submenu',
-    appliesTo: (tg, ctx) => photosOnly(tg, ctx),
+    appliesTo: (tg, ctx) => photosOnly(tg, ctx) && !allPinned(tg, ctx),
     disabled: (tg, ctx) => {
       const block = editBlocked(ctx);
       if (block) return block;
