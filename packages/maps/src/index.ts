@@ -71,6 +71,19 @@ export {
   type PhotoMapClick,
   type PhotoMapPin,
 } from './photoPins';
+export {
+  MapMediaMarkers,
+  mapMarkerView,
+  setMapPanoOpenHandler,
+  type MapMediaMarkersOptions,
+} from './mediaMarkers';
+export {
+  MEDIA_PIN_LAYERS,
+  mediaPinData,
+  removeMediaPins,
+  setMediaPins,
+  type MapPin,
+} from './mediaPins';
 // M8 C2: swipe and blend of two dates, the look of change results
 export * from './swipe';
 export * from './changeStyle';
