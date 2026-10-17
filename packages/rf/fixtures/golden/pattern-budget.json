@@ -1,0 +1,1339 @@
+{
+  "format": "aio.rf-golden/1",
+  "description": "Shared golden vectors for the RF antenna pattern, tilt geometry and link budget (spec D11, D13, D15, D16). Run by vitest (packages/rf/src/golden.test.ts) and pytest (python/tests/rf). Both engines must match every expected value within the tolerance.",
+  "tolerance": {
+    "db": 0.01,
+    "deg": 0.001
+  },
+  "units": {
+    "directionGrid": "metres, offset from the antenna to the point in the project CRS: east = grid east, north = grid north, up = vertical",
+    "angles": "degrees",
+    "portPowerDbm": "dBm per port over the whole carrier",
+    "feederLossDb, pathLossDb, attenuationDb, marginDb, perReOffsetDb": "dB, positive is a loss",
+    "antennaGainDbi": "dBi, peak gain of the port (for an AAU, the SSB or broadcast beam)",
+    "rsrpDbm": "dBm per resource element",
+    "carrier.bandwidthMHz": "MHz; carrier.scsKHz is kHz, null for LTE",
+    "pattern cuts": "dB attenuation relative to the peak gain, one value per whole degree 0..359"
+  },
+  "conventions": {
+    "frames": "Grid: project CRS axes. True: east, true north, up. A grid vector turns clockwise by convergenceDeg into the true frame (true bearing = grid bearing + convergence).",
+    "azimuth": "Degrees clockwise from north. trueAzimuthDeg = azimuthGridDeg + convergenceDeg, wrapped to [0, 360). Because directionGrid is also on the grid, the convergence turns both and cancels in the antenna-frame angles; using the true azimuth against a grid direction is the wrong-way error.",
+    "tilt": "Downtilt is positive when the beam points down, mechanical and electrical alike. Mechanical tilt is a rotation of the antenna; electrical tilt shifts the vertical cut. They are never added.",
+    "antennaFrame": "Rotate the unit direction by the true azimuth about the vertical, then by the mechanical downtilt about the antenna's horizontal (right-hand) axis. forward = along the tilted boresight, right = horizontal tilt axis, up = antenna up. antennaAzimuthDeg = atan2(right, forward), (-180, 180], positive clockwise (right). antennaDownElevationDeg = -asin(up), [-90, 90], positive below the boresight plane. 38.901 zenith theta = 90 + antennaDownElevationDeg.",
+    "pattern": {
+      "parametric": "3GPP TR 38.901 Table 7.3-1: A_H = -min(12 (phi/hBeamwidthDeg)^2, amDb); A_V = -min(12 ((antennaDownElevationDeg - eTiltDeg)/vBeamwidthDeg)^2, slavDb); A = -min(-(A_H + A_V), amDb); attenuationDb = -A. phi = antennaAzimuthDeg. amDb is the front-to-back value.",
+      "two-cut": "Summing method: attenuationDb = min(H(antennaAzimuthDeg) + V(antennaDownElevationDeg), capDb). H and V are read by linear interpolation between whole degrees, angles taken modulo 360 (so -0.5 interpolates indices 359 and 0, and -2 reads index 358). horizontalDb index = degrees clockwise from boresight seen from above; verticalDb index = degrees below boresight (0 forward at the horizon, 90 straight down, 270 straight up). The cuts already hold the electrical tilt (tiltDeg is informational) so eTiltDeg is null."
+    },
+    "budget": "rsrpDbm = portPowerDbm - perReOffsetDb - feederLossDb + antennaGainDbi - attenuationDb - pathLossDb - marginDb, with perReOffsetDb = 10 log10(12 N_RB) (N_RB from TS 36.101 Table 5.6-1 for LTE and TS 38.101-1 Table 5.3.2-1 for NR) and marginDb = penetration (outdoor 0, in-car 7, indoor 15, deep-indoor 20) + bodyLossDb + Phi^-1(edgeProbability) * shadowSigmaDb.",
+    "classes": "A value at or above a threshold is in that class: excellent >= excellentDbm, good >= goodDbm, fair >= fairDbm, poor >= poorDbm, otherwise none.",
+    "pathLoss": "pathLossDb is an input here; propagation models have their own tests (Task 5)."
+  },
+  "thresholds": {
+    "excellentDbm": -80,
+    "goodDbm": -95,
+    "fairDbm": -105,
+    "poorDbm": -115
+  },
+  "patterns": {
+    "generic-65x7-fb30": {
+      "kind": "parametric",
+      "hBeamwidthDeg": 65,
+      "vBeamwidthDeg": 7,
+      "amDb": 30,
+      "slavDb": 30
+    },
+    "generic-65x7-fb25": {
+      "kind": "parametric",
+      "hBeamwidthDeg": 65,
+      "vBeamwidthDeg": 7,
+      "amDb": 25,
+      "slavDb": 30
+    },
+    "aau-ssb-65x12": {
+      "kind": "parametric",
+      "hBeamwidthDeg": 65,
+      "vBeamwidthDeg": 12,
+      "amDb": 30,
+      "slavDb": 30
+    },
+    "msi-synthetic-tilt4": {
+      "kind": "two-cut",
+      "tiltDeg": 4,
+      "capDb": 25,
+      "note": "Synthetic MSI-style cuts, not a vendor file. Horizontal is 10 % lossier clockwise (right) of boresight so a mirrored reader fails; vertical holds a 4 deg electrical tilt.",
+      "horizontalDb": [
+        0.0, 0.0, 0.01, 0.03, 0.05, 0.08, 0.11, 0.15, 0.2, 0.25, 0.31, 0.38, 0.45, 0.53, 0.61, 0.7,
+        0.8, 0.9, 1.01, 1.13, 1.25, 1.38, 1.51, 1.65, 1.8, 1.95, 2.11, 2.28, 2.45, 2.63, 2.81, 3.0,
+        3.2, 3.4, 3.61, 3.83, 4.05, 4.28, 4.51, 4.75, 5.0, 5.25, 5.51, 5.78, 6.05, 6.33, 6.61, 6.9,
+        7.2, 7.5, 7.81, 8.13, 8.45, 8.78, 9.11, 9.45, 9.8, 10.15, 10.51, 10.88, 11.25, 11.63, 12.01,
+        12.4, 12.8, 13.2, 13.61, 14.02, 14.45, 14.87, 15.31, 15.75, 16.2, 16.65, 17.11, 17.57,
+        18.05, 18.52, 19.01, 19.5, 20.0, 20.5, 21.01, 21.52, 22.04, 22.57, 23.11, 23.65, 24.19,
+        24.75, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+        25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 24.57, 24.04,
+        23.52, 23.01, 22.5, 21.99, 21.5, 21.01, 20.52, 20.04, 19.57, 19.1, 18.63, 18.18, 17.73,
+        17.28, 16.84, 16.41, 15.98, 15.55, 15.14, 14.72, 14.32, 13.92, 13.52, 13.13, 12.75, 12.37,
+        12.0, 11.63, 11.27, 10.92, 10.57, 10.22, 9.89, 9.55, 9.23, 8.91, 8.59, 8.28, 7.98, 7.68,
+        7.39, 7.1, 6.82, 6.54, 6.27, 6.01, 5.75, 5.5, 5.25, 5.01, 4.77, 4.54, 4.32, 4.1, 3.89, 3.68,
+        3.48, 3.28, 3.09, 2.91, 2.73, 2.56, 2.39, 2.23, 2.07, 1.92, 1.78, 1.64, 1.5, 1.37, 1.25,
+        1.14, 1.03, 0.92, 0.82, 0.73, 0.64, 0.56, 0.48, 0.41, 0.34, 0.28, 0.23, 0.18, 0.14, 0.1,
+        0.07, 0.05, 0.03, 0.01, 0.0
+      ],
+      "verticalDb": [
+        3.92, 2.2, 0.98, 0.24, 0.0, 0.24, 0.98, 2.2, 3.92, 6.12, 8.82, 12.0, 15.67, 19.84, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
+        20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 19.84, 15.67, 12.0, 8.82, 6.12
+      ]
+    }
+  },
+  "vectors": [
+    {
+      "id": "boresight-horizon",
+      "covers": ["boresight", "mech-tilt-0", "etilt-0"],
+      "note": "On boresight at the horizon: no pattern loss.",
+      "input": {
+        "directionGrid": {
+          "east": 0.0,
+          "north": 1000.0,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 100,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 0.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -84.044225,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "boresight-strong",
+      "covers": ["boresight"],
+      "note": "Boresight close in, class excellent.",
+      "input": {
+        "directionGrid": {
+          "east": 601.815023152,
+          "north": 798.635510047,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 37,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 70,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 37.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 0.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -54.044225,
+        "rsrpClass": "excellent"
+      }
+    },
+    {
+      "id": "h-3db-edge",
+      "covers": ["h-3db-edge"],
+      "note": "32.5 deg right of a 65 deg beam: A_H = -3 dB.",
+      "input": {
+        "directionGrid": {
+          "east": 843.391445813,
+          "north": -537.299608347,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 90,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 90.0,
+        "antennaAzimuthDeg": 32.5,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 3.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -92.044225,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "h-3db-edge-left",
+      "covers": ["h-3db-edge"],
+      "note": "32.5 deg left, across north: A_H = -3 dB.",
+      "input": {
+        "directionGrid": {
+          "east": -216.439613938,
+          "north": 976.29600712,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 20,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 20.0,
+        "antennaAzimuthDeg": -32.5,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 3.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -92.044225,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "v-3db-edge",
+      "covers": ["v-3db-edge"],
+      "note": "e-tilt 4, point 7.5 deg down: A_V = -3 dB with a 7 deg beam.",
+      "input": {
+        "directionGrid": {
+          "east": 0.0,
+          "north": 1000.0,
+          "up": -131.652497587
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 4,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": 7.5,
+        "attenuationDb": 3.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -92.044225,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "corner-3db-3db",
+      "covers": ["h-3db-edge", "v-3db-edge"],
+      "note": "Both 3 dB edges: 6 dB.",
+      "input": {
+        "directionGrid": {
+          "east": 537.299608347,
+          "north": 843.391445813,
+          "up": -8.726867791
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 4,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 32.5,
+        "antennaDownElevationDeg": 0.5,
+        "attenuationDb": 6.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -95.044225,
+        "rsrpClass": "fair"
+      }
+    },
+    {
+      "id": "back-lobe-cap",
+      "covers": ["back-lobe"],
+      "note": "Behind at the horizon, e-tilt 6: 25 + 8.8 capped at Am = 25 (front-to-back).",
+      "input": {
+        "directionGrid": {
+          "east": -1000.0,
+          "north": 0.0,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 90,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 6,
+        "pattern": "generic-65x7-fb25",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 95,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 90.0,
+        "antennaAzimuthDeg": 180.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 25.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -104.044225,
+        "rsrpClass": "fair"
+      }
+    },
+    {
+      "id": "back-lobe-mech",
+      "covers": ["back-lobe", "mech-tilt-180"],
+      "note": "Behind with 6 deg mechanical tilt: the rear plane lifts, the point reads 6 deg down; loss capped at 30.",
+      "input": {
+        "directionGrid": {
+          "east": 342.020143326,
+          "north": 939.692620786,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 200,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 6,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 90,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 200.0,
+        "antennaAzimuthDeg": 180.0,
+        "antennaDownElevationDeg": 6.0,
+        "attenuationDb": 30.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -104.044225,
+        "rsrpClass": "fair"
+      }
+    },
+    {
+      "id": "mech-tilt-0",
+      "covers": ["mech-tilt-0"],
+      "note": "Mechanical 6 deg, horizon point on boresight: 6 deg above the beam, 12 (6/7)^2 = 8.816.",
+      "input": {
+        "directionGrid": {
+          "east": -342.020143326,
+          "north": -939.692620786,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 200,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 6,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 120.0,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 200.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": -6.0,
+        "attenuationDb": 8.816327,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -112.860552,
+        "rsrpClass": "poor"
+      }
+    },
+    {
+      "id": "mech-tilt-45",
+      "covers": ["mech-tilt-45"],
+      "note": "Mechanical 6 deg, horizon point 45 deg off: down = -asin(cos45 sin6) = -4.239, az 45.157.",
+      "input": {
+        "directionGrid": {
+          "east": -906.307787037,
+          "north": -422.618261741,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 200,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 6,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 120.0,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 200.0,
+        "antennaAzimuthDeg": 45.157367,
+        "antennaDownElevationDeg": -4.238756,
+        "attenuationDb": 10.191871,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -114.236096,
+        "rsrpClass": "poor"
+      }
+    },
+    {
+      "id": "mech-tilt-90",
+      "covers": ["mech-tilt-90"],
+      "note": "Mechanical 6 deg, horizon point 90 deg off: tilt has no effect, A_V = 0.",
+      "input": {
+        "directionGrid": {
+          "east": -939.692620786,
+          "north": 342.020143326,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 200,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 6,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 100,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 200.0,
+        "antennaAzimuthDeg": 90.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 23.005917,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -107.050142,
+        "rsrpClass": "poor"
+      }
+    },
+    {
+      "id": "etilt-0",
+      "covers": ["etilt-0"],
+      "note": "Electrical 6 deg, horizon point on boresight: same 8.816 as mechanical.",
+      "input": {
+        "directionGrid": {
+          "east": -342.020143326,
+          "north": -939.692620786,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 200,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 6,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 120.0,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 200.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 8.816327,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -112.860552,
+        "rsrpClass": "poor"
+      }
+    },
+    {
+      "id": "etilt-45",
+      "covers": ["etilt-45"],
+      "note": "Electrical 6 deg, 45 deg off: 5.752 + 8.816 = 14.568 (mechanical gives 10.19).",
+      "input": {
+        "directionGrid": {
+          "east": -906.307787037,
+          "north": -422.618261741,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 200,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 6,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 120.0,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 200.0,
+        "antennaAzimuthDeg": 45.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 14.567806,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -118.612031,
+        "rsrpClass": "none"
+      }
+    },
+    {
+      "id": "etilt-90",
+      "covers": ["etilt-90"],
+      "note": "Electrical 6 deg, 90 deg off: 23.006 + 8.816 capped at 30 (mechanical gives 23.006).",
+      "input": {
+        "directionGrid": {
+          "east": -939.692620786,
+          "north": 342.020143326,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 200,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 6,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 100,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 200.0,
+        "antennaAzimuthDeg": 90.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 30.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -114.044225,
+        "rsrpClass": "poor"
+      }
+    },
+    {
+      "id": "mech-tilt-45-on-plane",
+      "covers": ["mech-tilt-45"],
+      "note": "Mechanical 10 deg; a point 45 deg off at atan(tan10 cos45) = 7.107 deg down lies on the beam plane.",
+      "input": {
+        "directionGrid": {
+          "east": 707.106781187,
+          "north": 707.106781187,
+          "up": -124.682003765
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 10,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 120.0,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 44.561451,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 5.639923,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -109.684148,
+        "rsrpClass": "poor"
+      }
+    },
+    {
+      "id": "convergence-1.5",
+      "covers": ["convergence-1.5", "h-3db-edge"],
+      "note": "Grid azimuth 120, convergence 1.5 (true 121.5); point 32.5 deg clockwise on the grid stays at the 3 dB edge.",
+      "input": {
+        "directionGrid": {
+          "east": 461.748613235,
+          "north": -887.010833178,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 120,
+        "convergenceDeg": 1.5,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 121.5,
+        "antennaAzimuthDeg": 32.5,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 3.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -92.044225,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "convergence-1.5-ground",
+      "covers": ["convergence-1.5", "ground"],
+      "note": "Convergence 1.5, mech 6, e-tilt 2, ground point 300 m away, 30 deg right on the grid, 28.5 m below.",
+      "input": {
+        "directionGrid": {
+          "east": -150.0,
+          "north": 259.807621135,
+          "up": -28.5
+        },
+        "azimuthGridDeg": 300,
+        "convergenceDeg": 1.5,
+        "mechanicalDowntiltDeg": 6,
+        "eTiltDeg": 2,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 98,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 301.5,
+        "antennaAzimuthDeg": 29.852096,
+        "antennaDownElevationDeg": 0.225605,
+        "attenuationDb": 3.302126,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -85.346351,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "convergence-minus-1.5",
+      "covers": ["convergence-1.5"],
+      "note": "Convergence -1.5 across north: grid 359, true 357.5.",
+      "input": {
+        "directionGrid": {
+          "east": 156.43446504,
+          "north": 987.688340595,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 359,
+        "convergenceDeg": -1.5,
+        "mechanicalDowntiltDeg": 3,
+        "eTiltDeg": 3,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 100,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 357.5,
+        "antennaAzimuthDeg": 10.013446,
+        "antennaDownElevationDeg": -2.954383,
+        "attenuationDb": 8.967565,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -93.01179,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "ground-typical",
+      "covers": ["ground"],
+      "note": "Typical: 30 m mast, mech 4, e-tilt 2, 500 m, 20 deg right.",
+      "input": {
+        "directionGrid": {
+          "east": 492.403876506,
+          "north": 86.824088833,
+          "up": -28.5
+        },
+        "azimuthGridDeg": 60,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 4,
+        "eTiltDeg": 2,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 92,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 60.0,
+        "antennaAzimuthDeg": 19.966992,
+        "antennaDownElevationDeg": -0.497013,
+        "attenuationDb": 2.659305,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -78.70353,
+        "rsrpClass": "excellent"
+      }
+    },
+    {
+      "id": "nadir",
+      "covers": ["ground"],
+      "note": "Straight below the antenna: 86 deg below the beam, capped at SLAv then Am.",
+      "input": {
+        "directionGrid": {
+          "east": 0.0,
+          "north": 0.0,
+          "up": -28.5
+        },
+        "azimuthGridDeg": 60,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 4,
+        "eTiltDeg": 2,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 60,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 60.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": 86.0,
+        "attenuationDb": 30.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -74.044225,
+        "rsrpClass": "excellent"
+      }
+    },
+    {
+      "id": "two-cut-boresight",
+      "covers": ["two-cut", "boresight"],
+      "note": "Synthetic MSI, point 4 deg down on boresight (its baked tilt): 0 dB.",
+      "input": {
+        "directionGrid": {
+          "east": 0.0,
+          "north": 1000.0,
+          "up": -69.926811944
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": null,
+        "pattern": "msi-synthetic-tilt4",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": 4.0,
+        "attenuationDb": 0.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -89.044225,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "two-cut-right-interp",
+      "covers": ["two-cut"],
+      "note": "MSI, 20.5 deg right (between whole degrees, lossier side), 1.3 deg down.",
+      "input": {
+        "directionGrid": {
+          "east": 350.207381259,
+          "north": 936.672189248,
+          "up": -22.693174584
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": null,
+        "pattern": "msi-synthetic-tilt4",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 20.5,
+        "antennaDownElevationDeg": 1.3,
+        "attenuationDb": 3.149,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -92.193225,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "two-cut-left-interp",
+      "covers": ["two-cut"],
+      "note": "MSI, 20.5 deg left: less loss than the right side.",
+      "input": {
+        "directionGrid": {
+          "east": -350.207381259,
+          "north": 936.672189248,
+          "up": -22.693174584
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": null,
+        "pattern": "msi-synthetic-tilt4",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": -20.5,
+        "antennaDownElevationDeg": 1.3,
+        "attenuationDb": 3.029,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -92.073225,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "two-cut-seam",
+      "covers": ["two-cut"],
+      "note": "MSI, 0.5 deg left: interpolates H(359) and H(0); 2 deg up reads V(358).",
+      "input": {
+        "directionGrid": {
+          "east": -8.726535498,
+          "north": 999.961923064,
+          "up": 34.920769492
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": null,
+        "pattern": "msi-synthetic-tilt4",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 105,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": -0.5,
+        "antennaDownElevationDeg": -2.0,
+        "attenuationDb": 8.82,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -97.864225,
+        "rsrpClass": "fair"
+      }
+    },
+    {
+      "id": "two-cut-mech",
+      "covers": ["two-cut", "mech-tilt-45"],
+      "note": "MSI with 5 deg mechanical tilt, ground point 45 deg right.",
+      "input": {
+        "directionGrid": {
+          "east": 143.394109088,
+          "north": -204.788011072,
+          "up": -28.5
+        },
+        "azimuthGridDeg": 100,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 5,
+        "eTiltDeg": null,
+        "pattern": "msi-synthetic-tilt4",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 95,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 100.0,
+        "antennaAzimuthDeg": 44.707973,
+        "antennaDownElevationDeg": 2.957979,
+        "attenuationDb": 6.519328,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -85.563553,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "two-cut-back-cap",
+      "covers": ["two-cut", "back-lobe"],
+      "note": "MSI behind: capped at 25.",
+      "input": {
+        "directionGrid": {
+          "east": 0.0,
+          "north": -1000.0,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": null,
+        "pattern": "msi-synthetic-tilt4",
+        "portPowerDbm": 43.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 20,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 90,
+        "margins": {
+          "marginPreset": "outdoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 180.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 25.0,
+        "perReOffsetDb": 30.791812,
+        "marginDb": 13.252413,
+        "rsrpDbm": -99.044225,
+        "rsrpClass": "fair"
+      }
+    },
+    {
+      "id": "nr-n78-ssb",
+      "covers": ["nr"],
+      "note": "NR n78 100 MHz at 30 kHz (273 PRB), AAU SSB beam 65x12, in car.",
+      "input": {
+        "directionGrid": {
+          "east": 103.527618041,
+          "north": 386.370330516,
+          "up": -28.5
+        },
+        "azimuthGridDeg": 10,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 2,
+        "eTiltDeg": 6,
+        "pattern": "aau-ssb-65x12",
+        "portPowerDbm": 40.0,
+        "carrier": {
+          "tech": "nr",
+          "bandwidthMHz": 100,
+          "scsKHz": 30
+        },
+        "feederLossDb": 0.0,
+        "antennaGainDbi": 24.0,
+        "pathLossDb": 95,
+        "margins": {
+          "marginPreset": "in-car",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.9,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 10.0,
+        "antennaAzimuthDeg": 4.990631,
+        "antennaDownElevationDeg": 2.083032,
+        "attenuationDb": 1.349293,
+        "perReOffsetDb": 35.153439,
+        "marginDb": 20.252413,
+        "rsrpDbm": -87.755145,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "nr-20-15khz-indoor",
+      "covers": ["nr"],
+      "note": "NR 20 MHz at 15 kHz (106 PRB), indoor, 95 % edge.",
+      "input": {
+        "directionGrid": {
+          "east": 0.0,
+          "north": 1000.0,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 46.0,
+        "carrier": {
+          "tech": "nr",
+          "bandwidthMHz": 20,
+          "scsKHz": 15
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 85,
+        "margins": {
+          "marginPreset": "indoor",
+          "bodyLossDb": 3,
+          "edgeProbability": 0.95,
+          "shadowSigmaDb": 8
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 0.0,
+        "perReOffsetDb": 31.044871,
+        "marginDb": 31.158829,
+        "rsrpDbm": -84.2037,
+        "rsrpClass": "good"
+      }
+    },
+    {
+      "id": "lte10-deep-indoor-p50",
+      "covers": ["lte"],
+      "note": "LTE 10 MHz (50 RB), deep indoor, 50 % edge (no fade margin), sigma 6, no body loss.",
+      "input": {
+        "directionGrid": {
+          "east": 0.0,
+          "north": 1000.0,
+          "up": 0.0
+        },
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.0,
+        "mechanicalDowntiltDeg": 0.0,
+        "eTiltDeg": 0.0,
+        "pattern": "generic-65x7-fb30",
+        "portPowerDbm": 40.0,
+        "carrier": {
+          "tech": "lte",
+          "bandwidthMHz": 10,
+          "scsKHz": null
+        },
+        "feederLossDb": 0.5,
+        "antennaGainDbi": 17.5,
+        "pathLossDb": 115,
+        "margins": {
+          "marginPreset": "deep-indoor",
+          "bodyLossDb": 0,
+          "edgeProbability": 0.5,
+          "shadowSigmaDb": 6
+        }
+      },
+      "expected": {
+        "trueAzimuthDeg": 0.0,
+        "antennaAzimuthDeg": 0.0,
+        "antennaDownElevationDeg": 0.0,
+        "attenuationDb": 0.0,
+        "perReOffsetDb": 27.781513,
+        "marginDb": 20.0,
+        "rsrpDbm": -105.781513,
+        "rsrpClass": "poor"
+      }
+    }
+  ]
+}
