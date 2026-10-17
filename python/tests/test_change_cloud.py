@@ -788,3 +788,85 @@ def test_cloud_change_job_applies_the_date_shift(tmp_path):
         "from": {"eastM": 0.0, "northM": 0.0},
         "to": {"eastM": -2.0, "northM": 0.0},
     }
+
+
+def _regions_step(tmp_path, root, prep):
+    """The regions step alone, on a prepared run with no tiles (no PDAL needed)."""
+    from types import SimpleNamespace
+
+    params = ChangeCloud().validate(
+        {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}}
+    )
+    step = next(s for s in ChangeCloud().plan(params) if s.name == "regions")
+    stage = tmp_path / "stage"
+    stage.mkdir(exist_ok=True)
+    ctx = SimpleNamespace(
+        project=root,
+        outputs=lambda name: prep,
+        stage=lambda rel: stage / rel,
+        log=lambda *a, **k: None,
+        check=lambda: None,
+        job=SimpleNamespace(job_id="j1"),
+    )
+    step.run(ctx)
+    return json.loads((stage / "changeset.json").read_text("utf-8"))
+
+
+def _lined_up_cloud_project(tmp_path):
+    root = _project(
+        tmp_path,
+        [
+            {
+                "kind": "pointcloud",
+                "id": "a",
+                "name": "A",
+                "capture": "c1",
+                "format": "copc",
+                "src": {"path": "a.laz"},
+            },
+            {
+                "kind": "pointcloud",
+                "id": "b",
+                "name": "B",
+                "capture": "c2",
+                "format": "copc",
+                "src": {"path": "b.laz"},
+            },
+        ],
+    )
+    return root
+
+
+def _line_up_c2(root, east):
+    m = json.loads((root / "manifest.json").read_text())
+    m["captures"][1]["lineUp"] = {"eastM": east, "northM": 0.0, "with": "c1", "at": "2026-10-16T00:00:00Z"}
+    (root / "manifest.json").write_text(json.dumps(m))
+
+
+PREP = {
+    "tiles": [],
+    "setId": "c1-c2-cloud",
+    "from": "c1",
+    "to": "c2",
+    "registration": {"ok": True, "shiftM": 0.01},
+}
+
+
+def test_a_line_up_saved_during_the_run_stamps_the_shifts_the_points_were_read_with(tmp_path):
+    # the clouds were read with no shift; the date is lined up while the long run goes on
+    root = _lined_up_cloud_project(tmp_path)
+    _line_up_c2(root, -2.0)
+    prep = {**PREP, "shifts": [[0.0, 0.0], [0.0, 0.0]], "lineUp": [[0.0, 0.0], [0.0, 0.0]]}
+    cs = _regions_step(tmp_path, root, prep)
+    # labelled with the frame it was computed in, so the set reads Out of date
+    assert "lineUp" not in cs
+
+
+def test_a_run_prepared_without_its_shifts_refuses_when_they_changed(tmp_path):
+    root = _lined_up_cloud_project(tmp_path)
+    _line_up_c2(root, -2.0)
+    with pytest.raises(JobError, match="changed since this job started"):
+        _regions_step(tmp_path, root, {**PREP, "shifts": [[0.0, 0.0], [0.0, 0.0]]})
+    # unchanged: stamped with the shifts it was read with
+    cs = _regions_step(tmp_path, root, {**PREP, "shifts": [[0.0, 0.0], [-2.0, 0.0]]})
+    assert cs["lineUp"]["to"] == {"eastM": -2.0, "northM": 0.0}

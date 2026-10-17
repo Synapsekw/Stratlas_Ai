@@ -269,6 +269,28 @@ def test_pose_pairs_use_shifted_positions(tmp_path, frames):
     assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": -2.0, "northM": 0.5}}
 
 
+def test_a_line_up_saved_after_the_pairing_stamps_the_shifts_the_pairs_were_made_with(
+    tmp_path, frames, monkeypatch
+):
+    # the photos were paired with no shift; the date is lined up while the frames are compared
+    shift = {"eastM": -2.0, "northM": 0.5, "with": "c1", "at": "2026-10-16T00:00:00Z"}
+    project = _project(tmp_path, frames)
+    compare = ChangeFrames._compare
+
+    def compare_then_line_up(self, ctx):
+        out = compare(self, ctx)
+        m = json.loads((project / "manifest.json").read_text("utf-8"))
+        m["captures"][1]["lineUp"] = shift
+        (project / "manifest.json").write_text(json.dumps(m), "utf-8")
+        return out
+
+    monkeypatch.setattr(ChangeFrames, "_compare", compare_then_line_up)
+    run_job(ChangeFrames(), project, {"from": "c1", "to": "c2", "minAreaPx": 150})
+    cs = json.loads((project / "change" / "c1-c2-frames.json").read_text("utf-8"))
+    # labelled with the frame the pairs were made in, so the set reads Out of date
+    assert "lineUp" not in cs
+
+
 def test_the_pose_gap_takes_each_layers_local_delta():
     q = [0.0, 0.0, 0.0, 1.0]
     a = {"pos": [0, 30, 0], "q": q}

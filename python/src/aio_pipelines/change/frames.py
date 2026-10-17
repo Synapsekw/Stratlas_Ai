@@ -224,6 +224,18 @@ def _layer_delta(manifest: dict[str, Any], layer_id: str) -> tuple[float, float]
     return local_delta(date_shift(manifest, layer_id))
 
 
+def _line_up_paired(
+    pair: dict[str, Any], manifest: dict[str, Any], frm: str, to: str
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """The line-ups the pairs were made with (stamped by the pair step), so a line-up saved while
+    the frames are compared leaves the set Out of date; the current ones for a pairing from before
+    the stamp."""
+    s = pair.get("lineUp")
+    if s:
+        return (float(s[0][0]), float(s[0][1])), (float(s[1][0]), float(s[1][1]))
+    return capture_shift(manifest, frm), capture_shift(manifest, to)
+
+
 def _ref_key(ref: dict[str, Any]) -> str:
     return f"{ref['layer']}/{ref['photo']}" if "photo" in ref else f"{ref['layer']}@{ref['t']:g}"
 
@@ -339,7 +351,9 @@ class ChangeFrames:
                 rec["poseM"], rec["angleDeg"] = gap
             out.append(rec)
         ctx.log(f"{len(out)} pairs to compare between {frm} and {to}.")
-        return {"from": frm, "to": to, "pairs": out, "skipped": skipped}
+        # the dates' line-ups the pairs were made with: what the change set is stamped with
+        line_up = [list(capture_shift(manifest, frm)), list(capture_shift(manifest, to))]
+        return {"from": frm, "to": to, "pairs": out, "skipped": skipped, "lineUp": line_up}
 
     def _pose_pairs(self, ctx, manifest, layers, captures, frm, to) -> list[dict[str, Any]]:
         max_d = number(ctx.params, "maxPoseM", DEFAULT_MAX_POSE_M) or DEFAULT_MAX_POSE_M
@@ -522,7 +536,7 @@ class ChangeFrames:
             items,
             stats=stats,
             run={"jobId": run, "at": at, "params": {k: v for k, v in ctx.params.items() if k != "pairs"}},
-            line_up=(capture_shift(manifest, frm), capture_shift(manifest, to)),
+            line_up=_line_up_paired(pair, manifest, frm, to),
         )
         dest = ctx.out(f"change/{set_id}.json")
         merged = merge_reviews(cs, read_change_set(dest) if dest.exists() else None)

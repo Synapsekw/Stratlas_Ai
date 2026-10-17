@@ -36,7 +36,7 @@ from typing import Any, ClassVar, Protocol
 
 import numpy as np
 
-from ..captures import capture_shift, date_shift
+from ..captures import Shift, capture_shift, date_shift
 from ..params import known_keys, number, text
 from ..pointcloud import PDAL_MISSING, find_pdal, pdal_env
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, replace_over
@@ -889,6 +889,8 @@ class ChangeCloud:
             files = [_cloud_file(ctx.project, layer) for layer in (a, b)]
             offsets = [height_offset_m(layer) for layer in (a, b)]
             shifts = [list(date_shift(manifest, str(layer.get("id")))) for layer in (a, b)]
+            # the dates' line-ups as the points are read: what the change set is stamped with
+            line_up = [list(capture_shift(manifest, frm)), list(capture_shift(manifest, to))]
             return {
                 "manifest": manifest,
                 "a": a,
@@ -898,6 +900,7 @@ class ChangeCloud:
                 "files": files,
                 "offsets": offsets,
                 "shifts": shifts,
+                "lineUp": line_up,
             }
 
         def sources(ctx: StepContext, prep: dict[str, Any]) -> tuple[PdalSource, PdalSource]:
@@ -953,6 +956,7 @@ class ChangeCloud:
                 "copc": [c["a"].get("format") == "copc", c["b"].get("format") == "copc"],
                 "offsets": c["offsets"],
                 "shifts": c["shifts"],
+                "lineUp": c["lineUp"],
                 "zRange": z_range,
             }
             # registration on a sample at the centre of the overlap, before the long work
@@ -1086,7 +1090,7 @@ class ChangeCloud:
                 stats=stats,
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg,
-                line_up=(capture_shift(manifest, prep["from"]), capture_shift(manifest, prep["to"])),
+                line_up=_line_up_read(prep, manifest, params),
             )
             atomic_write_bytes(ctx.stage("changeset.json"), dump_change_set(cs))
             ctx.log(
@@ -1141,6 +1145,26 @@ class ChangeCloud:
             Step("regions", "Find the change regions", regions, weight=1),
             Step("commit", "Add the layer and the change set", commit, weight=0.5),
         ]
+
+
+INPUTS_CHANGED = "The clouds changed since this job started. Start the job again."
+
+
+def _line_up_read(
+    prep: dict[str, Any], manifest: dict[str, Any], params: dict[str, Any]
+) -> tuple[Shift, Shift]:
+    """The line-ups the points were read with, for the change set: those stamped when the run was
+    prepared, so a line-up saved while it runs leaves the set Out of date. A run prepared before
+    they were stamped is checked instead: its clouds were read with ``prep["shifts"]`` (none
+    when absent), and a date shift that changed since refuses."""
+    stamped = prep.get("lineUp")
+    if stamped:
+        return (float(stamped[0][0]), float(stamped[0][1])), (float(stamped[1][0]), float(stamped[1][1]))
+    read = [tuple(float(x) for x in v) for v in prep.get("shifts") or [(0.0, 0.0), (0.0, 0.0)]]
+    now = [date_shift(manifest, str(params[k])) for k in ("layerFrom", "layerTo")]
+    if any(abs(r[0] - n[0]) > 5e-4 or abs(r[1] - n[1]) > 5e-4 for r, n in zip(read, now, strict=True)):
+        raise JobError(INPUTS_CHANGED)
+    return capture_shift(manifest, prep["from"]), capture_shift(manifest, prep["to"])
 
 
 def _save_tile(path: Path, r: TileResult) -> None:
