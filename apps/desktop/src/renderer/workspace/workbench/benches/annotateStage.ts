@@ -4,8 +4,10 @@
  * bench reads them. The functions the bench calls go to the stage's latest drawing, so they stay
  * the same however often the stage draws again.
  */
-import type { MapDraw } from '@aio/annotate';
-import { useEffect } from 'react';
+import { beginSighting, startSceneTool, type MapDraw, type SceneTool } from '@aio/annotate';
+import { getActiveScene, onActiveScene } from '@aio/engine';
+import { useEffect, useSyncExternalStore } from 'react';
+import { useShell } from '../../../shell';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
@@ -16,6 +18,9 @@ export interface AnnotateStageState {
   showMap: boolean;
   mode: MapDraw['mode'];
   state: MapDraw['state'];
+  /** The 3D annotation tool in use; the stage runs it, whatever tab shows. */
+  tool: SceneTool | null;
+  setTool: (tool: SceneTool | null) => void;
   /** The stage's map drawing, as of its last draw. */
   publish: (draw: MapDraw) => void;
   /** The stage is gone: nothing is drawn. */
@@ -29,6 +34,10 @@ export const annotateStage = createStore<AnnotateStageState>()((set, get) => ({
   showMap: false,
   mode: null,
   state: null,
+  tool: null,
+  setTool: (tool) => {
+    set({ tool });
+  },
   publish: (draw) => {
     current = draw;
     const s = get();
@@ -36,7 +45,7 @@ export const annotateStage = createStore<AnnotateStageState>()((set, get) => ({
   },
   clear: () => {
     current = null;
-    set({ show3d: false, showMap: false, mode: null, state: null });
+    set({ show3d: false, showMap: false, mode: null, state: null, tool: null });
   },
 }));
 
@@ -78,10 +87,31 @@ export function useAnnotateStageBridge(draw: MapDraw, show3d: boolean, showMap: 
   useEffect(() => {
     annotateStage.setState({ show3d, showMap });
   }, [show3d, showMap]);
+  useSceneToolRunner(show3d);
   useEffect(
     () => () => {
       annotateStage.getState().clear();
     },
     [],
   );
+}
+
+/**
+ * Runs the chosen 3D tool on the active scene while annotating in 3D, so it outlives the bench's
+ * tab; leaving Annotate or the 3D view drops it.
+ */
+function useSceneToolRunner(show3d: boolean): void {
+  const annotating = useShell((s) => s.annotating);
+  const tool = useAnnotateStage((s) => s.tool);
+  const scene = useSyncExternalStore(onActiveScene, getActiveScene, getActiveScene);
+  const on = annotating && show3d;
+  useEffect(() => {
+    if (!on && annotateStage.getState().tool) annotateStage.getState().setTool(null);
+  }, [on]);
+  useEffect(() => {
+    if (!on || !scene || !tool) return;
+    return startSceneTool(scene, tool, (s, at) => {
+      beginSighting(s, at);
+    });
+  }, [on, scene, tool]);
 }

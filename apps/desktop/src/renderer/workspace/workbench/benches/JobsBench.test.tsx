@@ -73,6 +73,12 @@ describe('JobsBench', () => {
     expect(host.querySelectorAll('.row[data-kind="tree"]')).toHaveLength(2);
   });
 
+  it('lists a quiet job too', () => {
+    jobs.setState({ jobs: [job('j1', { quiet: true } as Partial<JobRecord>), job('j2')] });
+    render();
+    expect(rows().map((r) => r.dataset.job)).toEqual(['j1', 'j2']);
+  });
+
   it('shows the ring, the steps and the log of each job', () => {
     jobs.setState({
       jobs: [job('j1')],

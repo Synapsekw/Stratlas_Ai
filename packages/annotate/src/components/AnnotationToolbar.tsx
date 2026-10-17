@@ -45,18 +45,26 @@ export function AnnotationToolbar({
   className,
   store,
   picker = true,
+  control,
 }: {
   className?: string;
   /**
-   * Whether the toolbar holds the class and severity picker for its shapes. A host that clips or
-   * contains fixed boxes (the workbench) turns it off and mounts `<SightingPicker>` itself.
+   * Whether the toolbar holds the class and severity picker for its shapes. A host that mounts
+   * `<SightingPicker>` itself (the stage) turns it off.
    */
   picker?: boolean;
+  /**
+   * The chosen tool kept by the host, which then runs it (`startSceneTool`) for as long as it
+   * likes: the toolbar only shows and sets it, so it can unmount without ending the tool.
+   */
+  control?: { tool: SceneTool | null; onTool: (tool: SceneTool | null) => void };
   /** The workspace as the 3D view sees it, for the issue pins (`useIssueOverlay`). */
   store?: StoreApi<Workspace>;
 }) {
   useIssueOverlay(store);
-  const [tool, setTool] = useState<SceneTool | null>(null);
+  const [own, setOwn] = useState<SceneTool | null>(null);
+  const tool = control ? control.tool : own;
+  const setTool = control ? control.onTool : setOwn;
   // An external store: the scene may be published before this component subscribes.
   const scene = useSyncExternalStore(onActiveScene, getActiveScene, getActiveScene);
   const attach = useAnnotateUi((s) => s.attachToSelected);
@@ -64,11 +72,11 @@ export function AnnotationToolbar({
   const readOnly = useAnnotateReadOnly();
 
   useEffect(() => {
-    if (!scene || !tool) return;
+    if (control || !scene || !tool) return;
     return startSceneTool(scene, tool, (s, at) => {
       beginSighting(s, at);
     });
-  }, [scene, tool]);
+  }, [scene, tool, control]);
 
   if (readOnly) return null;
   return (

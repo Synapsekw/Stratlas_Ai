@@ -4,12 +4,11 @@
  * here now. Starting annotating (A, or the island) opens this tab as a live tool tab, and closing
  * the tools closes it again (D13).
  */
-import { AnnotationToolbar, SightingPicker, annotateUi, type MapDraw } from '@aio/annotate';
+import { AnnotationToolbar, annotateUi, type MapDraw } from '@aio/annotate';
 import type { MapDrawMode } from '@aio/maps';
 import { Button, EmptyState, isShortcut, Row, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { isTyping } from '../../../keys';
 import { shell, useShell } from '../../../shell';
 import { primaryScene } from '../../compare';
@@ -117,6 +116,8 @@ export function AnnotateBench() {
   const show3d = useAnnotateStage((s) => s.show3d);
   const showMap = useAnnotateStage((s) => s.showMap);
   const draw = useMapDrawHandle();
+  const tool = useAnnotateStage((s) => s.tool);
+  const setTool = useAnnotateStage((s) => s.setTool);
   if (pkg) {
     return <EmptyState icon="anno" title={t('bench.annotate.readOnly')} />;
   }
@@ -138,7 +139,12 @@ export function AnnotateBench() {
           </div>
           <Section id="model" bench="annotate" title={t('bench.annotate.model')} forceOpen>
             {show3d ? (
-              <AnnotationToolbar className="stage-ann" store={primaryScene} picker={false} />
+              <AnnotationToolbar
+                className="stage-ann"
+                store={primaryScene}
+                picker={false}
+                control={{ tool, onTool: setTool }}
+              />
             ) : (
               <p className="ab-note">{t('bench.annotate.needs3d')}</p>
             )}
@@ -167,10 +173,6 @@ export function AnnotateBench() {
         </div>
       )}
       <Drafts />
-      {/* the sidebar contains fixed boxes and clips them: the picker opens over the window */}
-      {annotating &&
-        show3d &&
-        createPortal(<SightingPicker kinds={['mesh', 'pointcloud']} />, document.body)}
     </div>
   );
 }

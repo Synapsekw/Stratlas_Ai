@@ -587,6 +587,7 @@ export function Stage() {
         <DatesOnScreen kinds={['mesh', 'pointcloud', 'raster', 'vector', 'panoramas']} />
       )}
       <SightingPicker kinds={['map']} />
+      <SightingPicker kinds={['mesh', 'pointcloud']} />
       {!docked && showVideo && (
         <FloatingVideo layerId={activeClip} docked={false} stageRef={stageRef} />
       )}

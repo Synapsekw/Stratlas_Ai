@@ -10,11 +10,30 @@ import { useStageKeys } from '../../stageKeys';
 import { sectionStore } from '../sectionState';
 import { workbench } from '../workbenchStore';
 import { AnnotateBench, useAnnotateFollow } from './AnnotateBench';
-import { annotateStage } from './annotateStage';
+import { annotateStage, useAnnotateStageBridge } from './annotateStage';
+import type * as SceneModule from '../../../../../../../packages/annotate/src/tools/scene';
+import type * as EngineModule from '@aio/engine';
 
 // the 3D view's workspace is the plain one here
 vi.mock('../../compare', async () => ({
   primaryScene: (await import('@aio/workspace')).workspace,
+}));
+
+// a scene to run tools on, and a tool runner that says when it starts and stops
+const scene = {};
+const stopTool = vi.fn();
+const startTool = vi.fn<(...args: unknown[]) => () => void>(() => stopTool);
+vi.mock('@aio/engine', async (importOriginal) => ({
+  ...(await importOriginal<typeof EngineModule>()),
+  getActiveScene: () => scene,
+  onActiveScene: () => () => undefined,
+}));
+// (the same module the toolbar and the stage runner import their tools from)
+vi.mock('../../../../../../../packages/annotate/src/tools/scene', async (importOriginal) => ({
+  ...(await importOriginal<typeof SceneModule>()),
+  startSceneTool: (...args: unknown[]) => startTool(...args),
+  // the pins draw into a real scene
+  installIssueOverlay: () => () => undefined,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -40,7 +59,18 @@ let host: HTMLDivElement;
 let root: Root | undefined;
 
 /** What the sidebar mounts: the follow, and the stage's keys that start it. */
+const draw = {
+  mode: null,
+  state: null,
+  setMode: vi.fn(),
+  finish: vi.fn(),
+  undo: vi.fn(),
+  cancel: vi.fn(),
+  onClick: vi.fn(),
+};
+let views = { show3d: true, showMap: false };
 function Probe({ bench }: { bench: boolean }) {
+  useAnnotateStageBridge(draw, views.show3d, views.showMap);
   useAnnotateFollow();
   useStageKeys(null);
   return bench ? <AnnotateBench /> : null;
@@ -62,7 +92,8 @@ const button = (name: string) =>
 beforeEach(() => {
   localStorage.clear();
   sectionStore.setState({ byBench: {} });
-  annotateStage.setState({ show3d: true, showMap: false, mode: null, state: null });
+  views = { show3d: true, showMap: false };
+  annotateStage.setState({ mode: null, state: null, tool: null });
   shell.getState().setAnnotating(false);
   shell.getState().setRight(false);
   workspace.getState().openProject({ id: 'p', root: '/p', manifest: threeDates });
@@ -113,6 +144,50 @@ describe('A opens Annotate', () => {
   });
 });
 
+describe('the 3D tool outlives the bench', () => {
+  it('stays on when an issue is picked and the sidebar shows Selection', () => {
+    startTool.mockClear();
+    stopTool.mockClear();
+    act(() => {
+      shell.getState().setAnnotating(true);
+    });
+    render();
+    act(() => button('Pin')?.click());
+    expect(startTool).toHaveBeenCalledTimes(1);
+    expect(startTool.mock.calls[0]?.[1]).toBe('point');
+    // picking an issue brings Selection to the front: the bench unmounts
+    act(() => {
+      workspace.getState().upsertIssue(issue('f01', 'draft'));
+      workspace.getState().select({ kind: 'issue', id: 'f01' });
+      workbench.getState().show('selection');
+    });
+    render(false);
+    expect(host.querySelector('[role="group"][aria-label="Annotation tools"]')).toBeNull();
+    expect(stopTool).not.toHaveBeenCalled();
+    expect(annotateStage.getState().tool).toBe('point');
+    // back in Annotate the tool shows as on
+    act(() => {
+      workbench.getState().show('annotate');
+    });
+    render();
+    expect(button('Pin')?.getAttribute('aria-pressed')).toBe('true');
+    expect(stopTool).not.toHaveBeenCalled();
+  });
+
+  it('ends with the annotation tools', () => {
+    act(() => {
+      shell.getState().setAnnotating(true);
+    });
+    render();
+    act(() => button('Pin')?.click());
+    act(() => {
+      shell.getState().setAnnotating(false);
+    });
+    expect(stopTool).toHaveBeenCalled();
+    expect(annotateStage.getState().tool).toBeNull();
+  });
+});
+
 describe('AnnotateBench', () => {
   it('offers to start annotating while the tools are off', () => {
     render();
@@ -138,19 +213,9 @@ describe('AnnotateBench', () => {
   });
 
   it('shows the map tools on the map, and sets the draw mode', () => {
-    const setMode = vi.fn();
     act(() => {
       shell.getState().setAnnotating(true);
-      annotateStage.setState({ show3d: false, showMap: true });
-      annotateStage.getState().publish({
-        mode: null,
-        state: null,
-        setMode,
-        finish: vi.fn(),
-        undo: vi.fn(),
-        cancel: vi.fn(),
-        onClick: vi.fn(),
-      });
+      views = { show3d: false, showMap: true };
     });
     render();
     expect(host.querySelector('[aria-label="3D annotation tools"]')).toBeNull();
@@ -158,7 +223,7 @@ describe('AnnotateBench', () => {
       host.querySelector('[role="toolbar"][aria-label="Map annotation tools"]'),
     ).not.toBeNull();
     act(() => button('Line')?.click());
-    expect(setMode).toHaveBeenCalledWith('line');
+    expect(draw.setMode).toHaveBeenCalledWith('line');
   });
 
   it('lists the drafts and selects the one picked', () => {

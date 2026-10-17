@@ -339,7 +339,7 @@ function FrontBody({ front, road }: { front: TabId; road: boolean }) {
       </>
     );
   }
-  // the other workbenches and tool panels fill their tab in their own tasks
+  // the workbenches and tool panels fill their tab in their own tasks
   return BENCHES.includes(front) ? <BenchHead bench={front} /> : null;
 }
 
@@ -354,6 +354,7 @@ export function RightSidebar() {
   const { tabs, front } = useWorkbenchView();
   useFollow(front.id);
   useBenchFollow();
+  // Video, Annotate and Jobs benches: Annotate opens its tab when the tools start
   useAnnotateFollow();
   const issues = useWorkspace((s) => s.issues.length);
   const piles = useVolumetric((s) => s.piles.length);
