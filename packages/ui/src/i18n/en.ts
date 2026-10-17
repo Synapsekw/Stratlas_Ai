@@ -4702,6 +4702,9 @@ export const en = {
 
   // Island opens the workbench: Display's way to its workbench (D5 "Layers →")
   'island.tile.layers': 'Layers',
+
+  // Batch-H integration: the workbench's heading in the right sidebar (I-R45)
+  'wb.heading': 'Workbench',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

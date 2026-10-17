@@ -302,6 +302,17 @@ describe('RightSidebar', () => {
     expect(linked).toBe(false);
   });
 
+  it('has a workbench heading above the bench, so the agent h3 follows an h2 (I-R45)', () => {
+    render();
+    const h2 = host.querySelector('aside.right h2');
+    expect(h2?.textContent).toBe('Workbench');
+    // it comes before the agent's heading in document order
+    const h3 = host.querySelector('aside.right h3');
+    if (h2 && h3) {
+      expect(h2.compareDocumentPosition(h3) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
   it('still folds with Ctrl+Alt+B', () => {
     const onKey = (e: KeyboardEvent) => {
       if (matchShortcut('global', e) === 'global.rightPanel') shell.getState().toggleRight();

@@ -254,6 +254,7 @@ function lastBody(front: 'hydro') {
 }
 
 export function RightSidebar() {
+  const t = useT();
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const drawerPresent = useDrawer((s) => s.present);
   const focusedWindow = useWorkspace((s) => s.focusedWindow);
@@ -281,6 +282,8 @@ export function RightSidebar() {
       inert={rightCollapsed}
     >
       <RightHeader />
+      {/* the workbench's heading, so the agent's h3 below the bench follows an h2 (I-R45) */}
+      <h2 className="sr-only">{t('wb.heading')}</h2>
       <TabBar
         tabs={tabs}
         front={id}
