@@ -1,5 +1,5 @@
 import { brand } from '@aio/brand';
-import { ariaKeys, formatDate, Icon, shortcutHint, t, useT, type MessageKey } from '@aio/ui';
+import { ariaKeys, formatDate, Icon, shortcutHint, t, Tip, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { AgentToggle } from '../agent/AgentToggle';
 import { shell, useShell } from '../shell';
@@ -53,12 +53,15 @@ export function TitleBar() {
               {c}
             </b>
           ) : (
-            <span key={`${String(i)}-${c}`} className="crumb" title={c}>
-              <span className="crumb-text" dir="auto">
-                {c}
+            // a crumb cut to an ellipsis shows its whole name on hover
+            <Tip key={`${String(i)}-${c}`} content={c} repeatsName>
+              <span className="crumb">
+                <span className="crumb-text" dir="auto">
+                  {c}
+                </span>
+                <span className="sep">/</span>
               </span>
-              <span className="sep">/</span>
-            </span>
+            </Tip>
           ),
         )}
       </nav>

@@ -20,7 +20,7 @@ import {
   type ReviewError,
 } from '@aio/annotate/detections';
 import type { Layer } from '@aio/schema';
-import { formatCount, Icon, shortcutHint, useT, type MessageKey } from '@aio/ui';
+import { Button, formatCount, Icon, shortcutHint, useT, type MessageKey } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { authorName } from '../author';
@@ -522,24 +522,21 @@ export function DetectionsScreen() {
           <i />
           {readOnly ? t('det.save.readOnly') : t(`det.save.${save.state}`)}
         </span>
-        {/* nothing to look at yet: greyed, and the wrapper says why (a disabled button gets no
-            pointer, so it could not show its own tooltip) */}
-        <span title={detectable ? undefined : t('det.ai.nothing')} className="why-wrap">
-          <button
-            type="button"
-            className="btn primary sm"
-            data-testid="det-ai-open"
-            disabled={readOnly || !detectable}
-            onClick={() => {
-              setAiOpen(true);
-            }}
-          >
-            <Icon name="agent" size={14} />
-            {selected.size > 0
-              ? t('det.ai.openSelected', { count: selected.size })
-              : t('det.ai.open')}
-          </button>
-        </span>
+        {/* nothing to look at yet: greyed, with the reason in its tooltip */}
+        <Button
+          variant="primary"
+          icon="agent"
+          data-testid="det-ai-open"
+          disabled={readOnly}
+          {...(!readOnly && !detectable ? { disabledReason: t('det.ai.nothing') } : {})}
+          onClick={() => {
+            setAiOpen(true);
+          }}
+        >
+          {selected.size > 0
+            ? t('det.ai.openSelected', { count: selected.size })
+            : t('det.ai.open')}
+        </Button>
         {project.manifest.type === 'inspection' && (
           <button
             type="button"

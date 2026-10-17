@@ -44,7 +44,10 @@ describe('breadcrumbs', () => {
   it('keep each separator with the crumb before it, so a crumb squeezed away takes its slash', () => {
     const nav = host.querySelector('.crumbs');
     const crumbs = [...(nav?.querySelectorAll(':scope > .crumb') ?? [])];
-    expect(crumbs.map((c) => c.getAttribute('title'))).toEqual(['Demo customer', 'Demo tank farm']);
+    expect(crumbs.map((c) => c.querySelector('.crumb-text')?.textContent)).toEqual([
+      'Demo customer',
+      'Demo tank farm',
+    ]);
     for (const c of crumbs) expect(c.querySelector('.sep')?.textContent).toBe('/');
     expect(nav?.querySelectorAll(':scope > .sep')).toHaveLength(0);
     expect(nav?.lastElementChild?.tagName).toBe('B');

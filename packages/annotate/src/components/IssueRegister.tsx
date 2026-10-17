@@ -140,22 +140,22 @@ function useViewport(ref: React.RefObject<HTMLDivElement | null>) {
  * browses: no checkboxes, bulk actions, undo or save state. Owner: stream S7.
  */
 /**
- * The issue list with its filters. `title` names it in its header row (a screen that shows only the
- * register passes its own title and `actions`, so the screen has one heading and one header row).
+ * The issue list with its filters. `heading` names it in its header row (a screen that shows only the
+ * register passes its own heading and `actions`, so the screen has one heading and one header row).
  */
 export function IssueRegister({
   className,
-  title = 'Issues',
-  titleLevel = 3,
+  heading = 'Issues',
+  headingLevel = 3,
   actions,
 }: {
   className?: string;
-  title?: string;
-  /** The heading level of the title: 2 where the register is a screen's main content. */
-  titleLevel?: 2 | 3;
+  heading?: string;
+  /** The level of the heading: 2 where the register is a screen's main content. */
+  headingLevel?: 2 | 3;
   actions?: ReactNode;
 }) {
-  const Title = titleLevel === 2 ? 'h2' : 'h3';
+  const Title = headingLevel === 2 ? 'h2' : 'h3';
   useUndoHotkeys();
   const issues = useWorkspace((s) => s.issues);
   const selection = useWorkspace((s) => s.selection);
@@ -399,7 +399,7 @@ export function IssueRegister({
     <div className={`ann-panel ${className ?? ''}`} data-testid="issue-register">
       <AnnotateStyles />
       <div className="ann-h">
-        <Title>{title}</Title>
+        <Title>{heading}</Title>
         <span className="sub">
           {shown.length === issues.length ? issues.length : `${shown.length} of ${issues.length}`}
         </span>
@@ -533,7 +533,7 @@ export function IssueRegister({
             </option>
           ))}
         </select>
-        <MineFilter headingLevel={titleLevel === 2 ? 3 : 4} />
+        <MineFilter headingLevel={headingLevel === 2 ? 3 : 4} />
         <select
           className="ann-select"
           aria-label="Sort"

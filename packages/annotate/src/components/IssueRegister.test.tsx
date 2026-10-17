@@ -312,8 +312,8 @@ describe('IssueRegister right-click menu', () => {
     workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(3));
     const ui = mount(
       <IssueRegister
-        title="Issue register"
-        titleLevel={2}
+        heading="Issue register"
+        headingLevel={2}
         actions={
           <button type="button" data-testid="extra">
             Export

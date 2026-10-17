@@ -386,7 +386,9 @@ button.chip-status:hover {
   align-items: center;
   gap: 6px;
   height: 24px;
-  padding: 0 8px;
+  /* 8px with the border: the border is there on both sides so choosing one does not shift it */
+  padding: 0 7px;
+  border: 1px solid transparent;
   border-radius: var(--r-4);
   white-space: nowrap;
   transition:
@@ -402,7 +404,7 @@ button.chip-status:hover {
   color: var(--fg-0);
   font-weight: 600;
   background: var(--bg-3);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
+  border-color: var(--line-strong);
 }
 .conn-opt[data-current='true'] svg {
   color: var(--acc);

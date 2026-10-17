@@ -32,8 +32,8 @@ export function IssuesScreen() {
             {/* one header row: the register's title, count, save state, undo and redo, and Export */}
             <IssueRegister
               className="fill-col"
-              title={t('issues.register')}
-              titleLevel={2}
+              heading={t('issues.register')}
+              headingLevel={2}
               actions={<ExportMenu />}
             />
           </div>

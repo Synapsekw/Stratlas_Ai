@@ -76,12 +76,12 @@ describe('Reports screen', () => {
   });
 
   it('greys the project report export of a project with no data yet, and says why', () => {
-    const exportBtn = [...host.querySelectorAll('button')].find(
-      (b) => b.textContent === 'Export project report PDF',
+    const exportBtn = [...host.querySelectorAll('button')].find((b) =>
+      b.textContent.startsWith('Export project report PDF'),
     );
-    expect(exportBtn?.disabled).toBe(true);
-    expect(exportBtn?.closest('[title]')?.getAttribute('title')).toBe(
-      'Add data to the project first.',
-    );
+    // greyed but focusable, so its reason reaches the tooltip and the screen reader
+    expect(exportBtn?.getAttribute('aria-disabled')).toBe('true');
+    const reason = exportBtn?.getAttribute('aria-describedby') ?? '';
+    expect(document.getElementById(reason)?.textContent).toBe('Add data to the project first.');
   });
 });

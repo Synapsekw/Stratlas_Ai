@@ -72,7 +72,6 @@ export function ExportMenu() {
                 role="menuitem"
                 className="xmenu-item"
                 aria-disabled={reason ? true : undefined}
-                title={reason ?? undefined}
                 onClick={() => {
                   if (reason) return;
                   setOpen(false);

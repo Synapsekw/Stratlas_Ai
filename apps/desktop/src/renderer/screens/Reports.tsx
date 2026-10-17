@@ -9,7 +9,7 @@ import {
   type ReportFile,
   type ReportSectionId,
 } from '@aio/schema';
-import { formatBytes, Icon, SevChip, t } from '@aio/ui';
+import { Button, formatBytes, Icon, SevChip, t } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { FocusZone } from '../FocusZone';
@@ -98,20 +98,18 @@ function ProjectReport(props: {
           {t('reports.text.open')}
         </button>
         {props.allowed ? (
-          // a disabled button takes no pointer: the wrapper carries the reason as its tooltip
-          <span className="why-wrap" title={props.empty ? t('reports.house.noData') : undefined}>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={props.empty}
-              onClick={() => {
-                runExportAction('house-pdf');
-              }}
-            >
-              <Icon name="download" size={14} />
-              {t('reports.house.export')}
-            </button>
-          </span>
+          // nothing to put in it yet: greyed, with the reason in its tooltip
+          <Button
+            variant="primary"
+            size="md"
+            icon="download"
+            {...(props.empty ? { disabledReason: t('reports.house.noData') } : {})}
+            onClick={() => {
+              runExportAction('house-pdf');
+            }}
+          >
+            {t('reports.house.export')}
+          </Button>
         ) : (
           <p className="faint small">This package does not allow PDF exports.</p>
         )}
