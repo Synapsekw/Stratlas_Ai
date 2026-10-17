@@ -15,7 +15,8 @@ export interface StagePref {
   cutaway?: CutawayPref;
   /** What each side of the split stage shows (absent: 3D left, map right). */
   split?: SplitPref;
-  /** Drone telemetry (trace and HUD) while a clip plays or scrubs (absent: on). */
+  /** Drone telemetry (the trace; its readings are the island live line) while a clip plays or
+   * scrubs (absent: on). */
   telemetry?: boolean;
   /** Opacity and on top of each drawing, by plan layer (absent: as the views draw them). */
   drawings?: DrawingDisplay;

@@ -43,7 +43,7 @@ export { VolumetricScene, type VolumetricView } from './scene/controller';
  * above it (the desktop's Volumes workbench has `VolumeDateSwipe`), so a new host must add one.
  */
 export { VolumesPanel, BaseSelect } from './components/VolumesPanel';
-export { VolumetricStage } from './components/VolumetricStage';
+export { VolumeHint, VolumetricStage, useVolumeHint } from './components/VolumetricStage';
 export { ProfileChart } from './components/ProfileChart';
 export { VolumetricStyles } from './components/styles';
 export { f0, f1, sgn } from './components/format';

@@ -397,7 +397,7 @@ export class VideoRig {
     this.handle.requestRender();
   }
 
-  /** Drone telemetry (trace and HUD) on or off, and the HUD words. */
+  /** Drone telemetry (the trace, and its HUD plate unless `hud: false`) on or off, and the words. */
   setDroneTelemetry(o: DroneTelemetryOptions) {
     if (o.labels) this.trace.setLabels(o.labels);
     if (o.hud !== undefined) this.trace.setHud(o.hud);
@@ -939,8 +939,9 @@ export function setFlightPaths(handle: SceneHandle, o: FlightPathOptions): void 
 }
 
 /**
- * Drone telemetry for the UI: the tactical trace and HUD of the active clip, on or off, and the
- * HUD words. Remembered for the scene, so a rig built later starts with it.
+ * Drone telemetry for the UI: the tactical trace of the active clip on or off, its HUD plate
+ * (`hud`, off where the app reads the telemetry elsewhere) and the words. Remembered for the
+ * scene, so a rig built later starts with it.
  */
 export function setDroneTelemetry(handle: SceneHandle, o: DroneTelemetryOptions): void {
   telemetryChoice.set(handle, { ...telemetryChoice.get(handle), ...o });

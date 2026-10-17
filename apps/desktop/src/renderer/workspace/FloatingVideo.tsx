@@ -1,6 +1,6 @@
 import { VideoAnnotator } from '@aio/annotate';
 import { getActiveStage } from '@aio/engine';
-import { Button, Icon, matchShortcut, SplitHandle, useResizableSplit, useT } from '@aio/ui';
+import { Button, Icon, matchShortcut, SplitHandle, Tip, useResizableSplit, useT } from '@aio/ui';
 import { VideoWindow } from '@aio/video';
 import { useWorkspace } from '@aio/workspace';
 import {
@@ -219,20 +219,22 @@ export function FloatingVideo({ layerId, docked, stageRef, onCorners, dock }: Pr
   const rect = stage ? clampVideoRect(want, stage) : want;
 
   // The corners it takes as it rests (not while it is dragged): the corner overlays keep out. The
-  // corners are those of the stage the drawer leaves uncovered, where the overlays stand.
+  // corners are those of the stage the drawer leaves uncovered, where the overlays stand: the
+  // drawer covers the end edge, the physical left right to left.
   const resting = stage ? clampVideoRect(saved ?? defaultVideoRect(stage), stage) : null;
+  const rtl = document.documentElement.dir === 'rtl';
   const corners =
     docked || !stage || !resting
       ? ''
       : cornersOf(
           {
-            left: resting.left,
+            left: rtl ? resting.left - cover : resting.left,
             top: stage.height - resting.bottom - videoHeight(resting.width),
             width: resting.width,
             height: videoHeight(resting.width),
           },
           { width: Math.max(0, stage.width - cover), height: stage.height },
-          document.documentElement.dir === 'rtl',
+          rtl,
         ).join(' ');
   useEffect(() => {
     onCorners?.(corners ? (corners.split(' ') as Corner[]) : []);
@@ -332,7 +334,10 @@ export function FloatingVideo({ layerId, docked, stageRef, onCorners, dock }: Pr
           data-testid="video-header"
         >
           <Icon name="video" size={14} className="muted" />
-          <b>{layer.name}</b>
+          {/* the full name on a tip: the docked header has little room for it */}
+          <Tip content={layer.name}>
+            <b>{layer.name}</b>
+          </Tip>
           <DateBadge layerId={layer.id} />
           <span className="mono">{meta}</span>
           <div className="acts">

@@ -4,9 +4,17 @@ import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
 import { MapView, type MapController, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
 import { Button, Icon, useT } from '@aio/ui';
 import { setDroneTelemetry, setFlightPaths, videoRig } from '@aio/video';
-import { VolumetricStage } from '@aio/volumetric';
+import { useVolumeHint, VolumeHint, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { CloudChangeLegend } from '../change/producers/CloudChangeLegend';
 import { useStageEnvironment } from '../environment/EnvironmentTool';
 import { FocusZone } from '../FocusZone';
@@ -124,7 +132,8 @@ function ScenePane({
       {!cursorHidden && <CursorReadout text={cursor} wide={cursorWide} />}
       {!hidden && <StageComponentBrief engine={engine} />}
       <StageElevationLegend view={view} />
-      <VolumetricStage stage={engine} epoch={epoch} />
+      {/* the "Click a pile" hint takes a corner slot of the stage (I-R51) */}
+      <VolumetricStage stage={engine} epoch={epoch} hint={false} />
       <StageClassLegend view={view} />
       {!hidden && <CleanupHost engine={engine} />}
       <CloudChangeLegend view={view} />
@@ -270,7 +279,16 @@ export interface StageCornersInput {
   video: readonly Corner[];
   /** The stage corner the 3D view's coordinates readout stands in (null: not at a corner). */
   cursor: Corner | null;
+  /** The corners the Map menu chip wants: at the map's side of a split (default: the end). */
+  basemapAt?: readonly Corner[];
+  /**
+   * The open island reaches past the middle of the stage: the top corners are not free, or an
+   * overlay pushed under it would meet the bottom ones.
+   */
+  topTaken?: boolean;
 }
+
+const END: readonly Corner[] = ['tr', 'br'];
 
 /**
  * The stage's corner overlays (D30), each in a corner of its own around the top-centre island:
@@ -287,17 +305,30 @@ export function useStageCorners(o: StageCornersInput): {
   const cutaway = useCutawayStatus(o.engine).shown && o.show3d;
   const basemap = useStageBasemap(o.show3d, o.showMap);
   const dates = useDatesShown() && !o.splitting;
+  const volHint = useVolumeHint() && o.show3d;
   const status = o.roadMeasure || cutaway || notice !== null;
+  const basemapAt = o.basemapAt ?? END;
+  const topTaken = o.topTaken ?? false;
   const slots = useMemo(() => {
     const items: SlotRequest[] = [
       ...o.video.map((c) => ({ id: `video-${c}`, want: [c] })),
+      // the top corners while the open island reaches past the middle
+      ...(topTaken ? (['tl', 'tr'] as const).map((c) => ({ id: `island-${c}`, want: [c] })) : []),
       { id: 'status', want: status ? ['tl', 'bl'] : [] },
-      { id: 'basemap', want: basemap ? ['tr', 'br'] : [] },
+      { id: 'basemap', want: basemap ? basemapAt : [] },
+      // the volumes hint at the foot, the corner away from the readout first (I-R51)
+      { id: 'volHint', want: volHint ? (o.cursor === 'bl' ? ['br', 'bl'] : ['bl', 'br']) : [] },
       { id: 'dates', want: dates ? ['tl', 'bl', 'tr'] : [] },
       { id: 'cursor', want: o.cursor ? [o.cursor] : [] },
     ];
     return assignSlots(items);
-  }, [o.video, o.cursor, status, basemap, dates]);
+  }, [o.video, o.cursor, status, basemap, basemapAt, volHint, dates, topTaken]);
+  // the callouts keep out of the overlays: placed again as the overlays move (they read their
+  // keep-out on a rendered frame)
+  const engine = o.engine;
+  useEffect(() => {
+    engine?.requestRender();
+  }, [engine, slots]);
   const at = (id: string, node: ReactNode) => {
     const corner = slots.get(id);
     if (!corner || corner === 'hidden') return null;
@@ -329,6 +360,7 @@ export function useStageCorners(o: StageCornersInput): {
           </div>,
         )}
         {basemap && at('basemap', <StageBasemapChip view={basemap} />)}
+        {at('volHint', <VolumeHint />)}
         {at('dates', <DatesOnScreen kinds={DATE_KINDS} />)}
       </>
     ),
@@ -336,6 +368,61 @@ export function useStageCorners(o: StageCornersInput): {
 }
 
 /* ----------------------------------------------------------------------- stage */
+
+const START: readonly Corner[] = ['tl', 'bl'];
+
+/** A right-to-left UI (the corners are named by the reading direction). */
+const rtlUi = () => typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
+
+/** Room kept below the open island for a top overlay: a chip and its gap. */
+const TOP_SLOT_ROOM = 48;
+
+/**
+ * Whether the open island (its bottom edge is --isl-open-b on the stage, Island.tsx) reaches so far
+ * down that a top overlay under it would pass the middle of the stage. Also asks the stage to
+ * draw again as the island and its T notice come, go and settle: the callouts read their
+ * keep-out on a rendered frame, so they move off the notice then.
+ */
+function useIslandReach(
+  stageRef: RefObject<HTMLDivElement | null>,
+  engine: EngineStage | null,
+): boolean {
+  const [taken, setTaken] = useState(false);
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const read = () => {
+      const bottom = Number.parseFloat(el.style.getPropertyValue('--isl-open-b')) || 0;
+      setTaken(bottom > 0 && bottom + TOP_SLOT_ROOM > el.clientHeight / 2);
+    };
+    const redraw = () => {
+      engine?.requestRender();
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    // --isl-open-b is written on the stage's style
+    const style = new MutationObserver(() => {
+      read();
+      redraw();
+    });
+    style.observe(el, { attributes: true, attributeFilter: ['style'] });
+    // the T notice mounts under the island, and the island morphs in and out
+    const wrap = el.querySelector(':scope > .island-wrap');
+    const notice = new MutationObserver(redraw);
+    if (wrap) notice.observe(wrap, { childList: true });
+    el.addEventListener('transitionend', redraw);
+    el.addEventListener('animationend', redraw);
+    return () => {
+      ro.disconnect();
+      style.disconnect();
+      notice.disconnect();
+      el.removeEventListener('transitionend', redraw);
+      el.removeEventListener('animationend', redraw);
+    };
+  }, [stageRef, engine]);
+  return taken;
+}
 
 /** Map sightings go on the project's first map layer (or the plain basemap). */
 function mapLayerId(layers: readonly { id: string; kind: string }[]): string {
@@ -470,9 +557,13 @@ export function Stage() {
   const hasPhoto = useRoad((s) => s.rows.some((r) => r.id === selectedIssue && r.photo));
   const closeup = roadMap !== null && closeupOn && hasPhoto && showMap;
   const roadMeasuring = useRoad((s) => Boolean(s.measure.mode));
+  const topTaken = useIslandReach(stageRef, engine);
+  // the Map menu chip stands at the map's side of a split (physical sides: the panes are
+  // left to right)
+  const mapAtStart = splitting && sideMap !== undefined && (sideMap === 'left') !== rtlUi();
   // the 3D view's readout is at the views' bottom end (the panes keep left-to-right geometry),
   // a stage corner unless the split shows the 3D view on the left
-  const rtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
+  const rtl = rtlUi();
   const { cursorHidden, cursorWide, corners } = useStageCorners({
     engine,
     show3d,
@@ -481,6 +572,8 @@ export function Stage() {
     roadMeasure: roadMap !== null && showMap && roadMeasuring,
     video: showVideo && !docked ? videoCorners : NO_CORNERS,
     cursor: show3d && (!splitting || side3d === 'right') ? (rtl ? 'bl' : 'br') : null,
+    basemapAt: mapAtStart ? START : END,
+    topTaken,
   });
   // road keys first: they run before the stage keys below
   useRoadKeys(roadMap !== null);

@@ -1796,6 +1796,9 @@ button.chip-status:hover {
 }
 .stage {
   --dock-w: clamp(320px, 36%, 560px);
+  /* how much of the views the drawer covers: the drawer's cover of the stage's end edge
+     (--drawer-inline, Drawer.tsx) less a video docked beside the views (--vdock-w) */
+  --views-cover: max(0px, var(--drawer-inline, 0px) - var(--vdock-w, 0px));
 }
 /* the views and, docked, the video beside or under them with a divider (VideoDock, D30): the
    split's own grid, from @aio/ui parts/split.css; floating, the views take the whole stage */
@@ -1822,8 +1825,10 @@ button.chip-status:hover {
 .ws.right-off .stage-rp {
   inset-inline-end: calc(max(var(--vdock-w, 0px), var(--caption-inline-end, 0px)) + var(--sp-5));
 }
-/* and the docked video's own buttons stay clear of them */
+/* and the docked video's own buttons stay clear of them, on a header as tall as their band,
+   so the frame starts below them */
 .ws.right-off .stage-body[data-dock='side'] .vwin.docked .vh {
+  block-size: var(--head-h);
   padding-inline: 10px calc(var(--caption-inline-end, 0px) + var(--sp-2));
 }
 .pane {
@@ -2064,15 +2069,15 @@ button.chip-status:hover {
    to left the drawer covers the other edge of the left-to-right panes) */
 html:not([dir='rtl']) .stage-panes:not([data-mode='split']) > .pane-3d .cursor-ro,
 html:not([dir='rtl']) .stage-panes[data-mode='split'] > .pane-3d[data-side='right'] .cursor-ro {
-  inset-inline-end: calc(var(--drawer-inline, 0px) + 80px);
-  max-inline-size: calc((100% - var(--drawer-inline, 0px)) / 2 - 80px - var(--sp-5));
+  inset-inline-end: calc(var(--views-cover) + 80px);
+  max-inline-size: calc((100% - var(--views-cover)) / 2 - 80px - var(--sp-5));
 }
 html:not([dir='rtl']) .stage-panes:not([data-mode='split']) > .pane-3d .cursor-ro.wide,
 html:not([dir='rtl'])
   .stage-panes[data-mode='split']
   > .pane-3d[data-side='right']
   .cursor-ro.wide {
-  max-inline-size: calc(100% - var(--drawer-inline, 0px) - 80px - 2 * var(--sp-5));
+  max-inline-size: calc(100% - var(--views-cover) - 80px - 2 * var(--sp-5));
 }
 /* the right panel's toggle at the stage's top right (D17); the island holds the tools. It stands
    left of a video docked beside the views (--vdock-w, from VideoDock). */
@@ -2110,9 +2115,9 @@ svg.flip {
 /* The stage's corner slots (D30, overlaySlots.ts): one overlay in each, around the top-centre
    island. The top ones start under the island's row and below the open island's bottom edge
    while it is open (--isl-open-b, set by Island.tsx; I-R18); the end ones keep clear of the
-   drawer (--drawer-inline, Drawer.tsx) and of the road's close-up dock. */
+   drawer where it covers the views (--views-cover) and of the road's close-up dock. */
 .stage-slot {
-  --slot-end: max(var(--drawer-inline, 0px), var(--slot-dock, 0px));
+  --slot-end: max(var(--views-cover), var(--slot-dock, 0px));
   position: absolute;
   z-index: var(--z-stage-ui);
   display: flex;
@@ -2124,6 +2129,10 @@ svg.flip {
 }
 .stage-slot > .dates-on {
   flex-wrap: wrap;
+}
+/* the volumes' "Click a pile" hint, placed by its slot (I-R51) */
+.stage-slot > .vol-legend {
+  position: static;
 }
 .stage-slot > * {
   pointer-events: auto;
@@ -2153,11 +2162,22 @@ svg.flip {
   bottom: 40px;
   align-items: flex-start;
 }
-/* left of the engine's compass and above the map's credits */
+/* left of the engine's compass and above the map's credits; its half less that room */
 .stage-slot[data-slot='br'] {
   inset-inline-end: calc(var(--slot-end) + 80px);
   bottom: 40px;
   align-items: flex-end;
+  max-inline-size: calc((100% - var(--slot-end)) / 2 - 80px - var(--sp-2));
+}
+/* right to left the compass and the readout stay at the physical right (the panes keep
+   left-to-right geometry): the start corner keeps their room, the end one does not */
+html[dir='rtl'] .stage-slot[data-slot='bl'] {
+  inset-inline-start: 80px;
+  max-inline-size: calc((100% - var(--slot-end)) / 2 - 80px - var(--sp-2));
+}
+html[dir='rtl'] .stage-slot[data-slot='br'] {
+  inset-inline-end: calc(var(--slot-end) + var(--sp-5));
+  max-inline-size: calc((100% - var(--slot-end)) / 2 - var(--sp-5) - var(--sp-2));
 }
 /* an open Map menu rises over the other overlays */
 .stage-slot:has(.mm-anchor[data-open]) {
@@ -2389,10 +2409,21 @@ svg.flip {
   font-size: var(--t-12);
 }
 
-/* the annotator's tools sit under the clip chip, clear of the telemetry chips */
+/* the annotator's tools sit under the clip chip row (8px down, one 11px chip line with 3px
+   padding), clear of the telemetry chips; the toolbar takes its own height, not the 3px of the
+   app's progress .bar (mission.css), which clipped it to a sliver */
+.ann-video .bar {
+  height: auto;
+  overflow: visible;
+}
 .vframe .ann-video .bar {
-  top: 38px;
+  top: calc(8px + 11px * 1.35 + 6px + var(--sp-3));
   bottom: auto;
+}
+/* it shows while the pointer is over the video or focus is in it, and while annotating: the
+   picture reads clear otherwise */
+.vwin:not(:hover, :focus-within) .ann-video .bar:not(:has([aria-pressed='true'])) {
+  opacity: 0;
 }
 
 /* video window */
@@ -2545,6 +2576,11 @@ svg.flip {
 .vh .mono {
   color: var(--fg-3);
   font-size: 11px;
+  /* the lens gives way before the clip name */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 4;
 }
 .vh .acts {
   margin-inline-start: auto;

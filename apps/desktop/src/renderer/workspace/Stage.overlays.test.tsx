@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { Layer } from '@aio/schema';
+import { volumetric } from '@aio/volumetric';
 import { captureIndex, workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -85,6 +86,7 @@ afterEach(() => {
   root = undefined;
   host.remove();
   compareNotice.getState().clear();
+  volumetric.setState({ status: 'idle' });
   timeline.getState().attach(null, null);
   workspace.getState().closeProject();
 });
@@ -144,6 +146,42 @@ describe('the stage corners', () => {
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-wide')).toBe(true);
     render({ video: ['bl'] });
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-wide')).toBe(false);
+  });
+
+  it('gives the volumes hint a bottom corner of its own, never the readout one', () => {
+    volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+    render({ video: [] });
+    expect(slotOf('vol-hint')).toBe('bl');
+    // the readout keeps to its half: the other bottom corner is taken
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-wide')).toBe(false);
+    render({ video: ['bl'] });
+    expect(slotOf('vol-hint')).toBe('br');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
+    // a pile revealed: no hint
+    act(() => {
+      volumetric.setState({ shown: ['p1'] });
+    });
+    expect(slotOf('vol-hint')).toBeUndefined();
+    // right to left the readout stands at bl: the hint takes br
+    act(() => {
+      volumetric.setState({ shown: [] });
+    });
+    render({ video: [], cursor: 'bl' });
+    expect(slotOf('vol-hint')).toBe('br');
+  });
+
+  it('keeps the top corners free while the open island reaches past the middle', () => {
+    render({ video: [], topTaken: true });
+    expect(slots().map((s) => s.corner)).not.toContain('tl');
+    expect(slots().map((s) => s.corner)).not.toContain('tr');
+    // the dates and the Map menu chip go to the foot, the readout gives way
+    expect(slotOf('dates-on-screen')).toBe('bl');
+    expect(slotOf('scene-map-button')).toBe('br');
+  });
+
+  it('puts the Map menu chip at the map side of a split', () => {
+    render({ show3d: true, showMap: true, splitting: true, basemapAt: ['tl', 'bl'] });
+    expect(slotOf('basemap-button')).toBe('tl');
   });
 
   it('hides the coordinates readout when the video rests in its corner', () => {

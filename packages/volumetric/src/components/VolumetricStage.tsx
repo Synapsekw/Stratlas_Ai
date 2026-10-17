@@ -539,11 +539,37 @@ function ElevationKey() {
 }
 
 /**
+ * Whether the main view's "Click a pile" hint shows: volumes are ready, the photo shows, no pile
+ * is revealed, and no swipe, section or boundary edit is under way.
+ */
+export function useVolumeHint(): boolean {
+  return useVolumetric(
+    (s) =>
+      s.status === 'ready' &&
+      s.surface === 'photo' &&
+      s.selected === null &&
+      s.shown.length === 0 &&
+      !s.swipe &&
+      s.section.mode === 'idle' &&
+      !s.edit,
+  );
+}
+
+/** The "Click a pile" hint, for a host that places it itself (`VolumetricStage hint={false}`). */
+export function VolumeHint() {
+  return (
+    <div className="vol-legend vol-hint overlay-box" data-testid="vol-hint">
+      {t('vol.reveal')}
+    </div>
+  );
+}
+
+/**
  * The legend of a 3D view. `view` is the second view of a comparison: the same keys read only
  * (the ramp and range are set on the main view's legend and hold for both), no hint, and one
- * line when this view could not be coloured.
+ * line when this view could not be coloured. `hint`: false when the host shows the hint itself.
  */
-function Legend({ view }: { view?: { refused: boolean } }) {
+function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boolean }) {
   const chosen = useVolumetric((s) => s.surface);
   const body = useVolumetric((s) => s.body);
   const base = useVolumetric((s) => s.file?.bases.find((b) => b.id === s.base)?.label);
@@ -565,12 +591,8 @@ function Legend({ view }: { view?: { refused: boolean } }) {
           </span>
         </div>
       );
-    if (view) return null;
-    return (
-      <div className="vol-legend vol-hint overlay-box" data-testid="vol-hint">
-        {t('vol.reveal')}
-      </div>
-    );
+    if (view || !hint) return null;
+    return <VolumeHint />;
   }
   return (
     <div
@@ -670,6 +692,7 @@ export function VolumetricStage({
   display = false,
   layerVisible,
   budget,
+  hint = true,
 }: {
   stage: EngineStage | null;
   /**
@@ -683,6 +706,8 @@ export function VolumetricStage({
   layerVisible?: (id: string) => boolean;
   /** Whether a drape texture of that many bytes fits the graphics memory of the views. */
   budget?: (bytes: number) => boolean;
+  /** False: the host shows the "Click a pile" hint itself (`useVolumeHint`, `VolumeHint`). */
+  hint?: boolean;
 }) {
   const ready = useVolumetric((s) => s.status === 'ready');
   const picking = useVolumetric((s) => s.section.mode === 'picking');
@@ -806,7 +831,7 @@ export function VolumetricStage({
     <div className="vol-stage">
       {scene && stage && <Handles scene={scene} stage={stage} />}
       <SwipeDivider />
-      <Legend />
+      <Legend hint={hint} />
       <div className="vol-under">
         <SectionPanel />
         <EditBar />
