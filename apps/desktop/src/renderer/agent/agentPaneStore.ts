@@ -49,13 +49,20 @@ export function createAgentPaneStore(userSized = false): StoreApi<AgentPaneState
     },
     toolStarted: () => {
       const s = get();
-      if (s.userSized || s.mode === 'min') return;
+      if (s.mode === 'min') return;
+      // sized by the person, the agent stays, but not over the live card (its Save and Undo)
+      if (s.userSized) {
+        if (s.mode === 'max') set({ mode: 'normal', folded: 'max' });
+        return;
+      }
       set({ mode: 'min', folded: s.mode });
     },
     toolStopped: () => {
       const s = get();
       if (s.folded === null) return;
-      set({ mode: s.mode === 'min' ? s.folded : s.mode, folded: null });
+      // what the tool changed goes back (a choice the person made since cleared `folded`)
+      const changed = s.mode === 'min' || (s.mode === 'normal' && s.folded === 'max');
+      set({ mode: changed ? s.folded : s.mode, folded: null });
     },
   }));
 }

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
+import { createAgentPaneStore } from '../../agent/agentPaneStore';
 import { beginIssueEdit, clearIssueEditing } from '../../issueCard/state';
 import { shell } from '../../shell';
 import { drawerStore } from './drawerStore';
@@ -14,6 +15,19 @@ afterEach(() => {
 });
 
 describe('one rule for bringing a tool tab forward (D14)', () => {
+  it('an open from the stage gives the bench back from a maximised agent', () => {
+    const wb = createWorkbenchStore(null);
+    const pane = createAgentPaneStore();
+    pane.getState().setMode('max');
+    showBench('display', wb, shell, pane);
+    expect(wb.getState().front).toBe('display');
+    expect(pane.getState().mode).toBe('normal');
+    // a minimised agent stays on its line
+    pane.getState().setMode('min');
+    showBench('measure', wb, shell, pane);
+    expect(pane.getState().mode).toBe('min');
+  });
+
   it('a tool start takes the front, live', () => {
     const wb = createWorkbenchStore(null);
     followTool('measure', {}, wb);

@@ -216,6 +216,21 @@ describe('AgentPane', () => {
     stop();
   });
 
+  it('sized by the person and maximised, a tool start gives the bench back, and its stop the agent', () => {
+    const pane = createAgentPaneStore();
+    const bench = createWorkbenchStore(null);
+    const prefs = createSplitPrefs(null);
+    const stop = startAgentPaneFollow(pane, bench, prefs);
+    prefs.getState().save(CTX_AGENT, { size: 0.45 });
+    pane.getState().setMode('max');
+    // the live card (Save, Undo) is in the bench the maximised agent covers
+    bench.getState().toolStarted('measure');
+    expect(pane.getState().mode).toBe('normal');
+    bench.getState().toolStopped('measure');
+    expect(pane.getState().mode).toBe('max');
+    stop();
+  });
+
   it('the divider moved by the keyboard counts as a manual resize; a double-click resets 60 / 40', () => {
     const stop = startAgentPaneFollow();
     render();

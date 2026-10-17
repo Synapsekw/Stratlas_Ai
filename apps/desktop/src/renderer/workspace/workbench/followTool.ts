@@ -10,10 +10,12 @@
  *   unfolds a folded sidebar. A tool start never does: with the sidebar folded the workbench
  *   drawer slides in for it (D20, I-R39), and M's folded Save is the stage's `UnsavedBar`.
  * - `showBench`: an open the person makes from the stage (the island, its tiles, Annotate) brings
- *   the tab forward and, with the sidebar folded, opens the drawer instead (I-R40, I-R40a).
+ *   the tab forward, out from under a maximised agent, and, with the sidebar folded, opens the
+ *   drawer instead (I-R40, I-R40a).
  * The road tools have no tab: their controls are on the stage (the measure bar, the close-up).
  */
 import type { StoreApi } from 'zustand/vanilla';
+import { agentPane, type AgentPaneState } from '../../agent/agentPaneStore';
 import { shell } from '../../shell';
 import { openDrawer } from './drawerStore';
 import type { TabId } from './tabsModel';
@@ -45,9 +47,12 @@ export function showBench(
   id: TabId,
   bench: StoreApi<WorkbenchState> = workbench,
   sh: Pick<typeof shell, 'getState'> = shell,
+  pane: Pick<StoreApi<AgentPaneState>, 'getState'> = agentPane,
 ): void {
   const b = bench.getState();
   if (b.tabs.some((t) => t.id === id)) b.show(id);
   else b.open(id);
+  // a maximised agent covers the bench: the open would look dead
+  if (pane.getState().mode === 'max') pane.getState().setMode('normal');
   if (sh.getState().rightCollapsed) openDrawer();
 }
