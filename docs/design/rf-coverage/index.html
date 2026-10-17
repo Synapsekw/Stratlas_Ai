@@ -845,6 +845,53 @@ body.rp-off .win-ctl { background: var(--scrim); border-bottom-left-radius: 6px;
 .sb-status { display: flex; align-items: center; gap: 6px; padding: 2px 2px 4px; }
 .sb-status .chip-status { height: 22px; font-size: 11px; padding: 0 7px; }
 .isl-wrap { width: max-content; } .isl-r2 { flex-wrap: nowrap; }
+
+/* ---------- v2: basemaps, label layer, opacity ---------- */
+:root { --sp-1: 2px; --sp-2: 4px; --sp-3: 6px; --sp-4: 8px; --sp-5: 12px; --sp-6: 16px; --sp-7: 24px; --z-stage-ui: 10; --z-pop: 40; }
+.map2d canvas#base, .map2d canvas#labels { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map2d canvas#labels { pointer-events: none; }
+.map2d canvas#heat { transition: opacity 120ms var(--ease); mix-blend-mode: multiply; }
+/* multiply keeps the map texture visible through the tint, so the ramp is lighter than a flat fill would be */
+:root { --rsrp-1: oklch(0.7 0.19 150); --rsrp-2: oklch(0.84 0.18 130); --rsrp-3: oklch(0.92 0.17 98); --rsrp-4: oklch(0.8 0.15 48); }
+.stage-corner { display: flex; align-items: flex-start; gap: var(--sp-3); }
+.bm-chip { position: relative; }
+.bm-btn { display: inline-flex; align-items: center; gap: var(--sp-3); height: 32px; padding-inline: var(--sp-4); border-radius: var(--r-4); font-size: var(--t-12); color: var(--fg-0); white-space: nowrap; }
+.bm-btn:hover { background: var(--bg-3); }
+.bm-btn .faint { font-size: var(--t-11); }
+.bm-menu { position: absolute; inset-block-start: calc(100% + var(--sp-3)); inset-inline-end: 0; z-index: var(--z-pop); min-width: 248px; padding: var(--sp-2); background: var(--bg-1); border: 1px solid var(--line-strong); border-radius: var(--r-4); box-shadow: 0 12px 32px var(--shadow); display: grid; gap: 1px; animation: page-in 200ms var(--ease); }
+.bm-menu button { display: flex; align-items: center; gap: var(--sp-4); height: 30px; padding-inline: var(--sp-4); border-radius: 3px; font-size: var(--t-12); color: var(--fg-1); text-align: start; white-space: nowrap; }
+.bm-menu button:hover { background: var(--bg-3); color: var(--fg-0); }
+.bm-menu button .faint { margin-inline-start: auto; font-size: var(--t-11); }
+.bm-menu .rd { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--fg-3); flex: none; }
+.bm-menu [aria-checked='true'] .rd { box-shadow: inset 0 0 0 1.5px var(--acc), inset 0 0 0 4px var(--bg-1); background: var(--acc); }
+.bm-menu .switch { width: 24px; height: 14px; }
+.bm-menu .switch::after { width: 8px; height: 8px; }
+.bm-menu .switch[aria-checked='true']::after { transform: translateX(10px); }
+.bm-menu hr { border: 0; height: 1px; background: var(--line-soft); margin-block: var(--sp-1); }
+.legend { width: 252px; }
+.legend .sw.clear { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.legend .sw.hid { opacity: 0.25; }
+.lctl { display: grid; grid-template-columns: 62px minmax(0, 1fr) 38px; align-items: center; gap: var(--sp-4); font-size: var(--t-11); color: var(--fg-2); }
+.lctl input[type='range'] { width: 100%; accent-color: var(--acc); }
+.lctl output { text-align: end; font-size: var(--t-11); color: var(--fg-0); }
+.lctl select.input { grid-column: 2 / 4; height: 24px; font-size: var(--t-11); }
+.titem .eye[aria-expanded='true'] { background: var(--bg-3); color: var(--fg-0); }
+.trow-x { display: grid; grid-template-columns: 52px minmax(0, 1fr) 36px; align-items: center; gap: var(--sp-4); padding-block: var(--sp-2) var(--sp-3); padding-inline: 30px var(--sp-4); font-size: var(--t-11); color: var(--fg-3); animation: page-in 200ms var(--ease); }
+.trow-x input { width: 100%; accent-color: var(--acc); }
+.trow-x output { text-align: end; color: var(--fg-1); }
+/* demo chip sits between the legend and the coordinates, clear of the island */
+.demo { top: auto; left: auto; inset-block: auto var(--sp-5); inset-inline-start: 276px; max-width: 400px; }
+
+.trow-x input { min-width: 0; }
+/* compact island tiles leave the top-right corner to the basemap chip */
+.isl-tools.compact .tile { width: 58px; }
+.isl-tools.compact .gtab svg { display: none; }
+.isl-tools.compact .gtab .gl { display: inline !important; }
+
+#covItems { grid-template-columns: minmax(0, 1fr); }
+.trow-x { min-width: 0; }
+/* while the island is open the basemap chip shrinks to its icon */
+.bm-chip.compact .bm-btn > span, .bm-chip.compact .bm-btn > svg:last-child { display: none; }
 </style></head><body>
 <div class="app" id="app">
 
@@ -879,10 +926,7 @@ body.rp-off .win-ctl { background: var(--scrim); border-bottom-left-radius: 6px;
           <div class="titems"><div class="titem"><span class="tn">Orthomosaic, 13 Apr</span><span class="tm">2.1 cm</span></div><div class="titem"><span class="tn">Surface model (DSM)</span><span class="tm">5 cm</span></div></div>
           <div id="covGroup">
             <button class="tgroup-btn" type="button" style="padding-left:20px"><span data-i="chevdown" data-s="12" class="chev"></span><span data-i="signal" data-s="14"></span>Coverage<span class="gcount" id="covCount">2</span></button>
-            <div class="titems" id="covItems">
-              <div class="titem sel" data-layer="rsrp"><span class="lsw"></span><span class="tn">RSRP · n78 · 13 Apr</span><span class="tm">indicative</span><button class="eye" type="button" data-eye="rsrp" aria-label="Hide layer"><span data-i="eye" data-s="14"></span></button></div>
-              <div class="titem" data-layer="bs"><span class="lsw bs"></span><span class="tn">Best server · n78</span><span class="tm">3 sectors</span><button class="eye off" type="button" data-eye="bs" aria-label="Show layer"><span data-i="eye" data-s="14"></span></button></div>
-            </div>
+            <div class="titems" id="covItems" ></div>
           </div>
           <button class="tgroup-btn" type="button" style="padding-left:20px"><span data-i="chevdown" data-s="12" class="chev"></span><span data-i="drawing" data-s="14"></span>Annotations<span class="gcount">3</span></button>
         </div>
@@ -902,24 +946,30 @@ body.rp-off .win-ctl { background: var(--scrim); border-bottom-left-radius: 6px;
     <div class="ws" id="ws">
       <section class="stage" id="stage" data-surface="dark" aria-label="Map">
         <div class="map2d" id="map">
-          <svg class="base" id="baseSvg" preserveAspectRatio="none"></svg>
+          <!-- order matches the app: basemap, coverage raster, then line and label layers on top -->
+          <canvas id="base"></canvas>
           <canvas id="heat"></canvas>
+          <canvas id="labels"></canvas>
           <svg class="over" id="overSvg"></svg>
         </div>
 
         <div class="isl-wrap"><div class="island anim" id="island" aria-label="Stage tools"></div></div>
 
-        <div class="stage-corner"><div class="tgroup-h overlay-box"><button type="button" class="tool" aria-pressed="true" aria-label="Right panel"><span data-i="sidebar" class="flip"></span></button></div></div>
+        <div class="stage-corner"><div class="bm-chip overlay-box" id="bmChip"></div><div class="tgroup-h overlay-box"><button type="button" class="tool" aria-pressed="true" aria-label="Right panel"><span data-i="sidebar" class="flip"></span></button></div></div>
 
         <div class="legend overlay-box" id="legend" aria-label="Coverage legend"></div>
 
-        <div class="scale-bar"><span>1 km</span><i></i></div>
+        <div class="scale-bar"><span>500 m</span><i></i></div>
         <svg class="stage-compass" viewBox="0 0 54 54" aria-hidden="true"><circle cx="27" cy="27" r="25" fill="oklch(0.13 0.01 250 / 0.82)" stroke="oklch(0.36 0.012 250)"/><path d="M27 9l5 18h-10z" fill="var(--acc)"/><path d="M27 45l-5-18h10z" fill="oklch(0.62 0.012 250)"/><text x="27" y="8.5" text-anchor="middle" font-size="7" font-family="IBM Plex Mono" fill="oklch(0.945 0.006 250)">N</text></svg>
         <div class="stage-coords">UTM 40N · WGS84 · true N −0.6°<br>E 391 204  N 2 769 880</div>
 
         <div class="demo" id="demo">
           <button class="dlab" type="button" id="demoToggle"><span data-i="flag" data-s="12"></span>Demo</button>
           <div class="dbtns">
+            <button class="btn sm ghost" data-demo="sat">Coverage on satellite</button>
+            <button class="btn sm ghost" data-demo="streets">Coverage on streets</button>
+            <button class="btn sm ghost" data-demo="opacity30">Opacity low (30%)</button>
+            <button class="btn sm ghost" data-demo="basemenu">Basemap menu open</button>
             <button class="btn sm ghost" data-demo="antennas">1 · Antennas in Measure</button>
             <button class="btn sm ghost" data-demo="rf">2 · RF tab</button>
             <button class="btn sm ghost" data-demo="catalogue">3 · Catalogue</button>
@@ -1051,6 +1101,237 @@ const ic = (n, s = 16, cls = '') => `<svg class="i ${cls}" width="${s}" height="
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const hydrate = (root = document) => $$('[data-i]', root).forEach((el) => { el.outerHTML = ic(el.dataset.i, +(el.dataset.s || 16), el.className); });
 
+/* ---------- procedural basemaps (no tiles: the repo is public and tile licences forbid it) ---------- */
+const BM = { cache: {}, rot: -14 * Math.PI / 180, cell: 50 };
+const rnd = (a, b) => hash(a * 1.37 + 0.11, b * 2.71 + 0.53);
+function bmLayout(W, H, TX, TY) {
+  // deterministic street grid in a frame rotated about the tower; the tower sits in block (0, 0)
+  const C = BM.cell, ext = Math.ceil(Math.hypot(W, H) / C / 2) + 2;
+  const cells = [];
+  for (let i = -ext; i <= ext; i++) for (let j = -ext; j <= ext; j++) {
+    const r = rnd(i, j);
+    const far = Math.hypot(i, j) > 6 + vnoise(i * 0.4, j * 0.4) * 4;
+    let type = r < 0.06 ? 'park' : r < (far ? 0.42 : 0.13) ? 'sand' : r < 0.2 ? 'build' : r < 0.32 ? 'commercial' : r < 0.42 ? 'apart' : 'villas';
+    if (i === 0 && j === 0) type = 'site';
+    if ((i === 2 && j === -1) || (i === -3 && j === 2)) type = 'park';
+    cells.push({ i, j, type });
+  }
+  return { C, ext, cells, major: (k) => ((k % 4) + 4) % 4 === 2 };
+}
+const toScreen = (TX, TY, u, v) => [TX + u * Math.cos(BM.rot) - v * Math.sin(BM.rot), TY + u * Math.sin(BM.rot) + v * Math.cos(BM.rot)];
+function waterPath(W, H) {
+  const p = new Path2D();
+  p.moveTo(W * 0.38, 0); p.bezierCurveTo(W * 0.5, H * 0.1, W * 0.7, H * 0.02, W * 0.82, H * 0.12); p.bezierCurveTo(W * 0.9, H * 0.18, W * 0.95, H * 0.1, W, H * 0.13); p.lineTo(W, 0); p.closePath();
+  return p;
+}
+function inWater(ctx, wp, x, y) { return ctx.isPointInPath(wp, x, y); }
+
+function drawSatellite(W, H, TX, TY) {
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d', { willReadFrequently: true });
+  // sand: multi-octave noise with ripples
+  const img = g.createImageData(W, H), d = img.data;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const n = vnoise(x / 140, y / 140) * 0.5 + vnoise(x / 34 + 9, y / 34) * 0.3 + vnoise(x / 7 + 3, y / 7 + 5) * 0.2;
+    const rip = Math.sin((x * 0.8 + y * 0.35) / 2.4 + vnoise(x / 60, y / 60) * 6) * 0.04;
+    const k = 0.84 + (n - 0.5) * 0.22 + rip + (Math.random() - 0.5) * 0.06;
+    const o = (y * W + x) * 4; d[o] = 204 * k; d[o + 1] = 178 * k; d[o + 2] = 136 * k; d[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const L = bmLayout(W, H, TX, TY), C = L.C, wp = waterPath(W, H);
+  g.save(); g.translate(TX, TY); g.rotate(BM.rot);
+  const E = (L.ext + 1) * C;
+  // blocks
+  const shadows = [], roofs = [], extras = [];
+  for (const c of L.cells) {
+    const u0 = c.i * C - C / 2, v0 = c.j * C - C / 2;
+    const [sx, sy] = toScreen(TX, TY, c.i * C, c.j * C);
+    if (sx < -60 || sy < -60 || sx > W + 60 || sy > H + 60 || inWater(g, wp, sx, sy)) continue;
+    const pad = 4;
+    if (c.type === 'park') {
+      g.fillStyle = 'rgb(92,116,64)'; g.fillRect(u0 + pad, v0 + pad, C - 2 * pad, C - 2 * pad);
+      for (let t = 0; t < 46; t++) { const x = u0 + pad + 2 + rnd(c.i * 31 + t, c.j) * (C - 2 * pad - 4), y = v0 + pad + 2 + rnd(c.j * 17 + t, c.i) * (C - 2 * pad - 4); extras.push(['palm', x, y]); }
+      g.fillStyle = 'rgb(176,160,128)'; g.fillRect(u0 + C / 2 - 1, v0 + pad, 2, C - 2 * pad);
+    } else if (c.type === 'sand') {
+      g.strokeStyle = 'rgba(120,96,64,.25)'; g.lineWidth = 0.7;
+      for (let t = 0; t < 3; t++) { g.beginPath(); g.moveTo(u0 + 4, v0 + 8 + t * 13); g.quadraticCurveTo(u0 + C / 2, v0 + 2 + t * 15 + rnd(c.i, t) * 10, u0 + C - 4, v0 + 10 + t * 12); g.stroke(); }
+    } else if (c.type === 'commercial' || c.type === 'site') {
+      g.fillStyle = 'rgb(112,110,106)'; g.fillRect(u0 + pad, v0 + pad, C - 2 * pad, C - 2 * pad); // parking asphalt
+      const bw = c.type === 'site' ? 26 : 18 + rnd(c.i, c.j) * 12, bh = c.type === 'site' ? 22 : 16 + rnd(c.j, c.i) * 12;
+      const bx = u0 + pad + 3, by = v0 + pad + 3;
+      shadows.push([bx - 3, by - 3, bw, bh]); roofs.push([bx, by, bw, bh, c.type === 'site' ? 'rgb(226,222,214)' : ['rgb(222,218,210)', 'rgb(198,196,192)', 'rgb(214,206,190)'][Math.floor(rnd(c.i + 4, c.j) * 3)], 'flat']);
+      for (let t = 0; t < 22; t++) { const x = u0 + pad + 2 + (t % 11) * 3.6, y = v0 + C - pad - 5 - Math.floor(t / 11) * 5; if (rnd(t, c.i + c.j) > 0.35) extras.push(['car', x, y]); }
+    } else if (c.type === 'build') {
+      // construction plot: concrete slab, dusty ground, a crane shadow
+      g.fillStyle = 'rgb(186,170,140)'; g.fillRect(u0 + pad, v0 + pad, C - 2 * pad, C - 2 * pad);
+      g.fillStyle = 'rgb(168,166,160)'; g.fillRect(u0 + 12, v0 + 10, 24, 20);
+      g.fillStyle = 'rgba(80,78,72,.6)'; for (let t = 0; t < 16; t++) g.fillRect(u0 + 13 + (t % 4) * 6, v0 + 11 + Math.floor(t / 4) * 5, 1, 1);
+      g.strokeStyle = 'rgba(40,34,26,.35)'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(u0 + 30, v0 + 14); g.lineTo(u0 + 8, v0 + 4); g.stroke();
+    } else if (c.type === 'apart') {
+      // mid-rise blocks with long shadows and car parks
+      g.fillStyle = 'rgb(140,136,128)'; g.fillRect(u0 + pad, v0 + pad, C - 2 * pad, C - 2 * pad);
+      for (let a = 0; a < 2; a++) { const bx = u0 + 7 + a * 20, by = v0 + 8; shadows.push([bx - 6, by - 6, 15, 26]); roofs.push([bx, by, 15, 26, ['rgb(218,210,196)', 'rgb(232,228,220)', 'rgb(204,196,184)'][Math.floor(rnd(c.i + a, c.j) * 3)], 'flat']); }
+      for (let t = 0; t < 14; t++) if (rnd(t, c.i * c.j + 2) > 0.3) extras.push(['car', u0 + 7 + t * 2.6, v0 + C - 8]);
+    } else {
+      // villa compounds with walls, roofs, pools and palms; plot count varies by block
+      const na = 2 + Math.floor(rnd(c.i + 11, c.j) * 2.2), nb = 2;
+      for (let a = 0; a < na; a++) for (let b = 0; b < nb; b++) {
+        if (rnd(c.i * 3 + a, c.j * 9 + b) < 0.07) continue;
+        const pw = (C - 2 * pad) / na, ph = (C - 2 * pad) / nb, px = u0 + pad + a * pw, py = v0 + pad + b * ph;
+        g.fillStyle = ['rgb(214,198,168)', 'rgb(196,184,160)', 'rgb(222,210,186)', 'rgb(176,166,148)', 'rgb(206,190,158)'][Math.floor(rnd(px, py) * 5)]; g.fillRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+        g.strokeStyle = 'rgba(240,232,214,.9)'; g.lineWidth = 0.8; g.strokeRect(px + 0.8, py + 0.8, pw - 1.6, ph - 1.6);
+        const k = rnd(c.i * 7 + a, c.j * 5 + b), rw = pw * (0.5 + k * 0.2), rh = ph * (0.46 + rnd(a, b + c.i) * 0.2);
+        const rx = px + (pw - rw) / 2, ry = py + 2.2;
+        shadows.push([rx - 2.2, ry - 2.2, rw, rh]);
+        const pal = ['rgb(236,232,224)', 'rgb(224,212,192)', 'rgb(240,236,230)', 'rgb(214,198,174)', 'rgb(200,182,156)', 'rgb(228,220,206)'];
+        roofs.push([rx, ry, rw, rh, pal[Math.floor(k * pal.length)], k > 0.55 ? 'L' : 'flat']);
+        if (k > 0.45) extras.push(['pool', px + pw * 0.25, py + ph - 4.2, pw * 0.42, 2.2]);
+        if (rnd(b, c.j + a) > 0.4) extras.push(['palm', px + pw - 2.2, py + ph - 2.5]);
+        if (rnd(a + 9, b + c.i) > 0.7) extras.push(['car', px + 1.8, py + ph - 3]);
+      }
+    }
+  }
+  // roads: minor every cell, major every 4th line with medians and lane markings
+  const road = (horiz, k) => {
+    const m = L.major(k), w = m ? 13 : 4, pos = k * C + C / 2;
+    g.fillStyle = m ? 'rgb(66,66,68)' : 'rgb(118,114,106)';
+    if (horiz) g.fillRect(-E, pos - w / 2, 2 * E, w); else g.fillRect(pos - w / 2, -E, w, 2 * E);
+    if (!m) { g.fillStyle = 'rgba(206,184,146,.45)'; if (horiz) { g.fillRect(-E, pos - w / 2, 2 * E, 0.8); g.fillRect(-E, pos + w / 2 - 0.8, 2 * E, 0.8); } else { g.fillRect(pos - w / 2, -E, 0.8, 2 * E); g.fillRect(pos + w / 2 - 0.8, -E, 0.8, 2 * E); } }
+    if (m) {
+      g.fillStyle = 'rgb(118,124,82)'; if (horiz) g.fillRect(-E, pos - 1, 2 * E, 2); else g.fillRect(pos - 1, -E, 2, 2 * E);
+      g.strokeStyle = 'rgba(236,236,230,.7)'; g.lineWidth = 0.6; g.setLineDash([3, 4]);
+      for (const off of [-3.8, 3.8]) { g.beginPath(); if (horiz) { g.moveTo(-E, pos + off); g.lineTo(E, pos + off); } else { g.moveTo(pos + off, -E); g.lineTo(pos + off, E); } g.stroke(); }
+      g.setLineDash([]); g.strokeStyle = 'rgba(220,190,90,.55)';
+      for (const off of [-6, 6]) { g.beginPath(); if (horiz) { g.moveTo(-E, pos + off); g.lineTo(E, pos + off); } else { g.moveTo(pos + off, -E); g.lineTo(pos + off, E); } g.stroke(); }
+      for (let t = -E; t < E; t += 9) extras.push(horiz ? ['palm', t, pos, 1.1] : ['palm', pos, t, 1.1]);
+      for (let t = -E; t < E; t += 6) if (rnd(t, k) > 0.86) extras.push(horiz ? ['car', t, pos + (rnd(k, t) > 0.5 ? 3.5 : -3.5)] : ['car', pos + (rnd(k, t) > 0.5 ? 3.5 : -3.5), t, 0, 0, true]);
+    }
+  };
+  for (let k = -L.ext; k <= L.ext; k++) { road(true, k); road(false, k); }
+  // roundabouts on major crossings
+  for (let a = -L.ext; a <= L.ext; a++) for (let b = -L.ext; b <= L.ext; b++) if (L.major(a) && L.major(b)) {
+    const x = a * C + C / 2, y = b * C + C / 2;
+    g.fillStyle = 'rgb(66,66,68)'; g.beginPath(); g.arc(x, y, 17, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(236,236,230,.6)'; g.lineWidth = 0.6; g.setLineDash([3, 4]); g.beginPath(); g.arc(x, y, 13, 0, 7); g.stroke(); g.setLineDash([]);
+    g.fillStyle = 'rgb(104,126,70)'; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill();
+    g.fillStyle = 'rgb(206,196,170)'; g.beginPath(); g.arc(x, y, 9, 0, 7); g.lineWidth = 1.2; g.strokeStyle = 'rgb(206,196,170)'; g.stroke();
+  }
+  // cast shadows to the north-west, then roofs
+  g.fillStyle = 'rgba(40,34,26,.42)'; for (const [x, y, w, h] of shadows) g.fillRect(x, y, w, h);
+  for (const [x, y, w, h, col, kind] of roofs) {
+    g.fillStyle = col; g.fillRect(x, y, w, h);
+    if (kind === 'L') { g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x + w * 0.55, y, w * 0.45, h * 0.5); }
+    g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x, y, w, 0.8);
+    g.fillStyle = 'rgba(90,86,80,.55)';
+    const n = kind === 'flat' && w > 15 ? 6 : 2;
+    for (let t = 0; t < n; t++) g.fillRect(x + 1.5 + rnd(x, t) * (w - 4), y + 1.5 + rnd(t, y) * (h - 4), w > 15 ? 2 : 1.2, w > 15 ? 1.6 : 1.2);
+  }
+  const carCols = ['rgb(236,236,236)', 'rgb(190,192,196)', 'rgb(40,40,44)', 'rgb(150,30,30)', 'rgb(220,220,214)', 'rgb(70,90,120)'];
+  for (const e of extras) {
+    if (e[0] === 'palm') { const r = e[3] || 1.7; g.fillStyle = 'rgba(30,26,20,.45)'; g.beginPath(); g.arc(e[1] - 1, e[2] - 1, r, 0, 7); g.fill(); g.fillStyle = 'rgb(58,86,40)'; g.beginPath(); g.arc(e[1], e[2], r, 0, 7); g.fill(); g.fillStyle = 'rgba(120,150,80,.6)'; g.beginPath(); g.arc(e[1] + 0.4, e[2] + 0.4, r * 0.45, 0, 7); g.fill(); }
+    if (e[0] === 'pool') { g.fillStyle = 'rgb(84,186,204)'; g.fillRect(e[1], e[2], e[3], e[4]); }
+    if (e[0] === 'car') { g.fillStyle = carCols[Math.floor(rnd(e[1], e[2]) * carCols.length)]; if (e[5]) g.fillRect(e[1] - 0.6, e[2] - 1.1, 1.3, 2.2); else g.fillRect(e[1] - 1.1, e[2] - 0.6, 2.2, 1.3); }
+  }
+  g.restore();
+  // creek with a lighter shore
+  g.save(); g.fillStyle = 'rgb(214,198,162)'; g.translate(0, 5); g.fill(wp); g.restore();
+  const wg = g.createLinearGradient(0, 0, 0, H * 0.16); wg.addColorStop(0, 'rgb(22,62,78)'); wg.addColorStop(1, 'rgb(48,104,112)');
+  g.fillStyle = wg; g.fill(wp);
+  // soften like a resampled photo, then large-scale colour drift, grain and haze
+  const soft = document.createElement('canvas'); soft.width = W; soft.height = H; const sg = soft.getContext('2d');
+  sg.filter = 'blur(0.55px) saturate(0.88)'; sg.drawImage(cv, 0, 0); g.clearRect(0, 0, W, H); g.drawImage(soft, 0, 0);
+  const im2 = g.getImageData(0, 0, W, H), e2 = im2.data;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4, t = (vnoise(x / 180 + 70, y / 180 + 20) - 0.5) * 18, n = (Math.random() - 0.5) * 16;
+    e2[i] += n + t; e2[i + 1] += n + t * 0.7; e2[i + 2] += n + t * 0.3;
+  }
+  g.putImageData(im2, 0, 0);
+  g.fillStyle = 'rgba(220,210,190,.07)'; g.fillRect(0, 0, W, H);
+  return cv;
+}
+
+function drawStreets(W, H, TX, TY) {
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+  g.fillStyle = 'rgb(242,238,230)'; g.fillRect(0, 0, W, H);
+  const L = bmLayout(W, H, TX, TY), C = L.C, wp = waterPath(W, H), E = (L.ext + 1) * C;
+  g.save(); g.translate(TX, TY); g.rotate(BM.rot);
+  for (const c of L.cells) {
+    const u0 = c.i * C - C / 2, v0 = c.j * C - C / 2, pad = 4;
+    if (c.type === 'park') { g.fillStyle = 'rgb(205,230,190)'; g.fillRect(u0 + pad, v0 + pad, C - 2 * pad, C - 2 * pad); }
+    else if (c.type === 'sand') { g.fillStyle = 'rgb(238,228,204)'; g.fillRect(u0 + pad, v0 + pad, C - 2 * pad, C - 2 * pad); }
+    else if (c.type === 'commercial' || c.type === 'site') { g.fillStyle = 'rgb(232,226,218)'; g.fillRect(u0 + pad, v0 + pad, C - 2 * pad, C - 2 * pad); g.fillStyle = 'rgb(217,208,197)'; g.strokeStyle = 'rgb(196,186,174)'; g.lineWidth = 0.7; const bw = c.type === 'site' ? 26 : 18 + rnd(c.i, c.j) * 12, bh = c.type === 'site' ? 22 : 16 + rnd(c.j, c.i) * 12; g.fillRect(u0 + pad + 3, v0 + pad + 3, bw, bh); g.strokeRect(u0 + pad + 3, v0 + pad + 3, bw, bh); }
+    else for (let a = 0; a < 3; a++) for (let b = 0; b < 2; b++) { const pw = (C - 8) / 3, ph = (C - 8) / 2, px = u0 + 4 + a * pw, py = v0 + 4 + b * ph; const k = rnd(c.i * 7 + a, c.j * 5 + b), rw = pw * (0.5 + k * 0.2), rh = ph * (0.46 + rnd(a, b + c.i) * 0.2); g.fillStyle = 'rgb(226,218,206)'; g.fillRect(px + (pw - rw) / 2, py + 2.2, rw, rh); }
+  }
+  const road = (horiz, k, pass) => {
+    const m = L.major(k), pos = k * C + C / 2, w = (m ? 10 : 4.5) + (pass === 0 ? 2 : 0);
+    g.fillStyle = pass === 0 ? (m ? 'rgb(222,186,110)' : 'rgb(214,206,194)') : (m ? 'rgb(252,226,160)' : 'rgb(255,255,255)');
+    if (horiz) g.fillRect(-E, pos - w / 2, 2 * E, w); else g.fillRect(pos - w / 2, -E, w, 2 * E);
+  };
+  for (const pass of [0, 1]) for (let k = -L.ext; k <= L.ext; k++) { road(true, k, pass); road(false, k, pass); }
+  for (let a = -L.ext; a <= L.ext; a++) for (let b = -L.ext; b <= L.ext; b++) if (L.major(a) && L.major(b)) { const x = a * C + C / 2, y = b * C + C / 2; g.fillStyle = 'rgb(222,186,110)'; g.beginPath(); g.arc(x, y, 15, 0, 7); g.fill(); g.fillStyle = 'rgb(252,226,160)'; g.beginPath(); g.arc(x, y, 14, 0, 7); g.fill(); g.fillStyle = 'rgb(205,230,190)'; g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill(); }
+  g.restore();
+  g.fillStyle = 'rgb(170,211,223)'; g.fill(wp);
+  return cv;
+}
+function drawHillshade(W, H) {
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d'); const img = g.createImageData(W, H), d = img.data;
+  const h = (x, y) => vnoise(x / 220 + 50, y / 220) * 40 + vnoise(x / 70, y / 70 + 30) * 8;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const dx = h(x + 1, y) - h(x - 1, y), dy = h(x, y + 1) - h(x, y - 1);
+    const s = Math.max(0, Math.min(1, 0.55 + (-dx - dy) * 0.9));
+    const o = (y * W + x) * 4; d[o] = d[o + 1] = d[o + 2] = s * 255; d[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0); return cv;
+}
+function labelSet(W, H, TX, TY) {
+  const L = bmLayout(W, H, TX, TY), C = L.C, out = [];
+  const majors = ['First Avenue', 'Market Road', 'Canal Road', 'Garden Road'], minors = ['Street 9', 'Street 12', 'Street 14', 'Street 21', 'Street 27', 'Street 33'];
+  let mi = 0, ni = 0;
+  for (let k = -L.ext; k <= L.ext; k++) {
+    const pos = k * C + C / 2;
+    if (L.major(k)) { out.push({ t: majors[mi++ % 4], u: -60 + k * 9, v: pos, rot: 0, big: true }); out.push({ t: majors[mi++ % 4], u: pos, v: 70 - k * 13, rot: 90, big: true }); }
+    else if (((k % 3) + 3) % 3 === 0) { out.push({ t: minors[ni++ % 6], u: 25 + k * 7, v: pos, rot: 0 }); out.push({ t: minors[ni++ % 6], u: pos, v: -25 + k * 5, rot: 90 }); }
+  }
+  for (const c of L.cells) if (c.type === 'park' && rnd(c.i, c.j + 3) > 0.3) out.push({ t: 'Park', u: c.i * C, v: c.j * C, rot: 0, park: true });
+  return out;
+}
+function drawLabels(lc, W, H, TX, TY, mode) {
+  lc.width = W; lc.height = H; const g = lc.getContext('2d'); g.clearRect(0, 0, W, H);
+  if (BM.ortho && mode !== 'streets') {
+    // the orthomosaic outline and name are line and label layers, so they stay above the coverage
+    const [ox, oy, ow, oh] = BM.ortho;
+    g.save(); g.strokeStyle = 'rgba(255,255,255,.6)'; g.setLineDash([4, 3]); g.lineWidth = 1; g.strokeRect(ox + 0.5, oy + 0.5, ow, oh);
+    g.font = '500 10.5px "IBM Plex Mono", monospace'; g.fillStyle = 'rgba(20,20,22,.78)'; g.fillRect(ox + 1, oy + 1, 128, 16); g.fillStyle = 'rgb(240,240,236)'; g.fillText('Orthomosaic · 13 Apr', ox + 6, oy + 12.5); g.restore();
+  }
+  if (mode === 'satellite') return;
+  const dark = mode === 'streets';
+  for (const l of labelSet(W, H, TX, TY)) {
+    const [x, y] = toScreen(TX, TY, l.u, l.v); if (x < 20 || y < 20 || x > W - 20 || y > H - 20) continue;
+    g.save(); g.translate(x, y); g.rotate(BM.rot + (l.rot * Math.PI) / 180);
+    g.font = `${l.big ? 600 : 500} ${l.big ? 11 : 10}px "IBM Plex Sans", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 3; g.strokeStyle = dark ? 'rgba(255,255,255,.95)' : 'rgba(20,20,22,.8)'; g.fillStyle = l.park ? (dark ? 'rgb(64,112,52)' : 'rgb(190,230,170)') : dark ? 'rgb(84,78,70)' : 'rgb(246,244,238)';
+    g.strokeText(l.t, 0, 0); g.fillText(l.t, 0, 0); g.restore();
+  }
+  g.font = 'italic 500 11px "IBM Plex Sans", sans-serif'; g.textAlign = 'center'; g.lineWidth = 3;
+  g.strokeStyle = dark ? 'rgba(255,255,255,.9)' : 'rgba(20,20,22,.7)'; g.fillStyle = dark ? 'rgb(60,110,140)' : 'rgb(190,224,240)';
+  g.strokeText('Creek', W * 0.7, H * 0.06); g.fillText('Creek', W * 0.7, H * 0.06);
+}
+function composeBase(bc, W, H, TX, TY, mode, hill) {
+  bc.width = W; bc.height = H; const g = bc.getContext('2d');
+  const key = `${mode === 'streets' ? 'st' : 'sat'}:${W}x${H}`;
+  if (!BM.cache[key]) BM.cache[key] = mode === 'streets' ? drawStreets(W, H, TX, TY) : drawSatellite(W, H, TX, TY);
+  g.drawImage(BM.cache[key], 0, 0);
+  if (mode !== 'streets') {
+    // drone orthomosaic: a sharper, slightly warmer patch over the site
+    const ow = 300, oh = 240, ox = TX - ow * 0.55, oy = TY - oh * 0.5;
+    g.save(); g.beginPath(); g.rect(ox, oy, ow, oh); g.clip(); g.filter = 'contrast(1.16) saturate(1.18) brightness(1.04)'; g.drawImage(BM.cache[key], 0, 0); g.restore();
+    BM.ortho = [ox, oy, ow, oh];
+  } else BM.ortho = null;
+  if (hill) {
+    const hk = `hill:${W}x${H}`; if (!BM.cache[hk]) BM.cache[hk] = drawHillshade(W, H);
+    g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.4; g.drawImage(BM.cache[hk], 0, 0); g.restore();
+  }
+}
+
 /* ---------- RF coverage mockup: throwaway, vanilla JS ---------- */
 ICONS.tower = '<path d="M10 3.5v14M6.5 17.5L10 6l3.5 11.5M7.6 13.5h4.8" /><path d="M5.5 4.5a6 6 0 000 6M14.5 4.5a6 6 0 010 6" />';
 ICONS.signal = '<path d="M4 16v-2M8 16v-5M12 16V8M16 16V4.5" />';
@@ -1061,15 +1342,15 @@ ICONS.info = '<circle cx="10" cy="10" r="7.5" /><path d="M10 9v5" /><circle cx="
 
 /* bands used by GCC operators today (LTE + NR), from the research brief */
 const BANDS = [
-  { id: 'n78', label: 'n78 · 3500 TDD', f: 3.5, nr: true, scs: 30, bws: [100, 80, 60, 40], who: '' },
-  { id: 'n77', label: 'n77 · 3700 TDD', f: 3.7, nr: true, scs: 30, bws: [100, 60], who: '' },
-  { id: 'n41', label: 'n41 · 2600 TDD', f: 2.6, nr: true, scs: 30, bws: [100, 60, 40], who: '' },
-  { id: 'B7', label: 'B7 · 2600 FDD', f: 2.65, nr: false, bws: [20, 15, 10], who: '' },
-  { id: 'B40', label: 'B40 · 2300 TDD', f: 2.35, nr: false, bws: [20], who: '' },
-  { id: 'B1', label: 'B1 · 2100 FDD', f: 2.14, nr: false, bws: [20, 15, 10], who: '' },
-  { id: 'B3', label: 'B3 · 1800 FDD', f: 1.84, nr: false, bws: [20, 15, 10], who: '' },
-  { id: 'B20', label: 'B20 · 800 FDD', f: 0.806, nr: false, bws: [10], who: '' },
-  { id: 'n28', label: 'n28 · 700 FDD', f: 0.76, nr: true, scs: 15, bws: [20, 10], who: '' },
+  { id: 'n78', label: 'n78 · 3500 TDD', f: 3.5, nr: true, scs: 30, bws: [100, 80, 60, 40] },
+  { id: 'n77', label: 'n77 · 3700 TDD', f: 3.7, nr: true, scs: 30, bws: [100, 60] },
+  { id: 'n41', label: 'n41 · 2600 TDD', f: 2.6, nr: true, scs: 30, bws: [100, 60, 40] },
+  { id: 'B7', label: 'B7 · 2600 FDD', f: 2.65, nr: false, bws: [20, 15, 10] },
+  { id: 'B40', label: 'B40 · 2300 TDD', f: 2.35, nr: false, bws: [20] },
+  { id: 'B1', label: 'B1 · 2100 FDD', f: 2.14, nr: false, bws: [20, 15, 10] },
+  { id: 'B3', label: 'B3 · 1800 FDD', f: 1.84, nr: false, bws: [20, 15, 10] },
+  { id: 'B20', label: 'B20 · 800 FDD', f: 0.806, nr: false, bws: [10] },
+  { id: 'n28', label: 'n28 · 700 FDD', f: 0.76, nr: true, scs: 15, bws: [20, 10] },
 ];
 const NRB_LTE = { 5: 25, 10: 50, 15: 75, 20: 100 };
 const NRB_NR30 = { 40: 106, 60: 162, 80: 217, 100: 273 };
@@ -1104,8 +1385,9 @@ const S = {
     { n: 2, panels: 'Panel A3 + A4', az: 141.2, mt: 3.0, et: 6, radio: 'air3229', ant: null, w: 240, loss: 0 },
     { n: 3, panels: 'Panel A5 + A6', az: 260.4, mt: 2.0, et: 5, radio: 'air3229', ant: null, w: 240, loss: 0 },
   ],
-  h: 32.0, ground: 12, conv: 0.6, ue: 1.5, mpp: 6,
+  h: 32.0, ground: 12, conv: 0.6, ue: 1.5, mpp: 3,
   job: null, tab: 'measure', menu: true, layers: { rsrp: true, bs: false },
+  basemap: 'satellite', hill: false, bmMenu: false, opacity: { rsrp: 0.6, bs: 0.6 }, showFrom: -115, rowOpen: null,
 };
 const MARGINS = { outdoor: { label: 'Outdoor', db: 0 }, car: { label: 'In-car', db: 7 }, indoor: { label: 'Indoor', db: 15 } };
 const RSRP = [
@@ -1178,33 +1460,16 @@ function cssRgb(varName, alpha) {
 }
 function drawBase() {
   W = map.clientWidth; H = map.clientHeight; TX = W * 0.5; TY = H * 0.5;
-  const svg = $('#baseSvg'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  let out = `<defs><pattern id="sand" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".6" fill="oklch(0.3 0.02 70 / .35)"/></pattern></defs>`;
-  out += `<rect width="${W}" height="${H}" fill="oklch(0.19 0.012 70)"/><rect width="${W}" height="${H}" fill="url(#sand)"/>`;
-  // creek / coast along the top-left
-  out += `<path d="M0 ${H * 0.08} C ${W * 0.25} ${H * 0.02}, ${W * 0.35} ${H * 0.2}, ${W * 0.55} ${H * 0.12} S ${W * 0.9} ${H * -0.02}, ${W} 0 L 0 0 Z" fill="oklch(0.25 0.04 235)"/>`;
-  // urban fabric, a rotated street grid with blocks (procedural)
-  out += `<g transform="rotate(-14 ${TX} ${TY})">`;
-  const step = 54;
-  for (let gx = -W; gx < W * 2; gx += step) for (let gy = -H * 0.2; gy < H * 1.6; gy += step) {
-    const r = hash(gx * 0.13, gy * 0.07);
-    if (r < 0.12) { out += `<rect x="${gx + 5}" y="${gy + 5}" width="${step - 10}" height="${step - 10}" rx="3" fill="oklch(0.27 0.05 145 / .55)"/>`; continue; }
-    const n = 1 + Math.floor(r * 4);
-    for (let i = 0; i < n; i++) {
-      const bx = gx + 6 + hash(gx + i, gy) * 22, by = gy + 6 + hash(gy + i, gx) * 22;
-      const bw = 8 + hash(i, gx + gy) * 16, bh = 8 + hash(gy, i + gx) * 16;
-      const tall = hash(gx * 3, gy * 5 + i) > 0.86;
-      out += `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="${tall ? 'oklch(0.42 0.012 250)' : 'oklch(0.31 0.012 70)'}"/>`;
-    }
-  }
-  for (let gx = -W; gx < W * 2; gx += step) out += `<path d="M${gx} ${-H} V ${H * 2}" stroke="oklch(0.36 0.01 70)" stroke-width="2.2"/>`;
-  for (let gy = -H; gy < H * 2; gy += step) out += `<path d="M${-W} ${gy} H ${W * 2}" stroke="oklch(0.36 0.01 70)" stroke-width="2.2"/>`;
-  out += `<path d="M${-W} ${TY + 160} H ${W * 2}" stroke="oklch(0.5 0.02 80)" stroke-width="6"/><path d="M${TX - 230} ${-H} V ${H * 2}" stroke="oklch(0.46 0.02 80)" stroke-width="4.5"/>`;
-  out += `</g>`;
-  out += `<text x="${W * 0.62}" y="${H * 0.045}" font-family="IBM Plex Sans" font-size="11" fill="oklch(0.7 0.03 235)">Creek</text>`;
-  svg.innerHTML = out;
-  const bar = $('.scale-bar i'); if (bar) bar.style.width = `${1000 / S.mpp}px`;
+  composeBase($('#base'), W, H, TX, TY, S.basemap, S.hill);
+  drawLabels($('#labels'), W, H, TX, TY, S.basemap);
+  const bar = $('.scale-bar i'); if (bar) bar.style.width = `${500 / S.mpp}px`;
   canvas.width = Math.ceil(W / CELL); canvas.height = Math.ceil(H / CELL);
+  syncOpacity();
+}
+const curLayer = () => (S.view === 'bs' ? 'bs' : 'rsrp');
+function syncOpacity() {
+  canvas.style.opacity = S.opacity[curLayer()];
+  $$('[data-opacity]').forEach((el) => { const l = el.dataset.opacity; if (document.activeElement !== el) el.value = Math.round(S.opacity[l] * 100); const out = el.parentElement.querySelector('output'); if (out) out.textContent = `${Math.round(S.opacity[l] * 100)}%`; });
 }
 function compute() {
   const cw = canvas.width, ch = canvas.height;
@@ -1230,17 +1495,17 @@ function paint(upto = 1) {
     let c = null, a = 0;
     if (S.view === 'rsrp' && S.layers.rsrp) {
       const k = RSRP.findIndex((r) => b >= r.min);
-      if (k < 4) { c = rs[k]; a = 150; }
+      if (k < 4 && b >= S.showFrom) { c = rs[k]; a = 235; }
     } else if (S.view === 'bs' || (S.view === 'rsrp' && S.layers.bs)) {
       if (b >= -115) {
-        const w = grid.who[idx]; c = sc[w]; a = 125;
+        const w = grid.who[idx]; c = sc[w]; a = 200;
         // pattern per sector, so the map does not rely on colour alone
-        if (w === 1 && (i + j) % 4 === 0) a = 235;
-        if (w === 3 && i % 3 === 0 && j % 3 === 0) a = 245;
+        if (w === 1 && (i + j) % 4 === 0) { a = 255; c = c.map((v, q) => (q < 3 ? v * 0.5 : v)); }
+        if (w === 3 && i % 3 === 0 && j % 3 === 0) { a = 255; c = c.map((v, q) => (q < 3 ? v * 0.5 : v)); }
       }
     } else if (S.view === 'overlap') {
       const n = grid.n6[idx];
-      if (n >= 2) { c = ov[Math.min(n, 3)]; a = n >= 3 ? 190 : 140; if (n >= 3 && (i - j) % 4 === 0) a = 245; }
+      if (n >= 2) { c = ov[Math.min(n, 3)]; a = n >= 3 ? 235 : 200; if (n >= 3 && (i - j) % 4 === 0) { a = 255; c = c.map((v, q) => (q < 3 ? v * 0.6 : v)); } }
     }
     if (c) { d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = a; }
   }
@@ -1276,20 +1541,24 @@ function renderLegend() {
   const L = $('#legend'), b = band();
   if (S.view === 'rsrp') {
     L.innerHTML = `<div class="lh">RSRP<span class="mono">${b.id} · ${S.bw} MHz · ${MARGINS[S.margin].label.toLowerCase()}</span></div>` +
-      RSRP.map((r, k) => `<div class="lr"><span class="sw" style="background:${k === 4 ? 'repeating-linear-gradient(45deg, transparent 0 3px, oklch(0.55 0.02 250 / .7) 3px 4px)' : `var(${r.v})`}"></span><span>${r.label}</span><span class="mono">${r.range} dBm</span></div>`).join('') +
+      RSRP.map((r, k) => `<div class="lr"><span class="sw ${k === 4 ? 'clear' : ''} ${k < 4 && r.min < S.showFrom ? 'hid' : ''}" style="background:${k === 4 ? 'transparent' : `var(${r.v})`}"></span><span class="${(k < 4 && r.min < S.showFrom) || k === 4 ? 'faint' : ''}">${r.label}${k === 4 ? ' · no tint' : r.min < S.showFrom ? ' · hidden' : ''}</span><span class="mono">${r.range} dBm</span></div>`).join('') +
+      opacityRow('rsrp') +
+      `<div class="lctl"><label for="showFrom">Show from</label><select class="input" id="showFrom">${[[-115, 'All bands'], [-105, 'Fair and better'], [-95, 'Good and better']].map(([v, l]) => `<option value="${v}" ${S.showFrom === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` +
       `<div class="note">Indicative: untuned model, ±8 dB typical</div>`;
   } else if (S.view === 'bs') {
     const pat = ['repeating-linear-gradient(45deg, var(--sec-1) 0 2px, oklch(0.72 0.13 250 / .45) 2px 5px)', 'var(--sec-2)', 'radial-gradient(circle, var(--sec-3) 1.2px, oklch(0.72 0.15 320 / .5) 1.4px) 0 0 / 4px 4px'];
     L.innerHTML = `<div class="lh">Best server<span class="mono">${b.id} · ≥ −115 dBm</span></div>` +
       S.sectors.map((s, k) => `<div class="lr"><span class="sw" style="background:${pat[k]}"></span><span>Sector ${s.n} · ${['striped', 'solid', 'dotted'][k]}</span><span class="mono">${s.az.toFixed(0)}°</span></div>`).join('') +
-      `<div class="note">Strongest sector at each point</div>`;
+      opacityRow('bs') + `<div class="note">Strongest sector at each point</div>`;
   } else {
     L.innerHTML = `<div class="lh">Overlap<span class="mono">within 6 dB of best</span></div>` +
       `<div class="lr"><span class="sw" style="background:var(--rsrp-3)"></span><span>2 servers</span><span class="mono">handover zone</span></div>` +
       `<div class="lr"><span class="sw" style="background:repeating-linear-gradient(-45deg, var(--rsrp-4) 0 2px, oklch(0.72 0.16 50 / .6) 2px 4px)"></span><span>3 or more · striped</span><span class="mono">interference risk</span></div>` +
-      `<div class="note">Only where best server ≥ −105 dBm</div>`;
+      opacityRow('rsrp') + `<div class="note">Only where best server ≥ −105 dBm</div>`;
   }
+  syncOpacity();
 }
+const opacityRow = (l) => `<div class="lctl"><label for="op-${l}-legend">Opacity</label><input type="range" id="op-${l}-legend" min="0" max="100" step="1" data-opacity="${l}" value="${Math.round(S.opacity[l] * 100)}"><output class="mono">${Math.round(S.opacity[l] * 100)}%</output></div>`;
 
 /* ---------- workbench ---------- */
 function tabs() {
@@ -1349,7 +1618,7 @@ function rfPage() {
   ${csec('Site', site, false, `${S.h.toFixed(1)} m above ground · estimated`)}${csec('Radio', radio)}${csec('Pointing', point)}${csec('Losses and margins', loss)}${csec('Results', results)}</div>`;
 }
 function renderResultsStats() {
-  const el = $('#rstats'); if (!el) return;
+  const el = $('#rstats'); if (!el || !grid) return;
   const st = stats();
   el.innerHTML = `<div><div class="v">${st.a95.toFixed(1)}<small>km²</small></div><div class="k">≥ −95 dBm in view</div></div><div><div class="v">${st.a105.toFixed(1)}<small>km²</small></div><div class="k">≥ −105 dBm in view</div></div><div><div class="v">${st.reach.toFixed(2)}<small>km</small></div><div class="k">S${S.sel} reach, fair</div></div>`;
 }
@@ -1368,7 +1637,7 @@ function island(mode) {
     I.innerHTML = `<div class="isl-line"><span class="spin-s"></span><span class="t">Coverage</span><span>Tower T-01</span><span class="sep"></span><span class="v">${pct}%</span><span class="mini-bar"><i style="width:${pct}%"></i></span><span class="hint">terrain and buildings</span></div>`;
   } else if (mode === 'tools') {
     const tiles = [['ruler', 'Distance'], ['polygon', 'Area'], ['measure', 'Height'], ['compass', 'Azimuth'], ['section', 'Tilt'], ['target', 'Clearance']];
-    I.innerHTML = `<div class="isl-tools"><div class="isl-r1"><button class="gtab"><span class="gl">View</span></button><button class="gtab" aria-selected="true"><span class="gl">Measure</span></button><button class="gtab"><span class="gl">Mark up</span></button><button class="gtab"><span class="gl">Inspect</span></button><span class="isl-x">All tools <span class="kbd">T</span></span></div>
+    I.innerHTML = `<div class="isl-tools compact"><div class="isl-r1"><button class="gtab"><span class="gl">View</span></button><button class="gtab" aria-selected="true"><span class="gl">Measure</span></button><button class="gtab"><span class="gl">Mark up</span></button><button class="gtab"><span class="gl">Inspect</span></button><span class="isl-x">All tools <span class="kbd">T</span></span></div>
       <div class="isl-r2">${tiles.map(([i, l]) => `<button class="tile">${ic(i === 'compass' ? 'crosshair' : i, 18)}<span class="tl">${l}</span></button>`).join('')}<span class="vsep"></span><button class="tile to-side" data-demo="rf">${ic('signal', 18)}<span class="tl">Coverage</span></button></div></div>`;
   } else {
     I.innerHTML = `<div class="isl-line ready"><span class="ib"><span class="dsw" style="background:var(--date-2)"></span>13 Apr<span class="mode">2026</span></span></div>`;
@@ -1424,11 +1693,29 @@ $('#wbBody').addEventListener('change', (e) => {
   const changed = [];
   S.sectors.forEach((s) => { if (!byId(s.radio).bands.includes(S.band)) { const old = byId(s.radio); const nr = CAT.find((c) => c.kind !== 'ant' && c.bands.includes(S.band)); s.radio = nr.id; s.w = nr.total ? nr.w : Math.min(40, nr.w); s.ant = nr.kind === 'aau' ? null : (CAT.find((c) => c.kind === 'ant' && c.vendor !== 'Generic' && c.bands.includes(S.band)) || byId('p3gpp')).id; s.loss = nr.kind === 'aau' ? 0 : 0.5; const a = antennaOf(s); s.et = Math.max(a.et[0], Math.min(a.et[1], s.et)); changed.push([old, nr]); } });
   S.note = changed.length ? `${changed[0][0].vendor} ${changed[0][0].name} does not support ${S.band}, so all sectors now use ${changed[0][1].vendor} ${changed[0][1].name}. Change it if the site has a different radio.` : null;
-  $('#covItems .titem[data-layer="rsrp"] .tn').textContent = `RSRP · ${S.band} · 13 Apr`; $('#covItems .titem[data-layer="bs"] .tn').textContent = `Best server · ${S.band}`;
+  renderTreeRows();
   renderBody(); render();
 });
+document.addEventListener('input', (e) => {
+  const l = e.target.dataset.opacity; if (!l) return;
+  S.opacity[l] = +e.target.value / 100; syncOpacity();
+});
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'showFrom') { S.showFrom = +e.target.value; paint(); renderLegend(); }
+});
+function renderBasemapChip() {
+  const names = { satellite: 'Satellite', streets: 'Streets', hybrid: 'Satellite + labels' };
+  const sub = { satellite: 'imagery pack', streets: 'offline vector', hybrid: 'imagery and roads' };
+  $('#bmChip').innerHTML = `<button class="bm-btn" type="button" data-bm-toggle aria-expanded="${S.bmMenu}">${ic(S.basemap === 'streets' ? 'map' : 'globe', 14)}<span>${names[S.basemap]}</span>${S.hill ? '<span class="faint">· hillshade</span>' : ''}${ic('chevdown', 12)}</button>` +
+    (S.bmMenu ? `<div class="bm-menu" role="menu">${Object.entries(names).map(([k, l]) => `<button role="menuitemradio" aria-checked="${S.basemap === k}" data-bm="${k}"><span class="rd"></span>${l}<span class="faint">${sub[k]}</span></button>`).join('')}<hr><button role="menuitemcheckbox" aria-checked="${S.hill}" data-hill><span class="switch" aria-checked="${S.hill}"></span>Hillshade<span class="faint">terrain pack</span></button></div>` : '');
+}
+function setBasemap(k) { S.basemap = k; drawBase(); renderBasemapChip(); }
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.bmToggle !== undefined) { S.bmMenu = !S.bmMenu; renderBasemapChip(); return; }
+  if (t.dataset.bm) { S.bmMenu = false; setBasemap(t.dataset.bm); return; }
+  if (t.dataset.hill !== undefined) { S.hill = !S.hill; drawBase(); renderBasemapChip(); return; }
+  if (t.dataset.rowmenu) { S.rowOpen = S.rowOpen === t.dataset.rowmenu ? null : t.dataset.rowmenu; renderTreeRows(); return; }
   if (t.dataset.csec !== undefined) { const c = t.parentElement; c.setAttribute('aria-expanded', c.getAttribute('aria-expanded') !== 'true'); return; }
   if (t.dataset.tab) { S.tab = t.dataset.tab; if (S.tab === 'rf') S.rfOpen = true; renderBody(); return; }
   if (t.dataset.pin) { S.preview = !S.preview; tabs(); return; }
@@ -1441,21 +1728,32 @@ document.addEventListener('click', (e) => {
   if (t.id === 'demoToggle') { $('#demo').classList.toggle('open'); return; }
   if (t.dataset.demo) demo(t.dataset.demo);
 });
+function renderTreeRows() {
+  const row = (l, name, meta) => `<div class="titem ${(l === 'bs') === (S.view === 'bs') ? 'sel' : ''}" data-layer="${l}"><span class="lsw ${l === 'bs' ? 'bs' : ''}"></span><span class="tn">${name}</span>${meta ? `<span class="tm">${meta}</span>` : '<span style="flex:1"></span>'}<button class="eye" type="button" data-eye="${l}" aria-label="Show or hide">${ic('eye', 14)}</button><button class="eye" type="button" data-rowmenu="${l}" aria-label="Layer options" aria-expanded="${S.rowOpen === l}">${ic('more', 14)}</button></div>` +
+    (S.rowOpen === l ? `<div class="trow-x"><label for="op-${l}-tree">Opacity</label><input type="range" id="op-${l}-tree" min="0" max="100" step="1" data-opacity="${l}" value="${Math.round(S.opacity[l] * 100)}"><output class="mono">${Math.round(S.opacity[l] * 100)}%</output></div>` : '');
+  $('#covItems').innerHTML = row('rsrp', `RSRP · ${S.band} · 13 Apr`, '') + row('bs', `Best server · ${S.band}`, '');
+  syncEyes();
+}
 function syncEyes() {
   $$('#covItems [data-eye]').forEach((b) => { const on = b.dataset.eye === 'rsrp' ? S.layers.rsrp && S.view === 'rsrp' : S.view === 'bs'; b.classList.toggle('off', !on); });
   $$('#covItems .titem').forEach((r) => r.classList.toggle('sel', (r.dataset.layer === 'bs') === (S.view === 'bs')));
+  syncOpacity();
 }
 let jobTimer = null;
 function demo(k) {
-  $('#cat').hidden = true;
+  $('#cat').hidden = true; $('#bmChip').classList.remove('compact');
+  if (k === 'sat') { S.tab = 'rf'; S.rfOpen = true; S.menu = false; S.view = 'rsrp'; S.layers.bs = false; S.opacity.rsrp = 0.6; S.bmMenu = false; S.rowOpen = null; renderTreeRows(); setBasemap('satellite'); island('rest'); }
+  if (k === 'streets') { S.tab = 'rf'; S.rfOpen = true; S.view = 'rsrp'; S.layers.bs = false; S.bmMenu = false; setBasemap('streets'); syncEyes(); }
+  if (k === 'opacity30') { S.opacity[curLayer()] = 0.3; S.rowOpen = curLayer(); renderTreeRows(); }
+  if (k === 'basemenu') { S.bmMenu = true; renderBasemapChip(); return; }
   if (k === 'antennas') { S.tab = 'measure'; S.menu = true; S.job = null; island('rest'); }
   if (k === 'rf') { S.tab = 'rf'; S.rfOpen = true; S.menu = false; S.view = 'rsrp'; S.layers.bs = false; syncEyes(); island(S.job ? 'run' : 'rest'); }
   if (k === 'catalogue') { if (S.tab !== 'rf') demo('rf'); openCat(); return; }
   if (k === 'catalogue-ant') { openCat('ant'); return; }
   if (k === 'bestserver') { S.tab = 'rf'; S.rfOpen = true; S.view = 'bs'; S.layers.bs = true; syncEyes(); }
   if (k === 'overlap') { S.tab = 'rf'; S.rfOpen = true; S.view = 'overlap'; syncEyes(); }
-  if (k === 'tools') { island('tools'); return; }
-  if (k === 'theme') { const l = document.documentElement.dataset.theme === 'light'; document.documentElement.dataset.theme = l ? 'dark' : 'light'; $('#themeBtn').textContent = l ? 'Light theme' : 'Dark theme'; paint(); return; }
+  if (k === 'tools') { island('tools'); $('#bmChip').classList.add('compact'); return; }
+  if (k === 'theme') { const l = document.documentElement.dataset.theme === 'light'; document.documentElement.dataset.theme = l ? 'dark' : 'light'; $('#themeBtn').textContent = l ? 'Light theme' : 'Dark theme'; setBasemap(l ? 'satellite' : 'streets'); paint(); return; }
   if (k === 'run') { startJob(); return; }
   renderBody(); paint(); renderLegend();
 }
@@ -1470,6 +1768,6 @@ function startJob(stopAt) {
 }
 window.__demo = { demo, startJob, openCat, S, CS, renderCat };
 
-hydrate(); drawBase(); island('rest'); renderBody(); render(); syncEyes();
+hydrate(); S.tab = 'rf'; S.rfOpen = true; S.menu = false; drawBase(); renderBasemapChip(); renderTreeRows(); island('rest'); renderBody(); render();
 window.addEventListener('resize', () => { drawBase(); render(); });
 </script></body></html>
