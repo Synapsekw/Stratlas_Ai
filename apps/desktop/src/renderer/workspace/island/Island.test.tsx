@@ -437,6 +437,8 @@ describe('Island', () => {
     // the Point cloud tab of the sidebar shows it (workbench/benchFollow.test.tsx)
     expect(document.querySelector('[data-testid="cloud-panel"]')).toBeNull();
     expect(document.querySelector('.isl-full')).toBeNull();
+    // the island itself is untouched: still at rest,
+    expect(island()?.dataset.state).toBe('rest');
     shell.getState().setCloudPanel(false);
   });
 });

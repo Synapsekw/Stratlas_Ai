@@ -25,7 +25,6 @@ import { ChangesTab, useChangesTabSeq } from '../../change';
 import { IssueCard } from '../../issueCard/IssueCard';
 import { useCardFocusSeq } from '../../issueCard/state';
 import { useModeller } from '../../modeller';
-import { CleanupTab } from '../../pointcloud/CleanupTab';
 import { RoadPanel } from '../../road/RoadPanel';
 import { RoadSetupCard } from '../../road/RoadSetup';
 import { useIsRoad } from '../../road/useRoadMap';
@@ -39,9 +38,6 @@ import { useCaptureIndex } from '../compare';
 import { pickLive, type LiveItem } from '../island/islandModel';
 import { useIslandLive } from '../island/useIslandLive';
 import { SelectionCard } from '../SelectionCard';
-import { useBenchFollow } from './benchFollow';
-import { CloudBench } from './benches/CloudBench';
-import { DisplayBench } from './benches/DisplayBench';
 import { sectionStore, useSections } from './sectionState';
 import { TabBar } from './TabBar';
 import type { Tab, TabId } from './tabsModel';
@@ -51,6 +47,11 @@ import { EnvironmentTab } from '../../environment/EnvironmentTool';
 import { CutawayTab } from '../CutawayTool';
 import { RoadBench } from './benches/RoadBench';
 import { VolumesBench } from './benches/VolumesBench';
+// Display and Point cloud benches
+import { CleanupTab } from '../../pointcloud/CleanupTab';
+import { useBenchFollow } from './benchFollow';
+import { CloudBench } from './benches/CloudBench';
+import { DisplayBench } from './benches/DisplayBench';
 import './workbench.css';
 
 /** The workbenches with collapsible sections, whose header holds Collapse all (D16). */
@@ -78,25 +79,21 @@ export function useWorkbenchView(): { tabs: Tab[]; front: Tab } {
   const volumes = useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
   const captureIx = useCaptureIndex();
   const dated = captureIx !== null && canCompare(captureIx);
-  // the Point cloud workbench and its Clean up tab only where the project has a cloud (D6)
+  const tabs = useMemo(
+    () =>
+      all.filter((tab) => (tab.id === 'volumes' ? volumes : tab.id === 'changes' ? dated : true)),
+    [all, volumes, dated],
+  );
+  // Display and Point cloud benches: the cloud tabs only where the project has a cloud (D6)
   const clouds = useWorkspace((s) =>
     (s.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
   );
-  const tabs = useMemo(
-    () =>
-      all.filter((tab) =>
-        tab.id === 'volumes'
-          ? volumes
-          : tab.id === 'changes'
-            ? dated
-            : tab.id === 'clouds' || tab.id === 'cleanup'
-              ? clouds
-              : true,
-      ),
-    [all, volumes, dated, clouds],
+  const shown = useMemo(
+    () => (clouds ? tabs : tabs.filter((tab) => tab.id !== 'clouds' && tab.id !== 'cleanup')),
+    [tabs, clouds],
   );
-  const front = tabs.find((tab) => tab.id === chosen) ?? SELECTION;
-  return { tabs, front };
+  const front = shown.find((tab) => tab.id === chosen) ?? SELECTION;
+  return { tabs: shown, front };
 }
 const SELECTION: Tab = { id: 'selection', live: false, pinned: false, fixed: true };
 
@@ -318,17 +315,18 @@ function FrontBody({ front, road }: { front: TabId; road: boolean }) {
     );
   if (front === 'environment') return <EnvironmentTab />;
   if (front === 'cutaway') return <CutawayTab />;
+  // Display and Point cloud benches
   if (front === 'cleanup') return <CleanupTab />;
+  if (front === 'display' || front === 'clouds') {
+    return (
+      <>
+        <BenchHead bench={front} />
+        {front === 'display' ? <DisplayBench /> : <CloudBench />}
+      </>
+    );
+  }
   // the workbenches and tool panels fill their tab in their own tasks
-  if (!BENCHES.includes(front)) return null;
-  return (
-    <>
-      <BenchHead bench={front} />
-      {/* Display bench, Point cloud bench */}
-      {front === 'display' && <DisplayBench />}
-      {front === 'clouds' && <CloudBench />}
-    </>
-  );
+  return BENCHES.includes(front) ? <BenchHead bench={front} /> : null;
 }
 
 export function RightSidebar() {

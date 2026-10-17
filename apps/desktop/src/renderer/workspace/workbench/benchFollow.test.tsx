@@ -7,6 +7,7 @@ import { cleanup } from '../../pointcloud/cleanupStore';
 import { shell } from '../../shell';
 import { threeDates } from '../__fixtures__/threeDates';
 import { useBenchFollow } from './benchFollow';
+import { sectionStore } from './sectionState';
 import { workbench } from './workbenchStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -49,28 +50,42 @@ describe('useBenchFollow', () => {
     expect(shell.getState().rightCollapsed).toBe(false);
   });
 
-  it('leaving the clouds tab clears the panel flag, so the next ask brings it back', () => {
+  it('clears the ask once handled, so asking again brings the tab back', () => {
     act(() => {
       shell.getState().setCloudPanel(true);
     });
+    expect(shell.getState().cloudPanelOpen).toBe(false);
     act(() => {
       workbench.getState().show('selection');
     });
-    expect(shell.getState().cloudPanelOpen).toBe(false);
     act(() => {
       shell.getState().setCloudPanel(true);
     });
     expect(front()).toBe('clouds');
   });
 
-  it('closing the clouds tab clears the flag', () => {
+  it('asking while the stage is on the map still brings the tab, and the 3D view back', () => {
+    shell.getState().setStageMode('map');
+    act(() => {
+      shell.getState().openCloudPanel();
+    });
+    expect(shell.getState().stageMode).toBe('3d');
+    expect(front()).toBe('clouds');
+    shell.getState().setStageMode('map');
+    act(() => {
+      workbench.getState().show('selection');
+      shell.getState().setCloudPanel(true);
+    });
+    expect(front()).toBe('clouds');
+  });
+
+  it('opens the colour controls even if they were folded away', () => {
+    sectionStore.getState().toggle('clouds', 'cloud-colour', true);
+    expect(sectionStore.getState().byBench.clouds?.ids['cloud-colour']).toBe(false);
     act(() => {
       shell.getState().setCloudPanel(true);
     });
-    act(() => {
-      workbench.getState().close('clouds');
-    });
-    expect(shell.getState().cloudPanelOpen).toBe(false);
+    expect(sectionStore.getState().byBench.clouds?.ids['cloud-colour']).toBe(true);
   });
 
   it('opening Clean up opens the cleanup tab, and closing the tab closes Clean up', () => {

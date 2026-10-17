@@ -338,6 +338,7 @@ describe('RightSidebar', () => {
     });
     expect(tabIds()).toContain('wb-tab-clouds');
     expect(host.querySelector('[data-testid="cloud-bench"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="cloud-panel"]')).not.toBeNull();
   });
 
   it('opens the Point cloud tab when the panel is asked for, and unfolds the sidebar', () => {

@@ -404,7 +404,7 @@ export function CleanupPanel({
       className={inTab ? 'cleanup-panel in-tab' : 'cleanup-panel overlay-box'}
       {...(inTab ? {} : { 'data-surface': 'dark' })}
       data-testid="cleanup-panel"
-      role="dialog"
+      role={inTab ? 'region' : 'dialog'}
       aria-label={t('cleanup.title')}
       onKeyDown={(e) => {
         if (e.key !== 'Escape') return;

@@ -494,6 +494,13 @@
   block-size: 58px;
   padding-inline: var(--sp-4);
 }
+/* a long survey name is cut, not allowed to widen the row */
+.isl-choice .seg button {
+  max-inline-size: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .isl-cl {
   display: flex;
   align-items: center;

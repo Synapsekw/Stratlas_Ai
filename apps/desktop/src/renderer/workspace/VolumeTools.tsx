@@ -1,5 +1,6 @@
 import { useVolumetric, volumetric, type BodyMode, type SurfaceMode } from '@aio/volumetric';
 import { PopTool, Tool } from './StageTools';
+import { surveyDateLabel } from './surveyDateLabel';
 
 const SURFACES: { v: SurfaceMode; t: string; d: string }[] = [
   { v: 'photo', t: 'Photo', d: 'Orthomosaic draped on the terrain' },
@@ -37,7 +38,7 @@ export function VolumeDateSwipe() {
             v.setEpoch(c.epoch);
           }}
         >
-          {c.label.replace(/ 20\d\d$/, '')}
+          {surveyDateLabel(c)}
         </button>
       ))}
       <button
