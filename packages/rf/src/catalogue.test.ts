@@ -39,10 +39,10 @@ describe('seed catalogue', () => {
     expect(generic.filter((e) => e.kind === 'radio').length).toBeGreaterThanOrEqual(2);
     expect(generic.filter((e) => e.kind === 'aau').length).toBeGreaterThanOrEqual(2);
   });
-  it('has vendor entries for the three radio vendors', () => {
-    for (const v of ['Huawei', 'Ericsson', 'Nokia'])
+  it('has vendor entries for Huawei, Ericsson and CommScope', () => {
+    for (const v of ['Huawei', 'Ericsson', 'CommScope'])
       expect(all.some((e) => e.vendor === v)).toBe(true);
-    expect(all.filter((e) => e.vendor !== 'Generic').length).toBeGreaterThanOrEqual(9);
+    expect(all.filter((e) => e.vendor !== 'Generic').length).toBeGreaterThanOrEqual(19);
   });
 });
 

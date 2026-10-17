@@ -6,19 +6,47 @@
       "id": "commscope-hbxx-6517ds-vtm",
       "vendor": "CommScope",
       "model": "HBXX-6517DS-VTM",
-      "source": "public datasheet, CommScope HBXX-6517DS-VTM product specification",
+      "source": "https://www.andrew.com/globalassets/digizuite/262555-p360-hbxx-6517ds-vtm-external.pdf (rev 12 Mar 2025); https://www.andrew.com/products/base-station-antennas/antennas/itemhbxx-6517ds-vtm/",
       "verified": false,
       "ports": [
         {
-          "id": "p1",
-          "bandRangeMhz": [698, 896],
-          "gainDbi": 16,
-          "hBeamwidthDeg": 65,
-          "vBeamwidthDeg": 14,
-          "frontToBackDb": 25,
+          "id": "b1710-1880",
+          "bandRangeMhz": [1710, 1880],
+          "gainDbi": 19,
+          "hBeamwidthDeg": 67,
+          "vBeamwidthDeg": 5,
+          "frontToBackDb": 30,
           "etilt": {
-            "minDeg": 2,
-            "maxDeg": 14,
+            "minDeg": 0,
+            "maxDeg": 6,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "b1850-1990",
+          "bandRangeMhz": [1850, 1990],
+          "gainDbi": 19.1,
+          "hBeamwidthDeg": 66.3,
+          "vBeamwidthDeg": 4.7,
+          "frontToBackDb": 30,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 6,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "b1920-2180",
+          "bandRangeMhz": [1920, 2180],
+          "gainDbi": 19.2,
+          "hBeamwidthDeg": 64.9,
+          "vBeamwidthDeg": 4.4,
+          "frontToBackDb": 30,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 6,
             "stepDeg": 1
           },
           "patterns": []
@@ -30,19 +58,89 @@
       "id": "commscope-sbnhh-1d65c",
       "vendor": "CommScope",
       "model": "SBNHH-1D65C",
-      "source": "public datasheet, CommScope SBNHH-1D65C product specification",
+      "source": "https://www.andrew.com/globalassets/digizuite/263589-p360-sbnhh-1d65c-external.pdf (rev 12 Mar 2025); https://fr.andrew.com/products/base-station-antennas/antennas/itemsbnhh-1d65c",
       "verified": false,
       "ports": [
         {
-          "id": "p1",
-          "bandRangeMhz": [1695, 2690],
-          "gainDbi": 17.5,
-          "hBeamwidthDeg": 65,
-          "vBeamwidthDeg": 7,
+          "id": "low-698-806",
+          "bandRangeMhz": [698, 806],
+          "gainDbi": 16.2,
+          "hBeamwidthDeg": 66.2,
+          "vBeamwidthDeg": 8.9,
+          "frontToBackDb": 29,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 11,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "low-806-896",
+          "bandRangeMhz": [806, 896],
+          "gainDbi": 16,
+          "hBeamwidthDeg": 63.8,
+          "vBeamwidthDeg": 7.8,
+          "frontToBackDb": 31,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 11,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1695-1880",
+          "bandRangeMhz": [1695, 1880],
+          "gainDbi": 17.7,
+          "hBeamwidthDeg": 70,
+          "vBeamwidthDeg": 5.7,
+          "frontToBackDb": 27,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1850-1990",
+          "bandRangeMhz": [1850, 1990],
+          "gainDbi": 17.9,
+          "hBeamwidthDeg": 64.5,
+          "vBeamwidthDeg": 5.2,
+          "frontToBackDb": 27,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1920-2200",
+          "bandRangeMhz": [1920, 2200],
+          "gainDbi": 18.5,
+          "hBeamwidthDeg": 63,
+          "vBeamwidthDeg": 5,
           "frontToBackDb": 28,
           "etilt": {
             "minDeg": 0,
-            "maxDeg": 10,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-2300-2360",
+          "bandRangeMhz": [2300, 2360],
+          "gainDbi": 18.5,
+          "hBeamwidthDeg": 58,
+          "vBeamwidthDeg": 4.4,
+          "frontToBackDb": 27,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
             "stepDeg": 1
           },
           "patterns": []
@@ -54,33 +152,89 @@
       "id": "commscope-nhh-65b-r2b",
       "vendor": "CommScope",
       "model": "NHH-65B-R2B",
-      "source": "public datasheet, CommScope NHH-65B-R2B product specification",
+      "source": "https://www.andrew.com/globalassets/digizuite/263004-p360-nhh-65b-r2b-external.pdf (ANDREW, rev 23 Jul 2025)",
       "verified": false,
       "ports": [
         {
-          "id": "low",
-          "bandRangeMhz": [698, 960],
-          "gainDbi": 15,
+          "id": "low-698-806",
+          "bandRangeMhz": [698, 806],
+          "gainDbi": 14.9,
           "hBeamwidthDeg": 65,
-          "vBeamwidthDeg": 12.5,
-          "frontToBackDb": 25,
+          "vBeamwidthDeg": 12.4,
+          "frontToBackDb": 30,
           "etilt": {
-            "minDeg": 2,
+            "minDeg": 0,
             "maxDeg": 14,
             "stepDeg": 1
           },
           "patterns": []
         },
         {
-          "id": "high",
-          "bandRangeMhz": [1695, 2690],
-          "gainDbi": 17,
-          "hBeamwidthDeg": 65,
-          "vBeamwidthDeg": 7,
-          "frontToBackDb": 28,
+          "id": "low-806-896",
+          "bandRangeMhz": [806, 896],
+          "gainDbi": 15,
+          "hBeamwidthDeg": 60,
+          "vBeamwidthDeg": 11.2,
+          "frontToBackDb": 29,
           "etilt": {
-            "minDeg": 2,
+            "minDeg": 0,
             "maxDeg": 14,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1695-1880",
+          "bandRangeMhz": [1695, 1880],
+          "gainDbi": 17.7,
+          "hBeamwidthDeg": 71,
+          "vBeamwidthDeg": 5.7,
+          "frontToBackDb": 31,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1850-1990",
+          "bandRangeMhz": [1850, 1990],
+          "gainDbi": 17.9,
+          "hBeamwidthDeg": 69,
+          "vBeamwidthDeg": 5.2,
+          "frontToBackDb": 30,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1920-2200",
+          "bandRangeMhz": [1920, 2200],
+          "gainDbi": 18.4,
+          "hBeamwidthDeg": 64,
+          "vBeamwidthDeg": 4.9,
+          "frontToBackDb": 29,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-2300-2360",
+          "bandRangeMhz": [2300, 2360],
+          "gainDbi": 18.7,
+          "hBeamwidthDeg": 57,
+          "vBeamwidthDeg": 4.6,
+          "frontToBackDb": 31,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
             "stepDeg": 1
           },
           "patterns": []
@@ -102,51 +256,18 @@
       "mounting": "tower"
     },
     {
-      "kind": "radio",
-      "id": "ericsson-radio-4449-b5-b8",
-      "vendor": "Ericsson",
-      "model": "Radio 4449 B5/B8",
-      "source": "public datasheet, Ericsson Radio 4449 B5/B8 product description",
-      "verified": false,
-      "bandRangeMhz": [925, 960],
-      "txPorts": 4,
-      "rxPorts": 4,
-      "maxPowerDbmPerPort": 46.02,
-      "maxBandwidthMhz": 35,
-      "mounting": "tower"
-    },
-    {
       "kind": "aau",
       "id": "ericsson-air-6449-b77d",
       "vendor": "Ericsson",
       "model": "AIR 6449 B77D",
-      "source": "public datasheet, Ericsson AIR 6449 B77D product description; broadcast-beam gain and beamwidths are an estimate, not a datasheet figure",
+      "source": "public datasheet, Ericsson AIR 6449 product description; 320 W and 64 TRX from Ericsson datasheet text (secondary); SSB gain/beamwidth estimated, band range not confirmed",
       "verified": false,
       "bandRangeMhz": [3300, 3800],
       "ports": 64,
-      "totalPowerDbm": 53.01,
+      "totalPowerDbm": 55.05,
       "ssbGainDbi": 18,
       "ssbHBeamwidthDeg": 90,
       "ssbVBeamwidthDeg": 12,
-      "etilt": {
-        "minDeg": 0,
-        "maxDeg": 10,
-        "stepDeg": 1
-      }
-    },
-    {
-      "kind": "aau",
-      "id": "ericsson-air-6419-b77g",
-      "vendor": "Ericsson",
-      "model": "AIR 6419 B77G",
-      "source": "public datasheet, Ericsson AIR 6419 B77G product description; broadcast-beam gain and beamwidths are an estimate, not a datasheet figure",
-      "verified": false,
-      "bandRangeMhz": [3300, 3800],
-      "ports": 32,
-      "totalPowerDbm": 53.01,
-      "ssbGainDbi": 17,
-      "ssbHBeamwidthDeg": 90,
-      "ssbVBeamwidthDeg": 14,
       "etilt": {
         "minDeg": 0,
         "maxDeg": 10,
@@ -158,7 +279,7 @@
       "id": "huawei-aau5613",
       "vendor": "Huawei",
       "model": "AAU5613",
-      "source": "public datasheet, Huawei AAU5613 product description; broadcast-beam gain and beamwidths are an estimate, not a datasheet figure",
+      "source": "Huawei AAU5613: 64T64R n78 200 W from a teardown summary and reseller listings (secondary); SSB gain/beamwidth estimated, band range not confirmed",
       "verified": false,
       "bandRangeMhz": [3300, 3800],
       "ports": 64,
@@ -173,23 +294,412 @@
       }
     },
     {
-      "kind": "aau",
-      "id": "nokia-airscale-maa-64t64r-aeqa",
-      "vendor": "Nokia",
-      "model": "AirScale MAA 64T64R AEQA",
-      "source": "public datasheet, Nokia AirScale Massive MIMO Adaptive Antenna 64T64R data sheet; broadcast-beam gain and beamwidths are an estimate, not a datasheet figure",
+      "kind": "antenna",
+      "id": "commscope-nhh-65c-r2b",
+      "vendor": "CommScope",
+      "model": "NHH-65C-R2B",
+      "source": "https://www.andrew.com/products/base-station-antennas/antennas/itemnhh-65c-r2b (vendor product page; datasheet https://www.andrew.com/globalassets/digizuite/263007-p360-nhh-65c-r2b-external.pdf, PDF not independently re-read)",
       "verified": false,
-      "bandRangeMhz": [3300, 3800],
+      "ports": [
+        {
+          "id": "low-698-806",
+          "bandRangeMhz": [698, 806],
+          "gainDbi": 16,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 9,
+          "frontToBackDb": 35,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 11,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "low-806-896",
+          "bandRangeMhz": [806, 896],
+          "gainDbi": 16.1,
+          "hBeamwidthDeg": 62,
+          "vBeamwidthDeg": 7.9,
+          "frontToBackDb": 31,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 11,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1695-1880",
+          "bandRangeMhz": [1695, 1880],
+          "gainDbi": 17.3,
+          "hBeamwidthDeg": 74,
+          "vBeamwidthDeg": 5.6,
+          "frontToBackDb": 33,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1850-1990",
+          "bandRangeMhz": [1850, 1990],
+          "gainDbi": 17.7,
+          "hBeamwidthDeg": 66,
+          "vBeamwidthDeg": 5.2,
+          "frontToBackDb": 29,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1920-2200",
+          "bandRangeMhz": [1920, 2200],
+          "gainDbi": 18.3,
+          "hBeamwidthDeg": 62,
+          "vBeamwidthDeg": 4.9,
+          "frontToBackDb": 29,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-2300-2360",
+          "bandRangeMhz": [2300, 2360],
+          "gainDbi": 18.2,
+          "hBeamwidthDeg": 59,
+          "vBeamwidthDeg": 4.5,
+          "frontToBackDb": 30,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 7,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "antenna",
+      "id": "commscope-rv4px310r-v2",
+      "vendor": "CommScope",
+      "model": "RV4PX310R-V2",
+      "source": "https://www.andrew.com/globalassets/digizuite/263377-p360-rv4px310r-v2-external.pdf (rev 6 May 2025)",
+      "verified": false,
+      "ports": [
+        {
+          "id": "low-694-798",
+          "bandRangeMhz": [694, 798],
+          "gainDbi": 16,
+          "hBeamwidthDeg": 69,
+          "vBeamwidthDeg": 9.9,
+          "frontToBackDb": 31,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "low-790-894",
+          "bandRangeMhz": [790, 894],
+          "gainDbi": 16.6,
+          "hBeamwidthDeg": 68,
+          "vBeamwidthDeg": 8.7,
+          "frontToBackDb": 34,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "low-890-960",
+          "bandRangeMhz": [890, 960],
+          "gainDbi": 16.9,
+          "hBeamwidthDeg": 66,
+          "vBeamwidthDeg": 8.1,
+          "frontToBackDb": 33,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1695-1880",
+          "bandRangeMhz": [1695, 1880],
+          "gainDbi": 16.8,
+          "hBeamwidthDeg": 63,
+          "vBeamwidthDeg": 8.3,
+          "frontToBackDb": 32,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1850-1990",
+          "bandRangeMhz": [1850, 1990],
+          "gainDbi": 16.9,
+          "hBeamwidthDeg": 62,
+          "vBeamwidthDeg": 7.7,
+          "frontToBackDb": 39,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-1920-2200",
+          "bandRangeMhz": [1920, 2200],
+          "gainDbi": 17.2,
+          "hBeamwidthDeg": 63,
+          "vBeamwidthDeg": 7.1,
+          "frontToBackDb": 37,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high-2300-2690",
+          "bandRangeMhz": [2300, 2690],
+          "gainDbi": 18,
+          "hBeamwidthDeg": 61,
+          "vBeamwidthDeg": 6,
+          "frontToBackDb": 38,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "antenna",
+      "id": "commscope-t4s4-90a-r2-v4",
+      "vendor": "CommScope",
+      "model": "T4S4-90A-R2-V4",
+      "source": "https://www.andrew.com/globalassets/digizuite/922979-p360-t4s4-90a-r2-v4-external.pdf (rev 28 May 2026); https://www.andrew.com/products/base-station-antennas/antennas/itemt4s4-90a-r2-v4 ; broadcast-65 beam values",
+      "verified": false,
+      "ports": [
+        {
+          "id": "p1-8-2300-2500",
+          "bandRangeMhz": [2300, 2500],
+          "gainDbi": 17.9,
+          "hBeamwidthDeg": 63,
+          "vBeamwidthDeg": 5.2,
+          "frontToBackDb": 27,
+          "etilt": {
+            "minDeg": 2,
+            "maxDeg": 12,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "p1-8-2500-2690",
+          "bandRangeMhz": [2500, 2690],
+          "gainDbi": 17.9,
+          "hBeamwidthDeg": 62,
+          "vBeamwidthDeg": 4.9,
+          "frontToBackDb": 26,
+          "etilt": {
+            "minDeg": 2,
+            "maxDeg": 12,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "p9-16-3300-3600",
+          "bandRangeMhz": [3300, 3600],
+          "gainDbi": 16.2,
+          "hBeamwidthDeg": 67,
+          "vBeamwidthDeg": 6.7,
+          "frontToBackDb": 23,
+          "etilt": {
+            "minDeg": 2,
+            "maxDeg": 12,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "p9-16-3600-3800",
+          "bandRangeMhz": [3600, 3800],
+          "gainDbi": 16.3,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 6.3,
+          "frontToBackDb": 22,
+          "etilt": {
+            "minDeg": 2,
+            "maxDeg": 12,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "aau",
+      "id": "huawei-aau5639w-2600",
+      "vendor": "Huawei",
+      "model": "AAU5639w (2600 MHz)",
+      "source": "Huawei AAU5639w Description Issue 03 (2020-06-30), hosted copy: https://www.icasa.org.za/uploads/files/MTN-Supplementary-submission-annex-3-Draft-Consultation-Document-on-Spectrum-Outlook.pdf (secondary host of the vendor document), tables 4-1 to 4-5 (secondary)",
+      "verified": false,
+      "bandRangeMhz": [2496, 2690],
       "ports": 64,
-      "totalPowerDbm": 53.01,
+      "totalPowerDbm": 53.8,
+      "ssbGainDbi": 17.5,
+      "ssbHBeamwidthDeg": 65,
+      "ssbVBeamwidthDeg": 5.5
+    },
+    {
+      "kind": "aau",
+      "id": "huawei-aau5639w-3500",
+      "vendor": "Huawei",
+      "model": "AAU5639w (3500 MHz, 3400-3600)",
+      "source": "Huawei AAU5639w Description Issue 03 (2020-06-30), hosted copy: https://www.icasa.org.za/uploads/files/MTN-Supplementary-submission-annex-3-Draft-Consultation-Document-on-Spectrum-Outlook.pdf (secondary host of the vendor document), tables 5-1 to 5-5 (secondary)",
+      "verified": false,
+      "bandRangeMhz": [3400, 3600],
+      "ports": 64,
+      "totalPowerDbm": 53.8,
       "ssbGainDbi": 18,
-      "ssbHBeamwidthDeg": 90,
-      "ssbVBeamwidthDeg": 12,
-      "etilt": {
-        "minDeg": 0,
-        "maxDeg": 10,
-        "stepDeg": 1
-      }
+      "ssbHBeamwidthDeg": 65,
+      "ssbVBeamwidthDeg": 5.5
+    },
+    {
+      "kind": "aau",
+      "id": "huawei-aau5639w-3600",
+      "vendor": "Huawei",
+      "model": "AAU5639w (3600 MHz, 3450-3700)",
+      "source": "Huawei AAU5639w Description Issue 03 (2020-06-30), hosted copy: https://www.icasa.org.za/uploads/files/MTN-Supplementary-submission-annex-3-Draft-Consultation-Document-on-Spectrum-Outlook.pdf (secondary host of the vendor document), tables 6-1 to 6-5 (secondary)",
+      "verified": false,
+      "bandRangeMhz": [3450, 3700],
+      "ports": 64,
+      "totalPowerDbm": 53.8,
+      "ssbGainDbi": 18,
+      "ssbHBeamwidthDeg": 65,
+      "ssbVBeamwidthDeg": 5.5
+    },
+    {
+      "kind": "aau",
+      "id": "huawei-aau5639w-3700",
+      "vendor": "Huawei",
+      "model": "AAU5639w (3700 MHz, 3600-3800)",
+      "source": "Huawei AAU5639w Description Issue 03 (2020-06-30), hosted copy: https://www.icasa.org.za/uploads/files/MTN-Supplementary-submission-annex-3-Draft-Consultation-Document-on-Spectrum-Outlook.pdf (secondary host of the vendor document), tables 7-1 to 7-5 (secondary)",
+      "verified": false,
+      "bandRangeMhz": [3600, 3800],
+      "ports": 64,
+      "totalPowerDbm": 53.8,
+      "ssbGainDbi": 18,
+      "ssbHBeamwidthDeg": 65,
+      "ssbVBeamwidthDeg": 5.5
+    },
+    {
+      "kind": "radio",
+      "id": "ericsson-radio-4418-b41",
+      "vendor": "Ericsson",
+      "model": "Radio 4418 B41",
+      "source": "https://dorfatrade.com/product/ericssonradiocapabilities/ (secondary: reseller page reproducing Ericsson's radio capability table); 4T/4R and 4x40 W also in the Ericsson Radio 4418 data sheet text quoted at https://www.coursehero.com/file/119307901/5-Ericsson-RRUs-4418-B41pdf/ (secondary)",
+      "verified": false,
+      "bandRangeMhz": [2496, 2690],
+      "txPorts": 4,
+      "rxPorts": 4,
+      "maxPowerDbmPerPort": 46.02,
+      "maxBandwidthMhz": 120,
+      "mounting": "pole"
+    },
+    {
+      "kind": "radio",
+      "id": "ericsson-radio-4418-b40n",
+      "vendor": "Ericsson",
+      "model": "Radio 4418 B40N",
+      "source": "https://dorfatrade.com/product/ericssonradiocapabilities/ (secondary: reseller page reproducing Ericsson's radio capability table) (secondary)",
+      "verified": false,
+      "bandRangeMhz": [2300, 2395],
+      "txPorts": 4,
+      "rxPorts": 4,
+      "maxPowerDbmPerPort": 46.02,
+      "maxBandwidthMhz": 95,
+      "mounting": "pole"
+    },
+    {
+      "kind": "radio",
+      "id": "ericsson-radio-8863-b41",
+      "vendor": "Ericsson",
+      "model": "Radio 8863 B41",
+      "source": "https://dorfatrade.com/product/ericssonradiocapabilities/ (secondary: reseller page reproducing Ericsson's radio capability table) (secondary)",
+      "verified": false,
+      "bandRangeMhz": [2496, 2690],
+      "txPorts": 8,
+      "rxPorts": 8,
+      "maxPowerDbmPerPort": 46.02,
+      "maxBandwidthMhz": 194,
+      "mounting": "pole"
+    },
+    {
+      "kind": "radio",
+      "id": "ericsson-radio-8863-b78k",
+      "vendor": "Ericsson",
+      "model": "Radio 8863 B78K",
+      "source": "https://dorfatrade.com/product/ericssonradiocapabilities/ (secondary: reseller page reproducing Ericsson's radio capability table) (secondary)",
+      "verified": false,
+      "bandRangeMhz": [3420, 3800],
+      "txPorts": 8,
+      "rxPorts": 8,
+      "maxPowerDbmPerPort": 46.02,
+      "maxBandwidthMhz": 200,
+      "mounting": "pole"
+    },
+    {
+      "kind": "radio",
+      "id": "ericsson-radio-4480-b8-b28-b8",
+      "vendor": "Ericsson",
+      "model": "Radio 4480 B8/B28 (B8 side)",
+      "source": "https://dorfatrade.com/product/ericssonradiocapabilities/ (secondary: reseller page reproducing Ericsson's radio capability table) (secondary)",
+      "verified": false,
+      "bandRangeMhz": [925, 960],
+      "txPorts": 4,
+      "rxPorts": 4,
+      "maxPowerDbmPerPort": 47.78,
+      "maxBandwidthMhz": 35,
+      "mounting": "pole"
+    },
+    {
+      "kind": "radio",
+      "id": "ericsson-radio-4480-b1-b3-b3",
+      "vendor": "Ericsson",
+      "model": "Radio 4480 B1/B3 (B3 side)",
+      "source": "https://dorfatrade.com/product/ericssonradiocapabilities/ (secondary: reseller page reproducing Ericsson's radio capability table) (secondary)",
+      "verified": false,
+      "bandRangeMhz": [1805, 1880],
+      "txPorts": 4,
+      "rxPorts": 4,
+      "maxPowerDbmPerPort": 47.78,
+      "maxBandwidthMhz": 75,
+      "mounting": "pole"
     }
   ]
 }

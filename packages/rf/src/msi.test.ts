@@ -82,6 +82,14 @@ describe('parseMsi', () => {
     expect(() => parseMsi(fixture().replace('HORIZONTAL 360', 'HORIZONTAL 180'))).toThrow(/360/);
   });
 
+  it('refuses a duplicate cut', () => {
+    const f = fixture();
+    const h = f.slice(f.indexOf('HORIZONTAL 360'), f.indexOf('VERTICAL 360'));
+    expect(() => parseMsi([f, h].join('\n'))).toThrow(/twice|duplicate/i);
+    const v = f.slice(f.indexOf('VERTICAL 360'));
+    expect(() => parseMsi([f, v].join('\n'))).toThrow(/twice|duplicate/i);
+  });
+
   it('refuses a missing frequency or gain', () => {
     expect(() => parseMsi(fixture().replace('FREQUENCY 2100\n', ''))).toThrow(/FREQUENCY/);
     expect(() => parseMsi(fixture().replace(/GAIN .*\n/, ''))).toThrow(/GAIN/);
@@ -108,6 +116,11 @@ describe('pickNearestPattern', () => {
   });
   it('prefers the frequency before the tilt', () => {
     expect(pickNearestPattern(refs, 2500, 0)?.ref).toEqual(refs[3]);
+  });
+  it('breaks an e-tilt tie toward the lower tilt', () => {
+    expect(pickNearestPattern(refs, 1800, 2)?.ref).toEqual(refs[0]);
+    expect(pickNearestPattern(refs, 1800, 6)?.ref).toEqual(refs[1]);
+    expect(pickNearestPattern([...refs].reverse(), 1800, 2)?.ref).toEqual(refs[0]);
   });
   it('returns undefined for an empty list', () => {
     expect(pickNearestPattern([], 1800, 0)).toBeUndefined();

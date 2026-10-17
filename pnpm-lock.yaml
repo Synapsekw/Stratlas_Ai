@@ -494,7 +494,7 @@ importers:
         version: 0.35.5(@types/node@24.19.1)
 
   packages/rf:
-    devDependencies:
+    dependencies:
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema

@@ -7,10 +7,10 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "devDependencies": {
-    "@aio/schema": "workspace:*"
-  },
   "scripts": {
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@aio/schema": "workspace:*"
   }
 }

@@ -72,6 +72,8 @@ export function parseMsi(text: string): MsiPattern {
     const t = tokens(raw);
     const key = (t[0] ?? '').toUpperCase();
     if (key === 'HORIZONTAL' || key === 'VERTICAL') {
+      if ((key === 'HORIZONTAL' ? horizontalFile : verticalFile) !== undefined)
+        throw new Error(`MSI: ${key} appears twice`);
       const cut = readCut(lines, i, key);
       if (key === 'HORIZONTAL') horizontalFile = cut.values;
       else verticalFile = cut.values;
