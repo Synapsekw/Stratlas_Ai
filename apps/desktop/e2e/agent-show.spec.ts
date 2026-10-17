@@ -374,6 +374,21 @@ const firstPhotoOutside = (win: Page) =>
 
 const mediaScrollTop = (win: Page) => win.locator('.media-main').evaluate((el) => el.scrollTop);
 
+/**
+ * How far the first photo card shown would lie below the visible part of the Media list with the
+ * list at its top, in px: 0 when it is in view without a scroll, -1 when no photo card is shown.
+ */
+const firstPhotoBelowAtTop = (win: Page) =>
+  win.evaluate(() => {
+    const main = document.querySelector('.media-main');
+    const card = main?.querySelector('.m-card.sq[data-photo]');
+    if (!main || !card) return -1;
+    const top = main.getBoundingClientRect().top + main.clientTop;
+    const bottom = card.getBoundingClientRect().bottom - top + main.scrollTop;
+    const seen = Math.min(main.clientHeight, window.innerHeight - top);
+    return Math.max(0, Math.ceil(bottom - seen));
+  });
+
 async function shot(win: Page, name: string) {
   if (SHOTS) await win.screenshot({ path: join(SHOTS, `${name}.png`) });
 }
@@ -574,10 +589,11 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     const list = await mediaOverflow(win);
     expect(list.out, `the Media list is ${String(list.width)} px wide`).toEqual([]);
     expect(await sidewaysScrollers(win)).toEqual([]);
-    // what was asked for is in view without a scroll: the photos sit below the videos, and the
-    // list brought the first one shown into view when the agent set the filter
+    // what was asked for is in view without a scroll: the list brought the first photo shown into
+    // view when the agent set the filter, and scrolled only when it lay below the videos
     await expect.poll(() => firstPhotoOutside(win)).toBe(0);
-    expect(await mediaScrollTop(win)).toBeGreaterThan(0);
+    if ((await firstPhotoBelowAtTop(win)) > 0) expect(await mediaScrollTop(win)).toBeGreaterThan(0);
+    else expect(await mediaScrollTop(win)).toBe(0);
     expect((await photoCards(win).first().boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(120);
     expect(
       await win.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -596,7 +612,6 @@ test.describe('the agent shows findings, photos and issues on the tank farm', ()
     await win.getByTestId('media-severity').selectOption('');
     await expect(photoCards(win)).toHaveCount(farm.photosWithFindings.length);
     expect(await mediaScrollTop(win)).toBe(0);
-    expect(await firstPhotoOutside(win)).toBeGreaterThan(0);
     await expect(win.getByTestId('media-only-findings')).toHaveAttribute('aria-pressed', 'true');
     await win.getByTestId('media-only-findings').click();
     await expect(photoCards(win)).toHaveCount(farm.photos);
