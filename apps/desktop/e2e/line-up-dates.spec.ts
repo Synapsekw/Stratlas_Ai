@@ -8,7 +8,7 @@
  * the change run are pipeline jobs, `uv sync` in python/ or QUADRION_E2E_PYTHON).
  */
 import type { Page } from '@playwright/test';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   createMisalignedDemo,
@@ -36,9 +36,9 @@ type XYZ = [number, number, number];
 
 /** Where the demo's T-201 stands and the top of its cone roof (tools/demo/change-scene.mjs). */
 const TANK = { name: 'T-201', cx: -26, cz: -18, top: 10.2 };
-/** The apex of the roof as the demo puts it, and as the moved date stores it (2 m east). */
 /** A point on the cone roof, a little off the apex (the apex has the model's tag label on it). */
 const ROOF: XYZ = [TANK.cx, 9.6, TANK.cz + 3];
+/** The apex of the roof as the demo puts it, and as the moved date stores it (2 m east). */
 const apex = (eastM: number): XYZ => [TANK.cx + eastM, TANK.top + 0.02, TANK.cz];
 
 const SAVED = { eastM: -2, northM: 0, with: 'd1', at: '2026-10-16T08:00:00.000Z' };
@@ -169,6 +169,26 @@ const lineUpOf = (win: Page, capture: string) =>
         ?.lineUp ?? null,
     capture,
   );
+
+/** The finished `change.lineup` jobs of the project (each start measures the pair once), with whether their `lineup.json` verdict is ok. */
+async function finishedMeasures(root: string): Promise<{ ok: boolean }[]> {
+  const dir = join(root, 'jobs');
+  const out: { ok: boolean }[] = [];
+  for (const id of await readdir(dir).catch(() => [] as string[])) {
+    const read = async (
+      file: string,
+    ): Promise<{ pipeline?: string; status?: string; verdict?: string } | null> =>
+      JSON.parse(await readFile(join(dir, id, file), 'utf8').catch(() => 'null')) as {
+        pipeline?: string;
+        status?: string;
+        verdict?: string;
+      } | null;
+    const job = await read('job.json');
+    if (job?.pipeline !== 'change.lineup' || job.status !== 'done') continue;
+    out.push({ ok: (await read('lineup.json'))?.verdict === 'ok' });
+  }
+  return out;
+}
 
 /** The saved line-up of a date, read from `manifest.json` on disk. */
 async function lineUpOnDisk(root: string, capture: string) {
@@ -417,7 +437,14 @@ test('a misaligned survey offers Line up dates, and Not now is remembered', asyn
     expect(await answers(win, 'measured')).toBe(0);
     await openMisaligned(win, misaligned.id);
     await expect.poll(() => answers(win, 'measured'), { timeout: 180_000 }).toBe(1);
-    await expect(win.getByTestId('lineup-offer')).toHaveCount(0, { timeout: 10_000 });
+    // the measurement of this start finished and found the pair misaligned (a failed one would
+    // also leave no offer), so the answer is what keeps the offer away
+    const done = () => finishedMeasures(misaligned.root);
+    await expect.poll(done, { timeout: 60_000 }).toHaveLength(2);
+    for (const m of await done()) expect(m.ok, 'a measurement found the pair').toBe(true);
+    // held over the whole window, not only looked at once
+    await win.waitForTimeout(10_000);
+    await expect(win.getByTestId('lineup-offer')).toHaveCount(0);
     expect(await lineUpOnDisk(misaligned.root, 'd2')).toBeNull();
   });
 });
@@ -554,13 +581,8 @@ test('the lined-up date lines up in 3D, on the map and for pins', async ({ lined
   await expect(panes).toHaveAttribute('data-compare-view', 'swipe');
   const divider = win.getByTestId('compare-divider');
   const stage = await panes.boundingBox();
-  const handle = await divider.boundingBox();
-  if (!stage || !handle) throw new Error('no stage or divider');
-  const y = stage.y + stage.height / 2;
-  await win.mouse.move(handle.x + handle.width / 2, y);
-  await win.mouse.down();
-  await win.mouse.move(stage.x + stage.width * 0.5, y, { steps: 8 });
-  await win.mouse.up();
+  if (!stage) throw new Error('no stage');
+  await dragDivider(win, stage.x + stage.width * 0.5);
   await expect(divider).toHaveAttribute('aria-valuenow', '50');
   // the divider stops 2% short of either end: the earlier date shows left of it, the later right
   await dragDivider(win, stage.x + stage.width + 40);
