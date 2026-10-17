@@ -66,7 +66,13 @@ interface GoldenFile {
 }
 
 const dir = new URL('../fixtures/golden/', import.meta.url);
-const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+// Every golden file without a `suite` is a pattern-and-budget file; other suites (propagation.json)
+// have their own runner (propagation.golden.test.ts).
+const files = readdirSync(dir).filter(
+  (f) =>
+    f.endsWith('.json') &&
+    (JSON.parse(readFileSync(new URL(f, dir), 'utf8')) as { suite?: string }).suite === undefined,
+);
 
 function toPattern(p: GoldenPattern, eTiltDeg: number | null): AntennaPattern {
   if (p.kind === 'two-cut') return makeTwoCutPattern(p.horizontalDb, p.verticalDb, p.capDb);
