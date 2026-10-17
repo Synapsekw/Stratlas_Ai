@@ -1,8 +1,8 @@
 import { fromWgs84, toWgs84 } from '@aio/geo';
 import type { Sighting } from '@aio/schema';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { linedUp } from '../testing';
-import { shiftOfManifest, sightingInDateFrame } from './dateFrame';
+import { movedSighting, shiftOfManifest, sightingInDateFrame } from './dateFrame';
 
 const lonLatOf = (e: number, n: number): [number, number] => {
   const [lon, lat] = toWgs84([e, n, 0], 32639);
@@ -71,6 +71,23 @@ describe('sightings drawn on a lined-up date', () => {
       ...point,
       geom: { type: 'point3', p: [0, 0, 5] },
     });
+  });
+
+  it('says so when a map sighting is saved drawn because the CRS is unknown', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const drawn: Sighting = {
+      on: 'map',
+      layer: 'ortho-d2',
+      geojson: { type: 'Point', coordinates: [48, 29] },
+    };
+    const shift = { eastM: 2, northM: 0 };
+    expect(movedSighting(drawn, shift, -1, { wkt: 'LOCAL_CS["site"]' })).toBe(drawn);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('ortho-d2');
+    // drawing it does not warn: only a save keeps the drawn place
+    movedSighting(drawn, shift, 1, { wkt: 'LOCAL_CS["site"]' });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 
   it("stores a map sighting placed on a shifted date in the date's own frame", () => {

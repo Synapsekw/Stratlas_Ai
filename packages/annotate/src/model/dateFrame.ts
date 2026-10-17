@@ -95,7 +95,14 @@ export function movedSighting(
     }
   }
   if (sighting.on === 'map') {
-    if (!crs || !('epsg' in crs) || !isKnownCrs(crs.epsg)) return sighting;
+    if (!crs || !('epsg' in crs) || !isKnownCrs(crs.epsg)) {
+      // the map cannot draw it shifted either without a CRS, but the save keeps the drawn place
+      if (sign === -1)
+        console.warn(
+          `Line up dates: the map sighting on ${sighting.layer} is saved as drawn: the project CRS is not known, so its date shift cannot be taken off.`,
+        );
+      return sighting;
+    }
     const geojson = moveGeoJson(sighting.geojson, s, sign, crs.epsg) as Record<string, unknown>;
     return { ...sighting, geojson };
   }
