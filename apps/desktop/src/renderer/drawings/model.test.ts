@@ -126,6 +126,26 @@ describe('placing a drawing by point pairs', () => {
     expect(r.rms).toBeCloseTo(0, 6);
   });
 
+  it('keeps a drawing placed on a lined-up date in its own frame, so it reloads where it was put', () => {
+    // the site was clicked where the date is drawn, 2 m east and 1 m north of its own frame
+    const shift = { eastM: 2, northM: 1 };
+    const drawn = (px: number, py: number): PlacePair => {
+      const [x, y, z] = truth(px, py);
+      return { px: [px, py], local: [x + 2, y, z - 1] };
+    };
+    const r = cornersFromPairs([drawn(100, 100), drawn(900, 400)], size, shift);
+    if ('error' in r) throw new Error(r.error);
+    // saved as the raster's own corners; the engine adds the shift again when it draws them
+    const near = (a: readonly number[], b: readonly number[]) => {
+      a.forEach((v, i) => {
+        expect(v).toBeCloseTo(b[i] ?? 0, 6);
+      });
+    };
+    near(r.corners.tl, truth(0, 0));
+    near(r.corners.tr, truth(1000, 0));
+    expect(r.rms).toBeCloseTo(0, 6);
+  });
+
   it('refuses pairs that put two drawing points on one spot of the site', () => {
     const spot = truth(100, 100);
     const r = cornersFromPairs(
