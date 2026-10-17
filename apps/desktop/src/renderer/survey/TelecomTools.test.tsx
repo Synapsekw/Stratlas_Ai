@@ -8,6 +8,8 @@ import { measureStore, startTool } from './measureStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+vi.mock('./DetectAntennas', () => ({ DetectAntennas: () => null }));
+
 vi.mock('../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false }) },
   jobs: {},

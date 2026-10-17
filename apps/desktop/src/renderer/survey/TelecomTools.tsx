@@ -12,6 +12,7 @@ import {
 import { useWorkspace } from '@aio/workspace';
 import { useSyncExternalStore } from 'react';
 import { shell, useShell } from '../shell';
+import { DetectAntennas } from './DetectAntennas';
 import {
   drawEvent,
   editEvent,
@@ -239,6 +240,7 @@ export function TelecomTools() {
           Save measurements
         </button>
       )}
+      <DetectAntennas />
     </section>
   );
 }
