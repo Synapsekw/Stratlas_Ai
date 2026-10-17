@@ -311,6 +311,25 @@ const gridGeo = (run: RfRun): GridGeo => ({
 
 // ---- the handlers --------------------------------------------------------------------------------
 
+/**
+ * Where the built-in catalogue (`packages/rf/catalogue`) is: `QUADRION_RF_CATALOGUE` when set;
+ * `resources/rf-catalogue` in a packaged app (electron-builder `extraResources`); otherwise beside
+ * the repo, from the built main's own folder (`out/main`), as the preload and renderer are found.
+ * Never from `app.getAppPath()`, which is `out/main` when the app starts as
+ * `electron out/main/index.js` (the end to end tests) and `apps/desktop` for `electron .`.
+ */
+export function rfBuiltinDir(o: {
+  env: Readonly<Record<string, string | undefined>>;
+  packaged: boolean;
+  resourcesPath: string;
+  dirname: string;
+}): string {
+  const set = o.env.QUADRION_RF_CATALOGUE?.trim();
+  if (set) return set;
+  if (o.packaged) return join(o.resourcesPath, 'rf-catalogue');
+  return join(o.dirname, '..', '..', '..', '..', 'packages', 'rf', 'catalogue');
+}
+
 export function createRf(deps: RfDeps) {
   const sourceOf = (projectId: string): Source | undefined => {
     const root = deps.projects.root(projectId);

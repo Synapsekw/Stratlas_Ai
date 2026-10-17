@@ -10,9 +10,10 @@ import {
 } from '@aio/schema';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createRf, type RfDeps } from './rf';
+import { createRf, rfBuiltinDir, type RfDeps } from './rf';
 import { readGridTiff, writeGridTiff, type GridGeo } from './rf/export';
 
 const antenna: RfCatalogueEntry = {
@@ -689,5 +690,28 @@ describe('fix round 1', () => {
     const r = await rf.importCatalogue({ path: file, format: 'msi', attach });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/GAIN/);
+  });
+});
+
+describe('rfBuiltinDir', () => {
+  const base = { env: {}, packaged: false, resourcesPath: '/app/resources' };
+  it('takes QUADRION_RF_CATALOGUE first, then resources once packaged', () => {
+    expect(
+      rfBuiltinDir({
+        ...base,
+        env: { QUADRION_RF_CATALOGUE: '/x/cat' },
+        packaged: true,
+        dirname: '/a',
+      }),
+    ).toBe('/x/cat');
+    expect(rfBuiltinDir({ ...base, packaged: true, dirname: '/a' })).toBe(
+      join('/app/resources', 'rf-catalogue'),
+    );
+  });
+  it('finds packages/rf/catalogue from the built main folder (electron . and electron out/main/index.js)', () => {
+    const outMain = resolve(import.meta.dirname, '..', '..', 'out', 'main');
+    const dir = rfBuiltinDir({ ...base, dirname: outMain });
+    expect(resolve(dir)).toBe(resolve(import.meta.dirname, '../../../../packages/rf/catalogue'));
+    expect(existsSync(join(dir, 'vendor.json'))).toBe(true);
   });
 });

@@ -251,7 +251,7 @@ import {
   ProjectPolicy,
   stagePackageExport,
 } from './packages';
-import { createRf } from './rf';
+import { createRf, rfBuiltinDir } from './rf';
 import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
 import { readPackageVolumes, readVolumes, writeBoundaries } from './boundaries';
 import { folderFiles, packageFiles, readDetectionPasses, writeDetectionPass } from './detections';
@@ -1085,11 +1085,14 @@ function registerIpc(): void {
 
   // RF coverage: sectors, catalogue, runs and exports (main/rf.ts).
   const rf = createRf({
-    // the catalogue shipped with the app: beside the repo in development, in resources once packaged
     userDir: join(app.getPath('userData'), 'rf-catalogue'),
-    builtinDir: app.isPackaged
-      ? join(process.resourcesPath, 'rf-catalogue')
-      : join(app.getAppPath(), '..', '..', 'packages', 'rf', 'catalogue'),
+    // the catalogue shipped with the app: beside the repo in development, in resources once packaged
+    builtinDir: rfBuiltinDir({
+      env: process.env,
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      dirname: import.meta.dirname,
+    }),
     projects: { root: (id) => registry.root(id), package: (id) => registry.package(id) },
     choose: (defaultName, format) =>
       chooseSavePath(join(app.getPath('downloads'), defaultName), {
