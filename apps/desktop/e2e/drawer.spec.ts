@@ -62,6 +62,8 @@ test.describe('the drawer', () => {
     await win.locator('[data-scene-view] canvas').first().focus();
     await win.keyboard.press('m');
     await expect(drawer(win).getByTestId('survey-drawbar')).toBeVisible();
+    // one live copy of each bench: the folded sidebar renders none while the drawer shows (I-R38)
+    await expect(win.getByTestId('survey-drawbar')).toHaveCount(1);
     await expect(drawer(win)).toHaveAttribute('data-open', '');
     await expect(drawer(win)).toHaveAttribute('data-front', 'measure');
     await expect(drawer(win).locator('.wb-section').first()).toBeVisible();
@@ -69,6 +71,14 @@ test.describe('the drawer', () => {
     // it covers the stage's end edge only, and the sidebar stays folded
     await expect(win.locator('.ws')).toHaveClass(/right-off/);
     await drawerIn(win);
+    // the island centres on the stage the drawer leaves, so it is not cut (I-R42)
+    await expect
+      .poll(async () => {
+        const i = await island(win).boundingBox();
+        const d = await drawer(win).boundingBox();
+        return i && d ? Math.round(d.x - (i.x + i.width)) : null;
+      })
+      .toBeGreaterThanOrEqual(0);
     await shot(win, info, 'drawer-live.png');
 
     await win.keyboard.press('Escape');

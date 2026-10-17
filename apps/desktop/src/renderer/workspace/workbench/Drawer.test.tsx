@@ -8,6 +8,8 @@ import { shell } from '../../shell';
 import type { LiveItem } from '../island/islandModel';
 import type * as LiveModule from '../island/useIslandLive';
 import { Drawer } from './Drawer';
+import { drawerStore } from './drawerStore';
+import { RightSidebar } from './RightSidebar';
 import { workbench } from './workbenchStore';
 
 let live: LiveItem[] = [];
@@ -16,8 +18,13 @@ vi.mock('../island/useIslandLive', async (importOriginal) => ({
   useIslandLive: () => live,
 }));
 vi.mock('../compare', () => ({ useCaptureIndex: () => ({ captures: [], layers: {} }) }));
+vi.mock('../../shell/RightHeader', () => ({ RightHeader: () => null }));
 vi.mock('./benches/MeasureBench', () => ({
-  MeasureBench: () => <button type="button">measure bench</button>,
+  MeasureBench: () => (
+    <button type="button" data-testid="bench-probe">
+      measure bench
+    </button>
+  ),
 }));
 vi.mock('../../agent/AgentHost', () => ({ AgentHost: () => <p>agent</p> }));
 vi.mock('../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card</p> }));
@@ -29,8 +36,6 @@ vi.mock('../../road/RoadSetup', () => ({ RoadSetupCard: () => null }));
 let host: HTMLDivElement;
 let root: Root | undefined;
 
-const TOOL: LiveItem = { kind: 'tool', label: 'Distance', reading: '12.4 m' };
-
 function Stage() {
   return (
     <>
@@ -41,6 +46,7 @@ function Stage() {
         </div>
       </div>
       <Drawer />
+      <RightSidebar />
     </>
   );
 }
@@ -53,13 +59,20 @@ const render = () => {
 const drawer = () => host.querySelector<HTMLElement>('[data-testid="wb-drawer"]');
 const island = () => host.querySelector<HTMLElement>('.island-wrap');
 const startTool = () => {
-  live = [TOOL];
-  render();
+  act(() => {
+    workbench.getState().toolStarted('measure');
+  });
+};
+const stopTool = () => {
+  act(() => {
+    workbench.getState().toolStopped('measure');
+  });
 };
 
 beforeEach(() => {
   live = [];
   localStorage.clear();
+  drawerStore.getState().close();
   shell.getState().setRight(true);
   workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
   workbench.getState().reset();
@@ -95,6 +108,43 @@ describe('Drawer', () => {
     expect(drawer()?.textContent).toContain('measure bench');
   });
 
+  it('keeps one live copy of the bench: the folded sidebar steps aside while it shows (I-R38)', () => {
+    vi.useFakeTimers();
+    render();
+    act(() => {
+      workbench.getState().open('measure');
+    });
+    // the folded sidebar holds it until the drawer takes over
+    expect(host.querySelectorAll('[data-testid="bench-probe"]')).toHaveLength(1);
+    startTool();
+    expect(host.querySelectorAll('[data-testid="bench-probe"]')).toHaveLength(1);
+    expect(drawer()?.querySelector('[data-testid="bench-probe"]')).not.toBeNull();
+    stopTool();
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    // closed, the sidebar has its bench again
+    expect(drawer()).toBeNull();
+    expect(host.querySelectorAll('[data-testid="bench-probe"]')).toHaveLength(1);
+  });
+
+  it('does not open for a playing clip or a running job (I-R39)', () => {
+    render();
+    live = [
+      { kind: 'playback', clip: 'Flight', progress: 0.2, telemetry: null },
+      { kind: 'job', id: 'j1', label: 'Processing', progress: 0.1, more: 0 },
+    ];
+    act(() => {
+      workspace.setState({ playing: true });
+    });
+    render();
+    expect(drawer()).toBeNull();
+    expect(drawerStore.getState().opened).toBeNull();
+    act(() => {
+      workspace.setState({ playing: false });
+    });
+  });
+
   it('has no agent pane', () => {
     render();
     startTool();
@@ -108,8 +158,7 @@ describe('Drawer', () => {
     render();
     startTool();
     expect(drawer()?.dataset.open).toBe('');
-    live = [];
-    render();
+    stopTool();
     expect(drawer()?.dataset.open).toBeUndefined();
     expect(drawer()?.hasAttribute('inert')).toBe(true);
     act(() => {

@@ -43,6 +43,9 @@ export interface WorkbenchState {
   close(id: TabId): void;
   /** Bring a tab to the front (also the "Show it" action). */
   show(id: TabId): void;
+  /** Tools that started, ever (the drawer opens on a change), and how many run now. */
+  toolSeq: number;
+  liveTools: number;
   toolStarted(id: TabId): void;
   toolStopped(id: TabId): void;
   reset(): void;
@@ -78,6 +81,8 @@ export function createWorkbenchStore(
     };
     return {
       ...base(),
+      toolSeq: 0,
+      liveTools: 0,
       open: (id, opts) => {
         const { tabs, waiting } = get();
         const left = waiting.filter((w) => w !== id);
@@ -115,6 +120,7 @@ export function createWorkbenchStore(
       },
       toolStarted: (id) => {
         const s = get();
+        set({ toolSeq: s.toolSeq + 1, liveTools: s.liveTools + 1 });
         const opened = new Set(s.openedByTool);
         if (!s.tabs.some((t) => t.id === id)) opened.add(id);
         const c = onToolStart({ ...s, issueEditing: isIssueEditing() }, id);
@@ -123,6 +129,7 @@ export function createWorkbenchStore(
       },
       toolStopped: (id) => {
         const s = get();
+        set({ liveTools: Math.max(0, s.liveTools - 1) });
         const opened = new Set(s.openedByTool);
         const openedByTool = opened.delete(id);
         const c = onToolStop({ ...s, issueEditing: isIssueEditing() }, id, { openedByTool });
@@ -133,7 +140,7 @@ export function createWorkbenchStore(
         );
       },
       reset: () => {
-        set(base());
+        set({ ...base(), liveTools: 0 });
       },
     };
   });

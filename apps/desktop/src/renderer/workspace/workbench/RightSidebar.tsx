@@ -45,6 +45,7 @@ import { MeasureBench } from './benches/MeasureBench';
 import { sectionStore, useSections } from './sectionState';
 import { TabBar } from './TabBar';
 import type { Tab, TabId } from './tabsModel';
+import { useDrawer } from './drawerStore';
 import { useWorkbench, workbench } from './workbenchStore';
 // Road, Volumes and environment benches
 import { EnvironmentTab } from '../../environment/EnvironmentTool';
@@ -360,6 +361,7 @@ export function FrontBody({ front, road }: { front: TabId; road: boolean }) {
 
 export function RightSidebar() {
   const rightCollapsed = useShell((s) => s.rightCollapsed);
+  const drawerPresent = useDrawer((s) => s.present);
   const focusedWindow = useWorkspace((s) => s.focusedWindow);
   const stageMode = useShell((s) => s.stageMode);
   const focused = agentWindow(focusedWindow, stageMode);
@@ -410,7 +412,8 @@ export function RightSidebar() {
               aria-labelledby={`wb-tab-${id}`}
               data-front={id}
             >
-              <FrontBody front={id} road={road} />
+              {/* the drawer shows the bench while this panel is folded away (I-R38) */}
+              {rightCollapsed && drawerPresent ? null : <FrontBody front={id} road={road} />}
             </div>
           </>
         }

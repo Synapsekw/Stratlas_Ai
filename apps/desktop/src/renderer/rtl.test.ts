@@ -52,8 +52,14 @@ describe('right-to-left readiness', () => {
     expect(physical).toEqual([]);
     const users = lines.filter((l) => /var\(--caption-inline-(end|start)/.test(l));
     expect(users.length).toBeGreaterThanOrEqual(4);
-    for (const line of users)
-      expect(line).toMatch(/^\s*(padding-inline|inset-inline-end|inline-size):/);
+    let selector = '';
+    for (const line of lines) {
+      if (/\{\s*$/.test(line)) selector = line;
+      if (!/var\(--caption-inline-(end|start)/.test(line)) continue;
+      // the window buttons' backing is sized by their room (I-R23), nothing else is
+      const sized = /^\s*inline-size:/.test(line) && selector.includes('.caption-backing');
+      expect(line).toMatch(sized ? /./ : /^\s*(padding-inline|inset-inline-end):/);
+    }
   });
 
   it('isolates numbers and codes inside mixed-direction text', () => {

@@ -1,5 +1,7 @@
 /* Quadrion AI shell: frame, sidebar and screens. Components live in @aio/ui/mission.css. */
 :root {
+  /* the 40 px header rows, and the window's caption buttons (titleBarOverlay height) */
+  --head-h: 40px;
   --rp-w: 360px;
   /* folding a side panel away and back: short and ease-out, so the views settle at once */
   --panel-ms: 180ms;
@@ -1111,7 +1113,7 @@ button.chip-status:hover {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 40px;
+  height: var(--head-h);
   padding-inline: 6px calc(8px + var(--caption-inline-end));
   border-bottom: 1px solid var(--line-soft);
 }
@@ -1120,14 +1122,15 @@ button.chip-status:hover {
    OS draws them at the window's right in either direction); it is placed by the logical sides it
    falls on. Left to right it shows with the right panel folded away, at the main area's end;
    right to left it is the part of the buttons that reaches past the left sidebar's rail onto the
-   main area's start (I-R23). */
+   main area's start (I-R23). On macOS the traffic lights are at the physical left, the end side
+   right to left, so the base rule serves both directions there. */
 .caption-backing {
   display: none;
   position: absolute;
   inset-block-start: 0;
   inset-inline-end: 0;
   z-index: var(--z-panel);
-  block-size: 40px;
+  block-size: var(--head-h);
   inline-size: var(--caption-inline-end, 0px);
   background: var(--bg-0);
   border-block-end: 1px solid var(--line-soft);
@@ -1136,7 +1139,7 @@ button.chip-status:hover {
 .ws.right-off > .caption-backing {
   display: block;
 }
-[dir='rtl'] .ws > .caption-backing {
+[dir='rtl'] .app[data-platform='win32'] .ws > .caption-backing {
   display: block;
   inset-inline-end: auto;
   inset-inline-start: 0;

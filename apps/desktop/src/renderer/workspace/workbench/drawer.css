@@ -33,7 +33,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  block-size: 40px;
+  block-size: var(--head-h);
   /* under the window's own buttons (the caption backing keeps them dark) */
   padding-inline: var(--sp-5) calc(var(--sp-3) + var(--caption-inline-end, 0px));
   border-block-end: 1px solid var(--line-soft);
@@ -52,4 +52,11 @@
   min-block-size: 0;
   overflow: auto;
   border-block-end: 0;
+}
+
+/* The island centres on the stage the drawer leaves uncovered (I-R42): the drawer sets
+   --drawer-inline on the stage while it is open, and the island's end inset follows it. */
+.stage > .island-wrap {
+  inset-inline-end: var(--drawer-inline, 0px);
+  transition: inset-inline-end var(--d-3) var(--ease);
 }
