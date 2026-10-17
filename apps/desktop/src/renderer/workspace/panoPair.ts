@@ -1,4 +1,4 @@
-import { panoOpenable } from '@aio/engine';
+import { hasPos, panoOpenable } from '@aio/engine';
 import type { Layer, PanoRef, Vec3 } from '@aio/schema';
 import type { CaptureIndex } from '@aio/workspace';
 
@@ -25,7 +25,8 @@ export function panosOf(
     const of = index?.of[l.id];
     if (capture !== undefined && of !== undefined && of !== capture) continue;
     // a sphere not stitched yet has no image to show or pair
-    for (const pano of l.items) if (panoOpenable(pano)) out.push({ layer: l.id, pano });
+    for (const pano of l.items)
+      if (panoOpenable(pano) && hasPos(pano)) out.push({ layer: l.id, pano });
   }
   return out;
 }
@@ -49,9 +50,12 @@ export function pairPano(
   candidates: readonly PanoAt[],
   maxM = PAIR_MAX_M,
 ): PanoPair | null {
+  const here = from.pos;
+  if (here === undefined) return null;
   let best: PanoPair | null = null;
   for (const at of candidates) {
-    const d = groundDistance(from.pos, at.pano.pos);
+    if (!at.pano.pos) continue;
+    const d = groundDistance(here, at.pano.pos);
     if (!best || d < best.distanceM) best = { at, distanceM: d, within: d <= maxM };
   }
   return best;

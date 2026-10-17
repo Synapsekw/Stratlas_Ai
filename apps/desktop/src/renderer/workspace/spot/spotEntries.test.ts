@@ -181,3 +181,22 @@ describe('spotEntries and unstitched spheres', () => {
     expect(out.map((x) => (x.kind === 'pano' ? x.id : x.kind))).toEqual(['d']);
   });
 });
+
+describe('spotEntries and 360s that are not placed', () => {
+  it('has no entry for them', () => {
+    const layers = [
+      {
+        kind: 'panoramas',
+        id: 'pano-np',
+        name: 'p',
+        visible: true,
+        items: [
+          { id: 'a', src: { path: 'a.jpg' }, pos: [10, 0, 0], headingDeg: 0 },
+          { id: 'b', src: { path: 'b.jpg' }, headingDeg: 0 },
+        ],
+      },
+    ] as unknown as Layer[];
+    const out = spotEntries({ layers, index: captureIndex({ ...manifest, layers }) });
+    expect(out.map((x) => (x.kind === 'pano' ? x.id : x.kind))).toEqual(['a']);
+  });
+});

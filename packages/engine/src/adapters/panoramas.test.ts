@@ -118,6 +118,27 @@ describe('panoramas layer', () => {
     host.remove();
   });
 
+  it('leaves a 360 that is not placed out of the bounds (no NaN)', async () => {
+    const { host, h } = setup();
+    const providers: (() => Box3 | null)[] = [];
+    h.addContentBounds = (b) => {
+      providers.push(b);
+      return vi.fn();
+    };
+    const mixed: PanoLayer = {
+      ...layer,
+      items: [
+        { id: 'a', src: { path: 'panoramas/a.jpg' }, pos: [10, 0, 0], headingDeg: 0 },
+        { id: 'b', src: { path: 'panoramas/b.jpg' }, headingDeg: 0 },
+      ],
+    };
+    await createPanoramasAdapter(createWorkspace()).create(mixed, { url: () => '', scene: h });
+    const box = providers[0]?.();
+    expect(box?.min.toArray()).toEqual([9, -1, -1]);
+    expect(box?.max.toArray()).toEqual([11, 1, 1]);
+    host.remove();
+  });
+
   it('bounds the camera by its markers and stems while visible, and lets go on dispose', async () => {
     const { host, h } = setup();
     const providers: (() => Box3 | null)[] = [];

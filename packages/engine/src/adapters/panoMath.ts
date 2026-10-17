@@ -167,3 +167,10 @@ export function panoMarkerStatus(p: {
 export function panoOpenable(p: { stitch?: { status: string } | undefined }): boolean {
   return p.stitch === undefined || p.stitch.status === 'done';
 }
+
+/** Whether a 360 has a place on the site; one that came in without GPS and is not pinned has none. */
+export function hasPos<T extends { pos?: readonly number[] | undefined }>(
+  p: T,
+): p is T & { pos: [number, number, number] } {
+  return p.pos !== undefined;
+}

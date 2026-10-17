@@ -227,7 +227,7 @@ export async function fullLayerExtent(
           ),
         );
   try {
-    if (l.kind === 'panoramas') return boxOf(l.items.map((p) => p.pos));
+    if (l.kind === 'panoramas') return boxOf(l.items.flatMap((p) => (p.pos ? [p.pos] : [])));
     if (l.kind === 'vector' && 'path' in l.src)
       return fromLonLat(
         geojsonLonLat(JSON.parse(await readFile(join(root, l.src.path), 'utf8')) as unknown),

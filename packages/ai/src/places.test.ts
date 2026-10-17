@@ -44,3 +44,47 @@ describe('placeIndex with moved photos', () => {
     expect(places.find((p) => p.id === 'photo:a')?.eye?.pos).toEqual([0, 50, 0]);
   });
 });
+
+describe('placeIndex with a 360 that is not placed', () => {
+  it('gives it a place without p and eye, and keeps it out of the layer box', () => {
+    const ws = createWorkspace();
+    const manifest = {
+      schema: 'aio.project/1',
+      id: 'p',
+      name: 'P',
+      crs: { epsg: 32639 },
+      origin: [0, 0, 0],
+      captures: [],
+      layers: [
+        {
+          kind: 'panoramas',
+          id: 'pn',
+          name: 'N',
+          visible: true,
+          items: [
+            { id: 'a', src: { path: 'a.jpg' }, pos: [10, 0, 0], headingDeg: 0 },
+            { id: 'b', src: { path: 'b.jpg' }, headingDeg: 0 },
+          ],
+        },
+      ],
+      severityModels: [],
+      classCatalogues: [],
+    } as unknown as ProjectManifest;
+    ws.getState().openProject({ id: 'p', root: 'C:/p', manifest });
+    const ctx: RendererToolContext = {
+      workspace: ws,
+      window: 'scene3d',
+      scene: () => null,
+      fetchJson: () => Promise.resolve(null),
+      captureFrame: () => Promise.resolve(null),
+      now: () => new Date(0),
+    };
+    const places = placeIndex(ctx);
+    const b = places.find((p) => p.id === 'pano:b');
+    expect(b).toBeDefined();
+    expect(b?.p).toBeUndefined();
+    expect(b?.eye).toBeUndefined();
+    expect(places.find((p) => p.id === 'pano:a')?.p).toEqual([10, 0, 0]);
+    expect(places.find((p) => p.id === 'layer:pn')?.p).toEqual([10, 0, 0]);
+  });
+});

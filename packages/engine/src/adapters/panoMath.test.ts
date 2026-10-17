@@ -11,6 +11,7 @@ import {
   itemCoverage,
   panoMarkerStatus,
   panoOpenable,
+  hasPos,
   panoUv,
   parsePanoIndex,
   startLook,
@@ -122,5 +123,14 @@ describe('coverage and status from the item', () => {
     expect(panoOpenable({})).toBe(true);
     expect(panoOpenable({ stitch: { status: 'done' } })).toBe(true);
     expect(panoOpenable({ stitch: { status: 'queued' } })).toBe(false);
+  });
+});
+
+describe('hasPos', () => {
+  it('is true for a placed 360 and false for one that is not placed', () => {
+    const a = { id: 'a', pos: [10, 0, 0] as [number, number, number] };
+    const b: { id: string; pos?: [number, number, number] } = { id: 'b' };
+    expect(hasPos(a)).toBe(true);
+    expect(hasPos(b)).toBe(false);
   });
 });

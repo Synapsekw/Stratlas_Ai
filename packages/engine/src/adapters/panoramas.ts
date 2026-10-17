@@ -31,6 +31,7 @@ import {
   itemCoverage,
   panoMarkerStatus,
   panoOpenable,
+  hasPos,
   parsePanoIndex,
   startLook,
   zoomLook,
@@ -257,7 +258,7 @@ export function createPanoramasAdapter(
     kind: 'panoramas',
     async create(layer: PanoLayer, ctx: AdapterContext): Promise<LayerHandle> {
       const scene = ctx.scene;
-      const items = layer.items;
+      const items = layer.items.filter(hasPos);
       const coverage = await loadCoverage(ctx);
       const group = new Group();
       group.name = `panoramas:${layer.id}`;
@@ -400,7 +401,7 @@ export function createPanoramasAdapter(
 
       const show = (i: number) => {
         const p = items[i];
-        if (!p || !panoOpenable(p)) return;
+        if (!p || !panoOpenable(p) || !hasPos(p)) return;
         current = i;
         const cov = coverageOf(p);
         center.set(...p.pos);

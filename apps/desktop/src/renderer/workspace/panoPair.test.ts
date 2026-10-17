@@ -140,3 +140,21 @@ describe('panosOf and unstitched spheres', () => {
     expect(list.map((a) => a.pano.id)).toEqual(['done', 'ready']);
   });
 });
+
+describe('a 360 that is not placed', () => {
+  const unplaced = { id: 'u', src: { path: 'p/u.jpg' }, headingDeg: 0 };
+  const mixed = [
+    {
+      kind: 'panoramas',
+      id: 'p-x',
+      name: 'x',
+      items: [pano('a', 0, 0), unplaced],
+    } as unknown as Layer,
+  ];
+  it('is left out of panosOf and never paired', () => {
+    const list = panosOf(mixed, null, undefined);
+    expect(list.map(panoKey)).toEqual(['p-x/a']);
+    expect(pairPano(pano('z', 5, 0), list)?.at.pano.id).toBe('a');
+    expect(pairPano(unplaced, list)).toBeNull();
+  });
+});

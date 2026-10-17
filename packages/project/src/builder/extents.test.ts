@@ -275,3 +275,19 @@ it('gives panoramas, kit pyramids and GeoJSON an extent for Properties only', as
   // the far-content list is unchanged: no vector, no panoramas
   expect(await layerExtent(root, m, vector, null)).toBeNull();
 });
+
+it('ignores a 360 that is not placed in a panoramas extent', async () => {
+  const root = await project();
+  const m = await readManifestFile(root);
+  const panos = {
+    kind: 'panoramas',
+    id: 'pn',
+    name: 'P',
+    visible: true,
+    items: [
+      { id: 'a', src: { path: 'a.jpg' }, pos: [10, 0, 0], headingDeg: 0 },
+      { id: 'b', src: { path: 'b.jpg' }, headingDeg: 0 },
+    ],
+  } as unknown as Layer;
+  expect(await fullLayerExtent(root, m, panos, null)).toEqual({ min: [10, 0, 0], max: [10, 0, 0] });
+});

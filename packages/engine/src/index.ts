@@ -40,6 +40,7 @@ export {
   imageCentreDeg,
   itemCoverage,
   panoOpenable,
+  hasPos,
   panoUv,
   parsePanoIndex,
   startLook,

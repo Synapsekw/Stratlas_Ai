@@ -138,3 +138,19 @@ describe('layerBounds', () => {
     expect(rayDown).toHaveBeenCalledWith(1, 2, 'dsm');
   });
 });
+
+describe('an unplaced 360', () => {
+  const mk = (items: unknown[]) =>
+    ({ kind: 'panoramas', id: 'pu', name: 'U', visible: true, items }) as unknown as Layer;
+  const a = { id: 'a', src: { path: 'a' }, pos: [10, 0, 0], headingDeg: 0 };
+  const b = { id: 'b', src: { path: 'b' }, headingDeg: 0 };
+  it('is no place by itself and does not widen the bounds', async () => {
+    expect(knowsWhere(mk([b]))).toBe(false);
+    expect(knowsWhere(mk([a, b]))).toBe(true);
+    const m = { layers: [mk([a, b])] } as unknown as ProjectManifest;
+    const m1 = { layers: [mk([a])] } as unknown as ProjectManifest;
+    expect(await layerBounds('pu', deps({ manifest: m }))).toEqual(
+      await layerBounds('pu', deps({ manifest: m1 })),
+    );
+  });
+});

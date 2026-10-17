@@ -1,4 +1,4 @@
-import { panoOpenable } from '@aio/engine';
+import { hasPos, panoOpenable } from '@aio/engine';
 import { correctedPhoto } from '@aio/geo';
 import type { Layer, PhotoCorrection, WalkLayer } from '@aio/schema';
 import {
@@ -45,7 +45,7 @@ export function spotEntries(input: EntryInputs): SpotEntry[] {
       }
     } else if (l.kind === 'panoramas') {
       // a sphere not stitched yet has no image to show in the history
-      for (const p of l.items.filter(panoOpenable))
+      for (const p of l.items.filter(hasPos).filter(panoOpenable))
         out.push({
           kind: 'pano',
           layer: l.id,

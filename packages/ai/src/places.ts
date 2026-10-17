@@ -521,7 +521,7 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
         }),
       );
     } else if (l.kind === 'panoramas') {
-      box = boxOfPoints(l.items.map((i) => i.pos));
+      box = boxOfPoints(l.items.flatMap((i) => (i.pos ? [i.pos] : [])));
     } else if (opts.measureLayers && scene && (l.kind === 'mesh' || l.kind === 'pointcloud')) {
       const roots = scene.scene.children.filter((o) => o.userData.layerId === l.id);
       box = roots.length ? boxOf(roots) : undefined;
@@ -552,8 +552,7 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
           name: i.id,
           detail: l.name,
           layer: l.id,
-          p: i.pos,
-          eye: { pos: i.pos, headingDeg: i.headingDeg },
+          ...(i.pos ? { p: i.pos, eye: { pos: i.pos, headingDeg: i.headingDeg } } : {}),
         });
       }
     } else if (l.kind === 'video') {

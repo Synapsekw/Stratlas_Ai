@@ -50,8 +50,8 @@ export function knowsWhere(l: Layer): boolean {
     case 'pointcloud':
     case 'raster':
     case 'vector':
-    case 'panoramas':
       return true;
+    case 'panoramas':
     case 'photos':
       return l.items.some((p) => p.pos !== undefined);
     case 'walk':
@@ -76,7 +76,7 @@ export async function layerBounds(layerId: string, deps: BoundsDeps): Promise<Bo
         ),
       );
     case 'panoramas':
-      return boxOfPoints(l.items.map((p) => p.pos));
+      return boxOfPoints(l.items.flatMap((p) => (p.pos ? [p.pos] : [])));
     case 'raster': {
       if (l.corners) {
         const { tl, tr, bl } = l.corners;
