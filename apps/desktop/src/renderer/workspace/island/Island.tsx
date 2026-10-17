@@ -25,7 +25,7 @@ import { useRoad } from '../../road/store';
 import { useShell } from '../../shell';
 import type { StageMode } from '../../store';
 import { CompareButton, useCompareDates } from '../CompareControls';
-import type { Side } from '../splitModel';
+import { focusedSide, type Side } from '../splitModel';
 import { paneCapture, type SplitModel } from '../SplitPanes';
 import { takeTNotice } from '../stagePrefs';
 import { useTimeline } from '../timeline';
@@ -134,7 +134,28 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const index = useTimeline((x) => x.index);
   const focus = useTimeline((x) => x.focus);
   const splitting = mode === 'split';
-  const dates = islandDates(index, focus, splitting ? split : null, side);
+  const dateSide = splitting ? focusedSide(split.sides, side, split.dates) : null;
+  const dates = islandDates(index, focus, dateSide ? split : null, dateSide ?? 'left');
+  // in Split, Alt+Left / Alt+Right step the pane the date follows, before the app steps the
+  // date bar's survey (App.tsx); elsewhere the app's shortcut does it
+  const paneStep = useRef<((dir: -1 | 1) => void) | null>(null);
+  useEffect(() => {
+    paneStep.current = dateSide && dates ? dates.step : null;
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const step = paneStep.current;
+      if (!step || e.defaultPrevented || isTyping(e.target)) return;
+      const id = matchShortcut('global', e);
+      if (id !== 'global.prevSurvey' && id !== 'global.nextSurvey') return;
+      e.preventDefault();
+      step(id === 'global.prevSurvey' ? -1 : 1);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, []);
   const rest = islandRest(dates ? dates.order.length : 0);
   const compareDates = useCompareDates(split);
   const left = splitting ? paneCapture(split, 'left') : undefined;

@@ -111,7 +111,7 @@
     "fontPx": 3,
     "colour": 2,
     "shadow": 2,
-    "zIndex": 2
+    "zIndex": 1
   },
   "apps/desktop/src/renderer/issueCard/IssueCard.tsx": {
     "title": 8
@@ -376,7 +376,7 @@
     "title": 2
   },
   "apps/desktop/src/renderer/workspace/SplitPanes.tsx": {
-    "title": 8
+    "title": 7
   },
   "apps/desktop/src/renderer/workspace/spot/spot.css": {
     "fontPx": 2,

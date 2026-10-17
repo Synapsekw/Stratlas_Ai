@@ -1796,6 +1796,9 @@ button.chip-status:hover {
 }
 .stage {
   --dock-w: clamp(320px, 36%, 560px);
+  /* where a split pane's header strip stands: under the island, and under Compare's tools and
+     "How compare works" beside it while two dates are compared (CompareControls.tsx) */
+  --pane-head-top: 54px;
   /* how much of the views the drawer covers: the drawer's cover of the stage's end edge
      (--drawer-inline, Drawer.tsx) less a video docked beside the views (--vdock-w) */
   --views-cover: max(0px, var(--drawer-inline, 0px) - var(--vdock-w, 0px));
@@ -1865,12 +1868,12 @@ button.chip-status:hover {
 .stage-panes[data-mode='split'] > [data-side='right'] {
   border-inline-start: 1px solid var(--line);
 }
-/* a pane other than the 3D view or the map: its content starts below the toolbar row and the
-   band that holds the pane chooser */
+/* a pane other than the 3D view or the map: its content starts below the island and the pane's
+   header strip */
 .pane-x {
   display: flex;
   flex-direction: column;
-  padding-top: 90px;
+  padding-top: calc(var(--pane-head-top) + 36px);
   background: var(--bg-0);
 }
 .pane-x > .scene-fill,
@@ -1964,44 +1967,112 @@ button.chip-status:hover {
   text-overflow: ellipsis;
   min-width: 0;
 }
-/* the selector in a split pane's corner: what this side shows */
-.pane-chooser {
+/* a split pane's header strip (D31): under the island, across the pane; its date chip and view
+   list at the start, the link toggle at the end. The strip lets the pointer through to the view;
+   the corner slots keep below it */
+.pane-head {
+  --pane-head-h: 32px;
   position: absolute;
-  top: 54px;
-  inset-inline-end: 12px;
+  top: var(--pane-head-top);
+  inset-inline: var(--sp-3);
   z-index: 7;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  block-size: var(--pane-head-h);
+  pointer-events: none;
+}
+.pane-head > * {
+  pointer-events: auto;
+}
+.pane-head-main {
+  display: flex;
+  align-items: center;
   gap: 6px;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   padding-block: 2px;
   padding-inline: 8px 2px;
 }
-.pane-chooser select.input {
+.pane-head .pane-date {
+  display: flex;
+  flex-shrink: 0;
+}
+.pane-head .pane-date .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.pane-head select.input {
+  min-inline-size: 0;
   height: 26px;
   border-color: transparent;
   background-color: transparent;
 }
-.pane-chooser select.input:hover {
+.pane-head select.input:hover {
   border-color: var(--line);
 }
-.pane-chooser .pane-link[aria-pressed='true'] {
+.pane-head .pane-link {
+  flex-shrink: 0;
+}
+.pane-head .pane-link[aria-pressed='true'] {
   color: var(--acc);
 }
-.pane-chooser .pane-link[aria-pressed='false'] {
+.pane-head .pane-link[aria-pressed='false'] {
   color: var(--fg-3);
+}
+/* the Split view's divider (scene.split): the left side's share, from @aio/ui parts/split.css;
+   the panes keep their own places in the grid (order by side) */
+.stage-panes.split {
+  position: absolute;
+}
+.stage-panes.split[data-mode='split'][data-orientation='horizontal'] {
+  grid-template-columns: var(--split-track) minmax(0, 1fr);
+}
+/* the divider runs the stage's height under the island, the corner overlays and the pane headers
+   (which come later at the same level, or stand above it) */
+.stage-panes.split > .split-handle {
+  z-index: var(--z-stage-ui);
+}
+/* Compare's tools beside the island, "How compare works" under them; the pane headers below */
+.stage:has(.isl-aside .compare-how) {
+  --pane-head-top: 86px;
+}
+/* and two maps or orthos compared: Side by side, Swipe and Blend (MapSwipe.tsx) take the row above
+   the headers */
+.stage:has(.stage-panes > .compare-view) {
+  --pane-head-top: 122px;
+}
+.compare-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+}
+.compare-how {
+  padding-inline: var(--sp-3);
+}
+/* a split pane's coordinates readout keeps a readable width, the pane's foot at most */
+.stage-panes[data-mode='split'] .cursor-ro {
+  min-inline-size: min(160px, calc(100% - 80px - 2 * var(--sp-5)));
 }
 .compare-notice {
   max-width: 520px;
   white-space: normal;
 }
-/* in a split the status chips stay clear of the left pane's chooser */
+/* in a split the status chips keep to the left pane, and the top ones stand below its header */
 .stage[data-mode='split'] .stage-slot[data-slot='tl'],
 .stage[data-mode='split'] .stage-slot[data-slot='bl'] {
-  max-width: max(180px, calc(50% - 240px));
+  max-width: max(180px, calc(50% - var(--sp-6)));
 }
-/* the map's zoom buttons move below the chooser in a split */
+.stage[data-mode='split'] .stage-slot[data-slot='tl'] {
+  top: max(calc(var(--pane-head-top) + 40px), calc(var(--isl-open-b, 0px) + var(--sp-4)));
+}
+/* the map's zoom buttons move below the pane header in a split */
 .stage-panes[data-mode='split'] .pane-map .maplibregl-ctrl-top-right {
-  top: 92px;
+  top: calc(var(--pane-head-top) + 38px);
 }
 /* a raster (ortho, plan) panned and zoomed as a flat image */
 .raster-view {
@@ -2154,7 +2225,7 @@ svg.flip {
 }
 /* in a split the map's zoom buttons sit below the pane chooser, and so does the slot */
 .stage[data-mode='split'] .stage-slot[data-slot='tr'] {
-  top: max(168px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
+  top: max(calc(var(--pane-head-top) + 114px), calc(var(--isl-open-b, 0px) + var(--sp-4)));
 }
 /* over the map's scale bar and the 3D view's foot */
 .stage-slot[data-slot='bl'] {

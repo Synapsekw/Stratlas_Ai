@@ -127,6 +127,18 @@ export function followsFocus(prev: FocusFollow, next: FocusFollow): boolean {
   );
 }
 
+/**
+ * The side whose survey date the island shows and steps in Split (D7): the last focused pane
+ * when it is drawn per date, else the other side when that one is, else null (the island shows
+ * the date bar's survey). Without two dates to compare, null.
+ */
+export function focusedSide(pref: SplitPref, last: Side, dates?: SplitDates): Side | null {
+  if (!dates || dates.captures.length < 2) return null;
+  const other: Side = last === 'left' ? 'right' : 'left';
+  if (PER_CAPTURE.includes(pref[last])) return last;
+  return PER_CAPTURE.includes(pref[other]) ? other : null;
+}
+
 /** Every side that shows `kind` in split mode. */
 export function sidesOf(pref: SplitPref, kind: PaneKind): Side[] {
   return (['left', 'right'] as const).filter((s) => pref[s] === kind);

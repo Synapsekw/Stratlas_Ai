@@ -64,7 +64,7 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
-  padding-top: 90px;
+  padding-top: calc(var(--pane-head-top, 54px) + 36px);
 }
 .pane-map.walk-placing > .wplace,
 .pane-3d.walk-placing > .wplace {
@@ -72,8 +72,8 @@
   grid-column: 1;
 }
 /* the split's pane chooser keeps its place by the stage toolbar, above the placing toolbar */
-.pane-map.walk-placing > :not(.wplace, .pane-chooser),
-.pane-3d.walk-placing > :not(.wplace, .pane-chooser) {
+.pane-map.walk-placing > :not(.wplace, .pane-head),
+.pane-3d.walk-placing > :not(.wplace, .pane-head) {
   grid-row: 2;
   grid-column: 1;
 }

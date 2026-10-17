@@ -1,6 +1,6 @@
 import { changeStore, useChange } from '@aio/change';
 import { MapView, type MapController, type MapIssueDisplay } from '@aio/maps';
-import { Icon, useT } from '@aio/ui';
+import { Button, Icon, useT } from '@aio/ui';
 import { useVolumetric, volumetric } from '@aio/volumetric';
 import {
   canCompare,
@@ -12,7 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { openChangesTab, useChangeOverlays } from '../change';
 import { FocusZone } from '../FocusZone';
-import { HelpLink } from '../help/HelpPanel';
+import { help } from '../help/store';
 import { useGraphics } from '../graphics';
 import { shell, useShell } from '../shell';
 import { useMeasureDisplayMap } from '../survey/measureDisplay';
@@ -92,7 +92,7 @@ export function useCompareDates(split: SplitModel): CompareDates {
 
 /**
  * "Compare dates" beside the view modes (`useCompareDates`), and while comparing, Show changes,
- * the compare tools of later streams and help.
+ * the compare tools of later streams and "How compare works" (the chapter in Help).
  */
 export function CompareButton({
   split,
@@ -113,44 +113,58 @@ export function CompareButton({
   if (!available || (whileComparing && !twin && !showChanges)) return null;
 
   return (
-    <div className="tgroup-h overlay-box" data-fixed="">
-      {(!whileComparing || twin) && (
-        <button
-          type="button"
-          className="tool"
-          data-testid="compare-dates"
-          aria-pressed={twin}
-          aria-label={label}
+    <div className="compare-group">
+      <div className="tgroup-h overlay-box" data-fixed="">
+        {(!whileComparing || twin) && (
+          <button
+            type="button"
+            className="tool"
+            data-testid="compare-dates"
+            aria-pressed={twin}
+            aria-label={label}
+            onClick={() => {
+              open();
+            }}
+          >
+            <Icon name="history" />
+            <span className="tip">{label}</span>
+          </button>
+        )}
+        {(twin || showChanges) && (
+          <button
+            type="button"
+            className="tool"
+            data-testid="compare-show-changes"
+            aria-pressed={showChanges}
+            aria-label={t(showChanges ? 'change.hide' : 'change.show')}
+            onClick={() => {
+              const on = !showChanges;
+              changeStore.getState().setShow(on);
+              if (on) {
+                openChangesTab();
+                shell.getState().setRight(false);
+              }
+            }}
+          >
+            <Icon name="flag" />
+            <span className="tip">{t(showChanges ? 'change.hide' : 'change.show')}</span>
+          </button>
+        )}
+        {twin && COMPARE_TOOLS.map((Tool, i) => <Tool key={i} split={split} />)}
+      </div>
+      {/* under the tools, so the group stays narrow beside the island */}
+      {twin && (
+        <Button
+          variant="link"
+          className="compare-how overlay-box"
+          data-help="compare-dates"
           onClick={() => {
-            open();
+            help.getState().openHelp({ chapter: 'compare-dates' });
           }}
         >
-          <Icon name="history" />
-          <span className="tip">{label}</span>
-        </button>
+          {t('compare.how')}
+        </Button>
       )}
-      {(twin || showChanges) && (
-        <button
-          type="button"
-          className="tool"
-          data-testid="compare-show-changes"
-          aria-pressed={showChanges}
-          aria-label={t(showChanges ? 'change.hide' : 'change.show')}
-          onClick={() => {
-            const on = !showChanges;
-            changeStore.getState().setShow(on);
-            if (on) {
-              openChangesTab();
-              shell.getState().setRight(false);
-            }
-          }}
-        >
-          <Icon name="flag" />
-          <span className="tip">{t(showChanges ? 'change.hide' : 'change.show')}</span>
-        </button>
-      )}
-      {twin && COMPARE_TOOLS.map((Tool, i) => <Tool key={i} split={split} />)}
-      {twin && <HelpLink topic={{ chapter: 'compare-dates' }} label={t('help.compare')} />}
     </div>
   );
 }

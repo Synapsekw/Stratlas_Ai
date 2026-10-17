@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
 import type { PaneKind, SplitDates, SplitPref } from './splitModel';
-import { PaneChooser, pickPano, type SplitModel } from './SplitPanes';
+import { PaneHeader, pickPano, type SplitModel } from './SplitPanes';
 
 const panoLayer = (id: string, capture?: string) =>
   ({
@@ -68,14 +68,14 @@ afterEach(() => {
 
 const render = (side: 'left' | 'right', split: SplitModel) => {
   root ??= createRoot(host);
-  act(() => root?.render(<PaneChooser side={side} split={split} />));
+  act(() => root?.render(<PaneHeader side={side} split={split} />));
 };
 const select = (side: 'left' | 'right') =>
   only(host.querySelector<HTMLSelectElement>(`[data-testid="pane-select-${side}"]`), 'select');
 const groupLabels = (side: 'left' | 'right') =>
   [...select(side).querySelectorAll('optgroup')].map((g) => g.label);
 
-describe('PaneChooser', () => {
+describe('PaneHeader', () => {
   it('groups the panes by survey date, newest first, then any date', () => {
     render('left', model({ left: '3d', right: 'map' }));
     expect(groupLabels('left')).toEqual(['6 Nov 2024', '2 Oct 2024', '4 Sep 2024', 'Any date']);

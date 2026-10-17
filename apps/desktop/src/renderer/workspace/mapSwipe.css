@@ -10,21 +10,30 @@
   z-index: 1;
   border-inline-start: 0;
 }
+/* one view over the other: the swipe has its own divider, the split's goes */
+.stage-panes[data-compare-view] > .split-handle {
+  display: none;
+}
 .stage-panes[data-compare-view='swipe'] > [data-side='right'] {
   clip-path: var(--compare-clip, inset(0 0 0 50%));
 }
 .stage-panes[data-compare-view='blend'] > [data-side='right'] {
   opacity: var(--compare-blend, 0.5);
 }
-/* the earlier date's chooser moves to the left edge, above the later pane */
-.stage-panes[data-compare-view] > [data-side='left'] .pane-chooser {
-  inset-inline-end: auto;
-  inset-inline-start: 12px;
+/* the panes lie one over the other: the earlier date's header keeps the left half, above the
+   later pane, and the later date's header the right half, its date and view at the end */
+.stage-panes[data-compare-view] > [data-side='left'] .pane-head {
+  inset-inline-end: 50%;
   z-index: 8;
+}
+.stage-panes[data-compare-view] > [data-side='right'] .pane-head {
+  inset-inline-start: 50%;
+  justify-content: flex-end;
 }
 .compare-view {
   position: absolute;
-  top: 54px;
+  /* the row above the pane headers, under Compare's tools beside the island */
+  top: calc(var(--pane-head-top, 122px) - 36px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 9;

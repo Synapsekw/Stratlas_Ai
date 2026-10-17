@@ -1,6 +1,15 @@
 import { PhotoViewer, VideoAnnotator } from '@aio/annotate';
 import { shiftedLayer, type Layer, type ReportFile } from '@aio/schema';
-import { Icon, useT, type IconName, type MessageKey } from '@aio/ui';
+import {
+  Chip,
+  Icon,
+  IconButton,
+  SplitHandle,
+  useResizableSplit,
+  useT,
+  type IconName,
+  type MessageKey,
+} from '@aio/ui';
 import { VideoWindow } from '@aio/video';
 import {
   assetUrl,
@@ -11,7 +20,7 @@ import {
   workspace,
   type CaptureIndex,
 } from '@aio/workspace';
-import { useMemo, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, type ReactNode, type RefObject } from 'react';
 import { FocusZone } from '../FocusZone';
 import {
   closeEvidence,
@@ -145,10 +154,21 @@ export function paneCapture(split: SplitModel, side: Side): string | undefined {
 }
 
 /**
- * The small selector in a pane's corner: what this side of the split shows, as one list grouped
- * by survey date (newest first, then the panes of any date) when the project has two dates.
+ * A split pane's header strip (D31): the survey date the side shows, the view it shows (one list
+ * grouped by survey date, newest first, then the panes of any date, when the project has two
+ * dates) and, on the right of two linked views, the link toggle. It sits under the island, and no
+ * corner overlay covers it.
  */
-export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) {
+export function PaneHeader({
+  side,
+  split,
+  end,
+}: {
+  side: Side;
+  split: SplitModel;
+  /** More of the pane's own controls, at the strip's end (the evidence's close button). */
+  end?: ReactNode;
+}) {
   const t = useT();
   const layers = useWorkspace((s) => s.project?.manifest.layers);
   const current = split.sides[side];
@@ -174,62 +194,109 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
       </option>
     ));
   return (
-    // over the stage (street map, imagery), like the stage toolbar: dark in every theme
+    // over the stage (street map, imagery), like the island: dark in every theme
     <div
-      className={`pane-chooser overlay-box side-${side}`}
+      className={`pane-head side-${side}`}
       data-testid={`pane-chooser-${side}`}
       data-surface="dark"
     >
-      <Icon name={paneInfo(current).icon} size={14} className="muted" />
-      {capture !== undefined && index && (
-        <span
-          className="dtag"
-          style={{ background: dateTags(index.captures)[capture]?.colour }}
-          aria-hidden="true"
-        />
-      )}
-      <select
-        className="input"
-        data-testid={`pane-select-${side}`}
-        aria-label={t(side === 'left' ? 'stage.split.left' : 'stage.split.right')}
-        value={paneValue(current, capture ?? null)}
-        onChange={(e) => {
-          const picked = parsePaneValue(e.target.value);
-          if (!picked) return;
-          dropEvidence();
-          split.set(chooseAt(split.sides, side, picked.kind, picked.capture, split.dates));
-        }}
-      >
-        {groups.length < 2
-          ? groups.map(options)
-          : groups.map((g) => (
-              <optgroup
-                key={g.capture ?? ''}
-                label={
-                  g.capture && index ? captureLabel(index, g.capture) : t('stage.pane.anyDate')
-                }
-              >
-                {options(g)}
-              </optgroup>
-            ))}
-      </select>
+      <div className="pane-head-main overlay-box">
+        <Icon name={paneInfo(current).icon} size={14} className="muted" />
+        {capture !== undefined && index && (
+          <span className="pane-date" data-testid="pane-date">
+            <Chip kind="tag">
+              <span
+                className="dtag"
+                style={{ background: dateTags(index.captures)[capture]?.colour }}
+                aria-hidden="true"
+              />
+              {captureLabel(index, capture)}
+            </Chip>
+          </span>
+        )}
+        <select
+          className="input"
+          data-testid={`pane-select-${side}`}
+          aria-label={t(side === 'left' ? 'stage.split.left' : 'stage.split.right')}
+          value={paneValue(current, capture ?? null)}
+          onChange={(e) => {
+            const picked = parsePaneValue(e.target.value);
+            if (!picked) return;
+            dropEvidence();
+            split.set(chooseAt(split.sides, side, picked.kind, picked.capture, split.dates));
+          }}
+        >
+          {groups.length < 2
+            ? groups.map(options)
+            : groups.map((g) => (
+                <optgroup
+                  key={g.capture ?? ''}
+                  label={
+                    g.capture && index ? captureLabel(index, g.capture) : t('stage.pane.anyDate')
+                  }
+                >
+                  {options(g)}
+                </optgroup>
+              ))}
+        </select>
+      </div>
       {twin && side === 'right' && (
-        <button
-          type="button"
-          className="btn icon sm ghost pane-link"
+        <IconButton
+          icon="link"
+          className="pane-link overlay-box"
           data-testid="compare-link"
-          aria-pressed={linked}
-          aria-label={t(linked ? 'stage.compare.unlink' : 'stage.compare.link')}
-          title={t(linked ? 'stage.compare.unlink' : 'stage.compare.link')}
+          pressed={linked}
+          label={t(linked ? 'stage.compare.unlink' : 'stage.compare.link')}
           onClick={() => {
             split.set({ ...split.sides, ...(linked ? { unlinked: true } : { unlinked: false }) });
           }}
-        >
-          <Icon name="link" size={14} />
-        </button>
+        />
       )}
+      {end}
     </div>
   );
+}
+
+/** The Split view's divider: its share of the stage is kept on this computer under this id. */
+export const SPLIT_ID = 'scene.split';
+
+/**
+ * The divider between the two sides of the Split view (D31): the shared `ResizableSplit`, sized
+ * from the left side as a share of the stage. Drag it, or use the arrow keys on it; double-click
+ * puts it back in the middle. Each side keeps 200 px, or half a stage too narrow for that.
+ * `containerRef` goes on the panes' grid, which lays the panes out itself (they keep their
+ * canvas as the sides change), and `handle` inside it; off (no split), there is no handle.
+ */
+export function useSplitDivider(on: boolean): {
+  containerRef: RefObject<HTMLDivElement | null>;
+  handle: ReactNode;
+} {
+  const t = useT();
+  const { containerRef, separatorProps } = useResizableSplit({
+    id: SPLIT_ID,
+    orientation: 'horizontal',
+    sized: 'start',
+    unit: 'fraction',
+    defaultSize: 0.5,
+    min: 200,
+    minShare: 0.5,
+    max: '100%',
+    otherMin: 200,
+  });
+  const paneId = separatorProps['aria-controls'];
+  // the handle names the pane it sizes: the left one, whichever pane that is now
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el || !paneId) return;
+    const left = on ? el.querySelector(':scope > [data-side="left"]') : null;
+    for (const pane of el.querySelectorAll(`:scope > [id="${paneId}"]`))
+      if (pane !== left) pane.removeAttribute('id');
+    if (left) left.id = paneId;
+  });
+  return {
+    containerRef,
+    handle: on ? <SplitHandle separatorProps={separatorProps} label={t('split.scene')} /> : null,
+  };
 }
 
 /**
@@ -564,21 +631,26 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
       ) : (
         <ReportPane split={split} />
       )}
-      <PaneChooser side={side} split={split} />
-      {kind === 'video' && videoEvidence && (
-        <button
-          type="button"
-          className="btn icon sm overlay-box pane-close"
-          aria-label={t('evidence.close')}
-          title={`${t('evidence.close')} (Esc)`}
-          data-testid="evidence-close"
-          onClick={() => {
-            closeEvidence();
-          }}
-        >
-          <Icon name="x" size={14} />
-        </button>
-      )}
+      <PaneHeader
+        side={side}
+        split={split}
+        end={
+          kind === 'video' && videoEvidence ? (
+            <button
+              type="button"
+              className="btn icon sm overlay-box pane-close"
+              aria-label={t('evidence.close')}
+              title={`${t('evidence.close')} (Esc)`}
+              data-testid="evidence-close"
+              onClick={() => {
+                closeEvidence();
+              }}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          ) : undefined
+        }
+      />
     </FocusZone>
   );
 }

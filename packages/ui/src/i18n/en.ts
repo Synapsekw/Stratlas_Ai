@@ -2009,7 +2009,6 @@ export const en = {
   'help.noResults': 'Nothing in the guide matches "{query}".',
   'help.close': 'Close the guide (Esc)',
   'help.topic': 'Help on this',
-  'help.compare': 'Help on comparing dates',
   'det.sheet.issues_one': '{count} issue on this photo',
   'det.sheet.issues_other': '{count} issues on this photo',
   // M8 C7: the local model in Settings, AI providers (the person's own server, nothing bundled)
@@ -4294,6 +4293,8 @@ export const en = {
   'split.media': 'Resize the library',
   'split.issues': 'Resize the issue list',
   'split.agentDock': 'Resize the assistant',
+  // the Split view's divider (scene.split)
+  'split.scene': 'Resize the two sides',
 
   // Tabs (Tabs.tsx) and the shared dialog close button
   'tabs.live': 'Live',

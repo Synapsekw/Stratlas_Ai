@@ -479,9 +479,7 @@
 .pane-bar .grow {
   flex: 1;
 }
+/* the evidence's close button stands at the end of the video pane's header (SplitPanes.tsx) */
 .pane-close {
-  position: absolute;
-  top: 54px;
-  inset-inline-start: 12px;
-  z-index: 7;
+  flex-shrink: 0;
 }

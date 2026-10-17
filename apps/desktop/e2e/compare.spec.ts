@@ -161,6 +161,45 @@ async function compareFolder(win: Page, from: string, to: string) {
   await expect(menu).toHaveCount(0);
 }
 
+/** A side of the split, as the island hears it: a press on the pane (D7). */
+async function focusSide(win: Page, side: 'left' | 'right') {
+  await win.locator(`.stage-panes > [data-side="${side}"]`).first().dispatchEvent('pointerdown');
+}
+
+/**
+ * Where each pane's header strip is wrong (D31): outside its pane, or under the island or a
+ * corner overlay. Empty when all is well.
+ */
+function headerProblems(win: Page) {
+  return win.evaluate(() => {
+    const out: string[] = [];
+    const rect = (el: Element) => el.getBoundingClientRect();
+    const meets = (a: DOMRect, b: DOMRect) =>
+      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const others = [
+      ...document.querySelectorAll(
+        '.island, .isl-aside > *, .compare-view, .stage-slot > *, .stage-rp, .split-handle',
+      ),
+    ].filter((e) => rect(e).width > 0 && getComputedStyle(e).visibility !== 'hidden');
+    for (const side of ['left', 'right']) {
+      const head = document.querySelector(`[data-testid="pane-chooser-${side}"]`);
+      const pane = head?.closest('[data-side]');
+      if (!head || !pane) {
+        out.push(`no ${side} header`);
+        continue;
+      }
+      const p = rect(pane);
+      for (const part of head.children) {
+        const r = rect(part);
+        if (r.left < p.left || r.right > p.right) out.push(`the ${side} header leaves its pane`);
+        for (const o of others)
+          if (meets(r, rect(o))) out.push(`the ${side} header is under ${o.className}`);
+      }
+    }
+    return out;
+  });
+}
+
 /** Which of these layers each 3D view has, and whether each shows. */
 function layerState(win: Page, ids: string[]) {
   return inspect(
@@ -448,6 +487,67 @@ fixtures(
         second: { site: 'shown', 'model-2026-01-01': 'shown', 'model-2026-06-01': 'absent' },
       });
 
+    // each pane has its header strip (D31): its date, the view it shows, the link on the right;
+    // nothing covers it, the island centred above both
+    const head = (side: 'left' | 'right') => win.getByTestId(`pane-chooser-${side}`);
+    await expect(head('left').getByTestId('pane-date')).toHaveText('1 Jun 2026');
+    await expect(head('right').getByTestId('pane-date')).toHaveText('1 Jan 2026');
+    await expect(head('right').getByTestId('compare-link')).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => headerProblems(win)).toEqual([]);
+
+    // the island's date follows the last pane used, and Alt+Right steps that pane (D7): the
+    // right goes to June, and the left takes January, the date the right gave up
+    const islandDate = win.getByTestId('date-bar-open');
+    await focusSide(win, 'left');
+    await expect(islandDate).toHaveAccessibleName(/1 Jun 2026/);
+    await focusSide(win, 'right');
+    await expect(islandDate).toHaveAccessibleName(/1 Jan 2026/);
+    await win.keyboard.press('Alt+ArrowRight');
+    await expectPane(win, 'left', '3d', 'jan');
+    await expectPane(win, 'right', '3d', 'jun');
+    await expect(islandDate).toHaveAccessibleName(/1 Jun 2026/);
+    await expect(head('right').getByTestId('pane-date')).toHaveText('1 Jun 2026');
+    await expect
+      .poll(() => layerState(win, ids))
+      .toEqual({
+        main: { site: 'shown', 'model-2026-01-01': 'shown', 'model-2026-06-01': 'hidden' },
+        second: { site: 'shown', 'model-2026-01-01': 'absent', 'model-2026-06-01': 'shown' },
+      });
+    await shot(win, 'split-headers');
+
+    // the divider (scene.split): the arrow keys move it, a double-click puts it back
+    const divider = win.getByRole('separator', { name: 'Resize the two sides' });
+    const leftPane = win.locator('.stage-panes > [data-side="left"]').first();
+    const leftWidth = async () => Math.round((await leftPane.boundingBox())?.width ?? 0);
+    const half = await leftWidth();
+    await divider.focus();
+    // two steps of 16 px, as far as the right side's 200 px allow
+    const wider = Math.min(half + 32, Number(await divider.getAttribute('aria-valuemax')));
+    expect(wider).toBeGreaterThan(half + 16);
+    await win.keyboard.press('ArrowRight');
+    await win.keyboard.press('ArrowRight');
+    await expect.poll(leftWidth).toBe(wider);
+    await expect(divider).toHaveAttribute('aria-valuenow', String(wider));
+    await expect.poll(() => headerProblems(win)).toEqual([]);
+    await divider.dblclick();
+    await expect.poll(leftWidth).toBe(half);
+
+    // How compare works: a labelled link under Compare's tools, clear of the right panel's
+    // toggle, opens the chapter
+    const how = win.getByRole('button', { name: 'How compare works' });
+    await win.mouse.move(5, 400);
+    const clear = await how.evaluate((el) => {
+      const a = el.getBoundingClientRect();
+      const b = document.querySelector('.stage-rp')?.getBoundingClientRect();
+      return !b || a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom;
+    });
+    expect(clear, 'the link is clear of the right panel toggle').toBe(true);
+    await how.click();
+    const guide = win.getByRole('dialog', { name: 'User guide' });
+    await expect(guide.getByRole('heading', { level: 1, name: 'Compare dates' })).toBeInViewport();
+    await win.keyboard.press('Escape');
+    await expect(guide).toBeHidden();
+
     // leaving the comparison: one 3D view, every date as the layer tree says. The project opened
     // on its latest date (June), which hides the January model, and the comparison did not change
     // that, so only the June model is shown.
@@ -511,6 +611,20 @@ fixtures(
         ['m-jan', 'm-site'],
         ['m-jun', 'm-site'],
       ]);
+    // two maps: Side by side, Swipe and Blend take a row of their own, clear of Compare's tools
+    // and of both pane headers (D31)
+    const views = win.getByTestId('compare-view');
+    await expect(views).toBeVisible();
+    await expect.poll(() => headerProblems(win)).toEqual([]);
+    const clearOfAside = await views.evaluate((el) => {
+      const a = el.getBoundingClientRect();
+      return [...document.querySelectorAll('.isl-aside > *, .island')].every((o) => {
+        const b = o.getBoundingClientRect();
+        return a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom;
+      });
+    });
+    expect(clearOfAside, 'the compare views bar is clear of the island').toBe(true);
+    await shot(win, 'two-maps-headers');
   },
 );
 

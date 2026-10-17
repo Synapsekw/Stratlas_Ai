@@ -7,17 +7,22 @@
  */
 import { ONLINE_SATELLITE } from '@aio/schema';
 import type { ElectronApplication, Page, TestInfo } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test } from './fixtures';
+import { DEMO_FOLDER, expect, test } from './fixtures';
 import {
   closeIslandTools,
+  island,
   islandCutOff,
+  islandSettled,
   measureControl,
+  openBench,
   openIslandTools,
   stageMode,
   toggleCompareDates,
 } from './island';
+import { openDemo } from './surveyJobs';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } });
 
@@ -440,5 +445,97 @@ test.describe('with online satellite', () => {
     }
     await expect.poll(() => footProblems(win, 2), { message: 'credits open' }).toEqual([]);
     await shot(win, info, 'compare-foot-online-satellite.png');
+  });
+});
+
+// ------------------------------------------------------------------------- Volumes in front
+
+/**
+ * The stage with the widest tab in front (Volumes, 470 px): what a click at the middle of the
+ * stage reaches, the rows the workbench tabs take, where the resting island lies against the
+ * stage, and for each pane header of a split what lies outside its pane or under the island.
+ */
+async function narrowStage(win: Page) {
+  return win.evaluate(() => {
+    const stage = document.querySelector('.ws > .stage')?.getBoundingClientRect();
+    if (!stage) return null;
+    const middle = document.elementFromPoint(
+      stage.left + stage.width / 2,
+      stage.top + stage.height / 2,
+    );
+    const tabs = [...document.querySelectorAll('.ws > .right [id^="wb-tab-"]')]
+      .map((t) => t.getBoundingClientRect())
+      .filter((r) => r.width > 0);
+    const capsule = document.querySelector('.island')?.getBoundingClientRect();
+    const heads: string[] = [];
+    for (const head of document.querySelectorAll('.pane-head')) {
+      const pane = head.closest('[data-side]')?.getBoundingClientRect();
+      const side = head.closest('[data-side]')?.getAttribute('data-side') ?? '?';
+      for (const part of head.children) {
+        const r = part.getBoundingClientRect();
+        if (!pane || r.left < pane.left - 0.5 || r.right > pane.right + 0.5)
+          heads.push(`the ${side} header leaves its pane`);
+        if (capsule && r.top < capsule.bottom && capsule.top < r.bottom)
+          heads.push(`the ${side} header is under the island`);
+      }
+    }
+    return {
+      width: Math.round(stage.width),
+      // the 3D view's canvas takes the click, nothing laid over it
+      middle: middle?.closest('[data-scene-view]')
+        ? middle.tagName.toLowerCase()
+        : middle?.className,
+      tabRows: new Set(tabs.map((r) => Math.round(r.top))).size,
+      tabs: tabs.length,
+      islandIn:
+        capsule !== undefined &&
+        capsule.left >= stage.left &&
+        capsule.right <= stage.right &&
+        capsule.top >= stage.top,
+      heads,
+    };
+  });
+}
+
+test.describe('with Volumes in front', () => {
+  test.skip(
+    !existsSync(join(DEMO_FOLDER, 'demo-tank-farm', 'manifest.json')),
+    `no demos in ${DEMO_FOLDER}: run pnpm demo:build --quick`,
+  );
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700', QUADRION_DEMO: DEMO_FOLDER } });
+
+  test('the stage centre takes a click, the tabs keep one row and the island fits', async ({
+    app,
+    win,
+  }, info) => {
+    test.setTimeout(120_000);
+    await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
+    await openBench(win, 'volumes');
+    for (const height of [700, 720]) {
+      if (height !== 700) await resize(app, win, 1100, height);
+      const size = `1100 x ${String(height)}`;
+      await expect(island(win)).toHaveAttribute('data-state', 'rest');
+      const at = await narrowStage(win);
+      expect(at, size).not.toBeNull();
+      if (!at) return;
+      // the right panel at its Volumes width leaves the stage narrow, but whole
+      expect(at.width, `the stage at ${size}`).toBeGreaterThanOrEqual(360);
+      expect(at.middle, `a click at the middle of the stage at ${size}`).toBe('canvas');
+      expect(at.tabs, `the workbench tabs at ${size}`).toBeGreaterThan(1);
+      expect(at.tabRows, `rows of workbench tabs at ${size}`).toBe(1);
+      expect(at.islandIn, `the island inside the stage at ${size}`).toBe(true);
+      expect(await islandCutOff(win), `the open island at ${size}`).toEqual([]);
+      await closeIslandTools(win);
+      await islandSettled(win);
+      await shot(win, info, `volumes-front-1100x${String(height)}.png`);
+    }
+
+    // Split on the same narrow stage: each pane header stays inside its pane, under the island
+    await stageMode(win, 'Split');
+    await closeIslandTools(win);
+    await expect(win.locator('.pane-head')).toHaveCount(2);
+    await expect.poll(async () => (await narrowStage(win))?.heads).toEqual([]);
+    await islandSettled(win);
+    await shot(win, info, 'volumes-front-split-1100x720.png');
   });
 });

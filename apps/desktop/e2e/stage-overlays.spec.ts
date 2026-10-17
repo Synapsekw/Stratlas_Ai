@@ -15,7 +15,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { captionArea } from './caption';
 import { DEMO_FOLDER, expect, test } from './fixtures';
-import { islandGroup, islandSettled } from './island';
+import { closeIslandTools, islandGroup, islandSettled, stageMode } from './island';
 import { openDemo } from './surveyJobs';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
@@ -327,6 +327,96 @@ test('with the drawer open, the corners at its side keep clear of it', async ({ 
     .toEqual([]);
   await shot(win, info, 'overlays-drawer-1100.png');
   await win.keyboard.press('Escape');
+});
+
+/**
+ * The Split view's pane headers (D31): what lies outside its pane or under the island, a corner
+ * overlay, the floating video or the right panel's toggle. Empty when all is well.
+ */
+const headerProblems = (win: Page) =>
+  win.evaluate(() => {
+    const meets = (a: DOMRect, b: DOMRect) =>
+      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const others = [
+      ...document.querySelectorAll('.island, .stage-slot > *, .vwin:not(.docked), .stage-rp'),
+    ].filter((e) => e.getBoundingClientRect().width > 0);
+    const out: string[] = [];
+    for (const head of document.querySelectorAll('.pane-head')) {
+      const pane = head.closest('[data-side]');
+      const side = pane?.getAttribute('data-side') ?? '?';
+      const p = pane?.getBoundingClientRect();
+      for (const part of head.children) {
+        const r = part.getBoundingClientRect();
+        if (!p || r.left < p.left - 0.5 || r.right > p.right + 0.5)
+          out.push(`the ${side} header leaves its pane`);
+        for (const o of others)
+          if (meets(r, o.getBoundingClientRect()))
+            out.push(`the ${side} header is under ${o.className}`);
+      }
+    }
+    return out;
+  });
+
+test('in Split, the pane headers keep clear of the corners and the video, and each divider moves alone', async ({
+  win,
+}, info) => {
+  await openTankFarm(win);
+  await foldRight(win);
+  await stageMode(win, 'Split');
+  await closeIslandTools(win);
+  await expect(win.locator('.pane-head')).toHaveCount(2);
+  await islandSettled(win);
+  // the floating clip, the corners and the two headers keep apart
+  await expect.poll(() => headerProblems(win), VIEW_READY).toEqual([]);
+  await expect
+    .poll(async () => {
+      const now = await layout(win);
+      return overlaps([...now.slots, ...now.others]);
+    })
+    .toEqual([]);
+
+  // docked beside the views: two dividers, the split's inside the views
+  await win.getByRole('button', { name: 'Dock the video window' }).click();
+  const dockDivider = win.getByRole('separator', { name: 'Resize the video dock' });
+  const splitDivider = win.getByRole('separator', { name: 'Resize the two sides' });
+  await expect(dockDivider).toHaveAttribute('aria-orientation', 'vertical');
+  await expect(splitDivider).toBeVisible();
+  const panes = win.locator('.stage-panes');
+  const left = win.locator('.stage-panes > [data-side="left"]').first();
+  const dock = win.locator('.stage-dock');
+  /** The left side's share of the views, in hundredths. */
+  const share = async () => {
+    const a = await left.boundingBox();
+    const b = await panes.boundingBox();
+    return a && b ? Math.round((a.width / b.width) * 100) : -1;
+  };
+  const dockWidth = async () => Math.round((await dock.boundingBox())?.width ?? 0);
+  await expect.poll(() => headerProblems(win)).toEqual([]);
+  await shot(win, info, 'split-dock-side-1100.png');
+
+  // the dock's divider: the dock grows, the two sides keep their shares
+  const shareBefore = await share();
+  const dockBefore = await dockWidth();
+  await dockDivider.focus();
+  await win.keyboard.press('ArrowLeft');
+  await win.keyboard.press('ArrowLeft');
+  await expect.poll(dockWidth).toBeGreaterThan(dockBefore + 20);
+  await expect.poll(share).toBe(shareBefore);
+  // the split's divider: the left side grows, the dock keeps its width
+  const dockNow = await dockWidth();
+  const leftBefore = Math.round((await left.boundingBox())?.width ?? 0);
+  await splitDivider.focus();
+  await win.keyboard.press('ArrowLeft');
+  await expect
+    .poll(async () => Math.round((await left.boundingBox())?.width ?? 0))
+    .toBeLessThan(leftBefore - 10);
+  expect(await dockWidth()).toBe(dockNow);
+  await expect.poll(() => headerProblems(win)).toEqual([]);
+
+  // floating again: the split keeps its divider
+  await win.getByRole('button', { name: 'Float the video window' }).click();
+  await expect(dockDivider).toHaveCount(0);
+  await expect(splitDivider).toBeVisible();
 });
 
 test.describe('right to left', () => {

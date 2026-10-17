@@ -6,6 +6,7 @@ import {
   chooseSide,
   compareSplit,
   DEFAULT_SPLIT,
+  focusedSide,
   followsFocus,
   sideCapture,
   sidesOf,
@@ -273,6 +274,26 @@ describe('followsFocus', () => {
     expect(followsFocus(at(null, true), at('nov', true))).toBe(false);
     expect(followsFocus(at('nov', true), at(null, true))).toBe(false);
     expect(followsFocus(at('nov', true, 'p'), at('oct', true, 'q'))).toBe(false);
+  });
+});
+
+describe('focusedSide', () => {
+  const dates = { captures: ['jan', 'jun'] };
+
+  it('is the last focused pane when it is drawn per date', () => {
+    expect(focusedSide({ left: '3d', right: '3d' }, 'right', dates)).toBe('right');
+    expect(focusedSide({ left: '3d', right: 'map' }, 'left', dates)).toBe('left');
+  });
+
+  it('falls back to the other side when the focused pane has no date', () => {
+    expect(focusedSide({ left: '3d', right: 'video' }, 'right', dates)).toBe('left');
+    expect(focusedSide({ left: 'report', right: 'pano' }, 'left', dates)).toBe('right');
+  });
+
+  it('is null with no pane drawn per date, or fewer than two dates', () => {
+    expect(focusedSide({ left: 'video', right: 'report' }, 'left', dates)).toBeNull();
+    expect(focusedSide({ left: '3d', right: 'map' }, 'left', { captures: ['jan'] })).toBeNull();
+    expect(focusedSide({ left: '3d', right: 'map' }, 'left')).toBeNull();
   });
 });
 

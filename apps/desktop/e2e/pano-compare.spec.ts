@@ -156,6 +156,24 @@ test.describe('panoramas of two survey dates', () => {
     await expect(pane(win, 'left')).toHaveAttribute('data-capture', 'oct');
     await expect(pane(win, 'left')).toHaveAttribute('data-pano', 'pano-oct/p3');
     await expect(pane(win, 'right')).toHaveAttribute('data-capture', 'sep');
+    // each pane's header names its date (D31)
+    const paneDate = (side: 'left' | 'right') =>
+      win.getByTestId(`pane-chooser-${side}`).getByTestId('pane-date');
+    await expect(paneDate('left')).toHaveText('2 Oct 2024');
+    await expect(paneDate('right')).toHaveText('4 Sep 2024');
+
+    // 5b. the right pane used last: the island shows its date, and Alt+Right steps it to 2 Oct
+    // (the left takes 4 Sep, the date the right gave up); Alt+Left puts both back
+    await pane(win, 'right').dispatchEvent('pointerdown');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
+    await win.keyboard.press('Alt+ArrowRight');
+    await expect(pane(win, 'right')).toHaveAttribute('data-capture', 'oct');
+    await expect(pane(win, 'left')).toHaveAttribute('data-capture', 'sep');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/2 Oct 2024/);
+    await expect(paneDate('right')).toHaveText('2 Oct 2024');
+    await win.keyboard.press('Alt+ArrowLeft');
+    await expect(pane(win, 'right')).toHaveAttribute('data-capture', 'sep');
+    await expect(pane(win, 'left')).toHaveAttribute('data-capture', 'oct');
 
     // 6. a map on the left: the right Panoramas pane is the only one and steps on its own
     await choosePane(win, 'left', 'map', 'oct');

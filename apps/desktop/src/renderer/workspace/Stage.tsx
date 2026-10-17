@@ -46,7 +46,7 @@ import { DesignsMount } from '../survey/Designs';
 import { HaulRoadMount } from '../survey/HaulRoad';
 import { HydroMount } from '../survey/Hydro';
 import './m8Mounts';
-import { paneCapture, PaneChooser, SplitPane, useSplit } from './SplitPanes';
+import { paneCapture, PaneHeader, SplitPane, useSplit, useSplitDivider } from './SplitPanes';
 import {
   chooseCapture,
   followsFocus,
@@ -290,6 +290,28 @@ export interface StageCornersInput {
 
 const END: readonly Corner[] = ['tr', 'br'];
 
+/** The corners the volumes hint wants, given the readout's corner. */
+function hintCorners(cursor: Corner | null, splitting: boolean): Corner[] {
+  if (splitting && cursor) return [cursor];
+  return cursor === 'bl' ? ['br', 'bl'] : ['bl', 'br'];
+}
+
+/**
+ * The stage corner the 3D view's coordinates readout stands in: the foot of the stage's end, or
+ * in a split the quarter of the stage its side's pane takes (the panes keep left to right, so
+ * the left pane is the end right to left), where a floating video or a corner overlay may
+ * hide it. Null without a 3D view.
+ */
+export function readoutCorner(
+  show3d: boolean,
+  side: Side | undefined,
+  rtl: boolean,
+): Corner | null {
+  if (!show3d) return null;
+  if (side === 'left') return rtl ? 'br' : 'bl';
+  return rtl ? 'bl' : 'br';
+}
+
 /**
  * The stage's corner overlays (D30), each in a corner of its own around the top-centre island:
  * the floating video where it rests, the status chips, the one Map menu chip, the survey dates and
@@ -316,13 +338,15 @@ export function useStageCorners(o: StageCornersInput): {
       ...(topTaken ? (['tl', 'tr'] as const).map((c) => ({ id: `island-${c}`, want: [c] })) : []),
       { id: 'status', want: status ? ['tl', 'bl'] : [] },
       { id: 'basemap', want: basemap ? basemapAt : [] },
-      // the volumes hint at the foot, the corner away from the readout first (I-R51)
-      { id: 'volHint', want: volHint ? (o.cursor === 'bl' ? ['br', 'bl'] : ['bl', 'br']) : [] },
+      // the volumes hint at the foot, the corner away from the readout first (I-R51); in a split
+      // the 3D pane's own foot, the readout giving way while it shows (the other pane's foot is
+      // another view's: the map's scale and credits)
+      { id: 'volHint', want: volHint ? hintCorners(o.cursor, o.splitting) : [] },
       { id: 'dates', want: dates ? ['tl', 'bl', 'tr'] : [] },
       { id: 'cursor', want: o.cursor ? [o.cursor] : [] },
     ];
     return assignSlots(items);
-  }, [o.video, o.cursor, status, basemap, basemapAt, volHint, dates, topTaken]);
+  }, [o.video, o.cursor, o.splitting, status, basemap, basemapAt, volHint, dates, topTaken]);
   // the callouts keep out of the overlays: placed again as the overlays move (they read their
   // keep-out on a rendered frame)
   const engine = o.engine;
@@ -452,7 +476,7 @@ export function Stage() {
   const at = (kind: '3d' | 'map') => (kind === '3d' ? sides3d[0] : sidesMap[0]);
   const chooser = (kind: '3d' | 'map') => {
     const side = at(kind);
-    return side ? <PaneChooser side={side} split={split} /> : null;
+    return side ? <PaneHeader side={side} split={split} /> : null;
   };
   const showVideo = activeClip !== null && !videoHidden && !videoPane;
   // the corners the floating video takes as it rests, which the corner overlays keep out of (D30)
@@ -530,7 +554,7 @@ export function Stage() {
     if (!root) return [];
     return [
       ...root.querySelectorAll(
-        '.island, .isl-notice, .stage-rp, .stage-slot > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-chooser, .vol-legend',
+        '.island, .isl-notice, .stage-rp, .stage-slot > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-head > *, .vol-legend',
       ),
     ].map((e) => e.getBoundingClientRect());
   }, []);
@@ -556,6 +580,9 @@ export function Stage() {
   );
   const hasPhoto = useRoad((s) => s.rows.some((r) => r.id === selectedIssue && r.photo));
   const closeup = roadMap !== null && closeupOn && hasPhoto && showMap;
+  // the divider between the two sides (scene.split); the road's close-up dock keeps halves
+  const divided = splitting && !closeup;
+  const { containerRef: panesRef, handle: splitHandle } = useSplitDivider(divided);
   const roadMeasuring = useRoad((s) => Boolean(s.measure.mode));
   const topTaken = useIslandReach(stageRef, engine);
   // the Map menu chip stands at the map's side of a split (physical sides: the panes are
@@ -571,7 +598,7 @@ export function Stage() {
     splitting,
     roadMeasure: roadMap !== null && showMap && roadMeasuring,
     video: showVideo && !docked ? videoCorners : NO_CORNERS,
-    cursor: show3d && (!splitting || side3d === 'right') ? (rtl ? 'bl' : 'br') : null,
+    cursor: readoutCorner(show3d, splitting ? side3d : undefined, rtl),
     basemapAt: mapAtStart ? START : END,
     topTaken,
   });
@@ -692,7 +719,12 @@ export function Stage() {
         video={docked && showVideo && activeClip ? { layerId: activeClip, stageRef } : null}
       >
         {/* 3D and map panes keep their geometry in a right-to-left UI. */}
-        <div className={`stage-panes${closeup ? ' with-dock' : ''}`} data-mode={mode} dir="ltr">
+        <div
+          ref={panesRef}
+          className={`stage-panes${closeup ? ' with-dock' : ''}${divided ? ' split' : ''}`}
+          data-mode={mode}
+          dir="ltr"
+        >
           <ScenePane
             hidden={!show3d}
             engine={engine}
@@ -710,7 +742,7 @@ export function Stage() {
               index={index}
               main={engine}
               linked={linked}
-              corner={<PaneChooser side={second3d} split={split} />}
+              corner={<PaneHeader side={second3d} split={split} />}
               stageRef={stageRef}
               keepOut={keepOut}
             />
@@ -723,7 +755,7 @@ export function Stage() {
               index={index}
               issues={mapIssues}
               onController={onSecondMap}
-              corner={<PaneChooser side={secondMap} split={split} />}
+              corner={<PaneHeader side={secondMap} split={split} />}
             />
           )}
           {showMap && (
@@ -758,6 +790,7 @@ export function Stage() {
           )}
           {splitting && <SplitPane side="left" split={split} />}
           {splitting && <SplitPane side="right" split={split} />}
+          {splitHandle}
           {closeup && <CloseupDock />}
         </div>
         {corners}

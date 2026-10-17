@@ -1,7 +1,7 @@
 /**
  * The survey date in the island: the pill ("13 Apr" in the survey's colour), with ‹ › and the
  * count while the island is open, and the calendar the pill opens (D7). In Split the date is the
- * last focused pane's, and the arrows step that pane.
+ * last focused pane's (`focusedSide`), and the arrows step that pane.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { Calendar, formatDate, Icon, IconButton, Tip, useT, type IconName } from '@aio/ui';
@@ -31,8 +31,9 @@ export interface IslandDates {
 }
 
 /**
- * The date bar's survey, or in Split the date of the last focused pane when that pane is drawn
- * per date (its arrows step that pane; the other side keeps its date).
+ * The date bar's survey, or in Split the date of `side`, the pane the island follows
+ * (`focusedSide` in splitModel.ts: the last focused pane drawn per date). Its arrows, the calendar
+ * and Alt+Left / Alt+Right (Island.tsx) step that pane; the other side keeps its date.
  */
 export function islandDates(
   index: CaptureIndex | null,

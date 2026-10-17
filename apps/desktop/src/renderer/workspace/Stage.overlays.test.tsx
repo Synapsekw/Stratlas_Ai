@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
 import { compareNotice } from './compare';
-import { useStageCorners, type StageCornersInput } from './Stage';
+import { readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
 import { timeline } from './timeline';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -170,6 +170,18 @@ describe('the stage corners', () => {
     expect(slotOf('vol-hint')).toBe('br');
   });
 
+  it('in a split, gives the volumes hint the foot of the 3D pane, never the other pane', () => {
+    volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+    // the 3D view on the left, the map on the right: the hint over the 3D pane's foot, and the
+    // readout gives way while it shows (the map's foot has its own scale and credits)
+    render({ video: [], splitting: true, showMap: true, cursor: 'bl' });
+    expect(slotOf('vol-hint')).toBe('bl');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
+    // the 3D view on the right
+    render({ video: [], splitting: true, showMap: true, cursor: 'br' });
+    expect(slotOf('vol-hint')).toBe('br');
+  });
+
   it('keeps the top corners free while the open island reaches past the middle', () => {
     render({ video: [], topTaken: true });
     expect(slots().map((s) => s.corner)).not.toContain('tl');
@@ -189,5 +201,17 @@ describe('the stage corners', () => {
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
     render({ video: ['bl'] });
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+  });
+});
+
+describe('readoutCorner', () => {
+  it('is the foot of the end, or in a split the quarter of the 3D side', () => {
+    expect(readoutCorner(true, undefined, false)).toBe('br');
+    expect(readoutCorner(true, 'right', false)).toBe('br');
+    expect(readoutCorner(true, 'left', false)).toBe('bl');
+    // right to left the corners are logical; the panes keep left to right
+    expect(readoutCorner(true, undefined, true)).toBe('bl');
+    expect(readoutCorner(true, 'left', true)).toBe('br');
+    expect(readoutCorner(false, 'left', false)).toBeNull();
   });
 });
