@@ -107,7 +107,10 @@ async function pinIssue(r: Reviewer): Promise<void> {
   await expect.poll(async () => (await meshHits(win, 'quad')).length).toBeGreaterThan(0);
   await canvas.click({ position: { x: 5, y: 5 } });
   await win.keyboard.press('a');
-  await win.locator('.ann-subbar').getByRole('button', { name: 'Pin' }).click();
+  await win
+    .getByRole('group', { name: 'Annotation tools' })
+    .getByRole('button', { name: 'Pin' })
+    .click();
   const hits = await meshHits(win, 'quad');
   const pin = hits[Math.floor(hits.length / 2)];
   if (!pin) throw new Error('no point on the quad');

@@ -165,7 +165,7 @@ test.describe('@realdata HCl as a customer package', () => {
         await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
         await expect(win.getByRole('button', { name: /^Annotate/ })).toHaveCount(0);
         await win.keyboard.press('a');
-        await expect(win.locator('.ann-subbar')).toHaveCount(0);
+        await expect(win.getByRole('group', { name: 'Annotation tools' })).toHaveCount(0);
         const id = await projectId(win);
         expect(id).toBe('hcl-customer');
 

@@ -249,7 +249,10 @@ test.describe('@realdata HCl with an embedded map region', () => {
         await win.waitForTimeout(2500);
         await win.locator('[data-scene-view] canvas').click({ position: { x: 5, y: 5 } });
         await win.keyboard.press('a');
-        await win.locator('.ann-subbar').getByRole('button', { name: 'Pin' }).click();
+        await win
+          .getByRole('group', { name: 'Annotation tools' })
+          .getByRole('button', { name: 'Pin' })
+          .click();
         await expect.poll(async () => (await meshHits(win, 'tank')).length).toBeGreaterThan(0);
         const hits = await meshHits(win, 'tank');
         const pin = hits[Math.floor(hits.length / 2)];

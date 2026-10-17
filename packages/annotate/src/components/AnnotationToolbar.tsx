@@ -44,8 +44,14 @@ export function useIssueOverlay(store: StoreApi<Workspace> = workspace): void {
 export function AnnotationToolbar({
   className,
   store,
+  picker = true,
 }: {
   className?: string;
+  /**
+   * Whether the toolbar holds the class and severity picker for its shapes. A host that clips or
+   * contains fixed boxes (the workbench) turns it off and mounts `<SightingPicker>` itself.
+   */
+  picker?: boolean;
   /** The workspace as the 3D view sees it, for the issue pins (`useIssueOverlay`). */
   store?: StoreApi<Workspace>;
 }) {
@@ -101,7 +107,7 @@ export function AnnotationToolbar({
       >
         Add to selected
       </button>
-      <SightingPicker kinds={['mesh', 'pointcloud']} />
+      {picker && <SightingPicker kinds={['mesh', 'pointcloud']} />}
     </div>
   );
 }

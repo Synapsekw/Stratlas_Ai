@@ -233,11 +233,13 @@ test('@realdata stage polish: island tools in view, label modes, annotate tools 
   await win.keyboard.press('l');
 
   // The annotation tools show only in Annotate mode.
-  await expect(win.locator('.ann-subbar')).toHaveCount(0);
+  await expect(win.getByRole('group', { name: 'Annotation tools' })).toHaveCount(0);
   await win.keyboard.press('a');
-  await expect(win.locator('.ann-subbar').getByRole('button', { name: 'Pin' })).toBeVisible();
+  await expect(
+    win.getByRole('group', { name: 'Annotation tools' }).getByRole('button', { name: 'Pin' }),
+  ).toBeVisible();
   await win.keyboard.press('a');
-  await expect(win.locator('.ann-subbar')).toHaveCount(0);
+  await expect(win.getByRole('group', { name: 'Annotation tools' })).toHaveCount(0);
 
   // Space plays and pauses even right after clicking a stage tool.
   await (

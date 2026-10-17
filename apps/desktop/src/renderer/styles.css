@@ -2073,23 +2073,6 @@ svg.flip {
     transform: translateY(-4px);
   }
 }
-.ann-subbar .ann-toolbar.stage-ann {
-  position: static;
-  border: 0;
-  background: none;
-  padding: 0;
-}
-.ann-subbar .ann-toolbar.stage-ann + .ann-toolbar.stage-ann {
-  border-inline-start: 1px solid var(--line);
-  padding-inline-start: 6px;
-  border-radius: 0;
-}
-.ann-cap {
-  font: 500 var(--t-11) / 1 var(--f-mono);
-  color: var(--fg-3);
-  padding-block: 0;
-  padding-inline: 4px 6px;
-}
 .stage-status {
   display: flex;
   flex-wrap: wrap;

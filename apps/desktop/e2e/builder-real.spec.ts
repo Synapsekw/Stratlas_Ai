@@ -295,7 +295,10 @@ test('@realdata new project from raw EBSM photos and the GLB: create, import, al
     await win.waitForTimeout(2000);
     await win.locator('[data-scene-view] canvas').click({ position: { x: 5, y: 5 } });
     await win.keyboard.press('a');
-    await win.locator('.ann-subbar').getByRole('button', { name: 'Pin' }).click();
+    await win
+      .getByRole('group', { name: 'Annotation tools' })
+      .getByRole('button', { name: 'Pin' })
+      .click();
     const [pin] = pickSpread(await meshHits(win, meshId), 1);
     if (!pin) throw new Error('no point on the model to pin');
     await win.mouse.click(pin.x, pin.y);

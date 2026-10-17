@@ -1,22 +1,8 @@
 import { registerAppHooks } from '@aio/ai';
-import {
-  AnnotationToolbar,
-  SightingPicker,
-  annotateUi,
-  useIssueOverlay,
-  useMapDraw,
-  usePinDisplay,
-  type MapDraw,
-} from '@aio/annotate';
+import { SightingPicker, useIssueOverlay, useMapDraw, usePinDisplay } from '@aio/annotate';
 import { getActiveScene, SceneView, type EngineStage } from '@aio/engine';
-import {
-  MapView,
-  type MapController,
-  type MapDrawMode,
-  type MapDrawSeam,
-  type MapIssueDisplay,
-} from '@aio/maps';
-import { Button, Icon, isShortcut, useT } from '@aio/ui';
+import { MapView, type MapController, type MapDrawSeam, type MapIssueDisplay } from '@aio/maps';
+import { Button, Icon, useT } from '@aio/ui';
 import { setDroneTelemetry, setFlightPaths, videoRig } from '@aio/video';
 import { VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -28,11 +14,11 @@ import { CloseupDock, MeasureBar, PciUnitCard, RoadLegend, useRoadKeys } from '.
 import { useRoad } from '../road/store';
 import { useRoadSetupMap } from '../road/RoadSetup';
 import { useRoadMap } from '../road/useRoadMap';
-import { isTyping } from '../keys';
 import { photoSplitIsOpen } from '../builder/photoOpen';
 import { shell, useShell } from '../shell';
 import { PANEL_ID } from '../shell/PanelHandle';
 import { FloatingVideo } from './FloatingVideo';
+import { useAnnotateStageBridge } from './workbench/benches/annotateStage';
 import {
   compareRuntime,
   linkMaps,
@@ -72,7 +58,7 @@ import { useTimeline } from './timeline';
 import { hiddenPathClips } from './flightPaths';
 import { telemetryLabels, useTelemetryOn } from './telemetryPref';
 import { useFlightPathModel } from './pathModel';
-import { Tool, useEngineStage } from './StageTools';
+import { useEngineStage } from './StageTools';
 import { useStageKeys } from './stageKeys';
 import {
   insideView,
@@ -162,54 +148,6 @@ function RightPanelToggle() {
       >
         <Icon name="sidebar" size={16} className="flip" />
       </Button>
-    </div>
-  );
-}
-
-/* ----------------------------------------------------------------------- annotate bar */
-
-const MAP_MODES: { mode: MapDrawMode; label: string; title: string }[] = [
-  { mode: 'point', label: 'Point', title: 'Map point' },
-  { mode: 'line', label: 'Line', title: 'Map line (double-click or Enter to finish)' },
-  { mode: 'polygon', label: 'Area', title: 'Map area (double-click or Enter to close)' },
-];
-
-function MapDrawTools({ draw }: { draw: MapDraw }) {
-  const { mode, finish, undo, cancel, setMode } = draw;
-  useEffect(() => {
-    if (!mode) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target) || annotateUi.getState().pending) return;
-      if (isShortcut('scene.drawFinish', e)) finish();
-      else if (isShortcut('scene.drawUndo', e)) undo();
-      else if (isShortcut('scene.escape', e)) {
-        cancel();
-        setMode(null);
-      } else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [mode, finish, undo, cancel, setMode]);
-  return (
-    <div className="ann-toolbar stage-ann" role="toolbar" aria-label="Map annotation tools">
-      <span className="ann-cap">Map</span>
-      {MAP_MODES.map((m) => (
-        <button
-          key={m.mode}
-          type="button"
-          className="ann-btn ghost"
-          aria-pressed={mode === m.mode}
-          title={m.title}
-          onClick={() => {
-            setMode(mode === m.mode ? null : m.mode);
-          }}
-        >
-          {m.label}
-        </button>
-      ))}
     </div>
   );
 }
@@ -408,6 +346,8 @@ export function Stage() {
     ].map((e) => e.getBoundingClientRect());
   }, []);
   const mapDraw = useMapDraw(mapLayer);
+  // the Annotate workbench draws the map tools from this and says which views are on
+  useAnnotateStageBridge(mapDraw, show3d, showMap);
   const roadMap = useRoadMap();
   const roadSetup = useRoadSetupMap();
   // the walks' path, stills and pins (and the pointer session while placing one) on the main map
@@ -632,20 +572,6 @@ export function Stage() {
       <HaulRoadMount stage={engine} />
       <DesignsMount stage={engine} />
       <div className="stage-under" data-surface="dark">
-        {annotating && (
-          <div className="ann-subbar overlay-box" role="group" aria-label="Annotation tools">
-            {show3d && <AnnotationToolbar className="stage-ann" store={primaryScene} />}
-            {showMap && <MapDrawTools draw={mapDraw} />}
-            <Tool
-              icon="x"
-              label="Close the annotation tools"
-              shortcut="scene.annotate"
-              onClick={() => {
-                shell.getState().setAnnotating(false);
-              }}
-            />
-          </div>
-        )}
         {roadMap && showMap && <MeasureBar />}
         {show3d && <StageStatus stage={engine} />}
         {notice && (

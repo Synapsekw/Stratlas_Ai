@@ -52,6 +52,10 @@ import { CleanupTab } from '../../pointcloud/CleanupTab';
 import { useBenchFollow } from './benchFollow';
 import { CloudBench } from './benches/CloudBench';
 import { DisplayBench } from './benches/DisplayBench';
+// Video, Annotate and Jobs benches
+import { AnnotateBench, useAnnotateFollow } from './benches/AnnotateBench';
+import { JobsBench } from './benches/JobsBench';
+import { VideoBench } from './benches/VideoBench';
 import './workbench.css';
 
 /** The workbenches with collapsible sections, whose header holds Collapse all (D16). */
@@ -325,7 +329,17 @@ function FrontBody({ front, road }: { front: TabId; road: boolean }) {
       </>
     );
   }
-  // the workbenches and tool panels fill their tab in their own tasks
+  // Video, Annotate and Jobs benches
+  if (front === 'jobs') return <JobsBench />;
+  if (front === 'video' || front === 'annotate') {
+    return (
+      <>
+        <BenchHead bench={front} />
+        {front === 'video' ? <VideoBench /> : <AnnotateBench />}
+      </>
+    );
+  }
+  // the other workbenches and tool panels fill their tab in their own tasks
   return BENCHES.includes(front) ? <BenchHead bench={front} /> : null;
 }
 
@@ -340,6 +354,7 @@ export function RightSidebar() {
   const { tabs, front } = useWorkbenchView();
   useFollow(front.id);
   useBenchFollow();
+  useAnnotateFollow();
   const issues = useWorkspace((s) => s.issues.length);
   const piles = useVolumetric((s) => s.piles.length);
   const issueOpen = useWorkspace((s) => s.selection?.kind === 'issue');

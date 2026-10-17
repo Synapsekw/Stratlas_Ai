@@ -41,3 +41,288 @@
   flex-wrap: wrap;
   max-inline-size: 100%;
 }
+
+/* The Video, Annotate and Jobs workbenches. Spacing, type and colour come from the tokens. */
+
+/* ----------------------------------------------------------------------- Video and camera */
+.vb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  min-inline-size: 0;
+}
+.vb-title {
+  margin: 0;
+  font-size: var(--t-title);
+  font-weight: var(--fw-title);
+  color: var(--fg-0);
+}
+.vb-pick {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
+.vb-card {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-2);
+}
+.vb-poster-box {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  color: var(--fg-3);
+}
+.vb-poster {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+.vb-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-12);
+  color: var(--fg-0);
+}
+.vb-scrub {
+  inline-size: 100%;
+  margin: 0;
+  accent-color: var(--acc);
+}
+.vb-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.vb-time,
+.vb-tele {
+  font-size: var(--t-11);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.vb-time {
+  flex: 1;
+  min-inline-size: 0;
+}
+.vb-tele {
+  flex: none;
+}
+.vb-flight-name {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.vb-modes {
+  display: grid;
+  gap: var(--sp-2);
+}
+.vb-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--r-4);
+  background: transparent;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  text-align: start;
+  cursor: pointer;
+}
+.vb-mode:hover:not(:disabled) {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.vb-mode[aria-pressed='true'] {
+  background: var(--acc-a20);
+  border-color: var(--acc-a40);
+  color: var(--acc-strong);
+}
+.vb-mode:disabled {
+  color: var(--fg-4);
+  cursor: default;
+}
+.vb-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+
+/* ----------------------------------------------------------------------- Annotate */
+.ab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  min-inline-size: 0;
+}
+.ab-start,
+.ab-close {
+  display: flex;
+}
+/* the annotation toolbars wrap inside the sidebar instead of floating over the stage */
+.ab .ann-toolbar,
+.ab .ann-toolbar.stage-ann {
+  position: static;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.ab-note {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.ab-drafts {
+  display: grid;
+}
+
+/* ----------------------------------------------------------------------- Jobs */
+.jb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  list-style: none;
+  min-inline-size: 0;
+}
+.jb-job {
+  display: grid;
+  gap: var(--sp-2);
+  padding-block-end: var(--sp-4);
+  border-block-end: 1px solid var(--line-soft);
+}
+.jb-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-inline-size: 0;
+}
+.jb-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jb-ring {
+  flex: none;
+}
+.jb-ring-track,
+.jb-ring-fill {
+  fill: none;
+  stroke-width: 3;
+}
+.jb-ring-track {
+  stroke: var(--line);
+}
+.jb-ring-fill {
+  stroke: var(--acc);
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--d-2) var(--ease);
+}
+.jb-body {
+  display: grid;
+  gap: var(--sp-3);
+  padding-inline: var(--sp-4);
+}
+.jb-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  font-size: var(--t-11);
+  color: var(--fg-2);
+}
+.jb-project {
+  color: var(--fg-3);
+}
+.jb-steps {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.jb-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.jb-steps li[data-state='pending'] {
+  color: var(--fg-3);
+}
+.jb-steps li[data-state='running'] {
+  color: var(--fg-0);
+}
+.jb-step-mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 14px;
+  color: var(--acc);
+}
+.jb-step-mark i {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: var(--r-pill);
+  background: currentcolor;
+  opacity: 0.5;
+}
+.jb-log {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  font-size: var(--t-11);
+  color: var(--fg-2);
+}
+.jb-line {
+  display: flex;
+  gap: var(--sp-4);
+  min-inline-size: 0;
+}
+.jb-line.warn {
+  color: var(--warn-ink);
+}
+.jb-line.error {
+  color: var(--danger-ink);
+}
+.jb-time {
+  flex: none;
+  color: var(--fg-3);
+}
+.jb-msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jb-log-none {
+  color: var(--fg-3);
+}
+.jb-err {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--danger-ink);
+}
+.jb-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
