@@ -89,11 +89,18 @@ describe('pin actions', () => {
     expect(ids(pano('sphere'))).not.toContain('media.asPhoto');
   });
 
-  it('offers Move pin and Set direction on a GPS photo, not Remove pin', () => {
+  it('offers no pin action on a GPS photo with no pin (its GPS place is not corrected here)', () => {
     const got = ids(photo('gps'));
-    expect(got).toEqual(expect.arrayContaining(['media.move', 'media.direction', 'media.as360']));
-    expect(got).not.toContain('media.remove');
-    expect(got).not.toContain('media.place');
+    expect(got).toContain('media.as360');
+    for (const id of ['media.place', 'media.move', 'media.direction', 'media.remove'])
+      expect(got).not.toContain(id);
+  });
+
+  it('offers Place on site alone on an unplaced photo', () => {
+    const got = ids(photo('loose'));
+    expect(got).toContain('media.place');
+    expect(got).not.toContain('media.move');
+    expect(got).not.toContain('media.direction');
   });
 
   it('offers Remove pin on a pinned photo', () => {

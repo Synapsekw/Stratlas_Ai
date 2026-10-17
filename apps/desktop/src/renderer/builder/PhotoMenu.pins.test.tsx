@@ -105,6 +105,15 @@ describe('the photo menu and pins', () => {
     expect(byId('ctx-item-media.remove')).toBeNull();
   });
 
+  it('lists no Move pin or Set direction on a GPS photo with no pin', () => {
+    open({ pos: [1, 2, 3] });
+    rightClick();
+    expect(byId('photo-menu-open')).not.toBeNull();
+    expect(byId('ctx-item-media.move')).toBeNull();
+    expect(byId('ctx-item-media.direction')).toBeNull();
+    expect(byId('ctx-item-media.place')).toBeNull();
+  });
+
   it('lists no pin items in a package', () => {
     shell.setState({ pkg: {} as never });
     open(PINNED);

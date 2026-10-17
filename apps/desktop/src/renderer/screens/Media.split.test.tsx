@@ -269,6 +269,8 @@ describe('Media and pinned media', () => {
         new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
       );
     });
-    expect(document.querySelector('[data-testid="ctx-item-media.move"]')).not.toBeNull();
+    // a GPS photo with no pin takes no pin (its GPS place is not corrected here)
+    expect(document.querySelector('[data-testid="ctx-item-media.as360"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="ctx-item-media.move"]')).toBeNull();
   });
 });

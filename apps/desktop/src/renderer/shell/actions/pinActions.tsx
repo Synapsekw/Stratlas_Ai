@@ -24,6 +24,8 @@ import { toastHost } from './toastHost';
  * The pin actions of a photo or 360 (pinned media design): place it on the site, move its pin,
  * set its direction, remove the pin, and move it between photos and 360s. Photos keep the
  * `photos` target (the Datasets photo rows, Media tiles); 360s and pins in the views are `media`.
+ * Only pinned or unplaced items take a pin: an item placed by its GPS gets no Move or direction
+ * here (a GPS correction is not this feature's job; the photo hand correction stays for that).
  */
 
 type Target = Extract<MenuTarget, { kind: 'photos' | 'media' }>;
@@ -99,7 +101,7 @@ const actions: readonly Action[] = [
     icon: 'crosshair',
     section: 'edit',
     targets: TARGETS,
-    appliesTo: (tg, ctx) => picked(tg, ctx)?.item.pos !== undefined,
+    appliesTo: (tg, ctx) => picked(tg, ctx)?.item.pin !== undefined,
     disabled: blocked,
     run: (tg, ctx) => {
       const p = picked(tg, ctx);
@@ -112,7 +114,7 @@ const actions: readonly Action[] = [
     icon: 'target',
     section: 'edit',
     targets: TARGETS,
-    appliesTo: (tg, ctx) => picked(tg, ctx)?.item.pos !== undefined,
+    appliesTo: (tg, ctx) => picked(tg, ctx)?.item.pin !== undefined,
     disabled: blocked,
     run: (tg, ctx) => {
       const p = picked(tg, ctx);
