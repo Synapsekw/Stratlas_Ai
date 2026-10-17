@@ -64,6 +64,9 @@ The antennas in an engineering model (see Engineering models) are still approxim
 - It needs a tower axis (monopole or lattice). Rooftop and water-tower sites are not supported yet.
 - On lattice towers, antennas facing more than 60 degrees away from straight out are listed as other equipment.
 - Small radio units are listed as other equipment without angles and may be missed.
+- Units side by side with no gap between them can come out as one wide unit.
+- Faces narrower than 0.2 m or thinner than 0.08 m are never listed as antennas.
+- Crops allow for a few degrees of error in a photo's recorded pose; a larger error can still cut a unit off at the crop edge.
 - A dish bolted to a thick member (radius 0.1 m or more) may be missed.
 - Plumb on narrow faces is less certain than azimuth.
 - Magnetic north is not available, and electrical tilt is not measured.

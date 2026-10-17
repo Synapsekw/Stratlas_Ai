@@ -345,6 +345,9 @@ Current limits only; each is removed from this list when fixed.
 - Only mechanical downtilt is measured; electrical tilt is not.
 - On lattice towers, antennas facing more than 60 degrees away from straight out are listed as other equipment.
 - Small radio units are listed as other equipment without angles, and they or units merged with neighbours can be missed.
+- Units side by side with no gap between them can come out as one wide unit.
+- Faces narrower than 0.2 m or thinner than 0.08 m are never listed as antennas.
+- Crops allow for a few degrees of error in a photo's recorded pose; a larger error can still cut a unit off at the crop edge.
 - A dish bolted to a thick member (radius 0.1 m or more) may be missed.
 - The type comes from the size of the unit unless AI labelling is used; AI labelling sets the type label only and never a number.
 - Plumb on narrow faces is less certain than azimuth.
