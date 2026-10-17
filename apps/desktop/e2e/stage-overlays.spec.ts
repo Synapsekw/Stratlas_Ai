@@ -21,6 +21,8 @@ import { openDemo } from './surveyJobs';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
 
+/** The CSS width of the window the wider stage's tests ask for. */
+const WIDE_PX = 1400;
 const VIEW_READY = { timeout: 30_000 };
 
 interface Hooks {
@@ -319,6 +321,17 @@ test('docked, the video shares the stage across a divider, under or beside the v
 
 test.describe('a wider stage', () => {
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1400x800', QUADRION_DEMO: DEMO_FOLDER } });
+  // The CI runners' 1024 x 768 screens cut any window down to the app's minimum, 1100 px wide
+  // (src/main/windowMode.ts), so a wider window is not to be had there. The page is zoomed out
+  // instead until it is 1400 CSS px wide, the stage these tests are about.
+  test.beforeEach(async ({ app, win }) => {
+    const width = await win.evaluate(() => innerWidth);
+    if (width >= WIDE_PX) return;
+    await app.evaluate(({ BrowserWindow }, factor) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(factor);
+    }, width / WIDE_PX);
+    await expect.poll(() => win.evaluate(() => innerWidth)).toBeGreaterThanOrEqual(WIDE_PX - 2);
+  });
 
   test('the open island moves only the top corners it reaches across', async ({ win }, info) => {
     await openTankFarm(win);
