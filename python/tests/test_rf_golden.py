@@ -15,7 +15,7 @@ import pytest
 
 from aio_pipelines.rf import budget, grid, pattern, propagation
 
-GOLDEN = Path(__file__).resolve().parents[3] / "packages" / "rf" / "fixtures" / "golden"
+GOLDEN = Path(__file__).resolve().parents[2] / "packages" / "rf" / "fixtures" / "golden"
 # Built in two parts, as the generators do: a whole literal would read as a file schema id to the
 # schema registry scan (packages/schema/src/versions.test.ts).
 FORMAT = "aio.rf-" + "golden/1"

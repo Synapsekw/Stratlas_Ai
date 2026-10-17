@@ -1,5 +1,5 @@
 /**
- * Golden vector runner. The same files run in pytest (python/tests/rf, Task 6), so the TypeScript
+ * Golden vector runner. The same files run in pytest (python/tests/test_rf_golden.py, Task 6), so the TypeScript
  * preview and the Python job cannot drift (spec D16). Every `fixtures/golden/*.json` is read.
  */
 import { readFileSync, readdirSync } from 'node:fs';

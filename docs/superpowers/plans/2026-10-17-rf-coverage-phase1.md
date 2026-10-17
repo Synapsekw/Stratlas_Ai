@@ -65,7 +65,7 @@
 | `packages/rf/src/sectors.ts`                                                                                | 30 degree bearing grouping, names, eligibility, orphans                        | T5   |
 | `packages/rf/src/preview.ts`, `preview.worker.ts`                                                           | pattern and budget over cached path loss; composite, best server, overlap      | T5   |
 | `python/src/aio_pipelines/rf/` (new: `pipeline.py`, `pattern.py`, `budget.py`, `propagation.py`, `grid.py`) | `rf.coverage` job                                                              | T6   |
-| `python/tests/rf/`                                                                                          | pytest, including the golden vectors                                           | T6   |
+| `python/tests/test_rf_*.py`                                                                                 | pytest, including the golden vectors                                           | T6   |
 | `apps/desktop/src/main/rf.ts` (new), `index.ts` (wiring)                                                    | sectors read and write, catalogue list and import, runs, export                | T7   |
 | `apps/desktop/src/main/rf/export.ts` (new)                                                                  | GeoTIFF, GeoJSON contours, CSV                                                 | T7   |
 | `apps/desktop/src/renderer/rf/rfStore.ts` (new)                                                             | units from antennas.json, sectors, height basis, orphans, preview state        | T8   |

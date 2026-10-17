@@ -2,7 +2,7 @@
 
     cd python && uv run python scripts/rf_desktop_fixture.py
 
-Runs the real job on a synthetic two-sector site (``tests/rf/rf_synth.py``, no real site data) with a
+Runs the real job on a synthetic two-sector site (``tests/rf_synth.py``, no real site data) with a
 21 x 21 pixel grid and copies the run folder to ``apps/desktop/src/main/rf/__fixtures__/py-run/``.
 It prints the pixel values that ``apps/desktop/src/main/rf/pyRun.test.ts`` checks; copy them into
 the test when the engine changes on purpose.
@@ -20,10 +20,9 @@ from pathlib import Path
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "tests" / "rf"))
+sys.path.insert(0, str(HERE.parent / "tests"))
 
 import rf_synth as S  # noqa: E402
-
 from aio_pipelines.rf.pipeline import RfCoverage  # noqa: E402
 from aio_pipelines.runtime import Job  # noqa: E402
 

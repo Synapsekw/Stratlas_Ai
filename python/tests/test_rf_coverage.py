@@ -16,8 +16,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import rf_synth as S
 
+import rf_synth as S
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.rf import pipeline as rf_pipeline
 from aio_pipelines.rf import propagation
@@ -25,7 +25,7 @@ from aio_pipelines.rf.pipeline import RfCoverage
 from aio_pipelines.runtime import Cancelled, JobError
 from conftest import run_job
 
-GOLDEN = Path(__file__).resolve().parents[3] / "packages" / "rf" / "fixtures" / "golden"
+GOLDEN = Path(__file__).resolve().parents[2] / "packages" / "rf" / "fixtures" / "golden"
 
 
 def _gen_propagation():
