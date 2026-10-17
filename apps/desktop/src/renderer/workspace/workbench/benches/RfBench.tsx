@@ -25,7 +25,17 @@ import {
   type RfEnvironment,
   type RfTech,
 } from '@aio/schema';
-import { Button, Chip, EmptyState, IconButton, Menu, Switch, useT, type MessageKey } from '@aio/ui';
+import {
+  Button,
+  Chip,
+  EmptyState,
+  IconButton,
+  Menu,
+  Switch,
+  useT,
+  type MessageKey,
+  type SwitchProps,
+} from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { processingTools, useProcessingTools } from '../../../processingTools';
@@ -199,6 +209,16 @@ function NumberField({
 }
 
 const fmt = (n: number, d = 1): string => n.toFixed(d);
+
+/** A switch with its name shown beside it (the Switch part names itself for assistive tech only). */
+function LabelledSwitch(props: SwitchProps) {
+  return (
+    <div className="rf-switch">
+      <Switch {...props} />
+      <span aria-hidden="true">{props.label}</span>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------- save bar
 
@@ -465,7 +485,7 @@ function StudySettings() {
       <p className="rf-note">
         {t('rf.study.always', { body: study.bodyLossDb, ue: study.ueHeightM })}
       </p>
-      <Switch
+      <LabelledSwitch
         checked={unreviewed}
         label={t('rf.study.includeUnreviewed')}
         onChange={setIncludeUnreviewed}
@@ -841,7 +861,7 @@ function UnitFields({ row }: { row: RfUnitRow }) {
           ))}
         </select>
       </Field>
-      <Switch
+      <LabelledSwitch
         checked={s?.active ?? true}
         disabled={readOnly}
         label={t('rf.sector.active')}

@@ -84,11 +84,19 @@
 }
 .seg.rf-seg-full {
   display: flex;
+  flex-wrap: wrap;
 }
 .seg.rf-seg-full button {
   flex: 1;
   justify-content: center;
   white-space: nowrap;
+}
+.rf-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  color: var(--fg-1);
+  font-size: var(--t-12);
 }
 .rf-faint {
   color: var(--fg-3);
