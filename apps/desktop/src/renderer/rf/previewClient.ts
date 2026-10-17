@@ -37,11 +37,23 @@ export interface PreviewClient {
   dispose(): void;
 }
 
+/** The Worker's answer when a path-loss key is not in its cache (`resolvePreviewRequest`). */
+const MISSING = 'No path-loss grid is loaded';
+
 export function connectPreview(port: PreviewClientPort): PreviewClient {
   const asked = new Set<string>();
   const pending = new Map<number, { ok: (r: PreviewResult) => void; fail: (e: Error) => void }>();
   let seq = 0;
   let closed = false;
+  let last: { grid: PreviewGrid; radiusM: number; jobs: readonly PathLossJob[] } | null = null;
+  const send = (request: PreviewRequest): Promise<PreviewResult> => {
+    if (closed) return Promise.reject(new Error('The preview is closed.'));
+    const id = ++seq;
+    return new Promise<PreviewResult>((ok, fail) => {
+      pending.set(id, { ok, fail });
+      port.postMessage({ type: 'preview', id, input: request });
+    });
+  };
   const failAll = (e: Error) => {
     for (const p of pending.values()) p.fail(e);
     pending.clear();
@@ -58,9 +70,10 @@ export function connectPreview(port: PreviewClientPort): PreviewClient {
     // a dead Worker forgets its grids: ask again in a new one
     asked.clear();
   };
-  return {
+  const client: PreviewClient = {
     pathLoss(grid, radiusM, jobs) {
       if (closed) return;
+      last = { grid, radiusM, jobs };
       const wanted = new Set(jobs.map((j) => j.key));
       for (const key of [...asked]) {
         if (wanted.has(key)) continue;
@@ -80,13 +93,17 @@ export function connectPreview(port: PreviewClientPort): PreviewClient {
         });
       }
     },
-    preview(request) {
-      if (closed) return Promise.reject(new Error('The preview is closed.'));
-      const id = ++seq;
-      return new Promise<PreviewResult>((ok, fail) => {
-        pending.set(id, { ok, fail });
-        port.postMessage({ type: 'preview', id, input: request });
-      });
+    async preview(request) {
+      try {
+        return await send(request);
+      } catch (e) {
+        // the Worker no longer has a grid this client thinks it asked for (evicted, or a new
+        // Worker): forget what was asked, ask for the plan's grids again and retry once
+        if (closed || !last || !(e instanceof Error) || !e.message.startsWith(MISSING)) throw e;
+        asked.clear();
+        client.pathLoss(last.grid, last.radiusM, last.jobs);
+        return send(request);
+      }
     },
     dispose() {
       if (closed) return;
@@ -96,6 +113,7 @@ export function connectPreview(port: PreviewClientPort): PreviewClient {
       port.terminate?.();
     },
   };
+  return client;
 }
 
 /** Start the module Worker. */

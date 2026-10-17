@@ -194,6 +194,42 @@ describe('the preview Worker round trip', () => {
     await expect(client.preview(first.request)).rejects.toThrow(/path-loss/);
   });
 
+  it('previews a plan larger than the Worker cache (18 units x 4 bands), asking again once', async () => {
+    const base = previewPlan(setup(), new Map());
+    const job = base?.pathLoss[0];
+    const src = base?.request.sectors[0]?.sources[0];
+    if (!base || !job || !src) throw new Error('no plan');
+    const grid = { ...base.grid, width: 9, height: 9 };
+    // 72 grids: one per unit and band, each its own key (MAX_PATH_LOSS_GRIDS is 64)
+    const jobs = Array.from({ length: 72 }, (_, i) => ({
+      ...job,
+      key: `k${String(i)}`,
+      antenna: { east: job.antenna.east + i, north: job.antenna.north },
+    }));
+    const request = {
+      ...base.request,
+      grid,
+      sectors: [
+        {
+          id: 'sec-a',
+          sources: jobs.map((j) => ({ ...src, east: j.antenna.east, pathLossKey: j.key })),
+        },
+      ],
+    };
+    const { client: port, posted } = channel();
+    const client = connectPreview(port);
+    client.pathLoss(grid, base.radiusM, jobs);
+    // the first try finds the oldest grids evicted; the client asks for them again and the
+    // Worker keeps every grid the preview uses
+    const r = await client.preview(request);
+    expect(r.output.rsrpDbm.length).toBe(81);
+    expect(posted.filter((m) => m.type === 'path-loss:compute').length).toBe(144);
+    expect(posted.filter((m) => m.type === 'preview')).toHaveLength(2);
+    // and from then on every preview is answered at once
+    await client.preview(request);
+    expect(posted.filter((m) => m.type === 'preview')).toHaveLength(3);
+  });
+
   it('answers a refused request with its reason, and fails what is out when it is closed', async () => {
     const plan = previewPlan(setup(), new Map());
     if (!plan) throw new Error('no plan');

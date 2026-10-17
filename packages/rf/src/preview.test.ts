@@ -471,4 +471,51 @@ describe('the Worker path-loss cache', () => {
     expect(ask('a', 3)).toBe(true);
     expect(ask('c', 4)).toBe(true);
   });
+
+  it('never evicts a grid the last preview used', () => {
+    const sent: PreviewReply[] = [];
+    const port: PreviewPort = {
+      onmessage: null,
+      postMessage(m) {
+        sent.push(m);
+      },
+    };
+    servePreview(port, () => 0, 1);
+    const grid = makeGrid(8, 10);
+    const [sector] = sectorsFor(grid, [SPECS[1] ?? []]);
+    const src = sector?.sources[0];
+    if (!src) throw new Error('missing');
+    const { pathLossDb, ...settings } = src;
+    const send = (data: PreviewMessage) => port.onmessage?.({ data });
+    const both = (id: number) => {
+      send({
+        type: 'preview',
+        id,
+        input: {
+          grid,
+          ueHeightM: UE,
+          marginDb: 0,
+          sectors: [
+            {
+              id: 'sec-a',
+              sources: [
+                { ...settings, pathLossKey: 'a' },
+                { ...settings, pathLossKey: 'b' },
+              ],
+            },
+          ],
+        },
+      });
+      return sent.at(-1)?.ok;
+    };
+    send({ type: 'path-loss:set', key: 'a', pathLossDb });
+    send({ type: 'path-loss:set', key: 'b', pathLossDb });
+    // cap 1: a was evicted before any preview pinned it
+    expect(both(1)).toBe(false);
+    // the failed preview pinned a and b: both are kept past the cap now
+    send({ type: 'path-loss:set', key: 'a', pathLossDb });
+    expect(both(2)).toBe(true);
+    send({ type: 'path-loss:set', key: 'c', pathLossDb });
+    expect(both(3)).toBe(true);
+  });
 });

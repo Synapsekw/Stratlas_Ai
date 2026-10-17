@@ -367,7 +367,8 @@ export function resolvePreviewRequest(
 
 /**
  * Path-loss grids the Worker keeps at most (a backstop: the client drops the keys its plan no
- * longer uses). The least recently used grid goes first.
+ * longer uses). The least recently used grid goes first; the grids the last preview used are
+ * never evicted, so a plan larger than the cap still works.
  */
 export const MAX_PATH_LOSS_GRIDS = 64;
 
@@ -379,12 +380,15 @@ export function servePreview(
 ): void {
   const cache = new Map<string, Float32Array>();
   const failed = new Map<string, string>();
-  /** Keep a grid as the most recently used, then trim the oldest past the cap. */
+  /** The keys the last preview asked for: never evicted (a plan may need more than the cap). */
+  let pinned = new Set<string>();
+  /** Keep a grid as the most recently used, then trim the oldest unpinned past the cap. */
   const keep = (key: string, grid: Float32Array) => {
     cache.delete(key);
     cache.set(key, grid);
-    for (const k of cache.keys()) {
+    for (const k of [...cache.keys()]) {
       if (cache.size <= maxGrids) break;
+      if (k === key || pinned.has(k)) continue;
       cache.delete(k);
     }
   };
@@ -409,6 +413,7 @@ export function servePreview(
       failed.delete(data.key);
       return;
     }
+    pinned = new Set(data.input.sectors.flatMap((sec) => sec.sources.map((x) => x.pathLossKey)));
     const t0 = now();
     try {
       const output = computePreview(resolvePreviewRequest(data.input, cache, failed));
