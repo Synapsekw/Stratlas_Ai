@@ -2,7 +2,7 @@
 
 ## Cross-sections
 
-Draw a line with **Line**, **Cross-section**. The section opens docked under the view.
+In the **Measure** workbench, draw a line with **Line**, **Cross-section**. The section opens docked under the view.
 
 - Under **Surfaces**, tick the surveys and design surfaces to show; each gets its own coloured line.
 - Click the chart to add a pin. Each pin lists every surface's elevation at that chainage, the difference ("Δ") to the surface you click, and the grade in degrees, percent and ratio.
@@ -19,7 +19,7 @@ With an alignment active (see [Designs, alignments and compliance](38-designs-al
 
 ## Terrain overlays
 
-**Site data**, **Terrain overlays** makes overlays from a prepared survey, or from the difference to another survey (**Difference from**):
+In the **Measure** workbench, **Site data**, **Terrain overlays** opens the **Terrain overlays** tab of the right panel. It makes overlays from a prepared survey, or from the difference to another survey (**Difference from**):
 
 - **Contours**: **Minor (m)** and **Major (m)** intervals;
 - **Gradient**: shown as **Degrees (0, 30, 45, 60)**, **Percent** or **Ratio 1:n**;

@@ -32,9 +32,15 @@ The switch at the start of the open island changes the view:
 
 - **3D** (key **1**): the 3D view.
 - **Map** (key **2**): a flat map with the orthos, plans and the offline street map.
-- **Split** (key **3**): two views side by side. Each side has a selector, **Left side shows** and **Right side shows**: **3D view**, **Map**, **Video**, **Photos**, **Ortho and plans** or **Report**. Only what the project has is offered, and the 3D view can be on one side only.
+- **Split** (key **3**): two views side by side. Each side has a header strip under the island: the survey date it shows, and what it shows, **Left side shows** and **Right side shows**: **3D view**, **Map**, **Video**, **Photos**, **Ortho and plans** or **Report**. Only what the project has is offered, and the 3D view can be on one side only.
+  - Drag the divider between the two sides to give one more room, or focus it and use the **←** and **→** keys; a double-click puts it back in the middle. The share is remembered on this computer.
+  - The island's date is the date of the side you used last: **‹** **›** and **Alt ←** **Alt →** step that side, and the other keeps its date.
 
 Projects with more than one survey date also have **Compare dates**. See [Compare dates](04-compare-dates.md).
+
+## What stands on the view
+
+Around the island, each overlay keeps a corner of the view to itself, so none covers another: the survey dates on screen, a status such as the cutaway or a comparison notice, the **Map** chip, the volumes hint, and the coordinates readout at the foot of the 3D view. Where the floating video window rests, or the open island reaches down, what wanted that corner takes a free one, or waits until one is free. In **Split**, each side's header strip stands under the island and no overlay covers it.
 
 ## Show and hide layers
 
@@ -150,7 +156,7 @@ Point clouds hide while Cut or Transparent is on. **Inside view** flies behind t
 Projects with video have a **Timeline** at the bottom. The **Timeline** tile in the island's **View** group shows or hides it; it has no key.
 
 1. Click a clip bar on the timeline: the clip is selected and the playhead goes to that point. It does not play yet: **Space** (or the play button) plays and pauses, and playback runs on to the next clip of the same date. **Previous clip** and **Next clip** step through the clips.
-2. The video window floats over the stage. Drag it by its title bar, resize it from the edges (it keeps 16:9), double-click the title to reset. **Dock beside the stage** puts it next to the view; **W** hides it.
+2. The video window floats over the stage. Drag it by its title bar, resize it from the edges (it keeps 16:9), double-click the title to reset. **Dock beside the stage** docks it beside the view, with a divider between them: drag the divider, or focus it and use the arrow keys, to share the stage, and double-click it to reset. In the docked window's header, **Dock the video at the bottom** puts it under the view instead, and **Dock the video at the side** back beside it; on a narrow stage (a wide tab in front of the right panel) it docks under the view. **W** hides it.
 3. **P** shows the flight paths (**All**, **Active clip** or **Off**).
 4. **Follow the drone** keeps the drone in view. **Drone eye (through the camera)** looks through the drone's camera, so the video lines up with the model.
 
@@ -179,7 +185,7 @@ Projects without video, and road surveys, have the single timeline, and their da
 
 - The flown path is solid up to the playhead, dashed after it.
 - A shadow track on the ground with drop lines, and distance ticks from START.
-- The HUD plate reads **DIST**, **T+**, **AGL**, **EL**, **GS**, **HDG** and **GMB**.
+- The readings are not drawn on the model: while the clip plays, the island shows its altitude and speed beside the date (for example "ALT 31 m · SPD 3.2 m/s"), and the player card of the **Video** workbench shows them too.
 
 ## Photos and panoramas
 

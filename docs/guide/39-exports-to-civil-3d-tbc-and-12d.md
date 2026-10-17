@@ -1,6 +1,6 @@
 # Exports to Civil 3D, TBC and 12d
 
-**Site data**, **Export survey data** writes surveys, designs, measurements, contours and sections for Autodesk Civil 3D, Trimble Business Center (TBC), 12d Model and GIS programs. You choose where the file goes first; nothing is added to the project.
+In the **Measure** workbench, **Site data**, **Export survey data** writes surveys, designs, measurements, contours and sections for Autodesk Civil 3D, Trimble Business Center (TBC), 12d Model and GIS programs. You choose where the file goes first; nothing is added to the project.
 
 ## What you can export
 

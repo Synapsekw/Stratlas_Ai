@@ -51,7 +51,7 @@ The engineering model opens in the Model builder with the **Components** list.
 - **Still to settle** lists what the run could not decide, for example an unclear count or a scale that is only assumed. **Photos that may show another asset** lists images that seem to show a different structure; the run stops before building so you can leave them out.
 - **The size is assumed. Enter one known dimension to fix it.** appears on a model made from photos without a known dimension: its lengths are not yet true metres.
 
-**Corrections through the AI agent**: in the agent panel you can say, for example, "there are four flues, not three" or "move the first light level to 45 m". The agent changes counts, levels and values, adds or removes components and accepts or rejects them through the same rules: only the affected components change and ids stay. Each change asks for your approval first. Removing an accepted component also needs your confirmation.
+**Corrections through the AI agent**: in the agent (below the workbench in the right panel, or **Ctrl J**) you can say, for example, "there are four flues, not three" or "move the first light level to 45 m". The agent changes counts, levels and values, adds or removes components and accepts or rejects them through the same rules: only the affected components change and ids stay. Each change asks for your approval first. Removing an accepted component also needs your confirmation.
 
 ## Place a model
 

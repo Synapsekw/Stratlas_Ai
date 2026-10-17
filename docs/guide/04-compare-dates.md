@@ -10,13 +10,13 @@ To step through all survey dates of a project, see [Survey dates](28-survey-date
 2. Open the island's tools (click the island at the top of the view, or press **T**) and click **Compare dates** in the **View** row.
    - From **3D** or **Split** you get two 3D views. From **Map** you get two maps.
    - The first date is on the left, the last on the right.
-3. To show another date on a side, open the picker above that side and pick the view under that date. The picker is one list grouped by survey date (see [Two orthos side by side](#two-orthos-side-by-side)). The view and date the other side shows is greyed, so both sides never show the same thing. To swap the two dates, right-click the right date's folder in the tree and choose **Compare with...**, then the left date.
-4. Orbit, pan or zoom. With **Link the two views** on, both sides move together. Click it again to **Unlink the two views**.
+3. Each side has a header strip with its date and the view it shows. To show another date on a side, open the view list in its header and pick the view under that date. Or click the side, then step its date with the island's **‹** **›**, or **Alt ←** and **Alt →**: the island's date is always the date of the side you used last. The picker is one list grouped by survey date (see [Two orthos side by side](#two-orthos-side-by-side)). The view and date the other side shows is greyed, so both sides never show the same thing. To swap the two dates, right-click the right date's folder in the tree and choose **Compare with...**, then the left date.
+4. Orbit, pan or zoom. With **Link the two views** on (the link button at the end of the right side's header), both sides move together. Click it again to **Unlink the two views**. Drag the divider between the sides to give one more room; a double-click puts it back in the middle.
 5. Click a pile or an object on one side: it is outlined on both.
 
 Each side draws the issues of its own date, and the issues that belong to no date. See [Survey dates](28-survey-dates.md#issues-and-measurements-belong-to-their-date).
 
-While you compare, **Stop comparing dates** and the compare tools sit beside the island. To stop, click **Stop comparing dates**. {product} remembers the comparison per project.
+While you compare, **Stop comparing dates** and the compare tools sit beside the island, with **How compare works** under them. To stop, click **Stop comparing dates**. {product} remembers the comparison per project.
 
 ## Compare from the tree
 
@@ -42,10 +42,10 @@ A date that has no matching data is listed but greyed, with the reason, for exam
 
 The right pane shows the panorama of the other date nearest to the one on the left, if one was taken within 25 m. It says how far apart the two are. If none is that close, it says so and offers **Show the nearest**, which shows the closest one anyway.
 
-- Both panoramas turn together, and the bearing shows as **HDG**. The link button in the right pane's corner unlinks the look, so each pane turns on its own. Press it again to link them.
+- Both panoramas turn together, and the bearing shows as **HDG**. The link button at the end of the right pane's header unlinks the look, so each pane turns on its own. Press it again to link them.
 - Step with **Previous panorama** and **Next panorama** (or Page Up and Page Down) in the left pane. The right pane follows to the nearest panorama of its date. It has no stepper of its own.
 - A **Panoramas** pane on one side only (the other side shows 3D or a map, for example) has the stepper itself and steps through the panoramas of its date. So does the right pane when the left date has no panoramas.
-- The island's date moves the left pane to another date and keeps it at the same spot.
+- The island's date moves the pane you used last to another date and keeps it at the same spot.
 - Pick a panorama somewhere else (a marker in 3D, or the Media screen) and it goes to the left pane, and the right pane pairs again.
 
 ## What changed
@@ -56,7 +56,7 @@ While you compare, **Show changes** beside the island lists what changed between
 - Point clouds and 3D models: [Point cloud and 3D model change](16-cloud-and-model-change.md).
 - Video frames and photos of the same view: [Same view on another date](17-frames.md).
 
-> While you compare, the **?** next to **Stop comparing dates** opens this page.
+> While you compare, **How compare works** under **Stop comparing dates** opens this page.
 
 ## Two orthos side by side
 
@@ -64,7 +64,7 @@ While you compare, **Show changes** beside the island lists what changed between
 2. Open **Left side shows** and pick **Ortho and plans** under one date.
 3. Open **Right side shows** and pick **Ortho and plans** under another date.
 
-The picker on each side is one list grouped by survey date, newest first. Each date lists what it has (**3D**, **Map**, **Ortho and plans**, **Panoramas**), and the last group, **Any date**, holds the panes that do not follow a date (for example **Video**, **Photos**, **Report**). Picking an entry sets the view and the date in one step. A project with one survey date shows a plain list.
+The view list in each side's header is one list grouped by survey date, newest first. Each date lists what it has (**3D**, **Map**, **Ortho and plans**, **Panoramas**), and the last group, **Any date**, holds the panes that do not follow a date (for example **Video**, **Photos**, **Report**). Picking an entry sets the view and the date in one step. A project with one survey date shows a plain list.
 
 With two maps or two orthos of different dates, a bar at the top of the views offers **Side by side**, **Swipe** and **Blend**. See [Swipe and blend two dates](15-imagery-and-surface-change.md#swipe-and-blend-two-dates).
 

@@ -6,7 +6,7 @@ Every polygon can hold one or more comparisons, each from one surface to another
 
 A comparison takes the height difference **To** minus **From** over the polygon. Where **To** is higher it is fill, where it is lower it is cut. **Net** is fill minus cut and **Total** is fill plus cut. Cells at the polygon's edge count by the share of the cell inside it. Where either surface has no data, the area shows as **Not covered**: a comparison that is partly outside the survey says so, and one mostly outside it is refused.
 
-Surveys are prepared once as height tiles. If a comparison says "No survey surface is prepared yet", click **Prepare surfaces** and wait for it under **Processing**.
+Surveys are prepared once as height tiles. If a comparison says "No survey surface is prepared yet", click **Prepare surfaces** and wait for the job: the island shows its progress beside the date, and the **Jobs** tab of the right panel lists it.
 
 ## Add a comparison
 
@@ -33,7 +33,7 @@ Stops either side of zero make a deadband: small changes inside it are left clea
 
 ## Materials and calculators
 
-**Materials** opens **Site materials**: each material's name, code, density in t/m³ and its loose and compacted factors, with **Import CSV** and **Export CSV**.
+**Materials**, under **Site data** in the **Measure** workbench, opens **Site materials**: each material's name, code, density in t/m³ and its loose and compacted factors, with **Import CSV** and **Export CSV**.
 
 In a polygon's **Material and calculators**, pick the material and which volume to use (net, fill or cut). The panel shows the volume as bank, loose and compacted, and the weight. Type a **Weighed tonnage (t)** to get the **Achieved density**: 63,000 t over 70,104 m³ is 0.899 t/m³. Calculators are for display only; the stored volume never changes.
 
@@ -43,7 +43,7 @@ Select several measurements in the list: the totals add their comparisons up. **
 
 ## Whole site cut and fill
 
-**Whole site cut and fill** compares two surveys or designs over their whole overlap in a background job. It then suggests cut and fill regions as drafts. **Keep** the ones you want: they become volume measurements in the folder "Whole-site regions".
+**Whole site cut and fill**, under **Site data** in the **Measure** workbench, compares two surveys or designs over their whole overlap in a background job. It then suggests cut and fill regions as drafts. **Keep** the ones you want: they become volume measurements in the folder "Whole-site regions".
 
 **Snap to ortho edges** moves the ticked regions' boundaries to the edges seen in the ortho, with the same local model as **Suggest boundaries** ([Measuring and templates](35-measuring-and-templates.md)). A region is snapped only when the edge in the ortho matches it; otherwise it stays as it was, and the panel says why. Snapped regions are still drafts.
 

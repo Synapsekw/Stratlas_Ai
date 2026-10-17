@@ -1,6 +1,6 @@
 # Haul roads
 
-**Site data**, **Haul road** checks a haul road on a survey against your limits: running width, grade along the road, cross fall either side, and berm heights.
+In the **Measure** workbench, **Site data**, **Haul road** checks a haul road on a survey against your limits: running width, grade along the road, cross fall either side, and berm heights.
 
 ## Run a check
 

@@ -2,7 +2,7 @@
 
 ## Industry template sets
 
-Each industry has a set of ready templates. Turn sets on in **Templates**, **Industry template sets**; the choice is saved with the site and the toolbar shows their templates.
+Each industry has a set of ready templates. Turn sets on in **Templates**, **Industry template sets** (in the **Measure** workbench); the choice is saved with the site and the workbench lists their templates under **Templates**.
 
 | Set                   | Templates                                                                                                                           |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |

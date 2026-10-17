@@ -1,6 +1,8 @@
 # Survey QA and cleanup
 
-**Site data**, **Survey QA and cleanup** checks a delivered survey before anyone reports from it, cleans up the terrain without touching the delivered data, and shows the surveys and the history of a point.
+In the **Measure** workbench, **Site data**, **Survey QA and cleanup** checks a delivered survey before anyone reports from it, cleans up the terrain without touching the delivered data, and shows the surveys and the history of a point.
+
+Its menu has **Check against points**, **Cleanup and crop**, **Surveys** and **Elevation history**; each opens in the **Survey QA** tab of the right panel (with the panel folded, as a drawer over the view).
 
 ## Check against points
 

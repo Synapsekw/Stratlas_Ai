@@ -4,7 +4,7 @@ Design surfaces, linework, points and alignments come from Civil 3D, Trimble Bus
 
 ## Import a design
 
-**Site data**, **Designs**, **Import design**, and pick a LandXML (`.xml`), DXF, 12da or CSV file. The options open under the button, filled from a quick look at the file:
+In the **Measure** workbench, under **Site data**, click **Designs**, then **Import design**, and pick a LandXML (`.xml`), DXF, 12da or CSV file. The options open under the button, filled from a quick look at the file:
 
 - **Name**: the file's name; change it if you like.
 - **Format**: **Automatic** says what the file was recognised as. Pick another only when the file name misleads.
@@ -38,7 +38,7 @@ Untick a layer to take it out of both views. Design layers are also used in comp
 
 ## Compliance to design
 
-Select the polygon to check (for example the pad's outline), then **Designs**, **Compliance to design**:
+Select the polygon to check (for example the pad's outline), then **Designs** under **Site data**, **Compliance to design**:
 
 1. **Design surface**: the layer to compare to.
 2. **Tolerance, plus or minus (mm)**, for example 50.
@@ -52,6 +52,6 @@ You can also set up a design comparison by hand in a polygon's **Comparisons**: 
 
 ## Alignments
 
-On an alignment layer, **Activate alignment**. The cursor readout then adds the station and offset, for example "Sta 1+234.567 Off 2.500 R", or says when the pointer is off the alignment. **Station interval (m)** with **Set interval** sets the spacing of the stations and of the labels in the views. Station equations come from the LandXML file. Use the active alignment for sections at stations (see [Cross-sections and terrain overlays](37-cross-sections-and-terrain-overlays.md)).
+On an alignment layer, **Activate alignment**. The coordinates readout at the foot of the 3D view then adds the station and offset, for example "Sta 1+234.567 Off 2.500 R", or says when the pointer is off the alignment. **Station interval (m)** with **Set interval** sets the spacing of the stations and of the labels in the views. Station equations come from the LandXML file. Use the active alignment for sections at stations (see [Cross-sections and terrain overlays](37-cross-sections-and-terrain-overlays.md)).
 
 Only horizontal alignments are read; vertical profiles are not.
