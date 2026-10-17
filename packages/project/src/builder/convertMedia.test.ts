@@ -1,3 +1,4 @@
+import { photoQuatFromHeading } from '@aio/geo';
 import { ProjectManifest, type Layer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { convertMediaManifest } from './convertMedia';
@@ -137,9 +138,46 @@ describe('convertMediaManifest', () => {
         src: { path: 'photos/ph.jpg' },
         takenAt: '2026-10-01T09:00:00+02:00',
         pos: [1, 2, 1.6],
+        q: photoQuatFromHeading(0),
         pin,
       },
     ]);
+  });
+
+  it('gives a placed 360 back as a photo aimed along its heading', () => {
+    const pano = {
+      id: 'a',
+      src: { path: 'a.jpg' },
+      pos: [3, 4, 1.6],
+      headingDeg: 95,
+      capturedAt: '2026-10-01T10:00:00+02:00',
+    };
+    const r = convertMediaManifest(
+      manifest([{ kind: 'panoramas', id: 'pn', name: 'Pn', items: [pano] }]),
+      { layerId: 'pn', itemId: 'a', to: 'photo' },
+    );
+    if ('error' in r) throw new Error(r.error);
+    const l = layer(r.manifest, r.layerId);
+    if (l?.kind !== 'photos') throw new Error('kind');
+    expect(l.items[0]?.q).toEqual(photoQuatFromHeading(95));
+  });
+
+  it('files an undated photo in "panos" with no capture', () => {
+    const r = convertMediaManifest(
+      manifest([
+        {
+          kind: 'photos',
+          id: 'ph-layer',
+          name: 'Photos',
+          items: [{ id: 'x', src: { path: 'x.jpg' } }],
+        },
+      ]),
+      { layerId: 'ph-layer', itemId: 'x', to: 'pano' },
+    );
+    if ('error' in r) throw new Error(r.error);
+    expect(r.layerId).toBe('panos');
+    const l = layer(r.manifest, 'panos');
+    expect(l?.capture).toBeUndefined();
   });
 
   it('refuses a stitched 360, a missing item and the wrong kind', () => {

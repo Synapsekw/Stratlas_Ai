@@ -1,3 +1,4 @@
+import { photoQuatFromHeading } from '@aio/geo';
 import type { Layer, PanoRef, PhotoRef, ProjectManifest } from '@aio/schema';
 import { captureForDate, uniqueId } from './create';
 
@@ -85,6 +86,10 @@ export function convertMediaManifest(
           src: item.src,
           ...(time !== undefined ? { takenAt: time } : {}),
           ...(item.pos ? { pos: item.pos } : {}),
+          // keep the aim as a level camera, so the photo still has a frustum
+          ...('headingDeg' in item && item.pos
+            ? { q: photoQuatFromHeading(((item.headingDeg % 360) + 360) % 360) }
+            : {}),
           ...(item.pin ? { pin: item.pin } : {}),
         };
 

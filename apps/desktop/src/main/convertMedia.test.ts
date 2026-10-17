@@ -24,6 +24,16 @@ const manifest = ProjectManifest.parse({
         { id: 'p2', src: { path: 'p2.jpg' }, takenAt: '2026-10-01T09:05:00+02:00' },
       ],
     },
+    {
+      kind: 'panoramas',
+      id: 'pn-1',
+      name: 'Pn',
+      capture: 'c1',
+      items: [
+        { id: 'a', src: { path: 'a.jpg' }, headingDeg: 0, capturedAt: '2026-10-01T10:00:00+02:00' },
+        { id: 'b', src: { path: 'b.jpg' }, headingDeg: 0, capturedAt: '2026-10-01T10:05:00+02:00' },
+      ],
+    },
   ],
   severityModels: [
     {
@@ -51,6 +61,26 @@ const issue = Issue.parse({
   ],
   source: 'human',
 });
+const panoIssue = Issue.parse({
+  ...issue,
+  id: 'mark2',
+  code: 'F02',
+  sightings: [
+    {
+      on: 'pano',
+      layer: 'pn-1',
+      pano: 'a',
+      geom: {
+        type: 'sphpolygon',
+        points: [
+          [0, 0],
+          [10, 0],
+          [10, 10],
+        ],
+      },
+    },
+  ],
+});
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'aio-convert-'));
@@ -58,7 +88,7 @@ async function fixture() {
   await writeFile(join(root, 'manifest.json'), JSON.stringify(manifest));
   await writeFile(
     join(root, 'issues.json'),
-    JSON.stringify({ schema: 'aio.issues/1', issues: [issue] }),
+    JSON.stringify({ schema: 'aio.issues/1', issues: [issue, panoIssue] }),
   );
   return root;
 }
@@ -93,11 +123,37 @@ describe('convertMedia', () => {
   it('turns an unmarked photo into a 360 and saves the manifest', async () => {
     const root = await fixture();
     const r = await convertMedia({ root: () => root, package: () => undefined }, req('p2'));
-    expect(r).toMatchObject({ ok: true, layerId: 'panos-2026-10-01', itemId: 'p2' });
+    expect(r).toMatchObject({ ok: true, layerId: 'pn-1', itemId: 'p2' });
     const saved = ProjectManifest.parse(
       JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')),
     );
-    expect(saved.layers.map((l) => l.id)).toEqual(['photos-1', 'panos-2026-10-01']);
+    const l = saved.layers.find((x) => x.id === 'pn-1');
+    expect(l?.kind === 'panoramas' && l.items.map((p) => p.id)).toEqual(['a', 'b', 'p2']);
+  });
+
+  it('refuses a 360 with marks on it before writing anything', async () => {
+    const root = await fixture();
+    const before = await readFile(join(root, 'manifest.json'));
+    const r = await convertMedia(
+      { root: () => root, package: () => undefined },
+      req('a', 'photo', 'pn-1'),
+    );
+    expect(r).toEqual({ ok: false, error: 'This 360 has marks on it. Remove them first.' });
+    expect(await readFile(join(root, 'manifest.json'))).toEqual(before);
+  });
+
+  it('turns an unmarked 360 into a photo and saves the manifest', async () => {
+    const root = await fixture();
+    const r = await convertMedia(
+      { root: () => root, package: () => undefined },
+      req('b', 'photo', 'pn-1'),
+    );
+    expect(r).toMatchObject({ ok: true, layerId: 'photos-1', itemId: 'b' });
+    const saved = ProjectManifest.parse(
+      JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')),
+    );
+    const l = saved.layers.find((x) => x.id === 'photos-1');
+    expect(l?.kind === 'photos' && l.items.map((p) => p.id)).toEqual(['p1', 'p2', 'b']);
   });
 
   it('refuses a missing item', async () => {

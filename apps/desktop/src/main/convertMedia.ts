@@ -16,6 +16,7 @@ const fail = (error: string): ConvertMediaResult => ({ ok: false, error });
 // the wording of the `pin.convert.*` strings in @aio/ui (main has no i18n)
 const PACKAGE = 'A package cannot be changed.';
 const MARKS = 'This photo has marks on it. Remove them first.';
+const MARKS_360 = 'This 360 has marks on it. Remove them first.';
 const STITCHED = 'Only a single 360 image can become a photo.';
 const MISSING = 'That item is not in this layer.';
 const KIND = 'That layer does not hold this kind of image.';
@@ -38,16 +39,16 @@ export async function convertMedia(
   const checked = convertMediaManifest(manifest.value, req);
   if ('error' in checked) return fail(REASONS[checked.error]);
 
-  if (req.to === 'pano') {
-    const issues = await readIssues(root);
-    if (!issues.ok) return fail(issues.error);
-    const marked = issues.value.some((issue) =>
-      issue.sightings.some(
-        (s) => s.on === 'image' && s.layer === req.layerId && s.photo === req.itemId,
-      ),
-    );
-    if (marked) return fail(MARKS);
-  }
+  const issues = await readIssues(root);
+  if (!issues.ok) return fail(issues.error);
+  const marked = issues.value.some((issue) =>
+    issue.sightings.some((s) =>
+      req.to === 'pano'
+        ? s.on === 'image' && s.layer === req.layerId && s.photo === req.itemId
+        : s.on === 'pano' && s.layer === req.layerId && s.pano === req.itemId,
+    ),
+  );
+  if (marked) return fail(req.to === 'pano' ? MARKS : MARKS_360);
 
   try {
     const saved = await updateManifestFile(root, (current) => {
