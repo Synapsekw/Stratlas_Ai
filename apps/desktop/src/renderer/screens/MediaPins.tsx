@@ -1,7 +1,15 @@
 import type { AssetRef, PanoRef, PhotoRef } from '@aio/schema';
 import { actionsFor, Button, Chip, ContextMenu, useT, type MenuTarget } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
-import { useCallback, useEffect, useState, type MouseEvent, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { mediaItem, type MediaKey } from '../pins/pinModel';
 import { mediaName } from '../pins/placePin';
 import { usePinActionCtx } from '../shell/actions/pinActions';
@@ -22,13 +30,47 @@ function targetOf(k: MediaKey): MenuTarget {
     : { kind: 'media', picks: [k] };
 }
 
-/** Whether a photo's image is near 2:1: from its lens when known, else from the file's header. */
-function useLooks360(projectId: string, photo: PhotoRef): boolean {
+/** One observer per scroll list: a tile's header is read once it comes into view. */
+const observers = new WeakMap<Element | Document, IntersectionObserver>();
+const onSeen = new WeakMap<Element, () => void>();
+
+function watchSeen(el: Element, cb: () => void): () => void {
+  const root = el.closest('[data-thumb-root]') ?? document;
+  let io = observers.get(root);
+  if (!io) {
+    const made = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          made.unobserve(e.target);
+          onSeen.get(e.target)?.();
+          onSeen.delete(e.target);
+        }
+      },
+      { root: root === document ? null : root },
+    );
+    observers.set(root, made);
+    io = made;
+  }
+  onSeen.set(el, cb);
+  io.observe(el);
+  const observer = io;
+  return () => {
+    observer.unobserve(el);
+    onSeen.delete(el);
+  };
+}
+
+/**
+ * Whether a photo's image is near 2:1: from its lens when known, else from the file's header,
+ * read only once the tile has been in view (`seen`).
+ */
+function useLooks360(projectId: string, photo: PhotoRef, seen: boolean): boolean {
   const aspect = photo.lens?.aspect;
-  const src = photo.src as AssetRef | undefined;
+  const src = photo.src;
   const [read, setRead] = useState<{ src: AssetRef; wide: boolean } | null>(null);
   useEffect(() => {
-    if (aspect !== undefined || !src) return;
+    if (aspect !== undefined || !seen) return;
     let url: string;
     try {
       url = assetUrl(projectId, src);
@@ -42,7 +84,7 @@ function useLooks360(projectId: string, photo: PhotoRef): boolean {
     return () => {
       live = false;
     };
-  }, [projectId, src, aspect]);
+  }, [projectId, src, aspect, seen]);
   if (aspect !== undefined) return isNear2to1(aspect, 1);
   return read !== null && read.src === src && read.wide;
 }
@@ -58,18 +100,62 @@ function NotPlaced({ itemId }: { itemId: string }) {
   );
 }
 
-/** The chips under a photo tile, or nothing. */
-export function PhotoPinChips({
+/**
+ * A photo tile of Media: the tile (`children`) with its chips under it, and the pin actions on a
+ * right-click.
+ */
+export function PhotoTile({
   projectId,
   layerId,
   photo,
+  onMenu,
+  children,
 }: {
   projectId: string;
   layerId: string;
   photo: PhotoRef;
+  onMenu: (e: MouseEvent, k: MediaKey) => void;
+  children: ReactNode;
+}): ReactElement {
+  const box = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState(false);
+  // only a photo whose size is unknown (no lens) is watched for its header read
+  const watch = photo.lens === undefined && !seen;
+  useEffect(() => {
+    const el = box.current;
+    if (!el || !watch) return;
+    return watchSeen(el, () => {
+      setSeen(true);
+    });
+  }, [watch]);
+  return (
+    <div
+      ref={box}
+      className="m-tile"
+      onContextMenu={(e) => {
+        onMenu(e, { kind: 'photo', layerId, itemId: photo.id });
+      }}
+    >
+      {children}
+      <PhotoPinChips projectId={projectId} layerId={layerId} photo={photo} seen={seen} />
+    </div>
+  );
+}
+
+/** The chips under a photo tile, or nothing. */
+function PhotoPinChips({
+  projectId,
+  layerId,
+  photo,
+  seen,
+}: {
+  projectId: string;
+  layerId: string;
+  photo: PhotoRef;
+  seen: boolean;
 }): ReactElement | null {
   const t = useT();
-  const looks360 = useLooks360(projectId, photo);
+  const looks360 = useLooks360(projectId, photo, seen);
   const ctxOf = usePinActionCtx();
   const placed = photo.pos !== undefined;
   if (placed && !looks360) return null;

@@ -17,10 +17,12 @@ vi.mock('@aio/annotate', async (load) => ({
 }));
 vi.mock('../issueCard/IssueCard', () => ({ IssueCard: () => <div data-testid="issue-card" /> }));
 // a photo's size from its header: the wide one is 2:1
-vi.mock('../thumbs/photoSize', () => ({
-  photoSize: (url: string) =>
+const { photoSize } = vi.hoisted(() => ({
+  photoSize: vi.fn((url: string) =>
     Promise.resolve(url.includes('wide') ? ([2560, 1280] as const) : ([4000, 3000] as const)),
+  ),
 }));
+vi.mock('../thumbs/photoSize', () => ({ photoSize }));
 
 const manifest = {
   schema: 'aio.project/1',
@@ -154,6 +156,12 @@ describe('Media and pinned media', () => {
         items: [
           { id: 'wide', src: { path: 'photos/wide.jpg' } },
           { id: 'gps', src: { path: 'photos/gps.jpg' }, pos: [1, 2, 3] },
+          {
+            id: 'lensed',
+            src: { path: 'photos/wide-lensed.jpg' },
+            pos: [1, 2, 3],
+            lens: { model: 'pinhole', hfovDeg: 80, aspect: 1.3333 },
+          },
         ],
       },
       {
@@ -177,6 +185,21 @@ describe('Media and pinned media', () => {
 
   let off: () => void;
   beforeEach(() => {
+    photoSize.mockClear();
+    // every tile is in view at once
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(
+          private readonly cb: (e: { isIntersecting: boolean; target: Element }[]) => void,
+        ) {}
+        observe = (target: Element) => {
+          this.cb([{ isIntersecting: true, target }]);
+        };
+        unobserve = () => undefined;
+        disconnect = () => undefined;
+      },
+    );
     off = registerPinActions();
     workspace.getState().openProject({ id: 'p1', root: 'E:/projects/p1', manifest: placing });
   });
@@ -208,6 +231,34 @@ describe('Media and pinned media', () => {
     );
     const other = host.querySelector('[data-photo="gps"]')?.closest('.m-tile');
     expect(other?.textContent ?? '').not.toContain('Looks like a 360');
+  });
+
+  it('reads no header of a photo whose lens gives its size', async () => {
+    render();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const urls = photoSize.mock.calls.map((c) => c[0]);
+    expect(urls.some((u) => u.includes('wide.jpg'))).toBe(true);
+    expect(urls.some((u) => u.includes('lensed'))).toBe(false);
+    const lensed = host.querySelector('[data-photo="lensed"]')?.closest('.m-tile');
+    expect(lensed?.textContent ?? '').not.toContain('Looks like a 360');
+  });
+
+  it('reads no header of a tile that has not come into view', async () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe = () => undefined;
+        unobserve = () => undefined;
+        disconnect = () => undefined;
+      },
+    );
+    render();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(photoSize).not.toHaveBeenCalled();
   });
 
   it('opens the pin actions on a right-click of a tile', () => {

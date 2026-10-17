@@ -1,5 +1,4 @@
 import { hasPos } from '@aio/engine';
-import { correctedPhoto, photoCorrection } from '@aio/geo';
 import { frameProjection } from '@aio/maps';
 import type { ProjectManifest, Vec3 } from '@aio/schema';
 import { actionsFor, ContextMenu } from '@aio/ui';
@@ -14,9 +13,9 @@ import { mediaName } from './placePin';
 
 /*
  * The right-click menu of pins and 360s in the views (pinned media design): a pin in 3D (its eye
- * or its ground ring), a placed 360 in 3D or on the map, or a pinned photo on the map. A photo
- * under the cursor in 3D is left to the photo menu (`PhotoMenu`), as are photos without a pin on
- * the map. The items are the registered actions of a `media` target.
+ * or its ground ring) and a placed 360 in 3D or on the map. A photo under the cursor, in 3D or on
+ * the map, is left to the photo menu (`PhotoMenu`), which lists the same pin actions besides Open
+ * and Align. The items are the registered actions of a `media` target.
  */
 
 interface Point {
@@ -37,24 +36,6 @@ function placedPanos(
     if (l.kind !== 'panoramas' || !l.visible || hidden.has(l.id)) continue;
     for (const p of l.items.filter(hasPos))
       out.push({ key: { kind: 'pano', layerId: l.id, itemId: p.id }, pos: p.pos });
-  }
-  return out;
-}
-
-/** Pinned photos of the shown layers, where their markers are (with their hand corrections). */
-function pinnedPhotos(
-  m: ProjectManifest,
-  hidden: ReadonlySet<string>,
-): { key: MediaKey; pos: Vec3 }[] {
-  const orientation = workspace.getState().orientation;
-  const out: { key: MediaKey; pos: Vec3 }[] = [];
-  for (const l of m.layers) {
-    if (l.kind !== 'photos' || !l.visible || hidden.has(l.id)) continue;
-    for (const p of l.items) {
-      if (!p.pin) continue;
-      const pos = correctedPhoto(p, photoCorrection(orientation, l.id, p.id)).pos;
-      if (pos) out.push({ key: { kind: 'photo', layerId: l.id, itemId: p.id }, pos });
-    }
   }
   return out;
 }
@@ -129,7 +110,7 @@ export function PinMenu() {
     };
   }, [scene]);
 
-  // map: a 360's marker or a pinned photo's (before the photo and drone menus see the click)
+  // map: a 360's marker (before the drone menu sees the click); photos have the photo menu
   useEffect(() => {
     const m = map?.map;
     if (!m) return;
@@ -142,13 +123,13 @@ export function PinMenu() {
       const d = down;
       down = null;
       if (isClaimed(e)) return;
-      if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_PX) return;
+      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_PX) return;
       const man = workspace.getState().project?.manifest;
       const proj = man ? frameProjection(man.crs, man.origin) : null;
       if (!man || !proj) return;
       const r = m.getCanvas().getBoundingClientRect();
       const hidden = hiddenSet();
-      const points = [...placedPanos(man, hidden), ...pinnedPhotos(man, hidden)].map((p) => {
+      const points = placedPanos(man, hidden).map((p) => {
         const at = m.project(proj.toLonLat(p.pos));
         return { key: p.key, x: r.left + at.x, y: r.top + at.y };
       });

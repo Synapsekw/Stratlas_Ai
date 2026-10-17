@@ -37,6 +37,14 @@ type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 
 export const CLICK_PX = 5;
 
+/** The pin actions of the registry a single photo's menu lists (pinned media design). */
+const PIN_ACTIONS: readonly string[] = [
+  'media.place',
+  'media.move',
+  'media.direction',
+  'media.remove',
+];
+
 interface MenuPhoto {
   layerId: string;
   photoId: string;
@@ -466,6 +474,18 @@ export function PhotoMenu() {
   if (!photo) return null;
   const posed = !!photo.pos && !!photo.q;
   const readOnly = !!pkg;
+  // Place on site, Move pin, Set direction, Remove pin: the shared actions, as every menu has them
+  const pinItems = readOnly
+    ? []
+    : actionsFor(
+        { kind: 'photos', picks: [photoIdsOf(photo.id)] },
+        makeActionCtx({
+          manifest: project.manifest,
+          canEdit: !lookOnly,
+          pkg: false,
+          host: toastHost(photo.id),
+        }),
+      ).filter((i) => PIN_ACTIONS.includes(i.id));
   const item = (
     id: string,
     icon: IconName,
@@ -517,6 +537,23 @@ export function PhotoMenu() {
         item('alignTo', 'target', t('align.photoMenu.alignTo'), () => {
           setAlignAt({ x: menu.x, y: menu.y, picks: [photoIdsOf(photo.id)] });
         })}
+      {pinItems.map((pi) => (
+        <button
+          key={pi.id}
+          type="button"
+          role="menuitem"
+          className="dmenu-item"
+          disabled={pi.disabled !== false}
+          data-testid={pi.testId}
+          onClick={() => {
+            close();
+            pi.run();
+          }}
+        >
+          <Icon name={pi.icon ?? 'pin'} size={14} />
+          <span>{pi.label}</span>
+        </button>
+      ))}
       {item('open', 'photo', t('align.photoMenu.open'), () => {
         openPhoto(set.id, photo.id, menu.from);
       })}

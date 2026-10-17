@@ -46,7 +46,7 @@ import {
   useMediaRevealAsked,
   useMediaView,
 } from './mediaView';
-import { PanoPinChips, PhotoPinChips, useTileMenu } from './MediaPins';
+import { PanoPinChips, PhotoTile, useTileMenu } from './MediaPins';
 import { NoProject } from './NoProject';
 import { PageHeader } from '../shell/PageHeader';
 
@@ -522,12 +522,12 @@ export function MediaScreen() {
                       ? ` · ${f.label ? t('media.findings.tile', { count: f.count, severity: f.label }) : t('media.findings.tileUngraded', { count: f.count })}`
                       : '';
                     return (
-                      <div
+                      <PhotoTile
                         key={p.id}
-                        className="m-tile"
-                        onContextMenu={(e) => {
-                          tileMenu.open(e, { kind: 'photo', layerId: set.id, itemId: p.id });
-                        }}
+                        projectId={project.id}
+                        layerId={set.id}
+                        photo={p}
+                        onMenu={tileMenu.open}
                       >
                         <button
                           type="button"
@@ -557,8 +557,7 @@ export function MediaScreen() {
                           />
                           {f && <FindingsBadge findings={f} />}
                         </button>
-                        <PhotoPinChips projectId={project.id} layerId={set.id} photo={p} />
-                      </div>
+                      </PhotoTile>
                     );
                   })}
                 </div>
