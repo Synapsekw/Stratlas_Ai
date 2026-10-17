@@ -98,6 +98,28 @@ export function PanoPane(p: {
     else setLocal({ key: shownKey, look: next });
   };
 
+  // the same panorama getting a new heading (a line-up saved one): turn the compass look with it so
+  // the picture stays still under the view; a different panorama is not a heading change
+  const headingNow = frame?.headingDeg;
+  const prevHeading = useRef<{ key: string | undefined; deg: number | undefined }>({
+    key: shownKey,
+    deg: headingNow,
+  });
+  const lookNow = useRef({ look, onLook });
+  useEffect(() => {
+    lookNow.current = { look, onLook };
+  });
+  useEffect(() => {
+    const prev = prevHeading.current;
+    prevHeading.current = { key: shownKey, deg: headingNow };
+    if (!shownKey || prev.key !== shownKey || prev.deg === undefined || headingNow === undefined)
+      return;
+    const delta = headingNow - prev.deg;
+    if (Math.abs(delta) < 1e-9) return;
+    const cur = lookNow.current;
+    cur.onLook({ ...cur.look, yawDeg: wrap360(cur.look.yawDeg + delta) });
+  }, [shownKey, headingNow]);
+
   // linked: the first panorama of the split sets where both look
   const seeded = useRef(false);
   const startYaw = start.yawDeg;

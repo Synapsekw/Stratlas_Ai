@@ -365,6 +365,31 @@ describe('PanoPane', () => {
     expect(got.offsetDeg).toBeCloseTo(350);
   });
 
+  it('keeps the picture still when the shown panorama gets a new heading', () => {
+    open({ ...threeDates, layers: [layer('p-oct', [pano('x', 0, 0, 40)], 'oct')] });
+    render(left({ sides: sides('p-oct/x') }));
+    act(() => {
+      panoLookLink.getState().set({ yawDeg: 30, pitchDeg: 0, fovDeg: 70 });
+    });
+    const pane = only(panes()[0]);
+    // image direction under the centre = look yaw - heading = -10
+    expect(viewOf(pane).looks.at(-1)?.yawDeg).toBeCloseTo(30);
+    open({ ...threeDates, layers: [layer('p-oct', [pano('x', 0, 0, 95)], 'oct')] });
+    render(left({ sides: sides('p-oct/x') }));
+    const yaw = only(viewOf(only(panes()[0])).looks.at(-1)).yawDeg;
+    expect(yaw).toBeCloseTo(85);
+    expect(yaw - 95).toBeCloseTo(30 - 40);
+  });
+
+  it('does not turn the look when switching to another panorama', () => {
+    render(left({ linked: false }));
+    // b has heading 30, c has 0: the look restarts at c's own start, not shifted by -30
+    expect(only(panes()[0]).dataset.yaw).toBe('30.0');
+    render(left({ linked: false, sides: sides('p-oct/c') }));
+    expect(only(panes()[0]).dataset.pano).toBe('p-oct/c');
+    expect(only(panes()[0]).dataset.yaw).toBe('0.0');
+  });
+
   it('keeps the spot when the left date changes', () => {
     const onPick = vi.fn();
     render(left({ onPick }));
