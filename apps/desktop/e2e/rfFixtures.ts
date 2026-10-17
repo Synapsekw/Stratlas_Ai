@@ -4,7 +4,7 @@
  * degrees grid, 30 m above the tower-base ground, and one draft panel hangs lower on the same
  * tower. There is no `rf/` folder: the RF tab starts from nothing.
  */
-import { ANTENNAS_SCHEMA, AntennasFile, type AntennaUnit } from '@aio/schema';
+import { ANTENNAS_SCHEMA, AntennasFile, RfSectorsFile, type AntennaUnit } from '@aio/schema';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -98,20 +98,16 @@ export async function writeRfProject(projectDir: string): Promise<void> {
   await writeFile(join(projectDir, 'telecom', 'antennas.json'), JSON.stringify(rfAntennas()));
 }
 
-/** `rf/sectors.json` as saved by the RF tab, or null before the first save. */
-export async function readRfSectors(projectDir: string): Promise<{
-  sectors: { id: string; antennaIds: string[] }[];
-  antennas: {
-    antennaId: string;
-    etiltDeg?: number;
-    equipment?: { kind: string; antenna?: string; radio?: string };
-    carriers: { tech: string; band: string; bandwidthMhz: number }[];
-  }[];
-  study: { radiusM: number; gridResolutionM: number };
-} | null> {
+/**
+ * `rf/sectors.json` as saved by the RF tab, parsed with its schema (a file the schema refuses
+ * fails the test), or null before the first save.
+ */
+export async function readRfSectors(projectDir: string): Promise<RfSectorsFile | null> {
+  let text: string;
   try {
-    return JSON.parse(await readFile(join(projectDir, 'rf', 'sectors.json'), 'utf8')) as never;
+    text = await readFile(join(projectDir, 'rf', 'sectors.json'), 'utf8');
   } catch {
     return null;
   }
+  return RfSectorsFile.parse(JSON.parse(text));
 }

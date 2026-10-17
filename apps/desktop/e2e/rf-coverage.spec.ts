@@ -29,8 +29,9 @@ test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), 'needs the pipeline Python (uv sync --frozen in python/)');
 
 const TINY_ORIGIN = tinyManifest().origin;
-const PANEL = 'generic-panel-65-17';
-const RADIO = 'generic-rru-4t4r-4x40w';
+/** The generic n78 AAU (ruling R16): no generic panel or RRU in the catalogue covers 3.5 GHz. */
+const AAU = 'generic-aau-64t64r-n78';
+const AAU_NAME = /AAU 64T64R 3\.5 GHz 200 W/;
 const CLASS_NAMES = ['Excellent', 'Good', 'Fair', 'Poor', 'No service'];
 
 /**
@@ -158,7 +159,7 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   let bench = await openRfFromProjectMenu(win);
   await expect(bench.getByTestId('rf-sectors')).toContainText('No sectors');
 
-  // 2. three sectors by bearing (the draft panel stays out), each a generic panel and RRU on n78
+  // 2. three sectors by bearing (the draft panel stays out), each the generic n78 AAU on n78
   await bench
     .getByTestId('rf-sectors')
     .getByRole('button', { name: 'Group by bearing', exact: true })
@@ -169,10 +170,14 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
     await chips.nth(i).click();
     const unit = bench.locator('[data-testid^="rf-unit-"]');
     await expect(unit).toHaveAttribute('data-testid', `rf-unit-${RF_PANELS[i] ?? ''}`);
-    await pick(win, unit.getByTestId('rf-pick-antenna'), PANEL);
-    await expect(unit.getByTestId('rf-pick-antenna')).toHaveText('Generic Panel 65 deg 17 dBi');
-    await pick(win, unit.getByTestId('rf-pick-radio'), RADIO);
-    await expect(unit.getByTestId('rf-pick-radio')).toHaveText('Generic RRU 4T4R 4 x 40 W');
+    // no carrier yet, so the picker has no band filter and lists the AAU before n78 is chosen
+    await pick(win, unit.getByTestId('rf-pick-aau'), AAU);
+    await expect(unit.getByTestId('rf-pick-aau')).toHaveText(AAU_NAME);
+    // an AAU has its antenna and radio built in
+    for (const id of ['rf-pick-antenna', 'rf-pick-radio']) {
+      await expect(unit.getByTestId(id)).toContainText('Built into the AAU');
+      await expect(unit.getByTestId(id)).toHaveAttribute('aria-disabled', 'true');
+    }
     await unit.getByTestId('rf-band').selectOption('n78');
     await expect(unit.getByRole('button', { name: 'NR', exact: true })).toHaveAttribute(
       'aria-pressed',
@@ -199,11 +204,15 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   expect(saved?.sectors.flatMap((s) => s.antennaIds).sort()).toEqual([...RF_PANELS]);
   expect(saved?.sectors.flatMap((s) => s.antennaIds)).not.toContain(RF_DRAFT);
   expect(saved?.study).toMatchObject({ radiusM: 1000, gridResolutionM: 20 });
-  for (const a of saved?.antennas ?? [])
+  expect(saved?.antennas).toHaveLength(3);
+  for (const a of saved?.antennas ?? []) {
     expect(a).toMatchObject({
-      equipment: { kind: 'separate', antenna: PANEL, radio: RADIO },
+      equipment: { kind: 'aau', aau: AAU },
       carriers: [{ tech: 'nr', band: 'n78', bandwidthMhz: 100 }],
     });
+    // an AAU's carrier names no radio port
+    expect(a.carriers[0]?.port).toBeUndefined();
+  }
   await expect(run).toHaveText('Run coverage', { timeout: 30_000 });
 
   // 4. the classes of the run: every class has an area and the shares add up to the whole study
@@ -217,7 +226,7 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   const shares = afterRun.map((r) => Number(/(\d+)%$/.exec(r)?.[1] ?? NaN));
   expect(shares.every(Number.isFinite)).toBe(true);
   expect(Math.abs(shares.reduce((a, b) => a + b, 0) - 100)).toBeLessThanOrEqual(3);
-  // n78 at 40 W per port mostly reaches poor or fair in 1 km; some area must have service
+  // the AAU's 53 dBm in all (200 W) on n78 serves most of the 1 km study
   const areas = afterRun.map((r) => Number(/\|([\d.]+) km²\|/.exec(r)?.[1] ?? NaN));
   const served = areas.slice(0, 4).reduce((a, b) => a + b, 0);
   expect(served, 'some of the study has service').toBeGreaterThan(0);
@@ -250,11 +259,17 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   await tilt.press('Enter');
   await expect(bench.getByTestId('rf-etilt')).toHaveValue('10');
   await expect(bench.getByRole('status').filter({ hasText: 'not saved yet' })).toBeVisible();
+  // one poll on both: the table changed from the run's, and every class has an area again
   await expect
-    .poll(async () => (await classTable(bench)).join('\n'), { timeout: 60_000 })
-    .not.toBe(afterRun.join('\n'));
+    .poll(
+      async () => {
+        const rows = await classTable(bench);
+        return rows.join('\n') !== afterRun.join('\n') && rows.every((r) => r.includes('km²'));
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
   const preview = await classTable(bench);
-  expect(preview.every((r) => r.includes('km²'))).toBe(true);
   await bench.getByTestId('rf-classes').scrollIntoViewIfNeeded();
   await evidence(win, 'rf-tab-preview');
   await workbench(win, 'display');
@@ -302,8 +317,8 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   ).toHaveValue('20');
   await chips.first().click();
   const unit = bench.getByTestId(`rf-unit-${RF_PANELS[0]}`);
-  await expect(unit.getByTestId('rf-pick-antenna')).toHaveText('Generic Panel 65 deg 17 dBi');
-  await expect(unit.getByTestId('rf-pick-radio')).toHaveText('Generic RRU 4T4R 4 x 40 W');
+  await expect(unit.getByTestId('rf-pick-aau')).toHaveText(AAU_NAME);
+  await expect(unit.getByTestId('rf-pick-antenna')).toContainText('Built into the AAU');
   await expect(unit.getByTestId('rf-band')).toHaveValue('n78');
   await expect(unit.getByRole('combobox', { name: 'Carrier bandwidth' })).toHaveValue('100');
   await expect(unit.getByTestId('rf-etilt-number')).toHaveValue('10');
