@@ -128,7 +128,7 @@ describe('coverage and status from the item', () => {
 
 describe('hasPos', () => {
   it('is true for a placed 360 and false for one that is not placed', () => {
-    const a = { id: 'a', pos: [10, 0, 0] as [number, number, number] };
+    const a: { id: string; pos?: [number, number, number] } = { id: 'a', pos: [10, 0, 0] };
     const b: { id: string; pos?: [number, number, number] } = { id: 'b' };
     expect(hasPos(a)).toBe(true);
     expect(hasPos(b)).toBe(false);

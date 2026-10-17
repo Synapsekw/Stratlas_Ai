@@ -2,6 +2,7 @@
  * Panorama maths, shared by the immersive view's shader and its tests. Directions are in the local
  * frame (Y up, X east, Z south); azimuths are clockwise from local north (-Z), in degrees.
  */
+import type { Vec3 } from '@aio/schema';
 
 /** What part of the sphere a panorama image covers, around its centre column (`headingDeg`). */
 export interface PanoCoverage {
@@ -169,8 +170,6 @@ export function panoOpenable(p: { stitch?: { status: string } | undefined }): bo
 }
 
 /** Whether a 360 has a place on the site; one that came in without GPS and is not pinned has none. */
-export function hasPos<T extends { pos?: readonly number[] | undefined }>(
-  p: T,
-): p is T & { pos: [number, number, number] } {
+export function hasPos<T extends { pos?: Vec3 | undefined }>(p: T): p is T & { pos: Vec3 } {
   return p.pos !== undefined;
 }

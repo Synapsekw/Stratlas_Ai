@@ -1,3 +1,4 @@
+import { hasPos } from '@aio/engine';
 import { correctPos, photoCorrection } from '@aio/geo';
 import type { Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 
@@ -53,7 +54,7 @@ export function knowsWhere(l: Layer): boolean {
       return true;
     case 'panoramas':
     case 'photos':
-      return l.items.some((p) => p.pos !== undefined);
+      return l.items.some(hasPos);
     case 'walk':
       // pins alone are no place: the fitted path (`flight`) is written once a placement is saved
       return l.flight !== undefined;

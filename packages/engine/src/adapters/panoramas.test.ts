@@ -139,6 +139,29 @@ describe('panoramas layer', () => {
     host.remove();
   });
 
+  it('enters the placed sphere when an unplaced one comes first in the layer', async () => {
+    const { host, camera, h } = setup();
+    const store = createWorkspace();
+    const mixed: PanoLayer = {
+      ...layer,
+      items: [
+        { id: 'u', src: { path: 'panoramas/u.jpg' }, headingDeg: 0 },
+        { id: 'a', src: { path: 'panoramas/a.jpg' }, pos: [0, 40, -100], headingDeg: 90 },
+      ],
+    };
+    await createPanoramasAdapter(store).create(mixed, { url: () => '', scene: h });
+    store.getState().openPano('panos', 'a');
+    expect(store.getState().selection).toEqual({ kind: 'pano', id: 'a', layer: 'panos' });
+    expect(camera.position.toArray()).toEqual([0, 40, -100]);
+    // asking for the unplaced one selects nothing and moves nothing
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    store.getState().select(null);
+    store.getState().openPano('panos', 'u');
+    expect(store.getState().selection).toBeNull();
+    expect(camera.position.toArray()).toEqual([0, 40, 200]);
+    host.remove();
+  });
+
   it('bounds the camera by its markers and stems while visible, and lets go on dispose', async () => {
     const { host, h } = setup();
     const providers: (() => Box3 | null)[] = [];
