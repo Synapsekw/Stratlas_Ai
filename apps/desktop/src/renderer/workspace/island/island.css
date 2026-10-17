@@ -543,6 +543,26 @@
     flex: none;
   }
 }
+/* narrower still (1100 px wide with a 470 px Volumes or Changes tab, ruling I-R27): the row
+   tightens its padding and gaps so the tabs keep fitting before they would scroll */
+@container (max-width: 640px) {
+  .isl-tools {
+    padding: var(--sp-3);
+  }
+  .seg.isl-groups button {
+    padding-inline: var(--sp-2);
+  }
+  .seg.isl-groups {
+    gap: 0;
+  }
+  .isl-vsep {
+    margin-inline: var(--sp-1);
+  }
+  .island .btn.isl-x {
+    padding-inline: var(--sp-2);
+    gap: var(--sp-2);
+  }
+}
 
 /* ---------------------------------------------------------------- the calendar */
 
