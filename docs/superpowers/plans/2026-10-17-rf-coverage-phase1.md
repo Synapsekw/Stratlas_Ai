@@ -54,7 +54,7 @@
 | `packages/schema/src/jobs.ts`                                                                               | `rf.coverage` params, `RF_COVERAGE_MIN_PACK`                                   | T1   |
 | `docs/architecture/contract-changes.md`, `docs/release/UPGRADE-POLICY.md`                                   | contract row, reader rows                                                      | T1   |
 | `packages/rf/` (new package: `package.json`, `tsconfig`, `src/index.ts`)                                    | package skeleton                                                               | T2   |
-| `packages/rf/src/bands.ts`                                                                                  | GCC band table, `N_RB` per bandwidth and numerology                            | T2   |
+| `packages/rf/src/bands.ts`                                                                                  | regional band table, `N_RB` per bandwidth and numerology                       | T2   |
 | `packages/rf/catalogue/*.json`, `packages/rf/src/catalogue.ts`                                              | seed entries (generic plus vendor), lookup, search, filters                    | T3   |
 | `packages/rf/src/msi.ts`                                                                                    | MSI / Planet parser and nearest e-tilt pick                                    | T3   |
 | `packages/rf/src/pattern.ts`                                                                                | parametric 38.901 pattern, two-cut summing, front-to-back cap                  | T4   |

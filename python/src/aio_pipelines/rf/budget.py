@@ -22,7 +22,7 @@ DEFAULT_THRESHOLDS = {"excellentDbm": -80.0, "goodDbm": -95.0, "fairDbm": -105.0
 #: Class codes in the order ``rsrp_classes`` returns them.
 CLASS_NAMES = ("excellent", "good", "fair", "poor", "none")
 
-#: GCC bands (bands.ts): id, LTE band numbers, NR band, duplex, nominal downlink centre (MHz).
+#: regional bands (bands.ts): id, LTE band numbers, NR band, duplex, nominal downlink centre (MHz).
 BANDS: tuple[tuple[str, tuple[int, ...], str | None, str, float], ...] = (
     ("n28", (28,), "n28", "FDD", 780.0),
     ("b20-n20", (20,), "n20", "FDD", 806.0),

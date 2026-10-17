@@ -10,29 +10,29 @@ This feature predicts the downlink signal level (RSRP) around a site from the me
 
 It is a **prediction**, not a measurement. An untuned model is typically within 8 to 10 dB (standard deviation) of drive-test readings; terrain, clutter and tuning bring that to about 6 to 8 dB. The UI says "indicative" on every result.
 
-## Scope: what GCC networks run today
+## Scope: what regional networks run today
 
-Built for one GCC market first (called the lead market here) and the GCC in general. The band list comes from public band listings and operator news (sources at the end) and is data, not code: correcting a band is a catalogue edit.
+Built for one market first (called the lead market here) and the surrounding region in general. The band list comes from public band listings and operator news (sources at the end) and is data, not code: correcting a band is a catalogue edit.
 
 **Technologies:** LTE and 5G NR only.
 
-- No 2G or 3G. The lead market's regulator scheduled the 2G switch-off for the end of 2025; STC switched 3G off in Q4 2022 and scheduled 2G for Q4 2025; Zain Bahrain switched 3G off in 2022; Oman began its 3G switch-off in July 2024.
-- No mmWave (26 GHz, n258) in v1. Only two GCC markets have assigned it, cells reach a few hundred metres, and a useful prediction needs building-level ray tracing.
+- No 2G or 3G. Regional operators have switched 3G off and scheduled or completed 2G switch-off, so neither is needed in the first catalogue.
+- No mmWave (26 GHz, n258) in v1. Only a few regional markets have assigned it, cells reach a few hundred metres, and a useful prediction needs building-level ray tracing.
 
 **Bands in the first catalogue:**
 
-| Band                   | Duplex | Seen at                            |
-| ---------------------- | ------ | ---------------------------------- |
-| 700 MHz (n28)          | FDD    | KSA (recent award)                 |
-| 800 MHz (B20/n20)      | FDD    | lead market, KSA                   |
-| 900 MHz (B8/n8)        | FDD    | KSA (LTE and NR)                   |
-| 1800 MHz (B3/n3)       | FDD    | every operator, the main LTE layer |
-| 2100 MHz (B1/n1)       | FDD    | lead market, KSA                   |
-| 2300 MHz (B40/n40)     | TDD    | KSA                                |
-| 2600 MHz (B7)          | FDD    | lead market                        |
-| 2600 MHz (B38/B41/n41) | TDD    | lead market (5G), KSA              |
-| 3500 MHz (n78)         | TDD    | every operator, the main 5G layer  |
-| 3700 MHz (n77)         | TDD    | KSA                                |
+| Band                   | Duplex | Seen at                              |
+| ---------------------- | ------ | ------------------------------------ |
+| 700 MHz (n28)          | FDD    | one regional operator (recent award) |
+| 800 MHz (B20/n20)      | FDD    | lead market, market B                |
+| 900 MHz (B8/n8)        | FDD    | market B (LTE and NR)                |
+| 1800 MHz (B3/n3)       | FDD    | every operator, the main LTE layer   |
+| 2100 MHz (B1/n1)       | FDD    | lead market, market B                |
+| 2300 MHz (B40/n40)     | TDD    | market B                             |
+| 2600 MHz (B7)          | FDD    | lead market                          |
+| 2600 MHz (B38/B41/n41) | TDD    | lead market (5G), market B           |
+| 3500 MHz (n78)         | TDD    | every operator, the main 5G layer    |
+| 3700 MHz (n77)         | TDD    | market B                             |
 
 **Equipment vendors in the first catalogue:** radios from Huawei and Ericsson first (dual-band 2.6 + 3.5 GHz massive MIMO units are deployed in the lead market), Nokia second; antennas from Huawei, CommScope, Ericsson (former Kathrein) and Rosenberger. Massive MIMO units (32T32R, 64T64R) are normal on the 3.5 GHz layer.
 
@@ -72,7 +72,7 @@ Built for one GCC market first (called the lead market here) and the GCC in gene
   - MIMO layers do not raise RSRP (it is per port).
   - Margins by preset: Outdoor (0 dB), In car (7 dB), Indoor (15 dB), Deep indoor (20 dB), plus body loss 3 dB and a log-normal fade margin from the cell-edge probability (90 % gives 1.28σ, σ 8 dB by default).
   - Thresholds, all editable: Excellent above -80 dBm, Good -80 to -95, Fair -95 to -105, Poor -105 to -115, No service below -115.
-- **D14. Propagation models.** 3GPP TR 38.901 is the default because half the GCC bands (2.3, 2.6, 3.5, 3.7 GHz) are above COST-231 Hata's 2 GHz limit. Environments: UMa (urban macro), UMi (street canyon, for small cells), RMa (rural macro), with LOS probability averaged into an expected path loss. Okumura-Hata (below 1500 MHz) and COST-231 Hata (1500 to 2000 MHz) are offered as an option for the low bands; picking them for a band out of range is refused with the range in the reason. Free space is available for a line-of-sight sanity check.
+- **D14. Propagation models.** 3GPP TR 38.901 is the default because half the regional bands (2.3, 2.6, 3.5, 3.7 GHz) are above COST-231 Hata's 2 GHz limit. Environments: UMa (urban macro), UMi (street canyon, for small cells), RMa (rural macro), with LOS probability averaged into an expected path loss. Okumura-Hata (below 1500 MHz) and COST-231 Hata (1500 to 2000 MHz) are offered as an option for the low bands; picking them for a band out of range is refused with the range in the reason. Free space is available for a line-of-sight sanity check.
 - **D15. Tilt is a 3D rotation, and only the pattern term changes with it.**
   - For each pixel the engine forms the direction from the antenna, rotates it by true azimuth then by mechanical downtilt (about the antenna's horizontal axis) into the antenna frame, and reads the pattern that already holds the electrical tilt. Mechanical and electrical tilt are never simply added: mechanical tilt fades towards ±90° off boresight and lifts the back lobe.
   - Path loss depends only on distance, frequency and heights, so it is computed once per sector and band and cached in the run folder. Changing azimuth, tilt, power or loss recomputes only the pattern and link-budget terms. That is what makes the sliders live.
@@ -163,8 +163,4 @@ Owned by the antenna-detection work: `packages/schema/src/antennas.ts`, `apps/de
 - Signal-Server (GPL, reference only): <https://github.com/expressionnetworks/signal-server>
 - Sionna RT (Phase 3 option): <https://research.nvidia.com/publication/2025-04_sionna-rt-technical-report>
 - Hata accuracy on measured routes: <https://ideas.repec.org/a/ibn/nctjnl/v2y2013i2p1.html>
-- Lead market band listing: <https://www.kimovil.com/en/frequency-checker/AE>
-- KSA band listing: <https://www.kimovil.com/en/frequency-checker/SA>
-- STC 3G and 2G switch-off: <https://www.stc.com.sa/en/business/static/3G-shutdown.html>
-- 2G and 3G switch-off in MENA: <https://cullen-international.com/news/2023/07/Latest-status-of-2G-and-3G-network-switch-off-in-MENA.html>
-- GCC spectrum: <https://insights.opensignal.com/2024/11/14/spectrum-and-network-evolution-in-mena-insights-from-gcc-markets>
+- Market band listings and switch-off sources are kept in the internal research notes.

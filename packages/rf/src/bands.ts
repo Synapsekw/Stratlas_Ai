@@ -1,4 +1,4 @@
-/** GCC band table (spec "Scope") and 3GPP resource-block tables (D13). Data, not logic. */
+/** Regional band table (spec "Scope") and 3GPP resource-block tables (D13). Data, not logic. */
 
 export type Duplex = 'FDD' | 'TDD';
 export type Tech = 'lte' | 'nr';
@@ -27,7 +27,7 @@ export const BANDS: readonly Band[] = [
     duplex: 'FDD',
     centreMHz: 780,
     dlRangeMHz: [758, 803],
-    seenAt: 'KSA (recent award)',
+    seenAt: 'one regional operator (recent award)',
   },
   {
     id: 'b20-n20',
@@ -37,7 +37,7 @@ export const BANDS: readonly Band[] = [
     duplex: 'FDD',
     centreMHz: 806,
     dlRangeMHz: [791, 821],
-    seenAt: 'lead market, KSA',
+    seenAt: 'lead market, market B',
   },
   {
     id: 'b8-n8',
@@ -47,7 +47,7 @@ export const BANDS: readonly Band[] = [
     duplex: 'FDD',
     centreMHz: 942.5,
     dlRangeMHz: [925, 960],
-    seenAt: 'KSA (LTE and NR)',
+    seenAt: 'market B (LTE and NR)',
   },
   {
     id: 'b3-n3',
@@ -67,7 +67,7 @@ export const BANDS: readonly Band[] = [
     duplex: 'FDD',
     centreMHz: 2140,
     dlRangeMHz: [2110, 2170],
-    seenAt: 'lead market, KSA',
+    seenAt: 'lead market, market B',
   },
   {
     id: 'b40-n40',
@@ -77,7 +77,7 @@ export const BANDS: readonly Band[] = [
     duplex: 'TDD',
     centreMHz: 2350,
     dlRangeMHz: [2300, 2400],
-    seenAt: 'KSA',
+    seenAt: 'market B',
   },
   {
     id: 'b7',
@@ -97,7 +97,7 @@ export const BANDS: readonly Band[] = [
     duplex: 'TDD',
     centreMHz: 2593,
     dlRangeMHz: [2496, 2690],
-    seenAt: 'lead market (5G), KSA',
+    seenAt: 'lead market (5G), market B',
   },
   {
     id: 'n78',
@@ -117,7 +117,7 @@ export const BANDS: readonly Band[] = [
     duplex: 'TDD',
     centreMHz: 3700,
     dlRangeMHz: [3300, 4200],
-    seenAt: 'KSA',
+    seenAt: 'market B',
   },
 ];
 

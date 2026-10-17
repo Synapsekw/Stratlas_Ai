@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "RF coverage prediction: GCC band table, resource-block tables, antenna pattern, link budget and propagation.",
+  "description": "RF coverage prediction: regional band table, resource-block tables, antenna pattern, link budget and propagation.",
   "exports": {
     ".": "./src/index.ts"
   },
