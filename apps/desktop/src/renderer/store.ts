@@ -440,6 +440,10 @@ export function createShellStore(
       const { id, root, manifest, issues } = r.value;
       const pkg = r.value.package ?? null;
       const player = isPlayer(pkg);
+      // A bundled demo opens as its working copy, which the library read before the open did not
+      // list yet: read it again first, so the open project's card (and the Delete its menu holds
+      // back) is the copy from the moment the project counts as open.
+      if (!samePathText(root, path)) await get().loadLibrary();
       // Every package is opened in place and never written: no annotation, no issue edits.
       setReadOnly(pkg !== null);
       if (workspace.getState().project?.id !== id) leaveScene(null);

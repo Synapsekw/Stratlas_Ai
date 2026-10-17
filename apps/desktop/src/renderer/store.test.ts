@@ -401,6 +401,28 @@ describe('shell store', () => {
     expect(s.getState().opening).toBeNull();
   });
 
+  it('reads the library again before a demo opened as its working copy counts as open', async () => {
+    const bundled = 'C:\\app\\resources\\demo\\yard';
+    const copy = 'C:\\data\\demo\\yard';
+    const { bridge } = fakeBridge({
+      'project:open': () => ({ ok: true, id: 'yard', root: copy, manifest, issues: [] }),
+      'library:list': () => [{ ...entry, id: 'yard', path: copy, demo: { primary: true, copy } }],
+      'library:folders': () => ({ ok: true, folders: [] }),
+    });
+    const ws = createWorkspace();
+    const s = createShellStore(bridge, ws);
+    // the card read before the open still names the bundled folder
+    s.setState({ library: [{ ...entry, id: 'yard', path: bundled, demo: { primary: true } }] });
+    let listedWhenOpen: string[] | undefined;
+    ws.subscribe((w) => {
+      if (w.project && listedWhenOpen === undefined)
+        listedWhenOpen = (s.getState().library ?? []).map((e) => e.path);
+    });
+    await s.getState().openProject(bundled);
+    // the open project's card is the working copy from the moment it is open (its menu holds Delete)
+    expect(listedWhenOpen).toEqual([copy]);
+  });
+
   it('keeps a screen picked while the project was still opening', async () => {
     let answer: (v: unknown) => void = () => undefined;
     const bridge: Bridge = {
