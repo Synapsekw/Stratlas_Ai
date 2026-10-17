@@ -383,6 +383,43 @@ test.describe('in the window CI runs, 1100 x 720', () => {
       if (u.box) expect(overlap(u.box, capsule), `${u.name} under the capsule`).toBe(false);
     expect(await centreClick(win), 'with the tools open').toBe('the view');
 
+    // the right panel folded, the stage is wider and the open island no longer reaches past the
+    // middle: the top corners hold their overlays again, below the island and its notice
+    await win.keyboard.press('Control+Alt+B');
+    await expect(win.locator('.ws')).toHaveClass(/right-off/);
+    await expect(bar).toHaveAttribute('data-state', 'tools');
+    await expect(win.getByTestId('t-notice')).toBeVisible();
+    // the panel slid away and the capsule has grown around its content on the wider stage
+    await expect
+      .poll(() =>
+        win.evaluate(() => {
+          const c = document.querySelector('.island')?.getBoundingClientRect().width ?? 0;
+          const l = document.querySelector('.island .isl-layer')?.getBoundingClientRect().width;
+          return l !== undefined && Math.abs(c - l) <= 2;
+        }),
+      )
+      .toBe(true);
+    await islandSettled(win);
+    await expect(
+      win.locator('.stage-slot[data-slot="tl"], .stage-slot[data-slot="tr"]').first(),
+    ).toBeVisible();
+    // (the corners follow the capsule on the next frame once it has grown)
+    await expect
+      .poll(async () => {
+        const wide = await openLayout(win);
+        const { notice: n, capsule: c } = wide;
+        if (!n || !c) return ['no notice or capsule'];
+        const held = wide.under.filter((u) => u.box !== null);
+        if (held.length === 0) return ['no overlays on the stage'];
+        return held
+          .filter((u) => u.box && (overlap(u.box, n) || overlap(u.box, c)))
+          .map((u) => `${u.name} under the T notice or the capsule`);
+      })
+      .toEqual([]);
+    await shot(win, info, 'island-open-folded-1100.png');
+    await win.keyboard.press('Control+Alt+B');
+    await expect(win.locator('.ws')).not.toHaveClass(/right-off/);
+
     // the Volumes group's full set is the Volumes workbench (I-R19): it lies in the right panel,
     // inside the window, its one Survey date switch in view, and the centre still the view's
     const bench = await islandGroup(win, 'volumes');
