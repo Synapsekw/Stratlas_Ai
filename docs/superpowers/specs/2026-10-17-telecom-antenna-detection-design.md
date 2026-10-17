@@ -171,9 +171,10 @@ Built now as plain components with data and callbacks in props, no layout chrome
 - **Scene layer**:
   - a translucent box per unit, coloured by kind with status shown by outline style, not colour alone;
   - a facing arrow per unit (reuse the measure scene's `addFacing` style);
-  - a highlight for the selected unit;
+  - a highlight for the selected unit. Selection syncs both ways: selecting a row highlights its box, and clicking a box selects the row (the Measure bench scrolls it into view);
   - visible only while the inventory is shown.
-- **CSV export** of accepted units (and drafts if the user asks): one row per unit, all values, basis columns.
+- **CSV export** of accepted units (and drafts if the user asks): one row per unit, all values, basis columns. Merge 1: a button in the temporary panel. Merge 2: under the Measure bench's export menu, next to "Export survey data".
+- **Job label:** "Detecting antennas", in `en.ts`. The island live line and the jobs chip show it.
 
 Wiring after the stage-island stage 2 workbench lands, reviewed with the UI rework session first:
 
@@ -181,7 +182,7 @@ Wiring after the stage-island stage 2 workbench lands, reviewed with the UI rewo
 - progress through the jobs chip and live line only;
 - `AntennaInventory` inside `<Section id="telecom-antennas" bench="measure">` in `MeasureBench`;
 - `AntennaDetails` hosted by the live card or the row's ⋯.
-  Exact names: `docs/superpowers/plans/2026-10-16-stage-island.md` Tasks 12 and 14 (in the stage-island worktree until it lands).
+  Exact names: `docs/superpowers/plans/2026-10-16-stage-island.md` Tasks 12 and 13 (in the stage-island worktree until it lands). The UI rework session reviews the merge-2 wiring diff before it merges.
 
 ### 7. Delivery in two merges (my call)
 
@@ -190,13 +191,13 @@ Wiring after the stage-island stage 2 workbench lands, reviewed with the UI rewo
   - the main-process handlers and the AI labelling call;
   - the standalone components with component tests;
   - the scene layer;
-  - a temporary entry point outside the frozen files: a "Detect antennas" command in the existing telecom tools strip (`TelecomTools.tsx`), if the UI rework session agrees, else an item in the command palette. The e2e spec drives that entry point. The inventory and details show in a plain temporary panel.
+  - a temporary entry point in its own file, `apps/desktop/src/renderer/survey/DetectAntennas.tsx`: the "Detect antennas" button plus a plain temporary panel showing the inventory, details and CSV button. The only change to `TelecomTools.tsx` is **one** `<DetectAntennas … />` mount line; leave the strip's markup, classes and order alone. That file is restructured by stage 2 Task 13, and whichever branch lands second carries the line (agreed with the UI rework session). The e2e spec drives this entry point.
 - **Merge 2, after stage 2 lands:**
   - move the entry point to the island tile and the inventory into the Measure bench section, as above;
   - delete the temporary panel;
   - update the e2e spec.
 
-The tile is enabled only when the project has a point cloud. Its tip explains why when it's disabled (`disabledReason`).
+**Availability:** the entry point is **hidden** when the project has no point cloud, matching the founder's rule that the island hides groups the project has no data for. It is **disabled**, with a `disabledReason` tip, only in transient cases: a run already going, or the cloud still loading. This applies to both merges.
 
 ## Testing
 
