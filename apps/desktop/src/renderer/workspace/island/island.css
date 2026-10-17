@@ -514,10 +514,12 @@
   justify-content: center;
   gap: var(--sp-3);
   block-size: 58px;
-  padding-inline: var(--sp-4);
+  padding-inline: var(--sp-1);
 }
-/* a long survey name is cut, not allowed to widen the row */
+/* a long survey name is cut, not allowed to widen the row; the switch's buttons sit tighter than
+   the app's, so the Point cloud row keeps All tools on its line at 1100 px (T20 M3) */
 .isl-choice .seg button {
+  padding-inline: var(--sp-2);
   max-inline-size: 12ch;
   overflow: hidden;
   text-overflow: ellipsis;

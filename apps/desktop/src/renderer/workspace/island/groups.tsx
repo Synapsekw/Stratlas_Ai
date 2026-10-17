@@ -768,7 +768,8 @@ const ANNO_3D: readonly (AnnoTile & { tool: SceneTool })[] = [
   },
   {
     tool: 'cloud-point',
-    icon: 'point',
+    // a pick on the cloud, told apart from the map's Point pin (T20 M3)
+    icon: 'crosshair',
     label: 'island.tile.annoCloudPoint',
     name: 'island.tile.annoCloudPointName',
   },

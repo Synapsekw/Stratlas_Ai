@@ -552,6 +552,11 @@ test.describe('the quick rows (D5, I-R48)', () => {
       );
     await expect.poll(mode).toBe('height');
     await islandSettled(win);
+    // at 1100 px the row is one line: All tools does not wrap under it alone (T20 M3)
+    const tiles = row.locator('.isl-tile');
+    const first = await tiles.first().boundingBox();
+    const all = await tiles.last().boundingBox();
+    expect(Math.round(all?.y ?? -1)).toBe(Math.round(first?.y ?? -2));
     await shot(win, info, 'island-row-clouds-colour.png');
     // the workbench's own switch says the same
     const bench = await islandGroup(win, 'clouds');
