@@ -48,11 +48,14 @@ const fileName = (item: PhotoRef | PanoRef): string => {
   return base === '' ? item.id : base;
 };
 
-/** The pins of visible photos and panoramas layers not in `hidden`, in the drawn frame. */
+/**
+ * The pins of photos and panoramas layers not in `hidden` (the workspace's shown layers, as the
+ * plates follow them; a layer saved hidden starts there), in the drawn frame.
+ */
 export function drawnPins(m: ProjectManifest, hidden: ReadonlySet<string>): DrawnPin[] {
   const out: DrawnPin[] = [];
   for (const l of m.layers) {
-    if (!l.visible || hidden.has(l.id)) continue;
+    if (hidden.has(l.id)) continue;
     if (l.kind !== 'photos' && l.kind !== 'panoramas') continue;
     const kind = l.kind === 'photos' ? 'photo' : 'pano';
     const items: readonly (PhotoRef | PanoRef)[] = l.items;

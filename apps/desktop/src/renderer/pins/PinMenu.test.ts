@@ -46,4 +46,9 @@ describe('placedPanos', () => {
   it('skips hidden layers', () => {
     expect(placedPanos(m, new Set(['new'])).map((p) => p.key.layerId)).toEqual(['old']);
   });
+
+  it('follows the shown layers as the plates do, not the saved visibility', () => {
+    const saved = { ...m, layers: m.layers.map((l) => ({ ...l, visible: false })) };
+    expect(placedPanos(saved, new Set()).map((p) => p.key.layerId)).toEqual(['old', 'new']);
+  });
 });

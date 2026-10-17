@@ -35,7 +35,7 @@ export function placedPanos(
 ): { key: MediaKey; pos: Vec3 }[] {
   const out: { key: MediaKey; pos: Vec3 }[] = [];
   for (const l of m.layers) {
-    if (l.kind !== 'panoramas' || !l.visible || hidden.has(l.id)) continue;
+    if (l.kind !== 'panoramas' || hidden.has(l.id)) continue;
     for (const p of l.items.filter(hasPos))
       out.push({ key: { kind: 'pano', layerId: l.id, itemId: p.id }, pos: toDraw(p.pos, m, l.id) });
   }

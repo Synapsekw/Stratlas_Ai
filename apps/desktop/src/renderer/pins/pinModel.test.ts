@@ -64,7 +64,8 @@ describe('pinModel', () => {
   });
 
   it('draws pinned items of shown layers only, skipping unpinned GPS items', () => {
-    const pins = drawnPins(m, new Set());
+    // the workspace's hidden set holds the layers saved hidden (`hid`) from the start
+    const pins = drawnPins(m, new Set(['hid']));
     expect(pins.map((p) => p.key.itemId)).toEqual(['a', 'x']);
     const [a, x] = pins;
     expect(a).toMatchObject({ name: 'a.jpg', ground: [1, 0, 2], headingDeg: 30, linedUp: true });
@@ -72,7 +73,11 @@ describe('pinModel', () => {
     // a 360 shows a heading only when the pin set it
     expect(x).toMatchObject({ name: 'Pano 1', eye: [0, 2, 0], linedUp: false });
     expect(x?.headingDeg).toBeUndefined();
-    expect(drawnPins(m, new Set(['ph'])).map((p) => p.key.itemId)).toEqual(['x']);
+    expect(drawnPins(m, new Set(['ph', 'hid'])).map((p) => p.key.itemId)).toEqual(['x']);
+  });
+
+  it('follows the shown layers as the plates do: a layer saved hidden and shown again draws', () => {
+    expect(drawnPins(m, new Set()).map((p) => p.key.itemId)).toEqual(['a', 'x', 'z']);
   });
 
   it('picks the nearest pin within 14 px, null beyond', () => {
