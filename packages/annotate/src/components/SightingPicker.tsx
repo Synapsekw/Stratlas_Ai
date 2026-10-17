@@ -1,6 +1,6 @@
 import type { Issue, Sighting } from '@aio/schema';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   annotateUi,
   cancelSighting,
@@ -39,6 +39,29 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const open = pending !== null && kinds.includes(pending.sighting.on);
+  const box = useRef<HTMLDivElement | null>(null);
+
+  // Focus goes back where it was when the shape was finished (the tool button or the view) once
+  // the panel closes with focus in it: Create issue, Cancel, Esc. Focus the person moved outside
+  // the panel is left where it is.
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    let inside = false;
+    const panel = box.current;
+    const track = () => {
+      inside = panel?.contains(document.activeElement) ?? false;
+    };
+    panel?.addEventListener('focusin', track);
+    panel?.addEventListener('focusout', track);
+    return () => {
+      panel?.removeEventListener('focusin', track);
+      panel?.removeEventListener('focusout', track);
+      const now = document.activeElement;
+      const lost = inside || now === null || now === document.body;
+      if (lost && opener?.isConnected && opener !== now) opener.focus({ preventScroll: true });
+    };
+  }, [open]);
 
   // Reset the form for each new shape (derived during render, not in an effect).
   const [pendingSeen, setPendingSeen] = useState(pending);
@@ -132,6 +155,7 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
       role="dialog"
       aria-label="New issue"
       ref={(el) => {
+        box.current = el;
         if (el) keepInside(el, at);
       }}
     >

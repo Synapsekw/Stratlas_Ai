@@ -155,4 +155,66 @@ describe('SightingPicker', () => {
       });
     }
   });
+
+  describe('focus after the panel closes (I-R36)', () => {
+    const opener = () => {
+      const b = document.createElement('button');
+      b.textContent = 'Pin';
+      document.body.append(b);
+      b.focus();
+      return b;
+    };
+
+    it('goes back to what had it when the shape was finished, on Cancel', () => {
+      workspace.getState().openProject({ id: 'p', root: 'r', manifest }, []);
+      const pin = opener();
+      const el = render(<SightingPicker kinds={['image']} />);
+      act(() => {
+        beginSighting(photoSighting, { x: 40, y: 40 });
+      });
+      const cancel = [...el.querySelectorAll('button')].find((b) => b.textContent === 'Cancel');
+      cancel?.focus();
+      expect(document.activeElement).toBe(cancel);
+      act(() => {
+        cancel?.click();
+      });
+      expect(el.querySelector('[aria-label="New issue"]')).toBeNull();
+      expect(document.activeElement).toBe(pin);
+      pin.remove();
+    });
+
+    it('goes back after the issue is made, from inside the panel', () => {
+      workspace.getState().openProject({ id: 'p', root: 'r', manifest }, []);
+      const pin = opener();
+      const el = render(<SightingPicker kinds={['image']} />);
+      act(() => {
+        beginSighting(photoSighting, { x: 40, y: 40 });
+      });
+      el.querySelector<HTMLButtonElement>('[aria-label="Class"] button')?.focus();
+      // made: the pending shape is gone (confirmSighting)
+      act(() => {
+        annotateUi.setState({ pending: null });
+      });
+      expect(document.activeElement).toBe(pin);
+      pin.remove();
+    });
+
+    it('stays where the person put it outside the panel', () => {
+      workspace.getState().openProject({ id: 'p', root: 'r', manifest }, []);
+      const pin = opener();
+      render(<SightingPicker kinds={['image']} />);
+      act(() => {
+        beginSighting(photoSighting, { x: 40, y: 40 });
+      });
+      const other = document.createElement('input');
+      document.body.append(other);
+      other.focus();
+      act(() => {
+        cancelSighting();
+      });
+      expect(document.activeElement).toBe(other);
+      pin.remove();
+      other.remove();
+    });
+  });
 });
