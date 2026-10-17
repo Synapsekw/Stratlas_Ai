@@ -664,6 +664,8 @@ test("the right panel's tab takes its clicks wherever the divider below the cont
   const { win } = run;
   try {
     await openScene(win);
+    // with the AI off the agent is one row with no divider until it is opened
+    await openAgentOff(win);
     const handle = win.getByTestId('panel-handle-right');
     await expect(handle).toHaveAttribute('aria-expanded', 'true');
     const tab = await handle.boundingBox();
