@@ -613,6 +613,12 @@ test.describe('with Volumes in front', () => {
     const both = await islandOverToggle(win);
     await shot(win, info, 'island-toggle-live-tool.png');
     expect(both.over, `at a ${String(both.stage)} px stage`).toEqual([]);
+    // the right panel folded, the toggle stands left of the window's buttons: still clear
+    await win.keyboard.press('Control+Alt+B');
+    await expect(win.locator('.ws')).toHaveClass(/right-off/);
+    await near();
+    const folded = await islandOverToggle(win);
+    expect(folded.over, `folded, at a ${String(folded.stage)} px stage`).toEqual([]);
     await win.keyboard.press('Escape');
   });
 });

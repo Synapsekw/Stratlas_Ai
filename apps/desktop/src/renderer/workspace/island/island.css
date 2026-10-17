@@ -683,6 +683,13 @@
 .island-wrap {
   --isl-toggle-room: calc(var(--sp-5) + 34px + var(--sp-3));
 }
+/* the right panel folded, the toggle stands left of the window's own buttons (styles.css) */
+.ws.right-off .island-wrap {
+  --isl-toggle-room: calc(
+    max(0px, var(--caption-inline-end, 0px) - var(--vdock-w, 0px)) + var(--sp-5) + 34px +
+      var(--sp-3)
+  );
+}
 .island-wrap:is([data-state='rest'], [data-state='ready']) .isl-layer {
   max-inline-size: calc(
     100cqi - max(var(--drawer-inline, 0px), var(--vdock-w, 0px)) - 2 *
