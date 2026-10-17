@@ -381,6 +381,17 @@ describe('PanoPane', () => {
     expect(yaw - 95).toBeCloseTo(30 - 40);
   });
 
+  it('keeps an untouched unlinked picture still: its start look already follows the heading', () => {
+    open({ ...threeDates, layers: [layer('p-oct', [pano('x', 0, 0, 40)], 'oct')] });
+    render(left({ linked: false, sides: sides('p-oct/x') }));
+    const a = Number(only(panes()[0]).dataset.yaw);
+    open({ ...threeDates, layers: [layer('p-oct', [pano('x', 0, 0, 95)], 'oct')] });
+    render(left({ linked: false, sides: sides('p-oct/x') }));
+    const b = Number(only(panes()[0]).dataset.yaw);
+    // direction under the centre (yaw minus heading) is unchanged, not shifted twice
+    expect(b - 95).toBeCloseTo(a - 40);
+  });
+
   it('does not turn the look when switching to another panorama', () => {
     render(left({ linked: false }));
     // b has heading 30, c has 0: the look restarts at c's own start, not shifted by -30

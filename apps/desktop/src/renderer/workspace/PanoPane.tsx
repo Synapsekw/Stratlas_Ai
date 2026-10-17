@@ -105,9 +105,10 @@ export function PanoPane(p: {
     key: shownKey,
     deg: headingNow,
   });
-  const lookNow = useRef({ look, onLook });
+  const ownLook = linked || local?.key === shownKey;
+  const lookNow = useRef({ look, onLook, ownLook });
   useEffect(() => {
-    lookNow.current = { look, onLook };
+    lookNow.current = { look, onLook, ownLook };
   });
   useEffect(() => {
     const prev = prevHeading.current;
@@ -117,6 +118,8 @@ export function PanoPane(p: {
     const delta = headingNow - prev.deg;
     if (Math.abs(delta) < 1e-9) return;
     const cur = lookNow.current;
+    // an untouched unlinked look is the start look, which already follows the new heading
+    if (!cur.ownLook) return;
     cur.onLook({ ...cur.look, yawDeg: wrap360(cur.look.yawDeg + delta) });
   }, [shownKey, headingNow]);
 
