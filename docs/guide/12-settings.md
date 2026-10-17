@@ -8,7 +8,7 @@ Click **Settings** at the bottom of the sidebar. The pages are grouped:
 
 The **?** at the top right of each page opens its section of this guide.
 
-Two title bar chips open a page directly: the mode chip (**Online** or **Offline only**) has **Download maps**, which opens **Offline maps**, and the cloud AI chip opens **Privacy and cloud**. See [Online or offline only](01-install.md#online-or-offline-only).
+Two chips in the status row at the foot of the left sidebar open a page directly: the mode chip (**Online** or **Offline only**) has **Download maps**, which opens **Offline maps**, and the cloud AI chip opens **Privacy and cloud**. See [Online or offline only](01-install.md#online-or-offline-only).
 
 ## Data folder
 
@@ -71,7 +71,7 @@ The pipelines are grouped by area: **Photos to maps**, **Inspection**, **Stockpi
 | High   | 8 M    | on                | 4096       | animated | 1.5x        |
 | Ultra  | 16 M   | on                | 4096       | animated | 2x          |
 
-Integrated graphics get **Low**; laptop graphics one step lower than the desktop card. **Graphics card** shows what the system reports. Changes in the point cloud panel after picking a preset are kept.
+Integrated graphics get **Low**; laptop graphics one step lower than the desktop card. **Graphics card** shows what the system reports. Changes in the **Point cloud** tab of the right panel after picking a preset are kept.
 
 ![Graphics quality](images/settings-graphics.png)
 

@@ -11,13 +11,13 @@ The project itself stays on each computer. Exchange files and shared folders nee
 ## Share a project
 
 1. Open the project.
-2. Click **Share** in the title bar. **Make this a team project** opens.
+2. Click **Share** at the top of the right panel on the **Scene** (or at the end of the page header on the other screens). **Make this a team project** opens.
 3. Check the **Team project name**.
 4. Under **How changes travel**, pick **Exchange files**, **Shared folder** or **Team server**. Team server is greyed until a server is connected in **Settings**, **Data folder**, **Team server**.
 5. For a shared folder, enter the **Path of the shared folder** or click **Choose folder**, for example `\\nas01\survey\hub`. Leave **Sync automatically every 15 minutes** ticked to sync on its own.
 6. Click **Share**.
 
-You become the project's first owner. The title bar now shows the sharing state instead of **Share**: **Exchange files**, **Synced just now**, **Not synced yet** or **Syncing**. Click it to open the **Team** dialog.
+You become the project's first owner. The same place now shows the sharing state instead of **Share**: **Exchange files**, **Synced just now**, **Not synced yet** or **Syncing**. Click it to open the **Team** dialog.
 
 ## The Team dialog
 
@@ -63,14 +63,14 @@ Someone else shared the project. To join:
 2. Give the owner your identity card (see [Identity and team](21-identity-and-team.md#your-identity-card)). They add you as a member and export changes.
 3. Import their exchange file. The preview says "Applying it makes this project part of the team project ...". Click **Apply**.
 
-The title bar now shows **Exchange files**. To sync through the same shared folder, click **Use a shared folder** in the **Team** dialog, enter the same path and click **Share**.
+**Share** now reads **Exchange files**. To sync through the same shared folder, click **Use a shared folder** in the **Team** dialog, enter the same path and click **Share**.
 
 With a shared folder you can also join without an exchange file: open your copy of the project, click **Share**, choose **Shared folder** and enter the folder's path. **Team project in this folder** lists the team projects the folder holds; pick the one to join instead of **A new team project**, then click **Share**. Your changes count for the others once the owner has added you as a member.
 
 ## Work with a shared folder
 
 - {product} syncs when you click **Sync now**, and, with automatic sync on, every 15 minutes and when you come back to the window.
-- If the folder cannot be reached, the title bar turns amber: **Folder offline**, "The shared folder cannot be reached. Your work is kept on this computer and syncs when it is back." The count of changes to send, such as "1 to send", stays until the next sync.
+- If the folder cannot be reached, the sharing state turns amber: **Folder offline**, "The shared folder cannot be reached. Your work is kept on this computer and syncs when it is back." The count of changes to send, such as "1 to send", stays until the next sync.
 - The initials of people who have the project open show next to the sharing state.
 - Each computer writes only its own files in the folder, and files once written never change. So two people never overwrite each other there.
 - A OneDrive or Dropbox folder works as a shared folder. Files the cloud client keeps online only are slow to read the first time.

@@ -22,13 +22,13 @@ Each invite code works once and for a few days. A code already used, mistyped or
 
 ## When {product} talks to the server
 
-Only when you connect, and when a project in server mode syncs. With **Offline only** on (in **Privacy and cloud**, or from the mode chip in the title bar), the page says "Offline only is on, so this computer makes no network connections." and **Connect** is greyed.
+Only when you connect, and when a project in server mode syncs. With **Offline only** on (in **Privacy and cloud**, or from the mode chip in the status row at the foot of the left sidebar), the page says "Offline only is on, so this computer makes no network connections." and **Connect** is greyed.
 
 Every request is signed with this computer's device key (see [Identity and team](21-identity-and-team.md)). There is no password to type or steal. The server's certificate is remembered at the first contact: a server with another certificate is refused.
 
 ## Share a project through the server
 
-1. Open the project and click **Share** in the title bar.
+1. Open the project and click **Share** at the top of the right panel on the **Scene** (or at the end of the page header on the other screens).
 2. Pick **Team server**, and the server if there are several. Click **Share**.
 
 The first sync runs at once. After that, **Sync now** in the **Team** dialog, or automatic sync, sends and receives changes.

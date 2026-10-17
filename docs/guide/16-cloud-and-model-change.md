@@ -6,8 +6,8 @@ Two point clouds of the same site show, point by point, how far the later survey
 
 Each date needs a point cloud of its own, in COPC. Convert LAS or LAZ first with the **Point cloud to COPC** pipeline (**Settings**, **Processing tools**, **Advanced: run a pipeline directly**; see [Processing](08-building-projects.md#processing)).
 
-1. Open the **Changes** tab (see [Show changes](14-changes.md#show-changes)) and pick the two dates.
-2. Click **Run cloud change**. **Processing** in the title bar shows it while it runs.
+1. Open the **Changes** tab of the right panel (see [Show changes](14-changes.md#show-changes)) and pick the two dates.
+2. Click **Run cloud change**. **Processing** in the status row at the foot of the left sidebar shows it while it runs, and so does the island beside the date.
 3. When it finishes:
    - a layer "Cloud change ... to ..." is added: the later cloud with the distance of each point to the earlier cloud;
    - the clouds are coloured by **Change**;
@@ -19,8 +19,8 @@ Before the long work, {product} checks that the two clouds line up where nothing
 
 ## Colour by change
 
-1. Click **Point cloud** in the stage toolbar.
-2. In **Colour by**, click **Change**. It is offered once a project has a cloud change layer.
+1. Click the **Point cloud** tab in the island: its workbench opens in the right panel.
+2. Under **Colour, size and EDL**, in **Colour by**, click **Change**. It is offered once a project has a cloud change layer.
 
 The legend under the 3D view reads "Change: distance to the earlier date":
 

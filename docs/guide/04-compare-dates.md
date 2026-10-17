@@ -7,7 +7,7 @@ To step through all survey dates of a project, see [Survey dates](28-survey-date
 ## Compare two dates
 
 1. Open the project on **Scene**.
-2. Click **Compare dates**, next to **3D**, **Map** and **Split**.
+2. Open the island's tools (click the island at the top of the view, or press **T**) and click **Compare dates** in the **View** row.
    - From **3D** or **Split** you get two 3D views. From **Map** you get two maps.
    - The first date is on the left, the last on the right.
 3. To show another date on a side, open the picker above that side and pick the view under that date. The picker is one list grouped by survey date (see [Two orthos side by side](#two-orthos-side-by-side)). The view and date the other side shows is greyed, so both sides never show the same thing. To swap the two dates, right-click the right date's folder in the tree and choose **Compare with...**, then the left date.
@@ -16,7 +16,7 @@ To step through all survey dates of a project, see [Survey dates](28-survey-date
 
 Each side draws the issues of its own date, and the issues that belong to no date. See [Survey dates](28-survey-dates.md#issues-and-measurements-belong-to-their-date).
 
-To stop, click **Stop comparing dates**. {product} remembers the comparison per project.
+While you compare, **Stop comparing dates** and the compare tools sit beside the island. To stop, click **Stop comparing dates**. {product} remembers the comparison per project.
 
 ## Compare from the tree
 
@@ -45,12 +45,12 @@ The right pane shows the panorama of the other date nearest to the one on the le
 - Both panoramas turn together, and the bearing shows as **HDG**. The link button in the right pane's corner unlinks the look, so each pane turns on its own. Press it again to link them.
 - Step with **Previous panorama** and **Next panorama** (or Page Up and Page Down) in the left pane. The right pane follows to the nearest panorama of its date. It has no stepper of its own.
 - A **Panoramas** pane on one side only (the other side shows 3D or a map, for example) has the stepper itself and steps through the panoramas of its date. So does the right pane when the left date has no panoramas.
-- The date bar moves the left pane to another date and keeps it at the same spot.
+- The island's date moves the left pane to another date and keeps it at the same spot.
 - Pick a panorama somewhere else (a marker in 3D, or the Media screen) and it goes to the left pane, and the right pane pairs again.
 
 ## What changed
 
-While you compare, **Show changes** beside **Compare dates** lists what changed between the two dates and marks it on both views. See [Changes between two dates](14-changes.md).
+While you compare, **Show changes** beside the island lists what changed between the two dates in the **Changes** tab of the right panel and marks it on both views. See [Changes between two dates](14-changes.md).
 
 - Orthos and surfaces: [Imagery and surface change](15-imagery-and-surface-change.md).
 - Point clouds and 3D models: [Point cloud and 3D model change](16-cloud-and-model-change.md).
@@ -72,7 +72,7 @@ With two maps or two orthos of different dates, a bar at the top of the views of
 
 Both sides show the same things, each for its own date:
 
-- On a stockpile project: the surface colours (**Photo**, **Elevation**, **Cut / fill**), the pile bodies, the toe lines and the callouts. One switch in the stage toolbar sets both sides. The legend on the left sets the elevation ramp and range for both sides; the right view shows the same legend without the controls.
+- On a stockpile project: the surface colours (**Photo**, **Elevation**, **Cut / fill**), the pile bodies, the toe lines and the callouts. One switch, in the island's **Volumes** row or the **Volumes** tab, sets both sides. The legend on the left sets the elevation ramp and range for both sides; the right view shows the same legend without the controls.
 - The point cloud legends (elevation, classification, change), on each side that shows the colouring.
 - Saved survey measurements. A measurement of the whole site is drawn on both sides, a measurement of one survey date on the side that shows that date. This also holds for two maps.
 
@@ -88,7 +88,7 @@ Two 3D views need more graphics memory than the **Low** tier allows. On Low, **C
 
 ## Swipe between dates (stockpiles)
 
-On a stockpile project, **Swipe** in the stage toolbar slides between the first and the last survey in one 3D view. Drag the divider, or use the Left and Right keys. See [Volumes](09-volumes-and-roads.md#volumes-stockpiles).
+On a stockpile project, **Swipe**, in the island's **Volumes** row or the **Volumes** tab, slides between the first and the last survey in one 3D view. Drag the divider, or use the Left and Right keys. See [Volumes](09-volumes-and-roads.md#volumes-stockpiles).
 
 ## Other dates of one spot
 
@@ -132,7 +132,7 @@ When a date chip (a select) or a video has the focus, the arrow keys are left to
 - **Side by side** puts the two images next to each other. The mouse wheel zooms both on the same place, a drag pans both, and a double-click fits them. For 360s the two views look the same way.
 - **Swipe** puts one image over the other under a divider. Drag the handle, or focus it and use the arrow keys. The zoom and pan stay.
 
-**One image**, or the first Esc, leaves Compare and shows the left date alone. A second Esc closes the viewer. The viewer only reads: the date bar, the layers and the selection behind it do not change.
+**One image**, or the first Esc, leaves Compare and shows the left date alone. A second Esc closes the viewer. The viewer only reads: the island's date, the layers and the selection behind it do not change.
 
 ### How images are matched
 

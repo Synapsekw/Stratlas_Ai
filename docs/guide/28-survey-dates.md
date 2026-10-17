@@ -6,7 +6,7 @@ Projects that are flown again and again (weekly or monthly progress flights) kee
 
 The Datasets list on the left shows one folder per survey date, newest first. Inside each folder are the usual groups: models, maps, video, photos and panoramas. Layers that belong to no date, such as a design drawing, sit in **Every date** at the top.
 
-A project with a single survey date still shows its date folder and the date bar, without the arrows. A project with no survey dates keeps the plain list grouped by type, and has no date bar.
+A project with a single survey date still shows its date folder and the date in the island at the top of the view, without the arrows. A project with no survey dates keeps the plain list grouped by type, and the island rests as three dots, with no date.
 
 The highlighted folder is the date you are viewing. Click a date's name to view it. Click only the arrow beside it to open the folder without switching, for example to pick one layer from another date.
 
@@ -20,7 +20,7 @@ In a small window the list can be longer than the sidebar. If the folder you wan
 
 Drop a dataset on **Every date** to take its date off. When every dataset has a date the Every date folder is not in the list, so while you drag it appears at the foot of the list as a place to drop.
 
-Without dragging: right-click a dataset or a group heading (or focus it and press the menu key or **Shift+F10**), then pick a date or **Every date (no date)** under **File under**. The same menu has **Compare with another date...** and **Delete…**. The **Belongs to date...** box in the Selection panel does the same for one dataset.
+Without dragging: right-click a dataset or a group heading (or focus it and press the menu key or **Shift+F10**), then pick a date or **Every date (no date)** under **File under**. The same menu has **Compare with another date...** and **Delete…**. The **Belongs to date...** box in the **Selection** tab of the right panel does the same for one dataset.
 
 After a move of more than one dataset, a note at the top of the list says how many were moved and offers **Undo**, which puts them back under the date they had. Undo covers the last move only, until you dismiss the note, make another move or close the project. A dataset you filed under a different date since stays where you put it.
 
@@ -38,7 +38,7 @@ Right-click a date folder, or use the three dots that show when you point at it:
 - **Expand** or **Collapse** opens or closes the folder without switching date.
 - **Show all layers** and **Hide all layers** switch every layer of the date on or off.
 - **Rename** puts a name field beside the date. Type a name, such as "Baseline" or "After the blast", and press **Enter**. **Escape** leaves it as it was, and an empty field removes the name. **F2** on a focused folder starts renaming too. The date itself stays: the name is shown beside it, and it is the name used for that survey in the date pickers and in reports.
-- **Colour** picks one of the eight date colours. The colour changes everywhere the date is shown: the folder, the date bar, the calendar, the video and photo headers and the date chips.
+- **Colour** picks one of the eight date colours. The colour changes everywhere the date is shown: the folder, the island, the calendar, the video and photo headers and the date chips.
 - **Icon** swaps the colour square for an icon in the date's colour. The first choice, the square, removes the icon.
 - **Reset colour and icon** goes back to the colour the date gets from its place in date order, and to the square.
 - **Compare with...** puts this date beside another. See [Compare from the tree](04-compare-dates.md#compare-from-the-tree).
@@ -50,15 +50,15 @@ The name, colour and icon are saved in the project, so they are there when you o
 
 ## Moving between dates
 
-- The bar above the views shows the date you are viewing. Use the arrows, or press **Alt+Left** and **Alt+Right** on the workspace screen. The shortcuts are ignored while you are typing in a text field. In a project with video, the date sits in the top left corner of the timeline instead, which has one lane per date (see [One lane per survey date](03-scene.md#one-lane-per-survey-date)).
-- Click the date to open the calendar. Days with a survey are coloured, and other days are shown but can't be selected. The month arrows and **Page Up** and **Page Down** skip months without a survey, the arrow keys move day by day, **Enter** picks the day, and **Escape** closes the calendar and returns you to the date bar.
+- The island at the top of the view shows the date you are viewing. Move the pointer near it for its arrows, or press **Alt+Left** and **Alt+Right** on the workspace screen. The shortcuts are ignored while you are typing in a text field. In a project with video, the date also sits in the top left corner of the timeline, which has one lane per date (see [One lane per survey date](03-scene.md#one-lane-per-survey-date)).
+- Click the date to open the calendar. Days with a survey are coloured, and other days are shown but can't be selected. The month arrows and **Page Up** and **Page Down** skip months without a survey, the arrow keys move day by day, **Enter** picks the day, and **Escape** closes the calendar and returns you to the island.
 - Press Ctrl+K and type "survey" to list **Go to previous survey**, **Go to next survey** and one command per date, such as **Go to survey 6 Nov 2024**.
 
 When you move to another date, that date's layers come on and the previous date's layers go off. Anything you switched on by hand from a third date stays on, so you can keep, say, the 1 November orthomosaic on screen while you step through later surveys. A closed folder shows how many of its layers are on ("1 on").
 
 When you move to another date, the playhead keeps its time of day. If the new date has a clip at that time, that clip is selected, ready to play with **Space**.
 
-In stockpile projects the Volumes date buttons and the date bar move together.
+In stockpile projects the Volumes date buttons and the island's date move together.
 
 ## Issues and measurements belong to their date
 
@@ -73,9 +73,9 @@ Issues on layers in **Every date**, and measurements for the whole site, are alw
 
 ## Which date am I looking at?
 
-Each date has a colour. It appears on the folder, in the date bar, on the calendar, in the header of the floating video and of the split video and photo panes (and on the date pickers in the split panes), and in a small chip at the top of the 3D view or map whenever more than one date is on screen. The chip is hidden while the split view is open. The panorama overlay shows the survey date as YYYY-MM-DD.
+Each date has a colour. It appears on the folder, in the island, on the calendar, in the header of the floating video and of the split video and photo panes (and on the date pickers in the split panes), and in a small chip at the top of the 3D view or map whenever more than one date is on screen. The chip is hidden while the split view is open. The panorama overlay shows the survey date as YYYY-MM-DD.
 
-To put two dates side by side, use [Compare dates](04-compare-dates.md). The left side of the compare split follows the date bar.
+To put two dates side by side, use [Compare dates](04-compare-dates.md). The left side of the compare split follows the island's date.
 
 ## Adding a survey date
 

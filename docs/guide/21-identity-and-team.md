@@ -38,7 +38,7 @@ The card holds your name, initials, email and your device's public key. It holds
 A project becomes a team project when you share it. The person who shares it is its first **owner**.
 
 1. Open the project.
-2. Click **Share** in the title bar and pick how changes travel (see [Exchange files and shared folders](24-exchange-files-and-shared-folders.md)). Click **Share**.
+2. Click **Share** at the top of the right panel on the **Scene** (or at the end of the page header on the other screens) and pick how changes travel (see [Exchange files and shared folders](24-exchange-files-and-shared-folders.md)). Click **Share**.
 3. In the **Team** dialog, or in **Settings**, **Identity and team**, find **Members of** the project.
 4. Click **Add from card** and pick the person's `.aioid` file.
 5. Pick a role in **Add as**.

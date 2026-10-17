@@ -40,7 +40,7 @@ Projects made before the types above keep working as they are. An empty one show
 5. A GeoTIFF over 300 MB, over 12,000 x 12,000 pixels, or saved as a BigTIFF is **Failed** with the reason: reduce or split it in other software, then import the parts.
 
 - A DJI video with its `.SRT` becomes a clip with its flight path, in sync with the timeline.
-- A LAS or LAZ point cloud is converted in the background; **Processing** in the title bar shows the progress, and the cloud appears when it is done.
+- A LAS or LAZ point cloud is converted in the background; **Processing** in the status row at the foot of the left sidebar shows the progress, and the island shows the job beside the date, and the cloud appears when it is done.
 - A GLB or OBJ model can be placed with **Georeference a model by point pairs** (**Ctrl K**): click a point on the model (**Pick on model**), then the same point on the scene, map or photo, three times or more; **Apply and save**.
 
 ### Camera heights
@@ -116,7 +116,7 @@ A DXF drawing is placed in the model builder, which also reads parts from it: se
 
 Heavy work runs in the background on this computer: making maps from photos, comparing survey dates, converting a point cloud, an AI inspection. It always belongs to the project it was started in.
 
-**Processing**, in the title bar, shows what the open project is doing: "Processing 40%" while one thing runs, "Processing · 3 running" for several, and a warning mark with "1 needs attention" when something failed or was interrupted. With no project open it shows only while another project is still working ("Processing · 1 running elsewhere").
+**Processing**, in the status row at the foot of the left sidebar, shows what the open project is doing: "Processing 40%" while one thing runs, "Processing · 3 running" for several, and a warning mark with "1 needs attention" when something failed or was interrupted. With no project open it shows only while another project is still working ("Processing · 1 running elsewhere").
 
 Click it to open the drawer:
 

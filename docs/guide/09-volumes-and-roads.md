@@ -13,7 +13,7 @@ A volumetric project holds one or more survey dates of a yard: an elevation mode
 
 ### Read the volumes
 
-The right panel has a **Volumes** tab with the **Pile register**: **Pile**, **Fill**, **Cut**, **Net** and **Change** per pile.
+The right panel has a **Volumes** tab with the **Pile register**; a stockpile project opens on it, and the island's **Volumes** tab brings it to the front. The tab is at least 470 px wide while it is in front. The register has **Pile**, **Fill**, **Cut**, **Net** and **Change** per pile.
 
 - Pick the survey date and the **Base**: **Triangulated toe**, a best-fit toe plane, the average toe height, or the lowest toe point. The volumes follow.
 - **CSV** saves the register.
@@ -26,7 +26,7 @@ When the project opens, the piles are hidden: "Click a pile to see its outline a
 
 ### Surfaces, swipe and sections
 
-In the stage toolbar:
+The island's **Volumes** row has the survey date and **Swipe**, the surface colours and the volume bodies; the **Volumes** tab of the right panel has the same switches above the register, and **Section line between the surveys**:
 
 - The survey date buttons switch the date. Only one date shows at a time.
 - **Photo**, **Elevation** or **Cut / fill** colours the terrain. With **Elevation**: **Colour ramp** (**Turbo**, **Spectral**, **Viridis**, **Terrain**, **Inferno**, **Greyscale**), **Low** and **High** in metres, **Auto**, and **Hillshade**.

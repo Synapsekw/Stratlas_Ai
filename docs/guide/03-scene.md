@@ -20,9 +20,9 @@
 The stage has no toolbar and no date bar. At the top centre of the view sits the island. At rest it shows the survey date you are viewing, for example "13 Apr", in the survey's colour; move the pointer near the top of the view and it grows to the date's arrows, the view and **Tools**.
 
 - Click the date for the calendar: the month with the survey days marked, the survey list and **Compare the two dates**. **Alt ←** and **Alt →** step through the dates.
-- Click the island, or press **T**, to open the stage tools: the **3D**, **Map** and **Split** switch, and a tab per group: **View**, **Measure**, **Display** and **Annotate**, and where the project has them **Point cloud**, **Volumes**, **Video** and **Road**. Pointing at a tab shows the group's quick tiles; clicking it opens the group's full set under the island. **All tools** at the end of a row does the same.
+- Click the island, or press **T**, to open the stage tools: the **3D**, **Map** and **Split** switch, and a tab per group: **View**, **Measure**, **Display** and **Annotate**, and where the project has them **Point cloud**, **Volumes**, **Video** and **Road**. Pointing at a tab shows the group's quick tiles; clicking it opens the group's workbench, its full set, as a tab in the right panel (see [The right panel](#the-right-panel)), and the island goes back to rest. **All tools** at the end of a row does the same.
 - The arrow keys move between the tiles, **Tab** moves between the rows, and **Esc** closes the tools.
-- While something is going on, the island says it beside the date: a measurement and its reading, the playing clip with its telemetry, a processing job with its progress, or **Offline** when the network is down. When two things are going on, the second one is a small bubble beside the island; click it to swap them.
+- While something is going on, the island says it beside the date: a measurement and its reading, the playing clip with its telemetry, a processing job with its progress, or **Offline** when the network is down. Click the reading, or press **Space** on it, to bring its tab to the front of the right panel. When two things are going on, the second one is a small bubble beside the island; click it to swap them.
 
 **T** no longer shows or hides the timeline: the timeline is the **Timeline** tile in the island's **View** group, and has no key.
 
@@ -39,7 +39,7 @@ Projects with more than one survey date also have **Compare dates**. See [Compar
 ## Show and hide layers
 
 - In the sidebar, **Datasets** has an eye per layer, one per group (Models, Point clouds, Maps, Video) and one at the top for everything. A half-filled eye means some layers in the group are hidden.
-- In the island, the **Display** group's full set has **Layers and issue pins**, which turns kinds on and off: **Models**, **Point clouds**, **Photo cameras**, **Maps and rasters** and **Video clips**.
+- In the island, the **Display** group's workbench (**Layers** at the end of its row) has **Layers and issue pins**, which turns kinds on and off: **Models**, **Point clouds**, **Photo cameras**, **Maps and rasters** and **Video clips**.
 - The 3D view sits on the offline street map wherever an installed map pack covers the site: sharp under the site and running out to the horizon. The **Street map** tile in the island's **Display** row (**Hide the street map under the site**) takes it away and brings it back; the choice is remembered for the project on this computer. The **Map** chip at the top right of the 3D view puts an online map (Esri, Mapbox or Sentinel-2) or your imagery and terrain packs on the ground instead. See [The ground in 3D](06-maps.md#the-ground-in-3d).
 - If you delete a layer you were looking at, for example photos placed far away by a wrong GPS, and the view is left on empty ground, the 3D view frames the project again.
 - **I** or the **Issue pins** tile in **Display** turns the issue tags off and back on. **Issue pins** in the Display group's full set shows **All**, only issues at or above a severity, or **Off**, and the **Severity heat map**.
@@ -86,7 +86,7 @@ Re-centring is not offered when the project holds things that cannot move with i
 
 ## Point clouds
 
-Click the **Point cloud** tab in the island, then **Point cloud**:
+The island's **Point cloud** row has **Show** and the colour switch **RGB**, **Elevation**, **Intensity** and **Flight**. Click the **Point cloud** tab in the island for its workbench in the right panel, with every setting under **Colour, size and EDL**:
 
 - **Colour by**: **RGB**, **Elevation**, **Intensity**, **Classification** or **Flight**.
 - **Point size**: 1x is the normal size; 2x and 4x make points at least 2 and 4 pixels.
@@ -107,7 +107,7 @@ A cloud whose heights are off (for example a cloud built from photo altitudes th
 
 ## Clean up a point cloud
 
-Click **Clean up** in the island's **Point cloud** group, or right-click a point cloud in **Datasets** and pick **Clean up...**. The panel opens at the top left of the view and works on the selected cloud; with several clouds, pick one at the top. Cleanup works on COPC clouds only: convert others first.
+Click **Clean up** in the island's **Point cloud** group, or right-click a point cloud in **Datasets** and pick **Clean up...**. The panel opens as the **Point cloud cleanup** tab of the right panel and works on the selected cloud; with several clouds, pick one at the top. Cleanup works on COPC clouds only: convert others first.
 
 Nothing is rewritten while you clean up. Every change is one step you can undo with **Undo** (**Ctrl+Z**) and redo with **Redo** (**Ctrl+Y** or **Ctrl+Shift+Z**), and the points come back when you undo.
 
@@ -222,4 +222,15 @@ A photo whose image is twice as wide as it is high shows **Looks like a 360** on
 
 ## The right panel
 
-The right panel (the right sidebar) holds the **Selection** card, the **Issues** list (and **Volumes** on stockpile projects), and the AI agent at the bottom. The tab on its left edge, **Ctrl Alt B**, the right-panel button at the top right of the stage or **Right panel** in the island's **View** group folds it away and brings it back; folded, the panel is a thin strip at the edge of the window, a click on the strip opens it, and the right-panel button sits to the left of the window's own buttons. **Ctrl J** opens the panel and puts the cursor in the agent. The 3D view, the map and the video take the room. Picking an issue or clicking **Show changes** opens the panel again, because they show their result there; selecting a layer does not.
+The right panel (the right sidebar) is the workbench: one row of tabs over the front tab's content, and the AI agent below it.
+
+- **The tabs.** From the left: what is live (a measurement being drawn, the annotation tools, the playing clip, the jobs running), each with a small dot; the workbench or panel you opened from the island; then **Selection**, **Issues**, and on the projects that have them **Volumes** and **Changes**. A tab that does not fit goes into the **More tabs** menu at the end of the row; its count says how many are there.
+- **Following what you do.** A tool you start brings its tab to the front: **M** opens **Measure**, **A** opens **Annotate**. Picking an issue shows its card in **Selection**, and **Show changes** brings **Changes**. While an issue's **Edit issue** form is open, a tool that starts does not take the front from it: its tab waits beside it with its dot, and you click it when you want it. When the tool stops, the tab it opened closes again.
+- **Pin.** A workbench or panel opened from the island replaces the one opened before it, and closes when a tool starts. **Pin** on its tab keeps it: a pinned tab stays until you close it with its **X**, and it is there again the next time you start {product} on this computer.
+- **Sections.** A workbench is made of sections with a title and a count; click a title to fold it. **Collapse all** at the top folds every section, and **Expand all** opens them again. The open sections are remembered per workbench on this computer. In **Measure**, **Search tools** keeps only the tools whose names match, for example "slope" leaves **Grade and slope** under **Line**.
+- **Width.** Drag the panel's inner edge to make it wider or narrower; it keeps that width the next time. **Volumes** and **Changes** open at least 470 px wide while they are in front, so their tables fit.
+- **The agent.** It sits below the workbench. While the AI is off it is one row, **Agent off · Turn on**. **Maximise** in its header gives it the whole panel; **Restore**, or a click on a tab, brings the workbench back. **Minimise** folds it to one line, **Ask about** and what is in view; click the line to open it again. Drag the divider between the workbench and the agent to share the height; a double-click on it goes back to the usual share. While a tool is live the agent folds to its line, unless you have sized it.
+
+The tab on its left edge, **Ctrl Alt B**, the right-panel button at the top right of the stage or **Right panel** in the island's **View** group folds the panel away and brings it back; folded, the panel is a thin strip at the edge of the window, a click on the strip opens it, and the right-panel button sits to the left of the window's own buttons. **Ctrl J** opens the panel and puts the cursor in the agent. The 3D view, the map and the video take the room. Picking an issue or clicking **Show changes** opens the panel again, because they show their result there; selecting a layer does not.
+
+**The drawer.** With the panel folded, a tool you start, or a workbench you open from the island, slides its tab in over the right edge of the view as a drawer, without the agent. The panel stays folded and the view is not resized. **Esc** slides the drawer out, and it goes by itself when the tool ends.

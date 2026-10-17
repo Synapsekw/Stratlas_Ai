@@ -8,11 +8,11 @@ Two orthos of the same area show what changed on the ground: a new building, a c
 - **Surface change** needs a DSM or a point cloud on each date.
 - Each layer must belong to its survey date (see [Survey dates of layers](14-changes.md#survey-dates-of-layers)).
 
-Open the **Changes** tab (see [Show changes](14-changes.md#show-changes)) and pick the two dates. A button that cannot run for these dates is greyed; its tool tip says what is missing.
+Open the **Changes** tab of the right panel (see [Show changes](14-changes.md#show-changes)) and pick the two dates. A button that cannot run for these dates is greyed; its tool tip says what is missing.
 
 ## Run imagery change
 
-1. Click **Run imagery change**. **Processing** in the title bar shows it while it runs.
+1. Click **Run imagery change**. **Processing** in the status row at the foot of the left sidebar shows it while it runs, and so does the island beside the date.
 2. When it finishes, two layers are added:
    - "Imagery change heat map, ..." with the two dates: yellow where the change is weak, red where it is strong.
    - "Imagery change areas, ...": an outline around each changed area.

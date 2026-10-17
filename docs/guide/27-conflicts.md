@@ -14,7 +14,7 @@ Any two copies with the same changes show exactly the same issues, whatever orde
 
 ## Where conflicts show
 
-- The title bar shows the count, for example "1 conflict", and the **Team** dialog says "1 change needs a decision: both copies changed the same field."
+- The sharing state at the top of the right panel shows the count, for example "1 conflict", and the **Team** dialog says "1 change needs a decision: both copies changed the same field."
 - The **Conflicts** list is in the **Team** dialog. **My work** in **Issues** lists them under **Conflicts** too.
 
 With no conflicts the list says "No conflicts. Changes from others merged cleanly."

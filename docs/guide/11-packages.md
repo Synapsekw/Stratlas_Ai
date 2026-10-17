@@ -31,9 +31,9 @@ A line reads "From" the pack, with the number of tiles and their size, and the p
 - Double-click the `.aio` file, or on **Projects** click **Open package** (or **Ctrl K**, **Open a project package (.aio)**).
 - An encrypted package asks for the **Passphrase**; click **Open package**.
 
-It opens on **Welcome**: the client, site, capture date and issue count, tips on what to try, **Start exploring** and **Open the issue register**. The title bar shows **Read-only package**. There are no annotation tools, and cloud AI is off unless the package allows it.
+It opens on **Welcome**: the client, site, capture date and issue count, tips on what to try, **Start exploring** and **Open the issue register**. The status row at the foot of the left sidebar shows **Read-only package**. The island has no **Annotate** group and the right panel no annotation tools, and cloud AI is off unless the package allows it.
 
-A package of a survey project shows its survey measurements, sections, terrain overlays, comparison results, designs and QA status: **Survey measurements**, **Measurements** lists them and the views draw them. They are read only: there are no drawing tools, no **Save**, and **Site settings** can be read but not saved. Nothing runs in a package, so a section cannot be downloaded and a result that is out of date stays out of date.
+A package of a survey project shows its survey measurements, sections, terrain overlays, comparison results, designs and QA status: the island's **Measure** tab opens the **Measure** workbench in the right panel, whose **Saved in this project** lists them, and the views draw them. They are read only: **Measure** has only **Distance**, which measures without saving, there is no **Save**, and **Site settings** can be read but not saved. Nothing runs in a package, so a section cannot be downloaded and a result that is out of date stays out of date.
 
 The map region in the package shows in **Settings**, **Offline maps** as **In open package**.
 
@@ -42,7 +42,7 @@ The map region in the package shows in **Settings**, **Offline maps** as **In op
 If the sender allowed it, you can turn a package into a normal project:
 
 1. Open the package. On **Reports** (or on **Welcome**), under **Edit a copy**, click **Extract to edit**.
-2. A new project is made in your data folder, with every layer, issue and edit, and opens. The title bar shows "Copy of" and the file name.
+2. A new project is made in your data folder, with every layer, issue and edit, and opens. The status row at the foot of the left sidebar shows "Copy of" and the file name.
 
 Annotate and change the copy as any project. The `.aio` file stays as it was.
 
