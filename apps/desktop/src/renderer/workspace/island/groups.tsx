@@ -3,8 +3,15 @@
  * inline switches, D5). A group's full set is its workbench in the right sidebar (D4, D12): the
  * group's tab and the tile at the end of its row open it, and caret tiles open their panel tab.
  */
-import { pinDisplay, usePinDisplay } from '@aio/annotate';
+import { pinDisplay, usePinDisplay, type SceneTool } from '@aio/annotate';
 import type { EngineStage, LabelMode } from '@aio/engine';
+import type { MapDrawMode } from '@aio/maps';
+import {
+  pointcloudSettings,
+  usePointcloudCounts,
+  usePointcloudSettings,
+  type ColourMode,
+} from '@aio/pointcloud';
 import {
   Button,
   Icon,
@@ -37,6 +44,11 @@ import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
 import { toggleTimeline, useTimelineShown } from '../timelinePref';
 import { LABEL_MODES } from '../tools/display';
 import { toggleMeasure, toggleSection } from '../tools/measure';
+import {
+  annotateStage,
+  useAnnotateStage,
+  useMapDrawHandle,
+} from '../workbench/benches/annotateStage';
 import type { TabId } from '../workbench/tabsModel';
 import { GROUP_TAB } from './islandBench';
 import type { GroupId } from './islandModel';
@@ -470,6 +482,38 @@ function StreetMapTile() {
   );
 }
 
+/** The colour switch the quick row offers (D5); the workbench has every mode. */
+const CLOUD_COLOURS: readonly { value: ColourMode; label: MessageKey }[] = [
+  { value: 'rgb', label: 'island.tile.colourRgb' },
+  { value: 'height', label: 'island.tile.colourElevation' },
+  { value: 'intensity', label: 'island.tile.colourIntensity' },
+  { value: 'flight', label: 'island.tile.colourFlight' },
+];
+
+/** RGB / Elevation / Intensity / Flight; none pressed while the cloud is coloured another way. */
+function CloudColour() {
+  const t = useT();
+  const mode = usePointcloudSettings((s) => s.colourMode);
+  const counts = usePointcloudCounts();
+  // as the workbench's controls: an intensity-only cloud draws the RGB choice as intensity
+  const hasRgb = counts.layers === 0 || counts.rgb;
+  const shown = mode === 'rgb' && !hasRgb ? 'intensity' : mode;
+  return (
+    <Choice
+      label={t('island.tile.colour')}
+      options={CLOUD_COLOURS.map((c) => ({
+        value: c.value,
+        label: t(c.label),
+        disabled: c.value === 'rgb' && !hasRgb,
+      }))}
+      value={CLOUD_COLOURS.some((c) => c.value === shown) ? shown : null}
+      onPick={(m) => {
+        pointcloudSettings.getState().setColourMode(m);
+      }}
+    />
+  );
+}
+
 function CloudRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
   const ids = useWorkspace((s) =>
@@ -491,6 +535,7 @@ function CloudRow({ ctx }: { ctx: GroupCtx }) {
           for (const id of ids.split('|')) workspace.getState().setLayerVisible(id, !shown);
         }}
       />
+      <CloudColour />
       <Tile
         icon="boxclip"
         label={t('island.tile.cleanUp')}
@@ -700,9 +745,75 @@ function RoadRow({ ctx }: { ctx: GroupCtx }) {
   );
 }
 
+interface AnnoTile {
+  icon: IconName;
+  label: MessageKey;
+  name: MessageKey;
+}
+
+/** The Annotate row's tools on the model and the cloud (D5), as the workbench's toolbar has them. */
+const ANNO_3D: readonly (AnnoTile & { tool: SceneTool })[] = [
+  { tool: 'point', icon: 'pin', label: 'island.tile.annoPin', name: 'island.tile.annoPinName' },
+  {
+    tool: 'polyline',
+    icon: 'path',
+    label: 'island.tile.annoLine',
+    name: 'island.tile.annoLineName',
+  },
+  {
+    tool: 'polygon',
+    icon: 'polygon',
+    label: 'island.tile.annoArea',
+    name: 'island.tile.annoAreaName',
+  },
+  {
+    tool: 'cloud-point',
+    icon: 'point',
+    label: 'island.tile.annoCloudPoint',
+    name: 'island.tile.annoCloudPointName',
+  },
+  {
+    tool: 'cloud-box',
+    icon: 'boxclip',
+    label: 'island.tile.annoCloudBox',
+    name: 'island.tile.annoCloudBoxName',
+  },
+];
+
+/** ... and on the map. */
+const ANNO_MAP: readonly (AnnoTile & { mode: MapDrawMode })[] = [
+  {
+    mode: 'point',
+    icon: 'point',
+    label: 'island.tile.annoMapPoint',
+    name: 'island.tile.annoMapPointName',
+  },
+  {
+    mode: 'line',
+    icon: 'path',
+    label: 'island.tile.annoMapLine',
+    name: 'island.tile.annoMapLineName',
+  },
+  {
+    mode: 'polygon',
+    icon: 'polygon',
+    label: 'island.tile.annoMapArea',
+    name: 'island.tile.annoMapAreaName',
+  },
+];
+
 function AnnotateRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
   const on = useShell((s) => s.annotating);
+  // the stage runs the tools (workbench/benches/annotateStage.ts): the row only picks them
+  const show3d = useAnnotateStage((s) => s.show3d);
+  const showMap = useAnnotateStage((s) => s.showMap);
+  const tool = useAnnotateStage((s) => s.tool);
+  const draw = useMapDrawHandle();
+  // a tool picked here starts the annotation tools with it; picked again, it is put down
+  const begin = () => {
+    if (!on) shell.getState().setAnnotating(true);
+  };
   return (
     <>
       <Tile
@@ -715,6 +826,40 @@ function AnnotateRow({ ctx }: { ctx: GroupCtx }) {
           shell.getState().setAnnotating(!on);
         }}
       />
+      {show3d &&
+        ANNO_3D.map((a) => {
+          const picked = on && tool === a.tool;
+          return (
+            <Tile
+              key={a.tool}
+              icon={a.icon}
+              label={t(a.label)}
+              name={t(a.name)}
+              pressed={picked}
+              onClick={() => {
+                begin();
+                annotateStage.getState().setTool(picked ? null : a.tool);
+              }}
+            />
+          );
+        })}
+      {showMap &&
+        ANNO_MAP.map((a) => {
+          const picked = on && draw.mode === a.mode;
+          return (
+            <Tile
+              key={a.mode}
+              icon={a.icon}
+              label={t(a.label)}
+              name={t(a.name)}
+              pressed={picked}
+              onClick={() => {
+                begin();
+                draw.setMode(picked ? null : a.mode);
+              }}
+            />
+          );
+        })}
       <AllTools g="annotate" ctx={ctx} />
     </>
   );
@@ -722,9 +867,6 @@ function AnnotateRow({ ctx }: { ctx: GroupCtx }) {
 
 /**
  * A group's quick row (D5): a few tiles and switches, then the way to its workbench.
- * TODO(stage 2, ruling I-R13): D5 items still carried: the point cloud colour switch RGB /
- * Elevation / Intensity / Flight (Task 14), the Annotate tiles 3D pin, line, area, cloud point,
- * cloud box and map point, line, area (Task 15). Their workbenches have them meanwhile.
  */
 export function quickRow(g: GroupId, ctx: GroupCtx): ReactNode {
   switch (g) {

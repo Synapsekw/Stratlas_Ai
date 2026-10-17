@@ -4713,6 +4713,30 @@ export const en = {
   'stage.video.dockBottom': 'Dock the video at the bottom',
   'stage.video.dockSide': 'Dock the video at the side',
   'stage.video.dockSideNarrow': 'The stage is too narrow to dock the video at its side',
+
+  // Task 20: the D5 quick-row items (I-R48) and the live reading opened by key (I-R44)
+  'island.tile.colour': 'Colour',
+  'island.tile.colourRgb': 'RGB',
+  'island.tile.colourElevation': 'Elevation',
+  'island.tile.colourIntensity': 'Intensity',
+  'island.tile.colourFlight': 'Flight',
+  'island.tile.annoPin': 'Pin',
+  'island.tile.annoPinName': 'Pin on the model',
+  'island.tile.annoLine': 'Line',
+  'island.tile.annoLineName': 'Line on the model',
+  'island.tile.annoArea': 'Area',
+  'island.tile.annoAreaName': 'Area on the model',
+  'island.tile.annoCloudPoint': 'Cloud point',
+  'island.tile.annoCloudPointName': 'Point on the cloud',
+  'island.tile.annoCloudBox': 'Cloud box',
+  'island.tile.annoCloudBoxName': 'Box on the cloud',
+  'island.tile.annoMapPoint': 'Map point',
+  'island.tile.annoMapPointName': 'Point on the map',
+  'island.tile.annoMapLine': 'Map line',
+  'island.tile.annoMapLineName': 'Line on the map',
+  'island.tile.annoMapArea': 'Map area',
+  'island.tile.annoMapAreaName': 'Area on the map',
+  'island.liveOpen': 'Show {item} in the right panel',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
