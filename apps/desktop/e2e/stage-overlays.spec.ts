@@ -236,7 +236,9 @@ test('docked, the video shares the stage across a divider, under or beside the v
   await expect.poll(async () => (await strip.boundingBox())?.height ?? 0).toBeGreaterThan(20);
   await expect(strip).toHaveCSS('opacity', '1');
   await shot(win, info, 'dock-volumes-1100.png');
+  // the pointer gone, the strip hides again (I-R55)
   await win.mouse.move(5, 5);
+  await expect(strip).toHaveCSS('opacity', '0');
 
   // drag the divider up: the dock grows, the views give way
   const before = (await dock.boundingBox())?.height ?? 0;
