@@ -56,6 +56,7 @@ MIN_CROWN_POINTS = 5_000
 CROWN_MARGIN_M = 3.0
 
 GRID_M = 1.0
+SEED_CLIP_PCT = 0.5  # the seed grid spans the 0.5 to 99.5 percentile of the overview in plan
 OVERVIEW_POINTS = 400_000
 FULL_POINTS = 2_000_000
 # the evidence read: the shaft from 0.1 of the height up plus the crown, sampled so the crown keeps
@@ -258,6 +259,14 @@ def _find_seed(xyz: np.ndarray) -> tuple[float, float] | None:
         return None
     cx = np.floor(xyz[:, 0] / GRID_M).astype(np.int64)
     cz = np.floor(xyz[:, 2] / GRID_M).astype(np.int64)
+    # the grid spans the bulk of the overview: a few stray points kilometres out would size a
+    # dense grid by their reach (and could run out of memory)
+    inside = np.ones(len(xyz), dtype=bool)
+    for c in (cx, cz):
+        lo, hi = np.percentile(c, [SEED_CLIP_PCT, 100.0 - SEED_CLIP_PCT])
+        inside &= (c >= np.floor(lo)) & (c <= np.ceil(hi))
+    if not inside.all():
+        xyz, cx, cz = xyz[inside], cx[inside], cz[inside]
     x0, z0 = int(cx.min()), int(cz.min())
     ix, iz = cx - x0, cz - z0
     shape = (int(ix.max()) + 1, int(iz.max()) + 1)

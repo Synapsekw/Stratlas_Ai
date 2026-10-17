@@ -383,3 +383,22 @@ def test_order_free_sample_is_uniform_and_order_independent():
     sample, _ = res.result()
     counts = np.histogram2d(sample[:, 0], sample[:, 1], bins=4)[0]
     assert counts.min() > 0.8 * counts.mean()
+
+
+def test_seed_grid_ignores_stray_points_far_away(monkeypatch):
+    # a few points kilometres out must not size the dense 1 m seed grid by their reach
+    xyz, _ = tower_cloud("monopole", seed=1)
+    want = crown_mod._find_seed(xyz)
+    assert want is not None
+    stray = np.array([[4000.0, 2.0, 0.0], [-3500.0, 1.0, 2500.0], [0.0, 3.0, -5000.0], [2500.0, 0.5, 4500.0]])
+    cells: list[int] = []
+    real_full = np.full
+
+    def full(shape, *args, **kwargs):
+        cells.append(int(np.prod(shape)))
+        return real_full(shape, *args, **kwargs)
+
+    monkeypatch.setattr(crown_mod.np, "full", full)
+    got = crown_mod._find_seed(np.vstack([xyz, stray]))
+    assert got == want
+    assert cells and max(cells) < 1_000_000  # the bulk of the cloud, not kilometres of empty grid
