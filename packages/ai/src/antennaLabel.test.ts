@@ -6,6 +6,8 @@ import {
   antennaLabelUserText,
   estimateAntennaLabel,
   parseAntennaLabels,
+  WARNING_KEY_MAX,
+  WARNINGS_MAX,
 } from './antennaLabel';
 
 describe('parseAntennaLabels', () => {
@@ -40,6 +42,39 @@ describe('parseAntennaLabels', () => {
     );
     expect(r.labels[0]?.reason).toHaveLength(200);
     expect(r.labels[1]).toEqual({ unitId: 'ant-2', label: 'dish', reason: '' });
+  });
+
+  it('compares keys exactly: a bad label for ant-10 still leaves ant-1 unlabelled', () => {
+    const r = parseAntennaLabels('{"labels":[{"key":"ant-10","label":"omni","reason":"x"}]}', [
+      'ant-1',
+      'ant-10',
+    ]);
+    expect(r.labels).toEqual([]);
+    expect(r.warnings).toEqual([
+      'The label for ant-10 is not one of the allowed labels. It was ignored.',
+      'The reply has no label for ant-1.',
+    ]);
+  });
+
+  it('cuts a long unsent key in its warning', () => {
+    const key = `ant-${'x'.repeat(5000)}`;
+    const r = parseAntennaLabels(JSON.stringify({ labels: [{ key, label: 'dish' }] }), []);
+    expect(r.warnings).toHaveLength(1);
+    const w = r.warnings[0] ?? '';
+    expect(w).toContain(`"${key.slice(0, WARNING_KEY_MAX)}..."`);
+    expect(w.length).toBeLessThan(WARNING_KEY_MAX + 80);
+  });
+
+  it('caps the warnings of one reply', () => {
+    const labels = Array.from({ length: 100 }, (_, i) => ({
+      key: `bad-${String(i)}`,
+      label: 'dish',
+    }));
+    const r = parseAntennaLabels(JSON.stringify({ labels }), ['ant-1']);
+    expect(r.warnings).toHaveLength(WARNINGS_MAX);
+    expect(r.warnings[0]).toContain('"bad-0"');
+    // 100 unsent keys and one missing label, 19 listed
+    expect(r.warnings.at(-1)).toBe('82 more warnings were not listed.');
   });
 
   it('warns for every key when the reply is not JSON', () => {

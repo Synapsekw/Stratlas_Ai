@@ -53,6 +53,14 @@ export interface ParsedAntennaLabels {
   warnings: string[];
 }
 
+/** Longest model-chosen key echoed back in a warning. */
+export const WARNING_KEY_MAX = 80;
+/** Most warnings one reply produces; the last says how many more there were. */
+export const WARNINGS_MAX = 20;
+
+const echo = (key: string) =>
+  key.length > WARNING_KEY_MAX ? `${key.slice(0, WARNING_KEY_MAX)}...` : key;
+
 /** The labels in a model reply, for the keys that were sent; anything else is dropped with a warning. */
 export function parseAntennaLabels(text: string, keys: readonly string[]): ParsedAntennaLabels {
   const warnings: string[] = [];
@@ -69,17 +77,20 @@ export function parseAntennaLabels(text: string, keys: readonly string[]): Parse
     return { labels, warnings: ['The reply was not a list of labels, so no unit was labelled.'] };
   }
   const seen = new Set<string>();
+  const badLabel = new Set<string>();
   for (const item of list) {
     const o = typeof item === 'object' && item !== null ? (item as Record<string, unknown>) : {};
     const key = typeof o.key === 'string' ? o.key : '';
     if (!asked.has(key)) {
-      warnings.push(`The reply labelled "${key}", which was not sent. It was ignored.`);
+      warnings.push(`The reply labelled "${echo(key)}", which was not sent. It was ignored.`);
       continue;
     }
     if (seen.has(key)) continue;
     const label = AntennaAiLabel.safeParse(o.label);
     if (!label.success) {
-      warnings.push(`The label for ${key} is not one of the allowed labels. It was ignored.`);
+      if (!badLabel.has(key))
+        warnings.push(`The label for ${key} is not one of the allowed labels. It was ignored.`);
+      badLabel.add(key);
       continue;
     }
     seen.add(key);
@@ -87,9 +98,15 @@ export function parseAntennaLabels(text: string, keys: readonly string[]): Parse
     labels.push({ unitId: key, label: label.data, reason });
   }
   for (const k of keys) {
-    if (!seen.has(k) && !warnings.some((w) => w.includes(k))) {
-      warnings.push(`The reply has no label for ${k}.`);
-    }
+    if (!seen.has(k) && !badLabel.has(k)) warnings.push(`The reply has no label for ${k}.`);
+  }
+  if (warnings.length > WARNINGS_MAX) {
+    const more = warnings.length - (WARNINGS_MAX - 1);
+    warnings.splice(
+      WARNINGS_MAX - 1,
+      warnings.length,
+      `${String(more)} more warnings were not listed.`,
+    );
   }
   return { labels, warnings };
 }
