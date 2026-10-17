@@ -19,6 +19,7 @@ import {
   tinyGlb,
   tinyManifest,
 } from './fixtures';
+import { headerProblems } from './split';
 import { closeIslandTools, islandGroup, islandRow, stageMode, toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
 import { copyRealData, hasRealData, missingRealProject, realProjectDir } from './realData';
@@ -164,40 +165,6 @@ async function compareFolder(win: Page, from: string, to: string) {
 /** A side of the split, as the island hears it: a press on the pane (D7). */
 async function focusSide(win: Page, side: 'left' | 'right') {
   await win.locator(`.stage-panes > [data-side="${side}"]`).first().dispatchEvent('pointerdown');
-}
-
-/**
- * Where each pane's header strip is wrong (D31): outside its pane, or under the island or a
- * corner overlay. Empty when all is well.
- */
-function headerProblems(win: Page) {
-  return win.evaluate(() => {
-    const out: string[] = [];
-    const rect = (el: Element) => el.getBoundingClientRect();
-    const meets = (a: DOMRect, b: DOMRect) =>
-      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-    const others = [
-      ...document.querySelectorAll(
-        '.island, .isl-aside > *, .compare-view, .stage-slot > *, .stage-rp, .split-handle',
-      ),
-    ].filter((e) => rect(e).width > 0 && getComputedStyle(e).visibility !== 'hidden');
-    for (const side of ['left', 'right']) {
-      const head = document.querySelector(`[data-testid="pane-chooser-${side}"]`);
-      const pane = head?.closest('[data-side]');
-      if (!head || !pane) {
-        out.push(`no ${side} header`);
-        continue;
-      }
-      const p = rect(pane);
-      for (const part of head.children) {
-        const r = rect(part);
-        if (r.left < p.left || r.right > p.right) out.push(`the ${side} header leaves its pane`);
-        for (const o of others)
-          if (meets(r, rect(o))) out.push(`the ${side} header is under ${o.className}`);
-      }
-    }
-    return out;
-  });
 }
 
 /** Which of these layers each 3D view has, and whether each shows. */

@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { captionArea } from './caption';
 import { DEMO_FOLDER, expect, test } from './fixtures';
 import { closeIslandTools, island, islandGroup, islandSettled, stageMode } from './island';
+import { headerProblems } from './split';
 import { openDemo } from './surveyJobs';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
@@ -522,34 +523,6 @@ test('with the drawer open, the corners at its side keep clear of it', async ({ 
   await shot(win, info, 'overlays-drawer-1100.png');
   await win.keyboard.press('Escape');
 });
-
-/**
- * The Split view's pane headers (D31): what lies outside its pane or under the island, a corner
- * overlay, the floating video or the right panel's toggle. Empty when all is well.
- */
-const headerProblems = (win: Page) =>
-  win.evaluate(() => {
-    const meets = (a: DOMRect, b: DOMRect) =>
-      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-    const others = [
-      ...document.querySelectorAll('.island, .stage-slot > *, .vwin:not(.docked), .stage-rp'),
-    ].filter((e) => e.getBoundingClientRect().width > 0);
-    const out: string[] = [];
-    for (const head of document.querySelectorAll('.pane-head')) {
-      const pane = head.closest('[data-side]');
-      const side = pane?.getAttribute('data-side') ?? '?';
-      const p = pane?.getBoundingClientRect();
-      for (const part of head.children) {
-        const r = part.getBoundingClientRect();
-        if (!p || r.left < p.left - 0.5 || r.right > p.right + 0.5)
-          out.push(`the ${side} header leaves its pane`);
-        for (const o of others)
-          if (meets(r, o.getBoundingClientRect()))
-            out.push(`the ${side} header is under ${o.className}`);
-      }
-    }
-    return out;
-  });
 
 test('in Split, the pane headers keep clear of the corners and the video, and each divider moves alone', async ({
   win,

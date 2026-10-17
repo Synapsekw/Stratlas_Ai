@@ -22,6 +22,7 @@ import {
   stageMode,
   toggleCompareDates,
 } from './island';
+import { headerProblems } from './split';
 import { openDemo } from './surveyJobs';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } });
@@ -452,8 +453,8 @@ test.describe('with online satellite', () => {
 
 /**
  * The stage with the widest tab in front (Volumes, 470 px): what a click at the middle of the
- * stage reaches, the rows the workbench tabs take, where the resting island lies against the
- * stage, and for each pane header of a split what lies outside its pane or under the island.
+ * stage reaches, the rows the workbench tabs take, and where the resting island lies against the
+ * stage (a split's pane headers: headerProblems).
  */
 async function narrowStage(win: Page) {
   return win.evaluate(() => {
@@ -467,18 +468,6 @@ async function narrowStage(win: Page) {
       .map((t) => t.getBoundingClientRect())
       .filter((r) => r.width > 0);
     const capsule = document.querySelector('.island')?.getBoundingClientRect();
-    const heads: string[] = [];
-    for (const head of document.querySelectorAll('.pane-head')) {
-      const pane = head.closest('[data-side]')?.getBoundingClientRect();
-      const side = head.closest('[data-side]')?.getAttribute('data-side') ?? '?';
-      for (const part of head.children) {
-        const r = part.getBoundingClientRect();
-        if (!pane || r.left < pane.left - 0.5 || r.right > pane.right + 0.5)
-          heads.push(`the ${side} header leaves its pane`);
-        if (capsule && r.top < capsule.bottom && capsule.top < r.bottom)
-          heads.push(`the ${side} header is under the island`);
-      }
-    }
     return {
       width: Math.round(stage.width),
       // the 3D view's canvas takes the click, nothing laid over it
@@ -492,7 +481,6 @@ async function narrowStage(win: Page) {
         capsule.left >= stage.left &&
         capsule.right <= stage.right &&
         capsule.top >= stage.top,
-      heads,
     };
   });
 }
@@ -572,7 +560,7 @@ test.describe('with Volumes in front', () => {
     await stageMode(win, 'Split');
     await closeIslandTools(win);
     await expect(win.locator('.pane-head')).toHaveCount(2);
-    await expect.poll(async () => (await narrowStage(win))?.heads).toEqual([]);
+    await expect.poll(() => headerProblems(win)).toEqual([]);
     await islandSettled(win);
     await shot(win, info, 'volumes-front-split-1100x720.png');
     // each pane's view name is cut cleanly in so narrow a pane, and its tip gives it whole
