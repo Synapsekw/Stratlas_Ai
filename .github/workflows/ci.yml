@@ -181,8 +181,8 @@ jobs:
   # is asked for, gets the same six; they queue behind GitHub's five macOS jobs at once.
   e2e:
     name: e2e (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.of }})
-    needs: gate
-    if: needs.gate.outputs.run == 'true'
+    needs: [gate, changes]
+    if: needs.gate.outputs.run == 'true' && needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -330,8 +330,8 @@ jobs:
   # The suite runs in two parts, a job each: the photo tests and the rest.
   python:
     name: pipelines (${{ matrix.os }}, ${{ matrix.part }})
-    needs: gate
-    if: needs.gate.outputs.run == 'true'
+    needs: [gate, changes]
+    if: needs.gate.outputs.run == 'true' && needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -404,6 +404,13 @@ jobs:
         run: uv run --frozen python -m aio_pipelines --list
 
   # Which parts of the tree a push or pull request changed, for the jobs that only run when theirs did.
+  #
+  # `code` is false only for a pull request whose changed files are all documents (under docs/ or
+  # any .md file; tools/ci/docs-only.mjs holds the rule and its test). The e2e shards, the pipelines
+  # and the pack then skip: the run stays green because a skipped job counts as passed, and
+  # format, lint, types, unit tests, the licence check and the team server still run. Any other
+  # event, any changed file that is not a document, and any failure to read the file list leave
+  # `code` true, so nothing is skipped by mistake.
   changes:
     name: changes
     needs: gate
@@ -415,6 +422,7 @@ jobs:
       pull-requests: read
     outputs:
       pack: ${{ steps.filter.outputs.pack }}
+      code: ${{ steps.docs.outputs.code }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -427,6 +435,27 @@ jobs:
               - 'python/uv.lock'
               - 'python/src/aio_pipelines/photo/**'
               - '.github/workflows/ci.yml'
+      - name: Documents only?
+        id: docs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            # both names of a renamed file; the API lists at most 3000 files, so a list that long
+            # may be cut short and counts as code
+            jq='.[] | .filename, (.previous_filename // empty)'
+            if files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files?per_page=100" --jq "$jq") &&
+              [ "$(echo "$files" | wc -l)" -lt 3000 ]; then
+              code=$(echo "$files" | node tools/ci/docs-only.mjs | sed 's/^code=//')
+            fi
+          fi
+          case "$code" in true | false) ;; *) code=true ;; esac
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+          if [ "$code" = false ]; then
+            echo "Documents only: the e2e shards, the pipelines and the pack are skipped." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
 
   # The pipeline pack as the nightly and the release build it, with its built-in smoke test (the
   # photogrammetry engines each in the process the product runs them in). Only when the pack's
@@ -438,6 +467,7 @@ jobs:
     needs: [gate, changes]
     if: >-
       needs.gate.outputs.run == 'true' &&
+      needs.changes.outputs.code == 'true' &&
       (needs.changes.outputs.pack == 'true' || github.event_name == 'workflow_dispatch')
     strategy:
       fail-fast: false
