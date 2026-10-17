@@ -405,9 +405,6 @@
   "apps/desktop/src/renderer/workspace/tools/video.tsx": {
     "title": 1
   },
-  "apps/desktop/src/renderer/workspace/tools/view.tsx": {
-    "title": 1
-  },
   "apps/desktop/src/renderer/workspace/VolumeTools.tsx": {
     "title": 3
   },

@@ -1,17 +1,14 @@
 /**
- * The Video and camera group: the video window, flight paths, telemetry and camera views. Seeing
- * inside the asset (Cutaway) is in View, which every 3D project has (ruling I-R17).
+ * What the Video workbench shows of the flight paths and the camera views (the free, follow-cam
+ * and drone-eye modes).
  */
 import type { EngineStage } from '@aio/engine';
-import { useT, type IconName } from '@aio/ui';
+import type { IconName } from '@aio/ui';
 import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
 import { useWorkspace } from '@aio/workspace';
 import { useReducer } from 'react';
-import { shell, useShell } from '../../shell';
 import { PATH_MODES, setPathMode } from '../flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../pathModel';
-import { PopTool, Tool } from '../StageTools';
-import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
 
 /** All, active clip only or no flight paths: the segmented choice and its note (P toggles them). */
 export function FlightPathPanel({ showTitle = true }: { showTitle?: boolean }) {
@@ -45,39 +42,6 @@ export function FlightPathPanel({ showTitle = true }: { showTitle?: boolean }) {
   );
 }
 
-/** All, active clip only or no flight paths in 3D (P turns them off and back on). */
-export function FlightPathTool() {
-  const m = useFlightPathModel();
-  if (!m) return null;
-  return (
-    <PopTool
-      icon="path"
-      label="Flight paths"
-      shortcut="scene.flightPaths"
-      pressed={m.pref.mode !== 'off'}
-      wide
-    >
-      <FlightPathPanel />
-    </PopTool>
-  );
-}
-
-/** Drone telemetry while a clip plays: flown track, distance ticks and the HUD (D). */
-export function TelemetryTool() {
-  const t = useT();
-  const on = useTelemetryOn();
-  if (!useFlightPathModel()) return null;
-  return (
-    <Tool
-      icon="telemetry"
-      label={on ? t('stage.telemetry.hide') : t('stage.telemetry.show')}
-      shortcut="scene.telemetry"
-      pressed={on}
-      onClick={toggleTelemetry}
-    />
-  );
-}
-
 export const CAMERA_MODES: { mode: CameraMode; label: string; icon: IconName }[] = [
   { mode: 'free', label: 'Free orbit', icon: 'orbit' },
   { mode: 'follow', label: 'Follow the drone', icon: 'follow' },
@@ -99,39 +63,4 @@ export function useCameraModes(stage: EngineStage | null) {
       bump();
     },
   }));
-}
-
-/** Video window, flight paths, telemetry and the free, follow-cam and drone-eye views. */
-export function VideoTools({ stage, map }: { stage: EngineStage | null; map: boolean }) {
-  const activeClip = useWorkspace((s) => s.activeClip);
-  const videoHidden = useShell((s) => s.videoHidden);
-  const showVideo = activeClip !== null && !videoHidden;
-  const modes = useCameraModes(stage);
-  return (
-    <>
-      <Tool
-        icon="video"
-        label={showVideo ? 'Hide the video window' : 'Show the video window'}
-        shortcut="scene.video"
-        pressed={showVideo}
-        disabled={activeClip === null}
-        onClick={() => {
-          shell.getState().setVideoHidden(!videoHidden);
-        }}
-      />
-      {!map && <FlightPathTool />}
-      {!map && <TelemetryTool />}
-      {!map &&
-        modes.map((m) => (
-          <Tool
-            key={m.mode}
-            icon={m.icon}
-            label={m.label}
-            pressed={m.pressed}
-            disabled={m.disabled}
-            onClick={m.choose}
-          />
-        ))}
-    </>
-  );
 }

@@ -4,7 +4,6 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo } from 'react';
 import { isTyping } from '../keys';
 import { shell } from '../shell';
-import { PopTool, Tool } from '../workspace/StageTools';
 import { pciRating } from './model';
 import { densityLegend } from './overlays';
 import { roadStore, setRoad, useRoad, type MeasureMode } from './store';
@@ -175,68 +174,9 @@ export function RoadOverlayControls() {
   );
 }
 
-function RoadLayers() {
-  return (
-    <div className="pop-form rr-layers">
-      <RoadLayerControls />
-      <RoadOverlayControls />
-    </div>
-  );
-}
-
 export function toggleMeasure(mode: MeasureMode = 'line'): void {
   const m = roadStore.getState().measure;
   setRoad({ measure: m.mode ? { mode: null, vertices: [] } : { mode, vertices: [] } });
-}
-
-/** The road group on the stage toolbar (map and split): road layers, overlays and measure. */
-export function RoadToolGroup() {
-  const overlay = useRoad((s) => s.overlay);
-  const measuring = useRoad((s) => s.measure.mode !== null);
-  const closeup = useRoad((s) => s.closeup);
-  return (
-    <>
-      <Tool
-        icon="photo"
-        label="Close-up of the selected defect"
-        shortcut="road.closeup"
-        pressed={closeup}
-        onClick={() => {
-          setRoad({ closeup: !closeup });
-        }}
-      />
-      <PopTool icon="road" label="Road layers" pressed={overlay !== 'none'} wide>
-        <RoadLayers />
-      </PopTool>
-      <Tool
-        icon="filter"
-        label="PCI grid"
-        shortcut="road.pci"
-        pressed={overlay === 'pci'}
-        onClick={() => {
-          setRoad({ overlay: overlay === 'pci' ? 'none' : 'pci' });
-        }}
-      />
-      <Tool
-        icon="raster"
-        label="Defect density"
-        shortcut="road.density"
-        pressed={overlay === 'density'}
-        onClick={() => {
-          setRoad({ overlay: overlay === 'density' ? 'none' : 'density' });
-        }}
-      />
-      <Tool
-        icon="ruler"
-        label="Measure on the map"
-        shortcut="road.measure"
-        pressed={measuring}
-        onClick={() => {
-          toggleMeasure();
-        }}
-      />
-    </>
-  );
 }
 
 /** The measure readout under the stage toolbar while measuring on the map. */
