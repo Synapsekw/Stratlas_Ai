@@ -75,7 +75,7 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   pressed?: boolean; // a toggle: sets aria-pressed
   busy?: boolean;
   disabled?: boolean; // no reason: native disabled
-  disabledReason?: string; // aria-disabled, click ignored, reason in the tooltip
+  disabledReason?: string | undefined; // aria-disabled, click ignored, reason in the tooltip
   icon?: IconName;
   shortcut?: ShortcutId;
   tip?: string;

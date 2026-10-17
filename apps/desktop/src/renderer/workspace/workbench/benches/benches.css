@@ -1,14 +1,50 @@
-/* The Road and Volumes workbenches and the Environment and Cutaway panel tabs: their body fills
-   the tab and scrolls; the controls keep the popover form's rows (.pop-form, .seg, .pop-row). */
+/* The workbenches' shared stylesheet: the Display, Point cloud, Road, Volumes, Video, Annotate and
+   Jobs benches, and the Environment and Cutaway panel tabs. Spacing, type and colour come from the
+   tokens. */
+
+/* ----------------------------------------------------------------------- shared */
+/* a bench body that fills the tab and scrolls */
 .wb-scroll {
   flex: 1 1 auto;
   min-block-size: 0;
   overflow: auto;
 }
-.wb-form {
-  padding: var(--sp-2) var(--sp-5) var(--sp-5);
+/* a bench of sections of plain controls in the sidebar's column (Display, Point cloud) */
+.wb-bench {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-2);
+  padding-block: var(--sp-2) var(--sp-5);
+  padding-inline: var(--sp-4);
+  min-inline-size: 0;
+}
+/* a section's controls stacked in a grid; its buttons keep their own width */
+.wb-controls {
+  display: grid;
+  gap: var(--sp-4);
+  padding-block: var(--sp-2) var(--sp-4);
+  padding-inline: var(--sp-4);
+  min-inline-size: 0;
+}
+.wb-controls > .btn {
+  justify-self: start;
+}
+/* a popover's form (.pop-form, which owns the grid and its rows) laid out in a tab: only the inset */
+.wb-pop-form {
+  padding-block: var(--sp-2) var(--sp-5);
+  padding-inline: var(--sp-5);
+}
+.wb-note {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
+/* a layer row's eye is always there, not only on hover: it says what is shown */
+.wb-eye-row .row-acts {
+  visibility: visible;
 }
 
+/* ----------------------------------------------------------------------- Road */
 /* the road's legend under the overlay choice: plain rows, not the map's floating box */
 .rr-legend-inline {
   display: grid;
@@ -22,7 +58,8 @@
   margin-block-end: var(--sp-1);
 }
 
-/* Volumes: the controls above the inventory, which scrolls on its own */
+/* ----------------------------------------------------------------------- Volumes */
+/* the controls above the inventory, which scrolls on its own */
 .vol-bench {
   flex: 1 1 auto;
   min-block-size: 0;
@@ -41,8 +78,6 @@
   flex-wrap: wrap;
   max-inline-size: 100%;
 }
-
-/* The Video, Annotate and Jobs workbenches. Spacing, type and colour come from the tokens. */
 
 /* ----------------------------------------------------------------------- Video and camera */
 .vb {

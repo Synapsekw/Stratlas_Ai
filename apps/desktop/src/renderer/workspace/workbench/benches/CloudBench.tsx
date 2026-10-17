@@ -12,7 +12,7 @@ import { cleanup, useCleanup } from '../../../pointcloud/cleanupStore';
 import { openQaPanel, useQa } from '../../../survey/qaStore';
 import { useCloudLayers } from '../../tools/cloud';
 import { Section } from '../Section';
-import './bench.css';
+import './benches.css';
 
 const BENCH = 'clouds';
 
@@ -64,14 +64,14 @@ export function CloudBench() {
   return (
     <div className="wb-bench" data-testid="cloud-bench">
       <Section id="cloud-show" bench={BENCH} title={t('bench.cloud.show')} defaultOpen>
-        <div className="wb-form">
+        <div className="wb-controls">
           <Button icon="cloud" pressed={shown} data-testid="cloud-show-all" onClick={toggle}>
             {many ? t('bench.cloud.showMany') : t('bench.cloud.showAll')}
           </Button>
         </div>
       </Section>
       <Section id="cloud-colour" bench={BENCH} title={t('bench.cloud.colour')} defaultOpen>
-        <div className="wb-form" data-testid="cloud-panel">
+        <div className="wb-controls" data-testid="cloud-panel">
           <PointCloudControls className="pop-form" />
         </div>
       </Section>
@@ -86,7 +86,7 @@ export function CloudBench() {
         ))}
       </Section>
       <Section id="cloud-cleanup" bench={BENCH} title={t('bench.cloud.cleanup')}>
-        <div className="wb-form">
+        <div className="wb-controls">
           <Button
             icon="boxclip"
             pressed={cleanupOpen}
@@ -102,7 +102,7 @@ export function CloudBench() {
         </div>
       </Section>
       <Section id="cloud-qa" bench={BENCH} title={t('bench.cloud.qa')}>
-        <div className="wb-form">
+        <div className="wb-controls">
           <Button
             icon="shield"
             pressed={qaOpen}

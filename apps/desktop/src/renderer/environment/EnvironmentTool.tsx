@@ -125,7 +125,7 @@ function EnvironmentPanel({ stage, originH }: { stage: EngineStage; originH: num
   };
   const tz = `${offset >= 0 ? '+' : ''}${String(offset)}`;
   return (
-    <div className="pop-form env-pop wb-form" data-testid="env-panel">
+    <div className="pop-form env-pop wb-pop-form" data-testid="env-panel">
       <span className="pop-title">{t('stage.env.title')}</span>
       <div className="seg pop-seg" role="group" aria-label={t('stage.env.backdrop')}>
         {(['sky', 'studio'] as const).map((m) => (

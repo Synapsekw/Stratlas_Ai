@@ -10,7 +10,7 @@ import { shell, useShell } from '../../../shell';
 import { useStreetMapButton } from '../../StreetMapTool';
 import { KINDS, LABEL_MODES, useKindLayers } from '../../tools/display';
 import { Section } from '../Section';
-import './bench.css';
+import './benches.css';
 
 const BENCH = 'display';
 
@@ -45,7 +45,7 @@ function Labels() {
   const mode = useShell((s) => s.labelMode);
   const hint = LABEL_MODES.find((m) => m.mode === mode)?.hint ?? '';
   return (
-    <div className="wb-form">
+    <div className="wb-controls">
       <div className="seg" role="group" aria-label={t('bench.display.labelsGroup')}>
         {LABEL_MODES.map((m) => (
           <button
@@ -69,7 +69,7 @@ function Pins() {
   const t = useT();
   const on = usePinDisplay((s) => s.filter !== 'off');
   return (
-    <div className="wb-form">
+    <div className="wb-controls">
       <Button
         icon="pin"
         pressed={on}
@@ -120,7 +120,7 @@ function StreetMap() {
   if (!tool) return null;
   return (
     <Section id="display-streetmap" bench={BENCH} title={t('bench.display.streetMap')}>
-      <div className="wb-form">
+      <div className="wb-controls">
         <Button
           icon="map"
           pressed={tool.pressed}

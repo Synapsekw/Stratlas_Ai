@@ -23,17 +23,17 @@ export function RoadBench() {
   // the close-up and the measure are the map's: not in the 3D view
   const onMap = useShell((s) => s.stageMode) !== '3d';
   const reading = measure.mode ? measureText(measure.mode, measure.vertices) : null;
-  const mapOnly = onMap ? {} : { disabledReason: t('roadBench.mapOnly') };
+  const mapOnly = onMap ? undefined : t('roadBench.mapOnly');
   return (
     <div className="wb-scroll" data-testid="road-bench">
       <Section id="overlay" bench="road" title={t('roadBench.overlay')} defaultOpen>
-        <div className="pop-form wb-form">
+        <div className="pop-form wb-pop-form">
           <RoadOverlayControls />
           <RoadLegend inline />
         </div>
       </Section>
       <Section id="closeup" bench="road" title={t('roadBench.closeup')}>
-        <div className="pop-form wb-form">
+        <div className="pop-form wb-pop-form">
           <Button
             icon="photo"
             pressed={closeup}
@@ -41,7 +41,7 @@ export function RoadBench() {
             onClick={() => {
               setRoad({ closeup: !closeup });
             }}
-            {...mapOnly}
+            disabledReason={mapOnly}
           >
             {t('roadBench.closeupButton')}
           </Button>
@@ -49,12 +49,12 @@ export function RoadBench() {
         </div>
       </Section>
       <Section id="layers" bench="road" title={t('roadBench.layers')}>
-        <div className="pop-form wb-form rr-layers">
+        <div className="pop-form wb-pop-form rr-layers">
           <RoadLayerControls />
         </div>
       </Section>
       <Section id="measure" bench="road" title={t('roadBench.measure')}>
-        <div className="pop-form wb-form">
+        <div className="pop-form wb-pop-form">
           <Button
             icon="ruler"
             pressed={measure.mode !== null}
@@ -62,7 +62,7 @@ export function RoadBench() {
             onClick={() => {
               toggleMeasure();
             }}
-            {...mapOnly}
+            disabledReason={mapOnly}
           >
             {t('roadBench.measureButton')}
           </Button>

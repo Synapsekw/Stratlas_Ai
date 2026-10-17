@@ -30,7 +30,7 @@ export function CutawayPanel({ stage, tab = false }: { stage: EngineStage | null
   const { mode, opacity } = useCutawayPref();
   const inside = useCutawayState((s) => s.inside);
   return (
-    <div className={`pop-form${tab ? ' wb-form' : ''}`} data-testid="cutaway-panel">
+    <div className={`pop-form${tab ? ' wb-pop-form' : ''}`} data-testid="cutaway-panel">
       <span className="pop-title">{t('stage.cutaway.title')}</span>
       <div className="seg pop-seg" role="group" aria-label={t('stage.cutaway.modes')}>
         {CUTAWAY_MODES.map((m) => (
