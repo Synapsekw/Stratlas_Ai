@@ -58,9 +58,23 @@ describe('convertMediaManifest', () => {
         pos: [1, 2, 1.6],
         pin,
         capturedAt: '2026-10-01T09:00:00+02:00',
-        headingDeg: 0,
+        // the pinned heading, so the 360 faces where the pin's arrow pointed
+        headingDeg: 95,
       },
     ]);
+  });
+
+  it('gives a 360 of a photo pinned without a heading, or not pinned, a heading of 0', () => {
+    const loose = { ...photo, pin: { ground: [1, 2, 0], eyeM: 1.6 } };
+    const r = convertMediaManifest(manifest([photos([loose])]), {
+      layerId: 'photos-1',
+      itemId: 'ph',
+      to: 'pano',
+    });
+    if ('error' in r) throw new Error(r.error);
+    const l = layer(r.manifest, r.layerId);
+    if (l?.kind !== 'panoramas') throw new Error('kind');
+    expect(l.items[0]?.headingDeg).toBe(0);
   });
 
   it('joins an existing panoramas layer of that capture and renames a clashing id', () => {
@@ -138,7 +152,7 @@ describe('convertMediaManifest', () => {
         src: { path: 'photos/ph.jpg' },
         takenAt: '2026-10-01T09:00:00+02:00',
         pos: [1, 2, 1.6],
-        q: photoQuatFromHeading(0),
+        q: photoQuatFromHeading(95),
         pin,
       },
     ]);

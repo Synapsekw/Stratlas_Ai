@@ -79,7 +79,8 @@ export function convertMediaManifest(
           ...(item.pos ? { pos: item.pos } : {}),
           ...(item.pin ? { pin: item.pin } : {}),
           ...(time !== undefined ? { capturedAt: time } : {}),
-          headingDeg: 0,
+          // a pinned heading turns the 360 the way the pin's arrow points
+          headingDeg: item.pin?.headingDeg ?? 0,
         }
       : {
           id: itemId,
