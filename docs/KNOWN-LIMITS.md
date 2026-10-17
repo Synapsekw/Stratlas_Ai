@@ -24,6 +24,9 @@ Current limits only; each is removed from this list when fixed.
 - No Arabic translation yet; **Right to left** mirrors the panels only.
 - Opening projects again and again from the project list grows the app's window process by about 4 MB per open for the first 80 or so opens, then by under 1 MB per open (one demo project: about 360 MB to 590 MB after 120 opens). The app's own memory, its 3D resources and its WebGL contexts stay flat; the growth is in Chromium's native memory (likely worker heaps or Blink caches) and is not traced further yet. Restarting the app frees it.
 - The 3D view prepares the shaders of a new 3D Tiles tile, and of the view with the section or the cutaway switched on or off, before drawing them, so the view does not freeze. The tile, or the cut, therefore appears a moment later: a few frames with a graphics card; on a computer without one (software rendering) the picture can hold still for up to a few seconds while the rest of the window keeps responding. Opening a project and showing a layer for the first time still prepare their shaders while drawing: without a graphics card the whole window can stop responding for a moment then.
+- In a 3D view or pane narrower than 640 px, the coordinates readout is hidden while the Volumes hint ("Click a pile…") shows: the two share the bottom corner and do not both fit. Widen the view, or hide the hint with Esc, to see the coordinates again.
+- On a stage 420 px wide or narrower, the stage island drops its date steps (the arrows and the count) at rest. The date stays; step through the dates with Alt+Left and Alt+Right, or from the island's calendar.
+- In **Split**, when one side is about 200 px wide, the compass can be drawn over the Volumes hint in that side's bottom corner. Drag the divider to give the side more room.
 
 ## Reports, packages and maps
 
