@@ -16,6 +16,7 @@ import {
   unit,
 } from '../../../rf/__fixtures__/rfData';
 import { processingTools } from '../../../processingTools';
+import { RfLayer } from '../../../rf/RfLayer';
 import { resetRf, rfStore } from '../../../rf/rfStore';
 import { threeDates } from '../../__fixtures__/threeDates';
 import { sectionStore } from '../sectionState';
@@ -247,6 +248,36 @@ describe('RfBench', () => {
     expect(rfStore.getState().sectors.antennas[0]?.etiltDeg).toBe(6);
     expect(qi('[data-testid="rf-etilt-number"]')?.value).toBe('6');
     expect(h.sectors?.antennas[0]?.etiltDeg).toBe(4);
+  });
+
+  it('a close and reopen of the same project does not bring back unsaved edits', async () => {
+    // the RF layer, mounted with the app, resets the store when the project closes
+    root = createRoot(host);
+    act(() => {
+      setPack(h.pack);
+      root?.render(
+        <>
+          <RfLayer />
+          <RfBench />
+        </>,
+      );
+    });
+    await flush();
+    setNumber(qi('[data-testid="rf-etilt-number"]'), '6');
+    expect(rfStore.getState().dirty).toBe(true);
+    act(() => {
+      workspace.getState().closeProject();
+    });
+    await flush();
+    expect(rfStore.getState().projectId).toBeNull();
+    act(() => {
+      workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
+    });
+    await flush();
+    expect(rfStore.getState().projectId).toBe('p3');
+    expect(rfStore.getState().dirty).toBe(false);
+    expect(rfStore.getState().sectors.antennas[0]?.etiltDeg).toBe(4);
+    expect(qi('[data-testid="rf-etilt-number"]')?.value).toBe('4');
   });
 
   it('picking an AAU disables the antenna and radio fields and labels the AAU total power', async () => {

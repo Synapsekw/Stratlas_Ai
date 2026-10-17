@@ -366,6 +366,41 @@ describe('the Coverage layer', () => {
     expect(map.order.indexOf(COVERAGE_LAYER)).toBeLessThan(map.order.indexOf(BORESIGHT_LAYER));
   });
 
+  it('closing the project resets the RF store and starts no Worker', async () => {
+    // an unsaved edit, closed before its preview runs
+    act(() => {
+      patchSettings('ant-a', { etiltDeg: 6 });
+    });
+    expect(rfStore.getState().dirty).toBe(true);
+    act(() => {
+      workspace.getState().closeProject();
+    });
+    await wait(300);
+    const s = rfStore.getState();
+    expect(s.projectId).toBeNull();
+    expect(s.dirty).toBe(false);
+    expect(s.antennas).toBeNull();
+    expect(s.sectors.antennas).toEqual([]);
+    expect(h.workers.started).toBe(0);
+    expect(coverage.getState()).toMatchObject({ run: null, preview: null, previewSources: [] });
+    expect(map.sources.has(COVERAGE_SOURCE)).toBe(false);
+  });
+
+  it('closing the project puts a running preview Worker away and keeps the pack', async () => {
+    act(() => {
+      rfStore.setState({ pack: { state: 'ok', version: '1.0.0' } });
+    });
+    await preview();
+    expect(h.workers).toEqual({ started: 1, terminated: 0 });
+    act(() => {
+      workspace.getState().closeProject();
+    });
+    await wait(300);
+    expect(h.workers).toEqual({ started: 1, terminated: 1 });
+    expect(rfStore.getState().projectId).toBeNull();
+    expect(rfStore.getState().pack).toEqual({ state: 'ok', version: '1.0.0' });
+  });
+
   it('puts the preview Worker away and starts a new one for another project', async () => {
     await preview();
     expect(h.workers).toEqual({ started: 1, terminated: 0 });

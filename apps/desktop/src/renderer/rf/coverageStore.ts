@@ -43,6 +43,11 @@ export function useCoverage<T>(selector: (s: CoverageState) => T): T {
   return useStore(coverage, selector);
 }
 
+/** Drop the shown run and preview (the project closed). */
+export function clearCoverage(): void {
+  coverage.setState({ run: null, runError: null, preview: null, previewSources: [] });
+}
+
 /** What the layer draws: the preview while there are changes, else the selected run. */
 export function shownGrids(c: CoverageState, rf: Pick<RfState, 'dirty'>): CoverageGrids | null {
   return rf.dirty && c.preview ? c.preview : c.run;
@@ -243,6 +248,6 @@ export function followCoverage(deps: CoverageDeps): () => void {
     if (timer) clearTimeout(timer);
     runToken++;
     previewToken++;
-    coverage.setState({ run: null, runError: null, preview: null, previewSources: [] });
+    clearCoverage();
   };
 }

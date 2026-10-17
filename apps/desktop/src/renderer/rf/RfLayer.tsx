@@ -22,11 +22,17 @@ import {
 } from './coverageDraw';
 import { attachCoverageMap, type CoverageMapView } from './coverageMap';
 import { attachCoverageScene, type CoverageSceneView } from './coverageScene';
-import { followCoverage, refreshPreview, shownGrids, useCoverage } from './coverageStore';
+import {
+  clearCoverage,
+  followCoverage,
+  refreshPreview,
+  shownGrids,
+  useCoverage,
+} from './coverageStore';
 import { dsmGroundProvider } from './dsmGround';
 import { startPreviewWorker, type PreviewClient } from './previewClient';
 import { loadRfLayer, useRfLayer } from './coverageDisplay';
-import { loadRf, rfStore, selectRun, setDsmGroundProvider, useRf } from './rfStore';
+import { loadRf, resetRf, rfStore, selectRun, setDsmGroundProvider, useRf } from './rfStore';
 
 /** A project file's bytes through the app's project protocol; null when it is missing. */
 async function projectBytes(projectId: string, path: string): Promise<Uint8Array | null> {
@@ -35,13 +41,23 @@ async function projectBytes(projectId: string, path: string): Promise<Uint8Array
   return new Uint8Array(await r.arrayBuffer());
 }
 
-/** Load the RF store for the open project (the RF tab does too) and pick its newest run once. */
+/**
+ * Load the RF store for the open project (the RF tab does too) and pick its newest run once. A
+ * closed project resets the RF store and the coverage, so nothing of it (an unsaved edit, its run
+ * grids) is left for a later open of the same project.
+ */
 function useRfProject(): void {
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const picked = useRef<string | null>(null);
   useEffect(() => {
     loadRfLayer(projectId);
-    if (projectId && rfStore.getState().projectId !== projectId) void loadRf(projectId);
+    if (!projectId) {
+      picked.current = null;
+      if (rfStore.getState().projectId !== null) resetRf({ keepPack: true });
+      clearCoverage();
+      return;
+    }
+    if (rfStore.getState().projectId !== projectId) void loadRf(projectId);
   }, [projectId]);
   useEffect(
     () =>
@@ -92,9 +108,11 @@ export function RfLayer(): null {
   useDsmGround();
 
   // the run and preview controller, with the preview Worker started when first needed; a new
-  // project starts both again, so no path-loss grid of the last project stays in memory
+  // project starts both again, so no path-loss grid of the last project stays in memory, and with
+  // no project open neither runs
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   useEffect(() => {
+    if (!projectId) return;
     let client: PreviewClient | null = null;
     const stop = followCoverage({
       bytes: projectBytes,

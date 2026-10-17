@@ -208,12 +208,17 @@ const set = (patch: Partial<Base>): void => {
   rfStore.setState({ ...patch, ...derived(next) });
 };
 
-/** Resets the store (project closed, or a test). */
-export function resetRf(): void {
+/**
+ * Resets the store (project closed, or a test). `keepPack` keeps the installed pack, which belongs
+ * to the app rather than the project (the RF tab hands it over only when it changes).
+ */
+export function resetRf(opts: { keepPack?: boolean } = {}): void {
   loadSeq++;
   dsmGroundAt = null;
   queue = Promise.resolve();
-  rfStore.setState(initial());
+  const pack = opts.keepPack === true ? get().pack : null;
+  const b = { ...base(), pack };
+  rfStore.setState({ ...b, ...derived(b) });
 }
 
 // ---------------------------------------------------------------- loading
