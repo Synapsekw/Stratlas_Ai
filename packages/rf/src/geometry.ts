@@ -33,7 +33,7 @@ export interface AntennaOrientation {
 }
 
 export interface GridAntennaOrientation {
-  /** Degrees clockwise from grid north (`azimuthGridDeg` in `aio.antennas/1`). */
+  /** Degrees clockwise from grid north (`azimuthGridDeg` in the antenna inventory file, `telecom/antennas.json`). */
   azimuthGridDeg: number;
   /** True azimuth = grid azimuth + convergence. Null when the project has no CRS. */
   convergenceDeg: number | null;
