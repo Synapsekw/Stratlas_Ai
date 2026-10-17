@@ -43,6 +43,7 @@ import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { tilesDebug } from './workspace/siteTiles';
 import { registerCorrectedPhotos } from './builder/photoPoses';
 import { workbench } from './workspace/workbench/workbenchStore';
+import { antennaStore } from './telecom/antennaStore';
 
 let started = false;
 
@@ -132,6 +133,8 @@ export function bootstrap(): void {
     __stratlas: {
       workspace,
       stage: getActiveStage,
+      /** The antenna inventory's store (e2e: the AI send preview without a provider). */
+      antennas: antennaStore,
       volumetric,
       graphics,
       /** Tier, detection facts and memory now (diagnostics, the performance tests). */

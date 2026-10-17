@@ -10,7 +10,11 @@ import { measureControl } from './island';
 import { writeTelecomTower } from './telecomFixtures';
 
 interface Inspect {
-  __stratlas: { stage(): EngineStage | null };
+  __stratlas: {
+    stage(): EngineStage | null;
+    antennas: { setState(patch: Record<string, unknown>): void };
+    workspace: { getState(): { project: { id: string } | null } };
+  };
 }
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -155,6 +159,43 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await expect(win.getByTestId('antenna-csv')).toBeVisible();
   await evidence(win, 'f-csv-next-to-export');
   await win.keyboard.press('Escape');
+
+  // the AI send preview (set as a run would, no provider needed) is a modal over the whole window,
+  // on the modal layer, not clipped to the sidebar
+  await win.evaluate(() => {
+    (window as unknown as Inspect).__stratlas.antennas.setState({
+      aiPreview: {
+        projectId: (window as unknown as Inspect).__stratlas.workspace.getState().project?.id,
+        unitIds: ['u1'],
+        value: {
+          ok: true,
+          provider: 'anthropic',
+          model: 'm1',
+          cloud: true,
+          photosAllowed: false,
+          crops: [],
+          missing: [],
+          estimate: { images: 1, inputTokens: 900, costUsd: 0.02 },
+          token: 'e2e',
+        },
+      },
+    });
+  });
+  const preview = win.getByRole('dialog', { name: 'Send photo crops for labelling' });
+  await expect(preview).toBeVisible();
+  const layer = await win.locator('.antenna-send-layer .ag-modal-back').evaluate((back) => {
+    const r = back.getBoundingClientRect();
+    return {
+      z: getComputedStyle(back).zIndex,
+      modal: getComputedStyle(document.documentElement).getPropertyValue('--z-modal').trim(),
+      covers: r.left <= 0 && r.top <= 0 && r.right >= innerWidth && r.bottom >= innerHeight,
+    };
+  });
+  expect(layer.z).toBe(layer.modal);
+  expect(layer.covers, 'the preview backdrop covers the window').toBe(true);
+  await evidence(win, 'g-ai-send-preview');
+  await win.keyboard.press('Escape');
+  await expect(preview).toHaveCount(0);
 
   // the accept is on disk before the reload reads it again
   await expect

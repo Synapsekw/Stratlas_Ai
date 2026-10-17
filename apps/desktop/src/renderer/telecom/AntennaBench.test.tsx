@@ -19,7 +19,7 @@ import { jobs, shell } from '../shell';
 import { measureStore, startTool, stopTool } from '../survey/measureStore';
 import { MeasureBench } from '../workspace/workbench/benches/MeasureBench';
 import { sectionStore } from '../workspace/workbench/sectionState';
-import { antennaStore, runDetection, setAiLabelPref } from './antennaStore';
+import { antennaStore, loadAntennas, runDetection, setAiLabelPref } from './antennaStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -327,6 +327,36 @@ describe('the antenna inventory in the Measure workbench', () => {
     });
     expect(head()?.getAttribute('aria-expanded')).toBe('false');
   });
+
+  it('a header click ends the hold of a pick and folds the section', async () => {
+    await mount();
+    // open as the person left it (the default): the pick holds it, the header folds it
+    act(() => {
+      h.layerPick!('ant-d1');
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    act(() => {
+      head()!.click();
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+    expect(antennaStore.getState().selected).toBe('ant-d1');
+    // folded by the person before the pick: the click ends the hold, the saved fold stays
+    act(() => {
+      h.layerPick!('ant-d1');
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    const saved = JSON.stringify(sectionStore.getState().byBench);
+    act(() => {
+      head()!.click();
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+    expect(JSON.stringify(sectionStore.getState().byBench)).toBe(saved);
+    // and the next click opens it as usual
+    act(() => {
+      head()!.click();
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+  });
 });
 
 describe('AI labelling after a run', () => {
@@ -392,6 +422,25 @@ describe('AI labelling after a run', () => {
     const d = dialog();
     expect(d).not.toBeNull();
     expect(d!.closest('[inert]')).toBeNull();
+  });
+
+  it('offers it when a newer read of the inventory overtakes the one after the run', async () => {
+    h.replies['ai:antennaLabelPreview'] = PREVIEW;
+    setAiLabelPref('p1', true);
+    antennaStore.setState({ projectId: 'p1', root: 'C:/proj', file: sample(), status: 'ready' });
+    await act(async () => {
+      await runDetection();
+    });
+    h.disk = sample('run-b');
+    act(() => {
+      jobs.setState({ jobs: [{ id: 'j1', status: 'done' } as unknown as JobRecord] });
+      // a bench mounting now reads the inventory again, before the first read is back
+      void loadAntennas('p1', 'C:/proj');
+    });
+    await flush();
+    expect(antennaStore.getState().file?.run.id).toBe('run-b');
+    expect(channels('ai:antennaLabelPreview')).toHaveLength(1);
+    expect(antennaStore.getState().aiPreview).not.toBeNull();
   });
 
   it('says why it was skipped above the inventory, which a fold does not hide', async () => {

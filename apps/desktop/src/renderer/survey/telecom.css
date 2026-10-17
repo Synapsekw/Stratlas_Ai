@@ -91,13 +91,18 @@
   gap: var(--sp-3);
   justify-items: start;
 }
-/* the AI send preview: a modal under <body>, on the app's modal layer */
-.antenna-send-layer .ag-modal-back {
+/* the AI send preview: a modal under <body>, on the app's modal layer; one class more than the
+   agent panel's own rules (.aio-agent .ag-modal-back), so the order of the sheets never matters */
+.antenna-send-layer .aio-agent .ag-modal-back {
   z-index: var(--z-modal);
 }
-.antenna-send-layer .ag-modal.surface-dlg {
+.antenna-send-layer .aio-agent .ag-modal.surface-dlg {
   box-shadow: var(--el-3);
 }
 .telecom-note {
   margin-inline: var(--sp-4);
+}
+/* the inventory's wrapper only listens for clicks: its section lays out as a bench child */
+.telecom-section {
+  display: contents;
 }

@@ -2,7 +2,7 @@
  * The antenna inventory as a section of the Measure workbench: the run's warnings, the units by
  * kind and the selected unit's details. A unit picked in the 3D view holds the section open while
  * it stays selected (without changing the person's own fold) and its row scrolls into view once
- * the section has opened. A search shows the section only when its title matches. Why the AI
+ * the section has opened; a click on the header ends the hold and folds it. A search shows the section only when its title matches. Why the AI
  * labelling was skipped shows above the section, so no fold hides it. The boxes, the
  * inventory read and the AI send preview are `AntennaRunner`'s; the "Detect antennas" button is in
  * the Telecom family (`survey/DetectAntennas.tsx`), the CSV export next to "Export survey data"
@@ -10,9 +10,10 @@
  */
 import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactElement } from 'react';
 import { openPhoto } from '../builder/photoOpen';
 import { Section } from '../workspace/workbench/Section';
+import { useSections } from '../workspace/workbench/sectionState';
 import { AntennaDetails } from './AntennaDetails';
 import { AntennaInventory } from './AntennaInventory';
 import { useAntennaClouds } from './AntennaRunner';
@@ -40,14 +41,17 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
   const s = useAntennas((a) => a);
   const hasCloud = useAntennaClouds().length > 0;
   const host = useRef<HTMLDivElement>(null);
-  // the pick being revealed: held open while its unit stays selected
-  const [revealing, setRevealing] = useState<{ seq: number; id: string } | null>(null);
-  if (s.reveal !== 0 && (revealing?.seq ?? 0) < s.reveal && s.selected !== null)
-    setRevealing({ seq: s.reveal, id: s.selected });
-  else if (revealing && s.selected !== revealing.id) setRevealing(null);
+  const sections = useSections(BENCH);
+  // the last pick seen, and the unit it holds open while that unit stays selected
+  const [seen, setSeen] = useState(s.reveal);
+  const [hold, setHold] = useState<string | null>(null);
+  if (s.reveal !== seen) {
+    setSeen(s.reveal);
+    setHold(s.selected);
+  } else if (hold !== null && s.selected !== hold) setHold(null);
 
   // scroll the revealed row into view once the fold has opened (it animates from zero height)
-  const seq = revealing?.seq;
+  const seq = hold === null ? undefined : seen;
   useEffect(() => {
     if (seq === undefined) return;
     const section = host.current?.closest<HTMLElement>('.wb-section');
@@ -87,8 +91,17 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
   const aiProvider = selected?.ai?.provider;
   const listed = file?.units.filter((u) => u.status !== 'rejected').length ?? 0;
 
+  // while a pick holds the section open its header click would look dead: it ends the hold and
+  // folds the section (a fold the person asks for, so it is kept)
+  const releaseOnHead = (e: MouseEvent) => {
+    if (hold === null || !(e.target as Element).closest('.wb-section-head')) return;
+    e.stopPropagation();
+    setHold(null);
+    if (sections.isOpen(SECTION, true)) sections.toggle(SECTION, true);
+  };
+
   return (
-    <>
+    <div className="telecom-section" onClickCapture={releaseOnHead}>
       {s.aiNote !== null && (
         <p className="telecom-help telecom-note" role="status" data-testid="antenna-ai-note">
           {t('telecom.antennas.ai.skipped', { reason: s.aiNote })}
@@ -100,7 +113,7 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
         title={t('telecom.antennas.title')}
         count={listed}
         defaultOpen
-        forceOpen={searching || revealing !== null ? true : undefined}
+        forceOpen={searching || hold !== null ? true : undefined}
       >
         <div
           ref={host}
@@ -148,6 +161,6 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
           )}
         </div>
       </Section>
-    </>
+    </div>
   );
 }

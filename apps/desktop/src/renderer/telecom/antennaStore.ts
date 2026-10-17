@@ -75,6 +75,8 @@ const get = () => antennaStore.getState();
 
 /** Guards a slow read against a newer load or a project switch. */
 let loadSeq = 0;
+/** A finished run's AI offer, made once the inventory read after it is in (whichever read). */
+let offerAfterLoad: { projectId: string; before: string | null } | null = null;
 /** Writes run one after the other so a quick second click builds on the first. */
 let queue: Promise<void> = Promise.resolve();
 
@@ -112,6 +114,11 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
         .map((id) => [id, true as const]),
     ),
   });
+  if (offerAfterLoad?.projectId === projectId) {
+    const { before } = offerAfterLoad;
+    offerAfterLoad = null;
+    offerAiLabels(projectId, before);
+  }
 }
 
 // ---------------------------------------------------------------- the job
@@ -136,10 +143,12 @@ function onJobs(list: readonly JobRecord[]): void {
     case 'done': {
       const { projectId, root, file } = get();
       set({ running: false, jobId: null, needsHint: false, message: null });
-      if (projectId && root)
-        void loadAntennas(projectId, root).then(() => {
-          offerAiLabels(projectId, file?.run.id ?? null);
-        });
+      if (projectId && root) {
+        // a newer read (a bench mounting meanwhile) may supersede this one: the offer follows
+        // whichever read brings the new file in
+        offerAfterLoad = { projectId, before: file?.run.id ?? null };
+        void loadAntennas(projectId, root);
+      }
       return;
     }
     case 'failed': {
