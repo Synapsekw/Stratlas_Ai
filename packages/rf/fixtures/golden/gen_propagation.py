@@ -31,6 +31,8 @@ RMA_W = 20.0  # average street width
 HATA_RANGE = (150.0, 1500.0)
 COST231_RANGE = (1500.0, 2000.0)
 TR_RANGE = {"uma": (500.0, 100000.0), "umi": (500.0, 100000.0), "rma": (500.0, 30000.0)}
+# Lower end of each scenario's UE height range (Table 7.4.1-1); a lower UE is clamped up to it.
+UE_MIN = {"uma": 1.5, "umi": 1.5, "rma": 1.0}
 HATA_AREA_OF_ENV = {"uma": "urban", "umi": "urban", "rma": "open"}
 
 
@@ -58,8 +60,9 @@ def p_los(env, d2, hut):
     return p
 
 
-def tr38901(env, f_mhz, d2_in, hbs, hut):
-    """Returns (los, nlos, plos, expected, breakpoint)."""
+def tr38901(env, f_mhz, d2_in, hbs, hut_in):
+    """Returns (los, nlos, plos, expected, breakpoint, hut_used)."""
+    hut = hut_in if hut_in >= UE_MIN[env] else UE_MIN[env]
     fg = f_mhz / 1000.0
     fhz = f_mhz * 1e6
     d2 = max(d2_in, MIN_D2D)
@@ -102,7 +105,7 @@ def tr38901(env, f_mhz, d2_in, hbs, hut):
         )
     nlos = los if los > nlos_p else nlos_p
     p = p_los(env, d2, hut)
-    return los, nlos, p, p * los + (1 - p) * nlos, dbp
+    return los, nlos, p, p * los + (1 - p) * nlos, dbp, hut
 
 
 def fspl(f_mhz, d3):
@@ -149,7 +152,7 @@ def refusal(model, env, f, hb, hm):
         return {"refused": True, "code": "frequency", "rangeMHz": [lo, hi]}
     if hb <= 0 or hm <= 0:
         return {"refused": True, "code": "height", "rangeMHz": None}
-    if model == "tr38901" and env in ("uma", "umi") and (hm <= H_E or hb <= H_E):
+    if model == "tr38901" and env in ("uma", "umi") and hb <= H_E:
         return {"refused": True, "code": "height", "rangeMHz": None}
     return None
 
@@ -175,9 +178,18 @@ def vector(vid, model, env, f, d2, hb, hm, area=None, extra=()):
     if r is not None:
         covers.append("refused-" + r["code"])
         return {"id": vid, "covers": covers, "input": inp, "expected": r}
-    exp = {"refused": False, "losDb": None, "nlosDb": None, "pLos": None, "breakpointM": None}
+    exp = {
+        "refused": False,
+        "losDb": None,
+        "nlosDb": None,
+        "pLos": None,
+        "breakpointM": None,
+        "hUtUsedM": None,
+    }
     if model == "tr38901":
-        los, nlos, p, e, dbp = tr38901(env, f, d2, hb, hm)
+        los, nlos, p, e, dbp, hut_used = tr38901(env, f, d2, hb, hm)
+        if hut_used != hm:
+            covers.append("ue-clamp")
         covers.append("los-pl1" if max(d2, MIN_D2D) <= dbp else "los-pl2")
         if nlos == los:
             covers.append("nlos-floor-los")
@@ -189,6 +201,7 @@ def vector(vid, model, env, f, d2, hb, hm, area=None, extra=()):
             nlosDb=round(nlos, 6),
             pLos=round(p, 9),
             breakpointM=round(dbp, 6),
+            hUtUsedM=hut_used,
         )
     elif model == "free-space":
         exp["pathLossDb"] = round(fspl(f, dist3(max(d2, MIN_D2D), hb, hm)), 6)
@@ -223,7 +236,13 @@ def vectors():
     out.append(vector("uma-1840-d5-clamp", "tr38901", "uma", 1840.0, 5.0, 25.0, 1.5))
     out.append(vector("umi-3500-d15", "tr38901", "umi", 3500.0, 15.0, 10.0, 1.5))
     # refusals in 38.901
-    out.append(vector("uma-ue-1m-refused", "tr38901", "uma", 1840.0, 500.0, 25.0, 1.0))
+    # UE below the scenario range: clamped to 1.5 m (UMa, UMi) or 1 m (RMa), never refused
+    for env, hb in (("uma", 25.0), ("umi", 10.0), ("rma", 35.0)):
+        for hm in (0.5, 1.0):
+            for f, d in ((1840.0, 200.0), (3500.0, 1000.0)):
+                out.append(vector(f"{env}-ue{hm:g}-{int(f)}-d{int(d)}", "tr38901", env, f, d, hb, hm))
+    # an antenna with no effective height is still refused
+    out.append(vector("umi-bs-1m-refused", "tr38901", "umi", 1840.0, 500.0, 1.0, 1.5))
     out.append(vector("rma-40ghz-refused", "tr38901", "rma", 40000.0, 500.0, 35.0, 1.5))
     out.append(vector("uma-400mhz-refused", "tr38901", "uma", 400.0, 500.0, 25.0, 1.5))
 
@@ -268,7 +287,7 @@ def vectors():
 CONVENTIONS = {
     "distance": "d2DM is the horizontal distance from the mast to the UE. Every model clamps it to at least 10 m (the 38.901 lower bound); d3D = sqrt(d2D^2 + (hBsM - hUtM)^2). Beyond the validated range (5 km for 38.901 UMa/UMi NLOS and RMa NLOS, 10 km RMa LOS, 1 to 20 km for Hata) the formulas are extrapolated as written; that is a warning, never a refusal.",
     "heights": "hBsM is the antenna height above the tower-base ground, hUtM the UE height above the same ground (flat ground, spec D17).",
-    "tr38901": "3GPP TR 38.901 V17 Table 7.4.1-1, fc in GHz inside the formulas, c = 3.0e8. UMa: d'BP = 4 h'BS h'UT fc[Hz]/c with h' = h - hE, PL1 = 28 + 22 log10(d3D) + 20 log10(fc), PL2 = 28 + 40 log10(d3D) + 20 log10(fc) - 9 log10(d'BP^2 + (hBS - hUT)^2), NLOS' = 13.54 + 39.08 log10(d3D) + 20 log10(fc) - 0.6 (hUT - 1.5). UMi street canyon: same d'BP, PL1 = 32.4 + 21 log10(d3D) + 20 log10(fc), PL2 = 32.4 + 40 log10(d3D) + 20 log10(fc) - 9.5 log10(d'BP^2 + (hBS - hUT)^2), NLOS' = 35.3 log10(d3D) + 22.4 + 21.3 log10(fc) - 0.3 (hUT - 1.5). RMa: dBP = 2 pi hBS hUT fc[Hz]/c with actual heights, PL1(d) = 20 log10(40 pi d fc/3) + min(0.03 h^1.72, 10) log10(d) - min(0.044 h^1.72, 14.77) + 0.002 log10(h) d, PL2 = PL1(dBP) + 40 log10(d3D/dBP), NLOS' = 161.04 - 7.1 log10(W) + 7.5 log10(h) - (24.37 - 3.7 (h/hBS)^2) log10(hBS) + (43.42 - 3.1 log10(hBS)) (log10(d3D) - 3) + 20 log10(fc) - (3.2 (log10(11.75 hUT))^2 - 4.97), h = 5 m, W = 20 m. PL1 when d2D <= breakpoint, else PL2. PL_NLOS = max(PL_LOS, NLOS'). hE = 1 m: exact for UMi; for UMa the TR draws hE = 1 m with probability 1/(1 + C(d2D, hUT)) and C = 0 for hUT < 13 m, so 1 m is exact at the default 1.5 m UE and a simplification above 13 m. UMa and UMi refuse hUT <= 1 m or hBS <= 1 m (no effective height). Frequency range: UMa and UMi 500 MHz to 100 GHz, RMa 500 MHz to 30 GHz; outside is refused.",
+    "tr38901": "3GPP TR 38.901 V17 Table 7.4.1-1, fc in GHz inside the formulas, c = 3.0e8. UMa: d'BP = 4 h'BS h'UT fc[Hz]/c with h' = h - hE, PL1 = 28 + 22 log10(d3D) + 20 log10(fc), PL2 = 28 + 40 log10(d3D) + 20 log10(fc) - 9 log10(d'BP^2 + (hBS - hUT)^2), NLOS' = 13.54 + 39.08 log10(d3D) + 20 log10(fc) - 0.6 (hUT - 1.5). UMi street canyon: same d'BP, PL1 = 32.4 + 21 log10(d3D) + 20 log10(fc), PL2 = 32.4 + 40 log10(d3D) + 20 log10(fc) - 9.5 log10(d'BP^2 + (hBS - hUT)^2), NLOS' = 35.3 log10(d3D) + 22.4 + 21.3 log10(fc) - 0.3 (hUT - 1.5). RMa: dBP = 2 pi hBS hUT fc[Hz]/c with actual heights, PL1(d) = 20 log10(40 pi d fc/3) + min(0.03 h^1.72, 10) log10(d) - min(0.044 h^1.72, 14.77) + 0.002 log10(h) d, PL2 = PL1(dBP) + 40 log10(d3D/dBP), NLOS' = 161.04 - 7.1 log10(W) + 7.5 log10(h) - (24.37 - 3.7 (h/hBS)^2) log10(hBS) + (43.42 - 3.1 log10(hBS)) (log10(d3D) - 3) + 20 log10(fc) - (3.2 (log10(11.75 hUT))^2 - 4.97), h = 5 m, W = 20 m. PL1 when d2D <= breakpoint, else PL2. PL_NLOS = max(PL_LOS, NLOS'). hE = 1 m: exact for UMi; for UMa the TR draws hE = 1 m with probability 1/(1 + C(d2D, hUT)) and C = 0 for hUT < 13 m, so 1 m is exact at the default 1.5 m UE and a simplification above 13 m. hUT below the scenario's UE range (UMa and UMi 1.5 m, RMa 1 m; Table 7.4.1-1 gives 1.5 to 22.5 m and 1 to 10 m) is clamped up to that lower bound everywhere in the formulas (d3D, breakpoint, NLOS, LOS probability), with a warning, never refused; hUtUsedM is the height used. UMa and UMi refuse hBS <= 1 m (no effective height). Frequency range: UMa and UMi 500 MHz to 100 GHz, RMa 500 MHz to 30 GHz; outside is refused.",
     "losProbability": "TR 38.901 Table 7.4.2-1 on d2D (clamped to 10 m). UMi: 1 for d2D <= 18 m, else 18/d2D + exp(-d2D/36)(1 - 18/d2D). UMa: 1 for d2D <= 18 m, else [18/d2D + exp(-d2D/63)(1 - 18/d2D)] [1 + C'(hUT) 5/4 (d2D/100)^3 exp(-d2D/150)], C' = 0 for hUT <= 13 m, ((hUT - 13)/10)^1.5 above. RMa: 1 for d2D <= 10 m, else exp(-(d2D - 10)/1000).",
     "expected": "pathLossDb for tr38901 is the expected path loss with LOS probability, combined in the dB domain: P_LOS PL_LOS + (1 - P_LOS) PL_NLOS (spec D14 'LOS probability averaged into an expected path loss'). The dB-domain mean is the planning convention; a linear-power mean would sit up to a few dB lower where P_LOS is mid-range.",
     "hata": "f in MHz, d in km, heights in m. a(hm): medium or small city (1.1 log10 f - 0.7) hm - (1.56 log10 f - 0.8); large city 8.29 (log10(1.54 hm))^2 - 1.1 below 300 MHz, else 3.2 (log10(11.75 hm))^2 - 4.97. Okumura-Hata urban = 69.55 + 26.16 log10 f - 13.82 log10 hb - a(hm) + (44.9 - 6.55 log10 hb) log10 d; suburban = urban - 2 (log10(f/28))^2 - 5.4; open = urban - 4.78 (log10 f)^2 + 18.33 log10 f - 40.94. COST-231 Hata = 46.3 + 33.9 log10 f - 13.82 log10 hb - a(hm) + (44.9 - 6.55 log10 hb) log10 d + Cm, Cm = 3 dB for urban-large (with the large-city a(hm)), else 0; suburban is the COST-231 medium-city formula as published; open applies the Okumura-Hata open-area correction (an extension, not in COST-231). Areas: urban-large, urban (medium city), suburban, open; when hataArea is null it follows the 38.901 environment: uma and umi urban, rma open. Both are floored at free space over d3D (the empirical fits go below free space near the mast, outside their 1 km validity). Okumura-Hata refuses f outside 150 to 1500 MHz, COST-231 outside 1500 to 2000 MHz (inclusive edges).",

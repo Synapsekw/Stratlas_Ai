@@ -40,6 +40,7 @@ interface Vector {
         nlosDb: number | null;
         pLos: number | null;
         breakpointM: number | null;
+        hUtUsedM: number | null;
       }
     | { refused: true; code: 'frequency' | 'height'; rangeMHz: [number, number] | null };
 }
@@ -96,6 +97,7 @@ describe('propagation golden vectors', () => {
       'free-space-floor',
       'refused-frequency',
       'refused-height',
+      'ue-clamp',
     ])
       expect(covered.has(tag), tag).toBe(true);
   });
@@ -127,6 +129,7 @@ describe('propagation golden vectors', () => {
         expect(Math.abs(r.pLos - (e.pLos ?? Number.NaN))).toBeLessThanOrEqual(
           g.tolerance.probability,
         );
+        expect(r.hUtUsedM).toBe(e.hUtUsedM);
         expect(Math.abs(r.breakpointM - (e.breakpointM ?? Number.NaN))).toBeLessThanOrEqual(
           g.tolerance.m,
         );

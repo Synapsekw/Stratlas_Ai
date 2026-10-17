@@ -180,17 +180,48 @@ describe('38.901 path loss (Table 7.4.1-1)', () => {
       12,
     );
   });
-  it('refuses a UE at or below the 1 m effective environment height in UMa and UMi', () => {
+  it('clamps a UE below the model range to its lower bound, with a warning, never refusing', () => {
+    for (const hUtM of [0.5, 1, 1.2]) {
+      const setup = {
+        model: 'tr38901',
+        environment: 'uma',
+        frequencyMHz: 1840,
+        hBsM: 25,
+        hUtM,
+      } as const;
+      expect(pathLossRefusal(setup)).toBeNull();
+      expect(pathLossDb(setup, 400)).toBeCloseTo(uma38901(1840, 400, 25, 1.5).expectedDb, 12);
+      expect(pathLossDb({ ...setup, environment: 'umi' }, 400)).toBeCloseTo(
+        umi38901(1840, 400, 25, 1.5).expectedDb,
+        12,
+      );
+      const w = pathLossWarnings(setup, 3000);
+      expect(w).toEqual([
+        { code: 'ue-height', message: 'UE height below the model range, 1.5 m used' },
+      ]);
+    }
+    expect(uma38901(1840, 400, 25, 0.5)).toEqual(uma38901(1840, 400, 25, 1.5));
+    expect(uma38901(1840, 400, 25, 0.5).hUtUsedM).toBe(1.5);
+    // RMa's range starts at 1 m
+    expect(rma38901(760, 2000, 35, 0.5)).toEqual(rma38901(760, 2000, 35, 1));
+    expect(
+      pathLossWarnings(
+        { model: 'tr38901', environment: 'rma', frequencyMHz: 760, hBsM: 35, hUtM: 0.5 },
+        3000,
+      ),
+    ).toEqual([{ code: 'ue-height', message: 'UE height below the model range, 1 m used' }]);
+    expect(rma38901(760, 2000, 35, 1.5).hUtUsedM).toBe(1.5);
+  });
+  it('still refuses an antenna at or below the 1 m effective environment height in UMa and UMi', () => {
     const setup = {
       model: 'tr38901',
-      environment: 'uma',
+      environment: 'umi',
       frequencyMHz: 1840,
-      hBsM: 25,
-      hUtM: 1,
+      hBsM: 1,
+      hUtM: 1.5,
     } as const;
     expect(pathLossRefusal(setup)).toMatchObject({ code: 'height' });
     expect(() => pathLossDb(setup, 100)).toThrow(PathLossRefusalError);
-    expect(pathLossRefusal({ ...setup, environment: 'rma' })).toBeNull();
   });
   it('refuses frequencies outside the 38.901 range', () => {
     expect(

@@ -204,15 +204,20 @@ export function findOrphans(file: SectorsPart, units: readonly RfUnit[]): Orphan
   return out;
 }
 
-/** Removes a unit's RF settings and sector membership (the person's Remove). */
+/**
+ * Removes a unit's RF settings and sector membership (the person's Remove). A sector the removal
+ * leaves empty is dropped with it.
+ */
 export function removeOrphan<T extends SectorsPart>(file: T, antennaId: string): T {
   return {
     ...file,
     antennas: file.antennas.filter((a) => a.antennaId !== antennaId),
-    sectors: file.sectors.map((s) => ({
-      ...s,
-      antennaIds: s.antennaIds.filter((id) => id !== antennaId),
-    })),
+    sectors: file.sectors
+      .filter((s) => !(s.antennaIds.length === 1 && s.antennaIds[0] === antennaId))
+      .map((s) => ({
+        ...s,
+        antennaIds: s.antennaIds.filter((id) => id !== antennaId),
+      })),
   };
 }
 

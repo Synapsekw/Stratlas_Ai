@@ -66,13 +66,15 @@ interface GoldenFile {
 }
 
 const dir = new URL('../fixtures/golden/', import.meta.url);
-// Every golden file without a `suite` is a pattern-and-budget file; other suites (propagation.json)
-// have their own runner (propagation.golden.test.ts).
-const files = readdirSync(dir).filter(
-  (f) =>
-    f.endsWith('.json') &&
-    (JSON.parse(readFileSync(new URL(f, dir), 'utf8')) as { suite?: string }).suite === undefined,
-);
+// Every golden file without a `suite` is a pattern-and-budget file; the only other suite is
+// `propagation` (propagation.json), which has its own runner (propagation.golden.test.ts).
+const all = readdirSync(dir)
+  .filter((f) => f.endsWith('.json'))
+  .map((f) => ({
+    file: f,
+    suite: (JSON.parse(readFileSync(new URL(f, dir), 'utf8')) as { suite?: unknown }).suite,
+  }));
+const files = all.filter((x) => x.suite === undefined).map((x) => x.file);
 
 function toPattern(p: GoldenPattern, eTiltDeg: number | null): AntennaPattern {
   if (p.kind === 'two-cut') return makeTwoCutPattern(p.horizontalDb, p.verticalDb, p.capDb);
@@ -88,8 +90,13 @@ function toPattern(p: GoldenPattern, eTiltDeg: number | null): AntennaPattern {
 }
 
 describe('golden vectors', () => {
-  it('has at least one golden file', () => {
+  it('has at least one pattern-and-budget golden file', () => {
     expect(files.length).toBeGreaterThan(0);
+  });
+
+  it('knows every suite a golden file carries', () => {
+    for (const x of all.filter((y) => y.suite !== undefined))
+      expect(x.suite, x.file).toBe('propagation');
   });
 
   for (const file of files) {

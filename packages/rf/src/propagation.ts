@@ -13,6 +13,8 @@
  *   effective heights h' = h - hE with hE = 1 m. That is exact for UMi. For UMa the TR draws hE = 1 m
  *   with probability 1 / (1 + C(d2D, hUT)) and C = 0 below a 13 m UE, so 1 m is exact at the default
  *   1.5 m UE and a deliberate simplification above 13 m. LOS probability from Table 7.4.2-1.
+ *   A UE below the scenario's range (UMa and UMi 1.5 m, RMa 1 m) is clamped up to it with a
+ *   `ue-height` warning; it is never refused, since the study allows a 0.5 m UE.
  * - Expected path loss = P_LOS PL_LOS + (1 - P_LOS) PL_NLOS, combined in dB (the planning
  *   convention; the spec says "averaged into an expected path loss" and names no domain).
  * - Okumura-Hata and COST-231 Hata are floored at free space over d3D: the empirical fits fall below
@@ -38,6 +40,21 @@ export const SPEED_OF_LIGHT = 299_792_458;
 export const MIN_DISTANCE_2D_M = 10;
 /** Effective environment height hE for the UMa and UMi breakpoint, metres. */
 export const EFFECTIVE_ENV_HEIGHT_M = 1;
+/**
+ * Lower end of each 38.901 scenario's UE height range (Table 7.4.1-1: UMa and UMi 1.5 to 22.5 m,
+ * RMa 1 to 10 m). A lower UE (the study allows 0.5 m) is clamped up to it, with a warning, and never
+ * refused: below 1 m UMa and UMi have no effective height at all.
+ */
+export const TR38901_MIN_UE_HEIGHT_M: Readonly<Record<Environment38901, number>> = {
+  uma: 1.5,
+  umi: 1.5,
+  rma: 1,
+};
+export const TR38901_MAX_UE_HEIGHT_M: Readonly<Record<Environment38901, number>> = {
+  uma: 22.5,
+  umi: 22.5,
+  rma: 10,
+};
 /** RMa defaults from Table 7.4.1-1: average building height and street width, metres. */
 export const RMA_BUILDING_HEIGHT_M = 5;
 export const RMA_STREET_WIDTH_M = 20;
@@ -108,6 +125,8 @@ export interface Tr38901Result {
   expectedDb: number;
   /** d'BP (UMa, UMi, effective heights) or dBP (RMa, actual heights), metres. */
   breakpointM: number;
+  /** The UE height the formulas used: hUT clamped up to TR38901_MIN_UE_HEIGHT_M. */
+  hUtUsedM: number;
 }
 
 const log10 = Math.log10;
@@ -151,16 +170,12 @@ export function pathLossRefusal(s: PathLossSetup): PathLossRefusal | null {
       rangeMHz: null,
       message: 'Antenna and UE heights must be above the ground.',
     };
-  if (
-    s.model === 'tr38901' &&
-    s.environment !== 'rma' &&
-    (s.hUtM <= EFFECTIVE_ENV_HEIGHT_M || s.hBsM <= EFFECTIVE_ENV_HEIGHT_M)
-  )
+  if (s.model === 'tr38901' && s.environment !== 'rma' && s.hBsM <= EFFECTIVE_ENV_HEIGHT_M)
     return {
       code: 'height',
       model: s.model,
       rangeMHz: null,
-      message: `${MODEL_LABEL[s.model]} ${s.environment.toUpperCase()} needs the antenna and the UE above ${String(EFFECTIVE_ENV_HEIGHT_M)} m.`,
+      message: `${MODEL_LABEL[s.model]} ${s.environment.toUpperCase()} needs the antenna above ${String(EFFECTIVE_ENV_HEIGHT_M)} m.`,
     };
   return null;
 }
@@ -176,19 +191,22 @@ export function pathLossWarnings(s: PathLossSetup, maxDistanceM: number): PathLo
         code: 'distance-far',
         message: `${name} is validated to 5 km; beyond it the result is extrapolated.`,
       });
-    const [bs, ue] =
-      s.environment === 'rma'
-        ? [between(s.hBsM, 10, 150), between(s.hUtM, 1, 10)]
-        : [true, between(s.hUtM, 1.5, 22.5)];
-    if (!bs)
+    if (s.environment === 'rma' && !between(s.hBsM, 10, 150))
       out.push({
         code: 'bs-height',
         message: `${name} RMa is validated for antennas 10 to 150 m high.`,
       });
-    if (!ue)
+    const lo = TR38901_MIN_UE_HEIGHT_M[s.environment];
+    const hi = TR38901_MAX_UE_HEIGHT_M[s.environment];
+    if (s.hUtM < lo)
       out.push({
         code: 'ue-height',
-        message: `${name} is validated for UE heights ${s.environment === 'rma' ? '1 to 10' : '1.5 to 22.5'} m.`,
+        message: `UE height below the model range, ${String(lo)} m used`,
+      });
+    else if (s.hUtM > hi)
+      out.push({
+        code: 'ue-height',
+        message: `${name} is validated for UE heights ${String(lo)} to ${String(hi)} m.`,
       });
   } else if (s.model === 'okumura-hata' || s.model === 'cost231-hata') {
     out.push({
@@ -232,7 +250,13 @@ export function losProbability38901(env: Environment38901, d2DM: number, hUtM: n
   return p * (1 + cPrime * 1.25 * (d / 100) ** 3 * Math.exp(-d / 150));
 }
 
-function mix(los: number, nlosPrime: number, pLos: number, breakpointM: number): Tr38901Result {
+function mix(
+  los: number,
+  nlosPrime: number,
+  pLos: number,
+  breakpointM: number,
+  hUtUsedM: number,
+): Tr38901Result {
   const nlos = Math.max(los, nlosPrime);
   return {
     losDb: los,
@@ -240,16 +264,18 @@ function mix(los: number, nlosPrime: number, pLos: number, breakpointM: number):
     pLos,
     expectedDb: pLos * los + (1 - pLos) * nlos,
     breakpointM,
+    hUtUsedM,
   };
 }
 
-/** TR 38.901 UMa. */
+/** TR 38.901 UMa. hUT is clamped up to the scenario's lower bound. */
 export function uma38901(
   frequencyMHz: number,
   d2DM: number,
   hBsM: number,
-  hUtM: number,
+  hUtInM: number,
 ): Tr38901Result {
+  const hUtM = Math.max(hUtInM, TR38901_MIN_UE_HEIGHT_M.uma);
   const fc = frequencyMHz / 1000;
   const d2 = Math.max(d2DM, MIN_DISTANCE_2D_M);
   const dd = d3(d2, hBsM, hUtM);
@@ -261,16 +287,17 @@ export function uma38901(
       ? 28 + 22 * log10(dd) + 20 * log10(fc)
       : 28 + 40 * log10(dd) + 20 * log10(fc) - 9 * log10(bp * bp + (hBsM - hUtM) ** 2);
   const nlosPrime = 13.54 + 39.08 * log10(dd) + 20 * log10(fc) - 0.6 * (hUtM - 1.5);
-  return mix(los, nlosPrime, losProbability38901('uma', d2, hUtM), bp);
+  return mix(los, nlosPrime, losProbability38901('uma', d2, hUtM), bp, hUtM);
 }
 
-/** TR 38.901 UMi street canyon. */
+/** TR 38.901 UMi street canyon. hUT is clamped up to the scenario's lower bound. */
 export function umi38901(
   frequencyMHz: number,
   d2DM: number,
   hBsM: number,
-  hUtM: number,
+  hUtInM: number,
 ): Tr38901Result {
+  const hUtM = Math.max(hUtInM, TR38901_MIN_UE_HEIGHT_M.umi);
   const fc = frequencyMHz / 1000;
   const d2 = Math.max(d2DM, MIN_DISTANCE_2D_M);
   const dd = d3(d2, hBsM, hUtM);
@@ -282,16 +309,17 @@ export function umi38901(
       ? 32.4 + 21 * log10(dd) + 20 * log10(fc)
       : 32.4 + 40 * log10(dd) + 20 * log10(fc) - 9.5 * log10(bp * bp + (hBsM - hUtM) ** 2);
   const nlosPrime = 35.3 * log10(dd) + 22.4 + 21.3 * log10(fc) - 0.3 * (hUtM - 1.5);
-  return mix(los, nlosPrime, losProbability38901('umi', d2, hUtM), bp);
+  return mix(los, nlosPrime, losProbability38901('umi', d2, hUtM), bp, hUtM);
 }
 
-/** TR 38.901 RMa, with h = 5 m and W = 20 m. */
+/** TR 38.901 RMa, with h = 5 m and W = 20 m. hUT is clamped up to the scenario's lower bound. */
 export function rma38901(
   frequencyMHz: number,
   d2DM: number,
   hBsM: number,
-  hUtM: number,
+  hUtInM: number,
 ): Tr38901Result {
+  const hUtM = Math.max(hUtInM, TR38901_MIN_UE_HEIGHT_M.rma);
   const fc = frequencyMHz / 1000;
   const h = RMA_BUILDING_HEIGHT_M;
   const w = RMA_STREET_WIDTH_M;
@@ -311,7 +339,7 @@ export function rma38901(
     (43.42 - 3.1 * log10(hBsM)) * (log10(dd) - 3) +
     20 * log10(fc) -
     (3.2 * log10(11.75 * hUtM) ** 2 - 4.97);
-  return mix(los, nlosPrime, losProbability38901('rma', d2, hUtM), bp);
+  return mix(los, nlosPrime, losProbability38901('rma', d2, hUtM), bp, hUtM);
 }
 
 function aHm(f: number, hm: number, area: HataArea): number {
@@ -320,7 +348,8 @@ function aHm(f: number, hm: number, area: HataArea): number {
   return (1.1 * log10(f) - 0.7) * hm - (1.56 * log10(f) - 0.8);
 }
 
-function hataFamily(
+/** Unchecked Hata-family kernel: callers validate the setup once (pathLossRefusal). */
+function hataKernel(
   model: 'okumura-hata' | 'cost231-hata',
   f: number,
   d2DM: number,
@@ -328,14 +357,6 @@ function hataFamily(
   hm: number,
   area: HataArea,
 ): number {
-  const refusal = pathLossRefusal({
-    model,
-    environment: 'uma',
-    frequencyMHz: f,
-    hBsM: hb,
-    hUtM: hm,
-  });
-  if (refusal) throw new PathLossRefusalError(refusal);
   const d2 = Math.max(d2DM, MIN_DISTANCE_2D_M);
   const slope = (44.9 - 6.55 * log10(hb)) * log10(d2 / 1000);
   let pl =
@@ -352,6 +373,25 @@ function hataFamily(
   return Math.max(pl, freeSpacePathLossDb(f, d3(d2, hb, hm)));
 }
 
+function checkedHata(
+  model: 'okumura-hata' | 'cost231-hata',
+  f: number,
+  d2DM: number,
+  hb: number,
+  hm: number,
+  area: HataArea,
+): number {
+  const refusal = pathLossRefusal({
+    model,
+    environment: 'uma',
+    frequencyMHz: f,
+    hBsM: hb,
+    hUtM: hm,
+  });
+  if (refusal) throw new PathLossRefusalError(refusal);
+  return hataKernel(model, f, d2DM, hb, hm, area);
+}
+
 /** Okumura-Hata, MHz and metres; refuses outside 150 to 1500 MHz. */
 export function okumuraHataDb(
   frequencyMHz: number,
@@ -360,7 +400,7 @@ export function okumuraHataDb(
   hUtM: number,
   area: HataArea,
 ): number {
-  return hataFamily('okumura-hata', frequencyMHz, d2DM, hBsM, hUtM, area);
+  return checkedHata('okumura-hata', frequencyMHz, d2DM, hBsM, hUtM, area);
 }
 
 /** COST-231 Hata, MHz and metres; refuses outside 1500 to 2000 MHz. */
@@ -371,7 +411,7 @@ export function cost231HataDb(
   hUtM: number,
   area: HataArea,
 ): number {
-  return hataFamily('cost231-hata', frequencyMHz, d2DM, hBsM, hUtM, area);
+  return checkedHata('cost231-hata', frequencyMHz, d2DM, hBsM, hUtM, area);
 }
 
 /**
@@ -389,9 +429,9 @@ export function makePathLoss(s: PathLossSetup): (d2DM: number) => number {
       return (d) => fn(f, d, hb, hm).expectedDb;
     }
     case 'okumura-hata':
-      return (d) => okumuraHataDb(f, d, hb, hm, area);
+      return (d) => hataKernel('okumura-hata', f, d, hb, hm, area);
     case 'cost231-hata':
-      return (d) => cost231HataDb(f, d, hb, hm, area);
+      return (d) => hataKernel('cost231-hata', f, d, hb, hm, area);
     case 'free-space':
       return (d) => freeSpacePathLossDb(f, d3(Math.max(d, MIN_DISTANCE_2D_M), hb, hm));
   }

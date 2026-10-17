@@ -19,7 +19,7 @@
   "conventions": {
     "distance": "d2DM is the horizontal distance from the mast to the UE. Every model clamps it to at least 10 m (the 38.901 lower bound); d3D = sqrt(d2D^2 + (hBsM - hUtM)^2). Beyond the validated range (5 km for 38.901 UMa/UMi NLOS and RMa NLOS, 10 km RMa LOS, 1 to 20 km for Hata) the formulas are extrapolated as written; that is a warning, never a refusal.",
     "heights": "hBsM is the antenna height above the tower-base ground, hUtM the UE height above the same ground (flat ground, spec D17).",
-    "tr38901": "3GPP TR 38.901 V17 Table 7.4.1-1, fc in GHz inside the formulas, c = 3.0e8. UMa: d'BP = 4 h'BS h'UT fc[Hz]/c with h' = h - hE, PL1 = 28 + 22 log10(d3D) + 20 log10(fc), PL2 = 28 + 40 log10(d3D) + 20 log10(fc) - 9 log10(d'BP^2 + (hBS - hUT)^2), NLOS' = 13.54 + 39.08 log10(d3D) + 20 log10(fc) - 0.6 (hUT - 1.5). UMi street canyon: same d'BP, PL1 = 32.4 + 21 log10(d3D) + 20 log10(fc), PL2 = 32.4 + 40 log10(d3D) + 20 log10(fc) - 9.5 log10(d'BP^2 + (hBS - hUT)^2), NLOS' = 35.3 log10(d3D) + 22.4 + 21.3 log10(fc) - 0.3 (hUT - 1.5). RMa: dBP = 2 pi hBS hUT fc[Hz]/c with actual heights, PL1(d) = 20 log10(40 pi d fc/3) + min(0.03 h^1.72, 10) log10(d) - min(0.044 h^1.72, 14.77) + 0.002 log10(h) d, PL2 = PL1(dBP) + 40 log10(d3D/dBP), NLOS' = 161.04 - 7.1 log10(W) + 7.5 log10(h) - (24.37 - 3.7 (h/hBS)^2) log10(hBS) + (43.42 - 3.1 log10(hBS)) (log10(d3D) - 3) + 20 log10(fc) - (3.2 (log10(11.75 hUT))^2 - 4.97), h = 5 m, W = 20 m. PL1 when d2D <= breakpoint, else PL2. PL_NLOS = max(PL_LOS, NLOS'). hE = 1 m: exact for UMi; for UMa the TR draws hE = 1 m with probability 1/(1 + C(d2D, hUT)) and C = 0 for hUT < 13 m, so 1 m is exact at the default 1.5 m UE and a simplification above 13 m. UMa and UMi refuse hUT <= 1 m or hBS <= 1 m (no effective height). Frequency range: UMa and UMi 500 MHz to 100 GHz, RMa 500 MHz to 30 GHz; outside is refused.",
+    "tr38901": "3GPP TR 38.901 V17 Table 7.4.1-1, fc in GHz inside the formulas, c = 3.0e8. UMa: d'BP = 4 h'BS h'UT fc[Hz]/c with h' = h - hE, PL1 = 28 + 22 log10(d3D) + 20 log10(fc), PL2 = 28 + 40 log10(d3D) + 20 log10(fc) - 9 log10(d'BP^2 + (hBS - hUT)^2), NLOS' = 13.54 + 39.08 log10(d3D) + 20 log10(fc) - 0.6 (hUT - 1.5). UMi street canyon: same d'BP, PL1 = 32.4 + 21 log10(d3D) + 20 log10(fc), PL2 = 32.4 + 40 log10(d3D) + 20 log10(fc) - 9.5 log10(d'BP^2 + (hBS - hUT)^2), NLOS' = 35.3 log10(d3D) + 22.4 + 21.3 log10(fc) - 0.3 (hUT - 1.5). RMa: dBP = 2 pi hBS hUT fc[Hz]/c with actual heights, PL1(d) = 20 log10(40 pi d fc/3) + min(0.03 h^1.72, 10) log10(d) - min(0.044 h^1.72, 14.77) + 0.002 log10(h) d, PL2 = PL1(dBP) + 40 log10(d3D/dBP), NLOS' = 161.04 - 7.1 log10(W) + 7.5 log10(h) - (24.37 - 3.7 (h/hBS)^2) log10(hBS) + (43.42 - 3.1 log10(hBS)) (log10(d3D) - 3) + 20 log10(fc) - (3.2 (log10(11.75 hUT))^2 - 4.97), h = 5 m, W = 20 m. PL1 when d2D <= breakpoint, else PL2. PL_NLOS = max(PL_LOS, NLOS'). hE = 1 m: exact for UMi; for UMa the TR draws hE = 1 m with probability 1/(1 + C(d2D, hUT)) and C = 0 for hUT < 13 m, so 1 m is exact at the default 1.5 m UE and a simplification above 13 m. hUT below the scenario's UE range (UMa and UMi 1.5 m, RMa 1 m; Table 7.4.1-1 gives 1.5 to 22.5 m and 1 to 10 m) is clamped up to that lower bound everywhere in the formulas (d3D, breakpoint, NLOS, LOS probability), with a warning, never refused; hUtUsedM is the height used. UMa and UMi refuse hBS <= 1 m (no effective height). Frequency range: UMa and UMi 500 MHz to 100 GHz, RMa 500 MHz to 30 GHz; outside is refused.",
     "losProbability": "TR 38.901 Table 7.4.2-1 on d2D (clamped to 10 m). UMi: 1 for d2D <= 18 m, else 18/d2D + exp(-d2D/36)(1 - 18/d2D). UMa: 1 for d2D <= 18 m, else [18/d2D + exp(-d2D/63)(1 - 18/d2D)] [1 + C'(hUT) 5/4 (d2D/100)^3 exp(-d2D/150)], C' = 0 for hUT <= 13 m, ((hUT - 13)/10)^1.5 above. RMa: 1 for d2D <= 10 m, else exp(-(d2D - 10)/1000).",
     "expected": "pathLossDb for tr38901 is the expected path loss with LOS probability, combined in the dB domain: P_LOS PL_LOS + (1 - P_LOS) PL_NLOS (spec D14 'LOS probability averaged into an expected path loss'). The dB-domain mean is the planning convention; a linear-power mean would sit up to a few dB lower where P_LOS is mid-range.",
     "hata": "f in MHz, d in km, heights in m. a(hm): medium or small city (1.1 log10 f - 0.7) hm - (1.56 log10 f - 0.8); large city 8.29 (log10(1.54 hm))^2 - 1.1 below 300 MHz, else 3.2 (log10(11.75 hm))^2 - 4.97. Okumura-Hata urban = 69.55 + 26.16 log10 f - 13.82 log10 hb - a(hm) + (44.9 - 6.55 log10 hb) log10 d; suburban = urban - 2 (log10(f/28))^2 - 5.4; open = urban - 4.78 (log10 f)^2 + 18.33 log10 f - 40.94. COST-231 Hata = 46.3 + 33.9 log10 f - 13.82 log10 hb - a(hm) + (44.9 - 6.55 log10 hb) log10 d + Cm, Cm = 3 dB for urban-large (with the large-city a(hm)), else 0; suburban is the COST-231 medium-city formula as published; open applies the Okumura-Hata open-area correction (an extension, not in COST-231). Areas: urban-large, urban (medium city), suburban, open; when hataArea is null it follows the 38.901 environment: uma and umi urban, rma open. Both are floored at free space over d3D (the empirical fits go below free space near the mast, outside their 1 km validity). Okumura-Hata refuses f outside 150 to 1500 MHz, COST-231 outside 1500 to 2000 MHz (inclusive edges).",
@@ -44,6 +44,7 @@
         "nlosDb": 79.245749,
         "pLos": 0.64940219,
         "breakpointM": 121.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 69.310768
       }
     },
@@ -65,6 +66,7 @@
         "nlosDb": 101.196884,
         "pLos": 0.12804773,
         "breakpointM": 121.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 98.496045
       }
     },
@@ -86,6 +88,7 @@
         "nlosDb": 116.650745,
         "pLos": 0.036344584,
         "breakpointM": 121.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 115.897371
       }
     },
@@ -107,6 +110,7 @@
         "nlosDb": 128.400957,
         "pLos": 0.018000125,
         "breakpointM": 121.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 128.032818
       }
     },
@@ -128,6 +132,7 @@
         "nlosDb": 147.042691,
         "pLos": 0.006,
         "breakpointM": 121.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 146.922612
       }
     },
@@ -149,6 +154,7 @@
         "nlosDb": 167.476319,
         "pLos": 0.0018,
         "breakpointM": 121.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 167.441161
       }
     },
@@ -170,6 +176,7 @@
         "nlosDb": 86.925833,
         "pLos": 0.64940219,
         "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 76.990853
       }
     },
@@ -191,6 +198,7 @@
         "nlosDb": 108.876969,
         "pLos": 0.12804773,
         "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 105.689547
       }
     },
@@ -212,6 +220,7 @@
         "nlosDb": 124.330829,
         "pLos": 0.036344584,
         "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 123.330546
       }
     },
@@ -233,6 +242,7 @@
         "nlosDb": 136.081042,
         "pLos": 0.018000125,
         "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 135.590617
       }
     },
@@ -254,6 +264,7 @@
         "nlosDb": 154.722776,
         "pLos": 0.006,
         "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 154.561935
       }
     },
@@ -275,6 +286,7 @@
         "nlosDb": 175.156403,
         "pLos": 0.0018,
         "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 175.109017
       }
     },
@@ -296,6 +308,7 @@
         "nlosDb": 89.928944,
         "pLos": 0.64940219,
         "breakpointM": 416.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 79.993963
       }
     },
@@ -317,6 +330,7 @@
         "nlosDb": 111.880079,
         "pLos": 0.12804773,
         "breakpointM": 416.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 108.692658
       }
     },
@@ -338,6 +352,7 @@
         "nlosDb": 127.33394,
         "pLos": 0.036344584,
         "breakpointM": 416.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 126.235874
       }
     },
@@ -359,6 +374,7 @@
         "nlosDb": 139.084152,
         "pLos": 0.018000125,
         "breakpointM": 416.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 138.5453
       }
     },
@@ -380,6 +396,7 @@
         "nlosDb": 157.725886,
         "pLos": 0.006,
         "breakpointM": 416.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 157.548903
       }
     },
@@ -401,6 +418,7 @@
         "nlosDb": 178.159514,
         "pLos": 0.0018,
         "breakpointM": 416.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 178.107285
       }
     },
@@ -422,6 +440,7 @@
         "nlosDb": 92.510838,
         "pLos": 0.64940219,
         "breakpointM": 560.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 82.575857
       }
     },
@@ -443,6 +462,7 @@
         "nlosDb": 114.461973,
         "pLos": 0.12804773,
         "breakpointM": 560.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 111.274552
       }
     },
@@ -464,6 +484,7 @@
         "nlosDb": 129.915834,
         "pLos": 0.036344584,
         "breakpointM": 560.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 128.765652
       }
     },
@@ -485,6 +506,7 @@
         "nlosDb": 141.666046,
         "pLos": 0.018000125,
         "breakpointM": 560.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 141.085467
       }
     },
@@ -506,6 +528,7 @@
         "nlosDb": 160.30778,
         "pLos": 0.006,
         "breakpointM": 560.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 160.116888
       }
     },
@@ -527,6 +550,7 @@
         "nlosDb": 180.741408,
         "pLos": 0.0018,
         "breakpointM": 560.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 180.685006
       }
     },
@@ -548,6 +572,7 @@
         "nlosDb": 80.69871,
         "pLos": 0.64940219,
         "breakpointM": 172.266667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 70.351346
       }
     },
@@ -569,6 +594,7 @@
         "nlosDb": 101.315334,
         "pLos": 0.12804773,
         "breakpointM": 172.266667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 98.265975
       }
     },
@@ -590,6 +616,7 @@
         "nlosDb": 116.670029,
         "pLos": 0.036344584,
         "breakpointM": 172.266667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 115.817648
       }
     },
@@ -611,6 +638,7 @@
         "nlosDb": 128.40579,
         "pLos": 0.018000125,
         "breakpointM": 172.266667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 127.98861
       }
     },
@@ -632,6 +660,7 @@
         "nlosDb": 147.043229,
         "pLos": 0.006,
         "breakpointM": 172.266667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 146.906802
       }
     },
@@ -653,6 +682,7 @@
         "nlosDb": 167.476367,
         "pLos": 0.0018,
         "breakpointM": 172.266667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 167.436305
       }
     },
@@ -674,6 +704,7 @@
         "nlosDb": 88.378795,
         "pLos": 0.64940219,
         "breakpointM": 417.066667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 78.031431
       }
     },
@@ -695,6 +726,7 @@
         "nlosDb": 108.995418,
         "pLos": 0.12804773,
         "breakpointM": 417.066667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 105.801368
       }
     },
@@ -716,6 +748,7 @@
         "nlosDb": 124.350113,
         "pLos": 0.036344584,
         "breakpointM": 417.066667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 123.250875
       }
     },
@@ -737,6 +770,7 @@
         "nlosDb": 136.085875,
         "pLos": 0.018000125,
         "breakpointM": 417.066667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 135.546436
       }
     },
@@ -758,6 +792,7 @@
         "nlosDb": 154.723313,
         "pLos": 0.006,
         "breakpointM": 417.066667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 154.546134
       }
     },
@@ -779,6 +814,7 @@
         "nlosDb": 175.156452,
         "pLos": 0.0018,
         "breakpointM": 417.066667,
+        "hUtUsedM": 1.5,
         "pathLossDb": 175.104164
       }
     },
@@ -800,6 +836,7 @@
         "nlosDb": 91.381905,
         "pLos": 0.64940219,
         "breakpointM": 589.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 81.034541
       }
     },
@@ -821,6 +858,7 @@
         "nlosDb": 111.998529,
         "pLos": 0.12804773,
         "breakpointM": 589.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 108.804479
       }
     },
@@ -842,6 +880,7 @@
         "nlosDb": 127.353224,
         "pLos": 0.036344584,
         "breakpointM": 589.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 126.202735
       }
     },
@@ -863,6 +902,7 @@
         "nlosDb": 139.088985,
         "pLos": 0.018000125,
         "breakpointM": 589.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 138.501121
       }
     },
@@ -884,6 +924,7 @@
         "nlosDb": 157.726424,
         "pLos": 0.006,
         "breakpointM": 589.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 157.533103
       }
     },
@@ -905,6 +946,7 @@
         "nlosDb": 178.159562,
         "pLos": 0.0018,
         "breakpointM": 589.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 178.102432
       }
     },
@@ -926,6 +968,7 @@
         "nlosDb": 93.963799,
         "pLos": 0.64940219,
         "breakpointM": 793.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 83.616435
       }
     },
@@ -947,6 +990,7 @@
         "nlosDb": 114.580423,
         "pLos": 0.12804773,
         "breakpointM": 793.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 111.386373
       }
     },
@@ -968,6 +1012,7 @@
         "nlosDb": 129.935118,
         "pLos": 0.036344584,
         "breakpointM": 793.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 128.784629
       }
     },
@@ -989,6 +1034,7 @@
         "nlosDb": 141.670879,
         "pLos": 0.018000125,
         "breakpointM": 793.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 141.04129
       }
     },
@@ -1010,6 +1056,7 @@
         "nlosDb": 160.308318,
         "pLos": 0.006,
         "breakpointM": 793.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 160.101088
       }
     },
@@ -1031,6 +1078,7 @@
         "nlosDb": 180.741456,
         "pLos": 0.0018,
         "breakpointM": 793.333333,
+        "hUtUsedM": 1.5,
         "pathLossDb": 180.680153
       }
     },
@@ -1052,6 +1100,7 @@
         "nlosDb": 69.122609,
         "pLos": 0.661348969,
         "breakpointM": 3648.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 65.169945
       }
     },
@@ -1073,6 +1122,7 @@
         "nlosDb": 92.397691,
         "pLos": 0.183509593,
         "breakpointM": 3648.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 89.434177
       }
     },
@@ -1094,6 +1144,7 @@
         "nlosDb": 107.934769,
         "pLos": 0.069633016,
         "breakpointM": 3648.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 106.337414
       }
     },
@@ -1115,6 +1166,7 @@
         "nlosDb": 119.696959,
         "pLos": 0.022705247,
         "breakpointM": 3648.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 119.059389
       }
     },
@@ -1136,6 +1188,7 @@
         "nlosDb": 138.342247,
         "pLos": 0.006000069,
         "breakpointM": 3648.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 138.124869
       }
     },
@@ -1157,6 +1210,7 @@
         "nlosDb": 158.776279,
         "pLos": 0.0018,
         "breakpointM": 3648.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 158.70918
       }
     },
@@ -1178,6 +1232,7 @@
         "nlosDb": 76.802694,
         "pLos": 0.661348969,
         "breakpointM": 8832.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 72.85003
       }
     },
@@ -1199,6 +1254,7 @@
         "nlosDb": 100.077776,
         "pLos": 0.183509593,
         "breakpointM": 8832.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 97.114262
       }
     },
@@ -1220,6 +1276,7 @@
         "nlosDb": 115.614853,
         "pLos": 0.069633016,
         "breakpointM": 8832.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 114.017499
       }
     },
@@ -1241,6 +1298,7 @@
         "nlosDb": 127.377044,
         "pLos": 0.022705247,
         "breakpointM": 8832.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 126.739474
       }
     },
@@ -1262,6 +1320,7 @@
         "nlosDb": 146.022331,
         "pLos": 0.006000069,
         "breakpointM": 8832.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 145.804953
       }
     },
@@ -1283,6 +1342,7 @@
         "nlosDb": 166.456363,
         "pLos": 0.0018,
         "breakpointM": 8832.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 166.376823
       }
     },
@@ -1304,6 +1364,7 @@
         "nlosDb": 79.805805,
         "pLos": 0.661348969,
         "breakpointM": 12480.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 75.85314
       }
     },
@@ -1325,6 +1386,7 @@
         "nlosDb": 103.080886,
         "pLos": 0.183509593,
         "breakpointM": 12480.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 100.117372
       }
     },
@@ -1346,6 +1408,7 @@
         "nlosDb": 118.617964,
         "pLos": 0.069633016,
         "breakpointM": 12480.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 117.02061
       }
     },
@@ -1367,6 +1430,7 @@
         "nlosDb": 130.380154,
         "pLos": 0.022705247,
         "breakpointM": 12480.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 129.742584
       }
     },
@@ -1388,6 +1452,7 @@
         "nlosDb": 149.025442,
         "pLos": 0.006000069,
         "breakpointM": 12480.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 148.808064
       }
     },
@@ -1409,6 +1474,7 @@
         "nlosDb": 169.459474,
         "pLos": 0.0018,
         "breakpointM": 12480.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 169.378186
       }
     },
@@ -1430,6 +1496,7 @@
         "nlosDb": 82.387698,
         "pLos": 0.661348969,
         "breakpointM": 16800.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 78.435034
       }
     },
@@ -1451,6 +1518,7 @@
         "nlosDb": 105.66278,
         "pLos": 0.183509593,
         "breakpointM": 16800.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 102.699266
       }
     },
@@ -1472,6 +1540,7 @@
         "nlosDb": 121.199858,
         "pLos": 0.069633016,
         "breakpointM": 16800.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 119.602504
       }
     },
@@ -1493,6 +1562,7 @@
         "nlosDb": 132.962048,
         "pLos": 0.022705247,
         "breakpointM": 16800.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 132.324478
       }
     },
@@ -1514,6 +1584,7 @@
         "nlosDb": 151.607336,
         "pLos": 0.006000069,
         "breakpointM": 16800.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 151.389958
       }
     },
@@ -1535,6 +1606,7 @@
         "nlosDb": 172.041368,
         "pLos": 0.0018,
         "breakpointM": 16800.0,
+        "hUtUsedM": 16.0,
         "pathLossDb": 171.96008
       }
     },
@@ -1556,6 +1628,7 @@
         "nlosDb": 80.053357,
         "pLos": 0.519585414,
         "breakpointM": 45.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 73.043071
       }
     },
@@ -1577,6 +1650,7 @@
         "nlosDb": 101.101521,
         "pLos": 0.093517987,
         "breakpointM": 45.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 100.101849
       }
     },
@@ -1598,6 +1672,7 @@
         "nlosDb": 115.137186,
         "pLos": 0.036000896,
         "breakpointM": 45.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 114.819627
       }
     },
@@ -1619,6 +1694,7 @@
         "nlosDb": 125.761883,
         "pLos": 0.018,
         "breakpointM": 45.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 125.628571
       }
     },
@@ -1640,6 +1716,7 @@
         "nlosDb": 142.603771,
         "pLos": 0.006,
         "breakpointM": 45.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 142.572788
       }
     },
@@ -1661,6 +1738,7 @@
         "nlosDb": 161.061335,
         "pLos": 0.0018,
         "breakpointM": 45.6,
+        "hUtUsedM": 1.5,
         "pathLossDb": 161.056464
       }
     },
@@ -1682,6 +1760,7 @@
         "nlosDb": 88.232647,
         "pLos": 0.519585414,
         "breakpointM": 110.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 80.580192
       }
     },
@@ -1703,6 +1782,7 @@
         "nlosDb": 109.280811,
         "pLos": 0.093517987,
         "breakpointM": 110.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 107.563038
       }
     },
@@ -1724,6 +1804,7 @@
         "nlosDb": 123.316476,
         "pLos": 0.036000896,
         "breakpointM": 110.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 122.722475
       }
     },
@@ -1745,6 +1826,7 @@
         "nlosDb": 133.941173,
         "pLos": 0.018,
         "breakpointM": 110.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 133.669644
       }
     },
@@ -1766,6 +1848,7 @@
         "nlosDb": 150.783061,
         "pLos": 0.006,
         "breakpointM": 110.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 150.706006
       }
     },
@@ -1787,6 +1870,7 @@
         "nlosDb": 169.240625,
         "pLos": 0.0018,
         "breakpointM": 110.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 169.221932
       }
     },
@@ -1808,6 +1892,7 @@
         "nlosDb": 91.43096,
         "pLos": 0.519585414,
         "breakpointM": 156.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 83.67708
       }
     },
@@ -1829,6 +1914,7 @@
         "nlosDb": 112.479124,
         "pLos": 0.093517987,
         "breakpointM": 156.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 110.47743
       }
     },
@@ -1850,6 +1936,7 @@
         "nlosDb": 126.514788,
         "pLos": 0.036000896,
         "breakpointM": 156.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 125.811489
       }
     },
@@ -1871,6 +1958,7 @@
         "nlosDb": 137.139486,
         "pLos": 0.018,
         "breakpointM": 156.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 136.813308
       }
     },
@@ -1892,6 +1980,7 @@
         "nlosDb": 153.981374,
         "pLos": 0.006,
         "breakpointM": 156.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 153.886103
       }
     },
@@ -1913,6 +2002,7 @@
         "nlosDb": 172.438938,
         "pLos": 0.0018,
         "breakpointM": 156.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 172.41478
       }
     },
@@ -1934,6 +2024,7 @@
         "nlosDb": 94.180677,
         "pLos": 0.519585414,
         "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 86.339599
       }
     },
@@ -1955,6 +2046,7 @@
         "nlosDb": 115.228841,
         "pLos": 0.093517987,
         "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 113.020169
       }
     },
@@ -1976,6 +2068,7 @@
         "nlosDb": 129.264505,
         "pLos": 0.036000896,
         "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 128.467058
       }
     },
@@ -1997,6 +2090,7 @@
         "nlosDb": 139.889203,
         "pLos": 0.018,
         "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 139.515953
       }
     },
@@ -2018,6 +2112,7 @@
         "nlosDb": 156.731091,
         "pLos": 0.006,
         "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 156.620129
       }
     },
@@ -2039,6 +2134,7 @@
         "nlosDb": 175.188655,
         "pLos": 0.0018,
         "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 175.15979
       }
     },
@@ -2060,6 +2156,7 @@
         "nlosDb": 79.814244,
         "pLos": 0.519585414,
         "breakpointM": 283.733333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 72.610594
       }
     },
@@ -2081,6 +2178,7 @@
         "nlosDb": 100.665234,
         "pLos": 0.093517987,
         "breakpointM": 283.733333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 98.578759
       }
     },
@@ -2102,6 +2200,7 @@
         "nlosDb": 114.689385,
         "pLos": 0.036000896,
         "breakpointM": 283.733333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 113.849772
       }
     },
@@ -2123,6 +2222,7 @@
         "nlosDb": 125.312433,
         "pLos": 0.018,
         "breakpointM": 283.733333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 124.918097
       }
     },
@@ -2144,6 +2244,7 @@
         "nlosDb": 142.153832,
         "pLos": 0.006,
         "breakpointM": 283.733333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 142.035841
       }
     },
@@ -2165,6 +2266,7 @@
         "nlosDb": 160.611341,
         "pLos": 0.0018,
         "breakpointM": 283.733333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 160.580367
       }
     },
@@ -2186,6 +2288,7 @@
         "nlosDb": 87.993534,
         "pLos": 0.519585414,
         "breakpointM": 686.933333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 80.530504
       }
     },
@@ -2207,6 +2310,7 @@
         "nlosDb": 108.844524,
         "pLos": 0.093517987,
         "breakpointM": 686.933333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 106.711365
       }
     },
@@ -2228,6 +2332,7 @@
         "nlosDb": 122.868675,
         "pLos": 0.036000896,
         "breakpointM": 686.933333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 121.842962
       }
     },
@@ -2249,6 +2354,7 @@
         "nlosDb": 133.491723,
         "pLos": 0.018,
         "breakpointM": 686.933333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 132.957182
       }
     },
@@ -2270,6 +2376,7 @@
         "nlosDb": 150.333123,
         "pLos": 0.006,
         "breakpointM": 686.933333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 150.168396
       }
     },
@@ -2291,6 +2398,7 @@
         "nlosDb": 168.790631,
         "pLos": 0.0018,
         "breakpointM": 686.933333,
+        "hUtUsedM": 3.0,
         "pathLossDb": 168.745636
       }
     },
@@ -2312,6 +2420,7 @@
         "nlosDb": 91.191847,
         "pLos": 0.519585414,
         "breakpointM": 970.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 83.627393
       }
     },
@@ -2333,6 +2442,7 @@
         "nlosDb": 112.042837,
         "pLos": 0.093517987,
         "breakpointM": 970.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 109.891422
       }
     },
@@ -2354,6 +2464,7 @@
         "nlosDb": 126.066987,
         "pLos": 0.036000896,
         "breakpointM": 970.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 125.034247
       }
     },
@@ -2375,6 +2486,7 @@
         "nlosDb": 136.690036,
         "pLos": 0.018,
         "breakpointM": 970.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 136.100639
       }
     },
@@ -2396,6 +2508,7 @@
         "nlosDb": 153.531435,
         "pLos": 0.006,
         "breakpointM": 970.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 153.348424
       }
     },
@@ -2417,6 +2530,7 @@
         "nlosDb": 171.988943,
         "pLos": 0.0018,
         "breakpointM": 970.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 171.938463
       }
     },
@@ -2438,6 +2552,7 @@
         "nlosDb": 93.941564,
         "pLos": 0.519585414,
         "breakpointM": 1306.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 86.289911
       }
     },
@@ -2459,6 +2574,7 @@
         "nlosDb": 114.792554,
         "pLos": 0.093517987,
         "breakpointM": 1306.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 112.625445
       }
     },
@@ -2480,6 +2596,7 @@
         "nlosDb": 128.816704,
         "pLos": 0.036000896,
         "breakpointM": 1306.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 127.777922
       }
     },
@@ -2501,6 +2618,7 @@
         "nlosDb": 139.439753,
         "pLos": 0.018,
         "breakpointM": 1306.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 138.842914
       }
     },
@@ -2522,6 +2640,7 @@
         "nlosDb": 156.281152,
         "pLos": 0.006,
         "breakpointM": 1306.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 156.082419
       }
     },
@@ -2543,6 +2662,7 @@
         "nlosDb": 174.73866,
         "pLos": 0.0018,
         "breakpointM": 1306.666667,
+        "hUtUsedM": 3.0,
         "pathLossDb": 174.683464
       }
     },
@@ -2564,6 +2684,7 @@
         "nlosDb": 69.997339,
         "pLos": 0.960789439,
         "breakpointM": 835.663646,
+        "hUtUsedM": 1.5,
         "pathLossDb": 66.042851
       }
     },
@@ -2585,6 +2706,7 @@
         "nlosDb": 90.378354,
         "pLos": 0.826959134,
         "breakpointM": 835.663646,
+        "hUtUsedM": 1.5,
         "pathLossDb": 79.219009
       }
     },
@@ -2606,6 +2728,7 @@
         "nlosDb": 105.557573,
         "pLos": 0.612626394,
         "breakpointM": 835.663646,
+        "hUtUsedM": 1.5,
         "pathLossDb": 93.17594
       }
     },
@@ -2627,6 +2750,7 @@
         "nlosDb": 117.159217,
         "pLos": 0.371576691,
         "breakpointM": 835.663646,
+        "hUtUsedM": 1.5,
         "pathLossDb": 108.364623
       }
     },
@@ -2648,6 +2772,7 @@
         "nlosDb": 135.583665,
         "pLos": 0.050287437,
         "breakpointM": 835.663646,
+        "hUtUsedM": 1.5,
         "pathLossDb": 134.42622
       }
     },
@@ -2669,6 +2794,7 @@
         "nlosDb": 155.783291,
         "pLos": 4.5856e-5,
         "breakpointM": 835.663646,
+        "hUtUsedM": 1.5,
         "pathLossDb": 155.782268
       }
     },
@@ -2690,6 +2816,7 @@
         "nlosDb": 77.677424,
         "pLos": 0.960789439,
         "breakpointM": 2023.185669,
+        "hUtUsedM": 1.5,
         "pathLossDb": 73.722936
       }
     },
@@ -2711,6 +2838,7 @@
         "nlosDb": 98.058438,
         "pLos": 0.826959134,
         "breakpointM": 2023.185669,
+        "hUtUsedM": 1.5,
         "pathLossDb": 86.899094
       }
     },
@@ -2732,6 +2860,7 @@
         "nlosDb": 113.237658,
         "pLos": 0.612626394,
         "breakpointM": 2023.185669,
+        "hUtUsedM": 1.5,
         "pathLossDb": 100.856025
       }
     },
@@ -2753,6 +2882,7 @@
         "nlosDb": 124.839302,
         "pLos": 0.371576691,
         "breakpointM": 2023.185669,
+        "hUtUsedM": 1.5,
         "pathLossDb": 115.563016
       }
     },
@@ -2774,6 +2904,7 @@
         "nlosDb": 143.263749,
         "pLos": 0.050287437,
         "breakpointM": 2023.185669,
+        "hUtUsedM": 1.5,
         "pathLossDb": 141.812803
       }
     },
@@ -2795,6 +2926,7 @@
         "nlosDb": 163.463375,
         "pLos": 4.5856e-5,
         "breakpointM": 2023.185669,
+        "hUtUsedM": 1.5,
         "pathLossDb": 163.462085
       }
     },
@@ -2816,6 +2948,7 @@
         "nlosDb": 80.680535,
         "pLos": 0.960789439,
         "breakpointM": 2858.849315,
+        "hUtUsedM": 1.5,
         "pathLossDb": 76.726047
       }
     },
@@ -2837,6 +2970,7 @@
         "nlosDb": 101.061549,
         "pLos": 0.826959134,
         "breakpointM": 2858.849315,
+        "hUtUsedM": 1.5,
         "pathLossDb": 89.902204
       }
     },
@@ -2858,6 +2992,7 @@
         "nlosDb": 116.240768,
         "pLos": 0.612626394,
         "breakpointM": 2858.849315,
+        "hUtUsedM": 1.5,
         "pathLossDb": 103.859135
       }
     },
@@ -2879,6 +3014,7 @@
         "nlosDb": 127.842412,
         "pLos": 0.371576691,
         "breakpointM": 2858.849315,
+        "hUtUsedM": 1.5,
         "pathLossDb": 118.566126
       }
     },
@@ -2900,6 +3036,7 @@
         "nlosDb": 146.26686,
         "pLos": 0.050287437,
         "breakpointM": 2858.849315,
+        "hUtUsedM": 1.5,
         "pathLossDb": 144.72725
       }
     },
@@ -2921,6 +3058,7 @@
         "nlosDb": 166.466486,
         "pLos": 4.5856e-5,
         "breakpointM": 2858.849315,
+        "hUtUsedM": 1.5,
         "pathLossDb": 166.465115
       }
     },
@@ -2942,6 +3080,7 @@
         "nlosDb": 83.262428,
         "pLos": 0.960789439,
         "breakpointM": 3848.451001,
+        "hUtUsedM": 1.5,
         "pathLossDb": 79.30794
       }
     },
@@ -2963,6 +3102,7 @@
         "nlosDb": 103.643443,
         "pLos": 0.826959134,
         "breakpointM": 3848.451001,
+        "hUtUsedM": 1.5,
         "pathLossDb": 92.484098
       }
     },
@@ -2984,6 +3124,7 @@
         "nlosDb": 118.822662,
         "pLos": 0.612626394,
         "breakpointM": 3848.451001,
+        "hUtUsedM": 1.5,
         "pathLossDb": 106.441029
       }
     },
@@ -3005,6 +3146,7 @@
         "nlosDb": 130.424306,
         "pLos": 0.371576691,
         "breakpointM": 3848.451001,
+        "hUtUsedM": 1.5,
         "pathLossDb": 121.14802
       }
     },
@@ -3026,6 +3168,7 @@
         "nlosDb": 148.848754,
         "pLos": 0.050287437,
         "breakpointM": 3848.451001,
+        "hUtUsedM": 1.5,
         "pathLossDb": 147.298506
       }
     },
@@ -3047,6 +3190,7 @@
         "nlosDb": 169.04838,
         "pLos": 4.5856e-5,
         "breakpointM": 3848.451001,
+        "hUtUsedM": 1.5,
         "pathLossDb": 169.046957
       }
     },
@@ -3068,6 +3212,7 @@
         "nlosDb": 67.778592,
         "pLos": 0.960789439,
         "breakpointM": 4775.220833,
+        "hUtUsedM": 5.0,
         "pathLossDb": 67.778592
       }
     },
@@ -3089,6 +3234,7 @@
         "nlosDb": 80.433061,
         "pLos": 0.826959134,
         "breakpointM": 4775.220833,
+        "hUtUsedM": 5.0,
         "pathLossDb": 77.669759
       }
     },
@@ -3110,6 +3256,7 @@
         "nlosDb": 95.016972,
         "pLos": 0.612626394,
         "breakpointM": 4775.220833,
+        "hUtUsedM": 5.0,
         "pathLossDb": 89.114976
       }
     },
@@ -3131,6 +3278,7 @@
         "nlosDb": 106.354195,
         "pLos": 0.371576691,
         "breakpointM": 4775.220833,
+        "hUtUsedM": 5.0,
         "pathLossDb": 101.096435
       }
     },
@@ -3152,6 +3300,7 @@
         "nlosDb": 124.418683,
         "pLos": 0.050287437,
         "breakpointM": 4775.220833,
+        "hUtUsedM": 5.0,
         "pathLossDb": 123.429963
       }
     },
@@ -3173,6 +3322,7 @@
         "nlosDb": 144.237312,
         "pLos": 4.5856e-5,
         "breakpointM": 4775.220833,
+        "hUtUsedM": 5.0,
         "pathLossDb": 144.236394
       }
     },
@@ -3194,6 +3344,7 @@
         "nlosDb": 75.458677,
         "pLos": 0.960789439,
         "breakpointM": 11561.060965,
+        "hUtUsedM": 5.0,
         "pathLossDb": 75.458677
       }
     },
@@ -3215,6 +3366,7 @@
         "nlosDb": 88.113146,
         "pLos": 0.826959134,
         "breakpointM": 11561.060965,
+        "hUtUsedM": 5.0,
         "pathLossDb": 85.349844
       }
     },
@@ -3236,6 +3388,7 @@
         "nlosDb": 102.697057,
         "pLos": 0.612626394,
         "breakpointM": 11561.060965,
+        "hUtUsedM": 5.0,
         "pathLossDb": 96.79506
       }
     },
@@ -3257,6 +3410,7 @@
         "nlosDb": 114.03428,
         "pLos": 0.371576691,
         "breakpointM": 11561.060965,
+        "hUtUsedM": 5.0,
         "pathLossDb": 108.776519
       }
     },
@@ -3278,6 +3432,7 @@
         "nlosDb": 132.098767,
         "pLos": 0.050287437,
         "breakpointM": 11561.060965,
+        "hUtUsedM": 5.0,
         "pathLossDb": 131.110047
       }
     },
@@ -3299,6 +3454,7 @@
         "nlosDb": 151.917397,
         "pLos": 4.5856e-5,
         "breakpointM": 11561.060965,
+        "hUtUsedM": 5.0,
         "pathLossDb": 151.916526
       }
     },
@@ -3320,6 +3476,7 @@
         "nlosDb": 78.461787,
         "pLos": 0.960789439,
         "breakpointM": 16336.281799,
+        "hUtUsedM": 5.0,
         "pathLossDb": 78.461787
       }
     },
@@ -3341,6 +3498,7 @@
         "nlosDb": 91.116257,
         "pLos": 0.826959134,
         "breakpointM": 16336.281799,
+        "hUtUsedM": 5.0,
         "pathLossDb": 88.352954
       }
     },
@@ -3362,6 +3520,7 @@
         "nlosDb": 105.700167,
         "pLos": 0.612626394,
         "breakpointM": 16336.281799,
+        "hUtUsedM": 5.0,
         "pathLossDb": 99.798171
       }
     },
@@ -3383,6 +3542,7 @@
         "nlosDb": 117.03739,
         "pLos": 0.371576691,
         "breakpointM": 16336.281799,
+        "hUtUsedM": 5.0,
         "pathLossDb": 111.77963
       }
     },
@@ -3404,6 +3564,7 @@
         "nlosDb": 135.101878,
         "pLos": 0.050287437,
         "breakpointM": 16336.281799,
+        "hUtUsedM": 5.0,
         "pathLossDb": 134.113158
       }
     },
@@ -3425,6 +3586,7 @@
         "nlosDb": 154.920507,
         "pLos": 4.5856e-5,
         "breakpointM": 16336.281799,
+        "hUtUsedM": 5.0,
         "pathLossDb": 154.919637
       }
     },
@@ -3446,6 +3608,7 @@
         "nlosDb": 81.043681,
         "pLos": 0.960789439,
         "breakpointM": 21991.148575,
+        "hUtUsedM": 5.0,
         "pathLossDb": 81.043681
       }
     },
@@ -3467,6 +3630,7 @@
         "nlosDb": 93.69815,
         "pLos": 0.826959134,
         "breakpointM": 21991.148575,
+        "hUtUsedM": 5.0,
         "pathLossDb": 90.934848
       }
     },
@@ -3488,6 +3652,7 @@
         "nlosDb": 108.282061,
         "pLos": 0.612626394,
         "breakpointM": 21991.148575,
+        "hUtUsedM": 5.0,
         "pathLossDb": 102.380065
       }
     },
@@ -3509,6 +3674,7 @@
         "nlosDb": 119.619284,
         "pLos": 0.371576691,
         "breakpointM": 21991.148575,
+        "hUtUsedM": 5.0,
         "pathLossDb": 114.361524
       }
     },
@@ -3530,6 +3696,7 @@
         "nlosDb": 137.683772,
         "pLos": 0.050287437,
         "breakpointM": 21991.148575,
+        "hUtUsedM": 5.0,
         "pathLossDb": 136.695052
       }
     },
@@ -3551,6 +3718,7 @@
         "nlosDb": 157.502401,
         "pLos": 4.5856e-5,
         "breakpointM": 21991.148575,
+        "hUtUsedM": 5.0,
         "pathLossDb": 157.501531
       }
     },
@@ -3572,6 +3740,7 @@
         "nlosDb": 73.830008,
         "pLos": 1.0,
         "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
         "pathLossDb": 64.254911
       }
     },
@@ -3593,20 +3762,285 @@
         "nlosDb": 77.63925,
         "pLos": 1.0,
         "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
         "pathLossDb": 69.24914
       }
     },
     {
-      "id": "uma-ue-1m-refused",
-      "covers": ["uma", "f-1840", "d-500", "tr38901", "refused-height"],
+      "id": "uma-ue0.5-1840-d200",
+      "covers": ["uma", "f-1840", "d-200", "tr38901", "ue-clamp", "los-pl1"],
       "input": {
         "model": "tr38901",
         "environment": "uma",
         "hataArea": null,
         "frequencyMHz": 1840.0,
-        "d2DM": 500.0,
+        "d2DM": 200.0,
+        "hBsM": 25.0,
+        "hUtM": 0.5
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 83.984521,
+        "nlosDb": 108.876969,
+        "pLos": 0.12804773,
+        "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
+        "pathLossDb": 105.689547
+      }
+    },
+    {
+      "id": "uma-ue0.5-3500-d1000",
+      "covers": ["uma", "f-3500", "d-1000", "tr38901", "ue-clamp", "los-pl2"],
+      "input": {
+        "model": "tr38901",
+        "environment": "uma",
+        "hataArea": null,
+        "frequencyMHz": 3500.0,
+        "d2DM": 1000.0,
+        "hBsM": 25.0,
+        "hUtM": 0.5
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 109.411895,
+        "nlosDb": 141.666046,
+        "pLos": 0.018000125,
+        "breakpointM": 560.0,
+        "hUtUsedM": 1.5,
+        "pathLossDb": 141.085467
+      }
+    },
+    {
+      "id": "uma-ue1-1840-d200",
+      "covers": ["uma", "f-1840", "d-200", "tr38901", "ue-clamp", "los-pl1"],
+      "input": {
+        "model": "tr38901",
+        "environment": "uma",
+        "hataArea": null,
+        "frequencyMHz": 1840.0,
+        "d2DM": 200.0,
         "hBsM": 25.0,
         "hUtM": 1.0
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 83.984521,
+        "nlosDb": 108.876969,
+        "pLos": 0.12804773,
+        "breakpointM": 294.4,
+        "hUtUsedM": 1.5,
+        "pathLossDb": 105.689547
+      }
+    },
+    {
+      "id": "uma-ue1-3500-d1000",
+      "covers": ["uma", "f-3500", "d-1000", "tr38901", "ue-clamp", "los-pl2"],
+      "input": {
+        "model": "tr38901",
+        "environment": "uma",
+        "hataArea": null,
+        "frequencyMHz": 3500.0,
+        "d2DM": 1000.0,
+        "hBsM": 25.0,
+        "hUtM": 1.0
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 109.411895,
+        "nlosDb": 141.666046,
+        "pLos": 0.018000125,
+        "breakpointM": 560.0,
+        "hUtUsedM": 1.5,
+        "pathLossDb": 141.085467
+      }
+    },
+    {
+      "id": "umi-ue0.5-1840-d200",
+      "covers": ["umi", "f-1840", "d-200", "tr38901", "ue-clamp", "los-pl2"],
+      "input": {
+        "model": "tr38901",
+        "environment": "umi",
+        "hataArea": null,
+        "frequencyMHz": 1840.0,
+        "d2DM": 200.0,
+        "hBsM": 10.0,
+        "hUtM": 0.5
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 90.912434,
+        "nlosDb": 109.280811,
+        "pLos": 0.093517987,
+        "breakpointM": 110.4,
+        "hUtUsedM": 1.5,
+        "pathLossDb": 107.563038
+      }
+    },
+    {
+      "id": "umi-ue0.5-3500-d1000",
+      "covers": ["umi", "f-3500", "d-1000", "tr38901", "ue-clamp", "los-pl2"],
+      "input": {
+        "model": "tr38901",
+        "environment": "umi",
+        "hataArea": null,
+        "frequencyMHz": 3500.0,
+        "d2DM": 1000.0,
+        "hBsM": 10.0,
+        "hUtM": 0.5
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 119.153068,
+        "nlosDb": 139.889203,
+        "pLos": 0.018,
+        "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
+        "pathLossDb": 139.515953
+      }
+    },
+    {
+      "id": "umi-ue1-1840-d200",
+      "covers": ["umi", "f-1840", "d-200", "tr38901", "ue-clamp", "los-pl2"],
+      "input": {
+        "model": "tr38901",
+        "environment": "umi",
+        "hataArea": null,
+        "frequencyMHz": 1840.0,
+        "d2DM": 200.0,
+        "hBsM": 10.0,
+        "hUtM": 1.0
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 90.912434,
+        "nlosDb": 109.280811,
+        "pLos": 0.093517987,
+        "breakpointM": 110.4,
+        "hUtUsedM": 1.5,
+        "pathLossDb": 107.563038
+      }
+    },
+    {
+      "id": "umi-ue1-3500-d1000",
+      "covers": ["umi", "f-3500", "d-1000", "tr38901", "ue-clamp", "los-pl2"],
+      "input": {
+        "model": "tr38901",
+        "environment": "umi",
+        "hataArea": null,
+        "frequencyMHz": 3500.0,
+        "d2DM": 1000.0,
+        "hBsM": 10.0,
+        "hUtM": 1.0
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 119.153068,
+        "nlosDb": 139.889203,
+        "pLos": 0.018,
+        "breakpointM": 210.0,
+        "hUtUsedM": 1.5,
+        "pathLossDb": 139.515953
+      }
+    },
+    {
+      "id": "rma-ue0.5-1840-d200",
+      "covers": ["rma", "f-1840", "d-200", "tr38901", "ue-clamp", "los-pl1"],
+      "input": {
+        "model": "tr38901",
+        "environment": "rma",
+        "hataArea": null,
+        "frequencyMHz": 1840.0,
+        "d2DM": 200.0,
+        "hBsM": 35.0,
+        "hUtM": 0.5
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 84.56777,
+        "nlosDb": 99.370462,
+        "pLos": 0.826959134,
+        "breakpointM": 1348.790446,
+        "hUtUsedM": 1.0,
+        "pathLossDb": 87.129241
+      }
+    },
+    {
+      "id": "rma-ue0.5-3500-d1000",
+      "covers": ["rma", "f-3500", "d-1000", "tr38901", "ue-clamp", "los-pl1"],
+      "input": {
+        "model": "tr38901",
+        "environment": "rma",
+        "hataArea": null,
+        "frequencyMHz": 3500.0,
+        "d2DM": 1000.0,
+        "hBsM": 35.0,
+        "hUtM": 0.5
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 105.45982,
+        "nlosDb": 131.729731,
+        "pLos": 0.371576691,
+        "breakpointM": 2565.634,
+        "hUtUsedM": 1.0,
+        "pathLossDb": 121.968444
+      }
+    },
+    {
+      "id": "rma-ue1-1840-d200",
+      "covers": ["rma", "f-1840", "d-200", "tr38901", "los-pl1"],
+      "input": {
+        "model": "tr38901",
+        "environment": "rma",
+        "hataArea": null,
+        "frequencyMHz": 1840.0,
+        "d2DM": 200.0,
+        "hBsM": 35.0,
+        "hUtM": 1.0
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 84.56777,
+        "nlosDb": 99.370462,
+        "pLos": 0.826959134,
+        "breakpointM": 1348.790446,
+        "hUtUsedM": 1.0,
+        "pathLossDb": 87.129241
+      }
+    },
+    {
+      "id": "rma-ue1-3500-d1000",
+      "covers": ["rma", "f-3500", "d-1000", "tr38901", "los-pl1"],
+      "input": {
+        "model": "tr38901",
+        "environment": "rma",
+        "hataArea": null,
+        "frequencyMHz": 3500.0,
+        "d2DM": 1000.0,
+        "hBsM": 35.0,
+        "hUtM": 1.0
+      },
+      "expected": {
+        "refused": false,
+        "losDb": 105.45982,
+        "nlosDb": 131.729731,
+        "pLos": 0.371576691,
+        "breakpointM": 2565.634,
+        "hUtUsedM": 1.0,
+        "pathLossDb": 121.968444
+      }
+    },
+    {
+      "id": "umi-bs-1m-refused",
+      "covers": ["umi", "f-1840", "d-500", "tr38901", "refused-height"],
+      "input": {
+        "model": "tr38901",
+        "environment": "umi",
+        "hataArea": null,
+        "frequencyMHz": 1840.0,
+        "d2DM": 500.0,
+        "hBsM": 1.0,
+        "hUtM": 1.5
       },
       "expected": {
         "refused": true,
@@ -3668,6 +4102,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 78.670593
       }
     },
@@ -3689,6 +4124,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 72.450219
       }
     },
@@ -3710,6 +4146,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 99.878069
       }
     },
@@ -3731,6 +4168,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 92.782836
       }
     },
@@ -3752,6 +4190,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 113.895449
       }
     },
@@ -3773,6 +4212,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 106.221965
       }
     },
@@ -3794,6 +4234,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 124.499187
       }
     },
@@ -3815,6 +4256,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 116.388274
       }
     },
@@ -3836,6 +4278,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 141.305714
       }
     },
@@ -3857,6 +4300,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 132.501492
       }
     },
@@ -3878,6 +4322,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 159.724043
       }
     },
@@ -3899,6 +4344,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 150.16002
       }
     },
@@ -3920,6 +4366,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 80.591493
       }
     },
@@ -3941,6 +4388,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 74.371119
       }
     },
@@ -3962,6 +4410,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 101.79897
       }
     },
@@ -3983,6 +4432,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 94.703736
       }
     },
@@ -4004,6 +4454,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 115.816349
       }
     },
@@ -4025,6 +4476,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 108.142866
       }
     },
@@ -4046,6 +4498,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 126.420087
       }
     },
@@ -4067,6 +4520,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 118.309174
       }
     },
@@ -4088,6 +4542,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 143.226615
       }
     },
@@ -4109,6 +4564,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 134.422392
       }
     },
@@ -4130,6 +4586,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 161.644943
       }
     },
@@ -4151,6 +4608,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 152.080921
       }
     },
@@ -4172,6 +4630,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 86.395057
       }
     },
@@ -4193,6 +4652,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 80.174682
       }
     },
@@ -4214,6 +4674,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 107.602533
       }
     },
@@ -4235,6 +4696,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 100.5073
       }
     },
@@ -4256,6 +4718,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 121.619912
       }
     },
@@ -4277,6 +4740,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 113.946429
       }
     },
@@ -4298,6 +4762,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 132.223651
       }
     },
@@ -4319,6 +4784,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 124.112738
       }
     },
@@ -4340,6 +4806,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 149.030178
       }
     },
@@ -4361,6 +4828,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 140.225956
       }
     },
@@ -4382,6 +4850,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 167.448506
       }
     },
@@ -4403,6 +4872,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 157.884484
       }
     },
@@ -4424,6 +4894,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 90.728003
       }
     },
@@ -4445,6 +4916,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 111.935479
       }
     },
@@ -4466,6 +4938,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 125.952859
       }
     },
@@ -4487,6 +4960,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 136.556597
       }
     },
@@ -4508,6 +4982,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 153.363124
       }
     },
@@ -4529,6 +5004,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 171.781453
       }
     },
@@ -4550,6 +5026,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 93.735834
       }
     },
@@ -4571,6 +5048,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 114.94331
       }
     },
@@ -4592,6 +5070,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 128.960689
       }
     },
@@ -4613,6 +5092,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 139.564428
       }
     },
@@ -4634,6 +5114,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 156.370955
       }
     },
@@ -4655,6 +5136,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 174.789283
       }
     },
@@ -4676,6 +5158,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 94.963426
       }
     },
@@ -4697,6 +5180,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 116.170903
       }
     },
@@ -4718,6 +5202,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 130.188282
       }
     },
@@ -4739,6 +5224,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 140.79202
       }
     },
@@ -4760,6 +5246,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 157.598548
       }
     },
@@ -4781,6 +5268,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 176.016876
       }
     },
@@ -4802,6 +5290,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 78.660401
       }
     },
@@ -4823,6 +5312,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 68.843857
       }
     },
@@ -4844,6 +5334,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 99.867877
       }
     },
@@ -4865,6 +5356,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 89.176475
       }
     },
@@ -4886,6 +5378,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 113.885256
       }
     },
@@ -4907,6 +5400,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 102.615604
       }
     },
@@ -4928,6 +5422,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 124.488995
       }
     },
@@ -4949,6 +5444,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 112.781913
       }
     },
@@ -4970,6 +5466,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 141.295522
       }
     },
@@ -4991,6 +5488,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 128.895131
       }
     },
@@ -5012,6 +5510,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 159.71385
       }
     },
@@ -5033,6 +5532,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 146.553659
       }
     },
@@ -5054,6 +5554,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 80.574693
       }
     },
@@ -5075,6 +5576,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 70.475448
       }
     },
@@ -5096,6 +5598,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 101.782169
       }
     },
@@ -5117,6 +5620,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 90.808065
       }
     },
@@ -5138,6 +5642,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 115.799548
       }
     },
@@ -5159,6 +5664,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 104.247194
       }
     },
@@ -5180,6 +5686,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 126.403286
       }
     },
@@ -5201,6 +5708,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 114.413503
       }
     },
@@ -5222,6 +5730,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 143.209814
       }
     },
@@ -5243,6 +5752,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 130.526721
       }
     },
@@ -5264,6 +5774,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 161.628142
       }
     },
@@ -5285,6 +5796,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 148.18525
       }
     },
@@ -5306,6 +5818,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 86.358289
       }
     },
@@ -5327,6 +5840,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 75.404927
       }
     },
@@ -5348,6 +5862,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 107.565766
       }
     },
@@ -5369,6 +5884,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 95.737545
       }
     },
@@ -5390,6 +5906,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 121.583145
       }
     },
@@ -5411,6 +5928,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 109.176674
       }
     },
@@ -5432,6 +5950,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 132.186883
       }
     },
@@ -5453,6 +5972,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 119.342982
       }
     },
@@ -5474,6 +5994,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 148.993411
       }
     },
@@ -5495,6 +6016,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 135.4562
       }
     },
@@ -5516,6 +6038,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 167.411739
       }
     },
@@ -5537,6 +6060,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 153.114729
       }
     },
@@ -5558,6 +6082,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 87.691236
       }
     },
@@ -5579,6 +6104,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 108.898712
       }
     },
@@ -5600,6 +6126,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 122.916092
       }
     },
@@ -5621,6 +6148,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 133.51983
       }
     },
@@ -5642,6 +6170,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 150.326357
       }
     },
@@ -5663,6 +6192,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 168.744686
       }
     },
@@ -5684,6 +6214,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 90.691081
       }
     },
@@ -5705,6 +6236,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 111.898557
       }
     },
@@ -5726,6 +6258,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 125.915937
       }
     },
@@ -5747,6 +6280,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 136.519675
       }
     },
@@ -5768,6 +6302,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 153.326202
       }
     },
@@ -5789,6 +6324,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 171.744531
       }
     },
@@ -5810,6 +6346,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 91.915414
       }
     },
@@ -5831,6 +6368,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 113.122891
       }
     },
@@ -5852,6 +6390,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 127.14027
       }
     },
@@ -5873,6 +6412,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 137.744008
       }
     },
@@ -5894,6 +6434,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 154.550536
       }
     },
@@ -5915,6 +6456,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 172.968864
       }
     },
@@ -5936,6 +6478,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 69.149664
       }
     },
@@ -5957,6 +6500,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 66.620241
       }
     },
@@ -5978,6 +6522,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 90.35714
       }
     },
@@ -5999,6 +6544,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 79.665738
       }
     },
@@ -6020,6 +6566,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 104.37452
       }
     },
@@ -6041,6 +6588,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 93.104867
       }
     },
@@ -6062,6 +6610,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 114.978258
       }
     },
@@ -6083,6 +6632,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 103.271176
       }
     },
@@ -6104,6 +6654,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 131.784785
       }
     },
@@ -6125,6 +6676,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 119.384394
       }
     },
@@ -6146,6 +6698,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 150.203114
       }
     },
@@ -6167,6 +6720,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 137.042922
       }
     },
@@ -6188,6 +6742,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 70.632085
       }
     },
@@ -6209,6 +6764,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 68.088819
       }
     },
@@ -6230,6 +6786,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 91.839562
       }
     },
@@ -6251,6 +6808,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 80.865458
       }
     },
@@ -6272,6 +6830,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 105.856941
       }
     },
@@ -6293,6 +6852,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 94.304587
       }
     },
@@ -6314,6 +6874,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 116.460679
       }
     },
@@ -6335,6 +6896,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 104.470896
       }
     },
@@ -6356,6 +6918,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 133.267207
       }
     },
@@ -6377,6 +6940,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 120.584114
       }
     },
@@ -6398,6 +6962,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 151.685535
       }
     },
@@ -6419,6 +6984,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 138.242642
       }
     },
@@ -6440,6 +7006,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 74.979869
       }
     },
@@ -6461,6 +7028,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 72.525794
       }
     },
@@ -6482,6 +7050,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 96.187346
       }
     },
@@ -6503,6 +7072,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 84.359124
       }
     },
@@ -6524,6 +7094,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 110.204725
       }
     },
@@ -6545,6 +7116,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 97.798253
       }
     },
@@ -6566,6 +7138,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 120.808463
       }
     },
@@ -6587,6 +7160,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 107.964562
       }
     },
@@ -6608,6 +7182,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 137.614991
       }
     },
@@ -6629,6 +7204,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 124.07778
       }
     },
@@ -6650,6 +7226,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 156.033319
       }
     },
@@ -6671,6 +7248,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 141.736309
       }
     },
@@ -6692,6 +7270,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 87.691236
       }
     },
@@ -6713,6 +7292,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 108.898712
       }
     },
@@ -6734,6 +7314,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 122.916092
       }
     },
@@ -6755,6 +7336,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 133.51983
       }
     },
@@ -6776,6 +7358,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 150.326357
       }
     },
@@ -6797,6 +7380,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 168.744686
       }
     },
@@ -6818,6 +7402,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 90.691081
       }
     },
@@ -6839,6 +7424,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 111.898557
       }
     },
@@ -6860,6 +7446,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 125.915937
       }
     },
@@ -6881,6 +7468,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 136.519675
       }
     },
@@ -6902,6 +7490,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 153.326202
       }
     },
@@ -6923,6 +7512,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 171.744531
       }
     },
@@ -6944,6 +7534,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 91.915414
       }
     },
@@ -6965,6 +7556,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 113.122891
       }
     },
@@ -6986,6 +7578,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 127.14027
       }
     },
@@ -7007,6 +7600,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 137.744008
       }
     },
@@ -7028,6 +7622,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 154.550536
       }
     },
@@ -7049,6 +7644,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 172.968864
       }
     },
@@ -7070,6 +7666,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 65.265286
       }
     },
@@ -7091,6 +7688,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 66.620241
       }
     },
@@ -7112,6 +7710,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 76.17196
       }
     },
@@ -7133,6 +7732,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 76.299132
       }
     },
@@ -7154,6 +7754,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 86.080934
       }
     },
@@ -7175,6 +7776,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 84.078491
       }
     },
@@ -7196,6 +7798,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 96.684672
       }
     },
@@ -7217,6 +7820,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 90.072841
       }
     },
@@ -7238,6 +7842,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 113.4912
       }
     },
@@ -7259,6 +7864,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 101.090808
       }
     },
@@ -7280,6 +7886,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 131.909528
       }
     },
@@ -7301,6 +7908,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 118.749337
       }
     },
@@ -7322,6 +7930,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 66.733864
       }
     },
@@ -7343,6 +7952,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 68.088819
       }
     },
@@ -7364,6 +7974,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 77.640539
       }
     },
@@ -7385,6 +7996,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 77.767711
       }
     },
@@ -7406,6 +8018,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 87.29313
       }
     },
@@ -7427,6 +8040,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 85.54707
       }
     },
@@ -7448,6 +8062,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 97.896868
       }
     },
@@ -7469,6 +8084,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 91.541419
       }
     },
@@ -7490,6 +8106,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 114.703396
       }
     },
@@ -7511,6 +8128,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 102.020303
       }
     },
@@ -7532,6 +8150,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 133.121724
       }
     },
@@ -7553,6 +8172,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 119.678831
       }
     },
@@ -7574,6 +8194,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 71.170839
       }
     },
@@ -7595,6 +8216,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 72.525794
       }
     },
@@ -7616,6 +8238,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 82.077514
       }
     },
@@ -7637,6 +8260,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 82.204686
       }
     },
@@ -7658,6 +8282,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 90.642382
       }
     },
@@ -7679,6 +8304,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 89.984045
       }
     },
@@ -7700,6 +8326,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 101.24612
       }
     },
@@ -7721,6 +8348,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 95.978394
       }
     },
@@ -7742,6 +8370,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 118.052647
       }
     },
@@ -7763,6 +8392,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 105.513011
       }
     },
@@ -7784,6 +8414,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 136.470976
       }
     },
@@ -7805,6 +8436,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 122.173965
       }
     },
@@ -7826,6 +8458,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 71.170839
       }
     },
@@ -7847,6 +8480,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 82.077514
       }
     },
@@ -7868,6 +8502,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 91.975328
       }
     },
@@ -7889,6 +8524,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 102.579066
       }
     },
@@ -7910,6 +8546,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 119.385594
       }
     },
@@ -7931,6 +8568,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 137.803922
       }
     },
@@ -7952,6 +8590,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 72.945371
       }
     },
@@ -7973,6 +8612,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 83.852045
       }
     },
@@ -7994,6 +8634,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 93.869858
       }
     },
@@ -8015,6 +8656,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 104.473596
       }
     },
@@ -8036,6 +8678,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 121.280124
       }
     },
@@ -8057,6 +8700,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 139.698452
       }
     },
@@ -8078,6 +8722,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 73.669614
       }
     },
@@ -8099,6 +8744,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 84.576289
       }
     },
@@ -8120,6 +8766,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 94.621451
       }
     },
@@ -8141,6 +8788,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 105.225189
       }
     },
@@ -8162,6 +8810,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 122.031716
       }
     },
@@ -8183,6 +8832,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 140.450045
       }
     },
@@ -8204,6 +8854,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 112.356777
       }
     },
@@ -8225,6 +8876,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 129.482616
       }
     },
@@ -8372,6 +9024,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 65.265286
       }
     },
@@ -8393,6 +9046,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 76.17196
       }
     },
@@ -8414,6 +9068,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 84.057543
       }
     },
@@ -8435,6 +9090,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 90.067581
       }
     },
@@ -8456,6 +9112,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 99.606872
       }
     },
@@ -8477,6 +9134,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 110.06409
       }
     },
@@ -8498,6 +9156,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 72.945371
       }
     },
@@ -8519,6 +9178,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 83.852045
       }
     },
@@ -8540,6 +9200,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 91.737627
       }
     },
@@ -8561,6 +9222,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 97.747666
       }
     },
@@ -8582,6 +9244,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 107.286957
       }
     },
@@ -8603,6 +9266,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 117.744175
       }
     },
@@ -8624,6 +9288,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 75.948481
       }
     },
@@ -8645,6 +9310,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 86.855156
       }
     },
@@ -8666,6 +9332,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 94.740738
       }
     },
@@ -8687,6 +9354,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 100.750776
       }
     },
@@ -8708,6 +9376,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 110.290067
       }
     },
@@ -8729,6 +9398,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 120.747285
       }
     },
@@ -8750,6 +9420,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 78.530375
       }
     },
@@ -8771,6 +9442,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 89.437049
       }
     },
@@ -8792,6 +9464,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 97.322632
       }
     },
@@ -8813,6 +9486,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 103.33267
       }
     },
@@ -8834,6 +9508,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 112.871961
       }
     },
@@ -8855,6 +9530,7 @@
         "nlosDb": null,
         "pLos": null,
         "breakpointM": null,
+        "hUtUsedM": null,
         "pathLossDb": 123.329179
       }
     }

@@ -187,6 +187,11 @@ describe('orphans', () => {
     expect(file.sectors[0]?.antennaIds).toEqual(['ant-a', 'ant-gone']);
   });
 
+  it('drops a sector that the removal leaves empty', () => {
+    const out = removeOrphan(file, 'ant-rej');
+    expect(out.sectors.map((s) => s.id)).toEqual(['sec-s1']);
+  });
+
   it('reassigns an orphan to another unit, keeping its settings and sector', () => {
     const out = reassignOrphan(file, 'ant-gone', 'ant-new');
     expect(out.antennas.find((a) => a.antennaId === 'ant-new')?.etiltDeg).toBe(4);
