@@ -1,0 +1,67 @@
+/* ---------- the placing strip: one line bottom-centre over the stage ---------- */
+.pin-strip {
+  position: absolute;
+  inset-inline-start: 50%;
+  bottom: var(--sp-7);
+  transform: translateX(-50%);
+  z-index: var(--z-panel);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
+  width: max-content;
+  max-width: calc(100% - 2 * var(--sp-6));
+  padding-block: var(--sp-3);
+  padding-inline: var(--sp-5) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  box-shadow: var(--el-2);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  pointer-events: auto;
+  animation: pin-strip-in var(--d-2) var(--ease);
+}
+@keyframes pin-strip-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, var(--sp-2));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pin-strip {
+    animation: none;
+  }
+}
+/* the sentence leads and takes the room left; the controls keep their size */
+.pin-strip p {
+  margin: 0;
+  line-height: 1.4;
+}
+.pin-strip-say {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: var(--fg-0);
+}
+.pin-strip-note {
+  flex: 1 1 100%;
+  color: var(--fg-2);
+}
+.pin-strip-error {
+  flex: 1 1 100%;
+  color: var(--danger-ink);
+}
+.pin-strip-eye {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  white-space: nowrap;
+}
+.pin-strip-eye .input {
+  width: 64px;
+}
+.pin-strip-acts {
+  display: inline-flex;
+  gap: var(--sp-2);
+  margin-inline-start: auto;
+}
