@@ -52,6 +52,8 @@ An audit of every reader (7 Oct 2026) found that only the manifest, the package 
 | pipeline pack `manifest.json`              | `main/jobs/pack.ts`                                | "runtime not found"                                         | No                 |
 | `models/detect/*/model.json`               | `main/inference/models.ts`                         | model left out                                              | No                 |
 | `drawings/*/placement.json`                | `packages/modelling/src/drawing.ts`                | throws, advice is "import the drawing again"                | Through the advice |
+| `rf/sectors.json`, `rf/catalogue.json`     | `main/rf.ts` (RF tab, `parseRfSectors`)            | refused with the update message                             | No (never written) |
+| `rf/runs/*/run.json`                       | `main/rf.ts` (`parseRfRun`)                        | left out of the run list; a write never touches it          | No                 |
 | tiles, flight poses, panoramas             | `packages/engine`, `packages/video`                | throws or defaults                                          | No (read only)     |
 
 The M9 files (journal, identity, team, exchange, hub) are read with unknown keys kept and unknown op kinds accepted, so a 1.x file of a later minor version still reads.

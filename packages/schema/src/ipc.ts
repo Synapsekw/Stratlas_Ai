@@ -33,6 +33,14 @@ import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
 import { AntennaAiLabel, AntennasFile } from './antennas';
 import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
+import {
+  CatalogueId,
+  CatalogueOrigin,
+  RfCatalogueEntry,
+  RfRun,
+  RfRunId,
+  RfSectorsFile,
+} from './rf';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
@@ -3438,6 +3446,97 @@ export const ipc = {
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), trashed: z.array(z.string()) }),
+      Failure,
+    ]),
+  },
+  /**
+   * `rf/sectors.json` (`aio.rf-sectors/1`); `file` is null when the project has none. A file saved
+   * by a newer version answers a failure with the update message and is left unchanged.
+   * `readOnly` for a package.
+   */
+  'rf:readSectors': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: RfSectorsFile.nullable(), readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /**
+   * Write `rf/sectors.json` atomically (`.bak`, journaled); copies the catalogue entries it uses
+   * into `rf/catalogue.json`. Refused for packages and when the file on disk is newer.
+   */
+  'rf:writeSectors': {
+    request: z.object({ projectId: ProjectId, file: RfSectorsFile }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * Catalogue entries: built in (read only), the person's own (userData `rf-catalogue/`) and, with
+   * a project, those copied into `rf/catalogue.json`.
+   */
+  'rf:listCatalogue': {
+    request: z.object({ projectId: ProjectId.optional() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        entries: z.array(z.object({ origin: CatalogueOrigin, entry: RfCatalogueEntry }).strict()),
+      }),
+      Failure,
+    ]),
+  },
+  /**
+   * Import into the person's catalogue: an MSI / Planet pattern file attached to one port of an
+   * antenna entry (`attach`), or a catalogue JSON file (`aio.rf-catalogue/1`). `path` comes from
+   * `dialog:openFile`. Answers the entries that were added or changed.
+   */
+  'rf:importCatalogue': {
+    request: z
+      .object({
+        path: z.string().min(1).max(1024),
+        format: z.enum(['msi', 'catalogue']),
+        attach: z
+          .object({ entryId: CatalogueId, portId: z.string().min(1).max(40) })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        entries: z.array(RfCatalogueEntry),
+        warnings: z.array(z.string()),
+      }),
+      Failure,
+    ]),
+  },
+  /** Coverage runs (`rf/runs/<runId>/run.json`), newest first; packages read in place. */
+  'rf:listRuns': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), runs: z.array(RfRun) }),
+      Failure,
+    ]),
+  },
+  /** One run's `run.json`. */
+  'rf:readRun': {
+    request: z.object({ projectId: ProjectId, runId: RfRunId }).strict(),
+    response: z.discriminatedUnion('ok', [z.object({ ok: z.literal(true), run: RfRun }), Failure]),
+  },
+  /**
+   * Export a run through the save dialog: a GeoTIFF of a grid, GeoJSON coverage polygons per
+   * threshold, or the CSV of per-sector summaries. `path` is null when the person cancelled.
+   */
+  'rf:export': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        runId: RfRunId,
+        format: z.enum(['geotiff', 'geojson', 'csv']),
+        /** The grid for `geotiff` and `geojson`; ignored for `csv`. */
+        view: z.enum(['rsrp', 'bestServer', 'overlap']).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string().nullable() }),
       Failure,
     ]),
   },

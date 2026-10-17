@@ -602,6 +602,28 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'edits/pointcloud/<layer>.json',
     since: '0.16',
   },
+  // RF coverage (rf.ts): new files in a new folder, so older builds never read them
+  {
+    family: 'aio.rf-sectors',
+    version: 1,
+    home: 'project',
+    where: 'rf/sectors.json',
+    since: '0.17',
+  },
+  {
+    family: 'aio.rf-catalogue',
+    version: 1,
+    home: 'project',
+    where: 'rf/catalogue.json (also userData rf-catalogue/)',
+    since: '0.17',
+  },
+  {
+    family: 'aio.rf-run',
+    version: 1,
+    home: 'project',
+    where: 'rf/runs/<runId>/run.json',
+    since: '0.17',
+  },
 ];
 
 /**

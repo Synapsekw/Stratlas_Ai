@@ -9,6 +9,7 @@ import { ModelEvidenceParams } from './modelEvidence';
 import { PanoFolderId, PanoQuality, PanoShape } from './panoStitch';
 import { PointcloudCleanParams, PointcloudCleanup } from './pointcloudCleanup';
 import { ProcModelId, ProcPartKind } from './procmodel';
+import { RfRunId, SectorId } from './rf';
 import { TilesetId } from './tilesets';
 import { DesignFormat, DesignId, DesignSourceUnits } from './designs';
 import {
@@ -96,6 +97,8 @@ export const PipelineName = z.enum([
   'pointcloud.clean',
   // Telecom antenna inventory (pipeline pack TELECOM_ANTENNAS_MIN_PACK)
   'telecom.antennas',
+  // RF coverage prediction (pipeline pack RF_COVERAGE_MIN_PACK)
+  'rf.coverage',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -360,7 +363,20 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     description:
       'Finds and measures the antennas, dishes and other equipment on a tower crown from a point cloud: type, azimuth, downtilt, plumb and size, with a fit quality for each.',
   },
+  {
+    name: 'rf.coverage',
+    title: 'Predicting coverage',
+    description:
+      'Signal strength (RSRP) around a telecom site from the antenna units and their RF settings: path loss per sector, then composite, best server and overlap grids. Flat ground, no buildings.',
+  },
 ];
+
+/**
+ * The first pipeline pack with `rf.coverage`; one constant, set at merge time (0.14.0,
+ * provisional: the pack is at 0.13.1 today).
+ */
+export const RF_COVERAGE_MIN_PACK = '0.14.0';
+export const RF_COVERAGE_FEATURE = 'Coverage prediction for telecom sites';
 
 const Latitude = z.number().min(-90).max(90);
 const Longitude = z.number().min(-180).max(180);
@@ -1209,6 +1225,24 @@ export const PanoStitchParams = z
   .strict();
 export type PanoStitchParams = z.infer<typeof PanoStitchParams>;
 
+/**
+ * `rf.coverage` (python `aio_pipelines/rf/pipeline.py`). The job reads `rf/sectors.json`,
+ * `rf/catalogue.json` and `telecom/antennas.json` itself and writes `rf/runs/<runId>/`; the params
+ * only name the run and narrow it.
+ */
+export const RfCoverageParams = z
+  .object({
+    runId: RfRunId,
+    /** Only these sectors; absent means every sector with an eligible unit. */
+    sectorIds: z.array(SectorId).min(1).max(64).optional(),
+    /** Let draft (unreviewed) units take part; the run records that it did (D3). */
+    includeUnreviewed: z.boolean().optional(),
+    /** Reuse path-loss grids of an earlier run folder when geometry and heights are unchanged. */
+    reusePathLoss: z.boolean().optional(),
+  })
+  .strict();
+export type RfCoverageParams = z.infer<typeof RfCoverageParams>;
+
 const PARAMS = {
   'aik.cameras': AikCamerasParams,
   'aik.project': AikProjectParams,
@@ -1255,6 +1289,7 @@ const PARAMS = {
   'model.evidence': ModelEvidenceParams,
   'pointcloud.clean': PointcloudCleanParams,
   'telecom.antennas': TelecomAntennasParams,
+  'rf.coverage': RfCoverageParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

@@ -64,3 +64,5 @@ export * from './engineer';
 export * from './modelEvidence';
 // Telecom antenna inventory: aio.antennas/1, the telecom.antennas params and label contracts
 export * from './antennas';
+// RF coverage: sectors, catalogue and run files (aio.rf-*)
+export * from './rf';

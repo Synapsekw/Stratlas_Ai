@@ -1064,6 +1064,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'pointcloud.clean': [],
   // started from the antenna inventory panel only
   'telecom.antennas': [],
+  // started from the RF tab (a run id and the sectors), never from a form
+  'rf.coverage': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */
