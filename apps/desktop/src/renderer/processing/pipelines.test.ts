@@ -41,6 +41,7 @@ describe('pipelines by area (the Advanced list)', () => {
       'Import and convert',
       'Map packs',
       'Road survey',
+      'Telecom coverage',
       'System',
     ]);
     // no area is empty, and Other only appears for a pipeline nobody placed

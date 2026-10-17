@@ -18,6 +18,7 @@ export type PipelineGroupId =
   | 'import'
   | 'packs'
   | 'road'
+  | 'rf'
   | 'system';
 
 /** The areas of the Advanced list, in the order they show. */
@@ -31,6 +32,7 @@ export const PIPELINE_GROUPS: readonly { id: PipelineGroupId; label: string }[] 
   { id: 'import', label: 'Import and convert' },
   { id: 'packs', label: 'Map packs' },
   { id: 'road', label: 'Road survey' },
+  { id: 'rf', label: 'Telecom coverage' },
   { id: 'system', label: 'System' },
 ];
 
@@ -72,7 +74,7 @@ export const PIPELINE_GROUP: Record<PipelineName, PipelineGroupId> = {
   'pointcloud.to_copc': 'import',
   'pointcloud.clean': 'import',
   'telecom.antennas': 'survey',
-  'rf.coverage': 'survey',
+  'rf.coverage': 'rf',
   'drawing.import': 'import',
   'design.import': 'import',
   'opf.import': 'import',
@@ -184,7 +186,7 @@ export const JOB_KIND: Record<PipelineName, JobKind> = {
   'pointcloud.to_copc': 'files',
   'pointcloud.clean': 'files',
   'telecom.antennas': 'survey',
-  'rf.coverage': 'maps',
+  'rf.coverage': 'survey',
   'drawing.import': 'files',
   'design.import': 'files',
   'opf.import': 'files',
