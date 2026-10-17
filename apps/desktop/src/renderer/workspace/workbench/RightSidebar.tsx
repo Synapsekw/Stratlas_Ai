@@ -243,16 +243,18 @@ function useFollow(front: TabId) {
     workbench.getState().show('changes');
   }, [changesSeq]);
   const volumes = useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
-  const seenVolumes = useRef(false);
+  // once per project: another volumetric project opened straight after this one opens on its own
+  const projectId = useWorkspace((s) => s.project?.id ?? null);
+  const seenVolumes = useRef<string | null>(null);
   useEffect(() => {
-    if (!volumes) {
-      seenVolumes.current = false;
+    if (!volumes || !projectId) {
+      seenVolumes.current = null;
       return;
     }
-    if (seenVolumes.current) return;
-    seenVolumes.current = true;
+    if (seenVolumes.current === projectId) return;
+    seenVolumes.current = projectId;
     if (front === 'selection') workbench.getState().show('volumes');
-  }, [volumes, front]);
+  }, [volumes, projectId, front]);
 }
 
 /** A workbench's header row: Collapse all or Expand all, one icon button (D16). */

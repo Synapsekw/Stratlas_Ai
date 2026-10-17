@@ -256,6 +256,20 @@ describe('RightSidebar', () => {
     expect(workbench.getState().front).toBe('volumes');
   });
 
+  it('opens the next volumetric project on Volumes too, straight from another', () => {
+    act(() => {
+      volumetric.setState({ status: 'ready' });
+    });
+    render();
+    expect(workbench.getState().front).toBe('volumes');
+    // another project opens; its volumes are ready without passing through idle
+    act(() => {
+      workspace.getState().openProject({ id: 'p4', root: '/p4', manifest: threeDates });
+      workbench.getState().reset();
+    });
+    expect(workbench.getState().front).toBe('volumes');
+  });
+
   it('links the island while the live tool tab is in front', () => {
     render();
     expect(linked).toBe(false);

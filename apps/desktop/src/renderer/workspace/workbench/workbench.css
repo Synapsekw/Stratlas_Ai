@@ -3,7 +3,7 @@
 .wb-bar {
   flex: none;
   padding-inline: var(--sp-5);
-  min-width: 0;
+  min-inline-size: 0;
 }
 /* the bar is one row (Tabs overflow="menu"); its "More tabs" button keeps to the row's end */
 .wb-bar > .tabs {
@@ -16,7 +16,7 @@
 /* the road's own panel fills the Selection tab instead of sizing itself (a road keeps 72%) */
 .ws .right .wb-body.ctx-wrap > .ctx-wrap.tall.rr-panel {
   flex: 1 1 auto;
-  border-bottom: 0;
+  border-block-end: 0;
 }
 /* a workbench's header row: Collapse all or Expand all at its end */
 .wb-bench-head {
