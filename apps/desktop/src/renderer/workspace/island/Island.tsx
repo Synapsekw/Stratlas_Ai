@@ -111,6 +111,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const layer = useRef<HTMLDivElement>(null);
   const dateBox = useRef<HTMLDivElement>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
+  const asideRef = useRef<HTMLDivElement>(null);
   // the app's own Reduce motion setting, or the system's
   const osStill = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);
   const appStill = useShell((x) => x.settings.motion === 'reduce');
@@ -265,6 +266,25 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     },
     [],
   );
+  // what hangs beside the capsule (the bubble, a comparison's controls) and its gap: the line
+  // leaves room for it before the right panel's toggle (--isl-aside-w, island.css)
+  useEffect(() => {
+    const aside = asideRef.current;
+    const wrap = root.current;
+    if (!aside || !wrap || typeof ResizeObserver === 'undefined') return;
+    const write = () => {
+      const w = aside.offsetWidth;
+      // the aside stands the wrap's gap away from the capsule
+      const gap = Number.parseFloat(getComputedStyle(wrap).columnGap) || 0;
+      wrap.style.setProperty('--isl-aside-w', `${String(w > 0 ? w + gap : 0)}px`);
+    };
+    write();
+    const ro = new ResizeObserver(write);
+    ro.observe(aside);
+    return () => {
+      ro.disconnect();
+    };
+  }, []);
 
   // the pointer near the top of the stage wakes the island
   useEffect(() => {
@@ -519,7 +539,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         </p>
       )}
       {/* beside the capsule, outside the centring: the bubble and a comparison's controls */}
-      <div className="isl-aside">
+      <div ref={asideRef} className="isl-aside">
         {secondary && !open && (
           <Button
             variant="quiet"

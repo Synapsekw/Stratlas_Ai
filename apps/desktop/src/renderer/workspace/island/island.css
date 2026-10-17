@@ -675,3 +675,49 @@
     animation: none !important;
   }
 }
+
+/* The line keeps clear of the right panel's toggle at the stage's top end (T21 concern 2, T22
+   concern 2): the island centres on the views (styles.css), so the line is at most their width
+   less the toggle's room at both sides, and less what hangs beside the capsule (--isl-aside-w,
+   Island.tsx). A long live name is cut to fit. Open, the tools hide the toggle (above). */
+.island-wrap {
+  --isl-toggle-room: calc(var(--sp-5) + 34px + var(--sp-3));
+}
+.island-wrap:is([data-state='rest'], [data-state='ready']) .isl-layer {
+  max-inline-size: calc(
+    100cqi - max(var(--drawer-inline, 0px), var(--vdock-w, 0px)) - 2 *
+      (var(--isl-toggle-room) + var(--isl-aside-w, 0px)) - 2px
+  );
+}
+.isl-line > .isl-live-open,
+.isl-line > .isl-live,
+.isl-live-open > .isl-live {
+  min-inline-size: 0;
+  overflow: clip;
+}
+.isl-live > .isl-name {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.isl-line > :not(.isl-live-open, .isl-live),
+.isl-live > :not(.isl-name) {
+  flex: none;
+}
+/* on a narrow stage the live name comes first: the Tools button leaves the view's name to its
+   icon and drops its key, the date its count, a playing clip its bar and telemetry */
+@container (max-width: 560px) {
+  .isl-line .isl-open .isl-mode,
+  .isl-line .isl-open .kbd,
+  .isl-line .isl-count,
+  .isl-line [data-live='playback'] > :is(.isl-bar, .isl-value) {
+    display: none;
+  }
+}
+/* narrower still (Volumes in front at 1100 px): the date keeps its pill, which opens the calendar,
+   and leaves its steps */
+@container (max-width: 420px) {
+  .isl-line .isl-arrow {
+    display: none;
+  }
+}

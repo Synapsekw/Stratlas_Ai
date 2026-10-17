@@ -497,6 +497,44 @@ async function narrowStage(win: Page) {
   });
 }
 
+/**
+ * What of the island (its capsule and what hangs beside it) covers the right panel's toggle, and
+ * the stage's width. Nothing, wherever the island grows (T21 concern 2).
+ */
+async function islandOverToggle(win: Page) {
+  return win.evaluate(() => {
+    const toggle = document.querySelector('.ws > .stage > .stage-rp')?.getBoundingClientRect();
+    const stage = document.querySelector('.ws > .stage')?.getBoundingClientRect();
+    const parts = [
+      ...document.querySelectorAll<HTMLElement>(
+        '.ws > .stage > .island-wrap .island, .ws > .stage > .island-wrap .isl-aside > *',
+      ),
+    ];
+    const over = toggle
+      ? parts
+          .map((el) => ({ name: el.className, r: el.getBoundingClientRect() }))
+          .filter(
+            ({ r }) =>
+              r.width > 0 &&
+              r.left < toggle.right &&
+              toggle.left < r.right &&
+              r.top < toggle.bottom &&
+              toggle.top < r.bottom,
+          )
+          .map(
+            ({ name, r }) => `${name} ${String(Math.round(r.left))}-${String(Math.round(r.right))}`,
+          )
+      : ['no toggle'];
+    return {
+      over,
+      stage: Math.round(stage?.width ?? 0),
+      toggle: toggle
+        ? `${String(Math.round(toggle.left))}-${String(Math.round(toggle.right))}`
+        : '',
+    };
+  });
+}
+
 test.describe('with Volumes in front', () => {
   test.skip(
     !existsSync(join(DEMO_FOLDER, 'demo-tank-farm', 'manifest.json')),
@@ -537,5 +575,42 @@ test.describe('with Volumes in front', () => {
     await expect.poll(async () => (await narrowStage(win))?.heads).toEqual([]);
     await islandSettled(win);
     await shot(win, info, 'volumes-front-split-1100x720.png');
+  });
+
+  test('the island, grown by what is live and the pointer near, keeps clear of the panel toggle', async ({
+    win,
+  }, info) => {
+    await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
+    await openBench(win, 'volumes');
+    await stageMode(win, '3D');
+    await closeIslandTools(win);
+    const near = async () => {
+      await island(win).locator('.island').hover();
+      await expect(island(win)).toHaveAttribute('data-state', 'ready');
+      await islandSettled(win);
+    };
+    // the clip plays: the island carries its reading, on the narrowest stage (Volumes in front)
+    await win.evaluate(() => {
+      (
+        window as unknown as { __stratlas: { workspace: { getState(): { play(): void } } } }
+      ).__stratlas.workspace
+        .getState()
+        .play();
+    });
+    await expect(island(win).locator('[data-live]')).toHaveCount(1);
+    await near();
+    const narrow = await islandOverToggle(win);
+    await shot(win, info, 'island-toggle-narrow.png');
+    expect(narrow.over, `at a ${String(narrow.stage)} px stage`).toEqual([]);
+    // a tool live too (Measure in front, the stage a little wider): two live items, the second
+    // as the bubble beside the capsule
+    await win.locator('[data-scene-view] canvas').first().focus();
+    await win.keyboard.press('m');
+    await expect(win.locator('.right #wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+    await near();
+    const both = await islandOverToggle(win);
+    await shot(win, info, 'island-toggle-live-tool.png');
+    expect(both.over, `at a ${String(both.stage)} px stage`).toEqual([]);
+    await win.keyboard.press('Escape');
   });
 });
