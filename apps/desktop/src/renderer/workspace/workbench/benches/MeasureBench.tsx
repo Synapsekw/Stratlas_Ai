@@ -31,6 +31,7 @@ import {
   type MessageKey,
 } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useStore } from 'zustand';
 import { useShell } from '../../../shell';
 import { BulkTotals } from '../../../survey/BulkTotals';
 import { openCompareDialog } from '../../../survey/compareStore';
@@ -840,6 +841,20 @@ function Saved({ stage }: { stage: EngineStage | null }) {
   );
 }
 
+/**
+ * Collapse all during a search clears the search: the search holds its sections open, so the
+ * button would otherwise flip to Expand all with nothing folded. The sections then fold as asked.
+ */
+function useCollapseEndsSearch(setQuery: (q: string) => void): void {
+  const all = useStore(sectionStore, (s) => s.byBench[BENCH]?.all);
+  const seen = useRef(all);
+  useEffect(() => {
+    if (all === seen.current) return;
+    seen.current = all;
+    if (all === false) setQuery('');
+  }, [all, setQuery]);
+}
+
 /** The Measure workbench's body, under the sidebar's bench header. */
 export function MeasureBench() {
   const stage = useEngineStage();
@@ -848,6 +863,7 @@ export function MeasureBench() {
   const families = useMemo(() => familiesFor(readOnly), [readOnly]);
   const [query, setQuery] = useState('');
   const searching = !live && query.trim() !== '';
+  useCollapseEndsSearch(setQuery);
   return (
     <div className="meb wb-scroll">
       {live ? (

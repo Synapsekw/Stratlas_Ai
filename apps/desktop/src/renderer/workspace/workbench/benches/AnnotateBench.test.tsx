@@ -280,6 +280,19 @@ describe('AnnotateBench', () => {
     expect(shell.getState().annotating).toBe(false);
   });
 
+  it('folds its tool sections with Collapse all, and they open by default', () => {
+    act(() => {
+      shell.getState().setAnnotating(true);
+    });
+    render();
+    const model = () => host.querySelector('[data-testid="wb-section-annotate-model"]');
+    expect(model()?.getAttribute('data-open')).toBe('true');
+    act(() => {
+      sectionStore.getState().setAll('annotate', false);
+    });
+    expect(model()?.getAttribute('data-open')).toBe('false');
+  });
+
   it('shows the map tools on the map, and sets the draw mode', () => {
     act(() => {
       shell.getState().setAnnotating(true);

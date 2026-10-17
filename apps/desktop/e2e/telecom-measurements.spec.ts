@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, test } from './fixtures';
-import { measureControl, stageMode } from './island';
+import { measureControl, measureStrip, stageMode } from './island';
 import { writeTelecomFace } from './telecomFixtures';
 
 interface Inspect {
@@ -71,8 +71,8 @@ async function expectValue(win: Page, key: string, expected: number) {
  * buttons before it, and once more out of the strip: into the live card above it.
  */
 async function shiftTabOutOfStrip(win: Page) {
-  const before = await win
-    .locator('.meb-strip button')
+  const before = await measureStrip(win)
+    .locator('button')
     .evaluateAll((all) => all.indexOf(document.activeElement as HTMLButtonElement));
   expect(before, 'the focus is in the strip').toBeGreaterThanOrEqual(0);
   for (let i = 0; i <= before; i++) await win.keyboard.press('Shift+Tab');

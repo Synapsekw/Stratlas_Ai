@@ -244,3 +244,11 @@ export async function measurementsList(win: Page): Promise<Locator> {
   await expect(list).toBeVisible();
   return list;
 }
+
+/**
+ * The live tool strip of the Measure workbench (the catalogue while a tool draws): the tools as
+ * short text buttons, by its accessible name.
+ */
+export function measureStrip(win: Page): Locator {
+  return win.getByRole('group', { name: 'Measure tools', exact: true });
+}

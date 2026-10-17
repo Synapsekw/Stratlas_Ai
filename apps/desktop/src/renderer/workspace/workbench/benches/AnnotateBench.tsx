@@ -140,7 +140,12 @@ export function AnnotateBench() {
               {t('bench.annotate.close')}
             </Button>
           </div>
-          <Section id="annotate-model" bench="annotate" title={t('bench.annotate.model')} forceOpen>
+          <Section
+            id="annotate-model"
+            bench="annotate"
+            title={t('bench.annotate.model')}
+            defaultOpen
+          >
             {show3d ? (
               <AnnotationToolbar
                 className="stage-ann"
@@ -152,7 +157,7 @@ export function AnnotateBench() {
               <p className="ab-note">{t('bench.annotate.needs3d')}</p>
             )}
           </Section>
-          <Section id="annotate-map" bench="annotate" title={t('bench.annotate.map')} forceOpen>
+          <Section id="annotate-map" bench="annotate" title={t('bench.annotate.map')} defaultOpen>
             {showMap ? (
               <MapDrawTools draw={draw} />
             ) : (

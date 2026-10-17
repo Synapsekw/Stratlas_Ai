@@ -313,6 +313,18 @@ describe('search reaches every section (D16)', () => {
     return input;
   };
 
+  it('Collapse all during a search ends it, and the sections fold', () => {
+    render();
+    type(search(), 'slope');
+    expect(q('wb-section-line')?.getAttribute('data-open')).toBe('true');
+    act(() => {
+      sectionStore.getState().setAll('measure', false);
+    });
+    expect(search().value).toBe('');
+    expect(q('wb-section-line')?.getAttribute('data-open')).toBe('false');
+    expect(q('wb-section-measurements')).not.toBeNull();
+  });
+
   it('finds the Site data entries by name, and the saved list steps aside', () => {
     render();
     expect(q('wb-section-measurements')).not.toBeNull();
