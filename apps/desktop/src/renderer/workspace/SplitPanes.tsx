@@ -1,10 +1,11 @@
 import { PhotoViewer, VideoAnnotator } from '@aio/annotate';
-import type { Layer, ReportFile } from '@aio/schema';
+import { shiftedLayer, type Layer, type ReportFile } from '@aio/schema';
 import { Icon, useT, type IconName, type MessageKey } from '@aio/ui';
 import { VideoWindow } from '@aio/video';
 import {
   assetUrl,
   counterpart,
+  dateShiftOf,
   dateTags,
   useWorkspace,
   workspace,
@@ -443,7 +444,13 @@ function RasterPane({ split, side }: { split: SplitModel; side: Side }) {
   const mapped = chosen && capture && index ? counterpart(index, chosen, capture) : chosen;
   const layer = rasters.find((l) => l.id === mapped) ?? rasters[0];
   const twin = isTwin(split);
-  if (!project || !layer) return null;
+  // the picture lies where its date's line-up puts it, so that two dates swipe and link in place
+  const shift = project && layer ? dateShiftOf(project.manifest, layer.id) : null;
+  const placed = useMemo(
+    () => (layer && shift ? (shiftedLayer(layer, shift) as RasterLayer) : layer),
+    [layer, shift],
+  );
+  if (!project || !layer || !placed) return null;
   return (
     <div className="pane-col">
       {rasters.length > 1 && (
@@ -463,7 +470,7 @@ function RasterPane({ split, side }: { split: SplitModel; side: Side }) {
       <DrawingPane
         key={layer.id}
         projectId={project.id}
-        layer={layer}
+        layer={placed}
         link={twin && !split.sides.unlinked ? side : null}
       />
     </div>
