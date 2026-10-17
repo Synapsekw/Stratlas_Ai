@@ -17,7 +17,7 @@ import {
   type MeasurementFilter,
   type MeasurementSort,
 } from '@aio/survey';
-import { Icon, IconButton, Menu, Row, type MenuEntry } from '@aio/ui';
+import { Icon, IconButton, Menu, Row, t, type MenuEntry } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
@@ -409,7 +409,9 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
                           <>
                             <IconButton
                               icon="eye"
-                              label={hidden ? `Show ${m.label}` : `Hide ${m.label}`}
+                              label={t(hidden ? 'measureBench.showOne' : 'measureBench.hideOne', {
+                                label: m.label,
+                              })}
                               pressed={!hidden}
                               data-testid="survey-item-eye"
                               onClick={() => {
@@ -495,13 +497,13 @@ function ItemMenu({
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
   const items: MenuEntry[] = [
-    { id: 'fly', label: 'Fly to', icon: 'target', onSelect: onFly },
+    { id: 'fly', label: t('measureBench.flyTo'), icon: 'target', onSelect: onFly },
     ...(readOnly
       ? []
       : [
           {
             id: 'delete',
-            label: 'Delete',
+            label: t('measureBench.delete'),
             icon: 'trash' as const,
             danger: true,
             onSelect: onDelete,
@@ -513,7 +515,7 @@ function ItemMenu({
       <IconButton
         ref={opener}
         icon="more"
-        label={`More for ${label}`}
+        label={t('measureBench.moreFor', { label })}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => {
@@ -526,7 +528,7 @@ function ItemMenu({
           setOpen(false);
         }}
         opener={opener}
-        label={`More for ${label}`}
+        label={t('measureBench.moreFor', { label })}
         items={items}
       />
     </>

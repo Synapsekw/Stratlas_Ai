@@ -123,6 +123,14 @@
 .meb-live-acts .kbd {
   margin-inline-start: var(--sp-2);
 }
+/* unsaved changes and their Save (D18), in the live card or on top of the bench */
+.meb-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
 /* while live, the catalogue is a strip of short text buttons (several Line tools share a glyph) */
 .meb-strip {
   display: flex;

@@ -4656,6 +4656,17 @@ export const en = {
   'measureBench.selected': 'Selected measurement',
   'measureBench.readOnly':
     'This project is a read-only package: measurements, sections and results are shown only. Distance measures without saving.',
+  'measureBench.unsavedRegion': 'Unsaved measurements',
+  'measureBench.unsaved': 'Unsaved measurement changes.',
+  'measureBench.editingEndpoints': 'Editing endpoints: drag a point. Vertex count stays fixed.',
+  'measureBench.editingVertices':
+    'Editing vertices: drag, Alt+click deletes, the blue dots insert.',
+  'measureBench.saveAll': 'Save measurements',
+  'measureBench.showOne': 'Show {label}',
+  'measureBench.hideOne': 'Hide {label}',
+  'measureBench.moreFor': 'More for {label}',
+  'measureBench.flyTo': 'Fly to',
+  'measureBench.delete': 'Delete',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

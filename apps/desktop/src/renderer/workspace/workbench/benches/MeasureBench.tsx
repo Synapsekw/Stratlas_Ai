@@ -19,7 +19,17 @@ import {
   TOOL_LABELS,
   type SnapSource,
 } from '@aio/survey';
-import { ariaKeys, Button, EmptyState, Icon, IconButton, Row, shortcutHint, useT } from '@aio/ui';
+import {
+  ariaKeys,
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  Row,
+  shortcutHint,
+  useT,
+  type IconName,
+} from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShell } from '../../../shell';
 import { BulkTotals } from '../../../survey/BulkTotals';
@@ -31,6 +41,7 @@ import { HydroTool } from '../../../survey/Hydro';
 import { MagicPolygon } from '../../../survey/MagicPolygon';
 import {
   entryOf,
+  familyOf,
   familiesFor,
   favouritesAndRecent,
   matchesQuery,
@@ -39,14 +50,17 @@ import {
   type CatalogueEntry,
   type CatalogueTool,
   type Family,
+  type FamilyId,
 } from '../../../survey/measureCatalogue';
 import { MeasurementList } from '../../../survey/MeasurementList';
 import { MeasurementPanel } from '../../../survey/MeasurementPanel';
 import {
   drawEvent,
+  isDirty,
   liveReading,
   measureStore,
   openDialog,
+  saveMeasurements,
   setListOpen,
   setSnap,
   setSnapSource,
@@ -120,6 +134,19 @@ function useToolState(stage: EngineStage | null) {
   };
 }
 
+/** The rows' icons (D12): the family's glyph; Distance and Volume have their own. */
+const FAMILY_ICON: Record<FamilyId, IconName> = {
+  point: 'point',
+  line: 'path',
+  polygon: 'polygon',
+  telecom: 'crosshair',
+  markup: 'brush',
+  section: 'section',
+};
+const TOOL_ICON: Partial<Record<CatalogueTool, IconName>> = { distance: 'ruler', volume: 'pile' };
+const iconOf = (tool: CatalogueTool): IconName =>
+  TOOL_ICON[tool] ?? FAMILY_ICON[familyOf(tool) ?? 'line'];
+
 function ToolRow({
   entry,
   testId,
@@ -139,6 +166,7 @@ function ToolRow({
       as="li"
       className="meb-row"
       selected={on}
+      icon={iconOf(entry.tool)}
       label={
         <button
           type="button"
@@ -196,6 +224,56 @@ function ToolList({
 // ---------------------------------------------------------------- the live morph
 
 const coord = (v: number) => v.toFixed(2);
+
+/**
+ * Unsaved measurement changes and their Save, or what dragging does while vertices are edited
+ * (D18: in the workbench, not over the stage). In the live card while a tool draws, on top of the
+ * bench otherwise; the stage shows it only while the sidebar is folded away (`UnsavedBar`).
+ */
+export function PendingNote() {
+  const t = useT();
+  const dirty = useMeasure(isDirty);
+  const saving = useMeasure((s) => s.saving);
+  const editing = useMeasure((s) => s.editing !== null);
+  const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
+  const readOnly = useReadOnly();
+  if (readOnly || (!dirty && !editing)) return null;
+  return (
+    <div className="meb-pending" role="region" aria-label={t('measureBench.unsavedRegion')}>
+      <span className="meb-faint">
+        {editing && focusTool && isTelecomTool(focusTool)
+          ? t('measureBench.editingEndpoints')
+          : editing
+            ? t('measureBench.editingVertices')
+            : t('measureBench.unsaved')}
+      </span>
+      {dirty && (
+        <Button
+          variant="primary"
+          disabled={saving}
+          data-testid="survey-save"
+          onClick={() => {
+            void saveMeasurements();
+          }}
+        >
+          {t('measureBench.saveAll')}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** The unsaved state on top of the bench while no tool draws. */
+function PendingCard() {
+  const dirty = useMeasure(isDirty);
+  const editing = useMeasure((s) => s.editing !== null);
+  if (!dirty && !editing) return null;
+  return (
+    <div className="meb-live">
+      <PendingNote />
+    </div>
+  );
+}
 
 /** The live tool on top of the bench: its reading, its points and Undo, Stop and Save (D13). */
 function LiveCard() {
@@ -304,6 +382,7 @@ function LiveCard() {
           </Button>
         )}
       </div>
+      <PendingNote />
     </section>
   );
 }
@@ -350,50 +429,94 @@ const SNAP_SOURCES: { source: SnapSource; label: string }[] = [
   { source: 'guide', label: 'Guidelines' },
 ];
 
-/** The site's designs, survey QA, terrain overlays, hydrology, haul road, export and totals. */
-function SiteData() {
+/** A label matches the search (case-insensitive, anywhere in it). */
+const labelMatches = (label: string, query: string): boolean =>
+  label.toLowerCase().includes(query.trim().toLowerCase());
+
+type SiteItem =
+  'designs' | 'qa' | 'overlays' | 'hydro' | 'haul' | 'export' | 'materials' | 'site' | 'units';
+
+/** Site data's entries by the names their buttons carry, for the search (D16). */
+const SITE_ITEMS: readonly { id: SiteItem; label: string }[] = [
+  { id: 'designs', label: 'Designs' },
+  { id: 'qa', label: 'Survey QA and cleanup' },
+  { id: 'overlays', label: 'Terrain overlays' },
+  { id: 'hydro', label: 'Hydrology' },
+  { id: 'haul', label: 'Haul road' },
+  { id: 'export', label: 'Export survey data' },
+  { id: 'materials', label: 'Materials' },
+  { id: 'site', label: 'Whole site cut and fill' },
+  { id: 'units', label: 'Units' },
+];
+
+/** Drawing aids' controls by name, for the search: a match shows the whole section. */
+const AID_LABELS: readonly string[] = [
+  'Snap to vertices',
+  'Snap to edges',
+  'Snap to',
+  'Snap distance',
+  ...SNAP_SOURCES.map((s) => s.label),
+];
+
+/** The site data entries offered: Units needs a writable project, export a project (not a package). */
+function useSiteItems(): SiteItem[] {
   const readOnly = useReadOnly();
+  const pkg = useShell((s) => s.pkg !== null);
+  return SITE_ITEMS.map((i) => i.id).filter(
+    (id) => !(id === 'units' && readOnly) && !(id === 'export' && pkg),
+  );
+}
+
+/** The site's designs, survey QA, terrain overlays, hydrology, haul road, export and totals. */
+function SiteData({ items }: { items: readonly SiteItem[] }) {
   const overlaysOpen = useOverlays((s) => s.open);
+  const has = (id: SiteItem) => items.includes(id);
   return (
     <div className="meb-site">
       <div className="tgroup-h sv-nested" role="group" aria-label="Site data">
-        <DesignsTool />
-        <SurveyQaTool />
-        <Tool
-          icon="raster"
-          label="Terrain overlays"
-          testId="survey-overlays-open"
-          pressed={overlaysOpen}
-          onClick={() => {
-            setOverlaysOpen(!overlaysOpen);
-          }}
-        />
-        <HydroTool />
-        <HaulRoadTool />
-        <ExportTool />
+        {has('designs') && <DesignsTool />}
+        {has('qa') && <SurveyQaTool />}
+        {has('overlays') && (
+          <Tool
+            icon="raster"
+            label="Terrain overlays"
+            testId="survey-overlays-open"
+            pressed={overlaysOpen}
+            onClick={() => {
+              setOverlaysOpen(!overlaysOpen);
+            }}
+          />
+        )}
+        {has('hydro') && <HydroTool />}
+        {has('haul') && <HaulRoadTool />}
+        {has('export') && <ExportTool />}
       </div>
       <div className="sv-tool-row">
-        <button
-          type="button"
-          className="btn sm"
-          data-testid="survey-materials-tool"
-          onClick={() => {
-            openCompareDialog('materials');
-          }}
-        >
-          Materials
-        </button>
-        <button
-          type="button"
-          className="btn sm"
-          data-testid="survey-site-open"
-          onClick={() => {
-            openCompareDialog('site');
-          }}
-        >
-          Whole site cut and fill
-        </button>
-        {!readOnly && (
+        {has('materials') && (
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="survey-materials-tool"
+            onClick={() => {
+              openCompareDialog('materials');
+            }}
+          >
+            Materials
+          </button>
+        )}
+        {has('site') && (
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="survey-site-open"
+            onClick={() => {
+              openCompareDialog('site');
+            }}
+          >
+            Whole site cut and fill
+          </button>
+        )}
+        {has('units') && (
           <button
             type="button"
             className="btn sm"
@@ -471,15 +594,20 @@ function DrawingAids() {
   );
 }
 
-/** The bookmarked templates (each starts its tool) and the template editor. */
-function Templates() {
-  const active = useMeasure((s) => s.tool);
+/** The bookmarked templates (they start their tool from the Templates section). */
+function useBookmarks() {
   const templates = useMeasure((s) => s.templates);
   const sets = useMeasure((s) => s.settings.templateSets);
-  const lib = useMemo(
+  return useMemo(
     () => bookmarks(templateLibrary(templates.project, templates.user, industryTemplates(sets))),
     [templates, sets],
   );
+}
+
+/** The bookmarked templates (each starts its tool; `only` narrows them) and the editor. */
+function Templates({ only }: { only?: (name: string) => boolean }) {
+  const active = useMeasure((s) => s.tool);
+  const lib = useBookmarks().filter(({ template: tpl }) => !only || only(tpl.name));
   return (
     <div className="meb-templates">
       {lib.length > 0 && (
@@ -524,19 +652,28 @@ function Templates() {
   );
 }
 
-/** The search, Favourites and recent, the families, Site data, Drawing aids and Templates. */
+/**
+ * The search, Favourites and recent, the families, Site data, Drawing aids and Templates. A query
+ * reaches every section by its title and its entries (D16): the sections with a match open, the
+ * others hide; with no match anywhere, the empty state says so.
+ */
 function Catalogue({
   families,
   stage,
+  query,
+  onQuery,
 }: {
   families: readonly Family[];
   stage: EngineStage | null;
+  query: string;
+  onQuery: (q: string) => void;
 }) {
   const t = useT();
   const readOnly = useReadOnly();
-  const [query, setQuery] = useState('');
   const favourites = useFavourites((s) => s.favourites);
   const recent = useFavourites((s) => s.recent);
+  const siteItems = useSiteItems();
+  const bookmarked = useBookmarks();
   const offered = useMemo(
     () => new Set(families.flatMap((f) => f.tools.map((e) => e.tool))),
     [families],
@@ -550,12 +687,28 @@ function Catalogue({
     const m = s.file.measurements.find((x) => x.id === s.focus);
     return m !== undefined && isTelecomTool(m.tool);
   });
-  const found = query.trim()
+  const siteTitle = t('measureCat.family.siteData');
+  const aidsTitle = t('measureCat.family.aids');
+  const templatesTitle = t('measureCat.family.templates');
+  const searching = query.trim() !== '';
+  const found = searching
     ? filterSections(
         families.map((f) => ({ id: f.id, items: f.tools })),
         (e) => matchesQuery(e, query),
       )
     : null;
+  // a section's title matching shows all of it; otherwise only its matching entries
+  const site =
+    !searching || labelMatches(siteTitle, query)
+      ? siteItems
+      : siteItems.filter((id) =>
+          labelMatches(SITE_ITEMS.find((i) => i.id === id)?.label ?? '', query),
+        );
+  const aids = !searching || [aidsTitle, ...AID_LABELS].some((l) => labelMatches(l, query));
+  const templatesWhole = !searching || labelMatches(templatesTitle, query);
+  const templateHits = bookmarked.filter(({ template: tpl }) => labelMatches(tpl.name, query));
+  const templates = !readOnly && (templatesWhole || templateHits.length > 0);
+  const nothing = searching && found?.length === 0 && site.length === 0 && !aids && !templates;
   const label = (id: string) => families.find((f) => f.id === id)?.label ?? id;
   return (
     <div className="meb-cat" data-testid="survey-tools">
@@ -566,7 +719,7 @@ function Catalogue({
         placeholder={t('wb.search')}
         value={query}
         onChange={(e) => {
-          setQuery(e.target.value);
+          onQuery(e.target.value);
         }}
       />
       {readOnly && (
@@ -574,7 +727,7 @@ function Catalogue({
           {t('measureBench.readOnly')}
         </p>
       )}
-      {found?.length === 0 && (
+      {nothing && (
         <EmptyState
           icon="search"
           title={t('measureBench.noMatch')}
@@ -618,28 +771,57 @@ function Catalogue({
               {f.id === 'section' && stage && <SectionPanel stage={stage} />}
             </Section>
           ))}
-          <Section bench={BENCH} id="siteData" title={t('measureCat.family.siteData')}>
-            <SiteData />
-          </Section>
-          <Section bench={BENCH} id="aids" title={t('measureCat.family.aids')}>
-            <DrawingAids />
-          </Section>
-          {!readOnly && (
-            <Section bench={BENCH} id="templates" title={t('measureCat.family.templates')}>
-              <Templates />
-            </Section>
-          )}
         </>
+      )}
+      {site.length > 0 && (
+        <Section
+          bench={BENCH}
+          id="siteData"
+          title={siteTitle}
+          forceOpen={searching ? true : undefined}
+        >
+          <SiteData items={site} />
+        </Section>
+      )}
+      {aids && (
+        <Section bench={BENCH} id="aids" title={aidsTitle} forceOpen={searching ? true : undefined}>
+          <DrawingAids />
+        </Section>
+      )}
+      {templates && (
+        <Section
+          bench={BENCH}
+          id="templates"
+          title={templatesTitle}
+          forceOpen={searching ? true : undefined}
+        >
+          <Templates
+            {...(templatesWhole ? {} : { only: (name: string) => labelMatches(name, query) })}
+          />
+        </Section>
       )}
     </div>
   );
 }
 
-/** The picked measurement's panel (a telecom one shows in its family instead). */
-function SelectedCard() {
+/**
+ * The picked measurement's panel. A telecom one shows in its family, except when the family is
+ * not shown (a read-only package offers no telecom tools; a search hides it): then its reading
+ * is here.
+ */
+function SelectedCard({ searching }: { searching: boolean }) {
   const t = useT();
+  const readOnly = useReadOnly();
   const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
-  if (!focusTool || isTelecomTool(focusTool)) return null;
+  if (!focusTool) return null;
+  if (isTelecomTool(focusTool)) {
+    if (!readOnly && !searching) return null;
+    return (
+      <Section bench={BENCH} id="selected" title={t('measureBench.selected')} defaultOpen>
+        <TelecomTools />
+      </Section>
+    );
+  }
   return (
     <Section bench={BENCH} id="selected" title={t('measureBench.selected')} defaultOpen>
       <div className="meb-selected" data-testid="survey-side">
@@ -682,15 +864,25 @@ export function MeasureBench() {
   const readOnly = useReadOnly();
   const live = useMeasure((s) => s.tool !== null && s.draw !== null);
   const families = useMemo(() => familiesFor(readOnly), [readOnly]);
+  const [query, setQuery] = useState('');
+  const searching = !live && query.trim() !== '';
   return (
     <div className="meb">
-      {live ? <LiveCard /> : <SelectedCard />}
+      {live ? (
+        <LiveCard />
+      ) : (
+        <>
+          <PendingCard />
+          <SelectedCard searching={searching} />
+        </>
+      )}
       {live ? (
         <Strip families={families} stage={stage} />
       ) : (
-        <Catalogue families={families} stage={stage} />
+        <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />
       )}
-      <Saved stage={stage} />
+      {/* a search is about the tools: the saved list steps aside until it is cleared */}
+      {!searching && <Saved stage={stage} />}
     </div>
   );
 }

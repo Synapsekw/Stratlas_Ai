@@ -12,13 +12,17 @@ import { createWorkbenchStore } from '../workbenchStore';
 import { followMeasureTool, followRecent } from '../measureFollow';
 import { createFavouritesStore } from '../../../survey/measureCatalogue';
 import { MeasureBench } from './MeasureBench';
+import { UnsavedBar } from '../../../survey/MeasureToolbar';
 
 // the site data tools are their own screens: here only that the bench lists them
 vi.mock('../../../survey/Designs', () => ({
   DesignsTool: () => <button type="button">Designs</button>,
 }));
 vi.mock('../../../survey/HaulRoad', () => ({ HaulRoadTool: () => null }));
-vi.mock('../../../survey/ExportDialog', () => ({ ExportTool: () => null }));
+vi.mock('../../../survey/ExportDialog', () => ({
+  ExportTool: () => <button type="button">Export survey data</button>,
+  ExportDialogMount: () => null,
+}));
 vi.mock('../../../survey/MagicPolygon', () => ({ MagicPolygon: () => null }));
 vi.mock('../../../survey/MeasurementPanel', () => ({ MeasurementPanel: () => <p>panel</p> }));
 vi.mock('../../../survey/BulkTotals', () => ({ BulkTotals: () => null }));
@@ -263,5 +267,122 @@ describe('recent tools', () => {
     } finally {
       off();
     }
+  });
+});
+
+describe('search reaches every section (D16)', () => {
+  const search = () => {
+    const input = host.querySelector<HTMLInputElement>('input[type="search"]');
+    if (!input) throw new Error('no search');
+    return input;
+  };
+
+  it('finds the Site data entries by name, and the saved list steps aside', () => {
+    render();
+    expect(q('wb-section-measurements')).not.toBeNull();
+    for (const [query, button] of [
+      ['Hydrology', 'Hydrology'],
+      ['designs', 'Designs'],
+      ['Export', 'Export survey data'],
+    ] as const) {
+      type(search(), query);
+      // "designs" also finds the Drawing aids (Snap to Designs)
+      expect(shownSections()).toEqual(query === 'designs' ? ['siteData', 'aids'] : ['siteData']);
+      const site = q('wb-section-siteData');
+      expect(site?.getAttribute('data-open')).toBe('true');
+      const names = [...(site?.querySelectorAll('button') ?? [])]
+        .map((b) => b.getAttribute('aria-label') ?? b.textContent)
+        .filter((n) => n !== 'Site data');
+      expect(names).toContain(button);
+      expect(host.querySelector('.empty-state')).toBeNull();
+      expect(q('wb-section-measurements')).toBeNull();
+    }
+    // a section's own title shows all of it; the drawing aids by a control's name
+    type(search(), 'snap');
+    expect(shownSections()).toEqual(['aids']);
+    type(search(), 'templates');
+    expect(shownSections()).toEqual(['templates']);
+  });
+
+  it('clearing the search restores the sections as the person left them', () => {
+    render();
+    const head = (id: string) =>
+      q(`wb-section-${id}`)?.querySelector<HTMLButtonElement>('.wb-section-head');
+    act(() => {
+      head('point')?.click();
+    });
+    expect(q('wb-section-point')?.getAttribute('data-open')).toBe('true');
+    expect(q('wb-section-line')?.getAttribute('data-open')).toBe('false');
+    type(search(), 'grade');
+    expect(q('wb-section-line')?.getAttribute('data-open')).toBe('true');
+    type(search(), '');
+    expect(q('wb-section-point')?.getAttribute('data-open')).toBe('true');
+    expect(q('wb-section-line')?.getAttribute('data-open')).toBe('false');
+    expect(q('wb-section-favourites')?.getAttribute('data-open')).toBe('true');
+    expect(q('wb-section-measurements')).not.toBeNull();
+  });
+});
+
+describe('a picked measurement', () => {
+  it('a read-only package shows a saved telecom measurement and its reading', () => {
+    shell.setState({ pkg: {} as unknown as PackageInfo });
+    const azimuth = {
+      family: 'line' as const,
+      scope: { kind: 'site' as const },
+      items: [],
+      results: [],
+      createdAt: '2026-10-01T00:00:00.000Z',
+      id: 'm-az',
+      tool: 'azimuth' as const,
+      label: 'Sector A',
+      points: [
+        [0, 0, 0],
+        [0, 0, 2],
+        [2, 0, 0],
+      ] as SitePoint[],
+    };
+    const file = { ...existing, measurements: [azimuth] };
+    measureStore.setState({ readOnly: true, file, savedText: JSON.stringify(file), focus: 'm-az' });
+    render();
+    // no telecom tools in a package, so the reading is in the picked measurement's card
+    expect(q('wb-section-telecom')).toBeNull();
+    const card = q('wb-section-selected');
+    expect(card?.querySelector('[data-testid="telecom-tools"]')).not.toBeNull();
+    const readout = card?.querySelector('[data-testid="telecom-readout"]');
+    expect(readout?.querySelector('[data-key="azimuth"] dd')?.textContent).toMatch(/\d/);
+    expect(card?.querySelector('[data-testid="telecom-save"]')).toBeNull();
+  });
+});
+
+describe('unsaved changes (D18)', () => {
+  const dirty = () => {
+    measureStore.setState({ savedText: JSON.stringify(emptyMeasurements()) });
+  };
+
+  it('the bench holds the unsaved state and its Save, on top and in the live card', () => {
+    dirty();
+    render();
+    expect(q('survey-save')?.textContent).toBe('Save measurements');
+    act(() => {
+      startTool('distance');
+    });
+    expect(q('survey-drawbar')?.querySelector('[data-testid="survey-save"]')).not.toBeNull();
+  });
+
+  it('the stage shows it only while the right sidebar is folded away', () => {
+    dirty();
+    shell.setState({ rightCollapsed: false });
+    root ??= createRoot(host);
+    act(() => {
+      root?.render(<UnsavedBar />);
+    });
+    expect(q('survey-save-stage')).toBeNull();
+    act(() => {
+      shell.setState({ rightCollapsed: true });
+    });
+    expect(q('survey-save-stage')?.textContent).toBe('Save measurements');
+    act(() => {
+      shell.setState({ rightCollapsed: false });
+    });
   });
 });
