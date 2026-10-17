@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { shell } from '../../shell';
+import { drawerStore } from '../workbench/drawerStore';
 import { createWorkbenchStore } from '../workbench/workbenchStore';
 import { followRoadMeasure, GROUP_TAB, liveTab, openBenchFromIsland } from './islandBench';
 
@@ -28,6 +29,7 @@ describe('islandBench', () => {
   beforeEach(() => {
     bench = createWorkbenchStore(memory());
     shell.setState({ rightCollapsed: false });
+    drawerStore.getState().close();
   });
 
   it('has a workbench for every group but View', () => {
@@ -55,11 +57,19 @@ describe('islandBench', () => {
     expect(bench.getState().tabs.find((t) => t.id === 'video')?.pinned).toBe(true);
   });
 
-  it('leaves a folded right panel to the workbench (I-R40)', () => {
+  it('leaves a folded right panel folded and opens the drawer for it (I-R40, I-R40a)', () => {
     shell.setState({ rightCollapsed: true });
     openBenchFromIsland('volumes', bench);
     expect(shell.getState().rightCollapsed).toBe(true);
     expect(bench.getState().front).toBe('volumes');
+    expect(drawerStore.getState().opened).toBe('click');
+  });
+
+  it('does not open the drawer while the right panel shows (guarded on rightCollapsed)', () => {
+    openBenchFromIsland('volumes', bench);
+    expect(bench.getState().front).toBe('volumes');
+    // a stray open here would pop the drawer the next time the sidebar folds
+    expect(drawerStore.getState().opened).toBeNull();
   });
 
   it("makes the Road tab live while the road's measure draws, and closes it after", () => {

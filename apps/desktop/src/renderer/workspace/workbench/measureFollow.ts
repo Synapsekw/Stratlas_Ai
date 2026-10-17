@@ -13,7 +13,7 @@ import { measureFavourites, type FavouritesState } from '../../survey/measureCat
 import { measureStore, type MeasureState } from '../../survey/measureStore';
 import { overlays, setOverlaysOpen } from '../../survey/overlaysStore';
 import { openQaPanel, qaStore } from '../../survey/qaStore';
-import { followTool } from './followTool';
+import { followTool, showBench } from './followTool';
 import type { TabId } from './tabsModel';
 import { linkLiveTab, workbench, type WorkbenchState } from './workbenchStore';
 
@@ -33,11 +33,11 @@ function reveal(bench: StoreApi<WorkbenchState>): void {
 }
 
 /**
- * Open the Measure workbench (the island's Measure tab, its All tools tile), unfolding the right
- * sidebar when it is folded away.
+ * Open the Measure workbench (the island's Measure tab, its All tools tile). A folded sidebar
+ * stays folded and the Measure tab shows in the workbench drawer (I-R40a).
  */
 export function showMeasureBench(bench: StoreApi<WorkbenchState> = workbench): void {
-  followTool(BENCH, { ask: true, unfold: true }, bench);
+  showBench(BENCH, bench);
 }
 
 /**

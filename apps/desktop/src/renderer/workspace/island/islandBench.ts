@@ -5,6 +5,7 @@
  */
 import type { StoreApi } from 'zustand/vanilla';
 import { roadStore, type RoadState } from '../../road/store';
+import { showBench } from '../workbench/followTool';
 import type { TabId } from '../workbench/tabsModel';
 import { workbench, type WorkbenchState } from '../workbench/workbenchStore';
 import type { GroupId, LiveItem } from './islandModel';
@@ -37,15 +38,12 @@ export function liveTab(item: LiveItem): TabId | null {
 
 /**
  * An open the person makes from the island (a group, a tile, All tools): the tab comes to the
- * front of the workbench, opened as an unpinned panel (D15) when it is not there yet (on this
- * base `show` of a missing tab falls back to Selection). The island never unfolds the sidebar
- * (rulings I-R40, I-R40a): a folded sidebar shows the tab in the workbench drawer.
+ * front of the workbench, opened as an unpinned panel (D15) when it is not there yet. The island
+ * never unfolds the sidebar (rulings I-R40, I-R40a): a folded sidebar shows the tab in the
+ * workbench drawer (`showBench`).
  */
 export function openBenchFromIsland(id: TabId, bench: StoreApi<WorkbenchState> = workbench): void {
-  const b = bench.getState();
-  if (b.tabs.some((t) => t.id === id)) b.show(id);
-  else b.open(id);
-  // I-R40a: openDrawer() when collapsed, wired at integration
+  showBench(id, bench);
 }
 
 /**

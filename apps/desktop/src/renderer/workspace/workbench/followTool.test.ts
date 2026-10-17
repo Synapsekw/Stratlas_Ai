@@ -2,12 +2,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { beginIssueEdit, clearIssueEditing } from '../../issueCard/state';
 import { shell } from '../../shell';
-import { followTool } from './followTool';
+import { drawerStore } from './drawerStore';
+import { followTool, showBench } from './followTool';
+import { showMeasureBench } from './measureFollow';
 import { createWorkbenchStore } from './workbenchStore';
 
 afterEach(() => {
   clearIssueEditing();
   shell.getState().setRight(false);
+  drawerStore.getState().close();
 });
 
 describe('one rule for bringing a tool tab forward (D14)', () => {
@@ -39,7 +42,34 @@ describe('one rule for bringing a tool tab forward (D14)', () => {
     shell.getState().setRight(true);
     followTool('measure', {}, wb);
     expect(shell.getState().rightCollapsed).toBe(true);
-    followTool('annotate', { unfold: true }, wb);
+    followTool('cleanup', { ask: true, unfold: true }, wb);
     expect(shell.getState().rightCollapsed).toBe(false);
+  });
+});
+
+describe('an open from the stage (I-R40a)', () => {
+  it('brings the tab forward and leaves the drawer shut while the sidebar shows', () => {
+    const wb = createWorkbenchStore(null);
+    showBench('jobs', wb);
+    expect(wb.getState().front).toBe('jobs');
+    expect(drawerStore.getState().opened).toBeNull();
+  });
+
+  it('with the sidebar folded, opens the drawer and keeps the sidebar folded', () => {
+    const wb = createWorkbenchStore(null);
+    shell.getState().setRight(true);
+    showBench('jobs', wb);
+    expect(wb.getState().front).toBe('jobs');
+    expect(shell.getState().rightCollapsed).toBe(true);
+    expect(drawerStore.getState().opened).toBe('click');
+  });
+
+  it('showMeasureBench goes the same way: no unfold, the drawer instead', () => {
+    const wb = createWorkbenchStore(null);
+    shell.getState().setRight(true);
+    showMeasureBench(wb);
+    expect(wb.getState().front).toBe('measure');
+    expect(shell.getState().rightCollapsed).toBe(true);
+    expect(drawerStore.getState().opened).toBe('click');
   });
 });

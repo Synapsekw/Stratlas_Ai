@@ -24,8 +24,8 @@ const MAP_MODES: { mode: MapDrawMode; label: MessageKey; tip: MessageKey }[] = [
 ];
 
 /**
- * A on, the tools' tab opens as a live tab in front, and a folded sidebar unfolds (the tools are
- * in it); A off, the tab goes away if the tools opened it. The live tab closed with its X (or
+ * A on, the tools' tab opens as a live tab in front; with the sidebar folded the workbench
+ * drawer slides in with it (a tool start, I-R39, I-R40a), the sidebar stays folded; A off, the tab goes away if the tools opened it. The live tab closed with its X (or
  * dropped for another project) closes the tools. Mounted with the sidebar.
  */
 export function useAnnotateFollow(): void {
@@ -45,8 +45,8 @@ export function useAnnotateFollow(): void {
   useEffect(() => {
     if (annotating === was.current) return;
     was.current = annotating;
-    // a tool start (D14), whose controls are only in the sidebar
-    if (annotating) followTool('annotate', { unfold: true });
+    // a tool start (D14); a folded sidebar shows it in the drawer, which opens on tool starts
+    if (annotating) followTool('annotate');
     else workbench.getState().toolStopped('annotate');
   }, [annotating]);
 }

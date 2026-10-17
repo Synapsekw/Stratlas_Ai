@@ -151,13 +151,20 @@ describe('A opens Annotate', () => {
     }
   });
 
-  it('opens a folded sidebar, because the tools live there now', () => {
+  it('leaves a folded sidebar folded: the tool start opens the drawer instead (I-R40a)', () => {
     act(() => {
       shell.getState().setRight(true);
     });
     render(false);
+    const seq = workbench.getState().toolSeq;
     press('a');
-    expect(shell.getState().rightCollapsed).toBe(false);
+    expect(shell.getState().rightCollapsed).toBe(true);
+    // the drawer opens on a tool start (Drawer.tsx follows toolSeq)
+    expect(workbench.getState().toolSeq).toBe(seq + 1);
+    expect(workbench.getState().front).toBe('annotate');
+    act(() => {
+      shell.getState().setRight(false);
+    });
   });
 
   it('leaves the tab in place when the person had opened it themselves', () => {
