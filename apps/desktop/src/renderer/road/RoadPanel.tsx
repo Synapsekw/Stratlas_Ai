@@ -434,7 +434,8 @@ export function RoadPanel() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'road', label: 'Road' },
     { id: 'defects', label: 'Defects' },
-    { id: 'selection', label: 'Selection' },
+    // hosted in the workbench's Selection tab: named for what it holds, not Selection again
+    { id: 'selection', label: 'Selected defect' },
   ];
   return (
     <div className="ctx-wrap tall rr-panel">

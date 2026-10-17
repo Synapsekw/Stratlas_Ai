@@ -86,7 +86,7 @@ test('@realdata the Ring Road opens in the native road workspace with its map ov
   await expect(win.getByLabel('Density legend')).toBeVisible();
   await win.keyboard.press('d');
 
-  // Picking the defect opened its card on the Selection tab; back to the list for the filters.
+  // Picking the defect opened its card on the Selected defect tab; back to the list for the filters.
   await expect(win.getByTestId('issue-card')).toBeVisible();
   await win.getByRole('tab', { name: /^Defects/ }).click();
 
