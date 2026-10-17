@@ -161,31 +161,12 @@
   display: grid;
   gap: var(--sp-2);
 }
+/* a camera mode is a quiet toggle Button (its pressed, hover and disabled states are the part's):
+   a row the column's width, its icon and name at the start */
 .vb-mode {
-  display: flex;
-  align-items: center;
+  justify-content: flex-start;
   gap: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid transparent;
-  border-radius: var(--r-4);
-  background: transparent;
-  color: var(--fg-1);
-  font-size: var(--t-12);
   text-align: start;
-  cursor: pointer;
-}
-.vb-mode:hover:not(:disabled) {
-  background: var(--bg-2);
-  color: var(--fg-0);
-}
-.vb-mode[aria-pressed='true'] {
-  background: var(--acc-a20);
-  border-color: var(--acc-a40);
-  color: var(--acc-strong);
-}
-.vb-mode:disabled {
-  color: var(--fg-4);
-  cursor: default;
 }
 .vb-switch {
   display: flex;

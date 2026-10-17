@@ -61,8 +61,9 @@ function JobRing({ job }: { job: JobRecord }) {
 }
 
 function Steps({ steps }: { steps: readonly JobStep[] }) {
+  const t = useT();
   return (
-    <ol className="jb-steps">
+    <ol className="jb-steps" aria-label={t('bench.jobs.steps')}>
       {steps.map((s) => {
         const icon = STEP_ICON[s.state];
         return (
@@ -170,7 +171,7 @@ export function JobsBench() {
     () => projectJobs(all, own).running.filter(isActive).sort(byStart),
     [all, own],
   );
-  const elsewhere = useMemo(() => runningElsewhere(all, own).sort(byStart), [all, own]);
+  const elsewhere = useMemo(() => [...runningElsewhere(all, own)].sort(byStart), [all, own]);
   const now = useNow(mine.length + elsewhere.length > 0);
   if (mine.length + elsewhere.length === 0) {
     return <EmptyState icon="clock" title={t('bench.jobs.none')} body={t('bench.jobs.noneBody')} />;

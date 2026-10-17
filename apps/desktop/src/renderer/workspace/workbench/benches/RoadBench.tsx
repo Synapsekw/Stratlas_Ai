@@ -26,13 +26,13 @@ export function RoadBench() {
   const mapOnly = onMap ? undefined : t('roadBench.mapOnly');
   return (
     <div className="wb-scroll" data-testid="road-bench">
-      <Section id="overlay" bench="road" title={t('roadBench.overlay')} defaultOpen>
+      <Section id="road-overlay" bench="road" title={t('roadBench.overlay')} defaultOpen>
         <div className="pop-form wb-pop-form">
           <RoadOverlayControls />
           <RoadLegend inline />
         </div>
       </Section>
-      <Section id="closeup" bench="road" title={t('roadBench.closeup')}>
+      <Section id="road-closeup" bench="road" title={t('roadBench.closeup')}>
         <div className="pop-form wb-pop-form">
           <Button
             icon="photo"
@@ -48,12 +48,12 @@ export function RoadBench() {
           <p className="pop-note">{t('roadBench.closeupHint')}</p>
         </div>
       </Section>
-      <Section id="layers" bench="road" title={t('roadBench.layers')}>
+      <Section id="road-layers" bench="road" title={t('roadBench.layers')}>
         <div className="pop-form wb-pop-form rr-layers">
           <RoadLayerControls />
         </div>
       </Section>
-      <Section id="measure" bench="road" title={t('roadBench.measure')}>
+      <Section id="road-measure" bench="road" title={t('roadBench.measure')}>
         <div className="pop-form wb-pop-form">
           <Button
             icon="ruler"

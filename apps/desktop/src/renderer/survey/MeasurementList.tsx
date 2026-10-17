@@ -132,7 +132,7 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
             setMeasurementsVisible(true);
           }}
         >
-          Show all
+          {t('wb.showAll')}
         </button>
         <button
           type="button"

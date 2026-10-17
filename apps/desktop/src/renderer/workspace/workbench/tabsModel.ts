@@ -17,7 +17,6 @@ export type TabId =
   | 'overlays'
   | 'hydro'
   | 'cleanup'
-  | 'measurements'
   // Road, Volumes and environment benches
   | 'environment'
   | 'cutaway';

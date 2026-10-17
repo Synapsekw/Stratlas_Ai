@@ -74,14 +74,14 @@ describe('RoadBench', () => {
     const heads = [...host.querySelectorAll('.wb-section-head')].map((h) => h.textContent);
     expect(heads).toEqual(['Overlay', 'Close-up', 'Layers', 'Measure']);
     // the overlay section is open to start with, the rest folded
-    expect(section('overlay')?.getAttribute('data-open')).toBe('true');
-    expect(section('layers')?.getAttribute('data-open')).toBe('false');
+    expect(section('road-overlay')?.getAttribute('data-open')).toBe('true');
+    expect(section('road-layers')?.getAttribute('data-open')).toBe('false');
   });
 
   it('renders the road layers: orthomosaic, centreline and what the defects are coloured by', () => {
     render();
-    click(section('layers')?.querySelector('.wb-section-head'));
-    const layers = section('layers');
+    click(section('road-layers')?.querySelector('.wb-section-head'));
+    const layers = section('road-layers');
     expect(layers?.textContent).toContain('Orthomosaic');
     expect(layers?.textContent).toContain('Centreline and chainage');
     expect(layers?.querySelector('[aria-label="Colour defects by"]')).not.toBeNull();

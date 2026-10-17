@@ -6,7 +6,7 @@
  */
 import { AnnotationToolbar, type MapDraw } from '@aio/annotate';
 import type { MapDrawMode } from '@aio/maps';
-import { Button, EmptyState, Row, useT } from '@aio/ui';
+import { Button, EmptyState, Row, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef } from 'react';
 import { shell, useShell } from '../../../shell';
@@ -16,10 +16,10 @@ import { linkLiveTab, workbench } from '../workbenchStore';
 import { useAnnotateStage, useMapDrawHandle } from './annotateStage';
 import './benches.css';
 
-const MAP_MODES: { mode: MapDrawMode; label: string; tip: string }[] = [
-  { mode: 'point', label: 'Point', tip: 'Map point' },
-  { mode: 'line', label: 'Line', tip: 'Map line (double-click or Enter to finish)' },
-  { mode: 'polygon', label: 'Area', tip: 'Map area (double-click or Enter to close)' },
+const MAP_MODES: { mode: MapDrawMode; label: MessageKey; tip: MessageKey }[] = [
+  { mode: 'point', label: 'bench.annotate.mapPoint', tip: 'bench.annotate.mapPointTip' },
+  { mode: 'line', label: 'bench.annotate.mapLine', tip: 'bench.annotate.mapLineTip' },
+  { mode: 'polygon', label: 'bench.annotate.mapArea', tip: 'bench.annotate.mapAreaTip' },
 ];
 
 /**
@@ -56,20 +56,21 @@ export function useAnnotateFollow(): void {
  * and Esc (stop) are the stage's (annotateStage.ts), so they work whichever tab is in front.
  */
 export function MapDrawTools({ draw }: { draw: MapDraw }) {
+  const t = useT();
   const { mode, setMode } = draw;
   return (
-    <div className="ann-toolbar stage-ann" role="toolbar" aria-label="Map annotation tools">
+    <div className="ann-toolbar stage-ann" role="toolbar" aria-label={t('bench.annotate.mapTools')}>
       {MAP_MODES.map((m) => (
         <Button
           key={m.mode}
           variant="quiet"
-          tip={m.tip}
+          tip={t(m.tip)}
           pressed={mode === m.mode}
           onClick={() => {
             setMode(mode === m.mode ? null : m.mode);
           }}
         >
-          {m.label}
+          {t(m.label)}
         </Button>
       ))}
     </div>
@@ -82,7 +83,12 @@ function Drafts() {
   const issues = useWorkspace((s) => s.issues);
   const drafts = issues.filter((i) => i.status === 'draft');
   return (
-    <Section id="drafts" bench="annotate" title={t('bench.annotate.drafts')} count={drafts.length}>
+    <Section
+      id="annotate-drafts"
+      bench="annotate"
+      title={t('bench.annotate.drafts')}
+      count={drafts.length}
+    >
       {drafts.length === 0 ? (
         <p className="ab-note">{t('bench.annotate.noDrafts')}</p>
       ) : (
@@ -121,7 +127,7 @@ export function AnnotateBench() {
   return (
     <div className="ab wb-scroll">
       {annotating ? (
-        <div className="ab-tools" role="group" aria-label="Annotation tools">
+        <div className="ab-tools" role="group" aria-label={t('bench.annotate.tools')}>
           <div className="ab-close">
             <Button
               variant="quiet"
@@ -134,7 +140,7 @@ export function AnnotateBench() {
               {t('bench.annotate.close')}
             </Button>
           </div>
-          <Section id="model" bench="annotate" title={t('bench.annotate.model')} forceOpen>
+          <Section id="annotate-model" bench="annotate" title={t('bench.annotate.model')} forceOpen>
             {show3d ? (
               <AnnotationToolbar
                 className="stage-ann"
@@ -146,7 +152,7 @@ export function AnnotateBench() {
               <p className="ab-note">{t('bench.annotate.needs3d')}</p>
             )}
           </Section>
-          <Section id="map" bench="annotate" title={t('bench.annotate.map')} forceOpen>
+          <Section id="annotate-map" bench="annotate" title={t('bench.annotate.map')} forceOpen>
             {showMap ? (
               <MapDrawTools draw={draw} />
             ) : (

@@ -7,6 +7,7 @@ import { PointCloudControls } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
 import { Button, EmptyState, IconButton, Row, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
+import { useMemo } from 'react';
 import { openCleanupPanel } from '../../../pointcloud/cleanupActions';
 import { cleanup, useCleanup } from '../../../pointcloud/cleanupStore';
 import { openQaPanel, useQa } from '../../../survey/qaStore';
@@ -16,11 +17,15 @@ import './benches.css';
 
 const BENCH = 'clouds';
 
-/** The project's point cloud layers (a stable list: the manifest's own objects). */
+/** The project's point cloud layers (the manifest's own objects, filtered once per manifest). */
 function useClouds(): Extract<Layer, { kind: 'pointcloud' }>[] {
   const layers = useWorkspace((s) => s.project?.manifest.layers);
-  return (layers ?? []).filter(
-    (l): l is Extract<Layer, { kind: 'pointcloud' }> => l.kind === 'pointcloud',
+  return useMemo(
+    () =>
+      (layers ?? []).filter(
+        (l): l is Extract<Layer, { kind: 'pointcloud' }> => l.kind === 'pointcloud',
+      ),
+    [layers],
   );
 }
 

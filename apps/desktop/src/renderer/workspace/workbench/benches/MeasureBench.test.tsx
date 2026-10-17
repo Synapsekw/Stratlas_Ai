@@ -388,6 +388,17 @@ describe('unsaved changes (D18)', () => {
     expect(q('survey-drawbar')?.querySelector('[data-testid="survey-save"]')).not.toBeNull();
   });
 
+  it('a read-only project shows no empty card while a measurement is in edit', () => {
+    measureStore.setState({ readOnly: true, editing: { points: [] } as never });
+    try {
+      render();
+      expect(host.querySelector('.meb-live')).toBeNull();
+      expect(q('survey-save')).toBeNull();
+    } finally {
+      measureStore.setState({ readOnly: false, editing: null });
+    }
+  });
+
   it('the stage shows it only while the right sidebar is folded away', () => {
     dirty();
     shell.setState({ rightCollapsed: false });

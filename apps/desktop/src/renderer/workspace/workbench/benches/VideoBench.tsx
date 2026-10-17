@@ -4,7 +4,7 @@
  * and a scrubber that move the project clock; the one floating video window plays that clock, so
  * there is no second decoder here.
  */
-import { flightGroups, Icon, IconButton, Row, Switch, useT } from '@aio/ui';
+import { Button, flightGroups, Icon, IconButton, Row, Switch, useT } from '@aio/ui';
 import { telemetryAt } from '@aio/video';
 import { assetUrl, clipStartMs, useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
@@ -168,21 +168,23 @@ function ClipList() {
 
 /** Free orbit, follow the drone and the drone's own eye. */
 function CameraModes() {
+  const t = useT();
   const modes = useCameraModes(useEngineStage());
   return (
-    <div className="vb-modes" role="group" aria-label="Camera">
+    <div className="vb-modes" role="group" aria-label={t('bench.video.camera')}>
       {modes.map((m) => (
-        <button
+        <Button
           key={m.mode}
-          type="button"
+          variant="quiet"
+          size="md"
           className="vb-mode"
-          aria-pressed={m.pressed}
+          icon={m.icon}
+          pressed={m.pressed}
           disabled={m.disabled}
           onClick={m.choose}
         >
-          <Icon name={m.icon} size={16} />
-          <span>{m.label}</span>
-        </button>
+          {m.label}
+        </Button>
       ))}
     </div>
   );
@@ -199,18 +201,24 @@ export function VideoBench() {
     <div className="vb wb-scroll">
       <h2 className="vb-title">{t('bench.video.heading')}</h2>
       <PlayerCard />
-      <Section id="clips" bench="video" title={t('bench.video.clips')} count={clips} defaultOpen>
+      <Section
+        id="video-clips"
+        bench="video"
+        title={t('bench.video.clips')}
+        count={clips}
+        defaultOpen
+      >
         <ClipList />
       </Section>
-      <Section id="camera" bench="video" title={t('bench.video.camera')} defaultOpen>
+      <Section id="video-camera" bench="video" title={t('bench.video.camera')} defaultOpen>
         <CameraModes />
       </Section>
       {paths && (
-        <Section id="paths" bench="video" title={t('bench.video.paths')} defaultOpen>
+        <Section id="video-paths" bench="video" title={t('bench.video.paths')} defaultOpen>
           <FlightPathPanel showTitle={false} />
         </Section>
       )}
-      <Section id="telemetry" bench="video" title={t('bench.video.telemetry')} defaultOpen>
+      <Section id="video-telemetry" bench="video" title={t('bench.video.telemetry')} defaultOpen>
         <div className="vb-switch">
           <span>{t('bench.video.telemetryOn')}</span>
           <Switch

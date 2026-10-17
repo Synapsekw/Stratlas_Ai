@@ -23,12 +23,12 @@ import {
   ariaKeys,
   Button,
   EmptyState,
-  Icon,
   IconButton,
   Row,
   shortcutHint,
   useT,
   type IconName,
+  type MessageKey,
 } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShell } from '../../../shell';
@@ -39,6 +39,7 @@ import { ExportTool } from '../../../survey/ExportDialog';
 import { HaulRoadTool } from '../../../survey/HaulRoad';
 import { HydroTool } from '../../../survey/Hydro';
 import { MagicPolygon } from '../../../survey/MagicPolygon';
+import { PendingNote, usePending } from '../../../survey/PendingNote';
 import {
   entryOf,
   familyOf,
@@ -56,11 +57,9 @@ import { MeasurementList } from '../../../survey/MeasurementList';
 import { MeasurementPanel } from '../../../survey/MeasurementPanel';
 import {
   drawEvent,
-  isDirty,
   liveReading,
   measureStore,
   openDialog,
-  saveMeasurements,
   setListOpen,
   setSnap,
   setSnapSource,
@@ -226,48 +225,11 @@ function ToolList({
 const coord = (v: number) => v.toFixed(2);
 
 /**
- * Unsaved measurement changes and their Save, or what dragging does while vertices are edited
- * (D18: in the workbench, not over the stage). In the live card while a tool draws, on top of the
- * bench otherwise; the stage shows it only while the sidebar is folded away (`UnsavedBar`).
+ * The unsaved state on top of the bench while no tool draws (D18: in the workbench, not over the
+ * stage); nothing at all when there is nothing to say, a read-only project included.
  */
-export function PendingNote() {
-  const t = useT();
-  const dirty = useMeasure(isDirty);
-  const saving = useMeasure((s) => s.saving);
-  const editing = useMeasure((s) => s.editing !== null);
-  const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
-  const readOnly = useReadOnly();
-  if (readOnly || (!dirty && !editing)) return null;
-  return (
-    <div className="meb-pending" role="region" aria-label={t('measureBench.unsavedRegion')}>
-      <span className="meb-faint">
-        {editing && focusTool && isTelecomTool(focusTool)
-          ? t('measureBench.editingEndpoints')
-          : editing
-            ? t('measureBench.editingVertices')
-            : t('measureBench.unsaved')}
-      </span>
-      {dirty && (
-        <Button
-          variant="primary"
-          disabled={saving}
-          data-testid="survey-save"
-          onClick={() => {
-            void saveMeasurements();
-          }}
-        >
-          {t('measureBench.saveAll')}
-        </Button>
-      )}
-    </div>
-  );
-}
-
-/** The unsaved state on top of the bench while no tool draws. */
 function PendingCard() {
-  const dirty = useMeasure(isDirty);
-  const editing = useMeasure((s) => s.editing !== null);
-  if (!dirty && !editing) return null;
+  if (!usePending()) return null;
   return (
     <div className="meb-live">
       <PendingNote />
@@ -422,11 +384,11 @@ function Strip({ families, stage }: { families: readonly Family[]; stage: Engine
 
 // ---------------------------------------------------------------- the catalogue
 
-const SNAP_SOURCES: { source: SnapSource; label: string }[] = [
-  { source: 'measurement', label: 'Measurements' },
-  { source: 'design', label: 'Designs' },
-  { source: 'alignment', label: 'Alignments' },
-  { source: 'guide', label: 'Guidelines' },
+const SNAP_SOURCES: { source: SnapSource; label: MessageKey }[] = [
+  { source: 'measurement', label: 'measureBench.snapMeasurements' },
+  { source: 'design', label: 'measureBench.snapDesigns' },
+  { source: 'alignment', label: 'measureBench.snapAlignments' },
+  { source: 'guide', label: 'measureBench.snapGuidelines' },
 ];
 
 /** A label matches the search (case-insensitive, anywhere in it). */
@@ -437,26 +399,50 @@ type SiteItem =
   'designs' | 'qa' | 'overlays' | 'hydro' | 'haul' | 'export' | 'materials' | 'site' | 'units';
 
 /** Site data's entries by the names their buttons carry, for the search (D16). */
-const SITE_ITEMS: readonly { id: SiteItem; label: string }[] = [
-  { id: 'designs', label: 'Designs' },
-  { id: 'qa', label: 'Survey QA and cleanup' },
-  { id: 'overlays', label: 'Terrain overlays' },
-  { id: 'hydro', label: 'Hydrology' },
-  { id: 'haul', label: 'Haul road' },
-  { id: 'export', label: 'Export survey data' },
-  { id: 'materials', label: 'Materials' },
-  { id: 'site', label: 'Whole site cut and fill' },
-  { id: 'units', label: 'Units' },
+const SITE_ITEMS: readonly { id: SiteItem; label: MessageKey }[] = [
+  { id: 'designs', label: 'measureBench.siteDesigns' },
+  { id: 'qa', label: 'measureBench.siteQa' },
+  { id: 'overlays', label: 'measureBench.siteOverlays' },
+  { id: 'hydro', label: 'measureBench.siteHydro' },
+  { id: 'haul', label: 'measureBench.siteHaul' },
+  { id: 'export', label: 'measureBench.siteExport' },
+  { id: 'materials', label: 'measureBench.siteMaterials' },
+  { id: 'site', label: 'measureBench.siteCutFill' },
+  { id: 'units', label: 'measureBench.siteUnits' },
 ];
 
 /** Drawing aids' controls by name, for the search: a match shows the whole section. */
-const AID_LABELS: readonly string[] = [
-  'Snap to vertices',
-  'Snap to edges',
-  'Snap to',
-  'Snap distance',
+const AID_LABELS: readonly MessageKey[] = [
+  'measureBench.snapVertices',
+  'measureBench.snapEdges',
+  'measureBench.snapTo',
+  'measureBench.snapDistance',
   ...SNAP_SOURCES.map((s) => s.label),
 ];
+
+/** The drawing keys' note: its {shift}, {enter}, {tab} and {esc} drawn as key caps. */
+const AID_KEYS: Readonly<Record<string, string>> = {
+  shift: 'Shift',
+  enter: 'Enter',
+  tab: 'Tab',
+  esc: 'Esc',
+};
+function KeysNote({ text }: { text: string }) {
+  return (
+    <p className="pop-note">
+      {text.split(/(\{\w+\})/).map((part, i) => {
+        const cap = part.startsWith('{') ? AID_KEYS[part.slice(1, -1)] : undefined;
+        return cap ? (
+          <span key={i} className="kbd">
+            {cap}
+          </span>
+        ) : (
+          part
+        );
+      })}
+    </p>
+  );
+}
 
 /** The site data entries offered: Units needs a writable project, export a project (not a package). */
 function useSiteItems(): SiteItem[] {
@@ -469,17 +455,18 @@ function useSiteItems(): SiteItem[] {
 
 /** The site's designs, survey QA, terrain overlays, hydrology, haul road, export and totals. */
 function SiteData({ items }: { items: readonly SiteItem[] }) {
+  const t = useT();
   const overlaysOpen = useOverlays((s) => s.open);
   const has = (id: SiteItem) => items.includes(id);
   return (
     <div className="meb-site">
-      <div className="tgroup-h sv-nested" role="group" aria-label="Site data">
+      <div className="tgroup-h sv-nested" role="group" aria-label={t('measureCat.family.siteData')}>
         {has('designs') && <DesignsTool />}
         {has('qa') && <SurveyQaTool />}
         {has('overlays') && (
           <Tool
             icon="raster"
-            label="Terrain overlays"
+            label={t('measureBench.siteOverlays')}
             testId="survey-overlays-open"
             pressed={overlaysOpen}
             onClick={() => {
@@ -493,40 +480,34 @@ function SiteData({ items }: { items: readonly SiteItem[] }) {
       </div>
       <div className="sv-tool-row">
         {has('materials') && (
-          <button
-            type="button"
-            className="btn sm"
+          <Button
             data-testid="survey-materials-tool"
             onClick={() => {
               openCompareDialog('materials');
             }}
           >
-            Materials
-          </button>
+            {t('measureBench.siteMaterials')}
+          </Button>
         )}
         {has('site') && (
-          <button
-            type="button"
-            className="btn sm"
+          <Button
             data-testid="survey-site-open"
             onClick={() => {
               openCompareDialog('site');
             }}
           >
-            Whole site cut and fill
-          </button>
+            {t('measureBench.siteCutFill')}
+          </Button>
         )}
         {has('units') && (
-          <button
-            type="button"
-            className="btn sm"
+          <Button
             data-testid="survey-units-open"
             onClick={() => {
               openDialog({ kind: 'units', target: 'site' });
             }}
           >
-            Units
-          </button>
+            {t('measureBench.siteUnits')}
+          </Button>
         )}
       </div>
     </div>
@@ -535,11 +516,12 @@ function SiteData({ items }: { items: readonly SiteItem[] }) {
 
 /** Snapping, its sources and distance, and the typed aids. */
 function DrawingAids() {
+  const t = useT();
   const snap = useMeasure((s) => s.snap);
   return (
     <div className="pop-form meb-aids">
       <label className="pop-row">
-        <span className="pop-grow">Snap to vertices</span>
+        <span className="pop-grow">{t('measureBench.snapVertices')}</span>
         <input
           type="checkbox"
           checked={snap.vertices}
@@ -549,7 +531,7 @@ function DrawingAids() {
         />
       </label>
       <label className="pop-row">
-        <span className="pop-grow">Snap to edges</span>
+        <span className="pop-grow">{t('measureBench.snapEdges')}</span>
         <input
           type="checkbox"
           checked={snap.edges}
@@ -558,7 +540,7 @@ function DrawingAids() {
           }}
         />
       </label>
-      <div className="sv-chips" role="group" aria-label="Snap to">
+      <div className="sv-chips" role="group" aria-label={t('measureBench.snapTo')}>
         {SNAP_SOURCES.map((s) => (
           <label key={s.source} className="sv-chip">
             <input
@@ -568,12 +550,12 @@ function DrawingAids() {
                 setSnapSource(s.source, e.target.checked);
               }}
             />
-            {s.label}
+            {t(s.label)}
           </label>
         ))}
       </div>
       <label className="pop-row">
-        <span>Snap distance</span>
+        <span>{t('measureBench.snapDistance')}</span>
         <input
           type="range"
           min={2}
@@ -585,11 +567,7 @@ function DrawingAids() {
         />
         <span className="mono">{snap.tolerancePx} px</span>
       </label>
-      <p className="pop-note">
-        Hold <span className="kbd">Shift</span> to lock the angle; type a distance and press{' '}
-        <span className="kbd">Enter</span>; <span className="kbd">Tab</span> types a bearing;{' '}
-        <span className="kbd">Esc</span> cancels.
-      </p>
+      <KeysNote text={t('measureBench.aidsKeys')} />
     </div>
   );
 }
@@ -606,12 +584,13 @@ function useBookmarks() {
 
 /** The bookmarked templates (each starts its tool; `only` narrows them) and the editor. */
 function Templates({ only }: { only?: (name: string) => boolean }) {
+  const t = useT();
   const active = useMeasure((s) => s.tool);
   const lib = useBookmarks().filter(({ template: tpl }) => !only || only(tpl.name));
   return (
     <div className="meb-templates">
       {lib.length > 0 && (
-        <ul className="meb-list" aria-label="Bookmarked templates">
+        <ul className="meb-list" aria-label={t('measureBench.bookmarked')}>
           {lib.map(({ template: tpl }) => (
             <Row
               key={tpl.id}
@@ -638,16 +617,15 @@ function Templates({ only }: { only?: (name: string) => boolean }) {
           ))}
         </ul>
       )}
-      <button
-        type="button"
-        className="btn sm"
+      <Button
+        icon="flag"
         data-testid="survey-templates-open"
         onClick={() => {
           openDialog({ kind: 'templates', edit: null, scope: 'project' });
         }}
       >
-        <Icon name="flag" size={12} /> Templates
-      </button>
+        {t('measureCat.family.templates')}
+      </Button>
     </div>
   );
 }
@@ -702,9 +680,13 @@ function Catalogue({
     !searching || labelMatches(siteTitle, query)
       ? siteItems
       : siteItems.filter((id) =>
-          labelMatches(SITE_ITEMS.find((i) => i.id === id)?.label ?? '', query),
+          labelMatches(
+            t(SITE_ITEMS.find((i) => i.id === id)?.label ?? 'measureCat.family.siteData'),
+            query,
+          ),
         );
-  const aids = !searching || [aidsTitle, ...AID_LABELS].some((l) => labelMatches(l, query));
+  const aids =
+    !searching || [aidsTitle, ...AID_LABELS.map((k) => t(k))].some((l) => labelMatches(l, query));
   const templatesWhole = !searching || labelMatches(templatesTitle, query);
   const templateHits = bookmarked.filter(({ template: tpl }) => labelMatches(tpl.name, query));
   const templates = !readOnly && (templatesWhole || templateHits.length > 0);

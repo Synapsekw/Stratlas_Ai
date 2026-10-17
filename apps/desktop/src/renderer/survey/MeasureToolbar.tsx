@@ -8,7 +8,6 @@
 import type { EngineStage } from '@aio/engine';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import { isTelecomTool } from '@aio/survey';
-import { useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
@@ -19,16 +18,9 @@ import { CompareLayer } from './Comparison';
 import { DesignRolePrompt } from './DesignRolePrompt';
 import { ExportDialogMount } from './ExportDialog';
 import { useMagicController } from './MagicPolygon';
+import { PendingNote, usePending } from './PendingNote';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
-import {
-  isDirty,
-  loadMeasurements,
-  saveMeasurements,
-  setSurface,
-  stopTool,
-  stopEditing,
-  useMeasure,
-} from './measureStore';
+import { loadMeasurements, setSurface, stopTool, stopEditing, useMeasure } from './measureStore';
 import { TemplateEditor } from './TemplateEditor';
 import { useOverlaysLoad } from './Overlays';
 import { attachOverlaysMap } from './overlaysMap';
@@ -140,44 +132,15 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
 /**
  * The stage's fallback for unsaved measurement changes (D18): they and their Save live in the
  * Measure workbench, so the stage shows them only while the right sidebar is folded away, where
- * the Save would otherwise be out of reach.
+ * the Save would otherwise be out of reach. The same note as the bench's.
  */
 export function UnsavedBar() {
-  const t = useT();
   const folded = useShell((s) => s.rightCollapsed);
-  const dirty = useMeasure(isDirty);
-  const saving = useMeasure((s) => s.saving);
-  const editing = useMeasure((s) => s.editing !== null);
-  const readOnly = useMeasure((s) => s.readOnly);
-  const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
-  if (!folded || readOnly || (!dirty && !editing)) return null;
+  const pending = usePending();
+  if (!folded || !pending) return null;
   return (
-    <div
-      className="sv-drawbar"
-      role="region"
-      aria-label={t('measureBench.unsavedRegion')}
-      data-surface="dark"
-    >
-      <span className="small">
-        {editing && focusTool && isTelecomTool(focusTool)
-          ? t('measureBench.editingEndpoints')
-          : editing
-            ? t('measureBench.editingVertices')
-            : t('measureBench.unsaved')}
-      </span>
-      {dirty && (
-        <button
-          type="button"
-          className="btn sm primary"
-          disabled={saving}
-          data-testid="survey-save-stage"
-          onClick={() => {
-            void saveMeasurements();
-          }}
-        >
-          {t('measureBench.saveAll')}
-        </button>
-      )}
+    <div className="sv-drawbar" data-surface="dark">
+      <PendingNote saveTestId="survey-save-stage" />
     </div>
   );
 }
