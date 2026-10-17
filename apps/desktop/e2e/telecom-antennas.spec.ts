@@ -144,6 +144,18 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   expect(await chipWhole(rows.nth(1)), 'draft chip is whole').toBe(true);
   await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
 
+  // the inventory's CSV export sits next to Export survey data, in Site data
+  const site = win.getByTestId('wb-section-siteData');
+  const siteHead = site.locator('.wb-section-head');
+  if ((await siteHead.getAttribute('aria-expanded')) !== 'true') await siteHead.click();
+  const csvTool = site.getByRole('button', { name: 'Export antenna inventory (CSV)' });
+  await expect(site.getByTestId('survey-export-open')).toBeVisible();
+  await expect(csvTool).toBeVisible();
+  await csvTool.click();
+  await expect(win.getByTestId('antenna-csv')).toBeVisible();
+  await evidence(win, 'f-csv-next-to-export');
+  await win.keyboard.press('Escape');
+
   // the accept is on disk before the reload reads it again
   await expect
     .poll(

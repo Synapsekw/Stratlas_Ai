@@ -81,3 +81,13 @@
 .antenna-row:has([aria-expanded='true']) .row-acts {
   display: inline-flex;
 }
+.telecom-check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.telecom-csv {
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: start;
+}

@@ -81,6 +81,9 @@ import { Section } from '../Section';
 import { filterSections, sectionStore, useSections } from '../sectionState';
 import type { TabId } from '../tabsModel';
 import './measureBench.css';
+// telecom (merge 2): the antenna inventory section and its CSV export
+import { AntennaCsvTool } from '../../../telecom/AntennaCsvTool';
+import { AntennaSection } from '../../../telecom/AntennaSection';
 
 const BENCH: TabId = 'measure';
 
@@ -478,6 +481,7 @@ function SiteData({ items }: { items: readonly SiteItem[] }) {
         {has('hydro') && <HydroTool />}
         {has('haul') && <HaulRoadTool />}
         {has('export') && <ExportTool />}
+        {has('export') && <AntennaCsvTool />}
       </div>
       <div className="sv-tool-row">
         {has('materials') && (
@@ -879,6 +883,8 @@ export function MeasureBench() {
       ) : (
         <Catalogue families={families} stage={stage} query={query} onQuery={setQuery} />
       )}
+      {/* telecom: the antenna inventory, mounted while the bench shows (its boxes are in 3D) */}
+      <AntennaSection />
       {/* a search is about the tools: the saved list steps aside until it is cleared */}
       {!searching && <Saved stage={stage} />}
     </div>

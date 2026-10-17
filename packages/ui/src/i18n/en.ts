@@ -4565,6 +4565,8 @@ export const en = {
   'telecom.antennas.csv': 'Export CSV',
   'telecom.antennas.csv.drafts': 'Include drafts',
   'telecom.antennas.csv.done': 'Exported to {path}.',
+  // telecom (merge 2): the CSV export's tool next to Export survey data
+  'telecom.antennas.csv.tool': 'Export antenna inventory (CSV)',
   'telecom.antennas.warnings': 'Warnings',
   // Road, Volumes and environment benches
   'wb.tab.environment': 'Environment',
