@@ -21,7 +21,7 @@ import {
   workspace,
   type CaptureIndex,
 } from '@aio/workspace';
-import { useLayoutEffect, useMemo, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, type ReactNode, type RefObject } from 'react';
 import { FocusZone } from '../FocusZone';
 import {
   closeEvidence,
@@ -297,6 +297,31 @@ export function useSplitDivider(on: boolean): {
       if (pane !== left) pane.removeAttribute('id');
     if (left) left.id = paneId;
   });
+  // each side's width, at the reading start and end, for the corner overlays over it
+  // (--pane-start-w, --pane-end-w on the views; styles.css .stage-slot): a chip keeps to its pane
+  useEffect(() => {
+    const el = containerRef.current;
+    const host = el?.parentElement;
+    if (!el || !host || !on || typeof ResizeObserver === 'undefined') return;
+    const write = () => {
+      const width = (side: Side) =>
+        el.querySelector(`:scope > [data-side="${side}"]`)?.getBoundingClientRect().width ?? 0;
+      const [left, right] = [width('left'), width('right')];
+      if (!left || !right) return;
+      const rtl = document.documentElement.dir === 'rtl';
+      host.style.setProperty('--pane-start-w', `${String(rtl ? right : left)}px`);
+      host.style.setProperty('--pane-end-w', `${String(rtl ? left : right)}px`);
+    };
+    write();
+    const ro = new ResizeObserver(write);
+    ro.observe(el);
+    for (const pane of el.querySelectorAll(':scope > [data-side]')) ro.observe(pane);
+    return () => {
+      ro.disconnect();
+      host.style.removeProperty('--pane-start-w');
+      host.style.removeProperty('--pane-end-w');
+    };
+  }, [on, containerRef]);
   return {
     containerRef,
     handle: on ? <SplitHandle separatorProps={separatorProps} label={t('split.scene')} /> : null,

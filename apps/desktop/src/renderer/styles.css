@@ -2066,10 +2066,22 @@ button.chip-status:hover {
   max-width: 520px;
   white-space: normal;
 }
-/* in a split the status chips keep to the left pane, and the top ones stand below its header */
-.stage[data-mode='split'] .stage-slot[data-slot='tl'],
-.stage[data-mode='split'] .stage-slot[data-slot='bl'] {
-  max-width: max(180px, calc(50% - var(--sp-6)));
+/* in a split each corner overlay keeps to the pane under it, whatever the divider's share
+   (--pane-start-w and --pane-end-w, useSplitDivider), and the top ones stand below its header */
+.stage[data-mode='split'] .stage-slot:is([data-slot='tl'], [data-slot='bl']) {
+  max-inline-size: calc(var(--pane-start-w, 50%) - var(--sp-5) - var(--sp-3));
+}
+.stage[data-mode='split'] .stage-slot[data-slot='tr'] {
+  max-inline-size: calc(var(--pane-end-w, 50%) - var(--slot-end) - 10px - var(--sp-3));
+}
+.stage[data-mode='split'] .stage-slot[data-slot='br'] {
+  max-inline-size: calc(var(--pane-end-w, 50%) - var(--slot-end) - 80px - var(--sp-3));
+}
+html[dir='rtl'] .stage[data-mode='split'] .stage-slot[data-slot='bl'] {
+  max-inline-size: calc(var(--pane-start-w, 50%) - 80px - var(--sp-3));
+}
+html[dir='rtl'] .stage[data-mode='split'] .stage-slot[data-slot='br'] {
+  max-inline-size: calc(var(--pane-end-w, 50%) - var(--slot-end) - var(--sp-5) - var(--sp-3));
 }
 .stage[data-mode='split'] .stage-slot[data-slot='tl'] {
   top: max(calc(var(--pane-head-top) + 40px), calc(var(--isl-open-b, 0px) + var(--sp-4)));

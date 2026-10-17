@@ -584,6 +584,33 @@ test('in Split, the pane headers keep clear of the corners and the video, and ea
     .toBeLessThan(leftBefore - 10);
   expect(await dockWidth()).toBe(dockNow);
   await expect.poll(() => headerProblems(win)).toEqual([]);
+  // the left side at its least (200 px): each corner overlay keeps to the pane under it
+  for (let i = 0; i < 20; i++) await win.keyboard.press('ArrowLeft');
+  await expect
+    .poll(async () => Math.round((await left.boundingBox())?.width ?? 0))
+    .toBeLessThanOrEqual(210);
+  await expect
+    .poll(() =>
+      win.evaluate(() => {
+        const pane = (side: string) =>
+          document.querySelector(`.stage-panes > [data-side="${side}"]`)?.getBoundingClientRect();
+        const out: string[] = [];
+        for (const slot of document.querySelectorAll<HTMLElement>('.stage-slot')) {
+          const at = slot.dataset.slot ?? '';
+          const p = pane(at.endsWith('l') ? 'left' : 'right');
+          for (const item of slot.children) {
+            const r = item.getBoundingClientRect();
+            if (!p || r.width === 0) continue;
+            if (r.left < p.left - 0.5 || r.right > p.right + 0.5)
+              out.push(`${at} ${item.className} leaves its pane`);
+          }
+        }
+        return out;
+      }),
+    )
+    .toEqual([]);
+  await expect(win.getByTestId('vol-hint')).toBeVisible();
+  await shot(win, info, 'split-narrow-side-1100.png');
 
   // floating again: the split keeps its divider
   await win.getByRole('button', { name: 'Float the video window' }).click();
