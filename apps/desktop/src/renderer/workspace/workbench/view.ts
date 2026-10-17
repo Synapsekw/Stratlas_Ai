@@ -11,7 +11,7 @@ import { useCaptureIndex } from '../compare';
 import { pickLive, type LiveItem, type ToolSource } from '../island/islandModel';
 import { useIslandLive } from '../island/useIslandLive';
 import type { Tab, TabId } from './tabsModel';
-import { useWorkbench, WIDE_TAB_PX } from './workbenchStore';
+import { useWorkbench } from './workbenchStore';
 
 /**
  * The tab each kind of live item lives in (D11), a tool by whose it is; the connection has none.
@@ -41,9 +41,6 @@ export function islandLinked(front: TabId, primary: LiveItem | null): boolean {
 
 const SELECTION: Tab = { id: 'selection', live: false, pinned: false, fixed: true };
 
-// RF coverage bench (rf-coverage T9): the RF tab opens at least as wide as Volumes and Changes
-const rfWide = (tab: Tab): Tab => ({ ...tab, minWidth: WIDE_TAB_PX });
-
 /**
  * The tabs the sidebar shows and the one in front: Volumes only in a volumetric project and
  * Changes only with two dates to compare, as before; a front tab that is not shown is Selection.
@@ -67,9 +64,7 @@ export function useWorkbenchView(): { tabs: Tab[]; front: Tab } {
     () => (clouds ? tabs : tabs.filter((tab) => tab.id !== 'clouds' && tab.id !== 'cleanup')),
     [tabs, clouds],
   );
-  const found = shown.find((tab) => tab.id === chosen) ?? SELECTION;
-  // RF coverage bench (rf-coverage T9): the RF tab's sliders need 470 px while it is in front (D20)
-  const front = found.id === 'rf' && found.minWidth === undefined ? rfWide(found) : found;
+  const front = shown.find((tab) => tab.id === chosen) ?? SELECTION;
   return { tabs: shown, front };
 }
 

@@ -21,14 +21,19 @@ const KEY = 'quadrion.workbench';
 const FIXED: readonly TabId[] = ['selection', 'issues', 'volumes', 'changes'];
 /** Volumes and Changes open at least this wide (D17, founder 16 Oct). */
 export const WIDE_TAB_PX = 470;
+/** The tabs that open at least `WIDE_TAB_PX` wide (the RF tab's sliders need it too, D20). */
+const isWide = (id: TabId): boolean => id === 'volumes' || id === 'changes' || id === 'rf';
 const fixedTabs = (): Tab[] =>
   FIXED.map((id) => ({
     id,
     live: false,
     pinned: false,
     fixed: true,
-    ...(id === 'volumes' || id === 'changes' ? { minWidth: WIDE_TAB_PX } : {}),
+    ...(isWide(id) ? { minWidth: WIDE_TAB_PX } : {}),
   }));
+/** A panel tab is created without a width (tabsModel); a wide one gets it here. */
+const widen = (tabs: Tab[]): Tab[] =>
+  tabs.map((t) => (isWide(t.id) && t.minWidth === undefined ? { ...t, minWidth: WIDE_TAB_PX } : t));
 
 export interface WorkbenchState {
   tabs: Tab[];
@@ -87,12 +92,24 @@ export function createWorkbenchStore(
     for (const id of readPins(storage)) {
       if (!FIXED.includes(id)) tabs = openPanel(tabs, id, { pinned: true });
     }
-    return { tabs, front: 'selection', attention: null, waiting: [], openedByTool: new Set() };
+    return {
+      tabs: widen(tabs),
+      front: 'selection',
+      attention: null,
+      waiting: [],
+      openedByTool: new Set(),
+    };
   };
 
   const store = createStore<WorkbenchState>()((set, get) => {
     const apply = (c: TabsChange, openedByTool: Set<TabId>, waiting: readonly TabId[]) => {
-      set({ tabs: c.tabs, front: c.front, waiting, attention: waiting[0] ?? null, openedByTool });
+      set({
+        tabs: widen(c.tabs),
+        front: c.front,
+        waiting,
+        attention: waiting[0] ?? null,
+        openedByTool,
+      });
     };
     return {
       ...base(),
@@ -101,7 +118,7 @@ export function createWorkbenchStore(
         const { tabs, waiting } = get();
         const left = waiting.filter((w) => w !== id);
         set({
-          tabs: openPanel(tabs, id, { pinned: opts?.pinned ?? false }),
+          tabs: widen(openPanel(tabs, id, { pinned: opts?.pinned ?? false })),
           front: id,
           waiting: left,
           attention: left[0] ?? null,
