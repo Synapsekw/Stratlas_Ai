@@ -259,7 +259,7 @@
     "fontPx": 25,
     "colour": 25,
     "shadow": 15,
-    "zIndex": 15
+    "zIndex": 14
   },
   "apps/desktop/src/renderer/survey/Cleanup.tsx": {
     "title": 1

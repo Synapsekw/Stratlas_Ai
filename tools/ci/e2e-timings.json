@@ -7,6 +7,7 @@
   "e2e/alzour-calibration.spec.ts": 1,
   "e2e/alzour-orientation.spec.ts": 1,
   "e2e/audit.spec.ts": 10,
+  "e2e/bench-scroll.spec.ts": 20,
   "e2e/blobs.spec.ts": 17,
   "e2e/builder-real.spec.ts": 1,
   "e2e/builder.spec.ts": 16,
