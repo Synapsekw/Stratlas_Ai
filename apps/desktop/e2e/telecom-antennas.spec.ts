@@ -1,7 +1,7 @@
 /** Antenna detection in the real app: a synthetic tower cloud, the real pipeline job, a reload. */
 import type { EngineStage } from '@aio/engine';
 import { AntennasFile } from '@aio/schema';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
@@ -60,6 +60,22 @@ const detectInView = (win: Page) =>
     );
   });
 
+/**
+ * Whether a row's status chip shows its whole text: not cut inside itself and not cut by the row
+ * label around it.
+ */
+const chipWhole = (row: Locator) =>
+  row.getByTestId('antenna-status').evaluate((chip) => {
+    const label = chip.closest('.row-label');
+    if (!label) return false;
+    const c = chip.getBoundingClientRect();
+    const l = label.getBoundingClientRect();
+    return chip.scrollWidth <= chip.clientWidth && c.left >= l.left && c.right <= l.right + 0.5;
+  });
+
+const savedFile = async (dir: string) =>
+  AntennasFile.parse(JSON.parse(await readFile(join(dir, 'telecom', 'antennas.json'), 'utf8')));
+
 const sceneHas = (win: Page, name: string) =>
   win.evaluate(
     (n) => Boolean((window as unknown as Inspect).__stratlas.stage()?.scene.getObjectByName(n)),
@@ -88,7 +104,12 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
 
   const panel = win.getByTestId('antenna-panel');
   const rows = panel.getByTestId('antenna-row');
-  await expect.poll(() => rows.count(), { timeout: 180_000 }).toBeGreaterThanOrEqual(3);
+  // seed 3 has 9 truth units: 4 panels, 3 short antennas, 1 dish and 1 "other" box. The run finds
+  // the 8 antennas, all of them, and does not report the other box (fixed seed, same every run).
+  await expect.poll(() => rows.count(), { timeout: 180_000 }).toBe(8);
+  await expect(panel.getByTestId('antenna-summary')).toHaveText(
+    '8 antennas · 8 need review · Project north azimuths',
+  );
   await expect(panel).toContainText('Project north');
   await expect(detect).toBeEnabled();
   await viewCrown(win);
@@ -109,8 +130,21 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await first.getByRole('button', { name: /^More for / }).click();
   await win.getByRole('menuitem', { name: 'Accept' }).click();
   await expect(first).toHaveAttribute('data-status', 'accepted');
+  // the chip keeps its text at the CI size, with the row's actions showing (selected)
+  expect(await chipWhole(first), 'accepted chip is whole').toBe(true);
+  await expect(rows.nth(1)).toHaveAttribute('data-status', 'draft');
+  expect(await chipWhole(rows.nth(1)), 'draft chip is whole').toBe(true);
   await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
 
+  // the accept is on disk before the reload reads it again
+  await expect
+    .poll(
+      async () =>
+        (await savedFile(dataRoot.projectDir).catch(() => null))?.units.filter(
+          (u) => u.status === 'accepted',
+        ).length ?? 0,
+    )
+    .toBe(1);
   await win.reload();
   await expect(
     win.locator('[data-testid="project-card"], [data-scene-view] canvas').first(),
@@ -119,11 +153,11 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   const reopened = win.getByTestId('antenna-panel').getByTestId('antenna-row');
   await expect(reopened.first()).toHaveAttribute('data-status', 'accepted');
   await expect(win.getByTestId('antenna-panel')).toContainText('Accepted');
+  expect(await chipWhole(reopened.first()), 'accepted chip is whole after the reload').toBe(true);
   await viewCrown(win);
   await evidence(win, 'e-accepted-after-reload');
 
-  const saved = AntennasFile.parse(
-    JSON.parse(await readFile(join(dataRoot.projectDir, 'telecom', 'antennas.json'), 'utf8')),
-  );
+  const saved = await savedFile(dataRoot.projectDir);
+  expect(saved.units).toHaveLength(8);
   expect(saved.units.filter((u) => u.status === 'accepted')).toHaveLength(1);
 });
