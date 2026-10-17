@@ -236,6 +236,19 @@ describe('RfBench', () => {
     );
   });
 
+  it('keeps unsaved edits when the tab is shown again (another tab in front, then RF)', async () => {
+    await render();
+    setNumber(qi('[data-testid="rf-etilt-number"]'), '6');
+    expect(rfStore.getState().dirty).toBe(true);
+    // the workbench unmounts a tab that is not in front and mounts it again when shown
+    act(() => root?.unmount());
+    await render();
+    expect(rfStore.getState().dirty).toBe(true);
+    expect(rfStore.getState().sectors.antennas[0]?.etiltDeg).toBe(6);
+    expect(qi('[data-testid="rf-etilt-number"]')?.value).toBe('6');
+    expect(h.sectors?.antennas[0]?.etiltDeg).toBe(4);
+  });
+
   it('picking an AAU disables the antenna and radio fields and labels the AAU total power', async () => {
     await render();
     expect(byTest('rf-pick-antenna')?.getAttribute('aria-disabled')).toBeNull();

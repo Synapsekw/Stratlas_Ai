@@ -106,8 +106,10 @@ const BENCH: TabId = 'rf';
  */
 function useRfSync(): void {
   const projectId = useWorkspace((s) => s.project?.id ?? null);
+  // The tab mounts again each time it comes to the front: read the files again, but keep the
+  // person's unsaved edits (a project switch starts from a fresh store anyway).
   useEffect(() => {
-    if (projectId) void loadRf(projectId);
+    if (projectId) void loadRf(projectId, { keepEdits: true });
   }, [projectId]);
   const pack = useProcessingTools((s) => s.status);
   useEffect(() => {
