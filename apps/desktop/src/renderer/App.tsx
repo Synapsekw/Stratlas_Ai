@@ -46,6 +46,7 @@ import { createClass, createSeverityModel } from './classes/store';
 import { detections, loadDetections } from './detections/store';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
+import { LineUpDialog } from './lineup/LineUpDialog';
 import { isTypingTarget, spaceIsPlayPause } from './keys';
 import {
   finishedChangeJob,
@@ -553,6 +554,7 @@ export function App() {
       <PackageExportDialog />
       <PanoImportDialog />
       <Toasts />
+      <LineUpDialog />
       <ClassNotice />
       <LiveAnnouncer />
       <BuilderLayer />

@@ -8,6 +8,8 @@ import { PhotoAlignNotice } from '../builder/PhotoAlignNotice';
 import { photoPicks, usePhotoPicks } from '../builder/photoPicks';
 import { DiskChangedNotice } from '../DiskChangedNotice';
 import { GraphicsNotice } from '../GraphicsNotice';
+import { LineUpNotice } from '../lineup/LineUpNotice';
+import { LineUpOffer } from '../lineup/LineUpOffer';
 import { FarContentNotice } from '../builder/FarContentNotice';
 import { ProjectMapNotice } from '../mapCoverage/ProjectMapNotice';
 import { placement } from '../placement';
@@ -57,6 +59,8 @@ export function Toasts() {
       <PhotoAlignNotice />
       <AlignToNotice />
       <DropNotice />
+      <LineUpOffer />
+      <LineUpNotice />
       <PhotoPicksNotice />
       <PlaceOnModelNotice store={placement} />
       <ProjectMapNotice />

@@ -4149,6 +4149,8 @@ export const en = {
   'lineUp.items_other': '{count} drawn items',
   'lineUp.before': 'Before',
   'lineUp.after': 'After',
+  'lineUp.divider': 'Divider between the dates',
+  'lineUp.preview': 'Preview',
   'lineUp.done': '{moved} lined up with {kept} ({distance}).',
   'lineUp.undone': 'Line-up undone.',
   'lineUp.redone': 'Lined up again.',
