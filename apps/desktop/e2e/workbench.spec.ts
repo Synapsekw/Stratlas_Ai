@@ -118,6 +118,8 @@ test.describe('following (D14)', () => {
 });
 
 test.describe('pins (D15)', () => {
+  // the size CI runs at, where the row has no room for Display beside the live tool (T20 M6)
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720' } });
   test('a pinned tab stays when a tool starts; an unpinned panel gives way', async ({
     twoDateProject,
     win,
@@ -141,20 +143,16 @@ test.describe('pins (D15)', () => {
     await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
     await expect.poll(() => openTabs(win)).not.toContain('environment');
     expect(await openTabs(win)).toContain('display pinned');
-    // where the row has no room for it, the More tabs menu lists it, ticked as pinned
-    if ((await tab(win, 'display').count()) === 0) {
-      const more = win.locator('.right').getByRole('button', { name: 'More tabs', exact: true });
-      await more.click();
-      const menu = win.getByRole('menu', { name: 'More tabs' });
-      await expect(menu.getByRole('menuitemcheckbox', { name: 'Display' })).toBeChecked();
-      await shot(win, 'workbench-pin-survives-tool.png');
-      // (closed by its button: Esc would also put the live tool away)
-      await more.click();
-      await expect(menu).toHaveCount(0);
-    } else {
-      await expect(pin).toHaveAttribute('aria-pressed', 'true');
-      await shot(win, 'workbench-pin-survives-tool.png');
-    }
+    // the row has no room for it: the More tabs menu lists it, ticked as pinned
+    await expect(tab(win, 'display')).toHaveCount(0);
+    const more = win.locator('.right').getByRole('button', { name: 'More tabs', exact: true });
+    await more.click();
+    const menu = win.getByRole('menu', { name: 'More tabs' });
+    await expect(menu.getByRole('menuitemcheckbox', { name: 'Display' })).toBeChecked();
+    await shot(win, 'workbench-pin-survives-tool.png');
+    // (closed by its button: Esc would also put the live tool away)
+    await more.click();
+    await expect(menu).toHaveCount(0);
 
     // and when it stops, the pinned tab is still there
     await pressM(win);

@@ -2,7 +2,7 @@
  * The stage island in the e2e specs: the tools that used to sit on the stage toolbar are behind
  * it. Specs reach them through these helpers rather than learning the island each.
  */
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import type { TabId } from '../src/renderer/workspace/workbench/tabsModel';
 
 /** The island's group tabs, by the short names it shows (`island.group.*`). */
@@ -129,6 +129,13 @@ async function pickGroupTab(win: Page, g: GroupId, bench: Locator): Promise<void
     await expect(bar).not.toHaveAttribute('data-state', 'tools', { timeout: 3_000 });
     await expect(bench).toBeVisible({ timeout: 3_000 });
   }).toPass({ timeout: 30_000 });
+  // a lost Enter may be a real defect (the capsule swallowing a key while it morphs): each pick
+  // that needed another try is recorded, so a rising rate shows in CI (T20 M1)
+  if (tries > 1)
+    test.info().annotations.push({
+      type: 'island-pick-retry',
+      description: `${g}: ${String(tries)} tries`,
+    });
 }
 
 /** A tool button of a group's full set (the set opened, so it shows). */
