@@ -372,10 +372,11 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
 ];
 
 /**
- * The first pipeline pack with `rf.coverage`; one constant, set at merge time (0.14.0,
- * provisional: the pack is at 0.13.1 today).
+ * The first pipeline pack with `rf.coverage` (python `aio_pipelines/rf`): pack 0.15.0. One
+ * constant; when another stream also bumps the pack before this merges, move it to the merged
+ * version.
  */
-export const RF_COVERAGE_MIN_PACK = '0.14.0';
+export const RF_COVERAGE_MIN_PACK = '0.15.0';
 export const RF_COVERAGE_FEATURE = 'Coverage prediction for telecom sites';
 
 const Latitude = z.number().min(-90).max(90);

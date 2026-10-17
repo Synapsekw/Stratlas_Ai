@@ -30,6 +30,7 @@ from .photo.georef import PhotoGeoref
 from .photo.products import PhotoProducts
 from .pointcloud import PointcloudToCopc
 from .pointcloud_cleanup.pipeline import PointcloudClean
+from .rf.pipeline import RfCoverage
 from .road.pipeline import RoadBuild
 from .runtime import Pipeline
 from .selftest import SelfTest
@@ -103,5 +104,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         PointcloudClean(),
         # Telecom (pipeline pack 0.14.0)
         TelecomAntennas(),
+        # RF coverage prediction (pipeline pack RF_COVERAGE_MIN_PACK)
+        RfCoverage(),
     ]
     return {p.name: p for p in items}
