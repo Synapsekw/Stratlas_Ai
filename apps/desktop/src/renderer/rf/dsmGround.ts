@@ -28,6 +28,10 @@ export function dsmGroundAt(
   origin: Vec3,
   sample: (x: number, z: number) => number | null,
 ): number | null {
+  // A known small difference from python's `ground_from_dsm` (final review M2, kept for v1): it
+  // reads the square window of +/- 30 m, every pixel, and only DSM layers with `format == 'cog'`;
+  // this samples a disc every 2 m, and the caller passes every `role: 'dsm'` raster (no cog-only
+  // filter). So an estimated height in the preview can differ a little from the run's.
   const hits: number[] = [];
   const r = DSM_GROUND_RADIUS_M;
   const x0 = east - origin[0];
