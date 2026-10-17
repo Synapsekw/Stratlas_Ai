@@ -123,6 +123,16 @@ describe('antennas contract', () => {
     expect(p.safeParse({ ...ok, floorFraction: 0.2 }).success).toBe(false);
     expect(p.safeParse({ ...ok, floorFraction: 0.99 }).success).toBe(false);
   });
+
+  it('takes an optional ground height in the run and nothing but a number', () => {
+    const file = AntennasFile.parse(contract.example);
+    expect(file.run.groundZ).toBeUndefined();
+    const withGround = AntennasFile.parse({ ...file, run: { ...file.run, groundZ: 12.25 } });
+    expect(withGround.run.groundZ).toBe(12.25);
+    expect(AntennasFile.parse(JSON.parse(JSON.stringify(withGround))).run.groundZ).toBe(12.25);
+    const bad = AntennasFile.safeParse({ ...file, run: { ...file.run, groundZ: '12' } });
+    expect(bad.success).toBe(false);
+  });
 });
 
 describe('antennas channels and versions', () => {

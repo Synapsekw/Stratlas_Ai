@@ -157,6 +157,11 @@ export const AntennaRun = z
     crown: z
       .object({ floorZ: z.number(), topZ: z.number(), radiusM: z.number().nonnegative() })
       .strict(),
+    /**
+     * Ground height at the tower base, project vertical datum (the crown step's estimate, with the
+     * layer's `heightOffsetM` applied); for heights above ground. Absent in older files.
+     */
+    groundZ: z.number().optional(),
     north: z.enum(['grid', 'project']),
     warnings: z.array(z.string().max(300)),
     counts: z
