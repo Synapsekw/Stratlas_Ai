@@ -5,7 +5,6 @@ import { Icon, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { openCleanupPanel } from '../../pointcloud/cleanupActions';
 import { cleanup, useCleanup } from '../../pointcloud/cleanupStore';
-import { shell, useShell } from '../../shell';
 import { PopTool, Tool } from '../StageTools';
 
 /** Cloud layer ids of the open project, joined (a stable selector value). */
@@ -15,38 +14,36 @@ const cloudIds = (layers: readonly Layer[] | undefined) =>
     .map((l) => l.id)
     .join('|');
 
+/** The open project's point cloud layers and one switch for all of them. */
+export function useCloudLayers() {
+  const joined = useWorkspace((s) => cloudIds(s.project?.manifest.layers));
+  const ids = joined ? joined.split('|') : [];
+  const shown = useWorkspace((s) => ids.some((id) => !s.hidden[id]));
+  return {
+    ids,
+    shown,
+    many: ids.length > 1,
+    toggle: () => {
+      for (const id of ids) workspace.getState().setLayerVisible(id, !shown);
+    },
+  };
+}
+
 /** The point cloud panel: show it, colour by RGB, elevation, intensity or flight, size, EDL. */
 export function CloudTools() {
   const t = useT();
-  const open = useShell((s) => s.cloudPanelOpen);
   const cleanupOpen = useCleanup((s) => s.panelOpen);
-  const ids = useWorkspace((s) => cloudIds(s.project?.manifest.layers));
-  const shown = useWorkspace((s) => ids.split('|').some((id) => id && !s.hidden[id]));
-  const many = ids.includes('|');
-  if (!ids) return null;
+  const { ids, shown, many, toggle } = useCloudLayers();
+  if (ids.length === 0) return null;
   return (
     <>
-      <PopTool
-        icon="cloud"
-        label="Point cloud"
-        wide
-        open={open}
-        onOpenChange={(o) => {
-          shell.getState().setCloudPanel(o);
-        }}
-      >
+      <PopTool icon="cloud" label="Point cloud" wide>
         <div className="pop-form" data-testid="cloud-panel">
           <span className="pop-title">Point cloud{many ? 's' : ''}</span>
           <label className="pop-row">
             <Icon name="cloud" size={14} className="muted" />
             <span className="pop-grow">Show the point cloud{many ? 's' : ''}</span>
-            <input
-              type="checkbox"
-              checked={shown}
-              onChange={() => {
-                for (const id of ids.split('|')) workspace.getState().setLayerVisible(id, !shown);
-              }}
-            />
+            <input type="checkbox" checked={shown} onChange={toggle} />
           </label>
           <PointCloudControls className="pop-form" />
         </div>

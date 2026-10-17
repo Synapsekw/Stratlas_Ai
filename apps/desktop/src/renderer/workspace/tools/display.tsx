@@ -18,7 +18,7 @@ export function nextLabelMode(m: LabelMode): LabelMode {
   return LABEL_MODES[(i + 1) % LABEL_MODES.length]?.mode ?? 'key';
 }
 
-const KINDS: { kinds: Layer['kind'][]; label: string; icon: IconName }[] = [
+export const KINDS: { kinds: Layer['kind'][]; label: string; icon: IconName }[] = [
   { kinds: ['mesh'], label: 'Models', icon: 'scene' },
   { kinds: ['pointcloud'], label: 'Point clouds', icon: 'cloud' },
   { kinds: ['photos'], label: 'Photo cameras', icon: 'photo' },
@@ -26,26 +26,33 @@ const KINDS: { kinds: Layer['kind'][]; label: string; icon: IconName }[] = [
   { kinds: ['video'], label: 'Video clips', icon: 'video' },
 ];
 
-function KindRow({ kinds, label, icon }: (typeof KINDS)[number]) {
-  const ids = useWorkspace((s) =>
+/** The project's layers of these kinds, and one switch for all of them (the Layers eyes). */
+export function useKindLayers(kinds: readonly Layer['kind'][]) {
+  const joined = useWorkspace((s) =>
     (s.project?.manifest.layers ?? [])
       .filter((l) => kinds.includes(l.kind))
       .map((l) => l.id)
       .join('|'),
   );
-  const anyVisible = useWorkspace((s) => ids.split('|').some((id) => id && !s.hidden[id]));
-  if (!ids) return null;
+  const ids = joined ? joined.split('|') : [];
+  const visible = useWorkspace((s) => ids.some((id) => !s.hidden[id]));
+  return {
+    ids,
+    visible,
+    toggle: () => {
+      for (const id of ids) workspace.getState().setLayerVisible(id, !visible);
+    },
+  };
+}
+
+function KindRow({ kinds, label, icon }: (typeof KINDS)[number]) {
+  const { ids, visible, toggle } = useKindLayers(kinds);
+  if (ids.length === 0) return null;
   return (
     <label className="pop-row">
       <Icon name={icon} size={14} className="muted" />
       <span className="pop-grow">{label}</span>
-      <input
-        type="checkbox"
-        checked={anyVisible}
-        onChange={() => {
-          for (const id of ids.split('|')) workspace.getState().setLayerVisible(id, !anyVisible);
-        }}
-      />
+      <input type="checkbox" checked={visible} onChange={toggle} />
     </label>
   );
 }

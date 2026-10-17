@@ -32,7 +32,7 @@ import {
 import { EnvironmentTool } from '../../environment/EnvironmentTool';
 import { isTyping } from '../../keys';
 import { useRoad } from '../../road/store';
-import { shell, useShell } from '../../shell';
+import { useShell } from '../../shell';
 import type { StageMode } from '../../store';
 import { CompareButton, useCompareDates } from '../CompareControls';
 import type { Side } from '../splitModel';
@@ -138,16 +138,9 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const groups = islandGroups({ map, mode: tools, clouds, volumes, video, road, pkg });
   const group = groups.includes(s.group) ? s.group : 'view';
 
-  // the point cloud panel opened from the sidebar or the palette: the Point cloud group's set
-  // (asked while the group is away, on the map, it opens when the group comes back)
-  const cloudPanel = useShell((x) => x.cloudPanelOpen) && groups.includes('clouds');
-  const [seenCloudPanel, setSeenCloudPanel] = useState(cloudPanel);
-  if (cloudPanel !== seenCloudPanel) {
-    setSeenCloudPanel(cloudPanel);
-    if (cloudPanel) setFull('clouds');
-  }
+  // (the point cloud panel asked for from the sidebar or the palette is the Point cloud tab now,
+  // brought to the front by workbench/benchFollow.ts)
   const closeFull = () => {
-    if (full === 'clouds') shell.getState().setCloudPanel(false);
     setFull(null);
   };
 

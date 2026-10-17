@@ -6,7 +6,6 @@ import { pinDisplay, usePinDisplay } from '@aio/annotate';
 import type { EngineStage, LabelMode } from '@aio/engine';
 import {
   Button,
-  formatDate,
   Icon,
   shortcutHint,
   useT,
@@ -557,6 +556,12 @@ const BODIES: readonly { value: BodyMode; label: MessageKey }[] = [
   { value: 'off', label: 'island.tile.hidden' },
 ];
 
+/**
+ * A survey's name in the date switch: the survey's own label, as the Volumes tab shows it (not its
+ * ISO capture date, which a label may differ from), less a trailing year.
+ */
+export const surveyDateLabel = (label: string): string => label.replace(/ 20\d\d$/, '');
+
 function VolumeRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
   const captures = useVolumetric((s) => s.file?.captures ?? []);
@@ -572,7 +577,7 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
       <Choice
         label={t('island.tile.surveyDate')}
         options={[
-          ...captures.map((c) => ({ value: c.epoch, label: formatDate(c.date, { year: false }) })),
+          ...captures.map((c) => ({ value: c.epoch, label: surveyDateLabel(c.label) })),
           { value: SWIPE, label: t('island.tile.swipe'), disabled: captures.length < 2 || editing },
         ]}
         value={swipe ? SWIPE : surface === 'change' ? null : epoch}

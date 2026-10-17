@@ -110,7 +110,14 @@ function Section({
   );
 }
 
-export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
+export function CleanupPanel({
+  stage,
+  inTab = false,
+}: {
+  stage: EngineStage | null;
+  /** In the sidebar's Clean up tab, not floating over the stage. */
+  inTab?: boolean;
+}) {
   const t = useT();
   const tool = useStageTool(stage);
   // chunks arriving re-render the panel, so the layer's bounds show once its header has loaded
@@ -394,8 +401,8 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
   return (
     <div
       ref={panelRef}
-      className="cleanup-panel overlay-box"
-      data-surface="dark"
+      className={inTab ? 'cleanup-panel in-tab' : 'cleanup-panel overlay-box'}
+      {...(inTab ? {} : { 'data-surface': 'dark' })}
       data-testid="cleanup-panel"
       role="dialog"
       aria-label={t('cleanup.title')}

@@ -419,7 +419,7 @@ describe('Island', () => {
     expect(document.activeElement).toBe(island());
   });
 
-  it('opens the point cloud panel when the sidebar or the palette asks for it', async () => {
+  it('leaves the point cloud panel to the sidebar: asking for it opens no set here', async () => {
     const cloud = { kind: 'pointcloud', id: 'scan', name: 'Scan', visible: true } as const;
     const withCloud = {
       ...threeDates,
@@ -428,65 +428,15 @@ describe('Island', () => {
         { ...cloud, src: { path: 'c.copc.laz' }, format: 'copc' as const },
       ],
     };
-    // the panel's placement watches its size
-    const noop = () => undefined;
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        observe = noop;
-        unobserve = noop;
-        disconnect = noop;
-      },
-    );
     workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: withCloud });
     shell.getState().setCloudPanel(false);
     await render();
     act(() => {
       shell.getState().openCloudPanel();
     });
-    expect(document.querySelector('[data-testid="cloud-panel"]')).not.toBeNull();
-    // closing the group's set closes the panel with it
-    act(() =>
-      document.querySelector<HTMLButtonElement>('.isl-full button[aria-label="Close"]')?.click(),
-    );
-    expect(shell.getState().cloudPanelOpen).toBe(false);
+    // the Point cloud tab of the sidebar shows it (workbench/benchFollow.test.tsx)
     expect(document.querySelector('[data-testid="cloud-panel"]')).toBeNull();
-  });
-
-  it('opens a point cloud panel asked for on the map once the 3D tools are back', async () => {
-    const cloud = { kind: 'pointcloud', id: 'scan', name: 'Scan', visible: true } as const;
-    const withCloud = {
-      ...threeDates,
-      layers: [
-        ...threeDates.layers,
-        { ...cloud, src: { path: 'c.copc.laz' }, format: 'copc' as const },
-      ],
-    };
-    const noop = () => undefined;
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        observe = noop;
-        unobserve = noop;
-        disconnect = noop;
-      },
-    );
-    workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: withCloud });
-    shell.getState().setCloudPanel(false);
-    root = createRoot(host);
-    const at = async (tools: '3d' | 'map') => {
-      await act(async () => {
-        root?.render(<WithSplit stage={null} mode={tools} tools={tools} linked={false} />);
-        await Promise.resolve();
-      });
-    };
-    await at('map');
-    act(() => {
-      shell.getState().setCloudPanel(true);
-    });
-    expect(document.querySelector('[data-testid="cloud-panel"]')).toBeNull();
-    await at('3d');
-    expect(document.querySelector('[data-testid="cloud-panel"]')).not.toBeNull();
+    expect(document.querySelector('.isl-full')).toBeNull();
     shell.getState().setCloudPanel(false);
   });
 });

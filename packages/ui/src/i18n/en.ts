@@ -4580,6 +4580,31 @@ export const en = {
   'stage.cutaway.needs3d': 'Open the 3D view to cut the model open.',
   'stage.env.noProject': 'Open a project to set the environment.',
   'stage.cutaway.noProject': 'Open a project to cut the model open.',
+  // Display bench
+  'bench.display.labels': 'Labels',
+  'bench.display.pins': 'Issue pins',
+  'bench.display.layers': 'Layers',
+  'bench.display.streetMap': 'Street map',
+  'bench.display.labelsGroup': 'Component labels',
+  'bench.display.labelsNote': '{hint}.',
+  'bench.display.layersEmpty': 'No layers yet',
+  'bench.display.layersEmptyBody':
+    'Models, point clouds, photos, maps and video appear here as you add them.',
+  'bench.display.eye': 'Show or hide {kind}',
+  // Point cloud bench
+  'bench.cloud.show': 'Show',
+  'bench.cloud.colour': 'Colour, size and EDL',
+  'bench.cloud.clouds': 'Point clouds',
+  'bench.cloud.cleanup': 'Clean up',
+  'bench.cloud.qa': 'Survey QA',
+  'bench.cloud.showAll': 'Show the point cloud',
+  'bench.cloud.showMany': 'Show the point clouds',
+  'bench.cloud.eye': 'Show or hide {name}',
+  'bench.cloud.cleanupHint': 'Clip box, height range, lasso, noise and a cleaned copy.',
+  'bench.cloud.qaOpen': 'Check against points',
+  'bench.cloud.qaHint': 'Compare a survey with checkpoints and release or hold it.',
+  'bench.cloud.empty': 'No point clouds',
+  'bench.cloud.emptyBody': 'Add a point cloud to the project to see it here.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

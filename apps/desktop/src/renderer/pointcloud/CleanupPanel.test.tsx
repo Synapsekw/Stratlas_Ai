@@ -150,21 +150,20 @@ describe('CleanupHost', () => {
     expect(cleanup.store.getState().pending).toBeNull();
   });
 
-  it('draws the notice at the top of the stage, beside the open panel', () => {
+  it('draws the notice at the top centre of the stage, panel open or not', () => {
     project([copc('a')]);
     root = createRoot(host);
     act(() => root?.render(<CleanupHost engine={null} />));
     act(() => {
+      cleanup.openPanel();
       cleanup.notify({ text: 'Cleanup reset.', undo: true, error: false, layerId: 'a' });
     });
     const notice = q('cleanup-notice');
     expect(notice?.className).toContain('cleanup-notice');
-    expect(notice?.className).toContain('beside-panel');
+    // the panel is a sidebar tab, so the notice keeps clear of nothing on the stage
+    expect(notice?.className).not.toContain('beside-panel');
     expect(notice?.getAttribute('style')).toBeNull(); // placed by cleanup.css only
-    act(() => {
-      cleanup.closePanel();
-    });
-    expect(q('cleanup-notice')?.className).not.toContain('beside-panel');
+    expect(q('cleanup-panel')).toBeNull(); // not drawn over the stage
   });
 
   it('closes the panel and forgets the recipes when the project changes', () => {

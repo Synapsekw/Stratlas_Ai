@@ -48,12 +48,11 @@ test('lasso delete and clip box, saved as a copy and exported with the same poin
   await openNoisyProject(win);
   await openCleanupFromMenu(win);
 
-  // a lasso in the part of the view right of the panel (it sits top left on the stage), then Delete
+  // a lasso over the middle of the view (the panel is a tab in the sidebar, off the stage), then Delete
   await win.getByTestId('cleanup-select-lasso').click();
   const box = await win.locator('[data-scene-view] canvas').boundingBox();
-  const panel = await win.getByTestId('cleanup-panel').boundingBox();
-  if (!box || !panel) throw new Error('no canvas or panel');
-  const left = panel.x + panel.width + 24;
+  if (!box) throw new Error('no canvas');
+  const left = box.x + box.width * 0.1;
   const right = box.x + box.width * 0.9;
   const at = (fx: number, fy: number) =>
     [left + (right - left) * fx, box.y + box.height * fy] as const;

@@ -1,26 +1,32 @@
 /**
- * The Clean up panel's place on the stage: binds the cleanup stage tools while the panel is open,
- * and draws the panel, the bar of a drawn selection and the notice with Undo. The recipes load with
+ * The Clean up panel's place on the stage: binds the cleanup stage tools while the panel is open
+ * and hands the engine to the panel's tab (CleanupTab, in the sidebar), and draws the bar of a
+ * drawn selection and the notice with Undo. The recipes load with
  * the project, not here (cleanupStore.ts `followProjectForCleanup`, from bootstrap).
  */
 import type { EngineStage } from '@aio/engine';
 import { ASPRS_CLASSES, classColour } from '@aio/pointcloud';
 import { Icon, useT } from '@aio/ui';
 import { useEffect, useRef, useState } from 'react';
-import { CleanupPanel } from './CleanupPanel';
 import { applyPending, mountCleanupScene } from './cleanupScene';
+import { setCleanupStage } from './cleanupStage';
 import { cleanup, useCleanup } from './cleanupStore';
 import './cleanup.css';
 
 const SHOW_MS = 8000;
 
-/** Binds the stage tools while the panel is open, draws the panel. */
+/** Binds the stage tools while the panel is open, draws the selection bar and the notice. */
 export function CleanupHost({ engine }: { engine: EngineStage | null }) {
   const open = useCleanup((s) => s.panelOpen);
   useEffect(() => (open && engine ? mountCleanupScene(engine) : undefined), [open, engine]);
+  useEffect(() => {
+    setCleanupStage(engine);
+    return () => {
+      setCleanupStage(null);
+    };
+  }, [engine]);
   return (
     <>
-      {open && <CleanupPanel stage={engine} />}
       {open && <SelectionBar />}
       <CleanupNotice />
     </>
@@ -147,8 +153,6 @@ function SelectionBar() {
 export function CleanupNotice() {
   const t = useT();
   const notice = useCleanup((s) => s.notice);
-  // top centre of the stage, beside the panel while it is open
-  const beside = useCleanup((s) => s.panelOpen);
   useEffect(() => {
     if (!notice || notice.error) return;
     const timer = window.setTimeout(cleanup.dismiss, SHOW_MS);
@@ -159,7 +163,7 @@ export function CleanupNotice() {
   if (!notice) return null;
   return (
     <div
-      className={`cleanup-notice notice${notice.error ? ' warn' : ''}${beside ? ' beside-panel' : ''}`}
+      className={`cleanup-notice notice${notice.error ? ' warn' : ''}`}
       role="status"
       data-testid="cleanup-notice"
     >

@@ -1,0 +1,28 @@
+/* The Display and Point cloud workbenches: sections of plain controls in the sidebar's column. */
+.wb-bench {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-2);
+  padding-block: var(--sp-2) var(--sp-5);
+  padding-inline: var(--sp-4);
+  min-inline-size: 0;
+}
+.wb-form {
+  display: grid;
+  gap: var(--sp-4);
+  padding-block: var(--sp-2) var(--sp-4);
+  padding-inline: var(--sp-4);
+  min-inline-size: 0;
+}
+.wb-form > .btn {
+  justify-self: start;
+}
+.wb-note {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
+/* a layer row's eye is always there, not only on hover: it says what is shown */
+.wb-eye-row .row-acts {
+  visibility: visible;
+}

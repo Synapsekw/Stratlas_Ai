@@ -46,6 +46,18 @@
 .cleanup-field .input[aria-invalid='true'] {
   border-color: var(--danger-line);
 }
+/* in the sidebar's Clean up tab: the tab's own column, on the sidebar's surface */
+.cleanup-panel.in-tab {
+  position: static;
+  inset-block-start: auto;
+  width: auto;
+  max-height: none;
+  overflow: visible;
+  padding: var(--sp-4) var(--sp-5);
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+}
 .cleanup-head {
   display: flex;
   align-items: center;
@@ -238,10 +250,6 @@
   align-items: center;
   /* opaque over the view: the warning tint on the panel colour */
   background: linear-gradient(var(--s3-a), var(--s3-a)), var(--bg-1);
-}
-.cleanup-notice.beside-panel {
-  inset-inline-start: calc(clamp(220px, calc(50% - 24px), 300px) + 24px);
-  max-width: none;
 }
 .cleanup-notice > span {
   min-width: 0;

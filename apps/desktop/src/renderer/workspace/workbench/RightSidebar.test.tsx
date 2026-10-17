@@ -302,4 +302,54 @@ describe('RightSidebar', () => {
     expect(shell.getState().rightCollapsed).toBe(true);
     expect(aside?.hasAttribute('inert')).toBe(true);
   });
+
+  it('fills the Display tab with the Display bench', () => {
+    // jsdom draws nothing (the street map probes a canvas)
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    render();
+    act(() => {
+      workbench.getState().open('display');
+    });
+    expect(host.querySelector('[data-testid="display-bench"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="wb-section-display-pins"]')).not.toBeNull();
+  });
+
+  it('shows the Point cloud tab and its Clean up tab only in a project with a cloud', () => {
+    const cloud = {
+      kind: 'pointcloud',
+      id: 'scan',
+      name: 'Scan',
+      visible: true,
+      src: { path: 'c.copc.laz' },
+      format: 'copc',
+    };
+    render();
+    act(() => {
+      workbench.getState().open('clouds');
+    });
+    expect(tabIds()).not.toContain('wb-tab-clouds');
+    act(() => {
+      workspace.getState().openProject({
+        id: 'pc',
+        root: '/pc',
+        manifest: { ...threeDates, layers: [...threeDates.layers, cloud] } as typeof threeDates,
+      });
+      workbench.getState().open('clouds');
+    });
+    expect(tabIds()).toContain('wb-tab-clouds');
+    expect(host.querySelector('[data-testid="cloud-bench"]')).not.toBeNull();
+  });
+
+  it('opens the Point cloud tab when the panel is asked for, and unfolds the sidebar', () => {
+    render();
+    act(() => {
+      shell.getState().setRight(true);
+      shell.getState().setCloudPanel(true);
+    });
+    expect(shell.getState().rightCollapsed).toBe(false);
+    expect(workbench.getState().front).toBe('clouds');
+    act(() => {
+      shell.getState().setCloudPanel(false);
+    });
+  });
 });
