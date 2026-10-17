@@ -73,7 +73,7 @@ describe('planAlign', () => {
     // drawn 2 m east and 1 m north: the block's centre is on the target's (0, 0)
     expect(planAlign(sources, target, null).inPlace).toBe(true);
     // moved onto a target 10 m east: the saved move is the 10 m alone, not the date's shift
-    const east = { min: [0, 0, -10], max: [20, 5, 10] };
+    const east: typeof target = { min: [0, 0, -10], max: [20, 5, 10] };
     expect(planAlign(sources, east, null).fixes.ph?.a?.offsetM).toEqual([10, 0, 0]);
   });
 
