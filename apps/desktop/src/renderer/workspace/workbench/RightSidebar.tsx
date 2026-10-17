@@ -300,7 +300,7 @@ export function RightSidebar() {
     <aside
       className="right"
       id={PANEL_ID.right}
-      aria-label="Context"
+      aria-label={t('wb.sidebar')}
       aria-hidden={rightCollapsed}
       inert={rightCollapsed}
     >

@@ -4738,6 +4738,16 @@ export const en = {
   'island.tile.annoMapArea': 'Map area',
   'island.tile.annoMapAreaName': 'Area on the map',
   'island.liveOpen': 'Show {item} in the right panel',
+
+  // Final review fixes: strings the stage island work moved but left written in place, and copy
+  // that still sent people to the stage toolbar
+  'wb.sidebar': 'Right panel',
+  'survey.list.label': 'Measurements',
+  'survey.list.empty':
+    "No measurements yet. Pick a tool in the island's Measure tab and click on the site.",
+  'survey.list.noMatch': 'No measurement matches.',
+  'vol.surfaceColours': 'Surface colours',
+  'vol.swipeTip': 'Swipe between the first and last survey',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

@@ -386,7 +386,7 @@ function TemplateForm({
               onChange({ ...t, bookmarked: e.target.checked });
             }}
           />
-          Bookmark on the toolbar
+          Bookmark in the Measure workbench
         </label>
         <label className="sv-check">
           Colour

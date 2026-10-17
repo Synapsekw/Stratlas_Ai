@@ -1,3 +1,4 @@
+import { t } from '@aio/ui';
 import { useVolumetric, volumetric, type BodyMode, type SurfaceMode } from '@aio/volumetric';
 import { PopTool, Tool } from './StageTools';
 import { surveyDateLabel } from './surveyDateLabel';
@@ -45,7 +46,7 @@ export function VolumeDateSwipe() {
         type="button"
         aria-pressed={swipe}
         disabled={captures.length < 2 || editing}
-        title="Swipe between the first and last survey"
+        title={t('vol.swipeTip')}
         onClick={() => {
           if (surface === 'change') v.setSurface('photo');
           v.setSwipe(!swipe);
@@ -64,7 +65,7 @@ export function VolumeSurfaces() {
   const editing = useVolumetric((s) => s.edit !== null);
   const v = volumetric.getState();
   return (
-    <div className="seg vol-surface" role="group" aria-label="Surface colours">
+    <div className="seg vol-surface" role="group" aria-label={t('vol.surfaceColours')}>
       {SURFACES.map((s) => (
         <button
           key={s.v}

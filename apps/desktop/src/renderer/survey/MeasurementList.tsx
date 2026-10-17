@@ -113,7 +113,7 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
   };
 
   return (
-    <section className="sv-list" aria-label="Measurements" data-testid="survey-list">
+    <section className="sv-list" aria-label={t('survey.list.label')} data-testid="survey-list">
       <div
         className="sv-row sv-wrap"
         role="group"
@@ -322,9 +322,7 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
       <div className="sv-scroll">
         {shown.length === 0 && (
           <p className="faint small sv-empty">
-            {file.measurements.length === 0
-              ? 'No measurements yet. Pick a tool on the toolbar and click on the site.'
-              : 'No measurement matches.'}
+            {file.measurements.length === 0 ? t('survey.list.empty') : t('survey.list.noMatch')}
           </p>
         )}
         {shown.length > 0 && (

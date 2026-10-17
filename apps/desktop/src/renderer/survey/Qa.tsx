@@ -9,7 +9,7 @@
  * loads the project's QA state and shows the hold banner.
  */
 import type { QaLevel, SurveyQa } from '@aio/schema';
-import { Icon } from '@aio/ui';
+import { Icon, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -104,7 +104,7 @@ export function QaSide() {
   const panel = useQa((s) => s.panel);
   if (!panel) return null;
   return (
-    <aside className="qa-side" aria-label="Survey QA" data-testid="survey-qa-side">
+    <aside className="qa-side" aria-label={t('wb.tab.qa')} data-testid="survey-qa-side">
       {panel === 'qa' && <QaPanelView />}
       {panel === 'cleanup' && <CleanupPanel />}
       {panel === 'surveys' && <SurveyPicker />}
