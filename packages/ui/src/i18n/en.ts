@@ -5125,7 +5125,12 @@ export const en = {
   'rf.legend.showFrom.good': 'Good and better',
   'rf.legend.hatch': 'Hatch the classes',
   'rf.legend.indicativeBody': 'flat ground, no buildings, untuned model, about 8 dB either way.',
-  'rf.legend.assumptions': 'Assumes {margin}, {db} dB of margin in all, phone at {ue} m.',
+  'rf.legend.assumptions': 'Assumes {margin}, {db} dB margin in all, phone at {ue} m.',
+  // where people are, mid-sentence in the legend (the study select keeps its own labels)
+  'rf.legend.margin.outdoor': 'outdoor use',
+  'rf.legend.margin.inCar': 'use in a car',
+  'rf.legend.margin.indoor': 'indoor use',
+  'rf.legend.margin.deepIndoor': 'deep indoor use',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

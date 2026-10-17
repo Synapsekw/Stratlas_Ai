@@ -93,7 +93,14 @@ describe('the coverage legend', () => {
   it('carries the indicative and assumptions line', () => {
     show('rsrp');
     expect(text('rf-legend-indicative')).toBe(
-      'Indicative: flat ground, no buildings, untuned model, about 8 dB either way. Assumes Outdoor, 13.3 dB of margin in all, phone at 1.5 m.',
+      'Indicative: flat ground, no buildings, untuned model, about 8 dB either way. Assumes outdoor use, 13.3 dB margin in all, phone at 1.5 m.',
+    );
+  });
+
+  it('names an indoor preset in lowercase with its whole margin', () => {
+    show('rsrp', { ...DEFAULT_RF_STUDY, marginPreset: 'deep-indoor' });
+    expect(text('rf-legend-indicative')).toContain(
+      'Assumes deep indoor use, 33.3 dB margin in all, phone at 1.5 m.',
     );
   });
 
