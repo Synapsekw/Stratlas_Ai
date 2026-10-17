@@ -66,6 +66,18 @@ async function expectValue(win: Page, key: string, expected: number) {
     .toBeCloseTo(expected, 1);
 }
 
+/**
+ * From the focused button of the Measure workbench's live strip, Shift+Tab past the strip
+ * buttons before it, and once more out of the strip: into the live card above it.
+ */
+async function shiftTabOutOfStrip(win: Page) {
+  const before = await win
+    .locator('.meb-strip button')
+    .evaluateAll((all) => all.indexOf(document.activeElement as HTMLButtonElement));
+  expect(before, 'the focus is in the strip').toBeGreaterThanOrEqual(0);
+  for (let i = 0; i <= before; i++) await win.keyboard.press('Shift+Tab');
+}
+
 async function saved(dir: string) {
   return MeasurementsFile.parse(
     JSON.parse(await readFile(join(dir, 'survey', 'measurements.json'), 'utf8')),
@@ -210,15 +222,24 @@ for (const kind of ['mesh', 'cloud'] as const) {
       await expect(azimuthButton).toBeFocused();
       await win.keyboard.press('Tab');
       await expect(win.getByTestId('telecom-tool-antenna-tilt')).toBeFocused();
-      // the live card above the strip holds Cancel
-      await cancelButton.focus();
+      // the live card sits above the strip: Shift+Tab back past the strip's first tools reaches
+      // its Cancel (Undo is disabled with no point yet)
+      await win.keyboard.press('Shift+Tab');
+      await expect(azimuthButton).toBeFocused();
+      await shiftTabOutOfStrip(win);
+      await expect(cancelButton).toBeFocused();
       await win.keyboard.press('Space');
       await expect(cancelButton).toHaveCount(0);
 
       await (await measureControl(win, 'telecom-tool-azimuth')).click();
       await pick(win, [-2, 3, 0]);
       await expect(panel).toContainText('1 / 3 points picked');
-      await panel.getByRole('button', { name: 'Undo last point' }).focus();
+      // from the live tool in the strip, back to the card: Cancel, then the enabled Undo
+      await azimuthButton.focus();
+      await shiftTabOutOfStrip(win);
+      await expect(cancelButton).toBeFocused();
+      await win.keyboard.press('Shift+Tab');
+      await expect(panel.getByRole('button', { name: 'Undo last point' })).toBeFocused();
       await win.keyboard.press('Enter');
       await expect(panel).toContainText('0 / 3 points picked');
       await win.keyboard.press('Tab');
