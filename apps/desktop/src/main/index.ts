@@ -176,6 +176,7 @@ import { registerGeodesyIpc } from './geodesy';
 import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geoid';
 import { registerSurveyIpc } from './survey';
 import { registerTelecomIpc } from './telecom';
+import { telecomLabelHost } from './telecomAi';
 import { antennaPackRefusal } from './telecomPack';
 import { registerSurveyAiIpc } from './surveyAi';
 import { createSegmenter } from './inference/segment';
@@ -645,6 +646,16 @@ const agent = createAgentRuntime(
     emit: emitAiEvent,
     // the engineering model's AI step: consents re-read from disk for every request
     engineer: engineerRuntimeHost({
+      projects: registry,
+      packagePolicy: (id) => {
+        const header = registry.package(id)?.header;
+        return header === undefined || header.aiPolicy === 'allow' ? 'allow' : 'forbid';
+      },
+      resize: (dataUrl, maxPx) =>
+        resizeDataUrl(dataUrl, maxPx, (url) => nativeImage.createFromDataURL(url)),
+    }),
+    // antenna labelling: policy and photo consent re-read from disk, crops from telecom/crops
+    telecom: telecomLabelHost({
       projects: registry,
       packagePolicy: (id) => {
         const header = registry.package(id)?.header;
@@ -1135,6 +1146,9 @@ function registerIpc(): void {
   // the engineering model's AI step: the send preview, then one request per pass (ai:cancel stops it)
   handle('ai:engineerPreview', (req) => agent.engineerPreview(req));
   handle('ai:engineer', (req) => agent.engineer(req));
+  // antenna labelling: the send preview, then the labels (ai:cancel stops it)
+  handle('ai:antennaLabelPreview', (req) => agent.antennaLabelPreview(req));
+  handle('ai:labelAntennas', (req) => agent.labelAntennas(req));
 
   // Map packs carried by open packages join the list when this machine lacks that area.
   handle('packs:list', async () => {

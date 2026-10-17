@@ -11,13 +11,22 @@ import {
   type AiPolicy,
   type AiProvider,
   type AiTask,
+  type AntennaAiLabel,
   type IpcEvent,
   type IpcRequest,
   type IpcResponse,
   type LocalModelSettings,
   type WindowKind,
 } from '@aio/schema';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  antennaLabelInstructions,
+  ANTENNA_LABEL_PROMPT_VERSION,
+  antennaLabelOutputTokens,
+  antennaLabelUserText,
+  estimateAntennaLabel,
+  parseAntennaLabels,
+} from './antennaLabel';
 import {
   buildEngineerPayload,
   ENGINEER_TIMEOUT_MS,
@@ -25,6 +34,7 @@ import {
   engineerLimits,
   estimateEngineerCostUsd,
   fileEngineerCache,
+  imageSize,
   runEngineer,
   TIME_USED_UP,
   type EngineerCall,
@@ -48,10 +58,14 @@ import {
 } from 'ai';
 import { engineerReady } from './capabilities';
 import {
+  DEFAULT_BATCH,
   DETECT_PROMPT_VERSION,
   detectInstructions,
   detectUserText,
   parseDetectReply,
+  planBatches,
+  SEND_MAX_PX,
+  sendSize,
 } from './detect';
 import {
   describeError,
@@ -160,6 +174,24 @@ export interface AgentRuntimeHost {
   recordUsage?(projectId: string, usage: StepUsage): void;
   /** The engineering model's AI step (`ai:engineerPreview`, `ai:engineer`); absent: refused. */
   engineer?: EngineerRuntimeHost;
+  /** The telecom antenna labelling (`ai:antennaLabelPreview`, `ai:labelAntennas`); absent: refused. */
+  telecom?: TelecomLabelHost;
+}
+
+/** What the antenna labelling needs from the Electron main process. */
+export interface TelecomLabelHost {
+  /**
+   * The project's AI policy and photo consent, read from the manifest on disk now (never from the
+   * renderer); null when the project is not open; `error` when the manifest cannot be read.
+   */
+  policy(projectId: string): Promise<{ ai: AiPolicy; photos: boolean } | { error: string } | null>;
+  /** The crop image of each unit that has one (`telecom/crops/<id>.jpg`), with its SHA-256. */
+  crops(
+    projectId: string,
+    unitIds: readonly string[],
+  ): Promise<{ unitId: string; path: string; dataUrl: string; sha256: string }[]>;
+  /** Downscale an image to `maxPx` on its long side (Electron `nativeImage`). */
+  resize?(dataUrl: string, maxPx: number): Promise<string>;
 }
 
 /** What the engineer step needs from the Electron main process. */
@@ -222,6 +254,12 @@ export interface AgentRuntime {
   ): Promise<IpcResponse<'ai:engineerPreview'>>;
   /** One engineer request; `cancel(req.runId)` stops it. */
   engineer(req: IpcRequest<'ai:engineer'>): Promise<IpcResponse<'ai:engineer'>>;
+  /** What an antenna labelling request would send, with a one-time token for exactly that. */
+  antennaLabelPreview(
+    req: IpcRequest<'ai:antennaLabelPreview'>,
+  ): Promise<IpcResponse<'ai:antennaLabelPreview'>>;
+  /** Label antenna crops with the vision route; AI sets no number. */
+  labelAntennas(req: IpcRequest<'ai:labelAntennas'>): Promise<IpcResponse<'ai:labelAntennas'>>;
 }
 
 /** How long a one-time consent from the send preview stays valid. */
@@ -233,6 +271,15 @@ const SPEND_UNREADABLE =
   "This run's AI spend record (engineering/<run>/ai/spend.json) could not be read, so no more AI requests are sent for it. Start a new run.";
 const LIMIT_REACHED =
   'This run has made all the AI requests its detail level allows. Review the proposal so far, or start a new run.';
+/** How long the one-time token of an antenna labelling preview stays valid. */
+const LABEL_CONSENT_MS = 5 * 60_000;
+const LABEL_PREVIEW_FIRST = 'Show the send preview first.';
+const LABEL_NO_PHOTOS =
+  'Photos of this project may not leave this computer. Allow them in the preview.';
+const LABEL_NO_TELECOM = 'Antenna labelling is not available here.';
+const LABEL_NO_CROPS =
+  'None of these antennas has a photo crop to send. Run the antenna detection again.';
+
 const PREVIEW_FIRST =
   'Open the send preview and send from there: every request to a cloud model is confirmed for exactly what it sends.';
 
@@ -990,9 +1037,241 @@ export function createAgentRuntime(
     }
   }
 
+  // ---------------------------------------------------------------- antenna labelling
+
+  /** One-time tokens of the antenna send preview: valid once, for these units, a few minutes. */
+  const labelConsents = new Map<
+    string,
+    { projectId: string; ids: string; key: string; expires: number }
+  >();
+  const idsOf = (ids: readonly string[]) => [...new Set(ids)].sort().join('\n');
+
+  /** The exact content of a request: the units, their crop files and the route. */
+  function labelContentKey(
+    crops: readonly { unitId: string; sha256: string }[],
+    route: ModelRoute,
+  ): string {
+    const files = crops
+      .map((c): [string, string] => [c.unitId, c.sha256])
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    return createHash('sha256')
+      .update(JSON.stringify({ files, provider: route.provider, model: route.model }))
+      .digest('hex');
+  }
+
+  /** The telecom host and the photo flag of the project, or the message to show instead. */
+  async function labelProject(
+    projectId: string,
+    cloud: boolean,
+  ): Promise<{ th: TelecomLabelHost; photos: boolean } | { error: string }> {
+    const th = host.telecom;
+    if (!th) return { error: LABEL_NO_TELECOM };
+    const flags = await th.policy(projectId);
+    if (!flags) return { error: notOpenMessage };
+    if ('error' in flags) return { error: flags.error };
+    if (cloud && flags.ai === 'forbid') return { error: MESSAGES.forbidden };
+    return { th, photos: flags.photos };
+  }
+
+  async function antennaLabelPreview(
+    req: IpcRequest<'ai:antennaLabelPreview'>,
+  ): Promise<IpcResponse<'ai:antennaLabelPreview'>> {
+    if (!host.telecom) return { ok: false, error: LABEL_NO_TELECOM };
+    const gate = await check('vision', req.projectId);
+    if (!gate.ok) return { ok: false, error: gate.message };
+    const project = await labelProject(req.projectId, gate.provider.cloud);
+    if ('error' in project) return { ok: false, error: project.error };
+    const unitIds = [...new Set(req.unitIds)];
+    const found = await project.th.crops(req.projectId, unitIds);
+    const byId = new Map(found.map((c) => [c.unitId, c]));
+    const crops = unitIds.flatMap((id) => byId.get(id) ?? []);
+    if (crops.length === 0) return { ok: false, error: LABEL_NO_CROPS };
+    const base = estimateAntennaLabel(crops.length);
+    const batches = planBatches(crops, DEFAULT_BATCH).length;
+    // every batch repeats the instructions
+    const inputTokens =
+      base.inputTokens + (batches - 1) * Math.ceil(antennaLabelInstructions().length / 4);
+    const costUsd =
+      gate.route.provider === 'local'
+        ? 0
+        : estimateCostUsd(gate.route.model, {
+            inputTokens,
+            outputTokens: antennaLabelOutputTokens(crops.length),
+          });
+    const now = Date.now();
+    for (const [t, v] of labelConsents) if (v.expires <= now) labelConsents.delete(t);
+    const token = randomUUID();
+    labelConsents.set(token, {
+      projectId: req.projectId,
+      ids: idsOf(unitIds),
+      key: labelContentKey(crops, gate.route),
+      expires: now + LABEL_CONSENT_MS,
+    });
+    return {
+      ok: true,
+      provider: gate.route.provider,
+      model: gate.route.model,
+      cloud: gate.provider.cloud,
+      photosAllowed: project.photos,
+      crops: crops.map((c) => ({ unitId: c.unitId, path: c.path })),
+      missing: unitIds.filter((id) => !byId.has(id)),
+      estimate: {
+        images: base.images,
+        inputTokens,
+        ...(costUsd !== undefined ? { costUsd } : {}),
+      },
+      token,
+    };
+  }
+
+  async function labelAntennas(
+    req: IpcRequest<'ai:labelAntennas'>,
+  ): Promise<IpcResponse<'ai:labelAntennas'>> {
+    if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
+    const run: Run = { controller: new AbortController(), pending: new Map() };
+    runs.set(req.runId, run);
+    try {
+      const gate = await check('vision', req.projectId);
+      if (!gate.ok) return { ok: false, error: gate.message };
+      const { route, provider } = gate;
+      const cloud = provider.cloud;
+      // every cloud request goes through the send preview: a token valid once, for this project
+      // and exactly these units; it is spent whether or not it fits
+      const token = req.token ? labelConsents.get(req.token) : undefined;
+      if (req.token) labelConsents.delete(req.token);
+      if (
+        cloud &&
+        !(
+          token?.projectId === req.projectId &&
+          token.expires > Date.now() &&
+          token.ids === idsOf(req.unitIds)
+        )
+      ) {
+        return { ok: false, error: LABEL_PREVIEW_FIRST };
+      }
+      const project = await labelProject(req.projectId, cloud);
+      if ('error' in project) return { ok: false, error: project.error };
+      if (cloud && !(project.photos || req.photos === true)) {
+        return { ok: false, error: LABEL_NO_PHOTOS };
+      }
+      const unitIds = [...new Set(req.unitIds)];
+      const found = await project.th.crops(req.projectId, unitIds);
+      const byId = new Map(found.map((c) => [c.unitId, c]));
+      const crops = unitIds.flatMap((id) => byId.get(id) ?? []);
+      // the files must be the ones the preview showed
+      if (cloud && token?.key !== labelContentKey(crops, route)) {
+        return { ok: false, error: LABEL_PREVIEW_FIRST };
+      }
+      if (crops.length === 0) return { ok: false, error: LABEL_NO_CROPS };
+      return await runAntennaLabels(req, run, route, provider, project.th, crops, unitIds.length);
+    } finally {
+      runs.delete(req.runId);
+    }
+  }
+
+  async function runAntennaLabels(
+    req: IpcRequest<'ai:labelAntennas'>,
+    run: Run,
+    route: ModelRoute,
+    provider: ModelProvider,
+    th: TelecomLabelHost,
+    crops: readonly { unitId: string; dataUrl: string }[],
+    asked: number,
+  ): Promise<IpcResponse<'ai:labelAntennas'>> {
+    const key = await keyFor(provider, route.provider);
+    const local = localOf(route);
+    const timeoutMs = local
+      ? Math.max(DETECT_TIMEOUT_MS, local.timeoutMs ?? DEFAULT_LOCAL_TIMEOUT_MS)
+      : DETECT_TIMEOUT_MS;
+    const labels: { unitId: string; label: AntennaAiLabel; reason: string }[] = [];
+    const warnings: string[] = [];
+    if (crops.length < asked) {
+      warnings.push(`${String(asked - crops.length)} units had no photo crop and were skipped.`);
+    }
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let costUsd: number | undefined;
+    // one record per run, also when a later batch fails: what was spent was spent
+    const record = () => {
+      if (inputTokens === 0 && outputTokens === 0) return;
+      host.recordUsage?.(req.projectId, {
+        provider: route.provider,
+        model: route.model,
+        inputTokens,
+        outputTokens,
+        ...(costUsd !== undefined ? { costUsd } : {}),
+      });
+    };
+    try {
+      for (const batch of planBatches(crops, DEFAULT_BATCH)) {
+        if (run.controller.signal.aborted) {
+          record();
+          return { ok: false, error: MESSAGES.stopped };
+        }
+        const keys = batch.map((c) => c.unitId);
+        const content: UserContent = [{ type: 'text', text: antennaLabelUserText(keys) }];
+        for (const [i, c] of batch.entries()) {
+          let img = parseDataUrl(c.dataUrl);
+          const dim = img ? imageSize(Buffer.from(img.base64, 'base64')) : null;
+          if (img && dim && th.resize) {
+            const [w, h] = sendSize(dim.w, dim.h, SEND_MAX_PX);
+            if (w !== dim.w || h !== dim.h) {
+              img = parseDataUrl(await th.resize(c.dataUrl, SEND_MAX_PX));
+            }
+          }
+          if (!img) {
+            record();
+            return { ok: false, error: `The crop of ${c.unitId} is not an image.` };
+          }
+          content.push({ type: 'text', text: `Image ${String(i + 1)}` });
+          content.push({ type: 'file', data: img.base64, mediaType: img.mediaType });
+        }
+        const result = await generateText({
+          model: provider.languageModel(route.model, key),
+          instructions: antennaLabelInstructions(),
+          messages: [{ role: 'user', content }],
+          maxRetries: options.maxRetries ?? 2,
+          maxOutputTokens: 2_000,
+          abortSignal: AbortSignal.any([run.controller.signal, AbortSignal.timeout(timeoutMs)]),
+        });
+        const u = usageEvent(req.runId, route, result.usage);
+        if (u.type === 'usage') {
+          inputTokens += u.inputTokens;
+          outputTokens += u.outputTokens;
+          if (u.costUsd !== undefined) costUsd = (costUsd ?? 0) + u.costUsd;
+        }
+        const parsed = parseAntennaLabels(result.text, keys);
+        labels.push(...parsed.labels);
+        warnings.push(...parsed.warnings);
+      }
+    } catch (e) {
+      record();
+      if (run.controller.signal.aborted) {
+        return { ok: false, error: MESSAGES.stopped };
+      }
+      const described = describeFailure(e, provider, route, key);
+      console.warn(`antenna label request failed: ${described.log}`);
+      return { ok: false, error: described.message };
+    }
+    record();
+    return {
+      ok: true,
+      provider: route.provider,
+      model: route.model,
+      promptVersion: ANTENNA_LABEL_PROMPT_VERSION,
+      labels,
+      inputTokens,
+      outputTokens,
+      ...(costUsd !== undefined ? { costUsd } : {}),
+      warnings,
+    };
+  }
+
   return {
     engineerPreview,
     engineer,
+    antennaLabelPreview,
+    labelAntennas,
     send: async (req) => {
       if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
       const run: Run = { controller: new AbortController(), pending: new Map() };

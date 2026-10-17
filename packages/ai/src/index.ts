@@ -36,6 +36,14 @@ export type {
   EngineerUsage,
 } from './engineer';
 export {
+  ANTENNA_LABEL_PROMPT_VERSION,
+  antennaLabelInstructions,
+  antennaLabelUserText,
+  estimateAntennaLabel,
+  parseAntennaLabels,
+  type ParsedAntennaLabels,
+} from './antennaLabel';
+export {
   AgentPanel,
   describeStep,
   type AgentFixControls,
