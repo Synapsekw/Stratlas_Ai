@@ -73,6 +73,24 @@ describe('JobsBench', () => {
     expect(host.querySelectorAll('.row[data-kind="tree"]')).toHaveLength(2);
   });
 
+  it('lists a running coverage prediction by its title, with its steps', () => {
+    jobs.setState({
+      jobs: [
+        job('rf1', {
+          pipeline: 'rf.coverage',
+          steps: [
+            { name: 'pathloss', title: 'Path loss per sector', state: 'running' },
+            { name: 'composite', title: 'Composite grids', state: 'pending' },
+          ],
+        }),
+      ],
+    });
+    render();
+    expect(rows().map((r) => r.dataset.job)).toEqual(['rf1']);
+    expect(rows()[0]?.textContent).toContain('Predicting coverage');
+    expect(rows()[0]?.textContent).not.toContain('rf.coverage');
+  });
+
   it('lists a quiet job too', () => {
     jobs.setState({ jobs: [job('j1', { quiet: true } as Partial<JobRecord>), job('j2')] });
     render();
