@@ -575,6 +575,20 @@ test.describe('with Volumes in front', () => {
     await expect.poll(async () => (await narrowStage(win))?.heads).toEqual([]);
     await islandSettled(win);
     await shot(win, info, 'volumes-front-split-1100x720.png');
+    // each pane's view name is cut cleanly in so narrow a pane, and its tip gives it whole
+    for (const side of ['left', 'right'] as const) {
+      const select = win.getByTestId(`pane-select-${side}`);
+      await expect(select).toHaveCSS('text-overflow', 'ellipsis');
+      const name = await select.evaluate((el) => {
+        const s = el as HTMLSelectElement;
+        return s.options[s.selectedIndex]?.textContent ?? '';
+      });
+      expect(name).not.toBe('');
+      await select.hover();
+      await expect(win.getByRole('tooltip')).toHaveText(name);
+      await win.mouse.move(5, 5);
+      await expect(win.getByRole('tooltip')).toHaveCount(0);
+    }
   });
 
   test('the island, grown by what is live and the pointer near, keeps clear of the panel toggle', async ({

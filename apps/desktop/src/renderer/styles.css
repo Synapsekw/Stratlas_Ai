@@ -2007,6 +2007,10 @@ button.chip-status:hover {
 }
 .pane-head select.input {
   min-inline-size: 0;
+  /* a narrow pane cuts the view's name cleanly; its tip gives it whole */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   height: 26px;
   border-color: transparent;
   background-color: transparent;

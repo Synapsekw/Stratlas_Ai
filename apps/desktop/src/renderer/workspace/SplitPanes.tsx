@@ -5,6 +5,7 @@ import {
   Icon,
   IconButton,
   SplitHandle,
+  Tip,
   useResizableSplit,
   useT,
   type IconName,
@@ -214,31 +215,34 @@ export function PaneHeader({
             </Chip>
           </span>
         )}
-        <select
-          className="input"
-          data-testid={`pane-select-${side}`}
-          aria-label={t(side === 'left' ? 'stage.split.left' : 'stage.split.right')}
-          value={paneValue(current, capture ?? null)}
-          onChange={(e) => {
-            const picked = parsePaneValue(e.target.value);
-            if (!picked) return;
-            dropEvidence();
-            split.set(chooseAt(split.sides, side, picked.kind, picked.capture, split.dates));
-          }}
-        >
-          {groups.length < 2
-            ? groups.map(options)
-            : groups.map((g) => (
-                <optgroup
-                  key={g.capture ?? ''}
-                  label={
-                    g.capture && index ? captureLabel(index, g.capture) : t('stage.pane.anyDate')
-                  }
-                >
-                  {options(g)}
-                </optgroup>
-              ))}
-        </select>
+        {/* a narrow pane cuts the view's name: the tip gives it whole */}
+        <Tip content={t(paneInfo(current).label)}>
+          <select
+            className="input"
+            data-testid={`pane-select-${side}`}
+            aria-label={t(side === 'left' ? 'stage.split.left' : 'stage.split.right')}
+            value={paneValue(current, capture ?? null)}
+            onChange={(e) => {
+              const picked = parsePaneValue(e.target.value);
+              if (!picked) return;
+              dropEvidence();
+              split.set(chooseAt(split.sides, side, picked.kind, picked.capture, split.dates));
+            }}
+          >
+            {groups.length < 2
+              ? groups.map(options)
+              : groups.map((g) => (
+                  <optgroup
+                    key={g.capture ?? ''}
+                    label={
+                      g.capture && index ? captureLabel(index, g.capture) : t('stage.pane.anyDate')
+                    }
+                  >
+                    {options(g)}
+                  </optgroup>
+                ))}
+          </select>
+        </Tip>
       </div>
       {twin && side === 'right' && (
         <IconButton
