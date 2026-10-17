@@ -48,6 +48,7 @@
   "e2e/jobs.spec.ts": 11,
   "e2e/launch-gate.spec.ts": 44,
   "e2e/library.spec.ts": 11,
+  "e2e/line-up-dates.spec.ts": 50,
   "e2e/lowend.spec.ts": 1,
   "e2e/m10-fixtures.spec.ts": 6,
   "e2e/magic-polygon.spec.ts": 13,
