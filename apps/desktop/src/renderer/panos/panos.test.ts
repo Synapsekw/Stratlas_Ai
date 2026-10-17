@@ -317,6 +317,32 @@ describe('revealPanoLayer', () => {
     expect(focusSurvey).toHaveBeenCalledTimes(1);
   });
 
+  it('flies to the spheres of a lined-up date where they are drawn', () => {
+    const focusSurvey = vi.fn((c: string) => {
+      timeline.setState({ focus: c });
+    });
+    timeline.setState({ index, focus: null, focusSurvey } as never);
+    place('c1');
+    const m = workspace.getState().project?.manifest;
+    if (!m) throw new Error('fixture');
+    workspace.getState().replaceManifest({
+      ...m,
+      captures: [
+        {
+          id: 'c1',
+          label: 'First',
+          date: '2026-01-01',
+          lineUp: { eastM: 2, northM: 1, with: 'c0', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+    });
+    revealPanoLayer('panos-1');
+    expect(workspace.getState().lastCamera?.target).toMatchObject({
+      kind: 'point',
+      p: [152, 40, -1],
+    });
+  });
+
   it('drops the wait when another project opens, and does not fly', () => {
     const focusSurvey = vi.fn();
     timeline.setState({ index: null, focusSurvey } as never);

@@ -1,7 +1,7 @@
-import type { Layer, PanoRef } from '@aio/schema';
+import { shiftLocal, type Layer, type PanoRef } from '@aio/schema';
 import { panoOpenable } from '@aio/engine';
 import { Icon, t } from '@aio/ui';
-import { workspace, useWorkspace } from '@aio/workspace';
+import { dateShiftOf, workspace, useWorkspace } from '@aio/workspace';
 import { jobs, shell, useJobs } from '../shell';
 import { jobForPano, PANO_FLY_DISTANCE_M, panoStatus, panoStatusText } from './panoModel';
 import './panos.css';
@@ -81,7 +81,10 @@ function SphereRow({
             open(layer.id, item);
           })}
         {act('fly', 'target', t('pano.action.flyTo', { name }), () => {
-          workspace.getState().flyTo({ kind: 'point', p: item.pos, distance: PANO_FLY_DISTANCE_M });
+          // where the sphere is drawn: its date's line-up added
+          const m = workspace.getState().project?.manifest;
+          const p = m ? shiftLocal(item.pos, dateShiftOf(m, layer.id)) : item.pos;
+          workspace.getState().flyTo({ kind: 'point', p, distance: PANO_FLY_DISTANCE_M });
         })}
         {canEdit &&
           (status.kind === 'queued' || status.kind === 'failed') &&

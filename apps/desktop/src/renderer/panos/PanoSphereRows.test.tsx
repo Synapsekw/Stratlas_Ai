@@ -121,6 +121,33 @@ describe('PanoSphereRows', () => {
     });
   });
 
+  it('flies to a sphere of a lined-up date where it is drawn', () => {
+    const dated = { ...layer, capture: 'd2' };
+    const m = workspace.getState().project?.manifest;
+    if (!m) throw new Error('fixture');
+    workspace.getState().replaceManifest({
+      ...m,
+      captures: [
+        {
+          id: 'd2',
+          label: 'Second',
+          date: '2026-09-10',
+          lineUp: { eastM: 2, northM: 1, with: 'd1', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: [dated],
+    });
+    act(() => {
+      root.render(<PanoSphereRows layer={dated} canEdit />);
+    });
+    act(() => q('pano-fly-p02')?.click());
+    expect(workspace.getState().camera?.target).toEqual({
+      kind: 'point',
+      p: [152, 70, -21],
+      distance: 120,
+    });
+  });
+
   it('stitches a wide panorama as wide and a never-stitched sphere as a sphere', () => {
     const more: PanoLayer = {
       ...layer,
