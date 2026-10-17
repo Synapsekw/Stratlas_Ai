@@ -1,5 +1,6 @@
 import type { GlobeSite } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
+import { dateShiftOf } from '@aio/workspace';
 import { issuesCsv } from './exporting';
 import { getRendererTool, runRendererTool, type RendererToolContext } from './renderer-tools';
 import { fixtureIssue, fixtureManifest, fixtureWorkspace } from './test-fixtures';
@@ -158,6 +159,48 @@ describe('find_issues_near', () => {
       withoutLocation: 1,
       issues: [{ code: 'D02', distanceM: 5 }],
     });
+  });
+});
+
+describe('issues of a lined-up date', () => {
+  const lined = () => {
+    const m = fixtureManifest();
+    return {
+      ...m,
+      captures: [
+        {
+          id: 'd2',
+          label: 'Second',
+          date: '2026-02-10',
+          lineUp: { eastM: 2, northM: 1, with: 'd1', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: m.layers.map((l) => (l.id === 'm1' ? { ...l, capture: 'd2' } : l)),
+    };
+  };
+  const at = (p: [number, number, number]) =>
+    fixtureIssue({
+      id: 'near',
+      code: 'D02',
+      sightings: [{ on: 'mesh', layer: 'm1', geom: { type: 'spoint', p, n: [0, 1, 0] } }],
+    });
+
+  it('find_issues_near measures from where the pin is drawn', async () => {
+    const ws = fixtureWorkspace();
+    // stored at the origin; drawn 2 m east and 1 m north
+    ws.getState().openProject({ id: 'p1', root: 'E:/x', manifest: lined() }, [at([0, 0, 0])]);
+    const r = await runRendererTool(
+      'find_issues_near',
+      { target: { kind: 'point', p: [2, 0, -1] }, radiusM: 0.5 },
+      ctx({}, ws),
+    );
+    expect(r.result).toMatchObject({ total: 1, issues: [{ code: 'D02', distanceM: 0 }] });
+  });
+
+  it('exports the CSV x y z where the pin is drawn', () => {
+    const m = lined();
+    const csv = issuesCsv([at([10, 5, -20])], new Map(), (id) => dateShiftOf(m, id));
+    expect(csv.split('\r\n')[1]).toContain('12.000,5.000,-21.000');
   });
 });
 

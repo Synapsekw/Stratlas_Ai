@@ -16,6 +16,7 @@ import type {
   Vec3,
   WindowKind,
 } from '@aio/schema';
+import { shiftLocal, type DateShift } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
 import { getToolSpec, toolInputs, type ToolInput, type ToolName } from './tools';
@@ -312,20 +313,28 @@ export function centroid(points: readonly Vec3[]): Vec3 | null {
   return [s[0] / points.length, s[1] / points.length, s[2] / points.length];
 }
 
-/** A 3D point for an issue from its first sighting that has one. */
-export function issuePoint(issue: Issue): Vec3 | null {
+/**
+ * A 3D point for an issue from its first sighting that has one, where it is drawn: with its
+ * layer's date shift when `shiftOf` is given (line up dates; `places.ts` `issuePoints` alike).
+ */
+export function issuePoint(
+  issue: Issue,
+  shiftOf?: (layerId: string) => DateShift | null,
+): Vec3 | null {
+  const at = (p: Vec3 | null, layer: string): Vec3 | null =>
+    p && shiftOf ? shiftLocal(p, shiftOf(layer)) : p;
   for (const s of issue.sightings) {
     if (s.on === 'mesh') {
       const g = s.geom;
-      if (g.type === 'spoint') return g.p;
-      if (g.type === 'spolyline' || g.type === 'spolygon') return centroid(g.points);
-      if (g.center) return g.center;
+      if (g.type === 'spoint') return at(g.p, s.layer);
+      if (g.type === 'spolyline' || g.type === 'spolygon') return at(centroid(g.points), s.layer);
+      if (g.center) return at(g.center, s.layer);
     }
     if (s.on === 'pointcloud') {
       const g = s.geom;
-      if (g.type === 'point3') return g.p;
-      if (g.type === 'box3') return centroid([g.min, g.max]);
-      if (g.type === 'polygon3') return centroid(g.points);
+      if (g.type === 'point3') return at(g.p, s.layer);
+      if (g.type === 'box3') return at(centroid([g.min, g.max]), s.layer);
+      if (g.type === 'polygon3') return at(centroid(g.points), s.layer);
     }
   }
   return null;

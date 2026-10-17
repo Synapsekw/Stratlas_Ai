@@ -7,13 +7,14 @@
 import { getActiveScene } from '@aio/engine';
 import {
   validateIssueAgainstModel,
+  shiftLocal,
   type AioBridge,
   type Issue,
   type Sighting,
   type Vec3,
   type WindowKind,
 } from '@aio/schema';
-import { assetUrl, workspace, type Selection } from '@aio/workspace';
+import { assetUrl, dateShiftOf, workspace, type Selection } from '@aio/workspace';
 import './analysis-tools';
 import { assetIndex, describeIssue } from './asset-index';
 import './camera-tools';
@@ -110,7 +111,14 @@ define('find_clips_near', async ({ target, radiusM }, ctx) => {
       }
       const flight = parseFlight(json);
       if (!flight) return null;
-      const r = passNear(flight, c.flight.startUtcMs, p, radiusM);
+      // the flight log is in the clip's own frame: the drawn target less the clip's offset and
+      // its date's line-up, as the 3D view draws the path
+      const off = shiftLocal(
+        c.positionOffsetM ?? [0, 0, 0],
+        dateShiftOf(project(ctx).manifest, c.id),
+      );
+      const at: Vec3 = [p[0] - off[0], p[1] - off[1], p[2] - off[2]];
+      const r = passNear(flight, c.flight.startUtcMs, at, radiusM);
       if (!r) return null;
       const start = clipStartUtcMs(c);
       return {

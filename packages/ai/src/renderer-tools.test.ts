@@ -186,6 +186,31 @@ describe('read tools', () => {
     expect(r.summary).toBe('1 of 2 clips');
   });
 
+  it('find_clips_near measures a lined-up clip along its flight where it is drawn', async () => {
+    const ws = fixtureWorkspace();
+    const m = ws.getState().project?.manifest;
+    if (!m) throw new Error('fixture');
+    // the clip's date is lined up 40 m north: its path is drawn at z -40, 50 m from the issue
+    ws.getState().replaceManifest({
+      ...m,
+      captures: [
+        {
+          id: 'd2',
+          label: 'Second',
+          date: '2023-02-21',
+          lineUp: { eastM: 0, northM: 40, with: 'd1', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: m.layers.map((l) => (l.id === 'v1' ? { ...l, capture: 'd2' } : l)),
+    });
+    const r = await runRendererTool(
+      'find_clips_near',
+      { target: { kind: 'issue', id: 'D01' }, radiusM: 60 },
+      ctx({ workspace: ws }),
+    );
+    expect(r.result).toMatchObject({ clips: [{ id: 'v1', minDistanceM: 50 }] });
+  });
+
   it('find_clips_near explains an asset it cannot place', async () => {
     await expect(
       runRendererTool('find_clips_near', { target: { kind: 'asset', id: '20-T-0002' } }, ctx()),

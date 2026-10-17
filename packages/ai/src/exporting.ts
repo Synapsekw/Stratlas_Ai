@@ -1,5 +1,5 @@
 /** Plain-text exports: the issue CSV of export_issues and a conversation as Markdown (AI-8). */
-import type { Conversation, Issue } from '@aio/schema';
+import type { Conversation, DateShift, Issue } from '@aio/schema';
 import { issuePoint } from './tool-kit';
 
 const CSV_HEAD = [
@@ -24,13 +24,17 @@ function cell(v: string | number | undefined): string {
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** RFC 4180 CSV, one row per issue, with the issue's 3D point when it has one. */
+/**
+ * RFC 4180 CSV, one row per issue, with the issue's 3D point when it has one: in the lined-up
+ * frame, where the app draws it, when `shiftOf` is given (data-conventions section 38).
+ */
 export function issuesCsv(
   issues: readonly Issue[],
   classLabels: ReadonlyMap<string, string>,
+  shiftOf?: (layerId: string) => DateShift | null,
 ): string {
   const rows = issues.map((i) => {
-    const p = issuePoint(i);
+    const p = issuePoint(i, shiftOf);
     const xyz = p ? p.map((n) => n.toFixed(3)) : ['', '', ''];
     return [
       i.code,
