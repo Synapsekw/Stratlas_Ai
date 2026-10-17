@@ -635,17 +635,27 @@ describe('Island calendar: line-up', () => {
     expect(island()?.dataset.state).toBe('rest');
   });
 
-  it('leaves the line-up out of a read-only package and before the step is ready', async () => {
+  it('greys the line-up with its reason in a package and before the step is ready', async () => {
+    const reasonOf = (b: HTMLButtonElement | undefined) =>
+      document.getElementById(b?.getAttribute('aria-describedby') ?? '')?.textContent;
     lineUpApp.setState({ store: null });
     await render();
     openCalendar();
-    expect(calButton('Line up dates')).toBeUndefined();
+    let line = calButton('Line up dates');
+    expect(line?.getAttribute('aria-disabled')).toBe('true');
+    expect(reasonOf(line)).toBe('Line up dates is not ready yet.');
+    act(() => line?.click());
+    expect(lineUp.openLineUpFor).not.toHaveBeenCalled();
     key('Escape');
     lineUpApp.setState({ store: {} as never });
     shell.setState({ pkg: {} as never });
     try {
       openCalendar();
-      expect(calButton('Line up dates')).toBeUndefined();
+      line = calButton('Line up dates');
+      expect(line?.getAttribute('aria-disabled')).toBe('true');
+      expect(reasonOf(line)).toBe('This is a package: its files stay inside it.');
+      act(() => line?.click());
+      expect(lineUp.openLineUpFor).not.toHaveBeenCalled();
     } finally {
       shell.setState({ pkg: null });
     }

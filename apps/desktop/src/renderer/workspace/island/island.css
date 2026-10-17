@@ -634,6 +634,16 @@
 .isl-cal-list .isl-compare svg {
   color: var(--acc);
 }
+/* a line-up item greyed with its reason (in its tip), as the date menu has it */
+.isl-cal-list button[aria-disabled='true'],
+.isl-cal-list button[aria-disabled='true']:hover {
+  background: none;
+  color: var(--fg-3);
+  cursor: default;
+}
+.isl-cal-list .isl-compare[aria-disabled='true'] svg {
+  color: var(--fg-3);
+}
 
 /* reduced motion (the system's, or the app's own setting on the root): every morph and fade is
    instant */

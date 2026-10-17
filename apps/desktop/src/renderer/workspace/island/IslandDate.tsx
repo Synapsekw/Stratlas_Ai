@@ -4,8 +4,9 @@
  * last focused pane's, and the arrows step that pane.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { Calendar, formatDate, Icon, IconButton, useT } from '@aio/ui';
+import { Calendar, formatDate, Icon, IconButton, Tip, useT, type IconName } from '@aio/ui';
 import { useWorkspace, type CaptureIndex } from '@aio/workspace';
+import { useId } from 'react';
 import { useStore } from 'zustand';
 import { openLineUpFor, removeLineUp } from '../../lineup/lineUpActions';
 import { lineUpApp } from '../../lineup/lineUpStore';
@@ -148,10 +149,15 @@ export function IslandDate({
 
 /**
  * Line up dates and Remove line-up for the shown date, as its date menu has them
- * (shell/actions/dateActions.tsx): only where the project can change and once the line-up step is
- * up, Line up with two dates or more, Remove on a date that is lined up.
+ * (shell/actions/dateActions.tsx): Line up with two dates or more, Remove on a date that is lined
+ * up, each greyed with the menu's reason (a package, a reviewer who may only look, the step not up
+ * yet) rather than left out. `false` where the item does not apply, else the reason or null.
  */
-function useLineUp(captureId: string): { lineUp: boolean; remove: boolean } {
+function useLineUp(captureId: string): {
+  lineUp: string | null | false;
+  remove: string | null | false;
+} {
+  const t = useT();
   const ready = useStore(lineUpApp, (s) => s.store !== null);
   const pkg = useShell((s) => s.pkg !== null);
   const lookOnly = useAnnotateReadOnly();
@@ -159,8 +165,53 @@ function useLineUp(captureId: string): { lineUp: boolean; remove: boolean } {
   const lined = useWorkspace(
     (s) => s.project?.manifest.captures.find((c) => c.id === captureId)?.lineUp !== undefined,
   );
-  const editable = ready && !pkg && !lookOnly;
-  return { lineUp: editable && dates > 1, remove: editable && lined };
+  // the date menu's order: editBlocked (package, then look-only), then the step not ready
+  const blocked = pkg
+    ? t('actions.reason.package')
+    : lookOnly
+      ? t('actions.reason.readOnly')
+      : ready
+        ? null
+        : t('lineUp.menu.notReady');
+  return { lineUp: dates > 1 && blocked, remove: lined && blocked };
+}
+
+/** A line-up item: greyed with its reason (in its tip and its description) when it is blocked. */
+function LineUpItem({
+  icon,
+  label,
+  reason,
+  onRun,
+}: {
+  icon: IconName;
+  label: string;
+  reason: string | null;
+  onRun: () => void;
+}) {
+  const id = useId();
+  const item = (
+    <button
+      type="button"
+      className="isl-compare"
+      aria-disabled={reason ? true : undefined}
+      aria-describedby={reason ? id : undefined}
+      onClick={() => {
+        if (!reason) onRun();
+      }}
+    >
+      <Icon name={icon} size={14} />
+      {label}
+    </button>
+  );
+  if (!reason) return item;
+  return (
+    <>
+      <Tip content={reason}>{item}</Tip>
+      <span id={id} className="sr-only">
+        {reason}
+      </span>
+    </>
+  );
 }
 
 /** The calendar inside the island: the month, the survey list, Compare and line up the dates. */
@@ -212,11 +263,12 @@ export function IslandCalendar({
             {t('island.compareDates')}
           </button>
         )}
-        {lineUp.lineUp && (
-          <button
-            type="button"
-            className="isl-compare"
-            onClick={() => {
+        {lineUp.lineUp !== false && (
+          <LineUpItem
+            icon="target"
+            label={t('lineUp.action')}
+            reason={lineUp.lineUp}
+            onRun={() => {
               const captureId = dates.focus;
               onDone();
               // the step picks the date this one overlaps most; without one it says why
@@ -224,23 +276,18 @@ export function IslandCalendar({
                 if (why) toastHost(t('lineUp.action')).note(why, true);
               });
             }}
-          >
-            <Icon name="target" size={14} />
-            {t('lineUp.action')}
-          </button>
+          />
         )}
-        {lineUp.remove && (
-          <button
-            type="button"
-            className="isl-compare"
-            onClick={() => {
+        {lineUp.remove !== false && (
+          <LineUpItem
+            icon="undo"
+            label={t('lineUp.remove')}
+            reason={lineUp.remove}
+            onRun={() => {
               removeLineUp(dates.focus);
               onDone();
             }}
-          >
-            <Icon name="undo" size={14} />
-            {t('lineUp.remove')}
-          </button>
+          />
         )}
       </div>
     </div>
