@@ -97,6 +97,7 @@ import { AgentDock, useAgentDockOpen } from './agent/AgentDock';
 import { isDockScreen } from './agent/dockScreens';
 import { startAgentSession } from './agent/session';
 import { startAgentPaneFollow } from './agent/agentPaneStore';
+import { startActivityFollow } from './workspace/workbench/activityFollow';
 import { startWorkbenchReset } from './workspace/workbench/workbenchStore';
 
 /** The Globe (M10 G6) is its own chunk: CesiumJS loads only when the Globe opens. */
@@ -457,6 +458,8 @@ export function App() {
     const stopWorkbench = startWorkbenchReset();
     // the Scene's agent drops to its line while a tool is live, unless the person sized it (D23)
     const stopAgentPane = startAgentPaneFollow();
+    // a playing clip and running jobs are live tabs ("Video ●", "Jobs ●", D11, I-R62)
+    const stopActivities = startActivityFollow();
     const stopOpenPath = openPackagesHandedOver();
     const stopMenu = followMenu();
     // M9: merges, imports and outside edits reload the records, keeping selection and camera
@@ -497,6 +500,7 @@ export function App() {
       stopOpenPath();
       stopWorkbench();
       stopAgentPane();
+      stopActivities();
       stopMenu();
       stopJournal();
       stopPeople();

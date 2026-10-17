@@ -53,6 +53,13 @@ export interface WorkbenchState {
   toolStarted(id: TabId): void;
   /** The tool ends: its tab is no longer live, and closes if the tool opened it. Not live: no-op. */
   toolStopped(id: TabId): void;
+  /**
+   * An activity goes live (a playing clip, running jobs; I-R62): its tab gets its dot, but it
+   * takes no front, closes no panel, moves no `toolSeq` and leaves the agent (I-R39, I-R43).
+   */
+  activityStarted(id: TabId): void;
+  /** The activity ends: as `toolStopped`. */
+  activityStopped(id: TabId): void;
   reset(): void;
 }
 
@@ -147,6 +154,20 @@ export function createWorkbenchStore(
           opened,
           s.waiting.filter((w) => w !== id),
         );
+      },
+      activityStarted: (id) => {
+        const s = get();
+        if (isLive(s, id)) return;
+        const opened = new Set(s.openedByTool);
+        const has = s.tabs.some((t) => t.id === id);
+        if (!has) opened.add(id);
+        const tabs = has
+          ? s.tabs.map((t) => (t.id === id ? { ...t, live: true } : t))
+          : [...s.tabs, { id, live: true, pinned: false, fixed: false }];
+        set({ tabs: orderTabs(tabs), openedByTool: opened });
+      },
+      activityStopped: (id) => {
+        get().toolStopped(id);
       },
       reset: () => {
         set(base());

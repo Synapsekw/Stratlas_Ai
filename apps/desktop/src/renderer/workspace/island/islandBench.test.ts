@@ -46,6 +46,13 @@ describe('islandBench', () => {
     expect(liveTab({ kind: 'connection', state: 'offline' })).toBeNull();
   });
 
+  it("lives the road's measure in Road and the annotation tools in Annotate (I-R62)", () => {
+    expect(liveTab({ kind: 'tool', label: 'Measure', reading: null, source: 'road' })).toBe('road');
+    expect(liveTab({ kind: 'tool', label: 'Annotate', reading: null, source: 'annotate' })).toBe(
+      'annotate',
+    );
+  });
+
   it('opens a tab that is not there as an unpinned panel, and brings one that is to the front', () => {
     openBenchFromIsland('jobs', bench);
     expect(bench.getState().front).toBe('jobs');

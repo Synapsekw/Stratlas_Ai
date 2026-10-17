@@ -8,17 +8,22 @@ import { useVolumetric } from '@aio/volumetric';
 import { canCompare, useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useCaptureIndex } from '../compare';
-import { pickLive, type LiveItem } from '../island/islandModel';
+import { pickLive, type LiveItem, type ToolSource } from '../island/islandModel';
 import { useIslandLive } from '../island/useIslandLive';
 import type { Tab, TabId } from './tabsModel';
 import { useWorkbench } from './workbenchStore';
 
 /**
- * The tab each kind of live item lives in (D11); the connection has none. One map for both ends:
- * the island's click on its live reading (D10) and the sidebar's linked outline must agree.
+ * The tab each kind of live item lives in (D11), a tool by whose it is; the connection has none.
+ * One map for both ends: the island's click on its live reading (D10) and the sidebar's linked
+ * outline must agree.
  */
-export const LIVE_TAB: Readonly<Record<LiveItem['kind'], TabId | null>> = {
-  tool: 'measure',
+export const LIVE_TAB: Readonly<
+  Record<Exclude<LiveItem['kind'], 'tool'> | ToolSource, TabId | null>
+> = {
+  measure: 'measure',
+  road: 'road',
+  annotate: 'annotate',
   playback: 'video',
   job: 'jobs',
   connection: null,
@@ -26,7 +31,7 @@ export const LIVE_TAB: Readonly<Record<LiveItem['kind'], TabId | null>> = {
 
 /** The tab a live item lives in, or null for one with none (the connection). */
 export function liveTab(item: LiveItem): TabId | null {
-  return LIVE_TAB[item.kind];
+  return LIVE_TAB[item.kind === 'tool' ? (item.source ?? 'measure') : item.kind];
 }
 
 /** The island is linked when the sidebar's front tab is its primary live item's tab (D10). */

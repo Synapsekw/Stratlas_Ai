@@ -1,6 +1,6 @@
 /**
  * What is live in the app right now, as the island's `LiveItem`s: the survey tool being drawn (or
- * the quick measure), the playing clip, the running jobs and a network that is not healthy. The
+ * the quick measure, the road's measure, the annotation tools), the playing clip, the running jobs and a network that is not healthy. The
  * pure `liveItems` decides the list; `useIslandLive` reads the real stores into it. The survey date
  * is not a live item: it stays visible beside a live reading.
  */
@@ -16,8 +16,10 @@ import { projectJobs } from '../../processing/model';
 import { jobTitle } from '../../processing/pipelines';
 import { useJobs, useShell } from '../../shell';
 import { useNetworkUp } from '../../shell/connection';
+import { useRoad } from '../../road/store';
+import { measureText } from '../../road/useRoadMap';
 import { liveReading, useMeasure } from '../../survey/measureStore';
-import type { LiveItem } from './islandModel';
+import type { LiveItem, ToolSource } from './islandModel';
 
 /** How long "Back online" shows (D3). */
 export const BACK_MS = 2000;
@@ -25,7 +27,7 @@ export const BACK_MS = 2000;
 type ConnectionState = Extract<LiveItem, { kind: 'connection' }>['state'];
 
 export interface LiveInput {
-  tool: { label: string; reading: string | null } | null;
+  tool: { label: string; reading: string | null; source?: ToolSource } | null;
   clip: { name: string; progress: number; telemetry: string | null } | null;
   /** Running jobs in any order; `liveItems` orders them by start. */
   jobs: { id: string; label: string; progress: number; startedMs: number }[];
@@ -159,13 +161,36 @@ export function toolLabel(tool: MeasurementTool, template: { name: string } | nu
   return template?.name ?? TOOL_LABELS[tool];
 }
 
-/** The live survey tool and its reading, from the measuring store (M and Distance included). */
+/**
+ * The one live tool the island reads (D2): a survey tool drawing (M and Distance included), else
+ * the road's measure on the map, else the annotation tools; each brings back its own tab (D10).
+ */
+export function liveTool(input: {
+  measure: { label: string; reading: string | null } | null;
+  road: { reading: string | null } | null;
+  annotating: boolean;
+}): LiveInput['tool'] {
+  if (input.measure) return { ...input.measure, source: 'measure' };
+  if (input.road) return { label: t('island.tile.roadMeasureName'), ...input.road, source: 'road' };
+  if (input.annotating)
+    return { label: t('island.group.annotate'), reading: null, source: 'annotate' };
+  return null;
+}
+
+/** The live tool and its reading, from the measuring, road and annotation states. */
 function useToolLive(): LiveInput['tool'] {
   const active = useMeasure((s) => s.tool);
   const reading = useMeasure(liveReading);
+  const road = useRoad((s) => s.measure);
+  const annotating = useShell((s) => s.annotating);
   return useMemo(
-    () => (active ? { label: toolLabel(active.tool, active.template), reading } : null),
-    [active, reading],
+    () =>
+      liveTool({
+        measure: active ? { label: toolLabel(active.tool, active.template), reading } : null,
+        road: road.mode ? { reading: measureText(road.mode, road.vertices) } : null,
+        annotating,
+      }),
+    [active, reading, road, annotating],
   );
 }
 

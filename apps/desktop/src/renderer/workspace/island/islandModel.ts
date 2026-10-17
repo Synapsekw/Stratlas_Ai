@@ -4,8 +4,11 @@ import type { StageMode } from '../../store';
 export type GroupId =
   'view' | 'measure' | 'display' | 'clouds' | 'volumes' | 'video' | 'road' | 'annotate';
 
+/** Whose tool a live `tool` item is: the survey tools (the default), the road's measure, Annotate. */
+export type ToolSource = 'measure' | 'road' | 'annotate';
+
 export type LiveItem =
-  | { kind: 'tool'; label: string; reading: string | null }
+  | { kind: 'tool'; label: string; reading: string | null; source?: ToolSource }
   | { kind: 'playback'; clip: string; progress: number; telemetry: string | null }
   | { kind: 'job'; id: string; label: string; progress: number; more: number }
   | { kind: 'connection'; state: 'offline' | 'reconnecting' | 'back' };

@@ -95,6 +95,33 @@ describe('workbench store', () => {
     expect(ids(store.getState())).toContain('display');
   });
 
+  it('an activity goes live without taking the front or counting as a tool start (I-R62)', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().open('display');
+    store.getState().activityStarted('video');
+    const s = store.getState();
+    expect(s.tabs.find((t) => t.id === 'video')?.live).toBe(true);
+    expect(s.front).toBe('display');
+    expect(ids(s)).toContain('display');
+    expect(s.toolSeq).toBe(0);
+    expect(personToolLive(s.tabs)).toBe(false);
+    store.getState().activityStarted('video');
+    expect(store.getState().tabs.filter((t) => t.id === 'video')).toHaveLength(1);
+    store.getState().activityStopped('video');
+    expect(ids(store.getState())).not.toContain('video');
+    expect(store.getState().front).toBe('display');
+  });
+
+  it('an activity whose tab the person had open leaves it open, no longer live', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().open('jobs');
+    store.getState().activityStarted('jobs');
+    expect(store.getState().front).toBe('jobs');
+    store.getState().activityStopped('jobs');
+    expect(store.getState().tabs.find((t) => t.id === 'jobs')?.live).toBe(false);
+    expect(store.getState().front).toBe('jobs');
+  });
+
   it('pins persist per computer and close unpins', () => {
     const storage = memory();
     const a = createWorkbenchStore(storage);

@@ -5,6 +5,7 @@ import {
   liveItems,
   liveJobs,
   livePairKey,
+  liveTool,
   playbackClock,
   playbackTelemetry,
   toolLabel,
@@ -19,6 +20,35 @@ vi.mock('../../media', () => ({ useMedia: vi.fn() }));
 vi.mock('../StageTools', () => ({ useEngineStage: vi.fn() }));
 
 const none: LiveInput = { tool: null, clip: null, jobs: [], connection: null };
+
+describe('liveTool', () => {
+  const quiet = { measure: null, road: null, annotating: false };
+
+  it('reads nothing while no tool is live', () => {
+    expect(liveTool(quiet)).toBeNull();
+  });
+
+  it("reads the road's measure, and the annotation tools, each with its own tab", () => {
+    expect(liveTool({ ...quiet, road: { reading: '42.00 m' } })).toEqual({
+      label: 'Measure on the map',
+      reading: '42.00 m',
+      source: 'road',
+    });
+    expect(liveTool({ ...quiet, annotating: true })).toEqual({
+      label: 'Annotate',
+      reading: null,
+      source: 'annotate',
+    });
+  });
+
+  it('a survey tool drawing comes first, then the road, then annotating', () => {
+    const measure = { label: 'Distance', reading: '1 m' };
+    expect(liveTool({ measure, road: { reading: null }, annotating: true })?.source).toBe(
+      'measure',
+    );
+    expect(liveTool({ ...quiet, road: { reading: null }, annotating: true })?.source).toBe('road');
+  });
+});
 
 describe('liveItems', () => {
   it('a running survey tool with a reading', () => {
