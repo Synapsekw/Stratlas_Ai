@@ -153,4 +153,14 @@ describe('the see-through asset', () => {
     expect(parseCutawayPref({ mode: 'auto' })).toBeNull();
     expect(parseCutawayPref(null)).toBeNull();
   });
+
+  it('remembers the clouds the cut-away hid, and drops what is not a layer id', () => {
+    expect(parseCutawayPref({ mode: 'transparent', opacity: 0.5, held: ['a', 3, 'b'] })).toEqual({
+      mode: 'transparent',
+      opacity: 0.5,
+      held: ['a', 'b'],
+    });
+    expect(parseCutawayPref({ mode: 'cut', held: [] })).not.toHaveProperty('held');
+    expect(parseCutawayPref({ mode: 'cut', held: 'a' })).not.toHaveProperty('held');
+  });
 });

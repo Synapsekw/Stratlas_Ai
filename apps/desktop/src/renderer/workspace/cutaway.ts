@@ -82,6 +82,11 @@ export interface CutawayPref {
   mode: CutawayMode;
   /** Opacity of the asset in Transparent mode, 0.05..0.95. */
   opacity: number;
+  /**
+   * The point clouds the cut-away hid, so that Solid shows them again after a restart (their
+   * hidden state is saved with the date's layers, which cannot tell who hid them).
+   */
+  held?: readonly string[];
 }
 
 export const DEFAULT_CUTAWAY: CutawayPref = { mode: 'off', opacity: 0.3 };
@@ -96,11 +101,13 @@ export function clampOpacity(o: number): number {
 /** A remembered choice read back from storage, or null when it is not one. */
 export function parseCutawayPref(v: unknown): CutawayPref | null {
   if (!v || typeof v !== 'object') return null;
-  const { mode, opacity } = v as Record<string, unknown>;
+  const { mode, opacity, held } = v as Record<string, unknown>;
   if (typeof mode !== 'string' || !CUTAWAY_MODES.includes(mode as CutawayMode)) return null;
+  const ids = Array.isArray(held) ? held.filter((x): x is string => typeof x === 'string') : [];
   return {
     mode: mode as CutawayMode,
     opacity: typeof opacity === 'number' ? clampOpacity(opacity) : DEFAULT_CUTAWAY.opacity,
+    ...(ids.length > 0 && { held: ids }),
   };
 }
 

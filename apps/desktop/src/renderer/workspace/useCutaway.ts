@@ -54,6 +54,19 @@ function updatePref(patch: Partial<CutawayPref>): void {
   stagePrefs.getState().update(id, { cutaway: next });
 }
 
+/** Remember (or forget, with none) the clouds the cut-away holds hidden in project `id`. */
+function writeHeld(id: string, ids: readonly string[]): void {
+  const cur = stagePrefs.getState().byProject[id]?.cutaway ?? DEFAULT_CUTAWAY;
+  const was = cur.held ?? [];
+  if (was.length === ids.length && was.every((x, i) => x === ids[i])) return;
+  const next: CutawayPref = {
+    mode: cur.mode,
+    opacity: cur.opacity,
+    ...(ids.length > 0 && { held: ids }),
+  };
+  stagePrefs.getState().update(id, { cutaway: next });
+}
+
 /** Choose Off, Cut or Transparent for the open project (remembered per project). */
 export function setCutawayMode(mode: CutawayMode): void {
   if (cutawayPref().mode !== mode) updatePref({ mode });
@@ -127,6 +140,7 @@ export function useCutaway(stage: EngineStage | null): void {
       hiddenClouds = (ws.project?.manifest.layers ?? [])
         .filter((l) => l.kind === 'pointcloud' && !ws.hidden[l.id])
         .map((l) => l.id);
+      if (project) writeHeld(project.id, hiddenClouds);
       if (hiddenClouds.length) ws.setLayersVisible(hiddenClouds, false);
     };
     const showClouds = () => {
@@ -135,8 +149,28 @@ export function useCutaway(stage: EngineStage | null): void {
       const ws = workspace.getState();
       const back = hiddenClouds.filter((id) => ws.hidden[id]);
       hiddenClouds = [];
+      if (project) writeHeld(project.id, []);
       if (back.length) ws.setLayersVisible(back, true);
     };
+    /**
+     * The clouds this project's cut-away hid before a restart are its own again (still hidden,
+     * still point clouds), so Solid, or the mode found off, shows them.
+     */
+    const adoptHeld = () => {
+      if (!project) return;
+      const ws = workspace.getState();
+      const clouds = new Set(
+        project.manifest.layers.filter((l) => l.kind === 'pointcloud').map((l) => l.id),
+      );
+      const held = (cutawayPref().held ?? []).filter((id) => clouds.has(id) && ws.hidden[id]);
+      if (held.length === 0) {
+        writeHeld(project.id, []);
+        return;
+      }
+      cloudsHeld = true;
+      hiddenClouds = held;
+    };
+    adoptHeld();
     const releaseCut = () => {
       if (applied && saved) apply(saved);
       applied = null;
@@ -191,6 +225,7 @@ export function useCutaway(stage: EngineStage | null): void {
         releaseAll();
         project = ws.project;
         box = null;
+        adoptHeld();
       }
       if (!project) return;
       const { mode, opacity } = cutawayPref();
