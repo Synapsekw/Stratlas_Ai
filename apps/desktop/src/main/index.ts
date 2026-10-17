@@ -178,6 +178,7 @@ import { registerSurveyIpc } from './survey';
 import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
 import { antennaPackRefusal } from './telecomPack';
+import { RF_PACK_FEATURE, rfPackRefusal } from './rfPack';
 import { registerSurveyAiIpc } from './surveyAi';
 import { createSegmenter } from './inference/segment';
 import { qaJobEvents, registerSurveyQaIpc } from './surveyQa';
@@ -1366,7 +1367,8 @@ function registerIpc(): void {
       pipeline === 'pano.stitch' ||
       pipeline === 'model.evidence' ||
       pipeline === 'pointcloud.clean' ||
-      pipeline === 'telecom.antennas'
+      pipeline === 'telecom.antennas' ||
+      pipeline === 'rf.coverage'
     ) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
@@ -1379,6 +1381,7 @@ function registerIpc(): void {
         panoPackRefusal(pipeline, version) ??
         evidencePackRefusal(pipeline, version) ??
         antennaPackRefusal(pipeline, version) ??
+        rfPackRefusal(pipeline, version) ??
         cleanPackRefusal(pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
@@ -1962,6 +1965,7 @@ function registerIpc(): void {
             WALK_PACK_FEATURE,
             PANO_PACK_FEATURE,
             EVIDENCE_PACK_FEATURE,
+            RF_PACK_FEATURE,
             CLEAN_PACK_FEATURE,
           ],
     places: () =>
