@@ -310,6 +310,7 @@ const TAB_NAME: Record<TabId, string> = {
   cleanup: 'Point cloud cleanup',
   environment: 'Environment',
   cutaway: 'Cutaway',
+  rf: 'RF',
 };
 
 /**

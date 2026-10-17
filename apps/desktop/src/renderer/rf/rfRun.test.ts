@@ -3,6 +3,7 @@ import type { AntennasFile, JobRecord, RfSectorsFile } from '@aio/schema';
 import { RF_COVERAGE_MIN_PACK } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWorkbenchStore } from '../workspace/workbench/workbenchStore';
+import { personToolLive } from '../workspace/workbench/tabsModel';
 import {
   antennasFile,
   lteSettings,
@@ -131,7 +132,7 @@ describe('startRfRun', () => {
     const r = await startRfRun('/p3', bench);
     expect(r).toEqual({ ok: false, code: 'failed', message: 'Processing tools too old' });
     expect(rfStore.getState().running).toBe(false);
-    expect(bench.getState().liveTools).toBe(0);
+    expect(personToolLive(bench.getState().tabs)).toBe(false);
   });
 
   it('does not start while the store refuses (pack unknown)', async () => {
