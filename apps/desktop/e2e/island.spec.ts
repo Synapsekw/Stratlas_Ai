@@ -11,16 +11,20 @@ import type { Locator, Page, TestInfo } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { captionArea } from './caption';
+import { writeNoisyProject } from './cleanupHelpers';
 import { DEMO_FOLDER, expect, openProject, test, TINY_PROJECT_ID } from './fixtures';
 import {
   closeIslandTools,
   island,
   islandDate,
   islandGroup,
+  islandRow,
   islandSettled,
   measureControl,
+  openBench,
   openIslandCalendar,
   openIslandTools,
+  stageMode,
 } from './island';
 import { openDemo } from './surveyJobs';
 
@@ -202,6 +206,16 @@ test.describe('the island on a project with two dates', () => {
       expect(reading.x).toBeGreaterThanOrEqual(date.x + date.width);
       expect(Math.abs(reading.y + reading.height / 2 - (date.y + date.height / 2))).toBeLessThan(3);
     }
+    // by key (I-R44): with another tab in front, the reading is a button that Space brings
+    // Measure back with (while a line is drawn, Enter finishes it and Tab types a bearing)
+    await openBench(win, 'issues');
+    const open = island(win).getByRole('button', { name: /^Show Distance .* in the right panel$/ });
+    await open.focus();
+    await expect(open).toBeFocused();
+    await win.keyboard.press('Space');
+    await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+    await expect(island(win)).not.toHaveAttribute('data-state', 'tools');
+    await win.locator('[data-scene-view] canvas').first().hover();
     await win.keyboard.press('Escape');
     await win.keyboard.press('Escape');
     await expect(live).toHaveCount(0);
@@ -496,6 +510,90 @@ test.describe('right to left', () => {
     expect(measure, 'Measure lies left of View').toBeLessThan(view);
     expect(threeD, 'the view switch is right of the tabs').toBeGreaterThan(view);
     expect(close, 'Close is left of the tabs').toBeLessThan(measure);
+    await closeIslandTools(win);
+  });
+});
+
+test.describe('the quick rows (D5, I-R48)', () => {
+  test('Point cloud: the colour switch RGB / Elevation / Intensity / Flight', async ({
+    dataRoot,
+    win,
+  }, info) => {
+    await writeNoisyProject(dataRoot.projectDir);
+    await openCard(win, 'E2E tiny project', TINY_PROJECT_ID);
+    const row = await islandRow(win, 'clouds');
+    const colour = row.getByRole('group', { name: 'Colour', exact: true });
+    await expect(colour.getByRole('button')).toHaveText([
+      'RGB',
+      'Elevation',
+      'Intensity',
+      'Flight',
+    ]);
+    await colour.getByRole('button', { name: 'Elevation', exact: true }).click();
+    await expect(colour.getByRole('button', { name: 'Elevation', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const mode = () =>
+      win.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __stratlas: { pointcloud: { getState(): { colourMode: string } } };
+            }
+          ).__stratlas.pointcloud.getState().colourMode,
+      );
+    await expect.poll(mode).toBe('height');
+    await islandSettled(win);
+    await shot(win, info, 'island-row-clouds-colour.png');
+    // the workbench's own switch says the same
+    const bench = await islandGroup(win, 'clouds');
+    await expect(
+      bench.getByRole('group', { name: 'Colour by' }).getByRole('button', { name: 'Elevation' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('Annotate: the tools on the model and the map start annotating with that tool', async ({
+    twoDateProject,
+    win,
+  }, info) => {
+    await openCard(win, 'E2E two dates', twoDateProject.id);
+    let row = await islandRow(win, 'annotate');
+    for (const name of [
+      'Pin on the model',
+      'Line on the model',
+      'Area on the model',
+      'Point on the cloud',
+      'Box on the cloud',
+    ])
+      await expect(row.getByRole('button', { name, exact: true })).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Point on the map' })).toHaveCount(0);
+    await islandSettled(win);
+    await shot(win, info, 'island-row-annotate-3d.png');
+
+    const pin = row.getByRole('button', { name: 'Pin on the model', exact: true });
+    await pin.click();
+    await expect(pin).toHaveAttribute('aria-pressed', 'true');
+    // the annotation tools are on, their tab live in front, with Pin picked there too
+    await expect(win.locator('#wb-tab-annotate')).toHaveAttribute('aria-selected', 'true');
+    const tools = win
+      .locator('#wb-panel-annotate')
+      .getByRole('toolbar', { name: '3D annotation tools' });
+    await expect(tools.getByRole('button', { name: 'Pin', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // in Split the map's tools are there as well
+    await stageMode(win, 'Split');
+    row = await islandRow(win, 'annotate');
+    for (const name of ['Point on the map', 'Line on the map', 'Area on the map'])
+      await expect(row.getByRole('button', { name, exact: true })).toBeVisible();
+    const area = row.getByRole('button', { name: 'Area on the map', exact: true });
+    await area.click();
+    await expect(area).toHaveAttribute('aria-pressed', 'true');
+    await islandSettled(win);
+    await shot(win, info, 'island-row-annotate-split.png');
     await closeIslandTools(win);
   });
 });
