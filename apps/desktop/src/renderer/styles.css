@@ -2526,6 +2526,9 @@ svg.flip {
   inset: auto;
   flex: none;
   margin-block: -4px;
+  /* clear of the panel handle's tab (mid-height, in the panel's edge padding): a divider that
+     lands at mid-height must not take the tab's clicks */
+  margin-inline-start: var(--ph-w);
 }
 .right .rp-split.auto[data-orientation] > .split-handle::before {
   content: none;
