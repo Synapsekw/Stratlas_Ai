@@ -333,3 +333,44 @@ describe('photogrammetry run folders', () => {
     expect(p.members.some((x) => x.path === `${run}/pyramid.json`)).toBe(true);
   });
 });
+
+describe('rf coverage runs', () => {
+  const run = 'rf/runs/rf-20261017-0900';
+  const files: SourceFile[] = [
+    'rf/sectors.json',
+    'rf/sectors.json.bak',
+    'rf/catalogue.json',
+    'rf/patterns/x-2600-4.msi',
+    `${run}/run.json`,
+    `${run}/rsrp.tif`,
+    `${run}/best.tif`,
+    `${run}/overlap.tif`,
+    `${run}/pathloss/sec-a-B3.f32`,
+    `${run}/pathloss/sec-b-B3.f32`,
+    `${run}/path-loss-sec-c.f32`,
+  ].map((path) => ({ path, size: 10 }));
+
+  it('carries the sectors, the catalogue, run.json and the composite grids', () => {
+    const p = planPackage(manifest(), files, []);
+    expect(
+      p.members
+        .map((m) => m.path)
+        .filter((x) => x.startsWith('rf/'))
+        .sort(),
+    ).toEqual([
+      'rf/catalogue.json',
+      'rf/patterns/x-2600-4.msi',
+      `${run}/best.tif`,
+      `${run}/overlap.tif`,
+      `${run}/rsrp.tif`,
+      `${run}/run.json`,
+      'rf/sectors.json',
+    ]);
+  });
+
+  it('leaves out the per-sector path-loss cache and counts it nowhere', () => {
+    const p = planPackage(manifest(), files, []);
+    expect(p.members.some((m) => /path-?loss/.test(m.path))).toBe(false);
+    expect(p.baseBytes).toBe(7 * 10);
+  });
+});

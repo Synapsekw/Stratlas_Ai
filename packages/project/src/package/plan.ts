@@ -51,6 +51,10 @@ const SKIP = [
   // cache what was sent, so runs stay with the project (engineering model spec 5.6). The model
   // itself travels in `models/`.
   /^engineering\//i,
+  // Coverage runs (`rf/runs/<run>/`): `run.json` and the composite grids travel; the per-sector
+  // path-loss cache (any folder or file whose name starts `pathloss` or `path-loss`) is rebuilt
+  // on demand, so it stays behind (RF coverage spec, founder answer 2).
+  /^rf\/runs\/[^/]+\/(?:[^/]+\/)*path-?loss[^/]*(?:\/|$)/i,
 ];
 
 /** What a built procedural model layer owns beside its GLB, per source model id. */
@@ -164,7 +168,8 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[]; kept: s
  * `models/` and `drawings/` go with it, and so does the `data/` folder beside a stockpile
  * viewer, which holds the grids of the volumes. `photogrammetry/<run>/` sends only its records
  * and reports (`run.json`, `gcp.json`, `report/`), never its work files, unless a layer owns them.
- * `engineering/` never travels. A built model layer owns `models/<id>.procmodel.json`,
+ * `engineering/` never travels. `rf/` travels (sectors, catalogue, runs), except each run's
+ * per-sector path-loss cache. A built model layer owns `models/<id>.procmodel.json`,
  * `.georeference.json` and `.components.json`, so leaving the layer out leaves them out.
  */
 export function planPackage(
