@@ -373,21 +373,19 @@ DROP_SPANS = "spans"  # a box around another unit's front
 DROP_PART = "part of a listed unit"
 
 
-# how the run warning names each reason (one, many)
+# how the run warning names each reason (one, many): only reasons that could hide real equipment;
+# the others (outside the size range, structure, no back found, parts of listed units) are logged
 _DROP_WORDS: dict[str, tuple[str, str]] = {
     DROP_SIDE_FACE: ("side face", "side faces"),
     DROP_COVERAGE: ("with low coverage", "with low coverage"),
-    DROP_NO_BACK: ("with no back found", "with no back found"),
     DROP_SPANS: ("overlapping other units", "overlapping other units"),
-    DROP_STRUCTURE: ("pole or frame member", "poles or frame members"),
-    DROP_SIZE: ("outside the size range", "outside the size range"),
 }
 
 
 def drop_warning(drops: dict[str, int]) -> str | None:
     """The run warning for the candidate boxes left out, most common reason first, e.g. "12
     candidate boxes were not listed: 7 side faces, 3 with low coverage, 2 overlapping other
-    units."; None when none was (faces of a listed unit, `DROP_PART`, do not count)."""
+    units."; None when none was (only side faces, low coverage and overlapping boxes count; the rest is logged)."""
     named: dict[str, list] = {}
     for reason, n in drops.items():
         words = _DROP_WORDS.get(reason)

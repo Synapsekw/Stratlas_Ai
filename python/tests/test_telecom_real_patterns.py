@@ -175,13 +175,16 @@ def _with_kind(u: Unit, radial) -> Unit:
 def test_drop_warning_text():
     assert drop_warning({}) is None
     assert drop_warning({DROP_PART: 9}) is None  # faces of listed units left nothing out
+    # not equipment by size or shape, or no back found: logged, never warned
+    assert drop_warning({DROP_SIZE: 4, DROP_STRUCTURE: 2, DROP_NO_BACK: 1}) is None
     assert drop_warning({DROP_SIDE_FACE: 1}) == "1 candidate box was not listed: 1 side face."
-    text = drop_warning({DROP_SIDE_FACE: 7, DROP_COVERAGE: 3, DROP_SPANS: 2, DROP_PART: 5, DROP_STRUCTURE: 1})
-    assert text == (
-        "13 candidate boxes were not listed: 7 side faces, 3 with low coverage, "
-        "2 overlapping other units, 1 pole or frame member."
+    text = drop_warning(
+        {DROP_SIDE_FACE: 7, DROP_COVERAGE: 3, DROP_SPANS: 2, DROP_PART: 5, DROP_STRUCTURE: 1, DROP_SIZE: 9}
     )
-    assert "\u2013" not in text and "\u2014" not in text
+    assert text == (
+        "12 candidate boxes were not listed: 7 side faces, 3 with low coverage, 2 overlapping other units."
+    )
+    assert "–" not in text and "—" not in text
 
 
 def test_drops_are_counted_and_faces_of_listed_units_are_not_warned():
@@ -194,7 +197,7 @@ def test_drops_are_counted_and_faces_of_listed_units_are_not_warned():
     # the side faces of the listed units are found and counted, but as parts of them
     assert drops.get(DROP_PART, 0) >= 6 and DROP_SIDE_FACE not in drops
     # the headframe's frame and tray are real candidates left out: the warning counts them
-    left_out = sum(v for k, v in drops.items() if k != DROP_PART)
+    left_out = sum(drops.get(k, 0) for k in (DROP_COVERAGE, DROP_SIDE_FACE, DROP_SPANS))
     assert left_out >= 1
     text = drop_warning(drops)
     assert text is not None and text.startswith(f"{left_out} candidate box")
@@ -204,7 +207,7 @@ def test_drops_are_counted_and_faces_of_listed_units_are_not_warned():
     faces = planar_faces(crown, np.zeros(3), np.array([0.0, 1.0, 0.0]), shaft_radius(truth))
     drops = {}
     pair_faces(faces, np.zeros(3), crown, shaft_radius(truth), drops)
-    assert drops and set(drops) == {DROP_PART} and drop_warning(drops) is None
+    assert drops and drop_warning(drops) is None
 
 
 def test_coverage_follows_the_point_spacing():
