@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { closeProcessing, expect, launchApp, test } from './fixtures';
+import { islandGroup, toggleCompareDates } from './island';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
@@ -123,21 +124,16 @@ function overlays(win: Page, pile: string) {
   }, pile);
 }
 
-/** The Photo, Elevation or Cut / fill switch (under More tools when the toolbar folds it). */
+/** The Photo, Elevation or Cut / fill switch of a stockpile project (the island's Volumes set). */
 async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fill') {
-  const button = win
+  const full = await islandGroup(win, 'volumes');
+  const button = full
     .getByRole('group', { name: 'Surface colours' })
     .getByRole('button', { name, exact: true });
-  // The toolbar may fold or unfold the group between the look and the click (it measures itself
-  // again when the views change), so both are tried together until the click lands. More tools
-  // is a toggle: a try that closed it opens it again on the next one. Pressing the switch twice
-  // changes nothing.
-  await expect(async () => {
-    if (!(await button.isVisible()))
-      await win.getByRole('button', { name: 'More tools' }).click({ timeout: 2_000 });
-    await button.click({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
+  await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await win.keyboard.press('Escape');
+  await expect(full).toHaveCount(0);
 }
 
 test.skip(!existsSync(venvPython), `no Python with aio_pipelines at ${venvPython}`);
@@ -250,7 +246,7 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
       const g = (window as unknown as Views).__stratlas.graphics().getState();
       if (g.tier === 'low') g.setOverride('medium');
     });
-    await win.getByTestId('compare-dates').click();
+    await toggleCompareDates(win);
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
     const second = win.getByTestId('pane-3d-compare');
     await expect

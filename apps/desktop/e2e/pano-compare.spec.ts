@@ -9,6 +9,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { expect, openProject, test as base } from './fixtures';
+import { closeIslandTools, islandDateStep, stageModeButton } from './island';
 import { choosePane, createPanoDateProject, PANO_DATE_PROJECT_NAME } from './panoFixtures';
 
 /** The panorama project, written before the app starts (list `panoProject` before `win`). */
@@ -85,11 +86,8 @@ async function compareNovWithOct(win: Page) {
   await expect(pane(win, 'right')).toHaveAttribute('data-capture', 'oct');
 }
 
-const stageView = (win: Page, view: '3D' | 'Map' | 'Split') =>
-  win
-    .getByRole('toolbar', { name: 'Stage tools' })
-    .getByRole('group', { name: 'Stage view' })
-    .getByRole('button', { name: view, exact: true });
+/** The island's view switch (its tools open). */
+const stageView = (win: Page, view: '3D' | 'Map' | 'Split') => stageModeButton(win, view);
 
 test.describe('panoramas of two survey dates', () => {
   test('compare a Panoramas row with another date: pair, link, pick, step, follow the date bar', async ({
@@ -97,11 +95,11 @@ test.describe('panoramas of two survey dates', () => {
     win,
   }) => {
     await openPanoDates(win, panoProject.id);
-    await expect(win.getByTestId('date-bar-open')).toContainText('6 Nov 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/6 Nov 2024/);
 
     // 1. the Panoramas header of 6 Nov compared with 2 Oct: two Panoramas panes, nearest paired
     await compareNovWithOct(win);
-    await expect(stageView(win, 'Split')).toHaveAttribute('aria-pressed', 'true');
+    await expect(await stageView(win, 'Split')).toHaveAttribute('aria-pressed', 'true');
     await expect(win.getByTestId('pane-pano')).toHaveCount(2);
     await expect(pane(win, 'left')).toHaveAttribute('data-pano', 'pano-nov/p1');
     await expect(pane(win, 'right')).toHaveAttribute('data-pano', 'pano-oct/p1');
@@ -150,8 +148,11 @@ test.describe('panoramas of two survey dates', () => {
     await expect(pane(win, 'right')).toHaveAttribute('data-pano', 'pano-sep/p3');
 
     // 5. the date bar's previous date: the left moves to 2 Oct, at the panorama nearest its spot
-    await win.getByTestId('date-bar-prev').click();
-    await expect(win.getByTestId('date-bar-open')).toContainText('2 Oct 2024');
+    // in Split the island's date is the last pane used (D7): the left one
+    await closeIslandTools(win);
+    await pane(win, 'left').dispatchEvent('pointerdown');
+    await islandDateStep(win, 'prev');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/2 Oct 2024/);
     await expect(pane(win, 'left')).toHaveAttribute('data-capture', 'oct');
     await expect(pane(win, 'left')).toHaveAttribute('data-pano', 'pano-oct/p3');
     await expect(pane(win, 'right')).toHaveAttribute('data-capture', 'sep');
@@ -170,14 +171,14 @@ test.describe('panoramas of two survey dates', () => {
   }) => {
     await openPanoDates(win, panoProject.id);
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1, { timeout: 30_000 });
-    await expect(stageView(win, '3D')).toHaveAttribute('aria-pressed', 'true');
+    await expect(await stageView(win, '3D')).toHaveAttribute('aria-pressed', 'true');
     // a software GPU is the Low tier, where a comparison draws two maps by design: pin Medium
     await win.evaluate(() => {
       const g = (window as unknown as Probe).__stratlas.graphics().getState();
       if (g.tier === 'low') g.setOverride('medium');
     });
     await compareFolder(win, 'oct', 'nov');
-    await expect(stageView(win, 'Split')).toHaveAttribute('aria-pressed', 'true');
+    await expect(await stageView(win, 'Split')).toHaveAttribute('aria-pressed', 'true');
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2, { timeout: 30_000 });
     await expect(win.getByTestId('pane-select-left')).toHaveValue('3d@oct');
     await expect(win.getByTestId('pane-select-right')).toHaveValue('3d@nov');
@@ -195,7 +196,7 @@ test.describe('panoramas of two survey dates', () => {
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await openPanoDates(win, panoProject.id);
-    const split = stageView(win, 'Split');
+    const split = await stageView(win, 'Split');
     if ((await split.getAttribute('aria-pressed')) !== 'true') await split.click();
     await expect(split).toHaveAttribute('aria-pressed', 'true');
     await expect(win.getByTestId('pane-pano')).toHaveCount(2);

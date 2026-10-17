@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
+import { islandGroup, islandTool } from './island';
 import { hasRealData, missingRealProject, realProjectDir } from './realData';
 
 const MASAFI = realProjectDir('masafi');
@@ -289,7 +290,11 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
   await win.locator('[data-testid="vol-register"] tbody tr[data-pile="P02"]').click();
 
   // The other survey: its terrain shows, the other hides.
-  await win.locator('.vol-dates button', { hasText: '31 Dec' }).click();
+  await (
+    await islandGroup(win, 'volumes')
+  )
+    .locator('.vol-dates button', { hasText: '31 Dec' })
+    .click();
   expect(
     await inspect(
       win,
@@ -301,11 +306,16 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
     ),
   ).toEqual([true, false]);
   await expect(win.getByTestId('vol-net')).toHaveText('14,687 m³');
-  await win.locator('.vol-dates button', { hasText: '10 Jan' }).click();
+  await (
+    await islandGroup(win, 'volumes')
+  )
+    .locator('.vol-dates button', { hasText: '10 Jan' })
+    .click();
 
-  // Elevation colours drape on the shown survey, straight from the toolbar.
-  const surfaces = win.getByRole('group', { name: 'Surface colours' });
-  await surfaces.getByRole('button', { name: 'Elevation' }).click();
+  // Elevation colours drape on the shown survey, from the island's Volumes set.
+  const surfaces = async () =>
+    (await islandGroup(win, 'volumes')).getByRole('group', { name: 'Surface colours' });
+  await (await surfaces()).getByRole('button', { name: 'Elevation' }).click();
   await expect
     .poll(
       () =>
@@ -348,7 +358,7 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
   await elev.getByRole('radio', { name: 'Turbo' }).click();
 
   // Cut and fill colours drape on the last survey.
-  await surfaces.getByRole('button', { name: 'Cut / fill' }).click();
+  await (await surfaces()).getByRole('button', { name: 'Cut / fill' }).click();
   await expect
     .poll(
       () =>
@@ -371,7 +381,7 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
   await expect(win.getByTestId('vol-change').locator('button[data-pile="P05"]')).toContainText(
     '−5,116',
   );
-  await surfaces.getByRole('button', { name: 'Photo' }).click();
+  await (await surfaces()).getByRole('button', { name: 'Photo' }).click();
 
   // Piles show on purpose one by one or all at once; hiding all goes back to none.
   await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
@@ -388,7 +398,11 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
   await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
 
   // Swipe shows both surveys.
-  await win.locator('.vol-dates button', { hasText: 'Swipe' }).click();
+  await (
+    await islandGroup(win, 'volumes')
+  )
+    .locator('.vol-dates button', { hasText: 'Swipe' })
+    .click();
   await expect(win.getByTestId('vol-swipe')).toBeVisible();
   expect(
     await inspect(
@@ -400,12 +414,16 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
       null,
     ),
   ).toEqual([true, true]);
-  await win.locator('.vol-dates button', { hasText: 'Swipe' }).click();
+  await (
+    await islandGroup(win, 'volumes')
+  )
+    .locator('.vol-dates button', { hasText: 'Swipe' })
+    .click();
 
   // Section across the yard: a profile of both surveys with cut and fill areas.
   await win.locator('body').press('h'); // whole site
   await win.waitForTimeout(1200);
-  await win.getByRole('button', { name: 'Section line between the surveys' }).click();
+  await (await islandTool(win, 'volumes', 'Section line between the surveys')).click();
   const box = await win.locator('[data-scene-view] canvas').boundingBox();
   if (!box) throw new Error('no canvas');
   const camera = () =>

@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import sharp from 'sharp';
 import { expect, test } from './fixtures';
+import { stageMode } from './island';
 
 /** Make the next native open dialog return these files (Electron main process). */
 async function nextOpenDialog(app: ElectronApplication, paths: string[]) {
@@ -96,14 +97,8 @@ const mapOpacity = (win: Page, layerId: string) =>
       : null;
   }, layerId);
 
-const stageBar = (win: Page) => win.getByRole('toolbar', { name: 'Stage tools' });
-
 async function showView(win: Page, view: '3D' | 'Map' | 'Split'): Promise<void> {
-  const button = stageBar(win)
-    .getByRole('group', { name: 'Stage view' })
-    .getByRole('button', { name: view, exact: true });
-  await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await stageMode(win, view);
 }
 
 interface Corners {

@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
+import { toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -213,13 +214,13 @@ test('imagery and surface change on the change demo, then swipe and blend', asyn
 
   // 4. two maps (Compare dates from the map): swipe works on them too
   await win.keyboard.press('2');
-  await win.getByTestId('compare-dates').click();
+  await toggleCompareDates(win);
   await expect(win.getByTestId('pane-map-compare')).toBeVisible();
   await win.getByTestId('compare-view-swipe').click();
   await expect(panes).toHaveAttribute('data-compare-view', 'swipe');
   await expect(win.getByTestId('compare-divider')).toBeVisible();
   // leaving the comparison puts the stage back
-  await win.getByTestId('compare-dates').click();
+  await toggleCompareDates(win);
   await expect(panes).not.toHaveAttribute('data-compare-view', /./);
 
   expect(errors).toEqual([]);

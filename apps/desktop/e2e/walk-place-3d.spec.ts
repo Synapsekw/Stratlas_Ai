@@ -9,6 +9,7 @@ import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
+import { closeIslandTools, stageModeButton } from './island';
 import {
   createWalkProject,
   ffmpegReady,
@@ -106,11 +107,8 @@ test.describe('placing a walk in the 3D view', () => {
     await expect(strip.getByTestId('walk-place-on')).toHaveValue('3d');
     // nothing to save before the start
     await expect(strip.getByTestId('walk-place-save')).toBeDisabled();
-    await expect(
-      win
-        .getByRole('toolbar', { name: 'Stage tools' })
-        .getByRole('button', { name: '3D', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(await stageModeButton(win, '3D')).toHaveAttribute('aria-pressed', 'true');
+    await closeIslandTools(win);
     const canvas = win.locator('[data-scene-view] canvas').first();
     await expect(canvas).toBeVisible();
     await lookDown(win);
@@ -137,7 +135,7 @@ test.describe('placing a walk in the 3D view', () => {
     await win.mouse.up();
     await expect(strip).toHaveAttribute('data-step', 'placed');
 
-    // the toolbar does not cover the middle of the view
+    // the island does not cover the middle of the view
     expect(
       await win.evaluate(() => {
         const c = document.querySelector('[data-scene-view] canvas');

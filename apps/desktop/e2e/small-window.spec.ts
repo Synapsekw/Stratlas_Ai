@@ -10,21 +10,23 @@ import type { ElectronApplication, Page, TestInfo } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
+import {
+  closeIslandTools,
+  islandCutOff,
+  islandGroup,
+  openIslandTools,
+  stageMode,
+  toggleCompareDates,
+} from './island';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } });
 
 /** A view that was just created (the map loads its style, the 3D scene its model) takes a while. */
 const VIEW_READY = { timeout: 30_000 };
 
-const stageBar = (win: Page) => win.getByRole('toolbar', { name: 'Stage tools' });
-
-/** Switch the stage with its view switch (the one control of that name on the toolbar). */
+/** Switch the stage with the island's view switch. */
 async function showView(win: Page, view: '3D' | 'Map'): Promise<void> {
-  const button = stageBar(win)
-    .getByRole('group', { name: 'Stage view' })
-    .getByRole('button', { name: view, exact: true });
-  await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await stageMode(win, view);
   await expect(win.locator('.stage')).toHaveAttribute('data-mode', view === '3D' ? '3d' : 'map');
 }
 
@@ -75,34 +77,37 @@ async function shot(win: Page, info: TestInfo, name: string): Promise<void> {
   await win.screenshot({ path: dir ? join(dir, name) : info.outputPath(name) });
 }
 
-test('the Map toolbar shows its tools again after a visit to the 3D view', async ({
-  win,
-}, info) => {
+/** The island's group tabs, and those of its first row cut off at the capsule's edge. */
+async function islandTabs(win: Page) {
+  const bar = await openIslandTools(win);
+  const names = await bar.getByRole('tab').allTextContents();
+  const cut = await islandCutOff(win);
+  await closeIslandTools(win);
+  return { names, cut };
+}
+
+test('the Map island shows its tools again after a visit to the 3D view', async ({ win }, info) => {
   await openProject(win);
-  const bar = stageBar(win);
-  const layers = bar.getByRole('button', { name: 'Layers and issue pins', exact: true });
-  const more = bar.getByRole('button', { name: 'More tools', exact: true });
 
-  // the map's toolbar fits the stage: every group on the bar, nothing folded
+  // the map's island: its groups, every tab in view
   await showView(win, 'Map');
   await expect(win.locator('.maplibregl-canvas')).toBeVisible(VIEW_READY);
-  await expect(layers).toBeVisible();
-  await expect(more).toHaveCount(0);
+  const onMap = await islandTabs(win);
+  expect(onMap.cut).toEqual([]);
 
-  // the 3D view has more tools than fit: Labels and layers is the first group to fold
+  // the 3D view's island, every tab in view too
   await showView(win, '3D');
-  await expect(bar.getByRole('button', { name: 'Environment and time of day' })).toBeVisible(
-    VIEW_READY,
-  );
-  await expect(more).toBeVisible();
-  await expect(layers).toHaveCount(0);
+  await expect(win.locator('[data-scene-view] canvas')).toBeVisible(VIEW_READY);
+  expect((await islandTabs(win)).cut).toEqual([]);
 
-  // back on the map the bar is as it was: what the 3D view folded does not stay folded
+  // back on the map the island is as it was: what the 3D view showed does not stay
   await showView(win, 'Map');
   await expect(win.locator('.maplibregl-canvas')).toBeVisible(VIEW_READY);
-  await expect(layers).toBeVisible();
-  await expect(more).toHaveCount(0);
-  await shot(win, info, 'map-toolbar-after-3d.png');
+  const again = await islandTabs(win);
+  expect(again).toEqual(onMap);
+  await openIslandTools(win);
+  await shot(win, info, 'map-island-after-3d.png');
+  await closeIslandTools(win);
 });
 
 /**
@@ -217,11 +222,9 @@ async function drawBarLayout(win: Page) {
 
 /** Start drawing an area: the bar with its Finish and Cancel shows. */
 async function startArea(win: Page) {
-  // Area is in the Survey measurements popover, whose tool is on the bar or under More tools
-  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible()))
-    await stageBar(win).getByRole('button', { name: 'More tools', exact: true }).click();
-  await survey.click();
+  // Area is in the Survey measurements popover, in the island's Measure set
+  await islandGroup(win, 'measure');
+  await win.getByRole('button', { name: 'Survey measurements', exact: true }).click();
   await win.getByTestId('survey-tool-area').click();
   const bar = win.getByTestId('survey-drawbar');
   await expect(bar).toContainText('Area');
@@ -442,7 +445,7 @@ test.describe('with online satellite', () => {
     await switchOnSatellite(win);
 
     // from the Map, Compare dates shows two maps, each half the stage wide
-    await win.getByTestId('compare-dates').click();
+    await toggleCompareDates(win);
     await expect(win.locator('.pane-map')).toHaveCount(2);
     await expect(credits(win)).toHaveCount(2);
     for (const credit of await credits(win).all()) {

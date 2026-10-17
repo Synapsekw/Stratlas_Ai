@@ -196,7 +196,7 @@ test('a survey date is added by hand and focused', async ({ undatedProject, win,
   await expect(folder).toContainText('3 Feb 2026');
   await expect(folder).toHaveAttribute('aria-selected', 'true');
   await expect(win.locator('[data-testid^="date-folder-capture-"]')).toHaveCount(1);
-  await expect(win.getByTestId('date-bar-open')).toContainText('3 Feb 2026');
+  await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/3 Feb 2026/);
   await expect
     .poll(async () => (await savedManifest(dataRoot, id)).captures)
     .toEqual([{ id: 'capture-2026-02-03', label: 'Baseline', date: '2026-02-03' }]);

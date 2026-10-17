@@ -9,6 +9,7 @@ import type { Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, openProject, test as base, tinyGlb, type DataRoot } from './fixtures';
+import { closeIslandTools, timelineToggle } from './island';
 
 const ID = 'e2e-stockpile-dates';
 const NAME = 'E2E stockpile dates';
@@ -108,25 +109,28 @@ test.describe('stockpile survey date', () => {
     win,
   }) => {
     await openStockpile(win, stockpile.id);
-    await expect(win.getByTestId('date-bar-open')).toContainText('2 Oct 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/2 Oct 2024/);
     await win.getByTestId('date-name-d1').click();
-    await expect(win.getByTestId('date-bar-open')).toContainText('4 Sep 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     await expect.poll(async () => (await volumes(win)).epoch).toBe('e1');
     await reopen(win, stockpile.id);
-    await expect(win.getByTestId('date-bar-open')).toContainText('4 Sep 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     await expect.poll(async () => (await volumes(win)).epoch).toBe('e1');
   });
 
   test('showing the timeline does not forget the date', async ({ stockpile, win }) => {
     await openStockpile(win, stockpile.id);
     await win.getByTestId('date-name-d1').click();
-    await expect(win.getByTestId('date-bar-open')).toContainText('4 Sep 2024');
-    // a project without video starts with the timeline folded into the thin bar
-    await win.getByTestId('timeline-bar').getByRole('button').click();
-    await expect(win.getByTestId('timeline-bar')).toHaveCount(0);
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
+    // a project without video starts with the timeline folded: the island's View tile shows it
+    const toggle = await timelineToggle(win);
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await closeIslandTools(win);
     await reopen(win, stockpile.id);
-    await expect(win.getByTestId('date-bar-open')).toContainText('4 Sep 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     await expect.poll(async () => (await volumes(win)).epoch).toBe('e1');
-    await expect(win.getByTestId('timeline-bar')).toHaveCount(0);
+    await expect(await timelineToggle(win)).toHaveAttribute('aria-pressed', 'true');
   });
 });

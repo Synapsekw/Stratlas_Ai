@@ -6,6 +6,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, realDataTest } from './fixtures';
+import { islandGroup } from './island';
 import { hasRealProject, missingRealProject } from './realData';
 
 interface Env {
@@ -26,11 +27,10 @@ test.setTimeout(180_000);
 const env = (win: Page) =>
   win.evaluate(() => (window as unknown as Inspect).__stratlas.stage()?.environment ?? null);
 
-/** The environment popover, opened from the toolbar or from More when the toolbar is narrow. */
+/** The environment popover, opened from the island's View set. */
 async function openPanel(win: Page) {
-  const button = win.getByRole('button', { name: 'Environment and time of day' });
-  if (!(await button.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
-  await button.click();
+  const view = await islandGroup(win, 'view');
+  await view.getByRole('button', { name: 'Environment and time of day' }).click();
   await expect(win.getByTestId('env-panel')).toBeVisible();
 }
 

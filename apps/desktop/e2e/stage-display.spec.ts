@@ -10,6 +10,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, realDataTest } from './fixtures';
+import { closeIslandTools, islandGroup, islandTool, timelineToggle } from './island';
 import { hasRealProject, missingRealProject } from './realData';
 
 const has = hasRealProject;
@@ -79,7 +80,7 @@ async function pathsTest(win: Page, card: string, flights: number, groups = true
   await expect.poll(async () => (await rig(win)).shown).toBe(1);
   await expect.poll(async () => (await rig(win)).drone, { timeout: 20_000 }).toBe(true);
 
-  const tool = win.getByRole('button', { name: 'Flight paths' });
+  const tool = await islandTool(win, 'video', 'Flight paths');
   await expect(tool).toHaveAttribute('aria-keyshortcuts', 'P');
   await tool.click();
   const panel = win.getByTestId('path-panel');
@@ -199,8 +200,7 @@ const cloudSizes = (win: Page) =>
  */
 async function sizeTest(win: Page, layers: readonly string[]) {
   const panel = win.getByTestId('cloud-panel');
-  if (!(await panel.isVisible()))
-    await win.getByRole('button', { name: 'Point cloud', exact: true }).click();
+  if (!(await panel.isVisible())) await (await islandTool(win, 'clouds', 'Point cloud')).click();
   const slider = panel.getByRole('slider', { name: 'Point size' });
   await slider.fill('0');
   await expect
@@ -247,7 +247,7 @@ async function sizeTest(win: Page, layers: readonly string[]) {
 
 async function colourTest(win: Page, card: string, rgb: boolean) {
   await open(win, card);
-  await win.getByRole('button', { name: 'Point cloud', exact: true }).click();
+  await (await islandTool(win, 'clouds', 'Point cloud')).click();
   const panel = win.getByTestId('cloud-panel');
   await expect(panel.getByRole('button', { name: 'Elevation' })).toBeVisible();
   const show = panel.getByRole('checkbox').first();
@@ -412,15 +412,17 @@ test.describe('@realdata DAMAC', () => {
     await expect
       .poll(async () => (await pinLayout(win))?.items ?? 0, { timeout: 30_000 })
       .toBeGreaterThan(0);
-    const hide = win.getByRole('button', { name: 'Hide issue pins', exact: true });
+    // the pin toggle and the Layers popover are in the island's Display set
+    const display = await islandGroup(win, 'display');
+    const hide = display.getByRole('button', { name: 'Hide issue pins', exact: true });
     await expect(hide).toHaveAttribute('aria-keyshortcuts', 'I');
     await expect(hide).toHaveAttribute('aria-pressed', 'true');
     await hide.click();
     await expect.poll(async () => (await pinLayout(win))?.items).toBe(0);
-    const show = win.getByRole('button', { name: 'Show issue pins', exact: true });
+    const show = display.getByRole('button', { name: 'Show issue pins', exact: true });
     await expect(show).toHaveAttribute('aria-pressed', 'false');
     // the popover shows the same setting; the heat map stays on with the pins off
-    await win.getByRole('button', { name: 'Layers and issue pins' }).click();
+    await display.getByRole('button', { name: 'Layers and issue pins' }).click();
     await expect(win.getByRole('button', { name: 'No pins' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -429,13 +431,14 @@ test.describe('@realdata DAMAC', () => {
     await win.getByRole('button', { name: 'Severity 2 and above' }).click();
     await win.keyboard.press('Escape');
     await expect(hide).toBeVisible();
+    await win.keyboard.press('Escape');
     // I turns them off and back on to the popover's last choice
     await focusStage(win);
     await win.keyboard.press('i');
     await expect.poll(async () => (await pinLayout(win))?.items).toBe(0);
     await win.keyboard.press('i');
     await expect.poll(async () => (await pinLayout(win))?.items ?? 0).toBeGreaterThan(0);
-    await win.getByRole('button', { name: 'Layers and issue pins' }).click();
+    await (await islandTool(win, 'display', 'Layers and issue pins')).click();
     await expect(win.getByRole('button', { name: 'Severity 2 and above' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -443,24 +446,24 @@ test.describe('@realdata DAMAC', () => {
     await expect(win.getByRole('checkbox', { name: 'Severity heat map' })).toBeChecked();
   });
 
-  test('no video: the timeline folds into a thin bar; T and the bar bring it back', async ({
+  test('no video: the timeline starts folded; the View tile brings it back and folds it', async ({
     win,
   }) => {
     await openDamac(win);
     const timeline = win.locator('.tl-wrap [aria-label="Timeline"]');
-    const bar = win.getByTestId('timeline-bar');
-    await expect(bar).toBeVisible();
-    await expect(bar).toContainText('No video in this project');
+    // T opens the island's tools now (D9); the thin bar went with the date strips
     await expect(timeline).toHaveCount(0);
-    expect((await bar.boundingBox())?.height ?? 99).toBeLessThanOrEqual(30);
-    await bar.getByRole('button', { name: 'Show the timeline' }).click();
+    const toggle = await timelineToggle(win);
+    await expect(toggle).toHaveAccessibleName('Show the timeline');
+    await toggle.click();
     await expect(timeline).toBeVisible();
-    await win.getByRole('button', { name: 'Hide the timeline' }).click();
-    await expect(bar).toBeVisible();
+    await closeIslandTools(win);
+    await win.locator('.tl-wrap').getByRole('button', { name: 'Hide the timeline' }).click();
+    await expect(timeline).toHaveCount(0);
     await focusStage(win);
-    await win.keyboard.press('t');
+    await (await timelineToggle(win)).click();
     await expect(timeline).toBeVisible();
-    await win.keyboard.press('t');
+    await (await timelineToggle(win)).click();
     await expect(timeline).toHaveCount(0);
   });
 });
@@ -471,7 +474,8 @@ test.describe('@realdata HCl', () => {
   test('with clips the timeline shows as before', async ({ win }) => {
     await open(win, 'HCl');
     await expect(win.locator('.tl-wrap [aria-label="Timeline"]')).toBeVisible();
-    await expect(win.getByTestId('timeline-bar')).toHaveCount(0);
+    await expect(await timelineToggle(win)).toHaveAttribute('aria-pressed', 'true');
+    await closeIslandTools(win);
   });
   test('flight paths: all, active clip only, off, P, and per flight', async ({ win }) => {
     await pathsTest(win, 'HCl', 10, false);

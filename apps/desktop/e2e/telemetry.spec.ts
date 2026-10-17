@@ -208,12 +208,14 @@ async function telemetryFollowsTheClip(win: Page, clip: string, at: number, labe
   for (const k of ['el', 'speed', 'gimbal'])
     expect(Number.isFinite(await hudValue(win, k))).toBe(true);
 
-  // D turns it off and on (the toolbar button follows), independent of the flight paths
-  const tool = win.getByRole('button', { name: /drone telemetry/i });
-  await expect(tool).toHaveAttribute('aria-pressed', 'true');
+  // D turns it off and on (the island's Video button follows), independent of the flight paths
+  const telemetryTool = async () =>
+    (await islandGroup(win, 'video')).getByRole('button', { name: /drone telemetry/i });
+  await expect(await telemetryTool()).toHaveAttribute('aria-pressed', 'true');
   await win.locator('[data-scene-view] canvas').click({ position: { x: 5, y: 400 } });
   await win.keyboard.press('d');
   await expect(hud).toBeHidden();
+  const tool = await telemetryTool();
   await expect(tool).toHaveAttribute('aria-pressed', 'false');
   expect(
     await win.evaluate(

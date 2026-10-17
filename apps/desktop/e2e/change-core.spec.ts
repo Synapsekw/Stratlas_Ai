@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { CHANGE_DEMO, expect, openChangeDemo, test } from './fixtures';
+import { toggleCompareDates } from './island';
 
 interface Inspect {
   __stratlas: {
@@ -68,7 +69,7 @@ test('the change demo: compare dates, find changes as truth.json says, review an
     if (g.tier === 'low') g.setOverride('medium');
   });
 
-  await win.getByTestId('compare-dates').click();
+  await toggleCompareDates(win);
   await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
   await win.getByTestId('compare-show-changes').click();
   await expect(win.getByTestId('compare-show-changes')).toHaveAttribute('aria-pressed', 'true');

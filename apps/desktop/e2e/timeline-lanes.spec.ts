@@ -9,6 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test as base, type DataRoot } from './fixtures';
+import { closeIslandTools, island, timelineToggle } from './island';
 import { tinyMp4 } from './tinyVideo';
 
 const ID = 'e2e-date-lanes';
@@ -117,7 +118,9 @@ const state = (win: Page) =>
 test('lanes show the focused date and its neighbours, the rest folded', async ({ win }) => {
   await openLanes(win);
   const tl = win.getByTestId('lane-timeline');
-  await expect(win.getByTestId('date-bar')).toHaveCount(0);
+  // the one date bar is the island's (I-R15): no second one beside the lanes
+  await expect(win.getByTestId('date-bar')).toHaveCount(1);
+  await expect(island(win).getByTestId('date-bar')).toHaveCount(1);
   await expect(tl.getByTestId('lane-date-open')).toContainText('10 Oct 2026');
   await expect(tl.getByTestId('lane-label-d6')).toHaveAttribute('aria-pressed', 'true');
   for (const id of ['d4', 'd5', 'd6'])
@@ -205,15 +208,19 @@ test('the other lanes show a ghost line at the playhead time', async ({ win }) =
   expect(head && ghost && Math.abs(head.x - ghost.x)).toBeLessThanOrEqual(2);
 });
 
-test('T folds the timeline to the date row, and Alt+Left still steps', async ({ win }) => {
+test('the View tile folds the timeline to the date row, and Alt+Left still steps', async ({
+  win,
+}) => {
   await openLanes(win);
-  await win.keyboard.press('t');
+  // T opens the island's tools now (D9): the timeline is the View row's tile
+  await (await timelineToggle(win)).click();
+  await closeIslandTools(win);
   await expect(win.getByTestId('date-row')).toBeVisible();
   await expect(win.getByTestId('lane-timeline')).toHaveCount(0);
-  await expect(win.getByTestId('date-bar-open')).toContainText('10 Oct 2026');
+  await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/10 Oct 2026/);
   await win.keyboard.press('Alt+ArrowLeft');
-  await expect(win.getByTestId('date-bar-open')).toContainText('3 Oct 2026');
-  await win.keyboard.press('t');
+  await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/3 Oct 2026/);
+  await (await timelineToggle(win)).click();
   await expect(win.getByTestId('lane-timeline')).toBeVisible();
 });
 

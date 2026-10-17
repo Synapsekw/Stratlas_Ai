@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, test } from './fixtures';
+import { stageMode } from './island';
 import { writeTelecomFace } from './telecomFixtures';
 
 interface Inspect {
@@ -229,17 +230,11 @@ for (const kind of ['mesh', 'cloud'] as const) {
 
       await panel.getByTestId('telecom-tool-clearance').click();
       await pick(win, [-2, 3, 0]);
-      await win
-        .getByRole('toolbar', { name: 'Stage tools' })
-        .getByRole('button', { name: 'Map', exact: true })
-        .click();
+      await stageMode(win, 'Map');
       await expect(panel.getByTestId('telecom-tool-clearance')).toBeDisabled();
       await expect(panel).toContainText('Switch to 3D');
       await expect(panel.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
-      await win
-        .getByRole('toolbar', { name: 'Stage tools' })
-        .getByRole('button', { name: '3D', exact: true })
-        .click();
+      await stageMode(win, '3D');
       await expect(panel.getByTestId('telecom-tool-clearance')).toBeEnabled();
       await panel.getByRole('button', { name: 'Measurements', exact: true }).click();
       await expect(win.getByTestId('survey-item')).toHaveCount(0);

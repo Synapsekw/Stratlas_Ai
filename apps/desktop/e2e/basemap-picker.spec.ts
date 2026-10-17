@@ -14,6 +14,7 @@ import { ONLINE_SATELLITE } from '@aio/schema';
 import type { ElectronApplication, Page, TestInfo } from '@playwright/test';
 import { expectAccessible } from './a11y';
 import { expect, launchApp, NetworkGuard, test } from './fixtures';
+import { stageMode } from './island';
 
 // two launches in the first test, a theme change in the last: room for a slow runner
 test.setTimeout(180_000);
@@ -61,18 +62,12 @@ const shownStreets = async (win: Page) => {
 /** A map that was just created (a view change, back from Settings) loads its style first. */
 const MAP_READY = { timeout: 30_000 };
 
-const stageBar = (win: Page) => win.getByRole('toolbar', { name: 'Stage tools' });
-
 /** One On top switch of the open Map menu. */
 const onTop = (win: Page, key: string) => win.getByTestId(`map-ontop-${key}`).getByRole('switch');
 
-/** Switch the stage with its view switch (the one control of that name on the toolbar). */
+/** Switch the stage with the island's view switch. */
 async function showView(win: Page, view: '3D' | 'Map'): Promise<void> {
-  const button = stageBar(win)
-    .getByRole('group', { name: 'Stage view' })
-    .getByRole('button', { name: view, exact: true });
-  await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await stageMode(win, view);
   await expect(win.locator('.stage')).toHaveAttribute('data-mode', view === '3D' ? '3d' : 'map');
 }
 

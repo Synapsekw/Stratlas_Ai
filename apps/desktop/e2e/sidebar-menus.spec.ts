@@ -8,6 +8,7 @@ import type { Locator, Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, openProject, test } from './fixtures';
+import { stageMode } from './island';
 
 interface Probe {
   __stratlas: {
@@ -250,7 +251,7 @@ test('a photo pin on the map opens the photo menu with Align to', async ({ demoP
   test.skip(!layers.some((l) => l.kind === 'photos'), 'the demo holds no photo set');
   // the map beside 3D, so the pins show
   const mode = await win.locator('.stage').getAttribute('data-mode');
-  if (mode !== 'split') await win.getByRole('button', { name: /split/i }).first().click();
+  if (mode !== 'split') await stageMode(win, 'Split');
   const found: { at: { x: number; y: number } | null } = { at: null };
   await expect
     .poll(

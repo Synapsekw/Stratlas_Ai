@@ -27,7 +27,8 @@
 .island {
   position: relative;
   pointer-events: auto;
-  overflow: hidden;
+  /* clip, not hidden: focusing a tab never scrolls the content inside the capsule */
+  overflow: clip;
   background: var(--isl-bg);
   border: 1px solid var(--line);
   box-shadow: var(--el-2);
@@ -359,6 +360,8 @@
   flex-direction: column;
   gap: var(--sp-4);
   padding: var(--sp-4);
+  /* room for five tiles a row, whatever the tab row's width (the tiles wrap under it) */
+  min-inline-size: min(calc(100cqi - var(--sp-6) * 2), 460px);
   max-inline-size: calc(100cqi - var(--sp-6) * 2);
 }
 .isl-r1 {
@@ -414,6 +417,10 @@
   padding-block-start: var(--sp-4);
   border-block-start: 1px solid var(--line-soft);
   animation: isl-row var(--d-3) var(--ease-island);
+  /* the first row sets the island's width and the tiles wrap under it: a previewed row of
+     another width would morph the capsule and slide the tabs away from the pointer, onto the
+     next tab, whose row morphs it back (as in the prototype) */
+  contain: inline-size;
 }
 @keyframes isl-row {
   from {
@@ -514,7 +521,26 @@
     display: inline;
   }
   .seg.isl-groups button {
-    padding-inline: 7px;
+    padding-inline: 6px;
+  }
+  .isl-r1 {
+    gap: 0;
+  }
+  /* Close keeps its chevron and its name; the Esc hint goes */
+  .isl-x .kbd {
+    display: none;
+  }
+  /* the last resort, when even the icons do not fit: the tabs scroll and Close stays in view
+     (the padding keeps a focused tab's ring inside the scroller, the margin takes it back) */
+  .seg.isl-groups {
+    min-inline-size: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 3px;
+    margin: -3px;
+  }
+  .isl-r1 > :not(.isl-groups) {
+    flex: none;
   }
 }
 

@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, openProject, test as base } from './fixtures';
+import { stageMode } from './island';
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
@@ -167,7 +168,7 @@ test.describe('annotations follow their survey date', () => {
   }) => {
     await open(win, datedIssues.id);
     // opens on 6 Nov: September and October are off, and so are their issues
-    await expect(win.getByTestId('date-bar-open')).toContainText('6 Nov 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/6 Nov 2024/);
     await expect.poll(() => pins3d(win), { timeout: 30_000 }).toEqual(['on-nov', 'undated']);
 
     // each date's issues sit in its folder; the undated one under Every date
@@ -252,12 +253,11 @@ test.describe('annotations follow their survey date', () => {
 
     // focusing September swaps the dates, and their issues with them
     await win.getByTestId('date-name-sep').click();
-    await expect(win.getByTestId('date-bar-open')).toContainText('4 Sep 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     await expect.poll(() => pins3d(win)).toEqual(['on-sep', 'undated']);
 
     // the map draws the same issues
-    const bar = win.getByRole('toolbar', { name: 'Stage tools' });
-    await bar.getByRole('button', { name: 'Map' }).click();
+    await stageMode(win, 'Map');
     await expect(win.locator('.maplibregl-canvas').first()).toBeVisible();
     await expect.poll(() => pinsMap(win), { timeout: 30_000 }).toEqual(['on-sep', 'undated']);
 
@@ -269,7 +269,7 @@ test.describe('annotations follow their survey date', () => {
 
     // October by its capture field: on the map once October is focused
     await win.getByTestId('date-name-oct').click();
-    await expect(win.getByTestId('date-bar-open')).toContainText('2 Oct 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/2 Oct 2024/);
     await expect.poll(() => pinsMap(win)).toEqual(['of-oct', 'undated']);
     expect(await issueCount(win)).toBe(ISSUES.length);
   });

@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { APP_CSP } from '../src/main/csp';
 import { createTwoDateProject, expect, launchApp, test } from './fixtures';
+import { stageMode } from './island';
 
 /**
  * The built pages load from file://, where main's CSP header never applies; the build writes the
@@ -143,8 +144,7 @@ test('the 3D scene and the map run under the policy without a violation', async 
     });
     expect(gl).toBe(true);
 
-    const bar = win.getByRole('toolbar', { name: 'Stage tools' });
-    await bar.getByRole('button', { name: 'Map' }).click();
+    await stageMode(win, 'Map');
     await expect(win.locator('.maplibregl-canvas').first()).toBeVisible();
     // loaded: the style and the vector sources went through MapLibre's workers
     await expect
@@ -158,7 +158,7 @@ test('the 3D scene and the map run under the policy without a violation', async 
         { timeout: 20_000 },
       )
       .toBe(true);
-    await bar.getByRole('button', { name: '3D' }).click();
+    await stageMode(win, '3D');
     await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
 
     expect(await win.evaluate(() => (window as { __cspSeen?: string[] }).__cspSeen)).toEqual([]);

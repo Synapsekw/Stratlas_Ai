@@ -2,8 +2,8 @@
  * The 3D scene sits on the street map. The tiny project (a model on the ground, placed on the
  * Earth) with a synthetic street pack over its site (empty vector tiles: valid, nothing drawn)
  * opens with the street map under it: the rings in the scene, nearest first, instead of the plain
- * ground, and the toolbar button pressed. The button takes it away and brings it back, and the
- * choice is kept for the project. In the smallest window the button is under More tools.
+ * ground, and the island's button pressed. The button takes it away and brings it back, and the
+ * choice is kept for the project. The button is in the island's Display set, at every width.
  */
 import { toWgs84 } from '@aio/geo';
 import type { Page } from '@playwright/test';
@@ -11,6 +11,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pmtilesArchive, tilesOver } from '../src/main/testing';
 import { expect, test as base, tinyManifest, type DataRoot } from './fixtures';
+import { islandGroup } from './island';
 
 const NAME = 'E2E tiny project';
 
@@ -69,18 +70,15 @@ const ground = (win: Page) =>
     };
   });
 
-const stageBar = (win: Page) => win.getByRole('toolbar', { name: 'Stage tools' });
-
 async function openProject(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: NAME }).first().click();
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 30_000 });
 }
 
-/** The street map button, on the bar or under More tools when its group is folded there. */
+/** The street map button, in the island's Display set. */
 async function streetButton(win: Page) {
-  const button = win.getByTestId('street-map-3d');
-  if (!(await button.isVisible()))
-    await stageBar(win).getByRole('button', { name: 'More tools', exact: true }).click();
+  const full = await islandGroup(win, 'display');
+  const button = full.getByTestId('street-map-3d');
   await expect(button).toBeVisible();
   return button;
 }
@@ -125,17 +123,14 @@ test('a project opens on the street map, and the button takes it away and brings
 test.describe('the smallest window', () => {
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x700' } });
 
-  test('the street map button is under More tools and works from there', async ({ win }) => {
+  test('the street map button is in the Display set there too, and works from there', async ({
+    win,
+  }) => {
     await openProject(win);
     await expect.poll(() => ground(win), { timeout: 60_000 }).toMatchObject({ plain: false });
-    const bar = stageBar(win);
-    // Labels and layers is the first group to fold at this width
-    const more = bar.getByRole('button', { name: 'More tools', exact: true });
-    await expect(more).toBeVisible({ timeout: 30_000 });
+    // the island keeps every tool where it is at every width (D6): nothing folds away
     await expect(win.getByTestId('street-map-3d')).toHaveCount(0);
-    await more.click();
-    const button = win.getByTestId('street-map-3d');
-    await expect(button).toBeVisible();
+    const button = await streetButton(win);
     await expect(button).toHaveAttribute('aria-pressed', 'true');
     await button.click();
     await expect.poll(() => ground(win), { timeout: 15_000 }).toEqual({ rings: 0, plain: true });

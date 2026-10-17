@@ -27,6 +27,15 @@ import {
   tinyManifest,
   type DataRoot,
 } from './fixtures';
+import {
+  closeIslandTools,
+  compareDatesButton,
+  type GroupId,
+  islandGroup,
+  openIslandTools,
+  stageMode,
+  stageModeButton,
+} from './island';
 import { hasRealProject, missingRealProject } from './realData';
 
 test.setTimeout(240_000);
@@ -138,8 +147,8 @@ async function openProject(win: Page, name: string) {
  * A stage popover opened from its tool by keyboard: focus moves inside, Tab stays inside, Esc
  * closes it and focus is back on the tool. Audits the open popover.
  */
-async function popoverByKeyboard(win: Page, label: string, within?: Locator) {
-  const tool = (within ?? win.locator('.stbar')).getByRole('button', { name: label, exact: true });
+async function popoverByKeyboard(win: Page, label: string, within: Locator) {
+  const tool = within.getByRole('button', { name: label, exact: true });
   await tool.focus();
   await win.keyboard.press('Enter');
   const pop = win.getByRole('dialog', { name: label });
@@ -299,37 +308,45 @@ test.describe('a synthetic project', () => {
     await openProject(win, 'E2E accessibility');
     await expectAccessible(win, 'Scene, 3D');
 
-    // the stage tools are one toolbar: Left and Right move between them
+    // the stage tools are the island: open, Left and Right move along its first row
     const bar = win.getByRole('toolbar', { name: 'Stage tools' });
     await expect(bar).toBeVisible();
-    await bar.getByRole('button', { name: '3D' }).focus();
+    const modes = (await openIslandTools(win)).getByRole('group', { name: 'Stage view' });
+    await modes.getByRole('button', { name: '3D' }).focus();
     await win.keyboard.press('ArrowRight');
-    await expect(bar.getByRole('button', { name: 'Map' })).toBeFocused();
+    await expect(modes.getByRole('button', { name: 'Map' })).toBeFocused();
     await win.keyboard.press('ArrowLeft');
-    await expect(bar.getByRole('button', { name: '3D' })).toBeFocused();
+    await expect(modes.getByRole('button', { name: '3D' })).toBeFocused();
+    await expectAccessible(win, 'Scene, island open');
+    await closeIslandTools(win);
 
-    // Every stage popover, wherever the window width puts its tool: on the bar, or folded into
-    // More tools. How many fold depends on the window, and the window on the screen (the macOS
-    // runner's display is smaller than the default 1440 x 900, so the window opens narrower than
-    // on Windows), so the bar is walked first at the size the window got, then again at the
-    // smallest window the app allows, where tools fold on every platform.
-    const POPOVERS = [
-      'View presets',
-      'Layers and issue pins',
-      'Point cloud',
-      'Environment and time of day',
-      'See inside the asset: cut or transparent',
+    // Every stage popover, from its group's set in the island. The island keeps every tool in
+    // the same place at every width (D6), so the sets are walked at the size the window got and
+    // again in the smallest window the app allows. Esc closes the inner popover first.
+    const POPOVERS: [string, GroupId][] = [
+      ['View presets', 'view'],
+      ['Layers and issue pins', 'display'],
+      ['Point cloud', 'clouds'],
+      ['Environment and time of day', 'view'],
+      ['See inside the asset: cut or transparent', 'view'],
     ];
-    const opened = new Set<string>();
-    const walkBar = async () => {
-      for (const label of POPOVERS) {
-        const tool = bar.getByRole('button', { name: label, exact: true });
-        if ((await tool.count()) === 0 || !(await tool.isEnabled())) continue;
-        await popoverByKeyboard(win, label);
-        opened.add(label);
+    const walkSets = async () => {
+      const opened = new Set<string>();
+      for (const [label, group] of POPOVERS) {
+        const full = await islandGroup(win, group);
+        const tool = full.getByRole('button', { name: label, exact: true });
+        if ((await tool.count()) > 0 && (await tool.isEnabled())) {
+          await popoverByKeyboard(win, label, full);
+          await expect(full, `the ${group} set stays open after closing ${label}`).toBeVisible();
+          opened.add(label);
+        }
+        await win.keyboard.press('Escape');
+        await expect(full).toBeHidden();
       }
+      return [...opened].sort();
     };
-    await walkBar();
+    const all = POPOVERS.map(([label]) => label).sort();
+    expect(await walkSets(), 'popovers opened at the first size').toEqual(all);
     const firstWidth = await win.evaluate(() => window.innerWidth);
     const size = await app.evaluate(({ BrowserWindow }) => {
       const w = BrowserWindow.getAllWindows()[0];
@@ -339,45 +356,16 @@ test.describe('a synthetic project', () => {
       w.setContentSize(minW, minH);
       return [...before, minW];
     });
-    // More tools may already show at the first size (a narrower screen), so it is no sign the bar
-    // has refitted: wait until the renderer has the new size and every tool is inside the bar.
+    // the renderer has the new size (or the window was at its smallest already)
     await expect
       .poll(() =>
-        bar.evaluate(
-          (el, { first, min }) => {
-            const end = el.getBoundingClientRect().right + 1;
-            const inside = [...el.children].every((c) => c.getBoundingClientRect().right <= end);
-            return (window.innerWidth < first || first <= min) && inside;
-          },
-          { first: firstWidth, min: size?.[2] ?? 0 },
-        ),
+        win.evaluate(({ first, min }) => window.innerWidth < first || first <= min, {
+          first: firstWidth,
+          min: size?.[2] ?? 0,
+        }),
       )
       .toBe(true);
-    const more = bar.getByRole('button', { name: 'More tools', exact: true });
-    await expect(more, 'tools fold into More tools in the smallest window').toBeVisible();
-    await walkBar();
-    // the folded tools, from inside the More tools popover; Esc closes the inner popover first
-    const folded: string[] = [];
-    for (const label of POPOVERS) {
-      await more.focus();
-      await win.keyboard.press('Enter');
-      const menu = win.getByRole('dialog', { name: 'More tools' });
-      await expect(menu).toBeVisible();
-      const tool = menu.getByRole('button', { name: label, exact: true });
-      if ((await tool.count()) > 0 && (await tool.isEnabled())) {
-        await popoverByKeyboard(win, label, menu);
-        await expect(menu, `More tools stays open after closing ${label}`).toBeVisible();
-        folded.push(label);
-        opened.add(label);
-      }
-      await win.keyboard.press('Escape');
-      await expect(menu).toBeHidden();
-      await expect(more).toBeFocused();
-    }
-    expect(folded.length, 'popovers opened from More tools').toBeGreaterThan(0);
-    expect([...opened].sort(), `popovers opened: ${[...opened].join(', ')}`).toEqual(
-      [...POPOVERS].sort(),
-    );
+    expect(await walkSets(), 'popovers opened in the smallest window').toEqual(all);
     await app.evaluate(({ BrowserWindow }, s) => {
       if (s) BrowserWindow.getAllWindows()[0]?.setContentSize(s[0] ?? 1440, s[1] ?? 900);
     }, size);
@@ -404,13 +392,14 @@ test.describe('a synthetic project', () => {
     await win.keyboard.press('Escape');
     await win.locator('body').press('2');
     await expect(win.locator('.app')).toBeVisible();
-    await expect(bar.getByRole('button', { name: 'Map' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(await stageModeButton(win, 'Map')).toHaveAttribute('aria-pressed', 'true');
+    await closeIslandTools(win);
     await expectAccessible(win, 'Scene, Map');
-    await bar.getByRole('button', { name: 'Split' }).click();
+    await stageMode(win, 'Split');
     await expectAccessible(win, 'Scene, Split');
 
     // compare two dates in the split
-    const compare = win.getByTestId('compare-dates');
+    const compare = await compareDatesButton(win);
     if (await compare.count()) {
       // A software GPU (CI) is the Low tier, where Compare dates offers two maps by design; the
       // audit covers the two 3D views, so pin Medium there (as compare.spec does).
@@ -427,10 +416,12 @@ test.describe('a synthetic project', () => {
         if (g.tier === 'low') g.setOverride('medium');
       });
       await compare.click();
+      await closeIslandTools(win);
       await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
       await expectAccessible(win, 'Scene, compare dates');
     }
-    await bar.getByRole('button', { name: '3D' }).click();
+    await closeIslandTools(win);
+    await stageMode(win, '3D');
 
     for (const screen of ['Issues', 'Media', 'Detections', 'Reports']) {
       await nav(win, screen);
@@ -549,16 +540,18 @@ test.describe('@realdata HCl (real data, local only)', () => {
       });
       await expect(win.locator('.vwin').first()).toBeVisible({ timeout: 60_000 });
       await expectAccessible(win, 'HCl, scene with the video window');
-      const bar = win.getByRole('toolbar', { name: 'Stage tools' });
-      for (const label of [
-        'Layers and issue pins',
-        'Point cloud',
-        'See inside the asset: cut or transparent',
-        'Flight paths',
-      ]) {
-        const tool = bar.getByRole('button', { name: label, exact: true });
-        if ((await tool.count()) === 0 || !(await tool.isEnabled())) continue;
-        await popoverByKeyboard(win, label);
+      for (const [label, group] of [
+        ['Layers and issue pins', 'display'],
+        ['Point cloud', 'clouds'],
+        ['See inside the asset: cut or transparent', 'view'],
+        ['Flight paths', 'video'],
+      ] as const) {
+        const full = await islandGroup(win, group);
+        const tool = full.getByRole('button', { name: label, exact: true });
+        if ((await tool.count()) > 0 && (await tool.isEnabled()))
+          await popoverByKeyboard(win, label, full);
+        await win.keyboard.press('Escape');
+        await expect(full).toBeHidden();
       }
       await win.getByRole('tab', { name: /Issues/ }).click();
       await win.locator('.ann-list [role="option"]').first().click();

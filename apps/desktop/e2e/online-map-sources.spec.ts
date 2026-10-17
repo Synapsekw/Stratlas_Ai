@@ -8,6 +8,7 @@
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { stageMode } from './island';
 
 test.use({ appEnv: { QUADRION_ONLINE_TILES_TEST: '1' } });
 test.setTimeout(240_000);
@@ -29,18 +30,10 @@ const tileStatus = (win: Page, path: string) =>
     return { status: res.status, why: res.headers.get('x-aio-online') };
   }, `aio://online/${path}`);
 
-const stageView = (win: Page, name: '3D' | 'Map') =>
-  win
-    .getByRole('toolbar', { name: 'Stage tools' })
-    .getByRole('group', { name: 'Stage view' })
-    .getByRole('button', { name, exact: true });
-
 async function openProject(win: Page, view: '3D' | 'Map'): Promise<void> {
   await win.locator('.nav-item', { hasText: 'Projects' }).click();
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  const button = stageView(win, view);
-  await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await stageMode(win, view);
 }
 
 async function openSettings(win: Page, page: string): Promise<void> {

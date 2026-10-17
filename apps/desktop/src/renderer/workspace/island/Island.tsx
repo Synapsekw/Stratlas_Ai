@@ -202,10 +202,14 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       const h = el.offsetHeight;
       // open, the stage's overlays under it (.stage-under) move below its bottom edge, and below
       // the T notice under it (I-R18)
+      // (the capsule is still at its old size here, so the notice is placed by the new height h:
+      // its gap above it is the same at every size)
       if (open) {
-        const top = root.current?.offsetTop ?? 0;
+        const wrap = root.current;
+        const top = wrap?.offsetTop ?? 0;
         const note = noticeRef.current;
-        const bottom = Math.max(top + h, note ? top + note.offsetTop + note.offsetHeight : 0);
+        const gap = note && wrap ? note.offsetTop - wrap.offsetHeight : 0;
+        const bottom = top + h + (note ? gap + note.offsetHeight : 0);
         stageEl?.style.setProperty('--isl-open-b', `${String(bottom)}px`);
       } else stageEl?.style.removeProperty('--isl-open-b');
       if (!w || !h) return;

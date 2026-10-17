@@ -24,6 +24,7 @@ import {
   test as plain,
   VENV_PYTHON,
 } from './fixtures';
+import { closeIslandTools, stageModeButton } from './island';
 import {
   buildPhotoPack,
   CAMERAS,
@@ -305,9 +306,8 @@ test.describe('on the stand-in pipelines', () => {
     await expect(drawer).toHaveCount(0);
     await panel.getByRole('button', { name: 'Show on map' }).click();
     await expect(panel).toHaveCount(0);
-    await expect(
-      win.getByRole('group', { name: 'Stage view' }).getByRole('button', { name: 'Map' }),
-    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(await stageModeButton(win, 'Map')).toHaveAttribute('aria-pressed', 'true');
+    await closeIslandTools(win);
   });
 
   test('cancel keeps the work, resume continues, and a photo job opens its run', async ({

@@ -24,6 +24,7 @@ import {
   tinyManifest,
   VENV_PYTHON,
 } from './fixtures';
+import { islandTool } from './island';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const CHANGE_COPC = join(repo, 'packages', 'pointcloud', 'test-data', 'change.copc.laz');
@@ -122,7 +123,7 @@ async function openYard(win: Page) {
 
 /** Point cloud panel, Colour by: Change. */
 async function colourByChange(win: Page) {
-  await win.getByRole('button', { name: 'Point cloud', exact: true }).click();
+  await (await islandTool(win, 'clouds', 'Point cloud')).click();
   const panel = win.getByTestId('cloud-panel');
   await expect(panel.getByRole('button', { name: 'Change', exact: true })).toBeVisible({
     timeout: 30_000,

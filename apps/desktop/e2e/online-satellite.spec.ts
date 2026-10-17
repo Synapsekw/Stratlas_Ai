@@ -13,6 +13,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
+import { stageMode } from './island';
 
 test.use({ appEnv: { QUADRION_ONLINE_TILES_TEST: '1' } });
 // the first test opens the project's Map three times; the software GPU of CI is slow at it
@@ -32,13 +33,7 @@ async function openSettings(win: Page, page: string): Promise<void> {
 async function openMap(win: Page): Promise<void> {
   await win.locator('.nav-item', { hasText: 'Projects' }).click();
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  // the view switch of the stage toolbar (the one control of that name there)
-  const map = win
-    .getByRole('toolbar', { name: 'Stage tools' })
-    .getByRole('group', { name: 'Stage view' })
-    .getByRole('button', { name: 'Map', exact: true });
-  await map.click();
-  await expect(map).toHaveAttribute('aria-pressed', 'true');
+  await stageMode(win, 'Map');
 }
 
 /** The addresses main's stand-in for the service was asked for. */

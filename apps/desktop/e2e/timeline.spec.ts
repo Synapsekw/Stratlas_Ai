@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, openProject, test as base, tinyManifest, type DataRoot } from './fixtures';
+import { openIslandCalendar } from './island';
 
 /**
  * The tiny fixture project with its one capture removed, written before the app starts (list
@@ -156,7 +157,7 @@ async function expand(win: Page, folder: string) {
 test.describe('survey date timeline', () => {
   test('opens on the latest date with other dates hidden', async ({ threeDateProject, win }) => {
     await openThreeDates(win, threeDateProject.id);
-    await expect(win.getByTestId('date-bar-open')).toContainText('6 Nov 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/6 Nov 2024/);
     await expect(win.getByTestId('date-folder-nov')).toHaveAttribute('aria-expanded', 'true');
     await expect(win.getByTestId('date-folder-oct')).toHaveAttribute('aria-expanded', 'false');
     expect(await hidden(win)).toEqual(['quad-oct', 'quad-sep', 'site-oct', 'site-sep']);
@@ -174,10 +175,10 @@ test.describe('survey date timeline', () => {
       .locator('.titem', { hasText: 'Quad' })
       .locator('.eye')
       .click();
-    await win.getByTestId('date-bar-open').click();
+    await openIslandCalendar(win);
     await win.getByTestId('cal-prev').click(); // November -> October
     await win.getByTestId('cal-day-2024-10-02').click();
-    await expect(win.getByTestId('date-bar-open')).toContainText('2 Oct 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/2 Oct 2024/);
     await expect(win.getByTestId('date-folder-oct')).toHaveAttribute('aria-expanded', 'true');
     await expect(win.getByTestId('date-on-sep')).toHaveText('1 on');
     expect(await hidden(win)).toEqual(['quad-nov', 'site-nov', 'site-sep']);
@@ -186,19 +187,19 @@ test.describe('survey date timeline', () => {
   test('Alt+Left and Alt+Right step dates', async ({ threeDateProject, win }) => {
     await openThreeDates(win, threeDateProject.id);
     await win.keyboard.press('Alt+ArrowLeft');
-    await expect(win.getByTestId('date-bar-open')).toContainText('2 Oct 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/2 Oct 2024/);
     await win.keyboard.press('Alt+ArrowRight');
-    await expect(win.getByTestId('date-bar-open')).toContainText('6 Nov 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/6 Nov 2024/);
   });
 
   test('focus survives reopening the project', async ({ threeDateProject, win }) => {
     await openThreeDates(win, threeDateProject.id);
     await win.getByTestId('date-name-sep').click();
-    await expect(win.getByTestId('date-bar-open')).toContainText('4 Sep 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     await win.reload();
     await win.waitForLoadState('domcontentloaded');
     await openThreeDates(win, threeDateProject.id);
-    await expect(win.getByTestId('date-bar-open')).toContainText('4 Sep 2024');
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
   });
 
   test('a project without captures keeps the type-first tree and no date bar', async ({
@@ -478,8 +479,8 @@ test.describe('survey date folders', () => {
 
     // the same colour everywhere: the date bar of the viewed date
     await win.getByTestId('date-name-oct').click();
-    await expect(win.getByTestId('date-bar-open')).toContainText('2 Oct 2024');
-    await expect(win.getByTestId('date-bar-open').locator('.dtag')).toHaveAttribute(
+    await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/2 Oct 2024/);
+    await expect(win.getByTestId('date-bar-open').locator('.isl-swatch')).toHaveAttribute(
       'style',
       /--date-5/,
     );

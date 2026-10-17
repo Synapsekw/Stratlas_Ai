@@ -9,6 +9,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { expect, realDataTest } from './fixtures';
+import { closeIslandTools, islandCutOff, islandGroup, islandRow } from './island';
 import { hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 /** Issues saved in the real project: 11 imported plus any the founder added while testing. */
@@ -210,25 +211,15 @@ async function openHcl(app: ElectronApplication, win: Page, width = 1440, height
     .toBe(true);
 }
 
-/** Rows the stage toolbar's items sit on (by their vertical centres). */
-const toolbarRows = (win: Page) =>
-  win.evaluate(() => {
-    const mids = [...document.querySelectorAll('.stbar > :not(.stbar-sp)')].map((e) => {
-      const r = e.getBoundingClientRect();
-      return Math.round((r.top + r.bottom) / 2 / 8);
-    });
-    return new Set(mids).size;
-  });
-
-test('@realdata stage polish: one-row toolbar, label modes, annotate tools on demand, camera memory', async ({
+test('@realdata stage polish: island tools in view, label modes, annotate tools on demand, camera memory', async ({
   app,
   win,
 }) => {
   await openHcl(app, win);
 
-  // The toolbar fits one row at 1440 px without an overflow menu.
-  await expect.poll(() => toolbarRows(win)).toBe(1);
-  await expect(win.getByRole('button', { name: 'More tools' })).toHaveCount(0);
+  // The island's tools fit their capsule at 1440 px: nothing cut off, nothing folded away.
+  expect(await islandCutOff(win)).toEqual([]);
+  await closeIslandTools(win);
 
   // Key labels by default: a few group callouts, not every component.
   const callouts = () => win.locator('[data-callout]').count();
@@ -249,7 +240,11 @@ test('@realdata stage polish: one-row toolbar, label modes, annotate tools on de
   await expect(win.locator('.ann-subbar')).toHaveCount(0);
 
   // Space plays and pauses even right after clicking a stage tool.
-  await win.getByRole('button', { name: 'Measure a distance' }).click();
+  await (
+    await islandRow(win, 'measure')
+  )
+    .getByRole('button', { name: 'Measure a distance' })
+    .click();
   await win.keyboard.press('Space');
   await expect.poll(async () => (await clock(win)).playing).toBe(true);
   await win.keyboard.press('Space');
@@ -295,12 +290,14 @@ test('@realdata stage polish: one-row toolbar, label modes, annotate tools on de
   if (!before || !after) throw new Error('no view');
   for (let i = 0; i < 3; i++) expect(after.position[i]).toBeCloseTo(before.position[i] ?? 0, 0);
 
-  // At 1100 px the toolbar still fits one row, with the rest under More.
+  // At 1100 px the island's tools still fit, the tabs down to their icons.
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setContentSize(1100, 800);
   });
-  await expect(win.getByRole('button', { name: 'More tools' })).toBeVisible();
-  await expect.poll(() => toolbarRows(win)).toBe(1);
+  // (the window's minimum may keep the page a few px wider than asked)
+  await expect.poll(() => win.evaluate(() => innerWidth)).toBeLessThan(1200);
+  await expect.poll(() => islandCutOff(win)).toEqual([]);
+  await closeIslandTools(win);
 });
 
 /** The tank's materials as the renderer draws them (blending, opacity, depth writes). */
@@ -366,8 +363,9 @@ test('@realdata the tank is cut or made transparent only by hand; photos and fli
   expect(await cloudsHidden()).toBe(false);
   await win.keyboard.press('Space');
 
-  // Cut, by hand from the toolbar: the section opens at the drone and the clouds hide.
-  const tool = win.getByRole('button', { name: 'See inside the asset: cut or transparent' });
+  // Cut, by hand from the island's View set: the section opens at the drone and the clouds hide.
+  const view = await islandGroup(win, 'view');
+  const tool = view.getByRole('button', { name: 'See inside the asset: cut or transparent' });
   await tool.click();
   const panel = win.getByTestId('cutaway-panel');
   await panel.getByRole('button', { name: 'Cut', exact: true }).click();
@@ -475,7 +473,7 @@ test('@realdata the video window moves, resizes with its aspect ratio and rememb
   await win.mouse.up();
   const corner = await boxOf(win, 'video-window');
   expect(corner.x + corner.width).toBeLessThanOrEqual(stage.x + stage.width - 11);
-  // the title bar stays below the toolbar row, where it can be grabbed again
+  // the title bar stays below the island's row, where it can be grabbed again
   expect(corner.y).toBeGreaterThanOrEqual(stage.y + 55);
   // ... and back to the left, half way down
   const head2 = await boxOf(win, 'video-header');

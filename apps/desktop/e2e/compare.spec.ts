@@ -19,6 +19,7 @@ import {
   tinyGlb,
   tinyManifest,
 } from './fixtures';
+import { closeIslandTools, islandGroup, islandRow, stageMode, toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
 import { copyRealData, hasRealData, missingRealProject, realProjectDir } from './realData';
 
@@ -268,21 +269,16 @@ function measuresOnMaps(win: Page) {
   );
 }
 
-/** The Photo, Elevation or Cut / fill switch of a stockpile project (under More tools when folded). */
+/** The Photo, Elevation or Cut / fill switch of a stockpile project (the island's Volumes set). */
 async function surfaceColours(win: Page, name: 'Photo' | 'Elevation' | 'Cut / fill') {
-  const button = win
+  const full = await islandGroup(win, 'volumes');
+  const button = full
     .getByRole('group', { name: 'Surface colours' })
     .getByRole('button', { name, exact: true });
-  // The toolbar may fold or unfold the group between the look and the click (it measures itself
-  // again when the views change), so both are tried together until the click lands. More tools
-  // is a toggle: a try that closed it opens it again on the next one. Pressing the switch twice
-  // changes nothing.
-  await expect(async () => {
-    if (!(await button.isVisible()))
-      await win.getByRole('button', { name: 'More tools' }).click({ timeout: 2_000 });
-    await button.click({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
+  await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await win.keyboard.press('Escape');
+  await expect(full).toHaveCount(0);
 }
 
 /** The surface colours draped on each 3D view: the survey (epoch) of each drape that shows. */
@@ -395,7 +391,9 @@ fixtures(
     // one capture: no comparison offered
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
     await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
+    await islandRow(win, 'view');
     await expect(win.getByTestId('compare-dates')).toHaveCount(0);
+    await closeIslandTools(win);
     await win.keyboard.press('3');
     const right = win.getByTestId('pane-chooser-right').locator('select').first();
     await expect(right.locator('option[value="3d"]')).toBeDisabled();
@@ -407,7 +405,7 @@ fixtures(
     await win.getByTestId('project-card').filter({ hasText: 'E2E two dates' }).first().click();
     await expect(win.locator('[data-scene-view=""] canvas')).toBeVisible();
     await pinTwoViewTier(win);
-    await win.getByTestId('compare-dates').click();
+    await toggleCompareDates(win);
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
     await expectPane(win, 'left', '3d', 'jan', '1 Jan 2026');
     await expectPane(win, 'right', '3d', 'jun', '1 Jun 2026');
@@ -456,7 +454,7 @@ fixtures(
     // on its latest date (June), which hides the January model, and the comparison did not change
     // that, so only the June model is shown.
     await pinTwoViewTier(win);
-    await win.getByTestId('compare-dates').click();
+    await toggleCompareDates(win);
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1);
     await expect
       .poll(() => layerState(win, ids))
@@ -483,7 +481,7 @@ fixtures(
 
     // two 3D views: January on the left, June on the right, each with its own
     await pinTwoViewTier(win);
-    await win.getByTestId('compare-dates').click();
+    await toggleCompareDates(win);
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2, { timeout: 30_000 });
     await expectPane(win, 'left', '3d', 'jan');
     await expect
@@ -502,15 +500,10 @@ fixtures(
 
     // two maps: the same rule
     await pinTwoViewTier(win);
-    await win.getByTestId('compare-dates').click();
+    await toggleCompareDates(win);
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(1, { timeout: 30_000 });
-    const modes = win.getByRole('toolbar', { name: 'Stage tools' });
-    await modes.getByRole('button', { name: 'Map', exact: true }).click();
-    await expect(modes.getByRole('button', { name: 'Map', exact: true })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    await win.getByTestId('compare-dates').click();
+    await stageMode(win, 'Map');
+    await toggleCompareDates(win);
     await expect(win.locator('.pane-map')).toHaveCount(2, { timeout: 30_000 });
     await expectPane(win, 'left', 'map', 'jan');
     await expectPane(win, 'right', 'map', 'jun');
@@ -724,7 +717,7 @@ real.describe('@realdata Masafi', () => {
 
       // Compare dates: 31 Dec 2020 on the left, 10 Jan 2021 on the right
       await pinTwoViewTier(win);
-      await win.getByTestId('compare-dates').click();
+      await toggleCompareDates(win);
       await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
       await expectPane(win, 'left', '3d', 'survey-2020-12-31', '31 Dec 2020');
       await expectPane(win, 'right', '3d', 'survey-2021-01-10');
@@ -1089,7 +1082,7 @@ real.describe('@realdata Al-Zour with a synthetic second survey', () => {
       const single = await measure(app, win, 6000);
 
       await pinTwoViewTier(win);
-      await win.getByTestId('compare-dates').click();
+      await toggleCompareDates(win);
       await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
       await expect
         .poll(() => layerState(win, ['plant', 'ortho', 'ortho-2023-08-30']), { timeout: 60_000 })

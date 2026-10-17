@@ -9,6 +9,7 @@ import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test, tinyManifest } from './fixtures';
+import { islandTool } from './island';
 
 const FIXTURE = join(
   import.meta.dirname,
@@ -205,7 +206,7 @@ test('elevation colours spread over the cloud heights, with a hand-set range', a
   if (SHOTS) await win.screenshot({ path: join(SHOTS, 'copc-synthetic-elevation.png') });
 
   // the point cloud panel stretches the ramp by hand and Auto brings the automatic range back
-  await win.getByRole('button', { name: 'Point cloud', exact: true }).click();
+  await (await islandTool(win, 'clouds', 'Point cloud')).click();
   const range = win.getByTestId('elevation-range');
   await expect(range.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
   await range.getByLabel('Elevation ramp top').fill('5');
