@@ -314,6 +314,125 @@ test('docked, the video shares the stage across a divider, under or beside the v
   await expect(win.getByTestId('video-window')).toBeVisible();
 });
 
+test('a click through the volumes hint picks the pile under it', async ({ win }, info) => {
+  await openTankFarm(win);
+  // Volumes in front and the video docked, as above: the hint has its corner
+  await islandGroup(win, 'volumes');
+  await win.keyboard.press('Escape');
+  await win.getByRole('button', { name: 'Dock the video window' }).click();
+  const hint = win.getByTestId('vol-hint');
+  await expect(hint).toBeVisible(VIEW_READY);
+  const box = await hint.boundingBox();
+  if (!box) throw new Error('no hint');
+  const aim = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  // pan the camera until a pile stands under the hint's middle
+  const pile = await win.evaluate(({ x, y }) => {
+    interface V {
+      x: number;
+      y: number;
+      z: number;
+      clone(): V;
+      project(c: unknown): V;
+      applyMatrix4(m: unknown): V;
+      sub(v: V): V;
+      add(v: V): V;
+      length(): number;
+      setFromMatrixColumn(m: unknown, i: number): V;
+      multiplyScalar(k: number): V;
+    }
+    const w = window as unknown as {
+      __stratlas: {
+        stage(): {
+          canvas: HTMLCanvasElement;
+          camera: {
+            fov: number;
+            aspect: number;
+            position: V;
+            matrixWorld: unknown;
+            updateMatrixWorld(): void;
+          };
+          controls: { target: V; update(): void };
+          scene: { getObjectByName(n: string): unknown };
+          renderNow(): void;
+        } | null;
+        volumetric: {
+          getState(): {
+            epoch: string;
+            piles: { id: string; epochs: Record<string, { node: string } | undefined> }[];
+          };
+        };
+      };
+    };
+    const stage = w.__stratlas.stage();
+    const vol = w.__stratlas.volumetric.getState();
+    if (!stage) return null;
+    const r = stage.canvas.getBoundingClientRect();
+    const hx = ((x - r.left) / r.width) * 2 - 1;
+    const hy = 1 - ((y - r.top) / r.height) * 2;
+    for (const p of vol.piles) {
+      const node = p.epochs[vol.epoch]?.node;
+      const obj = node
+        ? (stage.scene.getObjectByName(node) as
+            { traverse(cb: (o: unknown) => void): void } | undefined)
+        : undefined;
+      const found: V[] = [];
+      obj?.traverse((o) => {
+        const m = o as {
+          isMesh?: boolean;
+          matrixWorld: unknown;
+          geometry?: { boundingSphere: { center: V } | null; computeBoundingSphere(): void };
+        };
+        if (found.length > 0 || !m.isMesh || !m.geometry) return;
+        if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+        const c = m.geometry.boundingSphere?.center;
+        if (c) found.push(c.clone().applyMatrix4(m.matrixWorld));
+      });
+      const centre = found[0];
+      if (!centre) continue;
+      const cam = stage.camera;
+      const tan = Math.tan((cam.fov * Math.PI) / 360);
+      for (let i = 0; i < 4; i++) {
+        cam.updateMatrixWorld();
+        const at = centre.clone().project(cam);
+        const d = centre.clone().sub(cam.position).length();
+        const right = cam.position.clone().setFromMatrixColumn(cam.matrixWorld, 0);
+        const up = cam.position.clone().setFromMatrixColumn(cam.matrixWorld, 1);
+        const move = right
+          .multiplyScalar((at.x - hx) * d * tan * cam.aspect)
+          .add(up.multiplyScalar((at.y - hy) * d * tan));
+        cam.position.add(move);
+        stage.controls.target.add(move);
+        stage.controls.update();
+      }
+      stage.renderNow();
+      return p.id;
+    }
+    return null;
+  }, aim);
+  expect(pile).not.toBeNull();
+  // the hint is still there, and the click lands on the 3D view under it
+  await expect(hint).toBeVisible();
+  const top = await win.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.tagName ?? null,
+    aim,
+  );
+  expect(top).toBe('CANVAS');
+  await win.mouse.click(aim.x, aim.y);
+  await expect
+    .poll(() =>
+      win.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __stratlas: { volumetric: { getState(): { selected: string | null } } };
+            }
+          ).__stratlas.volumetric.getState().selected,
+      ),
+    )
+    .toBe(pile);
+  await shot(win, info, 'vol-hint-click-through-1100.png');
+});
+
 test('with the drawer open, the corners at its side keep clear of it', async ({ win }, info) => {
   await openTankFarm(win);
   // the right sidebar folded: a live tool slides its bench in as the drawer

@@ -2208,6 +2208,10 @@ svg.flip {
 .stage-slot > * {
   pointer-events: auto;
 }
+/* the hint only reads: a click on it reaches the pile under it */
+.stage-slot > .vol-legend:not(.live) {
+  pointer-events: none;
+}
 .stage-views:has(> .stage-panes.with-dock) > .stage-slot {
   --slot-dock: var(--dock-w);
 }
