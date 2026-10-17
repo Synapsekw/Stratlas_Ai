@@ -2068,6 +2068,16 @@ button.chip-status:hover {
 .stage-panes[data-mode='split'] .cursor-ro {
   min-inline-size: min(160px, calc(100% - 80px - 2 * var(--sp-5)));
 }
+/* a 3D pane too narrow for it (under 300 px, beside the compass) leaves the readout out: wrapped
+   into a column it would stand over the pane's legends */
+.stage-panes > .pane-3d {
+  container: pane3d / inline-size;
+}
+@container pane3d (max-width: 299px) {
+  .cursor-ro {
+    display: none;
+  }
+}
 .compare-notice {
   max-width: 520px;
   white-space: normal;
