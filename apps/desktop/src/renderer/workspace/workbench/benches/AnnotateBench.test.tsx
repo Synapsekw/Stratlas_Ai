@@ -9,6 +9,7 @@ import { threeDates } from '../../__fixtures__/threeDates';
 import { beginIssueEdit } from '../../../issueCard/state';
 import { useStageKeys } from '../../stageKeys';
 import { sectionStore } from '../sectionState';
+import { personToolLive } from '../tabsModel';
 import { workbench } from '../workbenchStore';
 import { AnnotateBench, useAnnotateFollow } from './AnnotateBench';
 import { annotateStage, useAnnotateStageBridge } from './annotateStage';
@@ -162,6 +163,27 @@ describe('A opens Annotate', () => {
     // the drawer opens on a tool start (Drawer.tsx follows toolSeq)
     expect(workbench.getState().toolSeq).toBe(seq + 1);
     expect(workbench.getState().front).toBe('annotate');
+    act(() => {
+      shell.getState().setRight(false);
+    });
+  });
+
+  it('mounted again while annotating (the Scene left and come back to), starts nothing twice', () => {
+    act(() => {
+      shell.getState().setRight(true);
+    });
+    render(false);
+    press('a');
+    const seq = workbench.getState().toolSeq;
+    // the Scene unmounts, then mounts again
+    act(() => root?.unmount());
+    root = undefined;
+    render(false);
+    expect(workbench.getState().toolSeq).toBe(seq);
+    expect(workbench.getState().tabs.filter((t) => t.id === 'annotate' && t.live)).toHaveLength(1);
+    press('a');
+    expect(shell.getState().annotating).toBe(false);
+    expect(personToolLive(workbench.getState().tabs)).toBe(false);
     act(() => {
       shell.getState().setRight(false);
     });

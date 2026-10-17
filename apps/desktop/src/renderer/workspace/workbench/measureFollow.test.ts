@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { followRoadMeasure } from './measureFollow';
+import { followMeasureTool, followRoadMeasure } from './measureFollow';
+import { personToolLive } from './tabsModel';
 import { createWorkbenchStore } from './workbenchStore';
 
 vi.mock('../../issueCard/state', () => ({ isIssueEditing: () => false }));
@@ -34,9 +35,41 @@ describe('followRoadMeasure', () => {
     const road = roadMeasure();
     const off = followRoadMeasure(road as never, bench);
     road.setState({ measure: { mode: 'line', vertices: [] } });
-    expect(bench.getState().liveTools).toBe(1);
+    expect(personToolLive(bench.getState().tabs)).toBe(true);
     off();
-    expect(bench.getState().liveTools).toBe(0);
+    expect(personToolLive(bench.getState().tabs)).toBe(false);
     expect(bench.getState().tabs.some((t) => t.id === 'road')).toBe(false);
+  });
+});
+
+describe('followMeasureTool', () => {
+  interface Measuring {
+    tool: { tool: string } | null;
+    focus: string | null;
+    listOpen: boolean;
+  }
+  const measure = () =>
+    createStore<Measuring>()(() => ({ tool: null, focus: null, listOpen: false }));
+
+  it('lets the live Measure tab go when the Scene is left mid-drawing, so none stays live', () => {
+    const bench = createWorkbenchStore(null);
+    const store = measure();
+    const off = followMeasureTool(store as never, bench);
+    store.setState({ tool: { tool: 'distance' } });
+    expect(bench.getState().tabs.find((t) => t.id === 'measure')?.live).toBe(true);
+    // the Scene unmounts: the follower goes
+    off();
+    expect(personToolLive(bench.getState().tabs)).toBe(false);
+    expect(bench.getState().tabs.some((t) => t.id === 'measure')).toBe(false);
+    // back on the Scene: a new follower, then the mount stops the tool it never saw start
+    const again = followMeasureTool(store as never, bench);
+    store.setState({ tool: null });
+    expect(personToolLive(bench.getState().tabs)).toBe(false);
+    // the next tool starts and ends as usual
+    store.setState({ tool: { tool: 'distance' } });
+    expect(personToolLive(bench.getState().tabs)).toBe(true);
+    store.setState({ tool: null });
+    expect(personToolLive(bench.getState().tabs)).toBe(false);
+    again();
   });
 });

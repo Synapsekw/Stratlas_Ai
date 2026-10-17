@@ -8,7 +8,7 @@ import { AnnotationToolbar, type MapDraw } from '@aio/annotate';
 import type { MapDrawMode } from '@aio/maps';
 import { Button, EmptyState, Row, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { shell, useShell } from '../../../shell';
 import { primaryScene } from '../../compare';
 import { followTool } from '../followTool';
@@ -30,7 +30,6 @@ const MAP_MODES: { mode: MapDrawMode; label: MessageKey; tip: MessageKey }[] = [
  */
 export function useAnnotateFollow(): void {
   const annotating = useShell((s) => s.annotating);
-  const was = useRef(false);
   useEffect(
     () =>
       linkLiveTab(
@@ -42,12 +41,14 @@ export function useAnnotateFollow(): void {
       ),
     [],
   );
+  // The tab follows the tools from what is live, not from what this mount saw: mounted again (the
+  // Scene left and come back to) while annotating, the tab is still live from the first start, so
+  // nothing starts twice (no second drawer, no second agent fold, I-R63).
   useEffect(() => {
-    if (annotating === was.current) return;
-    was.current = annotating;
+    const live = workbench.getState().tabs.some((t) => t.id === 'annotate' && t.live);
     // a tool start (D14); a folded sidebar shows it in the drawer, which opens on tool starts
-    if (annotating) followTool('annotate');
-    else workbench.getState().toolStopped('annotate');
+    if (annotating && !live) followTool('annotate');
+    else if (!annotating && live) workbench.getState().toolStopped('annotate');
   }, [annotating]);
 }
 

@@ -1,6 +1,7 @@
 import { workspace } from '@aio/workspace';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { beginIssueEdit, clearIssueEditing } from '../../issueCard/state';
+import { personToolLive } from './tabsModel';
 import {
   createWorkbenchStore,
   linkLiveTab,
@@ -75,6 +76,23 @@ describe('workbench store', () => {
     store.getState().show('measure');
     expect(store.getState().front).toBe('measure');
     expect(store.getState().attention).toBeNull();
+  });
+
+  it('a tool started again while live is one start, and one stop ends it (I-R63)', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().toolStarted('annotate');
+    const seq = store.getState().toolSeq;
+    // a follower mounted again sends the same start
+    store.getState().toolStarted('annotate');
+    expect(store.getState().toolSeq).toBe(seq);
+    expect(personToolLive(store.getState().tabs)).toBe(true);
+    store.getState().toolStopped('annotate');
+    expect(personToolLive(store.getState().tabs)).toBe(false);
+    expect(ids(store.getState())).not.toContain('annotate');
+    // a stop with nothing live changes nothing
+    store.getState().open('display');
+    store.getState().toolStopped('display');
+    expect(ids(store.getState())).toContain('display');
   });
 
   it('pins persist per computer and close unpins', () => {

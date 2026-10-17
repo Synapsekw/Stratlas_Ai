@@ -16,6 +16,7 @@ import { useShell } from '../../shell';
 import './drawer.css';
 import { drawerStore, useDrawer } from './drawerStore';
 import { FrontBody } from './RightSidebar';
+import { personToolLive } from './tabsModel';
 import { useWorkbenchView } from './view';
 import { useWorkbench } from './workbenchStore';
 
@@ -31,7 +32,7 @@ export function Drawer() {
   const road = useIsRoad();
   const { front } = useWorkbenchView();
   const toolSeq = useWorkbench((s) => s.toolSeq);
-  const liveTools = useWorkbench((s) => s.liveTools);
+  const toolLive = useWorkbench((s) => personToolLive(s.tabs));
   const opened = useDrawer((s) => s.opened);
   const [mounted, setMounted] = useState(false);
   const panel = useRef<HTMLElement | null>(null);
@@ -55,10 +56,10 @@ export function Drawer() {
     if (available) drawerStore.getState().open('live');
   }, [toolSeq, available]);
 
-  // the tool ending closes the drawer it opened
+  // the last tool ending closes the drawer it opened
   useEffect(() => {
-    if (liveTools === 0 && drawerStore.getState().opened === 'live') hide();
-  }, [liveTools]);
+    if (!toolLive && drawerStore.getState().opened === 'live') hide();
+  }, [toolLive]);
 
   // the sidebar coming back, or the project closing, ends it
   useEffect(() => {

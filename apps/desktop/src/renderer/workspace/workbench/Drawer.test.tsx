@@ -166,6 +166,16 @@ describe('Drawer', () => {
     expect(drawer()).toBeNull();
   });
 
+  it('slides out when the last tool ends, after a follower sent its start again (I-R63)', () => {
+    render();
+    startTool();
+    // the Scene left and come back to: the follower mounted again sends the same start
+    startTool();
+    expect(drawer()?.dataset.open).toBe('');
+    stopTool();
+    expect(drawer()?.dataset.open).toBeUndefined();
+  });
+
   it('opens on a click on the island, traps focus, and Esc returns focus to the island', async () => {
     render();
     act(() => {

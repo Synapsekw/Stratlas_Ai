@@ -79,6 +79,9 @@ export function followMeasureTool(
   return () => {
     offTab();
     offTool();
+    // unmounted mid-drawing (the Scene left): the live tab is let go with it, as the road's is;
+    // the Scene coming back stops the tool on mount, with no follower that saw it start
+    if (started) bench.getState().toolStopped(BENCH);
   };
 }
 

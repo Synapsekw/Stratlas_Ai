@@ -53,6 +53,21 @@ export interface TabsChange {
   attention: TabId | null;
 }
 
+/**
+ * The live tabs of activities that are not a person's tool (rulings I-R39, I-R43, I-R62): a
+ * playing clip and running jobs are live in the island and the sidebar, but open no drawer and
+ * leave the agent as it is.
+ */
+export const ACTIVITIES: ReadonlySet<TabId> = new Set<TabId>(['jobs', 'video']);
+
+/**
+ * A tool the person started is live: a live tab other than playback and jobs. Read from the tabs,
+ * never counted, so a follower mounted again cannot leave it out of step (I-R63).
+ */
+export function personToolLive(tabs: readonly Tab[]): boolean {
+  return tabs.some((t) => t.live && !ACTIVITIES.has(t.id));
+}
+
 /** Fixed tabs sit at the end of the row in this order (D11). */
 const FIXED_ORDER: readonly TabId[] = ['selection', 'issues', 'volumes', 'changes'];
 
