@@ -8,7 +8,7 @@ import { isTelecomTool } from '@aio/survey';
 import { useEffect } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { isIssueEditing } from '../../issueCard/state';
-import { roadStore, type RoadState } from '../../road/store';
+import { roadStore, setRoad, type RoadState } from '../../road/store';
 import { hydro } from '../../survey/hydroStore';
 import { measureFavourites, type FavouritesState } from '../../survey/measureCatalogue';
 import { measureStore, stopTool, type MeasureState } from '../../survey/measureStore';
@@ -121,14 +121,27 @@ export function linkPanelTab<S>(
 /**
  * The road's measure on the map is a tool (D14): while it draws the Road tab is live, in front
  * unless an issue is being edited, and it closes again when it opened for the tool. Whichever way
- * it starts (the island's tile, the Road workbench, the key). Unmounted mid-measure, the live tab
- * is let go too, so it never stays live with nothing following it. Returns unsubscribe.
+ * it starts (the island's tile, the Road workbench, the key). Closing the live tab with its X
+ * stops the measure. Unmounted mid-measure, the live tab is let go too, so it never stays live
+ * with nothing following it. Returns unsubscribe.
  */
 export function followRoadMeasure(
-  road: Pick<StoreApi<RoadState>, 'subscribe'> = roadStore,
+  road: Pick<StoreApi<RoadState>, 'subscribe' | 'getState'> = roadStore,
   bench: StoreApi<WorkbenchState> = workbench,
+  setMeasure: (m: RoadState['measure']) => void = (measure) => {
+    setRoad({ measure });
+  },
 ): () => void {
   let live = false;
+  // the live tab closed with its X stops the measure, as Measure's and Annotate's do
+  const offTab = linkLiveTab(
+    'road',
+    () => road.getState().measure.mode !== null,
+    () => {
+      setMeasure({ mode: null, vertices: [] });
+    },
+    bench,
+  );
   const off = road.subscribe((s, prev) => {
     const now = s.measure.mode !== null;
     if (now === (prev.measure.mode !== null)) return;
@@ -137,6 +150,7 @@ export function followRoadMeasure(
     else bench.getState().toolStopped('road');
   });
   return () => {
+    offTab();
     off();
     if (live) bench.getState().toolStopped('road');
   };

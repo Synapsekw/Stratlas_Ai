@@ -30,6 +30,19 @@ describe('followRoadMeasure', () => {
     expect(bench.getState().front).toBe('selection');
   });
 
+  it("closing the live Road tab with its X stops the road's measure", () => {
+    const bench = createWorkbenchStore(null);
+    const road = roadMeasure();
+    const off = followRoadMeasure(road as never, bench, (m) => {
+      road.setState({ measure: m as never });
+    });
+    road.setState({ measure: { mode: 'line', vertices: [] } });
+    bench.getState().close('road');
+    expect(road.getState().measure.mode).toBeNull();
+    expect(bench.getState().tabs.some((t) => t.id === 'road')).toBe(false);
+    off();
+  });
+
   it('lets the live Road tab go when unmounted mid-measure', () => {
     const bench = createWorkbenchStore(null);
     const road = roadMeasure();
