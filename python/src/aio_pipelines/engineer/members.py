@@ -352,6 +352,23 @@ def find_bays(xyz: np.ndarray, axis: Axis, legs: MemberGroup) -> dict[str, float
     return {"height": float(period), "count": round(top / period)}
 
 
+def fit_shaft_envelope(h: np.ndarray, r: np.ndarray, top: float) -> np.ndarray | None:
+    """Straight fit of the shaft radius against height: the 98th percentile radius in 1 m slices
+    from 0.1 to 0.6 of `top` (at least 20 points each), as `np.polyfit` coefficients (slope,
+    intercept) valid beyond the fitted range, or None when fewer than 4 slices have points."""
+    order = np.argsort(h)
+    ys = np.linspace(0.1 * top, 0.6 * top, 12)
+    vals = []
+    for y in ys:
+        lo, hi = np.searchsorted(h[order], [y - 0.5, y + 0.5])
+        sel = order[lo:hi]
+        vals.append(float(np.percentile(r[sel], 98)) if len(sel) > 20 else np.nan)
+    ok = ~np.isnan(vals)
+    if ok.sum() < 4:
+        return None
+    return np.polyfit(ys[ok], np.array(vals)[ok], 1)
+
+
 def find_antenna_candidates(xyz: np.ndarray, axis: Axis, taper: Taper | None = None) -> MemberGroup:
     """Compact objects standing out of the body in the upper half: beyond the shaft radius (`taper`)
     or, for an open lattice, beyond a straight envelope fitted to the lower half. Clusters in
@@ -364,17 +381,9 @@ def find_antenna_candidates(xyz: np.ndarray, axis: Axis, taper: Taper | None = N
     if taper is not None and taper.profile:
         env = _taper_r(taper, h) + 0.25
     else:
-        order = np.argsort(h)
-        ys = np.linspace(0.1 * top, 0.6 * top, 12)
-        vals = []
-        for y in ys:
-            lo, hi = np.searchsorted(h[order], [y - 0.5, y + 0.5])
-            sel = order[lo:hi]
-            vals.append(float(np.percentile(r[sel], 98)) if len(sel) > 20 else np.nan)
-        ok = ~np.isnan(vals)
-        if ok.sum() < 4:
+        coef = fit_shaft_envelope(h, r, top)
+        if coef is None:
             return group
-        coef = np.polyfit(ys[ok], np.array(vals)[ok], 1)
         env = np.polyval(coef, h) * 1.15 + 0.4
     m = (h > 0.5 * top) & (r > env)
     idx = np.flatnonzero(m)
