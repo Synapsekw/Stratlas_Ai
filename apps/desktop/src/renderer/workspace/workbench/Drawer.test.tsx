@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { workspace } from '@aio/workspace';
+import { splitPrefs } from '@aio/ui';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +8,7 @@ import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
 import type { LiveItem } from '../island/islandModel';
 import type * as LiveModule from '../island/useIslandLive';
-import { Drawer } from './Drawer';
+import { Drawer, drawerWidthPx } from './Drawer';
 import { drawerStore } from './drawerStore';
 import { RightSidebar } from './RightSidebar';
 import { workbench } from './workbenchStore';
@@ -237,6 +238,23 @@ describe('Drawer', () => {
       expect(drawer()?.dataset.open).toBe('');
     } finally {
       window.removeEventListener('keydown', drawing);
+    }
+  });
+
+  it("is as wide as the person's right panel, and at least the front tab's minimum (D17)", () => {
+    expect(drawerWidthPx(undefined, undefined)).toBe(360);
+    expect(drawerWidthPx(420, undefined)).toBe(420);
+    // a folded split's strip is no panel width
+    expect(drawerWidthPx(13, undefined)).toBe(360);
+    expect(drawerWidthPx(420, 470)).toBe(470);
+    const before = splitPrefs.getState().byId;
+    splitPrefs.setState({ byId: { ...before, 'scene.right': { size: 420 } } });
+    try {
+      render();
+      startTool();
+      expect(drawer()?.style.getPropertyValue('--drawer-w')).toBe('420px');
+    } finally {
+      splitPrefs.setState({ byId: before });
     }
   });
 

@@ -5,7 +5,8 @@
   inset-block: 0;
   inset-inline-end: 0;
   z-index: var(--z-drawer);
-  inline-size: min(var(--rp-w, 360px), 100%);
+  /* the right panel's width, at least the front tab's minimum (Drawer.tsx) */
+  inline-size: min(var(--drawer-w, var(--rp-w, 360px)), 100%);
   display: flex;
   flex-direction: column;
   min-block-size: 0;
@@ -52,11 +53,4 @@
   min-block-size: 0;
   overflow: auto;
   border-block-end: 0;
-}
-
-/* The island centres on the stage the drawer leaves uncovered (I-R42): the drawer sets
-   --drawer-inline on the stage while it is open, and the island's end inset follows it. */
-.stage > .island-wrap {
-  inset-inline-end: var(--drawer-inline, 0px);
-  transition: inset-inline-end var(--d-3) var(--ease);
 }

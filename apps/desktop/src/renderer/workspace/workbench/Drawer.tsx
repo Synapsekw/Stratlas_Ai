@@ -8,9 +8,10 @@
  * in it and Esc gives focus back to the island; a tool start leaves the focus on the stage, where
  * the person is working. While it shows, the collapsed sidebar renders no bench (I-R38).
  */
-import { IconButton, useFocusTrap, useT } from '@aio/ui';
+import { IconButton, splitPrefs, useFocusTrap, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useStore } from 'zustand';
 import { useIsRoad } from '../../road/useRoadMap';
 import { useShell } from '../../shell';
 import './drawer.css';
@@ -22,6 +23,18 @@ import { useWorkbench } from './workbenchStore';
 
 /** How long a closed drawer stays mounted for its slide out, if no transition ends first. */
 const SLIDE_MS = 320;
+/** The right panel's own width and narrowest width (RightSidebar.tsx, the `scene.right` split). */
+const PANEL_PX = 360;
+const PANEL_MIN_PX = 280;
+
+/**
+ * The drawer's width: the person's right panel width (the `scene.right` split, remembered in px),
+ * and at least the front tab's minimum (Volumes and Changes, D17).
+ */
+export function drawerWidthPx(panelPx: number | undefined, minWidth: number | undefined): number {
+  const panel = panelPx !== undefined && panelPx >= PANEL_MIN_PX ? panelPx : PANEL_PX;
+  return Math.round(Math.max(panel, minWidth ?? 0));
+}
 
 const islandWrap = () => document.querySelector<HTMLElement>('.island-wrap');
 
@@ -34,6 +47,9 @@ export function Drawer() {
   const toolSeq = useWorkbench((s) => s.toolSeq);
   const toolLive = useWorkbench((s) => personToolLive(s.tabs));
   const opened = useDrawer((s) => s.opened);
+  // as wide as the person's right panel, and at least what the front tab needs (D17)
+  const panelPx = useStore(splitPrefs, (s) => s.byId['scene.right']?.size);
+  const widthPx = drawerWidthPx(panelPx, front.minWidth);
   const [mounted, setMounted] = useState(false);
   const panel = useRef<HTMLElement | null>(null);
 
@@ -182,6 +198,7 @@ export function Drawer() {
       data-surface="dark"
       data-open={open ? '' : undefined}
       data-front={front.id}
+      style={{ '--drawer-w': `${String(widthPx)}px` } as CSSProperties}
       aria-label={t('wb.drawer', { tab: label })}
       inert={!open}
     >
