@@ -20,7 +20,19 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import ConvexHull, QhullError, cKDTree
 
 from ..modelfit.ransac import ransac_circle
-from .faces import RANSAC_THR_M, VOXEL_M, Face, Sparse, coverage, point_spacing, span, voxel_down
+from .faces import (
+    CORE_CELL_M,
+    MIN_FACE_POINTS_SPARSE,
+    RANSAC_THR_M,
+    VOXEL_M,
+    Face,
+    Sparse,
+    _core,
+    coverage,
+    point_spacing,
+    span,
+    voxel_down,
+)
 
 MIN_W, MAX_W = 0.12, 3.0
 MIN_H, MAX_H = 0.25, 3.5
@@ -80,6 +92,65 @@ class Unit:
 
 def _interval(f: Face, axis: np.ndarray) -> tuple[float, float]:
     return span(f.points @ axis, 0.5)
+
+
+def _solid_part(f: Face, solid: Face) -> Face | None:
+    """`f` cut to the solid part in front of or behind the parallel face `solid`: its points across
+    `solid` (plus `FRONT_MARGIN_M` each side), then its full rows and columns (`faces._core`), so a
+    face grown on past its unit's edges (up a pipe, into the frame beside it) keeps only the unit's
+    rectangle. None when too few points are left."""
+    a = (f.points - f.centre) @ f.side
+    s0, s1 = span((solid.points - f.centre) @ f.side, 0.5)
+    pts = f.points[(a >= s0 - FRONT_MARGIN_M) & (a <= s1 + FRONT_MARGIN_M)]
+    if len(pts) < MIN_FACE_POINTS_SPARSE:
+        return None
+    pts = pts[_core(pts, f.centre, f.side, f.up, CORE_CELL_M)]
+    if len(pts) < MIN_FACE_POINTS_SPARSE:
+        return None
+    rel = pts - f.centre
+    a, b = rel @ f.side, rel @ f.up
+    a0, a1 = span(a, 1.0)
+    b0, b1 = span(b, 0.5)
+    w, h = a1 - a0, b1 - b0
+    if w <= 0 or h <= 0:
+        return None
+    centre = f.centre + f.side * (a0 + a1) / 2 + f.up * (b0 + b1) / 2
+    cov = coverage(a, b, w, h, a0, b0)
+    return Face(pts, centre, f.normal, f.up, f.side, float(h), float(w), f.rms, len(pts), cov)
+
+
+def _pairs(f: Face, g: Face) -> bool:
+    """Whether `g` is the front or back of the unit `f` belongs to: parallel, about as wide, close
+    along the normal and across, and overlapping in height."""
+    if abs(f.normal @ g.normal) <= PAIR_DOT:
+        return False
+    delta = g.centre - f.centre
+    fi, gi = _interval(f, f.up), _interval(g, f.up)
+    overlap = min(fi[1], gi[1]) - max(fi[0], gi[0])
+    return (
+        min(f.width, g.width) >= PAIR_WIDTH_SHARE * max(f.width, g.width)
+        and abs(delta @ f.normal) < PAIR_ALONG_M
+        and abs(delta @ f.side) < PAIR_LATERAL_M
+        and overlap > PAIR_Z_OVERLAP_M
+    )
+
+
+def _pair(f: Face, g: Face) -> tuple[Face, Face] | None:
+    """`f` and `g` as the two faces of one unit, or None. A patchy face (under `MIN_LONE_COVERAGE`)
+    paired with a solid one at least `ANTENNA_MIN_W` wide is first cut to its solid part across it
+    (`_solid_part`): the region growing can run a unit's face on up a pipe or into the frame beside
+    it, which stretches the box and leaves it patchy, or too wide to pair with its own back. The
+    cut is taken only when all its patchiness was outside (the cut part is solid)."""
+    if abs(f.normal @ g.normal) <= PAIR_DOT:
+        return None
+    for patchy, solid in ((f, g), (g, f)):
+        if patchy.coverage < MIN_LONE_COVERAGE <= solid.coverage and solid.width >= ANTENNA_MIN_W:
+            cut = _solid_part(patchy, solid)
+            if cut is not None and cut.coverage >= MIN_LONE_COVERAGE and cut.height >= MIN_H:
+                pair = (cut, g) if patchy is f else (f, cut)
+                if _pairs(*pair):
+                    return pair
+    return (f, g) if _pairs(f, g) else None
 
 
 def _inferred_depth(front: Face, w: float, h: float, crown: np.ndarray, tree: cKDTree | None = None) -> float:
@@ -484,20 +555,13 @@ def pair_faces(
             continue
         used.add(i)
         group = [f]
-        fi = _interval(f, f.up)
         for j, g in enumerate(big):
-            if j in used or abs(f.normal @ g.normal) <= PAIR_DOT:
+            if j in used:
                 continue
-            delta = g.centre - f.centre
-            gi = _interval(g, f.up)
-            overlap = min(fi[1], gi[1]) - max(fi[0], gi[0])
-            if (
-                min(f.width, g.width) >= PAIR_WIDTH_SHARE * max(f.width, g.width)
-                and abs(delta @ f.normal) < PAIR_ALONG_M
-                and abs(delta @ f.side) < PAIR_LATERAL_M
-                and overlap > PAIR_Z_OVERLAP_M
-            ):
-                group.append(g)
+            pair = _pair(group[0], g)
+            if pair is not None:
+                group[0] = pair[0]
+                group.append(pair[1])
                 used.add(j)
         units.append(_group_unit(group, axis_point, crown, tree))
     dropped: list[tuple[str, Unit]] = []

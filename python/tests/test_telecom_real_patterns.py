@@ -38,7 +38,7 @@ from aio_pipelines.telecom.boxes import (
     drop_warning,
     pair_faces,
 )
-from aio_pipelines.telecom.faces import COVERAGE_CELL_M, Face, coverage, planar_faces
+from aio_pipelines.telecom.faces import COVERAGE_CELL_M, Face, coverage, make_face, planar_faces
 from aio_pipelines.telecom.measure import measure_unit
 from antenna_synth import tower_cloud
 from test_telecom_faces import AXIS_DIR, AXIS_POINT, _pipe, _plane, _shaft_r
@@ -323,3 +323,48 @@ def test_variants_leave_the_default_cloud_alone():
         assert len(more) > len(plain)
         # the default parts come first and are the same points
         assert np.array_equal(more[: len(plain) - 30_000], plain[: len(plain) - 30_000])
+
+
+def _stitched_box(rng, back_share):
+    """A 0.47 x 2.0 x 0.2 m box 2.3 m east of the axis facing east, whose front face grew on past
+    the box (as on a real crown): up a pipe's tangent strip 0.9 m above it and into a sparse frame
+    0.35 m beside it, coplanar, so the front is one wide, tall, patchy face. Its back, 0.2 m behind,
+    is seen over the lower `back_share` of its height. Returns (front points, back points, all)."""
+    w, h, d, x = 0.47, 2.0, 0.2, 2.3
+    fx, bx = x + d / 2, x - d / 2
+    front = np.vstack(
+        [
+            _plane(rng, [fx, 10.0, 0.0], [0, 0, 1.0], [0, 1.0, 0], w, h),
+            _plane(rng, [fx, 10.0 + h / 2 + 0.45, 0.15], [0, 0, 1.0], [0, 1.0, 0], 0.06, 0.9),
+            _plane(rng, [fx, 10.0, -w / 2 - 0.175], [0, 0, 1.0], [0, 1.0, 0], 0.35, h, ppm2=500.0),
+        ]
+    )
+    bh = back_share * h
+    back = _plane(rng, [bx, 10.0 - h / 2 + bh / 2, 0.0], [0, 0, 1.0], [0, 1.0, 0], w, bh)
+    sides = [_plane(rng, [x, 10.0, s * w / 2], [1.0, 0, 0], [0, 1.0, 0], d, h) for s in (-1, 1)]
+    return front, back, np.vstack([front, back, *sides])
+
+
+@pytest.mark.parametrize("back_share", [1.0, 0.5])
+def test_a_front_grown_past_its_box_is_cut_to_the_box(back_share):
+    # the stretched front once made a 0.65 x 2.8 m box off the unit's centre (full back), or was
+    # too wide to pair with a half-seen back and dropped as patchy, leaving a 1 m "short" unit
+    front, back, xyz = _stitched_box(np.random.default_rng(31), back_share)
+    faces = [make_face(p, AXIS_POINT, AXIS_DIR) for p in (front, back)]
+    assert faces[0].coverage < MIN_LONE_COVERAGE and faces[0].height > 2.5
+    units = pair_faces(faces, AXIS_POINT, xyz, _shaft_r)
+    assert len(units) == 1
+    u = units[0]
+    assert u.depth_measured and classify(u, np.array([1.0, 0.0, 0.0])) == "panel"
+    assert np.allclose(u.extents, [0.47, 2.0, 0.2], atol=0.04)
+    assert np.allclose(u.centre, [2.3, 10.0, 0.0], atol=0.04)
+
+
+def test_a_patchy_front_is_not_cut_to_a_pole_behind_it():
+    # a narrow solid face (a 0.15 m pole) is no unit's back: the patchy face is left whole
+    rng = np.random.default_rng(32)
+    front, _, _ = _stitched_box(rng, 1.0)
+    pole = _plane(rng, [2.2, 10.0, 0.0], [0, 0, 1.0], [0, 1.0, 0], 0.15, 2.0)
+    faces = [make_face(p, AXIS_POINT, AXIS_DIR) for p in (front, pole)]
+    units = pair_faces(faces, AXIS_POINT, np.vstack([front, pole]), _shaft_r)
+    assert not any(abs(u.extents[0] - 0.47) < 0.05 for u in units)
