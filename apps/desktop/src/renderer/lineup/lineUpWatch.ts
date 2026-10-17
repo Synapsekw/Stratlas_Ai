@@ -14,6 +14,8 @@ export interface LineUpWatchDeps {
   memory: LineUpMemory;
   /** The pipeline Python is installed: without it there is no check and no notice. */
   hasPython(): boolean;
+  /** Call `cb` when the pipeline Python turns up later (the pack list loads); returns the stop. */
+  onReady?: (cb: () => void) => () => void;
 }
 
 /**
@@ -82,9 +84,13 @@ export function watchLineUps(deps: LineUpWatchDeps): () => void {
   const unStore = deps.store.subscribe((s, prev) => {
     if (prev.offer && !s.offer) void run();
   });
+  const unReady = deps.onReady?.(() => {
+    void run();
+  });
   void run();
   return () => {
     state.stopped = true;
+    unReady?.();
     unWorkspace();
     unStore();
   };

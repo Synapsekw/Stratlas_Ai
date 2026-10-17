@@ -1,9 +1,9 @@
+import { t } from '@aio/ui';
 import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace } from '@aio/workspace';
 import { alignTo } from '../builder/alignSession';
 import { dropToGround } from '../builder/dropSession';
 import { builder } from '../builder/state';
-import { startChangeJob } from '../change/producers/register';
 import { waitForJob } from '../jobs';
 import { bridge, jobs, shell } from '../shell';
 import { updateCapture } from '../shell/dateFolders';
@@ -12,14 +12,14 @@ import { measureStore } from '../survey/measureStore';
 import { volumeHints } from '../workspace/compare';
 import { createLineUpMemory } from './lineUpMemory';
 import { createLineUpPreview } from './lineUpPreview';
-import { createLineUpSession } from './lineUpSession';
+import { createLineUpSession, linkNotices, writersFor } from './lineUpSession';
 
 /** The project file `path` as JSON, through the project's own protocol (as the producers read). */
 async function readJson(path: string): Promise<unknown> {
   const project = workspace.getState().project;
-  if (!project) throw new Error('No project is open.');
+  if (!project) throw new Error(t('lineUp.read.noProject'));
   const res = await fetch(assetUrl(project.id, { path }));
-  if (!res.ok) throw new Error(`${path} could not be read (${String(res.status)}).`);
+  if (!res.ok) throw new Error(t('lineUp.read.failed', { path, status: res.status }));
   return res.json();
 }
 
@@ -58,16 +58,20 @@ export function startLineUpSession(): () => void {
   const session = createLineUpSession({
     workspace,
     root: () => (shell.getState().pkg ? null : (workspace.getState().project?.root ?? null)),
-    start: async (pipeline, project, params) => {
-      const r = await startChangeJob({ pipeline, project, params });
-      if ('error' in r) return r;
-      return r.jobId ? { jobId: r.jobId } : { error: 'The job did not start.' };
+    // background work: it takes no Processing selection and its end is not announced
+    start: (pipeline, project, params) => jobs.getState().startQuiet({ pipeline, project, params }),
+    finished: (jobId, signal) => waitForJob(jobs, jobId, signal),
+    cancel: (jobId) => {
+      void jobs.getState().cancel(jobId);
     },
-    finished: (jobId) => waitForJob(jobs, jobId),
     readJson,
     extents,
     // the pipeline pack the Processing screens need: no pack, no check and no notice
     hasPython: () => jobs.getState().runtime?.found === true,
+    onReady: (cb) =>
+      jobs.subscribe((s, prev) => {
+        if (s.runtime?.found === true && prev.runtime?.found !== true) cb();
+      }),
     preview: createLineUpPreview({
       manifest: () => workspace.getState().project?.manifest,
       extents,
@@ -91,33 +95,20 @@ export function startLineUpSession(): () => void {
         return canvas;
       },
     }),
-    saveCapture: (captureId, lineUp) => updateCapture(captureId, { lineUp }),
-    pinCaptures: (layerIds, captureId) =>
-      builder.getState().saveLayers(layerIds, { capture: captureId }),
+    ...writersFor({
+      updateCapture,
+      saveLayers: (layerIds, patch) => builder.getState().saveLayers(layerIds, patch),
+    }),
     hints: () => volumeHints(volumetric.getState()),
     issues: () => workspace.getState().issues,
     measurements: () => measureStore.getState().file.measurements,
     memory: createLineUpMemory(storage()),
     now: () => new Date().toISOString(),
   });
-  // one Ctrl+Z owner, as Align to and Drop to ground: a newer notice with Undo or Redo sends the
-  // others away
-  const own = session.store.subscribe((s, prev) => {
-    if (s.notice?.action && s.notice !== prev.notice) {
-      alignTo.getState().dismiss();
-      dropToGround.getState().dismiss();
-    }
-  });
-  const offDrop = dropToGround.subscribe((s, prev) => {
-    if (s.notice?.action && s.notice !== prev.notice) session.store.getState().dismiss();
-  });
-  const offAlign = alignTo.subscribe((s, prev) => {
-    if (s.notice?.action && s.notice !== prev.notice) session.store.getState().dismiss();
-  });
+  // one Ctrl+Z owner, as Align to and Drop to ground
+  const unlink = linkNotices(session.store, [alignTo, dropToGround]);
   return () => {
-    own();
-    offDrop();
-    offAlign();
+    unlink();
     session.stop();
   };
 }

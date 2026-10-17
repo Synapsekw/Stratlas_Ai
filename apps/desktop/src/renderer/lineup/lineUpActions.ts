@@ -26,7 +26,7 @@ export async function openLineUpFor(captureId: string): Promise<string | null> {
     try {
       boxes = await extents();
     } catch {
-      boxes = {};
+      return t('lineUp.extents.failed');
     }
   }
   const other = partnerOf(manifest, boxes, captureId);

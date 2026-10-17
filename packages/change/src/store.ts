@@ -12,6 +12,7 @@ import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { IN_APP_KINDS } from './pairs';
+import type { ChangePairContext, ChangeProducer } from './producers';
 import { reviewItem, type RegisterFilter, type RegisterSort } from './register';
 
 /**
@@ -73,6 +74,8 @@ export interface ChangeActions {
   setShow(on: boolean): void;
   /** Keep (or clear, with null) a refused run for the panel. */
   setMisaligned(m: Misaligned | null): void;
+  /** Show (or clear, with null) an error line in the panel. */
+  setError(error: string | null): void;
   /** Run the in-app producers for the pair; true when sets were written. */
   compute(kinds?: readonly ChangeKind[]): Promise<boolean>;
   cancel(): Promise<void>;
@@ -176,6 +179,9 @@ export function createChangeStore() {
       setMisaligned(m) {
         bump({ misaligned: m });
       },
+      setError(error) {
+        bump({ error });
+      },
       async compute(kinds = IN_APP_KINDS) {
         const { projectId, pair } = get();
         if (!projectId || !pair || get().run) return false;
@@ -235,6 +241,19 @@ export function createChangeStore() {
 }
 
 export const changeStore = createChangeStore();
+
+/**
+ * Run one producer for a pair, the way the panel's own button does: when it wrote change sets,
+ * read the project's sets again. Returns the error sentence, or null when it ran.
+ */
+export async function runProducer(
+  producer: ChangeProducer,
+  ctx: ChangePairContext,
+): Promise<string | null> {
+  const r = await producer.run(ctx);
+  if (r.ok && r.ids?.length) await changeStore.getState().load(ctx.projectId);
+  return r.ok ? null : r.error;
+}
 
 export function useChange<T>(selector: (s: ChangeStore) => T): T {
   return useStore(changeStore, selector);

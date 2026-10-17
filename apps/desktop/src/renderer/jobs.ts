@@ -30,6 +30,8 @@ export interface JobsState {
   jobs: JobRecord[];
   logs: Record<string, JobLogLine[]>;
   selected: string | null;
+  /** Ids of jobs started quietly (background work): never selected, never announced. */
+  quiet: string[];
   error: string | null;
 }
 
@@ -40,6 +42,11 @@ export interface JobsActions {
   select: (id: string | null) => Promise<void>;
   /** Start a job; returns an error sentence or null. */
   start: (req: IpcRequest<'jobs:start'>) => Promise<string | null>;
+  /**
+   * Start a job as background work: it joins the list but does not take the Processing selection
+   * and its end is not announced. Returns the job id, or why it did not start.
+   */
+  startQuiet: (req: IpcRequest<'jobs:start'>) => Promise<{ jobId: string } | { error: string }>;
   cancel: (id: string) => Promise<string | null>;
   /**
    * Take finished jobs off the list for good (main forgets them); a job still at work is left
@@ -235,9 +242,11 @@ export function mergeDiskIssues(
 export function jobsEnded(
   prev: readonly JobRecord[],
   next: readonly JobRecord[],
+  quiet: ReadonlySet<string> = new Set(),
 ): { job: JobRecord; ok: boolean }[] {
   return next
     .filter((j) => {
+      if (quiet.has(j.id)) return false;
       if (j.status !== 'done' && j.status !== 'failed') return false;
       const before = prev.find((p) => p.id === j.id);
       return before !== undefined && before.status !== j.status;
@@ -251,22 +260,33 @@ export function isActive(job: Pick<JobRecord, 'status'>): boolean {
 
 /**
  * The finished record of job `id` once it is no longer at work (done, failed, cancelled or
- * interrupted), as the store holds it. Null when the store does not know the job.
+ * interrupted), as the store holds it. Null when the store does not know the job, and when
+ * `signal` aborts first (the caller gave up waiting).
  */
-export function waitForJob(store: StoreApi<Jobs>, id: string): Promise<JobRecord | null> {
-  const settled = (): JobRecord | null => {
-    const job = store.getState().jobs.find((j) => j.id === id);
-    return job && !isActive(job) ? job : null;
-  };
-  const now = settled();
-  if (now) return Promise.resolve(now);
+export function waitForJob(
+  store: StoreApi<Jobs>,
+  id: string,
+  signal?: AbortSignal,
+): Promise<JobRecord | null> {
+  const find = () => store.getState().jobs.find((j) => j.id === id);
+  const known = find();
+  if (!known || signal?.aborted) return Promise.resolve(null);
+  if (!isActive(known)) return Promise.resolve(known);
   return new Promise((resolve) => {
-    const off = store.subscribe(() => {
-      const job = settled();
-      if (!job) return;
+    const done = (job: JobRecord | null) => {
       off();
+      signal?.removeEventListener('abort', onAbort);
       resolve(job);
+    };
+    const onAbort = () => {
+      done(null);
+    };
+    const off = store.subscribe(() => {
+      const job = find();
+      if (!job) done(null);
+      else if (!isActive(job)) done(job);
     });
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -281,6 +301,7 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
     jobs: [],
     logs: {},
     selected: null,
+    quiet: [],
     error: null,
 
     init: async () => {
@@ -314,6 +335,19 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
       if (!id) return;
       const r = await bridge.call('jobs:log', { jobId: id, tail: 1000 });
       if (r.ok) set((s) => ({ logs: { ...s.logs, [id]: mergeLog(r.value.lines, s.logs[id]) } }));
+    },
+
+    startQuiet: async (req) => {
+      const r = await bridge.call('jobs:start', req);
+      if (!r.ok) return { error: r.error };
+      if (!r.value.ok) return { error: r.value.error };
+      const job = r.value.job;
+      set((s) => ({
+        ...applyJobEvent(s, { type: 'update', job }),
+        quiet: [...s.quiet, job.id],
+        logs: s.logs[job.id] ? s.logs : { ...s.logs, [job.id]: [] },
+      }));
+      return { jobId: job.id };
     },
 
     start: async (req) => {

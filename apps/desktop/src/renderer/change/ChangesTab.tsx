@@ -1,16 +1,11 @@
-import {
-  changeProducers,
-  changeStore,
-  ChangePanel,
-  layersOf,
-  type ChangePairContext,
-} from '@aio/change';
+import { changeStore, ChangePanel, layersOf, type ChangePairContext } from '@aio/change';
 import { formatDate } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useCaptureIndex } from '../workspace/compare';
 import { useSplit } from '../workspace/SplitPanes';
 import { openLineUp } from '../lineup/lineUpActions';
+import { rerunProducer } from './rerun';
 import { createChangeActions } from './actions';
 import { useChangeProject, useComparedPair } from './useChangeOverlays';
 
@@ -39,17 +34,10 @@ export function ChangesTab({ className }: { className?: string }) {
     layersFrom: layersOf(index, project.manifest.layers, pair.from),
     layersTo: layersOf(index, project.manifest.layers, pair.to),
   });
-  /** Run a producer again for the panel's pair; `name` is its id or a change set's producer. */
-  const rerun = (name: string) => {
+  /** Run a producer again for the panel's pair; the error comes back for the panel to show. */
+  const rerun = (name: string): Promise<string | null> => {
     const pair = changeStore.getState().pair;
-    const ctx = pair ? context(pair) : null;
-    const producer = changeProducers().find((p) => p.id === name || `change.${p.id}` === name);
-    if (!ctx || !producer) {
-      // an in-app producer (issues, detections, vectors) is part of the panel's own run
-      void changeStore.getState().compute();
-      return;
-    }
-    void producer.run(ctx);
+    return rerunProducer(name, pair ? context(pair) : null);
   };
   return (
     <ChangePanel
@@ -66,7 +54,9 @@ export function ChangesTab({ className }: { className?: string }) {
           to,
           refused
             ? () => {
-                rerun(refused);
+                void rerun(refused).then((error) => {
+                  if (error) changeStore.getState().setError(error);
+                });
               }
             : undefined,
         );

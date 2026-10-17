@@ -15,6 +15,7 @@ export { changeMarkers, VERDICT_COLOR, type ChangeMarker, type MarkerInput } fro
 export {
   changeStore,
   createChangeStore,
+  runProducer,
   setsOfPair,
   useChange,
   type ChangeRun,

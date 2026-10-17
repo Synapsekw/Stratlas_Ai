@@ -96,6 +96,7 @@ export function registerAppChangeProducers(): void {
       if ('error' in r) return r;
       return r.jobId ? { jobId: r.jobId } : { error: 'The job did not start.' };
     },
+    projectId: () => workspace.getState().project?.id ?? null,
     finished: (jobId) => waitForJob(jobs, jobId),
     setMisaligned: (m) => {
       changeStore.getState().setMisaligned(m);

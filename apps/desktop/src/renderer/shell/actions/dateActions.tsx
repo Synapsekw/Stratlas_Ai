@@ -14,6 +14,7 @@ import {
 import { DATE_COLOURS, workspace } from '@aio/workspace';
 import { builder } from '../../builder/state';
 import { openLineUpFor, removeLineUp } from '../../lineup/lineUpActions';
+import { lineUpApp } from '../../lineup/lineUpStore';
 import { timeline } from '../../workspace/timeline';
 import {
   COMPARE_WITH_ACTIONS,
@@ -82,6 +83,10 @@ const onCapture = (
       (o.edit ? editBlocked(ctx) : false) || (o.disabled?.(d.captureId ?? '', ctx) ?? false),
     run: (d, ctx) => run(d.captureId ?? '', ctx),
   });
+
+/** Why the line-up items are greyed: the project cannot change, or the step is not up yet. */
+const lineUpBlocked = (ctx: ActionCtx) =>
+  editBlocked(ctx) || (lineUpApp.getState().store ? false : t('lineUp.menu.notReady'));
 
 const dateItems: Action[] = [
   onCapture(
@@ -211,7 +216,7 @@ const dateItems: Action[] = [
     testId: 'date-menu-line-up',
     appliesTo: (d, ctx) =>
       captureOf(d.captureId, ctx) !== undefined && ctx.manifest.captures.length > 1,
-    disabled: (_d, ctx) => editBlocked(ctx),
+    disabled: (_d, ctx) => lineUpBlocked(ctx),
     run: async (d, ctx) => {
       const why = d.captureId === null ? null : await openLineUpFor(d.captureId);
       if (why) ctx.host.note(why, true);
@@ -225,7 +230,7 @@ const dateItems: Action[] = [
     targets: ['date'],
     testId: 'date-menu-remove-line-up',
     appliesTo: (d, ctx) => captureOf(d.captureId, ctx)?.lineUp !== undefined,
-    disabled: (_d, ctx) => editBlocked(ctx),
+    disabled: (_d, ctx) => lineUpBlocked(ctx),
     run: (d) => {
       if (d.captureId !== null) removeLineUp(d.captureId);
     },

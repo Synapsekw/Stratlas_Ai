@@ -240,4 +240,39 @@ describe('a refused run', () => {
     }
     expect(misalignedOf(other, 'raster')).toBeNull();
   });
+
+  it('ignores a late refusal after the project changed or a newer run started', async () => {
+    let finish: (job: JobRecord) => void = () => undefined;
+    const waits: Promise<JobRecord | null>[] = [];
+    let project = 'p1';
+    const setMisaligned = vi.fn();
+    const d = deps({
+      projectId: () => project,
+      setMisaligned,
+      finished: () => {
+        const w = new Promise<JobRecord | null>((resolve) => {
+          finish = resolve;
+        });
+        waits.push(w);
+        return w;
+      },
+    });
+    const producer = imageryProducers(d).find((p) => p.id === 'raster');
+    await producer?.run(orthos);
+    project = 'p2';
+    finish(failed());
+    await waits[0];
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(setMisaligned).toHaveBeenCalledTimes(1);
+    expect(setMisaligned).toHaveBeenCalledWith(null);
+
+    project = 'p1';
+    await producer?.run(orthos);
+    const first = finish;
+    await producer?.run(orthos);
+    first(failed());
+    await waits[1];
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(setMisaligned).not.toHaveBeenCalledWith(expect.objectContaining({ shiftM: 2.01 }));
+  });
 });

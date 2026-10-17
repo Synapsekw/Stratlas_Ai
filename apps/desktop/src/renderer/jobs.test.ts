@@ -13,6 +13,7 @@ import {
   isActive,
   jobsEnded,
   mergeDiskIssues,
+  waitForJob,
 } from './jobs';
 
 const job = (over: Partial<JobRecord> = {}): JobRecord => ({
@@ -313,5 +314,65 @@ describe('jobsEnded', () => {
       ['b', false],
     ]);
     expect(jobsEnded([], after)).toEqual([]);
+  });
+});
+
+describe('waitForJob', () => {
+  const started = (status: JobRecord['status'] = 'starting') =>
+    fakeBridge({ 'jobs:start': () => ({ ok: true, job: job({ id: 'q1', status }) }) });
+
+  it('resolves null at once for a job the store does not know', async () => {
+    const { bridge } = fakeBridge({});
+    const store = createJobsStore(bridge, undefined);
+    expect(await waitForJob(store, 'nope')).toBeNull();
+  });
+
+  it('resolves null when the signal aborts while the job is at work', async () => {
+    const { bridge } = started();
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().start({ pipeline: 'aik.cameras', project: 'E:/p', params: {} });
+    const ctl = new AbortController();
+    const waiting = waitForJob(store, 'q1', ctl.signal);
+    ctl.abort();
+    expect(await waiting).toBeNull();
+  });
+
+  it('resolves the record once the job ends', async () => {
+    const { bridge } = started();
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().start({ pipeline: 'aik.cameras', project: 'E:/p', params: {} });
+    const waiting = waitForJob(store, 'q1');
+    store.setState((s) => ({
+      jobs: s.jobs.map((j) => ({ ...j, status: 'done', updatedAt: 'z' })),
+    }));
+    expect((await waiting)?.status).toBe('done');
+  });
+});
+
+describe('a quiet start', () => {
+  it('keeps the selection and is not announced', async () => {
+    const { bridge } = fakeBridge({
+      'jobs:start': () => ({ ok: true, job: job({ id: 'q2', pipeline: 'change.lineup' }) }),
+    });
+    const store = createJobsStore(bridge, undefined);
+    store.setState({ selected: 'other' });
+    const r = await store
+      .getState()
+      .startQuiet({ pipeline: 'change.lineup', project: 'E:/p', params: {} });
+    expect(r).toEqual({ jobId: 'q2' });
+    expect(store.getState().selected).toBe('other');
+    expect(store.getState().jobs.map((j) => j.id)).toContain('q2');
+    const before = [job({ id: 'q2', status: 'running' })];
+    const after = [job({ id: 'q2', status: 'done' })];
+    expect(jobsEnded(before, after, new Set(store.getState().quiet))).toEqual([]);
+    expect(jobsEnded(before, after)).toHaveLength(1);
+  });
+
+  it('says why it did not start', async () => {
+    const { bridge } = fakeBridge({ 'jobs:start': () => ({ ok: false, error: 'No pack.' }) });
+    const store = createJobsStore(bridge, undefined);
+    expect(
+      await store.getState().startQuiet({ pipeline: 'change.lineup', project: 'p', params: {} }),
+    ).toEqual({ error: 'No pack.' });
   });
 });

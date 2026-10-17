@@ -120,6 +120,18 @@ describe('the Changes panel and a line-up', () => {
     expect(onRerun).toHaveBeenCalledWith('issues');
   });
 
+  it('shows the error of a Run again that fails', async () => {
+    open(true);
+    changeStore.setState({ projectId: 'p', sets: { 'd1-d2-issues': set() } });
+    await render({ onRerun: () => Promise.resolve('No pack.') });
+    await act(async () => {
+      (q('chg-rerun') as HTMLButtonElement).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(q('change-notice')?.textContent).toBe('No pack.');
+  });
+
   it('shows nothing stale for a set computed after the line-up', async () => {
     open(true);
     changeStore.setState({

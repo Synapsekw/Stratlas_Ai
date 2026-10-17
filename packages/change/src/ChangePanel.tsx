@@ -8,7 +8,7 @@ import { VERDICT_COLOR } from './overlay';
 import { changeProducers, subscribeChangeProducers, type ChangePairContext } from './producers';
 import { registerRows, verdictCounts, type RegisterRow, type ReviewStatus } from './register';
 import { changeSetStale } from './stale';
-import { changeStore, setsOfPair, useChange } from './store';
+import { changeStore, runProducer, setsOfPair, useChange } from './store';
 
 /**
  * The Changes panel (FUS-12): the register of the chosen date pair with filters and sort, the
@@ -40,8 +40,8 @@ export interface ChangePanelProps {
   actions: ChangeRowActions;
   /** Open Line up dates for the two dates (offered when a run was refused for their gap). */
   onLineUp?: (from: string, to: string) => void;
-  /** Run a producer's set again (offered on an out of date set). */
-  onRerun?: (producer: string) => void;
+  /** Run a producer's set again (offered on an out of date set); an error sentence or null. */
+  onRerun?: (producer: string) => Promise<string | null>;
   className?: string | undefined;
 }
 
@@ -327,12 +327,7 @@ export function ChangePanel({
                 disabled={ok !== true || !!s.run}
                 title={ok === true ? p.label : t('change.producerMissing', { why: ok })}
                 onClick={() => {
-                  if (ctx)
-                    void act(async () => {
-                      const r = await p.run(ctx);
-                      if (r.ok && r.ids?.length) await changeStore.getState().load(ctx.projectId);
-                      return r.ok ? null : r.error;
-                    });
+                  if (ctx) void act(() => runProducer(p, ctx));
                 }}
               >
                 {p.label}
@@ -472,7 +467,7 @@ export function ChangePanel({
               className="chg-btn"
               data-testid="chg-rerun"
               onClick={() => {
-                onRerun(x.producer);
+                void act(async () => (await onRerun(x.producer)) ?? null);
               }}
             >
               {t('change.rerun')}

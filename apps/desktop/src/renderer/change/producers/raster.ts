@@ -152,12 +152,15 @@ export interface ProducerDeps {
   ): Promise<{ jobId: string } | { error: string }>;
   /** The job's record once it has ended (null when unknown): to see why a run was refused. */
   finished?: (jobId: string) => Promise<JobRecord | null>;
+  /** The open project's id: a late answer for another project is ignored. */
+  projectId?: () => string | null;
   /** Keep (or clear, with null) a refused run for the Changes panel. */
   setMisaligned?: (m: Misaligned | null) => void;
 }
 
 async function runJob(
   deps: ProducerDeps,
+  latest: { run: number },
   producer: 'raster' | 'surface',
   pipeline: PipelineName,
   params: Record<string, unknown>,
@@ -165,12 +168,16 @@ async function runJob(
   const root = deps.root();
   if (!root) return { ok: false, error: 'Open a project first.' };
   deps.setMisaligned?.(null);
+  const run = ++latest.run;
+  const project = deps.projectId?.() ?? null;
   const r = await deps.start(pipeline, root, params);
   if ('error' in r) return { ok: false, error: r.error };
   // a refusal for the dates' gap is the panel's offer to line them up; other ends stay as they are
   const { finished, setMisaligned } = deps;
   if (finished && setMisaligned)
     void finished(r.jobId).then((job) => {
+      // a late answer belongs to a run that is no longer the panel's
+      if (run !== latest.run || (deps.projectId?.() ?? null) !== project) return;
       const m = job ? misalignedOf(job, producer) : null;
       if (m) setMisaligned(m);
     });
@@ -178,6 +185,7 @@ async function runJob(
 }
 
 export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
+  const latest = { run: 0 };
   return [
     {
       id: 'raster',
@@ -190,7 +198,7 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
       run: (ctx) => {
         const pair = orthoPair(ctx);
         if (typeof pair === 'string') return Promise.resolve({ ok: false, error: pair });
-        return runJob(deps, 'raster', 'change.raster', {
+        return runJob(deps, latest, 'raster', 'change.raster', {
           ...rasterParams(ctx, pair, deps.thresholds()),
         });
       },
@@ -206,7 +214,7 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
       run: (ctx) => {
         const pair = surfacePair(ctx);
         if (typeof pair === 'string') return Promise.resolve({ ok: false, error: pair });
-        return runJob(deps, 'surface', 'change.surface', {
+        return runJob(deps, latest, 'surface', 'change.surface', {
           ...surfaceParams(ctx, pair, deps.thresholds()),
         });
       },

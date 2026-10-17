@@ -505,4 +505,34 @@ describe('date folder menu: line up', () => {
     });
     expect(open).toHaveBeenCalledWith('sep', 'nov');
   });
+
+  it('says the extents could not be read instead of blaming the imagery', async () => {
+    const three = {
+      captures,
+      layers: [ortho('o-sep', 'sep'), ortho('o-oct', 'oct'), ortho('o-nov', 'nov')],
+    } as unknown as ProjectManifest;
+    workspace.setState({
+      project: { id: 'p1', root: 'C:/p', manifest: three },
+    } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+    const { open, store } = fake();
+    lineUpApp.setState({ store, extents: () => Promise.reject(new Error('x')) });
+    const note = vi.fn();
+    date('sep', { manifest: three, hostExtra: { note } });
+    await act(async () => {
+      q('date-menu-line-up')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(open).not.toHaveBeenCalled();
+    expect(note).toHaveBeenCalledWith('The extent of the layers could not be read.', true);
+  });
+
+  it('greys the line-up items until the step is ready', () => {
+    const withLineUp = {
+      ...manifestOf(),
+      captures: captures.map((c) => (c.id === 'oct' ? { ...c, lineUp } : c)),
+    } as unknown as ProjectManifest;
+    date('oct', { manifest: withLineUp });
+    expect(disabled('date-menu-line-up')).toBe(true);
+    expect(disabled('date-menu-remove-line-up')).toBe(true);
+  });
 });

@@ -147,4 +147,45 @@ describe('watchLineUps', () => {
       s.stop();
     }
   });
+
+  it('checks once the pipeline pack turns up after a project is open', async () => {
+    const workspace = createWorkspace();
+    const memory = createLineUpMemory(null);
+    const measure = vi.fn(() => Promise.resolve(measureOf()));
+    const store = createLineUpStore({
+      workspace,
+      measure,
+      saveCapture: () => Promise.resolve(null),
+      pinCaptures: () => Promise.resolve(null),
+      hints: () => ({}),
+      issues: () => [],
+      measurements: () => [],
+      memory,
+      now: () => '2026-10-17T10:00:00.000Z',
+    });
+    let python = false;
+    let ready: () => void = () => undefined;
+    const off = vi.fn();
+    const stop = watchLineUps({
+      store,
+      workspace,
+      extents: () => Promise.resolve({ o1: BOX, o2: BOX, c2: BOX }),
+      measure,
+      memory,
+      hasPython: () => python,
+      onReady: (cb) => {
+        ready = cb;
+        return off;
+      },
+    });
+    workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest: lineUpManifest() });
+    await flush();
+    expect(measure).not.toHaveBeenCalled();
+    python = true;
+    ready();
+    await flush();
+    expect(measure).toHaveBeenCalledTimes(1);
+    stop();
+    expect(off).toHaveBeenCalled();
+  });
 });

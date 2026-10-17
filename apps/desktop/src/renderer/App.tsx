@@ -413,7 +413,7 @@ export function App() {
     });
     // a job that ends is said aloud wherever the person is
     const stopJobAnnounce = jobs.subscribe((s, prev) => {
-      for (const { job, ok } of jobsEnded(prev.jobs, s.jobs)) {
+      for (const { job, ok } of jobsEnded(prev.jobs, s.jobs, new Set(s.quiet))) {
         announce(
           t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: jobTitle(job.pipeline) }),
           ok ? 'polite' : 'assertive',
