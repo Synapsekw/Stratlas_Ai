@@ -6,7 +6,13 @@ import type {
   SurveyMeasurement,
 } from '@aio/schema';
 import { t } from '@aio/ui';
-import { hintOnlyLayers, type CaptureHints, type Workspace } from '@aio/workspace';
+import {
+  captureShift,
+  hintOnlyLayers,
+  shiftKey,
+  type CaptureHints,
+  type Workspace,
+} from '@aio/workspace';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { LineUpMemory } from './lineUpMemory';
 import { formatMetres, movesWith, planLineUp } from './planLineUp';
@@ -46,6 +52,8 @@ export interface LineUpDialogState {
   moves: { layers: number; items: number } | null;
   /** Run after a saved line-up (the Changes panel runs the refused change again). */
   then?: () => void;
+  /** Both dates' shifts when the measurement was taken (`shiftsOf`): a change measures again. */
+  shifts?: string;
 }
 
 export interface LineUpOfferState {
@@ -53,6 +61,8 @@ export interface LineUpOfferState {
   key: string;
   measure: LineUpMeasure;
   text: string;
+  /** Both dates' shifts when it was measured (`shiftsOf`). */
+  shifts: string;
 }
 
 /** One write of Undo or Redo, and the write that takes it back again. */
@@ -117,6 +127,20 @@ export function refusalOf(m: LineUpMeasure): string | null {
   }
 }
 
+/** Both dates' shifts as one key, to the millimetre: a measurement holds while it is unchanged. */
+function shiftsOf(m: ProjectManifest, a: string, b: string): string {
+  return `${shiftKey(captureShift(m, a))};${shiftKey(captureShift(m, b))}`;
+}
+
+/** Why the step cannot save with this measurement and this choice; null when it can. */
+function blockOf(m: ProjectManifest, measure: LineUpMeasure, keep: string | null): string | null {
+  const refused = refusalOf(measure);
+  if (refused || keep === null) return refused;
+  return planLineUp(measure, keep, m, new Date(0).toISOString()).inRange
+    ? null
+    : t('lineUp.refuse.range');
+}
+
 /** The manifest as it will be once these layers carry `captureId` of their own. */
 function withPins(m: ProjectManifest, pins: readonly string[], captureId: string): ProjectManifest {
   if (pins.length === 0) return m;
@@ -132,22 +156,58 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
   const openId = () => deps.workspace.getState().project?.id ?? null;
   const manifest = () => deps.workspace.getState().project?.manifest;
 
-  /** Write one Undo or Redo step: pins before the line-up, unpins after it. Null when done. */
-  const write = async (w: LineUpWrite): Promise<string | null> => {
-    if (w.pin && w.pins.length) {
+  /**
+   * Write one line-up, Undo or Redo step into `projectId`: pins before the line-up, unpins after
+   * it. A refused save takes the pins it put in off again. `stopped` when another project opened
+   * between two writes: nothing more is written, into either project.
+   */
+  const write = async (
+    projectId: string,
+    w: LineUpWrite,
+  ): Promise<{ err: string | null; stopped: boolean }> => {
+    const gone = () => openId() !== projectId;
+    const pinning = w.pin && w.pins.length > 0;
+    if (pinning) {
       const err = await deps.pinCaptures(w.pins, w.captureId);
-      if (err) return err;
+      if (gone()) return { err: null, stopped: true };
+      if (err) return { err, stopped: false };
     }
     const err = await deps.saveCapture(w.captureId, w.lineUp);
-    if (err) return err;
-    if (!w.pin && w.pins.length) return deps.pinCaptures(w.pins, null);
-    return null;
+    if (gone()) return { err: null, stopped: true };
+    if (err) {
+      if (pinning) await deps.pinCaptures(w.pins, null);
+      return { err, stopped: gone() };
+    }
+    if (!w.pin && w.pins.length) {
+      const unpinned = await deps.pinCaptures(w.pins, null);
+      return { err: unpinned, stopped: gone() };
+    }
+    return { err: null, stopped: false };
   };
 
   const store = createStore<LineUpStore>()((set, get) => {
     const setDialog = (patch: Partial<LineUpDialogState>) => {
       const d = get().dialog;
       if (d) set({ dialog: { ...d, ...patch } });
+    };
+    /** Measure the dialog's dates as they are placed now and show the answer. */
+    const measureInto = async (projectId: string, a: string, b: string) => {
+      const m = manifest();
+      if (!m) return;
+      setDialog({ measuring: true, measure: null, error: null, shifts: shiftsOf(m, a, b) });
+      let r: LineUpMeasure | { error: string };
+      try {
+        r = await deps.measure(a, b);
+      } catch (e) {
+        r = { error: errorText(e) };
+      }
+      // closed, opened for another pair, or another project meanwhile: not this answer's dialog
+      const d = get().dialog;
+      const now = manifest();
+      if (d?.a !== a || d.b !== b || openId() !== projectId || !now) return;
+      if ('error' in r)
+        setDialog({ measuring: false, error: t('lineUp.failed', { error: r.error }) });
+      else setDialog({ measuring: false, measure: r, error: blockOf(now, r, d.keep) });
     };
     return {
       dialog: null,
@@ -167,17 +227,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
           ...(then ? { then } : {}),
         };
         set({ dialog });
-        let r: LineUpMeasure | { error: string };
-        try {
-          r = await deps.measure(a, b);
-        } catch (e) {
-          r = { error: errorText(e) };
-        }
-        // closed, opened for another pair, or another project meanwhile: not this answer's dialog
-        if (get().dialog?.a !== a || get().dialog?.b !== b || openId() !== projectId) return;
-        if ('error' in r)
-          setDialog({ measuring: false, error: t('lineUp.failed', { error: r.error }) });
-        else setDialog({ measuring: false, measure: r, error: refusalOf(r) });
+        await measureInto(projectId, a, b);
       },
       choose: (keepId) => {
         const d = get().dialog;
@@ -188,6 +238,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
         setDialog({
           keep: keepId,
           moves: movesWith(withPins(m, pins, moveId), moveId, deps.issues(), deps.measurements()),
+          ...(d.measure ? { error: blockOf(m, d.measure, keepId) } : {}),
         });
       },
       confirm: async () => {
@@ -197,19 +248,26 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
         if (busy || !d?.keep || d.measure?.verdict !== 'ok' || !projectId || !m) return;
         busy = true;
         try {
+          // a date moved since the measurement (Undo, another line-up): its answer is stale
+          if (d.shifts !== shiftsOf(m, d.a, d.b)) {
+            await measureInto(projectId, d.a, d.b);
+            return;
+          }
           const plan = planLineUp(d.measure, d.keep, m, deps.now());
+          if (!plan.inRange) {
+            setDialog({ error: t('lineUp.refuse.range') });
+            return;
+          }
           const pins = hintOnlyLayers(m, deps.hints(), plan.moveId);
-          const err = await write({
+          const { err, stopped } = await write(projectId, {
             captureId: plan.moveId,
             lineUp: plan.lineUp,
             back: plan.previous,
             pins,
             pin: true,
           });
-          if (openId() !== projectId) return;
+          if (stopped || openId() !== projectId) return;
           if (err) {
-            // the pins went in before a refused line-up: take them off again
-            if (pins.length) await deps.pinCaptures(pins, null);
             setDialog({ error: err });
             return;
           }
@@ -282,8 +340,8 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
         }
         busy = true;
         try {
-          const err = await write(a.write);
-          if (openId() !== n.projectId) return;
+          const { err, stopped } = await write(n.projectId, a.write);
+          if (stopped || openId() !== n.projectId) return;
           const w = a.write;
           set({
             notice: err
@@ -315,6 +373,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
             projectId,
             key,
             measure: m,
+            shifts: shiftsOf(man, m.keep, m.move),
             text: t('lineUp.offer', {
               moved: labelOf(man, m.move),
               kept: labelOf(man, m.keep),
@@ -342,6 +401,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
             measure: o.measure,
             error: refusalOf(o.measure),
             moves: null,
+            shifts: o.shifts,
           },
         });
         return Promise.resolve();

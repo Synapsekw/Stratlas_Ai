@@ -118,6 +118,22 @@ describe('LineUpDialog', () => {
     expect(byId('lineup-dialog')).toBeNull();
   });
 
+  it('closes on Escape', async () => {
+    const { store, workspace } = setup();
+    root = createRoot(host);
+    act(() => root?.render(<LineUpDialog store={store} preview={preview} workspace={workspace} />));
+    await act(async () => {
+      await store.getState().open('d1', 'd2');
+    });
+    const radio = byId('lineup-keep-d1');
+    act(() => {
+      radio?.focus();
+      radio?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(store.getState().dialog).toBeNull();
+    expect(byId('lineup-dialog')).toBeNull();
+  });
+
   it('shows the reason for a refused measurement', async () => {
     const { store, workspace } = setup(measureOf({ verdict: 'overlap' }));
     root = createRoot(host);

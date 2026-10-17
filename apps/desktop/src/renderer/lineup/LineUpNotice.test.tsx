@@ -6,7 +6,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shell } from '../shell';
 import { createLineUpMemory } from './lineUpMemory';
-import { createLineUpStore } from './lineUpStore';
+import { otherUndo } from '../builder/AlignToNotice';
+import { createLineUpStore, lineUpApp } from './lineUpStore';
+import { LineUpDialog } from './LineUpDialog';
 import { LineUpNotice } from './LineUpNotice';
 import { LineUpOffer } from './LineUpOffer';
 import { lineUpManifest, measureOf } from './testing';
@@ -97,6 +99,42 @@ describe('LineUpNotice', () => {
     await flush();
     expect(saves).toHaveLength(1);
     expect(byId('lineup-undo')).not.toBeNull();
+  });
+
+  it('leaves Ctrl+Z to the open line-up step', async () => {
+    const { store, saves } = await linedUp();
+    act(() =>
+      root?.render(
+        <>
+          <LineUpNotice store={store} />
+          <LineUpDialog store={store} />
+        </>,
+      ),
+    );
+    await act(async () => {
+      await store.getState().open('d1', 'd2');
+    });
+    const radio = host.querySelector<HTMLElement>('[data-testid="lineup-keep-d1"]');
+    expect(radio).not.toBeNull();
+    press({ key: 'z', ctrlKey: true }, radio ?? document.body);
+    await flush();
+    expect(saves).toHaveLength(1);
+    expect(byId('lineup-undo')).not.toBeNull();
+  });
+
+  it("leaves the other notices' Ctrl+Z to the open line-up step", async () => {
+    const { store } = await linedUp();
+    const key = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true });
+    lineUpApp.setState({ store });
+    try {
+      expect(otherUndo(key)).toBe(false);
+      await act(async () => {
+        await store.getState().open('d1', 'd2');
+      });
+      expect(otherUndo(key)).toBe(true);
+    } finally {
+      lineUpApp.setState({ store: null });
+    }
   });
 
   it('offers a line-up with Line up dates and Not now', async () => {

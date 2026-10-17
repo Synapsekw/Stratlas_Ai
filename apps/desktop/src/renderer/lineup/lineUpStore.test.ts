@@ -13,6 +13,10 @@ function setup(
     manifest?: ProjectManifest;
     measure?: LineUpMeasure | { error: string };
     hints?: CaptureHints;
+    /** A save's error, by the count of saves before it. */
+    failSave?: (n: number) => string | null;
+    /** Runs inside each pin write, before it lands. */
+    onPin?: () => void;
   } = {},
 ) {
   const workspace = createWorkspace();
@@ -21,7 +25,13 @@ function setup(
     .openProject({ id: 'p', root: 'C:/p', manifest: opts.manifest ?? lineUpManifest() });
   const calls: string[] = [];
   // like the app's saves: the written value goes into the open manifest
+  let saves = 0;
   const saveCapture = vi.fn((captureId: string, lineUp: CaptureLineUp | null) => {
+    const err = opts.failSave?.(saves++) ?? null;
+    if (err) {
+      calls.push(`save ${captureId} failed`);
+      return Promise.resolve<string | null>(err);
+    }
     calls.push(
       `save ${captureId} ${lineUp ? `${String(lineUp.eastM)},${String(lineUp.northM)}` : 'null'}`,
     );
@@ -40,6 +50,7 @@ function setup(
   });
   const pinCaptures = vi.fn((layerIds: readonly string[], captureId: string | null) => {
     calls.push(`pin ${layerIds.join(',')} ${captureId ?? 'null'}`);
+    opts.onPin?.();
     const m = workspace.getState().project?.manifest;
     if (m)
       workspace.getState().replaceManifest({
@@ -190,5 +201,104 @@ describe('lineUpStore', () => {
     await store.getState().open('d1', 'd2');
     workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest: lineUpManifest() });
     expect(store.getState().dialog).toBeNull();
+  });
+  it('measures again when a date moved after the measurement', async () => {
+    const { store, workspace, saveCapture, measure } = setup();
+    store.getState().offerFrom(measureOf(), 'o1|o2');
+    // d1 is lined up elsewhere before the offer is taken
+    const m = workspace.getState().project?.manifest;
+    if (m)
+      workspace.getState().replaceManifest({
+        ...m,
+        captures: m.captures.map((c) =>
+          c.id === 'd1' ? { ...c, lineUp: { eastM: 0.5, northM: 0, with: 'd2', at: AT } } : c,
+        ),
+      });
+    await store.getState().acceptOffer();
+    store.getState().choose('d1');
+    await store.getState().confirm();
+    expect(saveCapture).not.toHaveBeenCalled();
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(store.getState().dialog).toMatchObject({ keep: 'd1', measuring: false });
+    // measured where the dates are now: this one may be saved
+    await store.getState().confirm();
+    expect(saveCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing more when another project opens between the pin and the save', async () => {
+    const manifest = lineUpManifest({
+      layers: [ortho('o1', 'd1'), ortho('o2', 'd2'), cloud('vol2')],
+    });
+    const s = setup({
+      manifest,
+      hints: { layers: { d2: ['vol2'] } },
+      onPin: () => {
+        s.workspace.getState().openProject({ id: 'q', root: 'C:/q', manifest: lineUpManifest() });
+      },
+    });
+    await s.store.getState().open('d1', 'd2');
+    s.store.getState().choose('d1');
+    await s.store.getState().confirm();
+    expect(s.calls).toEqual(['pin vol2 d2']);
+    expect(s.saveCapture).not.toHaveBeenCalled();
+    expect(s.store.getState().notice).toBeNull();
+  });
+
+  it('takes the pins off again when the save fails', async () => {
+    const manifest = lineUpManifest({
+      layers: [ortho('o1', 'd1'), ortho('o2', 'd2'), cloud('vol2')],
+    });
+    const { store, calls } = setup({
+      manifest,
+      hints: { layers: { d2: ['vol2'] } },
+      failSave: () => 'No space left.',
+    });
+    await store.getState().open('d1', 'd2');
+    store.getState().choose('d1');
+    await store.getState().confirm();
+    expect(calls).toEqual(['pin vol2 d2', 'save d2 failed', 'pin vol2 null']);
+    expect(store.getState().dialog?.error).toBe('No space left.');
+    expect(store.getState().notice).toBeNull();
+  });
+
+  it('takes the pins off again when Redo fails', async () => {
+    const manifest = lineUpManifest({
+      layers: [ortho('o1', 'd1'), ortho('o2', 'd2'), cloud('vol2')],
+    });
+    const { store, calls } = setup({
+      manifest,
+      hints: { layers: { d2: ['vol2'] } },
+      failSave: (n) => (n === 2 ? 'No space left.' : null),
+    });
+    await store.getState().open('d1', 'd2');
+    store.getState().choose('d1');
+    await store.getState().confirm();
+    await store.getState().apply();
+    await store.getState().apply();
+    expect(calls.slice(4)).toEqual(['pin vol2 d2', 'save d2 failed', 'pin vol2 null']);
+    expect(store.getState().notice).toMatchObject({
+      text: 'No space left.',
+      action: { kind: 'redo' },
+    });
+  });
+
+  it('refuses a line-up that would move a date more than 500 m', async () => {
+    const far = { eastM: 499, northM: 0, with: 'd1', at: AT };
+    const { store, saveCapture } = setup({
+      manifest: lineUpManifest({ lineUps: { d2: far } }),
+      measure: measureOf({ eastM: 2, totalM: 2 }),
+    });
+    await store.getState().open('d1', 'd2');
+    store.getState().choose('d1');
+    expect(store.getState().dialog?.error).toBe(
+      'These dates cannot be lined up: the date would move more than 500 m from where its files place it.',
+    );
+    await store.getState().confirm();
+    expect(saveCapture).not.toHaveBeenCalled();
+    // keeping the other date moves d1 by 2 m: that one fits
+    store.getState().choose('d2');
+    expect(store.getState().dialog?.error).toBeNull();
+    await store.getState().confirm();
+    expect(saveCapture).toHaveBeenCalledWith('d1', expect.objectContaining({ eastM: -2 }));
   });
 });

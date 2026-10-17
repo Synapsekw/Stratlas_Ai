@@ -7,7 +7,7 @@ import type {
   SurveyMeasurement,
 } from '@aio/schema';
 import type { t as translate } from '@aio/ui';
-import { captureIndex, captureShift, layerDateShifts } from '@aio/workspace';
+import { captureIndex, captureShift, layerDateShifts, shiftKey } from '@aio/workspace';
 import type { Box } from '../shell/layerBounds';
 
 /**
@@ -28,7 +28,12 @@ export interface LineUpPlan {
   previous: CaptureLineUp | null;
   /** How far it moves, metres. */
   totalM: number;
+  /** The new shift is finite and within the 500 m a line-up may hold; else it cannot be saved. */
+  inRange: boolean;
 }
+
+/** The most a line-up may shift a date, metres east or north (`CaptureLineUp`). */
+const MAX_SHIFT_M = 500;
 
 /**
  * The `lineUp` that brings the dates together. The measurement is the correction `m.move` still
@@ -47,17 +52,21 @@ export function planLineUp(
   const now = captureShift(manifest, moveId) ?? { eastM: 0, northM: 0 };
   const previous = manifest.captures.find((c) => c.id === moveId)?.lineUp ?? null;
   const spreadM = mm(m.spreadPx * m.cellM);
+  const eastM = mm(now.eastM + sign * m.eastM);
+  const northM = mm(now.northM + sign * m.northM);
+  const fits = (v: number) => Number.isFinite(v) && Math.abs(v) <= MAX_SHIFT_M;
   return {
     moveId,
     lineUp: {
-      eastM: mm(now.eastM + sign * m.eastM),
-      northM: mm(now.northM + sign * m.northM),
+      eastM,
+      northM,
       with: keepId,
       ...(Number.isFinite(spreadM) && spreadM >= 0 ? { spreadM } : {}),
       at,
     },
     previous,
     totalM: mm(Math.hypot(m.eastM, m.northM)),
+    inRange: fits(eastM) && fits(northM),
   };
 }
 
@@ -118,7 +127,10 @@ export interface LineUpPair {
   move: string;
   layerKeep: string;
   layerMove: string;
-  /** `"<layer>|<layer>"`, the two layer ids sorted: one pair whichever date it was found from. */
+  /**
+   * `"<layer>|<layer>"`, the two layer ids sorted, each with `@<shift>` when its date is lined up:
+   * one pair whichever date it was found from, and a new pair once either date moves (call 11).
+   */
   key: string;
 }
 
@@ -171,7 +183,11 @@ export function pairsToMeasure(
       if (area > 0 && (!best || area > best.area)) best = { b, la: la.id, lb: lb.id, area };
     }
     if (!best) continue;
-    const key = [best.la, best.lb].sort().join('|');
+    const tag = (layerId: string, captureId: string) => {
+      const s = shiftKey(captureShift(manifest, captureId));
+      return s ? `${layerId}@${s}` : layerId;
+    };
+    const key = [tag(best.la, a), tag(best.lb, best.b)].sort().join('|');
     if (seen.has(key) || measured.has(key)) continue;
     seen.add(key);
     const aFirst = order.indexOf(a) < order.indexOf(best.b);

@@ -42,6 +42,16 @@ describe('planLineUp', () => {
     expect(plan.previous).toEqual(old);
   });
 
+  it('says whether the shift stays within 500 m', () => {
+    const at = (eastM: number) =>
+      lineUpManifest({ lineUps: { d2: { eastM, northM: 0, with: 'd1', at: AT } } });
+    const plan = (eastM: number) => planLineUp(measureOf({ eastM: 2 }), 'd1', at(eastM), AT);
+    expect(plan(498).inRange).toBe(true);
+    expect(plan(498).lineUp.eastM).toBe(500);
+    expect(plan(499).inRange).toBe(false);
+    expect(planLineUp(measureOf({ eastM: Number.NaN }), 'd1', at(0), AT).inRange).toBe(false);
+  });
+
   it('counts what moves with a date', () => {
     const m = lineUpManifest({
       layers: [ortho('o1', 'd1'), ortho('o2', 'd2'), cloud('c2', 'd2'), ortho('base')],
@@ -94,6 +104,16 @@ describe('planLineUp', () => {
     ]);
     expect(pairsToMeasure(m, extents, new Set(['o1|o2']))).toEqual([
       { keep: 'd2', move: 'd3', layerKeep: 'o2', layerMove: 'o3', key: 'o2|o3' },
+    ]);
+    // a date lined up since: its pairs are new to the memory (spec call 11)
+    const moved = lineUpManifest({
+      captures,
+      layers: m.layers,
+      lineUps: { d2: { eastM: 1.25, northM: -0.5, with: 'd1', at: AT } },
+    });
+    expect(pairsToMeasure(moved, extents, new Set(['o1|o2'])).map((p) => p.key)).toEqual([
+      'o1|o2@1.25,-0.5',
+      'o2@1.25,-0.5|o3',
     ]);
   });
 });

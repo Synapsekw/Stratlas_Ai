@@ -4164,6 +4164,8 @@ export const en = {
     'These dates cannot be lined up: parts of them point to different shifts, so one may be turned or scaled against the other. Lining up only moves a date sideways.',
   'lineUp.refuse.overlap': 'These dates hardly overlap.',
   'lineUp.refuse.aligned': 'These dates already line up (within {distance}).',
+  'lineUp.refuse.range':
+    'These dates cannot be lined up: the date would move more than 500 m from where its files place it.',
   'lineUp.refuse.noImagery': 'Each date needs an ortho or a DSM to be lined up.',
   'lineUp.failed': 'The measurement did not finish: {error}',
   'lineUp.folder': 'Lined up with {kept} ({distance})',

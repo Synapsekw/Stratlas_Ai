@@ -81,6 +81,28 @@ describe('watchLineUps', () => {
     stop();
   });
 
+  it('measures the pair again once the kept date moved', async () => {
+    const { workspace, open, measure, stop } = setup({
+      measure: measureOf({ verdict: 'aligned' }),
+    });
+    open();
+    await flush();
+    expect(measure).toHaveBeenCalledTimes(1);
+    const m = workspace.getState().project?.manifest;
+    if (m)
+      workspace.getState().replaceManifest({
+        ...m,
+        captures: m.captures.map((c) =>
+          c.id === 'd1'
+            ? { ...c, lineUp: { eastM: 3, northM: 0, with: 'd2', at: '2026-10-17T10:00:00.000Z' } }
+            : c,
+        ),
+      });
+    await flush();
+    expect(measure).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
   it('stays quiet after Not now', async () => {
     const { store, open, memory, stop } = setup();
     open();
