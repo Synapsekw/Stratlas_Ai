@@ -84,6 +84,8 @@ afterEach(() => {
   root = undefined;
   host.remove();
   shell.getState().setRight(false);
+  // a test that played a clip stops it here, so a failed assertion cannot leak it
+  workspace.setState({ playing: false });
   workspace.getState().closeProject();
   vi.useRealTimers();
 });
@@ -140,9 +142,6 @@ describe('Drawer', () => {
     render();
     expect(drawer()).toBeNull();
     expect(drawerStore.getState().opened).toBeNull();
-    act(() => {
-      workspace.setState({ playing: false });
-    });
   });
 
   it('has no agent pane', () => {
@@ -192,6 +191,17 @@ describe('Drawer', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(drawer()?.dataset.open).toBeUndefined();
+  });
+
+  it('leaves Esc to what took it first: a defaultPrevented Esc keeps a live drawer open', () => {
+    render();
+    startTool();
+    act(() => {
+      const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      esc.preventDefault();
+      window.dispatchEvent(esc);
+    });
+    expect(drawer()?.dataset.open).toBe('');
   });
 
   it('closes when the sidebar comes back', () => {
