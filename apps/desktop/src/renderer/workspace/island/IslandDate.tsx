@@ -10,8 +10,8 @@ import { chooseCapture, type Side } from '../splitModel';
 import { paneCapture, type SplitModel } from '../SplitPanes';
 import { timeline } from '../timeline';
 
-/** "13 Apr 2026" without its year. */
-export const shortDate = (iso: string): string => formatDate(iso).replace(/ \d{4}$/, '');
+/** "13 Apr": the pill's date, its year in the pill's name. */
+export const shortDate = (iso: string): string => formatDate(iso, { year: false });
 
 /** The dates the island steps through, and which one it shows. */
 export interface IslandDates {

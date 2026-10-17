@@ -3,9 +3,10 @@
  * switches, D5) and, until the workbenches land, each group's full set as the stage toolbar had it.
  */
 import { pinDisplay, usePinDisplay } from '@aio/annotate';
-import type { EngineStage } from '@aio/engine';
+import type { EngineStage, LabelMode } from '@aio/engine';
 import {
   Button,
+  formatDate,
   Icon,
   shortcutHint,
   useT,
@@ -13,7 +14,7 @@ import {
   type MessageKey,
   type ShortcutId,
 } from '@aio/ui';
-import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
+import { setCameraMode, videoRig, type CameraMode, type FlightPathMode } from '@aio/video';
 import { useVolumetric, volumetric, type BodyMode, type SurfaceMode } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useReducer, type ReactNode } from 'react';
@@ -73,6 +74,18 @@ export const GROUP_ICON: Record<GroupId, IconName> = {
   video: 'video',
   road: 'road',
   annotate: 'anno',
+};
+
+/** The quick rows' names for the label and flight path modes (the full sets keep their own). */
+const LABEL_NAME: Record<LabelMode, MessageKey> = {
+  off: 'island.tile.labelOff',
+  key: 'island.tile.labelKey',
+  all: 'island.tile.labelAll',
+};
+const PATH_NAME: Record<FlightPathMode, MessageKey> = {
+  all: 'island.tile.pathsAll',
+  active: 'island.tile.pathsActive',
+  off: 'island.tile.pathsOff',
 };
 
 export interface GroupCtx {
@@ -234,7 +247,7 @@ function AllTools({ g, ctx }: { g: GroupId; ctx: GroupCtx }) {
         caret
         toSide
         label={t('island.allTools')}
-        name={`${t(GROUP_NAME[g])}: ${t('island.allTools')}`}
+        name={t('island.groupTile', { group: t(GROUP_NAME[g]), tile: t('island.allTools') })}
         onClick={() => {
           ctx.openFull(g);
         }}
@@ -461,7 +474,7 @@ function DisplayRow({ ctx }: { ctx: GroupCtx }) {
           label={t('island.tile.labels')}
           shortcut="scene.labels"
           disabled={!stage}
-          options={LABEL_MODES.map((m) => ({ value: m.mode, label: m.label }))}
+          options={LABEL_MODES.map((m) => ({ value: m.mode, label: t(LABEL_NAME[m.mode]) }))}
           value={labelMode}
           onPick={(m) => {
             shell.getState().setLabelMode(m);
@@ -559,7 +572,7 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
       <Choice
         label={t('island.tile.surveyDate')}
         options={[
-          ...captures.map((c) => ({ value: c.epoch, label: c.label.replace(/ 20\d\d$/, '') })),
+          ...captures.map((c) => ({ value: c.epoch, label: formatDate(c.date, { year: false }) })),
           { value: SWIPE, label: t('island.tile.swipe'), disabled: captures.length < 2 || editing },
         ]}
         value={swipe ? SWIPE : surface === 'change' ? null : epoch}
@@ -632,7 +645,7 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
         <Choice
           label={t('island.tile.flightPaths')}
           shortcut="scene.flightPaths"
-          options={PATH_MODES.map((p) => ({ value: p.mode, label: p.label }))}
+          options={PATH_MODES.map((p) => ({ value: p.mode, label: t(PATH_NAME[p.mode]) }))}
           value={paths.pref.mode}
           onPick={(m) => {
             updateFlightPaths((pref) => setPathMode(pref, m));

@@ -64,7 +64,18 @@ export function liveItems(input: LiveInput): LiveItem[] {
 
 /** "ALT 31 m · SPD 3.2 m/s" for the playing clip (D30). */
 export function playbackTelemetry(altitudeM: number, speedMps: number): string {
-  return `ALT ${String(Math.round(altitudeM))} m · SPD ${speedMps.toFixed(1)} m/s`;
+  return t('island.telemetry', { alt: Math.round(altitudeM), speed: speedMps.toFixed(1) });
+}
+
+/** How often the island follows the playhead while a clip plays. */
+const PLAYBACK_STEP_MS = 250;
+
+/**
+ * The playhead in the island's steps: the playhead moves on every frame, the island's line (its
+ * bar and telemetry) four times a second, so the island does not draw again on every frame.
+ */
+export function playbackClock(nowMs: number): number {
+  return Math.floor(nowMs / PLAYBACK_STEP_MS) * PLAYBACK_STEP_MS;
 }
 
 /**
@@ -190,21 +201,24 @@ function useToolLive(): LiveInput['tool'] {
 function usePlaybackLive(): LiveInput['clip'] {
   const playing = useWorkspace((s) => s.playing);
   const activeClip = useWorkspace((s) => s.activeClip);
-  const nowMs = useWorkspace((s) => s.nowMs);
+  // the playhead in steps (playbackClock): only playing, the island follows it
+  const nowMs = useWorkspace((s) => (s.playing ? playbackClock(s.nowMs) : 0));
   const project = useWorkspace((s) => s.project);
   const { durations, flights } = useMedia(project);
-  if (!playing || !activeClip || !project) return null;
-  const layer = project.manifest.layers.find((l) => l.id === activeClip);
-  if (layer?.kind !== 'video') return null;
-  const dur = durations[layer.id];
-  const progress = dur ? (nowMs - clipStartMs(layer)) / dur : 0;
-  const samples = flights[layer.id];
-  const tm = samples?.length ? telemetryAt(samples, nowMs - layer.flight.startUtcMs) : null;
-  return {
-    name: layer.name,
-    progress,
-    telemetry: tm ? playbackTelemetry(tm.altitudeM, tm.speedMps) : null,
-  };
+  return useMemo(() => {
+    if (!playing || !activeClip || !project) return null;
+    const layer = project.manifest.layers.find((l) => l.id === activeClip);
+    if (layer?.kind !== 'video') return null;
+    const dur = durations[layer.id];
+    const progress = dur ? (nowMs - clipStartMs(layer)) / dur : 0;
+    const samples = flights[layer.id];
+    const tm = samples?.length ? telemetryAt(samples, nowMs - layer.flight.startUtcMs) : null;
+    return {
+      name: layer.name,
+      progress,
+      telemetry: tm ? playbackTelemetry(tm.altitudeM, tm.speedMps) : null,
+    };
+  }, [playing, activeClip, nowMs, project, durations, flights]);
 }
 
 function useJobsLive(): LiveInput['jobs'] {

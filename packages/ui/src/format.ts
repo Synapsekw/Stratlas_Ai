@@ -46,9 +46,10 @@ function writtenOffset(iso: string): number | null {
  * "2023-02-21" or an ISO datetime -> "21 Feb 2023". The day is the one in the time zone the
  * datetime was recorded in: "2024-04-02T00:00:00+03:00" is 2 Apr (not 1 Apr, its UTC day); a
  * datetime in UTC ("Z") gives its UTC day, one without a zone the day as written (never the
- * day of the computer's own zone). Unparseable input is returned as is.
+ * day of the computer's own zone). Unparseable input is returned as is. `year: false` leaves the
+ * year out ("21 Feb"), where the year is said elsewhere.
  */
-export function formatDate(iso: string): string {
+export function formatDate(iso: string, opts: { year?: boolean } = {}): string {
   const ms = Date.parse(
     /^\d{4}-\d{2}-\d{2}$/.test(iso)
       ? `${iso}T00:00:00Z`
@@ -58,7 +59,8 @@ export function formatDate(iso: string): string {
   );
   if (Number.isNaN(ms)) return iso;
   const d = new Date(ms + (writtenOffset(iso) ?? 0) * 60_000);
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()] ?? ''} ${d.getUTCFullYear()}`;
+  const day = `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()] ?? ''}`;
+  return opts.year === false ? day : `${day} ${d.getUTCFullYear()}`;
 }
 
 /** UTC wall clock, "15:11:16". */

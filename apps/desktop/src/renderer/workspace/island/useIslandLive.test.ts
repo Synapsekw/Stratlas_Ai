@@ -4,6 +4,7 @@ import {
   createBackOnline,
   liveItems,
   livePairKey,
+  playbackClock,
   playbackTelemetry,
   toolLabel,
   type LiveInput,
@@ -55,6 +56,16 @@ describe('liveItems', () => {
   it('clamps progress into 0..1', () => {
     const [p] = liveItems({ ...none, clip: { name: 'x', progress: 3, telemetry: null } });
     expect(p).toMatchObject({ progress: 1 });
+  });
+});
+
+describe('playbackClock', () => {
+  // the island follows the playhead in steps, not on every frame
+  it('steps the playhead to a quarter of a second', () => {
+    expect(playbackClock(0)).toBe(0);
+    expect(playbackClock(249)).toBe(0);
+    expect(playbackClock(250)).toBe(250);
+    expect(playbackClock(1010)).toBe(1000);
   });
 });
 

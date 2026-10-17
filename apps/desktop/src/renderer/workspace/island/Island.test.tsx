@@ -177,6 +177,23 @@ describe('Island', () => {
     expect(document.activeElement).toBe(tiles[0]);
   });
 
+  it('mirrors the arrow keys right to left, as the tabs do', async () => {
+    document.documentElement.dir = 'rtl';
+    try {
+      await render();
+      openTools();
+      const tiles = [...host.querySelectorAll<HTMLElement>('[role="tabpanel"] button')];
+      act(() => tiles[0]?.focus());
+      // the next tile lies to the left
+      key('ArrowLeft');
+      expect(document.activeElement).toBe(tiles[1]);
+      key('ArrowRight');
+      expect(document.activeElement).toBe(tiles[0]);
+    } finally {
+      document.documentElement.dir = '';
+    }
+  });
+
   it('closes on Esc and gives focus back to the island', async () => {
     await render();
     openTools();
@@ -225,6 +242,38 @@ describe('Island', () => {
     expect(text).toContain('Distance');
     expect(text).toContain('12.40 m');
     expect(announced().polite).toContain('Distance 12.40 m');
+  });
+
+  it('says a playing clip once, not its telemetry on every tick', async () => {
+    live = [
+      { kind: 'playback', clip: 'Flight 3', progress: 0.1, telemetry: 'ALT 31 m · SPD 3.2 m/s' },
+    ];
+    await render();
+    expect(island()?.textContent).toContain('ALT 31 m');
+    expect(announced().polite.trim()).toBe('Flight 3');
+    const said = announced();
+    live = [
+      { kind: 'playback', clip: 'Flight 3', progress: 0.2, telemetry: 'ALT 33 m · SPD 3.0 m/s' },
+    ];
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(island()?.textContent).toContain('ALT 33 m');
+    expect(announced()).toBe(said);
+  });
+
+  it('says a running job at coarse steps', async () => {
+    live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }];
+    await render();
+    expect(announced().polite.trim()).toBe('Build the model 25%');
+    const said = announced();
+    live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.41, more: 0 }];
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(announced()).toBe(said);
   });
 
   it('shows the second live item as a bubble that swaps with the island', async () => {

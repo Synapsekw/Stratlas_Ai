@@ -4287,6 +4287,18 @@ export const en = {
   'island.tile.annotate': 'Annotate',
   'island.tile.annotateOpen': 'Annotate: pins, lines, areas, cloud regions',
   'island.tile.annotateClose': 'Close the annotation tools',
+  'island.tile.labelOff': 'Off',
+  'island.tile.labelKey': 'Key',
+  'island.tile.labelAll': 'All',
+  'island.tile.pathsAll': 'All',
+  'island.tile.pathsActive': 'Active clip',
+  'island.tile.pathsOff': 'Off',
+  // a group's tile named with its group, "Measure: All tools"
+  'island.groupTile': '{group}: {tile}',
+  // a live item and its reading, as the live line says it ("Distance 12.40 m")
+  'island.liveReading': '{name} {value}',
+  'island.percent': '{pct}%',
+  'island.telemetry': 'ALT {alt} m · SPD {speed} m/s',
   'wb.showIt': 'Show it',
   'wb.collapseAll': 'Collapse all',
   'wb.expandAll': 'Expand all',

@@ -37,6 +37,11 @@ describe('dates and times', () => {
     expect(formatDate('2023-11-22T09:18:00Z')).toBe('22 Nov 2023');
     expect(formatDate('not a date')).toBe('not a date');
   });
+  it('leaves the year out when asked, built from the date and not cut from the text', () => {
+    expect(formatDate('2023-02-21', { year: false })).toBe('21 Feb');
+    expect(formatDate('2024-04-02T00:00:00+03:00', { year: false })).toBe('2 Apr');
+    expect(formatDate('not a date', { year: false })).toBe('not a date');
+  });
   it('gives the day in the time zone a datetime was recorded in', () => {
     // Ring Road issues: midnight on 2 Apr in Kuwait is 21:00 on 1 Apr UTC
     expect(formatDate('2024-04-02T00:00:00+03:00')).toBe('2 Apr 2024');

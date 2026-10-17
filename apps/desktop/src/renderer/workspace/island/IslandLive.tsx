@@ -2,15 +2,19 @@
 import { Icon, t, useT } from '@aio/ui';
 import type { LiveItem } from './islandModel';
 
-/** What a live item says, for the bubble's tooltip and the polite live region. */
+const percent = (progress: number) => t('island.percent', { pct: Math.floor(progress * 100) });
+const reading = (name: string, value: string | null) =>
+  value ? t('island.liveReading', { name, value }) : name;
+
+/** What a live item says in full, for the bubble's tooltip. */
 export function liveText(item: LiveItem): string {
   switch (item.kind) {
     case 'tool':
-      return item.reading ? `${item.label} ${item.reading}` : item.label;
+      return reading(item.label, item.reading);
     case 'playback':
-      return item.telemetry ? `${item.clip} ${item.telemetry}` : item.clip;
+      return reading(item.clip, item.telemetry);
     case 'job':
-      return `${item.label} ${String(Math.floor(item.progress * 100))}%`;
+      return reading(item.label, percent(item.progress));
     case 'connection':
       return t(
         item.state === 'offline'
@@ -19,6 +23,26 @@ export function liveText(item: LiveItem): string {
             ? 'island.reconnecting'
             : 'island.backOnline',
       );
+  }
+}
+
+/** A job's progress is said at every quarter, not at every percent. */
+const SAY_STEPS = 4;
+
+/**
+ * What the polite live region says of a live item: a reading the person makes (a tool's), a
+ * clip's name (not its telemetry, which changes all through the clip), a job at coarse steps, the
+ * connection. The island says it again only when this text changes.
+ */
+export function liveSay(item: LiveItem): string {
+  switch (item.kind) {
+    case 'playback':
+      return item.clip;
+    case 'job':
+      return reading(item.label, percent(Math.floor(item.progress * SAY_STEPS) / SAY_STEPS));
+    case 'tool':
+    case 'connection':
+      return liveText(item);
   }
 }
 
@@ -82,7 +106,7 @@ export function IslandLive({ item }: { item: LiveItem }) {
         <span className="isl-live" data-live="job">
           <Ring progress={item.progress} size={16} />
           <span className="isl-name">{item.label}</span>
-          <span className="isl-value sm">{`${String(Math.floor(item.progress * 100))}%`}</span>
+          <span className="isl-value sm">{percent(item.progress)}</span>
           {item.more > 0 && <span className="isl-more">{`+${String(item.more)}`}</span>}
         </span>
       );

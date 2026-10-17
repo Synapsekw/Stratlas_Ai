@@ -41,7 +41,7 @@ import { takeTNotice } from '../stagePrefs';
 import { useTimeline } from '../timeline';
 import { fullGroup, GROUP_NAME, MODES, type GroupCtx } from './groups';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
-import { IslandLive, LiveGlyph, liveText } from './IslandLive';
+import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
 import { IslandTools } from './IslandTools';
 import {
   islandGroups,
@@ -59,7 +59,7 @@ const INITIAL: IslandState = { open: 'rest', group: 'view', preview: null, swapp
 const NEAR_PX = 88;
 /** The one-time T notice stays this long at most. */
 const NOTICE_MS = 8000;
-/** Live readings are said at most once a second. */
+/** Live readings are said at most once a second, and only when what is said changes. */
 const SAY_MS = 1000;
 
 const REDUCE = '(prefers-reduced-motion: reduce)';
@@ -179,7 +179,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   }, [pairKey]);
   const primary = s.swapped && pair.secondary ? pair.secondary : pair.primary;
   const secondary = s.swapped && pair.secondary ? pair.primary : pair.secondary;
-  useSayLive(primary ? liveText(primary) : '');
+  useSayLive(primary ? liveSay(primary) : '');
 
   const open = s.open === 'tools' || s.open === 'date';
   const expanded = s.open === 'ready';

@@ -1,7 +1,8 @@
 /**
  * The open island: the 3D / Map / Split switch and the group tabs on top, the shown group's quick
  * row under them. Hovering or focusing a tab previews its row; clicking it opens the group's full
- * set. Left and Right move along a row, Up and Down (and Tab) between the rows.
+ * set. Left and Right move along a row (mirrored right to left, as the foundation's Tabs do), Up
+ * and Down (and Tab) between the rows.
  */
 import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
 import { useId, type Dispatch, type KeyboardEvent } from 'react';
@@ -32,12 +33,18 @@ function moveFocus(root: HTMLElement, e: KeyboardEvent): boolean {
     const list = focusables(target);
     (list.find((el) => el.getAttribute('aria-selected') === 'true') ?? list[0])?.focus();
   };
+  // right to left the next item lies to the left (packages/ui Tabs.tsx)
+  const dir = root.closest('[dir]')?.getAttribute('dir') ?? document.documentElement.dir;
+  const flip = dir === 'rtl' ? -1 : 1;
+  const along = (by: number) => {
+    items[Math.min(items.length - 1, Math.max(0, i + by))]?.focus();
+  };
   switch (e.key) {
     case 'ArrowRight':
-      items[Math.min(items.length - 1, i + 1)]?.focus();
+      along(flip);
       return true;
     case 'ArrowLeft':
-      items[Math.max(0, i - 1)]?.focus();
+      along(-flip);
       return true;
     case 'Home':
       items[0]?.focus();
