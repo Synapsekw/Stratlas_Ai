@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TelecomAntennasParams } from './antennas';
 import { FrameRef, LonLatRing } from './change';
 import { Id, IsoDate, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
@@ -93,6 +94,8 @@ export const PipelineName = z.enum([
   'model.evidence',
   // Point cloud cleanup (pipeline pack POINTCLOUD_CLEAN_MIN_PACK)
   'pointcloud.clean',
+  // Telecom antenna inventory (pipeline pack TELECOM_ANTENNAS_MIN_PACK)
+  'telecom.antennas',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -350,6 +353,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Clean up a point cloud',
     description:
       'Marks noise with PDAL outlier filters, or writes a cleaned copy of a COPC cloud as a new layer.',
+  },
+  {
+    name: 'telecom.antennas',
+    title: 'Detect antennas',
+    description:
+      'Finds and measures the antennas, dishes and other equipment on a tower crown from a point cloud: type, azimuth, downtilt, plumb and size, with a fit quality for each.',
   },
 ];
 
@@ -1245,6 +1254,7 @@ const PARAMS = {
   'pano.stitch': PanoStitchParams,
   'model.evidence': ModelEvidenceParams,
   'pointcloud.clean': PointcloudCleanParams,
+  'telecom.antennas': TelecomAntennasParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

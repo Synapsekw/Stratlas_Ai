@@ -146,6 +146,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.17',
   },
   {
+    family: 'aio.antennas',
+    version: 1,
+    home: 'project',
+    where: 'telecom/antennas.json',
+    since: '0.20',
+  },
+  {
     family: 'aio.drawingplacement',
     version: 1,
     home: 'project',

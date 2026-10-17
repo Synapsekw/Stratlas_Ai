@@ -30,6 +30,7 @@ import { SELECTION_MAX_POINTS, SelectionName, selectionByteLength } from './sele
 import { ProjectManifest } from './manifest';
 import { ClassCatalogue, LibraryClass, SeverityModel } from './severity';
 import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
+import { AntennaAiLabel, AntennasFile } from './antennas';
 import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
@@ -2274,6 +2275,84 @@ export const ipc = {
         .optional(),
     }).strict(),
     response: EngineerOutcomeSchema,
+  },
+
+  // ---------------------------------------------------------------- telecom antenna inventory
+  /** Read `telecom/antennas.json`; `file` is null when no run has written one yet. */
+  'telecom:readAntennas': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: AntennasFile.nullable(), readOnly: z.boolean() }),
+      Failure,
+    ]),
+  },
+  /** Write `telecom/antennas.json` atomically (`.bak`, journaled); refused for packages. */
+  'telecom:writeAntennas': {
+    request: z.object({ projectId: ProjectId, file: AntennasFile }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * What an AI labelling request would send: the unit crops, the provider and the estimate. The
+   * token is valid once, for these units, for a few minutes.
+   */
+  'ai:antennaLabelPreview': {
+    request: z
+      .object({ projectId: ProjectId, unitIds: z.array(z.string().min(1)).min(1).max(200) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        provider: z.string(),
+        model: z.string(),
+        cloud: z.boolean(),
+        photosAllowed: z.boolean(),
+        crops: z.array(z.object({ unitId: z.string(), path: z.string() }).strict()),
+        missing: z.array(z.string()),
+        estimate: z
+          .object({
+            images: z.number().int().nonnegative(),
+            inputTokens: z.number().nonnegative(),
+            costUsd: z.number().nonnegative().optional(),
+          })
+          .strict(),
+        token: z.string().max(100),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Label antenna crops with the vision route. AI changes only kind, kindBasis and ai, never a
+   * number. Gates in main: `check('vision')`, the photo consent or `photos`, and the preview token
+   * for every cloud request.
+   */
+  'ai:labelAntennas': {
+    request: z
+      .object({
+        runId: z.string().min(1),
+        projectId: ProjectId,
+        unitIds: z.array(z.string().min(1)).min(1).max(200),
+        token: z.string().max(100).optional(),
+        photos: z.boolean().optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        provider: z.string(),
+        model: z.string(),
+        promptVersion: z.string(),
+        labels: z.array(
+          z
+            .object({ unitId: z.string(), label: AntennaAiLabel, reason: z.string().max(200) })
+            .strict(),
+        ),
+        inputTokens: z.number().nonnegative(),
+        outputTokens: z.number().nonnegative(),
+        costUsd: z.number().nonnegative().optional(),
+        warnings: z.array(z.string()),
+      }),
+      Failure,
+    ]),
   },
 
   // ---------------------------------------------------------------- M8 local detection (C6)

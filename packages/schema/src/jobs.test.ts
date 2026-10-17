@@ -104,6 +104,7 @@ describe('pipeline params', () => {
       'pano.stitch',
       'model.evidence',
       'pointcloud.clean',
+      'telecom.antennas',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });

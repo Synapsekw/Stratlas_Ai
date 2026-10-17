@@ -4,7 +4,7 @@
  * and descriptions are the frozen contract of `@aio/schema`; the plain words live here.
  */
 import { PIPELINES, type PipelineName } from '@aio/schema';
-import type { MessageKey } from '@aio/ui';
+import { t, type MessageKey } from '@aio/ui';
 
 // ---------------------------------------------------------------- pipelines by area
 
@@ -71,6 +71,7 @@ export const PIPELINE_GROUP: Record<PipelineName, PipelineGroupId> = {
   'model.evidence': 'import',
   'pointcloud.to_copc': 'import',
   'pointcloud.clean': 'import',
+  'telecom.antennas': 'survey',
   'drawing.import': 'import',
   'design.import': 'import',
   'opf.import': 'import',
@@ -126,8 +127,15 @@ const PLAIN_TITLES: Partial<Record<PipelineName, string>> = {
   'photo.products': 'Maps from photos: building the maps',
 };
 
+/** Pipelines whose job title is a catalogue string. */
+const TITLE_KEYS: Partial<Record<PipelineName, MessageKey>> = {
+  'telecom.antennas': 'jobs.telecom.antennas',
+};
+
 /** A job's title in the list and its details: plain words where there are any, else the pipeline's. */
 export function jobTitle(name: PipelineName): string {
+  const key = TITLE_KEYS[name];
+  if (key) return t(key);
   return PLAIN_TITLES[name] ?? PIPELINES.find((p) => p.name === name)?.title ?? name;
 }
 
@@ -174,6 +182,7 @@ export const JOB_KIND: Record<PipelineName, JobKind> = {
   'inspection.run': 'ai',
   'pointcloud.to_copc': 'files',
   'pointcloud.clean': 'files',
+  'telecom.antennas': 'survey',
   'drawing.import': 'files',
   'design.import': 'files',
   'opf.import': 'files',

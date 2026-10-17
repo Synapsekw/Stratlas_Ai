@@ -1062,6 +1062,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'model.evidence': [],
   // started from the Clean up panel only
   'pointcloud.clean': [],
+  // started from the antenna inventory panel only
+  'telecom.antennas': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */
