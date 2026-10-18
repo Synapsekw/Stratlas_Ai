@@ -51,11 +51,14 @@ describe('a change set against the dates shifts now', () => {
     };
     // computed with the same shift but no turn
     expect(changeSetStale(set({ to: { eastM: 2, northM: -1 } }), now)).toBe(true);
-    // computed with this very turn
-    const withTurn = ChangeSet.parse({
-      ...set({ to: { eastM: 2, northM: -1 } }),
-      lineUp: { to: { eastM: 2, northM: -1 } },
-    });
-    expect(withTurn.lineUp?.to).toEqual({ eastM: 2, northM: -1 });
+    // computed with this very turn: fresh
+    const withTurn = (t: typeof turn) =>
+      ChangeSet.parse({ ...set({ to: { eastM: 2, northM: -1 } }), lineUpTurn: { to: t } });
+    expect(changeSetStale(withTurn(turn), now)).toBe(false);
+    // computed with another turn: stale
+    expect(changeSetStale(withTurn({ ...turn, rotationDeg: 0.2 }), now)).toBe(true);
+    expect(changeSetStale(withTurn({ ...turn, scale: 1.001 }), now)).toBe(true);
+    // the turn removed since
+    expect(changeSetStale(withTurn(turn), base)).toBe(true);
   });
 });

@@ -266,6 +266,18 @@ export const LineUpMeasure = z
   })
   .strict();
 
+/**
+ * A date's line-up turn and scale about a pivot (project CRS), as a change set records it beside
+ * `lineUp`. Plain (not strict), so later fields stay additive. The same shape as the capture's
+ * `lineUpTurn`.
+ */
+const ChangeLineUpTurn = z.object({
+  rotationDeg: z.number().min(-1).max(1),
+  scale: z.number().min(0.99).max(1.01),
+  pivotE: z.number(),
+  pivotN: z.number(),
+});
+
 export const ChangeSet = z
   .object({
     schema: z.literal(CHANGE_SCHEMA),
@@ -295,6 +307,11 @@ export const ChangeSet = z
     /** The shifts of the two dates when the set was computed; a later difference marks it out of date. */
     lineUp: z
       .object({ from: DateShiftSchema.optional(), to: DateShiftSchema.optional() })
+      .strict()
+      .optional(),
+    /** The turns of the dates that had one, beside `lineUp` (which stays strict). */
+    lineUpTurn: z
+      .object({ from: ChangeLineUpTurn.optional(), to: ChangeLineUpTurn.optional() })
       .strict()
       .optional(),
   })

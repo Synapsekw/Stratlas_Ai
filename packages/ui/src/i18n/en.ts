@@ -4322,6 +4322,8 @@ export const en = {
   'lineUp.north': '{distance} north',
   'lineUp.south': '{distance} south',
   'lineUp.confident': 'Confident: {tiles} matching areas agree within {spread}.',
+  'lineUp.turn': 'turned {deg}°, scaled {pct}',
+  'lineUp.cloudsNoTurn': "Point clouds move but don't turn yet.",
   'lineUp.moves': 'Moves with {date}: {layers} and {items}.',
   'lineUp.layers_one': '{count} dataset',
   'lineUp.layers_other': '{count} datasets',
@@ -4341,11 +4343,13 @@ export const en = {
   'lineUp.refuse.texture':
     'These dates cannot be lined up: there is too little detail to match (water, snow or bare ground, for example).',
   'lineUp.refuse.disagree':
-    'These dates cannot be lined up: parts of them point to different shifts, so one may be turned or scaled against the other. Lining up only moves a date sideways.',
+    "These dates cannot be lined up: their parts don't fit one shift, turn and scale, so part of the site may have warped or changed too much.",
   'lineUp.refuse.overlap': 'These dates hardly overlap.',
   'lineUp.refuse.aligned': 'These dates already line up (within {distance}).',
   'lineUp.refuse.range':
-    'These dates cannot be lined up: the date would move more than 500 m from where its files place it.',
+    'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other.',
+  'lineUp.refuse.far':
+    'These dates cannot be lined up: the date would move more than 500 m, turn more than 2° or scale more than 2% from where its files place it.',
   'lineUp.refuse.noImagery': 'Each date needs an ortho or a DSM to be lined up.',
   'lineUp.failed': 'The measurement did not finish: {error}',
   'lineUp.folder': 'Lined up with {kept} ({distance})',
