@@ -130,6 +130,17 @@ describe('antennaMeasure', () => {
     expect(name[0]?.at[1]).toBeGreaterThan(30 + 1.3);
   });
 
+  it('keeps the width label on top, depth below and the name above both', () => {
+    const spots = antennaMeasure(upright, frame, null).spots;
+    const width = spots.find((s) => s.text === '0.40 m');
+    const depth = spots.find((s) => s.text === '0.30 m');
+    const name = spots.find((s) => s.kind === 'name');
+    // box centre local y 30, half height 1.3
+    expect(width?.at[1]).toBeGreaterThan(30 + 1.3 - 1e-6);
+    expect(depth?.at[1]).toBeLessThan(30);
+    expect(name?.at[1]).toBeGreaterThan(width?.at[1] ?? Infinity);
+  });
+
   it('has no angle spot without an azimuth', () => {
     const rest = { ...upright };
     delete rest.azimuthGridDeg;

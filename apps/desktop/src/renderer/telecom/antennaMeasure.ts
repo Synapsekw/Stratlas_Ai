@@ -18,7 +18,7 @@ export const DIM_TICK_M = 0.05;
 const metres = (v: number): string => t('telecom.antennas.label.metres', { value: v.toFixed(2) });
 
 /** Gap between the box top and its name label, metres. */
-const NAME_LIFT_M = 0.15;
+const NAME_LIFT_M = 0.3;
 
 /** A project axis (E, N, Z) as a unit local direction: x = E, y = Z, z = -N. */
 export function axisToLocal(a: Vec3): Vec3 {
@@ -89,8 +89,8 @@ function angleText(unit: AntennaUnit): string | null {
 
 /**
  * The selected unit's dimension lines and labels. Width runs along the box's across axis on its
- * bottom-front edge and height along its up axis on the right-front edge, both pushed out along
- * the outward axis; depth runs along the outward axis on the bottom-right edge, pushed out to the
+ * top-front edge, pushed up and out, and height along its up axis on the right-front edge, pushed
+ * out along the outward axis (so the width and depth labels stay apart); depth runs along the outward axis on the bottom-right edge, pushed out to the
  * right. Each line is `DIM_OFFSET_M` off its edge with a `DIM_TICK_M` tick across each end.
  */
 export function antennaMeasure(
@@ -101,10 +101,20 @@ export function antennaMeasure(
   const centre = antennaCentre(unit, frame, shift);
   const across = axisToLocal(unit.box.axes[0]);
   const out = axisToLocal(unit.box.axes[2]);
+  const up = axisToLocal(unit.box.axes[1]);
+  const upOut: Vec3 = [out[0] + up[0], out[1] + up[1], out[2] + up[2]];
+  const n = Math.hypot(...upOut) || 1;
+  const pushUpOut: Vec3 = [upOut[0] / n, upOut[1] / n, upOut[2] / n];
   const at = (s: Vec3) => boxPoint(unit, centre, s);
 
   const lines: { key: string; from: Vec3; to: Vec3; push: Vec3; value: number }[] = [
-    { key: 'w', from: at([-1, -1, 1]), to: at([1, -1, 1]), push: out, value: unit.widthM.value },
+    {
+      key: 'w',
+      from: at([-1, 1, 1]),
+      to: at([1, 1, 1]),
+      push: pushUpOut,
+      value: unit.widthM.value,
+    },
     { key: 'h', from: at([1, -1, 1]), to: at([1, 1, 1]), push: out, value: unit.heightM.value },
     { key: 'd', from: at([1, -1, -1]), to: at([1, -1, 1]), push: across, value: unit.depthM.value },
   ];
