@@ -1,6 +1,7 @@
 import { registerDateActions } from './dateActions';
 import { registerKindActions } from './kindActions';
 import { registerLayerActions } from './layerActions';
+import { registerMeasureActions } from './measureActions';
 import { registerPinActions } from './pinActions';
 import { registerProjectActions } from './projectActions';
 import { registerRfActions } from './rfActions';
@@ -16,5 +17,6 @@ export function registerSidebarActions(): void {
   registerLayerActions();
   registerKindActions();
   registerPinActions();
+  registerMeasureActions();
   registerRfActions();
 }
