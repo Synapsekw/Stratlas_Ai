@@ -6,7 +6,7 @@
  */
 import { brand } from '@aio/brand';
 import type { DetectionsFile, DetectorModelInfo, IpcEvent, Settings } from '@aio/schema';
-import { DetectionsFile as DetectionsFileSchema } from '@aio/schema';
+import { DetectionsFile as DetectionsFileSchema, WalkFile } from '@aio/schema';
 import { app, nativeImage, utilityProcess } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -16,6 +16,7 @@ import type { DecodedImage } from '../maskAssist';
 import type { ProjectRegistry } from '../project';
 import { readManifest } from '../project';
 import { resolveInside } from '../protocol/paths';
+import { decodeFrame, videoSize } from './frames';
 import type { InferenceEnv } from './index';
 import { listModels } from './models';
 import { createInferenceHost, remoteOrt, type ChildLike, type InferenceHost } from './utility';
@@ -132,6 +133,8 @@ export interface ElectronInferenceDeps {
   /** The pipeline pack folder, or null. */
   packDir: () => Promise<string | null>;
   send: (event: IpcEvent<'inference:progress'>) => void;
+  /** The ffmpeg that decodes walk frames (the pipeline pack's, `findFfmpeg`); null: the PATH. */
+  ffmpeg: () => Promise<string | null>;
 }
 
 /** The environment `registerInferenceIpc` runs in, inside the app. */
@@ -167,6 +170,32 @@ export function electronInference(deps: ElectronInferenceDeps): { env: Inference
       const r = await resolveInside(root, rel);
       if (!r.ok) throw new Error(`The photo ${rel} is not in this project.`);
       return decodeImage(r.path, maxSide);
+    },
+    decodeFrame: async (root, rel, t, width, height) => {
+      const r = await resolveInside(root, rel);
+      if (!r.ok) throw new Error(`The video ${rel} is not in this project.`);
+      return decodeFrame({
+        ffmpeg: (await deps.ffmpeg()) ?? 'ffmpeg',
+        file: r.path,
+        t,
+        width,
+        height,
+      });
+    },
+    videoSize: async (root, rel) => {
+      const r = await resolveInside(root, rel);
+      if (!r.ok) throw new Error(`The video ${rel} is not in this project.`);
+      return videoSize((await deps.ffmpeg()) ?? 'ffmpeg', r.path);
+    },
+    readWalk: async (root, rel) => {
+      try {
+        const r = await resolveInside(root, rel);
+        if (!r.ok) return null;
+        const parsed = WalkFile.safeParse(JSON.parse(await readFile(r.path, 'utf8')));
+        return parsed.success ? parsed.data : null;
+      } catch {
+        return null;
+      }
     },
     readPass: async (root, name): Promise<DetectionsFile | null> => {
       try {
