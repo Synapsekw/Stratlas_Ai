@@ -32,7 +32,7 @@ import {
   stepAntenna,
   useAntennas,
 } from './antennaStore';
-import { placeCard, type Rect } from './cardPlacement';
+import { leaderLine, placeCard, type Rect } from './cardPlacement';
 import { useAntennaKeys } from './useAntennaKeys';
 
 export interface AntennaCardProps {
@@ -781,23 +781,6 @@ function CardBody(props: BodyProps): ReactElement {
       </div>
     </>
   );
-}
-
-/** From the box's right-middle to the card's left edge, or its left-middle to the right edge. */
-function leaderLine(
-  box: Rect,
-  card: { x: number; y: number },
-  size: { w: number; h: number },
-): { x1: number; y1: number; x2: number; y2: number } {
-  const y1 = box.y + box.h / 2;
-  const right = card.x >= box.x + box.w;
-  const inset = Math.min(12, size.h / 2);
-  return {
-    x1: right ? box.x + box.w : box.x,
-    y1,
-    x2: right ? card.x : card.x + size.w,
-    y2: Math.min(Math.max(y1, card.y + inset), card.y + size.h - inset),
-  };
 }
 
 /** The card for the selected unit, drawn in `stageHost`; nothing without a selection. */
