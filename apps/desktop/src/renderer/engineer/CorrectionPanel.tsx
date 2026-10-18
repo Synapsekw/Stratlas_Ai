@@ -1,10 +1,11 @@
 import { useId, useRef, useState, type HTMLAttributes } from 'react';
+import { formatNumber } from '@aio/geo';
+import { Button, Chip, EmptyState, formatCount, useT, type MessageKey } from '@aio/ui';
 import type {
   CorrectionComposerDraft,
   CorrectionPanelProps,
   CorrectionTargetView,
 } from './CorrectionPanel.types';
-import { Button, Chip, EmptyState } from './CorrectionPanel.ui';
 import './CorrectionPanel.css';
 export type { CorrectionPanelProps } from './CorrectionPanel.types';
 
@@ -45,29 +46,33 @@ function ViewSwitch<T extends string>({
 
 const TEXT_LIMIT = 4000;
 const EVIDENCE_LIMIT = 16;
-const STATUS = {
-  open: 'Queued',
-  submitted: 'Sent to AI',
-  proposed: 'Ready to review',
-  accepted: 'Accepted',
-  rejected: 'Rejected',
-  stale: 'Needs a new proposal',
-  failed: 'Needs attention',
+const EVIDENCE_KINDS: Record<string, MessageKey> = {
+  photo: 'eng.ev.kind.photo',
+  crop: 'eng.ev.kind.crop',
+  side: 'eng.ev.kind.side',
+  top: 'eng.ev.kind.top',
+  slice: 'eng.ev.kind.slice',
+  generated: 'eng.ev.kind.generated',
 };
-function targetLabel(target: CorrectionTargetView): string {
-  return target.kind === 'part' ? target.label : 'Location pin';
+function targetLabel(target: CorrectionTargetView, t: ReturnType<typeof useT>): string {
+  return target.kind === 'part' ? target.label : t('eng.correction.pin');
 }
 function Position({ position }: { position: [number, number, number] }) {
+  const t = useT();
   return (
     <p className="eng-correction-coordinates">
-      Project-local metres: X {position[0].toFixed(3)}, Y {position[1].toFixed(3)}, Z{' '}
-      {position[2].toFixed(3)}
+      {t('eng.correction.position', {
+        x: formatNumber(position[0], 3),
+        y: formatNumber(position[1], 3),
+        z: formatNumber(position[2], 3),
+      })}
     </p>
   );
 }
 
 /** Content only. The parent owns model selection, scene rendering, persistence and AI delivery. */
 export function CorrectionPanel(p: CorrectionPanelProps) {
+  const t = useT();
   const id = useId();
   const [localDraft, setLocalDraft] = useState<CorrectionComposerDraft>({
     targetMode: 'part',
@@ -95,7 +100,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const [actionError, setActionError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState<MessageKey | null>(null);
   const locked = !!p.busy || !!p.readOnly || pending;
   const selectedPart = p.parts.find((part) => part.id === p.selectedPartId);
   const validPin = p.pin?.position.every(Number.isFinite) ? p.pin : undefined;
@@ -129,14 +134,12 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
     pendingRef.current = true;
     setPending(true);
     setActionError('');
-    setNotice('');
+    setNotice(null);
     try {
       await action();
       success();
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'The action could not be saved. Try again.',
-      );
+      setActionError(error instanceof Error ? error.message : t('eng.correction.error.save'));
     } finally {
       pendingRef.current = false;
       setPending(false);
@@ -152,7 +155,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
   return (
     <section
       className="eng-corrections"
-      aria-label="Model corrections"
+      aria-label={t('eng.correction.label')}
       aria-busy={!!p.busy || pending}
     >
       {p.onSourceVisibleChange && (
@@ -163,51 +166,48 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
               p.onSourceVisibleChange?.(!p.sourceVisible);
             }}
           >
-            {p.sourceVisible ? 'Hide source cloud' : 'Show source cloud'}
+            {t(p.sourceVisible ? 'eng.correction.source.hide' : 'eng.correction.source.show')}
           </Button>
         </ActionRow>
       )}
       <details
         key={p.selectedRequestId ?? 'compose'}
         className="eng-correction-composer"
-        aria-label="New correction request"
+        aria-label={t('eng.correction.new')}
         open={!selected}
       >
         <summary>
-          <h3>Request a correction</h3>
+          <h3>{t('eng.correction.request')}</h3>
         </summary>
         <div className="eng-correction-section">
-          <p className="eng-correction-hint">
-            Choose a part or mark a missing item in the scene. The model stays visible while you
-            review.
-          </p>
+          <p className="eng-correction-hint">{t('eng.correction.requestHint')}</p>
           {p.readOnly && (
             <p role="status" className="eng-correction-hint">
-              This model is read-only. Open an editable modelling run to request changes.
+              {t('eng.correction.readOnly')}
             </p>
           )}
           <ViewSwitch
-            label="Correction target"
+            label={t('eng.correction.target')}
             value={targetMode}
             onChange={changeMode}
             items={[
-              { value: 'part', label: 'Selected part', disabled: locked },
-              { value: 'pin', label: 'Location pin', disabled: locked },
+              { value: 'part', label: t('eng.correction.selectedPart'), disabled: locked },
+              { value: 'pin', label: t('eng.correction.pin'), disabled: locked },
             ]}
           />
           {targetMode === 'part' ? (
             <label className="eng-correction-field">
-              Part to correct
+              {t('eng.correction.part')}
               <select
                 className="input"
-                aria-label="Part to correct"
+                aria-label={t('eng.correction.part')}
                 value={p.selectedPartId ?? ''}
                 disabled={locked || p.parts.length === 0}
                 onChange={(e) => {
                   p.onSelectPart(e.target.value);
                 }}
               >
-                <option value="">Select a part in the model</option>
+                <option value="">{t('eng.correction.selectPart')}</option>
                 {p.parts.map((part) => (
                   <option key={part.id} value={part.id}>
                     {part.label}
@@ -221,11 +221,11 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                 <>
                   <Position position={validPin.position} />
                   <label className="eng-correction-field">
-                    Correction radius (m)
+                    {t('eng.correction.radius')}
                     <input
                       type="number"
                       className="input"
-                      aria-label="Correction radius (m)"
+                      aria-label={t('eng.correction.radius')}
                       min={0.1}
                       max={5}
                       step={0.1}
@@ -237,9 +237,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                       }}
                     />
                   </label>
-                  <p className="eng-correction-hint">
-                    Changes must stay within this distance of the pin. Choose 0.1 to 5 metres.
-                  </p>
+                  <p className="eng-correction-hint">{t('eng.correction.radiusHint')}</p>
                   <ActionRow>
                     <Button
                       disabled={locked}
@@ -248,7 +246,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                         p.onPinModeChange(true);
                       }}
                     >
-                      Move pin
+                      {t('eng.correction.pinMove')}
                     </Button>
                     <Button
                       disabled={!!p.busy || pending}
@@ -258,16 +256,14 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                         setTargetMode('part');
                       }}
                     >
-                      Remove pin
+                      {t('eng.correction.pinRemove')}
                     </Button>
                   </ActionRow>
                 </>
               ) : (
                 <>
                   <p role="status" className="eng-correction-hint">
-                    {p.pinMode
-                      ? 'Click a surface on the model or point cloud to place a pin. Empty space cannot be pinned.'
-                      : 'Choose Place pin, then click a surface on the model or point cloud.'}
+                    {t(p.pinMode ? 'eng.correction.pinPicking' : 'eng.correction.pinHint')}
                   </p>
                   {!p.pinMode && (
                     <Button
@@ -276,7 +272,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                         p.onPinModeChange(true);
                       }}
                     >
-                      Place pin
+                      {t('eng.correction.pinPlace')}
                     </Button>
                   )}
                 </>
@@ -289,7 +285,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                     setTargetMode('part');
                   }}
                 >
-                  Cancel picking
+                  {t('eng.correction.pinCancel')}
                 </Button>
               )}
             </div>
@@ -302,39 +298,37 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                 p.onFocusTarget(target);
               }}
             >
-              Show target in scene
+              {t('eng.correction.showTarget')}
             </Button>
           )}
           <label className="eng-correction-field" htmlFor={`${id}-comment`}>
-            Describe the discrepancy
+            {t('eng.correction.comment')}
             <textarea
               id={`${id}-comment`}
               className="input"
-              aria-label="Describe the discrepancy"
+              aria-label={t('eng.correction.comment')}
               rows={3}
               aria-describedby={`${id}-comment-help`}
               value={comment}
               maxLength={TEXT_LIMIT}
               disabled={locked}
-              placeholder="What is wrong, and what should change?"
+              placeholder={t('eng.correction.commentPlaceholder')}
               onChange={(e) => {
                 setComment(e.target.value);
               }}
             />
           </label>
           <p id={`${id}-comment-help`} className="eng-correction-hint">
-            Be specific about the visible difference. Saving keeps this request in the project;
-            sending to AI is a separate action.
+            {t('eng.correction.commentHint')}
           </p>
           {p.evidenceOptions.length > 0 && (
             <details className="eng-correction-evidence">
               <summary>
-                Source evidence
-                {selectedEvidence.length ? ` (${selectedEvidence.length} selected)` : ' (optional)'}
+                {selectedEvidence.length
+                  ? t('eng.correction.evidenceSelected', { count: selectedEvidence.length })
+                  : t('eng.correction.evidenceOptional')}
               </summary>
-              <p className="eng-correction-hint">
-                Attach the source photos or views that show the discrepancy.
-              </p>
+              <p className="eng-correction-hint">{t('eng.correction.evidenceHint')}</p>
               <div className="eng-correction-evidence-list">
                 {p.evidenceOptions.map((item) => (
                   <label key={item.id} className="eng-correction-evidence-item">
@@ -359,7 +353,9 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                       {item.label}
                       <small>
                         {item.id}
-                        {item.kind ? ` (${item.kind})` : ''}
+                        {item.kind
+                          ? ` (${EVIDENCE_KINDS[item.kind] ? t(EVIDENCE_KINDS[item.kind]) : item.kind})`
+                          : ''}
                       </small>
                     </span>
                   </label>
@@ -382,12 +378,12 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                     () => {
                       setComment('');
                       setEvidenceIds([]);
-                      setNotice('Request saved. Send it to AI when the review is ready.');
+                      setNotice('eng.correction.saved');
                     },
                   );
               }}
             >
-              Save request
+              {t('eng.correction.save')}
             </Button>
             {p.onDiscardDraft && (
               <Button
@@ -395,7 +391,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                 disabled={locked || (!comment && !validPin && evidenceIds.length === 0)}
                 onClick={p.onDiscardDraft}
               >
-                Discard draft
+                {t('eng.correction.discard')}
               </Button>
             )}
           </ActionRow>
@@ -407,22 +403,19 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
           {actionError ? actionError : p.error}
         </p>
       )}
-      {(notice !== '' || !!p.busy || pending) && (
+      {(notice !== null || !!p.busy || pending) && (
         <p role="status" className="eng-correction-hint">
-          {p.busy || pending ? 'Saving or preparing the correction…' : notice}
+          {p.busy || pending ? t('eng.correction.busy') : notice && t(notice)}
         </p>
       )}
 
       <div className="eng-correction-section">
         <ActionRow>
-          <h3>Saved requests</h3>
-          <Chip kind="tag">{p.requests.length}</Chip>
+          <h3>{t('eng.correction.requests')}</h3>
+          <Chip kind="tag">{formatCount(p.requests.length)}</Chip>
         </ActionRow>
         {p.requests.length === 0 ? (
-          <EmptyState
-            title="Save a request above to begin a review."
-            body="Your original model stays unchanged until you accept a correction."
-          />
+          <EmptyState title={t('eng.correction.empty')} body={t('eng.correction.emptyBody')} />
         ) : (
           <>
             <ul className="eng-correction-queue">
@@ -436,9 +429,9 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                         p.onSelectRequest(request.id);
                       }}
                     >
-                      {targetLabel(request.target)}
+                      {targetLabel(request.target, t)}
                     </Button>
-                    <Chip kind="status">{STATUS[request.status]}</Chip>
+                    <Chip kind="status">{t(`eng.correction.status.${request.status}`)}</Chip>
                   </ActionRow>
                   <p>{request.comment}</p>
                 </li>
@@ -449,27 +442,27 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
               onClick={() => void perform(() => p.onSend(queued.map((request) => request.id)))}
             >
               {queued.length
-                ? `Send ${queued.length} ${queued.length === 1 ? 'request' : 'requests'} to AI`
-                : 'No requests waiting to send'}
+                ? t('eng.correction.send', { count: queued.length })
+                : t('eng.correction.noneToSend')}
             </Button>
-            <p className="eng-correction-hint">
-              AI proposes changes for review. Sending requests does not accept a correction.
-            </p>
+            <p className="eng-correction-hint">{t('eng.correction.sendHint')}</p>
           </>
         )}
       </div>
 
       {selected && (
-        <div className="eng-correction-section" aria-label="Selected correction request">
+        <div className="eng-correction-section" aria-label={t('eng.correction.selectedRequest')}>
           <ActionRow>
-            <h3>{targetLabel(selected.target)}</h3>
-            <Chip kind="status">{STATUS[selected.status]}</Chip>
+            <h3>{targetLabel(selected.target, t)}</h3>
+            <Chip kind="status">{t(`eng.correction.status.${selected.status}`)}</Chip>
           </ActionRow>
           <p className="eng-correction-comment">{selected.comment}</p>
           {selected.target.kind === 'pin' && <Position position={selected.target.position} />}
           {selected.target.kind === 'pin' && (
             <p className="eng-correction-hint">
-              Permitted correction radius: {selected.target.radiusM ?? 2} m
+              {t('eng.correction.permittedRadius', {
+                radius: formatNumber(selected.target.radiusM ?? 2, 1),
+              })}
             </p>
           )}
           <Button
@@ -478,14 +471,15 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
               p.onFocusTarget(selected.target);
             }}
           >
-            Show request in scene
+            {t('eng.correction.showRequest')}
           </Button>
           {selected.evidenceIds.length > 0 && (
             <p className="eng-correction-hint">
-              Evidence:{' '}
-              {selected.evidenceIds
-                .map((ref) => p.evidenceOptions.find((item) => item.id === ref)?.label ?? ref)
-                .join(', ')}
+              {t('eng.correction.evidence', {
+                labels: selected.evidenceIds
+                  .map((ref) => p.evidenceOptions.find((item) => item.id === ref)?.label ?? ref)
+                  .join(', '),
+              })}
             </p>
           )}
           {selected.error && (
@@ -495,36 +489,33 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
           )}
           {proposal ? (
             <>
-              <h4>Review proposed changes</h4>
+              <h4>{t('eng.correction.review')}</h4>
               <ViewSwitch
-                label="Compare correction"
+                label={t('eng.correction.compare')}
                 value={p.view}
                 onChange={p.onViewChange}
                 items={[
-                  { value: 'before', label: 'Before' },
-                  { value: 'after', label: 'After', disabled: p.proposalReady === false || stale },
+                  { value: 'before', label: t('eng.correction.before') },
+                  {
+                    value: 'after',
+                    label: t('eng.correction.after'),
+                    disabled: p.proposalReady === false || stale,
+                  },
                 ]}
               />
               <p className="eng-correction-hint">
-                Compare from the same viewpoint in the scene.{' '}
-                {p.view === 'before' ? 'Showing the current model.' : 'Showing the proposed model.'}
+                {t(p.view === 'before' ? 'eng.correction.beforeHint' : 'eng.correction.afterHint')}
               </p>
               {p.proposalReady === false && (
                 <p role="status" className="eng-correction-hint">
-                  Preparing the proposed model. Acceptance is available once it is visible.
+                  {t('eng.correction.preparing')}
                 </p>
               )}
               <p className="eng-correction-comment">{proposal.explanation}</p>
               <ul className="eng-correction-changes">
                 {proposal.changes.map((change) => (
                   <li key={change.partId}>
-                    <Chip kind="status">
-                      {change.kind === 'added'
-                        ? 'Added'
-                        : change.kind === 'removed'
-                          ? 'Removed'
-                          : 'Changed'}
-                    </Chip>
+                    <Chip kind="status">{t(`eng.correction.change.${change.kind}`)}</Chip>
                     <Button
                       variant="quiet"
                       onClick={() => {
@@ -543,8 +534,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
               </ul>
               {stale && (
                 <p role="alert" className="eng-correction-error">
-                  The model has changed since this proposal was prepared. Ask AI for a new proposal
-                  before accepting changes.
+                  {t('eng.correction.stale')}
                 </p>
               )}
               {activeProposal && (
@@ -560,31 +550,29 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                     }
                     onClick={() => void perform(() => p.onAccept(proposal.id))}
                   >
-                    Accept correction
+                    {t('eng.correction.accept')}
                   </Button>
                   <Button
                     disabled={locked || stale}
                     onClick={() => void perform(() => p.onReject(proposal.id))}
                   >
-                    Reject correction
+                    {t('eng.correction.reject')}
                   </Button>
                 </ActionRow>
               )}
               {activeProposal && p.view === 'before' && !stale && (
-                <p className="eng-correction-hint">
-                  View After to review the change before accepting.
-                </p>
+                <p className="eng-correction-hint">{t('eng.correction.viewAfter')}</p>
               )}
             </>
           ) : (
             <EmptyState
-              title={
+              title={t(
                 selected.status === 'accepted'
-                  ? 'This correction was accepted into the model.'
+                  ? 'eng.correction.accepted'
                   : selected.status === 'submitted'
-                    ? 'Waiting for an AI proposal. The current model is unchanged.'
-                    : 'A proposed model will appear here when AI returns a correction.'
-              }
+                    ? 'eng.correction.waiting'
+                    : 'eng.correction.noProposal',
+              )}
             />
           )}
           {selected.replies && selected.replies.length > 0 && (
@@ -598,11 +586,11 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
             </ul>
           )}
           <label className="eng-correction-field" htmlFor={`${id}-reply`}>
-            Reply to this request
+            {t('eng.correction.reply')}
             <textarea
               id={`${id}-reply`}
               className="input"
-              aria-label="Reply to this request"
+              aria-label={t('eng.correction.reply')}
               rows={2}
               maxLength={TEXT_LIMIT}
               disabled={locked}
@@ -619,12 +607,12 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                 () => p.onReply(selected.id, reply.trim()),
                 () => {
                   setReplies({ ...replies, [selected.id]: '' });
-                  setNotice('Reply saved. Send it to AI when you are ready.');
+                  setNotice('eng.correction.replySaved');
                 },
               )
             }
           >
-            Save reply
+            {t('eng.correction.replySave')}
           </Button>
         </div>
       )}

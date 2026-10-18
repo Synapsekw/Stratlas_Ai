@@ -33,7 +33,7 @@ describe('pack gate for model.evidence', () => {
   });
   it('lists the feature for Settings, Processing tools', () => {
     expect(EVIDENCE_PACK_FEATURE).toEqual({
-      label: 'Measuring an engineered asset',
+      label: 'Resuming saved engineering measurements',
       minVersion: '0.13.1',
     });
     expect(COMPONENT_EVIDENCE_PACK_FEATURE).toEqual({

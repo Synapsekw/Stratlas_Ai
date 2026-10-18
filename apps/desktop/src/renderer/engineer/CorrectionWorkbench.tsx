@@ -1,5 +1,6 @@
 import { getActiveStage } from '@aio/engine';
 import type { ModelCorrection, ProcModel } from '@aio/schema';
+import { useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { Matrix4 } from 'three';
@@ -16,6 +17,7 @@ import { prepareCorrectionSubmission } from './correctionTools';
 
 /** App wiring only; CorrectionPanel remains portable to the sidebar workbench. */
 export function CorrectionWorkbench({ layerId }: { layerId: string }) {
+  const t = useT();
   const model = useRun((s) => s.model, null);
   const run = useRun((s) => s.run, null);
   const evidence = useRun((s) => s.evidence, null);
@@ -165,7 +167,7 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
         };
   };
   const act = async (action: () => Promise<void>) => {
-    if (!draft.begin()) throw new Error('A correction action is already running.');
+    if (!draft.begin()) throw new Error(t('eng.correction.error.running'));
     try {
       await action();
     } catch (e) {
@@ -250,7 +252,7 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
         replies: r.replies.map((v, i) => ({
           id: `${r.id}-${String(i)}`,
           text: v.comment,
-          author: 'Reviewer',
+          author: t('eng.correction.reviewer'),
         })),
       }))}
       onSelectPart={(id) => {
@@ -267,7 +269,7 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
       }}
       onCreate={({ target, comment, evidenceIds }) =>
         act(async () => {
-          if (target.kind === 'pin' && !pin) throw new Error('Pick a surface location first.');
+          if (target.kind === 'pin' && !pin) throw new Error(t('eng.correction.error.pin'));
           const camera = getActiveStage()?.saveView();
           const request = await modelCorrections.create({
             id: `fix-${crypto.randomUUID()}`,
@@ -308,10 +310,9 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
           const session = appAgentSession();
           await session.refresh();
           const state = session.getState();
-          if (state.busy || state.preview)
-            throw new Error('Finish or cancel the current AI conversation first.');
+          if (state.busy || state.preview) throw new Error(t('eng.correction.error.conversation'));
           if (state.availability.status !== 'ready')
-            throw new Error('Configure an available AI model in Settings before sending.');
+            throw new Error(t('eng.correction.error.model'));
           const submitted = await prepareCorrectionSubmission(ids);
           shell.getState().setRight(false);
           agentPane.getState().setMode('normal');
@@ -326,7 +327,7 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
       onFocusTarget={focus}
       onAccept={(id) =>
         act(async () => {
-          if (!ready || view !== 'after') throw new Error('Review the After view first.');
+          if (!ready || view !== 'after') throw new Error(t('eng.correction.error.after'));
           await modelCorrections.accept(id);
           setView('before');
         })

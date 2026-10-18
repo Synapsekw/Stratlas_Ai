@@ -137,9 +137,9 @@ describe('compact tool profile (small local models)', () => {
       const compact = toolsForWindow(w, 'compact');
       expect(compact.length, w).toBeGreaterThan(3);
       // 13 everyday tools, the four change tools (C1, every window), the four modelling
-      // tools (C5: 3D view, map and point cloud), the three show tools, the two Globe tools
-      // and the two photo tools
-      expect(compact.length, w).toBeLessThanOrEqual(28);
+      // tools (C5: 3D view, map and point cloud), the three correction tools, the three show
+      // tools, the two Globe tools and the two photo tools
+      expect(compact.length, w).toBeLessThanOrEqual(31);
       expect(compact.length, w).toBeLessThan(toolsForWindow(w, 'full').length);
       for (const s of compact) {
         expect(s.meta.description.length, s.meta.name).toBeLessThanOrEqual(100);
@@ -180,6 +180,23 @@ describe('compact tool profile (small local models)', () => {
     for (const w of WindowKind.options) {
       const full = names(w, 'full');
       for (const n of names(w, 'compact')) expect(full, `${w} ${n}`).toContain(n);
+    }
+  });
+
+  it('includes correction tools only in the three modelling views', () => {
+    const correctionNames = [
+      'list_model_corrections',
+      'propose_model_correction',
+      'view_model_correction_evidence',
+    ];
+    for (const w of WindowKind.options) {
+      const expected = ['scene3d', 'map', 'pointcloud'].includes(w) ? correctionNames : [];
+      expect(names(w, 'compact').filter((name) => correctionNames.includes(name))).toEqual(
+        expect.arrayContaining(expected),
+      );
+      expect(names(w, 'compact').filter((name) => correctionNames.includes(name))).toHaveLength(
+        expected.length,
+      );
     }
   });
 

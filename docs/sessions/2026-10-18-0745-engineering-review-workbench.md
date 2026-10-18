@@ -12,6 +12,7 @@ related: [2026-10-17-model-correction-review.md, 2026-10-18-0255-stage-island-st
 
 - This PR integrates source-driven modelling and human correction review with the landed sidebar, telecom and RF interfaces. Model review is a workbench tab using shared UI parts and a single scroll surface.
 - Review keeps selection, camera and source placement intact. Unsaved comments and pins survive tab changes; in-flight correction actions cannot be resubmitted on remount. Only one review controls comparison visibility during drawer transitions.
+- A completed run opens a normal review tab, preserves other panels and waits behind an issue edit. Correction controls use shared translations and number formatting; the saved-measurement compatibility row is labelled explicitly.
 - Pipeline pack 0.16.0 is required for new component runs and enhanced resumes. Saved legacy measurement compatibility remains 0.13.1; RF remains 0.15.0. The landed telecom detector is preserved.
 
 ## Why

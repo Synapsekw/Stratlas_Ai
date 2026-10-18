@@ -1,7 +1,9 @@
 import { createStore } from 'zustand/vanilla';
 import { workspace } from '@aio/workspace';
+import { isIssueEditing } from '../issueCard/state';
 import { shell } from '../shell';
-import { followTool, showBench } from '../workspace/workbench/followTool';
+import { showBench } from '../workspace/workbench/followTool';
+import { orderTabs } from '../workspace/workbench/tabsModel';
 import { workbench } from '../workspace/workbench/workbenchStore';
 import { engineeringUiOn } from './flags';
 import { setCorrectionDraftKey } from './correctionDraft';
@@ -50,11 +52,28 @@ export const engineerUi = createStore<{
   },
 }));
 
-/** Explicit review opens its tab; a completed run follows the workbench's issue-edit rule. */
+/** Completed results preserve other panels and wait behind issue edits without starting a tool. */
 export function openEngineeringReview(automatic = false): void {
   engineerUi.setState({ open: true, review: true });
-  if (automatic) followTool('review');
-  else showBench('review');
+  const waitingForIssue = automatic && isIssueEditing();
+  if (automatic)
+    workbench.setState((state) => {
+      const waiting =
+        waitingForIssue && !state.waiting.includes('review')
+          ? [...state.waiting, 'review' as const]
+          : state.waiting;
+      return {
+        // open() replaces an unpinned panel. A background result must keep that work available.
+        tabs: orderTabs(
+          state.tabs.some((tab) => tab.id === 'review')
+            ? state.tabs
+            : [...state.tabs, { id: 'review', live: false, pinned: false, fixed: false }],
+        ),
+        waiting,
+        attention: waiting[0] ?? null,
+      };
+    });
+  if (!waitingForIssue) showBench('review');
 }
 
 /** Closing the review is presentation-only. The run and its saved corrections remain intact. */

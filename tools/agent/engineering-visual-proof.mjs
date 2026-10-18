@@ -106,6 +106,7 @@ try {
     (id) => window.__stratlas?.workspace.getState().project?.id === id,
     manifest.id,
   );
+  await win.locator('.nav-item', { hasText: 'Scene' }).first().click();
   await win.waitForFunction(
     (id) => (window.__stratlas.stage()?.components(id).length ?? 0) > 0,
     layerId,
@@ -133,16 +134,31 @@ try {
   await cloudRow.click({ button: 'right' });
   await win.getByTestId('menu-create-engineering').click();
   await win.getByTestId('eng-review').click();
-  await win.getByTestId('eng-model-review').waitFor({ state: 'visible' });
-  const inventoryVisible = await win.getByTestId('component-tree').evaluate((tree) => {
+  const review = win
+    .locator('#wb-panel-review [data-testid="review-bench"]')
+    .getByTestId('eng-model-review');
+  await review.waitFor({ state: 'visible' });
+  await win.locator('#wb-tab-review[aria-selected="true"]').waitFor({ state: 'visible' });
+  const inventoryVisible = await review.getByTestId('component-tree').evaluate((tree) => {
     const r = tree.getBoundingClientRect();
-    const viewport = tree.closest('.mb-scroll').getBoundingClientRect();
+    const viewport = tree.closest('.wb-scroll').getBoundingClientRect();
     return r.top >= viewport.top - 2 && r.top + 80 < viewport.bottom;
   });
   if (!inventoryVisible)
     throw new Error('Review notes push the component inventory outside the viewport');
   await look([0, 28, 0], 14, [1, 0.3, 1]);
   await win.screenshot({ path: join(out, 'app-review.png') });
+  await review.getByRole('button', { name: 'Corrections', exact: true }).click();
+  const corrections = review.getByRole('region', { name: 'Model corrections', exact: true });
+  await corrections
+    .getByRole('combobox', { name: 'Part to correct' })
+    .waitFor({ state: 'visible' });
+  await corrections
+    .getByRole('textbox', { name: 'Describe the discrepancy' })
+    .waitFor({ state: 'visible' });
+  await win.screenshot({ path: join(out, 'app-corrections.png') });
+  await review.getByRole('button', { name: 'Components', exact: true }).click();
+  await review.getByTestId('component-tree').waitFor({ state: 'visible' });
   for (const kind of ['panel', 'rru']) {
     let picked = false;
     for (const part of model.assemblies.filter(
@@ -170,9 +186,9 @@ try {
       );
       await win.mouse.move(20, 20);
       await win.waitForTimeout(400);
-      const cardVisible = await win.getByTestId('component-card').evaluate((card) => {
+      const cardVisible = await review.getByTestId('component-card').evaluate((card) => {
         const r = card.getBoundingClientRect();
-        const viewport = card.closest('.mb-scroll').getBoundingClientRect();
+        const viewport = card.closest('.wb-scroll').getBoundingClientRect();
         return r.top >= viewport.top - 2 && r.top + 80 < viewport.bottom;
       });
       if (!cardVisible) throw new Error(`Selected ${kind} details are outside the review viewport`);

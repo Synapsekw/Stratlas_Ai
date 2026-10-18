@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, 'engineering-compare.mjs');
 const dir = mkdtempSync(join(tmpdir(), 'eng-compare-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+// The test runner may keep TEMP inside its worktree. Give the standalone CLI a synthetic
+// repository boundary so its report can sit outside that boundary but remain in private TEMP.
+const cliRepo = join(dir, 'repo');
+const cliScript = join(cliRepo, 'tools', 'agent', 'engineering-compare.mjs');
+mkdirSync(dirname(cliScript), { recursive: true });
+copyFileSync(script, cliScript);
+const cliEnv = { ...process.env, GIT_CEILING_DIRECTORIES: dir };
 
 /** A minimal GLB (JSON chunk only) with these nodes. */
 function glb(nodes) {
@@ -113,12 +121,12 @@ describe('evidence', () => {
 describe('command line', () => {
   it('refuses an output folder inside the repository', () => {
     expect(insideRepo(join(here, 'out'))).toBe(true);
-    expect(insideRepo(dir)).toBe(false);
     const r = spawnSync(
       process.execPath,
-      [script, candidate, reference, '--out', join(here, 'x')],
+      [cliScript, candidate, reference, '--out', join(cliRepo, 'out')],
       {
         encoding: 'utf8',
+        env: cliEnv,
       },
     );
     expect(r.status).not.toBe(0);
@@ -127,8 +135,9 @@ describe('command line', () => {
 
   it('writes the report outside the repository without the reference path', () => {
     const out = join(dir, 'report');
-    const r = spawnSync(process.execPath, [script, candidate, reference, '--out', out], {
+    const r = spawnSync(process.execPath, [cliScript, candidate, reference, '--out', out], {
       encoding: 'utf8',
+      env: cliEnv,
     });
     expect(r.status).toBe(0);
     const report = JSON.parse(readFileSync(join(out, 'compare.json'), 'utf8'));

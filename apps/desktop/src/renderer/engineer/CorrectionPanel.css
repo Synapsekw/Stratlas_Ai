@@ -65,14 +65,6 @@
   color: var(--danger-ink);
   overflow-wrap: anywhere;
 }
-.eng-correction-chip {
-  display: inline-flex;
-  padding-inline: var(--correction-gap-small);
-  border: thin solid var(--line);
-  border-radius: var(--r-4);
-  color: var(--fg-2);
-  font-size: var(--t-12);
-}
 .eng-correction-field .input {
   width: 100%;
   min-width: 0;
@@ -112,8 +104,8 @@
   color: var(--fg-2);
 }
 .eng-correction-evidence-item img {
-  width: var(--sb-w-c);
-  height: var(--tb-h);
+  inline-size: var(--sp-8);
+  block-size: var(--sp-8);
   object-fit: cover;
   flex: none;
 }
@@ -132,10 +124,6 @@
   white-space: normal;
   text-align: start;
   overflow-wrap: anywhere;
-}
-.eng-corrections .btn[aria-pressed='true'] {
-  border-color: var(--acc);
-  color: var(--acc);
 }
 .eng-corrections :focus-visible {
   outline: thin solid var(--acc);

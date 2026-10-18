@@ -5,7 +5,6 @@
 import {
   COMPONENT_EVIDENCE_FEATURE,
   COMPONENT_EVIDENCE_MIN_PACK,
-  MODEL_EVIDENCE_FEATURE,
   MODEL_EVIDENCE_MIN_PACK,
   type JobRecord,
 } from '@aio/schema';
@@ -15,7 +14,7 @@ import { compareVersions } from './jobs/pack';
 
 /** What the processing tools must be for `model.evidence` (Settings, Processing tools lists it). */
 export const EVIDENCE_PACK_FEATURE = {
-  label: MODEL_EVIDENCE_FEATURE,
+  label: 'Resuming saved engineering measurements',
   minVersion: MODEL_EVIDENCE_MIN_PACK,
 };
 

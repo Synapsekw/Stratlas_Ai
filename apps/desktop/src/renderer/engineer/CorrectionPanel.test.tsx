@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from 'react';
+import { setLocale } from '@aio/ui';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CorrectionPanel, type CorrectionPanelProps } from './CorrectionPanel';
@@ -17,6 +18,7 @@ afterEach(() => {
     root.unmount();
   });
   host.remove();
+  setLocale('en');
 });
 
 function props(over: Partial<CorrectionPanelProps> = {}): CorrectionPanelProps {
@@ -89,6 +91,55 @@ const proposal = {
     { partId: 'part-a', label: 'Upper radio', kind: 'changed' as const, detail: 'Height +0.2 m' },
   ],
 };
+
+it('updates correction controls, statuses and plural counts when the language changes', () => {
+  render(
+    props({
+      requests: [request, { ...request, id: 'r2' }],
+      sourceVisible: false,
+      onSourceVisibleChange: vi.fn(),
+    }),
+  );
+  act(() => {
+    setLocale('fr', {
+      'eng.correction.label': 'Corrections du modèle',
+      'eng.correction.source.show': 'Afficher le nuage source',
+      'eng.correction.comment': 'Décrire la différence',
+      'eng.correction.commentPlaceholder': 'Que faut-il modifier ?',
+      'eng.correction.status.open': 'En attente',
+      'eng.correction.send_one': 'Envoyer {count} demande',
+      'eng.correction.send_other': 'Envoyer {count} demandes',
+    });
+  });
+  expect(host.querySelector('section')?.getAttribute('aria-label')).toBe('Corrections du modèle');
+  expect(button('Afficher le nuage source')).toBeDefined();
+  expect(area('Décrire la différence').placeholder).toBe('Que faut-il modifier ?');
+  expect(host.textContent).toContain('En attente');
+  expect(button('Envoyer 2 demandes')).toBeDefined();
+  render(props({ requests: [request] }));
+  expect(button('Envoyer 1 demande')).toBeDefined();
+});
+
+it('formats coordinates with shared metric grouping and removes rounded negative zero', () => {
+  setLocale('fr', {
+    'eng.correction.position': 'Mètres locaux : X {x}, Y {y}, Z {z}',
+  });
+  render(
+    props({
+      requests: [
+        {
+          ...request,
+          target: {
+            kind: 'pin',
+            position: [1234.123456, -0.0001, 3],
+          },
+        },
+      ],
+      selectedRequestId: 'r1',
+    }),
+  );
+  expect(host.textContent).toContain('Mètres locaux : X 1 234.123, Y 0.000, Z 3.000');
+});
 
 it('saves a selected-part request and explicit evidence only after a useful comment', async () => {
   const p = props();
