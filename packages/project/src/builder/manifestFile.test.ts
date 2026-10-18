@@ -168,6 +168,41 @@ describe('saves of one manifest take turns', () => {
     expect((await readManifest(root)).captures[0]).not.toHaveProperty('lineUp');
   });
 
+  it('updateCapture writes and removes lineUpTurn with lineUp', async () => {
+    const root = await project();
+    const at = '2026-10-16T08:00:00.000Z';
+    const lineUp = { eastM: 1, northM: 2, with: 'c2', at };
+    const turn = { rotationDeg: 0.1, scale: 1.0035, pivotE: 500120.5, pivotN: 3200080.25 };
+    const first = async () => (await readManifest(root)).captures[0];
+    await updateCapture(root, 'c1', { lineUp, lineUpTurn: turn });
+    expect((await first())?.lineUpTurn).toEqual(turn);
+    // the turn goes on its own, the line-up stays
+    await updateCapture(root, 'c1', { lineUpTurn: null });
+    expect(await first()).not.toHaveProperty('lineUpTurn');
+    expect((await first())?.lineUp).toMatchObject({ eastM: 1, northM: 2 });
+    // removing the line-up removes its turn too
+    await updateCapture(root, 'c1', { lineUp, lineUpTurn: turn });
+    await updateCapture(root, 'c1', { lineUp: null });
+    expect(await first()).not.toHaveProperty('lineUp');
+    expect(await first()).not.toHaveProperty('lineUpTurn');
+    // a new line-up saved without a turn is a plain shift: no stale turn stays behind
+    await updateCapture(root, 'c1', { lineUp, lineUpTurn: turn });
+    await updateCapture(root, 'c1', { lineUp });
+    expect(await first()).not.toHaveProperty('lineUpTurn');
+    // an identity turn is not stored
+    await updateCapture(root, 'c1', {
+      lineUp,
+      lineUpTurn: { rotationDeg: 0, scale: 1, pivotE: 500000, pivotN: 3200000 },
+    });
+    expect(await first()).not.toHaveProperty('lineUpTurn');
+    // a turn needs a line-up
+    await updateCapture(root, 'c1', { lineUp: null });
+    await expect(updateCapture(root, 'c1', { lineUpTurn: turn })).rejects.toThrow(
+      'A turn needs a line-up.',
+    );
+    expect(await first()).not.toHaveProperty('lineUpTurn');
+  });
+
   it('refuses a line-up with itself', async () => {
     const root = await project();
     const at = '2026-10-16T08:00:00.000Z';
