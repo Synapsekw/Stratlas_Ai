@@ -305,8 +305,11 @@ export async function saveMeasurements(): Promise<boolean> {
   const s = get();
   if (!s.projectId || s.readOnly || s.saving) return false;
   const file = s.file;
+  const projectId = s.projectId;
   set({ saving: true, message: null });
-  const r = await bridge.call('survey:writeMeasurements', { projectId: s.projectId, file });
+  const r = await bridge.call('survey:writeMeasurements', { projectId, file });
+  // another project opened meanwhile: its state is not this save's to touch, or to save
+  if (get().projectId !== projectId) return false;
   const ok = r.ok && r.value.ok;
   const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
   set({
@@ -316,7 +319,7 @@ export async function saveMeasurements(): Promise<boolean> {
     ...(ok && get().file === file ? { resultsUnwritten: false } : {}),
   });
   // an edit made while this save was in flight (an Undo right after a Delete) is saved too
-  if (ok && get().autosave && isDirty(get())) void saveMeasurements();
+  if (ok && get().autosave && get().status === 'ready' && isDirty(get())) void saveMeasurements();
   return ok;
 }
 
@@ -476,9 +479,11 @@ export function undoDeleteMeasurements(): void {
   for (const { m, index } of [...left.items].sort((a, b) => a.index - b.index))
     measurements.splice(Math.min(index, measurements.length), 0, m);
   const back = left.items.map((x) => x.m.id);
+  const focus = back[0] ?? null;
+  // the focus moves to what came back: an edit under way on another measurement ends
   changed(
     { ...s.file, measurements },
-    { undoDelete: null, selected: back, focus: back[0] ?? null },
+    { undoDelete: null, selected: back, focus, editing: focus === s.focus ? s.editing : null },
   );
 }
 

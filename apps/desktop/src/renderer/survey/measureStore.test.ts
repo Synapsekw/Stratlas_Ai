@@ -30,24 +30,32 @@ import {
 } from './measureStore';
 import { createMeasureVisibilityMemory } from './measureVisibility';
 
-const io = vi.hoisted(() => ({ saved: emptyFile(), writes: 0, readOnly: false }));
+const io = vi.hoisted(() => ({
+  saved: emptyFile(),
+  writes: 0,
+  readOnly: false,
+  /** Writes per project. */
+  writesTo: new Map<string, number>(),
+  /** While set, a call on this channel waits for it before it answers. */
+  gate: null as { channel: string; wait: Promise<void> } | null,
+}));
 function emptyFile(): MeasurementsFile {
   return { schema: 'aio.measurements/1' as const, measurements: [] };
 }
 vi.mock('../shell', () => ({
   bridge: {
-    call: (channel: string, payload: { file?: unknown }) => {
+    call: async (channel: string, payload: { file?: unknown; projectId?: string }) => {
+      if (io.gate?.channel === channel) await io.gate.wait;
       if (channel === 'survey:writeMeasurements') {
         io.saved = MeasurementsFile.parse(JSON.parse(JSON.stringify(payload.file)) as unknown);
         io.writes++;
-        return Promise.resolve({ ok: true, value: { ok: true } });
+        const p = payload.projectId ?? '';
+        io.writesTo.set(p, (io.writesTo.get(p) ?? 0) + 1);
+        return { ok: true, value: { ok: true } };
       }
       if (channel === 'survey:readMeasurements')
-        return Promise.resolve({
-          ok: true,
-          value: { ok: true, file: io.saved, readOnly: io.readOnly },
-        });
-      return Promise.resolve({ ok: false, error: 'Not configured' });
+        return { ok: true, value: { ok: true, file: io.saved, readOnly: io.readOnly } };
+      return { ok: false, error: 'Not configured' };
     },
   },
   jobs: { getState: () => ({}) },
@@ -98,6 +106,8 @@ beforeEach(() => {
   io.saved = emptyFile();
   io.writes = 0;
   io.readOnly = false;
+  io.writesTo.clear();
+  io.gate = null;
   memory = createMeasureVisibilityMemory(memoryStorage());
   setMeasureVisibilityMemory(memory);
   measureStore.setState({
@@ -430,5 +440,71 @@ describe('a deletion can be undone', () => {
     measureStore.setState({ readOnly: true });
     deleteMeasurements(['m1']);
     expect(measureStore.getState().undoDelete).toBeNull();
+  });
+});
+
+describe('an autosave and the undo against what happens meanwhile', () => {
+  const gate = (channel: string) => {
+    let open: () => void = () => undefined;
+    io.gate = {
+      channel,
+      wait: new Promise<void>((r) => {
+        open = r;
+      }),
+    };
+    return () => {
+      io.gate = null;
+      open();
+    };
+  };
+  const flush = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it('a save still writing for one project does not touch, or save, the next one', async () => {
+    await loadFile([measurement('m1'), measurement('m2')]);
+    measureStore.setState({ projectId: 'A' });
+    setAutosave(true);
+    const writeA = gate('survey:writeMeasurements');
+    deleteMeasurements(['m1']);
+    expect(measureStore.getState().saving).toBe(true);
+    // the person opens B; its file is still being read when A's write answers
+    const readB = gate('survey:readMeasurements');
+    void loadMeasurements('B');
+    const bSaved = measureStore.getState().savedText;
+    writeA();
+    await flush();
+    expect(io.writesTo.get('B') ?? 0).toBe(0);
+    expect(measureStore.getState().projectId).toBe('B');
+    expect(measureStore.getState().savedText).toBe(bSaved);
+    expect(measureStore.getState().saving).toBe(false);
+    readB();
+    await flush();
+    expect(io.writesTo.get('B') ?? 0).toBe(0);
+    setAutosave(false);
+  });
+
+  it('Undo while another measurement is being edited ends that edit: no geometry crosses over', async () => {
+    await loadFile([
+      measurement('x'),
+      {
+        ...measurement('r'),
+        points: [
+          [10, 10, 0],
+          [13, 14, 0],
+        ] as SitePoint[],
+      },
+    ]);
+    select(['x'], 'x');
+    startEditing();
+    expect(measureStore.getState().editing).not.toBeNull();
+    deleteMeasurements(['r']);
+    undoDeleteMeasurements();
+    editEvent({ type: 'set', vertex: 0, coords: { z: 7 } });
+    const r = measureStore.getState().file.measurements.find((m) => m.id === 'r');
+    expect(r?.points).toEqual([
+      [10, 10, 0],
+      [13, 14, 0],
+    ]);
   });
 });
