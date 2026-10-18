@@ -228,6 +228,55 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await panel.getByTestId('antenna-group-eye-panel').click();
   await expect.poll(() => boxNames(win)).toHaveLength(8);
 
+  // numbered pins: a click on another unit's pin selects it, as a box pick does
+  await viewCrown(win);
+  const pins = win.locator('.antenna-label--pin');
+  await expect.poll(() => pins.count()).toBe(7);
+  const target = await pins.evaluateAll((els) => {
+    // the first pin that is on top where it is drawn (not under the card or another pin)
+    for (const el of els as HTMLElement[]) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0) continue;
+      if (document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el)
+        return el.dataset.unitId ?? null;
+    }
+    return null;
+  });
+  expect(target, 'a pin is clickable').not.toBeNull();
+  const pin = win.locator(`.antenna-label--pin[data-unit-id="${target ?? ''}"]`);
+  const pinBox = await pin.boundingBox();
+  expect(pinBox?.height ?? 0, 'the pin is a small pill').toBeLessThan(16);
+  const targetName = await win.evaluate(
+    (id) =>
+      (window as unknown as Inspect).__stratlas.antennas
+        .getState()
+        .file?.units.find((u) => u.id === id)?.name ?? '',
+    target,
+  );
+  await expect(pin).toHaveAttribute('title', new RegExp(`^${targetName} · `));
+  await pin.hover();
+  await evidence(win, 'j-pins');
+  await pin.click();
+  await expect(card.getByTestId('antenna-card-name')).toHaveText(targetName);
+  await expect(pin).toHaveCount(0);
+  await expect(pins).toHaveCount(7);
+  const control = win.getByTestId('antenna-labels-control');
+  await expectAccessible(win, 'Labels control', {
+    include: '[data-testid="antenna-labels-control"]',
+  });
+  // Labels Off: no pins, the selected unit keeps its card and its own labels
+  await control.getByRole('button', { name: 'Off' }).click();
+  await expect(control.getByRole('button', { name: 'Off' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(pins).toHaveCount(0);
+  await expect(card).toBeVisible();
+  await expect(win.locator('.antenna-labels .sv-label.sel').first()).toBeVisible();
+  await evidence(win, 'k-labels-off');
+  await control.getByRole('button', { name: 'All' }).click();
+  await expect(pins).toHaveCount(7);
+
   // the inventory's CSV export sits next to Export survey data, in Site data
   const site = win.getByTestId('wb-section-siteData');
   const siteHead = site.locator('.wb-section-head');
