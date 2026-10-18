@@ -393,6 +393,22 @@ describe('AntennaCard keys', () => {
     expect(antennaStore.getState().selected).toBe('a1');
   });
 
+  it('ignores a held A (auto-repeat) but takes a fresh press', async () => {
+    load(three());
+    show();
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'a', repeat: true, cancelable: true }),
+      );
+    });
+    await settle();
+    expect(status('a1')).toBe('draft');
+    expect(h.writes).toBe(0);
+    press('a');
+    await settle();
+    expect(status('a1')).toBe('accepted');
+  });
+
   it('read-only: A writes nothing', async () => {
     load(three(), { readOnly: true });
     show();

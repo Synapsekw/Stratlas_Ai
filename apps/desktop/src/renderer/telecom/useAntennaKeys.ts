@@ -49,6 +49,8 @@ export function useAntennaKeys(enabled: boolean): void {
     if (!enabled) return;
     const onKey = (e: KeyboardEvent): void => {
       if (ignored(e)) return;
+      // a held A or R would accept or reject a run of units; held arrows may step on
+      if (e.repeat && /^[aArR]$/.test(e.key)) return;
       const act = actionOf(e.key);
       if (!act) return;
       e.preventDefault();
