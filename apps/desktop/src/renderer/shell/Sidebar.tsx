@@ -342,7 +342,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   /**
    * Delete these rows. Layers go through the shared dialog, which may be cancelled, so with
    * layers among them only the layers are asked about and the measurements stay marked for a
-   * second Delete; measurements alone go straight away (Save measurements keeps it).
+   * second Delete; measurements alone go straight away, with an Undo notice
+   * (`MeasureUndoNotice`) that brings them back.
    */
   const deleteRows = (ids: readonly string[]) => {
     const layers = deletable(ids.filter((id) => measureIdOf(id) === null));
@@ -744,7 +745,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           setMarks(NO_MARKS);
           letGoOfMeasures(marks.marked);
         } else if (e.key === 'Delete' && canEdit) {
-          // the marked rows, else the focused row; always through the shared dialog
+          // the marked rows, else the focused row: layers through the shared dialog,
+          // measurements at once with an Undo notice
           const row = marked ? null : e.target.closest<HTMLElement>('[data-mark]')?.dataset.mark;
           const ids = marked ? [...marks.marked] : row ? [row] : [];
           if (ids.length === 0) return;

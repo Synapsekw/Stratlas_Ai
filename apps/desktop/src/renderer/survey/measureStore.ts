@@ -116,6 +116,12 @@ export interface RolePrompt {
   error: string | null;
 }
 
+/** Measurements a deletion took out, each with its index in the file before it. */
+export interface UndoDelete {
+  items: { m: SurveyMeasurement; index: number }[];
+  seq: number;
+}
+
 export interface MeasureState {
   projectId: string | null;
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -148,6 +154,11 @@ export interface MeasureState {
   measurementsVisible: boolean;
   /** Saved measurements hidden one by one in the views (the eye on their row; view only). */
   hiddenMeasurements: readonly string[];
+  /**
+   * The last deletion, until it is undone, dismissed or replaced by the next one: the deleted
+   * measurements with where each stood in the file (`seq` makes each deletion new).
+   */
+  undoDelete: UndoDelete | null;
   /** The tree is asked to scroll to and select a measurement (`seq` makes each ask new). */
   reveal: { id: string | null; seq: number; openSidebar: boolean } | null;
   /** The tree is asked to open an inline new-folder row for these measurements. */
@@ -209,6 +220,7 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   editing: null,
   measurementsVisible: true,
   hiddenMeasurements: [],
+  undoDelete: null,
   reveal: null,
   newFolder: null,
   dialog: null,
@@ -241,6 +253,7 @@ export function setMeasureVisibilityMemory(m: MeasureVisibilityMemory): void {
   visibilityMemory = m;
 }
 let revealSeq = 0;
+let undoSeq = 0;
 let newFolderSeq = 0;
 
 export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
@@ -299,6 +312,8 @@ export async function saveMeasurements(): Promise<boolean> {
     ...(ok ? { savedText: text(file) } : {}),
     ...(ok && get().file === file ? { resultsUnwritten: false } : {}),
   });
+  // an edit made while this save was in flight (an Undo right after a Delete) is saved too
+  if (ok && get().autosave && isDirty(get())) void saveMeasurements();
   return ok;
 }
 
@@ -315,7 +330,16 @@ export function revertMeasurements(): void {
       focus: null,
       editing: null,
       message: null,
+      undoDelete: undoLeft(s.undoDelete, parsed.data),
     });
+}
+
+/** What an undo still has to bring back: the deleted measurements not in `file` again. */
+function undoLeft(u: UndoDelete | null, file: MeasurementsFile): UndoDelete | null {
+  if (!u) return null;
+  const present = new Set(file.measurements.map((m) => m.id));
+  const items = u.items.filter((x) => !present.has(x.m.id));
+  return items.length === 0 ? null : { ...u, items };
 }
 
 function changed(file: MeasurementsFile, extra: Partial<MeasureState> = {}): void {
@@ -420,14 +444,44 @@ export function deleteMeasurements(ids: readonly string[]): void {
   const s = get();
   if (s.readOnly) return;
   const gone = new Set(ids);
+  const items = s.file.measurements.flatMap((m, index) => (gone.has(m.id) ? [{ m, index }] : []));
+  if (items.length === 0) return;
+  undoSeq += 1;
   changed(
     { ...s.file, measurements: s.file.measurements.filter((m) => !gone.has(m.id)) },
     {
       selected: s.selected.filter((id) => !gone.has(id)),
       focus: s.focus && gone.has(s.focus) ? null : s.focus,
       editing: s.focus && gone.has(s.focus) ? null : s.editing,
+      undoDelete: { items, seq: undoSeq },
     },
   );
+}
+
+/**
+ * Bring the last deleted measurements back as they were (same ids, folder and style), each at
+ * its old place in the file. An ordinary edit: it marks the file unsaved, or Autosave saves it.
+ */
+export function undoDeleteMeasurements(): void {
+  const s = get();
+  const left = undoLeft(s.undoDelete, s.file);
+  if (s.readOnly || !left) {
+    set({ undoDelete: null });
+    return;
+  }
+  const measurements = [...s.file.measurements];
+  for (const { m, index } of [...left.items].sort((a, b) => a.index - b.index))
+    measurements.splice(Math.min(index, measurements.length), 0, m);
+  const back = left.items.map((x) => x.m.id);
+  changed(
+    { ...s.file, measurements },
+    { undoDelete: null, selected: back, focus: back[0] ?? null },
+  );
+}
+
+/** Let go of the last deletion's undo. */
+export function dismissUndoDelete(): void {
+  set({ undoDelete: null });
 }
 
 /** Copy a measurement into another survey (a new id, scoped to that capture). */

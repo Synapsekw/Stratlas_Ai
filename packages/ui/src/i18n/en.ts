@@ -4940,6 +4940,11 @@ export const en = {
   'measureBench.saved.save': 'Save',
   'measureBench.saved.readOnly': 'Read-only package: measurements are shown only.',
   'measureBench.saved.label': 'Saving measurements',
+  'measure.undo.deleted_one': '{count} measurement deleted',
+  'measure.undo.deleted_other': '{count} measurements deleted',
+  'measure.undo.deletedOne': '{name} deleted',
+  'measure.undo.undo': 'Undo',
+  'measure.undo.dismiss': 'Dismiss',
 
   // Batch G review fixes: the benches' remaining strings (Measure Site data and Drawing aids,
   // the Annotate map tools)

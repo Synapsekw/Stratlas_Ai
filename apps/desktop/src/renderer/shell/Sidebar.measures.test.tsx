@@ -19,6 +19,7 @@ import {
   measureStore,
   revealMeasurement,
   setMeasureVisibilityMemory,
+  undoDeleteMeasurements,
 } from '../survey/measureStore';
 import { createMeasureVisibilityMemory } from '../survey/measureVisibility';
 import { removal } from './removal';
@@ -262,6 +263,11 @@ describe('Datasets: measurements', () => {
     const del = keyDown(row('c'), 'Delete');
     expect(del.defaultPrevented).toBe(true);
     expect(measures().map((m) => m.id)).toEqual(['b']);
+    // a stray Delete is taken back with the notice's Undo
+    act(() => {
+      undoDeleteMeasurements();
+    });
+    expect(measures().map((m) => m.id)).toEqual(['b', 'c']);
   });
 
   it.each([

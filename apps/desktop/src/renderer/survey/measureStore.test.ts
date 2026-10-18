@@ -25,6 +25,9 @@ import {
   setMeasurementsHidden,
   setMeasurementsVisible,
   setMeasureVisibilityMemory,
+  dismissUndoDelete,
+  setAutosave,
+  undoDeleteMeasurements,
 } from './measureStore';
 import { createMeasureVisibilityMemory } from './measureVisibility';
 
@@ -388,5 +391,72 @@ describe('measurement layers: remembered visibility and edits', () => {
       ],
     });
     expect(measureFolders(f)).toEqual(['alpha', 'Zed']);
+  });
+});
+
+describe('a deletion can be undone', () => {
+  const three = () =>
+    loadFile([
+      { ...measurement('m1'), folder: 'Fence' },
+      measurement('m2', { color: '#ff0000', fill: '#00ff00' }),
+      { ...measurement('m3'), folder: 'Fence' },
+    ]);
+  const ids = () => measureStore.getState().file.measurements.map((m) => m.id);
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it('deleting offers an undo that brings the same measurements back in their places', async () => {
+    await three();
+    const before = measureStore.getState().file;
+    deleteMeasurements(['m1', 'm3']);
+    expect(ids()).toEqual(['m2']);
+    expect(measureStore.getState().undoDelete?.items.map((x) => x.m.id)).toEqual(['m1', 'm3']);
+    undoDeleteMeasurements();
+    expect(measureStore.getState().file.measurements).toEqual(before.measurements);
+    expect(isDirty(measureStore.getState())).toBe(false);
+    expect(measureStore.getState().undoDelete).toBeNull();
+  });
+
+  it('the undo puts the measurements back after later edits, without doubling one already back', async () => {
+    await three();
+    deleteMeasurements(['m2']);
+    revertMeasurements();
+    // Revert brought it back already: the undo has nothing left to do
+    expect(measureStore.getState().undoDelete).toBeNull();
+    deleteMeasurements(['m1']);
+    // a later edit: a new measurement at the end
+    measureStore.setState((s) => ({
+      file: { ...s.file, measurements: [...s.file.measurements, measurement('m4')] },
+    }));
+    undoDeleteMeasurements();
+    expect(ids()).toEqual(['m1', 'm2', 'm3', 'm4']);
+    undoDeleteMeasurements();
+    expect(ids()).toEqual(['m1', 'm2', 'm3', 'm4']);
+  });
+
+  it('with Autosave on, the undo is saved too, even while the deletion is still being written', async () => {
+    await three();
+    setAutosave(true);
+    deleteMeasurements(['m2']);
+    // the deletion's save is in flight
+    expect(measureStore.getState().saving).toBe(true);
+    undoDeleteMeasurements();
+    await flush();
+    await flush();
+    expect(io.saved.measurements.map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
+    expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  it('dismissing, a project switch and a read-only file leave no undo', async () => {
+    await three();
+    deleteMeasurements(['m1']);
+    dismissUndoDelete();
+    expect(measureStore.getState().undoDelete).toBeNull();
+    deleteMeasurements(['m2']);
+    measureStore.setState({ projectId: null });
+    await loadMeasurements('p1');
+    expect(measureStore.getState().undoDelete).toBeNull();
+    measureStore.setState({ readOnly: true });
+    deleteMeasurements(['m1']);
+    expect(measureStore.getState().undoDelete).toBeNull();
   });
 });
