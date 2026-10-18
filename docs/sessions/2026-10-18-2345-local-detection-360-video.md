@@ -17,6 +17,20 @@ related:
 - **Founder decision, 2026-10-18 (the founder's, not the session's):** the licence gate is relaxed for internal use. Copyleft, non-commercial and unknown licences import with a warning chip and note; a missing licence is still refused. The pack segmentation model (SAM) still refuses warned licences: an open question for the founder. Contract row in `docs/architecture/contract-changes.md`.
 - Proof on a real 360 test video (4096 x 2048, 191.6 s): 192 frames at 1 s on DirectML, 593 drafts; at exact times 17 of 18 boxes match the Ultralytics reference (mean IoU 0.85 to 0.97). On the founder's real project, 3 walks: 253 frames in 131 s (about 516 ms a frame), 94 drafts, and only the new pass files were written. The model and video stay out of git; test fixtures are synthetic.
 
+## Review fixes
+
+The PR review found two important issues and nine minor ones.
+
+- **I1 fixed:** a walk run where every frame decode failed read as a clean "N of N frames checked, 0 found". Frames that cannot be read are now counted as skipped, with the first reason, in the progress and the result (optional `skipped` and `reason` on `inference:run` and its progress, contract row added); a run where none could be read fails and writes no pass; ffmpeg is checked once before the first frame.
+- **I2 fixed:** in the review, a click picks the smallest box under the pointer, so a helmet inside a selected person box can be clicked. The selected box still paints on top.
+- **M1:** the seam merge margin is max(6 decoded px, 1 % of the width), so halves that stop a few pixels short of the seam still merge.
+- **M2:** a frame box that rounding moved onto the frame width is folded back.
+- **M3:** the 360 overlay shows only the nearest sampled frame, and nothing when that frame found nothing.
+- **M5:** cloud Detect with AI leaves 360 walk frames out; only the local model reads walks.
+- **M6:** Stop kills the running ffmpeg decode.
+- **M7:** ffmpeg is looked up once per run, not per frame.
+- **Known limits, accepted:** M4, the overlay is hidden while Level horizon is on (the viewer says so); M8, with tiles on an 8K copy a frame peaks at several hundred MB (sequential, so bounded); M9, the frame tests skip locally without ffmpeg (CI has ffmpeg).
+
 ## Why
 
 The founder wanted the PPE detector run over 360 walks, with the drafts reviewed like any other detection.
