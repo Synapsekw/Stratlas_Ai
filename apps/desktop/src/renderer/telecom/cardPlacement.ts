@@ -30,12 +30,18 @@ const GRID = 8;
 /** The card is never capped shorter than this, CSS pixels. */
 export const CARD_MIN_H = 200;
 
+/** Which side of the unit the card stands on; a `corner` card has no leader line. */
+export type CardSide = 'right' | 'left' | 'above' | 'below' | 'corner';
+
 /** Where the card goes, and the height it is capped to when it sits in a band (`placeCard`). */
 export interface CardPlace {
   x: number;
   y: number;
   docked: boolean;
+  side: CardSide;
   maxH?: number;
+  /** The rect the leader starts from, when not the box placed around (capped: box and name). */
+  anchor?: Rect;
 }
 
 const clamp = (v: number, lo: number, hi: number): number =>
@@ -91,7 +97,17 @@ export function placeCard(
   const below = roomBelow >= roomAbove;
   const maxH = Math.max(CARD_MIN_H, Math.min(card.h, below ? roomBelow : roomAbove));
   const y = clamp(below ? belowTop : aboveBottom - maxH, stage.y, stage.y + stage.h - maxH);
-  return { x, y, docked: false, maxH };
+  return { x, y, docked: false, side: below ? 'below' : 'above', maxH, anchor: p };
+}
+
+/** The side a card at `at` stands on, seen from `box`; `corner` when it is on none. */
+function sideOf(box: Rect | null, at: Rect): CardSide {
+  if (!box) return 'corner';
+  if (at.x >= box.x + box.w) return 'right';
+  if (at.x + at.w <= box.x) return 'left';
+  if (at.y + at.h <= box.y) return 'above';
+  if (at.y >= box.y + box.h) return 'below';
+  return 'corner';
 }
 
 const union = (a: Rect, b: Rect): Rect => {
@@ -113,7 +129,7 @@ const union = (a: Rect, b: Rect): Rect => {
  * the box, the one with the least weighted cover of `areas` (the box costs most, then the name,
  * the angle and the sizes), weighing every stage spot on an 8 px grid as well; without areas,
  * the spot that covers least of the box. A tie goes to the earlier spot. Corners and grid spots
- * report `docked` (no leader line). Without a box on stage the card docks top-right.
+ * report `docked` and side `corner` (no leader line). Without a box on stage the card docks top-right.
  *
  * A spot that would cover a `reserved` control rises to stand 8 px above it, or is dropped if it
  * then leaves the stage's top.
@@ -130,9 +146,11 @@ function placeFull(
   const minY = stage.y;
   const maxY = stage.y + stage.h - card.h;
   if (dragged) {
-    return { x: clamp(dragged.x, minX, maxX), y: clamp(dragged.y, minY, maxY), docked: false };
+    const x = clamp(dragged.x, minX, maxX);
+    const y = clamp(dragged.y, minY, maxY);
+    return { x, y, docked: false, side: sideOf(box, { x, y, ...card }) };
   }
-  const topRight = { x: maxX - INSET, y: minY + INSET, docked: true };
+  const topRight: CardPlace = { x: maxX - INSET, y: minY + INSET, docked: true, side: 'corner' };
   const onStage =
     box !== null &&
     box.x < stage.x + stage.w &&
@@ -141,22 +159,26 @@ function placeFull(
     box.y + box.h > stage.y;
   if (!box || !onStage) return topRight;
 
-  const spots: { x: number; y: number; docked: boolean }[] = [];
+  const spots: CardPlace[] = [];
   const y = clamp(box.y + box.h / 2 - card.h / 2, minY, maxY);
   const right = box.x + box.w + gap;
-  if (right + card.w <= stage.x + stage.w) spots.push({ x: right, y, docked: false });
+  if (right + card.w <= stage.x + stage.w) {
+    spots.push({ x: right, y, docked: false, side: 'right' });
+  }
   const left = box.x - gap - card.w;
-  if (left >= stage.x) spots.push({ x: left, y, docked: false });
+  if (left >= stage.x) spots.push({ x: left, y, docked: false, side: 'left' });
   const x = clamp(box.x + box.w / 2 - card.w / 2, minX, maxX);
   const above = box.y - gap - card.h;
-  if (above >= stage.y) spots.push({ x, y: above, docked: false });
+  if (above >= stage.y) spots.push({ x, y: above, docked: false, side: 'above' });
   const below = box.y + box.h + gap;
-  if (below + card.h <= stage.y + stage.h) spots.push({ x, y: below, docked: false });
+  if (below + card.h <= stage.y + stage.h) {
+    spots.push({ x, y: below, docked: false, side: 'below' });
+  }
   spots.push(
     topRight,
-    { x: minX + INSET, y: minY + INSET, docked: true },
-    { x: maxX - INSET, y: maxY - INSET, docked: true },
-    { x: minX + INSET, y: maxY - INSET, docked: true },
+    { x: minX + INSET, y: minY + INSET, docked: true, side: 'corner' },
+    { x: maxX - INSET, y: maxY - INSET, docked: true, side: 'corner' },
+    { x: minX + INSET, y: maxY - INSET, docked: true, side: 'corner' },
   );
 
   const rect = (p: { x: number; y: number }): Rect => ({ x: p.x, y: p.y, w: card.w, h: card.h });
@@ -177,7 +199,7 @@ function placeFull(
   if (areas.length > 0) {
     for (let gy = minY; gy <= maxY; gy += GRID) {
       for (let gx = minX; gx <= maxX; gx += GRID) {
-        const p = { x: gx, y: gy, docked: true };
+        const p: CardPlace = { x: gx, y: gy, docked: true, side: 'corner' };
         if (clear(p)) kept.push(p);
       }
     }
@@ -199,29 +221,30 @@ function placeFull(
 }
 
 /**
- * The leader from the box to the card. Beside the box: from its right- or left-middle to the
- * card's near side edge. Above or below it: from its top- or bottom-middle to the card's near
- * bottom or top edge. The card end slides along that edge, 12 px in from the card's corners,
- * to keep the line as straight as it can.
+ * The leader from the box (or a capped card's `anchor`) to the card, on the side `placeCard`
+ * chose; `size` is the card's height as drawn (capped or not). Beside the box: from its right- or
+ * left-middle to the card's near side edge. Above or below it: from its top- or bottom-middle to
+ * the card's bottom or top edge. The card end slides along that edge, 12 px in from the card's
+ * corners, to keep the line as straight as it can. No line for a `corner` card.
  */
 export function leaderLine(
   box: Rect,
   card: { x: number; y: number },
   size: { w: number; h: number },
-): { x1: number; y1: number; x2: number; y2: number } {
-  const right = card.x >= box.x + box.w;
-  const beside = right || card.x + size.w <= box.x;
-  const above = card.y + size.h <= box.y;
-  if (!beside && (above || card.y >= box.y + box.h)) {
+  side: CardSide,
+): { x1: number; y1: number; x2: number; y2: number } | null {
+  if (side === 'corner') return null;
+  if (side === 'above' || side === 'below') {
     const x1 = box.x + box.w / 2;
     const inset = Math.min(12, size.w / 2);
     return {
       x1,
-      y1: above ? box.y : box.y + box.h,
+      y1: side === 'above' ? box.y : box.y + box.h,
       x2: Math.min(Math.max(x1, card.x + inset), card.x + size.w - inset),
-      y2: above ? card.y + size.h : card.y,
+      y2: side === 'above' ? card.y + size.h : card.y,
     };
   }
+  const right = side === 'right';
   const y1 = box.y + box.h / 2;
   const inset = Math.min(12, size.h / 2);
   return {

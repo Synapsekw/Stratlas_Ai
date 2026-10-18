@@ -409,6 +409,10 @@ describe('AntennaCard', () => {
     expect(card.style.maxHeight).toBe(`${String(720 - 8 - 419)}px`);
     expect(card.style.top).toBe('419px');
     expect(card.dataset.unitBox).toBe('226 317 37 86');
+    // the leader runs from the box's foot to the capped card's top edge
+    const line = narrow.querySelector('[data-testid="antenna-card-leader"] line')!;
+    expect(line.getAttribute('y1')).toBe('403');
+    expect(line.getAttribute('y2')).toBe('419');
     // the actions are a row of their own below the scrolling middle
     const actions = narrow.querySelector('[data-testid="antenna-card-actions"]')!;
     const body = narrow.querySelector('[data-testid="antenna-card-body"]')!;

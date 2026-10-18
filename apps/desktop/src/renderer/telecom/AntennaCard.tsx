@@ -648,7 +648,10 @@ function CardBody(props: BodyProps): ReactElement {
   };
 
   const unitBox = props.avoid?.find((a) => a.weight === AVOID_WEIGHT.box)?.rect;
-  const leader = boxRect && !at.docked ? leaderLine(boxRect, at, size) : null;
+  // the line meets the card as drawn: at its capped height, on the side placement chose
+  const leader = boxRect
+    ? leaderLine(at.anchor ?? boxRect, at, { w: size.w, h: at.maxH ?? size.h }, at.side)
+    : null;
   const decide = (status: Exclude<AntennaStatus, 'draft'>) => {
     void decideAntenna(status);
   };
