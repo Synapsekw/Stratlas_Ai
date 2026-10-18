@@ -135,3 +135,72 @@ def test_a_wide_panorama_is_cropped_to_what_it_covers(tmp_path, scene):
 
 def test_thumbnail_size():
     assert compose.thumbnail(np.zeros((1024, 2048, 3), np.uint8)).shape == (256, 512, 3)
+
+
+def _shrunk(mask, margin):
+    padded = cv2.copyMakeBorder((mask > 0).astype(np.uint8), 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+    return cv2.distanceTransform(padded, cv2.DIST_L2, 3)[1:-1, 1:-1] > margin
+
+
+def test_seams_keep_off_a_frame_border_where_another_frame_covers():
+    # three frames in a row on a 300 x 100 canvas, the last one lower: overlaps of 40 px
+    masks = [
+        np.full((100, 120), 255, np.uint8),
+        np.full((100, 120), 255, np.uint8),
+        np.full((80, 120), 255, np.uint8),
+    ]
+    corners = [(0, 0), (80, 0), (160, 30)]
+    margin = 10.0
+    out = compose.seam_masks(masks, corners, margin)
+
+    def on_canvas(ms):
+        layers = np.zeros((len(ms), 110, 280), bool)
+        for k, (m, (x, y)) in enumerate(zip(ms, corners, strict=True)):
+            layers[k, y : y + m.shape[0], x : x + m.shape[1]] = m > 0
+        return layers
+
+    full, inner, shrunk = on_canvas(masks), on_canvas(out), on_canvas([_shrunk(m, margin) for m in masks])
+    for k in range(len(masks)):
+        others = np.delete(shrunk, k, axis=0).any(axis=0)
+        border = full[k] & ~shrunk[k]
+        assert not (inner[k] & border & others).any()  # no seam on the border where another frame is
+        assert inner[k][full[k] & ~np.delete(full, k, axis=0).any(axis=0)].all()  # alone, it keeps all
+        assert inner[k][border & ~others].all()
+    assert np.array_equal(inner.any(axis=0), full.any(axis=0))  # no hole for the seam finder
+
+
+def test_a_frame_is_extended_past_its_footprint_with_the_colours_near_it():
+    img = np.zeros((256, 256, 3), np.uint8)
+    mask = np.zeros((256, 256), np.uint8)
+    mask[:, :128] = 255
+    img[:128, :128] = (40, 60, 200)  # red above
+    img[128:, :128] = (200, 90, 30)  # blue below
+    before = img.copy()
+    out = compose.extend(img, mask)
+    inside = mask > 0
+    assert np.array_equal(out[inside], before[inside])
+    assert (out[~inside].max(axis=1) > 0).all()  # no black left for the blend to pull in
+    assert np.abs(out[20, 150].astype(int) - (40, 60, 200)).max() < 6
+    assert np.abs(out[236, 150].astype(int) - (200, 90, 30)).max() < 6
+    full = np.full((64, 64), 255, np.uint8)
+    assert np.array_equal(compose.extend(before[:64, :64].copy(), full), before[:64, :64])
+
+
+def test_a_tower_reaching_the_top_edge_does_not_darken_the_sky_fill():
+    sky = np.array([200, 160, 120], np.uint8)
+
+    def canvas(tower: bool):
+        pano = np.zeros((H, W, 3), np.uint8)
+        mask = np.zeros((H, W), np.uint8)
+        mask[300:] = 255
+        pano[300:] = sky
+        if tower:
+            pano[300:, 1000:1024] = (30, 30, 35)  # a mast, 24 px wide, from the top edge down
+        compose.fill_sky(pano, mask)
+        return pano
+
+    plain, towered = canvas(False).astype(int), canvas(True).astype(int)
+    others = np.r_[0:960, 1064:W]
+    assert np.abs(towered[:300, others] - plain[:300, others]).max() <= 2
+    # and the fill does not paint over the tower below the top edge
+    assert towered[340, 1012].max() < 60

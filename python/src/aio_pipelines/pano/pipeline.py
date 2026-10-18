@@ -5,7 +5,8 @@ Plan ``docs/plans/2026-10-13-drone-panoramas-p1.md`` (task 6), spec section 2. R
 ``stitch.json`` beside it; never the manifest (the app files the outcome). Steps, weighted by the
 P0 timings: ``read`` (frame metadata, disk check), ``seed`` (rotations from the gimbal angles),
 ``match`` (features between overlapping frames), ``adjust`` (bundle adjustment or the seeds),
-``compose`` (warp, exposure, seams, blend), ``fill`` (sky fill or wide crop, JPEGs), ``write``
+``light`` (one exposure and lens falloff for the sphere, ``photometry``), ``compose`` (warp, seams,
+blend), ``fill`` (sky fill or wide crop, JPEGs), ``write``
 (run record, files moved into place together). Everything a later step needs is in the job's
 staging folder or the step outputs, so a cancelled job resumes from its last finished step, and
 the old ``pano.jpg`` stays until a new one is complete.
@@ -13,6 +14,7 @@ the old ``pano.jpg`` stays until a new one is complete.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import time
@@ -47,7 +49,16 @@ JPEG_QUALITY = 90
 DISK_BYTES_PER_PIXEL = 8
 FRAMES_MISSING = "The frames of this panorama are missing."
 #: Step weights: seconds per step at 8K on 24 cores, measured by P0.
-WEIGHTS = {"read": 0.2, "seed": 0.1, "match": 5.7, "adjust": 6.0, "compose": 10.5, "fill": 2.4, "write": 1.0}
+WEIGHTS = {
+    "read": 0.2,
+    "seed": 0.1,
+    "match": 5.7,
+    "adjust": 6.0,
+    "light": 1.5,
+    "compose": 10.5,
+    "fill": 2.4,
+    "write": 1.0,
+}
 
 
 def out_width(quality: str) -> int:
@@ -137,7 +148,7 @@ class PanoStitch:
         # on use: importing the pipelines must not load OpenCV
         import cv2
 
-        from . import align, compose
+        from . import align, compose, photometry
         from .frames import FrameError, FrameInfo, encode_jpeg, list_frames, read_frame_info
         from .geometry import rot_from_gimbal
 
@@ -257,20 +268,39 @@ class PanoStitch:
                 "seconds": time.monotonic() - t0,
             }
 
+        # --- light -------------------------------------------------------------------------------
+        def light(ctx: StepContext) -> dict[str, Any]:
+            t0 = time.monotonic()
+            adj = ctx.outputs("adjust")
+            fs = infos(ctx)
+            rots = [np.array(r, float) for r in adj["rotations"]]
+            focal = fs[0].focal * float(adj["focalScale"])
+            scale = min(1.0, photometry.FIT_WIDTH / fs[0].width)
+            copies = []
+            for n, f in enumerate(fs):
+                ctx.check()
+                copies.append(photometry.fit_copy(_load(frames_dir(ctx) / f.name, scale), focal * scale))
+                ctx.progress(0.7 * (n + 1) / len(fs))
+            hfov = 2 * math.degrees(math.atan(fs[0].width / 2 / focal))
+            fitted = photometry.fit(copies, rots, [f.ev for f in fs], align.overlap_pairs(rots, hfov))
+            return {"light": fitted.to_json(), "seconds": time.monotonic() - t0}
+
         # --- compose -----------------------------------------------------------------------------
         def compose_step(ctx: StepContext) -> dict[str, Any]:
             t0 = time.monotonic()
             width = int(ctx.outputs("read")["width"])
             height = width // 2
             adj = ctx.outputs("adjust")
+            lit = photometry.Light.from_json(ctx.outputs("light")["light"])
             fs = infos(ctx)
             pieces: list[compose.Piece] = []
             for n, (f, rot) in enumerate(zip(fs, adj["rotations"], strict=True)):
                 ctx.check()
                 focal = f.focal * float(adj["focalScale"])
                 scale = compose.frame_scale(focal, width)
-                img = _load(frames_dir(ctx) / f.name, scale)
-                pieces += compose.warp(img, np.array(rot, float), focal * scale, width, height)
+                r = np.array(rot, float)
+                img = photometry.apply(_load(frames_dir(ctx) / f.name, scale), lit, n, r, focal * scale)
+                pieces += compose.warp(img, r, focal * scale, width, height)
                 ctx.progress(0.6 * (n + 1) / len(fs))
             canvas, covered = compose.blend(pieces, width, height, ctx.check)
             del pieces
@@ -319,7 +349,7 @@ class PanoStitch:
             warnings = [f"Aligned from the gimbal angles only: {adj['reason']}"] if adj.get("reason") else []
             if adj.get("unmatched") and adj["aligned"] == "features":
                 warnings.append(
-                    f"{len(adj['unmatched'])} frames had no matching features and keep their gimbal angles."
+                    f"{len(adj['unmatched'])} frames had no matching features and take the correction of the frames around them."
                 )
             doc = {
                 "schema": SCHEMA,
@@ -358,6 +388,7 @@ class PanoStitch:
             Step("seed", "Start from the gimbal angles", seed, WEIGHTS["seed"]),
             Step("match", "Match features", match, WEIGHTS["match"]),
             Step("adjust", "Align the frames", adjust, WEIGHTS["adjust"]),
+            Step("light", "Even out the exposure", light, WEIGHTS["light"]),
             Step("compose", "Compose the panorama", compose_step, WEIGHTS["compose"]),
             Step("fill", "Fill the sky", fill, WEIGHTS["fill"]),
             Step("write", "Write the panorama", write, WEIGHTS["write"]),
