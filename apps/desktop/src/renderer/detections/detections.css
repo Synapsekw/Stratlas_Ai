@@ -361,6 +361,17 @@
 .det-row .grow {
   flex: 1;
 }
+/* Local model, 360 video frames: the walk and its frames, indented under the scope */
+.det-walk {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 2px 22px;
+}
+.det-walk .det-row {
+  margin-top: 0;
+}
 .det-num {
   width: 64px;
 }

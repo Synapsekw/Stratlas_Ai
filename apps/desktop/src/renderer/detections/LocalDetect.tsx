@@ -3,17 +3,20 @@
  * computer (inference utility process). No AI-6 preview or cost estimate: nothing leaves the
  * machine and the run is free. Results land in `detections/model-<run>.json` as waiting
  * detections; the review reads them when the run ends. Stop keeps the photos done; "Run the
- * remaining" continues the same run.
+ * remaining" continues the same run. "360 video frames" runs on frames of a walk layer: one frame
+ * every N seconds, or the frame the 360 pane shows now.
  */
-import type { DetectorModelInfo, IpcEvent } from '@aio/schema';
+import type { DetectorModelInfo, IpcEvent, Layer } from '@aio/schema';
 import { NEW_CLASS_OPTION, NewClassRow, useNewClass } from '@aio/annotate';
 import { Icon, t, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useStore } from 'zustand';
 import { providerLabel } from '../screens/settings/DetectionModels';
 import '../screens/settings/detectionModels.css';
 import { bridge, useCall } from '../shell';
-import type { DetectItem } from './convert';
+import { walkPlayback } from '../walks/walkPlayback';
+import { sampleTimes, type DetectItem } from './convert';
 import { loadDetections } from './store';
 
 export type DetectMode = 'cloud' | 'local';
@@ -99,7 +102,29 @@ export function ModeSwitch({
   );
 }
 
-type Scope = 'selected' | 'current' | 'unreviewed';
+type Scope = 'selected' | 'current' | 'unreviewed' | 'walk';
+type WalkLayer = Extract<Layer, { kind: 'walk' }>;
+
+/** Intervals offered for walk frames, in seconds. */
+export const WALK_EVERY = [1, 2, 5, 10] as const;
+/**
+ * At most this many walk frames per run. A local run costs nothing, so the cap is higher than the
+ * cloud's 500: it covers a 33 minute walk at one frame a second, while one run stays a bounded
+ * job (a few hundred ms a frame: minutes, not hours) and a bounded list of items over IPC.
+ */
+export const MAX_WALK_FRAMES = 2000;
+
+/** Frames of a walk to check: one every `everyS` seconds, or only the time `at`. */
+export function walkItems(
+  walk: { id: string; durationS: number },
+  pick: { everyS: number } | { at: number },
+): DetectItem[] {
+  const times =
+    'at' in pick
+      ? [Math.round(pick.at * 1000) / 1000]
+      : sampleTimes(walk.durationS, pick.everyS, MAX_WALK_FRAMES);
+  return times.map((t) => ({ kind: 'frame', layer: walk.id, t }));
+}
 type Phase = 'running' | 'done' | 'stopped' | 'failed';
 
 interface Progress {
@@ -109,6 +134,8 @@ interface Progress {
   found: number;
   /** Stop was pressed; the run ends after the photo in hand. */
   stopping?: boolean;
+  /** The run checks walk frames, so progress counts frames. */
+  frames?: boolean;
   error?: string;
 }
 
@@ -131,6 +158,7 @@ function runStamp(): string {
 
 export function LocalDetectDialog({
   projectId,
+  layers,
   selected,
   current,
   unreviewed,
@@ -138,6 +166,8 @@ export function LocalDetectDialog({
   onClose,
 }: {
   projectId: string;
+  /** The project's layers: its walk layers are offered as 360 video frames. */
+  layers: readonly Layer[];
   selected: readonly DetectItem[];
   current: DetectItem | null;
   unreviewed: readonly DetectItem[];
@@ -153,20 +183,49 @@ export function LocalDetectDialog({
   );
   const photos = (list: readonly (DetectItem | null)[]) =>
     list.flatMap((i) => (i?.kind === 'photo' ? [i] : []));
+  const walks = useMemo(
+    () => layers.filter((l): l is WalkLayer => l.kind === 'walk' && l.durationS > 0),
+    [layers],
+  );
+  const [walkId, setWalkId] = useState(walks[0]?.id ?? '');
+  const walk = walks.find((w) => w.id === walkId) ?? walks[0];
+  const [everyS, setEveryS] = useState<number>(2);
+  const [atNow, setAtNow] = useState(false);
+  const playing = useStore(walkPlayback);
+  // the current frame is offered only while the 360 pane plays the chosen walk
+  const nowT = playing.layerId !== null && playing.layerId === walk?.id ? playing.t : null;
+  const useNow = atNow && nowT !== null;
+  const walkFrames = useMemo(
+    () => (walk ? walkItems(walk, nowT !== null && atNow ? { at: nowT } : { everyS }) : []),
+    [walk, atNow, nowT, everyS],
+  );
+  const capped =
+    !!walk &&
+    !useNow &&
+    sampleTimes(walk.durationS, everyS, MAX_WALK_FRAMES + 1).length > MAX_WALK_FRAMES;
   const counts: Record<Scope, number> = {
     selected: photos(selected).length,
     current: photos([current]).length,
     unreviewed: photos(unreviewed).length,
+    walk: walkFrames.length,
   };
   const [scope, setScope] = useState<Scope>(
-    counts.selected > 0 ? 'selected' : counts.current > 0 ? 'current' : 'unreviewed',
+    counts.selected > 0
+      ? 'selected'
+      : counts.current > 0
+        ? 'current'
+        : counts.unreviewed === 0 && walks.length > 0
+          ? 'walk'
+          : 'unreviewed',
   );
   const items =
     scope === 'selected'
       ? photos(selected)
       : scope === 'current'
         ? photos([current])
-        : photos(unreviewed);
+        : scope === 'walk'
+          ? walkFrames
+          : photos(unreviewed);
 
   const res = useCall('inference:models', {}, projectId);
   const runtime = res?.ok ? res.value.runtime : null;
@@ -224,6 +283,7 @@ export function LocalDetectDialog({
       ? progress.total - progress.done
       : 0;
   const canRun = available && !!model && items.length > 0 && !running;
+  const ofFrames = progress?.frames === true;
 
   const start = async (resume: boolean) => {
     if (!model) return;
@@ -231,12 +291,15 @@ export function LocalDetectDialog({
     run.current = r;
     writeStore(MODEL_KEY, model.id);
     writeStore(classMapKey(projectId, model.id), JSON.stringify(classMap));
-    setProgress({ phase: 'running', done: 0, total: r.items.length, found: 0 });
+    const frames = r.items[0]?.kind === 'frame';
+    setProgress({ phase: 'running', done: 0, total: r.items.length, found: 0, frames });
     const res = await bridge.call('inference:run', {
       runId: r.id,
       projectId,
       model: model.id,
-      items: r.items.map((i) => ({ layer: i.layer, photo: i.photo })),
+      items: r.items.map((i) =>
+        i.kind === 'photo' ? { layer: i.layer, photo: i.photo } : { layer: i.layer, t: i.t },
+      ),
       classMap: Object.fromEntries(Object.entries(classMap).filter(([, v]) => v !== '')),
       minConfidence: conf,
       ...(tile ? { tile: { size, overlap: Math.min(ov, size - 1) } } : {}),
@@ -244,7 +307,13 @@ export function LocalDetectDialog({
     // the review reads the pass the run wrote
     await loadDetections(projectId, true);
     setProgress((p) => {
-      const base = p ?? { done: 0, total: r.items.length, found: 0, phase: 'done' as Phase };
+      const base = p ?? {
+        done: 0,
+        total: r.items.length,
+        found: 0,
+        frames,
+        phase: 'done' as Phase,
+      };
       if (!res.ok) return { ...base, phase: 'failed', error: res.error };
       if (!res.value.ok) return { ...base, phase: 'failed', error: res.value.error };
       const stopped = base.stopping === true || base.done < base.total;
@@ -323,7 +392,7 @@ export function LocalDetectDialog({
                 />
               </div>
               <p>
-                {t('infer.dlg.progress', {
+                {t(ofFrames ? 'infer.dlg.progressFrames' : 'infer.dlg.progress', {
                   done: progress.done,
                   total: progress.total,
                   found: progress.found,
@@ -358,21 +427,100 @@ export function LocalDetectDialog({
             <section className="dlg-sec">
               <h3 className="caps">{t('infer.dlg.what')}</h3>
               <div className="det-scope" role="radiogroup" aria-label={t('infer.dlg.what')}>
-                {(['selected', 'current', 'unreviewed'] as const).map((s) => (
+                {(['selected', 'current', 'unreviewed', 'walk'] as const).map((s) => (
                   <label key={s} className="ann-check">
                     <input
                       type="radio"
                       name="det-local-scope"
+                      data-testid={`det-local-scope-${s}`}
                       checked={scope === s}
-                      disabled={counts[s] === 0}
+                      disabled={s === 'walk' ? walks.length === 0 : counts[s] === 0}
                       onChange={() => {
                         setScope(s);
                       }}
                     />
-                    {t(`det.ai.scope.${s}`, { count: counts[s] })}
+                    {s === 'walk'
+                      ? t('infer.dlg.scope.walk')
+                      : t(`det.ai.scope.${s}`, { count: counts[s] })}
                   </label>
                 ))}
               </div>
+              {walks.length === 0 && <p className="ann-faint">{t('infer.dlg.noWalk')}</p>}
+              {scope === 'walk' && walk && (
+                <div className="det-walk" data-testid="det-local-walk-frames">
+                  <label className="ann-check">
+                    {t('infer.dlg.walk')}
+                    <select
+                      className="ann-select"
+                      value={walk.id}
+                      data-testid="det-local-walk"
+                      onChange={(e) => {
+                        setWalkId(e.target.value);
+                      }}
+                    >
+                      {walks.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="det-row">
+                    <label className="ann-check">
+                      <input
+                        type="radio"
+                        name="det-local-frames"
+                        data-testid="det-local-every"
+                        checked={!useNow}
+                        onChange={() => {
+                          setAtNow(false);
+                        }}
+                      />
+                      {t('infer.dlg.every')}
+                    </label>
+                    <div className="seg" role="group" aria-label={t('infer.dlg.every')}>
+                      {WALK_EVERY.map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          aria-pressed={!useNow && everyS === n}
+                          data-testid={`det-local-every-${String(n)}`}
+                          onClick={() => {
+                            setEveryS(n);
+                            setAtNow(false);
+                          }}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <span>{t('det.ai.seconds')}</span>
+                    {!useNow && (
+                      <span className="ann-faint mono" data-testid="det-local-frames-count">
+                        {t('infer.dlg.framesCount', { count: walkFrames.length })}
+                      </span>
+                    )}
+                  </div>
+                  {capped && (
+                    <p className="ann-faint" data-testid="det-local-frames-capped">
+                      {t('infer.dlg.framesCapped', { max: MAX_WALK_FRAMES })}
+                    </p>
+                  )}
+                  <label className="ann-check">
+                    <input
+                      type="radio"
+                      name="det-local-frames"
+                      data-testid="det-local-current-frame"
+                      checked={useNow}
+                      disabled={nowT === null}
+                      onChange={() => {
+                        setAtNow(true);
+                      }}
+                    />
+                    {t('infer.dlg.currentFrame', { t: (nowT ?? 0).toFixed(1) })}
+                  </label>
+                </div>
+              )}
               <p className="ann-faint">{t('infer.dlg.framesNote')}</p>
             </section>
 
@@ -421,12 +569,12 @@ export function LocalDetectDialog({
                     <input
                       type="checkbox"
                       checked={tile}
-                      data-testid="det-local-tile"
+                      data-testid={scope === 'walk' ? 'det-local-walk-tile' : 'det-local-tile'}
                       onChange={(e) => {
                         setTile(e.target.checked);
                       }}
                     />
-                    {t('infer.dlg.tile')}
+                    {t(scope === 'walk' ? 'infer.dlg.walkTile' : 'infer.dlg.tile')}
                   </label>
                   {tile && (
                     <>
@@ -463,6 +611,7 @@ export function LocalDetectDialog({
                     </>
                   )}
                 </div>
+                {scope === 'walk' && <p className="ann-faint">{t('infer.dlg.walkTileHint')}</p>}
               </section>
             )}
 
@@ -532,7 +681,9 @@ export function LocalDetectDialog({
                 disabled={progress.stopping === true}
                 onClick={stop}
               >
-                {progress.stopping ? t('infer.dlg.stopping') : t('infer.dlg.stop')}
+                {progress.stopping
+                  ? t(ofFrames ? 'infer.dlg.stoppingFrame' : 'infer.dlg.stopping')
+                  : t('infer.dlg.stop')}
               </button>
             </>
           ) : progress ? (
@@ -571,7 +722,9 @@ export function LocalDetectDialog({
                 onClick={() => void start(false)}
               >
                 <Icon name="target" size={12} />
-                {t('infer.dlg.run', { count: items.length })}
+                {t(scope === 'walk' ? 'infer.dlg.runFrames' : 'infer.dlg.run', {
+                  count: items.length,
+                })}
               </button>
             </>
           )}

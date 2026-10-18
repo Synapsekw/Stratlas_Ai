@@ -2231,7 +2231,7 @@ export const en = {
   'infer.dlg.source': 'Detect with',
   'infer.dlg.cloud': 'Cloud vision',
   'infer.dlg.local': 'Local model',
-  'infer.dlg.what': 'Photos to check',
+  'infer.dlg.what': 'What to check',
   'infer.dlg.model': 'Model',
   'infer.dlg.noModels':
     'No detection model is installed. Import one in Settings, AI providers, Detection models.',
@@ -2272,6 +2272,10 @@ export const en = {
   'infer.dlg.progressFrames': '{done} of {total} frames checked, {found} found',
   'infer.dlg.stoppingFrame': 'Stopping after this frame',
   'infer.dlg.noWalk': 'Add a 360 video to detect on its frames.',
+  'infer.dlg.framesCount_one': '{count} frame',
+  'infer.dlg.framesCount_other': '{count} frames',
+  'infer.dlg.framesCapped':
+    'At most {max} frames per run. Pick a longer interval to cover the whole video.',
   // M8 C2: imagery and surface change, swipe and blend of two dates
   'imgChange.view': 'How to show the two dates',
   'imgChange.side': 'Side by side',
