@@ -115,7 +115,7 @@ export interface DeriveInput {
   dsmGroundAt: DsmGroundAt | null;
 }
 
-function rfUnit(u: AntennaUnit): RfUnit {
+export function rfUnit(u: AntennaUnit): RfUnit {
   return {
     id: u.id,
     kind: u.kind,
