@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoTime, Vec3 } from './common';
-import { DateShiftSchema } from './dateShift';
+import { CaptureLineUpTurn, DateShiftSchema } from './dateShift';
 
 /**
  * Change between two capture dates (M8, FUS-12): one register for every layer type. Each producer
@@ -266,18 +266,6 @@ export const LineUpMeasure = z
   })
   .strict();
 
-/**
- * A date's line-up turn and scale about a pivot (project CRS), as a change set records it beside
- * `lineUp`. Plain (not strict), so later fields stay additive. The same shape as the capture's
- * `lineUpTurn`.
- */
-const ChangeLineUpTurn = z.object({
-  rotationDeg: z.number().min(-1).max(1),
-  scale: z.number().min(0.99).max(1.01),
-  pivotE: z.number(),
-  pivotN: z.number(),
-});
-
 export const ChangeSet = z
   .object({
     schema: z.literal(CHANGE_SCHEMA),
@@ -309,9 +297,12 @@ export const ChangeSet = z
       .object({ from: DateShiftSchema.optional(), to: DateShiftSchema.optional() })
       .strict()
       .optional(),
-    /** The turns of the dates that had one, beside `lineUp` (which stays strict). */
+    /**
+     * The turns of the dates that had one, beside `lineUp` (which stays strict): the capture's
+     * `lineUpTurn` shape and stored envelope, so a composed turn up to 2 degrees still parses.
+     */
     lineUpTurn: z
-      .object({ from: ChangeLineUpTurn.optional(), to: ChangeLineUpTurn.optional() })
+      .object({ from: CaptureLineUpTurn.optional(), to: CaptureLineUpTurn.optional() })
       .strict()
       .optional(),
   })

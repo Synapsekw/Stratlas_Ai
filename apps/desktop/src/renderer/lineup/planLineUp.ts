@@ -1,5 +1,6 @@
 import {
   composeShift,
+  hasTurn,
   invertShift,
   turnOf,
   type CaptureLineUp,
@@ -313,7 +314,10 @@ export function partnerOf(
   return best?.id ?? null;
 }
 
-/** The folder tooltip line of a lined-up date ("Lined up with ... (2.01 m)"); null for none. */
+/**
+ * The folder tooltip line of a lined-up date ("Lined up with ... (2.01 m)", and with a turn
+ * "(2.01 m, turned 0.11°, scaled -0.18%)"); null for none.
+ */
 export function lineUpTip(
   manifest: Pick<ProjectManifest, 'captures'>,
   captureId: string,
@@ -322,8 +326,12 @@ export function lineUpTip(
   const c = manifest.captures.find((x) => x.id === captureId);
   if (!c?.lineUp) return null;
   const kept = manifest.captures.find((x) => x.id === c.lineUp?.with);
+  const distance = formatMetres(Math.hypot(c.lineUp.eastM, c.lineUp.northM));
   return t('lineUp.folder', {
     kept: kept?.label ?? c.lineUp.with,
-    distance: formatMetres(Math.hypot(c.lineUp.eastM, c.lineUp.northM)),
+    distance:
+      c.lineUpTurn && hasTurn(c.lineUpTurn)
+        ? `${distance}, ${turnWords(c.lineUpTurn, t)}`
+        : distance,
   });
 }

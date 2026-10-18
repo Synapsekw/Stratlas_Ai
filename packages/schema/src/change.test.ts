@@ -46,6 +46,22 @@ describe('change sets (aio.change/1)', () => {
     expect(ChangeSet.safeParse({ ...base(), lineUp: { extra: 1 } }).success).toBe(false);
   });
 
+  it('a change set with a 1.5 degree recorded turn parses', () => {
+    const turn = { rotationDeg: 1.5, scale: 1.015, pivotE: 500100, pivotN: 3199900 };
+    const r = ChangeSet.safeParse({
+      ...base(),
+      lineUp: { to: { eastM: 2, northM: -1 } },
+      lineUpTurn: { to: turn },
+    });
+    expect(r.success).toBe(true);
+    expect(r.data?.lineUpTurn?.to).toEqual(turn);
+    // beyond the stored envelope, and an unknown side, are refused
+    const at = (to: object) => ChangeSet.safeParse({ ...base(), lineUpTurn: { to } }).success;
+    expect(at({ ...turn, rotationDeg: 2.5 })).toBe(false);
+    expect(at({ ...turn, scale: 1.03 })).toBe(false);
+    expect(ChangeSet.safeParse({ ...base(), lineUpTurn: { mid: turn } }).success).toBe(false);
+  });
+
   it('parses a line-up measurement', () => {
     const m: LineUpMeasure = {
       keep: 'c1',

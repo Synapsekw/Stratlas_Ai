@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import type { Box } from '../shell/layerBounds';
 import {
   formatMetres,
+  lineUpTip,
   movesWith,
   pairsToMeasure,
   planLineUp,
@@ -166,6 +167,22 @@ describe('planLineUp with a turn', () => {
     );
     expect(far.totalM).toBe(501);
     expect(far.inRange).toBe(false);
+  });
+
+  it('the folder tip shows the turn', () => {
+    const lined = { eastM: 2.01, northM: 0, with: 'd1', at: AT };
+    const turned = lineUpManifest({
+      lineUps: { d2: lined },
+      turns: { d2: { rotationDeg: 0.11, scale: 0.9982, pivotE: 500050, pivotN: 3999975 } },
+    });
+    expect(lineUpTip(turned, 'd2', t)).toBe(
+      'Lined up with Survey 2 March 2026 (2.01 m, turned 0.11°, scaled -0.18%)',
+    );
+    // a plain shift reads as before
+    expect(lineUpTip(lineUpManifest({ lineUps: { d2: lined } }), 'd2', t)).toBe(
+      'Lined up with Survey 2 March 2026 (2.01 m)',
+    );
+    expect(lineUpTip(turned, 'd1', t)).toBeNull();
   });
 
   it('says the turn in degrees and a signed percent', () => {
