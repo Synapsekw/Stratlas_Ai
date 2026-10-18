@@ -1,14 +1,8 @@
 /** Rules-only equipment pick: the no-AI fallback of Auto-plan (C2). Pure, offline. */
-import { bandOfName } from '@aio/rf';
 import type { AntennaUnit, RfCatalogueEntry } from '@aio/schema';
 import { AAU_MIN_DEPTH_M, AAU_MIN_WIDTH_M, AUTOPLAN_AAU, AUTOPLAN_PANEL } from '../rfDefaults';
+import { entryCoversBand } from './bandFit';
 import type { PlanPick } from './types';
-
-type Range = readonly [number, number];
-
-function holds(range: Range, dl: Range): boolean {
-  return range[0] <= dl[0] && range[1] >= dl[1];
-}
 
 /** True when the band's downlink range lies inside the panel's port range and the radio's range. */
 function panelCoversBand(
@@ -17,12 +11,10 @@ function panelCoversBand(
   radioId: string,
   band: string,
 ): boolean {
-  const dl = bandOfName(band)?.dlRangeMHz;
-  if (!dl) return false;
   const antenna = catalogue.find((e) => e.id === antennaId);
   const radio = catalogue.find((e) => e.id === radioId);
   if (antenna?.kind !== 'antenna' || radio?.kind !== 'radio') return false;
-  return antenna.ports.some((p) => holds(p.bandRangeMhz, dl)) && holds(radio.bandRangeMhz, dl);
+  return entryCoversBand(antenna, band) && entryCoversBand(radio, band);
 }
 
 function aauPick(reason: string, confidence: PlanPick['confidence']): PlanPick {
