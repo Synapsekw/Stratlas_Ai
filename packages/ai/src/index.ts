@@ -44,6 +44,14 @@ export {
   type ParsedAntennaLabels,
 } from './antennaLabel';
 export {
+  estimateRfPlan,
+  parseRfPlan,
+  RF_PLAN_PROMPT_VERSION,
+  rfPlanInstructions,
+  rfPlanUserText,
+  type AiPickRaw,
+} from './rfPlan';
+export {
   AgentPanel,
   describeStep,
   type AgentFixControls,

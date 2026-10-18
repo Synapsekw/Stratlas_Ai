@@ -772,6 +772,51 @@ export const LicenseEntry = z.object({
   author: z.string().optional(),
 });
 
+/**
+ * One AI pick of Auto-plan (`ai:rfPlan`): equipment and one carrier for a detected unit. It has no
+ * geometry field, and the renderer still validates it against the catalogue before a review.
+ */
+export const RfPlanAiPick = z
+  .object({
+    unitId: z.string().min(1),
+    entryId: z.string().min(1),
+    radioId: z.string().min(1).optional(),
+    band: z.string().min(1),
+    tech: z.enum(['lte', 'nr']),
+    bandwidthMhz: z.number().positive(),
+    reason: z.string().max(200),
+    confidence: z.enum(['high', 'medium', 'low']),
+  })
+  .strict();
+export type RfPlanAiPick = z.infer<typeof RfPlanAiPick>;
+
+/** What Auto-plan tells the model about one unit: its measured size and what the person typed. */
+export const RfPlanUnitInput = z
+  .object({
+    unitId: z.string().min(1).max(100),
+    widthM: z.number().nonnegative().optional(),
+    heightM: z.number().nonnegative().optional(),
+    depthM: z.number().nonnegative().optional(),
+    downtiltDeg: z.number().optional(),
+    heightAboveGroundM: z.number().optional(),
+    userModel: z.string().max(200).optional(),
+    userFrequencies: z.string().max(200).optional(),
+  })
+  .strict();
+export type RfPlanUnitInput = z.infer<typeof RfPlanUnitInput>;
+
+/** One catalogue entry the model may choose from. */
+export const RfPlanCatalogueInput = z
+  .object({
+    id: z.string().min(1).max(100),
+    kind: z.enum(['antenna', 'radio', 'aau']),
+    vendor: z.string().max(100),
+    model: z.string().max(100),
+    bands: z.array(z.string().min(1).max(20)).max(50),
+  })
+  .strict();
+export type RfPlanCatalogueInput = z.infer<typeof RfPlanCatalogueInput>;
+
 const VerifyResult = z.discriminatedUnion('ok', [
   z.object({
     ok: z.literal(true),
@@ -2377,6 +2422,66 @@ export const ipc = {
             .object({ unitId: z.string(), label: AntennaAiLabel, reason: z.string().max(200) })
             .strict(),
         ),
+        inputTokens: z.number().nonnegative(),
+        outputTokens: z.number().nonnegative(),
+        costUsd: z.number().nonnegative().optional(),
+        warnings: z.array(z.string()),
+      }),
+      Failure,
+    ]),
+  },
+  /**
+   * What an Auto-plan AI request would send: the route (vision when photos are allowed and crops
+   * exist, else chat), the crops that go with it and the estimate. The token is valid once, for
+   * this project and these units, for a few minutes.
+   */
+  'ai:rfPlanPreview': {
+    request: z
+      .object({ projectId: ProjectId, unitIds: z.array(z.string().min(1)).min(1).max(200) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        provider: z.string(),
+        model: z.string(),
+        cloud: z.boolean(),
+        photosAllowed: z.boolean(),
+        crops: z.array(z.object({ unitId: z.string(), path: z.string() }).strict()),
+        estimate: z
+          .object({
+            inputTokens: z.number().nonnegative(),
+            costUsd: z.number().nonnegative().optional(),
+          })
+          .strict(),
+        token: z.string().max(100),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Auto-plan's AI step: one request for the whole site, which proposes equipment and one carrier
+   * per unit (LTE and NR only). The AI never sets azimuth, tilt or height. Gates in main: the
+   * route, the project policy, the photo consent or `photos`, and the preview token for every
+   * cloud request.
+   */
+  'ai:rfPlan': {
+    request: z
+      .object({
+        runId: z.string().min(1),
+        projectId: ProjectId,
+        units: z.array(RfPlanUnitInput).min(1).max(200),
+        catalogue: z.array(RfPlanCatalogueInput).min(1).max(400),
+        token: z.string().max(100).optional(),
+        photos: z.boolean().optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        provider: z.string(),
+        model: z.string(),
+        promptVersion: z.string(),
+        picks: z.array(RfPlanAiPick),
         inputTokens: z.number().nonnegative(),
         outputTokens: z.number().nonnegative(),
         costUsd: z.number().nonnegative().optional(),
