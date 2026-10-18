@@ -119,7 +119,7 @@ function pickClick(
     revealMeasurement(id, { openSidebar: false });
     return true;
   }
-  if (s.focus !== null) select([], null);
+  if (s.selected.length > 0 || s.focus !== null) select([], null);
   return false;
 }
 

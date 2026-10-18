@@ -240,6 +240,12 @@ describe('measurement pick in 3D', () => {
     expect(measureStore.getState().selected).toEqual([]);
   });
 
+  it('empty ground clears a selection the sidebar marks left without a focus', () => {
+    measureStore.setState({ selected: ['m1'], focus: null });
+    expect(claim(leftClickAt(empty))).toBe(false);
+    expect(measureStore.getState().selected).toEqual([]);
+  });
+
   it('a left click is the stage tool when another stage tool is on', () => {
     stage.tool = 'measure';
     expect(claim(leftClickAt(onShape))).toBe(false);

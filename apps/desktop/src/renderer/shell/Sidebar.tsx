@@ -56,6 +56,7 @@ import { buildMeasureItems } from '../survey/measureRows';
 import {
   deleteMeasurements,
   endNewFolder,
+  measureStore,
   renameMeasurement,
   revealMeasurement,
   select,
@@ -324,6 +325,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     // marked measurements are selected too, so the Selected panel totals them
     const ids = measureIdsOf(next.marked);
     if (ids.length > 0) select(ids);
+    else letGoOfMeasures(marks.marked);
+  };
+  /** The marks held measurements and hold none now: only the focused one stays selected. */
+  const letGoOfMeasures = (was: ReadonlySet<string>) => {
+    if (measureIdsOf(was).length === 0) return;
+    const f = measureStore.getState().focus;
+    select(f ? [f] : [], f);
   };
   const marked = marks.marked.size > 0;
   /** Delete these rows: measurements straight away (Save measurements keeps it), layers asking. */
@@ -722,6 +730,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         if (marked && e.key === 'Escape') {
           e.stopPropagation();
           setMarks(NO_MARKS);
+          letGoOfMeasures(marks.marked);
         } else if (e.key === 'Delete' && canEdit) {
           // the marked rows, else the focused row; always through the shared dialog
           const row = marked ? null : e.target.closest<HTMLElement>('[data-mark]')?.dataset.mark;

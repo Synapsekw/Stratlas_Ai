@@ -198,6 +198,34 @@ describe('Datasets: measurements', () => {
     expect(q('[data-testid="measure-menu"]')?.textContent).toContain('2 measurements');
   });
 
+  it('marks that no longer hold a measurement let go of the measurement selection', () => {
+    render();
+    const mesh = () => layerRow('mesh')?.querySelector('.tn') ?? null;
+    ctrlClick(mesh());
+    click(name('c'), { shiftKey: true });
+    expect(measureStore.getState().selected).toEqual(['a', 'b', 'c']);
+    // the range shrinks back to the model alone
+    click(mesh(), { shiftKey: true });
+    expect(measureStore.getState().selected).toEqual([]);
+  });
+
+  it('Escape lets go of the marked measurements’ selection', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    measureStore.setState({ focus: null });
+    keyDown(row('b'), 'Escape');
+    expect(measureStore.getState().selected).toEqual([]);
+  });
+
+  it('marking only layers leaves the measurement selection alone', () => {
+    render();
+    click(name('c'));
+    ctrlClick(layerRow('mesh')?.querySelector('.tn') ?? null);
+    keyDown(layerRow('mesh'), 'Escape');
+    expect(measureStore.getState().selected).toEqual(['c']);
+  });
+
   it('mixed marks: a layer row menu acts on layers only, the header deletes both kinds', () => {
     render();
     ctrlClick(layerRow('mesh')?.querySelector('.tn') ?? null);
