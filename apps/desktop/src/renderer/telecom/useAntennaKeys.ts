@@ -43,14 +43,20 @@ function actionOf(key: string): (() => void) | null {
   }
 }
 
-/** Listens on `window` while `enabled` (the card shows a unit). */
+/** Widgets that own the arrows and Escape themselves. */
+const OWNS_KEYS =
+  '[role="tablist"], [role="menu"], [role="listbox"], [role="slider"], [role="tree"]';
+
+/**
+ * Listens on `window` while `enabled` (the card shows a unit). A and R collide with the stage's
+ * own keys, so they are taken in the capture phase; the arrows and Esc are taken on the way back
+ * up, only when nothing has handled them and the focus is not in a widget that owns them.
+ */
 export function useAntennaKeys(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (ignored(e)) return;
-      // a held A or R would accept or reject a run of units; held arrows may step on
-      if (e.repeat && /^[aArR]$/.test(e.key)) return;
+    const onCapture = (e: KeyboardEvent): void => {
+      if (!/^[aArR]$/.test(e.key) || ignored(e) || e.repeat) return;
       const act = actionOf(e.key);
       if (!act) return;
       e.preventDefault();
@@ -58,9 +64,19 @@ export function useAntennaKeys(enabled: boolean): void {
       e.stopImmediatePropagation();
       act();
     };
-    window.addEventListener('keydown', onKey, true);
+    const onBubble = (e: KeyboardEvent): void => {
+      if (/^[aArR]$/.test(e.key) || ignored(e)) return;
+      if (e.target instanceof Element && e.target.closest(OWNS_KEYS)) return;
+      const act = actionOf(e.key);
+      if (!act) return;
+      e.preventDefault();
+      act();
+    };
+    window.addEventListener('keydown', onCapture, true);
+    window.addEventListener('keydown', onBubble);
     return () => {
-      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keydown', onCapture, true);
+      window.removeEventListener('keydown', onBubble);
     };
   }, [enabled]);
 }

@@ -417,6 +417,23 @@ describe('AntennaCard keys', () => {
     window.removeEventListener('keydown', other);
   });
 
+  it('leaves the arrows to a focused widget that owns them, and steps from the body', () => {
+    load(three());
+    show();
+    const tabs = document.createElement('div');
+    tabs.setAttribute('role', 'tablist');
+    const tab = document.createElement('button');
+    tab.setAttribute('role', 'tab');
+    tabs.append(tab);
+    document.body.append(tabs);
+    tab.focus();
+    press('ArrowRight', tab);
+    expect(antennaStore.getState().selected).toBe('a1');
+    tabs.remove();
+    press('ArrowRight');
+    expect(antennaStore.getState().selected).toBe('a2');
+  });
+
   it('ignores a held A (auto-repeat) but takes a fresh press', async () => {
     load(three());
     show();
