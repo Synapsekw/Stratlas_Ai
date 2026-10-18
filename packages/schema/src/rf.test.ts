@@ -11,6 +11,7 @@ import {
   RfSectorsFile,
   carrierProblems,
   etiltProblems,
+  originOf,
   parseRfCatalogue,
   parseRfRun,
   parseRfSectors,
@@ -405,5 +406,46 @@ describe('carriers against the equipment', () => {
     expect(carrierProblems(aau({ radioUnit: 'generic-rru-2t2r' }))).toHaveLength(1);
     expect(carrierProblems(aau({ port: 'p1' }))).toHaveLength(1);
     expect(carrierProblems(aau({ radioUnit: 'r', port: 'p1' }))).toHaveLength(2);
+  });
+});
+
+describe('origins on RF settings', () => {
+  interface Loose {
+    antennas: Record<string, unknown>[];
+  }
+  const base = () => structuredClone(sectors) as unknown as Loose;
+  const withOrigins = (
+    origins?: Record<string, unknown>,
+    carrierOrigin?: Record<string, unknown>,
+  ) => {
+    const f = base();
+    const a = f.antennas[0]!;
+    if (origins) a.origins = origins;
+    if (carrierOrigin) {
+      a.carriers = [{ id: 'c1', tech: 'lte', band: 'B3', bandwidthMhz: 20, origin: carrierOrigin }];
+    }
+    return f;
+  };
+
+  it('accepts origins and keeps old files valid', () => {
+    const old = RfSectorsFile.parse(base());
+    expect(old.antennas[0]?.origins).toBeUndefined();
+    const f = RfSectorsFile.parse(
+      withOrigins({ equipment: { by: 'ai', confidence: 'low' } }, { by: 'rules' }),
+    );
+    expect(f.antennas[0]?.origins?.equipment).toEqual({ by: 'ai', confidence: 'low' });
+    expect(f.antennas[0]?.carriers[0]?.origin).toEqual({ by: 'rules' });
+  });
+
+  it('rejects an unknown origin', () => {
+    expect(RfSectorsFile.safeParse(withOrigins({ equipment: { by: 'guess' } })).success).toBe(
+      false,
+    );
+    expect(RfSectorsFile.safeParse(withOrigins({ height: { by: 'ai' } })).success).toBe(false);
+  });
+
+  it('originOf defaults to user', () => {
+    expect(originOf(undefined)).toBe('user');
+    expect(originOf({ by: 'export' })).toBe('export');
   });
 });
