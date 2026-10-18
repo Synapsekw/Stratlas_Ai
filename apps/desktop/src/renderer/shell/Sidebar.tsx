@@ -546,8 +546,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   };
 
   const onSelect = (it: TreeItem) => {
-    // a plain click selects one row and lets go of the marks
+    // a plain click selects one row and lets go of the marks, and of the measurements they held
     setMarks(NO_MARKS);
+    letGoOfMeasures(marks.marked);
     if (!it.layerId) {
       shell.getState().go('issues');
       return;

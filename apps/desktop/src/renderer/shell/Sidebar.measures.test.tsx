@@ -220,6 +220,16 @@ describe('Datasets: measurements', () => {
     expect(measureStore.getState().selected).toEqual([]);
   });
 
+  it('a plain click on a layer row lets go of the marked measurements’ selection too', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    measureStore.setState({ focus: null });
+    click(layerRow('mesh')?.querySelector('.tn') ?? null);
+    expect(row('a')?.classList.contains('marked')).toBe(false);
+    expect(measureStore.getState().selected).toEqual([]);
+  });
+
   it('marking only layers leaves the measurement selection alone', () => {
     render();
     click(name('c'));
