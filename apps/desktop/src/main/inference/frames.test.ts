@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,12 +7,14 @@ import { testFfmpeg, writeMarkerVideo } from './fixtures/walkVideo';
 import { decodeFrame, frameArgs, parseVideoSize, scaledHeight, videoSize } from './frames';
 
 describe('frame decode arguments', () => {
-  it('seeks before the input and writes one scaled RGBA frame to stdout', () => {
+  it('seeks before the input with two decoder threads and writes one scaled RGBA frame', () => {
     expect(frameArgs('C:/p/walks/w/playback.mp4', 2.5, 640, 320)).toEqual([
       '-nostdin',
       '-hide_banner',
       '-loglevel',
       'error',
+      '-threads',
+      '2',
       '-ss',
       '2.500',
       '-i',
@@ -95,6 +98,18 @@ describe.skipIf(!testFfmpeg)('decoding a synthetic walk video with ffmpeg', () =
     const second = await decodeFrame({ ffmpeg, file: video, t: 1.4, width: 320, height: 160 });
     expect(near(px(second, 260, 70), [0, 255, 255])).toBe(true);
     expect(near(px(second, 40, 70), [255, 0, 255])).toBe(false);
+  });
+
+  it('gives the same pixels as ffmpeg with its default threads', async () => {
+    const ffmpeg = testFfmpeg ?? 'ffmpeg';
+    for (const t of [0.4, 1.13]) {
+      const ours = await decodeFrame({ ffmpeg, file: video, t, width: 320, height: 160 });
+      const args = frameArgs(video, t, 320, 160);
+      const at = args.indexOf('-threads');
+      args.splice(at, 2);
+      const theirs = execFileSync(ffmpeg, args, { maxBuffer: 1 << 24 });
+      expect(Buffer.from(ours.rgba).equals(theirs)).toBe(true);
+    }
   });
 
   it('reads the size of the video', async () => {
