@@ -10,6 +10,12 @@
  * - Any failure of the AI step (refused preview, a provider error or timeout, a thrown call) ends
  *   in `error`, from where the dialog offers Rules only. Cancel goes back to `idle` and a late reply
  *   is ignored, so the chip never stays on "planning".
+ * - Bound to a project (ruling R17): each step keeps the project it started for (`projectId`),
+ *   and after every await an answer is dropped when `rfStore` holds another project by then.
+ *   `applyAutoplan` refuses a proposal made for another project. The store also subscribes to
+ *   `rfStore` itself and resets (`resetAutoplan`) whenever its project changes, so no other code
+ *   has to remember to.
+ * - The English texts it shows are in `AUTOPLAN_MESSAGES`, for the dialog to map to i18n keys.
  *
  * Bridge calls follow `telecom/antennaStore.ts`. Nothing here writes `antennas.json`.
  */
@@ -37,6 +43,18 @@ import { rulesPick } from './rules';
 import { planSectors } from './sectors';
 import type { PlanPick } from './types';
 
+/** Every text this store puts in `error`, `warnings` or a reason, in one place (for i18n). */
+export const AUTOPLAN_MESSAGES = {
+  exportEmpty: 'The cell export is empty.',
+  exportNoAntennaColumn: 'The cell export has no antenna column.',
+  noExportRow: (name: string) => `No export row for ${name}`,
+  noProject: 'No project is open.',
+  aiUnavailable: 'The AI is not available.',
+  aiNoAnswer: 'The AI did not answer.',
+  aiNoPick: 'The AI gave no pick.',
+  noRoot: 'The project folder is not known, so the run did not start.',
+} as const;
+
 export type AutoplanSource = 'ai' | 'rules' | { csvText: string };
 export type AutoplanPhase = 'idle' | 'blocked-review' | 'preview' | 'thinking' | 'review' | 'error';
 
@@ -47,6 +65,8 @@ export interface AutoplanState {
   proposal: Proposal | null;
   warnings: string[];
   error: string | null;
+  /** The project this step was started for (R17); null when idle with no project. */
+  projectId: string | null;
   /** A provider is set up and the project policy allows it (`ai:status`, chat route). */
   aiAvailable: boolean;
 }
@@ -68,6 +88,7 @@ const initial = (): AutoplanState => ({
   proposal: null,
   warnings: [],
   error: null,
+  projectId: null,
   aiAvailable: false,
 });
 
@@ -92,10 +113,19 @@ let previewFor: { projectId: string; unitIds: string[] } | null = null;
 /** Reset (project closed, or a test). */
 export function resetAutoplan(): void {
   seq++;
-  pendingRunId = null;
+  stopPending();
   previewFor = null;
   autoplanStore.setState(initial());
 }
+
+/** True when the step `my` for `projectId` is no longer the current one (R17). */
+const stale = (my: number, projectId: string | null): boolean =>
+  my !== seq || rfStore.getState().projectId !== projectId || get().projectId !== projectId;
+
+// A project switch (or close) drops whatever Auto-plan holds: self-contained, not left to callers.
+rfStore.subscribe((s, prev) => {
+  if (s.projectId !== prev.projectId) resetAutoplan();
+});
 
 // ---------------------------------------------------------------- inputs
 
@@ -123,8 +153,8 @@ function bandsOf(entry: RfCatalogueEntry): string[] {
 const MAX_UNITS = 200;
 const MAX_CATALOGUE = 400;
 
-const finite = (v: number | undefined): number | undefined =>
-  v !== undefined && Number.isFinite(v) ? v : undefined;
+const finite = (v: number | null | undefined): number | undefined =>
+  v !== undefined && v !== null && Number.isFinite(v) ? v : undefined;
 const size = (v: number | undefined): number | undefined => {
   const f = finite(v);
   return f !== undefined && f >= 0 ? f : undefined;
@@ -134,13 +164,13 @@ const size = (v: number | undefined): number | undefined => {
 function unitInput(u: AntennaUnit): RfPlanUnitInput {
   // a unit read from an older file may lack a size
   const m: Partial<Pick<AntennaUnit, 'widthM' | 'heightM' | 'depthM' | 'downtiltDeg'>> = u;
-  const agl = rfStore.getState().rows.find((r) => r.id === u.id)?.height.heightM ?? undefined;
+  const agl = rfStore.getState().rows.find((r) => r.id === u.id)?.height.heightM;
   const fields: Record<string, number | string | undefined> = {
     widthM: size(m.widthM?.value),
     heightM: size(m.heightM?.value),
     depthM: size(m.depthM?.value),
     downtiltDeg: finite(m.downtiltDeg?.value),
-    heightAboveGroundM: finite(agl ?? undefined),
+    heightAboveGroundM: finite(agl),
     userModel: u.user.model?.slice(0, 200),
     userFrequencies: u.user.frequencies?.slice(0, 200),
   };
@@ -216,10 +246,12 @@ export async function startAutoplan(source?: AutoplanSource): Promise<void> {
   stopPending();
   previewFor = null;
   const projectId = rfStore.getState().projectId;
+  // the step belongs to this project from the start, so a switch during the status call drops it
+  set({ ...initial(), projectId, aiAvailable: get().aiAvailable });
   const aiAvailable = await aiReady(projectId);
-  if (my !== seq) return;
+  if (stale(my, projectId)) return;
   const chosen: AutoplanSource = source ?? (aiAvailable ? 'ai' : 'rules');
-  set({ ...initial(), source: chosen, aiAvailable });
+  set({ ...initial(), projectId, source: chosen, aiAvailable });
 
   const units = currentUnits();
   if (!units.some((u) => u.status === 'accepted')) {
@@ -245,8 +277,8 @@ function planFromExport(units: readonly AntennaUnit[], text: string): void {
       phase: 'error',
       error:
         m.error === 'empty'
-          ? 'The cell export is empty.'
-          : 'The cell export has no antenna column.',
+          ? AUTOPLAN_MESSAGES.exportEmpty
+          : AUTOPLAN_MESSAGES.exportNoAntennaColumn,
     });
     return;
   }
@@ -257,7 +289,7 @@ function planFromExport(units: readonly AntennaUnit[], text: string): void {
       renames: m.renames,
       unmatchedRows: m.unmatchedRows,
     }),
-    warnings: m.unmatchedUnits.map((id) => `No export row for ${nameOf(id)}`),
+    warnings: m.unmatchedUnits.map((id) => AUTOPLAN_MESSAGES.noExportRow(nameOf(id))),
   });
 }
 
@@ -273,7 +305,7 @@ async function askPreview(
     return;
   }
   if (!projectId) {
-    set({ phase: 'error', error: 'No project is open.' });
+    set({ phase: 'error', error: AUTOPLAN_MESSAGES.noProject });
     return;
   }
   set({ phase: 'preview' });
@@ -281,13 +313,13 @@ async function askPreview(
   try {
     r = await bridge.call('ai:rfPlanPreview', { projectId, unitIds });
   } catch (e) {
-    if (my === seq) set({ phase: 'error', error: messageOf(e) });
+    if (!stale(my, projectId)) set({ phase: 'error', error: messageOf(e) });
     return;
   }
-  if (my !== seq) return;
+  if (stale(my, projectId)) return;
   const v = unwrap(r);
   if (!v.ok) {
-    set({ phase: 'error', error: v.error || 'The AI is not available.' });
+    set({ phase: 'error', error: v.error || AUTOPLAN_MESSAGES.aiUnavailable });
     return;
   }
   previewFor = { projectId, unitIds };
@@ -304,7 +336,10 @@ export async function confirmSend(photos: boolean): Promise<void> {
   const preview = get().preview;
   const target = previewFor;
   if (get().phase !== 'preview' || !preview?.ok || !target) return;
+  if (target.projectId !== get().projectId || target.projectId !== rfStore.getState().projectId)
+    return;
   const my = ++seq;
+  const projectId = target.projectId;
   const runId = `rfplan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   pendingRunId = runId;
   previewFor = null;
@@ -323,21 +358,17 @@ export async function confirmSend(photos: boolean): Promise<void> {
       ...(photos && preview.photosAllowed ? { photos: true } : {}),
     });
   } catch (e) {
-    if (my === seq) {
+    if (!stale(my, projectId)) {
       pendingRunId = null;
       set({ phase: 'error', error: messageOf(e) });
     }
     return;
   }
-  if (my !== seq) return;
+  if (stale(my, projectId)) return;
   pendingRunId = null;
   const v = unwrap(r);
   if (!v.ok) {
-    set({ phase: 'error', error: v.error || 'The AI did not answer.' });
-    return;
-  }
-  if (rfStore.getState().projectId !== target.projectId) {
-    set({ phase: 'idle' });
+    set({ phase: 'error', error: v.error || AUTOPLAN_MESSAGES.aiNoAnswer });
     return;
   }
   try {
@@ -368,7 +399,7 @@ function aiPicks(
     }
     const rules = rulesPick(u, catalogue);
     picks.set(u.id, [
-      { ...rules, confidence: 'low', reason: `The AI gave no pick. ${rules.reason}` },
+      { ...rules, confidence: 'low', reason: `${AUTOPLAN_MESSAGES.aiNoPick} ${rules.reason}` },
     ]);
   }
   return picks;
@@ -392,22 +423,28 @@ export function cancelAutoplan(): void {
   seq++;
   stopPending();
   previewFor = null;
-  set({ ...initial(), aiAvailable: get().aiAvailable, source: get().source });
+  const { aiAvailable, source, projectId } = get();
+  set({ ...initial(), aiAvailable, source, projectId });
 }
 
 /**
  * Write the reviewed proposal into the working copy (Apply only: left unsaved, C6), then with
- * `run` start a coverage run, which saves first. Null when nothing was in review or no run was
- * asked for.
+ * `run` start a coverage run, which saves first. Null when nothing was applied (nothing in review,
+ * or the proposal is for another project, R17) or no run was asked for; a `failed` result with
+ * `AUTOPLAN_MESSAGES.noRoot` when it applied but the project folder is not known.
  */
 export async function applyAutoplan(run: boolean): Promise<StartResult | null> {
-  const { phase, proposal } = get();
+  const { phase, proposal, projectId } = get();
   if (phase !== 'review' || !proposal) return null;
+  if (projectId === null || rfStore.getState().projectId !== projectId) {
+    resetAutoplan();
+    return null;
+  }
   applyPlan(proposal);
   cancelAutoplan();
   if (!run) return null;
   const root = workspace.getState().project?.root;
-  if (!root) return null;
+  if (!root) return { ok: false, code: 'failed', message: AUTOPLAN_MESSAGES.noRoot };
   return startRfRun(root);
 }
 
