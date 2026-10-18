@@ -21,7 +21,7 @@ import {
   type InAppKind,
 } from './pairs';
 import { buildChangeSet, mergeReviews } from './register';
-import { lineUpOfPair } from './stale';
+import { lineUpOfPair, lineUpTurnOfPair } from './stale';
 import { vectorChanges } from './vector';
 
 /**
@@ -85,6 +85,7 @@ export async function computeInApp(
     throw new Error('Issues, detections and map layers are compared in the app; pick one of them.');
   const shiftOf = (layerId: string) => dateShiftOf(src.manifest, layerId);
   const lineUp = lineUpOfPair(src.manifest, from, to);
+  const lineUpTurn = lineUpTurnOfPair(src.manifest, from, to);
   const out: ChangeSet[] = [];
   let done = 0;
   const step = (phase: string) => {
@@ -173,6 +174,7 @@ export async function computeInApp(
       createdAt: now,
       run: { at: now, ...(src.jobId ? { jobId: src.jobId } : {}) },
       lineUp,
+      lineUpTurn,
     });
     out.push(mergeReviews(await src.previous(id), fresh));
     done += 1;

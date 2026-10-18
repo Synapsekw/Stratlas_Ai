@@ -7,6 +7,7 @@ import {
 import { captureIndex } from '@aio/workspace/captures';
 import { describe, expect, it } from 'vitest';
 import { ChangeCancelled, computeInApp, type ComputeSources } from './compute';
+import { changeSetStale } from './stale';
 import { issue, SITE } from './testing';
 
 const vector = (id: string, capture: string): Layer => ({
@@ -106,6 +107,9 @@ describe('a turned date without a coordinate system', () => {
       ['issue', 'vector'],
     );
     expect(sets.map((s) => s.producer)).toEqual(['issues']);
+    // the set records the turn beside the shift, so it is not out of date at once
+    expect(sets[0]?.lineUpTurn?.to?.rotationDeg).toBe(0.5);
+    expect(changeSetStale(ChangeSet.parse(sets[0]), manifest)).toBe(false);
     expect(notes).toEqual([
       "Vector changes were skipped: a turned line-up needs the project's coordinate system.",
     ]);
