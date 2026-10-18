@@ -6,6 +6,7 @@
  * results (cut, fill, net, total and their areas) with partial, refused and stale states. Volumes
  * come from G2's executor in the survey engine worker (`compareStore.ts`).
  */
+import { useAnnotateReadOnly } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
 import { formatQuantity, fromSI, toSI, unitLabel } from '@aio/geo';
 import type { MapController } from '@aio/maps';
@@ -52,7 +53,8 @@ const MAX_ITEMS = 20;
 
 /** The comparisons section of a polygon measurement's panel. */
 export function Comparisons({ m }: { m: SurveyMeasurement }) {
-  const readOnly = useMeasure((s) => s.readOnly);
+  const fileReadOnly = useMeasure((s) => s.readOnly);
+  const readOnly = useAnnotateReadOnly() || fileReadOnly;
   const settings = useMeasure((s) => s.settings);
   const status = useCompare((s) => s.status);
   const surfaces = useCompare((s) => s.surfaces);

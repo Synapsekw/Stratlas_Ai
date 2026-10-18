@@ -5,6 +5,7 @@
  * (the landfill compaction figure: 63,000 t over 70,104 m3 is 0.899 t/m3). Nothing here changes
  * the stored volume.
  */
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, toSI, unitLabel } from '@aio/geo';
 import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
 import { DENSITY_DECIMALS, effectiveUnits, materialReadout } from '@aio/survey';
@@ -19,7 +20,8 @@ const volumeOf = (r: ComparisonResult, basis: Basis) =>
 
 export function Calculators({ m }: { m: SurveyMeasurement }) {
   const settings = useMeasure((s) => s.settings);
-  const readOnly = useMeasure((s) => s.readOnly);
+  const fileReadOnly = useMeasure((s) => s.readOnly);
+  const readOnly = useAnnotateReadOnly() || fileReadOnly;
   const typed = useCompare((s) => s.tonnes[m.id] ?? null);
   const [itemId, setItemId] = useState<string | null>(null);
   const [basis, setBasis] = useState<Basis>('net');
