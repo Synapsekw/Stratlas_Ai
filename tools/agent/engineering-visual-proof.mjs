@@ -80,6 +80,8 @@ await writeFile(
     },
   ),
 );
+// A saved project may already contain this draft. Replace it only in the disposable copy.
+manifest.layers = manifest.layers.filter((layer) => layer.id !== layerId);
 manifest.layers.push({
   id: layerId,
   name: 'Generated benchmark',
