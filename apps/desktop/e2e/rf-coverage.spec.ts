@@ -499,6 +499,36 @@ async function settled(box: Locator): Promise<void> {
     .toBe(true);
 }
 
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Whether two boxes overlap, with the 4 px room the coverage card keeps (StageCoverageLegend). */
+const overlaps = (a: Rect | null, b: Rect | null) =>
+  a !== null &&
+  b !== null &&
+  a.x < b.x + b.width + 4 &&
+  b.x < a.x + a.width + 4 &&
+  a.y < b.y + b.height + 4 &&
+  b.y < a.y + a.height + 4;
+
+/**
+ * Drag the antenna card by its header so that its name lands on `to` (the card stays where it
+ * is put for the session, `AntennaCard`).
+ */
+async function dragCardTo(win: Page, to: Rect): Promise<void> {
+  const name = await win.getByTestId('antenna-card-name').boundingBox();
+  if (!name) throw new Error('no antenna card');
+  const from = { x: name.x + name.width / 2, y: name.y + name.height / 2 };
+  await win.mouse.move(from.x, from.y);
+  await win.mouse.down();
+  await win.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+  await win.mouse.up();
+}
+
 const selectUnit = (win: Page, id: string | null) =>
   win.evaluate((unit) => {
     (window as unknown as Hooks).__stratlas.antennas.setState({ selected: unit });
@@ -521,7 +551,7 @@ for (const size of ['1100x720', '1440x900']) {
       await openTiny(win);
       const labels = win.getByTestId('antenna-labels-control');
       await expect(labels).toBeVisible({ timeout: 30_000 });
-      const bench = await openRfFromProjectMenu(win);
+      await openRfFromProjectMenu(win);
       await viewSiteFromAbove(win);
 
       // before a run: the prompt keeps clear of the Labels control and the other overlays
@@ -531,20 +561,39 @@ for (const size of ['1100x720', '1440x900']) {
       });
       await expect.poll(() => legendCovers(win, 'rf-card')).toEqual([]);
       await shot('before-run');
-      // a selected unit's card: the prompt gives its corner up wherever the card is over it
+      // where the prompt stands, as the overlap checks below read it while it may be aside
+      const promptAt = await card.boundingBox();
+      // a selected unit's card: the prompt gives its corner up exactly while the card is over
+      // where it stands (the card lands where the renderer's framing puts it)
       const unitCard = win.getByTestId('antenna-card');
       for (const id of [...RF_PANELS, RF_DRAFT]) {
         await selectUnit(win, id);
         await expect(unitCard).toBeVisible();
         await settled(unitCard);
         await expect.poll(() => antennaClash(win)).toEqual([]);
-        // at 1440 x 900 the last draft's card lands on the stage's foot over the prompt: it yields
-        if (size === '1440x900' && id === RF_DRAFT) await expect(card).toHaveCount(0);
+        if (overlaps(promptAt, await unitCard.boundingBox())) await expect(card).toHaveCount(0);
+        else await expect(card).toBeVisible();
         if (id === RF_PANELS[0] || id === RF_DRAFT) await shot(`before-run-card-${id}`);
       }
+      // the card dragged over the prompt: it yields, whatever the framing
+      await dragCardTo(win, promptAt ?? { x: 0, y: 0, width: 0, height: 0 });
+      expect(overlaps(promptAt, await unitCard.boundingBox())).toBe(true);
+      await expect(card).toHaveCount(0);
+      await expect.poll(() => antennaClash(win)).toEqual([]);
+      await shot('before-run-card-dragged');
       await selectUnit(win, null);
       await expect(unitCard).toHaveCount(0);
       await expect(card).toBeVisible();
+      // a reload forgets where the card was dragged
+      await win.reload();
+      await expect(
+        win.locator('[data-testid="project-card"], [data-scene-view] canvas').first(),
+      ).toBeVisible();
+      if (await win.getByTestId('project-card').first().isVisible()) await openTiny(win);
+      await expect(labels).toBeVisible({ timeout: 30_000 });
+      const bench = await openRfFromProjectMenu(win);
+      await viewSiteFromAbove(win);
+      await expect(card).toBeVisible({ timeout: 30_000 });
 
       // a quick run: a small study, the rules' plan, Apply & run
       const head = bench.getByTestId('rf-advanced');
@@ -570,16 +619,28 @@ for (const size of ['1100x720', '1440x900']) {
       await viewSiteFromAbove(win);
       await expect.poll(() => legendCovers(win)).toEqual([]);
       await shot('after-run');
-      // and of a selected unit's card, wherever the card stands
+      // and of a selected unit's card, wherever the card stands: hidden in place while under it
+      const covered = () => legend.evaluate((el) => el.hasAttribute('data-covered'));
       for (const id of [...RF_PANELS, RF_DRAFT]) {
         await selectUnit(win, id);
         await expect(unitCard).toBeVisible();
         await settled(unitCard);
         await expect.poll(() => antennaClash(win)).toEqual([]);
+        const under = overlaps(await legend.boundingBox(), await unitCard.boundingBox());
+        await expect.poll(covered).toBe(under);
         if (id === RF_PANELS[0] || id === RF_DRAFT) await shot(`after-run-card-${id}`);
       }
+      // the card dragged over the legend: the legend steps aside in place, its corner kept
+      const legendAt = await legend.boundingBox();
+      await dragCardTo(win, legendAt ?? { x: 0, y: 0, width: 0, height: 0 });
+      expect(overlaps(legendAt, await unitCard.boundingBox())).toBe(true);
+      await expect.poll(covered).toBe(true);
+      await expect(legend).toBeHidden();
+      await expect.poll(() => antennaClash(win)).toEqual([]);
+      await shot('after-run-card-dragged');
       await selectUnit(win, null);
       await expect(legend).toBeVisible();
+      await expect.poll(covered).toBe(false);
     });
   });
 }
