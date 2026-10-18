@@ -54,6 +54,10 @@ const EVIDENCE_KINDS: Record<string, MessageKey> = {
   slice: 'eng.ev.kind.slice',
   generated: 'eng.ev.kind.generated',
 };
+function evidenceKindLabel(kind: string, t: ReturnType<typeof useT>): string {
+  const key = EVIDENCE_KINDS[kind];
+  return key ? t(key) : kind;
+}
 function targetLabel(target: CorrectionTargetView, t: ReturnType<typeof useT>): string {
   return target.kind === 'part' ? target.label : t('eng.correction.pin');
 }
@@ -353,9 +357,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                       {item.label}
                       <small>
                         {item.id}
-                        {item.kind
-                          ? ` (${EVIDENCE_KINDS[item.kind] ? t(EVIDENCE_KINDS[item.kind]) : item.kind})`
-                          : ''}
+                        {item.kind ? ` (${evidenceKindLabel(item.kind, t)})` : ''}
                       </small>
                     </span>
                   </label>
