@@ -4657,6 +4657,7 @@ export const en = {
   'telecom.antennas.status.draft': 'Draft',
   'telecom.antennas.status.accepted': 'Accepted',
   'telecom.antennas.status.rejected': 'Rejected',
+  'telecom.antennas.filterDone': 'Every antenna in this filter is done.',
   'telecom.antennas.notFound': 'Not found in latest run',
   'telecom.antennas.show': 'Show {name} in 3D',
   'telecom.antennas.hide': 'Hide {name} in 3D',
