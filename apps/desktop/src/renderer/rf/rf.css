@@ -465,6 +465,12 @@
   padding-block-start: 0;
   border-block-start: 0;
 }
+/* on the map its bottom corner stands above the map's "No map pack installed" note, which goes
+   above the scale bar and the credits, up into the corner, where the map is too narrow for it on
+   one line (the note's anchor; none without the map or the note, and the corner keeps its place) */
+.stage-slot:is([data-slot='bl'], [data-slot='br']):has(> .rf-legend) {
+  inset-block-end: max(40px, calc(anchor(--aio-map-note top, 0px) + var(--sp-2)));
+}
 /* in its stage corner it keeps to the lower half of the stage and scrolls the rest (Details open) */
 .stage-slot > .rf-legend {
   max-block-size: calc(50vh - 64px);

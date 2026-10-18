@@ -24,7 +24,9 @@ interface Hooks {
   };
 }
 
-test.use({ appEnv: PIPELINE_ENV });
+// a small window: the map beside the RF tab is narrow, so its "No map pack installed" note goes
+// above the scale bar and the credits, up into the legend's corner, and the legend must keep clear
+test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_WINDOW_SIZE: '1100x720' } });
 test.skip(!hasPipelinePython(), 'needs the pipeline Python (uv sync --frozen in python/)');
 
 const TINY_ORIGIN = tinyManifest().origin;
@@ -150,7 +152,8 @@ async function viewSiteFromAbove(win: Page): Promise<void> {
 
 /**
  * What the coverage legend covers on the stage: the coordinates readout, the volumes hint, the
- * island and any other corner overlay, by name (none when it keeps clear of them all).
+ * island, the map's "No map pack installed" note and any other corner overlay, by name (none when
+ * it keeps clear of them all).
  */
 const legendCovers = (win: Page) =>
   win.evaluate(() => {
@@ -164,6 +167,7 @@ const legendCovers = (win: Page) =>
       ['readout', document.querySelector('.pane-3d:not(.is-hidden) .cursor-ro')],
       ['volumes hint', document.querySelector('[data-testid="vol-hint"]')],
       ['island', document.querySelector('[role="toolbar"][aria-label="Stage tools"]')],
+      ['map note', document.querySelector('[data-testid="map-no-packs"]')],
       ...[...document.querySelectorAll('.stage-slot')]
         .filter((s) => !s.querySelector('[data-testid="rf-legend"]'))
         .map((s): [string, Element] => [`slot ${(s as HTMLElement).dataset.slot ?? ''}`, s]),

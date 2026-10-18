@@ -108,6 +108,8 @@
   text-align: center;
   pointer-events: none;
   position-try-fallbacks: --aio-map-note-above;
+  /* the host's overlays at the foot of the map can stand above it (the app's coverage legend) */
+  anchor-name: --aio-map-note;
 }
 @position-try --aio-map-note-above {
   bottom: calc(max(anchor(--aio-map-scale top, 0px), anchor(--aio-map-credits top, 0px)) + 6px);
