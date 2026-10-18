@@ -1,9 +1,26 @@
-import type { Issue, SurveyMeasurement } from '@aio/schema';
+import {
+  captureLineUpShift,
+  shiftEN,
+  type Capture,
+  type DateShift,
+  type Issue,
+  type LineUpFit,
+  type SurveyMeasurement,
+} from '@aio/schema';
 import { t } from '@aio/ui';
 import { describe, expect, it } from 'vitest';
 import type { Box } from '../shell/layerBounds';
-import { formatMetres, movesWith, pairsToMeasure, planLineUp, shiftWords } from './planLineUp';
-import { cloud, dsm, lineUpManifest, measureOf, ortho } from './testing';
+import {
+  formatMetres,
+  lineUpTip,
+  movesWith,
+  pairsToMeasure,
+  planLineUp,
+  shiftWords,
+  turnWords,
+  type LineUpPlan,
+} from './planLineUp';
+import { cloud, dsm, fitOf, lineUpManifest, measureOf, ortho } from './testing';
 
 const AT = '2026-10-17T10:00:00.000Z';
 
@@ -17,12 +34,174 @@ const box = (minX: number, minZ: number, maxX: number, maxZ: number): Box => ({
   max: [maxX, 10, maxZ],
 });
 
+const ORIGIN = [500000, 4000000, 10] as const;
+
+/** The correction a fit describes, as the helpers apply it. */
+const correctionOf = (f: LineUpFit): DateShift => ({
+  eastM: f.eastM,
+  northM: f.northM,
+  turn: {
+    rotationDeg: f.rotationDeg,
+    scale: f.scale,
+    pivotE: f.pivotE,
+    pivotN: f.pivotN,
+    pivotX: f.pivotE - ORIGIN[0],
+    pivotZ: ORIGIN[1] - f.pivotN,
+  },
+});
+
+/** What the plan saves, read back as the app reads a capture. */
+const savedShift = (plan: LineUpPlan): DateShift | null =>
+  captureLineUpShift(
+    {
+      id: plan.moveId,
+      label: plan.moveId,
+      lineUp: plan.lineUp,
+      ...(plan.lineUpTurn ? { lineUpTurn: plan.lineUpTurn } : {}),
+    } as Capture,
+    [...ORIGIN],
+  );
+
+/** Points spread over a few hundred metres of site, project CRS. */
+const POINTS: [number, number][] = [
+  [500000, 4000000],
+  [500050, 3999975],
+  [500310, 3999820],
+  [499870, 4000240],
+];
+
+const expectSameMove = (got: DateShift | null, want: (p: [number, number]) => number[]) => {
+  for (const p of POINTS) {
+    const a = shiftEN(p, got);
+    const b = want(p);
+    expect(Math.abs(a[0] - (b[0] ?? 0))).toBeLessThan(1e-6);
+    expect(Math.abs(a[1] - (b[1] ?? 0))).toBeLessThan(1e-6);
+  }
+};
+
+describe('planLineUp with a turn', () => {
+  const oldTurn = { rotationDeg: 0.4, scale: 0.999, pivotE: 500020, pivotN: 3999990 };
+  const old = { eastM: 0.5, northM: -0.25, with: 'd1', at: AT };
+
+  it('composes a turn onto an existing one', () => {
+    const man = lineUpManifest({ lineUps: { d2: old }, turns: { d2: oldTurn } });
+    const fit = fitOf();
+    const plan = planLineUp(measureOf({ fit }), 'd1', man, AT);
+    expect(plan.moveId).toBe('d2');
+    expect(plan.previous).toEqual(old);
+    expect(plan.previousTurn).toEqual(oldTurn);
+    expect(plan.lineUpTurn).not.toBeNull();
+    expect(plan.lineUpTurn?.rotationDeg).toBeCloseTo(0.65, 9);
+    expect(plan.lineUpTurn?.scale).toBeCloseTo(0.999 * 1.0035, 9);
+    // saved about the newer pivot
+    expect(plan.lineUpTurn).toMatchObject({ pivotE: fit.pivotE, pivotN: fit.pivotN });
+    const now = captureLineUpShift(
+      { id: 'd2', label: 'd2', lineUp: old, lineUpTurn: oldTurn } as Capture,
+      [...ORIGIN],
+    );
+    // applying the saved line-up is applying the old one, then the correction
+    expectSameMove(savedShift(plan), (p) => shiftEN(shiftEN(p, now), correctionOf(fit)));
+    expect(plan.totalM).toBe(2.4);
+    expect(plan.inRange).toBe(true);
+  });
+
+  it('keeping the other date saves the inverse', () => {
+    const fit = fitOf();
+    const plan = planLineUp(measureOf({ fit }), 'd2', lineUpManifest(), AT);
+    expect(plan.moveId).toBe('d1');
+    expect(plan.previousTurn).toBeNull();
+    expect(plan.lineUpTurn?.rotationDeg).toBeCloseTo(-0.25, 9);
+    expect(plan.lineUpTurn?.scale).toBeCloseTo(1 / 1.0035, 9);
+    // the correction after the saved line-up puts every point back
+    expectSameMove(savedShift(plan), (p) => shiftEN(p, correctionOf(fit), -1));
+    expect(plan.inRange).toBe(true);
+  });
+
+  it('lining up an aligned pair adds nothing', () => {
+    const none = fitOf({ rotationDeg: 0, scale: 1, eastM: 0, northM: 0, maxMoveM: 0 });
+    const man = lineUpManifest({ lineUps: { d2: old }, turns: { d2: oldTurn } });
+    const plan = planLineUp(measureOf({ eastM: 0, northM: 0, fit: none }), 'd1', man, AT);
+    expect(plan.lineUp.eastM).toBeCloseTo(old.eastM, 6);
+    expect(plan.lineUp.northM).toBeCloseTo(old.northM, 6);
+    expect(plan.lineUpTurn?.rotationDeg).toBeCloseTo(oldTurn.rotationDeg, 9);
+    expect(plan.lineUpTurn?.scale).toBeCloseTo(oldTurn.scale, 9);
+    expect(plan.lineUpTurn).toMatchObject({ pivotE: oldTurn.pivotE, pivotN: oldTurn.pivotN });
+    // and onto a plain date: still no turn
+    const plain = planLineUp(
+      measureOf({ eastM: 0, northM: 0, fit: none }),
+      'd1',
+      lineUpManifest(),
+      AT,
+    );
+    expect(plain.lineUpTurn).toBeNull();
+    expect(plain.lineUp).toMatchObject({ eastM: 0, northM: 0 });
+  });
+
+  it('undoes an earlier turn to a plain shift', () => {
+    const man = lineUpManifest({ lineUps: { d2: old }, turns: { d2: oldTurn } });
+    const back = fitOf({ rotationDeg: -0.4, scale: 1 / 0.999, pivotE: 500020, pivotN: 3999990 });
+    expect(planLineUp(measureOf({ fit: back }), 'd1', man, AT).lineUpTurn).toBeNull();
+  });
+
+  it('cannot save a composed turn beyond the stored bounds or a move beyond 500 m', () => {
+    const big = { rotationDeg: 1.5, scale: 1, pivotE: 500020, pivotN: 3999990 };
+    const man = lineUpManifest({ lineUps: { d2: old }, turns: { d2: big } });
+    expect(planLineUp(measureOf({ fit: fitOf({ rotationDeg: 0.8 }) }), 'd1', man, AT).inRange).toBe(
+      false,
+    );
+    expect(planLineUp(measureOf({ fit: fitOf({ rotationDeg: 0.4 }) }), 'd1', man, AT).inRange).toBe(
+      true,
+    );
+    const scaled = lineUpManifest({
+      lineUps: { d2: old },
+      turns: { d2: { ...big, rotationDeg: 0, scale: 1.015 } },
+    });
+    expect(planLineUp(measureOf({ fit: fitOf({ scale: 1.008 }) }), 'd1', scaled, AT).inRange).toBe(
+      false,
+    );
+    const far = planLineUp(
+      measureOf({ fit: fitOf({ maxMoveM: 501 }) }),
+      'd1',
+      lineUpManifest(),
+      AT,
+    );
+    expect(far.totalM).toBe(501);
+    expect(far.inRange).toBe(false);
+  });
+
+  it('the folder tip shows the turn', () => {
+    const lined = { eastM: 2.01, northM: 0, with: 'd1', at: AT };
+    const turned = lineUpManifest({
+      lineUps: { d2: lined },
+      turns: { d2: { rotationDeg: 0.11, scale: 0.9982, pivotE: 500050, pivotN: 3999975 } },
+    });
+    expect(lineUpTip(turned, 'd2', t)).toBe(
+      'Lined up with Survey 2 March 2026 (2.01 m, turned 0.11°, scaled -0.18%)',
+    );
+    // a plain shift reads as before
+    expect(lineUpTip(lineUpManifest({ lineUps: { d2: lined } }), 'd2', t)).toBe(
+      'Lined up with Survey 2 March 2026 (2.01 m)',
+    );
+    expect(lineUpTip(turned, 'd1', t)).toBeNull();
+  });
+
+  it('says the turn in degrees and a signed percent', () => {
+    expect(turnWords({ rotationDeg: 0.25, scale: 1.0035 }, t)).toBe('turned 0.25°, scaled +0.35%');
+    expect(turnWords({ rotationDeg: -0.004, scale: 0.99999 }, t)).toBe(
+      'turned 0.00°, scaled +0.00%',
+    );
+    expect(turnWords({ rotationDeg: -1, scale: 0.99 }, t)).toBe('turned -1.00°, scaled -1.00%');
+  });
+});
+
 describe('planLineUp', () => {
   it('moves the later date by the correction', () => {
     const plan = planLineUp(measureOf(), 'd1', lineUpManifest(), AT);
     expect(plan.moveId).toBe('d2');
     expect(plan.lineUp).toEqual({ eastM: -2, northM: 0, with: 'd1', spreadM: 0.02, at: AT });
+    expect(plan.lineUpTurn).toBeNull();
     expect(plan.previous).toBeNull();
+    expect(plan.previousTurn).toBeNull();
     expect(plan.totalM).toBe(2);
   });
 

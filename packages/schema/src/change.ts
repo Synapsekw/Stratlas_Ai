@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoTime, Vec3 } from './common';
-import { DateShiftSchema } from './dateShift';
+import { CaptureLineUpTurn, DateShiftSchema } from './dateShift';
 
 /**
  * Change between two capture dates (M8, FUS-12): one register for every layer type. Each producer
@@ -295,6 +295,14 @@ export const ChangeSet = z
     /** The shifts of the two dates when the set was computed; a later difference marks it out of date. */
     lineUp: z
       .object({ from: DateShiftSchema.optional(), to: DateShiftSchema.optional() })
+      .strict()
+      .optional(),
+    /**
+     * The turns of the dates that had one, beside `lineUp` (which stays strict): the capture's
+     * `lineUpTurn` shape and stored envelope, so a composed turn up to 2 degrees still parses.
+     */
+    lineUpTurn: z
+      .object({ from: CaptureLineUpTurn.optional(), to: CaptureLineUpTurn.optional() })
       .strict()
       .optional(),
   })

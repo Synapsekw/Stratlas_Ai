@@ -1,12 +1,18 @@
-import type { LineUpMeasure } from '@aio/schema';
+import { hasTurn, type DateShift, type LineUpMeasure, type Vec3 } from '@aio/schema';
 import { Button, Icon, IconButton, useFocusTrap, useT } from '@aio/ui';
-import { dateTags, workspace as appWorkspace, type Workspace } from '@aio/workspace';
+import { captureIndex, dateTags, workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import './lineup.css';
-import { lineUpApp, type LineUpImage, type LineUpPreview, type LineUpStore } from './lineUpStore';
-import { formatMetres, shiftWords } from './planLineUp';
+import {
+  lineUpApp,
+  verdictOf,
+  type LineUpImage,
+  type LineUpPreview,
+  type LineUpStore,
+} from './lineUpStore';
+import { formatMetres, shiftWords, stepOf, turnWords } from './planLineUp';
 
 export type { LineUpImage, LineUpPreview } from './lineUpStore';
 
@@ -14,11 +20,7 @@ export type { LineUpImage, LineUpPreview } from './lineUpStore';
 const W = 720;
 const H = 300;
 
-/** How the date that moves goes, in metres east and north, once the chosen date is kept. */
-function moveOf(m: LineUpMeasure, keep: string | null): { eastM: number; northM: number } {
-  const sign = keep === m.move ? -1 : 1;
-  return { eastM: sign * m.eastM, northM: sign * m.northM };
-}
+const NO_ORIGIN: Vec3 = [0, 0, 0];
 
 type Box = LineUpImage['box'];
 
@@ -48,7 +50,7 @@ function draw(
   canvas: HTMLCanvasElement,
   kept: LineUpImage,
   moved: LineUpImage,
-  shift: { eastM: number; northM: number } | null,
+  shift: DateShift | null,
   divider: number,
 ) {
   const ctx = canvas.getContext('2d');
@@ -59,10 +61,10 @@ function draw(
   const s = Math.min(W / vw, H / vh);
   const ox = (W - vw * s) / 2;
   const oy = (H - vh * s) / 2;
-  const rectOf = (b: Box, dx = 0, dz = 0) =>
+  const rectOf = (b: Box) =>
     [
-      ox + (b.minX + dx - view.minX) * s,
-      oy + (b.minZ + dz - view.minZ) * s,
+      ox + (b.minX - view.minX) * s,
+      oy + (b.minZ - view.minZ) * s,
       (b.maxX - b.minX) * s,
       (b.maxZ - b.minZ) * s,
     ] as const;
@@ -76,8 +78,21 @@ function draw(
   ctx.beginPath();
   ctx.rect(x, oy, W - x, vh * s);
   ctx.clip();
-  // local frame: east is +x, north is -z
-  ctx.drawImage(moved.image, ...rectOf(moved.box, shift?.eastM ?? 0, -(shift?.northM ?? 0)));
+  // the correction in canvas pixels (x east, y south, as the local frame): x' = a x + b y + tx,
+  // y' = -b x + a y + ty, from the local x' = px + a(x-px) + b(z-pz) + east,
+  // z' = pz - b(x-px) + a(z-pz) - north, with x = (X - kx) / s and z = (Y - kz) / s
+  const turn = shift?.turn && hasTurn(shift.turn) ? shift.turn : null;
+  const r = ((turn?.rotationDeg ?? 0) * Math.PI) / 180;
+  const a = (turn?.scale ?? 1) * Math.cos(r);
+  const b = (turn?.scale ?? 1) * Math.sin(r);
+  const px = turn?.pivotX ?? 0;
+  const pz = turn?.pivotZ ?? 0;
+  const cx = px - a * px - b * pz + (shift?.eastM ?? 0);
+  const cz = pz + b * px - a * pz - (shift?.northM ?? 0);
+  const kx = ox - view.minX * s;
+  const kz = oy - view.minZ * s;
+  ctx.setTransform(a, -b, b, a, kx - a * kx - b * kz + s * cx, kz + b * kx - a * kz + s * cz);
+  ctx.drawImage(moved.image, ...rectOf(moved.box));
   ctx.restore();
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
   ctx.lineWidth = 2;
@@ -90,12 +105,15 @@ function draw(
 function Preview({
   measure,
   keep,
+  shift,
   keptLabel,
   movedLabel,
   preview,
 }: {
   measure: LineUpMeasure;
   keep: string | null;
+  /** The correction the moving date takes (`stepOf`). */
+  shift: DateShift;
   keptLabel: string;
   movedLabel: string;
   preview: LineUpPreview | null;
@@ -122,7 +140,6 @@ function Preview({
   const movedLayer = keptLayer === layerKeep ? layerMove : layerKeep;
   const kept = images[keptLayer];
   const moved = images[movedLayer];
-  const shift = moveOf(measure, keep);
   useEffect(() => {
     if (canvas.current && kept && moved)
       draw(canvas.current, kept, moved, after ? shift : null, divider);
@@ -195,7 +212,8 @@ function Dialog({
 }) {
   const t = useT();
   const d = useStore(store, (s) => s.dialog);
-  const captures = useStore(workspace, (s) => s.project?.manifest.captures);
+  const manifest = useStore(workspace, (s) => s.project?.manifest);
+  const captures = manifest?.captures;
   const ref = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const close = () => {
@@ -208,8 +226,16 @@ function Dialog({
   const m = d.measure;
   const movedId = d.keep === null ? (m?.move ?? d.b) : d.keep === d.a ? d.b : d.a;
   const keptId = movedId === d.a ? d.b : d.a;
-  const ok = m !== null && m.verdict === 'ok';
-  const shift = m ? moveOf(m, d.keep) : null;
+  const ok = m !== null && verdictOf(m) === 'ok';
+  const shift = m ? stepOf(m, d.keep, manifest?.origin ?? NO_ORIGIN) : null;
+  // the turn line shows whenever the fit turns or scales, and the moving date's clouds do not turn
+  const turned = hasTurn(m?.fit) && shift?.turn ? shift.turn : null;
+  const clouds =
+    turned !== null &&
+    manifest !== undefined &&
+    (captureIndex(manifest).layers[movedId] ?? []).some(
+      (id) => manifest.layers.find((l) => l.id === id)?.kind === 'pointcloud',
+    );
   const canSave = ok && d.keep !== null && !saving && !d.measuring;
   return (
     <div
@@ -279,6 +305,22 @@ function Dialog({
                   <Icon name="target" size={12} />
                 </dt>
                 <dd data-testid="lineup-shift">{shiftWords(shift.eastM, shift.northM, t)}</dd>
+                {turned && (
+                  <>
+                    <dt>
+                      <Icon name="refresh" size={12} />
+                    </dt>
+                    <dd data-testid="lineup-turn">{turnWords(turned, t)}</dd>
+                  </>
+                )}
+                {clouds && (
+                  <>
+                    <dt>
+                      <Icon name="cloud" size={12} />
+                    </dt>
+                    <dd data-testid="lineup-clouds">{t('lineUp.cloudsNoTurn')}</dd>
+                  </>
+                )}
                 <dt>
                   <Icon name="check" size={12} />
                 </dt>
@@ -306,6 +348,7 @@ function Dialog({
               <Preview
                 measure={m}
                 keep={d.keep}
+                shift={shift}
                 keptLabel={labelOf(keptId)}
                 movedLabel={labelOf(movedId)}
                 preview={preview}
@@ -342,9 +385,9 @@ function Dialog({
 }
 
 /**
- * The line-up step (Decision 11): which date stays, the measured shift, how sure it is, what
- * moves, and a Before and After swipe. Line up stays off until a date is chosen. Without a
- * `store` it shows the app's (`lineUpApp`), once the session has made it.
+ * The line-up step (Decision 11): which date stays, the measured shift (and turn), how sure it
+ * is, what moves, and a Before and After swipe. Line up stays off until a date is chosen. Without
+ * a `store` it shows the app's (`lineUpApp`), once the session has made it.
  */
 export function LineUpDialog(props: {
   store?: StoreApi<LineUpStore>;

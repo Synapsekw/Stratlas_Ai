@@ -12,7 +12,7 @@ import {
   type LineUpSessionDeps,
 } from './lineUpSession';
 import { lineUpApp } from './lineUpStore';
-import { lineUpManifest, measureOf } from './testing';
+import { fitOf, lineUpManifest, measureOf } from './testing';
 
 const job = (over: Partial<JobRecord> = {}): JobRecord => ({
   id: 'job-1',
@@ -34,7 +34,12 @@ function setup(over: Partial<LineUpSessionDeps> = {}) {
   const start = vi.fn<LineUpSessionDeps['start']>(() => Promise.resolve({ jobId: 'job-1' }));
   const finished = vi.fn<LineUpSessionDeps['finished']>(() => Promise.resolve(job()));
   const cancel = vi.fn<LineUpSessionDeps['cancel']>();
-  const readJson = vi.fn<LineUpSessionDeps['readJson']>(() => Promise.resolve(measureOf()));
+  // an older pipeline pack by default: lineup.json and no lineup-fit.json beside it
+  const readJson = vi.fn<LineUpSessionDeps['readJson']>((path) =>
+    path.endsWith('/lineup.json')
+      ? Promise.resolve(measureOf())
+      : Promise.reject(new Error(`${path} could not be read (404).`)),
+  );
   const deps: LineUpSessionDeps = {
     workspace,
     root: () => 'C:/p',
@@ -69,6 +74,30 @@ describe('line-up session', () => {
     expect(finished).toHaveBeenCalledWith('job-1', expect.any(AbortSignal));
     expect(readJson).toHaveBeenCalledWith('jobs/job-1/lineup.json');
     expect(r).toEqual<LineUpMeasure>(measureOf());
+  });
+
+  it('older pack without lineup-fit.json stays shift-only', async () => {
+    const { deps, readJson } = setup();
+    const r = await measureWith(deps)('d1', 'd2');
+    expect(readJson).toHaveBeenCalledWith('jobs/job-1/lineup-fit.json');
+    expect(r).toEqual<LineUpMeasure>(measureOf());
+    expect(r).not.toHaveProperty('fit');
+  });
+
+  it('reads the turn and scale from lineup-fit.json', async () => {
+    const fit = fitOf();
+    const { deps } = setup({
+      readJson: (path) => Promise.resolve(path.endsWith('/lineup-fit.json') ? fit : measureOf()),
+    });
+    expect(await measureWith(deps)('d1', 'd2')).toEqual<LineUpMeasure>(measureOf({ fit }));
+
+    const garbled = setup({
+      readJson: (path) =>
+        Promise.resolve(path.endsWith('/lineup-fit.json') ? { rotationDeg: 'x' } : measureOf()),
+    });
+    expect(await measureWith(garbled.deps)('d1', 'd2')).toEqual({
+      error: 'The measurement could not be read.',
+    });
   });
 
   it('reports a failed measurement', async () => {
@@ -192,10 +221,14 @@ describe('line-up wiring', () => {
     const saveLayers = vi.fn(() => Promise.resolve<string | null>('refused'));
     const { saveCapture, pinCaptures } = writersFor({ updateCapture, saveLayers });
     const lineUp = { eastM: 1, northM: 2, with: 'd1', at: '2026-10-17T10:00:00.000Z' };
-    expect(await saveCapture('d2', lineUp)).toBeNull();
-    expect(updateCapture).toHaveBeenCalledWith('d2', { lineUp });
-    await saveCapture('d2', null);
-    expect(updateCapture).toHaveBeenLastCalledWith('d2', { lineUp: null });
+    const lineUpTurn = { rotationDeg: 0.25, scale: 1.0035, pivotE: 500050, pivotN: 3999975 };
+    expect(await saveCapture('d2', lineUp, lineUpTurn)).toBeNull();
+    expect(updateCapture).toHaveBeenCalledWith('d2', { lineUp, lineUpTurn });
+    // always both: a plain shift takes a stored turn off
+    await saveCapture('d2', lineUp, null);
+    expect(updateCapture).toHaveBeenLastCalledWith('d2', { lineUp, lineUpTurn: null });
+    await saveCapture('d2', null, null);
+    expect(updateCapture).toHaveBeenLastCalledWith('d2', { lineUp: null, lineUpTurn: null });
     expect(await pinCaptures(['a', 'b'], 'd2')).toBe('refused');
     expect(saveLayers).toHaveBeenCalledWith(['a', 'b'], { capture: 'd2' });
     await pinCaptures(['a'], null);
