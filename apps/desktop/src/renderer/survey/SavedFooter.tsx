@@ -3,6 +3,7 @@
  * the list itself lives in the Datasets tree: Autosave, the status line, Revert and Save, the
  * read-only notice, a load error, and the bulk totals of the selection.
  */
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { Icon, Tip, t } from '@aio/ui';
 import { BulkTotals } from './BulkTotals';
 import {
@@ -15,6 +16,8 @@ import {
 
 export function SavedFooter() {
   const readOnly = useMeasure((s) => s.readOnly);
+  // a look-only reviewer saves nothing, as the panel, the tree and the menus offer no edits
+  const lookOnly = useAnnotateReadOnly();
   const autosave = useMeasure((s) => s.autosave);
   const dirty = useMeasure(isDirty);
   const unwritten = useMeasure((s) => s.resultsUnwritten);
@@ -39,6 +42,10 @@ export function SavedFooter() {
       {readOnly ? (
         <p className="small faint sv-foot" data-testid="survey-list-readonly">
           {t('measureBench.saved.readOnly')}
+        </p>
+      ) : lookOnly ? (
+        <p className="small faint sv-foot" data-testid="survey-saved-lookonly">
+          {t('measureBench.saved.lookOnly')}
         </p>
       ) : (
         <footer className="sv-foot" role="none">

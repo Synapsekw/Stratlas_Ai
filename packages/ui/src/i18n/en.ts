@@ -4940,6 +4940,8 @@ export const en = {
   'measureBench.saved.save': 'Save',
   'measureBench.saved.readOnly': 'Read-only package: measurements are shown only.',
   'measureBench.saved.label': 'Saving measurements',
+  'measureBench.saved.lookOnly':
+    'You can look at this project but not change it: measurements are shown, not saved.',
   'measure.undo.deleted_one': '{count} measurement deleted',
   'measure.undo.deleted_other': '{count} measurements deleted',
   'measure.undo.deletedOne': '{name} deleted',
