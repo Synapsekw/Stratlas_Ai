@@ -38,8 +38,12 @@ export const DetectionBox = z
   .refine((b) => b[2] > b[0] && b[3] > b[1], { message: 'A box needs x1 > x0 and y1 > y0.' });
 
 /**
- * A video frame instead of a photo: `t` in video seconds of the video layer (data-conventions
- * section 3). The pipeline does not place frames yet and skips them.
+ * A video frame instead of a photo: `t` in video seconds of the video or walk layer
+ * (data-conventions section 3). The pipeline does not place frames yet and skips them.
+ *
+ * On a walk (360 video) frame the picture is equirectangular and wraps around: a `source` box with
+ * x1 > `width` (in `geom`, x + w > `width`) wraps across the seam, its part past `width` continuing
+ * at x = 0. Nothing clamps a frame box to the frame, so such a box is valid as it is.
  */
 export const DetectionFrame = z.object({ layer: Id, t: z.number().nonnegative() }).strict();
 
