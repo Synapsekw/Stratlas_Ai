@@ -403,6 +403,20 @@ describe('AntennaCard keys', () => {
     expect(antennaStore.getState().selected).toBe('a1');
   });
 
+  it('wins over another window key handler for its keys only', async () => {
+    load(three());
+    show();
+    const other = vi.fn();
+    window.addEventListener('keydown', other);
+    press('a');
+    await settle();
+    expect(status('a1')).toBe('accepted');
+    expect(other).not.toHaveBeenCalled();
+    press('x');
+    expect(other).toHaveBeenCalledTimes(1);
+    window.removeEventListener('keydown', other);
+  });
+
   it('ignores a held A (auto-repeat) but takes a fresh press', async () => {
     load(three());
     show();

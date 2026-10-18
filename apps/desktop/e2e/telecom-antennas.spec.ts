@@ -144,18 +144,16 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await expect.poll(() => sceneHas(win, 'antenna-highlight')).toBe(true);
   const card = win.getByTestId('antenna-card');
   await expect(card).toBeVisible();
-  // the run leaves the filter on To review, so the card walks the 8 drafts (the walk follows the
-  // file's order; the list groups by kind, so the first row need not be the walk's first unit)
-  await expect(card.getByTestId('antenna-card-position')).toHaveText(/^[1-8] \/ 8$/);
+  // the run leaves the filter on To review, so the card walks the 8 drafts, in the list's order
+  await expect(card.getByTestId('antenna-card-position')).toHaveText('1 / 8');
   await evidence(win, 'e-card-selected');
   // at the CI size the tools scroll up and down inside the aside, never sideways
   await expect.poll(() => horizontalOverflow(win)).toBeLessThanOrEqual(0);
 
-  // accept from the card: the unit leaves To review and the card moves on. (Not with the A key:
-  // the stage's own A shortcut, annotate, takes it first. Reported, not hidden by this spec.)
-  await card.getByTestId('antenna-card-accept').click();
+  // accept with the key: the unit leaves To review and the card moves on
+  await win.keyboard.press('a');
   await expect(rows).toHaveCount(7);
-  await expect(card.getByTestId('antenna-card-position')).toHaveText(/^[1-7] \/ 7$/);
+  await expect(card.getByTestId('antenna-card-position')).toHaveText('1 / 7');
   await panel.getByTestId('antenna-filter-all').click();
   await expect(rows).toHaveCount(8);
   const accepted = panel.locator('[data-testid="antenna-row"][data-status="accepted"]');

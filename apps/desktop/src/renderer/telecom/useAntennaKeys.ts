@@ -54,11 +54,13 @@ export function useAntennaKeys(enabled: boolean): void {
       const act = actionOf(e.key);
       if (!act) return;
       e.preventDefault();
+      // the card's keys win over the stage's (A is annotate there)
+      e.stopImmediatePropagation();
       act();
     };
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
     };
   }, [enabled]);
 }

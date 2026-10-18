@@ -296,10 +296,14 @@ export function toggleAntennaHidden(id: string): void {
   else set({ hidden: { ...hidden, [id]: true } });
 }
 
-/** The units a filter shows, in file order. */
+/** The order the panel groups kinds in (and the review walk steps through). */
+export const KIND_ORDER: readonly AntennaKind[] = ['panel', 'short', 'dish', 'other'];
+
+/** The units a filter shows, in the panel's order: by kind, then file order within a kind. */
 export function filteredUnits(file: AntennasFile | null, filter: AntennaFilter): AntennaUnit[] {
   if (!file) return [];
-  return filter === 'all' ? file.units : file.units.filter((u) => u.status === filter);
+  const shown = filter === 'all' ? file.units : file.units.filter((u) => u.status === filter);
+  return KIND_ORDER.flatMap((k) => shown.filter((u) => u.kind === k));
 }
 
 /** Switch the filter; a selection outside it moves to the first unit inside it (or none). */

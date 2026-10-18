@@ -20,6 +20,7 @@ import {
   setAntennaSolo,
   showAllAntennas,
   stepAntenna,
+  filteredUnits,
   toggleGroupHidden,
   loadAntennas,
   patchUnitUser,
@@ -724,5 +725,17 @@ describe('review walk', () => {
     await loadAntennas('p1', '/p');
     expect(state().filter).toBe('accepted');
     expect(state().solo).toBe('panel');
+  });
+});
+
+describe('filteredUnits order', () => {
+  it('groups by kind in the panel order, then file order', () => {
+    const f = sampleFile();
+    const kinds: AntennaKind[] = ['other', 'dish', 'panel', 'short', 'panel'];
+    const base = need(f.units[0]);
+    const units = kinds.map((kind, i) => ({ ...base, id: `k${i}`, kind }));
+    const order = filteredUnits({ ...f, units }, 'all').map((u) => u.id);
+    const id = (i: number) => need(units[i]).id;
+    expect(order).toEqual([id(2), id(4), id(3), id(1), id(0)]);
   });
 });

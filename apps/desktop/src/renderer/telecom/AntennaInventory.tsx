@@ -3,7 +3,7 @@ import { Button, Chip, EmptyState, IconButton, Row, t } from '@aio/ui';
 import type { CSSProperties, ReactElement } from 'react';
 import { azimuthLines, formatDeg, trueAzimuth } from './antennaFormat';
 import { KIND_COLOURS } from './antennaScene';
-import { filteredUnits } from './antennaStore';
+import { KIND_ORDER, filteredUnits } from './antennaStore';
 import { isAntennaDrawn, type AntennaFilter } from './antennaVisibility';
 
 export interface AntennaInventoryProps {
@@ -24,7 +24,7 @@ export interface AntennaInventoryProps {
   onShowAll: () => void;
 }
 
-const KINDS: readonly AntennaKind[] = ['panel', 'short', 'dish', 'other'];
+const KINDS = KIND_ORDER;
 const FILTERS: readonly AntennaFilter[] = ['draft', 'accepted', 'rejected', 'all'];
 const TONE = { draft: 'warn', accepted: 'acc', rejected: 'off' } as const;
 /** Outline style carries the status beside the text chip: dashed draft, solid accepted, dotted rejected. */
