@@ -11,6 +11,7 @@ import { t } from '@aio/ui';
 import { describe, expect, it } from 'vitest';
 import type { Box } from '../shell/layerBounds';
 import {
+  dateLabel,
   formatMetres,
   lineUpTip,
   movesWith,
@@ -294,5 +295,31 @@ describe('planLineUp', () => {
       'o1|o2@1.25,-0.5',
       'o2@1.25,-0.5|o3',
     ]);
+  });
+});
+
+describe('dateLabel', () => {
+  const captures = [
+    { id: 'a', label: 'Survey', date: '2024-09-04' },
+    { id: 'b', label: 'Survey', date: '2024-09-10' },
+    { id: 'c', label: 'Topo', date: '2024-10-02' },
+  ];
+  it('adds the date when another date shares the label, and leaves unique labels as they are', () => {
+    expect(dateLabel(captures, 'a')).toBe('Survey · 4 Sep 2024');
+    expect(dateLabel(captures, 'b')).toBe('Survey · 10 Sep 2024');
+    expect(dateLabel(captures, 'c')).toBe('Topo');
+    expect(dateLabel(captures, 'gone')).toBe('gone');
+    expect(dateLabel(undefined, 'x')).toBe('x');
+  });
+
+  it('tells same-named dates apart in the folder tooltip', () => {
+    const m = lineUpManifest({
+      captures: [
+        { id: 'd1', label: 'Survey', date: '2024-09-04' },
+        { id: 'd2', label: 'Survey', date: '2024-09-10' },
+      ],
+      lineUps: { d2: { with: 'd1', eastM: 1, northM: 0, at: AT } },
+    });
+    expect(lineUpTip(m, 'd2', t)).toContain('Survey · 4 Sep 2024');
   });
 });

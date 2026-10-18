@@ -1,4 +1,5 @@
 import type { ProjectManifest } from '@aio/schema';
+import type { Bridge } from '../bridge';
 import type { Box } from '../shell/layerBounds';
 import type { LineUpPreview } from './lineUpStore';
 
@@ -7,6 +8,21 @@ import type { LineUpPreview } from './lineUpStore';
  * resident), stitched into one image over the layer's box as placed now. No raster is read here
  * beyond the tiles the view itself loads. Other formats have no overview this cheap: no preview.
  */
+
+/**
+ * Each layer's box in the local frame, as placed now (a lined-up date's shift is in it). Full
+ * extents: an imported ortho or DSM is often a kit pyramid whose corners are only in its
+ * `tiles.json`, and the preview, the background check and the partner pick all need its box.
+ */
+export async function readLineUpExtents(
+  bridge: Bridge,
+  projectId: string,
+): Promise<Record<string, Box>> {
+  const r = await bridge.call('builder:layerExtents', { projectId, full: true });
+  if (!r.ok) throw new Error(r.error);
+  if (!r.value.ok) throw new Error(r.value.error);
+  return Object.fromEntries(r.value.extents.map((e) => [e.layerId, { min: e.min, max: e.max }]));
+}
 
 /** A coarse level this small is a handful of tiles; a finer one is not an overview. */
 const MAX_TILES = 16;

@@ -12,7 +12,7 @@ import {
   type LineUpPreview,
   type LineUpStore,
 } from './lineUpStore';
-import { formatMetres, shiftWords, stepOf, turnWords } from './planLineUp';
+import { dateLabel, formatMetres, shiftWords, stepOf, turnWords } from './planLineUp';
 
 export type { LineUpImage, LineUpPreview } from './lineUpStore';
 
@@ -221,7 +221,7 @@ function Dialog({
   };
   useFocusTrap(ref, d !== null, { onEscape: close });
   if (!d) return null;
-  const labelOf = (id: string) => captures?.find((c) => c.id === id)?.label ?? id;
+  const labelOf = (id: string) => dateLabel(captures, id);
   const tags = dateTags(captures ?? []);
   const m = d.measure;
   const movedId = d.keep === null ? (m?.move ?? d.b) : d.keep === d.a ? d.b : d.a;

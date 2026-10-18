@@ -15,7 +15,7 @@ import {
 } from './compareLineUpStore';
 import { openLineUp, removeLineUp } from './lineUpActions';
 import { lineUpApp, type LineUpStore } from './lineUpStore';
-import { formatMetres, shiftWords } from './planLineUp';
+import { dateLabel, formatMetres, shiftWords } from './planLineUp';
 import './lineup.css';
 
 type T = typeof translate;
@@ -38,8 +38,7 @@ function turnWords(rotationDeg: number, scale: number, t: T): string {
   });
 }
 
-const labelOf = (m: ProjectManifest, id: string) =>
-  m.captures.find((c) => c.id === id)?.label ?? id;
+const labelOf = (m: ProjectManifest, id: string) => dateLabel(m.captures, id);
 
 function hasClouds(m: ProjectManifest, index: CaptureIndex | null, id: string): boolean {
   const ids = new Set(index?.layers[id] ?? []);
@@ -72,7 +71,7 @@ function detailsOf(
     lines.push(t('compare.lineUp.within', { distance: formatMetres(r.tolerancePx * r.cellM) }));
   for (const { capture, lineUp } of saved) {
     lines.push(
-      t('compare.lineUp.saved', { moved: capture.label, kept: labelOf(m, lineUp.with) }),
+      t('compare.lineUp.saved', { moved: labelOf(m, capture.id), kept: labelOf(m, lineUp.with) }),
       shiftWords(lineUp.eastM, lineUp.northM, t),
     );
     if (hasTurn(capture.lineUpTurn) && capture.lineUpTurn)
@@ -253,7 +252,7 @@ function Chip({
                   }}
                 >
                   {saved.length > 1
-                    ? t('compare.lineUp.removeOf', { date: capture.label })
+                    ? t('compare.lineUp.removeOf', { date: labelOf(manifest, capture.id) })
                     : t('lineUp.remove')}
                 </Button>
               ))}
