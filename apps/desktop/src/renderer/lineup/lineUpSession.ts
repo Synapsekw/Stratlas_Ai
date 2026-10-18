@@ -2,6 +2,7 @@ import { LineUpMeasure, type CaptureLineUp, type JobRecord, type PipelineName } 
 import { t } from '@aio/ui';
 import type { StoreApi } from 'zustand/vanilla';
 import type { Box } from '../shell/layerBounds';
+import { compareLineUpApp, createCompareLineUp } from './compareLineUpStore';
 import {
   createLineUpStore,
   lineUpApp,
@@ -55,20 +56,22 @@ const ENDED = {
  * Measure how far `move` sits from `keep`: start `change.lineup`, wait for it, read its answer.
  * Any failure (no project, a job that does not start or fails, an older pipeline pack without the
  * job, an unreadable answer) is `{ error }` with a sentence. The wait ends, and the job is
- * cancelled, when another project opens or after `MEASURE_LIMIT_MS`.
+ * cancelled, when another project opens, when `signal` aborts, or after `MEASURE_LIMIT_MS`.
  */
 export function measureWith(deps: LineUpSessionDeps): LineUpDeps['measure'] {
   const projectId = () => deps.workspace.getState().project?.id ?? null;
-  return async (keep, move) => {
+  return async (keep, move, signal) => {
     const root = deps.root();
     const opened = projectId();
     if (!root) return { error: t('lineUp.measure.noProject') };
+    if (signal?.aborted) return { error: t('lineUp.measure.abandoned') };
     const started = await deps.start('change.lineup', root, { keep, move });
     if ('error' in started) return { error: started.error };
     const ctl = new AbortController();
-    const stopped: { why: 'lineUp.measure.switched' | 'lineUp.measure.timedOut' | null } = {
-      why: null,
-    };
+    const stopped: {
+      why:
+        'lineUp.measure.switched' | 'lineUp.measure.timedOut' | 'lineUp.measure.abandoned' | null;
+    } = { why: null };
     const stop = (reason: NonNullable<typeof stopped.why>) => {
       stopped.why ??= reason;
       ctl.abort();
@@ -79,12 +82,19 @@ export function measureWith(deps: LineUpSessionDeps): LineUpDeps['measure'] {
     const timer = setTimeout(() => {
       stop('lineUp.measure.timedOut');
     }, MEASURE_LIMIT_MS);
+    // the caller gave the measurement up (Compare moved to another pair of dates)
+    const abandon = () => {
+      stop('lineUp.measure.abandoned');
+    };
+    if (signal?.aborted) abandon();
+    else signal?.addEventListener('abort', abandon, { once: true });
     let job: JobRecord | null;
     try {
       job = await deps.finished(started.jobId, ctl.signal);
     } finally {
       clearTimeout(timer);
       off();
+      signal?.removeEventListener('abort', abandon);
     }
     if (stopped.why) {
       deps.cancel(started.jobId);
@@ -118,12 +128,15 @@ export interface LineUpSession {
 
 /**
  * Make the step and its background check, and hand them to the dialog, the offer and the notice
- * (`lineUpApp`). Call once; `stop` ends the check.
+ * (`lineUpApp`) and the Compare dates chip (`compareLineUpApp`). Call once; `stop` ends the check.
  */
 export function createLineUpSession(deps: LineUpSessionDeps): LineUpSession {
   const measure = measureWith(deps);
   const store = createLineUpStore({ ...deps, measure });
   lineUpApp.setState({ store, preview: deps.preview, extents: deps.extents });
+  // the Compare dates chip measures with the same job, one pair at a time
+  const compare = createCompareLineUp({ measure, workspace: deps.workspace });
+  compareLineUpApp.setState({ store: compare, workspace: deps.workspace });
   const stopWatch = watchLineUps({
     store,
     workspace: deps.workspace,
@@ -138,6 +151,8 @@ export function createLineUpSession(deps: LineUpSessionDeps): LineUpSession {
     measure,
     stop: () => {
       stopWatch();
+      compare.getState().stop();
+      compareLineUpApp.setState({ store: null, workspace: null });
       lineUpApp.setState({ store: null, preview: null, extents: null });
     },
   };

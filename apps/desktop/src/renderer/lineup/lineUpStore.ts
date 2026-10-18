@@ -27,8 +27,15 @@ import { formatMetres, movesWith, planLineUp } from './planLineUp';
 
 export interface LineUpDeps {
   workspace: StoreApi<Workspace>;
-  /** Run `change.lineup` for the two dates: its `lineup.json`, or why there is none. */
-  measure(keep: string, move: string): Promise<LineUpMeasure | { error: string }>;
+  /**
+   * Run `change.lineup` for the two dates: its `lineup.json`, or why there is none. Aborting
+   * `signal` gives the measurement up: its job is cancelled and the answer is an `{ error }`.
+   */
+  measure(
+    keep: string,
+    move: string,
+    signal?: AbortSignal,
+  ): Promise<LineUpMeasure | { error: string }>;
   /** One `builder:updateCapture` `{ lineUp }` write (null removes it): an error or null. */
   saveCapture(captureId: string, lineUp: CaptureLineUp | null): Promise<string | null>;
   /** File layers under a date (null: take the own `capture` off again): an error or null. */

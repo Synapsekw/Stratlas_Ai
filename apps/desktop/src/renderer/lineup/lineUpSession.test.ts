@@ -11,6 +11,7 @@ import {
   writersFor,
   type LineUpSessionDeps,
 } from './lineUpSession';
+import { compareLineUpApp } from './compareLineUpStore';
 import { lineUpApp } from './lineUpStore';
 import { lineUpManifest, measureOf } from './testing';
 
@@ -107,8 +108,11 @@ describe('line-up session', () => {
     expect(lineUpApp.getState().store).toBe(session.store);
     expect(lineUpApp.getState().preview).toBe(deps.preview);
     expect(lineUpApp.getState().extents).toBe(deps.extents);
+    expect(compareLineUpApp.getState().store).not.toBeNull();
+    expect(compareLineUpApp.getState().workspace).toBe(deps.workspace);
     session.stop();
     expect(lineUpApp.getState().store).toBeNull();
+    expect(compareLineUpApp.getState().store).toBeNull();
   });
 
   it('says so when the job is not known any more', async () => {
@@ -135,6 +139,25 @@ describe('line-up session', () => {
       error: 'Another project was opened, so the measurement was stopped.',
     });
     expect(cancel).toHaveBeenCalledWith('job-1');
+  });
+
+  it('stops measuring and cancels the job when its signal aborts', async () => {
+    const { deps, cancel } = setup({ finished: stalls });
+    const ctl = new AbortController();
+    const pending = measureWith(deps)('d1', 'd2', ctl.signal);
+    await Promise.resolve();
+    ctl.abort();
+    expect(await pending).toEqual({ error: 'The measurement was stopped.' });
+    expect(cancel).toHaveBeenCalledWith('job-1');
+
+    // aborted before it began: no job is started
+    const early = setup({ finished: stalls });
+    const gone = new AbortController();
+    gone.abort();
+    expect(await measureWith(early.deps)('d1', 'd2', gone.signal)).toEqual({
+      error: 'The measurement was stopped.',
+    });
+    expect(early.start).not.toHaveBeenCalled();
   });
 
   it('stops a stalled job after the limit', async () => {

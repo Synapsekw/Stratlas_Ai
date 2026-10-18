@@ -1,9 +1,10 @@
 /**
  * The M8 streams' tools and panes on C1's mount points, registered once (imported by the stage):
- * C2's Side by side, Swipe and Blend bar beside Compare dates (`COMPARE_TOOLS`) and C4's Frames
+ * C2's Side by side, Swipe and Blend bar and the line-up chip beside Compare dates (`COMPARE_TOOLS`) and C4's Frames
  * pane in the split (`EXTRA_PANES`). Kept in its own module so the stream modules and the mount
  * points never import each other (no import cycle through `SplitPanes`).
  */
+import { CompareLineUp } from '../lineup/CompareLineUp';
 import { COMPARE_TOOLS } from './CompareControls';
 import { FramesPane } from './FramesPane';
 import { CompareViewControls } from './MapSwipe';
@@ -12,6 +13,8 @@ import { EXTRA_PANES } from './SplitPanes';
 import '../walks/walkMounts';
 
 if (!COMPARE_TOOLS.includes(CompareViewControls)) COMPARE_TOOLS.push(CompareViewControls);
+// whether the two dates line up, with Line up (lineup/CompareLineUp.tsx)
+if (!COMPARE_TOOLS.includes(CompareLineUp)) COMPARE_TOOLS.push(CompareLineUp);
 
 EXTRA_PANES.frames = {
   label: 'frames.pane',

@@ -165,3 +165,120 @@
   margin: 0;
   accent-color: var(--acc);
 }
+
+/* the line-up chip in the Compare dates bar (CompareLineUp.tsx): one short line, 220 px at most,
+   so the bar still fits a 1100 x 720 window; everything else is in its details */
+.compare-lineup {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  max-width: 220px;
+  margin-inline-start: var(--sp-2);
+}
+.compare-lineup-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  height: 28px;
+  padding-inline: var(--sp-3);
+  border-radius: 3px;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  white-space: nowrap;
+}
+.compare-lineup-chip:hover,
+.compare-lineup-chip[aria-expanded='true'] {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.compare-lineup-chip:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.compare-lineup-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compare-lineup-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fg-3);
+}
+.compare-lineup[data-status='lined'] .compare-lineup-dot {
+  background: var(--ok);
+}
+.compare-lineup[data-status='off'] .compare-lineup-dot {
+  background: var(--warn);
+}
+.compare-lineup[data-status='measuring'] .compare-lineup-chip {
+  color: var(--fg-2);
+}
+.compare-lineup .spin {
+  flex: none;
+}
+.compare-lineup-action {
+  flex: none;
+}
+.compare-lineup-details {
+  position: absolute;
+  inset-block-start: calc(100% + var(--sp-3));
+  /* it opens towards the views, away from the right panel */
+  inset-inline-end: 0;
+  z-index: var(--z-pop);
+  display: grid;
+  gap: var(--sp-2);
+  width: max-content;
+  max-width: 320px;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  white-space: normal;
+}
+.compare-lineup-details p {
+  margin: 0;
+}
+.compare-lineup-details .compare-lineup-head {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.compare-lineup-tip {
+  display: grid;
+  gap: var(--sp-1);
+}
+.compare-lineup-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.compare-lineup-acts:empty {
+  display: none;
+}
+
+/* The chip hangs beside the island, which gives up its own width for it (--isl-aside-w,
+   Island.tsx), and must also keep clear of the right panel's toggle and, with the panel folded,
+   of the window's own buttons. Below a 1000 px stage (any 1100 px window: about 500 px with both
+   side panels open, 850 px with the right one folded) the chip keeps its status dot and the
+   Line up icon; the words are in its tooltip and details. */
+.stage {
+  container-name: stage;
+}
+@container stage (max-width: 999px) {
+  .compare-lineup-label,
+  .compare-lineup-action-text {
+    display: none;
+  }
+  .compare-lineup-chip {
+    justify-content: center;
+    width: 28px;
+    padding-inline: 0;
+  }
+}
