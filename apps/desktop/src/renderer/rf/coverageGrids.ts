@@ -7,93 +7,27 @@
  * the project CRS. Antenna geometry, and so the grid, is stored in its survey date's own frame and
  * drawn moved by that date's line-up shift (`coverageShift`), as the antenna boxes are.
  */
-import { NO_SERVER, readGridTiff, type PreviewGrid, type PreviewOutput } from '@aio/rf';
+import { NO_SERVER, type PreviewGrid, type PreviewOutput } from '@aio/rf';
 import {
   shiftEN,
   type AntennasFile,
   type DateShift,
   type ProjectManifest,
-  type RfRun,
   type RfThresholds,
 } from '@aio/schema';
 import { antennaShift } from '../telecom/antennaScene';
-import { RSRP_CLASSES, classOf } from './coverageRamp';
-import type { RfClassStat } from './rfStore';
+import type { CoverageGrids } from './runGrids';
 
-export interface CoverageGrids {
-  /** What the grids are, for caching: the run id, or the preview's number. */
-  key: string;
-  source: 'run' | 'preview';
-  grid: PreviewGrid;
-  /** dBm; NaN where no sector reaches. */
-  rsrp: Float32Array;
-  /** Index into `sectorIds`; NO_SERVER where none. */
-  bestServer: Uint8Array;
-  /** Sectors within the overlap window of the best (the best included); 0 where none. */
-  overlap: Uint8Array;
-  sectorIds: string[];
-  thresholds: RfThresholds;
-}
-
-/** A run's grid in the preview's terms. */
-export function runGrid(run: RfRun): PreviewGrid {
-  return {
-    width: run.grid.width,
-    height: run.grid.height,
-    resolutionM: run.grid.resolutionM,
-    originEast: run.grid.origin[0],
-    originNorth: run.grid.origin[1],
-  };
-}
-
-/** The project-relative home of one of a run's grid files. */
-export const runFile = (run: RfRun, file: string): string => `rf/runs/${run.runId}/${file}`;
-
-/**
- * A run's composite grids from the bytes of its three GeoTIFFs. Nodata (`run.grid.nodata`) is NaN
- * RSRP and NO_SERVER; best server is the index into `run.inputs.sectors.sectors` (the job's rule).
- */
-export function gridsFromRun(
-  run: RfRun,
-  bytes: { rsrp: Uint8Array; bestServer: Uint8Array; overlap: Uint8Array },
-): CoverageGrids {
-  const grid = runGrid(run);
-  const n = grid.width * grid.height;
-  const read = (b: Uint8Array, name: string): Float32Array => {
-    const t = readGridTiff(b);
-    if (t.width !== grid.width || t.height !== grid.height)
-      throw new Error(
-        `${name} is ${String(t.width)} x ${String(t.height)} but the run's grid is ${String(grid.width)} x ${String(grid.height)}.`,
-      );
-    return t.data;
-  };
-  const nodata = run.grid.nodata;
-  const r = read(bytes.rsrp, 'rsrp');
-  const b = read(bytes.bestServer, 'best server');
-  const o = read(bytes.overlap, 'overlap');
-  const rsrp = new Float32Array(n);
-  const bestServer = new Uint8Array(n);
-  const overlap = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    const v = r[i] ?? Number.NaN;
-    const none = v === nodata || !Number.isFinite(v);
-    rsrp[i] = none ? Number.NaN : v;
-    const s = b[i] ?? nodata;
-    bestServer[i] = none || s === nodata || !(s >= 0 && s < NO_SERVER) ? NO_SERVER : Math.round(s);
-    const c = o[i] ?? 0;
-    overlap[i] = none || !(c > 0) ? 0 : Math.min(254, Math.round(c));
-  }
-  return {
-    key: `run:${run.runId}`,
-    source: 'run',
-    grid,
-    rsrp,
-    bestServer,
-    overlap,
-    sectorIds: run.inputs.sectors.sectors.map((s) => s.id),
-    thresholds: run.inputs.sectors.study.thresholds,
-  };
-}
+export {
+  classStatsOf,
+  gridsFromRun,
+  readRunGrids,
+  runFile,
+  runGrid,
+  MAX_DRAWN_SIDE,
+  type CoverageGrids,
+  type ReducedFrom,
+} from './runGrids';
 
 /**
  * A live preview's output as coverage grids. Best server is renumbered to the index in
@@ -126,26 +60,6 @@ export function gridsFromPreview(
     sectorIds: [...allSectorIds],
     thresholds,
   };
-}
-
-/**
- * Area and share of each RSRP class over the pixels a sector reaches (the job's `classAreasM2`:
- * "no service" is the reached area below the poor threshold).
- */
-export function classStatsOf(g: CoverageGrids): RfClassStat[] {
-  const counts = new Map<string, number>(RSRP_CLASSES.map((c) => [c, 0]));
-  let total = 0;
-  for (const v of g.rsrp) {
-    const cls = classOf(v, g.thresholds);
-    if (cls === null) continue;
-    counts.set(cls, (counts.get(cls) ?? 0) + 1);
-    total++;
-  }
-  const px = g.grid.resolutionM * g.grid.resolutionM;
-  return RSRP_CLASSES.map((cls) => {
-    const k = counts.get(cls) ?? 0;
-    return { cls, areaM2: k * px, share: total > 0 ? k / total : 0 };
-  });
 }
 
 /**

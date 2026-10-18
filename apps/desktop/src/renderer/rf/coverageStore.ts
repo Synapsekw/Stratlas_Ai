@@ -10,13 +10,7 @@
 import { msiToTwoCut, parseMsi, previewTooLarge, type TwoCutPattern } from '@aio/rf';
 import type { RfRun } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
-import {
-  classStatsOf,
-  gridsFromPreview,
-  gridsFromRun,
-  runFile,
-  type CoverageGrids,
-} from './coverageGrids';
+import { classStatsOf, gridsFromPreview, type CoverageGrids } from './coverageGrids';
 import { previewPlan, patternKey, type PreviewPlan } from './previewInput';
 import type { PreviewClient } from './previewClient';
 import { rfStore, setClassStats, setPreviewState, type RfState } from './rfStore';
@@ -56,6 +50,11 @@ export function shownGrids(c: CoverageState, rf: Pick<RfState, 'dirty'>): Covera
 export interface CoverageDeps {
   /** Bytes of a project file (`assetUrl` and fetch in the app); null when it is missing. */
   bytes(projectId: string, path: string): Promise<Uint8Array | null>;
+  /**
+   * A finished run's grids as drawn (the run reader Worker in the app: whole, or reduced to at
+   * most `MAX_DRAWN_SIDE` cells on the long side with the full grid's class areas).
+   */
+  runGrids(projectId: string, run: RfRun): Promise<CoverageGrids>;
   /** The preview Worker, started when first needed. */
   client(): PreviewClient;
   /** Debounce of a setting change before the preview runs, ms. */
@@ -95,14 +94,10 @@ export function followCoverage(deps: CoverageDeps): () => void {
     if (!run || !s.projectId) return;
     const projectId = s.projectId;
     try {
-      const [rsrp, bestServer, overlap] = await Promise.all(
-        [run.outputs.rsrp, run.outputs.bestServer, run.outputs.overlap].map((f) =>
-          deps.bytes(projectId, runFile(run, f)),
-        ),
-      );
+      // decoded, and reduced when large, off the main thread (integration review I1)
+      const grids = await deps.runGrids(projectId, run);
       if (mine !== runToken || stopped) return;
-      if (!rsrp || !bestServer || !overlap) throw new Error('The run has no coverage grids.');
-      coverage.setState({ run: gridsFromRun(run, { rsrp, bestServer, overlap }) });
+      coverage.setState({ run: grids });
     } catch (e) {
       if (mine !== runToken || stopped) return;
       coverage.setState({ runError: e instanceof Error ? e.message : String(e) });

@@ -1,7 +1,7 @@
 /**
  * The coverage legend on the stage (d-ba ruling I3, option b): `Stage.tsx` gives it one corner
- * slot (`rfLegend`, wanting `bl` then `br`) while `useCoverageLegendShown()` holds, and renders
- * `<StageCoverageLegend />` there. Everything the legend shows is read here, from the RF stores,
+ * slot (`rfLegend`, a foot corner away from the readout) while `useCoverageLegendShown()` holds,
+ * and renders `<StageCoverageLegend />` there. Everything the legend shows is read here, from the RF stores,
  * so the stage's block stays small.
  */
 import { useMemo } from 'react';
@@ -39,6 +39,7 @@ export function useCoverageLegendProps(): CoverageLegendProps | null {
       sectors: grids.sectorIds.map((id) => ({ id, name: names.get(id) ?? id })),
       // the run's time of day keeps the title on one line (the RF tab names the whole date)
       source: run ? { kind: 'run', at: timeOfDay(run.createdAt) } : { kind: 'preview' },
+      reduced: grids.reducedFrom ?? null,
     };
   }, [visible, grids, view, sectors, runs, selectedRunId]);
 }

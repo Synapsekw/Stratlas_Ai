@@ -4991,6 +4991,8 @@ export const en = {
   'rf.results.saveNeedsPreview': 'Change a setting to see a live preview first.',
   'rf.results.previewTooLarge':
     'This study is too large to preview live. Run coverage to see it, or make the radius smaller or the grid coarser.',
+  'rf.results.reducedView':
+    'This run is {width} × {height} cells, too many to draw whole, so the map and 3D view show 1 cell in {step} each way. The areas and the exports use the full grid.',
   'rf.results.export': 'Export',
   'rf.results.exportNeedsRun': 'Choose a finished run to export.',
   'rf.results.exportTiff': 'GeoTIFF of the grid',
@@ -5130,6 +5132,7 @@ export const en = {
   'rf.legend.showFrom.good': 'Good and better',
   'rf.legend.hatch': 'Hatch the classes',
   'rf.legend.details': 'Details',
+  'rf.legend.reduced': 'Drawn at 1 cell in {step} each way: the run is {width} × {height} cells.',
   'rf.legend.short.above': '> {dbm}',
   'rf.legend.short.between': '{hi}…{lo}',
   'rf.legend.short.below': '< {dbm}',

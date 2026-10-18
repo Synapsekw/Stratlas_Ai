@@ -3,7 +3,8 @@
  * range (never colour alone) on one compact row, the swatch with its optional hatch, and behind
  * Details the opacity slider (in sync with the Display bench row), "Show from", the hatch switch
  * and the indicative and assumptions line. It has no position of its own: the stage places it in
- * a corner slot (`rfLegend`, wanting `bl` then `br`), through `StageCoverageLegend.tsx`.
+ * a corner slot (`rfLegend`, a foot corner away from the 3D readout), through
+ * `StageCoverageLegend.tsx`.
  */
 import { OVERLAP_WINDOW_DB } from '@aio/rf';
 import type { RfStudy } from '@aio/schema';
@@ -26,6 +27,7 @@ import {
 } from './coverageRamp';
 import { setRfLayer, useRfLayer } from './coverageDisplay';
 import type { RfView } from './rfStore';
+import type { ReducedFrom } from './runGrids';
 import { VIEW_KEY, assumptionsText } from './rfText';
 import './rf.css';
 
@@ -93,6 +95,8 @@ export interface CoverageLegendProps {
   sectors: readonly { id: string; name: string }[];
   /** What is shown: the live preview or a run (its time, as the run list shows it). */
   source: { kind: 'preview' } | { kind: 'run'; at: string } | null;
+  /** Set when a large run is drawn reduced (its full size and the step between drawn cells). */
+  reduced?: ReducedFrom | null;
 }
 
 /**
@@ -147,7 +151,7 @@ function Line({
  * The legend body; the stage gives it its corner. Compact: the view and its source on one line
  * and one row per class. The controls and the assumptions sit behind Details.
  */
-export function CoverageLegend({ view, study, sectors, source }: CoverageLegendProps) {
+export function CoverageLegend({ view, study, sectors, source, reduced }: CoverageLegendProps) {
   const t = useT();
   const opacity = useRfLayer((s) => s.opacity);
   const hatch = useRfLayer((s) => s.hatch);
@@ -302,6 +306,15 @@ export function CoverageLegend({ view, study, sectors, source }: CoverageLegendP
             <span aria-hidden="true">{t('rf.legend.hatch')}</span>
           </div>
           <p className="rf-legend-note">{note}</p>
+          {reduced && (
+            <p className="rf-legend-note" data-testid="rf-legend-reduced">
+              {t('rf.legend.reduced', {
+                step: reduced.step,
+                width: reduced.width,
+                height: reduced.height,
+              })}
+            </p>
+          )}
           <p className="rf-legend-note" data-testid="rf-legend-indicative">
             <b>{t('rf.results.indicative')}</b> {t('rf.legend.indicativeBody')}{' '}
             {assumptionsText(t, study)}

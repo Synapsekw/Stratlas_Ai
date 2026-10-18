@@ -78,6 +78,7 @@ import {
   type RfView,
 } from '../../../rf/rfStore';
 import { startRfRun } from '../../../rf/rfTab';
+import { useCoverage } from '../../../rf/coverageStore';
 import {
   ENVIRONMENT_KEY,
   EXCLUSION_KEY,
@@ -1286,6 +1287,7 @@ function ResultsSection() {
   const running = useRf((s) => s.running);
   const runError = useRf((s) => s.runError);
   const stats = useRf((s) => s.classStats);
+  const reduced = useCoverage((c) => c.run?.reducedFrom ?? null);
   const study = useRf((s) => s.sectors.study);
   const preview = useRf((s) => s.preview);
   const rows = useRf((s) => s.rows);
@@ -1390,6 +1392,15 @@ function ResultsSection() {
       </table>
       {!stats && (
         <p className="rf-note">{t(run ? 'rf.results.areasPending' : 'rf.results.noRunYet')}</p>
+      )}
+      {reduced && (
+        <p className="rf-note" role="status" data-testid="rf-reduced">
+          {t('rf.results.reducedView', {
+            width: reduced.width,
+            height: reduced.height,
+            step: reduced.step,
+          })}
+        </p>
       )}
       <p className="rf-note" data-testid="rf-participants">
         {t('rf.results.participants', { count: check.participants.length })}

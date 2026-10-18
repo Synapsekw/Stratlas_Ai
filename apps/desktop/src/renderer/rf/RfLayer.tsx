@@ -13,7 +13,7 @@ import { appBoundsDeps } from '../shell/appBounds';
 import { useMap, useScene } from '../builder/activeViews';
 import { imageUrl } from './coverageCanvas';
 import { coverageImage } from './coverageImage';
-import { coverageShift } from './coverageGrids';
+import { coverageShift, runFile } from './coverageGrids';
 import {
   groundZOf,
   mapPlacement,
@@ -32,6 +32,7 @@ import {
 } from './coverageStore';
 import { dsmGroundProvider } from './dsmGround';
 import { startPreviewWorker, type PreviewClient } from './previewClient';
+import { startRunWorker, type RunReader } from './runClient';
 import { loadRfLayer, useRfLayer } from './coverageDisplay';
 import { loadRf, resetRf, rfStore, selectRun, setDsmGroundProvider, useRf } from './rfStore';
 
@@ -115,13 +116,22 @@ export function RfLayer(): null {
   useEffect(() => {
     if (!projectId) return;
     let client: PreviewClient | null = null;
+    let reader: RunReader | null = null;
     const stop = followCoverage({
       bytes: projectBytes,
       client: () => (client ??= startPreviewWorker()),
+      // a run's GeoTIFFs are fetched and decoded in the run reader Worker (review I1)
+      runGrids: (id, run) =>
+        (reader ??= startRunWorker()).read(run, [
+          assetUrl(id, { path: runFile(run, run.outputs.rsrp) }),
+          assetUrl(id, { path: runFile(run, run.outputs.bestServer) }),
+          assetUrl(id, { path: runFile(run, run.outputs.overlap) }),
+        ]),
     });
     return () => {
       stop();
       client?.dispose();
+      reader?.dispose();
     };
   }, [projectId]);
 
