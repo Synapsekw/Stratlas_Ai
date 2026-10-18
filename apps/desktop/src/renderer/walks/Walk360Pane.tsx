@@ -1,13 +1,17 @@
+import { useTaxonomy } from '@aio/annotate';
 import { PANO_FOV, dragLook, zoomLook, type PanoLook } from '@aio/engine';
 import type { AssetRef, WalkFile, WalkLayer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, useWorkspace } from '@aio/workspace';
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { useStore } from 'zustand';
+import { detectionLook } from '../detections/look';
+import { loadDetections, useDetections } from '../detections/store';
 import { SpotHistoryButton } from '../workspace/spot/SpotHistoryEntry';
 import { wrapDeg } from '../workspace/spot/spotGeom';
 import { bearingFromHeadingRad } from '../workspace/spot/spotWalk';
+import { framesNear } from './detOverlay';
 import { northTick, viewClickYawRad } from './placeModel';
 import { placeSession, placeUi, useWalkViewHeading } from './placeWalk';
 import { PlaceWalkHere } from './PlaceWalkStrip';
@@ -20,6 +24,7 @@ import {
   walkUnstabilised,
 } from './walkModel';
 import { publishWalkPlayback } from './walkPlayback';
+import { WalkDetOverlay, type OverlayBox } from './WalkDetOverlay';
 import { useWalks, walks } from './walks';
 import { walkFolderId, walkRecordKey } from './walkStore';
 
@@ -82,6 +87,21 @@ function WalkPlayer({
   const heading = useWalkViewHeading(walk, time);
   const audio = record?.video.audio ?? false;
   const poster = walk.poster ? assetUrl(projectId, walk.poster) : undefined;
+  // detections on this walk's frames (local detection writes them as drafts for the review)
+  const allDetections = useDetections((s) => s.review.detections);
+  const { classById } = useTaxonomy();
+  const [showDets, setShowDets] = useState(true);
+  const walkDets = useMemo(
+    () => allDetections.filter((d) => d.source.kind === 'frame' && d.source.layer === walk.id),
+    [allDetections, walk.id],
+  );
+  const nearDets = useMemo(() => framesNear(walkDets, walk.id, time), [walkDets, walk.id, time]);
+  const overlayBoxes = useMemo<OverlayBox[]>(
+    () => nearDets.map((d) => ({ detection: d, ...detectionLook(d, classById.get(d.classId)) })),
+    [nearDets, classById],
+  );
+  // the boxes are in the playback copy's pixels: the levelled copy is turned and cannot show them
+  const onLevelled = levelled && level;
 
   const setLook = (next: PanoLook) => {
     look.current = next;
@@ -188,6 +208,11 @@ function WalkPlayer({
       v.load();
     };
   }, [url, walk.id]);
+
+  // the review's detections, read once per project (the review screen reads them again)
+  useEffect(() => {
+    void loadDetections(projectId);
+  }, [projectId]);
 
   // a seek asked by Place walk (the start or end of the walk, a pin's moment)
   useEffect(() => {
@@ -318,6 +343,19 @@ function WalkPlayer({
             N
           </span>
         )}
+        {walkDets.length > 0 &&
+          showDets &&
+          status === 'ready' &&
+          !onLevelled &&
+          box.w > 0 &&
+          box.h > 0 && (
+            <WalkDetOverlay boxes={overlayBoxes} look={shown} width={box.w} height={box.h} />
+          )}
+        {walkDets.length > 0 && showDets && status === 'ready' && onLevelled && (
+          <div className="walk-det-note" role="note" data-testid="walk-det-level-note">
+            {t('walk.det.levelNote')}
+          </div>
+        )}
         {message && (
           <div className="walk-status" role="status">
             {message}
@@ -364,6 +402,19 @@ function WalkPlayer({
           </span>
         )}
         <span className="grow" />
+        {walkDets.length > 0 && (
+          <button
+            type="button"
+            className="btn sm ghost"
+            data-testid="walk-det-toggle"
+            aria-pressed={showDets}
+            onClick={() => {
+              setShowDets(!showDets);
+            }}
+          >
+            {t('walk.det.show')}
+          </button>
+        )}
         {levelled && (
           <button
             type="button"

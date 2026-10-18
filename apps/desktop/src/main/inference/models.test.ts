@@ -105,7 +105,7 @@ describe('import, list and remove', () => {
     expect(await readdir(dirs.user)).toEqual(['marker-test-detector-1.0.0']);
   });
 
-  it('needs the licence confirmed, and refuses copyleft weights', async () => {
+  it('needs the licence confirmed', async () => {
     expect(
       await importModel({ path: await source(), acceptLicence: false }, dirs, okProbe),
     ).toEqual({
@@ -113,15 +113,71 @@ describe('import, list and remove', () => {
       error:
         'Confirm that you may use "Marker test detector" under its licence (MIT) to import it.',
     });
+    expect(
+      await importModel(
+        { path: await source({ licence: 'AGPL-3.0' }, 'agpl'), acceptLicence: false },
+        dirs,
+        okProbe,
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Confirm that you may use') as string,
+    });
+    expect(await readdir(dirs.user)).toEqual([]);
+  });
+
+  it('imports copyleft weights with a warning, permissive ones without', async () => {
     const agpl = await importModel(
-      { path: await source({ licence: 'AGPL-3.0-only' }, 'agpl'), acceptLicence: true },
+      { path: await source({ licence: 'AGPL-3.0' }, 'agpl'), acceptLicence: true },
       dirs,
       okProbe,
     );
     expect(agpl).toMatchObject({
-      ok: false,
-      error: expect.stringContaining('AGPL-3.0-only is not allowed') as string,
+      ok: true,
+      model: { card: { licence: 'AGPL-3.0' }, licenceWarning: 'copyleft' },
     });
+    const list = await listModels(dirs);
+    expect(list.map((m) => [m.info.card.licence, m.info.licenceWarning])).toEqual([
+      ['AGPL-3.0', 'copyleft'],
+    ]);
+    // the same file again: the listed model, warning and all
+    expect(
+      await importModel(
+        { path: await source({ licence: 'AGPL-3.0' }, 'agpl2'), acceptLicence: true },
+        dirs,
+        okProbe,
+      ),
+    ).toMatchObject({ ok: true, model: { licenceWarning: 'copyleft' } });
+  });
+
+  it('gives an MIT model no warning, on import and in the listing', async () => {
+    const r = await importModel({ path: await source(), acceptLicence: true }, dirs, okProbe);
+    expect(r.ok && 'licenceWarning' in r.model).toBe(false);
+    expect((await listModels(dirs))[0]?.info).not.toHaveProperty('licenceWarning');
+  });
+
+  it('warns about a pack model too', async () => {
+    const dir = join(dirs.pack ?? '', 'nc-model');
+    await mkdir(dir, { recursive: true });
+    const onnx = markerDetectorOnnx();
+    await writeFile(join(dir, 'model.onnx'), onnx);
+    await writeFile(
+      join(dir, 'model.json'),
+      JSON.stringify({ ...markerCard(onnx), licence: 'CC-BY-NC-4.0' }),
+    );
+    expect((await listModels(dirs)).map((m) => [m.info.where, m.info.licenceWarning])).toEqual([
+      ['pack', 'non-commercial'],
+    ]);
+  });
+
+  it('still refuses a card without a licence', async () => {
+    expect(
+      await importModel(
+        { path: await source({ licence: '' }, 'none'), acceptLicence: true },
+        dirs,
+        okProbe,
+      ),
+    ).toMatchObject({ ok: false });
   });
 
   it('refuses a file that does not match its card', async () => {

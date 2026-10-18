@@ -2387,14 +2387,18 @@ export const ipc = {
   },
 
   // ---------------------------------------------------------------- M8 local detection (C6)
-  /** Installed detector models and the onnxruntime execution provider. */
+  /**
+   * Installed detector models and the onnxruntime execution provider. A model whose licence is
+   * copyleft, non-commercial or unknown carries `licenceWarning` (its kind).
+   */
   'inference:models': {
     request: Empty,
     response: z.object({ runtime: InferenceRuntime, models: z.array(DetectorModelInfo) }),
   },
   /**
    * Copy a model folder or `model.onnx` with its `model.json` card into the models folder after a
-   * SHA-256 check, a layout probe and the person's licence acknowledgement.
+   * SHA-256 check, a layout probe and the person's licence acknowledgement. Only an empty licence
+   * is refused; a copyleft, non-commercial or unknown one imports with `model.licenceWarning`.
    */
   'inference:importModel': {
     request: z.object({ path: z.string().min(1), acceptLicence: z.boolean() }).strict(),

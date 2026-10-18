@@ -27,9 +27,11 @@ export function itemSource(i: DetectItem): DetectionSource {
 
 export const itemKey = (i: DetectItem) => sourceKey(itemSource(i));
 
-/** Whether the project holds anything Detect with AI can look at: a photo, or a video clip. */
+/** Whether the project holds anything Detect with AI can look at: a photo, a video clip or a walk. */
 export function hasDetectable(layers: readonly Layer[]): boolean {
-  return layers.some((l) => (l.kind === 'photos' && l.items.length > 0) || l.kind === 'video');
+  return layers.some(
+    (l) => (l.kind === 'photos' && l.items.length > 0) || l.kind === 'video' || l.kind === 'walk',
+  );
 }
 
 /** Proposals overlapping an earlier one of the same class this much are repeats. */
