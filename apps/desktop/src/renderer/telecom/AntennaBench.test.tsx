@@ -87,7 +87,11 @@ vi.mock('./antennaScene', () => ({
   },
   armTowerPick: () => () => undefined,
   antennaShift: () => null,
+  antennaLabelSpots: () => [],
 }));
+// the labels and the camera framing are the runner's own tests
+vi.mock('./antennaLabels', () => ({ attachAntennaLabels: () => () => undefined }));
+vi.mock('../workspace/flyToBox', () => ({ flyToLocalBox: () => undefined }));
 vi.mock('../builder/photoOpen', () => ({ openPhoto: () => undefined }));
 // the site data tools are their own screens: here only that the bench lists them
 vi.mock('../survey/ExportDialog', () => ({
