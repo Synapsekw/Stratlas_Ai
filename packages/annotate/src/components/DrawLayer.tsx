@@ -15,7 +15,14 @@ import {
   type ViewTransform,
 } from '../image/geometry';
 import { insertVertex, nearestEdge, removeVertex } from '../detections/geometry';
-import { CHIP_H, CHIP_PAD_X, chipTextColor, chipWidth, stackChips } from '../detections/classStyle';
+import {
+  CHIP_H,
+  CHIP_PAD_X,
+  boxInView,
+  chipTextColor,
+  chipWidth,
+  stackChips,
+} from '../detections/classStyle';
 import type { ImageTool } from '../runtime';
 
 export interface ShapeItem {
@@ -296,10 +303,13 @@ export function DrawLayer(props: DrawLayerProps) {
             const pts = geomOutline(shapeFor(s)).map((p) => toDisplay(p, view));
             const x = Math.min(...pts.map((p) => p.x));
             const y = Math.min(...pts.map((p) => p.y));
+            const x1 = Math.max(...pts.map((p) => p.x));
+            const y1 = Math.max(...pts.map((p) => p.y));
             const text = s.label ?? '';
-            return { s, text, x, y, w: chipWidth(text), h: CHIP_H };
+            return { s, text, x, y, x1, y1, w: chipWidth(text), h: CHIP_H };
           })
           .filter((c) => Number.isFinite(c.x) && Number.isFinite(c.y))
+          .filter((c) => box.width <= 0 || boxInView(c.x, c.y, c.x1, c.y1, box))
           .reverse();
         const at = stackChips(wanted, box.width > 0 ? box : { width: 1e9, height: 1e9 });
         return wanted.map((c, i) => ({ ...c, at: at[i] ?? { x: c.x, y: c.y } })).reverse();

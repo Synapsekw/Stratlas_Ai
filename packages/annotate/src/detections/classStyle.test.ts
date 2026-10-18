@@ -12,6 +12,7 @@ import {
   detectionColor,
   isWarningClass,
   readableClass,
+  boxInView,
   stackChips,
 } from './classStyle';
 
@@ -92,6 +93,17 @@ describe('chip labels', () => {
   it('estimates wider chips for longer text', () => {
     expect(chipWidth('No safety jacket 88%')).toBeGreaterThan(chipWidth('Helmet 79%'));
     expect(chipWidth('')).toBe(12);
+  });
+});
+
+describe('boxes in view', () => {
+  const view = { width: 400, height: 300 };
+  it('knows a box that shows, even in part, from one outside the view', () => {
+    expect(boxInView(10, 10, 50, 50, view)).toBe(true);
+    expect(boxInView(-40, 10, 5, 50, view)).toBe(true);
+    expect(boxInView(-90, 10, -10, 50, view)).toBe(false);
+    expect(boxInView(410, 10, 450, 50, view)).toBe(false);
+    expect(boxInView(10, 310, 50, 350, view)).toBe(false);
   });
 });
 
