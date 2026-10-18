@@ -5,8 +5,9 @@
  * a W1 import leaves it, with the synthetic `raw-path.json` of
  * `packages/schema/src/__fixtures__/walk/` beside it (optional: a walk never processed has none).
  *
- * The video is a small equirectangular test pattern made by ffmpeg. It runs 64 s because the
- * synthetic path walks from 4 s to 62 s, and Place walk seeks to those moments.
+ * The video is a small equirectangular test pattern made by ffmpeg, unless a spec brings its own
+ * (`video`). It runs 64 s because the synthetic path walks from 4 s to 62 s, and Place walk seeks
+ * to those moments.
  */
 import { placementFor, walkLayerFor } from '@aio/project/builder';
 import {
@@ -53,6 +54,18 @@ export interface WalkProjectOptions {
   drawing?: boolean;
   /** The raw path `walk.process` writes (default true); false: a walk never processed. */
   processed?: boolean;
+  /** The playback copy (default: a 256 x 128 test pattern of `VIDEO_S`). */
+  video?: WalkVideo;
+}
+
+/** A playback copy a spec makes itself, with the numbers `walk.json` records for it. */
+export interface WalkVideo {
+  /** Write the MP4 to `out`. */
+  make: (out: string) => Promise<void> | void;
+  width: number;
+  height: number;
+  durationS: number;
+  fps: number;
 }
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -153,7 +166,16 @@ export async function createWalkProject(
   if (drawing) await writeSheet(join(dir, 'drawings', 'ground-floor'));
 
   // the walk, as a W1 import of a stitched MP4 leaves it, plus the path walk.process would write
-  makeEquirect(join(walkDir, 'playback.mp4'), VIDEO_S);
+  const video = opts.video ?? {
+    make: (out: string) => {
+      makeEquirect(out, VIDEO_S);
+    },
+    width: 256,
+    height: 128,
+    durationS: VIDEO_S,
+    fps: 10,
+  };
+  await video.make(join(walkDir, 'playback.mp4'));
   if (processed) await copyFile(RAW_PATH, join(walkDir, 'raw-path.json'));
   const walk = WalkFile.parse({
     schema: 'aio.walk/1',
@@ -163,14 +185,14 @@ export async function createWalkProject(
     source: {
       file: 'Ground floor walk.mp4',
       layout: 'equirect',
-      streams: [{ width: 256, height: 128, codec: 'avc1', fps: 10 }],
+      streams: [{ width: video.width, height: video.height, codec: 'avc1', fps: video.fps }],
     },
     video: {
       src: `walks/${WALK_ID}/playback.mp4`,
-      width: 256,
-      height: 128,
-      durationS: VIDEO_S,
-      fps: 10,
+      width: video.width,
+      height: video.height,
+      durationS: video.durationS,
+      fps: video.fps,
       audio: false,
     },
   });
