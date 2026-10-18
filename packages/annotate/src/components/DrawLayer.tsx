@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import {
   boxFromDrag,
   dragHandle,
+  geomArea,
   geomOutline,
   handlesOf,
   hitGeom,
@@ -146,14 +147,39 @@ export function DrawLayer(props: DrawLayerProps) {
   });
 
   const selected = shapes.find((s) => s.selected && s.editable);
-  // the detections look draws the hovered shape, then the selected one, last (on top); clicks
-  // pick the topmost shape, so they follow the same order
   const groupOf = (s: ShapeItem) => s.group ?? s.key;
-  const hitAt = (list: readonly ShapeItem[], p: Point) =>
-    [...list].reverse().find((s) => hitGeom(s.geom, p, 6 / view.scale));
+  const hits = (s: ShapeItem, p: Point) => hitGeom(s.geom, p, 6 / view.scale);
+  // plain look: the last drawn shape under the point wins
+  const lastAt = (p: Point) => [...shapes].reverse().find((s) => hits(s, p));
+  // detections look: the smallest shape under the point wins, so a box nested in another (a
+  // helmet in a person) stays reachable whichever is selected or drawn on top. The parts of a box
+  // across a 360 seam count as one shape (their summed area). Equal areas go to the selected
+  // shape, then to the later one in the list.
+  const groupArea = new Map<string, number>();
+  if (det) {
+    for (const s of shapes)
+      groupArea.set(groupOf(s), (groupArea.get(groupOf(s)) ?? 0) + geomArea(s.geom));
+  }
+  const smallestAt = (p: Point) => {
+    let best: { s: ShapeItem; area: number; i: number } | undefined;
+    shapes.forEach((s, i) => {
+      if (!hits(s, p)) return;
+      const area = groupArea.get(groupOf(s)) ?? 0;
+      const better =
+        !best ||
+        area < best.area ||
+        (area === best.area &&
+          (Boolean(s.selected) > Boolean(best.s.selected) ||
+            (Boolean(s.selected) === Boolean(best.s.selected) && i > best.i)));
+      if (better) best = { s, area, i };
+    });
+    return best?.s;
+  };
+  const pickAt = (p: Point) => (det ? smallestAt(p) : lastAt(p));
   const hovered =
-    det && hover && gesture.kind === 'none' && tool === 'select' ? hitAt(shapes, hover) : undefined;
+    det && hover && gesture.kind === 'none' && tool === 'select' ? pickAt(hover) : undefined;
   const hoverGroup = hovered ? groupOf(hovered) : null;
+  // drawing order only (detections look): the hovered shape, then the selected one, on top
   const rank = (s: ShapeItem) => (s.selected ? 2 : 0) + (groupOf(s) === hoverGroup ? 1 : 0);
   const ordered = det
     ? shapes
@@ -193,7 +219,7 @@ export function DrawLayer(props: DrawLayerProps) {
           return;
         }
       }
-      const hit = hitAt(ordered, p);
+      const hit = pickAt(p);
       props.onSelect?.(hit?.key ?? null);
       if (hit?.editable) {
         setGesture({ kind: 'move', key: hit.key, start: p, geom: hit.geom, cur: hit.geom });

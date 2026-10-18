@@ -34,6 +34,15 @@ export function hasDetectable(layers: readonly Layer[]): boolean {
   );
 }
 
+/**
+ * The items cloud Detect with AI can send: photos and video clip frames. A 360 walk's frames
+ * are left out (only the local model reads walks), so they never reach the send.
+ */
+export function cloudItems(items: readonly DetectItem[], layers: readonly Layer[]): DetectItem[] {
+  const walks = new Set(layers.filter((l) => l.kind === 'walk').map((l) => l.id));
+  return items.filter((i) => i.kind !== 'frame' || !walks.has(i.layer));
+}
+
 /** Proposals overlapping an earlier one of the same class this much are repeats. */
 const REPEAT_IOU = 0.7;
 
