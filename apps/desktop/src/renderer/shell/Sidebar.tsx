@@ -294,7 +294,12 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const [seenRemoval, setSeenRemoval] = useState({ removed, held });
   if (seenRemoval.removed !== removed || seenRemoval.held !== held) {
     setSeenRemoval({ removed, held });
-    if (seenRemoval.removed !== removed) setMarks(NO_MARKS);
+    // the layers asked about are gone; marked measurements were not asked about, so stay marked
+    if (seenRemoval.removed !== removed)
+      setMarks((m) => {
+        const marked = new Set([...m.marked].filter((x) => measureIdOf(x) !== null));
+        return marked.size === 0 ? NO_MARKS : { marked, anchor: null };
+      });
     if (held > 0 && seenRemoval.held !== held)
       setNote({ text: t('trash.held', { count: held }), danger: false });
   }
@@ -334,17 +339,24 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     select(f ? [f] : [], f);
   };
   const marked = marks.marked.size > 0;
-  /** Delete these rows: measurements straight away (Save measurements keeps it), layers asking. */
+  /**
+   * Delete these rows. Layers go through the shared dialog, which may be cancelled, so with
+   * layers among them only the layers are asked about and the measurements stay marked for a
+   * second Delete; measurements alone go straight away (Save measurements keeps it).
+   */
   const deleteRows = (ids: readonly string[]) => {
-    const ms = measureIdsOf(ids);
-    if (ms.length > 0 && !measureReadOnly) {
-      deleteMeasurements(ms);
-      setMarks((m) => ({
-        marked: new Set([...m.marked].filter((x) => measureIdOf(x) === null)),
-        anchor: m.anchor !== null && measureIdOf(m.anchor) !== null ? null : m.anchor,
-      }));
+    const layers = deletable(ids.filter((id) => measureIdOf(id) === null));
+    if (layers.length > 0) {
+      askLayers(layers);
+      return;
     }
-    askLayers(ids.filter((id) => measureIdOf(id) === null));
+    const ms = measureIdsOf(ids);
+    if (ms.length === 0 || measureReadOnly) return;
+    deleteMeasurements(ms);
+    setMarks((m) => ({
+      marked: new Set([...m.marked].filter((x) => measureIdOf(x) === null)),
+      anchor: m.anchor !== null && measureIdOf(m.anchor) !== null ? null : m.anchor,
+    }));
   };
 
   const failed = (error: string | null) => {

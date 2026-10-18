@@ -226,7 +226,7 @@ describe('Datasets: measurements', () => {
     expect(measureStore.getState().selected).toEqual(['c']);
   });
 
-  it('mixed marks: a layer row menu acts on layers only, the header deletes both kinds', () => {
+  it('mixed marks: a layer row menu acts on layers only, the header asks for the layers first', () => {
     render();
     ctrlClick(layerRow('mesh')?.querySelector('.tn') ?? null);
     ctrlClick(name('a'));
@@ -237,8 +237,20 @@ describe('Datasets: measurements', () => {
       document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     });
     click(q('[data-testid="tree-marked-delete"]'));
-    expect(measures().map((m) => m.id)).not.toContain('a');
+    // the dialog may be cancelled: nothing is deleted before it is confirmed, the
+    // measurement stays marked for a second Delete
+    expect(measures().map((m) => m.id)).toContain('a');
     expect(asked).toEqual([[{ layer: 'mesh' }]]);
+    expect(row('a')?.classList.contains('marked')).toBe(true);
+    // confirmed: the model goes, the measurement is still marked and deletes on its own
+    act(() => {
+      removal.setState((s) => ({ removed: s.removed + 1 }));
+    });
+    expect(row('a')?.classList.contains('marked')).toBe(true);
+    asked.length = 0;
+    click(q('[data-testid="tree-marked-delete"]'));
+    expect(measures().map((m) => m.id)).not.toContain('a');
+    expect(asked).toEqual([]);
   });
 
   it('the Delete key deletes the marked measurements, or the focused one', () => {
