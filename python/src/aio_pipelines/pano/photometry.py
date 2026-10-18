@@ -30,6 +30,7 @@ from dataclasses import asdict, dataclass
 import cv2
 import numpy as np
 from scipy.optimize import least_squares
+from scipy.sparse import coo_matrix
 
 from .geometry import principal
 
@@ -269,8 +270,33 @@ def fit(
         rc = CHANNEL_PRIOR * (g - g.mean(axis=1, keepdims=True)).ravel()
         return np.concatenate([r.ravel(), rp, rc])
 
+    # the residuals are linear in the parameters: their Jacobian is one sparse matrix
+    m = len(ii_)
+    rows, cols, vals = [], [], []
+    for ch in range(3):
+        r = 3 * np.arange(m) + ch
+        rows += [r, r]
+        cols += [3 * ii_ + ch, 3 * jj_ + ch]
+        vals += [np.full(m, -1.0), np.full(m, 1.0)]
+        for t in range(3):
+            rows.append(r)
+            cols.append(np.full(m, 3 * n + t))
+            vals.append(-dv[:, t])
+    for ch in range(3):
+        rows.append(3 * m + np.arange(n))
+        cols.append(3 * np.arange(n) + ch)
+        vals.append(np.full(n, EXPOSURE_PRIOR / 3))
+        for ch2 in range(3):
+            rows.append(3 * m + n + 3 * np.arange(n) + ch)
+            cols.append(3 * np.arange(n) + ch2)
+            vals.append(np.full(n, CHANNEL_PRIOR * ((ch == ch2) - 1 / 3)))
+    jac = coo_matrix(
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(3 * m + 4 * n, 3 * n + 3)
+    ).tocsr()
     x0 = np.concatenate([np.repeat(prior, 3), np.zeros(3)])
-    sol = least_squares(residuals, x0, loss="soft_l1", f_scale=LOSS_SCALE, x_scale=1.0, max_nfev=100)
+    sol = least_squares(
+        residuals, x0, jac=lambda x: jac, loss="soft_l1", f_scale=LOSS_SCALE, x_scale=1.0, max_nfev=100
+    )
     g = sol.x[: 3 * n].reshape(n, 3)
     c = sol.x[3 * n :]
     # a falloff that brightens the corners, or darkens them past the clamp, is no lens: drop it
