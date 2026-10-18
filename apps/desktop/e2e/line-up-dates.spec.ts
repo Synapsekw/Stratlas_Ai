@@ -415,9 +415,33 @@ async function verticalEdges(
   band: { x: number; y: number; width: number; height: number },
   count: number,
 ): Promise<number[]> {
+  return strongest(await edgeStrength(win, band, 'columns'), count);
+}
+
+/** The `count` strongest places of an edge profile, a few pixels apart. */
+function strongest(strength: number[], count: number): number[] {
+  const out: number[] = [];
+  const order = strength.map((v, x) => [v, x] as const).sort((a, b) => b[0] - a[0]);
+  for (const [v, x] of order) {
+    if (v <= 0 || out.length >= count) break;
+    if (out.every((c) => Math.abs(c - x) > 6)) out.push(x);
+  }
+  return out;
+}
+
+/**
+ * How strong an edge each column (or row) of `band` is: the change of brightness from the one
+ * before it to the one after it, summed down (or across) the strip. In pixels of the screenshot
+ * (device pixels).
+ */
+async function edgeStrength(
+  win: Page,
+  band: { x: number; y: number; width: number; height: number },
+  axis: 'columns' | 'rows',
+): Promise<number[]> {
   const png = (await win.screenshot({ clip: band })).toString('base64');
   return win.evaluate(
-    async ({ data, count }) => {
+    async ({ data, rows }) => {
       const blob = await (await fetch(`data:image/png;base64,${data}`)).blob();
       const bmp = await createImageBitmap(blob);
       const canvas = document.createElement('canvas');
@@ -427,27 +451,22 @@ async function verticalEdges(
       if (!ctx) return [];
       ctx.drawImage(bmp, 0, 0);
       const { data: px, width, height } = ctx.getImageData(0, 0, bmp.width, bmp.height);
-      const grey = (x: number, row: number) => {
-        const i = (row * width + x) * 4;
+      // `along` runs across the edges (columns, or rows), `down` along them
+      const [along, down] = rows ? [height, width] : [width, height];
+      const grey = (a: number, d: number) => {
+        const i = (rows ? a * width + d : d * width + a) * 4;
         return 0.3 * (px[i] ?? 0) + 0.59 * (px[i + 1] ?? 0) + 0.11 * (px[i + 2] ?? 0);
       };
       const strength: number[] = [];
-      for (let x = 0; x < width; x++) {
+      for (let x = 0; x < along; x++) {
         let sum = 0;
-        if (x >= 1 && x < width - 1)
-          for (let row = 0; row < height; row++)
-            sum += Math.abs(grey(x + 1, row) - grey(x - 1, row));
+        if (x >= 1 && x < along - 1)
+          for (let d = 0; d < down; d++) sum += Math.abs(grey(x + 1, d) - grey(x - 1, d));
         strength.push(sum);
       }
-      const out: number[] = [];
-      const order = strength.map((v, x) => [v, x] as const).sort((a, b) => b[0] - a[0]);
-      for (const [v, x] of order) {
-        if (v <= 0 || out.length >= count) break;
-        if (out.every((c) => Math.abs(c - x) > 6)) out.push(x);
-      }
-      return out;
+      return strength;
     },
-    { data: png, count },
+    { data: png, rows: axis === 'rows' },
   );
 }
 
@@ -595,7 +614,9 @@ test('imagery change refused, lined up from the Changes panel, then runs clean',
   await expect(run).toBeEnabled();
   await run.click();
   const refused = win.getByTestId('chg-misaligned');
-  await expect(refused).toHaveText(/These dates are (?:1\.9[5-9]|2\.0\d) m apart\./, {
+  // the imagery change's own registration (the median over fine tiles spread across the
+  // overlap) reads the 2 m shift as 1.99 m
+  await expect(refused).toHaveText(/These dates are (?:1\.99|2\.0\d) m apart\./, {
     timeout: 120_000,
   });
 
@@ -606,12 +627,9 @@ test('imagery change refused, lined up from the Changes panel, then runs clean',
   const confirm = win.getByTestId('lineup-confirm');
   await expect(confirm).toBeDisabled();
   await win.getByTestId('lineup-keep-d1').click();
-  await expect(win.getByTestId('lineup-shift')).toHaveText(
-    /^(?:1\.9[5-9]|2\.0\d) m west, 0\.0\d m (?:north|south)/,
-    {
-      timeout: 120_000,
-    },
-  );
+  await expect(win.getByTestId('lineup-shift')).toHaveText(/^2\.0\d m west, 0\.0\d m north/, {
+    timeout: 120_000,
+  });
   await expect(win.getByTestId('lineup-confidence')).toHaveText(/^Confident/);
   await expect(confirm).toBeEnabled();
   await win.getByTestId('lineup-after').click();
@@ -619,7 +637,7 @@ test('imagery change refused, lined up from the Changes panel, then runs clean',
   await confirm.click();
   await expect(dialog).toHaveCount(0);
   await expect(win.getByTestId('lineup-text')).toHaveText(
-    /^Survey 13 April 2026 lined up with Survey 2 March 2026 \((?:1\.9[5-9]|2\.0\d) m\)\.$/,
+    /^Survey 13 April 2026 lined up with Survey 2 March 2026 \(2\.0\d m\)\.$/,
   );
 
   // 3. saved on the date that moved, nothing written into its files
@@ -855,6 +873,8 @@ test.describe('at the window size CI uses', () => {
     await shot('dialog.png');
     await confirm.click();
     await expect(dialog).toHaveCount(0);
+    // the background offer for this pair goes with the line-up
+    await expect(win.getByTestId('lineup-offer')).toHaveCount(0);
 
     // saved on the later date: a shift with a turn beside it, nothing on the earlier date
     const disk = async () => {
@@ -878,7 +898,7 @@ test.describe('at the window size CI uses', () => {
     await expect(label).toHaveText('Lined up');
     await shot('chip-lined.png');
 
-    // 5. on both maps the later ortho covers the earlier one corner for corner; the pin of the
+    // 4. on both maps the later ortho covers the earlier one corner for corner; the pin of the
     // later date (on its map, the right one) stands on the building corner both orthos show
     const looks: { d1: LonLat[] | null; d2: LonLat[] | null }[] = [];
     for (const side of [0, 1]) {
@@ -906,7 +926,8 @@ test.describe('at the window size CI uses', () => {
         expect(metresApart(pin, feature), `pin on map ${String(side)}`).toBeLessThan(0.1);
       }
 
-    // the same building edges in Swipe, whichever date shows (the pixel probe of the tanks)
+    // 5. Swipe, zoomed in on the building: its north and south edges stand at the same rows
+    // whichever date shows. A line-up that only shifted would leave the turn and the scale there.
     await toggleCompareDates(win);
     await win.keyboard.press('3');
     await choosePane(win, 'left', 'raster', 'd1');
@@ -920,45 +941,102 @@ test.describe('at the window size CI uses', () => {
     if (!stage) throw new Error('no stage');
     await dragDivider(win, stage.x + stage.width + 40);
     await expect(divider).toHaveAttribute('aria-valuenow', '98');
-    // the drone video of the later date floats over the stage's lower left at this size
-    const video = win.getByTestId('video-window');
-    if (await video.isVisible())
-      await video.getByRole('button', { name: 'Hide the video window' }).click();
-    await expect(video).toBeHidden();
-    // the building B-01 (x -34 to -22 m) and the ground west of it, at the site's south-west
-    const band = await orthoBand(win, [-42, -18], [21, 27]);
+    // the drone video of the later date floats over the stage's lower left at this size: hide it
+    // through the state its own Hide button sets
+    await win.evaluate(() => {
+      (
+        window as unknown as {
+          __stratlas: { shell: { getState(): { setVideoHidden(h: boolean): void } } };
+        }
+      ).__stratlas.shell
+        .getState()
+        .setVideoHidden(true);
+    });
+    await expect(win.getByTestId('video-window')).toHaveCount(0);
+    // zoom in at the building (the two panes follow each other) to 24 px a metre or more
+    const picture = win.locator('.pane-raster[data-side="left"] .raster-plane img').first();
+    for (let k = 0; k < 40; k++) {
+      const box = await picture.boundingBox();
+      if (!box) throw new Error('no ortho picture');
+      if (box.width / 96 >= 24) break;
+      const at = await orthoBand(win, [-28, -28], [24, 24]);
+      await win.mouse.move(at.x, at.y);
+      await win.mouse.wheel(0, -100);
+      await win.waitForTimeout(50);
+    }
+    // and bring the building to the middle of the views (a drag pans both)
+    const view = await win.locator('.pane-raster[data-side="left"]').boundingBox();
+    // (the ortho draws the roof north of the footprint, and the pane's own controls cover the
+    // top of the view: aim at the building's north edge)
+    const at = await orthoBand(win, [-28, -28], [20, 20]);
+    if (!view) throw new Error('no ortho pane');
+    await win.mouse.move(at.x, at.y);
+    await win.mouse.down();
+    await win.mouse.move(view.x + view.width / 2, view.y + view.height / 2, { steps: 8 });
+    await win.mouse.up();
+    const box = await picture.boundingBox();
+    if (!box) throw new Error('no ortho picture');
+    const perM = box.width / 96;
+    expect(perM).toBeGreaterThanOrEqual(24);
+    // what a shift-only line-up would leave on the building's south edge (x -28, z 28), north to
+    // south: the turn and the scale about the site centre, about 0.26 m, here 6 px or more
+    const r = (TURN.turnDeg * Math.PI) / 180;
+    const residual = TURN.scale * Math.sin(r) * 28 + (TURN.scale * Math.cos(r) - 1) * 28;
+    expect(residual * perM).toBeGreaterThanOrEqual(4);
+    // a strip down the middle of the building, across its roof's long edges, from under the
+    // pane's controls to the bottom of the views
+    const across = await orthoBand(win, [-30, -26], [20, 20]);
+    const band = { ...across, y: view.y + view.height * 0.22, height: view.height * 0.76 };
     // nothing covers the strip: the probe reads the orthos
     const seen = await win.evaluate(
       (b) =>
         [0.05, 0.5, 0.95].map(
           (f) =>
             document
-              .elementFromPoint(b.x + b.width * f, b.y + b.height / 2)
+              .elementFromPoint(b.x + b.width / 2, b.y + b.height * f)
               ?.closest('.pane-raster') != null,
         ),
       band,
     );
     expect(seen).toEqual([true, true, true]);
-    const earlier = await verticalEdges(win, band, 2);
+    const loaded = () =>
+      win.evaluate(() =>
+        [...document.querySelectorAll<HTMLImageElement>('.pane-raster img')].every(
+          (i) => i.complete,
+        ),
+      );
+    await expect.poll(loaded).toBe(true);
+    const dpr = await win.evaluate(() => devicePixelRatio);
+    // the earlier date's two strongest edges across the roof
+    const earlier = strongest(await edgeStrength(win, band, 'rows'), 2);
     await shot('swipe-earlier.png');
     await dragDivider(win, stage.x - 40);
     await expect(divider).toHaveAttribute('aria-valuenow', '2');
-    const later = await verticalEdges(win, band, 6);
+    await expect.poll(loaded).toBe(true);
+    const later = await edgeStrength(win, band, 'rows');
     await shot('swipe-later.png');
+    // Each stands at the strongest row of the later date within `reach` of it, and that within a
+    // page pixel. The reach stays short of what a shift-only line-up would leave there, so such a
+    // line-up would put the strongest row at the reach's end, not on the edge. (The dates differ
+    // further out: the later one has the building's shadow on its north side.)
+    const reach = Math.floor(residual * perM * dpr) - 2;
     expect(earlier).toHaveLength(2);
-    for (const column of earlier)
-      expect(
-        Math.min(...later.map((c) => Math.abs(c - column))),
-        `an edge at column ${String(column)} of the earlier date`,
-      ).toBeLessThanOrEqual(2);
+    expect(Math.abs((earlier[1] ?? 0) - (earlier[0] ?? 0)) / dpr / perM).toBeGreaterThan(4);
+    for (const row of earlier) {
+      let best = row;
+      for (let k = row - reach; k <= row + reach; k++)
+        if ((later[k] ?? -1) > (later[best] ?? -1)) best = k;
+      expect(Math.abs(best - row) / dpr, `the edge at row ${String(row)}`).toBeLessThanOrEqual(1);
+    }
 
-    // 4. the imagery change runs, with no misaligned notice
+    // 6. the imagery change runs, with no misaligned notice
     const truth = changeDemoTruth();
     const { from, to } = truth.captures;
     await openBench(win, 'changes');
     const run = win.getByTestId('change-panel').getByTestId('change-producer-raster');
     await expect(run).toBeEnabled();
     await run.click();
+    await expect(win.getByTestId('chg-misaligned')).toHaveCount(0);
     const file = join(turned.root, 'change', `${from}-${to}-raster.json`);
     await expect
       .poll(() => readFile(file, 'utf8').catch(() => null), {
