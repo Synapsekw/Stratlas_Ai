@@ -86,8 +86,10 @@ async function lookDown(win: Page): Promise<void> {
 /**
  * The page point of a model point (x, height, z) in the 3D view. A panel that just opened or
  * closed resizes the view over a few frames, and the camera can still be easing: the point is read
- * once the view's box and the camera's pose have held still for three frames and the camera's
- * aspect matches the box, else the click lands where the view was.
+ * once no side panel is mid-fold, the view's box and the camera's pose have held still for three
+ * frames and the camera's aspect matches the box, else the click lands where the view was. A
+ * folding panel slides out first and the view is resized only when the slide ends (useFold.ts),
+ * so a still box during the slide is not enough.
  */
 async function scenePoint(
   win: Page,
@@ -115,7 +117,8 @@ async function scenePoint(
       const r = st.renderer.domElement.getBoundingClientRect();
       const a = aspect();
       const fits = a === undefined || Math.abs(a - r.width / r.height) < 0.01;
-      still = now === last && fits ? still + 1 : 0;
+      const folding = document.querySelector('[data-fold]') !== null;
+      still = now === last && fits && !folding ? still + 1 : 0;
       last = now;
     }
     st.camera.updateMatrixWorld();
