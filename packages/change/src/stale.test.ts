@@ -40,4 +40,22 @@ describe('a change set against the dates shifts now', () => {
     // within a millimetre
     expect(changeSetStale(set({ to: { eastM: 2.0004, northM: -1 } }), now)).toBe(false);
   });
+
+  it('stale when only the turn changed', () => {
+    const turn = { rotationDeg: 0.3, scale: 1, pivotE: 500100, pivotN: 3199900 };
+    const base = lined({ eastM: 2, northM: -1 });
+    const now: ProjectManifest = {
+      ...base,
+      origin: [500000, 3200000, 0],
+      captures: base.captures.map((c) => (c.id === 'd2' ? { ...c, lineUpTurn: turn } : c)),
+    };
+    // computed with the same shift but no turn
+    expect(changeSetStale(set({ to: { eastM: 2, northM: -1 } }), now)).toBe(true);
+    // computed with this very turn
+    const withTurn = ChangeSet.parse({
+      ...set({ to: { eastM: 2, northM: -1 } }),
+      lineUp: { to: { eastM: 2, northM: -1 } },
+    });
+    expect(withTurn.lineUp?.to).toEqual({ eastM: 2, northM: -1 });
+  });
 });

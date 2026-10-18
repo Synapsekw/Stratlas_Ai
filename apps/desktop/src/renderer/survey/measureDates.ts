@@ -36,7 +36,7 @@ export function measurementsOn(
   );
 }
 
-type Dated = Pick<ProjectManifest, 'captures' | 'layers'>;
+type Dated = Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>;
 
 /**
  * The date shift a measurement's scope carries: that of its survey date. Site-wide measurements

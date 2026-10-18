@@ -69,7 +69,7 @@ export function gridsFromPreview(
  */
 export const coverageShift: (
   antennas: AntennasFile | null,
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null,
 ) => DateShift | null = antennaShift;
 
 /** Project CRS (east, north) corners of the grid as drawn: tl, tr, br, bl, line-up shift applied. */

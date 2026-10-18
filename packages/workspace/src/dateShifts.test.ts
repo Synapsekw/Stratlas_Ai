@@ -100,4 +100,30 @@ describe('shiftKey', () => {
       shiftKey({ eastM: 2, northM: -1.235 }),
     );
   });
+
+  it('shiftKey differs by turn alone', () => {
+    const turn = { rotationDeg: 0.25, scale: 1.0005, pivotE: 500010, pivotN: 3200020 };
+    const mk = (rotationDeg: number) => ({
+      eastM: 2,
+      northM: -1,
+      turn: { ...turn, rotationDeg, pivotX: 10, pivotZ: -20 },
+    });
+    expect(shiftKey(mk(0.25))).toBe('2,-1,r0.25,s1.0005,p500010,3200020');
+    expect(shiftKey(mk(0.25))).not.toBe(shiftKey(mk(0.26)));
+    expect(shiftKey(mk(0.25))).not.toBe(shiftKey({ eastM: 2, northM: -1 }));
+    // an identity turn keeps today's key
+    expect(shiftKey({ eastM: 2, northM: -1, turn: { ...mk(0).turn, scale: 1 } })).toBe('2,-1');
+  });
+});
+
+describe('a turned line-up is read with the manifest origin', () => {
+  it('places the pivot in the local frame', () => {
+    const m = manifest([cloud('a', 'Scan', { capture: 'd2' })]);
+    const lineUpTurn = { rotationDeg: 0.5, scale: 1.001, pivotE: 500100, pivotN: 3199900 };
+    m.captures = m.captures.map((c) => (c.id === 'd2' ? { ...c, lineUpTurn } : c));
+    const s = captureShift(m, 'd2');
+    expect(s?.turn?.pivotX).toBe(100);
+    expect(s?.turn?.pivotZ).toBe(100);
+    expect(dateShiftOf(m, 'a')?.turn?.rotationDeg).toBe(0.5);
+  });
 });
