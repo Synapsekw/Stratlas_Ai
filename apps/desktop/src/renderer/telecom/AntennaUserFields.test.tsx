@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /* eslint-disable @typescript-eslint/no-non-null-assertion -- DOM lookups that fail the test when missing */
-import type { AntennaUnit } from '@aio/schema';
+import type { AntennaUnit, AntennaValue } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +8,11 @@ import { AntennaUserFields, type AntennaUserFieldsProps } from './AntennaUserFie
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const measured = (value: number): AntennaValue => ({
+  value,
+  basis: 'measured',
+  quality: { basis: 'measured', residualM: 0.003, support: 812, coverage: 0.74 },
+});
 function unit(over: Partial<AntennaUnit> = {}): AntennaUnit {
   return {
     id: 'ant-1',
@@ -25,6 +30,12 @@ function unit(over: Partial<AntennaUnit> = {}): AntennaUnit {
       extents: [0.3, 1.2, 0.15],
     },
     support: 100,
+    azimuthGridDeg: measured(123.4),
+    downtiltDeg: measured(4),
+    plumbDeg: measured(-0.5),
+    widthM: measured(0.3),
+    heightM: measured(1.2),
+    depthM: measured(0.15),
     convergenceDeg: 1.2,
     photos: [],
     user: {},
