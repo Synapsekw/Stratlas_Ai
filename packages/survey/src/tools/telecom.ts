@@ -40,7 +40,7 @@ export function antennaAzimuth(points: readonly SitePoint[]): Result<{
 }> {
   const [a, b, c] = points;
   if (points.length !== 3 || !a || !b || !c)
-    return invalid('Pick three points across the antenna front face.');
+    return invalid('Pick three points along the top or bottom edge of the antenna front face.');
   // Differences avoid summing large project coordinates.
   const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]] as const;
   const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]] as const;
@@ -48,7 +48,7 @@ export function antennaAzimuth(points: readonly SitePoint[]): Result<{
     vl = Math.hypot(...v);
   if (!Number.isFinite(ul + vl)) return invalid('Pick points on the 3D model.');
   if (ul <= EPS || vl <= EPS)
-    return invalid('Pick distinct points spread across the antenna face.');
+    return invalid('Pick three distinct points spread along the antenna face.');
   const nx = u[1] * v[2] - u[2] * v[1];
   const ny = u[2] * v[0] - u[0] * v[2];
   const nz = u[0] * v[1] - u[1] * v[0];

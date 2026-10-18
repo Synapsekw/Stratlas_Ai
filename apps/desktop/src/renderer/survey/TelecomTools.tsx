@@ -30,7 +30,7 @@ import './telecom.css';
 
 const GUIDANCE: Record<TelecomTool, string> = {
   azimuth:
-    'Pick three points spread across the antenna front face. Check the facing arrow, then flip it if needed.',
+    'Pick three points along the top or bottom edge of the antenna front face. Check the facing arrow, then flip it if needed.',
   'antenna-tilt':
     'Pick bottom and top on the same straight antenna edge. Physical inclination from project vertical, not electrical tilt or signed downtilt.',
   clearance:
