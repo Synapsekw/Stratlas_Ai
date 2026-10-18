@@ -37,6 +37,9 @@ import { farNotice } from '../builder/farSession';
 import { addDateMenu } from './AddSurveyDate';
 import { panelHandleLabel } from './PanelHandle';
 import { selectClip } from '../workspace/pickClip';
+import { startAutoplan } from '../rf/autoplan/autoplanStore';
+import { useChipState } from '../rf/CoverageChip';
+import { openCoverage } from '../rf/rfTab';
 
 /** The layer kinds the palette lists: a retired viewer of an older project is not offered. */
 type ListedKind = Exclude<Layer['kind'], 'legacy'>;
@@ -91,6 +94,11 @@ export function Palette() {
   const lookOnly = useAnnotateReadOnly();
   // the map commands follow the Map menu of the Map view (packs, keys, online maps)
   const mapMenu = useMapViewMenuModel();
+  // the Coverage chip's two ways in (spec F1), offered while the chip shows
+  const chipKind = useChipState().kind;
+  const coverageShown = chipKind !== 'hidden';
+  // Auto-plan where the chip offers it or Re-plan: not before a review, nor while planning or running
+  const canAutoplan = chipKind === 'not-planned' || chipKind === 'ready' || chipKind === 'result';
   const hasProject = project !== null;
   useEffect(() => {
     if (open && hasProject) rasterPacks.getState().refresh();
@@ -250,6 +258,18 @@ export function Palette() {
           ws.flyTo({ kind: 'site' });
         }),
       );
+      // the review dialog lives in the Coverage tab: it opens too
+      if (canAutoplan)
+        action(
+          'rf:autoplan',
+          t('rf.chip.paletteAutoplan'),
+          'agent',
+          scene(() => {
+            openCoverage();
+            void startAutoplan();
+          }),
+        );
+      if (coverageShown) action('rf:open', t('rf.chip.paletteOpen'), 'layers', scene(openCoverage));
       // the base maps, as the Map menu on the map offers them (a greyed one is not listed)
       const onMap = (fn: () => void) =>
         scene(() => {
@@ -699,6 +719,8 @@ export function Palette() {
     leftCollapsed,
     rightCollapsed,
     mapMenu,
+    coverageShown,
+    canAutoplan,
   ]);
 
   if (!open) return null;

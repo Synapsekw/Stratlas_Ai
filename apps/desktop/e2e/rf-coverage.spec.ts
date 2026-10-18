@@ -164,13 +164,13 @@ async function viewSiteFromAbove(win: Page): Promise<void> {
  * island, the map's "No map pack installed" note and any other corner overlay, by name (none when
  * it keeps clear of them all).
  */
-const legendCovers = (win: Page) =>
-  win.evaluate(() => {
+const legendCovers = (win: Page, card = 'rf-legend') =>
+  win.evaluate((id) => {
     const box = (el: Element | null) => {
       const r = el?.getBoundingClientRect();
       return r && r.width > 0 && r.height > 0 ? r : null;
     };
-    const legend = box(document.querySelector('[data-testid="rf-legend"]'));
+    const legend = box(document.querySelector(`[data-testid="${id}"]`));
     if (!legend) return ['no legend'];
     const others: [string, Element | null][] = [
       ['readout', document.querySelector('.pane-3d:not(.is-hidden) .cursor-ro')],
@@ -178,7 +178,7 @@ const legendCovers = (win: Page) =>
       ['island', document.querySelector('[role="toolbar"][aria-label="Stage tools"]')],
       ['map note', document.querySelector('[data-testid="map-no-packs"]')],
       ...[...document.querySelectorAll('.stage-slot')]
-        .filter((s) => !s.querySelector('[data-testid="rf-legend"]'))
+        .filter((s) => !s.querySelector(`[data-testid="${id}"]`))
         .map((s): [string, Element] => [`slot ${(s as HTMLElement).dataset.slot ?? ''}`, s]),
     ];
     return others
@@ -193,7 +193,7 @@ const legendCovers = (win: Page) =>
         );
       })
       .map(([name]) => name);
-  });
+  }, card);
 
 async function stubSaveDialog(app: ElectronApplication, file: string): Promise<void> {
   await app.evaluate(({ dialog }, target) => {
@@ -209,6 +209,14 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   test.setTimeout(420_000);
   await writeRfProject(dataRoot.projectDir);
   await openTiny(win);
+
+  // 0. the Coverage chip (spec F1 revised): with antennas and no run it heads a card of its own
+  // in the legend's corner, clear of the readout, the island, the map note and the other corners
+  const card = win.getByTestId('rf-card');
+  await expect(card.getByTestId('rf-chip')).toHaveAttribute('data-state', 'not-planned', {
+    timeout: 30_000,
+  });
+  await expect.poll(() => legendCovers(win, 'rf-card')).toEqual([]);
 
   // 1. the Coverage tab, from the project menu's Coverage...: the AI card, three steps, Advanced
   let bench = await openRfFromProjectMenu(win);

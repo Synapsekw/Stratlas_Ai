@@ -90,6 +90,7 @@ import { AdvancedFold, studySummary } from '../../../rf/panel/AdvancedFold';
 import { AutoplanDialog } from '../../../rf/AutoplanDialog';
 import { openAntennaReviewOrFallback, startAutoplan } from '../../../rf/autoplan/autoplanStore';
 import { AiCard } from '../../../rf/panel/AiCard';
+import { CoverageChip } from '../../../rf/CoverageChip';
 import { LabelledSwitch, fmt } from '../../../rf/panel/parts';
 import { Step } from '../../../rf/panel/Step';
 import { StepAntennas } from '../../../rf/panel/StepAntennas';
@@ -1567,6 +1568,8 @@ export function RfBench() {
     <div className="wb-bench wb-scroll rf-bench" data-testid="rf-bench">
       <SaveBar />
       <AutoplanDialog />
+      {/* the Coverage chip's status line and its next step (spec F1 revised) */}
+      <CoverageChip variant="panel" />
       <AiCard
         onAutoplan={() => {
           void startAutoplan();
