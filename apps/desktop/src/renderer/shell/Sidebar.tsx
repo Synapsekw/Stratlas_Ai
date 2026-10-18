@@ -123,6 +123,19 @@ const OPEN_GROUPS: readonly TreeGroupKind[] = [
   'annotations',
 ];
 
+/** These marks without the measurements no longer in the file (the same marks when none went). */
+function withoutGoneMeasures(m: Marks, present: readonly { id: string }[]): Marks {
+  const ids = new Set(present.map((x) => x.id));
+  const gone = (x: string) => {
+    const id = measureIdOf(x);
+    return id !== null && !ids.has(id);
+  };
+  if (![...m.marked].some(gone) && !(m.anchor !== null && gone(m.anchor))) return m;
+  const marked = new Set([...m.marked].filter((x) => !gone(x)));
+  if (marked.size === 0) return NO_MARKS;
+  return { marked, anchor: m.anchor !== null && gone(m.anchor) ? null : m.anchor };
+}
+
 /** The measurement ids among marks (a measurement row marks `measure:<id>`). */
 function measureIdsOf(marks: Iterable<string>): string[] {
   return [...marks].flatMap((m) => {
@@ -289,6 +302,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setMarks(NO_MARKS);
     setEmptying(false);
   }
+  // a measurement that left the file (deleted from any menu, the 3D view, the map, the panel,
+  // or taken back by Revert) is not marked any more (adjusted during render, not in an effect)
+  const [marksFile, setMarksFile] = useState(measureFile);
+  if (marksFile !== measureFile) {
+    setMarksFile(measureFile);
+    setMarks((m) => withoutGoneMeasures(m, measureFile.measurements));
+  }
   // a removal went through: what was marked is gone; Empty could not delete everything: say so
   // where the tree's notes go (adjusted during render, not in an effect)
   const [seenRemoval, setSeenRemoval] = useState({ removed, held });
@@ -353,11 +373,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     }
     const ms = measureIdsOf(ids);
     if (ms.length === 0 || measureReadOnly) return;
+    // the marks of the deleted rows go with them (withoutGoneMeasures)
     deleteMeasurements(ms);
-    setMarks((m) => ({
-      marked: new Set([...m.marked].filter((x) => measureIdOf(x) === null)),
-      anchor: m.anchor !== null && measureIdOf(m.anchor) !== null ? null : m.anchor,
-    }));
   };
 
   const failed = (error: string | null) => {

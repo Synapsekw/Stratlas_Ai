@@ -15,6 +15,7 @@ vi.mock('@aio/annotate', async (orig) => ({
 import { shell } from '../shell';
 import {
   askNewFolder,
+  deleteMeasurements,
   isDirty,
   measureStore,
   revealMeasurement,
@@ -268,6 +269,31 @@ describe('Datasets: measurements', () => {
       undoDeleteMeasurements();
     });
     expect(measures().map((m) => m.id)).toEqual(['b', 'c']);
+  });
+
+  it('Delete from the menu lets go of the deleted marks: no stuck header, no ghost count', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('c'));
+    expect(q('[data-testid="tree-marked-delete"]')).not.toBeNull();
+    contextMenu(row('c'));
+    click(q('[data-testid="ctx-item-measure.delete"]'));
+    expect(measures().map((m) => m.id)).toEqual(['b']);
+    expect(q('[data-testid="tree-marked-delete"]')).toBeNull();
+    ctrlClick(name('b'));
+    contextMenu(row('b'));
+    expect(q('[data-testid="measure-menu"]')?.textContent).not.toContain('measurements');
+    expect(q('[data-testid="ctx-item-measure.delete"]')?.textContent).toBe('Delete');
+  });
+
+  it('a measurement deleted elsewhere (3D, map, the panel) drops out of the marks', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    act(() => {
+      deleteMeasurements(['a', 'b']);
+    });
+    expect(q('[data-testid="tree-marked-delete"]')).toBeNull();
   });
 
   it.each([
