@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureControl, measurementsList } from './island';
+import { measureControl, measureSaved, measureTree, selectMeasure } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -72,20 +72,16 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   ]);
 
   // the lift: prepare the surveys, then compute previous to current
-  await measurementsList(win);
-  await win
-    .getByTestId('survey-item')
-    .filter({ hasText: 'Cell 1' })
-    .locator('.sv-item-main')
-    .click();
+  await measureTree(win);
+  await selectMeasure(win, 'Cell 1');
   const panel = win.getByTestId('survey-panel');
   await panel.getByTestId('survey-prepare').click();
   await expect(panel.getByTestId('survey-prepare')).toHaveCount(0, { timeout: 240_000 });
   const lift = panel.getByTestId('survey-cmp-item').first();
   await expect(lift.getByTestId('survey-cmp-result')).toBeVisible({ timeout: 60_000 });
   await expect(panel.getByTestId('survey-recompute')).toHaveText('Recompute', { timeout: 60_000 });
-  await win.getByTestId('survey-list-save').click();
-  await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+  await (await measureSaved(win)).getByTestId('survey-list-save').click();
+  await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
   let file = await readJson<MeasurementsFile>(join(dir, 'survey', 'measurements.json'));
   const cell = file.measurements.find((m) => m.id === 'm-cell');
   const r = cell?.results.find((x) => x.item === 'lift');
@@ -113,8 +109,8 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   await expectAccessible(win, 'Survey calculators', { include: '[data-testid="survey-side"]' });
 
   // the material is stored on the measurement; the volume is not changed by the calculators
-  await win.getByTestId('survey-list-save').click();
-  await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+  await (await measureSaved(win)).getByTestId('survey-list-save').click();
+  await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
   file = await readJson<MeasurementsFile>(join(dir, 'survey', 'measurements.json'));
   const after = file.measurements.find((m) => m.id === 'm-cell');
   expect(after?.material).toBe('cover');

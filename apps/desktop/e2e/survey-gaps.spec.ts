@@ -26,7 +26,7 @@ import {
 } from './fixtures';
 import { prepareSurveys } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureBench, measurementsList, measureSection } from './island';
+import { measureBench, measureSaved, measureSection, measureTree, selectMeasure } from './island';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
@@ -273,11 +273,12 @@ test('a package of a survey project shows its measurements read only, drawn, wit
     await expect(tools.getByTestId('survey-tool-distance')).toHaveCount(1);
     await expect(tools.getByTestId('survey-units-open')).toHaveCount(0);
     await expect(tools.getByTestId('survey-templates-open')).toHaveCount(0);
-    const list = await measurementsList(pw);
-    await expect(list.getByTestId('survey-item')).toHaveCount(5);
-    await expect(list).toContainText('Cone (synthetic)');
-    await expect(list.getByTestId('survey-list-readonly')).toBeVisible();
-    await expect(list.getByTestId('survey-list-save')).toHaveCount(0);
+    const tree = await measureTree(pw);
+    await expect(tree.getByTestId('measure-row')).toHaveCount(5);
+    await expect(tree).toContainText('Cone (synthetic)');
+    const saved = await measureSaved(pw);
+    await expect(saved.getByTestId('survey-list-readonly')).toBeVisible();
+    await expect(saved.getByTestId('survey-list-save')).toHaveCount(0);
 
     // drawn in the 3D view
     await expect
@@ -300,7 +301,7 @@ test('a package of a survey project shows its measurements read only, drawn, wit
       .toBeGreaterThan(0);
 
     // the properties are read only: no delete, no vertex editing, the label cannot be typed in
-    await list.locator('[data-id="m-cone"] .sv-item-main').click();
+    await selectMeasure(pw, 'Cone (synthetic)');
     const panel = pw.getByTestId('survey-panel');
     await expect(panel).toBeVisible();
     await expect(panel.getByTestId('survey-label')).toHaveAttribute('readonly', '');

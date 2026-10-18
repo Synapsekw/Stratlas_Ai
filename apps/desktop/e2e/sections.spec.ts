@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
 import { openDemo, prepareSurveys } from './surveyJobs';
-import { measureControl, measurementsList } from './island';
+import { measureControl, measureTree, selectMeasure } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -48,12 +48,8 @@ test('a section across the pad: two surveys and the design, a pin, 1:4, the wind
   // the tool is on the toolbar
   await openDemo(win, earthworksProject.name, earthworksProject.id);
   await expect(await measureControl(win, 'survey-tool-section')).toBeVisible();
-  await measurementsList(win);
-  await win
-    .getByTestId('survey-item')
-    .filter({ hasText: 'Section across the pad' })
-    .locator('.sv-item-main')
-    .click();
+  await measureTree(win);
+  await selectMeasure(win, 'Section across the pad');
 
   const dock = win.getByTestId('section-dock');
   await expect(dock).toBeVisible();
