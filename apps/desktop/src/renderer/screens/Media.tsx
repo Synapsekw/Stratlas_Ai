@@ -586,6 +586,11 @@ export function MediaScreen() {
                     className="m-card"
                     data-pano={p.id}
                     onClick={() => {
+                      // an unplaced 360 has nowhere to show in the scene: place it first
+                      if (p.pos === undefined) {
+                        tileMenu.place({ kind: 'pano', layerId: set.id, itemId: p.id });
+                        return;
+                      }
                       workspace.getState().select({ kind: 'pano', id: p.id, layer: set.id });
                       shell.getState().go('scene');
                     }}

@@ -210,9 +210,13 @@ export function PanoPinChips({ pano }: { pano: PanoRef }): ReactElement | null {
   return null;
 }
 
-/** The right-click menu of the tiles: `open` on a tile's contextmenu, `menu` drawn once. */
+/**
+ * The right-click menu of the tiles: `open` on a tile's contextmenu, `menu` drawn once. `place`
+ * runs Place on site for an unplaced item (a click on its tile), or notes why it cannot.
+ */
 export function useTileMenu(): {
   open: (e: MouseEvent, k: MediaKey) => void;
+  place: (k: MediaKey) => void;
   menu: ReactElement | null;
 } {
   const ctxOf = usePinActionCtx();
@@ -224,6 +228,16 @@ export function useTileMenu(): {
   const close = useCallback(() => {
     setAt(null);
   }, []);
+  const place = useCallback(
+    (k: MediaKey) => {
+      const c = ctxOf(k);
+      const item = c ? actionsFor(targetOf(k), c).find((a) => a.id === 'media.place') : undefined;
+      if (!c || !item) return;
+      if (item.disabled === false) item.run();
+      else c.host.note(item.disabled);
+    },
+    [ctxOf],
+  );
   const ctx = at ? ctxOf(at.k) : null;
   const item = at && ctx ? mediaItem(ctx.manifest, at.k) : null;
   const items = at && ctx ? actionsFor(targetOf(at.k), ctx) : [];
@@ -231,5 +245,5 @@ export function useTileMenu(): {
     at && item && items.length > 0 ? (
       <ContextMenu items={items} x={at.x} y={at.y} label={mediaName(item)} onClose={close} />
     ) : null;
-  return { open, menu };
+  return { open, place, menu };
 }

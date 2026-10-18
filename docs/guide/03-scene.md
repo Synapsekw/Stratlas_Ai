@@ -206,7 +206,7 @@ A ground photo or a 360 taken without GPS still comes in. Its Media tile says **
 
 ### Place on site
 
-1. Right-click the photo or 360 (its Media tile, its row, or its marker) and choose **Place on site**. A strip at the bottom of the scene says what to click next.
+1. Right-click the photo or 360 (its Media tile, its row, or its marker) and choose **Place on site**. A click on an unplaced 360's Media tile does the same. A strip at the bottom of the scene says what to click next.
 2. Click where it was taken: on the model, the point cloud or the map. The pin sits on the surface you clicked, and the camera sits **Eye height** above it (1.6 m unless you change it on the strip). On the map with no model under the point, the strip says the height is unknown and the pin sits at 0 m.
 3. For a 360, line it up with landmarks. The 360 opens beside the view. Click a landmark in the 360, then the same landmark in the 3D view or on the map. One pair lines it up. A second pair refines it (the two are averaged). If the two pairs disagree by a lot, the first one is kept and the strip says so.
 4. For a photo, click the direction it looks, or press **Done** to leave it without one. In 3D you can also drag the pin's arrow to turn it.

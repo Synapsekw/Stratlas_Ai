@@ -1,12 +1,14 @@
 /**
  * Pinned media (pinned media design): a 360 and a photo that have no GPS show "Not placed" in
- * Media; Place on site from a tile's right-click opens the placing strip bottom-centre over the
- * stage, clear of the middle of the view; a click on the site pins the 360 at eye height, two
- * landmark pairs line it up, its marker enters it facing the saved heading, and Remove pin makes
- * it "Not placed" again. On the map, a GPS photo is a marker plate that previews on hover and
+ * Media; Place on site from a tile's right-click (or a click on an unplaced 360's tile) opens the
+ * placing strip bottom-centre over the stage, clear of the middle of the view; a click on the
+ * site pins the 360 at eye height, two landmark pairs line it up, its marker enters it facing the
+ * saved heading, and Remove pin makes it "Not placed" again. On the map, a GPS photo is a marker plate that previews on hover and
  * opens beside the map, a photo pinned on the map opens the same way, and a 360 pinned there is a
  * round plate that enters the 360. Synthetic project (pinFixture.ts), off-screen, zero network.
  */
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { closeIslandTools, stageMode } from './island';
@@ -208,8 +210,23 @@ async function stripClearOfView(win: Page): Promise<void> {
   ).toBe(true);
 }
 
-/** Open the project, see the unplaced items in Media, Place on site on `p1`. */
-async function placeP1(win: Page): Promise<void> {
+/**
+ * Screenshots for a person to look at, only when AIO_EVIDENCE_DIR names a folder (never on CI);
+ * the assertions never depend on them.
+ */
+const EVIDENCE = process.env.AIO_EVIDENCE_DIR;
+
+async function evidence(win: Page, name: string): Promise<void> {
+  if (!EVIDENCE) return;
+  await mkdir(EVIDENCE, { recursive: true });
+  await win.screenshot({ path: join(EVIDENCE, `pinned-media-${name}.png`) });
+}
+
+/**
+ * Open the project, see the unplaced items in Media, Place on site on `p1`: from its right-click
+ * menu, or (`click`) by a plain click on its tile, which places an unplaced 360.
+ */
+async function placeP1(win: Page, via: 'menu' | 'click' = 'menu'): Promise<void> {
   await openPinProject(win);
   await openMedia(win);
   await expect(notPlaced(win, 'p1')).toBeVisible({ timeout: 30_000 });
@@ -217,9 +234,13 @@ async function placeP1(win: Page): Promise<void> {
   // ph2 (the 2:1 photo) has no place either; ph3 has GPS
   await expect(notPlaced(win, 'ph2')).toBeVisible();
   await expect(win.getByTestId('media-not-placed')).toHaveCount(3);
-  await tileAction(win, { pano: 'p1' }, 'Place on site');
+  await evidence(win, `${via}-1-media`);
+  if (via === 'menu') await tileAction(win, { pano: 'p1' }, 'Place on site');
+  else await win.locator('[data-pano="p1"]').first().click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 30_000 });
+  await expect(step(win)).toHaveAttribute('data-step', 'pick');
   await stripClearOfView(win);
+  await evidence(win, `${via}-2-placing`);
 }
 
 /** Turn the Panoramas pane's look to compass `deg` with the arrow keys (5 degrees a press). */
@@ -333,7 +354,7 @@ test.describe('the placing strip in a shorter window', () => {
     test.setTimeout(120_000);
     await createPinProject(dataRoot.root);
     await win.reload();
-    await placeP1(win);
+    await placeP1(win, 'click');
   });
 });
 

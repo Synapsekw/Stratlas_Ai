@@ -5,6 +5,8 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { pinSession } from '../pins/placePin';
+import { shell } from '../shell';
 import { registerPinActions } from '../shell/actions/pinActions';
 import { MediaScreen } from './Media';
 
@@ -272,5 +274,46 @@ describe('Media and pinned media', () => {
     // a GPS photo with no pin takes no pin (its GPS place is not corrected here)
     expect(document.querySelector('[data-testid="ctx-item-media.as360"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="ctx-item-media.move"]')).toBeNull();
+  });
+
+  const clickPano = (id: string) => {
+    act(() => {
+      host.querySelector<HTMLElement>(`[data-pano="${id}"]`)?.click();
+    });
+  };
+
+  it('starts Place on site on a click of an unplaced 360, not an empty scene', () => {
+    workspace.getState().select(null);
+    render();
+    clickPano('free');
+    expect(pinSession.getState().target).toEqual({
+      kind: 'pano',
+      layerId: 'panos',
+      itemId: 'free',
+    });
+    expect(pinSession.getState().mode).toBe('place');
+    expect(shell.getState().screen).toBe('scene');
+    expect(workspace.getState().selection).toBeNull();
+    act(() => {
+      pinSession.getState().cancel();
+    });
+  });
+
+  it('opens a placed 360 in the scene on a click', () => {
+    render();
+    clickPano('pinned');
+    expect(workspace.getState().selection).toEqual({ kind: 'pano', id: 'pinned', layer: 'panos' });
+    expect(pinSession.getState().target).toBeNull();
+  });
+
+  it('places nothing from a package, where the pin actions are greyed', () => {
+    shell.setState({ pkg: {} as never });
+    try {
+      render();
+      clickPano('free');
+      expect(pinSession.getState().target).toBeNull();
+    } finally {
+      shell.setState({ pkg: null });
+    }
   });
 });
