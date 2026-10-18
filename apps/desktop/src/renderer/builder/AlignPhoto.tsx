@@ -1,6 +1,6 @@
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
+import type { SceneHandle } from '@aio/engine';
 import type { CameraDirection } from '@aio/geo';
-import { frameProjection, getActiveMap, onActiveMap, type MapController } from '@aio/maps';
+import { frameProjection } from '@aio/maps';
 import type { LensModel, Quat, Vec3 } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { DEFAULT_PHOTO_LENS } from '@aio/video';
@@ -25,6 +25,7 @@ import {
 import { photoAlign, usePhotoAlign } from './alignSession';
 import { frameHit } from './droneHits';
 import { DirectionMapOverlay } from './directionMap';
+import { useScene, useMap } from './activeViews';
 
 const PLANE = 'PhotoAlignFrame';
 const DRAG_DEG_PX = 0.15;
@@ -50,18 +51,6 @@ const OFFSET: {
   { label: 'align.photoAlign.north', index: 2, sign: -1 },
   { label: 'align.photoAlign.up', index: 1, sign: 1 },
 ];
-
-function useScene(): SceneHandle | null {
-  const [h, setH] = useState<SceneHandle | null>(() => getActiveScene());
-  useEffect(() => onActiveScene(setH), []);
-  return h;
-}
-
-function useMap(): MapController | null {
-  const [m, setM] = useState<MapController | null>(() => getActiveMap());
-  useEffect(() => onActiveMap(setM), []);
-  return m;
-}
 
 const editable = (el: EventTarget | null) =>
   el instanceof HTMLElement && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName);

@@ -1,6 +1,5 @@
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
 import { clipCamera, clipKeys, clipPoseAt, localToProject, toWgs84 } from '@aio/geo';
-import { frameProjection, getActiveMap, onActiveMap, type MapController } from '@aio/maps';
+import { frameProjection } from '@aio/maps';
 import { shiftLocal, type Layer } from '@aio/schema';
 import { arrowFocus, Icon, useFocusTrap, useT, type IconName } from '@aio/ui';
 import { setCameraMode, videoRig } from '@aio/video';
@@ -11,6 +10,7 @@ import { getMedia, loadFlight } from '../media';
 import { useShell } from '../shell';
 import { alignCamera, useAlign } from './alignSession';
 import { claimEvent, clipAtFlightTime, nearestSampleMs, rigHit } from './droneHits';
+import { useScene, useMap } from './activeViews';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 
@@ -28,18 +28,6 @@ interface MenuAt {
   x: number;
   y: number;
   layerId: string;
-}
-
-function useScene(): SceneHandle | null {
-  const [h, setH] = useState<SceneHandle | null>(() => getActiveScene());
-  useEffect(() => onActiveScene(setH), []);
-  return h;
-}
-
-function useMap(): MapController | null {
-  const [m, setM] = useState<MapController | null>(() => getActiveMap());
-  useEffect(() => onActiveMap(setM), []);
-  return m;
 }
 
 const videos = (): VideoLayer[] =>

@@ -1,4 +1,3 @@
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
 import {
   unshiftLocal,
   type CameraOrientation,
@@ -34,6 +33,7 @@ import { createPortal } from 'react-dom';
 import { clipVideoTime, parseCoordinate } from './model';
 import { useStagePick } from './pick';
 import { builder } from './state';
+import { useScene } from './activeViews';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 type Step = 'image' | 'model' | null;
@@ -66,12 +66,6 @@ const POS_AXES: {
   { label: 'calibrate.pos.north', index: 2, sign: -1 },
   { label: 'calibrate.pos.up', index: 1, sign: 1 },
 ];
-
-function useScene(): SceneHandle | null {
-  const [h, setH] = useState<SceneHandle | null>(() => getActiveScene());
-  useEffect(() => onActiveScene(setH), []);
-  return h;
-}
 
 /** Overlay rectangle of the video frame on the 3D pane: full height, centred, lens aspect. */
 function useFrameRect(pane: HTMLElement | null, aspect: number) {

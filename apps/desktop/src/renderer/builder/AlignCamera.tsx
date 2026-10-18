@@ -1,6 +1,5 @@
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
 import { clipCamera, clipPoseAt, type CameraDirection } from '@aio/geo';
-import { frameProjection, getActiveMap, onActiveMap, type MapController } from '@aio/maps';
+import { frameProjection } from '@aio/maps';
 import { shiftLocal, type DirectionFill } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { getPlayer, setFramePlane } from '@aio/video';
@@ -14,6 +13,7 @@ import { frameHit, groundHit } from './droneHits';
 import { DirectionMapOverlay } from './directionMap';
 import { clipTimeMs, formatClipMs, keyAt, previewKeys, segmentKey } from './directionModel';
 import { useStagePick } from './pick';
+import { useScene, useMap } from './activeViews';
 
 type Axis = 'yaw' | 'pitch' | 'roll';
 
@@ -40,18 +40,6 @@ const FILLS: {
 
 /** Degrees the camera turns per pixel of a drag in 3D. */
 const DRAG_DEG_PX = 0.15;
-
-function useScene(): SceneHandle | null {
-  const [h, setH] = useState<SceneHandle | null>(() => getActiveScene());
-  useEffect(() => onActiveScene(setH), []);
-  return h;
-}
-
-function useMap(): MapController | null {
-  const [m, setM] = useState<MapController | null>(() => getActiveMap());
-  useEffect(() => onActiveMap(setM), []);
-  return m;
-}
 
 const editable = (el: EventTarget | null) =>
   el instanceof HTMLElement && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName);
