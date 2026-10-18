@@ -80,14 +80,34 @@ async function lookDown(win: Page): Promise<void> {
     .toBe(40);
 }
 
-/** The page point of a model point (x, height, z) in the 3D view. */
+/**
+ * The page point of a model point (x, height, z) in the 3D view. A panel that just opened or
+ * closed resizes the view over a few frames: the point is read once the view's box has held still
+ * for three frames and the camera's aspect matches it, else the click lands where the view was.
+ */
 async function scenePoint(
   win: Page,
   p: [number, number, number],
 ): Promise<{ x: number; y: number }> {
-  return win.evaluate((p) => {
+  return win.evaluate(async (p) => {
     const st = (window as unknown as Probe).__stratlas.stage();
     if (!st) throw new Error('no stage');
+    const frame = () => new Promise((done) => requestAnimationFrame(done));
+    const box = () => {
+      const r = st.renderer.domElement.getBoundingClientRect();
+      return `${String(r.left)},${String(r.top)},${String(r.width)},${String(r.height)}`;
+    };
+    const aspect = () => (st.camera as unknown as { aspect?: number }).aspect;
+    let last = box();
+    for (let still = 0, i = 0; still < 3 && i < 120; i++) {
+      await frame();
+      const now = box();
+      const r = st.renderer.domElement.getBoundingClientRect();
+      const a = aspect();
+      const fits = a === undefined || Math.abs(a - r.width / r.height) < 0.01;
+      still = now === last && fits ? still + 1 : 0;
+      last = now;
+    }
     st.camera.updateMatrixWorld();
     const v = st.camera.position.clone().set(p[0], p[1], p[2]).project(st.camera);
     const r = st.renderer.domElement.getBoundingClientRect();
