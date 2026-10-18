@@ -30,6 +30,7 @@ interface Probe {
       camera: {
         updateMatrixWorld(): void;
         matrixWorld: { elements: number[] };
+        projectionMatrix: { elements: number[] };
         position: {
           y: number;
           clone(): {
@@ -82,8 +83,9 @@ async function lookDown(win: Page): Promise<void> {
 
 /**
  * The page point of a model point (x, height, z) in the 3D view. A panel that just opened or
- * closed resizes the view over a few frames: the point is read once the view's box has held still
- * for three frames and the camera's aspect matches it, else the click lands where the view was.
+ * closed resizes the view over a few frames, and the camera can still be easing: the point is read
+ * once the view's box and the camera's pose have held still for three frames and the camera's
+ * aspect matches the box, else the click lands where the view was.
  */
 async function scenePoint(
   win: Page,
@@ -98,10 +100,16 @@ async function scenePoint(
       return `${String(r.left)},${String(r.top)},${String(r.width)},${String(r.height)}`;
     };
     const aspect = () => (st.camera as unknown as { aspect?: number }).aspect;
-    let last = box();
+    const pose = () => {
+      st.camera.updateMatrixWorld();
+      return [...st.camera.matrixWorld.elements, ...st.camera.projectionMatrix.elements]
+        .map((e) => e.toFixed(4))
+        .join(',');
+    };
+    let last = box() + pose();
     for (let still = 0, i = 0; still < 3 && i < 120; i++) {
       await frame();
-      const now = box();
+      const now = box() + pose();
       const r = st.renderer.domElement.getBoundingClientRect();
       const a = aspect();
       const fits = a === undefined || Math.abs(a - r.width / r.height) < 0.01;
