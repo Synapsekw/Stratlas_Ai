@@ -17,7 +17,7 @@ import type * as ShellModule from '../shell';
 import type * as CardModule from './AntennaCard';
 import type * as SceneModule from './antennaScene';
 import { shell } from '../shell';
-import { AntennaRunner, screenRectOf } from './AntennaRunner';
+import { AntennaRunner, LABEL_PAD_X, LABEL_PAD_Y, screenRectOf, withLabels } from './AntennaRunner';
 import { resetCardDrag } from './AntennaCard';
 import type { AntennaSceneState } from './antennaScene';
 import { antennaStore, revealAntenna, selectAntenna, setAntennaSolo } from './antennaStore';
@@ -246,5 +246,24 @@ describe('screenRectOf', () => {
   it('is null behind the camera or wholly outside the host', () => {
     expect(screenRectOf([[0, 0, 20]], camera, canvas, host)).toBeNull();
     expect(screenRectOf([[30, 0, 0]], camera, canvas, host)).toBeNull();
+  });
+});
+
+describe('withLabels', () => {
+  const box = { x: 100, y: 100, w: 20, h: 40 };
+
+  it('is the box when no label is on screen', () => {
+    expect(withLabels(box, null)).toEqual(box);
+  });
+
+  it('grows the box over the label anchors and the room their text takes', () => {
+    // a dimension label right of the box, the name label above it
+    const anchors = { x: 110, y: 90, w: 30, h: 50 };
+    expect(withLabels(box, anchors)).toEqual({
+      x: 110 - LABEL_PAD_X,
+      y: 90 - LABEL_PAD_Y,
+      w: 140 + LABEL_PAD_X - (110 - LABEL_PAD_X),
+      h: 140 + LABEL_PAD_Y - (90 - LABEL_PAD_Y),
+    });
   });
 });

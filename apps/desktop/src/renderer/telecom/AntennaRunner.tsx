@@ -6,12 +6,13 @@
  * <body> so no column, drawer or folded section can clip it or make it inert. The stage mounts it,
  * once.
  */
-import { getActiveStage, onActiveScene, type EngineStage } from '@aio/engine';
+import { getActiveStage, onActiveScene } from '@aio/engine';
 import type { Vec3 } from '@aio/schema';
 import { PortalRoot } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -93,19 +94,35 @@ export function screenRectOf(
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/** Room for a label's text around its anchor, CSS pixels: sideways, and up and down. */
+export const LABEL_PAD_X = 60;
+export const LABEL_PAD_Y = 20;
+
+/**
+ * The box grown to also cover its labels: the anchors' screen box, padded by the room their text
+ * takes, joined to the box. The card is placed beside this, so it does not cover the labels.
+ */
+export function withLabels(box: Rect, anchors: Rect | null): Rect {
+  if (!anchors) return box;
+  const x0 = Math.min(box.x, anchors.x - LABEL_PAD_X);
+  const y0 = Math.min(box.y, anchors.y - LABEL_PAD_Y);
+  const x1 = Math.max(box.x + box.w, anchors.x + anchors.w + LABEL_PAD_X);
+  const y1 = Math.max(box.y + box.h, anchors.y + anchors.h + LABEL_PAD_Y);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
 const rounded = (r: Rect | null): Rect | null =>
   r && { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) };
 
 const sameRect = (a: Rect | null, b: Rect | null): boolean =>
   a === b || (a !== null && b !== null && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h);
 
-/** The element the card is drawn in: the canvas's parent, made a positioned box if it was not. */
-function cardHost(stage: EngineStage): HTMLElement | null {
-  const host = stage.renderer.domElement.parentElement;
-  // the card and its leader line are placed absolutely inside it; a static host would let them
-  // escape to the next positioned ancestor, so it is made relative (once; it stays so)
-  if (host && getComputedStyle(host).position === 'static') host.style.position = 'relative';
-  return host;
+/**
+ * The card and its leader line are placed absolutely inside the stage host; a static host would
+ * let them escape to the next positioned ancestor, so it is made relative (once; it stays so).
+ */
+function positionHost(host: HTMLElement): void {
+  if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
 }
 
 export function AntennaRunner(): ReactElement | null {
@@ -175,26 +192,36 @@ export function AntennaRunner(): ReactElement | null {
 
   // the floating card beside the selected box, only while the 3D view is on screen
   const showCard = drawn && stage !== null && frame !== null && selected !== null && onScene;
-  const cardStage = showCard ? stage : null;
-  const host = useMemo(() => (cardStage ? cardHost(cardStage) : null), [cardStage]);
+  const host = showCard ? (stage.renderer.domElement.parentElement ?? null) : null;
   const [rect, setRect] = useState<Rect | null>(null);
-  useEffect(() => {
+  // before paint, so the card's first frame is already in place
+  useLayoutEffect(() => {
     if (!host || !stage || !frame || !selected) return;
+    positionHost(host);
     const canvas = stage.renderer.domElement;
     let last: Rect | null = null;
     const place = () => {
       const a = antennaStore.getState();
       const unit = a.file?.units.find((u) => u.id === selected);
-      const next = rounded(
-        unit
-          ? screenRectOf(
-              antennaCorners(unit, frame, antennaShift(a.file, manifest)),
-              stage.camera,
-              canvas,
-              host,
+      const shift = antennaShift(a.file, manifest);
+      const box = unit
+        ? screenRectOf(antennaCorners(unit, frame, shift), stage.camera, canvas, host)
+        : null;
+      // the selected unit's labels (name, dimensions, angles) are drawn around the box
+      const anchors = box
+        ? screenRectOf(
+            antennaLabelSpots(
+              { file: a.file, selected, hidden: a.hidden, solo: a.solo, shift },
+              frame,
             )
-          : null,
-      );
+              .filter((s) => s.selected)
+              .map((s) => s.at),
+            stage.camera,
+            canvas,
+            host,
+          )
+        : null;
+      const next = rounded(box && withLabels(box, anchors));
       // React hears of the box only when it moved by a whole pixel
       if (sameRect(next, last)) return;
       last = next;

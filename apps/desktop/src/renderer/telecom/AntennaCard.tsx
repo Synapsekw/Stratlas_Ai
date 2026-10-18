@@ -254,15 +254,25 @@ function Value({
   name,
   label,
   big,
+  wide,
   children,
 }: {
   name: string;
   label: string;
   big?: boolean;
+  /** Takes the whole row and wraps rather than cut its text (W × H × D). */
+  wide?: boolean;
   children: ReactNode;
 }): ReactElement {
   return (
-    <div style={{ display: 'grid', gap: 'var(--sp-1)', minWidth: 0 }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: 'var(--sp-1)',
+        minWidth: 0,
+        ...(wide ? { gridColumn: '1 / -1' } : null),
+      }}
+    >
       <dt style={LABEL}>{label}</dt>
       <dd
         className="mono"
@@ -271,9 +281,9 @@ function Value({
           margin: 0,
           fontSize: big ? 'var(--t-20)' : 'var(--t-12)',
           color: 'var(--fg-0)',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
+          ...(wide
+            ? { overflowWrap: 'anywhere' }
+            : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
         }}
       >
         {children}
@@ -291,7 +301,7 @@ const GRID: CSSProperties = {
 
 function Values({ unit }: { unit: AntennaUnit }): ReactElement {
   const dish = unit.kind === 'dish';
-  const size = `${metres(unit.widthM)}×${metres(unit.heightM)}×${metres(unit.depthM)}`;
+  const size = `${metres(unit.widthM)} × ${metres(unit.heightM)} × ${metres(unit.depthM)} m`;
   return (
     <dl style={GRID}>
       <Value name="azimuth" label={t('telecom.antennas.value.azimuth')} big>
@@ -316,14 +326,14 @@ function Values({ unit }: { unit: AntennaUnit }): ReactElement {
           </Value>
         </>
       )}
-      <Value name="size" label={t('telecom.antennas.card.size')}>
-        {size}
-      </Value>
       <Value name="altitude" label={t('telecom.antennas.card.altitude')}>
         {`${unit.box.centre[2].toFixed(1)} m`}
       </Value>
       <Value name="points" label={t('telecom.antennas.card.points')}>
         {unit.support.toLocaleString()}
+      </Value>
+      <Value name="size" label={t('telecom.antennas.card.size')} wide>
+        {size}
       </Value>
     </dl>
   );

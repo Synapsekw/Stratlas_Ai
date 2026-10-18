@@ -198,9 +198,19 @@ describe('AntennaCard', () => {
     expect(value('azimuth')).toBe('169.1°');
     expect(value('downtilt')).toBe('0.3°');
     expect(value('plumb')).toBe('-0.6°');
-    expect(value('size')).toBe('0.42×2.60×0.29');
+    expect(value('size')).toBe('0.42 × 2.60 × 0.29 m');
     expect(value('altitude')).toBe('29.1 m');
     expect(value('points')).toBe((10330).toLocaleString());
+  });
+
+  it('shows the whole W × H × D on a row of its own, wrapping rather than cut', () => {
+    load(three());
+    show();
+    const dd = stage.querySelector<HTMLElement>('[data-value="size"]')!;
+    expect(dd.textContent).toBe('0.42 × 2.60 × 0.29 m');
+    expect(dd.style.textOverflow).toBe('');
+    expect(dd.style.whiteSpace).toBe('');
+    expect(dd.parentElement!.style.gridColumn).toBe('1 / -1');
   });
 
   it('shows elevation and diameter for a dish, and no downtilt', () => {
