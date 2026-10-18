@@ -928,7 +928,7 @@ export class MeshSink {
   }
 
   /** A round bar of radius `r` from `a` to `b`, closed at both ends when `caps`. */
-  rod(m: string, a: V3, b: V3, r: number, caps: boolean): void {
+  rod(m: string, a: V3, b: V3, r: number, caps: boolean, segments?: number): void {
     need(finiteV(a, b), 'rod ends must be finite');
     needPos(r, 'rod radius');
     const d = sub(b, a);
@@ -943,6 +943,7 @@ export class MeshSink {
       ],
       capBottom: caps,
       capTop: caps,
+      ...(segments === undefined ? {} : { segments }),
     });
   }
 
@@ -955,10 +956,10 @@ export class MeshSink {
     m: string,
     path: V3[],
     r: number,
-    o: { bendRadius?: number; capStart: boolean; capEnd: boolean; startU?: V3 },
+    o: { bendRadius?: number; capStart: boolean; capEnd: boolean; startU?: V3; segments?: number },
   ): void {
     needPos(r, 'sweep radius');
-    this.sweepSection(m, path, circleSection(r, this.segmentsFor(r)), o);
+    this.sweepSection(m, path, circleSection(r, o.segments ?? this.segmentsFor(r)), o);
   }
 
   /**

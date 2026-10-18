@@ -40,6 +40,14 @@ def _project(xyz: np.ndarray, view: str) -> tuple[np.ndarray, np.ndarray, np.nda
     raise ValueError(f"unknown view {view!r}")
 
 
+def projection_frame(xyz: np.ndarray, view: View) -> dict:
+    u, v, _ = _project(np.asarray(xyz, dtype=np.float64), view)
+    return {
+        "centre": [float((u.min() + u.max()) / 2), float((v.min() + v.max()) / 2)],
+        "extent": max(float(np.ptp(u)), float(np.ptp(v)), 1e-9),
+    }
+
+
 def render_ortho(xyz: np.ndarray, rgb: np.ndarray | None, view: View, px: int) -> Image.Image:
     """A `px` by `px` orthographic image of the points: 2 px splats, nearest point wins, scaled to
     fit the longer side. With `rgb` (uint8, or 16-bit as LAS stores it) the points keep their

@@ -283,10 +283,22 @@ export function chooseCount(
 }
 
 /** Kinds every family places only when the proposal or the person asks for them. */
-export function noteUnplaced(ctx: FamilyCtx, placed: ReadonlySet<string>, template: string): void {
-  for (const c of ctx.input.proposal?.components ?? [])
+export function noteUnplaced(
+  ctx: FamilyCtx,
+  placed: ReadonlySet<string>,
+  template: string,
+  measuredIds: ReadonlySet<string> = new Set(),
+): void {
+  for (const c of ctx.input.proposal?.components ?? []) {
+    if (
+      c.count === 1 &&
+      typeof c.params.observationId === 'string' &&
+      measuredIds.has(c.params.observationId)
+    )
+      continue;
     if (c.count > 0 && !placed.has(c.kind) && /^[a-zA-Z]+$/.test(c.kind))
       ctx.note(`The ${template} template does not place "${c.kind}" components (${c.role}).`);
+  }
 }
 
 // -- warning lights ------------------------------------------------------------------------------

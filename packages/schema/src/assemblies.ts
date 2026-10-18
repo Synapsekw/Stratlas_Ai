@@ -47,7 +47,7 @@ export const ParamQuality = z
   });
 export const EvidenceRef = z
   .object({
-    kind: z.enum(['cloud', 'photo', 'mesh', 'user']),
+    kind: z.enum(['cloud', 'photo', 'mesh', 'drawing', 'user']),
     ref: z.string().min(1).max(200),
     view: z.string().max(120).optional(),
   })
@@ -130,9 +130,37 @@ export const AssemblyParamsByKind = {
       y: Y,
       outline: Outline,
       thickness: L,
+      /** Open steel grid with an edge frame; grid detail is an inferred construction convention. */
+      grating: z.boolean().optional(),
+      /** Per-corner elevations for a measured convex shelter roof. Same order as outline. */
+      elevations: z.array(Y).min(3).max(64).optional(),
+      /** Source-fitted planar roof faces; first edge is the ridge direction. */
+      roofPanels: z
+        .array(z.tuple([Vec3, Vec3, Vec3, Vec3]))
+        .min(1)
+        .max(8)
+        .optional(),
+      corrugation: z
+        .object({ pitch: z.number().min(0.04).max(0.5), depth: z.number().positive().max(0.05) })
+        .strict()
+        .optional(),
       openings: z.array(z.object({ centre: Vec2, r: L }).strict()).max(16),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (p) =>
+        !p.elevations ||
+        (Array.isArray(p.outline) &&
+          p.elevations.length === p.outline.length &&
+          p.openings.length === 0 &&
+          !p.grating),
+      'Roof elevations must match an outline without openings or grating.',
+    )
+    .refine(
+      (p) => !p.roofPanels || (!p.grating && p.openings.length === 0),
+      'Roof panels cannot contain grating or openings.',
+    )
+    .refine((p) => !p.corrugation || !!p.roofPanels, 'Corrugation needs roof panels.'),
   ringPlatform: z
     .object({
       y: Y,
@@ -155,11 +183,31 @@ export const AssemblyParamsByKind = {
       height: L,
       posts: L,
       rails: z.number().int().min(1).max(3),
+      pickets: z
+        .object({
+          spacing: z.number().min(0.06).max(0.4),
+          diameter: z.number().min(0.008).max(0.04),
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
   ladder: z
-    .object({ bottom: Vec3, top: Vec3, width: L, rungSpacing: L, cage: z.boolean().optional() })
-    .strict(),
+    .object({
+      bottom: Vec3,
+      top: Vec3,
+      width: L,
+      rungSpacing: L,
+      cage: z.boolean().optional(),
+      style: z.enum(['ladder', 'step-bolts']).optional(),
+      steps: z.array(Vec3).min(2).max(256).optional(),
+      outward: Dir.optional(),
+    })
+    .strict()
+    .refine(
+      (p) => p.style !== 'step-bolts' || (!!p.steps && !!p.outward && !p.cage),
+      'Step bolts need measured centres and an outward direction, without a cage.',
+    ),
   hatch: z.object({ centre: Vec3, size: z.tuple([L, L]), open: z.boolean().optional() }).strict(),
   louvre: z
     .object({
@@ -184,7 +232,7 @@ export const AssemblyParamsByKind = {
     .object({
       path: Path3,
       diameter: L,
-      bendRadius: L.optional(),
+      bendRadius: z.number().nonnegative().max(1000).optional(),
       /** Ends left open (declared openings) instead of capped; default 'none'. */
       openEnds: z.enum(['none', 'start', 'end', 'both']).optional(),
       flanges: z.array(z.number().int().min(0)).max(64).optional(),
@@ -204,7 +252,13 @@ export const AssemblyParamsByKind = {
     .strict(),
   base: z.object({ outline: Outline, y: Y, height: L }).strict(),
   cabinet: z
-    .object({ base: Vec3, size: z.tuple([L, L, L]), yawDeg: z.number().min(-360).max(360) })
+    .object({
+      base: Vec3,
+      size: z.tuple([L, L, L]),
+      yawDeg: z.number().min(-360).max(360),
+      /** Front-down inclination about the bottom centre; omitted means upright. */
+      tiltDeg: z.number().min(-90).max(90).optional(),
+    })
     .strict(),
   lattice: z
     .object({
@@ -224,6 +278,7 @@ export const AssemblyParamsByKind = {
   monopole: z
     .object({
       base: Vec3,
+      axis: Dir.optional(),
       profile: Profile,
       sides: z.union([z.literal(0), z.number().int().min(8).max(18)]),
     })
@@ -233,18 +288,25 @@ export const AssemblyParamsByKind = {
       kind: z.enum(['panel', 'dish', 'rru', 'omni']),
       centre: Vec3,
       azimuthDeg: z.number().min(0).max(360),
-      tiltDeg: z.number().min(-30).max(30),
+      tiltDeg: z.number().min(-90).max(90),
       size: z.tuple([L, L, L]),
     })
     .strict(),
   antennaMount: z
     .object({
-      kind: z.enum(['pipe', 'sector-frame', 'standoff']),
+      kind: z.enum(['pipe', 'sector-frame', 'standoff', 'clamp']),
       centre: Vec3,
       azimuthDeg: z.number().min(0).max(360),
       size: z.tuple([L, L, L]),
+      anchor: Vec3.optional(),
+      pipeDiameter: L.optional(),
+      tiltDeg: z.number().min(-90).max(90).optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (p) => p.kind !== 'clamp' || (!!p.anchor && !!p.pipeDiameter),
+      'A clamp needs its device anchor and pipe diameter.',
+    ),
   warningLight: z
     .object({
       fixture: z.enum(['single', 'twin', 'canister', 'beacon']),

@@ -7,7 +7,7 @@
  * fixture stays on.
  */
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -139,6 +139,49 @@ async function setupFromCloud(win: Page) {
   return setup;
 }
 
+async function setupStep(setup: Locator, step: number) {
+  // Drive the same buttons a person uses; hidden controls never get force-clicked.
+  while (step === 0 && (await setup.getByRole('button', { name: 'Back', exact: true }).isVisible()))
+    await setup.getByRole('button', { name: 'Back', exact: true }).click();
+  if (
+    step > 0 &&
+    !(await setup.getByTestId('eng-detail-fast').isVisible()) &&
+    !(await setup.getByTestId('eng-start').isVisible())
+  )
+    await setup.getByTestId('eng-next').click();
+  if (step === 2 && !(await setup.getByTestId('eng-start').isVisible()))
+    await setup.getByTestId('eng-next').click();
+  if (step === 1 && (await setup.getByTestId('eng-start').isVisible()))
+    await setup.getByRole('button', { name: 'Back', exact: true }).click();
+}
+async function startSetup(setup: Locator) {
+  await setupStep(setup, 2);
+  await setup.getByTestId('eng-start').click();
+}
+async function openReview(win: Page) {
+  if (!(await win.getByTestId('eng-model-review').isVisible()))
+    await win.getByTestId('eng-review').click();
+  const bench = win.locator('#wb-panel-review').getByTestId('review-bench');
+  await expect(bench).toBeVisible();
+  await expect(win.locator('#wb-tab-review')).toHaveAttribute('aria-selected', 'true');
+  await expect(bench.getByTestId('eng-model-review')).toBeVisible();
+  // Reviewing must leave a usable 3D view beside the tab, not an inspector over the model.
+  const canvas = win.locator('[data-scene-view] canvas').first();
+  await expect(canvas).toBeVisible();
+  await expect
+    .poll(() =>
+      canvas.evaluate((element) => {
+        const r = element.getBoundingClientRect();
+        return (
+          r.width > 100 &&
+          r.height > 100 &&
+          document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === element
+        );
+      }),
+    )
+    .toBe(true);
+}
+
 /** Confirm every send the run asks for (allow the kinds for the project, then send). */
 async function confirmSends(win: Page, until: () => Promise<boolean>) {
   const dialog = win.locator('.ag-ev').first();
@@ -150,7 +193,7 @@ async function confirmSends(win: Page, until: () => Promise<boolean>) {
         await allow.first().click();
         await win.waitForTimeout(200);
       }
-      await dialog.getByRole('button', { name: 'Send once' }).click();
+      await dialog.getByRole('button', { name: 'Approve and build' }).click();
     }
     await win.waitForTimeout(1000);
   }
@@ -162,13 +205,15 @@ const stageStatus = (win: Page, stage: string) =>
     (s) =>
       document
         .querySelector(`[data-testid="eng-stage"][data-stage="${s}"]`)
-        ?.getAttribute('data-status') ?? null,
+        ?.getAttribute('data-status') ??
+      (s === 'review' && document.querySelector('[data-testid="eng-model-review"]')
+        ? 'done'
+        : null),
     stage,
   );
 
 /** Start, confirm the sends (or not), and wait for the review stage. */
 async function runToReview(win: Page, o: { send: boolean } = { send: true }) {
-  await expect(win.getByTestId('eng-run')).toBeVisible({ timeout: 30_000 });
   if (o.send) await confirmSends(win, async () => (await stageStatus(win, 'review')) === 'done');
   await expect.poll(() => stageStatus(win, 'review'), { timeout: 240_000 }).toBe('done');
 }
@@ -212,6 +257,9 @@ const agent = (win: Page) => win.getByRole('region', { name: 'Agent' });
 
 async function ask(win: Page, text: string) {
   const box = agent(win).getByRole('textbox', { name: 'Message the agent' });
+  // A live workbench can minimise the agent; use its normal keyboard entry point.
+  if (!(await box.isVisible())) await win.keyboard.press('Control+j');
+  await expect(box).toBeVisible();
   await expect(box).toBeEnabled();
   await box.fill(text);
   await box.press('Enter');
@@ -240,14 +288,14 @@ engTest('A: from a partial chimney cloud to an accepted model layer', async ({ e
   await openProject(win);
   const setup = await setupFromCloud(win);
   await expect(setup.getByTestId('eng-detail-standard')).toBeChecked();
-  await setup.getByTestId('eng-start').click();
+  await startSetup(setup);
   const panel = win.getByTestId('eng-run');
   await expect(panel).toBeVisible({ timeout: 30_000 });
   await confirmSends(win, async () => (await stageStatus(win, 'review')) === 'done');
   await expect.poll(() => stageStatus(win, 'review'), { timeout: 240_000 }).toBe('done');
   // the AI step ran (the scripted provider), after the preview was confirmed
   await expect(win.getByTestId('eng-run-notice')).toHaveCount(0);
-  expect(await stageStatus(win, 'identify')).toBe('done');
+  expect((await readRun(eng.dir)).stages.identify?.status).toBe('done');
   // the draft: the measured taper, the flues the evidence supports, lights at the intermediate
   // levels as well as the crown
   const model = await readModel(eng.dir);
@@ -272,21 +320,46 @@ engTest('A: from a partial chimney cloud to an accepted model layer', async ({ e
   expect(rAt(100)).toBeLessThan(7.1);
 
   // review the components, accept them, then accept the model: one new layer
-  await expect(win.getByTestId('eng-accept')).toBeDisabled();
-  await expect(win.getByTestId('eng-accept-needs')).toBeVisible();
-  await win.getByTestId('eng-review').click();
+  await openReview(win);
+  await expect(win.getByTestId('eng-add-reviewed')).toBeDisabled();
   const section = win.getByTestId('components-section');
   await expect(section).toBeVisible();
   await section.getByRole('button', { name: 'Accept all drafts' }).click();
   await expect
     .poll(async () => (await readModel(eng.dir)).assemblies.every((x) => x.status === 'accepted'))
     .toBe(true);
-  // the builder closed, the run panel is back with Accept on
-  await win.getByTestId('model-builder').getByRole('button', { name: 'Close' }).click();
-  await expect(win.getByTestId('eng-accept')).toBeEnabled({ timeout: 15_000 });
-  await win.getByTestId('eng-accept').click();
-  await expect(panel).toContainText('Accepted: the model is a layer of the project now.', {
-    timeout: 60_000,
+  const review = win.getByTestId('eng-model-review');
+  await expect(review.getByTestId('eng-add-reviewed')).toBeEnabled({
+    timeout: 30000,
+  });
+  await win.screenshot({ path: test.info().outputPath('review-wide.png') });
+  await win.setViewportSize({ width: 1100, height: 720 });
+  await section.locator('.mb-cmp-row').last().click();
+  await expect
+    .poll(() =>
+      review.getByTestId('component-card').evaluate((card) => {
+        const box = card.getBoundingClientRect();
+        const scroller = card.closest('.wb-scroll');
+        const viewport = scroller?.getBoundingClientRect();
+        const body = scroller?.closest('[role="tabpanel"]')?.getBoundingClientRect();
+        return (
+          !!viewport &&
+          !!body &&
+          viewport.bottom <= body.bottom + 1 &&
+          box.top >= viewport.top - 2 &&
+          box.top + 80 < viewport.bottom
+        );
+      }),
+    )
+    .toBe(true);
+  await win.screenshot({ path: test.info().outputPath('review-1100.png') });
+  await expect(win.locator('#wb-tab-review')).toHaveAttribute('aria-selected', 'true');
+  await review.getByTestId('eng-view-overlay').click();
+  await expect(review.getByTestId('eng-view-overlay')).toHaveAttribute('aria-pressed', 'true');
+  await review.getByTestId('eng-view-model').click();
+  await review.getByTestId('eng-add-reviewed').click();
+  await expect(review).toContainText('Accepted: the model is a layer of the project now.', {
+    timeout: 60000,
   });
   const manifest = JSON.parse(await readFile(join(eng.dir, 'manifest.json'), 'utf8')) as {
     layers: { id: string; kind: string }[];
@@ -308,7 +381,9 @@ engTest(
     test.setTimeout(240_000);
     await openProject(win);
     const setup = await setupFromCloud(win);
+    await setupStep(setup, 1);
     await setup.getByTestId('eng-detail-fast').check();
+    await setupStep(setup, 0);
     const bar = win.getByTestId('eng-pick-bar');
 
     // the region: the setup steps aside while the bar says what to do; Escape lets it go
@@ -330,6 +405,7 @@ engTest(
     await expect(setup.getByTestId('eng-source-scan')).toBeChecked();
 
     // the anchor: Start waits for it, then takes it
+    await setupStep(setup, 1);
     await setup.getByTestId('eng-placement-anchor').check();
     await expect(setup.getByTestId('eng-start')).toBeDisabled();
     await setup.getByTestId('eng-anchor-pick').click();
@@ -338,7 +414,7 @@ engTest(
     await expect(setup.getByTestId('eng-anchor')).toContainText('At E');
     await expect(setup.getByTestId('eng-region')).toContainText('Around E');
     await expect(setup.getByTestId('eng-start')).toBeEnabled();
-    await setup.getByTestId('eng-start').click();
+    await startSetup(setup);
     await expect(win.getByTestId('eng-run')).toBeVisible({ timeout: 30_000 });
     await expect
       .poll(async () => (await readRun(eng.dir).catch(() => null))?.setup ?? null, {
@@ -367,15 +443,16 @@ engTest(
     await nextOpenDialog(app, [eng.photo]);
     await setup.getByTestId('eng-add-photos').click();
     await expect(setup.getByTestId('eng-photo-files')).toContainText('1 photo from files');
+    await setupStep(setup, 1);
     await setup.getByTestId('eng-detail-fast').check();
-    await setup.getByTestId('eng-start').click();
+    await startSetup(setup);
     await runToReview(win);
     const model = await readModel(eng.dir);
     expect(model.scale?.status).toBe('provisional');
     expect(model.georef?.horizontal.status).toBe('unplaced');
     expect(model.assemblies.length).toBeGreaterThan(0);
     expect((await readRun(eng.dir)).reconstruction).toBe('unavailable');
-    await win.getByTestId('eng-review').click();
+    await openReview(win);
     await expect(win.getByTestId('components-section')).toBeVisible();
   },
 );
@@ -388,21 +465,21 @@ engTest(
     await openProject(win);
     await setSettings(win, { offlineOnly: true });
     const setup = await setupFromCloud(win);
+    await setupStep(setup, 1);
     await expect(setup.getByTestId('eng-offline')).toBeVisible();
-    await expect(setup.getByTestId('eng-preview')).toBeDisabled();
+    await expect(setup.getByTestId('eng-next')).toBeEnabled();
+    await setupStep(setup, 1);
     await setup.getByTestId('eng-detail-fast').check();
-    await setup.getByTestId('eng-start').click();
+    await startSetup(setup);
     await runToReview(win, { send: false });
     await expect(win.locator('.ag-ev')).toHaveCount(0);
-    expect(await stageStatus(win, 'identify')).toBe('skipped');
-    await expect(win.getByTestId('eng-run')).toContainText(
-      'Offline mode is on, so nothing is sent.',
-    );
+    expect((await readRun(eng.dir)).stages.identify?.status).toBe('skipped');
+    expect((await readRun(eng.dir)).stages.identify?.message).toContain('Offline mode is on');
     const run = await readRun(eng.dir);
     expect(run.usage.inputTokens).toBe(0);
     expect(await network.outbound()).toEqual([]);
     // the measured draft is reviewable
-    await win.getByTestId('eng-review').click();
+    await openReview(win);
     await expect(win.getByTestId('components-section')).toBeVisible();
   },
 );
@@ -414,14 +491,15 @@ engTest(
     needPdal();
     await openProject(win);
     const setup = await setupFromCloud(win);
+    await setupStep(setup, 1);
     await setup.getByTestId('eng-detail-fast').check();
-    await setup.getByTestId('eng-start').click();
+    await startSetup(setup);
     const dialog = win.locator('.ag-ev').first();
     await expect(dialog).toBeVisible({ timeout: 120_000 });
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await runToReview(win, { send: false });
-    expect(await stageStatus(win, 'identify')).toBe('skipped');
-    await expect(win.getByTestId('eng-run')).toContainText('the send was declined');
+    expect((await readRun(eng.dir)).stages.identify?.status).toBe('skipped');
+    expect((await readRun(eng.dir)).stages.identify?.message).toContain('the send was declined');
     expect((await readRun(eng.dir)).usage.inputTokens).toBe(0);
   },
 );
@@ -442,8 +520,9 @@ engTest('H: the OpenAI route runs the same flow; cancel and retry', async ({ eng
   });
   const setup = await setupFromCloud(win);
   await expect(setup.getByTestId('eng-route')).toContainText('OpenAI');
+  await setupStep(setup, 1);
   await setup.getByTestId('eng-detail-fast').check();
-  await setup.getByTestId('eng-start').click();
+  await startSetup(setup);
   // cancel while measuring, then retry the same run
   await expect(win.getByTestId('eng-cancel')).toBeVisible({ timeout: 30_000 });
   await win.getByTestId('eng-cancel').click();
@@ -453,7 +532,7 @@ engTest('H: the OpenAI route runs the same flow; cancel and retry', async ({ eng
   await expect(dialog).toBeVisible({ timeout: 120_000 });
   await expect(dialog).toContainText('Send evidence to OpenAI?');
   await runToReview(win);
-  expect(await stageStatus(win, 'identify')).toBe('done');
+  expect((await readRun(eng.dir)).stages.identify?.status).toBe('done');
   const run = await readRun(eng.dir);
   expect(run.usage.inputTokens).toBeGreaterThan(0);
   await expect(win.getByTestId('eng-setup')).toHaveCount(0);
@@ -473,11 +552,12 @@ test('D: corrections regenerate only what they touch, keep ids and survive a res
     await win.waitForLoadState('domcontentloaded');
     await openProject(win);
     const setup = await setupFromCloud(win);
+    await setupStep(setup, 1);
     await setup.getByTestId('eng-detail-fast').check();
-    await setup.getByTestId('eng-start').click();
+    await startSetup(setup);
     await runToReview(win);
     // the person accepts every component first
-    await win.getByTestId('eng-review').click();
+    await openReview(win);
     const section = win.getByTestId('components-section');
     await section.getByRole('button', { name: 'Accept all drafts' }).click();
     await expect
@@ -543,6 +623,17 @@ test('D: corrections regenerate only what they touch, keep ids and survive a res
     await openProject(win);
     expect(await readModel(eng.dir)).toEqual(corrected);
     expect(corrected.assemblies.filter((a) => a.kind === 'flue')).toHaveLength(4);
+    const row = win.getByTestId('tree-row-scan');
+    if (!(await row.isVisible()))
+      await win
+        .getByRole('tree', { name: 'Datasets' })
+        .getByRole('button', { name: /^Point clouds 1/ })
+        .click();
+    await row.click({ button: 'right' });
+    await win.getByTestId('menu-create-engineering').click();
+    await expect(win.getByTestId('eng-saved-runs')).toBeVisible();
+    await openReview(win);
+    await expect.poll(flueRows, { timeout: 30_000 }).toBe(4);
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app.close();

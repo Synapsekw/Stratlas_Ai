@@ -1,6 +1,6 @@
 import { AssemblyKind, type Assembly, type ProcModel } from '@aio/schema';
 import { arrowFocus, Icon, useT, type MessageKey } from '@aio/ui';
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { kindLabel } from './assemblyEdit';
 
 /**
@@ -71,12 +71,20 @@ export function ComponentTree(p: ComponentTreeProps) {
   const groups = useMemo(() => {
     const byCategory = new Map<string, Assembly[]>();
     for (const a of all)
-      if (matches(a, query)) byCategory.set(a.category, [...(byCategory.get(a.category) ?? []), a]);
+      if (matches(a, query) || a.id === p.selected)
+        byCategory.set(a.category, [...(byCategory.get(a.category) ?? []), a]);
     return [...byCategory.entries()].map(([category, items]) => ({
       category,
       rows: ordered(items),
     }));
-  }, [all, query]);
+  }, [all, query, p.selected]);
+  useEffect(() => {
+    if (!p.selected) return;
+    const row = [
+      ...(listRef.current?.querySelectorAll<HTMLElement>('[data-component]') ?? []),
+    ].find((r) => r.dataset.component === p.selected);
+    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  }, [p.selected, groups]);
 
   const remove = (a: Assembly) => {
     if (a.status === 'accepted') setConfirming(a.id);

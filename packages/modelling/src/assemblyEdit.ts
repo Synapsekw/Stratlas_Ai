@@ -20,6 +20,8 @@ export interface AssemblyField {
   options?: { value: string; label: string }[];
   /** A whole number (a count). */
   integer?: boolean;
+  /** Display a derived value without offering a scalar edit that cannot update its geometry. */
+  readOnly?: boolean;
 }
 
 interface Meta {
@@ -57,7 +59,7 @@ const META: Record<string, Meta> = {
   legSection: LEN,
   braceSection: LEN,
   azimuthDeg: { unit: 'deg', min: 0, max: 360 },
-  tiltDeg: { unit: 'deg', min: -30, max: 30 },
+  tiltDeg: { unit: 'deg', min: -90, max: 90 },
   size: LEN, // the scalar `size` of a warning light; antennas carry a triple and are not listed
   posts: LEN,
   pilots: { min: 0, max: 8, integer: true },
@@ -98,14 +100,25 @@ export function assemblyFields(a: Assembly): AssemblyField[] {
   const out: AssemblyField[] = [];
   const params = a.params as Record<string, unknown>;
   for (const [k, v] of Object.entries(params)) {
+    if (
+      a.kind === 'ladder' &&
+      a.params.style === 'step-bolts' &&
+      (k === 'rungSpacing' || k === 'cage')
+    )
+      continue;
+    if (a.kind === 'guardrail' && a.params.pickets && k === 'rails') continue;
     const meta = META[k];
     if (meta === undefined) continue;
     if (typeof v !== 'number' && typeof v !== 'string' && typeof v !== 'boolean') continue;
-    const options = OPTIONS[a.kind]?.[k];
+    const clampKind = a.kind === 'antennaMount' && a.params.kind === 'clamp' && k === 'kind';
+    const fittedHeight =
+      a.kind === 'deck' && (a.params.roofPanels ?? a.params.elevations) && k === 'y';
+    const options = clampKind ? ['clamp'] : OPTIONS[a.kind]?.[k];
     out.push({
       key: k,
-      label: t(key(`review.field.${k}`)),
+      label: t(key(`review.field.${fittedHeight ? 'projectY' : k}`)),
       value: v,
+      ...(clampKind || fittedHeight ? { readOnly: true } : {}),
       ...(meta.unit ? { unit: meta.unit } : {}),
       ...(meta.min !== undefined ? { min: meta.min } : {}),
       ...(meta.max !== undefined ? { max: meta.max } : {}),

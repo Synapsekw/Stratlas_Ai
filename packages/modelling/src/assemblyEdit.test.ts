@@ -19,6 +19,35 @@ import { setAssemblyStatus } from './procmodel';
 const NOW = '2026-10-16T00:00:00.000Z';
 
 describe('assemblyFields', () => {
+  it('shows supported controls for fitted roofs, step routes and clamp assemblies', () => {
+    const model = assembleStack().model;
+    const roof = newAssembly(model, 'deck');
+    if (roof.kind !== 'deck') throw new Error('deck');
+    roof.params.outline = [
+      [0, 0],
+      [2, 0],
+      [2, 2],
+      [0, 2],
+    ];
+    roof.params.elevations = [4, 4.2, 4.2, 4];
+    expect(assemblyFields(roof).find((f) => f.key === 'y')).toMatchObject({
+      readOnly: true,
+      label: 'Height · project Y',
+    });
+    const steps = newAssembly(model, 'ladder');
+    if (steps.kind !== 'ladder') throw new Error('ladder');
+    steps.params.style = 'step-bolts';
+    expect(assemblyFields(steps).some((f) => f.key === 'rungSpacing' || f.key === 'cage')).toBe(
+      false,
+    );
+    const clamp = newAssembly(model, 'antennaMount');
+    if (clamp.kind !== 'antennaMount') throw new Error('mount');
+    clamp.params.kind = 'clamp';
+    expect(assemblyFields(clamp).find((f) => f.key === 'kind')).toMatchObject({
+      readOnly: true,
+      options: [{ value: 'clamp', label: 'Clamp assembly' }],
+    });
+  });
   it('lists the editable values with their units and the basis each is known on', () => {
     const { model } = assembleStack();
     const flue = assemblyFields(byId(model, 'flue-1'));

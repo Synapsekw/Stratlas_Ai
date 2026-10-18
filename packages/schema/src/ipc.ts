@@ -52,6 +52,7 @@ import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds 
 import { ProcModel, ProcModelId, ProcModelSummary } from './procmodel';
 import { Detail, EngineerProposal, EngineerRun, EngineerSetup, RunId } from './engineer';
 import { EvidencePack } from './modelEvidence';
+import { ComponentObservation } from './componentObservation';
 import {
   DetectorModelId,
   DetectorModelInfo,
@@ -358,10 +359,12 @@ const EngineerCallRequest = z
     projectId: z.string().min(1),
     /** The engineering run (`engineering/<run>/`): cache folder, cost cap and AI time. */
     engineerRun: RunId,
+    approvalScope: z.enum(['request', 'run']).optional(),
     pass: z.number().int().min(1).max(3),
     images: z.array(EngineerCallImage).max(64),
     /** The evidence pack's measurement summary (JSON text); main refuses one over 40 000. */
     summary: z.string().max(200_000),
+    observations: z.array(ComponentObservation).max(512).optional(),
     setup: EngineerSetup,
     previous: EngineerProposal.optional(),
   })
@@ -369,6 +372,7 @@ const EngineerCallRequest = z
 
 /** The send preview's content: exactly the request text and images. */
 const EvidencePreviewContent = z.object({
+  measurements: z.string().optional(),
   text: z.string(),
   images: z.array(
     z.object({
@@ -406,6 +410,7 @@ const EngineerOutcomeSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('refused'),
+    approvalRequired: z.boolean().optional(),
     reason: z.string(),
     code: z.enum([
       'offline',
@@ -2161,6 +2166,16 @@ export const ipc = {
       Failure,
     ]),
   },
+  'engineer:runList': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        runs: z.array(EngineerRun.pick({ id: true, modelId: true, createdAt: true })).max(100),
+      }),
+      Failure,
+    ]),
+  },
   /** Write `engineering/<run.id>/run.json` atomically with a `.bak`; refused for packages. */
   'engineer:runWrite': {
     request: z
@@ -2264,6 +2279,13 @@ export const ipc = {
         /** Valid once, for this project and this content, for a few minutes. */
         consent: z.string().max(100),
       }),
+      Failure,
+    ]),
+  },
+  'engineer:sourceStamp': {
+    request: z.object({ projectId: z.string().min(1), setup: EngineerSetup }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), signature: z.string() }),
       Failure,
     ]),
   },

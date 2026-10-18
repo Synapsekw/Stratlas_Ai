@@ -177,7 +177,7 @@ function markdown(diff, evidence) {
 }
 
 /** Views of both models, rendered headless (Playwright Chromium, three.js); PNGs into `out`. */
-async function render(files, out) {
+async function render(files, out, georefs = {}, cloudFile) {
   const require = createRequire(join(REPO, 'package.json'));
   const pw = await import(pathToFileURL(require.resolve('playwright')).href);
   // a CommonJS package: its exports may come as the default
@@ -191,21 +191,55 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 r.setSize(900, 900); document.body.appendChild(r.domElement);
-window.shoot = async (url, view) => {
+const georefs = ${JSON.stringify(georefs)};
+const cache = new Map();
+const commonOrigin = georefs.reference?.anchor ?? [0,0,0];
+const crsToLocal = new THREE.Matrix4().set(1,0,0,-commonOrigin[0], 0,0,1,-commonOrigin[2], 0,-1,0,commonOrigin[1], 0,0,0,1);
+async function load(which) {
+  if (cache.has(which)) return cache.get(which);
+  const g=await new GLTFLoader().loadAsync('/'+which+'.glb');
+  if (georefs[which]) g.scene.applyMatrix4(crsToLocal.clone().multiply(new THREE.Matrix4().fromArray(georefs[which].modelToCrs)));
+  cache.set(which,g.scene);return g.scene;
+}
+window.shoot = async (which, view) => {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8a8f96);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2));
   const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(1, 2, 1); scene.add(sun);
-  const g = await new GLTFLoader().loadAsync(url); scene.add(g.scene);
-  const box = new THREE.Box3().setFromObject(g.scene); const c = box.getCenter(new THREE.Vector3());
+  const reference=await load('reference');
+  if(which!=='cloud') scene.add(await load(which==='overlay'?'candidate':which));
+  if(which==='cloud'||which==='overlay') {
+    if(!cache.has('cloud')) {
+      const data=await (await fetch('/cloud.json')).json();
+      const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(data.points.flat(),3));
+      const points=new THREE.Points(geometry,new THREE.PointsMaterial({color:0x2de0e6,size:.016,sizeAttenuation:true}));
+      if(georefs.candidate)points.applyMatrix4(crsToLocal.clone().multiply(new THREE.Matrix4().fromArray(georefs.candidate.modelToCrs)));
+      cache.set('cloud',points);
+    }
+    scene.add(cache.get('cloud'));
+  }
+  const box = new THREE.Box3().setFromObject(reference); const c = box.getCenter(new THREE.Vector3());
   const s = box.getSize(new THREE.Vector3()); const H = Math.max(s.x, s.y, s.z);
   const cam = new THREE.PerspectiveCamera(30, 1, H / 1000, H * 20);
-  const D = H * 1.45; // the whole height in a 30 degree view, with a margin
+  const D = H * 1.65; // the whole height in a 30 degree view, with a margin
   const at = { full: [c.x + D, c.y, c.z + D, c.y], rear: [c.x - D, c.y, c.z - D, c.y],
-    crown: [c.x + H * 0.25, box.max.y + H * 0.15, c.z + H * 0.25, box.max.y - H * 0.05],
+    crown: [c.x + H * 0.34, box.max.y + H * 0.06, c.z + H * 0.34, box.max.y - H * 0.12],
     base: [c.x + H * 0.3, box.min.y + H * 0.05, c.z + H * 0.3, box.min.y + H * 0.08],
+    top: [c.x, box.max.y + H * .45, c.z + .001, box.max.y-H*.1],
     lights: [c.x + H * 0.35, c.y + H * 0.2, c.z + H * 0.35, c.y + H * 0.2] }[view];
   cam.position.set(at[0], at[1], at[2]); cam.lookAt(c.x, at[3], c.z);
   r.render(scene, cam); return r.domElement.toDataURL('image/png');
+};
+window.measure = async () => {
+  const data={};
+  for(const name of ['candidate','reference']){
+    const object=await load(name);object.updateMatrixWorld(true);
+    const parts={};object.traverse(o=>{if(!o.userData.component)return;const tag=o.userData.tag ?? o.name;if(!/^[A-Z]+[0-9]+$/.test(tag))return;const b=new THREE.Box3().setFromObject(o);parts[tag]={centre:b.getCenter(new THREE.Vector3()).toArray(),size:b.getSize(new THREE.Vector3()).toArray()};});
+    const bounds=new THREE.Box3().setFromObject(object);data[name]={parts,bounds:{min:bounds.min.toArray(),max:bounds.max.toArray()}};
+  }
+  const comparisons=Object.keys(data.candidate.parts).filter(k=>data.reference.parts[k]).map(tag=>{
+    const a=data.candidate.parts[tag],b=data.reference.parts[tag];return {tag,centreDifferenceM:Math.hypot(...a.centre.map((v,i)=>v-b.centre[i])),candidate:a,reference:b};
+  });
+  return {...data,comparisons};
 };
 window.ready = true;
 </script></body></html>`;
@@ -215,6 +249,7 @@ window.ready = true;
     if (url === '/') return res.end(page);
     if (url === '/candidate.glb') file = files.candidate;
     if (url === '/reference.glb') file = files.reference;
+    if (url === '/cloud.json' && cloudFile) file = cloudFile;
     if (url.startsWith('/three/')) {
       const p = resolve(threeDir, `.${url.slice('/three'.length)}`);
       if (p.startsWith(threeDir)) file = p;
@@ -237,12 +272,11 @@ window.ready = true;
     await tab.goto(`http://127.0.0.1:${String(port)}/`);
     // these run in the page, where `globalThis` is its window
     await tab.waitForFunction(() => globalThis.ready === true);
-    for (const which of ['candidate', 'reference']) {
-      for (const view of ['full', 'rear', 'crown', 'base', 'lights']) {
-        const data = await tab.evaluate(
-          ([u, v]) => globalThis.shoot(u, v),
-          [`/${which}.glb`, view],
-        );
+    const measurements = await tab.evaluate(() => globalThis.measure());
+    writeFileSync(join(out, 'geometry-comparison.json'), JSON.stringify(measurements, null, 2));
+    for (const which of ['candidate', 'reference', ...(cloudFile ? ['cloud', 'overlay'] : [])]) {
+      for (const view of ['full', 'rear', 'crown', 'base', 'lights', 'top']) {
+        const data = await tab.evaluate(([u, v]) => globalThis.shoot(u, v), [which, view]);
         writeFileSync(join(out, `${which}-${view}.png`), Buffer.from(data.split(',')[1], 'base64'));
       }
     }
@@ -258,6 +292,9 @@ function args(argv) {
     const a = argv[i];
     if (a === '--out') o.out = argv[++i];
     else if (a === '--evidence') o.evidence = argv[++i];
+    else if (a === '--candidate-georef') o.candidateGeoref = argv[++i];
+    else if (a === '--reference-georef') o.referenceGeoref = argv[++i];
+    else if (a === '--cloud') o.cloud = argv[++i];
     else if (a === '--render') o.render = true;
     else o.files.push(a);
   }
@@ -282,6 +319,8 @@ async function main() {
     console.error('--render needs --out (a folder outside the repository).');
     process.exit(2);
   }
+  if (Boolean(o.candidateGeoref) !== Boolean(o.referenceGeoref))
+    throw new Error('Supply both georeferences, or neither, for a common-frame comparison.');
   const [candidatePath, referencePath] = o.files;
   const diff = compareInventories(
     inventory(readGlbJson(readFileSync(candidatePath))),
@@ -300,7 +339,19 @@ async function main() {
     writeFileSync(join(o.out, 'compare.json'), `${JSON.stringify({ diff, evidence }, null, 2)}\n`);
     writeFileSync(join(o.out, 'compare.md'), md);
     if (o.render)
-      await render({ candidate: resolve(candidatePath), reference: resolve(referencePath) }, o.out);
+      await render(
+        { candidate: resolve(candidatePath), reference: resolve(referencePath) },
+        o.out,
+        {
+          ...(o.candidateGeoref
+            ? { candidate: JSON.parse(readFileSync(o.candidateGeoref, 'utf8')) }
+            : {}),
+          ...(o.referenceGeoref
+            ? { reference: JSON.parse(readFileSync(o.referenceGeoref, 'utf8')) }
+            : {}),
+        },
+        o.cloud,
+      );
   }
 }
 

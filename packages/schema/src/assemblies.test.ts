@@ -13,6 +13,23 @@ const base = {
 } as const;
 
 describe('Assembly', () => {
+  it('accepts optional enclosure tilt while retaining old upright cabinets', () => {
+    const cabinet = (tiltDeg?: number) => ({
+      ...base,
+      id: 'box-1',
+      kind: 'cabinet',
+      params: {
+        base: [1, 2, 3],
+        size: [0.4, 0.6, 0.2],
+        yawDeg: 90,
+        ...(tiltDeg === undefined ? {} : { tiltDeg }),
+      },
+    });
+    expect(Assembly.safeParse(cabinet()).success).toBe(true);
+    expect(Assembly.safeParse(cabinet(30)).success).toBe(true);
+    expect(Assembly.safeParse(cabinet(-90)).success).toBe(true);
+    expect(Assembly.safeParse(cabinet(91)).success).toBe(false);
+  });
   it('accepts a tapered shaft with an open top', () => {
     const r = Assembly.safeParse({
       ...base,

@@ -83,10 +83,13 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(() => {
-  act(() => root?.unmount());
-  root = undefined;
-  host.remove();
-  engineerHost.setState({ store: null, ipc: null, projectId: null });
+  act(() => {
+    root?.unmount();
+    root = undefined;
+    host.remove();
+    engineerHost.setState({ store: null, ipc: null, projectId: null });
+    workspace.getState().select(null);
+  });
   seen = null;
 });
 
@@ -96,6 +99,31 @@ const panel = () => {
 };
 
 describe('the engineering review in the Model builder', () => {
+  it('shares component selection between the list and the model viewport', async () => {
+    act(() => {
+      setup();
+      workspace.setState({ selection: null });
+    });
+    act(() => root?.render(<Probe shown={null} />));
+    await act(async () => {
+      panel().onSelect('flue-1');
+      await Promise.resolve();
+    });
+    expect(workspace.getState().selection).toEqual({
+      kind: 'asset',
+      id: 'flue-1',
+      layer: 'model-draft-stack',
+    });
+    act(() => {
+      workspace.getState().select({ kind: 'asset', id: 'flue-2', layer: 'model-draft-stack' });
+    });
+    expect(panel().selected).toBe('flue-2');
+    act(() => {
+      workspace.getState().select({ kind: 'asset', id: 'flue-1', layer: 'another-model' });
+    });
+    expect(panel().selected).toBeNull();
+  });
+
   it('shows the run model with its panel, not another model the builder has open', () => {
     setup();
     act(() => root?.render(<Probe shown={null} />));

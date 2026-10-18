@@ -13,16 +13,28 @@ import { z } from 'zod';
 
 export const SPEND_SCHEMA = 'aio.engineer-spend/1';
 
+const RequestReservation = z
+  .object({
+    id: z.uuid(),
+    costUsd: z.number().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+  })
+  .strict();
+export type EngineerReservation = z.infer<typeof RequestReservation>;
+
 const RunSpendFile = z
   .object({
     schema: z.literal(SPEND_SCHEMA),
-    /** Epoch ms of the run's first metered AI request (for the record). */
+    /** Epoch ms of the run's first reserved AI request (for the record). */
     startedAt: z.number().int().nonnegative(),
     /**
-     * Milliseconds the run's AI requests were in flight: its 10 minutes of AI time. Not the time
+     * Milliseconds the run's AI requests were in flight, charged to its detail-level allowance. Not the time
      * between requests (the person reading a send preview). Absent in older files: 0.
      */
     aiMs: z.number().int().nonnegative().optional(),
+    /** Time held before dispatch until elapsed time is saved; survives a crash or failed final write. */
+    reservedAiMs: z.number().int().nonnegative().optional(),
     /** Known cost in US dollars. */
     spentUsd: z.number().nonnegative(),
     /** Model requests made (repairs included). */
@@ -31,17 +43,31 @@ const RunSpendFile = z
     tokens: z.number().int().nonnegative(),
     /** Requests to a model without a price (sent after the person confirmed). */
     unpriced: z.number().int().nonnegative(),
+    /** Unsettled requests. Estimates hold allowance; they are never reported as billed usage. */
+    reservations: z.array(RequestReservation).optional(),
   })
   .strict();
 export type RunSpend = Omit<z.infer<typeof RunSpendFile>, 'schema' | 'aiMs'> & { aiMs: number };
 
+/** Known usage plus requests whose final usage is not yet known (including interrupted ones). */
+export function committedRunSpend(spend: RunSpend) {
+  return (spend.reservations ?? []).reduce(
+    (total, r) => ({
+      spentUsd: total.spentUsd + r.costUsd,
+      calls: total.calls + 1,
+      tokens: total.tokens + r.inputTokens + r.outputTokens,
+    }),
+    { spentUsd: spend.spentUsd, calls: spend.calls, tokens: spend.tokens },
+  );
+}
+
 /** Tokens a run may use per pass, whatever the price (also caps a model without a price). */
 export const TOKENS_PER_PASS = 250_000;
 
-/** A run's request and token limits: one request and one repair per pass. */
-export function runLimits(detail: Detail): { calls: number; tokens: number } {
+/** One answer and one repair per pass; a tool-enabled answer may take three bounded steps. */
+export function runLimits(detail: Detail, withTools = false): { calls: number; tokens: number } {
   const passes = DETAIL_BUDGETS[detail].passes;
-  return { calls: passes * 2, tokens: passes * TOKENS_PER_PASS };
+  return { calls: passes * 2 * (withTools ? 3 : 1), tokens: passes * TOKENS_PER_PASS };
 }
 
 const fileOf = (runDir: string) => join(runDir, 'ai', 'spend.json');
@@ -66,6 +92,8 @@ export async function readRunSpend(runDir: string): Promise<RunSpend | null> {
     tokens: f.tokens,
     unpriced: f.unpriced,
     aiMs: f.aiMs ?? 0,
+    ...(f.reservedAiMs !== undefined ? { reservedAiMs: f.reservedAiMs } : {}),
+    ...(f.reservations ? { reservations: f.reservations } : {}),
   };
 }
 

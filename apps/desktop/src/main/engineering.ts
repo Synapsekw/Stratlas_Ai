@@ -27,12 +27,13 @@ import {
   DETAIL_BUDGETS,
   EngineerProposal,
   EngineerRun,
+  RunId,
   EvidencePack,
   PROCMODEL_DIR,
   type GlbCheckReport,
   type ProjectManifest,
 } from '@aio/schema';
-import { mkdir, open, readFile, realpath, rm } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonSeen } from './fsutil';
@@ -48,6 +49,7 @@ import {
   type ModelProjects,
 } from './modelBuilder';
 import type { Handle } from './notYet';
+import { engineeringSourceStamp } from './evidencePolicy';
 
 /** The builder library loads on first use (see modelBuilder.ts). */
 const lib = () => import('@aio/project/builder');
@@ -183,6 +185,18 @@ export function registerEngineeringIpc({
   const notOpen = (id: string) => ({ ok: false as const, error: `Project "${id}" is not open.` });
   const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+  handle('engineer:sourceStamp', async ({ projectId, setup }) => {
+    const root = projects.root(projectId);
+    if (!root) return { ok: false, error: 'The project is not open.' };
+    try {
+      return { ok: true, signature: await engineeringSourceStamp(root, setup) };
+    } catch {
+      return {
+        ok: false,
+        error: 'A selected source is missing or unreadable. Re-select the modelling inputs.',
+      };
+    }
+  });
   handle('model:exportEngineering', async ({ projectId, modelId, folder, detail, replace }) => {
     // the contract refuses a relative folder; main checks again with the platform's own rule
     if (!isAbsolute(folder))
@@ -255,6 +269,27 @@ export function registerEngineeringIpc({
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
+  });
+
+  handle('engineer:runList', async ({ projectId }) => {
+    if (projects.package(projectId)) return { ok: true, runs: [] };
+    const root = projects.root(projectId);
+    if (root === undefined) return notOpen(projectId);
+    const dirs = await readdir(join(root, ENGINEERING_DIR), { withFileTypes: true }).catch(
+      () => [],
+    );
+    const runs = [];
+    for (const d of dirs) {
+      if (!d.isDirectory() || !RunId.safeParse(d.name).success) continue;
+      const rel = `${ENGINEERING_DIR}/${d.name}/run.json`;
+      const r = await readRunFile(join(root, rel), rel, EngineerRun, true);
+      if (r.ok && r.value)
+        runs.push({ id: r.value.id, modelId: r.value.modelId, createdAt: r.value.createdAt });
+    }
+    return {
+      ok: true,
+      runs: runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100),
+    };
   });
 
   handle('engineer:runRead', async ({ projectId, runId }) => {

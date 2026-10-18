@@ -89,7 +89,7 @@ function arrays(v: unknown, path = '$', out: { path: string; n: number }[] = [])
 }
 
 describe('measurementSummary', () => {
-  it('is compact JSON: rounded numbers, no list over 16 items, no paths', () => {
+  it('is compact JSON with a complete member inventory, sampled profiles and no paths', () => {
     const text = measurementSummary(pack(), SETUP);
     const s = JSON.parse(text) as Record<string, unknown> & {
       height: number;
@@ -100,7 +100,9 @@ describe('measurementSummary', () => {
       photos: { count: number; duplicates: number };
       setup: { reference: { valueM: number } };
     };
-    expect(arrays(s).filter((a) => a.n > SUMMARY_MAX_ITEMS)).toEqual([]);
+    expect(arrays(s).filter((a) => a.n > SUMMARY_MAX_ITEMS)).toEqual([
+      { path: '$.members[0].items', n: 100 },
+    ]);
     expect(s.height).toBe(60);
     expect(s.base).toEqual([0.123, 0, -0.765]);
     expect(s.setup.reference.valueM).toBe(60.123);
@@ -109,6 +111,7 @@ describe('measurementSummary', () => {
     expect(s.taper.profile[0]?.y).toBe(0);
     expect(s.taper.profile.at(-1)?.y).toBe(63);
     expect(s.members[0]?.count).toBe(100);
+    expect(s.members[0]?.items).toHaveLength(100);
     expect(s.photos).toEqual({ count: 30, duplicates: 2 });
     expect(text).not.toMatch(/private|IMG_|\.jpg|img\/|cloud-1/);
     expect(text.length).toBeLessThan(40_000);

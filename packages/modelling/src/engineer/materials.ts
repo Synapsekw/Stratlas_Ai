@@ -20,6 +20,8 @@ export const DEFAULT_MATERIALS: readonly Material[] = [
   mat('concrete-grey', 'Concrete, grey', [0.55, 0.55, 0.53], 0, 0.9),
   mat('paint-red', 'Paint, red', [0.6, 0.05, 0.04], 0, 0.6),
   mat('paint-white', 'Paint, white', [0.85, 0.85, 0.83], 0, 0.55),
+  mat('mast-painted', 'Light neutral coated steel (inferred)', [0.74, 0.77, 0.75], 0.28, 0.68),
+  mat('paint-black', 'Dark painted metal', [0.045, 0.05, 0.055], 0.15, 0.65),
   mat('steel-galv', 'Galvanised steel', [0.62, 0.64, 0.66], 0.8, 0.45),
   mat('steel-galv-cage', 'Galvanised steel, ladder cage', [0.6, 0.62, 0.64], 0.8, 0.5),
   mat('steel-blue', 'Steel, blue paint', [0.12, 0.22, 0.4], 0.3, 0.5),

@@ -18,6 +18,8 @@ export const TAB_IDS = [
   'overlays',
   'hydro',
   'cleanup',
+  // Engineering model review: source comparison, components and saved corrections.
+  'review',
   // Road, Volumes and environment benches
   'environment',
   'cutaway',

@@ -156,6 +156,10 @@
   justify-content: space-between;
   gap: 8px;
 }
+.comp-card .comp-values li span:first-child {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .comp-card .comp-values li span:last-child {
   color: var(--fg-3);
 }

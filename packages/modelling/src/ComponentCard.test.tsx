@@ -81,6 +81,13 @@ const press = (el: Element, key: string) => {
 };
 
 describe('ComponentCard', () => {
+  it('shows individual dimensions and position and offers full-size source evidence', () => {
+    const antenna = newAssembly(model, 'antenna');
+    render({ assembly: { ...antenna, sources: measuredFlue().sources } });
+    expect(row('size').textContent).toContain('Width / height / depth');
+    expect(row('centre').textContent).toContain('project local X / Y / Z');
+    expect(html().querySelector('button[aria-label="Enlarge source image"]')).not.toBeNull();
+  });
   it('names the basis of each value in words', () => {
     render();
     expect(row('rOuter').textContent).toContain('Measured');
@@ -95,17 +102,17 @@ describe('ComponentCard', () => {
     render();
     const text = html().textContent;
     expect(row('rOuter').textContent).toContain('Fits the scan to about 1 cm');
-    expect(row('rOuter').textContent).toContain('Seen from all sides');
+    expect(row('rOuter').textContent).toContain('High coverage in the sampled region');
     expect(text).not.toMatch(/%/);
     expect(text).not.toMatch(/\bsure\b|confidence/i);
     // the bands of both words
     const q = (coverage: number) =>
       coverageWords(t, { basis: 'measured', coverage, residualM: 0.01, support: 10 });
     expect([0.95, 0.7, 0.4, 0.1].map(q)).toEqual([
-      'Seen from all sides',
-      'Seen from most sides',
-      'Seen from one side',
-      'Barely seen',
+      'High coverage in the sampled region',
+      'Moderate coverage in the sampled region',
+      'Partial coverage in the sampled region',
+      'Sparse coverage in the sampled region',
     ]);
     expect(residualWords(t, { basis: 'measured', residualM: 0.004, support: 9 })).toBe(
       'Fits the scan to under 1 cm',

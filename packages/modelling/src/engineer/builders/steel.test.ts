@@ -339,4 +339,20 @@ describe('cabinet', () => {
     expect(b.max[2] - b.min[2]).toBeCloseTo(1.2, 9);
     expect(b.max[0] - b.min[0]).toBeGreaterThan(0.8);
   });
+
+  it('tilts body and doors together about the bottom centre while preserving closed solids', () => {
+    const p = only(build('cabinet', { ...cab, yawDeg: 90, tiltDeg: 30 }).out());
+    expectSolid(p);
+    const up: V3 = [0.5, Math.sqrt(3) / 2, 0];
+    const front: V3 = [Math.sqrt(3) / 2, -0.5, 0];
+    const project = (axis: V3) =>
+      Array.from({ length: p.positions.length / 3 }, (_, i) => {
+        const v = vertexAt(p, i);
+        return axis.reduce((sum, n, j) => sum + n * ((v[j] ?? 0) - (cab.base[j] ?? 0)), 0);
+      });
+    expect(Math.min(...project(up))).toBeCloseTo(0, 8);
+    expect(Math.max(...project(up))).toBeCloseTo(cab.size[1], 8);
+    expect(Math.min(...project(front))).toBeCloseTo(-cab.size[2] / 2, 8);
+    expect(Math.max(...project(front))).toBeCloseTo(cab.size[2] / 2 + 0.01, 8);
+  });
 });

@@ -83,12 +83,12 @@ describe('engineering model quality regressions', () => {
     expect(ProcModel.safeParse(result.model).success).toBe(true);
   });
 
-  it('keeps valid measured radii while using the reference height', () => {
+  it('keeps the measured cloud scale when an approximate reference height is supplied', () => {
     const result = assemble({ ...input(), evidence: monopoleEvidence() });
     const pole = must(byKind(result.model, 'monopole')[0]);
-    expect(pole.params.profile.at(-1)?.y).toBe(31);
+    expect(pole.params.profile.at(-1)?.y).toBe(30);
     expect(pole.quality.profile?.basis).toBe('measured');
-    expect(result.model.scale?.status).toBe('reference');
+    expect(result.model.scale?.status).toBe('measured');
   });
 
   it('does not label the height of a low compound fit as the measured height of a tall source', () => {

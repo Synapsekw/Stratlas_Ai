@@ -2,6 +2,7 @@
 import type * as Engine from '@aio/engine';
 import type { EngineerRun, ProcModel, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
+import { stackModel } from '@aio/modelling';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,9 +17,12 @@ vi.mock('@aio/engine', async (importOriginal) => ({
 const { EngineerLayer } = await import('./EngineerLayer');
 import { ENGINEERING_MODEL_UI } from './flags';
 import { activeEngineerSession } from '../modeller/engineerTools';
-import { engineerHost } from './host';
+import { engineerHost, openRun } from './host';
 import type { RunState } from './runStore';
 import { engineerUi } from './ui';
+import { ReviewBench } from '../workspace/workbench/benches/ReviewBench';
+import { useWorkbench, workbench } from '../workspace/workbench/workbenchStore';
+import { shell } from '../shell';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -68,6 +72,11 @@ const model = (accepted: boolean) =>
     parts: [],
   }) as unknown as ProcModel;
 
+function WorkbenchReview() {
+  const front = useWorkbench((s) => s.front);
+  return front === 'review' ? <ReviewBench /> : null;
+}
+
 /** The open project's run store, its actions replaced by mocks. */
 function fake(state: Partial<RunState>) {
   const store = engineerHost.getState().store;
@@ -89,18 +98,29 @@ function fake(state: Partial<RunState>) {
 }
 
 beforeEach(() => {
+  workbench.getState().reset();
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
   workspace.getState().openProject({ id: 'p', root: 'E:/p', manifest });
-  act(() => root?.render(<EngineerLayer />));
+  act(() =>
+    root?.render(
+      <>
+        <EngineerLayer />
+        <WorkbenchReview />
+      </>,
+    ),
+  );
 });
 afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   host.remove();
-  engineerUi.setState({ open: false, preselect: [] });
-  workspace.getState().closeProject();
+  act(() => {
+    engineerUi.getState().hide();
+    workspace.getState().closeProject();
+    openRun(null, false);
+  });
 });
 
 const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
@@ -132,6 +152,103 @@ const setupShown = () =>
   must(q('eng-setup')).closest<HTMLElement>('.dlg-scrim')?.style.display !== 'none';
 
 describe('EngineerLayer', () => {
+  it('opens review on the generated model with model/cloud/overlay controls and a fitted camera', () => {
+    const draft = {
+      kind: 'mesh',
+      id: 'model-draft-stack',
+      name: 'Stack draft',
+      visible: true,
+      src: { path: 'models/draft.glb' },
+      transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    };
+    act(() => {
+      workspace
+        .getState()
+        .replaceManifest({ ...manifest, layers: [...manifest.layers, draft] } as ProjectManifest);
+    });
+    fake({ run: run({ validate: { status: 'done' } }), model: stackModel(), draftLayer: draft.id });
+    act(() => {
+      workspace.getState().setLayerVisible(draft.id, false);
+      engineerUi.getState().show();
+    });
+    act(() => {
+      q('eng-review')?.click();
+    });
+    expect(q('eng-model-review')).not.toBeNull();
+    expect(q('eng-model-review')?.closest('.wb-scroll')).toBe(q('review-bench'));
+    expect(q('eng-model-review')?.querySelector('header, footer, .mb-scroll')).toBeNull();
+    expect(
+      [...must(q('eng-model-review')).querySelectorAll('.wb-section-head')].every(
+        (head) => head.getAttribute('aria-expanded') === 'true',
+      ),
+    ).toBe(true);
+    expect(workbench.getState().front).toBe('review');
+    expect(workspace.getState().hidden[draft.id]).toBeUndefined();
+    expect(workspace.getState().hidden.scan).toBe(true);
+    expect(workspace.getState().lastCamera?.target).toEqual({
+      kind: 'selection',
+      selection: { kind: 'layer', id: draft.id, layer: draft.id },
+    });
+    const camera = workspace.getState().lastCamera;
+    act(() => q('eng-view-overlay')?.click());
+    expect(workspace.getState().hidden.scan).toBeUndefined();
+    expect(workspace.getState().hidden[draft.id]).toBeUndefined();
+    expect(workspace.getState().lastCamera).toBe(camera);
+    act(() => q('eng-view-cloud')?.click());
+    expect(workspace.getState().hidden[draft.id]).toBe(true);
+    expect(q('eng-model-review')?.textContent).not.toContain('No parts yet. Import a drawing');
+    // Switching tabs must preserve the chosen source overlay and the camera.
+    act(() => {
+      workbench.getState().show('selection');
+    });
+    expect(q('eng-model-review')).toBeNull();
+    act(() => {
+      workbench.getState().show('review');
+    });
+    expect(workspace.getState().hidden[draft.id]).toBe(true);
+    expect(workspace.getState().lastCamera).toBe(camera);
+  });
+
+  it('does not offer model review before there is a built draft layer', () => {
+    fake({ run: run({ generate: { status: 'done' } }), model: stackModel(), draftLayer: null });
+    act(() => {
+      engineerUi.getState().show();
+    });
+    expect((q('eng-review') as HTMLButtonElement | null)?.disabled ?? true).toBe(true);
+  });
+
+  it('explains an unavailable preview and offers a rebuild while acceptance stays disabled', () => {
+    vi.useFakeTimers();
+    try {
+      const rebuild = vi.fn(() => Promise.resolve());
+      fake({
+        run: run({ validate: { status: 'done' } }),
+        model: stackModel(),
+        draftLayer: 'draft',
+        rebuild,
+      });
+      act(() => {
+        engineerUi.getState().show();
+      });
+      act(() => {
+        q('eng-review')?.click();
+      });
+      expect(q('eng-model-review')?.textContent).toContain('Loading');
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(q('eng-model-review')?.textContent).toContain('preview has not loaded');
+      expect((must(q('eng-add-reviewed')) as HTMLButtonElement).disabled).toBe(true);
+      act(() => {
+        q('eng-preview-retry')?.click();
+      });
+      expect(rebuild).toHaveBeenCalledOnce();
+      expect(q('eng-preview-retry')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('is on, makes a run store for the open project and hands the agent a session', () => {
     expect(ENGINEERING_MODEL_UI).toBe(true);
     expect(engineerHost.getState()).toMatchObject({ projectId: 'p' });
@@ -175,23 +292,61 @@ describe('EngineerLayer', () => {
     expect(a.retry).toHaveBeenCalled();
   });
 
-  it('keeps Accept off, and says why, until a component is accepted in the review', async () => {
-    const a = fake({ run: run({ validate: { status: 'done' } }), model: model(false) });
+  it('opens the visible model review instead of accepting an unseen draft', async () => {
+    const a = fake({
+      run: run({ validate: { status: 'done' } }),
+      model: model(false),
+      draftLayer: 'draft',
+    });
     act(() => {
       engineerUi.getState().show();
     });
-    expect((q('eng-accept') as HTMLButtonElement).disabled).toBe(true);
-    expect(q('eng-accept-needs')?.textContent).toContain('Accept at least one component');
-    act(() => {
-      engineerHost.getState().store?.setState({ model: model(true) });
-    });
-    expect((q('eng-accept') as HTMLButtonElement).disabled).toBe(false);
-    expect(q('eng-accept-needs')).toBeNull();
+    expect(q('eng-accept')).toBeNull();
+    expect((q('eng-review') as HTMLButtonElement).disabled).toBe(false);
     await act(async () => {
-      q('eng-accept')?.click();
+      q('eng-review')?.click();
       await Promise.resolve();
     });
-    expect(a.accept).toHaveBeenCalled();
+    expect(engineerUi.getState().review).toBe(true);
+    expect(a.accept).not.toHaveBeenCalled();
+    act(() => {
+      workbench.getState().close('review');
+    });
+    expect(q('eng-model-review')).toBeNull();
+    expect(q('eng-run')).toBeNull();
+    expect(a.cancel).not.toHaveBeenCalled();
+    expect(engineerHost.getState().store?.getState().run?.id).toBe('run-1');
+  });
+
+  it('opens the finished model in the review workbench and Progress returns to the run', () => {
+    fake({
+      run: run({ review: { status: 'running' } }),
+      model: stackModel(),
+      draftLayer: 'draft',
+      busy: true,
+    });
+    act(() => {
+      engineerUi.getState().show();
+    });
+    fake({ run: run({ review: { status: 'done' } }), busy: false });
+    expect(workbench.getState().front).toBe('review');
+    expect(q('review-bench')).not.toBeNull();
+    act(() => q('eng-review-progress')?.click());
+    expect(q('eng-run')).not.toBeNull();
+    expect(q('review-bench')).toBeNull();
+    expect(engineerHost.getState().store?.getState().run?.id).toBe('run-1');
+  });
+
+  it('does not unfold a collapsed sidebar when review content mounts', () => {
+    shell.getState().setRight(true);
+    fake({ run: run({ validate: { status: 'done' } }), model: stackModel(), draftLayer: 'draft' });
+    act(() => {
+      engineerUi.getState().show();
+    });
+    act(() => q('eng-review')?.click());
+    expect(q('eng-model-review')).not.toBeNull();
+    expect(shell.getState().rightCollapsed).toBe(true);
+    shell.getState().setRight(false);
   });
 
   it('picks a region and an anchor in the 3D view and keeps every other choice', async () => {

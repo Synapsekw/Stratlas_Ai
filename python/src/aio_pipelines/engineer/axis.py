@@ -75,10 +75,17 @@ def estimate_axis(xyz: np.ndarray, seed: int = 0, slices: int = 24) -> Axis:
         sel = order[lo:hi]
         fit = fit_ring(np.column_stack([u[sel], w[sel]]), rng)
         if fit is not None:
-            cs.append((y, fit[0], fit[1], fit[2]))
+            cs.append((y, *fit))
     if len(cs) < 4:
         return coarse
     a = np.array(cs)
+    middle = (a[:, 0] > 0.2 * top) & (a[:, 0] < 0.7 * top) & (a[:, 6] >= 0.6)
+    if middle.sum() >= 6:
+        radii = a[middle, 3]
+        # A coherent bare shaft gives a less biased centreline than a crowded crown.
+        # Keep the original all-height method for open lattice or discontinuous members.
+        if np.ptp(radii) < 0.6 * np.median(radii):
+            a = a[middle]
     keep = np.ones(len(a), dtype=bool)
     coef_u = coef_w = np.zeros(2)
     for _ in range(2):

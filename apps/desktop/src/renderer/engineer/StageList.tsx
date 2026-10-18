@@ -19,6 +19,7 @@ const ICON: Record<Status, IconName> = {
  * until reached. Cancel while the run is at work; Retry once it stopped short: a stage failed or
  * was cancelled, the run stopped with a reason (`error`, such as photos alone and offline), or
  * run.json still says a stage is running though nothing runs (the app closed mid-stage).
+ * A skipped AI stage can be explicitly retried through the same consent flow.
  */
 export function StageList({
   stages,
@@ -80,15 +81,15 @@ export function StageList({
             {t('eng.stage.cancel')}
           </button>
         )}
-        {!running && stopped && (
+        {!running && (stopped || stages.identify?.status === 'skipped') && (
           <button
             type="button"
             className="btn sm primary"
-            data-testid="eng-retry"
+            data-testid={stopped ? 'eng-retry' : 'eng-run-ai'}
             onClick={onRetry}
           >
             <Icon name="refresh" size={12} />
-            {t('eng.stage.retry')}
+            {t(stopped ? 'eng.stage.retry' : 'eng.stage.runAi')}
           </button>
         )}
       </div>

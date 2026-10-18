@@ -138,3 +138,13 @@ export {
 } from './ComponentCard';
 export { ComponentTree, type ComponentTreeProps } from './ComponentTree';
 export { ComponentsSection, type ComponentsPanel } from './ComponentsSection';
+export {
+  modelCorrectionFingerprint,
+  createModelCorrection,
+  proposeModelCorrection,
+  buildCorrectionCandidate,
+  acceptModelCorrection,
+  rejectModelCorrection,
+  replyToModelCorrection,
+  rebaseModelCorrection,
+} from './engineer/corrections';

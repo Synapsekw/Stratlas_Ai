@@ -422,6 +422,7 @@ export function ModellerLayer() {
       onEngineer={
         engineeringUiOn() && !s.readOnly
           ? () => {
+              st.hide();
               createEngineeringModel();
             }
           : undefined

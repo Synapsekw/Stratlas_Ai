@@ -132,6 +132,15 @@ def stack_run(tmp_path_factory):
     return root, truth, read_pack(root), rec, result
 
 
+def test_unsupported_shaft_height_does_not_abort_optional_hardware(tmp_path, monkeypatch):
+    make_project(tmp_path, compound_pole_cloud())
+    monkeypatch.setattr(pipe, "_shaft_height", lambda *args: None)
+    run_job(ModelEvidence(), tmp_path, params())
+    pack = read_pack(tmp_path)
+    assert pack["height"] is None
+    assert not any(o["kind"] in ("climbing-steps", "light") for o in pack.get("observations", []))
+
+
 def test_partial_noisy_stack_pack(stack_run):
     root, truth, pack, rec, result = stack_run
     assert result["status"] == "done" if "status" in result else True
@@ -206,6 +215,17 @@ def _shape(v):
 
 
 def _compare_with_fixture(pack: dict, fixture: Path = FIXTURE) -> None:
+    # Preserve legacy pack fixtures as compatibility checks. The additive frame contains file
+    # stats from this test's temporary project; its invalidation is tested independently.
+    assert pack["frame"]["origin"] == list(ORIGIN)
+    assert pack["frame"]["coordinates"] == "project-local"
+    assert len(pack["frame"]["signature"]) == 64
+    pack = {k: v for k, v in pack.items() if k != "frame"}
+    for image in pack["images"]:
+        if image["kind"] in ("side", "top"):
+            assert image["projection"]["extent"] > 0
+            assert len(image["projection"]["centre"]) == 2
+    pack["images"] = [{k: v for k, v in image.items() if k != "projection"} for image in pack["images"]]
     if os.environ.get("AIO_UPDATE_FIXTURES"):
         fixture.parent.mkdir(parents=True, exist_ok=True)
         fixture.write_text(json.dumps(pack, indent=1) + "\n", "utf-8")
@@ -605,6 +625,14 @@ def test_only_the_source_files_decide_whether_a_job_may_resume(tmp_path):
     unrelated.write_bytes(b"changed")  # another cloud of the project: not this job's input
     run_job(ModelEvidence(), tmp_path, params(), job_id="j1")
     assert ModelEvidence().inputs(params(), tmp_path) == ["manifest.json", "clouds/scan.las"]
+
+
+def test_png_cloud_chunks_are_measurement_inputs(tmp_path):
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"layers": [{"id": "scan", "format": "png-packed", "src": {"path": "index.json"}}]})
+    )
+    (tmp_path / "index.json").write_text(json.dumps({"chunks": [{"file": "chunk.png"}]}))
+    assert "chunk.png" in ModelEvidence().inputs({"clouds": [{"layer": "scan"}]}, tmp_path)
 
 
 @pytest.mark.skipif(find_pdal() is None, reason="PDAL not found (set AIO_PDAL)")

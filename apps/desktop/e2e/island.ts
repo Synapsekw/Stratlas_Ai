@@ -311,6 +311,7 @@ const TAB_NAME: Record<TabId, string> = {
   environment: 'Environment',
   cutaway: 'Cutaway',
   rf: 'RF',
+  review: 'Model review',
 };
 
 /**

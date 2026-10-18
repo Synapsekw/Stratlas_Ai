@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ModelFamily } from './assemblies';
 import { Detail, EvidenceRegion, RunId } from './engineer';
+import { ComponentObservation, MeasurementFrame } from './componentObservation';
 
 /**
  * The `model.evidence` job: measures an asset locally and writes a bounded evidence pack under
@@ -11,6 +12,13 @@ import { Detail, EvidenceRegion, RunId } from './engineer';
 /** The minimum pack with the engineering measurement repairs, and its Settings feature name. */
 export const MODEL_EVIDENCE_MIN_PACK = '0.13.1';
 export const MODEL_EVIDENCE_FEATURE = 'Measuring an engineered asset';
+
+/** New component evidence jobs need the discovery, drawing and measured-frame processing pack. */
+export const COMPONENT_EVIDENCE_MIN_PACK = '0.16.0';
+export const COMPONENT_EVIDENCE_FEATURE = 'Building engineering components';
+
+/** Keep app freshness checks in step with Python's observation and checkpoint version. */
+export const ENGINEER_MEASUREMENT_ALGORITHM = 'components/7';
 
 /** Default sampling and image limits per detail. */
 export const EVIDENCE_LIMITS = {
@@ -42,8 +50,16 @@ export const ModelEvidenceParams = z
     clouds: z.array(z.object({ layer: z.string().min(1).max(128) }).strict()).max(4),
     /** 0..2 mesh layers (reference evidence). */
     meshes: z.array(z.object({ layer: z.string().min(1).max(128) }).strict()).max(2),
-    /** 0..400 photo originals, project-relative or absolute. */
-    photos: z.array(z.object({ path: z.string().min(1).max(1000) }).strict()).max(400),
+    /** Full local inventory; outbound images have a separate, smaller limit. */
+    photos: z.array(z.object({ path: z.string().min(1).max(1000) }).strict()).max(2000),
+    drawings: z
+      .array(z.object({ path: z.string().min(1).max(1000) }).strict())
+      .max(8)
+      .optional(),
+    cameraPoses: z
+      .object({ path: z.string().min(1).max(1000) })
+      .strict()
+      .optional(),
     region: EvidenceRegion.optional(),
     detail: Detail,
     limits: EvidenceLimits.optional(),
@@ -119,6 +135,11 @@ export const EvidenceImage = z
     h: z.number().int().positive(),
     bytes: z.number().int().nonnegative(),
     sha1: z.string().regex(/^[0-9a-f]{40}$/),
+    /** Shared orthographic view in local metres; generated views must not fit their own bounds. */
+    projection: z
+      .object({ centre: z.tuple([z.number(), z.number()]), extent: z.number().positive() })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -169,6 +190,15 @@ export const EvidencePack = z
       .strict()
       .nullable(),
     members: z.array(MemberGroup).max(16),
+    observations: z
+      .array(ComponentObservation)
+      .max(512)
+      .refine(
+        (items) => new Set(items.map((i) => i.id)).size === items.length,
+        'Observation IDs must be unique.',
+      )
+      .optional(),
+    frame: MeasurementFrame.optional(),
     familyHints: z
       .object({
         fillRatio: z.number().min(0).max(1),
@@ -192,7 +222,7 @@ export const EvidencePack = z
           .strict(),
       )
       .max(64),
-    photos: z.array(PhotoItem).max(400),
+    photos: z.array(PhotoItem).max(2000),
     images: z.array(EvidenceImage).max(64),
     /**
      * `available-not-run`: photos only, photogrammetry is installed but nothing was reconstructed

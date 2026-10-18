@@ -8,8 +8,8 @@
  * 1. inspect: the `model.evidence` job (its id in the stage `output`, so a retry resumes it).
  * 2. estimate: `evidence.json`, read and checked.
  * 3. identify: one structured request per pass (fast 1, standard 2, detailed 3; passes 2 and 3
- *    carry generated views of the draft when the renderer can make them). Every request waits for
- *    the person at the send preview. Offline, refused or declined: skipped with the reason, the
+ *    carry generated views of the draft when the renderer can make them). Approval covers the
+ *    selected inputs and budget once per run; a changed scope needs a new preview. Offline, refused or declined: skipped with the reason, the
  *    draft is measured-only. An identity conflict stops here with the flagged images.
  * 4. generate: the deterministic assembler, the model's georeference from the setup's placement,
  *    `model:write`.
@@ -29,17 +29,22 @@ import {
   type EvidencePreviewContent,
   type ModelRoute,
 } from '@aio/ai';
-import { layerTransformToGeoref, localToProject } from '@aio/geo';
+import { georefFor } from './georef';
+export { georefFor } from './georef';
 import { assemble, type AssembleResult, type UserOverrides } from '@aio/modelling';
 import { t } from '@aio/ui';
+import { workspace } from '@aio/workspace';
 import {
   DETAIL_BUDGETS,
+  EngineerRun as EngineerRunSchema,
+  ProcModel as ProcModelSchema,
+  type ModelCorrection,
   type EngineerProposal,
   type EngineerRun,
   type EngineerSetup,
   type EngineerStage,
   type EvidencePack,
-  type Georef,
+  type EvidenceImage,
   type GlbBuildReport,
   type GlbCheckReport,
   type IpcRequest,
@@ -110,6 +115,7 @@ export type GeneratedView = EngineerCallImage & { kind: 'generated' };
 
 /** The IPC a run needs, as plain promises (errors thrown as `Error` with a readable message). */
 export interface RunIpc {
+  sourceStamp?(setup: EngineerSetup): Promise<string>;
   /** The model route the engineer step uses now (Settings), or null when none is set. */
   route(): Promise<ModelRoute | null>;
   runRead(runId: string): Promise<{
@@ -142,7 +148,10 @@ export interface RunDeps {
   sleep?(ms: number): Promise<void>;
   newRunId?(): string;
   /** Generated views of the draft for passes 2 and 3 (engine offscreen snapshot). */
-  renderViews?(model: ProcModel, views: { id: string; view: string }[]): Promise<GeneratedView[]>;
+  renderViews?(
+    model: ProcModel,
+    views: { id: string; view: string; projection?: EvidenceImage['projection'] }[],
+  ): Promise<GeneratedView[]>;
   /** Silhouette IoU per side view (draft renders against the pack's side renders). */
   silhouette?(model: ProcModel, evidence: EvidencePack): Promise<Record<string, number>>;
 }
@@ -166,6 +175,8 @@ export interface RunState {
   silhouette: Record<string, number> | null;
   stage: EngineerStage | null;
   busy: boolean;
+  /** A failed rollback left disk state uncertain; only a successful reload clears this lock. */
+  recoveryRequired: boolean;
   error: string | null;
   notice: string | null;
   conflicts: { imageIds: string[]; reason: string }[];
@@ -178,11 +189,20 @@ export interface RunState {
   /** The person's corrections the draft was last assembled with (kept in run.json). */
   user: UserOverrides;
   start(setup: EngineerSetup, o?: { modelId?: string; runId?: string }): Promise<void>;
-  resume(runId: string): Promise<void>;
+  resume(
+    runId: string,
+    options?: { drive: false; layer?: string | null; draftLayer?: string | null },
+  ): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
   rebuild(user: UserOverrides): Promise<void>;
   accept(): Promise<void>;
+  /** Save review requests; accepting a proposal also persists the reviewed model atomically on failure. */
+  saveCorrections(
+    corrections: ModelCorrection[],
+    model?: ProcModel,
+    expected?: ProcModel,
+  ): Promise<void>;
   sendPreview(o: { once: { photos: boolean; scans: boolean }; costConfirmed: boolean }): void;
   declinePreview(): void;
   allowProject(kind: 'photos' | 'scans'): Promise<void>;
@@ -242,40 +262,6 @@ function dataUrlBytes(url: string): number {
  * measured base already stands on it), the record's anchor is that point in project E, N, H, and
  * only then is the horizontal placement the person's (`user`).
  */
-export function georefFor(
-  model: ProcModel,
-  setup: EngineerSetup,
-  evidence: EvidencePack | null,
-  project: RunDeps['project'],
-): Georef {
-  const metric = (evidence?.samples.kept ?? 0) > 0;
-  const anchor = setup.placement === 'anchor' ? setup.anchor : undefined;
-  // where the assembler stood the model: the measured base, else the anchor, else the origin
-  const measuredBase = metric ? (evidence?.base ?? evidence?.axis?.point) : undefined;
-  const shift: Vec3 =
-    anchor && measuredBase
-      ? [anchor[0] - measuredBase[0], anchor[1] - measuredBase[1], anchor[2] - measuredBase[2]]
-      : [0, 0, 0];
-  const transform = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ...shift, 1];
-  const g = layerTransformToGeoref(transform, project, null, 'engineer');
-  const horizontal: Georef['horizontal']['status'] = anchor
-    ? 'user'
-    : setup.placement === 'from-source' && metric
-      ? 'from-source'
-      : 'unplaced';
-  if (anchor) g.anchor = localToProject([anchor[0], anchor[1], anchor[2]], project.origin);
-  const scale = model.scale?.status ?? 'provisional';
-  return {
-    ...g,
-    heading: { deg: g.heading.deg, status: metric ? 'measured' : 'assumed-grid' },
-    scale: {
-      factor: g.scale.factor,
-      status:
-        scale === 'measured' ? 'measured' : scale === 'reference' ? 'reference' : 'provisional',
-    },
-    horizontal: { status: horizontal },
-  };
-}
 
 export function createRunStore(deps: RunDeps): StoreApi<RunState> {
   const sleep = (ms: number): Promise<void> =>
@@ -289,6 +275,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
   let answer: ((a: 'send' | 'decline' | 'cancel', o?: SendChoice) => void) | null = null;
   let user: UserOverrides = NO_OVERRIDES;
   let assembled: AssembleResult | null = null;
+  let savingCorrections = false;
 
   interface SendChoice {
     once: { photos: boolean; scans: boolean };
@@ -296,6 +283,15 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
   }
 
   const store = createStore<RunState>()((set, get) => {
+    const recoveryMessage =
+      'Reopen the engineering run before further edits: the saved model could not be restored.';
+    const writeBarrier = () =>
+      get().recoveryRequired ? recoveryMessage : savingCorrections ? runText.busy() : null;
+    const blockedWrite = () => {
+      const error = writeBarrier();
+      if (error) set({ error });
+      return error !== null;
+    };
     const check = (t: number) => {
       if (t !== token) throw new Cancelled('cancelled');
     };
@@ -330,12 +326,23 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
 
     async function inspect(t: number): Promise<void> {
       const setup = mustRun().setup;
-      const hash = await hashOf({ s: setup.sources, r: setup.region, d: setup.detail });
+      const hash = await hashOf({
+        s: setup.sources,
+        r: setup.region,
+        d: setup.detail,
+        sourceStamp: await deps.ipc.sourceStamp?.(setup),
+      });
       if (fresh('inspect', hash) && get().evidence) return;
-      const { clouds, meshes, photos } = setup.sources;
+      const { clouds, meshes, photos, drawings, cameraPoses } = setup.sources;
       if (clouds.length + meshes.length + photos.length === 0)
         throw new StageFailed(runText.noSources());
-      const known = statusOf('inspect')?.output;
+      const previous = statusOf('inspect');
+      if (previous?.hash !== hash && mustRun().approval) {
+        const next = { ...mustRun() };
+        delete next.approval;
+        await saveRun(next);
+      }
+      const known = previous?.hash === hash ? previous.output : undefined;
       let rec = known ? await deps.ipc.jobStatus(known) : null;
       // Cancel acknowledges the request before the runtime exits. A retry belongs to this
       // drive, so first let the previous cancellation finish, then resume its saved job.
@@ -360,6 +367,8 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           clouds,
           meshes,
           photos,
+          ...(drawings ? { drawings } : {}),
+          ...(cameraPoses ? { cameraPoses } : {}),
           ...(setup.region ? { region: setup.region } : {}),
           detail: setup.detail,
         },
@@ -478,6 +487,8 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       const route = deps.online() ? await deps.ipc.route() : null;
       return hashOf({
         summary: measurementSummary(e, run.setup),
+        observations: e?.observations ?? [],
+        frame: e?.frame?.signature,
         images: (e?.images ?? []).map((i) => [i.id, i.sha1]),
         excluded: get().excludedImages,
         setup: run.setup,
@@ -538,6 +549,15 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       if (choice.a === 'cancel') throw new Cancelled('cancelled');
       check(t);
       if (choice.a === 'decline' || !choice.o) return { declined: true as const };
+      await saveRun({
+        ...mustRun(),
+        approval: {
+          token: p.consent,
+          photos: choice.o.once.photos,
+          scans: choice.o.once.scans,
+          costConfirmed: choice.o.costConfirmed,
+        },
+      });
       return { token: p.consent, choice: choice.o };
     }
 
@@ -583,7 +603,11 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           const excluded = new Set(get().excludedImages);
           const views = (get().evidence?.images ?? [])
             .filter((i) => !excluded.has(i.id) && (i.kind === 'side' || i.kind === 'top'))
-            .map((i) => ({ id: `gen-${i.view}`.slice(0, 40), view: i.view }));
+            .map((i) => ({
+              id: `gen-${i.view}`.slice(0, 40),
+              view: i.view,
+              ...(i.projection ? { projection: i.projection } : {}),
+            }));
           if (views.length === 0) break;
           images = [...evidenceImages, ...(await deps.renderViews(draftFor(proposal), views))];
           check(t);
@@ -591,13 +615,24 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         const req: EngineerCall = {
           projectId: '',
           engineerRun: run.id,
+          approvalScope: 'run',
           pass,
           images,
           summary,
+          observations: get().evidence?.observations ?? [],
           setup: run.setup,
           ...(proposal ? { previous: proposal } : {}),
         };
-        const c = await consent(t, pass, req);
+        const approval = mustRun().approval;
+        let c = approval
+          ? {
+              token: approval.token,
+              choice: {
+                once: { photos: approval.photos, scans: approval.scans },
+                costConfirmed: approval.costConfirmed,
+              },
+            }
+          : await consent(t, pass, req);
         if ('refused' in c) {
           skipped = c.refused ?? runText.notPrepared();
           break;
@@ -607,12 +642,28 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           break;
         }
         aiRun = `${run.id}-p${String(pass)}-${String(++calls)}`;
-        const out = await deps.ipc.engineer({
-          ...req,
-          runId: aiRun,
-          consent: { token: c.token, photos: c.choice.once.photos, scans: c.choice.once.scans },
-          ...(c.choice.costConfirmed ? { costConfirmed: true } : {}),
-        });
+        const requestId = aiRun;
+        const send = () => {
+          if ('refused' in c || 'declined' in c) throw new StageFailed(runText.notPrepared());
+          return deps.ipc.engineer({
+            ...req,
+            runId: requestId,
+            consent: { token: c.token, photos: c.choice.once.photos, scans: c.choice.once.scans },
+            ...(c.choice.costConfirmed ? { costConfirmed: true } : {}),
+          });
+        };
+        let out = await send();
+        if (out.kind === 'refused' && out.approvalRequired) {
+          const next = { ...mustRun() };
+          delete next.approval;
+          await saveRun(next);
+          c = await consent(t, pass, req);
+          if ('refused' in c || 'declined' in c) {
+            skipped = runText.declined();
+            break;
+          }
+          out = await send();
+        }
         aiRun = null;
         check(t);
         if (out.kind === 'failed') {
@@ -784,6 +835,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       silhouette: null,
       stage: null,
       busy: false,
+      recoveryRequired: false,
       error: null,
       notice: null,
       conflicts: [],
@@ -796,6 +848,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       user: NO_OVERRIDES,
 
       async start(setup, o = {}) {
+        if (blockedWrite()) return;
         if (driving) await get().cancel();
         const now = deps.now();
         const id = o.runId ?? (deps.newRunId ?? (() => newRunIdAt(now)))();
@@ -829,11 +882,23 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         await go();
       },
 
-      async resume(runId) {
+      async resume(runId, options) {
+        if (savingCorrections) {
+          set({ error: runText.busy() });
+          return;
+        }
         if (driving) await get().cancel();
+        const restoring = ++token;
         const r = await deps.ipc.runRead(runId);
+        if (restoring !== token) return;
         if (!r.run) {
           set({ error: runText.noSuchRun(runId) });
+          return;
+        }
+        const model = await deps.ipc.modelRead(r.run.modelId);
+        if (restoring !== token) return;
+        if (get().recoveryRequired && !model) {
+          set({ error: recoveryMessage });
           return;
         }
         // the corrections come back with the run, so nothing reassembles without them
@@ -844,12 +909,23 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           run: r.run,
           evidence: r.evidence,
           proposal: r.proposal,
-          model: await deps.ipc.modelRead(r.run.modelId),
+          model,
           excludedImages: r.run.excludedImages ?? [],
           conflicts: [],
           notice: null,
+          error: null,
+          preview: null,
+          busy: false,
+          recoveryRequired: false,
+          layer: options?.layer ?? null,
+          draftLayer: options?.draftLayer ?? null,
+          build: null,
+          report: null,
+          silhouette: null,
+          unresolved: [],
+          flagged: [],
         });
-        await go();
+        if (options?.drive !== false) await go();
       },
 
       async cancel() {
@@ -863,12 +939,14 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       },
 
       async retry() {
+        if (blockedWrite()) return;
         if (driving) return;
         set({ conflicts: [], notice: null });
         await go();
       },
 
       async rebuild(next) {
+        if (blockedWrite()) return;
         if (driving) await get().cancel();
         user = next;
         set({ user });
@@ -878,6 +956,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       },
 
       async accept() {
+        if (blockedWrite()) return;
         if (get().busy) {
           set({ error: runText.busy() });
           return;
@@ -896,7 +975,119 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         return model ? { model, user } : null;
       },
 
+      async saveCorrections(corrections, nextModel, expected) {
+        const barrier = writeBarrier();
+        if (barrier) throw new Error(barrier);
+        const before = get();
+        const run = before.run;
+        const oldModel = before.model;
+        if (before.busy) throw new Error('Wait for the current modelling operation to finish.');
+        if (!run || !oldModel) throw new Error('No engineering model is open.');
+        if (expected && expected !== oldModel)
+          throw new Error('The model changed. Review a new proposal.');
+        if (
+          nextModel &&
+          (nextModel.id !== oldModel.id ||
+            JSON.stringify(nextModel.georef) !== JSON.stringify(oldModel.georef) ||
+            JSON.stringify(nextModel.scale) !== JSON.stringify(oldModel.scale))
+        )
+          throw new Error('A correction cannot change the model coordinate frame or scale.');
+        if (nextModel) ProcModelSchema.parse(nextModel);
+        const nextUser: UserOverrides = structuredClone(user);
+        if (nextModel) {
+          const ids = new Set(nextModel.assemblies.map((a) => a.id));
+          const oldIds = new Set(oldModel.assemblies.map((a) => a.id));
+          for (const a of oldModel.assemblies) if (!ids.has(a.id)) nextUser.removed.push(a.id);
+          nextUser.removed = [...new Set(nextUser.removed)];
+          nextUser.added = nextUser.added.filter((a) => ids.has(a.id));
+          for (const a of nextModel.assemblies) {
+            if (!oldIds.has(a.id)) nextUser.added.push(a);
+            else if (nextUser.added.some((x) => x.id === a.id))
+              nextUser.added = nextUser.added.map((x) => (x.id === a.id ? a : x));
+            if (
+              JSON.stringify(a) !== JSON.stringify(oldModel.assemblies.find((x) => x.id === a.id))
+            ) {
+              const scalars = Object.fromEntries(
+                Object.entries(a.params).filter(
+                  ([, v]) =>
+                    typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string',
+                ),
+              ) as Record<string, number | boolean | string>;
+              nextUser.params[a.id] = { ...nextUser.params[a.id], ...scalars };
+            }
+          }
+        }
+        const nextRun = EngineerRunSchema.parse({
+          ...run,
+          corrections,
+          user: nextUser,
+          ...(nextModel
+            ? {
+                stages: {
+                  ...run.stages,
+                  validate: {
+                    status: 'pending',
+                    message:
+                      'The model changed; validation and source fit need to be checked again.',
+                  },
+                },
+              }
+            : {}),
+        });
+        savingCorrections = true;
+        set({ busy: true, error: null });
+        let wroteModel = false;
+        let built: Awaited<ReturnType<RunIpc['modelBuild']>> | null = null;
+        try {
+          if (nextModel) {
+            await deps.ipc.modelWrite(nextModel);
+            wroteModel = true;
+            built = await deps.ipc.modelBuild(nextModel.id, !before.layer);
+          }
+          await deps.ipc.runWrite(nextRun);
+          user = nextUser;
+          set({
+            run: nextRun,
+            user,
+            ...(nextModel
+              ? {
+                  model: nextModel,
+                  build: built?.report ?? null,
+                  report: null,
+                  silhouette: null,
+                  ...(before.layer
+                    ? { layer: built?.layer ?? before.layer, draftLayer: null }
+                    : { draftLayer: built?.layer ?? before.draftLayer }),
+                }
+              : {}),
+          });
+        } catch (e) {
+          let message = e instanceof Error ? e.message : String(e);
+          if (wroteModel) {
+            try {
+              await deps.ipc.modelWrite(oldModel);
+              await deps.ipc.modelBuild(oldModel.id, !before.layer);
+              await deps.ipc.runWrite(run);
+            } catch {
+              message +=
+                ' Restoring the saved model failed; reopen the project before further edits.';
+              set({ recoveryRequired: true });
+            }
+          }
+          set({ error: message });
+          throw new Error(message, { cause: e });
+        } finally {
+          savingCorrections = false;
+          set({ busy: false });
+        }
+      },
+
       async setStatus(ids, status) {
+        const barrier = writeBarrier();
+        if (barrier) {
+          set({ error: barrier });
+          return { error: barrier };
+        }
         const model = get().model;
         if (!model) return { error: runText.nothingToAccept() };
         const want = new Set(ids);
@@ -937,12 +1128,14 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       },
 
       async allowProject(kind) {
+        if (blockedWrite()) return;
         await deps.ipc.setCloudEvidence(kind === 'photos' ? { photos: true } : { scans: true });
         const p = get().preview;
         if (p) set({ preview: { ...p, flags: { ...p.flags, [kind]: true } } });
       },
 
       async dropImages(ids) {
+        if (blockedWrite()) return;
         if (driving) await get().cancel();
         const excluded = [...new Set([...get().excludedImages, ...ids])].slice(0, 64);
         set({ excludedImages: excluded, conflicts: [], error: null });
@@ -967,6 +1160,21 @@ export function ipcRunIpc(bridge: Bridge, projectId: string, root: string): RunI
     if (!v.ok) throw new Error((v as { error?: string }).error ?? 'The request failed.');
     return v as Extract<T, { ok: true }>;
   };
+  // Building writes the manifest in main. The renderer must see that manifest before it can
+  // load the GLB. Keep the clock/visibility and never replace a newly opened project's state.
+  const refreshLayers = async () => {
+    const before = workspace.getState();
+    if (before.project?.id !== projectId || before.project.root !== root) return;
+    const seq = before.openSeq;
+    const opened = ok(await must(bridge.call('project:open', { path: root })));
+    const current = workspace.getState();
+    if (
+      current.openSeq === seq &&
+      current.project?.id === projectId &&
+      current.project.root === root
+    )
+      current.replaceManifest(opened.manifest);
+  };
   return {
     route: async () => {
       const settings = await must(bridge.call('settings:get', {}));
@@ -989,6 +1197,8 @@ export function ipcRunIpc(bridge: Bridge, projectId: string, root: string): RunI
     },
     evidenceImage: async (runId, imageId) =>
       ok(await must(bridge.call('engineer:evidenceImage', { projectId, runId, imageId }))).dataUrl,
+    sourceStamp: async (setup) =>
+      ok(await must(bridge.call('engineer:sourceStamp', { projectId, setup }))).signature,
     preview: (req) => must(bridge.call('ai:engineerPreview', { ...req, projectId })),
     engineer: (req) => must(bridge.call('ai:engineer', { ...req, projectId })),
     cancel: async (runId) => {
@@ -1020,6 +1230,7 @@ export function ipcRunIpc(bridge: Bridge, projectId: string, root: string): RunI
     },
     modelBuild: async (id, draft) => {
       const r = ok(await must(bridge.call('model:build', { projectId, id, draft })));
+      await refreshLayers();
       return { layer: r.layer, ...(r.report ? { report: r.report } : {}) };
     },
     validate: async (modelId, draft, detail) =>
@@ -1027,6 +1238,7 @@ export function ipcRunIpc(bridge: Bridge, projectId: string, root: string): RunI
         .report,
     accept: async (modelId) => {
       const r = ok(await must(bridge.call('engineer:accept', { projectId, modelId })));
+      await refreshLayers();
       return { layer: r.layer };
     },
     setCloudEvidence: async (o) => {

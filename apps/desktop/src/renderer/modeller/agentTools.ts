@@ -8,6 +8,7 @@ import {
   type EngineerModelSession,
 } from './engineerTools';
 import type { Modeller } from './store';
+import { registerCorrectionTools } from '../engineer/correctionTools';
 
 /** Inputs as `@aio/ai` `modellingToolInputs` checks them before an executor runs. */
 interface ModellingToolInputs {
@@ -100,6 +101,7 @@ export function registerModellingTools(host: ModellingToolHost): void {
   const { modeller } = host;
   // the engineering model's corrections (list, edit, counts, levels, add, remove)
   registerEngineerTools(host.engineer ?? activeEngineerSession);
+  registerCorrectionTools();
   const share = async () => !(await host.cloudRoute()) || host.cloudDrawings();
 
   async function model(id: string | undefined): Promise<ProcModel> {

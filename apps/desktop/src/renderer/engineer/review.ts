@@ -27,11 +27,26 @@ export function useEngineeringReview(
   const runModel = useRun((s) => s.model, null);
   const run = useRun((s) => s.run, null);
   const busy = useRun((s) => s.busy, false);
-  const draftLayer = useRun((s) => s.draftLayer, null);
+  const draftLayer = useRun((s) => s.layer ?? s.draftLayer, null);
   const state = useRun((s) => s, null);
   const hiddenLayers = useWorkspace((s) => s.hidden);
   const selected = host.selected;
   const engineering = runModel !== null && (shown === null || shown.id === runModel.id);
+
+  useEffect(() => {
+    if (!engineering || !draftLayer) return;
+    const ids = new Set(runModel.assemblies.map((a) => a.id));
+    const sync = () => {
+      const pick = workspace.getState().selection;
+      const id =
+        pick?.kind === 'asset' && pick.layer === draftLayer && ids.has(pick.id) ? pick.id : null;
+      if (engineerHost.getState().selected !== id) engineerHost.setState({ selected: id });
+    };
+    sync();
+    return workspace.subscribe((s, prev) => {
+      if (s.selection !== prev.selection) sync();
+    });
+  }, [engineering, runModel, draftLayer]);
 
   // the evidence thumbnails of the selected component, read once each
   useEffect(() => {
@@ -64,11 +79,14 @@ export function useEngineeringReview(
       modelVisible: draftLayer !== null && !hiddenLayers[draftLayer],
       stale: host.stale,
       thumbnails: host.thumbnails,
-      locked: busy,
+      locked: busy || !!state.layer,
     },
     {
       onSelect: (id) => {
         engineerHost.setState({ selected: id });
+        workspace
+          .getState()
+          .select(id && draftLayer ? { kind: 'asset', id, layer: draftLayer } : null);
       },
       onToggle: (id) => {
         const was = engineerHost.getState().hidden;

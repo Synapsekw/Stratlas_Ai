@@ -8,7 +8,7 @@ import {
   type Vec3,
 } from '@aio/schema';
 import { Icon, useFocusTrap, useT, type MessageKey } from '@aio/ui';
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import './engineer.css';
 
 type Setup = EngineerSetup;
@@ -53,11 +53,12 @@ const DETAILS: Detail[] = ['fast', 'standard', 'detailed'];
 const PLACEMENTS: PlacementMode[] = ['from-source', 'anchor', 'unplaced'];
 const REFS: RefWhat[] = ['height', 'diameter', 'other'];
 /** What the schema allows per source kind. */
-const MAX = { clouds: 4, meshes: 2, photos: 400 };
+const MAX = { clouds: 4, meshes: 2, photos: 2000 };
 
 const fmt = (v: number) => String(Number(v.toFixed(2)));
 
 export interface SetupDialogProps {
+  savedRuns?: ReactNode;
   /** The project's layers; point clouds, models and photo sets are offered as sources. */
   layers: readonly Layer[];
   /** The engineer route from Settings, shown read-only; null when none is set. */
@@ -70,6 +71,7 @@ export interface SetupDialogProps {
   run: { start(setup: Setup): Promise<void> };
   /** The file picker for photos outside the project; the chosen paths. */
   onPickPhotos: () => Promise<string[]>;
+  onPickSupplement?: (kind: 'drawings' | 'cameraPoses') => Promise<string[]>;
   /** A centre and radius picked in the 3D view (local frame, x and z), or null when cancelled. */
   onPickRegion: () => Promise<Region | null>;
   /** A point picked in the 3D view (local frame), or null when cancelled. */
@@ -105,6 +107,10 @@ export function SetupDialog(props: SetupDialogProps) {
     () => new Set((props.initial ?? []).filter((id) => sources.some((l) => l.id === id))),
   );
   const [files, setFiles] = useState<string[]>([]);
+  const [drawings, setDrawings] = useState<string[]>([]);
+  const [cameraPoses, setCameraPoses] = useState<string>();
+  const [step, setStep] = useState(0);
+  const [budget, setBudget] = useState('');
   const [region, setRegion] = useState<Region | null>(null);
   // a circle (centre and radius) or a box around the picked centre: width east, depth north,
   // and the height range it spans
@@ -141,11 +147,14 @@ export function SetupDialog(props: SetupDialogProps) {
           .slice(0, MAX.meshes)
           .map((l) => ({ layer: l.id })),
         photos,
+        ...(drawings.length ? { drawings: drawings.map((path) => ({ path })) } : {}),
+        ...(cameraPoses ? { cameraPoses: { path: cameraPoses } } : {}),
       },
       ...(region ? { region: regionOf(region, shape, box) } : {}),
       family,
       scope,
       detail,
+      budgetUsd: budget.trim() ? Number(budget) : DETAIL_BUDGETS[detail].costUsd,
       ...(refValue.trim() && value > 0
         ? {
             reference: {
@@ -247,324 +256,435 @@ export function SetupDialog(props: SetupDialogProps) {
         </div>
 
         <div className="dlg-b">
-          <fieldset className="dlg-sec eng-sec">
-            <legend>{t('eng.setup.sources')}</legend>
-            <p>{t('eng.setup.sourcesHint')}</p>
-            {sources.length === 0 && <p className="faint">{t('eng.setup.noSources')}</p>}
-            <div className="eng-sources">
-              {sources.map((l) => (
-                <label key={l.id} className="eng-choice">
-                  <input
-                    type="checkbox"
-                    checked={chosen.has(l.id)}
-                    data-testid={`eng-source-${l.id}`}
-                    onChange={() => {
-                      toggle(l.id);
-                    }}
-                  />
-                  <span>{l.name}</span>
-                  <span className="faint">
-                    {l.kind === 'photos'
-                      ? t('eng.setup.kind.photos', { count: l.items.length })
-                      : t(`eng.setup.kind.${l.kind}`)}
-                  </span>
-                </label>
-              ))}
-            </div>
-            <div className="acts">
-              <button
-                type="button"
-                className="btn sm"
-                data-testid="eng-add-photos"
-                onClick={() => {
-                  void props.onPickPhotos().then((paths) => {
-                    if (paths.length) setFiles((f) => [...new Set([...f, ...paths])]);
-                  });
-                }}
-              >
-                <Icon name="photo" size={12} />
-                {t('eng.setup.addPhotos')}
-              </button>
-              {files.length > 0 && (
-                <span className="eng-files" data-testid="eng-photo-files">
-                  {t('eng.setup.photoFiles', { count: files.length })}
-                  <button
-                    type="button"
-                    className="btn ghost icon sm"
-                    aria-label={t('eng.setup.clearFiles')}
-                    onClick={() => {
-                      setFiles([]);
-                    }}
-                  >
-                    <Icon name="x" size={12} />
-                  </button>
-                </span>
-              )}
-            </div>
-          </fieldset>
-
-          <fieldset className="dlg-sec eng-sec">
-            <legend>{t('eng.setup.region')}</legend>
-            <p>{t('eng.setup.regionHint')}</p>
-            <div className="acts">
-              <button
-                type="button"
-                className="btn sm"
-                data-testid="eng-region-pick"
-                onClick={() => {
-                  void props.onPickRegion().then((r) => {
-                    if (r) setRegion(r);
-                  });
-                }}
-              >
-                <Icon name="target" size={12} />
-                {t('eng.setup.regionPick')}
-              </button>
-              {region && (
-                <>
-                  <span className="eng-at mono" data-testid="eng-region">
-                    {t('eng.setup.regionAt', {
-                      e: fmt(region.centre[0]),
-                      n: fmt(-region.centre[1]),
-                      r: fmt(region.radiusM),
-                    })}
-                  </span>
-                  <span className="seg" role="group" aria-label={t('eng.setup.regionShape')}>
-                    {(['circle', 'box'] as const).map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        aria-pressed={shape === k}
-                        data-testid={`eng-region-${k}`}
-                        onClick={() => {
-                          setShape(k);
-                        }}
-                      >
-                        {t(k === 'circle' ? 'eng.setup.regionCircle' : 'eng.setup.regionBox')}
-                      </button>
-                    ))}
-                  </span>
-                  {shape === 'circle' && (
-                    <label className="eng-num">
-                      <span>{t('eng.setup.regionRadius')}</span>
-                      <input
-                        className="input mono"
-                        type="number"
-                        min={1}
-                        max={2000}
-                        value={region.radiusM}
-                        data-testid="eng-region-radius"
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (v > 0) setRegion({ ...region, radiusM: Math.min(2000, v) });
-                        }}
-                      />
-                    </label>
-                  )}
-                  {shape === 'box' &&
-                    BOX_FIELDS.map((f) => (
-                      <label key={f.key} className="eng-num">
-                        <span>{t(f.label)}</span>
-                        <input
-                          className="input mono"
-                          type="number"
-                          value={box[f.key]}
-                          data-testid={`eng-box-${f.key}`}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            const sized = f.key === 'width' || f.key === 'depth';
-                            if (Number.isFinite(v) && (!sized || v > 0))
-                              setBox({ ...box, [f.key]: v });
-                          }}
-                        />
-                      </label>
-                    ))}
-                  <button
-                    type="button"
-                    className="btn ghost icon sm"
-                    aria-label={t('eng.setup.regionClear')}
-                    data-testid="eng-region-clear"
-                    onClick={() => {
-                      setRegion(null);
-                    }}
-                  >
-                    <Icon name="x" size={12} />
-                  </button>
-                </>
-              )}
-            </div>
-          </fieldset>
-
-          <div className="eng-grid">
+          {props.savedRuns}
+          <ol className="eng-setup-steps" aria-label={t('eng.setup.steps')}>
+            {(
+              [
+                'eng.setup.step.sources',
+                'eng.setup.step.options',
+                'eng.setup.step.confirm',
+              ] as const
+            ).map((key, i) => (
+              <li key={key} aria-current={step === i ? 'step' : undefined}>
+                {i + 1}. {t(key)}
+              </li>
+            ))}
+          </ol>
+          <div hidden={step !== 0}>
             <fieldset className="dlg-sec eng-sec">
-              <legend>{t('eng.setup.family')}</legend>
-              {props.familyHint && (
-                <p data-testid="eng-family-hint" title={props.familyHint.reasons?.join('; ')}>
-                  {t('eng.setup.familyHint', {
-                    family: t(`eng.setup.family.${props.familyHint.suggested}`),
-                  })}
-                </p>
-              )}
-              <select
-                className="input"
-                aria-label={t('eng.setup.family')}
-                data-testid="eng-family"
-                value={family}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setFamily(v === 'auto' ? 'auto' : ModelFamily.parse(v));
-                }}
-              >
-                <option value="auto">{t('eng.setup.familyAuto')}</option>
-                {ModelFamily.options.map((f) => (
-                  <option key={f} value={f}>
-                    {t(`eng.setup.family.${f}`)}
-                  </option>
+              <legend>{t('eng.setup.sources')}</legend>
+              <p>{t('eng.setup.sourcesHint')}</p>
+              {sources.length === 0 && <p className="faint">{t('eng.setup.noSources')}</p>}
+              <div className="eng-sources">
+                {sources.map((l) => (
+                  <label key={l.id} className="eng-choice">
+                    <input
+                      type="checkbox"
+                      checked={chosen.has(l.id)}
+                      data-testid={`eng-source-${l.id}`}
+                      onChange={() => {
+                        toggle(l.id);
+                      }}
+                    />
+                    <span>{l.name}</span>
+                    <span className="faint">
+                      {l.kind === 'photos'
+                        ? t('eng.setup.kind.photos', { count: l.items.length })
+                        : t(`eng.setup.kind.${l.kind}`)}
+                    </span>
+                  </label>
                 ))}
-              </select>
-            </fieldset>
-
-            <fieldset className="dlg-sec eng-sec">
-              <legend>{t('eng.setup.scope')}</legend>
-              {SCOPES.map((s) =>
-                radio('scope', s, scope === s, t(`eng.setup.scope.${s}`), () => {
-                  setScope(s);
-                }),
-              )}
-            </fieldset>
-
-            <fieldset className="dlg-sec eng-sec">
-              <legend>{t('eng.setup.detail')}</legend>
-              {DETAILS.map((d) =>
-                radio(
-                  'detail',
-                  d,
-                  detail === d,
-                  t(`eng.setup.detail.${d}`),
-                  () => {
-                    setDetail(d);
-                  },
-                  t(`eng.setup.detailHint.${d}` as MessageKey, {
-                    usd: DETAIL_BUDGETS[d].costUsd.toFixed(2),
-                  }),
-                ),
-              )}
-            </fieldset>
-
-            <fieldset className="dlg-sec eng-sec">
-              <legend>{t('eng.setup.reference')}</legend>
-              <p>{t('eng.setup.referenceHint')}</p>
-              <div className="eng-row">
-                <select
-                  className="input"
-                  aria-label={t('eng.setup.reference')}
-                  value={refWhat}
-                  onChange={(e) => {
-                    const v = REFS.find((r) => r === e.target.value);
-                    if (v) setRefWhat(v);
-                  }}
-                >
-                  {REFS.map((r) => (
-                    <option key={r} value={r}>
-                      {t(`eng.setup.ref.${r}`)}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="input mono"
-                  inputMode="decimal"
-                  aria-label={t('eng.setup.refValue')}
-                  placeholder={t('eng.setup.refValue')}
-                  data-testid="eng-ref-value"
-                  aria-invalid={refInvalid}
-                  value={refValue}
-                  onChange={(e) => {
-                    setRefValue(e.target.value);
-                  }}
-                />
               </div>
-              {refInvalid && (
-                <p className="eng-bad" role="alert" data-testid="eng-ref-invalid">
-                  {t('eng.setup.refInvalid')}
-                </p>
-              )}
-              {refWhat === 'other' && (
-                <input
-                  className="input"
-                  aria-label={t('eng.setup.refLabel')}
-                  placeholder={t('eng.setup.refLabel')}
-                  maxLength={80}
-                  value={refLabel}
-                  onChange={(e) => {
-                    setRefLabel(e.target.value);
-                  }}
-                />
-              )}
-            </fieldset>
-          </div>
-
-          <fieldset className="dlg-sec eng-sec">
-            <legend>{t('eng.setup.placement')}</legend>
-            {PLACEMENTS.map((p) =>
-              radio('placement', p, placement === p, t(`eng.setup.placement.${p}`), () => {
-                setPlacement(p);
-              }),
-            )}
-            {placement === 'anchor' && (
               <div className="acts">
                 <button
                   type="button"
                   className="btn sm"
-                  data-testid="eng-anchor-pick"
+                  data-testid="eng-add-photos"
                   onClick={() => {
-                    void props.onPickAnchor().then((a) => {
-                      if (a) setAnchor(a);
+                    void props.onPickPhotos().then((paths) => {
+                      if (paths.length) setFiles((f) => [...new Set([...f, ...paths])]);
                     });
                   }}
                 >
-                  <Icon name="point" size={12} />
-                  {t('eng.setup.anchorPick')}
+                  <Icon name="photo" size={12} />
+                  {t('eng.setup.addPhotos')}
                 </button>
-                {anchor ? (
-                  <span className="eng-at mono" data-testid="eng-anchor">
-                    {t('eng.setup.anchorAt', {
-                      e: fmt(anchor[0]),
-                      n: fmt(-anchor[2]),
-                      h: fmt(anchor[1]),
-                    })}
+                {files.length > 0 && (
+                  <span className="eng-files" data-testid="eng-photo-files">
+                    {t('eng.setup.photoFiles', { count: files.length })}
+                    <button
+                      type="button"
+                      className="btn ghost icon sm"
+                      aria-label={t('eng.setup.clearFiles')}
+                      onClick={() => {
+                        setFiles([]);
+                      }}
+                    >
+                      <Icon name="x" size={12} />
+                    </button>
                   </span>
-                ) : (
-                  <span className="faint">{t('eng.setup.anchorNeeded')}</span>
                 )}
               </div>
-            )}
-          </fieldset>
+              <div className="acts">
+                {(['drawings', 'cameraPoses'] as const).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    className="btn sm"
+                    disabled={!props.onPickSupplement}
+                    onClick={() => {
+                      void props.onPickSupplement?.(kind).then((paths) => {
+                        if (kind === 'drawings')
+                          setDrawings((previous) =>
+                            [...new Set([...previous, ...paths])].slice(0, 8),
+                          );
+                        else if (paths[0]) setCameraPoses(paths[0]);
+                      });
+                    }}
+                  >
+                    {t(kind === 'drawings' ? 'eng.setup.addDrawings' : 'eng.setup.addCameras')}
+                  </button>
+                ))}
+              </div>
+              {(drawings.length > 0 || cameraPoses) && (
+                <ul className="eng-source-files">
+                  {drawings.map((path) => (
+                    <li key={path}>
+                      {path.split(/[\\/]/).at(-1)}{' '}
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        onClick={() => {
+                          setDrawings((d) => d.filter((p) => p !== path));
+                        }}
+                      >
+                        {t('eng.setup.remove')}
+                      </button>
+                    </li>
+                  ))}
+                  {cameraPoses && (
+                    <li>
+                      {cameraPoses.split(/[\\/]/).at(-1)}{' '}
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        onClick={() => {
+                          setCameraPoses(undefined);
+                        }}
+                      >
+                        {t('eng.setup.remove')}
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              )}
+              <p className="faint">{t('eng.setup.calibrationHint')}</p>
+            </fieldset>
 
-          <section className="dlg-sec eng-sec" aria-labelledby={`${id}-ai`}>
-            <h3 id={`${id}-ai`}>{t('eng.setup.ai')}</h3>
-            <div className="eng-route">
-              <span data-testid="eng-route">
-                {props.route
-                  ? t('eng.setup.aiRoute', {
-                      provider: providerName,
-                      model: modelLabel(props.route.model),
-                    })
-                  : t('eng.setup.aiNone')}
-              </span>
-              <button
-                type="button"
-                className="btn ghost sm"
-                data-testid="eng-open-settings"
-                onClick={props.onOpenSettings}
-              >
-                {t('eng.setup.settings')}
-              </button>
+            <fieldset className="dlg-sec eng-sec">
+              <legend>{t('eng.setup.region')}</legend>
+              <p>{t('eng.setup.regionHint')}</p>
+              <div className="acts">
+                <button
+                  type="button"
+                  className="btn sm"
+                  data-testid="eng-region-pick"
+                  onClick={() => {
+                    void props.onPickRegion().then((r) => {
+                      if (r) setRegion(r);
+                    });
+                  }}
+                >
+                  <Icon name="target" size={12} />
+                  {t('eng.setup.regionPick')}
+                </button>
+                {region && (
+                  <>
+                    <span className="eng-at mono" data-testid="eng-region">
+                      {t('eng.setup.regionAt', {
+                        e: fmt(region.centre[0]),
+                        n: fmt(-region.centre[1]),
+                        r: fmt(region.radiusM),
+                      })}
+                    </span>
+                    <span className="seg" role="group" aria-label={t('eng.setup.regionShape')}>
+                      {(['circle', 'box'] as const).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          aria-pressed={shape === k}
+                          data-testid={`eng-region-${k}`}
+                          onClick={() => {
+                            setShape(k);
+                          }}
+                        >
+                          {t(k === 'circle' ? 'eng.setup.regionCircle' : 'eng.setup.regionBox')}
+                        </button>
+                      ))}
+                    </span>
+                    {shape === 'circle' && (
+                      <label className="eng-num">
+                        <span>{t('eng.setup.regionRadius')}</span>
+                        <input
+                          className="input mono"
+                          type="number"
+                          min={1}
+                          max={2000}
+                          value={region.radiusM}
+                          data-testid="eng-region-radius"
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            if (v > 0) setRegion({ ...region, radiusM: Math.min(2000, v) });
+                          }}
+                        />
+                      </label>
+                    )}
+                    {shape === 'box' &&
+                      BOX_FIELDS.map((f) => (
+                        <label key={f.key} className="eng-num">
+                          <span>{t(f.label)}</span>
+                          <input
+                            className="input mono"
+                            type="number"
+                            value={box[f.key]}
+                            data-testid={`eng-box-${f.key}`}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              const sized = f.key === 'width' || f.key === 'depth';
+                              if (Number.isFinite(v) && (!sized || v > 0))
+                                setBox({ ...box, [f.key]: v });
+                            }}
+                          />
+                        </label>
+                      ))}
+                    <button
+                      type="button"
+                      className="btn ghost icon sm"
+                      aria-label={t('eng.setup.regionClear')}
+                      data-testid="eng-region-clear"
+                      onClick={() => {
+                        setRegion(null);
+                      }}
+                    >
+                      <Icon name="x" size={12} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </fieldset>
+          </div>
+          <div hidden={step !== 1}>
+            <div className="eng-grid">
+              <fieldset className="dlg-sec eng-sec">
+                <legend>{t('eng.setup.family')}</legend>
+                {props.familyHint && (
+                  <p data-testid="eng-family-hint" title={props.familyHint.reasons?.join('; ')}>
+                    {t('eng.setup.familyHint', {
+                      family: t(`eng.setup.family.${props.familyHint.suggested}`),
+                    })}
+                  </p>
+                )}
+                <select
+                  className="input"
+                  aria-label={t('eng.setup.family')}
+                  data-testid="eng-family"
+                  value={family}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFamily(v === 'auto' ? 'auto' : ModelFamily.parse(v));
+                  }}
+                >
+                  <option value="auto">{t('eng.setup.familyAuto')}</option>
+                  {ModelFamily.options.map((f) => (
+                    <option key={f} value={f}>
+                      {t(`eng.setup.family.${f}`)}
+                    </option>
+                  ))}
+                </select>
+              </fieldset>
+
+              <fieldset className="dlg-sec eng-sec">
+                <legend>{t('eng.setup.scope')}</legend>
+                {SCOPES.map((s) =>
+                  radio('scope', s, scope === s, t(`eng.setup.scope.${s}`), () => {
+                    setScope(s);
+                  }),
+                )}
+              </fieldset>
+
+              <fieldset className="dlg-sec eng-sec">
+                <legend>{t('eng.setup.detail')}</legend>
+                {DETAILS.map((d) =>
+                  radio(
+                    'detail',
+                    d,
+                    detail === d,
+                    t(`eng.setup.detail.${d}`),
+                    () => {
+                      setDetail(d);
+                    },
+                    t(`eng.setup.detailHint.${d}` as MessageKey, {
+                      usd: DETAIL_BUDGETS[d].costUsd.toFixed(2),
+                    }),
+                  ),
+                )}
+              </fieldset>
+
+              <fieldset className="dlg-sec eng-sec">
+                <legend>{t('eng.setup.reference')}</legend>
+                <p>{t('eng.setup.referenceHint')}</p>
+                <div className="eng-row">
+                  <select
+                    className="input"
+                    aria-label={t('eng.setup.reference')}
+                    value={refWhat}
+                    onChange={(e) => {
+                      const v = REFS.find((r) => r === e.target.value);
+                      if (v) setRefWhat(v);
+                    }}
+                  >
+                    {REFS.map((r) => (
+                      <option key={r} value={r}>
+                        {t(`eng.setup.ref.${r}`)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="input mono"
+                    inputMode="decimal"
+                    aria-label={t('eng.setup.refValue')}
+                    placeholder={t('eng.setup.refValue')}
+                    data-testid="eng-ref-value"
+                    aria-invalid={refInvalid}
+                    value={refValue}
+                    onChange={(e) => {
+                      setRefValue(e.target.value);
+                    }}
+                  />
+                </div>
+                {refInvalid && (
+                  <p className="eng-bad" role="alert" data-testid="eng-ref-invalid">
+                    {t('eng.setup.refInvalid')}
+                  </p>
+                )}
+                {refWhat === 'other' && (
+                  <input
+                    className="input"
+                    aria-label={t('eng.setup.refLabel')}
+                    placeholder={t('eng.setup.refLabel')}
+                    maxLength={80}
+                    value={refLabel}
+                    onChange={(e) => {
+                      setRefLabel(e.target.value);
+                    }}
+                  />
+                )}
+              </fieldset>
             </div>
-            {!props.online && (
-              <p className="notice small" role="status" data-testid="eng-offline">
-                {t('eng.setup.offline')}
-              </p>
+
+            <fieldset className="dlg-sec eng-sec">
+              <legend>{t('eng.setup.placement')}</legend>
+              {PLACEMENTS.map((p) =>
+                radio('placement', p, placement === p, t(`eng.setup.placement.${p}`), () => {
+                  setPlacement(p);
+                }),
+              )}
+              {placement === 'anchor' && (
+                <div className="acts">
+                  <button
+                    type="button"
+                    className="btn sm"
+                    data-testid="eng-anchor-pick"
+                    onClick={() => {
+                      void props.onPickAnchor().then((a) => {
+                        if (a) setAnchor(a);
+                      });
+                    }}
+                  >
+                    <Icon name="point" size={12} />
+                    {t('eng.setup.anchorPick')}
+                  </button>
+                  {anchor ? (
+                    <span className="eng-at mono" data-testid="eng-anchor">
+                      {t('eng.setup.anchorAt', {
+                        e: fmt(anchor[0]),
+                        n: fmt(-anchor[2]),
+                        h: fmt(anchor[1]),
+                      })}
+                    </span>
+                  ) : (
+                    <span className="faint">{t('eng.setup.anchorNeeded')}</span>
+                  )}
+                </div>
+              )}
+            </fieldset>
+
+            <section className="dlg-sec eng-sec" aria-labelledby={`${id}-ai`}>
+              <h3 id={`${id}-ai`}>{t('eng.setup.ai')}</h3>
+              <div className="eng-route">
+                <span data-testid="eng-route">
+                  {props.route
+                    ? t('eng.setup.aiRoute', {
+                        provider: providerName,
+                        model: modelLabel(props.route.model),
+                      })
+                    : t('eng.setup.aiNone')}
+                </span>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  data-testid="eng-open-settings"
+                  onClick={props.onOpenSettings}
+                >
+                  {t('eng.setup.settings')}
+                </button>
+              </div>
+              {!props.online && (
+                <p className="notice small" role="status" data-testid="eng-offline">
+                  {t('eng.setup.offline')}
+                </p>
+              )}
+            </section>
+          </div>
+          <section hidden={step !== 2} className="dlg-sec eng-sec">
+            <h3>{t('eng.setup.step.confirm')}</h3>
+            <p>{t('eng.setup.runFlow')}</p>
+            <dl className="eng-summary">
+              <dt>{t('eng.setup.sources')}</dt>
+              <dd>
+                {t('eng.setup.sourceCount', {
+                  clouds: ready?.sources.clouds.length ?? 0,
+                  photos: ready?.sources.photos.length ?? 0,
+                  drawings: drawings.length,
+                })}
+              </dd>
+              <dt>{t('eng.setup.placement')}</dt>
+              <dd>{t(`eng.setup.placement.${placement}`)}</dd>
+              <dt>{t('eng.setup.ai')}</dt>
+              <dd>
+                {props.route
+                  ? `${providerName} · ${modelLabel(props.route.model)}`
+                  : t('eng.setup.aiNone')}
+              </dd>
+            </dl>
+            {placement === 'from-source' && (
+              <p className="notice small">{t('eng.setup.frameLock')}</p>
             )}
+            <label className="eng-num">
+              <span>{t('eng.setup.budget')}</span>
+              <input
+                className="input mono"
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={budget || DETAIL_BUDGETS[detail].costUsd}
+                onChange={(e) => {
+                  setBudget(e.target.value);
+                }}
+              />
+            </label>
+            <p className="faint">{t('eng.setup.budgetHint')}</p>
           </section>
         </div>
 
@@ -572,13 +692,12 @@ export function SetupDialog(props: SetupDialogProps) {
           <button
             type="button"
             className="btn"
-            data-testid="eng-preview"
-            disabled={!props.online || !ready || !props.route}
+            hidden={step === 0}
             onClick={() => {
-              if (ready) props.onPreview(ready);
+              setStep((s) => Math.max(0, s - 1));
             }}
           >
-            {t('eng.setup.preview')}
+            {t('eng.setup.back')}
           </button>
           <span className="grow" />
           <button type="button" className="btn ghost" onClick={props.onClose}>
@@ -588,10 +707,23 @@ export function SetupDialog(props: SetupDialogProps) {
             type="button"
             className="btn primary"
             data-testid="eng-start"
+            hidden={step !== 2}
             disabled={!ready || anchorMissing || refInvalid || starting}
             onClick={() => void start()}
           >
             {t('eng.setup.start')}
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            data-testid="eng-next"
+            hidden={step === 2}
+            disabled={!ready || anchorMissing || refInvalid}
+            onClick={() => {
+              setStep((s) => Math.min(2, s + 1));
+            }}
+          >
+            {t('eng.setup.next')}
           </button>
         </div>
       </div>

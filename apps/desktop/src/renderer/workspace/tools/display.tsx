@@ -5,7 +5,7 @@ import type { IconName } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 
 export const LABEL_MODES: { mode: LabelMode; label: string; hint: string }[] = [
-  { mode: 'off', label: 'Off', hint: 'Selection and hover only' },
+  { mode: 'off', label: 'Off', hint: 'All model labels hidden, including selection and hover' },
   { mode: 'key', label: 'Key', hint: 'One per component group' },
   { mode: 'all', label: 'All', hint: 'Every tagged component' },
 ];

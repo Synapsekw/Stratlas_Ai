@@ -13,6 +13,8 @@ never refers to a file that is not there yet. Running a job again with the same 
 step that has a manifest: a cancelled or crashed job resumes where it stopped.
 A resume is refused when the job's input files (``Pipeline.inputs``) changed since it started:
 ``job.json`` keeps a hash of their sorted paths, sizes and modification times.
+Pipelines may declare ``checkpoint_version`` to invalidate completed steps when their processing
+algorithm changes; the new version is recorded only after the old checkpoints are removed.
 """
 
 from __future__ import annotations
@@ -77,6 +79,8 @@ class Pipeline(Protocol):
 
     # Optional: ``inputs(params) -> list[str]``, the files and folders the job reads (absolute or
     # project-relative). A resumed job refuses to continue when any of them changed.
+    # Optional: ``checkpoint_version: str``, a nonempty processing version. A changed or missing
+    # recorded version invalidates this job's completed steps before adopting the current version.
 
 
 INPUTS_CHANGED = "The input photos changed since this job started. Start the job again."
@@ -315,6 +319,8 @@ class Job:
         self.weights: list[float] = []
         self.done = 0.0
         self.inputs: dict[str, Any] | None = None
+        version = getattr(pipeline, "checkpoint_version", None)
+        self.pipeline_version = version if isinstance(version, str) and version.strip() else None
 
     # notifications
     def log(self, message: str, level: str = "info", step: str | None = None) -> None:
@@ -367,6 +373,8 @@ class Job:
             ],
         }
         inputs = self.inputs or prev.get("inputs")
+        if self.pipeline_version is not None:
+            m["pipelineVersion"] = self.pipeline_version
         if inputs:
             m["inputs"] = inputs
         if error:
@@ -412,17 +420,24 @@ class Job:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.staging.mkdir(parents=True, exist_ok=True)
         self.steps_dir.mkdir(parents=True, exist_ok=True)
+        invalidate = (
+            bool(prev)
+            and self.pipeline_version is not None
+            and prev.get("pipelineVersion") != self.pipeline_version
+        )
         if prev and self.pipeline.name == "model.evidence":
             recorded_version = str(prev.get("version", ""))
             release = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?", recorded_version)
-            predates_repair = release is None or tuple(map(int, release.groups())) < (0, 13, 1)
+            predates_repair = release is None or tuple(map(int, release.groups())) < (0, 14, 0)
             if predates_repair and (release is None or recorded_version != __version__):
-                # Remove every checkpoint before relabelling job.json. If interrupted here, its
-                # old version remains and the next resume retries the invalidation. Downstream
-                # stages must not reuse old sections or members after the measuring repair.
-                for checkpoint in self.steps_dir.glob("*.json"):
-                    checkpoint.unlink()
-                self.log("Processing tools changed. Re-measuring this asset with the repaired tools.", "warn")
+                invalidate = True
+        if invalidate:
+            # Remove every checkpoint before relabelling job.json. If interrupted here, its
+            # old versions remain and the next resume retries the invalidation. Downstream
+            # stages must not reuse measurements from the earlier algorithm.
+            for checkpoint in self.steps_dir.glob("*.json"):
+                checkpoint.unlink()
+            self.log("Processing tools changed. Re-running this job with the current tools.", "warn")
         states = ["pending"] * len(self.steps)
         self._manifest("running", states=states)
         self.emit(

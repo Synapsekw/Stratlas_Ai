@@ -48,7 +48,8 @@ from .members import (
     find_light_candidates,
     find_platforms,
 )
-from .render import colour_bands, crop_views, render_ortho, render_slice, write_images
+from .observations import ALGORITHM, measurement_frame
+from .render import colour_bands, crop_views, projection_frame, render_ortho, render_slice, write_images
 from .sections import SliceFit, Taper, fit_sections, fit_taper
 
 #: Mirrors `EVIDENCE_LIMITS` in packages/schema/src/modelEvidence.ts (maxPoints, maxImages, maxPx).
@@ -196,6 +197,17 @@ def _shaft_height(kept: np.ndarray, axis: Axis, taper: Taper, step: float, famil
     central = h[np.hypot(u, w) <= max(rs) * 1.5]
     if len(central) >= 40 and ys[-1] + step < 0.9 * float(np.percentile(central, 99)):
         return None
+    if family == "telecom-monopole":
+        # A few cables or mounting pipes beside the last section do not continue the
+        # mast wall. Its highest supported band must span a substantial part of a ring.
+        radius = np.interp(h, ys, rs)
+        wall = (abs(np.hypot(u, w) - radius) < np.maximum(0.03, radius * 0.12)) & (h <= ys[-1] + step)
+        bins = np.floor(h / 0.1).astype(int)
+        az = (np.arctan2(w, u) * 12 / np.pi).astype(int)
+        for band in sorted(np.unique(bins[wall]), reverse=True):
+            selected = wall & (bins == band)
+            if selected.sum() >= 12 and len(np.unique(az[selected])) >= 8:
+                return float(np.percentile(h[selected], 98))
     wall = np.hypot(u, w) >= 0.85 * np.interp(h, ys, rs)
     sel = wall & (h <= ys[-1] + step)
     return float(h[sel].max()) if sel.any() else float(ys[-1])
@@ -203,12 +215,15 @@ def _shaft_height(kept: np.ndarray, axis: Axis, taper: Taper, step: float, famil
 
 class ModelEvidence:
     name = "model.evidence"
+    checkpoint_version = ALGORITHM
     title = "Measure an engineered asset"
     description = (
         "Crop, ground, axis, sections and repeated members of a chimney, flare stack or tower from a "
         "point cloud and photos, as a bounded evidence pack."
     )
-    keys = frozenset({"run", "clouds", "meshes", "photos", "region", "detail", "limits"})
+    keys = frozenset(
+        {"run", "clouds", "meshes", "photos", "drawings", "cameraPoses", "region", "detail", "limits"}
+    )
 
     # ------------------------------------------------------------------ params
 
@@ -218,7 +233,12 @@ class ModelEvidence:
         if not isinstance(run, str) or not RUN_ID.match(run):
             raise JobError("run must be run- followed by lower-case letters, digits and dashes.")
         out: dict[str, Any] = {"run": run}
-        for key, limit, field in (("clouds", 4, "layer"), ("meshes", 2, "layer"), ("photos", 400, "path")):
+        for key, limit, field in (
+            ("clouds", 4, "layer"),
+            ("meshes", 2, "layer"),
+            ("photos", 2000, "path"),
+            ("drawings", 8, "path"),
+        ):
             items = params.get(key, [])
             if not isinstance(items, list) or len(items) > limit:
                 raise JobError(f"{key} must be a list of at most {limit}.")
@@ -233,6 +253,16 @@ class ModelEvidence:
                     raise JobError(f"Each of {key} is {{ {field} }}.")
                 vals.append({field: it[field]})
             out[key] = vals
+        if "cameraPoses" in params:
+            poses = params["cameraPoses"]
+            if (
+                not isinstance(poses, dict)
+                or set(poses) != {"path"}
+                or not isinstance(poses["path"], str)
+                or not poses["path"]
+            ):
+                raise JobError("cameraPoses must be { path } with a nonempty path.")
+            out["cameraPoses"] = poses
         detail = params.get("detail", "standard")
         if detail not in LIMITS:
             raise JobError("detail must be fast, standard or detailed.")
@@ -282,9 +312,14 @@ class ModelEvidence:
             src = layer.get("src") if isinstance(layer, dict) else None
             if isinstance(src, dict) and isinstance(src.get("path"), str):
                 files.append(src["path"])
+                if layer.get("format") == "png-packed" and project is not None:
+                    index = json.loads((Path(project) / src["path"]).read_text("utf-8"))
+                    files.extend(c["file"] for c in index["chunks"])
             else:  # unknown layer: the job will say so; the folders keep a changed file noticed
                 files += ["clouds", "meshes", "photogrammetry"]
-        return ["manifest.json", *files, *photos]
+        drawings = [p["path"] for p in params.get("drawings", [])]
+        poses = [params["cameraPoses"]["path"]] if params.get("cameraPoses") else []
+        return ["manifest.json", *files, *photos, *drawings, *poses]
 
     # ------------------------------------------------------------------ plan
 
@@ -471,16 +506,103 @@ class ModelEvidence:
             elif hints.suggested == "flare":
                 relevant = [platforms, lights]
             else:
-                relevant = [antennas, lights]
+                relevant = [antennas, lights, platforms]
             height = _shaft_height(asset, axis, taper, float(sec["step"]), hints.suggested)
             step = max((height or 1.0) / 40.0, 0.5)
             bands = colour_bands(asset, rgb, axis, step) if rgb is not None else []
+            observations, drawing_warnings = [], []
+            if params.get("drawings"):
+                import hashlib
+
+                import ezdxf
+
+                from .components import fit_drawing_components
+                from .drawings import read_drawing
+
+                cloud_refs = [{"kind": "cloud", "ref": c["layer"]} for c in params["clouds"]]
+                cloud_refs += [{"kind": "mesh", "ref": c["layer"]} for c in params["meshes"]]
+                for i, source in enumerate(params["drawings"]):
+                    ctx.check()
+                    ctx.progress(0.55, f"Fit equipment from drawing {i + 1}")
+                    path = ctx.input(source["path"])
+                    try:
+                        drawing = read_drawing(path)
+                    except (OSError, ezdxf.DXFError, ValueError) as error:
+                        drawing_warnings.append(
+                            f"Drawing {i + 1} could not be interpreted ({type(error).__name__})."
+                        )
+                        continue
+                    drawing_warnings.extend(drawing.warnings)
+                    if not drawing.devices:
+                        continue
+                    source_ref = "dxf-" + hashlib.sha1(str(path.resolve()).encode()).hexdigest()[:10]
+                    fitted, notes, _ = fit_drawing_components(
+                        asset, drawing, axis.point, source_ref, cloud_refs, ctx.check
+                    )
+                    observations.extend(fitted)
+                    drawing_warnings.extend(notes)
+            if hints.suggested == "telecom-monopole":
+                from .compound import fit_compound
+                from .finial import fit_auxiliary_rods, fit_finial
+                from .hardware import fit_cap_beacon, fit_climbing_steps
+
+                refs = [{"kind": "cloud", "ref": c["layer"]} for c in params["clouds"]]
+                refs += [{"kind": "mesh", "ref": c["layer"]} for c in params["meshes"]]
+                if not params.get("drawings"):
+                    from .discovery import discover_components
+                    from .supports import fit_crown_supports
+
+                    ctx.progress(0.55, "Discover equipment from the point cloud")
+                    discovered, notes = discover_components(asset, axis, taper.profile, refs, ctx.check)
+                    drawing_warnings.extend(notes)
+                    ctx.progress(0.62, "Fit crown supports from the point cloud")
+                    supports, parents, notes = fit_crown_supports(
+                        asset, axis, taper.profile, discovered, refs, ctx.check
+                    )
+                    observations.extend(
+                        {**o, "parent": parents[o["id"]]} if o["id"] in parents else o for o in discovered
+                    )
+                    observations.extend(supports)
+                    drawing_warnings.extend(notes)
+                observations.extend(fit_finial(asset, refs))
+                auxiliary = fit_auxiliary_rods(asset, observations, refs, ctx.check)
+                if not params.get("drawings"):
+                    from .supports import pipe_overlaps
+
+                    auxiliary = [
+                        o
+                        for o in auxiliary
+                        if not any(pipe_overlaps(o, p) for p in observations if p["kind"] == "mounting-pipe")
+                    ]
+                observations.extend(auxiliary)
+                ctx.check()
+                observations.extend(fit_compound(load(ctx, "points"), axis.point, refs))
+                if height is not None and taper.profile:
+                    top = (
+                        min(
+                            (o["centre"][1] for o in observations if o["kind"] == "platform"),
+                            default=float(axis.point[1] + height),
+                        )
+                        - 0.25
+                    )
+                    profile = [
+                        {"y": float(axis.point[1] + y * axis.dir[1]), "r": float(r)} for y, r in taper.profile
+                    ]
+                    observations.extend(fit_climbing_steps(asset, axis.point, axis.dir, profile, top, refs))
+                    cap = np.asarray(axis.point) + height * np.asarray(axis.dir)
+                    observations.extend(fit_cap_beacon(asset, rgb, cap, taper.profile[-1][1], refs))
+            if len(observations) > 512:
+                raise JobError(
+                    "More than 512 equipment observations; narrow the asset region or drawing selection."
+                )
             return {
                 "members": [g.to_dict() for g in relevant if g.items],
                 "hints": hints.to_dict(),
                 "bays": bays,
                 "height": height,
                 "colours": bands,
+                "observations": observations,
+                "warnings": drawing_warnings,
             }
 
         # ---- renders
@@ -537,6 +659,9 @@ class ModelEvidence:
             ]
             ctx.check()
             written = write_images(items, ctx.stage("img"), "img", budget, lim["maxPx"])
+            for image in written:
+                if image["kind"] in ("side", "top"):
+                    image["projection"] = projection_frame(asset, image["view"])
             return {"images": written}
 
         # ---- photos
@@ -549,8 +674,37 @@ class ModelEvidence:
                 path = ctx.input(p["path"])
                 paths.append(path)
                 given[str(path)] = p["path"]
+            from copy import deepcopy
+
+            observations = deepcopy(ctx.outputs("members").get("observations", []))
+            cameras, camera_warnings = [], []
+            budget = max(0, lim["maxImages"] - used)
+            if params.get("cameraPoses") and observations:
+                from .cameras import read_cameras
+
+                manifest = json.loads((ctx.project / "manifest.json").read_text("utf-8"))
+                selected = {c["layer"] for c in params["clouds"]}
+                offsets = {
+                    float(layer.get("heightOffsetM") or 0)
+                    for layer in manifest["layers"]
+                    if layer["id"] in selected
+                }
+                if len(offsets) == 1:
+                    try:
+                        cameras = read_cameras(
+                            ctx.input(params["cameraPoses"]["path"]),
+                            paths,
+                            manifest["origin"],
+                            offsets.pop(),
+                            manifest["crs"],
+                        )
+                    except (OSError, ValueError) as error:
+                        camera_warnings.append(f"Calibrated photo crops unavailable: {error}")
+                else:
+                    camera_warnings.append("Calibrated photo crops need a single cloud height offset.")
+            crop_budget = min(12, budget // 2) if cameras else 0
             res = photo_ingest.ingest_photos(
-                paths, ctx.stage("img_photos"), lim["maxPx"], max(0, lim["maxImages"] - used), ctx.check
+                paths, ctx.stage("img_photos"), lim["maxPx"], budget - crop_budget, ctx.check
             )
             centre = _region_lonlat(ctx.project, region)
             if centre is not None:
@@ -594,11 +748,25 @@ class ModelEvidence:
                     for c in res.identity["conflicts"]
                 ],
             }
+            if cameras:
+                from .cameras import component_crops
+
+                images.extend(
+                    component_crops(
+                        cameras,
+                        observations,
+                        ctx.stage("img"),
+                        crop_budget,
+                        lim["maxPx"],
+                        ctx.check,
+                    )
+                )
             return {
                 "items": items,
                 "images": images,
                 "identity": ident,
-                "rejected": [r["reason"] for r in res.rejected],
+                "rejected": [r["reason"] for r in res.rejected] + camera_warnings,
+                "observations": observations,
             }
 
         # ---- pack
@@ -626,7 +794,7 @@ class ModelEvidence:
             Step("ground", "Remove the ground, find the asset", ground, 2),
             Step("axis", "Find the axis and base", axis_step, 1),
             Step("sections", "Measure the sections", sections, 2),
-            Step("members", "Find repeated members", members, 3),
+            Step("members", "Find repeated members", members, 4),
             Step("renders", "Render evidence views", renders, 3),
             Step("photos", "Prepare the photos", photos, 2),
             Step("pack", "Write the evidence pack", pack, 1),
@@ -661,6 +829,8 @@ class ModelEvidence:
             "reconstruction": "not-needed",
             "warnings": warnings,
         }
+        manifest = json.loads((ctx.project / "manifest.json").read_text("utf-8"))
+        doc["frame"] = measurement_frame(ctx.project, manifest, params)
         if not has_cloud:
             if photogrammetry_available():
                 # nothing is reconstructed here: the person is pointed at the step that does it
@@ -751,6 +921,9 @@ class ModelEvidence:
                     why = ", ".join(f"{n} {k}" for k, n in rej.items() if n)
                     warnings.append(f"Skipped {total} slices ({why}).")
             doc["members"] = mem["members"][:16]
+            if mem.get("observations"):
+                doc["observations"] = phot.get("observations", mem["observations"])
+            warnings.extend(mem.get("warnings", []))
             doc["height"] = mem["height"] if mem["height"] and mem["height"] > 0 else None
             if doc["height"] is None and sec["slices"]:
                 warnings.append(

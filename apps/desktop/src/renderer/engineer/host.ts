@@ -1,5 +1,12 @@
 import { addAssembly, newAssembly, type UserOverrides } from '@aio/modelling';
-import type { Assembly, AssemblyKind, PartStatus, ProcModel, ProjectManifest } from '@aio/schema';
+import type {
+  Assembly,
+  AssemblyKind,
+  PartStatus,
+  ProcModel,
+  ProjectManifest,
+  EngineerRun,
+} from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useStore, type StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -7,6 +14,8 @@ import { setEngineerSession } from '../modeller/engineerTools';
 import { bridge, shell } from '../shell';
 import { createRunStore, ipcRunIpc, type RunIpc, type RunState } from './runStore';
 import { domDecode, domViewCanvas, renderDraftViews, silhouetteScores } from './views';
+import { createCorrectionSession } from './correctionSession';
+import { setCorrectionSession } from './correctionTools';
 
 /**
  * The engineering model's run for the open project: one run store (Task 35) made when a folder
@@ -30,6 +39,7 @@ export interface HostState {
   thumbnails: Record<string, string>;
   /** Why the last host action failed (accept refused, a write failed), or null. */
   error: string | null;
+  history: Pick<EngineerRun, 'id' | 'modelId' | 'createdAt'>[];
 }
 
 const initial = (): HostState => ({
@@ -43,14 +53,31 @@ const initial = (): HostState => ({
   stale: false,
   thumbnails: {},
   error: null,
+  history: [],
 });
 
 export const engineerHost = createStore<HostState>(initial);
+
+export const modelCorrections = createCorrectionSession(() => {
+  const { store, projectId } = engineerHost.getState();
+  const state = store?.getState();
+  if (!state?.model || !state.run || !projectId || shell.getState().pkg) return null;
+  if (state.recoveryRequired) return null;
+  return {
+    projectId,
+    model: state.model,
+    run: state.run,
+    busy: state.busy,
+    save: (requests, model, expected) => state.saveCorrections(requests, model, expected),
+  };
+});
 
 /** Status, additions and hiding are model edits, written and drawn again (not a rebuild). */
 async function writeModel(model: ProcModel): Promise<ProcModel | { error: string }> {
   const { store, ipc } = engineerHost.getState();
   if (!store || !ipc) return { error: 'No engineering model is open.' };
+  if (store.getState().recoveryRequired)
+    return { error: 'Reopen the project to recover the saved model before editing.' };
   try {
     await ipc.modelWrite(model);
     store.setState({ model });
@@ -133,6 +160,7 @@ export function openRun(
     return;
   void s.store?.getState().cancel();
   setEngineerSession(null);
+  setCorrectionSession(null);
   engineerHost.setState(initial());
   if (!project || readOnly) return;
   const ipc = ipcRunIpc(bridge, project.id, project.root);
@@ -151,7 +179,81 @@ export function openRun(
   });
   engineerHost.setState({ projectId: project.id, store, ipc });
   // the store's own session: corrections are saved with the run and survive a reopen
-  setEngineerSession(store.getState().session());
+  const session = store.getState().session();
+  const pendingReview = () =>
+    store.getState().run?.corrections?.some((r) => r.status === 'open' || r.status === 'proposed');
+  const reviewRequired = {
+    error:
+      'There are pending correction requests. Use propose_model_correction so the person can compare Before and After.',
+  };
+  setEngineerSession({
+    ...session,
+    current: () => (pendingReview() ? null : session.current()),
+    rebuild: (user) => (pendingReview() ? Promise.resolve(reviewRequired) : session.rebuild(user)),
+    setStatus: (ids, status) =>
+      pendingReview() ? Promise.resolve(reviewRequired) : session.setStatus(ids, status),
+  });
+  setCorrectionSession({
+    session: modelCorrections,
+    cloudRoute: async () => {
+      const r = await bridge.call('ai:status', { projectId: project.id, task: 'build' });
+      return !r.ok || r.value.cloud;
+    },
+    permissions: () => {
+      const p = workspace.getState().project?.manifest;
+      return {
+        photos: p?.aiCloudPhotos === true,
+        scans: p?.aiCloudScans === true,
+        drawings: p?.aiCloudDrawings === true,
+      };
+    },
+    readEvidence: (id) => {
+      const s = store.getState();
+      if (!s.run || !s.evidence?.images.some((i) => i.id === id))
+        throw new Error('That image is not in this run’s prepared evidence.');
+      return ipc.evidenceImage(s.run.id, id);
+    },
+  });
+  void refreshRunHistory(true);
+}
+
+/** Restore controls and the saved scene layer only; continuing work is always explicit. */
+export async function restoreRun(runId: string): Promise<void> {
+  const { store, projectId } = engineerHost.getState();
+  if (!store || store.getState().busy) return;
+  const saved = engineerHost.getState().history.find((r) => r.id === runId);
+  if (!saved) return;
+  const layers = workspace.getState().project?.manifest.layers ?? [];
+  const accepted = `model-${saved.modelId}`,
+    draft = `model-draft-${saved.modelId}`;
+  try {
+    await store.getState().resume(runId, {
+      drive: false,
+      layer: layers.some((l) => l.id === accepted) ? accepted : null,
+      draftLayer: layers.some((l) => l.id === draft) ? draft : null,
+    });
+    if (engineerHost.getState().projectId === projectId && engineerHost.getState().store === store)
+      engineerHost.setState({ selected: null, hidden: [], thumbnails: {}, error: null });
+  } catch (e) {
+    if (engineerHost.getState().store === store)
+      engineerHost.setState({ error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+export async function refreshRunHistory(restoreLatest = false): Promise<void> {
+  const { store, projectId } = engineerHost.getState();
+  if (!store || !projectId) return;
+  try {
+    const r = await bridge.call('engineer:runList', { projectId });
+    if (engineerHost.getState().store !== store || !r.ok || !r.value.ok) return;
+    engineerHost.setState({ history: r.value.runs });
+    const latest = r.value.runs[0];
+    if (restoreLatest && latest && !store.getState().run && !store.getState().busy)
+      await restoreRun(latest.id);
+  } catch (e) {
+    if (engineerHost.getState().store === store)
+      engineerHost.setState({ error: e instanceof Error ? e.message : String(e) });
+  }
 }
 
 /** Follow the open project (call once; returns the unsubscribe). */

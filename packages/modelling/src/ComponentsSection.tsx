@@ -1,5 +1,6 @@
 import type { Assembly, AssemblyKind, ProcModel, ScaleRecord } from '@aio/schema';
 import { useT } from '@aio/ui';
+import { useEffect, useRef } from 'react';
 import { ComponentCard } from './ComponentCard';
 import { ComponentTree } from './ComponentTree';
 
@@ -45,48 +46,93 @@ export interface ComponentsPanel {
   onRebuild: () => void;
 }
 
-export function ComponentsSection({ model, panel }: { model: ProcModel; panel: ComponentsPanel }) {
+export function ComponentsSection({
+  model,
+  panel,
+  showVisibility = true,
+  selectionFirst = false,
+}: {
+  model: ProcModel;
+  panel: ComponentsPanel;
+  showVisibility?: boolean;
+  /** In the docked review, bring the selected component's details before the long list. */
+  selectionFirst?: boolean;
+}) {
   const t = useT();
   const selected = model.assemblies.find((a) => a.id === panel.selected) ?? null;
+  const section = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectionFirst && panel.selected)
+      section.current
+        ?.querySelector<HTMLElement>('[data-testid="component-card"]')
+        ?.scrollIntoView({ block: 'start' });
+  }, [selectionFirst, panel.selected]);
   const locked = panel.locked === true;
   const r = panel.report;
   const clean = r !== null && r.failed.length === 0 && r.simplified.length === 0 && !r.overBudget;
+  const card = selected && (
+    <ComponentCard
+      key={selected.id}
+      assembly={selected}
+      evidence={{
+        thumbnails: panel.thumbnails,
+        ...(panel.scale ? { scale: panel.scale } : {}),
+      }}
+      locked={locked}
+      onField={(key, value) => {
+        panel.onField(selected.id, key, value);
+      }}
+      onFocus={() => {
+        panel.onFocus(selected.id);
+      }}
+    />
+  );
   return (
-    <div className="mb-sec" data-testid="components-section" aria-label={t('review.components')}>
+    <div
+      ref={section}
+      className="mb-sec"
+      data-testid="components-section"
+      aria-label={t('review.components')}
+    >
       <h3>{t('review.components')}</h3>
+      {selectionFirst && card}
 
-      <div className="mb-row" role="group" aria-label={t('review.visibility')}>
-        <label className="mb-check">
-          <input
-            type="checkbox"
-            checked={panel.sourceVisible}
-            onChange={(e) => {
-              panel.onSourceVisible(e.target.checked);
-            }}
-          />
-          <span>{t('review.showScan')}</span>
-        </label>
-        <label className="mb-check">
-          <input
-            type="checkbox"
-            checked={panel.modelVisible}
-            onChange={(e) => {
-              panel.onModelVisible(e.target.checked);
-            }}
-          />
-          <span>{t('review.showModel')}</span>
-        </label>
-      </div>
+      {showVisibility && (
+        <div className="mb-row" role="group" aria-label={t('review.visibility')}>
+          <label className="mb-check">
+            <input
+              type="checkbox"
+              checked={panel.sourceVisible}
+              onChange={(e) => {
+                panel.onSourceVisible(e.target.checked);
+              }}
+            />
+            <span>{t('review.showScan')}</span>
+          </label>
+          <label className="mb-check">
+            <input
+              type="checkbox"
+              checked={panel.modelVisible}
+              onChange={(e) => {
+                panel.onModelVisible(e.target.checked);
+              }}
+            />
+            <span>{t('review.showModel')}</span>
+          </label>
+        </div>
+      )}
 
       {panel.unresolved.length > 0 && (
-        <div className="mb-cmp-note" data-testid="unresolved">
-          <h4>{t('review.unresolved')}</h4>
+        <details className="mb-cmp-note" data-testid="unresolved">
+          <summary>
+            {t('review.unresolved')} ({panel.unresolved.length})
+          </summary>
           <ul>
             {panel.unresolved.map((u, i) => (
               <li key={`${String(i)}:${u}`}>{u}</li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       {panel.conflicts.length > 0 && (
@@ -114,23 +160,7 @@ export function ComponentsSection({ model, panel }: { model: ProcModel; panel: C
         onAdd={panel.onAdd}
       />
 
-      {selected && (
-        <ComponentCard
-          key={selected.id}
-          assembly={selected}
-          evidence={{
-            thumbnails: panel.thumbnails,
-            ...(panel.scale ? { scale: panel.scale } : {}),
-          }}
-          locked={locked}
-          onField={(key, value) => {
-            panel.onField(selected.id, key, value);
-          }}
-          onFocus={() => {
-            panel.onFocus(selected.id);
-          }}
-        />
-      )}
+      {!selectionFirst && card}
 
       <div className="mb-row">
         <button

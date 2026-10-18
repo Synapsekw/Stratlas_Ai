@@ -2,12 +2,14 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { EngineerProposal, EngineerSetup } from '@aio/schema';
+import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildEngineerPayload,
   engineerCacheKey,
   SUMMARY_MAX_CHARS,
   estimateEngineerCostUsd,
+  EngineerSpendError,
   fileEngineerCache,
   imageSize,
   runEngineer,
@@ -19,7 +21,10 @@ import {
 import { engineerSystem, evidenceNeed, payloadPreview, PROMPT_VERSION } from './engineerPrompt';
 import { describeError, InvalidProposalError } from './errors';
 import { builtInProviders, createProviderRegistry } from './providers';
+import { estimateCostUsd } from './pricing';
 import type { ModelRoute } from './routes';
+import type { EngineerReservation } from './engineerSpend';
+import { createScriptedProvider } from './scripted';
 
 // ------------------------------------------------------------------ tiny real images
 
@@ -186,6 +191,67 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
   });
 }
 
+/** The Responses API sends item events and final usage when streaming is requested. */
+async function openaiResponse(
+  body: Record<string, unknown>,
+  response: Response,
+  control?: { hold: Promise<void>; signal: AbortSignal | null | undefined; partial: () => void },
+  complete = true,
+): Promise<Response> {
+  if (body.stream !== true || !response.ok) return response;
+  const data = (await response.json()) as {
+    id: string;
+    created_at: number;
+    model: string;
+    output: { type: string; id: string; content?: { text: string }[] }[];
+    usage: unknown;
+  };
+  const events: Record<string, unknown>[] = [{ type: 'response.created', response: data }];
+  for (const [output_index, item] of data.output.entries()) {
+    events.push({ type: 'response.output_item.added', output_index, item });
+    if (item.type === 'message') {
+      const text = item.content?.map((part) => part.text).join('') ?? '';
+      const split = Math.max(1, Math.floor(text.length / 2));
+      for (const delta of [text.slice(0, split), text.slice(split)])
+        events.push({ type: 'response.output_text.delta', item_id: item.id, output_index, delta });
+    }
+    events.push({
+      type: 'response.output_item.done',
+      output_index,
+      item: { ...item, status: 'completed' },
+    });
+  }
+  if (complete) events.push({ type: 'response.completed', response: data });
+  const encode = (event: Record<string, unknown>) =>
+    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const state = { aborted: false };
+      const abort = () => {
+        state.aborted = true;
+        controller.error(control?.signal?.reason);
+      };
+      control?.signal?.addEventListener('abort', abort, { once: true });
+      try {
+        let held = false;
+        for (const event of events) {
+          if (state.aborted) return;
+          controller.enqueue(encode(event));
+          if (control && !held && event.type === 'response.output_text.delta') {
+            held = true;
+            control.partial();
+            await control.hold;
+          }
+        }
+        if (!state.aborted) controller.close();
+      } finally {
+        control?.signal?.removeEventListener('abort', abort);
+      }
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+}
+
 /** A provider-shaped reply carrying `obj` as the structured output. */
 function reply(provider: Provider, url: string, body: Record<string, unknown>, obj: unknown) {
   const text = typeof obj === 'string' ? obj : JSON.stringify(obj);
@@ -255,6 +321,10 @@ interface MockOpts {
   signal?: AbortSignal;
   /** Hold every request until the signal aborts it. */
   hang?: boolean;
+  /** Pause a streamed response after its first incomplete JSON fragment. */
+  streamHold?: Promise<void>;
+  /** Close after JSON text without the provider's completion and usage event. */
+  streamTruncated?: boolean;
   resize?: EngineerHost['resize'];
   route?: Partial<ModelRoute>;
 }
@@ -266,6 +336,7 @@ function mockHost(o: MockOpts = {}) {
   const keyReads: string[] = [];
   const usage: EngineerUsage[] = [];
   const cache = o.cache ?? new Map<string, EngineerProposal>();
+  const streamState = { partial: false };
   const replies = o.replies ?? [o.reply ?? wire(stackProposal())];
   const fetch: typeof globalThis.fetch = (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -275,6 +346,23 @@ function mockHost(o: MockOpts = {}) {
       unknown
     >;
     bodies.push(body);
+    const respond = (response: Response) =>
+      provider === 'openai'
+        ? openaiResponse(
+            body,
+            response,
+            o.streamHold
+              ? {
+                  hold: o.streamHold,
+                  signal: init?.signal,
+                  partial: () => {
+                    streamState.partial = true;
+                  },
+                }
+              : undefined,
+            o.streamTruncated !== true,
+          )
+        : Promise.resolve(response);
     if (o.hang) {
       return new Promise<Response>((_, reject) => {
         const signal = init?.signal;
@@ -284,6 +372,43 @@ function mockHost(o: MockOpts = {}) {
       });
     }
     const r = replies[Math.min(calls.length - 1, replies.length - 1)];
+    if (provider === 'openai' && typeof r === 'object' && r !== null && 'measurementTool' in r) {
+      return respond(
+        json(200, {
+          id: 'resp_tool',
+          object: 'response',
+          created_at: 1,
+          status: 'completed',
+          model: MODELS.openai,
+          output: [
+            ...('outputText' in r && typeof r.outputText === 'string'
+              ? [
+                  {
+                    type: 'message',
+                    id: 'msg_tool',
+                    role: 'assistant',
+                    status: 'completed',
+                    content: [{ type: 'output_text', text: r.outputText, annotations: [] }],
+                  },
+                ]
+              : []),
+            {
+              type: 'function_call',
+              id: 'fc_1',
+              call_id: 'call_1',
+              name: 'read_components',
+              arguments: JSON.stringify({ ids: ['obs-panel-1', 'obs-absent'] }),
+            },
+          ],
+          usage: {
+            input_tokens: 'inputTokens' in r ? r.inputTokens : 400,
+            output_tokens: 'outputTokens' in r ? r.outputTokens : 50,
+            input_tokens_details: { cached_tokens: 0 },
+            output_tokens_details: { reasoning_tokens: 0 },
+          },
+        }),
+      );
+    }
     if (typeof r === 'object' && r !== null && 'status' in r && typeof r.status === 'number') {
       return Promise.resolve(
         json(
@@ -295,7 +420,7 @@ function mockHost(o: MockOpts = {}) {
         ),
       );
     }
-    return Promise.resolve(reply(provider, url, body, r));
+    return respond(reply(provider, url, body, r));
   };
   const offlineOnly = () => o.offline === true;
   const host: EngineerHost = {
@@ -314,15 +439,363 @@ function mockHost(o: MockOpts = {}) {
       },
     },
     spent: () => o.spent ?? 0,
-    usage: (u) => usage.push(u),
+    usage: (u) => {
+      usage.push(u);
+    },
     budgetUsd: o.budgetUsd ?? 2,
     signal: o.signal ?? new AbortController().signal,
     providers: createProviderRegistry(builtInProviders({ fetch, offlineOnly })),
     maxRetries: 0,
     ...(o.resize ? { resize: o.resize } : {}),
   };
-  return { host, calls, bodies, keyReads, usage, cache };
+  return { host, calls, bodies, keyReads, usage, cache, streamState };
 }
+
+function reserveRequests(host: EngineerHost) {
+  const pending = new Map<string, EngineerReservation>();
+  const usage = host.usage;
+  host.accounting = {
+    reserve: (reservation) => {
+      pending.set(reservation.id, reservation);
+      return Promise.resolve();
+    },
+    release: (id) => {
+      pending.delete(id);
+      return Promise.resolve();
+    },
+    dispatched: vi.fn(),
+  };
+  host.usage = async (u, id) => {
+    await usage(u);
+    if (id) pending.delete(id);
+  };
+  return pending;
+}
+
+it('awaits the durable reservation before provider dispatch', async () => {
+  const t = mockHost();
+  reserveRequests(t.host);
+  let release!: () => void;
+  const write = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reserve = vi.fn(() => write);
+  if (!t.host.accounting) throw new Error('missing accounting');
+  t.host.accounting.reserve = reserve;
+  const running = runEngineer(call(), t.host);
+  await vi.waitFor(() => {
+    expect(reserve).toHaveBeenCalledOnce();
+  });
+  expect(t.calls).toHaveLength(0);
+  release();
+  expect(await running).toMatchObject({ kind: 'proposal' });
+  expect(t.host.accounting.dispatched).toHaveBeenCalledOnce();
+});
+
+it('reserves multibyte input conservatively instead of counting JavaScript characters', () => {
+  const t = mockHost({ provider: 'openai' });
+  const ascii = estimateEngineerCostUsd(call({ summary: 'a'.repeat(1000) }), t.host.route());
+  const multibyte = estimateEngineerCostUsd(call({ summary: '測'.repeat(1000) }), t.host.route());
+  expect(multibyte).toBeGreaterThan(ascii ?? 0);
+});
+
+it('never uses hidden SDK retries for a reserved provider request', async () => {
+  const t = mockHost({ replies: [{ status: 429 }, wire(stackProposal())] });
+  const pending = reserveRequests(t.host);
+  t.host.maxRetries = 2;
+  expect(await runEngineer(call(), t.host)).toMatchObject({ kind: 'failed', code: 'rate-limit' });
+  expect(t.calls).toHaveLength(1);
+  expect(pending.size).toBe(1);
+  expect(t.usage).toEqual([]);
+});
+
+it.each([
+  { input: 0, output: 0 },
+  { input: 1200, output: 150 },
+])('settles legitimate local zero-dollar usage $input/$output', async ({ input, output }) => {
+  const t = mockHost();
+  const pending = reserveRequests(t.host);
+  const local = createScriptedProvider('local', false);
+  const scripted = local.languageModel('local-test', null) as LanguageModelV4;
+  const model: LanguageModelV4 = {
+    ...scripted,
+    doGenerate: async (opts) => ({
+      ...(await scripted.doGenerate(opts)),
+      usage: {
+        inputTokens: { total: input, noCache: input, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: output, text: output, reasoning: 0 },
+      },
+    }),
+  };
+  t.host.providers = createProviderRegistry([{ ...local, languageModel: () => model }]);
+  t.host.route = () => ({
+    task: 'engineer',
+    provider: 'local',
+    model: 'local-test',
+    treatAsVision: true,
+  });
+  expect(await runEngineer(call(), t.host)).toMatchObject({ kind: 'proposal', costUsd: 0 });
+  expect(t.usage).toMatchObject([{ inputTokens: input, outputTokens: output, costUsd: 0 }]);
+  expect(pending.size).toBe(0);
+});
+
+it('releases an unsent reservation if policy changes while it is being saved', async () => {
+  const t = mockHost();
+  const pending = reserveRequests(t.host);
+  if (!t.host.accounting) throw new Error('missing accounting');
+  const reserve = t.host.accounting.reserve;
+  t.host.accounting.reserve = async (reservation) => {
+    await reserve(reservation);
+    t.host.policy = () => ({ ai: 'forbid', photos: true, scans: true });
+  };
+  expect(await runEngineer(call(), t.host)).toMatchObject({ kind: 'refused', code: 'policy' });
+  expect(t.calls).toEqual([]);
+  expect(pending.size).toBe(0);
+  expect(t.host.accounting.dispatched).not.toHaveBeenCalled();
+});
+
+it('rechecks policy between a tool response and the next provider request', async () => {
+  const t = mockHost({
+    provider: 'openai',
+    replies: [{ measurementTool: true }, wire(stackProposal())],
+  });
+  t.host.policy = () => ({ ai: t.calls.length ? 'forbid' : 'allow', photos: true, scans: true });
+  const q = { basis: 'measured' as const };
+  const result = await runEngineer(
+    call({
+      observations: [
+        {
+          id: 'obs-panel-1',
+          kind: 'panel',
+          centre: [1, 29, 2],
+          size: [0.4, 2, 0.2],
+          azimuthDeg: 90,
+          tiltDeg: 0,
+          quality: { centre: q, width: q, height: q, depth: q, azimuthDeg: q, tiltDeg: q },
+          sources: [],
+        },
+      ],
+    }),
+    t.host,
+  );
+  expect(result).toMatchObject({ kind: 'refused', code: 'policy' });
+  expect(t.calls).toHaveLength(1);
+});
+
+it('executes a bounded measurement read through the provider and meters each step', async () => {
+  const { host, calls, bodies, usage } = mockHost({
+    provider: 'openai',
+    replies: [{ measurementTool: true }, wire(stackProposal())],
+  });
+  const q = { basis: 'measured' as const };
+  const result = await runEngineer(
+    call({
+      observations: [
+        {
+          id: 'obs-panel-1',
+          kind: 'panel',
+          centre: [1, 29, 2],
+          size: [0.4, 2, 0.2],
+          azimuthDeg: 67,
+          tiltDeg: 3,
+          quality: { centre: q, width: q, height: q, depth: q, azimuthDeg: q, tiltDeg: q },
+          sources: [{ kind: 'cloud', ref: 'local-private-path' }],
+        },
+      ],
+    }),
+    host,
+  );
+  expect(result.kind).toBe('proposal');
+  expect(result).toMatchObject({ usage: { inputTokens: 3400, outputTokens: 950 } });
+  expect(calls).toHaveLength(2);
+  expect(bodies.every((body) => body.stream === true)).toBe(true);
+  expect(usage).toHaveLength(2);
+  expect(JSON.stringify(bodies[1])).toContain('obs-panel-1');
+  expect(JSON.stringify(bodies[1])).toContain('obs-absent');
+  expect(JSON.stringify(bodies)).not.toContain('local-private-path');
+});
+
+it('allows a complete large-inventory reply and reserves that output before sending', async () => {
+  const q = { basis: 'measured' as const };
+  const req = call({
+    observations: Array.from({ length: 56 }, (_, i) => ({
+      id: `obs-panel-${i + 1}`,
+      kind: 'panel' as const,
+      centre: [1, 29, 2] as [number, number, number],
+      size: [0.4, 2, 0.2] as [number, number, number],
+      azimuthDeg: 90,
+      tiltDeg: 0,
+      quality: { centre: q, width: q, height: q, depth: q, azimuthDeg: q, tiltDeg: q },
+      sources: [],
+    })),
+  });
+  const t = mockHost({ provider: 'openai' });
+  expect((await runEngineer(req, t.host)).kind).toBe('proposal');
+  const output = Number(t.bodies[0]?.max_output_tokens);
+  expect(t.bodies[0]?.stream).toBe(true);
+  expect(output).toBeGreaterThan(8_000); // Actual 56-object review was truncated at 8,000.
+  expect(output).toBeLessThanOrEqual(24_000);
+  const route = t.host.route();
+  const large = estimateEngineerCostUsd(req, route) ?? 0;
+  expect(large).toBeGreaterThan(estimateEngineerCostUsd(call(), route) ?? 0);
+  const bounded = mockHost({ provider: 'openai', budgetUsd: large - 0.00001 });
+  expect(await runEngineer(req, bounded.host)).toMatchObject({ kind: 'refused', code: 'budget' });
+  expect(bounded.calls).toHaveLength(0);
+});
+
+function measuredCall(count = 1): EngineerCall {
+  const q = { basis: 'measured' as const };
+  return call({
+    observations: Array.from({ length: count }, (_, i) => ({
+      id: `obs-panel-${i + 1}`,
+      kind: 'panel' as const,
+      centre: [1, 29, 2] as [number, number, number],
+      size: [0.4, 2, 0.2] as [number, number, number],
+      azimuthDeg: 90,
+      tiltDeg: 0,
+      quality: { centre: q, width: q, height: q, depth: q, azimuthDeg: q, tiltDeg: q },
+      sources: [],
+    })),
+  });
+}
+
+it('repairs a completed invalid streamed proposal and meters both requests', async () => {
+  const t = mockHost({ provider: 'openai', replies: ['{"family":', wire(stackProposal())] });
+  expect(await runEngineer(measuredCall(), t.host)).toMatchObject({
+    kind: 'proposal',
+    proposal: stackProposal(),
+    usage: { inputTokens: 6000, outputTokens: 1800 },
+  });
+  expect(t.calls).toHaveLength(2);
+  expect(t.bodies.every((body) => body.stream === true)).toBe(true);
+  expect(t.usage).toHaveLength(2);
+  expect(t.cache.size).toBe(1);
+});
+
+it('awaits durable usage settlement before a streamed tool continuation', async () => {
+  const t = mockHost({
+    provider: 'openai',
+    replies: [{ measurementTool: true }, wire(stackProposal())],
+  });
+  const pending = reserveRequests(t.host);
+  const settle = t.host.usage;
+  let release!: () => void;
+  const write = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  t.host.usage = vi.fn<EngineerHost['usage']>(async (u, id) => {
+    await write;
+    await settle(u, id);
+  });
+  const running = runEngineer(measuredCall(), t.host);
+  await vi.waitFor(() => {
+    expect(t.host.usage).toHaveBeenCalledOnce();
+  });
+  expect(t.calls).toHaveLength(1);
+  expect(pending.size).toBe(1);
+  release();
+  expect(await running).toMatchObject({ kind: 'proposal' });
+  expect(t.calls).toHaveLength(2);
+  expect(pending.size).toBe(0);
+});
+
+it('stops a streamed tool continuation when usage settlement fails', async () => {
+  const t = mockHost({
+    provider: 'openai',
+    replies: [{ measurementTool: true }, wire(stackProposal())],
+  });
+  const pending = reserveRequests(t.host);
+  t.host.usage = () => Promise.reject(new EngineerSpendError());
+  expect(await runEngineer(measuredCall(), t.host)).toMatchObject({
+    kind: 'refused',
+    code: 'budget',
+  });
+  expect(t.calls).toHaveLength(1);
+  expect(pending.size).toBe(1);
+  expect(t.cache.size).toBe(0);
+});
+
+it('keeps partial streamed JSON out of the result and cache, and cancellation stops the stream', async () => {
+  const ctl = new AbortController();
+  let release: () => void = () => undefined;
+  const streamHold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const t = mockHost({ provider: 'openai', signal: ctl.signal, streamHold });
+  const pending = reserveRequests(t.host);
+  let settled = false;
+  const running = runEngineer(measuredCall(), t.host).finally(() => {
+    settled = true;
+  });
+  try {
+    await vi.waitFor(() => {
+      expect(t.streamState.partial).toBe(true);
+    });
+    expect(settled).toBe(false);
+    expect(t.cache.size).toBe(0);
+    expect(t.usage).toHaveLength(0);
+    ctl.abort();
+    expect(await running).toMatchObject({ kind: 'failed', code: 'cancelled' });
+    expect(t.cache.size).toBe(0);
+    expect(t.calls).toHaveLength(1);
+    expect(pending.size).toBe(1);
+  } finally {
+    release();
+  }
+});
+
+it('does not accept JSON from a stream that closes without provider completion', async () => {
+  const t = mockHost({ provider: 'openai', streamTruncated: true });
+  const pending = reserveRequests(t.host);
+  expect(await runEngineer(measuredCall(), t.host)).toMatchObject({
+    kind: 'failed',
+    code: 'invalid',
+  });
+  expect(t.cache.size).toBe(0);
+  expect(t.usage).toEqual([]);
+  expect(pending.size).toBe(1);
+});
+
+it('reserves the actual assistant and tool history before a continuation', async () => {
+  const req = measuredCall(56);
+  const t = mockHost({
+    provider: 'openai',
+    replies: [
+      { measurementTool: true, outputText: 'x'.repeat(72_000), outputTokens: 18_000 },
+      wire(stackProposal()),
+    ],
+  });
+  // Allows the old 16k history estimate, but not the actual accumulated reply.
+  t.host.budgetUsd =
+    (estimateEngineerCostUsd(req, t.host.route()) ?? 0) +
+    (estimateCostUsd(MODELS.openai, { inputTokens: 20_400, outputTokens: 18_000 }) ?? 0);
+  expect(await runEngineer(req, t.host)).toMatchObject({ kind: 'refused', code: 'budget' });
+  expect(t.calls).toHaveLength(1);
+  expect(t.usage).toHaveLength(1);
+});
+
+it('stops tool continuations when metered usage exhausts the remaining token allowance', async () => {
+  const t = mockHost({
+    provider: 'openai',
+    replies: [
+      { measurementTool: true, inputTokens: 19_000, outputTokens: 3_000 },
+      wire(stackProposal()),
+    ],
+  });
+  const result = await runEngineer(measuredCall(), { ...t.host, tokensLeft: 20_000 });
+  expect(result).toMatchObject({ kind: 'refused', code: 'budget' });
+  expect(t.calls).toHaveLength(1);
+  expect(t.usage).toHaveLength(1);
+});
+
+it('reserves input and output tokens before the first request', async () => {
+  const t = mockHost({ provider: 'openai' });
+  expect(await runEngineer(call(), { ...t.host, tokensLeft: 1 })).toMatchObject({
+    kind: 'refused',
+    code: 'budget',
+  });
+  expect(t.calls).toHaveLength(0);
+});
 
 /** Images in a provider request body, whatever the provider's part names. */
 function countImages(body: unknown): number {
@@ -401,29 +874,29 @@ describe('runEngineer', () => {
       const c = call({
         costConfirmed: true,
         images: [
-          ...Array.from({ length: 8 }, (_, i) => ({ ...source, id: `selected-${String(i)}` })),
+          ...Array.from({ length: 20 }, (_, i) => ({ ...source, id: `selected-${String(i)}` })),
           { ...omitted, id: 'omitted-kind' },
         ],
       });
       const photos = kind === 'photo';
       const t = mockHost({
-        model: 'acme-vlm-2',
+        model: MODELS.anthropic,
         route: { treatAsVision: true },
         policy: { photos, scans: !photos },
       });
       const built = await buildEngineerPayload(c, {
         vision: true,
         structured: true,
-        maxImages: 8,
+        maxImages: 20,
         maxImagePx: 1024,
       });
       if (!built.ok) throw new Error(built.reason);
       expect(payloadPreview(built.payload).images.map((im) => im.kind)).toEqual(
-        Array(8).fill(kind),
+        Array(20).fill(kind),
       );
       expect(built.payload.leftOut).toEqual(['omitted-kind']);
       expect(await runEngineer(c, t.host)).toMatchObject({ kind: 'proposal', cached: false });
-      expect(countImages(t.bodies[0])).toBe(8);
+      expect(countImages(t.bodies[0])).toBe(20);
       expect(JSON.stringify(t.bodies[0])).not.toContain('Image omitted-kind (');
       expect(await runEngineer(c, t.host)).toMatchObject({ kind: 'proposal', cached: true });
       expect(t.calls).toHaveLength(1);
@@ -559,7 +1032,7 @@ describe('runEngineer', () => {
     expect(t.calls.length).toBe(0);
   });
 
-  it('a model without a price needs the cost confirmed in the preview', async () => {
+  it('an unpriced cloud model cannot bypass a run spending limit with legacy confirmation', async () => {
     const route = { treatAsVision: true };
     expect(
       estimateEngineerCostUsd(call(), {
@@ -572,13 +1045,14 @@ describe('runEngineer', () => {
     const t = mockHost({ provider: 'openai', model: 'acme-vlm-2', route });
     const r = await runEngineer(call(), t.host);
     expect(r).toMatchObject({ kind: 'refused', code: 'budget' });
-    if (r.kind === 'refused') expect(r.reason).toContain('price of this model is not known');
+    if (r.kind === 'refused') expect(r.reason).toContain('no known price');
     expect(t.calls.length).toBe(0);
     const confirmed = mockHost({ provider: 'openai', model: 'acme-vlm-2', route });
     expect(await runEngineer(call({ costConfirmed: true }), confirmed.host)).toMatchObject({
-      kind: 'proposal',
+      kind: 'refused',
+      code: 'budget',
     });
-    expect(confirmed.calls.length).toBe(1);
+    expect(confirmed.calls.length).toBe(0);
   });
 
   it('sends only the pack images and the summary (no arrays, no file paths of originals)', async () => {
@@ -649,16 +1123,20 @@ describe('runEngineer', () => {
 
   it('sends at most the model image limit and says what was left out', async () => {
     const many = call({
-      images: Array.from({ length: 10 }, (_, i) => ({
+      images: Array.from({ length: 22 }, (_, i) => ({
         id: `p${String(i)}`,
         kind: 'photo' as const,
         dataUrl: png(64, 64),
         bytes: 10,
       })),
     });
-    const t = mockHost({ provider: 'openai', model: 'acme-vlm-2', route: { treatAsVision: true } });
+    const t = mockHost({
+      provider: 'openai',
+      model: MODELS.openai,
+      route: { treatAsVision: true },
+    });
     const r = await runEngineer({ ...many, costConfirmed: true }, t.host);
-    expect(countImages(t.bodies[0])).toBe(8);
+    expect(countImages(t.bodies[0])).toBe(20);
     expect(r).toMatchObject({ kind: 'proposal' });
     if (r.kind === 'proposal') expect(r.proposal.unresolved.at(-1)).toContain('2 images');
   });
@@ -722,7 +1200,7 @@ describe('engineerCacheKey', () => {
     ];
     for (const c of changed) expect(c).not.toBe(k);
     expect(new Set(changed).size).toBe(changed.length);
-    expect(PROMPT_VERSION).toBe('eng-2');
+    expect(PROMPT_VERSION).toBe('eng-6');
   });
 
   it('does not change with the run id or project (resume in another run)', () => {

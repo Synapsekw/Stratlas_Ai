@@ -55,6 +55,8 @@ import { DisplayBench } from './benches/DisplayBench';
 import { AnnotateBench, useAnnotateFollow } from './benches/AnnotateBench';
 import { JobsBench } from './benches/JobsBench';
 import { VideoBench } from './benches/VideoBench';
+// Engineering model review: self-contained content in the standard workbench.
+import { ReviewBench } from './benches/ReviewBench';
 // Agent pane: the agent below the bench, maximised, minimised or off (Task 18)
 import { AgentPane } from '../../agent/AgentPane';
 import { agentPane } from '../../agent/agentPaneStore';
@@ -270,6 +272,14 @@ export function FrontBody({ front, road }: { front: TabId; road: boolean }) {
     );
   if (front === 'qa') return <QaSide />;
   if (front === 'overlays') return <OverlaysPanel />;
+  // Engineering model review: uses the same section controls and drawer as other benches.
+  if (front === 'review')
+    return (
+      <>
+        <BenchHead bench={front} />
+        <ReviewBench />
+      </>
+    );
   // RF coverage bench (rf-coverage T9): the Site, Sector and Results sections (spec D21)
   if (front === 'rf')
     return (
@@ -290,10 +300,11 @@ export function RightSidebar() {
   const t = useT();
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const drawerPresent = useDrawer((s) => s.present);
+  const drawerOpened = useDrawer((s) => s.opened);
   const focusedWindow = useWorkspace((s) => s.focusedWindow);
   const stageMode = useShell((s) => s.stageMode);
   const focused = agentWindow(focusedWindow, stageMode);
-  // the agent answers on the build route while the Model builder is open (C5)
+  // The Model builder and engineering review use the build route (C5).
   const modellerOpen = useModeller((s) => s.open);
   const road = useIsRoad();
   const { tabs, front } = useWorkbenchView();
@@ -306,6 +317,12 @@ export function RightSidebar() {
   const issueOpen = useWorkspace((s) => s.selection?.kind === 'issue');
   const id = front.id;
   const tall = id !== 'selection' || issueOpen || road;
+  // Engineering comparison effects must have one owner through both drawer handoffs:
+  // opened covers its first render; present includes the slide-out after sidebar expansion.
+  const deferBody =
+    id === 'review'
+      ? drawerPresent || (rightCollapsed && drawerOpened !== null)
+      : rightCollapsed && drawerPresent;
   return (
     <aside
       className="right"
@@ -336,7 +353,7 @@ export function RightSidebar() {
       <ShowIt tabs={tabs} front={id} />
       <AgentPane
         window={focused}
-        task={modellerOpen ? 'build' : undefined}
+        task={modellerOpen || id === 'review' ? 'build' : undefined}
         bench={
           <>
             {!road && <RoadSetupCard />}
@@ -348,7 +365,7 @@ export function RightSidebar() {
               data-front={id}
             >
               {/* the drawer shows the bench while this panel is folded away (I-R38) */}
-              {rightCollapsed && drawerPresent ? null : <FrontBody front={id} road={road} />}
+              {deferBody ? null : <FrontBody front={id} road={road} />}
             </div>
           </>
         }

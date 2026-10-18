@@ -7,7 +7,7 @@ import {
   type ModelRoute,
 } from '@aio/ai';
 import { useT, type MessageKey } from '@aio/ui';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 type Need = 'photos' | 'scans';
 
@@ -21,6 +21,7 @@ export interface EvidencePreviewProps {
   route: ModelRoute;
   /** Estimated cost in US dollars; undefined when the model has no price. */
   estimateUsd: number | undefined;
+  budgetUsd?: number | undefined;
   /** The project's consents as main read them from the manifest. */
   flags: { photos: boolean; scans: boolean };
   /** "Allow for this project": the parent asks main to set `aiCloudPhotos` or `aiCloudScans`. */
@@ -78,22 +79,16 @@ export function EvidencePreview(p: EvidencePreviewProps) {
   const local = p.route.provider === 'local';
   const provider = PROVIDER_LABELS[p.route.provider];
   const [once, setOnce] = useState({ photos: false, scans: false });
-  const [costConfirmed, setCostConfirmed] = useState(false);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    cancelRef.current?.focus();
-  }, []);
-
   const byNeed = (need: Need) => p.content.images.filter((im) => evidenceNeed(im.kind) === need);
+  const needs = (need: Need) =>
+    byNeed(need).length > 0 || (need === 'scans' && Boolean(p.content.measurements));
   const total = p.content.images.reduce((n, im) => n + im.bytes, 0);
-  const consented = GROUPS.every(
-    (g) => local || byNeed(g.need).length === 0 || p.flags[g.need] || once[g.need],
-  );
-  const priced = local || p.estimateUsd !== undefined || costConfirmed;
+  const consented = GROUPS.every((g) => local || !needs(g.need) || p.flags[g.need] || once[g.need]);
+  const priced = local || p.estimateUsd !== undefined;
   const ready = consented && priced;
   const left = p.content.leftOut;
   const missing = GROUPS.filter(
-    (g) => !local && byNeed(g.need).length > 0 && !p.flags[g.need] && !once[g.need],
+    (g) => !local && needs(g.need) && !p.flags[g.need] && !once[g.need],
   ).map((g) => g.need);
   const kinds: MessageKey =
     missing.length > 1
@@ -116,7 +111,7 @@ export function EvidencePreview(p: EvidencePreviewProps) {
       onCancel={p.onCancel}
       actions={
         <>
-          <button ref={cancelRef} type="button" className="ag-btn" onClick={p.onCancel}>
+          <button type="button" className="ag-btn" onClick={p.onCancel}>
             {t('eng.ev.cancel')}
           </button>
           <button
@@ -127,7 +122,7 @@ export function EvidencePreview(p: EvidencePreviewProps) {
             onClick={() => {
               p.onSendOnce({
                 once: { photos: !local && once.photos, scans: !local && once.scans },
-                costConfirmed: !local && p.estimateUsd === undefined && costConfirmed,
+                costConfirmed: false,
               });
             }}
           >
@@ -137,6 +132,9 @@ export function EvidencePreview(p: EvidencePreviewProps) {
       }
     >
       <p className="ag-sub">{local ? t('eng.ev.subLocal') : t('eng.ev.sub')}</p>
+      {p.budgetUsd !== undefined && (
+        <p className="notice">{t('eng.ev.runBudget', { usd: p.budgetUsd.toFixed(2) })}</p>
+      )}
       <dl className="ag-sent">
         <dt>{t('eng.ev.provider')}</dt>
         <dd className="ag-mono">
@@ -158,7 +156,7 @@ export function EvidencePreview(p: EvidencePreviewProps) {
 
       {GROUPS.map((g) => {
         const images = byNeed(g.need);
-        if (images.length === 0) return null;
+        if (!needs(g.need)) return null;
         const allowed = p.flags[g.need];
         return (
           <section
@@ -212,6 +210,12 @@ export function EvidencePreview(p: EvidencePreviewProps) {
                 </li>
               ))}
             </ul>
+            {g.need === 'scans' && p.content.measurements && (
+              <details>
+                <summary>{t('eng.ev.measurements')}</summary>
+                <pre>{p.content.measurements}</pre>
+              </details>
+            )}
             {!local && !allowed && (
               <label className="ag-check">
                 <input
@@ -233,18 +237,6 @@ export function EvidencePreview(p: EvidencePreviewProps) {
         <p className="ag-faint">
           {t('eng.ev.leftOut', { count: left.length, ids: left.join(', ') })}
         </p>
-      )}
-      {!local && p.estimateUsd === undefined && (
-        <label className="ag-check">
-          <input
-            type="checkbox"
-            checked={costConfirmed}
-            onChange={(e) => {
-              setCostConfirmed(e.target.checked);
-            }}
-          />
-          {t('eng.ev.noEstimate')}
-        </label>
       )}
       {why && (
         <p id="eng-ev-why" className="ag-sub">

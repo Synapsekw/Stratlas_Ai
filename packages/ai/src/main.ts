@@ -16,6 +16,7 @@ import {
   type IpcRequest,
   type IpcResponse,
   type LocalModelSettings,
+  type EngineerSetup,
   type WindowKind,
 } from '@aio/schema';
 import { createHash, randomUUID } from 'node:crypto';
@@ -30,6 +31,7 @@ import {
 import {
   buildEngineerPayload,
   ENGINEER_TIMEOUT_MS,
+  EngineerSpendError,
   engineerCacheKey,
   engineerLimits,
   estimateEngineerCostUsd,
@@ -40,7 +42,19 @@ import {
   type EngineerCall,
 } from './engineer';
 import { payloadPreview } from './engineerPrompt';
-import { readRunSpend, runLimits, writeRunSpend, type RunSpend } from './engineerSpend';
+import {
+  approvalScopeKey,
+  readApproval,
+  writeApproval,
+  type RunApproval,
+} from './engineerApproval';
+import {
+  committedRunSpend,
+  readRunSpend,
+  runLimits,
+  writeRunSpend,
+  type RunSpend,
+} from './engineerSpend';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -210,6 +224,8 @@ export interface EngineerRuntimeHost {
    * spend live in its `ai/` folder.
    */
   runDir?(projectId: string, engineerRun: string): string | undefined;
+  /** Effective source transforms and on-disk input identity; no raw content leaves main. */
+  sourceStamp?(projectId: string, setup: EngineerSetup): Promise<string>;
   /** Downscale an image to `maxPx` on its long side (Electron `nativeImage`). */
   resize?(dataUrl: string, maxPx: number): Promise<string>;
   /** The clock for the run's AI time; Date.now by default. */
@@ -800,7 +816,7 @@ export function createAgentRuntime(
   /** One-time consents handed out with a send preview: valid once, for that content only. */
   const consents = new Map<
     string,
-    { projectId: string; run: string; key: string; expires: number }
+    { projectId: string; run: string; key: string; expires: number; scope?: 'run' }
   >();
   const clock = () => host.engineer?.now?.() ?? Date.now();
   /** The registry the engineer step resolves through: the local model included. */
@@ -825,6 +841,7 @@ export function createAgentRuntime(
         ...(im.view !== undefined ? { view: im.view } : {}),
       })),
       summary: req.summary,
+      ...(req.observations ? { observations: req.observations } : {}),
       setup: req.setup,
       ...(req.previous ? { previous: req.previous } : {}),
     };
@@ -859,7 +876,12 @@ export function createAgentRuntime(
     if (!flags) return { ok: false, error: notOpenMessage };
     if ('error' in flags) return { ok: false, error: flags.error };
     const c = engineerCallOf(req);
-    const built = await buildEngineerPayload(c, ready.caps, eh.resize?.bind(eh));
+    const scope = req.approvalScope === 'run';
+    const built = await buildEngineerPayload(
+      c,
+      scope ? { ...ready.caps, maxImages: 64 } : ready.caps,
+      eh.resize?.bind(eh),
+    );
     if (!built.ok) return { ok: false, error: built.reason };
     const provider = resolveProvider(route.provider);
     const estimate = estimateEngineerCostUsd(c, route, ready.caps);
@@ -869,8 +891,11 @@ export function createAgentRuntime(
     consents.set(token, {
       projectId: req.projectId,
       run: req.engineerRun,
-      key: contentKey(c, route),
+      key: scope
+        ? approvalScopeKey(c, route, await eh.sourceStamp?.(req.projectId, req.setup))
+        : contentKey(c, route),
       expires: now + CONSENT_MS,
+      ...(scope ? { scope: 'run' as const } : {}),
     });
     return {
       ok: true,
@@ -906,132 +931,251 @@ export function createAgentRuntime(
         reason: 'Another AI request of this run is still under way. Wait for it, or stop it.',
       };
     }
-    const route = engineerRoute();
-    if ('error' in route) return { kind: 'refused', code: 'capability', reason: route.error };
-    const provider = resolveProvider(route.provider);
-    const cloud = provider ? provider.cloud : route.provider !== 'local';
-    if (cloud && offlineOnly()) {
-      return { kind: 'refused', code: 'offline', reason: MESSAGES.offlineOnly };
-    }
-    if (cloud && !host.cloudAllowed()) {
-      return { kind: 'refused', code: 'policy', reason: MESSAGES.cloudOff };
-    }
-    // an engineering run is saved in the project before its AI step: its allowance lives there
-    const dir = eh.runDir?.(req.projectId, req.engineerRun);
-    if (!dir || !existsSync(join(dir, 'run.json'))) {
-      return { kind: 'refused', code: 'capability', reason: NO_RUN };
-    }
-    // the consents as the manifest on disk says now, whatever the renderer claims
-    const disk = await eh.policy(req.projectId);
-    if (!disk) return { kind: 'refused', code: 'policy', reason: notOpenMessage };
-    if ('error' in disk) return { kind: 'refused', code: 'policy', reason: disk.error };
-    let spend: RunSpend;
-    try {
-      // nothing is written until a request is metered: a refused or cached one starts no clock
-      spend = (await readRunSpend(dir)) ?? {
-        startedAt: 0,
-        spentUsd: 0,
-        calls: 0,
-        tokens: 0,
-        unpriced: 0,
-        aiMs: 0,
-      };
-    } catch {
-      return { kind: 'refused', code: 'budget', reason: SPEND_UNREADABLE };
-    }
-    // the run's AI time (requests in flight) and request limits, checked before a consent token
-    // is spent
-    const left = ENGINEER_TIMEOUT_MS - spend.aiMs;
-    if (left <= 0) return { kind: 'refused', code: 'time', reason: TIME_USED_UP };
-    const limits = runLimits(req.setup.detail);
-    if (spend.calls >= limits.calls || spend.tokens >= limits.tokens) {
-      return { kind: 'refused', code: 'budget', reason: LIMIT_REACHED };
-    }
-    const c: EngineerCall = {
-      ...engineerCallOf(req),
-      ...(req.costConfirmed ? { costConfirmed: true } : {}),
-    };
-    let { photos, scans } = disk;
-    // every cloud request goes through the send preview: a token valid once, for this project
-    // and exactly the content shown; the project consents only spare the per-request boxes
-    const token = req.consent ? consents.get(req.consent.token) : undefined;
-    if (req.consent) consents.delete(req.consent.token);
-    const valid =
-      token?.projectId === req.projectId &&
-      token.run === req.engineerRun &&
-      token.expires > clock() &&
-      token.key === contentKey(c, route);
-    if (cloud && !valid) return { kind: 'refused', code: 'policy', reason: PREVIEW_FIRST };
-    if (valid && req.consent) {
-      photos ||= req.consent.photos;
-      scans ||= req.consent.scans;
-    }
-
+    // Lock before any asynchronous preflight: every approved pass shares one spend ledger.
+    inFlight.add(runKey);
     const run: Run = { controller: new AbortController(), pending: new Map() };
     runs.set(req.runId, run);
-    inFlight.add(runKey);
-    // the run's AI time is what its requests spend in flight, kept across restarts
-    let saving: Promise<void> = Promise.resolve();
-    const sent = { metered: false };
-    const began = clock();
-    let outcome: Awaited<ReturnType<typeof runEngineer>> | undefined;
     try {
-      outcome = await runEngineer(c, {
-        route: () => route,
-        key: (p) => host.getKey(p as AiProvider),
-        offlineOnly,
-        policy: () => ({ ai: disk.ai, photos, scans }),
-        cache: fileEngineerCache(join(dir, 'ai')),
-        spent: () => spend.spentUsd,
-        usage: (u) => {
-          sent.metered = true;
-          spend = {
-            ...spend,
-            startedAt: spend.startedAt || clock(),
-            spentUsd: spend.spentUsd + (u.costUsd ?? 0),
-            calls: spend.calls + 1,
-            tokens: spend.tokens + u.inputTokens + u.outputTokens,
-            unpriced: spend.unpriced + (u.costUsd === undefined ? 1 : 0),
-          };
-          const snapshot = spend;
-          saving = saving.then(() => writeRunSpend(dir, snapshot)).catch(() => undefined);
-          const tags = { provider: u.provider, model: u.model };
-          const cost = u.costUsd !== undefined ? { costUsd: u.costUsd } : {};
-          host.emit({
-            type: 'usage',
-            runId: req.runId,
-            inputTokens: u.inputTokens,
-            outputTokens: u.outputTokens,
-            ...cost,
-            ...tags,
-          });
-          host.recordUsage?.(req.projectId, {
-            ...tags,
-            inputTokens: u.inputTokens,
-            outputTokens: u.outputTokens,
-            ...cost,
-          });
-        },
-        budgetUsd: DETAIL_BUDGETS[req.setup.detail].costUsd,
-        signal: run.controller.signal,
-        providers: engineerProviders,
-        localCaps: () => localOf(route)?.capabilities,
-        endpoint: () => localOf(route)?.baseUrl,
-        ...(eh.resize ? { resize: eh.resize.bind(eh) } : {}),
-        maxRetries: options.maxRetries ?? 2,
-        // the run's AI time, on the wall clock the request's timer uses
-        deadline: Date.now() + left,
-        callsLeft: limits.calls - spend.calls,
-      });
-      return outcome;
-    } finally {
-      // a request that went out (metered, or failed on the way) counts its time in flight
-      if (sent.metered || outcome === undefined || outcome.kind === 'failed') {
-        spend = { ...spend, aiMs: spend.aiMs + Math.max(0, Math.round(clock() - began)) };
-        const snapshot = spend;
-        saving = saving.then(() => writeRunSpend(dir, snapshot)).catch(() => undefined);
+      const route = engineerRoute();
+      if ('error' in route) return { kind: 'refused', code: 'capability', reason: route.error };
+      const provider = resolveProvider(route.provider);
+      const cloud = provider ? provider.cloud : route.provider !== 'local';
+      if (cloud && offlineOnly()) {
+        return { kind: 'refused', code: 'offline', reason: MESSAGES.offlineOnly };
       }
-      await saving;
+      if (cloud && !host.cloudAllowed()) {
+        return { kind: 'refused', code: 'policy', reason: MESSAGES.cloudOff };
+      }
+      // an engineering run is saved in the project before its AI step: its allowance lives there
+      const dir = eh.runDir?.(req.projectId, req.engineerRun);
+      if (!dir || !existsSync(join(dir, 'run.json'))) {
+        return { kind: 'refused', code: 'capability', reason: NO_RUN };
+      }
+      // the consents as the manifest on disk says now, whatever the renderer claims
+      const disk = await eh.policy(req.projectId);
+      if (!disk) return { kind: 'refused', code: 'policy', reason: notOpenMessage };
+      if ('error' in disk) return { kind: 'refused', code: 'policy', reason: disk.error };
+      let spend: RunSpend;
+      try {
+        // Refused and cached requests create no reservation or clock.
+        spend = (await readRunSpend(dir)) ?? {
+          startedAt: 0,
+          spentUsd: 0,
+          calls: 0,
+          tokens: 0,
+          unpriced: 0,
+          aiMs: 0,
+        };
+      } catch {
+        return { kind: 'refused', code: 'budget', reason: SPEND_UNREADABLE };
+      }
+      // The run has ten minutes of AI time per planned pass, shared across requests and retries.
+      // Check the persisted allowance before spending a consent token; each call keeps its timeout.
+      const priorReservedAiMs = spend.reservedAiMs ?? 0;
+      const left =
+        DETAIL_BUDGETS[req.setup.detail].passes * ENGINEER_TIMEOUT_MS -
+        spend.aiMs -
+        priorReservedAiMs;
+      if (left <= 0) return { kind: 'refused', code: 'time', reason: TIME_USED_UP };
+      const limits = runLimits(req.setup.detail, Boolean(req.observations?.length));
+      const committed = committedRunSpend(spend);
+      if (committed.calls >= limits.calls || committed.tokens >= limits.tokens) {
+        return { kind: 'refused', code: 'budget', reason: LIMIT_REACHED };
+      }
+      const c: EngineerCall = {
+        ...engineerCallOf(req),
+        ...(req.costConfirmed ? { costConfirmed: true } : {}),
+      };
+      let { photos, scans } = disk;
+      // every cloud request goes through the send preview: a token valid once, for this project
+      // and exactly the content shown; the project consents only spare the per-request boxes
+      const token = req.consent ? consents.get(req.consent.token) : undefined;
+      if (req.consent) consents.delete(req.consent.token);
+      const scopeKey =
+        req.approvalScope === 'run'
+          ? approvalScopeKey(c, route, await eh.sourceStamp?.(req.projectId, req.setup))
+          : '';
+      const valid =
+        token?.projectId === req.projectId &&
+        token.run === req.engineerRun &&
+        token.expires > clock() &&
+        token.key === (token.scope === 'run' ? scopeKey : contentKey(c, route));
+      let grant: RunApproval | null = req.approvalScope === 'run' ? await readApproval(dir) : null;
+      const generated = req.images.filter((i) => i.kind === 'generated');
+      const generatedValid =
+        generated.length <= 5 &&
+        new Set(generated.map((i) => i.id)).size === generated.length &&
+        generated.every((i) => /^gen-(north|east|south|west|top)$/.test(i.id));
+      if (valid && token.scope === 'run' && req.consent) {
+        grant = {
+          token: req.consent.token,
+          key: scopeKey,
+          photos: photos || req.consent.photos,
+          scans: scans || req.consent.scans,
+          expires: clock() + 24 * 60 * 60 * 1000,
+          budgetUsd: req.setup.budgetUsd ?? DETAIL_BUDGETS[req.setup.detail].costUsd,
+          costConfirmed: req.costConfirmed === true,
+        };
+        try {
+          await writeApproval(dir, grant);
+        } catch {
+          return {
+            kind: 'refused',
+            code: 'policy',
+            reason: 'The run approval could not be saved. Nothing was sent.',
+          };
+        }
+      }
+      const runApproved =
+        grant !== null &&
+        grant.token === req.consent?.token &&
+        grant.key === scopeKey &&
+        grant.expires > clock() &&
+        generatedValid;
+      if (cloud && ((!valid && !runApproved) || (req.approvalScope === 'run' && !generatedValid)))
+        return {
+          kind: 'refused',
+          code: 'policy',
+          reason: PREVIEW_FIRST,
+          ...(req.approvalScope === 'run' ? { approvalRequired: true } : {}),
+        };
+      if (runApproved && grant) {
+        photos ||= grant.photos;
+        scans ||= grant.scans;
+        c.costConfirmed = grant.costConfirmed;
+      }
+      if (valid && req.consent) {
+        photos ||= req.consent.photos;
+        scans ||= req.consent.scans;
+      }
+
+      // the run's AI time is what its requests spend in flight, kept across restarts
+      const sent: { began?: number } = {};
+      const saveSpend = async (next: RunSpend) => {
+        try {
+          await writeRunSpend(dir, next);
+        } catch {
+          throw new EngineerSpendError();
+        }
+        spend = next;
+      };
+      let outcome: Awaited<ReturnType<typeof runEngineer>> | undefined;
+      try {
+        outcome = await runEngineer(c, {
+          route: () => route,
+          key: (p) => host.getKey(p as AiProvider),
+          offlineOnly,
+          policy: () => ({ ai: disk.ai, photos, scans }),
+          authorize: async () => {
+            if (!host.cloudAllowed()) return MESSAGES.cloudOff;
+            const current = await eh.policy(req.projectId);
+            if (
+              !current ||
+              'error' in current ||
+              current.ai !== disk.ai ||
+              current.photos !== disk.photos ||
+              current.scans !== disk.scans
+            )
+              return 'Project sharing permission changed. Review the inputs again before continuing.';
+            const currentRoute = engineerRoute();
+            if ('error' in currentRoute || JSON.stringify(currentRoute) !== JSON.stringify(route))
+              return 'The AI model changed. Review the inputs again before continuing.';
+            if (
+              req.approvalScope === 'run' &&
+              approvalScopeKey(c, route, await eh.sourceStamp?.(req.projectId, req.setup)) !==
+                scopeKey
+            )
+              return 'The source data changed. Review the inputs again before continuing.';
+            return null;
+          },
+          cache: fileEngineerCache(join(dir, 'ai')),
+          spent: () => committedRunSpend(spend).spentUsd,
+          accounting: {
+            reserve: async (reservation) => {
+              await saveSpend({
+                ...spend,
+                startedAt: spend.startedAt || clock(),
+                reservations: [...(spend.reservations ?? []), reservation],
+                // One call's timeout covers all its tool steps and repair. Keep this debt
+                // separate from money reservations, which may settle before time is saved.
+                reservedAiMs: priorReservedAiMs + Math.min(ENGINEER_TIMEOUT_MS, left),
+              });
+            },
+            release: async (id) => {
+              await saveSpend({
+                ...spend,
+                reservations: spend.reservations?.filter((r) => r.id !== id),
+                ...(sent.began === undefined ? { reservedAiMs: priorReservedAiMs } : {}),
+              });
+            },
+            dispatched: () => {
+              sent.began ??= clock();
+            },
+          },
+          usage: async (u, reservationId) => {
+            await saveSpend({
+              ...spend,
+              spentUsd: spend.spentUsd + (u.costUsd ?? 0),
+              calls: spend.calls + 1,
+              tokens: spend.tokens + u.inputTokens + u.outputTokens,
+              unpriced: spend.unpriced + (u.costUsd === undefined ? 1 : 0),
+              reservations: spend.reservations?.filter((r) => r.id !== reservationId),
+            });
+            const tags = { provider: u.provider, model: u.model };
+            const cost = u.costUsd !== undefined ? { costUsd: u.costUsd } : {};
+            host.emit({
+              type: 'usage',
+              runId: req.runId,
+              inputTokens: u.inputTokens,
+              outputTokens: u.outputTokens,
+              ...cost,
+              ...tags,
+            });
+            host.recordUsage?.(req.projectId, {
+              ...tags,
+              inputTokens: u.inputTokens,
+              outputTokens: u.outputTokens,
+              ...cost,
+            });
+          },
+          budgetUsd:
+            runApproved && grant
+              ? grant.budgetUsd
+              : (req.setup.budgetUsd ?? DETAIL_BUDGETS[req.setup.detail].costUsd),
+          signal: run.controller.signal,
+          providers: engineerProviders,
+          localCaps: () => localOf(route)?.capabilities,
+          endpoint: () => localOf(route)?.baseUrl,
+          ...(eh.resize ? { resize: eh.resize.bind(eh) } : {}),
+          maxRetries: options.maxRetries ?? 2,
+          // Remaining whole-run time; runEngineer also enforces the per-call timeout.
+          deadline: Date.now() + left,
+          callsLeft: limits.calls - committed.calls,
+          tokensLeft: limits.tokens - committed.tokens,
+        });
+      } finally {
+        // Dispatch, rather than reported usage or outcome shape, charges time on every exit.
+        if (sent.began !== undefined) {
+          try {
+            await saveSpend({
+              ...spend,
+              aiMs: spend.aiMs + Math.max(0, Math.round(clock() - sent.began)),
+              // Replace only this call's debt atomically with its actual elapsed time.
+              reservedAiMs: priorReservedAiMs,
+            });
+          } catch (e) {
+            outcome = {
+              kind: 'refused',
+              code: 'budget',
+              reason: (e as EngineerSpendError).message,
+            };
+          }
+        }
+      }
+      return outcome.kind === 'refused' && outcome.code === 'policy' && req.approvalScope === 'run'
+        ? { ...outcome, approvalRequired: true }
+        : outcome;
+    } finally {
       inFlight.delete(runKey);
       runs.delete(req.runId);
     }

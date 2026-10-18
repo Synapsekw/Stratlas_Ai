@@ -9,6 +9,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PHOTO_PACK } from '../photogrammetry';
+import { evidencePackRefusal } from '../evidencePack';
+import { rfPackRefusal } from '../rfPack';
 import { compareVersions } from './pack';
 import { packNeeds, packOffer } from './packInstall';
 
@@ -70,5 +72,12 @@ describe('the app and the pipeline pack of this repository', () => {
     expect(packOffer({ state: 'ok', version: pack }, [archive(BEFORE.version)])).toBeNull();
     // the same number again is nothing new: why every build handed over needs its own
     expect(packOffer({ state: 'ok', version: pack }, [archive(pack)])).toBeNull();
+  });
+
+  it('offers the component pack beyond shipped RF while retaining existing RF compatibility', () => {
+    expect(evidencePackRefusal('model.evidence', '0.15.0')).not.toBeNull();
+    expect(evidencePackRefusal('model.evidence', pack)).toBeNull();
+    expect(rfPackRefusal('rf.coverage', '0.15.0')).toBeNull();
+    expect(packOffer({ state: 'ok', version: '0.15.0' }, [archive(pack)])).toEqual(archive(pack));
   });
 });

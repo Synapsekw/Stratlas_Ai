@@ -68,6 +68,8 @@ export interface AgentFix {
 /** What will leave the machine with the next message, shown before the first cloud send (AI-6). */
 export interface SendPreview {
   text: string;
+  /** The task chosen when this preview was prepared, unaffected by later tab changes. */
+  task?: AiTask;
   /** The window context exactly as it is sent. */
   context: Record<string, unknown>;
   /** The attached frame (data URL), if any. */
@@ -215,7 +217,11 @@ export class AgentSession {
     }
     const projectId = this.projectId();
     try {
-      const status = await bridge.invoke('ai:status', projectId ? { projectId } : {});
+      const task = this.deps.task?.();
+      const status = await bridge.invoke('ai:status', {
+        ...(projectId ? { projectId } : {}),
+        ...(task ? { task } : {}),
+      });
       const availability: Availability =
         status.ready && status.route
           ? {
@@ -255,6 +261,28 @@ export class AgentSession {
     const bridge = this.deps.bridge;
     const trimmed = text.trim();
     if (!bridge || !trimmed || this.state.busy || this.state.preview) return;
+    const task = this.deps.task?.();
+    let a = this.state.availability;
+    if (a.status === 'ready' && a.route.task !== (task ?? 'chat')) {
+      const projectId = this.projectId();
+      const status = await bridge.invoke('ai:status', {
+        ...(projectId ? { projectId } : {}),
+        ...(task ? { task } : {}),
+      });
+      const current = this.getState();
+      if (this.projectId() !== projectId || current.busy || current.preview) return;
+      if (!status.ready || !status.route) {
+        this.set({
+          availability: {
+            status: 'disabled',
+            reason: status.reason ?? 'no-provider',
+            message: status.message ?? SESSION_TEXT.noResponse,
+          },
+        });
+        return;
+      }
+      a = { status: 'ready', route: status.route, cloud: status.cloud };
+    }
     const ctx = this.deps.toolContext();
     const context = {
       ...assembleContext(ctx.workspace.getState(), this.window),
@@ -263,15 +291,20 @@ export class AgentSession {
     };
     let image: string | undefined;
     if (opts.attachFrame) image = (await ctx.captureFrame(this.window)) ?? undefined;
-    const a = this.state.availability;
     const key = this.projectId() ?? '';
     if (a.status === 'ready' && a.cloud && !this.state.alwaysAllow && !previewed.has(key)) {
       this.set({
-        preview: { text: trimmed, context, route: a.route, ...(image ? { image } : {}) },
+        preview: {
+          text: trimmed,
+          context,
+          route: a.route,
+          ...(task ? { task } : {}),
+          ...(image ? { image } : {}),
+        },
       });
       return;
     }
-    await this.dispatch(trimmed, context, image);
+    await this.dispatch(trimmed, context, image, task);
   }
 
   /** Send the previewed message. `always` stores "Always allow for this project". */
@@ -286,7 +319,7 @@ export class AgentSession {
       const r = await bridge.invoke('ai:setConsent', { projectId, alwaysAllow: true });
       if (r.ok) this.set({ alwaysAllow: true });
     }
-    await this.dispatch(p.text, p.context, p.image);
+    await this.dispatch(p.text, p.context, p.image, p.task);
   }
 
   /**
@@ -329,6 +362,7 @@ export class AgentSession {
     text: string,
     context: Record<string, unknown>,
     image: string | undefined,
+    task: AiTask | undefined,
   ): Promise<void> {
     const bridge = this.deps.bridge;
     if (!bridge || this.state.busy) return;
@@ -356,7 +390,6 @@ export class AgentSession {
     this.set({ turns: [...this.state.turns, user, reply], busy: true, fix: null });
     const messages: ChatMessage[] = [...history, { role: 'user', content: text }];
     const projectId = this.projectId();
-    const task = this.deps.task?.();
     try {
       const res = await bridge.invoke('ai:send', {
         runId,

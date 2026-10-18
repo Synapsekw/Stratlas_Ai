@@ -172,15 +172,19 @@ function resolveScale(
     measured < 0.5 * sourceHeight &&
     taper.length >= 2 &&
     (taper.at(-1)?.y ?? Infinity) - baseY < 0.5 * sourceHeight;
+  if (ev && measured !== undefined && !shortBaseFit) {
+    if (ref?.what === 'height' && Math.abs(ref.valueM - measured) > 0.01)
+      notes.push(
+        `The reference height (${ref.valueM.toFixed(2)} m) is a check only; the measured cloud height (${measured.toFixed(2)} m) and scale are preserved.`,
+      );
+    return { height: measured, scale: { status: 'measured' }, metric: true };
+  }
   if (ref?.what === 'height') {
     if (measured !== undefined && Math.abs(ref.valueM - measured) > 0.05 * measured)
       notes.push(
         `The reference height (${ref.valueM.toFixed(1)} m) differs from the automated height (${measured.toFixed(1)} m); your reference is used.`,
       );
     return { height: ref.valueM, scale: { status: 'reference', reference: ref }, metric };
-  }
-  if (ev && measured !== undefined && !shortBaseFit) {
-    return { height: measured, scale: { status: 'measured' }, metric: true };
   }
   if (shortBaseFit)
     notes.push(
@@ -534,6 +538,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         : [],
   );
   const unresolved = [
+    ...(input.evidence?.warnings ?? []),
     ...(input.proposal?.unresolved ?? []),
     ...notes,
     ...flagged.map((f) => `${f.id}: ${f.reason}`),

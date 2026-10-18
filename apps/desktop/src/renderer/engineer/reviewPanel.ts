@@ -60,7 +60,9 @@ export function buildComponentsPanel(s: Source, ui: ReviewUi, h: ReviewHandlers)
     scale: s.model?.scale,
     sourceVisible: ui.sourceVisible,
     modelVisible: ui.modelVisible,
-    unresolved: [...s.unresolved, ...flagged],
+    unresolved: [
+      ...new Set([...(s.model?.evidence?.unresolved ?? []), ...s.unresolved, ...flagged]),
+    ],
     conflicts: s.conflicts,
     report: s.build
       ? {

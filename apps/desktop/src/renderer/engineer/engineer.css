@@ -5,6 +5,43 @@
 .eng-setup .dlg-b {
   gap: 12px;
 }
+.eng-setup [hidden] {
+  display: none !important;
+}
+.eng-setup .dlg-b > div:not([hidden]) {
+  display: grid;
+  gap: 20px;
+}
+.eng-setup-steps {
+  display: flex;
+  gap: 16px;
+  padding: 0 0 12px;
+  margin: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
+.eng-setup-steps [aria-current] {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.eng-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 20px;
+}
+.eng-summary dt {
+  color: var(--fg-3);
+}
+.eng-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.eng-setup .eng-supplements {
+  display: grid;
+  gap: 6px;
+}
 .eng-sec {
   margin: 0;
   padding: 0;
@@ -160,6 +197,16 @@
 .eng-run .sec p {
   margin: 0;
 }
+.eng-model-review {
+  min-inline-size: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+.eng-review-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
 .eng-conflict {
   display: grid;
   gap: 6px;
@@ -201,4 +248,10 @@
 }
 .eng-pickbar > span {
   min-width: 0;
+}
+.eng-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 8px);
+  padding: var(--sp-3, 12px);
 }

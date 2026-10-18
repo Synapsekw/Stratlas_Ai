@@ -16,6 +16,8 @@ import { agentPane } from '../../agent/agentPaneStore';
 import { RightSidebar, useSidebarSplit } from './RightSidebar';
 import { useIslandLinked } from './view';
 import { workbench } from './workbenchStore';
+import { Drawer } from './Drawer';
+import { drawerStore } from './drawerStore';
 
 // what is live comes from the stores in the app; here each test says what it is
 let live: LiveItem[] = [];
@@ -35,7 +37,32 @@ vi.mock('../compare', () => ({
 vi.mock('../../shell/RightHeader', () => ({ RightHeader: () => null }));
 vi.mock('./benches/MeasureBench', () => ({ MeasureBench: () => <p>measure bench</p> }));
 vi.mock('./benches/RfBench', () => ({ RfBench: () => <p>rf bench</p> }));
-vi.mock('../../agent/AgentHost', () => ({ AgentHost: () => <p>agent</p> }));
+let trackReview = false;
+let reviewOwners = 0;
+let maxReviewOwners = 0;
+vi.mock('./benches/ReviewBench', () => ({
+  ReviewBench: () => {
+    useEffect(() => {
+      if (!trackReview) return;
+      const shown = workspace.getState().isLayerVisible('review-base');
+      reviewOwners++;
+      maxReviewOwners = Math.max(maxReviewOwners, reviewOwners);
+      workspace.getState().setLayerVisible('review-base', false);
+      return () => {
+        reviewOwners--;
+        workspace.getState().setLayerVisible('review-base', shown);
+      };
+    }, []);
+    return <p>engineering review bench</p>;
+  },
+}));
+vi.mock('../../agent/AgentHost', () => ({
+  AgentHost: ({ task }: { task?: string }) => (
+    <p data-testid="agent-host" data-task={task}>
+      agent
+    </p>
+  ),
+}));
 vi.mock('../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card</p> }));
 vi.mock('../SelectionCard', () => ({ SelectionCard: () => <p>selection</p> }));
 vi.mock('../../road/RoadPanel', () => ({ RoadPanel: () => <p>road</p> }));
@@ -105,6 +132,10 @@ beforeEach(() => {
   live = [];
   dated = false;
   linked = undefined;
+  trackReview = false;
+  reviewOwners = 0;
+  maxReviewOwners = 0;
+  drawerStore.setState({ opened: null, present: false });
   localStorage.clear();
   splitPrefs.setState({ byId: {} });
   shell.getState().setRight(false);
@@ -124,6 +155,66 @@ afterEach(() => {
 });
 
 describe('RightSidebar', () => {
+  it('gives a comparison one owner while moving through the drawer, including slide-out', () => {
+    vi.useFakeTimers();
+    trackReview = true;
+    try {
+      root = createRoot(host);
+      act(() => {
+        root?.render(
+          <>
+            <Scene />
+            <Drawer />
+          </>,
+        );
+      });
+      act(() => {
+        workbench.getState().open('review');
+      });
+      expect(reviewOwners).toBe(1);
+      expect(workspace.getState().isLayerVisible('review-base')).toBe(false);
+      act(() => {
+        shell.getState().setRight(true);
+        drawerStore.getState().open('click');
+      });
+      expect(reviewOwners).toBe(1);
+      expect(maxReviewOwners).toBe(1);
+      expect(workspace.getState().isLayerVisible('review-base')).toBe(false);
+      act(() => {
+        shell.getState().setRight(false);
+      });
+      expect(reviewOwners).toBe(1);
+      expect(maxReviewOwners).toBe(1);
+      expect(workspace.getState().isLayerVisible('review-base')).toBe(false);
+      act(() => {
+        vi.advanceTimersByTime(320);
+      });
+      expect(reviewOwners).toBe(1);
+      expect(maxReviewOwners).toBe(1);
+      expect(workspace.getState().isLayerVisible('review-base')).toBe(false);
+      act(() => {
+        workbench.getState().close('review');
+      });
+      expect(reviewOwners).toBe(0);
+      expect(workspace.getState().isLayerVisible('review-base')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('shows model review inside its workbench tab beside the stage', () => {
+    render();
+    act(() => {
+      workbench.getState().open('review');
+    });
+    expect(document.getElementById('wb-tab-review')?.textContent).toContain('Model review');
+    expect(host.querySelector('[data-front="review"]')?.textContent).toContain(
+      'engineering review bench',
+    );
+    expect(host.querySelector('[data-front="review"] .wb-bench-head')).not.toBeNull();
+    expect(host.querySelector('[data-testid="agent-host"]')?.getAttribute('data-task')).toBe(
+      'build',
+    );
+  });
   it('renders the tabs in model order, Changes keeping its test id', () => {
     withVolumesAndDates();
     render();

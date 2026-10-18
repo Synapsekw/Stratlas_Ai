@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isTabId,
   onToolStart,
   onToolStop,
   openPanel,
@@ -24,6 +25,16 @@ const fixedTabs = (): Tab[] => [
   tab('changes', { fixed: true, minWidth: 470 }),
 ];
 const ids = (tabs: readonly Tab[]) => tabs.map((t) => t.id);
+
+it('recognises model review as a normal closable workbench tab', () => {
+  expect(isTabId('review')).toBe(true);
+  expect(
+    openPanel(fixedTabs(), 'review', { pinned: false }).find((t) => t.id === 'review'),
+  ).toMatchObject({
+    fixed: false,
+    pinned: false,
+  });
+});
 
 describe('orderTabs', () => {
   it('puts live tabs in island priority, then panels, then fixed tabs last', () => {

@@ -89,6 +89,15 @@ const RUN: EngineerRun = {
   usage: { costUsd: 0, inputTokens: 0, outputTokens: 0 },
 };
 
+it('lists saved engineering runs for review recovery', async () => {
+  const r = ipc();
+  await r.call('engineer:runWrite', { projectId: 'site', run: RUN });
+  expect(await r.call('engineer:runList', { projectId: 'site' })).toMatchObject({
+    ok: true,
+    runs: [{ id: RUN.id, modelId: RUN.modelId }],
+  });
+});
+
 /** A PNG signature and IHDR naming `w` by `h` (enough for the size check). */
 function png(w: number, h: number): Uint8Array {
   const b = new Uint8Array(33);

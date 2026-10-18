@@ -249,6 +249,67 @@ export function buildRingPlatform(
 export function buildGuardrail(sink: MeshSink, a: AssemblyOf<'guardrail'>, ctx: BuildCtx): void {
   const g = a.params;
   const m = ctx.material(a.material, 'steel-galv');
+  if (g.pickets && Array.isArray(g.path)) {
+    const path = g.path;
+    const pickets = g.pickets;
+    checkPath(g.path, 'fence');
+    const first = pick(g.path, 0),
+      last = pick(g.path, g.path.length - 1);
+    const closed = len(sub(first, last)) < 1e-6;
+    const post = (p: V3) => {
+      sink.rod(m, p, add(p, [0, g.height + 0.06, 0]), 0.038, true, 12);
+      sink.frustumShell(m, {
+        base: add(p, [0, g.height + 0.045, 0]),
+        axis: UP,
+        profile: [
+          { y: 0, r: 0.05 },
+          { y: 0.035, r: 0.035 },
+        ],
+        capBottom: true,
+        capTop: true,
+        segments: 12,
+      });
+    };
+    const pieceCount = g.path
+      .slice(1)
+      .reduce((n, p, i) => n + Math.ceil(len(sub(p, pick(path, i))) / pickets.spacing), 0);
+    if (pieceCount > MAX_PIECES) fail('fence pickets are too close');
+    const postCount = g.path
+      .slice(1)
+      .reduce((n, p, i) => n + Math.ceil(len(sub(p, pick(path, i))) / g.posts), closed ? 0 : 1);
+    if (postCount > MAX_PIECES) fail('fence posts are too close');
+    for (let i = 1; i < g.path.length; i++) {
+      const from = pick(g.path, i - 1),
+        to = pick(g.path, i),
+        delta = sub(to, from),
+        length = len(delta);
+      const posts = Math.max(1, Math.ceil(length / g.posts));
+      for (let j = 0; j < posts; j++) post(add(from, scale(delta, j / posts)));
+      const n = Math.max(1, Math.floor(length / g.pickets.spacing));
+      for (let j = 1; j < n; j++) {
+        const t = j / n;
+        if (Math.abs(t * posts - Math.round(t * posts)) < 0.03) continue;
+        const p = add(from, scale(delta, t));
+        sink.frustumShell(m, {
+          base: add(p, [0, 0.08, 0]),
+          axis: UP,
+          profile: [
+            { y: 0, r: g.pickets.diameter / 2 },
+            { y: g.height - 0.09, r: g.pickets.diameter / 2 },
+            { y: g.height - 0.075, r: g.pickets.diameter * 0.7 },
+            { y: g.height - 0.015, r: 0 },
+          ],
+          capBottom: true,
+          capTop: false,
+          segments: 8,
+        });
+      }
+      for (const h of [0.24, g.height - 0.14])
+        sink.beam(m, add(from, [0, h, 0]), add(to, [0, h, 0]), 0.03);
+    }
+    if (!closed) post(last);
+    return;
+  }
   const railHeights = Array.from({ length: g.rails }, (_, k) => (g.height * (k + 1)) / g.rails);
   const post = (foot: V3) => {
     sink.rod(m, foot, add(foot, [0, g.height + RAIL_R, 0]), POST_R, true);
@@ -359,6 +420,25 @@ function awayFromShaft(ctx: BuildCtx, at: V3): V3 {
 export function buildLadder(sink: MeshSink, a: AssemblyOf<'ladder'>, ctx: BuildCtx): void {
   const l = a.params;
   const m = ctx.material(a.material, 'steel-galv');
+  if (l.style === 'step-bolts' && l.steps && l.outward) {
+    const out = norm(l.outward),
+      side = norm(cross([0, 1, 0], out));
+    for (const c of l.steps) {
+      const left = sub(c, scale(side, l.width / 2)),
+        right = add(c, scale(side, l.width / 2));
+      sink.sweep(m, [add(left, [0, 0.045, 0]), left, right, add(right, [0, 0.045, 0])], 0.012, {
+        bendRadius: 0.015,
+        capStart: true,
+        capEnd: true,
+        segments: 12,
+      });
+      for (const end of [left, right]) {
+        const anchor = add(end, scale(sub(c, end), 0.12));
+        sink.rod(m, sub(anchor, scale(out, 0.1)), anchor, 0.01, true, 12);
+      }
+    }
+    return;
+  }
   const along = sub(l.top, l.bottom);
   const length = len(along);
   if (length < 1e-6) fail('ladder top and bottom must be apart');

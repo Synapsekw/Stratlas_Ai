@@ -5,15 +5,23 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
-import { engineerUi, engineeringUiOn } from './ui';
+import { engineerUi, engineeringUiOn, followEngineeringReview, openEngineeringReview } from './ui';
 import { useStagePick } from '../builder/pick';
-import { useModeller } from '../modeller';
-import { openModelBuilder } from '../modeller/ModellerLayer';
+import { modeller, useModeller } from '../modeller';
 import { bridge, shell, useShell } from '../shell';
 import { EvidencePreview } from './EvidencePreview';
-import { acceptedCount, acceptRun, engineerHost, followProject, useHost, useRun } from './host';
+import {
+  acceptedCount,
+  engineerHost,
+  followProject,
+  refreshRunHistory,
+  restoreRun,
+  useHost,
+  useRun,
+} from './host';
 import { SetupDialog } from './SetupDialog';
 import { StageList } from './StageList';
+import { correctionDraftKey, setCorrectionDraftKey } from './correctionDraft';
 
 /** What a pick in the 3D view is for while the setup waits for it. */
 type Picking =
@@ -110,6 +118,34 @@ function setLayersVisible(ids: readonly string[], visible: boolean) {
  * draft shown together or apart, how the draft's outline fits the scan, and Accept (only once a
  * component is accepted in the review).
  */
+function SavedRuns() {
+  const t = useT();
+  const history = useHost((s) => s.history);
+  const busy = useRun((s) => s.busy, false);
+  const current = useRun((s) => s.run?.id, undefined);
+  if (!history.length) return null;
+  return (
+    <label className="eng-history">
+      {t('eng.run.saved')}
+      <select
+        data-testid="eng-saved-runs"
+        disabled={busy}
+        value={current ?? ''}
+        onChange={(e) => {
+          if (e.target.value) void restoreRun(e.target.value);
+        }}
+      >
+        <option value="">{t('eng.run.chooseSaved')}</option>
+        {history.map((r) => (
+          <option key={r.id} value={r.id}>
+            {new Date(r.createdAt).toLocaleString()} · {r.modelId}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function RunPanel() {
   const tt = useT();
   const store = useHost((s) => s.store);
@@ -147,6 +183,7 @@ function RunPanel() {
         </button>
       </header>
       <div className="scroll">
+        <SavedRuns />
         <div className="sec">
           <StageList
             stages={run.stages}
@@ -226,45 +263,36 @@ function RunPanel() {
         )}
         {reviewReady && (
           <div className="sec">
-            {layer ? (
+            {layer && (
               <p className="say" role="status">
                 {tt('eng.run.accepted')}
               </p>
-            ) : (
-              <>
-                {accepted === 0 && (
-                  <p className="say" data-testid="eng-accept-needs">
-                    {tt('eng.run.acceptNeeds')}
-                  </p>
-                )}
-                {hostError && (
-                  <p className="eng-bad" role="alert">
-                    {hostError}
-                  </p>
-                )}
-                <div className="acts">
-                  <button
-                    type="button"
-                    className="btn"
-                    data-testid="eng-review"
-                    onClick={() => {
-                      openModelBuilder();
-                    }}
-                  >
-                    {tt('eng.run.review')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn primary"
-                    data-testid="eng-accept"
-                    disabled={busy || accepted === 0}
-                    onClick={() => void acceptRun()}
-                  >
-                    {tt('eng.run.accept')}
-                  </button>
-                </div>
-              </>
             )}
+            {accepted === 0 && (
+              <p className="say" data-testid="eng-accept-needs">
+                {tt('eng.run.acceptNeeds')}
+              </p>
+            )}
+            {hostError && (
+              <p className="eng-bad" role="alert">
+                {hostError}
+              </p>
+            )}
+            <div className="acts">
+              <button
+                type="button"
+                className="btn primary"
+                data-testid="eng-review"
+                disabled={busy || !(draftLayer ?? layer) || !model}
+                onClick={() => {
+                  modeller.getState().hide();
+                  shell.getState().go('scene');
+                  openEngineeringReview();
+                }}
+              >
+                {tt('eng.run.review')}
+              </button>
+            </div>
           </div>
         )}
         {!busy && (
@@ -274,6 +302,7 @@ function RunPanel() {
               className="btn ghost sm"
               data-testid="eng-new-run"
               onClick={() => {
+                void refreshRunHistory();
                 store.setState({ run: null, model: null, error: null, notice: null });
               }}
             >
@@ -290,11 +319,13 @@ function RunPanel() {
 function PendingSend() {
   const store = useHost((s) => s.store);
   const preview = useRun((s) => s.preview, null);
+  const budgetUsd = useRun((s) => s.run?.setup.budgetUsd, undefined);
   if (!store || !preview) return null;
   const st = store.getState();
   return (
     <EvidencePreview
       content={preview.content}
+      budgetUsd={budgetUsd}
       route={preview.route}
       estimateUsd={preview.estimateUsd}
       flags={preview.flags}
@@ -315,6 +346,7 @@ function PendingSend() {
  * `ENGINEERING_MODEL_UI` is off.
  */
 export function EngineerLayer() {
+  useEffect(followEngineeringReview, []);
   const on = engineeringUiOn();
   useEffect(() => (on ? followProject() : undefined), [on]);
   // a pick waits only while its setup is open and its project is the open one
@@ -332,6 +364,7 @@ export function EngineerLayer() {
     };
   }, []);
   const open = useStore(engineerUi, (s) => s.open);
+  const review = useStore(engineerUi, (s) => s.review);
   const preselect = useStore(engineerUi, (s) => s.preselect);
   const picking = useStore(pickingStore, (s) => s.picking !== null);
   const layers = useWorkspace((s) => s.project?.manifest.layers ?? null);
@@ -341,6 +374,36 @@ export function EngineerLayer() {
   const run = useRun((s) => s.run, null);
   const evidence = useRun((s) => s.evidence, null);
   const builderOpen = useModeller((s) => s.open);
+  // A tab can be closed while its run changes. Clear its ephemeral draft even while unmounted.
+  useEffect(() => {
+    const sync = () => {
+      setCorrectionDraftKey(
+        correctionDraftKey(workspace.getState().project?.id, store?.getState().run?.id),
+      );
+    };
+    sync();
+    return store?.subscribe((next, prev) => {
+      if (next.run?.id !== prev.run?.id) sync();
+    });
+  }, [store]);
+  useEffect(
+    () =>
+      store?.subscribe((next, prev) => {
+        if (
+          prev.busy &&
+          !next.busy &&
+          !next.error &&
+          next.draftLayer &&
+          next.run?.stages.review?.status === 'done' &&
+          engineerUi.getState().open
+        ) {
+          modeller.getState().hide();
+          shell.getState().go('scene');
+          openEngineeringReview(true);
+        }
+      }),
+    [store],
+  );
   if (!on || !layers || !store) return null;
   const hint = evidence?.familyHints ?? null;
   return (
@@ -348,9 +411,10 @@ export function EngineerLayer() {
       <ScenePick />
       <PendingSend />
       {/* the Model builder takes that place while it is open (the review); the run comes back after */}
-      {open && run && !builderOpen && <RunPanel />}
+      {open && run && !builderOpen && !review && <RunPanel />}
       {open && !run && (
         <SetupDialog
+          savedRuns={<SavedRuns />}
           hidden={picking}
           layers={layers}
           route={engineerRoute(routes)}
@@ -373,6 +437,19 @@ export function EngineerLayer() {
                 },
               ],
               multi: true,
+            });
+            return r.ok ? r.value.paths : [];
+          }}
+          onPickSupplement={async (kind) => {
+            const r = await bridge.call('dialog:openFiles', {
+              title: t(kind === 'drawings' ? 'eng.setup.addDrawings' : 'eng.setup.addCameras'),
+              filters: [
+                {
+                  name: kind === 'drawings' ? 'DXF' : 'BlocksExchange XML',
+                  extensions: [kind === 'drawings' ? 'dxf' : 'xml'],
+                },
+              ],
+              multi: kind === 'drawings',
             });
             return r.ok ? r.value.paths : [];
           }}

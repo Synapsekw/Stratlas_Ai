@@ -63,6 +63,37 @@ const search = (value: string) => {
   });
 };
 
+it('reveals a scene-selected component even when the current search excludes it', () => {
+  render();
+  search('no matching component');
+  expect(rows()).toHaveLength(0);
+  const chosen = must(model.assemblies[0]);
+  const scroll = vi.fn();
+  const old = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+  HTMLElement.prototype.scrollIntoView = scroll;
+  try {
+    act(() =>
+      root?.render(
+        <ComponentTree
+          model={model}
+          selected={chosen.id}
+          hidden={[]}
+          onSelect={vi.fn()}
+          onToggle={vi.fn()}
+          onStatus={vi.fn()}
+          onRemove={vi.fn()}
+          onAdd={vi.fn()}
+        />,
+      ),
+    );
+    expect(rows().map((r) => r.dataset.component)).toContain(chosen.id);
+    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
+  } finally {
+    if (old) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', old);
+    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+  }
+});
+
 describe('ComponentTree', () => {
   it('groups components by category with counts', () => {
     render();

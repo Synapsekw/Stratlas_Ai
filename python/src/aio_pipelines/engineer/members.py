@@ -16,8 +16,6 @@ from typing import Any
 
 import numpy as np
 from scipy import ndimage
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from .axis import Axis
@@ -113,9 +111,47 @@ def _components(pts: np.ndarray, eps: float, min_pts: int) -> list[np.ndarray]:
     n = len(pts)
     if n < min_pts:
         return []
-    pairs = cKDTree(pts).query_pairs(eps, output_type="ndarray")
-    graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n))
-    count, labels = connected_components(graph, directed=False)
+    # Every point in a cell is within eps of every other point in that cell. Collapse those
+    # cliques before searching neighbours: a dense scan must never allocate O(n²) point pairs.
+    cell = eps / np.sqrt(pts.shape[1])
+    keys, inverse, counts = np.unique(
+        np.floor(pts / cell).astype(np.int64), axis=0, return_inverse=True, return_counts=True
+    )
+    groups = np.split(np.argsort(inverse, kind="stable"), np.cumsum(counts)[:-1])
+    centres = (keys + 0.5) * cell
+    tree = cKDTree(centres)
+    parent = np.arange(len(keys))
+    point_trees = {}
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def touches(i, j):
+        # Exact point distance, not voxel adjacency: diagonally close cells can still have a
+        # real gap. Query only the smaller group, in bounded chunks, and stop at the first edge.
+        if len(groups[i]) > len(groups[j]):
+            i, j = j, i
+        if j not in point_trees:
+            point_trees[j] = cKDTree(pts[groups[j]])
+        for start in range(0, len(groups[i]), 128):
+            distance, _ = point_trees[j].query(pts[groups[i][start : start + 128]], k=1)
+            if np.min(distance) <= eps:
+                return True
+        return False
+
+    for i in range(len(keys)):
+        for j in tree.query_ball_point(centres[i], 2 * eps + 1e-12):
+            if j <= i:
+                continue
+            a, b = root(i), root(j)
+            if a != b and touches(i, j):
+                parent[b] = a
+    roots = np.array([root(i) for i in range(len(keys))])
+    _, labels = np.unique(roots[inverse], return_inverse=True)
+    count = int(labels.max()) + 1
     sizes = np.bincount(labels, minlength=count)
     order = np.argsort(labels, kind="stable")
     bounds = np.cumsum(sizes)[:-1]

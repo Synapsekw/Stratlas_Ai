@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EngineerRun } from './engineer';
 import {
   EVIDENCE_LIMITS,
+  ENGINEER_MEASUREMENT_ALGORITHM,
   EvidencePack,
   MODEL_EVIDENCE_MIN_PACK,
   ModelEvidenceParams,
@@ -16,6 +17,21 @@ function must<T>(x: T | undefined | null): T {
 const base = { run: 'run-1', clouds: [{ layer: 'cloud-a' }], meshes: [], photos: [] };
 
 describe('ModelEvidenceParams', () => {
+  it('uses cloud-supported hardware discovery version 6 for measurement freshness', () => {
+    expect(ENGINEER_MEASUREMENT_ALGORITHM).toBe('components/7');
+  });
+  it('accepts the full photo inventory, drawings and calibrated camera poses', () => {
+    const photos = Array.from({ length: 560 }, (_, i) => ({ path: `photos/${String(i)}.jpg` }));
+    const p = {
+      ...base,
+      detail: 'detailed',
+      photos,
+      drawings: [{ path: 'site.dxf' }],
+      cameraPoses: { path: 'cameras.xml' },
+    };
+    expect(ModelEvidenceParams.safeParse(p).success).toBe(true);
+    expect(ModelEvidenceParams.safeParse({ ...p, drawings: [{ path: '' }] }).success).toBe(false);
+  });
   it('limits default per detail', () => {
     for (const detail of ['fast', 'standard', 'detailed'] as const) {
       const r = ModelEvidenceParams.safeParse({ ...base, detail });
@@ -31,10 +47,10 @@ describe('ModelEvidenceParams', () => {
     const r = ModelEvidenceParams.safeParse({ ...base, detail: 'fast', limits });
     expect(must(r.data).limits).toEqual(limits);
   });
-  it('refuses 5 clouds and 401 photos', () => {
+  it('refuses 5 clouds and 2001 photos', () => {
     const clouds = Array.from({ length: 5 }, (_, i) => ({ layer: `c${String(i)}` }));
     expect(ModelEvidenceParams.safeParse({ ...base, clouds, detail: 'fast' }).success).toBe(false);
-    const photos = Array.from({ length: 401 }, (_, i) => ({ path: `p${String(i)}.jpg` }));
+    const photos = Array.from({ length: 2001 }, (_, i) => ({ path: `p${String(i)}.jpg` }));
     expect(ModelEvidenceParams.safeParse({ ...base, photos, detail: 'fast' }).success).toBe(false);
   });
   it('accepts a circle or box region and refuses unknown keys', () => {
@@ -107,6 +123,57 @@ const pack = (slices: unknown[]) => ({
 });
 
 describe('EvidencePack', () => {
+  it('retains individual dimensions, orientation and per-field provenance in a recorded frame', () => {
+    const measured = { basis: 'measured', residualM: 0.012, support: 450, coverage: 0.8 };
+    const observation = {
+      id: 'obs-panel-12',
+      kind: 'panel',
+      centre: [1.2, 28.3, -0.4],
+      size: [0.51, 2.62, 0.19],
+      azimuthDeg: 132,
+      tiltDeg: 2,
+      quality: {
+        centre: measured,
+        width: measured,
+        height: measured,
+        depth: { basis: 'inferred', note: 'Rear face hidden' },
+        azimuthDeg: measured,
+        tiltDeg: measured,
+      },
+      sources: [
+        { kind: 'cloud', ref: 'cloud-1' },
+        { kind: 'drawing', ref: 'drawing-1:ABCD' },
+      ],
+    };
+    const frame = {
+      coordinates: 'project-local',
+      origin: [265092, 2680453, 0],
+      algorithm: 'components/1',
+      signature: 'f'.repeat(64),
+      sources: [{ layer: 'cloud-1', kind: 'cloud', heightOffsetM: -32.542 }],
+    };
+    const p = { ...pack([]), observations: [observation], frame };
+    expect(EvidencePack.parse(p).observations?.[0]).toEqual(observation);
+    expect(EvidencePack.parse(p).frame).toEqual(frame);
+    expect(
+      EvidencePack.safeParse({ ...p, observations: [{ ...observation, size: [0.5, 2, -0.1] }] })
+        .success,
+    ).toBe(false);
+    expect(EvidencePack.safeParse({ ...p, observations: [observation, observation] }).success).toBe(
+      false,
+    );
+    expect(
+      EvidencePack.safeParse({
+        ...p,
+        observations: [
+          {
+            ...observation,
+            quality: { ...observation.quality, depth: { basis: 'inferred', residualM: 0.01 } },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
   it('parses a pack with two slices and a flue group', () => {
     const r = EvidencePack.safeParse(pack([slice(10, 0.9), slice(40, 0.7)]));
     expect(r.success).toBe(true);

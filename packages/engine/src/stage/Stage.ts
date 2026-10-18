@@ -1535,10 +1535,15 @@ export class Stage implements EngineStage {
   }
 
   /**
-   * Callouts for the label mode: the selected and hovered component always; in `key` mode one
-   * callout per component group (its most prominent member); in `all` mode every tagged component.
+   * Callouts for the label mode: none when off; otherwise selected and hovered components, with
+   * one per component group in `key` mode and every tagged component in `all` mode.
    */
   private rebuildCallouts() {
+    if (this._labelMode === 'off') {
+      this.groupNodes.clear();
+      this.overlay.setCallouts([]);
+      return;
+    }
     const specs: CalloutSpec[] = [];
     // a hidden component has no callout; a hovered component has the hover brief instead
     const shownSel = this.highlight.selected;

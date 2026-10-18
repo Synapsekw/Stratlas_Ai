@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Assembly, ModelFamily } from './assemblies';
 import { IsoTime, Vec2, Vec3 } from './common';
+import { ModelCorrection } from './modelCorrections';
 
 /**
  * Engineering model run contracts: the setup a person chooses, the bounded proposal the AI returns
@@ -101,13 +102,22 @@ export const EngineerSetup = z
       .object({
         clouds: z.array(LayerRef).max(4),
         meshes: z.array(LayerRef).max(2),
-        photos: z.array(z.object({ path: z.string().min(1).max(1000) }).strict()).max(400),
+        photos: z.array(z.object({ path: z.string().min(1).max(1000) }).strict()).max(2000),
+        drawings: z
+          .array(z.object({ path: z.string().min(1).max(1000) }).strict())
+          .max(8)
+          .optional(),
+        cameraPoses: z
+          .object({ path: z.string().min(1).max(1000) })
+          .strict()
+          .optional(),
       })
       .strict(),
     region: EvidenceRegion.optional(),
     family: z.union([z.literal('auto'), ModelFamily]),
     scope: z.enum(['asset', 'asset-and-surroundings']),
     detail: Detail,
+    budgetUsd: z.number().min(0).max(100).optional(),
     reference: z
       .object({
         what: z.enum(['height', 'diameter', 'other']),
@@ -164,6 +174,16 @@ export const EngineerRun = z
     modelId: z.string().min(1).max(80),
     createdAt: IsoTime,
     setup: EngineerSetup,
+    /** Run-scoped approval handle; main validates the persisted scope and remaining spend. */
+    approval: z
+      .object({
+        token: z.string().max(100),
+        photos: z.boolean(),
+        scans: z.boolean(),
+        costConfirmed: z.boolean(),
+      })
+      .strict()
+      .optional(),
     /** Only the stages reached so far are recorded. */
     stages: z.partialRecord(EngineerStage, StageState),
     usage: z
@@ -181,6 +201,8 @@ export const EngineerRun = z
      * `@aio/modelling`), so a reopened run rebuilds with them, never without.
      */
     user: RunOverrides.optional(),
+    /** Human discrepancy reports, bounded proposals and their review decisions. */
+    corrections: z.array(ModelCorrection).max(100).optional(),
     /** Evidence images the person dropped (an identity conflict): never sent again in this run. */
     excludedImages: z
       .array(z.string().regex(/^img-[a-z0-9-]{1,40}$/))

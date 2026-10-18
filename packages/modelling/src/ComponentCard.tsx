@@ -1,6 +1,6 @@
 import type { Assembly, ParamQuality, ScaleRecord } from '@aio/schema';
 import { Icon, useT, type MessageKey } from '@aio/ui';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { assemblyFields, kindLabel, type AssemblyField } from './assemblyEdit';
 
 /**
@@ -139,6 +139,15 @@ export function ComponentCard(p: ComponentCardProps) {
   const fields = assemblyFields(a);
   const locked = p.locked === true;
   const scale = p.evidence.scale;
+  const imageDialog = useRef<HTMLDialogElement>(null);
+  const [fullImage, setFullImage] = useState<{ src: string; alt: string } | null>(null);
+  const vectors = Object.entries(a.params).filter(
+    ([k, v]) =>
+      (k === 'size' || k === 'centre') &&
+      Array.isArray(v) &&
+      v.length === 3 &&
+      v.every((n: unknown) => typeof n === 'number'),
+  );
   return (
     <div className="mb-cmp-card" data-testid="component-card" data-component={a.id}>
       <div className="mb-cmp-head">
@@ -164,6 +173,17 @@ export function ComponentCard(p: ComponentCardProps) {
 
       <h4>{t('review.values')}</h4>
       <dl className="mb-cmp-values">
+        {vectors.map(([key, value]) => (
+          <div key={key} className="mb-cmp-value" data-field={key}>
+            <dt>{t(key === 'size' ? 'review.dimensions' : 'review.position')}</dt>
+            <dd>
+              <output>{(value as number[]).map((n) => n.toFixed(3)).join(' / ')}</output>
+              <span className="mb-cmp-basis">
+                {t(`review.basis.${a.quality[key]?.basis ?? 'inferred'}` as MessageKey)}
+              </span>
+            </dd>
+          </div>
+        ))}
         {fields.map((f) => {
           const q = a.quality[f.key];
           const fit = q ? residualWords(t, q) : null;
@@ -178,7 +198,7 @@ export function ComponentCard(p: ComponentCardProps) {
               <dd>
                 <Editor
                   f={f}
-                  disabled={locked}
+                  disabled={locked || f.readOnly === true}
                   onCommit={(v) => {
                     p.onField(f.key, v);
                   }}
@@ -214,12 +234,25 @@ export function ComponentCard(p: ComponentCardProps) {
             return (
               <li key={`${s.kind}:${s.ref}:${String(i)}`}>
                 {thumb ? (
-                  <img
-                    src={thumb}
-                    alt={`${t(`review.source.${s.kind}` as MessageKey)} ${s.view ?? s.ref}`}
-                    width={56}
-                    height={42}
-                  />
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    aria-label={t('review.enlarge')}
+                    onClick={() => {
+                      setFullImage({
+                        src: thumb,
+                        alt: `${t(`review.source.${s.kind}` as MessageKey)} ${s.view ?? s.ref}`,
+                      });
+                      imageDialog.current?.showModal();
+                    }}
+                  >
+                    <img
+                      src={thumb}
+                      alt={`${t(`review.source.${s.kind}` as MessageKey)} ${s.view ?? s.ref}`}
+                      width={56}
+                      height={42}
+                    />
+                  </button>
                 ) : (
                   <span className="mb-cmp-nothumb" aria-hidden="true" />
                 )}
@@ -232,6 +265,25 @@ export function ComponentCard(p: ComponentCardProps) {
           })}
         </ul>
       )}
+      <dialog
+        ref={imageDialog}
+        className="mb-evidence-dialog"
+        aria-label={t('review.enlarge')}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+        }}
+      >
+        <button type="button" className="btn" onClick={() => imageDialog.current?.close()}>
+          {t('review.closeImage')}
+        </button>
+        {fullImage && (
+          <img
+            src={fullImage.src}
+            alt={fullImage.alt}
+            style={{ display: 'block', maxWidth: '85vw', maxHeight: '80vh', objectFit: 'contain' }}
+          />
+        )}
+      </dialog>
     </div>
   );
 }

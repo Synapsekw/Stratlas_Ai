@@ -1,6 +1,13 @@
 import type { EngineerRuntimeHost } from '@aio/ai/main';
-import type { AiPolicy, ProjectManifest } from '@aio/schema';
-import { join } from 'node:path';
+import {
+  ENGINEER_MEASUREMENT_ALGORITHM,
+  type AiPolicy,
+  type ProjectManifest,
+  type EngineerSetup,
+} from '@aio/schema';
+import { join, resolve } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { readAiPolicy } from './aiProjects';
 import type { ModelProjects } from './modelBuilder';
 import type { Handle } from './notYet';
@@ -16,6 +23,59 @@ export interface EvidencePolicy {
   ai: AiPolicy;
   photos: boolean;
   scans: boolean;
+}
+
+/** Local cache identity, including exactly the offsets/transforms used by the scene. */
+export async function engineeringSourceStamp(root: string, setup: EngineerSetup): Promise<string> {
+  const manifest = JSON.parse(
+    await readFile(join(root, 'manifest.json'), 'utf8'),
+  ) as ProjectManifest;
+  const ids = new Set([...setup.sources.clouds, ...setup.sources.meshes].map((s) => s.layer));
+  const layers = manifest.layers.filter((l) => ids.has(l.id));
+  if (layers.length !== ids.size)
+    throw new Error(
+      'A selected source layer is no longer in this project. Choose the sources again.',
+    );
+  const files = [
+    ...setup.sources.photos,
+    ...(setup.sources.drawings ?? []),
+    ...(setup.sources.cameraPoses ? [setup.sources.cameraPoses] : []),
+  ].map((s) => s.path);
+  for (const layer of layers) {
+    if ('src' in layer && 'path' in layer.src) files.push(layer.src.path);
+    if (layer.kind === 'pointcloud' && layer.format === 'png-packed' && 'path' in layer.src) {
+      const index = JSON.parse(await readFile(resolve(root, layer.src.path), 'utf8')) as {
+        chunks?: { file?: unknown }[];
+      };
+      for (const chunk of index.chunks ?? []) {
+        if (typeof chunk.file !== 'string') throw new Error('Invalid point cloud chunk index.');
+        files.push(chunk.file);
+      }
+    }
+  }
+  const identity = await Promise.all(
+    [...new Set(files)].sort().map(async (path) => {
+      const s = await stat(resolve(root, path));
+      return [path, s.size, s.mtimeMs, s.ctimeMs];
+    }),
+  );
+  const frames = layers.map((l) => ({
+    id: l.id,
+    src: 'src' in l ? l.src : null,
+    transform: 'transform' in l ? l.transform : null,
+    offset: 'heightOffsetM' in l ? l.heightOffsetM : 0,
+  }));
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        algorithm: ENGINEER_MEASUREMENT_ALGORITHM,
+        origin: manifest.origin,
+        crs: manifest.crs,
+        frames,
+        identity,
+      }),
+    )
+    .digest('hex');
 }
 
 /** The builder library loads on first use, as in builder.ts and modelBuilder.ts. */
@@ -144,6 +204,11 @@ export function engineerRuntimeHost(o: {
       if (o.projects.package(projectId)) return undefined;
       const root = o.projects.root(projectId);
       return root === undefined ? undefined : join(root, 'engineering', run);
+    },
+    sourceStamp: async (projectId, setup) => {
+      const root = o.projects.root(projectId);
+      if (!root) throw new Error('The project is not open.');
+      return engineeringSourceStamp(root, setup);
     },
     ...(o.resize ? { resize: o.resize } : {}),
   };

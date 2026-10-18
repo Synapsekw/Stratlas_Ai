@@ -7,6 +7,7 @@ import { needsApproval, ToolMeta, Vec3, type ToolRisk, type WindowKind } from '@
 import { z } from 'zod';
 import { CHANGE_TOOL_SPECS } from './change-tool-specs';
 import { COLLAB_TOOL_SPECS } from './collab-tool-specs';
+import { CORRECTION_TOOL_SPECS } from './correction-tool-specs';
 import { MODELLING_TOOL_SPECS } from './modelling-tools';
 import { PHOTO_TOOL_SPECS } from './photo-tool-specs';
 import { SHOW_TOOL_SPECS } from './show-tool-specs';
@@ -660,6 +661,12 @@ export const COMPACT_TOOLS: Readonly<Record<string, string>> = {
   fit_primitives: 'Fit tanks, boxes and pipes to a point cloud.',
   edit_model_part: 'Change one part of a model.',
   build_model: 'Build the 3D model from its parts.',
+  list_model_corrections:
+    'Read human model correction requests, pins, evidence references and component parameters.',
+  propose_model_correction:
+    'Propose a scoped model correction for human Before/After review. Never applies it.',
+  view_model_correction_evidence:
+    'View a prepared image attached to a submitted correction, subject to cloud permissions.',
   // the show tools
   show_issue:
     'Show a finding: select it, fly to it, open its photo. No issue given: the most severe.',
@@ -697,3 +704,4 @@ export function undoable(name: string): boolean {
 
 // M8 model builder tools (stream C5); executors in the desktop renderer (modeller/agentTools.ts)
 MODELLING_TOOL_SPECS.forEach(registerToolSpec);
+CORRECTION_TOOL_SPECS.forEach(registerToolSpec);

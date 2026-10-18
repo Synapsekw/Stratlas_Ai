@@ -1,5 +1,6 @@
 import type {
   AioBridge,
+  AiTask,
   Conversation,
   IpcChannel,
   IpcEvent,
@@ -50,7 +51,10 @@ function fakeBridge(opts: BridgeOpts = {}) {
     invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
       calls.push({ channel, req });
       const answer: Partial<Record<IpcChannel, unknown>> = {
-        'ai:status': status,
+        'ai:status': {
+          ...status,
+          route: { ...route, task: (req as IpcRequest<'ai:status'>).task ?? 'chat' },
+        },
         'ai:project': {
           alwaysAllow: opts.alwaysAllow ?? true,
           policy: 'allow',
@@ -108,7 +112,7 @@ beforeEach(() => {
   resetPreviewMemory();
 });
 
-function setup(opts: BridgeOpts = {}, app?: AppHooks) {
+function setup(opts: BridgeOpts = {}, app?: AppHooks, task?: () => AiTask | undefined) {
   const b = fakeBridge(opts);
   const ws = fixtureWorkspace();
   let n = 0;
@@ -128,6 +132,7 @@ function setup(opts: BridgeOpts = {}, app?: AppHooks) {
     newId: () => `id${++n}`,
     now: () => new Date('2026-10-04T10:00:00Z'),
     saveDelayMs: 0,
+    ...(task ? { task } : {}),
   });
   session.connect();
   return { ...b, ws, session };
@@ -136,6 +141,15 @@ function setup(opts: BridgeOpts = {}, app?: AppHooks) {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('agent session availability', () => {
+  it('checks the active task route for readiness and consent instead of the chat default', async () => {
+    let task: AiTask | undefined = 'build';
+    const t = setup({}, undefined, () => task);
+    await t.session.refresh();
+    expect(t.sent('ai:status').at(-1)?.req).toMatchObject({ task: 'build' });
+    task = undefined;
+    await t.session.refresh();
+    expect(t.sent('ai:status').at(-1)?.req).not.toHaveProperty('task');
+  });
   it('explains how to enable cloud AI', async () => {
     const t = setup({ cloudAi: false });
     await t.session.refresh();
@@ -430,6 +444,54 @@ describe('provider errors fixed in place', () => {
 });
 
 describe('send preview (AI-6)', () => {
+  it('previews the captured task route even when cached availability belongs to another tab', async () => {
+    let task: AiTask | undefined;
+    const t = setup({ alwaysAllow: false }, undefined, () => task);
+    await t.session.refresh();
+    task = 'build';
+    await t.session.send('Review these model corrections.');
+    expect(t.session.getState().preview?.route.task).toBe('build');
+    expect(t.sent('ai:status').at(-1)?.req).toMatchObject({ task: 'build' });
+    task = undefined;
+    await t.session.confirmPreview();
+    expect(t.sent('ai:send')[0]?.req).toMatchObject({ task: 'build' });
+  });
+
+  it('keeps the previewed build task after the active tab returns to chat', async () => {
+    let task: AiTask | undefined = 'build';
+    const t = setup({ alwaysAllow: false }, undefined, () => task);
+    await t.session.refresh();
+    await t.session.send('Review these model corrections.');
+    expect(t.session.getState().preview?.route.task).toBe('build');
+    task = undefined;
+    await t.session.refresh();
+    await t.session.confirmPreview();
+    expect(t.sent('ai:send')[0]?.req).toMatchObject({ task: 'build' });
+  });
+
+  it('does not redirect a chat preview to build when the active task changes', async () => {
+    let task: AiTask | undefined = undefined;
+    const t = setup({ alwaysAllow: false }, undefined, () => task);
+    await t.session.refresh();
+    await t.session.send('Review this selection.');
+    task = 'build';
+    await t.session.confirmPreview();
+    expect(t.sent('ai:send')[0]?.req).not.toHaveProperty('task');
+  });
+
+  it('keeps the initiating task while an attached frame is captured asynchronously', async () => {
+    let task: AiTask | undefined = 'build';
+    const t = setup({}, undefined, () => task);
+    await t.session.refresh();
+    const sending = t.session.send('Review this model view.', { attachFrame: true });
+    task = undefined;
+    await sending;
+    expect(t.sent('ai:send')[0]?.req).toMatchObject({
+      task: 'build',
+      image: 'data:image/jpeg;base64,AAAA',
+    });
+  });
+
   it('shows what will be sent before the first cloud send in a project', async () => {
     const t = setup({ alwaysAllow: false });
     await t.session.refresh();

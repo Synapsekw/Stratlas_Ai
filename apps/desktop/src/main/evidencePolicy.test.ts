@@ -1,11 +1,13 @@
 import { readManifestFile, writeManifestFile } from '@aio/project/builder';
-import type { ProjectManifest } from '@aio/schema';
+import type { EngineerSetup, ProjectManifest } from '@aio/schema';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   engineerRuntimeHost,
+  engineeringSourceStamp,
   evidencePolicy,
   MANIFEST_UNREADABLE,
   registerEvidencePolicyIpc,
@@ -53,6 +55,83 @@ afterEach(async () => {
 });
 
 describe('evidencePolicy', () => {
+  it('invalidates measurements from the previous fitting algorithm without source edits', async () => {
+    await writeManifestFile(root, manifest);
+    const setup: EngineerSetup = {
+      sources: { clouds: [], meshes: [], photos: [] },
+      family: 'auto',
+      scope: 'asset',
+      detail: 'fast',
+      placement: 'from-source',
+    };
+    const oldStamp = createHash('sha256')
+      .update(
+        JSON.stringify({
+          algorithm: 'components/5',
+          origin: manifest.origin,
+          crs: manifest.crs,
+          frames: [],
+          identity: [],
+        }),
+      )
+      .digest('hex');
+    expect(await engineeringSourceStamp(root, setup)).not.toBe(oldStamp);
+  });
+
+  it('invalidates a PNG cloud when a referenced point chunk changes', async () => {
+    await writeFile(join(root, 'index.json'), JSON.stringify({ chunks: [{ file: 'chunk.png' }] }));
+    await writeFile(join(root, 'chunk.png'), 'old points');
+    await writeManifestFile(root, {
+      ...manifest,
+      layers: [
+        {
+          id: 'scan',
+          name: 'Scan',
+          kind: 'pointcloud',
+          src: { path: 'index.json' },
+          format: 'png-packed',
+          visible: true,
+        },
+      ],
+    });
+    const setup: EngineerSetup = {
+      sources: { clouds: [{ layer: 'scan' }], meshes: [], photos: [] },
+      family: 'auto',
+      scope: 'asset',
+      detail: 'fast',
+      placement: 'from-source',
+    };
+    const before = await engineeringSourceStamp(root, setup);
+    await writeFile(join(root, 'chunk.png'), 'changed points');
+    expect(await engineeringSourceStamp(root, setup)).not.toBe(before);
+  });
+  it('invalidates measurements when a selected source changes in place or its cloud offset changes', async () => {
+    const layer = {
+      id: 'scan',
+      name: 'Scan',
+      kind: 'pointcloud' as const,
+      src: { path: 'scan.laz' },
+      format: 'copc' as const,
+      visible: true,
+    };
+    const setup: EngineerSetup = {
+      sources: { clouds: [{ layer: 'scan' }], meshes: [], photos: [] },
+      family: 'auto',
+      scope: 'asset',
+      detail: 'fast',
+      placement: 'from-source',
+    };
+    await writeFile(join(root, 'scan.laz'), 'original');
+    await writeManifestFile(root, { ...manifest, layers: [layer] });
+    const a = await engineeringSourceStamp(root, setup);
+    await writeFile(join(root, 'scan.laz'), 'changed point data');
+    const b = await engineeringSourceStamp(root, setup);
+    expect(b).not.toBe(a);
+    await writeManifestFile(root, { ...manifest, layers: [{ ...layer, heightOffsetM: -32.542 }] });
+    expect(await engineeringSourceStamp(root, setup)).not.toBe(b);
+    await rm(join(root, 'scan.laz'));
+    await expect(engineeringSourceStamp(root, setup)).rejects.toThrow();
+  });
   it('is off for photos and scans when the flags are absent', async () => {
     await writeManifestFile(root, manifest);
     expect(await evidencePolicy(root)).toEqual({ ai: 'allow', photos: false, scans: false });

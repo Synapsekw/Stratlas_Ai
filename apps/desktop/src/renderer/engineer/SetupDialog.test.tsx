@@ -91,6 +91,15 @@ const flush = () =>
   });
 
 describe('SetupDialog', () => {
+  it('guides sources, options and a budget summary before starting', () => {
+    show({ initial: ['scan'] });
+    expect((q('eng-start') as HTMLButtonElement).hidden).toBe(true);
+    act(() => q('eng-next')?.click());
+    expect((q('eng-start') as HTMLButtonElement).hidden).toBe(true);
+    act(() => q('eng-next')?.click());
+    expect((q('eng-start') as HTMLButtonElement).hidden).toBe(false);
+    expect((q('eng-next') as HTMLButtonElement).hidden).toBe(true);
+  });
   it('lists the clouds, models and photo sets as sources, and adds photos from files', async () => {
     const p = show();
     const names = [...host.querySelectorAll('[data-testid^="eng-source-"]')].map((el) =>
@@ -158,8 +167,7 @@ describe('SetupDialog', () => {
     expect(q('eng-route')?.querySelector('input,select')).toBeNull();
     act(() => q('eng-open-settings')?.click());
     expect(p.onOpenSettings).toHaveBeenCalled();
-    const preview = q('eng-preview') as HTMLButtonElement;
-    expect(preview.disabled).toBe(true);
+    expect(q('eng-preview')).toBeNull();
     expect(q('eng-offline')?.textContent).toContain('offline');
   });
 
@@ -209,6 +217,7 @@ describe('SetupDialog', () => {
       family: 'auto',
       scope: 'asset-and-surroundings',
       detail: 'detailed',
+      budgetUsd: 5,
       reference: { what: 'height', valueM: 42.5 },
       placement: 'anchor',
       anchor: [4, 0, -6],

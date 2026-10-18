@@ -105,6 +105,52 @@ describe('StageList', () => {
     expect(onRetry).toHaveBeenCalled();
   });
 
+  it('offers an explicit AI pass after a measured-only draft without starting it automatically', () => {
+    const onRetry = vi.fn();
+    act(() =>
+      root?.render(
+        <StageList
+          stages={{
+            inspect: { status: 'done' },
+            estimate: { status: 'done' },
+            identify: { status: 'skipped', message: 'Nothing was sent: the send was declined.' },
+            generate: { status: 'done' },
+            validate: { status: 'done' },
+            review: { status: 'done' },
+          }}
+          busy={false}
+          onCancel={() => undefined}
+          onRetry={onRetry}
+        />,
+      ),
+    );
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(q('eng-run-ai')?.textContent).toBe('Run AI pass');
+    expect(q('eng-cancel')).toBeNull();
+    expect(q('eng-retry')).toBeNull();
+    act(() => q('eng-run-ai')?.click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { status: 'skipped' as const, busy: true, error: null },
+    { status: 'done' as const, busy: false, error: null },
+    { status: 'skipped' as const, busy: false, error: 'Offline' },
+  ])('does not offer a separate AI pass for $status, busy=$busy, error=$error', (state) => {
+    act(() =>
+      root?.render(
+        <StageList
+          stages={{ identify: { status: state.status } }}
+          busy={state.busy}
+          error={state.error}
+          onCancel={() => undefined}
+          onRetry={() => undefined}
+        />,
+      ),
+    );
+    expect(q('eng-run-ai')).toBeNull();
+  });
+
   it('a run stopped with a reason (photos alone, offline) offers Retry', () => {
     act(() =>
       root?.render(

@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIME_USED_UP } from './engineer';
 import { readRunSpend, SPEND_SCHEMA } from './engineerSpend';
+import * as spendStore from './engineerSpend';
 import {
   createAgentRuntime,
   MESSAGES,
@@ -67,6 +68,8 @@ function preview(r: IpcRequest<'ai:engineer'>): IpcRequest<'ai:engineerPreview'>
     images: r.images,
     summary: r.summary,
     setup: r.setup,
+    ...(r.approvalScope ? { approvalScope: r.approvalScope } : {}),
+    ...(r.observations ? { observations: r.observations } : {}),
     ...(r.previous ? { previous: r.previous } : {}),
   };
 }
@@ -81,6 +84,7 @@ beforeEach(async () => {
   }
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -162,6 +166,317 @@ async function send(
 const ALLOWED = { photos: true, scans: true };
 
 describe('ai:engineer', () => {
+  it('persists a reservation before dispatch and replaces it only with complete usage', async () => {
+    const scripted = createScriptedProvider('anthropic').languageModel(
+      'claude-opus-5-5',
+      null,
+    ) as LanguageModelV4;
+    const model: LanguageModelV4 = {
+      ...scripted,
+      doGenerate: async (opts) => {
+        const pending = await readRunSpend(runDir());
+        expect(pending?.reservations).toHaveLength(1);
+        expect(pending?.spentUsd).toBe(0);
+        expect(pending?.calls).toBe(0);
+        expect(pending?.reservations?.[0]?.outputTokens).toBe(8000);
+        return scripted.doGenerate(opts);
+      },
+    };
+    const t = setup({ model, flags: ALLOWED });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });
+    expect(await readRunSpend(runDir())).toMatchObject({
+      calls: 1,
+      tokens: 1350,
+      reservations: [],
+    });
+    expect(t.recorded).toHaveLength(1);
+  });
+
+  it.each([
+    { input: undefined, output: undefined },
+    { input: 0, output: 0 },
+    { input: 1200, output: undefined },
+    { input: Infinity, output: 150 },
+    { input: 1200, output: NaN },
+  ])(
+    'retains unknown usage $input/$output across restart without reporting its reservation as billing',
+    async ({ input, output }) => {
+      const scripted = createScriptedProvider('anthropic').languageModel(
+        'claude-opus-5-5',
+        null,
+      ) as LanguageModelV4;
+      const model: LanguageModelV4 = {
+        ...scripted,
+        doGenerate: async (opts) => ({
+          ...(await scripted.doGenerate(opts)),
+          usage: {
+            inputTokens: {
+              total: input,
+              noCache: undefined,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: { total: output, text: undefined, reasoning: undefined },
+          },
+        }),
+      };
+      const t = setup({ model, flags: ALLOWED });
+      await send(t.runtime, request());
+      const pending = await readRunSpend(runDir());
+      expect(pending?.reservations).toHaveLength(1);
+      expect(pending).toMatchObject({ calls: 0, tokens: 0, spentUsd: 0 });
+      expect(t.events.filter((e) => e.type === 'usage')).toEqual([]);
+      expect(t.recorded).toEqual([]);
+      const reopened = setup({ flags: ALLOWED });
+      const budgetUsd = (pending?.reservations?.[0]?.costUsd ?? 0) * 1.5;
+      const refused = await send(
+        reopened.runtime,
+        request({ pass: 2, setup: { ...SETUP, budgetUsd } }),
+      );
+      expect(refused).toMatchObject({ kind: 'refused', code: 'budget' });
+      if (refused.kind !== 'refused') throw new Error('expected refusal');
+      expect(refused.reason).toContain('reserved');
+      expect(refused.reason).not.toContain('spent so far');
+      expect(reopened.requests()).toBe(0);
+    },
+  );
+
+  it('charges dispatched time and retains the reservation when timeout has no usage', async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const timeout = new AbortController();
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+    const scripted = createScriptedProvider('anthropic').languageModel(
+      'claude-opus-5-5',
+      null,
+    ) as LanguageModelV4;
+    const model: LanguageModelV4 = {
+      ...scripted,
+      doGenerate: () => {
+        now += 600_001;
+        const error = new DOMException('Timed out', 'TimeoutError');
+        timeout.abort(error);
+        return Promise.reject(error);
+      },
+    };
+    const t = setup({ model, flags: ALLOWED, now: () => now });
+    expect(await send(t.runtime, request({ setup: { ...SETUP, detail: 'fast' } }))).toMatchObject({
+      kind: 'refused',
+      code: 'time',
+    });
+    expect(await readRunSpend(runDir())).toMatchObject({ aiMs: 600_001, calls: 0, spentUsd: 0 });
+    expect((await readRunSpend(runDir()))?.reservations).toHaveLength(1);
+  });
+
+  it('keeps time reserved across restart when the final time write fails after usage settles', async () => {
+    const write = spendStore.writeRunSpend;
+    vi.spyOn(spendStore, 'writeRunSpend')
+      .mockImplementation(write)
+      .mockImplementationOnce(write)
+      .mockImplementationOnce(write)
+      .mockRejectedValueOnce(new Error('disk full on final time write'));
+    let now = 1_000_000;
+    const t = setup({
+      now: () => now,
+      onGenerate: () => {
+        now += 599_999;
+      },
+    });
+    const req = request({
+      approvalScope: 'run',
+      setup: { ...SETUP, detail: 'fast', budgetUsd: 5 },
+    });
+    const p = await t.runtime.engineerPreview(preview(req));
+    if (!p.ok) throw new Error(p.error);
+    const consent = { token: p.consent, ...ALLOWED };
+    expect(await t.runtime.engineer({ ...req, consent })).toMatchObject({
+      kind: 'refused',
+      code: 'budget',
+    });
+    const ledger = await readRunSpend(runDir());
+    expect(ledger).toMatchObject({ aiMs: 0, calls: 1, reservations: [], reservedAiMs: 600_000 });
+    const approval = await readFile(join(runDir(), 'ai', 'approval.json'), 'utf8');
+    const reopened = setup({ now: () => now });
+    expect(await reopened.runtime.engineer({ ...req, pass: 2, consent })).toMatchObject({
+      kind: 'refused',
+      code: 'time',
+    });
+    expect(reopened.requests()).toBe(0);
+    expect(await readRunSpend(runDir())).toEqual(ledger);
+    expect(await readFile(join(runDir(), 'ai', 'approval.json'), 'utf8')).toBe(approval);
+  });
+
+  it("reserves time before dispatch and replaces only this call's debt with elapsed time", async () => {
+    await spendStore.writeRunSpend(runDir(), {
+      startedAt: 1,
+      aiMs: 100_000,
+      reservedAiMs: 600_000,
+      spentUsd: 0,
+      calls: 0,
+      tokens: 0,
+      unpriced: 0,
+    });
+    const scripted = createScriptedProvider('anthropic').languageModel(
+      'claude-opus-5-5',
+      null,
+    ) as LanguageModelV4;
+    let now = 1_000_000;
+    const model: LanguageModelV4 = {
+      ...scripted,
+      doGenerate: async (opts) => {
+        // Standard has 20 minutes: 700,000 ms is used or reserved, so this call reserves 500,000.
+        expect((await readRunSpend(runDir()))?.reservedAiMs).toBe(1_100_000);
+        now += 120_000;
+        return scripted.doGenerate(opts);
+      },
+    };
+    const t = setup({ model, flags: ALLOWED, now: () => now });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });
+    expect(await readRunSpend(runDir())).toMatchObject({ aiMs: 220_000, reservedAiMs: 600_000 });
+  });
+
+  it('releases time held for an unsent request when consent changes during reservation', async () => {
+    const opts: Opts = { flags: ALLOWED, ai: 'allow' };
+    const write = spendStore.writeRunSpend;
+    vi.spyOn(spendStore, 'writeRunSpend').mockImplementation(async (dir, spend) => {
+      await write(dir, spend);
+      if (spend.reservations?.length) opts.ai = 'forbid';
+    });
+    const t = setup(opts);
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'policy' });
+    expect(t.requests()).toBe(0);
+    expect(await readRunSpend(runDir())).toMatchObject({
+      aiMs: 0,
+      reservedAiMs: 0,
+      reservations: [],
+      calls: 0,
+    });
+  });
+
+  it('does not settle finite counts from a response with an unknown finish reason', async () => {
+    const scripted = createScriptedProvider('anthropic').languageModel(
+      'claude-opus-5-5',
+      null,
+    ) as LanguageModelV4;
+    const model: LanguageModelV4 = {
+      ...scripted,
+      doGenerate: async (opts) => ({
+        ...(await scripted.doGenerate(opts)),
+        finishReason: { unified: 'other', raw: undefined },
+      }),
+    };
+    const t = setup({ model, flags: ALLOWED });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'failed', code: 'invalid' });
+    expect((await readRunSpend(runDir()))?.reservations).toHaveLength(1);
+    expect((await readRunSpend(runDir()))?.spentUsd).toBe(0);
+    expect(t.recorded).toEqual([]);
+  });
+
+  it('fails closed before dispatch when the reservation cannot be saved', async () => {
+    vi.spyOn(spendStore, 'writeRunSpend').mockRejectedValue(new Error('disk full'));
+    const t = setup({ flags: ALLOWED });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'budget' });
+    expect(t.requests()).toBe(0);
+    expect(await readRunSpend(runDir())).toBeNull();
+  });
+
+  it('retains the durable reservation and sends no repair when settlement cannot be saved', async () => {
+    const write = spendStore.writeRunSpend;
+    vi.spyOn(spendStore, 'writeRunSpend')
+      .mockImplementationOnce(write)
+      .mockRejectedValue(new Error('disk full'));
+    const t = setup({ flags: ALLOWED });
+    expect(
+      await send(t.runtime, request({ summary: '{"note":"#engineer invalid"}' })),
+    ).toMatchObject({ kind: 'refused', code: 'budget' });
+    expect(t.requests()).toBe(1);
+    expect((await readRunSpend(runDir()))?.reservations).toHaveLength(1);
+    expect((await readRunSpend(runDir()))?.spentUsd).toBe(0);
+  });
+
+  it.each(['calls', 'tokens'] as const)(
+    'counts unsettled reservations against the persisted %s limit',
+    async (limit) => {
+      await spendStore.writeRunSpend(runDir(), {
+        startedAt: 1,
+        aiMs: 0,
+        spentUsd: 0,
+        calls: limit === 'calls' ? 3 : 0,
+        tokens: limit === 'tokens' ? 499_000 : 0,
+        unpriced: 0,
+        reservations: [
+          {
+            id: '00000000-0000-4000-8000-000000000001',
+            costUsd: 0.01,
+            inputTokens: 1000,
+            outputTokens: 8000,
+          },
+        ],
+      });
+      const t = setup({ flags: ALLOWED });
+      expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'budget' });
+      expect(t.requests()).toBe(0);
+    },
+  );
+
+  it('serializes follow-up passes before async preflight and preserves the spend ledger', async () => {
+    const t = setup();
+    const req = request({ approvalScope: 'run', setup: { ...SETUP, budgetUsd: 5 } });
+    const p = await t.runtime.engineerPreview(preview(req));
+    if (!p.ok) throw new Error(p.error);
+    const consent = { token: p.consent, ...ALLOWED };
+    await t.runtime.engineer({ ...req, consent });
+    const results = await Promise.all(
+      [2, 3].map((pass) => t.runtime.engineer({ ...req, runId: `ipc-${pass}`, pass, consent })),
+    );
+    expect(results.filter((r) => r.kind === 'refused' && r.code === 'busy')).toHaveLength(1);
+    expect((await readRunSpend(runDir()))?.calls).toBe(t.requests());
+  });
+  it('one approval covers bounded later passes across restart, but not changed inputs or budget', async () => {
+    const t = setup();
+    const req = request({ approvalScope: 'run', setup: { ...SETUP, budgetUsd: 5 } });
+    const p = await t.runtime.engineerPreview(preview(req));
+    if (!p.ok) throw new Error(p.error);
+    const consent = { token: p.consent, ...ALLOWED };
+    expect((await t.runtime.engineer({ ...req, consent })).kind).toBe('proposal');
+    const reopened = setup();
+    expect(
+      (
+        await reopened.runtime.engineer({
+          ...req,
+          pass: 2,
+          consent,
+          images: [...req.images, { id: 'gen-east', kind: 'generated', dataUrl: PNG, bytes: 40 }],
+        })
+      ).kind,
+    ).toBe('proposal');
+    const changed = await reopened.runtime.engineer({
+      ...req,
+      consent,
+      summary: 'changed source measurements',
+    });
+    expect(changed).toMatchObject({ kind: 'refused', approvalRequired: true });
+    const budget = await reopened.runtime.engineer({
+      ...req,
+      consent,
+      setup: { ...req.setup, budgetUsd: 10 },
+    });
+    expect(budget).toMatchObject({ kind: 'refused', approvalRequired: true });
+    const duplicates = await reopened.runtime.engineer({
+      ...req,
+      consent,
+      images: [
+        ...req.images,
+        ...Array.from({ length: 6 }, () => ({
+          id: 'gen-east',
+          kind: 'generated' as const,
+          dataUrl: PNG,
+          bytes: 40,
+        })),
+      ],
+    });
+    expect(duplicates).toMatchObject({ kind: 'refused', approvalRequired: true });
+  });
   it.each(['anthropic', 'openai'] as const)(
     '%s: returns a proposal, emits usage and records it to the project',
     async (provider) => {
@@ -258,6 +573,41 @@ describe('ai:engineer', () => {
     expect(t.policyReads).toEqual(['p1', 'p1']);
   });
 
+  it.each([
+    { kind: 'crop' as const, id: 'img-crown', photos: true, scans: false, allowed: false },
+    { kind: 'crop' as const, id: 'img-crown', photos: false, scans: true, allowed: true },
+    { kind: 'photo' as const, id: 'img-part-device', photos: false, scans: true, allowed: false },
+    { kind: 'photo' as const, id: 'img-part-device', photos: true, scans: false, allowed: true },
+  ])(
+    'enforces the source category of $id with photos=$photos scans=$scans before dispatch',
+    async ({ kind, id, photos, scans, allowed }) => {
+      const t = setup({ flags: { photos, scans } });
+      const req = request({
+        images: [
+          { id, kind, dataUrl: PNG, bytes: 40, view: kind === 'crop' ? 'crown' : 'obs-device' },
+        ],
+      });
+      expect(await send(t.runtime, req)).toMatchObject(
+        allowed ? { kind: 'proposal' } : { kind: 'refused', code: 'policy' },
+      );
+      expect(t.requests()).toBe(allowed ? 1 : 0);
+    },
+  );
+
+  it.each([false, true])(
+    'a generated cloud crop can use one-time scan consent only: scans=%s',
+    async (scans) => {
+      const t = setup();
+      const req = request({
+        images: [{ id: 'img-level-1', kind: 'crop', dataUrl: PNG, bytes: 40, view: 'level-1' }],
+      });
+      expect(await send(t.runtime, req, { photos: !scans, scans })).toMatchObject(
+        scans ? { kind: 'proposal' } : { kind: 'refused', code: 'policy' },
+      );
+      expect(t.requests()).toBe(scans ? 1 : 0);
+    },
+  );
+
   it('a one-time consent from the preview counts once, for that content only', async () => {
     const t = setup({ flags: { photos: false, scans: false } });
     const p = await t.runtime.engineerPreview(preview(request()));
@@ -313,7 +663,7 @@ describe('ai:engineer', () => {
     });
     expect(r).toMatchObject({ kind: 'proposal' });
     expect(t.requests()).toBe(1);
-    expect(t.policyReads).toEqual(['p1', 'p1']);
+    expect(t.policyReads).toEqual(['p1', 'p1', 'p1', 'p1']);
     expect(await send(t.runtime, req)).toMatchObject({ kind: 'refused', code: 'policy' });
     expect(t.requests()).toBe(1);
   });
@@ -414,36 +764,62 @@ describe('ai:engineer', () => {
     });
   });
 
-  it('the run has 10 minutes of AI time in all, counted while requests are in flight', async () => {
-    let now = 1_000_000;
-    // every request takes 5 minutes
-    const slow = { flags: ALLOWED, now: () => now, onGenerate: () => (now += 5 * 60_000) };
-    const t = setup(slow);
-    expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });
-    expect((await readRunSpend(runDir()))?.aiMs).toBe(5 * 60_000);
-    // an hour reading the send preview does not count; a new runtime (a restart) keeps the time
-    now += 60 * 60_000;
-    const after = setup(slow);
-    expect(await send(after.runtime, request({ pass: 2 }))).toMatchObject({ kind: 'proposal' });
-    expect((await readRunSpend(runDir()))?.aiMs).toBe(10 * 60_000);
-    const p = await after.runtime.engineerPreview(preview(request({ pass: 3 })));
-    if (!p.ok) throw new Error(p.error);
-    const consent = { token: p.consent, photos: false, scans: false };
-    expect(await after.runtime.engineer(request({ pass: 3, consent }))).toEqual({
-      kind: 'refused',
-      code: 'time',
-      reason: TIME_USED_UP,
-    });
-    // a token is bound to its run: run-a's does not open run-b
-    expect(
-      await after.runtime.engineer(request({ pass: 3, engineerRun: 'run-b', consent })),
-    ).toMatchObject({ kind: 'refused', code: 'policy' });
-    // a new run starts its own time
-    expect(await send(after.runtime, request({ engineerRun: 'run-b' }))).toMatchObject({
-      kind: 'proposal',
-    });
-    expect(t.requests() + after.requests()).toBe(3);
-  });
+  it.each([
+    { detail: 'fast' as const, minutes: 10 },
+    { detail: 'standard' as const, minutes: 20 },
+    { detail: 'detailed' as const, minutes: 30 },
+  ])(
+    '$detail keeps its $minutes-minute AI allowance and spend across restarts',
+    async ({ detail, minutes }) => {
+      let now = 1_000_000;
+      // Each model request takes ten minutes; only time in flight counts toward the allowance.
+      const slow = { now: () => now, onGenerate: () => (now += 10 * 60_000) };
+      const req = request({ approvalScope: 'run', setup: { ...SETUP, detail } });
+      let current = setup(slow);
+      const p = await current.runtime.engineerPreview(preview(req));
+      if (!p.ok) throw new Error(p.error);
+      const consent = { token: p.consent, ...ALLOWED };
+      let costUsd = 0;
+      let approval = '';
+      for (let pass = 1; pass <= minutes / 10; pass++) {
+        const out = await current.runtime.engineer({ ...req, pass, consent });
+        expect(out).toMatchObject({ kind: 'proposal', cached: false });
+        if (out.kind !== 'proposal') throw new Error(out.kind);
+        costUsd += out.costUsd;
+        expect(await readRunSpend(runDir())).toMatchObject({
+          startedAt: 1_000_000,
+          aiMs: pass * 10 * 60_000,
+          calls: pass,
+          tokens: pass * 1350,
+          unpriced: 0,
+        });
+        expect((await readRunSpend(runDir()))?.spentUsd).toBeCloseTo(costUsd, 10);
+        const savedApproval = await readFile(join(runDir(), 'ai', 'approval.json'), 'utf8');
+        if (pass === 1) approval = savedApproval;
+        else expect(savedApproval).toBe(approval);
+        // An hour reviewing the draft and a new runtime must neither spend nor reset AI time.
+        now += 60 * 60_000;
+        current = setup(slow);
+      }
+      const spend = await readFile(join(runDir(), 'ai', 'spend.json'), 'utf8');
+      expect(await current.runtime.engineer({ ...req, pass: 3, consent })).toEqual({
+        kind: 'refused',
+        code: 'time',
+        reason: TIME_USED_UP,
+      });
+      expect(current.requests()).toBe(0);
+      expect(await readFile(join(runDir(), 'ai', 'spend.json'), 'utf8')).toBe(spend);
+      expect(await readFile(join(runDir(), 'ai', 'approval.json'), 'utf8')).toBe(approval);
+      // Approval and time remain scoped to this run.
+      expect(
+        await current.runtime.engineer({ ...req, engineerRun: 'run-b', consent }),
+      ).toMatchObject({ kind: 'refused', code: 'policy' });
+      expect(await send(current.runtime, { ...req, engineerRun: 'run-b' }, ALLOWED)).toMatchObject({
+        kind: 'proposal',
+      });
+      expect(current.requests()).toBe(1);
+    },
+  );
 
   it('a request that sends nothing does not start the run clock', async () => {
     let now = 1_000_000;
@@ -453,7 +829,7 @@ describe('ai:engineer', () => {
     expect(await readRunSpend(runDir())).toBeNull();
     now += 30 * 60_000;
     expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });
-    // the clock starts with the first metered request
+    // the clock starts with the first request reservation
     expect(await readRunSpend(runDir())).toMatchObject({ startedAt: now, calls: 1 });
   });
 
@@ -497,6 +873,27 @@ describe('ai:engineer', () => {
     const t = setup({ flags: ALLOWED });
     expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'budget' });
     expect(t.requests()).toBe(0);
+  });
+
+  it('reserves the next request against the remaining persisted token allowance', async () => {
+    await mkdir(join(runDir(), 'ai'), { recursive: true });
+    // Standard permits 500,000 tokens; one token left cannot cover another request.
+    await writeFile(
+      join(runDir(), 'ai', 'spend.json'),
+      JSON.stringify({
+        schema: SPEND_SCHEMA,
+        startedAt: Date.now(),
+        spentUsd: 0,
+        calls: 1,
+        tokens: 499_999,
+        unpriced: 0,
+        aiMs: 0,
+      }),
+    );
+    const t = setup({ flags: ALLOWED });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'budget' });
+    expect(t.requests()).toBe(0);
+    expect((await readRunSpend(runDir()))?.tokens).toBe(499_999);
   });
 
   it('a run that has made all its requests is refused, also with an unknown price', async () => {

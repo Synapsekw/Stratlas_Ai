@@ -66,3 +66,5 @@ export * from './modelEvidence';
 export * from './antennas';
 // RF coverage: sectors, catalogue and run files (aio.rf-*)
 export * from './rf';
+export * from './componentObservation';
+export * from './modelCorrections';

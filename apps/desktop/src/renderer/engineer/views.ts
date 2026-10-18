@@ -1,5 +1,5 @@
 import { meshAssemblies } from '@aio/modelling';
-import type { EvidencePack, ProcModel } from '@aio/schema';
+import type { EvidenceImage, EvidencePack, ProcModel } from '@aio/schema';
 import type { GeneratedView } from './runStore';
 
 /**
@@ -61,7 +61,12 @@ export interface Projected {
 }
 
 /** The triangles in a view, scaled to fit `px` square with the renders' margin. */
-export function projectTriangles(tris: Float64Array, view: ViewName, px: number): Projected {
+export function projectTriangles(
+  tris: Float64Array,
+  view: ViewName,
+  px: number,
+  frame?: EvidenceImage['projection'],
+): Projected {
   const n = tris.length / 9;
   const uvn = new Float64Array(tris.length);
   let u0 = Infinity;
@@ -78,10 +83,10 @@ export function projectTriangles(tris: Float64Array, view: ViewName, px: number)
     v0 = Math.min(v0, v);
     v1 = Math.max(v1, v);
   }
-  const ext = Math.max(u1 - u0, v1 - v0, 1e-9);
+  const ext = frame?.extent ?? Math.max(u1 - u0, v1 - v0, 1e-9);
   const s = (px * (1 - 2 * MARGIN)) / ext;
-  const cu = (u0 + u1) / 2;
-  const cv = (v0 + v1) / 2;
+  const cu = frame?.centre[0] ?? (u0 + u1) / 2;
+  const cv = frame?.centre[1] ?? (v0 + v1) / 2;
   const depth = new Float64Array(n);
   for (let i = 0; i < uvn.length; i += 3) {
     uvn[i] = ((uvn[i] ?? 0) - cu) * s + px / 2;
@@ -173,9 +178,10 @@ export async function silhouetteScores(
   if (tris.length === 0) return out;
   for (const img of evidence.images) {
     if ((img.kind !== 'side' && img.kind !== 'top') || !isViewName(img.view)) continue;
+    if (!img.projection) continue; // Legacy packs cannot provide a placement comparison.
     const pixels = await decode(await load(img.id));
     const cloud = imageMask(pixels.data, pixels.width, pixels.height, MASK_PX);
-    const draft = triangleMask(projectTriangles(tris, img.view, MASK_PX), MASK_PX);
+    const draft = triangleMask(projectTriangles(tris, img.view, MASK_PX, img.projection), MASK_PX);
     out[img.view] = Math.round(iou(cloud, draft) * 1000) / 1000;
   }
   return out;
@@ -219,14 +225,14 @@ export interface ViewCanvas {
  */
 export function renderDraftViews(
   model: ProcModel,
-  views: readonly { id: string; view: string }[],
+  views: readonly { id: string; view: string; projection?: EvidenceImage['projection'] }[],
   canvas: (px: number) => ViewCanvas,
 ): GeneratedView[] {
   const tris = draftTriangles(model);
   const out: GeneratedView[] = [];
   for (const v of views) {
     if (!isViewName(v.view)) continue;
-    const p = projectTriangles(tris, v.view, VIEW_PX);
+    const p = projectTriangles(tris, v.view, VIEW_PX, v.projection);
     const order = [...p.depth.keys()].sort((a, b) => (p.depth[a] ?? 0) - (p.depth[b] ?? 0));
     const c = canvas(VIEW_PX);
     // flat shading: a face turned to the camera is light, one seen edge on dark

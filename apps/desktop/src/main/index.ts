@@ -89,7 +89,11 @@ import {
   WALK_PACK_FEATURE,
   walkPackRefusal,
 } from './walks';
-import { EVIDENCE_PACK_FEATURE, evidencePackRefusal } from './evidencePack';
+import {
+  COMPONENT_EVIDENCE_PACK_FEATURE,
+  EVIDENCE_PACK_FEATURE,
+  evidenceJobPackRefusal,
+} from './evidencePack';
 import {
   PANO_PACK_FEATURE,
   PANO_QUEUED,
@@ -1381,7 +1385,11 @@ function registerIpc(): void {
       const tooOld =
         walkPackRefusal(pipeline, version) ??
         panoPackRefusal(pipeline, version) ??
-        evidencePackRefusal(pipeline, version) ??
+        (await evidenceJobPackRefusal(
+          pipeline,
+          version,
+          'resume' in req ? jobs.get(req.resume) : undefined,
+        )) ??
         antennaPackRefusal(pipeline, version) ??
         rfPackRefusal(pipeline, version) ??
         cleanPackRefusal(pipeline, version);
@@ -1967,6 +1975,7 @@ function registerIpc(): void {
             WALK_PACK_FEATURE,
             PANO_PACK_FEATURE,
             EVIDENCE_PACK_FEATURE,
+            COMPONENT_EVIDENCE_PACK_FEATURE,
             RF_PACK_FEATURE,
             CLEAN_PACK_FEATURE,
           ],

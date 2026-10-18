@@ -10,6 +10,7 @@
 import type { AssemblyParams } from '@aio/schema';
 import { add, cross, norm, scale, sub, type MeshSink, type V3 } from '../geom';
 import type { AssemblyOf, BuildCtx, BuilderTable } from './ctx';
+import { orientedBox } from './access';
 
 function fail(what: string): never {
   throw new Error(`geometry: ${what}`);
@@ -195,26 +196,31 @@ const DOOR_EMBED = 0.002;
 
 /**
  * Cabinet: a box standing on `base` (centre of its bottom), `size` = width, height, depth, turned
- * by `yawDeg`, with two door leaves on its front (local +z) split by a vertical seam and inset
- * from the edges.
+ * by `yawDeg` and inclined front-down by optional `tiltDeg`. Known cabinets have two door
+ * leaves; unclassified equipment boxes retain their measured envelope without invented doors.
  */
 export function buildCabinet(sink: MeshSink, a: AssemblyOf<'cabinet'>, ctx: BuildCtx): void {
   const p = a.params;
   const m = ctx.material(a.material, 'cabinet-grey');
   const [w, h, d] = p.size;
   const { x, z } = planAxes(p.yawDeg);
-  const centre: V3 = [p.base[0], p.base[1] + h / 2, p.base[2]];
-  sink.box(m, { centre, size: [w, h, d], yawDeg: p.yawDeg });
+  const tRad = ((p.tiltDeg ?? 0) * Math.PI) / 180;
+  const up: V3 = [z[0] * Math.sin(tRad), Math.cos(tRad), z[2] * Math.sin(tRad)];
+  const front: V3 = [z[0] * Math.cos(tRad), -Math.sin(tRad), z[2] * Math.cos(tRad)];
+  const axes = [x, up, front] as const;
+  const centre = add(p.base, scale(up, h / 2));
+  orientedBox(sink, m, centre, axes, [w / 2, h / 2, d / 2]);
+  if (a.type === 'equipment-box') return;
   const inset = Math.min(w, h) * 0.04;
   const seam = Math.min(0.01, w * 0.02);
   const leafW = (w - 2 * inset - seam) / 2;
   const leafH = h - 2 * inset;
   if (!(leafW > 0 && leafH > 0)) fail('cabinet is too small for its doors');
   const t = DOOR_PROUD + DOOR_EMBED;
-  const face = add(centre, scale(z, d / 2 + DOOR_PROUD - t / 2));
+  const face = add(centre, scale(front, d / 2 + DOOR_PROUD - t / 2));
   for (const side of [-1, 1]) {
     const c = add(face, scale(x, side * (seam / 2 + leafW / 2)));
-    sink.box(m, { centre: c, size: [leafW, leafH, t], yawDeg: p.yawDeg });
+    orientedBox(sink, m, c, axes, [leafW / 2, leafH / 2, t / 2]);
   }
 }
 

@@ -35,6 +35,7 @@ const pack = (views: string[]): EvidencePack =>
       h: 256,
       bytes: 1,
       sha1: '0'.repeat(40),
+      projection: { centre: [0, -65], extent: 140 },
     })),
   }) as unknown as EvidencePack;
 
@@ -57,7 +58,10 @@ describe('the draft seen as the evidence renders see the cloud', () => {
   it('scores a draft that matches the cloud near 1 and a wrong one low', async () => {
     const model = stackModel();
     const tris = draftTriangles(model);
-    const truth = triangleMask(projectTriangles(tris, 'east', MASK_PX), MASK_PX);
+    const truth = triangleMask(
+      projectTriangles(tris, 'east', MASK_PX, { centre: [0, -65], extent: 140 }),
+      MASK_PX,
+    );
     // the cloud render of a chimney twice as wide: the draft no longer fits it
     const wide = new Uint8Array(MASK_PX * MASK_PX);
     for (let y = 0; y < MASK_PX; y++)
@@ -82,6 +86,17 @@ describe('the draft seen as the evidence renders see the cloud', () => {
     expect([...m]).toEqual([1, 0, 0, 0]);
     expect(iou(new Uint8Array([1, 1, 0, 0]), new Uint8Array([1, 0, 1, 0]))).toBeCloseTo(1 / 3);
     expect(iou(new Uint8Array(4), new Uint8Array(4))).toBe(0);
+  });
+
+  it('cannot hide translation or scale by framing each model separately', () => {
+    const frame = { centre: [0, 0] as [number, number], extent: 12 };
+    const tri = new Float64Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]);
+    const shifted = tri.map((v, i) => (i % 3 === 0 ? v + 5 : v));
+    const scaled = tri.map((v) => v * 0.5);
+    const mask = (t: Float64Array) =>
+      triangleMask(projectTriangles(t, 'top', MASK_PX, frame), MASK_PX);
+    expect(iou(mask(tri), mask(shifted))).toBeLessThan(0.05);
+    expect(iou(mask(tri), mask(scaled))).toBeLessThan(0.35);
   });
 
   it('draws generated views far first, flat shaded, as PNG data URLs', () => {

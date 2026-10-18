@@ -133,6 +133,7 @@ function taggedAdapter(): LayerAdapter {
       for (const [name, size, x] of parts) {
         const node = new Group();
         node.name = name;
+        node.userData.aioNode = true;
         const mesh = new Mesh(new BoxGeometry(size, size, size), new MeshStandardMaterial());
         mesh.position.set(x, 5, 0);
         node.add(mesh);
@@ -1227,9 +1228,43 @@ describe('Stage', () => {
     expect(ids()).toEqual(['N1_Neck', 'N2_Neck', 'Roof_Head']);
     stage.setLabelMode('off');
     expect(ids()).toEqual([]);
-    // the selection is always labelled
+    // Turning labels off keeps component selection and its highlight, without a floating label.
     store.getState().select({ kind: 'asset', id: 'N1_Neck', layer: 'plant' });
-    expect(ids()).toEqual(['N1_Neck']);
+    const selected = stage.selected;
+    expect(selected?.node).toBe('N1_Neck');
+    expect(stage.scene.getObjectByName('engine:highlight')?.children.length).toBeGreaterThan(0);
+    expect(ids()).toEqual([]);
+    stage.setLabelMode('all');
+    expect(ids()).toEqual(['N1_Neck', 'N2_Neck', 'Roof_Head']);
+    expect(stage.selected).toEqual(selected);
+    expect(store.getState().selection).toEqual({ kind: 'asset', id: 'N1_Neck', layer: 'plant' });
+    stage.dispose();
+  });
+
+  it('keeps hovered GLB labels hidden when off while preserving picking and highlight', async () => {
+    const { stage, store, resize } = make(taggedAdapter());
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    stage.restoreView({ position: [0, 5, 30], target: [0, 5, 0] });
+    stage.camera.updateMatrixWorld(true);
+    stage.canvas.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+    stage.setLabelMode('off');
+    const picked = stage.pickAt(0, 0);
+    expect(picked?.node).toBe('Roof_Head');
+    const move = new MouseEvent('pointermove', { clientX: 400, clientY: 300, buttons: 0 });
+    Object.defineProperty(move, 'pointerType', { value: 'mouse' });
+    stage.canvas.dispatchEvent(move);
+    await vi.waitFor(() => {
+      expect(stage.hovered).toEqual(picked);
+    });
+    expect(stage.scene.getObjectByName('engine:highlight')?.children.length).toBeGreaterThan(0);
+    expect(container.querySelector('[data-callout]')).toBeNull();
+    stage.setLabelMode('all');
+    expect(container.querySelectorAll('[data-callout]')).toHaveLength(3);
+    expect(stage.hovered).toEqual(picked);
+    expect(stage.pickAt(0, 0)).toEqual(picked);
     stage.dispose();
   });
 

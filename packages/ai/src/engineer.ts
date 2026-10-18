@@ -12,13 +12,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { EngineerProposal, type EngineerSetup } from '@aio/schema';
+import { EngineerProposal, type EngineerSetup, type ComponentObservation } from '@aio/schema';
 import {
   APICallError,
   generateText,
+  streamText,
+  wrapLanguageModel,
   NoObjectGeneratedError,
   NoOutputGeneratedError,
   Output,
+  stepCountIs,
   RetryError,
   type LanguageModelUsage,
   type ModelMessage,
@@ -26,6 +29,8 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { engineerReady, type LocalCaps, type ModelCaps } from './capabilities';
+import { componentTools, measurementRecords, ReadComponentsInput } from './engineerTools';
+import type { EngineerReservation } from './engineerSpend';
 import {
   engineerRepairText,
   engineerSystem,
@@ -47,20 +52,23 @@ import { estimateCostUsd as priceUsd } from './pricing';
 import type { ProviderRegistry } from './providers';
 import { missingKeyMessage, PROVIDER_LABELS, type ModelRoute } from './routes';
 
-/** AI wall time of one engineer call (the plan's 10 minutes per run is enforced by the caller). */
+/** Maximum AI wall time of one engineer call; the caller enforces the remaining run allowance. */
 export const ENGINEER_TIMEOUT_MS = 600_000;
-/** Output tokens a reply may use, and the output part of the cost estimate. */
-export const ENGINEER_MAX_OUTPUT_TOKENS = 8_000;
-const ESTIMATE_OUTPUT_TOKENS = 4_000;
+/** Hard ceiling; large measured inventories need more room than small generic proposals. */
+export const ENGINEER_MAX_OUTPUT_TOKENS = 24_000;
+export function engineerOutputTokens(c: Pick<EngineerCall, 'observations' | 'previous'>): number {
+  const count = Math.max(c.observations?.length ?? 0, c.previous?.components.length ?? 0);
+  return Math.min(ENGINEER_MAX_OUTPUT_TOKENS, Math.max(8_000, 4_096 + count * 256));
+}
 /** Longest measurement summary sent (characters); a longer one is refused, not cut. */
 export const SUMMARY_MAX_CHARS = 40_000;
 /** The refusal once a run's AI time is used up. */
 export const TIME_USED_UP =
-  'This run has used its 10 minutes of AI time. Review the proposal so far, or start a new run.';
+  'This run has used its AI time allowance. Review the proposal so far, or start a new run.';
 /** Longest bad reply sent back in the repair request (characters). */
 const REPAIR_REPLY_MAX = 20_000;
 /** Version of the reply format (the wire schema below and its mapping to `EngineerProposal`). */
-const PROPOSAL_FORMAT = 'proposal-1';
+const PROPOSAL_FORMAT = 'proposal-2';
 
 export type EngineerImageKind = 'photo' | 'side' | 'top' | 'slice' | 'crop' | 'generated';
 
@@ -82,11 +90,11 @@ export interface EngineerCall {
   images: EngineerImage[];
   /** The evidence pack's measurement summary (JSON text). Treated as data, paths redacted. */
   summary: string;
+  observations?: ComponentObservation[];
   setup: EngineerSetup;
   previous?: EngineerProposal;
   /**
-   * The person confirmed the cost in the preview although the model has no price (the estimate is
-   * unknown). Without it a model without a price is refused with `budget`.
+   * Legacy preview field, retained for reading old runs. It does not bypass an unknown price.
    */
   costConfirmed?: boolean;
 }
@@ -110,13 +118,21 @@ export interface EngineerHost {
   offlineOnly(): boolean;
   /** The project's AI policy and its sharing flags (`aiCloudPhotos`, `aiCloudScans`), re-read. */
   policy(): { ai: 'allow' | 'forbid'; photos: boolean; scans: boolean };
+  /** Re-read main-process policy, route and approved source identities before each request. */
+  authorize?(): Promise<string | null>;
   cache: {
     get(key: string): Promise<EngineerProposal | null>;
     put(key: string, p: EngineerProposal): Promise<void>;
   };
-  /** US dollars this run has spent on AI so far. */
+  /** Known spend plus outstanding request reservations for this run. */
   spent(runId: string): number;
-  usage(u: EngineerUsage): void;
+  usage: (u: EngineerUsage, reservationId?: string) => void | Promise<void>;
+  /** Durable request accounting, used by the project runtime before every provider dispatch. */
+  accounting?: {
+    reserve: (reservation: EngineerReservation) => Promise<void>;
+    release: (id: string) => Promise<void>;
+    dispatched: () => void;
+  };
   /** The run's AI cost cap (`DETAIL_BUDGETS[detail].costUsd`). */
   budgetUsd: number;
   /** Aborted by `ai:cancel`. */
@@ -137,6 +153,8 @@ export interface EngineerHost {
   deadline?: number;
   /** Model requests the run may still make: with only one left, an invalid reply gets no repair. */
   callsLeft?: number;
+  /** Remaining run token allowance, reserved before every tool step and repair. */
+  tokensLeft?: number;
 }
 
 export type EngineerOutcome =
@@ -160,6 +178,7 @@ export type EngineerOutcome =
     }
   | {
       kind: 'refused';
+      approvalRequired?: boolean;
       reason: string;
       code:
         | 'offline'
@@ -503,6 +522,7 @@ export function engineerCacheKey(
     endpoint: route.provider === 'local' ? (endpoint ?? '') : '',
     pass: c.pass,
     summary: c.summary,
+    observations: c.observations ?? [],
     setup: c.setup,
     previous: c.previous ?? null,
     images,
@@ -526,7 +546,7 @@ function imageTokens(dims: { w: number; h: number } | null, maxPx: number): numb
 
 /** The text part of the request: setup, bounded and redacted summary, previous proposal. */
 function requestText(c: EngineerCall, images: readonly EngineerImage[]): string {
-  return engineerUserText({
+  const text = engineerUserText({
     summary: redactPaths(c.summary),
     setup: setupView(c.setup),
     pass: c.pass,
@@ -534,12 +554,15 @@ function requestText(c: EngineerCall, images: readonly EngineerImage[]): string 
     generatedCount: images.filter((im) => im.kind === 'generated').length,
     ...(c.previous ? { previous: c.previous } : {}),
   });
+  return c.observations?.length
+    ? `${text}\n\nApproved component IDs (read_components returns their measurements):\n${c.observations.map((o) => `${o.id}: ${o.kind}`).join('\n')}\nMeasurements are authoritative: never average, relocate or rescale them. Infer only unresolved details, and label them inferred.`
+    : text;
 }
 
 /**
  * The estimated cost of one engineer request in US dollars: images at (w * h) / 750 tokens each
  * after fitting into the model's image size, the system text, the request text (setup, summary,
- * previous proposal) and the image labels at four characters a token, and 4000 output tokens,
+ * previous proposal), schemas and image labels at three UTF-8 bytes a token, and the full reply allowance,
  * priced with the meter's table. 0 on the local model; undefined when the model has no price.
  */
 export function estimateEngineerCostUsd(
@@ -548,15 +571,31 @@ export function estimateEngineerCostUsd(
   caps: ModelCaps = engineerLimits(route),
 ): number | undefined {
   if (route.provider === 'local') return 0;
+  return priceUsd(route.model, estimateEngineerTokens(c, caps));
+}
+
+function estimateEngineerTokens(c: EngineerCall, caps: ModelCaps) {
   const images = selectEngineerImages(c, caps.maxImages);
   const labels = images.map((im) => imageLabel(im.id, im.kind, im.view)).join('\n');
-  const text = engineerSystem().length + requestText(c, images).length + labels.length;
+  const toolDescription = c.observations?.length
+    ? componentTools(c.observations).read_components.description
+    : '';
+  const text =
+    engineerSystem() +
+    requestText(c, images) +
+    labels +
+    JSON.stringify(z.toJSONSchema(WireProposal)) +
+    (c.observations?.length
+      ? JSON.stringify(measurementRecords(c.observations)) +
+        JSON.stringify(z.toJSONSchema(ReadComponentsInput)) +
+        (typeof toolDescription === 'string' ? toolDescription : '')
+      : '');
   const inputTokens =
     images.reduce((n, im) => {
       const d = decodeDataUrl(im.dataUrl);
       return n + imageTokens(d ? imageSize(d.bytes) : null, caps.maxImagePx);
-    }, 0) + Math.ceil(text / 4);
-  return priceUsd(route.model, { inputTokens, outputTokens: ESTIMATE_OUTPUT_TOKENS });
+    }, 0) + Math.ceil(Buffer.byteLength(text, 'utf8') / 3);
+  return { inputTokens, outputTokens: engineerOutputTokens(c) };
 }
 
 // ---------------------------------------------------------------- the payload
@@ -579,6 +618,8 @@ export interface EngineerPayloadImage {
 
 /** What one engineer request sends besides the fixed system text: shown as is in the preview. */
 export interface EngineerPayload {
+  /** The complete bounded measurement pool available to the read-only tool, shown before approval. */
+  measurements?: string;
   /** The request text: setup, the redacted summary, the previous proposal. */
   text: string;
   images: EngineerPayloadImage[];
@@ -652,6 +693,9 @@ export async function buildEngineerPayload(
     ok: true,
     payload: {
       text,
+      ...(c.observations?.length
+        ? { measurements: JSON.stringify(measurementRecords(c.observations), null, 2) }
+        : {}),
       images,
       leftOut: c.images.filter((im) => !chosen.includes(im)).map((im) => im.id),
       bytes: images.reduce((n, im) => n + im.bytes, 0) + text.length,
@@ -693,6 +737,19 @@ function costOf(
 }
 
 const unwrap = (e: unknown) => (RetryError.isInstance(e) ? e.lastError : e);
+class EngineerPolicyError extends Error {}
+export class EngineerSpendError extends Error {
+  constructor() {
+    super("This run's AI spending record could not be saved. No further AI requests were sent.");
+  }
+}
+class EngineerTokenLimitError extends Error {
+  constructor() {
+    super(
+      'This request would exceed the remaining AI token allowance. Review the proposal so far, or start a new run.',
+    );
+  }
+}
 
 function withNote(p: EngineerProposal, note: string): EngineerProposal {
   const unresolved = [...p.unresolved, note.slice(0, 200)].slice(-40);
@@ -732,7 +789,8 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
     // this machine and must not require a sharing flag the preview cannot offer.
     const selected = selectEngineerImages(c, ready.caps.maxImages);
     const photos = selected.some((im) => evidenceNeed(im.kind) === 'photos');
-    const scans = selected.some((im) => evidenceNeed(im.kind) === 'scans');
+    const scans =
+      Boolean(c.observations?.length) || selected.some((im) => evidenceNeed(im.kind) === 'scans');
     if (photos && !policy.photos) {
       return {
         kind: 'refused',
@@ -769,9 +827,17 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
   const capUsd = host.budgetUsd;
   let spent = host.spent(c.runId);
   const estimate = estimateEngineerCostUsd(c, route, ready.caps);
-  const over = estimate === undefined ? !c.costConfirmed : spent + estimate > capUsd;
+  const tokenEstimate = estimateEngineerTokens(c, ready.caps);
+  const budgetError = (estimateUsd = estimate) => {
+    const error = new BudgetReachedError({ capUsd, spentUsd: spent, estimateUsd });
+    if (estimateUsd !== undefined)
+      error.message = `The next AI request would cost about US$${estimateUsd.toFixed(2)}, exceeding this run's AI cost cap of US$${capUsd.toFixed(2)}. US$${spent.toFixed(2)} is already spent or reserved for requests whose final usage is unknown.`;
+    return error;
+  };
+  // A legacy confirmation cannot make an unknown dollar price enforceable.
+  const over = estimate === undefined || spent + estimate > capUsd;
   if (over) {
-    const err = new BudgetReachedError({ capUsd, spentUsd: spent, estimateUsd: estimate });
+    const err = budgetError();
     if (c.previous && estimate !== undefined) {
       return {
         kind: 'proposal',
@@ -784,7 +850,14 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
         stopped: 'budget',
       };
     }
-    return { kind: 'refused', code: 'budget', reason: err.message };
+    return {
+      kind: 'refused',
+      code: 'budget',
+      reason:
+        estimate === undefined
+          ? 'This model has no known price. Choose a priced model or a local model so the run spending limit can be checked.'
+          : err.message,
+    };
   }
 
   const left = host.deadline === undefined ? ENGINEER_TIMEOUT_MS : host.deadline - Date.now();
@@ -793,28 +866,125 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
   }
   const timeout = AbortSignal.timeout(Math.min(ENGINEER_TIMEOUT_MS, left));
   const signal = AbortSignal.any([host.signal, timeout]);
-  const model = provider.languageModel(route.model, key);
+  const baseModel = provider.languageModel(route.model, key);
+  if (host.accounting && typeof baseModel === 'string')
+    return {
+      kind: 'refused',
+      code: 'capability',
+      reason: 'This model cannot reserve AI requests safely.',
+    };
   const instructions = engineerSystem();
   let costUsd = 0;
   /** Tokens of every metered request of this call (the repair included). */
   const tokens = { inputTokens: 0, outputTokens: 0 };
-  const meter = (u: LanguageModelUsage | undefined) => {
-    const cost = costOf(route, u);
-    if (cost.costUsd !== undefined) {
-      costUsd += cost.costUsd;
-      spent += cost.costUsd;
+  let meteredCalls = 0;
+  let dispatchedCalls = 0;
+  let committedTokens = 0;
+  let nextReservation: EngineerReservation | undefined;
+  let activeReservation: EngineerReservation | undefined;
+  let accountingError: Error | undefined;
+  const callsUsed = () => (host.accounting ? dispatchedCalls : meteredCalls);
+  const authorizeRequest = async () => {
+    if (cloud && host.offlineOnly()) throw new OfflineOnlyError();
+    signal.throwIfAborted();
+    if (cloud) {
+      const denied = await host.authorize?.();
+      if (denied) throw new EngineerPolicyError(denied);
+      const policy = host.policy();
+      const images = selectEngineerImages(c, ready.caps.maxImages);
+      if (
+        policy.ai === 'forbid' ||
+        (!policy.photos && images.some((im) => evidenceNeed(im.kind) === 'photos')) ||
+        (!policy.scans &&
+          (Boolean(c.observations?.length) ||
+            images.some((im) => evidenceNeed(im.kind) === 'scans')))
+      )
+        throw new EngineerPolicyError(
+          'Sharing permission changed. Review the inputs again before continuing.',
+        );
     }
+    signal.throwIfAborted();
+  };
+  const beforeDispatch = async () => {
+    if (accountingError) throw accountingError;
+    signal.throwIfAborted();
+    const reservation = nextReservation;
+    if (!host.accounting || !reservation) throw new EngineerSpendError();
+    await host.accounting.reserve(reservation);
+    try {
+      // Persisting is asynchronous: cancellation and revoked consent still stop an unsent request.
+      await authorizeRequest();
+    } catch (e) {
+      await host.accounting.release(reservation.id);
+      throw e;
+    }
+    activeReservation = reservation;
+    spent += reservation.costUsd;
+    committedTokens += reservation.inputTokens + reservation.outputTokens;
+    dispatchedCalls++;
+    host.accounting.dispatched();
+  };
+  const model =
+    host.accounting && typeof baseModel !== 'string'
+      ? wrapLanguageModel({
+          model: baseModel,
+          middleware: {
+            wrapGenerate: async ({ doGenerate }) => {
+              await beforeDispatch();
+              return doGenerate();
+            },
+            wrapStream: async ({ doStream }) => {
+              await beforeDispatch();
+              return doStream();
+            },
+          },
+        })
+      : baseModel;
+  const meter = async (u: LanguageModelUsage | undefined) => {
+    // An interrupted stream can finish without counts. Zero-filling would release paid,
+    // unknown work; keep its reservation instead, and emit only complete reported usage.
+    if (
+      !u ||
+      !Number.isSafeInteger(u.inputTokens) ||
+      !Number.isSafeInteger(u.outputTokens) ||
+      (u.inputTokens ?? -1) < 0 ||
+      (u.outputTokens ?? -1) < 0
+    )
+      return;
+    // A cloud answer to this nonempty prompt cannot have used no input or output tokens.
+    // Some providers use 0/0 as missing-usage placeholders; retain that request's estimate.
+    if (cloud && u.inputTokens === 0 && u.outputTokens === 0) return;
+    const cost = costOf(route, u);
+    if (cost.costUsd === undefined || !Number.isFinite(cost.costUsd)) return;
+    try {
+      await host.usage(
+        {
+          projectId: c.projectId,
+          runId: c.runId,
+          provider: route.provider,
+          model: route.model,
+          inputTokens: cost.inputTokens,
+          outputTokens: cost.outputTokens,
+          costUsd: cost.costUsd,
+        },
+        activeReservation?.id,
+      );
+    } catch (e) {
+      // The streaming SDK may continue after a callback error. Keep a sticky gate so the
+      // next prepare/dispatch cannot send anything after a failed durable settlement.
+      accountingError = e instanceof Error ? e : new EngineerSpendError();
+      throw accountingError;
+    }
+    meteredCalls++;
+    costUsd += cost.costUsd;
+    spent += cost.costUsd - (activeReservation?.costUsd ?? 0);
+    committedTokens +=
+      cost.inputTokens +
+      cost.outputTokens -
+      (activeReservation ? activeReservation.inputTokens + activeReservation.outputTokens : 0);
+    activeReservation = undefined;
     tokens.inputTokens += cost.inputTokens;
     tokens.outputTokens += cost.outputTokens;
-    host.usage({
-      projectId: c.projectId,
-      runId: c.runId,
-      provider: route.provider,
-      model: route.model,
-      inputTokens: cost.inputTokens,
-      outputTokens: cost.outputTokens,
-      ...(cost.costUsd !== undefined ? { costUsd: cost.costUsd } : {}),
-    });
   };
 
   /** One request: the proposal, or what was wrong with the reply. */
@@ -823,24 +993,103 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
   ): Promise<
     { ok: true; proposal: EngineerProposal } | { ok: false; raw: string; issues: string }
   > => {
+    const beforeCalls = meteredCalls;
+    let streamError: Error | undefined;
     try {
-      const r = await generateText({
+      const request = {
         model,
         instructions,
         messages,
         output: Output.object({ schema: WireProposal, name: 'engineer_proposal' }),
-        maxRetries: host.maxRetries ?? 2,
-        maxOutputTokens: ENGINEER_MAX_OUTPUT_TOKENS,
+        ...(c.observations?.length ? { tools: componentTools(c.observations) } : {}),
+        stopWhen: stepCountIs(
+          Math.min(3, host.callsLeft === undefined ? 3 : Math.max(1, host.callsLeft - callsUsed())),
+        ),
+        prepareStep: async ({ stepNumber, messages: stepMessages }) => {
+          if (accountingError) throw accountingError;
+          await authorizeRequest();
+          if (host.callsLeft !== undefined && callsUsed() >= host.callsLeft) throw budgetError();
+          // The initial user payload is already reserved above. Include actual assistant/tool
+          // messages (and repair prompts) instead of assuming every step adds a fixed 16k.
+          // UTF-8 bytes / 3 is conservative, but tokenization varies: these remain estimates
+          // rather than a billing guarantee.
+          const historyTokens = Math.max(
+            stepNumber * tokenEstimate.outputTokens,
+            Math.ceil(Buffer.byteLength(JSON.stringify(stepMessages.slice(1)), 'utf8') / 3),
+          );
+          if (
+            host.tokensLeft !== undefined &&
+            committedTokens +
+              tokenEstimate.inputTokens +
+              tokenEstimate.outputTokens +
+              historyTokens >
+              host.tokensLeft
+          )
+            throw new EngineerTokenLimitError();
+          const historyReserve =
+            route.provider === 'local'
+              ? 0
+              : (priceUsd(route.model, {
+                  inputTokens: historyTokens,
+                  outputTokens: 0,
+                }) ?? 0);
+          if (spent + estimate + historyReserve > capUsd)
+            throw budgetError(estimate + historyReserve);
+          nextReservation = {
+            id: randomUUID(),
+            costUsd: estimate + historyReserve,
+            inputTokens: tokenEstimate.inputTokens + historyTokens,
+            outputTokens: tokenEstimate.outputTokens,
+          };
+          return stepNumber >= 2 ||
+            (host.callsLeft !== undefined && host.callsLeft - callsUsed() <= 1)
+            ? { toolChoice: 'none' as const }
+            : {};
+        },
+        onStepFinish: async ({ usage, finishReason }) => {
+          if (finishReason !== 'other' && finishReason !== 'error') await meter(usage);
+        },
+        // A hidden retry could duplicate paid work without its own durable reservation.
+        maxRetries: host.accounting ? 0 : (host.maxRetries ?? 2),
+        maxOutputTokens: engineerOutputTokens(c),
         abortSignal: signal,
-      });
-      meter(r.usage);
-      const parsed = EngineerProposal.safeParse(fromWire(r.output));
+      } satisfies Parameters<typeof generateText>[0];
+      // Long non-streamed Responses requests can hit the transport's five-minute header
+      // timeout. Consume SSE internally, and expose only the complete validated proposal.
+      const streaming =
+        route.provider === 'openai' &&
+        (Boolean(c.observations?.length) || request.maxOutputTokens > 8_000);
+      const r = streaming
+        ? streamText({
+            ...request,
+            onError: ({ error }) => {
+              streamError ??= error instanceof Error ? error : new Error(String(error));
+            },
+          })
+        : await generateText(request);
+      const output = await r.output;
+      if (streamError !== undefined) throw streamError;
+      signal.throwIfAborted();
+      const finish = await r.finishReason;
+      if (finish === 'other' || finish === 'error')
+        throw new NoOutputGeneratedError({ message: 'The proposal response did not complete.' });
+      if (meteredCalls === beforeCalls) await meter(await r.usage);
+      const parsed = EngineerProposal.safeParse(fromWire(output));
       return parsed.success
         ? { ok: true, proposal: parsed.data }
-        : { ok: false, raw: JSON.stringify(r.output), issues: issuesText(parsed.error) };
+        : { ok: false, raw: JSON.stringify(output), issues: issuesText(parsed.error) };
     } catch (e) {
+      // Streaming may wrap a policy/budget/provider error as "no output". Keep its cause.
+      if (streamError !== undefined) throw streamError;
+      signal.throwIfAborted();
       if (NoObjectGeneratedError.isInstance(e)) {
-        meter(e.usage);
+        if (
+          meteredCalls === beforeCalls &&
+          e.finishReason !== undefined &&
+          e.finishReason !== 'other' &&
+          e.finishReason !== 'error'
+        )
+          await meter(e.usage);
         const cause = e.cause instanceof Error ? e.cause.message : e.message;
         return { ok: false, raw: e.text ?? '', issues: cause };
       }
@@ -860,10 +1109,10 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
         ),
         outputTokens: 0,
       });
-      if (estimate !== undefined && spent + estimate + (extra ?? 0) > capUsd) {
+      if (spent + estimate + (extra ?? 0) > capUsd) {
         throw new InvalidProposalError(`${answer.issues} (no retry: the AI cost cap was reached)`);
       }
-      if (host.callsLeft !== undefined && host.callsLeft <= 1) {
+      if (host.callsLeft !== undefined && host.callsLeft <= callsUsed()) {
         throw new InvalidProposalError(
           `${answer.issues} (no retry: the run has made all the AI requests it may)`,
         );
@@ -914,6 +1163,14 @@ function failure(
   if (inner instanceof OfflineOnlyError) {
     return { kind: 'refused', code: 'offline', reason: OFFLINE_ONLY_MESSAGE };
   }
+  if (inner instanceof EngineerPolicyError)
+    return { kind: 'refused', code: 'policy', reason: inner.message };
+  if (inner instanceof BudgetReachedError)
+    return { kind: 'refused', code: 'budget', reason: inner.message };
+  if (inner instanceof EngineerTokenLimitError)
+    return { kind: 'refused', code: 'budget', reason: inner.message };
+  if (inner instanceof EngineerSpendError)
+    return { kind: 'refused', code: 'budget', reason: inner.message };
   if (o.timeout.aborted) {
     const runOut = o.host.deadline !== undefined && Date.now() >= o.host.deadline;
     return runOut

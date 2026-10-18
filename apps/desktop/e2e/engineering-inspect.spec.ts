@@ -15,6 +15,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openAgentOff } from './agentPane';
 import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
+import { openBench } from './island';
 
 type V3 = [number, number, number];
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -210,6 +211,7 @@ engTest(
     test.setTimeout(180_000);
     expect(engGlb).toContain('stack.glb');
     await openByName(win, PROJECT.name, PROJECT.id);
+    const selectionBench = await openBench(win, 'selection');
     await expect
       .poll(
         () =>
@@ -241,7 +243,7 @@ engTest(
     // click selects the component by its id
     await win.mouse.click(at.x, at.y);
     await expect.poll(() => selection(win)).toMatchObject({ kind: 'asset', id: 'flue-2' });
-    await expect(win.getByTestId('component-card')).toContainText('flue 2');
+    await expect(selectionBench.getByTestId('component-card')).toContainText('flue 2');
 
     // Focus component frames it: the camera comes closer
     await look(win, flue, 120, [1, 0.4, 0.4]);
@@ -253,7 +255,7 @@ engTest(
         return st.camera.position.distanceTo(new V(p[0], p[1], p[2]));
       }, flue);
     const far = await dist();
-    await win.getByTestId('component-focus').click();
+    await selectionBench.getByTestId('component-focus').click();
     await expect.poll(dist, { timeout: 10_000 }).toBeLessThan(far * 0.6);
 
     // Escape clears; a background click clears
@@ -282,7 +284,7 @@ engTest(
     await look(win, flue, 30, [1, 0.35, 0]);
     await win.mouse.click(at.x, at.y);
     await expect.poll(() => selection(win)).toMatchObject({ id: 'flue-2' });
-    const list = win.getByTestId('component-list');
+    const list = selectionBench.getByTestId('component-list');
     await list.getByTestId('component-search').fill('flue 2');
     await list.locator('[data-testid="component-row"][data-id="flue-2"] .cl-eye').click();
     await expect
@@ -290,7 +292,9 @@ engTest(
         win.evaluate(() => (window as unknown as Probe).__stratlas.stage()?.hiddenNodes('stack')),
       )
       .toEqual(['flue-2']);
-    await expect(win.getByTestId('component-card')).toContainText('Hidden in the 3D view');
+    await expect(selectionBench.getByTestId('component-card')).toContainText(
+      'Hidden in the 3D view',
+    );
     await win.keyboard.press('Escape');
     await win.mouse.click(at.x, at.y);
     await win.waitForTimeout(300);
@@ -440,22 +444,29 @@ for (const windowHeight of [720, 700]) {
           .getState()
           .select({ kind: 'layer', id: 'long' });
       });
-      const list = win.getByTestId('component-list');
+      const selectionBench = await openBench(win, 'selection');
+      const list = selectionBench.getByTestId('component-list');
       const rows = list.getByTestId('component-row');
       await expect(rows).toHaveCount(count);
       const last = rows.last();
       const lastId = await last.getAttribute('data-id');
       const height = await win.evaluate(() => window.innerHeight);
-      // the last row starts out of sight; the wheel over the list brings it into the window
+      // The last row starts outside its tab's viewport; only the wheel brings it into view.
+      const scroll = selectionBench.getByTestId('selection-scroll');
+      const host = await scroll.boundingBox();
+      const benchBox = await selectionBench.boundingBox();
+      if (!host || !benchBox) throw new Error('no Selection workbench scrolling host');
+      expect(host.y).toBeGreaterThanOrEqual(benchBox.y - 1);
+      expect(host.y + host.height).toBeLessThanOrEqual(benchBox.y + benchBox.height + 1);
+      expect(await scroll.evaluate((element) => getComputedStyle(element).overflowY)).toBe('auto');
       const before = await last.boundingBox();
-      expect((before?.y ?? 0) + (before?.height ?? 0)).toBeGreaterThan(height);
-      const host = await win.getByTestId('selection-scroll').boundingBox();
-      if (!host) throw new Error('no scrolling host');
+      expect((before?.y ?? 0) + (before?.height ?? 0)).toBeGreaterThan(host.y + host.height);
       await win.mouse.move(host.x + host.width / 2, host.y + host.height / 2);
       for (let i = 0; i < 30; i++) await win.mouse.wheel(0, 400);
       await win.waitForTimeout(300);
       const box = await last.boundingBox();
       if (!box) throw new Error('no last row');
+      expect(box.y).toBeGreaterThanOrEqual(host.y - 1);
       expect(box.y + box.height).toBeLessThanOrEqual(height);
       expect(box.y + box.height).toBeLessThanOrEqual(host.y + host.height + 1);
       // a real click there selects it (nothing covers it)
@@ -463,6 +474,7 @@ for (const windowHeight of [720, 700]) {
       if (!name) throw new Error('no row name');
       await win.mouse.click(name.x + 10, name.y + name.height / 2);
       await expect.poll(() => selection(win)).toMatchObject({ kind: 'asset', id: lastId });
+      await expect(win.locator('#wb-tab-selection')).toHaveAttribute('aria-selected', 'true');
       // the agent below keeps its share of the panel
       const agent = await win.locator('.right .agent').boundingBox();
       expect(agent?.height ?? 0).toBeGreaterThan(150);

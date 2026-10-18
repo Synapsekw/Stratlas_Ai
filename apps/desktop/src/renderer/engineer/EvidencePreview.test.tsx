@@ -37,9 +37,9 @@ const content: EvidencePreviewContent = {
       resized: true,
     },
     {
-      id: 'c2',
+      id: 'img-crown',
       kind: 'crop',
-      label: 'Image c2 (crop)',
+      label: 'Image img-crown (crop, crown)',
       thumb: PNG,
       bytes: 30_000,
       width: 400,
@@ -105,6 +105,11 @@ const click = (el: HTMLElement) => {
 };
 
 describe('EvidencePreview', () => {
+  it('opens with focus on the dialog so the evidence summary stays in view', () => {
+    render(props());
+    expect(document.activeElement).toBe(dialog());
+  });
+
   it('lists every image with its kind and size, the totals, the route and the estimate', () => {
     render(props());
     const text = dialog().textContent;
@@ -120,7 +125,7 @@ describe('EvidencePreview', () => {
     expect(dialog().querySelector('[data-image="p1"]')?.textContent).toContain('117 KB');
     expect(dialog().querySelector('[data-image="p1"]')?.textContent).toContain('made smaller');
     expect(dialog().querySelector('[data-image="side-090"]')?.textContent).toContain('Side view');
-    expect(dialog().querySelector('[data-image="c2"]')?.textContent).toContain('Photo crop');
+    expect(dialog().querySelector('[data-image="img-crown"]')?.textContent).toContain('Scan crop');
     // the request text, exactly
     expect(dialog().querySelector('pre')?.textContent).toBe(content.text);
     expect(text).toContain("Not sent: 2 images over this model's limit (p9, p10).");
@@ -131,8 +136,49 @@ describe('EvidencePreview', () => {
     render(props());
     const groups = [...dialog().querySelectorAll<HTMLElement>('[data-need]')];
     expect(groups.map((g) => g.dataset.need)).toEqual(['photos', 'scans']);
-    expect(groups[0]?.querySelectorAll('[data-image]').length).toBe(2);
-    expect(groups[1]?.querySelectorAll('[data-image]').length).toBe(1);
+    expect(groups[0]?.querySelectorAll('[data-image]').length).toBe(1);
+    expect(groups[1]?.querySelectorAll('[data-image]').length).toBe(2);
+    expect(groups[1]?.querySelector('[data-image="img-crown"]')).not.toBeNull();
+  });
+
+  it('a generated crown crop needs scan consent even when photos are already allowed', () => {
+    const crop = content.images.find((im) => im.id === 'img-crown');
+    if (!crop) throw new Error('missing synthetic cloud crop');
+    const p = props({
+      content: { ...content, images: [crop] },
+      flags: { photos: true, scans: false },
+    });
+    render(p);
+    expect(dialog().querySelector('[data-need="photos"]')).toBeNull();
+    expect(dialog().querySelector('[data-need="scans"] [data-image="img-crown"]')).not.toBeNull();
+    expect(button(/Approve and build/).disabled).toBe(true);
+    click(box(/Allow these measurements and scan views for this run/));
+    click(button(/Approve and build/));
+    expect(p.onSendOnce).toHaveBeenCalledWith({
+      once: { photos: false, scans: true },
+      costConfirmed: false,
+    });
+  });
+
+  it('an original-photo crop remains a photo and needs photo consent', () => {
+    const photo = content.images.find((im) => im.kind === 'photo');
+    if (!photo) throw new Error('missing synthetic photo');
+    const p = props({
+      content: { ...content, images: [{ ...photo, id: 'img-part-device' }] },
+      flags: { photos: false, scans: true },
+    });
+    render(p);
+    expect(dialog().querySelector('[data-need="scans"]')).toBeNull();
+    expect(
+      dialog().querySelector('[data-need="photos"] [data-image="img-part-device"]'),
+    ).not.toBeNull();
+    expect(button(/Approve and build/).disabled).toBe(true);
+    click(box(/Allow these photos for this run/));
+    click(button(/Approve and build/));
+    expect(p.onSendOnce).toHaveBeenCalledWith({
+      once: { photos: true, scans: false },
+      costConfirmed: false,
+    });
   });
 
   it('"Allow for this project" per kind calls onAllowProject with that kind', () => {
@@ -156,12 +202,12 @@ describe('EvidencePreview', () => {
   it('Send once stays off while a needed consent is missing, unless allowed this once', () => {
     const p = props();
     render(p);
-    expect(button(/Send once/).disabled).toBe(true);
-    click(box(/Send photos this once/));
-    expect(button(/Send once/).disabled).toBe(true);
-    click(box(/Send scan views this once/));
-    expect(button(/Send once/).disabled).toBe(false);
-    click(button(/Send once/));
+    expect(button(/Approve and build/).disabled).toBe(true);
+    click(box(/Allow these photos for this run/));
+    expect(button(/Approve and build/).disabled).toBe(true);
+    click(box(/Allow these measurements and scan views for this run/));
+    expect(button(/Approve and build/).disabled).toBe(false);
+    click(button(/Approve and build/));
     expect(p.onSendOnce).toHaveBeenCalledWith({
       once: { photos: true, scans: true },
       costConfirmed: false,
@@ -174,25 +220,21 @@ describe('EvidencePreview', () => {
     const photos = dialog().querySelector<HTMLElement>('[data-need="photos"]');
     expect(photos?.textContent).toContain('Allowed for this project');
     expect(photos?.querySelector('input')).toBeNull();
-    click(box(/Send scan views this once/));
-    click(button(/Send once/));
+    click(box(/Allow these measurements and scan views for this run/));
+    click(button(/Approve and build/));
     expect(p.onSendOnce).toHaveBeenCalledWith({
       once: { photos: false, scans: true },
       costConfirmed: false,
     });
   });
 
-  it('an unknown price needs an explicit confirmation', () => {
+  it('an unknown price cannot approve a spending limit that cannot be enforced', () => {
     const p = props({ estimateUsd: undefined, flags: { photos: true, scans: true } });
     render(p);
     expect(dialog().textContent).toContain('Price not known for this model');
-    expect(button(/Send once/).disabled).toBe(true);
-    click(box(/Send without a cost estimate/));
-    click(button(/Send once/));
-    expect(p.onSendOnce).toHaveBeenCalledWith({
-      once: { photos: false, scans: false },
-      costConfirmed: true,
-    });
+    expect(button(/Approve and build/).disabled).toBe(true);
+    expect(dialog().textContent).toContain('Choose a model with known pricing');
+    expect(p.onSendOnce).not.toHaveBeenCalled();
   });
 
   it('on a local model nothing leaves the machine and no consent is asked', () => {
@@ -209,16 +251,16 @@ describe('EvidencePreview', () => {
 
   it('a disabled Send once says why, and the reason follows the boxes', () => {
     render(props());
-    const send = button(/Send once/);
+    const send = button(/Approve and build/);
     const why = () => document.getElementById(send.getAttribute('aria-describedby') ?? '');
     expect(why()?.textContent).toBe(
       'Allow photos and scan views for this project, or tick them for this send.',
     );
-    click(box(/Send photos this once/));
+    click(box(/Allow these photos for this run/));
     expect(why()?.textContent).toBe(
       'Allow scan views for this project, or tick them for this send.',
     );
-    click(box(/Send scan views this once/));
+    click(box(/Allow these measurements and scan views for this run/));
     expect(send.getAttribute('aria-describedby')).toBeNull();
     expect(dialog().textContent).not.toContain('or tick them');
   });

@@ -7,7 +7,9 @@
  * and flare tip `stainless`, joints `joint`, flare lining `refractory`, windshield `steel-sheet`
  * (a doubleSided sheet). A band always uses its own `material` param.
  */
-import { add, scale, type MeshSink, type V3 } from '../geom';
+import { add, cross, dot, norm, sub, scale, type MeshSink, type V3 } from '../geom';
+import { orientedBox } from './access';
+import { roofSheet } from './roof';
 import {
   profileRadiusAt,
   shaftAxis,
@@ -265,6 +267,116 @@ export function buildFlareTip(sink: MeshSink, a: AssemblyOf<'flareTip'>, ctx: Bu
 
 export function buildDeck(sink: MeshSink, a: AssemblyOf<'deck'>, ctx: BuildCtx): void {
   const d = a.params;
+  if (d.roofPanels) {
+    for (const panel of d.roofPanels)
+      roofSheet(sink, ctx.material(a.material, 'paint-white'), panel, d.thickness, d.corrugation);
+    return;
+  }
+  if (d.elevations && Array.isArray(d.outline)) {
+    const p = sink.prim(ctx.material(a.material, 'paint-white'));
+    const top: V3[] = d.outline.map((v, i) => [v[0], d.elevations?.[i] ?? d.y, v[1]]);
+    const first = top[0],
+      second = top[1],
+      third = top[2];
+    if (!first || !second || !third) fail('roof needs at least three corners');
+    let n = norm(cross(sub(second, first), sub(third, first)));
+    if (n[1] < 0) n = scale(n, -1);
+    const bottom = top.map((v) => sub(v, [0, d.thickness, 0]));
+    sink.fan(p, top, n);
+    sink.fan(p, bottom, scale(n, -1));
+    const centre = scale(
+      top.reduce<V3>((s, v) => add(s, v), [0, 0, 0]),
+      1 / top.length,
+    );
+    for (let i = 0; i < top.length; i++) {
+      const a0 = top[i],
+        b0 = top[(i + 1) % top.length],
+        a1 = bottom[i],
+        b1 = bottom[(i + 1) % top.length];
+      if (!a0 || !b0 || !a1 || !b1) continue;
+      let side = norm(cross(sub(b0, a0), [0, 1, 0]));
+      if (dot(side, sub(a0, centre)) < 0) side = scale(side, -1);
+      sink.fan(p, [a0, b0, b1, a1], side);
+    }
+    return;
+  }
+  if (d.grating && Array.isArray(d.outline)) {
+    const m = ctx.material(a.material, 'steel-galv');
+    const poly = d.outline;
+    const x0 = Math.min(...poly.map((p) => p[0]));
+    const x1 = Math.max(...poly.map((p) => p[0]));
+    const z0 = Math.min(...poly.map((p) => p[1]));
+    const z1 = Math.max(...poly.map((p) => p[1]));
+    // Scan-line clipping retains concave edges and the shaft opening. Bars remain closed solids.
+    const bars = (swap: boolean) => {
+      const pts = poly.map((p) => (swap ? [p[1], p[0]] : p));
+      const lo = swap ? x0 : z0,
+        hi = swap ? x1 : z1;
+      const pitch = Math.max(0.065, (hi - lo) / 200);
+      for (let v = lo + pitch / 2; v < hi; v += pitch) {
+        const hits: number[] = [];
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i],
+            q = pts[(i + 1) % pts.length];
+          if (!p || !q) continue;
+          const [px = 0, py = 0] = p,
+            [qx = 0, qy = 0] = q;
+          if ((py <= v && qy > v) || (qy <= v && py > v))
+            hits.push(px + ((v - py) * (qx - px)) / (qy - py));
+        }
+        hits.sort((p, q) => p - q);
+        for (let i = 0; i + 1 < hits.length; i += 2) {
+          let intervals: [number, number][] = [[hits[i] ?? 0, hits[i + 1] ?? 0]];
+          for (const hole of d.openings) {
+            const hc = swap ? hole.centre[1] : hole.centre[0];
+            const hv = swap ? hole.centre[0] : hole.centre[1];
+            const rr = hole.r + 0.008;
+            if (Math.abs(v - hv) >= rr) continue;
+            const span = Math.sqrt(rr * rr - (v - hv) ** 2);
+            intervals = intervals.flatMap(([l, r]): [number, number][] =>
+              r <= hc - span || l >= hc + span
+                ? [[l, r]]
+                : ([
+                    [l, Math.min(r, hc - span)],
+                    [Math.max(l, hc + span), r],
+                  ].filter(([a = 0, b = 0]) => b > a) as [number, number][]),
+            );
+          }
+          for (const [l, r] of intervals) {
+            if (r - l < 0.002) continue;
+            const c: V3 = swap
+              ? [v, d.y - d.thickness / 2, (l + r) / 2]
+              : [(l + r) / 2, d.y - d.thickness / 2, v];
+            orientedBox(
+              sink,
+              m,
+              c,
+              [
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+              ],
+              swap ? [0.004, d.thickness / 2, (r - l) / 2] : [(r - l) / 2, d.thickness / 2, 0.004],
+            );
+          }
+        }
+      }
+    };
+    bars(false);
+    bars(true);
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i],
+        q = poly[(i + 1) % poly.length];
+      if (p && q && Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-6)
+        sink.beam(
+          m,
+          [p[0], d.y - d.thickness / 2, p[1]],
+          [q[0], d.y - d.thickness / 2, q[1]],
+          d.thickness,
+        );
+    }
+    return;
+  }
   sink.slab(ctx.material(a.material, 'concrete-grey'), {
     y: d.y,
     outline: d.outline,

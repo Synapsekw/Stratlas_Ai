@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import type { UserOverrides } from '@aio/modelling';
 import {
   createRunStore,
+  georefFor,
   DECLINED_IDENTIFY,
   NO_OVERRIDES,
   OFFLINE_IDENTIFY,
@@ -23,6 +24,30 @@ import {
 
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 const SHA = (c: string) => c.repeat(40);
+
+describe('recorded measurement frame', () => {
+  it('keeps an already offset cloud fixed when the project origin changes', () => {
+    const evidence = cloudEvidence('run-frame', {
+      base: [2, 3.233, -4],
+      frame: {
+        coordinates: 'project-local',
+        origin: [500000, 3200000, 10],
+        algorithm: 'components/1',
+        signature: 'a'.repeat(64),
+        sources: [{ layer: 'cloud-1', kind: 'cloud', heightOffsetM: -32.542 }],
+      },
+    });
+    const m = { scale: { status: 'measured' } } as ProcModel;
+    for (const origin of [
+      [500000, 3200000, 10],
+      [500100, 3200200, 30],
+    ] as [number, number, number][]) {
+      const g = georefFor(m, setup(), evidence, { crs: { epsg: 32639 }, origin });
+      // The model already contains the cloud's -32.542 m offset: no second vertical shift.
+      expect(g.modelToCrs).toEqual([1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 500000, 3200000, 10, 1]);
+    }
+  });
+});
 
 /** A synthetic metric chimney pack: 60 m, tapering, two flues, a side render and a photo. */
 function cloudEvidence(run: string, o: Partial<EvidencePack> = {}): EvidencePack {
@@ -343,12 +368,13 @@ function store(
     autoSend?: boolean;
     renderViews?: RunDeps['renderViews'];
     silhouette?: RunDeps['silhouette'];
+    ipc?: RunIpc;
   } = {},
 ) {
   const s = createRunStore({
     ...(o.renderViews ? { renderViews: o.renderViews } : {}),
     ...(o.silhouette ? { silhouette: o.silhouette } : {}),
-    ipc: p.ipc(),
+    ipc: o.ipc ?? p.ipc(),
     project: { crs: { epsg: 32639 }, origin: [500000, 3200000, 0] },
     now: () => new Date(Date.UTC(2026, 9, 15, 10, 0, clock++)).toISOString(),
     online: () => o.online ?? true,
@@ -380,6 +406,185 @@ function doneOrder(p: FakeProject): string[] {
 }
 
 describe('engineering run store', () => {
+  it('saves correction review metadata and restores it without another AI pass', async () => {
+    const p = new FakeProject();
+    const s = store(p);
+    await s.getState().start(setup());
+    const before = p.engineerCalls;
+    expect(typeof s.getState().saveCorrections).toBe('function');
+    await s.getState().saveCorrections([]);
+    const restored = store(p);
+    await restored.getState().resume('run-test-1', { drive: false });
+    expect(restored.getState().run?.corrections).toEqual([]);
+    expect(p.engineerCalls).toBe(before);
+  });
+
+  it('keeps the current model when correction persistence fails', async () => {
+    const p = new FakeProject();
+    const s = store(p);
+    await s.getState().start(setup());
+    const original = s.getState().model;
+    if (!original) throw Error('no model');
+    const next = structuredClone(original);
+    next.assemblies = next.assemblies.filter((a) => a.kind !== 'flue');
+    expect(typeof s.getState().saveCorrections).toBe('function');
+    const set = p.runs.set.bind(p.runs);
+    let failed = false;
+    p.runs.set = (key, value) => {
+      if (!failed) {
+        failed = true;
+        throw Error('disk full');
+      }
+      return set(key, value);
+    };
+    await expect(s.getState().saveCorrections([], next, original)).rejects.toThrow('disk full');
+    expect(s.getState().model).toEqual(original);
+    expect(p.models.get(original.id)).toEqual(original);
+    expect(s.getState().busy).toBe(false);
+  });
+
+  it('rejects correction writes against a changed base or coordinate frame', async () => {
+    const p = new FakeProject();
+    const s = store(p);
+    await s.getState().start(setup());
+    const original = s.getState().model;
+    if (!original) throw Error('no model');
+    expect(typeof s.getState().saveCorrections).toBe('function');
+    const next = structuredClone(original);
+    delete next.georef;
+    await expect(s.getState().saveCorrections([], next, original)).rejects.toThrow(/frame/);
+    await expect(s.getState().saveCorrections([], original, { ...original })).rejects.toThrow(
+      /changed/,
+    );
+  });
+
+  it('refreshes the build and invalidates previous validation and fit after accepting corrections', async () => {
+    const p = new FakeProject();
+    const ipc = p.ipc();
+    let correction = false;
+    const freshBuild = {
+      triangles: 2400,
+      overBudget: false,
+      detail: 'standard' as const,
+      simplified: [],
+      failed: [],
+      notes: [],
+    };
+    const s = store(p, {
+      silhouette: () => Promise.resolve({ north: 0.8 }),
+      ipc: {
+        ...ipc,
+        modelBuild: async (id, draft) => {
+          const built = await ipc.modelBuild(id, draft);
+          return correction ? { ...built, report: freshBuild } : built;
+        },
+      },
+    });
+    await s.getState().start(setup());
+    expect(s.getState().report).toEqual(CLEAN);
+    expect(s.getState().silhouette).toEqual({ north: 0.8 });
+    const original = s.getState().model;
+    if (!original) throw new Error('No model.');
+    const next = structuredClone(original);
+    next.assemblies = next.assemblies.filter((a) => a.kind !== 'flue');
+    correction = true;
+    await s.getState().saveCorrections([], next, original);
+    expect(s.getState().build).toEqual(freshBuild);
+    expect(s.getState().report).toBeNull();
+    expect(s.getState().silhouette).toBeNull();
+    expect(s.getState().run?.stages.validate?.status).toBe('pending');
+    expect(s.getState().draftLayer).toBe('model-draft-eng-test-1');
+  });
+
+  it('locks writes after failed rollback and clears the lock only after a successful model reload', async () => {
+    const p = new FakeProject();
+    const ipc = p.ipc();
+    let fault = false;
+    let writes = 0;
+    let missing = false;
+    const s = store(p, {
+      ipc: {
+        ...ipc,
+        modelRead: (id) => (missing ? Promise.resolve(null) : ipc.modelRead(id)),
+        modelWrite: (model) => {
+          if (fault && ++writes === 2) return Promise.reject(new Error('Restore unavailable.'));
+          return ipc.modelWrite(model);
+        },
+        modelBuild: (id, draft) =>
+          fault ? Promise.reject(new Error('Build unavailable.')) : ipc.modelBuild(id, draft),
+      },
+    });
+    await s.getState().start(setup());
+    const original = s.getState().model;
+    if (!original) throw new Error('No model.');
+    const next = structuredClone(original);
+    next.assemblies = next.assemblies.filter((a) => a.kind !== 'flue');
+    fault = true;
+    await expect(s.getState().saveCorrections([], next, original)).rejects.toThrow(/reopen/);
+    expect(s.getState().recoveryRequired).toBe(true);
+    expect(s.getState().busy).toBe(false);
+    const calls = p.calls.length;
+    await expect(s.getState().saveCorrections([])).rejects.toThrow(/reopen/i);
+    await s.getState().rebuild(NO_OVERRIDES);
+    await s.getState().retry();
+    await s.getState().accept();
+    await s.getState().start(setup());
+    await s.getState().dropImages(['img-photo-1']);
+    await s.getState().allowProject('photos');
+    const status = await s.getState().setStatus(['flue-1'], 'draft');
+    expect('error' in status ? status.error : '').toMatch(/reopen/i);
+    expect(p.calls).toHaveLength(calls);
+    await s.getState().resume('run-missing', { drive: false });
+    expect(s.getState().recoveryRequired).toBe(true);
+    missing = true;
+    await s.getState().resume('run-test-1', { drive: false });
+    expect(s.getState().recoveryRequired).toBe(true);
+    missing = false;
+    fault = false;
+    await s.getState().resume('run-test-1', { drive: false });
+    expect(s.getState().recoveryRequired).toBe(false);
+    await s.getState().saveCorrections([]);
+  });
+
+  it('retains the previous validation and build reports when correction rollback succeeds', async () => {
+    const p = new FakeProject();
+    const s = store(p, { silhouette: () => Promise.resolve({ east: 0.7 }) });
+    await s.getState().start(setup());
+    const before = s.getState();
+    if (!before.model) throw new Error('No model.');
+    const next = structuredClone(before.model);
+    next.assemblies = next.assemblies.filter((a) => a.kind !== 'flue');
+    const set = p.runs.set.bind(p.runs);
+    let fail = true;
+    p.runs.set = (key, value) => {
+      if (fail) {
+        fail = false;
+        throw new Error('Run write unavailable.');
+      }
+      return set(key, value);
+    };
+    await expect(s.getState().saveCorrections([], next, before.model)).rejects.toThrow(/Run write/);
+    expect(s.getState().model).toEqual(before.model);
+    expect(s.getState().run).toEqual(before.run);
+    expect(s.getState().build).toEqual(before.build);
+    expect(s.getState().report).toEqual(before.report);
+    expect(s.getState().silhouette).toEqual(before.silhouette);
+    expect(s.getState().recoveryRequired).toBe(false);
+  });
+  it('restores a saved draft without measuring or sending any request', async () => {
+    const p = new FakeProject();
+    const first = store(p);
+    await first.getState().start(setup());
+    const saved = first.getState();
+    const calls = p.calls.length;
+    const second = store(p);
+    await second.getState().resume('run-test-1', { drive: false, draftLayer: saved.draftLayer });
+    expect(second.getState().model).toEqual(saved.model);
+    expect(second.getState().draftLayer).toBe(saved.draftLayer);
+    expect(p.calls.slice(calls).map((c) => c.channel)).not.toContain('ai:engineer');
+    expect(p.calls.slice(calls).map((c) => c.channel)).not.toContain('model:build');
+    expect(second.getState().busy).toBe(false);
+  });
   it('a cloud and photos run reaches review with the stages in order', async () => {
     const p = new FakeProject();
     const s = store(p);
@@ -597,6 +802,49 @@ describe('engineering run store', () => {
     expect(p.engineerCalls).toBe(0);
   });
 
+  it('explicitly retries a saved declined draft with the same evidence and fresh consent', async () => {
+    const p = new FakeProject();
+    const first = store(p, { autoSend: false });
+    const started = first.getState().start(setup({ budgetUsd: 5 }));
+    await expect.poll(() => first.getState().preview).not.toBeNull();
+    first.getState().declinePreview();
+    await started;
+    const saved = first.getState();
+    expect(saved.run?.stages.identify?.status).toBe('skipped');
+    expect(saved.proposal).toBeNull();
+    expect(p.proposals.has('run-test-1')).toBe(false);
+    expect(saved.run?.approval).toBeUndefined();
+    const jobs = p.jobsStarted;
+    const firstPreview = p.calls.find((c) => c.channel === 'ai:engineerPreview')?.payload;
+
+    const reopened = store(p, { autoSend: false });
+    await reopened.getState().resume('run-test-1', { drive: false, draftLayer: saved.draftLayer });
+    expect(reopened.getState().preview).toBeNull();
+    expect(p.engineerCalls).toBe(0);
+    const retrying = reopened.getState().retry();
+    await expect.poll(() => reopened.getState().preview).not.toBeNull();
+    expect(p.jobsStarted).toBe(jobs);
+    expect(reopened.getState().evidence).toEqual(saved.evidence);
+    expect(p.engineerCalls).toBe(0);
+    const previews = p.calls.filter((c) => c.channel === 'ai:engineerPreview');
+    expect(previews).toHaveLength(2);
+    expect(previews[1]?.payload).toEqual(firstPreview);
+
+    reopened.getState().sendPreview({ once: { photos: true, scans: true }, costConfirmed: false });
+    await retrying;
+    expect(statuses(reopened.getState())).toEqual(['done', 'done', 'done', 'done', 'done', 'done']);
+    expect(reopened.getState().run?.id).toBe('run-test-1');
+    expect(reopened.getState().proposal).toEqual(PROPOSAL);
+    expect(p.jobsStarted).toBe(jobs);
+    expect(p.engineerCalls).toBe(1);
+    expect(p.calls.find((c) => c.channel === 'ai:engineer')?.payload).toMatchObject({
+      engineerRun: 'run-test-1',
+      pass: 1,
+      setup: { budgetUsd: 5 },
+      consent: { token: 'token-1', photos: true, scans: true },
+    });
+  });
+
   it('reopening a finished run neither measures nor asks the AI again', async () => {
     const p = new FakeProject();
     await store(p).getState().start(setup());
@@ -629,7 +877,7 @@ describe('engineering run store', () => {
     if (!run) throw new Error('no run');
     p.runs.set('run-test-1', {
       ...run,
-      stages: { inspect: { status: 'running', output: 'job-1' } },
+      stages: { inspect: { ...run.stages.inspect, status: 'running', output: 'job-1' } },
     });
     await store(p).getState().resume('run-test-1');
     const starts = p.calls.filter((c) => c.channel === 'jobs:start').map((c) => c.payload);
@@ -783,6 +1031,7 @@ describe('engineering run store', () => {
       const st = s.getState();
       expect(p.engineerCalls).toBe(2);
       expect(st.proposal?.notes).toBe('pass 2');
+      expect(p.calls.filter((c) => c.channel === 'ai:engineerPreview')).toHaveLength(1);
       expect(st.unresolved.some((u) => u.includes('earlier draft'))).toBe(false);
     });
 

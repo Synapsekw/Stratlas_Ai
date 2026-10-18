@@ -176,6 +176,9 @@ async function openByName(win: Page, name: string, id: string) {
       { timeout: 60_000 },
     )
     .toBe(id);
+  // Georeference checks include the geometry actually drawn in the Scene workbench.
+  await win.locator('.nav-item', { hasText: 'Scene' }).first().click();
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
 }
 
 /** Make the next native open dialog return these files (Electron main process). */
@@ -400,6 +403,18 @@ geoTest(
       // back to zone 39N through WGS84 directly
       expectClose(fromWgs84(toWgs84(w, 32640), 32639), truth(p.model), 0.001, `C ${p.node}`);
     }
+    // The new-zone placement must reach the rendered model too, not only its manifest.
+    let drawnC: V3[] | null = null;
+    await expect
+      .poll(async () => (drawnC = await drawnWorld(win, inC.layer.id, C.origin, probes)) !== null, {
+        timeout: 60_000,
+      })
+      .toBe(true);
+    probes.forEach((p, i) => {
+      const w = (drawnC ?? [])[i];
+      if (!w) throw new Error('not drawn in the new zone');
+      expectClose(fromWgs84(toWgs84(w, 32640), 32639), truth(p.model), 0.001, `drawn C ${p.node}`);
+    });
   },
 );
 

@@ -28,6 +28,8 @@ import type {
 import { latticeLegAt } from '../builders/steel';
 import type { FamilyAssembler, FamilyCtx } from './assemble';
 import { angleBetween, azimuthDeg, indexInRole } from './ids';
+import { measuredEquipment } from './observations';
+import { lightNeutralShaft } from './hardware';
 import {
   ai,
   bool,
@@ -986,7 +988,12 @@ export const assembleMonopole: FamilyAssembler = (ctx) => {
     ctx,
     'monopole',
     id,
-    { base: b, profile: profile.v, sides: sidesOk(sides.v) ? sides.v : 0 },
+    {
+      base: b,
+      profile: profile.v,
+      sides: sidesOk(sides.v) ? sides.v : 0,
+      ...(ctx.metric && ctx.input.evidence?.axis ? { axis: ctx.input.evidence.axis.dir } : {}),
+    },
     {
       category: 'Structure',
       name: 'Monopole',
@@ -997,10 +1004,46 @@ export const assembleMonopole: FamilyAssembler = (ctx) => {
     },
   );
   const reach: HostReach = (_az, y) => ctx.radiusAt(y);
-  const ants = antennas(ctx, id, reach);
-  const out: Assembly[] = [pole, ...ants];
-  out.push(...lights(ctx, id, { reach, description: 'Aviation warning light on the pole.' }));
-  out.push(...towerExtras(ctx, id, reach, (y) => ctx.radiusAt(y), facingsIn(ants), spansIn(ants)));
-  noteUnplaced(ctx, new Set([...PLACED, 'monopole', 'shaft']), 'monopole');
+  if (lightNeutralShaft(ctx)) {
+    pole.material = 'mast-painted';
+    pole.description =
+      `${pole.description} Light coating inferred from source colour bands; finish requires review.`.slice(
+        0,
+        300,
+      );
+  }
+  const measured = measuredEquipment(ctx, id);
+  const records = ctx.metric ? (ctx.input.evidence?.observations ?? []) : [];
+  const ants = records.some((o) => ['panel', 'rru', 'equipment-box'].includes(o.kind))
+    ? []
+    : antennas(ctx, id, reach);
+  const out: Assembly[] = [pole, ...(measured ?? []), ...ants];
+  if (!records.some((o) => o.kind === 'light'))
+    out.push(...lights(ctx, id, { reach, description: 'Aviation warning light on the pole.' }));
+  const extras = towerExtras(
+    ctx,
+    id,
+    reach,
+    (y) => ctx.radiusAt(y),
+    facingsIn(ants),
+    spansIn(ants),
+  );
+  out.push(
+    ...extras.filter(
+      (a) =>
+        !(
+          (a.kind === 'deck' || a.kind === 'guardrail') &&
+          records.some((o) => o.kind === 'platform')
+        ) &&
+        !(a.kind === 'cabinet' && records.some((o) => o.kind === 'cabinet')) &&
+        !(a.kind === 'ladder' && records.some((o) => o.kind === 'climbing-steps')),
+    ),
+  );
+  noteUnplaced(
+    ctx,
+    new Set([...PLACED, 'monopole', 'shaft']),
+    'monopole',
+    new Set(measured?.map((a) => a.id)),
+  );
   return out;
 };

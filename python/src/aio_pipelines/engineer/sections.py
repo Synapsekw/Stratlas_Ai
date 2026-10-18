@@ -132,6 +132,14 @@ def fit_sections(
         candidates = sorted(by_height.values(), key=lambda s: s.y)
         out = _coherent_sections(candidates, step)
     rejected["radius-jump"] = len(candidates) - len(out)
+    if len(out) >= 10:
+        coverage = float(np.median([s.coverage for s in out]))
+        reliable = [s.y for s in out if s.coverage >= max(0.3, 0.6 * coverage)]
+        if reliable and max(reliable) > 0.8 * top:
+            # Partial arcs beyond a well observed cap are usually nearby equipment.
+            trimmed = [s for s in out if s.y <= max(reliable)]
+            rejected["off-axis"] += len(out) - len(trimmed)
+            out = trimmed
     if report is not None:
         report["slices"] = len(out)
         report["rejected"] = rejected

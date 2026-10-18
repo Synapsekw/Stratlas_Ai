@@ -14,6 +14,7 @@ from __future__ import annotations
 import struct
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -442,24 +443,59 @@ class Base:
 def find_base(axis: Axis, kept: np.ndarray, split: GroundSplit | None) -> tuple[Base, Axis]:
     """The asset base and the axis re-anchored there, so heights count from the base.
 
-    With ground found (at least 100 ground points beyond 1.2 times the asset radius, so the
+    With ground found (at least 100 ground points beyond 1.2 times the shaft radius, so the
     ground is not just the asset's own lowest layer) the base is the ground height under the axis.
     When the lowest asset point is more than `BASE_GAP_TOLERANCE_M` above it, the base was not
     scanned: it is flagged unobserved and heights still count from the ground. With no ground the
     base is the lowest observed point, flagged unobserved.
     """
     foot = np.asarray(axis.point)
-    u, w, _ = axis.to_frame(kept) if len(kept) else (np.zeros(1), np.zeros(1), None)
-    radius = float(np.percentile(np.hypot(u, w), 98)) if len(kept) else 0.0
+    u, w, h = axis.to_frame(kept) if len(kept) else (np.zeros(1), np.zeros(1), np.zeros(1))
+    # The footprint of connected cabinets/fences is not the shaft radius. Use the middle
+    # vertical span, where a monopole's wall is visible, to choose a local terrain annulus.
+    middle = (h > 0.2 * h.max()) & (h < 0.7 * h.max())
+    radius = (
+        float(np.median(np.hypot(u[middle], w[middle])))
+        if middle.sum() >= 100
+        else (float(np.percentile(np.hypot(u, w), 98)) if len(kept) else 0.0)
+    )
+    # A tapered shaft is wider at its cropped bottom than halfway up. Extrapolate
+    # middle-wall medians so the ground filter cannot mistake that wall for terrain.
+    if middle.sum() >= 100:
+        bins = np.linspace(0.2 * h.max(), 0.7 * h.max(), 7)
+        medians = []
+        for lo, hi in pairwise(bins):
+            band = (h >= lo) & (h < hi)
+            if band.sum() >= 20:
+                medians.append(((lo + hi) / 2, np.median(np.hypot(u[band], w[band]))))
+        if len(medians) >= 4:
+            hh, rr = np.asarray(medians).T
+            slope, intercept = np.polyfit(hh, rr, 1)
+            if slope < 0 and intercept < 2 * radius:
+                radius = max(radius, float(intercept))
     ground = split.ground if split is not None else np.zeros((0, 3))
     far = np.hypot(ground[:, 0] - foot[0], ground[:, 2] - foot[2]) > 1.2 * radius if len(ground) else []
     if split is None or int(np.sum(far)) < 100:
         note = "No ground was found, so heights count from the lowest point seen."
         return Base(tuple(float(v) for v in foot), False, "lowest-point", 0.0, note), axis
     ground_y = float(split.surface(foot[None, [0, 2]])[0])
+    distance = np.hypot(ground[:, 0] - foot[0], ground[:, 2] - foot[2])
+    local = ground[(distance > max(1.2 * radius, 0.6)) & (distance < max(6 * radius, 3.0))]
+    if len(local) >= 100:
+        xz = local[:, [0, 2]] - foot[[0, 2]]
+        occupied = np.unique((np.arctan2(xz[:, 1], xz[:, 0]) * 6 / np.pi).astype(int))
+        # Require surrounding support; a single exposed patch cannot establish a plane.
+        if len(occupied) >= 8:
+            design = np.c_[xz, np.ones(len(local))]
+            keep = np.ones(len(local), dtype=bool)
+            for _ in range(3):
+                coef = np.linalg.lstsq(design[keep], local[keep, 1], rcond=None)[0]
+                residual = local[:, 1] - design @ coef
+                lo, hi = np.percentile(residual[keep], [5, 80])
+                keep = (residual >= lo - 0.02) & (residual <= hi + 0.02)
+            if np.linalg.norm(coef[:2]) < 0.5:
+                ground_y = float(coef[2] + np.percentile(residual[keep], 25))
     gap = float(foot[1] - ground_y)
-    if gap <= 0:
-        return Base(tuple(float(v) for v in foot), True, "ground", 0.0, None), axis
     d = np.asarray(axis.dir)
     point = foot - d * (gap / d[1])
     moved = Axis(tuple(float(v) for v in point), axis.dir, axis.tilt_deg)
@@ -469,4 +505,4 @@ def find_base(axis: Axis, kept: np.ndarray, split: GroundSplit | None) -> tuple[
         if observed
         else f"The base was not scanned: the lowest point seen is {gap:.1f} m above the ground. Heights count from the ground."
     )
-    return Base(tuple(float(v) for v in point), observed, "ground", gap, note), moved
+    return Base(tuple(float(v) for v in point), observed, "ground", max(0.0, gap), note), moved

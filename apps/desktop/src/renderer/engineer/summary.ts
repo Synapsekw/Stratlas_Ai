@@ -3,7 +3,7 @@ import type { EngineerSetup, EvidencePack } from '@aio/schema';
 /**
  * The measurement summary an engineer request carries (spec 5.2, step 3): the evidence pack's
  * numbers as compact JSON text, rounded (millimetres for lengths, three decimals otherwise), every
- * list cut to at most 16 items (evenly over its length, so a profile keeps its ends), and the
+ * continuous profiles sampled to at most 16 items, a complete discrete inventory, and the
  * setup choices the model should know. No paths, no photo file names, nothing raw: the request
  * treats this text as data.
  */
@@ -70,7 +70,7 @@ export function measurementSummary(e: EvidencePack | null, setup: EngineerSetup)
     members: e.members.slice(0, SUMMARY_MAX_ITEMS).map((m) => ({
       kind: m.kind,
       count: m.items.length,
-      items: spread(m.items).map((i) => ({
+      items: m.items.map((i) => ({
         centre: v3(i.centre),
         size: r3(i.size),
         ...(i.azimuthDeg !== undefined ? { azimuthDeg: r3(i.azimuthDeg) } : {}),
@@ -79,6 +79,8 @@ export function measurementSummary(e: EvidencePack | null, setup: EngineerSetup)
       ...(m.metrics.residualM !== undefined ? { residualM: r3(m.metrics.residualM) } : {}),
       ...(m.metrics.regularity !== undefined ? { regularity: r3(m.metrics.regularity) } : {}),
     })),
+    // IDs and proposed kinds are complete; full fit records remain local and are queried by ID.
+    observations: (e.observations ?? []).map((o) => ({ id: o.id, kind: o.kind })),
     familyHints: e.familyHints
       ? {
           suggested: e.familyHints.suggested,
