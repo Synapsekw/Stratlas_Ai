@@ -41,7 +41,9 @@ const SECONDS_PER_PICTURE = 2;
 /**
  * One picture per 2 s, so the sampled frames (1, 3 and 5 s with one every 2 s) lie inside a
  * picture, never on a cut. 0 to 2 s: a magenta marker cut by the seam and a cyan one; 2 to 4 s: a
- * magenta one in the middle; 4 to 6 s: a cyan one.
+ * magenta one in the middle; 4 to 6 s: a cyan one. The test detector's windows step by 32 input
+ * pixels (64 here: the frame is halved to fit 320): a marker lying far across a step is also seen
+ * in part by the next window, so the markers sit where the unit tests of the detector put them.
  */
 const PICTURES: MarkerPatch[][] = [
   [
@@ -50,7 +52,7 @@ const PICTURES: MarkerPatch[][] = [
     { cls: 'cyan-marker', box: [200, 100, 240, 140] },
   ],
   [{ cls: 'marker', box: [300, 140, 340, 180] }],
-  [{ cls: 'cyan-marker', box: [420, 150, 456, 186] }],
+  [{ cls: 'cyan-marker', box: [520, 150, 560, 190] }],
 ];
 const DURATION_S = PICTURES.length * SECONDS_PER_PICTURE;
 
@@ -59,7 +61,7 @@ const EXPECTED: { t: number; cls: string; box: [number, number, number, number] 
   { t: 1, cls: 'cyan-marker', box: [200, 100, 240, 140] },
   { t: 1, cls: 'marker', box: [608, 120, 664, 160] },
   { t: 3, cls: 'marker', box: [300, 140, 340, 180] },
-  { t: 5, cls: 'cyan-marker', box: [420, 150, 456, 186] },
+  { t: 5, cls: 'cyan-marker', box: [520, 150, 560, 190] },
 ];
 
 /** Within 4 px: the frame went through H.264 and a scale-down to the model's input. */
@@ -130,7 +132,8 @@ const turn = (a: number, b: number) => {
  */
 async function aimYaw(win: Page, yawDeg: number): Promise<void> {
   const view = win.getByTestId('walk-view');
-  for (let i = 0; i < 12; i++) {
+  // the pane is narrow in a small window: a drag across it turns the look some 15 degrees
+  for (let i = 0; i < 40; i++) {
     const yaw = await num(win, 'walk-view', 'data-yaw');
     const left = turn(yaw, yawDeg);
     if (Math.abs(left) < 3) return;
