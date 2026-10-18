@@ -1,5 +1,12 @@
 import { toWgs84 } from '@aio/geo';
-import { emptyOrientation, type Layer, type OrientationFile, type Vec3 } from '@aio/schema';
+import {
+  emptyOrientation,
+  shiftLocal,
+  type DateShift,
+  type Layer,
+  type OrientationFile,
+  type Vec3,
+} from '@aio/schema';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -375,4 +382,39 @@ it('moves a dated extent by its shift', async () => {
     min: [4, 2, 1],
     max: [4, 2, 1],
   });
+});
+
+it('follows a 0.5 degree turn', async () => {
+  const root = await project();
+  const m = await readManifestFile(root);
+  await mkdir(join(root, 'clouds', 'q'), { recursive: true });
+  await writeFile(
+    join(root, 'clouds', 'q', 'index.json'),
+    JSON.stringify({ bounds: { min: [0, 1, 0], max: [200, 3, 100] } }),
+  );
+  const cloud = {
+    kind: 'pointcloud',
+    id: 'q',
+    name: 'q',
+    visible: true,
+    src: { path: 'clouds/q/index.json' },
+    format: 'png-packed',
+  } as unknown as Layer;
+  const s: DateShift = {
+    eastM: 1,
+    northM: 0,
+    turn: { rotationDeg: 0.5, scale: 1, pivotE: 0, pivotN: 0, pivotX: 0, pivotZ: 0 },
+  };
+  const e = await fullLayerExtent(root, m, cloud, null, s);
+  const pts = [
+    [0, 0],
+    [200, 0],
+    [0, 100],
+    [200, 100],
+  ].map(([x = 0, z = 0]) => shiftLocal([x, 0, z], s));
+  expect(e?.min[0]).toBeCloseTo(Math.min(...pts.map((p) => p[0])), 9);
+  expect(e?.max[0]).toBeCloseTo(Math.max(...pts.map((p) => p[0])), 9);
+  expect(e?.min[2]).toBeCloseTo(Math.min(...pts.map((p) => p[2])), 9);
+  expect(e?.max[2]).toBeCloseTo(Math.max(...pts.map((p) => p[2])), 9);
+  expect([e?.min[1], e?.max[1]]).toEqual([1, 3]);
 });

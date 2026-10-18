@@ -6,7 +6,7 @@
  * layers' materials (texture and clipping, restored afterwards) and the pile callout text.
  */
 import type { EngineStage } from '@aio/engine';
-import type { VolumeBaseId } from '@aio/schema';
+import { shiftEN, type VolumeBaseId } from '@aio/schema';
 import { t } from '@aio/ui';
 import { shiftKey } from '@aio/workspace';
 import {
@@ -239,7 +239,12 @@ export class VolumetricScene {
   private localOf(epoch: string): ToLocal {
     const shift = this.store.getState().epochShift(epoch);
     const local = this.local;
-    return shift ? (E, N, H) => local(E + shift.eastM, N + shift.northM, H) : local;
+    return shift
+      ? (E, N, H) => {
+          const [e, n] = shiftEN([E, N], shift);
+          return local(e, n, H);
+        }
+      : local;
   }
 
   /** Local-frame position of (E, N, H). */

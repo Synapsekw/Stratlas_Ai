@@ -1,4 +1,4 @@
-import { shiftLocal, type ChangeItem, type DateShift, type Vec3 } from '@aio/schema';
+import { shiftLocal, turnOf, type ChangeItem, type DateShift, type Vec3 } from '@aio/schema';
 import { box2, boxGap, centroid2, hausdorff, lonLatToMetres, type Box2, type XY } from './geometry';
 
 /**
@@ -101,8 +101,17 @@ export function vectorChanges(input: VectorChangeInput): VectorItem[] {
     i: number,
     shift: DateShift | null,
   ): F => {
+    // A turn is about a pivot in the project frame, so it needs the local frame (`toLocal`); the
+    // move it makes there is added to the metres about the centroid, so the unmoved date and the
+    // moved one stay in one frame. Without `toLocal` (or a turn) the shift is the plain one.
+    const turned = !!turnOf(shift) && !!input.toLocal;
     const m = g.ll.map((p): XY => {
       const [x, y] = lonLatToMetres(p, origin);
+      if (turned && input.toLocal) {
+        const l = input.toLocal(p);
+        const q = shiftLocal(l, shift);
+        return [x + (q[0] - l[0]), y - (q[2] - l[2])];
+      }
       return [x + (shift?.eastM ?? 0), y + (shift?.northM ?? 0)];
     });
     return {

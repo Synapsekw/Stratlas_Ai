@@ -1,4 +1,4 @@
-import type { DateShift, Issue } from '@aio/schema';
+import { shiftLocal, type DateShift, type Issue } from '@aio/schema';
 
 /**
  * Plan-view footprints of issues placed as areas on a model (findings on a model): the convex
@@ -94,7 +94,10 @@ export function footprintOf(
     if (!pts) continue;
     const at = shiftOf?.(s.layer) ?? null;
     const hull = convexHullXZ(
-      pts.map((p): XZ => [p[0] + (at?.eastM ?? 0), p[2] - (at?.northM ?? 0)]),
+      pts.map((p): XZ => {
+        const q = shiftLocal(p, at);
+        return [q[0], q[2]];
+      }),
     );
     if (hull.length >= 3 && areaXZ(hull) > 1e-9) return hull;
   }

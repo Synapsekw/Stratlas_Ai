@@ -1,3 +1,4 @@
+import { shiftLocal, type DateShift } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { vectorChanges } from './vector';
 
@@ -79,5 +80,37 @@ describe('vector change of two counterpart layers', () => {
     });
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ id: 'vector:a:f1', verdict: 'attributes', keys: ['name'] });
+  });
+});
+
+describe('vector change on a turned date', () => {
+  it('follows a 0.5 degree turn', () => {
+    const toLocal = ([lon, lat]: [number, number]): [number, number, number] => [
+      lon / M,
+      0,
+      -lat / M,
+    ];
+    const shiftFrom: DateShift = {
+      eastM: 0,
+      northM: 0,
+      turn: { rotationDeg: 0.5, scale: 1, pivotE: 0, pivotN: 0, pivotX: 0, pivotZ: 0 },
+    };
+    const a = line(0, 0, 400, 0);
+    const turned = a.map(([lon, lat]) => {
+      const q = shiftLocal(toLocal([lon ?? 0, lat ?? 0]), shiftFrom);
+      return [q[0] * M, -q[2] * M];
+    });
+    const run = (s: DateShift | null) =>
+      vectorChanges({
+        layerFrom: 'a',
+        layerTo: 'b',
+        from: fc(feature({ name: 'Fence' }, a)),
+        to: fc(feature({ name: 'Fence' }, turned)),
+        toLocal,
+        shiftFrom: s,
+      })[0]?.verdict;
+    // 400 m at 0.5 degree ends 3.5 m north: the turn puts the old line on the new one
+    expect(run(shiftFrom)).toBe('unchanged');
+    expect(run(null)).not.toBe('unchanged');
   });
 });

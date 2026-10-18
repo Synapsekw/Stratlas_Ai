@@ -167,6 +167,30 @@ export function shiftLocal(p: Vec3, s: DateShift | null): Vec3 {
   return [t.pivotX + a * dx + b * dz + s.eastM, p[1], t.pivotZ - b * dx + a * dz - s.northM];
 }
 
+/**
+ * An axis-aligned local box as it lies on a lined-up date: the box of its four moved plan corners
+ * (a turn makes a box wider), with y kept. The same box for no shift; a null box stays null.
+ */
+export function shiftedBox<B extends { min: Vec3; max: Vec3 }>(
+  b: B | null,
+  s: DateShift | null,
+): B | null {
+  if (!b || !s || isZeroShift(s)) return b;
+  const xs: number[] = [];
+  const zs: number[] = [];
+  for (const x of [b.min[0], b.max[0]])
+    for (const z of [b.min[2], b.max[2]]) {
+      const q = shiftLocal([x, 0, z], s);
+      xs.push(q[0]);
+      zs.push(q[2]);
+    }
+  return {
+    ...b,
+    min: [Math.min(...xs), b.min[1], Math.min(...zs)],
+    max: [Math.max(...xs), b.max[1], Math.max(...zs)],
+  };
+}
+
 /** The inverse of `shiftLocal`: what a writer stores for a point drawn on a dated layer. */
 export function unshiftLocal(p: Vec3, s: DateShift | null): Vec3 {
   if (!s || isZeroShift(s)) return p;
