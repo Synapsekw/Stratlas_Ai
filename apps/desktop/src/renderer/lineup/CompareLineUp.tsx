@@ -15,7 +15,7 @@ import {
 } from './compareLineUpStore';
 import { openLineUp, removeLineUp } from './lineUpActions';
 import { lineUpApp, type LineUpStore } from './lineUpStore';
-import { dateLabel, formatMetres, shiftWords } from './planLineUp';
+import { dateLabel, formatMetres, shiftWords, turnWords } from './planLineUp';
 import './lineup.css';
 
 type T = typeof translate;
@@ -27,15 +27,6 @@ export function twinDates(split: SplitModel): [string, string] | null {
   const left = sideCapture(sides, 'left', dates);
   const right = sideCapture(sides, 'right', dates);
   return left && right && left !== right ? [left, right] : null;
-}
-
-/** "turned 0.11°, scaled -0.18%". */
-function turnWords(rotationDeg: number, scale: number, t: T): string {
-  const pct = (scale - 1) * 100;
-  return t('lineUp.turn', {
-    deg: rotationDeg.toFixed(2),
-    pct: `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`,
-  });
 }
 
 const labelOf = (m: ProjectManifest, id: string) => dateLabel(m.captures, id);
@@ -75,7 +66,7 @@ function detailsOf(
       shiftWords(lineUp.eastM, lineUp.northM, t),
     );
     if (hasTurn(capture.lineUpTurn) && capture.lineUpTurn)
-      lines.push(turnWords(capture.lineUpTurn.rotationDeg, capture.lineUpTurn.scale, t));
+      lines.push(turnWords(capture.lineUpTurn, t));
   }
   if (saved.length === 0 && s.status !== 'measuring') lines.push(t('compare.lineUp.never'));
   if (r && s.status !== 'cannot') lines.push(fitWords(r, t));
