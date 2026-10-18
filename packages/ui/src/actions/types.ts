@@ -34,9 +34,9 @@ export type MenuTarget =
   | { kind: 'photos'; picks: PhotoPick[] }
   /** 360s and pins (photos keep `photos`). */
   | { kind: 'media'; picks: MediaPick[] }
-  /** The Issues and Drafts rows of the Annotations group (they carry no layer). */
   /** Measurement rows: the marked ones, and the row the menu opened on. */
   | { kind: 'measurements'; ids: string[]; clicked: string }
+  /** The Issues and Drafts rows of the Annotations group (they carry no layer). */
   | { kind: 'annotations'; row: 'issues' | 'drafts' };
 
 export type ActionSection = 'open' | 'view' | 'edit' | 'compare' | 'file' | 'danger';
