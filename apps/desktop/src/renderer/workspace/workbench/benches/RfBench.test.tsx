@@ -338,7 +338,7 @@ describe('RfBench', () => {
     expect(qi('[data-testid="rf-etilt"]')?.min).toBe('3');
   });
 
-  it('holds Run coverage until the pack is known, then starts the job as a live tool', async () => {
+  it('holds Run coverage until the pack is known, then starts the job, the tab open but not a live tool', async () => {
     h.pack = null;
     await render();
     const run = () => byTest('rf-run');
@@ -354,7 +354,9 @@ describe('RfBench', () => {
     const start = h.calls.find(([c]) => c === 'jobs:start');
     expect(start?.[1]).toMatchObject({ pipeline: 'rf.coverage', project: '/p3' });
     expect((start?.[1].params as { runId: string }).runId).toMatch(/^rf-/);
-    expect(workbench.getState().tabs.find((t) => t.id === 'rf')?.live).toBe(true);
+    // a run is an activity the Jobs tab follows, not a tool (review I2)
+    expect(workbench.getState().tabs.find((t) => t.id === 'rf')?.live).toBeFalsy();
+    expect(workbench.getState().front).toBe('rf');
     expect(rfStore.getState().running).toBe(true);
   });
 

@@ -4,6 +4,7 @@ import { RF_COVERAGE_MIN_PACK } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWorkbenchStore } from '../workspace/workbench/workbenchStore';
 import { personToolLive } from '../workspace/workbench/tabsModel';
+import { createAgentPaneStore, startAgentPaneFollow } from '../agent/agentPaneStore';
 import {
   antennasFile,
   lteSettings,
@@ -101,7 +102,7 @@ afterEach(() => {
 });
 
 describe('startRfRun', () => {
-  it('saves pending edits, starts rf.coverage, keeps the tab live until the job ends', async () => {
+  it('saves pending edits, starts rf.coverage, keeps the RF tab open and not live', async () => {
     const bench = createWorkbenchStore(null);
     openRfTab(undefined, bench);
     patchStudy({ radiusM: 2000 });
@@ -112,15 +113,38 @@ describe('startRfRun', () => {
       .filter((c) => c === 'rf:writeSectors' || c === 'jobs:start');
     expect(order).toEqual(['rf:writeSectors', 'jobs:start']);
     expect(h.sectors?.study.radiusM).toBe(2000);
-    expect(bench.getState().tabs.find((t) => t.id === 'rf')?.live).toBe(true);
+    // a run is an activity (review I2): the tab is open in front, but not a live tool
+    expect(bench.getState().front).toBe('rf');
+    expect(bench.getState().tabs.find((t) => t.id === 'rf')?.live).toBeFalsy();
     expect(rfStore.getState().check.refusals).toContain('running');
     jobsStore.setState({ jobs: [job('done')] });
     expect(rfStore.getState().running).toBe(false);
-    // the person opened the tab, so it stays open, no longer live
-    const tab = bench.getState().tabs.find((t) => t.id === 'rf');
-    expect(tab?.live).toBe(false);
+    expect(bench.getState().tabs.find((t) => t.id === 'rf')).toBeDefined();
     await Promise.resolve();
     expect(h.calls.some(([c]) => c === 'rf:listRuns')).toBe(true);
+  });
+
+  it('opens the RF tab when a run starts from elsewhere', async () => {
+    const bench = createWorkbenchStore(null);
+    await startRfRun('/p3', bench);
+    expect(bench.getState().front).toBe('rf');
+    expect(bench.getState().tabs.filter((t) => t.id === 'rf')).toHaveLength(1);
+  });
+
+  it('while a run is in progress the drawer stays closed and the agent pane is not minimised', async () => {
+    const bench = createWorkbenchStore(null);
+    const pane = createAgentPaneStore(false);
+    const stop = startAgentPaneFollow(pane, bench);
+    const seq = bench.getState().toolSeq;
+    await startRfRun('/p3', bench);
+    expect(rfStore.getState().running).toBe(true);
+    // the drawer opens only on a toolSeq move (Drawer.tsx); no tool went live
+    expect(bench.getState().toolSeq).toBe(seq);
+    expect(personToolLive(bench.getState().tabs)).toBe(false);
+    expect(pane.getState().mode).toBe('normal');
+    jobsStore.setState({ jobs: [job('done')] });
+    expect(pane.getState().mode).toBe('normal');
+    stop();
   });
 
   it('keeps the job error when the job fails, and main refusals too', async () => {
