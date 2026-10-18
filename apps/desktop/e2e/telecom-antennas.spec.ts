@@ -66,6 +66,53 @@ async function labelClashes(win: Page): Promise<{ card: string[]; nameWidth: boo
   });
 }
 
+/**
+ * Whether the card covers the selected box (its `data-unit-box`, host px) or the name label, and
+ * the stage's width.
+ */
+async function cardCover(win: Page): Promise<{ box: boolean; name: boolean; stageW: number }> {
+  return win.evaluate(() => {
+    const hit = (a: DOMRect, b: DOMRect) =>
+      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const card = document.querySelector<HTMLElement>('[data-testid="antenna-card"]');
+    const host = card?.parentElement;
+    if (!card || !host) return { box: false, name: false, stageW: 0 };
+    const c = card.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    const [x = 0, y = 0, w = 0, h = 0] = (card.dataset.unitBox ?? '').split(' ').map(Number);
+    const box = card.dataset.unitBox ? hit(c, new DOMRect(hr.left + x, hr.top + y, w, h)) : false;
+    const name = [...document.querySelectorAll<HTMLElement>('.antenna-labels .sv-label.sel')].find(
+      (el) => el.style.display !== 'none' && el.dataset.key?.endsWith(':name'),
+    );
+    return {
+      box,
+      name: name !== undefined && hit(c, name.getBoundingClientRect()),
+      stageW: host.clientWidth,
+    };
+  });
+}
+
+/** Waits until the card has held its place for 500 ms: the fly to the unit has settled. */
+async function cardSettled(win: Page): Promise<void> {
+  const card = win.getByTestId('antenna-card');
+  let last = '';
+  let since = Date.now();
+  await expect
+    .poll(
+      async () => {
+        const b = await card.boundingBox();
+        const now = b ? `${b.x} ${b.y}` : '';
+        if (now !== last) {
+          last = now;
+          since = Date.now();
+        }
+        return Date.now() - since >= 500;
+      },
+      { intervals: [100], timeout: 15_000 },
+    )
+    .toBe(true);
+}
+
 async function openTiny(win: Page) {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
@@ -286,8 +333,26 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await evidence(win, 'j-pins');
   await pin.click();
   await expect(card.getByTestId('antenna-card-name')).toHaveText(targetName);
-  // the card stands clear of the selected unit's labels, and the name clears the width label
-  await expect.poll(() => labelClashes(win)).toEqual({ card: [], nameWidth: false });
+  // once the fly to the unit has settled, the card keeps off the selected box and its name at
+  // every size, and the name clears the width label. On a stage 700 px wide or less (CI's
+  // 1100 x 720 window leaves about 490 px) the 320 px card cannot clear the box and all its
+  // labels as well, so it may cover the cheap ones (sizes, angle); a wider stage has room for
+  // the card to clear every selected label.
+  await cardSettled(win);
+  const cover = await cardCover(win);
+  expect({ box: cover.box, name: cover.name }).toEqual({ box: false, name: false });
+  const clashes = await labelClashes(win);
+  expect(clashes.nameWidth).toBe(false);
+  if (cover.stageW > 700) expect(clashes.card).toEqual([]);
+  // a card capped to the room beside the unit keeps Accept whole in view, without scrolling
+  const accept = card.getByTestId('antenna-card-accept');
+  await expect(accept).toBeInViewport({ ratio: 1 });
+  const unclipped = await accept.evaluate((el) => {
+    const a = el.getBoundingClientRect();
+    const c = el.closest('[data-testid="antenna-card"]')?.getBoundingClientRect();
+    return c !== undefined && a.top >= c.top && a.bottom <= c.bottom && a.height > 0;
+  });
+  expect(unclipped, 'Accept lies wholly inside the card').toBe(true);
   await evidence(win, 'j2-pins');
   await expect(pin).toHaveCount(0);
   await expect(pins).toHaveCount(7);

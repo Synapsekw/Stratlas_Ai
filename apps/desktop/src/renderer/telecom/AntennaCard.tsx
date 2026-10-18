@@ -33,7 +33,7 @@ import {
   useAntennas,
 } from './antennaStore';
 import { LABELS_CONTROL_SELECTOR } from './AntennaLabelsControl';
-import { leaderLine, placeCard, type Rect } from './cardPlacement';
+import { AVOID_WEIGHT, leaderLine, placeCard, type AvoidArea, type Rect } from './cardPlacement';
 import { useAntennaKeys } from './useAntennaKeys';
 
 export interface AntennaCardProps {
@@ -41,6 +41,8 @@ export interface AntennaCardProps {
   stageHost: HTMLElement;
   /** The selected box on screen, in CSS pixels relative to `stageHost`; null when not in view. */
   boxRect: Rect | null;
+  /** The selected unit's box and labels, weighted, for when no spot clears `boxRect`. */
+  avoid?: readonly AvoidArea[];
 }
 
 // ---------------------------------------------------------------- session drag position
@@ -522,12 +524,25 @@ const HEAD_ROW: CSSProperties = {
   alignItems: 'center',
   gap: 'var(--sp-3)',
 };
+/** The middle of the card (photos, values, more) scrolls when the card is capped. */
 const BODY: CSSProperties = {
+  flex: '1 1 auto',
+  overflowY: 'auto',
+  minHeight: 0,
+};
+const BODY_INNER: CSSProperties = {
   display: 'grid',
   gap: 'var(--sp-5)',
   padding: 'var(--sp-5)',
-  overflowY: 'auto',
-  minHeight: 0,
+};
+/** Accept and Reject stay in view below the scrolling middle. */
+const FOOT: CSSProperties = {
+  flex: 'none',
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 'var(--sp-4)',
+  padding: 'var(--sp-4) var(--sp-5) var(--sp-5)',
+  borderTop: '1px solid var(--line-soft)',
 };
 
 interface BodyProps extends AntennaCardProps {
@@ -537,6 +552,8 @@ interface BodyProps extends AntennaCardProps {
   readOnly: boolean;
   projectId: string | null;
 }
+
+const NO_AREAS: readonly AvoidArea[] = [];
 
 function sameSize(a: { w: number; h: number }, b: { w: number; h: number }): boolean {
   return a.w === b.w && a.h === b.h;
@@ -550,6 +567,7 @@ function sameRect(a: Rect | null, b: Rect | null): boolean {
 function CardBody(props: BodyProps): ReactElement {
   const { unit, stageHost: host, boxRect, readOnly } = props;
   const card = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
   const grab = useRef<{ dx: number; dy: number } | null>(null);
   const drag = useSyncExternalStore(subscribeDrag, getDragged, getDragged);
   const layers = useWorkspace((s) => s.project?.manifest.layers);
@@ -564,7 +582,11 @@ function CardBody(props: BodyProps): ReactElement {
     const measure = () => {
       const el = card.current;
       if (el) {
-        const next = { w: el.offsetWidth || CARD_W, h: el.offsetHeight || CARD_H };
+        // the full height, as if not capped: the scrolling middle at its content's height
+        const scroller = body.current;
+        const inner = scroller?.firstElementChild as HTMLElement | null | undefined;
+        const capped = scroller && inner ? inner.offsetHeight - scroller.clientHeight : 0;
+        const next = { w: el.offsetWidth || CARD_W, h: el.offsetHeight + capped || CARD_H };
         setSize((s) => (sameSize(s, next) ? s : next));
       }
       const st = { w: host.clientWidth, h: host.clientHeight };
@@ -578,6 +600,8 @@ function CardBody(props: BodyProps): ReactElement {
     const ro = new ResizeObserver(measure);
     ro.observe(host);
     if (card.current) ro.observe(card.current);
+    const inner = body.current?.firstElementChild;
+    if (inner) ro.observe(inner);
     const c = host.querySelector(LABELS_CONTROL_SELECTOR);
     if (c) ro.observe(c);
     return () => {
@@ -585,13 +609,10 @@ function CardBody(props: BodyProps): ReactElement {
     };
   }, [host, unit.id]);
 
-  const at = placeCard(
-    boxRect,
-    { x: 0, y: 0, w: stage.w, h: stage.h },
-    size,
-    drag,
-    control ? [control] : [],
-  );
+  const at = placeCard(boxRect, { x: 0, y: 0, w: stage.w, h: stage.h }, size, drag, {
+    reserved: control ? [control] : [],
+    areas: props.avoid ?? NO_AREAS,
+  });
   const entries = useMemo(
     () => photoEntries(unit, props.projectId, layers ?? []),
     [unit, props.projectId, layers],
@@ -626,6 +647,7 @@ function CardBody(props: BodyProps): ReactElement {
     }
   };
 
+  const unitBox = props.avoid?.find((a) => a.weight === AVOID_WEIGHT.box)?.rect;
   const leader = boxRect && !at.docked ? leaderLine(boxRect, at, size) : null;
   const decide = (status: Exclude<AntennaStatus, 'draft'>) => {
     void decideAntenna(status);
@@ -670,7 +692,15 @@ function CardBody(props: BodyProps): ReactElement {
         aria-label={unit.name}
         data-testid="antenna-card"
         data-docked={at.docked ? 'true' : undefined}
-        style={{ ...CARD, left: at.x, top: at.y }}
+        // the selected box on screen (x y w h, host px), for checks that the card keeps off it
+        data-unit-box={unitBox ? `${unitBox.x} ${unitBox.y} ${unitBox.w} ${unitBox.h}` : undefined}
+        data-capped={at.maxH !== undefined ? 'true' : undefined}
+        style={{
+          ...CARD,
+          left: at.x,
+          top: at.y,
+          ...(at.maxH !== undefined ? { maxHeight: at.maxH } : {}),
+        }}
       >
         <div
           data-testid="antenna-card-head"
@@ -751,51 +781,53 @@ function CardBody(props: BodyProps): ReactElement {
             </span>
           </Tip>
         </div>
-        <div style={BODY}>
-          <PhotoStrip key={unit.id} entries={entries} />
-          <Values unit={unit} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-4)' }}>
-            <Button
-              size="lg"
-              icon="check"
-              variant={unit.status === 'accepted' ? 'primary' : 'secondary'}
-              data-testid="antenna-card-accept"
-              pressed={unit.status === 'accepted'}
-              {...reason}
-              onClick={() => {
-                decide('accepted');
-              }}
-            >
-              {t('telecom.antennas.accept')} <Kbd>A</Kbd>
-            </Button>
-            <Button
-              size="lg"
-              icon="x"
-              variant={unit.status === 'rejected' ? 'danger' : 'secondary'}
-              data-testid="antenna-card-reject"
-              pressed={unit.status === 'rejected'}
-              {...reason}
-              onClick={() => {
-                decide('rejected');
-              }}
-            >
-              {t('telecom.antennas.reject')} <Kbd>R</Kbd>
-            </Button>
+        <div ref={body} data-testid="antenna-card-body" style={BODY}>
+          <div style={BODY_INNER}>
+            <PhotoStrip key={unit.id} entries={entries} />
+            <Values unit={unit} />
+            <details>
+              <summary style={{ cursor: 'pointer', color: 'var(--fg-2)' }}>
+                {t('telecom.antennas.card.more')}
+              </summary>
+              <div style={{ paddingTop: 'var(--sp-4)' }}>
+                <AntennaUserFields
+                  unit={unit}
+                  readOnly={readOnly}
+                  onPatchUser={(fields) => {
+                    void patchUnitUser(unit.id, fields);
+                  }}
+                />
+              </div>
+            </details>
           </div>
-          <details>
-            <summary style={{ cursor: 'pointer', color: 'var(--fg-2)' }}>
-              {t('telecom.antennas.card.more')}
-            </summary>
-            <div style={{ paddingTop: 'var(--sp-4)' }}>
-              <AntennaUserFields
-                unit={unit}
-                readOnly={readOnly}
-                onPatchUser={(fields) => {
-                  void patchUnitUser(unit.id, fields);
-                }}
-              />
-            </div>
-          </details>
+        </div>
+        <div data-testid="antenna-card-actions" style={FOOT}>
+          <Button
+            size="lg"
+            icon="check"
+            variant={unit.status === 'accepted' ? 'primary' : 'secondary'}
+            data-testid="antenna-card-accept"
+            pressed={unit.status === 'accepted'}
+            {...reason}
+            onClick={() => {
+              decide('accepted');
+            }}
+          >
+            {t('telecom.antennas.accept')} <Kbd>A</Kbd>
+          </Button>
+          <Button
+            size="lg"
+            icon="x"
+            variant={unit.status === 'rejected' ? 'danger' : 'secondary'}
+            data-testid="antenna-card-reject"
+            pressed={unit.status === 'rejected'}
+            {...reason}
+            onClick={() => {
+              decide('rejected');
+            }}
+          >
+            {t('telecom.antennas.reject')} <Kbd>R</Kbd>
+          </Button>
         </div>
       </div>
     </>

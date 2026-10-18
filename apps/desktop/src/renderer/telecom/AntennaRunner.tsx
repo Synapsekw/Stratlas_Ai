@@ -43,7 +43,7 @@ import {
   sendAiLabels,
   useAntennas,
 } from './antennaStore';
-import type { Rect } from './cardPlacement';
+import { AVOID_WEIGHT, type AvoidArea, type Rect } from './cardPlacement';
 import { projectToHost } from './screenProjection';
 
 /** The point cloud layers of the open project, none in a package (read only, no pipelines). */
@@ -140,6 +140,36 @@ export function drawnLabelsRect(host: HTMLElement): Rect | null {
   return out;
 }
 
+const whole = (r: Rect): Rect => ({
+  x: Math.round(r.x),
+  y: Math.round(r.y),
+  w: Math.round(r.w),
+  h: Math.round(r.h),
+});
+
+/**
+ * The selected unit's parts the card should not cover, weighted (`AVOID_WEIGHT`): its box and
+ * each of its labels as drawn, by kind (`.antenna-label--name`, `--angle`, `--dim`), rounded to
+ * whole CSS pixels relative to `host`.
+ */
+export function selectedAreas(host: HTMLElement, box: Rect): AvoidArea[] {
+  const hr = host.getBoundingClientRect();
+  const out: AvoidArea[] = [{ rect: whole(box), weight: AVOID_WEIGHT.box }];
+  for (const el of host.querySelectorAll<HTMLElement>('.antenna-labels .sv-label.sel')) {
+    if (el.style.display === 'none') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    const kind = el.classList.contains('antenna-label--name')
+      ? 'name'
+      : el.classList.contains('antenna-label--angle')
+        ? 'angle'
+        : 'dim';
+    const rect = { x: r.left - hr.left, y: r.top - hr.top, w: r.width, h: r.height };
+    out.push({ rect: whole(rect), weight: AVOID_WEIGHT[kind] });
+  }
+  return out;
+}
+
 /**
  * The box grown to cover its labels as drawn, with `LABEL_GAP` around; before they are drawn,
  * the anchors padded by the room text takes (`withLabels`).
@@ -155,6 +185,13 @@ const rounded = (r: Rect | null): Rect | null =>
 
 const sameRect = (a: Rect | null, b: Rect | null): boolean =>
   a === b || (a !== null && b !== null && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h);
+
+const sameAreas = (a: readonly AvoidArea[], b: readonly AvoidArea[]): boolean =>
+  a.length === b.length &&
+  a.every((x, i) => {
+    const y = b[i];
+    return x.weight === y?.weight && sameRect(x.rect, y.rect);
+  });
 
 /**
  * The card and its leader line are placed absolutely inside the stage host; a static host would
@@ -251,12 +288,14 @@ export function AntennaRunner(): ReactElement | null {
   // the floating card beside the selected box, only while the 3D view is on screen
   const host = selected !== null ? layerHost : null;
   const [rect, setRect] = useState<Rect | null>(null);
+  const [avoid, setAvoid] = useState<AvoidArea[]>([]);
   // before paint, so the card's first frame is already in place
   useLayoutEffect(() => {
     if (!host || !stage || !frame || !spotsOf || !selected) return;
     positionHost(host);
     const canvas = stage.renderer.domElement;
     let last: Rect | null = null;
+    let lastAreas: AvoidArea[] = [];
     const place = () => {
       const a = antennaStore.getState();
       const unit = a.file?.units.find((u) => u.id === selected);
@@ -283,10 +322,13 @@ export function AntennaRunner(): ReactElement | null {
           )
         : null;
       const next = rounded(box && withDrawnLabels(box, drawnLabelsRect(host), anchors));
-      // React hears of the box only when it moved by a whole pixel
-      if (sameRect(next, last)) return;
+      const areas = box ? selectedAreas(host, box) : [];
+      // React hears of the box only when it or a part moved by a whole pixel
+      if (sameRect(next, last) && sameAreas(areas, lastAreas)) return;
       last = next;
+      lastAreas = areas;
       setRect(next);
+      setAvoid(areas);
     };
     place();
     // after the labels are placed in the same frame, so the card measures them where they are
@@ -295,6 +337,7 @@ export function AntennaRunner(): ReactElement | null {
     return () => {
       listeners.delete(place);
       setRect(null);
+      setAvoid([]);
     };
   }, [host, stage, frame, manifest, selected, spotsOf]);
 
@@ -329,7 +372,7 @@ export function AntennaRunner(): ReactElement | null {
   return (
     <>
       {layerHost && <AntennaLabelsControl host={layerHost} />}
-      {host && <AntennaCard stageHost={host} boxRect={rect} />}
+      {host && <AntennaCard stageHost={host} boxRect={rect} avoid={avoid} />}
       {shown && (
         <PortalRoot opener={null} className="antenna-send-layer">
           <AntennaSendPreview

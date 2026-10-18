@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AntennaCard, STRIP_MAX_H, STRIP_MIN_H, resetCardDrag, stripHeight } from './AntennaCard';
 import { AntennaInventory } from './AntennaInventory';
 import { antennaStore, selectAntenna, type AntennaFilter } from './antennaStore';
-import type { Rect } from './cardPlacement';
+import { AVOID_WEIGHT, type Rect } from './cardPlacement';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -382,6 +382,40 @@ describe('AntennaCard', () => {
     expect(card.style.top).toBe('8px');
     expect(card.dataset.docked).toBe('true');
     expect(q('antenna-card-leader')).toBeNull();
+  });
+
+  it('caps its height to the free band on a narrow stage, Accept and Reject still in the row', () => {
+    load(three());
+    const narrow = document.createElement('div');
+    Object.defineProperty(narrow, 'clientWidth', { value: 488 });
+    Object.defineProperty(narrow, 'clientHeight', { value: 720 });
+    document.body.append(narrow);
+    const unitBox = { x: 226, y: 317, w: 37, h: 86 };
+    act(() => {
+      root.render(
+        <AntennaCard
+          stageHost={narrow}
+          boxRect={{ x: 192, y: 266, w: 266, h: 143 }}
+          avoid={[
+            { rect: unitBox, weight: AVOID_WEIGHT.box },
+            { rect: { x: 198, y: 272, w: 91, h: 20 }, weight: AVOID_WEIGHT.name },
+          ]}
+        />,
+      );
+    });
+    const card = narrow.querySelector<HTMLElement>('[data-testid="antenna-card"]')!;
+    // the full card (420 px here) has no room; below the box: 403 + 16 to 720 - 8
+    expect(card.dataset.capped).toBe('true');
+    expect(card.style.maxHeight).toBe(`${String(720 - 8 - 419)}px`);
+    expect(card.style.top).toBe('419px');
+    expect(card.dataset.unitBox).toBe('226 317 37 86');
+    // the actions are a row of their own below the scrolling middle
+    const actions = narrow.querySelector('[data-testid="antenna-card-actions"]')!;
+    const body = narrow.querySelector('[data-testid="antenna-card-body"]')!;
+    expect(actions.querySelector('[data-testid="antenna-card-accept"]')).not.toBeNull();
+    expect(actions.querySelector('[data-testid="antenna-card-reject"]')).not.toBeNull();
+    expect(body.contains(actions)).toBe(false);
+    expect(body.nextElementSibling).toBe(actions);
   });
 
   it('stays where it was dragged until the drag is reset', () => {

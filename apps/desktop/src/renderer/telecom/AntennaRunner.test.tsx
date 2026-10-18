@@ -24,10 +24,12 @@ import {
   LABEL_PAD_Y,
   drawnLabelsRect,
   screenRectOf,
+  selectedAreas,
   withDrawnLabels,
   withLabels,
 } from './AntennaRunner';
 import { resetCardDrag } from './AntennaCard';
+import { AVOID_WEIGHT } from './cardPlacement';
 import type { AntennaSceneState } from './antennaScene';
 import { antennaStore, revealAntenna, selectAntenna, setAntennaSolo } from './antennaStore';
 
@@ -351,6 +353,27 @@ describe('drawnLabelsRect and withDrawnLabels', () => {
       w: 112 + 130 - 80 + 2 * LABEL_GAP,
       h: 140 - 70 + 2 * LABEL_GAP,
     });
+  });
+
+  it('weighs the box and each drawn label by its kind', () => {
+    const host = document.createElement('div');
+    host.getBoundingClientRect = () => new DOMRect(50, 20, 800, 600);
+    const layer = document.createElement('div');
+    layer.className = 'sv-labels antenna-labels';
+    layer.append(
+      span('sv-label antenna-label--name sel', new DOMRect(50 + 80, 20 + 70, 90, 18)),
+      span('sv-label antenna-label--angle sel', new DOMRect(50 + 112, 20 + 120, 130, 18)),
+      span('sv-label antenna-label--dim sel', new DOMRect(50 + 100, 20 + 145, 55, 18)),
+      span('sv-label antenna-label--dim sel', new DOMRect(0, 0, 500, 500), 'none'),
+      span('sv-label antenna-label--pin', new DOMRect(0, 0, 500, 500)),
+    );
+    host.append(layer);
+    expect(selectedAreas(host, box)).toEqual([
+      { rect: box, weight: AVOID_WEIGHT.box },
+      { rect: { x: 80, y: 70, w: 90, h: 18 }, weight: AVOID_WEIGHT.name },
+      { rect: { x: 112, y: 120, w: 130, h: 18 }, weight: AVOID_WEIGHT.angle },
+      { rect: { x: 100, y: 145, w: 55, h: 18 }, weight: AVOID_WEIGHT.dim },
+    ]);
   });
 
   it('falls back to the anchor pad before the labels are drawn', () => {
