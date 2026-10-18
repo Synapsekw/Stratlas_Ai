@@ -114,6 +114,24 @@ def photo_layers(manifest: dict[str, Any], ids: list[str] | None = None) -> list
     return out
 
 
+def turn_q(q: list[float], rotation_deg: float) -> list[float]:
+    """A camera quaternion (three.js [x, y, z, w], local frame) turned by a line-up's rotation.
+
+    The line-up turns counter-clockwise in plan (east towards north). In the local frame (x east,
+    y up, z south) that is a right-handed turn about +y by the same angle: east (1, 0, 0) goes to
+    (cos, 0, -sin), towards north (-z), as ``Similarity.apply_local`` moves points."""
+    h = math.radians(rotation_deg) / 2
+    ay, aw = math.sin(h), math.cos(h)
+    qx, qy, qz, qw = q
+    # (0, ay, 0, aw) * q
+    return [
+        aw * qx + ay * qz,
+        aw * qy + ay * qw,
+        aw * qz - ay * qx,
+        aw * qw - ay * qy,
+    ]
+
+
 def load_meshes(
     project: Path, layers: list[dict[str, Any]], log=print, manifest: dict[str, Any] | None = None
 ):

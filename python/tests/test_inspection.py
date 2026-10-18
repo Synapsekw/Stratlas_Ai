@@ -486,11 +486,13 @@ def test_issue_hash_ignores_how_numbers_are_written():
 # ------------------------------------------------------------------------------ lined-up dates
 
 
-def line_up_project(root, east=2.0, north=-1.0, layers=("stack", "photos")):
+def line_up_project(root, east=2.0, north=-1.0, layers=("stack", "photos"), turn=None):
     path = root / "manifest.json"
     m = json.loads(path.read_text())
     m["captures"] = [{"id": "c1", "label": "Survey", "date": "2026-01-02",
                       "lineUp": {"eastM": east, "northM": north, "with": "c0", "at": "2026-10-16T09:00:00Z"}}]  # fmt: skip
+    if turn:
+        m["captures"][0]["lineUpTurn"] = turn
     for layer in m["layers"]:
         if layer["id"] in layers:
             layer["capture"] = "c1"
@@ -539,13 +541,21 @@ def test_inspection_meshes_follows_a_turned_line_up(project):
     assert after[k] == pytest.approx([x, before[k, 1], z], abs=1e-3)
 
 
-def test_a_lined_up_date_gives_findings_in_its_stored_frame(project):
+#: A 0.5 degree turn about a pivot 100 m west of the stack (origin 500000, 3200000; the stack is
+#: at local x 3, z -4): it moves the stack and the photos most of a metre past the shift.
+FAR_TURN = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": 500003.0 - 100.0, "pivotN": 3200004.0}
+
+
+@pytest.mark.parametrize("turn", [None, FAR_TURN], ids=["shift", "turned"])
+def test_a_lined_up_date_gives_findings_in_its_stored_frame(project, turn):
     # model and photos both sit where the date is lined up while the job runs; what it saves is in
-    # the layer's own (stored) frame, so the issues are where an unshifted project puts them
+    # the layer's own (stored) frame, so the issues are where an unshifted project puts them. A
+    # turned line-up turns the photos' positions and orientations with the model, and the findings
+    # come back through the inverse.
     standard(project)
     run_job(InspectionRun(), project, {})
     want = {i["code"]: mesh_point(i) for i in issues_of(project)[1:]}
-    line_up_project(project)
+    line_up_project(project, turn=turn)
     (project / "issues.json").write_text(json.dumps({"schema": "aio.issues/1", "issues": [USER_ISSUE]}))
     result, _ = run_job(InspectionRun(), project, {}, job_id="j2")
     assert result["outputs"]["place"] == {"points": 3, "unmapped": 0}
@@ -553,3 +563,24 @@ def test_a_lined_up_date_gives_findings_in_its_stored_frame(project):
     assert got.keys() == want.keys()
     for code in want:
         assert got[code] == pytest.approx(want[code], abs=0.15)
+
+
+def test_a_turned_line_up_turns_the_camera_like_the_points():
+    # the sign of the turn in the local frame: a camera turned by the line-up looks along the line
+    # between its turned eye and its turned target
+    from aio_pipelines.inspection.frame import rotate, turn_q
+    from aio_pipelines.similarity import Similarity
+
+    origin = [500000.0, 3200000.0, 0.0]
+    sim = Similarity(2.0, -1.0, 30.0, 1.0, origin[0] - 50.0, origin[1] + 20.0)
+    eye, target = np.array([10.0, 5.0, 3.0]), np.array([-4.0, 2.0, -9.0])
+    q = turn_q(look_q(eye, target), sim.rotation_deg)
+    ex, ez = sim.apply_local(eye[0], eye[2], origin)
+    tx, tz = sim.apply_local(target[0], target[2], origin)
+    want = np.array([tx - ex, target[1] - eye[1], tz - ez])
+    assert rotate(q, [0, 0, -1]) == pytest.approx(want / np.linalg.norm(want), abs=1e-9)
+    # a turn about the vertical keeps the camera's tilt
+    assert rotate(q, [0, 1, 0])[1] == pytest.approx(rotate(look_q(eye, target), [0, 1, 0])[1], abs=1e-12)
+    # 30 degrees counter-clockwise: a camera looking east now looks east-north-east (-z is north)
+    east = turn_q(look_q([0, 0, 0], [1, 0, 0]), 30.0)
+    assert rotate(east, [0, 0, -1]) == pytest.approx([math.cos(math.pi / 6), 0, -0.5], abs=1e-9)

@@ -122,7 +122,7 @@ class InspectionRun:
         def read(ctx: StepContext) -> dict[str, Any]:
             from PIL import Image
 
-            from ..captures import date_shift, local_delta
+            from ..captures import date_shift, date_similarity
             from . import frame as Fr
             from .detections import Catalogue
 
@@ -148,8 +148,10 @@ class InspectionRun:
             unplaced: list[str] = []
             missing: list[str] = []
             for layer in Fr.photo_layers(manifest):
-                # photos sit where their date is lined up, like the models they are projected on
-                dx, dz = local_delta(date_shift(manifest, str(layer["id"])))
+                # photos sit where their date is lined up, like the models they are projected on: the
+                # position moves with the line-up, the orientation turns with its rotation
+                sim = date_similarity(manifest, str(layer["id"]))
+                origin = manifest.get("origin") or [0, 0, 0]
                 for item in layer.get("items", []):
                     path = Fr.asset_path(ctx.project, item.get("src"))
                     if path is None or not path.exists():
@@ -159,8 +161,11 @@ class InspectionRun:
                         unplaced.append(item["id"])
                         continue
                     pos = item["pos"]
-                    if dx or dz:
-                        item = {**item, "pos": [pos[0] + dx, pos[1], pos[2] + dz]}
+                    if not sim.is_identity():
+                        x, z = sim.apply_local(float(pos[0]), float(pos[2]), origin)
+                        item = {**item, "pos": [x, pos[1], z]}
+                        if item.get("q") and abs(sim.rotation_deg) > 0.0:
+                            item["q"] = Fr.turn_q(item["q"], sim.rotation_deg)
                     photos.append({**item, "_layer": layer["id"], "_file": str(path)})
             if missing:
                 ctx.log(
@@ -233,7 +238,10 @@ class InspectionRun:
                 ctx.stage("read.json"),
                 {"axis": [ax, az], "height": height, "footprint": fp, "nodes": nodes, "cameras": index,
                  "profile": profile, "unplaced": unplaced, "missing": missing,
-                 "shifts": {layer["id"]: list(date_shift(manifest, layer["id"])) for layer in mesh_layers}},
+                 "shifts": {layer["id"]: list(date_shift(manifest, layer["id"])) for layer in mesh_layers},
+                 # the turns beside those shifts (absent for none; an older read.json has none)
+                 "turns": {layer["id"]: t for layer in mesh_layers
+                           if (t := date_similarity(manifest, layer["id"]).to_turn())}},
             )  # fmt: skip
             ctx.log(f"{len(cams)} placed photos; kit profile {profile}")
             return {"photos": len(cams), "unplaced": len(unplaced), "missing": len(missing), "profile": profile,
@@ -346,13 +354,14 @@ class InspectionRun:
         # ------------------------------------------------------------ cluster
         def cluster(ctx: StepContext) -> dict[str, Any]:
             from ..aik import records as R_
-            from ..captures import local_delta
+            from ..similarity import Similarity
             from . import frame as Fr
             from .detections import Catalogue
             from .issues import links, proposals
 
             st = read_state(ctx)
-            cat = Catalogue(Fr.read_manifest(ctx.project))
+            manifest = Fr.read_manifest(ctx.project)
+            cat = Catalogue(manifest)
             meta = json.loads(ctx.stage("meta.json").read_text("utf-8"))
             frame = Fr.Frame(*st["axis"])
             job = kit_job(ctx)
@@ -364,14 +373,20 @@ class InspectionRun:
             props = proposals(R, meta["meta"], cat, frame, st["cameras"], layer_of)
             linked = links(R, meta["meta"], frame, layer_of)
             # the job ran where the dates are lined up; a finding is saved in its layer's own frame
+            # (through the inverse of its line-up, the turn included)
             shifts = st.get("shifts") or {}
+            turns = st.get("turns") or {}
+            origin = manifest.get("origin") or [0, 0, 0]
             for sighting in [s for p in props for s in p["sightings"]] + [
                 x["mesh"] for x in linked if x["mesh"]
             ]:
-                dx, dz = local_delta(tuple(shifts.get(sighting.get("layer"), (0.0, 0.0))))
-                if (dx or dz) and sighting.get("on") == "mesh":
+                layer = sighting.get("layer")
+                e, n = shifts.get(layer, (0.0, 0.0))
+                sim = Similarity.from_line_up({"eastM": e, "northM": n}, turns.get(layer))
+                if not sim.is_identity() and sighting.get("on") == "mesh":
                     p = sighting["geom"]["p"]
-                    sighting["geom"]["p"] = [round(p[0] - dx, 4), p[1], round(p[2] - dz, 4)]
+                    x, z = sim.inverse().apply_local(p[0], p[2], origin)
+                    sighting["geom"]["p"] = [round(x, 4), p[1], round(z, 4)]
             summary = R_.summary(R)
             summary["stats"]["detections"] = len(R["findings"])
             summary["stats"]["skipped"] = meta["skipped"]
