@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { issueAt } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
 import { fromWgs84 } from '@aio/geo';
 import type { MapController } from '@aio/maps';
@@ -34,6 +35,10 @@ vi.mock('../pins/PinMenu', () => ({ placedPanos: vi.fn(() => []) }));
 vi.mock('../pins/pinModel', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   pinsAt: vi.fn(() => null),
+}));
+vi.mock('@aio/annotate', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  issueAt: vi.fn(() => null),
 }));
 vi.mock('@aio/engine', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -159,6 +164,7 @@ afterEach(() => {
   detach();
   canvas.remove();
   vi.mocked(pinsAt).mockReturnValue(null);
+  vi.mocked(issueAt).mockReturnValue(null);
 });
 
 const contextMenuAt = (p: { x: number; y: number }, before?: (e: MouseEvent) => void) => {
@@ -246,6 +252,17 @@ describe('measurement pick in 3D', () => {
     expect(measureStore.getState().focus).toBeNull();
     contextMenuAt(onShape);
     expect(onMenu).not.toHaveBeenCalled();
+  });
+
+  it('an issue pin over a measurement keeps its click and its right-click', () => {
+    vi.mocked(issueAt).mockImplementation((el, x, y) =>
+      el === canvas && x === onShape.x && y === onShape.y ? 'issue-1' : null,
+    );
+    expect(claim(leftClickAt(onShape))).toBe(false);
+    expect(measureStore.getState().focus).toBeNull();
+    const e = contextMenuAt(onShape);
+    expect(onMenu).not.toHaveBeenCalled();
+    expect(isClaimed(e)).toBe(false);
   });
 
   it('hits a survey measurement where its date line-up draws it', () => {

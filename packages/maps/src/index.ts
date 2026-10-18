@@ -65,9 +65,11 @@ export {
   type PyramidIndex,
   type PyramidTile,
 } from './pyramid';
+export { ISSUE_LAYERS } from './controller';
 export type { IssueColorBy, MapController, MapPointerSession } from './controller';
 export {
   photoMapClickHandler,
+  PHOTO_PIN_LAYERS,
   photosFromClusterLeaves,
   setPhotoMapClickHandler,
   type PhotoMapClick,

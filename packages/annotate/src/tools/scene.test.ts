@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { catalogue, linedUp, makeIssue, photoSighting, tankModel } from '../testing';
 import type { OcclusionFactory } from './occlusion';
 import { createPinDisplay } from './pinDisplay';
-import { installIssueOverlay, ndcOf } from './scene';
+import { installIssueOverlay, issueAt, ndcOf } from './scene';
 
 const farSighting = {
   on: 'mesh' as const,
@@ -580,6 +580,22 @@ describe('installIssueOverlay', () => {
       expect(lines?.geometry).not.toBe(old);
       r.uninstall();
     });
+  });
+
+  it('tells another tool on the canvas which issue pin is under the cursor', () => {
+    const store = createWorkspace();
+    store.getState().openProject({ id: 'p', root: 'r', manifest }, [makeIssue()]);
+    const uninstall = installIssueOverlay(store, createPinDisplay(null));
+    const { handle, frames } = fakeHandle();
+    setActiveScene(handle);
+    frame(frames);
+    const pin = layoutOf(handle)?.items[0] as { x: number; y: number } | undefined;
+    if (!pin) throw new Error('no pin');
+    const el = handle.renderer.domElement;
+    expect(issueAt(el, pin.x, pin.y)).toBe(makeIssue().id);
+    expect(issueAt(el, pin.x + 200, pin.y)).toBeNull();
+    uninstall();
+    expect(issueAt(el, pin.x, pin.y)).toBeNull();
   });
 
   it('attaches to a scene that was already active', () => {

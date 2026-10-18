@@ -7,12 +7,14 @@
  */
 import { markersHit, type EngineStage } from '@aio/engine';
 import { toWgs84 } from '@aio/geo';
-import { frameProjection, type MapController } from '@aio/maps';
+import { frameProjection, ISSUE_LAYERS, PHOTO_PIN_LAYERS, type MapController } from '@aio/maps';
 import type { Vec3 } from '@aio/schema';
 import type { ToScreen } from '@aio/survey';
 import { workspace } from '@aio/workspace';
 import { Vector3 } from 'three';
+import { issueAt } from '@aio/annotate';
 import { claimEvent, isClaimed, rigHit } from '../builder/droneHits';
+import { MAP_DRONE } from '../builder/DroneMenu';
 import { CLICK_PX, photosAt3d } from '../builder/PhotoMenu';
 import { placedPanos } from '../pins/PinMenu';
 import { drawnPins, pinsAt, type MediaKey } from '../pins/pinModel';
@@ -39,22 +41,11 @@ export interface MeasureMenuAt {
  * Map layers whose features keep a click (issues, the drone and its flights, photo pins): the
  * map controller and the photo and drone menus act on them.
  */
-const MAP_POINT_LAYERS = [
-  'aio-issue-shape-fill',
-  'aio-issue-shape-line',
-  'aio-issues-cluster',
-  'aio-issues-far-cluster',
-  'aio-issues-circle',
-  'aio-issues-circle-far',
-  'aio-issues-focus',
-  'aio-issues-focus-far',
-  'aio-drone-point',
-  'aio-drone-heading',
-  'aio-drone-footprint',
-  'aio-dir-handle-pt',
+const MAP_POINT_LAYERS: readonly string[] = [
+  ...ISSUE_LAYERS,
+  ...MAP_DRONE,
   'aio-flights-line',
-  'aio-photos-pt',
-  'aio-photos-cluster',
+  ...PHOTO_PIN_LAYERS,
 ];
 /** How near a map feature the cursor is on it (as the photo and drone menus ask). */
 const MAP_FEATURE_PX = 5;
@@ -155,6 +146,7 @@ export function attachMeasurePick3d(
     measureAt(hitShapes(primaryScene.getState(), frame), toScreen, x, y);
   const pointTarget = (x: number, y: number): boolean => {
     if (markersHit(canvas, x, y)) return true;
+    if (issueAt(canvas, x, y) !== null) return true;
     if (photosAt3d(stage, canvas, x, y)) return true;
     if (rigHit(stage, canvas, x, y)) return true;
     const m = workspace.getState().project?.manifest;

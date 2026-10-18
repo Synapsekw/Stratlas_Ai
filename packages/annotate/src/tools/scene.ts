@@ -168,4 +168,4 @@ export function startSceneTool(
 }
 
 // Issue pins in 3D live in ./overlay.
-export { installIssueOverlay } from './overlay';
+export { installIssueOverlay, issueAt } from './overlay';
