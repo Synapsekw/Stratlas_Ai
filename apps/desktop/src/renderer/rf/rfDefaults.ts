@@ -223,3 +223,24 @@ export function resolveCarrier(
     },
   };
 }
+
+/** Auto-plan, rules only (C2): an AAU-like face gets this AAU on n78. */
+export const AUTOPLAN_AAU = {
+  aau: 'generic-aau-64t64r-n78',
+  band: 'n78',
+  tech: 'nr',
+  bandwidthMhz: 100,
+} as const;
+
+/** Auto-plan, rules only (C2): any other face gets this panel and radio on B3. */
+export const AUTOPLAN_PANEL = {
+  antenna: 'generic-panel-65-17',
+  radio: 'generic-rru-4t4r-4x40w',
+  band: 'B3',
+  tech: 'lte',
+  bandwidthMhz: 20,
+} as const;
+
+/** A face at least this deep and this wide is AAU-like. */
+export const AAU_MIN_DEPTH_M = 0.15;
+export const AAU_MIN_WIDTH_M = 0.4;
