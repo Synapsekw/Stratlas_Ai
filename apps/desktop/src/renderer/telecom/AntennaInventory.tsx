@@ -260,7 +260,7 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
               .every((u) => props.hidden[u.id] === true);
             const label = t(`telecom.antennas.kind.${kind}`);
             return (
-              <div key={kind} role="group" aria-label={label}>
+              <div key={kind} role="treeitem" aria-expanded="true" aria-label={label}>
                 <div
                   style={{
                     display: 'flex',
@@ -308,18 +308,20 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
                     }}
                   />
                 </div>
-                {units.map((u) => (
-                  <UnitRow
-                    key={u.id}
-                    unit={u}
-                    north={north}
-                    selected={props.selected === u.id}
-                    hidden={props.hidden[u.id] === true}
-                    drawn={isAntennaDrawn(vis, u)}
-                    onSelect={props.onSelect}
-                    onToggleVisible={props.onToggleVisible}
-                  />
-                ))}
+                <div role="group">
+                  {units.map((u) => (
+                    <UnitRow
+                      key={u.id}
+                      unit={u}
+                      north={north}
+                      selected={props.selected === u.id}
+                      hidden={props.hidden[u.id] === true}
+                      drawn={isAntennaDrawn(vis, u)}
+                      onSelect={props.onSelect}
+                      onToggleVisible={props.onToggleVisible}
+                    />
+                  ))}
+                </div>
               </div>
             );
           })}
