@@ -456,10 +456,14 @@ function Values({ unit }: { unit: AntennaUnit }): ReactElement {
             label={t('telecom.antennas.value.downtilt')}
             v={unit.downtiltDeg}
             big
-            note={{
-              short: t('telecom.antennas.mechanical.short'),
-              full: t('telecom.antennas.mechanical'),
-            }}
+            note={
+              unit.downtiltDeg
+                ? {
+                    short: t('telecom.antennas.mechanical.short'),
+                    full: t('telecom.antennas.mechanical'),
+                  }
+                : undefined
+            }
           >
             {deg(unit.downtiltDeg)}
           </Value>
@@ -504,19 +508,18 @@ const CARD: CSSProperties = {
   fontSize: 'var(--t-12)',
 };
 const HEAD: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 'var(--sp-3)',
+  display: 'grid',
+  gap: 'var(--sp-1)',
   padding: 'var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-5)',
   borderBottom: '1px solid var(--line-soft)',
   cursor: 'grab',
   touchAction: 'none',
   userSelect: 'none',
 };
-const ELLIPSIS: CSSProperties = {
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
+const HEAD_ROW: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 'var(--sp-3)',
 };
 const BODY: CSSProperties = {
   display: 'grid',
@@ -658,76 +661,76 @@ function CardBody(props: BodyProps): ReactElement {
           onPointerUp={onPointerEnd}
           onPointerCancel={onPointerEnd}
         >
-          <span
-            aria-hidden="true"
-            style={{
-              flex: 'none',
-              width: 10,
-              height: 10,
-              borderRadius: 'var(--r-2)',
-              background: KIND_COLOURS[unit.kind],
-            }}
-          />
-          {/* the name never gives way: the kind beside it shrinks first */}
-          <strong
-            data-testid="antenna-card-name"
-            style={{ flex: 'none', fontSize: 'var(--t-14)', whiteSpace: 'nowrap' }}
-          >
-            {unit.name}
-          </strong>
-          <span style={{ flex: 'none', display: 'inline-flex' }}>
-            <Chip kind="status" tone={TONE[unit.status]}>
-              {t(`telecom.antennas.status.${unit.status}`)}
-            </Chip>
-          </span>
-          {/* the kind and its basis may be cut short: the tip gives them whole */}
+          <div style={HEAD_ROW}>
+            <span
+              aria-hidden="true"
+              style={{
+                flex: 'none',
+                width: 10,
+                height: 10,
+                borderRadius: 'var(--r-2)',
+                background: KIND_COLOURS[unit.kind],
+              }}
+            />
+            {/* the name never gives way: the kind beside it shrinks first */}
+            <strong
+              data-testid="antenna-card-name"
+              style={{ flex: 'none', fontSize: 'var(--t-14)', whiteSpace: 'nowrap' }}
+            >
+              {unit.name}
+            </strong>
+            <span style={{ flex: 'none', display: 'inline-flex' }}>
+              <Chip kind="status" tone={TONE[unit.status]}>
+                {t(`telecom.antennas.status.${unit.status}`)}
+              </Chip>
+            </span>
+            <span style={{ flex: 1 }} />
+            <span
+              className="mono"
+              data-testid="antenna-card-position"
+              style={{ flex: 'none', color: 'var(--fg-2)', whiteSpace: 'nowrap' }}
+            >
+              {t('telecom.antennas.card.position', {
+                i: props.position < 0 ? DASH : props.position + 1,
+                n: props.count,
+              })}
+            </span>
+            <IconButton
+              icon="chev-r"
+              label={t('telecom.antennas.card.prev')}
+              data-testid="antenna-card-prev"
+              style={{ transform: 'scaleX(-1)' }}
+              onClick={() => {
+                stepAntenna(-1);
+              }}
+            />
+            <IconButton
+              icon="chev-r"
+              label={t('telecom.antennas.card.next')}
+              data-testid="antenna-card-next"
+              onClick={() => {
+                stepAntenna(1);
+              }}
+            />
+            <IconButton
+              icon="x"
+              label={t('telecom.antennas.card.close')}
+              data-testid="antenna-card-close"
+              onClick={() => {
+                selectAntenna(null);
+              }}
+            />
+          </div>
+          {/* the kind and how it was found, whole: they wrap rather than get cut */}
           <Tip content={`${kindWord} · ${kindBasis}`} placement="top" repeatsName>
             <span
               data-testid="antenna-card-kind"
               tabIndex={0}
-              style={{ flex: '1 1 auto', minWidth: 0, display: 'grid', lineHeight: 1.2 }}
+              style={{ ...MUTED, lineHeight: 1.3, overflowWrap: 'anywhere' }}
             >
-              <span style={{ ...ELLIPSIS, color: 'var(--fg-3)' }}>{kindWord}</span>
-              <small data-testid="antenna-card-kind-basis" style={{ ...ELLIPSIS, ...MUTED }}>
-                {kindBasis}
-              </small>
+              {kindWord} · <span data-testid="antenna-card-kind-basis">{kindBasis}</span>
             </span>
           </Tip>
-          <span
-            className="mono"
-            data-testid="antenna-card-position"
-            style={{ flex: 'none', color: 'var(--fg-2)', whiteSpace: 'nowrap' }}
-          >
-            {t('telecom.antennas.card.position', {
-              i: props.position < 0 ? DASH : props.position + 1,
-              n: props.count,
-            })}
-          </span>
-          <IconButton
-            icon="chev-r"
-            label={t('telecom.antennas.card.prev')}
-            data-testid="antenna-card-prev"
-            style={{ transform: 'scaleX(-1)' }}
-            onClick={() => {
-              stepAntenna(-1);
-            }}
-          />
-          <IconButton
-            icon="chev-r"
-            label={t('telecom.antennas.card.next')}
-            data-testid="antenna-card-next"
-            onClick={() => {
-              stepAntenna(1);
-            }}
-          />
-          <IconButton
-            icon="x"
-            label={t('telecom.antennas.card.close')}
-            data-testid="antenna-card-close"
-            onClick={() => {
-              selectAntenna(null);
-            }}
-          />
         </div>
         <div style={BODY}>
           <PhotoStrip key={unit.id} entries={entries} />

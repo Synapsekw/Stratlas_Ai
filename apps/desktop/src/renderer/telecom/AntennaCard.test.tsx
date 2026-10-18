@@ -206,8 +206,15 @@ describe('AntennaCard', () => {
     expect(name.textContent).toBe('A14');
     expect(name.style.flexShrink).toBe('0');
     expect(name.style.textOverflow).toBe('');
-    expect(q('antenna-card-kind')!.style.minWidth).toBe('0px');
+    expect(q('antenna-card-kind')!.textContent).toBe('panel · labelled by AI (anthropic)');
     expect(q('antenna-card-kind-basis')!.textContent).toBe('labelled by AI (anthropic)');
+  });
+
+  it('shows the mechanical note only when the unit has a downtilt', () => {
+    load([unit('a1', { kind: 'other', downtiltDeg: undefined })]);
+    show();
+    expect(stage.querySelector('[data-value="downtilt"]')!.textContent).toBe('—');
+    expect(stage.querySelector('[data-note="downtilt"]')).toBeNull();
   });
 
   it('says a geometric kind is from geometry', () => {

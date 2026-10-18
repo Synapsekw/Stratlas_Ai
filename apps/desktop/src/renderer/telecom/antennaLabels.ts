@@ -48,6 +48,25 @@ export function attachAntennaLabels(
     return el;
   };
 
+  /** A pin that would sit on a selected unit's label gives way: it hides while they overlap. */
+  const hidePinsUnderSelected = () => {
+    const sel: DOMRect[] = [];
+    for (const el of labels.querySelectorAll<HTMLElement>('.sv-label.sel')) {
+      if (el.style.display !== 'none') sel.push(el.getBoundingClientRect());
+    }
+    if (sel.length === 0) return;
+    for (const el of labels.querySelectorAll<HTMLElement>('.antenna-label--pin')) {
+      if (el.style.display === 'none') continue;
+      const p = el.getBoundingClientRect();
+      if (
+        sel.some(
+          (s) => p.left < s.right && p.right > s.left && p.top < s.bottom && p.bottom > s.top,
+        )
+      )
+        el.style.display = 'none';
+    }
+  };
+
   const place = () => {
     const spots = getSpots();
     const live = new Set(spots.map((s) => s.key));
@@ -88,6 +107,7 @@ export function attachAntennaLabels(
       // an aligned label is placed by its align; any other sits beside it (.sv-label's margin)
       el.style.transform = align ? to + ALIGN[align] : to;
     }
+    hidePinsUnderSelected();
     onPlaced?.();
   };
 

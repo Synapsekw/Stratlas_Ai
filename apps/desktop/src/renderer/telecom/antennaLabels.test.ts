@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { EngineStage } from '@aio/engine';
 import { PerspectiveCamera } from 'three';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { attachAntennaLabels } from './antennaLabels';
 import type { AntennaLabelSpot } from './antennaVisibility';
 
@@ -155,4 +155,53 @@ it('puts the name wholly above its anchor and hangs the width under its line', (
   expect(el('u:dim:h')?.dataset.align).toBeUndefined();
   expect(el('u:dim:h')?.style.transform).toMatch(/^translate\([^)]*\)$/);
   detach();
+});
+
+it('hides a pin whose rect meets a selected label, and shows it again when clear', () => {
+  const host = document.createElement('div');
+  const canvas = document.createElement('canvas');
+  host.append(canvas);
+  document.body.append(host);
+  canvas.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  host.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  const camera = new PerspectiveCamera(50, 1, 0.1, 1000);
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  let frame: () => void = () => undefined;
+  const stage = {
+    camera,
+    renderer: { domElement: canvas },
+    onFrame: (fn: () => void) => {
+      frame = fn;
+      return () => undefined;
+    },
+  };
+  const spots: AntennaLabelSpot[] = [
+    { key: 'u:dim', text: '2.60 m', at: [0, 0, 0], kind: 'dim', selected: true },
+    { key: 'p1:pin', text: '31', at: [0, 0, 0], kind: 'pin', selected: false, unitId: 'p1' },
+    { key: 'p2:pin', text: '32', at: [0, 0, 0], kind: 'pin', selected: false, unitId: 'p2' },
+  ];
+  let pinRect = new DOMRect(10, 10, 20, 20);
+  const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+  spy.mockImplementation(function (this: HTMLElement) {
+    if (this.dataset.key === 'u:dim') return new DOMRect(0, 0, 50, 20);
+    if (this.dataset.key === 'p1:pin') return pinRect;
+    if (this.dataset.key === 'p2:pin') return new DOMRect(80, 80, 20, 20);
+    return new DOMRect(0, 0, 0, 0);
+  });
+  try {
+    const detach = attachAntennaLabels(stage as unknown as EngineStage, () => spots);
+    frame();
+    const el = (key: string) => host.querySelector<HTMLElement>(`[data-key="${key}"]`);
+    expect(el('u:dim')?.style.display).toBe('');
+    expect(el('p1:pin')?.style.display).toBe('none');
+    expect(el('p2:pin')?.style.display).toBe('');
+    pinRect = new DOMRect(60, 60, 20, 20);
+    frame();
+    expect(el('p1:pin')?.style.display).toBe('');
+    detach();
+  } finally {
+    spy.mockRestore();
+  }
 });
