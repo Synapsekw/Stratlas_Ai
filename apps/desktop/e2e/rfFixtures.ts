@@ -63,12 +63,18 @@ function panel(
   };
 }
 
-/** The inventory: three accepted panels and one draft. */
-export function rfAntennas(): AntennasFile {
+export interface RfFixtureOptions {
+  /** Every unit a draft: nothing reviewed yet, so Auto-plan asks for a review first. */
+  allDraft?: boolean;
+}
+
+/** The inventory: three accepted panels and one draft (or four drafts, `allDraft`). */
+export function rfAntennas(opts: RfFixtureOptions = {}): AntennasFile {
+  const status = opts.allDraft ? 'draft' : 'accepted';
   const units = [
-    panel(RF_PANELS[0], 'P1', 0, 'accepted', RF_SITE.heightM),
-    panel(RF_PANELS[1], 'P2', 120, 'accepted', RF_SITE.heightM),
-    panel(RF_PANELS[2], 'P3', 240, 'accepted', RF_SITE.heightM),
+    panel(RF_PANELS[0], 'P1', 0, status, RF_SITE.heightM),
+    panel(RF_PANELS[1], 'P2', 120, status, RF_SITE.heightM),
+    panel(RF_PANELS[2], 'P3', 240, status, RF_SITE.heightM),
     panel(RF_DRAFT, 'P4', 300, 'draft', RF_SITE.heightM - 6),
   ];
   return AntennasFile.parse({
@@ -93,9 +99,12 @@ export function rfAntennas(): AntennasFile {
  * Turn the tiny project (it has a CRS, `tinyManifest`) into the RF fixture by adding
  * `telecom/antennas.json`. No `rf/` folder is written.
  */
-export async function writeRfProject(projectDir: string): Promise<void> {
+export async function writeRfProject(
+  projectDir: string,
+  opts: RfFixtureOptions = {},
+): Promise<void> {
   await mkdir(join(projectDir, 'telecom'), { recursive: true });
-  await writeFile(join(projectDir, 'telecom', 'antennas.json'), JSON.stringify(rfAntennas()));
+  await writeFile(join(projectDir, 'telecom', 'antennas.json'), JSON.stringify(rfAntennas(opts)));
 }
 
 /**
