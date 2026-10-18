@@ -363,4 +363,24 @@ describe('lineUpStore', () => {
     await store.getState().confirm();
     expect(saveCapture).not.toHaveBeenCalled();
   });
+
+  it('tells same-named dates apart in the offer and the done notice', async () => {
+    const manifest = lineUpManifest({
+      captures: [
+        { id: 'd1', label: 'Survey', date: '2024-09-04' },
+        { id: 'd2', label: 'Survey', date: '2024-09-10' },
+      ],
+    });
+    const { store } = setup({ manifest });
+    store.getState().offerFrom(measureOf(), 'o1|o2');
+    expect(store.getState().offer?.text).toMatch(
+      /^Survey · 10 Sep 2024 doesn't line up with Survey · 4 Sep 2024\./,
+    );
+    await store.getState().open('d1', 'd2');
+    store.getState().choose('d1');
+    await store.getState().confirm();
+    expect(store.getState().notice?.text).toBe(
+      'Survey · 10 Sep 2024 lined up with Survey · 4 Sep 2024 (2.00 m).',
+    );
+  });
 });

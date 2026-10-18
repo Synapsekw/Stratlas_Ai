@@ -13,7 +13,7 @@ import {
   type SurveyMeasurement,
   type Vec3,
 } from '@aio/schema';
-import type { t as translate } from '@aio/ui';
+import { formatDate, type t as translate } from '@aio/ui';
 import { captureIndex, captureShift, layerDateShifts, shiftKey } from '@aio/workspace';
 import type { Box } from '../shell/layerBounds';
 
@@ -28,6 +28,21 @@ const mm = (v: number) => Math.round(v * 1000) / 1000;
 // a turned line-up keeps its shift to the micrometre: the shift moves the pivot, and the pair
 // must apply as the two corrections in order (rounding stays far below a millimetre)
 const um = (v: number) => Math.round(v * 1e6) / 1e6;
+
+/**
+ * How the line-up step names a date: its label, with the date added ("Survey · 4 Sep 2024") when
+ * another date of the project has the same label. The id when there is no such date.
+ */
+export function dateLabel(
+  captures:
+    readonly Pick<ProjectManifest['captures'][number], 'id' | 'label' | 'date'>[] | undefined,
+  captureId: string,
+): string {
+  const c = captures?.find((x) => x.id === captureId);
+  if (!c) return captureId;
+  const shared = captures?.some((x) => x.id !== c.id && x.label === c.label) ?? false;
+  return shared ? `${c.label} · ${formatDate(c.date)}` : c.label;
+}
 
 export interface LineUpPlan {
   /** The date that moves (the one not kept). */
@@ -325,10 +340,9 @@ export function lineUpTip(
 ): string | null {
   const c = manifest.captures.find((x) => x.id === captureId);
   if (!c?.lineUp) return null;
-  const kept = manifest.captures.find((x) => x.id === c.lineUp?.with);
   const distance = formatMetres(Math.hypot(c.lineUp.eastM, c.lineUp.northM));
   return t('lineUp.folder', {
-    kept: kept?.label ?? c.lineUp.with,
+    kept: dateLabel(manifest.captures, c.lineUp.with),
     distance:
       c.lineUpTurn && hasTurn(c.lineUpTurn)
         ? `${distance}, ${turnWords(c.lineUpTurn, t)}`

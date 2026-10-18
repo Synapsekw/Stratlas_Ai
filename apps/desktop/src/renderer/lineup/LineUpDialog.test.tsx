@@ -55,9 +55,9 @@ const preview = (layerId: string): Promise<LineUpImage | null> =>
     box: { minX: 0, maxX: 100, minZ: 0, maxZ: 50 },
   });
 
-function setup(measure = measureOf()) {
+function setup(measure = measureOf(), manifest = lineUpManifest()) {
   const workspace = createWorkspace();
-  workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest: lineUpManifest() });
+  workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest });
   const store = createLineUpStore({
     workspace,
     measure: () => Promise.resolve(measure),
@@ -237,5 +237,26 @@ describe('LineUpDialog', () => {
     expect(byId('lineup-clouds')?.textContent).toBe("Point clouds move but don't turn yet.");
     click('lineup-keep-d2');
     expect(byId('lineup-clouds')).toBeNull();
+  });
+
+  it('tells same-named dates apart on the keep buttons and the preview', async () => {
+    const manifest = lineUpManifest({
+      captures: [
+        { id: 'd1', label: 'Survey', date: '2024-09-04' },
+        { id: 'd2', label: 'Survey', date: '2024-09-10' },
+      ],
+    });
+    const { store, workspace } = setup(measureOf(), manifest);
+    root = createRoot(host);
+    act(() => root?.render(<LineUpDialog store={store} preview={preview} workspace={workspace} />));
+    await act(async () => {
+      await store.getState().open('d1', 'd2');
+    });
+    await flush();
+    expect(byId('lineup-keep-d1')?.textContent).toBe('Survey · 4 Sep 2024');
+    expect(byId('lineup-keep-d2')?.textContent).toBe('Survey · 10 Sep 2024');
+    click('lineup-keep-d1');
+    const sides = [...host.querySelectorAll('.lu-side')].map((e) => e.textContent);
+    expect(sides).toEqual(['Survey · 4 Sep 2024', 'Survey · 10 Sep 2024']);
   });
 });

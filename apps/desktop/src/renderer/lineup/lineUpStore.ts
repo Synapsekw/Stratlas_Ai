@@ -17,7 +17,7 @@ import {
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Box } from '../shell/layerBounds';
 import type { LineUpMemory } from './lineUpMemory';
-import { formatMetres, movesWith, planLineUp } from './planLineUp';
+import { dateLabel, formatMetres, movesWith, planLineUp } from './planLineUp';
 
 /**
  * Line up dates: the step (measure two dates, choose the one that stays, save the other's
@@ -128,8 +128,7 @@ export interface LineUpStore {
 const errorText = (e: unknown) =>
   e instanceof Error && e.message ? e.message : t('library.failed');
 
-const labelOf = (m: ProjectManifest | undefined, id: string) =>
-  m?.captures.find((c) => c.id === id)?.label ?? id;
+const labelOf = (m: ProjectManifest | undefined, id: string) => dateLabel(m?.captures, id);
 
 /** The measurement's verdict: the fit's when `lineup-fit.json` came with it (it may say `range`). */
 export function verdictOf(m: LineUpMeasure): NonNullable<LineUpMeasure['fit']>['verdict'] {

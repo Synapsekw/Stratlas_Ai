@@ -41,13 +41,20 @@ function splitOf(workspace: StoreApi<Workspace>, twin = true): SplitModel {
 
 async function show(
   answer: LineUpMeasure | { error: string },
-  opts: { twin?: boolean; lineUps?: Record<string, CaptureLineUp> } = {},
+  opts: {
+    twin?: boolean;
+    lineUps?: Record<string, CaptureLineUp>;
+    captures?: { id: string; label: string; date: string }[];
+  } = {},
 ) {
   const workspace = createWorkspace();
   workspace.getState().openProject({
     id: 'p',
     root: 'C:/p',
-    manifest: lineUpManifest(opts.lineUps ? { lineUps: opts.lineUps } : {}),
+    manifest: lineUpManifest({
+      ...(opts.lineUps ? { lineUps: opts.lineUps } : {}),
+      ...(opts.captures ? { captures: opts.captures } : {}),
+    }),
   });
   const measure = vi.fn<LineUpDeps['measure']>(() => Promise.resolve(answer));
   const store = createCompareLineUp({ measure, workspace });
@@ -198,5 +205,21 @@ describe('CompareLineUp', () => {
     const { measure } = await show(measureOf(), { twin: false });
     expect(byId('compare-lineup')).toBeNull();
     expect(measure).not.toHaveBeenCalled();
+  });
+
+  it('tells same-named dates apart in the details', async () => {
+    await show(measureOf({ verdict: 'aligned', totalM: 0.02 }), {
+      captures: [
+        { id: 'd1', label: 'Survey', date: '2024-09-04' },
+        { id: 'd2', label: 'Survey', date: '2024-09-10' },
+      ],
+      lineUps: { d2: { with: 'd1', eastM: 2, northM: 0, at: '2026-10-17T10:00:00.000Z' } },
+    });
+    act(() => {
+      byId('compare-lineup-chip')?.click();
+    });
+    expect(byId('compare-lineup-details')?.textContent).toContain(
+      'Survey · 10 Sep 2024 lined up with Survey · 4 Sep 2024',
+    );
   });
 });
