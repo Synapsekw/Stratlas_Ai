@@ -407,9 +407,9 @@ function Value({
         )}
       </dd>
       {note ? (
-        <small data-note={name} style={MUTED}>
+        <dd data-note={name} style={{ margin: 0, ...MUTED }}>
           {note.short}
-        </small>
+        </dd>
       ) : null}
     </div>
   );
