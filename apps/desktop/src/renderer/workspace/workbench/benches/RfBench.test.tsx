@@ -278,12 +278,23 @@ describe('RfBench', () => {
     expect(byTest('rf-step-antennas')?.textContent).toContain('3 accepted · 1 draft');
   });
 
-  it('Review in inventory reveals the first draft in the Measure bench', async () => {
+  it('Review in inventory opens the Measure bench, then the review once the inventory is read', async () => {
     h.antennas = antennasFile([unit('ant-a1', 10), unit('ant-a4', 300, { status: 'draft' })]);
     await render();
     click(byTest('rf-step-review'));
-    expect(antennaStore.getState().selected).toBe('ant-a4');
     expect(workbench.getState().front).toBe('measure');
+    // the Measure bench reads the inventory: its first draft is revealed
+    act(() => {
+      antennaStore.setState({ projectId: 'p3', status: 'ready', file: h.antennas });
+    });
+    expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-a4' });
+    antennaStore.setState({
+      projectId: null,
+      status: 'idle',
+      file: null,
+      selected: null,
+      filter: 'all',
+    });
   });
 
   it('Review in inventory with no draft still opens the Measure bench, the tab pinned', async () => {
