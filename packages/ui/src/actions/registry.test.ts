@@ -166,4 +166,7 @@ describe('actionsFor', () => {
     expect(actionsFor({ kind: 'media', picks }, ctx).map((r) => r.id)).toEqual(['t.media']);
     expect(actionsFor({ kind: 'photos', picks: [] }, ctx)).toEqual([]);
   });
+  it('counts a measurements target by its ids', () => {
+    expect(targetCount({ kind: 'measurements', ids: ['a', 'b'], clicked: 'a' })).toBe(2);
+  });
 });

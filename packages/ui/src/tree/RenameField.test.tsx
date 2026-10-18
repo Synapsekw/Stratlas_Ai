@@ -16,7 +16,7 @@ afterEach(() => {
   host.remove();
 });
 
-const setup = (initial = 'Old') => {
+const setup = (initial = 'Old', maxLength?: number) => {
   const onCommit = vi.fn();
   const onEnd = vi.fn();
   root = createRoot(host);
@@ -29,6 +29,7 @@ const setup = (initial = 'Old') => {
         testId="f"
         onCommit={onCommit}
         onEnd={onEnd}
+        {...(maxLength !== undefined ? { maxLength } : {})}
       />,
     ),
   );
@@ -48,6 +49,12 @@ const leave = (el: HTMLElement) => {
 };
 
 describe('RenameField', () => {
+  it('takes a longer cap for measurement labels', () => {
+    expect(setup('Old', 200).field.maxLength).toBe(200);
+    act(() => root?.unmount());
+    expect(setup().field.maxLength).toBe(80);
+  });
+
   it('Enter saves the trimmed text', () => {
     const { field, onCommit, onEnd } = setup();
     field.value = '  New ';

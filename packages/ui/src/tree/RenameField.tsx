@@ -8,6 +8,7 @@ export function RenameField({
   testId,
   onCommit,
   onEnd,
+  maxLength = 80,
 }: {
   initial: string;
   label: string;
@@ -16,6 +17,8 @@ export function RenameField({
   onCommit: (name: string) => void;
   /** `how` is blur when focus left the field, so the caller keeps focus where the person put it. */
   onEnd: (how: 'enter' | 'escape' | 'blur') => void;
+  /** The longest name the field takes (measurement labels take more than a dataset name). */
+  maxLength?: number;
 }) {
   const done = useRef(false);
   const finish = (value: string | null, how: 'enter' | 'escape' | 'blur') => {
@@ -29,7 +32,7 @@ export function RenameField({
       className="input drename"
       type="text"
       defaultValue={initial}
-      maxLength={80}
+      maxLength={maxLength}
       aria-label={label}
       placeholder={placeholder}
       data-testid={testId}
