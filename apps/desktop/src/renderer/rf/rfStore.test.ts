@@ -792,8 +792,7 @@ describe('applying a plan and marking hand edits', () => {
         band: 'B3',
         bandwidthMhz: 10,
         etiltDeg: 6,
-        antennaEntry: 'ant-x',
-        radioEntry: 'rru-x',
+        radioEntry: 'aau-x',
         problems: [],
       },
     ];
@@ -802,5 +801,22 @@ describe('applying a plan and marking hand edits', () => {
     expect(a.carriers[0]?.origin).toEqual({ by: 'export', confidence: 'high' });
     expect(a.origins?.etiltDeg).toEqual({ by: 'export', confidence: 'high' });
     expect(a.origins?.equipment).toEqual({ by: 'export', confidence: 'high' });
+  });
+
+  it('an e-tilt only row keeps the carrier origin; a rejected radio leaves no export mark', async () => {
+    site();
+    await loadRf('p1');
+    patchSettings('ant-a', {
+      carriers: [{ id: 'c1', tech: 'lte', band: 'B3', bandwidthMhz: 20, feederLossDb: 0 }],
+    });
+    const base: CellRow = { line: 2, ref: 'a', unitId: 'ant-a', unitName: 'a', problems: [] };
+    applyCellImport([{ ...base, etiltDeg: 6 }]);
+    expect(settings('ant-a').carriers[0]?.origin).toEqual({ by: 'user' });
+    expect(settings('ant-a').origins?.etiltDeg?.by).toBe('export');
+    // a radio without an antenna is refused by withEquipment, so nothing is written
+    clearSetting('ant-b', 'equipment');
+    applyCellImport([{ ...base, unitId: 'ant-b', radioEntry: 'rru-x' }]);
+    expect(settings('ant-b').equipment).toBeUndefined();
+    expect(settings('ant-b').origins?.equipment?.by).toBe('user');
   });
 });
