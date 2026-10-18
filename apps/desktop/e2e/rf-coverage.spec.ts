@@ -1,7 +1,8 @@
 /**
  * RF coverage in the real app, end to end: a project with a CRS and a synthetic antenna inventory
  * (three accepted panels, one draft, no `rf/` folder, `rfFixtures.ts`), the Coverage... project
- * action, the RF tab, the real `rf.coverage` pipeline job in the development venv (as the antenna
+ * action, the Coverage tab (the AI card, three steps and a folded Advanced), the real
+ * `rf.coverage` pipeline job in the development venv (as the antenna
  * detection spec runs its job), the live preview, a second run, a GeoTIFF export and a reload.
  * The classes are checked in the RF tab's class table, the Display bench's Coverage group and the
  * compact coverage legend in its stage corner (ruling I3, bottom left first), which keeps clear
@@ -95,6 +96,14 @@ async function pick(win: Page, opener: Locator, entryId: string): Promise<void> 
   await dialog.getByTestId(`rf-cat-${entryId}`).click();
   await dialog.getByTestId('rf-cat-use').click();
   await expect(dialog).toBeHidden();
+}
+
+/** Advanced, unfolded (it folds by default and remembers a hand toggle). */
+async function openAdvanced(bench: Locator): Promise<Locator> {
+  const head = bench.getByTestId('rf-advanced');
+  if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+  return bench.getByTestId('rf-study');
 }
 
 /** The class table as text, one "name|range|area|share" line per class. */
@@ -201,19 +210,37 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   await writeRfProject(dataRoot.projectDir);
   await openTiny(win);
 
-  // 1. the RF tab, from the project menu's Coverage...
+  // 1. the Coverage tab, from the project menu's Coverage...: the AI card, three steps, Advanced
   let bench = await openRfFromProjectMenu(win);
+  await expect(win.locator('#wb-tab-rf')).toContainText('Coverage');
+  await expect(bench.getByTestId('rf-ai-card')).toBeVisible();
+  await expect(bench.getByTestId('rf-step-antennas')).toContainText('3 accepted · 1 draft');
+  await expect(bench.locator('.rf-step-title')).toHaveText([
+    'Antennas',
+    'Sectors & equipment',
+    'Coverage',
+  ]);
+  await expect(bench.getByTestId('rf-advanced')).toHaveAttribute('aria-expanded', 'false');
   await expect(bench.getByTestId('rf-sectors')).toContainText('No sectors');
+  await evidence(win, 'coverage-panel');
 
   // 2. three sectors by bearing (the draft panel stays out), each the generic n78 AAU on n78
   await bench
     .getByTestId('rf-sectors')
     .getByRole('button', { name: 'Group by bearing', exact: true })
     .click();
-  const chips = bench.locator('[data-testid^="rf-sector-chip-"]');
-  await expect(chips).toHaveCount(3);
+  const rows = bench.locator('[data-testid^="rf-step-sector-sec-"]');
+  await expect(rows).toHaveCount(3);
+  // nothing picked yet: every sector needs setup
+  for (let i = 0; i < 3; i++) await expect(rows.nth(i)).toHaveAttribute('data-tag', 'needs-setup');
+  /** Open a step 2 row (one is open at a time); a row already open stays open. */
+  const openRow = async (i: number) => {
+    const head = rows.nth(i).locator('.rf-step-row-head');
+    if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
+    await expect(head).toHaveAttribute('aria-expanded', 'true');
+  };
   for (let i = 0; i < 3; i++) {
-    await chips.nth(i).click();
+    await openRow(i);
     const unit = bench.locator('[data-testid^="rf-unit-"]');
     await expect(unit).toHaveAttribute('data-testid', `rf-unit-${RF_PANELS[i] ?? ''}`);
     // no carrier yet, so the picker has no band filter and lists the AAU before n78 is chosen
@@ -232,9 +259,17 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
     await unit.getByRole('combobox', { name: 'Carrier bandwidth' }).selectOption('100');
     await expect(unit.getByRole('combobox', { name: 'Carrier bandwidth' })).toHaveValue('100');
     await expect(unit.getByTestId('rf-excluded')).toHaveCount(0);
+    // set by hand, so the row says edited, with its equipment and band
+    await expect(rows.nth(i)).toHaveAttribute('data-tag', 'edited');
+    await expect(rows.nth(i)).toContainText('n78 · 100 MHz');
   }
+  // fold the last row so the shot shows the three rows and their tags
+  await rows.nth(2).locator('.rf-step-row-head').click();
+  await expect(bench.locator('[data-testid^="rf-unit-"]')).toHaveCount(0);
+  await bench.getByTestId('rf-step-sectors').scrollIntoViewIfNeeded();
+  await evidence(win, 'coverage-panel-set-up');
   // a smaller study keeps the job short: 1 km at 20 m
-  const study = bench.getByTestId('rf-study');
+  const study = await openAdvanced(bench);
   await study.getByRole('spinbutton', { name: 'Radius', exact: true }).fill('1000');
   await study.getByRole('spinbutton', { name: 'Radius', exact: true }).press('Enter');
   await study.getByRole('spinbutton', { name: 'Grid', exact: true }).fill('20');
@@ -325,7 +360,7 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   await workbench(win, 'rf');
   bench = win.locator('.rf-bench');
   await expect(bench).toBeVisible();
-  await chips.first().click();
+  await openRow(0);
   const tilt = bench.getByTestId('rf-etilt-number');
   await expect(tilt).toHaveValue('0');
   await tilt.fill('10');
@@ -381,21 +416,20 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   ).toBeVisible();
   if (await win.getByTestId('project-card').first().isVisible()) await openTiny(win);
   bench = await openRfFromProjectMenu(win);
-  await expect(chips).toHaveCount(3);
-  await expect(
-    bench.getByTestId('rf-study').getByRole('spinbutton', { name: 'Radius', exact: true }),
-  ).toHaveValue('1000');
-  await expect(
-    bench.getByTestId('rf-study').getByRole('spinbutton', { name: 'Grid', exact: true }),
-  ).toHaveValue('20');
-  await chips.first().click();
+  await expect(rows).toHaveCount(3);
+  const reopened = await openAdvanced(bench);
+  await expect(reopened.getByRole('spinbutton', { name: 'Radius', exact: true })).toHaveValue(
+    '1000',
+  );
+  await expect(reopened.getByRole('spinbutton', { name: 'Grid', exact: true })).toHaveValue('20');
+  await openRow(0);
   const unit = bench.getByTestId(`rf-unit-${RF_PANELS[0]}`);
   await expect(unit.getByTestId('rf-pick-aau')).toHaveText(AAU_NAME);
   await expect(unit.getByTestId('rf-pick-antenna')).toContainText('Built into the AAU');
   await expect(unit.getByTestId('rf-band')).toHaveValue('n78');
   await expect(unit.getByRole('combobox', { name: 'Carrier bandwidth' })).toHaveValue('100');
   await expect(unit.getByTestId('rf-etilt-number')).toHaveValue('10');
-  await chips.nth(1).click();
+  await openRow(1);
   await expect(
     bench.getByTestId(`rf-unit-${RF_PANELS[1]}`).getByTestId('rf-etilt-number'),
   ).toHaveValue('0');

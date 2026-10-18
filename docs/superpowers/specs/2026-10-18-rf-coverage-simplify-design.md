@@ -37,7 +37,7 @@ What planners usually have is **only the drone data**, and sometimes the operato
 
 ## Decisions (founder)
 
-- **F1. The way in is a Coverage chip on the stage** (option A of three; the left-nav item and the island tile were not chosen). It is a pill at the top of the stage, next to the date chip. It shows once `telecom/antennas.json` exists and has at least one unit.
+- **F1. The way in is a Coverage chip on the stage** (option A of three; the left-nav item and the island tile were not chosen). It shows once `telecom/antennas.json` exists and has at least one unit. **Revised 18 Oct (founder, after the stage-island merger objected):** the top centre belongs to the island capsule, which widens and grows down, so the chip is not a separate top-centre pill. It is the header of the coverage card in the existing `rfLegend` stage corner, and the same status line also heads the Coverage panel. A run in progress also shows through the island's existing live line (the job). No new stage slot and no layout shifts.
 - **F2. Auto-plan shows a review table first.** Applying and running happen only after the person presses **Apply & run coverage** (there is also **Apply only**).
 - **F3. When the AI isn't sure, it still gives its best guess**, marked low confidence, so that a run can go ahead.
 - **F4. The usual input is drone data only. A cell export is sometimes available**, and Auto-plan uses it when it is.
@@ -49,7 +49,7 @@ What planners usually have is **only the drone data**, and sometimes the operato
 
 ## The Coverage chip
 
-The chip sits on the stage, at the top beside the dates chip. It is a new stage slot (`at('rfChip', ...)`) inside the `Stage.tsx` RF marked block, next to `rfLegend`. It has three states:
+The chip is the header of the coverage card in the `rfLegend` stage corner (the existing slot in the `Stage.tsx` RF marked block). The card shows whenever the chip state isn't hidden, with the legend under the header only once a run exists. It hides while dates are being compared. It has these states:
 
 | State                                                   | Text                                           | Actions                                                                      |
 | ------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------- |
