@@ -34,6 +34,13 @@ const OUTLINE: Record<AntennaStatus, CSSProperties> = {
   rejected: { outline: '1px dotted var(--fg-4)', outlineOffset: -1 },
 };
 
+/** The selected filter tab (aria-selected carries the state; a tab takes no aria-pressed). */
+const TAB_ON: CSSProperties = {
+  background: 'var(--acc-a20)',
+  borderColor: 'var(--acc-a40)',
+  color: 'var(--acc-strong)',
+};
+
 /** The north every azimuth of the file is from, or null when the units mix them. */
 type North = 'project' | 'true' | null;
 
@@ -204,10 +211,32 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
             size="sm"
             role="tab"
             aria-selected={props.filter === f}
-            pressed={props.filter === f}
+            tabIndex={props.filter === f ? 0 : -1}
+            style={props.filter === f ? TAB_ON : undefined}
             data-testid={`antenna-filter-${f}`}
             onClick={() => {
               props.onFilter(f);
+            }}
+            onKeyDown={(e) => {
+              const at = FILTERS.indexOf(f);
+              const next =
+                e.key === 'ArrowRight'
+                  ? (at + 1) % FILTERS.length
+                  : e.key === 'ArrowLeft'
+                    ? (at + FILTERS.length - 1) % FILTERS.length
+                    : e.key === 'Home'
+                      ? 0
+                      : e.key === 'End'
+                        ? FILTERS.length - 1
+                        : -1;
+              if (next < 0) return;
+              e.preventDefault();
+              const target = FILTERS[next];
+              if (!target) return;
+              props.onFilter(target);
+              e.currentTarget.parentElement
+                ?.querySelector<HTMLElement>(`[data-testid="antenna-filter-${target}"]`)
+                ?.focus();
             }}
           >
             {`${t(`telecom.antennas.filter.${f}`)} ${filteredUnits(file, f).length}`}

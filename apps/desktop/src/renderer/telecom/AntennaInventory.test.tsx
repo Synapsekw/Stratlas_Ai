@@ -153,6 +153,28 @@ describe('AntennaInventory', () => {
     expect(h.onFilter).toHaveBeenCalledWith('accepted');
   });
 
+  it('keeps tabs free of aria-pressed and moves between them with the keyboard', () => {
+    const file = fileOf([mk('ant-1', 'panel'), mk('ant-2', 'dish', { status: 'accepted' })]);
+    const h = show({ file, filter: 'draft' });
+    const tabs = () => [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
+    expect(tabs().some((x) => x.hasAttribute('aria-pressed'))).toBe(false);
+    expect(tabs().map((x) => x.tabIndex)).toEqual([0, -1, -1, -1]);
+    const key = (el: Element, k: string) => {
+      act(() => {
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+      });
+    };
+    key(tabs()[0]!, 'ArrowRight');
+    expect(h.onFilter).toHaveBeenLastCalledWith('accepted');
+    expect(document.activeElement).toBe(tabs()[1]);
+    key(tabs()[0]!, 'End');
+    expect(h.onFilter).toHaveBeenLastCalledWith('all');
+    key(tabs()[0]!, 'ArrowLeft');
+    expect(h.onFilter).toHaveBeenLastCalledWith('all');
+    key(tabs()[3]!, 'Home');
+    expect(h.onFilter).toHaveBeenLastCalledWith('draft');
+  });
+
   it('hides a group with no units in the filter and says when nothing is left', () => {
     const file = fileOf([mk('ant-1', 'panel'), mk('ant-3', 'dish', { status: 'accepted' })]);
     show({ file, filter: 'accepted' });
