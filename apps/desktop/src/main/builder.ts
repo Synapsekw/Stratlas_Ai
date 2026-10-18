@@ -552,7 +552,9 @@ export async function builderLayerExtents(
     const orientation = o.ok ? o.file : null;
     return {
       ok: true,
-      extents: await l.layerExtents(root, m, orientation, layerDateShifts(m)),
+      extents: await l.layerExtents(root, m, orientation, layerDateShifts(m), {
+        full: req.full === true,
+      }),
       recentre: { blockers: await l.recentreBlockers(root, m) },
     };
   } catch (e) {

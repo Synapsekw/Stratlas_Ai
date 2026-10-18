@@ -11,7 +11,7 @@ import type { Box } from '../shell/layerBounds';
 import { measureStore } from '../survey/measureStore';
 import { volumeHints } from '../workspace/compare';
 import { createLineUpMemory } from './lineUpMemory';
-import { createLineUpPreview } from './lineUpPreview';
+import { createLineUpPreview, readLineUpExtents } from './lineUpPreview';
 import { createLineUpSession, linkNotices, writersFor } from './lineUpSession';
 
 /** The project file `path` as JSON, through the project's own protocol (as the producers read). */
@@ -27,10 +27,7 @@ async function readJson(path: string): Promise<unknown> {
 async function extents(): Promise<Record<string, Box>> {
   const project = workspace.getState().project;
   if (!project) return {};
-  const r = await bridge.call('builder:layerExtents', { projectId: project.id });
-  if (!r.ok) throw new Error(r.error);
-  if (!r.value.ok) throw new Error(r.value.error);
-  return Object.fromEntries(r.value.extents.map((e) => [e.layerId, { min: e.min, max: e.max }]));
+  return readLineUpExtents(bridge, project.id);
 }
 
 function storage(): Storage | null {

@@ -153,16 +153,22 @@ export async function layerExtent(
   return null;
 }
 
-/** The extent of every layer that has one, in manifest order. */
+/**
+ * The extent of every layer that has one, in manifest order. `full` reads every kind
+ * `fullLayerExtent` reads (a kit pyramid's corners in its `tiles.json`, a COG, ...): the line-up
+ * step needs each date's imagery; the far-content check leaves it off and sees the kinds it always saw.
+ */
 export async function layerExtents(
   root: string,
   m: ProjectManifest,
   orientation: OrientationFile | null = null,
   shifts: Readonly<Record<string, DateShift>> = {},
+  opts: { full?: boolean } = {},
 ): Promise<{ layerId: string; min: Vec3; max: Vec3 }[]> {
   const out: { layerId: string; min: Vec3; max: Vec3 }[] = [];
+  const extentOf = opts.full ? fullLayerExtent : layerExtent;
   for (const l of m.layers) {
-    const e = await layerExtent(root, m, l, orientation, shifts[l.id] ?? null);
+    const e = await extentOf(root, m, l, orientation, shifts[l.id] ?? null);
     if (e) out.push({ layerId: l.id, ...e });
   }
   return out;
