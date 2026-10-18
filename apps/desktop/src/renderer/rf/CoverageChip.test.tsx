@@ -4,6 +4,7 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { jobs } from '../shell';
 import { antennaStore } from '../telecom/antennaStore';
 import { workbench } from '../workspace/workbench/workbenchStore';
 import { antennasFile, unit } from './__fixtures__/rfData';
@@ -14,7 +15,7 @@ import {
   startAutoplan,
 } from './autoplan/autoplanStore';
 import { rfLayer } from './coverageDisplay';
-import { CoverageChip, NARROW_CHIP_PX } from './CoverageChip';
+import { CoverageChip, NARROW_STAGE_PX } from './CoverageChip';
 import { resetRf, rfStore, type RfClassStat, type RfState } from './rfStore';
 import { startRfRun } from './rfTab';
 
@@ -64,10 +65,12 @@ const empty = { ...planned, sectors: [], antennas: [] } as RfState['sectors'];
 
 const site3 = (): AntennaUnit[] => [unit('ant-a', 0), unit('ant-b', 120), unit('ant-c', 240)];
 
+const jobsStore = jobs as unknown as { setState(s: { jobs: unknown[] }): void };
+
 let host: HTMLDivElement;
 let root: Root;
-/** The width the chip's row reads (0: not laid out, as jsdom). */
-let rowWidth = 0;
+/** The width of the stage's views around the chip (0: not laid out, as jsdom). */
+let viewsWidth = 0;
 
 function seed(units: AntennaUnit[] | null, rf: Partial<RfState> = {}): void {
   rfStore.setState({ projectId: 'p1', sectors: empty, ...rf });
@@ -97,13 +100,14 @@ const click = (id: string) => {
 };
 
 beforeEach(() => {
-  rowWidth = 0;
+  viewsWidth = 0;
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
     this: HTMLElement,
   ) {
-    return this.classList.contains('rf-chip-row') ? rowWidth : 0;
+    return this.classList.contains('stage-views') ? viewsWidth : 0;
   });
   host = document.createElement('div');
+  host.className = 'stage-views';
   document.body.append(host);
   root = createRoot(host);
   workspace.getState().openProject({
@@ -125,6 +129,7 @@ afterEach(() => {
   resetAutoplan();
   antennaStore.setState({ projectId: null, file: null, status: 'idle' });
   rfLayer.setState({ visible: true });
+  jobsStore.setState({ jobs: [] });
   workspace.getState().closeProject();
   workbench.getState().close('rf');
 });
@@ -146,6 +151,41 @@ describe('the Coverage chip', () => {
     expect(text(chip())).toContain('Coverage · 3 antennas · not planned');
     click('rf-chip-autoplan');
     expect(startAutoplan).toHaveBeenCalled();
+  });
+
+  it('Auto-plan and Re-plan open the Coverage tab first, where the review dialog lives', () => {
+    // the dialog is mounted in the Coverage panel: the tab must be open when Auto-plan starts
+    const tabAtStart: (boolean | undefined)[] = [];
+    vi.mocked(startAutoplan).mockImplementation(() => {
+      tabAtStart.push(workbench.getState().tabs.find((t) => t.id === 'rf')?.pinned);
+      return Promise.resolve();
+    });
+    seed(site3());
+    render();
+    click('rf-chip-autoplan');
+    act(() => {
+      workbench.getState().close('rf');
+      rfStore.setState({
+        sectors: planned,
+        runs: [RUN],
+        selectedRunId: RUN.runId,
+        classStats: STATS,
+        view: 'rsrp',
+      });
+    });
+    click('rf-chip-replan');
+    expect(tabAtStart).toEqual([true, true]);
+  });
+
+  it('Run opens the Coverage tab when the start is refused', async () => {
+    vi.mocked(startRfRun).mockResolvedValueOnce({ ok: false, code: 'refused' });
+    seed(site3(), { sectors: planned });
+    render();
+    click('rf-chip-run');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(workbench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
   });
 
   it('review-first shows Review antennas', () => {
@@ -185,6 +225,42 @@ describe('the Coverage chip', () => {
     expect(
       chip()?.querySelectorAll('[data-testid^="rf-chip-"]:not([data-testid="rf-chip-open"])'),
     ).toHaveLength(0);
+  });
+
+  it('running shows the coverage job progress when the jobs store has it', () => {
+    seed(site3(), { sectors: planned, running: true, jobId: 'job-1' });
+    render();
+    expect(text(chip())).toContain('Coverage · running…');
+    act(() => {
+      jobsStore.setState({ jobs: [{ id: 'job-1', progress: 0.42 }] });
+    });
+    expect(text(chip())).toContain('Coverage · running… 42%');
+  });
+
+  it('the panel variant is a read-only status line with the same primary action', () => {
+    seed(site3());
+    act(() => {
+      root.render(<CoverageChip variant="panel" />);
+    });
+    const line = byId('rf-chip-panel');
+    expect(line?.getAttribute('role')).toBe('status');
+    expect(text(line)).toContain('Coverage · 3 antennas · not planned');
+    // no link to the panel it is in, and no layer toggle
+    expect(byId('rf-chip-open')).toBeNull();
+    click('rf-chip-panel-autoplan');
+    expect(startAutoplan).toHaveBeenCalled();
+    act(() => {
+      rfStore.setState({
+        sectors: planned,
+        runs: [RUN],
+        selectedRunId: RUN.runId,
+        classStats: STATS,
+        view: 'rsrp',
+      });
+    });
+    expect(text(byId('rf-chip-panel'))).toContain('RSRP · 17% fair or better');
+    expect(byId('rf-chip-panel-replan')).not.toBeNull();
+    expect(byId('rf-chip-layer')).toBeNull();
   });
 
   it('result shows the RSRP share and toggles the layer', () => {
@@ -233,7 +309,7 @@ describe('the Coverage chip', () => {
   it('narrow layout keeps the dot, Coverage and the buttons only', () => {
     seed(site3());
     // the stage beside the panels in a 1100 px window
-    rowWidth = NARROW_CHIP_PX - 1;
+    viewsWidth = NARROW_STAGE_PX - 1;
     render();
     expect(chip()?.querySelector('.rf-chip-dot')).not.toBeNull();
     expect(chip()?.querySelector('.rf-chip-desc')).toBeNull();
@@ -243,12 +319,20 @@ describe('the Coverage chip', () => {
     expect(byId('rf-chip-open')?.getAttribute('aria-label')).toBe(
       'Coverage · 3 antennas · not planned',
     );
+    // running has no button: its few words stay
+    act(() => {
+      rfStore.setState({ running: true });
+    });
+    expect(text(chip())).toContain('Coverage · running…');
+    act(() => {
+      rfStore.setState({ running: false });
+    });
     // wide enough: the words come back
     act(() => {
       root.unmount();
     });
     root = createRoot(host);
-    rowWidth = NARROW_CHIP_PX;
+    viewsWidth = NARROW_STAGE_PX;
     render();
     expect(chip()?.querySelector('.rf-chip-desc')).not.toBeNull();
   });

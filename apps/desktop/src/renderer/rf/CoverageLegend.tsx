@@ -97,6 +97,8 @@ export interface CoverageLegendProps {
   source: { kind: 'preview' } | { kind: 'run'; at: string } | null;
   /** Set when a large run is drawn reduced (its full size and the step between drawn cells). */
   reduced?: ReducedFrom | null;
+  /** Above the legend: the stage card's Coverage chip (StageCoverageLegend). */
+  header?: ReactNode;
 }
 
 /**
@@ -151,7 +153,14 @@ function Line({
  * The legend body; the stage gives it its corner. Compact: the view and its source on one line
  * and one row per class. The controls and the assumptions sit behind Details.
  */
-export function CoverageLegend({ view, study, sectors, source, reduced }: CoverageLegendProps) {
+export function CoverageLegend({
+  view,
+  study,
+  sectors,
+  source,
+  reduced,
+  header,
+}: CoverageLegendProps) {
   const t = useT();
   const opacity = useRfLayer((s) => s.opacity);
   const hatch = useRfLayer((s) => s.hatch);
@@ -234,6 +243,7 @@ export function CoverageLegend({ view, study, sectors, source, reduced }: Covera
       aria-label={t('rf.legend.label')}
       data-testid="rf-legend"
     >
+      {header}
       <header className="rf-legend-head">
         <span>{t(VIEW_KEY[view])}</span>
         {source && (

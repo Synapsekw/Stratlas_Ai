@@ -88,6 +88,7 @@ import {
 } from '../../../rf/rfText';
 import { AdvancedFold, studySummary } from '../../../rf/panel/AdvancedFold';
 import { AiCard } from '../../../rf/panel/AiCard';
+import { CoverageChip } from '../../../rf/CoverageChip';
 import { LabelledSwitch, fmt } from '../../../rf/panel/parts';
 import { Step } from '../../../rf/panel/Step';
 import { StepAntennas } from '../../../rf/panel/StepAntennas';
@@ -1566,6 +1567,8 @@ export function RfBench() {
   return (
     <div className="wb-bench wb-scroll rf-bench" data-testid="rf-bench">
       <SaveBar />
+      {/* the Coverage chip's status line and its next step (spec F1 revised) */}
+      <CoverageChip variant="panel" />
       <AiCard
         // wired in Task 9
         onAutoplan={() => undefined}

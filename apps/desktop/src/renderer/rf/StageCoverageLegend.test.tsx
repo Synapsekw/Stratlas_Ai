@@ -6,6 +6,8 @@ import type { CoverageGrids } from './coverageGrids';
 import { rfLayer } from './coverageDisplay';
 import { clearCoverage, coverage } from './coverageStore';
 import { resetRf, rfStore } from './rfStore';
+import { antennasFile, unit } from './__fixtures__/rfData';
+import { antennaStore } from '../telecom/antennaStore';
 import { StageCoverageLegend, useCoverageLegendShown } from './StageCoverageLegend';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,6 +39,7 @@ afterEach(() => {
   clearCoverage();
   resetRf();
   rfLayer.setState({ visible: true });
+  antennaStore.setState({ projectId: null, file: null, status: 'idle' });
 });
 
 describe('the stage coverage legend', () => {
@@ -63,5 +66,40 @@ describe('the stage coverage legend', () => {
     });
     expect(shown()).toBe('no');
     expect(legend()).toBeNull();
+  });
+
+  it('shows the Coverage chip card once the project has antennas, before any run', () => {
+    act(() => {
+      root.render(<Probe />);
+    });
+    expect(shown()).toBe('no');
+    act(() => {
+      rfStore.setState({ projectId: 'p1' });
+      antennaStore.setState({
+        projectId: 'p1',
+        status: 'ready',
+        file: antennasFile([unit('ant-a', 0), unit('ant-b', 120)]),
+      });
+    });
+    // a card of its own: the chip, and no legend while nothing is drawn
+    expect(shown()).toBe('yes');
+    expect(host.querySelector('[data-testid="rf-card"] [data-testid="rf-chip"]')).not.toBeNull();
+    expect(legend()).toBeNull();
+    // something drawn: the chip heads the legend, in one card
+    act(() => {
+      rfStore.setState({ dirty: true, view: 'rsrp' });
+      coverage.setState({
+        preview: { key: 'p1', source: 'preview', sectorIds: [] } as unknown as CoverageGrids,
+      });
+    });
+    expect(host.querySelector('[data-testid="rf-card"]')).toBeNull();
+    expect(legend()?.firstElementChild?.getAttribute('data-testid')).toBe('rf-chip');
+    // the layer's eye off: the chip's card stays, the way back to the layer
+    act(() => {
+      rfLayer.setState({ visible: false });
+    });
+    expect(shown()).toBe('yes');
+    expect(legend()).toBeNull();
+    expect(host.querySelector('[data-testid="rf-card"]')).not.toBeNull();
   });
 });

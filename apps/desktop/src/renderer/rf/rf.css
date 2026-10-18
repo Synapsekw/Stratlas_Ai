@@ -703,7 +703,7 @@
 /* on the map its bottom corner stands above the map's "No map pack installed" note, which goes
    above the scale bar and the credits, up into the corner, where the map is too narrow for it on
    one line (the note's anchor; none without the map or the note, and the corner keeps its place) */
-.stage-slot:is([data-slot='bl'], [data-slot='br']):has(> .rf-legend) {
+.stage-slot:is([data-slot='bl'], [data-slot='br']):has(> :is(.rf-legend, .rf-card)) {
   inset-block-end: max(40px, calc(anchor(--aio-map-note top, 0px) + var(--sp-2)));
 }
 /* in its stage corner it keeps to the lower half of the stage and scrolls the rest (Details open) */
@@ -717,75 +717,64 @@
 }
 
 /* ---------------------------------------------------------------- rf-chip
-   The Coverage chip (CoverageChip.tsx, spec F1): a row of its own at the top centre of the views,
-   under the island's date pill (the island's row ends at --isl-row-b), centred as the island is
-   on the views the drawer leaves. While it shows, the top-start corner slot and a split's pane
-   headers stand below it, so nothing at the top overlaps it; a comparison's tools take that row,
-   so the chip gives way to them. The row is geometry, the chip an ss-chip with an rf-chip look. */
-.stage:has(.rf-chip-row) {
-  --rf-chip-row-h: calc(30px + var(--sp-3));
-}
-.rf-chip-row {
-  position: absolute;
-  z-index: var(--z-stage-ui);
-  inset-block-start: var(--isl-row-b, 54px);
-  inset-inline: var(--sp-5) calc(var(--views-cover, 0px) + var(--sp-5));
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-.stage:not([data-mode='split']):has(.rf-chip-row) .stage-slot[data-slot='tl'] {
-  inset-block-start: max(
-    calc(var(--isl-row-b) + var(--rf-chip-row-h)),
-    calc(var(--isl-open-b, 0px) + var(--sp-4))
-  );
-}
-.stage[data-isl-clear~='tl']:not([data-mode='split']):has(.rf-chip-row)
-  .stage-slot[data-slot='tl'] {
-  inset-block-start: calc(var(--isl-row-b) + var(--rf-chip-row-h));
-}
-.stage[data-mode='split']:has(.rf-chip-row):not(:has(.isl-aside .compare-how)) {
-  --pane-head-top: calc(var(--isl-row-b) + var(--rf-chip-row-h));
-}
-.stage:has(.isl-aside .compare-how) .rf-chip-row {
-  display: none;
+   The Coverage chip (CoverageChip.tsx, spec F1 revised): the header of the coverage card in the
+   stage's legend corner (a card of its own before any run, `.rf-card`), and the status line at
+   the top of the Coverage panel. In the corner it wraps rather than widens: the corner is half
+   the stage at most, under 180 px in a 1100 px window beside the panels. */
+.rf-card {
+  display: grid;
+  inline-size: max-content;
+  max-inline-size: 100%;
+  padding-block: var(--sp-3);
+  padding-inline: var(--sp-4);
+  color: var(--fg-1);
+  font-size: var(--t-12);
 }
 .rf-chip {
-  gap: var(--sp-3);
-  height: 30px;
-  padding-inline: var(--sp-2) 3px;
-  border-color: var(--line-strong);
-  border-radius: var(--r-pill);
-  background: color-mix(in oklch, var(--bg-1) 94%, transparent);
-  box-shadow: var(--el-2);
-  color: var(--fg-0);
-  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  min-inline-size: 0;
 }
-/* the chip's words open the Coverage tab; the buttons beside them act */
+/* above the legend, a rule between them */
+.rf-legend > .rf-chip {
+  padding-block-end: var(--sp-3);
+  border-block-end: 1px solid var(--line-soft);
+}
+/* while two dates are compared the chip gives way: the card goes, the legend stays */
+.stage:has(.isl-aside .compare-how) .stage-slot:has(> .rf-card),
+.stage:has(.isl-aside .compare-how) .rf-legend > .rf-chip {
+  display: none;
+}
 .rf-chip-open {
   display: inline-flex;
-  align-items: center;
-  gap: var(--sp-3);
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--sp-3);
   min-inline-size: 0;
-  block-size: 100%;
-  padding-inline: var(--sp-4) var(--sp-2);
+  padding: 0;
   border: 0;
-  border-radius: var(--r-pill);
   background: none;
-  color: inherit;
+  color: var(--fg-0);
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
+  text-align: start;
+}
+button.rf-chip-open {
   cursor: pointer;
 }
-.rf-chip-open:hover .rf-chip-name {
+button.rf-chip-open:hover .rf-chip-name {
   color: var(--acc);
 }
-.rf-chip-open:focus-visible {
+button.rf-chip-open:focus-visible {
+  border-radius: var(--r-2);
   outline: 1.5px solid var(--acc);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 .rf-chip-dot {
   flex: none;
+  align-self: center;
   inline-size: 8px;
   block-size: 8px;
   border-radius: 50%;
@@ -809,17 +798,26 @@
   }
 }
 .rf-chip-desc {
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--fg-2);
   font-weight: 400;
 }
-.rf-chip:is([data-state='planning'], [data-state='running']) {
-  padding-inline-end: var(--sp-4);
+.rf-chip-acts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-inline-start: auto;
 }
-.rf-chip-btn {
-  flex: none;
+.rf-chip-acts:empty {
+  display: none;
 }
 .rf-chip-spark {
   margin-inline-end: var(--sp-2);
+}
+/* the panel's status line: a quiet bar above the AI card */
+.rf-chip[data-variant='panel'] {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-2);
+  font-size: var(--t-12);
 }

@@ -68,6 +68,17 @@ describe('palette: Coverage', () => {
     expect(command('rf:open')).toBeUndefined();
   });
 
+  it('offers only Open Coverage panel before the antennas are reviewed', () => {
+    antennaStore.setState({
+      projectId: 'p',
+      status: 'ready',
+      file: antennasFile([unit('ant-a', 0, { status: 'draft' })]),
+    });
+    open();
+    expect(command('rf:open')).toBeDefined();
+    expect(command('rf:autoplan')).toBeUndefined();
+  });
+
   it('offers Auto-plan coverage and Open Coverage panel once the project has antennas', () => {
     antennaStore.setState({
       projectId: 'p',
@@ -81,9 +92,19 @@ describe('palette: Coverage', () => {
       command('rf:open')?.run();
     });
     expect(workbench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
+    // the review dialog lives in the Coverage panel: the tab is open before Auto-plan starts
+    act(() => {
+      workbench.getState().close('rf');
+    });
+    let tabAtStart: boolean | undefined;
+    vi.mocked(startAutoplan).mockImplementationOnce(() => {
+      tabAtStart = workbench.getState().tabs.some((t) => t.id === 'rf');
+      return Promise.resolve();
+    });
     act(() => {
       command('rf:autoplan')?.run();
     });
     expect(startAutoplan).toHaveBeenCalled();
+    expect(tabAtStart).toBe(true);
   });
 });

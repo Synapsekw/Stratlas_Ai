@@ -1,22 +1,27 @@
 /**
- * The Coverage chip on the stage (spec F1, "The Coverage chip"): a pill in a row of its own at the
- * top centre of the stage, under the island's date pill, once the project has antennas. It reads
- * the chip state (`selectChipState`) and offers the next step: Review antennas, Auto-plan, Run,
- * or after a run the layer toggle (the Display bench Coverage eye's state) and Re-plan. Clicking
- * the chip opens the Coverage tab pinned. On a narrow stage it keeps the dot, the word Coverage
- * and the buttons. `Stage.tsx` renders it with one line in its RF block; rf.css places the row
- * and moves the top-start corner slot and a split's pane headers below it.
+ * The Coverage chip (spec F1, revised 18 Oct): the status line of RF coverage, from the chip state
+ * (`selectChipState`), with the next step as a button: Review antennas, Auto-plan, Run, or after a
+ * run the layer toggle (the Display bench Coverage eye's state) and Re-plan.
+ *
+ * - `stage`: the header of the coverage card in the stage's `rfLegend` corner (StageCoverageLegend).
+ *   Its words open the Coverage tab pinned. On a narrow stage it keeps the dot, the word Coverage
+ *   and the buttons; the words stay in the accessible name.
+ * - `panel`: the same line at the top of the Coverage panel, read only, with the same primary
+ *   action (no layer toggle: the panel's Display controls have it).
  */
 import type { AntennaUnit } from '@aio/schema';
 import { Button, useT, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { useStore } from 'zustand';
+import { jobs } from '../shell';
 import { useAntennas } from '../telecom/antennaStore';
 import {
   openAntennaReviewOrFallback,
   selectChipState,
   startAutoplan,
   useAutoplan,
+  type AutoplanState,
   type ChipState,
 } from './autoplan/autoplanStore';
 import { setRfLayer, useRfLayer } from './coverageDisplay';
@@ -24,8 +29,8 @@ import { openCoverage, startRfRun } from './rfTab';
 import { useRf, type RfState, type RfView } from './rfStore';
 import './rf.css';
 
-/** Below this row width (the stage less its margins) the chip drops its descriptive text. */
-export const NARROW_CHIP_PX = 560;
+/** Below this width of the stage's views the stage chip drops its descriptive text. */
+export const NARROW_STAGE_PX = 640;
 
 const VIEW_KEY: Record<RfView, MessageKey> = {
   rsrp: 'rf.results.view.rsrp',
@@ -53,12 +58,21 @@ export function useChipState(): ChipState {
   const classStats = useRf((s) => s.classStats);
   const view = useRf((s) => s.view);
   const sectors = useRf((s) => s.sectors);
-  const autoplan = useAutoplan((s) => s);
+  // Auto-plan's phase is all the chip reads of it
+  const phase = useAutoplan((s) => s.phase);
   return useMemo(() => {
-    // selectChipState reads only these fields of the RF state
     const rf = { running, selectedRunId, runs, dirty, classStats, view, sectors } as RfState;
-    return selectChipState(rf, units, autoplan);
-  }, [units, running, selectedRunId, runs, dirty, classStats, view, sectors, autoplan]);
+    return selectChipState(rf, units, { phase } as AutoplanState);
+  }, [units, running, selectedRunId, runs, dirty, classStats, view, sectors, phase]);
+}
+
+/** The running coverage job's progress, 0 to 100; null when unknown. */
+function useRunPercent(): number | null {
+  const jobId = useRf((s) => s.jobId);
+  return useStore(jobs, (s) => {
+    const p = jobId ? s.jobs.find((j) => j.id === jobId)?.progress : undefined;
+    return p === undefined ? null : Math.round(p * 100);
+  });
 }
 
 /** A run's time of day, as the stage legend's title shows it. */
@@ -81,39 +95,42 @@ function run(): void {
   });
 }
 
-/** The row's width as laid out (0 until it is), kept up to date. */
-function useRowWidth(): [(el: HTMLDivElement | null) => void, number] {
-  const [el, setEl] = useState<HTMLDivElement | null>(null);
+/** The width of the stage's views around `el` (0 until laid out, or outside a stage). */
+function useViewsWidth(): [(el: HTMLElement | null) => void, number] {
+  const [el, setEl] = useState<HTMLElement | null>(null);
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
-    if (!el) return;
+    const views = el?.closest<HTMLElement>('.stage-views');
+    if (!views) return;
     const read = () => {
-      setWidth(el.clientWidth);
+      setWidth(views.clientWidth);
     };
     read();
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(read);
-    ro.observe(el);
+    ro.observe(views);
     return () => {
       ro.disconnect();
     };
   }, [el]);
   return [
-    useCallback((n: HTMLDivElement | null) => {
+    useCallback((n: HTMLElement | null) => {
       setEl(n);
     }, []),
     width,
   ];
 }
 
-export function CoverageChip() {
+export function CoverageChip({ variant = 'stage' }: { variant?: 'stage' | 'panel' }) {
   const t = useT();
   const s = useChipState();
   const visible = useRfLayer((l) => l.visible);
-  const [rowRef, rowWidth] = useRowWidth();
+  const percent = useRunPercent();
+  const [ref, viewsWidth] = useViewsWidth();
   if (s.kind === 'hidden') return null;
+  const stage = variant === 'stage';
   // not laid out yet (0): the words show
-  const narrow = rowWidth > 0 && rowWidth < NARROW_CHIP_PX;
+  const narrow = stage && viewsWidth > 0 && viewsWidth < NARROW_STAGE_PX;
 
   const parts: string[] = [];
   switch (s.kind) {
@@ -130,7 +147,11 @@ export function CoverageChip() {
       parts.push(t('rf.chip.planning'));
       break;
     case 'running':
-      parts.push(t('rf.chip.running'));
+      parts.push(
+        percent !== null && percent > 0
+          ? t('rf.chip.runningPct', { pct: percent })
+          : t('rf.chip.running'),
+      );
       break;
     case 'result':
       parts.push(t(VIEW_KEY[s.view]));
@@ -143,15 +164,28 @@ export function CoverageChip() {
   const sep = ' · ';
   const desc = sep + parts.join(sep);
   const label = t('rf.chip.label');
+  const words = (
+    <>
+      <span className="rf-chip-dot" aria-hidden="true" />
+      <span className="rf-chip-name">{label}</span>
+      {/* planning and running have no button: their few words stay on a narrow stage */}
+      {(!narrow || s.kind === 'planning' || s.kind === 'running') && (
+        <span className="rf-chip-desc">{desc}</span>
+      )}
+    </>
+  );
 
   return (
-    <div ref={rowRef} className="rf-chip-row" data-surface="dark">
-      <div
-        className="ss-chip rf-chip"
-        data-testid="rf-chip"
-        data-state={s.kind}
-        data-narrow={narrow ? '' : undefined}
-      >
+    <div
+      ref={ref}
+      className="rf-chip"
+      data-testid={stage ? 'rf-chip' : 'rf-chip-panel'}
+      data-variant={variant}
+      data-state={s.kind}
+      data-narrow={narrow ? '' : undefined}
+      role={stage ? undefined : 'status'}
+    >
+      {stage ? (
         <button
           type="button"
           className="rf-chip-open"
@@ -161,14 +195,15 @@ export function CoverageChip() {
             openCoverage();
           }}
         >
-          <span className="rf-chip-dot" aria-hidden="true" />
-          <span className="rf-chip-name">{label}</span>
-          {!narrow && <span className="rf-chip-desc">{desc}</span>}
+          {words}
         </button>
+      ) : (
+        <span className="rf-chip-open">{words}</span>
+      )}
+      <span className="rf-chip-acts">
         {s.kind === 'review-first' && (
           <Button
-            className="rf-chip-btn"
-            data-testid="rf-chip-review"
+            data-testid={stage ? 'rf-chip-review' : 'rf-chip-panel-review'}
             onClick={() => {
               openAntennaReviewOrFallback();
             }}
@@ -179,8 +214,8 @@ export function CoverageChip() {
         {s.kind === 'not-planned' && (
           <Button
             variant="primary"
-            className="rf-chip-btn rf-chip-ai"
-            data-testid="rf-chip-autoplan"
+            className="rf-chip-ai"
+            data-testid={stage ? 'rf-chip-autoplan' : 'rf-chip-panel-autoplan'}
             tip={t('rf.chip.autoplanTip')}
             onClick={autoplan}
           >
@@ -193,39 +228,36 @@ export function CoverageChip() {
         {s.kind === 'ready' && (
           <Button
             variant="primary"
-            className="rf-chip-btn"
-            data-testid="rf-chip-run"
+            data-testid={stage ? 'rf-chip-run' : 'rf-chip-panel-run'}
             icon="play"
             onClick={run}
           >
             {t('rf.chip.run')}
           </Button>
         )}
-        {s.kind === 'result' && (
-          <>
-            <Button
-              variant="icon"
-              className="rf-chip-btn"
-              data-testid="rf-chip-layer"
-              icon={visible ? 'eye' : 'eye-off'}
-              pressed={visible}
-              aria-label={t('rf.chip.layer')}
-              tip={t('rf.chip.layer')}
-              onClick={() => {
-                setRfLayer({ visible: !visible });
-              }}
-            />
-            <Button
-              className="rf-chip-btn"
-              data-testid="rf-chip-replan"
-              tip={t('rf.chip.replanTip')}
-              onClick={autoplan}
-            >
-              {t('rf.chip.replan')}
-            </Button>
-          </>
+        {s.kind === 'result' && stage && (
+          <Button
+            variant="icon"
+            data-testid="rf-chip-layer"
+            icon={visible ? 'eye' : 'eye-off'}
+            pressed={visible}
+            aria-label={t('rf.chip.layer')}
+            tip={t('rf.chip.layer')}
+            onClick={() => {
+              setRfLayer({ visible: !visible });
+            }}
+          />
         )}
-      </div>
+        {s.kind === 'result' && (
+          <Button
+            data-testid={stage ? 'rf-chip-replan' : 'rf-chip-panel-replan'}
+            tip={t('rf.chip.replanTip')}
+            onClick={autoplan}
+          >
+            {t('rf.chip.replan')}
+          </Button>
+        )}
+      </span>
     </div>
   );
 }
