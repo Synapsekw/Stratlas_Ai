@@ -69,6 +69,13 @@ export interface AutoplanState {
   projectId: string | null;
   /** A provider is set up and the project policy allows it (`ai:status`, chat route). */
   aiAvailable: boolean;
+  /**
+   * The provider of the chat route (`ai:status`, then the send preview), so the dialog can name
+   * it even when a local model skips the preview; null when not known.
+   */
+  provider: string | null;
+  /** Whether that provider is a cloud one; null when not known. */
+  cloud: boolean | null;
 }
 
 export type ChipState =
@@ -90,6 +97,8 @@ const initial = (): AutoplanState => ({
   error: null,
   projectId: null,
   aiAvailable: false,
+  provider: null,
+  cloud: null,
 });
 
 export const autoplanStore = createStore<AutoplanState>()(initial);
@@ -224,15 +233,33 @@ function unwrap<T extends { ok: boolean }>(
   return { ok: true, value: r.value as Extract<T, { ok: true }> };
 }
 
-async function aiReady(projectId: string | null): Promise<boolean> {
-  if (!projectId) return false;
+type AiStatus = Pick<AutoplanState, 'aiAvailable' | 'provider' | 'cloud'>;
+
+const NO_AI: AiStatus = { aiAvailable: false, provider: null, cloud: null };
+
+/** Whether the chat route is ready for this project, and its provider. */
+async function aiStatus(projectId: string | null): Promise<AiStatus> {
+  if (!projectId) return NO_AI;
   try {
     const r = await bridge.call('ai:status', { projectId, task: 'chat' });
-    return r.ok && r.value.ready;
+    if (!r.ok) return NO_AI;
+    const provider = r.value.route?.provider ?? null;
+    return {
+      aiAvailable: r.value.ready,
+      provider,
+      cloud: provider === null ? null : provider !== 'local',
+    };
   } catch {
-    return false;
+    return NO_AI;
   }
 }
+
+/** What the last status call said, kept across steps of the same project. */
+const statusOf = (s: AutoplanState): AiStatus => ({
+  aiAvailable: s.aiAvailable,
+  provider: s.provider,
+  cloud: s.cloud,
+});
 
 // ---------------------------------------------------------------- the flow
 
@@ -247,11 +274,12 @@ export async function startAutoplan(source?: AutoplanSource): Promise<void> {
   previewFor = null;
   const projectId = rfStore.getState().projectId;
   // the step belongs to this project from the start, so a switch during the status call drops it
-  set({ ...initial(), projectId, aiAvailable: get().aiAvailable });
-  const aiAvailable = await aiReady(projectId);
+  const before = get().projectId === projectId ? statusOf(get()) : NO_AI;
+  set({ ...initial(), projectId, ...before });
+  const status = await aiStatus(projectId);
   if (stale(my, projectId)) return;
-  const chosen: AutoplanSource = source ?? (aiAvailable ? 'ai' : 'rules');
-  set({ ...initial(), projectId, source: chosen, aiAvailable });
+  const chosen: AutoplanSource = source ?? (status.aiAvailable ? 'ai' : 'rules');
+  set({ ...initial(), projectId, source: chosen, ...status });
 
   const units = currentUnits();
   if (!units.some((u) => u.status === 'accepted')) {
@@ -323,7 +351,7 @@ async function askPreview(
     return;
   }
   previewFor = { projectId, unitIds };
-  set({ preview: v.value });
+  set({ preview: v.value, provider: v.value.provider, cloud: v.value.cloud });
   // a local model sends nothing off this machine: no send preview to confirm
   if (!v.value.cloud) await confirmSend(false);
 }
@@ -423,8 +451,8 @@ export function cancelAutoplan(): void {
   seq++;
   stopPending();
   previewFor = null;
-  const { aiAvailable, source, projectId } = get();
-  set({ ...initial(), aiAvailable, source, projectId });
+  const { source, projectId } = get();
+  set({ ...initial(), ...statusOf(get()), source, projectId });
 }
 
 /**
@@ -459,7 +487,8 @@ export function openAntennaReviewOrFallback(bench: StoreApi<WorkbenchState> = wo
     (review as () => void)();
     return;
   }
-  const firstDraft = a.file?.units.find((u) => u.status === 'draft');
+  // the inventory's units when it holds this project, else the RF store's
+  const firstDraft = currentUnits().find((u) => u.status === 'draft');
   if (firstDraft) antennas.revealAntenna(firstDraft.id);
   bench.getState().open('measure');
 }

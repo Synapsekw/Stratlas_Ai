@@ -563,6 +563,158 @@
   white-space: normal;
 }
 
+/* -------------------------------------------------------------- Auto-plan review (simplify T9) */
+.dlg.rf-autoplan {
+  inline-size: min(1100px, 94vw);
+}
+.rf-autoplan-mark {
+  color: var(--acc);
+}
+.rf-autoplan-table-wrap {
+  overflow: auto;
+  max-block-size: 56vh;
+  margin-block-start: var(--sp-4);
+}
+.rf-autoplan-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+}
+.rf-autoplan-table th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--bg-1);
+  padding: var(--sp-3);
+  border-block-end: 1px solid var(--line-soft);
+  text-align: start;
+  color: var(--fg-3);
+  font: 500 var(--t-11) var(--f-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.rf-autoplan-table td {
+  padding: var(--sp-3);
+  border-block-end: 1px solid var(--line-soft);
+  color: var(--fg-1);
+  vertical-align: top;
+}
+.rf-autoplan-table td b {
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.rf-autoplan-table td small {
+  display: block;
+  margin-block-start: 2px;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.rf-autoplan-why {
+  min-inline-size: 16em;
+}
+.rf-autoplan-table td small.rf-autoplan-note {
+  color: var(--warn-ink);
+}
+.rf-autoplan-sw {
+  display: inline-block;
+  inline-size: 10px;
+  block-size: 10px;
+  margin-inline-end: var(--sp-3);
+  border-radius: 2px;
+}
+.rf-autoplan-left td {
+  color: var(--fg-3);
+}
+.rf-autoplan-kept {
+  color: var(--fg-2);
+  font: 500 var(--t-11) var(--f-mono);
+}
+.rf-autoplan-conf {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font: 500 var(--t-11) var(--f-mono);
+  white-space: nowrap;
+}
+.rf-autoplan-bar {
+  inline-size: 48px;
+  block-size: 4px;
+  border-radius: 2px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.rf-autoplan-bar i {
+  display: block;
+  block-size: 100%;
+  background: var(--acc);
+}
+.rf-autoplan-conf[data-level='high'] .rf-autoplan-bar i {
+  inline-size: 85%;
+}
+.rf-autoplan-conf[data-level='medium'] .rf-autoplan-bar i {
+  inline-size: 60%;
+}
+.rf-autoplan-conf[data-level='low'] {
+  color: var(--warn-ink);
+}
+.rf-autoplan-conf[data-level='low'] .rf-autoplan-bar i {
+  inline-size: 30%;
+  background: var(--warn-ink);
+}
+.rf-autoplan-table tr[data-confidence='low'] td:first-child {
+  box-shadow: inset 2px 0 0 var(--warn-ink);
+}
+.rf-autoplan-notes {
+  margin: var(--sp-4) 0 0;
+  padding-inline-start: var(--sp-6);
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+.rf-autoplan-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+.rf-autoplan-progress {
+  display: grid;
+  gap: var(--sp-3);
+}
+.rf-autoplan-progress-bar {
+  block-size: 4px;
+  border-radius: 2px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.rf-autoplan-progress-bar i {
+  display: block;
+  inline-size: 30%;
+  block-size: 100%;
+  background: var(--acc);
+  animation: rf-autoplan-slide 1.4s ease-in-out infinite;
+}
+@keyframes rf-autoplan-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-autoplan-progress-bar i {
+    animation: none;
+    inline-size: 100%;
+    opacity: 0.5;
+  }
+}
+.rf-autoplan-crops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  padding: 0;
+  list-style: none;
+}
+
 /* ----------------------------------------------------------------------- the coverage legend */
 /* No position here: the stage gives the legend a corner slot (the rfLegend slot, Stage.tsx). It
    sits on the map or the 3D view, so it is a dark overlay box (data-surface='dark') in every
