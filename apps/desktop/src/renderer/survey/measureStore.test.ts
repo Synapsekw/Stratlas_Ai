@@ -12,11 +12,23 @@ import {
   startTool,
   stopTool,
   flipAzimuth,
+  askNewFolder,
+  deleteMeasurements,
+  endNewFolder,
+  measureFolders,
+  renameMeasurement,
+  revealMeasurement,
+  revertMeasurements,
+  select,
+  setMeasurementColour,
   setMeasurementHidden,
+  setMeasurementsHidden,
   setMeasurementsVisible,
+  setMeasureVisibilityMemory,
 } from './measureStore';
+import { createMeasureVisibilityMemory } from './measureVisibility';
 
-const io = vi.hoisted(() => ({ saved: emptyFile(), writes: 0 }));
+const io = vi.hoisted(() => ({ saved: emptyFile(), writes: 0, readOnly: false }));
 function emptyFile(): MeasurementsFile {
   return { schema: 'aio.measurements/1' as const, measurements: [] };
 }
@@ -29,7 +41,10 @@ vi.mock('../shell', () => ({
         return Promise.resolve({ ok: true, value: { ok: true } });
       }
       if (channel === 'survey:readMeasurements')
-        return Promise.resolve({ ok: true, value: { ok: true, file: io.saved, readOnly: false } });
+        return Promise.resolve({
+          ok: true,
+          value: { ok: true, file: io.saved, readOnly: io.readOnly },
+        });
       return Promise.resolve({ ok: false, error: 'Not configured' });
     },
   },
@@ -41,9 +56,46 @@ const click = (raw: SitePoint) => {
   drawEvent({ type: 'click', raw, screen: { x: 1, y: 1 }, shift: true }, env);
 };
 
+function memoryStorage(): Storage {
+  const m = new Map<string, string>();
+  return {
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      m.set(k, v);
+    },
+  } as unknown as Storage;
+}
+let memory = createMeasureVisibilityMemory(memoryStorage());
+
+const measurement = (id: string, style?: { color: string; fill?: string }) => ({
+  id,
+  family: 'line' as const,
+  tool: 'distance' as const,
+  label: id,
+  scope: { kind: 'site' as const },
+  items: [],
+  results: [],
+  points: [
+    [0, 0, 0],
+    [3, 4, 0],
+  ] as SitePoint[],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  ...(style ? { style } : {}),
+});
+/** Load a saved file with these measurements for 'p1' through the mocked bridge. */
+async function loadFile(ms: ReturnType<typeof measurement>[]): Promise<void> {
+  io.saved = MeasurementsFile.parse({ schema: 'aio.measurements/1', measurements: ms });
+  measureStore.setState({ projectId: null });
+  await loadMeasurements('p1');
+}
+
 beforeEach(() => {
   io.saved = emptyFile();
   io.writes = 0;
+  io.readOnly = false;
+  memory = createMeasureVisibilityMemory(memoryStorage());
+  setMeasureVisibilityMemory(memory);
   measureStore.setState({
     file: emptyMeasurements(),
     savedText: JSON.stringify(emptyMeasurements()),
@@ -173,19 +225,19 @@ describe('saved measurement view visibility', () => {
     expect(measureStore.getState().measurementsVisible).toBe(true);
   });
 
-  it('restores saved overlays when starting, completing or explicitly editing a measurement', () => {
-    setMeasurementsVisible(false);
-    startTool('clearance');
-    expect(measureStore.getState().measurementsVisible).toBe(true);
-    click([0, 0, 1]);
-    setMeasurementsVisible(false);
-    click([0, 0, 3]);
-    expect(measureStore.getState().measurementsVisible).toBe(true);
-    expect(measureStore.getState().file.measurements).toHaveLength(1);
-    setMeasurementsVisible(false);
+  it('drawing and editing do not unhide; a new measurement is visible', async () => {
+    await loadFile([measurement('m1'), measurement('m2')]);
+    setMeasurementsHidden(['m1'], true);
+    startTool('distance');
+    click([0, 0, 0]);
+    click([3, 4, 0]);
+    drawEvent({ type: 'key', key: 'Enter' }, env);
+    const s = measureStore.getState();
+    expect(s.hiddenMeasurements).toEqual(['m1']);
+    expect(s.hiddenMeasurements).not.toContain(s.focus);
+    select(['m2'], 'm2');
     startEditing();
-    expect(measureStore.getState().measurementsVisible).toBe(true);
-    expect(measureStore.getState().editing).not.toBeNull();
+    expect(measureStore.getState().hiddenMeasurements).toEqual(['m1']);
   });
 });
 
@@ -252,5 +304,90 @@ describe('one Distance tool, with a measure-without-saving mode (D19)', () => {
     // view state only: the file is untouched
     expect(isDirty(measureStore.getState())).toBe(true);
     expect(io.writes).toBe(0);
+  });
+});
+
+describe('measurement layers: remembered visibility and edits', () => {
+  const two = () => loadFile([measurement('m1'), measurement('m2')]);
+  const find = (id: string) => measureStore.getState().file.measurements.find((m) => m.id === id);
+
+  it('hiding is personal view state: not unsaved, no write, remembered on reload', async () => {
+    await two();
+    setMeasurementsHidden(['m1'], true);
+    expect(isDirty(measureStore.getState())).toBe(false);
+    expect(io.writes).toBe(0);
+    measureStore.setState({ projectId: null });
+    await loadMeasurements('p1');
+    expect(measureStore.getState().hiddenMeasurements).toEqual(['m1']);
+  });
+
+  it('a deleted hidden id survives Revert and is pruned on the next load', async () => {
+    await two();
+    setMeasurementsHidden(['m1'], true);
+    deleteMeasurements(['m1']);
+    revertMeasurements();
+    expect(measureStore.getState().hiddenMeasurements).toEqual(['m1']);
+    io.saved = MeasurementsFile.parse({
+      schema: 'aio.measurements/1',
+      measurements: [measurement('m2')],
+    });
+    measureStore.setState({ projectId: null });
+    await loadMeasurements('p1');
+    expect(measureStore.getState().hiddenMeasurements).toEqual([]);
+    expect(memory.load('p1')).toEqual([]);
+  });
+
+  it('a read-only package still hides and remembers', async () => {
+    io.readOnly = true;
+    await two();
+    setMeasurementsHidden(['m1'], true);
+    expect(memory.load('p1')).toEqual(['m1']);
+  });
+
+  it('a preset colour sets the colour, and the fill only when it matched', async () => {
+    await loadFile([
+      measurement('m1', { color: '#ffd166', fill: '#ffd166' }),
+      measurement('m2', { color: '#ffd166', fill: '#000000' }),
+      measurement('m3'),
+    ]);
+    setMeasurementColour(['m1', 'm2', 'm3'], '#ef476f');
+    expect(find('m1')?.style).toMatchObject({ color: '#ef476f', fill: '#ef476f' });
+    expect(find('m2')?.style).toMatchObject({ color: '#ef476f', fill: '#000000' });
+    expect(find('m3')?.style).toEqual({ color: '#ef476f' });
+    expect(isDirty(measureStore.getState())).toBe(true);
+  });
+
+  it('renames up to 200 characters, never to empty', async () => {
+    await two();
+    expect(renameMeasurement('m1', '  Fence line  ')).toBe(true);
+    expect(find('m1')?.label).toBe('Fence line');
+    expect(renameMeasurement('m1', 'Fence line')).toBe(false);
+    expect(renameMeasurement('m1', '   ')).toBe(false);
+    expect(renameMeasurement('m1', 'x'.repeat(201))).toBe(false);
+    expect(renameMeasurement('m1', 'x'.repeat(200))).toBe(true);
+  });
+
+  it('asks the tree to reveal a measurement and to open a new folder', () => {
+    revealMeasurement('m1');
+    const seq = measureStore.getState().reveal?.seq ?? 0;
+    expect(measureStore.getState().reveal).toEqual({ id: 'm1', seq, openSidebar: true });
+    askNewFolder(['m1', 'm2']);
+    expect(measureStore.getState().newFolder).toMatchObject({ ids: ['m1', 'm2'] });
+    expect(measureStore.getState().reveal).toMatchObject({ id: 'm1', seq: seq + 1 });
+    endNewFolder();
+    expect(measureStore.getState().newFolder).toBeNull();
+  });
+
+  it('lists the distinct folders A to Z', () => {
+    const f = MeasurementsFile.parse({
+      schema: 'aio.measurements/1',
+      measurements: [
+        { ...measurement('a'), folder: ' Zed ' },
+        { ...measurement('b'), folder: 'alpha' },
+        { ...measurement('c'), folder: 'Zed' },
+        { ...measurement('d'), folder: '  ' },
+      ],
+    });
+    expect(measureFolders(f)).toEqual(['alpha', 'Zed']);
   });
 });

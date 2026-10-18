@@ -59,6 +59,11 @@ import { authorName } from '../author';
 import { bridge } from '../shell';
 import { designs, loadDesigns } from './designsStore';
 import { drawnPoints, scopeShift, storedPoints } from './measureDates';
+import {
+  createMeasureVisibilityMemory,
+  measureStorage,
+  type MeasureVisibilityMemory,
+} from './measureVisibility';
 
 export type MeasureDialog =
   | { kind: 'units'; target: 'site' | 'measurement' }
@@ -144,6 +149,10 @@ export interface MeasureState {
   measurementsVisible: boolean;
   /** Saved measurements hidden one by one in the views (the eye on their row; view only). */
   hiddenMeasurements: readonly string[];
+  /** The tree is asked to scroll to and select a measurement (`seq` makes each ask new). */
+  reveal: { id: string | null; seq: number; openSidebar: boolean } | null;
+  /** The tree is asked to open an inline new-folder row for these measurements. */
+  newFolder: { ids: string[]; seq: number } | null;
   dialog: MeasureDialog;
   snap: SnapSettings;
   /** The surface readouts sample (the 3D view's terrain until G2's prepared surfaces). */
@@ -202,6 +211,8 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   listOpen: false,
   measurementsVisible: true,
   hiddenMeasurements: [],
+  reveal: null,
+  newFolder: null,
   dialog: null,
   rolePrompt: null,
 });
@@ -226,6 +237,14 @@ const set = (patch: Partial<MeasureState>) => {
 };
 const get = () => measureStore.getState();
 
+let visibilityMemory: MeasureVisibilityMemory = createMeasureVisibilityMemory(measureStorage());
+/** Replace where hidden ids are remembered (tests). */
+export function setMeasureVisibilityMemory(m: MeasureVisibilityMemory): void {
+  visibilityMemory = m;
+}
+let revealSeq = 0;
+let newFolderSeq = 0;
+
 export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
   text(s.file) !== s.savedText;
 
@@ -247,11 +266,17 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     set({ status: 'error', error });
     return;
   }
+  // hidden ids are remembered per project; ones no longer in the file are dropped
+  const remembered = visibilityMemory.load(projectId);
+  const present = new Set(m.value.file.measurements.map((x) => x.id));
+  const hidden = remembered.filter((id) => present.has(id));
+  if (hidden.length < remembered.length) visibilityMemory.save(projectId, hidden);
   const patch: Partial<MeasureState> = {
     status: 'ready',
     file: m.value.file,
     savedText: text(m.value.file),
     readOnly: m.value.readOnly,
+    hiddenMeasurements: hidden,
   };
   if (t.ok && t.value.ok) patch.templates = { project: t.value.project, user: t.value.user };
   // site settings are G1's; until they exist the defaults hold (metres)
@@ -389,7 +414,7 @@ export function addMeasurement(m: SurveyMeasurement): void {
   if (s.readOnly) return;
   changed(
     { ...s.file, measurements: [...s.file.measurements, m] },
-    { selected: [m.id], focus: m.id, measurementsVisible: true },
+    { selected: [m.id], focus: m.id },
   );
 }
 
@@ -472,14 +497,77 @@ export function setMeasurementsVisible(visible: boolean): void {
   });
 }
 
-/** Hide or show one saved measurement in the views (view only, like Show all and Hide all). */
-export function setMeasurementHidden(id: string, hidden: boolean): void {
+/**
+ * Hide or show saved measurements in the views. View only and remembered per project, so it also
+ * works in read-only packages and never counts as an unsaved change.
+ */
+export function setMeasurementsHidden(ids: readonly string[], hidden: boolean): void {
   const s = get();
-  const rest = s.hiddenMeasurements.filter((x) => x !== id);
+  const which = new Set(ids);
+  const rest = s.hiddenMeasurements.filter((x) => !which.has(x));
+  const next = hidden ? [...rest, ...ids.filter((id) => !s.hiddenMeasurements.includes(id))] : rest;
   set({
-    hiddenMeasurements: hidden ? [...rest, id] : rest,
-    ...(hidden && s.focus === id ? { editing: null } : {}),
+    hiddenMeasurements: next,
+    ...(hidden && s.focus !== null && which.has(s.focus) ? { editing: null } : {}),
   });
+  if (s.projectId) visibilityMemory.save(s.projectId, next);
+}
+
+export function setMeasurementHidden(id: string, hidden: boolean): void {
+  setMeasurementsHidden([id], hidden);
+}
+
+/** Give measurements a preset colour; their fill follows only when it was the old colour. */
+export function setMeasurementColour(ids: readonly string[], color: string): void {
+  const s = get();
+  if (s.readOnly) return;
+  const which = new Set(ids);
+  const t = now();
+  changed({
+    ...s.file,
+    measurements: s.file.measurements.map((m) => {
+      if (!which.has(m.id)) return m;
+      const style = m.style
+        ? { ...m.style, color, ...(m.style.fill === m.style.color ? { fill: color } : {}) }
+        : { color };
+      return { ...m, style, updatedAt: t };
+    }),
+  });
+}
+
+/** Rename a measurement; false (and nothing changes) for an empty, over-long or same name. */
+export function renameMeasurement(id: string, label: string): boolean {
+  const s = get();
+  const next = label.trim();
+  const m = s.file.measurements.find((x) => x.id === id);
+  if (s.readOnly || !m || next === '' || next.length > 200 || next === m.label) return false;
+  patchMeasurement(id, { label: next });
+  return true;
+}
+
+/** The folders in use (trimmed, distinct), A to Z. */
+export function measureFolders(file: MeasurementsFile): string[] {
+  const folders = new Set<string>();
+  for (const m of file.measurements) {
+    const f = m.folder?.trim();
+    if (f) folders.add(f);
+  }
+  return [...folders].sort(new Intl.Collator(undefined, { sensitivity: 'base' }).compare);
+}
+
+/** Ask the tree to show (open the sidebar for) and select a measurement. */
+export function revealMeasurement(id: string | null, opts: { openSidebar?: boolean } = {}): void {
+  set({ reveal: { id, seq: ++revealSeq, openSidebar: opts.openSidebar ?? true } });
+}
+
+/** Ask the tree for an inline new-folder row that will take these measurements. */
+export function askNewFolder(ids: readonly string[]): void {
+  revealMeasurement(ids[0] ?? null);
+  set({ newFolder: { ids: [...ids], seq: ++newFolderSeq } });
+}
+
+export function endNewFolder(): void {
+  set({ newFolder: null });
 }
 
 export function openDialog(dialog: MeasureDialog): void {
@@ -513,7 +601,6 @@ export function startTool(tool: MeasurementTool, opts: StartToolOptions = {}): v
     if ((get().readOnly && !transient) || get().projectId !== projectId) return;
     set({
       tool: { tool, template, picks, ...(forOther ?? {}), ...(transient ? { transient } : {}) },
-      measurementsVisible: true,
       draw: initialDraw(TOOL_FAMILY[tool]),
       editing: null,
       message: null,
@@ -713,7 +800,6 @@ export function startEditing(): void {
     editing: initialEdit(drawnPoints(m, openManifest())),
     tool: null,
     draw: null,
-    measurementsVisible: true,
   });
 }
 
