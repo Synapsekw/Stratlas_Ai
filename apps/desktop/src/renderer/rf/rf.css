@@ -901,11 +901,6 @@
   padding-block-end: var(--sp-3);
   border-block-end: 1px solid var(--line-soft);
 }
-/* while two dates are compared the chip gives way: the card goes, the legend stays */
-.stage:has(.isl-aside .compare-how) .stage-slot:has(> .rf-card),
-.stage:has(.isl-aside .compare-how) .rf-legend > .rf-chip {
-  display: none;
-}
 .rf-chip-open {
   display: inline-flex;
   flex-wrap: wrap;

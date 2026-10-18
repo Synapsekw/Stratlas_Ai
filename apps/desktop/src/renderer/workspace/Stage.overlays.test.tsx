@@ -12,9 +12,11 @@ import { clearCoverage, coverage } from '../rf/coverageStore';
 import { resetRf, rfStore } from '../rf/rfStore';
 import { useCoverageLegendShown } from '../rf/StageCoverageLegend';
 import { antennasFile, unit } from '../rf/__fixtures__/rfData';
+import { shell } from '../shell';
 import { antennaStore } from '../telecom/antennaStore';
 import { compareNotice } from './compare';
 import { readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
+import { stagePrefs } from './stagePrefs';
 import { timeline } from './timeline';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -101,6 +103,8 @@ afterEach(() => {
   resetRf();
   rfLayer.setState({ visible: true });
   antennaStore.setState({ projectId: null, file: null, status: 'idle' });
+  shell.setState({ stageMode: '3d' } as never);
+  stagePrefs.setState({ byProject: {} });
 });
 
 /** The Coverage layer draws a live preview (the working copy has changes). */
@@ -293,6 +297,8 @@ describe('the stage corners', () => {
     live();
     expect(slotOf('rf-chip')).toBeUndefined();
     act(() => {
+      // no floating video on the stage (the fixture's clip would float)
+      workspace.getState().setActiveClip(null);
       rfStore.setState({ projectId: 'p3' });
       antennaStore.setState({
         projectId: 'p3',
@@ -309,13 +315,6 @@ describe('the stage corners', () => {
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
     const corners = slots().map((x) => x.corner);
     expect(new Set(corners).size).toBe(corners.length);
-    // with the volumes hint at bl the card takes br and the readout gives way, never shared
-    act(() => {
-      volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
-    });
-    expect(slotOf('vol-hint')).toBe('bl');
-    expect(slotOf('rf-chip')).toBe('br');
-    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
     // a run drawn: the chip heads the legend in the same corner
     act(() => {
       volumetric.setState({ status: 'idle' });
@@ -331,6 +330,113 @@ describe('the stage corners', () => {
     });
     expect(slotOf('rf-chip')).toBeUndefined();
     expect(host.querySelector('[data-testid="rf-card"]')).toBeNull();
+  });
+
+  describe('the Coverage card before a run (only the chip prompt)', () => {
+    function Live(p: Partial<StageCornersInput>) {
+      return <Corners {...p} rfLegend={useCoverageLegendShown()} />;
+    }
+    const live = (p: Partial<StageCornersInput> = {}) => {
+      act(() => {
+        root ??= createRoot(host);
+        root.render(<Live {...p} />);
+      });
+    };
+    const withAntennas = () => {
+      act(() => {
+        // no floating video on the stage (the fixture's clip would float)
+        workspace.getState().setActiveClip(null);
+        rfStore.setState({ projectId: 'p3' });
+        antennaStore.setState({
+          projectId: 'p3',
+          status: 'ready',
+          file: antennasFile([unit('ant-a', 0), unit('ant-b', 120), unit('ant-c', 240)]),
+        });
+      });
+    };
+    const cursorHidden = () => host.querySelector('.stage')?.hasAttribute('data-cursor-hidden');
+
+    it('gives way to the dates: a status overlay at tl and the Map menu chip at tr', () => {
+      compareNotice.getState().show('Comparing two dates');
+      withAntennas();
+      live();
+      expect(slotOf('compare-notice')).toBe('tl');
+      expect(slotOf('scene-map-button')).toBe('tr');
+      // the card would take bl, the dates' last free corner: it stays off the stage
+      expect(slotOf('dates-on-screen')).toBe('bl');
+      expect(slotOf('rf-chip')).toBeUndefined();
+    });
+
+    it('gives way to the readout: the 3D view with the volumes hint up', () => {
+      volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+      withAntennas();
+      live();
+      expect(slotOf('vol-hint')).toBe('bl');
+      expect(slotOf('rf-chip')).toBeUndefined();
+      expect(cursorHidden()).toBe(false);
+    });
+
+    it('gives way to a floating video, and shows again once it is docked', () => {
+      withAntennas();
+      act(() => {
+        workspace.getState().setActiveClip('c1');
+      });
+      live({ video: ['bl'] });
+      expect(slotOf('rf-chip')).toBeUndefined();
+      expect(cursorHidden()).toBe(false);
+      act(() => {
+        shell.setState({ videoDocked: true } as never);
+      });
+      live();
+      expect(slotOf('rf-chip')).toBe('bl');
+      act(() => {
+        shell.setState({ videoDocked: false } as never);
+      });
+    });
+
+    it('after a run keeps the legend before the dates and the readout', () => {
+      withAntennas();
+      act(() => {
+        coverageShown();
+        volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+      });
+      live();
+      expect(slotOf('vol-hint')).toBe('bl');
+      expect(slotOf('rf-legend')).toBe('br');
+      expect(cursorHidden()).toBe(true);
+      act(() => {
+        volumetric.setState({ status: 'idle' });
+        compareNotice.getState().show('Comparing two dates');
+      });
+      expect(slotOf('compare-notice')).toBe('tl');
+      expect(slotOf('rf-legend')).toBe('bl');
+      expect(slotOf('dates-on-screen')).toBeUndefined();
+    });
+
+    it('claims no corner while two dates are compared, before or after a run', () => {
+      withAntennas();
+      const ids = captureIndex(manifest).captures.map((c) => c.id);
+      const first = ids[0] ?? '';
+      const last = ids.at(-1) ?? '';
+      act(() => {
+        stagePrefs.getState().update('p3', {
+          split: { left: 'map', right: 'map', leftCapture: first, rightCapture: last },
+        });
+        shell.setState({ stageMode: 'split' } as never);
+      });
+      live({ splitting: true, show3d: false, showMap: true, cursor: null });
+      expect(slotOf('rf-chip')).toBeUndefined();
+      act(() => {
+        coverageShown();
+      });
+      expect(slotOf('rf-legend')).toBeUndefined();
+      expect(host.querySelector('[data-testid="rf-legend"]')).toBeNull();
+      // a split that does not compare dates keeps the legend
+      act(() => {
+        stagePrefs.getState().update('p3', { split: { left: '3d', right: 'map' } });
+      });
+      expect(slotOf('rf-legend')).toBeDefined();
+    });
   });
 
   it('hides the coordinates readout when the video rests in its corner', () => {
