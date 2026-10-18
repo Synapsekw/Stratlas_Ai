@@ -28,8 +28,9 @@ const h = vi.hoisted(
   (): {
     getState: null | (() => AntennaSceneState);
     labels: number;
+    onPick: null | ((id: string) => void);
     frames: Set<() => void>;
-  } => ({ getState: null, labels: 0, frames: new Set() }),
+  } => ({ getState: null, labels: 0, onPick: null, frames: new Set() }),
 );
 
 vi.mock('../shell', async (importOriginal) => {
@@ -81,8 +82,9 @@ vi.mock('./antennaScene', async (importOriginal) => ({
   },
 }));
 vi.mock('./antennaLabels', () => ({
-  attachAntennaLabels: () => {
+  attachAntennaLabels: (_stage: unknown, _spots: unknown, onPick?: (id: string) => void) => {
     h.labels++;
+    h.onPick = onPick ?? null;
     return () => {
       h.labels--;
     };
@@ -205,6 +207,43 @@ describe('AntennaRunner', () => {
       selectAntenna(null);
     });
     expect(card()).toBeNull();
+  });
+
+  it('shows the Labels control while the antennas are drawn, and Off sets the mode', () => {
+    const control = () => stageHost()?.querySelector('[data-testid="antenna-labels-control"]');
+    expect(control()).not.toBeNull();
+    const group = control()?.querySelector('[role="group"]');
+    expect(group?.getAttribute('aria-label')).toBe('Labels');
+    const all = control()?.querySelector<HTMLButtonElement>('[data-testid="antenna-labels-all"]');
+    expect(all?.getAttribute('aria-pressed')).toBe('true');
+    const off = control()?.querySelector<HTMLButtonElement>('[data-testid="antenna-labels-off"]');
+    act(() => {
+      off?.click();
+    });
+    expect(antennaStore.getState().labelMode).toBe('off');
+    expect(off?.getAttribute('aria-pressed')).toBe('true');
+    expect(all?.getAttribute('aria-pressed')).toBe('false');
+    // the layer is told the mode, so it draws anew
+    expect(h.getState?.().labelMode).toBe('off');
+    act(() => {
+      shell.setState({ stageMode: 'map' });
+    });
+    expect(control()).toBeNull();
+  });
+
+  it('a pin picks its unit as a box pick does, and the selected one again changes nothing', () => {
+    const reveal = antennaStore.getState().reveal;
+    act(() => {
+      h.onPick?.('ant-a3');
+    });
+    expect(antennaStore.getState().selected).toBe('ant-a3');
+    expect(antennaStore.getState().reveal).toBe(reveal + 1);
+    expect(flyTo).toHaveBeenCalledTimes(1);
+    act(() => {
+      h.onPick?.('ant-a3');
+    });
+    expect(antennaStore.getState().reveal).toBe(reveal + 1);
+    expect(flyTo).toHaveBeenCalledTimes(1);
   });
 
   it('resets the card drag when the project changes', () => {

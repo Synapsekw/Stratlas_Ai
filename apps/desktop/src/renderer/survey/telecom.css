@@ -107,8 +107,25 @@
   display: contents;
 }
 /* the 3D antenna labels: .sv-label from measure.css does the rest */
-.antenna-label--name {
-  opacity: 0.85;
+/* a unit that is not selected: a small pill with its number in its kind colour (the fill is set
+   per pin), centred on the name's anchor; it takes clicks, the layer around it does not */
+.antenna-label--pin {
+  margin: 0;
+  padding: 2px 4px;
+  border-radius: var(--r-pill);
+  color: var(--sev-ink);
+  font: 700 9px/1 var(--f-mono);
+  pointer-events: auto;
+  cursor: pointer;
+}
+/* the hit area: at least 16px whatever the number's width */
+.antenna-label--pin::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+.antenna-label--pin:hover {
+  outline: 1px solid var(--fg-0);
 }
 .antenna-label--dim {
   background: rgba(0, 0, 0, 0.6);

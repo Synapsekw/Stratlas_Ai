@@ -46,3 +46,63 @@ it('places visible labels, hides the one behind the camera, and detaches', () =>
   detach();
   expect(host.querySelector('.antenna-labels')).toBeNull();
 });
+
+it('draws a pin that picks its unit on click, keeps the click and shows a tooltip', () => {
+  const host = document.createElement('div');
+  const canvas = document.createElement('canvas');
+  host.append(canvas);
+  document.body.append(host);
+  canvas.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  host.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  const camera = new PerspectiveCamera(50, 1, 0.1, 1000);
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  let frame: () => void = () => undefined;
+  const stage = {
+    camera,
+    renderer: { domElement: canvas },
+    onFrame: (fn: () => void) => {
+      frame = fn;
+      return () => undefined;
+    },
+  };
+  const spots: AntennaLabelSpot[] = [
+    {
+      key: 'u14:pin',
+      text: '14',
+      at: [0, 0, 0],
+      kind: 'pin',
+      selected: false,
+      unitId: 'u14',
+      colour: '#4fb3ff',
+      title: 'A14 · panel · Draft',
+    },
+  ];
+  const picks: string[] = [];
+  const heard: string[] = [];
+  for (const type of ['pointerdown', 'pointerup', 'click'])
+    host.addEventListener(type, () => heard.push(type));
+  const detach = attachAntennaLabels(
+    stage as unknown as EngineStage,
+    () => spots,
+    (id) => picks.push(id),
+  );
+  frame();
+  const pin = host.querySelector<HTMLElement>('.antenna-label--pin');
+  expect(pin?.textContent).toBe('14');
+  expect(pin?.title).toBe('A14 · panel · Draft');
+  expect(pin?.style.background).toBe('rgb(79, 179, 255)');
+  expect(pin?.style.transform).toMatch(/translate\(-50%, -50%\)$/);
+  pin?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+  pin?.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+  pin?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  expect(picks).toEqual(['u14']);
+  // the stage under the pin never hears it
+  expect(heard).toEqual([]);
+  // the pin stays the same element from frame to frame: one pick per click
+  frame();
+  host.querySelector<HTMLElement>('.antenna-label--pin')?.click();
+  expect(picks).toEqual(['u14', 'u14']);
+  detach();
+});

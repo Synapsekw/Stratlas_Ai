@@ -6,6 +6,12 @@ import type { AntennaKind, AntennaUnit, Vec3 } from '@aio/schema';
 
 export type AntennaFilter = 'draft' | 'accepted' | 'rejected' | 'all';
 
+/**
+ * Which labels the 3D view shows. The selected unit's full labels show in every mode; 'all' adds
+ * a numbered pin on every other drawn unit, 'off' and 'selected' show no pin.
+ */
+export type AntennaLabelMode = 'off' | 'selected' | 'all';
+
 /** What decides whether a unit is drawn in the 3D view. */
 export interface AntennaVisibility {
   selected: string | null;
@@ -30,6 +36,13 @@ export interface AntennaLabelSpot {
   text: string;
   /** Local frame (x east, y up, z south). */
   at: Vec3;
-  kind: 'name' | 'dim' | 'angle';
+  /** 'pin': the small numbered marker of a unit that is not selected. */
+  kind: 'name' | 'dim' | 'angle' | 'pin';
   selected: boolean;
+  /** The unit a pin stands for (a click on it picks that unit). */
+  unitId?: string;
+  /** A pin's fill, the unit's kind colour. */
+  colour?: string;
+  /** A pin's hover text: the unit's name, kind and status. */
+  title?: string;
 }

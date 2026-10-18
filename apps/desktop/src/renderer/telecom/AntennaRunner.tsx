@@ -25,6 +25,7 @@ import { frameOf } from '../survey/measureScene';
 import '../survey/telecom.css';
 import { flyToLocalBox } from '../workspace/flyToBox';
 import { AntennaCard, resetCardDrag } from './AntennaCard';
+import { AntennaLabelsControl } from './AntennaLabelsControl';
 import { AntennaSendPreview } from './AntennaSendPreview';
 import { attachAntennaLabels } from './antennaLabels';
 import { antennaCorners } from './antennaMeasure';
@@ -165,6 +166,7 @@ export function AntennaRunner(): ReactElement | null {
         hidden: a.hidden,
         solo: a.solo,
         shift: antennaShift(a.file, manifest),
+        labelMode: a.labelMode,
       };
     };
     const offLayer = attachAntennaLayer(stage, frame, {
@@ -172,7 +174,14 @@ export function AntennaRunner(): ReactElement | null {
       subscribe: (cb) => antennaStore.subscribe(cb),
       onPick: revealAntenna,
     });
-    const offLabels = attachAntennaLabels(stage, () => spotsOf(sceneState()));
+    // a pin picks its unit as a box pick does; the selected unit's own pin (none drawn) is a no-op
+    const offLabels = attachAntennaLabels(
+      stage,
+      () => spotsOf(sceneState()),
+      (id) => {
+        if (antennaStore.getState().selected !== id) revealAntenna(id);
+      },
+    );
     let last = antennaStore.getState().selected;
     const offFly = antennaStore.subscribe((a) => {
       if (a.selected === last) return;
@@ -187,9 +196,14 @@ export function AntennaRunner(): ReactElement | null {
     };
   }, [drawn, stage, frame, manifest, spotsOf]);
 
+  // the Labels control while the antennas are drawn in a 3D view on screen
+  const showLayer = drawn && stage !== null && frame !== null && onScene;
+  const layerHost = showLayer ? (stage.renderer.domElement.parentElement ?? null) : null;
+  useLayoutEffect(() => {
+    if (layerHost) positionHost(layerHost);
+  }, [layerHost]);
   // the floating card beside the selected box, only while the 3D view is on screen
-  const showCard = drawn && stage !== null && frame !== null && selected !== null && onScene;
-  const host = showCard ? (stage.renderer.domElement.parentElement ?? null) : null;
+  const host = selected !== null ? layerHost : null;
   const [rect, setRect] = useState<Rect | null>(null);
   // before paint, so the card's first frame is already in place
   useLayoutEffect(() => {
@@ -213,6 +227,7 @@ export function AntennaRunner(): ReactElement | null {
               hidden: a.hidden,
               solo: a.solo,
               shift,
+              labelMode: a.labelMode,
             })
               .filter((s) => s.selected)
               .map((s) => s.at),
@@ -262,9 +277,10 @@ export function AntennaRunner(): ReactElement | null {
 
   // a preview for another project (switched meanwhile) is not shown
   const shown = preview?.projectId === projectId ? preview : null;
-  if (!shown && !host) return null;
+  if (!shown && !layerHost) return null;
   return (
     <>
+      {layerHost && <AntennaLabelsControl host={layerHost} />}
       {host && <AntennaCard stageHost={host} boxRect={rect} />}
       {shown && (
         <PortalRoot opener={null} className="antenna-send-layer">

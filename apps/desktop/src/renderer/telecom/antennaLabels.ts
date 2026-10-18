@@ -2,21 +2,42 @@ import type { EngineStage } from '@aio/engine';
 import type { AntennaLabelSpot } from './antennaVisibility';
 import { projectToHost } from './screenProjection';
 
+/** Pointer events a pin keeps to itself, so the stage under it never sees a pin click. */
+const PIN_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick'];
+
 /**
  * The antenna labels in the 3D view: one `.sv-label` per spot in a `.sv-labels` layer beside the
- * canvas, moved on every frame. Spots are in the local frame already. Returns the detach.
+ * canvas, moved on every frame. Spots are in the local frame already. A pin (a unit that is not
+ * selected) takes clicks: `onPick` hears its unit id, and the click goes no further. Returns the
+ * detach.
  */
 export function attachAntennaLabels(
   stage: EngineStage,
   getSpots: () => AntennaLabelSpot[],
+  onPick?: (unitId: string) => void,
 ): () => void {
   const canvas = stage.renderer.domElement;
   const host = canvas.parentElement ?? canvas;
   const labels = document.createElement('div');
   labels.className = 'sv-labels antenna-labels';
+  // the inventory lists every unit for assistive technology; the pins are a pointer shortcut
   labels.setAttribute('aria-hidden', 'true');
   host.appendChild(labels);
   const els = new Map<string, HTMLElement>();
+
+  const onPin = (e: Event) => {
+    e.stopPropagation();
+    if (e.type !== 'click') return;
+    const id = (e.currentTarget as HTMLElement).dataset.unitId;
+    if (id) onPick?.(id);
+  };
+
+  const make = (sp: AntennaLabelSpot): HTMLElement => {
+    const el = document.createElement('span');
+    el.dataset.key = sp.key;
+    if (sp.kind === 'pin') for (const type of PIN_EVENTS) el.addEventListener(type, onPin);
+    return el;
+  };
 
   const place = () => {
     const spots = getSpots();
@@ -32,21 +53,27 @@ export function attachAntennaLabels(
     for (const sp of spots) {
       let el = els.get(sp.key);
       if (!el) {
-        el = document.createElement('span');
-        el.dataset.key = sp.key;
+        el = make(sp);
         els.set(sp.key, el);
       }
       labels.appendChild(el); // keeps the spots' order
+      const pin = sp.kind === 'pin';
       el.className = `sv-label antenna-label--${sp.kind}${sp.selected ? ' sel' : ''}`;
       if (el.textContent !== sp.text) el.textContent = sp.text;
-      el.style.fontSize = sp.kind === 'name' && !sp.selected ? '11px' : '12px';
+      if (pin) {
+        if (sp.unitId !== undefined) el.dataset.unitId = sp.unitId;
+        if (sp.title !== undefined && el.title !== sp.title) el.title = sp.title;
+        if (sp.colour !== undefined) el.style.background = sp.colour;
+      } else el.style.fontSize = '12px';
       const at = projectToHost(sp.at, stage.camera, r, hr);
       if (!at.inside) {
         el.style.display = 'none';
         continue;
       }
       el.style.display = '';
-      el.style.transform = `translate(${String(Math.round(at.x))}px, ${String(Math.round(at.y))}px)`;
+      const to = `translate(${String(Math.round(at.x))}px, ${String(Math.round(at.y))}px)`;
+      // a pin is centred on its anchor; a label sits beside it (.sv-label's margin)
+      el.style.transform = pin ? `${to} translate(-50%, -50%)` : to;
     }
   };
 

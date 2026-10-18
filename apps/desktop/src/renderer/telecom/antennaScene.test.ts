@@ -22,6 +22,8 @@ import {
   buildAntennaGroup,
   KIND_COLOURS,
   pickAntennaAt,
+  sameSceneState,
+  unitNumber,
   type AntennaSceneState,
 } from './antennaScene';
 
@@ -296,25 +298,53 @@ describe('antenna review drawing', () => {
     expect(named(buildAntennaGroup(state(), frame), 'antenna-dim:ant-acc')).toBeUndefined();
   });
 
-  it('places a name on every drawn unit and the measurements on the selected one', () => {
+  it('places a pin on every drawn unit and the measurements on the selected one', () => {
     const plain = antennaLabelSpots(state(), frame);
     expect(plain.map((s) => s.text).sort()).toEqual(['ant-acc', 'ant-draft', 'ant-oth', 'ant-rej']);
-    expect(plain.every((s) => s.kind === 'name' && !s.selected)).toBe(true);
+    expect(plain.every((s) => s.kind === 'pin' && !s.selected)).toBe(true);
+    // a hidden unit has no pin
+    expect(plain.some((s) => s.unitId === 'ant-hid')).toBe(false);
 
     const spots = antennaLabelSpots(state({ selected: 'ant-acc' }), frame);
     const measure = antennaMeasure(accUnit, frame, null).spots;
     expect(spots.filter((s) => s.selected)).toEqual(measure);
-    expect(
-      spots
-        .filter((s) => !s.selected)
-        .map((s) => s.text)
-        .sort(),
-    ).toEqual(['ant-draft', 'ant-oth', 'ant-rej']);
-    expect(spots.filter((s) => s.kind === 'name')).toHaveLength(4);
+    const pins = spots.filter((s) => s.kind === 'pin');
+    expect(pins.map((s) => s.unitId).sort()).toEqual(['ant-draft', 'ant-oth', 'ant-rej']);
+    expect(pins.every((s) => !s.selected)).toBe(true);
+    expect(spots.filter((s) => s.kind === 'name')).toHaveLength(1);
     expect(new Set(spots.map((s) => s.key)).size).toBe(spots.length);
-    // a plain name sits where the selected unit's name label would
-    const name = measure.find((s) => s.kind === 'name');
-    expect(name?.at).toEqual(nameAnchor(accUnit, frame, null));
+    // a pin sits where the selected unit's name label would, in its kind colour, with its tooltip
+    const draft = pins.find((s) => s.unitId === 'ant-draft');
+    expect(draft?.at).toEqual(nameAnchor(units[1] ?? accUnit, frame, null));
+    expect(draft?.colour).toBe(KIND_COLOURS.short);
+    expect(draft?.title).toBe('ant-draft · short · Draft');
+  });
+
+  it('shows only the selected unit labels in the Selected and Off modes', () => {
+    const measure = antennaMeasure(accUnit, frame, null).spots;
+    for (const labelMode of ['selected', 'off'] as const) {
+      expect(antennaLabelSpots(state({ selected: 'ant-acc', labelMode }), frame)).toEqual(measure);
+      expect(antennaLabelSpots(state({ labelMode }), frame)).toEqual([]);
+    }
+    // solo leaves the soloed-out units without a pin
+    const solo = antennaLabelSpots(state({ solo: 'dish', labelMode: 'all' }), frame);
+    expect(solo.map((s) => s.unitId)).toEqual(['ant-rej']);
+  });
+
+  it('numbers a pin by the digits its name ends in, else by the whole name', () => {
+    expect(unitNumber('A14')).toBe('14');
+    expect(unitNumber('S3-07')).toBe('07');
+    expect(unitNumber('Dish')).toBe('Dish');
+    const a14 = { ...accUnit, id: 'u14', name: 'A14' };
+    const [pin] = antennaLabelSpots({ file: file([a14]), selected: null, hidden: {} }, frame);
+    expect(pin).toMatchObject({ key: 'u14:pin', text: '14', unitId: 'u14', kind: 'pin' });
+    expect(pin?.title).toBe('A14 · panel · Accepted');
+  });
+
+  it('draws anew when the labels mode changes', () => {
+    const st = state();
+    expect(sameSceneState(st, { ...st, labelMode: 'all' })).toBe(true);
+    expect(sameSceneState(st, { ...st, labelMode: 'off' })).toBe(false);
   });
 
   it('computes the spots once per drawn state', () => {

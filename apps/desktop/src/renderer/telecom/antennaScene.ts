@@ -17,6 +17,7 @@ import {
   type ProjectManifest,
   type Vec3,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { captureShift, dateShiftOf } from '@aio/workspace';
 import {
   BoxGeometry,
@@ -48,7 +49,7 @@ import {
   facingTip,
   nameAnchor,
 } from './antennaMeasure';
-import { isAntennaDrawn, type AntennaLabelSpot } from './antennaVisibility';
+import { isAntennaDrawn, type AntennaLabelMode, type AntennaLabelSpot } from './antennaVisibility';
 
 export const KIND_COLOURS: Record<AntennaKind, string> = {
   panel: '#4fb3ff',
@@ -65,6 +66,8 @@ export interface AntennaSceneState {
   solo?: AntennaKind | null;
   /** The line-up shift of the run's survey date (`antennaShift`); none when absent or null. */
   shift?: DateShift | null;
+  /** Which labels show (the selected unit's always do); absent: 'all'. */
+  labelMode?: AntennaLabelMode;
 }
 
 /**
@@ -297,12 +300,19 @@ export function buildAntennaGroup(state: AntennaSceneState, frame: Frame): Group
   return group;
 }
 
+/** A pin's text: the unit's number, the digits its name ends in ("14" of "A14"), else the name. */
+export function unitNumber(name: string): string {
+  return /(\d+)$/.exec(name)?.[1] ?? name;
+}
+
 /**
- * The labels the 3D view places: a small name over every drawn unit, and for the selected unit
- * its full measurement labels (name with height, the three dimensions, the angles) instead.
+ * The labels the 3D view places: the selected unit's full measurement labels (name with height,
+ * the three dimensions, the angles) in every mode, and in mode 'all' a numbered pin over every
+ * other drawn unit, where its name would sit.
  */
 export function antennaLabelSpots(state: AntennaSceneState, frame: Frame): AntennaLabelSpot[] {
   const shift = state.shift ?? null;
+  const pins = (state.labelMode ?? 'all') === 'all';
   const spots: AntennaLabelSpot[] = [];
   for (const unit of state.file?.units ?? []) {
     if (!drawn(state, unit)) continue;
@@ -310,24 +320,36 @@ export function antennaLabelSpots(state: AntennaSceneState, frame: Frame): Anten
       spots.push(...antennaMeasure(unit, frame, shift).spots);
       continue;
     }
+    if (!pins) continue;
     spots.push({
-      key: `${unit.id}:name`,
-      text: unit.name,
+      key: `${unit.id}:pin`,
+      text: unitNumber(unit.name),
       at: nameAnchor(unit, frame, shift),
-      kind: 'name',
+      kind: 'pin',
       selected: false,
+      unitId: unit.id,
+      colour: KIND_COLOURS[unit.kind],
+      title: t('telecom.antennas.labels.pin', {
+        name: unit.name,
+        kind: t(`telecom.antennas.card.kind.${unit.kind}`),
+        status: t(`telecom.antennas.status.${unit.status}`),
+      }),
     });
   }
   return spots;
 }
 
-/** Whether two scene states draw the same thing (the same file, selection, visibility and shift). */
+/**
+ * Whether two scene states draw the same thing (the same file, selection, visibility, labels mode
+ * and shift).
+ */
 export function sameSceneState(a: AntennaSceneState, b: AntennaSceneState): boolean {
   return (
     a.file === b.file &&
     a.selected === b.selected &&
     a.hidden === b.hidden &&
     (a.solo ?? null) === (b.solo ?? null) &&
+    (a.labelMode ?? 'all') === (b.labelMode ?? 'all') &&
     JSON.stringify(a.shift ?? null) === JSON.stringify(b.shift ?? null)
   );
 }

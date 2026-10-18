@@ -18,9 +18,9 @@ import {
 import { t } from '@aio/ui';
 import { createStore, useStore } from 'zustand';
 import { bridge, jobs } from '../shell';
-import { isAntennaDrawn, type AntennaFilter } from './antennaVisibility';
+import { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode } from './antennaVisibility';
 
-export { isAntennaDrawn, type AntennaFilter };
+export { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode };
 
 export interface AntennaState {
   projectId: string | null;
@@ -48,6 +48,8 @@ export interface AntennaState {
   aiNote: string | null;
   /** Counts the units picked in the 3D view: each pick reveals its row (0: none yet). */
   reveal: number;
+  /** Which labels the 3D view shows; for the session only, never written to the file. */
+  labelMode: AntennaLabelMode;
 }
 
 export interface AiPreview {
@@ -75,6 +77,7 @@ const initial = (): AntennaState => ({
   aiPreview: null,
   aiNote: null,
   reveal: 0,
+  labelMode: 'all',
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -107,8 +110,17 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
   const same = get().projectId === projectId && get().root === root;
   const previousRunId = same ? (get().file?.run.id ?? null) : null;
   if (same) set({ status: get().file ? get().status : 'loading' });
-  // the reveal count carries on: the inventory section tells a new reveal by it
-  else set({ ...initial(), reveal: get().reveal, projectId, root, status: 'loading' });
+  // the reveal count carries on: the inventory section tells a new reveal by it; the labels
+  // setting is the person's for the session
+  else
+    set({
+      ...initial(),
+      reveal: get().reveal,
+      labelMode: get().labelMode,
+      projectId,
+      root,
+      status: 'loading',
+    });
   const r = await bridge.call('telecom:readAntennas', { projectId });
   if (seq !== loadSeq || get().projectId !== projectId) return;
   if (!r.ok || !r.value.ok) {
@@ -362,6 +374,19 @@ export function showAllAntennas(): void {
 /** Draw only one kind (the selected unit aside); null draws every kind. Never touches `hidden`. */
 export function setAntennaSolo(kind: AntennaKind | null): void {
   set({ solo: kind });
+}
+
+/** Which labels the 3D view shows (session only). */
+export function setLabelMode(mode: AntennaLabelMode): void {
+  set({ labelMode: mode });
+}
+
+const LABEL_MODES: readonly AntennaLabelMode[] = ['off', 'selected', 'all'];
+
+/** The next labels setting: off, selected, all, then off again. */
+export function cycleLabelMode(): void {
+  const at = LABEL_MODES.indexOf(get().labelMode);
+  set({ labelMode: LABEL_MODES[(at + 1) % LABEL_MODES.length] ?? 'all' });
 }
 
 /** Step the selection through the filtered list, wrapping at the ends. */

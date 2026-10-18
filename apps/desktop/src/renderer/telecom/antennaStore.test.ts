@@ -13,6 +13,7 @@ import {
   antennaStore,
   applyAiLabels,
   cancelHint,
+  cycleLabelMode,
   decideAntenna,
   getAiLabelPref,
   hideAllAntennas,
@@ -29,6 +30,7 @@ import {
   selectAntenna,
   setAiLabelPref,
   setCloudLayer,
+  setLabelMode,
   setUnitStatus,
   toggleAntennaHidden,
 } from './antennaStore';
@@ -151,6 +153,7 @@ beforeEach(() => {
     solo: null,
     note: null,
     cloudLayer: null,
+    labelMode: 'all',
   });
   localStorage.clear();
 });
@@ -824,5 +827,28 @@ describe('filteredUnits order', () => {
     const order = filteredUnits({ ...f, units }, 'all').map((u) => u.id);
     const id = (i: number) => need(units[i]).id;
     expect(order).toEqual([id(2), id(4), id(3), id(1), id(0)]);
+  });
+});
+
+describe('labels mode', () => {
+  it('starts on all and cycles off, selected, all', () => {
+    expect(antennaStore.getInitialState().labelMode).toBe('all');
+    cycleLabelMode();
+    expect(state().labelMode).toBe('off');
+    cycleLabelMode();
+    expect(state().labelMode).toBe('selected');
+    cycleLabelMode();
+    expect(state().labelMode).toBe('all');
+    setLabelMode('selected');
+    expect(state().labelMode).toBe('selected');
+  });
+
+  it('lasts the session: a project switch keeps it and nothing is written', async () => {
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+    setLabelMode('off');
+    await loadAntennas('p2', '/q');
+    expect(state().labelMode).toBe('off');
+    expect(h.calls.filter(([c]) => c === 'telecom:writeAntennas')).toHaveLength(0);
   });
 });
