@@ -241,6 +241,38 @@ describe('RfBench', () => {
     expect(workbench.getState().front).toBe('measure');
   });
 
+  it('Review in inventory with no draft still opens the Measure bench, the tab pinned', async () => {
+    antennaStore.setState({ selected: null });
+    workbench.getState().open('rf');
+    await render();
+    click(byTest('rf-step-review'));
+    expect(antennaStore.getState().selected).toBeNull();
+    expect(workbench.getState().front).toBe('measure');
+    expect(workbench.getState().tabs.find((x) => x.id === 'rf')?.pinned).toBe(true);
+  });
+
+  it('units in no sector that cannot take part are listed as not in this run', async () => {
+    h.antennas = antennasFile([
+      unit('ant-a1', 10),
+      unit('ant-a2', 130),
+      unit('ant-a3', 250, { status: 'draft' }),
+      unit('ant-a4', 300, { status: 'rejected' }),
+      unit('ant-a5', 200, { kind: 'short' }),
+    ]);
+    await render();
+    const row = () => byTest('rf-step-sector-ungrouped');
+    expect(row()?.getAttribute('data-tag')).toBe('out');
+    expect(row()?.textContent).toContain('In no sector (3)');
+    expect(row()?.textContent).toContain('not in this run');
+    expect(row()?.textContent).toContain('3 antennas that cannot take part');
+    // a neutral tag, not amber
+    expect(row()?.querySelector('.tag')?.className).toBe('tag');
+    // with drafts included, the draft could take part and needs setup
+    click(q('[data-testid="rf-step-antennas"] [role="switch"]'));
+    expect(row()?.getAttribute('data-tag')).toBe('needs-setup');
+    expect(row()?.textContent).toContain('1 antenna · equipment not picked');
+  });
+
   it('a sector row tag follows the weakest origin', async () => {
     h.antennas = antennasFile([unit('ant-a1', 10), unit('ant-a2', 130), unit('ant-a3', 250)]);
     const ai = lteSettings('ant-a1', { origins: { equipment: { by: 'ai', confidence: 'high' } } });

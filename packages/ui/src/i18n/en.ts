@@ -5314,6 +5314,11 @@ export const en = {
   'rf.steps.tag.rules': 'rules',
   'rf.steps.tag.edited': 'edited',
   'rf.steps.tag.from-export': 'from export',
+  'rf.steps.tag.out': 'not in this run',
+  'rf.steps.sectors.outOfRun_one':
+    '{count} antenna that cannot take part (draft, rejected or not a panel)',
+  'rf.steps.sectors.outOfRun_other':
+    '{count} antennas that cannot take part (drafts, rejected or not panels)',
   'rf.steps.coverage.title': 'Coverage',
   'rf.steps.coverage.noRuns': 'no runs yet',
   'rf.steps.coverage.runs_one': '{count} run',

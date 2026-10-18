@@ -29,17 +29,7 @@ import {
   type RfEnvironment,
   type RfTech,
 } from '@aio/schema';
-import {
-  Button,
-  Chip,
-  EmptyState,
-  IconButton,
-  Menu,
-  Switch,
-  useT,
-  type MessageKey,
-  type SwitchProps,
-} from '@aio/ui';
+import { Button, Chip, EmptyState, IconButton, Menu, Switch, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { clock } from '../../../processing/JobParts';
@@ -98,6 +88,7 @@ import {
 } from '../../../rf/rfText';
 import { AdvancedFold, studySummary } from '../../../rf/panel/AdvancedFold';
 import { AiCard } from '../../../rf/panel/AiCard';
+import { LabelledSwitch, fmt } from '../../../rf/panel/parts';
 import { Step } from '../../../rf/panel/Step';
 import { StepAntennas } from '../../../rf/panel/StepAntennas';
 import { StepSectors, UNGROUPED } from '../../../rf/panel/StepSectors';
@@ -223,18 +214,6 @@ function NumberField({
         if (e.key === 'Enter') commit();
       }}
     />
-  );
-}
-
-const fmt = (n: number, d = 1): string => n.toFixed(d);
-
-/** A switch with its name shown beside it (the Switch part names itself for assistive tech only). */
-function LabelledSwitch(props: SwitchProps) {
-  return (
-    <div className="rf-switch">
-      <Switch {...props} />
-      <span aria-hidden="true">{props.label}</span>
-    </div>
   );
 }
 
@@ -1515,14 +1494,14 @@ function ResultsSection() {
 // ---------------------------------------------------------------- the bench
 
 /**
- * Review in inventory: the first draft unit revealed in the Measure bench's antenna inventory.
- * The Coverage tab is pinned first, so opening the Measure bench does not close it.
+ * Review in inventory: the Measure bench's antenna inventory, with the first draft unit revealed
+ * when there is one. The Coverage tab is pinned first, so opening the Measure bench does not
+ * close it.
  */
 function reviewDrafts(firstDraftId: string | undefined): void {
-  if (firstDraftId === undefined) return;
   const wb = workbench.getState();
   if (wb.tabs.some((x) => x.id === BENCH)) wb.pin(BENCH, true);
-  revealAntenna(firstDraftId);
+  if (firstDraftId !== undefined) revealAntenna(firstDraftId);
   wb.open('measure');
 }
 

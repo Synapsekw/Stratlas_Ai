@@ -3,9 +3,10 @@
  * inventory and the "include drafts" switch (moved here from the study settings). The step is
  * done once a unit can take part: an accepted one, or a draft with drafts included.
  */
-import { Button, Switch, useT } from '@aio/ui';
+import { Button, useT } from '@aio/ui';
 import type { ReactElement, ReactNode } from 'react';
 import { setIncludeUnreviewed, useRf } from '../rfStore';
+import { LabelledSwitch } from './parts';
 import { Step } from './Step';
 
 export interface StepAntennasProps {
@@ -39,14 +40,11 @@ export function StepAntennas({
           {t('rf.steps.antennas.review')}
         </Button>
       </div>
-      <div className="rf-switch">
-        <Switch
-          checked={include}
-          label={t('rf.steps.antennas.includeDrafts')}
-          onChange={setIncludeUnreviewed}
-        />
-        <span aria-hidden="true">{t('rf.steps.antennas.includeDrafts')}</span>
-      </div>
+      <LabelledSwitch
+        checked={include}
+        label={t('rf.steps.antennas.includeDrafts')}
+        onChange={setIncludeUnreviewed}
+      />
       {children}
     </Step>
   );

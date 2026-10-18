@@ -12,6 +12,7 @@ import { useId, useMemo, type ReactElement, type ReactNode } from 'react';
 import { hex, sectorColour } from '../coverageRamp';
 import { sectorBearing } from '../rfFields';
 import { useRf } from '../rfStore';
+import { fmt } from './parts';
 import { Step } from './Step';
 import { groupTag, type StepTag } from './stepTag';
 
@@ -29,7 +30,11 @@ export interface StepSectorsProps {
   children?: ReactNode;
 }
 
-const TAG_TONE: Record<StepTag, 'acc' | 'warn' | undefined> = {
+/** A row tag: a step tag, or `out` for units in no sector that cannot take part in a run. */
+type RowTag = StepTag | 'out';
+
+const TAG_TONE: Record<RowTag, 'acc' | 'warn' | undefined> = {
+  out: undefined,
   'needs-setup': 'warn',
   'ai-low': 'warn',
   rules: undefined,
@@ -42,7 +47,7 @@ interface RowModel {
   key: string;
   title: string;
   summary: string;
-  tag: StepTag;
+  tag: RowTag;
   colour: string | null;
 }
 
@@ -109,6 +114,7 @@ export function StepSectors({
   const sectors = useRf((s) => s.sectors.sectors);
   const units = useRf((s) => s.antennas?.units);
   const rows = useRf((s) => s.rows);
+  const includeDrafts = useRf((s) => s.includeUnreviewed);
   const all = useRf((s) => s.catalogue);
   const catalogue = useMemo(() => all.map((c) => c.entry), [all]);
 
@@ -132,19 +138,30 @@ export function StepSectors({
       title:
         bearing === null
           ? sec.name
-          : t('rf.sector.chip', { name: sec.name, bearing: bearing.toFixed(0) }),
+          : t('rf.sector.chip', { name: sec.name, bearing: fmt(bearing, 0) }),
       summary: summary(inSector),
       tag: groupTag(inSector),
       colour: hex(sectorColour(i)),
     };
   });
-  const ungrouped = rows.filter((r) => r.sectorId === null).map((r) => r.settings);
+  // the units in no sector: only those that could take part (accepted panels, and draft ones
+  // with drafts included) count towards setup; the rest are listed as not in this run
+  const ungrouped = rows.filter((r) => r.sectorId === null);
+  const eligible = ungrouped
+    .filter(
+      (r) =>
+        r.kind === 'panel' && r.status !== 'rejected' && (r.status !== 'draft' || includeDrafts),
+    )
+    .map((r) => r.settings);
   if (ungrouped.length > 0)
     models.push({
       key: UNGROUPED,
       title: t('rf.sector.ungrouped', { count: ungrouped.length }),
-      summary: summary(ungrouped),
-      tag: groupTag(ungrouped),
+      summary:
+        eligible.length > 0
+          ? summary(eligible)
+          : t('rf.steps.sectors.outOfRun', { count: ungrouped.length }),
+      tag: eligible.length > 0 ? groupTag(eligible) : 'out',
       colour: null,
     });
 
