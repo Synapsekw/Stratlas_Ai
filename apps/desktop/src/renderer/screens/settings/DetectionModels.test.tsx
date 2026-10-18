@@ -26,6 +26,7 @@ vi.mock('../../shell', () => ({
   useShell: (sel: (s: object) => unknown) => sel({ settings: { inference: {} } }),
 }));
 
+import { TIP_DELAY_MS } from '@aio/ui';
 import { DetectionModels } from './DetectionModels';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,7 +88,19 @@ describe('Settings, Detection models', () => {
     expect(chip?.textContent).toBe('AGPL-3.0 · internal use');
     expect(chip?.getAttribute('data-kind')).toBe('copyleft');
     expect(chip?.className).toContain('warn');
-    expect(chip?.title).toBe(
+    // its note is the tooltip, opened from the keyboard too
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        chip?.focus();
+      });
+      act(() => {
+        vi.advanceTimersByTime(TIP_DELAY_MS);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
       'AGPL-3.0 is copyleft: fine for internal use, check before you sell or hand out this app.',
     );
     expect(rows[1]?.querySelector('[data-testid="infer-licence-warning"]')).toBeNull();

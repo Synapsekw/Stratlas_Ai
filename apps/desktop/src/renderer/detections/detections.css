@@ -153,7 +153,8 @@
    frames alike (the class colours come from @aio/annotate/detections classStyle) */
 .det-ol-halo {
   fill: none;
-  stroke: oklch(0.13 0.01 250 / 0.7);
+  stroke: var(--scrim);
+  stroke-opacity: 0.85;
   stroke-width: 3.5;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
