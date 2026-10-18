@@ -43,7 +43,7 @@ const MAX_SHIFT_M = 500;
 export function planLineUp(
   m: LineUpMeasure,
   keepId: string,
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   at: string,
 ): LineUpPlan {
   const keepIsKeep = keepId === m.keep;
@@ -72,7 +72,7 @@ export function planLineUp(
 
 /** The layers that take a date's shift: those the resolver gives a shift once the date has one. */
 function movingLayers(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   captureId: string,
 ): Set<string> {
   // the resolver answers for dates that carry a shift: give this one a stand-in to ask it
@@ -83,6 +83,7 @@ function movingLayers(
         : c,
     ),
     layers: manifest.layers,
+    origin: manifest.origin,
   };
   const of = captureIndex(manifest).of;
   return new Set(Object.keys(layerDateShifts(probe)).filter((id) => of[id] === captureId));
@@ -93,7 +94,7 @@ function movingLayers(
  * survey measurements scoped to it. Site measurements never move.
  */
 export function movesWith(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   captureId: string,
   issues: readonly Issue[],
   measurements: readonly SurveyMeasurement[],
@@ -151,7 +152,7 @@ function overlap(a: Box, b: Box): number {
  * ortho and a DSM is not measured. Pairs in `measured` (by key) are left out.
  */
 export function pairsToMeasure(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   extents: Readonly<Record<string, Box>>,
   measured: ReadonlySet<string>,
 ): LineUpPair[] {
@@ -205,7 +206,7 @@ export function pairsToMeasure(
  * the one whose imagery overlaps its own the most in plan. Null when no other date overlaps it.
  */
 export function partnerOf(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   extents: Readonly<Record<string, Box>>,
   captureId: string,
 ): string | null {

@@ -26,7 +26,7 @@ const NONE: ShiftOf = () => null;
 
 /** The shifts of a manifest's layers (none without a project). */
 export function shiftOfManifest(
-  m: Pick<ProjectManifest, 'captures' | 'layers'> | null | undefined,
+  m: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null | undefined,
 ): ShiftOf {
   return m ? (id) => dateShiftOf(m, id) : NONE;
 }
@@ -112,7 +112,7 @@ export function movedSighting(
 /** What a writer saves for a sighting picked on the open project's views: its date's own frame. */
 export function sightingInDateFrame(
   sighting: Sighting,
-  m: Pick<ProjectManifest, 'captures' | 'layers' | 'crs'> | null | undefined,
+  m: Pick<ProjectManifest, 'captures' | 'layers' | 'origin' | 'crs'> | null | undefined,
 ): Sighting {
   if (!m) return sighting;
   return movedSighting(sighting, dateShiftOf(m, sighting.layer), -1, m.crs);

@@ -46,7 +46,7 @@ export const VIEW_H = 600;
  * views of two lined-up dates line up and an issue's (lined-up) position falls on its model.
  */
 export function snapshotTransform(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   layer: Extract<Layer, { kind: 'mesh' }>,
 ): Mat4 {
   return drawnTransform(layer.transform, dateShiftOf(manifest, layer.id));

@@ -117,7 +117,7 @@ function onDatesChange(dates: StoreApi<Workspace>, redraw: () => void): () => vo
 export function shapesOf(
   s: MeasureState,
   ws: DatesOnScreen,
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null,
   north: 'project north' | 'grid north',
 ): Shape[] {
   const units = s.settings.units;
@@ -643,7 +643,7 @@ function anchorOf(points: readonly SitePoint[], closed: boolean): SitePoint | nu
 export function focusPoint(
   m: SurveyMeasurement,
   frame: Frame,
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null = openManifest(),
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null = openManifest(),
 ): { p: Vec3; distance: number } {
   const points = drawnPoints(m, manifest);
   const xs = points.map((p) => p[0]);

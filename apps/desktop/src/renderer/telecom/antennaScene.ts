@@ -62,7 +62,7 @@ export interface AntennaSceneState {
  */
 export function antennaShift(
   file: AntennasFile | null,
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null,
 ): DateShift | null {
   if (!file || !manifest) return null;
   const { captureId, cloudLayer } = file.run;
