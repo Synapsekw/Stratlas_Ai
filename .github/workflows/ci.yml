@@ -338,7 +338,8 @@ jobs:
         os: ${{ fromJSON(needs.gate.outputs.systems) }}
         part: [photo, rest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # the rest part ran 29 min of tests by Oct 2026 (2181 of them); 30 cut a green run off at the end
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash

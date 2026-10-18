@@ -7,14 +7,20 @@
 import {
   AI_LABEL_KIND,
   TOWER_HINT_NEEDED,
+  type AntennaKind,
   type AntennasFile,
   type AntennaStatus,
+  type AntennaUnit,
   type AntennaUserFields,
   type IpcResponse,
   type JobRecord,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { createStore, useStore } from 'zustand';
 import { bridge, jobs } from '../shell';
+import { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode } from './antennaVisibility';
+
+export { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode };
 
 export interface AntennaState {
   projectId: string | null;
@@ -28,6 +34,12 @@ export interface AntennaState {
   needsHint: boolean;
   selected: string | null;
   hidden: Record<string, true>;
+  /** Which review status the inventory and the walk show. */
+  filter: AntennaFilter;
+  /** Only this kind is drawn in 3D (the selected unit aside); null: every kind. */
+  solo: AntennaKind | null;
+  /** A transient status line (such as "all done"); cleared by the next selection or filter change. */
+  note: string | null;
   /** null = automatic (the newest visible cloud). */
   cloudLayer: string | null;
   /** The AI labelling request waiting for the person's yes (the send preview), if any. */
@@ -36,6 +48,8 @@ export interface AntennaState {
   aiNote: string | null;
   /** Counts the units picked in the 3D view: each pick reveals its row (0: none yet). */
   reveal: number;
+  /** Which labels the 3D view shows; for the session only, never written to the file. */
+  labelMode: AntennaLabelMode;
 }
 
 export interface AiPreview {
@@ -56,10 +70,14 @@ const initial = (): AntennaState => ({
   needsHint: false,
   selected: null,
   hidden: {},
+  filter: 'all',
+  solo: null,
+  note: null,
   cloudLayer: null,
   aiPreview: null,
   aiNote: null,
   reveal: 0,
+  labelMode: 'all',
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -90,8 +108,19 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
   watchJobs();
   const seq = ++loadSeq;
   const same = get().projectId === projectId && get().root === root;
+  const previousRunId = same ? (get().file?.run.id ?? null) : null;
   if (same) set({ status: get().file ? get().status : 'loading' });
-  else set({ ...initial(), projectId, root, status: 'loading' });
+  // the reveal count carries on: the inventory section tells a new reveal by it; the labels
+  // setting is the person's for the session
+  else
+    set({
+      ...initial(),
+      reveal: get().reveal,
+      labelMode: get().labelMode,
+      projectId,
+      root,
+      status: 'loading',
+    });
   const r = await bridge.call('telecom:readAntennas', { projectId });
   if (seq !== loadSeq || get().projectId !== projectId) return;
   if (!r.ok || !r.value.ok) {
@@ -102,7 +131,13 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
   const file = r.value.file;
   const ids = new Set(file?.units.map((u) => u.id));
   const { selected, hidden } = get();
+  // a new project or a new detection run starts on what is left to review
+  const newRun = !same || (file !== null && file.run.id !== previousRunId);
+  const startFilter: Partial<AntennaState> = newRun
+    ? { filter: file?.units.some((u) => u.status === 'draft') ? 'draft' : 'all' }
+    : {};
   set({
+    ...startFilter,
     status: 'ready',
     file,
     readOnly: r.value.readOnly,
@@ -259,7 +294,7 @@ export function patchUnitUser(id: string, fields: AntennaUserFields): Promise<vo
 }
 
 export function selectAntenna(id: string | null): void {
-  set({ selected: id });
+  set({ selected: id, note: null });
 }
 
 /** A unit picked in the 3D view: selected, and its row revealed in the inventory. */
@@ -272,6 +307,118 @@ export function toggleAntennaHidden(id: string): void {
   if (hidden[id])
     set({ hidden: Object.fromEntries(Object.entries(hidden).filter(([k]) => k !== id)) });
   else set({ hidden: { ...hidden, [id]: true } });
+}
+
+/** The order the panel groups kinds in (and the review walk steps through). */
+export const KIND_ORDER: readonly AntennaKind[] = ['panel', 'short', 'dish', 'other'];
+
+/** The units a filter shows, in the panel's order: by kind, then file order within a kind. */
+export function filteredUnits(file: AntennasFile | null, filter: AntennaFilter): AntennaUnit[] {
+  if (!file) return [];
+  const shown = filter === 'all' ? file.units : file.units.filter((u) => u.status === filter);
+  return KIND_ORDER.flatMap((k) => shown.filter((u) => u.kind === k));
+}
+
+/**
+ * Switch the filter. No selection stays none (a filter lists, it opens no card); a selection
+ * outside the new filter moves to its first unit, or to none when it is empty.
+ */
+export function setAntennaFilter(f: AntennaFilter): void {
+  const { file, selected } = get();
+  const list = filteredUnits(file, f);
+  const next =
+    selected === null || list.some((u) => u.id === selected) ? selected : (list[0]?.id ?? null);
+  set({ filter: f, note: null, selected: next });
+}
+
+/**
+ * Start reviewing the drafts (another tool's "review antennas"): the "To review" filter, its first
+ * unit in the panel's order selected and revealed (the section opens, the row scrolls into view,
+ * the camera frames it and the card shows). With no draft, the inventory section only opens.
+ */
+export function openAntennaReview(): void {
+  const first = filteredUnits(get().file, 'draft')[0];
+  set({ filter: 'draft', note: null });
+  if (first) revealAntenna(first.id);
+  else set({ selected: null, reveal: get().reveal + 1 });
+}
+
+/** The group eye: hide the whole kind when any of it shows, else show it all. */
+export function toggleGroupHidden(kind: AntennaKind): void {
+  const { file, hidden } = get();
+  const ids = (file?.units ?? []).filter((u) => u.kind === kind).map((u) => u.id);
+  if (ids.length === 0) return;
+  if (ids.some((id) => !hidden[id])) {
+    const next = { ...hidden };
+    for (const id of ids) next[id] = true;
+    set({ hidden: next });
+  } else {
+    const gone = new Set(ids);
+    set({
+      hidden: Object.fromEntries(Object.entries(hidden).filter(([k]) => !gone.has(k))),
+    });
+  }
+}
+
+export function hideAllAntennas(): void {
+  const next: Record<string, true> = {};
+  for (const u of get().file?.units ?? []) next[u.id] = true;
+  set({ hidden: next });
+}
+
+/** Show every unit: clears the hidden map and the solo. */
+export function showAllAntennas(): void {
+  set({ hidden: {}, solo: null });
+}
+
+/** Draw only one kind (the selected unit aside); null draws every kind. Never touches `hidden`. */
+export function setAntennaSolo(kind: AntennaKind | null): void {
+  set({ solo: kind });
+}
+
+/** Which labels the 3D view shows (session only). */
+export function setLabelMode(mode: AntennaLabelMode): void {
+  set({ labelMode: mode });
+}
+
+const LABEL_MODES: readonly AntennaLabelMode[] = ['off', 'selected', 'all'];
+
+/** The next labels setting: off, selected, all, then off again. */
+export function cycleLabelMode(): void {
+  const at = LABEL_MODES.indexOf(get().labelMode);
+  set({ labelMode: LABEL_MODES[(at + 1) % LABEL_MODES.length] ?? 'all' });
+}
+
+/** Step the selection through the filtered list, wrapping at the ends. */
+export function stepAntenna(dir: 1 | -1): void {
+  const { file, filter, selected } = get();
+  const list = filteredUnits(file, filter);
+  if (list.length === 0) return;
+  const at = list.findIndex((u) => u.id === selected);
+  const next = at < 0 ? (dir === 1 ? 0 : list.length - 1) : (at + dir + list.length) % list.length;
+  set({ selected: list[next]?.id ?? null, note: null });
+}
+
+/**
+ * Accept or reject the selected unit (the same again returns it to draft). When it then leaves the
+ * filter, the selection moves to the unit now at its place, or says the filter is done.
+ */
+export async function decideAntenna(status: 'accepted' | 'rejected'): Promise<void> {
+  const { file, filter, selected, readOnly } = get();
+  if (readOnly || !selected) return;
+  const current = file?.units.find((u) => u.id === selected);
+  if (!current) return;
+  const index = filteredUnits(file, filter).findIndex((u) => u.id === selected);
+  await setUnitStatus(selected, current.status === status ? 'draft' : status);
+  const after = get();
+  if (after.selected !== selected || filter === 'all' || after.filter !== filter) return;
+  const list = filteredUnits(after.file, filter);
+  if (list.some((u) => u.id === selected)) return;
+  if (list.length === 0) {
+    set({ selected: null, note: t('telecom.antennas.filterDone') });
+    return;
+  }
+  set({ selected: list[Math.min(Math.max(index, 0), list.length - 1)]?.id ?? null, note: null });
 }
 
 // ---------------------------------------------------------------- AI labels

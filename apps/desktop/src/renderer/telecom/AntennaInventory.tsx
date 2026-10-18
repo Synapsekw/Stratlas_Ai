@@ -1,26 +1,42 @@
 import type { AntennaKind, AntennasFile, AntennaStatus, AntennaUnit } from '@aio/schema';
-import { Chip, EmptyState, IconButton, Menu, Row, t, type MenuEntry } from '@aio/ui';
-import { useRef, useState, type CSSProperties, type ReactElement } from 'react';
-import { azimuthLines, formatDeg, trueAzimuth } from './antennaFormat';
+import { Button, Chip, EmptyState, IconButton, Row, t } from '@aio/ui';
+import type { CSSProperties, ReactElement } from 'react';
+import { TONE, azimuthLines, formatDeg, trueAzimuth } from './antennaFormat';
+import { KIND_COLOURS } from './antennaScene';
+import { KIND_ORDER, filteredUnits } from './antennaStore';
+import { isAntennaDrawn, type AntennaFilter } from './antennaVisibility';
 
 export interface AntennaInventoryProps {
   file: AntennasFile | null;
   selected: string | null;
   hidden: Record<string, true>;
+  solo: AntennaKind | null;
+  filter: AntennaFilter;
   readOnly: boolean;
+  /** A transient status line shown under the tabs. */
+  note?: string | null;
   onSelect: (id: string) => void;
   onToggleVisible: (id: string) => void;
-  onSetStatus: (id: string, status: AntennaStatus) => void;
-  onOpenDetails: (id: string) => void;
+  onToggleGroup: (kind: AntennaKind) => void;
+  onSolo: (kind: AntennaKind | null) => void;
+  onFilter: (f: AntennaFilter) => void;
+  onHideAll: () => void;
+  onShowAll: () => void;
 }
 
-const KINDS: readonly AntennaKind[] = ['panel', 'short', 'dish', 'other'];
-const TONE = { draft: 'warn', accepted: 'acc', rejected: 'off' } as const;
+const FILTERS: readonly AntennaFilter[] = ['draft', 'accepted', 'rejected', 'all'];
 /** Outline style carries the status beside the text chip: dashed draft, solid accepted, dotted rejected. */
 const OUTLINE: Record<AntennaStatus, CSSProperties> = {
   draft: { outline: '1px dashed var(--fg-3)', outlineOffset: -1 },
   accepted: { outline: '1px solid var(--fg-2)', outlineOffset: -1 },
   rejected: { outline: '1px dotted var(--fg-4)', outlineOffset: -1 },
+};
+
+/** The selected filter tab (aria-selected carries the state; a tab takes no aria-pressed). */
+const TAB_ON: CSSProperties = {
+  background: 'var(--acc-a20)',
+  borderColor: 'var(--acc-a40)',
+  color: 'var(--acc-strong)',
 };
 
 /** The north every azimuth of the file is from, or null when the units mix them. */
@@ -65,11 +81,9 @@ interface UnitRowProps {
   north: North;
   selected: boolean;
   hidden: boolean;
-  readOnly: boolean;
+  drawn: boolean;
   onSelect: (id: string) => void;
   onToggleVisible: (id: string) => void;
-  onSetStatus: (id: string, status: AntennaStatus) => void;
-  onOpenDetails: (id: string) => void;
 }
 
 function UnitRow({
@@ -77,44 +91,12 @@ function UnitRow({
   north,
   selected,
   hidden,
-  readOnly,
+  drawn,
   onSelect,
   onToggleVisible,
-  onSetStatus,
-  onOpenDetails,
 }: UnitRowProps): ReactElement {
-  const [open, setOpen] = useState(false);
-  const opener = useRef<HTMLButtonElement>(null);
   const az = rowAzimuth(unit, north);
   const name = unit.name;
-  const items: MenuEntry[] = [
-    {
-      id: 'accept',
-      label: t('telecom.antennas.accept'),
-      icon: 'check',
-      onSelect: () => {
-        onSetStatus(unit.id, 'accepted');
-      },
-      ...(readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {}),
-    },
-    {
-      id: 'reject',
-      label: t('telecom.antennas.reject'),
-      icon: 'x',
-      onSelect: () => {
-        onSetStatus(unit.id, 'rejected');
-      },
-      ...(readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {}),
-    },
-    'separator',
-    {
-      id: 'details',
-      label: t('telecom.antennas.details'),
-      onSelect: () => {
-        onOpenDetails(unit.id);
-      },
-    },
-  ];
   return (
     <Row
       kind="tree"
@@ -124,7 +106,7 @@ function UnitRow({
       data-testid="antenna-row"
       data-status={unit.status}
       selected={selected}
-      style={OUTLINE[unit.status]}
+      style={{ ...OUTLINE[unit.status], ...(drawn ? {} : { opacity: 0.45 }) }}
       tabIndex={0}
       onClick={() => {
         onSelect(unit.id);
@@ -158,42 +140,20 @@ function UnitRow({
         </span>
       }
       actions={
-        <>
-          <IconButton
-            icon={hidden ? 'eye-off' : 'eye'}
-            label={t(hidden ? 'telecom.antennas.show' : 'telecom.antennas.hide', { name })}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleVisible(unit.id);
-            }}
-          />
-          <IconButton
-            ref={opener}
-            icon="more"
-            label={t('telecom.antennas.more', { name })}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen((o) => !o);
-            }}
-          />
-          <Menu
-            open={open}
-            onClose={() => {
-              setOpen(false);
-            }}
-            opener={opener}
-            label={t('telecom.antennas.more', { name })}
-            items={items}
-          />
-        </>
+        <IconButton
+          icon={hidden ? 'eye-off' : 'eye'}
+          label={t(hidden ? 'telecom.antennas.show' : 'telecom.antennas.hide', { name })}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleVisible(unit.id);
+          }}
+        />
       }
     />
   );
 }
 
-/** The antenna inventory: units grouped by kind under a summary line, with no chrome of its own. */
+/** The antenna inventory: filter tabs and units grouped by kind under a summary line. */
 export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
   const { file } = props;
   if (!file)
@@ -222,47 +182,150 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
   ]
     .filter((s): s is string => s !== null)
     .join(' · ');
+  const listed = filteredUnits(file, props.filter);
+  const vis = { selected: props.selected, hidden: props.hidden, solo: props.solo };
   return (
     // minmax(0, 1fr): a long row ellipsizes in a narrow aside instead of widening the column
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--sp-4)' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-4)' }}>
+        <Button size="sm" data-testid="antenna-hide-all" onClick={props.onHideAll}>
+          {t('telecom.antennas.hideAll')}
+        </Button>
+        <Button size="sm" data-testid="antenna-show-all" onClick={props.onShowAll}>
+          {t('telecom.antennas.showAll')}
+        </Button>
+      </div>
       <p className="mono" data-testid="antenna-summary" style={{ margin: 0 }}>
         {summary}
       </p>
-      <div role="tree" aria-label={t('telecom.antennas.title')}>
-        {KINDS.map((kind) => {
-          const units = file.units.filter((u) => u.kind === kind);
-          if (units.length === 0) return null;
-          return (
-            <div key={kind} role="group" aria-label={t(`telecom.antennas.kind.${kind}`)}>
-              {/* the group's label says it; a tree holds groups and items, not headings */}
-              <h4
-                aria-hidden="true"
-                style={{
-                  margin: 0,
-                  padding: 'var(--sp-3) var(--sp-4)',
-                  fontSize: 'var(--t-title)',
-                }}
-              >
-                {t(`telecom.antennas.kind.${kind}`)}
-              </h4>
-              {units.map((u) => (
-                <UnitRow
-                  key={u.id}
-                  unit={u}
-                  north={north}
-                  selected={props.selected === u.id}
-                  hidden={props.hidden[u.id] === true}
-                  readOnly={props.readOnly}
-                  onSelect={props.onSelect}
-                  onToggleVisible={props.onToggleVisible}
-                  onSetStatus={props.onSetStatus}
-                  onOpenDetails={props.onOpenDetails}
-                />
-              ))}
-            </div>
-          );
-        })}
+      <div
+        role="tablist"
+        aria-label={t('telecom.antennas.title')}
+        style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap' }}
+      >
+        {FILTERS.map((f) => (
+          <Button
+            key={f}
+            size="sm"
+            role="tab"
+            aria-selected={props.filter === f}
+            tabIndex={props.filter === f ? 0 : -1}
+            style={props.filter === f ? TAB_ON : undefined}
+            data-testid={`antenna-filter-${f}`}
+            onClick={() => {
+              props.onFilter(f);
+            }}
+            onKeyDown={(e) => {
+              const at = FILTERS.indexOf(f);
+              const next =
+                e.key === 'ArrowRight'
+                  ? (at + 1) % FILTERS.length
+                  : e.key === 'ArrowLeft'
+                    ? (at + FILTERS.length - 1) % FILTERS.length
+                    : e.key === 'Home'
+                      ? 0
+                      : e.key === 'End'
+                        ? FILTERS.length - 1
+                        : -1;
+              if (next < 0) return;
+              e.preventDefault();
+              const target = FILTERS[next];
+              if (!target) return;
+              props.onFilter(target);
+              e.currentTarget.parentElement
+                ?.querySelector<HTMLElement>(`[data-testid="antenna-filter-${target}"]`)
+                ?.focus();
+            }}
+          >
+            {`${t(`telecom.antennas.filter.${f}`)} ${filteredUnits(file, f).length}`}
+          </Button>
+        ))}
       </div>
+      {props.note ? (
+        <p className="telecom-help telecom-note" role="status" data-testid="antenna-note">
+          {props.note}
+        </p>
+      ) : null}
+      {listed.length === 0 ? (
+        <EmptyState title={t('telecom.antennas.filter.empty')} />
+      ) : (
+        // the review keys step the card from a focused row (useAntennaKeys)
+        <div role="tree" data-antenna-tree="" aria-label={t('telecom.antennas.title')}>
+          {KIND_ORDER.map((kind) => {
+            const units = listed.filter((u) => u.kind === kind);
+            if (units.length === 0) return null;
+            const allHidden = file.units
+              .filter((u) => u.kind === kind)
+              .every((u) => props.hidden[u.id] === true);
+            const label = t(`telecom.antennas.kind.${kind}`);
+            return (
+              <div key={kind} role="treeitem" aria-expanded="true" aria-label={label}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--sp-4)',
+                    padding: 'var(--sp-3) var(--sp-4)',
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 10,
+                      height: 10,
+                      flex: 'none',
+                      borderRadius: 2,
+                      background: KIND_COLOURS[kind],
+                    }}
+                  />
+                  {/* the group's label says it; a tree holds groups and items, not headings */}
+                  <h4
+                    aria-hidden="true"
+                    style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 'var(--t-title)' }}
+                  >
+                    {label}
+                  </h4>
+                  <span className="mono">{units.length}</span>
+                  <IconButton
+                    icon={allHidden ? 'eye-off' : 'eye'}
+                    label={t(
+                      allHidden ? 'telecom.antennas.group.show' : 'telecom.antennas.group.hide',
+                      { name: label },
+                    )}
+                    data-testid={`antenna-group-eye-${kind}`}
+                    onClick={() => {
+                      props.onToggleGroup(kind);
+                    }}
+                  />
+                  <IconButton
+                    icon="target"
+                    label={t('telecom.antennas.group.solo', { name: label })}
+                    pressed={props.solo === kind}
+                    data-testid={`antenna-group-solo-${kind}`}
+                    onClick={() => {
+                      props.onSolo(props.solo === kind ? null : kind);
+                    }}
+                  />
+                </div>
+                <div role="group">
+                  {units.map((u) => (
+                    <UnitRow
+                      key={u.id}
+                      unit={u}
+                      north={north}
+                      selected={props.selected === u.id}
+                      hidden={props.hidden[u.id] === true}
+                      drawn={isAntennaDrawn(vis, u)}
+                      onSelect={props.onSelect}
+                      onToggleVisible={props.onToggleVisible}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

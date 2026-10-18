@@ -20,7 +20,14 @@ import { measureStore, startTool, stopTool } from '../survey/measureStore';
 import { MeasureBench } from '../workspace/workbench/benches/MeasureBench';
 import { AntennaRunner } from './AntennaRunner';
 import { sectionStore } from '../workspace/workbench/sectionState';
-import { antennaStore, loadAntennas, runDetection, setAiLabelPref } from './antennaStore';
+import {
+  antennaStore,
+  filteredUnits,
+  loadAntennas,
+  openAntennaReview,
+  runDetection,
+  setAiLabelPref,
+} from './antennaStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -76,6 +83,7 @@ vi.mock('../workspace/StageTools', async (importOriginal) => ({
   useEngineStage: () => null,
 }));
 vi.mock('./antennaScene', () => ({
+  KIND_COLOURS: { panel: '#111', short: '#222', dish: '#333', other: '#444' },
   attachAntennaLayer: (_stage: unknown, _frame: unknown, opts: { onPick(id: string): void }) => {
     h.layerPick = (id) => {
       opts.onPick(id);
@@ -86,7 +94,12 @@ vi.mock('./antennaScene', () => ({
   },
   armTowerPick: () => () => undefined,
   antennaShift: () => null,
+  antennaLabelSpots: () => [],
+  labelSpotsCache: () => () => [],
 }));
+// the labels and the camera framing are the runner's own tests
+vi.mock('./antennaLabels', () => ({ attachAntennaLabels: () => () => undefined }));
+vi.mock('../workspace/flyToBox', () => ({ flyToLocalBox: () => undefined }));
 vi.mock('../builder/photoOpen', () => ({ openPhoto: () => undefined }));
 // the site data tools are their own screens: here only that the bench lists them
 vi.mock('../survey/ExportDialog', () => ({
@@ -238,6 +251,13 @@ describe('the antenna inventory in the Measure workbench', () => {
     await mount();
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
     expect(head()?.textContent).toContain('Antenna inventory');
+    // the review filter starts on the drafts; the All tab lists every unit
+    expect(section()?.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(2);
+    expect(q('[data-testid="antenna-filter-all"]')?.textContent).toBe('All 3');
+    await act(async () => {
+      q('[data-testid="antenna-filter-all"]')!.click();
+      await Promise.resolve();
+    });
     expect(section()?.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(3);
     const exp = q('[data-testid="survey-export-open"]')!;
     const csv = q('[aria-label="Export antenna inventory (CSV)"]')!;
@@ -368,6 +388,61 @@ describe('the antenna inventory in the Measure workbench', () => {
       head()!.click();
     });
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
+  });
+});
+
+describe('openAntennaReview (another tool asks for the review)', () => {
+  it('opens a folded section on the first draft and scrolls its row into view', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await mount();
+    act(() => {
+      head()!.click();
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+    const s = antennaStore.getState();
+    const first = filteredUnits(s.file, 'draft')[0]!.id;
+    act(() => {
+      openAntennaReview();
+    });
+    expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: first });
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
+  });
+
+  it('with no draft, opens the section with nothing selected until the header folds it', async () => {
+    const f = sample();
+    h.disk = { ...f, units: f.units.map((u) => ({ ...u, status: 'accepted' as const })) };
+    await mount();
+    act(() => {
+      head()!.click();
+    });
+    act(() => {
+      openAntennaReview();
+    });
+    expect(antennaStore.getState().selected).toBeNull();
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    expect(q('[data-testid="antenna-filter-draft"]')?.getAttribute('aria-selected')).toBe('true');
+    act(() => {
+      head()!.click();
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('opens the section when it mounts after the call (another tab was in front)', async () => {
+    await mount();
+    act(() => {
+      head()!.click();
+    });
+    await mount('none');
+    act(() => {
+      openAntennaReview();
+    });
+    await mount();
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    expect(antennaStore.getState().selected).not.toBeNull();
   });
 });
 

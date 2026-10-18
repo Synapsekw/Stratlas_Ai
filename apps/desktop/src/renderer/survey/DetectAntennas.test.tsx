@@ -82,6 +82,8 @@ vi.mock('@aio/engine', () => {
 
 vi.mock('../telecom/antennaScene', () => ({
   antennaShift: () => null,
+  antennaLabelSpots: () => [],
+  labelSpotsCache: () => () => [],
   attachAntennaLayer: (_stage: unknown, _frame: unknown, opts: { onPick(id: string): void }) => {
     h.layerPick = (id) => {
       opts.onPick(id);
@@ -95,6 +97,8 @@ vi.mock('../telecom/antennaScene', () => ({
 }));
 
 vi.mock('../builder/photoOpen', () => ({ openPhoto: () => undefined }));
+vi.mock('../telecom/antennaLabels', () => ({ attachAntennaLabels: () => () => undefined }));
+vi.mock('../workspace/flyToBox', () => ({ flyToLocalBox: () => undefined }));
 
 const shell = await import('../shell');
 // eslint-disable-next-line @typescript-eslint/unbound-method -- a vi.fn, no `this`

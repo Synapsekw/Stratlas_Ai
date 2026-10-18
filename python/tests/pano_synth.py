@@ -11,6 +11,8 @@ Two capture patterns, as on the two reference sites of the spec (names withheld)
 
 The gimbal angles written are the true ones turned by a small world-frame rotation (zero mean over
 the sphere), so a stitch that recovers the truth within 0.2 degrees has fixed the metadata error.
+Optionally every frame has its own exposure (stops off the scene, with EXIF exposure time,
+f-number and ISO to match) and the lens darkens towards the corners, both in linear light.
 Run as a script for the e2e folder: ``python pano_synth.py <out> --spheres 3 --strays 4``.
 """
 
@@ -91,6 +93,34 @@ def render_frame(scene: np.ndarray, rot: np.ndarray, width: int, height: int, f:
     return cv2.remap(scene, u, v, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
 
 
+#: Exposure of a frame at 0 stops: 1/500 s at f/5.6, ISO 100 (EV100 about 14).
+BASE_EXPOSURE_S = 1 / 500
+F_NUMBER = 5.6
+ISO = 100
+
+
+def exposure_offsets(n: int, seed: int, max_stops: float = 1.0) -> list[float]:
+    """Stops off the scene per frame, uniform within +-max_stops."""
+    return np.random.default_rng(seed).uniform(-max_stops, max_stops, n).round(3).tolist()
+
+
+def expose(img: np.ndarray, stops: float = 0.0, vignette: float = 0.0) -> np.ndarray:
+    """A frame shot `stops` brighter (negative: darker), its linear light times
+    exp(vignette * r^2) with r = 1 at the image corner; sRGB in and out, clipped."""
+    c = img.astype(np.float32) / 255.0
+    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    lin *= np.float32(2.0**stops)
+    if vignette:
+        h, w = img.shape[:2]
+        cx, cy = principal(w, h)
+        xs = (np.arange(w, dtype=np.float32) - cx) ** 2
+        ys = (np.arange(h, dtype=np.float32) - cy) ** 2
+        lin *= np.exp(vignette * (ys[:, None] + xs[None]) / np.float32(cx * cx + cy * cy))[..., None]
+    lin = np.clip(lin, 0.0, 1.0)
+    s = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
+    return np.clip(s * 255.0 + 0.5, 0, 255).astype(np.uint8)
+
+
 def xmp_packet(fields: dict[str, float]) -> bytes:
     attrs = "\n".join(f'   drone-dji:{k}="{v:+.6f}"' for k, v in fields.items())
     xml = (
@@ -112,13 +142,19 @@ def write_frame(
     abs_alt: float,
     rel_alt: float,
     taken_at: datetime,
+    stops: float | None = None,
 ) -> None:
-    """A JPEG with DJI-like EXIF and XMP."""
+    """A JPEG with DJI-like EXIF and XMP; with `stops`, the EXIF exposure of a frame shot that
+    much brighter than the base exposure (a longer exposure time)."""
     exif = Image.Exif()
     exif[0x010F] = "DJI"
     ifd = exif.get_ifd(0x8769)
     ifd[0x9003] = taken_at.strftime("%Y:%m:%d %H:%M:%S")
     ifd[0xA405] = round(focal35)
+    if stops is not None:
+        ifd[0x829A] = BASE_EXPOSURE_S * 2.0**stops
+        ifd[0x829D] = F_NUMBER
+        ifd[0x8827] = ISO
     pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     buf = io.BytesIO()
     pil.save(buf, "JPEG", quality=92, exif=exif.tobytes())
@@ -176,8 +212,12 @@ def make_sphere(
     focal_error: float = 0.0,
     blank: tuple[int, ...] = (),
     origin: tuple[float, float] = (LAT, LON),
+    exposure: list[float] | int | None = None,
+    vignette: float = 0.0,
 ) -> list[SynthFrame]:
-    """Render one sphere into ``folder`` as ``SYN_<no>.JPG`` (numbers wrap after 0999)."""
+    """Render one sphere into ``folder`` as ``SYN_<no>.JPG`` (numbers wrap after 0999).
+    ``exposure``: stops per frame, or a seed for ``exposure_offsets``; ``vignette``: the log
+    falloff at the corner (``expose``)."""
     scene = make_scene() if scene is None else scene
     shots = PATTERNS[pattern] if shots is None else shots
     focal35 = focal35 if focal35 is not None else (28.0 if pattern == "rows" else 24.0)
@@ -187,6 +227,8 @@ def make_sphere(
     rng = np.random.default_rng(seed + 1000)
     lat0 = origin[0] + north_m / M_PER_DEG
     lon0 = origin[1] + east_m / (M_PER_DEG * math.cos(math.radians(origin[0])))
+    if isinstance(exposure, int):
+        exposure = exposure_offsets(len(shots), exposure)
     out: list[SynthFrame] = []
     t = 0.0
     for k, (yaw, pitch) in enumerate(shots):
@@ -195,13 +237,17 @@ def make_sphere(
         g = gimbal_from_rot(seeded)
         no = (first_no + k - 1) % 999 + 1
         path = folder / f"SYN_{no:04d}.JPG"
+        img = (
+            np.full((height, width, 3), 128, np.uint8)
+            if k in blank
+            else render_frame(scene, truth, width, height, f * (1 + focal_error))
+        )
+        stops = None if exposure is None else float(exposure[k])
+        if stops is not None or vignette:
+            img = expose(img, stops or 0.0, vignette)
         write_frame(
             path,
-            (
-                np.full((height, width, 3), 128, np.uint8)
-                if k in blank
-                else render_frame(scene, truth, width, height, f * (1 + focal_error))
-            ),
+            img,
             gimbal=g,
             focal35=focal35,
             lat=lat0 + rng.uniform(-0.5, 0.5) / M_PER_DEG,
@@ -209,6 +255,7 @@ def make_sphere(
             abs_alt=620.0 + rng.uniform(-0.5, 0.5),
             rel_alt=70.0 + rng.uniform(-0.5, 0.5),
             taken_at=start + timedelta(seconds=t),
+            stops=stops,
         )
         out.append(SynthFrame(path, truth, g))
         t += 6 if pattern == "rows" else (5 if k % 3 == 2 else 1)
