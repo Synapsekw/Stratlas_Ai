@@ -781,6 +781,18 @@ button.chip-status:hover {
 .app[data-sb='collapsed'] .titem {
   display: none;
 }
+/* a measurement row: its colour swatch, and dimmed while its survey date is hidden */
+.tsw {
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: var(--r-2);
+  background: var(--sw);
+  flex: none;
+}
+.titem.dim .tn,
+.titem.dim .tm {
+  opacity: 0.55;
+}
 .sb-foot {
   border-top: 1px solid var(--line-soft);
   padding: 8px;

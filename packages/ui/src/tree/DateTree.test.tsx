@@ -547,3 +547,55 @@ describe('DateTree: a whole group onto a date folder', () => {
     );
   });
 });
+
+describe('DateTree: groups below the date folders', () => {
+  const measured = (): TreeGroup => ({
+    kind: 'measurements',
+    label: 'Measurements',
+    icon: 'measure',
+    count: 2,
+    items: ['a', 'b'].map((id) => ({
+      id: `measure:${id}`,
+      name: `Line ${id}`,
+      measure: { id, color: '#ffd166', dimmed: false },
+    })),
+  });
+
+  it('draws the after groups once, below the folders', () => {
+    const onMark = vi.fn();
+    render('nov', {}, vi.fn(), {
+      after: [measured()],
+      onMark,
+      defaultOpen: ['models', 'measurements'],
+      measures: {
+        hidden: {},
+        selectedId: null,
+        onSetVisible: vi.fn(),
+        onSelect: vi.fn(),
+        onMenu: vi.fn(),
+        renaming: null,
+        onRename: vi.fn(),
+        onRenameEnd: vi.fn(),
+        newFolder: null,
+        onNewFolder: vi.fn(),
+        reveal: null,
+      },
+    });
+    const tree = host.querySelector('[role="tree"]');
+    expect(host.querySelectorAll('[data-testid="measure-row"]').length).toBe(2);
+    expect(host.querySelectorAll('[data-testid="tree-group-measurements"]').length).toBe(1);
+    expect(tree?.lastElementChild?.textContent).toContain('Measurements');
+    expect(tree?.lastElementChild?.getAttribute('role')).toBe('group');
+    // one tree: a Shift range runs over the date folders' rows and the measurements
+    const a = host.querySelector('[data-testid="measure-row"][data-id="a"] .tn');
+    act(() => {
+      a?.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    });
+    expect(onMark).toHaveBeenCalledWith('measure:a', { ctrl: true, shift: false }, [
+      'site',
+      'm-nov',
+      'measure:a',
+      'measure:b',
+    ]);
+  });
+});

@@ -81,6 +81,7 @@ export {
   menuPoint,
   type DatasetTreeProps,
   type GroupFold,
+  type MeasureTreeProps,
   type MenuPoint,
 } from './tree/DatasetTree';
 export { RenameField } from './tree/RenameField';

@@ -14,7 +14,13 @@ import {
 } from './DatasetTree';
 import { RenameField } from './RenameField';
 import { EVERY_DATE, dateIcon, dropCapture, type DateFolder } from './dateModel';
-import { datableLayerIds, groupDatableLayerIds, type TreeGroupKind, type TreeItem } from './model';
+import {
+  datableLayerIds,
+  groupDatableLayerIds,
+  type TreeGroup,
+  type TreeGroupKind,
+  type TreeItem,
+} from './model';
 
 /** A folder's menu was asked for: where, and how the folder stands in the tree right now. */
 export interface DateFolderMenuRequest extends MenuPoint {
@@ -72,6 +78,11 @@ export interface DateTreeProps extends Omit<
   onRename?: ((capture: string, name: string) => void) | undefined;
   /** The name field closed (committed or cancelled). */
   onRenameEnd?: (() => void) | undefined;
+  /**
+   * Groups of no survey date (Measurements), drawn once below the date folders in the same tree,
+   * with the same row props.
+   */
+  after?: readonly TreeGroup[] | undefined;
 }
 
 export function DateTree(props: DateTreeProps) {
@@ -88,6 +99,7 @@ export function DateTree(props: DateTreeProps) {
     onRenameStart,
     onRename,
     onRenameEnd,
+    after,
     ...rest
   } = props;
   const t = useT();
@@ -362,6 +374,9 @@ export function DateTree(props: DateTreeProps) {
             </span>
           </div>
         </div>
+      )}
+      {after && after.length > 0 && (
+        <DatasetTree {...rest} hidden={hidden} groups={after} collapsed={false} nested />
       )}
     </div>
   );

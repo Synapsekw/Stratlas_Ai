@@ -3,6 +3,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -10,9 +11,13 @@ import {
 } from 'react';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
+import { Tip } from '../Tip';
 import {
   eyeTarget,
   groupLayerIds,
+  groupMeasureIds,
+  itemMeasureIds,
+  measureMark,
   visibilityOf,
   type TreeGroup,
   type TreeGroupKind,
@@ -104,7 +109,36 @@ export interface DatasetTreeProps {
    * flight or date folder, or behind "more", are not in it (a Shift range runs over it).
    */
   onMark?: ((layerId: string, mods: MarkMods, order: readonly string[]) => void) | undefined;
+  /**
+   * The rows of the Measurements group: their eyes, selection, menu, rename, folders. Marks go
+   * through `onMark` as `measureMark(id)`, so a Shift range runs over layers and measurements.
+   */
+  measures?: MeasureTreeProps | undefined;
 }
+
+/** What the tree needs to draw the Measurements group (measurement rows and their folders). */
+export interface MeasureTreeProps {
+  /** Ids hidden by their own eye (measureStore.hiddenMeasurements as a record). */
+  hidden: Readonly<Record<string, true>>;
+  /** measureStore.focus, drawn selected. */
+  selectedId: string | null;
+  onSetVisible: (ids: string[], visible: boolean) => void;
+  onSelect: (id: string) => void;
+  onMenu: (id: string, at: MenuPoint) => void;
+  /** The measurement whose name is a field now; F2 starts it (undefined: read-only). */
+  renaming: string | null;
+  onRenameStart?: ((id: string) => void) | undefined;
+  onRename: (id: string, label: string) => void;
+  onRenameEnd: () => void;
+  /** A new folder row in rename mode at the top of the group; onNewFolder(null) on cancel. */
+  newFolder: { ids: readonly string[]; seq: number } | null;
+  onNewFolder: (name: string | null) => void;
+  /** Open the group (and the folder holding `id`), show the row past "more", scroll it into view. */
+  reveal: { id: string | null; seq: number } | null;
+}
+
+/** Measurement labels and folder names take up to 200 characters. */
+const MEASURE_NAME_MAX = 200;
 
 /**
  * The layer rows drawn under the tree around `row`, top to bottom. The trees are not virtualised,
@@ -178,6 +212,17 @@ const DEFAULT_OPEN: TreeGroupKind[] = [
 /** Rows shown per group before a "more" row; selected and active rows always show. */
 const ROW_LIMIT = 8;
 
+/** The rows drawn of a list capped at `ROW_LIMIT`, and how many wait behind "more". */
+function capRows(
+  items: readonly TreeItem[],
+  all: boolean,
+  keep: (it: TreeItem) => boolean,
+): { rows: readonly TreeItem[]; behind: number } {
+  if (all || items.length <= ROW_LIMIT + 1) return { rows: items, behind: 0 };
+  const rows = items.filter((it, i) => i < ROW_LIMIT || keep(it));
+  return { rows, behind: items.length - rows.length };
+}
+
 const EYE_ICON = { all: 'eye', none: 'eye-off', mixed: 'eye-mixed' } as const;
 
 /**
@@ -249,6 +294,93 @@ export function DatasetTree(props: DatasetTreeProps) {
     pendingFocus.current = null;
     rowEls.current.get(id)?.focus();
   });
+
+  const measures = props.measures;
+  /** Measurement folders opened or closed by hand (open by default), and those showing every row. */
+  const [folderOpen, setFolderOpen] = useState<Record<string, boolean>>({});
+  const [folderAll, setFolderAll] = useState<Record<string, boolean>>({});
+  /**
+   * The measurement a reveal asked for: it shows past "more" from then on. Adjusted during render
+   * on a new `seq`, as the unplace request is: open the group and the folder that holds it.
+   */
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [seenReveal, setSeenReveal] = useState(measures?.reveal?.seq ?? 0);
+  if (measures?.reveal && measures.reveal.seq !== seenReveal) {
+    const { id, seq } = measures.reveal;
+    setSeenReveal(seq);
+    setRevealed(id);
+    setOpen((o) => ({ ...o, measurements: true }));
+    const holder =
+      id === null
+        ? undefined
+        : groups
+            .find((g) => g.kind === 'measurements')
+            ?.items.find((it) => it.folder !== undefined && itemMeasureIds(it).includes(id));
+    const name = holder?.folder;
+    if (name !== undefined) {
+      setFolderOpen((o) => ({ ...o, [name]: true }));
+      setFolderAll((o) => ({ ...o, [name]: true }));
+    }
+  }
+  /** The reveal last scrolled to; a later one scrolls once its row (or the group) is drawn. */
+  const scrolledReveal = useRef(seenReveal);
+  const measureHead = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (scrolledReveal.current === seenReveal || collapsed) return;
+    const el = revealed === null ? measureHead.current : rowEls.current.get(measureMark(revealed));
+    if (!el) return;
+    scrolledReveal.current = seenReveal;
+    // jsdom has no scrollIntoView
+    if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
+  });
+  /** The new folder request whose field has closed (the caller clears the request after). */
+  const [newFolderDone, setNewFolderDone] = useState<number | null>(null);
+  const [seenNewFolder, setSeenNewFolder] = useState<number | null>(null);
+  const newFolderSeq = measures?.newFolder?.seq ?? null;
+  if (newFolderSeq !== null && newFolderSeq !== seenNewFolder) {
+    setSeenNewFolder(newFolderSeq);
+    setOpen((o) => ({ ...o, measurements: true }));
+  }
+
+  /**
+   * Ctrl+Space (Meta+Space on a Mac) toggles the focused row's mark; Shift+ArrowUp/Down moves to
+   * the next drawn row and marks the range up to it. True when the key was a mark key.
+   */
+  const markKey = (e: KeyboardEvent<HTMLElement>, id: string): boolean => {
+    const onMark = props.onMark;
+    if (!onMark) return false;
+    if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      onMark(id, { ctrl: true, shift: false }, drawnOrder(e.currentTarget));
+      return true;
+    }
+    if (e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      const drawn = drawnRows(e.currentTarget);
+      const at = drawn.indexOf(e.currentTarget);
+      const to = at < 0 ? undefined : drawn[at + (e.key === 'ArrowDown' ? 1 : -1)];
+      const toId = to?.dataset.mark;
+      if (!to || toId === undefined) return true;
+      to.focus();
+      onMark(
+        toId,
+        { ctrl: false, shift: true, from: id },
+        drawn.map((el) => el.dataset.mark ?? ''),
+      );
+      return true;
+    }
+    return false;
+  };
+
+  /** A "more" row under capped rows, and "Show fewer" once they all show. */
+  const moreRow = (behind: number, showingAll: boolean, count: number, toggle: () => void) =>
+    behind > 0 || (showingAll && count > ROW_LIMIT + 1) ? (
+      <button type="button" className="titem more" onClick={toggle}>
+        <span className="tn">
+          {behind > 0 ? t('tree.row.more', { count: behind }) : t('tree.row.fewer')}
+        </span>
+      </button>
+    ) : null;
 
   /**
    * Open, Place walk (Edit placement and Remove placement once placed) and Remove walk on a walk
@@ -450,37 +582,7 @@ export function DatasetTree(props: DatasetTreeProps) {
             props.onRenameLayerStart(it.layerId);
             return;
           }
-          const onMark = props.onMark;
-          const id = it.layerId;
-          if (onMark && id !== undefined && e.key === ' ' && (e.ctrlKey || e.metaKey)) {
-            // Ctrl+Space (Meta+Space on a Mac) toggles this row's mark
-            e.preventDefault();
-            onMark(id, { ctrl: true, shift: false }, drawnOrder(e.currentTarget));
-            return;
-          }
-          if (
-            onMark &&
-            id !== undefined &&
-            e.shiftKey &&
-            !e.ctrlKey &&
-            !e.metaKey &&
-            (e.key === 'ArrowDown' || e.key === 'ArrowUp')
-          ) {
-            // Shift+ArrowUp/Down moves to the next drawn row and marks the range up to it
-            e.preventDefault();
-            const drawn = drawnRows(e.currentTarget);
-            const at = drawn.indexOf(e.currentTarget);
-            const to = at < 0 ? undefined : drawn[at + (e.key === 'ArrowDown' ? 1 : -1)];
-            const toId = to?.dataset.mark;
-            if (!to || toId === undefined) return;
-            to.focus();
-            onMark(
-              toId,
-              { ctrl: false, shift: true, from: id },
-              drawn.map((el) => el.dataset.mark ?? ''),
-            );
-            return;
-          }
+          if (it.layerId !== undefined && markKey(e, it.layerId)) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             props.onSelect(it);
@@ -640,6 +742,206 @@ export function DatasetTree(props: DatasetTreeProps) {
     );
   };
 
+  /** A measurement row: swatch, label (or its name field), value and its own eye. */
+  const measureRow = (it: TreeItem, mp: MeasureTreeProps, sub: boolean) => {
+    const ms = it.measure;
+    if (!ms) return null;
+    const off = mp.hidden[ms.id] === true;
+    const sel = ms.id === mp.selectedId;
+    const mark = measureMark(ms.id);
+    const marked = props.marked?.has(mark) === true;
+    const renamingHere = mp.renaming === ms.id;
+    const line = (
+      <div
+        key={it.id}
+        role="treeitem"
+        aria-selected={sel || marked}
+        ref={(el) => {
+          if (el) rowEls.current.set(it.id, el);
+          else rowEls.current.delete(it.id);
+        }}
+        tabIndex={0}
+        className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${marked ? ' marked' : ''}${off ? ' hidden' : ''}${ms.dimmed ? ' dim' : ''}`}
+        data-testid="measure-row"
+        data-id={ms.id}
+        data-mark={props.onMark ? mark : undefined}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          mp.onMenu(ms.id, menuPoint(e));
+        }}
+        onClick={(e) => {
+          const mods = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
+          if ((mods.ctrl || mods.shift) && props.onMark) {
+            e.preventDefault();
+            props.onMark(mark, mods, drawnOrder(e.currentTarget));
+            return;
+          }
+          mp.onSelect(ms.id);
+        }}
+        onKeyDown={(e) => {
+          // keys on the eye or in the name field are theirs
+          if (e.target !== e.currentTarget) return;
+          if (isMenuKey(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+            mp.onMenu(ms.id, keyMenuPoint(e.currentTarget));
+            return;
+          }
+          if (e.key === 'F2' && mp.onRenameStart) {
+            e.preventDefault();
+            mp.onRenameStart(ms.id);
+            return;
+          }
+          if (markKey(e, mark)) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            mp.onSelect(ms.id);
+          }
+        }}
+      >
+        <span className="tsw" style={{ '--sw': ms.color } as CSSProperties} aria-hidden="true" />
+        {renamingHere ? (
+          <RenameField
+            testId="measure-rename"
+            initial={it.name}
+            label={t('tree.renameLayer', { name: it.name })}
+            placeholder={it.name}
+            maxLength={MEASURE_NAME_MAX}
+            onCommit={(n) => {
+              mp.onRename(ms.id, n);
+            }}
+            onEnd={(how) => {
+              mp.onRenameEnd();
+              if (how !== 'blur') pendingFocus.current = it.id;
+            }}
+          />
+        ) : (
+          <span className="tn">{it.name}</span>
+        )}
+        {it.meta && <span className="tm">{it.meta}</span>}
+        <button
+          type="button"
+          className={`eye${off ? ' off' : ''}`}
+          aria-label={t(off ? 'tree.row.show' : 'tree.row.hide', { name: it.name })}
+          aria-pressed={!off}
+          data-testid="measure-row-eye"
+          onClick={(e) => {
+            e.stopPropagation();
+            mp.onSetVisible([ms.id], off);
+          }}
+        >
+          <Icon name={off ? 'eye-off' : 'eye'} size={14} />
+        </button>
+      </div>
+    );
+    // The app's tip, not a native title: the full name, or for a dimmed row why it is dimmed (its
+    // survey date is hidden; its own eye stays as it was). Always wrapped, so dimming never
+    // remounts the row under keyboard focus.
+    const why = ms.dimmed ? ms.dimmedWhy : undefined;
+    return (
+      <Tip key={it.id} content={why ?? it.name} repeatsName={why === undefined}>
+        {line}
+      </Tip>
+    );
+  };
+
+  /** The selected, renaming and revealed measurement rows show past "more". */
+  const keepMeasure = (mp: MeasureTreeProps) => (it: TreeItem) => {
+    const id = it.measure?.id;
+    return id !== undefined && (id === mp.selectedId || id === mp.renaming || id === revealed);
+  };
+
+  /** A folder of measurements: opens and closes (open at first), with an eye over its rows. */
+  const measureFolderRow = (it: TreeItem, name: string, mp: MeasureTreeProps) => {
+    const ids = itemMeasureIds(it);
+    const open = folderOpen[name] ?? true;
+    const allOff = ids.length > 0 && ids.every((id) => mp.hidden[id] === true);
+    const kids = it.children ?? [];
+    const showingAll = folderAll[name] === true;
+    const { rows, behind } = capRows(kids, showingAll, keepMeasure(mp));
+    const toggle = () => {
+      setFolderOpen((o) => ({ ...o, [name]: !open }));
+    };
+    return (
+      <div key={it.id} role="treeitem" aria-expanded={open} aria-selected={false}>
+        <div
+          tabIndex={0}
+          className={`titem flight${allOff ? ' hidden' : ''}`}
+          data-testid="measure-folder"
+          data-folder={name}
+          onClick={toggle}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toggle();
+            }
+          }}
+        >
+          <Icon name="chev-r" size={12} className={`chev${open ? ' open' : ''}`} />
+          <Icon name="folder" size={14} />
+          <span className="tn">{name}</span>
+          <span className="tm">{t('tree.measure.folderCount', { count: ids.length })}</span>
+          <VisibilityEye
+            layerIds={ids}
+            hidden={mp.hidden}
+            onSet={mp.onSetVisible}
+            labels={{
+              all: t('tree.eye.hideGroup', { group: name }),
+              none: t('tree.eye.showGroup', { group: name }),
+              mixed: t('tree.eye.showGroupMixed', { group: name }),
+            }}
+          />
+        </div>
+        {open && (
+          <div role="group" className="titems-sub">
+            {rows.map((c) => measureRow(c, mp, true))}
+            {moreRow(behind, showingAll, kids.length, () => {
+              setFolderAll((o) => ({ ...o, [name]: !showingAll }));
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /** The name field of a folder being made, at the top of the group; Escape or empty cancels. */
+  const newFolderRow = (mp: MeasureTreeProps) => {
+    const nf = mp.newFolder;
+    if (!nf || nf.seq === newFolderDone) return null;
+    let named = false;
+    return (
+      <div
+        key={`measure-folder-new-${String(nf.seq)}`}
+        role="treeitem"
+        aria-selected={false}
+        className="titem flight"
+      >
+        <Icon name="chev-r" size={12} className="chev" />
+        <Icon name="folder" size={14} />
+        <RenameField
+          testId="measure-folder-new"
+          initial=""
+          label={t('tree.measure.folderName')}
+          placeholder={t('tree.measure.folderName')}
+          maxLength={MEASURE_NAME_MAX}
+          onCommit={(name) => {
+            named = true;
+            mp.onNewFolder(name);
+          }}
+          onEnd={(how) => {
+            setNewFolderDone(nf.seq);
+            if (!named) mp.onNewFolder(null);
+            // focus goes back to the row the folder was asked for
+            const first = nf.ids[0];
+            if (how !== 'blur' && first !== undefined) pendingFocus.current = measureMark(first);
+          }}
+        />
+      </div>
+    );
+  };
+
   return (
     <div
       className={props.nested ? 'tree tree-nested' : 'tree'}
@@ -649,17 +951,21 @@ export function DatasetTree(props: DatasetTreeProps) {
     >
       {groups.map((g) => {
         const expanded = !collapsed && isOpen(g.kind);
-        const all = showAll[g.kind] === true || g.items.length <= ROW_LIMIT + 1;
-        const rows = all
-          ? g.items
-          : g.items.filter(
-              (it, i) =>
-                i < ROW_LIMIT ||
+        // the Measurements group draws its own rows; its folders always show, loose rows are capped
+        const mg = g.kind === 'measurements' ? measures : undefined;
+        const folders = mg ? g.items.filter((it) => it.folder !== undefined) : [];
+        const capped = mg ? g.items.filter((it) => it.folder === undefined) : g.items;
+        const showingAll = showAll[g.kind] === true;
+        const { rows, behind } = capRows(
+          capped,
+          showingAll,
+          mg
+            ? keepMeasure(mg)
+            : (it) =>
                 it.id === selectedId ||
                 it.layerId === activeClip ||
-                it.children?.some((c) => c.layerId === activeClip || c.id === selectedId),
-            );
-        const hiddenRows = g.items.length - rows.length;
+                it.children?.some((c) => c.layerId === activeClip || c.id === selectedId) === true,
+        );
         // a header carries its whole group, the rows behind "more" too; never in rail mode
         const carried = collapsed ? [] : (props.dragGroupIds?.(g) ?? []);
         // every heading has a menu, one without layers too (the caller picks its items)
@@ -680,6 +986,7 @@ export function DatasetTree(props: DatasetTreeProps) {
             <div
               className="tgroup-row"
               data-testid={`tree-group-${g.kind}`}
+              ref={mg ? measureHead : undefined}
               {...(groupDrag
                 ? {
                     draggable: true,
@@ -745,7 +1052,19 @@ export function DatasetTree(props: DatasetTreeProps) {
                   <Icon name="plus" size={14} />
                 </button>
               )}
-              {props.onSetVisible && !collapsed && (
+              {mg && !collapsed && (
+                <VisibilityEye
+                  layerIds={groupMeasureIds(g)}
+                  hidden={mg.hidden}
+                  onSet={mg.onSetVisible}
+                  labels={{
+                    all: t('tree.eye.hideGroup', { group: g.label }),
+                    none: t('tree.eye.showGroup', { group: g.label }),
+                    mixed: t('tree.eye.showGroupMixed', { group: g.label }),
+                  }}
+                />
+              )}
+              {!mg && props.onSetVisible && !collapsed && (
                 <VisibilityEye
                   layerIds={groupLayerIds(g)}
                   hidden={hidden}
@@ -760,22 +1079,20 @@ export function DatasetTree(props: DatasetTreeProps) {
             </div>
             {expanded && (
               <div className="titems" role="group">
-                {rows.map((it) => (it.children ? flightRow(it, it.children) : row(it, false)))}
-                {(hiddenRows > 0 || (showAll[g.kind] && g.items.length > ROW_LIMIT + 1)) && (
-                  <button
-                    type="button"
-                    className="titem more"
-                    onClick={() => {
-                      setShowAll((s) => ({ ...s, [g.kind]: !s[g.kind] }));
-                    }}
-                  >
-                    <span className="tn">
-                      {hiddenRows > 0
-                        ? t('tree.row.more', { count: hiddenRows })
-                        : t('tree.row.fewer')}
-                    </span>
-                  </button>
+                {mg ? (
+                  <>
+                    {newFolderRow(mg)}
+                    {folders.map((it) =>
+                      it.folder !== undefined ? measureFolderRow(it, it.folder, mg) : null,
+                    )}
+                    {rows.map((it) => measureRow(it, mg, false))}
+                  </>
+                ) : (
+                  rows.map((it) => (it.children ? flightRow(it, it.children) : row(it, false)))
                 )}
+                {moreRow(behind, showingAll, capped.length, () => {
+                  setShowAll((s) => ({ ...s, [g.kind]: !s[g.kind] }));
+                })}
               </div>
             )}
           </div>
