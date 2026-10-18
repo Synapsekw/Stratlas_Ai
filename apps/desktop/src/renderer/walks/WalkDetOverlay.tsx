@@ -9,6 +9,7 @@ import {
   CHIP_H,
   CHIP_PAD_X,
   boundsOf,
+  boxInView,
   chipTextColor,
   chipWidth,
   stackChips,
@@ -54,14 +55,25 @@ export const WalkDetOverlay = memo(function WalkDetOverlay({
         const pts = r.lines.flat();
         const left = Math.min(...pts.map((p) => p[0]));
         const top = Math.min(...pts.map((p) => p[1]));
-        return [{ ...b, lines: r.lines, left, top }];
+        const right = Math.max(...pts.map((p) => p[0]));
+        const bottom = Math.max(...pts.map((p) => p[1]));
+        return [
+          {
+            ...b,
+            lines: r.lines,
+            left,
+            top,
+            shown: boxInView(left, top, right, bottom, { width, height }),
+          },
+        ];
       }),
     [boxes, look, width, height],
   );
   // the hovered box is drawn last (on top) and its chip placed first (it keeps its place)
   const hovered = drawn.find((b) => b.detection.id === hoverId);
   const ordered = hovered ? [...drawn.filter((b) => b !== hovered), hovered] : drawn;
-  const chipOrder = [...ordered].reverse();
+  // a chip only for a box that shows: one off the view would leave its chip at the edge
+  const chipOrder = [...ordered].reverse().filter((b) => b.shown);
   const places = stackChips(
     chipOrder.map((b) => ({ x: b.left, y: b.top, w: chipWidth(b.label), h: CHIP_H })),
     { width, height },

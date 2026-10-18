@@ -144,6 +144,20 @@ export function chipWidth(text: string, fontPx = CHIP_FONT_PX): number {
   return Math.ceil(em * fontPx + CHIP_PAD_X * 2);
 }
 
+/**
+ * Whether a box (`x0, y0` to `x1, y1` on screen) shows in a view; a chip is drawn only for those,
+ * so a box scrolled out of the view does not leave its chip at the edge.
+ */
+export function boxInView(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  view: { width: number; height: number },
+): boolean {
+  return x1 > 0 && y1 > 0 && x0 < view.width && y0 < view.height;
+}
+
 export interface ChipRequest {
   /** The box's top left corner on screen. */
   x: number;
