@@ -63,13 +63,24 @@ afterEach(() => {
 const handlers = () => ({
   onSelect: vi.fn(),
   onToggleVisible: vi.fn(),
-  onSetStatus: vi.fn(),
-  onOpenDetails: vi.fn(),
+  onToggleGroup: vi.fn(),
+  onSolo: vi.fn(),
+  onFilter: vi.fn(),
+  onHideAll: vi.fn(),
+  onShowAll: vi.fn(),
 });
 function show(p: Partial<AntennaInventoryProps> & { file: AntennasFile | null }) {
   const h = handlers();
   const ui: ReactElement = (
-    <AntennaInventory selected={null} hidden={{}} readOnly={false} {...h} {...p} />
+    <AntennaInventory
+      selected={null}
+      hidden={{}}
+      solo={null}
+      filter="all"
+      readOnly={false}
+      {...h}
+      {...p}
+    />
   );
   act(() => {
     root.render(ui);
@@ -107,20 +118,104 @@ describe('AntennaInventory', () => {
     expect(rows()).toHaveLength(0);
   });
 
-  it('calls back on select, eye and menu accept', () => {
+  it('calls back on select and eye, with no per-row menu', () => {
     const h = show({ file: fileOf([mk('ant-1', 'panel')]) });
     click(rows()[0]!);
     expect(h.onSelect).toHaveBeenCalledWith('ant-1');
     click(host.querySelector('button[aria-label="Hide A1 in 3D"]')!);
     expect(h.onToggleVisible).toHaveBeenCalledWith('ant-1');
     expect(h.onSelect).toHaveBeenCalledTimes(1);
-    click(host.querySelector('button[aria-label="More for A1"]')!);
-    const accept = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (b) => b.textContent === 'Accept',
-    );
-    expect(accept).toBeTruthy();
-    click(accept!);
-    expect(h.onSetStatus).toHaveBeenCalledWith('ant-1', 'accepted');
+    expect(host.querySelector('button[aria-label="More for A1"]')).toBeNull();
+  });
+
+  it('shows filter tabs with counts and reports a click', () => {
+    const file = fileOf([
+      mk('ant-1', 'panel'),
+      mk('ant-2', 'panel'),
+      mk('ant-3', 'dish', { status: 'accepted' }),
+    ]);
+    const h = show({ file, filter: 'draft' });
+    const tabs = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
+    expect(tabs.map((x) => x.textContent)).toEqual([
+      'To review 2',
+      'Accepted 1',
+      'Rejected 0',
+      'All 3',
+    ]);
+    expect(tabs.map((x) => x.getAttribute('aria-selected'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+    ]);
+    expect(rows()).toHaveLength(2);
+    click(tabs[1]!);
+    expect(h.onFilter).toHaveBeenCalledWith('accepted');
+  });
+
+  it('keeps tabs free of aria-pressed and moves between them with the keyboard', () => {
+    const file = fileOf([mk('ant-1', 'panel'), mk('ant-2', 'dish', { status: 'accepted' })]);
+    const h = show({ file, filter: 'draft' });
+    const tabs = () => [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
+    expect(tabs().some((x) => x.hasAttribute('aria-pressed'))).toBe(false);
+    expect(tabs().map((x) => x.tabIndex)).toEqual([0, -1, -1, -1]);
+    const key = (el: Element, k: string) => {
+      act(() => {
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+      });
+    };
+    key(tabs()[0]!, 'ArrowRight');
+    expect(h.onFilter).toHaveBeenLastCalledWith('accepted');
+    expect(document.activeElement).toBe(tabs()[1]);
+    key(tabs()[0]!, 'End');
+    expect(h.onFilter).toHaveBeenLastCalledWith('all');
+    key(tabs()[0]!, 'ArrowLeft');
+    expect(h.onFilter).toHaveBeenLastCalledWith('all');
+    key(tabs()[3]!, 'Home');
+    expect(h.onFilter).toHaveBeenLastCalledWith('draft');
+  });
+
+  it('hides a group with no units in the filter and says when nothing is left', () => {
+    const file = fileOf([mk('ant-1', 'panel'), mk('ant-3', 'dish', { status: 'accepted' })]);
+    show({ file, filter: 'accepted' });
+    expect([...host.querySelectorAll('h4')].map((x) => x.textContent)).toEqual([
+      'Microwave dishes',
+    ]);
+    show({ file, filter: 'rejected' });
+    expect(rows()).toHaveLength(0);
+    expect(host.textContent).toContain('Nothing here. Every antenna in this filter is done.');
+  });
+
+  it('toggles a group and solos a kind, then releases the solo', () => {
+    const file = fileOf([mk('ant-1', 'panel')]);
+    const h = show({ file });
+    click(host.querySelector('[data-testid="antenna-group-eye-panel"]')!);
+    expect(h.onToggleGroup).toHaveBeenCalledWith('panel');
+    click(host.querySelector('[data-testid="antenna-group-solo-panel"]')!);
+    expect(h.onSolo).toHaveBeenLastCalledWith('panel');
+    const h2 = show({ file, solo: 'panel' });
+    const solo = host.querySelector('[data-testid="antenna-group-solo-panel"]')!;
+    expect(solo.getAttribute('aria-pressed')).toBe('true');
+    click(solo);
+    expect(h2.onSolo).toHaveBeenLastCalledWith(null);
+  });
+
+  it('calls Hide all and Show all', () => {
+    const h = show({ file: fileOf([mk('ant-1', 'panel')]) });
+    click(host.querySelector('[data-testid="antenna-hide-all"]')!);
+    click(host.querySelector('[data-testid="antenna-show-all"]')!);
+    expect(h.onHideAll).toHaveBeenCalledTimes(1);
+    expect(h.onShowAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('dims a row whose unit is not drawn', () => {
+    show({
+      file: fileOf([mk('ant-1', 'panel'), mk('ant-2', 'dish')]),
+      solo: 'panel',
+      selected: 'ant-1',
+    });
+    expect(rows()[0]!.style.opacity).toBe('');
+    expect(rows()[1]!.style.opacity).toBe('0.45');
   });
 
   it('offers Show for a hidden unit', () => {
