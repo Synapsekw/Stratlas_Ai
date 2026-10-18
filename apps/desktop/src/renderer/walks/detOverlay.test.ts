@@ -143,4 +143,36 @@ describe('the detections shown at a moment of the walk', () => {
   it('leave rejected ones out', () => {
     expect(framesNear(list, 'w', 4).map((d) => d.id)).toEqual(['c']);
   });
+
+  it('show nothing when the nearest sampled frame found nothing', () => {
+    // sampled every second; only 2 s and 4 s found anything
+    const samples = [0, 1, 2, 3, 4, 5];
+    expect(framesNear(list, 'w', 3, samples)).toEqual([]);
+    expect(framesNear(list, 'w', 2.4, samples).map((d) => d.id)).toEqual(['a', 'b']);
+    expect(framesNear(list, 'w', 2.6, samples)).toEqual([]);
+    expect(framesNear(list, 'w', 3.6, samples).map((d) => d.id)).toEqual(['c']);
+  });
+
+  it('keep within half the sampling interval of the last sample', () => {
+    const samples = [3, 3.5, 4];
+    expect(framesNear(list, 'w', 4.2, samples).map((d) => d.id)).toEqual(['c']);
+    expect(framesNear(list, 'w', 4.3, samples)).toEqual([]);
+  });
+
+  it('cap the window at a second when samples are far apart', () => {
+    const one = [det('a', 'w', 2)];
+    expect(framesNear(one, 'w', 2.9, [2, 6]).map((d) => d.id)).toEqual(['a']);
+    expect(framesNear(one, 'w', 3.2, [2, 6])).toEqual([]);
+  });
+
+  it('without the sampled times, keep to half the gap to the neighbouring detection frame', () => {
+    const near = [det('x', 'w', 1), det('y', 'w', 1.5), det('z', 'w', 2)];
+    expect(framesNear(near, 'w', 2.2).map((d) => d.id)).toEqual(['z']);
+    expect(framesNear(near, 'w', 2.3)).toEqual([]);
+  });
+
+  it('show none of a sample whose detections were all rejected', () => {
+    const only = [det('r', 'w', 4, 'rejected'), det('a', 'w', 3)];
+    expect(framesNear(only, 'w', 4, [3, 4])).toEqual([]);
+  });
 });

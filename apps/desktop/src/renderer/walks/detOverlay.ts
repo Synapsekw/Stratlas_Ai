@@ -21,7 +21,7 @@ const NEAR = 0.02;
 /** Samples per edge at least; long edges get one every few degrees. */
 const PER_EDGE = 8;
 const MAX_STEP_DEG = 4;
-/** A detection is shown while the playback time is within this of its frame. */
+/** A sampled frame's detections show at most this far from it (with less, half the interval). */
 export const NEAR_FRAME_S = 1;
 
 /** Yaw and pitch (degrees) of a pixel of a `w` x `h` equirectangular frame. */
@@ -148,23 +148,50 @@ export function boxScreenLines(
 }
 
 /**
- * The detections of walk layer `layer` to show at playback time `t`: those of the nearest frame
- * that has any (not rejected), when it is within a second.
+ * The detections of walk layer `layer` to show at playback time `t`: those of the nearest sampled
+ * frame (not rejected), none when that frame found nothing. The sampled frames are the pass's
+ * `assessed` times (`samples`, seconds) plus the frames that hold detections, so without the
+ * assessed times the detection frames stand in. The nearest frame counts while `t` is within half
+ * the gap to its neighbour on `t`'s side (the other side at the ends), and at most a second.
  */
-export function framesNear(list: readonly Detection[], layer: string, t: number): Detection[] {
-  let best: number | null = null;
-  for (const d of list) {
-    if (d.source.kind !== 'frame' || d.source.layer !== layer || d.status === 'rejected') continue;
-    const dt = Math.abs(d.source.t - t);
-    if (dt <= NEAR_FRAME_S && (best === null || dt < Math.abs(best - t))) best = d.source.t;
+export function framesNear(
+  list: readonly Detection[],
+  layer: string,
+  t: number,
+  samples: readonly number[] = [],
+): Detection[] {
+  const ms = (x: number) => Math.round(x * 1000);
+  const own = list.filter((d) => d.source.kind === 'frame' && d.source.layer === layer);
+  const times = [
+    ...new Set([
+      ...samples.map(ms),
+      ...own.map((d) => (d.source.kind === 'frame' ? ms(d.source.t) : 0)),
+    ]),
+  ].sort((a, b) => a - b);
+  if (times.length === 0) return [];
+  const at = ms(t);
+  let i = 0;
+  for (let k = 1; k < times.length; k++) {
+    if (Math.abs((times[k] ?? 0) - at) < Math.abs((times[i] ?? 0) - at)) i = k;
   }
-  if (best === null) return [];
-  const at = best;
-  return list.filter(
-    (d) =>
-      d.source.kind === 'frame' &&
-      d.source.layer === layer &&
-      d.status !== 'rejected' &&
-      Math.round(d.source.t * 1000) === Math.round(at * 1000),
+  const best = times[i] ?? 0;
+  const prev = times[i - 1];
+  const next = times[i + 1];
+  const gap =
+    at >= best
+      ? next !== undefined
+        ? next - best
+        : prev !== undefined
+          ? best - prev
+          : null
+      : prev !== undefined
+        ? best - prev
+        : next !== undefined
+          ? next - best
+          : null;
+  const window = Math.min(NEAR_FRAME_S * 1000, gap === null ? Infinity : gap / 2);
+  if (Math.abs(at - best) > window) return [];
+  return own.filter(
+    (d) => d.source.kind === 'frame' && d.status !== 'rejected' && ms(d.source.t) === best,
   );
 }

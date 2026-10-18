@@ -95,7 +95,12 @@ function WalkPlayer({
     () => allDetections.filter((d) => d.source.kind === 'frame' && d.source.layer === walk.id),
     [allDetections, walk.id],
   );
-  const nearDets = useMemo(() => framesNear(walkDets, walk.id, time), [walkDets, walk.id, time]);
+  // the frames the detection passes sampled: a sampled frame that found nothing shows nothing
+  const sampled = useDetections((s) => s.sampled[walk.id]);
+  const nearDets = useMemo(
+    () => framesNear(walkDets, walk.id, time, sampled),
+    [walkDets, walk.id, time, sampled],
+  );
   const overlayBoxes = useMemo<OverlayBox[]>(
     () => nearDets.map((d) => ({ detection: d, ...detectionLook(d, classById.get(d.classId)) })),
     [nearDets, classById],
