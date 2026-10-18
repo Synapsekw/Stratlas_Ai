@@ -236,9 +236,9 @@ describe('the stage corners', () => {
     volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
     coverageShown();
     render({ video: [], rfLegend: true });
+    // the hint is served first and takes bl, away from the readout; the legend takes br
     expect(slotOf('vol-hint')).toBe('bl');
     expect(slotOf('rf-legend')).toBe('br');
-    // the readout gives way to the legend in its corner
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
     // right to left the readout stands at bl: the hint takes br, the legend bl
     render({ video: [], rfLegend: true, cursor: 'bl' });
@@ -248,15 +248,19 @@ describe('the stage corners', () => {
     expect(new Set(corners).size).toBe(corners.length);
   });
 
-  it('gives the coverage legend no slot while it is off', () => {
+  it('puts the coverage legend at the foot of the start, clear of the readout, and none while off', () => {
     coverageShown();
     render({ video: [], rfLegend: false });
     expect(slotOf('rf-legend')).toBeUndefined();
-    // the readout keeps its corner
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
-    // on, it takes the foot of the end, before the readout
+    // on: bl, the wider corner at 1100 px, and the readout at br stays shown
     render({ video: [], rfLegend: true });
+    expect(slotOf('rf-legend')).toBe('bl');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+    // a video resting at bl sends it to br, where the readout gives way
+    render({ video: ['bl'], rfLegend: true });
     expect(slotOf('rf-legend')).toBe('br');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
   });
 
   it('hides the coordinates readout when the video rests in its corner', () => {

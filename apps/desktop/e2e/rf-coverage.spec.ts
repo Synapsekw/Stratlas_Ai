@@ -4,8 +4,8 @@
  * action, the RF tab, the real `rf.coverage` pipeline job in the development venv (as the antenna
  * detection spec runs its job), the live preview, a second run, a GeoTIFF export and a reload.
  * The classes are checked in the RF tab's class table, the Display bench's Coverage group and the
- * coverage legend in its stage corner (ruling I3), which keeps clear of the readout, the volumes
- * hint and the island.
+ * compact coverage legend in its stage corner (ruling I3, bottom left first), which keeps clear
+ * of the readout, the volumes hint, the island and the Map menu chip.
  */
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
@@ -33,6 +33,14 @@ const AAU = 'generic-aau-64t64r-n78';
 const AAU_NAME = /AAU 64T64R 3\.5 GHz 200 W/;
 const CLASS_NAMES = ['Excellent', 'Good', 'Fair', 'Poor', 'No service'];
 const CLASS_KEYS = ['excellent', 'good', 'fair', 'poor', 'none'];
+/** Each class's whole range, as a screen reader reads its legend row (the default thresholds). */
+const CLASS_RANGES = [
+  'above -80 dBm',
+  '-80 to -95 dBm',
+  '-95 to -105 dBm',
+  '-105 to -115 dBm',
+  'below -115 dBm',
+];
 
 /**
  * Screenshots for a person to look at, only when AIO_EVIDENCE_DIR names a folder (never on CI);
@@ -269,18 +277,37 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   // the run is drawn in the 3D view and on the map
   await expect.poll(() => sceneCoverageVisible(win), { timeout: 30_000 }).toBe(true);
   await viewSiteFromAbove(win);
-  // the legend in its stage corner: every class, clear of the readout, the hint and the island
+  // the compact legend in its stage corner: every class on one line with its whole range for a
+  // screen reader, clear of the readout, the hint, the island and the Map menu chip
   const legend = win.getByTestId('rf-legend');
   await expect(legend).toBeVisible();
-  for (const c of CLASS_KEYS) await expect(legend.getByTestId(`rf-legend-${c}`)).toBeVisible();
   await expect(legend.locator('.rf-legend-row')).toHaveCount(CLASS_KEYS.length);
+  for (const [i, c] of CLASS_KEYS.entries()) {
+    const row = legend.getByTestId(`rf-legend-${c}`);
+    await expect(row).toBeVisible();
+    await expect(row.locator('.sr-only')).toContainText(CLASS_RANGES[i] ?? '');
+    // a range never wraps: the row is one line
+    expect((await row.boundingBox())?.height ?? 99).toBeLessThan(22);
+  }
+  expect((await legend.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(150);
+  await expect(legend.getByTestId('rf-legend-details')).not.toHaveAttribute('open', '');
   await expect.poll(() => legendCovers(win)).toEqual([]);
+  // at the foot of the start: the readout at the foot of the end stays shown
+  await expect(win.locator('.pane-3d:not(.is-hidden) .cursor-ro')).toBeVisible();
   await evidence(win, 'coverage-in-3d');
   await stageMode(win, 'Map');
   await expect.poll(() => mapHasCoverage(win), { timeout: 60_000 }).toBe(true);
   await expect(legend).toBeVisible();
   await expect.poll(() => legendCovers(win)).toEqual([]);
   await evidence(win, 'coverage-on-map');
+  // Details opens the controls and the assumptions, still clear of the other overlays
+  await legend.getByTestId('rf-legend-details').locator('summary').click();
+  await expect(legend.getByTestId('rf-legend-opacity')).toBeVisible();
+  await expect(legend.getByTestId('rf-legend-indicative')).toContainText('Indicative');
+  await expect.poll(() => legendCovers(win)).toEqual([]);
+  await evidence(win, 'legend-details');
+  await legend.getByTestId('rf-legend-details').locator('summary').click();
+  await expect(legend.getByTestId('rf-legend-opacity')).toBeHidden();
   await stageMode(win, '3D');
 
   // the Display bench's Coverage group says what is drawn
