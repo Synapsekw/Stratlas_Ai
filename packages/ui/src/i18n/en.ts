@@ -5129,6 +5129,10 @@ export const en = {
   'rf.legend.showFrom.fair': 'Fair and better',
   'rf.legend.showFrom.good': 'Good and better',
   'rf.legend.hatch': 'Hatch the classes',
+  'rf.legend.details': 'Details',
+  'rf.legend.short.above': '> {dbm}',
+  'rf.legend.short.between': '{hi}…{lo}',
+  'rf.legend.short.below': '< {dbm}',
   'rf.legend.indicativeBody': 'flat ground, no buildings, untuned model, about 8 dB either way.',
   // where people are, mid-sentence in the assumptions (the study select keeps its own labels)
   'rf.legend.margin.outdoor': 'outdoor use',

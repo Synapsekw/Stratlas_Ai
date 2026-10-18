@@ -1,14 +1,14 @@
 /**
  * The coverage legend (spec D23, D23a, D26): for the view shown, every class with its name and
- * range (never colour alone), the swatch with its optional hatch, the opacity slider (in sync with
- * the Display bench row), "Show from" and the hatch switch, and the indicative and assumptions
- * line. It has no position of its own: the stage places it in a corner slot (`rfLegend`, wanting
- * `br` then `bl`), through `StageCoverageLegend.tsx`.
+ * range (never colour alone) on one compact row, the swatch with its optional hatch, and behind
+ * Details the opacity slider (in sync with the Display bench row), "Show from", the hatch switch
+ * and the indicative and assumptions line. It has no position of its own: the stage places it in
+ * a corner slot (`rfLegend`, wanting `bl` then `br`), through `StageCoverageLegend.tsx`.
  */
 import { OVERLAP_WINDOW_DB } from '@aio/rf';
 import type { RfStudy } from '@aio/schema';
-import { Switch, useT, type MessageKey, type Vars } from '@aio/ui';
-import type { ReactNode } from 'react';
+import { Switch, Tip, useT, type MessageKey, type Vars } from '@aio/ui';
+import { useState, type ReactNode } from 'react';
 import {
   CLASS_HATCH,
   OVERLAP_HATCH,
@@ -55,6 +55,37 @@ export function classRanges(t: T, th: RfStudy['thresholds']): Record<RsrpClassKe
   };
 }
 
+/** A dBm threshold with a true minus sign, for the compact ranges. */
+const dbm = (n: number): string => (n < 0 ? `−${String(-n)}` : String(n));
+
+/** The compact range of each RSRP class ("> −80", "−80…−95", "< −115"). */
+export function shortRanges(t: T, th: RfStudy['thresholds']): Record<RsrpClassKey, string> {
+  return {
+    excellent: t('rf.legend.short.above', { dbm: dbm(th.excellentDbm) }),
+    good: t('rf.legend.short.between', { hi: dbm(th.excellentDbm), lo: dbm(th.goodDbm) }),
+    fair: t('rf.legend.short.between', { hi: dbm(th.goodDbm), lo: dbm(th.fairDbm) }),
+    poor: t('rf.legend.short.between', { hi: dbm(th.fairDbm), lo: dbm(th.poorDbm) }),
+    none: t('rf.legend.short.below', { dbm: dbm(th.poorDbm) }),
+  };
+}
+
+/** Whether the Details part is open, kept for this session (closed by default). */
+const DETAILS_KEY = 'quadrion.rfLegendDetails';
+function readDetails(): boolean {
+  try {
+    return sessionStorage.getItem(DETAILS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeDetails(open: boolean): void {
+  try {
+    sessionStorage.setItem(DETAILS_KEY, open ? '1' : '0');
+  } catch {
+    // blocked storage: it is just not remembered
+  }
+}
+
 export interface CoverageLegendProps {
   view: RfView;
   study: RfStudy;
@@ -64,41 +95,67 @@ export interface CoverageLegendProps {
   source: { kind: 'preview' } | { kind: 'run'; at: string } | null;
 }
 
+/**
+ * One legend row: the swatch, a short name and a short value on one line. The whole label (the
+ * class's hatch or hidden state and its full range) is what a screen reader reads, and the tip.
+ */
 function Line({
   swatch,
   name,
   value,
+  full,
   dim,
+  note,
   testId,
 }: {
   swatch: string | null;
-  name: ReactNode;
-  value: ReactNode;
+  name: string;
+  value: string;
+  full: string;
   dim?: boolean;
+  /** The value is a note, which may wrap (a range never does). */
+  note?: boolean;
   testId?: string;
 }) {
   return (
-    <li className="rf-legend-row" data-dim={dim ? '' : undefined} data-testid={testId}>
-      <span
-        className="rf-legend-sw"
-        data-clear={swatch === null ? '' : undefined}
-        style={swatch === null ? undefined : { background: swatch }}
-        aria-hidden="true"
-      />
-      <span className="rf-legend-name">{name}</span>
-      <span className="rf-legend-val mono">{value}</span>
-    </li>
+    <Tip content={full} repeatsName placement="start">
+      <li
+        className="rf-legend-row"
+        data-dim={dim ? '' : undefined}
+        data-testid={testId}
+        tabIndex={0}
+      >
+        <span
+          className="rf-legend-sw"
+          data-clear={swatch === null ? '' : undefined}
+          style={swatch === null ? undefined : { background: swatch }}
+          aria-hidden="true"
+        />
+        <span className="rf-legend-name" aria-hidden="true">
+          {name}
+        </span>
+        <span className="rf-legend-val mono" data-note={note ? '' : undefined} aria-hidden="true">
+          {value}
+        </span>
+        <span className="sr-only">{full}</span>
+      </li>
+    </Tip>
   );
 }
 
-/** The legend body; the stage gives it its corner. */
+/**
+ * The legend body; the stage gives it its corner. Compact: the view and its source on one line
+ * and one row per class. The controls and the assumptions sit behind Details.
+ */
 export function CoverageLegend({ view, study, sectors, source }: CoverageLegendProps) {
   const t = useT();
   const opacity = useRfLayer((s) => s.opacity);
   const hatch = useRfLayer((s) => s.hatch);
   const showFrom = useRfLayer((s) => s.showFrom);
+  const [details, setDetails] = useState(readDetails);
   const pct = Math.round(opacity * 100);
   const ranges = classRanges(t, study.thresholds);
+  const short = shortRanges(t, study.thresholds);
 
   let rows: ReactNode;
   let note: string;
@@ -119,8 +176,9 @@ export function CoverageLegend({ view, study, sectors, source }: CoverageLegendP
           key={c}
           testId={`rf-legend-${c}`}
           swatch={c === 'none' ? null : swatchBackground(RSRP_RAMP[c], CLASS_HATCH[c], hatch)}
-          name={label}
-          value={ranges[c]}
+          name={name}
+          value={short[c]}
+          full={`${label}, ${ranges[c]}`}
           dim={c === 'none' || !shown}
         />
       );
@@ -132,32 +190,36 @@ export function CoverageLegend({ view, study, sectors, source }: CoverageLegendP
         key={s.id}
         testId={`rf-legend-sector-${s.id}`}
         swatch={swatchBackground(sectorColour(i), sectorHatch(i), hatch)}
-        name={
+        name={s.name}
+        value=""
+        full={
           hatch
             ? t('rf.legend.withPattern', { name: s.name, pattern: t(HATCH_KEY[sectorHatch(i)]) })
             : s.name
         }
-        value=""
       />
     ));
     note = t('rf.legend.bestServerNote');
   } else {
-    rows = (['two', 'more'] as const).map((k) => (
-      <Line
-        key={k}
-        testId={`rf-legend-overlap-${k}`}
-        swatch={swatchBackground(OVERLAP_RAMP[k], OVERLAP_HATCH[k], hatch)}
-        name={
-          hatch && OVERLAP_HATCH[k] !== 'none'
-            ? t('rf.legend.withPattern', {
-                name: t(`rf.legend.overlap.${k}`),
-                pattern: t(HATCH_KEY[OVERLAP_HATCH[k]]),
-              })
-            : t(`rf.legend.overlap.${k}`)
-        }
-        value={t(`rf.legend.overlap.${k}Note`)}
-      />
-    ));
+    rows = (['two', 'more'] as const).map((k) => {
+      const name = t(`rf.legend.overlap.${k}`);
+      const label =
+        hatch && OVERLAP_HATCH[k] !== 'none'
+          ? t('rf.legend.withPattern', { name, pattern: t(HATCH_KEY[OVERLAP_HATCH[k]]) })
+          : name;
+      const value = t(`rf.legend.overlap.${k}Note`);
+      return (
+        <Line
+          key={k}
+          testId={`rf-legend-overlap-${k}`}
+          swatch={swatchBackground(OVERLAP_RAMP[k], OVERLAP_HATCH[k], hatch)}
+          name={name}
+          value={value}
+          full={`${label}, ${value}`}
+          note
+        />
+      );
+    });
     note = t('rf.legend.overlapNote', { db: OVERLAP_WINDOW_DB });
   }
 
@@ -179,59 +241,73 @@ export function CoverageLegend({ view, study, sectors, source }: CoverageLegendP
         )}
       </header>
       <ul className="rf-legend-rows">{rows}</ul>
-      <div className="rf-legend-ctl">
-        <label htmlFor="rf-legend-opacity">{t('rf.legend.opacity')}</label>
-        <input
-          id="rf-legend-opacity"
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={pct}
-          aria-valuetext={`${String(pct)}%`}
-          data-testid="rf-legend-opacity"
-          onChange={(e) => {
-            setRfLayer({ opacity: Number(e.target.value) / 100 });
-          }}
-        />
-        <output className="mono" htmlFor="rf-legend-opacity">
-          {pct}%
-        </output>
-      </div>
-      {view === 'rsrp' && (
-        <div className="rf-legend-ctl">
-          <label htmlFor="rf-legend-from">{t('rf.legend.showFrom')}</label>
-          <select
-            id="rf-legend-from"
-            className="input"
-            value={showFrom}
-            onChange={(e) => {
-              setRfLayer({ showFrom: e.target.value as ShowFrom });
-            }}
-          >
-            {SHOW_FROM.map((f) => (
-              <option key={f} value={f}>
-                {t(SHOW_FROM_KEY[f])}
-              </option>
-            ))}
-          </select>
+      <details
+        className="rf-legend-more"
+        open={details}
+        data-testid="rf-legend-details"
+        onToggle={(e) => {
+          const open = e.currentTarget.open;
+          setDetails(open);
+          writeDetails(open);
+        }}
+      >
+        <summary>{t('rf.legend.details')}</summary>
+        <div className="rf-legend-more-body">
+          <div className="rf-legend-ctl">
+            <label htmlFor="rf-legend-opacity">{t('rf.legend.opacity')}</label>
+            <input
+              id="rf-legend-opacity"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={pct}
+              aria-valuetext={`${String(pct)}%`}
+              data-testid="rf-legend-opacity"
+              onChange={(e) => {
+                setRfLayer({ opacity: Number(e.target.value) / 100 });
+              }}
+            />
+            <output className="mono" htmlFor="rf-legend-opacity">
+              {pct}%
+            </output>
+          </div>
+          {view === 'rsrp' && (
+            <div className="rf-legend-ctl">
+              <label htmlFor="rf-legend-from">{t('rf.legend.showFrom')}</label>
+              <select
+                id="rf-legend-from"
+                className="input"
+                value={showFrom}
+                onChange={(e) => {
+                  setRfLayer({ showFrom: e.target.value as ShowFrom });
+                }}
+              >
+                {SHOW_FROM.map((f) => (
+                  <option key={f} value={f}>
+                    {t(SHOW_FROM_KEY[f])}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="rf-legend-ctl rf-legend-hatch">
+            <Switch
+              checked={hatch}
+              label={t('rf.legend.hatch')}
+              onChange={(on) => {
+                setRfLayer({ hatch: on });
+              }}
+            />
+            <span aria-hidden="true">{t('rf.legend.hatch')}</span>
+          </div>
+          <p className="rf-legend-note">{note}</p>
+          <p className="rf-legend-note" data-testid="rf-legend-indicative">
+            <b>{t('rf.results.indicative')}</b> {t('rf.legend.indicativeBody')}{' '}
+            {assumptionsText(t, study)}
+          </p>
         </div>
-      )}
-      <div className="rf-legend-ctl rf-legend-hatch">
-        <Switch
-          checked={hatch}
-          label={t('rf.legend.hatch')}
-          onChange={(on) => {
-            setRfLayer({ hatch: on });
-          }}
-        />
-        <span aria-hidden="true">{t('rf.legend.hatch')}</span>
-      </div>
-      <p className="rf-legend-note">{note}</p>
-      <p className="rf-legend-note" data-testid="rf-legend-indicative">
-        <b>{t('rf.results.indicative')}</b> {t('rf.legend.indicativeBody')}{' '}
-        {assumptionsText(t, study)}
-      </p>
+      </details>
     </section>
   );
 }

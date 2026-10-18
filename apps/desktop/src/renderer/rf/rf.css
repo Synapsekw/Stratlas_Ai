@@ -329,15 +329,18 @@
 }
 
 /* ----------------------------------------------------------------------- the coverage legend */
-/* No position here: the stage gives the legend a corner slot (stage 3 T21). It sits on the map
-   or the 3D view, so it is a dark overlay box (data-surface='dark') in every theme. */
+/* No position here: the stage gives the legend a corner slot (the rfLegend slot, Stage.tsx). It
+   sits on the map or the 3D view, so it is a dark overlay box (data-surface='dark') in every
+   theme. Compact: as wide as its rows (one line each, a range never wraps), at least 150 px; the
+   controls and the assumptions sit behind Details, which takes the rows' width and adds none. */
 .rf-legend {
   display: grid;
-  gap: var(--sp-4);
-  inline-size: 252px;
+  gap: var(--sp-3);
+  inline-size: max-content;
+  min-inline-size: 150px;
   max-inline-size: 100%;
-  padding-block: var(--sp-4);
-  padding-inline: var(--sp-5);
+  padding-block: var(--sp-3);
+  padding-inline: var(--sp-4);
   color: var(--fg-1);
   font-size: var(--t-12);
 }
@@ -347,6 +350,7 @@
   gap: var(--sp-3);
   color: var(--fg-0);
   font-weight: 600;
+  white-space: nowrap;
 }
 .rf-legend-src {
   margin-inline-start: auto;
@@ -356,23 +360,29 @@
 }
 .rf-legend-rows {
   display: grid;
-  gap: var(--sp-2);
+  gap: var(--sp-1);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .rf-legend-row {
+  position: relative;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 14px max-content minmax(max-content, 1fr);
   align-items: center;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
+  border-radius: var(--r-2);
+}
+.rf-legend-row:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
 }
 .rf-legend-row[data-dim] .rf-legend-name {
   color: var(--fg-2);
 }
 .rf-legend-sw {
-  inline-size: 18px;
-  block-size: 12px;
+  inline-size: 14px;
+  block-size: 10px;
   border-radius: var(--r-2);
   outline: 1px solid var(--line-strong);
   outline-offset: -1px;
@@ -383,8 +393,34 @@
   outline: 1px dashed var(--fg-2);
 }
 .rf-legend-val {
+  text-align: end;
+  white-space: nowrap;
   color: var(--fg-1);
   font-size: var(--t-11);
+}
+/* an overlap note may wrap, and does not set the legend's width */
+.rf-legend-row:has(.rf-legend-val[data-note]) {
+  grid-template-columns: 14px max-content minmax(0, 1fr);
+}
+.rf-legend-val[data-note] {
+  white-space: normal;
+  color: var(--fg-2);
+}
+.rf-legend-more > summary {
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  cursor: pointer;
+}
+.rf-legend-more > summary:hover {
+  color: var(--fg-0);
+}
+.rf-legend-more-body {
+  display: grid;
+  gap: var(--sp-4);
+  /* the rows set the width; the notes wrap inside it */
+  inline-size: 0;
+  min-inline-size: 100%;
+  padding-block-start: var(--sp-4);
 }
 .rf-legend-ctl {
   display: grid;
@@ -394,6 +430,18 @@
   color: var(--fg-1);
   font-size: var(--t-11);
 }
+.rf-legend-ctl select.input {
+  grid-column: 2 / 4;
+}
+/* in the legend's narrow Details each label stands above its control */
+.rf-legend .rf-legend-ctl {
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: var(--sp-2) var(--sp-4);
+}
+.rf-legend .rf-legend-ctl > label,
+.rf-legend .rf-legend-ctl select.input {
+  grid-column: 1 / -1;
+}
 .rf-legend-ctl input[type='range'] {
   inline-size: 100%;
   accent-color: var(--acc);
@@ -401,9 +449,6 @@
 .rf-legend-ctl output {
   text-align: end;
   color: var(--fg-0);
-}
-.rf-legend-ctl select.input {
-  grid-column: 2 / 4;
 }
 .rf-legend-hatch {
   display: flex;
@@ -420,39 +465,11 @@
   padding-block-start: 0;
   border-block-start: 0;
 }
-/* In its stage corner (the rfLegend slot, Stage.tsx) the legend keeps to the lower half of the
-   stage and scrolls the rest; a narrow slot (the RF tab or Volumes in front at 1100 px) puts each
-   class's range under its name and each control's label above it. */
-.rf-legend {
-  container: rf-legend / inline-size;
-}
+/* in its stage corner it keeps to the lower half of the stage and scrolls the rest (Details open) */
 .stage-slot > .rf-legend {
   max-block-size: calc(50vh - 64px);
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-@container rf-legend (max-width: 230px) {
-  .rf-legend-head {
-    flex-wrap: wrap;
-  }
-  .rf-legend-src {
-    margin-inline-start: 0;
-  }
-  .rf-legend-row {
-    grid-template-columns: 18px minmax(0, 1fr);
-    row-gap: 0;
-  }
-  .rf-legend-val {
-    grid-column: 2;
-  }
-  .rf-legend-ctl {
-    grid-template-columns: minmax(0, 1fr) 38px;
-    row-gap: var(--sp-2);
-  }
-  .rf-legend-ctl > label,
-  .rf-legend-ctl select.input {
-    grid-column: 1 / -1;
-  }
 }
 .rf-layer-ctl .rf-legend-ctl {
   font-size: var(--t-12);

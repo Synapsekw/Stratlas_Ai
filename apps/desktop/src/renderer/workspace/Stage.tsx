@@ -359,7 +359,7 @@ export function useStageCorners(o: StageCornersInput): {
       // another view's: the map's scale and credits)
       { id: 'volHint', want: volHint ? hintCorners(o.cursor, o.splitting) : [] },
       // --- RF coverage legend (rf-ui) ---
-      { id: 'rfLegend', want: o.rfLegend ? ['br', 'bl'] : [] },
+      { id: 'rfLegend', want: o.rfLegend ? ['bl', 'br'] : [] },
       // --- end RF coverage legend ---
       { id: 'dates', want: dates ? ['tl', 'bl', 'tr'] : [] },
       { id: 'cursor', want: o.cursor ? [o.cursor] : [] },
