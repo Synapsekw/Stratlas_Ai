@@ -219,6 +219,27 @@ def cases() -> list[dict[str, Any]]:
             "ringCurrent": {**TURN, "rotationDeg": 0.25},
         },
     )
+    # prepared before the line-up: the surface has no dateShiftM, so the stored ring is sampled
+    # where it is (no prepared shift or turn) while the date's line-up now (shift and turn) joins
+    # the fingerprint; the result is the first case's volume, read stale
+    add(
+        "cone-over-flat-prepared-before-line-up",
+        ring,
+        item("a", SV("flat"), SV("cone")),
+        "A survey-scoped ring whose surface was prepared before its date was lined up: sampled as stored, the line-up now in the fingerprint",
+        lineUp={"current": {"cone": [2.0, -1.0]}, "ringShift": [0.0, 0.0], "ringCurrent": [2.0, -1.0]},
+        lineUpTurn={"current": {"cone": TURN}, "ringCurrent": TURN},
+    )
+    # only the turn now is given for the ring: it is enough to put the current line-up in the
+    # fingerprint (with the prepared shift)
+    add(
+        "cone-over-flat-turn-now-only",
+        ring,
+        item("a", SV("flat"), SV("cone")),
+        "A ring whose date's turn now is given without its shift now: the turn joins the fingerprint",
+        lineUp={"ringShift": [0.0, 0.0]},
+        lineUpTurn={"ringCurrent": TURN},
+    )
     add(
         "previous-current",
         ring,
@@ -432,7 +453,7 @@ def run_case(surfs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
         now=NOW,
         ring_shift=line_up(up.get("ringShift", (0.0, 0.0)), turn.get("ring")),
         ring_current=(
-            line_up(up["ringCurrent"], turn.get("ringCurrent"))
+            line_up(up.get("ringCurrent", up.get("ringShift", (0.0, 0.0))), turn.get("ringCurrent"))
             if "ringCurrent" in up or "ringCurrent" in turn
             else None
         ),

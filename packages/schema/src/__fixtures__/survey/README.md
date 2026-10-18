@@ -36,7 +36,7 @@ design refs (`{ kind: 'design', design, layer }`) name `<design>/<layer>`, and `
 - `site`: what the fingerprint records of the site (`verticalDatum`, `calibration?`);
 - `captures` (optional): `{ current, previous }`, each `{ surface, capture }`;
 - `lineUp` (optional): a lined-up date, `{ current?: { <surface id>: [east, north] }, ringShift?, ringCurrent? }`: the surfaces' shifts now, the shift added to the stored ring before sampling (the prepared one) and the ring date's shift now; only the "now" shifts join the fingerprint;
-- `lineUpTurn` (optional): the turns beside those shifts, `{ current?: { <surface id>: turn }, ring?, ringCurrent? }`, each turn `{ rotationDeg, scale, pivotE, pivotN }` (a capture's `lineUpTurn`): the stored ring is shifted and turned by `ring` before sampling; only the "now" turns join the fingerprint (as `lineUpTurn`, beside `lineUp`);
+- `lineUpTurn` (optional): the turns beside those shifts, `{ current?: { <surface id>: turn }, ring?, ringCurrent? }`, each turn `{ rotationDeg, scale, pivotE, pivotN }` (a capture's `lineUpTurn`): the stored ring is shifted and turned by `ring` before sampling; only the "now" turns join the fingerprint (as `lineUpTurn`, beside `lineUp`). The ring's line-up now is `ringCurrent` (default `ringShift`) with `ringCurrentTurn` when either is given, else `ringShift` with `ring`. A surface prepared before its date was lined up has `ringShift` `[0, 0]` and no `ring` turn;
 - `expected`: the Python core's `ComparisonResult` without `engine` and `computedAt`.
 
 ## `tiles/cone/`

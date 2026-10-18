@@ -36,7 +36,8 @@ export interface ProjectSurfacesInput {
  * The shifts of a survey-scoped ring (the capture its measurement belongs to): `ringShift` is what
  * its prepared surface sits at (its `dateShiftM`), added to the stored ring before sampling, so a
  * line-up since then does not move the answer; `ringCurrent` is the date's shift now, for the
- * fingerprint (the result reads stale until the surface is prepared again). `ringTurn` and
+ * fingerprint (the result reads stale until the surface is prepared again). A surface prepared
+ * before any line-up (no `dateShiftM`) sits where its file is: no prepared shift. `ringTurn` and
  * `ringCurrentTurn` are the turns beside them (the surface's `dateTurn`, the date's turn now),
  * present only when there is one.
  */
@@ -50,11 +51,9 @@ export function ringShifts(
   const current: Shift = shifts?.[capture] ?? [0, 0];
   const currentTurn = turns?.[capture];
   const s = surfaceOfCapture(surfaces, capture);
-  const lined = s && (s.dateShiftM !== undefined || s.dateTurn !== undefined) ? s : null;
-  const prepared: Shift = lined
-    ? [lined.dateShiftM?.eastM ?? 0, lined.dateShiftM?.northM ?? 0]
-    : current;
-  const preparedTurn = lined ? lined.dateTurn : currentTurn;
+  // a surface prepared before any line-up sits where its file is: no shift, no turn
+  const prepared: Shift = s ? [s.dateShiftM?.eastM ?? 0, s.dateShiftM?.northM ?? 0] : current;
+  const preparedTurn = s ? s.dateTurn : currentTurn;
   return {
     ringShift: prepared,
     ringCurrent: current,

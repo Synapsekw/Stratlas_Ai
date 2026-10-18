@@ -89,11 +89,20 @@ describe('ringShifts', () => {
       ringCurrent: [3.5, 0.5],
     });
   });
-  it('uses the shift now for a surface prepared before any line-up, and none for a site ring', () => {
+  it('uses no shift for a surface prepared before any line-up (the shift now only reads stale), and none for a site ring', () => {
     const plain: HeightTiles[] = [{ ...cone, capture: 'c2' }];
-    expect(ringShifts(plain, { c2: [3, 0] }, 'c2')).toEqual({
+    const now = { rotationDeg: 0.5, scale: 1, pivotE: 500000, pivotN: 3200000 };
+    expect(ringShifts(plain, { c2: [3, 0] }, 'c2', { c2: now })).toEqual({
+      ringShift: [0, 0],
+      ringCurrent: [3, 0],
+      ringCurrentTurn: now,
+    });
+    // a date without a prepared surface: its line-up now
+    expect(ringShifts([], { c2: [3, 0] }, 'c2', { c2: now })).toEqual({
       ringShift: [3, 0],
       ringCurrent: [3, 0],
+      ringTurn: now,
+      ringCurrentTurn: now,
     });
     expect(ringShifts(surfaces, { c2: [3, 0] }, undefined)).toEqual({});
   });

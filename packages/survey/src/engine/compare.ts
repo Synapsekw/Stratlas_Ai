@@ -137,8 +137,9 @@ export interface CompareOptions {
    * is added before sampling; `ringCurrent` (the date's shift now, default `ringShift`) joins the
    * fingerprint. A site-wide ring is already in the lined-up frame (no shift). `ringTurn` (the
    * surface's `dateTurn`) and `ringCurrentTurn` (the date's turn now) go beside them: the ring is
-   * turned too, and the turn joins the fingerprint. `ringCurrentTurn` is read with `ringCurrent`;
-   * without `ringCurrent`, the current line-up is `ringShift` with `ringTurn`.
+   * turned too, and the turn joins the fingerprint. With `ringCurrent` or `ringCurrentTurn` given,
+   * the current line-up is `ringCurrent` (default `ringShift`) with `ringCurrentTurn`; with
+   * neither, it is `ringShift` with `ringTurn`.
    */
   ringShift?: Shift;
   ringCurrent?: Shift;
@@ -419,7 +420,9 @@ export async function compareItem(
       rt,
       opts.site,
       opts.ringCurrent ?? opts.ringShift,
-      opts.ringCurrent !== undefined ? opts.ringCurrentTurn : opts.ringTurn,
+      opts.ringCurrent !== undefined || opts.ringCurrentTurn !== undefined
+        ? opts.ringCurrentTurn
+        : opts.ringTurn,
     ),
     computedAt: (opts.now ?? (() => new Date().toISOString()))(),
   };
