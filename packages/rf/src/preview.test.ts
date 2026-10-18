@@ -476,7 +476,7 @@ describe('the Worker path-loss cache', () => {
         sent.push(m);
       },
     };
-    servePreview(port, () => 0, 2);
+    servePreview(port, () => 0, { maxGrids: 2 });
     const grid = makeGrid(8, 10);
     const [sector] = sectorsFor(grid, [SPECS[1] ?? []]);
     const src = sector?.sources[0];
@@ -514,7 +514,7 @@ describe('the Worker path-loss cache', () => {
         sent.push(m);
       },
     };
-    servePreview(port, () => 0, 1);
+    servePreview(port, () => 0, { maxGrids: 1 });
     const grid = makeGrid(8, 10);
     const [sector] = sectorsFor(grid, [SPECS[1] ?? []]);
     const src = sector?.sources[0];
@@ -551,5 +551,51 @@ describe('the Worker path-loss cache', () => {
     expect(both(2)).toBe(true);
     send({ type: 'path-loss:set', key: 'c', pathLossDb });
     expect(both(3)).toBe(true);
+  });
+
+  it('keeps at most its byte budget, under the same rules', () => {
+    const sent: PreviewReply[] = [];
+    const port: PreviewPort = {
+      onmessage: null,
+      postMessage(m) {
+        sent.push(m);
+      },
+    };
+    // an 8 x 8 grid is 256 bytes: two fit in 600, three do not
+    servePreview(port, () => 0, { maxBytes: 600 });
+    const grid = makeGrid(8, 10);
+    const [sector] = sectorsFor(grid, [SPECS[1] ?? []]);
+    const src = sector?.sources[0];
+    if (!src) throw new Error('missing');
+    const { pathLossDb, ...settings } = src;
+    expect(pathLossDb.byteLength).toBe(256);
+    const send = (data: PreviewMessage) => port.onmessage?.({ data });
+    const ask = (key: string, id: number) => {
+      send({
+        type: 'preview',
+        id,
+        input: {
+          grid,
+          ueHeightM: UE,
+          marginDb: 0,
+          sectors: [{ id: 'sec-a', sources: [{ ...settings, pathLossKey: key }] }],
+        },
+      });
+      return sent.at(-1)?.ok;
+    };
+    send({ type: 'path-loss:set', key: 'a', pathLossDb });
+    send({ type: 'path-loss:set', key: 'b', pathLossDb });
+    expect(ask('a', 1)).toBe(true);
+    send({ type: 'path-loss:set', key: 'c', pathLossDb });
+    expect(ask('b', 2)).toBe(false);
+    expect(ask('a', 3)).toBe(true);
+    expect(ask('c', 4)).toBe(true);
+    // a dropped grid gives its bytes back: d and e fit once a and c are gone
+    send({ type: 'path-loss:drop', key: 'a' });
+    send({ type: 'path-loss:drop', key: 'c' });
+    send({ type: 'path-loss:set', key: 'd', pathLossDb });
+    send({ type: 'path-loss:set', key: 'e', pathLossDb });
+    expect(ask('d', 5)).toBe(true);
+    expect(ask('e', 6)).toBe(true);
   });
 });

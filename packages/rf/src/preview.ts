@@ -389,25 +389,47 @@ export function resolvePreviewRequest(
  * never evicted, so a plan larger than the cap still works.
  */
 export const MAX_PATH_LOSS_GRIDS = 64;
+/**
+ * Bytes of path loss the Worker keeps at most, under the same rules as `MAX_PATH_LOSS_GRIDS`:
+ * 512 MiB, 32 grids at `MAX_PREVIEW_PIXELS` (one is 16 MiB), where 64 of them would be 1 GiB.
+ */
+export const MAX_PATH_LOSS_BYTES = 512 * 1024 * 1024;
+
+/** How much path loss the Worker keeps (`MAX_PATH_LOSS_GRIDS`, `MAX_PATH_LOSS_BYTES`). */
+export interface PathLossCacheLimits {
+  maxGrids: number;
+  maxBytes: number;
+}
 
 /** The Worker side: path-loss cache and preview requests. preview.worker.ts only calls this. */
 export function servePreview(
   port: PreviewPort,
   now: () => number = () => performance.now(),
-  maxGrids = MAX_PATH_LOSS_GRIDS,
+  limits: Partial<PathLossCacheLimits> = {},
 ): void {
+  const maxGrids = limits.maxGrids ?? MAX_PATH_LOSS_GRIDS;
+  const maxBytes = limits.maxBytes ?? MAX_PATH_LOSS_BYTES;
   const cache = new Map<string, Float32Array>();
   const failed = new Map<string, string>();
   /** The keys the last preview asked for: never evicted (a plan may need more than the cap). */
   let pinned = new Set<string>();
-  /** Keep a grid as the most recently used, then trim the oldest unpinned past the cap. */
-  const keep = (key: string, grid: Float32Array) => {
+  /** Bytes held in `cache`. */
+  let bytes = 0;
+  const drop = (key: string) => {
+    const g = cache.get(key);
+    if (!g) return;
+    bytes -= g.byteLength;
     cache.delete(key);
+  };
+  /** Keep a grid as the most recently used, then trim the oldest unpinned past either cap. */
+  const keep = (key: string, grid: Float32Array) => {
+    drop(key);
     cache.set(key, grid);
+    bytes += grid.byteLength;
     for (const k of [...cache.keys()]) {
-      if (cache.size <= maxGrids) break;
+      if (cache.size <= maxGrids && bytes <= maxBytes) break;
       if (k === key || pinned.has(k)) continue;
-      cache.delete(k);
+      drop(k);
     }
   };
   port.onmessage = ({ data }) => {
@@ -427,7 +449,7 @@ export function servePreview(
       return;
     }
     if (data.type === 'path-loss:drop') {
-      cache.delete(data.key);
+      drop(data.key);
       failed.delete(data.key);
       return;
     }
