@@ -423,6 +423,12 @@ test.describe('a synthetic project', () => {
       await compare.click();
       await closeIslandTools(win);
       await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
+      // The pointer stays where Compare dates was, in the island's open tools. They close, and
+      // the panes' pickers move down under the row of the two views' tools (the line-up chip):
+      // the left picker lands under the pointer and its tip opens (a hover tip, under <body>, in
+      // no landmark). Move the pointer off the views first, as compare.spec does for its shots.
+      await win.mouse.move(1, 1);
+      await expect(win.locator('[role="tooltip"]')).toHaveCount(0);
       await expectAccessible(win, 'Scene, compare dates');
     }
     await closeIslandTools(win);
