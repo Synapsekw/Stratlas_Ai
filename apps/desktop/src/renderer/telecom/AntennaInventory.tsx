@@ -1,7 +1,7 @@
 import type { AntennaKind, AntennasFile, AntennaStatus, AntennaUnit } from '@aio/schema';
 import { Button, Chip, EmptyState, IconButton, Row, t } from '@aio/ui';
 import type { CSSProperties, ReactElement } from 'react';
-import { azimuthLines, formatDeg, trueAzimuth } from './antennaFormat';
+import { TONE, azimuthLines, formatDeg, trueAzimuth } from './antennaFormat';
 import { KIND_COLOURS } from './antennaScene';
 import { KIND_ORDER, filteredUnits } from './antennaStore';
 import { isAntennaDrawn, type AntennaFilter } from './antennaVisibility';
@@ -24,9 +24,7 @@ export interface AntennaInventoryProps {
   onShowAll: () => void;
 }
 
-const KINDS = KIND_ORDER;
 const FILTERS: readonly AntennaFilter[] = ['draft', 'accepted', 'rejected', 'all'];
-const TONE = { draft: 'warn', accepted: 'acc', rejected: 'off' } as const;
 /** Outline style carries the status beside the text chip: dashed draft, solid accepted, dotted rejected. */
 const OUTLINE: Record<AntennaStatus, CSSProperties> = {
   draft: { outline: '1px dashed var(--fg-3)', outlineOffset: -1 },
@@ -251,8 +249,9 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
       {listed.length === 0 ? (
         <EmptyState title={t('telecom.antennas.filter.empty')} />
       ) : (
-        <div role="tree" aria-label={t('telecom.antennas.title')}>
-          {KINDS.map((kind) => {
+        // the review keys step the card from a focused row (useAntennaKeys)
+        <div role="tree" data-antenna-tree="" aria-label={t('telecom.antennas.title')}>
+          {KIND_ORDER.map((kind) => {
             const units = listed.filter((u) => u.kind === kind);
             if (units.length === 0) return null;
             const allHidden = file.units

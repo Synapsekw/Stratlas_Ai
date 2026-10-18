@@ -4,14 +4,12 @@
  * pressed while a modal dialog is open are left alone.
  */
 import { useEffect } from 'react';
+import { isTypingTarget } from '../keys';
 import { decideAntenna, selectAntenna, stepAntenna } from './antennaStore';
-
-const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 
 function ignored(e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return true;
-  const target = e.target;
-  if (target instanceof Element && target.closest(EDITABLE)) return true;
+  if (isTypingTarget(e.target)) return true;
   return document.querySelector('[aria-modal="true"]') !== null;
 }
 
@@ -43,9 +41,18 @@ function actionOf(key: string): (() => void) | null {
   }
 }
 
-/** Widgets that own the arrows and Escape themselves. */
+/**
+ * Widgets that own the arrows and Escape themselves. The antenna inventory's tree is not one: its
+ * rows take only Enter and Space, so the arrows step the card from a clicked row.
+ */
 const OWNS_KEYS =
   '[role="tablist"], [role="menu"], [role="listbox"], [role="slider"], [role="tree"]';
+
+function ownedElsewhere(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  const owner = target.closest(OWNS_KEYS);
+  return owner !== null && !owner.hasAttribute('data-antenna-tree');
+}
 
 /**
  * Listens on `window` while `enabled` (the card shows a unit). A and R collide with the stage's
@@ -66,7 +73,7 @@ export function useAntennaKeys(enabled: boolean): void {
     };
     const onBubble = (e: KeyboardEvent): void => {
       if (/^[aArR]$/.test(e.key) || ignored(e)) return;
-      if (e.target instanceof Element && e.target.closest(OWNS_KEYS)) return;
+      if (ownedElsewhere(e.target)) return;
       const act = actionOf(e.key);
       if (!act) return;
       e.preventDefault();
