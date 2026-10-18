@@ -697,3 +697,36 @@ def test_engineer_mesh_carries_the_shift(tmp_path):
     a, b = read_pack(plain), read_pack(moved)
     assert b["axis"]["point"][0] - a["axis"]["point"][0] == pytest.approx(2.0, abs=0.1)
     assert b["axis"]["point"][2] - a["axis"]["point"][2] == pytest.approx(1.0, abs=0.1)
+
+
+def test_engineer_mesh_follows_a_turned_line_up(tmp_path):
+    import math
+
+    plain, moved = tmp_path / "plain", tmp_path / "moved"
+    for root in (plain, moved):
+        root.mkdir()
+        _mesh_project(root)
+    line_up(moved, "m0", 2.0, -1.0)
+    # the pivot 200 m west of the mesh: a turn there moves it by metres, a shift alone would not
+    rot, scale, px, pz = 0.5, 0.999, -200.0, 0.0
+    path = moved / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["captures"][0]["lineUpTurn"] = {
+        "rotationDeg": rot,
+        "scale": scale,
+        "pivotE": ORIGIN[0] + px,
+        "pivotN": ORIGIN[1] - pz,
+    }
+    path.write_text(json.dumps(m), "utf-8")
+    a_ = scale * math.cos(math.radians(rot))
+    b_ = scale * math.sin(math.radians(rot))
+    # the mesh's axis at local (0, 0), by the local-frame similarity
+    x = px + a_ * (0.0 - px) + b_ * (0.0 - pz) + 2.0
+    z = pz - b_ * (0.0 - px) + a_ * (0.0 - pz) + 1.0
+    assert abs(z - 1.0) > 1.5  # the turn alone moves it over a metre and a half
+    kw = {"clouds": [], "meshes": [{"layer": "m0"}]}
+    run_job(ModelEvidence(), plain, params(region={"centre": [0.0, 0.0], "radiusM": 20.0}, **kw))
+    run_job(ModelEvidence(), moved, params(region={"centre": [x, z], "radiusM": 20.0}, **kw))
+    a, b = read_pack(plain), read_pack(moved)
+    assert b["axis"]["point"][0] - a["axis"]["point"][0] == pytest.approx(x, abs=0.1)
+    assert b["axis"]["point"][2] - a["axis"]["point"][2] == pytest.approx(z, abs=0.1)
