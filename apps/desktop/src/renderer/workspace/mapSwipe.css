@@ -45,6 +45,29 @@
   color: var(--fg-1);
   white-space: nowrap;
 }
+/* the row stays on one line inside the views however long it gets (Blend's slider and the later
+   streams' tools, COMPARE_VIEW_TOOLS): the slider and the tools' own words give way */
+.stage-panes > .compare-view {
+  max-inline-size: calc(100% - 2 * var(--sp-4));
+}
+.compare-view > .seg {
+  flex: none;
+}
+/* Blend's slider gives way before a tool's words do, down to a usable 56 px */
+.compare-view > label {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.compare-view > label input[type='range'] {
+  min-width: 56px;
+}
+/* two other views of two dates: the row holds the later streams' tools alone, when they show */
+.compare-view.compare-view-tools {
+  padding: 2px;
+}
+.compare-view.compare-view-tools:empty {
+  display: none;
+}
 .compare-view .seg {
   background: transparent;
   border-color: var(--line-soft);

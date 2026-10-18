@@ -177,10 +177,7 @@
   min-width: 0;
   max-width: 220px;
 }
-/* its own row while no Swipe and Blend bar shows (two 3D views) */
-.compare-view.compare-lineup-row {
-  padding: 2px;
-}
+
 .compare-lineup-chip {
   display: flex;
   align-items: center;
@@ -266,11 +263,7 @@
 .compare-lineup-acts:empty {
   display: none;
 }
-/* the row stays inside the views however long it gets (Blend's slider and the chip): the chip's
-   words give way first */
-.stage-panes > .compare-view:has(.compare-lineup) {
-  max-inline-size: calc(100% - 2 * var(--sp-4));
-}
+/* in the row (COMPARE_VIEW_TOOLS, mapSwipe.css), the chip's words give way first */
 .compare-view .compare-lineup {
   flex: 0 1 auto;
 }

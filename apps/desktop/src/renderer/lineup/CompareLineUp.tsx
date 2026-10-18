@@ -1,8 +1,7 @@
 import { hasTurn, type Capture, type LineUpMeasure, type ProjectManifest } from '@aio/schema';
 import { Button, Tip, useT, type t as translate } from '@aio/ui';
 import type { CaptureIndex, Workspace } from '@aio/workspace';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import type { SplitModel } from '../workspace/SplitPanes';
@@ -266,67 +265,18 @@ function Chip({
   );
 }
 
-/** The Side by side, Swipe and Blend bar of two maps (MapSwipe.tsx), when it shows. */
-const viewBar = (panes: HTMLElement) =>
-  panes.querySelector<HTMLElement>(':scope > .compare-view:not(.compare-lineup-row)');
-
 /**
- * Whether the two dates Compare shows line up (design call 8), on `COMPARE_TOOLS`: "Lined up",
- * "2.04 m off" with Line up, "Checking line-up…" or "Can't line up", and the details on a click.
- * Like Swipe and Blend (MapSwipe.tsx) it shows in the row under the island, above the pane
- * headers, not beside the island (whose own width it would take): inside that bar when two maps
- * or orthos show it, else in a row of its own. Nothing without a twin, or before the line-up
+ * Whether the two dates Compare shows line up (design call 8), on `COMPARE_VIEW_TOOLS`: in the row
+ * under the island, after Side by side, Swipe and Blend (MapSwipe.tsx), not beside the island
+ * (whose own width it would take). "Lined up", "2.04 m off" with Line up, "Checking line-up…" or
+ * "Can't line up", and the details on a click. Nothing without a twin, or before the line-up
  * session has made its store.
  */
 export function CompareLineUp({ split }: { split: SplitModel }) {
   const { store, workspace } = useStore(compareLineUpApp);
   const pair = twinDates(split);
-  const anchor = useRef<HTMLSpanElement>(null);
-  const [panes, setPanes] = useState<HTMLElement | null>(null);
-  // Swipe and Blend's bar comes and goes with the panes it compares: look again when it does
-  const [, looked] = useState(0);
-  useLayoutEffect(() => {
-    // the anchor sits in the stage toolbar, beside the panes
-    setPanes(
-      anchor.current?.closest<HTMLElement>('.stage')?.querySelector<HTMLElement>('.stage-panes') ??
-        null,
-    );
-  }, []);
-  useEffect(() => {
-    if (!panes || typeof MutationObserver === 'undefined') return;
-    const mo = new MutationObserver(() => {
-      looked((n) => n + 1);
-    });
-    mo.observe(panes, { childList: true });
-    return () => {
-      mo.disconnect();
-    };
-  }, [panes]);
-  const bar = panes ? viewBar(panes) : null;
-  const chip =
-    store && workspace && pair ? (
-      <Chip
-        store={store}
-        workspace={workspace}
-        index={split.index}
-        left={pair[0]}
-        right={pair[1]}
-      />
-    ) : null;
+  if (!store || !workspace || !pair) return null;
   return (
-    <>
-      <span ref={anchor} hidden />
-      {chip &&
-        (bar
-          ? createPortal(chip, bar)
-          : panes
-            ? createPortal(
-                <div className="compare-view compare-lineup-row overlay-box" data-surface="dark">
-                  {chip}
-                </div>,
-                panes,
-              )
-            : chip)}
-    </>
+    <Chip store={store} workspace={workspace} index={split.index} left={pair[0]} right={pair[1]} />
   );
 }

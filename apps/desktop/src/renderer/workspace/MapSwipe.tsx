@@ -26,7 +26,7 @@ import {
 import type { Layer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace, type Workspace } from '@aio/workspace';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { create, useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
@@ -55,6 +55,27 @@ export const useCompareView = create<CompareViewState>()((set) => ({
     }));
   },
 }));
+
+/**
+ * Mount point for tools of later streams in the row under the island (Task 8's line-up chip),
+ * like `COMPARE_TOOLS` beside Compare dates: one line in their own module,
+ * `COMPARE_VIEW_TOOLS.push(Tool)`, imported once from the renderer. They show at the end of the
+ * Side by side, Swipe and Blend row while two maps or orthos are compared, and in that row on
+ * their own while two other views of two dates are (two 3D views). Keep them short: the row
+ * stays on one line and the tools' own text gives way first (`mapSwipe.css`).
+ */
+export const COMPARE_VIEW_TOOLS: ((p: { split: SplitModel }) => ReactNode)[] = [];
+
+/** The later streams' tools of the row (`COMPARE_VIEW_TOOLS`). */
+function CompareViewTools({ split }: { split: SplitModel }) {
+  return (
+    <>
+      {COMPARE_VIEW_TOOLS.map((Tool, i) => (
+        <Tool key={i} split={split} />
+      ))}
+    </>
+  );
+}
 
 /** Two maps or two orthos of different dates: the views swipe and blend can apply to. */
 export function canSwipe(split: SplitModel): boolean {
@@ -104,7 +125,9 @@ function useStageView(panes: HTMLElement | null, view: CompareView, at: number, 
 
 /**
  * The Side by side, Swipe and Blend bar with the divider and the blend slider, drawn over the
- * stage panes. Renders nothing unless two maps or two orthos of two dates are shown.
+ * stage panes, while two maps or two orthos of two dates are shown; it ends with the
+ * `COMPARE_VIEW_TOOLS`. While two other views of two dates are shown (it sits on
+ * `COMPARE_TOOLS`, which shows only then), the row holds those tools alone.
  */
 export function CompareViewControls({ split }: { split: SplitModel }) {
   const anchor = useRef<HTMLSpanElement>(null);
@@ -120,7 +143,22 @@ export function CompareViewControls({ split }: { split: SplitModel }) {
   return (
     <>
       <span ref={anchor} hidden />
-      {on && panes && <CompareViewBar panes={panes} split={split} />}
+      {panes &&
+        (on ? (
+          <CompareViewBar panes={panes} split={split} />
+        ) : (
+          COMPARE_VIEW_TOOLS.length > 0 &&
+          createPortal(
+            <div
+              className="compare-view compare-view-tools overlay-box"
+              data-surface="dark"
+              data-testid="compare-view-tools"
+            >
+              <CompareViewTools split={split} />
+            </div>,
+            panes,
+          )
+        ))}
     </>
   );
 }
@@ -183,6 +221,7 @@ function CompareViewBar({ panes, split }: { panes: HTMLElement; split: SplitMode
             <span className="faint">{t('imgChange.later')}</span>
           </label>
         )}
+        <CompareViewTools split={split} />
       </div>
       {view === 'swipe' && (
         <div
