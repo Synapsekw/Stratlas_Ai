@@ -4,6 +4,7 @@ import {
   CHANGE_VERDICTS,
   ChangeSet,
   ChangeThresholds,
+  LineUpFit,
   LineUpMeasure,
   DEFAULT_CHANGE_THRESHOLDS,
   type ChangeSetInput,
@@ -63,6 +64,42 @@ describe('change sets (aio.change/1)', () => {
     };
     expect(LineUpMeasure.parse(m)).toEqual(m);
     expect(LineUpMeasure.safeParse({ ...m, verdict: 'maybe' }).success).toBe(false);
+  });
+
+  it('LineUpFit parses a range verdict', () => {
+    const fit: LineUpFit = {
+      rotationDeg: 3.01,
+      scale: 1.0002,
+      pivotE: 500012.5,
+      pivotN: 3200005,
+      eastM: 0.01,
+      northM: -0.02,
+      maxMoveM: 5.1,
+      residualPx: 0.3,
+      inliers: 40,
+      verdict: 'range',
+    };
+    expect(LineUpFit.parse(fit)).toEqual(fit);
+    expect(LineUpFit.safeParse({ ...fit, verdict: 'maybe' }).success).toBe(false);
+    // lineup.json never says range (older apps parse it strictly); the app adds the fit beside it
+    const m = {
+      keep: 'c1',
+      move: 'c2',
+      layerKeep: 'ortho-1',
+      layerMove: 'ortho-2',
+      source: 'ortho',
+      eastM: 0.01,
+      northM: -0.02,
+      totalM: 5.1,
+      cellM: 0.05,
+      tolerancePx: 2,
+      spreadPx: 0.3,
+      tiles: 40,
+      verdict: 'disagree',
+    } as const;
+    expect(LineUpMeasure.safeParse({ ...m, verdict: 'range' }).success).toBe(false);
+    expect(LineUpMeasure.parse({ ...m, fit }).fit).toEqual(fit);
+    expect(LineUpMeasure.parse(m).fit).toBeUndefined();
   });
 
   it('accepts every shared fixture (also read by the Python writer tests)', () => {
