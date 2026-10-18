@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoDate, Vec3, err, ok, uniqueIds, type Result } from './common';
-import { CaptureLineUp } from './dateShift';
+import { CaptureLineUp, CaptureLineUpTurn } from './dateShift';
 import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 import { ProjectPurpose, ProjectType, VerticalDatum } from './builder';
@@ -26,6 +26,11 @@ export const Capture = z.object({
     .optional(),
   /** Where the date really lies against the others; absent means no shift. */
   lineUp: CaptureLineUp.optional(),
+  /**
+   * The turn and scale of the line-up about a pivot, next to `lineUp` and only with it; absent
+   * means a plain shift (also on every older project).
+   */
+  lineUpTurn: CaptureLineUpTurn.optional(),
 });
 
 export const Crs = z.union([

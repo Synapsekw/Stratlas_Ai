@@ -1,8 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  Capture,
+  CaptureLineUpTurn,
   captureLineUpShift,
+  composeShift,
   DateShiftSchema,
+  invertShift,
+  turnOf,
+  type DateShift,
   ProjectManifest,
   isZeroShift,
   drawnTransform,
@@ -15,7 +21,6 @@ import {
   storedTransform,
   unshiftCorners,
   unshiftLocal,
-  type Capture,
   type DirectionKey,
   type Layer,
 } from './index';
@@ -128,12 +133,12 @@ describe('date shift helpers', () => {
 
   it('reads the shift of a capture', () => {
     const c: Capture = { id: 'c1', label: 'A', date: '2026-01-01' };
-    expect(captureLineUpShift(c)).toBeNull();
+    expect(captureLineUpShift(c, [0, 0, 0])).toBeNull();
     expect(
-      captureLineUpShift({
-        ...c,
-        lineUp: { eastM: 1.5, northM: -2, with: 'c0', at: '2026-10-16T08:00:00Z' },
-      }),
+      captureLineUpShift(
+        { ...c, lineUp: { eastM: 1.5, northM: -2, with: 'c0', at: '2026-10-16T08:00:00Z' } },
+        [0, 0, 0],
+      ),
     ).toEqual({ eastM: 1.5, northM: -2 });
     expect(isZeroShift(null)).toBe(true);
     expect(isZeroShift({ eastM: 0.0004, northM: -0.0004 })).toBe(true);
@@ -194,3 +199,210 @@ describe('membership fixture (shared with the Python resolver)', () => {
     }
   });
 });
+
+describe('line-up turn and scale (similarity fixture, shared with Python)', () => {
+  const file = new URL('./__fixtures__/date-shift/similarity.json', import.meta.url);
+  interface Case {
+    name: string;
+    s: {
+      eastM: number;
+      northM: number;
+      rotationDeg: number;
+      scale: number;
+      pivotE: number;
+      pivotN: number;
+    };
+    en: [number, number][];
+    enOut: [number, number][];
+    local: [number, number, number][];
+    localOut: [number, number, number][];
+    mat4: number[];
+  }
+  const { origin, cases } = JSON.parse(readFileSync(file, 'utf8')) as {
+    origin: [number, number, number];
+    cases: Case[];
+  };
+  const at = '2026-10-16T08:00:00Z';
+  const must = <V>(v: V | null | undefined): V => {
+    if (v === null || v === undefined) throw new Error('missing');
+    return v;
+  };
+  const base: Capture = { id: 'c1', label: 'A', date: '2026-01-01' };
+  const capture = (s: Case['s']): Capture => ({
+    ...base,
+    lineUp: { eastM: s.eastM, northM: s.northM, with: 'c0', at },
+    lineUpTurn: { rotationDeg: s.rotationDeg, scale: s.scale, pivotE: s.pivotE, pivotN: s.pivotN },
+  });
+  const near = (got: readonly number[] | undefined, want: readonly number[], what: string) => {
+    expect(got?.length, what).toBe(want.length);
+    want.forEach((w, i) => {
+      expect(Math.abs((got?.[i] ?? NaN) - w), `${what}[${i}]`).toBeLessThanOrEqual(1e-9);
+    });
+  };
+  const turned = must(captureLineUpShift(capture(must(cases[3]).s), origin));
+  const c3 = Math.cos(0.3);
+  const s3 = Math.sin(0.3);
+  const T = [c3, 0, -s3, 0, 0, 1, 0, 0, s3, 0, c3, 0, 40, 5, -70, 1];
+
+  it('fixture parity: shiftEN, shiftLocal and shiftTransform match every case to 1e-9', () => {
+    expect(cases.length).toBe(4);
+    for (const c of cases) {
+      const s = captureLineUpShift(capture(c.s), origin);
+      c.en.forEach((p, i) => {
+        near(shiftEN(p, s), must(c.enOut[i]), `${c.name} en ${i}`);
+      });
+      c.local.forEach((p, i) => {
+        near(shiftLocal(p, s), must(c.localOut[i]), `${c.name} local ${i}`);
+      });
+      near(shiftTransform(identity, s), c.mat4, `${c.name} mat4`);
+      // a zero shift hands back what it was given (no transform: none)
+      if (!isZeroShift(s))
+        near(shiftTransform(undefined, s), c.mat4, `${c.name} mat4 from nothing`);
+    }
+  });
+
+  it('a {eastM,northM} literal behaves exactly as before', () => {
+    const lit: DateShift = { eastM: 2, northM: -1 };
+    expect(turnOf(lit)).toBeNull();
+    expect(shiftLocal([1, 2, 3], lit)).toEqual([3, 2, 4]);
+    expect(shiftEN([10, 20, 30], lit)).toEqual([12, 19, 30]);
+    expect(invertShift(lit)).toEqual({ eastM: -2, northM: 1 });
+    expect(composeShift(lit, { eastM: 0.5, northM: 0.25 })).toEqual({
+      eastM: 2.5,
+      northM: -0.75,
+    });
+    // the shift-only fixture case through a literal
+    const c = must(cases[1]);
+    const s: DateShift = { eastM: c.s.eastM, northM: c.s.northM };
+    c.local.forEach((p, i) => {
+      expect(shiftLocal(p, s)).toEqual([p[0] + s.eastM, p[1], p[2] - s.northM]);
+      near(shiftLocal(p, s), must(c.localOut[i]), `literal local ${i}`);
+    });
+    near(shiftTransform(identity, s), c.mat4, 'literal mat4');
+  });
+
+  it('a turned shift is not zero, even with no translation', () => {
+    expect(isZeroShift({ ...turned, eastM: 0, northM: 0 })).toBe(false);
+    expect(isZeroShift(turned)).toBe(false);
+    const p: [number, number, number] = [1, 2, 3];
+    // an identity turn is no turn
+    const id = { eastM: 0, northM: 0, turn: { ...must(turned.turn), rotationDeg: 0, scale: 1 } };
+    expect(isZeroShift(id)).toBe(true);
+    expect(shiftLocal(p, id)).toBe(p);
+  });
+
+  it('stored(drawn(t)) is t for a turned shift', () => {
+    const drawn = drawnTransform(T, turned);
+    expect(drawn).not.toEqual(T);
+    near(storedTransform(drawn, turned), T, 'stored(drawn)');
+    near(drawnTransform(storedTransform(T, turned), turned), T, 'drawn(stored)');
+  });
+
+  it('unshiftLocal undoes shiftLocal', () => {
+    for (const p of must(cases[3]).local) {
+      near(unshiftLocal(shiftLocal(p, turned), turned), p, 'local');
+      const q: [number, number, number] = [p[0] + origin[0], origin[1] - p[2], 7];
+      near(shiftEN(shiftEN(q, turned), turned, -1), q, 'en');
+    }
+    const c: RasterCornersT = { tl: [0, 1, 0], tr: [10, 1, 0], bl: [0, 1, 10] };
+    const back = unshiftCorners(shiftCorners(c, turned), turned);
+    near(back.tl, c.tl, 'tl');
+    near(back.tr, c.tr, 'tr');
+    near(back.bl, c.bl, 'bl');
+  });
+
+  it('composes and inverts', () => {
+    const second = must(captureLineUpShift(capture(must(cases[2]).s), origin));
+    const both = composeShift(turned, second);
+    const inv = invertShift(turned);
+    for (const p of must(cases[3]).local) {
+      near(shiftLocal(p, both), shiftLocal(shiftLocal(p, turned), second), 'compose local');
+      near(shiftLocal(p, inv), unshiftLocal(p, turned), 'invert local');
+    }
+    for (const p of must(cases[3]).en)
+      near(shiftEN(p, both), shiftEN(shiftEN(p, turned), second), 'compose en');
+    const none = composeShift(turned, inv);
+    near(shiftLocal([123, 4, -56], none), [123, 4, -56], 'compose with inverse');
+    // composing with a plain shift keeps the turn's pivot
+    const plain = composeShift(turned, { eastM: 1, northM: 2 });
+    for (const p of must(cases[3]).local)
+      near(shiftLocal(p, plain), shiftLocal(shiftLocal(p, turned), { eastM: 1, northM: 2 }), 'p');
+    const s = must(cases[3]).s;
+    expect(turnOf(turned)).toEqual({
+      rotationDeg: s.rotationDeg,
+      scale: s.scale,
+      pivotE: s.pivotE,
+      pivotN: s.pivotN,
+    });
+  });
+
+  it('the same capture under two origins moves a CRS point the same', () => {
+    const c = capture(must(cases[2]).s);
+    const o2: [number, number, number] = [500300, 2699800, 0];
+    const a = must(captureLineUpShift(c, origin));
+    const b = must(captureLineUpShift(c, o2));
+    for (const [E, N] of must(cases[2]).en) {
+      const la = shiftLocal([E - origin[0], 0, origin[1] - N], a);
+      const lb = shiftLocal([E - o2[0], 0, o2[1] - N], b);
+      near([la[0] + origin[0], origin[1] - la[2]], [lb[0] + o2[0], o2[1] - lb[2]], 'two origins');
+      near([la[0] + origin[0], origin[1] - la[2]], shiftEN([E, N], a), 'local vs CRS');
+    }
+  });
+
+  it('captureLineUpShift ignores a missing lineUpTurn', () => {
+    const s = captureLineUpShift(
+      { ...base, lineUp: { eastM: 1.5, northM: -2, with: 'c0', at } },
+      origin,
+    );
+    expect(s).toEqual({ eastM: 1.5, northM: -2 });
+    expect(s).not.toHaveProperty('turn');
+    const t = must(captureLineUpShift(capture(must(cases[2]).s), origin));
+    expect(t.turn).toEqual({
+      rotationDeg: 0.1,
+      scale: 1.0035,
+      pivotE: must(cases[2]).s.pivotE,
+      pivotN: must(cases[2]).s.pivotN,
+      pivotX: must(cases[2]).s.pivotE - origin[0],
+      pivotZ: origin[1] - must(cases[2]).s.pivotN,
+    });
+  });
+
+  it('CaptureLineUpTurn refuses 1.5 degrees and 1.02', () => {
+    const ok = { rotationDeg: 1, scale: 1.01, pivotE: 1, pivotN: 2 };
+    expect(CaptureLineUpTurn.safeParse(ok).success).toBe(true);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, rotationDeg: 1.5 }).success).toBe(false);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, rotationDeg: -1.5 }).success).toBe(false);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, scale: 1.02 }).success).toBe(false);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, scale: 0.98 }).success).toBe(false);
+  });
+
+  it('Capture keeps unknown keys out but parses lineUpTurn', () => {
+    const turn = { rotationDeg: 0.1, scale: 1.0035, pivotE: 1, pivotN: 2 };
+    const r = Capture.parse({ ...base, lineUpTurn: turn, somethingElse: 1 });
+    expect(r.lineUpTurn).toEqual(turn);
+    expect(r).not.toHaveProperty('somethingElse');
+    expect(Capture.safeParse({ ...base, lineUpTurn: { ...turn, scale: 2 } }).success).toBe(false);
+  });
+
+  it('moves a video offset point with the turn', () => {
+    const video = {
+      kind: 'video',
+      id: 'v',
+      name: 'V',
+      visible: true,
+      src: { path: 'a.mp4' },
+      flight: { src: { path: 'a.srt' }, startUtcMs: 0 },
+      lens: { model: 'pinhole', fovDeg: 80 },
+      offsetMs: 0,
+      positionOffsetM: [10, 5, -20],
+    } as unknown as Layer;
+    const r = shiftedLayer(video, turned);
+    near(
+      r.kind === 'video' ? r.positionOffsetM : undefined,
+      shiftLocal([10, 5, -20], turned),
+      'offset',
+    );
+  });
+});
+
+type RasterCornersT = Parameters<typeof shiftCorners>[0];
