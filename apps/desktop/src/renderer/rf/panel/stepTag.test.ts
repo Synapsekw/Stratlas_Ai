@@ -24,7 +24,9 @@ describe('step tags', () => {
     expect(originTag(by('ai', 'high'))).toBe('ai');
     expect(originTag(by('ai', 'low'))).toBe('ai-low');
     expect(originTag(by('rules'))).toBe('rules');
-    expect(originTag(by('rules', 'low'))).toBe('rules');
+    // ruling R24: low confidence is amber whoever set it
+    expect(originTag(by('rules', 'low'))).toBe('ai-low');
+    expect(originTag(by('rules', 'medium'))).toBe('rules');
     expect(originTag(by('export'))).toBe('from-export');
   });
 
@@ -42,6 +44,7 @@ describe('step tags', () => {
     expect(unitTag(set(by('ai'), by('ai')))).toBe('ai');
     expect(unitTag(set(by('ai'), by('ai', 'low')))).toBe('ai-low');
     expect(unitTag(set(by('rules'), by('ai')))).toBe('rules');
+    expect(unitTag(set(by('rules', 'low'), by('rules', 'low')))).toBe('ai-low');
     expect(unitTag(set(by('export'), undefined))).toBe('from-export');
     expect(unitTag(set(by('ai'), by('export')))).toBe('ai');
   });
