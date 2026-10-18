@@ -1,6 +1,6 @@
 /**
  * RF coverage in the real app, end to end: a project with a CRS and a synthetic antenna inventory
- * (three accepted panels, one draft, no `rf/` folder, `rfFixtures.ts`), the Coverage… project
+ * (three accepted panels, one draft, no `rf/` folder, `rfFixtures.ts`), the Coverage... project
  * action, the RF tab, the real `rf.coverage` pipeline job in the development venv (as the antenna
  * detection spec runs its job), the live preview, a second run, a GeoTIFF export and a reload.
  * The classes are checked in the RF tab's class table, the Display bench's Coverage group and the
@@ -60,7 +60,7 @@ async function openTiny(win: Page): Promise<void> {
 }
 
 /**
- * Step 1 (ruling R7): the project menu's Coverage… opens the RF tab. The action shows once the
+ * Step 1 (ruling R7): the project menu's Coverage... opens the RF tab. The action shows once the
  * RF store has read the inventory, so the menu is opened again until it is there.
  */
 async function openRfFromProjectMenu(win: Page): Promise<Locator> {
@@ -70,10 +70,10 @@ async function openRfFromProjectMenu(win: Page): Promise<Locator> {
       await win.locator('.sb-tree .tree-h .caps').click({ button: 'right' });
     if (!(await item.isVisible())) {
       await win.keyboard.press('Escape');
-      throw new Error('Coverage… is not in the project menu yet');
+      throw new Error('Coverage... is not in the project menu yet');
     }
   }).toPass({ timeout: 30_000 });
-  await expect(item).toHaveText(/Coverage…/);
+  await expect(item).toHaveText(/Coverage\.\.\./);
   await item.click();
   const bench = win.locator('.rf-bench');
   await expect(bench).toBeVisible();
@@ -197,7 +197,7 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   await writeRfProject(dataRoot.projectDir);
   await openTiny(win);
 
-  // 1. the RF tab, from the project menu's Coverage…
+  // 1. the RF tab, from the project menu's Coverage...
   let bench = await openRfFromProjectMenu(win);
   await expect(bench.getByTestId('rf-sectors')).toContainText('No sectors');
 

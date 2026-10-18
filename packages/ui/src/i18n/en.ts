@@ -4094,7 +4094,7 @@ export const en = {
   'actions.project.properties': 'Project properties...',
   'actions.project.close': 'Close project',
   'actions.project.emptyTrash': 'Empty trash...',
-  'actions.rf.coverage': 'Coverage…',
+  'actions.rf.coverage': 'Coverage...',
   'actions.rf.running': 'A coverage run is in progress.',
   'actions.date.zoomTo': 'Zoom to',
   'actions.date.export': 'Export...',
