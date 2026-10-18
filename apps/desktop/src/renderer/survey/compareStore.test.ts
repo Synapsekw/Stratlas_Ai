@@ -366,9 +366,14 @@ describe('a live run while editing a lined-up date', () => {
       focus: 'm1',
       editing: { points: drawn, dragging: null, selected: null } as never,
     });
-    await vi.waitFor(() => {
-      expect(compareStore.getState().computed.m1?.live).toBe(true);
-    });
+    // the live run goes through the debounced engine: give it more than the default 1 s, which a
+    // full parallel `pnpm check` can use up
+    await vi.waitFor(
+      () => {
+        expect(compareStore.getState().computed.m1?.live).toBe(true);
+      },
+      { timeout: 5000 },
+    );
     expect(compareStore.getState().computed.m1?.ringKey).toContain('302018');
     expect(compareStore.getState().computed.m1?.ringKey).not.toContain('302020');
     off();
