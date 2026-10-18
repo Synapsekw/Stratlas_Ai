@@ -12,8 +12,10 @@
  * - No accepted antenna: Auto-plan stops at "Review antennas first", and Review antennas opens
  *   the Measure bench.
  *
- * The coverage chip moves into the stage's legend corner card in another task, so nothing here
- * asserts it yet.
+ * The rules flow starts from the coverage card's ✦ Auto-plan in the stage's legend corner (the
+ * chip, `CoverageChip.tsx`), the other two from the panel's AI card; the card's state is checked
+ * in each. On a narrow stage (the CI window) the card drops its words, so the share after a run is
+ * read from the panel's status line there.
  */
 import { offlineRoutes } from '@aio/ai/routes';
 import type { Locator, Page } from '@playwright/test';
@@ -117,7 +119,10 @@ const sectorTags = (bench: Locator) =>
     rows.map((r) => (r as HTMLElement).dataset.tag ?? '').sort(),
   );
 
-test('Auto-plan with the rules: review, Apply & run, coverage and rules tags', async ({
+/** The coverage card's header in the stage corner. */
+const stageChip = (win: Page) => win.getByTestId('rf-chip');
+
+test('Auto-plan with the rules from the coverage card: review, Apply & run, coverage', async ({
   win,
   dataRoot,
 }) => {
@@ -143,10 +148,22 @@ test('Auto-plan with the rules: review, Apply & run, coverage and rules tags', a
   await head.click();
   await expect(head).toHaveAttribute('aria-expanded', 'false');
 
-  // the AI card's Auto-plan & run opens the review; no provider is set up, so Rules only
-  const card = bench.getByTestId('rf-ai-card');
-  await expect(card.getByTestId('rf-ai-autoplan')).toHaveText(/Auto-plan & run/);
-  await card.getByTestId('rf-ai-autoplan').click();
+  // the coverage card in the stage corner: three accepted antennas, not planned yet
+  const chip = stageChip(win);
+  await expect(chip).toHaveAttribute('data-state', 'not-planned');
+  await expect(chip.getByTestId('rf-chip-open')).toHaveAccessibleName(
+    'Coverage · 3 antennas · not planned',
+  );
+  if ((await chip.getAttribute('data-narrow')) === null)
+    await expect(chip).toContainText('3 antennas · not planned');
+  await expect(win.getByTestId('rf-chip-panel')).toContainText('3 antennas · not planned');
+  await expect(bench.getByTestId('rf-ai-card').getByTestId('rf-ai-autoplan')).toHaveText(
+    /Auto-plan & run/,
+  );
+  await evidence(win, 'chip-not-planned');
+
+  // the card's ✦ Auto-plan opens the review; no provider is set up, so Rules only
+  await chip.getByTestId('rf-chip-autoplan').click();
   const dlg = win.getByTestId('rf-autoplan');
   await expect(dlg).toBeVisible();
   await expect(dlg).toHaveAttribute('data-phase', 'review');
@@ -204,10 +221,23 @@ test('Auto-plan with the rules: review, Apply & run, coverage and rules tags', a
   await bench.getByTestId('rf-classes').scrollIntoViewIfNeeded();
   await evidence(win, 'panel-classes-rules');
 
-  // the run is drawn on the map
+  // the card says the result: the view and the share fair or better (in its accessible name
+  // always, in its words on a wide stage; the panel's status line always shows them)
+  const share = /RSRP · \d+% fair or better/;
+  await expect(chip).toHaveAttribute('data-state', 'result', { timeout: 30_000 });
+  await expect(chip.getByTestId('rf-chip-open')).toHaveAccessibleName(share);
+  if ((await chip.getAttribute('data-narrow')) === null) await expect(chip).toContainText(share);
+  else await expect(chip.locator('.rf-chip-desc')).toHaveCount(0);
+  await expect(win.getByTestId('rf-chip-panel')).toHaveAttribute('data-state', 'result');
+  await expect(win.getByTestId('rf-chip-panel')).toContainText(share);
+  await expect(chip.getByTestId('rf-chip-replan')).toBeVisible();
+  await evidence(win, 'chip-result');
+
+  // the run is drawn on the map, the card above the legend
   await stageMode(win, 'Map');
   await expect.poll(() => mapHasCoverage(win), { timeout: 60_000 }).toBe(true);
   await expect(win.getByTestId('rf-legend')).toBeVisible();
+  await expect(chip).toHaveAttribute('data-state', 'result');
   await evidence(win, 'coverage-on-map');
   await stageMode(win, '3D');
 });
@@ -272,6 +302,9 @@ test('Auto-plan with a local model: AI picks, a low-confidence row, Apply only',
       bench.getByRole('status').filter({ hasText: 'RF settings changed and not saved yet' }),
     ).toBeVisible();
     expect(await readRfSectors(data.projectDir)).toBeNull();
+    // every planned sector is set up, so the coverage card offers Run
+    await expect(stageChip(win)).toHaveAttribute('data-state', 'ready');
+    await expect(stageChip(win).getByTestId('rf-chip-run')).toBeVisible();
     await expect(sectorRows(bench)).toHaveCount(3);
     await bench.getByTestId('rf-step-sectors').scrollIntoViewIfNeeded();
     await evidence(win, 'panel-after-ai');
@@ -293,6 +326,15 @@ test('no accepted antennas: Auto-plan asks for a review, Review antennas opens M
   await openTiny(win);
   const bench = await openRfFromProjectMenu(win);
   await expect(bench.getByTestId('rf-step-antennas')).toContainText('0 accepted · 4 drafts');
+  // the coverage card: nothing reviewed, so its action is Review antennas
+  const chip = stageChip(win);
+  await expect(chip).toHaveAttribute('data-state', 'review-first');
+  await expect(chip.getByTestId('rf-chip-open')).toHaveAccessibleName(
+    'Coverage · 4 antennas · review first',
+  );
+  await expect(chip.getByTestId('rf-chip-review')).toHaveText('Review antennas');
+  await expect(chip.getByTestId('rf-chip-autoplan')).toHaveCount(0);
+  await evidence(win, 'chip-review-first');
   await bench.getByTestId('rf-ai-card').getByTestId('rf-ai-autoplan').click();
   const dlg = win.getByTestId('rf-autoplan');
   await expect(dlg).toHaveAttribute('data-phase', 'blocked-review');
