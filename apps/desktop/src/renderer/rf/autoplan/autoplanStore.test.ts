@@ -28,7 +28,6 @@ type Handler = (req: Record<string, unknown>) => unknown;
 const h = vi.hoisted(() => ({
   handlers: new Map<string, (req: Record<string, unknown>) => unknown>(),
   calls: new Array<[string, Record<string, unknown>]>(),
-  review: undefined as undefined | (() => void),
 }));
 
 vi.mock('../../shell', () => ({
@@ -46,17 +45,6 @@ vi.mock('../../shell', () => ({
 vi.mock('../rfTab', () => ({
   startRfRun: vi.fn(() => Promise.resolve({ ok: true, jobId: 'job-1', runId: 'rf-1' })),
 }));
-
-// `openAntennaReview` lands with the antenna inventory work; the tests switch it on and off.
-vi.mock('../../telecom/antennaStore', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return {
-    ...actual,
-    get openAntennaReview() {
-      return h.review;
-    },
-  };
-});
 
 const CATALOGUE = (
   JSON.parse(
@@ -132,7 +120,6 @@ const REPLY = {
 beforeEach(async () => {
   h.handlers.clear();
   h.calls = [];
-  h.review = undefined;
   vi.mocked(startRfRun).mockClear();
   resetRf();
   resetAutoplan();
@@ -531,34 +518,57 @@ describe('openAntennaReviewOrFallback', () => {
     const open = vi.fn();
     return { open, store: { getState: () => ({ open }) } as never };
   };
+  const drafts = () => [...site3(), draft('d1', 60), draft('d2', 90)];
 
-  it('opens the antenna review when the inventory offers it', () => {
-    const review = vi.fn();
-    h.review = review;
-    const b = bench();
-    openAntennaReviewOrFallback(b.store);
-    expect(review).toHaveBeenCalledTimes(1);
-    expect(b.open).not.toHaveBeenCalled();
-  });
-
-  it('reveals the first draft when there is no review to open', async () => {
-    await seedAntennas([...site3(), draft('d1', 60), draft('d2', 90)]);
+  it('opens the antenna review once the inventory is read', async () => {
+    await seedAntennas(drafts());
     const before = antennaStore.getState().reveal;
     const b = bench();
     openAntennaReviewOrFallback(b.store);
-    expect(antennaStore.getState().selected).toBe('ant-d1');
+    // the drafts, the first one revealed; the bench is left as it is
+    expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
     expect(antennaStore.getState().reveal).toBe(before + 1);
-    expect(b.open).toHaveBeenCalledWith('measure');
+    expect(b.open).not.toHaveBeenCalled();
   });
 
-  it('opens the Measure bench when there is no draft either', () => {
-    h.review = vi.fn();
-    antennaStore.setState({ status: 'loading' });
+  it('opens the Measure bench while the inventory loads, then the review once, when it is read', async () => {
+    await seedAntennas(drafts());
+    antennaStore.setState({ status: 'loading', selected: null, filter: 'all' });
     const b = bench();
     openAntennaReviewOrFallback(b.store);
-    expect(h.review).not.toHaveBeenCalled();
-    expect(antennaStore.getState().selected).toBeNull();
     expect(b.open).toHaveBeenCalledWith('measure');
+    expect(antennaStore.getState().selected).toBeNull();
+    antennaStore.setState({ status: 'ready' });
+    expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
+    // one shot: a later read opens nothing again
+    antennaStore.setState({ selected: null, status: 'loading' });
+    antennaStore.setState({ status: 'ready' });
+    expect(antennaStore.getState().selected).toBeNull();
+  });
+
+  it('drops the waiting review on a failed read, a read of another project or a newer ask', async () => {
+    await seedAntennas(drafts());
+    const b = bench();
+    // a failed read
+    antennaStore.setState({ status: 'loading', selected: null });
+    openAntennaReviewOrFallback(b.store);
+    antennaStore.setState({ status: 'error' });
+    antennaStore.setState({ status: 'ready' });
+    expect(antennaStore.getState().selected).toBeNull();
+    // another project's inventory
+    antennaStore.setState({ status: 'loading', projectId: 'p1' });
+    openAntennaReviewOrFallback(b.store);
+    antennaStore.setState({ status: 'ready', projectId: 'p2' });
+    expect(antennaStore.getState().selected).toBeNull();
+    // a newer ask replaces the waiting one: the review opens once
+    antennaStore.setState({ status: 'loading', projectId: 'p1' });
+    openAntennaReviewOrFallback(b.store);
+    openAntennaReviewOrFallback(b.store);
+    const before = antennaStore.getState().reveal;
+    antennaStore.setState({ status: 'ready' });
+    expect(antennaStore.getState().selected).toBe('ant-d1');
+    expect(antennaStore.getState().reveal).toBe(before + 1);
+    expect(b.open).toHaveBeenCalledTimes(4);
   });
 });
 

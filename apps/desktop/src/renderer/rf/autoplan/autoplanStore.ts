@@ -32,7 +32,7 @@ import { workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand';
 import { createStore, useStore } from 'zustand';
 import { bridge } from '../../shell';
-import * as antennas from '../../telecom/antennaStore';
+import { antennaStore, openAntennaReview } from '../../telecom/antennaStore';
 import { workbench, type WorkbenchState } from '../../workspace/workbench/workbenchStore';
 import { startRfRun } from '../rfTab';
 import { applyPlan, rfStore, type RfState, type RfView, type StartResult } from '../rfStore';
@@ -141,7 +141,7 @@ rfStore.subscribe((s, prev) => {
 /** The detected units: the inventory store's when it holds this project, else the RF store's. */
 function currentUnits(): readonly AntennaUnit[] {
   const rf = rfStore.getState();
-  const a = antennas.antennaStore.getState();
+  const a = antennaStore.getState();
   if (a.file && a.projectId === rf.projectId) return a.file.units;
   return rf.antennas?.units ?? [];
 }
@@ -495,21 +495,30 @@ export async function applyAutoplan(run: boolean): Promise<StartResult | ApplyRe
   return startRfRun(root);
 }
 
+/** The review asked for while the inventory was still loading: undone by the next ask. */
+let pendingReview: (() => void) | null = null;
+
 /**
- * "Review antennas first": the inventory's review when it offers one (and is loaded), else the
- * first draft revealed in the Measure bench's inventory, else the Measure bench.
+ * "Review antennas first": the inventory's review (`openAntennaReview`: the drafts, the first one
+ * revealed). Before the inventory is read, the Measure bench opens (where it loads) and the review
+ * opens once the read is in, for the project asked about; a failed read or a newer ask drops it.
  */
 export function openAntennaReviewOrFallback(bench: StoreApi<WorkbenchState> = workbench): void {
-  const review = (antennas as Record<string, unknown>).openAntennaReview;
-  const a = antennas.antennaStore.getState();
-  if (typeof review === 'function' && a.status === 'ready') {
-    (review as () => void)();
+  pendingReview?.();
+  pendingReview = null;
+  if (antennaStore.getState().status === 'ready') {
+    openAntennaReview();
     return;
   }
-  // the inventory's units when it holds this project, else the RF store's
-  const firstDraft = currentUnits().find((u) => u.status === 'draft');
-  if (firstDraft) antennas.revealAntenna(firstDraft.id);
   bench.getState().open('measure');
+  const projectId = rfStore.getState().projectId;
+  const off = antennaStore.subscribe((a) => {
+    if (a.status !== 'ready' && a.status !== 'error') return;
+    off();
+    pendingReview = null;
+    if (a.status === 'ready' && a.projectId === projectId) openAntennaReview();
+  });
+  pendingReview = off;
 }
 
 // ---------------------------------------------------------------- the chip
