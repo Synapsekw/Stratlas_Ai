@@ -5,7 +5,7 @@
  * tilesets and layers as they are). The scene is reached through a host, so this holds no
  * CesiumJS of its own: the controller is the host.
  */
-import type { DateShift, TilesetEntry } from '@aio/schema';
+import { shiftKey, type DateShift, type TilesetEntry } from '@aio/schema';
 import type { SiteGeoref } from '../geodesy';
 import type { PyramidIndex } from '../projectRasters';
 
@@ -18,9 +18,8 @@ export interface SiteOutputRaster {
   shift?: DateShift;
 }
 
-/** A shift as a comparison key, to the millimetre; empty for none. */
-const shiftKeyOf = (s: DateShift | undefined): string =>
-  s ? `${Math.round(s.eastM * 1000)},${Math.round(s.northM * 1000)}` : '';
+/** A shift as a comparison key (`shiftKey`: to the millimetre, and the turn); empty for none. */
+const shiftKeyOf = (s: DateShift | undefined): string => shiftKey(s);
 
 /** What one site in focus draws on the Globe. */
 export interface SiteOutputs {

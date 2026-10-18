@@ -108,6 +108,20 @@ export function turnOf(s: DateShift | null | undefined): CaptureLineUpTurn | nul
     : null;
 }
 
+/**
+ * A shift as a cache key: `"e,n"` to the millimetre (empty for none), and with a turn
+ * `"e,n,r<rotationDeg to 1e-6>,s<scale to 1e-7>,p<pivotE>,<pivotN to mm>"`. A shift without a
+ * turn keeps the plain `"e,n"` key, so older caches stay valid.
+ */
+export function shiftKey(s: DateShift | null | undefined): string {
+  if (!s) return '';
+  const fix = (v: number, d: number) => String(Number(v.toFixed(d)) + 0);
+  const base = `${fix(s.eastM, 3)},${fix(s.northM, 3)}`;
+  const t = turnIn(s);
+  if (!t) return base;
+  return `${base},r${fix(t.rotationDeg, 6)},s${fix(t.scale, 7)},p${fix(t.pivotE, 3)},${fix(t.pivotN, 3)}`;
+}
+
 /** True for no shift, or one within half a millimetre on both axes and with no turn. */
 export function isZeroShift(s: DateShift | null | undefined): boolean {
   return !s || (Math.abs(s.eastM) <= ZERO_M && Math.abs(s.northM) <= ZERO_M && !turnIn(s));

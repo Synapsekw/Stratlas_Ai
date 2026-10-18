@@ -19,7 +19,7 @@ import type {
   SurveyPrepareParams,
 } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
-import { captureShift, workspace } from '@aio/workspace';
+import { captureShift, shiftKey, workspace } from '@aio/workspace';
 import { bridge } from '../shell';
 import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } from './engineClient';
 import { designs as designsStore } from './designsStore';
@@ -221,6 +221,14 @@ export function currentShifts(
     if (s) out[c.id] = [s.eastM, s.northM];
   }
   return out;
+}
+
+/** Every date's line-up as one key, the turn included: a change of any of it pushes the context again. */
+function shiftsKeyOf(manifest: Parameters<typeof captureShift>[0] | null | undefined): string {
+  if (!manifest) return '';
+  return manifest.captures
+    .map((c) => `${c.id}:${shiftKey(captureShift(manifest, c.id))}`)
+    .join(';');
 }
 
 function pushContext(projectId: string, surfaces: HeightTiles[], designs: DesignEntry[]): void {
@@ -476,9 +484,9 @@ export function followMeasurements(): () => void {
     if (s.file && s.file !== prev.file && s.projectId === get().projectId) takeDesigns(s.file);
   });
   // a line-up changes the fingerprints: hand the engine the new shifts, then check again
-  let shiftsKey = JSON.stringify(currentShifts(workspace.getState().project?.manifest));
+  let shiftsKey = shiftsKeyOf(workspace.getState().project?.manifest);
   const offShifts = workspace.subscribe((ws) => {
-    const key = JSON.stringify(currentShifts(ws.project?.manifest));
+    const key = shiftsKeyOf(ws.project?.manifest);
     if (key === shiftsKey) return;
     shiftsKey = key;
     const { projectId, status, surfaces, designs } = get();
