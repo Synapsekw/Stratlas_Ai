@@ -186,6 +186,22 @@ export function isMenuKey(e: { key: string; shiftKey: boolean }): boolean {
   return (e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu';
 }
 
+/**
+ * A row with no menu of its own (the Measurements heading, a measurement folder): the right-click
+ * and the menu keys stop there, so the tree's empty-space Project menu does not open over it.
+ */
+const noMenu = {
+  onContextMenu: (e: MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  },
+  onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
+    if (!isMenuKey(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  },
+};
+
 /** Where a menu opened from the keyboard goes: just inside the element, under it. */
 export function keyMenuPoint(el: HTMLElement): MenuPoint {
   const r = el.getBoundingClientRect();
@@ -871,8 +887,13 @@ export function DatasetTree(props: DatasetTreeProps) {
           data-testid="measure-folder"
           data-folder={name}
           onClick={toggle}
+          onContextMenu={noMenu.onContextMenu}
           onKeyDown={(e) => {
             if (e.target !== e.currentTarget) return;
+            if (isMenuKey(e)) {
+              noMenu.onKeyDown(e);
+              return;
+            }
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               toggle();
@@ -968,8 +989,9 @@ export function DatasetTree(props: DatasetTreeProps) {
         );
         // a header carries its whole group, the rows behind "more" too; never in rail mode
         const carried = collapsed ? [] : (props.dragGroupIds?.(g) ?? []);
-        // every heading has a menu, one without layers too (the caller picks its items)
-        const groupMenu = props.onGroupMenu;
+        // every heading of datasets has a menu, one without layers too (the caller picks its
+        // items); the Measurements heading holds no datasets, so it has none
+        const groupMenu = mg ? undefined : props.onGroupMenu;
         const groupDrag = carried.length > 0 && props.onDragItem !== undefined;
         const action = collapsed ? undefined : props.groupAction?.(g);
         const fold: GroupFold = {
@@ -1015,7 +1037,9 @@ export function DatasetTree(props: DatasetTreeProps) {
                       groupMenu(g, carried, keyMenuPoint(e.currentTarget), fold);
                     },
                   }
-                : {})}
+                : mg
+                  ? noMenu
+                  : {})}
             >
               <button
                 type="button"

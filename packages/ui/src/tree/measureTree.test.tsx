@@ -166,6 +166,25 @@ describe('measurement rows in the dataset tree', () => {
     expect(row('a')).not.toBeNull();
   });
 
+  it('the heading and a folder have no menu and keep the right-click and menu keys', () => {
+    const onGroupMenu = vi.fn();
+    render(props({ onGroupMenu }));
+    const outer = vi.fn();
+    document.body.addEventListener('contextmenu', outer);
+    document.body.addEventListener('keydown', outer);
+    for (const el of [
+      q('[data-testid="tree-group-measurements"]'),
+      q('[data-testid="measure-folder"][data-folder="Fence"]'),
+    ]) {
+      contextMenu(el, 20, 20);
+      keyDown(el, 'F10', { shiftKey: true });
+    }
+    expect(onGroupMenu).not.toHaveBeenCalled();
+    expect(outer).not.toHaveBeenCalled();
+    document.body.removeEventListener('contextmenu', outer);
+    document.body.removeEventListener('keydown', outer);
+  });
+
   it('marks with namespaced ids, opens the menu, renames with a 200 cap', () => {
     const p = render(props({ marked: new Set(['measure:c']) }));
     expect(row('c')?.classList.contains('marked')).toBe(true);

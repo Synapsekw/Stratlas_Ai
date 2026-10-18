@@ -264,6 +264,21 @@ describe('Datasets: measurements', () => {
     expect(measures().map((m) => m.id)).toEqual(['b']);
   });
 
+  it.each([
+    ['survey dates off', plain],
+    ['survey dates on', dated],
+  ])('right-click on the Measurements heading or a folder opens no menu (%s)', (_, m) => {
+    render(m);
+    for (const el of [
+      q('[data-testid="tree-group-measurements"]'),
+      q('[data-testid="measure-folder"][data-folder="Fence"]'),
+    ]) {
+      expect(contextMenu(el).defaultPrevented).toBe(true);
+      expect(q('[data-testid="ctx-menu"]')).toBeNull();
+      expect(q('[data-testid="move-menu"]')).toBeNull();
+    }
+  });
+
   it('Shift+F10 on a measurement row’s eye opens that measurement’s menu', () => {
     render();
     keyDown(row('c')?.querySelector('[data-testid="measure-row-eye"]') ?? null, 'F10', {
