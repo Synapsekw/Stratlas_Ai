@@ -75,6 +75,12 @@ export function attachCoverageMap(ctl: { map: CoverageMapLike }): CoverageMapVie
 
   const before = () => (map.getLayer(ABOVE_RASTERS) ? ABOVE_RASTERS : undefined);
 
+  // the wait for a style still loading, taken off on dispose (review M5)
+  function onIdle(): void {
+    waiting = false;
+    apply();
+  }
+
   function apply(): void {
     const d = last;
     if (!d || disposed) return;
@@ -82,10 +88,7 @@ export function attachCoverageMap(ctl: { map: CoverageMapLike }): CoverageMapVie
       if (!map.isStyleLoaded()) {
         if (!waiting) {
           waiting = true;
-          map.once('idle', () => {
-            waiting = false;
-            apply();
-          });
+          map.once('idle', onIdle);
         }
         return;
       }
@@ -166,6 +169,7 @@ export function attachCoverageMap(ctl: { map: CoverageMapLike }): CoverageMapVie
     dispose() {
       disposed = true;
       map.off('styledata', onStyle);
+      if (waiting) map.off('idle', onIdle);
       try {
         for (const id of [BORESIGHT_LAYER, COVERAGE_LAYER])
           if (map.getLayer(id)) map.removeLayer(id);
