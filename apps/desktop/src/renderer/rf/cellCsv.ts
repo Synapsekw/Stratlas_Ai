@@ -28,7 +28,9 @@ export type CellField =
   | 'power'
   | 'etilt'
   | 'antennaModel'
-  | 'radioModel';
+  | 'radioModel'
+  | 'azimuth'
+  | 'height';
 
 const ALIASES: Readonly<Record<CellField, readonly string[]>> = {
   antenna: ['antenna', 'antennaname', 'antennaid', 'name', 'id', 'unit'],
@@ -40,6 +42,8 @@ const ALIASES: Readonly<Record<CellField, readonly string[]>> = {
   etilt: ['etiltdeg', 'etilt', 'electricaltilt'],
   antennaModel: ['antennamodel', 'antennatype'],
   radioModel: ['radiomodel', 'radio', 'rru', 'aau', 'radiounit'],
+  azimuth: ['azimuthdeg', 'azimuth', 'az', 'bearing'],
+  height: ['heightm', 'height', 'antennaheight'],
 };
 
 /** Why a row or one of its cells cannot be used; the review table shows the words. */
@@ -115,9 +119,9 @@ export function splitCsv(text: string): string[][] {
   return out.filter((r) => r.some((x) => x.trim() !== ''));
 }
 
-const norm = (s: string): string => s.toLowerCase().replace(/[\s_\-.]/g, '');
+export const norm = (s: string): string => s.toLowerCase().replace(/[\s_\-.]/g, '');
 
-function columnsOf(header: readonly string[]): Partial<Record<CellField, number>> {
+export function columnsOf(header: readonly string[]): Partial<Record<CellField, number>> {
   const cols: Partial<Record<CellField, number>> = {};
   header.forEach((h, i) => {
     const key = norm(h);
@@ -143,7 +147,7 @@ export function findEntry(
   );
 }
 
-const num = (s: string): number | null => {
+export const num = (s: string): number | null => {
   const v = Number(s.trim().replace(',', '.'));
   return s.trim() !== '' && Number.isFinite(v) ? v : null;
 };
