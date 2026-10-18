@@ -5,7 +5,7 @@
  * a unit (`useAntennaKeys`).
  */
 import type { AntennaStatus, AntennaUnit, AntennaValue, Layer } from '@aio/schema';
-import { Button, Chip, IconButton, Kbd, t } from '@aio/ui';
+import { Button, Chip, IconButton, Kbd, Tip, t } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import {
   useLayoutEffect,
@@ -22,7 +22,7 @@ import { createPortal } from 'react-dom';
 import { openPhoto } from '../builder/photoOpen';
 import { thumbUrl } from '../thumbs/Thumb';
 import { AntennaUserFields } from './AntennaUserFields';
-import { formatDeg, trueAzimuth } from './antennaFormat';
+import { TONE, formatDeg, qualityTip, trueAzimuth } from './antennaFormat';
 import { KIND_COLOURS } from './antennaScene';
 import {
   decideAntenna,
@@ -72,7 +72,6 @@ const DASH = '—';
 const CARD_W = 320;
 /** Assumed until the card has been measured once. */
 const CARD_H = 420;
-const TONE = { draft: 'warn', accepted: 'acc', rejected: 'off' } as const;
 
 const deg = (v: AntennaValue | undefined, signed = false): string =>
   v ? formatDeg(v.value, signed) : DASH;
@@ -130,14 +129,46 @@ function photoEntries(
 }
 
 const IMG: CSSProperties = {
+  position: 'relative',
   display: 'block',
   width: '100%',
   height: '100%',
   objectFit: 'contain',
 };
 
+/** The strip's height bounds, CSS pixels; within them it follows the image's aspect. */
+export const STRIP_MIN_H = 140;
+export const STRIP_MAX_H = 260;
+/** Until an image has loaded, the strip's height; in a DOM without layout, its width. */
+const STRIP_H = 180;
+const STRIP_W = 288;
+
+/** The strip's height for an image `w` x `h` shown `width` wide: its aspect, within the bounds. */
+export function stripHeight(w: number, h: number, width: number): number {
+  if (!(w > 0) || !(h > 0)) return STRIP_H;
+  return Math.round(Math.min(STRIP_MAX_H, Math.max(STRIP_MIN_H, (width * h) / w)));
+}
+
+/** Told the loaded image's natural size and the strip's width, for the strip's height. */
+type OnSize = (w: number, h: number, width: number) => void;
+const sizeOf =
+  (onSize: OnSize) =>
+  (e: { currentTarget: HTMLImageElement }): void => {
+    const img = e.currentTarget;
+    const width = img.parentElement?.clientWidth ?? 0;
+    onSize(img.naturalWidth, img.naturalHeight, width > 0 ? width : STRIP_W);
+  };
+
 /** A linked photo fitted in the card: its thumbnail, else the full image. */
-function FittedPhoto({ full }: { full: string }): ReactElement {
+function FittedPhoto({
+  full,
+  onShown,
+  onSize,
+}: {
+  full: string;
+  onShown: (src: string) => void;
+  onSize: OnSize;
+}): ReactElement {
   const [src, setSrc] = useState(() => thumbUrl(full));
   return (
     <img
@@ -147,6 +178,10 @@ function FittedPhoto({ full }: { full: string }): ReactElement {
       draggable={false}
       data-testid="antenna-photo-img"
       style={IMG}
+      onLoad={(e) => {
+        onShown(src);
+        sizeOf(onSize)(e);
+      }}
       onError={() => {
         if (src !== full) setSrc(full);
       }}
@@ -156,10 +191,21 @@ function FittedPhoto({ full }: { full: string }): ReactElement {
 
 const STRIP: CSSProperties = {
   position: 'relative',
-  height: 180,
   borderRadius: 'var(--r-4)',
   overflow: 'hidden',
   background: 'var(--bg-0)',
+};
+/**
+ * The same image, blurred and darkened, filling the strip behind a narrow one, so a portrait crop
+ * has no black bars beside it. Grown past the strip so the blur has no light edge.
+ */
+const FILL: CSSProperties = {
+  position: 'absolute',
+  inset: -24,
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  filter: 'blur(16px) brightness(0.55)',
+  pointerEvents: 'none',
 };
 const STRIP_BAR: CSSProperties = {
   position: 'absolute',
@@ -175,6 +221,9 @@ const STRIP_BAR: CSSProperties = {
 
 function PhotoStrip({ entries }: { entries: PhotoEntry[] }): ReactElement {
   const [i, setI] = useState(0);
+  const [height, setHeight] = useState(STRIP_H);
+  // the image the fill repeats: the crop, or a photo's thumbnail once it has loaded
+  const [shown, setShown] = useState<{ of: string; src: string } | null>(null);
   const n = entries.length;
   if (n === 0)
     return (
@@ -187,12 +236,38 @@ function PhotoStrip({ entries }: { entries: PhotoEntry[] }): ReactElement {
   const step = (d: 1 | -1) => {
     setI((at + d + n) % n);
   };
+  const onSize: OnSize = (w, h, width) => {
+    setHeight(stripHeight(w, h, width));
+  };
+  const url = entry?.url ?? null;
+  const fill = entry?.kind === 'crop' ? url : shown?.of === url ? shown.src : null;
   return (
-    <div style={STRIP} data-testid="antenna-card-photos">
+    <div style={{ ...STRIP, height }} data-testid="antenna-card-photos">
+      {fill ? (
+        <div
+          aria-hidden="true"
+          data-testid="antenna-photo-fill"
+          style={{ ...FILL, backgroundImage: `url(${JSON.stringify(fill)})` }}
+        />
+      ) : null}
       {entry?.kind === 'crop' ? (
-        <img src={entry.url} alt="" data-testid="antenna-crop" draggable={false} style={IMG} />
-      ) : entry?.url ? (
-        <FittedPhoto key={entry.url} full={entry.url} />
+        <img
+          src={entry.url}
+          alt=""
+          data-testid="antenna-crop"
+          draggable={false}
+          style={IMG}
+          onLoad={sizeOf(onSize)}
+        />
+      ) : url ? (
+        <FittedPhoto
+          key={url}
+          full={url}
+          onShown={(src) => {
+            setShown({ of: url, src });
+          }}
+          onSize={onSize}
+        />
       ) : null}
       <div style={STRIP_BAR}>
         {n > 1 ? (
@@ -209,7 +284,12 @@ function PhotoStrip({ entries }: { entries: PhotoEntry[] }): ReactElement {
         <span
           className="mono"
           data-testid="antenna-card-photo-index"
-          style={{ fontSize: 'var(--t-11)', color: 'var(--fg-0)' }}
+          style={{
+            flex: 'none',
+            whiteSpace: 'nowrap',
+            fontSize: 'var(--t-11)',
+            color: 'var(--fg-0)',
+          }}
         >
           {t('telecom.antennas.card.photo', { i: at + 1, n })}
         </span>
@@ -250,20 +330,41 @@ const LABEL: CSSProperties = {
   letterSpacing: '0.04em',
 };
 
+const MUTED: CSSProperties = { fontSize: 'var(--t-11)', color: 'var(--fg-3)' };
+
+/** How a value was found and how well it fits: "Measured · Fit residual 3.0 mm, ...". */
+function basisTip(v: AntennaValue, extra?: string): string {
+  const basis = t(`telecom.antennas.basis.${v.basis}`);
+  const quality = qualityTip(v);
+  return [basis, quality === basis ? null : quality, extra ?? null]
+    .filter((x): x is string => x !== null)
+    .join(' · ');
+}
+
 function Value({
   name,
   label,
+  v,
   big,
   wide,
+  note,
+  tip,
   children,
 }: {
   name: string;
   label: string;
+  /** The value behind the text: its basis and fit quality show as a tip. */
+  v?: AntennaValue | undefined;
   big?: boolean;
   /** Takes the whole row and wraps rather than cut its text (W × H × D). */
   wide?: boolean;
+  /** A short muted line under the value; its whole sentence joins the tip. */
+  note?: { short: string; full: string } | undefined;
+  /** The tip of a value made of several (W × H × D). */
+  tip?: string | undefined;
   children: ReactNode;
 }): ReactElement {
+  const content = v ? basisTip(v, note?.full) : tip;
   return (
     <div
       style={{
@@ -277,6 +378,7 @@ function Value({
       <dd
         className="mono"
         data-value={name}
+        data-basis={v?.basis}
         style={{
           margin: 0,
           fontSize: big ? 'var(--t-20)' : 'var(--t-12)',
@@ -286,8 +388,29 @@ function Value({
             : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
         }}
       >
-        {children}
+        {content ? (
+          <Tip content={content} placement="top">
+            {/* a value not measured directly reads with a dotted underline */}
+            <span
+              tabIndex={0}
+              style={
+                v && v.basis !== 'measured'
+                  ? { textDecoration: 'underline dotted var(--fg-3)', textUnderlineOffset: 4 }
+                  : undefined
+              }
+            >
+              {children}
+            </span>
+          </Tip>
+        ) : (
+          children
+        )}
       </dd>
+      {note ? (
+        <small data-note={name} style={MUTED}>
+          {note.short}
+        </small>
+      ) : null}
     </div>
   );
 }
@@ -304,24 +427,43 @@ function Values({ unit }: { unit: AntennaUnit }): ReactElement {
   const size = `${metres(unit.widthM)} × ${metres(unit.heightM)} × ${metres(unit.depthM)} m`;
   return (
     <dl style={GRID}>
-      <Value name="azimuth" label={t('telecom.antennas.value.azimuth')} big>
+      <Value name="azimuth" label={t('telecom.antennas.value.azimuth')} v={unit.azimuthGridDeg} big>
         {azimuthText(unit)}
       </Value>
       {dish ? (
         <>
-          <Value name="elevation" label={t('telecom.antennas.value.elevation')} big>
+          <Value
+            name="elevation"
+            label={t('telecom.antennas.value.elevation')}
+            v={unit.elevationDeg}
+            big
+          >
             {deg(unit.elevationDeg, true)}
           </Value>
-          <Value name="diameter" label={t('telecom.antennas.value.diameter')} big>
+          <Value
+            name="diameter"
+            label={t('telecom.antennas.value.diameter')}
+            v={unit.diameterM}
+            big
+          >
             {unit.diameterM ? `${unit.diameterM.value.toFixed(2)} m` : DASH}
           </Value>
         </>
       ) : (
         <>
-          <Value name="downtilt" label={t('telecom.antennas.value.downtilt')} big>
+          <Value
+            name="downtilt"
+            label={t('telecom.antennas.value.downtilt')}
+            v={unit.downtiltDeg}
+            big
+            note={{
+              short: t('telecom.antennas.mechanical.short'),
+              full: t('telecom.antennas.mechanical'),
+            }}
+          >
             {deg(unit.downtiltDeg)}
           </Value>
-          <Value name="plumb" label={t('telecom.antennas.value.plumb')} big>
+          <Value name="plumb" label={t('telecom.antennas.value.plumb')} v={unit.plumbDeg} big>
             {deg(unit.plumbDeg, true)}
           </Value>
         </>
@@ -332,7 +474,12 @@ function Values({ unit }: { unit: AntennaUnit }): ReactElement {
       <Value name="points" label={t('telecom.antennas.card.points')}>
         {unit.support.toLocaleString()}
       </Value>
-      <Value name="size" label={t('telecom.antennas.card.size')} wide>
+      <Value
+        name="size"
+        label={t('telecom.antennas.card.size')}
+        wide
+        tip={[unit.widthM, unit.heightM, unit.depthM].map((v) => basisTip(v)).join(' / ')}
+      >
         {size}
       </Value>
     </dl>
@@ -365,6 +512,11 @@ const HEAD: CSSProperties = {
   cursor: 'grab',
   touchAction: 'none',
   userSelect: 'none',
+};
+const ELLIPSIS: CSSProperties = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 const BODY: CSSProperties = {
   display: 'grid',
@@ -457,6 +609,11 @@ function CardBody(props: BodyProps): ReactElement {
     void decideAntenna(status);
   };
   const reason = readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {};
+  const kindWord = t(`telecom.antennas.card.kind.${unit.kind}`);
+  const provider = unit.kindBasis === 'ai' ? unit.ai?.provider : undefined;
+  const kindBasis = provider
+    ? t('telecom.antennas.kindBasis.aiBy', { provider })
+    : t(`telecom.antennas.kindBasis.${unit.kindBasis}`);
 
   return (
     <>
@@ -511,14 +668,10 @@ function CardBody(props: BodyProps): ReactElement {
               background: KIND_COLOURS[unit.kind],
             }}
           />
+          {/* the name never gives way: the kind beside it shrinks first */}
           <strong
-            style={{
-              fontSize: 'var(--t-14)',
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
+            data-testid="antenna-card-name"
+            style={{ flex: 'none', fontSize: 'var(--t-14)', whiteSpace: 'nowrap' }}
           >
             {unit.name}
           </strong>
@@ -527,14 +680,20 @@ function CardBody(props: BodyProps): ReactElement {
               {t(`telecom.antennas.status.${unit.status}`)}
             </Chip>
           </span>
-          <span style={{ color: 'var(--fg-3)' }}>
-            {t(`telecom.antennas.card.kind.${unit.kind}`)}
+          <span
+            data-testid="antenna-card-kind"
+            title={`${kindWord} · ${kindBasis}`}
+            style={{ flex: '1 1 auto', minWidth: 0, display: 'grid', lineHeight: 1.2 }}
+          >
+            <span style={{ ...ELLIPSIS, color: 'var(--fg-3)' }}>{kindWord}</span>
+            <small data-testid="antenna-card-kind-basis" style={{ ...ELLIPSIS, ...MUTED }}>
+              {kindBasis}
+            </small>
           </span>
-          <span style={{ flex: 1 }} />
           <span
             className="mono"
             data-testid="antenna-card-position"
-            style={{ color: 'var(--fg-2)', whiteSpace: 'nowrap' }}
+            style={{ flex: 'none', color: 'var(--fg-2)', whiteSpace: 'nowrap' }}
           >
             {t('telecom.antennas.card.position', {
               i: props.position < 0 ? DASH : props.position + 1,

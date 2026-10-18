@@ -5,8 +5,9 @@ import { workspace, type OpenProject } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AntennaCard, resetCardDrag } from './AntennaCard';
-import { antennaStore, type AntennaFilter } from './antennaStore';
+import { AntennaCard, STRIP_MAX_H, STRIP_MIN_H, resetCardDrag, stripHeight } from './AntennaCard';
+import { AntennaInventory } from './AntennaInventory';
+import { antennaStore, selectAntenna, type AntennaFilter } from './antennaStore';
 import type { Rect } from './cardPlacement';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -190,6 +191,86 @@ describe('AntennaCard', () => {
     load([unit('a1', { crop: 'telecom/crops/a1.jpg' })]);
     show();
     expect(q('antenna-crop')!.getAttribute('src')).toBe('aio://project/p1/telecom/crops/a1.jpg');
+  });
+
+  it('keeps the whole name in the header, the kind and how it was found beside it', () => {
+    load([
+      unit('a14', {
+        status: 'accepted',
+        kindBasis: 'ai',
+        ai: { provider: 'anthropic', model: 'm', promptVersion: 'v1', runId: 'ai-1' },
+      }),
+    ]);
+    show();
+    const name = q('antenna-card-name')!;
+    expect(name.textContent).toBe('A14');
+    expect(name.style.flexShrink).toBe('0');
+    expect(name.style.textOverflow).toBe('');
+    expect(q('antenna-card-kind')!.style.minWidth).toBe('0px');
+    expect(q('antenna-card-kind-basis')!.textContent).toBe('labelled by AI (anthropic)');
+  });
+
+  it('says a geometric kind is from geometry', () => {
+    load(three());
+    show();
+    expect(q('antenna-card-kind-basis')!.textContent).toBe('from geometry');
+  });
+
+  it('gives each value its basis and fit quality as a tip, and notes the tilt is mechanical', () => {
+    vi.useFakeTimers();
+    try {
+      load([
+        unit('a1', {
+          downtiltDeg: {
+            value: 2,
+            basis: 'inferred',
+            quality: { basis: 'inferred', residualM: 0.003, support: 812, coverage: 0.74 },
+          },
+        }),
+      ]);
+      show();
+      const dd = stage.querySelector<HTMLElement>('[data-value="downtilt"]')!;
+      expect(dd.dataset.basis).toBe('inferred');
+      expect(value('downtilt')).toBe('2.0°');
+      expect(stage.querySelector('[data-note="downtilt"]')!.textContent).toBe('mechanical');
+      const span = dd.querySelector<HTMLElement>('span[tabindex="0"]')!;
+      expect(span.style.textDecoration).toContain('dotted');
+      act(() => {
+        span.focus();
+      });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      const tip = document.querySelector('[role="tooltip"]')!;
+      expect(tip.textContent).toBe(
+        'Inferred · Fit residual 3.0 mm, 812 points, 74% coverage · Mechanical tilt only. ' +
+          'Electrical tilt is inside the antenna and is not measured.',
+      );
+      // a measured value has no underline
+      const az = stage.querySelector<HTMLElement>('[data-value="azimuth"] span[tabindex="0"]')!;
+      expect(az.style.textDecoration).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sizes the photo strip from the image, with a blurred fill instead of bars', () => {
+    load([unit('a1', { crop: 'telecom/crops/a1.jpg' })]);
+    show();
+    const crop = q('antenna-crop')!;
+    Object.defineProperty(crop, 'naturalWidth', { value: 40 });
+    Object.defineProperty(crop, 'naturalHeight', { value: 260 });
+    act(() => {
+      crop.dispatchEvent(new Event('load'));
+    });
+    const strip = q('antenna-card-photos')!;
+    expect(strip.style.height).toBe(`${String(STRIP_MAX_H)}px`);
+    const fill = q('antenna-photo-fill')!;
+    expect(fill.getAttribute('aria-hidden')).toBe('true');
+    expect(fill.style.backgroundImage).toContain('telecom/crops/a1.jpg');
+    expect(fill.style.filter).toContain('blur');
+    expect(stripHeight(400, 300, 288)).toBe(216);
+    expect(stripHeight(1000, 100, 288)).toBe(STRIP_MIN_H);
   });
 
   it('shows the values, true north azimuth first', () => {
@@ -415,6 +496,67 @@ describe('AntennaCard keys', () => {
     press('x');
     expect(other).toHaveBeenCalledTimes(1);
     window.removeEventListener('keydown', other);
+  });
+
+  it('steps and closes from a focused row of the antenna inventory', () => {
+    load(three(), { selected: null });
+    const panel = document.createElement('div');
+    document.body.append(panel);
+    const panelRoot = createRoot(panel);
+    const renderPanel = () => {
+      const st = antennaStore.getState();
+      act(() => {
+        panelRoot.render(
+          <AntennaInventory
+            file={st.file}
+            selected={st.selected}
+            hidden={{}}
+            solo={null}
+            filter={st.filter}
+            readOnly={false}
+            onSelect={selectAntenna}
+            onToggleVisible={() => undefined}
+            onToggleGroup={() => undefined}
+            onSolo={() => undefined}
+            onFilter={() => undefined}
+            onHideAll={() => undefined}
+            onShowAll={() => undefined}
+          />,
+        );
+      });
+    };
+    renderPanel();
+    show();
+    const row = panel.querySelectorAll<HTMLElement>('[data-testid="antenna-row"]')[0]!;
+    act(() => {
+      row.focus();
+      row.click();
+    });
+    show();
+    expect(antennaStore.getState().selected).toBe('a1');
+    expect(document.activeElement).toBe(row);
+    press('ArrowRight', row);
+    expect(antennaStore.getState().selected).toBe('a2');
+    expect(q('antenna-card-position')!.textContent).toBe('2 / 3');
+    press('Escape', row);
+    expect(antennaStore.getState().selected).toBeNull();
+    act(() => {
+      panelRoot.unmount();
+    });
+  });
+
+  it('leaves the arrows to another tree (the datasets sidebar)', () => {
+    load(three());
+    show();
+    const tree = document.createElement('div');
+    tree.setAttribute('role', 'tree');
+    const item = document.createElement('div');
+    item.setAttribute('role', 'treeitem');
+    item.tabIndex = 0;
+    tree.append(item);
+    document.body.append(tree);
+    press('ArrowRight', item);
+    expect(antennaStore.getState().selected).toBe('a1');
   });
 
   it('leaves the arrows to a focused widget that owns them, and steps from the body', () => {
