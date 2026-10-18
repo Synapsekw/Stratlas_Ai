@@ -91,9 +91,10 @@ test('marked datasets export to a folder with their frame; a second export never
   const quad = win.getByTestId('tree-row-quad');
   const ph = win.getByTestId('tree-row-ph');
   await quad.scrollIntoViewIfNeeded();
-  await quad.click({ modifiers: ['Control'] });
+  // on the names: a row's middle can fall on its eye, which hides instead of marking
+  await quad.locator('.tn').click({ modifiers: ['Control'] });
   await ph.scrollIntoViewIfNeeded();
-  await ph.click({ modifiers: ['Control'] });
+  await ph.locator('.tn').click({ modifiers: ['Control'] });
 
   const exportMarked = async () => {
     await nextOpenDialog(app, [out]);

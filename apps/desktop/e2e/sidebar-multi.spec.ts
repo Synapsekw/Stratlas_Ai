@@ -42,7 +42,11 @@ test('three marked rows share one menu: Hide and Move to date act on all three',
   await expect(win.locator('[data-testid^="date-folder-"][aria-expanded="false"]')).toHaveCount(0);
   const picked = ['quad-sep', 'site-sep', 'quad-oct'];
   for (const layer of picked)
-    await win.getByTestId(`tree-row-${layer}`).click({ modifiers: ['Control'] });
+    // on the names: a row's middle can fall on its eye, which hides instead of marking
+    await win
+      .getByTestId(`tree-row-${layer}`)
+      .locator('.tn')
+      .click({ modifiers: ['Control'] });
   await expect(win.locator('.titem.marked')).toHaveCount(3);
 
   // the menu of a marked row: the three datasets, only what applies to several

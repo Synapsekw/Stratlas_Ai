@@ -168,8 +168,9 @@ test('a model and a cloud marked together drop in one step', async ({ dataRoot, 
 
   const cloudRow = win.getByTestId('tree-row-synthetic').first();
   const quadRow = win.getByTestId('tree-row-quad').first();
-  await cloudRow.click({ modifiers: ['Control'] });
-  await quadRow.click({ modifiers: ['Control'] });
+  // on the names: a row's middle can fall on its eye, which hides instead of marking
+  await cloudRow.locator('.tn').click({ modifiers: ['Control'] });
+  await quadRow.locator('.tn').click({ modifiers: ['Control'] });
   await quadRow.click({ button: 'right' });
   await win.getByTestId('menu-drop-to-ground').click();
   await expect(win.getByTestId('drop-text')).toContainText('Moved 2 datasets onto the ground');
