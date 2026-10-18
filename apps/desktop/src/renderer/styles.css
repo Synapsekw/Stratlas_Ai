@@ -793,6 +793,11 @@ button.chip-status:hover {
 .titem.dim .tm {
   opacity: 0.55;
 }
+/* a folder eye over some hidden measurements stays in view, as a group header's mixed eye does */
+.titem .eye.mixed {
+  opacity: 1;
+  color: var(--fg-2);
+}
 .sb-foot {
   border-top: 1px solid var(--line-soft);
   padding: 8px;
