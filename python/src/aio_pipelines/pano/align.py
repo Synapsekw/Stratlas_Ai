@@ -3,13 +3,21 @@
 The gimbal angles put every frame within a degree or two of the truth (the seed). Features are
 matched only between frames whose seeds overlap; a rotation-only bundle adjustment with one shared
 focal length then pulls the sphere tight and is re-anchored to the seeds, so north and level come
-from the gimbal and the fine alignment from the features. A frame without matches keeps its seed.
+from the gimbal and the fine alignment from the features. Pairs the adjusted sphere still disagrees
+with (the drone drifted between two shots far apart in time, and the ground below shows parallax a
+rotation cannot absorb) are dropped and the adjustment run again.
+
+The gimbal's error is mostly systematic: on real spheres a steady roll of about a degree and a yaw
+error that changes smoothly round the circle. So a frame without matches (open water, plain sky)
+takes the correction of the frames around it, weighted by how close their view directions are;
+in a leave-one-out test on real spheres that halves its error against keeping the seed.
 The whole sphere falls back to the seeds (``aligned: 'metadata'``) when the median residual or a
 frame's turn from its seed is too large, or the adjustment does not converge.
 """
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -36,6 +44,14 @@ MAX_PER_PAIR = 300
 PRIOR_WEIGHT = 0.05
 HUBER_PX = 2.0
 MAX_EVALUATIONS = 200
+#: A pair whose median residual after the adjustment is over this, and over PRUNE_FACTOR times the
+#: sphere's median, is dropped before the adjustment runs again (working-copy pixels).
+PRUNE_PX = 3.0
+PRUNE_FACTOR = 3.0
+#: Correction of a frame without matches: neighbours weighted by exp(-(angle / sigma)^2), sigma
+#: this share of the horizontal field of view (leave-one-out on real spheres: half the error of
+#: the seed at 0.5, less good wider).
+BORROW_SIGMA_SHARE = 0.5
 #: Fallback limits (spec, P0 findings): median residual at the working width, turn from the seed.
 MAX_MEDIAN_RESIDUAL_PX = 2.0
 MAX_DRIFT_DEG = 5.0
@@ -178,38 +194,86 @@ def _residuals(x: np.ndarray, seeds: np.ndarray, f0: float, c: np.ndarray, data)
     return np.concatenate([r1.ravel(), r2.ravel(), PRIOR_WEIGHT * f0 * x[: 3 * n]])
 
 
-def adjust(
-    seeds: list[np.ndarray], matches: list[PairMatch], focal_work: float, size: tuple[int, int]
-) -> tuple[list[np.ndarray], float, float, bool]:
-    """Rotation-only bundle adjustment with one shared focal scale, re-anchored to the seeds.
-    Gives rotations, focal scale, median residual (working pixels) and whether it converged."""
-    n = len(seeds)
-    s = np.stack(seeds)
-    c = np.array(principal(*size))
-    data = (
+def _data(matches: list[PairMatch]):
+    return (
         np.concatenate([np.full(len(m.a), m.i) for m in matches]),
         np.concatenate([np.full(len(m.a), m.j) for m in matches]),
         np.concatenate([m.a for m in matches]).astype(float),
         np.concatenate([m.b for m in matches]).astype(float),
     )
-    x0 = np.zeros(3 * n + 1)
-    x0[-1] = 1.0
+
+
+def _solve(seeds: np.ndarray, matches: list[PairMatch], focal_work: float, c: np.ndarray, start=None):
+    n = len(seeds)
+    x0 = np.zeros(3 * n + 1) if start is None else start.copy()
+    x0[-1] = 1.0 if start is None else x0[-1]
+    data = _data(matches)
     sol = least_squares(
         _residuals,
         x0,
-        args=(s, focal_work, c, data),
+        args=(seeds, focal_work, c, data),
         loss="huber",
         f_scale=HUBER_PX,
         x_scale="jac",
         max_nfev=MAX_EVALUATIONS,
     )
     m2 = len(data[0])
-    res = sol.fun[: 4 * m2].reshape(-1, 2)
-    median_px = float(np.median(np.linalg.norm(res, axis=1)))
-    rots = s @ rotvecs_to_matrices(sol.x[: 3 * n])
+    # each match appears twice (a to b and b to a); a pair's residual is its points' mean of both
+    res = np.linalg.norm(sol.fun[: 4 * m2].reshape(-1, 2), axis=1)
+    per_point = (res[:m2] + res[m2:]) / 2
+    return sol, res, per_point
+
+
+def pair_residuals(per_point: np.ndarray, matches: list[PairMatch]) -> np.ndarray:
+    """Median residual of every pair, working-copy pixels."""
+    bounds = np.cumsum([0] + [len(m.a) for m in matches])
+    return np.array([float(np.median(per_point[a:b])) for a, b in itertools.pairwise(bounds)])
+
+
+def adjust(
+    seeds: list[np.ndarray], matches: list[PairMatch], focal_work: float, size: tuple[int, int]
+) -> tuple[list[np.ndarray], float, float, bool, list[PairMatch]]:
+    """Rotation-only bundle adjustment with one shared focal scale, re-anchored to the seeds; pairs
+    it still disagrees with are dropped and it runs again. Gives rotations, focal scale, median
+    residual (working pixels), whether it converged, and the pairs kept."""
+    n = len(seeds)
+    s = np.stack(seeds)
+    c = np.array(principal(*size))
+    sol, res, per_point = _solve(s, matches, focal_work, c)
+    pair_px = pair_residuals(per_point, matches)
+    limit = max(PRUNE_PX, PRUNE_FACTOR * float(np.median(res)))
+    kept = [m for m, px in zip(matches, pair_px, strict=True) if px <= limit]
+    if kept and len(kept) < len(matches):
+        matches = kept
+        sol, res, _ = _solve(s, matches, focal_work, c, sol.x)
+    median_px = float(np.median(res))
+    w = sol.x[: 3 * n].reshape(n, 3)
+    matched = sorted({m.i for m in matches} | {m.j for m in matches})
+    hfov = 2 * math.degrees(math.atan(size[0] / 2 / (focal_work * sol.x[-1])))
+    w = borrow(w, s, matched, BORROW_SIGMA_SHARE * hfov)
+    rots = s @ rotvecs_to_matrices(w.ravel())
     # re-anchor: the world turn G that best maps the adjusted frames onto their seeds
-    g = nearest_rotation(sum(seeds[k] @ rots[k].T for k in range(n)))
-    return [g @ r for r in rots], float(sol.x[-1]), median_px, bool(sol.success)
+    g = nearest_rotation(sum(seeds[k] @ rots[k].T for k in matched))
+    return [g @ r for r in rots], float(sol.x[-1]), median_px, bool(sol.success), matches
+
+
+def borrow(w: np.ndarray, seeds: np.ndarray, matched: list[int], sigma_deg: float) -> np.ndarray:
+    """Camera-frame corrections (n, 3) where each frame outside `matched` takes the mean of the
+    matched frames' corrections, weighted by exp(-(angle between view directions / sigma)^2)."""
+    out = w.copy()
+    if not matched:
+        return out
+    dirs = seeds[:, :, 2]
+    mi = np.array(matched)
+    for k in range(len(seeds)):
+        if k in matched:
+            continue
+        ang = np.degrees(np.arccos(np.clip(dirs[mi] @ dirs[k], -1.0, 1.0)))
+        wt = np.exp(-((ang / sigma_deg) ** 2))
+        if wt.sum() < 1e-6:  # nothing near: the nearest matched frames decide
+            wt = (ang <= ang.min() + 1e-6).astype(float)
+        out[k] = wt @ w[mi] / wt.sum()
+    return out
 
 
 def align(
@@ -217,15 +281,13 @@ def align(
 ) -> Alignment:
     """The rotations to compose with, and how they were found."""
     n = len(seeds)
-    matched = sorted({m.i for m in matches} | {m.j for m in matches})
-    unmatched = [k for k in range(n) if k not in matched]
     if not matches:
         return Alignment(
-            list(seeds), "metadata", 1.0, None, None, unmatched, "No features matched between frames."
+            list(seeds), "metadata", 1.0, None, None, list(range(n)), "No features matched between frames."
         )
-    rots, scale, median_px, ok = adjust(seeds, matches, focal_work, size)
-    for k in unmatched:  # no features: the seed stands (P0)
-        rots[k] = seeds[k]
+    rots, scale, median_px, ok, kept = adjust(seeds, matches, focal_work, size)
+    matched = sorted({m.i for m in kept} | {m.j for m in kept})
+    unmatched = [k for k in range(n) if k not in matched]
     drift = max(angle_deg(rots[k], seeds[k]) for k in matched)
     reason = None
     if not ok:
