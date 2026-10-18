@@ -248,6 +248,29 @@ def test_measures_a_turn_and_a_scale(tmp_path):
     assert f["maxMoveM"] >= math.hypot(f["eastM"], f["northM"])
 
 
+def test_measures_a_turn_and_a_scale_on_a_small_ortho(tmp_path):
+    # 500 px across (94 m at 19 cm, the size of the quick demo's orthos), a flat yard over its
+    # northern part and new ground in the middle: only 3 x 3 slots for tiles of 128 px, too few
+    # left for a fit. Smaller fine tiles still find the turn and the scale.
+    n = 500
+    a, b, true = warped(n, 0.3, 1.004, 2.0, 0.0)
+    a, b = a.copy(), b.copy()
+    a[:140], b[:140] = 0.5, 0.5
+    b[260:380, 260:380] = ground(120, 120, 77)
+    ortho_project(tmp_path, a, b, CELL)
+    m = run(tmp_path)
+    f = fit_of(tmp_path)
+    assert f["verdict"] == "ok" and m["verdict"] == "ok"
+    assert f["inliers"] >= 6 and f["residualPx"] < 0.5
+    assert f["rotationDeg"] == pytest.approx(0.3, abs=0.02)
+    assert f["scale"] == pytest.approx(1.004, abs=0.0005)
+    got = similarity_of(f)
+    for e, nn in corners_en(n):
+        ge, gn = got.apply_en(e, nn)
+        te, tn = true.apply_en(e, nn)
+        assert math.hypot(ge - te, gn - tn) < 0.1
+
+
 def test_fit_ignores_changed_patch(tmp_path):
     n = 1024
     a, b, _ = warped(n, 0.1, 1.003, 2.0, 0.0)

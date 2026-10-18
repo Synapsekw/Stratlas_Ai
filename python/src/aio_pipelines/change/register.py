@@ -112,6 +112,12 @@ COARSE_SEARCH_M = 60.0
 #: ``SPREAD_CELLS`` square grid over the overlap, then the most textured of the rest.
 MAX_FINE_TILES = 48
 SPREAD_CELLS = 6
+#: On a small overlap the fine tiles shrink, to no less than ``MIN_FINE_TILE`` px, so that its
+#: short side holds ``FINE_ACROSS`` of them: 500 px hold only 3 x 3 tiles of ``TILE`` px, too few
+#: for a fit once flat or changed ground leaves some out. The shift is then found first with tiles
+#: of ``TILE`` px, so the smaller tiles search no less far.
+FINE_ACROSS = 8
+MIN_FINE_TILE = 64
 #: Rounds of leaving out tiles that disagree with the fitted similarity (real change).
 FIT_ROUNDS = 3
 #: The least a fitted turn and scale must move some corner of the overlap, px, to be kept: below
@@ -145,6 +151,15 @@ def _coarse_level(h: int, w: int, cell: float) -> int:
     return f
 
 
+def _fine_step(h: int, w: int) -> int:
+    """The fine level's tile size for a grid of ``h`` x ``w``: ``TILE``, smaller on a small grid
+    (``FINE_ACROSS``, ``MIN_FINE_TILE``), half the short side on a grid under two ``TILE``."""
+    short = min(h, w)
+    if short < 2 * TILE:
+        return max(32, short // 2)
+    return max(MIN_FINE_TILE, min(TILE, short // FINE_ACROSS))
+
+
 def _downsample(x: np.ndarray, valid: np.ndarray, f: int) -> tuple[np.ndarray, np.ndarray]:
     """Block means of ``f`` x ``f`` cells; a block is valid when all its cells are."""
     h, w = (x.shape[0] // f) * f, (x.shape[1] // f) * f
@@ -170,6 +185,7 @@ def measure_line_up(
     b = np.asarray(b, np.float64)
     h, w = a.shape
     f = _coarse_level(h, w, cell)
+    step = _fine_step(h, w)
     dy0 = dx0 = 0
     if f > 1:
         ac, vc = _downsample(a, valid, f)
@@ -177,8 +193,12 @@ def measure_line_up(
         c = estimate_shift(ac, bc, vc, log=log)
         if c["tiles"]:
             dy0, dx0 = round(c["dy"] * f), round(c["dx"] * f)
+    elif step < TILE:
+        # small fine tiles search less far: the shift first, with tiles of TILE px
+        c = estimate_shift(a, b, valid, log=log)
+        if c["tiles"]:
+            dy0, dx0 = round(c["dy"]), round(c["dx"])
     ha, hb = highpass(a, log=log), highpass(b, log=log)
-    step = TILE if min(h, w) >= 2 * TILE else max(32, min(h, w) // 2)
     # b moved by the coarse answer: a(r, c) is b(r - dy0, c - dx0)
     found: list[tuple[float, int, int]] = []
     for r in range(0, h - step + 1, step):
