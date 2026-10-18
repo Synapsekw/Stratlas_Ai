@@ -89,6 +89,12 @@ export interface RfState {
   hasFile: boolean;
   /** Edited since the last load or save. */
   dirty: boolean;
+  /**
+   * The plan was saved after the last coverage run of it started, so that run no longer shows it:
+   * set by every save, cleared when a run started after the last save is done. The Coverage chip
+   * then offers Run instead of the old result. False for a project just opened.
+   */
+  planChangedSinceRun: boolean;
   saving: boolean;
   /** Warnings from the last `rf:writeSectors` (pattern files that could not be copied). */
   writeWarnings: string[];
@@ -155,6 +161,7 @@ const base = (): Base => ({
   sectors: emptyFile(),
   hasFile: false,
   dirty: false,
+  planChangedSinceRun: false,
   saving: false,
   writeWarnings: [],
   includeUnreviewed: false,
@@ -618,7 +625,9 @@ export function saveRf(): Promise<SaveResult> {
     }
     // An edit made while the write was in flight stays dirty.
     const unchanged = get().sectors === sectors;
+    plansSaved++;
     set({
+      planChangedSinceRun: true,
       saving: false,
       message: null,
       hasFile: true,
@@ -726,6 +735,9 @@ export async function exportRun(
 }
 
 let watchingJobs = false;
+/** Saves written so far, and how many there were when the run going now started. */
+let plansSaved = 0;
+let plansSavedAtRun = 0;
 function watchJobs(): void {
   // tests of other modules mock the shell with a bridge only
   const store: Partial<typeof jobs> = jobs;
@@ -742,7 +754,14 @@ function onJobs(list: readonly JobRecord[]): void {
   const job = list.find((j) => j.id === jobId);
   if (!job) return;
   if (job.status === 'done') {
-    set({ running: false, jobId: null, pendingRunId: null, runError: null });
+    set({
+      running: false,
+      jobId: null,
+      pendingRunId: null,
+      runError: null,
+      // the run shows the plan unless it was saved again while the run went
+      planChangedSinceRun: plansSaved !== plansSavedAtRun,
+    });
     void refreshRuns().then(() => {
       if (pendingRunId && get().runs.some((r) => r.runId === pendingRunId))
         void selectRun(pendingRunId);
@@ -779,6 +798,8 @@ export async function startCoverage(root: string): Promise<StartResult> {
   if (get().projectId !== projectId || get().check.refusals.length > 0)
     return { ok: false, code: 'refused' };
   watchJobs();
+  // the job reads the file as saved now
+  plansSavedAtRun = plansSaved;
   const runId = newRunId();
   set({ running: true, pendingRunId: runId, runError: null });
   const r = await bridge.call('jobs:start', {

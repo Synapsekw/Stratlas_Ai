@@ -49,6 +49,20 @@ describe('planSectors', () => {
     ]);
     expect(r.sectors).toEqual([]);
   });
+  it('leaves out a unit switched off in RF (the RF active flag), never placing it', () => {
+    const off = [{ antennaId: 'u1', active: false, carriers: [] }];
+    // no sectors yet: the bearing proposal leaves it out
+    const fresh = planSectors(units([0, 120]), [], off);
+    expect(fresh.leftOut).toEqual([{ unitId: 'u1', reason: 'inactive' }]);
+    expect(fresh.sectors.flatMap((s) => s.antennaIds)).toEqual(['u0']);
+    // already in a sector of the person's: kept there, but still left out of the plan
+    const cur: RfSector[] = [{ id: 'sec-a', name: 'North', antennaIds: ['u0', 'u1'] }];
+    const kept = planSectors(units([0, 10]), cur, off);
+    expect(kept.leftOut).toEqual([{ unitId: 'u1', reason: 'inactive' }]);
+    // a unit switched on again takes part
+    const on = [{ antennaId: 'u1', active: true, carriers: [] }];
+    expect(planSectors(units([0, 120]), [], on).leftOut).toEqual([]);
+  });
   it('uses the next free sec-s<n> id for a new sector', () => {
     const cur: RfSector[] = [{ id: 'sec-s1', name: 'S1', antennaIds: ['u0'] }];
     const r = planSectors(units([0, 180]), cur);

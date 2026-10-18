@@ -37,9 +37,10 @@ import { farNotice } from '../builder/farSession';
 import { addDateMenu } from './AddSurveyDate';
 import { panelHandleLabel } from './PanelHandle';
 import { selectClip } from '../workspace/pickClip';
-import { startAutoplan } from '../rf/autoplan/autoplanStore';
+import { canAutoplan as canAutoplanCoverage, startAutoplan } from '../rf/autoplan/autoplanStore';
 import { useChipState } from '../rf/CoverageChip';
 import { openCoverage } from '../rf/rfTab';
+import { useRf } from '../rf/rfStore';
 
 /** The layer kinds the palette lists: a retired viewer of an older project is not offered. */
 type ListedKind = Exclude<Layer['kind'], 'legacy'>;
@@ -95,10 +96,12 @@ export function Palette() {
   // the map commands follow the Map menu of the Map view (packs, keys, online maps)
   const mapMenu = useMapViewMenuModel();
   // the Coverage chip's two ways in (spec F1), offered while the chip shows
-  const chipKind = useChipState().kind;
-  const coverageShown = chipKind !== 'hidden';
-  // Auto-plan where the chip offers it or Re-plan: not before a review, nor while planning or running
-  const canAutoplan = chipKind === 'not-planned' || chipKind === 'ready' || chipKind === 'result';
+  const chip = useChipState();
+  const rfReadOnly = useRf((r) => r.readOnly);
+  const coverageShown = chip.kind !== 'hidden';
+  // Auto-plan where the chip offers it or Re-plan: not before a review, nor while planning or
+  // running, nor on a read-only project
+  const canAutoplan = canAutoplanCoverage(chip, rfReadOnly);
   const hasProject = project !== null;
   useEffect(() => {
     if (open && hasProject) rasterPacks.getState().refresh();

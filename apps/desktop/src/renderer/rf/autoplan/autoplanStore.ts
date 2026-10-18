@@ -40,7 +40,7 @@ import { entryCoversBand } from './bandFit';
 import { matchCellExport } from './exportMatch';
 import { buildProposal, validateAiPick, type AiPickRaw, type Proposal } from './proposal';
 import { rulesPick } from './rules';
-import { planSectors } from './sectors';
+import { plannedUnits, planSectors } from './sectors';
 import type { PlanPick } from './types';
 
 /** Every text this store puts in `error`, `warnings` or a reason, in one place (for i18n). */
@@ -202,7 +202,8 @@ function catalogueInput(): RfPlanCatalogueInput[] {
 
 /** The units the plan covers: accepted panels with a bearing, in the sectors they will be in. */
 function plannedUnitIds(units: readonly AntennaUnit[]): string[] {
-  const plan = planSectors(units, rfStore.getState().sectors.sectors);
+  const file = rfStore.getState().sectors;
+  const plan = planSectors(units, file.sectors, file.antennas);
   const out = new Set(plan.leftOut.map((l) => l.unitId));
   const known = new Set(units.map((u) => u.id));
   return plan.sectors.flatMap((s) => s.antennaIds).filter((id) => known.has(id) && !out.has(id));
@@ -266,13 +267,19 @@ const statusOf = (s: AutoplanState): AiStatus => ({
 /**
  * Start (or restart) Auto-plan. With no accepted antenna it stops at `blocked-review` (F6). The
  * default source is the AI when a provider is set up and the project policy allows it, else the
- * rules.
+ * rules. A read-only project could not take the plan, so nothing starts there (the chip, the
+ * panel and Ctrl+K do not offer it, `canAutoplan`).
  */
 export async function startAutoplan(source?: AutoplanSource): Promise<void> {
   const my = ++seq;
   stopPending();
   previewFor = null;
   const projectId = rfStore.getState().projectId;
+  if (rfStore.getState().readOnly) {
+    const kept = get().projectId === projectId ? statusOf(get()) : NO_AI;
+    set({ ...initial(), projectId, ...kept });
+    return;
+  }
   // the step belongs to this project from the start, so a switch during the status call drops it
   const before = get().projectId === projectId ? statusOf(get()) : NO_AI;
   set({ ...initial(), projectId, ...before });
@@ -298,8 +305,9 @@ export async function startAutoplan(source?: AutoplanSource): Promise<void> {
 }
 
 function planFromExport(units: readonly AntennaUnit[], text: string): void {
-  const sectors = planSectors(units, rfStore.getState().sectors.sectors).sectors;
-  const m = matchCellExport(text, units, sectors, catalogueOf());
+  const file = rfStore.getState().sectors;
+  const sectors = planSectors(units, file.sectors, file.antennas).sectors;
+  const m = matchCellExport(text, units, sectors, catalogueOf(), file.antennas);
   if ('error' in m) {
     set({
       phase: 'error',
@@ -455,18 +463,29 @@ export function cancelAutoplan(): void {
   set({ ...initial(), ...statusOf(get()), source, projectId });
 }
 
+/** Apply refused: the project is read only, so nothing was written (the dialog says so). */
+export interface ApplyRefusal {
+  ok: false;
+  code: 'read-only';
+}
+
 /**
  * Write the reviewed proposal into the working copy (Apply only: left unsaved, C6), then with
  * `run` start a coverage run, which saves first. Null when nothing was applied (nothing in review,
  * or the proposal is for another project, R17) or no run was asked for; a `failed` result with
- * `AUTOPLAN_MESSAGES.noRoot` when it applied but the project folder is not known.
+ * `AUTOPLAN_MESSAGES.noRoot` when it applied but the project folder is not known; `read-only`
+ * when the project cannot take it (nothing written, Auto-plan closed).
  */
-export async function applyAutoplan(run: boolean): Promise<StartResult | null> {
+export async function applyAutoplan(run: boolean): Promise<StartResult | ApplyRefusal | null> {
   const { phase, proposal, projectId } = get();
   if (phase !== 'review' || !proposal) return null;
   if (projectId === null || rfStore.getState().projectId !== projectId) {
     resetAutoplan();
     return null;
+  }
+  if (rfStore.getState().readOnly) {
+    cancelAutoplan();
+    return { ok: false, code: 'read-only' };
   }
   applyPlan(proposal);
   cancelAutoplan();
@@ -497,7 +516,21 @@ export function openAntennaReviewOrFallback(bench: StoreApi<WorkbenchState> = wo
 
 const FAIR_OR_BETTER = new Set(['excellent', 'good', 'fair']);
 
-/** The Coverage chip's state from the RF store, the detected units and Auto-plan. */
+/**
+ * Whether Auto-plan (or Re-plan) is offered: where the chip offers it (not before a review, nor
+ * while planning or running), and never on a read-only project, which could not take the plan.
+ */
+export function canAutoplan(chip: ChipState, readOnly: boolean): boolean {
+  if (readOnly) return false;
+  return chip.kind === 'not-planned' || chip.kind === 'ready' || chip.kind === 'result';
+}
+
+/**
+ * The Coverage chip's state from the RF store, the detected units and Auto-plan. The selected
+ * run is the result while the plan is as it ran: neither edited (`dirty`) nor saved again since
+ * (`planChangedSinceRun`). Ready needs the units Auto-plan plans (`plannedUnits`) that are in a
+ * sector to be set up; a draft, rejected or inactive member does not hold it back.
+ */
 export function selectChipState(
   rf: RfState,
   antennaUnits: readonly AntennaUnit[] | null,
@@ -510,7 +543,7 @@ export function selectChipState(
   if (accepted === 0) return { kind: 'review-first', total: antennaUnits.length };
 
   const run = rf.selectedRunId ? rf.runs.find((r) => r.runId === rf.selectedRunId) : undefined;
-  if (run && !rf.dirty) {
+  if (run && !rf.dirty && !rf.planChangedSinceRun) {
     const pct = rf.classStats
       ? Math.round(
           rf.classStats.filter((c) => FAIR_OR_BETTER.has(c.cls)).reduce((t, c) => t + c.share, 0) *
@@ -520,8 +553,8 @@ export function selectChipState(
     return { kind: 'result', view: rf.view, fairOrBetterPct: pct, at: run.createdAt };
   }
 
-  const known = new Set(antennaUnits.map((u) => u.id));
-  const planned = rf.sectors.sectors.flatMap((s) => s.antennaIds).filter((id) => known.has(id));
+  const takesPart = plannedUnits(antennaUnits, rf.sectors.antennas);
+  const planned = rf.sectors.sectors.flatMap((s) => s.antennaIds).filter((id) => takesPart.has(id));
   const setUp = (id: string) => {
     const s = rf.sectors.antennas.find((a) => a.antennaId === id);
     return s?.equipment !== undefined && s.carriers.length > 0;

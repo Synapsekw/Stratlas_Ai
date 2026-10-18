@@ -8,6 +8,7 @@
  *   and the buttons; the words stay in the accessible name.
  * - `panel`: the same line at the top of the Coverage panel, read only, with the same primary
  *   action (no layer toggle: the panel's Display controls have it).
+ * - A read-only project gets no Auto-plan or Re-plan (`canAutoplan`): it could not take the plan.
  */
 import type { AntennaUnit } from '@aio/schema';
 import { Button, useT, type MessageKey } from '@aio/ui';
@@ -17,6 +18,7 @@ import { useStore } from 'zustand';
 import { jobs } from '../shell';
 import { useAntennas } from '../telecom/antennaStore';
 import {
+  canAutoplan,
   openAntennaReviewOrFallback,
   selectChipState,
   startAutoplan,
@@ -55,15 +57,36 @@ export function useChipState(): ChipState {
   const selectedRunId = useRf((s) => s.selectedRunId);
   const runs = useRf((s) => s.runs);
   const dirty = useRf((s) => s.dirty);
+  const planChangedSinceRun = useRf((s) => s.planChangedSinceRun);
   const classStats = useRf((s) => s.classStats);
   const view = useRf((s) => s.view);
   const sectors = useRf((s) => s.sectors);
   // Auto-plan's phase is all the chip reads of it
   const phase = useAutoplan((s) => s.phase);
   return useMemo(() => {
-    const rf = { running, selectedRunId, runs, dirty, classStats, view, sectors } as RfState;
+    const rf = {
+      running,
+      selectedRunId,
+      runs,
+      dirty,
+      planChangedSinceRun,
+      classStats,
+      view,
+      sectors,
+    } as RfState;
     return selectChipState(rf, units, { phase } as AutoplanState);
-  }, [units, running, selectedRunId, runs, dirty, classStats, view, sectors, phase]);
+  }, [
+    units,
+    running,
+    selectedRunId,
+    runs,
+    dirty,
+    planChangedSinceRun,
+    classStats,
+    view,
+    sectors,
+    phase,
+  ]);
 }
 
 /** The running coverage job's progress, 0 to 100; null when unknown. */
@@ -124,6 +147,9 @@ function useViewsWidth(): [(el: HTMLElement | null) => void, number] {
 export function CoverageChip({ variant = 'stage' }: { variant?: 'stage' | 'panel' }) {
   const t = useT();
   const s = useChipState();
+  // a read-only project could not take a plan: no Auto-plan or Re-plan (the panel says why)
+  const readOnly = useRf((r) => r.readOnly);
+  const plan = canAutoplan(s, readOnly);
   const visible = useRfLayer((l) => l.visible);
   const percent = useRunPercent();
   const [ref, viewsWidth] = useViewsWidth();
@@ -211,7 +237,7 @@ export function CoverageChip({ variant = 'stage' }: { variant?: 'stage' | 'panel
             {t('rf.chip.review')}
           </Button>
         )}
-        {s.kind === 'not-planned' && (
+        {s.kind === 'not-planned' && plan && (
           <Button
             variant="primary"
             className="rf-chip-ai"
@@ -248,7 +274,7 @@ export function CoverageChip({ variant = 'stage' }: { variant?: 'stage' | 'panel
             }}
           />
         )}
-        {s.kind === 'result' && (
+        {s.kind === 'result' && plan && (
           <Button
             data-testid={stage ? 'rf-chip-replan' : 'rf-chip-panel-replan'}
             tip={t('rf.chip.replanTip')}

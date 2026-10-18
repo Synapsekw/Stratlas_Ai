@@ -19,6 +19,7 @@ import {
 } from './autoplan/autoplanStore';
 import { buildProposal, type Proposal } from './autoplan/proposal';
 import { resetRf, rfStore } from './rfStore';
+import { workbench } from '../workspace/workbench/workbenchStore';
 
 vi.mock('../shell', () => ({ bridge: { call: vi.fn(() => Promise.resolve({ ok: false })) } }));
 
@@ -231,6 +232,9 @@ describe('AutoplanDialog', () => {
     const left = must('rf-autoplan-left-ant-u4');
     expect(left.textContent).toContain('Panel D');
     expect(left.textContent).toContain('Not reviewed yet');
+    // Auto-plan never plans drafts (F6): no hint that a switch would plan this one
+    expect(left.textContent).not.toMatch(/include drafts/i);
+    expect(left.textContent).toContain('Accept it in the inventory to include it.');
     click(buttonNamed(left, /Review/));
     expect(openAntennaReviewOrFallback).toHaveBeenCalledTimes(1);
     // Auto-plan closes first, so the inventory is not under the dialog
@@ -292,6 +296,65 @@ describe('AutoplanDialog', () => {
     });
     const alert = must('rf-autoplan').querySelector('[role="alert"]');
     expect(alert?.textContent).toMatch(/applied/i);
+    click(must('rf-autoplan-cancel'));
+    expect(byTest('rf-autoplan')).toBeNull();
+  });
+
+  it('"Open the Coverage panel" after a refused run opens it pinned', async () => {
+    vi.mocked(applyAutoplan).mockImplementationOnce(() => {
+      autoplanStore.setState({ phase: 'idle', proposal: null });
+      return Promise.resolve({ ok: false, code: 'refused' });
+    });
+    renderWith(reviewState());
+    await act(async () => {
+      must('rf-autoplan-apply-run').click();
+      await Promise.resolve();
+    });
+    click(buttonNamed(must('rf-autoplan'), /Open the Coverage panel/));
+    expect(workbench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
+    expect(byTest('rf-autoplan')).toBeNull();
+    act(() => {
+      workbench.getState().close('rf');
+    });
+  });
+
+  it('drops the "Plan applied, but" note when the project changes', async () => {
+    vi.mocked(applyAutoplan).mockImplementationOnce(() => {
+      autoplanStore.setState({ phase: 'idle', proposal: null });
+      return Promise.resolve({ ok: false, code: 'refused' });
+    });
+    renderWith(reviewState());
+    await act(async () => {
+      must('rf-autoplan-apply-run').click();
+      await Promise.resolve();
+    });
+    expect(must('rf-autoplan').querySelector('[role="alert"]')?.textContent).toMatch(/applied/i);
+    act(() => {
+      rfStore.setState({ projectId: 'p2' });
+    });
+    expect(byTest('rf-autoplan')).toBeNull();
+    // and it does not come back on the way back
+    act(() => {
+      rfStore.setState({ projectId: 'p1' });
+    });
+    expect(byTest('rf-autoplan')).toBeNull();
+  });
+
+  it('says the project is read only when Apply cannot write the plan', async () => {
+    vi.mocked(applyAutoplan).mockImplementationOnce(() => {
+      autoplanStore.setState({ phase: 'idle', proposal: null });
+      return Promise.resolve({ ok: false, code: 'read-only' });
+    });
+    renderWith(reviewState());
+    await act(async () => {
+      must('rf-autoplan-apply').click();
+      await Promise.resolve();
+    });
+    const dlg = must('rf-autoplan');
+    expect(dlg.querySelector('[role="alert"]')?.textContent).toBe(
+      'This project is read only, so coverage cannot run here.',
+    );
+    expect(dlg.textContent).not.toMatch(/Plan applied/);
     click(must('rf-autoplan-cancel'));
     expect(byTest('rf-autoplan')).toBeNull();
   });

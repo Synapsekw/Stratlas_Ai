@@ -327,7 +327,7 @@ export function buildProposal(i: {
   renames?: readonly Rename[];
   unmatchedRows?: readonly number[];
 }): Proposal {
-  const plan = planSectors(i.units, i.file.sectors);
+  const plan = planSectors(i.units, i.file.sectors, i.file.antennas);
   const out = new Set(plan.leftOut.map((l) => l.unitId));
   const rows: ProposalRow[] = [];
   for (const sector of plan.sectors) {

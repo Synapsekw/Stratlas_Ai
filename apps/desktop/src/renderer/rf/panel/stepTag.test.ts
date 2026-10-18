@@ -30,6 +30,13 @@ describe('step tags', () => {
     expect(originTag(by('export'))).toBe('from-export');
   });
 
+  it('a low-confidence export match is amber too (ruling R24, extended)', () => {
+    expect(originTag(by('export', 'low'))).toBe('ai-low');
+    expect(originTag(by('export', 'medium'))).toBe('from-export');
+    expect(originTag(by('export', 'high'))).toBe('from-export');
+    expect(unitTag(set(by('export', 'low'), by('export')))).toBe('ai-low');
+  });
+
   it('a unit with no equipment or no carrier needs setup', () => {
     expect(unitTag(null)).toBe('needs-setup');
     expect(unitTag(undefined)).toBe('needs-setup');

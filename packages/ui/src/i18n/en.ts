@@ -5274,8 +5274,7 @@ export const en = {
   'rf.autoplan.conf.medium': 'medium',
   'rf.autoplan.conf.low': 'low',
   'rf.autoplan.leftOut': 'left out',
-  'rf.autoplan.left.draft':
-    'Not reviewed yet. Accept it in the inventory, or switch on "include drafts".',
+  'rf.autoplan.left.draft': 'Not reviewed yet. Accept it in the inventory to include it.',
   'rf.autoplan.left.notPanel': 'Not a panel antenna.',
   'rf.autoplan.left.noAzimuth':
     'No bearing: the azimuth was not measured, or the project has no coordinate system.',
@@ -5337,7 +5336,7 @@ export const en = {
   'rf.layer.row': 'Coverage',
   'rf.layer.eye': 'Show or hide the coverage on the map and in the 3D view',
   'rf.layer.none':
-    'Nothing to show yet. Choose a run, or change a setting in the RF tab for a live preview.',
+    'Nothing to show yet. Choose a run, or change a setting in the Coverage panel for a live preview.',
   'rf.layer.preview': 'Live preview, {view}',
   'rf.layer.run': 'Chosen run, {view}',
   'rf.layer.readFailed': 'The coverage grids could not be read: {error}',

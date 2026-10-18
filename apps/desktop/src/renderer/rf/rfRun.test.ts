@@ -13,7 +13,7 @@ import {
   ANTENNA_ENTRY,
   RADIO_ENTRY,
 } from './__fixtures__/rfData';
-import { loadRf, patchStudy, resetRf, rfStore, setPackStatus } from './rfStore';
+import { loadRf, patchStudy, resetRf, rfStore, saveRf, setPackStatus } from './rfStore';
 import { openCoverage, openRfTab, startRfRun } from './rfTab';
 
 type Call = [string, Record<string, unknown>];
@@ -124,6 +124,31 @@ describe('startRfRun', () => {
     expect(bench.getState().tabs.find((t) => t.id === 'rf')).toBeDefined();
     await Promise.resolve();
     expect(h.calls.some(([c]) => c === 'rf:listRuns')).toBe(true);
+  });
+
+  it('a plan saved after the last run counts as changed until a run of it is done', async () => {
+    const bench = createWorkbenchStore(null);
+    expect(rfStore.getState().planChangedSinceRun).toBe(false);
+    patchStudy({ radiusM: 2000 });
+    await saveRf();
+    expect(rfStore.getState().dirty).toBe(false);
+    expect(rfStore.getState().planChangedSinceRun).toBe(true);
+    await startRfRun('/p3', bench);
+    // the run is going: the old result still is the last one until it is done
+    expect(rfStore.getState().planChangedSinceRun).toBe(true);
+    jobsStore.setState({ jobs: [job('done')] });
+    expect(rfStore.getState().planChangedSinceRun).toBe(false);
+    // a save made while a run is going is newer than that run
+    jobsStore.setState({ jobs: [] });
+    await startRfRun('/p3', bench);
+    expect(rfStore.getState().running).toBe(true);
+    patchStudy({ radiusM: 3000 });
+    await saveRf();
+    jobsStore.setState({ jobs: [job('done')] });
+    expect(rfStore.getState().planChangedSinceRun).toBe(true);
+    // another project starts unchanged
+    await loadRf('p4');
+    expect(rfStore.getState().planChangedSinceRun).toBe(false);
   });
 
   it('opens the RF tab when a run starts from elsewhere', async () => {

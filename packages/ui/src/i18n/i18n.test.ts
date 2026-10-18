@@ -197,3 +197,15 @@ describe('the English catalogue', () => {
     expect(problems).toContain('nope.key: not in the English catalogue');
   });
 });
+
+describe('RF coverage texts', () => {
+  it('name the Coverage panel, never the old RF tab', () => {
+    const rf = Object.entries(en).filter(([k]) => k.startsWith('rf.'));
+    expect(rf.filter(([, v]) => /\bRF tab\b/.test(v)).map(([k]) => k)).toEqual([]);
+    expect(t('rf.layer.none')).toContain('Coverage panel');
+  });
+
+  it('never promise that Auto-plan plans a draft (F6)', () => {
+    expect(t('rf.autoplan.left.draft')).not.toMatch(/include drafts/i);
+  });
+});

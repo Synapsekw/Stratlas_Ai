@@ -12,6 +12,7 @@ import {
   AUTOPLAN_MESSAGES,
   applyAutoplan,
   autoplanStore,
+  canAutoplan,
   cancelAutoplan,
   confirmSend,
   openAntennaReviewOrFallback,
@@ -203,6 +204,39 @@ describe('startAutoplan', () => {
     expect(autoplan().warnings).toEqual(['No export row for B', 'No export row for C']);
   });
 
+  it('refuses on a read-only project: nothing is planned or asked', async () => {
+    rfStore.setState({ readOnly: true });
+    h.calls = [];
+    await startAutoplan('rules');
+    expect(autoplan().phase).toBe('idle');
+    expect(autoplan().proposal).toBeNull();
+    await startAutoplan('ai');
+    expect(autoplan().phase).toBe('idle');
+    expect(callsTo('ai:rfPlanPreview')).toHaveLength(0);
+  });
+
+  it('leaves out a unit switched off in RF, with the reason inactive', async () => {
+    rfStore.setState({
+      sectors: {
+        ...rfStore.getState().sectors,
+        antennas: [{ antennaId: 'ant-b', active: false, carriers: [] }],
+      },
+    });
+    await startAutoplan('rules');
+    expect(
+      autoplan()
+        .proposal?.rows.map((r) => r.unitId)
+        .sort(),
+    ).toEqual(['ant-a', 'ant-c']);
+    expect(autoplan().proposal?.leftOut).toEqual([{ unitId: 'ant-b', reason: 'inactive' }]);
+  });
+
+  it('a cell export lists no row missing for a unit it would not plan', async () => {
+    await seedAntennas([...site3(), draft('d1', 60)]);
+    await startAutoplan({ csvText: 'antenna,band\nA,B1\nB,B1\nC,B1' });
+    expect(autoplan().warnings).toEqual([]);
+  });
+
   it('a cell export it cannot read ends in error with rules offered', async () => {
     await startAutoplan({ csvText: 'band\nB3' });
     expect(autoplan().phase).toBe('error');
@@ -262,6 +296,24 @@ describe('the AI source', () => {
     });
     expect(rows.find((r) => r.unitId === 'ant-b')?.picks[0]?.reason).toMatch(/AI/);
     expect(autoplan().warnings).toContain('dropped a geometry key');
+  });
+
+  it('never sends a unit switched off in RF to the AI', async () => {
+    rfStore.setState({
+      sectors: {
+        ...rfStore.getState().sectors,
+        antennas: [{ antennaId: 'ant-b', active: false, carriers: [] }],
+      },
+    });
+    mockInvoke('ai:rfPlan', REPLY);
+    await startAutoplan('ai');
+    expect(callsTo('ai:rfPlanPreview')[0]?.[1]).toEqual({
+      projectId: 'p1',
+      unitIds: ['ant-a', 'ant-c'],
+    });
+    await confirmSend(false);
+    const req = callsTo('ai:rfPlan')[0]?.[1] as { units: { unitId: string }[] };
+    expect(req.units.map((u) => u.unitId)).toEqual(['ant-a', 'ant-c']);
   });
 
   it('a failed AI call ends in error with rules offered, never stuck in thinking', async () => {
@@ -457,6 +509,16 @@ describe('applyAutoplan', () => {
     expect(callsTo('rf:writeSectors')).toHaveLength(0);
   });
 
+  it('on a read-only project applies nothing and says so', async () => {
+    await startAutoplan('rules');
+    rfStore.setState({ readOnly: true });
+    expect(await applyAutoplan(true)).toEqual({ ok: false, code: 'read-only' });
+    expect(rfStore.getState().dirty).toBe(false);
+    expect(rfStore.getState().sectors.sectors).toHaveLength(0);
+    expect(vi.mocked(startRfRun)).not.toHaveBeenCalled();
+    expect(autoplan().phase).toBe('idle');
+  });
+
   it('does nothing without a proposal in review', async () => {
     expect(await applyAutoplan(true)).toBeNull();
     expect(rfStore.getState().dirty).toBe(false);
@@ -585,6 +647,53 @@ describe('selectChipState', () => {
       kind: 'ready',
       sectors: 2,
     });
+  });
+
+  it('is ready once the planned units are set up, whatever drafts, rejected or inactive members lack', () => {
+    const s = rf({});
+    const units = [
+      ...units3,
+      unit('ant-d', 0, { status: 'draft' }),
+      unit('ant-r', 120, { status: 'rejected' }),
+      unit('ant-o', 240),
+    ];
+    const withOthers = {
+      ...s,
+      sectors: {
+        ...s.sectors,
+        sectors: s.sectors.sectors.map((x, i) =>
+          i === 0 ? { ...x, antennaIds: [...x.antennaIds, 'ant-d', 'ant-r', 'ant-o'] } : x,
+        ),
+        // ant-o is switched off in RF and has nothing set up
+        antennas: [...s.sectors.antennas, { antennaId: 'ant-o', active: false, carriers: [] }],
+      },
+    };
+    expect(selectChipState(withOthers, units, idle)).toEqual({ kind: 'ready', sectors: 2 });
+    // only drafts and the like in the sectors: nothing is planned yet
+    const onlyDraft = {
+      ...s,
+      sectors: { ...s.sectors, sectors: [{ id: 'sec-s1', name: 'S1', antennaIds: ['ant-d'] }] },
+    };
+    expect(selectChipState(onlyDraft, units, idle).kind).toBe('not-planned');
+  });
+
+  it('is ready, not the old result, once the plan was saved again after the run', () => {
+    const s = rf({ classStats: STATS });
+    expect(selectChipState(s, units3, idle).kind).toBe('result');
+    expect(selectChipState({ ...s, planChangedSinceRun: true }, units3, idle)).toEqual({
+      kind: 'ready',
+      sectors: 2,
+    });
+  });
+
+  it('offers Auto-plan where the chip does, never on a read-only project', () => {
+    for (const kind of ['not-planned', 'ready', 'result'] as const) {
+      const chip = { kind } as Parameters<typeof canAutoplan>[0];
+      expect(canAutoplan(chip, false)).toBe(true);
+      expect(canAutoplan(chip, true)).toBe(false);
+    }
+    for (const kind of ['hidden', 'review-first', 'planning', 'running'] as const)
+      expect(canAutoplan({ kind } as Parameters<typeof canAutoplan>[0], false)).toBe(false);
   });
 
   it('is not planned while a planned unit lacks equipment or a carrier', () => {

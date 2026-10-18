@@ -10,6 +10,7 @@ import { columnsOf, findEntry, norm, num, splitCsv, type CellField } from '../ce
 import { defaultBandwidth } from '../rfFields';
 import { rfUnit } from '../rfModel';
 import { rulesPick } from './rules';
+import { plannedUnits, type ActiveSettings } from './sectors';
 import type { PlanPick } from './types';
 
 export interface ExportMatch {
@@ -17,6 +18,7 @@ export interface ExportMatch {
   renames: { sectorId: string; name: string }[];
   /** 1-based file lines (the header is line 1) of rows that matched no unit. */
   unmatchedRows: number[];
+  /** Units Auto-plan would plan (`plannedUnits`) that no row matched. */
   unmatchedUnits: string[];
 }
 
@@ -33,6 +35,8 @@ export function matchCellExport(
   units: readonly AntennaUnit[],
   sectors: readonly RfSector[],
   catalogue: readonly RfCatalogueEntry[],
+  /** The RF settings, for the units switched off in RF (not planned, so never unmatched). */
+  settings: ActiveSettings = [],
 ): ExportMatch | { error: 'empty' | 'no-antenna-column' } {
   const records = splitCsv(text);
   const header = records[0];
@@ -213,6 +217,10 @@ export function matchCellExport(
     out.picks.set(unit.id, list);
   });
 
-  out.unmatchedUnits = units.filter((u) => !out.picks.has(u.id)).map((u) => u.id);
+  // only the units Auto-plan plans: a draft, a dish or a unit switched off needs no row
+  const planned = plannedUnits(units, settings);
+  out.unmatchedUnits = units
+    .filter((u) => planned.has(u.id) && !out.picks.has(u.id))
+    .map((u) => u.id);
   return out;
 }

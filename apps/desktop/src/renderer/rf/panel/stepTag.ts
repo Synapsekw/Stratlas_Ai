@@ -4,8 +4,8 @@
  * carrier origins, in the order `needs-setup` > `ai-low` > `rules` > `ai` > `from-export` >
  * `edited`. A missing origin means the person set it (`edited`); a unit with no settings, no
  * equipment or no carrier needs setup. Any low-confidence group, set by the AI or by the rules (an
- * unusable AI pick falls back to the rules at low confidence), tags `ai-low`, the amber "check
- * this" tag (ruling R24).
+ * unusable AI pick falls back to the rules at low confidence) or matched from a cell export, tags
+ * `ai-low`, the amber "check this" tag (ruling R24, extended to the export).
  */
 import { originOf, type RfAntennaSettings, type RfOrigin } from '@aio/schema';
 
@@ -31,7 +31,7 @@ export function originTag(o: RfOrigin | undefined): StepTag {
     case 'rules':
       return o?.confidence === 'low' ? 'ai-low' : 'rules';
     case 'export':
-      return 'from-export';
+      return o?.confidence === 'low' ? 'ai-low' : 'from-export';
     case 'user':
       return 'edited';
   }

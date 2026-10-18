@@ -284,6 +284,50 @@ describe('the Coverage chip', () => {
     expect(startAutoplan).toHaveBeenCalled();
   });
 
+  it('offers no Auto-plan or Re-plan on a read-only project', () => {
+    seed(site3(), { readOnly: true });
+    render();
+    expect(chip()?.dataset.state).toBe('not-planned');
+    expect(byId('rf-chip-autoplan')).toBeNull();
+    act(() => {
+      root.render(<CoverageChip variant="panel" />);
+    });
+    expect(byId('rf-chip-panel-autoplan')).toBeNull();
+    act(() => {
+      rfStore.setState({
+        sectors: planned,
+        runs: [RUN],
+        selectedRunId: RUN.runId,
+        classStats: STATS,
+        view: 'rsrp',
+      });
+    });
+    expect(byId('rf-chip-panel')?.dataset.state).toBe('result');
+    expect(byId('rf-chip-panel-replan')).toBeNull();
+    render();
+    expect(byId('rf-chip-replan')).toBeNull();
+    // the layer toggle stays: it only shows what is there
+    expect(byId('rf-chip-layer')).not.toBeNull();
+    expect(startAutoplan).not.toHaveBeenCalled();
+  });
+
+  it('a plan saved since the run shows Run, not the old result', () => {
+    seed(site3(), {
+      sectors: planned,
+      runs: [RUN],
+      selectedRunId: RUN.runId,
+      classStats: STATS,
+      view: 'rsrp',
+    });
+    render();
+    expect(chip()?.dataset.state).toBe('result');
+    act(() => {
+      rfStore.setState({ planChangedSinceRun: true });
+    });
+    expect(chip()?.dataset.state).toBe('ready');
+    expect(byId('rf-chip-run')).not.toBeNull();
+  });
+
   it('result names the view instead of the share for best server and overlap', () => {
     seed(site3(), {
       sectors: planned,

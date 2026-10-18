@@ -20,7 +20,6 @@ import { assetUrl } from '@aio/workspace';
 import { useRef, useState, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { antennaStore } from '../telecom/antennaStore';
-import { workbench } from '../workspace/workbench/workbenchStore';
 import {
   applyAutoplan,
   AUTOPLAN_MESSAGES,
@@ -29,6 +28,7 @@ import {
   openAntennaReviewOrFallback,
   switchSource,
   useAutoplan,
+  type ApplyRefusal,
   type AutoplanPhase,
 } from './autoplan/autoplanStore';
 import type { Proposal, ProposalRow } from './autoplan/proposal';
@@ -37,12 +37,14 @@ import type { PlanPick } from './autoplan/types';
 import { sectorColour, swatchBackground } from './coverageRamp';
 import { carrierBandName, sectorBearing } from './rfFields';
 import { useRf, type StartResult } from './rfStore';
+import { openCoverage } from './rfTab';
 import './rf.css';
 
 type T = (key: MessageKey, vars?: Vars) => string;
 type Preview = Extract<IpcResponse<'ai:rfPlanPreview'>, { ok: true }>;
 type Confidence = PlanPick['confidence'];
-type RunProblem = Extract<StartResult, { ok: false }>;
+/** Why Apply did not end in a run: the plan applied but no run, or nothing applied (read only). */
+type RunProblem = Extract<StartResult, { ok: false }> | ApplyRefusal;
 
 /** The store's fixed texts, by the key that says the same (provider errors have none). */
 const MESSAGE_KEY: ReadonlyMap<string, MessageKey> = new Map<string, MessageKey>([
@@ -405,6 +407,7 @@ function SendPreview({ preview, t }: { preview: Preview; t: T }) {
 }
 
 function runProblemText(t: T, r: RunProblem): string {
+  if (r.code === 'read-only') return t('rf.refusal.readOnly');
   if (r.code === 'failed')
     return t('rf.autoplan.applied.failed', { message: messageText(t, r.message) });
   return t(r.code === 'refused' ? 'rf.autoplan.applied.refused' : 'rf.autoplan.applied.notSaved');
@@ -427,8 +430,15 @@ export function AutoplanDialog() {
   // the last send preview, for the provider's name and the cost line once it has been sent
   const [lastPreview, setLastPreview] = useState<Preview | null>(null);
   const [seenPhase, setSeenPhase] = useState<AutoplanPhase>(phase);
+  const rfProject = useRf((s) => s.projectId);
+  const [seenProject, setSeenProject] = useState(rfProject);
   const dlg = useRef<HTMLDivElement>(null);
 
+  // another project: what the last one's Apply said is not about this one (R17)
+  if (seenProject !== rfProject) {
+    setSeenProject(rfProject);
+    setProblem(null);
+  }
   // adjust state while rendering (not in an effect): a new Auto-plan remembers what opened it
   if (seenPhase !== phase) {
     setSeenPhase(phase);
@@ -481,7 +491,22 @@ export function AutoplanDialog() {
     </Button>
   );
 
-  if (phase === 'idle' && problem) {
+  if (phase === 'idle' && problem?.code === 'read-only') {
+    title = t('rf.autoplan.error.title');
+    body = (
+      <p className="rf-note rf-warn-ink" role="alert">
+        {runProblemText(t, problem)}
+      </p>
+    );
+    foot = (
+      <>
+        <span className="grow" />
+        <Button data-testid="rf-autoplan-cancel" onClick={close}>
+          {t('rf.autoplan.applied.close')}
+        </Button>
+      </>
+    );
+  } else if (phase === 'idle' && problem) {
     title = t('rf.autoplan.applied.title');
     body = (
       <p className="rf-note rf-warn-ink" role="alert">
@@ -498,7 +523,7 @@ export function AutoplanDialog() {
           variant="primary"
           onClick={() => {
             setProblem(null);
-            workbench.getState().open('rf');
+            openCoverage();
           }}
         >
           {t('rf.autoplan.applied.open')}

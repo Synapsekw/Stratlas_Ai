@@ -107,4 +107,16 @@ describe('palette: Coverage', () => {
     expect(startAutoplan).toHaveBeenCalled();
     expect(tabAtStart).toBe(true);
   });
+
+  it('offers no Auto-plan on a read-only project, only Open Coverage panel', () => {
+    rfStore.setState({ readOnly: true });
+    antennaStore.setState({
+      projectId: 'p',
+      status: 'ready',
+      file: antennasFile([unit('ant-a', 0), unit('ant-b', 120)]),
+    });
+    open();
+    expect(command('rf:open')).toBeDefined();
+    expect(command('rf:autoplan')).toBeUndefined();
+  });
 });

@@ -2,7 +2,8 @@
  * Auto-plan sector planning (C1). With no sectors yet it proposes by bearing. Otherwise it keeps
  * every sector the person made (ids, names, members) and only places units that are in none:
  * into the sector with the nearest bearing within `SECTOR_GAP_DEG`, else into a new sector.
- * Only accepted panels with a bearing take part; the rest come back as `leftOut`.
+ * Only accepted panels with a bearing that are not switched off in RF (the `active` flag of their
+ * settings, D5) take part; the rest come back as `leftOut`.
  */
 import {
   meanBearingDeg,
@@ -12,7 +13,7 @@ import {
   unitTrueAzimuthDeg,
   type RfUnit,
 } from '@aio/rf';
-import type { AntennaUnit, RfSector } from '@aio/schema';
+import type { AntennaUnit, RfAntennaSettings, RfSector } from '@aio/schema';
 import { rfUnit } from '../rfModel';
 
 export interface LeftOut {
@@ -27,8 +28,14 @@ export interface SectorPlan {
   regrouped: boolean;
 }
 
-function leftOutReason(u: RfUnit): LeftOut['reason'] | null {
-  const e = unitEligibility(u);
+/** The RF settings Auto-plan reads: only whether a unit is switched off. */
+export type ActiveSettings = readonly Pick<RfAntennaSettings, 'antennaId' | 'active'>[];
+
+const rfActiveOf = (settings: ActiveSettings, id: string): boolean | undefined =>
+  settings.find((a) => a.antennaId === id)?.active;
+
+function leftOutReason(u: RfUnit, rfActive: boolean | undefined): LeftOut['reason'] | null {
+  const e = unitEligibility(u, rfActive === undefined ? {} : { rfActive });
   if (e.eligible) return null;
   switch (e.reason) {
     case 'draft':
@@ -56,20 +63,40 @@ function angleBetween(a: number, b: number): number {
   return d > 180 ? 360 - d : d;
 }
 
+/**
+ * The units Auto-plan plans: accepted panels with a bearing, not switched off in RF. A unit it
+ * leaves out (a draft, a dish, a rejected or inactive unit) is not one of them, nor is one that
+ * detection dropped.
+ */
+export function plannedUnits(
+  units: readonly AntennaUnit[],
+  settings: ActiveSettings = [],
+): Set<string> {
+  const out = new Set<string>();
+  for (const u of units) {
+    const rfActive = rfActiveOf(settings, u.id);
+    if (unitEligibility(rfUnit(u), rfActive === undefined ? {} : { rfActive }).eligible)
+      out.add(u.id);
+  }
+  return out;
+}
+
 export function planSectors(
   units: readonly AntennaUnit[],
   current: readonly RfSector[],
+  settings: ActiveSettings = [],
 ): SectorPlan {
   const rf = units.map(rfUnit);
   const leftOut: LeftOut[] = [];
   const eligible: { id: string; az: number }[] = [];
+  const planned = plannedUnits(units, settings);
   for (const u of rf) {
-    const reason = leftOutReason(u);
+    const reason = leftOutReason(u, rfActiveOf(settings, u.id));
     if (reason) {
       leftOut.push({ unitId: u.id, reason });
       continue;
     }
-    if (!unitEligibility(u).eligible) continue;
+    if (!planned.has(u.id)) continue;
     const az = unitTrueAzimuthDeg(u);
     if (az !== null) eligible.push({ id: u.id, az });
   }

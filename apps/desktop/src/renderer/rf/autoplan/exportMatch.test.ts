@@ -105,6 +105,20 @@ describe('matchCellExport', () => {
     expect(m.unmatchedUnits).toEqual(['u3']);
   });
 
+  it('lists as unmatched only the units Auto-plan would plan', () => {
+    const units = [
+      unit('u1', 'Panel A', 10),
+      { ...unit('d1', 'Draft', 130), status: 'draft' } as AntennaUnit,
+      { ...unit('k1', 'Dish', 250), kind: 'dish' } as AntennaUnit,
+      { ...unit('r1', 'Rejected', 300), status: 'rejected' } as AntennaUnit,
+      unit('o1', 'Off', 200),
+      unit('u2', 'Panel B', 60),
+    ];
+    const off = [{ antennaId: 'o1', active: false, carriers: [] }];
+    const m = ok(matchCellExport('antenna,band\nPanel A,B3', units, [], CATALOGUE, off));
+    expect(m.unmatchedUnits).toEqual(['u2']);
+  });
+
   it('renames a matched sector but never moves a unit', () => {
     const units = [unit('u1', 'Panel A', 10), unit('u2', 'Panel B', 130)];
     const sectors = [sec('sec-s1', 'S1', ['u1']), sec('sec-s2', 'S2', ['u2'])];
