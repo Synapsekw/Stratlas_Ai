@@ -11,17 +11,18 @@
 import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type MouseEvent, type ReactElement } from 'react';
-import { openPhoto } from '../builder/photoOpen';
 import { Section } from '../workspace/workbench/Section';
 import { useSections } from '../workspace/workbench/sectionState';
-import { AntennaDetails } from './AntennaDetails';
 import { AntennaInventory } from './AntennaInventory';
 import { useAntennaClouds } from './AntennaRunner';
 import {
-  patchUnitUser,
+  hideAllAntennas,
   selectAntenna,
-  setUnitStatus,
+  setAntennaFilter,
+  setAntennaSolo,
+  showAllAntennas,
   toggleAntennaHidden,
+  toggleGroupHidden,
   useAntennas,
 } from './antennaStore';
 
@@ -87,8 +88,6 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
   if (!antennaSectionMatches(query)) return null;
   const searching = query.trim() !== '';
 
-  const selected = file?.units.find((u) => u.id === s.selected);
-  const aiProvider = selected?.ai?.provider;
   const listed = file?.units.filter((u) => u.status !== 'rejected').length ?? 0;
 
   // while a pick holds the section open its header click would look dead: it ends the hold and
@@ -135,30 +134,18 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
             file={file}
             selected={s.selected}
             hidden={s.hidden}
+            solo={s.solo}
+            filter={s.filter}
             readOnly={s.readOnly}
             onSelect={selectAntenna}
             onToggleVisible={toggleAntennaHidden}
-            onSetStatus={(id, status) => {
-              void setUnitStatus(id, status);
-            }}
-            onOpenDetails={selectAntenna}
+            onToggleGroup={toggleGroupHidden}
+            onSolo={setAntennaSolo}
+            onFilter={setAntennaFilter}
+            onHideAll={hideAllAntennas}
+            onShowAll={showAllAntennas}
+            note={s.note}
           />
-          {selected && (
-            <AntennaDetails
-              key={selected.id}
-              unit={selected}
-              projectId={projectId}
-              readOnly={s.readOnly}
-              {...(aiProvider !== undefined ? { aiProvider } : {})}
-              onSetStatus={(status) => {
-                void setUnitStatus(selected.id, status);
-              }}
-              onPatchUser={(fields) => {
-                void patchUnitUser(selected.id, fields);
-              }}
-              onOpenPhoto={openPhoto}
-            />
-          )}
         </div>
       </Section>
     </div>

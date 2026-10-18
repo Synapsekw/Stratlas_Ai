@@ -76,6 +76,7 @@ vi.mock('../workspace/StageTools', async (importOriginal) => ({
   useEngineStage: () => null,
 }));
 vi.mock('./antennaScene', () => ({
+  KIND_COLOURS: { panel: '#111', short: '#222', dish: '#333', other: '#444' },
   attachAntennaLayer: (_stage: unknown, _frame: unknown, opts: { onPick(id: string): void }) => {
     h.layerPick = (id) => {
       opts.onPick(id);
@@ -238,6 +239,13 @@ describe('the antenna inventory in the Measure workbench', () => {
     await mount();
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
     expect(head()?.textContent).toContain('Antenna inventory');
+    // the review filter starts on the drafts; the All tab lists every unit
+    expect(section()?.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(2);
+    expect(q('[data-testid="antenna-filter-all"]')?.textContent).toBe('All 3');
+    await act(async () => {
+      q('[data-testid="antenna-filter-all"]')!.click();
+      await Promise.resolve();
+    });
     expect(section()?.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(3);
     const exp = q('[data-testid="survey-export-open"]')!;
     const csv = q('[aria-label="Export antenna inventory (CSV)"]')!;
