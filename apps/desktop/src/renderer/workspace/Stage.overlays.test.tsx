@@ -4,7 +4,7 @@ import { volumetric } from '@aio/volumetric';
 import { captureIndex, workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
 import type { CoverageGrids } from '../rf/coverageGrids';
 import { rfLayer } from '../rf/coverageDisplay';
@@ -449,6 +449,121 @@ describe('the stage corners', () => {
       live({ splitting: true, cursor: 'br' });
       expect(slotOf('rf-chip')).toBe('bl');
       expect(cursorHidden()).toBe(false);
+    });
+
+    describe("beside a selected antenna's card (telecom/AntennaCard)", () => {
+      /** Where the antenna card stands (viewport px); null: not on the page. */
+      let antennaAt: DOMRect | null = null;
+      /** The coverage card at the stage's foot, start side (the bl slot of a 1100 x 720 window). */
+      const CARD = new DOMRect(12, 560, 190, 120);
+      const OVER = new DOMRect(40, 430, 320, 200);
+      const AWAY = new DOMRect(500, 80, 320, 200);
+      let antennaCard: HTMLElement;
+      const frames = () =>
+        act(async () => {
+          await new Promise((r) => setTimeout(r, 60));
+        });
+      beforeEach(() => {
+        antennaAt = null;
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+          this: Element,
+        ) {
+          const id = this.getAttribute('data-testid');
+          if (id === 'rf-card' || id === 'rf-legend') return CARD;
+          if (id === 'antenna-card' && antennaAt) return antennaAt;
+          return new DOMRect(0, 0, 0, 0);
+        });
+        antennaCard = document.createElement('div');
+        antennaCard.dataset.testid = 'antenna-card';
+        document.body.append(antennaCard);
+        // the inventory drawn in the 3D view on screen: a cloud in the project
+        const cloud = {
+          kind: 'pointcloud',
+          id: 'tower-cloud',
+          name: 'Tower cloud',
+          visible: true,
+          format: 'png-packed',
+          src: { path: 'cloud/index.json' },
+        } as Layer;
+        act(() => {
+          workspace.getState().openProject({
+            id: 'p3',
+            root: '/p3',
+            manifest: { ...manifest, layers: [...manifest.layers, cloud] },
+          });
+          shell.setState({ screen: 'scene', stageMode: '3d', pkg: null } as never);
+        });
+      });
+      afterEach(() => {
+        antennaCard.remove();
+        antennaStore.setState({ selected: null });
+        vi.restoreAllMocks();
+      });
+      const select = (id: string | null) => {
+        act(() => {
+          antennaStore.setState({ selected: id });
+        });
+      };
+
+      it('before a run the prompt gives its corner up while the card is over it', async () => {
+        withAntennas();
+        live();
+        await frames();
+        expect(slotOf('rf-chip')).toBe('bl');
+        // a unit selected, its card clear of the prompt: the prompt stays
+        antennaAt = AWAY;
+        select('ant-a');
+        await frames();
+        expect(slotOf('rf-chip')).toBe('bl');
+        // the card over the prompt: the prompt yields, the dates and the readout keep theirs
+        antennaAt = OVER;
+        await frames();
+        expect(slotOf('rf-chip')).toBeUndefined();
+        expect(slotOf('dates-on-screen')).toBe('tl');
+        expect(cursorHidden()).toBe(false);
+        // the card moves off where the prompt stood: it comes back
+        antennaAt = AWAY;
+        await frames();
+        expect(slotOf('rf-chip')).toBe('bl');
+        // and when the card closes over it
+        antennaAt = OVER;
+        await frames();
+        expect(slotOf('rf-chip')).toBeUndefined();
+        select(null);
+        await frames();
+        expect(slotOf('rf-chip')).toBe('bl');
+      });
+
+      it('after a run the legend keeps its corner and steps aside in place under the card', async () => {
+        withAntennas();
+        act(() => {
+          coverageShown();
+        });
+        live();
+        await frames();
+        const legend = () => host.querySelector<HTMLElement>('[data-testid="rf-legend"]');
+        expect(slotOf('rf-legend')).toBe('bl');
+        antennaAt = OVER;
+        select('ant-a');
+        await frames();
+        // the corner is kept (the readout and the dates do not move), the legend hidden in it
+        expect(slotOf('rf-legend')).toBe('bl');
+        expect(legend()?.hasAttribute('data-covered')).toBe(true);
+        expect(legend()?.hasAttribute('inert')).toBe(true);
+        antennaAt = AWAY;
+        await frames();
+        expect(legend()?.hasAttribute('data-covered')).toBe(false);
+        expect(legend()?.hasAttribute('inert')).toBe(false);
+        antennaAt = OVER;
+        await frames();
+        expect(legend()?.hasAttribute('data-covered')).toBe(true);
+        // in the map the antenna card is not up: the legend shows
+        act(() => {
+          shell.setState({ stageMode: 'map' } as never);
+        });
+        await frames();
+        expect(legend()?.hasAttribute('data-covered')).toBe(false);
+      });
     });
 
     it('claims no corner while two dates are compared, before or after a run', () => {

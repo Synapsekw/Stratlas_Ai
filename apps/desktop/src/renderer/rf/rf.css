@@ -861,9 +861,23 @@
 }
 /* on the map its bottom corner stands above the map's "No map pack installed" note, which goes
    above the scale bar and the credits, up into the corner, where the map is too narrow for it on
-   one line (the note's anchor; none without the map or the note, and the corner keeps its place) */
+   one line (the note's anchor; none without the map or the note, and the corner keeps its place).
+   In the 3D view it stands above the antennas' Labels control too (telecom/AntennaLabelsControl,
+   at the view's bottom left, a little taller than the 40 px under the corner; none while the
+   antennas are not drawn) */
+.stage [data-antenna-labels-control] {
+  anchor-name: --aio-antenna-labels;
+}
 .stage-slot:is([data-slot='bl'], [data-slot='br']):has(> :is(.rf-legend, .rf-card)) {
-  inset-block-end: max(40px, calc(anchor(--aio-map-note top, 0px) + var(--sp-2)));
+  inset-block-end: max(
+    40px,
+    calc(anchor(--aio-map-note top, 0px) + var(--sp-2)),
+    calc(anchor(--aio-antenna-labels top, 0px) + var(--sp-2))
+  );
+}
+/* a selected antenna's card over the legend: the legend steps aside in place (its corner kept) */
+.rf-legend[data-covered] {
+  visibility: hidden;
 }
 /* in its stage corner it keeps to the lower half of the stage and scrolls the rest (Details open) */
 .stage-slot > .rf-legend {

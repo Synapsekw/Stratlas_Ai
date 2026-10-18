@@ -18,6 +18,7 @@ import { RF_DRAFT, RF_PANELS, RF_SITE, readRfSectors, writeRfProject } from './r
 interface Hooks {
   __stratlas: {
     workbench: { getState(): { open(id: string): void } };
+    antennas: { setState(patch: Record<string, unknown>): void };
     stage(): {
       scene: { getObjectByName(n: string): { visible: boolean } | undefined };
       restoreView(v: { position: number[]; target: number[] }, animate?: boolean): void;
@@ -161,8 +162,8 @@ async function viewSiteFromAbove(win: Page): Promise<void> {
 
 /**
  * What the coverage legend covers on the stage: the coordinates readout, the volumes hint, the
- * island, the map's "No map pack installed" note and any other corner overlay, by name (none when
- * it keeps clear of them all).
+ * island, the map's "No map pack installed" note, the antennas' Labels control and card, and any
+ * other corner overlay, by name (none when it keeps clear of them all).
  */
 const legendCovers = (win: Page, card = 'rf-legend') =>
   win.evaluate((id) => {
@@ -177,6 +178,8 @@ const legendCovers = (win: Page, card = 'rf-legend') =>
       ['volumes hint', document.querySelector('[data-testid="vol-hint"]')],
       ['island', document.querySelector('[role="toolbar"][aria-label="Stage tools"]')],
       ['map note', document.querySelector('[data-testid="map-no-packs"]')],
+      ['antenna labels', document.querySelector('[data-testid="antenna-labels-control"]')],
+      ['antenna card', document.querySelector('[data-testid="antenna-card"]')],
       ...[...document.querySelectorAll('.stage-slot')]
         .filter((s) => !s.querySelector(`[data-testid="${id}"]`))
         .map((s): [string, Element] => [`slot ${(s as HTMLElement).dataset.slot ?? ''}`, s]),
@@ -445,3 +448,136 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   await expect(runPick.locator(`option[value="${firstRun ?? ''}"]`)).toHaveCount(1);
   await expect(bench.getByRole('status').filter({ hasText: 'not saved yet' })).toHaveCount(0);
 });
+
+/**
+ * Whether the coverage card (the prompt or the legend), when shown, overlaps the antennas' Labels
+ * control or the selected unit's floating card, by name (none when it keeps clear or is hidden).
+ */
+const antennaClash = (win: Page) =>
+  win.evaluate(() => {
+    const shown = (el: Element | null) => {
+      if (!el || getComputedStyle(el).visibility === 'hidden') return null;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 ? r : null;
+    };
+    const card = shown(
+      document.querySelector('[data-testid="rf-legend"], [data-testid="rf-card"]'),
+    );
+    if (!card) return [];
+    return (
+      [
+        ['antenna labels', '[data-testid="antenna-labels-control"]'],
+        ['antenna card', '[data-testid="antenna-card"]'],
+      ] as const
+    )
+      .filter(([, sel]) => {
+        const b = shown(document.querySelector(sel));
+        return (
+          b !== null &&
+          card.left < b.right &&
+          b.left < card.right &&
+          card.top < b.bottom &&
+          b.top < card.bottom
+        );
+      })
+      .map(([name]) => name);
+  });
+
+/** Wait until the box stops moving (the camera's fly to a selected unit has settled). */
+async function settled(box: Locator): Promise<void> {
+  let last = '';
+  await expect
+    .poll(
+      async () => {
+        const b = JSON.stringify(await box.boundingBox());
+        const same = b === last;
+        last = b;
+        return same;
+      },
+      { intervals: [300] },
+    )
+    .toBe(true);
+}
+
+const selectUnit = (win: Page, id: string | null) =>
+  win.evaluate((unit) => {
+    (window as unknown as Hooks).__stratlas.antennas.setState({ selected: unit });
+  }, id);
+
+/**
+ * The coverage card shares the stage's foot with the antenna inventory drawn in 3D (its Labels
+ * control at the bottom left) and a selected unit's card: before a run the card is only a prompt
+ * and gives its corner up while the antenna card is over it; after one the legend keeps its
+ * corner, above the Labels control, and steps aside in place while the antenna card is over it.
+ */
+for (const size of ['1100x720', '1440x900']) {
+  test.describe(`at ${size}`, () => {
+    test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_WINDOW_SIZE: size } });
+
+    test('the coverage card and the antenna card share the stage', async ({ win, dataRoot }) => {
+      test.setTimeout(300_000);
+      const shot = (name: string) => evidence(win, `antennas-${name}-${size}`);
+      await writeRfProject(dataRoot.projectDir, { cloud: true });
+      await openTiny(win);
+      const labels = win.getByTestId('antenna-labels-control');
+      await expect(labels).toBeVisible({ timeout: 30_000 });
+      const bench = await openRfFromProjectMenu(win);
+      await viewSiteFromAbove(win);
+
+      // before a run: the prompt keeps clear of the Labels control and the other overlays
+      const card = win.getByTestId('rf-card');
+      await expect(card.getByTestId('rf-chip')).toHaveAttribute('data-state', 'not-planned', {
+        timeout: 30_000,
+      });
+      await expect.poll(() => legendCovers(win, 'rf-card')).toEqual([]);
+      await shot('before-run');
+      // a selected unit's card: the prompt gives its corner up wherever the card is over it
+      const unitCard = win.getByTestId('antenna-card');
+      for (const id of [...RF_PANELS, RF_DRAFT]) {
+        await selectUnit(win, id);
+        await expect(unitCard).toBeVisible();
+        await settled(unitCard);
+        await expect.poll(() => antennaClash(win)).toEqual([]);
+        if (id === RF_PANELS[0] || id === RF_DRAFT) await shot(`before-run-card-${id}`);
+      }
+      await selectUnit(win, null);
+      await expect(unitCard).toHaveCount(0);
+      await expect(card).toBeVisible();
+
+      // a quick run: a small study, the rules' plan, Apply & run
+      const head = bench.getByTestId('rf-advanced');
+      if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
+      const study = bench.getByTestId('rf-study');
+      for (const [name, value] of [
+        ['Radius', '1000'],
+        ['Grid', '20'],
+      ] as const) {
+        await study.getByRole('spinbutton', { name, exact: true }).fill(value);
+        await study.getByRole('spinbutton', { name, exact: true }).press('Enter');
+      }
+      await card.getByTestId('rf-chip-autoplan').click();
+      const dlg = win.getByTestId('rf-autoplan');
+      await expect(dlg).toHaveAttribute('data-phase', 'review');
+      await dlg.getByTestId('rf-autoplan-apply-run').click();
+      await expect(dlg).toBeHidden();
+      await expect.poll(() => doneRuns(dataRoot.projectDir), { timeout: 240_000 }).toHaveLength(1);
+
+      // after it: the legend keeps its corner, clear of the Labels control and the overlays
+      const legend = win.getByTestId('rf-legend');
+      await expect(legend).toBeVisible({ timeout: 60_000 });
+      await viewSiteFromAbove(win);
+      await expect.poll(() => legendCovers(win)).toEqual([]);
+      await shot('after-run');
+      // and of a selected unit's card, wherever the card stands
+      for (const id of [...RF_PANELS, RF_DRAFT]) {
+        await selectUnit(win, id);
+        await expect(unitCard).toBeVisible();
+        await settled(unitCard);
+        await expect.poll(() => antennaClash(win)).toEqual([]);
+        if (id === RF_PANELS[0] || id === RF_DRAFT) await shot(`after-run-card-${id}`);
+      }
+      await selectUnit(win, null);
+      await expect(legend).toBeVisible();
+    });
+  });
+}

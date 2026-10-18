@@ -9,7 +9,7 @@
 import { OVERLAP_WINDOW_DB } from '@aio/rf';
 import type { RfStudy } from '@aio/schema';
 import { Switch, Tip, useT, type MessageKey, type Vars } from '@aio/ui';
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode, type Ref } from 'react';
 import {
   CLASS_HATCH,
   OVERLAP_HATCH,
@@ -99,6 +99,10 @@ export interface CoverageLegendProps {
   reduced?: ReducedFrom | null;
   /** Above the legend: the stage card's Coverage chip (StageCoverageLegend). */
   header?: ReactNode;
+  /** The legend's box, for the stage card to measure (StageCoverageLegend). */
+  boxRef?: Ref<HTMLElement>;
+  /** Hidden in place while a selected antenna's card covers it (StageCoverageLegend). */
+  covered?: boolean;
 }
 
 /**
@@ -160,6 +164,8 @@ export function CoverageLegend({
   source,
   reduced,
   header,
+  boxRef,
+  covered = false,
 }: CoverageLegendProps) {
   const t = useT();
   const opacity = useRfLayer((s) => s.opacity);
@@ -238,10 +244,13 @@ export function CoverageLegend({
 
   return (
     <section
+      ref={boxRef}
       className="rf-legend overlay-box"
       data-surface="dark"
       aria-label={t('rf.legend.label')}
       data-testid="rf-legend"
+      data-covered={covered ? '' : undefined}
+      inert={covered}
     >
       {header}
       <header className="rf-legend-head">

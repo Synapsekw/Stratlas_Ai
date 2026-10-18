@@ -4,9 +4,17 @@
  * degrees grid, 30 m above the tower-base ground, and one draft panel hangs lower on the same
  * tower. There is no `rf/` folder: the RF tab starts from nothing.
  */
-import { ANTENNAS_SCHEMA, AntennasFile, RfSectorsFile, type AntennaUnit } from '@aio/schema';
+import {
+  ANTENNAS_SCHEMA,
+  AntennasFile,
+  ProjectManifest,
+  RfSectorsFile,
+  type AntennaUnit,
+} from '@aio/schema';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tinyManifest } from './fixtures';
+import { packPngCloud } from './telecomFixtures';
 
 /** The tower base in the project CRS, close to the tiny project's origin. */
 export const RF_SITE = { east: 500_020, north: 3_200_020, groundZ: 0, heightM: 30 } as const;
@@ -66,6 +74,11 @@ function panel(
 export interface RfFixtureOptions {
   /** Every unit a draft: nothing reviewed yet, so Auto-plan asks for a review first. */
   allDraft?: boolean;
+  /**
+   * A small tower cloud (`tower-cloud`) beside the quad: the inventory is drawn in the 3D view,
+   * with its Labels control, and a selected unit shows its card.
+   */
+  cloud?: boolean;
 }
 
 /** The inventory: three accepted panels and one draft (or four drafts, `allDraft`). */
@@ -105,6 +118,44 @@ export async function writeRfProject(
 ): Promise<void> {
   await mkdir(join(projectDir, 'telecom'), { recursive: true });
   await writeFile(join(projectDir, 'telecom', 'antennas.json'), JSON.stringify(rfAntennas(opts)));
+  if (opts.cloud) await writeTowerCloud(projectDir);
+}
+
+/**
+ * A plain tower in the project's local frame (y up, x east, -z north from the origin): a mast of
+ * points up to the panels' height and a ring of ground around its base.
+ */
+async function writeTowerCloud(projectDir: string): Promise<void> {
+  const manifest = tinyManifest();
+  const [ox, oy] = manifest.origin;
+  const [cx, cz] = [RF_SITE.east - ox, -(RF_SITE.north - oy)];
+  const xyz: number[] = [];
+  for (let y = 0; y <= RF_SITE.heightM + 2; y += 0.1) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      xyz.push(cx + 0.4 * Math.cos(a), y, cz + 0.4 * Math.sin(a));
+    }
+  }
+  for (let r = 1; r <= 10; r += 1) {
+    for (let k = 0; k < 36; k++) {
+      const a = (k * Math.PI) / 18;
+      xyz.push(cx + r * Math.cos(a), 0, cz + r * Math.sin(a));
+    }
+  }
+  const count = await packPngCloud(projectDir, 'tower', xyz, [170, 178, 186], 0.1);
+  manifest.layers.push({
+    id: 'tower-cloud',
+    name: 'Tower cloud',
+    kind: 'pointcloud',
+    visible: true,
+    format: 'png-packed',
+    src: { path: 'cloud/index.json' },
+    pointCount: count,
+  });
+  await writeFile(
+    join(projectDir, 'manifest.json'),
+    JSON.stringify(ProjectManifest.parse(manifest)),
+  );
 }
 
 /**
