@@ -39,6 +39,11 @@ export interface AntennaLabelSpot {
   /** 'pin': the small numbered marker of a unit that is not selected. */
   kind: 'name' | 'dim' | 'angle' | 'pin';
   selected: boolean;
+  /**
+   * Where the label sits against its anchor on screen: 'above' (centred, wholly above it),
+   * 'below' (centred, hanging under it) or 'centre'; absent: beside it, `.sv-label`'s offset.
+   */
+  align?: 'above' | 'below' | 'centre';
   /** The unit a pin stands for (a click on it picks that unit). */
   unitId?: string;
   /** A pin's fill, the unit's kind colour. */

@@ -106,3 +106,53 @@ it('draws a pin that picks its unit on click, keeps the click and shows a toolti
   expect(picks).toEqual(['u14', 'u14']);
   detach();
 });
+
+it('puts the name wholly above its anchor and hangs the width under its line', () => {
+  const host = document.createElement('div');
+  const canvas = document.createElement('canvas');
+  host.append(canvas);
+  document.body.append(host);
+  canvas.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  host.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+  const camera = new PerspectiveCamera(50, 1, 0.1, 1000);
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  let frame: () => void = () => undefined;
+  const stage = {
+    camera,
+    renderer: { domElement: canvas },
+    onFrame: (fn: () => void) => {
+      frame = fn;
+      return () => undefined;
+    },
+  };
+  const spots: AntennaLabelSpot[] = [
+    {
+      key: 'u:name',
+      text: 'A7 · 1.31 m',
+      at: [0, 0, 0],
+      kind: 'name',
+      selected: true,
+      align: 'above',
+    },
+    { key: 'u:dim:w', text: '1.51 m', at: [0, 0, 0], kind: 'dim', selected: true, align: 'below' },
+    { key: 'u:dim:h', text: '1.31 m', at: [0, 0, 0], kind: 'dim', selected: true },
+  ];
+  let placed = 0;
+  const detach = attachAntennaLabels(
+    stage as unknown as EngineStage,
+    () => spots,
+    undefined,
+    () => placed++,
+  );
+  frame();
+  expect(placed).toBe(1);
+  const el = (key: string) => host.querySelector<HTMLElement>(`[data-key="${key}"]`);
+  expect(el('u:name')?.dataset.align).toBe('above');
+  expect(el('u:name')?.style.transform).toMatch(/translate\(-50%, calc\(-100% - 4px\)\)$/);
+  expect(el('u:dim:w')?.style.transform).toMatch(/translate\(-50%, 4px\)$/);
+  expect(el('u:dim:h')?.dataset.align).toBeUndefined();
+  expect(el('u:dim:h')?.style.transform).toMatch(/^translate\([^)]*\)$/);
+  detach();
+});

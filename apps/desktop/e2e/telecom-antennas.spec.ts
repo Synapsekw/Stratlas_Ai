@@ -38,6 +38,34 @@ async function evidence(win: Page, name: string): Promise<void> {
   await win.screenshot({ path: join(EVIDENCE, `${name}.png`) });
 }
 
+/**
+ * The selected unit's labels that the card covers (by key), and whether its name label and its
+ * width label overlap. Only labels in view count.
+ */
+async function labelClashes(win: Page): Promise<{ card: string[]; nameWidth: boolean }> {
+  return win.evaluate(() => {
+    const hit = (a: DOMRect, b: DOMRect) =>
+      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const shown = [
+      ...document.querySelectorAll<HTMLElement>('.antenna-labels .sv-label.sel'),
+    ].filter((el) => el.style.display !== 'none');
+    const cardEl = document.querySelector('[data-testid="antenna-card"]');
+    const cardRect = cardEl?.getBoundingClientRect();
+    const card = cardRect
+      ? shown
+          .filter((el) => hit(el.getBoundingClientRect(), cardRect))
+          .map((el) => el.dataset.key ?? '')
+      : [];
+    const name = shown.find((el) => el.dataset.key?.endsWith(':name'));
+    const width = shown.find((el) => el.dataset.key?.endsWith(':dim:w'));
+    const nameWidth =
+      name !== undefined &&
+      width !== undefined &&
+      hit(name.getBoundingClientRect(), width.getBoundingClientRect());
+    return { card, nameWidth };
+  });
+}
+
 async function openTiny(win: Page) {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
@@ -258,6 +286,9 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await evidence(win, 'j-pins');
   await pin.click();
   await expect(card.getByTestId('antenna-card-name')).toHaveText(targetName);
+  // the card stands clear of the selected unit's labels, and the name clears the width label
+  await expect.poll(() => labelClashes(win)).toEqual({ card: [], nameWidth: false });
+  await evidence(win, 'j2-pins');
   await expect(pin).toHaveCount(0);
   await expect(pins).toHaveCount(7);
   const control = win.getByTestId('antenna-labels-control');

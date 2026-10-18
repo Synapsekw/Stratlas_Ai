@@ -109,6 +109,47 @@ export function withLabels(box: Rect, anchors: Rect | null): Rect {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/** Room left between the card and the selected unit's labels, CSS pixels. */
+export const LABEL_GAP = 6;
+
+const union = (a: Rect, b: Rect): Rect => {
+  const x0 = Math.min(a.x, b.x);
+  const y0 = Math.min(a.y, b.y);
+  return {
+    x: x0,
+    y: y0,
+    w: Math.max(a.x + a.w, b.x + b.w) - x0,
+    h: Math.max(a.y + a.h, b.y + b.h) - y0,
+  };
+};
+
+/**
+ * The screen box of the selected unit's labels as drawn (`.antenna-labels .sv-label.sel`), in CSS
+ * pixels relative to `host`; null before they are drawn or while none is in view.
+ */
+export function drawnLabelsRect(host: HTMLElement): Rect | null {
+  const hr = host.getBoundingClientRect();
+  let out: Rect | null = null;
+  for (const el of host.querySelectorAll<HTMLElement>('.antenna-labels .sv-label.sel')) {
+    if (el.style.display === 'none') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    const rect = { x: r.left - hr.left, y: r.top - hr.top, w: r.width, h: r.height };
+    out = out ? union(out, rect) : rect;
+  }
+  return out;
+}
+
+/**
+ * The box grown to cover its labels as drawn, with `LABEL_GAP` around; before they are drawn,
+ * the anchors padded by the room text takes (`withLabels`).
+ */
+export function withDrawnLabels(box: Rect, drawn: Rect | null, anchors: Rect | null): Rect {
+  if (!drawn) return withLabels(box, anchors);
+  const u = union(box, drawn);
+  return { x: u.x - LABEL_GAP, y: u.y - LABEL_GAP, w: u.w + 2 * LABEL_GAP, h: u.h + 2 * LABEL_GAP };
+}
+
 const rounded = (r: Rect | null): Rect | null =>
   r && { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) };
 
@@ -156,6 +197,8 @@ export function AntennaRunner(): ReactElement | null {
   // (a date lined up again) draws them afresh. A newly selected unit (a row, a pick, the walk)
   // brings the camera to it; the same unit again leaves the view where the person put it.
   const drawn = hasCloud && hasFile;
+  // told once the labels stand where a frame draws them: the card then measures them
+  const afterLabels = useRef(new Set<() => void>());
   useEffect(() => {
     if (!drawn || !stage || !frame || !spotsOf) return;
     const sceneState = (): AntennaSceneState => {
@@ -180,6 +223,9 @@ export function AntennaRunner(): ReactElement | null {
       () => spotsOf(sceneState()),
       (id) => {
         if (antennaStore.getState().selected !== id) revealAntenna(id);
+      },
+      () => {
+        for (const fn of afterLabels.current) fn();
       },
     );
     let last = antennaStore.getState().selected;
@@ -236,16 +282,18 @@ export function AntennaRunner(): ReactElement | null {
             host,
           )
         : null;
-      const next = rounded(box && withLabels(box, anchors));
+      const next = rounded(box && withDrawnLabels(box, drawnLabelsRect(host), anchors));
       // React hears of the box only when it moved by a whole pixel
       if (sameRect(next, last)) return;
       last = next;
       setRect(next);
     };
     place();
-    const off = stage.onFrame(place);
+    // after the labels are placed in the same frame, so the card measures them where they are
+    const listeners = afterLabels.current;
+    listeners.add(place);
     return () => {
-      off();
+      listeners.delete(place);
       setRect(null);
     };
   }, [host, stage, frame, manifest, selected, spotsOf]);

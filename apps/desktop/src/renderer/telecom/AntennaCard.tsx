@@ -680,16 +680,19 @@ function CardBody(props: BodyProps): ReactElement {
               {t(`telecom.antennas.status.${unit.status}`)}
             </Chip>
           </span>
-          <span
-            data-testid="antenna-card-kind"
-            title={`${kindWord} · ${kindBasis}`}
-            style={{ flex: '1 1 auto', minWidth: 0, display: 'grid', lineHeight: 1.2 }}
-          >
-            <span style={{ ...ELLIPSIS, color: 'var(--fg-3)' }}>{kindWord}</span>
-            <small data-testid="antenna-card-kind-basis" style={{ ...ELLIPSIS, ...MUTED }}>
-              {kindBasis}
-            </small>
-          </span>
+          {/* the kind and its basis may be cut short: the tip gives them whole */}
+          <Tip content={`${kindWord} · ${kindBasis}`} placement="top" repeatsName>
+            <span
+              data-testid="antenna-card-kind"
+              tabIndex={0}
+              style={{ flex: '1 1 auto', minWidth: 0, display: 'grid', lineHeight: 1.2 }}
+            >
+              <span style={{ ...ELLIPSIS, color: 'var(--fg-3)' }}>{kindWord}</span>
+              <small data-testid="antenna-card-kind-basis" style={{ ...ELLIPSIS, ...MUTED }}>
+                {kindBasis}
+              </small>
+            </span>
+          </Tip>
           <span
             className="mono"
             data-testid="antenna-card-position"

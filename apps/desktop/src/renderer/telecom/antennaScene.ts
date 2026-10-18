@@ -327,6 +327,7 @@ export function antennaLabelSpots(state: AntennaSceneState, frame: Frame): Anten
       at: nameAnchor(unit, frame, shift),
       kind: 'pin',
       selected: false,
+      align: 'centre',
       unitId: unit.id,
       colour: KIND_COLOURS[unit.kind],
       title: t('telecom.antennas.labels.pin', {

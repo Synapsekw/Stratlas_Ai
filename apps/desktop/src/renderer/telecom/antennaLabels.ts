@@ -2,6 +2,13 @@ import type { EngineStage } from '@aio/engine';
 import type { AntennaLabelSpot } from './antennaVisibility';
 import { projectToHost } from './screenProjection';
 
+/** The screen shift that puts a label where its `align` says, after the move to its anchor. */
+const ALIGN: Record<NonNullable<AntennaLabelSpot['align']>, string> = {
+  above: ' translate(-50%, calc(-100% - 4px))',
+  below: ' translate(-50%, 4px)',
+  centre: ' translate(-50%, -50%)',
+};
+
 /** Pointer events a pin keeps to itself, so the stage under it never sees a pin click. */
 const PIN_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick'];
 
@@ -15,6 +22,8 @@ export function attachAntennaLabels(
   stage: EngineStage,
   getSpots: () => AntennaLabelSpot[],
   onPick?: (unitId: string) => void,
+  /** Told after every placement, when the labels stand where this frame draws them. */
+  onPlaced?: () => void,
 ): () => void {
   const canvas = stage.renderer.domElement;
   const host = canvas.parentElement ?? canvas;
@@ -59,6 +68,10 @@ export function attachAntennaLabels(
       labels.appendChild(el); // keeps the spots' order
       const pin = sp.kind === 'pin';
       el.className = `sv-label antenna-label--${sp.kind}${sp.selected ? ' sel' : ''}`;
+      // a pin is centred on its anchor whatever the spot says
+      const align = sp.align ?? (pin ? 'centre' : undefined);
+      if (align) el.dataset.align = align;
+      else delete el.dataset.align;
       if (el.textContent !== sp.text) el.textContent = sp.text;
       if (pin) {
         if (sp.unitId !== undefined) el.dataset.unitId = sp.unitId;
@@ -72,9 +85,10 @@ export function attachAntennaLabels(
       }
       el.style.display = '';
       const to = `translate(${String(Math.round(at.x))}px, ${String(Math.round(at.y))}px)`;
-      // a pin is centred on its anchor; a label sits beside it (.sv-label's margin)
-      el.style.transform = pin ? `${to} translate(-50%, -50%)` : to;
+      // an aligned label is placed by its align; any other sits beside it (.sv-label's margin)
+      el.style.transform = align ? to + ALIGN[align] : to;
     }
+    onPlaced?.();
   };
 
   const off = stage.onFrame(place);

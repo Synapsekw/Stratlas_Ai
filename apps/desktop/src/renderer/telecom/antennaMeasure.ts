@@ -142,6 +142,8 @@ export function antennaMeasure(
       at: mid(a, b),
       kind: 'dim',
       selected: true,
+      // the width hangs under its line on the top edge, clear of the name above the box
+      ...(l.key === 'w' ? { align: 'below' as const } : {}),
     });
   }
 
@@ -156,6 +158,7 @@ export function antennaMeasure(
     at: nameAnchor(unit, frame, shift),
     kind: 'name',
     selected: true,
+    align: 'above',
   });
 
   return { segments: [...main, ...ticks], spots };

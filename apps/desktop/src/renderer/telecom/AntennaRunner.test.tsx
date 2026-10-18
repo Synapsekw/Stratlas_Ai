@@ -17,7 +17,16 @@ import type * as ShellModule from '../shell';
 import type * as CardModule from './AntennaCard';
 import type * as SceneModule from './antennaScene';
 import { shell } from '../shell';
-import { AntennaRunner, LABEL_PAD_X, LABEL_PAD_Y, screenRectOf, withLabels } from './AntennaRunner';
+import {
+  AntennaRunner,
+  LABEL_GAP,
+  LABEL_PAD_X,
+  LABEL_PAD_Y,
+  drawnLabelsRect,
+  screenRectOf,
+  withDrawnLabels,
+  withLabels,
+} from './AntennaRunner';
 import { resetCardDrag } from './AntennaCard';
 import type { AntennaSceneState } from './antennaScene';
 import { antennaStore, revealAntenna, selectAntenna, setAntennaSolo } from './antennaStore';
@@ -304,5 +313,50 @@ describe('withLabels', () => {
       w: 140 + LABEL_PAD_X - (110 - LABEL_PAD_X),
       h: 140 + LABEL_PAD_Y - (90 - LABEL_PAD_Y),
     });
+  });
+});
+
+describe('drawnLabelsRect and withDrawnLabels', () => {
+  const box = { x: 100, y: 100, w: 20, h: 40 };
+  const span = (cls: string, r: DOMRect, display = '') => {
+    const el = document.createElement('span');
+    el.className = cls;
+    el.style.display = display;
+    el.getBoundingClientRect = () => r;
+    return el;
+  };
+
+  it('bounds the selected labels as drawn, host-relative, and the card keeps a gap round them', () => {
+    const host = document.createElement('div');
+    host.getBoundingClientRect = () => new DOMRect(50, 20, 800, 600);
+    const layer = document.createElement('div');
+    layer.className = 'sv-labels antenna-labels';
+    layer.append(
+      // a 130 px wide angle label right of the box
+      span('sv-label antenna-label--angle sel', new DOMRect(50 + 112, 20 + 120, 130, 18)),
+      // the name above it
+      span('sv-label antenna-label--name sel', new DOMRect(50 + 80, 20 + 70, 90, 18)),
+      // a label out of view and a pin do not count
+      span('sv-label antenna-label--dim sel', new DOMRect(0, 0, 500, 500), 'none'),
+      span('sv-label antenna-label--pin', new DOMRect(0, 0, 500, 500)),
+    );
+    host.append(layer);
+    const drawn = drawnLabelsRect(host);
+    expect(drawn).toEqual({ x: 80, y: 70, w: 112 + 130 - 80, h: 120 + 18 - 70 });
+    const grown = withDrawnLabels(box, drawn, null);
+    expect(grown.x + grown.w).toBe(112 + 130 + LABEL_GAP);
+    expect(grown).toEqual({
+      x: 80 - LABEL_GAP,
+      y: 70 - LABEL_GAP,
+      w: 112 + 130 - 80 + 2 * LABEL_GAP,
+      h: 140 - 70 + 2 * LABEL_GAP,
+    });
+  });
+
+  it('falls back to the anchor pad before the labels are drawn', () => {
+    const host = document.createElement('div');
+    expect(drawnLabelsRect(host)).toBeNull();
+    const anchors = { x: 110, y: 90, w: 30, h: 50 };
+    expect(withDrawnLabels(box, null, anchors)).toEqual(withLabels(box, anchors));
   });
 });
