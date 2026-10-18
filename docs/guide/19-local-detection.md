@@ -1,6 +1,6 @@
 # Local detection with ONNX models
 
-{product} can find defects in photos with a detection model on this computer, instead of cloud vision. Nothing leaves this computer and there is no cost. No model comes with {product}: you import one, with a model card that states its licence.
+{product} can find defects in photos and in 360 video with a detection model on this computer, instead of cloud vision. Nothing leaves this computer and there is no cost. No model comes with {product}: you import one, with a model card that states its licence.
 
 ## Detection models in Settings
 
@@ -28,7 +28,12 @@ A model is two files in one folder: `model.onnx` and its card `model.json`. The 
 }
 ```
 
-Licences that allow use in a commercial app pass (for example MIT, BSD or Apache-2.0). Copyleft and non-commercial licences are refused. Weights trained with Ultralytics YOLO are AGPL-3.0 unless you hold an Ultralytics Enterprise licence; then set the card's licence to `LicenseRef-Ultralytics-Enterprise`.
+Every model needs a licence on its card: a card with no licence is refused.
+
+- Licences that allow use in a commercial app (for example MIT, BSD or Apache-2.0) import with no note.
+- Copyleft licences (for example AGPL-3.0 or GPL-3.0), non-commercial licences (for example CC-BY-NC-4.0) and licences {product} does not know also import, for use inside your own company. The model's row in **Settings** then carries a warning chip, for example "AGPL-3.0 · internal use" or "check its terms", and the import says why. Check those terms before you sell {product} or hand it out with such a model.
+
+Weights trained with Ultralytics YOLO are AGPL-3.0 unless you hold an Ultralytics Enterprise licence. Without one, they import with the "internal use" chip. With one, set the card's licence to `LicenseRef-Ultralytics-Enterprise`: a `LicenseRef-` licence imports with no note.
 
 ## Import a model
 
@@ -57,7 +62,27 @@ The dialog counts "x of N photos checked" with the proposals found, and "Cost: f
 
 When it is **Done**, click **Review the results**. The proposals are waiting detections from the model, with their confidence. Accept or reject them as usual (see [Review detections](08-building-projects.md#review-detections)). Nothing counts until you accept it.
 
-Local models check photos only, not video frames.
+## Detect on 360 video
+
+A local model also checks frames of a 360 video (a walk under **360 walks** in **Datasets**).
+
+1. Click **Detections** in the sidebar, then **Detect with AI**, and pick **Local model**.
+2. Under **What to check**, pick **360 video frames**, then the **360 video**.
+3. Pick **One frame every** 1, 2, 5 or 10 seconds. The dialog shows how many frames that makes, for example "30 frames". A run takes at most 2000 frames; pick a longer interval to cover a longer video. Or pick **Current frame**: the frame the **360 video** pane shows now. It is offered while that pane plays the same video.
+4. Pick the **Model**, the **Lowest confidence** and the **Classes** as for photos, then click **Run on** N **frames**.
+
+The model looks at the whole 360 frame as it is, the equirectangular picture of the 360 video, not at cut-out views. That keeps one detection per object: a cut-out view would cut objects at its edges and see others twice where views overlap.
+
+- **Tiles across the 360 frame (for small, distant people)** is off by default. On, the model also checks the frame in tiles, so small objects far away are found. The tiles run on across the left and right edge of the frame. It is slower: the model checks every tile of each frame.
+- The left and right edges of a 360 frame are the same place behind the camera. An object cut by that seam is found as two halves; {product} joins them into one detection whose box runs across the seam.
+
+The dialog counts "x of N frames checked" with the detections found. **Stop** finishes the frame in hand, and **Run the remaining** N checks the frames that were not reached.
+
+The detections wait in the review like those on photos, one tile per frame, named after the video and the time, for example "Ground floor walk 12.0 s". A box across the seam shows in two parts, at both edges of the frame. Accept or reject them as usual; nothing counts until you accept it.
+
+The **360 video** pane draws the detections of the frame nearest to the time you watch, within a second of it, as boxes in the view. Turn to look at them; **Show detections** hides and shows them. The boxes are drawn on the video as it was recorded. While **Level horizon** is on, the pane plays the levelled copy and draws no boxes; a note says to turn **Level horizon** off to see them.
+
+Ordinary video clips (drone or phone video that is not 360) are not checked by local models yet. Use cloud vision for them.
 
 ## Not available
 
