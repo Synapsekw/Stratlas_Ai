@@ -32,7 +32,7 @@ from typing import Any
 
 import numpy as np
 
-from ..captures import capture_shift, date_shift, local_delta
+from ..captures import capture_similarity, date_shift, date_similarity
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
 from ..survey.compare import ring_weights
@@ -96,13 +96,20 @@ INPUTS_CHANGED = "The surfaces changed since this job started. Start the job aga
 
 def surface_fingerprint(project: Path, surfaces: Any) -> dict[str, Any]:
     """The files' fingerprint, plus each cloud layer's non-zero height offset and each surface's
-    date shift (unchanged when there are none)."""
+    date shift and turn (unchanged when there are none)."""
     base = input_fingerprint(project, [f for s in surfaces for f in s.files])
     offsets = [height_offset_m(s.layer) if s.kind != "dsm" else 0.0 for s in surfaces]
     shifts = [list(s.shift) for s in surfaces]
+    turns = [s.sim.to_turn() for s in surfaces]
     moved = any(v for sh in shifts for v in sh)
-    if any(offsets) or moved:
-        blob = base["hash"] + json.dumps(offsets) + (json.dumps(shifts) if moved else "")
+    turned = any(turns)
+    if any(offsets) or moved or turned:
+        blob = (
+            base["hash"]
+            + json.dumps(offsets)
+            + (json.dumps(shifts) if moved or turned else "")
+            + (json.dumps(turns) if turned else "")
+        )
         base = {**base, "hash": hashlib.sha256(blob.encode()).hexdigest()[:32]}
     return base
 
@@ -113,9 +120,10 @@ def surface_fingerprint(project: Path, surfaces: Any) -> dict[str, Any]:
 class Surface:
     """A DSM raster or a point cloud layer as heights in the local frame (y up).
 
-    Placed where its date is lined up: the date's shift (``captures.date_shift``) comes after the
-    layer's own placement (``heightOffsetM`` for a cloud). A height grid gets it from
-    ``grid_source``; a GeoTIFF and the points get it here.
+    Placed where its date is lined up: the date's line-up (``captures.date_similarity``, a shift
+    and maybe a turn and scale; heights never change) comes after the layer's own placement
+    (``heightOffsetM`` for a cloud). A height grid gets it from ``grid_source``; a GeoTIFF and the
+    points get it here.
     """
 
     def __init__(self, project: Path, manifest: dict[str, Any], spec: dict[str, Any]):
@@ -126,6 +134,7 @@ class Surface:
         self.name = str(self.layer.get("name") or self.layer.get("id"))
         self.origin = manifest.get("origin") or [0, 0, 0]
         self.shift = date_shift(manifest, str(self.layer.get("id")))
+        self.sim = date_similarity(manifest, str(self.layer.get("id")))
         self.grid: GridSource | None = None
         if self.kind == "dsm":
             if self.layer.get("kind") != "raster" or self.layer.get("role") != "dsm":
@@ -172,9 +181,15 @@ class Surface:
             else:
                 left, bottom, right, top = b.left, b.bottom, b.right, b.top
                 self.res = min(abs(ds.res[0]), abs(ds.res[1]))
+        # the box that holds the file's corners where its date is lined up
+        es, ns = self.sim.apply_en(np.array([left, right, left, right]), np.array([bottom, bottom, top, top]))
         o = self.origin
-        east, north = self.shift
-        self.box = (left + east - o[0], o[1] - top - north, right + east - o[0], o[1] - bottom - north)
+        self.box = (
+            float(es.min()) - o[0],
+            o[1] - float(ns.max()),
+            float(es.max()) - o[0],
+            o[1] - float(ns.min()),
+        )
 
     # -- clouds
 
@@ -182,15 +197,14 @@ class Surface:
         """(n, 3) local x, y, z of the cloud, its layer's height offset and date shift included
         (callers add none)."""
         off = height_offset_m(self.layer)
-        dx, dz = local_delta(self.shift)
         if self.layer.get("format") == "kit-packed":
             raw = np.fromfile(self.path, dtype=np.uint8)
             n = raw.size // 7
             if n == 0 or raw.size != n * 7:
                 raise JobError(f'The point cloud "{self.name}" is not a kit-packed file.')
             pts = raw[: 6 * n].view("<i2").reshape(n, 3).astype(np.float64) / 1000.0
-            pts += (dx, off, dz)
-            return pts
+            pts[:, 1] += off
+            return self._placed(pts)
         from ..pointcloud import PDAL_MISSING, _run, find_pdal
         from ..runtime import atomic_write_json
         from ..volumetric.cloud import read_las_chunks
@@ -217,8 +231,14 @@ class Surface:
         o = self.origin
         parts = []
         for x, y, z, _ in read_las_chunks(las, ctx.check):
-            parts.append(np.stack([x - o[0] + dx, z - o[2] + off, o[1] - y + dz], axis=1))
+            parts.append(self._placed(np.stack([x - o[0], z - o[2] + off, o[1] - y], axis=1)))
         return np.concatenate(parts) if parts else np.zeros((0, 3))
+
+    def _placed(self, pts: np.ndarray) -> np.ndarray:
+        """Local points (n, 3) moved where their date is lined up, in place; y is never changed."""
+        if not self.sim.is_identity():
+            pts[:, 0], pts[:, 2] = self.sim.apply_local(pts[:, 0], pts[:, 2], self.origin)
+        return pts
 
     def footprint(self, ctx: StepContext) -> None:
         if self.kind == "dsm":
@@ -272,10 +292,7 @@ class Surface:
                 resampling=Resampling.bilinear,
             )
         else:
-            from rasterio.transform import Affine
-
-            # the date's shift moves the file east and north: the grid is read that much back
-            east, north = self.shift
+            # the date's line-up moves the file: the grid is read through its inverse
             with rasterio.open(self.path) as ds:
                 src_crs = ds.crs or dst_crs
                 reproject(
@@ -284,7 +301,7 @@ class Surface:
                     src_transform=ds.transform,
                     src_crs=src_crs,
                     src_nodata=ds.nodata,
-                    dst_transform=Affine.translation(-east, -north) @ grid.crs_transform(self.origin),
+                    dst_transform=~self.sim.crs_affine() @ grid.crs_transform(self.origin),
                     dst_crs=dst_crs or src_crs,
                     dst_nodata=nodata,
                     resampling=Resampling.bilinear,
@@ -639,7 +656,7 @@ class ChangeSurface:
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg["registration"],
                 coverage=r["coverage"],
-                line_up=(capture_shift(m, a), capture_shift(m, b)),
+                line_up=(capture_similarity(m, a), capture_similarity(m, b)),
             )
             atomic_write_json(ctx.stage("work/change-set.json"), cs)
             return {"items": len(items), "setId": sid, "out": out_dir}

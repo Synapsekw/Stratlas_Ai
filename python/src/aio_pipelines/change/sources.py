@@ -16,6 +16,7 @@ followed outside it.
 from __future__ import annotations
 
 import json
+import math
 import re
 import warnings
 from dataclasses import dataclass
@@ -24,8 +25,9 @@ from typing import Any
 
 import numpy as np
 
-from ..captures import date_shift
+from ..captures import date_similarity
 from ..runtime import JobError
+from ..similarity import Similarity
 
 SOURCES = "sources"
 GRID_SCHEMA = "aio.grid/1"
@@ -45,8 +47,24 @@ def _source_dir(project: Path, layer: dict[str, Any]) -> tuple[Path, str] | None
 
 
 @dataclass(frozen=True)
+class _Stored:
+    """Where a turned grid's file lies before its line-up: the north-up grid it was read on."""
+
+    x0: float
+    y1: float
+    width: int
+    height: int
+    sim: Similarity
+
+
+@dataclass(frozen=True)
 class GridSource:
-    """A parsed ``aio.grid/1`` height grid."""
+    """A parsed ``aio.grid/1`` height grid.
+
+    Always north up: ``x0``, ``y1``, ``width`` and ``height`` are where its heights are. A grid
+    whose date has a turned line-up is resampled onto the north-up grid that holds its turned
+    footprint (``stored`` says where the file itself lies).
+    """
 
     json_path: Path
     image: Path
@@ -59,6 +77,7 @@ class GridSource:
     offset: float
     nodata: float | None
     epsg: int | None
+    stored: _Stored | None = None
 
     @property
     def files(self) -> list[str]:
@@ -83,10 +102,13 @@ class GridSource:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", NotGeoreferencedWarning)
                 with rasterio.open(self.image) as ds:
-                    if (ds.width, ds.height) != (self.width, self.height):
+                    width, height = (
+                        (self.stored.width, self.stored.height) if self.stored else (self.width, self.height)
+                    )
+                    if (ds.width, ds.height) != (width, height):
                         raise JobError(
                             f"The height grid {self.image.name} is {ds.width} x {ds.height} pixels; "
-                            f"its {self.json_path.name} says {self.width} x {self.height}."
+                            f"its {self.json_path.name} says {width} x {height}."
                         )
                     if ds.dtypes[0] not in ("uint8", "uint16", "int16", "uint32", "int32"):
                         raise JobError(f"The height grid {self.image.name} is not a grey PNG of heights.")
@@ -96,7 +118,35 @@ class GridSource:
         h = self.offset + raw.astype(np.float64) * self.scale
         if self.nodata is not None:
             h[raw == self.nodata] = np.nan
-        return h
+        return h if self.stored is None else self._turned(h)
+
+    def _turned(self, h: np.ndarray) -> np.ndarray:
+        """``h`` (on the stored grid) resampled onto this north-up grid through the line-up."""
+        from rasterio.crs import CRS
+        from rasterio.enums import Resampling
+        from rasterio.transform import from_origin
+        from rasterio.warp import reproject
+
+        st = self.stored
+        assert st is not None
+        empty = -3.0e38
+        src = np.where(np.isfinite(h), h, empty)
+        out = np.full((self.height, self.width), empty, np.float64)
+        # the same CRS on both sides: only the line-up's affine moves the cells
+        crs = CRS.from_epsg(self.epsg or 3857)
+        reproject(
+            src,
+            out,
+            src_transform=st.sim.crs_affine() @ from_origin(st.x0, st.y1, self.res, self.res),
+            src_crs=crs,
+            src_nodata=empty,
+            dst_transform=self.transform(),
+            dst_crs=crs,
+            dst_nodata=empty,
+            resampling=Resampling.bilinear,
+        )
+        out[out <= empty * 0.5] = np.nan
+        return out
 
 
 def _number(d: dict[str, Any], key: str) -> float | None:
@@ -114,8 +164,9 @@ def height_offset_m(layer: dict[str, Any]) -> float:
 def grid_source(project: Path, layer: dict[str, Any], manifest: dict[str, Any] | None = None) -> GridSource:
     """The ``aio.grid/1`` height grid of a DSM layer that is not a GeoTIFF (validated).
 
-    With the ``manifest``, the grid is where its date is lined up: the date's shift is added to
-    ``x0`` and ``y1`` (callers add none).
+    With the ``manifest``, the grid is where its date is lined up (callers add none): the date's
+    shift is added to ``x0`` and ``y1``; with a turn or scale too, the heights are resampled onto
+    the north-up grid that holds the turned footprint, at the same cell size.
     """
     name = _name(layer)
     where = _source_dir(project, layer)
@@ -160,27 +211,46 @@ def grid_source(project: Path, layer: dict[str, Any], manifest: dict[str, Any] |
     want = ((manifest or {}).get("crs") or {}).get("epsg")
     if isinstance(epsg, int) and isinstance(want, int) and epsg != want:
         raise JobError(f"{bad} is in EPSG:{epsg}; the project is in EPSG:{want}.")
-    east, north = date_shift(manifest, str(layer.get("id"))) if manifest else (0.0, 0.0)
+    sim = date_similarity(manifest, str(layer.get("id"))) if manifest else Similarity(0.0, 0.0)
+    common = {
+        "json_path": path,
+        "image": image,
+        "res": res,
+        "scale": scale,
+        "offset": offset,
+        "nodata": None if nodata is None else float(nodata),
+        "epsg": epsg if isinstance(epsg, int) else None,
+    }
+    if not sim.has_turn():
+        return GridSource(
+            x0=x0 + sim.east_m, y1=y1 + sim.north_m, width=int(width), height=int(height), **common
+        )
+    # turned: the north-up grid, on the file's own cell lattice moved by the shift, that holds the
+    # turned corners
+    w, h = int(width), int(height)
+    es, ns = sim.apply_en(
+        np.array([x0, x0 + w * res, x0, x0 + w * res]), np.array([y1, y1, y1 - h * res, y1 - h * res])
+    )
+    ox, oy = x0 + sim.east_m, y1 + sim.north_m
+    c0 = math.floor((float(es.min()) - ox) / res + 1e-9)
+    c1 = math.ceil((float(es.max()) - ox) / res - 1e-9)
+    r0 = math.floor((oy - float(ns.max())) / res + 1e-9)
+    r1 = math.ceil((oy - float(ns.min())) / res - 1e-9)
     return GridSource(
-        json_path=path,
-        image=image,
-        x0=x0 + east,
-        y1=y1 + north,
-        res=res,
-        width=int(width),
-        height=int(height),
-        scale=scale,
-        offset=offset,
-        nodata=None if nodata is None else float(nodata),
-        epsg=epsg if isinstance(epsg, int) else None,
+        x0=ox + c0 * res,
+        y1=oy - r0 * res,
+        width=c1 - c0,
+        height=r1 - r0,
+        stored=_Stored(x0, y1, w, h, sim),
+        **common,
     )
 
 
 def cloud_source(project: Path, layer: dict[str, Any], why: str = "") -> Path:
     """``sources/<id>.las`` (or ``.laz``) of a point cloud layer packed for viewing.
 
-    The points are in the file's own place: the reader adds the layer's date shift
-    (``captures.date_shift``), as it adds its ``heightOffsetM``.
+    The points are in the file's own place: the reader adds the line-up of the layer's date
+    (``captures.date_similarity``), as it adds its ``heightOffsetM``.
     """
     name = _name(layer)
     where = _source_dir(project, layer)

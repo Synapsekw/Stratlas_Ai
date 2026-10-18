@@ -162,3 +162,52 @@ def test_grid_source_carries_the_shift(tmp_path):
     t = g.transform()
     assert (t.c, t.f) == (301002.0, 2574999.0)
     assert np.array_equal(g.heights(), plain.heights(), equal_nan=True)
+
+
+def test_grid_source_follows_a_turned_line_up(tmp_path):
+    from aio_pipelines.similarity import Similarity
+
+    # 100 m x 100 m at 0.5 m, flat at 400 m with a 10 m block of 2 x 2 m near the north-east corner
+    src = tmp_path / "sources"
+    src.mkdir(parents=True, exist_ok=True)
+    values = np.full((200, 200), 20000, np.uint16)
+    values[10:14, 180:184] = 30000
+    Image.fromarray(values).save(src / "dsm-a.png")
+    x0, y1 = 301000.0, 2575000.0
+    g = {"schema": "aio.grid/1", "kind": "dsm", "layer": "dsm-a", "epsg": 32631, "x0": x0, "y1": y1,
+         "res": 0.5, "width": 200, "height": 200, "file": "dsm-a.png", "scale": 0.001, "offset": 380.0, "nodata": 0}  # fmt: skip
+    (src / "dsm-a.json").write_text(json.dumps(g), "utf-8")
+    turn = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": x0, "pivotN": y1 - 100.0}
+    dated = {**DSM, "capture": "c2"}
+    manifest = {
+        **MANIFEST,
+        "captures": [
+            {"id": "c1", "label": "Survey", "date": "2026-01-10"},
+            {"id": "c2", "label": "Survey", "date": "2026-03-01", "lineUp": {"eastM": 2.0, "northM": 0.0},
+             "lineUpTurn": turn},
+        ],
+        "layers": [dated],
+    }  # fmt: skip
+    sim = Similarity.from_line_up({"eastM": 2.0, "northM": 0.0}, turn)
+    t = grid_source(tmp_path, dated, manifest)
+    # still a north-up grid, now covering the turned footprint
+    a = t.transform()
+    assert (a.b, a.d) == (0.0, 0.0) and a.a == 0.5 and a.e == -0.5
+    e, n = sim.apply_en(np.array([x0, x0 + 100, x0, x0 + 100]), np.array([y1, y1, y1 - 100, y1 - 100]))
+    left, bottom, right, top = t.bounds
+    assert left <= e.min() and right >= e.max() and bottom <= n.min() and top >= n.max()
+    assert right - e.max() < 0.5 and left - e.min() > -0.5
+    h = t.heights()
+    assert h.shape == (t.height, t.width)
+    w = np.clip(np.nan_to_num(h, nan=400.0) - 400.0, 0, None)  # the block's height above the ground
+    rows, cols = np.indices(h.shape)
+    got = (
+        t.x0 + (np.average(cols, weights=w) + 0.5) * t.res,
+        t.y1 - (np.average(rows, weights=w) + 0.5) * t.res,
+    )
+    want = sim.apply_en(x0 + 182 * 0.5, y1 - 12 * 0.5)
+    assert got == pytest.approx(want, abs=0.15)
+    assert np.hypot(want[0] - (x0 + 91 + 2), want[1] - (y1 - 6)) > 0.7  # more than the shift alone
+    # flat ground stays at its height; outside the turned footprint there is none
+    assert np.nanmedian(h) == pytest.approx(400.0)
+    assert np.isnan(h).any()
