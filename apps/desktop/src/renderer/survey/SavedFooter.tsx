@@ -42,11 +42,12 @@ export function SavedFooter() {
         </p>
       ) : (
         <footer className="sv-foot" role="none">
-          <label className="sv-check" title={t('measureBench.saved.autosaveTip')}>
+          <label className="sv-check">
             <input
               type="checkbox"
               checked={autosave}
               data-testid="survey-autosave"
+              aria-description={t('measureBench.saved.autosaveTip')}
               onChange={(e) => {
                 setAutosave(e.target.checked);
               }}
