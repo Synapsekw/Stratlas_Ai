@@ -58,13 +58,21 @@ const photo: DetectItem = { kind: 'photo', layer: 'p', photo: 'a' };
 
 let host: HTMLDivElement;
 let root: Root;
+/** The dialog's `inference:progress` listener. */
+let onProgress: ((e: unknown) => void) | null = null;
 beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
   h.call.mockReset();
   h.call.mockResolvedValue({ ok: true, value: { ok: true, count: 0 } });
-  (window as unknown as { aio: unknown }).aio = { on: () => () => undefined };
+  onProgress = null;
+  (window as unknown as { aio: unknown }).aio = {
+    on: (_channel: string, fn: (e: unknown) => void) => {
+      onProgress = fn;
+      return () => undefined;
+    },
+  };
   window.localStorage.clear();
 });
 afterEach(() => {
@@ -164,6 +172,66 @@ describe('LocalDetectDialog, 360 video frames', () => {
     open([walk('w1', 10)]);
     await run();
     expect(q('det-local-progress')?.textContent).toContain('0 of 5 frames checked, 0 found');
+  });
+
+  it('says how many frames could not be read and why, while running and when done', async () => {
+    let finish: (v: unknown) => void = () => undefined;
+    h.call.mockImplementation((channel: string) =>
+      channel === 'inference:run'
+        ? new Promise((r) => {
+            finish = r;
+          })
+        : Promise.resolve({ ok: true, value: { ok: true } }),
+    );
+    open([walk('w1', 10)]);
+    const req = (await run()) as unknown as { runId: string };
+    const codec = "this video's codec can't be read";
+    act(() => {
+      onProgress?.({ runId: req.runId, done: 2, total: 5, found: 0, skipped: 1, reason: codec });
+    });
+    expect(q('det-local-skipped')?.textContent).toBe('1 frame could not be read');
+    expect(q('det-local-skipped-reason')?.textContent).toBe(codec);
+    await act(async () => {
+      onProgress?.({ runId: req.runId, done: 5, total: 5, found: 0, skipped: 2, reason: codec });
+      finish({
+        ok: true,
+        value: { ok: true, file: 'detections/model-x.json', count: 0, skipped: 2, reason: codec },
+      });
+      await Promise.resolve();
+    });
+    expect(host.querySelector('h3')?.textContent).toBe('Done');
+    expect(q('det-local-skipped')?.textContent).toBe('2 frames could not be read');
+    expect(q('det-local-skipped-reason')?.textContent).toBe(codec);
+    // the frames not read are not assessed: the same run tries them again
+    expect(q('det-local-rest')?.textContent).toBe('Run the remaining 2');
+  });
+
+  it('shows the error state, not Done, when no frame could be read', async () => {
+    const error =
+      'None of the 5 frames could be read: ffmpeg could not be started (ffmpeg): spawn ffmpeg ENOENT';
+    h.call.mockResolvedValue({ ok: true, value: { ok: false, error } });
+    open([walk('w1', 10)]);
+    await act(async () => {
+      q('det-local-run')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(host.querySelector('h3')?.textContent).toBe('Stopped by an error');
+    expect(q('det-local-error')?.textContent).toBe(error);
+  });
+
+  it('words a skipped photo as a photo', async () => {
+    h.call.mockResolvedValue({
+      ok: true,
+      value: { ok: true, file: 'f', count: 0, skipped: 1, reason: 'Could not decode a.jpg' },
+    });
+    open([], [photo]);
+    await act(async () => {
+      q('det-local-run')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(q('det-local-skipped')?.textContent).toBe('1 photo could not be read');
   });
 
   it('keeps photos as they were and shows the walk scope disabled without a 360 video', async () => {

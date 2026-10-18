@@ -4,7 +4,9 @@
  * machine and the run is free. Results land in `detections/model-<run>.json` as waiting
  * detections; the review reads them when the run ends. Stop keeps the photos done; "Run the
  * remaining" continues the same run. "360 video frames" runs on frames of a walk layer: one frame
- * every N seconds, or the frame the 360 pane shows now.
+ * every N seconds, or the frame the 360 pane shows now. Items that could not be read are counted
+ * with the reason, while running and when done; "Run the remaining" tries them again. A run where
+ * none could be read ends in the error state.
  */
 import type { DetectorModelInfo, IpcEvent, Layer } from '@aio/schema';
 import { NEW_CLASS_OPTION, NewClassRow, useNewClass } from '@aio/annotate';
@@ -136,6 +138,9 @@ interface Progress {
   stopping?: boolean;
   /** The run checks walk frames, so progress counts frames. */
   frames?: boolean;
+  /** Items that could not be read (not assessed), and why the first one could not. */
+  skipped?: number | undefined;
+  reason?: string | undefined;
   error?: string;
 }
 
@@ -268,7 +273,18 @@ export function LocalDetectDialog({
     () =>
       window.aio.on('inference:progress', (e: IpcEvent<'inference:progress'>) => {
         if (e.runId !== run.current?.id) return;
-        setProgress((p) => (p ? { ...p, done: e.done, total: e.total, found: e.found } : p));
+        setProgress((p) =>
+          p
+            ? {
+                ...p,
+                done: e.done,
+                total: e.total,
+                found: e.found,
+                skipped: e.skipped,
+                reason: e.reason,
+              }
+            : p,
+        );
       }),
     [],
   );
@@ -278,9 +294,10 @@ export function LocalDetectDialog({
   const ov = overlap ?? Math.round(size / 5);
   const running = progress?.phase === 'running';
   const available = runtime?.available === true;
+  // items not done, and items done but not read (a resume tries them again)
   const remaining =
-    progress && progress.phase !== 'running' && progress.done < progress.total
-      ? progress.total - progress.done
+    progress && progress.phase !== 'running'
+      ? progress.total - progress.done + (progress.phase === 'failed' ? 0 : (progress.skipped ?? 0))
       : 0;
   const canRun = available && !!model && items.length > 0 && !running;
   const ofFrames = progress?.frames === true;
@@ -322,6 +339,8 @@ export function LocalDetectDialog({
         stopping: false,
         phase: stopped ? 'stopped' : 'done',
         found: res.value.count,
+        skipped: res.value.skipped,
+        reason: res.value.reason,
       };
     });
   };
@@ -398,6 +417,20 @@ export function LocalDetectDialog({
                   found: progress.found,
                 })}
               </p>
+              {(progress.skipped ?? 0) > 0 && progress.phase !== 'failed' && (
+                <div role="status">
+                  <p data-testid="det-local-skipped">
+                    {t(ofFrames ? 'infer.dlg.skippedFrames' : 'infer.dlg.skippedPhotos', {
+                      count: progress.skipped ?? 0,
+                    })}
+                  </p>
+                  {progress.reason && (
+                    <p className="ann-faint mono" data-testid="det-local-skipped-reason">
+                      {progress.reason}
+                    </p>
+                  )}
+                </div>
+              )}
               <p className="mono">{t('infer.dlg.cost')}</p>
               {progress.error && (
                 <p className="ann-error" role="alert" data-testid="det-local-error">
@@ -689,16 +722,18 @@ export function LocalDetectDialog({
           ) : progress ? (
             <>
               <span className="grow" />
-              {remaining > 0 && progress.phase === 'stopped' && (
-                <button
-                  type="button"
-                  className="btn"
-                  data-testid="det-local-rest"
-                  onClick={() => void start(true)}
-                >
-                  {t('infer.dlg.runRest', { count: remaining })}
-                </button>
-              )}
+              {remaining > 0 &&
+                (progress.phase === 'stopped' ||
+                  (progress.phase === 'done' && (progress.skipped ?? 0) > 0)) && (
+                  <button
+                    type="button"
+                    className="btn"
+                    data-testid="det-local-rest"
+                    onClick={() => void start(true)}
+                  >
+                    {t('infer.dlg.runRest', { count: remaining })}
+                  </button>
+                )}
               <button
                 type="button"
                 className="btn primary"

@@ -11,6 +11,13 @@
  * and the halves of an object cut by the seam at x = width are merged into one box that wraps
  * (x1 > width, `seam.ts`). A walk pass names its frames in `assessed` as `t:<milliseconds>`.
  * Frames of ordinary video layers are refused.
+ *
+ * An item that cannot be read (its decode fails) is `skipped`: not assessed, so a resume tries it
+ * again, and counted with the first reason in progress and the result. A run where every item it
+ * tried was skipped fails with that reason and writes nothing, so it never reads as a clean pass.
+ * A run with walk frames opens its frame reader once before the first frame (ffmpeg looked up and
+ * started once) and is refused early when frames cannot be read on this computer. Stop aborts the
+ * frame decode in hand (ffmpeg is killed).
  */
 import type {
   Detection,
@@ -27,7 +34,7 @@ import type { DecodedImage } from '../maskAssist';
 import { layoutProblem, type NamedTensor } from './layouts';
 import type { FoundModel } from './models';
 import type { ScoredBox } from './nms';
-import { mergeSeam, nmsWrap } from './seam';
+import { frameBoxes } from './seam';
 import type { RgbaImage } from './tile';
 import type { InferenceHost } from './utility';
 import type { ProviderSetting } from './worker';
@@ -40,6 +47,25 @@ const SAVE_EVERY = 10;
 export type RunRequest = IpcRequest<'inference:run'>;
 export type RunResponse = IpcResponse<'inference:run'>;
 
+/** Reads walk frames for one run (the env resolves its ffmpeg once, when the reader opens). */
+export interface FrameReader {
+  /** The frame of a project video (relative path) at `t` s, as RGBA of `width` x `height`. */
+  decode(
+    root: string,
+    rel: string,
+    t: number,
+    width: number,
+    height: number,
+    /** The run's stop: a decode in hand ends at once. */
+    signal: AbortSignal,
+  ): Promise<RgbaImage>;
+  /** The picture size of a project video (relative path), read from the file. */
+  size(root: string, rel: string): Promise<{ width: number; height: number }>;
+}
+
+/** The longest skip reason kept (the schema allows 2000 characters). */
+const REASON_MAX = 500;
+
 export interface RunDeps {
   /** An open project folder and its manifest; an error for packages and closed projects. */
   project(
@@ -48,16 +74,11 @@ export interface RunDeps {
   model(id: string): Promise<FoundModel | null>;
   /** A photo of the project (relative path) decoded, scaled to at most `maxSide`. */
   decode(root: string, rel: string, maxSide: number): Promise<DecodedImage>;
-  /** The frame of a project video (relative path) at `t` s, as RGBA of `width` x `height`. */
-  decodeFrame(
-    root: string,
-    rel: string,
-    t: number,
-    width: number,
-    height: number,
-  ): Promise<RgbaImage>;
-  /** The picture size of a project video (relative path), read from the file. */
-  videoSize(root: string, rel: string): Promise<{ width: number; height: number }>;
+  /**
+   * The walk frame reader of one run, opened once before its first frame. Rejects with the reason
+   * when frames cannot be read on this computer (ffmpeg cannot be started): the run is refused.
+   */
+  frames(): Promise<FrameReader>;
   /** A walk's `walk.json` (relative path), or null when it is missing or does not parse. */
   readWalk(root: string, rel: string): Promise<WalkFile | null>;
   host(): InferenceHost;
@@ -213,6 +234,15 @@ export function createRunner(deps: RunDeps): Runner {
       work.push(w);
     }
 
+    // walk frames: ffmpeg looked up and started once, before anything runs
+    let reader: FrameReader | null = null;
+    if (work.some((w) => w.kind === 'frame'))
+      try {
+        reader = await deps.frames();
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+
     const host = deps.host();
     let session: string;
     try {
@@ -274,6 +304,11 @@ export function createRunner(deps: RunDeps): Runner {
     const todo = work.filter((w) => !passes.get(w.layer)?.done.has(w.key));
     const total = work.length;
     let count = all.reduce((n, p) => n + p.assessed.length, 0);
+    // items of this run that could not be read, and why the first one could not
+    let skipped = 0;
+    let reason: string | undefined;
+    let assessedNow = 0;
+    const skips = () => (skipped > 0 ? { skipped, ...(reason ? { reason } : {}) } : {});
     const report = (current?: string) => {
       deps.progress({
         runId: req.runId,
@@ -281,6 +316,7 @@ export function createRunner(deps: RunDeps): Runner {
         total,
         found: foundCount(),
         ...(current ? { current } : {}),
+        ...skips(),
       });
     };
     report();
@@ -290,19 +326,20 @@ export function createRunner(deps: RunDeps): Runner {
     const sourceSize = (w: FrameWork) => {
       let p = sizes.get(w.layer);
       if (!p) {
-        p = deps.readWalk(project.root, w.record).then(
-          (f) => f?.video ?? deps.videoSize(project.root, w.rel),
-          () => deps.videoSize(project.root, w.rel),
-        );
+        const size = () => {
+          if (!reader) throw new Error('No frame reader for this run.');
+          return reader.size(project.root, w.rel);
+        };
+        p = deps.readWalk(project.root, w.record).then((f) => f?.video ?? size(), size);
         sizes.set(w.layer, p);
       }
       return p;
     };
 
-    /** Decoded pixels and their source size, or null when the item cannot be read (skipped). */
+    /** Decoded pixels and their source size, or why the item cannot be read (skipped). */
     const decodeItem = async (
       w: Work,
-    ): Promise<{ img: RgbaImage; width: number; height: number } | null> => {
+    ): Promise<{ img: RgbaImage; width: number; height: number } | { error: string }> => {
       try {
         if (w.kind === 'photo') {
           const d = await deps.decode(project.root, w.rel, maxSide);
@@ -317,11 +354,13 @@ export function createRunner(deps: RunDeps): Runner {
         const s = Math.min(1, maxSide / Math.max(src.width, src.height));
         const dw = Math.max(1, Math.round(src.width * s));
         const dh = Math.max(1, Math.round(src.height * s));
-        const img = await deps.decodeFrame(project.root, w.rel, w.t, dw, dh);
+        if (!reader) throw new Error('No frame reader for this run.');
+        const img = await reader.decode(project.root, w.rel, w.t, dw, dh, ac.signal);
         return { img, width: src.width, height: src.height };
       } catch (e) {
-        deps.log?.(`inference: ${w.layer} ${w.key} skipped: ${String(e)}`);
-        return null;
+        const error = e instanceof Error ? e.message : String(e);
+        deps.log?.(`inference: ${w.layer} ${w.key} skipped: ${error}`);
+        return { error };
       }
     };
 
@@ -333,12 +372,15 @@ export function createRunner(deps: RunDeps): Runner {
         const pass = passes.get(w.layer);
         if (!pass) continue;
         const got = await decodeItem(w);
-        if (!got) {
+        // a decode the stop cut short is not a frame that could not be read
+        if (stopped()) break;
+        if ('error' in got) {
+          skipped++;
+          reason ??= got.error.slice(0, REASON_MAX);
           count++;
           report(w.key);
           continue;
         }
-        if (stopped()) break;
         const { img, width, height } = got;
         const frame = w.kind === 'frame';
         const scale = img.width / width;
@@ -351,10 +393,10 @@ export function createRunner(deps: RunDeps): Runner {
           scale,
           ...(frame ? { wrap: true } : {}),
         });
-        // the halves of an object the seam cut become one box that wraps (x1 > width); a
-        // decoded pixel is 1 / scale source pixels, so the edge margin grows with the scale-down
-        if (frame)
-          boxes = nmsWrap(mergeSeam(boxes, width, { margin: Math.max(2, 2 / scale) }), width);
+        // folded back into the frame, and the halves of an object the seam cut become one box
+        // that wraps (x1 > width); the edge margin is in decoded pixels, so it grows with the
+        // scale-down
+        if (frame) boxes = frameBoxes(boxes, width, scale);
         const at = deps.now();
         boxes.forEach((b, k) => {
           const modelClass = card.classes[b.cls] ?? `class ${String(b.cls)}`;
@@ -395,6 +437,7 @@ export function createRunner(deps: RunDeps): Runner {
             });
         });
         pass.assessed.push(w.key);
+        assessedNow++;
         count++;
         report(w.key);
         if (++sinceSave >= SAVE_EVERY) {
@@ -407,6 +450,23 @@ export function createRunner(deps: RunDeps): Runner {
     } finally {
       active.delete(req.runId);
     }
+    const what = work.every((w) => w.kind === 'photo')
+      ? 'photos'
+      : work.every((w) => w.kind === 'frame')
+        ? 'frames'
+        : 'photos and frames';
+    // every item tried could not be read: an error, never an empty pass that looks clean
+    if (!failure && skipped > 0 && assessedNow === 0) {
+      report();
+      return {
+        ok: false,
+        error: `${
+          skipped === 1
+            ? `The ${what === 'photos' ? 'photo' : what === 'frames' ? 'frame' : 'item'}`
+            : `None of the ${String(skipped)} ${what}`
+        } could be read: ${reason ?? 'no reason given'}`,
+      };
+    }
     try {
       await save();
     } catch (e) {
@@ -415,18 +475,18 @@ export function createRunner(deps: RunDeps): Runner {
     report();
     const files = written().map(([, p]) => `detections/${p.name}`);
     if (failure) {
-      const what = work.every((w) => w.kind === 'photo')
-        ? 'photos'
-        : work.every((w) => w.kind === 'frame')
-          ? 'frames'
-          : 'photos and frames';
       return {
         ok: false,
         error: `${failure} The ${String(all.reduce((n, p) => n + p.assessed.length, 0))} ${what} done are kept in ${files.join(', ')}.`,
       };
     }
     // the first pass written (a run over several layers writes one per layer)
-    return { ok: true, file: files[0] ?? `detections/${all[0]?.name ?? ''}`, count: foundCount() };
+    return {
+      ok: true,
+      file: files[0] ?? `detections/${all[0]?.name ?? ''}`,
+      count: foundCount(),
+      ...skips(),
+    };
   }
 
   return {

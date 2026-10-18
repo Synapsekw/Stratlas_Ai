@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { testFfmpeg, writeMarkerVideo } from './fixtures/walkVideo';
-import { decodeFrame, frameArgs, parseVideoSize, scaledHeight, videoSize } from './frames';
+import {
+  decodeFrame,
+  ffmpegProblem,
+  frameArgs,
+  parseVideoSize,
+  runFfmpeg,
+  scaledHeight,
+  videoSize,
+} from './frames';
 
 describe('frame decode arguments', () => {
   it('seeks before the input with two decoder threads and writes one scaled RGBA frame', () => {
@@ -63,6 +71,51 @@ describe('frame decode arguments', () => {
         height: 2,
       }),
     ).rejects.toThrow(/ffmpeg could not be started/);
+  });
+});
+
+describe('stopping and starting ffmpeg', () => {
+  it('kills a running child as soon as the run stops', async () => {
+    // Node stands in for a long ffmpeg decode: it would run for 30 s
+    const ac = new AbortController();
+    const started = Date.now();
+    setTimeout(() => {
+      ac.abort();
+    }, 150);
+    const r = await runFfmpeg(
+      process.execPath,
+      ['-e', 'setTimeout(() => {}, 30000)'],
+      60_000,
+      ac.signal,
+    );
+    expect(r.aborted).toBe(true);
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+
+  it('does not start a decode for a run already stopped, and says it was stopped', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    await expect(
+      decodeFrame({
+        ffmpeg: join(tmpdir(), 'no-such-ffmpeg.exe'),
+        file: 'x',
+        t: 1,
+        width: 4,
+        height: 2,
+        signal: ac.signal,
+      }),
+    ).rejects.toThrow('The frame decode at 1.000 s was stopped.');
+  });
+
+  it('says why ffmpeg cannot be started, once, before any frame', async () => {
+    const missing = join(tmpdir(), 'no-such-ffmpeg.exe');
+    expect(await ffmpegProblem(missing)).toMatch(
+      /^Walk frames are read with ffmpeg, and it could not be started \(.*no-such-ffmpeg\.exe\): .+ Install the pipeline pack, or put ffmpeg on the PATH\.$/,
+    );
+  });
+
+  it.skipIf(!testFfmpeg)('finds nothing wrong with a working ffmpeg', async () => {
+    expect(await ffmpegProblem(testFfmpeg ?? 'ffmpeg')).toBeNull();
   });
 });
 

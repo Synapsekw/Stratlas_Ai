@@ -16,7 +16,7 @@ import type { DecodedImage } from '../maskAssist';
 import type { ProjectRegistry } from '../project';
 import { readManifest } from '../project';
 import { resolveInside } from '../protocol/paths';
-import { decodeFrame, videoSize } from './frames';
+import { decodeFrame, ffmpegProblem, videoSize } from './frames';
 import type { InferenceEnv } from './index';
 import { listModels } from './models';
 import { createInferenceHost, remoteOrt, type ChildLike, type InferenceHost } from './utility';
@@ -133,7 +133,10 @@ export interface ElectronInferenceDeps {
   /** The pipeline pack folder, or null. */
   packDir: () => Promise<string | null>;
   send: (event: IpcEvent<'inference:progress'>) => void;
-  /** The ffmpeg that decodes walk frames (the pipeline pack's, `findFfmpeg`); null: the PATH. */
+  /**
+   * The ffmpeg that decodes walk frames (the pipeline pack's, `findFfmpeg`); null: the PATH.
+   * Asked once per run with walk frames.
+   */
   ffmpeg: () => Promise<string | null>;
 }
 
@@ -171,21 +174,21 @@ export function electronInference(deps: ElectronInferenceDeps): { env: Inference
       if (!r.ok) throw new Error(`The photo ${rel} is not in this project.`);
       return decodeImage(r.path, maxSide);
     },
-    decodeFrame: async (root, rel, t, width, height) => {
-      const r = await resolveInside(root, rel);
-      if (!r.ok) throw new Error(`The video ${rel} is not in this project.`);
-      return decodeFrame({
-        ffmpeg: (await deps.ffmpeg()) ?? 'ffmpeg',
-        file: r.path,
-        t,
-        width,
-        height,
-      });
-    },
-    videoSize: async (root, rel) => {
-      const r = await resolveInside(root, rel);
-      if (!r.ok) throw new Error(`The video ${rel} is not in this project.`);
-      return videoSize((await deps.ffmpeg()) ?? 'ffmpeg', r.path);
+    frames: async () => {
+      // once per run: the pack's ffmpeg (or the PATH's), and a check that it starts
+      const ffmpeg = (await deps.ffmpeg()) ?? 'ffmpeg';
+      const problem = await ffmpegProblem(ffmpeg);
+      if (problem) throw new Error(problem);
+      const inside = async (root: string, rel: string) => {
+        const r = await resolveInside(root, rel);
+        if (!r.ok) throw new Error(`The video ${rel} is not in this project.`);
+        return r.path;
+      };
+      return {
+        decode: async (root, rel, t, width, height, signal) =>
+          decodeFrame({ ffmpeg, file: await inside(root, rel), t, width, height, signal }),
+        size: async (root, rel) => videoSize(ffmpeg, await inside(root, rel)),
+      };
     },
     readWalk: async (root, rel) => {
       try {

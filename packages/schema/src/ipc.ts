@@ -2413,7 +2413,8 @@ export const ipc = {
   },
   /**
    * Run a detector on photos or frames; writes `detections/model-<run>.json` (draft, `source:
-   * 'model'`). Progress: `inference:progress` with `runId`; cancel keeps the finished items.
+   * 'model'`). Progress: `inference:progress` with `runId`; cancel keeps the finished items. An
+   * item that cannot be read is `skipped`; a run where every item it tried was skipped fails.
    */
   'inference:run': {
     request: z
@@ -2435,7 +2436,15 @@ export const ipc = {
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), file: z.string(), count: z.number().int().nonnegative() }),
+      z.object({
+        ok: z.literal(true),
+        file: z.string(),
+        count: z.number().int().nonnegative(),
+        /** Items that could not be read (decode failed); not assessed, so a resume retries them. */
+        skipped: z.number().int().nonnegative().optional(),
+        /** Why the first skipped item could not be read. */
+        reason: z.string().max(2000).optional(),
+      }),
       Failure,
     ]),
   },
@@ -4018,6 +4027,9 @@ export const ipcEvents = {
     total: z.number().int().nonnegative(),
     found: z.number().int().nonnegative(),
     current: z.string().optional(),
+    /** Items so far that could not be read, and why the first one could not. */
+    skipped: z.number().int().nonnegative().optional(),
+    reason: z.string().max(2000).optional(),
   }),
   /**
    * M9: records of an open project changed under the renderer (merge, import, external edit): reload

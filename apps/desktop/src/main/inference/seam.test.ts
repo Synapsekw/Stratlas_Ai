@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { ScoredBox } from './nms';
 import {
   foldWrap,
+  frameBoxes,
   iouWrap,
   mergeSeam,
   nmsWrap,
+  seamMargin,
   touchesTileEdgeWrapped,
   wrapExtend,
   wrapTileGrid,
@@ -68,6 +70,37 @@ describe('mergeSeam', () => {
   it('does not merge a box spanning the whole width', () => {
     const boxes = [box(0, 0, 3840, 100), box(3800, 0, 3840, 100)];
     expect(mergeSeam(boxes, W)).toEqual(boxes);
+  });
+});
+
+describe('frame boxes as a run stores them', () => {
+  it('counts 6 decoded pixels or 1 % of the width as touching the seam, whichever is more', () => {
+    // 3840 wide decoded at 640: a decoded pixel is 6 source pixels
+    expect(seamMargin(3840, 1 / 6)).toBe(38.4);
+    expect(seamMargin(640, 1)).toBe(6.4);
+    expect(seamMargin(3840, 1 / 12)).toBe(72);
+  });
+
+  it('merges halves that stop 4 decoded pixels short of the seam', () => {
+    // 3840 x 1920 decoded at 640 x 320: 4 decoded px = 24 source px
+    const right = box(3700, 900, 3840 - 24, 1100, 0.8);
+    const left = box(24, 905, 90, 1104, 0.9);
+    expect(frameBoxes([right, left], 3840, 1 / 6)).toEqual([box(3700, 900, 3930, 1104, 0.9)]);
+    // decoded at full size, 4 px short still merges
+    expect(frameBoxes([box(600, 100, 636, 160, 0.8), box(4, 100, 30, 160, 0.9)], 640, 1)).toEqual([
+      box(600, 100, 670, 160, 0.9),
+    ]);
+  });
+
+  it('still keeps two people apart when their heights differ (vertical IoU under 0.5)', () => {
+    const boxes = [box(3700, 900, 3820, 1100, 0.8), box(20, 1040, 90, 1240, 0.9)];
+    expect(frameBoxes(boxes, 3840, 1 / 6)).toEqual([boxes[1], boxes[0]]);
+  });
+
+  it('folds a box that rounding moved onto the width back into the frame', () => {
+    // a folded x0 of 3839.96 rounds to 3840
+    expect(frameBoxes([box(3840, 100, 3900, 200)], 3840, 1)).toEqual([box(0, 100, 60, 200)]);
+    expect(frameBoxes([box(3845, 100, 3900, 200)], 3840, 1)).toEqual([box(5, 100, 60, 200)]);
   });
 });
 

@@ -164,3 +164,20 @@ export function mergeSeam(
   }
   return boxes.flatMap((b, i) => (gone.has(i) ? [] : [merged.get(i) ?? b]));
 }
+
+/**
+ * How near x = 0 or x = width (source pixels) a box edge counts as touching the seam, for a frame
+ * decoded at `scale` (decoded / source): 6 decoded pixels or 1 % of the width, whichever is more.
+ * A model's box for a cut half often stops a few pixels short of the edge.
+ */
+export const seamMargin = (width: number, scale: number) => Math.max(6 / scale, 0.01 * width);
+
+/**
+ * A walk frame's boxes (source pixels) as a run stores them: a box that rounding moved onto the
+ * width folded back into the frame, the halves the seam cut merged (`seamMargin`), and NMS across
+ * the seam. The vertical IoU rule of `mergeSeam` keeps different people apart.
+ */
+export function frameBoxes(boxes: readonly ScoredBox[], width: number, scale: number): ScoredBox[] {
+  const folded = boxes.map((b) => foldWrap(b, width));
+  return nmsWrap(mergeSeam(folded, width, { margin: seamMargin(width, scale) }), width);
+}

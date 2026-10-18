@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DetectorModelCard, DetectorModelInfo, InferenceItem, InferenceSettings } from './index';
+import {
+  DetectorModelCard,
+  DetectorModelInfo,
+  InferenceItem,
+  InferenceSettings,
+  ipc,
+  ipcEvents,
+} from './index';
 
 const card = {
   schema: 'aio.detector/1',
@@ -43,6 +50,24 @@ describe('detector model cards (aio.detector/1)', () => {
     expect(InferenceItem.safeParse({ layer: 'photos', photo: 'p1' }).success).toBe(true);
     expect(InferenceItem.safeParse({ layer: 'clip', t: 12.5 }).success).toBe(true);
     expect(InferenceItem.safeParse({ layer: 'clip' }).success).toBe(false);
+  });
+
+  it('reports items that could not be read in the run result and progress, optionally', () => {
+    const res = ipc['inference:run'].response;
+    const done = { ok: true, file: 'detections/model-r1.json', count: 3 };
+    expect(res.safeParse(done).success).toBe(true);
+    expect(
+      res.safeParse({ ...done, skipped: 2, reason: 'ffmpeg could not be started' }).success,
+    ).toBe(true);
+    expect(res.safeParse({ ...done, skipped: -1 }).success).toBe(false);
+    expect(res.safeParse({ ...done, skipped: 1, reason: 'x'.repeat(2001) }).success).toBe(false);
+    const ev = ipcEvents['inference:progress'];
+    const progress = { runId: 'r1', done: 1, total: 3, found: 0 };
+    expect(ev.safeParse(progress).success).toBe(true);
+    expect(ev.safeParse({ ...progress, skipped: 1, reason: 'no frame at 2.000 s' }).success).toBe(
+      true,
+    );
+    expect(ev.safeParse({ ...progress, skipped: 1.5 }).success).toBe(false);
   });
 
   it('keeps the model folder, provider and memory cap in settings', () => {

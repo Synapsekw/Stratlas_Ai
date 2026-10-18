@@ -1,8 +1,14 @@
-import { DetectionsFile, type IpcEvent, type ProjectManifest, type WalkFile } from '@aio/schema';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  DetectionsFile,
+  type InferenceItem,
+  type IpcEvent,
+  type ProjectManifest,
+  type WalkFile,
+} from '@aio/schema';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectHandlers } from '../notYet';
 import {
   markerCard,
@@ -14,6 +20,7 @@ import { realOrt } from './fixtures/realOrt';
 import { testFfmpeg, writeMarkerVideo } from './fixtures/walkVideo';
 import { decodeFrame, videoSize } from './frames';
 import { registerInferenceIpc, type InferenceEnv } from './index';
+import type { RgbaImage } from './tile';
 import { createInferenceHost, type ChildLike } from './utility';
 import { createWorkerCore, type FromWorker } from './worker';
 
@@ -58,6 +65,15 @@ let env: InferenceEnv;
 let decoded: string[];
 let frames: number[];
 let walkJson: boolean;
+/** Times the run opened its frame reader (once per run with walk frames). */
+let opened: number;
+/** Why `frames()` refuses (ffmpeg cannot start), or null. */
+let framesProblem: string | null;
+/** Stands in for ffmpeg: a frame at `t` (null: ffmpeg decodes it). */
+let fakeFrame:
+  ((t: number, width: number, height: number, signal: AbortSignal) => Promise<RgbaImage>) | null;
+/** Photos whose decode fails. */
+let badPhotos: Set<string>;
 let hook: ((e: IpcEvent<'inference:progress'>) => void) | null = null;
 
 const manifest = {
@@ -96,6 +112,10 @@ beforeEach(async () => {
   decoded = [];
   frames = [];
   walkJson = true;
+  opened = 0;
+  framesProblem = null;
+  fakeFrame = null;
+  badPhotos = new Set();
   const h = host();
   env = {
     dirs: () => Promise.resolve({ user: join(base, 'models'), pack: null }),
@@ -110,16 +130,26 @@ beforeEach(async () => {
     decode: async (_root, rel) => {
       const id = rel.replace(/^(photos|later)\/|\.png$/g, '');
       decoded.push(id);
+      if (badPhotos.has(id)) throw new Error(`Could not decode ${rel}`);
       // decoding takes a moment, as it does in the app
       await new Promise((r) => setTimeout(r, 20));
       const rgba = markerPhotoRgba(320, 320, PHOTOS[id] ?? []);
       return { width: 320, height: 320, scaledWidth: 320, scaledHeight: 320, rgba };
     },
-    decodeFrame: (r, rel, t, width, height) => {
-      frames.push(t);
-      return decodeFrame({ ffmpeg: testFfmpeg ?? 'ffmpeg', file: join(r, rel), t, width, height });
+    frames: () => {
+      opened++;
+      if (framesProblem !== null) return Promise.reject(new Error(framesProblem));
+      const ffmpeg = testFfmpeg ?? 'ffmpeg';
+      return Promise.resolve({
+        decode: (r, rel, t, width, height, signal) => {
+          frames.push(t);
+          return fakeFrame
+            ? fakeFrame(t, width, height, signal)
+            : decodeFrame({ ffmpeg, file: join(r, rel), t, width, height, signal });
+        },
+        size: (r, rel) => videoSize(ffmpeg, join(r, rel)),
+      });
     },
-    videoSize: (r, rel) => videoSize(testFfmpeg ?? 'ffmpeg', join(r, rel)),
     // the walk.json fields a run reads (the walk tests write no full walk.json)
     readWalk: () =>
       Promise.resolve(
@@ -369,6 +399,137 @@ describe.skipIf(!ort)('runs', () => {
     expect(
       await ipc.call('inference:run', { ...base, items: [{ layer: 'photos', photo: 'p9' }] }),
     ).toEqual({ ok: false, error: 'There is no photo "p9" in Photos.' });
+  });
+});
+
+describe.skipIf(!ort)('items that cannot be read', () => {
+  const walkItems = [0.5, 1.5, 2.5].map((t) => ({ layer: 'walk-w1', t }));
+  const req = (runId: string, items: InferenceItem[] = walkItems) => ({
+    runId,
+    projectId: 'p',
+    model: 'marker-test-detector-1.0.0',
+    items,
+    classMap: {},
+    minConfidence: 0.5,
+  });
+  async function installed() {
+    const ipc = ipcOf();
+    await ipc.call('inference:importModel', { path: await modelSource(), acceptLicence: true });
+    return ipc;
+  }
+  const blank = (width: number, height: number): Promise<RgbaImage> =>
+    Promise.resolve({ width, height, rgba: new Uint8Array(width * height * 4).fill(128) });
+  const exists = (name: string) =>
+    access(join(root, 'detections', name)).then(
+      () => true,
+      () => false,
+    );
+  const codec =
+    "ffmpeg could not decode the frame at 1.500 s (exit 1): this video's codec can't be read";
+  const noFfmpeg = 'ffmpeg could not be started (ffmpeg): spawn ffmpeg ENOENT';
+
+  it('fails a run where no frame could be read, with the reason, and writes no pass', async () => {
+    const ipc = await installed();
+    fakeFrame = () => Promise.reject(new Error(noFfmpeg));
+    const r = await ipc.call('inference:run', req('f1'));
+    expect(r).toEqual({ ok: false, error: `None of the 3 frames could be read: ${noFfmpeg}` });
+    expect(await exists('model-f1.json')).toBe(false);
+    expect(events.at(-1)).toMatchObject({
+      runId: 'f1',
+      done: 3,
+      total: 3,
+      skipped: 3,
+      reason: noFfmpeg,
+    });
+  });
+
+  it('counts a frame that could not be read as skipped, and a resume retries it', async () => {
+    const ipc = await installed();
+    fakeFrame = (t, w, h) => (t === 1.5 ? Promise.reject(new Error(codec)) : blank(w, h));
+    const r = await ipc.call('inference:run', req('f2'));
+    expect(r).toEqual({
+      ok: true,
+      file: 'detections/model-f2.json',
+      count: 0,
+      skipped: 1,
+      reason: codec,
+    });
+    const pass = DetectionsFile.parse(
+      JSON.parse(await readFile(join(root, 'detections', 'model-f2.json'), 'utf8')),
+    );
+    expect(pass.assessed).toEqual(['t:500', 't:2500']);
+    expect(events.at(-1)).toMatchObject({ done: 3, total: 3, skipped: 1, reason: codec });
+    // the skipped frame is not assessed: the same run id tries it again
+    frames.length = 0;
+    fakeFrame = (_t, w, h) => blank(w, h);
+    expect(await ipc.call('inference:run', req('f2'))).toEqual({
+      ok: true,
+      file: 'detections/model-f2.json',
+      count: 0,
+    });
+    expect(frames).toEqual([1.5]);
+  });
+
+  it('counts photos that could not be read, and fails when none could', async () => {
+    const ipc = await installed();
+    badPhotos = new Set(['p2']);
+    const photos = ['p1', 'p2', 'p3'].map((photo) => ({ layer: 'photos', photo }));
+    expect(await ipc.call('inference:run', req('f3', photos))).toMatchObject({
+      ok: true,
+      count: 1,
+      skipped: 1,
+      reason: 'Could not decode photos/p2.png',
+    });
+    badPhotos = new Set(['p1', 'p2', 'p3']);
+    expect(await ipc.call('inference:run', req('f4', photos))).toEqual({
+      ok: false,
+      error: 'None of the 3 photos could be read: Could not decode photos/p1.png',
+    });
+  });
+
+  it('refuses a walk run before any frame when ffmpeg cannot be started', async () => {
+    const ipc = await installed();
+    framesProblem =
+      'Walk frames are read with ffmpeg, and it could not be started (ffmpeg): spawn ffmpeg ENOENT. Install the pipeline pack, or put ffmpeg on the PATH.';
+    expect(await ipc.call('inference:run', req('f5'))).toEqual({ ok: false, error: framesProblem });
+    expect(frames).toEqual([]);
+    expect(events).toEqual([]);
+    expect(await exists('model-f5.json')).toBe(false);
+    // a photos-only run does not need ffmpeg
+    opened = 0;
+    expect(
+      await ipc.call('inference:run', req('f6', [{ layer: 'photos', photo: 'p1' }])),
+    ).toMatchObject({ ok: true, count: 1 });
+    expect(opened).toBe(0);
+  });
+
+  it('looks ffmpeg up once per run, not per frame', async () => {
+    const ipc = await installed();
+    fakeFrame = (_t, w, h) => blank(w, h);
+    await ipc.call('inference:run', req('f7'));
+    expect(frames).toHaveLength(3);
+    expect(opened).toBe(1);
+  });
+
+  it('Stop ends a frame decode in hand at once, without counting it as skipped', async () => {
+    const ipc = await installed();
+    // a decode that only ends when the run's signal aborts (ffmpeg killed)
+    fakeFrame = (_t, _w, _h, signal) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          reject(new Error('The frame decode at 0.500 s was stopped.'));
+        });
+      });
+    const started = Date.now();
+    const running = ipc.call('inference:run', req('f8'));
+    await vi.waitFor(() => {
+      expect(frames).toEqual([0.5]);
+    });
+    await ipc.call('inference:cancel', { runId: 'f8' });
+    expect(await running).toEqual({ ok: true, file: 'detections/model-f8.json', count: 0 });
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(frames).toEqual([0.5]);
+    expect(events.at(-1)).not.toHaveProperty('skipped');
   });
 });
 

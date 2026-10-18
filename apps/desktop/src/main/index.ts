@@ -1772,7 +1772,8 @@ function registerIpc(): void {
         const parsed = ipcEvents['inference:progress'].safeParse(e);
         if (parsed.success) targetWindow()?.webContents.send('inference:progress', parsed.data);
       },
-      // walk frames decode with the pipeline pack's ffmpeg, looked up on each run
+      // walk frames decode with the pipeline pack's ffmpeg, looked up once at the start of each
+      // run with walk frames (a pack installed since counts), not for every frame
       ffmpeg: async () =>
         (
           await findFfmpeg(
