@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DetectorModelCard, InferenceItem, InferenceSettings } from './index';
+import { DetectorModelCard, DetectorModelInfo, InferenceItem, InferenceSettings } from './index';
 
 const card = {
   schema: 'aio.detector/1',
@@ -29,6 +29,14 @@ describe('detector model cards (aio.detector/1)', () => {
     expect(DetectorModelCard.safeParse({ ...card, sha256: 'abc' }).success).toBe(false);
     expect(DetectorModelCard.safeParse({ ...card, layout: 'yolo-v11' }).success).toBe(false);
     expect(DetectorModelCard.safeParse({ ...card, extra: 1 }).success).toBe(false);
+  });
+
+  it('lists a model with or without a licence warning kind', () => {
+    const info = { id: 'marker', card, where: 'user', sizeBytes: 1024 };
+    expect(DetectorModelInfo.safeParse(info).success).toBe(true);
+    for (const kind of ['copyleft', 'non-commercial', 'unknown'])
+      expect(DetectorModelInfo.safeParse({ ...info, licenceWarning: kind }).success).toBe(true);
+    expect(DetectorModelInfo.safeParse({ ...info, licenceWarning: 'gpl' }).success).toBe(false);
   });
 
   it('runs on a photo or a video frame', () => {

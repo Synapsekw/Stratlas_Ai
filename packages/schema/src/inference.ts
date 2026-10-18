@@ -68,13 +68,23 @@ export const InferenceRuntime = z.object({
   problem: z.string().optional(),
 });
 
-/** One installed detector (`inference:models`). */
+/**
+ * Why a model's licence deserves a second look before the app is sold or handed out. The import
+ * gate warns instead of refusing (internal use): `copyleft` (GPL, AGPL, ...), `non-commercial`
+ * (CC-BY-NC, ...), `unknown` (an expression the app does not know). Absent: nothing to warn about.
+ * The renderer words the warning (`infer.licence.*` in `en.ts`).
+ */
+export const LicenceWarning = z.enum(['copyleft', 'non-commercial', 'unknown']);
+
+/** One installed detector (`inference:models`, and the `inference:importModel` result). */
 export const DetectorModelInfo = z.object({
   id: DetectorModelId,
   card: DetectorModelCard,
   /** `user`: imported into userData `models/detect/`; `pack`: in the pipeline pack. */
   where: z.enum(['user', 'pack']),
   sizeBytes: z.number().int().nonnegative(),
+  /** The card's licence needs checking before the app is sold or handed out. */
+  licenceWarning: LicenceWarning.optional(),
 });
 
 /** A photo of a photos layer or a frame of a video layer (`t`, video seconds). */
@@ -98,6 +108,7 @@ export const InferenceSettings = z
 export type DetectorLayout = z.infer<typeof DetectorLayout>;
 export type DetectorModelCard = z.infer<typeof DetectorModelCard>;
 export type DetectorModelInfo = z.infer<typeof DetectorModelInfo>;
+export type LicenceWarning = z.infer<typeof LicenceWarning>;
 export type InferenceRuntime = z.infer<typeof InferenceRuntime>;
 export type InferenceItem = z.infer<typeof InferenceItem>;
 export type InferenceSettings = z.infer<typeof InferenceSettings>;
