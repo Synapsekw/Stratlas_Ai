@@ -236,6 +236,7 @@ export function AiDetectDialog({
     return (
       <LocalDetectDialog
         projectId={projectId}
+        layers={layers}
         selected={selected}
         current={current}
         unreviewed={unreviewed}
