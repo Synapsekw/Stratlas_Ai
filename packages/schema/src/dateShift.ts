@@ -28,10 +28,13 @@ export const CaptureLineUp = z
  * The turn and scale of a date's line-up, saved next to `lineUp` (never inside it): a similarity
  * about the pivot (project CRS) on top of the shift. Present only when it is not the identity
  * (|rotationDeg| > 1e-6 or |scale - 1| > 1e-7). Not strict, so later fields stay additive.
+ * The bounds are a storage envelope (|rotationDeg| <= 2, scale in [0.98, 1.02]) so composed and
+ * inverted line-ups still save; a single measurement is held to 1 degree and 1% by the measuring
+ * step, not here.
  */
 export const CaptureLineUpTurn = z.object({
-  rotationDeg: z.number().min(-1).max(1),
-  scale: z.number().min(0.99).max(1.01),
+  rotationDeg: z.number().min(-2).max(2),
+  scale: z.number().min(0.98).max(1.02),
   pivotE: z.number(),
   pivotN: z.number(),
 });
@@ -286,13 +289,14 @@ export function shiftedLayer(layer: Layer, s: DateShift | null): Layer {
         items: layer.items.map((it) => (it.pos ? { ...it, pos: shiftLocal(it.pos, s) } : it)),
       };
     case 'video': {
+      // The offset is added to the clip's positions, so it is not a point: it takes the move the
+      // shift makes at its pivot, shiftLocal(pivot) - pivot = (eastM, 0, -northM), which is the
+      // plain shift with or without a turn. That is exact for a camera at the pivot; a camera at r
+      // is off by (L - I)(r - P), at most about |r - P| * (|rot in rad| + |scale - 1|) (some
+      // 0.5 m per 100 m from the pivot at 0.1 degree and 0.35%, 2.7 m at 1 degree and 1%). The
+      // clip path itself is not turned until stage 2.
       const o = layer.positionOffsetM ?? [0, 0, 0];
-      if (!turnIn(s)) return { ...layer, positionOffsetM: [o[0] + s.eastM, o[1], o[2] - s.northM] };
-      // The offset is added to the clip's positions, so it is not a point. Moving it like a point
-      // (shiftLocal(offset)) is an approximation, exact only for clip positions near the offset
-      // (a raw position at the local origin); elsewhere the turn and scale of the path are left
-      // out. Turning the clip's path itself is stage 2.
-      return { ...layer, positionOffsetM: shiftLocal(o, s) };
+      return { ...layer, positionOffsetM: [o[0] + s.eastM, o[1], o[2] - s.northM] };
     }
     default:
       return layer;
