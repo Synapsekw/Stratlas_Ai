@@ -32,6 +32,7 @@ import {
   stepAntenna,
   useAntennas,
 } from './antennaStore';
+import { LABELS_CONTROL_SELECTOR } from './AntennaLabelsControl';
 import { leaderLine, placeCard, type Rect } from './cardPlacement';
 import { useAntennaKeys } from './useAntennaKeys';
 
@@ -541,6 +542,11 @@ function sameSize(a: { w: number; h: number }, b: { w: number; h: number }): boo
   return a.w === b.w && a.h === b.h;
 }
 
+function sameRect(a: Rect | null, b: Rect | null): boolean {
+  if (!a || !b) return a === b;
+  return a.x === b.x && a.y === b.y && sameSize(a, b);
+}
+
 function CardBody(props: BodyProps): ReactElement {
   const { unit, stageHost: host, boxRect, readOnly } = props;
   const card = useRef<HTMLDivElement>(null);
@@ -549,6 +555,8 @@ function CardBody(props: BodyProps): ReactElement {
   const layers = useWorkspace((s) => s.project?.manifest.layers);
   const [size, setSize] = useState({ w: CARD_W, h: CARD_H });
   const [stage, setStage] = useState({ w: host.clientWidth, h: host.clientHeight });
+  // the Labels control in the stage's bottom-left corner: the card keeps clear of it
+  const [control, setControl] = useState<Rect | null>(null);
 
   // the card's own size and the stage's, read after each render and on resizes; state changes
   // only when a size does, so this settles at once
@@ -561,18 +569,29 @@ function CardBody(props: BodyProps): ReactElement {
       }
       const st = { w: host.clientWidth, h: host.clientHeight };
       setStage((s) => (sameSize(s, st) ? s : st));
+      const c = host.querySelector<HTMLElement>(LABELS_CONTROL_SELECTOR);
+      const r = c ? { x: c.offsetLeft, y: c.offsetTop, w: c.offsetWidth, h: c.offsetHeight } : null;
+      setControl((o) => (sameRect(o, r) ? o : r));
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(measure);
     ro.observe(host);
     if (card.current) ro.observe(card.current);
+    const c = host.querySelector(LABELS_CONTROL_SELECTOR);
+    if (c) ro.observe(c);
     return () => {
       ro.disconnect();
     };
   }, [host, unit.id]);
 
-  const at = placeCard(boxRect, { x: 0, y: 0, w: stage.w, h: stage.h }, size, drag);
+  const at = placeCard(
+    boxRect,
+    { x: 0, y: 0, w: stage.w, h: stage.h },
+    size,
+    drag,
+    control ? [control] : [],
+  );
   const entries = useMemo(
     () => photoEntries(unit, props.projectId, layers ?? []),
     [unit, props.projectId, layers],

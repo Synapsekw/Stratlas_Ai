@@ -1,6 +1,9 @@
 /**
- * The Labels control at the top left of the 3D stage while the antennas are drawn: Off, Selected
- * or All. It sets the session's labels mode; the selected unit's own labels show in every mode.
+ * The Labels control at the bottom left of the 3D stage while the antennas are drawn: Off,
+ * Selected or All. It keeps out of the top band, where the pointer wakes the stage island and the
+ * island's open line would cover it on a narrow stage; it sits under the bottom-left corner slot
+ * (40 px up), and the floating card keeps clear of it (`LABELS_CONTROL_SELECTOR`). It sets the
+ * session's labels mode; the selected unit's own labels show in every mode.
  */
 import { t } from '@aio/ui';
 import type { CSSProperties, ReactElement } from 'react';
@@ -9,10 +12,13 @@ import { setLabelMode, useAntennas, type AntennaLabelMode } from './antennaStore
 
 const MODES: readonly AntennaLabelMode[] = ['off', 'selected', 'all'];
 
+/** Marks the control so the floating card can keep clear of it (AntennaCard). */
+export const LABELS_CONTROL_SELECTOR = '[data-antenna-labels-control]';
+
 const BAR: CSSProperties = {
   position: 'absolute',
-  top: 'var(--sp-3)',
-  left: 'var(--sp-3)',
+  bottom: 'var(--sp-5)',
+  left: 'var(--sp-5)',
   zIndex: 'var(--z-stage-ui)',
   display: 'flex',
   alignItems: 'center',
@@ -46,7 +52,7 @@ export function AntennaLabelsControl({ host }: { host: HTMLElement }): ReactElem
   const mode = useAntennas((a) => a.labelMode);
   const title = t('telecom.antennas.labels.title');
   return createPortal(
-    <div data-testid="antenna-labels-control" style={BAR}>
+    <div data-testid="antenna-labels-control" data-antenna-labels-control="" style={BAR}>
       <span aria-hidden="true" style={{ color: 'var(--fg-3)', padding: '0 4px' }}>
         {title}
       </span>

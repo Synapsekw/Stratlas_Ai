@@ -24,12 +24,17 @@ function overlapArea(a: Rect, b: Rect): number {
  * four corners (top-right, top-left, bottom-right, bottom-left, 8 px in). If no spot clears
  * the box, the one that covers least of it. Corners report `docked`. Without a box on stage
  * the card docks top-right.
+ *
+ * `reserved` are stage controls the card never covers (the Labels control at the bottom left):
+ * a spot that would cover one rises to stand 8 px above it, or is dropped if it then leaves the
+ * stage's top.
  */
 export function placeCard(
   box: Rect | null,
   stage: Rect,
   card: { w: number; h: number },
   dragged: { x: number; y: number } | null,
+  reserved: readonly Rect[] = [],
   gap = 16,
 ): { x: number; y: number; docked: boolean } {
   const minX = stage.x;
@@ -66,9 +71,20 @@ export function placeCard(
     { x: minX + INSET, y: maxY - INSET, docked: true },
   );
 
+  const rect = (p: { x: number; y: number }): Rect => ({ x: p.x, y: p.y, w: card.w, h: card.h });
+  const clear = (p: { x: number; y: number }) =>
+    reserved.every((r) => overlapArea(rect(p), r) === 0);
+  // a spot over a reserved control rises above it
+  const kept = spots.flatMap((p) => {
+    if (clear(p)) return [p];
+    const over = reserved.filter((r) => overlapArea(rect(p), r) > 0);
+    const lifted = { ...p, y: Math.min(...over.map((r) => r.y)) - INSET - card.h };
+    return lifted.y >= minY && clear(lifted) ? [lifted] : [];
+  });
+
   let best = topRight;
   let least = Infinity;
-  for (const s of spots) {
+  for (const s of kept) {
     const area = overlapArea({ x: s.x, y: s.y, w: card.w, h: card.h }, box);
     if (area === 0) return s;
     if (area < least) {

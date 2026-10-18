@@ -61,6 +61,42 @@ describe('placeCard', () => {
   });
 });
 
+describe('placeCard with a reserved control', () => {
+  // the Labels control in the bottom-left corner, 12 px in
+  const control = { x: 12, y: 762, w: 170, h: 26 };
+  it('lifts the bottom-left corner above the control', () => {
+    // every corner overlaps the box; the bottom-left one, lifted to 762 - 8 - 420 = 334, least
+    const p = placeCard({ x: 300, y: 0, w: 700, h: 700 }, stage, card, null, [control]);
+    expect(p).toEqual({ x: 8, y: 334, docked: true });
+    // without the control it would stand at the stage's foot
+    expect(placeCard({ x: 300, y: 0, w: 700, h: 700 }, stage, card, null).y).toBe(372);
+  });
+  it('lifts a side spot that would cover the control', () => {
+    const p = placeCard({ x: 400, y: 700, w: 60, h: 100 }, stage, card, null, [control]);
+    // right of the box, clamped to the foot (380), clears the control: unchanged
+    expect(p).toEqual({ x: 476, y: 380, docked: false });
+    const q = placeCard({ x: 800, y: 700, w: 60, h: 100 }, { ...stage, w: 900 }, card, null, [
+      control,
+    ]);
+    // no room right; left of the box (x 464) is clear of the control's 12..182
+    expect(q).toEqual({ x: 464, y: 380, docked: false });
+  });
+  it('drops a spot that cannot rise above the control', () => {
+    const small = { x: 0, y: 0, w: 500, h: 500 };
+    const tall = { w: 300, h: 470 };
+    // left of the box (x 24) would clear the box but covers the control, with no room above it;
+    // so do the left corners: a right corner, overlapping the box, is all that is left
+    const p = placeCard({ x: 340, y: 0, w: 160, h: 500 }, small, tall, null, [
+      { x: 12, y: 462, w: 170, h: 26 },
+    ]);
+    expect(p).toEqual({ x: 192, y: 8, docked: true });
+  });
+  it('still lets a dragged position win', () => {
+    const p = placeCard(null, stage, card, { x: 0, y: 500 }, [control]);
+    expect(p).toEqual({ x: 0, y: 380, docked: false });
+  });
+});
+
 describe('leaderLine', () => {
   const box = { x: 100, y: 600, w: 300, h: 100 };
   it('runs from the box side to the card beside it', () => {
