@@ -152,9 +152,10 @@ export interface MeasureState {
   editing: EditState | null;
   /**
    * Always true: the one switch for every saved measurement is gone (the tree's eyes hide them one
-   * by one, `hiddenMeasurements`). Kept read-only for the readers that still compare it.
+   * by one, `hiddenMeasurements`). Kept read-only, and typed `boolean`, for the readers that still
+   * compare it.
    */
-  readonly measurementsVisible: true;
+  readonly measurementsVisible: boolean;
   /** Saved measurements hidden one by one in the views (the eye on their row; view only). */
   hiddenMeasurements: readonly string[];
   /**
