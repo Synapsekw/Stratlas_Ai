@@ -132,4 +132,17 @@ describe('matchCellExport', () => {
     const m = ok(matchCellExport('antenna\nPanel A', [unit('u1', 'Panel A', 10)], [], CATALOGUE));
     expect(m.picks.get('u1')?.[0]?.carrier).toMatchObject({ band: 'B3', tech: 'lte' });
   });
+
+  it('carries the row e-tilt onto the pick', () => {
+    const m = ok(
+      matchCellExport(
+        'antenna,band,etilt_deg\nPanel A,B3,4\nPanel A,n78,',
+        [unit('u1', 'Panel A', 10)],
+        [],
+        CATALOGUE,
+      ),
+    );
+    expect(m.picks.get('u1')?.[0]?.etiltDeg).toBe(4);
+    expect(m.picks.get('u1')?.[1]).not.toHaveProperty('etiltDeg');
+  });
 });

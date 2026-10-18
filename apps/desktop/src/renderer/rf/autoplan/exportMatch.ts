@@ -162,6 +162,8 @@ export function matchCellExport(
     const bwOk = bw !== null && bw > 0 && bw <= 1000 ? bw : undefined;
     const power = num(cell('power'));
     const powerOk = power !== null && power >= 0 && power <= 80 ? power : undefined;
+    const etilt = num(cell('etilt'));
+    const etiltOk = etilt !== null && etilt >= -20 && etilt <= 40 ? etilt : undefined;
 
     let carrier: PlanPick['carrier'];
     if (bandOk) {
@@ -179,7 +181,14 @@ export function matchCellExport(
     else delete carrier.radioUnit;
 
     const list = out.picks.get(unit.id) ?? [];
-    list.push({ equipment, carrier, by: 'export', confidence, reason: reasons.join('; ') });
+    list.push({
+      equipment,
+      carrier,
+      ...(etiltOk === undefined ? {} : { etiltDeg: etiltOk }),
+      by: 'export',
+      confidence,
+      reason: reasons.join('; '),
+    });
     out.picks.set(unit.id, list);
   });
 
