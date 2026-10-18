@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
+  RfCatalogueEntry as CatalogueEntrySchema,
   RfSectorsFile,
   type AntennaUnit,
   type RfAntennaSettings,
@@ -10,7 +11,13 @@ import {
 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { sectorsFile, unit } from '../__fixtures__/rfData';
-import { applyToFile, buildProposal, validateAiPick, type AiPickRaw } from './proposal';
+import {
+  applyToFile,
+  buildProposal,
+  NO_CARRIER_FITS,
+  validateAiPick,
+  type AiPickRaw,
+} from './proposal';
 import type { PlanPick } from './types';
 
 const CATALOGUE = (
@@ -283,27 +290,155 @@ describe('applyToFile', () => {
     );
     expect(RfSectorsFile.safeParse(out).success).toBe(true);
   });
-  it('replaces ai equipment, keeps a user carrier and drops a replaced ai carrier', () => {
+  it('keeps the equipment when a kept carrier does not fit the new one (R11 d)', () => {
     const file = fileWith({ equipment: { by: 'ai' }, carriers: [{ by: 'user' }, { by: 'ai' }] });
+    const before = settingsOf(file, 'ant-u1');
     const ai = validateAiPick(raw, unitDeep, CATALOGUE);
-    const out = applyToFile(
+    const p = buildProposal({
+      units,
       file,
-      buildProposal({ units, file, catalogue: CATALOGUE, picks: new Map([['ant-u1', [ai]]]) }),
+      catalogue: CATALOGUE,
+      picks: new Map([['ant-u1', [ai]]]),
+    });
+    const row = p.rows.find((r) => r.unitId === 'ant-u1');
+    expect(row?.equipment).toBeUndefined();
+    expect(row?.note).toMatch(/^Kept your equipment: your B1 carrier doesn't fit /);
+    // A carrier is kept, so the AI adds none (R11 b).
+    expect(row?.picks).toEqual([]);
+    const s = settingsOf(applyToFile(file, p, CATALOGUE), 'ant-u1');
+    expect(s?.equipment).toEqual(before?.equipment);
+    expect(s?.origins?.equipment).toEqual({ by: 'ai' });
+    expect(s?.carriers).toEqual([before?.carriers[0]]);
+  });
+  it('adds no AI or rules carrier when one is kept, but still replaces the equipment (R11 b)', () => {
+    const file = fileWith({ equipment: { by: 'ai' }, carriers: [{ by: 'user' }] });
+    const panel = validateAiPick(
+      {
+        ...raw,
+        entryId: 'generic-panel-65-17',
+        radioId: 'generic-rru-4t4r-4x40w',
+        band: 'B3',
+        tech: 'lte',
+        bandwidthMhz: 20,
+      },
+      unitDeep,
       CATALOGUE,
     );
-    const s = settingsOf(out, 'ant-u1');
-    expect(s?.equipment).toEqual({ kind: 'aau', aau: 'generic-aau-64t64r-n78' });
-    expect(s?.origins?.equipment).toEqual({ by: 'ai', confidence: 'high' });
-    // The kept carrier stays the person's, but an AAU names no radio.
-    expect(s?.carriers).toHaveLength(1);
-    expect(s?.carriers[0]).toMatchObject({
-      id: 'c1',
-      band: 'B1',
-      bandwidthMhz: 15,
-      feederLossDb: 1,
+    const p = buildProposal({
+      units,
+      file,
+      catalogue: CATALOGUE,
+      picks: new Map([['ant-u1', [panel]]]),
     });
+    const row = p.rows.find((r) => r.unitId === 'ant-u1');
+    expect(row?.picks).toEqual([]);
+    expect(row?.equipment?.equipment).toEqual(panel.equipment);
+    const s = settingsOf(applyToFile(file, p, CATALOGUE), 'ant-u1');
+    expect(s?.equipment).toEqual(panel.equipment);
+    expect(s?.carriers.map((c) => [c.id, c.band, c.origin?.by ?? 'user'])).toEqual([
+      ['c1', 'B1', 'user'],
+    ]);
+  });
+  it('replaces a new carrier the kept equipment cannot do with one it can (R11 e)', () => {
+    const file = fileWith({ carriers: [] });
+    const own = file.antennas[0];
+    if (own) own.equipment = { kind: 'aau', aau: 'generic-aau-64t64r-n78' };
+    // The thin face makes the rules pick B3 on a panel; the person's AAU only does n78.
+    const p = buildProposal({ units, file, catalogue: CATALOGUE, picks: new Map() });
+    const row = p.rows.find((r) => r.unitId === 'ant-u1');
+    expect(row?.equipment).toBeUndefined();
+    expect(row?.picks).toHaveLength(1);
+    expect(row?.picks[0]).toMatchObject({
+      carrier: { tech: 'nr', band: 'n78', bandwidthMhz: 100 },
+      confidence: 'low',
+    });
+    expect(row?.picks[0]?.reason).toMatch(/^B3 doesn't fit .*, so n78$/);
+    const s = settingsOf(applyToFile(file, p, CATALOGUE), 'ant-u1');
+    expect(s?.carriers).toEqual([
+      {
+        id: 'c1',
+        tech: 'nr',
+        band: 'n78',
+        bandwidthMhz: 100,
+        feederLossDb: 0,
+        origin: { by: 'rules', confidence: 'low' },
+      },
+    ]);
+  });
+  it('writes no carrier when nothing fits the kept equipment (R11 e)', () => {
+    const lowOnly = CatalogueEntrySchema.parse({
+      kind: 'antenna',
+      id: 'low-only',
+      vendor: 'Maker',
+      model: 'Low band panel',
+      source: 'user',
+      verified: false,
+      ports: [
+        {
+          id: 'p1',
+          bandRangeMhz: [698, 960],
+          gainDbi: 15,
+          hBeamwidthDeg: 65,
+          vBeamwidthDeg: 12,
+          frontToBackDb: 28,
+          etilt: { minDeg: 0, maxDeg: 10, stepDeg: 1 },
+          patterns: [],
+        },
+      ],
+    });
+    const catalogue = [...CATALOGUE, lowOnly];
+    const file = fileWith({ carriers: [] });
+    const own = file.antennas[0];
+    if (own) own.equipment = { kind: 'separate', antenna: 'low-only' };
+    const p = buildProposal({ units, file, catalogue, picks: new Map() });
+    const row = p.rows.find((r) => r.unitId === 'ant-u1');
+    expect(row?.picks).toEqual([]);
+    expect(row?.note).toBe(NO_CARRIER_FITS);
+    expect(settingsOf(applyToFile(file, p, catalogue), 'ant-u1')?.carriers).toEqual([]);
+  });
+  it('flags an export band its own equipment cannot do (R10, R11 f)', () => {
+    // The kept AAU does n78, so the export's n78 carrier stays, but its panel could not do it.
+    const file = fileWith({ carriers: [] });
+    const own = file.antennas[0];
+    if (own) own.equipment = { kind: 'aau', aau: 'generic-aau-64t64r-n78' };
+    const n78 = {
+      ...exportPick('n78'),
+      carrier: { tech: 'nr' as const, band: 'n78', bandwidthMhz: 100 },
+    };
+    const p = buildProposal({
+      units,
+      file,
+      catalogue: CATALOGUE,
+      picks: new Map([
+        ['ant-u1', [n78]],
+        ['ant-u2', [n78]],
+      ]),
+    });
+    const r1 = p.rows.find((r) => r.unitId === 'ant-u1');
+    expect(r1?.picks[0]).toMatchObject({ carrier: { band: 'n78' }, confidence: 'low' });
+    expect(r1?.picks[0]?.reason).toMatch(/^n78 doesn't fit .* from the export/);
+    // Without kept equipment the export's own panel is written, and it can do B3 instead.
+    const r2 = p.rows.find((r) => r.unitId === 'ant-u2');
+    expect(r2?.equipment?.equipment.kind).toBe('separate');
+    expect(r2?.picks[0]).toMatchObject({ carrier: { band: 'B3' }, confidence: 'low' });
+  });
+  it('flags an export radio the catalogue does not have (R11 h)', () => {
+    const pick: PlanPick = {
+      ...exportPick('B3'),
+      equipment: { kind: 'separate', antenna: 'generic-panel-65-17', radio: 'mystery-rru' },
+    };
+    const p = buildProposal({
+      units,
+      file: emptyFile,
+      catalogue: CATALOGUE,
+      picks: new Map([['ant-u1', [pick]]]),
+    });
+    const row = p.rows.find((r) => r.unitId === 'ant-u1');
+    expect(row?.equipment?.confidence).toBe('low');
+    expect(row?.equipment?.reason).toMatch(/mystery-rru/);
+    const s = settingsOf(applyToFile(emptyFile, p, CATALOGUE), 'ant-u1');
+    expect(s?.equipment).toEqual({ kind: 'separate', antenna: 'generic-panel-65-17' });
     expect(s?.carriers[0]?.radioUnit).toBeUndefined();
-    expect(RfSectorsFile.safeParse(out).success).toBe(true);
   });
   it('keeps user equipment and names its radio on a replaced carrier', () => {
     const file = fileWith({ carriers: [{ by: 'rules' }] });
@@ -344,24 +479,69 @@ describe('applyToFile', () => {
       ['c2', 'B1', 'export'],
     ]);
 
+    // Kept carriers come first, unchanged; export bands they already have are not added (R11 c).
     const file = fileWith({ carriers: [{ by: 'user' }] });
     const kept = file.antennas[0]?.carriers[0];
     if (kept) kept.id = 'c2';
-    const out2 = applyToFile(
+    const p2 = buildProposal({
+      units,
       file,
-      buildProposal({
-        units,
-        file,
-        catalogue: CATALOGUE,
-        picks: new Map([['ant-u1', [exportPick('B3'), exportPick('B20')]]]),
-      }),
-      CATALOGUE,
-    );
+      catalogue: CATALOGUE,
+      picks: new Map([['ant-u1', [exportPick('B1'), exportPick('B3'), exportPick('B3')]]]),
+    });
+    expect(p2.rows[0]?.picks.map((p) => p.carrier.band)).toEqual(['B3']);
+    const out2 = applyToFile(file, p2, CATALOGUE);
     expect(settingsOf(out2, 'ant-u1')?.carriers.map((c) => [c.id, c.band])).toEqual([
       ['c2', 'B1'],
-      ['c1', 'B20'],
+      ['c1', 'B3'],
     ]);
+    expect(settingsOf(out2, 'ant-u1')?.carriers[0]).toEqual(kept);
     expect(RfSectorsFile.safeParse(out2).success).toBe(true);
+  });
+  it('writes exactly the kept carriers plus the row picks for every row (R11 g)', () => {
+    const scenarios: { file: RfSectorsFile; picks: Map<string, PlanPick[]> }[] = [
+      { file: emptyFile, picks: new Map() },
+      {
+        file: fileWith({ equipment: { by: 'ai' }, carriers: [{ by: 'user' }, { by: 'ai' }] }),
+        picks: new Map(),
+      },
+      {
+        file: fileWith({ equipment: { by: 'ai' }, carriers: [{ by: 'user' }] }),
+        picks: new Map([['ant-u1', [validateAiPick(raw, unitDeep, CATALOGUE)]]]),
+      },
+      {
+        file: fileWith({ carriers: [{ by: 'export' }, { by: 'rules' }] }),
+        picks: new Map([
+          ['ant-u1', [exportPick('B1'), exportPick('B3'), exportPick('B20')]],
+          ['ant-u2', [exportPick('B3'), exportPick('B1')]],
+        ]),
+      },
+    ];
+    for (const { file, picks } of scenarios) {
+      const p = buildProposal({ units, file, catalogue: CATALOGUE, picks });
+      const out = applyToFile(file, p, CATALOGUE);
+      expect(RfSectorsFile.safeParse(out).success).toBe(true);
+      for (const row of p.rows) {
+        const before = settingsOf(file, row.unitId)?.carriers ?? [];
+        const keptBefore = before.filter((_, k) => row.kept.carriers[k] === true);
+        const written = settingsOf(out, row.unitId)?.carriers ?? [];
+        const summary = (c: Pick<RfCarrier, 'tech' | 'band' | 'bandwidthMhz'>) => [
+          c.tech,
+          c.band,
+          c.bandwidthMhz,
+        ];
+        expect(written.map(summary)).toEqual([
+          ...keptBefore.map(summary),
+          ...row.picks.map((pk) => summary(pk.carrier)),
+        ]);
+        expect(written.slice(keptBefore.length).map((c) => c.origin)).toEqual(
+          row.picks.map((pk) => ({ by: pk.by, confidence: pk.confidence })),
+        );
+        expect(written.slice(keptBefore.length).map((c) => c.radioUnit)).toEqual(
+          row.picks.map((pk) => pk.carrier.radioUnit),
+        );
+      }
+    }
   });
   it('writes a cell export e-tilt clamped to the equipment, unless the person set one', () => {
     const tilted = { ...exportPick('B3'), etiltDeg: 99 };
