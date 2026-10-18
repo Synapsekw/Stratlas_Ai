@@ -15,7 +15,7 @@
  */
 import { PROVIDER_LABELS, SendDialog } from '@aio/ai';
 import type { IpcResponse, RfCatalogueEntry, RfEquipment, RfTech } from '@aio/schema';
-import { Button, PortalRoot, useFocusTrap, useT, type MessageKey, type Vars } from '@aio/ui';
+import { Button, PortalRoot, Tip, useFocusTrap, useT, type MessageKey, type Vars } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
 import { useRef, useState, type ReactNode } from 'react';
 import { useStore } from 'zustand';
@@ -583,18 +583,31 @@ export function AutoplanDialog() {
             aria-label={t('rf.autoplan.source')}
             data-testid="rf-autoplan-source"
           >
-            <button
-              type="button"
-              aria-pressed={source === 'ai'}
-              disabled={!aiAvailable}
-              title={aiAvailable ? undefined : t('rf.autoplan.source.aiOff')}
-              data-testid="rf-autoplan-source-ai"
-              onClick={() => {
-                if (source !== 'ai') void switchSource('ai');
-              }}
-            >
-              {provider}
-            </button>
+            {aiAvailable ? (
+              <button
+                type="button"
+                aria-pressed={source === 'ai'}
+                data-testid="rf-autoplan-source-ai"
+                onClick={() => {
+                  if (source !== 'ai') void switchSource('ai');
+                }}
+              >
+                {provider}
+              </button>
+            ) : (
+              // greyed with its reason in a tip (no native title), and still focusable to read it
+              <Tip content={t('rf.autoplan.source.aiOff')}>
+                <button
+                  type="button"
+                  aria-pressed={false}
+                  aria-disabled="true"
+                  aria-describedby="rf-autoplan-ai-off"
+                  data-testid="rf-autoplan-source-ai"
+                >
+                  {provider}
+                </button>
+              </Tip>
+            )}
             <button
               type="button"
               aria-pressed={source === 'rules'}
@@ -607,6 +620,11 @@ export function AutoplanDialog() {
             </button>
           </span>
           {cost && <span className="rf-faint">{cost}</span>}
+          {!aiAvailable && (
+            <span id="rf-autoplan-ai-off" className="sr-only">
+              {t('rf.autoplan.source.aiOff')}
+            </span>
+          )}
         </span>
         {cancelButton}
         <Button

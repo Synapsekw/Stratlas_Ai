@@ -661,7 +661,10 @@
   background: var(--warn-ink);
 }
 .rf-autoplan-table tr[data-confidence='low'] td:first-child {
-  box-shadow: inset 2px 0 0 var(--warn-ink);
+  /* a 2 px amber stripe at the row's start (a stripe, not an elevation, so no shadow token) */
+  background-image: linear-gradient(var(--warn-ink), var(--warn-ink));
+  background-size: 2px 100%;
+  background-repeat: no-repeat;
 }
 .rf-autoplan-notes {
   margin: var(--sp-4) 0 0;
@@ -674,6 +677,10 @@
   align-items: center;
   gap: var(--sp-4);
   flex-wrap: wrap;
+}
+.rf-autoplan-foot .seg button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .rf-autoplan-progress {
   display: grid;
