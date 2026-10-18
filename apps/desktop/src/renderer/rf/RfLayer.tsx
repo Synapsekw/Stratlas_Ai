@@ -30,7 +30,7 @@ import {
   shownGrids,
   useCoverage,
 } from './coverageStore';
-import { dsmGroundProvider } from './dsmGround';
+import { dsmGroundLayers, dsmGroundProvider } from './dsmGround';
 import { startPreviewWorker, type PreviewClient } from './previewClient';
 import { startRunWorker, type RunReader } from './runClient';
 import { loadRfLayer, useRfLayer } from './coverageDisplay';
@@ -83,9 +83,7 @@ function useDsmGround(): void {
   const needed = antennas !== null && antennas.run.groundZ === undefined;
   useEffect(() => {
     if (!needed || !scene || !manifest) return;
-    const dsm = manifest.layers
-      .filter((l) => l.kind === 'raster' && l.role === 'dsm')
-      .map((l) => l.id);
+    const dsm = dsmGroundLayers(manifest);
     if (dsm.length === 0) return;
     // the shell's ray straight down onto one layer (Drop to ground's DSM ground)
     const deps = appBoundsDeps();

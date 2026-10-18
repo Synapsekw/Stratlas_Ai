@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { dsmGroundAt, dsmGroundProvider } from './dsmGround';
+import type { Layer } from '@aio/schema';
+import { dsmGroundAt, dsmGroundLayers, dsmGroundProvider } from './dsmGround';
 
 const ORIGIN = [500_000, 2_700_000, 100] as const;
 
@@ -42,5 +43,31 @@ describe('the DSM ground near a tower base', () => {
     const n = second;
     expect(p(500_000, 2_700_000)).toBe(105);
     expect(second).toBe(n);
+  });
+
+  it('reads the whole square window, corners included, as the job does', () => {
+    // low ground only in the four corners beyond the 30 m circle (about 7% of the window)
+    const sample = (x: number, z: number) => (Math.abs(x) > 22 && Math.abs(z) > 22 ? 0 : 10);
+    expect(dsmGroundAt(500_000, 2_700_000, [...ORIGIN], sample)).toBeCloseTo(100, 6);
+  });
+
+  it('takes only COG DSMs, in manifest order, like the job', () => {
+    const raster = (id: string, role: string, format: string) =>
+      ({
+        kind: 'raster',
+        id,
+        name: id,
+        visible: true,
+        role,
+        format,
+        src: { path: `${id}.tif` },
+      }) as Layer;
+    const layers = [
+      raster('tiles', 'dsm', 'pmtiles'),
+      raster('ortho', 'ortho', 'cog'),
+      raster('b', 'dsm', 'cog'),
+      raster('a', 'dsm', 'cog'),
+    ];
+    expect(dsmGroundLayers({ layers })).toEqual(['b', 'a']);
   });
 });

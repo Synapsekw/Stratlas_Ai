@@ -1,8 +1,9 @@
 /**
  * The DSM ground near a tower base for the RF store (`setDsmGroundProvider`, spec D4), done the
  * job's way (python `rf/inputs.py` `ground_from_dsm`): the `DSM_GROUND_PERCENTILE` (5th)
- * percentile of the DSM within `DSM_GROUND_RADIUS_M` (30 m) of the base, from the first DSM that
- * covers it; never the DSM at the one point (that is the tower top) and never terrain.
+ * percentile of the DSM in the square window of +/- `DSM_GROUND_RADIUS_M` (30 m) around the base,
+ * from the first COG DSM that covers it; never the DSM at the one point (that is the tower top)
+ * and never terrain.
  *
  * The renderer reads the DSM where the 3D view draws it: `sample(x, z, layerId)` is the height
  * straight down onto one DSM layer in the local frame, or null off it (the shell's `rayDown`).
@@ -10,11 +11,11 @@
  * the base by the inventory's line-up shift first, so it is sampled where the tower is drawn.
  */
 import { DSM_GROUND_PERCENTILE, DSM_GROUND_RADIUS_M } from '@aio/rf';
-import type { Vec3 } from '@aio/schema';
+import type { Layer, Vec3 } from '@aio/schema';
 import { percentile } from '../builder/dropToGround';
 import type { DsmGroundAt } from './rfModel';
 
-/** Sample spacing inside the disc, metres (the job reads every DSM pixel; this is close enough). */
+/** Sample spacing inside the window, metres (the job reads every DSM pixel; this is close enough). */
 export const DSM_GROUND_STEP_M = 2;
 /** At least this many hits before the percentile is trusted. */
 export const DSM_GROUND_MIN_HITS = 20;
@@ -28,17 +29,14 @@ export function dsmGroundAt(
   origin: Vec3,
   sample: (x: number, z: number) => number | null,
 ): number | null {
-  // A known small difference from python's `ground_from_dsm` (final review M2, kept for v1): it
-  // reads the square window of +/- 30 m, every pixel, and only DSM layers with `format == 'cog'`;
-  // this samples a disc every 2 m, and the caller passes every `role: 'dsm'` raster (no cog-only
-  // filter). So an estimated height in the preview can differ a little from the run's.
+  // python reads every pixel of the window; this samples it every 2 m, so an estimated height in
+  // the preview can still differ a little from the run's
   const hits: number[] = [];
   const r = DSM_GROUND_RADIUS_M;
   const x0 = east - origin[0];
   const z0 = -(north - origin[1]);
   for (let dx = -r; dx <= r; dx += DSM_GROUND_STEP_M)
     for (let dz = -r; dz <= r; dz += DSM_GROUND_STEP_M) {
-      if (dx * dx + dz * dz > r * r) continue;
       const y = sample(x0 + dx, z0 + dz);
       if (y !== null && Number.isFinite(y)) hits.push(y);
     }
@@ -46,6 +44,13 @@ export function dsmGroundAt(
   // the same linear percentile as Drop to ground (numpy's default), as a fraction
   const y = percentile(hits, DSM_GROUND_PERCENTILE / 100);
   return y === null ? null : y + origin[2];
+}
+
+/** The DSM layers the job reads for the ground, in manifest order: `role: 'dsm'` rasters that are COGs. */
+export function dsmGroundLayers(manifest: { layers: readonly Layer[] }): string[] {
+  return manifest.layers
+    .filter((l) => l.kind === 'raster' && l.role === 'dsm' && l.format === 'cog')
+    .map((l) => l.id);
 }
 
 /**
