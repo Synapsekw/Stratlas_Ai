@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import pano_synth as ps
-from aio_pipelines.pano import align, compose, pipeline
+from aio_pipelines.pano import align, compose, photometry, pipeline
 from aio_pipelines.pano.pipeline import FRAMES_MISSING, PanoStitch
 from aio_pipelines.pano.record import check_record
 from aio_pipelines.runtime import Cancelled, JobError
@@ -86,9 +86,30 @@ def test_stitches_a_sphere_into_a_non_ascii_project(project):
     assert doc["run"] == "j1" and doc["aligned"] == "features" and doc["shape"] == "sphere"
     assert doc["size"] == {"width": 1024, "height": 512} and len(doc["frames"]["used"]) == 25
     assert doc["coverage"]["bottomDeg"] > 85 and 15 < doc["coverage"]["topDeg"] < 30
-    assert set(doc["timings"]) == set(pipeline.WEIGHTS)
+    assert set(doc["timings"]) == set(pipeline.WEIGHTS) and "light" in doc["timings"]
     assert read_jpeg(folder / "pano.jpg").shape == (512, 1024, 3)
     assert read_jpeg(folder / "thumb.jpg").shape == (256, 512, 3)
+
+
+def test_frames_shot_at_different_exposures_are_evened_from_their_exif(project, monkeypatch):
+    frames = ps.make_sphere(frames_dir(project), "rows", frame_w=480, seed=3, exposure=5, vignette=-0.3)
+    fitted = {}
+    real_fit = photometry.fit
+
+    def keeping_fit(copies, rotations, evs, pairs):
+        fitted["evs"], fitted["light"] = evs, real_fit(copies, rotations, evs, pairs)
+        return fitted["light"]
+
+    monkeypatch.setattr(photometry, "fit", keeping_fit)
+    stitch(project)
+    doc = json.loads((frames_dir(project).parent / "stitch.json").read_text("utf-8"))
+    check_record(doc)
+    assert doc["aligned"] == "features" and "light" in doc["timings"]
+    assert all(ev is not None for ev in fitted["evs"])
+    stops = np.array(ps.exposure_offsets(len(frames), 5)) * np.log(2)
+    g = np.array(fitted["light"].log_gains).mean(axis=1)
+    assert np.abs(g - (stops - np.median(stops))).max() < 0.1
+    assert np.exp(sum(fitted["light"].falloff)) == pytest.approx(np.exp(-0.3), rel=0.05)
 
 
 def test_a_wide_panorama_is_cropped_and_records_its_yaw_range(project):
@@ -130,12 +151,16 @@ def test_unusable_frames_are_dropped_and_named(project):
 
 def test_a_cancel_while_composing_resumes_without_matching_again(project, monkeypatch):
     ps.make_sphere(frames_dir(project), "rows", frame_w=480, seed=3)
-    calls = {"match": 0, "blend": 0}
-    real_match, real_blend = align.match_frames, compose.blend
+    calls = {"match": 0, "light": 0, "blend": 0}
+    real_match, real_fit, real_blend = align.match_frames, photometry.fit, compose.blend
 
     def counting_match(*a, **k):
         calls["match"] += 1
         return real_match(*a, **k)
+
+    def counting_fit(*a, **k):
+        calls["light"] += 1
+        return real_fit(*a, **k)
 
     def cancelling_blend(*a, **k):
         calls["blend"] += 1
@@ -144,12 +169,37 @@ def test_a_cancel_while_composing_resumes_without_matching_again(project, monkey
         return real_blend(*a, **k)
 
     monkeypatch.setattr(align, "match_frames", counting_match)
+    monkeypatch.setattr(photometry, "fit", counting_fit)
     monkeypatch.setattr(compose, "blend", cancelling_blend)
     with pytest.raises(Cancelled):
         stitch(project)
     assert not (frames_dir(project).parent / "pano.jpg").exists()
     assert stitch(project)["status"] == "done"
-    assert calls == {"match": 1, "blend": 2}
+    assert calls == {"match": 1, "light": 1, "blend": 2}
+
+
+def test_a_cancel_while_evening_the_light_resumes_from_the_adjustment(project, monkeypatch):
+    ps.make_sphere(frames_dir(project), "rows", frame_w=320, seed=3)
+    calls = {"match": 0, "light": 0}
+    real_match, real_fit = align.match_frames, photometry.fit
+
+    def counting_match(*a, **k):
+        calls["match"] += 1
+        return real_match(*a, **k)
+
+    def cancelling_fit(*a, **k):
+        calls["light"] += 1
+        if calls["light"] == 1:
+            raise Cancelled()
+        return real_fit(*a, **k)
+
+    monkeypatch.setattr(align, "match_frames", counting_match)
+    monkeypatch.setattr(photometry, "fit", cancelling_fit)
+    with pytest.raises(Cancelled):
+        stitch(project)
+    assert stitch(project)["status"] == "done"
+    assert calls == {"match": 1, "light": 2}
+    check_record(json.loads((frames_dir(project).parent / "stitch.json").read_text("utf-8")))
 
 
 def test_the_shared_fixture_passes_the_python_check():
