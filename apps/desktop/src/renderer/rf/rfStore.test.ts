@@ -43,6 +43,7 @@ const h = vi.hoisted(() => ({
   writeError: null as string | null,
   writeWarnings: undefined as string[] | undefined,
   delay: null as null | Promise<void>,
+  writeDelay: null as null | Promise<void>,
 }));
 
 vi.mock('../shell', () => ({
@@ -82,6 +83,7 @@ vi.mock('../shell', () => ({
           return { ok: true, value: { ok: true, runs: [] } };
         case 'rf:writeSectors':
           if (h.writeError) return { ok: true, value: { ok: false, error: h.writeError } };
+          if (h.writeDelay) await h.writeDelay;
           h.sectors = structuredClone(req.file) as RfSectorsFile;
           return {
             ok: true,
@@ -648,6 +650,35 @@ describe('loading', () => {
     expect(s().dirty).toBe(true);
     await loadRf('p1');
     expect(s().sectors.study.radiusM).toBe(3000);
+  });
+
+  it('keeps the saved values when a reload read the file from before the save (M2)', async () => {
+    site();
+    await loadRf('p1');
+    patchStudy({ radiusM: 5000 });
+    let endWrite: () => void = () => undefined;
+    h.writeDelay = new Promise<void>((r) => {
+      endWrite = r;
+    });
+    const saving = saveRf();
+    // the tab mounts again while the write is in flight: its reload reads the old file
+    let endRead: () => void = () => undefined;
+    h.delay = new Promise<void>((r) => {
+      endRead = r;
+    });
+    const reload = loadRf('p1', { keepEdits: true });
+    h.delay = null;
+    h.writeDelay = null;
+    // the save ends first (no longer dirty), then the reload's answer arrives
+    endWrite();
+    expect(await saving).toEqual({ ok: true });
+    expect(s().dirty).toBe(false);
+    endRead();
+    await reload;
+    expect(s().sectors.study.radiusM).toBe(5000);
+    // a later reload, with no save around it, reads the saved file
+    await loadRf('p1');
+    expect(s().sectors.study.radiusM).toBe(5000);
   });
 
   it('reads a selected run again', async () => {

@@ -123,6 +123,12 @@ export interface RfState {
 let dsmGroundAt: DsmGroundAt | null = null;
 /** Guards a slow read against a newer load or a project switch. */
 let loadSeq = 0;
+/**
+ * Saves asked for and not yet ended, and saves ended: a reload that overlaps a save may read the
+ * file from before the write, so it keeps the working copy (review M2).
+ */
+let savesPending = 0;
+let savesEnded = 0;
 /** Writes run one after the other. */
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -232,6 +238,8 @@ export function resetRf(opts: { keepPack?: boolean } = {}): void {
 export async function loadRf(projectId: string, opts: { keepEdits?: boolean } = {}): Promise<void> {
   const seq = ++loadSeq;
   const same = get().projectId === projectId;
+  const pendingAtStart = savesPending;
+  const endedAtStart = savesEnded;
   if (same) set({ status: get().antennas || get().hasFile ? get().status : 'loading' });
   else {
     // The installed pack belongs to the app, not the project; the ground provider to the project.
@@ -259,7 +267,10 @@ export async function loadRf(projectId: string, opts: { keepEdits?: boolean } = 
     set({ status: 'error', message: bad ?? '' });
     return;
   }
-  const keep = opts.keepEdits === true && get().dirty;
+  // a save in flight, or ended, while this read ran: the file read may be the one from before it
+  const overlapped =
+    same && (pendingAtStart > 0 || savesPending > 0 || savesEnded !== endedAtStart);
+  const keep = (opts.keepEdits === true && get().dirty) || overlapped;
   set({
     status: 'ready',
     message: null,
@@ -568,7 +579,13 @@ export function saveRf(): Promise<SaveResult> {
     });
     return { ok: true };
   };
+  savesPending++;
+  const ended = () => {
+    savesPending--;
+    savesEnded++;
+  };
   const next = queue.then(run, run);
+  next.then(ended, ended);
   queue = next.catch(() => null);
   return next;
 }
