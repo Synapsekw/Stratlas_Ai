@@ -4,7 +4,8 @@
  * measurement for this person only (no unsaved change, the file untouched, still hidden after
  * reopening); a right-click on a shape in the 3D view opens its menu and a left click selects it,
  * but not while a tool draws; Rename and Move to folder from the tree menu are edits that wait
- * for Save. Off-screen, zero network.
+ * for Save; a Delete is taken back with the notice's Undo, on disk too with Autosave on.
+ * Off-screen, zero network.
  */
 import { MeasurementsFile } from '@aio/schema';
 import type { Page } from '@playwright/test';
@@ -197,4 +198,33 @@ test('Rename and Move to folder from the tree menu are edits that wait for Save'
     label: 'Line C',
     folder: 'Pads',
   });
+});
+
+test('a stray Delete is taken back with Undo, on disk too with Autosave on', async ({
+  win,
+}, testInfo) => {
+  await openTiny(win);
+  await measureTree(win);
+  const saved = await measureSaved(win);
+  await saved.getByTestId('survey-autosave').check();
+  const onDisk = async () =>
+    MeasurementsFile.parse(JSON.parse(await readFile(measurementsPath, 'utf8'))).measurements;
+
+  // the Delete key on a focused row deletes it at once, and Autosave writes it
+  await measureRow(win, 'Line B').press('Delete');
+  await expect(measureRow(win, 'Line B')).toHaveCount(0);
+  await expect.poll(async () => (await onDisk()).map((m) => m.id)).toEqual(['pad-a']);
+  const notice = win.getByTestId('measure-undo');
+  await expect(notice).toContainText('Line B deleted');
+  await win.screenshot({ path: testInfo.outputPath('measurement-layers-undo.png') });
+
+  // Undo: the same measurement back in its place, and saved again
+  await notice.getByTestId('measure-undo-button').click();
+  await expect(notice).toHaveCount(0);
+  await expect(measureRow(win, 'Line B')).toHaveCount(1);
+  await expect.poll(async () => (await onDisk()).map((m) => m.id)).toEqual(['pad-a', 'line-b']);
+  expect((await onDisk()).find((m) => m.id === 'line-b')).toEqual(
+    SEED.measurements.find((m) => m.id === 'line-b'),
+  );
+  await expect(saved).not.toContainText('Unsaved changes');
 });
