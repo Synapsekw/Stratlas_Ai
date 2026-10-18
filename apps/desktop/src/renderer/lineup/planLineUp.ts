@@ -25,8 +25,9 @@ import type { Box } from '../shell/layerBounds';
 type T = typeof translate;
 
 const mm = (v: number) => Math.round(v * 1000) / 1000;
-// a turned line-up keeps its shift to the micrometre: the shift moves the pivot, and the pair
-// must apply as the two corrections in order (rounding stays far below a millimetre)
+// a turned line-up's shift is planned to the micrometre (the shift moves the pivot, and the pair
+// must apply as the two corrections in order); the project saves it to the millimetre, like any
+// line-up, which moves the date by under a millimetre
 const um = (v: number) => Math.round(v * 1e6) / 1e6;
 
 /**
