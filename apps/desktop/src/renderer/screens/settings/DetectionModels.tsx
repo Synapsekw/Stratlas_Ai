@@ -7,7 +7,7 @@
  */
 import { brand } from '@aio/brand';
 import type { DetectorModelInfo, InferenceRuntime } from '@aio/schema';
-import { Icon, t } from '@aio/ui';
+import { Icon, t, Tip } from '@aio/ui';
 import { useState } from 'react';
 import { bridge, shell, useCall, useShell } from '../../shell';
 import './detectionModels.css';
@@ -31,14 +31,16 @@ function ModelRow({ m, onRemove }: { m: DetectorModelInfo; onRemove: () => void 
           {t(m.where === 'user' ? 'infer.model.where.user' : 'infer.model.where.pack')}
         </span>
         {m.licenceWarning && (
-          <span
-            className="infer-chip warn"
-            data-testid="infer-licence-warning"
-            data-kind={m.licenceWarning}
-            title={t(`infer.licence.note.${m.licenceWarning}`, { licence: c.licence })}
-          >
-            {t(`infer.licence.chip.${m.licenceWarning}`, { licence: c.licence })}
-          </span>
+          <Tip content={t(`infer.licence.note.${m.licenceWarning}`, { licence: c.licence })}>
+            <span
+              className="infer-chip warn"
+              data-testid="infer-licence-warning"
+              data-kind={m.licenceWarning}
+              tabIndex={0}
+            >
+              {t(`infer.licence.chip.${m.licenceWarning}`, { licence: c.licence })}
+            </span>
+          </Tip>
         )}
         <span className="grow" />
         {m.where === 'user' && (
