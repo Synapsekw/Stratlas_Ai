@@ -1,19 +1,36 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AntennasFile, TOWER_HINT_NEEDED, type JobRecord } from '@aio/schema';
+import {
+  AntennasFile,
+  TOWER_HINT_NEEDED,
+  type AntennaKind,
+  type AntennaStatus,
+  type JobRecord,
+} from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   antennaStore,
   applyAiLabels,
   cancelHint,
+  cycleLabelMode,
+  decideAntenna,
   getAiLabelPref,
+  hideAllAntennas,
+  setAntennaFilter,
+  setAntennaSolo,
+  showAllAntennas,
+  stepAntenna,
+  filteredUnits,
+  toggleGroupHidden,
   loadAntennas,
+  openAntennaReview,
   patchUnitUser,
   runDetection,
   selectAntenna,
   setAiLabelPref,
   setCloudLayer,
+  setLabelMode,
   setUnitStatus,
   toggleAntennaHidden,
 } from './antennaStore';
@@ -132,7 +149,11 @@ beforeEach(() => {
     needsHint: false,
     selected: null,
     hidden: {},
+    filter: 'all',
+    solo: null,
+    note: null,
     cloudLayer: null,
+    labelMode: 'all',
   });
   localStorage.clear();
 });
@@ -517,5 +538,317 @@ describe('AI preference', () => {
     expect(() => {
       setAiLabelPref('p1', false);
     }).not.toThrow();
+  });
+});
+
+type Spec = [id: string, kind: AntennaKind, status: AntennaStatus];
+
+/** A file whose units are the given ids, kinds and statuses (copies of the fixture's first). */
+function fileOf(specs: Spec[], runId = 'run-a1'): AntennasFile {
+  const f = sampleFile();
+  const base = need(f.units[0]);
+  return {
+    ...f,
+    run: { ...f.run, id: runId },
+    units: specs.map(([id, kind, status]) => ({ ...base, id, kind, status })),
+  };
+}
+
+const sel = () => state().selected;
+
+describe('review walk', () => {
+  it('group eye hides a partly hidden group, then shows it', async () => {
+    h.disk.file = fileOf([
+      ['p1', 'panel', 'draft'],
+      ['p2', 'panel', 'draft'],
+      ['d1', 'dish', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    toggleAntennaHidden('p1');
+    toggleGroupHidden('panel');
+    expect(state().hidden).toEqual({ p1: true, p2: true });
+    toggleGroupHidden('panel');
+    expect(state().hidden).toEqual({});
+    toggleGroupHidden('dish');
+    expect(state().hidden).toEqual({ d1: true });
+  });
+
+  it('solo and walking never write the hidden map', async () => {
+    h.disk.file = fileOf([
+      ['a', 'panel', 'draft'],
+      ['b', 'panel', 'draft'],
+      ['c', 'dish', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    toggleAntennaHidden('a');
+    setAntennaSolo('panel');
+    stepAntenna(1);
+    stepAntenna(1);
+    stepAntenna(1);
+    expect(state().hidden).toEqual({ a: true });
+    setAntennaSolo(null);
+    expect(state().solo).toBeNull();
+    expect(state().hidden).toEqual({ a: true });
+  });
+
+  it('Hide all hides every unit and Show all clears hidden and solo', async () => {
+    h.disk.file = fileOf([
+      ['a', 'panel', 'draft'],
+      ['b', 'dish', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    hideAllAntennas();
+    expect(state().hidden).toEqual({ a: true, b: true });
+    setAntennaSolo('dish');
+    showAllAntennas();
+    expect(state().hidden).toEqual({});
+    expect(state().solo).toBeNull();
+  });
+
+  it('steps inside the filter and wraps', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['acc', 'panel', 'accepted'],
+      ['d2', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    expect(state().filter).toBe('draft');
+    stepAntenna(1);
+    expect(sel()).toBe('d1');
+    stepAntenna(1);
+    expect(sel()).toBe('d2');
+    stepAntenna(1);
+    expect(sel()).toBe('d1');
+    stepAntenna(-1);
+    expect(sel()).toBe('d2');
+    selectAntenna(null);
+    stepAntenna(-1);
+    expect(sel()).toBe('d2');
+  });
+
+  it('changing the filter moves a selection that falls outside it, and clears the note', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['acc', 'panel', 'accepted'],
+    ]);
+    await loadAntennas('p1', '/p');
+    selectAntenna('d1');
+    antennaStore.setState({ note: 'x' });
+    setAntennaFilter('accepted');
+    expect(sel()).toBe('acc');
+    expect(state().note).toBeNull();
+    setAntennaFilter('rejected');
+    expect(sel()).toBeNull();
+  });
+
+  it('loading selects nothing, and a filter change keeps nothing selected', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['acc', 'panel', 'accepted'],
+    ]);
+    await loadAntennas('p1', '/p');
+    expect(sel()).toBeNull();
+    setAntennaFilter('all');
+    expect(sel()).toBeNull();
+    setAntennaFilter('accepted');
+    expect(sel()).toBeNull();
+    await loadAntennas('p1', '/p');
+    expect(sel()).toBeNull();
+  });
+
+  it('a filter change keeps a selection that stays inside it', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['acc', 'panel', 'accepted'],
+    ]);
+    await loadAntennas('p1', '/p');
+    selectAntenna('acc');
+    setAntennaFilter('all');
+    expect(sel()).toBe('acc');
+  });
+
+  it('decide on a selection outside the filter moves to the first unit of the filter', async () => {
+    h.disk.file = fileOf([
+      ['acc', 'panel', 'accepted'],
+      ['d1', 'panel', 'draft'],
+      ['d2', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    expect(state().filter).toBe('draft');
+    // a pick in 3D can select a unit the filter does not list
+    selectAntenna('acc');
+    await decideAntenna('rejected');
+    expect(unit(0).status).toBe('rejected');
+    expect(sel()).toBe('d1');
+  });
+
+  it('decide leaves a selection made while its write was going', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['d2', 'panel', 'draft'],
+      ['d3', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    selectAntenna('d1');
+    const going = decideAntenna('accepted');
+    selectAntenna('d3');
+    await going;
+    expect(unit(0).status).toBe('accepted');
+    expect(sel()).toBe('d3');
+  });
+
+  it('openAntennaReview reveals the first draft in the panel order', async () => {
+    h.disk.file = fileOf([
+      ['o1', 'other', 'draft'],
+      ['acc', 'panel', 'accepted'],
+      ['s1', 'short', 'draft'],
+      ['p1', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    setAntennaFilter('all');
+    const before = state().reveal;
+    openAntennaReview();
+    expect(state().filter).toBe('draft');
+    expect(sel()).toBe('p1');
+    expect(state().reveal).toBe(before + 1);
+  });
+
+  it('openAntennaReview without drafts only reveals the section', async () => {
+    h.disk.file = fileOf([
+      ['a', 'panel', 'accepted'],
+      ['b', 'dish', 'rejected'],
+    ]);
+    await loadAntennas('p1', '/p');
+    expect(state().filter).toBe('all');
+    const before = state().reveal;
+    openAntennaReview();
+    expect(state().filter).toBe('draft');
+    expect(sel()).toBeNull();
+    expect(state().reveal).toBe(before + 1);
+  });
+
+  it('Accept on the active filter moves to the next, and says done after the last', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['d2', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    selectAntenna('d1');
+    await decideAntenna('accepted');
+    expect(file().units.map((u) => u.status)).toEqual(['accepted', 'draft']);
+    expect(sel()).toBe('d2');
+    await decideAntenna('accepted');
+    expect(sel()).toBeNull();
+    expect(state().note).toBe('Every antenna in this filter is done.');
+  });
+
+  it('keeps the selection on the All filter', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['d2', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    setAntennaFilter('all');
+    selectAntenna('d1');
+    await decideAntenna('rejected');
+    expect(sel()).toBe('d1');
+    expect(unit(0).status).toBe('rejected');
+  });
+
+  it('pressing the active decision again returns the unit to draft', async () => {
+    h.disk.file = fileOf([
+      ['a', 'panel', 'accepted'],
+      ['b', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    setAntennaFilter('accepted');
+    selectAntenna('a');
+    await decideAntenna('accepted');
+    expect(unit(0).status).toBe('draft');
+    expect(state().note).toBe('Every antenna in this filter is done.');
+  });
+
+  it('decide does nothing read-only', async () => {
+    h.disk.file = fileOf([['a', 'panel', 'draft']]);
+    h.disk.readOnly = true;
+    await loadAntennas('p1', '/p');
+    selectAntenna('a');
+    await decideAntenna('accepted');
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('decide does nothing with nothing selected', async () => {
+    h.disk.file = fileOf([['a', 'panel', 'draft']]);
+    await loadAntennas('p1', '/p');
+    await decideAntenna('accepted');
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('a new project starts on To review when it has drafts, else All', async () => {
+    h.disk.file = fileOf([['a', 'panel', 'draft']]);
+    await loadAntennas('p1', '/p');
+    expect(state().filter).toBe('draft');
+    h.disk.file = fileOf([['a', 'panel', 'accepted']]);
+    await loadAntennas('p2', '/q');
+    expect(state().filter).toBe('all');
+  });
+
+  it('a run finishing with drafts switches the filter to To review; a plain reload keeps it', async () => {
+    h.disk.file = fileOf([['a', 'panel', 'accepted']], 'run-1');
+    await loadAntennas('p1', '/p');
+    expect(state().filter).toBe('all');
+    setAntennaSolo('panel');
+    await runDetection();
+    h.disk.file = fileOf(
+      [
+        ['a', 'panel', 'accepted'],
+        ['b', 'panel', 'draft'],
+      ],
+      'run-2',
+    );
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(state().filter).toBe('draft');
+    });
+    expect(state().solo).toBe('panel');
+    setAntennaFilter('accepted');
+    await loadAntennas('p1', '/p');
+    expect(state().filter).toBe('accepted');
+    expect(state().solo).toBe('panel');
+  });
+});
+
+describe('filteredUnits order', () => {
+  it('groups by kind in the panel order, then file order', () => {
+    const f = sampleFile();
+    const kinds: AntennaKind[] = ['other', 'dish', 'panel', 'short', 'panel'];
+    const base = need(f.units[0]);
+    const units = kinds.map((kind, i) => ({ ...base, id: `k${i}`, kind }));
+    const order = filteredUnits({ ...f, units }, 'all').map((u) => u.id);
+    const id = (i: number) => need(units[i]).id;
+    expect(order).toEqual([id(2), id(4), id(3), id(1), id(0)]);
+  });
+});
+
+describe('labels mode', () => {
+  it('starts on all and cycles off, selected, all', () => {
+    expect(antennaStore.getInitialState().labelMode).toBe('all');
+    cycleLabelMode();
+    expect(state().labelMode).toBe('off');
+    cycleLabelMode();
+    expect(state().labelMode).toBe('selected');
+    cycleLabelMode();
+    expect(state().labelMode).toBe('all');
+    setLabelMode('selected');
+    expect(state().labelMode).toBe('selected');
+  });
+
+  it('lasts the session: a project switch keeps it and nothing is written', async () => {
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+    setLabelMode('off');
+    await loadAntennas('p2', '/q');
+    expect(state().labelMode).toBe('off');
+    expect(h.calls.filter(([c]) => c === 'telecom:writeAntennas')).toHaveLength(0);
   });
 });

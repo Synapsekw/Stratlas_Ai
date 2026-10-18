@@ -10,7 +10,6 @@
  */
 import type { EngineStage } from '@aio/engine';
 import {
-  shiftEN,
   type AntennaKind,
   type AntennasFile,
   type AntennaUnit,
@@ -18,6 +17,7 @@ import {
   type ProjectManifest,
   type Vec3,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { captureShift, dateShiftOf } from '@aio/workspace';
 import {
   BoxGeometry,
@@ -38,7 +38,18 @@ import {
   type Camera,
   type Object3D,
 } from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import type { Frame } from '../survey/measureScene';
+import {
+  antennaCentre,
+  antennaMeasure,
+  axisToLocal,
+  facingTip,
+  nameAnchor,
+} from './antennaMeasure';
+import { isAntennaDrawn, type AntennaLabelMode, type AntennaLabelSpot } from './antennaVisibility';
 
 export const KIND_COLOURS: Record<AntennaKind, string> = {
   panel: '#4fb3ff',
@@ -51,8 +62,12 @@ export interface AntennaSceneState {
   file: AntennasFile | null;
   selected: string | null;
   hidden: Record<string, true>;
+  /** Only this kind is drawn (the selected unit aside); absent or null: every kind. */
+  solo?: AntennaKind | null;
   /** The line-up shift of the run's survey date (`antennaShift`); none when absent or null. */
   shift?: DateShift | null;
+  /** Which labels show (the selected unit's always do); absent: 'all'. */
+  labelMode?: AntennaLabelMode;
 }
 
 /**
@@ -75,15 +90,34 @@ const HIGHLIGHT_COLOUR = '#ffffff';
 /** Scale of the selected unit's outline, a little outside the box so it reads as a halo. */
 const HIGHLIGHT_SCALE = 1.08;
 const CLICK_SLOP_PX = 4;
+/** Fill opacity of the selected unit's box (others: 0.18, rejected 0.08). */
+export const SELECTED_FILL = 0.35;
+/** Width of the selected unit's edges, pixels. */
+export const SELECTED_EDGE_PX = 3;
+/** Render order of the selected unit's objects: over the other boxes, the GLB and the cloud. */
+export const SELECTED_ORDER = 43;
+/**
+ * Render order of the selected unit's halo and dimension lines: transparent like the fill, and
+ * drawn after it so the fill does not tint them and a blended GLB does not paint over them.
+ */
+export const SELECTED_OVERLAY_ORDER = 44;
+const DIM_COLOUR = '#ffffff';
+
+/** Whether the scene state draws this unit (`isAntennaDrawn`, solo absent counts as none). */
+const drawn = (state: AntennaSceneState, unit: AntennaUnit): boolean =>
+  isAntennaDrawn(
+    { selected: state.selected, hidden: state.hidden, solo: state.solo ?? null },
+    unit,
+  );
 
 /** A project axis (E, N, Z) as a local direction: x = E, y = Z, z = -N. */
-const axisToLocal = (a: Vec3): Vector3 => new Vector3(a[0], a[2], -a[1]);
+const axisVector = (a: Vec3): Vector3 => new Vector3(...axisToLocal(a));
 
 /** Orientation of the box in the local frame from its axes (across, up, outward). */
 function orientation(box: AntennaUnit['box']): Quaternion {
-  const x = axisToLocal(box.axes[0]);
-  const y = axisToLocal(box.axes[1]);
-  const z = axisToLocal(box.axes[2]);
+  const x = axisVector(box.axes[0]);
+  const y = axisVector(box.axes[1]);
+  const z = axisVector(box.axes[2]);
   const m = new Matrix4().makeBasis(x, y, z);
   // A left-handed set of axes would shear the rotation: the box is symmetric, so flip outward.
   if (m.determinant() < 0) m.makeBasis(x, y, z.negate());
@@ -114,12 +148,12 @@ function outlineOf(unit: AntennaUnit, edges: EdgesGeometry, colour: string): Lin
 
 /** The facing arrow, as the measure scene's `addFacing`: shaft, then head at 0.25 / 0.15 of it. */
 function facingOf(unit: AntennaUnit, centre: Vec3, colour: string): LineSegments | null {
-  if (!unit.azimuthGridDeg) return null;
+  const tip = facingTip(unit, centre);
+  if (!tip || !unit.azimuthGridDeg) return null;
   const az = (unit.azimuthGridDeg.value * Math.PI) / 180;
   const length = Math.max(0.5, Math.min(unit.heightM.value, 5));
   const dx = Math.sin(az);
   const dz = -Math.cos(az);
-  const tip: Vec3 = [centre[0] + dx * length, centre[1], centre[2] + dz * length];
   // perpendicular to the direction in the horizontal plane
   const px = -dz;
   const pz = dx;
@@ -148,15 +182,61 @@ function facingOf(unit: AntennaUnit, centre: Vec3, colour: string): LineSegments
   return line;
 }
 
+/** The selected unit's edges: thick screen-space lines, dashed by status as `outlineOf`. */
+function selectedOutlineOf(unit: AntennaUnit, edges: EdgesGeometry, colour: string): LineSegments2 {
+  const dashed = unit.status !== 'accepted';
+  const rejected = unit.status === 'rejected';
+  const material = new LineMaterial({
+    color: colour,
+    linewidth: SELECTED_EDGE_PX,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    dashed,
+    dashSize: rejected ? 0.02 : 0.08,
+    gapSize: rejected ? 0.04 : 0.05,
+  });
+  const line = new LineSegments2(new LineSegmentsGeometry().fromEdgesGeometry(edges), material);
+  if (dashed) line.computeLineDistances();
+  line.frustumCulled = false;
+  line.raycast = () => undefined;
+  return line;
+}
+
+/** The selected unit's dimension lines, white and drawn over everything. */
+function dimensionsOf(unit: AntennaUnit, frame: Frame, shift: DateShift | null): LineSegments {
+  const { segments } = antennaMeasure(unit, frame, shift);
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(segments.flat(2), 3));
+  const line = new LineSegments(
+    g,
+    new LineBasicMaterial({
+      color: DIM_COLOUR,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      opacity: 1,
+    }),
+  );
+  line.name = `antenna-dim:${unit.id}`;
+  line.renderOrder = SELECTED_OVERLAY_ORDER;
+  line.frustumCulled = false;
+  line.raycast = () => undefined;
+  return line;
+}
+
 export function buildAntennaGroup(state: AntennaSceneState, frame: Frame): Group {
   const group = new Group();
   group.name = 'aio-telecom-antennas';
   group.renderOrder = 41;
+  const shift = state.shift ?? null;
   for (const unit of state.file?.units ?? []) {
-    if (state.hidden[unit.id]) continue;
+    if (!drawn(state, unit)) continue;
+    const selected = state.selected === unit.id;
+    const order = selected ? SELECTED_ORDER : 41;
     const colour = KIND_COLOURS[unit.kind];
     const [w, h, d] = unit.box.extents;
-    const centre = frame.toLocal(shiftEN(unit.box.centre, state.shift ?? null));
+    const centre = antennaCentre(unit, frame, shift);
     const quat = orientation(unit.box);
     const boxGeometry = new BoxGeometry(w, h, d);
     const rejected = unit.status === 'rejected';
@@ -166,49 +246,134 @@ export function buildAntennaGroup(state: AntennaSceneState, frame: Frame): Group
       new MeshBasicMaterial({
         color: colour,
         transparent: true,
-        opacity: rejected ? 0.08 : 0.18,
+        opacity: selected ? SELECTED_FILL : rejected ? 0.08 : 0.18,
         depthWrite: false,
+        depthTest: !selected,
       }),
     );
     mesh.name = `antenna-box:${unit.id}`;
     mesh.userData.antennaId = unit.id;
     mesh.position.set(centre[0], centre[1], centre[2]);
     mesh.quaternion.copy(quat);
-    mesh.renderOrder = 41;
+    mesh.renderOrder = order;
     group.add(mesh);
 
     const edges = new EdgesGeometry(boxGeometry);
-    const outline = outlineOf(unit, edges, colour);
+    const outline = selected
+      ? selectedOutlineOf(unit, edges, colour)
+      : outlineOf(unit, edges, colour);
     outline.name = `antenna-outline:${unit.id}`;
     outline.position.copy(mesh.position);
     outline.quaternion.copy(quat);
-    outline.renderOrder = 41;
+    outline.renderOrder = order;
     group.add(outline);
 
     const arrow = facingOf(unit, centre, colour);
     if (arrow) {
       arrow.name = `antenna-facing:${unit.id}`;
-      arrow.renderOrder = 41;
+      arrow.renderOrder = order;
       group.add(arrow);
     }
 
-    if (state.selected === unit.id) {
+    if (selected) {
       const halo = new LineSegments(
         edges.clone(),
-        new LineBasicMaterial({ color: HIGHLIGHT_COLOUR, depthTest: false }),
+        new LineBasicMaterial({
+          color: HIGHLIGHT_COLOUR,
+          depthTest: false,
+          transparent: true,
+          opacity: 1,
+        }),
       );
       halo.name = 'antenna-highlight';
       halo.userData.antennaId = unit.id;
       halo.position.copy(mesh.position);
       halo.quaternion.copy(quat);
       halo.scale.setScalar(HIGHLIGHT_SCALE);
-      halo.renderOrder = 42;
+      halo.renderOrder = SELECTED_OVERLAY_ORDER;
       halo.raycast = () => undefined;
       group.add(halo);
+      group.add(dimensionsOf(unit, frame, shift));
     }
     edges.dispose();
   }
   return group;
+}
+
+/** A pin's text: the unit's number, the digits its name ends in ("14" of "A14"), else the name. */
+export function unitNumber(name: string): string {
+  return /(\d+)$/.exec(name)?.[1] ?? name;
+}
+
+/**
+ * The labels the 3D view places: the selected unit's full measurement labels (name with height,
+ * the three dimensions, the angles) in every mode, and in mode 'all' a numbered pin over every
+ * other drawn unit, where its name would sit.
+ */
+export function antennaLabelSpots(state: AntennaSceneState, frame: Frame): AntennaLabelSpot[] {
+  const shift = state.shift ?? null;
+  const pins = (state.labelMode ?? 'all') === 'all';
+  const spots: AntennaLabelSpot[] = [];
+  for (const unit of state.file?.units ?? []) {
+    if (!drawn(state, unit)) continue;
+    if (state.selected === unit.id) {
+      spots.push(...antennaMeasure(unit, frame, shift).spots);
+      continue;
+    }
+    if (!pins) continue;
+    spots.push({
+      key: `${unit.id}:pin`,
+      text: unitNumber(unit.name),
+      at: nameAnchor(unit, frame, shift),
+      kind: 'pin',
+      selected: false,
+      align: 'centre',
+      unitId: unit.id,
+      colour: KIND_COLOURS[unit.kind],
+      title: t('telecom.antennas.labels.pin', {
+        name: unit.name,
+        kind: t(`telecom.antennas.card.kind.${unit.kind}`),
+        status: t(`telecom.antennas.status.${unit.status}`),
+      }),
+    });
+  }
+  return spots;
+}
+
+/**
+ * Whether two scene states draw the same thing (the same file, selection, visibility, labels mode
+ * and shift).
+ */
+export function sameSceneState(a: AntennaSceneState, b: AntennaSceneState): boolean {
+  return (
+    a.file === b.file &&
+    a.selected === b.selected &&
+    a.hidden === b.hidden &&
+    (a.solo ?? null) === (b.solo ?? null) &&
+    (a.labelMode ?? 'all') === (b.labelMode ?? 'all') &&
+    JSON.stringify(a.shift ?? null) === JSON.stringify(b.shift ?? null)
+  );
+}
+
+/**
+ * `antennaLabelSpots` computed once per drawn state: the labels and the card both ask on every
+ * frame, and the spots change only when the state does.
+ */
+export function labelSpotsCache(frame: Frame): (state: AntennaSceneState) => AntennaLabelSpot[] {
+  let last: { state: AntennaSceneState; spots: AntennaLabelSpot[] } | null = null;
+  return (state) => {
+    if (last && sameSceneState(last.state, state)) return last.spots;
+    last = { state, spots: antennaLabelSpots(state, frame) };
+    return last.spots;
+  };
+}
+
+/** Give every fat-line material in the group the canvas size it is drawn at, CSS pixels. */
+function setLineResolution(group: Group, width: number, height: number): void {
+  group.traverse((o: Object3D) => {
+    const mat = (o as Partial<Mesh>).material;
+    if (mat instanceof LineMaterial) mat.resolution.set(width, height);
+  });
 }
 
 function disposeGroup(group: Group): void {
@@ -250,18 +415,37 @@ export function attachAntennaLayer(
     onPick(id: string): void;
   },
 ): () => void {
-  let group = buildAntennaGroup(opts.getState(), frame);
-  stage.scene.add(group);
   const canvas = stage.renderer.domElement;
+  let size = { w: canvas.clientWidth, h: canvas.clientHeight };
+  const build = (state: AntennaSceneState) => {
+    const g = buildAntennaGroup(state, frame);
+    setLineResolution(g, size.w, size.h);
+    return g;
+  };
+  let built = opts.getState();
+  let group = build(built);
+  stage.scene.add(group);
 
+  // a store change that draws nothing new (a note, the filter, a reveal) keeps the group
   const rebuild = () => {
+    const next = opts.getState();
+    if (sameSceneState(built, next)) return;
+    built = next;
     stage.scene.remove(group);
     disposeGroup(group);
-    group = buildAntennaGroup(opts.getState(), frame);
+    group = build(next);
     stage.scene.add(group);
     stage.requestRender();
   };
   const off = opts.subscribe(rebuild);
+  // fat lines are sized in screen pixels: follow the canvas when it is resized
+  const offFrame = stage.onFrame(() => {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (w === size.w && h === size.h) return;
+    size = { w, h };
+    setLineResolution(group, w, h);
+  });
 
   let down: { x: number; y: number } | null = null;
   const onDown = (e: PointerEvent) => {
@@ -286,6 +470,7 @@ export function attachAntennaLayer(
 
   return () => {
     off();
+    offFrame();
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointerup', onUp);
     stage.scene.remove(group);
