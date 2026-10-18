@@ -162,6 +162,8 @@ const CHANNELS = {
   'telecom:writeAntennas': true,
   'ai:antennaLabelPreview': true,
   'ai:labelAntennas': true,
+  'ai:rfPlanPreview': true,
+  'ai:rfPlan': true,
   'inference:models': true,
   'inference:importModel': true,
   'inference:removeModel': true,

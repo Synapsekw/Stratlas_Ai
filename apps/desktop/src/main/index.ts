@@ -1181,6 +1181,8 @@ function registerIpc(): void {
   // antenna labelling: the send preview, then the labels (ai:cancel stops it)
   handle('ai:antennaLabelPreview', (req) => agent.antennaLabelPreview(req));
   handle('ai:labelAntennas', (req) => agent.labelAntennas(req));
+  handle('ai:rfPlanPreview', (req) => agent.rfPlanPreview(req));
+  handle('ai:rfPlan', (req) => agent.rfPlan(req));
 
   // Map packs carried by open packages join the list when this machine lacks that area.
   handle('packs:list', async () => {

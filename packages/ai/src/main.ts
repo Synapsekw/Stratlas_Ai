@@ -43,6 +43,15 @@ import {
 } from './engineer';
 import { payloadPreview } from './engineerPrompt';
 import {
+  estimateRfPlan,
+  parseRfPlan,
+  RF_PLAN_PROMPT_VERSION,
+  rfPlanInstructions,
+  rfPlanOutputTokens,
+  rfPlanUserText,
+  type AiPickRaw,
+} from './rfPlan';
+import {
   approvalScopeKey,
   readApproval,
   writeApproval,
@@ -188,7 +197,10 @@ export interface AgentRuntimeHost {
   recordUsage?(projectId: string, usage: StepUsage): void;
   /** The engineering model's AI step (`ai:engineerPreview`, `ai:engineer`); absent: refused. */
   engineer?: EngineerRuntimeHost;
-  /** The telecom antenna labelling (`ai:antennaLabelPreview`, `ai:labelAntennas`); absent: refused. */
+  /**
+   * The telecom antenna labelling (`ai:antennaLabelPreview`, `ai:labelAntennas`) and Auto-plan's
+   * AI step (`ai:rfPlanPreview`, `ai:rfPlan`); absent: refused.
+   */
   telecom?: TelecomLabelHost;
 }
 
@@ -276,6 +288,10 @@ export interface AgentRuntime {
   ): Promise<IpcResponse<'ai:antennaLabelPreview'>>;
   /** Label antenna crops with the vision route; AI sets no number. */
   labelAntennas(req: IpcRequest<'ai:labelAntennas'>): Promise<IpcResponse<'ai:labelAntennas'>>;
+  /** What an Auto-plan AI request would send, with a one-time token for exactly that. */
+  rfPlanPreview(req: IpcRequest<'ai:rfPlanPreview'>): Promise<IpcResponse<'ai:rfPlanPreview'>>;
+  /** Auto-plan's AI step: equipment and one carrier per unit, one request for the site, no geometry. */
+  rfPlan(req: IpcRequest<'ai:rfPlan'>): Promise<IpcResponse<'ai:rfPlan'>>;
 }
 
 /** How long a one-time consent from the send preview stays valid. */
@@ -295,6 +311,10 @@ const LABEL_NO_PHOTOS =
 const LABEL_NO_TELECOM = 'Antenna labelling is not available here.';
 const LABEL_NO_CROPS =
   'None of these antennas has a photo crop to send. Run the antenna detection again.';
+/** How long the one-time token of an Auto-plan send preview stays valid. */
+const RF_PLAN_CONSENT_MS = 5 * 60_000;
+const RF_PLAN_PREVIEW_FIRST = LABEL_PREVIEW_FIRST;
+const RF_PLAN_NO_TELECOM = 'Auto-plan with AI is not available here. Use Rules only.';
 
 const PREVIEW_FIRST =
   'Open the send preview and send from there: every request to a cloud model is confirmed for exactly what it sends.';
@@ -1411,11 +1431,238 @@ export function createAgentRuntime(
     };
   }
 
+  // ---------------------------------------------------------------- Auto-plan AI step
+
+  /** One-time tokens of the Auto-plan send preview: valid once, for these units, a few minutes. */
+  const rfConsents = new Map<
+    string,
+    { projectId: string; ids: string; key: string; expires: number }
+  >();
+
+  /** The exact content of a request: whether photos go, which crop files, and the route. */
+  function rfContentKey(
+    crops: readonly { unitId: string; sha256: string }[],
+    route: ModelRoute,
+  ): string {
+    const files = crops
+      .map((c): [string, string] => [c.unitId, c.sha256])
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          rfPlan: RF_PLAN_PROMPT_VERSION,
+          photos: files.length > 0,
+          files,
+          task: route.task,
+          provider: route.provider,
+          model: route.model,
+        }),
+      )
+      .digest('hex');
+  }
+
+  /**
+   * The plan of one Auto-plan request: the project's flags from disk, then the route. Photos go
+   * only with the project's consent or `extraPhotos` (the person's choice in the preview), and
+   * only when crops exist: then the vision route, else the chat route with text only. A cloud
+   * route under the `forbid` policy is refused.
+   */
+  async function rfPlanSetup(
+    projectId: string,
+    unitIds: readonly string[],
+    extraPhotos: boolean,
+  ): Promise<
+    | {
+        th: TelecomLabelHost;
+        photosAllowed: boolean;
+        gate: Extract<Check, { ok: true }>;
+        crops: { unitId: string; path: string; dataUrl: string; sha256: string }[];
+      }
+    | { error: string }
+  > {
+    const th = host.telecom;
+    if (!th) return { error: RF_PLAN_NO_TELECOM };
+    const flags = await th.policy(projectId);
+    if (!flags) return { error: notOpenMessage };
+    if ('error' in flags) return { error: flags.error };
+    // a cloud route under the forbid policy is refused before any crop is read
+    const allowed = (g: Check): g is Extract<Check, { ok: true }> =>
+      g.ok && !(g.provider.cloud && flags.ai === 'forbid');
+    if (flags.photos || extraPhotos) {
+      // the vision route only when it can answer; otherwise the chat route with text only
+      const vision = await check('vision', projectId);
+      if (allowed(vision)) {
+        const found = await th.crops(projectId, unitIds);
+        const byId = new Map(found.map((c) => [c.unitId, c]));
+        const crops = unitIds.flatMap((id) => byId.get(id) ?? []);
+        if (crops.length > 0) return { th, photosAllowed: flags.photos, gate: vision, crops };
+      }
+    }
+    const gate = await check('chat', projectId);
+    if (!gate.ok) return { error: gate.message };
+    if (!allowed(gate)) return { error: MESSAGES.forbidden };
+    return { th, photosAllowed: flags.photos, gate, crops: [] };
+  }
+
+  async function rfPlanPreview(
+    req: IpcRequest<'ai:rfPlanPreview'>,
+  ): Promise<IpcResponse<'ai:rfPlanPreview'>> {
+    const unitIds = [...new Set(req.unitIds)];
+    const plan = await rfPlanSetup(req.projectId, unitIds, false);
+    if ('error' in plan) return { ok: false, error: plan.error };
+    const { route, provider } = plan.gate;
+    const { inputTokens } = estimateRfPlan(unitIds.length, plan.crops.length);
+    const costUsd =
+      route.provider === 'local'
+        ? 0
+        : estimateCostUsd(route.model, {
+            inputTokens,
+            outputTokens: rfPlanOutputTokens(unitIds.length),
+          });
+    const now = Date.now();
+    for (const [t, v] of rfConsents) if (v.expires <= now) rfConsents.delete(t);
+    const token = randomUUID();
+    rfConsents.set(token, {
+      projectId: req.projectId,
+      ids: idsOf(unitIds),
+      key: rfContentKey(plan.crops, route),
+      expires: now + RF_PLAN_CONSENT_MS,
+    });
+    return {
+      ok: true,
+      provider: route.provider,
+      model: route.model,
+      cloud: provider.cloud,
+      photosAllowed: plan.photosAllowed,
+      crops: plan.crops.map((c) => ({ unitId: c.unitId, path: c.path })),
+      estimate: { inputTokens, ...(costUsd !== undefined ? { costUsd } : {}) },
+      token,
+    };
+  }
+
+  async function rfPlan(req: IpcRequest<'ai:rfPlan'>): Promise<IpcResponse<'ai:rfPlan'>> {
+    if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
+    const run: Run = { controller: new AbortController(), pending: new Map() };
+    runs.set(req.runId, run);
+    try {
+      // the token is spent whether or not it fits
+      const token = req.token ? rfConsents.get(req.token) : undefined;
+      if (req.token) rfConsents.delete(req.token);
+      const seen = new Set<string>();
+      const units = req.units.filter((u) => {
+        if (seen.has(u.unitId)) return false;
+        seen.add(u.unitId);
+        return true;
+      });
+      const unitIds = units.map((u) => u.unitId);
+      const plan = await rfPlanSetup(req.projectId, unitIds, req.photos === true);
+      if ('error' in plan) return { ok: false, error: plan.error };
+      const { route, provider } = plan.gate;
+      // every cloud request goes through the send preview: a token valid once, for this project,
+      // exactly these units and exactly the content and route the preview showed
+      if (
+        provider.cloud &&
+        !(
+          token?.projectId === req.projectId &&
+          token.expires > Date.now() &&
+          token.ids === idsOf(unitIds) &&
+          token.key === rfContentKey(plan.crops, route)
+        )
+      ) {
+        return { ok: false, error: RF_PLAN_PREVIEW_FIRST };
+      }
+      return await runRfPlan(req, run, route, provider, plan.th, units, plan.crops);
+    } finally {
+      runs.delete(req.runId);
+    }
+  }
+
+  async function runRfPlan(
+    req: IpcRequest<'ai:rfPlan'>,
+    run: Run,
+    route: ModelRoute,
+    provider: ModelProvider,
+    th: TelecomLabelHost,
+    units: IpcRequest<'ai:rfPlan'>['units'],
+    crops: readonly { unitId: string; dataUrl: string }[],
+  ): Promise<IpcResponse<'ai:rfPlan'>> {
+    const key = await keyFor(provider, route.provider);
+    const local = localOf(route);
+    const timeoutMs = local
+      ? Math.max(DETECT_TIMEOUT_MS, local.timeoutMs ?? DEFAULT_LOCAL_TIMEOUT_MS)
+      : DETECT_TIMEOUT_MS;
+    const content: UserContent = [{ type: 'text', text: rfPlanUserText(units, req.catalogue) }];
+    for (const c of crops) {
+      let img = parseDataUrl(c.dataUrl);
+      const dim = img ? imageSize(Buffer.from(img.base64, 'base64')) : null;
+      if (img && dim && th.resize) {
+        const [w, h] = sendSize(dim.w, dim.h, SEND_MAX_PX);
+        if (w !== dim.w || h !== dim.h) img = parseDataUrl(await th.resize(c.dataUrl, SEND_MAX_PX));
+      }
+      if (!img) return { ok: false, error: `The crop of ${c.unitId} is not an image.` };
+      content.push({ type: 'text', text: `Image of ${c.unitId}` });
+      content.push({ type: 'file', data: img.base64, mediaType: img.mediaType });
+    }
+    let result: Awaited<ReturnType<typeof generateText>>;
+    try {
+      result = await generateText({
+        model: provider.languageModel(route.model, key),
+        instructions: rfPlanInstructions(),
+        messages: [{ role: 'user', content }],
+        maxRetries: options.maxRetries ?? 2,
+        maxOutputTokens: local
+          ? outputBudget(local.contextTokens)
+          : Math.min(16_000, 1_000 + 2 * rfPlanOutputTokens(units.length)),
+        abortSignal: AbortSignal.any([run.controller.signal, AbortSignal.timeout(timeoutMs)]),
+      });
+    } catch (e) {
+      if (run.controller.signal.aborted) return { ok: false, error: MESSAGES.stopped };
+      const described = describeFailure(e, provider, route, key);
+      console.warn(`rf plan request failed: ${described.log}`);
+      return { ok: false, error: described.message };
+    }
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let costUsd: number | undefined;
+    const u = usageEvent(req.runId, route, result.usage);
+    if (u.type === 'usage') {
+      inputTokens = u.inputTokens;
+      outputTokens = u.outputTokens;
+      costUsd = u.costUsd;
+    }
+    if (inputTokens > 0 || outputTokens > 0) {
+      host.recordUsage?.(req.projectId, {
+        provider: route.provider,
+        model: route.model,
+        inputTokens,
+        outputTokens,
+        ...(costUsd !== undefined ? { costUsd } : {}),
+      });
+    }
+    const parsed: { picks: AiPickRaw[]; warnings: string[] } = parseRfPlan(
+      result.text,
+      units.map((x) => x.unitId),
+    );
+    return {
+      ok: true,
+      provider: route.provider,
+      model: route.model,
+      promptVersion: RF_PLAN_PROMPT_VERSION,
+      picks: parsed.picks,
+      inputTokens,
+      outputTokens,
+      ...(costUsd !== undefined ? { costUsd } : {}),
+      warnings: parsed.warnings,
+    };
+  }
+
   return {
     engineerPreview,
     engineer,
     antennaLabelPreview,
     labelAntennas,
+    rfPlanPreview,
+    rfPlan,
     send: async (req) => {
       if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
       const run: Run = { controller: new AbortController(), pending: new Map() };
