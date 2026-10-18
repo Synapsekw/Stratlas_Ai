@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chipOf, createCompareLineUp } from './compareLineUpStore';
 import type { LineUpDeps } from './lineUpStore';
 import { forgetMeasures, measureKey, remember } from './lineUpWatch';
-import { lineUpManifest, measureOf } from './testing';
+import { fitOf, lineUpManifest, measureOf } from './testing';
 
 const flush = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
@@ -125,8 +125,59 @@ describe('compare line-up status', () => {
       reason: 'The measurement did not finish: The job failed.',
     });
     // a measurement with a fit (Task 5) is judged by the fit
-    const fitted = { ...measureOf(), fit: { verdict: 'range', maxMoveM: 3 } } as LineUpMeasure;
+    const fitted = measureOf({ fit: fitOf({ verdict: 'range', maxMoveM: 3 }) });
     expect(chipOf(fitted).status).toBe('cannot');
     expect(chipOf(fitted).reason).toBeTruthy();
+  });
+
+  it('measures again after a failure once the manifest changes', async () => {
+    const measure = vi
+      .fn<LineUpDeps['measure']>()
+      .mockResolvedValueOnce({ error: 'The job failed.' })
+      .mockResolvedValueOnce(measureOf());
+    const { workspace, store } = setup(measure);
+    store.getState().watch('d1', 'd2');
+    await flush();
+    expect(store.getState().status).toBe('cannot');
+    // the same pair, the same shifts: a refusal would hold, a failure is tried again
+    const m = workspace.getState().project?.manifest;
+    if (m) workspace.getState().replaceManifest({ ...m, name: 'Renamed' });
+    await flush();
+    expect(measure).toHaveBeenCalledTimes(2);
+    expect(store.getState().status).toBe('off');
+  });
+
+  it('resumes once both dates exist', async () => {
+    const measure = vi.fn<LineUpDeps['measure']>(() => Promise.resolve(measureOf()));
+    const workspace = createWorkspace();
+    workspace.getState().openProject({
+      id: 'p',
+      root: 'C:/p',
+      manifest: lineUpManifest({
+        captures: [{ id: 'd1', label: 'Survey 2 March 2026', date: '2026-03-02' }],
+      }),
+    });
+    const store = createCompareLineUp({ measure, workspace });
+    store.getState().watch('d1', 'd2');
+    expect(store.getState().status).toBe('idle');
+    workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest: lineUpManifest() });
+    await flush();
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(store.getState().status).toBe('off');
+  });
+
+  it('stops following the workspace once disposed', async () => {
+    const measure = vi.fn<LineUpDeps['measure']>(() => Promise.resolve(measureOf()));
+    const { workspace, store } = setup(measure);
+    store.getState().watch('d1', 'd2');
+    await flush();
+    store.getState().dispose();
+    expect(store.getState().status).toBe('idle');
+    workspace
+      .getState()
+      .openProject({ id: 'p', root: 'C:/p', manifest: lineUpManifest({ lineUps: { d2: LINED } }) });
+    await flush();
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(store.getState().status).toBe('idle');
   });
 });

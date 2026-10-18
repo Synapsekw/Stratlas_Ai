@@ -166,8 +166,9 @@
   accent-color: var(--acc);
 }
 
-/* the line-up chip in the Compare dates bar (CompareLineUp.tsx): one short line, 220 px at most,
-   so the bar still fits a 1100 x 720 window; everything else is in its details */
+/* the line-up chip in the row under the island (CompareLineUp.tsx, beside Swipe and Blend): one
+   short line, 220 px at most, so the row still fits a 1100 x 720 window; everything else is in
+   its details */
 .compare-lineup {
   position: relative;
   display: flex;
@@ -175,7 +176,10 @@
   gap: var(--sp-2);
   min-width: 0;
   max-width: 220px;
-  margin-inline-start: var(--sp-2);
+}
+/* its own row while no Swipe and Blend bar shows (two 3D views) */
+.compare-view.compare-lineup-row {
+  padding: 2px;
 }
 .compare-lineup-chip {
   display: flex;
@@ -262,23 +266,15 @@
 .compare-lineup-acts:empty {
   display: none;
 }
-
-/* The chip hangs beside the island, which gives up its own width for it (--isl-aside-w,
-   Island.tsx), and must also keep clear of the right panel's toggle and, with the panel folded,
-   of the window's own buttons. Below a 1000 px stage (any 1100 px window: about 500 px with both
-   side panels open, 850 px with the right one folded) the chip keeps its status dot and the
-   Line up icon; the words are in its tooltip and details. */
-.stage {
-  container-name: stage;
+/* the row stays inside the views however long it gets (Blend's slider and the chip): the chip's
+   words give way first */
+.stage-panes > .compare-view:has(.compare-lineup) {
+  max-inline-size: calc(100% - 2 * var(--sp-4));
 }
-@container stage (max-width: 999px) {
-  .compare-lineup-label,
-  .compare-lineup-action-text {
-    display: none;
-  }
-  .compare-lineup-chip {
-    justify-content: center;
-    width: 28px;
-    padding-inline: 0;
-  }
+.compare-view .compare-lineup {
+  flex: 0 1 auto;
+}
+/* its details open over the panes' own controls (basemap, zoom) */
+.stage-panes > .compare-view:has(.compare-lineup-details) {
+  z-index: var(--z-pop);
 }

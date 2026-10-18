@@ -1,14 +1,15 @@
 import { hasTurn, type Capture, type LineUpMeasure, type ProjectManifest } from '@aio/schema';
 import { Button, Tip, useT, type t as translate } from '@aio/ui';
 import type { CaptureIndex, Workspace } from '@aio/workspace';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import type { SplitModel } from '../workspace/SplitPanes';
 import { sideCapture, twinAllowed } from '../workspace/splitModel';
 import {
   compareLineUpApp,
-  fitOf,
+  failedMeasure,
   offBy,
   type CompareLineUp as ChipStore,
   type CompareLineUpState,
@@ -81,11 +82,7 @@ function detailsOf(
   if (saved.length === 0 && s.status !== 'measuring') lines.push(t('compare.lineUp.never'));
   if (r && s.status !== 'cannot') lines.push(fitWords(r, t));
   // a turned line-up, saved or about to be, moves point clouds but does not turn them (stage 1)
-  const fit = r ? fitOf(r) : undefined;
-  const turnsNext =
-    s.status === 'off' &&
-    !!fit &&
-    hasTurn({ rotationDeg: fit.rotationDeg ?? 0, scale: fit.scale ?? 1 });
+  const turnsNext = s.status === 'off' && hasTurn(r?.fit);
   const turning =
     saved.some(({ capture }) => hasTurn(capture.lineUpTurn) && hasClouds(m, index, capture.id)) ||
     (turnsNext && ids.some((id) => hasClouds(m, index, id)));
@@ -94,7 +91,7 @@ function detailsOf(
 }
 
 function fitWords(r: LineUpMeasure, t: T): string {
-  const px = fitOf(r)?.residualPx ?? r.spreadPx;
+  const px = r.fit?.residualPx ?? r.spreadPx;
   return t('compare.lineUp.fit', { px: px.toFixed(2), tiles: r.tiles });
 }
 
@@ -207,17 +204,14 @@ function Chip({
       {s.status === 'off' && (
         <Button
           variant="primary"
-          icon="crosshair"
           className="compare-lineup-action"
           data-testid="compare-lineup-action"
-          aria-label={t('compare.lineUp.action')}
-          tip={t('compare.lineUp.action')}
           onClick={() => {
-            openLineUp(left, right);
+            // the left-hand date stays by default; the person can still switch
+            openLineUp(left, right, undefined, { keep: left });
           }}
         >
-          {/* a narrow stage shows the icon only (lineup.css) */}
-          <span className="compare-lineup-action-text">{t('compare.lineUp.action')}</span>
+          {t('compare.lineUp.action')}
         </Button>
       )}
       {open && (
@@ -234,8 +228,20 @@ function Chip({
               {line}
             </p>
           ))}
-          {(saved.length > 0 || step) && (
+          {(saved.length > 0 || !!step || failedMeasure(s)) && (
             <div className="compare-lineup-acts">
+              {failedMeasure(s) && (
+                <Button
+                  variant="quiet"
+                  data-testid="compare-lineup-retry"
+                  onClick={() => {
+                    store.getState().retry();
+                    setOpen(false);
+                  }}
+                >
+                  {t('compare.lineUp.retry')}
+                </Button>
+              )}
               {step && <UndoLine store={step} ids={[left, right]} />}
               {saved.map(({ capture }) => (
                 <Button
@@ -260,16 +266,67 @@ function Chip({
   );
 }
 
+/** The Side by side, Swipe and Blend bar of two maps (MapSwipe.tsx), when it shows. */
+const viewBar = (panes: HTMLElement) =>
+  panes.querySelector<HTMLElement>(':scope > .compare-view:not(.compare-lineup-row)');
+
 /**
  * Whether the two dates Compare shows line up (design call 8), on `COMPARE_TOOLS`: "Lined up",
  * "2.04 m off" with Line up, "Checking line-up…" or "Can't line up", and the details on a click.
- * Nothing without a twin, or before the line-up session has made its store.
+ * Like Swipe and Blend (MapSwipe.tsx) it shows in the row under the island, above the pane
+ * headers, not beside the island (whose own width it would take): inside that bar when two maps
+ * or orthos show it, else in a row of its own. Nothing without a twin, or before the line-up
+ * session has made its store.
  */
 export function CompareLineUp({ split }: { split: SplitModel }) {
   const { store, workspace } = useStore(compareLineUpApp);
   const pair = twinDates(split);
-  if (!store || !workspace || !pair) return null;
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [panes, setPanes] = useState<HTMLElement | null>(null);
+  // Swipe and Blend's bar comes and goes with the panes it compares: look again when it does
+  const [, looked] = useState(0);
+  useLayoutEffect(() => {
+    // the anchor sits in the stage toolbar, beside the panes
+    setPanes(
+      anchor.current?.closest<HTMLElement>('.stage')?.querySelector<HTMLElement>('.stage-panes') ??
+        null,
+    );
+  }, []);
+  useEffect(() => {
+    if (!panes || typeof MutationObserver === 'undefined') return;
+    const mo = new MutationObserver(() => {
+      looked((n) => n + 1);
+    });
+    mo.observe(panes, { childList: true });
+    return () => {
+      mo.disconnect();
+    };
+  }, [panes]);
+  const bar = panes ? viewBar(panes) : null;
+  const chip =
+    store && workspace && pair ? (
+      <Chip
+        store={store}
+        workspace={workspace}
+        index={split.index}
+        left={pair[0]}
+        right={pair[1]}
+      />
+    ) : null;
   return (
-    <Chip store={store} workspace={workspace} index={split.index} left={pair[0]} right={pair[1]} />
+    <>
+      <span ref={anchor} hidden />
+      {chip &&
+        (bar
+          ? createPortal(chip, bar)
+          : panes
+            ? createPortal(
+                <div className="compare-view compare-lineup-row overlay-box" data-surface="dark">
+                  {chip}
+                </div>,
+                panes,
+              )
+            : chip)}
+    </>
   );
 }

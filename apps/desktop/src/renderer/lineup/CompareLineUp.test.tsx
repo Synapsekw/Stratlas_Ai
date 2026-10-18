@@ -8,9 +8,10 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { SplitModel } from '../workspace/SplitPanes';
 import { compareLineUpApp, createCompareLineUp } from './compareLineUpStore';
 import { CompareLineUp } from './CompareLineUp';
-import { lineUpApp, type LineUpDeps, type LineUpStore } from './lineUpStore';
+import { createLineUpMemory } from './lineUpMemory';
+import { createLineUpStore, lineUpApp, type LineUpDeps, type LineUpStore } from './lineUpStore';
 import { forgetMeasures } from './lineUpWatch';
-import { lineUpManifest, measureOf } from './testing';
+import { fitOf, lineUpManifest, measureOf } from './testing';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -85,24 +86,57 @@ describe('CompareLineUp', () => {
   });
 
   it('ok with a fit shows its largest move', async () => {
-    await show({ ...measureOf({ totalM: 2.04 }), fit: { verdict: 'ok', maxMoveM: 2.6 } } as never);
+    await show(measureOf({ totalM: 2.04, fit: fitOf({ verdict: 'ok', maxMoveM: 2.6 }) }));
     expect(byId('compare-lineup-label')?.textContent).toBe('2.60 m off');
   });
 
   it('Line up opens the dialog with both dates', async () => {
-    const open = vi.fn<LineUpStore['open']>(() => Promise.resolve());
-    lineUpApp.setState({
-      store: createStore(() => ({ open, notice: null })) as unknown as StoreApi<LineUpStore>,
+    const { workspace } = await show(measureOf());
+    const step = createLineUpStore({
+      workspace,
+      measure: () => Promise.resolve(measureOf()),
+      saveCapture: () => Promise.resolve(null),
+      pinCaptures: () => Promise.resolve(null),
+      hints: () => ({}),
+      issues: () => [],
+      measurements: () => [],
+      memory: createLineUpMemory(null),
+      now: () => '2026-10-18T10:00:00.000Z',
     });
-    await show(measureOf());
+    lineUpApp.setState({ store: step });
     act(() => {
       byId('compare-lineup-action')?.click();
     });
-    expect(open).toHaveBeenCalledWith('d1', 'd2', undefined);
+    await flush();
+    // both dates, the left-hand one kept; the person can still switch
+    expect(step.getState().dialog).toMatchObject({ a: 'd1', b: 'd2', keep: 'd1' });
+    act(() => {
+      step.getState().choose('d2');
+    });
+    expect(step.getState().dialog?.keep).toBe('d2');
+    // other ways in leave the choice to the person
+    step.getState().close();
+    await act(() => step.getState().open('d1', 'd2'));
+    expect(step.getState().dialog?.keep).toBeNull();
+  });
+
+  it('a failed measurement offers to measure again', async () => {
+    const { measure } = await show({ error: 'The job failed.' });
+    expect(byId('compare-lineup')?.dataset.status).toBe('cannot');
+    measure.mockResolvedValueOnce(measureOf());
+    act(() => {
+      byId('compare-lineup-chip')?.click();
+    });
+    act(() => {
+      byId('compare-lineup-retry')?.click();
+    });
+    await flush();
+    expect(measure).toHaveBeenCalledTimes(2);
+    expect(byId('compare-lineup')?.dataset.status).toBe('off');
   });
 
   it("range shows Can't line up with the reason", async () => {
-    await show({ ...measureOf(), fit: { verdict: 'range', maxMoveM: 9 } } as never);
+    await show(measureOf({ fit: fitOf({ verdict: 'range', maxMoveM: 9 }) }));
     expect(byId('compare-lineup')?.dataset.status).toBe('cannot');
     expect(byId('compare-lineup-label')?.textContent).toBe("Can't line up");
     const chip = byId('compare-lineup-chip');

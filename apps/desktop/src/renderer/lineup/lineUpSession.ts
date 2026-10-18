@@ -170,7 +170,7 @@ export function createLineUpSession(deps: LineUpSessionDeps): LineUpSession {
     measure,
     stop: () => {
       stopWatch();
-      compare.getState().stop();
+      compare.getState().dispose();
       compareLineUpApp.setState({ store: null, workspace: null });
       lineUpApp.setState({ store: null, preview: null, extents: null });
     },

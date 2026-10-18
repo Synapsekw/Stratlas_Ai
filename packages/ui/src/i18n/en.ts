@@ -4377,6 +4377,7 @@ export const en = {
   'compare.lineUp.within': 'Already within {distance}.',
   'compare.lineUp.offBy': 'The dates sit {distance} apart.',
   'compare.lineUp.saved': '{moved} lined up with {kept}',
+  'compare.lineUp.retry': 'Measure again',
   'compare.lineUp.removeOf': 'Remove line-up of {date}',
   'compare.lineUp.never': 'Neither date has been lined up.',
   'compare.lineUp.fit': 'The fit agrees within {px} px over {tiles} matching areas.',

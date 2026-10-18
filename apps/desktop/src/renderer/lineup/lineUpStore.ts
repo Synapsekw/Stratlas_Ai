@@ -107,7 +107,7 @@ export interface LineUpStore {
   offer: LineUpOfferState | null;
   notice: LineUpNoticeState | null;
   /** Open the step for two dates and measure them. */
-  open(a: string, b: string, then?: () => void): Promise<void>;
+  open(a: string, b: string, then?: () => void, opts?: { keep?: string }): Promise<void>;
   choose(keepId: string): void;
   /** Save the line-up of the date not kept. */
   confirm(): Promise<void>;
@@ -240,7 +240,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       dialog: null,
       offer: null,
       notice: null,
-      open: async (a, b, then) => {
+      open: async (a, b, then, opts) => {
         const projectId = openId();
         if (!projectId || a === b) return;
         const dialog: LineUpDialogState = {
@@ -254,6 +254,8 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
           ...(then ? { then } : {}),
         };
         set({ dialog });
+        // the Compare dates chip chooses its left-hand date; the person can still switch
+        if (opts?.keep) get().choose(opts.keep);
         await measureInto(projectId, a, b);
       },
       choose: (keepId) => {
