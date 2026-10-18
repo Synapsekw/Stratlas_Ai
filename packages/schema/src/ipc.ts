@@ -2433,7 +2433,9 @@ export const ipc = {
   /**
    * What an Auto-plan AI request would send: the route (vision when photos are allowed and crops
    * exist, else chat), the crops that go with it and the estimate. The token is valid once, for
-   * this project and these units, for a few minutes.
+   * this project and these units, for a few minutes, and binds whether photos go, the crop files
+   * and the route. The text payload (unit sizes, the model and frequency text a person typed, the
+   * catalogue) is not bound: the renderer composes it at send time in `ai:rfPlan`.
    */
   'ai:rfPlanPreview': {
     request: z

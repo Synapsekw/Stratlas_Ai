@@ -1485,22 +1485,23 @@ export function createAgentRuntime(
     const flags = await th.policy(projectId);
     if (!flags) return { error: notOpenMessage };
     if ('error' in flags) return { error: flags.error };
-    let crops: { unitId: string; path: string; dataUrl: string; sha256: string }[] = [];
-    let gate: Check | undefined;
+    // a cloud route under the forbid policy is refused before any crop is read
+    const allowed = (g: Check): g is Extract<Check, { ok: true }> =>
+      g.ok && !(g.provider.cloud && flags.ai === 'forbid');
     if (flags.photos || extraPhotos) {
-      gate = await check('vision', projectId);
-      if (!gate.ok) return { error: gate.message };
-      const found = await th.crops(projectId, unitIds);
-      const byId = new Map(found.map((c) => [c.unitId, c]));
-      crops = unitIds.flatMap((id) => byId.get(id) ?? []);
+      // the vision route only when it can answer; otherwise the chat route with text only
+      const vision = await check('vision', projectId);
+      if (allowed(vision)) {
+        const found = await th.crops(projectId, unitIds);
+        const byId = new Map(found.map((c) => [c.unitId, c]));
+        const crops = unitIds.flatMap((id) => byId.get(id) ?? []);
+        if (crops.length > 0) return { th, photosAllowed: flags.photos, gate: vision, crops };
+      }
     }
-    if (crops.length === 0) {
-      gate = await check('chat', projectId);
-      if (!gate.ok) return { error: gate.message };
-    }
-    if (!gate?.ok) return { error: MESSAGES.failed };
-    if (gate.provider.cloud && flags.ai === 'forbid') return { error: MESSAGES.forbidden };
-    return { th, photosAllowed: flags.photos, gate, crops };
+    const gate = await check('chat', projectId);
+    if (!gate.ok) return { error: gate.message };
+    if (!allowed(gate)) return { error: MESSAGES.forbidden };
+    return { th, photosAllowed: flags.photos, gate, crops: [] };
   }
 
   async function rfPlanPreview(
@@ -1609,7 +1610,9 @@ export function createAgentRuntime(
         instructions: rfPlanInstructions(),
         messages: [{ role: 'user', content }],
         maxRetries: options.maxRetries ?? 2,
-        maxOutputTokens: Math.min(16_000, 1_000 + 2 * rfPlanOutputTokens(units.length)),
+        maxOutputTokens: local
+          ? outputBudget(local.contextTokens)
+          : Math.min(16_000, 1_000 + 2 * rfPlanOutputTokens(units.length)),
         abortSignal: AbortSignal.any([run.controller.signal, AbortSignal.timeout(timeoutMs)]),
       });
     } catch (e) {

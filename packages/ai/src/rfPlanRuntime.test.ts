@@ -37,6 +37,8 @@ interface Opts {
   chatModel?: string;
   answer?: string;
   fail?: boolean;
+  /** The vision route goes to a local model that cannot see images (the chat route stays). */
+  blindLocalVision?: boolean;
 }
 
 const UNIT_IN = /ant-[0-9]+/g;
@@ -83,8 +85,17 @@ function setup(o: Opts = {}) {
     needsKey: false,
     languageModel: () => model,
   };
+  const local: ModelProvider = {
+    id: 'local',
+    label: 'local',
+    cloud: false,
+    needsKey: false,
+    languageModel: () => model,
+  };
   const routes: ModelRoute[] = [
-    { task: 'vision', provider: providerId, model: 'claude-opus-5-5' },
+    o.blindLocalVision
+      ? { task: 'vision', provider: 'local', model: 'local-text-only' }
+      : { task: 'vision', provider: providerId, model: 'claude-opus-5-5' },
     { task: 'chat', provider: providerId, model: o.chatModel ?? 'claude-opus-5-5' },
   ];
   const policyReads: string[] = [];
@@ -116,11 +127,23 @@ function setup(o: Opts = {}) {
     offlineOnly: () => o.offline === true,
     emit: () => undefined,
     routes: () => routes,
+    ...(o.blindLocalVision
+      ? {
+          localModel: () => ({
+            enabled: true,
+            baseUrl: 'http://127.0.0.1:11434/v1',
+            model: 'local-text-only',
+            capabilities: { tools: true, vision: false },
+          }),
+        }
+      : {}),
     recordUsage: (_projectId, usage) => recorded.push(usage),
     telecom,
   };
   const runtime = createAgentRuntime(host, {
-    providers: createProviderRegistry([provider]),
+    providers: createProviderRegistry(
+      o.blindLocalVision && providerId !== 'local' ? [provider, local] : [provider],
+    ),
     maxRetries: 0,
   });
   return { runtime, model, policyReads, cropReads, recorded, disk };
@@ -206,8 +229,8 @@ describe('ai:rfPlanPreview', () => {
     expect(p).toMatchObject({ ok: true, model: 'claude-sonnet-5', crops: [] });
   });
 
-  it('refuses offline-only before anything is read', async () => {
-    const t = setup({ offline: true });
+  it('refuses offline-only before any crop is read, even with photo consent', async () => {
+    const t = setup({ offline: true, photos: true });
     expect(await preview(t)).toEqual({ ok: false, error: MESSAGES.offlineOnly });
     expect(t.cropReads).toEqual([]);
   });
@@ -222,6 +245,25 @@ describe('ai:rfPlanPreview', () => {
     const t = setup({ ai: 'forbid', photos: true });
     const p = await preview(t);
     expect(p).toEqual({ ok: false, error: MESSAGES.forbidden });
+    expect(t.cropReads).toEqual([]);
+  });
+
+  it('falls back to the chat route with no crops when the vision route cannot answer', async () => {
+    const t = setup({ photos: true, blindLocalVision: true, chatModel: 'claude-sonnet-5' });
+    const p = await preview(t);
+    expect(p).toMatchObject({
+      ok: true,
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
+      cloud: true,
+      photosAllowed: true,
+      crops: [],
+    });
+    expect(t.cropReads).toEqual([]);
+    if (!p.ok) throw new Error(p.error);
+    const r = await t.runtime.rfPlan(planReq({ token: p.token }));
+    expect(r).toMatchObject({ ok: true, provider: 'anthropic', model: 'claude-sonnet-5' });
+    expect(sent(t).files).toBe(0);
   });
 
   it('a local provider costs 0', async () => {
