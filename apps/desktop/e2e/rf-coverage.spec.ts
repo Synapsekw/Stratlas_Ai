@@ -538,6 +538,8 @@ for (const size of ['1100x720', '1440x900']) {
         await expect(unitCard).toBeVisible();
         await settled(unitCard);
         await expect.poll(() => antennaClash(win)).toEqual([]);
+        // at 1440 x 900 the last draft's card lands on the stage's foot over the prompt: it yields
+        if (size === '1440x900' && id === RF_DRAFT) await expect(card).toHaveCount(0);
         if (id === RF_PANELS[0] || id === RF_DRAFT) await shot(`before-run-card-${id}`);
       }
       await selectUnit(win, null);

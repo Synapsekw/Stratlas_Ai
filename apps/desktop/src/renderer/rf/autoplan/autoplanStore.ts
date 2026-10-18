@@ -499,24 +499,29 @@ export async function applyAutoplan(run: boolean): Promise<StartResult | ApplyRe
 let pendingReview: (() => void) | null = null;
 
 /**
- * "Review antennas first": the inventory's review (`openAntennaReview`: the drafts, the first one
- * revealed). Before the inventory is read, the Measure bench opens (where it loads) and the review
- * opens once the read is in, for the project asked about; a failed read or a newer ask drops it.
+ * "Review antennas first": the Measure bench forward (the Coverage tab pinned first, so it stays
+ * open), then the inventory's review (`openAntennaReview`: the drafts, the first one revealed).
+ * Before this project's inventory is read, the review opens once the read is in; a failed read, a
+ * read of another project or a newer ask drops it.
  */
 export function openAntennaReviewOrFallback(bench: StoreApi<WorkbenchState> = workbench): void {
   pendingReview?.();
   pendingReview = null;
-  if (antennaStore.getState().status === 'ready') {
+  const wb = bench.getState();
+  if (wb.tabs.some((x) => x.id === 'rf')) wb.pin('rf', true);
+  wb.open('measure');
+  const projectId = rfStore.getState().projectId;
+  const a = antennaStore.getState();
+  if (a.status === 'ready' && a.projectId === projectId) {
     openAntennaReview();
     return;
   }
-  bench.getState().open('measure');
-  const projectId = rfStore.getState().projectId;
-  const off = antennaStore.subscribe((a) => {
-    if (a.status !== 'ready' && a.status !== 'error') return;
+  const off = antennaStore.subscribe((next) => {
+    if (next.status !== 'ready' && next.status !== 'error') return;
+    if (next.status === 'ready' && next.projectId !== projectId) return;
     off();
     pendingReview = null;
-    if (a.status === 'ready' && a.projectId === projectId) openAntennaReview();
+    if (next.status === 'ready') openAntennaReview();
   });
   pendingReview = off;
 }

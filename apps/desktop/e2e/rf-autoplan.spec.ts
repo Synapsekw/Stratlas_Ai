@@ -349,3 +349,38 @@ test('no accepted antennas: Auto-plan asks for a review, Review antennas opens M
   // nothing was planned or written
   expect(await readRfSectors(dataRoot.projectDir)).toBeNull();
 });
+
+test('drafts with the inventory drawn: Review antennas opens Measure on the first draft', async ({
+  win,
+  dataRoot,
+}) => {
+  await writeRfProject(dataRoot.projectDir, { allDraft: true, cloud: true });
+  await openTiny(win);
+  // the inventory is read (its Labels control shows in the 3D view)
+  await expect(win.getByTestId('antenna-labels-control')).toBeVisible({ timeout: 30_000 });
+  const bench = await openRfFromProjectMenu(win);
+  await expect(bench.getByTestId('rf-step-antennas')).toContainText('0 accepted · 4 drafts');
+  const chip = stageChip(win);
+  await expect(chip).toHaveAttribute('data-state', 'review-first');
+  await chip.getByTestId('rf-chip-review').click();
+  // the Measure bench comes forward, the Coverage tab kept, the first draft's card shown
+  await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+  await expect(win.locator('[role="tabpanel"][data-front="measure"]')).toBeVisible();
+  // (kept and pinned; a narrow panel may list it under More tabs)
+  const rfTab = await win.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __stratlas: {
+            workbench: { getState(): { tabs: { id: string; pinned?: boolean }[] } };
+          };
+        }
+      ).__stratlas.workbench
+        .getState()
+        .tabs.find((x) => x.id === 'rf') ?? null,
+  );
+  expect(rfTab?.pinned).toBe(true);
+  await expect(win.getByTestId('antenna-card')).toBeVisible();
+  await expect(win.getByTestId('antenna-card-name')).toHaveText('P1');
+  await evidence(win, 'review-ready-measure');
+});

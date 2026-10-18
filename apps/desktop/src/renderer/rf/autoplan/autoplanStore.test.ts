@@ -516,7 +516,9 @@ describe('applyAutoplan', () => {
 describe('openAntennaReviewOrFallback', () => {
   const bench = () => {
     const open = vi.fn();
-    return { open, store: { getState: () => ({ open }) } as never };
+    const pin = vi.fn();
+    const tabs = [{ id: 'rf' }];
+    return { open, pin, store: { getState: () => ({ open, pin, tabs }) } as never };
   };
   const drafts = () => [...site3(), draft('d1', 60), draft('d2', 90)];
 
@@ -528,7 +530,23 @@ describe('openAntennaReviewOrFallback', () => {
     // the drafts, the first one revealed; the bench is left as it is
     expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
     expect(antennaStore.getState().reveal).toBe(before + 1);
-    expect(b.open).not.toHaveBeenCalled();
+    // the Measure bench comes forward, where the inventory and the card are, Coverage pinned first
+    expect(b.pin).toHaveBeenCalledWith('rf', true);
+    expect(b.open).toHaveBeenCalledWith('measure');
+    expect(b.pin.mock.invocationCallOrder[0]).toBeLessThan(b.open.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it("waits for this project's inventory when the one read is another project's", async () => {
+    await seedAntennas(drafts());
+    antennaStore.setState({ projectId: 'p2', selected: null, filter: 'all' });
+    const b = bench();
+    openAntennaReviewOrFallback(b.store);
+    expect(b.open).toHaveBeenCalledWith('measure');
+    expect(antennaStore.getState().selected).toBeNull();
+    // this project's inventory read: the review opens
+    antennaStore.setState({ status: 'loading' });
+    antennaStore.setState({ status: 'ready', projectId: 'p1' });
+    expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
   });
 
   it('opens the Measure bench while the inventory loads, then the review once, when it is read', async () => {
@@ -546,7 +564,7 @@ describe('openAntennaReviewOrFallback', () => {
     expect(antennaStore.getState().selected).toBeNull();
   });
 
-  it('drops the waiting review on a failed read, a read of another project or a newer ask', async () => {
+  it('drops the waiting review on a failed read or a newer ask, and skips a read of another project', async () => {
     await seedAntennas(drafts());
     const b = bench();
     // a failed read
@@ -555,7 +573,7 @@ describe('openAntennaReviewOrFallback', () => {
     antennaStore.setState({ status: 'error' });
     antennaStore.setState({ status: 'ready' });
     expect(antennaStore.getState().selected).toBeNull();
-    // another project's inventory
+    // another project's inventory: not this project's review
     antennaStore.setState({ status: 'loading', projectId: 'p1' });
     openAntennaReviewOrFallback(b.store);
     antennaStore.setState({ status: 'ready', projectId: 'p2' });

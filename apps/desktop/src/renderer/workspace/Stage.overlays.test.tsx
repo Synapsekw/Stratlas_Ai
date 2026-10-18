@@ -459,17 +459,20 @@ describe('the stage corners', () => {
       const OVER = new DOMRect(40, 430, 320, 200);
       const AWAY = new DOMRect(500, 80, 320, 200);
       let antennaCard: HTMLElement;
+      /** Where the coverage card stands now (a resize may move its corner). */
+      let cardAt = CARD;
       const frames = () =>
         act(async () => {
           await new Promise((r) => setTimeout(r, 60));
         });
       beforeEach(() => {
         antennaAt = null;
+        cardAt = CARD;
         vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
           this: Element,
         ) {
           const id = this.getAttribute('data-testid');
-          if (id === 'rf-card' || id === 'rf-legend') return CARD;
+          if (id === 'rf-card' || id === 'rf-legend') return cardAt;
           if (id === 'antenna-card' && antennaAt) return antennaAt;
           return new DOMRect(0, 0, 0, 0);
         });
@@ -530,6 +533,27 @@ describe('the stage corners', () => {
         await frames();
         expect(slotOf('rf-chip')).toBeUndefined();
         select(null);
+        await frames();
+        expect(slotOf('rf-chip')).toBe('bl');
+      });
+
+      it('a resize while the prompt is aside forgets where it stood', async () => {
+        withAntennas();
+        live();
+        await frames();
+        antennaAt = OVER;
+        select('ant-a');
+        await frames();
+        expect(slotOf('rf-chip')).toBeUndefined();
+        // the window grows: the corner moves clear of the card, the old box would keep it aside
+        cardAt = new DOMRect(12, 760, 190, 120);
+        await frames();
+        expect(slotOf('rf-chip')).toBeUndefined();
+        act(() => {
+          window.dispatchEvent(new Event('resize'));
+        });
+        await frames();
+        expect(slotOf('rf-chip')).toBe('bl');
         await frames();
         expect(slotOf('rf-chip')).toBe('bl');
       });

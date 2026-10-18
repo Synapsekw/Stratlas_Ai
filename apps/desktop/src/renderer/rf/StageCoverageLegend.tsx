@@ -201,8 +201,15 @@ function useAntennaCardWatch(): boolean {
       frame = requestAnimationFrame(tick);
     };
     tick();
+    // the stage resized while the card was off it: where it stood is no longer known, so it
+    // comes back and is measured afresh (and steps aside again if the card is still over it)
+    const onResize = () => {
+      if (!cardSpot.el?.isConnected) cardSpot.box = null;
+    };
+    window.addEventListener('resize', onResize);
     return () => {
       cancelAnimationFrame(frame);
+      window.removeEventListener('resize', onResize);
     };
   }, [up]);
   return up && clash;
@@ -236,7 +243,10 @@ export function StageCoverageLegend() {
   const t = useT();
   const p = useCoverageLegendProps();
   const chip = useChipState().kind !== 'hidden';
-  const covered = useStore(clashStore, (s) => s.clash);
+  const clash = useStore(clashStore, (s) => s.clash);
+  const up = useAntennaCardUp();
+  // as the watcher reads it: only while a unit's card can be up
+  const covered = up && clash;
   if (p)
     return (
       <CoverageLegend
