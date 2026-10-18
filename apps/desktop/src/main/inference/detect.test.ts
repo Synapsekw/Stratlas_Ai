@@ -77,6 +77,25 @@ describe.skipIf(!ort)('the synthetic marker detector, run by onnxruntime', () =>
     expect(boxesOf(found)).toEqual([{ cls: 0, box: [300, 100, 332, 132] }]);
   });
 
+  it('runs wrapping tiles across the seam of a 360 frame and finds a split patch whole', async () => {
+    const run = await markerRun();
+    // one patch cut by the seam (x 980 to 1000 and 0 to 20), one in the middle
+    const frame = photo(1000, 320, [
+      { cls: 'marker', box: [980, 100, 1000, 132] },
+      { cls: 'marker', box: [0, 100, 20, 132] },
+      { cls: 'cyan-marker', box: [500, 150, 524, 182] },
+    ]);
+    const tile = { size: 320, overlap: 64 };
+    const wrapped = await detectImage(frame, { card, minConfidence: 0.5, tile, wrap: true }, run);
+    expect(boxesOf(wrapped)).toEqual([
+      { cls: 0, box: [980, 100, 1020, 132] },
+      { cls: 1, box: [500, 150, 524, 182] },
+    ]);
+    // without wrapping the seam halves stay apart
+    const plain = await detectImage(frame, { card, minConfidence: 0.5, tile }, run);
+    expect(plain.filter((b) => b.cls === 0)).toHaveLength(2);
+  });
+
   it('scales boxes to photo pixels when the photo arrived scaled', async () => {
     const run = await markerRun();
     const found = await detectImage(

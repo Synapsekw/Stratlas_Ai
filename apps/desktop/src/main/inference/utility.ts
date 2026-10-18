@@ -38,6 +38,8 @@ export interface InferenceHost {
     minConfidence: number;
     tile?: { size: number; overlap: number };
     scale?: number;
+    /** An equirectangular frame that wraps across x = width. */
+    wrap?: boolean;
   }): Promise<ScoredBox[]>;
   close(path: string): Promise<void>;
   dispose(): void;

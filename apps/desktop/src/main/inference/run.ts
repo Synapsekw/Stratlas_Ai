@@ -4,6 +4,13 @@
  * detections (`source: 'model'`, data-conventions sections 11 and 16). Progress is an event per
  * photo; cancel stops after the photo in hand and keeps the finished ones; running the same run id
  * again skips the photos its pass already assessed (resume).
+ *
+ * Frames of a walk layer (360 video, `{layer, t}` items) run the same way: main decodes the frame
+ * of the playback copy at `t` with ffmpeg and the whole equirectangular frame goes to the model.
+ * Their boxes are in source pixels of the playback copy (`space: 'source'`, `frame: {layer, t}`),
+ * and the halves of an object cut by the seam at x = width are merged into one box that wraps
+ * (x1 > width, `seam.ts`). A walk pass names its frames in `assessed` as `t:<milliseconds>`.
+ * Frames of ordinary video layers are refused.
  */
 import type {
   Detection,
@@ -13,11 +20,15 @@ import type {
   IpcRequest,
   IpcResponse,
   ProjectManifest,
+  WalkFile,
 } from '@aio/schema';
 import { createHash } from 'node:crypto';
 import type { DecodedImage } from '../maskAssist';
 import { layoutProblem, type NamedTensor } from './layouts';
 import type { FoundModel } from './models';
+import type { ScoredBox } from './nms';
+import { mergeSeam, nmsWrap } from './seam';
+import type { RgbaImage } from './tile';
 import type { InferenceHost } from './utility';
 import type { ProviderSetting } from './worker';
 
@@ -37,6 +48,18 @@ export interface RunDeps {
   model(id: string): Promise<FoundModel | null>;
   /** A photo of the project (relative path) decoded, scaled to at most `maxSide`. */
   decode(root: string, rel: string, maxSide: number): Promise<DecodedImage>;
+  /** The frame of a project video (relative path) at `t` s, as RGBA of `width` x `height`. */
+  decodeFrame(
+    root: string,
+    rel: string,
+    t: number,
+    width: number,
+    height: number,
+  ): Promise<RgbaImage>;
+  /** The picture size of a project video (relative path), read from the file. */
+  videoSize(root: string, rel: string): Promise<{ width: number; height: number }>;
+  /** A walk's `walk.json` (relative path), or null when it is missing or does not parse. */
+  readWalk(root: string, rel: string): Promise<WalkFile | null>;
   host(): InferenceHost;
   provider(): ProviderSetting;
   readPass(root: string, name: string): Promise<DetectionsFile | null>;
@@ -54,11 +77,19 @@ export interface RunDeps {
 export const modelPassName = (runId: string) =>
   `model-${runId.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 100)}.json`;
 
-const detectionId = (runId: string, layer: string, photo: string, k: number) =>
+/** `item` is the photo id, or the frame's time in whole milliseconds. */
+const detectionId = (runId: string, layer: string, item: string, k: number) =>
   `m-${createHash('sha1')
-    .update(`${runId}|${layer}|${photo}|${String(k)}`)
+    .update(`${runId}|${layer}|${item}|${String(k)}`)
     .digest('hex')
     .slice(0, 16)}`;
+
+const frameMs = (t: number) => Math.round(t * 1000);
+/** How a walk pass names a frame in `assessed`. */
+export const frameKey = (t: number) => `t:${String(frameMs(t))}`;
+
+const relOf = (src: { path: string } | { hash: string }) =>
+  'path' in src ? src.path : `assets/sha256/${src.hash}`;
 
 /** The dummy-inference layout check for import: null when the outputs fit the card. */
 export function probeWith(host: () => InferenceHost) {
@@ -90,7 +121,27 @@ export function probeWith(host: () => InferenceHost) {
   };
 }
 
-/** The pass of one photos layer during a run. */
+/** One photo or walk frame of a run. */
+interface PhotoWork {
+  kind: 'photo';
+  layer: string;
+  /** The photo id (as `assessed` names it). */
+  key: string;
+  rel: string;
+}
+interface FrameWork {
+  kind: 'frame';
+  layer: string;
+  /** `t:<ms>` (as `assessed` names it). */
+  key: string;
+  t: number;
+  /** The playback copy and the walk's `walk.json`. */
+  rel: string;
+  record: string;
+}
+type Work = PhotoWork | FrameWork;
+
+/** The pass of one photos or walk layer during a run. */
 interface PassState {
   name: string;
   resumed: DetectionsFile | null;
@@ -111,11 +162,6 @@ export function createRunner(deps: RunDeps): Runner {
     if (active.has(req.runId)) return { ok: false, error: `Run ${req.runId} is already going.` };
     const project = await deps.project(req.projectId);
     if ('error' in project) return { ok: false, error: project.error };
-    if (req.items.some((i) => !('photo' in i)))
-      return {
-        ok: false,
-        error: 'Local detection works on photos. Video frames are not supported yet: pick photos.',
-      };
     const found = await deps.model(req.model);
     if (!found)
       return {
@@ -123,16 +169,48 @@ export function createRunner(deps: RunDeps): Runner {
         error: `There is no detector model "${req.model}". Import it in Settings, Detection models.`,
       };
     const { card } = found.info;
-    const photos = req.items.flatMap((i) => ('photo' in i ? [i] : []));
-    const layers = new Map(
-      project.manifest.layers.flatMap((l) => (l.kind === 'photos' ? [[l.id, l] as const] : [])),
-    );
-    for (const it of photos) {
+    const layers = new Map(project.manifest.layers.map((l) => [l.id, l] as const));
+
+    // the items as work, each once: a photo by its id, a walk frame by `t:<ms>`
+    const work: Work[] = [];
+    const seen = new Set<string>();
+    for (const it of req.items) {
       const layer = layers.get(it.layer);
-      if (!layer)
-        return { ok: false, error: `There is no photos layer "${it.layer}" in this project.` };
-      if (!layer.items.some((p) => p.id === it.photo))
-        return { ok: false, error: `There is no photo "${it.photo}" in ${layer.name}.` };
+      let w: Work;
+      if ('photo' in it) {
+        if (layer?.kind !== 'photos')
+          return { ok: false, error: `There is no photos layer "${it.layer}" in this project.` };
+        const photo = layer.items.find((p) => p.id === it.photo);
+        if (!photo)
+          return { ok: false, error: `There is no photo "${it.photo}" in ${layer.name}.` };
+        w = { kind: 'photo', layer: it.layer, key: it.photo, rel: relOf(photo.src) };
+      } else {
+        if (layer?.kind === 'video')
+          return {
+            ok: false,
+            error:
+              'Local detection on ordinary video clips is not supported yet: pick photos or a 360 walk.',
+          };
+        if (layer?.kind !== 'walk')
+          return { ok: false, error: `There is no 360 walk layer "${it.layer}" in this project.` };
+        if (layer.durationS > 0 && it.t > layer.durationS + 0.5)
+          return {
+            ok: false,
+            error: `${layer.name} lasts ${String(layer.durationS)} s: there is no frame at ${String(it.t)} s.`,
+          };
+        w = {
+          kind: 'frame',
+          layer: it.layer,
+          key: frameKey(it.t),
+          t: it.t,
+          rel: relOf(layer.src),
+          record: relOf(layer.record),
+        };
+      }
+      const id = `${w.layer}|${w.key}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      work.push(w);
     }
 
     const host = deps.host();
@@ -143,9 +221,9 @@ export function createRunner(deps: RunDeps): Runner {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
 
-    // One pass per photos layer: a pass names its photos by the file's `layer`, and photo ids
-    // repeat across layers (each date of a two-date project has its own p01, p02, ...).
-    const layerIds = [...new Set(photos.map((p) => p.layer))];
+    // One pass per layer: a pass names its photos by the file's `layer`, and photo ids repeat
+    // across layers (each date of a two-date project has its own p01, p02, ...).
+    const layerIds = [...new Set(work.map((p) => p.layer))];
     const several = layerIds.length > 1;
     const passes = new Map(
       await Promise.all(
@@ -183,7 +261,7 @@ export function createRunner(deps: RunDeps): Runner {
       },
       detections: p.detections,
     });
-    // a layer's pass is written once one of its photos is done (a run of one layer always)
+    // a layer's pass is written once one of its items is done (a run of one layer always)
     const written = () => [...passes].filter(([, p]) => !several || p.assessed.length > 0);
     const save = async () => {
       for (const [layer, p] of written()) {
@@ -193,8 +271,8 @@ export function createRunner(deps: RunDeps): Runner {
     };
     const foundCount = () => all.reduce((n, p) => n + p.detections.length, 0);
 
-    const todo = photos.filter((p) => !passes.get(p.layer)?.done.has(p.photo));
-    const total = photos.length;
+    const todo = work.filter((w) => !passes.get(w.layer)?.done.has(w.key));
+    const total = work.length;
     let count = all.reduce((n, p) => n + p.assessed.length, 0);
     const report = (current?: string) => {
       deps.progress({
@@ -207,60 +285,118 @@ export function createRunner(deps: RunDeps): Runner {
     };
     report();
     const maxSide = req.tile ? MAX_TILED_SIDE : Math.max(card.input.width, card.input.height);
+    // the source size of each walk's playback copy: walk.json, else the file itself
+    const sizes = new Map<string, Promise<{ width: number; height: number }>>();
+    const sourceSize = (w: FrameWork) => {
+      let p = sizes.get(w.layer);
+      if (!p) {
+        p = deps.readWalk(project.root, w.record).then(
+          (f) => f?.video ?? deps.videoSize(project.root, w.rel),
+          () => deps.videoSize(project.root, w.rel),
+        );
+        sizes.set(w.layer, p);
+      }
+      return p;
+    };
+
+    /** Decoded pixels and their source size, or null when the item cannot be read (skipped). */
+    const decodeItem = async (
+      w: Work,
+    ): Promise<{ img: RgbaImage; width: number; height: number } | null> => {
+      try {
+        if (w.kind === 'photo') {
+          const d = await deps.decode(project.root, w.rel, maxSide);
+          return {
+            img: { width: d.scaledWidth, height: d.scaledHeight, rgba: d.rgba },
+            width: d.width,
+            height: d.height,
+          };
+        }
+        const src = await sourceSize(w);
+        // the photo path's pre-scale: the longer side at most maxSide
+        const s = Math.min(1, maxSide / Math.max(src.width, src.height));
+        const dw = Math.max(1, Math.round(src.width * s));
+        const dh = Math.max(1, Math.round(src.height * s));
+        const img = await deps.decodeFrame(project.root, w.rel, w.t, dw, dh);
+        return { img, width: src.width, height: src.height };
+      } catch (e) {
+        deps.log?.(`inference: ${w.layer} ${w.key} skipped: ${String(e)}`);
+        return null;
+      }
+    };
+
     let failure: string | null = null;
     let sinceSave = 0;
     try {
-      for (const it of todo) {
+      for (const w of todo) {
         if (ac.signal.aborted) break;
-        const layer = layers.get(it.layer);
-        const photo = layer?.items.find((p) => p.id === it.photo);
-        const pass = passes.get(it.layer);
-        if (!photo || !pass) continue;
-        const rel = 'path' in photo.src ? photo.src.path : `assets/sha256/${photo.src.hash}`;
-        let img: DecodedImage;
-        try {
-          img = await deps.decode(project.root, rel, maxSide);
-        } catch (e) {
-          deps.log?.(`inference: ${it.photo} skipped: ${String(e)}`);
+        const pass = passes.get(w.layer);
+        if (!pass) continue;
+        const got = await decodeItem(w);
+        if (!got) {
           count++;
-          report(it.photo);
+          report(w.key);
           continue;
         }
         if (stopped()) break;
-        const boxes = await host.detect({
+        const { img, width, height } = got;
+        const frame = w.kind === 'frame';
+        const scale = img.width / width;
+        let boxes: ScoredBox[] = await host.detect({
           session,
-          image: { width: img.scaledWidth, height: img.scaledHeight, rgba: img.rgba },
+          image: img,
           card,
           minConfidence: req.minConfidence,
           ...(req.tile ? { tile: req.tile } : {}),
-          scale: img.scaledWidth / img.width,
+          scale,
+          ...(frame ? { wrap: true } : {}),
         });
+        // the halves of an object the seam cut become one box that wraps (x1 > width); a
+        // decoded pixel is 1 / scale source pixels, so the edge margin grows with the scale-down
+        if (frame)
+          boxes = nmsWrap(mergeSeam(boxes, width, { margin: Math.max(2, 2 / scale) }), width);
         const at = deps.now();
         boxes.forEach((b, k) => {
           const modelClass = card.classes[b.cls] ?? `class ${String(b.cls)}`;
           const mapped = req.classMap[modelClass];
-          pass.detections.push({
-            id: detectionId(req.runId, it.layer, it.photo, k),
-            photo: it.photo,
+          const common = {
             class: mapped ?? modelClass,
             ...(mapped ? {} : { label: modelClass }),
             confidence: Math.round(b.score * 1000) / 1000,
-            status: 'draft',
-            source: 'model',
-            bbox: [
-              Math.max(0, b.x0),
-              Math.max(0, b.y0),
-              Math.min(img.width, b.x1),
-              Math.min(img.height, b.y1),
-            ],
-            space: 'preview',
+            status: 'draft' as const,
+            source: 'model' as const,
             origin: { model: req.model, runId: req.runId },
             createdAt: at,
-          });
+          };
+          if (w.kind === 'frame') {
+            const x0 = Math.max(0, b.x0);
+            pass.detections.push({
+              id: detectionId(req.runId, w.layer, String(frameMs(w.t)), k),
+              frame: { layer: w.layer, t: w.t },
+              ...common,
+              // a box across the seam keeps x1 > width; it never wraps more than once
+              bbox: [x0, Math.max(0, b.y0), Math.min(x0 + width, b.x1), Math.min(height, b.y1)],
+              space: 'source',
+              width,
+              height,
+            });
+          } else
+            pass.detections.push({
+              id: detectionId(req.runId, w.layer, w.key, k),
+              photo: w.key,
+              ...common,
+              bbox: [
+                Math.max(0, b.x0),
+                Math.max(0, b.y0),
+                Math.min(width, b.x1),
+                Math.min(height, b.y1),
+              ],
+              space: 'preview',
+            });
         });
-        pass.assessed.push(it.photo);
+        pass.assessed.push(w.key);
         count++;
-        report(it.photo);
+        report(w.key);
         if (++sinceSave >= SAVE_EVERY) {
           sinceSave = 0;
           await save();
@@ -278,11 +414,17 @@ export function createRunner(deps: RunDeps): Runner {
     }
     report();
     const files = written().map(([, p]) => `detections/${p.name}`);
-    if (failure)
+    if (failure) {
+      const what = work.every((w) => w.kind === 'photo')
+        ? 'photos'
+        : work.every((w) => w.kind === 'frame')
+          ? 'frames'
+          : 'photos and frames';
       return {
         ok: false,
-        error: `${failure} The ${String(all.reduce((n, p) => n + p.assessed.length, 0))} photos done are kept in ${files.join(', ')}.`,
+        error: `${failure} The ${String(all.reduce((n, p) => n + p.assessed.length, 0))} ${what} done are kept in ${files.join(', ')}.`,
       };
+    }
     // the first pass written (a run over several layers writes one per layer)
     return { ok: true, file: files[0] ?? `detections/${all[0]?.name ?? ''}`, count: foundCount() };
   }
