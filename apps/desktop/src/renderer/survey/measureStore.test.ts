@@ -23,7 +23,6 @@ import {
   setMeasurementColour,
   setMeasurementHidden,
   setMeasurementsHidden,
-  setMeasurementsVisible,
   setMeasureVisibilityMemory,
   dismissUndoDelete,
   setAutosave,
@@ -87,7 +86,9 @@ const measurement = (id: string, style?: { color: string; fill?: string }) => ({
   ...(style ? { style } : {}),
 });
 /** Load a saved file with these measurements for 'p1' through the mocked bridge. */
-async function loadFile(ms: ReturnType<typeof measurement>[]): Promise<void> {
+async function loadFile(
+  ms: (ReturnType<typeof measurement> & { folder?: string })[],
+): Promise<void> {
   io.saved = MeasurementsFile.parse({ schema: 'aio.measurements/1', measurements: ms });
   measureStore.setState({ projectId: null });
   await loadMeasurements('p1');
@@ -201,32 +202,6 @@ describe('telecom fixed point drawing and persistence', () => {
 });
 
 describe('saved measurement view visibility', () => {
-  it('hides editing handles without changing saved data or requiring a write, including in read-only mode', () => {
-    startTool('clearance');
-    click([0, 0, 1]);
-    click([0, 0, 3]);
-    startEditing();
-    const file = measureStore.getState().file;
-    measureStore.setState({ readOnly: true, savedText: JSON.stringify(file) });
-    setMeasurementsVisible(false);
-    expect(measureStore.getState().measurementsVisible).toBe(false);
-    expect(measureStore.getState().editing).toBeNull();
-    expect(measureStore.getState().file).toBe(file);
-    expect(isDirty(measureStore.getState())).toBe(false);
-    expect(io.writes).toBe(0);
-    setMeasurementsVisible(true);
-    expect(measureStore.getState().measurementsVisible).toBe(true);
-  });
-
-  it('resets visibility on a project switch while leaving an active draft usable during a view toggle', async () => {
-    startTool('azimuth');
-    click([0, 0, 1]);
-    setMeasurementsVisible(false);
-    expect(measureStore.getState().draw?.points).toHaveLength(1);
-    await loadMeasurements(null);
-    expect(measureStore.getState().measurementsVisible).toBe(true);
-  });
-
   it('drawing and editing do not unhide; a new measurement is visible', async () => {
     await loadFile([measurement('m1'), measurement('m2')]);
     setMeasurementsHidden(['m1'], true);
@@ -290,7 +265,7 @@ describe('one Distance tool, with a measure-without-saving mode (D19)', () => {
     expect(io.writes).toBe(0);
   });
 
-  it('hides and shows one saved measurement in the views; Show all brings every one back', () => {
+  it('hides and shows one saved measurement in the views', () => {
     startTool('distance');
     click([0, 0, 0]);
     click([3, 4, 0]);
@@ -299,9 +274,6 @@ describe('one Distance tool, with a measure-without-saving mode (D19)', () => {
     setMeasurementHidden(id, true);
     expect(measureStore.getState().hiddenMeasurements).toEqual([id]);
     setMeasurementHidden(id, false);
-    expect(measureStore.getState().hiddenMeasurements).toEqual([]);
-    setMeasurementHidden(id, true);
-    setMeasurementsVisible(true);
     expect(measureStore.getState().hiddenMeasurements).toEqual([]);
     // view state only: the file is untouched
     expect(isDirty(measureStore.getState())).toBe(true);

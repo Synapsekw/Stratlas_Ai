@@ -150,8 +150,11 @@ export interface MeasureState {
   /** The measurement the panel shows. */
   focus: string | null;
   editing: EditState | null;
-  /** View-only overlay visibility for every saved tool; reset when changing projects. */
-  measurementsVisible: boolean;
+  /**
+   * Always true: the one switch for every saved measurement is gone (the tree's eyes hide them one
+   * by one, `hiddenMeasurements`). Kept read-only for the readers that still compare it.
+   */
+  readonly measurementsVisible: true;
   /** Saved measurements hidden one by one in the views (the eye on their row; view only). */
   hiddenMeasurements: readonly string[];
   /**
@@ -534,15 +537,6 @@ export function select(ids: string[], focus?: string | null): void {
 export function toggleSelected(id: string): void {
   const s = get();
   select(s.selected.includes(id) ? s.selected.filter((x) => x !== id) : [...s.selected, id], id);
-}
-
-/** View visibility does not mutate saved data, so it is also available in read-only packages. */
-export function setMeasurementsVisible(visible: boolean): void {
-  set({
-    measurementsVisible: visible,
-    hiddenMeasurements: [],
-    ...(!visible ? { editing: null } : {}),
-  });
 }
 
 /**

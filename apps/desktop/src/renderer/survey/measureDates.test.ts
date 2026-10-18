@@ -55,7 +55,6 @@ const state = {
   },
   editing: null,
   focus: null,
-  measurementsVisible: true,
 };
 
 const ids = (ms: SurveyMeasurement[]) => ms.map((m) => m.id);
@@ -89,7 +88,7 @@ describe('measurementsOn', () => {
     expect(ids(measurementsOn(editing, left.getState()))).toEqual(['m-site', 'm-jan', 'm-jun']);
   });
 
-  it('hides all measurement tools, including focused edits, without bypassing date scope on show', () => {
+  it('shows every measurement tool, without bypassing date scope', () => {
     const mixed = {
       ...state,
       file: {
@@ -106,13 +105,6 @@ describe('measurementsOn', () => {
         ],
       },
     };
-    const hidden = {
-      ...mixed,
-      measurementsVisible: false,
-      focus: 'm-jun',
-      editing: { points: [] } as never,
-    };
-    expect(measurementsOn(hidden, ws.getState())).toEqual([]);
     expect(ids(measurementsOn(mixed, ws.getState()))).toEqual([
       'm-site',
       'm-jun',
