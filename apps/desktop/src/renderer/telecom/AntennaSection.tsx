@@ -2,8 +2,11 @@
  * The antenna inventory as a section of the Measure workbench: the run's warnings, the units by
  * kind and the selected unit's details. A unit picked in the 3D view holds the section open while
  * it stays selected (without changing the person's own fold) and its row scrolls into view once
- * the section has opened; a click on the header ends the hold and folds it. A search shows the section only when its title matches. Why the AI
- * labelling was skipped shows above the section, so no fold hides it. The boxes, the
+ * the section has opened; a reveal with nothing selected (`openAntennaReview` without a draft)
+ * holds it open until the next reveal. A click on the header ends the hold and folds it. A reveal
+ * made while the section was not mounted is honoured when it mounts. A search shows the section
+ * only when its title matches. Why the AI labelling was skipped shows above the section, so no
+ * fold hides it. The boxes, the
  * inventory read and the AI send preview are `AntennaRunner`'s; the "Detect antennas" button is in
  * the Telecom family (`survey/DetectAntennas.tsx`), the CSV export next to "Export survey data"
  * (`AntennaCsvTool.tsx`).
@@ -31,6 +34,9 @@ const SECTION = 'telecom-antennas';
 /** The longest a fold takes to open (section.css) before a revealed row scrolls anyway. */
 const OPEN_FALLBACK_MS = 400;
 
+/** The last reveal a section has taken (any instance), so one made while none was mounted counts. */
+let lastReveal = 0;
+
 /** Whether the inventory section is shown for a search (its title matches) or without one. */
 export function antennaSectionMatches(query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -43,16 +49,20 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
   const hasCloud = useAntennaClouds().length > 0;
   const host = useRef<HTMLDivElement>(null);
   const sections = useSections(BENCH);
-  // the last pick seen, and the unit it holds open while that unit stays selected
-  const [seen, setSeen] = useState(s.reveal);
-  const [hold, setHold] = useState<string | null>(null);
+  // the last reveal seen, and what it holds open: a unit while it stays selected, or (id null)
+  // the section until the next reveal or a header click
+  const [seen, setSeen] = useState(() => (s.reveal > lastReveal ? lastReveal : s.reveal));
+  const [hold, setHold] = useState<{ id: string | null } | null>(null);
   if (s.reveal !== seen) {
     setSeen(s.reveal);
-    setHold(s.selected);
-  } else if (hold !== null && s.selected !== hold) setHold(null);
+    setHold({ id: s.selected });
+  } else if (hold !== null && hold.id !== null && s.selected !== hold.id) setHold(null);
+  useEffect(() => {
+    lastReveal = seen;
+  }, [seen]);
 
   // scroll the revealed row into view once the fold has opened (it animates from zero height)
-  const seq = hold === null ? undefined : seen;
+  const seq = (hold?.id ?? null) === null ? undefined : seen;
   useEffect(() => {
     if (seq === undefined) return;
     const section = host.current?.closest<HTMLElement>('.wb-section');

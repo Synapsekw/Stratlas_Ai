@@ -20,7 +20,14 @@ import { measureStore, startTool, stopTool } from '../survey/measureStore';
 import { MeasureBench } from '../workspace/workbench/benches/MeasureBench';
 import { AntennaRunner } from './AntennaRunner';
 import { sectionStore } from '../workspace/workbench/sectionState';
-import { antennaStore, loadAntennas, runDetection, setAiLabelPref } from './antennaStore';
+import {
+  antennaStore,
+  filteredUnits,
+  loadAntennas,
+  openAntennaReview,
+  runDetection,
+  setAiLabelPref,
+} from './antennaStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -88,6 +95,7 @@ vi.mock('./antennaScene', () => ({
   armTowerPick: () => () => undefined,
   antennaShift: () => null,
   antennaLabelSpots: () => [],
+  labelSpotsCache: () => () => [],
 }));
 // the labels and the camera framing are the runner's own tests
 vi.mock('./antennaLabels', () => ({ attachAntennaLabels: () => () => undefined }));
@@ -380,6 +388,61 @@ describe('the antenna inventory in the Measure workbench', () => {
       head()!.click();
     });
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
+  });
+});
+
+describe('openAntennaReview (another tool asks for the review)', () => {
+  it('opens a folded section on the first draft and scrolls its row into view', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await mount();
+    act(() => {
+      head()!.click();
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+    const s = antennaStore.getState();
+    const first = filteredUnits(s.file, 'draft')[0]!.id;
+    act(() => {
+      openAntennaReview();
+    });
+    expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: first });
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
+  });
+
+  it('with no draft, opens the section with nothing selected until the header folds it', async () => {
+    const f = sample();
+    h.disk = { ...f, units: f.units.map((u) => ({ ...u, status: 'accepted' as const })) };
+    await mount();
+    act(() => {
+      head()!.click();
+    });
+    act(() => {
+      openAntennaReview();
+    });
+    expect(antennaStore.getState().selected).toBeNull();
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    expect(q('[data-testid="antenna-filter-draft"]')?.getAttribute('aria-selected')).toBe('true');
+    act(() => {
+      head()!.click();
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('opens the section when it mounts after the call (another tab was in front)', async () => {
+    await mount();
+    act(() => {
+      head()!.click();
+    });
+    await mount('none');
+    act(() => {
+      openAntennaReview();
+    });
+    await mount();
+    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    expect(antennaStore.getState().selected).not.toBeNull();
   });
 });
 

@@ -23,6 +23,7 @@ import {
   filteredUnits,
   toggleGroupHidden,
   loadAntennas,
+  openAntennaReview,
   patchUnitUser,
   runDetection,
   selectAntenna,
@@ -635,6 +636,92 @@ describe('review walk', () => {
     expect(state().note).toBeNull();
     setAntennaFilter('rejected');
     expect(sel()).toBeNull();
+  });
+
+  it('loading selects nothing, and a filter change keeps nothing selected', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['acc', 'panel', 'accepted'],
+    ]);
+    await loadAntennas('p1', '/p');
+    expect(sel()).toBeNull();
+    setAntennaFilter('all');
+    expect(sel()).toBeNull();
+    setAntennaFilter('accepted');
+    expect(sel()).toBeNull();
+    await loadAntennas('p1', '/p');
+    expect(sel()).toBeNull();
+  });
+
+  it('a filter change keeps a selection that stays inside it', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['acc', 'panel', 'accepted'],
+    ]);
+    await loadAntennas('p1', '/p');
+    selectAntenna('acc');
+    setAntennaFilter('all');
+    expect(sel()).toBe('acc');
+  });
+
+  it('decide on a selection outside the filter moves to the first unit of the filter', async () => {
+    h.disk.file = fileOf([
+      ['acc', 'panel', 'accepted'],
+      ['d1', 'panel', 'draft'],
+      ['d2', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    expect(state().filter).toBe('draft');
+    // a pick in 3D can select a unit the filter does not list
+    selectAntenna('acc');
+    await decideAntenna('rejected');
+    expect(unit(0).status).toBe('rejected');
+    expect(sel()).toBe('d1');
+  });
+
+  it('decide leaves a selection made while its write was going', async () => {
+    h.disk.file = fileOf([
+      ['d1', 'panel', 'draft'],
+      ['d2', 'panel', 'draft'],
+      ['d3', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    selectAntenna('d1');
+    const going = decideAntenna('accepted');
+    selectAntenna('d3');
+    await going;
+    expect(unit(0).status).toBe('accepted');
+    expect(sel()).toBe('d3');
+  });
+
+  it('openAntennaReview reveals the first draft in the panel order', async () => {
+    h.disk.file = fileOf([
+      ['o1', 'other', 'draft'],
+      ['acc', 'panel', 'accepted'],
+      ['s1', 'short', 'draft'],
+      ['p1', 'panel', 'draft'],
+    ]);
+    await loadAntennas('p1', '/p');
+    setAntennaFilter('all');
+    const before = state().reveal;
+    openAntennaReview();
+    expect(state().filter).toBe('draft');
+    expect(sel()).toBe('p1');
+    expect(state().reveal).toBe(before + 1);
+  });
+
+  it('openAntennaReview without drafts only reveals the section', async () => {
+    h.disk.file = fileOf([
+      ['a', 'panel', 'accepted'],
+      ['b', 'dish', 'rejected'],
+    ]);
+    await loadAntennas('p1', '/p');
+    expect(state().filter).toBe('all');
+    const before = state().reveal;
+    openAntennaReview();
+    expect(state().filter).toBe('draft');
+    expect(sel()).toBeNull();
+    expect(state().reveal).toBe(before + 1);
   });
 
   it('Accept on the active filter moves to the next, and says done after the last', async () => {

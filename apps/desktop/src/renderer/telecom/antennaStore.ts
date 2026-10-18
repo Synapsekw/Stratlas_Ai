@@ -107,7 +107,8 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
   const same = get().projectId === projectId && get().root === root;
   const previousRunId = same ? (get().file?.run.id ?? null) : null;
   if (same) set({ status: get().file ? get().status : 'loading' });
-  else set({ ...initial(), projectId, root, status: 'loading' });
+  // the reveal count carries on: the inventory section tells a new reveal by it
+  else set({ ...initial(), reveal: get().reveal, projectId, root, status: 'loading' });
   const r = await bridge.call('telecom:readAntennas', { projectId });
   if (seq !== loadSeq || get().projectId !== projectId) return;
   if (!r.ok || !r.value.ok) {
@@ -306,12 +307,28 @@ export function filteredUnits(file: AntennasFile | null, filter: AntennaFilter):
   return KIND_ORDER.flatMap((k) => shown.filter((u) => u.kind === k));
 }
 
-/** Switch the filter; a selection outside it moves to the first unit inside it (or none). */
+/**
+ * Switch the filter. No selection stays none (a filter lists, it opens no card); a selection
+ * outside the new filter moves to its first unit, or to none when it is empty.
+ */
 export function setAntennaFilter(f: AntennaFilter): void {
   const { file, selected } = get();
   const list = filteredUnits(file, f);
-  const keep = selected !== null && list.some((u) => u.id === selected);
-  set({ filter: f, note: null, selected: keep ? selected : (list[0]?.id ?? null) });
+  const next =
+    selected === null || list.some((u) => u.id === selected) ? selected : (list[0]?.id ?? null);
+  set({ filter: f, note: null, selected: next });
+}
+
+/**
+ * Start reviewing the drafts (another tool's "review antennas"): the "To review" filter, its first
+ * unit in the panel's order selected and revealed (the section opens, the row scrolls into view,
+ * the camera frames it and the card shows). With no draft, the inventory section only opens.
+ */
+export function openAntennaReview(): void {
+  const first = filteredUnits(get().file, 'draft')[0];
+  set({ filter: 'draft', note: null });
+  if (first) revealAntenna(first.id);
+  else set({ selected: null, reveal: get().reveal + 1 });
 }
 
 /** The group eye: hide the whole kind when any of it shows, else show it all. */
