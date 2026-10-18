@@ -8,11 +8,14 @@ import pytest
 
 from aio_pipelines.captures import (
     capture_shift,
+    capture_similarity,
     date_shift,
+    date_similarity,
     layer_captures,
     local_delta,
     shift_transform,
 )
+from aio_pipelines.similarity import Similarity
 
 FIXTURE = (
     Path(__file__).resolve().parents[2]
@@ -84,3 +87,36 @@ def test_no_shift_for_a_change_result():
     assert capture_shift(m, "c1") == (1.5, 0.5)
     assert capture_shift(m, "c2") == (0.0, 0.0)
     assert capture_shift(m, "nope") == (0.0, 0.0)
+
+
+def test_similarity_reads_lineup_turn():
+    m = _manifest("Scan 20201231")
+    turn = {"rotationDeg": 0.5, "scale": 1.001, "pivotE": 500100.0, "pivotN": 3200200.0}
+    m["captures"][0]["lineUp"] = {"eastM": 2.0, "northM": 0.0}
+    m["captures"][0]["lineUpTurn"] = turn
+    m["layers"].append(
+        {
+            "kind": "mesh",
+            "id": "ch",
+            "name": "Change 20201231",
+            "capture": "c1",
+            "derived": {"kind": "change"},
+        }
+    )
+    want = Similarity(2.0, 0.0, 0.5, 1.001, 500100.0, 3200200.0)
+    assert capture_similarity(m, "c1") == want
+    assert date_similarity(m, "x") == want
+    assert date_similarity(m, "x").to_turn() == turn
+    # the shift alone is unchanged for the readers that only take a shift
+    assert capture_shift(m, "c1") == (2.0, 0.0)
+    assert date_shift(m, "x") == (2.0, 0.0)
+    # the same rules as date_shift: nothing for a change result, an unknown or a plain date
+    for s in (date_similarity(m, "ch"), capture_similarity(m, "c2"), capture_similarity(m, "nope")):
+        assert s.is_identity()
+    # a date with a shift only is a pure shift; a turn with no shift still turns
+    del m["captures"][0]["lineUpTurn"]
+    assert capture_similarity(m, "c1") == Similarity(2.0, 0.0)
+    m["captures"][0]["lineUp"] = {"eastM": 0.0, "northM": 0.0}
+    m["captures"][0]["lineUpTurn"] = turn
+    assert capture_similarity(m, "c1").has_turn()
+    assert capture_similarity(m, "c1").apply_en(500100.0, 3200200.0) == pytest.approx((500100.0, 3200200.0))

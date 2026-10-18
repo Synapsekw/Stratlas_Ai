@@ -20,12 +20,14 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from ..captures import ZERO_M
 from ..runtime import JobError, atomic_write_bytes, now_iso
+from ..similarity import Similarity
 
 CHANGE_SCHEMA = "aio.change/1"
 CHANGE_DIR = "change"
 SET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
+#: A date's line-up as a change set records it: an (east, north) shift or the whole similarity.
+LineUp = tuple[float, float] | Similarity
 
 #: The verdicts each kind of item may carry (``CHANGE_VERDICTS`` in ``change.ts``).
 VERDICTS: dict[str, frozenset[str]] = {
@@ -104,14 +106,15 @@ def change_set(
     run: Mapping[str, Any] | None = None,
     registration: Mapping[str, Any] | None = None,
     coverage: float | None = None,
-    line_up: tuple[tuple[float, float], tuple[float, float]] | None = None,
+    line_up: tuple[LineUp, LineUp] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     """Build and check a change set.
 
-    ``line_up`` is the (east, north) shift of each date (``from``, ``to``) when it was computed;
-    written as ``lineUp`` only when either is not zero, so the app can tell a set made before a
-    later line-up.
+    ``line_up`` is the line-up of each date (``from``, ``to``) when it was computed: an (east,
+    north) shift or a ``Similarity``. Written as ``lineUp`` only when either is not zero, so the
+    app can tell a set made before a later line-up. A date's turn and scale go beside it, in
+    ``lineUpTurn`` (``lineUp`` is a strict object), for the dates that have one.
     """
     data: dict[str, Any] = {
         "schema": CHANGE_SCHEMA,
@@ -130,8 +133,15 @@ def change_set(
         data["registration"] = dict(registration)
     if coverage is not None:
         data["coverage"] = float(coverage)
-    if line_up is not None and any(abs(v) > ZERO_M for s in line_up for v in s):
-        data["lineUp"] = {k: _metres(s) for k, s in zip(("from", "to"), line_up, strict=True)}
+    if line_up is not None:
+        sims = [s if isinstance(s, Similarity) else Similarity(float(s[0]), float(s[1])) for s in line_up]
+        if not all(s.is_identity() for s in sims):
+            data["lineUp"] = {
+                k: _metres((s.east_m, s.north_m)) for k, s in zip(("from", "to"), sims, strict=True)
+            }
+            turns = {k: s.to_turn() for k, s in zip(("from", "to"), sims, strict=True)}
+            if any(turns.values()):
+                data["lineUpTurn"] = {k: t for k, t in turns.items() if t}
     return validate_change_set(data)
 
 

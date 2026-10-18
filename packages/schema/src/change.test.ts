@@ -45,6 +45,26 @@ describe('change sets (aio.change/1)', () => {
     expect(ChangeSet.safeParse({ ...base(), lineUp: { extra: 1 } }).success).toBe(false);
   });
 
+  it('keeps the turns a change set was computed with, beside lineUp', () => {
+    const turn = { rotationDeg: 0.5, scale: 1.001, pivotE: 500100, pivotN: 3200200 };
+    const lineUp = { from: { eastM: 0, northM: 0 }, to: { eastM: 2, northM: 0 } };
+    const r = ChangeSet.safeParse({ ...base(), lineUp, lineUpTurn: { to: turn } });
+    expect(r.success && r.data.lineUpTurn).toEqual({ to: turn });
+    expect(r.success && r.data.lineUp).toEqual(lineUp);
+    // lineUp itself stays strict: the turn never goes inside it
+    const inside = { ...lineUp, to: { ...lineUp.to, rotationDeg: 0.5 } };
+    expect(ChangeSet.safeParse({ ...base(), lineUp: inside }).success).toBe(false);
+    // the turn's bounds: 1 degree and 1%
+    const bad = [
+      { ...turn, rotationDeg: 1.5 },
+      { ...turn, scale: 1.02 },
+    ];
+    for (const t of bad)
+      expect(ChangeSet.safeParse({ ...base(), lineUpTurn: { from: t } }).success).toBe(false);
+    // a set written before turns has none
+    expect(ChangeSet.parse(base()).lineUpTurn).toBeUndefined();
+  });
+
   it('parses a line-up measurement', () => {
     const m: LineUpMeasure = {
       keep: 'c1',
