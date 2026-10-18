@@ -1,0 +1,46 @@
+/* detections of the nearest walk frame, over the 360 view (the review's outline look) */
+.walk-det {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.walk-det-box polygon,
+.walk-det-box polyline {
+  fill: none;
+  stroke: var(--c);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.walk-det-box polygon {
+  fill: color-mix(in oklch, var(--c) 14%, transparent);
+}
+.walk-det-box.accepted polygon,
+.walk-det-box.accepted polyline {
+  stroke-width: 1.5;
+  opacity: 0.8;
+}
+.walk-det-box text {
+  font: 600 10px/1 var(--f-mono);
+  fill: var(--c);
+  paint-order: stroke;
+  stroke: var(--bg-0);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+/* Level horizon is on: the boxes are in the unlevelled copy's pixels */
+.walk-det-note {
+  position: absolute;
+  inset-inline: 12px;
+  bottom: 10px;
+  padding: 6px 10px;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin-inline: auto;
+  border-radius: var(--r-4);
+  background: color-mix(in oklch, var(--bg-0) 82%, transparent);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  text-align: center;
+  pointer-events: none;
+}

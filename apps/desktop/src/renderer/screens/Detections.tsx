@@ -28,6 +28,7 @@ import { AiDetectDialog } from '../detections/AiDetectDialog';
 import { ContactSheet, type SheetItem } from '../detections/ContactSheet';
 import { hasDetectable, itemKey, type DetectItem } from '../detections/convert';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
+import { frameLayerSrc } from '../detections/frameMedia';
 import { Inspector } from '../detections/Inspector';
 import { reviewCommand, typingIn } from '../detections/keys';
 import { BatchConfirm, BatchError } from '../detections/BatchConfirm';
@@ -175,10 +176,11 @@ export function DetectionsScreen() {
     }
     for (const c of perSource.values()) {
       if (c.source.kind !== 'frame') continue;
-      const layer = layers.find((l) => l.id === c.source.layer);
+      // a video clip, or a walk's playback copy
+      const src = frameLayerSrc(layers, c.source.layer);
       let video: string | undefined;
       try {
-        video = layer?.kind === 'video' && projectId ? assetUrl(projectId, layer.src) : undefined;
+        video = src && projectId ? assetUrl(projectId, src) : undefined;
       } catch {
         video = undefined;
       }
@@ -749,9 +751,9 @@ export function DetectionsScreen() {
           unreviewed={unreviewed}
           durations={durations}
           videoUrl={(layerId) => {
-            const l = layers.find((x) => x.id === layerId);
+            const src = frameLayerSrc(layers, layerId);
             try {
-              return l?.kind === 'video' ? assetUrl(project.id, l.src) : null;
+              return src ? assetUrl(project.id, src) : null;
             } catch {
               return null;
             }
