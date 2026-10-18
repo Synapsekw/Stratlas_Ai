@@ -10,6 +10,8 @@ import type { CoverageGrids } from '../rf/coverageGrids';
 import { rfLayer } from '../rf/coverageDisplay';
 import { clearCoverage, coverage } from '../rf/coverageStore';
 import { resetRf, rfStore } from '../rf/rfStore';
+import { antennasFile, unit } from '../rf/__fixtures__/rfData';
+import { antennaStore } from '../telecom/antennaStore';
 import { compareNotice } from './compare';
 import { readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
 import { timeline } from './timeline';
@@ -97,6 +99,7 @@ afterEach(() => {
   clearCoverage();
   resetRf();
   rfLayer.setState({ visible: true });
+  antennaStore.setState({ projectId: null, file: null, status: 'idle' });
 });
 
 /** The Coverage layer draws a live preview (the working copy has changes). */
@@ -273,6 +276,33 @@ describe('the stage corners', () => {
     render({ video: [], rfLegend: true, cursor: 'bl', splitting: true, showMap: true });
     expect(slotOf('rf-legend')).toBe('br');
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+  });
+
+  it('puts the Coverage chip in its own row under the island, clear of the legend and the dates (1100 px)', () => {
+    // the CI window: antennas detected, the coverage legend on and two dates on screen
+    rfStore.setState({ projectId: 'p3' });
+    antennaStore.setState({
+      projectId: 'p3',
+      status: 'ready',
+      file: antennasFile([unit('ant-a', 0), unit('ant-b', 120), unit('ant-c', 240)]),
+    });
+    coverageShown();
+    render({ video: [], rfLegend: true });
+    const chip = host.querySelector<HTMLElement>('[data-testid="rf-chip"]');
+    expect(chip).not.toBeNull();
+    // top centre in a row of its own (rf.css), never in a corner slot, so the corner overlays
+    // keep their corners: the dates top left (pushed below the chip's row), the legend bottom left
+    expect(chip?.closest('.stage-slot')).toBeNull();
+    expect(chip?.closest('.rf-chip-row')).not.toBeNull();
+    expect(slotOf('dates-on-screen')).toBe('tl');
+    expect(slotOf('rf-legend')).toBe('bl');
+    expect(host.querySelectorAll('[data-testid="rf-chip"]')).toHaveLength(1);
+    // no antennas: no chip, and nothing else moves
+    act(() => {
+      antennaStore.setState({ file: null });
+    });
+    expect(host.querySelector('[data-testid="rf-chip"]')).toBeNull();
+    expect(host.querySelector('.rf-chip-row')).toBeNull();
   });
 
   it('hides the coordinates readout when the video rests in its corner', () => {

@@ -90,6 +90,7 @@ import { assignSlots, type Corner, type SlotRequest } from './overlaySlots';
 import { useSiteTiles } from './siteTiles';
 // --- RF coverage legend (rf-ui) ---
 import { StageCoverageLegend, useCoverageLegendShown } from '../rf/StageCoverageLegend';
+import { CoverageChip } from '../rf/CoverageChip';
 // --- end RF coverage legend ---
 
 function ScenePane({
@@ -426,6 +427,7 @@ export function useStageCorners(o: StageCornersInput): {
         {at('volHint', <VolumeHint />)}
         {/* // --- RF coverage legend (rf-ui) --- */}
         {at('rfLegend', <StageCoverageLegend />)}
+        <CoverageChip />
         {/* // --- end RF coverage legend --- */}
         {at('dates', <DatesOnScreen kinds={DATE_KINDS} />)}
       </>

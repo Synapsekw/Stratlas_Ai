@@ -480,3 +480,111 @@
 .rf-layer-ctl .rf-legend-ctl {
   font-size: var(--t-12);
 }
+
+/* ---------------------------------------------------------------- rf-chip
+   The Coverage chip (CoverageChip.tsx, spec F1): a row of its own at the top centre of the views,
+   under the island's date pill (the island's row ends at --isl-row-b), centred as the island is
+   on the views the drawer leaves. While it shows, the top-start corner slot and a split's pane
+   headers stand below it, so nothing at the top overlaps it; a comparison's tools take that row,
+   so the chip gives way to them. The row is geometry, the chip an ss-chip with an rf-chip look. */
+.stage:has(.rf-chip-row) {
+  --rf-chip-row-h: calc(30px + var(--sp-3));
+}
+.rf-chip-row {
+  position: absolute;
+  z-index: var(--z-stage-ui);
+  inset-block-start: var(--isl-row-b, 54px);
+  inset-inline: var(--sp-5) calc(var(--views-cover, 0px) + var(--sp-5));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.stage:not([data-mode='split']):has(.rf-chip-row) .stage-slot[data-slot='tl'] {
+  inset-block-start: max(
+    calc(var(--isl-row-b) + var(--rf-chip-row-h)),
+    calc(var(--isl-open-b, 0px) + var(--sp-4))
+  );
+}
+.stage[data-isl-clear~='tl']:not([data-mode='split']):has(.rf-chip-row)
+  .stage-slot[data-slot='tl'] {
+  inset-block-start: calc(var(--isl-row-b) + var(--rf-chip-row-h));
+}
+.stage[data-mode='split']:has(.rf-chip-row):not(:has(.isl-aside .compare-how)) {
+  --pane-head-top: calc(var(--isl-row-b) + var(--rf-chip-row-h));
+}
+.stage:has(.isl-aside .compare-how) .rf-chip-row {
+  display: none;
+}
+.rf-chip {
+  gap: var(--sp-3);
+  height: 30px;
+  padding-inline: var(--sp-2) 3px;
+  border-color: var(--line-strong);
+  border-radius: var(--r-pill);
+  background: color-mix(in oklch, var(--bg-1) 94%, transparent);
+  box-shadow: var(--el-2);
+  color: var(--fg-0);
+  white-space: nowrap;
+}
+/* the chip's words open the Coverage tab; the buttons beside them act */
+.rf-chip-open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-inline-size: 0;
+  block-size: 100%;
+  padding-inline: var(--sp-4) var(--sp-2);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.rf-chip-open:hover .rf-chip-name {
+  color: var(--acc);
+}
+.rf-chip-open:focus-visible {
+  outline: 1.5px solid var(--acc);
+  outline-offset: -2px;
+}
+.rf-chip-dot {
+  flex: none;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  background: var(--acc);
+}
+/* a step waits on the person: amber */
+.rf-chip:is([data-state='review-first'], [data-state='not-planned']) .rf-chip-dot {
+  background: var(--warn);
+}
+.rf-chip:is([data-state='planning'], [data-state='running']) .rf-chip-dot {
+  animation: rf-chip-pulse 1.2s var(--ease) infinite alternate;
+}
+@keyframes rf-chip-pulse {
+  to {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-chip-dot {
+    animation: none !important;
+  }
+}
+.rf-chip-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-2);
+  font-weight: 400;
+}
+.rf-chip:is([data-state='planning'], [data-state='running']) {
+  padding-inline-end: var(--sp-4);
+}
+.rf-chip-btn {
+  flex: none;
+}
+.rf-chip-spark {
+  margin-inline-end: var(--sp-2);
+}
