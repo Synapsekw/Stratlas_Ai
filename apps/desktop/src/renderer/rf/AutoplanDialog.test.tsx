@@ -340,6 +340,21 @@ describe('AutoplanDialog', () => {
     expect(byTest('rf-autoplan')).toBeNull();
   });
 
+  it('drops a run problem that comes back after the project changed', async () => {
+    vi.mocked(applyAutoplan).mockImplementationOnce(() => {
+      autoplanStore.setState({ phase: 'idle', proposal: null });
+      // the person switched projects while the run was being started
+      rfStore.setState({ projectId: 'p2' });
+      return Promise.resolve({ ok: false, code: 'refused' });
+    });
+    renderWith(reviewState());
+    await act(async () => {
+      must('rf-autoplan-apply-run').click();
+      await Promise.resolve();
+    });
+    expect(byTest('rf-autoplan')).toBeNull();
+  });
+
   it('says the project is read only when Apply cannot write the plan', async () => {
     vi.mocked(applyAutoplan).mockImplementationOnce(() => {
       autoplanStore.setState({ phase: 'idle', proposal: null });

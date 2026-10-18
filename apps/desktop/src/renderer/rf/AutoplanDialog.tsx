@@ -36,7 +36,7 @@ import type { LeftOut } from './autoplan/sectors';
 import type { PlanPick } from './autoplan/types';
 import { sectorColour, swatchBackground } from './coverageRamp';
 import { carrierBandName, sectorBearing } from './rfFields';
-import { useRf, type StartResult } from './rfStore';
+import { rfStore, useRf, type StartResult } from './rfStore';
 import { openCoverage } from './rfTab';
 import './rf.css';
 
@@ -474,9 +474,11 @@ export function AutoplanDialog() {
   const apply = async (run: boolean) => {
     if (busy) return;
     setBusy(true);
+    const before = rfStore.getState().projectId;
     try {
       const r = await applyAutoplan(run);
-      if (r && !r.ok) setProblem(r);
+      // a problem with another project's plan is not about the one open now (R17)
+      if (r && !r.ok && rfStore.getState().projectId === before) setProblem(r);
     } finally {
       setBusy(false);
     }

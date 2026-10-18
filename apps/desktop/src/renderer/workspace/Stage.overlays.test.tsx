@@ -413,6 +413,44 @@ describe('the stage corners', () => {
       expect(slotOf('dates-on-screen')).toBeUndefined();
     });
 
+    it('gives way to the readout in a map|3D split with a status chip up', () => {
+      withAntennas();
+      act(() => {
+        stagePrefs.getState().update('p3', { split: { left: 'map', right: '3d' } });
+        shell.setState({ stageMode: 'split' } as never);
+        compareNotice.getState().show('Comparing two dates');
+      });
+      // the map on the start side: the Map menu chip takes the start corners, the status tl
+      live({ splitting: true, showMap: true, cursor: 'br', basemapAt: ['tl', 'bl'] });
+      expect(slotOf('compare-notice')).toBe('tl');
+      expect(slotOf('rf-chip')).toBeUndefined();
+      expect(cursorHidden()).toBe(false);
+    });
+
+    it('reads the split as the stage draws it: a side it cannot show falls back to 3D', () => {
+      volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+      withAntennas();
+      act(() => {
+        // no report in the project: the stage shows the 3D view on the left instead
+        stagePrefs.getState().update('p3', { split: { left: 'report', right: 'map' } });
+        shell.setState({ stageMode: 'split' } as never);
+      });
+      live({ splitting: true, showMap: true, cursor: 'bl' });
+      expect(slotOf('rf-chip')).toBeUndefined();
+    });
+
+    it('a video shown as a split pane does not float: the card keeps its corner', () => {
+      withAntennas();
+      act(() => {
+        workspace.getState().setActiveClip('c1');
+        stagePrefs.getState().update('p3', { split: { left: 'video', right: '3d' } });
+        shell.setState({ stageMode: 'split' } as never);
+      });
+      live({ splitting: true, cursor: 'br' });
+      expect(slotOf('rf-chip')).toBe('bl');
+      expect(cursorHidden()).toBe(false);
+    });
+
     it('claims no corner while two dates are compared, before or after a run', () => {
       withAntennas();
       const ids = captureIndex(manifest).captures.map((c) => c.id);

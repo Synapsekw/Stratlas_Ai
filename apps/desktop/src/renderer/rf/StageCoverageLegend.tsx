@@ -10,10 +10,10 @@ import { useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useRoad } from '../road/store';
 import { useShell } from '../shell';
-import { useCaptureIndex, useCompareNotice, useSplitDates } from '../workspace/compare';
+import { useCompareNotice } from '../workspace/compare';
 import { datesOnScreen } from '../workspace/DatesOnScreen';
-import { DEFAULT_SPLIT, twinAllowed } from '../workspace/splitModel';
-import { useStagePrefs } from '../workspace/stagePrefs';
+import { isTwin, useSplit } from '../workspace/SplitPanes';
+import { sideOf, sidesOf } from '../workspace/splitModel';
 import { useTimeline } from '../workspace/timeline';
 import { useCutawayPref, useCutawayState } from '../workspace/useCutaway';
 import { CoverageChip, useChipState } from './CoverageChip';
@@ -59,34 +59,44 @@ export function useCoverageLegendProps(): CoverageLegendProps | null {
 /** The layer kinds whose survey dates the stage's dates pill lists (as `Stage.tsx` asks). */
 const DATE_KINDS = ['mesh', 'pointcloud', 'raster', 'vector', 'panoramas'] as const;
 
-/** Two survey dates are compared: the split shows one kind of pane twice, one date each. */
-function useDatesCompared(): boolean {
+/**
+ * The stage's panes as `Stage.tsx` draws them, read the same way (`useSplit`, which resolves the
+ * remembered split against the panes the project offers).
+ */
+function useStagePanes() {
   const mode = useShell((s) => s.stageMode);
-  const projectId = useWorkspace((s) => s.project?.id ?? null);
-  const saved = useStagePrefs((s) => (projectId ? s.byProject[projectId]?.split : undefined));
-  const dates = useSplitDates(useCaptureIndex());
-  const pref = saved ?? DEFAULT_SPLIT;
-  return mode === 'split' && pref.left === pref.right && twinAllowed(pref.left, dates);
+  const split = useSplit();
+  const splitting = mode === 'split';
+  const sides = split.sides;
+  return {
+    splitting,
+    show3d: mode === '3d' || (splitting && sidesOf(sides, '3d').length > 0),
+    showMap: mode === 'map' || (splitting && sidesOf(sides, 'map').length > 0),
+    videoPane: splitting && sideOf(sides, 'video') !== undefined,
+    // two survey dates compared: one kind of pane twice, one date each (CompareControls `twin`)
+    compared: splitting && isTwin(split),
+  };
 }
 
 /**
  * Before a run the card is only the chip's prompt, so it does not take a corner the survey dates
  * pill or the 3D view's coordinates readout would lose. `Stage.tsx` serves the card before both
  * and tells RF nothing about the other overlays, so the rule is the conservative one, from what RF
- * can read: no card while the dates pill shows beside a status chip (the compare notice, the
- * cut-away chip or the road measuring bar take the top start corner) or a floating video, and no
- * card while a 3D view shows its readout beside the volumes hint or a floating video (either takes
- * the foot corner the card would have, leaving it the readout's). The island reaching across the
- * top corners is not known here. Auto-plan stays reachable from the Coverage panel's status line
- * and Ctrl+K.
+ * can read:
+ * - no card while the dates pill shows beside a status chip (the compare notice, the cut-away
+ *   chip or the road measuring bar take the top start corner) or a floating video;
+ * - no card while a 3D view shows its readout beside the volumes hint or a floating video (either
+ *   takes the foot corner the card would have, leaving it the readout's);
+ * - no card in a split with a 3D view while a status chip is up (with the map on the start side
+ *   the Map menu chip takes the start foot once the status has the top start corner).
+ * A video shown as a split pane does not float. The island reaching across the top corners is not
+ * known here. Auto-plan stays reachable from the Coverage panel's status line and Ctrl+K.
  */
-function useCornersCrowded(): boolean {
-  const mode = useShell((s) => s.stageMode);
+function useCornersCrowded(panes: ReturnType<typeof useStagePanes>): boolean {
+  const { splitting, show3d, showMap, videoPane } = panes;
   const docked = useShell((s) => s.videoDocked);
   const videoHidden = useShell((s) => s.videoHidden);
   const activeClip = useWorkspace((s) => s.activeClip);
-  const projectId = useWorkspace((s) => s.project?.id ?? null);
-  const saved = useStagePrefs((s) => (projectId ? s.byProject[projectId]?.split : undefined));
   const index = useTimeline((s) => s.index);
   const hidden = useWorkspace((s) => s.hidden);
   const layers = useWorkspace((s) => s.project?.manifest.layers);
@@ -96,10 +106,6 @@ function useCornersCrowded(): boolean {
   const { mode: cutawayMode } = useCutawayPref();
   const measuring = useRoad((s) => Boolean(s.measure.mode));
   const volHint = useVolumeHint();
-  const splitting = mode === 'split';
-  const pref = saved ?? DEFAULT_SPLIT;
-  const show3d = mode === '3d' || (splitting && (pref.left === '3d' || pref.right === '3d'));
-  const showMap = mode === 'map' || (splitting && (pref.left === 'map' || pref.right === 'map'));
   const dates = useMemo(
     () =>
       !splitting &&
@@ -108,10 +114,14 @@ function useCornersCrowded(): boolean {
       datesOnScreen(index, hidden, layers, DATE_KINDS).length >= 2,
     [splitting, index, hidden, layers],
   );
-  const video = activeClip !== null && !videoHidden && !docked;
+  const video = activeClip !== null && !videoHidden && !docked && !videoPane;
   const cutaway = show3d && ((cutawayEngaged && cutawayMode !== 'off') || inside);
   const status = notice !== null || cutaway || (showMap && measuring);
-  return (dates && (status || video)) || (show3d && (volHint || video));
+  return (
+    (dates && (status || video)) ||
+    (show3d && (volHint || video)) ||
+    (splitting && show3d && status)
+  );
 }
 
 /**
@@ -124,9 +134,9 @@ function useCornersCrowded(): boolean {
 export function useCoverageLegendShown(): boolean {
   const chip = useChipState().kind !== 'hidden';
   const drawn = useCoverageLegendProps() !== null;
-  const compared = useDatesCompared();
-  const crowded = useCornersCrowded();
-  if (compared) return false;
+  const panes = useStagePanes();
+  const crowded = useCornersCrowded(panes);
+  if (panes.compared) return false;
   return drawn || (chip && !crowded);
 }
 
