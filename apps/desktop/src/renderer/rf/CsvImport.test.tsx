@@ -105,6 +105,10 @@ describe('CsvImport', () => {
         active: true,
         equipment: { kind: 'separate', antenna: 'ant-x', radio: 'rru-x' },
         etiltDeg: 4,
+        origins: {
+          etiltDeg: { by: 'export', confidence: 'high' },
+          equipment: { by: 'export', confidence: 'high' },
+        },
         carriers: [
           {
             id: 'c1',
@@ -113,6 +117,7 @@ describe('CsvImport', () => {
             bandwidthMhz: 20,
             powerDbmPerPort: 43,
             feederLossDb: 0,
+            origin: { by: 'export', confidence: 'high' },
           },
         ],
       },
