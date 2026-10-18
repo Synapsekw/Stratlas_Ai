@@ -367,13 +367,14 @@ describe('line-up turn and scale (similarity fixture, shared with Python)', () =
     });
   });
 
-  it('CaptureLineUpTurn refuses 1.5 degrees and 1.02', () => {
-    const ok = { rotationDeg: 1, scale: 1.01, pivotE: 1, pivotN: 2 };
+  it('CaptureLineUpTurn stores within 2 degrees and 2 per cent', () => {
+    const ok = { rotationDeg: 2, scale: 1.02, pivotE: 1, pivotN: 2 };
     expect(CaptureLineUpTurn.safeParse(ok).success).toBe(true);
-    expect(CaptureLineUpTurn.safeParse({ ...ok, rotationDeg: 1.5 }).success).toBe(false);
-    expect(CaptureLineUpTurn.safeParse({ ...ok, rotationDeg: -1.5 }).success).toBe(false);
-    expect(CaptureLineUpTurn.safeParse({ ...ok, scale: 1.02 }).success).toBe(false);
-    expect(CaptureLineUpTurn.safeParse({ ...ok, scale: 0.98 }).success).toBe(false);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, rotationDeg: -2, scale: 0.98 }).success).toBe(true);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, rotationDeg: 2.5 }).success).toBe(false);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, rotationDeg: -2.5 }).success).toBe(false);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, scale: 1.03 }).success).toBe(false);
+    expect(CaptureLineUpTurn.safeParse({ ...ok, scale: 0.97 }).success).toBe(false);
   });
 
   it('Capture keeps unknown keys out but parses lineUpTurn', () => {
@@ -384,7 +385,7 @@ describe('line-up turn and scale (similarity fixture, shared with Python)', () =
     expect(Capture.safeParse({ ...base, lineUpTurn: { ...turn, scale: 2 } }).success).toBe(false);
   });
 
-  it('moves a video offset point with the turn', () => {
+  it('video offset adds the move at the pivot for a turned shift', () => {
     const video = {
       kind: 'video',
       id: 'v',
@@ -396,12 +397,16 @@ describe('line-up turn and scale (similarity fixture, shared with Python)', () =
       offsetMs: 0,
       positionOffsetM: [10, 5, -20],
     } as unknown as Layer;
+    const t = must(turned.turn);
+    const pivot: [number, number, number] = [t.pivotX, 0, t.pivotZ];
+    const moved = shiftLocal(pivot, turned);
     const r = shiftedLayer(video, turned);
-    near(
-      r.kind === 'video' ? r.positionOffsetM : undefined,
-      shiftLocal([10, 5, -20], turned),
-      'offset',
-    );
+    const got = r.kind === 'video' ? r.positionOffsetM : undefined;
+    near(got, [10 + moved[0] - pivot[0], 5, -20 + moved[2] - pivot[2]], 'offset');
+    expect(got).toEqual([10 + turned.eastM, 5, -20 - turned.northM]);
+    // with no turn it is today's offset
+    const plain = shiftedLayer(video, { eastM: turned.eastM, northM: turned.northM });
+    expect(plain.kind === 'video' && plain.positionOffsetM).toEqual(got);
   });
 });
 
