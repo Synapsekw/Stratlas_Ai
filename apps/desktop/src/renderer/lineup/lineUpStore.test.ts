@@ -351,7 +351,7 @@ describe('lineUpStore', () => {
       fit: fitOf({ rotationDeg: 3, verdict: 'range' }),
     });
     const range =
-      'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other.';
+      'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other, or would move more than 500 m.';
     expect(refusalOf(turned)).toBe(range);
     expect(refusalOf(measureOf({ verdict: 'disagree' }))).toBe(
       "These dates cannot be lined up: their parts don't fit one shift, turn and scale, so part of the site may have warped or changed too much.",
