@@ -145,4 +145,52 @@ describe('matchCellExport', () => {
     expect(m.picks.get('u1')?.[0]?.etiltDeg).toBe(4);
     expect(m.picks.get('u1')?.[1]).not.toHaveProperty('etiltDeg');
   });
+
+  it('marks a rejected band, bandwidth or power as low and says why', () => {
+    const csv = ['antenna,band,bandwidth_mhz,power_dbm', 'Panel A,B99,5000,200'].join('\n');
+    const m = ok(matchCellExport(csv, [unit('u1', 'Panel A', 10)], [], CATALOGUE));
+    const p = m.picks.get('u1')?.[0];
+    expect(p?.confidence).toBe('low');
+    expect(p?.reason).toContain("band 'B99' not recognised, rules band used");
+    expect(p?.reason).toContain("bandwidth '5000' out of range, default used");
+    expect(p?.reason).toContain("power '200' out of range");
+    expect(p?.carrier.band).toBe('B3');
+    expect(p?.carrier.powerDbmPerPort).toBeUndefined();
+  });
+
+  it('keeps a found antenna when only the radio text is unresolved', () => {
+    const antenna = CATALOGUE.find((e) => e.kind === 'antenna');
+    if (!antenna) throw new Error('no antenna in the catalogue');
+    const csv = ['antenna,antenna_model,radio_model', `Panel A,${antenna.id},Nope-9`].join('\n');
+    const m = ok(matchCellExport(csv, [unit('u1', 'Panel A', 10)], [], CATALOGUE));
+    const p = m.picks.get('u1')?.[0];
+    expect(p?.confidence).toBe('low');
+    expect(p?.equipment).toMatchObject({ kind: 'separate', antenna: antenna.id });
+    expect(p?.reason).toContain("'Nope-9'");
+    expect(p?.reason).not.toContain(antenna.id);
+  });
+
+  it('does not rename two sectors to the same name', () => {
+    const units = [unit('u1', 'Panel A', 10), unit('u2', 'Panel B', 130)];
+    const sectors = [sec('sec-s1', 'S1', ['u1']), sec('sec-s2', 'S2', ['u2'])];
+    const csv = ['antenna,sector', 'Panel A,Alpha', 'Panel B,alpha'].join('\n');
+    const m = ok(matchCellExport(csv, units, sectors, CATALOGUE));
+    expect(m.renames).toEqual([{ sectorId: 'sec-s1', name: 'Alpha' }]);
+  });
+
+  it('matches a bearing across north', () => {
+    const units = [unit('u1', 'P1', 5), unit('u2', 'P2', 180)];
+    const sectors = [sec('sec-s1', 'S1', ['u1', 'u2'])];
+    const csv = ['antenna,sector,azimuth', 'X,S1,355'].join('\n');
+    const m = ok(matchCellExport(csv, units, sectors, CATALOGUE));
+    expect([...m.picks.keys()]).toEqual(['u1']);
+  });
+
+  it('without a height takes the closest bearing among near ties', () => {
+    const units = [unit('u1', 'P1', 120.8), unit('u2', 'P2', 120.1)];
+    const sectors = [sec('sec-s1', 'S1', ['u1', 'u2'])];
+    const csv = ['antenna,sector,azimuth', 'X,S1,120'].join('\n');
+    const m = ok(matchCellExport(csv, units, sectors, CATALOGUE));
+    expect([...m.picks.keys()]).toEqual(['u2']);
+  });
 });

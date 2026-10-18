@@ -74,7 +74,7 @@ export function matchCellExport(
     if (cands.length === 0) return undefined;
     const best = Math.min(...cands.map((c) => c.d));
     const tied = cands.filter((c) => c.d - best <= TIE_DEG);
-    if (height === null || tied.length === 1) return tied[0]?.u;
+    if (height === null || tied.length === 1) return tied.reduce((a, b) => (b.d < a.d ? b : a)).u;
     const dh = (u: AntennaUnit): number => {
       const h = heightOf(u);
       return h === null ? Infinity : Math.abs(h - height);
@@ -111,18 +111,20 @@ export function matchCellExport(
 
     // a matched row may rename its sector (never move the unit)
     const own = sectorOfUnit.get(unit.id);
+    const taken = new Set(out.renames.map((r) => norm(r.name)));
     if (
       own &&
       sectorText !== '' &&
       norm(own.name) !== norm(sectorText) &&
       !renamed.has(own.id) &&
-      !sectorByName.has(norm(sectorText))
+      !sectorByName.has(norm(sectorText)) &&
+      !taken.has(norm(sectorText))
     ) {
       renamed.add(own.id);
       out.renames.push({ sectorId: own.id, name: sectorText.slice(0, 120) });
     }
 
-    // equipment from the model text, else the rules pick
+    // equipment from the model text, else the rules pick; each given text is checked on its own
     const rules = rulesPick(unit, catalogue);
     const am = cell('antennaModel');
     const rm = cell('radioModel');
@@ -137,20 +139,30 @@ export function matchCellExport(
         ...(radio?.kind === 'radio' ? { radio: radio.id } : {}),
       };
     const reasons = [how];
-    if (!equipment) {
-      equipment = rules.equipment;
-      if (am !== '' || rm !== '') {
-        confidence = 'low';
-        reasons.push('model text not found in the catalogue, equipment from the rules');
-      }
+    const missing = [am !== '' && !antenna ? am : '', rm !== '' && !radio ? rm : ''].filter(
+      (t) => t !== '',
+    );
+    if (missing.length > 0) {
+      confidence = 'low';
+      reasons.push(
+        `model text ${missing.map((t) => `'${t}'`).join(', ')} not found in the catalogue${
+          equipment ? '' : ', equipment from the rules'
+        }`,
+      );
     }
+    equipment ??= rules.equipment;
 
-    // carrier: the row's band, else the rules' band, tech and bandwidth
+    // carrier: the row's band, else the rules' band, tech and bandwidth; row text that is
+    // present but rejected lowers the confidence and is named in the reason
     const bandText = cell('band');
     const bandOk =
       bandText !== '' &&
       bandOfName(bandText) !== undefined &&
       /^[A-Za-z0-9-]{1,12}$/.test(bandText);
+    if (bandText !== '' && !bandOk) {
+      confidence = 'low';
+      reasons.push(`band '${bandText}' not recognised, rules band used`);
+    }
     const techText = cell('tech').toLowerCase();
     const techRow: RfCarrier['tech'] | undefined =
       techText === 'lte' || techText === '4g'
@@ -158,10 +170,20 @@ export function matchCellExport(
         : techText === 'nr' || techText === '5g'
           ? 'nr'
           : undefined;
-    const bw = num(cell('bandwidth'));
+    const bwText = cell('bandwidth');
+    const bw = num(bwText);
     const bwOk = bw !== null && bw > 0 && bw <= 1000 ? bw : undefined;
-    const power = num(cell('power'));
+    if (bwText !== '' && bwOk === undefined) {
+      confidence = 'low';
+      reasons.push(`bandwidth '${bwText}' out of range, default used`);
+    }
+    const powerText = cell('power');
+    const power = num(powerText);
     const powerOk = power !== null && power >= 0 && power <= 80 ? power : undefined;
+    if (powerText !== '' && powerOk === undefined) {
+      confidence = 'low';
+      reasons.push(`power '${powerText}' out of range, left unset`);
+    }
     const etilt = num(cell('etilt'));
     const etiltOk = etilt !== null && etilt >= -20 && etilt <= 40 ? etilt : undefined;
 
@@ -172,7 +194,6 @@ export function matchCellExport(
     } else {
       carrier = {
         ...rules.carrier,
-        ...(techRow ? { tech: techRow } : {}),
         ...(bwOk === undefined ? {} : { bandwidthMhz: bwOk }),
       };
     }
