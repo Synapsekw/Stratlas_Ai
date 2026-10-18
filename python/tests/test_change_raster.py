@@ -416,3 +416,66 @@ def test_a_line_up_since_the_job_started_is_refused(tmp_path):
     line_up(tmp_path, "c2", 1.0, 0.0)
     with pytest.raises(JobError, match="changed since this job started"):
         Job("j1", pipeline(), tmp_path, raster_params(), Recorder(), threading.Event()).run()
+
+
+# ------------------------------------------------------------------------------ a turned line-up
+
+#: A 0.5 degree turn about the site's south-west corner, then 2 m east.
+TURN = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": 500000.0 - 80.0, "pivotN": 3200000.0 - 80.0}
+
+
+def turn_up(project, capture, east, north, turn):
+    m = line_up(project, capture, east, north)
+    for c in m["captures"]:
+        if c["id"] == capture:
+            c["lineUpTurn"] = turn
+    (project / "manifest.json").write_text(json.dumps(m), "utf-8")
+    return m
+
+
+def bright_centre(rgb, ok, grid):
+    """The local (x, z) centre of the bright cells of a sampled grid."""
+    lum = np.where(ok, rgb.mean(axis=2), 0)
+    rows, cols = np.nonzero(lum > 0.5)
+    w = lum[rows, cols]
+    return (
+        grid.x0 + (np.average(cols, weights=w) + 0.5) * grid.cell,
+        grid.z0 + (np.average(rows, weights=w) + 0.5) * grid.cell,
+    )
+
+
+@pytest.mark.parametrize("fmt", ["kit-pyramid", "image", "cog"])
+def test_ortho_follows_a_turned_line_up(tmp_path, fmt):
+    from aio_pipelines.change.imagery import Grid, Ortho
+    from aio_pipelines.change.raster import ortho_fingerprint
+    from aio_pipelines.similarity import Similarity
+
+    # a dark ortho with one bright 4 x 4 px block near its north-east corner
+    a = np.full((N, N, 3), 0.1)
+    a[16:20, 616:620] = 1.0
+    ortho_project(tmp_path, a, a.copy(), CELL, fmt)
+    layer = next(x for x in json.loads((tmp_path / "manifest.json").read_text("utf-8"))["layers"])
+    plain_m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    shifted_m = line_up(tmp_path, "c1", 2.0, 0.0)
+    turned_m = turn_up(tmp_path, "c1", 2.0, 0.0, TURN)
+    plain, shifted, turned = (Ortho(tmp_path, m, layer) for m in (plain_m, shifted_m, turned_m))
+    sim = Similarity.from_line_up({"eastM": 2.0, "northM": 0.0}, TURN)
+    origin = plain_m["origin"]
+
+    # the corners move as a whole: the box holds the turned corners
+    x0, z0, x1, z1 = plain.box
+    xs, zs = sim.apply_local(np.array([x0, x1, x0, x1]), np.array([z0, z0, z1, z1]), origin)
+    assert turned.box == pytest.approx((xs.min(), zs.min(), xs.max(), zs.max()), abs=1e-6)
+
+    grid = Grid(-84.0, -84.0, CELL, 680, 680)
+    here = bright_centre(*plain.sample(grid), grid)
+    assert here == pytest.approx((-80 + 618 * CELL, -80 + 18 * CELL), abs=0.05)
+    want = sim.apply_local(here[0], here[1], origin)
+    got = bright_centre(*turned.sample(grid), grid)
+    assert got == pytest.approx(want, abs=0.1)
+    # the turn moves the block about 1.2 m more than the shift alone
+    assert np.hypot(want[0] - here[0] - 2.0, want[1] - here[1]) > 1.0
+
+    # the fingerprint tells the turn from the shift alone
+    prints = {ortho_fingerprint(tmp_path, [o, o])["hash"] for o in (plain, shifted, turned)}
+    assert len(prints) == 3

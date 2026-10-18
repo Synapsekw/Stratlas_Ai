@@ -232,3 +232,54 @@ def test_mesh_change_applies_the_date_shift(tmp_path):
         "to": {"eastM": -2.0, "northM": -1.0},
     }
     assert {i["verdict"] for i in cs["items"]} == {"unchanged"}
+
+
+def test_mesh_change_follows_a_turned_line_up(tmp_path):
+    from aio_pipelines.captures import similarity_transform
+    from aio_pipelines.change.mesh import load_parts
+    from aio_pipelines.similarity import Similarity
+
+    origin = [500000, 3200000, 0]
+    # a 0.5 degree turn about the site's south-west corner (local -10, 10), then 2 m east
+    turn = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": 499990.0, "pivotN": 3199990.0}
+    sim = Similarity.from_line_up({"eastM": 2.0, "northM": 0.0}, turn)
+    back = sim.inverse()
+    before, _ = scenes()
+    # the same model stored where the line-up has to move it back from
+    after = {}
+    for n, m in before.items():
+        v = np.array(m.vertices)
+        v[:, 0], v[:, 2] = back.apply_local(v[:, 0], v[:, 2], origin)
+        after[n.replace("_e1", "_e2")] = trimesh.Trimesh(v, m.faces, process=False)
+    root = project(tmp_path, before, after)
+
+    # the vertex at the far north-east of the tank P02 lands where the line-up puts it
+    t = similarity_transform(IDENTITY, sim, origin)
+    parts = load_parts(root / "models" / "site-e2.glb", t)
+    _, local = parts["P02_e2"]
+    corner = np.array(after["P02_e2"].vertices)
+    k = int(np.argmax(corner[:, 0] - corner[:, 2]))
+    x, z = sim.apply_local(corner[k, 0], corner[k, 2], origin)
+    assert local.vertices[k] == pytest.approx([x, corner[k, 1], z], abs=1e-4)
+    assert local.vertices[k] == pytest.approx(before["P02_e1"].vertices[k], abs=1e-4)
+
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["captures"][1]["lineUp"] = {
+        "eastM": 2.0,
+        "northM": 0.0,
+        "with": "c1",
+        "at": "2026-10-18T00:00:00Z",
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(JobError, match="not aligned"):  # the shift alone leaves the turn
+        run(root, {"layerFrom": "e1", "layerTo": "e2", "samples": 2000})
+
+    manifest["captures"][1]["lineUpTurn"] = turn
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    result = run(root, {"layerFrom": "e1", "layerTo": "e2", "samples": 2000}, job_id="j2")
+    assert result["status"] == "done"
+    cs = validate_change_set(json.loads((root / "change" / "c1-c2-mesh.json").read_text()))
+    assert cs["registration"]["shiftM"] < 0.01
+    assert {i["verdict"] for i in cs["items"]} == {"unchanged"}
+    assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": 2.0, "northM": 0.0}}
+    assert cs["lineUpTurn"] == {"to": turn}
