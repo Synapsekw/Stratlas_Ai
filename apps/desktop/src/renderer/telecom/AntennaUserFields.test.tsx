@@ -4,7 +4,7 @@ import type { AntennaUnit, AntennaValue } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AntennaDetails, type AntennaDetailsProps } from './AntennaDetails';
+import { AntennaUserFields, type AntennaUserFieldsProps } from './AntennaUserFields';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -58,12 +58,11 @@ afterEach(() => {
   });
   host.remove();
   document.body.innerHTML = '';
-  vi.useRealTimers();
 });
-function show(u: AntennaUnit, p: Partial<AntennaDetailsProps> = {}) {
-  const h = { onSetStatus: vi.fn(), onPatchUser: vi.fn(), onOpenPhoto: vi.fn() };
+function show(u: AntennaUnit, p: Partial<AntennaUserFieldsProps> = {}) {
+  const h = { onPatchUser: vi.fn() };
   act(() => {
-    root.render(<AntennaDetails unit={u} projectId="p1" readOnly={false} {...h} {...p} />);
+    root.render(<AntennaUserFields unit={u} readOnly={false} {...h} {...p} />);
   });
   return h;
 }
@@ -86,42 +85,7 @@ const blur = (el: HTMLElement) => {
   });
 };
 
-describe('AntennaDetails', () => {
-  it('shows basis and quality for each value', () => {
-    vi.useFakeTimers();
-    show(unit());
-    expect(host.textContent).toContain('True 124.6°');
-    expect(host.textContent).toContain('Grid 123.4°');
-    expect(host.textContent).toContain('Measured');
-    expect(host.textContent).toContain('Mechanical tilt only');
-    expect(host.textContent).toContain('31.50 m');
-    expect(host.textContent).toContain('10.50, 20.25');
-    const tipped = host.querySelector<HTMLElement>('dd [tabindex="0"]')!;
-    act(() => {
-      tipped.focus();
-    });
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-    expect(document.body.querySelector('[role="tooltip"]')?.textContent).toBe(
-      'Fit residual 3.0 mm, 812 points, 74% coverage',
-    );
-  });
-
-  it('shows Not measured for a missing plumb', () => {
-    show(unit({ plumbDeg: undefined }));
-    const dt = [...host.querySelectorAll('dt')].find((x) => x.textContent === 'Plumb')!;
-    expect(dt.nextElementSibling?.textContent).toBe('Not measured');
-  });
-
-  it('shows elevation and diameter for dishes only', () => {
-    show(unit({ kind: 'dish', elevationDeg: measured(5), diameterM: measured(0.6) }));
-    expect(host.textContent).toContain('Elevation');
-    expect(host.textContent).toContain('Diameter');
-    expect(host.textContent).not.toContain('Downtilt');
-    expect(host.textContent).not.toContain('Plumb');
-  });
-
+describe('AntennaUserFields', () => {
   it('saves a model on blur and refuses a negative weight', () => {
     const h = show(unit());
     type(input('Model'), 'XYZ-1');
@@ -155,54 +119,12 @@ describe('AntennaDetails', () => {
     expect(h.onPatchUser).toHaveBeenCalledWith({ active: true });
   });
 
-  it('opens the photo viewer from a thumbnail and builds the crop url', () => {
-    const h = show(
-      unit({
-        crop: 'telecom/crops/ant-1.jpg',
-        photos: [
-          { layer: 'L1', id: 'p-a', score: 0.9 },
-          { layer: 'L2', id: 'p-b', score: 0.5 },
-        ],
-      }),
-    );
-    expect(host.querySelector('img')?.getAttribute('src')).toBe(
-      'aio://project/p1/telecom/crops/ant-1.jpg',
-    );
-    const btns = [...host.querySelectorAll<HTMLElement>('[data-testid="antenna-photo"]')];
-    expect(btns).toHaveLength(2);
-    act(() => {
-      btns[1]!.click();
-    });
-    expect(h.onOpenPhoto).toHaveBeenCalledWith('L2', 'p-b');
-  });
-
-  it('names the AI provider in the kind basis', () => {
-    show(unit({ kindBasis: 'ai' }), { aiProvider: 'Claude' });
-    expect(host.textContent).toContain('Type labelled by AI (Claude)');
-  });
-
-  it('sets status from the buttons', () => {
-    const h = show(unit());
-    act(() => {
-      host.querySelector<HTMLElement>('[data-testid="antenna-accept"]')!.click();
-    });
-    expect(h.onSetStatus).toHaveBeenCalledWith('accepted');
-    act(() => {
-      host.querySelector<HTMLElement>('[data-testid="antenna-reject"]')!.click();
-    });
-    expect(h.onSetStatus).toHaveBeenCalledWith('rejected');
-  });
-
-  it('disables edits when read-only', () => {
-    const h = show(unit(), { readOnly: true });
+  it('disables the inputs when read-only', () => {
+    show(unit(), { readOnly: true });
     expect(input('Model').disabled).toBe(true);
-    expect(host.querySelector('[data-testid="antenna-accept"]')?.textContent).toContain(
-      'Read-only package: review is not available',
-    );
-    act(() => {
-      host.querySelector<HTMLElement>('[data-testid="antenna-accept"]')!.click();
-    });
-    expect(h.onSetStatus).not.toHaveBeenCalled();
+    expect(input('Weight').disabled).toBe(true);
+    expect(input('Frequencies').disabled).toBe(true);
+    expect(input('In service').disabled).toBe(true);
   });
 
   it('shows the new unit values when the unit changes and does not patch on blur', () => {
@@ -210,9 +132,8 @@ describe('AntennaDetails', () => {
     expect(input('Model').value).toBe('OLD');
     act(() => {
       root.render(
-        <AntennaDetails
+        <AntennaUserFields
           unit={unit({ id: 'ant-2', name: 'A2', user: { model: 'NEW' } })}
-          projectId="p1"
           readOnly={false}
           {...h}
         />,
