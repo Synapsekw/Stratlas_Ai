@@ -71,21 +71,6 @@ const input = (label: string): HTMLInputElement => {
   const l = [...host.querySelectorAll('label')].find((x) => x.textContent.startsWith(label));
   return l!.querySelector('input')!;
 };
-function type(el: HTMLInputElement, value: string) {
-  // eslint-disable-next-line @typescript-eslint/unbound-method
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-  act(() => {
-    setter?.call(el, value);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-}
-const blur = (el: HTMLElement) => {
-  act(() => {
-    el.focus();
-    el.blur();
-  });
-};
-
 describe('AntennaDetails', () => {
   it('shows basis and quality for each value', () => {
     vi.useFakeTimers();
@@ -120,39 +105,6 @@ describe('AntennaDetails', () => {
     expect(host.textContent).toContain('Diameter');
     expect(host.textContent).not.toContain('Downtilt');
     expect(host.textContent).not.toContain('Plumb');
-  });
-
-  it('saves a model on blur and refuses a negative weight', () => {
-    const h = show(unit());
-    type(input('Model'), 'XYZ-1');
-    blur(input('Model'));
-    expect(h.onPatchUser).toHaveBeenCalledWith({ model: 'XYZ-1' });
-    h.onPatchUser.mockClear();
-
-    type(input('Weight'), '-3');
-    blur(input('Weight'));
-    expect(h.onPatchUser).not.toHaveBeenCalled();
-    expect(input('Weight').getAttribute('aria-invalid')).toBe('true');
-    const err = host.querySelector('#antenna-weight-err');
-    expect(err?.textContent).toBe('Enter a weight in kilograms, 0 or more');
-    expect(input('Weight').getAttribute('aria-describedby')).toBe('antenna-weight-err');
-    type(input('Weight'), '501');
-    blur(input('Weight'));
-    expect(h.onPatchUser).not.toHaveBeenCalled();
-
-    type(input('Weight'), '12.5');
-    blur(input('Weight'));
-    expect(h.onPatchUser).toHaveBeenCalledWith({ weightKg: 12.5 });
-    expect(input('Weight').getAttribute('aria-invalid')).toBeNull();
-    expect(host.querySelector('#antenna-weight-err')).toBeNull();
-  });
-
-  it('saves the in-service flag on change', () => {
-    const h = show(unit());
-    act(() => {
-      input('In service').click();
-    });
-    expect(h.onPatchUser).toHaveBeenCalledWith({ active: true });
   });
 
   it('opens the photo viewer from a thumbnail and builds the crop url', () => {
@@ -203,27 +155,5 @@ describe('AntennaDetails', () => {
       host.querySelector<HTMLElement>('[data-testid="antenna-accept"]')!.click();
     });
     expect(h.onSetStatus).not.toHaveBeenCalled();
-  });
-
-  it('shows the new unit values when the unit changes and does not patch on blur', () => {
-    const h = show(unit({ user: { model: 'OLD', frequencies: 'f-old', weightKg: 9 } }));
-    expect(input('Model').value).toBe('OLD');
-    act(() => {
-      root.render(
-        <AntennaDetails
-          unit={unit({ id: 'ant-2', name: 'A2', user: { model: 'NEW' } })}
-          projectId="p1"
-          readOnly={false}
-          {...h}
-        />,
-      );
-    });
-    expect(input('Model').value).toBe('NEW');
-    expect(input('Frequencies').value).toBe('');
-    expect(input('Weight').value).toBe('');
-    blur(input('Model'));
-    blur(input('Frequencies'));
-    blur(input('Weight'));
-    expect(h.onPatchUser).not.toHaveBeenCalled();
   });
 });

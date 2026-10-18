@@ -1,7 +1,13 @@
-import type { AntennaStatus, AntennaUnit, AntennaUserFields, AntennaValue } from '@aio/schema';
+import type {
+  AntennaStatus,
+  AntennaUnit,
+  AntennaUserFields as UserFields,
+  AntennaValue,
+} from '@aio/schema';
 import { Button, Tip, t } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
-import { useState, type ReactElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { AntennaUserFields } from './AntennaUserFields';
 import { azimuthLines, formatDeg, qualityTip } from './antennaFormat';
 
 export interface AntennaDetailsProps {
@@ -10,7 +16,7 @@ export interface AntennaDetailsProps {
   readOnly: boolean;
   aiProvider?: string;
   onSetStatus: (status: AntennaStatus) => void;
-  onPatchUser: (fields: AntennaUserFields) => void;
+  onPatchUser: (fields: UserFields) => void;
   onOpenPhoto: (layer: string, photoId: string) => void;
 }
 
@@ -46,44 +52,12 @@ function Entry({ label, children }: { label: string; children: ReactNode }): Rea
   );
 }
 
-/** The weight in kg when `text` is a number from 0 to 500, else null. */
-function parseWeight(text: string): number | null {
-  if (!/^\s*\d+(\.\d+)?\s*$/.test(text)) return null;
-  const n = Number(text);
-  return n <= 500 ? n : null;
-}
-
 /** One unit's values, the fields a person types, its photos and the status buttons. */
 export function AntennaDetails(props: AntennaDetailsProps): ReactElement {
   const { unit, readOnly } = props;
-  const [model, setModel] = useState(unit.user.model ?? '');
-  const [freq, setFreq] = useState(unit.user.frequencies ?? '');
-  const [weight, setWeight] = useState(
-    unit.user.weightKg === undefined ? '' : String(unit.user.weightKg),
-  );
-  const [weightBad, setWeightBad] = useState(false);
-  // A different unit starts from its own saved values, never the previous unit's text.
-  const [seenId, setSeenId] = useState(unit.id);
-  if (seenId !== unit.id) {
-    setSeenId(unit.id);
-    setModel(unit.user.model ?? '');
-    setFreq(unit.user.frequencies ?? '');
-    setWeight(unit.user.weightKg === undefined ? '' : String(unit.user.weightKg));
-    setWeightBad(false);
-  }
   const az = azimuthLines(unit);
   const provider = props.aiProvider ?? unit.ai?.provider ?? '';
   const c = unit.box.centre;
-
-  const commitWeight = (): void => {
-    if (weight.trim() === '') {
-      setWeightBad(false);
-      return;
-    }
-    const n = parseWeight(weight);
-    setWeightBad(n === null);
-    if (n !== null && n !== unit.user.weightKg) props.onPatchUser({ weightKg: n });
-  };
 
   return (
     <section style={{ display: 'grid', gap: 'var(--sp-5)' }}>
@@ -146,69 +120,7 @@ export function AntennaDetails(props: AntennaDetailsProps): ReactElement {
         </Entry>
       </dl>
 
-      <div style={{ display: 'grid', gap: 'var(--sp-4)' }}>
-        <label style={{ display: 'grid', gap: 'var(--sp-1)' }}>
-          {t('telecom.antennas.field.model')}
-          <input
-            type="text"
-            value={model}
-            disabled={readOnly}
-            maxLength={120}
-            onChange={(e) => {
-              setModel(e.target.value);
-            }}
-            onBlur={() => {
-              if (model !== (unit.user.model ?? '')) props.onPatchUser({ model });
-            }}
-          />
-        </label>
-        <label style={{ display: 'grid', gap: 'var(--sp-1)' }}>
-          {t('telecom.antennas.field.weight')}
-          <input
-            type="text"
-            inputMode="decimal"
-            value={weight}
-            disabled={readOnly}
-            aria-invalid={weightBad ? true : undefined}
-            aria-describedby={weightBad ? 'antenna-weight-err' : undefined}
-            onChange={(e) => {
-              setWeight(e.target.value);
-            }}
-            onBlur={commitWeight}
-          />
-          {weightBad ? (
-            <small id="antenna-weight-err" role="alert">
-              {t('telecom.antennas.field.weight.invalid')}
-            </small>
-          ) : null}
-        </label>
-        <label style={{ display: 'grid', gap: 'var(--sp-1)' }}>
-          {t('telecom.antennas.field.frequencies')}
-          <input
-            type="text"
-            value={freq}
-            disabled={readOnly}
-            maxLength={200}
-            onChange={(e) => {
-              setFreq(e.target.value);
-            }}
-            onBlur={() => {
-              if (freq !== (unit.user.frequencies ?? '')) props.onPatchUser({ frequencies: freq });
-            }}
-          />
-        </label>
-        <label style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center' }}>
-          <input
-            type="checkbox"
-            checked={unit.user.active === true}
-            disabled={readOnly}
-            onChange={(e) => {
-              props.onPatchUser({ active: e.target.checked });
-            }}
-          />
-          {t('telecom.antennas.field.active')}
-        </label>
-      </div>
+      <AntennaUserFields unit={unit} readOnly={readOnly} onPatchUser={props.onPatchUser} />
 
       <div style={{ display: 'grid', gap: 'var(--sp-3)' }}>
         <h4 style={{ margin: 0, fontSize: 'var(--t-title)' }}>{t('telecom.antennas.photos')}</h4>
