@@ -1,4 +1,4 @@
-import { shiftLocal, type DateShift } from '@aio/schema';
+import { shiftEN, shiftLocal, type DateShift } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { vectorChanges } from './vector';
 
@@ -112,5 +112,44 @@ describe('vector change on a turned date', () => {
     // 400 m at 0.5 degree ends 3.5 m north: the turn puts the old line on the new one
     expect(run(shiftFrom)).toBe('unchanged');
     expect(run(null)).not.toBe('unchanged');
+  });
+
+  it('follows a turned line-up without toLocal', () => {
+    const toEN = ([lon, lat]: [number, number]): [number, number] => [
+      500000 + lon / M,
+      3200000 + lat / M,
+    ];
+    const turn: DateShift = {
+      eastM: 0,
+      northM: 0,
+      turn: { rotationDeg: 0.5, scale: 1, pivotE: 500000, pivotN: 3200000, pivotX: 0, pivotZ: 0 },
+    };
+    const a = line(0, 0, 400, 0);
+    const turned = a.map(([lon, lat]) => {
+      const q = shiftEN(toEN([lon ?? 0, lat ?? 0]), turn);
+      return [(q[0] - 500000) * M, (q[1] - 3200000) * M];
+    });
+    const run = (s: DateShift) =>
+      vectorChanges({
+        layerFrom: 'a',
+        layerTo: 'b',
+        from: fc(feature({ name: 'Fence' }, a)),
+        to: fc(feature({ name: 'Fence' }, turned)),
+        toEN,
+        shiftFrom: s,
+      })[0]?.verdict;
+    expect(run(turn)).toBe('unchanged');
+    // the plain shift (no turn) does not reach the turned line
+    expect(run({ eastM: 0, northM: 0 })).not.toBe('unchanged');
+    // a turn that cannot be placed is refused, not drawn as a plain shift
+    expect(() =>
+      vectorChanges({
+        layerFrom: 'a',
+        layerTo: 'b',
+        from: fc(feature({ name: 'F' }, a)),
+        to: fc(),
+        shiftFrom: turn,
+      }),
+    ).toThrow(/turned line-up/);
   });
 });
