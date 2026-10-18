@@ -304,7 +304,9 @@ function Dialog({
                 <dt>
                   <Icon name="target" size={12} />
                 </dt>
-                <dd data-testid="lineup-shift">{shiftWords(shift.eastM, shift.northM, t)}</dd>
+                <dd data-testid="lineup-shift">
+                  {shiftWords(shift.eastM, shift.northM, t, turned ? m.fit?.maxMoveM : undefined)}
+                </dd>
                 {turned && (
                   <>
                     <dt>

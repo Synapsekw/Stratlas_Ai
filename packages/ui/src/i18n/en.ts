@@ -4317,6 +4317,7 @@ export const en = {
   'lineUp.keepHint': 'Choose the date that stays where it is. The other date moves onto it.',
   'lineUp.measuring': 'Measuring how far apart the dates are...',
   'lineUp.shift': '{ew}, {ns} ({distance} in all)',
+  'lineUp.shiftTurned': '{ew}, {ns} at the centre, up to {distance} at the edges',
   'lineUp.east': '{distance} east',
   'lineUp.west': '{distance} west',
   'lineUp.north': '{distance} north',

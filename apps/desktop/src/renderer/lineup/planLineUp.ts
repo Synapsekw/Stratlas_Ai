@@ -209,15 +209,21 @@ export function turnWords(turn: { rotationDeg: number; scale: number }, t: T): s
   });
 }
 
-/** "2.01 m west, 0.00 m north (2.01 m in all)". */
-export function shiftWords(eastM: number, northM: number, t: T): string {
-  return t('lineUp.shift', {
+/**
+ * "2.01 m west, 0.00 m north (2.01 m in all)". A turned fit gives `maxMoveM`, its largest move
+ * over the overlap (what the chip and the offer show): the shift is then the move at the pivot,
+ * "2.00 m west, 0.74 m north at the centre, up to 2.86 m at the edges".
+ */
+export function shiftWords(eastM: number, northM: number, t: T, maxMoveM?: number): string {
+  const words = {
     ew: t(eastM < 0 ? 'lineUp.west' : 'lineUp.east', { distance: formatMetres(Math.abs(eastM)) }),
     ns: t(northM < 0 ? 'lineUp.south' : 'lineUp.north', {
       distance: formatMetres(Math.abs(northM)),
     }),
-    distance: formatMetres(Math.hypot(eastM, northM)),
-  });
+  };
+  return maxMoveM !== undefined && Number.isFinite(maxMoveM)
+    ? t('lineUp.shiftTurned', { ...words, distance: formatMetres(maxMoveM) })
+    : t('lineUp.shift', { ...words, distance: formatMetres(Math.hypot(eastM, northM)) });
 }
 
 export interface LineUpPair {
