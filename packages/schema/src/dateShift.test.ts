@@ -17,12 +17,14 @@ import {
   shiftLocal,
   shiftTransform,
   shiftedDirectionKeys,
+  shiftedBox,
   shiftedLayer,
   storedTransform,
   unshiftCorners,
   unshiftLocal,
   type DirectionKey,
   type Layer,
+  type Vec3,
 } from './index';
 
 const S = { eastM: 2, northM: 1 };
@@ -411,3 +413,40 @@ describe('line-up turn and scale (similarity fixture, shared with Python)', () =
 });
 
 type RasterCornersT = Parameters<typeof shiftCorners>[0];
+
+describe('shiftedBox', () => {
+  const turn: DateShift = {
+    eastM: 1,
+    northM: -2,
+    turn: {
+      rotationDeg: 1,
+      scale: 1.005,
+      pivotE: 500100,
+      pivotN: 3200100,
+      pivotX: 100,
+      pivotZ: -100,
+    },
+  };
+  it('is the same box for no shift and a plain shift moves it', () => {
+    const b = { min: [0, 1, 2] as Vec3, max: [10, 3, 8] as Vec3 };
+    expect(shiftedBox(b, null)).toBe(b);
+    expect(shiftedBox(null, turn)).toBeNull();
+    expect(shiftedBox(b, { eastM: 2, northM: 1 })).toEqual({ min: [2, 1, 1], max: [12, 3, 7] });
+  });
+  it('grows to hold the turned corners', () => {
+    const b = { min: [0, 1, 0] as Vec3, max: [200, 3, 100] as Vec3 };
+    const out = shiftedBox(b, turn);
+    if (!out) throw new Error('no box');
+    const pts = [
+      [0, 0],
+      [200, 0],
+      [0, 100],
+      [200, 100],
+    ].map(([x = 0, z = 0]) => shiftLocal([x, 0, z], turn));
+    expect(out.min[0]).toBeCloseTo(Math.min(...pts.map((p) => p[0])), 9);
+    expect(out.max[0]).toBeCloseTo(Math.max(...pts.map((p) => p[0])), 9);
+    expect(out.min[2]).toBeCloseTo(Math.min(...pts.map((p) => p[2])), 9);
+    expect(out.max[2]).toBeCloseTo(Math.max(...pts.map((p) => p[2])), 9);
+    expect([out.min[1], out.max[1]]).toEqual([1, 3]);
+  });
+});
