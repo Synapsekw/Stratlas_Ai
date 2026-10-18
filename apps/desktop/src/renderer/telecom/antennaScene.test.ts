@@ -1,17 +1,23 @@
 // @vitest-environment jsdom
 import type { AntennasFile, AntennaUnit, Vec3 } from '@aio/schema';
-import type { Group } from 'three';
+import type { Group, MeshBasicMaterial } from 'three';
 import {
   LineBasicMaterial,
   LineDashedMaterial,
   PerspectiveCamera,
+  Scene,
   type LineSegments,
   type Mesh,
 } from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { describe, expect, it, vi } from 'vitest';
 import { frameOf } from '../survey/measureScene';
+import { antennaMeasure } from './antennaMeasure';
 import {
+  antennaLabelSpots,
   antennaShift,
+  attachAntennaLayer,
   buildAntennaGroup,
   KIND_COLOURS,
   pickAntennaAt,
@@ -66,8 +72,9 @@ function unit(
 
 const file = (units: AntennaUnit[]) => ({ schema: 'aio.antennas/1', units }) as AntennasFile;
 
+const accUnit = unit('ant-acc', 'panel', 'accepted', [1003, 2004, 60], 90);
 const units = [
-  unit('ant-acc', 'panel', 'accepted', [1003, 2004, 60], 90),
+  accUnit,
   unit('ant-draft', 'short', 'draft', [1010, 2004, 60], 0),
   unit('ant-rej', 'dish', 'rejected', [1020, 2004, 60], 180),
   unit('ant-oth', 'other', 'accepted', [1030, 2004, 60]),
@@ -222,5 +229,136 @@ describe('antenna scene', () => {
   it('draws nothing without a file', () => {
     const g = buildAntennaGroup(state({ file: null }), frame);
     expect(g.children).toHaveLength(0);
+  });
+});
+
+describe('antenna review drawing', () => {
+  it('draws a hidden unit while it is selected, with its halo', () => {
+    const g = buildAntennaGroup(state({ selected: 'ant-hid' }), frame);
+    expect(g.getObjectByName('antenna-box:ant-hid')).toBeDefined();
+    expect(named(g, 'antenna-highlight')?.userData.antennaId).toBe('ant-hid');
+    const off = buildAntennaGroup(state({ selected: null }), frame);
+    expect(off.getObjectByName('antenna-box:ant-hid')).toBeUndefined();
+    expect(named(off, 'antenna-highlight')).toBeUndefined();
+  });
+
+  it('draws only the soloed kind, and the selected unit', () => {
+    const g = buildAntennaGroup(state({ solo: 'panel' }), frame);
+    expect(g.getObjectByName('antenna-box:ant-draft')).toBeUndefined();
+    expect(g.getObjectByName('antenna-box:ant-acc')).toBeDefined();
+    expect(g.getObjectByName('antenna-box:ant-rej')).toBeUndefined();
+    const sel = buildAntennaGroup(state({ solo: 'panel', selected: 'ant-draft' }), frame);
+    expect(sel.getObjectByName('antenna-box:ant-draft')).toBeDefined();
+  });
+
+  it('draws the selected box stronger and over everything', () => {
+    const g = buildAntennaGroup(state({ selected: 'ant-draft' }), frame);
+    const box = g.getObjectByName('antenna-box:ant-draft') as Mesh;
+    const mat = box.material as MeshBasicMaterial;
+    expect(mat.opacity).toBe(0.35);
+    expect(mat.depthTest).toBe(false);
+    expect(box.renderOrder).toBe(43);
+    const edges = g.getObjectByName('antenna-outline:ant-draft');
+    expect(edges).toBeInstanceOf(LineSegments2);
+    const lm = (edges as LineSegments2).material;
+    expect(lm).toBeInstanceOf(LineMaterial);
+    expect(lm.linewidth).toBe(3);
+    expect(lm.depthTest).toBe(false);
+    expect(lm.color.getHexString()).toBe(KIND_COLOURS.short.slice(1));
+    // a draft stays dashed when selected
+    expect(lm.dashed).toBe(true);
+    expect(named(g, 'antenna-highlight')?.renderOrder).toBe(43);
+    expect(named(g, 'antenna-facing:ant-draft')?.renderOrder).toBe(43);
+    // others keep today's look
+    const other = g.getObjectByName('antenna-box:ant-acc') as Mesh;
+    expect((other.material as MeshBasicMaterial).opacity).toBeCloseTo(0.18);
+    expect((other.material as MeshBasicMaterial).depthTest).toBe(true);
+    expect(other.renderOrder).toBe(41);
+    expect(outline(g, 'ant-acc')).not.toBeInstanceOf(LineSegments2);
+  });
+
+  it('draws dimension lines for the selected unit only', () => {
+    const g = buildAntennaGroup(state({ selected: 'ant-acc' }), frame);
+    const dims = g.children.filter((c) => c.name.startsWith('antenna-dim:'));
+    expect(dims.map((c) => c.name)).toEqual(['antenna-dim:ant-acc']);
+    const dim = dims[0] as LineSegments;
+    const mat = dim.material as LineBasicMaterial;
+    expect(mat.color.getHexString()).toBe('ffffff');
+    expect(mat.depthTest).toBe(false);
+    expect(dim.renderOrder).toBe(43);
+    const segments = antennaMeasure(accUnit, frame, null).segments;
+    expect(dim.geometry.getAttribute('position').count).toBe(segments.length * 2);
+    expect(named(buildAntennaGroup(state(), frame), 'antenna-dim:ant-acc')).toBeUndefined();
+  });
+
+  it('places a name on every drawn unit and the measurements on the selected one', () => {
+    const plain = antennaLabelSpots(state(), frame);
+    expect(plain.map((s) => s.text).sort()).toEqual(['ant-acc', 'ant-draft', 'ant-oth', 'ant-rej']);
+    expect(plain.every((s) => s.kind === 'name' && !s.selected)).toBe(true);
+
+    const spots = antennaLabelSpots(state({ selected: 'ant-acc' }), frame);
+    const measure = antennaMeasure(accUnit, frame, null).spots;
+    expect(spots.filter((s) => s.selected)).toEqual(measure);
+    expect(
+      spots
+        .filter((s) => !s.selected)
+        .map((s) => s.text)
+        .sort(),
+    ).toEqual(['ant-draft', 'ant-oth', 'ant-rej']);
+    expect(spots.filter((s) => s.kind === 'name')).toHaveLength(4);
+    expect(new Set(spots.map((s) => s.key)).size).toBe(spots.length);
+  });
+
+  it('sizes the fat lines to the canvas, on build and on resize', () => {
+    const canvas = document.createElement('canvas');
+    let w = 800;
+    let h = 600;
+    Object.defineProperty(canvas, 'clientWidth', { get: () => w });
+    Object.defineProperty(canvas, 'clientHeight', { get: () => h });
+    const frames: (() => void)[] = [];
+    let listeners = 0;
+    let current: AntennaSceneState = state({ selected: 'ant-acc' });
+    const subs: (() => void)[] = [];
+    const scene = new Scene();
+    const stage = {
+      scene,
+      camera: new PerspectiveCamera(),
+      renderer: { domElement: canvas },
+      requestRender: () => undefined,
+      onFrame: (cb: () => void) => {
+        frames.push(cb);
+        listeners++;
+        return () => {
+          listeners--;
+        };
+      },
+    } as never;
+    const detach = attachAntennaLayer(stage, frame, {
+      getState: () => current,
+      subscribe: (cb) => {
+        subs.push(cb);
+        return () => undefined;
+      },
+      onPick: () => undefined,
+    });
+    const res = () =>
+      (
+        scene.getObjectByName('antenna-outline:ant-acc') as LineSegments2
+      ).material.resolution.toArray();
+    expect(res()).toEqual([800, 600]);
+    w = 1024;
+    h = 512;
+    frames.forEach((f) => {
+      f();
+    });
+    expect(res()).toEqual([1024, 512]);
+    current = state({ selected: 'ant-acc', hidden: {} });
+    subs.forEach((f) => {
+      f();
+    });
+    expect(res()).toEqual([1024, 512]);
+    detach();
+    expect(listeners).toBe(0);
+    expect(scene.getObjectByName('aio-telecom-antennas')).toBeUndefined();
   });
 });
