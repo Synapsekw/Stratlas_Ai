@@ -108,12 +108,21 @@ def _median_shift(shifts: list[tuple[float, float]], dy0: float = 0.0, dx0: floa
 
 #: The coarse level is the first power of two at which a tile's search (a third of it) spans this.
 COARSE_SEARCH_M = 60.0
-#: The fine level reads at most this many tiles, the ones with the most texture.
+#: The fine level reads at most this many tiles: the most textured in each cell of a
+#: ``SPREAD_CELLS`` square grid over the overlap, then the most textured of the rest.
 MAX_FINE_TILES = 48
-#: A measurement is trusted with at least this many fine tiles ...
+SPREAD_CELLS = 6
+#: Rounds of leaving out tiles that disagree with the fitted similarity (real change).
+FIT_ROUNDS = 3
+#: A measurement is trusted with at least this many fine tiles (inliers of the fit) ...
 MIN_TILES = 6
-#: ... whose shifts lie within this of their median (the spread).
+#: ... whose shifts lie within this of the fitted similarity (the median residual).
 MAX_SPREAD_PX = 1.0
+#: A line-up turns at most this far and scales within 1 +- ``MAX_SCALE_DEV`` ...
+MAX_ROTATION_DEG = 1.0
+MAX_SCALE_DEV = 0.01
+#: ... and moves no point of the overlap further than this.
+MAX_MOVE_M = 500.0
 #: Dates whose common footprint is under this share of the smaller one's are not measured.
 MIN_OVERLAP = 0.3
 
@@ -144,12 +153,15 @@ def _downsample(x: np.ndarray, valid: np.ndarray, f: int) -> tuple[np.ndarray, n
 def measure_line_up(
     a: np.ndarray, b: np.ndarray, valid: np.ndarray, cell: float, log: bool = True
 ) -> dict[str, Any]:
-    """The shift (rows, columns) that moves ``b`` onto ``a``, measured coarse to fine.
+    """The similarity (shift, small turn and scale) that moves ``b`` onto ``a``, coarse to fine.
 
     A coarse level (``_coarse_level``, a power of two) finds shifts of up to ``COARSE_SEARCH_M``;
-    then, with ``b`` moved by that answer, at most ``MAX_FINE_TILES`` full-resolution tiles of the
-    most texture refine it. ``a``, ``b`` and ``valid`` as ``estimate_shift``. Returns ``dy``,
-    ``dx``, ``px``, ``tiles`` and ``spread`` of the fine level, and ``coarse`` (the factor).
+    then, with ``b`` moved by that answer, at most ``MAX_FINE_TILES`` full-resolution tiles spread
+    over the overlap (``_spread_tiles``) are measured, and a similarity is fitted to their centres
+    and shifts (``fit_similarity``). ``a``, ``b`` and ``valid`` as ``estimate_shift``. Returns
+    ``dy``, ``dx`` (the move of the fit's centroid, rows south and columns east) and ``px``,
+    ``tiles`` (tiles measured), ``spread`` (the fit's median residual), ``fit``, ``centres`` (the
+    measured tiles' centres, row and column) and ``coarse`` (the factor).
     """
     a = np.asarray(a, np.float64)
     b = np.asarray(b, np.float64)
@@ -181,17 +193,154 @@ def measure_line_up(
             texture = min(ha[r : r + step, col : col + step].std(), hb[rb : rb + step, cb : cb + step].std())
             if texture >= MIN_TEXTURE:
                 found.append((float(texture), r, col))
-    found.sort(key=lambda t: -t[0])
+    centres: list[tuple[float, float]] = []
     shifts: list[tuple[float, float]] = []
-    for _, r, col in found[:MAX_FINE_TILES]:
+    for r, col in _spread_tiles(found, step):
         ta = ha[r : r + step, col : col + step]
         tb = hb[r - dy0 : r - dy0 + step, col - dx0 : col - dx0 + step]
         s = _tile_shift(ta, tb)
         if s is not None:
-            shifts.append(s)
-    out = _median_shift(shifts, float(dy0), float(dx0))
+            centres.append((r + (step - 1) / 2, col + (step - 1) / 2))
+            shifts.append((s[0] + dy0, s[1] + dx0))
+    if not shifts:
+        out = _median_shift([], float(dy0), float(dx0))
+        out["fit"] = {**_identity_fit(), "ty": float(dy0), "tx": float(dx0)}
+    else:
+        fit = fit_similarity(np.array(centres), np.array(shifts), shape=(h, w))
+        dy, dx = fit["ty"], fit["tx"]
+        out = {
+            "dy": round(dy, 3),
+            "dx": round(dx, 3),
+            "px": round(float(np.hypot(dy, dx)), 3),
+            "tiles": len(shifts),
+            "spread": fit["residual"],
+            "fit": fit,
+        }
+    out["centres"] = [[round(float(r), 3), round(float(c), 3)] for r, c in centres]
     out["coarse"] = f
     return out
+
+
+def _spread_tiles(found: list[tuple[float, int, int]], step: int) -> list[tuple[int, int]]:
+    """At most ``MAX_FINE_TILES`` of the candidate tiles (texture, row, column), spread over the
+    overlap: the most textured in each cell of a ``SPREAD_CELLS`` square grid over the candidates,
+    then the most textured of the rest."""
+    if not found:
+        return []
+    found = sorted(found, key=lambda t: -t[0])
+    rows = [r for _, r, _ in found]
+    cols = [c for _, _, c in found]
+    r0, c0 = min(rows), min(cols)
+    hr = (max(rows) + step - r0) / SPREAD_CELLS
+    hc = (max(cols) + step - c0) / SPREAD_CELLS
+    best: dict[tuple[int, int], int] = {}
+    for i, (_, r, c) in enumerate(found):
+        key = (
+            min(SPREAD_CELLS - 1, int((r + step / 2 - r0) // hr)),
+            min(SPREAD_CELLS - 1, int((c + step / 2 - c0) // hc)),
+        )
+        best.setdefault(key, i)
+    picked = sorted(best.values())[:MAX_FINE_TILES]
+    chosen = set(picked)
+    for i in range(len(found)):
+        if len(picked) >= MAX_FINE_TILES:
+            break
+        if i not in chosen:
+            picked.append(i)
+    return [(found[i][1], found[i][2]) for i in picked]
+
+
+def _identity_fit() -> dict[str, Any]:
+    return {
+        "a": 1.0,
+        "b": 0.0,
+        "ty": 0.0,
+        "tx": 0.0,
+        "cy": 0.0,
+        "cx": 0.0,
+        "residual": 0.0,
+        "inliers": 0,
+        "turned": False,
+    }
+
+
+def fit_similarity(
+    centres: np.ndarray, shifts: np.ndarray, shape: tuple[int, int] | None = None
+) -> dict[str, Any]:
+    """A similarity fitted, robustly, to tile ``shifts`` (dy, dx) measured at tile ``centres``
+    (row, column), both in grid pixels: the map ``p = c + S (q - c) + t`` that takes a tile's
+    content in ``b`` (at ``q = p - shift``) to where it sits in ``a`` (at ``p``).
+
+    In (column x, row y) ``S`` is ``[[a, -b], [b, a]]``: with rows running south, a positive ``b``
+    turns clockwise as seen on the ground. ``t`` is (``ty``, ``tx``), the move of the centroid
+    ``c`` (``cy``, ``cx``) of the inlier centres. Least squares, then up to ``FIT_ROUNDS`` rounds
+    leave out tiles whose residual exceeds ``max(3 * 1.4826 * MAD, 0.5)`` px, the MAD being the
+    median of the residuals (their absolute deviation from the fit), and refit.
+
+    When the inlier centres span less than a third of the grid (``shape``, rows and columns) on
+    either axis, the turn and scale can't be trusted: the shift alone is fitted (their median) and
+    ``turned`` is false. Returns ``a``, ``b``, ``ty``, ``tx``, ``cy``, ``cx``, ``residual`` (the
+    median residual of the inliers, px), ``inliers`` and ``turned``.
+    """
+    p = np.asarray(centres, np.float64).reshape(-1, 2)
+    d = np.asarray(shifts, np.float64).reshape(-1, 2)
+    if len(p) == 0:
+        return _identity_fit()
+    q = p - d
+
+    def turnable(mask: np.ndarray) -> bool:
+        if mask.sum() < 3:
+            return False
+        if shape is None:
+            return True
+        span = p[mask].max(axis=0) - p[mask].min(axis=0)
+        return bool(span[0] >= shape[0] / 3 and span[1] >= shape[1] / 3)
+
+    def solve(mask: np.ndarray) -> tuple[float, float, float, float, np.ndarray, bool]:
+        c = p[mask].mean(axis=0)
+        if not turnable(mask):
+            t = np.median(d[mask], axis=0)
+            return 1.0, 0.0, float(t[0]), float(t[1]), c, False
+        u = q[mask] - c
+        m = int(mask.sum())
+        A = np.zeros((2 * m, 4))
+        y = np.zeros(2 * m)
+        # x' - cx = a ux - b uy + tx ; y' - cy = b ux + a uy + ty  (unknowns a, b, ty, tx)
+        A[:m] = np.column_stack([u[:, 1], -u[:, 0], np.zeros(m), np.ones(m)])
+        y[:m] = p[mask, 1] - c[1]
+        A[m:] = np.column_stack([u[:, 0], u[:, 1], np.ones(m), np.zeros(m)])
+        y[m:] = p[mask, 0] - c[0]
+        sol = np.linalg.lstsq(A, y, rcond=None)[0]
+        return float(sol[0]), float(sol[1]), float(sol[2]), float(sol[3]), c, True
+
+    def residuals(a: float, b: float, ty: float, tx: float, c: np.ndarray) -> np.ndarray:
+        u = q - c
+        px = c[1] + a * u[:, 1] - b * u[:, 0] + tx
+        py = c[0] + b * u[:, 1] + a * u[:, 0] + ty
+        return np.hypot(px - p[:, 1], py - p[:, 0])
+
+    mask = np.ones(len(p), bool)
+    a, b, ty, tx, c, turned = solve(mask)
+    for _ in range(FIT_ROUNDS):
+        r = residuals(a, b, ty, tx, c)
+        limit = max(3 * 1.4826 * float(np.median(r[mask])), 0.5)
+        keep = r <= limit
+        if keep.sum() < 2 or (keep == mask).all():
+            break
+        mask = keep
+        a, b, ty, tx, c, turned = solve(mask)
+    r = residuals(a, b, ty, tx, c)
+    return {
+        "a": round(a, 9),
+        "b": round(b, 9),
+        "ty": round(ty, 4),
+        "tx": round(tx, 4),
+        "cy": round(float(c[0]), 3),
+        "cx": round(float(c[1]), 3),
+        "residual": round(float(np.median(r[mask])), 3),
+        "inliers": int(mask.sum()),
+        "turned": turned,
+    }
 
 
 def registration(shift: dict[str, Any], cell: float, max_px: float) -> dict[str, Any]:
