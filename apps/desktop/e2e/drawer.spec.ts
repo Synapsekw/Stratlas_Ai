@@ -66,7 +66,8 @@ test.describe('the drawer', () => {
     await expect(win.getByTestId('survey-drawbar')).toHaveCount(1);
     await expect(drawer(win)).toHaveAttribute('data-open', '');
     await expect(drawer(win)).toHaveAttribute('data-front', 'measure');
-    await expect(drawer(win).locator('.wb-section').first()).toBeVisible();
+    // the bench itself is shown: the live card on top, the Saved footer under it
+    await expect(drawer(win).getByTestId('survey-saved')).toBeVisible();
     await expect(drawer(win).locator('.agent')).toHaveCount(0);
     // it covers the stage's end edge only, and the sidebar stays folded
     await expect(win.locator('.ws')).toHaveClass(/right-off/);
