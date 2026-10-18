@@ -9,6 +9,7 @@ import { antennasFile, unit } from '../__fixtures__/rfData';
 import { startRfRun } from '../rfTab';
 import { loadRf, resetRf, rfStore, type RfClassStat, type RfState } from '../rfStore';
 import {
+  AUTOPLAN_MESSAGES,
   applyAutoplan,
   autoplanStore,
   cancelAutoplan,
@@ -327,9 +328,87 @@ describe('the AI source', () => {
     expect(autoplan()).toMatchObject({ phase: 'idle', proposal: null });
     expect(selectChipState(rfStore.getState(), site3(), autoplan()).kind).not.toBe('planning');
   });
+
+  it('a second start while thinking cancels the first request and ignores its reply', async () => {
+    let release: (v: unknown) => void = () => undefined;
+    mockInvoke('ai:rfPlan', () => new Promise((r) => (release = r)));
+    await startAutoplan('ai');
+    const sending = confirmSend(false);
+    await vi.waitFor(() => {
+      expect(callsTo('ai:rfPlan')).toHaveLength(1);
+    });
+    const runId = (callsTo('ai:rfPlan')[0]?.[1] as { runId: string }).runId;
+    await startAutoplan('rules');
+    expect(callsTo('ai:cancel')[0]?.[1]).toEqual({ runId });
+    expect(autoplan().phase).toBe('review');
+    const rulesProposal = autoplan().proposal;
+    release(REPLY);
+    await sending;
+    expect(autoplan().phase).toBe('review');
+    expect(autoplan().proposal).toBe(rulesProposal);
+    expect(autoplan().proposal?.rows.every((r) => r.picks[0]?.by === 'rules')).toBe(true);
+  });
+
+  it('a project switch while the preview is pending drops it (R17)', async () => {
+    let release: (v: unknown) => void = () => undefined;
+    mockInvoke('ai:rfPlanPreview', () => new Promise((r) => (release = r)));
+    const starting = startAutoplan('ai');
+    await vi.waitFor(() => {
+      expect(callsTo('ai:rfPlanPreview')).toHaveLength(1);
+    });
+    expect(autoplan()).toMatchObject({ phase: 'preview', projectId: 'p1' });
+    await loadRf('p2');
+    expect(autoplan()).toMatchObject({ phase: 'idle', projectId: null, preview: null });
+    release(PREVIEW);
+    await starting;
+    expect(autoplan()).toMatchObject({ phase: 'idle', preview: null, proposal: null });
+    expect(selectChipState(rfStore.getState(), site3(), autoplan()).kind).not.toBe('planning');
+    await confirmSend(false);
+    expect(callsTo('ai:rfPlan')).toHaveLength(0);
+    expect(await applyAutoplan(true)).toBeNull();
+    expect(rfStore.getState().dirty).toBe(false);
+    expect(vi.mocked(startRfRun)).not.toHaveBeenCalled();
+  });
+
+  it('a project switch while thinking drops the reply (R17)', async () => {
+    let release: (v: unknown) => void = () => undefined;
+    mockInvoke('ai:rfPlan', () => new Promise((r) => (release = r)));
+    await startAutoplan('ai');
+    const sending = confirmSend(false);
+    await vi.waitFor(() => {
+      expect(callsTo('ai:rfPlan')).toHaveLength(1);
+    });
+    await loadRf('p2');
+    expect(callsTo('ai:cancel')).toHaveLength(1);
+    release(REPLY);
+    await sending;
+    expect(autoplan()).toMatchObject({ phase: 'idle', proposal: null });
+  });
 });
 
 describe('applyAutoplan', () => {
+  it('refuses a proposal made for another project (R17)', async () => {
+    await startAutoplan('rules');
+    autoplanStore.setState({ projectId: 'p-other' });
+    expect(await applyAutoplan(true)).toBeNull();
+    expect(rfStore.getState().dirty).toBe(false);
+    expect(rfStore.getState().sectors.sectors).toHaveLength(0);
+    expect(vi.mocked(startRfRun)).not.toHaveBeenCalled();
+    expect(autoplan().phase).toBe('idle');
+  });
+
+  it('applies and says why no run started when the project folder is not known', async () => {
+    await startAutoplan('rules');
+    workspace.setState({ project: null });
+    expect(await applyAutoplan(true)).toEqual({
+      ok: false,
+      code: 'failed',
+      message: AUTOPLAN_MESSAGES.noRoot,
+    });
+    expect(rfStore.getState().dirty).toBe(true);
+    expect(vi.mocked(startRfRun)).not.toHaveBeenCalled();
+  });
+
   it('applyAutoplan(true) applies and starts a run', async () => {
     await startAutoplan('rules');
     const r = await applyAutoplan(true);
@@ -408,6 +487,7 @@ describe('selectChipState', () => {
     proposal: null,
     warnings: [],
     error: null,
+    projectId: null,
     aiAvailable: false,
   };
   const RUN = { runId: 'rf-1', createdAt: '2026-10-18T08:17:00Z' } as RfRun;
