@@ -38,10 +38,10 @@ const MIN_TILE = 132;
 const GAP = 8;
 const CAPTION = 22;
 
-function Outline({ o }: { o: SheetOutline }) {
+/** One outline's shape, drawn with class `cls`. */
+function OutlineShape({ o, cls }: { o: SheetOutline; cls: string }) {
   const style = { ['--c' as string]: o.color };
   const g = o.geom;
-  const cls = `det-ol ${o.status}`;
   if (g.type === 'box')
     // a box across a walk's 360 seam shows on both edges of the frame
     return (
@@ -75,6 +75,16 @@ function Outline({ o }: { o: SheetOutline }) {
       <circle className={cls} style={style} cx={g.x} cy={g.y} r={Math.max(6, o.size[0] / 120)} />
     );
   return null;
+}
+
+/** A detection on a tile: a dark halo under the outline in its class colour. */
+function Outline({ o }: { o: SheetOutline }) {
+  return (
+    <>
+      <OutlineShape o={o} cls={`det-ol-halo ${o.status}`} />
+      <OutlineShape o={o} cls={`det-ol ${o.status}`} />
+    </>
+  );
 }
 
 function FrameTile({ url, t }: { url: string; t: number }) {

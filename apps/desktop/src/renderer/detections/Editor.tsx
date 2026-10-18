@@ -26,7 +26,10 @@ type ViewTransform = imageGeometry.ViewTransform;
 export interface EditorShape {
   detection: Detection;
   color: string;
+  /** The chip text: readable class and confidence ("No safety jacket 88%"). */
   label: string;
+  /** The tooltip: the class as the model or the project names it. */
+  title?: string;
 }
 
 function mediaUrl(
@@ -135,7 +138,15 @@ export function ReviewEditor({
         const editable = selected && !readOnly && s.detection.status !== 'accepted';
         if (parts.length < 2)
           return [
-            { key: s.detection.id, geom, color: s.color, label: s.label, selected, editable },
+            {
+              key: s.detection.id,
+              geom,
+              color: s.color,
+              label: s.label,
+              ...(s.title ? { title: s.title } : {}),
+              selected,
+              editable,
+            },
           ];
         const width = (g: ImageGeom | undefined) => (g?.type === 'box' ? g.w : 0);
         const widest = width(parts[1]) > width(parts[0]) ? 1 : 0;
@@ -144,6 +155,8 @@ export function ReviewEditor({
           geom: p,
           color: s.color,
           ...(i === widest ? { label: s.label } : {}),
+          ...(s.title ? { title: s.title } : {}),
+          group: s.detection.id,
           selected,
           editable: false,
         }));
@@ -212,6 +225,7 @@ export function ReviewEditor({
           size={natural}
           tool={readOnly ? 'select' : tool}
           shapes={items}
+          look="detections"
           onCreate={(geom) => {
             if (!readOnly) onCreate(geom, natural);
           }}

@@ -9,3 +9,4 @@ export * from './review';
 export * from './accept';
 export * from './grid';
 export * from './mask';
+export * from './classStyle';

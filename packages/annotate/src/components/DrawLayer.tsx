@@ -15,6 +15,7 @@ import {
   type ViewTransform,
 } from '../image/geometry';
 import { insertVertex, nearestEdge, removeVertex } from '../detections/geometry';
+import { CHIP_H, CHIP_PAD_X, chipTextColor, chipWidth, stackChips } from '../detections/classStyle';
 import type { ImageTool } from '../runtime';
 
 export interface ShapeItem {
@@ -24,6 +25,10 @@ export interface ShapeItem {
   label?: string;
   selected?: boolean;
   editable?: boolean;
+  /** Tooltip of the shape. */
+  title?: string;
+  /** Shapes drawn as parts of one (a box across a 360 seam) share hover by this key. */
+  group?: string;
 }
 
 export interface DrawLayerProps {
@@ -39,6 +44,12 @@ export interface DrawLayerProps {
   onVertexInsert?: (key: string, geom: ImageGeom) => void;
   /** Shift-click on a vertex of the selected polygon: remove it (three stay at least). */
   onVertexRemove?: (key: string, geom: ImageGeom) => void;
+  /**
+   * `detections`: the review's look. Each shape has a dark halo, its label is a filled chip in
+   * its colour above its top left corner (stacked so chips do not cover each other), the shape
+   * under the pointer thickens and comes to the front, and with one selected the others dim.
+   */
+  look?: 'plain' | 'detections';
 }
 
 type Gesture =
@@ -67,6 +78,22 @@ export function DrawLayer(props: DrawLayerProps) {
   const [gesture, setGesture] = useState<Gesture>({ kind: 'none' });
   const [clicks, setClicks] = useState<Point[]>([]);
   const [hover, setHover] = useState<Point | null>(null);
+  const det = props.look === 'detections';
+  // the layer's size on screen, to keep label chips inside it (detections look only)
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!det || !el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      setBox({ width: el.clientWidth, height: el.clientHeight });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+    };
+  }, [det]);
 
   // Drop a half-drawn shape when the tool changes (state derived during render, not in an effect).
   const [toolSeen, setToolSeen] = useState(tool);
@@ -112,6 +139,21 @@ export function DrawLayer(props: DrawLayerProps) {
   });
 
   const selected = shapes.find((s) => s.selected && s.editable);
+  // the detections look draws the hovered shape, then the selected one, last (on top); clicks
+  // pick the topmost shape, so they follow the same order
+  const groupOf = (s: ShapeItem) => s.group ?? s.key;
+  const hitAt = (list: readonly ShapeItem[], p: Point) =>
+    [...list].reverse().find((s) => hitGeom(s.geom, p, 6 / view.scale));
+  const hovered =
+    det && hover && gesture.kind === 'none' && tool === 'select' ? hitAt(shapes, hover) : undefined;
+  const hoverGroup = hovered ? groupOf(hovered) : null;
+  const rank = (s: ShapeItem) => (s.selected ? 2 : 0) + (groupOf(s) === hoverGroup ? 1 : 0);
+  const ordered = det
+    ? shapes
+        .map((s, i) => ({ s, i }))
+        .sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i)
+        .map((x) => x.s)
+    : shapes;
 
   const onDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -144,8 +186,7 @@ export function DrawLayer(props: DrawLayerProps) {
           return;
         }
       }
-      const tol = 6 / view.scale;
-      const hit = [...shapes].reverse().find((s) => hitGeom(s.geom, p, tol));
+      const hit = hitAt(ordered, p);
       props.onSelect?.(hit?.key ?? null);
       if (hit?.editable) {
         setGesture({ kind: 'move', key: hit.key, start: p, geom: hit.geom, cur: hit.geom });
@@ -245,10 +286,31 @@ export function DrawLayer(props: DrawLayerProps) {
 
   const cursor = gesture.kind === 'pan' ? 'grabbing' : tool === 'select' ? 'default' : 'crosshair';
 
+  // label chips (detections look): above each labelled shape's top left, in drawing order with
+  // the topmost first so it keeps its place
+  const chips = det
+    ? (() => {
+        const wanted = ordered
+          .filter((s) => s.label)
+          .map((s) => {
+            const pts = geomOutline(shapeFor(s)).map((p) => toDisplay(p, view));
+            const x = Math.min(...pts.map((p) => p.x));
+            const y = Math.min(...pts.map((p) => p.y));
+            const text = s.label ?? '';
+            return { s, text, x, y, w: chipWidth(text), h: CHIP_H };
+          })
+          .filter((c) => Number.isFinite(c.x) && Number.isFinite(c.y))
+          .reverse();
+        const at = stackChips(wanted, box.width > 0 ? box : { width: 1e9, height: 1e9 });
+        return wanted.map((c, i) => ({ ...c, at: at[i] ?? { x: c.x, y: c.y } })).reverse();
+      })()
+    : [];
+  const anySelected = det && shapes.some((s) => s.selected);
+
   return (
     <svg
       ref={svgRef}
-      className="ann-draw"
+      className={`ann-draw${det ? ' det-look' : ''}${anySelected ? ' has-sel' : ''}`}
       style={{ cursor }}
       onPointerDown={onDown}
       onPointerMove={onMove}
@@ -272,15 +334,31 @@ export function DrawLayer(props: DrawLayerProps) {
         e.preventDefault();
       }}
     >
-      {shapes.map((s) => {
+      {ordered.map((s) => {
         const g = shapeFor(s);
         const style = { ['--c' as string]: s.color };
-        const cls = `shape${s.selected ? ' sel' : ''}`;
+        const hov = det && groupOf(s) === hoverGroup;
+        const cls = `shape${s.selected ? ' sel' : ''}${hov ? ' hov' : ''}`;
         const outline = geomOutline(g);
         const top = outline.reduce<Point | null>((a, p) => (!a || p.y < a.y ? p : a), null);
         const labelAt = top ? toDisplay(top, view) : null;
         return (
           <g key={s.key} style={style}>
+            {s.title && <title>{s.title}</title>}
+            {det &&
+              (g.type === 'point' ? (
+                <circle
+                  className={`halo${s.selected ? ' sel' : ''}${hov ? ' hov' : ''}`}
+                  cx={toDisplay(outline[0] ?? { x: 0, y: 0 }, view).x}
+                  cy={toDisplay(outline[0] ?? { x: 0, y: 0 }, view).y}
+                  r={5}
+                />
+              ) : (
+                <polygon
+                  className={`halo${s.selected ? ' sel' : ''}${hov ? ' hov' : ''}`}
+                  points={pointsAttr(outline, view)}
+                />
+              ))}
             {g.type === 'point' ? (
               <circle
                 className={cls}
@@ -291,7 +369,7 @@ export function DrawLayer(props: DrawLayerProps) {
             ) : (
               <polygon className={cls} points={pointsAttr(outline, view)} />
             )}
-            {s.label && labelAt && (
+            {!det && s.label && labelAt && (
               <text className="label" x={labelAt.x + 2} y={labelAt.y - 5}>
                 {s.label}
               </text>
@@ -314,6 +392,19 @@ export function DrawLayer(props: DrawLayerProps) {
           </g>
         );
       })}
+      {chips.map((c) => (
+        <g
+          key={`chip:${c.s.key}`}
+          className={`chip${c.s.selected ? ' sel' : ''}`}
+          transform={`translate(${String(c.at.x)} ${String(c.at.y)})`}
+          aria-hidden="true"
+        >
+          <rect width={c.w} height={c.h} rx={3} fill={c.s.color} />
+          <text x={CHIP_PAD_X} y={c.h / 2} fill={chipTextColor(c.s.color)}>
+            {c.text}
+          </text>
+        </g>
+      ))}
       {preview && preview.length > 1 && (
         <polyline className="draft" points={pointsAttr(preview, view)} />
       )}

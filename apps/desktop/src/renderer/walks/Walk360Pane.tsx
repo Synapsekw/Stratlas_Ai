@@ -6,6 +6,7 @@ import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { useStore } from 'zustand';
+import { detectionLook } from '../detections/look';
 import { loadDetections, useDetections } from '../detections/store';
 import { SpotHistoryButton } from '../workspace/spot/SpotHistoryEntry';
 import { wrapDeg } from '../workspace/spot/spotGeom';
@@ -37,9 +38,6 @@ const CLICK_PX = 4;
 
 /** Frame steps before main has listed the walk's record (its real rate comes with it). */
 const DEFAULT_FPS = 30;
-
-/** The review's colour for a detection of no known class. */
-const UNKNOWN_COLOR = '#8a94a6';
 
 /**
  * The look-around player of one walk: its equirectangular playback copy on the inside of a
@@ -99,17 +97,7 @@ function WalkPlayer({
   );
   const nearDets = useMemo(() => framesNear(walkDets, walk.id, time), [walkDets, walk.id, time]);
   const overlayBoxes = useMemo<OverlayBox[]>(
-    () =>
-      nearDets.map((d) => {
-        const cls = classById.get(d.classId);
-        const conf =
-          d.confidence !== undefined ? ` ${String(Math.round(d.confidence * 100))}%` : '';
-        return {
-          detection: d,
-          color: cls?.color ?? UNKNOWN_COLOR,
-          label: `${cls?.label ?? d.label ?? '?'}${conf}`,
-        };
-      }),
+    () => nearDets.map((d) => ({ detection: d, ...detectionLook(d, classById.get(d.classId)) })),
     [nearDets, classById],
   );
   // the boxes are in the playback copy's pixels: the levelled copy is turned and cannot show them

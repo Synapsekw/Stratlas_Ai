@@ -149,22 +149,36 @@
   height: 100%;
   pointer-events: none;
 }
+/* a detection on a tile: class colour over a thin dark halo, so it reads on bright and dark
+   frames alike (the class colours come from @aio/annotate/detections classStyle) */
+.det-ol-halo {
+  fill: none;
+  stroke: oklch(0.13 0.01 250 / 0.7);
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
 .det-ol {
-  fill: color-mix(in oklch, var(--c) 18%, transparent);
+  fill: color-mix(in oklch, var(--c) 12%, transparent);
   stroke: var(--c);
   stroke-width: 2;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 .det-ol.accepted {
-  stroke-dasharray: none;
   fill: none;
   stroke-width: 1.5;
-  opacity: 0.7;
+}
+.det-ol-halo.accepted {
+  stroke-width: 3;
 }
 .det-ol.rejected {
   stroke-dasharray: 3 3;
   fill: none;
   opacity: 0.6;
+}
+.det-ol-halo.rejected {
+  opacity: 0.4;
 }
 .det-badge {
   position: absolute;

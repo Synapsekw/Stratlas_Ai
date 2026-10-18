@@ -96,6 +96,16 @@ span.ann-tick[data-on='true']::after { content: ''; position: absolute; left: 3.
 .ann-stage svg .draft { fill: var(--acc-a12); stroke: var(--acc); stroke-dasharray: 4 3; stroke-width: 1.5; }
 .ann-stage svg .handle { fill: var(--bg-0); stroke: var(--acc); stroke-width: 1.5; cursor: grab; }
 .ann-stage svg .label { font: 600 11px/1 var(--f-mono); fill: var(--ov); paint-order: stroke; stroke: oklch(0.13 0.01 250 / 0.85); stroke-width: 3px; }
+.ann-stage svg.det-look .halo { fill: none; stroke: oklch(0.13 0.01 250 / 0.72); stroke-width: 4.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; transition: stroke-width .12s var(--ease-x), opacity .12s var(--ease-x); }
+.ann-stage svg.det-look .shape { fill: color-mix(in oklch, var(--c) 10%, transparent); stroke-width: 2.5; stroke-linejoin: round; transition: stroke-width .12s var(--ease-x), opacity .12s var(--ease-x); }
+.ann-stage svg.det-look .shape.hov { stroke-width: 3.5; }
+.ann-stage svg.det-look .halo.hov, .ann-stage svg.det-look .halo.sel { stroke-width: 5.5; }
+.ann-stage svg.det-look .shape.sel { stroke-width: 3.5; fill: color-mix(in oklch, var(--c) 16%, transparent); filter: drop-shadow(0 0 4px color-mix(in oklch, var(--c) 65%, transparent)); }
+.ann-stage svg.det-look.has-sel .shape:not(.sel):not(.hov), .ann-stage svg.det-look.has-sel .halo:not(.sel):not(.hov), .ann-stage svg.det-look.has-sel .chip:not(.sel) { opacity: 0.6; }
+.ann-stage svg.det-look .chip { pointer-events: none; transition: opacity .12s var(--ease-x); }
+.ann-stage svg.det-look .chip rect { stroke: oklch(0.13 0.01 250 / 0.55); stroke-width: 1; }
+.ann-stage svg.det-look .chip text { font: 600 12px/1 var(--f-ui); dominant-baseline: central; }
+@media (prefers-reduced-motion: reduce) { .ann-stage svg.det-look .halo, .ann-stage svg.det-look .shape, .ann-stage svg.det-look .chip { transition: none; } }
 .ann-toolbar { position: absolute; top: 8px; left: 8px; display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r-6); background: var(--scrim); backdrop-filter: blur(6px); z-index: 2; align-items: center; }
 .ann-toolbar .sep { width: 1px; height: 16px; background: var(--line); margin: 0 3px; }
 .ann-toolbar label { display: inline-flex; align-items: center; gap: 6px; font: 400 var(--t-11)/1 var(--f-mono); color: var(--fg-2); padding: 0 6px; }
