@@ -7,18 +7,23 @@ date's ortho, else its DSM. Steps:
 1. read    both dates where they are lined up now (their stored shifts applied, as change.raster
            and change.surface read them) onto a common grid over the area both cover, as
            ``change.raster`` builds it: an ortho's brightness, or a DSM's slope;
-2. measure the shift coarse to fine (``register.measure_line_up``) and its verdict, written to
-           ``jobs/<id>/lineup.json`` as a ``LineUpMeasure`` (``packages/schema/src/change.ts``).
+2. measure the correction coarse to fine (``register.measure_line_up``): a shift, a small turn
+           and a scale fitted to the tiles, and its verdict. Written to ``jobs/<id>/lineup.json``
+           as a ``LineUpMeasure`` (``packages/schema/src/change.ts``), as before, and the turn
+           beside it in ``jobs/<id>/lineup-fit.json`` as a ``LineUpFit``.
 
-``eastM`` and ``northM`` are the correction ``move`` still needs, so the app adds them to its
-current shift. Only ``ok`` can be saved: ``aligned`` (within the change check's tolerance),
-``texture`` (too few textured tiles), ``disagree`` (the tiles do not agree, as for a rotated copy)
-and ``overlap`` (the dates hardly share ground) are answers too, not failures. The job never
-writes the manifest.
+The correction is a ``Similarity`` in the project CRS about the centroid of the tiles used (the
+pivot). ``eastM`` and ``northM`` are how far it moves the pivot, the correction ``move`` still
+needs there, so the app adds them to its current line-up. Only ``ok`` can be saved: ``aligned``
+(no point of the overlap moves beyond the change check's tolerance), ``texture`` (too few textured
+tiles), ``disagree`` (the tiles do not fit one similarity), ``range`` (a turn or scale beyond the
+bounds; ``lineup.json`` says ``disagree``, which older apps know) and ``overlap`` (the dates hardly
+share ground) are answers too, not failures. The job never writes the manifest.
 """
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +32,7 @@ import numpy as np
 from ..captures import layer_captures
 from ..params import known_keys, text
 from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files
+from ..similarity import Similarity
 from .imagery import (
     Grid,
     Ortho,
@@ -41,11 +47,21 @@ from .imagery import (
     union,
 )
 from .raster import DEFAULT_MAX_SHIFT_PX, LUMA, ortho_fingerprint
-from .register import MAX_SPREAD_PX, MIN_OVERLAP, MIN_TILES, measure_line_up, slope
+from .register import (
+    MAX_MOVE_M,
+    MAX_ROTATION_DEG,
+    MAX_SCALE_DEV,
+    MAX_SPREAD_PX,
+    MIN_OVERLAP,
+    MIN_TILES,
+    measure_line_up,
+    slope,
+)
 from .surface import Surface, surface_fingerprint
 
 PRODUCER = "change.lineup"
 RESULT = "lineup.json"
+FIT = "lineup-fit.json"
 INPUTS_CHANGED = "The layers changed since this job started. Start the job again."
 
 
@@ -118,6 +134,48 @@ def fingerprint(project: Path, kind: str, pair: tuple[_Date, _Date]) -> dict[str
     if kind == "ortho":
         return ortho_fingerprint(project, [d.ortho for d in pair])
     return surface_fingerprint(project, [d.surface for d in pair])
+
+
+def similarity(fit: dict[str, Any], grid: Grid, origin: list[float]) -> Similarity:
+    """The fit of ``measure_line_up`` (grid pixels, rows south) as the correction in the CRS.
+
+    The pivot is the fit's centroid: a cell centre, to local through ``grid``, then to the CRS
+    through the manifest ``origin``. Rows run south, so the pixel turn ``b`` flips sign.
+    """
+    a, b = float(fit["a"]), float(fit["b"])
+    x = grid.x0 + (float(fit["cx"]) + 0.5) * grid.cell
+    z = grid.z0 + (float(fit["cy"]) + 0.5) * grid.cell
+    return Similarity(
+        float(fit["tx"]) * grid.cell,
+        -float(fit["ty"]) * grid.cell,
+        math.degrees(math.atan2(-b, a)) + 0.0,
+        math.hypot(a, b),
+        float(origin[0]) + x,
+        float(origin[1]) - z,
+    )
+
+
+def box_en(grid: Grid, origin: list[float]) -> tuple[float, float, float, float]:
+    """The grid's (minE, minN, maxE, maxN) in the CRS."""
+    x0, z0, x1, z1 = grid.box
+    return (origin[0] + x0, origin[1] - z1, origin[0] + x1, origin[1] - z0)
+
+
+def verdict_of(inliers: int, residual: float, sim: Similarity, max_move: float, tolerance_m: float) -> str:
+    """``texture``, ``disagree``, ``range``, ``aligned`` or ``ok``, in that order."""
+    if inliers < MIN_TILES:
+        return "texture"
+    if residual > MAX_SPREAD_PX:
+        return "disagree"
+    if (
+        abs(sim.rotation_deg) > MAX_ROTATION_DEG
+        or abs(sim.scale - 1.0) > MAX_SCALE_DEV
+        or max_move > MAX_MOVE_M
+    ):
+        return "range"
+    if max_move <= tolerance_m + 1e-9:
+        return "aligned"
+    return "ok"
 
 
 class ChangeLineUp:
@@ -219,42 +277,68 @@ class ChangeLineUp:
             want = r.get("inputs")
             if want and want.get("hash") != fingerprint(ctx.project, kind, pair)["hash"]:
                 raise JobError(INPUTS_CHANGED)
+            fit: dict[str, Any] = {
+                "rotationDeg": 0.0,
+                "scale": 1.0,
+                "pivotE": 0.0,
+                "pivotN": 0.0,
+                "eastM": 0.0,
+                "northM": 0.0,
+                "maxMoveM": 0.0,
+                "residualPx": 0.0,
+                "inliers": 0,
+                "verdict": "overlap",
+            }
             if r.get("verdict") == "overlap":
                 out = result(kind, keep, move, verdict="overlap")
             else:
                 grid = Grid.of(r["grid"])
+                origin = read_manifest(ctx.project).get("origin") or [0.0, 0.0, 0.0]
                 arr = load_arrays(ctx.stage("work/grid.npz"))
                 s = measure_line_up(arr["a"], arr["b"], arr["valid"], grid.cell, log=kind == "ortho")
-                # s moves the grid of `move` onto `keep`: columns east, rows south
-                east = round(s["dx"] * grid.cell, 3) + 0.0
-                north = round(-s["dy"] * grid.cell, 3) + 0.0
-                if s["tiles"] < MIN_TILES:
-                    verdict = "texture"
-                elif s["spread"] > MAX_SPREAD_PX:
-                    verdict = "disagree"
-                elif s["px"] <= DEFAULT_MAX_SHIFT_PX + 1e-9:
-                    verdict = "aligned"
-                else:
-                    verdict = "ok"
+                # the fit moves the content of `move` onto `keep`, in grid pixels (rows south)
+                sim = similarity(s["fit"], grid, origin)
+                most = sim.max_move(box_en(grid, origin))
+                inliers, residual = int(s["fit"]["inliers"]), float(s["fit"]["residual"])
+                verdict = verdict_of(inliers, residual, sim, most, DEFAULT_MAX_SHIFT_PX * grid.cell)
+                east = round(sim.east_m, 3) + 0.0
+                north = round(sim.north_m, 3) + 0.0
+                fit = {
+                    "rotationDeg": round(sim.rotation_deg, 6) + 0.0,
+                    "scale": round(sim.scale, 7),
+                    "pivotE": round(sim.pivot_e, 3),
+                    "pivotN": round(sim.pivot_n, 3),
+                    "eastM": east,
+                    "northM": north,
+                    "maxMoveM": round(most, 3),
+                    "residualPx": residual,
+                    "inliers": inliers,
+                    "verdict": verdict,
+                }
                 out = result(
                     kind,
                     keep,
                     move,
                     eastM=east,
                     northM=north,
-                    totalM=round(float(np.hypot(east, north)), 3),
+                    totalM=round(most, 3),
                     cellM=grid.cell,
-                    spreadPx=s["spread"],
-                    tiles=s["tiles"],
-                    verdict=verdict,
+                    spreadPx=residual,
+                    tiles=inliers,
+                    # an older app knows no `range`: there it reads as a disagreement
+                    verdict="disagree" if verdict == "range" else verdict,
                 )
                 ctx.log(
-                    f"{verdict}: {out['totalM']:.2f} m ({s['px']:.1f} px) on {s['tiles']} tiles, "
-                    f"spread {s['spread']:.2f} px (coarse level 1/{s['coarse']})."
+                    f"{verdict}: {east:+.2f} m east, {north:+.2f} m north at the pivot, turn "
+                    f"{sim.rotation_deg:+.3f} deg, scale {sim.scale:.5f}, largest move {most:.2f} m; "
+                    f"{inliers} of {s['tiles']} tiles fit within {residual:.2f} px "
+                    f"(coarse level 1/{s['coarse']})."
                 )
             atomic_write_json(ctx.stage(RESULT), out)
-            commit_files(ctx, [(RESULT, f"jobs/{ctx.job.job_id}/{RESULT}")])
-            return {"verdict": out["verdict"]}
+            atomic_write_json(ctx.stage(FIT), fit)
+            job = ctx.job.job_id
+            commit_files(ctx, [(RESULT, f"jobs/{job}/{RESULT}"), (FIT, f"jobs/{job}/{FIT}")])
+            return {"verdict": fit["verdict"]}
 
         return [
             Step("read", "Read both dates", read, 3.0),

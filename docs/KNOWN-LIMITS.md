@@ -80,13 +80,18 @@ Current limits only; each is removed from this list when fixed.
 - Change is found only where both dates have data; outside the overlap nothing is reported.
 - Change on dates that are not registered is refused: more than 2 px (orthos, surfaces), 5 cm (point clouds) or a 5 cm height offset (surfaces) apart. Use **Line up dates** to correct a sideways gap; there is no setting in the app for a larger tolerance.
 - Line up dates: manual point picking is not available yet.
-- Line up dates only shifts sideways. It does not turn, scale or change height.
+- Line up dates moves, turns and scales a date in the ground plane (up to 1 degree and 1 %). It does not change height.
+- Point clouds move with a line-up but don't turn: in the viewer, in 3D Tiles and in point-cloud change, which refuses a turned pair.
+- Panorama headings, photo orientations, video direction keyframes and the clip path, and antenna and RF azimuths aren't turned. A video clip follows the move at the pivot.
+- Vector change is skipped for a turned pair in a project without a coordinate system, and the app doesn't show a note about it yet.
+- The line-up preview of a date that is already turned is slightly stretched.
 - A 3D Tiles set built before a line-up stays at the old place on the globe until you build it again.
 - A change result made before a line-up keeps the old place. It is marked out of date: use **Run again**.
 - A site picked on the globe that isn't the open project draws its imagery without its line-up.
 - A point cloud exported as COPC from a lined-up date is written at its file position. It doesn't carry the correction. The same goes for a GeoTIFF or COG ortho or DSM, a vector and a video exported from a lined-up date with **Export...** on the dataset: the files are copied as they are, with no sidecar that says the correction. Survey exports of surfaces, orthos, clouds and measurements do carry it.
 - Survey compare uses the scope a measurement has on disk. After changing a measurement's scope, save before you compare.
 - A build from before line-up shows the date at its file position and drops the line-up on its next save.
+- A build from before the turn (0.21) applies the shift only and drops the turn when it saves the project. Compare then shows the dates off, and **Line up** restores it.
 - The background check needs the pipeline Python. With an older pipeline pack installed, measuring doesn't work: the step says it couldn't measure, and the background check stays quiet.
 - When one date has several orthos, the first one is measured.
 - On small images the largest gap that can be measured drops below about 60 m. Quadrion refuses rather than guess.

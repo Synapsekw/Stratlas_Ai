@@ -28,6 +28,12 @@ export const OLDEST_SUPPORTED_DOWNGRADE = '0.8';
  */
 export const PINNED_RELEASES = [
   { version: '0.11', commit: 'fefc218d', date: '2026-10-12', note: 'app 0.11.4, the last 0.11' },
+  {
+    version: '0.21',
+    commit: 'ff859572',
+    date: '2026-10-18',
+    note: 'app 0.21.0, before the line-up turn',
+  },
 ];
 
 export function milestone(version) {

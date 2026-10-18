@@ -101,6 +101,16 @@ describe('layer files', () => {
     expect(crsSidecar(m, mesh, null)).not.toHaveProperty('dateShiftM');
   });
 
+  it('export sidecar carries dateTurn', () => {
+    const turn = { rotationDeg: 0.5, scale: 1.002, pivotE: 500100, pivotN: 3200100 };
+    const shift = { eastM: 2.5, northM: -1, turn: { ...turn, pivotX: 100, pivotZ: -100 } };
+    const out = crsSidecar(m, mesh, shift);
+    expect(out).toMatchObject({ dateShiftM: { eastM: 2.5, northM: -1 }, dateTurn: turn });
+    // only the saved fields: the local pivot is derived
+    expect(out?.dateTurn).toEqual(turn);
+    expect(crsSidecar(m, mesh, { eastM: 2.5, northM: -1 })).not.toHaveProperty('dateTurn');
+  });
+
   it('writes the cloud height offset into the sidecar', () => {
     const cloud = (extra: object) =>
       ({

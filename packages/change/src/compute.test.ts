@@ -78,6 +78,40 @@ function shifted(eastM: number, over: Partial<ComputeSources> = {}): ComputeSour
   return { ...base, manifest, index: captureIndex(manifest) };
 }
 
+describe('a turned date without a coordinate system', () => {
+  it('a turned vector pair without a coordinate system is skipped, other kinds still run', async () => {
+    const base = sources();
+    const manifest: ProjectManifest = {
+      ...base.manifest,
+      captures: base.manifest.captures.map((c) =>
+        c.id === 'd2'
+          ? {
+              ...c,
+              lineUp: { eastM: 1, northM: 0, with: 'd1', at: '2026-10-10T00:00:00.000Z' },
+              lineUpTurn: {
+                rotationDeg: 0.5,
+                scale: 1,
+                pivotE: base.manifest.origin[0],
+                pivotN: base.manifest.origin[1],
+              },
+            }
+          : c,
+      ),
+    };
+    const notes: string[] = [];
+    const sets = await computeInApp(
+      { ...base, manifest, index: captureIndex(manifest), note: (t) => notes.push(t) },
+      'd1',
+      'd2',
+      ['issue', 'vector'],
+    );
+    expect(sets.map((s) => s.producer)).toEqual(['issues']);
+    expect(notes).toEqual([
+      "Vector changes were skipped: a turned line-up needs the project's coordinate system.",
+    ]);
+  });
+});
+
 describe('lined-up dates in the in-app producers', () => {
   // the fence, 2 m east of itself in the later file
   const east = (m: number) => {

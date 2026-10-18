@@ -1,5 +1,6 @@
 import type {
   CaptureLineUp,
+  CaptureLineUpTurn,
   Issue,
   LineUpMeasure,
   ProjectManifest,
@@ -20,8 +21,8 @@ import { formatMetres, movesWith, planLineUp } from './planLineUp';
 
 /**
  * Line up dates: the step (measure two dates, choose the one that stays, save the other's
- * shift), the background offer, and the done notice with Undo and Redo. Writes only through the
- * deps: `builder:updateCapture` `{ lineUp }` and, for layers only the volume hints file under the
+ * shift, turn and scale), the background offer, and the done notice with Undo and Redo. Writes
+ * only through the deps: `builder:updateCapture` `{ lineUp, lineUpTurn }` (always as a pair) and, for layers only the volume hints file under the
  * moved date, an explicit `capture` (Decision 2), undone with it.
  */
 
@@ -36,8 +37,15 @@ export interface LineUpDeps {
     move: string,
     signal?: AbortSignal,
   ): Promise<LineUpMeasure | { error: string }>;
-  /** One `builder:updateCapture` `{ lineUp }` write (null removes it): an error or null. */
-  saveCapture(captureId: string, lineUp: CaptureLineUp | null): Promise<string | null>;
+  /**
+   * One `builder:updateCapture` `{ lineUp, lineUpTurn }` write, always the pair (a null turn is a
+   * plain shift; a null `lineUp` removes both): an error or null.
+   */
+  saveCapture(
+    captureId: string,
+    lineUp: CaptureLineUp | null,
+    lineUpTurn: CaptureLineUpTurn | null,
+  ): Promise<string | null>;
   /** File layers under a date (null: take the own `capture` off again): an error or null. */
   pinCaptures(layerIds: readonly string[], captureId: string | null): Promise<string | null>;
   hints(): CaptureHints;
@@ -77,7 +85,11 @@ export interface LineUpOfferState {
 export interface LineUpWrite {
   captureId: string;
   lineUp: CaptureLineUp | null;
+  /** The turn written with `lineUp` (null: none). */
+  turn: CaptureLineUpTurn | null;
   back: CaptureLineUp | null;
+  /** The turn written with `back`. */
+  backTurn: CaptureLineUpTurn | null;
   /** Layers filed under the date for this line-up (hint-only), and whether this write files them. */
   pins: string[];
   pin: boolean;
@@ -119,9 +131,14 @@ const errorText = (e: unknown) =>
 const labelOf = (m: ProjectManifest | undefined, id: string) =>
   m?.captures.find((c) => c.id === id)?.label ?? id;
 
+/** The measurement's verdict: the fit's when `lineup-fit.json` came with it (it may say `range`). */
+export function verdictOf(m: LineUpMeasure): NonNullable<LineUpMeasure['fit']>['verdict'] {
+  return m.fit?.verdict ?? m.verdict;
+}
+
 /** The sentence for a measurement that cannot be saved; null for one that can. */
 export function refusalOf(m: LineUpMeasure): string | null {
-  switch (m.verdict) {
+  switch (verdictOf(m)) {
     case 'ok':
       return null;
     case 'aligned':
@@ -132,6 +149,8 @@ export function refusalOf(m: LineUpMeasure): string | null {
       return t('lineUp.refuse.disagree');
     case 'overlap':
       return t('lineUp.refuse.overlap');
+    case 'range':
+      return t('lineUp.refuse.range');
   }
 }
 
@@ -146,7 +165,7 @@ function blockOf(m: ProjectManifest, measure: LineUpMeasure, keep: string | null
   if (refused || keep === null) return refused;
   return planLineUp(measure, keep, m, new Date(0).toISOString()).inRange
     ? null
-    : t('lineUp.refuse.range');
+    : t('lineUp.refuse.far');
 }
 
 /** The manifest as it will be once these layers carry `captureId` of their own. */
@@ -180,7 +199,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       if (gone()) return { err: null, stopped: true };
       if (err) return { err, stopped: false };
     }
-    const err = await deps.saveCapture(w.captureId, w.lineUp);
+    const err = await deps.saveCapture(w.captureId, w.lineUp, w.turn);
     if (gone()) return { err: null, stopped: true };
     if (err) {
       if (pinning) await deps.pinCaptures(w.pins, null);
@@ -253,7 +272,8 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
         const d = get().dialog;
         const projectId = openId();
         const m = manifest();
-        if (busy || !d?.keep || d.measure?.verdict !== 'ok' || !projectId || !m) return;
+        if (busy || !d?.keep || !d.measure || verdictOf(d.measure) !== 'ok' || !projectId || !m)
+          return;
         busy = true;
         try {
           // a date moved since the measurement (Undo, another line-up): its answer is stale
@@ -263,14 +283,16 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
           }
           const plan = planLineUp(d.measure, d.keep, m, deps.now());
           if (!plan.inRange) {
-            setDialog({ error: t('lineUp.refuse.range') });
+            setDialog({ error: t('lineUp.refuse.far') });
             return;
           }
           const pins = hintOnlyLayers(m, deps.hints(), plan.moveId);
           const { err, stopped } = await write(projectId, {
             captureId: plan.moveId,
             lineUp: plan.lineUp,
+            turn: plan.lineUpTurn,
             back: plan.previous,
+            backTurn: plan.previousTurn,
             pins,
             pin: true,
           });
@@ -293,7 +315,9 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
                 write: {
                   captureId: plan.moveId,
                   lineUp: plan.previous,
+                  turn: plan.previousTurn,
                   back: plan.lineUp,
+                  backTurn: plan.lineUpTurn,
                   pins,
                   pin: false,
                 },
@@ -313,11 +337,13 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       remove: async (captureId) => {
         const projectId = openId();
         const m = manifest();
-        const previous = m?.captures.find((c) => c.id === captureId)?.lineUp;
+        const capture = m?.captures.find((c) => c.id === captureId);
+        const previous = capture?.lineUp;
         if (busy || !projectId || !m || !previous) return;
+        const previousTurn = capture.lineUpTurn ?? null;
         busy = true;
         try {
-          const err = await deps.saveCapture(captureId, null);
+          const err = await deps.saveCapture(captureId, null, null);
           if (openId() !== projectId) return;
           set({
             notice: {
@@ -327,7 +353,15 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
                 ? null
                 : {
                     kind: 'undo',
-                    write: { captureId, lineUp: previous, back: null, pins: [], pin: false },
+                    write: {
+                      captureId,
+                      lineUp: previous,
+                      turn: previousTurn,
+                      back: null,
+                      backTurn: null,
+                      pins: [],
+                      pin: false,
+                    },
                   },
             },
           });
@@ -359,7 +393,14 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
                   text: t(a.kind === 'undo' ? 'lineUp.undone' : 'lineUp.redone'),
                   action: {
                     kind: a.kind === 'undo' ? 'redo' : 'undo',
-                    write: { ...w, lineUp: w.back, back: w.lineUp, pin: !w.pin },
+                    write: {
+                      ...w,
+                      lineUp: w.back,
+                      turn: w.backTurn,
+                      back: w.lineUp,
+                      backTurn: w.turn,
+                      pin: !w.pin,
+                    },
                   },
                 },
           });
@@ -375,7 +416,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       offerFrom: (m, key) => {
         const projectId = openId();
         const man = manifest();
-        if (!projectId || !man || m.verdict !== 'ok') return;
+        if (!projectId || !man || verdictOf(m) !== 'ok') return;
         set({
           offer: {
             projectId,
@@ -386,7 +427,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
               moved: labelOf(man, m.move),
               kept: labelOf(man, m.keep),
               source: t(m.source === 'ortho' ? 'lineUp.source.ortho' : 'lineUp.source.dsm'),
-              distance: formatMetres(m.totalM),
+              distance: formatMetres(m.fit?.maxMoveM ?? m.totalM),
             }),
           },
         });

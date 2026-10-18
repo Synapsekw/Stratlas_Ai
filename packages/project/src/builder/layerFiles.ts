@@ -6,7 +6,7 @@ import type {
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
-import { shiftLocal } from '@aio/schema';
+import { shiftedBox, turnOf } from '@aio/schema';
 import { constants } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
@@ -79,6 +79,7 @@ export function crsSidecar(
   shift: DateShift | null = null,
 ): Record<string, unknown> | null {
   if (!isLocalFrame(l)) return null;
+  const turn = turnOf(shift);
   return {
     schema: 'aio.layer-crs/1',
     crs: m.crs,
@@ -90,6 +91,7 @@ export function crsSidecar(
       ? { heightOffsetM: l.heightOffsetM }
       : {}),
     ...(shift ? { dateShiftM: { eastM: shift.eastM, northM: shift.northM } } : {}),
+    ...(turn ? { dateTurn: turn } : {}),
   };
 }
 
@@ -134,10 +136,6 @@ async function walkExtent(root: string, l: Layer): Promise<{ min: Vec3; max: Vec
   } catch {
     return null;
   }
-}
-
-function shiftedBox(b: { min: Vec3; max: Vec3 } | null, s: DateShift | null) {
-  return b && s ? { min: shiftLocal(b.min, s), max: shiftLocal(b.max, s) } : b;
 }
 
 export async function readLayerInfo(

@@ -169,7 +169,11 @@ describe('the English catalogue', () => {
       'lineUp.refuse.disagree',
       'lineUp.refuse.overlap',
       'lineUp.refuse.aligned',
+      'lineUp.refuse.range',
+      'lineUp.refuse.far',
       'lineUp.refuse.noImagery',
+      'lineUp.turn',
+      'lineUp.cloudsNoTurn',
       'lineUp.failed',
       'lineUp.folder',
       'lineUp.remove',
@@ -187,6 +191,14 @@ describe('the English catalogue', () => {
     expect(t('lineUp.layers', { count: 1 })).toBe('1 dataset');
     expect(t('lineUp.layers', { count: 2 })).toBe('2 datasets');
     expect(t('change.misaligned', { distance: '2.01 m' })).toBe('These dates are 2.01 m apart.');
+    expect(t('lineUp.turn', { deg: '0.25', pct: '+0.35%' })).toBe('turned 0.25°, scaled +0.35%');
+    expect(t('lineUp.cloudsNoTurn')).toBe("Point clouds move but don't turn yet.");
+    expect(t('lineUp.refuse.disagree')).toBe(
+      "These dates cannot be lined up: their parts don't fit one shift, turn and scale, so part of the site may have warped or changed too much.",
+    );
+    expect(t('lineUp.refuse.range')).toBe(
+      'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other.',
+    );
   });
 
   it('finds missing keys and placeholder mismatches in a translation', () => {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoTime, Vec3 } from './common';
-import { DateShiftSchema } from './dateShift';
+import { CaptureLineUpTurn, DateShiftSchema } from './dateShift';
 
 /**
  * Change between two capture dates (M8, FUS-12): one register for every layer type. Each producer
@@ -224,7 +224,29 @@ export const ChangeRegistration = z
   })
   .strict();
 
-/** The `lineup.json` result of `change.lineup`: the correction still needed between two dates. */
+/**
+ * The `lineup-fit.json` result of `change.lineup`, beside `lineup.json`: the correction as a
+ * similarity about a pivot in the project CRS (`rotationDeg` counter-clockwise, east towards
+ * north). `eastM`/`northM` move the pivot; `maxMoveM` is the largest move over the overlap;
+ * `range` is a turn or scale beyond the bounds (`lineup.json` says `disagree` then).
+ */
+export const LineUpFit = z.object({
+  rotationDeg: z.number(),
+  scale: z.number(),
+  pivotE: z.number(),
+  pivotN: z.number(),
+  eastM: z.number(),
+  northM: z.number(),
+  maxMoveM: z.number(),
+  residualPx: z.number(),
+  inliers: z.number(),
+  verdict: z.enum(['ok', 'aligned', 'texture', 'disagree', 'overlap', 'range']),
+});
+
+/**
+ * The `lineup.json` result of `change.lineup`: the correction still needed between two dates.
+ * `fit` is never written by Python: the app fills it from the sibling `lineup-fit.json`.
+ */
 export const LineUpMeasure = z
   .object({
     keep: Id,
@@ -240,6 +262,7 @@ export const LineUpMeasure = z
     spreadPx: z.number(),
     tiles: z.number(),
     verdict: z.enum(['ok', 'aligned', 'texture', 'disagree', 'overlap']),
+    fit: LineUpFit.optional(),
   })
   .strict();
 
@@ -272,6 +295,14 @@ export const ChangeSet = z
     /** The shifts of the two dates when the set was computed; a later difference marks it out of date. */
     lineUp: z
       .object({ from: DateShiftSchema.optional(), to: DateShiftSchema.optional() })
+      .strict()
+      .optional(),
+    /**
+     * The turns of the dates that had one, beside `lineUp` (which stays strict): the capture's
+     * `lineUpTurn` shape and stored envelope, so a composed turn up to 2 degrees still parses.
+     */
+    lineUpTurn: z
+      .object({ from: CaptureLineUpTurn.optional(), to: CaptureLineUpTurn.optional() })
       .strict()
       .optional(),
   })
@@ -356,6 +387,7 @@ export type ChangeReview = z.infer<typeof ChangeReview>;
 export type ChangeItem = z.infer<typeof ChangeItem>;
 export type ChangeRegistration = z.infer<typeof ChangeRegistration>;
 export type ChangeSet = z.infer<typeof ChangeSet>;
+export type LineUpFit = z.infer<typeof LineUpFit>;
 export type LineUpMeasure = z.infer<typeof LineUpMeasure>;
 export type ChangeSetInput = z.input<typeof ChangeSet>;
 export type ChangeSetSummary = z.infer<typeof ChangeSetSummary>;

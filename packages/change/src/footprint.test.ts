@@ -1,4 +1,4 @@
-import type { Issue, Vec3 } from '@aio/schema';
+import { shiftLocal, type DateShift, type Issue, type Vec3 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   areaXZ,
@@ -69,5 +69,32 @@ describe('footprints', () => {
       ],
     };
     expect(areaXZ(footprintOf(prism) ?? [])).toBeCloseTo(4, 9);
+  });
+});
+
+describe('footprintOf with a turned date', () => {
+  it('follows a 0.5 degree turn', () => {
+    const shift: DateShift = {
+      eastM: 1,
+      northM: 0.5,
+      turn: {
+        rotationDeg: 0.5,
+        scale: 1,
+        pivotE: 500050,
+        pivotN: 3200050,
+        pivotX: 50,
+        pivotZ: -50,
+      },
+    };
+    const pts = ring3(square(100, 100, 20));
+    const i: Issue = {
+      ...issue({ code: 'F01', layer: 'L', at: [0, 0, 0] }),
+      sightings: [{ on: 'mesh', layer: 'L', geom: { type: 'spolygon', points: pts } }],
+    };
+    const hull = footprintOf(i, () => shift) ?? [];
+    expect(hull).toHaveLength(4);
+    const want = pts.map((p) => shiftLocal(p, shift));
+    for (const [x, z] of hull)
+      expect(want.some((w) => Math.abs(w[0] - x) < 1e-9 && Math.abs(w[2] - z) < 1e-9)).toBe(true);
   });
 });

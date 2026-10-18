@@ -1,5 +1,5 @@
 import { correctPos, fromWgs84, photoCorrection, projectToLocal } from '@aio/geo';
-import { cloudFrameOrigin, shiftCorners, shiftLocal } from '@aio/schema';
+import { cloudFrameOrigin, shiftCorners, shiftedBox } from '@aio/schema';
 import type { DateShift, Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -29,12 +29,6 @@ function boxOf(points: readonly Vec3[]): LocalExtent | null {
   const lo = (k: 0 | 1 | 2) => Math.min(...axis(k));
   const hi = (k: 0 | 1 | 2) => Math.max(...axis(k));
   return { min: [lo(0), lo(1), lo(2)], max: [hi(0), hi(1), hi(2)] };
-}
-
-/** The box moved by a date shift (x += east, z -= north); the same box for none. */
-function shiftBox(b: LocalExtent | null, s: DateShift | null | undefined): LocalExtent | null {
-  if (!b || !s) return b;
-  return { min: shiftLocal(b.min, s), max: shiftLocal(b.max, s) };
 }
 
 function corners(b: LocalExtent): Vec3[] {
@@ -105,7 +99,7 @@ export async function layerExtent(
   try {
     if (l.kind === 'mesh' && 'path' in l.src) {
       const b = glbBounds(await glbJson(join(root, l.src.path)));
-      return b ? shiftBox(boxOf(corners(b).map((p) => applyMat4(l.transform, p))), shift) : null;
+      return b ? shiftedBox(boxOf(corners(b).map((p) => applyMat4(l.transform, p))), shift) : null;
     }
     if (l.kind === 'pointcloud' && 'path' in l.src) {
       if (l.format === 'copc') {
@@ -129,7 +123,7 @@ export async function layerExtent(
         const off = l.heightOffsetM ?? 0;
         const { bounds } = idx;
         if (!bounds) return null;
-        return shiftBox(
+        return shiftedBox(
           {
             min: [bounds.min[0], bounds.min[1] + off, bounds.min[2]],
             max: [bounds.max[0], bounds.max[1] + off, bounds.max[2]],
@@ -140,7 +134,7 @@ export async function layerExtent(
       return null;
     }
     if (l.kind === 'photos')
-      return shiftBox(
+      return shiftedBox(
         boxOf(
           l.items.flatMap((p) =>
             p.pos ? [correctPos(p.pos, photoCorrection(orientation, l.id, p.id))] : [],
@@ -232,7 +226,7 @@ export async function fullLayerExtent(
 ): Promise<LocalExtent | null> {
   const known = await layerExtent(root, m, l, orientation, shift);
   if (known) return known;
-  return shiftBox(await unshiftedExtent(root, m, l), shift);
+  return shiftedBox(await unshiftedExtent(root, m, l), shift);
 }
 
 /** The kinds `layerExtent` does not read, as stored (the caller adds the date shift). */

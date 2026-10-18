@@ -1,4 +1,11 @@
-import { shiftLocal, type ChangeItem, type DateShift, type Vec3 } from '@aio/schema';
+import {
+  shiftEN,
+  shiftLocal,
+  turnOf,
+  type ChangeItem,
+  type DateShift,
+  type Vec3,
+} from '@aio/schema';
 import { box2, boxGap, centroid2, hausdorff, lonLatToMetres, type Box2, type XY } from './geometry';
 
 /**
@@ -36,6 +43,8 @@ export interface VectorChangeInput {
   keys?: readonly string[];
   /** Lon/lat to the project local frame, for `at` (fly to). */
   toLocal?: (lonLat: [number, number]) => Vec3;
+  /** Lon/lat to project E, N: places a turned line-up's pivot when `toLocal` is not given. */
+  toEN?: (lonLat: [number, number]) => [number, number];
   /**
    * The date shifts of the two layers (lined-up dates): their features are compared where the
    * shift puts them, metres east and north.
@@ -101,8 +110,25 @@ export function vectorChanges(input: VectorChangeInput): VectorItem[] {
     i: number,
     shift: DateShift | null,
   ): F => {
+    // A turn is about a pivot in the project frame, so a turned date needs that frame: `toEN`
+    // (lon/lat to project E, N) or `toLocal`. The move it makes there is added to the metres about
+    // the centroid, so the unmoved date and the moved one stay in one frame. A turn with neither
+    // cannot be placed, and is refused rather than drawn as a plain shift.
+    const turned = !!turnOf(shift);
+    if (turned && !input.toEN && !input.toLocal)
+      throw new Error('vectorChanges: a turned line-up needs toEN or toLocal');
     const m = g.ll.map((p): XY => {
       const [x, y] = lonLatToMetres(p, origin);
+      if (turned && input.toEN) {
+        const en = input.toEN(p);
+        const q = shiftEN(en, shift);
+        return [x + (q[0] - en[0]), y + (q[1] - en[1])];
+      }
+      if (turned && input.toLocal) {
+        const l = input.toLocal(p);
+        const q = shiftLocal(l, shift);
+        return [x + (q[0] - l[0]), y - (q[2] - l[2])];
+      }
       return [x + (shift?.eastM ?? 0), y + (shift?.northM ?? 0)];
     });
     return {
