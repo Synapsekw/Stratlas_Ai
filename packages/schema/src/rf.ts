@@ -224,6 +224,19 @@ export type RfTech = z.infer<typeof RfTech>;
 /** NR subcarrier spacing, kHz; LTE is always 15. */
 export const ScsKhz = z.union([z.literal(15), z.literal(30), z.literal(60), z.literal(120)]);
 
+/** Where a planned RF value came from. A missing origin means the person set it. */
+export const RfOrigin = z
+  .object({
+    by: z.enum(['ai', 'export', 'rules', 'user']),
+    confidence: z.enum(['high', 'medium', 'low']).optional(),
+  })
+  .strict();
+export type RfOrigin = z.infer<typeof RfOrigin>;
+
+export function originOf(o: RfOrigin | undefined): RfOrigin['by'] {
+  return o?.by ?? 'user';
+}
+
 /** One carrier on one radio port. */
 export const RfCarrier = z
   .object({
@@ -243,6 +256,8 @@ export const RfCarrier = z
     powerDbmPerPort: z.number().min(0).max(80).optional(),
     /** Feeder or jumper loss, dB. */
     feederLossDb: z.number().min(0).max(30).default(0),
+    /** Who set this carrier; absent means the person did. */
+    origin: RfOrigin.optional(),
   })
   .strict();
 export type RfCarrier = z.infer<typeof RfCarrier>;
@@ -268,6 +283,11 @@ export const RfAntennaSettings = z
     /** The RF active flag (D5). */
     active: z.boolean().default(true),
     carriers: z.array(RfCarrier).max(16).default([]),
+    /** Who set the equipment and the e-tilt; an absent key means the person did. */
+    origins: z
+      .object({ equipment: RfOrigin.optional(), etiltDeg: RfOrigin.optional() })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((a) => new Set(a.carriers.map((c) => c.id)).size === a.carriers.length, {

@@ -463,3 +463,21 @@ def test_an_unreadable_sector_entry_keeps_best_server_indices_on_the_file_list(t
     # indices into run.inputs.sectors.sectors, which keeps the unreadable entry at 0
     assert r["inputs"]["sectors"]["sectors"][0] == "not a sector"
     assert set(np.unique(best[valid]).astype(int)) == {1, 2, 3}
+
+
+def test_origin_keys_are_ignored(tmp_path):
+    ids = [f"ant-s{k + 1}" for k in range(3)]
+    plain = S.write_site(tmp_path / "plain", antennas=[S.settings(i) for i in ids])
+    tagged = []
+    for k, i in enumerate(ids):
+        s = S.settings(i)
+        if k == 0:
+            s["origins"] = {"equipment": {"by": "ai", "confidence": "low"}, "etiltDeg": {"by": "rules"}}
+            s["carriers"][0]["origin"] = {"by": "export"}
+        tagged.append(s)
+    other = S.write_site(tmp_path / "tagged", antennas=tagged)
+    run(plain, "rf-plain")
+    run(other, "rf-tagged")
+    a = read_run(plain, "rf-plain")["inputs"]["antennas"]
+    b = read_run(other, "rf-tagged")["inputs"]["antennas"]
+    assert a == b
