@@ -25,6 +25,7 @@ cancellable; the commit replaces ``survey/surfaces/<id>/`` with ``tiles.json`` w
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
@@ -34,7 +35,7 @@ from typing import Any
 
 import numpy as np
 
-from ..captures import date_shift
+from ..captures import date_similarity
 from ..params import known_keys
 from ..runtime import (
     JobError,
@@ -45,7 +46,20 @@ from ..runtime import (
     commit_files,
     now_iso,
 )
-from .grid import TILE, TileSurface, Window, coverage, densify, encode_tile, normal_ring, read_tiles_json
+from ..similarity import Similarity
+from .grid import (
+    TILE,
+    TileSurface,
+    Window,
+    coverage,
+    densify,
+    encode_tile,
+    line_up_key,
+    line_up_meta,
+    normal_ring,
+    prepared_line_up,
+    read_tiles_json,
+)
 from .tin import Tin, delaunay, rasterize, read_tin
 
 PREPARE_VERSION = 1
@@ -168,12 +182,20 @@ def read_raster(
         return _resample(Heights(oe, on, g.res, h), cell)
     path = asset_path(ctx.project, layer)
     dst_crs = project_crs(manifest)
-    # the date's shift moves the file east and north (a height grid got it from grid_source)
-    east, north = date_shift(manifest, str(layer.get("id")))
+    # the date's line-up moves the file (a height grid got it from grid_source); a turn or scale
+    # takes the slow path, as the cells are no longer north up
+    sim = date_similarity(manifest, str(layer.get("id")))
+    east, north = sim.east_m, sim.north_m
     with rasterio.open(path) as ds:
         same = ds.crs is None or dst_crs is None or ds.crs == dst_crs
         res = min(abs(ds.res[0]), abs(ds.res[1]))
-        if same and ds.transform.b == 0 and ds.transform.d == 0 and (cell is None or abs(cell - res) < 1e-12):
+        if (
+            same
+            and not sim.has_turn()
+            and ds.transform.b == 0
+            and ds.transform.d == 0
+            and (cell is None or abs(cell - res) < 1e-12)
+        ):
             b = ds.bounds
             _check_size(ds.width, ds.height, res)
             data = ds.read(1, masked=True).astype(np.float64).filled(np.nan)
@@ -183,22 +205,25 @@ def read_raster(
         from rasterio.warp import transform_bounds
 
         left, bottom, right, top = transform_bounds(ds.crs, dst_crs, *ds.bounds) if not same else ds.bounds
-        left, right, bottom, top = left + east, right + east, bottom + north, top + north
+        # the box that holds the file's corners where its date is lined up
+        es, ns = sim.apply_en(np.array([left, right, left, right]), np.array([bottom, bottom, top, top]))
+        left, right, bottom, top = float(es.min()), float(es.max()), float(ns.min()), float(ns.max())
         c = float(cell or res)
         oe, on = _aligned(left, c), _aligned(bottom, c)
         nx, ny = math.ceil((right - oe) / c), math.ceil((top - on) / c)
         _check_size(nx, ny, c)
-        from rasterio.transform import Affine, from_origin
+        from rasterio.transform import from_origin
 
         nodata = -3.0e38
         out = np.full((ny, nx), nodata, np.float32)
+        # the grid is read through the inverse of the line-up, in the project CRS
         reproject(
             rasterio.band(ds, 1),
             out,
-            src_transform=Affine.translation(east, north) @ ds.transform,
+            src_transform=ds.transform,
             src_crs=ds.crs or dst_crs,
             src_nodata=ds.nodata,
-            dst_transform=from_origin(oe, on + ny * c, c, c),
+            dst_transform=~sim.crs_affine() @ from_origin(oe, on + ny * c, c, c),
             dst_crs=dst_crs or ds.crs,
             dst_nodata=nodata,
             resampling=Resampling.bilinear,
@@ -501,17 +526,14 @@ class SurveyPrepare:
             files = source_files(ctx.project, manifest, src)
             hashes = [_sha256(f) if f.is_file() else "" for f in files]
             key: dict[str, Any] = {"v": PREPARE_VERSION, "source": src, "cellM": cell, "files": hashes}
-            shift = (0.0, 0.0)
+            sim = Similarity(0.0, 0.0)
             if src["kind"] in ("dsm", "dtm", "cloud"):
-                shift = date_shift(manifest, src["layer"])
-                if shift != (0.0, 0.0):  # a date without a line-up keeps the fingerprint it always had
-                    key["dateShiftM"] = list(shift)
-            elif src["kind"] == "derived":  # made from a prepared surface: the shift it was prepared with
-                try:
-                    prior = read_tiles_json(ctx.project / SURFACES_DIR / src["of"]).get("dateShiftM") or {}
-                    shift = (float(prior.get("eastM", 0.0)), float(prior.get("northM", 0.0)))
-                except (JobError, TypeError, ValueError):
-                    pass
+                sim = date_similarity(manifest, src["layer"])
+                # a date without a line-up keeps the fingerprint it always had, a shift alone too
+                key.update(line_up_key(sim))
+            elif src["kind"] == "derived":  # made from a prepared surface: the line-up it was prepared with
+                with contextlib.suppress(JobError, TypeError, ValueError):
+                    sim = prepared_line_up(read_tiles_json(ctx.project / SURFACES_DIR / src["of"]))
             if src["kind"] == "cloud":
                 from ..change.sources import height_offset_m
 
@@ -554,7 +576,7 @@ class SurveyPrepare:
                 "source": src,
                 **({"capture": spec["capture"]} if spec.get("capture") else {}),
                 "crs": _crs_of(manifest),
-                **({"dateShiftM": {"eastM": shift[0], "northM": shift[1]}} if shift != (0.0, 0.0) else {}),
+                **line_up_meta(sim),
                 "cellM": g.cell,
                 "tileSize": TILE,
                 "originE": g.oe,

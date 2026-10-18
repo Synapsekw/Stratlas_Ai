@@ -861,9 +861,10 @@ def export_cloud(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Ou
         from ..change.sources import height_offset_m
 
         # a LAS, COPC or cleaned file is in file coordinates; the kit-packed branch below gets the
-        # offset and the date's shift from Surface.points
-        east, north = cs.shift
-        xyz = las.xyz + np.array([east, north, height_offset_m(layer)])
+        # offset and the date's line-up from Surface.points
+        xyz = las.xyz + np.array([0.0, 0.0, height_offset_m(layer)])
+        if not cs.sim.is_identity():
+            xyz[:, 0], xyz[:, 1] = cs.sim.apply_en(xyz[:, 0], xyz[:, 1])
     else:
         pts = cs.points(ctx)
         o = manifest.get("origin") or [0, 0, 0]
@@ -972,10 +973,10 @@ def export_contours(ctx: StepContext, params: dict[str, Any], frame: Frame, out:
 
 
 def _drawn(project: Path, ms: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Measurements where they are drawn: a survey-scoped one with its date's line-up added (E and
-    N), as the app shows it. Exports write the lined-up frame (data-conventions section 38); the
+    """Measurements where they are drawn: a survey-scoped one with its date's line-up put on it (E
+    and N, the turn included; heights never change), as the app shows it. Exports write the lined-up frame (data-conventions section 38); the
     stored points stay the date's own, for Undo."""
-    from ..captures import capture_shift
+    from ..captures import capture_similarity
 
     if not (project / "manifest.json").is_file():
         return ms
@@ -984,11 +985,11 @@ def _drawn(project: Path, ms: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for m in ms:
         scope = m.get("scope")
         cap = scope.get("capture") if isinstance(scope, dict) and scope.get("kind") == "survey" else None
-        east, north = capture_shift(manifest, str(cap)) if cap else (0.0, 0.0)
-        if east == 0.0 and north == 0.0:
+        sim = capture_similarity(manifest, str(cap)) if cap else None
+        if sim is None or sim.is_identity():
             out.append(m)
             continue
-        pts = [[float(p[0]) + east, float(p[1]) + north, *p[2:]] for p in m.get("points") or []]
+        pts = [[*sim.apply_en(float(p[0]), float(p[1])), *p[2:]] for p in m.get("points") or []]
         out.append({**m, "points": pts})
     return out
 

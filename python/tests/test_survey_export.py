@@ -8,6 +8,7 @@ geoid and calibration (``geodesy_synth.py``).
 from __future__ import annotations
 
 import json
+import math
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -636,3 +637,77 @@ def test_export_carries_the_shift_measurements(tmp_path):
     line = ms["m-line"]["points"][0]
     assert float(first[2]) == pytest.approx(line[0] + 2.0)
     assert float(first[3]) == pytest.approx(line[1] - 1.0)
+
+
+def turn_d1(root, pivot_e, pivot_n):
+    path = root / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["captures"][0]["lineUpTurn"] = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": pivot_e, "pivotN": pivot_n}
+    path.write_text(json.dumps(m), "utf-8")
+
+
+def test_export_measurements_follows_a_turned_line_up(tmp_path):
+    from aio_pipelines.similarity import Similarity
+
+    root = full_project(tmp_path)
+    path = root / "survey" / "measurements.json"
+    doc = json.loads(path.read_text("utf-8"))
+    for m in doc["measurements"]:
+        if m["id"] in ("m-pt", "m-line"):
+            m["scope"] = {"kind": "survey", "capture": "d1"}
+    path.write_text(json.dumps(doc), "utf-8")
+    ms = {m["id"]: m for m in doc["measurements"]}
+    spot = ms["m-pt"]["points"][0]
+    # the pivot 150 m south-west of the spot: the turn moves it more than a metre past the shift
+    pivot = (spot[0] - 100.0, spot[1] - 110.0)
+    line_up_d1(root)
+    turn_d1(root, *pivot)
+    sim = Similarity(2.0, -1.0, 0.5, 1.0, *pivot)
+    run(root, tmp_path / "m.csv", what="measurements", format="csv", measurements=["m-pt", "m-poly"])
+    pts = read_csv_points(tmp_path / "m.csv").points[0].points
+    want = sim.apply_en(spot[0], spot[1])
+    assert math.hypot(want[0] - spot[0] - 2.0, want[1] - spot[1] + 1.0) > 1.0
+    assert (pts[0].e, pts[0].n) == pytest.approx(want, abs=1e-6)
+    assert pts[0].z == spot[2]  # heights never change
+    pile = ms["m-poly"]["points"][0]
+    assert (pts[1].e, pts[1].n) == (pile[0], pile[1])  # site-wide: as saved
+    run(
+        root, tmp_path / "s.csv", "j2", what="section", format="csv", measurements=["m-line"], surface="plane"
+    )
+    first = (tmp_path / "s.csv").read_text("utf-8").splitlines()[1].split(",")
+    line = ms["m-line"]["points"][0]
+    assert (float(first[2]), float(first[3])) == pytest.approx(sim.apply_en(line[0], line[1]), abs=1e-3)
+
+
+def test_export_cloud_follows_a_turned_line_up(tmp_path, monkeypatch):
+    import shutil
+
+    from scipy.spatial import cKDTree
+
+    import aio_pipelines.export.las as el
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.change.las import read_las
+    from aio_pipelines.similarity import Similarity
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "pdal_env", lambda p: {})
+    monkeypatch.setattr(el, "compress_laz", lambda pdal, las, laz, env: shutil.copy(las, laz))
+    # the pivot 100 m west of the cloud (which is 16 m across, about 520010, 2750010)
+    pivot = (519910.0, 2750010.0)
+    xyz = {}
+    for name, turned in (("plain", False), ("moved", True)):
+        root = cloud_project(tmp_path, name, "png-packed", 0.0)
+        if turned:
+            line_up_d1(root)
+            turn_d1(root, *pivot)
+        out_dir = tmp_path / f"out-{name}"
+        out_dir.mkdir()
+        res = run(root, out_dir / "cloud.laz", what="cloud", format="laz", layer="c")
+        xyz[name] = read_las(Path(res["files"][0])).xyz
+    sim = Similarity(2.0, -1.0, 0.5, 1.0, *pivot)
+    e, n = sim.apply_en(xyz["plain"][:, 0], xyz["plain"][:, 1])
+    want = np.column_stack([e, n, xyz["plain"][:, 2]])
+    d, _ = cKDTree(xyz["moved"]).query(want)
+    assert d.max() < 0.01
+    # the turn shows: a plain shift is most of a metre off
+    assert float(np.abs(n - (xyz["plain"][:, 1] - 1.0)).max()) > 0.5

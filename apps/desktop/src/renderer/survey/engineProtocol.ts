@@ -4,6 +4,7 @@
  * when its polygon is edited. Shared by `engineServe.ts` (the worker side) and `engineClient.ts`.
  */
 import type {
+  CaptureLineUpTurn,
   ComparisonItem,
   ComparisonResult,
   DesignEntry,
@@ -23,6 +24,8 @@ export interface EngineContext {
   site: SiteContext;
   /** The line-up each survey date has now, `[eastM, northM]` (dates without one are absent). */
   shifts?: Record<string, [number, number]>;
+  /** The turn beside each date's line-up (its `lineUpTurn`; dates without one are absent). */
+  turns?: Record<string, CaptureLineUpTurn>;
 }
 
 /** The difference of one item on a coarse grid for heat maps (row 0 south). */
