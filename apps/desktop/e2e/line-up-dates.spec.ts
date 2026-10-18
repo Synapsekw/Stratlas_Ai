@@ -1015,18 +1015,28 @@ test.describe('at the window size CI uses', () => {
     await expect.poll(loaded).toBe(true);
     const later = await edgeStrength(win, band, 'rows');
     await shot('swipe-later.png');
-    // Each stands at the strongest row of the later date within `reach` of it, and that within a
-    // page pixel. The reach stays short of what a shift-only line-up would leave there, so such a
+    // Each stands at the strongest row of the later date within `reach` of it, and that within
+    // `near`. The reach stays short of what a shift-only line-up would leave there, so such a
     // line-up would put the strongest row at the reach's end, not on the edge. (The dates differ
     // further out: the later one has the building's shadow on its north side.)
     const reach = Math.floor(residual * perM * dpr) - 2;
+    // An edge zoomed in is a ramp one ortho pixel wide, with a flat crest: its strongest row can
+    // fall anywhere along that crest. So `near` is a page pixel, or half an ortho pixel on the page
+    // when that is more (the quick demo CI builds has orthos of 512 px, 19 cm a pixel), and stays
+    // short of the reach's end.
+    const tiles = JSON.parse(
+      await readFile(join(turned.root, 'rasters', 'ortho-d1', 'tiles.json'), 'utf8'),
+    ) as { levels: { tileSize: number; cols: number }[] };
+    const orthoPx = Math.max(...tiles.levels.map((l) => l.tileSize * l.cols));
+    const near = Math.max(dpr, ((96 / orthoPx) * perM * dpr) / 2);
+    expect(near).toBeLessThan(reach);
     expect(earlier).toHaveLength(2);
     expect(Math.abs((earlier[1] ?? 0) - (earlier[0] ?? 0)) / dpr / perM).toBeGreaterThan(4);
     for (const row of earlier) {
       let best = row;
       for (let k = row - reach; k <= row + reach; k++)
         if ((later[k] ?? -1) > (later[best] ?? -1)) best = k;
-      expect(Math.abs(best - row) / dpr, `the edge at row ${String(row)}`).toBeLessThanOrEqual(1);
+      expect(Math.abs(best - row), `the edge at row ${String(row)}`).toBeLessThanOrEqual(near);
     }
 
     // 6. the imagery change runs, with no misaligned notice
