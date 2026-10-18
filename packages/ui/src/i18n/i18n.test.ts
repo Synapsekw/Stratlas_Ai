@@ -197,7 +197,7 @@ describe('the English catalogue', () => {
       "These dates cannot be lined up: their parts don't fit one shift, turn and scale, so part of the site may have warped or changed too much.",
     );
     expect(t('lineUp.refuse.range')).toBe(
-      'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other.',
+      'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other, or would move more than 500 m.',
     );
   });
 

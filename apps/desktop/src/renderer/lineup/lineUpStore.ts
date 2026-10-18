@@ -183,6 +183,17 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
   const manifest = () => deps.workspace.getState().project?.manifest;
 
   /**
+   * Take off the background offer of a pair one of whose dates was just written (a line-up from
+   * any entry point, Undo, Redo, a removal): it was measured where the date sat before. The
+   * background check measures the pair again where it is now.
+   */
+  const dropOfferOf = (captureId: string) => {
+    const o = store.getState().offer;
+    if (o && (o.measure.keep === captureId || o.measure.move === captureId))
+      store.setState({ offer: null });
+  };
+
+  /**
    * Write one line-up, Undo or Redo step into `projectId`: pins before the line-up, unpins after
    * it. A refused save takes the pins it put in off again. `stopped` when another project opened
    * between two writes: nothing more is written, into either project.
@@ -204,6 +215,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       if (pinning) await deps.pinCaptures(w.pins, null);
       return { err, stopped: gone() };
     }
+    dropOfferOf(w.captureId);
     if (!w.pin && w.pins.length) {
       const unpinned = await deps.pinCaptures(w.pins, null);
       return { err: unpinned, stopped: gone() };
@@ -346,6 +358,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
         try {
           const err = await deps.saveCapture(captureId, null, null);
           if (openId() !== projectId) return;
+          if (!err) dropOfferOf(captureId);
           set({
             notice: {
               projectId,

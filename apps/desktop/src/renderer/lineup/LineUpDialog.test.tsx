@@ -196,8 +196,10 @@ describe('LineUpDialog', () => {
     await flush();
     click('lineup-keep-d1');
     await flush();
-    // the pivot moves by the fit's shift
-    expect(byId('lineup-shift')?.textContent).toBe('2.00 m west, 0.50 m north (2.06 m in all)');
+    // the pivot moves by the fit's shift, the edges by up to the fit's largest move
+    expect(byId('lineup-shift')?.textContent).toBe(
+      '2.00 m west, 0.50 m north at the centre, up to 2.40 m at the edges',
+    );
     expect(byId('lineup-turn')?.textContent).toBe('turned 0.25°, scaled +0.35%');
     click('lineup-after');
     const after = drawn.filter((d) => d.image === moveImage).at(-1);
@@ -220,7 +222,7 @@ describe('LineUpDialog', () => {
       await store.getState().open('d1', 'd2');
     });
     click('lineup-keep-d1');
-    expect(byId('lineup-shift')).not.toBeNull();
+    expect(byId('lineup-shift')?.textContent).toBe('2.00 m west, 0.50 m north (2.06 m in all)');
     expect(byId('lineup-turn')).toBeNull();
     expect(byId('lineup-clouds')).toBeNull();
   });

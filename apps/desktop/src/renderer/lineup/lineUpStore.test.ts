@@ -351,7 +351,7 @@ describe('lineUpStore', () => {
       fit: fitOf({ rotationDeg: 3, verdict: 'range' }),
     });
     const range =
-      'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other.';
+      'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other, or would move more than 500 m.';
     expect(refusalOf(turned)).toBe(range);
     expect(refusalOf(measureOf({ verdict: 'disagree' }))).toBe(
       "These dates cannot be lined up: their parts don't fit one shift, turn and scale, so part of the site may have warped or changed too much.",
@@ -362,6 +362,35 @@ describe('lineUpStore', () => {
     expect(store.getState().dialog?.error).toBe(range);
     await store.getState().confirm();
     expect(saveCapture).not.toHaveBeenCalled();
+  });
+
+  it('takes the offer of a pair off once one of its dates is lined up', async () => {
+    const { store } = setup();
+    // the background offer for d1/d2, then the same pair lined up from the chip or a menu
+    store.getState().offerFrom(measureOf(), 'o1|o2');
+    expect(store.getState().offer).not.toBeNull();
+    await store.getState().open('d1', 'd2');
+    store.getState().choose('d1');
+    await store.getState().confirm();
+    expect(store.getState().notice?.action?.kind).toBe('undo');
+    expect(store.getState().offer).toBeNull();
+    // Undo and Redo move the date too: an offer measured before them is stale
+    store.getState().offerFrom(measureOf(), 'o1|o2');
+    await store.getState().apply();
+    expect(store.getState().offer).toBeNull();
+    store.getState().offerFrom(measureOf(), 'o1|o2');
+    await store.getState().apply();
+    expect(store.getState().offer).toBeNull();
+    // and so does taking the line-up off
+    store.getState().offerFrom(measureOf(), 'o1|o2');
+    await store.getState().remove('d2');
+    expect(store.getState().offer).toBeNull();
+    // an offer for another pair stays
+    store.getState().offerFrom(measureOf({ keep: 'd3', move: 'd4' }), 'o3|o4');
+    await store.getState().open('d1', 'd2');
+    store.getState().choose('d1');
+    await store.getState().confirm();
+    expect(store.getState().offer?.key).toBe('o3|o4');
   });
 
   it('tells same-named dates apart in the offer and the done notice', async () => {

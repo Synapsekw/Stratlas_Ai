@@ -25,8 +25,9 @@ import type { Box } from '../shell/layerBounds';
 type T = typeof translate;
 
 const mm = (v: number) => Math.round(v * 1000) / 1000;
-// a turned line-up keeps its shift to the micrometre: the shift moves the pivot, and the pair
-// must apply as the two corrections in order (rounding stays far below a millimetre)
+// a turned line-up's shift is planned to the micrometre (the shift moves the pivot, and the pair
+// must apply as the two corrections in order); the project saves it to the millimetre, like any
+// line-up, which moves the date by under a millimetre
 const um = (v: number) => Math.round(v * 1e6) / 1e6;
 
 /**
@@ -209,15 +210,21 @@ export function turnWords(turn: { rotationDeg: number; scale: number }, t: T): s
   });
 }
 
-/** "2.01 m west, 0.00 m north (2.01 m in all)". */
-export function shiftWords(eastM: number, northM: number, t: T): string {
-  return t('lineUp.shift', {
+/**
+ * "2.01 m west, 0.00 m north (2.01 m in all)". A turned fit gives `maxMoveM`, its largest move
+ * over the overlap (what the chip and the offer show): the shift is then the move at the pivot,
+ * "2.00 m west, 0.74 m north at the centre, up to 2.86 m at the edges".
+ */
+export function shiftWords(eastM: number, northM: number, t: T, maxMoveM?: number): string {
+  const words = {
     ew: t(eastM < 0 ? 'lineUp.west' : 'lineUp.east', { distance: formatMetres(Math.abs(eastM)) }),
     ns: t(northM < 0 ? 'lineUp.south' : 'lineUp.north', {
       distance: formatMetres(Math.abs(northM)),
     }),
-    distance: formatMetres(Math.hypot(eastM, northM)),
-  });
+  };
+  return maxMoveM !== undefined && Number.isFinite(maxMoveM)
+    ? t('lineUp.shiftTurned', { ...words, distance: formatMetres(maxMoveM) })
+    : t('lineUp.shift', { ...words, distance: formatMetres(Math.hypot(eastM, northM)) });
 }
 
 export interface LineUpPair {

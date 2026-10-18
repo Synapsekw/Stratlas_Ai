@@ -114,6 +114,9 @@ MAX_FINE_TILES = 48
 SPREAD_CELLS = 6
 #: Rounds of leaving out tiles that disagree with the fitted similarity (real change).
 FIT_ROUNDS = 3
+#: The least a fitted turn and scale must move some corner of the overlap, px, to be kept: below
+#: it they are noise on a plain shift.
+TURN_MIN_PX = 0.5
 #: A measurement is trusted with at least this many fine tiles (inliers of the fit) ...
 MIN_TILES = 6
 #: ... whose shifts lie within this of the fitted similarity (the median residual).
@@ -250,6 +253,21 @@ def _spread_tiles(found: list[tuple[float, int, int]], step: int) -> list[tuple[
     return [(found[i][1], found[i][2]) for i in picked]
 
 
+def _turn_reach(
+    a: float, b: float, c: np.ndarray, centres: np.ndarray, shape: tuple[int, int] | None
+) -> float:
+    """How far, px, the turn and scale part alone (``S - I`` about ``c``) moves the farthest corner
+    of the overlap: the grid (``shape``) when given, else the box of the tile centres."""
+    if shape is not None:
+        lo, hi = np.zeros(2), np.array(shape, np.float64)
+    else:
+        lo, hi = centres.min(axis=0), centres.max(axis=0)
+    corners = np.array([[lo[0], lo[1]], [lo[0], hi[1]], [hi[0], lo[1]], [hi[0], hi[1]]]) - c
+    # (row, column) offsets u: the move is ((a-1) ux - b uy, b ux + (a-1) uy) in (x, y)
+    ux, uy = corners[:, 1], corners[:, 0]
+    return float(np.hypot((a - 1) * ux - b * uy, b * ux + (a - 1) * uy).max())
+
+
 def _identity_fit() -> dict[str, Any]:
     return {
         "a": 1.0,
@@ -279,7 +297,8 @@ def fit_similarity(
 
     When the inlier centres span less than a third of the grid (``shape``, rows and columns) on
     either axis, the turn and scale can't be trusted: the shift alone is fitted (their median) and
-    ``turned`` is false. Returns ``a``, ``b``, ``ty``, ``tx``, ``cy``, ``cx``, ``residual`` (the
+    ``turned`` is false. So it is when the fitted turn and scale alone move no corner of the
+    overlap by more than ``TURN_MIN_PX``: the shift is then their median. Returns ``a``, ``b``, ``ty``, ``tx``, ``cy``, ``cx``, ``residual`` (the
     median residual of the inliers, px), ``inliers`` and ``turned``.
     """
     p = np.asarray(centres, np.float64).reshape(-1, 2)
@@ -329,6 +348,11 @@ def fit_similarity(
             break
         mask = keep
         a, b, ty, tx, c, turned = solve(mask)
+    if turned and _turn_reach(a, b, c, p[mask], shape) <= TURN_MIN_PX:
+        # the turn and scale move no corner of the overlap by half a pixel: noise on a plain
+        # shift, which is reported as the shift alone (the median, as for clustered tiles)
+        t = np.median(d[mask], axis=0)
+        a, b, ty, tx, turned = 1.0, 0.0, float(t[0]), float(t[1]), False
     r = residuals(a, b, ty, tx, c)
     return {
         "a": round(a, 9),

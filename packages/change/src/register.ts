@@ -38,6 +38,8 @@ export function buildChangeSet(o: {
   stats?: Record<string, number>;
   /** The shifts of the two dates now (`lineUpOfPair`), so a later line-up marks the set stale. */
   lineUp?: ChangeSet['lineUp'] | undefined;
+  /** The turns of the two dates now (`lineUpTurnOfPair`), beside `lineUp`. */
+  lineUpTurn?: ChangeSet['lineUpTurn'] | undefined;
 }): ChangeSet {
   return {
     schema: CHANGE_SCHEMA,
@@ -51,6 +53,7 @@ export function buildChangeSet(o: {
     layers: o.layers ?? [],
     stats: { ...o.stats, ...changeStats(o.items) },
     ...(o.lineUp ? { lineUp: o.lineUp } : {}),
+    ...(o.lineUpTurn ? { lineUpTurn: o.lineUpTurn } : {}),
   };
 }
 

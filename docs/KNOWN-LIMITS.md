@@ -82,6 +82,9 @@ Current limits only; each is removed from this list when fixed.
 - Line up dates: manual point picking is not available yet.
 - Line up dates moves, turns and scales a date in the ground plane (up to 1 degree and 1 %). It does not change height.
 - Point clouds move with a line-up but don't turn: in the viewer, in 3D Tiles and in point-cloud change, which refuses a turned pair.
+- Items drawn on a point cloud (antennas, RF grids, sightings on cloud layers) turn with their date, while the cloud under them only moves, so on a turned date they can sit a little off the cloud. The pipeline's telecom merge and crown steps use the shift only.
+- The surface change and survey jobs turn a point cloud with its date, while the viewer shows that cloud shifted only.
+- Asset measurement (the engineer job) reads point clouds with the shift only; meshes take the full line-up.
 - Panorama headings, photo orientations, video direction keyframes and the clip path, and antenna and RF azimuths aren't turned. A video clip follows the move at the pivot.
 - Vector change is skipped for a turned pair in a project without a coordinate system, and the app doesn't show a note about it yet.
 - The line-up preview of a date that is already turned is slightly stretched.

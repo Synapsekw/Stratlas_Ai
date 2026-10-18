@@ -4317,6 +4317,7 @@ export const en = {
   'lineUp.keepHint': 'Choose the date that stays where it is. The other date moves onto it.',
   'lineUp.measuring': 'Measuring how far apart the dates are...',
   'lineUp.shift': '{ew}, {ns} ({distance} in all)',
+  'lineUp.shiftTurned': '{ew}, {ns} at the centre, up to {distance} at the edges',
   'lineUp.east': '{distance} east',
   'lineUp.west': '{distance} west',
   'lineUp.north': '{distance} north',
@@ -4347,7 +4348,7 @@ export const en = {
   'lineUp.refuse.overlap': 'These dates hardly overlap.',
   'lineUp.refuse.aligned': 'These dates already line up (within {distance}).',
   'lineUp.refuse.range':
-    'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other.',
+    'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other, or would move more than 500 m.',
   'lineUp.refuse.far':
     'These dates cannot be lined up: the date would move more than 500 m, turn more than 2° or scale more than 2% from where its files place it.',
   'lineUp.refuse.noImagery': 'Each date needs an ortho or a DSM to be lined up.',

@@ -1,5 +1,5 @@
 import type { CaptureLineUpTurn, ChangeSet, DateShift, ProjectManifest } from '@aio/schema';
-import { isZeroShift } from '@aio/schema';
+import { isZeroShift, turnOf } from '@aio/schema';
 import { captureShift, shiftKey } from '@aio/workspace';
 
 /**
@@ -52,5 +52,19 @@ export function lineUpOfPair(m: Source, from: string, to: string): ChangeSet['li
   };
   const f = side(from);
   const t = side(to);
+  return f || t ? { ...(f ? { from: f } : {}), ...(t ? { to: t } : {}) } : undefined;
+}
+
+/**
+ * The turns of a pair's dates for a set being written, beside `lineUpOfPair` (absent when neither
+ * date has one): without them a set computed on a turned date would read stale at once.
+ */
+export function lineUpTurnOfPair(
+  m: Source,
+  from: string,
+  to: string,
+): ChangeSet['lineUpTurn'] | undefined {
+  const f = turnOf(shiftOfDate(m, from));
+  const t = turnOf(shiftOfDate(m, to));
   return f || t ? { ...(f ? { from: f } : {}), ...(t ? { to: t } : {}) } : undefined;
 }

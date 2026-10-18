@@ -164,6 +164,28 @@ def test_measures_a_two_metre_shift(tmp_path):
     assert m["cellM"] == pytest.approx(CELL)
     assert m["tolerancePx"] == 2
     assert m["tiles"] >= 6 and m["spreadPx"] <= 1.0
+    # a plain shift carries no noise turn
+    f = fit_of(tmp_path)
+    assert (f["rotationDeg"], f["scale"]) == (0, 1)
+    assert m["totalM"] == f["maxMoveM"]
+
+
+def test_a_pure_shift_with_sub_pixel_noise_fits_no_turn():
+    rng = np.random.default_rng(5)
+    g = np.linspace(64, 960, 6)
+    centres = np.array([[r, c] for r in g for c in g])
+    true = np.array([0.0, 2.0 / CELL])  # 2 m east, in pixels
+    shifts = true + rng.normal(0, 0.15, centres.shape)
+    f = fit_similarity(centres, shifts, shape=(1024, 1024))
+    assert f["turned"] is False and (f["a"], f["b"]) == (1.0, 0.0)
+    assert abs(f["ty"] - true[0]) * CELL < 0.01
+    assert abs(f["tx"] - true[1]) * CELL < 0.01
+    # a turn that moves a corner by several pixels stays a turn
+    th = math.radians(0.1)
+    c0 = np.array([512.0, 512.0])
+    turned = np.array([[th * (c[1] - c0[1]), -th * (c[0] - c0[0])] for c in centres]) + true
+    t = fit_similarity(centres, turned, shape=(1024, 1024))
+    assert t["turned"] is True and abs(t["b"]) > 1e-3
 
 
 def test_measures_forty_metres_coarse_to_fine():

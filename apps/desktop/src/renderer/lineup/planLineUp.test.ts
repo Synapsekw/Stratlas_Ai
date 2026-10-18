@@ -250,6 +250,10 @@ describe('planLineUp', () => {
     expect(formatMetres(2.006)).toBe('2.01 m');
     expect(shiftWords(-2.01, 0, t)).toBe('2.01 m west, 0.00 m north (2.01 m in all)');
     expect(shiftWords(3, -4, t)).toBe('3.00 m east, 4.00 m south (5.00 m in all)');
+    // a turned fit: the move at the pivot, and the largest move over the overlap
+    expect(shiftWords(-2, 0.74, t, 2.86)).toBe(
+      '2.00 m west, 0.74 m north at the centre, up to 2.86 m at the edges',
+    );
   });
 
   it('pairs each date with the one it most overlaps', () => {

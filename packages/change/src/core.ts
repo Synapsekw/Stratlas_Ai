@@ -55,5 +55,5 @@ export {
   type RegisterSort,
   type ReviewStatus,
 } from './register';
-export { changeSetStale, lineUpOfPair } from './stale';
+export { changeSetStale, lineUpOfPair, lineUpTurnOfPair } from './stale';
 export { DEFAULT_VECTOR_KEYS, vectorChanges, type VectorChangeInput } from './vector';
