@@ -20,6 +20,14 @@ export type FrameDecoder = (
   height: number,
 ) => Promise<RgbaImage>;
 
+/**
+ * Decoder threads for one frame. ffmpeg's default (one frame thread per core, up to 16) reads and
+ * decodes that many frames past t before the first one comes out, so a single 3840 x 1920 frame
+ * costs about 3x the CPU (0.39 s against 0.17 s on the playback copy's settings) for no gain in
+ * wall time, and much more when the CPU is busy. Two threads give the same picture, byte for byte.
+ */
+export const FRAME_THREADS = 2;
+
 /** The ffmpeg arguments that decode one frame at `t` to raw RGBA of `width` x `height`. */
 export function frameArgs(file: string, t: number, width: number, height: number): string[] {
   return [
@@ -27,6 +35,9 @@ export function frameArgs(file: string, t: number, width: number, height: number
     '-hide_banner',
     '-loglevel',
     'error',
+    // before -i: options of the decoder
+    '-threads',
+    String(FRAME_THREADS),
     // before -i: a fast seek to the key frame, then decoding up to t
     '-ss',
     Math.max(0, t).toFixed(3),
