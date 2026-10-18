@@ -16,7 +16,7 @@ import { simplify, traceBoundary, type BinaryMask } from '@aio/annotate/detectio
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { OrtLike, OrtSession, OrtTensor } from '../maskAssist';
-import { licenceProblem } from './licence';
+import { licenceProblem, licenceWarning } from './licence';
 
 /** The model's input side (SAM and its small variants). */
 export const SAM_SIZE = 1024;
@@ -73,7 +73,13 @@ export async function findSegmentModel(packDir: string | null): Promise<ModelLoo
   const str = (v: unknown, max: number) =>
     typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined;
   const licence = str(raw.licence ?? raw.license, 200) ?? '';
-  const problem = licenceProblem(licence);
+  // The pack's own model keeps the strict gate: the relaxed import gate (licence.ts) is for
+  // detectors a person imports for internal use.
+  const problem =
+    licenceProblem(licence) ??
+    (licenceWarning(licence)
+      ? `${licence} is not allowed for the segmentation model (copyleft, non-commercial or unknown licence).`
+      : null);
   if (problem) return { ok: false, reason: 'licence', detail: problem };
   const version = str(raw.version, 40);
   const source = str(raw.source, 300);
