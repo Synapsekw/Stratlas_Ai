@@ -88,6 +88,16 @@ const chipWhole = (row: Locator) =>
 const savedFile = async (dir: string) =>
   AntennasFile.parse(JSON.parse(await readFile(join(dir, 'telecom', 'antennas.json'), 'utf8')));
 
+/** Names of the antenna boxes in the scene (one `antenna-box:<id>` per drawn unit). */
+const boxNames = (win: Page) =>
+  win.evaluate(() => {
+    const names: string[] = [];
+    (window as unknown as Inspect).__stratlas.stage()?.scene.traverse((o) => {
+      if (o.name.startsWith('antenna-box:')) names.push(o.name);
+    });
+    return names.sort();
+  });
+
 const sceneHas = (win: Page, name: string) =>
   win.evaluate(
     (n) => Boolean((window as unknown as Inspect).__stratlas.stage()?.scene.getObjectByName(n)),
@@ -132,21 +142,55 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await win.keyboard.press('Enter');
   await expect(first).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => sceneHas(win, 'antenna-highlight')).toBe(true);
-  await expect(panel.getByTestId('antenna-accept')).toBeVisible();
-  await evidence(win, 'd-unit-selected');
+  const card = win.getByTestId('antenna-card');
+  await expect(card).toBeVisible();
+  // the run leaves the filter on To review, so the card walks the 8 drafts (the walk follows the
+  // file's order; the list groups by kind, so the first row need not be the walk's first unit)
+  await expect(card.getByTestId('antenna-card-position')).toHaveText(/^[1-8] \/ 8$/);
+  await evidence(win, 'e-card-selected');
   // at the CI size the tools scroll up and down inside the aside, never sideways
   await expect.poll(() => horizontalOverflow(win)).toBeLessThanOrEqual(0);
-  await panel.getByTestId('antenna-accept').scrollIntoViewIfNeeded();
-  await evidence(win, 'd-unit-details');
 
-  await first.getByRole('button', { name: /^More for / }).click();
-  await win.getByRole('menuitem', { name: 'Accept' }).click();
-  await expect(first).toHaveAttribute('data-status', 'accepted');
-  // the chip keeps its text at the CI size, with the row's actions showing (selected)
-  expect(await chipWhole(first), 'accepted chip is whole').toBe(true);
-  await expect(rows.nth(1)).toHaveAttribute('data-status', 'draft');
-  expect(await chipWhole(rows.nth(1)), 'draft chip is whole').toBe(true);
+  // accept from the card: the unit leaves To review and the card moves on. (Not with the A key:
+  // the stage's own A shortcut, annotate, takes it first. Reported, not hidden by this spec.)
+  await card.getByTestId('antenna-card-accept').click();
+  await expect(rows).toHaveCount(7);
+  await expect(card.getByTestId('antenna-card-position')).toHaveText(/^[1-7] \/ 7$/);
+  await panel.getByTestId('antenna-filter-all').click();
+  await expect(rows).toHaveCount(8);
+  const accepted = panel.locator('[data-testid="antenna-row"][data-status="accepted"]');
+  await expect(accepted).toHaveCount(1);
+  // the chip keeps its text at the CI size
+  expect(await chipWhole(accepted.first()), 'accepted chip is whole').toBe(true);
+  await expect(panel.locator('[data-testid="antenna-row"][data-status="draft"]')).toHaveCount(7);
+  expect(
+    await chipWhole(panel.locator('[data-testid="antenna-row"][data-status="draft"]').first()),
+    'draft chip is whole',
+  ).toBe(true);
   await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
+  await expectAccessible(win, 'Antenna card', { include: '[data-testid="antenna-card"]' });
+
+  // Hide all: only the selected unit stays drawn, and the walk moves it with the selection
+  await panel.getByTestId('antenna-filter-draft').click();
+  await panel.getByTestId('antenna-hide-all').click();
+  await expect.poll(() => boxNames(win)).toHaveLength(1);
+  const [before] = await boxNames(win);
+  await win.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await boxNames(win)).join()).not.toBe(before);
+  expect(await boxNames(win)).toHaveLength(1);
+  await evidence(win, 'g-hide-all-walk');
+  await panel.getByTestId('antenna-show-all').click();
+  await expect.poll(() => boxNames(win)).toHaveLength(8);
+  await evidence(win, 'h-show-all');
+
+  // the panel group's eye hides the panels' boxes
+  await panel.getByTestId('antenna-filter-all').click();
+  await panel.getByTestId('antenna-group-eye-panel').click();
+  await expect.poll(async () => (await boxNames(win)).length).toBeLessThan(8);
+  const left = await boxNames(win);
+  expect(left.length).toBeGreaterThanOrEqual(1);
+  await panel.getByTestId('antenna-group-eye-panel').click();
+  await expect.poll(() => boxNames(win)).toHaveLength(8);
 
   // the inventory's CSV export sits next to Export survey data, in Site data
   const site = win.getByTestId('wb-section-siteData');
@@ -212,7 +256,11 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   ).toBeVisible();
   if (await win.getByTestId('project-card').first().isVisible()) await openTiny(win);
   else await openTelecom(win);
-  const reopened = win.getByTestId('antenna-panel').getByTestId('antenna-row');
+  await win.getByTestId('antenna-panel').getByTestId('antenna-filter-all').click();
+  const reopened = win
+    .getByTestId('antenna-panel')
+    .locator('[data-testid="antenna-row"][data-status="accepted"]');
+  await expect(reopened).toHaveCount(1);
   await expect(reopened.first()).toHaveAttribute('data-status', 'accepted');
   await expect(win.getByTestId('antenna-panel')).toContainText('Accepted');
   expect(await chipWhole(reopened.first()), 'accepted chip is whole after the reload').toBe(true);
