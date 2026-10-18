@@ -64,6 +64,25 @@ def test_refines_one_shared_focal_length(tmp_path, scene):
     assert a.focal_scale == pytest.approx(1.015, abs=0.003)
 
 
+def test_stopping_at_the_evaluation_cap_keeps_a_good_alignment(matched, monkeypatch):
+    frames, seeds, matches, focal, size = matched
+    # a real sphere stopped at the cap with a 0.2 px residual and fell back to the gimbal angles
+    monkeypatch.setattr(align, "MAX_EVALUATIONS", 20)
+    statuses = []
+    solve = align.least_squares
+
+    def capped(*args, **kwargs):
+        sol = solve(*args, **kwargs)
+        statuses.append(sol.status)
+        return sol
+
+    monkeypatch.setattr(align, "least_squares", capped)
+    a = align.align(seeds, matches, focal, size)
+    assert 0 in statuses  # the cap was hit
+    assert a.aligned == "features" and a.reason is None
+    assert a.residual_px is not None and a.residual_px < align.MAX_MEDIAN_RESIDUAL_PX
+
+
 def test_frames_without_matches_take_their_neighbours_correction(tmp_path, scene):
     frames = ps.make_sphere(tmp_path, "rows", scene=scene, frame_w=640, seed=5, blank=(3, 24))
     a, seeds = _align(frames)

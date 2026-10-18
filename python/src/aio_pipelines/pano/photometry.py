@@ -62,8 +62,9 @@ WHITE_PERCENTILE = 99.95
 #: the sphere; 1: each frame's own, less its seams), and the angular width of that smoothing.
 LOCAL_EXPOSURE = 0.6
 FIELD_SIGMA_DEG = 30.0
-#: The exposure field is computed on a grid of this many cells across a frame, then resized.
-FIELD_GRID = 24
+#: The exposure field and falloff are computed on a grid of this many cells across a frame, then
+#: resized (at 128 the falloff is within 0.3 percent of its exact value, under one 8-bit level).
+FIELD_GRID = 128
 
 _LIN = None
 
@@ -134,8 +135,12 @@ def _log_falloff(c: np.ndarray, r2: np.ndarray) -> np.ndarray:
     return c[0] * r2 + c[1] * r2**2 + c[2] * r2**3
 
 
-def exposure_map(light: Light, rot: np.ndarray, f: float, w: int, h: int) -> np.ndarray:
-    """exp(the smooth exposure) over a w x h frame with this rotation and focal length (float32)."""
+def exposure_map(
+    light: Light, rot: np.ndarray, f: float, w: int, h: int, falloff: bool = False
+) -> np.ndarray:
+    """exp(the smooth exposure) over a w x h frame with this rotation and focal length (float32);
+    with `falloff`, divided by the lens falloff too. Both are smooth, so they are computed on a
+    grid and resized: one full-size map, not three, for a 16K frame."""
     n = FIELD_GRID
     cx, cy = principal(w, h)
     xs = np.linspace(0, w - 1, n)
@@ -143,8 +148,11 @@ def exposure_map(light: Light, rot: np.ndarray, f: float, w: int, h: int) -> np.
     gx, gy = np.meshgrid(xs, ys)
     rays = np.stack([(gx - cx) / f, (gy - cy) / f, np.ones_like(gx)], axis=-1) @ rot.T
     rays /= np.linalg.norm(rays, axis=-1, keepdims=True)
-    small = np.exp(light.exposure(rays.astype(np.float32))).astype(np.float32)
-    return cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+    log = light.exposure(rays.astype(np.float32))
+    if falloff:
+        r2 = ((gx - cx) ** 2 + (gy - cy) ** 2) / (cx * cx + cy * cy)
+        log = log - _log_falloff(np.asarray(light.falloff), r2)
+    return cv2.resize(np.exp(log).astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
 
 
 def falloff_map(light: Light, w: int, h: int) -> np.ndarray:
@@ -279,7 +287,7 @@ def _evened(lin: np.ndarray, light: Light, k: int, rot: np.ndarray, f: float) ->
     """In place: linear light of frame k divided by its gain and the falloff, times the smooth
     exposure of where it looks."""
     h, w = lin.shape[:2]
-    lin *= (exposure_map(light, rot, f, w, h) / falloff_map(light, w, h))[..., None]
+    lin *= exposure_map(light, rot, f, w, h, falloff=True)[..., None]
     lin *= np.exp(-np.asarray(light.log_gains[k], np.float32))[None, None]
     return lin
 

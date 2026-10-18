@@ -254,7 +254,8 @@ def adjust(
     rots = s @ rotvecs_to_matrices(w.ravel())
     # re-anchor: the world turn G that best maps the adjusted frames onto their seeds
     g = nearest_rotation(sum(seeds[k] @ rots[k].T for k in matched))
-    return [g @ r for r in rots], float(sol.x[-1]), median_px, bool(sol.success), matches
+    # stopping at the evaluation cap (status 0) is not a failure: the residual and turn checks judge it
+    return [g @ r for r in rots], float(sol.x[-1]), median_px, bool(sol.success or sol.status == 0), matches
 
 
 def borrow(w: np.ndarray, seeds: np.ndarray, matched: list[int], sigma_deg: float) -> np.ndarray:
