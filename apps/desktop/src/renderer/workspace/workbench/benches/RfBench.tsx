@@ -87,12 +87,13 @@ import {
   warningText,
 } from '../../../rf/rfText';
 import { AdvancedFold, studySummary } from '../../../rf/panel/AdvancedFold';
+import { AutoplanDialog } from '../../../rf/AutoplanDialog';
+import { openAntennaReviewOrFallback, startAutoplan } from '../../../rf/autoplan/autoplanStore';
 import { AiCard } from '../../../rf/panel/AiCard';
 import { LabelledSwitch, fmt } from '../../../rf/panel/parts';
 import { Step } from '../../../rf/panel/Step';
 import { StepAntennas } from '../../../rf/panel/StepAntennas';
 import { StepSectors, UNGROUPED } from '../../../rf/panel/StepSectors';
-import { revealAntenna } from '../../../telecom/antennaStore';
 import { useSections } from '../sectionState';
 import { workbench } from '../workbenchStore';
 import type { TabId } from '../tabsModel';
@@ -1494,15 +1495,13 @@ function ResultsSection() {
 // ---------------------------------------------------------------- the bench
 
 /**
- * Review in inventory: the Measure bench's antenna inventory, with the first draft unit revealed
- * when there is one. The Coverage tab is pinned first, so opening the Measure bench does not
- * close it.
+ * Review in inventory, through Auto-plan's one review link (`openAntennaReviewOrFallback`). The
+ * Coverage tab is pinned first, so opening the inventory does not close it.
  */
-function reviewDrafts(firstDraftId: string | undefined): void {
+function reviewAntennas(): void {
   const wb = workbench.getState();
   if (wb.tabs.some((x) => x.id === BENCH)) wb.pin(BENCH, true);
-  if (firstDraftId !== undefined) revealAntenna(firstDraftId);
-  wb.open('measure');
+  openAntennaReviewOrFallback();
 }
 
 export function RfBench() {
@@ -1516,6 +1515,7 @@ export function RfBench() {
   const runs = useRf((s) => s.runs);
   const settings = useRf((s) => s.sectors.antennas);
   const study = useRf((s) => s.sectors.study);
+  const readOnly = useRf((s) => s.readOnly);
   const sections = useSections(BENCH);
   // the open step 2 row (a sector id or UNGROUPED) and the unit it shows
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1566,12 +1566,16 @@ export function RfBench() {
   return (
     <div className="wb-bench wb-scroll rf-bench" data-testid="rf-bench">
       <SaveBar />
+      <AutoplanDialog />
       <AiCard
-        // wired in Task 9
-        onAutoplan={() => undefined}
-        // wired in Task 9
-        onUseExport={() => undefined}
+        onAutoplan={() => {
+          void startAutoplan();
+        }}
+        onUseExport={(csvText) => {
+          void startAutoplan({ csvText });
+        }}
         exportAvailable={fromExport}
+        disabled={readOnly}
         onSetUpByHand={() => {
           const first = rfStore.getState().sectors.sectors[0]?.id;
           const ungrouped = rows.some((r) => r.sectorId === null);
@@ -1581,13 +1585,7 @@ export function RfBench() {
           (step2.current as Partial<HTMLElement> | null)?.scrollIntoView?.({ block: 'start' });
         }}
       />
-      <StepAntennas
-        accepted={accepted}
-        drafts={drafts.length}
-        onReview={() => {
-          reviewDrafts(drafts[0]?.id);
-        }}
-      >
+      <StepAntennas accepted={accepted} drafts={drafts.length} onReview={reviewAntennas}>
         <SiteFacts />
       </StepAntennas>
       <div ref={step2}>

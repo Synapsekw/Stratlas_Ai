@@ -18,6 +18,7 @@ import {
 } from '../../../rf/__fixtures__/rfData';
 import { processingTools } from '../../../processingTools';
 import { RfLayer } from '../../../rf/RfLayer';
+import { autoplanStore, resetAutoplan } from '../../../rf/autoplan/autoplanStore';
 import { antennaStore } from '../../../telecom/antennaStore';
 import { assumptionsText } from '../../../rf/rfText';
 import { resetRf, rfStore, setPreviewState } from '../../../rf/rfStore';
@@ -171,6 +172,7 @@ beforeEach(() => {
   localStorage.clear();
   sectionStore.setState({ byBench: {} });
   resetRf();
+  resetAutoplan();
   workbench.getState().reset();
   h.calls = [];
   h.readOnly = false;
@@ -196,6 +198,48 @@ afterEach(() => {
 });
 
 describe('RfBench', () => {
+  it('Auto-plan & run opens the review dialog on Rules only when no provider is set up', async () => {
+    await render();
+    expect(byTest('rf-autoplan')).toBeNull();
+    click(byTest('rf-ai-autoplan'));
+    await flush();
+    expect(autoplanStore.getState()).toMatchObject({ phase: 'review', source: 'rules' });
+    const dlg = byTest('rf-autoplan');
+    expect(dlg).not.toBeNull();
+    expect(byTest('rf-autoplan-row-ant-a1')).not.toBeNull();
+    expect(byTest('rf-autoplan-source-rules')?.getAttribute('aria-pressed')).toBe('true');
+    expect((byTest('rf-autoplan-source-ai') as HTMLButtonElement | null)?.disabled).toBe(true);
+    click(byTest('rf-autoplan-cancel'));
+    expect(byTest('rf-autoplan')).toBeNull();
+    expect(rfStore.getState().dirty).toBe(false);
+  });
+
+  it('Use cell export plans from the picked file', async () => {
+    await render();
+    const input = byTest('rf-ai-export-file') as HTMLInputElement | null;
+    if (!input) throw new Error('no file input');
+    const csv = ['antenna,band,bandwidth', 'A1,B3,20'].join('\n');
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [new File([csv], 'cells.csv', { type: 'text/csv' })],
+    });
+    act(() => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(autoplanStore.getState().source).toEqual({ csvText: csv });
+    expect(autoplanStore.getState().phase).toBe('review');
+    expect(byTest('rf-autoplan')).not.toBeNull();
+  });
+
+  it('a read-only project cannot start Auto-plan', async () => {
+    h.readOnly = true;
+    await render();
+    click(byTest('rf-ai-autoplan'));
+    await flush();
+    expect(autoplanStore.getState().phase).toBe('idle');
+  });
+
   it('shows the AI card, three steps and a folded Advanced', async () => {
     await render();
     expect(byTest('rf-ai-card')).not.toBeNull();

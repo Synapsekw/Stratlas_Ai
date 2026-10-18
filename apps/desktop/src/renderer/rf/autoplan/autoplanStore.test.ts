@@ -349,6 +349,32 @@ describe('the AI source', () => {
     expect(autoplan().proposal?.rows.every((r) => r.picks[0]?.by === 'rules')).toBe(true);
   });
 
+  it('knows the provider from the status, and keeps it when a local model skips the preview', async () => {
+    mockInvoke('ai:status', {
+      ready: true,
+      route: { task: 'chat', provider: 'local', model: 'local-x' },
+    });
+    mockInvoke('ai:rfPlanPreview', { ...PREVIEW, provider: 'local', cloud: false });
+    mockInvoke('ai:rfPlan', REPLY);
+    let during: { provider: string | null; cloud: boolean | null } | null = null;
+    const unsub = autoplanStore.subscribe((s) => {
+      if (s.phase === 'thinking') during = { provider: s.provider, cloud: s.cloud };
+    });
+    await startAutoplan();
+    unsub();
+    expect(during).toEqual({ provider: 'local', cloud: false });
+    expect(autoplan()).toMatchObject({ phase: 'review', provider: 'local', cloud: false });
+    cancelAutoplan();
+    expect(autoplan()).toMatchObject({ phase: 'idle', provider: 'local', cloud: false });
+  });
+
+  it('takes the provider from the send preview, and forgets it on a project switch', async () => {
+    await startAutoplan('ai');
+    expect(autoplan()).toMatchObject({ phase: 'preview', provider: 'cloud-x', cloud: true });
+    await loadRf('p2');
+    expect(autoplan()).toMatchObject({ provider: null, cloud: null, aiAvailable: false });
+  });
+
   it('a project switch while the preview is pending drops it (R17)', async () => {
     let release: (v: unknown) => void = () => undefined;
     mockInvoke('ai:rfPlanPreview', () => new Promise((r) => (release = r)));
@@ -489,6 +515,8 @@ describe('selectChipState', () => {
     error: null,
     projectId: null,
     aiAvailable: false,
+    provider: null,
+    cloud: null,
   };
   const RUN = { runId: 'rf-1', createdAt: '2026-10-18T08:17:00Z' } as RfRun;
   const planned = {

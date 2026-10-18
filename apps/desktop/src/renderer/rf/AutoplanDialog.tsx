@@ -149,7 +149,9 @@ function PlanRow({ row, proposal, t }: { row: ProposalRow; proposal: Proposal; t
   const eqKept = !row.equipment && eq !== undefined;
   const eqText = eq ? equipmentText(t, eq, entries) : null;
 
-  const keptCarriers = row.kept.carriers.filter(Boolean).length;
+  // kept carriers are written unchanged, so the current settings show them truthfully
+  const keptList = (settings?.carriers ?? []).filter((_, k) => row.kept.carriers[k] === true);
+  const keptCarriers = keptList.length;
   const conf = rowConfidence(row);
   const reasons = [...new Set([row.equipment, ...row.picks].flatMap((p) => (p ? [p.reason] : [])))];
 
@@ -199,9 +201,19 @@ function PlanRow({ row, proposal, t }: { row: ProposalRow; proposal: Proposal; t
             })}
           </div>
         ))}
-        {keptCarriers > 0 && (
-          <KeptTag t={t}>{t('rf.autoplan.keptCarriers', { count: keptCarriers })}</KeptTag>
-        )}
+        {keptList.map((c) => (
+          <div key={c.id} className="mono">
+            <KeptTag t={t}>
+              {t('rf.autoplan.keptCarrier', {
+                carrier: t('rf.autoplan.carrier', {
+                  band: carrierBandName(c),
+                  tech: t(TECH_KEY[c.tech]),
+                  bw: c.bandwidthMhz,
+                }),
+              })}
+            </KeptTag>
+          </div>
+        ))}
         {row.picks.length === 0 && keptCarriers === 0 && (
           <span className="rf-off">{t('rf.autoplan.noCarrier')}</span>
         )}
@@ -257,6 +269,7 @@ function LeftOutRow({ left, t }: { left: LeftOut; t: T }) {
           <Button
             size="sm"
             onClick={() => {
+              cancelAutoplan();
               openAntennaReviewOrFallback();
             }}
           >
@@ -336,6 +349,8 @@ function Progress({ label }: { label: string }) {
 
 function SendPreview({ preview, t }: { preview: Preview; t: T }) {
   const projectId = useRf((s) => s.projectId);
+  const units = useUnits();
+  const nameOf = (id: string) => units.find((u) => u.id === id)?.name ?? '';
   const provider = providerName(preview.provider);
   const photos = photosSent(preview);
   return (
@@ -373,7 +388,7 @@ function SendPreview({ preview, t }: { preview: Preview; t: T }) {
                 <li key={c.unitId}>
                   <img
                     src={assetUrl(projectId, { path: c.path })}
-                    alt={c.unitId}
+                    alt={nameOf(c.unitId)}
                     width={72}
                     height={72}
                   />
@@ -404,6 +419,8 @@ export function AutoplanDialog() {
   const warnings = useAutoplan((s) => s.warnings);
   const error = useAutoplan((s) => s.error);
   const aiAvailable = useAutoplan((s) => s.aiAvailable);
+  const storeProvider = useAutoplan((s) => s.provider);
+  const cloud = useAutoplan((s) => s.cloud);
   const [problem, setProblem] = useState<RunProblem | null>(null);
   const [busy, setBusy] = useState(false);
   const [opener, setOpener] = useState<HTMLElement | null>(null);
@@ -418,9 +435,12 @@ export function AutoplanDialog() {
     if (seenPhase === 'idle') {
       setOpener(document.activeElement instanceof HTMLElement ? document.activeElement : null);
       setProblem(null);
+      // a new Auto-plan: never show the last one's provider, cost or photos
+      setLastPreview(null);
     }
   }
-  if (preview?.ok && preview !== lastPreview) setLastPreview(preview);
+  // the current run's send preview, kept for the cost line once it has been sent
+  if (preview?.ok && preview !== lastPreview && seenPhase === phase) setLastPreview(preview);
 
   const sendShown = phase === 'preview' && preview?.ok === true;
   const open = (phase !== 'idle' && !sendShown) || (phase === 'idle' && problem !== null);
@@ -439,7 +459,8 @@ export function AutoplanDialog() {
   }
   if (!open) return null;
 
-  const provider = lastPreview ? providerName(lastPreview.provider) : t('rf.autoplan.source.ai');
+  const providerId = storeProvider ?? lastPreview?.provider ?? null;
+  const provider = providerId ? providerName(providerId) : t('rf.autoplan.source.ai');
   const apply = async (run: boolean) => {
     if (busy) return;
     setBusy(true);
@@ -494,8 +515,8 @@ export function AutoplanDialog() {
         <Button
           variant="primary"
           onClick={() => {
-            openAntennaReviewOrFallback();
             cancelAutoplan();
+            openAntennaReviewOrFallback();
           }}
         >
           {t('rf.autoplan.blocked.open')}
@@ -549,7 +570,9 @@ export function AutoplanDialog() {
                 cost: costText(t, lastPreview),
                 photos: t('rf.autoplan.photos', { count: photosSent(lastPreview) }),
               })
-            : null
+            : cloud === false
+              ? t('rf.autoplan.cost.local')
+              : null
           : t('rf.autoplan.source.export');
     foot = (
       <>

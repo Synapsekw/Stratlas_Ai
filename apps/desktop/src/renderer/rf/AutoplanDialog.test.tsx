@@ -108,6 +108,17 @@ function renderWith(state: Partial<AutoplanState>): void {
   });
 }
 
+const CLOUD_PREVIEW: IpcResponse<'ai:rfPlanPreview'> = {
+  ok: true,
+  provider: 'anthropic',
+  model: 'model-x',
+  cloud: true,
+  photosAllowed: true,
+  crops: [{ unitId: 'ant-u1', path: 'telecom/crops/ant-u1.jpg' }],
+  estimate: { inputTokens: 1200, costUsd: 0.004 },
+  token: 'tok',
+};
+
 const reviewState = (units = UNITS()): Partial<AutoplanState> => ({
   phase: 'review',
   source: 'rules',
@@ -194,7 +205,8 @@ describe('AutoplanDialog', () => {
     expect(kept.textContent).toContain('kept');
     // the person's equipment shows, from the settings, not from a pick
     expect(kept.textContent).toContain('AAU 64T64R 3.5 GHz 200 W');
-    // nothing new is written for its carriers, so no proposed band shows
+    // its own carrier is written unchanged, so it shows from the settings, marked kept
+    expect(kept.textContent).toContain('kept: n78 · NR · 80 MHz');
     expect(kept.textContent).not.toContain('n78 · NR · 100 MHz');
   });
 
@@ -217,6 +229,10 @@ describe('AutoplanDialog', () => {
     expect(left.textContent).toContain('Not reviewed yet');
     click(buttonNamed(left, /Review/));
     expect(openAntennaReviewOrFallback).toHaveBeenCalledTimes(1);
+    // Auto-plan closes first, so the inventory is not under the dialog
+    expect(vi.mocked(cancelAutoplan).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(openAntennaReviewOrFallback).mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it('lists a unit with no bearing as left out', () => {
@@ -339,24 +355,40 @@ describe('AutoplanDialog', () => {
   });
 
   it('preview shows the send dialog; Send confirms with the photo consent, Cancel cancels', () => {
-    const preview: IpcResponse<'ai:rfPlanPreview'> = {
-      ok: true,
-      provider: 'anthropic',
-      model: 'model-x',
-      cloud: true,
-      photosAllowed: true,
-      crops: [{ unitId: 'ant-u1', path: 'telecom/crops/ant-u1.jpg' }],
-      estimate: { inputTokens: 1200, costUsd: 0.004 },
-      token: 'tok',
-    };
+    const preview = CLOUD_PREVIEW;
     renderWith({ phase: 'preview', source: 'ai', aiAvailable: true, preview });
     const dlg = must('rf-autoplan');
     expect(dlg.textContent).toContain('model-x');
     expect(dlg.textContent).toMatch(/never sends the project or site name/i);
+    expect(dlg.querySelector('img')?.getAttribute('alt')).toBe('Panel A');
     click(must('rf-autoplan-send'));
     expect(confirmSend).toHaveBeenCalledWith(true);
     click(buttonNamed(dlg, /Cancel/));
     expect(cancelAutoplan).toHaveBeenCalledTimes(1);
+  });
+
+  it("a new Auto-plan never shows the last one's cost, photos or provider", () => {
+    renderWith({ phase: 'preview', source: 'ai', aiAvailable: true, preview: CLOUD_PREVIEW });
+    expect(must('rf-autoplan').textContent).toContain('Anthropic');
+    act(() => {
+      autoplanStore.setState({ phase: 'idle', preview: null });
+    });
+    expect(byTest('rf-autoplan')).toBeNull();
+    // a local model this time: no send preview reaches the dialog
+    act(() => {
+      autoplanStore.setState({ ...reviewState(), source: 'ai', provider: 'local', cloud: false });
+    });
+    const dlg = must('rf-autoplan');
+    expect(dlg.textContent).not.toMatch(/photo/i);
+    expect(dlg.textContent).not.toContain('Anthropic');
+    expect(dlg.textContent).toContain('runs on this computer');
+  });
+
+  it('names the provider from the store when no preview was shown', () => {
+    renderWith({ ...reviewState(), source: 'ai', provider: 'anthropic', cloud: true });
+    const ai = must('rf-autoplan-source-ai');
+    expect(ai.textContent).toBe('Anthropic');
+    expect(must('rf-autoplan').textContent).not.toMatch(/photo/i);
   });
 
   it('preview waits without buttons until the preview has come back', () => {
