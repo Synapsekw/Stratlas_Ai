@@ -14,7 +14,7 @@ import {
   RADIO_ENTRY,
 } from './__fixtures__/rfData';
 import { loadRf, patchStudy, resetRf, rfStore, setPackStatus } from './rfStore';
-import { openRfTab, startRfRun } from './rfTab';
+import { openCoverage, openRfTab, startRfRun } from './rfTab';
 
 type Call = [string, Record<string, unknown>];
 
@@ -116,6 +116,8 @@ describe('startRfRun', () => {
     // a run is an activity (review I2): the tab is open in front, but not a live tool
     expect(bench.getState().front).toBe('rf');
     expect(bench.getState().tabs.find((t) => t.id === 'rf')?.live).toBeFalsy();
+    // pinned (spec F1): the next panel opened does not replace it
+    expect(bench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
     expect(rfStore.getState().check.refusals).toContain('running');
     jobsStore.setState({ jobs: [job('done')] });
     expect(rfStore.getState().running).toBe(false);
@@ -129,6 +131,15 @@ describe('startRfRun', () => {
     await startRfRun('/p3', bench);
     expect(bench.getState().front).toBe('rf');
     expect(bench.getState().tabs.filter((t) => t.id === 'rf')).toHaveLength(1);
+    expect(bench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
+  });
+
+  it('openCoverage opens the tab pinned, and another panel does not replace it', () => {
+    const bench = createWorkbenchStore(null);
+    openCoverage(bench);
+    expect(bench.getState().front).toBe('rf');
+    bench.getState().open('measure');
+    expect(bench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
   });
 
   it('while a run is in progress the drawer stays closed and the agent pane is not minimised', async () => {

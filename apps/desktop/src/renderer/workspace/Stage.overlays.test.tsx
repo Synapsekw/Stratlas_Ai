@@ -10,6 +10,9 @@ import type { CoverageGrids } from '../rf/coverageGrids';
 import { rfLayer } from '../rf/coverageDisplay';
 import { clearCoverage, coverage } from '../rf/coverageStore';
 import { resetRf, rfStore } from '../rf/rfStore';
+import { useCoverageLegendShown } from '../rf/StageCoverageLegend';
+import { antennasFile, unit } from '../rf/__fixtures__/rfData';
+import { antennaStore } from '../telecom/antennaStore';
 import { compareNotice } from './compare';
 import { readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
 import { timeline } from './timeline';
@@ -97,6 +100,7 @@ afterEach(() => {
   clearCoverage();
   resetRf();
   rfLayer.setState({ visible: true });
+  antennaStore.setState({ projectId: null, file: null, status: 'idle' });
 });
 
 /** The Coverage layer draws a live preview (the working copy has changes). */
@@ -273,6 +277,60 @@ describe('the stage corners', () => {
     render({ video: [], rfLegend: true, cursor: 'bl', splitting: true, showMap: true });
     expect(slotOf('rf-legend')).toBe('br');
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+  });
+
+  it('gives the Coverage card the legend corner once antennas exist, before any run (1100 px)', () => {
+    // the CI window: no run, nothing drawn; the RF side decides the corner, as Stage.tsx asks it
+    function Live() {
+      return <Corners rfLegend={useCoverageLegendShown()} />;
+    }
+    const live = () => {
+      act(() => {
+        root ??= createRoot(host);
+        root.render(<Live />);
+      });
+    };
+    live();
+    expect(slotOf('rf-chip')).toBeUndefined();
+    act(() => {
+      rfStore.setState({ projectId: 'p3' });
+      antennaStore.setState({
+        projectId: 'p3',
+        status: 'ready',
+        file: antennasFile([unit('ant-a', 0), unit('ant-b', 120), unit('ant-c', 240)]),
+      });
+    });
+    // the chip heads a card of its own in the foot corner at the start, clear of the readout at
+    // the end (shown), and of the dates and the Map menu chip at the top
+    expect(host.querySelector('[data-testid="rf-card"] [data-testid="rf-chip"]')).not.toBeNull();
+    expect(slotOf('rf-chip')).toBe('bl');
+    expect(slotOf('dates-on-screen')).toBe('tl');
+    expect(slotOf('scene-map-button')).toBe('tr');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+    const corners = slots().map((x) => x.corner);
+    expect(new Set(corners).size).toBe(corners.length);
+    // with the volumes hint at bl the card takes br and the readout gives way, never shared
+    act(() => {
+      volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+    });
+    expect(slotOf('vol-hint')).toBe('bl');
+    expect(slotOf('rf-chip')).toBe('br');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
+    // a run drawn: the chip heads the legend in the same corner
+    act(() => {
+      volumetric.setState({ status: 'idle' });
+      coverageShown();
+    });
+    expect(slotOf('rf-legend')).toBe('bl');
+    expect(host.querySelector('[data-testid="rf-legend"] [data-testid="rf-chip"]')).not.toBeNull();
+    // no antennas and nothing drawn: no card, no corner
+    act(() => {
+      antennaStore.setState({ file: null });
+      clearCoverage();
+      rfStore.setState({ dirty: false });
+    });
+    expect(slotOf('rf-chip')).toBeUndefined();
+    expect(host.querySelector('[data-testid="rf-card"]')).toBeNull();
   });
 
   it('hides the coordinates readout when the video rests in its corner', () => {
