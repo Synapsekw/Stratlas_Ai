@@ -208,7 +208,8 @@ describe('RfBench', () => {
     expect(dlg).not.toBeNull();
     expect(byTest('rf-autoplan-row-ant-a1')).not.toBeNull();
     expect(byTest('rf-autoplan-source-rules')?.getAttribute('aria-pressed')).toBe('true');
-    expect((byTest('rf-autoplan-source-ai') as HTMLButtonElement | null)?.disabled).toBe(true);
+    // greyed with its reason in a tip, not natively disabled (no native title)
+    expect(byTest('rf-autoplan-source-ai')?.getAttribute('aria-disabled')).toBe('true');
     click(byTest('rf-autoplan-cancel'));
     expect(byTest('rf-autoplan')).toBeNull();
     expect(rfStore.getState().dirty).toBe(false);

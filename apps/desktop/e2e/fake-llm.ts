@@ -14,6 +14,9 @@
  * - "top view" gets a malformed `set_view` call;
  * - "slow" waits 60 s before the first token (the cancel test);
  * - an image gets "Red.", or the detection JSON for a detection request;
+ * - the RF Auto-plan request (its instructions say "plan the radio coverage") gets picks for the
+ *   units it lists (`rfPlanReply`): the generic panel and radio on B3 for each, except the last
+ *   unit, whose pick names an entry the catalogue does not have (`RF_UNKNOWN_ENTRY`);
  * - anything else gets a fixed greeting.
  * A model without tools answers a request with tools with the 400 Ollama gives; a model without
  * vision refuses images the same way.
@@ -59,6 +62,39 @@ export const DETECT_REPLY = {
     { image: 2, detections: [{ class: 'marker', box: [0.5, 0.5, 0.1, 0.1], confidence: 0.6 }] },
   ],
 };
+
+/** The entry id the fake's RF plan gives its last unit: not in any catalogue. */
+export const RF_UNKNOWN_ENTRY = 'fake-entry-not-in-catalogue';
+/** The equipment the fake's RF plan picks for the other units (in the bundled catalogue). */
+export const RF_FAKE_PICK = {
+  entryId: 'generic-panel-65-17',
+  radioId: 'generic-rru-4t4r-4x40w',
+  band: 'B3',
+  tech: 'lte',
+  bandwidthMhz: 20,
+} as const;
+export const RF_FAKE_REASON = 'Thin panel face, so a passive panel on B3.';
+
+/**
+ * The fake model's RF plan for the units listed in the request text (`- <unitId>: ...` lines
+ * under "Units (N):"), as the `{"picks": [...]}` JSON the app asks for.
+ */
+export function rfPlanReply(userText: string): string {
+  const units = userText.split('Catalogue (')[0] ?? '';
+  const ids = [...units.matchAll(/^- ([^:\s]+):/gm)].map((m) => m[1] ?? '');
+  const picks = ids.map((unitId, i) =>
+    i === ids.length - 1
+      ? {
+          ...RF_FAKE_PICK,
+          unitId,
+          entryId: RF_UNKNOWN_ENTRY,
+          reason: 'Unsure.',
+          confidence: 'medium',
+        }
+      : { ...RF_FAKE_PICK, unitId, reason: RF_FAKE_REASON, confidence: 'high' },
+  );
+  return JSON.stringify({ picks });
+}
 
 interface ChatPart {
   type: string;
@@ -147,6 +183,9 @@ function script(body: ChatBody): Reply {
     return allText(body.messages).includes('<aio-detect>')
       ? { text: JSON.stringify(DETECT_REPLY) }
       : { text: 'Red.' };
+  }
+  if (allText(body.messages).includes('plan the radio coverage')) {
+    return { text: rfPlanReply(original) };
   }
   if (body.tools?.length) {
     if (last?.role === 'tool') {

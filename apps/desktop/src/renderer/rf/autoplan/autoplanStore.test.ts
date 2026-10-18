@@ -59,8 +59,11 @@ vi.mock('../../telecom/antennaStore', async (importOriginal) => {
 
 const CATALOGUE = (
   JSON.parse(
-    // jsdom gives import.meta.url a non-file scheme, so resolve from the package folder
-    readFileSync(resolve(process.cwd(), '../../packages/rf/catalogue/generic.json'), 'utf8'),
+    // from this file, not the working folder (jsdom gives import.meta.url a non-file scheme)
+    readFileSync(
+      resolve(import.meta.dirname, '../../../../../../packages/rf/catalogue/generic.json'),
+      'utf8',
+    ),
   ) as { entries: RfCatalogueEntry[] }
 ).entries;
 
