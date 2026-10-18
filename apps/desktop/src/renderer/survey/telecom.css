@@ -106,3 +106,10 @@
 .telecom-section {
   display: contents;
 }
+/* the 3D antenna labels: .sv-label from measure.css does the rest */
+.antenna-label--name {
+  opacity: 0.85;
+}
+.antenna-label--dim {
+  background: rgba(0, 0, 0, 0.6);
+}
