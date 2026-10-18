@@ -107,7 +107,6 @@ beforeEach(() => {
     editing: null,
     selected: [],
     focus: null,
-    listOpen: false,
     message: null,
     measurementsVisible: true,
     hiddenMeasurements: [],
@@ -144,7 +143,7 @@ describe('the Measure workbench', () => {
     expect(measureStore.getState().file).toBe(existing);
   });
 
-  it('M in a normal project starts Distance and Enter saves to "Saved in this project"', () => {
+  it('M in a normal project starts Distance and Enter puts it in the tree, unsaved', () => {
     render();
     press('m');
     expect(measureStore.getState().tool).toMatchObject({ tool: 'distance' });
@@ -158,14 +157,12 @@ describe('the Measure workbench', () => {
     act(() => {
       drawEvent({ type: 'key', key: 'Enter' }, env);
     });
-    const saved = q('wb-section-measurements');
-    expect(saved?.querySelector('.wb-section-title')?.textContent).toBe('Saved in this project');
-    expect(saved?.getAttribute('data-open')).toBe('true');
-    const items = [...(saved?.querySelectorAll('[data-testid="survey-item"]') ?? [])];
-    expect(items.map((li) => li.querySelector('.sv-item-label')?.textContent)).toEqual([
-      'Distance 1',
-      'Kerb',
-    ]);
+    expect(q('wb-section-measurements')).toBeNull();
+    expect(q('survey-saved')?.textContent).toContain('Unsaved changes');
+    expect(measureStore.getState().reveal).toMatchObject({
+      id: measureStore.getState().focus,
+      openSidebar: false,
+    });
     // M again puts the tool away
     press('m');
     expect(measureStore.getState().tool).toBeNull();
@@ -322,12 +319,12 @@ describe('search reaches every section (D16)', () => {
     });
     expect(search().value).toBe('');
     expect(q('wb-section-line')?.getAttribute('data-open')).toBe('false');
-    expect(q('wb-section-measurements')).not.toBeNull();
+    expect(q('survey-saved')).not.toBeNull();
   });
 
-  it('finds the Site data entries by name, and the saved list steps aside', () => {
+  it('finds the Site data entries by name, and the save controls step aside', () => {
     render();
-    expect(q('wb-section-measurements')).not.toBeNull();
+    expect(q('survey-saved')).not.toBeNull();
     for (const [query, button] of [
       ['Hydrology', 'Hydrology'],
       ['designs', 'Designs'],
@@ -343,8 +340,10 @@ describe('search reaches every section (D16)', () => {
         .filter((n) => n !== 'Site data');
       expect(names).toContain(button);
       expect(host.querySelector('.empty-state')).toBeNull();
-      expect(q('wb-section-measurements')).toBeNull();
+      expect(q('survey-saved')).toBeNull();
     }
+    type(search(), '');
+    expect(q('survey-saved')).not.toBeNull();
     // a section's own title shows all of it; the drawing aids by a control's name
     type(search(), 'snap');
     expect(shownSections()).toEqual(['aids']);
@@ -367,7 +366,29 @@ describe('search reaches every section (D16)', () => {
     expect(q('wb-section-point')?.getAttribute('data-open')).toBe('true');
     expect(q('wb-section-line')?.getAttribute('data-open')).toBe('false');
     expect(q('wb-section-favourites')?.getAttribute('data-open')).toBe('true');
-    expect(q('wb-section-measurements')).not.toBeNull();
+    expect(q('survey-saved')).not.toBeNull();
+  });
+});
+
+describe('the Saved footer', () => {
+  it('keeps Autosave, Revert, Save, the read-only notice and the load error', () => {
+    render();
+    expect(q('survey-autosave')).not.toBeNull();
+    expect(q('survey-list-save')?.hasAttribute('disabled')).toBe(true);
+    act(() => {
+      measureStore.setState({ file: { ...existing, measurements: [] } });
+    });
+    expect(q('survey-list-save')?.hasAttribute('disabled')).toBe(false);
+    expect(host.textContent).toContain('Revert');
+    act(() => {
+      measureStore.setState({ readOnly: true });
+    });
+    expect(q('survey-list-readonly')).not.toBeNull();
+    expect(q('survey-list-save')).toBeNull();
+    act(() => {
+      measureStore.setState({ readOnly: false, status: 'error', error: 'Bad file' });
+    });
+    expect(q('survey-saved-error')?.getAttribute('role')).toBe('alert');
   });
 });
 

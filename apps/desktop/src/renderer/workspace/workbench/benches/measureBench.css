@@ -140,7 +140,7 @@
   border-block-end: 1px solid var(--line);
 }
 
-/* the picked measurement and the saved list sit in the column, not over the stage */
+/* the picked measurement and the save controls sit in the column, not over the stage */
 .meb .sv-card,
 .wb-body .qa-side .sv-card,
 .wb-body .ov-panel {
@@ -151,19 +151,11 @@
   padding: 0;
   background: transparent;
 }
-.meb .sv-list {
+.meb .sv-saved {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
-  padding: 0 var(--sp-4) var(--sp-4);
-}
-.meb .sv-item {
-  gap: var(--sp-3);
-}
-.meb .sv-item .row-label {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
+  padding: var(--sp-4);
 }
 .wb-body .qa-side,
 .wb-body .ov-panel,

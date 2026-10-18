@@ -144,7 +144,6 @@ export interface MeasureState {
   /** The measurement the panel shows. */
   focus: string | null;
   editing: EditState | null;
-  listOpen: boolean;
   /** View-only overlay visibility for every saved tool; reset when changing projects. */
   measurementsVisible: boolean;
   /** Saved measurements hidden one by one in the views (the eye on their row; view only). */
@@ -208,7 +207,6 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   selected: [],
   focus: null,
   editing: null,
-  listOpen: false,
   measurementsVisible: true,
   hiddenMeasurements: [],
   reveal: null,
@@ -484,10 +482,6 @@ export function toggleSelected(id: string): void {
   select(s.selected.includes(id) ? s.selected.filter((x) => x !== id) : [...s.selected, id], id);
 }
 
-export function setListOpen(open: boolean): void {
-  set({ listOpen: open });
-}
-
 /** View visibility does not mutate saved data, so it is also available in read-only packages. */
 export function setMeasurementsVisible(visible: boolean): void {
   set({
@@ -604,7 +598,6 @@ export function startTool(tool: MeasurementTool, opts: StartToolOptions = {}): v
       draw: initialDraw(TOOL_FAMILY[tool]),
       editing: null,
       message: null,
-      ...(isTelecomTool(tool) ? { listOpen: false } : {}),
     });
   };
   if (template) void withDesignLayers(template, begin);
@@ -778,12 +771,13 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
     if (s.tool.then) {
       // a one-shot drawing for another tool: hand the shape over and stop
       stopTool();
-      set({ listOpen: true });
+      revealMeasurement(m.id, { openSidebar: false });
       s.tool.then(m);
       return;
     }
     // the tool stays on for the next one (a template used twice in a row)
-    set({ draw: initialDraw(TOOL_FAMILY[tool]), listOpen: true });
+    set({ draw: initialDraw(TOOL_FAMILY[tool]) });
+    revealMeasurement(m.id, { openSidebar: false });
     return;
   }
   set({ draw: next, message: null });

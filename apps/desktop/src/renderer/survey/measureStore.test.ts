@@ -112,7 +112,6 @@ beforeEach(() => {
     saving: false,
     measurementsVisible: true,
     hiddenMeasurements: [],
-    listOpen: false,
   });
 });
 
@@ -284,7 +283,7 @@ describe('one Distance tool, with a measure-without-saving mode (D19)', () => {
     drawEvent({ type: 'key', key: 'Enter' }, env);
     const s = measureStore.getState();
     expect(s.file.measurements.map((m) => [m.tool, m.label])).toEqual([['distance', 'Distance 1']]);
-    expect(s.listOpen).toBe(true);
+    expect(s.reveal).toEqual({ id: s.focus, seq: s.reveal?.seq, openSidebar: false });
     expect(io.writes).toBe(0);
   });
 

@@ -69,3 +69,35 @@ it('reserves Space for telecom control activation instead of global playback', (
     measureStore.setState({ tool: null, draw: null });
   }
 });
+
+it('Measurements reveals the picked measurement in the tree', () => {
+  measureStore.setState({
+    readOnly: false,
+    status: 'ready',
+    focus: 'az1',
+    tool: null,
+    draw: null,
+    editing: null,
+    reveal: null,
+  });
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    act(() => {
+      root.render(<TelecomTools />);
+    });
+    const button = [...host.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Measurements',
+    );
+    act(() => {
+      button?.click();
+    });
+    expect(measureStore.getState().reveal).toMatchObject({ id: 'az1', openSidebar: true });
+  } finally {
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  }
+});

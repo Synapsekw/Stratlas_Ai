@@ -19,7 +19,7 @@ import {
   isDirty,
   patchMeasurement,
   saveMeasurements,
-  setListOpen,
+  revealMeasurement,
   startEditing,
   startTool,
   stopEditing,
@@ -84,6 +84,7 @@ export function TelecomTools() {
   const draw = useMeasure((s) => s.draw);
   const readOnly = useMeasure((s) => s.readOnly) || pkg !== null;
   const focused = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus));
+  const focus = useMeasure((s) => s.focus);
   const message = useMeasure((s) => s.message);
   const editing = useMeasure((s) => s.editing);
   const settings = useMeasure((s) => s.settings);
@@ -123,7 +124,7 @@ export function TelecomTools() {
           type="button"
           className="btn ghost sm"
           onClick={() => {
-            setListOpen(true);
+            revealMeasurement(focus ?? null);
           }}
         >
           Measurements

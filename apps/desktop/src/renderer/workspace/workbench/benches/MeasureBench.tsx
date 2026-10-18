@@ -33,7 +33,6 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useShell } from '../../../shell';
-import { BulkTotals } from '../../../survey/BulkTotals';
 import { openCompareDialog } from '../../../survey/compareStore';
 import { DesignsTool } from '../../../survey/Designs';
 import { ExportTool } from '../../../survey/ExportDialog';
@@ -54,14 +53,12 @@ import {
   type Family,
   type FamilyId,
 } from '../../../survey/measureCatalogue';
-import { MeasurementList } from '../../../survey/MeasurementList';
 import { MeasurementPanel } from '../../../survey/MeasurementPanel';
 import {
   drawEvent,
   liveReading,
   measureStore,
   openDialog,
-  setListOpen,
   setSnap,
   setSnapSource,
   startTool,
@@ -70,6 +67,7 @@ import {
 } from '../../../survey/measureStore';
 import { setOverlaysOpen, useOverlays } from '../../../survey/overlaysStore';
 import { SurveyQaTool } from '../../../survey/Qa';
+import { SavedFooter } from '../../../survey/SavedFooter';
 import {
   startTelecomTool,
   TelecomTools,
@@ -81,7 +79,7 @@ import { useAntennas } from '../../../telecom/antennaStore';
 import { Tool, useEngineStage } from '../../StageTools';
 import { SectionPanel, toggleMeasure, toggleSection } from '../../tools/measure';
 import { Section } from '../Section';
-import { filterSections, sectionStore, useSections } from '../sectionState';
+import { filterSections, sectionStore } from '../sectionState';
 import type { TabId } from '../tabsModel';
 import './measureBench.css';
 
@@ -826,33 +824,6 @@ function SelectedCard({ searching }: { searching: boolean }) {
 }
 
 /**
- * "Saved in this project" (the measurements list, D18). Its section is open exactly while the
- * list is wanted: opening the list (the telecom card's Measurements, a finished shape) opens it,
- * and its Close or its header folds it.
- */
-function Saved({ stage }: { stage: EngineStage | null }) {
-  const t = useT();
-  const count = useMeasure((s) => s.file.measurements.length);
-  const listOpen = useMeasure((s) => s.listOpen);
-  const sections = useSections(BENCH);
-  const open = sections.isOpen('measurements');
-  const seen = useRef({ listOpen, open });
-  useEffect(() => {
-    const was = seen.current;
-    seen.current = { listOpen, open };
-    if (listOpen !== was.listOpen) {
-      if (listOpen !== open) sectionStore.getState().toggle(BENCH, 'measurements', open);
-    } else if (open !== was.open && open !== listOpen) setListOpen(open);
-  }, [listOpen, open]);
-  return (
-    <Section bench={BENCH} id="measurements" title={t('wb.saved')} count={count}>
-      <MeasurementList stage={stage} />
-      <BulkTotals />
-    </Section>
-  );
-}
-
-/**
  * Collapse all during a search clears the search: the search holds its sections open, so the
  * button would otherwise flip to Expand all with nothing folded. The sections then fold as asked.
  */
@@ -885,6 +856,8 @@ export function MeasureBench() {
           <SelectedCard searching={searching} />
         </>
       )}
+      {/* a search is about the tools: the save controls step aside until it is cleared */}
+      {!searching && <SavedFooter />}
       {live ? (
         <Strip families={families} stage={stage} />
       ) : (
@@ -892,8 +865,6 @@ export function MeasureBench() {
       )}
       {/* the antenna inventory; a search shows it only when its title matches */}
       <AntennaSection query={searching ? query : ''} />
-      {/* a search is about the tools: the saved list steps aside until it is cleared */}
-      {!searching && <Saved stage={stage} />}
     </div>
   );
 }

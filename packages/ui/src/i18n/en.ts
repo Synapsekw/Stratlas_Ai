@@ -4663,8 +4663,6 @@ export const en = {
   'wb.unpin': 'Unpin',
   'wb.search': 'Search tools',
   'wb.favourites': 'Favourites and recent',
-  'wb.saved': 'Saved in this project',
-  'wb.showAll': 'Show all',
   'wb.hideAll': 'Hide all',
   'wb.jobs': 'Jobs',
   'agent.offRow': 'Agent off · Turn on',
@@ -4933,10 +4931,6 @@ export const en = {
   'measureBench.editingVertices':
     'Editing vertices: drag, Alt+click deletes, the blue dots insert.',
   'measureBench.saveAll': 'Save measurements',
-  'measureBench.showOne': 'Show {label}',
-  'measureBench.hideOne': 'Hide {label}',
-  'measureBench.moreFor': 'More for {label}',
-  'measureBench.flyTo': 'Fly to',
   'measureBench.saved.autosave': 'Autosave',
   'measureBench.saved.autosaveTip': 'Off by default: save when you are ready',
   'measureBench.saved.unsaved': 'Unsaved changes',
@@ -4946,7 +4940,6 @@ export const en = {
   'measureBench.saved.save': 'Save',
   'measureBench.saved.readOnly': 'Read-only package: measurements are shown only.',
   'measureBench.saved.label': 'Saving measurements',
-  'measureBench.delete': 'Delete',
 
   // Batch G review fixes: the benches' remaining strings (Measure Site data and Drawing aids,
   // the Annotate map tools)
@@ -5020,10 +5013,6 @@ export const en = {
   // Final review fixes: strings the stage island work moved but left written in place, and copy
   // that still sent people to the stage toolbar
   'wb.sidebar': 'Right panel',
-  'survey.list.label': 'Measurements',
-  'survey.list.empty':
-    "No measurements yet. Pick a tool in the island's Measure tab and click on the site.",
-  'survey.list.noMatch': 'No measurement matches.',
   'vol.surfaceColours': 'Surface colours',
   'vol.swipeTip': 'Swipe between the first and last survey',
   // RF coverage (rf-coverage T9): the RF workbench tab, the catalogue picker and the CSV import
