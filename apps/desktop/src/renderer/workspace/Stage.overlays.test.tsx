@@ -263,6 +263,18 @@ describe('the stage corners', () => {
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
   });
 
+  it('right to left with no volumes hint, gives the legend and the readout different corners', () => {
+    coverageShown();
+    // the readout stands at bl right to left: the legend takes br and the readout stays shown
+    render({ video: [], rfLegend: true, cursor: 'bl' });
+    expect(slotOf('rf-legend')).toBe('br');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+    // a split with the 3D view on the left puts the readout at bl too: the legend at br
+    render({ video: [], rfLegend: true, cursor: 'bl', splitting: true, showMap: true });
+    expect(slotOf('rf-legend')).toBe('br');
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+  });
+
   it('hides the coordinates readout when the video rests in its corner', () => {
     render({ video: ['br'] });
     expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
