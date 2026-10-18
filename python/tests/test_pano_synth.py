@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import pano_synth as ps
 from aio_pipelines.pano.frames import read_frame_info
@@ -34,6 +35,15 @@ def test_written_gimbal_angles_are_off_by_one_to_three_degrees(tmp_path):
         errors.append(angle_deg(rot_from_gimbal(info.yaw, info.pitch, info.roll), f.truth))
     assert 0.5 < max(errors) < 4.5
     assert (read_frame_info(frames[0].path).width, read_frame_info(frames[0].path).height) == (320, 240)
+
+
+def test_exposure_and_vignetting_are_applied_in_linear_light():
+    grey = np.full((40, 60, 3), 188, np.uint8)  # sRGB 188 is about half the linear light of 255
+    assert np.array_equal(ps.expose(grey), grey)
+    assert int(ps.expose(grey, -1.0)[0, 0, 0]) == pytest.approx(137, abs=1)
+    assert (ps.expose(grey, 1.0) == 255).all()
+    v = ps.expose(grey, 0.0, -0.35)
+    assert v[20, 30, 0] >= 187 and v[0, 0, 0] < v[20, 30, 0] - 10
 
 
 def test_file_numbers_wrap_after_0999(tmp_path):

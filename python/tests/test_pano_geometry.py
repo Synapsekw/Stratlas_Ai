@@ -12,6 +12,7 @@ import pano_synth as ps
 from aio_pipelines.pano.frames import (
     FrameError,
     encode_jpeg,
+    exposure_value,
     list_frames,
     read_frame_info,
     read_gimbal,
@@ -121,3 +122,28 @@ def test_frames_without_gimbal_angles_or_focal_length_are_refused(tmp_path):
     no_focal.write_bytes(data[:2] + seg + data[2:])
     with pytest.raises(FrameError, match="No 35 mm focal length"):
         read_frame_info(no_focal)
+
+
+def test_exposure_value_from_exif():
+    # EV100 = log2(N^2 / t * 100 / ISO): 1/500 s at f/5.6 and ISO 100 is about 13.94
+    assert exposure_value({0x829A: 1 / 500, 0x829D: 5.6, 0x8827: 100}) == pytest.approx(
+        math.log2(5.6**2 * 500), abs=1e-4
+    )
+    # four times the ISO for the same picture is two stops less light
+    assert exposure_value({0x829A: 1 / 500, 0x829D: 5.6, 0x8827: (400,)}) == pytest.approx(
+        math.log2(5.6**2 * 500) - 2, abs=1e-4
+    )
+    assert exposure_value({0x829A: 1 / 500, 0x829D: 5.6}) == pytest.approx(math.log2(5.6**2 * 500), abs=1e-4)
+    assert exposure_value({0x829D: 5.6, 0x8827: 100}) is None
+    assert exposure_value({0x829A: 1 / 500, 0x829D: 0, 0x8827: 100}) is None
+    assert exposure_value({0x829A: "odd", 0x829D: 5.6}) is None
+    assert exposure_value({}) is None
+
+
+def test_frame_info_carries_the_exposure(tmp_path):
+    lit = ps.make_sphere(tmp_path / "lit", "rows", frame_w=160, seed=2, exposure=[-1.0] + [0.0] * 24)
+    base = math.log2(ps.F_NUMBER**2 / ps.BASE_EXPOSURE_S * 100 / ps.ISO)
+    assert read_frame_info(lit[0].path).ev == pytest.approx(base + 1, abs=1e-3)  # half the light
+    assert read_frame_info(lit[1].path).ev == pytest.approx(base, abs=1e-3)
+    plain = ps.make_sphere(tmp_path / "plain", "rows", frame_w=160, seed=2)
+    assert read_frame_info(plain[0].path).ev is None
