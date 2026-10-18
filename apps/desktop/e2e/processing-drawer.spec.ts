@@ -372,3 +372,29 @@ test.describe('with the runtime', () => {
     }
   });
 });
+
+test('Create maps from photos sits under the project name, and opens the wizard', async ({
+  win,
+}) => {
+  // no project: nothing to make maps in
+  await expect(win.getByTestId('sidebar-create-maps')).toHaveCount(0);
+  await openTiny(win);
+  const button = win.getByTestId('sidebar-create-maps');
+  await expect(button).toBeVisible();
+  await expect(button.locator('.lbl')).toHaveText('Create maps from photos');
+  await shot(win, 'sidebar-create-maps');
+  await button.click();
+  const wizard = win.getByRole('dialog', { name: 'Create maps from photos' });
+  await expect(wizard).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(wizard).toHaveCount(0);
+
+  // folded to the rail: the glyph stays, named by its tip
+  await win.getByTestId('sidebar-toggle').click();
+  await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
+  await expect(button).toBeVisible();
+  await expect(button).toHaveAccessibleName('Create maps from photos');
+  await button.hover();
+  await expect(button.locator('.tip')).toHaveCSS('opacity', '1');
+  await shot(win, 'sidebar-create-maps-rail');
+});

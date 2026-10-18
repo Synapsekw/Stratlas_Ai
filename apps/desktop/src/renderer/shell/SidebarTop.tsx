@@ -5,6 +5,7 @@ import { openAuditTrail } from '../audit/auditView';
 import { shell, useShell } from '../shell';
 import { isSidebarFolded } from '../store';
 import { BrandSymbol, BrandWordmark } from './BrandMark';
+import { CreateMapsButton } from './CreateMapsButton';
 
 function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
   const manifest = useWorkspace((s) => s.project?.manifest);
@@ -166,6 +167,7 @@ export function SidebarTop() {
       </div>
       <div className="sb-sec sb-proj">
         <ProjectSwitcher collapsed={collapsed} />
+        <CreateMapsButton />
       </div>
     </>
   );

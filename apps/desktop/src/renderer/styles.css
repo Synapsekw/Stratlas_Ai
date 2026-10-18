@@ -693,6 +693,33 @@ button.chip-status:hover {
      there (the chevron sat 7 to 21 px into the 3D view) */
   pointer-events: none;
 }
+/* Create maps from photos, under the switcher (shell/CreateMapsButton.tsx): full width open,
+   its glyph alone in the rail, named by its tip there */
+.sb-create-maps {
+  position: relative;
+  width: 100%;
+  margin-top: var(--sp-3);
+  height: 36px;
+  transition: padding var(--panel-ms) var(--ease);
+}
+.sb-create-maps .lbl {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app[data-sb='collapsed'] .sb-create-maps {
+  justify-content: flex-start;
+  padding: 0 9px;
+}
+.app[data-sb='collapsed'] .sb-create-maps .lbl {
+  opacity: 0;
+  pointer-events: none;
+}
+.app[data-sb='collapsed'] .sb-create-maps:hover .tip,
+.app[data-sb='collapsed'] .sb-create-maps:focus-visible .tip {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
 .proj-menu {
   position: absolute;
   inset-inline-start: 0;
