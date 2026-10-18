@@ -2,7 +2,6 @@
 import type { EngineStage } from '@aio/engine';
 import { PerspectiveCamera } from 'three';
 import { expect, it } from 'vitest';
-import type { Frame } from '../survey/measureScene';
 import { attachAntennaLabels } from './antennaLabels';
 import type { AntennaLabelSpot } from './antennaVisibility';
 
@@ -30,7 +29,7 @@ it('places visible labels, hides the one behind the camera, and detaches', () =>
     { key: 'a', text: 'A1', at: [0, 0, 0], kind: 'name', selected: true },
     { key: 'b', text: 'B1', at: [0, 0, 20], kind: 'dim', selected: false },
   ];
-  const detach = attachAntennaLabels(stage as unknown as EngineStage, {} as Frame, () => spots);
+  const detach = attachAntennaLabels(stage as unknown as EngineStage, () => spots);
   frame();
   const box = host.querySelector('.antenna-labels');
   expect(box?.getAttribute('aria-hidden')).toBe('true');

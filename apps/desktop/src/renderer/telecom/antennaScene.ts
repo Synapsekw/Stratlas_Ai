@@ -41,7 +41,13 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import type { Frame } from '../survey/measureScene';
-import { antennaCentre, antennaMeasure, axisToLocal, facingTip } from './antennaMeasure';
+import {
+  antennaCentre,
+  antennaMeasure,
+  axisToLocal,
+  facingTip,
+  nameAnchor,
+} from './antennaMeasure';
 import { isAntennaDrawn, type AntennaLabelSpot } from './antennaVisibility';
 
 export const KIND_COLOURS: Record<AntennaKind, string> = {
@@ -304,10 +310,39 @@ export function antennaLabelSpots(state: AntennaSceneState, frame: Frame): Anten
       spots.push(...antennaMeasure(unit, frame, shift).spots);
       continue;
     }
-    const name = antennaMeasure(unit, frame, shift).spots.find((s) => s.kind === 'name');
-    if (name) spots.push({ ...name, text: unit.name, selected: false });
+    spots.push({
+      key: `${unit.id}:name`,
+      text: unit.name,
+      at: nameAnchor(unit, frame, shift),
+      kind: 'name',
+      selected: false,
+    });
   }
   return spots;
+}
+
+/** Whether two scene states draw the same thing (the same file, selection, visibility and shift). */
+export function sameSceneState(a: AntennaSceneState, b: AntennaSceneState): boolean {
+  return (
+    a.file === b.file &&
+    a.selected === b.selected &&
+    a.hidden === b.hidden &&
+    (a.solo ?? null) === (b.solo ?? null) &&
+    JSON.stringify(a.shift ?? null) === JSON.stringify(b.shift ?? null)
+  );
+}
+
+/**
+ * `antennaLabelSpots` computed once per drawn state: the labels and the card both ask on every
+ * frame, and the spots change only when the state does.
+ */
+export function labelSpotsCache(frame: Frame): (state: AntennaSceneState) => AntennaLabelSpot[] {
+  let last: { state: AntennaSceneState; spots: AntennaLabelSpot[] } | null = null;
+  return (state) => {
+    if (last && sameSceneState(last.state, state)) return last.spots;
+    last = { state, spots: antennaLabelSpots(state, frame) };
+    return last.spots;
+  };
 }
 
 /** Give every fat-line material in the group the canvas size it is drawn at, CSS pixels. */
@@ -359,18 +394,23 @@ export function attachAntennaLayer(
 ): () => void {
   const canvas = stage.renderer.domElement;
   let size = { w: canvas.clientWidth, h: canvas.clientHeight };
-  const build = () => {
-    const g = buildAntennaGroup(opts.getState(), frame);
+  const build = (state: AntennaSceneState) => {
+    const g = buildAntennaGroup(state, frame);
     setLineResolution(g, size.w, size.h);
     return g;
   };
-  let group = build();
+  let built = opts.getState();
+  let group = build(built);
   stage.scene.add(group);
 
+  // a store change that draws nothing new (a note, the filter, a reveal) keeps the group
   const rebuild = () => {
+    const next = opts.getState();
+    if (sameSceneState(built, next)) return;
+    built = next;
     stage.scene.remove(group);
     disposeGroup(group);
-    group = build();
+    group = build(next);
     stage.scene.add(group);
     stage.requestRender();
   };

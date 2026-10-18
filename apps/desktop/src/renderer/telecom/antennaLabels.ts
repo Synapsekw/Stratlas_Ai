@@ -1,7 +1,6 @@
 import type { EngineStage } from '@aio/engine';
-import { Vector3 } from 'three';
-import type { Frame } from '../survey/measureScene';
 import type { AntennaLabelSpot } from './antennaVisibility';
+import { projectToHost } from './screenProjection';
 
 /**
  * The antenna labels in the 3D view: one `.sv-label` per spot in a `.sv-labels` layer beside the
@@ -9,7 +8,6 @@ import type { AntennaLabelSpot } from './antennaVisibility';
  */
 export function attachAntennaLabels(
   stage: EngineStage,
-  _frame: Frame,
   getSpots: () => AntennaLabelSpot[],
 ): () => void {
   const canvas = stage.renderer.domElement;
@@ -18,7 +16,6 @@ export function attachAntennaLabels(
   labels.className = 'sv-labels antenna-labels';
   labels.setAttribute('aria-hidden', 'true');
   host.appendChild(labels);
-  const tmp = new Vector3();
   const els = new Map<string, HTMLElement>();
 
   const place = () => {
@@ -43,15 +40,13 @@ export function attachAntennaLabels(
       el.className = `sv-label antenna-label--${sp.kind}${sp.selected ? ' sel' : ''}`;
       if (el.textContent !== sp.text) el.textContent = sp.text;
       el.style.fontSize = sp.kind === 'name' && !sp.selected ? '11px' : '12px';
-      tmp.set(sp.at[0], sp.at[1], sp.at[2]).project(stage.camera);
-      const x = r.left + ((tmp.x + 1) / 2) * r.width;
-      const y = r.top + ((1 - tmp.y) / 2) * r.height;
-      if (tmp.z > 1 || x < r.left || x > r.right || y < r.top || y > r.bottom) {
+      const at = projectToHost(sp.at, stage.camera, r, hr);
+      if (!at.inside) {
         el.style.display = 'none';
         continue;
       }
       el.style.display = '';
-      el.style.transform = `translate(${String(Math.round(x - hr.left))}px, ${String(Math.round(y - hr.top))}px)`;
+      el.style.transform = `translate(${String(Math.round(at.x))}px, ${String(Math.round(at.y))}px)`;
     }
   };
 

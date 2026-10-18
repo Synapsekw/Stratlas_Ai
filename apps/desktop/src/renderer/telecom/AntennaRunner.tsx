@@ -19,7 +19,7 @@ import {
   useSyncExternalStore,
   type ReactElement,
 } from 'react';
-import { Vector3, type Camera } from 'three';
+import type { Camera } from 'three';
 import { useShell } from '../shell';
 import { frameOf } from '../survey/measureScene';
 import '../survey/telecom.css';
@@ -29,9 +29,9 @@ import { AntennaSendPreview } from './AntennaSendPreview';
 import { attachAntennaLabels } from './antennaLabels';
 import { antennaCorners } from './antennaMeasure';
 import {
-  antennaLabelSpots,
   antennaShift,
   attachAntennaLayer,
+  labelSpotsCache,
   type AntennaSceneState,
 } from './antennaScene';
 import {
@@ -43,6 +43,7 @@ import {
   useAntennas,
 } from './antennaStore';
 import type { Rect } from './cardPlacement';
+import { projectToHost } from './screenProjection';
 
 /** The point cloud layers of the open project, none in a package (read only, no pipelines). */
 export function useAntennaClouds() {
@@ -61,11 +62,9 @@ const FOCUS_FALLBACK = [
   '[data-testid="wb-section-telecom-antennas"] .wb-section-head',
 ];
 
-const tmp = new Vector3();
-
 /**
- * The screen box of local-frame points, in CSS pixels relative to `host` (the math of the labels'
- * placement). Null when every point is behind the camera or the box lies wholly outside the host.
+ * The screen box of local-frame points, in CSS pixels relative to `host` (the labels' projection).
+ * Null when every point is behind the camera or the box lies wholly outside the host.
  */
 export function screenRectOf(
   points: readonly Vec3[],
@@ -80,10 +79,8 @@ export function screenRectOf(
   let x1 = -Infinity;
   let y1 = -Infinity;
   for (const p of points) {
-    tmp.set(p[0], p[1], p[2]).project(camera);
-    if (tmp.z > 1) continue;
-    const x = r.left + ((tmp.x + 1) / 2) * r.width - hr.left;
-    const y = r.top + ((1 - tmp.y) / 2) * r.height - hr.top;
+    const { x, y, front } = projectToHost(p, camera, r, hr);
+    if (!front) continue;
     x0 = Math.min(x0, x);
     y0 = Math.min(y0, y);
     x1 = Math.max(x1, x);
@@ -138,6 +135,8 @@ export function AntennaRunner(): ReactElement | null {
   const root = project?.root ?? null;
   const manifest = project?.manifest ?? null;
   const frame = useMemo(() => (manifest ? frameOf(manifest) : null), [manifest]);
+  // the labels and the card both read the spots on every frame: computed once per drawn state
+  const spotsOf = useMemo(() => (frame ? labelSpotsCache(frame) : null), [frame]);
 
   // P8: the inventory is read on mount and when the project root changes
   useEffect(() => {
@@ -157,7 +156,7 @@ export function AntennaRunner(): ReactElement | null {
   // brings the camera to it; the same unit again leaves the view where the person put it.
   const drawn = hasCloud && hasFile;
   useEffect(() => {
-    if (!drawn || !stage || !frame) return;
+    if (!drawn || !stage || !frame || !spotsOf) return;
     const sceneState = (): AntennaSceneState => {
       const a = antennaStore.getState();
       return {
@@ -173,9 +172,7 @@ export function AntennaRunner(): ReactElement | null {
       subscribe: (cb) => antennaStore.subscribe(cb),
       onPick: revealAntenna,
     });
-    const offLabels = attachAntennaLabels(stage, frame, () =>
-      antennaLabelSpots(sceneState(), frame),
-    );
+    const offLabels = attachAntennaLabels(stage, () => spotsOf(sceneState()));
     let last = antennaStore.getState().selected;
     const offFly = antennaStore.subscribe((a) => {
       if (a.selected === last) return;
@@ -188,7 +185,7 @@ export function AntennaRunner(): ReactElement | null {
       offLabels();
       offLayer();
     };
-  }, [drawn, stage, frame, manifest]);
+  }, [drawn, stage, frame, manifest, spotsOf]);
 
   // the floating card beside the selected box, only while the 3D view is on screen
   const showCard = drawn && stage !== null && frame !== null && selected !== null && onScene;
@@ -196,7 +193,7 @@ export function AntennaRunner(): ReactElement | null {
   const [rect, setRect] = useState<Rect | null>(null);
   // before paint, so the card's first frame is already in place
   useLayoutEffect(() => {
-    if (!host || !stage || !frame || !selected) return;
+    if (!host || !stage || !frame || !spotsOf || !selected) return;
     positionHost(host);
     const canvas = stage.renderer.domElement;
     let last: Rect | null = null;
@@ -210,10 +207,13 @@ export function AntennaRunner(): ReactElement | null {
       // the selected unit's labels (name, dimensions, angles) are drawn around the box
       const anchors = box
         ? screenRectOf(
-            antennaLabelSpots(
-              { file: a.file, selected, hidden: a.hidden, solo: a.solo, shift },
-              frame,
-            )
+            spotsOf({
+              file: a.file,
+              selected,
+              hidden: a.hidden,
+              solo: a.solo,
+              shift,
+            })
               .filter((s) => s.selected)
               .map((s) => s.at),
             stage.camera,
@@ -233,7 +233,7 @@ export function AntennaRunner(): ReactElement | null {
       off();
       setRect(null);
     };
-  }, [host, stage, frame, manifest, selected]);
+  }, [host, stage, frame, manifest, selected, spotsOf]);
 
   // the dialog gives focus back where it came from; when that element went away meanwhile (a
   // drawer slid out), it goes to the button or the inventory instead of being lost

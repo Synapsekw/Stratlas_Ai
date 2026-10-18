@@ -83,6 +83,7 @@ vi.mock('@aio/engine', () => {
 vi.mock('../telecom/antennaScene', () => ({
   antennaShift: () => null,
   antennaLabelSpots: () => [],
+  labelSpotsCache: () => () => [],
   attachAntennaLayer: (_stage: unknown, _frame: unknown, opts: { onPick(id: string): void }) => {
     h.layerPick = (id) => {
       opts.onPick(id);

@@ -67,6 +67,13 @@ export function facingTip(unit: AntennaUnit, centre: Vec3): Vec3 | null {
   return [centre[0] + Math.sin(az) * length, centre[1], centre[2] - Math.cos(az) * length];
 }
 
+/** Where the unit's name label sits: `NAME_LIFT_M` over the top of its box, above the centre. */
+export function nameAnchor(unit: AntennaUnit, frame: Frame, shift: DateShift | null): Vec3 {
+  const centre = antennaCentre(unit, frame, shift);
+  const top = Math.max(...antennaCorners(unit, frame, shift).map((p) => p[1]));
+  return [centre[0], top + NAME_LIFT_M, centre[2]];
+}
+
 /** The azimuth (true where the file has convergence) and downtilt, or elevation for a dish. */
 function angleText(unit: AntennaUnit): string | null {
   const grid = unit.azimuthGridDeg;
@@ -90,8 +97,9 @@ function angleText(unit: AntennaUnit): string | null {
 /**
  * The selected unit's dimension lines and labels. Width runs along the box's across axis on its
  * top-front edge, pushed up and out, and height along its up axis on the right-front edge, pushed
- * out along the outward axis (so the width and depth labels stay apart); depth runs along the outward axis on the bottom-right edge, pushed out to the
- * right. Each line is `DIM_OFFSET_M` off its edge with a `DIM_TICK_M` tick across each end.
+ * out along the outward axis (so the width and depth labels stay apart); depth runs along the
+ * outward axis on the bottom-right edge, pushed out to the right. Each line is `DIM_OFFSET_M` off
+ * its edge with a `DIM_TICK_M` tick across each end.
  */
 export function antennaMeasure(
   unit: AntennaUnit,
@@ -142,11 +150,10 @@ export function antennaMeasure(
   if (tip && angle)
     spots.push({ key: `${unit.id}:angle`, text: angle, at: tip, kind: 'angle', selected: true });
 
-  const top = Math.max(...antennaCorners(unit, frame, shift).map((p) => p[1]));
   spots.push({
     key: `${unit.id}:name`,
     text: t('telecom.antennas.label.name', { name: unit.name, height: metres(unit.heightM.value) }),
-    at: [centre[0], top + NAME_LIFT_M, centre[2]],
+    at: nameAnchor(unit, frame, shift),
     kind: 'name',
     selected: true,
   });

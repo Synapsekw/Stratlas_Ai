@@ -13,9 +13,10 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { describe, expect, it, vi } from 'vitest';
 import { frameOf } from '../survey/measureScene';
-import { antennaMeasure } from './antennaMeasure';
+import { antennaMeasure, nameAnchor } from './antennaMeasure';
 import {
   antennaLabelSpots,
+  labelSpotsCache,
   antennaShift,
   attachAntennaLayer,
   buildAntennaGroup,
@@ -311,6 +312,17 @@ describe('antenna review drawing', () => {
     ).toEqual(['ant-draft', 'ant-oth', 'ant-rej']);
     expect(spots.filter((s) => s.kind === 'name')).toHaveLength(4);
     expect(new Set(spots.map((s) => s.key)).size).toBe(spots.length);
+    // a plain name sits where the selected unit's name label would
+    const name = measure.find((s) => s.kind === 'name');
+    expect(name?.at).toEqual(nameAnchor(accUnit, frame, null));
+  });
+
+  it('computes the spots once per drawn state', () => {
+    const spotsOf = labelSpotsCache(frame);
+    const st = state({ selected: 'ant-acc' });
+    const first = spotsOf(st);
+    expect(spotsOf({ ...st })).toBe(first);
+    expect(spotsOf(state({ selected: 'ant-draft' }))).not.toBe(first);
   });
 
   it('sizes the fat lines to the canvas, on build and on resize', () => {
@@ -356,11 +368,19 @@ describe('antenna review drawing', () => {
       f();
     });
     expect(res()).toEqual([1024, 512]);
+    // a store change that draws nothing new (a note, the filter) keeps the group
+    const group = scene.getObjectByName('aio-telecom-antennas');
+    current = { ...current };
+    subs.forEach((f) => {
+      f();
+    });
+    expect(scene.getObjectByName('aio-telecom-antennas')).toBe(group);
     current = state({ selected: 'ant-acc', hidden: {} });
     subs.forEach((f) => {
       f();
     });
     expect(res()).toEqual([1024, 512]);
+    expect(scene.getObjectByName('aio-telecom-antennas')).not.toBe(group);
     detach();
     expect(listeners).toBe(0);
     expect(scene.getObjectByName('aio-telecom-antennas')).toBeUndefined();
