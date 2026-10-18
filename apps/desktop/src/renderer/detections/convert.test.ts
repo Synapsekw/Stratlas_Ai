@@ -257,4 +257,9 @@ describe('something to detect on', () => {
     expect(hasDetectable([mesh, photos(2)])).toBe(true);
     expect(hasDetectable([video])).toBe(true);
   });
+
+  it('counts a walk (360 video) as something to detect on', () => {
+    const walk = { kind: 'walk', id: 'w', durationS: 12 } as unknown as Layer;
+    expect(hasDetectable([mesh, walk])).toBe(true);
+  });
 });

@@ -9,6 +9,7 @@ import { useT } from '@aio/ui';
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { MediaThumb } from '../thumbs/Thumb';
 import { frameThumb } from './prepare';
+import { wrapParts } from './frameMedia';
 
 export interface SheetOutline {
   id: string;
@@ -42,7 +43,14 @@ function Outline({ o }: { o: SheetOutline }) {
   const g = o.geom;
   const cls = `det-ol ${o.status}`;
   if (g.type === 'box')
-    return <rect className={cls} style={style} x={g.x} y={g.y} width={g.w} height={g.h} />;
+    // a box across a walk's 360 seam shows on both edges of the frame
+    return (
+      <>
+        {wrapParts(g, o.size[0]).map((p, i) => (
+          <rect key={i} className={cls} style={style} x={p.x} y={p.y} width={p.w} height={p.h} />
+        ))}
+      </>
+    );
   if (g.type === 'rotbox') {
     const cx = g.x + g.w / 2;
     const cy = g.y + g.h / 2;
