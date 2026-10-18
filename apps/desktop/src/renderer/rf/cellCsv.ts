@@ -16,6 +16,7 @@ import type {
   RfAntennaSettings,
   RfCarrier,
   RfCatalogueEntry,
+  RfOrigin,
   RfSectorsFile,
 } from '@aio/schema';
 
@@ -256,6 +257,7 @@ export function applyCellRows(
       carriers: [],
     };
     if (r.etiltDeg !== undefined) s = { ...s, etiltDeg: r.etiltDeg };
+    const exportOrigin: RfOrigin = { by: 'export', confidence: 'high' };
     const first = s.carriers[0];
     if (r.band !== undefined || first) {
       const tech = r.tech ?? first?.tech ?? 'lte';
@@ -273,7 +275,9 @@ export function applyCellRows(
         ...(r.powerDbm === undefined ? {} : { powerDbmPerPort: r.powerDbm }),
       };
       if (r.band !== undefined && r.band !== base.band) delete next.scsKhz;
-      if (next.band !== '') s = { ...s, carriers: [next, ...s.carriers.slice(1)] };
+      if (next.band !== '') {
+        s = { ...s, carriers: [{ ...next, origin: exportOrigin }, ...s.carriers.slice(1)] };
+      }
     }
     // equipment by the tab's own rule (rfFields.withEquipment): an AAU first, else the antenna
     // and then its radio; a radio without an antenna is left out
@@ -286,6 +290,11 @@ export function applyCellRows(
     }
     // a typed or imported e-tilt always lies in the range the tab shows
     s = clampSettingsEtilt(s, catalogue);
+    const marks = {
+      ...(r.etiltDeg === undefined ? {} : { etiltDeg: exportOrigin }),
+      ...(radio === undefined && antenna === undefined ? {} : { equipment: exportOrigin }),
+    };
+    if (Object.keys(marks).length > 0) s = { ...s, origins: { ...s.origins, ...marks } };
     const at = antennas.findIndex((a) => a.antennaId === id);
     if (at < 0) antennas.push(s);
     else antennas[at] = s;

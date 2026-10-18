@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import type { AntennasFile, RfSectorsFile } from '@aio/schema';
 import { RF_COVERAGE_MIN_PACK } from '@aio/schema';
+import { buildProposal } from './autoplan/proposal';
+import type { CellRow } from './cellCsv';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AAU_ENTRY,
@@ -13,6 +15,8 @@ import {
 } from './__fixtures__/rfData';
 import {
   addSector,
+  applyCellImport,
+  applyPlan,
   applyProposal,
   deleteSector,
   loadRf,
@@ -26,6 +30,8 @@ import {
   rfStore,
   saveRf,
   selectRun,
+  clearSetting,
+  setEquipment,
   setHeightOverride,
   setIncludeUnreviewed,
   setPackStatus,
@@ -689,5 +695,112 @@ describe('loading', () => {
     expect(h.calls.some(([c]) => c === 'rf:readRun')).toBe(true);
     await loadRf('p1');
     expect(s().selectedRunId).toBeNull();
+  });
+});
+
+describe('applying a plan and marking hand edits', () => {
+  async function planned() {
+    site();
+    h.sectors = sectorsFile([], []);
+    await loadRf('p1');
+    const proposal = buildProposal({
+      units: s().antennas?.units ?? [],
+      file: s().sectors,
+      catalogue: s().catalogue.map((c) => c.entry),
+      picks: new Map(),
+    });
+    applyPlan(proposal);
+    return proposal;
+  }
+  const settings = (id: string) => {
+    const x = s().sectors.antennas.find((a) => a.antennaId === id);
+    if (!x) throw new Error(`no settings ${id}`);
+    return x;
+  };
+
+  it('applyPlan writes the proposal and marks the copy dirty', async () => {
+    await planned();
+    expect(s().dirty).toBe(true);
+    expect(s().sectors.sectors.length).toBeGreaterThan(0);
+    expect(settings('ant-a').origins?.equipment?.by).toBe('rules');
+    expect(settings('ant-a').carriers[0]?.origin?.by).toBe('rules');
+  });
+
+  it('applyPlan does nothing on a read only project', async () => {
+    site();
+    h.sectors = sectorsFile([], []);
+    h.readOnly = true;
+    await loadRf('p1');
+    applyPlan(
+      buildProposal({
+        units: s().antennas?.units ?? [],
+        file: s().sectors,
+        catalogue: s().catalogue.map((c) => c.entry),
+        picks: new Map(),
+      }),
+    );
+    expect(s().dirty).toBe(false);
+    expect(s().sectors.antennas).toHaveLength(0);
+  });
+
+  it('a hand-picked equipment turns an ai group into user', async () => {
+    await planned();
+    expect(setEquipment('ant-a', AAU_ENTRY)).toBe(true);
+    expect(settings('ant-a').origins?.equipment).toEqual({ by: 'user' });
+  });
+
+  it('clearing the equipment or the e-tilt marks the group user', async () => {
+    await planned();
+    clearSetting('ant-a', 'equipment');
+    clearSetting('ant-a', 'etiltDeg');
+    expect(settings('ant-a').origins?.equipment).toEqual({ by: 'user' });
+    expect(settings('ant-a').origins?.etiltDeg).toEqual({ by: 'user' });
+  });
+
+  it('a patch with etiltDeg marks the e-tilt user and leaves the equipment alone', async () => {
+    await planned();
+    patchSettings('ant-a', { etiltDeg: 5 });
+    expect(settings('ant-a').origins?.etiltDeg).toEqual({ by: 'user' });
+    expect(settings('ant-a').origins?.equipment?.by).toBe('rules');
+  });
+
+  it('editing one carrier field marks only that carrier user', async () => {
+    await planned();
+    const first = settings('ant-a').carriers[0];
+    if (!first) throw new Error('no carrier');
+    patchSettings('ant-a', { carriers: [{ ...first, bandwidthMhz: 80 }] });
+    expect(settings('ant-a').carriers[0]?.origin).toEqual({ by: 'user' });
+    expect(settings('ant-a').origins?.equipment?.by).toBe('rules');
+    expect(settings('ant-b').carriers[0]?.origin?.by).toBe('rules');
+  });
+
+  it('a patch that leaves a carrier unchanged keeps its origin', async () => {
+    await planned();
+    patchSettings('ant-a', { carriers: settings('ant-a').carriers, active: false });
+    expect(settings('ant-a').carriers[0]?.origin?.by).toBe('rules');
+  });
+
+  it('applyCellImport marks the groups it writes export', async () => {
+    site();
+    await loadRf('p1');
+    const rows: CellRow[] = [
+      {
+        line: 2,
+        ref: 'a',
+        unitId: 'ant-a',
+        unitName: 'a',
+        band: 'B3',
+        bandwidthMhz: 10,
+        etiltDeg: 6,
+        antennaEntry: 'ant-x',
+        radioEntry: 'rru-x',
+        problems: [],
+      },
+    ];
+    applyCellImport(rows);
+    const a = settings('ant-a');
+    expect(a.carriers[0]?.origin).toEqual({ by: 'export', confidence: 'high' });
+    expect(a.origins?.etiltDeg).toEqual({ by: 'export', confidence: 'high' });
+    expect(a.origins?.equipment).toEqual({ by: 'export', confidence: 'high' });
   });
 });

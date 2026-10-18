@@ -23,7 +23,9 @@ import {
   type JobRecord,
   type PipelinePackStatus,
   type RfAntennaSettings,
+  type RfCarrier,
   type RfCatalogueEntry,
+  type RfOrigin,
   type RfRun,
   type RfSector,
   type RfSectorsFile,
@@ -31,6 +33,7 @@ import {
 } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
 import { bridge, jobs } from '../shell';
+import { applyToFile, type Proposal } from './autoplan/proposal';
 import { applyCellRows, type CellRow } from './cellCsv';
 import { withEquipment } from './rfFields';
 import {
@@ -363,6 +366,43 @@ export function applyCellImport(rows: readonly CellRow[]): void {
   edit((f) => applyCellRows(f, rows, catalogue));
 }
 
+/**
+ * Write a reviewed Auto-plan proposal into the working copy (nothing is saved here); each group it
+ * writes carries its origin. Read-only projects ignore it.
+ */
+export function applyPlan(p: Proposal): void {
+  const catalogue = get().catalogue.map((c) => c.entry);
+  edit((f) => applyToFile(f, p, catalogue));
+}
+
+const USER: RfOrigin = { by: 'user' };
+
+/** A group the person set by hand. */
+const markOrigins = (
+  a: RfAntennaSettings,
+  keys: ('equipment' | 'etiltDeg')[],
+): RfAntennaSettings =>
+  keys.length === 0
+    ? a
+    : { ...a, origins: { ...a.origins, ...Object.fromEntries(keys.map((k) => [k, USER])) } };
+
+const withoutOrigin = (c: RfCarrier): RfCarrier => {
+  const rest = { ...c };
+  delete rest.origin;
+  return rest;
+};
+
+/** Carriers the patch changed (or added), by id, marked as the person's. */
+function markCarriers(old: readonly RfCarrier[], next: readonly RfCarrier[]): RfCarrier[] {
+  return next.map((c) => {
+    const was = old.find((o) => o.id === c.id);
+    if (was && JSON.stringify(withoutOrigin(was)) === JSON.stringify(withoutOrigin(c))) {
+      return was.origin ? { ...c, origin: was.origin } : c;
+    }
+    return { ...c, origin: USER };
+  });
+}
+
 const settingsDefaults = (antennaId: string): RfAntennaSettings => ({
   antennaId,
   active: true,
@@ -376,9 +416,16 @@ export function patchSettings(
 ): void {
   edit((f) => {
     const has = f.antennas.some((a) => a.antennaId === antennaId);
+    const marked = (base: RfAntennaSettings): RfAntennaSettings => {
+      const merged = { ...base, ...patch };
+      const withCarriers = patch.carriers
+        ? { ...merged, carriers: markCarriers(base.carriers, patch.carriers) }
+        : merged;
+      return 'etiltDeg' in patch ? markOrigins(withCarriers, ['etiltDeg']) : withCarriers;
+    };
     const antennas = has
-      ? f.antennas.map((a) => (a.antennaId === antennaId ? { ...a, ...patch } : a))
-      : [...f.antennas, { ...settingsDefaults(antennaId), ...patch }];
+      ? f.antennas.map((a) => (a.antennaId === antennaId ? marked(a) : a))
+      : [...f.antennas, marked(settingsDefaults(antennaId))];
     return { ...f, antennas };
   });
 }
@@ -395,11 +442,12 @@ export function setEquipment(antennaId: string, entry: RfCatalogueEntry): boolea
     get().sectors.antennas.find((a) => a.antennaId === antennaId) ?? settingsDefaults(antennaId);
   const next = withEquipment(current, entry, catalogue);
   if (!next) return false;
+  const marked = markOrigins(next, ['equipment']);
   edit((f) => ({
     ...f,
     antennas: f.antennas.some((a) => a.antennaId === antennaId)
-      ? f.antennas.map((a) => (a.antennaId === antennaId ? next : a))
-      : [...f.antennas, next],
+      ? f.antennas.map((a) => (a.antennaId === antennaId ? marked : a))
+      : [...f.antennas, marked],
   }));
   return true;
 }
@@ -413,7 +461,7 @@ export function clearSetting(antennaId: string, key: 'equipment' | 'etiltDeg'): 
       const rest = { ...a };
       if (key === 'equipment') delete rest.equipment;
       else delete rest.etiltDeg;
-      return rest;
+      return markOrigins(rest, [key]);
     }),
   }));
 }
