@@ -18,6 +18,7 @@ import {
 } from '../../../rf/__fixtures__/rfData';
 import { processingTools } from '../../../processingTools';
 import { RfLayer } from '../../../rf/RfLayer';
+import { antennaStore } from '../../../telecom/antennaStore';
 import { assumptionsText } from '../../../rf/rfText';
 import { resetRf, rfStore, setPreviewState } from '../../../rf/rfStore';
 import { threeDates } from '../../__fixtures__/threeDates';
@@ -146,6 +147,12 @@ const render = async () => {
 const click = (el: Element | null) => {
   act(() => (el as HTMLElement | null)?.click());
 };
+/** Expand a step 2 row: a sector's, or the units in no sector (`ungrouped`). */
+const expand = (id = 'sec-s1') => {
+  const head = q(`[data-testid="rf-step-sector-${id}"] .rf-step-row-head`);
+  if (!head) throw new Error(`no step 2 row ${id}`);
+  click(head);
+};
 const setNumber = (input: HTMLInputElement | null, value: string) => {
   if (!input) throw new Error('no input');
   act(() => {
@@ -189,14 +196,126 @@ afterEach(() => {
 });
 
 describe('RfBench', () => {
-  it('has the Site, Sector and Results sections, open', async () => {
+  it('shows the AI card, three steps and a folded Advanced', async () => {
     await render();
-    for (const id of ['rf-site', 'rf-sector', 'rf-results'])
-      expect(byTest(`wb-section-${id}`)?.getAttribute('data-open')).toBe('true');
+    expect(byTest('rf-ai-card')).not.toBeNull();
+    const titles = [...document.querySelectorAll('.rf-step-title')].map((e) => e.textContent);
+    expect(titles).toEqual(['Antennas', 'Sectors & equipment', 'Coverage']);
+    expect(byTest('rf-step-antennas')).not.toBeNull();
+    expect(byTest('rf-step-sectors')).not.toBeNull();
+    expect(byTest('rf-step-coverage')?.querySelector('[data-testid="rf-run"]')).not.toBeNull();
+    const adv = byTest('rf-advanced');
+    expect(adv?.getAttribute('aria-expanded')).toBe('false');
+    expect(adv?.textContent).toContain('TR 38.901 · urban macro · 3 km · 10 m · CSV import');
+    expect(byTest('rf-study')).toBeNull();
+    expect(byTest('rf-csv-open')).toBeNull();
+    click(adv);
+    expect(adv?.getAttribute('aria-expanded')).toBe('true');
+    expect(byTest('rf-study')).not.toBeNull();
+    expect(byTest('rf-csv-open')).not.toBeNull();
+    // the include drafts switch moved to step 1
+    expect(byTest('rf-study')?.querySelector('[role="switch"]')).toBeNull();
+    expect(byTest('rf-step-antennas')?.querySelector('[role="switch"]')).not.toBeNull();
+  });
+
+  it('the tab is labelled Coverage', () => {
+    expect(t('wb.tab.rf')).toBe('Coverage');
+  });
+
+  it('step 1 counts accepted and draft units', async () => {
+    h.antennas = antennasFile([
+      unit('ant-a1', 10),
+      unit('ant-a2', 130),
+      unit('ant-a3', 250),
+      unit('ant-a4', 300, { status: 'draft' }),
+    ]);
+    await render();
+    expect(byTest('rf-step-antennas')?.textContent).toContain('3 accepted · 1 draft');
+  });
+
+  it('Review in inventory reveals the first draft in the Measure bench', async () => {
+    h.antennas = antennasFile([unit('ant-a1', 10), unit('ant-a4', 300, { status: 'draft' })]);
+    await render();
+    click(byTest('rf-step-review'));
+    expect(antennaStore.getState().selected).toBe('ant-a4');
+    expect(workbench.getState().front).toBe('measure');
+  });
+
+  it('a sector row tag follows the weakest origin', async () => {
+    h.antennas = antennasFile([unit('ant-a1', 10), unit('ant-a2', 130), unit('ant-a3', 250)]);
+    const ai = lteSettings('ant-a1', { origins: { equipment: { by: 'ai', confidence: 'high' } } });
+    ai.carriers = ai.carriers.map((c) => ({ ...c, origin: { by: 'ai' } }));
+    const low = lteSettings('ant-a2', { origins: { equipment: { by: 'ai' } } });
+    low.carriers = low.carriers.map((c) => ({ ...c, origin: { by: 'ai', confidence: 'low' } }));
+    h.sectors = sectorsFile(
+      [
+        { id: 'sec-s1', antennaIds: ['ant-a1', 'ant-a2'] },
+        { id: 'sec-s2', antennaIds: ['ant-a3'] },
+      ],
+      [ai, low],
+    );
+    await render();
+    const row = (id: string) => byTest(`rf-step-sector-${id}`);
+    expect(row('sec-s1')?.getAttribute('data-tag')).toBe('ai-low');
+    expect(row('sec-s1')?.textContent).toContain('AI · low');
+    // a unit with no settings at all needs setup
+    expect(row('sec-s2')?.getAttribute('data-tag')).toBe('needs-setup');
+    expect(row('sec-s2')?.textContent).toContain('needs setup');
+    expect(row('sec-s1')?.textContent).toMatch(/S1 · \d+°/);
+  });
+
+  it('a sector the person set up by hand is tagged edited, with its equipment and band', async () => {
+    await render();
+    const row = byTest('rf-step-sector-sec-s1');
+    expect(row?.getAttribute('data-tag')).toBe('edited');
+    expect(row?.textContent).toContain('P1 · B3 · 20 MHz');
+  });
+
+  it('expanding a sector row shows the existing unit fields', async () => {
+    await render();
+    expect(byTest('rf-pick-aau')).toBeNull();
+    const head = q('[data-testid="rf-step-sector-sec-s1"] .rf-step-row-head');
+    expect(head?.getAttribute('aria-expanded')).toBe('false');
+    expand('sec-s1');
+    expect(head?.getAttribute('aria-expanded')).toBe('true');
+    expect(byTest('rf-pick-aau')).not.toBeNull();
+    expect(byTest('rf-unit-ant-a1')).not.toBeNull();
+    // one row open at a time
+    expand('sec-s2');
+    expect(byTest('rf-unit-ant-a1')).toBeNull();
+    expect(byTest('rf-unit-ant-a2')).not.toBeNull();
+    expand('sec-s2');
+    expect(byTest('rf-pick-aau')).toBeNull();
+  });
+
+  it('set up by hand expands step 2', async () => {
+    await render();
+    click(byTest('rf-ai-by-hand'));
+    expect(byTest('rf-unit-ant-a1')).not.toBeNull();
+  });
+
+  it('units in no sector stay listed as their own row', async () => {
+    h.antennas = antennasFile([unit('ant-a1', 10), unit('ant-a2', 130), unit('ant-a3', 250)]);
+    await render();
+    const row = byTest('rf-step-sector-ungrouped');
+    expect(row?.textContent).toContain('In no sector (1)');
+    expect(row?.getAttribute('data-tag')).toBe('needs-setup');
+    expand('ungrouped');
+    expect(byTest('rf-unit-ant-a3')).not.toBeNull();
+  });
+
+  it("an Edit RF action opens that unit's sector row", async () => {
+    await render();
+    act(() => {
+      rfStore.setState({ focusUnitId: 'ant-a2' });
+    });
+    expect(byTest('rf-unit-ant-a2')).not.toBeNull();
+    expect(byTest('rf-unit-ant-a1')).toBeNull();
   });
 
   it('shows the measured geometry with its basis marks', async () => {
     await render();
+    expand();
     const az = q('[data-testid="rf-unit-ant-a1"] [data-field="azimuth"]');
     // grid 10, convergence 0.5
     expect(az?.textContent).toContain('10.5° true · 10.0° grid');
@@ -212,6 +331,7 @@ describe('RfBench', () => {
 
   it('marks a typed height as typed and clears it back to measured', async () => {
     await render();
+    expand();
     setNumber(qi('[data-testid="rf-height"]'), '28');
     const height = q('[data-testid="rf-unit-ant-a1"] [data-field="height"]');
     expect(height?.querySelector('.tag')?.textContent).toBe('typed');
@@ -225,6 +345,7 @@ describe('RfBench', () => {
       [lteSettings('ant-a1', { etiltDeg: 20 })],
     );
     await render();
+    expand();
     const slider = qi('[data-testid="rf-etilt"]');
     expect(slider?.min).toBe('0');
     expect(slider?.max).toBe('8');
@@ -241,11 +362,13 @@ describe('RfBench', () => {
 
   it('keeps unsaved edits when the tab is shown again (another tab in front, then RF)', async () => {
     await render();
+    expand();
     setNumber(qi('[data-testid="rf-etilt-number"]'), '6');
     expect(rfStore.getState().dirty).toBe(true);
     // the workbench unmounts a tab that is not in front and mounts it again when shown
     act(() => root?.unmount());
     await render();
+    expand();
     expect(rfStore.getState().dirty).toBe(true);
     expect(rfStore.getState().sectors.antennas[0]?.etiltDeg).toBe(6);
     expect(qi('[data-testid="rf-etilt-number"]')?.value).toBe('6');
@@ -262,6 +385,7 @@ describe('RfBench', () => {
 
   it('a study too large to preview says so, and can still be saved and run', async () => {
     await render();
+    expand();
     const save = () => byTest('rf-save-run');
     setNumber(qi('[data-testid="rf-etilt-number"]'), '6');
     // the coverage follower (the RF layer) works the preview out; here its state is set directly
@@ -288,6 +412,7 @@ describe('RfBench', () => {
       );
     });
     await flush();
+    expand();
     setNumber(qi('[data-testid="rf-etilt-number"]'), '6');
     expect(rfStore.getState().dirty).toBe(true);
     act(() => {
@@ -307,6 +432,7 @@ describe('RfBench', () => {
 
   it('picking an AAU disables the antenna and radio fields and labels the AAU total power', async () => {
     await render();
+    expand();
     expect(byTest('rf-pick-antenna')?.getAttribute('aria-disabled')).toBeNull();
     click(byTest('rf-pick-aau'));
     expect(byTest('rf-catalogue')).not.toBeNull();
@@ -382,6 +508,7 @@ describe('RfBench', () => {
       [lteSettings('ant-a1'), lteSettings('ant-gone')],
     );
     await render();
+    expand();
     click(q('[data-sector="sec-s1"] button[aria-label="Delete sector S1"]'));
     expect(rfStore.getState().sectors.sectors.map((s) => s.id)).toEqual(['sec-s1']);
     expect(byTest('rf-sector-kept')?.textContent).toContain(
@@ -394,6 +521,7 @@ describe('RfBench', () => {
   it('shows the warnings rf:writeSectors returns after a save', async () => {
     h.writeWarnings = ['Pattern file p1.msi could not be copied.'];
     await render();
+    expand();
     const name = qi('[data-sector="sec-s1"] input');
     setNumber(name, 'North');
     click(byTest('rf-save'));
@@ -424,6 +552,7 @@ describe('RfBench', () => {
     ];
     h.sectors = sectorsFile([{ id: 'sec-s1', antennaIds: ['ant-a1'] }], [two]);
     await render();
+    expand();
     expect(byTest('rf-more-carriers')?.textContent).toContain('1 more carrier');
   });
 

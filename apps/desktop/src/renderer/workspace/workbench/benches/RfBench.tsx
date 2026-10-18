@@ -1,15 +1,20 @@
 /**
- * The RF workbench, the `rf` tab (spec D20, D21; stage island R2): coverage prediction for the
- * telecom site, in three sections.
+ * The Coverage panel, the `rf` workbench tab (spec D20, D21; stage island R2; rf-coverage-simplify
+ * "The Coverage panel"): coverage prediction for the telecom site.
  *
- * - **Site:** the tower, the sectors (a toggle each, rename, delete, group by bearing), the study
- *   settings (model, environment, where people are, radius, grid), the CSV import and the settings
- *   of antennas no longer found.
- * - **Sector:** one unit of the chosen sector: measured geometry with its basis, band and carrier,
- *   the AAU, antenna and radio fields that open the catalogue picker, the e-tilt slider within the
- *   port's range and step, power and loss.
- * - **Results:** RSRP / Best server / Overlap (the layer, T10, draws the choice), per-class areas,
- *   Run coverage, Save as new run, Export, the indicative label and the assumptions.
+ * - **AI card:** Auto-plan & run, set up by hand, Use cell export (`rf/panel/AiCard.tsx`).
+ * - **Step 1, Antennas:** accepted and draft units, the inventory link, the include drafts switch,
+ *   the tower and its highest antenna.
+ * - **Step 2, Sectors & equipment:** group by bearing and add sector, then one row per sector with
+ *   its state tag. An open row shows the sector's toggle, name and delete, and one unit's fields:
+ *   measured geometry with its basis, band and carrier, the AAU, antenna and radio fields that open
+ *   the catalogue picker, the e-tilt slider within the port's range and step, power and loss. The
+ *   units in no sector and the settings of antennas no longer found stay listed.
+ * - **Step 3, Coverage:** RSRP / Best server / Overlap (the layer, T10, draws the choice),
+ *   per-class areas, Run coverage, Save as new run, Export, the indicative label and the
+ *   assumptions.
+ * - **Advanced (folded):** the study settings (model, environment, where people are, radius,
+ *   grid) and the CSV import.
  *
  * Every value lives in the RF store's working copy (`rf/rfStore.ts`) until Save; a run saves first.
  * The coverage layer and its legend are T10.
@@ -70,7 +75,6 @@ import {
   selectRun,
   setEquipment,
   setHeightOverride,
-  setIncludeUnreviewed,
   setPackStatus,
   setView,
   useRf,
@@ -92,7 +96,14 @@ import {
   refusalText,
   warningText,
 } from '../../../rf/rfText';
-import { Section } from '../Section';
+import { AdvancedFold, studySummary } from '../../../rf/panel/AdvancedFold';
+import { AiCard } from '../../../rf/panel/AiCard';
+import { Step } from '../../../rf/panel/Step';
+import { StepAntennas } from '../../../rf/panel/StepAntennas';
+import { StepSectors, UNGROUPED } from '../../../rf/panel/StepSectors';
+import { revealAntenna } from '../../../telecom/antennaStore';
+import { useSections } from '../sectionState';
+import { workbench } from '../workbenchStore';
 import type { TabId } from '../tabsModel';
 import '../../../rf/rf.css';
 import './benches.css';
@@ -296,100 +307,97 @@ function SaveBar() {
   );
 }
 
-// ---------------------------------------------------------------- Site
+// ---------------------------------------------------------------- Step 2: sectors
 
-function SectorList({ onShow }: { onShow: (sectorId: string) => void }) {
+/** Above the step 2 rows: group by bearing and add a sector. */
+function SectorToolbar() {
   const t = useT();
-  const sectors = useRf((s) => s.sectors.sectors);
-  const settings = useRf((s) => s.sectors.antennas);
-  const units = useRf((s) => s.antennas?.units ?? []);
   const proposed = useRf((s) => s.proposed);
   const readOnly = useRf((s) => s.readOnly);
-  const [kept, setKept] = useState<string | null>(null);
-  const activeOf = (ids: readonly string[]) =>
-    ids.length > 0 && ids.some((id) => settings.find((a) => a.antennaId === id)?.active ?? true);
   return (
-    <div className="rf-group" data-testid="rf-sectors">
-      {sectors.length === 0 && <p className="rf-note">{t('rf.sectors.none')}</p>}
-      {sectors.map((sec) => {
-        const bearing = sectorBearing(sec.antennaIds, units);
-        const live = sec.antennaIds.filter((id) => units.some((u) => u.id === id));
-        return (
-          <div key={sec.id} className="rf-sector" data-sector={sec.id}>
-            <Switch
-              checked={activeOf(live)}
-              disabled={readOnly || live.length === 0}
-              label={t('rf.sectors.toggle', { name: sec.name })}
-              onChange={(on) => {
-                for (const id of live) patchSettings(id, { active: on });
-              }}
-            />
-            <input
-              className="input rf-sector-name"
-              defaultValue={sec.name}
-              key={sec.name}
-              aria-label={t('rf.sectors.rename', { name: sec.name })}
-              disabled={readOnly}
-              onBlur={(e) => {
-                renameSector(sec.id, e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
-              }}
-            />
-            <span className="rf-sector-meta mono">
-              {t('rf.sectors.meta', {
-                count: live.length,
-                bearing: bearing === null ? t('rf.sectors.noBearing') : `${fmt(bearing, 0)}°`,
-              })}
-            </span>
-            <Button
-              onClick={() => {
-                onShow(sec.id);
-              }}
-            >
-              {t('rf.sectors.show')}
-            </Button>
-            <IconButton
-              icon="trash"
-              label={t('rf.sectors.delete', { name: sec.name })}
-              disabled={readOnly}
-              onClick={() => {
-                deleteSector(sec.id);
-                const still = rfStore.getState().sectors.sectors.some((x) => x.id === sec.id);
-                setKept(still ? sec.id : null);
-              }}
-            />
-            {kept === sec.id && (
-              <p className="rf-note rf-warn-ink" role="status" data-testid="rf-sector-kept">
-                {t('rf.sectors.keptForOrphans', { name: sec.name })}
-              </p>
-            )}
-          </div>
-        );
-      })}
-      <div className="rf-actions">
-        <Button
-          icon="refresh"
-          disabledReason={
-            readOnly
-              ? t('rf.refusal.readOnly')
-              : proposed.length === 0
-                ? t('rf.sectors.nothingToGroup')
-                : undefined
-          }
-          tip={t('rf.sectors.groupTip')}
-          onClick={applyProposal}
-        >
-          {t('rf.sectors.group')}
-        </Button>
-        <Button icon="plus" disabled={readOnly} onClick={() => void addSector()}>
-          {t('rf.sectors.add')}
-        </Button>
-      </div>
+    <div className="rf-actions">
+      <Button
+        icon="refresh"
+        disabledReason={
+          readOnly
+            ? t('rf.refusal.readOnly')
+            : proposed.length === 0
+              ? t('rf.sectors.nothingToGroup')
+              : undefined
+        }
+        tip={t('rf.sectors.groupTip')}
+        onClick={applyProposal}
+      >
+        {t('rf.sectors.group')}
+      </Button>
+      <Button icon="plus" disabled={readOnly} onClick={() => void addSector()}>
+        {t('rf.sectors.add')}
+      </Button>
     </div>
   );
 }
+
+/** At the top of an open sector row: its toggle, name, unit count and delete. */
+function SectorManage({ sectorId }: { sectorId: string }) {
+  const t = useT();
+  const sec = useRf((s) => s.sectors.sectors.find((x) => x.id === sectorId) ?? null);
+  const settings = useRf((s) => s.sectors.antennas);
+  const units = useRf((s) => s.antennas?.units ?? []);
+  const readOnly = useRf((s) => s.readOnly);
+  const [kept, setKept] = useState(false);
+  if (!sec) return null;
+  const activeOf = (ids: readonly string[]) =>
+    ids.length > 0 && ids.some((id) => settings.find((a) => a.antennaId === id)?.active ?? true);
+  const bearing = sectorBearing(sec.antennaIds, units);
+  const live = sec.antennaIds.filter((id) => units.some((u) => u.id === id));
+  return (
+    <div className="rf-sector" data-sector={sec.id}>
+      <Switch
+        checked={activeOf(live)}
+        disabled={readOnly || live.length === 0}
+        label={t('rf.sectors.toggle', { name: sec.name })}
+        onChange={(on) => {
+          for (const id of live) patchSettings(id, { active: on });
+        }}
+      />
+      <input
+        className="input rf-sector-name"
+        defaultValue={sec.name}
+        key={sec.name}
+        aria-label={t('rf.sectors.rename', { name: sec.name })}
+        disabled={readOnly}
+        onBlur={(e) => {
+          renameSector(sec.id, e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+      />
+      <span className="rf-sector-meta mono">
+        {t('rf.sectors.meta', {
+          count: live.length,
+          bearing: bearing === null ? t('rf.sectors.noBearing') : `${fmt(bearing, 0)}°`,
+        })}
+      </span>
+      <IconButton
+        icon="trash"
+        label={t('rf.sectors.delete', { name: sec.name })}
+        disabled={readOnly}
+        onClick={() => {
+          deleteSector(sec.id);
+          setKept(rfStore.getState().sectors.sectors.some((x) => x.id === sec.id));
+        }}
+      />
+      {kept && (
+        <p className="rf-note rf-warn-ink" role="status" data-testid="rf-sector-kept">
+          {t('rf.sectors.keptForOrphans', { name: sec.name })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Advanced: study
 
 const MODELS: readonly PropagationModel[] = [
   'tr38901',
@@ -404,7 +412,6 @@ function StudySettings() {
   const t = useT();
   const study = useRf((s) => s.sectors.study);
   const readOnly = useRf((s) => s.readOnly);
-  const unreviewed = useRf((s) => s.includeUnreviewed);
   return (
     <div className="rf-group" data-testid="rf-study">
       <Field label={t('rf.study.model')}>
@@ -492,11 +499,6 @@ function StudySettings() {
       <p className="rf-note">
         {t('rf.study.always', { body: study.bodyLossDb, ue: study.ueHeightM })}
       </p>
-      <LabelledSwitch
-        checked={unreviewed}
-        label={t('rf.study.includeUnreviewed')}
-        onChange={setIncludeUnreviewed}
-      />
     </div>
   );
 }
@@ -555,12 +557,44 @@ function Orphans() {
   );
 }
 
-function SiteSection({ onShowSector }: { onShowSector: (id: string) => void }) {
+/** The CSV import, under Advanced. */
+function CsvImportButton() {
+  const t = useT();
+  const readOnly = useRf((s) => s.readOnly);
+  const [csv, setCsv] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <div className="rf-actions">
+        <Button
+          icon="import"
+          disabledReason={readOnly ? t('rf.refusal.readOnly') : undefined}
+          data-testid="rf-csv-open"
+          onClick={(e) => {
+            setCsv(e.currentTarget);
+          }}
+        >
+          {t('rf.csv.open')}
+        </Button>
+      </div>
+      {csv && (
+        <CsvImport
+          opener={csv}
+          onClose={() => {
+            setCsv(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- Step 1: antennas
+
+/** Under step 1: the tower's units and its highest antenna. */
+function SiteFacts() {
   const t = useT();
   const antennas = useRf((s) => s.antennas);
   const rows = useRf((s) => s.rows);
-  const readOnly = useRf((s) => s.readOnly);
-  const [csv, setCsv] = useState<HTMLElement | null>(null);
   const units = antennas?.units ?? [];
   const panels = units.filter((u) => u.kind === 'panel' && u.status === 'accepted').length;
   const heights = rows.flatMap((r) => (r.height.heightM === null ? [] : [r.height]));
@@ -569,7 +603,7 @@ function SiteSection({ onShowSector }: { onShowSector: (id: string) => void }) {
     null,
   );
   return (
-    <div className="rf-sec">
+    <div className="rf-group">
       <Field label={t('rf.site.units')}>
         <span>{t('rf.site.unitsValue', { panels, count: units.length })}</span>
       </Field>
@@ -590,31 +624,6 @@ function SiteSection({ onShowSector }: { onShowSector: (id: string) => void }) {
             : t('rf.site.heightValue', { m: fmt(top.heightM) })}
         </span>
       </Field>
-      <h4 className="rf-sub">{t('rf.sectors.title')}</h4>
-      <SectorList onShow={onShowSector} />
-      <h4 className="rf-sub">{t('rf.study.title')}</h4>
-      <StudySettings />
-      <div className="rf-actions">
-        <Button
-          icon="import"
-          disabledReason={readOnly ? t('rf.refusal.readOnly') : undefined}
-          data-testid="rf-csv-open"
-          onClick={(e) => {
-            setCsv(e.currentTarget);
-          }}
-        >
-          {t('rf.csv.open')}
-        </Button>
-      </div>
-      <Orphans />
-      {csv && (
-        <CsvImport
-          opener={csv}
-          onClose={() => {
-            setCsv(null);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -1201,53 +1210,27 @@ function UnitFields({ row }: { row: RfUnitRow }) {
   );
 }
 
+/**
+ * The body of an open step 2 row: the sector's own controls, a choice of unit when it has more
+ * than one, and that unit's fields. `UNGROUPED` shows the units in no sector.
+ */
 function SectorSection({
-  sectorId,
+  sectorKey,
   unitId,
-  onSector,
   onUnit,
 }: {
-  sectorId: string | null;
+  sectorKey: string;
   unitId: string | null;
-  onSector: (id: string | null) => void;
   onUnit: (id: string) => void;
 }) {
   const t = useT();
-  const sectors = useRf((s) => s.sectors.sectors);
   const rows = useRf((s) => s.rows);
-  const units = useRf((s) => s.antennas?.units ?? []);
-  const ungrouped = rows.filter((r) => r.sectorId === null);
+  const sectorId = sectorKey === UNGROUPED ? null : sectorKey;
   const inSector = rows.filter((r) => r.sectorId === sectorId);
   const row = inSector.find((r) => r.id === unitId) ?? inSector[0] ?? null;
   return (
     <div className="rf-sec">
-      <div className="rf-chips" role="group" aria-label={t('rf.sector.choose')}>
-        {sectors.map((x) => {
-          const b = sectorBearing(x.antennaIds, units);
-          return (
-            <Button
-              key={x.id}
-              pressed={sectorId === x.id}
-              data-testid={`rf-sector-chip-${x.id}`}
-              onClick={() => {
-                onSector(x.id);
-              }}
-            >
-              {b === null ? x.name : t('rf.sector.chip', { name: x.name, bearing: fmt(b, 0) })}
-            </Button>
-          );
-        })}
-        {ungrouped.length > 0 && (
-          <Button
-            pressed={sectorId === null}
-            onClick={() => {
-              onSector(null);
-            }}
-          >
-            {t('rf.sector.ungrouped', { count: ungrouped.length })}
-          </Button>
-        )}
-      </div>
+      {sectorId !== null && <SectorManage sectorId={sectorId} />}
       {inSector.length > 1 && (
         <div className="rf-chips" role="group" aria-label={t('rf.sector.chooseUnit')}>
           {inSector.map((r) => (
@@ -1531,6 +1514,18 @@ function ResultsSection() {
 
 // ---------------------------------------------------------------- the bench
 
+/**
+ * Review in inventory: the first draft unit revealed in the Measure bench's antenna inventory.
+ * The Coverage tab is pinned first, so opening the Measure bench does not close it.
+ */
+function reviewDrafts(firstDraftId: string | undefined): void {
+  if (firstDraftId === undefined) return;
+  const wb = workbench.getState();
+  if (wb.tabs.some((x) => x.id === BENCH)) wb.pin(BENCH, true);
+  revealAntenna(firstDraftId);
+  wb.open('measure');
+}
+
 export function RfBench() {
   const t = useT();
   useRfSync();
@@ -1539,23 +1534,24 @@ export function RfBench() {
   const antennas = useRf((s) => s.antennas);
   const focus = useRf((s) => s.focusUnitId);
   const rows = useRf((s) => s.rows);
-  const sectors = useRf((s) => s.sectors.sectors);
-  const [sectorId, setSectorId] = useState<string | null | undefined>(undefined);
+  const runs = useRf((s) => s.runs);
+  const settings = useRf((s) => s.sectors.antennas);
+  const study = useRf((s) => s.sectors.study);
+  const sections = useSections(BENCH);
+  // the open step 2 row (a sector id or UNGROUPED) and the unit it shows
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [unitId, setUnitId] = useState<string | null>(null);
-  // an Edit RF action on a unit shows that unit's sector (once the unit is loaded)
+  const step2 = useRef<HTMLDivElement>(null);
+  // an Edit RF action on a unit opens that unit's sector row (once the unit is loaded)
   const [seenFocus, setSeenFocus] = useState<string | null>(null);
   if (focus !== seenFocus && (focus === null || rows.some((x) => x.id === focus))) {
     setSeenFocus(focus);
     const r = rows.find((x) => x.id === focus);
     if (r) {
-      setSectorId(r.sectorId);
+      setExpanded(r.sectorId ?? UNGROUPED);
       setUnitId(r.id);
     }
   }
-  const shownSector =
-    sectorId !== undefined && (sectorId === null || sectors.some((x) => x.id === sectorId))
-      ? sectorId
-      : (sectors[0]?.id ?? null);
 
   if (status === 'error')
     return (
@@ -1577,31 +1573,81 @@ export function RfBench() {
         <EmptyState icon="target" title={t('rf.noAntennas')} body={t('rf.noAntennasBody')} />
       </div>
     );
+  const accepted = antennas.units.filter((u) => u.status === 'accepted').length;
+  const drafts = antennas.units.filter((u) => u.status === 'draft');
+  const fromExport = settings.some(
+    (s) =>
+      s.origins?.equipment?.by === 'export' || s.carriers.some((c) => c.origin?.by === 'export'),
+  );
+  const done = runs.filter((r) => r.status === 'done').length;
+  const open = (key: string) => {
+    setExpanded(key);
+    setUnitId(null);
+  };
   return (
     <div className="wb-bench wb-scroll rf-bench" data-testid="rf-bench">
       <SaveBar />
-      <Section id="rf-site" bench={BENCH} title={t('rf.site.title')} defaultOpen>
-        <SiteSection
-          onShowSector={(id) => {
-            setSectorId(id);
-            setUnitId(null);
+      <AiCard
+        // wired in Task 9
+        onAutoplan={() => undefined}
+        // wired in Task 9
+        onUseExport={() => undefined}
+        exportAvailable={fromExport}
+        onSetUpByHand={() => {
+          const first = rfStore.getState().sectors.sectors[0]?.id;
+          const ungrouped = rows.some((r) => r.sectorId === null);
+          const key = first ?? (ungrouped ? UNGROUPED : null);
+          if (key !== null) open(key);
+          // jsdom has no scrollIntoView
+          (step2.current as Partial<HTMLElement> | null)?.scrollIntoView?.({ block: 'start' });
+        }}
+      />
+      <StepAntennas
+        accepted={accepted}
+        drafts={drafts.length}
+        onReview={() => {
+          reviewDrafts(drafts[0]?.id);
+        }}
+      >
+        <SiteFacts />
+      </StepAntennas>
+      <div ref={step2}>
+        <StepSectors
+          expanded={expanded}
+          onToggle={(key) => {
+            if (expanded === key) setExpanded(null);
+            else open(key);
           }}
-        />
-      </Section>
-      <Section id="rf-sector" bench={BENCH} title={t('rf.sector.title')} defaultOpen>
-        <SectorSection
-          sectorId={shownSector}
-          unitId={unitId}
-          onSector={(id) => {
-            setSectorId(id);
-            setUnitId(null);
-          }}
-          onUnit={setUnitId}
-        />
-      </Section>
-      <Section id="rf-results" bench={BENCH} title={t('rf.results.title')} defaultOpen>
+          toolbar={<SectorToolbar />}
+          renderBody={(key) => <SectorSection sectorKey={key} unitId={unitId} onUnit={setUnitId} />}
+        >
+          <Orphans />
+        </StepSectors>
+      </div>
+      <Step
+        n={3}
+        done={done > 0}
+        title={t('rf.steps.coverage.title')}
+        meta={
+          runs.length === 0
+            ? t('rf.steps.coverage.noRuns')
+            : t('rf.steps.coverage.runs', { count: runs.length })
+        }
+        testId="rf-step-coverage"
+      >
         <ResultsSection />
-      </Section>
+      </Step>
+      <AdvancedFold
+        title={t('rf.steps.advanced.title')}
+        summary={studySummary(t, study)}
+        open={sections.isOpen('rf-advanced', false)}
+        onToggle={() => {
+          sections.toggle('rf-advanced', false);
+        }}
+      >
+        <StudySettings />
+        <CsvImportButton />
+      </AdvancedFold>
     </div>
   );
 }

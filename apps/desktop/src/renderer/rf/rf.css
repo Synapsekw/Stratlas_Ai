@@ -166,10 +166,10 @@
   padding-inline-start: var(--sp-6);
 }
 
-/* the sector list */
+/* an open sector row's own controls: toggle, name, units and bearing, delete */
 .rf-sector {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--sp-3);
 }
@@ -233,6 +233,241 @@
 .rf-indicative b {
   color: var(--fg-0);
   font-weight: 500;
+}
+
+/* ----------------------------------------------------------------------- the Coverage panel */
+/* the AI card on top (rf/panel/AiCard.tsx); a file dragged over it lights its border */
+.rf-ai-card {
+  display: grid;
+  gap: var(--sp-3);
+  margin-inline: var(--sp-4);
+  padding: var(--sp-4);
+  border: 1px solid var(--acc-a40);
+  border-radius: var(--r-6);
+  background: linear-gradient(180deg, var(--acc-a12), transparent);
+}
+.rf-ai-card[data-drop] {
+  border-style: dashed;
+  border-color: var(--acc);
+}
+.rf-ai-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--fg-0);
+  font-size: var(--t-14);
+  font-weight: 600;
+}
+.rf-spark {
+  color: var(--acc);
+}
+.btn.primary .rf-spark {
+  color: inherit;
+}
+.rf-ai-body {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+  line-height: 1.45;
+}
+.rf-ai-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* the three steps (rf/panel/Step.tsx) */
+.rf-step {
+  display: grid;
+  gap: var(--sp-2);
+  padding-inline: var(--sp-4);
+  min-inline-size: 0;
+}
+.rf-step-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.rf-step-num {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  inline-size: 20px;
+  block-size: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  font-weight: 600;
+}
+.rf-step-num[data-done='true'] {
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--acc-ink);
+}
+.rf-step-title {
+  margin: 0;
+  color: var(--fg-0);
+  font-size: var(--t-13);
+  font-weight: 600;
+}
+.rf-step-meta {
+  margin-inline-start: auto;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+.rf-step-bd {
+  display: grid;
+  gap: var(--sp-2);
+  padding-inline-start: calc(20px + var(--sp-3));
+  min-inline-size: 0;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+/* the step bodies hold the older section bodies: no second inset */
+.rf-step-bd > .rf-sec {
+  padding-inline: 0;
+}
+.rf-step-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* step 2 rows: swatch, name and summary, tag; an open row shows its body under it */
+.rf-step-rows {
+  display: grid;
+  gap: var(--sp-1);
+}
+.rf-step-row {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+}
+.rf-step-row[data-open='true'] {
+  border-color: var(--line);
+}
+.rf-step-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  inline-size: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.rf-step-row-head:hover {
+  background: var(--bg-2);
+}
+.rf-step-row-head:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.rf-step-row-head > svg {
+  flex: none;
+  color: var(--fg-3);
+  transition: transform 120ms ease;
+}
+.rf-step-row[data-open='true'] .rf-step-row-head > svg {
+  transform: rotate(90deg);
+}
+.rf-step-swatch {
+  flex: none;
+  inline-size: 6px;
+  block-size: 28px;
+  border-radius: var(--r-2);
+}
+.rf-step-swatch[data-none] {
+  border: 1px dashed var(--line-strong);
+}
+.rf-step-row-t {
+  display: grid;
+  flex: 1;
+  min-inline-size: 0;
+}
+.rf-step-row-name {
+  color: var(--fg-0);
+  font-size: var(--t-12);
+  font-weight: 500;
+}
+.rf-step-row-sum {
+  overflow: hidden;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* an AI value is filled in the accent; the person's own edits keep the outline only */
+.rf-step-row[data-tag='ai'] .tag {
+  background: var(--acc-a12);
+}
+.rf-step-row-bd {
+  border-block-start: 1px solid var(--line-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-step-row-head > svg {
+    transition: none;
+  }
+}
+
+/* Advanced, folded under the steps */
+.rf-adv {
+  margin-inline: var(--sp-4);
+  border-block-start: 1px solid var(--line-soft);
+}
+.rf-adv-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding-block: var(--sp-3);
+  border: 0;
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-12);
+  text-align: start;
+  cursor: pointer;
+}
+.rf-adv-head:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.rf-adv-head > svg {
+  flex: none;
+  color: var(--fg-3);
+  transition: transform 120ms ease;
+}
+.rf-adv[data-open='true'] .rf-adv-head > svg {
+  transform: rotate(90deg);
+}
+.rf-adv-title {
+  font-weight: 600;
+}
+.rf-adv-sum {
+  overflow: hidden;
+  color: var(--fg-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rf-adv-bd {
+  display: grid;
+  gap: var(--sp-3);
+  padding-block-end: var(--sp-4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-adv-head > svg {
+    transition: none;
+  }
 }
 
 /* ----------------------------------------------------------------------- the picker */
