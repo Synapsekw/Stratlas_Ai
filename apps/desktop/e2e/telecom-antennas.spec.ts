@@ -12,7 +12,13 @@ import { writeTelecomTower } from './telecomFixtures';
 interface Inspect {
   __stratlas: {
     stage(): EngineStage | null;
-    antennas: { setState(patch: Record<string, unknown>): void };
+    antennas: {
+      setState(patch: Record<string, unknown>): void;
+      getState(): {
+        selected: string | null;
+        file: { units: { id: string; name: string }[] } | null;
+      };
+    };
     workspace: { getState(): { project: { id: string } | null } };
   };
 }
@@ -135,6 +141,14 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await expect(panel).toContainText('Project north');
   await expect(detect).toBeEnabled();
   await viewCrown(win);
+  // the run lists the units and opens no card: nothing is selected until the person picks
+  const card = win.getByTestId('antenna-card');
+  await expect(card).toHaveCount(0);
+  await expect(panel.locator('[aria-selected="true"][data-testid="antenna-row"]')).toHaveCount(0);
+  await panel.getByTestId('antenna-filter-all').click();
+  await expect(card).toHaveCount(0);
+  await expect(panel.locator('[aria-selected="true"][data-testid="antenna-row"]')).toHaveCount(0);
+  await panel.getByTestId('antenna-filter-draft').click();
   await evidence(win, 'c-inventory-after-run');
   // select the first unit: its row, the halo in 3D and the details
   const first = rows.first();
@@ -142,8 +156,20 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await win.keyboard.press('Enter');
   await expect(first).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => sceneHas(win, 'antenna-highlight')).toBe(true);
-  const card = win.getByTestId('antenna-card');
   await expect(card).toBeVisible();
+  // the header shows the whole name, as the row does
+  const head = card.getByTestId('antenna-card-name');
+  const name = await win.evaluate(() => {
+    const a = (window as unknown as Inspect).__stratlas.antennas.getState();
+    return a.file?.units.find((u) => u.id === a.selected)?.name ?? '';
+  });
+  expect(name.length).toBeGreaterThan(0);
+  await expect(head).toHaveText(name);
+  await expect(first).toContainText(name);
+  expect(
+    await head.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    'the card header name is not cut',
+  ).toBe(true);
   // the run leaves the filter on To review, so the card walks the 8 drafts, in the list's order
   await expect(card.getByTestId('antenna-card-position')).toHaveText('1 / 8');
   await evidence(win, 'e-card-selected');
@@ -168,8 +194,20 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
   await expectAccessible(win, 'Antenna card', { include: '[data-testid="antenna-card"]' });
 
-  // Hide all: only the selected unit stays drawn, and the walk moves it with the selection
+  // a clicked row keeps the review keys: the arrow steps the card, Escape closes it
   await panel.getByTestId('antenna-filter-draft').click();
+  await rows.nth(0).click();
+  await expect(rows.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await win.keyboard.press('ArrowRight');
+  await expect(rows.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(card.getByTestId('antenna-card-position')).toHaveText('2 / 7');
+  await evidence(win, 'i-row-click-arrow-step');
+  await win.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
+  await rows.nth(0).click();
+  await expect(card).toBeVisible();
+
+  // Hide all: only the selected unit stays drawn, and the walk moves it with the selection
   await panel.getByTestId('antenna-hide-all').click();
   await expect.poll(() => boxNames(win)).toHaveLength(1);
   const [before] = await boxNames(win);
@@ -254,7 +292,13 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   ).toBeVisible();
   if (await win.getByTestId('project-card').first().isVisible()) await openTiny(win);
   else await openTelecom(win);
+  // a fresh open selects nothing, and neither does a filter click
+  await expect(win.getByTestId('antenna-card')).toHaveCount(0);
   await win.getByTestId('antenna-panel').getByTestId('antenna-filter-all').click();
+  await expect(win.getByTestId('antenna-card')).toHaveCount(0);
+  await expect(
+    win.getByTestId('antenna-panel').locator('[aria-selected="true"][data-testid="antenna-row"]'),
+  ).toHaveCount(0);
   const reopened = win
     .getByTestId('antenna-panel')
     .locator('[data-testid="antenna-row"][data-status="accepted"]');
