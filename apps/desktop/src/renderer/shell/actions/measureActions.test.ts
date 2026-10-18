@@ -43,8 +43,8 @@ const m = (id: string, folder?: string, color?: string) => ({
 const ctx = (o: { pkg?: boolean; canEdit?: boolean } = {}) => makeActionCtx({ manifest, ...o });
 const one = (id: string): MenuTarget => ({ kind: 'measurements', ids: [id], clicked: id });
 const ids = (target: MenuTarget, c = ctx()) => actionsFor(target, c).map((i) => i.id);
-const styleOf = (id: string) =>
-  measureStore.getState().file.measurements.find((x) => x.id === id)?.style ?? {};
+const colourOf = (id: string) =>
+  measureStore.getState().file.measurements.find((x) => x.id === id)?.style?.color;
 const folderOf = (id: string) =>
   measureStore.getState().file.measurements.find((x) => x.id === id)?.folder;
 
@@ -108,7 +108,7 @@ describe('measurement menu actions', () => {
     ]);
     expect(colour?.sub[0]?.checked).toBe(true);
     colour?.run('#06d6a0');
-    expect(styleOf('m1').color).toBe('#06d6a0');
+    expect(colourOf('m1')).toBe('#06d6a0');
   });
 
   it('moves to a folder, out of one, or into a new one', () => {
