@@ -783,7 +783,11 @@ describe('ai:engineer', () => {
       let approval = '';
       for (let pass = 1; pass <= minutes / 10; pass++) {
         const out = await current.runtime.engineer({ ...req, pass, consent });
-        expect(out).toMatchObject({ kind: 'proposal', cached: false });
+        const failedSpend = out.kind === 'proposal' ? undefined : await readRunSpend(runDir());
+        expect(out, JSON.stringify({ detail, pass, out, spend: failedSpend })).toMatchObject({
+          kind: 'proposal',
+          cached: false,
+        });
         if (out.kind !== 'proposal') throw new Error(out.kind);
         costUsd += out.costUsd;
         expect(await readRunSpend(runDir())).toMatchObject({
