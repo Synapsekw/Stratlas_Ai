@@ -5,6 +5,7 @@
  * box mesh in `antennaScene` is placed.
  */
 import { shiftEN, type AntennaUnit, type DateShift, type Vec3 } from '@aio/schema';
+import { t } from '@aio/ui';
 import type { Frame } from '../survey/measureScene';
 import { formatDeg, trueAzimuth } from './antennaFormat';
 import type { AntennaLabelSpot } from './antennaVisibility';
@@ -13,6 +14,9 @@ import type { AntennaLabelSpot } from './antennaVisibility';
 export const DIM_OFFSET_M = 0.08;
 /** Length of the tick across each end of a dimension line, metres. */
 export const DIM_TICK_M = 0.05;
+/** A length as label text: '2.60 m'. */
+const metres = (v: number): string => t('telecom.antennas.label.metres', { value: v.toFixed(2) });
+
 /** Gap between the box top and its name label, metres. */
 const NAME_LIFT_M = 0.15;
 
@@ -69,11 +73,18 @@ function angleText(unit: AntennaUnit): string | null {
   if (!grid) return null;
   const az =
     unit.convergenceDeg === null ? grid.value : trueAzimuth(grid.value, unit.convergenceDeg);
-  const parts = [`az ${formatDeg(az)}`];
-  if (unit.kind === 'dish') {
-    if (unit.elevationDeg) parts.push(`elev ${formatDeg(unit.elevationDeg.value)}`);
-  } else if (unit.downtiltDeg) parts.push(`tilt ${formatDeg(unit.downtiltDeg.value)}`);
-  return parts.join(' · ');
+  const azText = formatDeg(az);
+  if (unit.kind === 'dish' && unit.elevationDeg)
+    return t('telecom.antennas.label.angleDish', {
+      az: azText,
+      elev: formatDeg(unit.elevationDeg.value),
+    });
+  if (unit.kind !== 'dish' && unit.downtiltDeg)
+    return t('telecom.antennas.label.angle', {
+      az: azText,
+      tilt: formatDeg(unit.downtiltDeg.value),
+    });
+  return t('telecom.antennas.label.azimuth', { az: azText });
 }
 
 /**
@@ -109,7 +120,7 @@ export function antennaMeasure(
       ticks.push([add(end, l.push, -DIM_TICK_M / 2), add(end, l.push, DIM_TICK_M / 2)]);
     spots.push({
       key: `${unit.id}:dim:${l.key}`,
-      text: `${l.value.toFixed(2)} m`,
+      text: metres(l.value),
       at: mid(a, b),
       kind: 'dim',
       selected: true,
@@ -124,7 +135,7 @@ export function antennaMeasure(
   const top = Math.max(...antennaCorners(unit, frame, shift).map((p) => p[1]));
   spots.push({
     key: `${unit.id}:name`,
-    text: `${unit.name} · ${unit.heightM.value.toFixed(2)} m`,
+    text: t('telecom.antennas.label.name', { name: unit.name, height: metres(unit.heightM.value) }),
     at: [centre[0], top + NAME_LIFT_M, centre[2]],
     kind: 'name',
     selected: true,

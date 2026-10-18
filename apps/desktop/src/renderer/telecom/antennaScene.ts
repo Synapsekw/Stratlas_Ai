@@ -87,6 +87,11 @@ export const SELECTED_FILL = 0.35;
 export const SELECTED_EDGE_PX = 3;
 /** Render order of the selected unit's objects: over the other boxes, the GLB and the cloud. */
 export const SELECTED_ORDER = 43;
+/**
+ * Render order of the selected unit's halo and dimension lines: transparent like the fill, and
+ * drawn after it so the fill does not tint them and a blended GLB does not paint over them.
+ */
+export const SELECTED_OVERLAY_ORDER = 44;
 const DIM_COLOUR = '#ffffff';
 
 /** Whether the scene state draws this unit (`isAntennaDrawn`, solo absent counts as none). */
@@ -196,10 +201,16 @@ function dimensionsOf(unit: AntennaUnit, frame: Frame, shift: DateShift | null):
   g.setAttribute('position', new Float32BufferAttribute(segments.flat(2), 3));
   const line = new LineSegments(
     g,
-    new LineBasicMaterial({ color: DIM_COLOUR, depthTest: false, depthWrite: false }),
+    new LineBasicMaterial({
+      color: DIM_COLOUR,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      opacity: 1,
+    }),
   );
   line.name = `antenna-dim:${unit.id}`;
-  line.renderOrder = SELECTED_ORDER;
+  line.renderOrder = SELECTED_OVERLAY_ORDER;
   line.frustumCulled = false;
   line.raycast = () => undefined;
   return line;
@@ -258,14 +269,19 @@ export function buildAntennaGroup(state: AntennaSceneState, frame: Frame): Group
     if (selected) {
       const halo = new LineSegments(
         edges.clone(),
-        new LineBasicMaterial({ color: HIGHLIGHT_COLOUR, depthTest: false }),
+        new LineBasicMaterial({
+          color: HIGHLIGHT_COLOUR,
+          depthTest: false,
+          transparent: true,
+          opacity: 1,
+        }),
       );
       halo.name = 'antenna-highlight';
       halo.userData.antennaId = unit.id;
       halo.position.copy(mesh.position);
       halo.quaternion.copy(quat);
       halo.scale.setScalar(HIGHLIGHT_SCALE);
-      halo.renderOrder = SELECTED_ORDER;
+      halo.renderOrder = SELECTED_OVERLAY_ORDER;
       halo.raycast = () => undefined;
       group.add(halo);
       group.add(dimensionsOf(unit, frame, shift));

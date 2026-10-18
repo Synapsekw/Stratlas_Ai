@@ -267,7 +267,9 @@ describe('antenna review drawing', () => {
     expect(lm.color.getHexString()).toBe(KIND_COLOURS.short.slice(1));
     // a draft stays dashed when selected
     expect(lm.dashed).toBe(true);
-    expect(named(g, 'antenna-highlight')?.renderOrder).toBe(43);
+    const halo = named(g, 'antenna-highlight');
+    expect(halo?.renderOrder).toBe(44);
+    expect((halo?.material as LineBasicMaterial).transparent).toBe(true);
     expect(named(g, 'antenna-facing:ant-draft')?.renderOrder).toBe(43);
     // others keep today's look
     const other = g.getObjectByName('antenna-box:ant-acc') as Mesh;
@@ -285,7 +287,9 @@ describe('antenna review drawing', () => {
     const mat = dim.material as LineBasicMaterial;
     expect(mat.color.getHexString()).toBe('ffffff');
     expect(mat.depthTest).toBe(false);
-    expect(dim.renderOrder).toBe(43);
+    expect(dim.renderOrder).toBe(44);
+    expect(mat.transparent).toBe(true);
+    expect(mat.opacity).toBe(1);
     const segments = antennaMeasure(accUnit, frame, null).segments;
     expect(dim.geometry.getAttribute('position').count).toBe(segments.length * 2);
     expect(named(buildAntennaGroup(state(), frame), 'antenna-dim:ant-acc')).toBeUndefined();
