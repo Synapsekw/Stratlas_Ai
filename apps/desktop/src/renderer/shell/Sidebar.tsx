@@ -15,6 +15,8 @@ import {
   isMenuKey,
   keyMenuPoint,
   makeActionCtx,
+  measureIdOf,
+  measurementsGroup,
   menuPoint,
   nextMarks,
   NO_MARKS,
@@ -32,13 +34,14 @@ import {
   type IconName,
   type MarkMods,
   type Marks,
+  type MeasureTreeProps,
   type MessageKey,
   type TreeGroup,
   type TreeItem,
   shortcutHint,
 } from '@aio/ui';
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useState, type HTMLAttributes } from 'react';
+import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
 import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
@@ -49,6 +52,17 @@ import { watchPanoStitches } from '../panos/panoJobs';
 import { pickAndScanPanos } from '../panos/panos';
 import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
+import { buildMeasureItems } from '../survey/measureRows';
+import {
+  deleteMeasurements,
+  endNewFolder,
+  renameMeasurement,
+  revealMeasurement,
+  select,
+  setFolder,
+  setMeasurementsHidden,
+  useMeasure,
+} from '../survey/measureStore';
 import { walkBadge, walkGroupAction } from '../walks/walkBadge';
 import { openWalk, placeWalk, removeWalkPlacement, useWalks } from '../walks/walks';
 import { WalkRowProcess } from '../walks/WalkProcessLine';
@@ -66,7 +80,7 @@ import { registerSidebarActions } from './actions';
 import { commitLayerRename } from './actions/layerActions';
 import { TreeMenu, type TreeMenuRequest } from './DateMenus';
 import { DateNotes, type DateNote } from './DateNotes';
-import { menuTitle, rowTarget } from './menuTargets';
+import { measureTarget, menuTitle, rowTarget } from './menuTargets';
 import { renameRequest, useRenameRequest } from './renameRequest';
 import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
@@ -92,6 +106,29 @@ const NAV: NavDef[] = [
   { screen: 'detections', label: 'nav.detections', icon: 'target' },
   { screen: 'reports', label: 'nav.reports', icon: 'report' },
 ];
+
+/**
+ * The groups open at first: the tree's own defaults (DatasetTree's DEFAULT_OPEN), and the
+ * Measurements group, so a finished measurement is seen in the list without a click.
+ */
+const OPEN_GROUPS: readonly TreeGroupKind[] = [
+  'models',
+  'maps',
+  'measurements',
+  'drawings',
+  'video',
+  'walks',
+  'panoramas',
+  'annotations',
+];
+
+/** The measurement ids among marks (a measurement row marks `measure:<id>`). */
+function measureIdsOf(marks: Iterable<string>): string[] {
+  return [...marks].flatMap((m) => {
+    const id = measureIdOf(m);
+    return id === null ? [] : [id];
+  });
+}
 
 function NavItem({
   def,
@@ -147,10 +184,60 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       ),
     [walkLayers, walkRecords, walkChecked],
   );
-  const groups = useMemo(
-    () => (project ? buildDatasetTree(project.manifest, issues, durations, { unplaced }) : []),
-    [project, issues, durations, unplaced],
+  // the Measurements group: rows from the measurement store, their eyes remembered per project
+  const measureFile = useMeasure((s) => s.file);
+  const measureSettings = useMeasure((s) => s.settings);
+  const measureTemplates = useMeasure((s) => s.templates);
+  const hiddenMeasurements = useMeasure((s) => s.hiddenMeasurements);
+  const measureFocus = useMeasure((s) => s.focus);
+  const measureReadOnly = useMeasure((s) => s.readOnly);
+  const newFolder = useMeasure((s) => s.newFolder);
+  const reveal = useMeasure((s) => s.reveal);
+  const measureRenaming = useRenameRequest((st) => st.measureId);
+  const dates = useWorkspace((s) => s.dates);
+  const manifest = project?.manifest ?? null;
+  const measureItems = useMemo(
+    () =>
+      buildMeasureItems(
+        { file: measureFile, settings: measureSettings, templates: measureTemplates },
+        manifest,
+        { dates, hidden },
+      ),
+    [measureFile, measureSettings, measureTemplates, manifest, dates, hidden],
   );
+  const measureHidden = useMemo(
+    () => Object.fromEntries(hiddenMeasurements.map((id) => [id, true] as const)),
+    [hiddenMeasurements],
+  );
+  // A reveal that opens the folded sidebar is asked again once the open tree is drawn: a tree
+  // drawn after a reveal takes it as already seen (survey dates on, opening swaps the rail for the
+  // date tree). Asked again without opening, so it is not asked a third time.
+  const revealWaits = useRef<number | null>(null);
+  useEffect(() => {
+    if (collapsed) {
+      if (reveal?.openSidebar === true) revealWaits.current = reveal.seq;
+      return;
+    }
+    const waited = revealWaits.current;
+    revealWaits.current = null;
+    if (waited !== null && waited === reveal?.seq)
+      revealMeasurement(reveal.id, { openSidebar: false });
+  }, [reveal, collapsed]);
+  const groups = useMemo(
+    () =>
+      project
+        ? buildDatasetTree(project.manifest, issues, durations, {
+            unplaced,
+            measurements: measureItems,
+          })
+        : [],
+    [project, issues, durations, unplaced, measureItems],
+  );
+  // survey dates on: the group shows once, below the date folders (no date folder holds it)
+  const after = useMemo(() => {
+    const g = measurementsGroup(measureItems);
+    return g ? [g] : [];
+  }, [measureItems]);
   const t = useT();
   const index = useCaptureIndex();
   const focus = useTimeline((s) => s.focus);
@@ -232,9 +319,25 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     if (ok.length > 0) askRemove(ok.map((layer) => ({ layer })));
   };
   const onMark = (id: string, mods: MarkMods, order: readonly string[]) => {
-    setMarks((m) => nextMarks(m, order, id, mods));
+    const next = nextMarks(marks, order, id, mods);
+    setMarks(next);
+    // marked measurements are selected too, so the Selected panel totals them
+    const ids = measureIdsOf(next.marked);
+    if (ids.length > 0) select(ids);
   };
   const marked = marks.marked.size > 0;
+  /** Delete these rows: measurements straight away (Save measurements keeps it), layers asking. */
+  const deleteRows = (ids: readonly string[]) => {
+    const ms = measureIdsOf(ids);
+    if (ms.length > 0 && !measureReadOnly) {
+      deleteMeasurements(ms);
+      setMarks((m) => ({
+        marked: new Set([...m.marked].filter((x) => measureIdOf(x) === null)),
+        anchor: m.anchor !== null && measureIdOf(m.anchor) !== null ? null : m.anchor,
+      }));
+    }
+    askLayers(ids.filter((id) => measureIdOf(id) === null));
+  };
 
   const failed = (error: string | null) => {
     setNote(error ? { text: error, danger: true } : null);
@@ -375,6 +478,19 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       label: t('tree.dates.menu.label', { date: m.folder.label }),
       testId: 'date-menu',
       host: { toggle: m.toggle, expanded: m.expanded, from: m.folder.id },
+    });
+  };
+  /** A measurement row's menu: the marked measurements when it is one of them, else the row. */
+  const openMeasure = (id: string, at: MenuPoint) => {
+    const target = measureTarget(id, marks.marked);
+    const name = measureFile.measurements.find((m) => m.id === id)?.label ?? id;
+    setMenu({
+      target,
+      ...at,
+      title: menuTitle(target, ctx, name),
+      label: t('actions.menu.label', { name }),
+      testId: 'measure-menu',
+      host: {},
     });
   };
   const onDatesMenu = (m: DateItemMenuRequest) => {
@@ -525,6 +641,40 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   };
   const markProps = { marked: marks.marked, onMark: canEdit ? onMark : undefined };
 
+  // rename, folders and delete edit the measurements file: not when it is read-only
+  const canMeasureEdit = canEdit && !measureReadOnly;
+  const measures: MeasureTreeProps = {
+    hidden: measureHidden,
+    selectedId: measureFocus,
+    onSetVisible: (ids, visible) => {
+      setMeasurementsHidden(ids, !visible);
+    },
+    onSelect: (id) => {
+      // a plain click selects one row and lets go of the marks
+      setMarks(NO_MARKS);
+      select([id], id);
+    },
+    onMenu: openMeasure,
+    renaming: canMeasureEdit ? measureRenaming : null,
+    onRenameStart: canMeasureEdit
+      ? (id) => {
+          renameRequest.getState().askMeasure(id);
+        }
+      : undefined,
+    onRename: (id, label) => {
+      renameMeasurement(id, label);
+    },
+    onRenameEnd: () => {
+      renameRequest.getState().done();
+    },
+    newFolder: canMeasureEdit ? newFolder : null,
+    onNewFolder: (name) => {
+      if (name && newFolder) setFolder(newFolder.ids, name);
+      endNewFolder();
+    },
+    reveal,
+  };
+
   // while rows are marked the header offers their Delete in place of the count and the add tools
   // (the sidebar is too narrow for all of them); the eye stays (founder, 13 Oct 2026)
   const marking = canEdit && marked;
@@ -549,6 +699,12 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         if (isMenuKey(e)) {
           e.preventDefault();
           // a button inside a row (eye, gear) opens that row's menu
+          const measureRow = e.target.closest<HTMLElement>('[data-testid="measure-row"]');
+          const measureId = measureRow?.dataset.id;
+          if (measureRow && measureId !== undefined) {
+            openMeasure(measureId, keyMenuPoint(measureRow));
+            return;
+          }
           const row = e.target.closest<HTMLElement>('[data-mark]');
           const id = row?.dataset.mark;
           const layer = id ? project.manifest.layers.find((l) => l.id === id) : undefined;
@@ -572,7 +728,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           const ids = marked ? [...marks.marked] : row ? [row] : [];
           if (ids.length === 0) return;
           e.preventDefault();
-          askLayers(ids);
+          deleteRows(ids);
         }
       }}
     >
@@ -594,7 +750,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               className="tree-marked"
               data-testid="tree-marked-delete"
               onClick={() => {
-                askLayers([...marks.marked]);
+                deleteRows([...marks.marked]);
               }}
             >
               {t('tree.marked', { count: marks.marked.size })} · {t('tree.delete')}
@@ -700,6 +856,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             setRenaming(null);
           }}
           {...layerRenameProps}
+          defaultOpen={OPEN_GROUPS}
+          measures={measures}
+          after={after}
         />
       ) : (
         <DatasetTree
@@ -725,6 +884,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           }}
           dragGroupIds={groupDatableLayerIds}
           {...layerRenameProps}
+          defaultOpen={OPEN_GROUPS}
+          measures={measures}
           onGroupMenu={(g, layerIds, at, fold) => {
             openGroup(
               g.kind,
@@ -784,6 +945,15 @@ export function Sidebar({ resize }: SidebarProps = {}) {
   const collapsed = useShell(isSidebarFolded);
   const libCount = useShell((s) => s.library?.length);
   const issueCount = useWorkspace((s) => (s.project ? s.issues.length : undefined));
+  // a reveal of a measurement (the telecom panel's Measurements) opens a folded sidebar; finishing
+  // a shape reveals it without opening
+  const revealSeq = useMeasure((s) => s.reveal?.seq);
+  const revealOpens = useMeasure((s) => s.reveal?.openSidebar === true);
+  useEffect(() => {
+    if (revealSeq === undefined || !revealOpens) return;
+    const sh = shell.getState();
+    if (isSidebarFolded(sh)) void sh.toggleSidebar();
+  }, [revealSeq, revealOpens]);
 
   return (
     <aside className="sidebar" id={PANEL_ID.left} aria-label={t('nav.primary')}>

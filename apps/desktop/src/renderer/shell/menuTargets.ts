@@ -1,6 +1,16 @@
-import { t, targetCount, type ActionCtx, type MenuTarget, type TreeItem } from '@aio/ui';
+import {
+  measureIdOf,
+  t,
+  targetCount,
+  type ActionCtx,
+  type MenuTarget,
+  type TreeItem,
+} from '@aio/ui';
 
-/** What a right-click on a row acts on: the marked rows when it is one of them, else the row. */
+/**
+ * What a right-click on a row acts on: the marked rows when it is one of them, else the row.
+ * Marked measurements are not layers: a layer row's menu leaves them out.
+ */
 export function rowTarget(item: TreeItem, marked: ReadonlySet<string>): MenuTarget | null {
   if (!item.layerId && !item.children && (item.id === 'issues' || item.id === 'drafts'))
     return { kind: 'annotations', row: item.id };
@@ -10,8 +20,28 @@ export function rowTarget(item: TreeItem, marked: ReadonlySet<string>): MenuTarg
       ? [item.layerId]
       : [];
   if (own.length === 0) return null;
-  const onMarked = marked.size > 1 && own.some((id) => marked.has(id));
-  return { kind: 'layers', layerIds: onMarked ? [...marked] : own };
+  const layers = [...marked].filter((id) => measureIdOf(id) === null);
+  const onMarked = layers.length > 1 && own.some((id) => marked.has(id));
+  return { kind: 'layers', layerIds: onMarked ? layers : own };
+}
+
+/**
+ * What a right-click on a measurement row acts on: the marked measurements when it is one of two
+ * or more, else the row; `clicked` is the row (Rename and Fly to act on it alone).
+ */
+export function measureTarget(
+  id: string,
+  marked: ReadonlySet<string>,
+): Extract<MenuTarget, { kind: 'measurements' }> {
+  const ids = [...marked].flatMap((m) => {
+    const mid = measureIdOf(m);
+    return mid === null ? [] : [mid];
+  });
+  return {
+    kind: 'measurements',
+    ids: ids.length > 1 && ids.includes(id) ? ids : [id],
+    clicked: id,
+  };
 }
 
 /**
@@ -34,6 +64,10 @@ export function menuTitle(target: MenuTarget, ctx: ActionCtx, name: string): str
     }
     case 'photos':
       return t('actions.header.photos', { count: targetCount(target) });
+    case 'measurements':
+      return target.ids.length > 1
+        ? t('actions.header.measurements', { count: target.ids.length })
+        : name;
     default:
       return name;
   }
