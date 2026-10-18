@@ -1,32 +1,59 @@
-/* detections of the nearest walk frame, over the 360 view (the review's outline look) */
+/* detections of the nearest walk frame, over the 360 view (the review's look: class colour over
+   a dark halo, a faint tint, a label chip; @aio/annotate/detections classStyle) */
 .walk-det {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
 }
-.walk-det-box polygon,
-.walk-det-box polyline {
+.walk-det-box .halo,
+.walk-det-box .line {
   fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  transition:
+    stroke-width 0.12s var(--ease-x),
+    opacity 0.12s var(--ease-x);
+}
+/* the dark halo under the line; it is also where the pointer finds the box */
+.walk-det-box .halo {
+  stroke: oklch(0.13 0.01 250 / 0.72);
+  stroke-width: 4.5;
+  pointer-events: visibleStroke;
+}
+.walk-det-box .line {
   stroke: var(--c);
+  stroke-width: 2.5;
+  pointer-events: visibleStroke;
+}
+.walk-det-box polygon.line {
+  fill: color-mix(in oklch, var(--c) 10%, transparent);
+}
+.walk-det-box.hov .line {
+  stroke-width: 3.5;
+}
+.walk-det-box.hov .halo {
+  stroke-width: 5.5;
+}
+.walk-det-box.accepted .line {
   stroke-width: 2;
-  stroke-linejoin: round;
 }
-.walk-det-box polygon {
-  fill: color-mix(in oklch, var(--c) 14%, transparent);
+.walk-det-box.accepted.hov .line {
+  stroke-width: 3;
 }
-.walk-det-box.accepted polygon,
-.walk-det-box.accepted polyline {
-  stroke-width: 1.5;
-  opacity: 0.8;
+.walk-det-chip rect {
+  stroke: oklch(0.13 0.01 250 / 0.55);
+  stroke-width: 1;
 }
-.walk-det-box text {
-  font: 600 10px/1 var(--f-mono);
-  fill: var(--c);
-  paint-order: stroke;
-  stroke: var(--bg-0);
-  stroke-width: 3px;
-  stroke-linejoin: round;
+.walk-det-chip text {
+  font: 600 12px/1 var(--f-ui);
+  dominant-baseline: central;
+}
+@media (prefers-reduced-motion: reduce) {
+  .walk-det-box .halo,
+  .walk-det-box .line {
+    transition: none;
+  }
 }
 /* Level horizon is on: the boxes are in the unlevelled copy's pixels */
 .walk-det-note {

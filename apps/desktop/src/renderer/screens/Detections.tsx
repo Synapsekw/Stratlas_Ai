@@ -30,6 +30,7 @@ import { hasDetectable, itemKey, type DetectItem } from '../detections/convert';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
 import { frameLayerSrc } from '../detections/frameMedia';
 import { Inspector } from '../detections/Inspector';
+import { detectionLook } from '../detections/look';
 import { reviewCommand, typingIn } from '../detections/keys';
 import { BatchConfirm, BatchError } from '../detections/BatchConfirm';
 import {
@@ -60,7 +61,6 @@ const ERROR_KEY: Record<ReviewError, MessageKey> = {
   missing: 'det.error.missing',
   duplicate: 'det.error.duplicate',
 };
-const UNKNOWN_COLOR = '#8a94a6';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 
@@ -147,7 +147,7 @@ export function DetectionsScreen() {
       list.push({
         id: d.id,
         geom: d.geom,
-        color: classById.get(d.classId)?.color ?? UNKNOWN_COLOR,
+        color: detectionLook(d, classById.get(d.classId)).color,
         size: d.size,
         status: d.status,
       });
@@ -222,14 +222,7 @@ export function DetectionsScreen() {
         (d) => d.status !== 'rejected' || d.id === review.currentId || review.filter === 'rejected',
       )
       .map((d) => {
-        const cls = classById.get(d.classId);
-        const conf =
-          d.confidence !== undefined ? ` ${String(Math.round(d.confidence * 100))}%` : '';
-        return {
-          detection: d,
-          color: cls?.color ?? UNKNOWN_COLOR,
-          label: `${cls?.label ?? d.label ?? '?'}${conf}`,
-        };
+        return { detection: d, ...detectionLook(d, classById.get(d.classId)) };
       });
   }, [shownSource, review.detections, review.currentId, review.filter, classById]);
 
