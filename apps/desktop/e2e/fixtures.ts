@@ -742,10 +742,16 @@ export const MISALIGNED_PROJECT_ID = 'e2e-misaligned';
  * the corners of `ortho-d2` and `dsm-d2` (layer and `tiles.json`), the origin of
  * `sources/dsm-d2.json` and the positions of `photos-d2`. The clouds stay. Local frame: x grows
  * east and z grows south. Skip the test first when `hasChangeDemo()` is false.
+ *
+ * `turnDeg` and `scale` also turn and scale `d2` about the site centre (local 0, 0) before the
+ * shift, as a line-up similarity does (python/src/aio_pipelines/similarity.py: counter-clockwise,
+ * east towards north; heights never change): the model's transform, the ortho and DSM corners,
+ * the photos (positions and headings) and the DSM grid. The grid is north up (`aio.grid/1`), so it
+ * takes the scale and the shift but not the turn; nothing the specs measure reads its heights.
  */
 export async function createMisalignedDemo(
   dataRoot: DataRoot,
-  shift: { eastM: number; northM: number },
+  shift: { eastM: number; northM: number; turnDeg?: number; scale?: number },
 ): Promise<{ id: string; root: string }> {
   const root = join(dataRoot.root, 'projects', MISALIGNED_PROJECT_ID);
   await mkdir(join(dataRoot.root, 'projects'), { recursive: true });
@@ -759,9 +765,28 @@ export async function createMisalignedDemo(
   interface Manifest {
     id: string;
     name: string;
-    layers: { id: string; transform?: number[]; corners?: Corners; items?: { pos: Vec }[] }[];
+    layers: {
+      id: string;
+      transform?: number[];
+      corners?: Corners;
+      items?: { pos: Vec; q?: number[] }[];
+    }[];
   }
-  const move = (v: Vec): Vec => [v[0] + shift.eastM, v[1], v[2] - shift.northM];
+  // the similarity in the local frame, pivot at the origin: x' = a x + b z + e, z' = -b x + a z - n
+  const rot = ((shift.turnDeg ?? 0) * Math.PI) / 180;
+  const scale = shift.scale ?? 1;
+  const turned = rot !== 0 || scale !== 1;
+  const [a, b] = [scale * Math.cos(rot), scale * Math.sin(rot)];
+  const move = (v: Vec): Vec =>
+    turned
+      ? [a * v[0] + b * v[2] + shift.eastM, v[1], -b * v[0] + a * v[2] - shift.northM]
+      : [v[0] + shift.eastM, v[1], v[2] - shift.northM];
+  /** Quaternion `q` (x, y, z, w) turned by `rot` about +y (local x towards -z: east towards north). */
+  const turnQ = (q: number[]): number[] => {
+    const [x, y, z, w] = [q[0] ?? 0, q[1] ?? 0, q[2] ?? 0, q[3] ?? 1];
+    const [s, c] = [Math.sin(rot / 2), Math.cos(rot / 2)];
+    return [c * x + s * z, c * y + s * w, c * z - s * x, c * w - s * y];
+  };
   const moveCorners = (c: Corners): Corners => ({ tl: move(c.tl), tr: move(c.tr), bl: move(c.bl) });
   const load = async (file: string): Promise<unknown> =>
     JSON.parse(await readFile(join(root, file), 'utf8'));
@@ -773,12 +798,28 @@ export async function createMisalignedDemo(
   manifest.name = 'E2E misaligned dates';
   for (const layer of manifest.layers) {
     if (layer.id === 'model-d2' && layer.transform) {
-      layer.transform[12] = (layer.transform[12] ?? 0) + shift.eastM;
-      layer.transform[14] = (layer.transform[14] ?? 0) - shift.northM;
+      if (turned) {
+        // column-major: the similarity (heights kept) after the layer's own transform
+        const t = layer.transform;
+        const out = [...t];
+        for (let col = 0; col < 4; col++) {
+          const [x, z, w] = [t[col * 4] ?? 0, t[col * 4 + 2] ?? 0, t[col * 4 + 3] ?? 0];
+          out[col * 4] = a * x + b * z + shift.eastM * w;
+          out[col * 4 + 2] = -b * x + a * z - shift.northM * w;
+        }
+        layer.transform = out;
+      } else {
+        layer.transform[12] = (layer.transform[12] ?? 0) + shift.eastM;
+        layer.transform[14] = (layer.transform[14] ?? 0) - shift.northM;
+      }
     }
     if ((layer.id === 'ortho-d2' || layer.id === 'dsm-d2') && layer.corners)
       layer.corners = moveCorners(layer.corners);
-    if (layer.id === 'photos-d2') for (const item of layer.items ?? []) item.pos = move(item.pos);
+    if (layer.id === 'photos-d2')
+      for (const item of layer.items ?? []) {
+        item.pos = move(item.pos);
+        if (turned && item.q) item.q = turnQ(item.q);
+      }
   }
   await save('manifest.json', manifest);
   for (const id of ['ortho-d2', 'dsm-d2']) {
@@ -786,9 +827,17 @@ export async function createMisalignedDemo(
     tiles.corners = moveCorners(tiles.corners);
     await save(`rasters/${id}/tiles.json`, tiles);
   }
-  const grid = (await load('sources/dsm-d2.json')) as { x0: number; y1: number };
-  grid.x0 += shift.eastM;
-  grid.y1 += shift.northM;
+  const grid = (await load('sources/dsm-d2.json')) as { x0: number; y1: number; res: number };
+  if (turned) {
+    // about the site centre, the local origin: 48 m in from the grid's north-west corner
+    const [pe, pn] = [grid.x0 + 48, grid.y1 - 48];
+    grid.x0 = pe + scale * (grid.x0 - pe) + shift.eastM;
+    grid.y1 = pn + scale * (grid.y1 - pn) + shift.northM;
+    grid.res *= scale;
+  } else {
+    grid.x0 += shift.eastM;
+    grid.y1 += shift.northM;
+  }
   await save('sources/dsm-d2.json', grid);
   return { id: MISALIGNED_PROJECT_ID, root };
 }
