@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { TIP_DELAY_MS } from '@aio/ui';
 import type { EngineStage } from '@aio/engine';
 import { emptyMeasurements, type PackageInfo, type SitePoint } from '@aio/schema';
 import { act } from 'react';
@@ -371,9 +372,21 @@ describe('search reaches every section (D16)', () => {
 });
 
 describe('the Saved footer', () => {
-  it('keeps Autosave, Revert, Save, the read-only notice and the load error', () => {
+  it('keeps Autosave, Revert, Save, the read-only notice and the load error', async () => {
     render();
-    expect(q('survey-autosave')).not.toBeNull();
+    const autosave = host.querySelector<HTMLElement>('[data-testid="survey-autosave"]');
+    expect(autosave).not.toBeNull();
+    act(() => {
+      autosave?.focus();
+    });
+    await act(async () => {
+      await new Promise<void>((r) => setTimeout(r, TIP_DELAY_MS + 100));
+    });
+    const tipId = autosave?.getAttribute('aria-describedby');
+    expect(tipId).toBeTruthy();
+    expect(document.getElementById(tipId ?? '')?.textContent).toBe(
+      'Off by default: save when you are ready',
+    );
     expect(q('survey-list-save')?.hasAttribute('disabled')).toBe(true);
     act(() => {
       measureStore.setState({ file: { ...existing, measurements: [] } });

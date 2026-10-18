@@ -3,7 +3,7 @@
  * the list itself lives in the Datasets tree: Autosave, the status line, Revert and Save, the
  * read-only notice, a load error, and the bulk totals of the selection.
  */
-import { Icon, t } from '@aio/ui';
+import { Icon, Tip, t } from '@aio/ui';
 import { BulkTotals } from './BulkTotals';
 import {
   isDirty,
@@ -43,15 +43,16 @@ export function SavedFooter() {
       ) : (
         <footer className="sv-foot" role="none">
           <label className="sv-check">
-            <input
-              type="checkbox"
-              checked={autosave}
-              data-testid="survey-autosave"
-              aria-description={t('measureBench.saved.autosaveTip')}
-              onChange={(e) => {
-                setAutosave(e.target.checked);
-              }}
-            />
+            <Tip content={t('measureBench.saved.autosaveTip')}>
+              <input
+                type="checkbox"
+                checked={autosave}
+                data-testid="survey-autosave"
+                onChange={(e) => {
+                  setAutosave(e.target.checked);
+                }}
+              />
+            </Tip>
             {t('measureBench.saved.autosave')}
           </label>
           <span className="small faint sv-grow" role="status">
