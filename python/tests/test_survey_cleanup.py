@@ -472,3 +472,65 @@ def test_a_dtm_records_the_line_up_and_an_edits_surface_keeps_it(tmp_path, monke
     clean = meta("dtm-clean")
     assert clean["dateShiftM"] == moved["dateShiftM"]
     assert (clean["originE"], clean["originN"]) == (moved["originE"], moved["originN"])
+
+
+def test_dtm_filter_follows_a_turned_line_up(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import aio_pipelines.pointcloud as pc
+    import aio_pipelines.survey.cleanup as cl
+    from aio_pipelines.similarity import Similarity
+    from aio_pipelines.volumetric.cloud import read_las_chunks
+    from imagery_synth import ORIGIN, surface_project
+    from synth import write_las
+
+    def fake_run(ctx, cmd, label):
+        stages = json.loads(Path(cmd[2]).read_text("utf-8"))["pipeline"]
+        parts = [np.stack(c[:3], axis=1) for c in read_las_chunks(Path(stages[0]["filename"]), lambda: None)]
+        write_las(Path(stages[-1]["filename"]), np.concatenate(parts), SITE_EPSG)
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "_run", fake_run)
+    surface_project(tmp_path, kinds=("las", "las"))
+    ctx = SimpleNamespace(
+        project=tmp_path,
+        check=lambda: None,
+        progress=lambda *a, **k: None,
+        log=lambda *a, **k: None,
+        stage=lambda rel: (
+            (tmp_path / "stage" / rel).parent.mkdir(parents=True, exist_ok=True) or tmp_path / "stage" / rel
+        ),
+    )
+
+    def pile_top(g):
+        """The centre of the pile's top (its volume over 4 m), project E and N."""
+        e = g.oe + (np.arange(g.h.shape[1]) + 0.5) * g.cell
+        n = g.on + (np.arange(g.h.shape[0]) + 0.5) * g.cell
+        E, N = np.meshgrid(e, n)
+        w = np.clip(np.nan_to_num(g.h, nan=-99.0) - (ORIGIN[2] + 4.0), 0.0, None)
+        return float((E * w).sum() / w.sum()), float((N * w).sum() / w.sum())
+
+    plain = pile_top(cl.run_dtm_filter(ctx, "surf-b", "equipment"))
+    # the pivot 100 m south-east of the pile, near the second date's south-east corner and beyond
+    pivot = (ORIGIN[0] + 60.0, ORIGIN[1] - 60.0)
+    turn = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": pivot[0], "pivotN": pivot[1]}
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == "c2":
+            c["lineUp"] = {"eastM": 2.0, "northM": -1.0, "with": "c1", "at": "2026-10-16T09:00:00Z"}
+            c["lineUpTurn"] = turn
+    path.write_text(json.dumps(m), "utf-8")
+    moved = pile_top(cl.run_dtm_filter(ctx, "surf-b", "equipment"))
+    want = Similarity(2.0, -1.0, 0.5, 1.0, *pivot).apply_en(*plain)
+    assert math.hypot(want[0] - plain[0] - 2.0, want[1] - plain[1] + 1.0) > 0.5
+    # the ground grid's cells follow the moved points (0.2 m, a little more turned): within a cell
+    assert moved == pytest.approx(want, abs=0.15)
+    # the job records the turn beside the shift, and an edits surface made from it keeps both
+    run_job(pipeline(), tmp_path, {"dtmFilter": {"layer": "surf-b", "preset": "equipment"}, "out": "dtm"})
+    meta = json.loads((tmp_path / "survey" / "surfaces" / "dtm" / "tiles.json").read_text("utf-8"))
+    assert meta["dateShiftM"] == {"eastM": 2.0, "northM": -1.0}
+    assert meta["dateTurn"] == turn
+    run_job(pipeline(), tmp_path, {"surface": "dtm", "edits": [], "out": "dtm-clean"}, job_id="j2")
+    clean = json.loads((tmp_path / "survey" / "surfaces" / "dtm-clean" / "tiles.json").read_text("utf-8"))
+    assert clean["dateTurn"] == turn and clean["dateShiftM"] == meta["dateShiftM"]

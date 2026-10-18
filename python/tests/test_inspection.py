@@ -511,6 +511,34 @@ def test_inspection_meshes_carry_the_shift(project):
     assert moved["min"][1] == pytest.approx(plain["min"][1])
 
 
+def test_inspection_meshes_follows_a_turned_line_up(project):
+    import trimesh
+
+    from aio_pipelines.inspection import frame as Fr
+    from aio_pipelines.similarity import Similarity
+
+    native_project(project)
+    plain = Fr.load_meshes(project, Fr.mesh_layers(Fr.read_manifest(project)), lambda *a: None)
+    line_up_project(project)
+    path = project / "manifest.json"
+    m = json.loads(path.read_text())
+    origin = m["origin"]
+    turn = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": origin[0] - 150.0, "pivotN": origin[1] + 120.0}
+    m["captures"][0]["lineUpTurn"] = turn
+    path.write_text(json.dumps(m))
+    m = Fr.read_manifest(project)
+    moved = Fr.load_meshes(project, Fr.mesh_layers(m), lambda *a: None, m)
+    before = trimesh.util.concatenate([g for _, _, g in plain]).vertices
+    after = trimesh.util.concatenate([g for _, _, g in moved]).vertices
+    sim = Similarity.from_line_up({"eastM": 2.0, "northM": -1.0}, turn)
+    # the corner farthest from the pivot, where the turn shows most
+    px, pz = turn["pivotE"] - origin[0], origin[1] - turn["pivotN"]
+    k = int(np.argmax(np.hypot(before[:, 0] - px, before[:, 2] - pz)))
+    x, z = sim.apply_local(before[k, 0], before[k, 2], origin)
+    assert math.hypot(x - (before[k, 0] + 2.0), z - (before[k, 2] + 1.0)) > 1.0
+    assert after[k] == pytest.approx([x, before[k, 1], z], abs=1e-3)
+
+
 def test_a_lined_up_date_gives_findings_in_its_stored_frame(project):
     # model and photos both sit where the date is lined up while the job runs; what it saves is in
     # the layer's own (stored) frame, so the issues are where an unshifted project puts them

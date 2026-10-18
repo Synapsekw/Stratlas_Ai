@@ -22,8 +22,8 @@ surface or layer id when it has no capture).
   ground points). The preset and its parameters are recorded in ``tiles.json`` (``filter``).
 
 A DTM filter is survey preparation: it reads its cloud where the cloud's date is lined up (the
-date's shift after the layer's own placement) and records the shift as ``dateShiftM`` in
-``tiles.json`` (only when not zero), so every surface in ``survey/surfaces/`` is in the lined-up
+date's line-up after the layer's own placement) and records the shift as ``dateShiftM`` in
+``tiles.json`` (only when not zero) with a turn beside it as ``dateTurn``, so every surface in ``survey/surfaces/`` is in the lined-up
 frame. Edits apply to a prepared surface, which already is.
 
 The derived surface carries no ``capture``: comparisons use it only when a person picks it (its
@@ -308,7 +308,7 @@ def run_dtm_filter(ctx: StepContext, layer: str, preset: str):
     parts = [np.stack([x, y, z], axis=1) for x, y, z, _ in read_las_chunks(ground, ctx.check)]
     pts = np.concatenate(parts) if parts else np.zeros((0, 3))
     if pts.size:
-        from ..captures import date_shift
+        from ..captures import date_similarity
         from ..change.imagery import find_layer
         from ..change.sources import height_offset_m
 
@@ -317,9 +317,10 @@ def run_dtm_filter(ctx: StepContext, layer: str, preset: str):
             # a LAS or COPC is read in file heights; a kit-packed cloud's points came through
             # Surface.points, which already added the offset
             pts[:, 2] += height_offset_m(lyr)
-            east, north = date_shift(manifest, layer)  # a kit-packed cloud got it from Surface.points
-            pts[:, 0] += east
-            pts[:, 1] += north
+            # the date's line-up (a kit-packed cloud got it from Surface.points); heights never change
+            sim = date_similarity(manifest, layer)
+            if not sim.is_identity():
+                pts[:, 0], pts[:, 1] = sim.apply_en(pts[:, 0], pts[:, 1])
     ctx.progress(0.5, "Ground grid")
     return grid_ground(pts[:, 0], pts[:, 1], pts[:, 2])
 
@@ -427,8 +428,9 @@ class SurveyCleanup:
             return {"id": out, "name": name[:200], "source": {"kind": "dtm", "layer": f["layer"]}}
 
         def surface(ctx: StepContext) -> dict[str, Any]:
-            from ..captures import date_shift
+            from ..captures import date_similarity
             from ..change.imagery import read_manifest
+            from .grid import line_up_key, line_up_meta
             from .prepare import _crs_of
 
             g = run_dtm_filter(ctx, f["layer"], f["preset"])
@@ -439,9 +441,9 @@ class SurveyCleanup:
 
             key: dict[str, Any] = {"dtm": f, "preset": DTM_PRESETS[f["preset"]]}
             man = read_manifest(ctx.project)
-            shift = date_shift(man, f["layer"])
-            if shift != (0.0, 0.0):  # a date without a line-up keeps the fingerprint it always had
-                key["dateShiftM"] = list(shift)
+            sim = date_similarity(man, f["layer"])
+            # a date without a line-up keeps the fingerprint it always had, a shift alone too
+            key.update(line_up_key(sim))
             off = height_offset_m(find_layer(man, f["layer"]))
             if off:  # a cloud without an offset keeps the fingerprint it always had
                 key["heightOffsetM"] = off
@@ -458,7 +460,7 @@ class SurveyCleanup:
                 "originN": g.on,
                 **fields,
                 "filter": {"preset": f["preset"], "pdal": DTM_PRESETS[f["preset"]]},
-                **({"dateShiftM": {"eastM": shift[0], "northM": shift[1]}} if shift != (0.0, 0.0) else {}),
+                **line_up_meta(sim),
                 "fingerprint": fp,
                 "preparedAt": now_iso(),
             }

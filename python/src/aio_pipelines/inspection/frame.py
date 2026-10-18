@@ -123,7 +123,7 @@ def load_meshes(
     shift after the layer's own transform): the job combines it with photos and findings."""
     import trimesh
 
-    from ..captures import date_shift, shift_transform
+    from ..captures import date_similarity, similarity_transform
 
     parts = []
     for layer in layers:
@@ -140,7 +140,8 @@ def load_meshes(
             raise JobError(f"Could not read the model {path.name}: {e}") from e
         transform = layer.get("transform")
         if manifest:
-            transform = shift_transform(transform, date_shift(manifest, layer["id"]))
+            origin = manifest.get("origin") or [0, 0, 0]
+            transform = similarity_transform(transform, date_similarity(manifest, layer["id"]), origin)
         L = layer_matrix(transform)
         for node in sc.graph.nodes_geometry:
             T, gname = sc.graph[node]

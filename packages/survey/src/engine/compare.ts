@@ -17,7 +17,15 @@
  * through `aio://`, a design TIN, or the stockpile kit's grids in memory) and an `AbortSignal`
  * cancels a computation when the polygon is edited.
  */
-import type { BaseSpec, ComparisonItem, ComparisonResult, SurfaceRef } from '@aio/schema';
+import type {
+  BaseSpec,
+  CaptureLineUpTurn,
+  ComparisonItem,
+  ComparisonResult,
+  DateShift,
+  SurfaceRef,
+} from '@aio/schema';
+import { hasTurn, shiftEN } from '@aio/schema';
 import { buildBase, f3, Refused, TIN_STEP_M, type Samples } from './bases';
 import { canonical, sha256Hex, type Json } from './fingerprint';
 import {
@@ -79,13 +87,35 @@ export type ResolvedSurface =
 export type Shift = readonly [number, number];
 
 /**
- * What a prepared surface knows of its date's line-up: `current` is the date's shift now (it joins
- * the fingerprint, so a result reads stale after a line-up), the prepared shift (`dateShiftM` in
- * its tiles.json) is what its cells sit at. Absent means no shift.
+ * The turn and scale of a date's line-up, beside its `Shift` (a capture's `lineUpTurn`, a prepared
+ * surface's `dateTurn`): about the pivot, in the project CRS. Absent means none.
+ */
+export type Turn = CaptureLineUpTurn;
+
+/**
+ * What a prepared surface knows of its date's line-up: `current` is the date's shift now and
+ * `currentTurn` its turn (they join the fingerprint, so a result reads stale after a line-up), the
+ * prepared shift and turn (`dateShiftM`, `dateTurn` in its tiles.json) are what its cells sit at.
+ * Absent means none.
  */
 interface Lined {
   current?: Shift;
+  currentTurn?: Turn;
 }
+
+/** A shift and an optional turn as the schema's `DateShift`, for `shiftEN` (E and N only). */
+function enShift(shift: Shift | undefined, turn: Turn | undefined): DateShift {
+  const s: DateShift = { eastM: shift?.[0] ?? 0, northM: shift?.[1] ?? 0 };
+  // the local-frame pivot is not used by `shiftEN`
+  if (turn && hasTurn(turn)) s.turn = { ...turn, pivotX: 0, pivotZ: 0 };
+  return s;
+}
+
+/** A turn for a fingerprint: its four saved numbers, or undefined for none (or an identity one). */
+const turnFp = (t: Turn | undefined): Json | undefined =>
+  t && hasTurn(t)
+    ? { rotationDeg: t.rotationDeg, scale: t.scale, pivotE: t.pivotE, pivotN: t.pivotN }
+    : undefined;
 
 export type Resolve = (ref: SurfaceRef) => Promise<ResolvedSurface>;
 
@@ -105,10 +135,15 @@ export interface CompareOptions {
    * The ring is as stored. A survey's own measurement is stored in its unshifted frame while the
    * prepared surface sits where its date was lined up: `ringShift` (the surface's `dateShiftM`)
    * is added before sampling; `ringCurrent` (the date's shift now, default `ringShift`) joins the
-   * fingerprint. A site-wide ring is already in the lined-up frame (no shift).
+   * fingerprint. A site-wide ring is already in the lined-up frame (no shift). `ringTurn` (the
+   * surface's `dateTurn`) and `ringCurrentTurn` (the date's turn now) go beside them: the ring is
+   * turned too, and the turn joins the fingerprint. `ringCurrentTurn` is read with `ringCurrent`;
+   * without `ringCurrent`, the current line-up is `ringShift` with `ringTurn`.
    */
   ringShift?: Shift;
   ringCurrent?: Shift;
+  ringTurn?: Turn;
+  ringCurrentTurn?: Turn;
 }
 
 /** Coverage and surface samples of one polygon, reused by its items (same grid, same cells). */
@@ -141,6 +176,7 @@ export async function fingerprint(
   rt: ResolvedSurface | null,
   site?: SiteContext,
   ringCurrent?: Shift,
+  ringCurrentTurn?: Turn,
 ): Promise<string> {
   const lineUp: Record<string, Json> = {};
   for (const [k, v] of [
@@ -149,6 +185,16 @@ export async function fingerprint(
     ['ring', ringCurrent],
   ] as const)
     if (v && (v[0] !== 0 || v[1] !== 0)) lineUp[k] = [v[0], v[1]];
+  // a turn goes beside the shifts, so a shift alone keeps the fingerprint it had
+  const lineUpTurn: Record<string, Json> = {};
+  for (const [k, t] of [
+    ['from', rf?.currentTurn],
+    ['to', rt?.currentTurn],
+    ['ring', ringCurrentTurn],
+  ] as const) {
+    const fp = turnFp(t);
+    if (fp) lineUpTurn[k] = fp;
+  }
   const obj: Record<string, Json | undefined> = {
     engine: ENGINE_VERSION,
     ring: ring.map((p) => [p[0], p[1]]),
@@ -159,6 +205,7 @@ export async function fingerprint(
     cellM: item.cellM,
     site: site as unknown as Json | undefined,
     lineUp: Object.keys(lineUp).length > 0 ? lineUp : undefined,
+    lineUpTurn: Object.keys(lineUpTurn).length > 0 ? lineUpTurn : undefined,
   };
   return `sha256:${await sha256Hex(canonical(obj))}`;
 }
@@ -332,9 +379,8 @@ export async function compareItem(
 ): Promise<ComparisonResult> {
   const { signal } = opts;
   const storedRing = normalRing(ring);
-  const [rsE, rsN] = opts.ringShift ?? [0, 0];
-  const ringN: [number, number][] =
-    rsE === 0 && rsN === 0 ? storedRing : storedRing.map(([e, n]) => [e + rsE, n + rsN]);
+  const placed = enShift(opts.ringShift, opts.ringTurn);
+  const ringN: [number, number][] = storedRing.map((p) => shiftEN<[number, number]>(p, placed));
   const from = item.from;
   const to = item.to;
   let rf: ResolvedSurface | null = null;
@@ -373,6 +419,7 @@ export async function compareItem(
       rt,
       opts.site,
       opts.ringCurrent ?? opts.ringShift,
+      opts.ringCurrent !== undefined ? opts.ringCurrentTurn : opts.ringTurn,
     ),
     computedAt: (opts.now ?? (() => new Date().toISOString()))(),
   };

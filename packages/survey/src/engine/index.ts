@@ -15,6 +15,7 @@ export {
   type GridOut,
   type Resolve,
   type Shift,
+  type Turn,
   type ResolvedSurface,
   type Shared,
   type SiteContext,

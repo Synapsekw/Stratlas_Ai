@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { HexColor, Id, IsoTime, ProjectPath, Sha256Hex, Vec3 } from './common';
+import { CaptureLineUpTurn } from './dateShift';
 import { Crs } from './manifest';
 import { DesignId } from './designs';
 import { SiteVerticalDatum } from './geodesy';
@@ -366,6 +367,11 @@ export const HeightTiles = z.looseObject({
   sourceSha256: Sha256Hex.optional(),
   /** The date's line-up the surface was prepared with (absent: none). Its cells sit that far over. */
   dateShiftM: z.object({ eastM: z.number(), northM: z.number() }).strict().optional(),
+  /**
+   * The turn and scale of that line-up, beside `dateShiftM` (absent: none). Its cells sit turned
+   * about the pivot as well as shifted.
+   */
+  dateTurn: CaptureLineUpTurn.optional(),
   fingerprint: z.string().min(1).max(200),
   preparedAt: IsoTime,
 });
