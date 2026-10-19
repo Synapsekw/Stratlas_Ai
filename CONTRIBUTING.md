@@ -33,7 +33,7 @@ This creates `<type>/<name>` in `.claude/worktrees/<name>` and runs `pnpm instal
 
 - A stream owns its package(s) and may not edit another stream's package. Ask the integration lead instead.
 - Nobody edits the main checkout directly; every change, docs included, starts in its own worktree.
-- Get `pnpm check` green on your branch, then merge it yourself, one session at a time: `node tools/agent/finish-task.mjs` rebases and checks, the merge lock keeps merges apart, and the pull request must be green before `main` moves. Nobody commits on `main` (the hooks refuse it). `CLAUDE.md` has the full steps.
+- Get `pnpm check` green on your branch (`node tools/agent/finish-task.mjs` rebases onto `origin/main` and runs the checks), open a pull request and get its CI green on the exact head. Then send the stage-island session the pull request number, the branch and the full head SHA, and never push `main` yourself: the stage-island session merges ready heads into a `train/...` branch, CI runs once on it, and `main` fast-forwards when it is green (`docs/NORTH-STAR.md`, section 3). Nobody commits on `main` (the hooks refuse it).
 - Contracts in `@aio/schema` are frozen (`contracts-v1`). A change needs an entry in `docs/architecture/contract-changes.md` and the integration lead's sign-off before merge.
 
 ## Tests

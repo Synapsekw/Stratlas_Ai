@@ -36,7 +36,7 @@ The processing tools build maps and models from your data: photo processing, sur
 **Status** says where you stand:
 
 - **Up to date**: every job this version of {product} has can run.
-- **Too old for this version of {product}**: the lines below say what the installed version lacks, for example "Creating maps from photos needs version 0.4.0 or later."
+- **Too old for this version of {product}**: the lines below say what the installed version lacks, for example "Creating maps from photos needs version 0.8.0 or later."
 - **Not made for this version of {product}**: the tools in the data folder are for another version of {product}.
 - **Not installed**: viewing, measuring, maps and reports work; processing does not start.
 

@@ -1,6 +1,6 @@
 # Founder setup guide: accounts and certificates for Quadrion AI 1.0
 
-For the founder of Synapse Solutions (Kuwait). This guide covers the outside accounts, certificates and decisions that the 1.0 release needs: founder blockers B1 to B6 in [CHECKLIST-1.0.md](CHECKLIST-1.0.md). You do not need to be a release engineer. Each section says what to click, what to type, what it costs, how long it takes and what to send back to us.
+For the founder of Synapse Solutions. This guide covers the outside accounts, certificates and decisions that the 1.0 release needs: founder blockers B1 to B6 in [CHECKLIST-1.0.md](CHECKLIST-1.0.md). You do not need to be a release engineer. Each section says what to click, what to type, what it costs, how long it takes and what to send back to us.
 
 _Note (19 Oct 2026): macOS is parked since 10 Oct 2026, so the Apple steps (B4) can wait; no public release is made while testing is internal._
 
@@ -10,22 +10,22 @@ _Facts checked on 7 October 2026. Exchange rate used: 1 USD = 0.310 KWD (7 Oct 2
 
 1. **Never paste a secret in chat or email,** not to us and not to anyone else. Secrets (passwords, private keys, `.p12`, `.p8` and `.pfx` files, API keys, client secrets) go straight into GitHub, as described in [section 8](#8-adding-secrets-and-variables-to-github). You send us only the public values listed under "What to send back".
 2. **Keep a private, offline copy** of every file and password in a password manager (for example 1Password or Bitwarden) under a "Quadrion AI release" folder. Several of these are shown only once.
-3. **"Check:"** marks something we could not confirm from an official source, or that depends on Kuwait. Confirm it when you reach that step and tell us if it differs.
+3. **"Check:"** marks something we could not confirm from an official source, or that depends on the home country. Confirm it when you reach that step and tell us if it differs.
 
 ---
 
 ## Overview
 
-| #   | Item                                                            | Why we need it                                                                                              | Cost (USD, approx. KWD)                                                                 | Time to get                                                                       | Blocks                                            | Start first?                                 |
-| --- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------- |
-| 0   | Company document pack and D-U-N-S number                        | Every vendor below checks the same company facts. D-U-N-S is required by Apple and speeds up the others     | Free                                                                                    | D-U-N-S: about 7 business days (Apple's figure); Kuwait can take longer           | Apple (B4); speeds up Windows (B2) and Store (B3) | **Yes, day 1**                               |
-| 1   | Windows code signing (B2): OV certificate in DigiCert KeyLocker | Signs the website installer and portable exe so Windows trusts them and in-app updates can check the signer | $996 a year (KWD 309)                                                                   | 1 to 3 weeks (order, company checks, phone call)                                  | Signed Windows installer for our website, RC1     | **Yes, day 1** (after the document pack)     |
-| 2   | Microsoft Partner Center company account and Store name (B3)    | Publishing in the Microsoft Store                                                                           | Free (company accounts have been free since May 2026)                                   | Confirm existing account: 1 hour. New company account: 2 to 5 business days       | Store submission, final MSIX identity             | **Yes, day 1** (confirm what already exists) |
-| 3   | Apple Developer Program, organisation (B4)                      | Developer ID certificate and notarisation, so macOS opens the app without warnings                          | $99 a year (KWD 31)                                                                     | 1 to 3 weeks after D-U-N-S arrives                                                | Signed and notarised macOS build, RC1             | After D-U-N-S                                |
-| 4   | Cosign signing for the Team Server image (B5)                   | Customers can prove the server image came from us                                                           | Free                                                                                    | 5 minutes (a decision)                                                            | Team Server leaving preview                       | Any time                                     |
-| 5   | External penetration test of the Team Server (B6)               | Independent security check before the server leaves preview; procurement teams will ask for it              | Typically $8,000 to $25,000 (KWD 2,500 to 7,750)                                        | Quotes 1 to 2 weeks; booking lead time 2 to 6 weeks; test and report 2 to 3 weeks | `HostingModel.server` leaving `preview`           | **Yes, request quotes in week 1**            |
-| 6   | Final product name (B1)                                         | Store listing, installers, About box, docs                                                                  | Searches free; Kuwait trademark filing: official fees plus agent fees (ask for a quote) | Searches: 1 to 2 days. Kuwait trademark registration: about 5 to 7 months         | Store listing, final `brand.json`, RC1            | **Yes, searches in week 1**                  |
-| 8   | GitHub secrets                                                  | The release build reads every certificate and key from here                                                 | Free                                                                                    | 10 minutes per item                                                               | All signed builds                                 | As each item arrives                         |
+| #   | Item                                                            | Why we need it                                                                                              | Cost (USD, approx. KWD)                                                                       | Time to get                                                                       | Blocks                                            | Start first?                                 |
+| --- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------- |
+| 0   | Company document pack and D-U-N-S number                        | Every vendor below checks the same company facts. D-U-N-S is required by Apple and speeds up the others     | Free                                                                                          | D-U-N-S: about 7 business days (Apple's figure); the home country can take longer | Apple (B4); speeds up Windows (B2) and Store (B3) | **Yes, day 1**                               |
+| 1   | Windows code signing (B2): OV certificate in DigiCert KeyLocker | Signs the website installer and portable exe so Windows trusts them and in-app updates can check the signer | $996 a year (KWD 309)                                                                         | 1 to 3 weeks (order, company checks, phone call)                                  | Signed Windows installer for our website, RC1     | **Yes, day 1** (after the document pack)     |
+| 2   | Microsoft Partner Center company account and Store name (B3)    | Publishing in the Microsoft Store                                                                           | Free (company accounts have been free since May 2026)                                         | Confirm existing account: 1 hour. New company account: 2 to 5 business days       | Store submission, final MSIX identity             | **Yes, day 1** (confirm what already exists) |
+| 3   | Apple Developer Program, organisation (B4)                      | Developer ID certificate and notarisation, so macOS opens the app without warnings                          | $99 a year (KWD 31)                                                                           | 1 to 3 weeks after D-U-N-S arrives                                                | Signed and notarised macOS build, RC1             | After D-U-N-S                                |
+| 4   | Cosign signing for the Team Server image (B5)                   | Customers can prove the server image came from us                                                           | Free                                                                                          | 5 minutes (a decision)                                                            | Team Server leaving preview                       | Any time                                     |
+| 5   | External penetration test of the Team Server (B6)               | Independent security check before the server leaves preview; procurement teams will ask for it              | Typically $8,000 to $25,000 (KWD 2,500 to 7,750)                                              | Quotes 1 to 2 weeks; booking lead time 2 to 6 weeks; test and report 2 to 3 weeks | `HostingModel.server` leaving `preview`           | **Yes, request quotes in week 1**            |
+| 6   | Final product name (B1)                                         | Store listing, installers, About box, docs                                                                  | Searches free; home-country trademark filing: official fees plus agent fees (ask for a quote) | Searches: 1 to 2 days. Home-country trademark registration: about 5 to 7 months   | Store listing, final `brand.json`, RC1            | **Yes, searches in week 1**                  |
+| 8   | GitHub secrets                                                  | The release build reads every certificate and key from here                                                 | Free                                                                                          | 10 minutes per item                                                               | All signed builds                                 | As each item arrives                         |
 
 **Not needed from you:** a certificate for the Microsoft Store package. Microsoft signs the MSIX during certification ([Microsoft Learn: MSI/EXE package requirements, FAQ](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msi/app-package-requirements)). Our certificate is only for the installer and portable exe we offer on our own website.
 
@@ -63,11 +63,11 @@ Every vendor in this guide checks the same facts about Synapse Solutions: legal 
 ### You need
 
 - Commercial registration certificate (commercial licence) from the Ministry of Commerce and Industry (MOCI), current, issued or reissued within the last 12 months if possible.
-- Kuwait Chamber of Commerce and Industry membership certificate (useful as extra proof of existence and address).
+- National Chamber of Commerce and Industry membership certificate (useful as extra proof of existence and address).
 - Articles of association or the document that names the authorised signatory.
 - An English translation of each Arabic document. Check: some certificate authorities and Apple may ask for a certified (sworn) translation, or for notarised documents. Ask a sworn translator for a quote now so you are not waiting later.
-- Your passport or Kuwait Civil ID (Apple and some authorities verify the person acting for the company).
-- A public company phone number that you answer, ideally a landline listed in a public directory (Kuwait Chamber directory, Google Business Profile, D-U-N-S record).
+- Your passport or national ID card (Apple and some authorities verify the person acting for the company).
+- A public company phone number that you answer, ideally a landline listed in a public directory (the Chamber of Commerce directory, Google Business Profile, D-U-N-S record).
 - The live company website, `synapse-solutions.ai`, with the company name, address and phone in the footer or on a Contact page. Apple rejects placeholder pages and social media links ([Apple: enrolment](https://developer.apple.com/programs/enroll/)).
 - An email address on that domain for yourself (for example `founder@synapse-solutions.ai`). Gmail or Outlook.com addresses are refused by Microsoft and Apple ([Microsoft Learn](https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/open-a-developer-account?tabs=company), [Apple](https://developer.apple.com/programs/enroll/)).
 
@@ -88,7 +88,7 @@ Every vendor in this guide checks the same facts about Synapse Solutions: legal 
 
 Time: 1 to 2 hours of your work, then 1 to 4 weeks of waiting.
 
-Check: D&B in Kuwait is served by Dun & Bradstreet South Asia Middle East ([dnbsame.com](https://dnbsame.com/db-d-u-n-s-number)). Third-party sites report that some countries take up to 30 business days. If D&B calls or emails asking for documents, answer the same day.
+Check: D&B in the home country is served by Dun & Bradstreet South Asia Middle East ([dnbsame.com](https://dnbsame.com/db-d-u-n-s-number)). Third-party sites report that some countries take up to 30 business days. If D&B calls or emails asking for documents, answer the same day.
 
 ### What to send back
 
@@ -114,18 +114,18 @@ Since 1 March 2026 a code-signing certificate lasts at most 460 days, so a "3-ye
 
 `release.yml` and `brand-config.mjs` try four routes in this order; the first one with all its values set wins, and the build log names the route it used ([SECRETS.md](SECRETS.md)):
 
-| Order | Route                                    | What it needs in GitHub                                                                                                                              | Fit for us                                                     |
-| ----- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| A     | Azure Trusted Signing (Artifact Signing) | `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, `AZURE_SIGN_PROFILE`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `WIN_PUBLISHER_NAME` | **Not available to a Kuwaiti company today** (see below)       |
-| B     | DigiCert KeyLocker                       | `SM_HOST`, `SM_API_KEY`, `SM_CLIENT_CERT_FILE_B64`, `SM_CLIENT_CERT_PASSWORD`, `SM_CODE_SIGNING_CERT_SHA1_HASH`, `WIN_PUBLISHER_NAME`                | **Our route (primary)**: built into the release workflow       |
-| C     | Certificate file (`.pfx`)                | `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`                                                                                                               | Not possible: new OV certificates cannot be exported to a file |
-| D     | Cloud HSM command                        | `WIN_SIGN_COMMAND` (variable) plus the provider's own credentials                                                                                    | Fallback: SSL.com eSigner (we add a small workflow step)       |
+| Order | Route                                    | What it needs in GitHub                                                                                                                              | Fit for us                                                           |
+| ----- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| A     | Azure Trusted Signing (Artifact Signing) | `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, `AZURE_SIGN_PROFILE`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `WIN_PUBLISHER_NAME` | **Not available to a company in the home country today** (see below) |
+| B     | DigiCert KeyLocker                       | `SM_HOST`, `SM_API_KEY`, `SM_CLIENT_CERT_FILE_B64`, `SM_CLIENT_CERT_PASSWORD`, `SM_CODE_SIGNING_CERT_SHA1_HASH`, `WIN_PUBLISHER_NAME`                | **Our route (primary)**: built into the release workflow             |
+| C     | Certificate file (`.pfx`)                | `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`                                                                                                               | Not possible: new OV certificates cannot be exported to a file       |
+| D     | Cloud HSM command                        | `WIN_SIGN_COMMAND` (variable) plus the provider's own credentials                                                                                    | Fallback: SSL.com eSigner (we add a small workflow step)             |
 
 Only builds of a `v*` release tag sign. Nightly and test builds never do, so they use none of the certificate's yearly signatures (one release uses 5).
 
 ### Why not Azure Artifact Signing (route A)
 
-Microsoft renamed Trusted Signing to **Artifact Signing**. It is the cheapest option (Basic $9.99 a month, about KWD 3.10, with 5,000 signatures a month, [Azure pricing](https://azure.microsoft.com/pricing/details/artifact-signing/), [Azure retail price list](<https://prices.azure.com/api/retail/prices?$filter=contains(productName,'Signing')>)). But public-trust certificates are only issued to organisations in the United States, Canada, the EU, the United Kingdom, Australia, New Zealand, Japan, South Korea, Singapore, Switzerland, Norway and Israel ([Microsoft Learn: Artifact Signing quickstart](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart)). Kuwait and the other GCC countries are not on the list. Microsoft staff also said in 2025 that organisations need at least 3 years of verifiable business history ([Microsoft Q&A](https://learn.microsoft.com/en-us/answers/questions/2243504/trusted-signing-for-other-countries)); the 2026 docs no longer say so.
+Microsoft renamed Trusted Signing to **Artifact Signing**. It is the cheapest option (Basic $9.99 a month, about KWD 3.10, with 5,000 signatures a month, [Azure pricing](https://azure.microsoft.com/pricing/details/artifact-signing/), [Azure retail price list](<https://prices.azure.com/api/retail/prices?$filter=contains(productName,'Signing')>)). But public-trust certificates are only issued to organisations in the United States, Canada, the EU, the United Kingdom, Australia, New Zealand, Japan, South Korea, Singapore, Switzerland, Norway and Israel ([Microsoft Learn: Artifact Signing quickstart](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart)). The home country and the other GCC countries are not on the list. Microsoft staff also said in 2025 that organisations need at least 3 years of verifiable business history ([Microsoft Q&A](https://learn.microsoft.com/en-us/answers/questions/2243504/trusted-signing-for-other-countries)); the 2026 docs no longer say so.
 
 - Check: only if Synapse Solutions owns a company registered in one of those countries (for example a UK or EU subsidiary with 3 years of history) can it use route A. Tell us if so; it would save about $870 a year. Otherwise skip route A.
 - Check: Microsoft says it is working on more countries but gives no date. We will re-check at each yearly renewal.
@@ -174,11 +174,11 @@ Microsoft renamed Trusted Signing to **Artifact Signing**. It is the cheapest op
 **Validation (1 to 3 weeks of waiting, 30 minutes of your time)**
 
 - [ ] Watch for DigiCert's emails. Upload the commercial registration, its translation and any other document they ask for, in the order portal.
-- [ ] Answer the verification phone call on the company number. DigiCert checks that the number is listed in a public source (D&B, a government registry or a directory). If it is not listed, ask DigiCert whether a **legal or professional opinion letter** from a Kuwaiti lawyer or accountant will do ([summary of what CAs accept](https://codesigningstore.com/documents-required-for-code-signing-certificate-validation)).
+- [ ] Answer the verification phone call on the company number. DigiCert checks that the number is listed in a public source (D&B, a government registry or a directory). If it is not listed, ask DigiCert whether a **legal or professional opinion letter** from a local lawyer or accountant will do ([summary of what CAs accept](https://codesigningstore.com/documents-required-for-code-signing-certificate-validation)).
 - [ ] Approve the final email that confirms you requested the certificate.
 - [ ] When DigiCert emails that the certificate is issued, note the **certificate subject (CN)**. It will be your legal name, for example `Synapse Solutions Company W.L.L.`.
 
-Check: whether DigiCert needs a certified translation and whether it accepts the Kuwait Chamber of Commerce record or the MOCI registry as the official source. Ask in your first reply to the validation team.
+Check: whether DigiCert needs a certified translation and whether it accepts the national Chamber of Commerce record or the Ministry of Commerce and Industry registry as the official source. Ask in your first reply to the validation team.
 
 **Access for GitHub (30 minutes; after issuance)**
 
@@ -237,7 +237,7 @@ DigiCert's names for these screens are in its guide ([DigiCert GitHub guide](htt
 
 Our repository already holds a Store identity: `brand.json` has `identityName` `SynapseSolutions.Stratlas`, `publisher` `CN=93BC08FE-8EF9-44E5-AC18-4B57E9E7759A` and `publisherDisplayName` `Synapse Solutions`, and [STORE-SUBMISSION.md](STORE-SUBMISSION.md) says the name is reserved. So someone has already signed in to Partner Center. **Start by confirming that account,** then do only what is missing.
 
-Costs: company accounts have been **free** since 7 May 2026, as long as you start at [storedeveloper.microsoft.com](https://storedeveloper.microsoft.com) ([Windows Developer blog](https://blogs.windows.com/windowsdeveloper/2026/05/07/publish-to-microsoft-store-as-a-company-now-with-free-registration-and-faster-onboarding/), [Microsoft Learn](https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/open-a-developer-account)). Before that, Kuwait paid a one-time KWD 28.
+Costs: company accounts have been **free** since 7 May 2026, as long as you start at [storedeveloper.microsoft.com](https://storedeveloper.microsoft.com) ([Windows Developer blog](https://blogs.windows.com/windowsdeveloper/2026/05/07/publish-to-microsoft-store-as-a-company-now-with-free-registration-and-faster-onboarding/), [Microsoft Learn](https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/open-a-developer-account)). Before that, a company in the home country paid a one-time KWD 28.
 
 ### Part A: confirm the existing account (about 1 hour)
 
@@ -313,7 +313,7 @@ These are already handled in [STORE-SUBMISSION.md](STORE-SUBMISSION.md); listed 
 
 ### Costs and timing
 
-- **$99 a year** (about KWD 31) ([Apple: enrol](https://developer.apple.com/programs/enroll/)). Apple charges in local currency where it has an online store, otherwise in USD by card. Check: the price and currency shown at checkout for Kuwait (we expect USD).
+- **$99 a year** (about KWD 31) ([Apple: enrol](https://developer.apple.com/programs/enroll/)). Apple charges in local currency where it has an online store, otherwise in USD by card. Check: the price and currency shown at checkout in the home country (we expect USD).
 - **Timing:** D-U-N-S first (section 0), then Apple reviews the organisation. Apple confirms membership within about 24 hours of payment once the review passes ([Apple: enrolment support](https://developer.apple.com/support/enrollment/)). Apple may call to check your authority to sign for the company. Check: no current Apple page promises or rules out a call; keep the company phone answered.
 
 ### You need
@@ -469,7 +469,7 @@ An outside security firm attacks a test copy of the Team Server the way a hacker
 
 Copy this into your request for quotes:
 
-> We are Synapse Solutions (Kuwait). We need a grey-box penetration test of our self-hosted Team Server: a Docker image run with Docker Compose behind TLS, with a Postgres database. Clients talk to it over an HTTPS API where every request is signed by a device key (HTTP Message Signatures, RFC 9421, Ed25519); there are no passwords or bearer tokens. In scope: the API and enrolment (invite codes), role enforcement between owner, reviewer, viewer and client, storage of project files, the container and Compose configuration, TLS settings, the database permissions, rate limits and logging. We provide the Compose file, the admin guide, a test server on our infrastructure, test accounts for each role and a desktop client build. Source code access available on request. We need a report with an executive summary, findings rated with CVSS, reproduction steps and fixes, plus one retest of fixed findings and a short attestation letter we can share with clients. Please quote fixed price, tester-days, earliest start date and the testers' certifications.
+> We are Synapse Solutions. We need a grey-box penetration test of our self-hosted Team Server: a Docker image run with Docker Compose behind TLS, with a Postgres database. Clients talk to it over an HTTPS API where every request is signed by a device key (HTTP Message Signatures, RFC 9421, Ed25519); there are no passwords or bearer tokens. In scope: the API and enrolment (invite codes), role enforcement between owner, reviewer, viewer and client, storage of project files, the container and Compose configuration, TLS settings, the database permissions, rate limits and logging. We provide the Compose file, the admin guide, a test server on our infrastructure, test accounts for each role and a desktop client build. Source code access available on request. We need a report with an executive summary, findings rated with CVSS, reproduction steps and fixes, plus one retest of fixed findings and a short attestation letter we can share with clients. Please quote fixed price, tester-days, earliest start date and the testers' certifications.
 
 ### Costs and timing (indicative)
 
@@ -486,12 +486,12 @@ Copy this into your request for quotes:
 - [ ] It has tested APIs before (ask for one reference).
 - [ ] Optional: GCC presence and Arabic-speaking staff if you want the summary in Arabic for clients.
 
-Kuwait has no national accreditation scheme for penetration testers that we could find; Dubai (DESC) and Qatar (NCSA) do. Check: ask Kuwait's National Cyber Security Center whether one has started since its 2026 national controls ([RSM Kuwait note](https://www.rsm.global/kuwait/node/282)).
+The home country has no national accreditation scheme for penetration testers that we could find; two neighbouring states do (DESC and NCSA). Check: ask the national cyber security centre whether one has started since its 2026 national controls (RSM's local office published a note on those controls; see the sources).
 
 **Examples, not endorsements** (all CREST-listed, checked 7 Oct 2026):
 
-- DTS Solution (UAE, part of Beyon Cyber; serves Kuwait) ([CREST listing](https://marketplace.crest.org/supplier/dts-solution/)).
-- GBM, Gulf Business Machines (offices in Kuwait; CREST and Dubai DESC accredited) ([Zawya](https://www.zawya.com/en/press-release/companies-news/gbm-sets-new-industry-standards-with-dual-crest-and-desc-cybersecurity-accreditation-q935jbsm)).
+- DTS Solution (a regional firm, part of Beyon Cyber; serves the home country) ([CREST listing](https://marketplace.crest.org/supplier/dts-solution/)).
+- GBM, Gulf Business Machines (offices in the home country; CREST and DESC accredited) ([Zawya](https://www.zawya.com/en/press-release/companies-news/gbm-sets-new-industry-standards-with-dual-crest-and-desc-cybersecurity-accreditation-q935jbsm)).
 - NCC Group (international; CREST member since 2008) ([CREST listing](https://www.crest-approved.org/member_companies/ncc-group)).
 
 ### Steps
@@ -530,20 +530,20 @@ Decided on 7 Oct 2026: **Quadrion AI** (`brand.json` has `"temporary": false`; t
 - [ ] **Trademarks, worldwide.** Search the name in [WIPO Global Brand Database](https://branddb.wipo.int). Filter to **Nice classes 9** (downloadable software) and **42** (software services). Note any identical or very similar names.
 - [ ] **United States.** Search [USPTO Trademark Search](https://tmsearch.uspto.gov/search/search-information) (it replaced TESS in 2023).
 - [ ] **European Union.** Search [EUIPO eSearch plus](https://euipo.europa.eu/eSearch/) and [TMview](https://www.tmdb.tmview.org) (TMview also covers many national offices).
-- [ ] **Kuwait.** Use the Ministry of Commerce and Industry trademark e-services ([e.gov.kw: MOCI trademark services](https://e.gov.kw/sites/kgoenglish/Pages/eServices/MOCI/TrademarkRegistrationServices.aspx)) or ask a local trademark agent to run a search. Check: we found no free public search; an agent search costs a small fee.
-- [ ] **Domains.** Check availability of the `.com`, `.ai` and `.com.kw` names at any registrar. A `.com.kw` needs a commercial licence that matches the name and costs KWD 15 a year through a CITRA-accredited registrar ([CITRA: .kw domains](https://citra.gov.kw/sites/en/Pages/KuwaitDomainKw.aspx)).
+- [ ] **Home country.** Use the Ministry of Commerce and Industry trademark e-services ([e.gov.kw: MOCI trademark services](https://e.gov.kw/sites/kgoenglish/Pages/eServices/MOCI/TrademarkRegistrationServices.aspx)) or ask a local trademark agent to run a search. Check: we found no free public search; an agent search costs a small fee.
+- [ ] **Domains.** Check availability of the `.com`, `.ai` and `.com.kw` names at any registrar. A `.com.kw` needs a commercial licence that matches the name and costs KWD 15 a year through a CITRA-accredited registrar (CITRA's .kw domain page at citra.gov.kw).
 - [ ] **Microsoft Store.** In Partner Center, **Apps and games**, **New product**, type the name, click **Check availability** (do not reserve until you decide).
 - [ ] **Apple.** Search the Mac App Store and App Store for apps with the same name. (Developer ID apps outside the Mac App Store need no name reservation; this check is about confusion, not rules.)
 - [ ] **GitHub.** Check whether `github.com/<name>` is free for an organisation. Consider creating a free GitHub organisation for the company and moving the repository into it before the first signed release (this affects the cosign identity in section 4).
 - [ ] **Search engines and social media.** Search the name with "software", "drone", "inspection" and "survey". Avoid a name a competitor or large company already uses in our field.
 - [ ] Decide. Then reserve: the domain, the Store name (Partner Center, **Reserve product name**) and the GitHub organisation, on the same day.
 
-### Kuwait trademark registration (recommended, slow)
+### Home-country trademark registration (recommended, slow)
 
-- Kuwait has not joined the Madrid Protocol (the only GCC state outside it; Saudi Arabia joins on 8 October 2026), so a Kuwaiti mark needs a national filing ([Asia IP](https://asiaiplaw.com/sector/trademarks/saudi-arabias-madrid-protocol-accession-reshapes-middle-east-trademark-strategy)).
-- The application is published in three issues of the Al-Kuwait Al-Youm gazette, followed by a 60-day opposition period. A legalised power of attorney and certificate of incorporation are due within 3 months of filing, so in practice you use a local agent ([Ladas & Parry](https://ladas.com/news/trademark-office-kuwait-ushers-new-procedural-changes/)). Expect about 5 to 7 months to registration.
-- [ ] Ask a Kuwaiti trademark agent for a quote for classes 9 and 42. Check: official fees are small (a few tens of KWD per class); agent fees are the main cost.
-- [ ] Optional, later: file abroad (for example the EU, the US, Saudi Arabia, UAE) through Madrid from another office, or nationally, depending on where you sell.
+- The home country has not joined the Madrid Protocol (the only GCC state outside it; Saudi Arabia joins on 8 October 2026), so a mark there needs a national filing ([Asia IP](https://asiaiplaw.com/sector/trademarks/saudi-arabias-madrid-protocol-accession-reshapes-middle-east-trademark-strategy)).
+- The application is published in three issues of the official gazette, followed by a 60-day opposition period. A legalised power of attorney and certificate of incorporation are due within 3 months of filing, so in practice you use a local agent (Ladas & Parry's news note on the trademark office's new procedure; see the sources). Expect about 5 to 7 months to registration.
+- [ ] Ask a local trademark agent for a quote for classes 9 and 42. Check: official fees are small (a few tens of KWD per class); agent fees are the main cost.
+- [ ] Optional, later: file abroad (for example the EU, the US, Saudi Arabia, the other Gulf states) through Madrid from another office, or nationally, depending on where you sell.
 
 ### What changed in `brand.json` (done 7 Oct 2026)
 
@@ -701,7 +701,7 @@ All checked on 7 October 2026.
 - Microsoft Learn, MSI/EXE app package requirements: https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msi/app-package-requirements
 - Microsoft Learn, app capability declarations: https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/app-capability-declarations
 - Microsoft Store App Developer Agreement v8.11: https://go.microsoft.com/fwlink/?linkid=528905
-- Former fees page (Kuwait KWD 28), in the docs repository history: https://github.com/MicrosoftDocs/windows-dev-docs
+- Former fees page (home country KWD 28), in the docs repository history: https://github.com/MicrosoftDocs/windows-dev-docs
 
 **Apple**
 
@@ -740,7 +740,7 @@ All checked on 7 October 2026.
 - Zawya, GBM CREST and DESC accreditation: https://www.zawya.com/en/press-release/companies-news/gbm-sets-new-industry-standards-with-dual-crest-and-desc-cybersecurity-accreditation-q935jbsm
 - Blaze Information Security, penetration testing cost: https://www.blazeinfosec.com/post/how-much-does-penetration-testing-cost/
 - DeepStrike, penetration testing cost: https://deepstrike.io/blogs/penetration-testing-cost
-- RSM Kuwait, NCSC national controls 2026: https://www.rsm.global/kuwait/node/282
+- RSM, the home country's national cyber security controls 2026: note 282 on the local office's pages at rsm.global
 
 **Name and trademarks**
 
@@ -748,10 +748,10 @@ All checked on 7 October 2026.
 - USPTO Trademark Search: https://tmsearch.uspto.gov/search/search-information
 - EUIPO eSearch plus: https://euipo.europa.eu/eSearch/
 - TMview: https://www.tmdb.tmview.org
-- Kuwait government portal, MOCI trademark services: https://e.gov.kw/sites/kgoenglish/Pages/eServices/MOCI/TrademarkRegistrationServices.aspx
-- Asia IP, Saudi Arabia joins Madrid (Kuwait outside): https://asiaiplaw.com/sector/trademarks/saudi-arabias-madrid-protocol-accession-reshapes-middle-east-trademark-strategy
-- Ladas & Parry, Kuwait trademark procedure: https://ladas.com/news/trademark-office-kuwait-ushers-new-procedural-changes/
-- CITRA, Kuwait .kw domains: https://citra.gov.kw/sites/en/Pages/KuwaitDomainKw.aspx
+- Government portal, Ministry of Commerce and Industry trademark services: https://e.gov.kw/sites/kgoenglish/Pages/eServices/MOCI/TrademarkRegistrationServices.aspx
+- Asia IP, Saudi Arabia joins Madrid (the home country outside): https://asiaiplaw.com/sector/trademarks/saudi-arabias-madrid-protocol-accession-reshapes-middle-east-trademark-strategy
+- Ladas & Parry, the home country's trademark procedure: news note "Trademark office ushers new procedural changes" at ladas.com
+- CITRA, .kw domains: the .kw domain page at citra.gov.kw
 
 **GitHub**
 

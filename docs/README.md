@@ -2,7 +2,7 @@
 
 The product is **Quadrion AI**. It was called Stratlas until 7 Oct 2026; older plans, ADRs and records keep that name ([rename record](plans/2026-10-07-rename-quadrion.md)).
 
-The order below follows the product process: requirements, then brand and UI direction, then architecture, then plans. Nothing under `apps/` or `packages/` is written until the spec is approved.
+The order below follows the product process: requirements, then brand and UI direction, then architecture, then plans.
 
 | Document                                                           | Purpose                                                                                                                      | Status        |
 | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------- |

@@ -26,7 +26,7 @@ A question only shows when your photos raise it:
 
 {product} checks this the moment you click **Create maps from photos**, before you choose anything:
 
-- **The processing tools are not installed**, or **The processing tools need an update**: click **Update processing tools**. It opens **Settings**, **Processing tools**: install the processing tools file there (**Install or update from file**, see [Processing tools](12-settings.md#processing-tools)), then click **Create maps from photos** in the message to come back. Maps from photos need version 0.4.0 or later.
+- **The processing tools are not installed**, or **The processing tools need an update**: click **Update processing tools**. It opens **Settings**, **Processing tools**: install the processing tools file there (**Install or update from file**, see [Processing tools](12-settings.md#processing-tools)), then click **Create maps from photos** in the message to come back. Maps from photos need version 0.8.0 or later.
 - **This computer cannot create maps from photos**: processing runs on Windows x64. Other computers can open the results.
 
 ## Options

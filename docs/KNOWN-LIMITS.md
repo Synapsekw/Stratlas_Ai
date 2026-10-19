@@ -6,18 +6,20 @@ Current limits only; each is removed from this list when fixed.
 
 ## Data and positions
 
-- The tank demo's position on the map is approximate (the source has no survey position); flight start times are nominal, relative timing is exact.
-- The tower demo's origin height is approximate (no survey control in the source).
-- Video calibration is one constant offset per clip (orientation, position, time, lens): no bias that changes along a clip. On the plant demo, **Refine automatically** is weak (the edges rarely agree clearly on the plant); point pairs work.
+These limits were seen on the founder's own real projects in the data folder (not shipped; the bundled demos are synthetic).
+
+- A real tank project's position on the map is approximate (the source has no survey position); flight start times are nominal, relative timing is exact.
+- A real tower project's origin height is approximate (no survey control in the source).
+- Video calibration is one constant offset per clip (orientation, position, time, lens): no bias that changes along a clip. On a real plant project, **Refine automatically** is weak (the edges rarely agree clearly on the plant); point pairs work.
 - One take-off height per import batch: import flights that took off from different heights separately.
-- The plant demo's sea level (93.56 m) is marked indicative; adjust it in the sun popover if the waterline looks high. A few light surf patches near the west breakwater read as land and show as flat patches on the water.
-- In the plant demo, the first clip is 31.5 s long and the next starts 60 s after it, so between them the video window shows "No footage at this time". That is correct.
+- A real plant project's sea level (93.56 m) is marked indicative; adjust it in the sun popover if the waterline looks high. A few light surf patches near the west breakwater read as land and show as flat patches on the water.
+- In a real plant project, the first clip is 31.5 s long and the next starts 60 s after it, so between them the video window shows "No footage at this time". That is correct.
 
 ## Viewer
 
 - Issue labels hidden behind the building can lag the camera by about a tenth of a second while orbiting.
 - At night the point cloud keeps its daylight colours and takes no shadows.
-- Point size cannot go below 1 px, so shrinking has no visible effect where points are already 1 px (plant demo overview, tank demo from far out). At the plant demo overview, larger points merge into a coarser mosaic rather than separate dots.
+- Point size cannot go below 1 px, so shrinking has no visible effect where points are already 1 px (a real plant project's overview, a real tank project from far out). At that plant overview, larger points merge into a coarser mosaic rather than separate dots.
 - **Compare dates**: both sides show the surface colours, pile bodies, toe lines, legends and saved survey measurements of their own date. Measuring, drawing, editing a pile boundary, picking a section line, the swipe, the AI agent and video still work in the left (main) view only, and designs, the haul road and terrain overlays are drawn there only. If the graphics memory of the tier cannot hold the surface colours for the right view, that view keeps the photo and says so. On the **Low** graphics tier you get two maps or the swipe instead of two 3D views.
 - **Split** with the 3D view beside the map: the map has no elevation or cut and fill colours of its own. It shows them only as a terrain overlay you computed (**Survey measurements**, **Terrain overlays**).
 - With the right panel open on a 1440 px screen, the Labels and layers buttons move into the **More** menu.
@@ -38,7 +40,7 @@ Current limits only; each is removed from this list when fixed.
 
 - The pipeline pack is not in the installer and updating the app does not update it: it is installed from its file (`pipeline-pack-<version>-<arch>.tar.gz`) in **Settings**, **Processing tools**, into `runtime` in the data folder, and must match the build. The app uses the newest pack there. The pack is not signed: the install checks every file against the checksums in the pack's own manifest, which catches a damaged file, not a forged one.
 - **Outline** (mask assist) on a photo detection uses the pipeline pack's boundary model (MobileSAM, pack 0.5.1 or later); with an older pack the button does not show.
-- The tank sample's GPS and gimbal tags are written from the delivered camera poses (the indoor drone logs no GPS in the tank) around the approximate tank origin; a real photo set brings its own tags.
+- In a real tank project (not shipped), the sample photos' GPS and gimbal tags are written from the delivered camera poses (the indoor drone logs no GPS in the tank) around the approximate tank origin; a real photo set brings its own tags.
 - Cloud AI detection needs Cloud AI on and your own key; cost is an estimate from list prices.
 - **A large GeoTIFF cannot be imported yet.** An ortho or DSM over 300 MB, over 12,000 x 12,000 pixels, or saved as a BigTIFF is refused with "This GeoTIFF is too large to import yet"; no tiling job exists for it. Reduce or split it in other software and import the parts. A smaller GeoTIFF is read whole and drawn as one picture of at most 4096 px on its long side.
 - **360 video and ffmpeg.** A 360 camera file (`.insv`, `.lrv`) is stitched by ffmpeg. The pipeline pack brings its own (pack 0.6.0 and later) and the app uses it first; with an older pack or none, ffmpeg has to be on the PATH (on Windows `winget install Gyan.FFmpeg`, then restart the app) with the `v360` filter (ffmpeg 4.3 or later, a full build). Without either the import says so and adds nothing. A stitched H.264 MP4 up to 3840 wide is added without ffmpeg.
@@ -71,7 +73,7 @@ Current limits only; each is removed from this list when fixed.
 ## Release
 
 - Unsigned build: SmartScreen warns on install. No automatic updates: install over the previous version. Store submission waits for M7.
-- Old video files are kept in `video.before-1080` folders in the two demo projects (about 0.6 GB): delete them once you are happy with M5.
+- Old video files are kept in `video.before-1080` folders in the two real reference projects in the data folder (about 0.6 GB): delete them once you are happy with M5.
 
 ## Change, modelling and local AI (M8)
 
@@ -180,7 +182,7 @@ Current limits only; each is removed from this list when fixed.
 - **Restore** in History puts back issue fields only, and the entry it writes reads "Edit F01" rather than "Restore".
 - Edits made outside the app (an older build, a hand edit in Notepad) are found at the next write of that file or the next open of the project, not the moment they happen.
 - The journal cache (userData `journal-cache/`) keeps a snapshot of every journaled file, so those JSON files take about twice their size on disk.
-- When the credential store (Windows Credential Manager, macOS Keychain) cannot be used, changes are recorded without a signature. **Verify** says so, and in a shared project the other copies hold those changes in quarantine until an owner applies them anyway.
+- When the credential store (Windows Credential Manager) cannot be used, changes are recorded without a signature. **Verify** says so, and in a shared project the other copies hold those changes in quarantine until an owner applies them anyway.
 - Signed checkpoints are written every 500 changes and at each audit export, not yet at every sync or exchange file.
 - Fork detection is proven on the golden fixtures only; a copied folder that kept writing in an unusual way may be reported as a gap or an order problem rather than a fork.
 - The history of a private project cannot be switched off from the app yet (`journal:setEnabled` exists, with no button).
@@ -245,7 +247,7 @@ Current limits only; each is removed from this list when fixed.
 
 - Photos are processed by ODM (OpenDroneMap), which runs on Windows x64 only; other computers can open the results but cannot process photos. Dense matching uses an NVIDIA graphics card when one is present and the GPU setting is on auto, and the CPU otherwise.
 - The photo pipelines need pipeline pack 0.8.0 or later and the ODM engine installed from Settings, Processing tools. The pack still carries pycolmap and OpenCV wheels for 360 walks, and conda-forge's PDAL. The macOS packs (PDAL's copy step and the Apple silicon wheels) are parked and proven in CI only.
-- The pipeline pack contains GPL components (CHOLMOD and SPQR in pycolmap, MeshLab, OpenCV's FFmpeg build on macOS): a distributed pack is under the GNU GPL version 3, and whoever receives it may ask for its source, our pipeline code included (founder decision of 8 Oct 2026). The app and the Team Server are not affected.
+- The pipeline pack contains GPL components (CHOLMOD and SPQR in pycolmap for 360 walks, the prebuilt GPL ffmpeg in `tools/ffmpeg`, untwine in `tools/pdal`, and OpenCV's FFmpeg build in the parked macOS pack): a distributed pack is under the GNU GPL version 3, and whoever receives it may ask for its source, our pipeline code included (founder decision of 8 Oct 2026). The app and the Team Server are not affected.
 - Heights from the drone's GNSS follow its altitude datum unless a geoid grid is installed (no EGM2008 or EGM96 grid ships yet); use ground control for absolute heights.
 - No automatic target detection: every ground control mark is placed or confirmed by a person. The marker's own predictions use a pinhole lens without distortion (a few pixels off).
 - Before ground control adjusts a run, its cameras follow the drone's GNSS: without RTK they sit tens of metres off the survey's height datum. The marker therefore places a point by its own marks once it has two (the ring is then on the target), and before that by the marks of the other points or, with no mark at all, by the model's ground level under the photos that look down: a search ring of 80 pixels, with the target usually inside it but not at its centre. A site whose ground control is far above or below most of the ground in the photos gets poorer first rings.
@@ -258,7 +260,7 @@ Current limits only; each is removed from this list when fixed.
 - **Processing accuracy report (PDF)** shows in the Exports menu of every project; without a processed run it answers with a message instead of a file.
 - The bundled photo demo is a small 13-photo block: only three of its nine surveyed points are in enough photos to mark, and it has no oblique photos.
 - Fisheye and spherical cameras are not supported; oblique close-range sets are untested.
-- Texturing drapes the orthophoto or projects one photo per face: there is no seam-levelled texturing (`texrecon` is deferred). The Fast preset is weak on buildings and has no true-ortho on tall structures.
+- ODM textures its own mesh. The **Quick** preset (ODM's fast orthophoto) builds no full 3D model, is weak on buildings and has no true-ortho on tall structures.
 - No LiDAR processing from raw scans.
 - The agent's **process_photos** reads a photos layer only (no folders), takes the project's coordinate system and picks the survey date as the dialog does by itself.
 

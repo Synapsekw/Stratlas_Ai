@@ -15,7 +15,7 @@ Patches come as 1.0.x updates through the same channels as the release: the Micr
 
 ## How to reach us
 
-- **Email:** [support address], answered in Kuwait business hours, Sunday to Thursday, 08:00 to 17:00 (UTC+3), except public holidays in Kuwait.
+- **Email:** [support address], answered in local business hours, Sunday to Thursday, 08:00 to 17:00 (UTC+3), except local public holidays.
 - **Portal:** [support portal URL], for tracking a case and downloading offline installers.
 - The Team plan's onboarding day and the optional managed-on-premises contract have their own terms.
 
