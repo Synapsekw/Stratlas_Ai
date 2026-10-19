@@ -2182,6 +2182,14 @@ export const en = {
   'change.area.noSets': 'This area (no results yet)',
   'change.area.runWholeMap': 'Choose "Whole map" to run for the whole map.',
   'change.area.volumesMissing': 'No volumes for this area: {why}',
+  'change.area.why.misaligned': 'The dates are {shift} m apart. Line them up, then run again.',
+  'change.area.why.failed': 'The volume run failed.',
+  'change.area.why.cancelled': 'The volume run was cancelled.',
+  'change.area.why.notStarted': 'The volume run did not start.',
+  'change.area.why.packTooOld':
+    'This needs newer processing tools. Update them in Settings, Processing tools.',
+  'change.area.gone': 'The area polygon no longer exists, so its comparison cannot run again.',
+  'change.area.measuresLoading': 'The measurements are still loading. Try again in a moment.',
   'change.belongsTo': 'Belongs to date...',
   'change.belongsToTitle': 'Survey date of {name}',
   'change.belongsToNone': 'Work it out from the name',
@@ -4302,7 +4310,10 @@ export const en = {
   'actions.area.reason.tooFew': 'The polygon needs at least three points.',
   'actions.area.reason.zeroArea': 'The polygon has no area.',
   'actions.area.reason.crossing': 'The polygon crosses itself.',
-  'actions.area.reason.noMap': 'The project has no map position.',
+  'actions.area.reason.noMap':
+    'The project has no EPSG coordinate system, so the polygon cannot be placed on the map.',
+  'actions.area.reason.unknownCrs':
+    'EPSG:{epsg} cannot be converted on this computer, so the polygon cannot be placed on the map.',
   'actions.area.reason.noEarlier': 'No earlier survey',
   'actions.area.reason.noImagery': 'Imagery change needs an ortho on each date.',
   'actions.group.add360': 'Add 360 video...',

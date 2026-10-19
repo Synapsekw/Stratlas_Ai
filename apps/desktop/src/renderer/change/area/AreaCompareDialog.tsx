@@ -7,7 +7,6 @@ import { formatDate, Icon, useFocusTrap, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useRef, useState } from 'react';
 import { toastHost } from '../../shell/actions/toastHost';
-import { frameOf } from '../../survey/measureScene';
 import { useMeasure } from '../../survey/measureStore';
 import '../../survey/measure.css';
 import { surfacePair } from '../producers/raster';
@@ -62,7 +61,7 @@ export function AreaCompareDialog({ request }: { request: AreaCompareRequest }) 
       setError(t('actions.measure.notFound'));
       return;
     }
-    const ring = polygonRing(m, frameOf(project.manifest).epsg);
+    const ring = polygonRing(m, project.manifest);
     if ('reason' in ring) {
       setError(ring.reason);
       return;
@@ -106,7 +105,12 @@ export function AreaCompareDialog({ request }: { request: AreaCompareRequest }) 
         <header className="sv-head" role="none">
           <Icon name="split" size={16} />
           <h2 id="area-compare-title">{t('change.area.title')}</h2>
-          <button type="button" className="btn ghost sm" aria-label="Close" onClick={close}>
+          <button
+            type="button"
+            className="btn ghost sm"
+            aria-label={t('dialog.close')}
+            onClick={close}
+          >
             <Icon name="x" size={14} />
           </button>
         </header>

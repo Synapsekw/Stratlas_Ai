@@ -93,10 +93,18 @@ const bowTie: [number, number][] = [
 ];
 
 const one = (id: string): MenuTarget => ({ kind: 'measurements', ids: [id], clicked: id });
-const item = (target: MenuTarget, o: { pkg?: boolean; manifest?: ProjectManifest } = {}) =>
-  actionsFor(target, makeActionCtx({ manifest: o.manifest ?? twoDates, pkg: o.pkg ?? false })).find(
-    (i) => i.id === 'change.areaCompare',
-  );
+const item = (
+  target: MenuTarget,
+  o: { pkg?: boolean; canEdit?: boolean; manifest?: ProjectManifest } = {},
+) =>
+  actionsFor(
+    target,
+    makeActionCtx({
+      manifest: o.manifest ?? twoDates,
+      pkg: o.pkg ?? false,
+      canEdit: o.canEdit ?? true,
+    }),
+  ).find((i) => i.id === 'change.areaCompare');
 
 function open(manifest: ProjectManifest) {
   workspace.getState().openProject({ id: 'p1', root: '/p1', manifest });
@@ -157,6 +165,20 @@ describe('compare with previous survey', () => {
   it('is disabled in a package', () => {
     expect(item(one('pad'), { pkg: true })?.disabled).toBe(
       'This is a package: its files stay inside it.',
+    );
+  });
+
+  it('is disabled for a reviewer who may only look', () => {
+    expect(item(one('pad'), { canEdit: false })?.disabled).toBe('This project can only be viewed.');
+  });
+
+  it('is disabled with its reason in a CRS this computer cannot convert, the menu intact', () => {
+    const swiss = { ...twoDates, crs: { epsg: 2056 } } as ProjectManifest;
+    open(swiss);
+    const menu = actionsFor(one('pad'), makeActionCtx({ manifest: swiss }));
+    expect(menu.length).toBeGreaterThan(0);
+    expect(menu.find((i) => i.id === 'change.areaCompare')?.disabled).toBe(
+      'EPSG:2056 cannot be converted on this computer, so the polygon cannot be placed on the map.',
     );
   });
 

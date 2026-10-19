@@ -5,9 +5,9 @@ import { areaCompare } from '../../change/area/areaCompareStore';
 import { polygonRing, previousPair } from '../../change/area/areaModel';
 import { orthoPair } from '../../change/producers/raster';
 import { pairContext } from '../../change/producers/register';
-import { frameOf } from '../../survey/measureScene';
 import { measureStore } from '../../survey/measureStore';
 import { timeline } from '../../workspace/timeline';
+import { editBlocked } from './reasons';
 
 /*
  * "Compare with previous survey" on one polygon measurement (its Datasets row, or the measurement
@@ -31,11 +31,14 @@ function pairOf(
 
 /** Why the polygon cannot be compared (the first reason wins), or false. */
 export function areaCompareBlocked(tg: Target, ctx: ActionCtx): string | false {
+  // the runs write change sets and layers: never for a package or a reviewer who may only look
+  const blocked = editBlocked(ctx);
+  if (blocked) return blocked;
   const project = workspace.getState().project;
-  if (ctx.pkg || !project?.root) return t('actions.reason.package');
+  if (!project?.root) return t('actions.reason.package');
   const m = clickedOf(tg);
   if (!m) return t('actions.measure.notFound');
-  const ring = polygonRing(m, frameOf(ctx.manifest).epsg);
+  const ring = polygonRing(m, ctx.manifest);
   if ('reason' in ring) return ring.reason;
   const pair = pairOf(m, ctx);
   if ('reason' in pair) return pair.reason;

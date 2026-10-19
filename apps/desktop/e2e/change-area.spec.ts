@@ -3,11 +3,14 @@
  * truth's imagery changes, right-clicked in the Datasets tree, "Compare with previous survey",
  * Compare in the confirm box (volumes off). The imagery change runs for that area only: its own
  * set beside the whole-map one (`<pair>-raster-area-area-a`), every region inside the polygon,
- * none from the rest of the site, and the Changes tab shows the area's entry. After a line-up of
- * the later date the area's set reads stale, and its Run again replays the area (still scoped,
- * still chosen) while the whole-map set stays as it was. The pipelines run as jobs with the
+ * none from the rest of the site, and the Changes tab shows the area's entry. Both dates are lined
+ * up 5 m east (past the polygon's 3 m margin), so the mask must follow the polygon where its date
+ * draws it. After that line-up the area's set reads stale, and its Run again replays the area
+ * (still scoped, still chosen, cut where the polygon is drawn now) while the whole-map set stays
+ * as it was. The pipelines run as jobs with the
  * development Python (`uv sync` in python/, or QUADRION_E2E_PYTHON); skipped without it.
  */
+import { fromWgs84 } from '@aio/geo';
 import { MeasurementsFile } from '@aio/schema';
 import type { Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
@@ -145,15 +148,68 @@ interface SetFile {
 const readSet = async (root: string, id: string) =>
   JSON.parse(await readFile(join(root, 'change', `${id}.json`), 'utf8')) as SetFile;
 
-/** The area's set: its scope, R's region among them, every region inside the polygon, none near S. */
-function expectScoped(set: SetFile, area: XZBox, s: Change): void {
+/**
+ * The area's set: its scope, R's region among them, every region inside the polygon, none near S.
+ * `east` is the line-up of both dates: the orthos, so the regions, sit that far east.
+ */
+function expectScoped(set: SetFile, area: XZBox, s: Change, east = 0): void {
   expect(set.scope).toEqual({ id: 'area-a', name: 'Area A' });
   expect(set.items.length).toBeGreaterThan(0);
-  expect(set.items.some((i) => inside(i.at, area))).toBe(true);
-  for (const i of set.items) expect(inside(i.at, area), JSON.stringify(i.at)).toBe(true);
-  const near = box(s.outlineLocal, 1);
+  const drawn = { ...area, x0: area.x0 + east, x1: area.x1 + east };
+  expect(set.items.some((i) => inside(i.at, drawn))).toBe(true);
+  for (const i of set.items) expect(inside(i.at, drawn), JSON.stringify(i.at)).toBe(true);
+  const sb = box(s.outlineLocal, 1);
+  const near = { ...sb, x0: sb.x0 + east, x1: sb.x1 + east };
   for (const i of set.items) expect(inside(i.at, near), JSON.stringify(i.at)).toBe(false);
 }
+
+/** Line both survey dates up `eastM` east, as a saved line-up writes it, and open the project again. */
+async function lineUpBoth(win: Page, root: string, truth: ChangeDemoTruth, eastM: number) {
+  const { from, to } = truth.captures;
+  const file = join(root, 'manifest.json');
+  const manifest = JSON.parse(await readFile(file, 'utf8')) as {
+    captures: { id: string; lineUp?: unknown }[];
+  };
+  for (const c of manifest.captures) {
+    if (c.id !== from && c.id !== to) continue;
+    c.lineUp = {
+      eastM,
+      northM: 0,
+      with: c.id === from ? to : from,
+      at: '2026-10-19T00:00:00.000Z',
+    };
+  }
+  await writeFile(file, JSON.stringify(manifest, null, 2));
+  await reopen(win);
+}
+
+/**
+ * The mask an area's run was cut with, as a local box: it must be where the polygon is drawn
+ * (its date's line-up applied), not where it is stored.
+ */
+async function maskBox(root: string, set: SetFile): Promise<XZBox> {
+  const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
+    crs: { epsg: number };
+    origin: [number, number, number];
+  };
+  const [ox, oy] = manifest.origin;
+  const ring = set.run?.params?.mask as [number, number][];
+  return box(
+    ring.map(([lon, lat]) => {
+      const [e, n] = fromWgs84([lon, lat, 0], manifest.crs.epsg);
+      return [e - ox, oy - n] as [number, number];
+    }),
+  );
+}
+
+/** Two boxes within 5 cm of each other. */
+function expectSameBox(a: XZBox, b: XZBox): void {
+  for (const k of ['x0', 'x1', 'z0', 'z1'] as const)
+    expect(Math.abs(a[k] - b[k])).toBeLessThan(0.05);
+}
+
+/** A line-up of both dates larger than the polygon's margin around R. */
+const EAST = 5;
 
 test('compare one area with the previous survey', async ({ demoProject }, testInfo) => {
   test.setTimeout(420_000);
@@ -164,7 +220,10 @@ test('compare one area with the previous survey', async ({ demoProject }, testIn
   const pair = `${from}-${to}`;
   const setId = `${pair}-raster-area-area-a`;
 
-  // 1. a polygon 3 m around truth's first change R, clear of another change S
+  // 1. both dates lined up 5 m east (past the 3 m margin), and a polygon on the later date stored
+  // 3 m around truth's first change R, clear of another change S: it is drawn 5 m east of that,
+  // on R where the lined-up orthos show it
+  await lineUpBoth(win, root, truth, EAST);
   const { area, s } = await seedArea(win, root, truth);
 
   // 2. and 3. right-click Area A; the confirm box: both dates and the polygon, volumes off
@@ -180,9 +239,10 @@ test('compare one area with the previous survey', async ({ demoProject }, testIn
   await layersOf(win, setId);
   await expect(dialog).toHaveCount(0);
 
-  // 5. the area's set holds the area only; no whole-map run started
+  // 5. the area's set holds the area only, cut where the polygon is drawn; no whole-map run started
   const set = await readSet(root, setId);
-  expectScoped(set, area, s);
+  expectScoped(set, area, s, EAST);
+  expectSameBox(await maskBox(root, set), { ...area, x0: area.x0 + EAST, x1: area.x1 + EAST });
   expect(existsSync(join(root, 'change', `${pair}-raster.json`))).toBe(false);
 
   // 6. the Changes tab on the area's entry: its regions only
@@ -226,16 +286,9 @@ test('Run again on a stale area replays the area; the whole-map set stays as it 
   expect(first.run?.params).toBeDefined();
   const whole = await readFile(wholeFile, 'utf8');
 
-  // 3. the later date lined up 5 cm east (as a saved line-up writes it): both sets read stale
-  const manifestFile = join(root, 'manifest.json');
-  const manifest = JSON.parse(await readFile(manifestFile, 'utf8')) as {
-    captures: { id: string; lineUp?: unknown }[];
-  };
-  const later = manifest.captures.find((c) => c.id === to);
-  if (!later) throw new Error(`no capture ${to}`);
-  later.lineUp = { eastM: 0.05, northM: 0, with: from, at: '2026-10-19T00:00:00.000Z' };
-  await writeFile(manifestFile, JSON.stringify(manifest, null, 2));
-  await reopen(win);
+  // 3. both dates lined up 5 m east (past the polygon's 3 m margin): both sets read stale, and
+  // the polygon on the later date is now drawn 5 m east
+  await lineUpBoth(win, root, truth, EAST);
 
   // 4. the area's entry in the Changes tab reads stale: Run again
   const panel = await openBench(win, 'changes');
@@ -246,17 +299,19 @@ test('Run again on a stale area replays the area; the whole-map set stays as it 
   await expect(stale).toHaveCount(1);
   await stale.getByTestId('chg-rerun').click();
 
-  // 5. the area's set again, on the lined-up date: still the area, still chosen
+  // 5. the area's set again, on the lined-up dates: still the area, still chosen, and cut where
+  // the polygon is drawn now (not where the first run cut it)
   await expect
     .poll(async () => (await readSet(root, setId)).lineUp?.to?.eastM ?? null, {
       timeout: 240_000,
       intervals: [1000],
     })
-    .toBeCloseTo(0.05, 3);
+    .toBeCloseTo(EAST, 3);
   await expect(stale).toHaveCount(0);
   await expect(picker).toHaveValue('area-a');
   const again = await readSet(root, setId);
-  expectScoped(again, area, s);
+  expectScoped(again, area, s, EAST);
+  expectSameBox(await maskBox(root, again), { ...area, x0: area.x0 + EAST, x1: area.x1 + EAST });
   await expect(panel.getByTestId('change-row')).toHaveCount(again.items.length);
   await expect(panel.locator('.chg-err')).toHaveCount(0);
 
