@@ -61,6 +61,9 @@ vi.mock('../shell', () => ({
   jobs: { getState: () => ({}) },
 }));
 
+/** The deletion the notice offers to undo (the latest). */
+const topUndo = () => measureStore.getState().undoDeletes.at(-1) ?? null;
+
 const env = { view: '3d' as const, clampZ: () => -99, snap: () => null };
 const click = (raw: SitePoint) => {
   drawEvent({ type: 'click', raw, screen: { x: 1, y: 1 }, shift: true }, env);
@@ -391,11 +394,11 @@ describe('a deletion can be undone', () => {
     const before = measureStore.getState().file;
     deleteMeasurements(['m1', 'm3']);
     expect(ids()).toEqual(['m2']);
-    expect(measureStore.getState().undoDelete?.items.map((x) => x.m.id)).toEqual(['m1', 'm3']);
+    expect(topUndo()?.items.map((x) => x.m.id)).toEqual(['m1', 'm3']);
     undoDeleteMeasurements();
     expect(measureStore.getState().file.measurements).toEqual(before.measurements);
     expect(isDirty(measureStore.getState())).toBe(false);
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
   });
 
   it('the undo puts the measurements back after later edits, without doubling one already back', async () => {
@@ -403,7 +406,7 @@ describe('a deletion can be undone', () => {
     deleteMeasurements(['m2']);
     revertMeasurements();
     // Revert brought it back already: the undo has nothing left to do
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
     deleteMeasurements(['m1']);
     // a later edit: a new measurement at the end
     measureStore.setState((s) => ({
@@ -432,14 +435,48 @@ describe('a deletion can be undone', () => {
     await three();
     deleteMeasurements(['m1']);
     dismissUndoDelete();
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
     deleteMeasurements(['m2']);
     measureStore.setState({ projectId: null });
     await loadMeasurements('p1');
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
     measureStore.setState({ readOnly: true });
     deleteMeasurements(['m1']);
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
+  });
+
+  it('a second deletion keeps the first one undoable: Undo takes them back latest first', async () => {
+    await three();
+    const before = measureStore.getState().file;
+    deleteMeasurements(['m1']);
+    deleteMeasurements(['m3']);
+    expect(topUndo()?.items.map((x) => x.m.id)).toEqual(['m3']);
+    undoDeleteMeasurements();
+    expect(ids()).toEqual(['m2', 'm3']);
+    expect(topUndo()?.items.map((x) => x.m.id)).toEqual(['m1']);
+    undoDeleteMeasurements();
+    expect(measureStore.getState().file.measurements).toEqual(before.measurements);
+    expect(topUndo()).toBeNull();
+  });
+
+  it('keeps the last 10 deletions; Revert trims what it brought back, Dismiss lets go of all', async () => {
+    await loadFile(Array.from({ length: 12 }, (_, i) => measurement(`m${String(i)}`)));
+    for (let i = 0; i < 12; i++) deleteMeasurements([`m${String(i)}`]);
+    expect(measureStore.getState().undoDeletes).toHaveLength(10);
+    for (let i = 0; i < 10; i++) undoDeleteMeasurements();
+    // the two oldest deletions are gone for good
+    expect(ids()).toEqual(Array.from({ length: 10 }, (_, i) => `m${String(i + 2)}`));
+    expect(topUndo()).toBeNull();
+    await three();
+    deleteMeasurements(['m1']);
+    deleteMeasurements(['m2']);
+    expect(await saveMeasurements()).toBe(true);
+    deleteMeasurements(['m3']);
+    revertMeasurements();
+    // m3 came back with Revert; m1 and m2 were saved gone, so their undos stay
+    expect(measureStore.getState().undoDeletes.map((u) => u.items[0]?.m.id)).toEqual(['m1', 'm2']);
+    dismissUndoDelete();
+    expect(measureStore.getState().undoDeletes).toEqual([]);
   });
 });
 
@@ -482,6 +519,38 @@ describe('an autosave and the undo against what happens meanwhile', () => {
     await flush();
     expect(io.writesTo.get('B') ?? 0).toBe(0);
     setAutosave(false);
+  });
+
+  it('a save still writing when the project is closed and opened again leaves the new load alone', async () => {
+    await loadFile([measurement('m1'), measurement('m2')]);
+    measureStore.setState({ projectId: 'A' });
+    setAutosave(true);
+    const writeA = gate('survey:writeMeasurements');
+    deleteMeasurements(['m1']);
+    expect(measureStore.getState().saving).toBe(true);
+    // A, then B, then A again while A's first write is still in flight
+    await loadMeasurements('B');
+    await loadMeasurements('A');
+    const loaded = measureStore.getState();
+    expect(loaded.file.measurements.map((m) => m.id)).toEqual(['m1', 'm2']);
+    writeA();
+    await flush();
+    expect(measureStore.getState().savedText).toBe(loaded.savedText);
+    expect(measureStore.getState().message).toBeNull();
+    expect(isDirty(measureStore.getState())).toBe(false);
+    setAutosave(false);
+  });
+
+  it('saving is refused unless the file is loaded', async () => {
+    for (const status of ['idle', 'loading', 'error'] as const) {
+      measureStore.setState({
+        status,
+        file: { schema: 'aio.measurements/1', measurements: [measurement('m1')] },
+      });
+      expect(await saveMeasurements()).toBe(false);
+    }
+    expect(io.writes).toBe(0);
+    expect(measureStore.getState().saving).toBe(false);
   });
 
   it('Undo while another measurement is being edited ends that edit: no geometry crosses over', async () => {

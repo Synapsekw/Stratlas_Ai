@@ -4,11 +4,12 @@ import { dismissUndoDelete, undoDeleteMeasurements, useMeasure } from './measure
 /**
  * "2 measurements deleted · Undo", bottom right, after any deletion of measurements (the tree,
  * the Delete key, the 3D and map menus, the Selected panel): a stray Delete can be taken back,
- * with Autosave on as well. It stays until it is undone, dismissed or replaced by the next one.
+ * with Autosave on as well. It offers the latest deletion; once that is undone, the one before it
+ * (up to 10 back). It stays until every deletion is undone or it is dismissed.
  */
 export function MeasureUndoNotice() {
   const t = useT();
-  const undo = useMeasure((s) => s.undoDelete);
+  const undo = useMeasure((s) => s.undoDeletes.at(-1));
   if (!undo) return null;
   const [only] = undo.items;
   const text =

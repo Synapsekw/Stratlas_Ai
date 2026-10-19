@@ -42,7 +42,7 @@ beforeEach(() => {
     editing: null,
     file,
     savedText: JSON.stringify(file),
-    undoDelete: null,
+    undoDeletes: [],
   });
   host = document.body.appendChild(document.createElement('div'));
   root = createRoot(host);
@@ -83,5 +83,23 @@ describe('MeasureUndoNotice', () => {
     });
     expect(q('[data-testid="measure-undo"]')).toBeNull();
     expect(ids()).toEqual(['m1', 'm3']);
+  });
+
+  it('after a second deletion, Undo takes it back and then offers the first one', () => {
+    act(() => {
+      deleteMeasurements(['m1']);
+      deleteMeasurements(['m3']);
+    });
+    expect(q('[data-testid="measure-undo"]')?.textContent).toContain('Line m3');
+    act(() => {
+      q('[data-testid="measure-undo-button"]')?.click();
+    });
+    expect(ids()).toEqual(['m2', 'm3']);
+    expect(q('[data-testid="measure-undo"]')?.textContent).toContain('Line m1');
+    act(() => {
+      q('[data-testid="measure-undo-button"]')?.click();
+    });
+    expect(ids()).toEqual(['m1', 'm2', 'm3']);
+    expect(q('[data-testid="measure-undo"]')).toBeNull();
   });
 });
