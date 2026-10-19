@@ -42,7 +42,7 @@ import {
   shortcutHint,
 } from '@aio/ui';
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
 import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
@@ -144,6 +144,16 @@ function measureIdsOf(marks: Iterable<string>): string[] {
     const id = measureIdOf(m);
     return id === null ? [] : [id];
   });
+}
+
+/**
+ * Select the marked measurements in view (`ids`); the focus moves off a marked one the filter
+ * hides (`marked`: every marked measurement), so the panel never shows a row the tree hides.
+ */
+function selectMarked(marked: ReadonlySet<string>, ids: string[]): void {
+  const f = measureStore.getState().focus;
+  const focus = f === null || ids.includes(f) || !marked.has(f) ? f : (ids[0] ?? null);
+  select(ids, focus);
 }
 
 function NavItem({
@@ -333,16 +343,36 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setMarks((m) => withoutGoneMeasures(m, measureFile.measurements));
   }
   // A measurement row the filter hides keeps its mark (clearing the filter brings the whole
-  // multi-selection back), but the marks acted on (menu, header, Delete) are the rows in view.
-  const shownMarks = useMemo(() => {
-    if (!filteringMeasures) return marks.marked;
-    const shown = new Set(measureItems.flatMap(itemMeasureIds));
-    const inView = [...marks.marked].filter((x) => {
-      const id = measureIdOf(x);
-      return id === null || shown.has(id);
-    });
-    return inView.length === marks.marked.size ? marks.marked : new Set(inView);
-  }, [filteringMeasures, measureItems, marks.marked]);
+  // multi-selection back), but the marks acted on (menu, header, Delete) are the rows in view,
+  // and so is the selection they make (the Selected panel, the 3D and map menus)
+  const shownMeasures = useMemo(
+    () => (filteringMeasures ? new Set(measureItems.flatMap(itemMeasureIds)) : null),
+    [filteringMeasures, measureItems],
+  );
+  const inView = useCallback(
+    (marked: ReadonlySet<string>): ReadonlySet<string> => {
+      if (!shownMeasures) return marked;
+      const kept = [...marked].filter((x) => {
+        const id = measureIdOf(x);
+        return id === null || shownMeasures.has(id);
+      });
+      return kept.length === marked.size ? marked : new Set(kept);
+    },
+    [shownMeasures],
+  );
+  const shownMarks = useMemo(() => inView(marks.marked), [inView, marks.marked]);
+  // the filter changed which marks are in view: the selection the marks made follows them (left
+  // alone once something else selected, a plain click or a pick in the 3D view)
+  const selectedMarks = useRef(shownMarks);
+  useEffect(() => {
+    const was = selectedMarks.current;
+    selectedMarks.current = shownMarks;
+    if (was === shownMarks) return;
+    const all = new Set(measureIdsOf(marks.marked));
+    if (all.size === 0) return;
+    if (!measureStore.getState().selected.every((id) => all.has(id))) return;
+    selectMarked(all, measureIdsOf(shownMarks));
+  }, [shownMarks, marks.marked]);
   // a removal went through: what was marked is gone; Empty could not delete everything: say so
   // where the tree's notes go (adjusted during render, not in an effect)
   const [seenRemoval, setSeenRemoval] = useState({ removed, held });
@@ -381,9 +411,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const onMark = (id: string, mods: MarkMods, order: readonly string[]) => {
     const next = nextMarks(marks, order, id, mods);
     setMarks(next);
-    // marked measurements are selected too, so the Selected panel totals them
-    const ids = measureIdsOf(next.marked);
-    if (ids.length > 0) select(ids);
+    // marked measurements in view are selected too, so the Selected panel totals them
+    const all = measureIdsOf(next.marked);
+    if (all.length > 0) selectMarked(new Set(all), measureIdsOf(inView(next.marked)));
     else letGoOfMeasures(marks.marked);
   };
   /** The marks held measurements and hold none now: only the focused one stays selected. */

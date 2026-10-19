@@ -25,6 +25,7 @@ import {
 import { createMeasureVisibilityMemory } from '../survey/measureVisibility';
 import { removal } from './removal';
 import { renameRequest } from './renameRequest';
+import { MeasureMenu } from '../survey/MeasureMenu';
 import { Sidebar } from './Sidebar';
 
 const mesh = {
@@ -456,6 +457,47 @@ describe('Datasets: the measurement filter', () => {
     filter('fence');
     keyDown(row('a'), 'Delete');
     expect(measures().map((x) => x.id)).toEqual(['c']);
+  });
+
+  it('the selection follows the marks in view: the panel, and the 3D menu, leave hidden ones', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    expect(measureStore.getState().selected).toEqual(['a', 'b', 'c']);
+    filter('fence');
+    // the Selected panel totals what the store selects: the marks in view only
+    expect(measureStore.getState().selected).toEqual(['a', 'b']);
+    // the 3D view's right-click menu on a marked shape acts on the same rows
+    const menu = (at: { x: number; y: number; id: string; projectId: string } | null) => {
+      act(() => {
+        root?.render(
+          <>
+            <Sidebar />
+            <MeasureMenu at={at} onClose={() => undefined} />
+          </>,
+        );
+      });
+    };
+    menu({ x: 40, y: 50, id: 'a', projectId: 'p' });
+    expect(q('[data-testid="measure-menu"]')?.textContent).toContain('2 measurements');
+    click(q('[data-testid="ctx-item-measure.delete"]'));
+    expect(measures().map((x) => x.id)).toEqual(['c']);
+    menu(null);
+  });
+
+  it('a mark made under the filter does not select the hidden ones; clearing selects them again', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('c'));
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual(['a']);
+    ctrlClick(name('b'));
+    expect(measureStore.getState().selected).toEqual(['a', 'b']);
+    filter('nothing here');
+    expect(measureStore.getState().selected).toEqual([]);
+    filter('');
+    expect([...measureStore.getState().selected].sort()).toEqual(['a', 'b', 'c']);
   });
 
   it('the header Delete leaves a hidden marked row alone', () => {
