@@ -130,6 +130,11 @@ describe('previousPair', () => {
       reason: t('actions.area.reason.noEarlier'),
     });
   });
+  it('does not guess a pair for a survey that is gone', () => {
+    expect(previousPair(idx, onSurvey('gone'), null)).toEqual({
+      reason: t('actions.area.reason.noEarlier'),
+    });
+  });
   it('has no earlier survey with one capture', () => {
     expect(previousPair(index(['a']), site, null)).toEqual({
       reason: t('actions.area.reason.noEarlier'),
@@ -138,6 +143,9 @@ describe('previousPair', () => {
 });
 
 describe('areaScope', () => {
+  it('falls back to the id for a blank label', () => {
+    expect(areaScope(measurement(square, { label: '   ' })).name).toBe('m1');
+  });
   it('keeps the id and cuts the name to 120', () => {
     const s = areaScope(measurement(square, { label: ` ${'x'.repeat(200)}` }));
     expect(s.id).toBe('m1');

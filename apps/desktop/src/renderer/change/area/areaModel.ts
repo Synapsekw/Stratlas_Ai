@@ -101,6 +101,9 @@ export function previousPair(
 ): { from: string; to: string } | { reason: string } {
   const known = (id: string | null | undefined): id is string =>
     !!id && index.captures.some((c) => c.id === id);
+  if (m.scope.kind === 'survey' && !known(m.scope.capture)) {
+    return { reason: t('actions.area.reason.noEarlier') };
+  }
   const current = m.scope.kind === 'survey' ? m.scope.capture : focus;
   const to = known(current) ? current : (index.captures.at(-1)?.id ?? null);
   const from = to ? stepCapture(index, to, -1) : null;
@@ -110,5 +113,5 @@ export function previousPair(
 
 /** The scope a run is filed under: the measurement id and its label, cut to 120 characters. */
 export function areaScope(m: SurveyMeasurement): ChangeScope {
-  return { id: m.id, name: m.label.trim().slice(0, 120) };
+  return { id: m.id, name: m.label.trim().slice(0, 120) || m.id };
 }
