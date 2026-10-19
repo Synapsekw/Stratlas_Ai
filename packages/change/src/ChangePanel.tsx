@@ -218,8 +218,17 @@ export function ChangePanel({
     );
 
   const pair = s.pair;
+  // a kept refusal belongs to its pair and to its area (a scoped run keeps the area in its params)
+  const refusedArea = (s.misaligned?.params?.scope as { id?: unknown } | undefined)?.id ?? null;
   const refused =
-    pair && s.misaligned?.from === pair.from && s.misaligned.to === pair.to ? s.misaligned : null;
+    pair &&
+    s.misaligned?.from === pair.from &&
+    s.misaligned.to === pair.to &&
+    refusedArea === s.area
+      ? s.misaligned
+      : null;
+  // the runs here are whole-map runs: their result is not what an area's view shows
+  const areaRunWhy = s.area ? t('change.area.runWholeMap') : null;
   const ctx = pair ? context(pair) : null;
   const label = (id: string) => captures.find((c) => c.id === id)?.label ?? id;
 
@@ -322,8 +331,8 @@ export function ChangePanel({
               type="button"
               className="chg-btn primary"
               data-testid="change-run"
-              title={t('change.run')}
-              disabled={!pair}
+              title={areaRunWhy ?? t('change.run')}
+              disabled={!pair || !!s.area}
               onClick={() => void s.compute()}
             >
               {t('change.runShort')}
@@ -337,8 +346,10 @@ export function ChangePanel({
                 type="button"
                 className="chg-btn"
                 data-testid={`change-producer-${p.id}`}
-                disabled={ok !== true || !!s.run}
-                title={ok === true ? p.label : t('change.producerMissing', { why: ok })}
+                disabled={ok !== true || !!s.run || !!s.area}
+                title={
+                  areaRunWhy ?? (ok === true ? p.label : t('change.producerMissing', { why: ok }))
+                }
                 onClick={() => {
                   if (ctx) void act(() => runProducer(p, ctx));
                 }}
@@ -349,7 +360,7 @@ export function ChangePanel({
           })}
         </div>
       )}
-      {areas.length > 0 && (
+      {(areas.length > 0 || s.area) && (
         <div className="chg-bar">
           <select
             className="chg-input"
@@ -361,6 +372,10 @@ export function ChangePanel({
             }}
           >
             <option value="">{t('change.area.wholeMap')}</option>
+            {/* a chosen area with no sets yet (its first run is going, or failed) */}
+            {s.area && !areas.some((a) => a.id === s.area) && (
+              <option value={s.area}>{t('change.area.noSets')}</option>
+            )}
             {areas.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}

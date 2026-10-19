@@ -2179,6 +2179,8 @@ export const en = {
   'change.area.volumesFailed': 'Volumes were not started: {why}',
   'change.area.picker': 'Area',
   'change.area.wholeMap': 'Whole map',
+  'change.area.noSets': 'This area (no results yet)',
+  'change.area.runWholeMap': 'Choose "Whole map" to run for the whole map.',
   'change.area.volumesMissing': 'No volumes for this area: {why}',
   'change.belongsTo': 'Belongs to date...',
   'change.belongsToTitle': 'Survey date of {name}',
