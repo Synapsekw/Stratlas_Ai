@@ -50,7 +50,8 @@ const STUB_NOT_BACK =
   "ODM's placeholder nvcuda.dll could not be put back. It is tried again before the next ODM run.";
 const VC_RUNTIME_MISSING =
   'ODM needs the Microsoft Visual C++ 2015-2022 Redistributable (x64), which is missing on this computer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then install ODM again.';
-const SMOKE_TIMED_OUT = `ODM did not finish starting within ${String(SMOKE_TIMEOUT_MS / 60_000)} minutes. The first start on a new computer can be slow while Windows checks the new files. Install it again; if this happens again, send us the app log.`;
+/** Why an install recorded unverified is not used yet; the card offers Try again. */
+const UNVERIFIED = `ODM did not finish starting within ${String(SMOKE_TIMEOUT_MS / 60_000)} minutes. The first start on a new computer can be slow while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.`;
 /** How much of the start check's output goes to the app log. */
 const SMOKE_LOG_CHARS = 4096;
 
@@ -99,7 +100,9 @@ export async function currentOdm(
   const devDir = d.env.QUADRION_ODM_DIR;
   if (devDir) return { dir: devDir, version: d.env.QUADRION_ODM_VERSION ?? 'dev', owned: false };
   const rec = await readRecord(d.dataRoot());
-  if (!rec || (await filesPresent(d.system, rec.dir)) !== null) return null;
+  // an install whose start check has not passed is not given to jobs
+  if (!rec || rec.verified === false || (await filesPresent(d.system, rec.dir)) !== null)
+    return null;
   return { dir: rec.dir, version: rec.version, owned: true };
 }
 
@@ -162,6 +165,7 @@ export async function odmStatus(d: OdmDeps, installing: boolean): Promise<OdmSta
   if (!rec) return { ...s, state: 'not-installed' };
   if ((await filesPresent(d.system, rec.dir)) !== null)
     return { ...s, ...found, state: 'broken', problem: BROKEN };
+  if (rec.verified === false) return { ...s, ...found, state: 'unverified', problem: UNVERIFIED };
   const problem = await stubProblem(rec.dir, setting, d.env, d.system);
   const state = compareVersions(rec.version, pin.version) < 0 ? 'update-available' : 'installed';
   return { ...s, ...found, state, ...(problem ? { problem } : {}) };
@@ -244,34 +248,29 @@ async function uninstallFolder(d: OdmDeps, dir: string, mayDelete: boolean): Pro
   if (mayDelete && (await system.exists(dir))) await system.rm(dir);
 }
 
-/** Download, verify and install the pinned ODM per user, then check that it starts. */
-export async function installOdm(
+/** Another ODM that would be replaced without asking, or too little free space: the refusal. */
+async function preflight(
   d: OdmDeps,
-  o: { replaceOther: boolean; signal: AbortSignal; onProgress(p: OdmInstallProgress): void },
-): Promise<OdmInstallResult> {
-  if (!supported(d)) return fail(UNSUPPORTED, 'unsupported');
-  if (d.env.QUADRION_ODM_DIR) return fail(DEV, 'dev');
-  if (d.offlineOnly()) return fail(OFFLINE, 'offline-only');
-
+  replaceOther: boolean,
+  old: OdmInstallRecord | null,
+  target: string,
+  setup: string,
+  pin: { size: number; installedBytes: number },
+): Promise<Failure | null> {
   const { system, env } = d;
-  const dataRoot = d.dataRoot();
-  const old = await readRecord(dataRoot);
-  const pin = await pinFrom(env);
-  const target = odmInstallDir(dataRoot, env, pin.version);
   const other = await findOtherOdm({
     regQuery: (k, s) => system.regQuery(k, s),
     exists: (p) => system.exists(p),
     ours: ourDirs(old, target),
     env,
   });
-  if (other && !o.replaceOther)
+  if (other && !replaceOther)
     return fail(
       `Another ODM is installed in ${other.dir}. Installing replaces it.`,
       'other-install',
     );
 
   // the setup lands in the data root, ODM in the install folder: each drive needs its share
-  const setup = join(downloadDir(dataRoot), pin.file);
   const needs = new Map<string, number>();
   for (const [path, bytes] of [
     [setup, pin.size],
@@ -287,6 +286,37 @@ export async function installOdm(
         `Not enough free space on ${drive}: the processing engine needs about ${gb(need)} there, ${gb(free)} is free.`,
         'disk',
       );
+  }
+  return null;
+}
+
+/**
+ * Download, verify and install the pinned ODM per user, then check that it starts. A start check
+ * that runs out of time keeps the install, recorded unverified; installing again then reruns only
+ * the start check (Try again), with no download and no setup.
+ */
+export async function installOdm(
+  d: OdmDeps,
+  o: { replaceOther: boolean; signal: AbortSignal; onProgress(p: OdmInstallProgress): void },
+): Promise<OdmInstallResult> {
+  if (!supported(d)) return fail(UNSUPPORTED, 'unsupported');
+  if (d.env.QUADRION_ODM_DIR) return fail(DEV, 'dev');
+  if (d.offlineOnly()) return fail(OFFLINE, 'offline-only');
+
+  const { system, env } = d;
+  const dataRoot = d.dataRoot();
+  const old = await readRecord(dataRoot);
+  const pin = await pinFrom(env);
+  const target = odmInstallDir(dataRoot, env, pin.version);
+  const setup = join(downloadDir(dataRoot), pin.file);
+  const retry =
+    old?.verified === false &&
+    old.version === pin.version &&
+    sameDir(old.dir, target) &&
+    (await filesPresent(system, target)) === null;
+  if (!retry) {
+    const refused = await preflight(d, o.replaceOther, old, target, setup, pin);
+    if (refused) return refused;
   }
 
   let done = 0;
@@ -308,35 +338,39 @@ export async function installOdm(
     return fail('The download was cancelled.', 'cancelled');
   };
 
-  progress('download');
-  try {
-    await downloadVerified({
-      url: pin.url,
-      sha256: pin.sha256,
-      size: pin.size,
-      dest: setup,
-      fetch: d.fetch,
-      signal: o.signal,
-      onProgress: (n, t) => {
-        done = n;
-        o.onProgress({ phase: n === t ? 'verify' : 'download', bytesDone: n, bytesTotal: t });
-      },
-    });
-  } catch (e) {
-    return o.signal.aborted ? cancelled() : failed(odmDownloadError(message(e)));
+  if (!retry) {
+    progress('download');
+    try {
+      await downloadVerified({
+        url: pin.url,
+        sha256: pin.sha256,
+        size: pin.size,
+        dest: setup,
+        fetch: d.fetch,
+        signal: o.signal,
+        onProgress: (n, t) => {
+          done = n;
+          o.onProgress({ phase: n === t ? 'verify' : 'download', bytesDone: n, bytesTotal: t });
+        },
+      });
+    } catch (e) {
+      return o.signal.aborted ? cancelled() : failed(odmDownloadError(message(e)));
+    }
+    // a cancel during the hash check: stop before the setup runs
+    if (o.signal.aborted) return cancelled();
   }
-  // a cancel during the hash check: stop before the setup runs
-  if (o.signal.aborted) return cancelled();
 
   // Past this point a failure removes what the setup left (folder and uninstall entry), unless
   // it was installed over our recorded ODM: that one is then reported broken until reinstalled.
-  // The setup's own log stays, outside that folder.
+  // An unverified install that fails its start check for real goes, record and all, as a failed
+  // install does. The setup's own log stays, outside that folder.
   const setupLog = odmSetupLogPath(dataRoot, pin.version);
   const rollback = async (error: string): Promise<Failure> => {
     d.log?.(`ODM: the install failed: ${error} The setup's log: ${setupLog}`);
-    if (!old || !sameDir(old.dir, target)) {
+    if (retry || !old || !sameDir(old.dir, target)) {
       try {
         await uninstallFolder(d, target, isOurOdmFolder(target, dataRoot, env));
+        if (retry) await system.rm(odmRecordPath(dataRoot));
       } catch (e) {
         d.log?.(`ODM: could not remove the failed install in ${target}: ${message(e)}`);
       }
@@ -344,20 +378,23 @@ export async function installOdm(
     return failed(error);
   };
 
+  let verified = true;
   try {
-    progress('install');
-    await mkdir(dirname(setupLog), { recursive: true });
-    // unquoted: Node quotes an argument with a space (the data root may have one), Inno takes it whole
-    const code = await system.runSetup(setup, [
-      ...SETUP_ARGS,
-      `/DIR=${target}`,
-      `/LOG=${setupLog}`,
-    ]);
-    if (code === 2 || code === 5)
-      return await rollback(
-        'The installation was cancelled (a Windows permission prompt may have been declined).',
-      );
-    if (code !== 0) return await rollback(`ODM's setup stopped with exit code ${String(code)}.`);
+    if (!retry) {
+      progress('install');
+      await mkdir(dirname(setupLog), { recursive: true });
+      // unquoted: Node quotes an argument with a space (the data root may have one), Inno takes it whole
+      const code = await system.runSetup(setup, [
+        ...SETUP_ARGS,
+        `/DIR=${target}`,
+        `/LOG=${setupLog}`,
+      ]);
+      if (code === 2 || code === 5)
+        return await rollback(
+          'The installation was cancelled (a Windows permission prompt may have been declined).',
+        );
+      if (code !== 0) return await rollback(`ODM's setup stopped with exit code ${String(code)}.`);
+    }
 
     progress('check');
     const missing = await filesPresent(system, target);
@@ -375,8 +412,9 @@ export async function installOdm(
     d.log?.(
       `ODM: start check: ${String(secs)} s, exit code ${String(smoke.code)}, ${smoke.timedOut ? 'timed out' : 'finished'}; output: ${smoke.out.slice(-SMOKE_LOG_CHARS).trim() || '(none)'}`,
     );
-    if (smoke.timedOut) return await rollback(SMOKE_TIMED_OUT);
-    if (smoke.code !== 0 || !/usage: run/i.test(smoke.out))
+    // a slow first start is no proof of a broken install: kept, it waits for Try again
+    if (smoke.timedOut) verified = false;
+    else if (smoke.code !== 0 || !/usage: run/i.test(smoke.out))
       return await rollback(
         `ODM installed but does not start: ${lastLine(smoke.out) ?? `exit code ${String(smoke.code)}`}`,
       );
@@ -390,7 +428,8 @@ export async function installOdm(
       schema: 'aio.odm-install/1',
       version: pin.version,
       dir: target,
-      installedAt: d.now().toISOString(),
+      installedAt: retry ? old.installedAt : d.now().toISOString(),
+      ...(verified ? {} : { verified: false }),
     });
     if (old && !sameDir(old.dir, target) && isOurOdmFolder(old.dir, dataRoot, env)) {
       // ODM's setup may have uninstalled it already; the parked placeholder (unknown to its

@@ -121,6 +121,23 @@ describe('the Processing engine card', () => {
     }
   });
 
+  it('a start check that ran out of time: says why, and Try again asks main to install', async () => {
+    const problem = 'ODM did not finish starting within 10 minutes.';
+    await mount(
+      status({ state: 'unverified', version: '3.6.2', dir: 'E:\\Q\\odm-3.6.2', problem }),
+    );
+    expect(q('engine-state')?.textContent).toBe('Needs a start check');
+    expect(q('engine-detail')?.textContent).toBe(problem);
+    expect(q('engine-remove')).not.toBeNull();
+    expect(q('engine-retry')?.textContent).toBe('Try again');
+    h.answers.set('odm:install', () => ({ ok: true, status: INSTALLED }));
+    click('engine-retry');
+    await settle();
+    expect(h.calls.filter((c) => c.channel === 'odm:install')).toEqual([
+      { channel: 'odm:install', req: {} },
+    ]);
+  });
+
   it('offers the install with the sizes, and none for an unsupported computer', async () => {
     await mount(status());
     expect(q('engine-about')?.textContent).toContain('AGPL-3.0');

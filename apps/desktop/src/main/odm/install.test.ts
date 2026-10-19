@@ -14,11 +14,21 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OdmInstallProgress } from '@aio/schema';
-import { installOdm, odmJobEnv, odmStatus, parkOdmStub, removeOdm, type OdmDeps } from './install';
+import {
+  currentOdm,
+  installOdm,
+  odmJobEnv,
+  odmStatus,
+  parkOdmStub,
+  removeOdm,
+  type OdmDeps,
+} from './install';
 import type { OdmSystem } from './system';
 
 const SETUP = Buffer.from('fake setup bytes');
 const VC_RUNTIME = ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'];
+const UNVERIFIED =
+  'ODM did not finish starting within 10 minutes. The first start on a new computer can be slow while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.';
 let dir: string;
 let server: Server;
 let url: string;
@@ -302,17 +312,93 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
       },
     });
     const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
-    const { r } = await run(deps(system, { log: (l) => lines.push(l), now: () => new Date(t) }));
+    const d = deps(system, { log: (l) => lines.push(l), now: () => new Date(t) });
+    const { r, seen } = await run(d);
+    // kept, not rolled back: the second start is usually much faster
+    expect(r).toMatchObject({ ok: true, status: { state: 'unverified', dir: target } });
+    if (r.ok) expect(r.status.problem).toBe(UNVERIFIED);
+    expect(seen.at(-1)).toMatchObject({ phase: 'done' });
+    expect(existsSync(target)).toBe(true);
+    expect(existsSync(join(dir, 'data', 'runtime', 'downloads', 'ODM_Setup_test.exe'))).toBe(false);
+    expect(await readRec(join(dir, 'data'))).toMatchObject({ dir: target, verified: false });
+    expect(lines.join('\n')).toMatch(/start check: 600 s, exit code 1, timed out/);
+    // after a restart too: shown as needing a start check, and never given to a photo job
+    expect(await odmStatus(d, false)).toMatchObject({ state: 'unverified', problem: UNVERIFIED });
+    expect(await currentOdm(d)).toBeNull();
+  });
+
+  it('Try again reruns only the start check, then ODM is ready', async () => {
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    await run(deps(slow));
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const bin = join(target, 'SuperBuild', 'install', 'bin');
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, 'nvcuda.dll'), Buffer.alloc(19_968));
+    await writeFile(join(dir, 'nowin', 'System32', 'nvcuda.dll'), 'driver');
+    const lines: string[] = [];
+    const system = fakeSystem();
+    const d = deps(system, {
+      // no download this time
+      fetch: () => Promise.reject(new Error('no download expected')),
+      log: (l) => lines.push(l),
+    });
+    const { r, seen } = await run(d);
+    expect(r).toMatchObject({ ok: true, status: { state: 'installed', dir: target } });
+    expect(system.calls).toHaveLength(0); // neither setup nor uninstaller
+    expect(seen.map((p) => p.phase)).toEqual(['check', 'done']);
+    expect(lines.join('\n')).toMatch(/start check: 0 s, exit code 0, finished/);
+    const rec = await readRec(join(dir, 'data'));
+    expect(rec).not.toHaveProperty('verified');
+    // what a passing check after an install does: the placeholder is parked
+    expect(existsSync(join(bin, 'nvcuda.dll.odm-stub'))).toBe(true);
+    expect(await currentOdm(d)).toMatchObject({ dir: target, owned: true });
+  });
+
+  it('Try again that runs out of time again keeps the install, still unverified', async () => {
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    await run(deps(slow));
+    const { r, seen } = await run(deps(slow));
+    expect(r).toMatchObject({ ok: true, status: { state: 'unverified' } });
+    expect(seen.map((p) => p.phase)).toEqual(['check', 'done']);
+    expect(slow.calls).toHaveLength(1); // the one setup of the first install
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-3.6.2'))).toBe(true);
+  });
+
+  it('Try again that fails for real removes the install, as a failed install does', async () => {
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    await run(deps(slow));
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const system = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: 'Traceback\nboom\n' }),
+    });
+    const d = deps(system);
+    const { r, seen } = await run(d);
     expect(r).toMatchObject({
       ok: false,
       code: 'failed',
-      error:
-        'ODM did not finish starting within 10 minutes. The first start on a new computer can be slow while Windows checks the new files. Install it again; if this happens again, send us the app log.',
+      error: 'ODM installed but does not start: boom',
     });
+    expect(seen.at(-1)).toMatchObject({ phase: 'failed' });
+    expect(system.calls.at(-1)).toEqual([join(target, 'unins000.exe')]);
     expect(existsSync(target)).toBe(false);
-    const log = lines.join('\n');
-    expect(log).toMatch(/start check: 600 s, exit code 1, timed out/);
-    expect(log).toContain(join(dir, 'data', 'runtime', 'logs', 'odm-setup-3.6.2.log'));
+    expect((await odmStatus(d, false)).state).toBe('not-installed');
+  });
+
+  it('remove works on an install that still needs its start check', async () => {
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    const d = deps(slow);
+    await run(d);
+    const r = await removeOdm(d);
+    expect(r).toMatchObject({ ok: true, status: { state: 'not-installed' } });
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-3.6.2'))).toBe(false);
   });
 
   it('logs every start check: how long, the exit code and the end of its output', async () => {
@@ -367,6 +453,8 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
     expect(smoked).toBe(false);
     expect(existsSync(join(dir, 'data', 'runtime', 'odm-3.6.2'))).toBe(false);
     expect(lines.join('\n')).toMatch(/vcruntime140_1\.dll, msvcp140\.dll/);
+    // the setup's log outlives the rollback, and the app log says where it is
+    expect(lines.join('\n')).toContain(join(dir, 'data', 'runtime', 'logs', 'odm-setup-3.6.2.log'));
   });
 
   it('too little free space is refused before the download', async () => {

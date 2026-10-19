@@ -93,6 +93,20 @@ describe('the Processing engine card', () => {
     expect(processingEngineView(null, null, false).state).toBe('loading');
   });
 
+  it('an install whose first start ran out of time asks for a start check: Try again or remove', () => {
+    const problem = 'ODM did not finish starting within 10 minutes.';
+    const v = processingEngineView(
+      { ...base, state: 'unverified', version: '3.6.2', dir: 'E:\\Q\\odm-3.6.2', problem },
+      null,
+      false,
+    );
+    expect(v.title).toBe('engine.state.unverified');
+    expect(v.tone).toBe('warn');
+    expect(v.detail).toBe(problem);
+    expect(v.warning).toBeNull();
+    expect(v.actions).toEqual(['retry', 'remove']);
+  });
+
   it('shows a problem as a warning while installed or update-available', () => {
     const problem = 'The GPU stub could not be renamed; dense matching will use the CPU.';
     const ok = processingEngineView({ ...base, state: 'installed', problem }, null, false);
