@@ -39,7 +39,7 @@ The founder wants the left sidebar to hold everything the project contains and t
 
 - Map: a click on a road PCI sample unit under a measurement opens the unit card and also selects the measurement (needs a map controller hook). 3D: issue areas and draped issue shapes over a measurement select both.
 - Fly to uses `focusPoint`; switch to `flyToLocalBox` (`workspace/flyToBox.ts`, now on main).
-- The old list's search, sort and field filters are not in the tree; the founder is deciding whether they come back.
+- The old list's search, sort and field filters are not in the tree; the founder chose to bring them back in a follow-up PR (a filter box at the top of the Measurements group).
 - In the live Measure bench, Shift+Tab from the tool strip reaches Autosave before the card's Cancel.
 - `Sidebar.tsx` `OPEN_GROUPS` copies DatasetTree's private `DEFAULT_OPEN`; `MeasureToolbar` and `BulkTotals` read only the file read-only flag; the dates-off Measurements heading has no menu (its Collapse entry went with the "0 datasets" menu).
 - Drag of rows onto folders, folder rename and delete, and nested folders are not built.
