@@ -153,11 +153,19 @@ function idsKey(ids: readonly string[]): string {
 
 /**
  * Select the marked measurements in view (`ids`); the focus moves off a marked one the filter
- * hides (`marked`: every marked measurement), so the panel never shows a row the tree hides.
+ * hides (`marked`: every marked measurement), so the panel never shows a row the tree hides, and
+ * onto the one measurement when only one is selected.
  */
 function selectMarked(marked: ReadonlySet<string>, ids: string[]): void {
   const f = measureStore.getState().focus;
-  const focus = f === null || ids.includes(f) || !marked.has(f) ? f : (ids[0] ?? null);
+  // one measurement selected is the one the panel shows, as a plain select of one does
+  const one = ids.length === 1 ? (ids[0] ?? null) : null;
+  const focus =
+    one !== null && f !== one
+      ? one
+      : f === null || ids.includes(f) || !marked.has(f)
+        ? f
+        : (ids[0] ?? null);
   select(ids, focus);
 }
 
@@ -368,11 +376,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const shownMarks = useMemo(() => inView(marks.marked), [inView, marks.marked]);
   // the filter changed which marks are in view: the selection the marks made follows them, but
   // only while it is still the one they made (by content): a pick in the 3D view, a plain click
-  // or a click on empty space selected something else, and that stays
-  const markSelection = useRef<string | null>(null);
+  // or a click on empty space selected something else, and that stays. A measurement that left
+  // the file (deleted from the panel, a menu or the tree) leaves the ids the marks selected as
+  // it leaves the marks and the selection, so the three never drift apart.
+  const markSelection = useRef<readonly string[] | null>(null);
   const selectFromMarks = (marked: ReadonlySet<string>, ids: string[]) => {
     selectMarked(marked, ids);
-    markSelection.current = idsKey(ids);
+    markSelection.current = ids;
   };
   const shownKey = idsKey(measureIdsOf(shownMarks));
   const seenShown = useRef(shownKey);
@@ -380,10 +390,18 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     if (seenShown.current === shownKey) return;
     seenShown.current = shownKey;
     const all = new Set(measureIdsOf(marks.marked));
-    if (all.size === 0) return;
-    if (idsKey(measureStore.getState().selected) !== markSelection.current) return;
-    selectMarked(all, measureIdsOf(shownMarks));
-    markSelection.current = idsKey(measureIdsOf(shownMarks));
+    const made = markSelection.current;
+    if (all.size === 0 || made === null) {
+      markSelection.current = null;
+      return;
+    }
+    const present = new Set(measureFile.measurements.map((m) => m.id));
+    const still = made.filter((id) => present.has(id));
+    if (idsKey(measureStore.getState().selected) !== idsKey(still)) {
+      markSelection.current = null;
+      return;
+    }
+    selectFromMarks(all, measureIdsOf(shownMarks));
   });
   // a removal went through: what was marked is gone; Empty could not delete everything: say so
   // where the tree's notes go (adjusted during render, not in an effect)

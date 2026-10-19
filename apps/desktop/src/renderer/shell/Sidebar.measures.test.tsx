@@ -17,6 +17,7 @@ import {
   askNewFolder,
   deleteMeasurements,
   isDirty,
+  revertMeasurements,
   measureStore,
   revealMeasurement,
   select,
@@ -544,6 +545,76 @@ describe('Datasets: the measurement filter', () => {
     expect(measureStore.getState().selected).toEqual([]);
     filter('');
     expect(measureStore.getState().selected).toEqual([]);
+  });
+
+  it('a marked row deleted another way (the Selected panel) leaves the selection following the filter', () => {
+    render();
+    click(name('a'));
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    // the Selected panel's Delete measurement takes the focused one only (the 3D and map menus
+    // delete the same way)
+    act(() => {
+      deleteMeasurements(['a']);
+    });
+    expect(measureStore.getState().selected).toEqual(['b', 'c']);
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual(['b']);
+    filter('');
+    expect(measureStore.getState().selected).toEqual(['b', 'c']);
+  });
+
+  it('marks in view all deleted, clearing the filter selects the hidden mark again', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    filter('fence');
+    keyDown(row('a'), 'Delete');
+    expect(measures().map((x) => x.id)).toEqual(['c']);
+    expect(measureStore.getState().selected).toEqual([]);
+    filter('');
+    expect(measureStore.getState().selected).toEqual(['c']);
+  });
+
+  it('an Undo that brings a deleted mark back selects it; the filter leaves that alone', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    act(() => {
+      deleteMeasurements(['a']);
+    });
+    act(() => {
+      undoDeleteMeasurements();
+    });
+    expect(measureStore.getState().selected).toEqual(['a']);
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual(['a']);
+  });
+
+  it('a Revert that lets go of the selection is not undone by the filter', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    act(() => {
+      deleteMeasurements(['a']);
+    });
+    act(() => {
+      revertMeasurements();
+    });
+    expect(measureStore.getState().selected).toEqual([]);
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual([]);
+  });
+
+  it('a first Ctrl+click focuses the measurement it selects', () => {
+    render();
+    ctrlClick(name('b'));
+    expect(measureStore.getState().selected).toEqual(['b']);
+    expect(measureStore.getState().focus).toBe('b');
   });
 
   it('the header Delete leaves a hidden marked row alone', () => {
