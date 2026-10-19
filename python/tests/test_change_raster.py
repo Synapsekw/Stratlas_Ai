@@ -236,19 +236,48 @@ def test_the_default_tolerance_refuses_three_pixels(tmp_path):
         run_job(pipeline(), tmp_path, raster_params())
 
 
-def test_an_ignore_polygon_hides_a_change_and_a_mask_keeps_only_its_area(tmp_path):
+def ortho_ring(r0, c0, size):
+    """A lon/lat polygon over ``size`` cells of the synthetic ortho, from row ``r0`` and column ``c0``."""
     from rasterio.warp import transform
 
+    x0, z0 = -N * CELL / 2 + c0 * CELL, -N * CELL / 2 + r0 * CELL
+    x1, z1 = x0 + size * CELL, z0 + size * CELL
+    xs, zs = [x0, x1, x1, x0, x0], [z0, z0, z1, z1, z0]
+    lon, lat = transform("EPSG:32639", "EPSG:4326", [500000 + x for x in xs], [3200000 - z for z in zs])
+    return [[a_, b_] for a_, b_ in zip(lon, lat, strict=True)]
+
+
+def test_a_scoped_run_keeps_its_own_set_beside_the_whole_map_one(tmp_path):
     a, b = dates()
     b = paint(b, 200, 260, SQUARE)
     ortho_project(tmp_path, a, b, CELL)
+    scope = {"id": "pad-a", "name": "Pad A"}
+    run_job(pipeline(), tmp_path, raster_params(), job_id="j1")
+    run_job(pipeline(), tmp_path, raster_params(mask=ortho_ring(150, 200, 300), scope=scope), job_id="j2")
+    assert len(read_set(tmp_path)["items"]) == 1
+    scoped = json.loads((tmp_path / "change" / "c1-c2-raster-area-pad-a.json").read_text("utf-8"))
+    assert scoped["scope"] == scope
+    assert len(scoped["items"]) == 1
+    assert "scope" not in read_set(tmp_path)
+    ls = layers(tmp_path)
+    for lid in (
+        "c1-c2-raster-heat",
+        "c1-c2-raster-regions",
+        "c1-c2-raster-area-pad-a-heat",
+        "c1-c2-raster-area-pad-a-regions",
+    ):
+        assert lid in ls
+    assert ls["c1-c2-raster-area-pad-a-heat"]["name"].startswith("Pad A: imagery change heat map")
+    assert ls["c1-c2-raster-area-pad-a-regions"]["name"].startswith("Pad A: imagery change areas")
+    assert ls["c1-c2-raster-heat"]["name"].startswith("Imagery change heat map")
+    assert (tmp_path / "change" / "c1-c2-raster-area-pad-a" / "heat" / "tiles.json").is_file()
 
-    def ring(r0, c0, size):
-        x0, z0 = -N * CELL / 2 + c0 * CELL, -N * CELL / 2 + r0 * CELL
-        x1, z1 = x0 + size * CELL, z0 + size * CELL
-        xs, zs = [x0, x1, x1, x0, x0], [z0, z0, z1, z1, z0]
-        lon, lat = transform("EPSG:32639", "EPSG:4326", [500000 + x for x in xs], [3200000 - z for z in zs])
-        return [[a_, b_] for a_, b_ in zip(lon, lat, strict=True)]
+
+def test_an_ignore_polygon_hides_a_change_and_a_mask_keeps_only_its_area(tmp_path):
+    a, b = dates()
+    b = paint(b, 200, 260, SQUARE)
+    ortho_project(tmp_path, a, b, CELL)
+    ring = ortho_ring
 
     run_job(pipeline(), tmp_path, raster_params(ignore=[ring(190, 250, SQUARE + 20)]), job_id="j1")
     assert read_set(tmp_path)["items"] == []
@@ -307,6 +336,7 @@ def test_resume_after_the_orthos_changed_is_refused(tmp_path):
         (raster_params(threshold=2), "threshold"),
         (raster_params(to="c1"), "two different dates"),
         ({**raster_params(), "bogus": 1}, "does not take: bogus"),
+        ({**raster_params(), "scope": {"id": "pad-a", "name": "Pad A"}}, "needs its mask"),
     ],
 )
 def test_bad_parameters_are_refused_with_a_clear_message(tmp_path, params, message):

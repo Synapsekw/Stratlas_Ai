@@ -36,7 +36,7 @@ import numpy as np
 from ..captures import capture_similarity
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
-from .changeset import change_set, change_set_id
+from .changeset import change_set, change_set_id, check_scope
 from .imagery import (
     Grid,
     Ortho,
@@ -340,6 +340,7 @@ class ChangeRaster:
             "maxShiftPx",
             "mask",
             "ignore",
+            "scope",
             "out",
         }
     )
@@ -361,11 +362,14 @@ class ChangeRaster:
                 raise JobError(f"{k} must be a polygon of at least three [lon, lat] points.")
         if "ignore" in p and (not isinstance(p["ignore"], list) or not all(_ring(r) for r in p["ignore"])):
             raise JobError("ignore must be a list of polygons of [lon, lat] points.")
+        check_scope(p)
         text(p, "out")
         return p
 
     def plan(self, params: dict[str, Any]) -> list[Step]:
-        set_id = change_set_id(params["from"], params["to"], PRODUCER)
+        scope = check_scope(params)
+        set_id = change_set_id(params["from"], params["to"], PRODUCER, scope["id"] if scope else None)
+        label = f"{scope['name']}: imagery change" if scope else "Imagery change"
         out_dir = params.get("out") or f"change/{set_id}"
 
         def orthos(ctx: StepContext):
@@ -576,6 +580,7 @@ class ChangeRaster:
                 registration=reg,
                 coverage=r["coverage"],
                 line_up=(capture_similarity(m, params["from"]), capture_similarity(m, params["to"])),
+                scope=scope,
             )
             atomic_write_json(ctx.stage("work/change-set.json"), cs)
             return {"items": len(items)}
@@ -591,7 +596,7 @@ class ChangeRaster:
                 {
                     "kind": "raster",
                     "id": f"{set_id}-heat",
-                    "name": f"Imagery change heat map, {when}",
+                    "name": f"{label} heat map, {when}",
                     "visible": True,
                     "capture": b,
                     "derived": prov,
@@ -602,7 +607,7 @@ class ChangeRaster:
                 {
                     "kind": "vector",
                     "id": f"{set_id}-regions",
-                    "name": f"Imagery change areas, {when}",
+                    "name": f"{label} areas, {when}",
                     "visible": True,
                     "capture": b,
                     "derived": dict(prov),
