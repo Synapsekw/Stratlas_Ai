@@ -450,6 +450,20 @@ def from_lonlat(manifest: dict[str, Any], ring: list[list[float]]) -> list[tuple
     return [(e - o[0], o[1] - n) for e, n in zip(E, N, strict=True)]
 
 
+def is_lonlat_ring(v: Any) -> bool:
+    """A lon/lat ring of the params: at least three ``[lon, lat]`` number pairs."""
+    return (
+        isinstance(v, list)
+        and len(v) >= 3
+        and all(
+            isinstance(p, list | tuple)
+            and len(p) == 2
+            and all(isinstance(x, int | float) and not isinstance(x, bool) for x in p)
+            for p in v
+        )
+    )
+
+
 def ring_mask(manifest: dict[str, Any], rings: list[list[list[float]]], grid: Grid) -> np.ndarray:
     """Cells of ``grid`` inside any of the lon/lat rings."""
     from rasterio import features

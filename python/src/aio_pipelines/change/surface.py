@@ -49,6 +49,7 @@ from .imagery import (
     find_layer,
     from_lonlat,
     intersect,
+    is_lonlat_ring,
     load_arrays,
     outline,
     polygons,
@@ -58,7 +59,6 @@ from .imagery import (
     save_arrays,
     write_pyramid,
 )
-from .raster import _ring
 from .register import estimate_shift, misaligned
 from .sources import GridSource, cloud_source, grid_source, height_offset_m
 
@@ -435,7 +435,7 @@ class ChangeSurface:
                     or len(ring) < 3
                 ):
                     raise JobError("Each area needs an id, a name and a ring of [lon, lat] points.")
-        if "mask" in p and not _ring(p["mask"]):
+        if "mask" in p and not is_lonlat_ring(p["mask"]):
             raise JobError("mask must be a polygon of at least three [lon, lat] points.")
         check_scope(p)
         text(p, "out")

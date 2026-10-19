@@ -47,6 +47,7 @@ from .imagery import (
     derived,
     find_layer,
     intersect,
+    is_lonlat_ring,
     load_arrays,
     outline,
     polygons,
@@ -358,9 +359,11 @@ class ChangeRaster:
         number(p, "minAreaM2", lo=0, hi=1e6)
         number(p, "maxShiftPx", lo=0, hi=100)
         for k in ("mask",):
-            if k in p and not _ring(p[k]):
+            if k in p and not is_lonlat_ring(p[k]):
                 raise JobError(f"{k} must be a polygon of at least three [lon, lat] points.")
-        if "ignore" in p and (not isinstance(p["ignore"], list) or not all(_ring(r) for r in p["ignore"])):
+        if "ignore" in p and (
+            not isinstance(p["ignore"], list) or not all(is_lonlat_ring(r) for r in p["ignore"])
+        ):
             raise JobError("ignore must be a list of polygons of [lon, lat] points.")
         check_scope(p)
         text(p, "out")
@@ -642,16 +645,3 @@ def _label(manifest: dict[str, Any], cid: str) -> str:
     from .imagery import capture_label
 
     return capture_label(manifest, cid)
-
-
-def _ring(v: Any) -> bool:
-    return (
-        isinstance(v, list)
-        and len(v) >= 3
-        and all(
-            isinstance(p, list | tuple)
-            and len(p) == 2
-            and all(isinstance(x, int | float) and not isinstance(x, bool) for x in p)
-            for p in v
-        )
-    )
