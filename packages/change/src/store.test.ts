@@ -1,7 +1,7 @@
 import { ChangeSet } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createChangeStore, setsOfPair } from './store';
+import { areasOfPair, createChangeStore, setsOfPair, volumesNote } from './store';
 
 const set = ChangeSet.parse({
   schema: 'aio.change/1',
@@ -125,5 +125,47 @@ describe('the Changes store', () => {
     s.getState().setMisaligned(refused);
     await s.getState().load('other');
     expect(s.getState().misaligned).toBeNull();
+  });
+});
+
+describe('area entries', () => {
+  const pair = { from: 'd1', to: 'd2' };
+  const mk = (id: string, producer: string, extra: object = {}) =>
+    ChangeSet.parse({ ...set, id, producer, ...extra });
+  const area = { id: 'a', name: 'Area A' };
+  const whole = mk('d1-d2-raster', 'change.raster');
+  const aRaster = mk('d1-d2-raster-area-a', 'change.raster', { scope: area });
+  const aSurface = mk('d1-d2-surface-area-a', 'change.surface', { scope: area });
+  const sets = Object.fromEntries([whole, aRaster, aSurface].map((x) => [x.id, x]));
+
+  it('the whole map and each area are separate entries', () => {
+    expect(setsOfPair(sets, pair).map((x) => x.id)).toEqual(['d1-d2-raster']);
+    expect(setsOfPair(sets, pair, 'a').map((x) => x.id)).toEqual([
+      'd1-d2-raster-area-a',
+      'd1-d2-surface-area-a',
+    ]);
+    expect(areasOfPair(sets, pair)).toEqual([area]);
+  });
+
+  it('another pair resets the area, the same pair keeps it', () => {
+    const store = createChangeStore();
+    store.getState().setPair(pair);
+    store.getState().setArea('a');
+    store.getState().setPair({ ...pair });
+    expect(store.getState().area).toBe('a');
+    store.getState().setPair({ from: 'd2', to: 'd3' });
+    expect(store.getState().area).toBeNull();
+    expect(store.getState().selected).toBeNull();
+  });
+
+  it('an area whose volumes were refused says why', () => {
+    const why = { reason: 'No elevation model on one date.', at: '2026-10-19T08:00:00Z' };
+    const refused = mk('d1-d2-raster-area-a', 'change.raster', {
+      scope: area,
+      volumesMissing: why,
+    });
+    expect(volumesNote([refused])).toBe(why.reason);
+    expect(volumesNote([refused, aSurface])).toBeNull();
+    expect(volumesNote([whole])).toBeNull();
   });
 });

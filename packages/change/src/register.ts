@@ -97,6 +97,7 @@ export function summarize(set: ChangeSet): ChangeSetSummary {
     createdAt: set.createdAt,
     items: set.items.length,
     open: stats.open ?? 0,
+    ...(set.scope ? { scope: set.scope } : {}),
   };
 }
 

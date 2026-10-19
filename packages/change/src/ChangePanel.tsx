@@ -1,5 +1,5 @@
 import { ChangeCollab } from '@aio/collab/ui';
-import type { ChangeItem, ChangeKind, ChangeVerdict } from '@aio/schema';
+import type { ChangeItem, ChangeKind, ChangeSet, ChangeVerdict } from '@aio/schema';
 import { useT, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -8,7 +8,7 @@ import { VERDICT_COLOR } from './overlay';
 import { changeProducers, subscribeChangeProducers, type ChangePairContext } from './producers';
 import { registerRows, verdictCounts, type RegisterRow, type ReviewStatus } from './register';
 import { changeSetStale } from './stale';
-import { changeStore, runProducer, setsOfPair, useChange } from './store';
+import { areasOfPair, changeStore, runProducer, setsOfPair, useChange, volumesNote } from './store';
 
 /**
  * The Changes panel (FUS-12): the register of the chosen date pair with filters and sort, the
@@ -41,7 +41,7 @@ export interface ChangePanelProps {
   /** Open Line up dates for the two dates (offered when a run was refused for their gap). */
   onLineUp?: (from: string, to: string) => void;
   /** Run a producer's set again (offered on an out of date set); an error sentence or null. */
-  onRerun?: (producer: string) => Promise<string | null>;
+  onRerun?: (producer: string, set?: ChangeSet) => Promise<string | null>;
   className?: string | undefined;
 }
 
@@ -170,7 +170,9 @@ export function ChangePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantPair?.from, wantPair?.to]);
 
-  const pairSets = useMemo(() => setsOfPair(s.sets, s.pair), [s.sets, s.pair]);
+  const pairSets = useMemo(() => setsOfPair(s.sets, s.pair, s.area), [s.sets, s.pair, s.area]);
+  const areas = useMemo(() => areasOfPair(s.sets, s.pair), [s.sets, s.pair]);
+  const volumesWhy = useMemo(() => (s.area ? volumesNote(pairSets) : null), [s.area, pairSets]);
   const rows = useMemo(
     () => registerRows(pairSets, s.filter, s.sort),
     [pairSets, s.filter, s.sort],
@@ -337,6 +339,31 @@ export function ChangePanel({
           })}
         </div>
       )}
+      {areas.length > 0 && (
+        <div className="chg-bar">
+          <select
+            className="chg-input"
+            aria-label={t('change.area.picker')}
+            data-testid="change-area"
+            value={s.area ?? ''}
+            onChange={(e) => {
+              s.setArea(e.target.value || null);
+            }}
+          >
+            <option value="">{t('change.area.wholeMap')}</option>
+            {areas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {volumesWhy && (
+        <p className="chg-note" role="note" data-testid="change-area-volumes-missing">
+          {t('change.area.volumesMissing', { why: volumesWhy })}
+        </p>
+      )}
       <div className="chg-bar">
         <select
           className="chg-input"
@@ -468,7 +495,7 @@ export function ChangePanel({
               className="chg-btn"
               data-testid="chg-rerun"
               onClick={() => {
-                void act(async () => (await onRerun(x.producer)) ?? null);
+                void act(async () => (await onRerun(x.producer, x)) ?? null);
               }}
             >
               {t('change.rerun')}

@@ -2,6 +2,7 @@ import type {
   AioBridge,
   ChangeKind,
   ChangeReview,
+  ChangeScope,
   ChangeSet,
   ChangeSetSummary,
   IpcChannel,
@@ -40,6 +41,8 @@ export interface Misaligned {
   shiftM: number;
   /** The producer that was refused (run again after the line-up). */
   producer: string;
+  /** The refused scoped job's parameters, for a replay (never a whole-map run). */
+  params?: Record<string, unknown>;
 }
 
 export interface ChangeState {
@@ -51,6 +54,8 @@ export interface ChangeState {
   sets: Record<string, ChangeSet>;
   /** The date pair the panel shows (capture ids, earlier first). */
   pair: { from: string; to: string } | null;
+  /** The area shown: a scope id; null is the whole map. */
+  area: string | null;
   filter: RegisterFilter;
   sort: RegisterSort;
   selected: SelectedItem | null;
@@ -68,6 +73,8 @@ export interface ChangeActions {
   /** Read the project's change sets (none: clear). */
   load(projectId: string | null): Promise<void>;
   setPair(pair: { from: string; to: string } | null): void;
+  /** Show one area's entry (null: the whole map). */
+  setArea(id: string | null): void;
   setFilter(patch: Partial<RegisterFilter>): void;
   setSort(sort: RegisterSort): void;
   select(sel: SelectedItem | null): void;
@@ -109,6 +116,7 @@ const initial: ChangeState = {
   problems: [],
   sets: {},
   pair: null,
+  area: null,
   filter: {},
   sort: 'verdict',
   selected: null,
@@ -153,7 +161,12 @@ export function createChangeStore() {
         });
       },
       setPair(pair) {
-        bump({ pair, selected: null });
+        const cur = get().pair;
+        if (cur && pair?.from === cur.from && pair.to === cur.to) return;
+        bump({ pair, area: null, selected: null });
+      },
+      setArea(id) {
+        bump({ area: id, selected: null });
       },
       setFilter(patch) {
         bump({ filter: { ...get().filter, ...patch } });
@@ -259,13 +272,37 @@ export function useChange<T>(selector: (s: ChangeStore) => T): T {
   return useStore(changeStore, selector);
 }
 
-/** The loaded sets of a date pair. */
+/** The loaded sets of a date pair for one area (null: the whole map). */
 export function setsOfPair(
   sets: Readonly<Record<string, ChangeSet>>,
   pair: { from: string; to: string } | null,
+  area: string | null = null,
 ): ChangeSet[] {
   if (!pair) return [];
   return Object.values(sets)
-    .filter((s) => s.from === pair.from && s.to === pair.to)
+    .filter((s) => s.from === pair.from && s.to === pair.to && (s.scope?.id ?? null) === area)
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** The distinct areas the pair's sets were limited to, by name then id. */
+export function areasOfPair(
+  sets: Readonly<Record<string, ChangeSet>>,
+  pair: { from: string; to: string } | null,
+): ChangeScope[] {
+  if (!pair) return [];
+  const found = new Map<string, ChangeScope>();
+  for (const s of Object.values(sets))
+    if (s.from === pair.from && s.to === pair.to && s.scope) found.set(s.scope.id, s.scope);
+  return [...found.values()].sort(
+    (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+  );
+}
+
+/**
+ * Why an area has no volumes: the note on its imagery set when it has no surface set. Null for
+ * the whole map, or when volumes exist or were never missing.
+ */
+export function volumesNote(sets: readonly ChangeSet[]): string | null {
+  if (!sets.length || sets.some((s) => s.producer === 'change.surface')) return null;
+  return sets.find((s) => s.producer === 'change.raster')?.volumesMissing?.reason ?? null;
 }

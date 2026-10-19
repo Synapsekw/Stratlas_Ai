@@ -89,3 +89,11 @@ describe('the register', () => {
     ]);
   });
 });
+
+describe('summaries', () => {
+  it('a summary carries the area scope', () => {
+    const scoped = { ...fixture, scope: { id: 'pad-a', name: 'Pad A' } };
+    expect(summarize(scoped).scope).toEqual({ id: 'pad-a', name: 'Pad A' });
+    expect('scope' in summarize(fixture)).toBe(false);
+  });
+});

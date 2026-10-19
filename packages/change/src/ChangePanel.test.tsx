@@ -20,7 +20,14 @@ afterEach(() => {
   host?.remove();
   delete (globalThis as { aio?: AioBridge }).aio;
   workspace.getState().closeProject();
-  changeStore.setState({ projectId: null, sets: {}, summaries: [], misaligned: null, pair: null });
+  changeStore.setState({
+    projectId: null,
+    sets: {},
+    summaries: [],
+    misaligned: null,
+    pair: null,
+    area: null,
+  });
 });
 
 const set = (lineUp?: object) =>
@@ -117,7 +124,7 @@ describe('the Changes panel and a line-up', () => {
       (q('chg-rerun') as HTMLButtonElement).click();
       await Promise.resolve();
     });
-    expect(onRerun).toHaveBeenCalledWith('issues');
+    expect(onRerun).toHaveBeenCalledWith('issues', expect.objectContaining({ id: 'd1-d2-issues' }));
   });
 
   it('shows the error of a Run again that fails', async () => {
@@ -141,5 +148,56 @@ describe('the Changes panel and a line-up', () => {
     await render({ onRerun: vi.fn() });
     expect(q('chg-stale')).toBeNull();
     expect(q('chg-rerun')).toBeNull();
+  });
+
+  const areaSet = (volumesMissing?: object) =>
+    ChangeSet.parse({
+      ...set(),
+      id: 'd1-d2-raster-area-a',
+      producer: 'change.raster',
+      scope: { id: 'a', name: 'Area A' },
+      items: [{ kind: 'region', id: 'region:1', verdict: 'added', label: 'Area item' }],
+      ...(volumesMissing ? { volumesMissing } : {}),
+    });
+
+  it("shows the area picker and only the chosen area's rows", async () => {
+    open(false);
+    changeStore.setState({
+      projectId: 'p',
+      sets: { 'd1-d2-issues': set(), 'd1-d2-raster-area-a': areaSet() },
+    });
+    await render();
+    const rows = () => host?.querySelectorAll('[data-testid="change-row"]') ?? [];
+    expect(rows().length).toBe(1);
+    const pick = q('change-area') as HTMLSelectElement;
+    expect([...pick.options].map((o) => o.textContent)).toEqual(['Whole map', 'Area A']);
+    await act(async () => {
+      changeStore.getState().setArea('a');
+      await Promise.resolve();
+    });
+    expect(rows().length).toBe(1);
+    expect(rows()[0]?.textContent).toContain('Area item');
+  });
+
+  it('offers no area picker without areas', async () => {
+    open(false);
+    changeStore.setState({ projectId: 'p', sets: { 'd1-d2-issues': set() } });
+    await render();
+    expect(q('change-area')).toBeNull();
+  });
+
+  it('shows why volumes are missing for an area', async () => {
+    open(false);
+    const why = { reason: 'No elevation model.', at: '2026-10-19T08:00:00Z' };
+    changeStore.setState({
+      projectId: 'p',
+      sets: { 'd1-d2-raster-area-a': areaSet(why) },
+      pair: { from: 'd1', to: 'd2' },
+      area: 'a',
+    });
+    await render();
+    expect(q('change-area-volumes-missing')?.textContent).toBe(
+      'No volumes for this area: No elevation model.',
+    );
   });
 });
