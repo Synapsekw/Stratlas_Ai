@@ -1,5 +1,6 @@
 import { changeStore, type ChangePairContext } from '@aio/change';
 import type { ChangeSet, JobRecord, Layer, ProjectManifest } from '@aio/schema';
+import { t } from '@aio/ui';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProducerDeps } from '../producers/raster';
 import { changesTab } from '../useChangeOverlays';
@@ -176,7 +177,21 @@ describe('comparing one area with the previous survey', () => {
     await runAreaCompare(deps({ finished }), both, AREA, { volumes: true });
     await flush();
     await flush();
-    expect(save.mock.calls[0]?.[0].volumesMissing?.reason).toBe('Out of memory.');
+    expect(save.mock.calls[0]?.[0].volumesMissing).toMatchObject({
+      reason: 'failed',
+      detail: 'Out of memory.',
+    });
+  });
+
+  it('says newer processing tools are needed when an older pack refuses the area', async () => {
+    const finished = vi.fn((id: string) =>
+      Promise.resolve(job(id, { status: 'failed', error: 'change.raster does not take: scope.' })),
+    );
+    changeStore.setState({ sets: {}, error: null } as never);
+    await runAreaCompare(deps({ finished }), both, AREA, { volumes: false });
+    await flush();
+    await flush();
+    expect(changeStore.getState().error).toBe(t('change.area.why.packTooOld'));
   });
 });
 
@@ -195,8 +210,30 @@ describe('the volumes outcome', () => {
     expect(save).toHaveBeenCalledTimes(1);
     const saved = save.mock.calls[0]?.[0];
     expect(saved?.id).toBe('c1-c2-change.raster-area-m-pad-a');
-    expect(saved?.volumesMissing?.reason).toBe('No elevation.');
+    expect(saved?.volumesMissing).toMatchObject({ reason: 'failed', detail: 'No elevation.' });
     expect(Number.isNaN(Date.parse(saved?.volumesMissing?.at ?? ''))).toBe(false);
+  });
+
+  it('records a cancelled volume run', async () => {
+    const d = deps({
+      finished: finishedWith(job('s', { pipeline: 'change.surface', status: 'cancelled' })),
+    });
+    await recordVolumesOutcome(d, 'r', { jobId: 's' }, AREA.scope, PAIR);
+    expect(save.mock.calls[0]?.[0].volumesMissing?.reason).toBe('cancelled');
+  });
+
+  it('records an older pack that does not take the area', async () => {
+    const d = deps({
+      finished: finishedWith(
+        job('s', {
+          pipeline: 'change.surface',
+          status: 'failed',
+          error: 'change.surface does not take: mask, scope.',
+        }),
+      ),
+    });
+    await recordVolumesOutcome(d, 'r', { jobId: 's' }, AREA.scope, PAIR);
+    expect(save.mock.calls[0]?.[0].volumesMissing?.reason).toBe('packTooOld');
   });
 
   it('records a misaligned refusal by its gap', async () => {
@@ -211,13 +248,26 @@ describe('the volumes outcome', () => {
       ),
     });
     await recordVolumesOutcome(d, 'r', { jobId: 's' }, AREA.scope, PAIR);
-    expect(save.mock.calls[0]?.[0].volumesMissing?.reason).toBe('Misaligned by 2.0 m');
+    // a code and the gap: the Changes tab words it in the person's language
+    expect(save.mock.calls[0]?.[0].volumesMissing).toMatchObject({
+      reason: 'misaligned',
+      shiftM: 2.01,
+    });
   });
 
   it('records a refused volume start', async () => {
     const d = deps({ finished: finishedWith(null) });
     await recordVolumesOutcome(d, 'r', { error: 'No pack.' }, AREA.scope, PAIR);
-    expect(save.mock.calls[0]?.[0].volumesMissing?.reason).toBe('No pack.');
+    expect(save.mock.calls[0]?.[0].volumesMissing).toMatchObject({
+      reason: 'unavailable',
+      detail: 'No pack.',
+    });
+  });
+
+  it('records a volume job that did not start', async () => {
+    const d = deps({ finished: finishedWith(null) });
+    await recordVolumesOutcome(d, 'r', { notStarted: true }, AREA.scope, PAIR);
+    expect(save.mock.calls[0]?.[0].volumesMissing?.reason).toBe('notStarted');
   });
 
   it('records nothing when volumes ran or were not asked for', async () => {

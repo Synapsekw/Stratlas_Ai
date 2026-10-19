@@ -3,7 +3,7 @@
  * `run_change_detection`, and the change-set reading `compare_captures` uses. Change sets come
  * from main through `window.aio` (`change:list`, `change:read`, `change:compute`).
  */
-import type { AioBridge, ChangeItem, ChangeSet } from '@aio/schema';
+import { inferChangeScope, type AioBridge, type ChangeItem, type ChangeSet } from '@aio/schema';
 import { changeToolInputs, type ChangeToolName } from './change-tool-specs';
 import {
   project,
@@ -103,9 +103,10 @@ export async function changeSetsOf(
   if (!list?.ok) return [];
   const out: ChangeSet[] = [];
   for (const s of list.sets) {
-    if (s.from !== from || s.to !== to || s.scope) continue;
+    // an area's set also when an older build wrote it back without its scope
+    if (s.from !== from || s.to !== to || inferChangeScope(s)) continue;
     const r = await aio.invoke('change:read', { projectId, id: s.id }).catch(() => null);
-    if (r?.ok && !r.set.scope) out.push(r.set);
+    if (r?.ok && !inferChangeScope(r.set)) out.push(r.set);
   }
   return out;
 }

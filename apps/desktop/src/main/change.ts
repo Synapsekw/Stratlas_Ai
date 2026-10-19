@@ -10,6 +10,8 @@ import {
   CHANGE_DIR,
   ChangeSet,
   DEFAULT_CHANGE_THRESHOLDS,
+  inferChangeScope,
+  MEASUREMENTS_FILE,
   type ChangeSetInput,
   type ChangeSetSummary,
   type ChangeThresholds,
@@ -110,6 +112,47 @@ function parseSet(
   return { set: parsed.data };
 }
 
+type Source = { root: string } | { archive: Archive };
+
+/** The labels of the project's measurements by id (empty when there are none or they do not read). */
+async function measurementLabels(src: Source): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  try {
+    const text =
+      'root' in src
+        ? await readFile(join(src.root, ...MEASUREMENTS_FILE.split('/')), 'utf8')
+        : src.archive.entries.has(MEASUREMENTS_FILE)
+          ? (await src.archive.read(MEASUREMENTS_FILE)).toString('utf8')
+          : null;
+    if (!text) return out;
+    const raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as unknown;
+    const list = (raw as { measurements?: unknown }).measurements;
+    if (!Array.isArray(list)) return out;
+    for (const m of list as { id?: unknown; label?: unknown }[])
+      if (typeof m.id === 'string' && typeof m.label === 'string') out.set(m.id, m.label);
+  } catch {
+    // no labels: the area is named by its id
+  }
+  return out;
+}
+
+/**
+ * A set with its area: an older build writes a scoped set back without `scope` (it strips the key
+ * it does not know), which would put its items in the whole-map view. The id keeps the area
+ * (`inferChangeScope`); the polygon's label names it. The labels are read once per call.
+ */
+async function withScope(
+  set: ChangeSet,
+  src: Source,
+  labels: { read?: Promise<Map<string, string>> },
+): Promise<ChangeSet> {
+  if (set.scope || !set.id.includes('-area-')) return set;
+  labels.read ??= measurementLabels(src);
+  const known = await labels.read;
+  const scope = inferChangeScope(set, (id) => known.get(id));
+  return scope ? { ...set, scope } : set;
+}
+
 /** Every change set of a project folder or package, newest first. */
 export async function listChangeSets(
   src: { root: string } | { archive: Archive },
@@ -139,6 +182,7 @@ export async function listChangeSets(
   }
   const sets: ChangeSetSummary[] = [];
   const problems: { name: string; error: string }[] = [];
+  const labels = {};
   for (const f of files.sort((a, b) => a.name.localeCompare(b.name))) {
     let text: string;
     try {
@@ -148,7 +192,7 @@ export async function listChangeSets(
       continue;
     }
     const r = parseSet(f.name, text);
-    if ('set' in r) sets.push(summarize(r.set));
+    if ('set' in r) sets.push(summarize(await withScope(r.set, src, labels)));
     else problems.push({ name: f.name, error: r.error });
   }
   sets.sort((a, b) => (a.createdAt === b.createdAt ? 0 : a.createdAt < b.createdAt ? 1 : -1));
@@ -178,7 +222,8 @@ export async function readChangeSet(
   }
   if (text === null) return { ok: false, error: `There is no change set "${id}" in this project.` };
   const r = parseSet(name, text);
-  if ('set' in r) return { ok: true, set: r.set, readOnly: !('root' in src) };
+  if ('set' in r)
+    return { ok: true, set: await withScope(r.set, src, {}), readOnly: !('root' in src) };
   return { ok: false, error: r.newer ? r.error : `change/${name} is ${r.error}` };
 }
 

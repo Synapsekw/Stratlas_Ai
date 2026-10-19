@@ -308,7 +308,15 @@ export const ChangeSet = z
      * `change.surface` run was refused or failed. The next pipeline run of the set drops it.
      */
     volumesMissing: z
-      .object({ reason: z.string().min(1).max(300), at: IsoTime })
+      .object({
+        /** A `VolumesMissingCode` the app shows in the person's language, or a sentence. */
+        reason: z.string().min(1).max(300),
+        /** The gap of a misaligned refusal, in metres. */
+        shiftM: z.number().nonnegative().optional(),
+        /** The job's own error text or the reason a run could not start. */
+        detail: z.string().min(1).max(300).optional(),
+        at: IsoTime,
+      })
       .strict()
       .optional(),
     /** Share of the area both dates cover, 0 to 1. */
@@ -341,6 +349,58 @@ export const ChangeSet = z
       seen.add(item.id);
     });
   });
+
+/**
+ * Why an area's volumes are missing, as `ChangeSet.volumesMissing.reason` stores it: the app
+ * words it in the person's language. `failed` and `unavailable` carry their `detail`.
+ */
+export const VOLUMES_MISSING_CODES = [
+  'misaligned',
+  'failed',
+  'cancelled',
+  'notStarted',
+  'unavailable',
+  'packTooOld',
+] as const;
+export type VolumesMissingCode = (typeof VOLUMES_MISSING_CODES)[number];
+
+/** A set id as the pipelines file it (`change_set_id`): letters, digits, `.`, `_` and `-`. */
+const safeId = (raw: string) =>
+  raw.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '');
+
+/**
+ * The area a change set was limited to, also when an older build wrote the set back without its
+ * `scope` (it strips the key it does not know). The set id keeps the area: the pipelines file a
+ * scoped set as `<from>-<to>-<producer>-area-<scope id>`, or end a long one in a 12-character
+ * hash. The scope the run's params carry (older builds keep `run`) gives the stored name; else
+ * `labelOf` (the polygon measurement's label), else the id. Undefined for a whole-map set.
+ */
+export function inferChangeScope(
+  set: Pick<ChangeSet, 'id' | 'from' | 'to' | 'producer' | 'scope' | 'run'>,
+  labelOf?: (id: string) => string | undefined,
+): ChangeScope | undefined {
+  if (set.scope) return set.scope;
+  const base = safeId(`${set.from}-${set.to}-${set.producer.split('.').at(-1) ?? ''}`);
+  let id: string | undefined;
+  let hashed = false;
+  if (set.id.startsWith(`${base}-area-`)) id = set.id.slice(base.length + '-area-'.length);
+  else {
+    const m = /^(.*)-area-([0-9a-f]{12})$/.exec(set.id);
+    if (m?.[1] === base.slice(0, 120 - 18)) {
+      id = m[2];
+      hashed = true;
+    }
+  }
+  if (!id || !ChangeScope.shape.id.safeParse(id).success) return undefined;
+  const ran = ChangeScope.safeParse(set.run?.params?.scope);
+  if (ran.success && (hashed || ran.data.id === id)) return ran.data;
+  let name = '';
+  for (const ch of labelOf?.(id)?.trim() ?? '') {
+    if (name.length + ch.length > 120) break;
+    name += ch;
+  }
+  return { id, name: name || id };
+}
 
 /** One line of `change:list`. */
 export const ChangeSetSummary = z.object({

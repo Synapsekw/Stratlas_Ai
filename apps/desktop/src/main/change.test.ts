@@ -194,6 +194,39 @@ describe('change IPC', () => {
     expect(await readFile(join(root, 'change', 'broken.json'), 'utf8')).toBe('{nope');
   });
 
+  it('keeps an area set an older build wrote back without its scope apart from the whole map', async () => {
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(root, 'change'), { recursive: true });
+    await mkdir(join(root, 'survey'), { recursive: true });
+    // what an older build writes back after a review: no scope, no volumesMissing
+    const stripped = {
+      schema: 'aio.change/1',
+      id: 'd1-d2-raster-area-pad-a',
+      from: 'd1',
+      to: 'd2',
+      producer: 'change.raster',
+      createdAt: '2026-10-19T08:00:00Z',
+      items: [],
+    };
+    await writeFile(join(root, 'change', `${stripped.id}.json`), JSON.stringify(stripped));
+    await writeFile(
+      join(root, 'survey', 'measurements.json'),
+      JSON.stringify({
+        schema: 'aio.measurements/1',
+        measurements: [{ id: 'pad-a', label: 'Pad A' }],
+      }),
+    );
+    const h = ipc();
+    const list = await h.call('change:list', { projectId: 'p' });
+    expect(list.ok && list.sets.map((s) => s.scope)).toEqual([{ id: 'pad-a', name: 'Pad A' }]);
+    const read = await h.call('change:read', { projectId: 'p', id: stripped.id });
+    expect(read.ok && read.set.scope).toEqual({ id: 'pad-a', name: 'Pad A' });
+    // the polygon gone: the id names the area
+    await rm(join(root, 'survey', 'measurements.json'));
+    const again = await ipc().call('change:read', { projectId: 'p', id: stripped.id });
+    expect(again.ok && again.set.scope).toEqual({ id: 'pad-a', name: 'pad-a' });
+  });
+
   it('refuses a change set saved by a newer version and never writes over it', async () => {
     const h = ipc();
     const args = { projectId: 'p', from: 'd1', to: 'd2', kinds: ['issue' as const] };

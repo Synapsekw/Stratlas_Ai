@@ -6,7 +6,7 @@
  * area's imagery set records why (`ChangeSet.volumesMissing`) once both jobs have ended.
  */
 import { changeStore, type ChangePairContext } from '@aio/change';
-import type { ChangeScope, JobRecord } from '@aio/schema';
+import type { ChangeScope, ChangeSet, JobRecord } from '@aio/schema';
 import { t } from '@aio/ui';
 import {
   areaRasterParams,
@@ -21,15 +21,38 @@ import { openChangesTab } from '../useChangeOverlays';
 const latestRaster = { run: 0 };
 const latestSurface = { run: 0 };
 
-type SurfaceStart = { jobId: string } | { error: string };
+type SurfaceStart = { jobId: string } | { error: string } | { notStarted: true };
 
-/** Why a volume job did not give a result: its gap when refused, else its error text. */
-function whyFailed(job: JobRecord): string {
+type VolumesMissing = NonNullable<ChangeSet['volumesMissing']>;
+type Why = Omit<VolumesMissing, 'at'>;
+
+/**
+ * True for the refusal of processing tools older than area runs: they do not take the area's
+ * params (`known_keys`: "change.raster does not take: scope.").
+ */
+export function oldPackRefusal(error: string | undefined): boolean {
+  return !!error && /does not take: .*\b(scope|mask)\b/.test(error);
+}
+
+/**
+ * Why a volume job did not give a result, as a code the Changes tab words in the person's
+ * language: its gap when refused, an older pack, a cancel, else the job's own error text.
+ */
+function whyEnded(job: JobRecord): Why | null {
+  if (job.status === 'cancelled') return { reason: 'cancelled' };
+  if (job.status !== 'failed') return null;
   const f = job.failure;
   const shiftM = f?.data.shiftM;
   if (f?.code === 'misaligned' && typeof shiftM === 'number' && Number.isFinite(shiftM))
-    return `Misaligned by ${shiftM.toFixed(1)} m`;
-  return job.error ?? 'The volume run failed.';
+    return { reason: 'misaligned', shiftM: Math.abs(shiftM) };
+  if (oldPackRefusal(job.error)) return { reason: 'packTooOld' };
+  return job.error ? { reason: 'failed', detail: job.error.slice(0, 300) } : { reason: 'failed' };
+}
+
+/** Why the volume run could not start. */
+function whyNotStarted(surface: Exclude<SurfaceStart, { jobId: string }>): Why {
+  if ('notStarted' in surface) return { reason: 'notStarted' };
+  return { reason: 'unavailable', detail: surface.error.slice(0, 300) };
 }
 
 /**
@@ -51,10 +74,8 @@ export async function recordVolumesOutcome(
     'jobId' in surface ? finished(surface.jobId) : Promise.resolve(null),
   ]);
   if (imagery?.status !== 'done') return;
-  let reason: string;
-  if ('error' in surface) reason = surface.error;
-  else if (volumes?.status === 'failed') reason = whyFailed(volumes);
-  else return;
+  const why = 'jobId' in surface ? (volumes ? whyEnded(volumes) : null) : whyNotStarted(surface);
+  if (!why) return;
   if (!project || (deps.projectId?.() ?? null) !== project) return;
   const store = changeStore.getState();
   await store.load(project);
@@ -69,7 +90,7 @@ export async function recordVolumesOutcome(
   if (!set) return;
   await changeStore.getState().save({
     ...set,
-    volumesMissing: { reason: reason.slice(0, 300), at: new Date().toISOString() },
+    volumesMissing: { ...why, at: new Date().toISOString() },
   });
 }
 
@@ -95,6 +116,8 @@ export async function releaseFailedArea(
   // its sets may have come in after all (a reload): then it stays
   if (Object.values(s.sets).some((x) => x.scope?.id === areaId)) return;
   s.setArea(null);
+  // processing tools older than area runs refuse the area's params: say what to do
+  if (oldPackRefusal(imagery.error)) s.setError(t('change.area.why.packTooOld'));
 }
 
 /**
@@ -133,13 +156,11 @@ export async function runAreaCompare(
         'change.surface',
         volumeParams,
       );
-      surface = r.ok
-        ? r.jobId
-          ? { jobId: r.jobId }
-          : { error: 'The job did not start.' }
-        : { error: r.error };
+      surface = r.ok ? (r.jobId ? { jobId: r.jobId } : { notStarted: true }) : { error: r.error };
     }
     if ('error' in surface) notes.push(t('change.area.volumesFailed', { why: surface.error }));
+    if ('notStarted' in surface)
+      notes.push(t('change.area.volumesFailed', { why: t('change.area.why.notStarted') }));
     if (imagery.jobId)
       void recordVolumesOutcome(deps, imagery.jobId, surface, area.scope, {
         from: ctx.from,

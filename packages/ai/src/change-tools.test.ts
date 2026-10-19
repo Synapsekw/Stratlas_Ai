@@ -132,6 +132,18 @@ describe('change tools', () => {
     expect(r.result).toMatchObject({ kind: 'changes', total: 4 });
   });
 
+  it('compare_captures leaves out an area set an older build wrote back without its scope', async () => {
+    const stripped = {
+      ...set,
+      id: 'c1-c2-raster-area-a',
+      producer: 'change.raster',
+      items: [{ kind: 'region', id: 'issue:D03', verdict: 'added' }],
+    };
+    bridge([set, stripped]);
+    const r = await runRendererTool('compare_captures', {}, ctx());
+    expect(r.result).toMatchObject({ kind: 'changes', total: 4 });
+  });
+
   it('compare_captures falls back to issue counts without change sets', async () => {
     bridge([]);
     const r = await runRendererTool('compare_captures', {}, ctx());

@@ -8,6 +8,7 @@ import {
   LineUpFit,
   LineUpMeasure,
   DEFAULT_CHANGE_THRESHOLDS,
+  inferChangeScope,
   type ChangeSetInput,
 } from './index';
 
@@ -140,6 +141,49 @@ describe('change sets (aio.change/1)', () => {
     expect(
       ChangeSet.safeParse({ ...base(), volumesMissing: { ...volumesMissing, reason: '' } }).success,
     ).toBe(false);
+    // a reason code with its gap or the job's own words, worded by the app
+    const coded = { reason: 'misaligned', shiftM: 2.01, at: '2026-10-19T08:00:00Z' };
+    expect(ChangeSet.parse({ ...base(), volumesMissing: coded }).volumesMissing).toEqual(coded);
+    const failed = { reason: 'failed', detail: 'Out of memory.', at: '2026-10-19T08:00:00Z' };
+    expect(ChangeSet.parse({ ...base(), volumesMissing: failed }).volumesMissing).toEqual(failed);
+  });
+
+  it('finds the area of a scoped set an older build wrote back without its scope', () => {
+    const stripped = (id: string, params?: Record<string, unknown>) =>
+      ChangeSet.parse({
+        ...base(),
+        id,
+        producer: 'change.raster',
+        items: [],
+        ...(params ? { run: { params } } : {}),
+      });
+    // the set id keeps the area id; the name comes from the polygon's label, else the id
+    expect(inferChangeScope(stripped('c1-c2-raster-area-pad-a'))).toEqual({
+      id: 'pad-a',
+      name: 'pad-a',
+    });
+    expect(
+      inferChangeScope(stripped('c1-c2-raster-area-pad-a'), (id) =>
+        id === 'pad-a' ? '  Pad A ' : undefined,
+      ),
+    ).toEqual({ id: 'pad-a', name: 'Pad A' });
+    // the params the set ran with (older builds keep `run`) give the stored name
+    const params = { scope: { id: 'pad-a', name: 'Pad A (east)' } };
+    expect(inferChangeScope(stripped('c1-c2-raster-area-pad-a', params))).toEqual(params.scope);
+    // a whole-map set, and a set that has its scope, stay as they are
+    expect(inferChangeScope(stripped('c1-c2-raster'))).toBeUndefined();
+    const scope = { id: 'b', name: 'B' };
+    expect(inferChangeScope({ ...stripped('c1-c2-raster-area-pad-a'), scope })).toEqual(scope);
+    // a capture id that holds "-area-" is no area
+    expect(
+      inferChangeScope({ ...stripped('x-area-1-c2-raster'), from: 'x-area-1' }),
+    ).toBeUndefined();
+    // a long scoped id ends in a 12-character hash: the run's scope names it, else the hash
+    const long = `${'c'.repeat(60)}-${'d'.repeat(60)}`;
+    const hashed = `${`${long}-raster`.slice(0, 102)}-area-0123456789ab`;
+    const set = { ...stripped(hashed), from: 'c'.repeat(60), to: 'd'.repeat(60) };
+    expect(inferChangeScope(set)).toEqual({ id: '0123456789ab', name: '0123456789ab' });
+    expect(inferChangeScope({ ...set, run: { params } })).toEqual(params.scope);
   });
 
   it('defaults layers and stats, and keeps reviews', () => {
