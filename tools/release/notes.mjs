@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Release notes from conventional commits between two git refs, as Markdown.
 //
-// The range runs from the newest `v<version>` tag before `--to` (or the first commit when there
-// is none) to `--to` (default HEAD). Only what a user notices is listed: `feat` under "New",
+// The range runs from the previous release to `--to` (default HEAD): the newest `v<version>` tag
+// before `--to`, else the commit the previous installer was built from as recorded in
+// tools/release/previous-release.json (internal builds carry no tags), else the first commit. Only what a user notices is listed: `feat` under "New",
 // `fix` under "Fixed", `perf` under "Faster", and anything marked breaking (`!` or a
 // `BREAKING CHANGE:` footer) first. Merges, docs, tests, chores and refactors are left out.
 //
@@ -96,8 +97,14 @@ export function renderNotes({
   return `${lines.join('\n')}\n`;
 }
 
+// A whole history's log runs to megabytes, well past execFileSync's 1 MB default.
 const git = (args, cwd) =>
-  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
 
 /**
  * The newest `v*` tag that is an ancestor of `to`, excluding a tag on `to` itself; null when
@@ -108,6 +115,28 @@ export function previousTag(to = 'HEAD', cwd = root) {
     return (
       git(['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', `${to}^`], cwd).trim() || null
     );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The commit the previous installer was built from (tools/release/previous-release.json under
+ * `cwd`, written by each version bump), when it is an ancestor of `to`; null otherwise.
+ */
+export function previousBuild(to = 'HEAD', cwd = root) {
+  let commit;
+  try {
+    commit = JSON.parse(
+      readFileSync(join(cwd, 'tools/release/previous-release.json'), 'utf8'),
+    ).commit;
+  } catch {
+    return null;
+  }
+  if (typeof commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(commit)) return null;
+  try {
+    git(['merge-base', '--is-ancestor', commit, to], cwd);
+    return commit;
   } catch {
     return null;
   }
@@ -152,7 +181,7 @@ export function releaseNotes(o = {}) {
   let commits;
   let from = o.from ?? null;
   try {
-    if (o.from === undefined) from = previousTag(to, cwd);
+    if (o.from === undefined) from = previousTag(to, cwd) ?? previousBuild(to, cwd);
     commits = readCommits(from, to, cwd);
   } catch {
     return {
