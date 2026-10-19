@@ -172,7 +172,8 @@ describe('the Changes panel and a line-up', () => {
     const pick = q('change-area') as HTMLSelectElement;
     expect([...pick.options].map((o) => o.textContent)).toEqual(['Whole map', 'Area A']);
     await act(async () => {
-      changeStore.getState().setArea('a');
+      pick.value = 'a';
+      pick.dispatchEvent(new Event('change', { bubbles: true }));
       await Promise.resolve();
     });
     expect(rows().length).toBe(1);
@@ -199,5 +200,30 @@ describe('the Changes panel and a line-up', () => {
     expect(q('change-area-volumes-missing')?.textContent).toBe(
       'No volumes for this area: No elevation model.',
     );
+  });
+
+  it('falls back to the whole map when the chosen area has no sets', async () => {
+    open(false);
+    changeStore.setState({
+      projectId: 'p',
+      sets: { 'd1-d2-issues': set() },
+      pair: { from: 'd1', to: 'd2' },
+      area: 'gone',
+    });
+    await render();
+    expect(changeStore.getState().area).toBeNull();
+    expect(host?.querySelectorAll('[data-testid="change-row"]').length).toBe(1);
+  });
+
+  it('shows no volumes note on the whole map', async () => {
+    open(false);
+    const why = { reason: 'No elevation model.', at: '2026-10-19T08:00:00Z' };
+    changeStore.setState({
+      projectId: 'p',
+      sets: { 'd1-d2-raster': { ...areaSet(why), id: 'd1-d2-raster', scope: undefined } },
+      pair: { from: 'd1', to: 'd2' },
+    });
+    await render();
+    expect(q('change-area-volumes-missing')).toBeNull();
   });
 });

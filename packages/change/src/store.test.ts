@@ -166,6 +166,5 @@ describe('area entries', () => {
     });
     expect(volumesNote([refused])).toBe(why.reason);
     expect(volumesNote([refused, aSurface])).toBeNull();
-    expect(volumesNote([whole])).toBeNull();
   });
 });

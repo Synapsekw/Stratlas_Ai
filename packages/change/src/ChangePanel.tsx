@@ -173,6 +173,11 @@ export function ChangePanel({
   const pairSets = useMemo(() => setsOfPair(s.sets, s.pair, s.area), [s.sets, s.pair, s.area]);
   const areas = useMemo(() => areasOfPair(s.sets, s.pair), [s.sets, s.pair]);
   const volumesWhy = useMemo(() => (s.area ? volumesNote(pairSets) : null), [s.area, pairSets]);
+  // an area whose sets are gone (a reload) falls back to the whole map
+  useEffect(() => {
+    if (s.area && s.pair && !areas.some((a) => a.id === s.area))
+      changeStore.getState().setArea(null);
+  }, [s.area, s.pair, areas]);
   const rows = useMemo(
     () => registerRows(pairSets, s.filter, s.sort),
     [pairSets, s.filter, s.sort],
