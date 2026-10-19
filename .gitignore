@@ -33,7 +33,7 @@ Thumbs.db
 dist-types/
 .claude/worktrees/
 .superpowers/
-# Stop-hook session drafts (tools/agent/session-draft.mjs); /wrapup folds them into a note
+# Old Stop-hook session drafts; the hook no longer writes them, this keeps leftover local stubs out
 docs/sessions/_draft-*.md
 
 # founder review board answers (tools/review-board)

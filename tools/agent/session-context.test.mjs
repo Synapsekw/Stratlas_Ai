@@ -5,6 +5,7 @@ import {
   frontmatterValue,
   isLinkedWorktreeGitDir,
   newestNoteNames,
+  noteStamp,
   noteTitle,
   parseAheadBehind,
   parsePorcelainZ,
@@ -82,6 +83,12 @@ describe('newestNoteNames', () => {
         '2026-10-01-0100-old.md',
       ]),
     ).toEqual(['2026-10-10-0815-c.md', '2026-10-09-2300-b.md', '2026-10-08-0900-a.md']);
+  });
+});
+
+describe('noteStamp', () => {
+  it('uses a zero-padded local YYYY-MM-DD-HHmm stamp', () => {
+    expect(noteStamp(new Date(2026, 0, 5, 9, 5))).toBe('2026-01-05-0905');
   });
 });
 

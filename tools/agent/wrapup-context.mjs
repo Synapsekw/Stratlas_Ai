@@ -1,6 +1,6 @@
 // One-call, read-only context gather for /wrapup: date and note-id, location (linked worktree or
 // main checkout), branch, status, ahead/behind vs the local origin/main, the full north-star
-// section 3, drafts, recent session notes and the branch's commits. Plain labelled sections.
+// section 3, recent session notes and the branch's commits. Plain labelled sections.
 //
 //   node tools/agent/wrapup-context.mjs
 //
@@ -13,13 +13,13 @@ import {
   frontmatterValue,
   git,
   isEntryPoint,
+  noteStamp,
   parseAheadBehind,
   readNorthStar,
   readSessionsDir,
   resolveRoot,
   toPosix,
 } from './session-context.mjs';
-import { noteStamp } from './session-draft.mjs';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -91,14 +91,7 @@ function build() {
     out.push(`(frontmatter last-updated: ${frontmatterValue(northStar, 'last-updated') ?? '?'})`);
   }
 
-  const { notes, drafts } = readSessionsDir(top);
-  section(`SESSION DRAFTS (${SESSIONS_DIR}/_draft-*.md)`);
-  if (drafts.length > 0) {
-    out.push(...drafts.map((d) => `${SESSIONS_DIR}/${d}`));
-    out.push('-> fold draft content into the new session note, then delete the draft(s).');
-  } else {
-    out.push('none');
-  }
+  const { notes } = readSessionsDir(top);
 
   section('RECENT SESSION NOTES (3 newest)');
   if (notes.length > 0) {
