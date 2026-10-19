@@ -4,6 +4,8 @@ Living document for the M9 release, owned by stream T8. Every row must be **Done
 
 Status values: **Done**, **Partly** (some of it is in place), **Open** (not started), **Blocked** (waiting for a founder decision or an outside party). Owners are streams (T1 to T8), the integration lead (IL) or the founder (F).
 
+_Note (19 Oct 2026): macOS is parked (founder, 10 Oct 2026), so the macOS rows wait until it is picked up again, and no `v*` tag or GitHub Release is made while testing is internal._
+
 _Last updated: 7 Oct 2026 (T8 part 1; M9 integration fixes and docs)._
 
 ## Founder blockers

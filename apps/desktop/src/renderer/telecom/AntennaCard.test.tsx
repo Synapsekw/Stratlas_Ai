@@ -5,7 +5,14 @@ import { workspace, type OpenProject } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AntennaCard, STRIP_MAX_H, STRIP_MIN_H, resetCardDrag, stripHeight } from './AntennaCard';
+import {
+  ANTENNA_CARD_SELECTOR,
+  AntennaCard,
+  STRIP_MAX_H,
+  STRIP_MIN_H,
+  resetCardDrag,
+  stripHeight,
+} from './AntennaCard';
 import { AntennaInventory } from './AntennaInventory';
 import { antennaStore, selectAntenna, type AntennaFilter } from './antennaStore';
 import { AVOID_WEIGHT, type Rect } from './cardPlacement';
@@ -149,6 +156,12 @@ describe('AntennaCard', () => {
     expect(q('antenna-card')!.textContent).toContain('A1');
     expect(q('antenna-card')!.textContent).toContain('Draft');
     expect(q('antenna-card')!.textContent).toContain('panel');
+  });
+
+  it('carries a stable marker other stage overlays find it by', () => {
+    load(three());
+    show();
+    expect(stage.querySelector(ANTENNA_CARD_SELECTOR)).toBe(q('antenna-card'));
   });
 
   it('accepts and moves on to the next unit of the filter', async () => {

@@ -15,7 +15,7 @@ and `@aio/geo`.
   bundled land and border shapes, street tiles the app draws from its street packs, imagery
   packs, and Natural Earth II from the app's own copy of Cesium's assets (`CESIUM_BASE_PATH`,
   served from `'self'`).
-- `BANNED_CESIUM_IMPORTS` and `BANNED_CESIUM_PACKAGES` feed the lint rule in `eslint.config.js`;
+- `BANNED_CESIUM_IMPORTS` and `BANNED_CESIUM_PACKAGES` feed the lint rule in the root `eslint.config.js`;
   `ONLINE_GLOBE_HOSTS` feeds the bundle check (`tools/release/check-bundle.mjs`).
 - Credits come from the layer plan and pack metadata (`planCredits`, `creditLines`), customer
   imagery marked as such.
@@ -36,9 +36,10 @@ more kind of plan entry and one more case in the view.
   levels in one view, and a street style draws each zoom differently, so with the view at rest
   every street tile in view is drawn again in the style of the deepest one (`styleZoomFor`,
   `TileSourceImageryProvider.syncView`): labels and line widths agree across tile edges.
-- **Online satellite** (`view/onlineSatellite.ts`): Sentinel-2 through `aio://online/...`, in the
-  Satellite look only, above the street globe and under the packs, while the host says the
-  person switched it on. Main serves or refuses every tile.
+- **Online satellite** (`view/onlineTiles.ts`): Sentinel-2, Esri World Imagery or a Mapbox map
+  through `aio://online/...`, in the Satellite look only, above the street globe and under the
+  packs, while the host says the person switched it on and chose the source. Main serves or
+  refuses every tile.
 - **Imagery packs** (`view/providers.ts`): raster PMTiles, in the Satellite and Natural Earth
   looks.
 - **Natural Earth II**: the painted raster of the first Globe, the Natural Earth look.

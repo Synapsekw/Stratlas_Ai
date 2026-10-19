@@ -15,7 +15,7 @@ Patches come as 1.0.x updates through the same channels as the release: the Micr
 
 ## How to reach us
 
-- **Email:** [support address], answered in Kuwait business hours, Sunday to Thursday, 08:00 to 17:00 (UTC+3), except public holidays in Kuwait.
+- **Email:** [support address], answered in local business hours, Sunday to Thursday, 08:00 to 17:00 (UTC+3), except local public holidays.
 - **Portal:** [support portal URL], for tracking a case and downloading offline installers.
 - The Team plan's onboarding day and the optional managed-on-premises contract have their own terms.
 
@@ -41,7 +41,7 @@ Quadrion AI sends nothing on its own: there is no crash upload in 1.0. To report
 ## Hotfix procedure (internal)
 
 1. The 1.0.0 tag starts the branch `release/1.0`. Fixes land on `main` first and are cherry-picked to `release/1.0`, unless the fix only applies to 1.0.
-2. Each patch raises the patch version (`1.0.1`), runs the full CI (Windows and macOS, Vitest, Playwright, pytest, the compatibility corpus) and the release checklist ([CHECKLIST.md](CHECKLIST.md)), is signed, and goes out on the stable feed and to the Store.
+2. Each patch raises the patch version (`1.0.1`), runs the full CI (Windows, with macOS parked; Vitest, Playwright, pytest, the compatibility corpus) and the release checklist ([CHECKLIST.md](CHECKLIST.md)), is signed, and goes out on the stable feed and to the Store.
 3. A patch never changes a file schema version or adds a required field.
 4. Severity 1: the integration lead may ship the patch to the beta channel first for a day with the affected customer before stable.
 

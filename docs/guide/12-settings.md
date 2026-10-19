@@ -36,13 +36,13 @@ The processing tools build maps and models from your data: photo processing, sur
 **Status** says where you stand:
 
 - **Up to date**: every job this version of {product} has can run.
-- **Too old for this version of {product}**: the lines below say what the installed version lacks, for example "Creating maps from photos needs version 0.4.0 or later."
+- **Too old for this version of {product}**: the lines below say what the installed version lacks, for example "Creating maps from photos needs version 0.8.0 or later."
 - **Not made for this version of {product}**: the tools in the data folder are for another version of {product}.
 - **Not installed**: viewing, measuring, maps and reports work; processing does not start.
 
 {product} checks the file before it uses it: it must hold the processing tools for this computer and this version, complete, with every file matching its checksum. A file that fails says why and changes nothing. A version that is already installed asks first: **Replace version 0.5.1** or **Keep it**. Nothing is downloaded.
 
-**Versions no longer in use** lists the older versions with their sizes. **Remove**, then **Move version 0.2.0 to the bin**, moves one to the bin of the computer (Recycle Bin on Windows, Trash on a Mac), where it can be restored. {product} never removes one on its own.
+**Versions no longer in use** lists the older versions with their sizes. **Remove**, then **Move version 0.2.0 to the bin**, moves one to the bin of the computer (the Recycle Bin), where it can be restored. {product} never removes one on its own.
 
 With a project open, {product} says once when the tools are missing or too old: "The processing tools need an update", with **Update processing tools**. **Dismiss** keeps the notice away for that version. The same button is in **Create maps from photos** and in the **Processing** drawer when processing cannot run; all of them open this page.
 

@@ -55,6 +55,9 @@ function setDragged(next: { x: number; y: number } | null): void {
   for (const l of dragListeners) l();
 }
 
+/** Marks the floating card for other stage overlays that keep clear of it (e.g. the RF coverage card). */
+export const ANTENNA_CARD_SELECTOR = '[data-antenna-card]';
+
 /** Forget where the card was dragged (the runner calls this when the project changes). */
 export function resetCardDrag(): void {
   setDragged(null);
@@ -694,6 +697,7 @@ function CardBody(props: BodyProps): ReactElement {
         role="region"
         aria-label={unit.name}
         data-testid="antenna-card"
+        data-antenna-card=""
         data-docked={at.docked ? 'true' : undefined}
         // the selected box on screen (x y w h, host px), for checks that the card keeps off it
         data-unit-box={unitBox ? `${unitBox.x} ${unitBox.y} ${unitBox.w} ${unitBox.h}` : undefined}
