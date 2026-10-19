@@ -17,6 +17,7 @@ import {
   type Resolve,
   type ResolvedSurface,
   type SiteContext,
+  type Turn,
 } from './compare';
 import { ArraySurface, decodeTile, TILE } from './tiles';
 
@@ -69,6 +70,12 @@ interface FixtureCase {
     ringShift?: [number, number];
     ringCurrent?: [number, number];
   };
+  /** The turns beside those shifts (a capture's `lineUpTurn`): the surfaces', the ring's. */
+  lineUpTurn?: {
+    current?: Record<string, Turn>;
+    ring?: Turn;
+    ringCurrent?: Turn;
+  };
   expected: Pick<
     ComparisonResult,
     | (typeof NUMBERS)[number]
@@ -98,6 +105,7 @@ function fixtureSurface(
   s: FixtureSurface,
   capture?: string,
   current?: [number, number],
+  currentTurn?: Turn,
 ): ResolvedSurface {
   if (s.kind === 'grid') {
     const h = Float64Array.from(s.z, (k) => (k === null ? NaN : s.base + k * s.scale));
@@ -107,6 +115,7 @@ function fixtureSurface(
       fingerprint: s.fingerprint,
       ...(capture !== undefined ? { capture } : {}),
       ...(current ? { current } : {}),
+      ...(currentTurn ? { currentTurn } : {}),
       grid: new ArraySurface(s.originE, s.originN, s.cellM, s.nx, s.ny, h),
     };
   }
@@ -128,7 +137,9 @@ function fixtureResolver(surfaces: Record<string, FixtureSurface>, c: FixtureCas
     const pick = (id: string, capture?: string) => {
       const s = surfaces[id];
       if (!s) return Promise.reject(new Error(`No fixture surface ${id}`));
-      return Promise.resolve(fixtureSurface(s, capture, c.lineUp?.current?.[id]));
+      return Promise.resolve(
+        fixtureSurface(s, capture, c.lineUp?.current?.[id], c.lineUpTurn?.current?.[id]),
+      );
     };
     switch (ref.kind) {
       case 'survey':
@@ -179,6 +190,8 @@ describe('TypeScript executor against the Python core (shared fixtures)', () => 
       ...(c.site ? { site: c.site } : {}),
       ...(c.lineUp?.ringShift ? { ringShift: c.lineUp.ringShift } : {}),
       ...(c.lineUp?.ringCurrent ? { ringCurrent: c.lineUp.ringCurrent } : {}),
+      ...(c.lineUpTurn?.ring ? { ringTurn: c.lineUpTurn.ring } : {}),
+      ...(c.lineUpTurn?.ringCurrent ? { ringCurrentTurn: c.lineUpTurn.ringCurrent } : {}),
       now: () => '2026-10-09T00:00:00Z',
     });
     const e = c.expected;

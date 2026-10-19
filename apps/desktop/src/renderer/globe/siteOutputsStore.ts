@@ -35,7 +35,7 @@ export function outputRasters(
   projectId: string,
   rasters: readonly GlobeRaster[],
   indexes: Readonly<Record<string, PyramidIndex | null | undefined>>,
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null,
 ): { layerId: string; src: string; index: PyramidIndex; shift?: DateShift }[] {
   const shifts = manifest ? layerDateShifts(manifest) : {};
   return rasters.flatMap((r) => {

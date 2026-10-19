@@ -1,7 +1,15 @@
-import { LineUpMeasure, type CaptureLineUp, type JobRecord, type PipelineName } from '@aio/schema';
+import {
+  LineUpFit,
+  LineUpMeasure,
+  type CaptureLineUp,
+  type CaptureLineUpTurn,
+  type JobRecord,
+  type PipelineName,
+} from '@aio/schema';
 import { t } from '@aio/ui';
 import type { StoreApi } from 'zustand/vanilla';
 import type { Box } from '../shell/layerBounds';
+import { compareLineUpApp, createCompareLineUp } from './compareLineUpStore';
 import {
   createLineUpStore,
   lineUpApp,
@@ -14,7 +22,7 @@ import { watchLineUps } from './lineUpWatch';
 /**
  * The app's line-up step, built from what the app offers (`lineUpStart.ts` supplies the real
  * pieces): `measure` runs `change.lineup` through the jobs store, waits for it and reads its
- * `lineup.json`; the store and the background check are the ones of Task 20. Everything the app
+ * `lineup.json` and, beside it, `lineup-fit.json` (the turn and scale); the store and the background check are the ones of Task 20. Everything the app
  * owns comes in through `deps`, so this file runs in tests without the app.
  */
 
@@ -52,23 +60,26 @@ const ENDED = {
 } as const;
 
 /**
- * Measure how far `move` sits from `keep`: start `change.lineup`, wait for it, read its answer.
- * Any failure (no project, a job that does not start or fails, an older pipeline pack without the
+ * Measure how far `move` sits from `keep`: start `change.lineup`, wait for it, read its answer
+ * (`lineup.json`, with `fit` from `lineup-fit.json` when the job wrote one: an older pipeline pack
+ * does not, and its answer stays a plain shift). Any failure (no project, a job that does not start or fails, an older pipeline pack without the
  * job, an unreadable answer) is `{ error }` with a sentence. The wait ends, and the job is
- * cancelled, when another project opens or after `MEASURE_LIMIT_MS`.
+ * cancelled, when another project opens, when `signal` aborts, or after `MEASURE_LIMIT_MS`.
  */
 export function measureWith(deps: LineUpSessionDeps): LineUpDeps['measure'] {
   const projectId = () => deps.workspace.getState().project?.id ?? null;
-  return async (keep, move) => {
+  return async (keep, move, signal) => {
     const root = deps.root();
     const opened = projectId();
     if (!root) return { error: t('lineUp.measure.noProject') };
+    if (signal?.aborted) return { error: t('lineUp.measure.abandoned') };
     const started = await deps.start('change.lineup', root, { keep, move });
     if ('error' in started) return { error: started.error };
     const ctl = new AbortController();
-    const stopped: { why: 'lineUp.measure.switched' | 'lineUp.measure.timedOut' | null } = {
-      why: null,
-    };
+    const stopped: {
+      why:
+        'lineUp.measure.switched' | 'lineUp.measure.timedOut' | 'lineUp.measure.abandoned' | null;
+    } = { why: null };
     const stop = (reason: NonNullable<typeof stopped.why>) => {
       stopped.why ??= reason;
       ctl.abort();
@@ -79,12 +90,19 @@ export function measureWith(deps: LineUpSessionDeps): LineUpDeps['measure'] {
     const timer = setTimeout(() => {
       stop('lineUp.measure.timedOut');
     }, MEASURE_LIMIT_MS);
+    // the caller gave the measurement up (Compare moved to another pair of dates)
+    const abandon = () => {
+      stop('lineUp.measure.abandoned');
+    };
+    if (signal?.aborted) abandon();
+    else signal?.addEventListener('abort', abandon, { once: true });
     let job: JobRecord | null;
     try {
       job = await deps.finished(started.jobId, ctl.signal);
     } finally {
       clearTimeout(timer);
       off();
+      signal?.removeEventListener('abort', abandon);
     }
     if (stopped.why) {
       deps.cancel(started.jobId);
@@ -98,14 +116,25 @@ export function measureWith(deps: LineUpSessionDeps): LineUpDeps['measure'] {
           : ENDED.failed;
       return { error: job.error ?? t(key) };
     }
+    let measured: LineUpMeasure;
     try {
       const parsed = LineUpMeasure.safeParse(
         await deps.readJson(`jobs/${started.jobId}/lineup.json`),
       );
-      return parsed.success ? parsed.data : { error: t('lineUp.measure.unreadable') };
+      if (!parsed.success) return { error: t('lineUp.measure.unreadable') };
+      measured = parsed.data;
     } catch (e) {
       return { error: e instanceof Error ? e.message : String(e) };
     }
+    let raw: unknown;
+    try {
+      raw = await deps.readJson(`jobs/${started.jobId}/lineup-fit.json`);
+    } catch {
+      // no lineup-fit.json: an older pipeline pack, which measures a shift only
+      return measured;
+    }
+    const fit = LineUpFit.safeParse(raw);
+    return fit.success ? { ...measured, fit: fit.data } : { error: t('lineUp.measure.unreadable') };
   };
 }
 
@@ -118,12 +147,15 @@ export interface LineUpSession {
 
 /**
  * Make the step and its background check, and hand them to the dialog, the offer and the notice
- * (`lineUpApp`). Call once; `stop` ends the check.
+ * (`lineUpApp`) and the Compare dates chip (`compareLineUpApp`). Call once; `stop` ends the check.
  */
 export function createLineUpSession(deps: LineUpSessionDeps): LineUpSession {
   const measure = measureWith(deps);
   const store = createLineUpStore({ ...deps, measure });
   lineUpApp.setState({ store, preview: deps.preview, extents: deps.extents });
+  // the Compare dates chip measures with the same job, one pair at a time
+  const compare = createCompareLineUp({ measure, workspace: deps.workspace });
+  compareLineUpApp.setState({ store: compare, workspace: deps.workspace });
   const stopWatch = watchLineUps({
     store,
     workspace: deps.workspace,
@@ -138,16 +170,21 @@ export function createLineUpSession(deps: LineUpSessionDeps): LineUpSession {
     measure,
     stop: () => {
       stopWatch();
+      compare.getState().dispose();
+      compareLineUpApp.setState({ store: null, workspace: null });
       lineUpApp.setState({ store: null, preview: null, extents: null });
     },
   };
 }
 
-/** The two manifest writes the step needs, over the app's `builder:updateCapture` and layer save. */
+/**
+ * The two manifest writes the step needs, over the app's `builder:updateCapture` and layer save.
+ * A line-up is always written with its turn: a `lineUp` sent alone would drop a stored turn.
+ */
 export function writersFor(io: {
   updateCapture: (
     captureId: string,
-    patch: { lineUp: CaptureLineUp | null },
+    patch: { lineUp: CaptureLineUp | null; lineUpTurn: CaptureLineUpTurn | null },
   ) => Promise<string | null>;
   saveLayers: (
     layerIds: readonly string[],
@@ -155,7 +192,8 @@ export function writersFor(io: {
   ) => Promise<string | null>;
 }): Pick<LineUpDeps, 'saveCapture' | 'pinCaptures'> {
   return {
-    saveCapture: (captureId, lineUp) => io.updateCapture(captureId, { lineUp }),
+    saveCapture: (captureId, lineUp, lineUpTurn) =>
+      io.updateCapture(captureId, { lineUp, lineUpTurn: lineUp ? lineUpTurn : null }),
     pinCaptures: (layerIds, captureId) => io.saveLayers(layerIds, { capture: captureId }),
   };
 }

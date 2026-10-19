@@ -1,6 +1,7 @@
 import { ChangeSet, type DateShift, type ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { changeSetStale } from './stale';
+import { buildChangeSet } from './register';
+import { changeSetStale, lineUpOfPair, lineUpTurnOfPair } from './stale';
 import { SITE } from './testing';
 
 const lined = (shift: DateShift | null): ProjectManifest => ({
@@ -39,5 +40,55 @@ describe('a change set against the dates shifts now', () => {
     expect(changeSetStale(set(), lined(null))).toBe(false);
     // within a millimetre
     expect(changeSetStale(set({ to: { eastM: 2.0004, northM: -1 } }), now)).toBe(false);
+  });
+
+  it('stale when only the turn changed', () => {
+    const turn = { rotationDeg: 0.3, scale: 1, pivotE: 500100, pivotN: 3199900 };
+    const base = lined({ eastM: 2, northM: -1 });
+    const now: ProjectManifest = {
+      ...base,
+      origin: [500000, 3200000, 0],
+      captures: base.captures.map((c) => (c.id === 'd2' ? { ...c, lineUpTurn: turn } : c)),
+    };
+    // computed with the same shift but no turn
+    expect(changeSetStale(set({ to: { eastM: 2, northM: -1 } }), now)).toBe(true);
+    // computed with this very turn: fresh
+    const withTurn = (t: typeof turn) =>
+      ChangeSet.parse({ ...set({ to: { eastM: 2, northM: -1 } }), lineUpTurn: { to: t } });
+    expect(changeSetStale(withTurn(turn), now)).toBe(false);
+    // computed with another turn: stale
+    expect(changeSetStale(withTurn({ ...turn, rotationDeg: 0.2 }), now)).toBe(true);
+    expect(changeSetStale(withTurn({ ...turn, scale: 1.001 }), now)).toBe(true);
+    // the turn removed since
+    expect(changeSetStale(withTurn(turn), base)).toBe(true);
+  });
+
+  it('a set written on a turned date is fresh, and stale once the turn changes', () => {
+    const turn = { rotationDeg: 0.1, scale: 0.998, pivotE: 500100, pivotN: 3199900 };
+    const base = lined({ eastM: 2, northM: -1 });
+    const turned = (t: typeof turn): ProjectManifest => ({
+      ...base,
+      origin: [500000, 3200000, 0],
+      captures: base.captures.map((c) => (c.id === 'd2' ? { ...c, lineUpTurn: t } : c)),
+    });
+    const now = turned(turn);
+    expect(lineUpTurnOfPair(now, 'd1', 'd2')).toEqual({ to: turn });
+    expect(lineUpTurnOfPair(base, 'd1', 'd2')).toBeUndefined();
+    const written = ChangeSet.parse(
+      buildChangeSet({
+        id: 'd1-d2-issues',
+        from: 'd1',
+        to: 'd2',
+        producer: 'issues',
+        items: [],
+        createdAt: '2026-10-18T00:00:00Z',
+        lineUp: lineUpOfPair(now, 'd1', 'd2'),
+        lineUpTurn: lineUpTurnOfPair(now, 'd1', 'd2'),
+      }),
+    );
+    expect(written.lineUpTurn).toEqual({ to: turn });
+    expect(changeSetStale(written, now)).toBe(false);
+    expect(changeSetStale(written, turned({ ...turn, rotationDeg: 0.2 }))).toBe(true);
+    expect(changeSetStale(written, base)).toBe(true);
   });
 });

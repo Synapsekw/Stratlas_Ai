@@ -74,5 +74,5 @@ Found in recon (16 Oct 2026); file references are starting points for the builde
 ## Later
 
 - Manual point picking when automatic line-up can't be trusted.
-- Rotation and scale (similarity) and height corrections.
+- Rotation and scale (similarity): done, see `2026-10-18-line-up-similarity-design.md`. Height corrections are still later.
 - The broader "one button for change": fewer steps from opening a project to seeing the heat map (today: Compare dates, Show changes, pick dates, Run imagery change).

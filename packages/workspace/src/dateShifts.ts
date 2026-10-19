@@ -1,6 +1,7 @@
 import {
   captureLineUpShift,
   isZeroShift,
+  shiftKey,
   type DateShift,
   type Layer,
   type ProjectManifest,
@@ -14,7 +15,7 @@ import { captureIndex, DATED_KINDS, type CaptureHints } from './captures';
  * the same rules; one shared fixture holds them to the same answers.
  */
 
-type Source = Pick<ProjectManifest, 'captures' | 'layers'>;
+type Source = Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>;
 
 const memo = new WeakMap<object, Readonly<Record<string, DateShift>>>();
 
@@ -29,7 +30,7 @@ export function layerDateShifts(m: Source): Readonly<Record<string, DateShift>> 
   const index = captureIndex(m);
   const shifts = new Map<string, DateShift>();
   for (const c of m.captures) {
-    const s = captureLineUpShift(c);
+    const s = captureLineUpShift(c, m.origin);
     if (s && !isZeroShift(s)) shifts.set(c.id, s);
   }
   const out: Record<string, DateShift> = {};
@@ -50,16 +51,11 @@ export function dateShiftOf(m: Source, layerId: string): DateShift | null {
 /** The shift a survey date carries, or null when it has none (or is not in the project). */
 export function captureShift(m: Source, captureId: string): DateShift | null {
   const c = m.captures.find((x) => x.id === captureId);
-  const s = c ? captureLineUpShift(c) : null;
+  const s = c ? captureLineUpShift(c, m.origin) : null;
   return s && !isZeroShift(s) ? s : null;
 }
 
-/** A shift as a cache key, to the millimetre; empty for none. */
-export function shiftKey(s: DateShift | null): string {
-  if (!s) return '';
-  const mm = (v: number) => Math.round(v * 1000) / 1000;
-  return `${mm(s.eastM)},${mm(s.northM)}`;
-}
+export { shiftKey };
 
 /**
  * The layers the volume hints file under `captureId` and the hintless index does not: they move

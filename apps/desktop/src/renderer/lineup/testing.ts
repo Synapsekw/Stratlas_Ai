@@ -1,4 +1,10 @@
-import type { CaptureLineUp, LineUpMeasure, ProjectManifest } from '@aio/schema';
+import type {
+  CaptureLineUp,
+  CaptureLineUpTurn,
+  LineUpFit,
+  LineUpMeasure,
+  ProjectManifest,
+} from '@aio/schema';
 
 /** Test data for the line-up step: two survey dates with an ortho each, and a cloud on the later. */
 
@@ -28,6 +34,8 @@ export const cloud = (id: string, capture?: string) => ({
 export function lineUpManifest(
   opts: {
     lineUps?: Record<string, CaptureLineUp>;
+    /** `lineUpTurn` by capture id, beside its `lineUp`. */
+    turns?: Record<string, CaptureLineUpTurn>;
     layers?: object[];
     captures?: { id: string; label: string; date: string }[];
   } = {},
@@ -44,7 +52,8 @@ export function lineUpManifest(
     origin: [500000, 4000000, 10],
     captures: captures.map((c) => {
       const lineUp = opts.lineUps?.[c.id];
-      return lineUp ? { ...c, lineUp } : c;
+      const lineUpTurn = opts.turns?.[c.id];
+      return { ...c, ...(lineUp ? { lineUp } : {}), ...(lineUpTurn ? { lineUpTurn } : {}) };
     }),
     layers: opts.layers ?? [ortho('o1', 'd1'), ortho('o2', 'd2'), cloud('c2', 'd2')],
     severityModels: [],
@@ -66,6 +75,23 @@ export function measureOf(over: Partial<LineUpMeasure> = {}): LineUpMeasure {
     tolerancePx: 2,
     spreadPx: 0.4,
     tiles: 12,
+    verdict: 'ok',
+    ...over,
+  };
+}
+
+/** A `lineup-fit.json`: by default a 0.25 degree turn and +0.35% scale about a pivot on site. */
+export function fitOf(over: Partial<LineUpFit> = {}): LineUpFit {
+  return {
+    rotationDeg: 0.25,
+    scale: 1.0035,
+    pivotE: 500050,
+    pivotN: 3999975,
+    eastM: -2,
+    northM: 0.5,
+    maxMoveM: 2.4,
+    residualPx: 0.3,
+    inliers: 12,
     verdict: 'ok',
     ...over,
   };

@@ -4,6 +4,7 @@ import {
   CHANGE_VERDICTS,
   ChangeSet,
   ChangeThresholds,
+  LineUpFit,
   LineUpMeasure,
   DEFAULT_CHANGE_THRESHOLDS,
   type ChangeSetInput,
@@ -45,6 +46,22 @@ describe('change sets (aio.change/1)', () => {
     expect(ChangeSet.safeParse({ ...base(), lineUp: { extra: 1 } }).success).toBe(false);
   });
 
+  it('a change set with a 1.5 degree recorded turn parses', () => {
+    const turn = { rotationDeg: 1.5, scale: 1.015, pivotE: 500100, pivotN: 3199900 };
+    const r = ChangeSet.safeParse({
+      ...base(),
+      lineUp: { to: { eastM: 2, northM: -1 } },
+      lineUpTurn: { to: turn },
+    });
+    expect(r.success).toBe(true);
+    expect(r.data?.lineUpTurn?.to).toEqual(turn);
+    // beyond the stored envelope, and an unknown side, are refused
+    const at = (to: object) => ChangeSet.safeParse({ ...base(), lineUpTurn: { to } }).success;
+    expect(at({ ...turn, rotationDeg: 2.5 })).toBe(false);
+    expect(at({ ...turn, scale: 1.03 })).toBe(false);
+    expect(ChangeSet.safeParse({ ...base(), lineUpTurn: { mid: turn } }).success).toBe(false);
+  });
+
   it('parses a line-up measurement', () => {
     const m: LineUpMeasure = {
       keep: 'c1',
@@ -63,6 +80,42 @@ describe('change sets (aio.change/1)', () => {
     };
     expect(LineUpMeasure.parse(m)).toEqual(m);
     expect(LineUpMeasure.safeParse({ ...m, verdict: 'maybe' }).success).toBe(false);
+  });
+
+  it('LineUpFit parses a range verdict', () => {
+    const fit: LineUpFit = {
+      rotationDeg: 3.01,
+      scale: 1.0002,
+      pivotE: 500012.5,
+      pivotN: 3200005,
+      eastM: 0.01,
+      northM: -0.02,
+      maxMoveM: 5.1,
+      residualPx: 0.3,
+      inliers: 40,
+      verdict: 'range',
+    };
+    expect(LineUpFit.parse(fit)).toEqual(fit);
+    expect(LineUpFit.safeParse({ ...fit, verdict: 'maybe' }).success).toBe(false);
+    // lineup.json never says range (older apps parse it strictly); the app adds the fit beside it
+    const m = {
+      keep: 'c1',
+      move: 'c2',
+      layerKeep: 'ortho-1',
+      layerMove: 'ortho-2',
+      source: 'ortho',
+      eastM: 0.01,
+      northM: -0.02,
+      totalM: 5.1,
+      cellM: 0.05,
+      tolerancePx: 2,
+      spreadPx: 0.3,
+      tiles: 40,
+      verdict: 'disagree',
+    } as const;
+    expect(LineUpMeasure.safeParse({ ...m, verdict: 'range' }).success).toBe(false);
+    expect(LineUpMeasure.parse({ ...m, fit }).fit).toEqual(fit);
+    expect(LineUpMeasure.parse(m).fit).toBeUndefined();
   });
 
   it('accepts every shared fixture (also read by the Python writer tests)', () => {

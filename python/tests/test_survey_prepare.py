@@ -7,6 +7,7 @@ cone pile of 1000 m3 and digs a pit of 300 m3, and a small design pad.
 from __future__ import annotations
 
 import json
+import math
 import threading
 
 import numpy as np
@@ -406,3 +407,63 @@ def test_prepared_dsm_heights_are_where_the_date_is_lined_up(tmp_path):
         m["originN"] - 1.0
     )
     assert np.allclose(moved, plain, equal_nan=True)  # the same grid, one place over
+
+
+def turn_c2(project, pivot_e, pivot_n, rotation_deg=0.5):
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == "c2":
+            c["lineUpTurn"] = {
+                "rotationDeg": rotation_deg,
+                "scale": 1.0,
+                "pivotE": pivot_e,
+                "pivotN": pivot_n,
+            }
+    path.write_text(json.dumps(m), "utf-8")
+
+
+def shed_centre(project, sid):
+    """Where the shed (3 m high, near the north-east corner) is on a prepared surface: the centre of
+    its cells, project E and N."""
+    m = meta(project, sid)
+    s = TileSurface(project / "survey" / "surfaces" / sid, m)
+    h = s.read(0, 0, s.nx, s.ny)
+    c = m["cellM"]
+    e = m["originE"] + (np.arange(h.shape[1]) + 0.5) * c
+    n = m["originN"] + (np.arange(h.shape[0]) + 0.5) * c
+    E, N = np.meshgrid(e, n)
+    x, y = E - ORIGIN[0], N - ORIGIN[1]
+    win = (x > 4) & (x < 22) & (y > 10) & (y < 30)
+    shed = win & (np.nan_to_num(h, nan=-99.0) > 2.5)
+    return float(E[shed].mean()), float(N[shed].mean())
+
+
+@pytest.mark.parametrize("kind", ["dsm", "grid"])
+def test_prepared_dsm_follows_a_turned_line_up(tmp_path, kind):
+    # a GeoTIFF takes the slow path here; a height grid comes resampled from grid_source
+    from aio_pipelines.similarity import Similarity
+
+    surface_project(tmp_path, kinds=(kind, kind))
+    run_job(pipeline(), tmp_path, S2)
+    stored = shed_centre(tmp_path, "s2")
+    line_up(tmp_path, "c2", 2.0, -1.0)
+    run_job(pipeline(), tmp_path, S2, job_id="j2")
+    shifted = meta(tmp_path, "s2")
+    # pivot at the south-west corner: the shed, near the north-east one, moves half a metre more
+    pivot = (ORIGIN[0] - 25.0, ORIGIN[1] - 25.0)
+    turn_c2(tmp_path, *pivot)
+    result, _ = run_job(pipeline(), tmp_path, S2, job_id="j3")
+    assert not result["outputs"]["surface-1"].get("skipped")  # the turn is in the fingerprint
+    m = meta(tmp_path, "s2")
+    assert m["fingerprint"] != shifted["fingerprint"]
+    assert m["dateShiftM"] == {"eastM": 2.0, "northM": -1.0}
+    assert m["dateTurn"] == {"rotationDeg": 0.5, "scale": 1.0, "pivotE": pivot[0], "pivotN": pivot[1]}
+    sim = Similarity(2.0, -1.0, 0.5, 1.0, *pivot)
+    want = sim.apply_en(*stored)
+    got = shed_centre(tmp_path, "s2")
+    assert math.hypot(want[0] - (stored[0] + 2.0), want[1] - (stored[1] - 1.0)) > 0.3
+    assert got == pytest.approx(want, abs=0.05)
+    # the same turn again is the same fingerprint, so nothing runs
+    result, _ = run_job(pipeline(), tmp_path, S2, job_id="j4")
+    assert result["outputs"]["surface-1"].get("skipped") is True

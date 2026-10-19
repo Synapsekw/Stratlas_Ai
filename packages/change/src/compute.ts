@@ -1,12 +1,13 @@
-import type {
-  ChangeItem,
-  ChangeKind,
-  ChangeSet,
-  ChangeThresholds,
-  Issue,
-  Layer,
-  ProjectManifest,
-  Vec3,
+import {
+  turnOf,
+  type ChangeItem,
+  type ChangeKind,
+  type ChangeSet,
+  type ChangeThresholds,
+  type Issue,
+  type Layer,
+  type ProjectManifest,
+  type Vec3,
 } from '@aio/schema';
 import { dateShiftOf } from '@aio/workspace';
 import { detectionChanges, photoDetectionLocator, type DetectionPass } from './detections';
@@ -20,7 +21,7 @@ import {
   type InAppKind,
 } from './pairs';
 import { buildChangeSet, mergeReviews } from './register';
-import { lineUpOfPair } from './stale';
+import { lineUpOfPair, lineUpTurnOfPair } from './stale';
 import { vectorChanges } from './vector';
 
 /**
@@ -51,6 +52,8 @@ export interface ComputeSources {
   previous(id: string): Promise<ChangeSet | null>;
   /** Lon/lat to the project local frame (vector `at`). */
   toLocal?: (lonLat: [number, number]) => Vec3;
+  /** A plain-words note on something the run left out (shown to the person by the caller). */
+  note?(text: string): void;
   now(): string;
   jobId?: string;
   progress?(phase: string, done: number, total: number): void;
@@ -82,6 +85,7 @@ export async function computeInApp(
     throw new Error('Issues, detections and map layers are compared in the app; pick one of them.');
   const shiftOf = (layerId: string) => dateShiftOf(src.manifest, layerId);
   const lineUp = lineUpOfPair(src.manifest, from, to);
+  const lineUpTurn = lineUpTurnOfPair(src.manifest, from, to);
   const out: ChangeSet[] = [];
   let done = 0;
   const step = (phase: string) => {
@@ -92,6 +96,8 @@ export async function computeInApp(
     step(kind);
     const producer = IN_APP_PRODUCERS[kind];
     let items: ChangeItem[];
+    let skipped = 0;
+    let pairsCount = 0;
     if (kind === 'issue') {
       items = issueChanges({
         manifest: src.manifest,
@@ -123,8 +129,15 @@ export async function computeInApp(
     } else {
       items = [];
       const pairs = counterpartPairs(src.index, src.manifest.layers, 'vector', from, to);
+      pairsCount = pairs.length;
       for (const [la, lb] of pairs) {
         step(kind);
+        // a turn is about a pivot in the project frame: without the coordinate system it cannot
+        // be placed, and the pair is left out rather than compared at a wrong place
+        if (!src.toLocal && (turnOf(shiftOf(la.id)) || turnOf(shiftOf(lb.id)))) {
+          skipped += 1;
+          continue;
+        }
         const [ga, gb] = await Promise.all([src.geojson(la), src.geojson(lb)]);
         if (ga === null || gb === null) continue;
         items.push(
@@ -140,6 +153,16 @@ export async function computeInApp(
         );
       }
     }
+    if (kind === 'vector' && skipped > 0) {
+      src.note?.(
+        "Vector changes were skipped: a turned line-up needs the project's coordinate system.",
+      );
+      // every pair was left out: an empty set would read as "nothing changed"
+      if (skipped === pairsCount) {
+        done += 1;
+        continue;
+      }
+    }
     const id = changeSetId(from, to, producer);
     const now = src.now();
     const fresh = buildChangeSet({
@@ -151,6 +174,7 @@ export async function computeInApp(
       createdAt: now,
       run: { at: now, ...(src.jobId ? { jobId: src.jobId } : {}) },
       lineUp,
+      lineUpTurn,
     });
     out.push(mergeReviews(await src.previous(id), fresh));
     done += 1;

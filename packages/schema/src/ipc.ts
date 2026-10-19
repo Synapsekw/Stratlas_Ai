@@ -1840,10 +1840,11 @@ export const ipc = {
   },
   /**
    * Where each placed layer lies, read from its files (local frame boxes), and what would stop a
-   * re-centre (`builder:recentre`). Layers without an extent are left out. Reads only.
+   * re-centre (`builder:recentre`). Layers without an extent are left out. Reads only. `full`
+   * also reads the kinds Properties reads (a kit pyramid's `tiles.json` corners, a COG, ...).
    */
   'builder:layerExtents': {
-    request: z.object({ projectId: z.string().min(1) }).strict(),
+    request: z.object({ projectId: z.string().min(1), full: z.boolean().optional() }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({
         ok: z.literal(true),

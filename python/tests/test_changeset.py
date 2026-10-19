@@ -94,3 +94,30 @@ def test_change_set_records_the_shifts():
     )
     assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": -2.0, "northM": 1.235}}
     assert json.dumps(cs["lineUp"]).count("-0.0") == 0
+
+
+def test_change_set_follows_a_turned_line_up():
+    from aio_pipelines.similarity import Similarity
+
+    turn = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": 500100.0, "pivotN": 3200200.0}
+    plain = Similarity(0.0, 0.0)
+    turned = Similarity.from_line_up({"eastM": 2.0, "northM": 0.0}, turn)
+    cs = change_set("c1-c2-raster", "c1", "c2", "change.raster", [], line_up=(plain, turned))
+    assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": 2.0, "northM": 0.0}}
+    # the turn rides beside lineUp (a strict object), for the side that has one
+    assert cs["lineUpTurn"] == {"to": turn}
+    # a shift alone writes no turn; a turn alone still stamps both
+    shifted = change_set(
+        "c1-c2-raster", "c1", "c2", "change.raster", [], line_up=(plain, Similarity(2.0, 0.0))
+    )
+    assert "lineUpTurn" not in shifted and shifted["lineUp"]["to"] == {"eastM": 2.0, "northM": 0.0}
+    only = change_set(
+        "c1-c2-raster", "c1", "c2", "change.raster", [],
+        line_up=(Similarity.from_line_up(None, turn), plain),
+    )  # fmt: skip
+    assert only["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": 0.0, "northM": 0.0}}
+    assert only["lineUpTurn"] == {"from": turn}
+    # nothing at all for two plain dates
+    none = change_set("c1-c2-raster", "c1", "c2", "change.raster", [], line_up=(plain, plain))
+    assert "lineUp" not in none and "lineUpTurn" not in none
+    assert validate_change_set(cs) == cs

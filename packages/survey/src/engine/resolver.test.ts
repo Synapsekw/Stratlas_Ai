@@ -89,13 +89,49 @@ describe('ringShifts', () => {
       ringCurrent: [3.5, 0.5],
     });
   });
-  it('uses the shift now for a surface prepared before any line-up, and none for a site ring', () => {
+  it('uses no shift for a surface prepared before any line-up (the shift now only reads stale), and none for a site ring', () => {
     const plain: HeightTiles[] = [{ ...cone, capture: 'c2' }];
-    expect(ringShifts(plain, { c2: [3, 0] }, 'c2')).toEqual({
+    const now = { rotationDeg: 0.5, scale: 1, pivotE: 500000, pivotN: 3200000 };
+    expect(ringShifts(plain, { c2: [3, 0] }, 'c2', { c2: now })).toEqual({
+      ringShift: [0, 0],
+      ringCurrent: [3, 0],
+      ringCurrentTurn: now,
+    });
+    // a date without a prepared surface: its line-up now
+    expect(ringShifts([], { c2: [3, 0] }, 'c2', { c2: now })).toEqual({
       ringShift: [3, 0],
       ringCurrent: [3, 0],
+      ringTurn: now,
+      ringCurrentTurn: now,
     });
     expect(ringShifts(surfaces, { c2: [3, 0] }, undefined)).toEqual({});
+  });
+  it('ring shifts follows a turned line-up: the prepared turn to sample with, the turn now for the fingerprint', async () => {
+    const turn = { rotationDeg: 0.5, scale: 1, pivotE: 500000, pivotN: 3200000 };
+    const now = { ...turn, rotationDeg: 0.25 };
+    const turned: HeightTiles[] = [
+      { ...cone, capture: 'c2', dateShiftM: { eastM: 2, northM: -1 }, dateTurn: turn },
+    ];
+    expect(ringShifts(turned, { c2: [3.5, 0.5] }, 'c2', { c2: now })).toEqual({
+      ringShift: [2, -1],
+      ringCurrent: [3.5, 0.5],
+      ringTurn: turn,
+      ringCurrentTurn: now,
+    });
+    // prepared before the turn: no prepared turn, the turn now still reads stale
+    expect(ringShifts(surfaces, { c2: [3.5, 0.5] }, 'c2', { c2: now })).toEqual({
+      ringShift: [2, -1],
+      ringCurrent: [3.5, 0.5],
+      ringCurrentTurn: now,
+    });
+    const resolve = projectResolver({
+      surfaces: turned,
+      captures: ['c2'],
+      shifts: { c2: [3.5, 0.5] },
+      turns: { c2: now },
+      fetchBytes: () => Promise.resolve(null),
+    });
+    expect((await resolve({ kind: 'current' })).currentTurn).toEqual(now);
   });
   it('puts the date shift now on the surfaces it resolves', async () => {
     const resolve = projectResolver({

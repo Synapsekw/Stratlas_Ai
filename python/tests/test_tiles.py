@@ -7,6 +7,7 @@ is a development tool and runs in CI only. Everything is generated at the fictio
 from __future__ import annotations
 
 import json
+import math
 import struct
 import threading
 
@@ -417,6 +418,36 @@ def test_mesh_tiles_carry_the_shift(mesh_project):
     folder = project / "tiles" / "mesh-1-tiles"
     ts = json.loads((folder / "tileset.json").read_text("utf-8"))
     truth = ecef_truth((local_verts[0] + np.array([2.0, 0.0, 1.0]))[None])[0]
+    best = np.inf
+    for t, _ in walk(ts["root"]):
+        if t.get("children"):
+            continue
+        ecef, _ = to_ecef(ts, (folder / t["content"]["uri"]).read_bytes())
+        best = min(best, float(np.linalg.norm(ecef - truth, axis=1).min()))
+    assert best < 1e-3
+
+
+TURN = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": ORIGIN[0] + 40.0, "pivotN": ORIGIN[1] - 25.0}
+
+
+def test_mesh_tiles_follows_a_turned_line_up(mesh_project):
+    from aio_pipelines.similarity import Similarity
+
+    project, local_verts = mesh_project
+    line_up_c1(project)
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["captures"][0]["lineUpTurn"] = TURN
+    path.write_text(json.dumps(m), "utf-8")
+    run_job(TilesMesh(), project, {"layer": "mesh-1", "maxTrianglesPerTile": 3000, "textureMaxPx": 128})
+    folder = project / "tiles" / "mesh-1-tiles"
+    ts = json.loads((folder / "tileset.json").read_text("utf-8"))
+    # a site corner, about 300 m from the pivot: the turn moves it metres beyond the plain shift
+    corner = local_verts[0]
+    sim = Similarity.from_line_up({"eastM": 2.0, "northM": -1.0}, TURN)
+    x, z = sim.apply_local(corner[0], corner[2], ORIGIN)
+    assert math.hypot(x - (corner[0] + 2.0), z - (corner[2] + 1.0)) > 1.0
+    truth = ecef_truth(np.array([[x, corner[1], z]]))[0]
     best = np.inf
     for t, _ in walk(ts["root"]):
         if t.get("children"):

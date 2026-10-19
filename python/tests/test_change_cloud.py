@@ -870,3 +870,24 @@ def test_a_run_prepared_without_its_shifts_refuses_when_they_changed(tmp_path):
     # unchanged: stamped with the shifts it was read with
     cs = _regions_step(tmp_path, root, {**PREP, "shifts": [[0.0, 0.0], [-2.0, 0.0]]})
     assert cs["lineUp"]["to"] == {"eastM": -2.0, "northM": 0.0}
+
+
+def test_refuses_a_turned_pair(tmp_path):
+    root = _lined_up_cloud_project(tmp_path)
+    m = json.loads((root / "manifest.json").read_text())
+    m["captures"][1]["lineUp"] = {"eastM": 2.0, "northM": 0.0, "with": "c1", "at": "2026-10-18T00:00:00Z"}
+    m["captures"][1]["lineUpTurn"] = {
+        "rotationDeg": 0.5,
+        "scale": 1.0,
+        "pivotE": 500000.0,
+        "pivotN": 3200000.0,
+    }
+    (root / "manifest.json").write_text(json.dumps(m))
+    with pytest.raises(JobError, match=r"^Point cloud change doesn't follow a turned line-up yet\."):
+        _run(root, {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}})
+    # a shift alone is still followed (refused here only for the missing files, later on)
+    del m["captures"][1]["lineUpTurn"]
+    (root / "manifest.json").write_text(json.dumps(m))
+    with pytest.raises(JobError) as err:
+        _run(root, {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}}, job_id="j2")
+    assert "turned" not in str(err.value)

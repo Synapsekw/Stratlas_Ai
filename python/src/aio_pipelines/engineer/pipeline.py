@@ -340,7 +340,7 @@ class ModelEvidence:
         def crop(ctx: StepContext) -> dict[str, Any]:
             if not has_cloud:
                 return {"points": 0}
-            from ..captures import date_shift, shift_transform
+            from ..captures import date_shift, date_similarity, similarity_transform
             from ..inspection.frame import asset_path, read_manifest
 
             manifest = read_manifest(ctx.project)
@@ -382,8 +382,11 @@ class ModelEvidence:
                 path = asset_path(ctx.project, layer.get("src"))
                 if path is None or not path.is_file():
                     raise JobError(f'The file of "{layer.get("name", m["layer"])}" is missing.')
-                # the region is drawn where the date is lined up: the shift comes after the transform
-                moved = shift_transform(layer.get("transform"), date_shift(manifest, m["layer"]))
+                # the region is drawn where the date is lined up: the line-up (shift and turn) comes
+                # after the transform; the clouds above stay shift-only (the stage-2 limit)
+                moved = similarity_transform(
+                    layer.get("transform"), date_similarity(manifest, m["layer"]), origin
+                )
                 pts = sample_mesh_surface(path, moved, region, cap, SEED + len(clouds) + j)
                 parts.append(pts)
                 colours.append(None)  # a mesh surface has no scanned colour

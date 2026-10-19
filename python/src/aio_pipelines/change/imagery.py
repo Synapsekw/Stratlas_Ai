@@ -21,7 +21,7 @@ from typing import Any
 
 import numpy as np
 
-from ..captures import date_shift, local_delta
+from ..captures import date_shift, date_similarity
 from ..runtime import (
     JobError,
     StepContext,
@@ -173,9 +173,10 @@ def _corners(c: Any, what: str) -> dict[str, list[float]]:
 class Ortho:
     """An ortho layer on the ground: its corners, finest pixel size and a way to sample it.
 
-    Placed where its date is lined up: the date's shift (``captures.date_shift``) is added after
-    the layer's own placement (corners or file georeference) to ``tl``, so ``box`` and ``sample``
-    carry it; ``corners`` stay as stored.
+    Placed where its date is lined up: the date's line-up (``captures.date_similarity``, a shift
+    and maybe a turn and scale) comes after the layer's own placement (corners or file
+    georeference). ``tl`` is moved and ``u``, ``v`` turned with it, so ``box`` and ``sample`` carry
+    it; ``corners`` stay as stored.
     """
 
     def __init__(self, project: Path, manifest: dict[str, Any], layer: dict[str, Any]):
@@ -221,11 +222,17 @@ class Ortho:
                 f'"{self.name}" is a {fmt} raster; imagery change reads kit pyramids, images and GeoTIFFs.'
             )
         self.y = float(np.mean([self.corners[k][1] for k in ("tl", "tr", "bl")]))
-        tl, tr, bl = (np.array(self.corners[k]) for k in ("tl", "tr", "bl"))
-        self.u = (tr - tl)[[0, 2]]
-        self.v = (bl - tl)[[0, 2]]
         self.shift = date_shift(manifest, str(layer.get("id")))
-        self.tl = tl[[0, 2]] + np.array(local_delta(self.shift))
+        self.sim = date_similarity(manifest, str(layer.get("id")))
+        origin = manifest.get("origin") or [0, 0, 0]
+        # each corner where its date is lined up: u and v are the moved corners' differences
+        tl, tr, bl = (
+            np.array(self.sim.apply_local(self.corners[k][0], self.corners[k][2], origin))
+            for k in ("tl", "tr", "bl")
+        )
+        self.u = tr - tl
+        self.v = bl - tl
+        self.tl = tl
         self.gsd = float(np.hypot(*self.u)) / self.width_px
 
     def _cog_footprint(self) -> None:
@@ -354,15 +361,11 @@ class Ortho:
     def _sample_cog(self, grid: Grid):
         import rasterio
         from rasterio.enums import ColorInterp, Resampling
-        from rasterio.transform import Affine
         from rasterio.warp import reproject
 
         dst_crs = project_crs(self.manifest)
-        # the date's shift moves the file east and north: the grid is read that much back
-        east, north = self.shift
-        transform = Affine.translation(-east, -north) @ grid.crs_transform(
-            self.manifest.get("origin") or [0, 0, 0]
-        )
+        # the date's line-up moves the file: the grid is read through its inverse
+        transform = ~self.sim.crs_affine() @ grid.crs_transform(self.manifest.get("origin") or [0, 0, 0])
         rgb = np.zeros((grid.rows, grid.cols, 3), np.float32)
         valid = np.ones((grid.rows, grid.cols), bool)
         with rasterio.open(self.path) as ds:

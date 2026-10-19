@@ -297,3 +297,25 @@ def test_the_pose_gap_takes_each_layers_local_delta():
     b = {"pos": [2, 30, 0.5], "q": q}
     assert pose_gap(a, b)[0] == pytest.approx(np.hypot(2, 0.5))
     assert pose_gap(a, b, (0.0, 0.0), (-2.0, -0.5))[0] == pytest.approx(0.0)
+
+
+def test_pose_pairs_follow_a_turned_line_up(tmp_path, frames):
+    from aio_pipelines.similarity import Similarity
+
+    # the second date is turned 0.5 degrees about a point 100 m west of the photos, then 2 m east;
+    # its photo is stored where that line-up puts it back onto the first
+    turn = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": -100.0, "pivotN": 0.0}
+    sim = Similarity.from_line_up({"eastM": 2.0, "northM": 0.0}, turn)
+    x, z = sim.inverse().apply_local(0.0, 0.0, [0, 0, 0])
+    shift_only = {"eastM": 2.0, "northM": 0.0, "with": "c1", "at": "2026-10-18T00:00:00Z"}
+    project = _project(tmp_path, frames, b_pos=(x, 30, z), line_up=shift_only)
+    m = json.loads((project / "manifest.json").read_text("utf-8"))
+    m["captures"][1]["lineUpTurn"] = turn
+    (project / "manifest.json").write_text(json.dumps(m), "utf-8")
+    assert np.hypot(x + 2.0, z) > 0.8  # the shift alone leaves it about 0.9 m away
+    run_job(ChangeFrames(), project, {"from": "c1", "to": "c2", "minAreaPx": 150})
+    cs = json.loads((project / "change" / "c1-c2-frames.json").read_text("utf-8"))
+    [item] = cs["items"]
+    assert item["poseM"] < 0.01
+    assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": 2.0, "northM": 0.0}}
+    assert cs["lineUpTurn"] == {"to": turn}

@@ -114,6 +114,24 @@ def photo_layers(manifest: dict[str, Any], ids: list[str] | None = None) -> list
     return out
 
 
+def turn_q(q: list[float], rotation_deg: float) -> list[float]:
+    """A camera quaternion (three.js [x, y, z, w], local frame) turned by a line-up's rotation.
+
+    The line-up turns counter-clockwise in plan (east towards north). In the local frame (x east,
+    y up, z south) that is a right-handed turn about +y by the same angle: east (1, 0, 0) goes to
+    (cos, 0, -sin), towards north (-z), as ``Similarity.apply_local`` moves points."""
+    h = math.radians(rotation_deg) / 2
+    ay, aw = math.sin(h), math.cos(h)
+    qx, qy, qz, qw = q
+    # (0, ay, 0, aw) * q
+    return [
+        aw * qx + ay * qz,
+        aw * qy + ay * qw,
+        aw * qz - ay * qx,
+        aw * qw - ay * qy,
+    ]
+
+
 def load_meshes(
     project: Path, layers: list[dict[str, Any]], log=print, manifest: dict[str, Any] | None = None
 ):
@@ -123,7 +141,7 @@ def load_meshes(
     shift after the layer's own transform): the job combines it with photos and findings."""
     import trimesh
 
-    from ..captures import date_shift, shift_transform
+    from ..captures import date_similarity, similarity_transform
 
     parts = []
     for layer in layers:
@@ -140,7 +158,8 @@ def load_meshes(
             raise JobError(f"Could not read the model {path.name}: {e}") from e
         transform = layer.get("transform")
         if manifest:
-            transform = shift_transform(transform, date_shift(manifest, layer["id"]))
+            origin = manifest.get("origin") or [0, 0, 0]
+            transform = similarity_transform(transform, date_similarity(manifest, layer["id"]), origin)
         L = layer_matrix(transform)
         for node in sc.graph.nodes_geometry:
             T, gname = sc.graph[node]

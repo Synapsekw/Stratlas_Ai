@@ -8,7 +8,7 @@ import type {
   SeverityTemplate,
   Vec3,
 } from '@aio/schema';
-import { WalkCalibration } from '@aio/schema';
+import { hasTurn, WalkCalibration } from '@aio/schema';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawingStemOf, markDrawingPlaced, type PlacedDrawing } from './drawingPlacement';
@@ -331,14 +331,25 @@ export async function updateCapture(
       else if (patch.colour !== undefined) next.colour = patch.colour;
       if (patch.icon === null) delete next.icon;
       else if (patch.icon !== undefined) next.icon = patch.icon;
-      if (patch.lineUp === null) delete next.lineUp;
-      else if (patch.lineUp !== undefined) {
+      if (patch.lineUp === null) {
+        delete next.lineUp;
+        delete next.lineUpTurn;
+      } else if (patch.lineUp !== undefined) {
         const { lineUp } = patch;
         if (lineUp.with === captureId) throw new Error('A date cannot be lined up with itself.');
         if (!m.captures.some((x) => x.id === lineUp.with))
           throw new Error(`Capture "${lineUp.with}" is not in this project.`);
         const mm = (v: number) => Math.round(v * 1000) / 1000;
         next.lineUp = { ...lineUp, eastM: mm(lineUp.eastM), northM: mm(lineUp.northM) };
+        // a line-up is saved with its turn as a pair: one sent without a turn is a plain shift
+        if (patch.lineUpTurn === undefined) delete next.lineUpTurn;
+      }
+      if (patch.lineUpTurn === null) delete next.lineUpTurn;
+      else if (patch.lineUpTurn !== undefined) {
+        if (!next.lineUp) throw new Error('A turn needs a line-up.');
+        // an identity turn is not saved (the date is a plain shift)
+        if (hasTurn(patch.lineUpTurn)) next.lineUpTurn = { ...patch.lineUpTurn };
+        else delete next.lineUpTurn;
       }
       return next;
     });
