@@ -913,7 +913,14 @@ export function DatasetTree(props: DatasetTreeProps) {
       if (!filtering) setFolderOpen((o) => ({ ...o, [name]: !open }));
     };
     return (
-      <div key={it.id} role="treeitem" aria-expanded={open} aria-selected={false}>
+      <div
+        key={it.id}
+        role="treeitem"
+        aria-expanded={open}
+        aria-selected={false}
+        // a click or Enter does not fold it under a filter: said, not left silent
+        aria-description={filtering ? t('tree.measure.filterFolderOpen') : undefined}
+      >
         <div
           tabIndex={0}
           className={`titem flight${allOff ? ' hidden' : ''}`}
@@ -933,18 +940,11 @@ export function DatasetTree(props: DatasetTreeProps) {
             }
           }}
         >
-          {/* the fold: under a filter it does nothing, and says so */}
-          <span
-            className="tfold"
-            data-testid="measure-folder-fold"
-            aria-disabled={filtering || undefined}
-          >
-            <Icon
-              name="chev-r"
-              size={12}
-              className={`chev${open ? ' open' : ''}${filtering ? ' chev-off' : ''}`}
-            />
-          </span>
+          <Icon
+            name="chev-r"
+            size={12}
+            className={`chev${open ? ' open' : ''}${filtering ? ' chev-off' : ''}`}
+          />
           <Icon name="folder" size={14} />
           <span className="tn">{name}</span>
           <span className="tm">

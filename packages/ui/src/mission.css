@@ -1509,10 +1509,6 @@ select.input option {
   color: var(--acc);
   background: none;
 }
-/* a measurement folder's fold holds its chevron where the chevron stood */
-.titem .tfold {
-  display: inline-flex;
-}
 /* a measurement folder under the filter stays open: its chevron keeps its place, unseen */
 .titem .chev.chev-off {
   visibility: hidden;

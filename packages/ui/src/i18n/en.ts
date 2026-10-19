@@ -591,6 +591,7 @@ export const en = {
   'tree.measure.filterClear': 'Clear the filter',
   'tree.measure.filterNone': 'No measurements match',
   'tree.measure.filterCount': '{shown} of {total}',
+  'tree.measure.filterFolderOpen': 'Folders stay open while filtering',
   'tree.measure.filterMatches': '{shown} of {total} measurements match',
   'tree.dates.expand': 'Expand {date}',
   'tree.dates.collapse': 'Collapse {date}',
