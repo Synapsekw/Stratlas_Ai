@@ -165,10 +165,12 @@ The founder hasn't ruled on these. Each is written so it can be reversed.
 
 ## Data
 
-- **Origin of each field group (C3):** in `rf/sectors.json`, `RfAntennaSettings` gains an optional `origins?: { equipment?, etiltDeg? }` and each `RfCarrier` gains an optional `origin?`. Each value is `{ by: 'ai' | 'export' | 'rules' | 'user', confidence?: 'high' | 'medium' | 'low' }`.
-  - When absent, the value counts as `user`, so old files are unchanged.
-  - The schemas are `.strict()`, so the zod definitions in `packages/schema/src/rf.ts` gain these optional keys. The version `aio.rf-sectors/1` stays.
-  - The Python `rf` inputs must ignore the keys. Check that `inputs.py` doesn't reject unknown keys, because the run snapshot embeds this shape.
+- **Origin of each field group (C3):** who set the equipment, the e-tilt and each carrier of a unit. Each value is `{ by: 'ai' | 'export' | 'rules' | 'user', confidence?: 'high' | 'medium' | 'low' }`. When absent, the value counts as `user`.
+  - **Stored in a sidecar, not in `rf/sectors.json`:** `rf/sectors.origins.json` (`aio.rf-origins/1`): `{ schema, sectorsSha256, antennas: { [antennaId]: { equipment?, etiltDeg?, carriers?: { [carrierId]: origin } } } }`. The sectors schemas stay `.strict()` and unchanged at `aio.rf-sectors/1`, so builds 0.19 to 0.21 keep reading a file this build writes; they never open the sidecar (`tools/compat/rf-origins-sidecar.test.mjs` checks this against the 0.21 schema).
+  - **Binding:** `sectorsSha256` is the digest of the sectors file the origins describe (as parsed). When an older build saves `rf/sectors.json`, the digest no longer matches and the origins are dropped: every value then counts as the person's, so Re-plan never overwrites a hand edit made there. A missing, unreadable or newer sidecar means the same and never fails the load. Origins of antennas or carriers the file does not hold are ignored.
+  - **IPC (additive):** the `rf:readSectors` answer gains optional `origins`; the `rf:writeSectors` request gains optional `origins`, written after the sectors file (atomic, `.bak`). In memory the renderer merges them back (`mergeRfOrigins`) and splits them out before a save (`splitRfOrigins`).
+  - **A cleared value stays cleared:** clearing the equipment or the e-tilt stamps `user` with no value; Auto-plan and Re-plan keep it empty (no equipment means no carrier is added).
+  - The Python `rf` job reads `rf/sectors.json` only, so the run inputs and `run.json` carry no origin.
 - **Nothing is written to `antennas.json`.**
 
 ## Coordination with other sessions

@@ -624,6 +624,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'rf/runs/<runId>/run.json',
     since: '0.20',
   },
+  // who set each planned RF value: a sidecar, so rf/sectors.json keeps the 0.20 shape
+  {
+    family: 'aio.rf-origins',
+    version: 1,
+    home: 'project',
+    where: 'rf/sectors.origins.json',
+    since: '0.22',
+  },
 ];
 
 /**

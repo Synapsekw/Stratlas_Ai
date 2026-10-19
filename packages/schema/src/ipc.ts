@@ -41,6 +41,7 @@ import {
   RfRun,
   RfRunId,
   RfSectorsFile,
+  RfOriginsMap,
 } from './rf';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
@@ -3585,6 +3586,9 @@ export const ipc = {
    * `readOnly` for a package. `orphans` are the antenna ids in the file that the antenna
    * inventory no longer has as a usable unit (removed, rejected or not found in the latest run);
    * they are flagged, never deleted (D9). Empty when `telecom/antennas.json` does not exist.
+   * `origins`: who set each value, from `rf/sectors.origins.json` (`aio.rf-origins/1`); absent
+   * when that sidecar is missing, unreadable or describes another sectors file (every value is
+   * then the person's). Never a reason to fail the read.
    */
   'rf:readSectors': {
     request: z.object({ projectId: ProjectId }).strict(),
@@ -3594,16 +3598,21 @@ export const ipc = {
         file: RfSectorsFile.nullable(),
         readOnly: z.boolean(),
         orphans: z.array(AntennaId),
+        origins: RfOriginsMap.optional(),
       }),
       Failure,
     ]),
   },
   /**
    * Write `rf/sectors.json` atomically (`.bak`, journaled); copies the catalogue entries it uses
-   * into `rf/catalogue.json`. Refused for packages and when the file on disk is newer.
+   * into `rf/catalogue.json`. Refused for packages and when the file on disk is newer. `file`
+   * carries no origin (`splitRfOrigins`); `origins`, when given, replace `rf/sectors.origins.json`
+   * (atomic, `.bak`), bound to the sectors file just written. Absent: the sidecar is left as it is.
    */
   'rf:writeSectors': {
-    request: z.object({ projectId: ProjectId, file: RfSectorsFile }).strict(),
+    request: z
+      .object({ projectId: ProjectId, file: RfSectorsFile, origins: RfOriginsMap.optional() })
+      .strict(),
     /** `warnings`: pattern files that could not be copied into the project. */
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), warnings: z.array(z.string()).optional() }),

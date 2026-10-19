@@ -10,19 +10,25 @@
 import {
   parseRfCatalogue,
   parseRfRun,
+  parseRfOrigins,
   parseRfSectors,
   carrierProblems,
   etiltProblems,
   RF_CATALOGUE_PATH,
   RF_CATALOGUE_SCHEMA,
+  RF_ORIGINS_PATH,
+  RF_ORIGINS_SCHEMA,
   RF_RUNS_DIR,
   RF_SECTORS_PATH,
   RfSectorsFile,
   type IpcRequest,
   type IpcResponse,
   type RfCatalogueEntry,
+  type RfOriginsMap,
   type RfRun,
+  type RfSectorsOnDisk,
 } from '@aio/schema';
+import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { parseMsi, type MsiPattern } from '@aio/rf';
@@ -65,6 +71,31 @@ const fail = (error: string, code?: 'read-only'): Fail =>
   code ? { ok: false, error, code } : { ok: false, error };
 const stripBom = (t: string): string => (t.charCodeAt(0) === 0xfeff ? t.slice(1) : t);
 const why = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/**
+ * The digest an origins sidecar is bound to: of the sectors file as parsed (so the same content
+ * written by any build gives the same digest, whatever its formatting).
+ */
+export function sectorsDigest(file: RfSectorsOnDisk): string {
+  return createHash('sha256').update(JSON.stringify(file)).digest('hex');
+}
+
+/**
+ * The origins of `rf/sectors.origins.json` when they describe `file`; undefined when the sidecar
+ * is missing, unreadable, from a newer version or bound to another sectors file (an older build
+ * saved the sectors since). Never throws: no origins only means every value is the person's.
+ */
+async function readOrigins(src: Source, file: RfSectorsOnDisk): Promise<RfOriginsMap | undefined> {
+  try {
+    const raw = await src.json(RF_ORIGINS_PATH);
+    if (raw === undefined) return undefined;
+    const r = parseRfOrigins(raw);
+    if (!r.ok || r.value.sectorsSha256 !== sectorsDigest(file)) return undefined;
+    return r.value.antennas;
+  } catch {
+    return undefined;
+  }
+}
 
 // ---- project sources -----------------------------------------------------------------------------
 
@@ -362,11 +393,13 @@ export function createRf(deps: RfDeps) {
       if (raw === undefined) return { ok: true, file: null, readOnly: src.readOnly, orphans: [] };
       const r = parseRfSectors(raw);
       if (!r.ok) return fail(r.error);
+      const origins = await readOrigins(src, r.value);
       return {
         ok: true,
         file: r.value,
         readOnly: src.readOnly,
         orphans: await findOrphans(src, r.value),
+        ...(origins ? { origins } : {}),
       };
     },
 
@@ -442,6 +475,23 @@ export function createRf(deps: RfDeps) {
       } catch (e) {
         if (isChangedOnDisk(e)) return fail(e.message);
         return fail(`Could not save ${target}: ${why(e)}`);
+      }
+      // The origins go after the sectors and are bound to them: a sidecar left behind by a failed
+      // write no longer matches, so it is read as "no origins" (every value the person's).
+      if (req.origins !== undefined) {
+        try {
+          await writeJsonAtomic(
+            join(root, RF_ORIGINS_PATH),
+            {
+              schema: RF_ORIGINS_SCHEMA,
+              sectorsSha256: sectorsDigest(file),
+              antennas: req.origins,
+            },
+            { backup: true, name: RF_ORIGINS_PATH },
+          );
+        } catch (e) {
+          warnings.push(`${RF_ORIGINS_PATH} could not be saved: ${why(e)}`);
+        }
       }
       return warnings.length > 0 ? { ok: true, warnings } : { ok: true };
     },

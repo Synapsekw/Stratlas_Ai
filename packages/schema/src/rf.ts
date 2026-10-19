@@ -10,6 +10,8 @@ import { readVersioned, type VersionedRead } from './versions';
  * - `rf/catalogue.json` and userData `rf-catalogue/` (`aio.rf-catalogue/1`, D10): antenna, radio and
  *   AAU records. The project copy holds the entries a project uses.
  * - `rf/runs/<runId>/run.json` (`aio.rf-run/1`, D12): a coverage run's inputs snapshot and outputs.
+ * - `rf/sectors.origins.json` (`aio.rf-origins/1`): who set each planned value (AI, rules, a cell
+ *   export, the person), kept out of `rf/sectors.json` so older builds still read that file.
  *
  * Nothing here imports `jobs.ts` or `ipc.ts` (they import this file). RF reads antenna geometry
  * through the antenna-detection file only and never imports `antennas.ts`, so the antenna id rule is repeated
@@ -19,11 +21,14 @@ import { readVersioned, type VersionedRead } from './versions';
 export const RF_SECTORS_SCHEMA = 'aio.rf-sectors/1';
 export const RF_CATALOGUE_SCHEMA = 'aio.rf-catalogue/1';
 export const RF_RUN_SCHEMA = 'aio.rf-run/1';
+export const RF_ORIGINS_SCHEMA = 'aio.rf-origins/1';
 
 /** Project-relative homes of the RF files. */
 export const RF_SECTORS_PATH = 'rf/sectors.json';
 export const RF_CATALOGUE_PATH = 'rf/catalogue.json';
 export const RF_RUNS_DIR = 'rf/runs';
+/** Who set the planned values of `rf/sectors.json`; a sidecar older builds ignore. */
+export const RF_ORIGINS_PATH = 'rf/sectors.origins.json';
 
 // ---- ids ---------------------------------------------------------------------------------------
 
@@ -256,11 +261,15 @@ export const RfCarrier = z
     powerDbmPerPort: z.number().min(0).max(80).optional(),
     /** Feeder or jumper loss, dB. */
     feederLossDb: z.number().min(0).max(30).default(0),
-    /** Who set this carrier; absent means the person did. */
-    origin: RfOrigin.optional(),
   })
   .strict();
-export type RfCarrier = z.infer<typeof RfCarrier>;
+/** A carrier as `rf/sectors.json` holds it (no origin: that lives in the sidecar). */
+export type RfCarrierOnDisk = z.infer<typeof RfCarrier>;
+/** A carrier in memory: the file's, plus who set it (from `rf/sectors.origins.json`). */
+export type RfCarrier = RfCarrierOnDisk & {
+  /** Who set this carrier; absent means the person did. */
+  origin?: RfOrigin;
+};
 
 /** An AAU replaces the antenna and the radio, so it excludes both (D10). */
 export const RfEquipment = z.discriminatedUnion('kind', [
@@ -283,18 +292,20 @@ export const RfAntennaSettings = z
     /** The RF active flag (D5). */
     active: z.boolean().default(true),
     carriers: z.array(RfCarrier).max(16).default([]),
-    /** Who set the equipment and the e-tilt; an absent key means the person did. */
-    origins: z
-      .object({ equipment: RfOrigin.optional(), etiltDeg: RfOrigin.optional() })
-      .strict()
-      .optional(),
   })
   .strict()
   .refine((a) => new Set(a.carriers.map((c) => c.id)).size === a.carriers.length, {
     message: 'Carrier ids must be unique',
     path: ['carriers'],
   });
-export type RfAntennaSettings = z.infer<typeof RfAntennaSettings>;
+/** One unit's settings as `rf/sectors.json` holds them. */
+export type RfAntennaSettingsOnDisk = z.infer<typeof RfAntennaSettings>;
+/** One unit's settings in memory: the file's, plus who set the equipment, e-tilt and carriers. */
+export type RfAntennaSettings = Omit<RfAntennaSettingsOnDisk, 'carriers'> & {
+  carriers: RfCarrier[];
+  /** Who set the equipment and the e-tilt; an absent key means the person did. */
+  origins?: { equipment?: RfOrigin; etiltDeg?: RfOrigin };
+};
 
 export const RfSector = z
   .object({ id: SectorId, name: Label, antennaIds: z.array(AntennaId).max(64) })
@@ -329,7 +340,95 @@ export const RfSectorsFile = z
         path: ['antennas'],
       });
   });
-export type RfSectorsFile = z.infer<typeof RfSectorsFile>;
+/** `rf/sectors.json` as it is on disk: no origins, so builds 0.19 to 0.21 read it unchanged. */
+export type RfSectorsOnDisk = z.infer<typeof RfSectorsFile>;
+/**
+ * The sectors file in memory: the file merged with `rf/sectors.origins.json` (`mergeRfOrigins`).
+ * Split it with `splitRfOrigins` before it is written; the file schema refuses origin keys.
+ */
+export type RfSectorsFile = Omit<RfSectorsOnDisk, 'antennas'> & { antennas: RfAntennaSettings[] };
+
+// ---- origins sidecar ---------------------------------------------------------------------------
+
+/** Who set one unit's equipment, e-tilt and carriers (by carrier id). Absent means the person. */
+export const RfUnitOrigins = z
+  .object({
+    equipment: RfOrigin.optional(),
+    etiltDeg: RfOrigin.optional(),
+    carriers: z.record(CarrierId, RfOrigin).optional(),
+  })
+  .strict();
+export type RfUnitOrigins = z.infer<typeof RfUnitOrigins>;
+
+/** Origins by antenna id. */
+export const RfOriginsMap = z
+  .record(AntennaId, RfUnitOrigins)
+  .refine((m) => Object.keys(m).length <= 512, 'At most 512 antennas');
+export type RfOriginsMap = z.infer<typeof RfOriginsMap>;
+
+/**
+ * `rf/sectors.origins.json` (`aio.rf-origins/1`): who set each planned value of `rf/sectors.json`.
+ * A sidecar, so the sectors file keeps the 0.21 shape and older builds, which ignore this file,
+ * still read it. `sectorsSha256` is the digest of the sectors file the origins describe; when the
+ * sectors file no longer matches (an older build saved it), the origins are dropped and every
+ * value counts as the person's. A missing or unreadable sidecar means the same.
+ */
+export const RfOriginsFile = z
+  .object({
+    schema: z.literal(RF_ORIGINS_SCHEMA),
+    sectorsSha256: z.string().regex(/^[0-9a-f]{64}$/, 'Not a sha256'),
+    antennas: RfOriginsMap,
+  })
+  .strict();
+export type RfOriginsFile = z.infer<typeof RfOriginsFile>;
+
+const isEmpty = (o: object): boolean => Object.keys(o).length === 0;
+
+/** The file to write (no origin keys) and the origins for the sidecar. Pure. */
+export function splitRfOrigins(f: RfSectorsFile): { file: RfSectorsOnDisk; origins: RfOriginsMap } {
+  const origins: RfOriginsMap = {};
+  const antennas = f.antennas.map((a) => {
+    const { origins: own, carriers, ...rest } = a;
+    const unit: RfUnitOrigins = {};
+    if (own?.equipment) unit.equipment = { ...own.equipment };
+    if (own?.etiltDeg) unit.etiltDeg = { ...own.etiltDeg };
+    const byCarrier: Record<string, RfOrigin> = {};
+    const plain = carriers.map((c) => {
+      const { origin, ...bare } = c;
+      if (origin) byCarrier[c.id] = { ...origin };
+      return bare;
+    });
+    if (!isEmpty(byCarrier)) unit.carriers = byCarrier;
+    if (!isEmpty(unit)) origins[a.antennaId] = unit;
+    return { ...rest, carriers: plain };
+  });
+  return { file: { ...f, antennas }, origins };
+}
+
+/**
+ * The file with the sidecar's origins put back on its units and carriers. Origins of antennas or
+ * carriers the file does not hold are ignored. Pure.
+ */
+export function mergeRfOrigins(
+  f: RfSectorsOnDisk,
+  origins: RfOriginsMap | null | undefined,
+): RfSectorsFile {
+  if (!origins) return f;
+  const antennas = f.antennas.map((a): RfAntennaSettings => {
+    const unit = Object.hasOwn(origins, a.antennaId) ? origins[a.antennaId] : undefined;
+    if (!unit) return a;
+    const own: NonNullable<RfAntennaSettings['origins']> = {};
+    if (unit.equipment) own.equipment = { ...unit.equipment };
+    if (unit.etiltDeg) own.etiltDeg = { ...unit.etiltDeg };
+    const carriers = a.carriers.map((c): RfCarrier => {
+      const o =
+        unit.carriers && Object.hasOwn(unit.carriers, c.id) ? unit.carriers[c.id] : undefined;
+      return o ? { ...c, origin: { ...o } } : c;
+    });
+    return isEmpty(own) ? { ...a, carriers } : { ...a, carriers, origins: own };
+  });
+  return { ...f, antennas };
+}
 
 // ---- coverage run (D12) ------------------------------------------------------------------------
 
@@ -416,6 +515,8 @@ function reader<T>(family: string, what: string, schema: z.ZodType<T>): Reader<T
 
 /** Read `rf/sectors.json`: a newer version is refused with the update message, nothing changed. */
 export const parseRfSectors = reader('aio.rf-sectors', 'rf/sectors.json', RfSectorsFile);
+/** Read `rf/sectors.origins.json`; the caller treats any failure as "no origins". */
+export const parseRfOrigins = reader('aio.rf-origins', RF_ORIGINS_PATH, RfOriginsFile);
 /** Read a catalogue file (built in, userData or project). */
 export const parseRfCatalogue = reader('aio.rf-catalogue', 'The RF catalogue', RfCatalogue);
 /** Read `rf/runs/<runId>/run.json`. */

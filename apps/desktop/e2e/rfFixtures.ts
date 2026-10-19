@@ -8,6 +8,7 @@ import {
   ANTENNAS_SCHEMA,
   AntennasFile,
   ProjectManifest,
+  RfOriginsFile,
   RfSectorsFile,
   type AntennaUnit,
 } from '@aio/schema';
@@ -170,4 +171,18 @@ export async function readRfSectors(projectDir: string): Promise<RfSectorsFile |
     return null;
   }
   return RfSectorsFile.parse(JSON.parse(text));
+}
+
+/**
+ * `rf/sectors.origins.json` (who set each value), parsed with its schema, or null when there is
+ * none. The sectors file itself never carries an origin (`readRfSectors` refuses one).
+ */
+export async function readRfOrigins(projectDir: string): Promise<RfOriginsFile | null> {
+  let text: string;
+  try {
+    text = await readFile(join(projectDir, 'rf', 'sectors.origins.json'), 'utf8');
+  } catch {
+    return null;
+  }
+  return RfOriginsFile.parse(JSON.parse(text));
 }

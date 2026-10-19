@@ -18,6 +18,8 @@ import { reassignOrphan, removeOrphan, type Orphan, type ProposedSector } from '
 import {
   DEFAULT_RF_STUDY,
   RF_SECTORS_SCHEMA,
+  mergeRfOrigins,
+  splitRfOrigins,
   type AntennasFile,
   type CatalogueOrigin,
   type JobRecord,
@@ -287,7 +289,13 @@ export async function loadRf(projectId: string, opts: { keepEdits?: boolean } = 
     antennas: ant.value.file,
     readOnly: sec.value.readOnly,
     hasFile: sec.value.file !== null,
-    ...(keep ? {} : { sectors: sec.value.file ?? emptyFile(), dirty: false }),
+    // the sidecar's origins merged in; absent ones mean the person set the value
+    ...(keep
+      ? {}
+      : {
+          sectors: sec.value.file ? mergeRfOrigins(sec.value.file, sec.value.origins) : emptyFile(),
+          dirty: false,
+        }),
     catalogue: cat.ok && cat.value.ok ? cat.value.entries : [],
     catalogueWarnings: cat.ok && cat.value.ok ? cat.value.warnings : [],
     runs: runs.ok && runs.value.ok ? runs.value.runs : [],
@@ -616,7 +624,9 @@ export function saveRf(): Promise<SaveResult> {
     if (!projectId) return { ok: false, code: 'no-project' };
     if (readOnly) return { ok: false, code: 'read-only' };
     set({ saving: true });
-    const r = await bridge.call('rf:writeSectors', { projectId, file: sectors });
+    // origins go to their sidecar, so rf/sectors.json stays readable by older builds
+    const { file, origins } = splitRfOrigins(sectors);
+    const r = await bridge.call('rf:writeSectors', { projectId, file, origins });
     if (get().projectId !== projectId) return { ok: true };
     if (!r.ok || !r.value.ok) {
       const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;

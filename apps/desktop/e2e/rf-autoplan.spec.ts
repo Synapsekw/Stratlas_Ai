@@ -32,7 +32,7 @@ import {
   test,
 } from './fixtures';
 import { stageMode } from './island';
-import { RF_DRAFT, RF_PANELS, readRfSectors, writeRfProject } from './rfFixtures';
+import { RF_DRAFT, RF_PANELS, readRfOrigins, readRfSectors, writeRfProject } from './rfFixtures';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -199,11 +199,17 @@ test('Auto-plan with the rules from the coverage card: review, Apply & run, cove
   expect(saved?.sectors.flatMap((s) => s.antennaIds).sort()).toEqual([...RF_PANELS]);
   expect(saved?.study).toMatchObject({ radiusM: 1000, gridResolutionM: 20 });
   expect(saved?.antennas).toHaveLength(3);
+  // who set each value is in the sidecar; rf/sectors.json keeps the shape older builds read
+  const origins = await readRfOrigins(dataRoot.projectDir);
   for (const a of saved?.antennas ?? []) {
     expect(a).toMatchObject({
       equipment: { kind: 'separate', antenna: PANEL, radio: RADIO },
-      origins: { equipment: { by: 'rules' } },
-      carriers: [{ tech: 'lte', band: 'B3', bandwidthMhz: 20, origin: { by: 'rules' } }],
+      carriers: [{ tech: 'lte', band: 'B3', bandwidthMhz: 20 }],
+    });
+    const c1 = a.carriers[0]?.id ?? '';
+    expect(origins?.antennas[a.antennaId]).toMatchObject({
+      equipment: { by: 'rules' },
+      carriers: { [c1]: { by: 'rules' } },
     });
   }
 

@@ -172,6 +172,82 @@ describe('rf:readSectors and rf:writeSectors', () => {
     expect((await readdir(join(root, 'rf'))).filter((f) => f.endsWith('.tmp'))).toEqual([]);
   });
 
+  describe('the origins sidecar (rf/sectors.origins.json)', () => {
+    const originsPath = () => join(root, 'rf', 'sectors.origins.json');
+    const origins = {
+      'ant-a': { equipment: { by: 'ai' as const, confidence: 'low' as const } },
+      'ant-c': { carriers: { c1: { by: 'rules' as const } } },
+    };
+
+    it('writes the origins beside a plain sectors file and reads them back', async () => {
+      const rf = createRf(deps);
+      expect(await rf.writeSectors({ projectId: 'p', file: sectors(), origins })).toEqual({
+        ok: true,
+      });
+      expect(await readFile(sectorsPath(), 'utf8')).not.toMatch(/origin/);
+      const side = JSON.parse(await readFile(originsPath(), 'utf8')) as Record<string, unknown>;
+      expect(side).toMatchObject({ schema: 'aio.rf-origins/1', antennas: origins });
+      expect(await rf.readSectors({ projectId: 'p' })).toMatchObject({ ok: true, origins });
+      // a second save keeps the previous sidecar as .bak
+      await rf.writeSectors({ projectId: 'p', file: sectors(), origins: {} });
+      expect(existsSync(`${originsPath()}.bak`)).toBe(true);
+      const r = await rf.readSectors({ projectId: 'p' });
+      expect(r).toMatchObject({ ok: true, origins: {} });
+    });
+
+    it('refuses a sectors file that carries origin keys', async () => {
+      const rf = createRf(deps);
+      const bad = sectors() as unknown as { antennas: Record<string, unknown>[] };
+      bad.antennas[0]!.origins = { equipment: { by: 'ai' } };
+      // the IPC contract refuses it first; main's own parse throws all the same
+      await expect(
+        rf.writeSectors({ projectId: 'p', file: bad as unknown as RfSectorsFile }),
+      ).rejects.toThrow();
+      expect(existsSync(sectorsPath())).toBe(false);
+    });
+
+    it('drops the origins when the sectors file changed without them (an older build)', async () => {
+      const rf = createRf(deps);
+      await rf.writeSectors({ projectId: 'p', file: sectors(), origins });
+      const edited = sectors();
+      edited.antennas[0]!.etiltDeg = 2;
+      await writeFile(sectorsPath(), JSON.stringify(edited, null, 2));
+      const r = await rf.readSectors({ projectId: 'p' });
+      expect(r.ok).toBe(true);
+      expect(r).not.toHaveProperty('origins');
+    });
+
+    it('keeps them when the same content is saved again in another layout', async () => {
+      const rf = createRf(deps);
+      await rf.writeSectors({ projectId: 'p', file: sectors(), origins });
+      await writeFile(sectorsPath(), JSON.stringify(sectors()));
+      expect(await rf.readSectors({ projectId: 'p' })).toMatchObject({ ok: true, origins });
+    });
+
+    it('a missing or unreadable sidecar never fails the read', async () => {
+      const rf = createRf(deps);
+      await rf.writeSectors({ projectId: 'p', file: sectors() });
+      expect(existsSync(originsPath())).toBe(false);
+      const none = await rf.readSectors({ projectId: 'p' });
+      expect(none).toMatchObject({ ok: true, file: sectors() });
+      expect(none).not.toHaveProperty('origins');
+      for (const text of ['{not json', JSON.stringify({ schema: 'aio.rf-origins/9' }), '[]']) {
+        await writeFile(originsPath(), text);
+        const r = await rf.readSectors({ projectId: 'p' });
+        expect(r).toMatchObject({ ok: true, file: sectors() });
+        expect(r).not.toHaveProperty('origins');
+      }
+    });
+
+    it('leaves the sidecar alone when a save sends no origins', async () => {
+      const rf = createRf(deps);
+      await rf.writeSectors({ projectId: 'p', file: sectors(), origins });
+      const before = await readFile(originsPath(), 'utf8');
+      await rf.writeSectors({ projectId: 'p', file: sectors() });
+      expect(await readFile(originsPath(), 'utf8')).toBe(before);
+    });
+  });
+
   it('refuses a file saved by a newer version, on read and on write, and leaves it alone', async () => {
     const rf = createRf(deps);
     await mkdir(join(root, 'rf'), { recursive: true });

@@ -11,8 +11,13 @@ import {
   RfSectorsFile,
   carrierProblems,
   etiltProblems,
+  RF_ORIGINS_SCHEMA,
+  RfOriginsFile,
+  mergeRfOrigins,
   originOf,
   parseRfCatalogue,
+  parseRfOrigins,
+  splitRfOrigins,
   parseRfRun,
   parseRfSectors,
   type RfCatalogueEntry,
@@ -342,6 +347,7 @@ describe('contract wiring', () => {
       ['aio.rf-sectors', 'rf/sectors.json'],
       ['aio.rf-catalogue', 'rf/catalogue.json'],
       ['aio.rf-run', 'rf/runs/<runId>/run.json'],
+      ['aio.rf-origins', 'rf/sectors.origins.json'],
     ] as const)
       expect(SCHEMA_REGISTRY.find((e) => e.family === family)).toMatchObject({
         version: 1,
@@ -409,39 +415,76 @@ describe('carriers against the equipment', () => {
   });
 });
 
-describe('origins on RF settings', () => {
+describe('origins (rf/sectors.origins.json)', () => {
   interface Loose {
     antennas: Record<string, unknown>[];
   }
   const base = () => structuredClone(sectors) as unknown as Loose;
-  const withOrigins = (
-    origins?: Record<string, unknown>,
-    carrierOrigin?: Record<string, unknown>,
-  ) => {
-    const f = base();
+  const sha = 'a'.repeat(64);
+
+  /** The file in memory with ant-a's equipment by the AI, its e-tilt by hand and c1 by the rules. */
+  const planned = (): RfSectorsFile => {
+    const f = RfSectorsFile.parse(sectors) as RfSectorsFile;
     const a = f.antennas[0]!;
-    if (origins) a.origins = origins;
-    if (carrierOrigin) {
-      a.carriers = [{ id: 'c1', tech: 'lte', band: 'B3', bandwidthMhz: 20, origin: carrierOrigin }];
-    }
+    a.origins = { equipment: { by: 'ai', confidence: 'low' }, etiltDeg: { by: 'user' } };
+    a.carriers = a.carriers.map((c) => ({ ...c, origin: { by: 'rules' } }));
     return f;
   };
 
-  it('accepts origins and keeps old files valid', () => {
-    const old = RfSectorsFile.parse(base());
-    expect(old.antennas[0]?.origins).toBeUndefined();
-    const f = RfSectorsFile.parse(
-      withOrigins({ equipment: { by: 'ai', confidence: 'low' } }, { by: 'rules' }),
-    );
-    expect(f.antennas[0]?.origins?.equipment).toEqual({ by: 'ai', confidence: 'low' });
-    expect(f.antennas[0]?.carriers[0]?.origin).toEqual({ by: 'rules' });
+  it('the sectors file refuses origin keys, as 0.21 does', () => {
+    const f = base();
+    f.antennas[0]!.origins = { equipment: { by: 'ai' } };
+    expect(RfSectorsFile.safeParse(f).success).toBe(false);
+    const g = base();
+    (g.antennas[0]!.carriers as Record<string, unknown>[])[0]!.origin = { by: 'rules' };
+    expect(RfSectorsFile.safeParse(g).success).toBe(false);
   });
 
-  it('rejects an unknown origin', () => {
-    expect(RfSectorsFile.safeParse(withOrigins({ equipment: { by: 'guess' } })).success).toBe(
-      false,
-    );
-    expect(RfSectorsFile.safeParse(withOrigins({ height: { by: 'ai' } })).success).toBe(false);
+  it('split leaves a plain sectors file and puts every origin in the sidecar', () => {
+    const { file, origins } = splitRfOrigins(planned());
+    expect(JSON.stringify(file)).not.toMatch(/origin/);
+    expect(RfSectorsFile.parse(file)).toEqual(RfSectorsFile.parse(sectors));
+    expect(origins).toEqual({
+      'ant-a': {
+        equipment: { by: 'ai', confidence: 'low' },
+        etiltDeg: { by: 'user' },
+        carriers: { c1: { by: 'rules' } },
+      },
+    });
+    expect(
+      RfOriginsFile.safeParse({ schema: RF_ORIGINS_SCHEMA, sectorsSha256: sha, antennas: origins })
+        .success,
+    ).toBe(true);
+  });
+
+  it('merge puts them back, and the round trip is exact', () => {
+    const f = planned();
+    const { file, origins } = splitRfOrigins(f);
+    expect(mergeRfOrigins(file, origins)).toEqual(f);
+    expect(mergeRfOrigins(file, null)).toEqual(file);
+  });
+
+  it('merge ignores origins of antennas and carriers the file does not hold', () => {
+    const { file } = splitRfOrigins(planned());
+    const out = mergeRfOrigins(file, {
+      'ant-gone': { equipment: { by: 'ai' } },
+      'ant-a': { carriers: { c9: { by: 'ai' }, c1: { by: 'export', confidence: 'high' } } },
+    });
+    expect(out.antennas.map((a) => a.antennaId)).toEqual(['ant-a', 'ant-c']);
+    expect(out.antennas[0]?.origins).toBeUndefined();
+    expect(out.antennas[0]?.carriers.map((c) => [c.id, c.origin])).toEqual([
+      ['c1', { by: 'export', confidence: 'high' }],
+    ]);
+    expect(out.antennas[1]?.carriers[0]?.origin).toBeUndefined();
+  });
+
+  it('the sidecar refuses an unknown origin or key', () => {
+    const file = (antennas: unknown) =>
+      parseRfOrigins({ schema: RF_ORIGINS_SCHEMA, sectorsSha256: sha, antennas }).ok;
+    expect(file({ 'ant-a': { equipment: { by: 'ai' } } })).toBe(true);
+    expect(file({ 'ant-a': { equipment: { by: 'guess' } } })).toBe(false);
+    expect(file({ 'ant-a': { height: { by: 'ai' } } })).toBe(false);
+    expect(file({ nope: {} })).toBe(false);
   });
 
   it('originOf defaults to user', () => {
