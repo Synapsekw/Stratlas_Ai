@@ -89,7 +89,7 @@ export interface OnlineTilesOptions {
    * fake fetcher): Sentinel-2 tiles on disk still serve, everything else is a 404.
    */
   fetch: TileFetch | null;
-  /** Names the app to the services, e.g. `Quadrion AI/0.21.0 (...)`. */
+  /** Names the app to the services, e.g. `Quadrion AI/0.22.0 (...)`. */
   userAgent: string;
   capBytes?: number;
   memoryCapBytes?: number;
