@@ -34,6 +34,7 @@ The measurement layers PR removed the Measure bench's list and with it search, s
 
 - Parked from the merge review: phrase-first is all or nothing across the project and the phrase is a plain substring ("Crew A" also matches "Crew AB"); a word boundary at the phrase's end was tried and dropped, since it breaks typing a prefix ("line 1" would stop finding "Line 12"). Showing phrase matches first needs an order the name-sorted tree does not have.
 - Parked: no row cap under a filter, so a one-letter query on a project with thousands of measurements draws every match on each keystroke; keep the "more" cap with a count, or debounce.
+- Predates this PR, worth its own ticket: `writeTemplates` and `saveSiteSettings` in `measureStore.ts` set state after their await with no project or load-counter guard, so a project switch while one is writing can put its result on the next project.
 - Parked: the Undo notice could say "and N more" so the stack is visible.
 - Later follow-ups from measurement layers: a map controller hook so a road PCI unit under a measurement does not also select it, issue areas and draped issue shapes in the 3D issue hit, Fly to onto `flyToLocalBox`, the live Measure bench tab order.
 
