@@ -287,6 +287,41 @@ def test_an_ignore_polygon_hides_a_change_and_a_mask_keeps_only_its_area(tmp_pat
     assert len(read_set(tmp_path)["items"]) == 1
 
 
+AREA_SCOPE = {"id": "pad-a", "name": "Pad A"}
+AREA_SET = "c1-c2-raster-area-pad-a.json"
+
+
+def test_an_area_outside_the_overlap_is_refused_not_an_all_clear(tmp_path):
+    a, b = dates()
+    ortho_project(tmp_path, a, b, CELL)
+    params = raster_params(mask=ortho_ring(-400, -400, 100), scope=AREA_SCOPE)
+    with pytest.raises(JobError, match="no imagery on both dates"):
+        run_job(pipeline(), tmp_path, params)
+    assert not (tmp_path / "change" / AREA_SET).exists()
+
+
+def test_an_area_inside_a_gap_of_one_ortho_is_refused(tmp_path):
+    a, b = dates()
+    ortho_project(tmp_path, a, b, CELL)
+    # the earlier ortho has no first tile: a gap over rows and columns 0 to 255
+    (tmp_path / "rasters" / "ortho-a" / "0" / "0_0.png").unlink()
+    params = raster_params(mask=ortho_ring(40, 40, 100), scope=AREA_SCOPE)
+    with pytest.raises(JobError, match="no imagery on both dates"):
+        run_job(pipeline(), tmp_path, params)
+
+
+def test_an_area_reports_the_coverage_of_its_own_polygon(tmp_path):
+    a, b = dates()
+    ortho_project(tmp_path, a, b, CELL)
+    (tmp_path / "rasters" / "ortho-a" / "0" / "0_0.png").unlink()
+    # the polygon covers rows 64 to 319 and columns 128 to 383; the gap is rows and columns 0 to 255
+    params = raster_params(mask=ortho_ring(64, 128, 256), scope=AREA_SCOPE)
+    run_job(pipeline(), tmp_path, params)
+    cs = json.loads((tmp_path / "change" / AREA_SET).read_text("utf-8"))
+    # rows 64 to 255 of columns 128 to 255 are missing: 192 x 128 of 256 x 256 cells
+    assert cs["coverage"] == pytest.approx(1 - (192 * 128) / (256 * 256), abs=0.03)
+
+
 def test_a_recompute_keeps_the_reviews_and_a_backup(tmp_path):
     a, b = dates()
     b = paint(b, 200, 260, SQUARE)

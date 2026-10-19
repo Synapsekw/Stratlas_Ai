@@ -199,6 +199,57 @@ def test_a_mask_keeps_only_the_regions_inside(tmp_path):
     assert names["c1-c2-surface-area-pile-regions"].startswith("Pile: cut and fill areas, ")
 
 
+def test_an_area_outside_the_surfaces_is_refused_not_an_all_clear(tmp_path):
+    surface_project(tmp_path)
+    params = surface_params(mask=local_ring(200, 200, 10), scope=SCOPE)
+    with pytest.raises(JobError, match="no elevation data on both dates"):
+        run_job(pipeline(), tmp_path, params)
+    assert not (tmp_path / "change" / "c1-c2-surface-area-pile.json").exists()
+
+
+def punch_hole(project, lid, cx, cz, r):
+    """Nodata over a square of half-size ``r`` around local (cx, cz) in a DSM of ``surface_project``."""
+    import rasterio
+
+    path = project / "rasters" / f"{lid}.tif"
+    with rasterio.open(path, "r+") as d:
+        Y = d.read(1)
+        rows, cols = np.indices(Y.shape)
+        cell = d.transform.a
+        x = -30 + (cols + 0.5) * cell
+        z = -30 + (rows + 0.5) * cell
+        Y[(np.abs(x - cx) <= r) & (np.abs(z - cz) <= r)] = d.nodata
+        d.write(Y, 1)
+
+
+def test_an_area_inside_a_hole_of_one_surface_is_refused(tmp_path):
+    surface_project(tmp_path)
+    punch_hole(tmp_path, "surf-a", -10, -8, 8)
+    params = surface_params(mask=local_ring(-10, -8, 5), scope=SCOPE)
+    with pytest.raises(JobError, match="no elevation data on both dates"):
+        run_job(pipeline(), tmp_path, params)
+
+
+def test_an_area_reports_the_coverage_of_its_own_polygon(tmp_path):
+    surface_project(tmp_path)
+    # the west half of a 20 m square around (0, 0) has no earlier surface
+    punch_hole(tmp_path, "surf-a", -10, 0, 10)
+    run_job(pipeline(), tmp_path, surface_params(mask=local_ring(0, 0, 10), scope=SCOPE))
+    cs = json.loads((tmp_path / "change" / "c1-c2-surface-area-pile.json").read_text("utf-8"))
+    assert cs["coverage"] == pytest.approx(0.5, abs=0.03)
+
+
+def test_an_area_s_site_totals_match_its_own_volume(tmp_path):
+    surface_project(tmp_path)
+    ring = local_ring(-10.03, -8.07, 9.6)
+    areas = [{"id": "pile", "name": "Pile", "ring": ring}]
+    run_job(pipeline(), tmp_path, surface_params(mask=ring, scope=SCOPE, areas=areas))
+    cs = json.loads((tmp_path / "change" / "c1-c2-surface-area-pile.json").read_text("utf-8"))
+    [area] = [it for it in cs["items"] if it["id"].startswith("area:")]
+    assert cs["stats"]["siteFillM3"] == pytest.approx(area["volume"]["fillM3"], abs=0.01)
+    assert cs["stats"]["siteCutM3"] == pytest.approx(area["volume"]["cutM3"], abs=0.01)
+
+
 def test_a_scoped_surface_run_leaves_the_whole_map_set(tmp_path):
     surface_project(tmp_path)
     run_job(pipeline(), tmp_path, surface_params())

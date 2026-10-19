@@ -38,8 +38,10 @@ from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
 from .changeset import change_set, change_set_id, check_scope
 from .imagery import (
+    AREA_COVERAGE_WARN,
     Grid,
     Ortho,
+    area_coverage,
     cell_for,
     check_captures,
     colour_ramp,
@@ -428,7 +430,16 @@ class ChangeRaster:
             valid = va & vb
             both = valid.copy()
             if "mask" in params:
-                valid &= ring_mask(m, [params["mask"]], grid)
+                inside = ring_mask(m, [params["mask"]], grid)
+                valid &= inside
+                # the area's own coverage: an area with no imagery on both dates is no all-clear
+                if not valid.any():
+                    raise JobError(
+                        "The area has no imagery on both dates: draw it where both orthos cover the ground."
+                    )
+                coverage = area_coverage(m, params["mask"], grid, inside, both)
+                if coverage < AREA_COVERAGE_WARN:
+                    ctx.log(f"Both dates have imagery over only {coverage:.0%} of the area.", "warn")
             if params.get("ignore"):
                 valid &= ~ring_mask(m, params["ignore"], grid)
             save_arrays(

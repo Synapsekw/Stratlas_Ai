@@ -38,7 +38,9 @@ from ..runtime import JobError, Step, StepContext, input_fingerprint
 from ..survey.compare import ring_weights
 from .changeset import change_set, change_set_id, check_scope
 from .imagery import (
+    AREA_COVERAGE_WARN,
     Grid,
+    area_coverage,
     asset_path,
     capture_label,
     cell_for,
@@ -55,7 +57,6 @@ from .imagery import (
     polygons,
     project_crs,
     read_manifest,
-    ring_mask,
     save_arrays,
     write_pyramid,
 )
@@ -388,6 +389,11 @@ def volumes(dod: np.ndarray, mask: np.ndarray, cell: float, floor: float = 0.0) 
 # --------------------------------------------------------------------------------------- pipeline
 
 
+def area_cells(manifest: dict[str, Any], ring: list[list[float]], grid: Grid) -> np.ndarray:
+    """Exact coverage weights (0 to 1) of a lon/lat polygon on ``grid`` (the survey core)."""
+    return ring_weights(from_lonlat(manifest, ring), grid.x0, grid.z0, grid.cell, grid.cols, grid.rows)
+
+
 def _spec(v: Any, key: str) -> dict[str, Any]:
     if not isinstance(v, dict) or set(v) - {"layer", "kind"}:
         raise JobError(f"{key} must be {{ layer, kind }}.")
@@ -494,11 +500,23 @@ class ChangeSurface:
             both = np.isfinite(ha) & np.isfinite(hb)
             if not both.any():
                 raise JobError("The two surfaces do not overlap where they have data.")
-            save_arrays(ctx.stage("work/surfaces.npz"), a=ha.astype(np.float32), b=hb.astype(np.float32))
             either = np.isfinite(ha) | np.isfinite(hb)
+            coverage = float(both.sum()) / float(either.sum())
+            if "mask" in params:
+                # the area's own coverage: an area with no data on both dates is no all-clear
+                inside = area_cells(m, params["mask"], grid) > 0
+                if not (both & inside).any():
+                    raise JobError(
+                        "The area has no elevation data on both dates: draw it where both surfaces "
+                        "cover the ground."
+                    )
+                coverage = area_coverage(m, params["mask"], grid, inside, both)
+                if coverage < AREA_COVERAGE_WARN:
+                    ctx.log(f"Both dates have elevation data over only {coverage:.0%} of the area.", "warn")
+            save_arrays(ctx.stage("work/surfaces.npz"), a=ha.astype(np.float32), b=hb.astype(np.float32))
             return {
                 "grid": grid.to_dict(),
-                "coverage": round(float(both.sum()) / float(either.sum()), 4),
+                "coverage": round(coverage, 4),
                 "inputs": inputs,
             }
 
@@ -550,8 +568,11 @@ class ChangeSurface:
             arr = load_arrays(ctx.stage("work/surfaces.npz"))
             ha, hb = arr["a"].astype(np.float64), arr["b"].astype(np.float64)
             dod = hb - ha
-            if "mask" in params:
-                dod[~ring_mask(m, [params["mask"]], grid)] = np.nan
+            # the area's cells: every cell the polygon touches, weighted by how much of it is inside
+            # (the same weights as the area's own item, so the totals agree at the edge)
+            weights = area_cells(m, params["mask"], grid) if "mask" in params else None
+            if weights is not None:
+                dod[~(weights > 0)] = np.nan
             min_depth = float(params.get("minDepthM", DEFAULT_MIN_DEPTH_M))
             min_area = float(params.get("minAreaM2", DEFAULT_MIN_AREA_M2))
             min_cells = max(1, math.ceil(min_area / grid.cell**2 - 1e-9))
@@ -640,7 +661,7 @@ class ChangeSurface:
                 {"type": "FeatureCollection", "features": feats},
                 indent=None,
             )
-            site = volumes(dod, np.isfinite(dod), grid.cell, floor)
+            site = volumes(dod, np.isfinite(dod) if weights is None else weights, grid.cell, floor)
             regs = [it for it in items if it["id"].startswith("region:")]
             reg = ctx.outputs("register")
             stats = {

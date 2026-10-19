@@ -153,6 +153,9 @@ def test_a_set_with_volumes_missing_still_validates():
     data["volumesMissing"] = {"reason": "Misaligned by 3 m", "at": "2026-10-19T09:00:00Z"}
     assert validate_change_set(data)["volumesMissing"]["reason"] == "Misaligned by 3 m"
     assert "volumesMissing" not in change_set("c1-c2-raster", "c1", "c2", "change.raster", [])
+    # the app stores a reason code with its gap or the job's own words
+    data["volumesMissing"] = {"reason": "misaligned", "shiftM": 2.01, "at": "2026-10-19T09:00:00Z"}
+    assert validate_change_set(data)["volumesMissing"]["shiftM"] == 2.01
 
 
 def test_check_scope_refuses_a_scope_without_a_mask():
