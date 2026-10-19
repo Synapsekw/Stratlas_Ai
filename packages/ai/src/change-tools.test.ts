@@ -58,7 +58,7 @@ function ctx(ws = workspace()): RendererToolContext {
 }
 
 function bridge(sets: unknown[] = [set]) {
-  const invoke = vi.fn((channel: string) => {
+  const invoke = vi.fn((channel: string, arg?: unknown) => {
     if (channel === 'change:list')
       return Promise.resolve({
         ok: true,
@@ -74,11 +74,18 @@ function bridge(sets: unknown[] = [set]) {
             createdAt: x.createdAt,
             items: x.items.length,
             open: 3,
+            ...((s as { scope?: unknown }).scope
+              ? { scope: (s as { scope?: unknown }).scope }
+              : {}),
           };
         }),
       });
     if (channel === 'change:read')
-      return Promise.resolve({ ok: true, set: sets[0], readOnly: false });
+      return Promise.resolve({
+        ok: true,
+        set: sets.find((s) => (s as typeof set).id === (arg as { id?: string } | undefined)?.id),
+        readOnly: false,
+      });
     if (channel === 'change:compute') return Promise.resolve({ ok: true, ids: ['c1-c2-issues'] });
     return Promise.reject(new Error(channel));
   });
@@ -110,6 +117,19 @@ describe('change tools', () => {
       byKind: { issue: { new: 1, grown: 1, resolved: 1, unchanged: 1 } },
     });
     expect(r.summary).toBe('1 new, 1 grown, 1 resolved');
+  });
+
+  it('compare_captures leaves out the sets of an area', async () => {
+    const area = {
+      ...set,
+      id: 'c1-c2-raster-area-a',
+      producer: 'change.raster',
+      scope: { id: 'a', name: 'Area A' },
+      items: [{ kind: 'region', id: 'issue:D03', verdict: 'added' }],
+    };
+    bridge([set, area]);
+    const r = await runRendererTool('compare_captures', {}, ctx());
+    expect(r.result).toMatchObject({ kind: 'changes', total: 4 });
   });
 
   it('compare_captures falls back to issue counts without change sets', async () => {

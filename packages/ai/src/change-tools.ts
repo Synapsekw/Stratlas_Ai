@@ -87,7 +87,10 @@ export function capturePair(
   return a.date <= b.date ? { from: a, to: b } : { from: b, to: a };
 }
 
-/** The saved change sets of a pair (every producer). */
+/**
+ * The saved whole-map change sets of a pair (every producer). An area's sets are left out: their
+ * items repeat the whole map's for one polygon and their region ids collide with it.
+ */
 export async function changeSetsOf(
   ctx: RendererToolContext,
   from: string,
@@ -100,9 +103,9 @@ export async function changeSetsOf(
   if (!list?.ok) return [];
   const out: ChangeSet[] = [];
   for (const s of list.sets) {
-    if (s.from !== from || s.to !== to) continue;
+    if (s.from !== from || s.to !== to || s.scope) continue;
     const r = await aio.invoke('change:read', { projectId, id: s.id }).catch(() => null);
-    if (r?.ok) out.push(r.set);
+    if (r?.ok && !r.set.scope) out.push(r.set);
   }
   return out;
 }
