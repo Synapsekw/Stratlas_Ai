@@ -262,8 +262,9 @@ let undoSeq = 0;
 /** How many deletions stay undoable. */
 export const UNDO_DELETES = 10;
 /**
- * Bumped by every load that resets the state: a save that awaited across one (A, then B, then A
- * again) finds it changed and leaves the new load alone, though the project id is the same.
+ * Bumped by every load that resets the state: a save or an earlier load that awaited across one
+ * (A, then B, then A again) finds it changed and leaves the new load alone, though the project id
+ * is the same.
  */
 let loadEpoch = 0;
 let newFolderSeq = 0;
@@ -276,7 +277,7 @@ export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
 /** Read the project's measurements, templates and site settings. */
 export async function loadMeasurements(projectId: string | null): Promise<void> {
   if (projectId === get().projectId && get().status !== 'error') return;
-  loadEpoch += 1;
+  const epoch = ++loadEpoch;
   set({ ...initial(), projectId, status: projectId ? 'loading' : 'idle' });
   if (!projectId) return;
   const [m, t, s] = await Promise.all([
@@ -284,7 +285,8 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     bridge.call('survey:readTemplates', { projectId }),
     bridge.call('survey:readSettings', { projectId }),
   ]);
-  if (get().projectId !== projectId) return;
+  // a later load (of another project, or of this one again) owns the state now
+  if (loadEpoch !== epoch) return;
   if (!m.ok || !m.value.ok) {
     const error = !m.ok ? m.error : m.value.ok ? '' : m.value.error;
     set({ status: 'error', error });

@@ -541,6 +541,66 @@ describe('an autosave and the undo against what happens meanwhile', () => {
     setAutosave(false);
   });
 
+  /** A, then B, then A again, with each of A's two reads waiting for its own door. */
+  async function aBaWithReadsHeld(): Promise<{
+    openFirst: () => void;
+    openSecond: () => void;
+    done: Promise<unknown>;
+  }> {
+    io.saved = MeasurementsFile.parse({
+      schema: 'aio.measurements/1',
+      measurements: [measurement('m1'), measurement('m2')],
+    });
+    measureStore.setState({ projectId: null });
+    const doors: (() => void)[] = [];
+    const hold = () => {
+      let open: () => void = () => undefined;
+      const wait = new Promise<void>((r) => {
+        open = r;
+      });
+      io.gate = { channel: 'survey:readMeasurements', wait };
+      doors.push(open);
+    };
+    hold();
+    const a1 = loadMeasurements('A');
+    io.gate = null;
+    const b = loadMeasurements('B');
+    hold();
+    const a2 = loadMeasurements('A');
+    io.gate = null;
+    await flush();
+    const [openFirst = () => undefined, openSecond = () => undefined] = doors;
+    return { openFirst, openSecond, done: Promise.all([a1, b, a2]) };
+  }
+
+  it('the first read of A answering after A was opened again is not taken as loaded', async () => {
+    const { openFirst, openSecond, done } = await aBaWithReadsHeld();
+    openFirst();
+    await flush();
+    // the latest load's read is still out: nothing to show or edit yet
+    expect(measureStore.getState().status).toBe('loading');
+    openSecond();
+    await done;
+    expect(measureStore.getState().status).toBe('ready');
+    deleteMeasurements(['m1']);
+    expect(measureStore.getState().file.measurements.map((m) => m.id)).toEqual(['m2']);
+  });
+
+  it('the first read of A answering late does not put back the file over an edit', async () => {
+    const { openFirst, openSecond, done } = await aBaWithReadsHeld();
+    openSecond();
+    await flush();
+    expect(measureStore.getState().status).toBe('ready');
+    deleteMeasurements(['m1']);
+    openFirst();
+    await done;
+    await flush();
+    const s = measureStore.getState();
+    expect(s.file.measurements.map((m) => m.id)).toEqual(['m2']);
+    expect(isDirty(s)).toBe(true);
+    expect(s.undoDeletes).toHaveLength(1);
+  });
+
   it('saving is refused unless the file is loaded', async () => {
     for (const status of ['idle', 'loading', 'error'] as const) {
       measureStore.setState({
