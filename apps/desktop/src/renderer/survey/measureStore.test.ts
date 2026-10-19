@@ -12,6 +12,7 @@ import {
   startTool,
   stopTool,
   flipAzimuth,
+  forgetMeasureWrites,
   askNewFolder,
   deleteMeasurements,
   endNewFolder,
@@ -115,6 +116,7 @@ beforeEach(() => {
   io.writesTo.clear();
   io.gate = null;
   io.writeFails = false;
+  forgetMeasureWrites();
   memory = createMeasureVisibilityMemory(memoryStorage());
   setMeasureVisibilityMemory(memory);
   measureStore.setState({

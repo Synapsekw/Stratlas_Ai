@@ -272,6 +272,10 @@ let loadEpoch = 0;
  * that project waits for them, so it never reads the file from before a write that lands after.
  */
 const writing = new Map<string, Promise<unknown>>();
+/** Forget the writes in flight (tests: a gate a test left shut must not hold the next one's load). */
+export function forgetMeasureWrites(): void {
+  writing.clear();
+}
 let newFolderSeq = 0;
 
 export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
