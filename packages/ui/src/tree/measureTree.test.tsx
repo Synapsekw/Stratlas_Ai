@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { announced } from '../announce';
 import { DatasetTree, type DatasetTreeProps, type MeasureTreeProps } from './DatasetTree';
 import { measureMark, measurementsGroup, type TreeGroup, type TreeItem } from './model';
 
@@ -439,6 +440,23 @@ describe('the filter box of the Measurements group', () => {
     render(props({ groups: [filtered(many, all)] }, { query: 'm', onQuery: vi.fn() }));
     expect(qa('[data-testid="measure-row"]').length).toBe(30);
     expect(qa('.titem.more')).toEqual([]);
+  });
+
+  it('a screen reader hears how many match as the filter changes, through the live region', () => {
+    const p = render(props({}, { query: '', onQuery: vi.fn() }));
+    const before = announced().polite;
+    const items = [{ ...folder('Fence', [m('b', 'Line B')]), folderIds: ['b', 'c'] }];
+    render({
+      ...p,
+      groups: [filtered(items, ALL)],
+      measures: { ...must2(p.measures), query: 'b' },
+    });
+    expect(announced().polite.trim()).toBe('1 of 4 measurements match');
+    render({ ...p, groups: [filtered([], ALL)], measures: { ...must2(p.measures), query: 'zz' } });
+    expect(announced().polite.trim()).toBe('No measurements match');
+    // the line in the tree is for the eye; the live region, mounted always, does the telling
+    expect(q('[data-testid="measure-filter-none"]')?.getAttribute('role')).toBeNull();
+    expect(before).not.toBe(announced().polite);
   });
 
   it('no match: the group stays with its box and says so', () => {

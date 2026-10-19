@@ -1,5 +1,6 @@
 import {
   Fragment,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -9,6 +10,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
+import { announce } from '../announce';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import { Tip } from '../Tip';
@@ -320,6 +322,19 @@ export function DatasetTree(props: DatasetTreeProps) {
   });
 
   const measures = props.measures;
+  // how many the filter matches is said through the app's live region, which is always mounted
+  // (a status line added together with its text is often not read)
+  const measureGroup = measures ? groups.find((g) => g.kind === 'measurements') : undefined;
+  const matched = measureGroup?.matched;
+  const matchTotal = measureGroup?.count ?? 0;
+  useEffect(() => {
+    if (matched === undefined) return;
+    announce(
+      matched === 0
+        ? t('tree.measure.filterNone')
+        : t('tree.measure.filterMatches', { shown: matched, total: matchTotal }),
+    );
+  }, [matched, matchTotal, t]);
   /** Measurement folders opened or closed by hand (open by default), and those showing every row. */
   const [folderOpen, setFolderOpen] = useState<Record<string, boolean>>({});
   const [folderAll, setFolderAll] = useState<Record<string, boolean>>({});
@@ -1181,7 +1196,7 @@ export function DatasetTree(props: DatasetTreeProps) {
             </div>
             {expanded && mg?.onQuery && filterBox(mg, mg.onQuery)}
             {expanded && filtering && g.matched === 0 && (
-              <p className="tfilter-none" role="status" data-testid="measure-filter-none">
+              <p className="tfilter-none" data-testid="measure-filter-none">
                 {t('tree.measure.filterNone')}
               </p>
             )}
