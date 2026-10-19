@@ -21,6 +21,7 @@
   (`@aio/maps` `rasterPacks.ts`) and the Globe (G6): `createRasterTileSource(kind, packs)` gives
   the best covering tile across packs and the credits; `decodeTerrarium`, `rasterPackUrl`
   (`aio://packs/<kind>/<id>.pmtiles`).
+- `online.ts`: `createOnlineTileSource(id)`, an online imagery source (Sentinel-2, Esri or Mapbox, from `@aio/schema`) as one pack that covers the whole Earth, read through the app's own `aio://online/<id>/<z>/<x>/<y>` address, so `buildSurroundings` treats it like the packs.
 - `surroundings.ts`: `buildSurroundings`, terrain and imagery around the site as one mesh in the
   local frame, just under the project's ground, not pickable.
 

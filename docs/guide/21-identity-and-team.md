@@ -19,7 +19,7 @@ If the initials are not valid, the page says "Initials are 1 to 3 letters, optio
 
 Under **This computer** you see "Device key d_..., kept in the credential store." The key signs every change you make on this computer, so nobody can later change your entries without it showing.
 
-- The private key stays in the Windows Credential Manager (on a Mac, the Keychain). It never goes into a project, a file you send, a log or a diagnostics bundle.
+- The private key stays in the Windows Credential Manager. It never goes into a project, a file you send, a log or a diagnostics bundle.
 - The key is made the first time it is needed. Until then the page says "No device key yet."
 - If the credential store cannot be used, the page says "The credential store is not available, so your changes are recorded without a signature." Your work is kept; **Verify** reports those entries as not signed.
 

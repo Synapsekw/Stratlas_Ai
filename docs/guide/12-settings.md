@@ -42,7 +42,7 @@ The processing tools build maps and models from your data: photo processing, sur
 
 {product} checks the file before it uses it: it must hold the processing tools for this computer and this version, complete, with every file matching its checksum. A file that fails says why and changes nothing. A version that is already installed asks first: **Replace version 0.5.1** or **Keep it**. Nothing is downloaded.
 
-**Versions no longer in use** lists the older versions with their sizes. **Remove**, then **Move version 0.2.0 to the bin**, moves one to the bin of the computer (Recycle Bin on Windows, Trash on a Mac), where it can be restored. {product} never removes one on its own.
+**Versions no longer in use** lists the older versions with their sizes. **Remove**, then **Move version 0.2.0 to the bin**, moves one to the bin of the computer (the Recycle Bin), where it can be restored. {product} never removes one on its own.
 
 With a project open, {product} says once when the tools are missing or too old: "The processing tools need an update", with **Update processing tools**. **Dismiss** keeps the notice away for that version. The same button is in **Create maps from photos** and in the **Processing** drawer when processing cannot run; all of them open this page.
 
@@ -92,7 +92,7 @@ Integrated graphics get **Low**; laptop graphics one step lower than the desktop
 
 ## Keyboard shortcuts
 
-The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) and Alt is ⌥ (Option); {product} shows the Mac keys there and in its tool tips.
+The same list is in **Settings**, **Keyboard**.
 
 ### Anywhere
 

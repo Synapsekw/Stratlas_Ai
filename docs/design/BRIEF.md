@@ -37,10 +37,10 @@ Every project is a set of georeferenced layers in one scene and one timeline:
 
 The two must-have reference experiences:
 
-1. **Al-Zour LNG terminal (KIPIC, Kuwait).** 3D plant model of 909 nodes (tanks, process, utilities, buildings, jetty) on the orthomosaic and a street map; 25 drone video clips whose flight paths are drawn in 3D; playing a clip moves a drone marker along its path and projects the video footprint on the ground; 12 panoramas; asset tree of 12 areas; point cloud (842 M points, thinned) streamed by distance.
-2. **HCl Tank 710-D-130335 (KOC, Kuwait).** Rubber-lined tank mesh (shell, lining, nozzles, internals) plus a 1.4 M point LiDAR cloud from 10 Elios flights; the inspection video is projected onto the tank wall from the drone pose (f-theta lens); flight scrub bar, follow-cam and drone-eye views; section cut; 11 findings F01 to F11 with severity 3 to 5; nozzle schedule.
+1. **LNG terminal demo.** 3D plant model of 909 nodes (tanks, process, utilities, buildings, jetty) on the orthomosaic and a street map; 25 drone video clips whose flight paths are drawn in 3D; playing a clip moves a drone marker along its path and projects the video footprint on the ground; 12 panoramas; asset tree of 12 areas; point cloud (842 M points, thinned) streamed by distance.
+2. **Tank inspection demo.** Rubber-lined tank mesh (shell, lining, nozzles, internals) plus a 1.4 M point LiDAR cloud from 10 indoor drone flights; the inspection video is projected onto the tank wall from the drone pose (f-theta lens); flight scrub bar, follow-cam and drone-eye views; section cut; 11 findings F01 to F11 with severity 3 to 5; nozzle schedule.
 
-Other projects in the library (use them as realistic data): EBSM flare stack, EQUATE, Kuwait (80 m, 299 photos, 78 findings); DAMAC Hills residential tower facade, Dubai (1,182 photos, 656 defects, 206-page PDF); Masafi stockpile yard, Kuwait (19 piles, two survey dates 31 Dec 2020 and 10 Jan 2021, volumes and cut/fill); 1st Ring Road survey, Kuwait (road defects, PCI per ASTM D6433, 1.25 cm GSD orthomosaic, chainage).
+Other projects in the library (use them as realistic data): a flare stack (80 m, 299 photos, 78 findings); a residential tower facade (1,182 photos, 656 defects, 206-page PDF); a stockpile yard (19 piles, two survey dates 31 Dec 2020 and 10 Jan 2021, volumes and cut/fill); a road survey (road defects, PCI per ASTM D6433, 1.25 cm GSD orthomosaic, chainage).
 
 ## AI everywhere
 
@@ -51,8 +51,8 @@ Other projects in the library (use them as realistic data): EBSM flare stack, EQ
 ## Screens every UI option must show (same four, so options compare fairly)
 
 1. **Projects home**: library of the six projects as cards or rows (type, site, date, size, layers present, offline-ready state), new project / import, recent activity, offline map packs status.
-2. **Fusion workspace: Al-Zour.** 3D plant + map + a playing drone video synced to its flight path + timeline + layers/asset tree + agent panel in use (realistic conversation, e.g. "Show me every clip that passes over Tank T-02 and the frames where the roof is visible").
-3. **Inspection workspace: HCl tank.** Tank mesh with the video projected onto it, point cloud on, flight scrubber, findings list with severity, the agent attached to the video window.
+2. **Fusion workspace: LNG terminal.** 3D plant + map + a playing drone video synced to its flight path + timeline + layers/asset tree + agent panel in use (realistic conversation, e.g. "Show me every clip that passes over Tank T-02 and the frames where the roof is visible").
+3. **Inspection workspace: tank demo.** Tank mesh with the video projected onto it, point cloud on, flight scrubber, findings list with severity, the agent attached to the video window.
 4. **Settings: AI and agents** (providers, keys masked, model routing table, agent per window, privacy) plus an **Offline maps** section (GCC packs, sizes, download/update).
 
 ## Mockup technical rules (these become claude.ai Artifact pages)

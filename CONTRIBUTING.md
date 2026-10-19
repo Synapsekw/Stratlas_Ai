@@ -5,10 +5,10 @@
 ```bash
 pnpm install
 pnpm check        # lint, format check, typecheck, unit tests
-pnpm dev          # run the desktop app (once apps/desktop exists)
+pnpm dev          # run the desktop app
 ```
 
-Node 24 and pnpm 10 are required. Hooks (lefthook) run lint-staged on commit and commitlint on the message.
+Node 24 and pnpm 10 are required. The app is built and tested on Windows only; macOS is parked (since 10 Oct 2026). Hooks (lefthook) run lint-staged on commit and commitlint on the message.
 
 ## Rules
 
@@ -23,15 +23,17 @@ Node 24 and pnpm 10 are required. Hooks (lefthook) run lint-staged on commit and
 
 ## Streams and worktrees
 
-Parallel work follows SPEC section 9. Each stream works in its own worktree and branch:
+Parallel work follows SPEC section 9. Each session or stream works in its own worktree and branch, cut off the latest `main`:
 
 ```bash
-git worktree add ../quadrion-wt/s3-engine -b stream/s3-engine
+node tools/agent/start-task.mjs <name> --type <feat|fix|chore|docs>
 ```
+
+This creates `<type>/<name>` in `.claude/worktrees/<name>` and runs `pnpm install` there.
 
 - A stream owns its package(s) and may not edit another stream's package. Ask the integration lead instead.
 - Nobody edits the main checkout directly; every change, docs included, starts in its own worktree.
-- Get `pnpm check` green on your branch, then hand it to the orchestrator session, which merges branches into `main` one at a time and pushes. Nobody commits on `main` (the hooks refuse it). `CLAUDE.md` has the full steps.
+- Get `pnpm check` green on your branch, then merge it yourself, one session at a time: `node tools/agent/finish-task.mjs` rebases and checks, the merge lock keeps merges apart, and the pull request must be green before `main` moves. Nobody commits on `main` (the hooks refuse it). `CLAUDE.md` has the full steps.
 - Contracts in `@aio/schema` are frozen (`contracts-v1`). A change needs an entry in `docs/architecture/contract-changes.md` and the integration lead's sign-off before merge.
 
 ## Tests

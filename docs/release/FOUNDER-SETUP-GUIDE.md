@@ -2,6 +2,8 @@
 
 For the founder of Synapse Solutions (Kuwait). This guide covers the outside accounts, certificates and decisions that the 1.0 release needs: founder blockers B1 to B6 in [CHECKLIST-1.0.md](CHECKLIST-1.0.md). You do not need to be a release engineer. Each section says what to click, what to type, what it costs, how long it takes and what to send back to us.
 
+_Note (19 Oct 2026): macOS is parked since 10 Oct 2026, so the Apple steps (B4) can wait; no public release is made while testing is internal._
+
 _Facts checked on 7 October 2026. Exchange rate used: 1 USD = 0.310 KWD (7 Oct 2026, [currencyconvert.online](https://currencyconvert.online/usd/kwd)). KWD figures are rounded. Vendors change prices and menu labels; if a label differs slightly, look for the nearest match._
 
 **Three rules for the whole guide**

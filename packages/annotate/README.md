@@ -19,7 +19,7 @@ dependencies: `docs/architecture/SPEC.md` section 2.
 | `src/image/geometry.ts` | 2D view maths, rotated boxes, hit tests, handle editing                                                                                  |
 | `src/tools/`            | Mesh draw state and pins (`mesh.ts`), point-cloud regions (`cloud.ts`), map drawing (`map.ts`), scene tools (`scene.ts`)                 |
 | `src/tools/overlay.ts`  | 3D issue pins at scale: one GPU point draw, screen clustering (`declutter.ts`), pooled code labels, heat map, Pins filter (`pinDisplay`) |
-| `src/import.ts`         | Kit importers: HCl `findings.json`, EBSM and DAMAC `annotations.json`, kit severity models                                               |
+| `src/import.ts`         | Kit importers: the Asset Inspection Kit `findings.json` and `annotations.json`, kit severity models                                      |
 | `src/detections/`       | Detection review (BLD-5), `@aio/annotate/detections`: pass file bridge, review reducer, acceptance into issues                           |
 | `src/runtime.ts`        | App-wide editor over the global workspace, pose and image-size caches, shared tool and picker state                                      |
 | `src/components/`       | `IssueRegister`, `IssueDetail`, `PhotoViewer`, `VideoAnnotator`, `AnnotationToolbar`, `SightingPicker`, `useMapDraw`                     |

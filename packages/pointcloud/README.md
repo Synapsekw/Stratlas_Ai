@@ -1,6 +1,6 @@
 # @aio/pointcloud
 
-Point clouds for the shared 3D scene: packed-cloud decoders in Web Workers, chunk LOD under a global point budget, a point material with four colour modes, Eye-Dome Lighting, point picking and a React control panel.
+Point clouds for the shared 3D scene: packed-cloud decoders in Web Workers, chunk LOD under a global point budget, a point material with six colour modes (RGB, intensity, elevation, flight, classification, change), Eye-Dome Lighting, point picking and a React control panel.
 
 Owner: stream S4. Depends on `@aio/schema`, `@aio/engine` (see `docs/architecture/SPEC.md` section 2). Public API: `src/index.ts`.
 
@@ -13,7 +13,7 @@ registerPointcloudAdapters(); // once, at app start, next to registerEngineAdapt
 // SceneView then creates a layer for every manifest layer of kind "pointcloud".
 
 const hit = pickPoint(handle, { x: ndcX, y: ndcY }); // nearest visible point within 6 px
-// <PointCloudControls /> anywhere in the UI: colour by RGB / Elevation / Intensity / Flight, point size, budget, EDL
+// <PointCloudControls /> anywhere in the UI: colour mode, point size, budget, EDL
 // <ElevationLegend range={useElevationRange()} toElevation={(y) => ...} /> on the stage
 ```
 
@@ -44,9 +44,12 @@ PDAL: `tools/pointcloud/README.md`.
   `<ClassificationLegend />` lists the classes of the shown points with their share, and a click
   hides a class (`hiddenClasses` in the settings, any colour mode).
 
+- **Change.** Colour mode `change` shows a point cloud change run (`changeRamp.ts`); `<ChangeLegend />` draws its ramp.
+- **Cleanup.** `cleanup/` evaluates a layer's cleanup recipe (`aio.pccleanup/1`, `PointcloudCleanup` in `@aio/schema`) per point in the viewer, in step with the pipeline's evaluator.
+
 All positions are in the project local frame (`docs/architecture/data-conventions.md` section 1: metres, Y up, X east, Z south).
 
-### `kit-packed` (HCl tank, Asset Inspection Kit)
+### `kit-packed` (Asset Inspection Kit)
 
 `src` is a single binary file, no header, little-endian, **planar**:
 
@@ -55,9 +58,9 @@ All positions are in the project local frame (`docs/architecture/data-convention
 | `0 .. 6N-1`  | block A: N x (int16 x, int16 y, int16 z), millimetres |
 | `6N .. 7N-1` | block B: N x uint8 intensity (0..255)                 |
 
-`N = byteLength / 7`. Metres = `int16 * 0.001`. This is the layout of the HCl artifact (`vy()` builds `Int16Array(buf, 0, 3N)` and `buf.slice(6N)`) and of `docs/design/assets/hcl/cloud.json`. Note: it is not interleaved per point. One file per flight; one layer per flight. The per-flight colour mode gives each kit layer its own palette colour (palette `Vd` of the HCl artifact) in layer creation order.
+`N = byteLength / 7`. Metres = `int16 * 0.001`. This is the layout of the kit artifact (`vy()` builds `Int16Array(buf, 0, 3N)` and `buf.slice(6N)`) and of the design fixture cloud under `docs/design/assets/`. Note: it is not interleaved per point. One file per flight; one layer per flight. The per-flight colour mode gives each kit layer its own palette colour (palette `Vd` of the kit artifact) in layer creation order.
 
-### `png-packed` (Al-Zour photogrammetry)
+### `png-packed` (plant photogrammetry)
 
 The cloud is split into chunks; each chunk is a lossless PNG whose pixels carry a byte stream.
 
@@ -86,7 +89,7 @@ The cloud is split into chunks; each chunk is a lossless PNG whose pixels carry 
   "spacing": 0.45,
   "chunks": [
     {
-      "file": "clouds/alzour/l0.png",
+      "file": "clouds/plant/l0.png",
       "points": 1048576,
       "bounds": { "min": [..], "max": [..] },
       "lod": 0,
@@ -103,7 +106,7 @@ The cloud is split into chunks; each chunk is a lossless PNG whose pixels carry 
 - `quant` (optional): `offset` (Vec3) and `scale` (number for all axes, or Vec3). Without `quant` the uint16 range spans the chunk `bounds`: `offset = bounds.min`, `scale = (bounds.max - bounds.min) / 65535`.
 - `spacing` (optional): typical point spacing in metres; sets the default point size.
 
-**Legacy Al-Zour `pc/pc.json`** (also accepted, so the artifact data can be loaded before import):
+**Legacy plant twin `pc/pc.json`** (also accepted, so the artifact data can be loaded before import):
 
 ```json
 { "levels": [[{ "f": "pc/l0.png", "n": 1048576, "o": [x, y, z], "q": 0.0123 }],
@@ -133,5 +136,5 @@ The cloud is split into chunks; each chunk is a lossless PNG whose pixels carry 
 
 ## Credits
 
-- Packed decoders and the point shader idea: HCl tank and Al-Zour viewer artifacts (Synapse).
+- Packed decoders and the point shader idea: the kit and plant twin viewer artifacts (Synapse).
 - EDL, point budget presets, colour mode fallbacks and the clip box approach follow Kestrel `frontend/src/clouds/` (MIT), which in turn uses potree-core's EDL. The EDL shader here is a port of Potree's `edl.fs` (Markus Schuetz, BSD-2-Clause).

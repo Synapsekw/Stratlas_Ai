@@ -14,13 +14,13 @@ The order below follows the product process: requirements, then brand and UI dir
 | `brand/`                                                           | Name and logo rounds; the final identity kit for **Quadrion AI** is `brand/quadrion/kit/`                                    | Final         |
 | [architecture/tech-evaluation.md](architecture/tech-evaluation.md) | Options and recommendation for every major technology choice                                                                 | Final         |
 | [architecture/SPEC.md](architecture/SPEC.md)                       | System architecture for Releases A and B, parallel delivery model                                                            | Approved v1.0 |
-| [architecture/adr/](architecture/adr/)                             | Architecture decision records: 0001 Electron, 0002 Mission UI                                                                | Accepted      |
-| [plans/ROADMAP.md](plans/ROADMAP.md)                               | Milestones M1 to M10 in build order (licensing last), one plan per milestone in `plans/`                                     | Living        |
+| [architecture/adr/](architecture/adr/)                             | Architecture decision records 0001 to 0012, from Electron and the Mission UI to the OpenDroneMap engine                      | Accepted      |
+| [plans/ROADMAP.md](plans/ROADMAP.md)                               | Milestones M1 to M12 in build order (licensing last), plus timeline, walks 360 and drone panoramas                           | Living        |
 | [TESTING.md](TESTING.md)                                           | Founder test checklist, only what still needs testing                                                                        | Living        |
 
 ## Reference material
 
-- Six existing review artifacts (claude.ai): HCl Tank 710-D-130335, EBSM Flare Inspection, DAMAC Hills residential tower Review, Masafi Stockpile Review, 1st Ring Road Survey, Al-Zour LNG Plant Model.
+- Six existing review artifacts (claude.ai): a tank inspection, a flare inspection, a residential tower review, a stockpile review, a road survey and an LNG plant model.
 - Build kits in the DRA vault: `outputs/templates/Asset Inspection Kit/`, `outputs/templates/Volumetric Survey Kit/`.
-- Offline packages on `\\DanNas\Work Data\`: see the project memory or the SPEC for exact paths.
+- Offline packages on the founder's network share: see the project memory or the SPEC for exact paths.
 - Kestrel (`E:\Dev\Yolo\app`), a separate app; modules may be copied: point-cloud viewer, GLB pins and frustums, image annotation canvas, agent risk-tier patterns.

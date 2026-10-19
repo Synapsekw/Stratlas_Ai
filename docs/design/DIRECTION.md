@@ -41,7 +41,7 @@ Taken from `option-1-mission.css`; the UI stream turns these into the design-tok
 
 ## Weaknesses to fix in the product build
 
-- HCl 3D view is cramped with the sidebar open; the right panel should collapse too, and the video window should dock to a split.
+- The tank demo's 3D view is cramped with the sidebar open; the right panel should collapse too, and the video window should dock to a split.
 - Projected video reads faintly on the tank; raise projection opacity and add an edge vignette.
 - Label crowding: declutter overlapping callouts into dots that expand on hover.
-- Masafi and Ring Road need real thumbnails.
+- The stockpile and road projects need real thumbnails.
