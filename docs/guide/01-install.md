@@ -12,10 +12,9 @@ No install rights? Use `{executable}-<version>-win-x64-portable.exe` instead. It
 
 To update, run the newer installer over the old version. Your projects, settings and keys stay. See [About and updates](12-settings.md#about-and-updates). The processing tools are a separate file: after an update, install the one that came with it (see [Install the processing tools](#install-the-processing-tools)).
 
-## Install on macOS
+## macOS
 
-1. Open `{executable}-<version>-mac-<arch>.dmg`.
-2. Drag {product} into **Applications**.
+{product} runs on Windows only for now. There is no macOS build.
 
 ## Install the processing tools
 

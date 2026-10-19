@@ -62,6 +62,8 @@ streaming store-mode ZIP. The desktop app runs them in an export utility process
 | Masks ZIP    | Kit masks and overlays where the import brought them, else a class-index mask and RGBA overlay drawn from the boxes, polygons and points; `masks.json` indexes photos, files and issues                       |
 | Report model | `reportModel`: counts by severity, class (catalogue) and zone (`issueZone` reads the note), register rows worst first with best photo and 3D position; no em or en dashes (`noDashes`)                        |
 
+Beside the issue exports, `house.ts` (the house report data), `processing.ts` (the photogrammetry accuracy report of a processing run) and `surveyCsv.ts` (survey report data and the survey CSVs) are pure and renderer safe too.
+
 ## Builder (stream B2)
 
 `src/builder/` (`@aio/project/builder`, Node only) backs the new project wizard, raw import and
@@ -78,9 +80,12 @@ alignment saves in the app:
   <= 2560 px and 480 px thumb), MP4/MOV with the DJI SRT of the same name (to `aio.flight/1`,
   frame timing checked), GLB, OBJ (+ MTL and textures, `objToGlb`), small GeoTIFF orthos and DSMs
   (`decodeTiff`: strips or tiles, none, LZW, Deflate, PackBits; GeoKeys or world file and .prj).
-  LAS, LAZ, E57 and PLY clouds, DXF plans, OPF projects and designs become pipeline-pack jobs
-  (`PipelineJobs`, methods such as `pointcloud.toCopc`) and report `needs-pipeline` until the pack
-  is installed. A GeoTIFF over 300 MB, over 12,000 x 12,000 pixels or a BigTIFF is refused with an
+  LAS, LAZ, E57, PLY and Bentley `.zpc` clouds (a ZIP of LAS/LAZ tiles; `zpc.ts` reads the survey
+  day from the tile headers), DXF plans, OPF projects and designs (LandXML, 12da) become
+  pipeline-pack jobs (`PipelineJobs`, methods such as `pointcloud.toCopc`) and report
+  `needs-pipeline` until the pack is installed. A Bentley BlocksExchange `.xml` imports as posed
+  photos, after the person picks the folder that holds its photos. 360 camera video is read and
+  stitched into a walk (`walks.ts`, kept in `walks/`). A GeoTIFF over 300 MB, over 12,000 x 12,000 pixels or a BigTIFF is refused with an
   `error` item saying so: no pipeline tiles a large raster yet.
 
 ## Importers (stream S10)
@@ -89,14 +94,9 @@ Convert staged source folders into native packages laid out per `docs/architectu
 
 ```bash
 cd packages/project
-pnpm import:hcl      # E:\Stratlas Data\sources\hcl    -> E:\Stratlas Data\projects\hcl
-pnpm import:alzour   # E:\Stratlas Data\sources\alzour -> E:\Stratlas Data\projects\alzour
-pnpm import:ebsm     # Asset Inspection Kit offline build, EBSM flare stack (EPSG 32639)
-pnpm import:damac    # Asset Inspection Kit offline build, DAMAC tower facade (EPSG 32640)
-
-pnpm import:masafi   # E:\Stratlas Data\sources\masafi -> E:\Stratlas Data\projects\masafi
-
-pnpm import:ringroad # E:\Stratlas Data\sources\ringroad -> E:\Stratlas Data\projects\ringroad
+pnpm import:<source>   # one script per staged source folder (see "scripts" in package.json):
+                       # the Asset Inspection Kit tank, plant twin, flare stack and tower facade
+                       # builds, the stockpile review and the road review
 # options: --src <folder> --out <folder>; QUADRION_DATA overrides the data root
 ```
 
@@ -113,14 +113,14 @@ gets an `IMPORT-REPORT.md` with counts, sizes, the frame check and warnings.
   N x uint8 intensity (planar, as the Asset Inspection Kit and the design fixture `cloud.bin`).
 - `png-packed` cloud index (`aio.pngcloud/1`): each chunk PNG (RGB) holds a byte stream of 9 planes
   of n bytes: x lo, x hi, y lo, y hi, z lo, z hi, r, g, b. Position in the local frame
-  `= quant.offset + quant.scale * u` (the Al-Zour viewer rule `o + q * u`); chunk `bounds` is the
+  `= quant.offset + quant.scale * u` (the plant viewer rule `o + q * u`); chunk `bounds` is the
   tight box, `lod` 0 the overview (see `packages/pointcloud/README.md`).
 - Flight files: `aio.flight/1`, optional top-level `name`. Clips cut from one drone flight share
   one file (same `src` and `startUtcMs`) and differ by `offsetMs`, so the app groups them.
 - `kit-pyramid` rasters (`aio.tiles/1`): every level spans the same `corners`, tiles are square
   and edge tiles are padded (top-left anchored) so all tiles of a level have one ground size.
 
-### Asset Inspection Kit offline builds (EBSM, DAMAC and later jobs)
+### Asset Inspection Kit offline builds
 
 `src/import/aik.ts` (I/O) and `aik-model.ts` (pure, tested) read any kit offline build: the
 `window.KIT` document in `OPEN ... Review.html`, the `data/*.js` chunk scripts
@@ -144,10 +144,10 @@ gets an `IMPORT-REPORT.md` with counts, sizes, the frame check and warnings.
 - `IMPORT-REPORT.md` compares every count with the kit stats. The offline viewer itself is not
   copied, and a `legacy/` folder left by an earlier import is not touched.
 
-### Al-Zour (plant twin artifact)
+### Plant twin artifact
 
 Source: the staged artifact (`INVENTORY.md`, `blob-map.json`, published files plus asset-store blobs
-under `_blob/`, `plant.glb` decoded from `model_glb_zip.b64.txt`). `src/import/alzour.ts`:
+under `_blob/`, `plant.glb` decoded from `model_glb_zip.b64.txt`). The plant importer in `src/import/`:
 
 - Frame: rigid plant grid to UTM-39 fit from the GLB node extras (`plant.ts`, `fit.ts`), origin at
   plant E 1300 / N 450, height 100 on the plant datum (local `y = EL - 100`). The GLB is copied and
@@ -164,12 +164,12 @@ under `_blob/`, `plant.glb` decoded from `model_glb_zip.b64.txt`). `src/import/a
 - Photos and panoramas with poses; wide panorama coverage in `panoramas/panoramas.json`.
 - Checks in `IMPORT-REPORT.md`: frame fit residuals, pose round trip, view-axis ground hits and
   assets in frame for every clip, LNG tanks in frame for the two design clips, and a comparison
-  with the design clip paths when `docs/design/assets/alzour` is present.
+  with the design clip paths when the design clips under `docs/design/assets/` are present.
 
-### Masafi (Volumetric Survey Kit stockpile review)
+### Stockpile review (Volumetric Survey Kit)
 
 Source: the kit's offline build (`job.json`, `data/*.js` with `window.VS_*` grids, `work/dsm_<epoch>.npy`,
-`tiles/<epoch>/<z>/<x>_<y>.webp`, the offline viewer HTML, PDF and register CSV). `src/import/masafi.ts`:
+`tiles/<epoch>/<z>/<x>_<y>.webp`, the offline viewer HTML, PDF and register CSV). The stockpile importer in `src/import/`:
 
 - Frame: origin at the centre of the job grid, height the lowest DSM value floored; everything hangs
   off the grid's top-left corner as in the kit.
@@ -186,15 +186,15 @@ Source: the kit's offline build (`job.json`, `data/*.js` with `window.VS_*` grid
   `grids`, whether or not the source has the viewer HTML. The offline viewer itself is not copied.
 - No issues; severity model "Stockpile" (1 to 3) and classes spillage, unsafe slope, encroachment.
 
-### 1st Ring Road (road review)
+### Road review
 
-Source: the Leaflet road review (`1st Ring Road Review.html`, `data/defects.js`, `data/grid.js`,
-`_build/crops.json`, `ortho/` tile bundles, `closeups/`, `lib/`). `src/import/ringroad.ts`:
+Source: the Leaflet road review (the review HTML, `data/defects.js`, `data/grid.js`,
+`_build/crops.json`, `ortho/` tile bundles, `closeups/`, `lib/`). The road importer in `src/import/`:
 
 - Frame: EPSG 32638 (UTM 38N), origin at the corridor centre, ground at `y = 0`.
 - Ortho: the review's Web Mercator tiles (`ortho/b13`, `ortho/b18`: `RRT("z/x/y",{...base64
 WebP})` script bundles, z13 to z22) resampled into a `kit-pyramid` aligned to UTM: 8 levels of
-  1024 px WebP tiles, 3.25 cm at level 7 (`ringroad-tiles.ts`, `ringroad-ortho.ts`). One affine
+  1024 px WebP tiles, 3.25 cm at level 7 (the road tile and ortho modules in `src/import/`). One affine
   for the whole Mercator grid would miss by about 0.3 m, so each output tile has its own affine
   (exact to 0.01 px) and is resampled bilinearly on premultiplied colour. Re-runs keep the tiles
   while the bundles are unchanged (`rasters/ortho/source.json`).

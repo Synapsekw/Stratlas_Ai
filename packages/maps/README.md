@@ -8,11 +8,11 @@ Offline 2D map (MapLibre GL JS 6 + PMTiles + Protomaps basemap) and the M1 3D gr
 Built once, online, by `node tools/maps/build-packs.mjs` (see the header of that file) into
 `<dataRoot>/packs/<id>.pmtiles` + `<id>.json` (`MapPackInfo`):
 
-| id     | bbox                   | zooms | size (planet build 20261003) |
-| ------ | ---------------------- | ----- | ---------------------------- |
-| world  | whole world            | 0-6   | 45 MB                        |
-| gcc    | 34.5, 12.0, 60.0, 32.5 | 0-15  | 1.31 GB                      |
-| kuwait | 46.5, 28.5, 48.5, 30.1 | 0-15  | 24 MB                        |
+| id            | bbox                   | zooms | size (planet build 20261003) |
+| ------------- | ---------------------- | ----- | ---------------------------- |
+| world         | whole world            | 0-6   | 45 MB                        |
+| gcc           | 34.5, 12.0, 60.0, 32.5 | 0-15  | 1.31 GB                      |
+| (one country) | 46.5, 28.5, 48.5, 30.1 | 0-15  | 24 MB                        |
 
 The same tool fetches the glyph PBFs (Noto Sans Regular, Medium, Italic; Latin and Arabic
 ranges) into the git-ignored `assets/fonts/`: run `node tools/maps/build-packs.mjs --assets-only`
@@ -54,6 +54,7 @@ tile's CRC-32, header zoom and area) and written with `source`, `build` and `bui
   mesh or point cloud sightings, and a wedge for the 3D camera (`cameraWedge`). Click an issue or
   flight to select it; Alt+click flies the 3D camera to that point. Hovering an issue or an
   overlay feature shows a tooltip.
+- `rasterPacks.ts`: the installed imagery packs as a **Satellite** basemap under the streets and the terrain packs as a `raster-dem` hillshade (the pack tile providers themselves are in `@aio/tiles`).
 - Kit pyramids draw at full detail: one coarse level (at most 16 tiles) stays as a backdrop and
   `pyramidView` picks, after every move, the coarsest level as sharp as the screen and the tiles
   in view (at most 48) as image sources. A tile missing from the package is not asked for again.
@@ -80,5 +81,5 @@ tile's CRC-32, header zoom and area) and written with `source`, `build` and `bui
 ## Dev harness
 
 `pnpm -F @aio/maps dev` and open http://localhost:5179: the real controller over the installed
-packs and a synthetic Al-Zour project built from the git-ignored design fixtures (packs and
+packs and a synthetic plant project built from the git-ignored design fixtures (packs and
 fixtures are served by Vite's `/@fs/` in place of `aio://`).

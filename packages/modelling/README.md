@@ -15,12 +15,17 @@ schema, ui).
 - `glb.ts`: a dependency-free GLB writer and reader.
 - `drawing.ts`: imported drawings in a manifest (`drawingsOf`), their candidate parts and
   placement (`drawingToLocal`, `localToDrawing`).
+- `engineer/`: the engineering model. `assemble/` turns evidence into assemblies (`assemble`, with
+  families for chimney, flare, lattice and monopole towers), `builders/` meshes each component kind
+  (`buildAssembly`, `meshAssemblies`, PBR materials), `corrections.ts` applies bounded correction
+  transactions, `validate.ts` checks a GLB (`validateGlb`) and `exportBundle.ts` writes the export
+  bundle (GLB, model, component register, georeference sidecar).
 - `ModelBuilder.tsx`: the Model builder panel (presentational; the desktop app wires it in
   `apps/desktop/src/renderer/modeller/`).
 
 ## Data
 
-- `<project>/models/<id>.procmodel.json` (`aio.procmodel/1`), schema in `@aio/schema`
+- `<project>/models/<id>.procmodel.json` (`aio.procmodel/2`; a `/1` file is still read and migrated), schema in `@aio/schema`
   `procmodel.ts`, layout in `docs/architecture/data-conventions.md` section 15.
 - Built models: `models/<id>.glb` (accepted parts) and `models/draft-<id>.glb` (preview), added as
   mesh layers `model-<id>` and `model-draft-<id>` with `derived: { kind: 'model', source: [id] }`

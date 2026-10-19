@@ -1,10 +1,10 @@
 # Release checklist
 
-Manual steps for a release candidate. Tick every box in the release issue. Commands assume the repository root; `<Product>` and `<version>` come from `packages/brand/brand.json` and `apps/desktop/package.json`.
+Manual steps for a release candidate. Tick every box in the release issue. Windows only for now: macOS is parked (founder, 10 Oct 2026), so skip the Mac and macOS steps until it is picked up again. No `v*` tag and no GitHub Release while testing is internal. Commands assume the repository root; `<Product>` and `<version>` come from `packages/brand/brand.json` and `apps/desktop/package.json`.
 
 ## 1. Prepare
 
-- [ ] `main` is green in CI on Windows and macOS, licence check included.
+- [ ] `main` is green in CI on Windows (macOS is parked), licence check included.
 - [ ] Version bumped in `apps/desktop/package.json` (semver); release notes drafted.
 - [ ] `packages/brand/brand.json` is final for this release (name, app id, company). If `icon.svg` changed: `pnpm icons` and commit.
 - [ ] `pnpm check` and `pnpm test:e2e` pass locally on a Windows and a Mac machine.

@@ -6,7 +6,7 @@
 
 Open **Settings**, **AI providers** and scroll to **Detection models**.
 
-- The first line says whether local detection can run, for example "onnxruntime 1.30.0 on DirectML (graphics card)". On a Mac it runs on **Core ML**; without a usable graphics card, on **CPU**.
+- The first line says whether local detection can run, for example "onnxruntime 1.30.0 on DirectML (graphics card)". Without a usable graphics card it runs on **CPU**.
 - **Run on**: **Graphics card when available** (the default) or **CPU only**. If the graphics card cannot load a model, {product} uses the CPU.
 - The models you imported are listed below. "No detection model is installed yet." means there are none.
 
@@ -86,4 +86,4 @@ Ordinary video clips (drone or phone video that is not 360) are not checked by l
 
 ## Not available
 
-"Local detection is not available: ..." says why. On a Mac with an Intel processor local detection does not run. Use cloud vision instead (see [Detect with AI](08-building-projects.md#detect-with-ai)).
+"Local detection is not available: ..." says why. Use cloud vision instead (see [Detect with AI](08-building-projects.md#detect-with-ai)).
