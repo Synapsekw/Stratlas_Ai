@@ -176,7 +176,7 @@ describe('AreaCompareDialog', () => {
     expect(volumesBox()?.checked).toBe(false);
     const reason = 'Surface change needs a DSM or a point cloud on each date.';
     expect(q('area-compare-volumes-reason')?.textContent).toBe(reason);
-    expect(volumesBox()?.closest('label')?.getAttribute('title')).toBe(reason);
+    expect(volumesBox()?.getAttribute('aria-describedby')).toBe('area-compare-volumes-reason');
   });
 
   it('keeps a start error in the box', async () => {

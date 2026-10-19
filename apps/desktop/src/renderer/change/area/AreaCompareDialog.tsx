@@ -117,10 +117,11 @@ export function AreaCompareDialog({ request }: { request: AreaCompareRequest }) 
           {t('change.area.dates', { from: dateOf(request.from), to: dateOf(request.to) })}
         </p>
         <div>
-          <label className="sv-check" title={noVolumes ?? undefined}>
+          <label className="sv-check">
             <input
               type="checkbox"
               data-testid="area-compare-volumes"
+              aria-describedby={noVolumes ? 'area-compare-volumes-reason' : undefined}
               checked={noVolumes === null && wanted}
               disabled={noVolumes !== null || busy}
               onChange={(e) => {
@@ -130,7 +131,11 @@ export function AreaCompareDialog({ request }: { request: AreaCompareRequest }) 
             {t('change.area.volumes')}
           </label>
           {noVolumes && (
-            <p className="small faint" data-testid="area-compare-volumes-reason">
+            <p
+              id="area-compare-volumes-reason"
+              className="small faint"
+              data-testid="area-compare-volumes-reason"
+            >
               {noVolumes}
             </p>
           )}
