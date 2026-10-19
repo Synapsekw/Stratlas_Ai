@@ -166,5 +166,9 @@ describe('area entries', () => {
     });
     expect(volumesNote([refused])).toBe(why.reason);
     expect(volumesNote([refused, aSurface])).toBeNull();
+    expect(volumesNote([])).toBeNull();
+    expect(volumesNote([refused, mk('d1-d2-issues-area-a', 'issues', { scope: area })])).toBe(
+      why.reason,
+    );
   });
 });

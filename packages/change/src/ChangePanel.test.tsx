@@ -202,15 +202,32 @@ describe('the Changes panel and a line-up', () => {
     );
   });
 
-  it('falls back to the whole map when the chosen area has no sets', async () => {
+  it('keeps a fresh area that has no sets yet', async () => {
     open(false);
     changeStore.setState({
       projectId: 'p',
       sets: { 'd1-d2-issues': set() },
       pair: { from: 'd1', to: 'd2' },
-      area: 'gone',
+      area: 'fresh',
     });
     await render();
+    expect(changeStore.getState().area).toBe('fresh');
+  });
+
+  it('falls back to the whole map when a seen area loses its sets', async () => {
+    open(false);
+    changeStore.setState({
+      projectId: 'p',
+      sets: { 'd1-d2-issues': set(), 'd1-d2-raster-area-a': areaSet() },
+      pair: { from: 'd1', to: 'd2' },
+      area: 'a',
+    });
+    await render();
+    expect(changeStore.getState().area).toBe('a');
+    await act(async () => {
+      changeStore.setState({ sets: { 'd1-d2-issues': set() } });
+      await Promise.resolve();
+    });
     expect(changeStore.getState().area).toBeNull();
     expect(host?.querySelectorAll('[data-testid="change-row"]').length).toBe(1);
   });

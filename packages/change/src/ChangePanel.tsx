@@ -2,7 +2,7 @@ import { ChangeCollab } from '@aio/collab/ui';
 import type { ChangeItem, ChangeKind, ChangeSet, ChangeVerdict } from '@aio/schema';
 import { useT, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from 'zustand';
 import { VERDICT_COLOR } from './overlay';
 import { changeProducers, subscribeChangeProducers, type ChangePairContext } from './producers';
@@ -173,9 +173,14 @@ export function ChangePanel({
   const pairSets = useMemo(() => setsOfPair(s.sets, s.pair, s.area), [s.sets, s.pair, s.area]);
   const areas = useMemo(() => areasOfPair(s.sets, s.pair), [s.sets, s.pair]);
   const volumesWhy = useMemo(() => (s.area ? volumesNote(pairSets) : null), [s.area, pairSets]);
-  // an area whose sets are gone (a reload) falls back to the whole map
+  // an area that had sets and lost them (a reload) falls back to the whole map; a fresh area
+  // whose first run is still going has none yet and stays chosen
+  const seenAreas = useRef({ key: '', ids: new Set<string>() });
   useEffect(() => {
-    if (s.area && s.pair && !areas.some((a) => a.id === s.area))
+    const key = s.pair ? `${s.pair.from}>${s.pair.to}` : '';
+    if (seenAreas.current.key !== key) seenAreas.current = { key, ids: new Set() };
+    for (const a of areas) seenAreas.current.ids.add(a.id);
+    if (s.area && seenAreas.current.ids.has(s.area) && !areas.some((a) => a.id === s.area))
       changeStore.getState().setArea(null);
   }, [s.area, s.pair, areas]);
   const rows = useMemo(
