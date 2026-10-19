@@ -1017,7 +1017,7 @@ export const en = {
   'engine.progress.download': 'Downloading {done} of {total}',
   'engine.progress.verify': 'Checking the download',
   'engine.progress.install': 'Installing',
-  'engine.progress.check': 'Checking the installation',
+  'engine.progress.check': 'Starting ODM for the first time; this can take a few minutes',
   'engine.back': 'Back to Create maps from photos',
   'engine.dev': 'ODM comes from QUADRION_ODM_DIR on this computer.',
   'settings.severity.text':

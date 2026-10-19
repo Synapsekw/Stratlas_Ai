@@ -40,8 +40,21 @@ describe.skipIf(process.platform !== 'win32')('the real smoke test', () => {
     });
     const r = await system.runSmoke(dir);
     expect(r.code).toBe(0);
+    expect(r.timedOut).toBe(false);
     expect(r.out).toContain('usage: run [options] --help 1');
   });
+
+  it('stops a run.bat that takes too long and says it ran out of time', async () => {
+    await writeFile(
+      join(dir, 'run.bat'),
+      '@echo off\r\necho starting\r\nping -n 30 127.0.0.1 >nul\r\n',
+    );
+    const system = nodeOdmSystem(process.env, { smokeTimeoutMs: 1500 });
+    const r = await system.runSmoke(dir);
+    expect(r.timedOut).toBe(true);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain('starting');
+  }, 20_000);
 
   it('reg query answers nothing for a key with no ODM in it', async () => {
     const system = nodeOdmSystem(process.env);

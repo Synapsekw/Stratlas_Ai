@@ -9,10 +9,17 @@ import {
   type OdmStatus,
 } from '@aio/schema';
 import { downloadVerified, type FetchLike } from '../update/download';
-import { findOtherOdm, nvcudaPresent, nvidiaName } from './detect';
-import { downloadDir, isOurOdmFolder, odmInstallDir, odmRecordPath, odmWorkRoot } from './paths';
+import { findOtherOdm, missingVcRuntime, nvcudaPresent, nvidiaName } from './detect';
+import {
+  downloadDir,
+  isOurOdmFolder,
+  odmInstallDir,
+  odmRecordPath,
+  odmSetupLogPath,
+  odmWorkRoot,
+} from './paths';
 import { pinFrom, REQUIRED_FILES, SETUP_ARGS, SETUP_MAY_ASK_ADMIN, UNINSTALL_ARGS } from './pin';
-import type { OdmSystem } from './system';
+import { SMOKE_TIMEOUT_MS, type OdmSystem } from './system';
 
 export interface OdmDeps {
   dataRoot(): string;
@@ -25,7 +32,7 @@ export interface OdmDeps {
   gpuSetting(): OdmGpuSetting;
   offlineOnly(): boolean;
   now(): Date;
-  /** A warning for the app log (a placeholder that could not be renamed); optional. */
+  /** A line for the app log (a placeholder that could not be renamed, the start check); optional. */
   log?(line: string): void;
 }
 
@@ -41,6 +48,11 @@ const STUB_NOT_PARKED =
   "Dense matching may run on the CPU: ODM's placeholder nvcuda.dll could not be set aside. It is tried again before the next ODM run.";
 const STUB_NOT_BACK =
   "ODM's placeholder nvcuda.dll could not be put back. It is tried again before the next ODM run.";
+const VC_RUNTIME_MISSING =
+  'ODM needs the Microsoft Visual C++ 2015-2022 Redistributable (x64), which is missing on this computer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then install ODM again.';
+const SMOKE_TIMED_OUT = `ODM did not finish starting within ${String(SMOKE_TIMEOUT_MS / 60_000)} minutes. The first start on a new computer can be slow while Windows checks the new files. Install it again; if this happens again, send us the app log.`;
+/** How much of the start check's output goes to the app log. */
+const SMOKE_LOG_CHARS = 4096;
 
 /** ODM's placeholder `nvcuda.dll` is 19 KB; NVIDIA's driver is far larger. */
 const STUB_MAX_BYTES = 100_000;
@@ -318,7 +330,10 @@ export async function installOdm(
 
   // Past this point a failure removes what the setup left (folder and uninstall entry), unless
   // it was installed over our recorded ODM: that one is then reported broken until reinstalled.
+  // The setup's own log stays, outside that folder.
+  const setupLog = odmSetupLogPath(dataRoot, pin.version);
   const rollback = async (error: string): Promise<Failure> => {
+    d.log?.(`ODM: the install failed: ${error} The setup's log: ${setupLog}`);
     if (!old || !sameDir(old.dir, target)) {
       try {
         await uninstallFolder(d, target, isOurOdmFolder(target, dataRoot, env));
@@ -331,7 +346,13 @@ export async function installOdm(
 
   try {
     progress('install');
-    const code = await system.runSetup(setup, [...SETUP_ARGS, `/DIR=${target}`]);
+    await mkdir(dirname(setupLog), { recursive: true });
+    // unquoted: Node quotes an argument with a space (the data root may have one), Inno takes it whole
+    const code = await system.runSetup(setup, [
+      ...SETUP_ARGS,
+      `/DIR=${target}`,
+      `/LOG=${setupLog}`,
+    ]);
     if (code === 2 || code === 5)
       return await rollback(
         'The installation was cancelled (a Windows permission prompt may have been declined).',
@@ -341,8 +362,20 @@ export async function installOdm(
     progress('check');
     const missing = await filesPresent(system, target);
     if (missing !== null) return await rollback(`ODM's setup finished but ${missing} is missing.`);
+    // only reached on Windows x64 (`supported`); the per-user setup may leave the runtime out
+    const noRuntime = await missingVcRuntime(env, (p) => system.exists(p));
+    if (noRuntime.length > 0) {
+      d.log?.(`ODM: the C++ runtime is missing from System32: ${noRuntime.join(', ')}`);
+      return await rollback(VC_RUNTIME_MISSING);
+    }
     // run.bat exits 0 even when it fails to start ODM: its usage text is the proof
+    const started = d.now().getTime();
     const smoke = await system.runSmoke(target);
+    const secs = Math.round((d.now().getTime() - started) / 1000);
+    d.log?.(
+      `ODM: start check: ${String(secs)} s, exit code ${String(smoke.code)}, ${smoke.timedOut ? 'timed out' : 'finished'}; output: ${smoke.out.slice(-SMOKE_LOG_CHARS).trim() || '(none)'}`,
+    );
+    if (smoke.timedOut) return await rollback(SMOKE_TIMED_OUT);
     if (smoke.code !== 0 || !/usage: run/i.test(smoke.out))
       return await rollback(
         `ODM installed but does not start: ${lastLine(smoke.out) ?? `exit code ${String(smoke.code)}`}`,

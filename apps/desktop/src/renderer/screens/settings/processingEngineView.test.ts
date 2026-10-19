@@ -51,7 +51,10 @@ describe('the Processing engine card', () => {
     const at = (phase: 'download' | 'verify' | 'install' | 'check') =>
       processingEngineView(base, { phase, bytesDone: 1, bytesTotal: 2 }, true);
     expect(at('verify').progress).toEqual({ label: 'Checking the download', pct: null });
-    expect(at('check').progress).toEqual({ label: 'Checking the installation', pct: null });
+    expect(at('check').progress).toEqual({
+      label: 'Starting ODM for the first time; this can take a few minutes',
+      pct: null,
+    });
     expect(processingEngineView(base, null, true).progress?.label).toBe('Installing');
     expect(phaseLabel(null)).toBe('Installing');
     expect(phaseLabel({ phase: 'download', bytesDone: 1, bytesTotal: 2 })).toBe('Downloading');
@@ -59,7 +62,7 @@ describe('the Processing engine card', () => {
       'Checking the download',
     );
     expect(phaseLabel({ phase: 'check', bytesDone: 0, bytesTotal: 0 })).toBe(
-      'Checking the installation',
+      'Starting ODM for the first time; this can take a few minutes',
     );
   });
 

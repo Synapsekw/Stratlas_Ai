@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   downloadDir,
@@ -5,6 +6,7 @@ import {
   isSafeOdmPath,
   odmInstallDir,
   odmRecordPath,
+  odmSetupLogPath,
   odmWorkRoot,
   SPACES_OK,
 } from './paths';
@@ -63,5 +65,13 @@ describe('paths ODM can use', () => {
     expect(odmRecordPath('E:\\Data')).toMatch(/^E:[\\/]Data[\\/]runtime[\\/]odm\.json$/);
     expect(downloadDir('E:\\Data')).toMatch(/^E:[\\/]Data[\\/]runtime[\\/]downloads$/);
     expect(odmWorkRoot('C:\\Q\\odm-3.6.2')).toBe('C:\\Q\\odm-work');
+  });
+});
+
+describe("the setup's log", () => {
+  it('sits in the runtime folder, outside the install folder a failed install removes', () => {
+    const log = odmSetupLogPath('E:\\Data', '3.6.2');
+    expect(log).toBe(join('E:\\Data', 'runtime', 'logs', 'odm-setup-3.6.2.log'));
+    expect(log.startsWith(odmInstallDir('E:\\Data', {}, '3.6.2'))).toBe(false);
   });
 });

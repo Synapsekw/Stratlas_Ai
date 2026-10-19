@@ -18,12 +18,18 @@ import { installOdm, odmJobEnv, odmStatus, parkOdmStub, removeOdm, type OdmDeps 
 import type { OdmSystem } from './system';
 
 const SETUP = Buffer.from('fake setup bytes');
+const VC_RUNTIME = ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'];
 let dir: string;
 let server: Server;
 let url: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-odm-'));
+  // both stand-in Windows folders hold Microsoft's x64 C++ runtime; neither has NVIDIA's driver
+  for (const win of ['nowin', 'win']) {
+    await mkdir(join(dir, win, 'System32'), { recursive: true });
+    for (const f of VC_RUNTIME) await writeFile(join(dir, win, 'System32', f), '');
+  }
   server = createServer((_, res) => res.end(SETUP));
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as { port: number }).port;
@@ -135,6 +141,8 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
       '/CURRENTUSER',
     ]);
     expect(setup[5]).toBe(`/DIR=${join(dir, 'data', 'runtime', 'odm-3.6.2')}`);
+    // unquoted: Node quotes an argument with a space, and Inno takes the quoted /LOG= whole
+    expect(setup[6]).toBe(`/LOG=${join(dir, 'data', 'runtime', 'logs', 'odm-setup-3.6.2.log')}`);
     const record = await readRec(join(dir, 'data'));
     expect(record).toMatchObject({
       schema: 'aio.odm-install/1',
@@ -282,6 +290,83 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
     );
     expect(broken.r).toMatchObject({ ok: false, code: 'failed' });
     if (!broken.r.ok) expect(broken.r.error).toMatch(/does not start: boom/);
+  });
+
+  it('a start check that runs out of time says so, and the log has how long it took', async () => {
+    const lines: string[] = [];
+    let t = Date.parse('2026-10-14T10:00:00Z');
+    const system = fakeSystem({
+      runSmoke: () => {
+        t += 600_000;
+        return Promise.resolve({ code: 1, out: '', timedOut: true });
+      },
+    });
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const { r } = await run(deps(system, { log: (l) => lines.push(l), now: () => new Date(t) }));
+    expect(r).toMatchObject({
+      ok: false,
+      code: 'failed',
+      error:
+        'ODM did not finish starting within 10 minutes. The first start on a new computer can be slow while Windows checks the new files. Install it again; if this happens again, send us the app log.',
+    });
+    expect(existsSync(target)).toBe(false);
+    const log = lines.join('\n');
+    expect(log).toMatch(/start check: 600 s, exit code 1, timed out/);
+    expect(log).toContain(join(dir, 'data', 'runtime', 'logs', 'odm-setup-3.6.2.log'));
+  });
+
+  it('logs every start check: how long, the exit code and the end of its output', async () => {
+    const lines: string[] = [];
+    let t = Date.parse('2026-10-14T10:00:00Z');
+    const out = `${'x'.repeat(10_000)}\nusage: run [options] <dataset name>`;
+    const system = fakeSystem({
+      runSmoke: () => {
+        t += 26_400;
+        return Promise.resolve({ code: 0, out });
+      },
+    });
+    const { r } = await run(deps(system, { log: (l) => lines.push(l), now: () => new Date(t) }));
+    expect(r.ok).toBe(true);
+    const line = lines.find((l) => l.includes('start check')) ?? '';
+    expect(line).toMatch(/start check: 26 s, exit code 0, finished/);
+    expect(line).toContain('usage: run [options] <dataset name>');
+    expect(line.length).toBeLessThan(4096 + 200);
+    // a real failure keeps its last line in the message, and the log has the output
+    lines.length = 0;
+    const broken = await run(
+      deps(fakeSystem({ runSmoke: () => Promise.resolve({ code: 3, out: 'Traceback\nboom\n' }) }), {
+        log: (l) => lines.push(l),
+      }),
+    );
+    expect(broken.r).toMatchObject({ error: 'ODM installed but does not start: boom' });
+    expect(lines.join('\n')).toMatch(/exit code 3, finished[^]*Traceback/);
+    const silent = await run(
+      deps(fakeSystem({ runSmoke: () => Promise.resolve({ code: 3, out: '' }) })),
+    );
+    expect(silent.r).toMatchObject({ error: 'ODM installed but does not start: exit code 3' });
+  });
+
+  it("a computer without Microsoft's x64 C++ runtime is told where to get it, before ODM is started", async () => {
+    await rm(join(dir, 'nowin', 'System32', 'vcruntime140_1.dll'));
+    await rm(join(dir, 'nowin', 'System32', 'msvcp140.dll'));
+    const lines: string[] = [];
+    let smoked = false;
+    const system = fakeSystem({
+      runSmoke: () => {
+        smoked = true;
+        return Promise.resolve({ code: 0, out: 'usage: run' });
+      },
+    });
+    const { r } = await run(deps(system, { log: (l) => lines.push(l) }));
+    expect(r).toMatchObject({
+      ok: false,
+      code: 'failed',
+      error:
+        'ODM needs the Microsoft Visual C++ 2015-2022 Redistributable (x64), which is missing on this computer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then install ODM again.',
+    });
+    expect(smoked).toBe(false);
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-3.6.2'))).toBe(false);
+    expect(lines.join('\n')).toMatch(/vcruntime140_1\.dll, msvcp140\.dll/);
   });
 
   it('too little free space is refused before the download', async () => {

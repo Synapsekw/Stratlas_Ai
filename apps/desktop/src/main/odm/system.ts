@@ -6,8 +6,11 @@ import { dirname, win32 } from 'node:path';
 export interface OdmSystem {
   /** Run ODM's setup and answer its exit code. */
   runSetup(file: string, args: string[]): Promise<number>;
-  /** `run.bat --help` in an ODM folder: its exit code and everything it printed. */
-  runSmoke(dir: string): Promise<{ code: number; out: string }>;
+  /**
+   * `run.bat --help` in an ODM folder: its exit code, everything it printed, and whether it was
+   * stopped for taking longer than `SMOKE_TIMEOUT_MS` (absent counts as no).
+   */
+  runSmoke(dir: string): Promise<{ code: number; out: string; timedOut?: boolean }>;
   runUninstaller(file: string, args: string[]): Promise<number>;
   /**
    * `reg query` output, `''` when nothing is found: with `search`, every value below `key` whose
@@ -23,8 +26,11 @@ export interface OdmSystem {
   sleep(ms: number): Promise<void>;
 }
 
-/** The first `--help` of a fresh ODM takes about 26 s. */
-const SMOKE_TIMEOUT_MS = 120_000;
+/**
+ * The first `--help` of a fresh ODM takes about 26 s on a warm computer; on a new one Python
+ * compiles every module and the virus scanner reads about 1 GB of new files, well past 2 minutes.
+ */
+export const SMOKE_TIMEOUT_MS = 600_000;
 
 function exitCode(child: ReturnType<typeof spawn>): Promise<number> {
   return new Promise((ok, fail) => {
@@ -60,7 +66,11 @@ export function odmSmokeEnv(env: Record<string, string | undefined>): Record<str
   return out;
 }
 
-export function nodeOdmSystem(env: Record<string, string | undefined>): OdmSystem {
+export function nodeOdmSystem(
+  env: Record<string, string | undefined>,
+  opts: { smokeTimeoutMs?: number } = {},
+): OdmSystem {
+  const smokeTimeoutMs = opts.smokeTimeoutMs ?? SMOKE_TIMEOUT_MS;
   const run = (file: string, args: string[]): Promise<number> => {
     const opts: SpawnOptions = { windowsHide: true, stdio: 'ignore' };
     // End to end tests stand a Node script in for ODM's setup, run by Electron as Node.
@@ -90,13 +100,15 @@ export function nodeOdmSystem(env: Record<string, string | undefined>): OdmSyste
         let out = '';
         child.stdout.on('data', (c: Buffer) => (out += c.toString('utf8')));
         child.stderr.on('data', (c: Buffer) => (out += c.toString('utf8')));
+        let timedOut = false;
         const timer = setTimeout(() => {
+          timedOut = true;
           killTree(child.pid);
-        }, SMOKE_TIMEOUT_MS);
+        }, smokeTimeoutMs);
         exitCode(child).then(
           (code) => {
             clearTimeout(timer);
-            ok({ code, out });
+            ok({ code, out, timedOut });
           },
           (e: unknown) => {
             clearTimeout(timer);

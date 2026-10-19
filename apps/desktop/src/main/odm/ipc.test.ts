@@ -15,6 +15,10 @@ let dir: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-odm-ipc-'));
+  // the stand-in Windows folder holds Microsoft's x64 C++ runtime, which the install checks for
+  await mkdir(join(dir, 'nowin', 'System32'), { recursive: true });
+  for (const f of ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'])
+    await writeFile(join(dir, 'nowin', 'System32', f), '');
   await writeFile(
     join(dir, 'pin.json'),
     JSON.stringify({

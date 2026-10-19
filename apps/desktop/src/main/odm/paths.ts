@@ -30,6 +30,11 @@ export function downloadDir(dataRoot: string): string {
   return join(dataRoot, 'runtime', 'downloads');
 }
 
+/** The log of ODM's setup (`/LOG=`): outside the install folder, so it outlives a failed install. */
+export function odmSetupLogPath(dataRoot: string, version: string): string {
+  return join(dataRoot, 'runtime', 'logs', `odm-setup-${version}.log`);
+}
+
 /**
  * Where ODM is installed. Inno's setup takes `/DIR=` as given and ODM's commands run from there,
  * so the folder must be safe too (C5): the data root's `runtime`, else local app data, else the

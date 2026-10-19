@@ -201,7 +201,7 @@ describe('the Processing engine card', () => {
     send({ phase: 'install', bytesDone: 0, bytesTotal: 0 });
     expect(live?.textContent).toBe('Installing');
     send({ phase: 'check', bytesDone: 0, bytesTotal: 0 });
-    expect(live?.textContent).toBe('Checking the installation');
+    expect(live?.textContent).toBe('Starting ODM for the first time; this can take a few minutes');
     await act(async () => {
       finish({ ok: true, status: INSTALLED });
       await Promise.resolve();
