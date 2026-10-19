@@ -133,6 +133,9 @@ beforeEach(() => {
     saving: false,
     measurementsVisible: true,
     hiddenMeasurements: [],
+    // a test that does not load a file starts with no undo or reveal of the one before
+    undoDeletes: [],
+    reveal: null,
   });
 });
 
