@@ -18,10 +18,12 @@ import {
 import {
   DEFAULT_CHANGE_THRESHOLDS,
   type ChangeRasterParams,
+  type ChangeScope,
   type ChangeSurfaceParams,
   type ChangeThresholds,
   type JobRecord,
   type Layer,
+  type LonLatRing,
   type PipelineName,
 } from '@aio/schema';
 import { t } from '@aio/ui';
@@ -122,6 +124,43 @@ export function surfaceParams(
   };
 }
 
+/** One polygon a run is limited to: filed under `scope`, clipped to `ring`. */
+export interface ChangeArea {
+  scope: ChangeScope;
+  ring: LonLatRing;
+}
+
+/** Imagery change inside one area; the `orthoPair` sentence when it cannot run. */
+export function areaRasterParams(
+  ctx: ChangePairContext,
+  area: ChangeArea,
+  thresholds?: ChangeThresholds,
+): RasterParams | string {
+  const pair = orthoPair(ctx);
+  if (typeof pair === 'string') return pair;
+  return { ...rasterParams(ctx, pair, thresholds), mask: area.ring, scope: area.scope };
+}
+
+/**
+ * Surface change inside one area, totalled as one region named after it; the `surfacePair`
+ * sentence when it cannot run.
+ */
+export function areaSurfaceParams(
+  ctx: ChangePairContext,
+  area: ChangeArea,
+  thresholds?: ChangeThresholds,
+): SurfaceParams | string {
+  const pair = surfacePair(ctx);
+  if (typeof pair === 'string') return pair;
+  const { scope, ring } = area;
+  return {
+    ...surfaceParams(ctx, pair, thresholds),
+    mask: ring,
+    scope,
+    areas: [{ id: scope.id, name: scope.name, ring }],
+  };
+}
+
 /** A refused run, as the Changes panel keeps it (offers Line up dates). */
 export type Misaligned = NonNullable<ChangeState['misaligned']>;
 
@@ -158,7 +197,11 @@ export interface ProducerDeps {
   setMisaligned?: (m: Misaligned | null) => void;
 }
 
-async function runJob(
+/**
+ * Start one change job for the panel: clears a kept refusal, then keeps the job's misaligned
+ * refusal (with the params of a scoped run, so the replay stays inside the area).
+ */
+export async function startChangeRun(
   deps: ProducerDeps,
   latest: { run: number },
   producer: 'raster' | 'surface',
@@ -179,7 +222,7 @@ async function runJob(
       // a late answer belongs to a run that is no longer the panel's
       if (run !== latest.run || (deps.projectId?.() ?? null) !== project) return;
       const m = job ? misalignedOf(job, producer) : null;
-      if (m) setMisaligned(m);
+      if (m) setMisaligned(params.scope ? { ...m, params } : m);
     });
   return { ok: true, jobId: r.jobId };
 }
@@ -198,7 +241,7 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
       run: (ctx) => {
         const pair = orthoPair(ctx);
         if (typeof pair === 'string') return Promise.resolve({ ok: false, error: pair });
-        return runJob(deps, latest, 'raster', 'change.raster', {
+        return startChangeRun(deps, latest, 'raster', 'change.raster', {
           ...rasterParams(ctx, pair, deps.thresholds()),
         });
       },
@@ -214,7 +257,7 @@ export function imageryProducers(deps: ProducerDeps): ChangeProducer[] {
       run: (ctx) => {
         const pair = surfacePair(ctx);
         if (typeof pair === 'string') return Promise.resolve({ ok: false, error: pair });
-        return runJob(deps, latest, 'surface', 'change.surface', {
+        return startChangeRun(deps, latest, 'surface', 'change.surface', {
           ...surfaceParams(ctx, pair, deps.thresholds()),
         });
       },
