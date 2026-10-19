@@ -36,7 +36,7 @@ from ..captures import capture_similarity, date_shift, date_similarity
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
 from ..survey.compare import ring_weights
-from .changeset import change_set, change_set_id
+from .changeset import change_set, change_set_id, check_scope
 from .imagery import (
     Grid,
     asset_path,
@@ -54,9 +54,11 @@ from .imagery import (
     polygons,
     project_crs,
     read_manifest,
+    ring_mask,
     save_arrays,
     write_pyramid,
 )
+from .raster import _ring
 from .register import estimate_shift, misaligned
 from .sources import GridSource, cloud_source, grid_source, height_offset_m
 
@@ -400,7 +402,9 @@ class ChangeSurface:
     name = PRODUCER
     title = "Surface change"
     description = "Two DSMs or point clouds: DEM of difference, cut and fill regions, site total."
-    keys = frozenset({"from", "to", "captures", "cellM", "minDepthM", "minAreaM2", "areas", "out"})
+    keys = frozenset(
+        {"from", "to", "captures", "cellM", "minDepthM", "minAreaM2", "areas", "mask", "scope", "out"}
+    )
 
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
         known_keys(params, set(self.keys), self.name)
@@ -431,11 +435,15 @@ class ChangeSurface:
                     or len(ring) < 3
                 ):
                     raise JobError("Each area needs an id, a name and a ring of [lon, lat] points.")
+        if "mask" in p and not _ring(p["mask"]):
+            raise JobError("mask must be a polygon of at least three [lon, lat] points.")
+        check_scope(p)
         text(p, "out")
         return p
 
     def plan(self, params: dict[str, Any]) -> list[Step]:
         state: dict[str, Any] = {}
+        scope = check_scope(params)
 
         def captures(m: dict[str, Any]) -> tuple[str, str]:
             cap = params.get("captures")
@@ -458,7 +466,7 @@ class ChangeSurface:
 
         def ids(m: dict[str, Any]) -> tuple[str, str, str]:
             a, b = captures(m)
-            sid = change_set_id(a, b, PRODUCER)
+            sid = change_set_id(a, b, PRODUCER, scope["id"] if scope else None)
             return a, b, sid
 
         def check_inputs(ctx: StepContext, pair) -> None:
@@ -542,6 +550,8 @@ class ChangeSurface:
             arr = load_arrays(ctx.stage("work/surfaces.npz"))
             ha, hb = arr["a"].astype(np.float64), arr["b"].astype(np.float64)
             dod = hb - ha
+            if "mask" in params:
+                dod[~ring_mask(m, [params["mask"]], grid)] = np.nan
             min_depth = float(params.get("minDepthM", DEFAULT_MIN_DEPTH_M))
             min_area = float(params.get("minAreaM2", DEFAULT_MIN_AREA_M2))
             min_cells = max(1, math.ceil(min_area / grid.cell**2 - 1e-9))
@@ -657,6 +667,7 @@ class ChangeSurface:
                 registration=reg["registration"],
                 coverage=r["coverage"],
                 line_up=(capture_similarity(m, a), capture_similarity(m, b)),
+                scope=scope,
             )
             atomic_write_json(ctx.stage("work/change-set.json"), cs)
             return {"items": len(items), "setId": sid, "out": out_dir}
@@ -670,12 +681,15 @@ class ChangeSurface:
             cs = json.loads(ctx.stage("work/change-set.json").read_text("utf-8"))
             src = [params["from"]["layer"], params["to"]["layer"]]
             when = f"{capture_label(m, a)} to {capture_label(m, b)}"
+            lead = f"{scope['name']}: " if scope else ""
             prov = derived(a, b, sid, ctx.job.job_id, src)
             layers = [
                 {
                     "kind": "raster",
                     "id": f"{sid}-heat",
-                    "name": f"Surface change heat map, {when}",
+                    "name": f"{lead}surface change heat map, {when}"
+                    if scope
+                    else f"Surface change heat map, {when}",
                     "visible": True,
                     "capture": b,
                     "derived": prov,
@@ -686,7 +700,7 @@ class ChangeSurface:
                 {
                     "kind": "vector",
                     "id": f"{sid}-regions",
-                    "name": f"Cut and fill areas, {when}",
+                    "name": f"{lead}cut and fill areas, {when}" if scope else f"Cut and fill areas, {when}",
                     "visible": True,
                     "capture": b,
                     "derived": dict(prov),

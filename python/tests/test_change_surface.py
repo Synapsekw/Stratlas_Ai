@@ -154,26 +154,60 @@ def test_a_cloud_offset_that_changed_since_the_job_started_is_refused(tmp_path):
         Job("j1", pipeline(), tmp_path, surface_params(kinds), Recorder(), threading.Event()).run()
 
 
-def test_areas_report_their_own_volumes(tmp_path):
+def local_ring(cx, cz, r):
     from rasterio.warp import transform
 
+    xs = [cx - r, cx + r, cx + r, cx - r, cx - r]
+    zs = [cz - r, cz - r, cz + r, cz + r, cz - r]
+    lon, lat = transform("EPSG:32639", "EPSG:4326", [ORIGIN[0] + x for x in xs], [ORIGIN[1] - z for z in zs])
+    return [[a, b] for a, b in zip(lon, lat, strict=True)]
+
+
+def test_areas_report_their_own_volumes(tmp_path):
     surface_project(tmp_path)
-
-    def ring(cx, cz, r):
-        xs = [cx - r, cx + r, cx + r, cx - r, cx - r]
-        zs = [cz - r, cz - r, cz + r, cz + r, cz - r]
-        lon, lat = transform(
-            "EPSG:32639", "EPSG:4326", [ORIGIN[0] + x for x in xs], [ORIGIN[1] - z for z in zs]
-        )
-        return [[a, b] for a, b in zip(lon, lat, strict=True)]
-
-    areas = [{"id": "yard-west", "name": "West bay", "ring": ring(-10, -8, 15)}]
+    areas = [{"id": "yard-west", "name": "West bay", "ring": local_ring(-10, -8, 15)}]
     run_job(pipeline(), tmp_path, surface_params(areas=areas))
     cs = read_set(tmp_path)
     [area] = [it for it in cs["items"] if it["id"] == "area:yard-west"]
     assert area["label"].startswith("West bay")
     assert area["volume"]["fillM3"] == pytest.approx(1000, rel=0.02)
     assert area["volume"]["cutM3"] < 5
+
+
+SCOPE = {"id": "pile", "name": "Pile"}
+
+
+def test_a_mask_keeps_only_the_regions_inside(tmp_path):
+    surface_project(tmp_path)
+    params = surface_params(mask=local_ring(-10, -8, 15), scope=SCOPE)
+    result, _ = run_job(pipeline(), tmp_path, params)
+    assert result["status"] == "done"
+    cs = json.loads((tmp_path / "change" / "c1-c2-surface-area-pile.json").read_text("utf-8"))
+    regions = [it for it in cs["items"] if it["id"].startswith("region:")]
+    assert len(regions) == 1
+    assert regions[0]["verdict"] == "fill"
+    assert regions[0]["volume"]["fillM3"] == pytest.approx(1000, rel=0.02)
+    assert not by_verdict(cs, "cut")
+    assert cs["stats"]["siteCutM3"] < 5
+    assert cs["scope"] == SCOPE
+    for it in regions:
+        assert -25 <= it["at"][0] <= 5 and -23 <= it["at"][2] <= 7
+    assert not (tmp_path / "change" / "c1-c2-surface.json").exists()
+    m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    names = {x["id"]: x["name"] for x in m["layers"]}
+    assert names["c1-c2-surface-area-pile-heat"].startswith("Pile: surface change heat map, ")
+    assert names["c1-c2-surface-area-pile-regions"].startswith("Pile: cut and fill areas, ")
+
+
+def test_a_scoped_surface_run_leaves_the_whole_map_set(tmp_path):
+    surface_project(tmp_path)
+    run_job(pipeline(), tmp_path, surface_params())
+    run_job(pipeline(), tmp_path, surface_params(mask=local_ring(-10, -8, 15), scope=SCOPE), job_id="j2")
+    cs = read_set(tmp_path)
+    assert by_verdict(cs, "fill") and by_verdict(cs, "cut")
+    m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    ids = {x["id"] for x in m["layers"]}
+    assert {"c1-c2-surface-heat", "c1-c2-surface-area-pile-heat"} <= ids
 
 
 def test_the_thresholds_are_honoured(tmp_path):
@@ -248,6 +282,8 @@ def test_resume_after_a_surface_changed_is_refused(tmp_path):
         (surface_params(cellM=0), "cellM"),
         ({**surface_params(), "bogus": 1}, "does not take: bogus"),
         (surface_params(kinds=("cloud", "dsm")), "not a point cloud"),
+        (surface_params(scope={"id": "p", "name": "P"}), "needs its mask"),
+        (surface_params(mask=[[1, 2]]), "mask must be a polygon"),
     ],
 )
 def test_bad_parameters_are_refused(tmp_path, params, message):
