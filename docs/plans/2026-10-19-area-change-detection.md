@@ -20,6 +20,7 @@
 - The action applies to exactly one polygon. Lines, points, several selected items: not offered.
 - A polygon with fewer than 3 distinct points, zero area or a self-intersection disables the action with a reason. Never a whole-map run: a job with `scope` and no `mask` is refused by both the schema and Python.
 - Scoped results never overwrite the whole-map set of the same pair: set id `<from>-<to>-<producer>-area-<scope id>` (hashed suffix when longer than 120 characters).
+- Partial outcome (founder, plan review): when volumes were asked for and the area's `change.surface` run was refused or failed (no elevation, misaligned, error), the area entry shows a lasting note saying why, next to the imagery result (`ChangeSet.volumesMissing`, Tasks 1, 5, 7).
 - Rerunning on the same polygon replaces that area's set and keeps its reviews (`merge_reviews`, as today).
 - No masks for `change.cloud`, `change.mesh`, `change.frames`. No ignore polygons in the UI. No thresholds UI.
 - Python tests in a worktree: there is no `python/.venv` here. Run from `python/` with the main venv and this worktree's source first on the path, and check the import path once:
@@ -120,6 +121,7 @@ Batch 5:            T10 e2e change-area.spec.ts (all)
 | `change.area.volumesFailed`      | `Volumes were not started: {why}`             |
 | `change.area.picker`             | `Area`                                        |
 | `change.area.wholeMap`           | `Whole map`                                   |
+| `change.area.volumesMissing`     | `No volumes for this area: {why}`             |
 
 - [ ] **Step 1:** Add the keys. Run `pnpm exec vitest run packages/ui/src/i18n` — PASS.
 - [ ] **Step 2:** Commit `feat(ui): messages for area-scoped change detection` (`git add packages/ui/src/i18n/en.ts`).
@@ -139,18 +141,19 @@ Batch 5:            T10 e2e change-area.spec.ts (all)
 
 - Produces: `export const ChangeScope = z.object({ id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/), name: z.string().min(1).max(120) }).strict()`; `export type ChangeScope = z.infer<typeof ChangeScope>`.
 - `ChangeSet.scope: ChangeScope.optional()`, `ChangeSetSummary.scope: ChangeScope.optional()`.
+- `ChangeSet.volumesMissing: z.object({ reason: z.string().min(1).max(300), at: IsoTime }).strict().optional()` — written by the app (Task 7) on the scoped imagery set when volumes were asked for and the `change.surface` run of that area was refused or failed. A later pipeline run of the set rewrites the file without it.
 - `ChangeRasterParams.scope: ChangeScope.optional()`; `ChangeSurfaceParams.mask: LonLatRing.optional()`, `.scope: ChangeScope.optional()`.
 - Both params: `.refine((p) => !p.scope || p.mask !== undefined, { message: 'A scoped run needs its mask.', path: ['mask'] })`. Keep `.strict()` before the refine; check `z.input<typeof ChangeRasterParams>` still resolves in `apps/desktop/src/renderer/change/producers/raster.ts` (`pnpm typecheck`).
 
 - [ ] **Step 1: Failing tests.**
-  - `change.test.ts` `it('a change set keeps its area scope')`: `ChangeSet.parse({...minimalSet, scope: { id: 'pad-a', name: 'Pad A' }}).scope` equals the input; `ChangeScope.safeParse({ id: 'pad a', name: 'x' }).success === false`; name of 121 chars refused.
+  - `change.test.ts` `it('a change set keeps its area scope')`: `ChangeSet.parse({...minimalSet, scope: { id: 'pad-a', name: 'Pad A' }}).scope` equals the input; `ChangeScope.safeParse({ id: 'pad a', name: 'x' }).success === false`; name of 121 chars refused; `volumesMissing: { reason: 'Misaligned by 3 m', at }` round-trips and an empty `reason` is refused.
   - `m8.test.ts` `it('change.raster and change.surface take an area scope with its mask')`: `pipelineParams('change.surface').safeParse({ from: {layer:'d1',kind:'dsm'}, to: {layer:'d2',kind:'dsm'}, mask: RING, scope: { id: 'pad-a', name: 'Pad A' } }).success === true`; same for `change.raster`; without `mask` both fail with message `A scoped run needs its mask.`
 - [ ] **Step 2:** `pnpm exec vitest run packages/schema/src/change.test.ts packages/schema/src/m8.test.ts` — FAIL.
 - [ ] **Step 3:** Implement the schema as above.
 - [ ] **Step 4:** Same command — PASS; `pnpm typecheck` — PASS.
 - [ ] **Step 5:** Append to `docs/architecture/contract-changes.md` (same table, one line):
 
-  `| 2026-10-19 | Area-scoped change detection (\`packages/schema/src/change.ts\`, \`jobs.ts\`), additive: new \`ChangeScope\` (\`{ id, name }\`, the polygon measurement's id and its label cut to 120). \`ChangeRasterParams\` gains optional \`scope\`; \`ChangeSurfaceParams\` gains optional \`mask\` (lon/lat ring: the DoD, its regions, heat map and site totals are clipped to it) and \`scope\`; both refuse \`scope\` without \`mask\`. A scoped run writes its own set \`<from>-<to>-<producer>-area-<scope id>\` (a 12-character hash of the scope id when the id would pass 120 characters), its folder \`change/<set id>\` and layers \`<set id>-heat\` and \`<set id>-regions\` named after the area, so it never replaces the whole-map set of the pair. \`ChangeSet\` and \`ChangeSetSummary\` (\`change:list\`) gain optional \`scope\`. Older builds read a scoped set as a plain set of the pair (the key is stripped) and show its items with the whole-map ones; params without \`scope\` and \`mask\` behave exactly as before. |`
+  `| 2026-10-19 | Area-scoped change detection (\`packages/schema/src/change.ts\`, \`jobs.ts\`), additive: new \`ChangeScope\` (\`{ id, name }\`, the polygon measurement's id and its label cut to 120). \`ChangeRasterParams\` gains optional \`scope\`; \`ChangeSurfaceParams\` gains optional \`mask\` (lon/lat ring: the DoD, its regions, heat map and site totals are clipped to it) and \`scope\`; both refuse \`scope\` without \`mask\`. A scoped run writes its own set \`<from>-<to>-<producer>-area-<scope id>\` (a 12-character hash of the scope id when the id would pass 120 characters), its folder \`change/<set id>\` and layers \`<set id>-heat\` and \`<set id>-regions\` named after the area, so it never replaces the whole-map set of the pair. \`ChangeSet\` and \`ChangeSetSummary\` (\`change:list\`) gain optional \`scope\`; \`ChangeSet\` also gains optional \`volumesMissing\` (\`{ reason, at }\`), which the app writes on a scoped imagery set when the volumes asked for with it were refused or failed, so the Changes tab can say why they are missing; the next pipeline run of that set drops it. Older builds read a scoped set as a plain set of the pair (the key is stripped) and show its items with the whole-map ones; params without \`scope\` and \`mask\` behave exactly as before. |`
 
 - [ ] **Step 6:** Commit `feat(schema): change scope and surface mask for area-scoped change` (stage the three files and two tests by path).
 
@@ -167,7 +170,7 @@ Batch 5:            T10 e2e change-area.spec.ts (all)
 
 - Produces: `change_set_id(from_capture: str, to_capture: str, producer: str, scope_id: str | None = None) -> str` — unscoped output unchanged; scoped `f"{base}-area-{scope_id}"`; when that passes 120 characters, `f"{base[:120 - 18]}-area-{sha1(scope_id)[:12]}"` (always ≤ 120, file-name safe).
 - `check_scope(p: dict) -> dict | None`: returns `p["scope"]` after checking `id` matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$` and `name` is a str of 1 to 120 chars, else `JobError("scope must be { id, name } of the area polygon.")`; when `scope` is present and `mask` absent: `JobError("A scoped run needs its mask (the area polygon).")`.
-- `change_set(..., scope: Mapping[str, str] | None = None)` writes `"scope": {"id", "name"}` when given; `validate_change_set` accepts an optional `scope` of that shape.
+- `change_set(..., scope: Mapping[str, str] | None = None)` writes `"scope": {"id", "name"}` when given; `validate_change_set` accepts an optional `scope` of that shape and an optional `volumesMissing` (`{ reason: str, at: str }`, written by the app) so reading a previous set for its reviews never fails on it; `change_set` never writes `volumesMissing` (a new run drops it). Test `test_a_set_with_volumes_missing_still_validates`.
 
 - [ ] **Step 1: Failing tests** in `test_changeset.py`:
   - `test_a_scoped_id_never_equals_the_whole_map_id`: `change_set_id("c1","c2","change.raster","pad-a") == "c1-c2-raster-area-pad-a"` and `!= change_set_id("c1","c2","change.raster")`.
@@ -248,6 +251,7 @@ Batch 5:            T10 e2e change-area.spec.ts (all)
   - `areasOfPair(sets, pair): ChangeScope[]` — distinct scopes of the pair's sets, by name then id.
   - `ChangePanelProps.onRerun?: (producer: string, set?: ChangeSet) => Promise<string | null>`; the stale bar passes its set.
   - Panel: `<select data-testid="change-area" aria-label={t('change.area.picker')}>` shown only when `areasOfPair` is non-empty; options `''` = Whole map, then each scope (`value = id`, text = `name`). Rows, counts, stale bars use `setsOfPair(s.sets, s.pair, s.area)`.
+  - `volumesNote(sets: ChangeSet[]): string | null` (store.ts, exported): among an area's sets, the `volumesMissing.reason` of its `change.raster` set when the area has no `change.surface` set; else null. The panel shows it while an area is chosen, as a lasting muted line above the rows: `<p className="chg-note" role="note" data-testid="change-area-volumes-missing">{t('change.area.volumesMissing', { why })}</p>`, next to the imagery result. Tests: `store.test.ts` `it('an area whose volumes were refused says why')` (raster set with `volumesMissing`, no surface set → the reason; with a surface set → null; whole map → null); `ChangePanel.test.tsx` `it('shows why volumes are missing for an area')`.
 
 - [ ] **Step 1: Failing tests.**
   - `register.test.ts` `it('a summary carries the area scope')`.
@@ -303,11 +307,12 @@ Batch 5:            T10 e2e change-area.spec.ts (all)
   - `areaRasterParams(ctx: ChangePairContext, area: { scope: ChangeScope; ring: LonLatRing }, thresholds?): RasterParams` = `rasterParams(...)` + `{ mask: ring, scope }`, or the `orthoPair` reason string.
   - `areaSurfaceParams(ctx, area, thresholds?): SurfaceParams | string` = `surfaceParams(...)` + `{ mask: ring, scope, areas: [{ id: scope.id, name: scope.name, ring }] }`, or the `surfacePair` reason.
   - `runAreaCompare(deps: ProducerDeps, ctx: ChangePairContext, area: { scope: ChangeScope; ring: LonLatRing }, opts: { volumes: boolean }): Promise<{ ok: true; notes: string[] } | { ok: false; error: string }>` — starts `change.raster` (an error there is the result, nothing else starts); with `volumes`, starts `change.surface` and turns its error into `t('change.area.volumesFailed', { why })` in `notes`. On ok: `changeStore.getState().setPair({ from, to })`, then `setArea(scope.id)`, then `openChangesTab()`.
+  - Recording the partial outcome (in `run.ts`, not awaited by the caller): `recordVolumesOutcome(deps, rasterJobId, surface: { jobId } | { error }, scope, pair): Promise<void>` — waits for both jobs with `deps.finished`; when the surface start errored, or its job ended `failed` (misaligned: `Misaligned by {shiftM} m` built from `failure.data`; otherwise the job's `failure.message` / error text), and the raster job ended `done`: reload the sets (`changeStore.getState().load(projectId)`), take the pair's `change.raster` set with `scope.id`, and `changeStore.getState().save({ ...set, volumesMissing: { reason, at: new Date().toISOString() } })`. Does nothing when the raster job did not end `done`, when the project changed meanwhile (`deps.projectId`), or when the surface job ended `done`. Tests in `run.test.ts`: `it('records why volumes are missing on the area\'s imagery set')` (surface `failed` → `save` called with `volumesMissing.reason`), `it('records a refused volume start')`, `it('records nothing when volumes ran or were not asked for')`, `it('records nothing when imagery failed')`.
 
 - [ ] **Step 1: Failing tests.**
   - `raster.test.ts`: `ChangeRasterParams.parse(areaRasterParams(ctx, AREA))` and `ChangeSurfaceParams.parse(areaSurfaceParams(ctx, AREA))` succeed and carry `mask`, `scope`; without an ortho pair the reason string comes back.
   - `raster.test.ts` `it('a refused scoped run keeps its params for the replay')`: a `finished` that answers a misaligned failure; `setMisaligned` receives `params.scope`.
-  - `run.test.ts`: volumes off → one `start('change.raster', ...)`; volumes on → raster then surface, both with the same `scope.id`; surface start error → `ok: true` with one note; raster error → `ok: false`, surface never started, store pair untouched; on ok the store has the pair and `area === scope.id` and `changesTab` seq bumped.
+  - `run.test.ts`: volumes off → one `start('change.raster', ...)`; volumes on → raster then surface, both with the same `scope.id`; surface start error → `ok: true` with one note; the volumes outcome is recorded (below) for a surface start error, a misaligned refusal and a failed job, and not when the surface job ends `done` or volumes were not asked for; raster error → `ok: false`, surface never started, store pair untouched; on ok the store has the pair and `area === scope.id` and `changesTab` seq bumped.
 - [ ] **Step 2:** `pnpm exec vitest run apps/desktop/src/renderer/change` — FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** Same command — PASS.
