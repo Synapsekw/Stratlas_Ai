@@ -84,6 +84,7 @@ import { RfLayer } from './rf/RfLayer';
 import { Lightbox } from './issueCard/Lightbox';
 import { LayerProperties } from './shell/LayerProperties';
 import { RemoveHost } from './shell/RemoveHost';
+import { AreaCompareHost } from './change/area/AreaCompareDialog';
 import { SpotViewer } from './workspace/spot/SpotViewer';
 import { CrashNotice } from './diagnostics/CrashNotice';
 import { ReportProblemDialog } from './diagnostics/ReportProblem';
@@ -585,6 +586,7 @@ export function App() {
       <RfLayer />
       <Lightbox />
       <RemoveHost />
+      <AreaCompareHost />
       <LayerProperties />
       <SpotViewer />
       <ReportProblemDialog />
