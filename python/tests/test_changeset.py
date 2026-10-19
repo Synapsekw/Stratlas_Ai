@@ -167,3 +167,17 @@ def test_check_scope_refuses_a_scope_without_a_mask():
     for bad in ({"id": "pad a", "name": "x"}, {"id": "p", "name": ""}, {"id": "p", "name": "x" * 121}, "p"):
         with pytest.raises(JobError, match="scope must be"):
             check_scope({"scope": bad, "mask": ring})
+
+
+def test_long_ids_differing_only_past_the_cut_stay_distinct():
+    scope = "a" * 70
+    a = change_set_id("c" * 100 + "1", "d", "change.raster", scope)
+    b = change_set_id("c" * 100 + "2", "d", "change.raster", scope)
+    assert a != b
+    assert len(a) <= 120 and len(b) <= 120
+    assert SET_ID.match(a) and SET_ID.match(b)
+
+
+def test_change_set_id_refuses_a_bad_scope_id():
+    with pytest.raises(ValueError):
+        change_set_id("c1", "c2", "change.raster", "pad a")

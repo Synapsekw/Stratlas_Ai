@@ -58,9 +58,11 @@ def change_set_id(from_capture: str, to_capture: str, producer: str, scope_id: s
     if scope_id is None:
         safe = base[:120]
     else:
+        if not SCOPE_ID.match(scope_id):
+            raise ValueError(f'"{scope_id}" is not a valid scope id.')
         safe = f"{base}-area-{scope_id}"
         if len(safe) > 120:
-            tag = hashlib.sha1(scope_id.encode("utf-8")).hexdigest()[:12]
+            tag = hashlib.sha1(safe.encode("utf-8")).hexdigest()[:12]
             safe = f"{base[: 120 - 18]}-area-{tag}"
     if not safe:
         raise JobError("A change set needs a name made of letters and digits.")
