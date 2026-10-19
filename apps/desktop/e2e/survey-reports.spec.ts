@@ -14,7 +14,7 @@ import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
 import { pdfText } from './pdf';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measurementsList } from './island';
+import { measureTree, selectMeasure } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -51,13 +51,10 @@ const figure = (text: string): number => {
 /** Text without spaces, lower case: pdfjs splits the report's runs, headings are capitals. */
 const flat = (s: string) => s.replace(/\s+/g, '').toLowerCase();
 
-/** Open the measurement list and focus a measurement by its label. */
+/** Open the measurements in the tree and focus a measurement by its label. */
 async function focus(win: Page, label: string): Promise<void> {
-  const list = win.getByTestId('survey-list');
-  if (!(await list.isVisible())) {
-    await measurementsList(win);
-  }
-  await win.getByTestId('survey-item').filter({ hasText: label }).locator('.sv-item-main').click();
+  await measureTree(win);
+  await selectMeasure(win, label);
   await expect(win.getByTestId('survey-label')).toHaveValue(label);
 }
 

@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measurementsList, siteDataButton } from './island';
+import { measureSaved, measureTree, selectMeasure, siteDataButton } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -49,8 +49,9 @@ interface Result {
 
 /** Save and read back the measurement with its items and results. */
 async function saved(win: Page, dir: string, id: string) {
-  await win.getByTestId('survey-list-save').click();
-  await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+  const footer = await measureSaved(win);
+  await footer.getByTestId('survey-list-save').click();
+  await expect(footer).toContainText('Measurements saved.');
   const m = (
     await readJson<MeasurementsFile>(dir, 'survey', 'measurements.json')
   ).measurements.find((x) => x.id === id);
@@ -86,12 +87,8 @@ test('compliance presets compute cut/fill and remaining to the pad design, with 
   test.setTimeout(480_000);
   const dir = earthworksProject.dir;
   await open(win, earthworksProject);
-  await measurementsList(win);
-  await win
-    .getByTestId('survey-item')
-    .filter({ hasText: 'Pad to design' })
-    .locator('.sv-item-main')
-    .click();
+  await measureTree(win);
+  await selectMeasure(win, 'Pad to design');
   const panel = win.getByTestId('survey-panel');
   await expect(panel.getByRole('textbox', { name: 'Measurement name' })).toHaveValue(
     'Pad to design',

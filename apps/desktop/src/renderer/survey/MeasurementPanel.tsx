@@ -4,6 +4,7 @@
  * another survey), vertices (drag in the 3D view, or type coordinates); a polygon's comparison
  * items and calculators are G4's (`Comparison.tsx`, `Calculators.tsx`).
  */
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, unitLabel } from '@aio/geo';
 import type { MeasurementStyle, SurveyMeasurement } from '@aio/schema';
 import {
@@ -49,6 +50,8 @@ export function MeasurementPanel() {
   const focus = useMeasure((s) => s.focus);
   const m = useMeasure((s) => s.file.measurements.find((x) => x.id === s.focus) ?? null);
   const readOnly = useMeasure((s) => s.readOnly);
+  // a look-only reviewer reads the panel as the tree and the 3D menu offer it: no edits
+  const lookOnly = useAnnotateReadOnly();
   const settings = useMeasure((s) => s.settings);
   const templates = useMeasure((s) => s.templates);
   const surface = useMeasure((s) => s.surface);
@@ -82,7 +85,7 @@ export function MeasurementPanel() {
   const family = all.filter(
     (t) => t.family === m.family && (!isTelecomTool(t.tool) || t.tool === m.tool),
   );
-  const ro = readOnly;
+  const ro = readOnly || lookOnly;
   const setStyle = (patch: Partial<MeasurementStyle>) => {
     patchMeasurement(m.id, { style: { color: MEASURE_COLOR, ...(m.style ?? {}), ...patch } });
   };

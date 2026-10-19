@@ -59,6 +59,11 @@ import { authorName } from '../author';
 import { bridge } from '../shell';
 import { designs, loadDesigns } from './designsStore';
 import { drawnPoints, scopeShift, storedPoints } from './measureDates';
+import {
+  createMeasureVisibilityMemory,
+  measureStorage,
+  type MeasureVisibilityMemory,
+} from './measureVisibility';
 
 export type MeasureDialog =
   | { kind: 'units'; target: 'site' | 'measurement' }
@@ -111,6 +116,12 @@ export interface RolePrompt {
   error: string | null;
 }
 
+/** Measurements a deletion took out, each with its index in the file before it. */
+export interface UndoDelete {
+  items: { m: SurveyMeasurement; index: number }[];
+  seq: number;
+}
+
 export interface MeasureState {
   projectId: string | null;
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -139,11 +150,23 @@ export interface MeasureState {
   /** The measurement the panel shows. */
   focus: string | null;
   editing: EditState | null;
-  listOpen: boolean;
-  /** View-only overlay visibility for every saved tool; reset when changing projects. */
-  measurementsVisible: boolean;
+  /**
+   * Always true: the one switch for every saved measurement is gone (the tree's eyes hide them one
+   * by one, `hiddenMeasurements`). Kept read-only, and typed `boolean`, for the readers that still
+   * compare it.
+   */
+  readonly measurementsVisible: boolean;
   /** Saved measurements hidden one by one in the views (the eye on their row; view only). */
   hiddenMeasurements: readonly string[];
+  /**
+   * The last deletion, until it is undone, dismissed or replaced by the next one: the deleted
+   * measurements with where each stood in the file (`seq` makes each deletion new).
+   */
+  undoDelete: UndoDelete | null;
+  /** The tree is asked to scroll to and select a measurement (`seq` makes each ask new). */
+  reveal: { id: string | null; seq: number; openSidebar: boolean } | null;
+  /** The tree is asked to open an inline new-folder row for these measurements. */
+  newFolder: { ids: string[]; seq: number } | null;
   dialog: MeasureDialog;
   snap: SnapSettings;
   /** The surface readouts sample (the 3D view's terrain until G2's prepared surfaces). */
@@ -199,9 +222,11 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   selected: [],
   focus: null,
   editing: null,
-  listOpen: false,
   measurementsVisible: true,
   hiddenMeasurements: [],
+  undoDelete: null,
+  reveal: null,
+  newFolder: null,
   dialog: null,
   rolePrompt: null,
 });
@@ -226,6 +251,15 @@ const set = (patch: Partial<MeasureState>) => {
 };
 const get = () => measureStore.getState();
 
+let visibilityMemory: MeasureVisibilityMemory = createMeasureVisibilityMemory(measureStorage());
+/** Replace where hidden ids are remembered (tests). */
+export function setMeasureVisibilityMemory(m: MeasureVisibilityMemory): void {
+  visibilityMemory = m;
+}
+let revealSeq = 0;
+let undoSeq = 0;
+let newFolderSeq = 0;
+
 export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
   text(s.file) !== s.savedText;
 
@@ -247,11 +281,17 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     set({ status: 'error', error });
     return;
   }
+  // hidden ids are remembered per project; ones no longer in the file are dropped
+  const remembered = visibilityMemory.load(projectId);
+  const present = new Set(m.value.file.measurements.map((x) => x.id));
+  const hidden = remembered.filter((id) => present.has(id));
+  if (hidden.length < remembered.length) visibilityMemory.save(projectId, hidden);
   const patch: Partial<MeasureState> = {
     status: 'ready',
     file: m.value.file,
     savedText: text(m.value.file),
     readOnly: m.value.readOnly,
+    hiddenMeasurements: hidden,
   };
   if (t.ok && t.value.ok) patch.templates = { project: t.value.project, user: t.value.user };
   // site settings are G1's; until they exist the defaults hold (metres)
@@ -266,8 +306,11 @@ export async function saveMeasurements(): Promise<boolean> {
   const s = get();
   if (!s.projectId || s.readOnly || s.saving) return false;
   const file = s.file;
+  const projectId = s.projectId;
   set({ saving: true, message: null });
-  const r = await bridge.call('survey:writeMeasurements', { projectId: s.projectId, file });
+  const r = await bridge.call('survey:writeMeasurements', { projectId, file });
+  // another project opened meanwhile: its state is not this save's to touch, or to save
+  if (get().projectId !== projectId) return false;
   const ok = r.ok && r.value.ok;
   const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
   set({
@@ -276,6 +319,8 @@ export async function saveMeasurements(): Promise<boolean> {
     ...(ok ? { savedText: text(file) } : {}),
     ...(ok && get().file === file ? { resultsUnwritten: false } : {}),
   });
+  // an edit made while this save was in flight (an Undo right after a Delete) is saved too
+  if (ok && get().autosave && get().status === 'ready' && isDirty(get())) void saveMeasurements();
   return ok;
 }
 
@@ -292,7 +337,16 @@ export function revertMeasurements(): void {
       focus: null,
       editing: null,
       message: null,
+      undoDelete: undoLeft(s.undoDelete, parsed.data),
     });
+}
+
+/** What an undo still has to bring back: the deleted measurements not in `file` again. */
+function undoLeft(u: UndoDelete | null, file: MeasurementsFile): UndoDelete | null {
+  if (!u) return null;
+  const present = new Set(file.measurements.map((m) => m.id));
+  const items = u.items.filter((x) => !present.has(x.m.id));
+  return items.length === 0 ? null : { ...u, items };
 }
 
 function changed(file: MeasurementsFile, extra: Partial<MeasureState> = {}): void {
@@ -389,7 +443,7 @@ export function addMeasurement(m: SurveyMeasurement): void {
   if (s.readOnly) return;
   changed(
     { ...s.file, measurements: [...s.file.measurements, m] },
-    { selected: [m.id], focus: m.id, measurementsVisible: true },
+    { selected: [m.id], focus: m.id },
   );
 }
 
@@ -397,14 +451,46 @@ export function deleteMeasurements(ids: readonly string[]): void {
   const s = get();
   if (s.readOnly) return;
   const gone = new Set(ids);
+  const items = s.file.measurements.flatMap((m, index) => (gone.has(m.id) ? [{ m, index }] : []));
+  if (items.length === 0) return;
+  undoSeq += 1;
   changed(
     { ...s.file, measurements: s.file.measurements.filter((m) => !gone.has(m.id)) },
     {
       selected: s.selected.filter((id) => !gone.has(id)),
       focus: s.focus && gone.has(s.focus) ? null : s.focus,
       editing: s.focus && gone.has(s.focus) ? null : s.editing,
+      undoDelete: { items, seq: undoSeq },
     },
   );
+}
+
+/**
+ * Bring the last deleted measurements back as they were (same ids, folder and style), each at
+ * its old place in the file. An ordinary edit: it marks the file unsaved, or Autosave saves it.
+ */
+export function undoDeleteMeasurements(): void {
+  const s = get();
+  const left = undoLeft(s.undoDelete, s.file);
+  if (s.readOnly || !left) {
+    set({ undoDelete: null });
+    return;
+  }
+  const measurements = [...s.file.measurements];
+  for (const { m, index } of [...left.items].sort((a, b) => a.index - b.index))
+    measurements.splice(Math.min(index, measurements.length), 0, m);
+  const back = left.items.map((x) => x.m.id);
+  const focus = back[0] ?? null;
+  // the focus moves to what came back: an edit under way on another measurement ends
+  changed(
+    { ...s.file, measurements },
+    { undoDelete: null, selected: back, focus, editing: focus === s.focus ? s.editing : null },
+  );
+}
+
+/** Let go of the last deletion's undo. */
+export function dismissUndoDelete(): void {
+  set({ undoDelete: null });
 }
 
 /** Copy a measurement into another survey (a new id, scoped to that capture). */
@@ -459,27 +545,77 @@ export function toggleSelected(id: string): void {
   select(s.selected.includes(id) ? s.selected.filter((x) => x !== id) : [...s.selected, id], id);
 }
 
-export function setListOpen(open: boolean): void {
-  set({ listOpen: open });
-}
-
-/** View visibility does not mutate saved data, so it is also available in read-only packages. */
-export function setMeasurementsVisible(visible: boolean): void {
-  set({
-    measurementsVisible: visible,
-    hiddenMeasurements: [],
-    ...(!visible ? { editing: null } : {}),
-  });
-}
-
-/** Hide or show one saved measurement in the views (view only, like Show all and Hide all). */
-export function setMeasurementHidden(id: string, hidden: boolean): void {
+/**
+ * Hide or show saved measurements in the views. View only and remembered per project, so it also
+ * works in read-only packages and never counts as an unsaved change.
+ */
+export function setMeasurementsHidden(ids: readonly string[], hidden: boolean): void {
   const s = get();
-  const rest = s.hiddenMeasurements.filter((x) => x !== id);
+  const which = new Set(ids);
+  const rest = s.hiddenMeasurements.filter((x) => !which.has(x));
+  const next = hidden ? [...rest, ...ids.filter((id) => !s.hiddenMeasurements.includes(id))] : rest;
   set({
-    hiddenMeasurements: hidden ? [...rest, id] : rest,
-    ...(hidden && s.focus === id ? { editing: null } : {}),
+    hiddenMeasurements: next,
+    ...(hidden && s.focus !== null && which.has(s.focus) ? { editing: null } : {}),
   });
+  if (s.projectId) visibilityMemory.save(s.projectId, next);
+}
+
+export function setMeasurementHidden(id: string, hidden: boolean): void {
+  setMeasurementsHidden([id], hidden);
+}
+
+/** Give measurements a preset colour; their fill follows only when it was the old colour. */
+export function setMeasurementColour(ids: readonly string[], color: string): void {
+  const s = get();
+  if (s.readOnly) return;
+  const which = new Set(ids);
+  const t = now();
+  changed({
+    ...s.file,
+    measurements: s.file.measurements.map((m) => {
+      if (!which.has(m.id)) return m;
+      const style = m.style
+        ? { ...m.style, color, ...(m.style.fill === m.style.color ? { fill: color } : {}) }
+        : { color };
+      return { ...m, style, updatedAt: t };
+    }),
+  });
+}
+
+/** Rename a measurement; false (and nothing changes) for an empty, over-long or same name. */
+export function renameMeasurement(id: string, label: string): boolean {
+  const s = get();
+  const next = label.trim();
+  const m = s.file.measurements.find((x) => x.id === id);
+  if (s.readOnly || !m || next === '' || next.length > 200 || next === m.label) return false;
+  patchMeasurement(id, { label: next });
+  return true;
+}
+
+/** The folders in use (trimmed, distinct), A to Z. */
+export function measureFolders(file: MeasurementsFile): string[] {
+  const folders = new Set<string>();
+  for (const m of file.measurements) {
+    const f = m.folder?.trim();
+    if (f) folders.add(f);
+  }
+  return [...folders].sort(new Intl.Collator(undefined, { sensitivity: 'base' }).compare);
+}
+
+/** Ask the tree to show (open the sidebar for) and select a measurement. */
+export function revealMeasurement(id: string | null, opts: { openSidebar?: boolean } = {}): void {
+  set({ reveal: { id, seq: ++revealSeq, openSidebar: opts.openSidebar ?? true } });
+}
+
+/** Ask the tree for an inline new-folder row that will take these measurements. */
+export function askNewFolder(ids: readonly string[]): void {
+  revealMeasurement(ids[0] ?? null);
+  set({ newFolder: { ids: [...ids], seq: ++newFolderSeq } });
+}
+
+export function endNewFolder(): void {
+  set({ newFolder: null });
 }
 
 export function openDialog(dialog: MeasureDialog): void {
@@ -513,11 +649,9 @@ export function startTool(tool: MeasurementTool, opts: StartToolOptions = {}): v
     if ((get().readOnly && !transient) || get().projectId !== projectId) return;
     set({
       tool: { tool, template, picks, ...(forOther ?? {}), ...(transient ? { transient } : {}) },
-      measurementsVisible: true,
       draw: initialDraw(TOOL_FAMILY[tool]),
       editing: null,
       message: null,
-      ...(isTelecomTool(tool) ? { listOpen: false } : {}),
     });
   };
   if (template) void withDesignLayers(template, begin);
@@ -691,12 +825,13 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
     if (s.tool.then) {
       // a one-shot drawing for another tool: hand the shape over and stop
       stopTool();
-      set({ listOpen: true });
+      revealMeasurement(m.id, { openSidebar: false });
       s.tool.then(m);
       return;
     }
     // the tool stays on for the next one (a template used twice in a row)
-    set({ draw: initialDraw(TOOL_FAMILY[tool]), listOpen: true });
+    set({ draw: initialDraw(TOOL_FAMILY[tool]) });
+    revealMeasurement(m.id, { openSidebar: false });
     return;
   }
   set({ draw: next, message: null });
@@ -713,7 +848,6 @@ export function startEditing(): void {
     editing: initialEdit(drawnPoints(m, openManifest())),
     tool: null,
     draw: null,
-    measurementsVisible: true,
   });
 }
 

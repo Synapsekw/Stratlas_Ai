@@ -290,9 +290,6 @@
     "shadow": 3,
     "zIndex": 5
   },
-  "apps/desktop/src/renderer/survey/MeasurementList.tsx": {
-    "title": 1
-  },
   "apps/desktop/src/renderer/survey/qa.css": {
     "shadow": 1,
     "zIndex": 2

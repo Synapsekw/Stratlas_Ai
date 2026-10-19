@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureControl, measurementsList } from './island';
+import { markMeasure, measureControl, measureSaved, measureTree, selectMeasure } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -30,12 +30,11 @@ async function open(win: Page, p: SurveyDemoProject): Promise<void> {
 }
 
 async function openList(win: Page): Promise<void> {
-  await measurementsList(win);
-  await expect(win.getByTestId('survey-list')).toBeVisible();
+  await measureTree(win);
 }
 
 async function focus(win: Page, label: string): Promise<Locator> {
-  await win.getByTestId('survey-item').filter({ hasText: label }).locator('.sv-item-main').click();
+  await selectMeasure(win, label);
   const panel = win.getByTestId('survey-panel');
   await expect(panel.getByRole('textbox', { name: 'Measurement name' })).toHaveValue(label);
   return panel;
@@ -51,8 +50,8 @@ async function settled(panel: Locator, n: number): Promise<void> {
 
 /** Save and read back the measurement with its results. */
 async function saved(win: Page, dir: string, id: string) {
-  await win.getByTestId('survey-list-save').click();
-  await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+  await (await measureSaved(win)).getByTestId('survey-list-save').click();
+  await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
   const m = (await readMeasurements(dir)).measurements.find((x) => x.id === id);
   if (!m) throw new Error(`no measurement ${id}`);
   return m;
@@ -227,12 +226,11 @@ test.describe('volumes and comparisons', () => {
     await settled(panel, 2);
     panel = await focus(win, 'Stockpile B');
     await settled(panel, 1);
-    for (const label of ['Stockpile A', 'Stockpile B'])
-      await win.getByTestId('survey-item').filter({ hasText: label }).getByRole('checkbox').check();
+    for (const label of ['Stockpile A', 'Stockpile B']) await markMeasure(win, label);
     const bulk = win.getByTestId('survey-bulk');
     await expect(bulk).toBeVisible();
-    await win.getByTestId('survey-list-save').click();
-    await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+    await (await measureSaved(win)).getByTestId('survey-list-save').click();
+    await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
     const file = await readMeasurements(dir);
     const a = file.measurements.find((x) => x.id === 'm-pile-a');
     const b = file.measurements.find((x) => x.id === 'm-pile-b');
@@ -291,8 +289,8 @@ test.describe('volumes and comparisons', () => {
     await expect(dlg.getByTestId('survey-site-snap-note')).toContainText('no boundary model');
     await dlg.getByTestId('survey-site-accept').click();
     await dlg.getByRole('button', { name: 'Close' }).click();
-    await win.getByTestId('survey-list-save').click();
-    await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+    await (await measureSaved(win)).getByTestId('survey-list-save').click();
+    await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
     const after = (await readMeasurements(dir)).measurements;
     expect(after).toHaveLength(before + 2);
     const kept = after.filter((m) => m.folder === 'Whole-site regions');

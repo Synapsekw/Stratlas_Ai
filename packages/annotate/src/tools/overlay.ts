@@ -312,6 +312,17 @@ function openClusterList(
 const heatWeight = (rank: number, top: number) =>
   rank < 0 ? 0.35 : 0.45 + 0.55 * (top > 1 ? (rank - 1) / (top - 1) : 1);
 
+/** The pin hit test of each 3D canvas an overlay is on (`issueAt`). */
+const pinHits = new WeakMap<object, (clientX: number, clientY: number) => string | null>();
+
+/**
+ * The issue whose pin, cluster or code label is under client point (x, y) on `canvas` (the 3D
+ * renderer's canvas), or null: a tool on the same canvas leaves that click to the issue.
+ */
+export function issueAt(canvas: object, clientX: number, clientY: number): string | null {
+  return pinHits.get(canvas)?.(clientX, clientY) ?? null;
+}
+
 export interface IssueOverlayOptions {
   /** How pins behind surfaces are found (tests pass a stand-in). */
   occlusion?: OcclusionFactory;
@@ -792,6 +803,12 @@ export function installIssueOverlay(
     el.addEventListener('pointerdown', onDown as EventListener);
     el.addEventListener('pointerup', onUp as EventListener);
     el.addEventListener('pointermove', onMove as EventListener);
+    const pinHit = (clientX: number, clientY: number): string | null => {
+      const at = local({ clientX, clientY });
+      const hit = hitItem(items, at.x, at.y);
+      return hit ? (hit.members[0]?.issueId ?? null) : labels.hitCode(clientX, clientY);
+    };
+    pinHits.set(el, pinHit);
     rebuild();
     drapeAll();
     drapeSelection();
@@ -806,6 +823,7 @@ export function installIssueOverlay(
       el.removeEventListener('pointerdown', onDown as EventListener);
       el.removeEventListener('pointerup', onUp as EventListener);
       el.removeEventListener('pointermove', onMove as EventListener);
+      if (pinHits.get(el) === pinHit) pinHits.delete(el);
       labels.dispose();
       drape.dispose();
       areaLines.geometry.dispose();

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { rowTarget } from './menuTargets';
+import { makeActionCtx } from '@aio/ui';
+import type { ProjectManifest } from '@aio/schema';
+import { measureTarget, menuTitle, rowTarget } from './menuTargets';
 
 describe('rowTarget', () => {
   const row = { id: 'a', layerId: 'a', layerKind: 'mesh' as const, name: 'A' };
@@ -46,5 +48,38 @@ describe('rowTarget', () => {
       layerIds: ['bm'],
     });
     expect(rowTarget({ id: 'x', name: 'X' }, new Set())).toBeNull();
+  });
+});
+
+describe('measureTarget', () => {
+  it('a measurement menu takes the marked measurements and ignores marked layers', () => {
+    const marked = new Set(['measure:a', 'measure:b', 'layer1']);
+    expect(measureTarget('a', marked)).toEqual({
+      kind: 'measurements',
+      ids: ['a', 'b'],
+      clicked: 'a',
+    });
+    expect(measureTarget('c', marked)).toEqual({ kind: 'measurements', ids: ['c'], clicked: 'c' });
+    expect(rowTarget({ id: 'layer1', layerId: 'layer1', name: 'L' }, marked)).toEqual({
+      kind: 'layers',
+      layerIds: ['layer1'],
+    });
+  });
+  it('one marked measurement is just that one; marked layers keep the measurements out', () => {
+    expect(measureTarget('a', new Set(['measure:a', 'layer1']))).toEqual({
+      kind: 'measurements',
+      ids: ['a'],
+      clicked: 'a',
+    });
+    expect(
+      rowTarget({ id: 'l1', layerId: 'l1', name: 'L' }, new Set(['l1', 'l2', 'measure:a'])),
+    ).toEqual({ kind: 'layers', layerIds: ['l1', 'l2'] });
+  });
+  it('counts several measurements in the heading, names one', () => {
+    const ctx = makeActionCtx({ manifest: { layers: [] } as unknown as ProjectManifest });
+    expect(menuTitle({ kind: 'measurements', ids: ['a', 'b'], clicked: 'a' }, ctx, 'A')).toBe(
+      '2 measurements',
+    );
+    expect(menuTitle({ kind: 'measurements', ids: ['a'], clicked: 'a' }, ctx, 'A')).toBe('A');
   });
 });

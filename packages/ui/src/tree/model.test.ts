@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { Layer } from '@aio/schema';
 import { mockIssue, mockManifest, T0 } from '../__fixtures__/project';
-import { buildDatasetTree, groupDatableLayerIds, type TreeGroup } from './model';
+import {
+  buildDatasetTree,
+  groupDatableLayerIds,
+  groupLayerIds,
+  groupMeasureIds,
+  measureIdOf,
+  measureMark,
+  measurementsGroup,
+  treeLayerIds,
+  type TreeGroup,
+  type TreeItem,
+} from './model';
 
 describe('buildDatasetTree', () => {
   const tree = buildDatasetTree(
@@ -223,5 +234,44 @@ describe('drawings in the dataset tree', () => {
     expect(meta['sheet-layout']).toBe('not placed');
     expect(meta['plan-site']).toBe('plan');
     expect(meta['drawing-site-walls']).toBe('GeoJSON');
+  });
+});
+
+describe('measurements group', () => {
+  it('puts the Measurements group right after Maps and rasters', () => {
+    const rows: TreeItem[] = [
+      { id: 'measure:a', name: 'A', measure: { id: 'a', color: '#ffd166', dimmed: false } },
+      {
+        id: 'measure-folder:Fence',
+        name: 'Fence',
+        folder: 'Fence',
+        children: [
+          { id: 'measure:b', name: 'B', measure: { id: 'b', color: '#ffd166', dimmed: false } },
+        ],
+      },
+    ];
+    const groups = buildDatasetTree(mockManifest(), [], {}, { measurements: rows });
+    expect(groups.map((g) => g.kind)).toEqual([
+      'models',
+      'pointclouds',
+      'maps',
+      'measurements',
+      'video',
+      'photos',
+      'panoramas',
+    ]);
+    const m = groups.find((g) => g.kind === 'measurements');
+    expect(m?.count).toBe(2);
+    expect(m && groupMeasureIds(m)).toEqual(['a', 'b']);
+    expect(m && groupLayerIds(m)).toEqual([]);
+    expect(treeLayerIds(groups)).not.toContain('a');
+  });
+  it('namespaces measurement marks', () => {
+    expect(measureMark('m1')).toBe('measure:m1');
+    expect(measureIdOf('measure:m1')).toBe('m1');
+    expect(measureIdOf('layer-1')).toBeNull();
+  });
+  it('has no Measurements group without measurements', () => {
+    expect(measurementsGroup([])).toBeNull();
   });
 });

@@ -73,7 +73,6 @@ export function followMeasureTool(
       // a telecom tool stops on its last pick: its reading stays in view
       if (isTelecomTool(prev.tool.tool) && s.focus && s.focus !== focusAtStart) follow();
     }
-    if (s.listOpen && !prev.listOpen) follow();
     if (!s.tool && s.focus && s.focus !== prev.focus) follow();
   });
   return () => {

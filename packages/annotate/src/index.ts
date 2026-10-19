@@ -95,7 +95,7 @@ export {
   type MeshDrawMode,
   type MeshDrawState,
 } from './tools/mesh';
-export { installIssueOverlay, ndcOf, startSceneTool, type SceneTool } from './tools/scene';
+export { installIssueOverlay, issueAt, ndcOf, startSceneTool, type SceneTool } from './tools/scene';
 export {
   clusterScreen,
   hitItem,

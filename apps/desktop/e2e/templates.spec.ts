@@ -1,7 +1,8 @@
 /**
  * Measurement templates in the real app (M11 G3): make "Pad check" (a volume template with a
  * dropdown "Crew" and a cut and fill comparison), bookmark it, use it twice from the toolbar, set
- * the Crew on one and filter the list by it. Synthetic tiny project, off-screen, zero network;
+ * the Crew on one (the measurement list and its filters gave way to the Datasets tree). Synthetic
+ * tiny project, off-screen, zero network;
  * axe on the template editor.
  */
 import type { Page } from '@playwright/test';
@@ -9,7 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, openProject, test } from './fixtures';
-import { measureControl } from './island';
+import { measureControl, measureSaved, measureTree } from './island';
 
 async function openTiny(win: Page): Promise<string> {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
@@ -68,22 +69,18 @@ test.describe('measurement templates', () => {
       await win.mouse.click(cx + dx + 80, cy + 50);
       await win.keyboard.press('Enter');
     }
-    await expect(win.getByTestId('survey-item')).toHaveCount(2);
     await win.keyboard.press('Escape');
+    await measureTree(win);
+    await expect(win.getByTestId('measure-row')).toHaveCount(2);
 
-    // set the Crew on the second pad, then filter the list by it
+    // set the Crew on the second pad
     const panel = win.getByTestId('survey-panel');
     await expect(panel.getByTestId('survey-label')).toHaveValue('Pad check 2');
     await panel.getByTestId('survey-field-crew').selectOption('North');
-    const list = win.getByTestId('survey-list');
-    await list.getByRole('button', { name: /Filters/ }).click();
-    await list.getByTestId('survey-filter-field').selectOption('crew=North');
-    await expect(win.getByTestId('survey-item')).toHaveCount(1);
-    await list.getByTestId('survey-filter-field').selectOption('');
-    await expect(win.getByTestId('survey-item')).toHaveCount(2);
 
-    await win.getByTestId('survey-list-save').click();
-    await expect(list).toContainText('Measurements saved.');
+    const footer = await measureSaved(win);
+    await footer.getByTestId('survey-list-save').click();
+    await expect(footer).toContainText('Measurements saved.');
     const saved = await readJson<{
       measurements: {
         label: string;

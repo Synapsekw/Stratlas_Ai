@@ -13,6 +13,7 @@ import { LineUpOffer } from '../lineup/LineUpOffer';
 import { FarContentNotice } from '../builder/FarContentNotice';
 import { ProjectMapNotice } from '../mapCoverage/ProjectMapNotice';
 import { placement } from '../placement';
+import { MeasureUndoNotice } from '../survey/MeasureUndoNotice';
 import { PlaceOnModelNotice } from '../placement/PlaceOnModelNotice';
 import { ProcessingToolsNotice } from '../ProcessingToolsNotice';
 import { SyncNotices } from '../team/SyncNotices';
@@ -62,6 +63,7 @@ export function Toasts() {
       <LineUpOffer />
       <LineUpNotice />
       <PhotoPicksNotice />
+      <MeasureUndoNotice />
       <PlaceOnModelNotice store={placement} />
       <ProjectMapNotice />
       <FarContentNotice />

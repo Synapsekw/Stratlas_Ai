@@ -77,7 +77,7 @@ const EMPTY: Collection = { type: 'FeatureCollection', features: [] };
 /** Issue shapes (map polygons) draw from this zoom; below it they are points. */
 const SHAPE_ZOOM = 17;
 /** Every issue layer a hover or click can hit (badges, markers, focus, shapes). */
-const ISSUE_LAYERS = [
+export const ISSUE_LAYERS = [
   'aio-issue-shape-fill',
   'aio-issue-shape-line',
   'aio-issues-cluster',

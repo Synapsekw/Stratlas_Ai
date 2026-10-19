@@ -3,7 +3,14 @@ import type { ProjectManifest, SurveyMeasurement } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const look = vi.hoisted(() => ({ only: false }));
+vi.mock('@aio/annotate', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  useAnnotateReadOnly: () => look.only,
+}));
+
 import { MeasurementPanel } from './MeasurementPanel';
 import { measureStore } from './measureStore';
 
@@ -69,6 +76,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   host.remove();
+  look.only = false;
   measureStore.setState({ focus: null, selected: [], surface: null });
   workspace.getState().closeProject();
 });
@@ -102,5 +110,20 @@ describe('the measurement panel on a lined-up date', () => {
     });
     expect(cell('e')).toContain('102');
     expect(cell('n')).toContain('199');
+  });
+});
+
+describe('the measurement panel for a look-only reviewer', () => {
+  it('shows the measurement and offers no edits, as the tree and the 3D menu do', () => {
+    look.only = true;
+    act(() => {
+      root = createRoot(host);
+      root.render(<MeasurementPanel />);
+    });
+    expect(host.querySelector('[data-testid="survey-panel"]')).not.toBeNull();
+    expect(host.querySelector<HTMLInputElement>('[data-testid="survey-label"]')?.readOnly).toBe(
+      true,
+    );
+    expect(host.textContent).not.toContain('Delete measurement');
   });
 });

@@ -17,7 +17,7 @@ type VideoLayer = Extract<Layer, { kind: 'video' }>;
 /** A right-click closer than this to its press (pixels) is a click, not a pan or rotate. */
 const CLICK_PX = 5;
 /** Map layers of the drone (its marker, heading arrow and view footprint). */
-const MAP_DRONE = [
+export const MAP_DRONE = [
   'aio-drone-point',
   'aio-drone-heading',
   'aio-drone-footprint',

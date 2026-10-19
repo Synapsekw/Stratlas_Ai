@@ -59,10 +59,8 @@ describe('followMeasureTool', () => {
   interface Measuring {
     tool: { tool: string } | null;
     focus: string | null;
-    listOpen: boolean;
   }
-  const measure = () =>
-    createStore<Measuring>()(() => ({ tool: null, focus: null, listOpen: false }));
+  const measure = () => createStore<Measuring>()(() => ({ tool: null, focus: null }));
 
   it('lets the live Measure tab go when the Scene is left mid-drawing, so none stays live', () => {
     const bench = createWorkbenchStore(null);

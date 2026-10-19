@@ -16,7 +16,7 @@ import { colourSegmenterOnnx } from '../src/main/inference/fixtures/colourSegmen
 import { encodePng } from '../src/main/inference/fixtures/markerDetector';
 import { expectAccessible } from './a11y';
 import { expect, launchApp, openProject, test, type DataRoot } from './fixtures';
-import { measureControl } from './island';
+import { measureControl, measureSaved, measureTree } from './island';
 
 const ID = 'e2e-magic-polygon';
 const ORIGIN: [number, number, number] = [500_000, 3_200_000, 0];
@@ -225,10 +225,12 @@ test.describe('Suggest boundaries', () => {
 
       // Enter accepts the draft as the area measurement
       await win.keyboard.press('Enter');
-      await expect(win.getByTestId('survey-item')).toHaveCount(1);
       await win.keyboard.press('Escape');
-      await win.getByTestId('survey-list-save').click();
-      await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+      await measureTree(win);
+      await expect(win.getByTestId('measure-row')).toHaveCount(1);
+      const footer = await measureSaved(win);
+      await footer.getByTestId('survey-list-save').click();
+      await expect(footer).toContainText('Measurements saved.');
       const saved = JSON.parse(
         await readFile(join(root, 'survey', 'measurements.json'), 'utf8'),
       ) as Saved;

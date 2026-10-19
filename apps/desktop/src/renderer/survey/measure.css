@@ -131,9 +131,6 @@
   box-shadow: 0 12px 32px oklch(0.08 0.01 250 / 0.45);
   overflow: auto;
 }
-.sv-list {
-  flex: 1 1 50%;
-}
 .sv-panel {
   flex: 1 1 50%;
 }
@@ -204,34 +201,9 @@ textarea.sv-input {
   margin: 0;
   padding: 0;
 }
-.sv-bulk {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px;
-  border-radius: var(--r-4);
-  background: var(--bg-2);
-}
 .sv-scroll {
   overflow: auto;
   min-height: 60px;
-}
-.sv-empty {
-  margin: 8px 0;
-}
-.sv-all {
-  margin-bottom: 4px;
-}
-.sv-folder-h {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 4px 0;
-  font-size: var(--t-12);
-  font-weight: 600;
-  color: var(--fg-1);
-  text-align: left;
 }
 .sv-items {
   list-style: none;
@@ -246,34 +218,6 @@ textarea.sv-input {
   gap: 6px;
   padding: 2px 4px;
   border-radius: var(--r-4);
-}
-.sv-items li.on {
-  background: var(--bg-2);
-}
-.sv-item-main {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  text-align: left;
-  color: var(--fg-0);
-  font-size: var(--t-12);
-}
-.sv-item-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sv-item-value {
-  margin-left: auto;
-  white-space: nowrap;
-}
-.sv-swatch {
-  width: 10px;
-  height: 10px;
-  flex: none;
-  border-radius: 2px;
 }
 .sv-foot {
   display: flex;

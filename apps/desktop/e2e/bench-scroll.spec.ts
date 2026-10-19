@@ -3,7 +3,8 @@
  * column that does not scroll, so each bench's root is the scroller (`.wb-scroll`). Asserted on
  * the layout itself, not through a click: Playwright's click scrolls even an `overflow: hidden`
  * box into view, which a person cannot. With the context/agent divider moved up to its smallest,
- * the bench is taller than its pane, and the mouse wheel alone brings its last section into view.
+ * the bench is taller than its pane, and the mouse wheel alone brings the end of its last section
+ * into view.
  * Runs at the CI window (1100 x 720) on the tiny project with a point cloud, so the Point cloud
  * and Clean up tabs are there too.
  */
@@ -62,7 +63,11 @@ interface Box {
   bounded: boolean;
   scrolls: boolean;
   atEnd: boolean;
-  /** The bench's last section is inside the scroller's visible box. */
+  /**
+   * The bottom edge of the bench's last section is inside the scroller's visible box: the end of
+   * the bench is reached (the section itself may be taller than the pane, as the Measure
+   * catalogue is).
+   */
   lastShown: boolean;
 }
 
@@ -80,7 +85,7 @@ const measure = (win: Page): Promise<Box | null> =>
       bounded: r.bottom <= b.bottom + 1,
       scrolls: root.scrollHeight > root.clientHeight + 1,
       atEnd: root.scrollTop + root.clientHeight >= root.scrollHeight - 1,
-      lastShown: l.top >= r.top - 1 && l.bottom <= r.bottom + 1,
+      lastShown: l.bottom >= r.top - 1 && l.bottom <= r.bottom + 1,
     };
   });
 
@@ -127,11 +132,11 @@ test('every workbench tab scrolls its own body with the mouse wheel', async ({ w
     expect(before?.overflowY, `${id}: the bench scrolls`).toBe('auto');
     expect(before?.bounded, `${id}: the bench ends inside its tab`).toBe(true);
     expect(before?.scrolls, `${id}: the bench is taller than its pane`).toBe(true);
-    expect(before?.lastShown, `${id}: the last section starts out of view`).toBe(false);
+    expect(before?.lastShown, `${id}: the end of the last section starts out of view`).toBe(false);
     await wheelToEnd(win);
     const after = await measure(win);
     expect(after?.atEnd, `${id}: the wheel scrolls the bench to its end`).toBe(true);
-    expect(after?.lastShown, `${id}: the last section is reachable`).toBe(true);
+    expect(after?.lastShown, `${id}: the end of the last section is reachable`).toBe(true);
     if (id === 'clouds' || id === 'cleanup') {
       const dir = process.env.QUADRION_E2E_SHOTS;
       if (dir) await mkdir(dir, { recursive: true });

@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, openProject, test } from './fixtures';
-import { measureControl } from './island';
+import { measureControl, measureSaved, measureTree } from './island';
 
 interface Saved {
   schema: string;
@@ -70,9 +70,10 @@ test.describe('survey measurement tools', () => {
     await expect(win.getByTestId('survey-drawbar')).toContainText('3 points');
     // Enter with nothing typed finishes the line; Esc puts the tool away
     await win.keyboard.press('Enter');
-    await expect(win.getByTestId('survey-item')).toHaveCount(1);
     await win.keyboard.press('Escape');
     await expect(win.getByTestId('survey-drawbar')).toHaveCount(0);
+    await measureTree(win);
+    await expect(win.getByTestId('measure-row')).toHaveCount(1);
 
     const panel = win.getByTestId('survey-panel');
     await expect(panel).toBeVisible();
@@ -82,8 +83,8 @@ test.describe('survey measurement tools', () => {
     });
 
     // autosave is off: nothing on disk until Save
-    await win.getByTestId('survey-list-save').click();
-    await expect(win.getByTestId('survey-list')).toContainText('Measurements saved.');
+    await (await measureSaved(win)).getByTestId('survey-list-save').click();
+    await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
     const saved = await readSaved(root);
     expect(saved.schema).toBe('aio.measurements/1');
     const [line] = saved.measurements;
@@ -111,19 +112,19 @@ test.describe('survey measurement tools', () => {
     await expect(dialog).toHaveCount(0);
     await expect(panel.getByTestId('survey-readout')).toContainText('US ft');
     await expect(panel.getByTestId('survey-units-summary')).toContainText('US ft');
-    await win.getByTestId('survey-list-save').click();
+    await (await measureSaved(win)).getByTestId('survey-list-save').click();
     await expect
       .poll(async () => (await readSaved(root)).measurements[0]?.units)
       .toEqual({ distance: 'us-ft' });
 
-    // The bulk view controls also cover the existing linear measurement tools.
-    const list = win.getByTestId('survey-list');
+    // The group eye of the tree also covers the existing linear measurement tools.
+    const group = (await measureTree(win)).getByTestId('tree-group-measurements');
     const beforeVisibility = await readSaved(root);
     await expect(win.locator('.sv-label')).toHaveCount(1);
-    await list.getByTestId('survey-hide-all').click();
+    await group.getByRole('button', { name: 'Measurements: hide all' }).click();
     await expect(win.locator('.sv-label')).toHaveCount(0);
-    await expect(win.getByTestId('survey-item')).toHaveCount(1);
-    await list.getByTestId('survey-show-all').click();
+    await expect(win.getByTestId('measure-row')).toHaveCount(1);
+    await group.getByRole('button', { name: 'Measurements: show all' }).click();
     await expect(win.locator('.sv-label')).toHaveCount(1);
     expect(await readSaved(root)).toEqual(beforeVisibility);
   });

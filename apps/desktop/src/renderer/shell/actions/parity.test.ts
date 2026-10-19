@@ -165,3 +165,11 @@ describe('menu parity with the menus before the registry', () => {
     expect(offered({ kind: 'layers', layerIds: ['set'] })).toContain('menu-create-engineering');
   });
 });
+
+describe('measurement items', () => {
+  it('a dataset row offers no measurement items', () => {
+    expect(
+      offered({ kind: 'layers', layerIds: ['v'] }).some((id) => id.startsWith('ctx-item-measure.')),
+    ).toBe(false);
+  });
+});

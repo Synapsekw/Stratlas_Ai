@@ -9,7 +9,7 @@ import type { EngineStage } from '@aio/engine';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import { isTelecomTool } from '@aio/survey';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useShell } from '../shell';
 import { primaryMap, primaryScene } from '../workspace/compare';
@@ -18,6 +18,8 @@ import { CompareLayer } from './Comparison';
 import { DesignRolePrompt } from './DesignRolePrompt';
 import { ExportDialogMount } from './ExportDialog';
 import { useMagicController } from './MagicPolygon';
+import { MeasureMenu } from './MeasureMenu';
+import { attachMeasurePick3d, attachMeasurePickMap, type MeasureMenuAt } from './measurePick';
 import { PendingNote, usePending } from './PendingNote';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
 import { loadMeasurements, setSurface, stopTool, stopEditing, useMeasure } from './measureStore';
@@ -46,7 +48,9 @@ export function MeasureMount({ stage }: { stage: EngineStage | null }) {
 /**
  * The measurements in the views: loads the project's file, attaches the 3D and map drawing, keeps
  * the Measure workbench and the survey panel tabs following the tools, and shows the unsaved
- * changes bar and the dialogs.
+ * changes bar and the dialogs. A measurement in the main 3D view or on the main map is picked with
+ * a left click and has its menu on a right-click (`measurePick`, `MeasureMenu`); the second view
+ * of a split and the display-only views have neither.
  */
 export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const project = useWorkspace((s) => s.project);
@@ -60,6 +64,10 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
   const activeTool = useMeasure((s) => s.tool?.tool);
   const dialog = useMeasure((s) => s.dialog);
+  const [menuAt, setMenuAt] = useState<MeasureMenuAt | null>(null);
+  const closeMenu = useCallback(() => {
+    setMenuAt(null);
+  }, []);
   useOverlaysLoad();
   useMeasureFollow();
   // Suggest boundaries holds the drawing while the measurements are on the stage, not its tab
@@ -75,7 +83,9 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     setSurface({ heightAt: clamp });
     // the main view's own dates: the date its side shows while the split shows dates
     const detach = attach3d(stage, frame, { dates: primaryScene });
+    const detachPick = attachMeasurePick3d(stage, frame, setMenuAt);
     return () => {
+      detachPick();
       detach();
       setSurface(null);
     };
@@ -88,6 +98,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
       attachMap(map, frame, clampZ, { dates: primaryMap }),
       attachSectionMap(map, frame.epsg),
       attachOverlaysMap(map, frame.epsg),
+      attachMeasurePickMap(map, frame, setMenuAt),
     ];
     return () => {
       for (const d of detach) d();
@@ -124,6 +135,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
       {dialog?.kind === 'units' && <UnitsDialog />}
       <DesignRolePrompt />
       <ExportDialogMount />
+      <MeasureMenu at={menuAt} onClose={closeMenu} />
     </>,
     document.body,
   );

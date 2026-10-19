@@ -7,6 +7,7 @@ export type TreeGroupKind =
   | 'models'
   | 'pointclouds'
   | 'maps'
+  | 'measurements'
   | 'drawings'
   | 'video'
   | 'walks'
@@ -28,6 +29,10 @@ export interface TreeItem {
   flightId?: string;
   /** The row is a drawing's plan (its picture): it takes the drawing controls. */
   drawing?: true;
+  /** A measurement row (its `id` is `measureMark(measure.id)`). */
+  measure?: { id: string; color: string; dimmed: boolean; dimmedWhy?: string };
+  /** A measurement folder row (`measure-folder:<name>`): its rows are `children`. */
+  folder?: string;
 }
 
 export interface TreeGroup {
@@ -42,6 +47,7 @@ const GROUPS: { kind: TreeGroupKind; label: string; icon: IconName }[] = [
   { kind: 'models', label: 'Models', icon: 'scene' },
   { kind: 'pointclouds', label: 'Point clouds', icon: 'cloud' },
   { kind: 'maps', label: 'Maps and rasters', icon: 'map' },
+  { kind: 'measurements', label: 'Measurements', icon: 'measure' },
   { kind: 'drawings', label: 'Drawings', icon: 'drawing' },
   { kind: 'video', label: 'Video', icon: 'video' },
   { kind: 'walks', label: '360 walks', icon: 'pano' },
@@ -93,6 +99,38 @@ function isDrawingLayer(layer: Layer): boolean {
 export interface TreeOptions {
   /** Drawings that lie on a provisional placement (their row says "not placed"). */
   unplaced?: ReadonlySet<string> | undefined;
+  /** The Measurements group's rows (measurements and folders of them). */
+  measurements?: readonly TreeItem[] | undefined;
+}
+
+/** Prefix that keeps a measurement's row and mark id apart from layer ids. */
+export const MEASURE_MARK = 'measure:';
+
+export function measureMark(id: string): string {
+  return `${MEASURE_MARK}${id}`;
+}
+
+/** The measurement id of a mark, or null when the mark is not a measurement's. */
+export function measureIdOf(mark: string): string | null {
+  return mark.startsWith(MEASURE_MARK) ? mark.slice(MEASURE_MARK.length) : null;
+}
+
+/** Measurement ids under a tree item (a folder row holds its measurements). */
+export function itemMeasureIds(it: TreeItem): string[] {
+  return [...(it.measure ? [it.measure.id] : []), ...(it.children ?? []).flatMap(itemMeasureIds)];
+}
+
+/** Every measurement id in a group, folder rows included. */
+export function groupMeasureIds(g: TreeGroup): string[] {
+  return g.items.flatMap(itemMeasureIds);
+}
+
+/** The Measurements group for these rows; null when there are none. */
+export function measurementsGroup(items: readonly TreeItem[]): TreeGroup | null {
+  const base = GROUPS.find((g) => g.kind === 'measurements');
+  const count = items.flatMap(itemMeasureIds).length;
+  if (!base || count === 0) return null;
+  return { ...base, count, items: [...items] };
 }
 
 function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): string | undefined {
@@ -196,6 +234,8 @@ export function buildDatasetTree(
     const drafts = issues.filter((i) => i.status === 'draft').length;
     if (drafts > 0) ann.items.push({ id: 'drafts', name: 'Drafts', meta: String(drafts) });
   }
+  const measured = measurementsGroup(opts.measurements ?? []);
+  if (measured) groups.set('measurements', measured);
   return [...groups.values()].filter((g) => g.items.length > 0);
 }
 

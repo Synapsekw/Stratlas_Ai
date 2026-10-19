@@ -272,15 +272,47 @@ export async function siteDataButton(win: Page, name: string): Promise<Locator> 
   return section.getByRole('button', { name, exact: true });
 }
 
-/** "Saved in this project" opened: the measurements list (`survey-list`). */
-export async function measurementsList(win: Page): Promise<Locator> {
-  // the section shows under the live strip too, while a tool draws
-  const section = win.getByTestId('wb-section-measurements');
-  if (!(await section.isVisible())) await measureBench(win);
-  await unfold(section);
-  const list = win.getByTestId('survey-list');
-  await expect(list).toBeVisible();
-  return list;
+/**
+ * The Measurements group of the Datasets tree, in the left sidebar on the Scene: the sidebar
+ * unfolded from its rail (the Scene folds it in a narrow window) and the group open. Returns the
+ * group, its head row and its rows (`measure-row`, `measure-folder`).
+ */
+export async function measureTree(win: Page): Promise<Locator> {
+  const handle = win.getByTestId('panel-handle-left');
+  if ((await handle.getAttribute('aria-expanded')) !== 'true') await handle.click();
+  await expect(handle).toHaveAttribute('aria-expanded', 'true');
+  const toggle = win.getByTestId('tree-group-toggle-measurements');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  return win.getByTestId('tree-group-measurements').locator('..');
+}
+
+/** A measurement's row in the Datasets tree, by its label. */
+export function measureRow(win: Page, label: string): Locator {
+  return win.getByTestId('measure-row').filter({ hasText: label });
+}
+
+/** Select a measurement in the tree: a click on its name (the row's middle can be its eye). */
+export async function selectMeasure(win: Page, label: string): Promise<void> {
+  await measureRow(win, label).locator('.tn').click();
+}
+
+/** Mark a measurement in the tree (Ctrl+click on its name), for several at once. */
+export async function markMeasure(win: Page, label: string): Promise<void> {
+  await measureRow(win, label)
+    .locator('.tn')
+    .click({ modifiers: ['Control'] });
+}
+
+/**
+ * The save controls of the measurements (`survey-saved`) under the Measure bench: Autosave, the
+ * status line and Save. They show under the live strip too, while a tool draws.
+ */
+export async function measureSaved(win: Page): Promise<Locator> {
+  const saved = win.getByTestId('survey-saved');
+  if (!(await saved.isVisible())) await measureBench(win);
+  await expect(saved).toBeVisible();
+  return saved;
 }
 
 /**

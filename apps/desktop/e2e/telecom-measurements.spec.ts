@@ -6,7 +6,14 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, test } from './fixtures';
-import { measureControl, measureStrip, stageMode } from './island';
+import {
+  measureControl,
+  measureSaved,
+  measureStrip,
+  measureTree,
+  selectMeasure,
+  stageMode,
+} from './island';
 import { writeTelecomFace } from './telecomFixtures';
 
 interface Inspect {
@@ -68,14 +75,19 @@ async function expectValue(win: Page, key: string, expected: number) {
 
 /**
  * From the focused button of the Measure workbench's live strip, Shift+Tab past the strip
- * buttons before it, and once more out of the strip: into the live card above it.
+ * buttons before it, out of the strip, and past the save controls (`survey-saved`, between the
+ * card and the strip): into the live card above them.
  */
 async function shiftTabOutOfStrip(win: Page) {
   const before = await measureStrip(win)
     .locator('button')
     .evaluateAll((all) => all.indexOf(document.activeElement as HTMLButtonElement));
   expect(before, 'the focus is in the strip').toBeGreaterThanOrEqual(0);
-  for (let i = 0; i <= before; i++) await win.keyboard.press('Shift+Tab');
+  const saveStops = await win
+    .getByTestId('survey-saved')
+    .locator('input:not([disabled]), button:not([disabled])')
+    .count();
+  for (let i = 0; i <= before + saveStops; i++) await win.keyboard.press('Shift+Tab');
 }
 
 async function saved(dir: string) {
@@ -158,32 +170,25 @@ for (const kind of ['mesh', 'cloud'] as const) {
         win.locator('[data-testid="project-card"], [data-scene-view] canvas').first(),
       ).toBeVisible();
       if (await win.getByTestId('project-card').first().isVisible()) await openFace(win);
+      // the panel's Measurements reveals them in the Datasets tree, unfolding the sidebar
       await win
         .getByTestId('telecom-tools')
         .getByRole('button', { name: 'Measurements', exact: true })
         .click();
-      await expect(win.getByTestId('survey-item')).toHaveCount(3);
-      await win
-        .getByTestId('survey-item')
-        .filter({ hasText: 'Azimuth' })
-        .locator('.sv-item-main')
-        .click();
-      await win.getByRole('button', { name: 'Close the measurements list' }).click();
+      await expect(win.getByTestId('measure-row')).toHaveCount(3);
+      await selectMeasure(win, 'Azimuth');
       await expectValue(win, 'azimuth', 0);
       expect((await saved(dataRoot.projectDir)).measurements[0]?.points).toEqual(azimuth.points);
 
-      // Bulk visibility covers every measurement, even when the list is filtered.
-      await panel.getByRole('button', { name: 'Measurements', exact: true }).click();
-      const list = win.getByTestId('survey-list');
+      // The group eye of the tree covers every measurement, and is not an edit to save.
+      const group = (await measureTree(win)).getByTestId('tree-group-measurements');
+      const footer = await measureSaved(win);
       const beforeVisibility = await saved(dataRoot.projectDir);
-      await list.getByRole('searchbox', { name: 'Search measurements' }).fill('Azimuth');
-      await expect(win.getByTestId('survey-item')).toHaveCount(1);
       await expect(win.locator('.sv-label')).toHaveCount(3);
-      await list.getByTestId('survey-hide-all').focus();
-      await win.keyboard.press('Space');
+      await group.getByRole('button', { name: 'Measurements: hide all' }).click();
       await expect(win.locator('.sv-label')).toHaveCount(0);
-      await expect(win.getByTestId('survey-item')).toHaveCount(1);
-      await expect(list.getByTestId('survey-list-save')).toBeDisabled();
+      await expect(win.getByTestId('measure-row')).toHaveCount(3);
+      await expect(footer.getByTestId('survey-list-save')).toBeDisabled();
       const anyVisible = await win.evaluate(
         (ids) => {
           const stage = (window as unknown as Inspect).__stratlas.stage();
@@ -200,13 +205,10 @@ for (const kind of ['mesh', 'cloud'] as const) {
         beforeVisibility.measurements.map((m) => m.id),
       );
       expect(anyVisible).toBe(false);
-      await list.getByTestId('survey-show-all').focus();
-      await win.keyboard.press('Space');
+      await group.getByRole('button', { name: 'Measurements: show all' }).click();
       await expect(win.locator('.sv-label')).toHaveCount(3);
-      await expect(list.getByTestId('survey-list-save')).toBeDisabled();
+      await expect(footer.getByTestId('survey-list-save')).toBeDisabled();
       expect(await saved(dataRoot.projectDir)).toEqual(beforeVisibility);
-      await list.getByRole('searchbox', { name: 'Search measurements' }).fill('');
-      await expect(win.getByTestId('survey-item')).toHaveCount(3);
       await win.screenshot({ path: testInfo.outputPath('measurement-visibility.png') });
     });
 
@@ -255,8 +257,11 @@ for (const kind of ['mesh', 'cloud'] as const) {
       await expect(panel.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
       await stageMode(win, '3D');
       await expect(win.getByTestId('telecom-tool-clearance')).toBeEnabled();
+      // nothing measured: the panel's Measurements unfolds the tree, with no Measurements group
       await panel.getByRole('button', { name: 'Measurements', exact: true }).click();
-      await expect(win.getByTestId('survey-item')).toHaveCount(0);
+      await expect(win.getByTestId('panel-handle-left')).toHaveAttribute('aria-expanded', 'true');
+      await expect(win.getByTestId('tree-group-measurements')).toHaveCount(0);
+      await expect(win.getByTestId('measure-row')).toHaveCount(0);
       await expect(
         readFile(join(dataRoot.projectDir, 'survey', 'measurements.json')),
       ).rejects.toThrow();

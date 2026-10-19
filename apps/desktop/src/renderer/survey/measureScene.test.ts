@@ -18,7 +18,7 @@ import {
   editEvent,
   flipAzimuth,
   measureStore,
-  setMeasurementsVisible,
+  setMeasurementsHidden,
   startEditing,
   startTool,
 } from './measureStore';
@@ -387,13 +387,13 @@ it('removes saved geometry and labels from the scene when hidden, including ordi
   expect(s.stage.scene.getObjectByName('measure:distance')).toBeDefined();
   expect(document.querySelectorAll('.sv-label')).toHaveLength(2);
   expect(snapProviders(measureStore.getState())[0]?.vertices()).toHaveLength(4);
-  setMeasurementsVisible(false);
+  setMeasurementsHidden(['distance', 'clearance'], true);
   expect(s.stage.scene.getObjectByName('measure:distance')).toBeUndefined();
   expect(s.stage.scene.getObjectByName('measure:clearance')).toBeUndefined();
   expect(document.querySelectorAll('.sv-label')).toHaveLength(0);
   expect(snapProviders(measureStore.getState())[0]?.vertices()).toHaveLength(0);
   expect(snapProviders(measureStore.getState())[0]?.segments()).toHaveLength(0);
-  setMeasurementsVisible(true);
+  setMeasurementsHidden(['distance', 'clearance'], false);
   expect(s.stage.scene.getObjectByName('measure:distance')).toBeDefined();
   expect(document.querySelectorAll('.sv-label')).toHaveLength(2);
   s.detach();
