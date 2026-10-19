@@ -1,11 +1,12 @@
 import { changeStore, ChangePanel, layersOf, type ChangePairContext } from '@aio/change';
+import type { ChangeSet } from '@aio/schema';
 import { formatDate } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useCaptureIndex } from '../workspace/compare';
 import { useSplit } from '../workspace/SplitPanes';
 import { openLineUp } from '../lineup/lineUpActions';
-import { rerunProducer } from './rerun';
+import { rerunProducer, rerunScoped } from './rerun';
 import { createChangeActions } from './actions';
 import { useChangeProject, useComparedPair } from './useChangeOverlays';
 
@@ -35,7 +36,9 @@ export function ChangesTab({ className }: { className?: string }) {
     layersTo: layersOf(index, project.manifest.layers, pair.to),
   });
   /** Run a producer again for the panel's pair; the error comes back for the panel to show. */
-  const rerun = (name: string): Promise<string | null> => {
+  const rerun = (name: string, set?: ChangeSet): Promise<string | null> => {
+    // an area's set replays the params it ran with, never a whole-map run
+    if (set?.scope && set.run?.params) return rerunScoped(set.producer, set.run.params);
     const pair = changeStore.getState().pair;
     return rerunProducer(name, pair ? context(pair) : null);
   };
@@ -48,13 +51,15 @@ export function ChangesTab({ className }: { className?: string }) {
       actions={actions}
       onLineUp={(from, to) => {
         // after a saved line-up the refused run starts again by itself
-        const refused = changeStore.getState().misaligned?.producer;
+        const mis = changeStore.getState().misaligned;
+        const refused = mis?.producer;
         openLineUp(
           from,
           to,
           refused
             ? () => {
-                void rerun(refused).then((error) => {
+                const run = mis.params ? rerunScoped(refused, mis.params) : rerun(refused);
+                void run.then((error) => {
                   if (error) changeStore.getState().setError(error);
                 });
               }

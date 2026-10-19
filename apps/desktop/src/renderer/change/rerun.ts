@@ -6,6 +6,10 @@ import {
   type ChangePairContext,
 } from '@aio/change';
 import { t } from '@aio/ui';
+import { workspace } from '@aio/workspace';
+import type { startChangeJob } from './producers/register';
+
+type StartJob = typeof startChangeJob;
 
 /**
  * Run a change producer again for a pair (the panel's Run again, and the run that follows a saved
@@ -27,4 +31,26 @@ export async function rerunProducer(
     return changeStore.getState().error;
   }
   return t('lineUp.rerun.unavailable');
+}
+
+/**
+ * Start a scoped change job again with the parameters it ran with (the polygon as it was: the
+ * result stays a snapshot of the area). Never a whole-map run: the stored params are replayed
+ * unchanged. `producer` is `change.raster` / `change.surface`, or a bare `raster` / `surface`.
+ * The error sentence comes back, or null when the job started.
+ */
+export async function rerunScoped(
+  producer: string,
+  params: Record<string, unknown>,
+  start?: StartJob,
+): Promise<string | null> {
+  const project = workspace.getState().project?.id;
+  if (!project) return t('lineUp.rerun.unavailable');
+  const pipeline = (
+    producer.startsWith('change.') ? producer : `change.${producer}`
+  ) as Parameters<StartJob>[0]['pipeline'];
+  // loaded on first use: the producers module needs the preload bridge of the real window
+  const run = start ?? (await import('./producers/register')).startChangeJob;
+  const res = await run({ pipeline, project, params });
+  return 'error' in res ? res.error : null;
 }

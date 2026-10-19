@@ -1,7 +1,8 @@
 import { changeStore, registerChangeProducer, type ChangePairContext } from '@aio/change';
 import type { ProjectManifest } from '@aio/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { rerunProducer } from './rerun';
+import { workspace } from '@aio/workspace';
+import { rerunProducer, rerunScoped } from './rerun';
 
 const ctx: ChangePairContext = {
   projectId: 'p',
@@ -50,5 +51,29 @@ describe('run again', () => {
     expect(await rerunProducer('mystery', ctx)).toBe('This comparison cannot be run again here.');
     expect(compute).toHaveBeenCalledTimes(1);
     expect(await rerunProducer('raster', null)).toBe('This comparison cannot be run again here.');
+  });
+});
+
+describe('rerunScoped', () => {
+  const P = { scope: { id: 'a', name: 'A' }, mask: { type: 'Polygon' }, from: 'c1', to: 'c2' };
+  const open = () => {
+    workspace.setState({ project: { id: 'p' } as never });
+  };
+  it('replays the stored params unchanged (never a whole-map run)', async () => {
+    open();
+    const start = vi.fn().mockResolvedValue({ jobId: 'j' });
+    expect(await rerunScoped('change.surface', P, start)).toBeNull();
+    expect(start).toHaveBeenCalledWith({ pipeline: 'change.surface', project: 'p', params: P });
+  });
+  it('prefixes a bare producer name', async () => {
+    open();
+    const start = vi.fn().mockResolvedValue({});
+    await rerunScoped('raster', P, start);
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ pipeline: 'change.raster' }));
+  });
+  it('returns a start error as the sentence', async () => {
+    open();
+    const start = vi.fn().mockResolvedValue({ error: 'No elevation.' });
+    expect(await rerunScoped('raster', P, start)).toBe('No elevation.');
   });
 });
