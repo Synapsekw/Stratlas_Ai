@@ -1,6 +1,6 @@
 import { changeStore, ChangePanel, layersOf, type ChangePairContext } from '@aio/change';
 import type { ChangeSet } from '@aio/schema';
-import { formatDate } from '@aio/ui';
+import { formatDate, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useCaptureIndex } from '../workspace/compare';
@@ -38,7 +38,10 @@ export function ChangesTab({ className }: { className?: string }) {
   /** Run a producer again for the panel's pair; the error comes back for the panel to show. */
   const rerun = (name: string, set?: ChangeSet): Promise<string | null> => {
     // an area's set replays the params it ran with, never a whole-map run
-    if (set?.scope && set.run?.params) return rerunScoped(set.producer, set.run.params);
+    if (set?.scope)
+      return set.run?.params
+        ? rerunScoped(set.producer, set.run.params)
+        : Promise.resolve(t('lineUp.rerun.unavailable'));
     const pair = changeStore.getState().pair;
     return rerunProducer(name, pair ? context(pair) : null);
   };

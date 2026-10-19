@@ -74,6 +74,30 @@ export async function recordVolumesOutcome(
 }
 
 /**
+ * Once the area's first imagery run has ended without a result, show the whole map again: the
+ * area would stay chosen with nothing to show. A refusal for the dates' gap keeps the area, so
+ * its Line up offer shows. Nothing when another area, pair or project is shown by then.
+ */
+export async function releaseFailedArea(
+  deps: ProducerDeps,
+  rasterJobId: string,
+  areaId: string,
+  pair: { from: string; to: string },
+): Promise<void> {
+  const { finished } = deps;
+  if (!finished) return;
+  const project = deps.projectId?.() ?? null;
+  const imagery = await finished(rasterJobId);
+  if (!imagery || imagery.status === 'done' || imagery.failure?.code === 'misaligned') return;
+  if ((deps.projectId?.() ?? null) !== project) return;
+  const s = changeStore.getState();
+  if (s.area !== areaId || s.pair?.from !== pair.from || s.pair.to !== pair.to) return;
+  // its sets may have come in after all (a reload): then it stays
+  if (Object.values(s.sets).some((x) => x.scope?.id === areaId)) return;
+  s.setArea(null);
+}
+
+/**
  * Start the area's imagery change (its error is the result and nothing else starts) and, with
  * `volumes`, its volume change (an error there is a note). On success the Changes tab opens on
  * the pair and the area.
@@ -127,6 +151,8 @@ export async function runAreaCompare(
   const store = changeStore.getState();
   store.setPair({ from: ctx.from, to: ctx.to });
   changeStore.getState().setArea(area.scope.id);
+  if (imagery.jobId)
+    void releaseFailedArea(deps, imagery.jobId, area.scope.id, { from: ctx.from, to: ctx.to });
   openChangesTab();
   return { ok: true, notes };
 }

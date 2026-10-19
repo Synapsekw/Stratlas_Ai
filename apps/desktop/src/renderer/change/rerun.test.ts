@@ -1,7 +1,7 @@
 import { changeStore, registerChangeProducer, type ChangePairContext } from '@aio/change';
-import type { ProjectManifest } from '@aio/schema';
+import type { JobRecord, ProjectManifest } from '@aio/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { workspace } from '@aio/workspace';
+import type { ProducerDeps } from './producers/raster';
 import { rerunProducer, rerunScoped } from './rerun';
 
 const ctx: ChangePairContext = {
@@ -56,24 +56,55 @@ describe('run again', () => {
 
 describe('rerunScoped', () => {
   const P = { scope: { id: 'a', name: 'A' }, mask: { type: 'Polygon' }, from: 'c1', to: 'c2' };
-  const open = () => {
-    workspace.setState({ project: { id: 'p' } as never });
-  };
+  const deps = (start: ProducerDeps['start'], extra: Partial<ProducerDeps> = {}): ProducerDeps => ({
+    root: () => 'E:/proj',
+    thresholds: () => undefined,
+    start,
+    projectId: () => 'p',
+    ...extra,
+  });
   it('replays the stored params unchanged (never a whole-map run)', async () => {
-    open();
     const start = vi.fn().mockResolvedValue({ jobId: 'j' });
-    expect(await rerunScoped('change.surface', P, start)).toBeNull();
-    expect(start).toHaveBeenCalledWith({ pipeline: 'change.surface', project: 'p', params: P });
+    expect(await rerunScoped('change.surface', P, deps(start))).toBeNull();
+    expect(start).toHaveBeenCalledWith('change.surface', 'E:/proj', P);
   });
   it('prefixes a bare producer name', async () => {
-    open();
-    const start = vi.fn().mockResolvedValue({});
-    await rerunScoped('raster', P, start);
-    expect(start).toHaveBeenCalledWith(expect.objectContaining({ pipeline: 'change.raster' }));
+    const start = vi.fn().mockResolvedValue({ jobId: 'j' });
+    await rerunScoped('raster', P, deps(start));
+    expect(start).toHaveBeenCalledWith('change.raster', 'E:/proj', P);
   });
   it('returns a start error as the sentence', async () => {
-    open();
     const start = vi.fn().mockResolvedValue({ error: 'No elevation.' });
-    expect(await rerunScoped('raster', P, start)).toBe('No elevation.');
+    expect(await rerunScoped('raster', P, deps(start))).toBe('No elevation.');
+  });
+  it('refuses a producer that is not scoped change', async () => {
+    const start = vi.fn();
+    expect(await rerunScoped('change.cloud', P, deps(start))).toBe(
+      'This comparison cannot be run again here.',
+    );
+    expect(start).not.toHaveBeenCalled();
+  });
+  it('keeps a refusal for the gap with its params, for the Line up offer', async () => {
+    const start = vi.fn().mockResolvedValue({ jobId: 'j' });
+    const setMisaligned = vi.fn();
+    const job = {
+      id: 'j',
+      status: 'failed',
+      failure: { code: 'misaligned', data: { from: 'c1', to: 'c2', shiftM: 2.5 } },
+    } as unknown as JobRecord;
+    await rerunScoped(
+      'raster',
+      P,
+      deps(start, { finished: () => Promise.resolve(job), setMisaligned }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(setMisaligned).toHaveBeenLastCalledWith({
+      from: 'c1',
+      to: 'c2',
+      shiftM: 2.5,
+      producer: 'raster',
+      params: P,
+    });
   });
 });

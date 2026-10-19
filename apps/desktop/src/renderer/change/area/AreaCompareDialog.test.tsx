@@ -130,6 +130,13 @@ describe('AreaCompareDialog', () => {
     );
   });
 
+  it('names a polygon with a blank label as the area is stored', () => {
+    const file = { ...emptyMeasurements(), measurements: [{ ...pad, label: '   ' }] };
+    measureStore.setState({ file, savedText: JSON.stringify(file) });
+    mount();
+    expect(q('area-compare-name')?.textContent).toBe('pad');
+  });
+
   it('keeps volumes off by default and remembers on after a run', async () => {
     mount();
     expect(volumesBox()?.checked).toBe(false);

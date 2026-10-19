@@ -3,7 +3,7 @@ import type { ChangeSet, JobRecord, Layer, ProjectManifest } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProducerDeps } from '../producers/raster';
 import { changesTab } from '../useChangeOverlays';
-import { recordVolumesOutcome, runAreaCompare } from './run';
+import { recordVolumesOutcome, releaseFailedArea, runAreaCompare } from './run';
 
 // the tab hook module reaches the whole renderer; only its "show the Changes tab" signal is used
 vi.mock('../useChangeOverlays', async () => {
@@ -251,5 +251,76 @@ describe('the volumes outcome', () => {
     });
     await recordVolumesOutcome(d, 'r', { error: 'No pack.' }, AREA.scope, PAIR);
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe('an area whose first imagery run does not finish', () => {
+  // a first run: the area has no sets yet
+  const chosen = () => {
+    changeStore.setState({ pair: PAIR, area: 'm-pad-a', sets: {} });
+  };
+  const ended = (over: Partial<JobRecord>) => vi.fn(() => Promise.resolve(job('r', over)));
+
+  it('falls back to the whole map when imagery failed', async () => {
+    chosen();
+    await releaseFailedArea(deps({ finished: ended({ status: 'failed' }) }), 'r', 'm-pad-a', PAIR);
+    expect(changeStore.getState().area).toBeNull();
+  });
+
+  it('does so after a run started from the dialog', async () => {
+    const finished = vi.fn((id: string) =>
+      Promise.resolve(job(id, { status: id === 'job-1' ? 'cancelled' : 'done' })),
+    );
+    changeStore.setState({ sets: {} });
+    await runAreaCompare(deps({ finished }), both, AREA, { volumes: false });
+    await flush();
+    await flush();
+    expect(changeStore.getState().area).toBeNull();
+  });
+
+  it('keeps the area when imagery finished, or was refused for the gap (Line up offer)', async () => {
+    chosen();
+    await releaseFailedArea(deps({ finished: ended({}) }), 'r', 'm-pad-a', PAIR);
+    expect(changeStore.getState().area).toBe('m-pad-a');
+    const refused = ended({
+      status: 'failed',
+      failure: { code: 'misaligned', data: { from: 'c1', to: 'c2', shiftM: 2 } },
+    });
+    await releaseFailedArea(deps({ finished: refused }), 'r', 'm-pad-a', PAIR);
+    expect(changeStore.getState().area).toBe('m-pad-a');
+  });
+
+  it('leaves another chosen area, pair or project alone', async () => {
+    const failed = ended({ status: 'failed' });
+    changeStore.setState({ pair: PAIR, area: 'm-b', sets: {} });
+    await releaseFailedArea(deps({ finished: failed }), 'r', 'm-pad-a', PAIR);
+    expect(changeStore.getState().area).toBe('m-b');
+    changeStore.setState({ pair: { from: 'c0', to: 'c2' }, area: 'm-pad-a' });
+    await releaseFailedArea(deps({ finished: failed }), 'r', 'm-pad-a', PAIR);
+    expect(changeStore.getState().area).toBe('m-pad-a');
+    chosen();
+    let project = 'p';
+    const moved = vi.fn(() => {
+      project = 'q';
+      return Promise.resolve(job('r', { status: 'failed' }));
+    });
+    await releaseFailedArea(
+      deps({ finished: moved, projectId: () => project }),
+      'r',
+      'm-pad-a',
+      PAIR,
+    );
+    expect(changeStore.getState().area).toBe('m-pad-a');
+  });
+
+  it('keeps an area that has sets from an earlier run', async () => {
+    changeStore.setState({ pair: PAIR, area: 'm-pad-a' });
+    await releaseFailedArea(
+      deps({ finished: vi.fn(() => Promise.resolve(job('r', { status: 'failed' }))) }),
+      'r',
+      'm-pad-a',
+      PAIR,
+    );
+    expect(changeStore.getState().area).toBe('m-pad-a');
   });
 });

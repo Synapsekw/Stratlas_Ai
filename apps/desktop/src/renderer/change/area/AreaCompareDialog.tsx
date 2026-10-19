@@ -54,7 +54,8 @@ export function AreaCompareDialog({ request }: { request: AreaCompareRequest }) 
     const c = project?.manifest.captures.find((x) => x.id === id);
     return formatDate(c?.date ?? id);
   };
-  const name = m?.label ?? request.measurementId;
+  // the name the area is stored under (a blank label falls back to the id)
+  const name = m ? areaScope(m).name : request.measurementId;
 
   const run = async () => {
     if (!m || !project || !ctx) {
