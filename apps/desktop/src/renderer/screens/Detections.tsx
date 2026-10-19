@@ -28,7 +28,9 @@ import { AiDetectDialog } from '../detections/AiDetectDialog';
 import { ContactSheet, type SheetItem } from '../detections/ContactSheet';
 import { hasDetectable, itemKey, type DetectItem } from '../detections/convert';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
+import { frameLayerSrc } from '../detections/frameMedia';
 import { Inspector } from '../detections/Inspector';
+import { detectionLook } from '../detections/look';
 import { reviewCommand, typingIn } from '../detections/keys';
 import { BatchConfirm, BatchError } from '../detections/BatchConfirm';
 import {
@@ -59,7 +61,6 @@ const ERROR_KEY: Record<ReviewError, MessageKey> = {
   missing: 'det.error.missing',
   duplicate: 'det.error.duplicate',
 };
-const UNKNOWN_COLOR = '#8a94a6';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 
@@ -146,7 +147,7 @@ export function DetectionsScreen() {
       list.push({
         id: d.id,
         geom: d.geom,
-        color: classById.get(d.classId)?.color ?? UNKNOWN_COLOR,
+        color: detectionLook(d, classById.get(d.classId)).color,
         size: d.size,
         status: d.status,
       });
@@ -175,10 +176,11 @@ export function DetectionsScreen() {
     }
     for (const c of perSource.values()) {
       if (c.source.kind !== 'frame') continue;
-      const layer = layers.find((l) => l.id === c.source.layer);
+      // a video clip, or a walk's playback copy
+      const src = frameLayerSrc(layers, c.source.layer);
       let video: string | undefined;
       try {
-        video = layer?.kind === 'video' && projectId ? assetUrl(projectId, layer.src) : undefined;
+        video = src && projectId ? assetUrl(projectId, src) : undefined;
       } catch {
         video = undefined;
       }
@@ -220,14 +222,7 @@ export function DetectionsScreen() {
         (d) => d.status !== 'rejected' || d.id === review.currentId || review.filter === 'rejected',
       )
       .map((d) => {
-        const cls = classById.get(d.classId);
-        const conf =
-          d.confidence !== undefined ? ` ${String(Math.round(d.confidence * 100))}%` : '';
-        return {
-          detection: d,
-          color: cls?.color ?? UNKNOWN_COLOR,
-          label: `${cls?.label ?? d.label ?? '?'}${conf}`,
-        };
+        return { detection: d, ...detectionLook(d, classById.get(d.classId)) };
       });
   }, [shownSource, review.detections, review.currentId, review.filter, classById]);
 
@@ -749,9 +744,9 @@ export function DetectionsScreen() {
           unreviewed={unreviewed}
           durations={durations}
           videoUrl={(layerId) => {
-            const l = layers.find((x) => x.id === layerId);
+            const src = frameLayerSrc(layers, layerId);
             try {
-              return l?.kind === 'video' ? assetUrl(project.id, l.src) : null;
+              return src ? assetUrl(project.id, src) : null;
             } catch {
               return null;
             }

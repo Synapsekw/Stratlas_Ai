@@ -5,16 +5,18 @@
  * card (`aio.detector/1`).
  *
  * Import refuses, with an exact message: a file that is not there, a model without a card, an
- * invalid card, a licence the gate does not allow, an unconfirmed licence, an oversized file, a
+ * invalid card, a card without a licence, an unconfirmed licence, an oversized file, a
  * SHA-256 that does not match the card, and a model the runtime cannot load or whose outputs do
  * not fit the card's layout (one dummy inference). Then it copies both files in atomically.
+ * Copyleft, non-commercial and unknown licences import, with `licenceWarning` on the model
+ * (`licence.ts`); the listing carries the same warning.
  */
 import { DetectorModelCard, DetectorModelId, type DetectorModelInfo } from '@aio/schema';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
-import { licenceProblem } from './licence';
+import { licenceProblem, licenceWarning } from './licence';
 
 export const MODEL_FILE = 'model.onnx';
 export const CARD_FILE = 'model.json';
@@ -79,6 +81,17 @@ async function readCard(
   return parseCard(raw);
 }
 
+/** The listed model, with the licence warning its card deserves (absent when none). */
+function modelInfo(
+  id: string,
+  card: DetectorModelCard,
+  where: 'user' | 'pack',
+  sizeBytes: number,
+): DetectorModelInfo {
+  const warning = licenceWarning(card.licence);
+  return { id, card, where, sizeBytes, ...(warning ? { licenceWarning: warning } : {}) };
+}
+
 async function listIn(dir: string | null, where: 'user' | 'pack'): Promise<FoundModel[]> {
   if (!dir) return [];
   let names: string[];
@@ -97,7 +110,7 @@ async function listIn(dir: string | null, where: 'user' | 'pack'): Promise<Found
     if (!s?.isFile()) continue;
     const card = await readCard(join(dir, id, CARD_FILE));
     if (!card.ok) continue;
-    out.push({ info: { id, card: card.card, where, sizeBytes: s.size }, onnx });
+    out.push({ info: modelInfo(id, card.card, where, s.size), onnx });
   }
   return out;
 }
@@ -217,7 +230,7 @@ export async function importModel(
       error: `The model could not be copied into ${dirs.user}: ${String(e).slice(0, 200)}`,
     };
   }
-  return { ok: true, model: { id, card: c, where: 'user', sizeBytes: size } };
+  return { ok: true, model: modelInfo(id, c, 'user', size) };
 }
 
 export async function removeModel(

@@ -144,6 +144,18 @@ function insidePolygon(p: Point, pts: readonly Point[]): boolean {
   return inside;
 }
 
+/** Area of a shape in square image pixels (0 for a point or a mask). */
+export function geomArea(g: ImageGeom): number {
+  const pts = geomOutline(g);
+  let twice = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i];
+    const b = pts[j];
+    if (a && b) twice += (b.x + a.x) * (b.y - a.y);
+  }
+  return Math.abs(twice) / 2;
+}
+
 /** Does an image point hit the shape? `tol` is in image pixels (points, edges). */
 export function hitGeom(g: ImageGeom, p: Point, tol: number): boolean {
   if (g.type === 'point') return Math.hypot(p.x - g.x, p.y - g.y) <= tol;

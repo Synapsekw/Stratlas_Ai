@@ -1772,6 +1772,21 @@ function registerIpc(): void {
         const parsed = ipcEvents['inference:progress'].safeParse(e);
         if (parsed.success) targetWindow()?.webContents.send('inference:progress', parsed.data);
       },
+      // walk frames decode with the pipeline pack's ffmpeg, looked up once at the start of each
+      // run with walk frames (a pack installed since counts), not for every frame
+      ffmpeg: async () =>
+        (
+          await findFfmpeg(
+            (
+              await findPack({
+                dataRoot: settings.current().dataRoot,
+                env: process.env,
+                app: packApp,
+              })
+            ).pack,
+            process.env,
+          )
+        )?.ffmpeg ?? null,
     }),
   });
   registerLocalModelsIpc({
