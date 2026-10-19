@@ -146,6 +146,11 @@ function measureIdsOf(marks: Iterable<string>): string[] {
   });
 }
 
+/** A list of ids by content, whatever its order (to tell whether a selection is still the same). */
+function idsKey(ids: readonly string[]): string {
+  return JSON.stringify([...ids].sort());
+}
+
 /**
  * Select the marked measurements in view (`ids`); the focus moves off a marked one the filter
  * hides (`marked`: every marked measurement), so the panel never shows a row the tree hides.
@@ -361,18 +366,25 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     [shownMeasures],
   );
   const shownMarks = useMemo(() => inView(marks.marked), [inView, marks.marked]);
-  // the filter changed which marks are in view: the selection the marks made follows them (left
-  // alone once something else selected, a plain click or a pick in the 3D view)
-  const selectedMarks = useRef(shownMarks);
+  // the filter changed which marks are in view: the selection the marks made follows them, but
+  // only while it is still the one they made (by content): a pick in the 3D view, a plain click
+  // or a click on empty space selected something else, and that stays
+  const markSelection = useRef<string | null>(null);
+  const selectFromMarks = (marked: ReadonlySet<string>, ids: string[]) => {
+    selectMarked(marked, ids);
+    markSelection.current = idsKey(ids);
+  };
+  const shownKey = idsKey(measureIdsOf(shownMarks));
+  const seenShown = useRef(shownKey);
   useEffect(() => {
-    const was = selectedMarks.current;
-    selectedMarks.current = shownMarks;
-    if (was === shownMarks) return;
+    if (seenShown.current === shownKey) return;
+    seenShown.current = shownKey;
     const all = new Set(measureIdsOf(marks.marked));
     if (all.size === 0) return;
-    if (!measureStore.getState().selected.every((id) => all.has(id))) return;
+    if (idsKey(measureStore.getState().selected) !== markSelection.current) return;
     selectMarked(all, measureIdsOf(shownMarks));
-  }, [shownMarks, marks.marked]);
+    markSelection.current = idsKey(measureIdsOf(shownMarks));
+  });
   // a removal went through: what was marked is gone; Empty could not delete everything: say so
   // where the tree's notes go (adjusted during render, not in an effect)
   const [seenRemoval, setSeenRemoval] = useState({ removed, held });
@@ -413,7 +425,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setMarks(next);
     // marked measurements in view are selected too, so the Selected panel totals them
     const all = measureIdsOf(next.marked);
-    if (all.length > 0) selectMarked(new Set(all), measureIdsOf(inView(next.marked)));
+    if (all.length > 0) selectFromMarks(new Set(all), measureIdsOf(inView(next.marked)));
     else letGoOfMeasures(marks.marked);
   };
   /** The marks held measurements and hold none now: only the focused one stays selected. */

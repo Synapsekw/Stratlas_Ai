@@ -19,6 +19,7 @@ import {
   isDirty,
   measureStore,
   revealMeasurement,
+  select,
   setMeasureVisibilityMemory,
   undoDeleteMeasurements,
 } from '../survey/measureStore';
@@ -498,6 +499,51 @@ describe('Datasets: the measurement filter', () => {
     expect(measureStore.getState().selected).toEqual([]);
     filter('');
     expect([...measureStore.getState().selected].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('a 3D pick of a marked shape the filter hides selects that shape only', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    filter('fence');
+    // what the 3D view's pick does: select the shape, reveal its row (which clears the filter)
+    act(() => {
+      select(['c'], 'c');
+      revealMeasurement('c');
+    });
+    expect((box() as HTMLInputElement).value).toBe('');
+    expect(measureStore.getState().selected).toEqual(['c']);
+  });
+
+  it('a pick of a visible marked row survives clearing the filter and an eye toggle', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    filter('fence');
+    act(() => {
+      select(['a'], 'a');
+    });
+    filter('');
+    expect(measureStore.getState().selected).toEqual(['a']);
+    filter('fence');
+    click(q('[data-testid="tree-group-measurements"] > .eye'));
+    expect(measureStore.getState().selected).toEqual(['a']);
+  });
+
+  it('a selection let go of (a click on empty space) stays empty through a filter change', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    act(() => {
+      select([]);
+    });
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual([]);
+    filter('');
+    expect(measureStore.getState().selected).toEqual([]);
   });
 
   it('the header Delete leaves a hidden marked row alone', () => {
