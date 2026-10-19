@@ -1,8 +1,8 @@
 /**
  * Measurement templates in the real app (M11 G3): make "Pad check" (a volume template with a
  * dropdown "Crew" and a cut and fill comparison), bookmark it, use it twice from the toolbar, set
- * the Crew on one (the measurement list and its filters gave way to the Datasets tree). Synthetic
- * tiny project, off-screen, zero network;
+ * the Crew on one and find it by its Crew in the Datasets tree's filter box. Synthetic tiny
+ * project, off-screen, zero network;
  * axe on the template editor.
  */
 import type { Page } from '@playwright/test';
@@ -10,7 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, openProject, test } from './fixtures';
-import { measureControl, measureSaved, measureTree } from './island';
+import { measureControl, measureFilter, measureSaved, measureTree } from './island';
 
 async function openTiny(win: Page): Promise<string> {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
@@ -73,10 +73,16 @@ test.describe('measurement templates', () => {
     await measureTree(win);
     await expect(win.getByTestId('measure-row')).toHaveCount(2);
 
-    // set the Crew on the second pad
+    // set the Crew on the second pad, then find it by its Crew in the tree's filter box
     const panel = win.getByTestId('survey-panel');
     await expect(panel.getByTestId('survey-label')).toHaveValue('Pad check 2');
     await panel.getByTestId('survey-field-crew').selectOption('North');
+    const filter = await measureFilter(win);
+    await filter.fill('north');
+    await expect(win.getByTestId('measure-row')).toHaveCount(1);
+    await expect(win.getByTestId('measure-row')).toContainText('Pad check 2');
+    await filter.fill('');
+    await expect(win.getByTestId('measure-row')).toHaveCount(2);
 
     const footer = await measureSaved(win);
     await footer.getByTestId('survey-list-save').click();

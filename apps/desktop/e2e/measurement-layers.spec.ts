@@ -4,15 +4,16 @@
  * measurement for this person only (no unsaved change, the file untouched, still hidden after
  * reopening); a right-click on a shape in the 3D view opens its menu and a left click selects it,
  * but not while a tool draws; Rename and Move to folder from the tree menu are edits that wait
- * for Save; a Delete is taken back with the notice's Undo, on disk too with Autosave on.
- * Off-screen, zero network.
+ * for Save; a Delete is taken back with the notice's Undo, on disk too with Autosave on; the
+ * group's filter box shows only the matching rows and leaves the view alone. Off-screen, zero
+ * network.
  */
 import { MeasurementsFile } from '@aio/schema';
 import type { Page } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, openProject, test } from './fixtures';
-import { measureControl, measureRow, measureSaved, measureTree } from './island';
+import { measureControl, measureFilter, measureRow, measureSaved, measureTree } from './island';
 
 /** The tiny project's origin (fixtures.ts `tinyManifest`): its 1 x 1 m quad lies E+, N+ of it. */
 const E = 500000;
@@ -227,4 +228,43 @@ test('a stray Delete is taken back with Undo, on disk too with Autosave on', asy
     SEED.measurements.find((m) => m.id === 'line-b'),
   );
   await expect(saved).not.toContainText('Unsaved changes');
+});
+
+test('the filter box shows only the matching rows; clearing it brings them all back', async ({
+  win,
+}, testInfo) => {
+  await openTiny(win);
+  const filter = await measureFilter(win);
+  const rows = win.getByTestId('measure-row');
+  const count = win.getByTestId('tree-group-measurements').locator('.gcount');
+  await expect(rows).toHaveCount(2);
+
+  // a folder name matches: Pads opens on its one row; the view still draws both
+  await filter.fill('pads');
+  await expect(rows).toHaveCount(1);
+  await expect(measureRow(win, 'Pad A')).toBeVisible();
+  await expect(count).toHaveText('1 of 2');
+  await expect(win.locator('.sv-label')).toHaveCount(2);
+  // a matching row still selects with a click on its name
+  await measureRow(win, 'Pad A').locator('.tn').click();
+  await expect(measureRow(win, 'Pad A')).toHaveAttribute('aria-selected', 'true');
+  await win.screenshot({ path: testInfo.outputPath('measurement-filter.png') });
+
+  // nothing matches: the group says so; Escape empties the box
+  await filter.fill('nothing like this');
+  await expect(rows).toHaveCount(0);
+  await expect(win.getByTestId('measure-filter-none')).toHaveText('No measurements match');
+  await win.screenshot({ path: testInfo.outputPath('measurement-filter-none.png') });
+  await filter.press('Escape');
+  await expect(filter).toHaveValue('');
+  await expect(rows).toHaveCount(2);
+  await expect(count).toHaveText('2');
+
+  // the tool's name matches too; the clear button empties the box
+  await filter.fill('distance');
+  await expect(rows).toHaveCount(1);
+  await expect(measureRow(win, 'Line B')).toBeVisible();
+  await win.getByTestId('measure-filter-clear').click();
+  await expect(filter).toHaveValue('');
+  await expect(rows).toHaveCount(2);
 });
