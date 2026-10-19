@@ -9,6 +9,7 @@ import type { AntennaUnit, RfCarrier, RfCatalogueEntry, RfEquipment, RfSector } 
 import { columnsOf, findEntry, norm, num, splitCsv, type CellField } from '../cellCsv';
 import { defaultBandwidth } from '../rfFields';
 import { rfUnit } from '../rfModel';
+import { msg, type PlanText } from './planText';
 import { rulesPick } from './rules';
 import { plannedUnits, type ActiveSettings } from './sectors';
 import type { PlanPick } from './types';
@@ -99,13 +100,13 @@ export function matchCellExport(
 
     let unit = ref === '' ? undefined : (byId.get(ref) ?? byName.get(norm(ref)));
     let confidence: PlanPick['confidence'] = 'high';
-    let how = 'matched by antenna name';
+    let how: PlanText = msg('rf.autoplan.export.byName');
     if (!unit && sectorText !== '') {
       const sector = sectorByName.get(norm(sectorText));
       if (sector) {
         unit = byBearing(sector, az, height);
         confidence = 'medium';
-        how = `matched by sector ${sector.name} and bearing`;
+        how = msg('rf.autoplan.export.bySector', { sector: sector.name });
       }
     }
     if (!unit) {
@@ -142,16 +143,18 @@ export function matchCellExport(
         antenna: antenna.id,
         ...(radio?.kind === 'radio' ? { radio: radio.id } : {}),
       };
-    const reasons = [how];
+    const reasons: PlanText[] = [how];
     const missing = [am !== '' && !antenna ? am : '', rm !== '' && !radio ? rm : ''].filter(
       (t) => t !== '',
     );
     if (missing.length > 0) {
       confidence = 'low';
+      const texts = missing.map((t) => `'${t}'`).join(', ');
       reasons.push(
-        `model text ${missing.map((t) => `'${t}'`).join(', ')} not found in the catalogue${
-          equipment ? '' : ', equipment from the rules'
-        }`,
+        msg(
+          equipment ? 'rf.autoplan.export.modelMissing' : 'rf.autoplan.export.modelMissingRules',
+          { texts },
+        ),
       );
     }
     equipment ??= rules.equipment;
@@ -165,7 +168,7 @@ export function matchCellExport(
       /^[A-Za-z0-9-]{1,12}$/.test(bandText);
     if (bandText !== '' && !bandOk) {
       confidence = 'low';
-      reasons.push(`band '${bandText}' not recognised, rules band used`);
+      reasons.push(msg('rf.autoplan.export.badBand', { band: bandText }));
     }
     const techText = cell('tech').toLowerCase();
     const techRow: RfCarrier['tech'] | undefined =
@@ -179,14 +182,14 @@ export function matchCellExport(
     const bwOk = bw !== null && bw > 0 && bw <= 1000 ? bw : undefined;
     if (bwText !== '' && bwOk === undefined) {
       confidence = 'low';
-      reasons.push(`bandwidth '${bwText}' out of range, default used`);
+      reasons.push(msg('rf.autoplan.export.badBandwidth', { text: bwText }));
     }
     const powerText = cell('power');
     const power = num(powerText);
     const powerOk = power !== null && power >= 0 && power <= 80 ? power : undefined;
     if (powerText !== '' && powerOk === undefined) {
       confidence = 'low';
-      reasons.push(`power '${powerText}' out of range, left unset`);
+      reasons.push(msg('rf.autoplan.export.badPower', { text: powerText }));
     }
     const etilt = num(cell('etilt'));
     const etiltOk = etilt !== null && etilt >= -20 && etilt <= 40 ? etilt : undefined;
@@ -212,7 +215,7 @@ export function matchCellExport(
       ...(etiltOk === undefined ? {} : { etiltDeg: etiltOk }),
       by: 'export',
       confidence,
-      reason: reasons.join('; '),
+      reason: reasons,
     });
     out.picks.set(unit.id, list);
   });

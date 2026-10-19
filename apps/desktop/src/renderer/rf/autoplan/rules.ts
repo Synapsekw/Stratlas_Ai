@@ -2,6 +2,7 @@
 import type { AntennaUnit, RfCatalogueEntry } from '@aio/schema';
 import { AAU_MIN_DEPTH_M, AAU_MIN_WIDTH_M, AUTOPLAN_AAU, AUTOPLAN_PANEL } from '../rfDefaults';
 import { entryCoversBand } from './bandFit';
+import { msg, type PlanText } from './planText';
 import type { PlanPick } from './types';
 
 /** True when the band's downlink range lies inside the panel's port range and the radio's range. */
@@ -17,7 +18,7 @@ function panelCoversBand(
   return entryCoversBand(antenna, band) && entryCoversBand(radio, band);
 }
 
-function aauPick(reason: string, confidence: PlanPick['confidence']): PlanPick {
+function aauPick(reason: PlanText, confidence: PlanPick['confidence']): PlanPick {
   return {
     equipment: { kind: 'aau', aau: AUTOPLAN_AAU.aau },
     carrier: {
@@ -27,11 +28,11 @@ function aauPick(reason: string, confidence: PlanPick['confidence']): PlanPick {
     },
     by: 'rules',
     confidence,
-    reason,
+    reason: [reason],
   };
 }
 
-const metres = (v: number) => `${v.toFixed(2)} m`;
+const metres = (v: number) => v.toFixed(2);
 
 export function rulesPick(unit: AntennaUnit, catalogue: readonly RfCatalogueEntry[]): PlanPick {
   // A unit read from an older file may lack a size, so read it as optional.
@@ -45,21 +46,25 @@ export function rulesPick(unit: AntennaUnit, catalogue: readonly RfCatalogueEntr
   const known = face !== undefined;
   const aauLike =
     face !== undefined && face.depth >= AAU_MIN_DEPTH_M && face.width >= AAU_MIN_WIDTH_M;
-  const size = face ? `${metres(face.width)} × ${metres(face.depth)} deep face` : 'No size';
+  const size = face
+    ? msg('rf.autoplan.reason.size', { width: metres(face.width), depth: metres(face.depth) })
+    : msg('rf.autoplan.reason.noSize');
 
-  if (aauLike) return aauPick(`${size}: AAU`, 'medium');
+  if (aauLike) return aauPick(msg('rf.autoplan.reason.aau', { size }), 'medium');
 
   const { antenna, radio, band, tech, bandwidthMhz } = AUTOPLAN_PANEL;
   if (!panelCoversBand(catalogue, antenna, radio, band))
-    return aauPick(`${size}: the panel and radio cannot do ${band}, so AAU`, 'low');
+    return aauPick(msg('rf.autoplan.reason.panelCannot', { size, band }), 'low');
 
   return {
     equipment: { kind: 'separate', antenna, radio },
     carrier: { tech, band, bandwidthMhz, radioUnit: radio },
     by: 'rules',
     confidence: known ? 'medium' : 'low',
-    reason: known
-      ? `${size}: panel and radio on ${band}`
-      : 'No size measured: panel and radio on B3',
+    reason: [
+      known
+        ? msg('rf.autoplan.reason.panel', { size, band })
+        : msg('rf.autoplan.reason.panelNoSize', { band }),
+    ],
   };
 }

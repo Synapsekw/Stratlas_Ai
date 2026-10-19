@@ -3,12 +3,14 @@ import { fileURLToPath } from 'node:url';
 import {
   RfCatalogueEntry as CatalogueEntrySchema,
   RfSectorsFile,
+  splitRfOrigins,
   type AntennaUnit,
   type RfAntennaSettings,
   type RfCarrier,
   type RfCatalogueEntry,
   type RfOrigin,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { describe, expect, it } from 'vitest';
 import { sectorsFile, unit } from '../__fixtures__/rfData';
 import {
@@ -18,7 +20,11 @@ import {
   validateAiPick,
   type AiPickRaw,
 } from './proposal';
+import { planText, raw as rawText, type PlanText } from './planText';
 import type { PlanPick } from './types';
+
+/** The English the review shows for these parts. */
+const en = (parts: readonly PlanText[] | undefined): string => planText(t, parts ?? []);
 
 const CATALOGUE = (
   JSON.parse(
@@ -94,7 +100,7 @@ const exportPick = (band: string): PlanPick => ({
   carrier: { tech: 'lte', band, bandwidthMhz: 20, radioUnit: 'generic-rru-4t4r-4x40w' },
   by: 'export',
   confidence: 'high',
-  reason: 'Cell export row',
+  reason: [rawText('Cell export row')],
 });
 
 describe('validateAiPick', () => {
@@ -105,7 +111,7 @@ describe('validateAiPick', () => {
       carrier: { band: 'n78', tech: 'nr', bandwidthMhz: 100 },
       by: 'ai',
       confidence: 'high',
-      reason: 'Deep wide face, AAU',
+      reason: [{ text: 'Deep wide face, AAU' }],
     });
   });
   it('accepts a panel with a radio on a band both can do', () => {
@@ -149,7 +155,7 @@ describe('validateAiPick', () => {
     const p = validateAiPick({ ...raw, entryId: 'nope' }, unitDeep, CATALOGUE);
     expect(p).toMatchObject({ by: 'rules', confidence: 'low' });
     expect(p.equipment).toEqual({ kind: 'aau', aau: 'generic-aau-64t64r-n78' });
-    expect(p.reason).toMatch(/^AI pick not usable: /);
+    expect(en(p.reason)).toMatch(/^AI pick not usable: /);
   });
   it('rejects a band the equipment cannot do', () => {
     expect(
@@ -185,7 +191,7 @@ describe('validateAiPick', () => {
   ])('falls back to the rules for %s', (_why, over) => {
     const p = validateAiPick({ ...raw, ...over }, unitDeep, CATALOGUE);
     expect(p).toMatchObject({ by: 'rules', confidence: 'low' });
-    expect(p.reason).toMatch(/^AI pick not usable: /);
+    expect(en(p.reason)).toMatch(/^AI pick not usable: /);
   });
 });
 
@@ -288,7 +294,7 @@ describe('applyToFile', () => {
       buildProposal({ units, file, catalogue: CATALOGUE, picks: new Map() }),
       CATALOGUE,
     );
-    expect(RfSectorsFile.safeParse(out).success).toBe(true);
+    expect(RfSectorsFile.safeParse(splitRfOrigins(out).file).success).toBe(true);
   });
   it('keeps the equipment when a kept carrier does not fit the new one (R11 d)', () => {
     const file = fileWith({ equipment: { by: 'ai' }, carriers: [{ by: 'user' }, { by: 'ai' }] });
@@ -302,7 +308,7 @@ describe('applyToFile', () => {
     });
     const row = p.rows.find((r) => r.unitId === 'ant-u1');
     expect(row?.equipment).toBeUndefined();
-    expect(row?.note).toMatch(/^Kept your equipment: your B1 carrier doesn't fit /);
+    expect(en(row?.note)).toMatch(/^Kept your equipment: your B1 carrier doesn't fit /);
     // A carrier is kept, so the AI adds none (R11 b).
     expect(row?.picks).toEqual([]);
     const s = settingsOf(applyToFile(file, p, CATALOGUE), 'ant-u1');
@@ -352,7 +358,7 @@ describe('applyToFile', () => {
       carrier: { tech: 'nr', band: 'n78', bandwidthMhz: 100 },
       confidence: 'low',
     });
-    expect(row?.picks[0]?.reason).toMatch(/^B3 doesn't fit .*, so n78$/);
+    expect(en(row?.picks[0]?.reason)).toMatch(/^B3 doesn't fit .*, so n78\.$/);
     const s = settingsOf(applyToFile(file, p, CATALOGUE), 'ant-u1');
     expect(s?.carriers).toEqual([
       {
@@ -393,7 +399,7 @@ describe('applyToFile', () => {
     const p = buildProposal({ units, file, catalogue, picks: new Map() });
     const row = p.rows.find((r) => r.unitId === 'ant-u1');
     expect(row?.picks).toEqual([]);
-    expect(row?.note).toBe(NO_CARRIER_FITS);
+    expect(row?.note).toEqual([NO_CARRIER_FITS]);
     expect(settingsOf(applyToFile(file, p, catalogue), 'ant-u1')?.carriers).toEqual([]);
   });
   it('flags an export band its own equipment cannot do (R10, R11 f)', () => {
@@ -416,7 +422,7 @@ describe('applyToFile', () => {
     });
     const r1 = p.rows.find((r) => r.unitId === 'ant-u1');
     expect(r1?.picks[0]).toMatchObject({ carrier: { band: 'n78' }, confidence: 'low' });
-    expect(r1?.picks[0]?.reason).toMatch(/^n78 doesn't fit .* from the export/);
+    expect(en(r1?.picks[0]?.reason)).toMatch(/^n78 doesn't fit .* from the export/);
     // Without kept equipment the export's own panel is written, and it can do B3 instead.
     const r2 = p.rows.find((r) => r.unitId === 'ant-u2');
     expect(r2?.equipment?.equipment.kind).toBe('separate');
@@ -435,7 +441,7 @@ describe('applyToFile', () => {
     });
     const row = p.rows.find((r) => r.unitId === 'ant-u1');
     expect(row?.equipment?.confidence).toBe('low');
-    expect(row?.equipment?.reason).toMatch(/mystery-rru/);
+    expect(en(row?.equipment?.reason)).toMatch(/mystery-rru/);
     const s = settingsOf(applyToFile(emptyFile, p, CATALOGUE), 'ant-u1');
     expect(s?.equipment).toEqual({ kind: 'separate', antenna: 'generic-panel-65-17' });
     expect(s?.carriers[0]?.radioUnit).toBeUndefined();
@@ -496,7 +502,7 @@ describe('applyToFile', () => {
       ['c1', 'B3'],
     ]);
     expect(settingsOf(out2, 'ant-u1')?.carriers[0]).toEqual(kept);
-    expect(RfSectorsFile.safeParse(out2).success).toBe(true);
+    expect(RfSectorsFile.safeParse(splitRfOrigins(out2).file).success).toBe(true);
   });
   it('writes exactly the kept carriers plus the row picks for every row (R11 g)', () => {
     const scenarios: { file: RfSectorsFile; picks: Map<string, PlanPick[]> }[] = [
@@ -520,7 +526,7 @@ describe('applyToFile', () => {
     for (const { file, picks } of scenarios) {
       const p = buildProposal({ units, file, catalogue: CATALOGUE, picks });
       const out = applyToFile(file, p, CATALOGUE);
-      expect(RfSectorsFile.safeParse(out).success).toBe(true);
+      expect(RfSectorsFile.safeParse(splitRfOrigins(out).file).success).toBe(true);
       for (const row of p.rows) {
         const before = settingsOf(file, row.unitId)?.carriers ?? [];
         const keptBefore = before.filter((_, k) => row.kept.carriers[k] === true);
@@ -612,7 +618,7 @@ describe('applyToFile', () => {
     ]);
     expect(settingsOf(out, 'ant-gone')).toEqual(orphan);
     expect(file.sectors[1]?.name).toBe('S2');
-    expect(RfSectorsFile.safeParse(out).success).toBe(true);
+    expect(RfSectorsFile.safeParse(splitRfOrigins(out).file).success).toBe(true);
   });
   it('does not mutate the input file', () => {
     const file = fileWith({ equipment: { by: 'ai' }, carriers: [{ by: 'ai' }] });
@@ -623,5 +629,84 @@ describe('applyToFile', () => {
       CATALOGUE,
     );
     expect(file).toEqual(copy);
+  });
+});
+
+describe('a value the person cleared', () => {
+  /** u1 with its equipment and e-tilt cleared by hand: origin user, value absent. */
+  const cleared = (keys: ('equipment' | 'etiltDeg')[]): RfSectorsFile => {
+    const file = fileWith({ carriers: [] });
+    const s = file.antennas[0];
+    if (!s) throw new Error('no settings');
+    if (keys.includes('equipment')) delete s.equipment;
+    s.origins = Object.fromEntries(keys.map((k) => [k, { by: 'user' as const }]));
+    return file;
+  };
+
+  it('is not filled again by Auto-plan or Re-plan: no equipment, no carrier', () => {
+    const file = cleared(['equipment']);
+    const p = buildProposal({ units, file, catalogue: CATALOGUE, picks: new Map() });
+    const row = p.rows.find((r) => r.unitId === 'ant-u1');
+    expect(row?.kept.equipment).toBe(true);
+    expect(row?.equipment).toBeUndefined();
+    expect(row?.picks).toEqual([]);
+    expect(row?.note).toEqual([{ key: 'rf.autoplan.note.clearedEquipment' }]);
+    const s = settingsOf(applyToFile(file, p, CATALOGUE), 'ant-u1');
+    expect(s?.equipment).toBeUndefined();
+    expect(s?.carriers).toEqual([]);
+    expect(s?.origins?.equipment).toEqual({ by: 'user' });
+    // the other units are planned as before
+    expect(p.rows.find((r) => r.unitId === 'ant-u2')?.equipment).toBeDefined();
+  });
+
+  it('keeps a cleared e-tilt empty against a cell export', () => {
+    const file = cleared(['etiltDeg']);
+    const p = buildProposal({
+      units,
+      file,
+      catalogue: CATALOGUE,
+      picks: new Map([['ant-u1', [{ ...exportPick('B3'), etiltDeg: 6 }]]]),
+    });
+    expect(p.rows[0]?.kept.etiltDeg).toBe(true);
+    expect(p.rows[0]?.etilt).toBeUndefined();
+    const s = settingsOf(applyToFile(file, p, CATALOGUE), 'ant-u1');
+    expect(s?.etiltDeg).toBeUndefined();
+    expect(s?.origins?.etiltDeg).toEqual({ by: 'user' });
+  });
+
+  it('a value never set (no origin) is still planned', () => {
+    const file = fileWith({ carriers: [] });
+    delete file.antennas[0]?.equipment;
+    const p = buildProposal({ units, file, catalogue: CATALOGUE, picks: new Map() });
+    expect(p.rows[0]?.kept.equipment).toBe(false);
+    expect(p.rows[0]?.equipment).toBeDefined();
+  });
+});
+
+describe('the planner holds no English', () => {
+  it('reasons and notes are message keys with values', () => {
+    const p = validateAiPick({ ...raw, entryId: 'nope' }, unitDeep, CATALOGUE);
+    expect(p.reason[0]).toEqual({
+      key: 'rf.autoplan.reason.aiUnusable',
+      vars: { problem: { key: 'rf.autoplan.aiProblem.notInCatalogue', vars: { id: 'nope' } } },
+    });
+    const proposal = buildProposal({
+      units,
+      file: emptyFile,
+      catalogue: CATALOGUE,
+      picks: new Map([['ant-u1', [p]]]),
+    });
+    const parts = proposal.rows.flatMap((r) => [
+      ...r.picks.flatMap((x) => x.reason),
+      ...(r.note ?? []),
+    ]);
+    expect(parts.length).toBeGreaterThan(0);
+    expect(parts.every((x) => 'key' in x && x.key.startsWith('rf.autoplan.'))).toBe(true);
+  });
+
+  it('the AI reason is kept as the AI wrote it', () => {
+    expect(validateAiPick(raw, unitDeep, CATALOGUE).reason).toEqual([
+      { text: 'Deep wide face, AAU' },
+    ]);
   });
 });

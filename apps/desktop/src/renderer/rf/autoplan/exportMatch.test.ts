@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { AntennaUnit, RfCatalogueEntry, RfSector } from '@aio/schema';
+import { t } from '@aio/ui';
 import { describe, expect, it } from 'vitest';
+import { planText, type PlanText } from './planText';
+
+const en = (parts: readonly PlanText[] | undefined): string => planText(t, parts ?? []);
 import { matchCellExport, type ExportMatch } from './exportMatch';
 
 const CATALOGUE = (
@@ -137,7 +141,7 @@ describe('matchCellExport', () => {
     });
     const low = m.picks.get('u2')?.[0];
     expect(low?.confidence).toBe('low');
-    expect(low?.reason).toMatch(/not found in the catalogue/);
+    expect(en(low?.reason)).toMatch(/not found in the catalogue/);
     expect(low?.equipment.kind).toBe('separate');
     expect(low?.carrier.band).toBe('B3');
   });
@@ -165,9 +169,9 @@ describe('matchCellExport', () => {
     const m = ok(matchCellExport(csv, [unit('u1', 'Panel A', 10)], [], CATALOGUE));
     const p = m.picks.get('u1')?.[0];
     expect(p?.confidence).toBe('low');
-    expect(p?.reason).toContain("band 'B99' not recognised, rules band used");
-    expect(p?.reason).toContain("bandwidth '5000' out of range, default used");
-    expect(p?.reason).toContain("power '200' out of range");
+    expect(en(p?.reason)).toContain("Band 'B99' not recognised, rules band used.");
+    expect(en(p?.reason)).toContain("Bandwidth '5000' out of range, default used.");
+    expect(en(p?.reason)).toContain("Power '200' out of range");
     expect(p?.carrier.band).toBe('B3');
     expect(p?.carrier.powerDbmPerPort).toBeUndefined();
   });
@@ -180,8 +184,9 @@ describe('matchCellExport', () => {
     const p = m.picks.get('u1')?.[0];
     expect(p?.confidence).toBe('low');
     expect(p?.equipment).toMatchObject({ kind: 'separate', antenna: antenna.id });
-    expect(p?.reason).toContain("'Nope-9'");
-    expect(p?.reason).not.toContain(antenna.id);
+    expect(en(p?.reason)).toContain("'Nope-9'");
+    expect(en(p?.reason)).not.toContain(antenna.id);
+    expect(p?.reason.every((x) => 'key' in x)).toBe(true);
   });
 
   it('does not rename two sectors to the same name', () => {

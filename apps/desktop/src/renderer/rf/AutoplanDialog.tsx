@@ -10,8 +10,8 @@
  *   keeps (C3) are marked "kept".
  * - Phases: `blocked-review` (F6), `preview` (the send preview, as the antenna AI labels do; a
  *   local model skips it), `thinking`, `review` and `error` (which offers Rules only).
- * - The store's English messages (`AUTOPLAN_MESSAGES`) are shown through `rf.autoplan.*` keys; a
- *   provider's own error text is shown as it came.
+ * - The store and the planner hold no English: reasons, notes, errors and warnings are
+ *   `rf.autoplan.*` keys with values (`planText`); a provider's own text is shown as it came.
  */
 import { PROVIDER_LABELS, SendDialog } from '@aio/ai';
 import type { IpcResponse, RfCatalogueEntry, RfEquipment, RfTech } from '@aio/schema';
@@ -22,7 +22,6 @@ import { useStore } from 'zustand';
 import { antennaStore } from '../telecom/antennaStore';
 import {
   applyAutoplan,
-  AUTOPLAN_MESSAGES,
   cancelAutoplan,
   confirmSend,
   openAntennaReviewOrFallback,
@@ -31,6 +30,7 @@ import {
   type ApplyRefusal,
   type AutoplanPhase,
 } from './autoplan/autoplanStore';
+import { planText, type PlanText } from './autoplan/planText';
 import type { Proposal, ProposalRow } from './autoplan/proposal';
 import type { LeftOut } from './autoplan/sectors';
 import type { PlanPick } from './autoplan/types';
@@ -45,25 +45,6 @@ type Preview = Extract<IpcResponse<'ai:rfPlanPreview'>, { ok: true }>;
 type Confidence = PlanPick['confidence'];
 /** Why Apply did not end in a run: the plan applied but no run, or nothing applied (read only). */
 type RunProblem = Extract<StartResult, { ok: false }> | ApplyRefusal;
-
-/** The store's fixed texts, by the key that says the same (provider errors have none). */
-const MESSAGE_KEY: ReadonlyMap<string, MessageKey> = new Map<string, MessageKey>([
-  [AUTOPLAN_MESSAGES.exportEmpty, 'rf.autoplan.error.exportEmpty'],
-  [AUTOPLAN_MESSAGES.exportNoAntennaColumn, 'rf.autoplan.error.exportNoAntennaColumn'],
-  [AUTOPLAN_MESSAGES.noProject, 'rf.autoplan.error.noProject'],
-  [AUTOPLAN_MESSAGES.aiUnavailable, 'rf.autoplan.error.aiUnavailable'],
-  [AUTOPLAN_MESSAGES.aiNoAnswer, 'rf.autoplan.error.aiNoAnswer'],
-  [AUTOPLAN_MESSAGES.noRoot, 'rf.autoplan.error.noRoot'],
-]);
-const NO_EXPORT_ROW = AUTOPLAN_MESSAGES.noExportRow('');
-
-function messageText(t: T, m: string): string {
-  const key = MESSAGE_KEY.get(m);
-  if (key) return t(key);
-  if (m.startsWith(NO_EXPORT_ROW))
-    return t('rf.autoplan.noExportRow', { name: m.slice(NO_EXPORT_ROW.length) });
-  return m;
-}
 
 const LEFT_KEY: Readonly<Record<LeftOut['reason'], MessageKey>> = {
   draft: 'rf.autoplan.left.draft',
@@ -155,7 +136,9 @@ function PlanRow({ row, proposal, t }: { row: ProposalRow; proposal: Proposal; t
   const keptList = (settings?.carriers ?? []).filter((_, k) => row.kept.carriers[k] === true);
   const keptCarriers = keptList.length;
   const conf = rowConfidence(row);
-  const reasons = [...new Set([row.equipment, ...row.picks].flatMap((p) => (p ? [p.reason] : [])))];
+  const reasons = [
+    ...new Set([row.equipment, ...row.picks].flatMap((p) => (p ? [planText(t, p.reason)] : []))),
+  ];
 
   return (
     <tr data-testid={`rf-autoplan-row-${row.unitId}`} data-confidence={conf ?? 'kept'}>
@@ -230,7 +213,7 @@ function PlanRow({ row, proposal, t }: { row: ProposalRow; proposal: Proposal; t
         {reasons.length > 0
           ? reasons.map((r) => <div key={r}>{r}</div>)
           : t('rf.autoplan.keptReason')}
-        {row.note && <small className="rf-autoplan-note">{row.note}</small>}
+        {row.note && <small className="rf-autoplan-note">{planText(t, row.note)}</small>}
       </td>
       <td>
         {conf ? (
@@ -283,7 +266,7 @@ function LeftOutRow({ left, t }: { left: LeftOut; t: T }) {
   );
 }
 
-function ReviewBody({ proposal, warnings, t }: { proposal: Proposal; warnings: string[]; t: T }) {
+function ReviewBody({ proposal, warnings, t }: { proposal: Proposal; warnings: PlanText[]; t: T }) {
   const sectorsWithRows = new Set(proposal.rows.map((r) => r.sectorId)).size;
   const nameOf = (id: string) => proposal.sectors.find((s) => s.id === id)?.name ?? id;
   return (
@@ -330,7 +313,7 @@ function ReviewBody({ proposal, warnings, t }: { proposal: Proposal; warnings: s
             <li>{t('rf.autoplan.unmatchedRows', { lines: proposal.unmatchedRows.join(', ') })}</li>
           )}
           {warnings.map((w, i) => (
-            <li key={i}>{messageText(t, w)}</li>
+            <li key={i}>{planText(t, w)}</li>
           ))}
         </ul>
       )}
@@ -408,8 +391,9 @@ function SendPreview({ preview, t }: { preview: Preview; t: T }) {
 
 function runProblemText(t: T, r: RunProblem): string {
   if (r.code === 'read-only') return t('rf.refusal.readOnly');
-  if (r.code === 'failed')
-    return t('rf.autoplan.applied.failed', { message: messageText(t, r.message) });
+  if (r.code === 'no-root')
+    return t('rf.autoplan.applied.failed', { message: t('rf.autoplan.error.noRoot') });
+  if (r.code === 'failed') return t('rf.autoplan.applied.failed', { message: r.message });
   return t(r.code === 'refused' ? 'rf.autoplan.applied.refused' : 'rf.autoplan.applied.notSaved');
 }
 
@@ -568,7 +552,7 @@ export function AutoplanDialog() {
     title = t('rf.autoplan.error.title');
     body = (
       <p className="rf-note rf-err" role="alert">
-        {messageText(t, error ?? '')}
+        {error ? planText(t, error) : ''}
       </p>
     );
     foot = (

@@ -15,7 +15,8 @@
  *   `applyAutoplan` refuses a proposal made for another project. The store also subscribes to
  *   `rfStore` itself and resets (`resetAutoplan`) whenever its project changes, so no other code
  *   has to remember to.
- * - The English texts it shows are in `AUTOPLAN_MESSAGES`, for the dialog to map to i18n keys.
+ * - What it shows (`error`, `warnings`, reasons) is i18n keys with values (`planText.ts`), never
+ *   English; a provider's own error text is kept as it came.
  *
  * Bridge calls follow `telecom/antennaStore.ts`. Nothing here writes `antennas.json`.
  */
@@ -38,22 +39,11 @@ import { startRfRun } from '../rfTab';
 import { applyPlan, rfStore, type RfState, type RfView, type StartResult } from '../rfStore';
 import { entryCoversBand } from './bandFit';
 import { matchCellExport } from './exportMatch';
+import { msg, raw, type PlanText } from './planText';
 import { buildProposal, validateAiPick, type AiPickRaw, type Proposal } from './proposal';
 import { rulesPick } from './rules';
 import { plannedUnits, planSectors } from './sectors';
 import type { PlanPick } from './types';
-
-/** Every text this store puts in `error`, `warnings` or a reason, in one place (for i18n). */
-export const AUTOPLAN_MESSAGES = {
-  exportEmpty: 'The cell export is empty.',
-  exportNoAntennaColumn: 'The cell export has no antenna column.',
-  noExportRow: (name: string) => `No export row for ${name}`,
-  noProject: 'No project is open.',
-  aiUnavailable: 'The AI is not available.',
-  aiNoAnswer: 'The AI did not answer.',
-  aiNoPick: 'The AI gave no pick.',
-  noRoot: 'The project folder is not known, so the run did not start.',
-} as const;
 
 export type AutoplanSource = 'ai' | 'rules' | { csvText: string };
 export type AutoplanPhase = 'idle' | 'blocked-review' | 'preview' | 'thinking' | 'review' | 'error';
@@ -63,8 +53,8 @@ export interface AutoplanState {
   source: AutoplanSource;
   preview: IpcResponse<'ai:rfPlanPreview'> | null;
   proposal: Proposal | null;
-  warnings: string[];
-  error: string | null;
+  warnings: PlanText[];
+  error: PlanText | null;
   /** The project this step was started for (R17); null when idle with no project. */
   projectId: string | null;
   /** A provider is set up and the project policy allows it (`ai:status`, chat route). */
@@ -223,7 +213,10 @@ function proposalFrom(
   });
 }
 
-const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+/** A thrown error's own text (from the bridge or a provider), shown as it came. */
+const messageOf = (e: unknown): PlanText => raw(e instanceof Error ? e.message : String(e));
+/** A failure's text as it came, or the store's own message when it gave none. */
+const failure = (error: string, fallback: PlanText): PlanText => (error ? raw(error) : fallback);
 
 /** Unwrap a bridge answer to its value, or the text of why not (as `antennaStore` does). */
 function unwrap<T extends { ok: boolean }>(
@@ -313,8 +306,8 @@ function planFromExport(units: readonly AntennaUnit[], text: string): void {
       phase: 'error',
       error:
         m.error === 'empty'
-          ? AUTOPLAN_MESSAGES.exportEmpty
-          : AUTOPLAN_MESSAGES.exportNoAntennaColumn,
+          ? msg('rf.autoplan.error.exportEmpty')
+          : msg('rf.autoplan.error.exportNoAntennaColumn'),
     });
     return;
   }
@@ -325,7 +318,7 @@ function planFromExport(units: readonly AntennaUnit[], text: string): void {
       renames: m.renames,
       unmatchedRows: m.unmatchedRows,
     }),
-    warnings: m.unmatchedUnits.map((id) => AUTOPLAN_MESSAGES.noExportRow(nameOf(id))),
+    warnings: m.unmatchedUnits.map((id) => msg('rf.autoplan.noExportRow', { name: nameOf(id) })),
   });
 }
 
@@ -341,7 +334,7 @@ async function askPreview(
     return;
   }
   if (!projectId) {
-    set({ phase: 'error', error: AUTOPLAN_MESSAGES.noProject });
+    set({ phase: 'error', error: msg('rf.autoplan.error.noProject') });
     return;
   }
   set({ phase: 'preview' });
@@ -355,7 +348,7 @@ async function askPreview(
   if (stale(my, projectId)) return;
   const v = unwrap(r);
   if (!v.ok) {
-    set({ phase: 'error', error: v.error || AUTOPLAN_MESSAGES.aiUnavailable });
+    set({ phase: 'error', error: failure(v.error, msg('rf.autoplan.error.aiUnavailable')) });
     return;
   }
   previewFor = { projectId, unitIds };
@@ -404,14 +397,15 @@ export async function confirmSend(photos: boolean): Promise<void> {
   pendingRunId = null;
   const v = unwrap(r);
   if (!v.ok) {
-    set({ phase: 'error', error: v.error || AUTOPLAN_MESSAGES.aiNoAnswer });
+    set({ phase: 'error', error: failure(v.error, msg('rf.autoplan.error.aiNoAnswer')) });
     return;
   }
   try {
     set({
       phase: 'review',
       proposal: proposalFrom(units, aiPicks(sent, v.value.picks)),
-      warnings: [...v.value.warnings],
+      // main's own words about the reply (a dropped key), shown as they came
+      warnings: v.value.warnings.map(raw),
     });
   } catch (e) {
     set({ phase: 'error', error: messageOf(e) });
@@ -435,7 +429,11 @@ function aiPicks(
     }
     const rules = rulesPick(u, catalogue);
     picks.set(u.id, [
-      { ...rules, confidence: 'low', reason: `${AUTOPLAN_MESSAGES.aiNoPick} ${rules.reason}` },
+      {
+        ...rules,
+        confidence: 'low',
+        reason: [msg('rf.autoplan.reason.aiNoPick'), ...rules.reason],
+      },
     ]);
   }
   return picks;
@@ -463,18 +461,21 @@ export function cancelAutoplan(): void {
   set({ ...initial(), ...statusOf(get()), source, projectId });
 }
 
-/** Apply refused: the project is read only, so nothing was written (the dialog says so). */
+/**
+ * Apply refused: the project is read only, so nothing was written (`read-only`); or the plan is
+ * applied but the project folder is not known, so no run started (`no-root`). The dialog says so.
+ */
 export interface ApplyRefusal {
   ok: false;
-  code: 'read-only';
+  code: 'read-only' | 'no-root';
 }
 
 /**
  * Write the reviewed proposal into the working copy (Apply only: left unsaved, C6), then with
  * `run` start a coverage run, which saves first. Null when nothing was applied (nothing in review,
  * or the proposal is for another project, R17) or no run was asked for; a `failed` result with
- * `AUTOPLAN_MESSAGES.noRoot` when it applied but the project folder is not known; `read-only`
- * when the project cannot take it (nothing written, Auto-plan closed).
+ * `no-root` when it applied but the project folder is not known; `read-only` when the project
+ * cannot take it (nothing written, Auto-plan closed).
  */
 export async function applyAutoplan(run: boolean): Promise<StartResult | ApplyRefusal | null> {
   const { phase, proposal, projectId } = get();
@@ -491,7 +492,7 @@ export async function applyAutoplan(run: boolean): Promise<StartResult | ApplyRe
   cancelAutoplan();
   if (!run) return null;
   const root = workspace.getState().project?.root;
-  if (!root) return { ok: false, code: 'failed', message: AUTOPLAN_MESSAGES.noRoot };
+  if (!root) return { ok: false, code: 'no-root' };
   return startRfRun(root);
 }
 
@@ -499,17 +500,17 @@ export async function applyAutoplan(run: boolean): Promise<StartResult | ApplyRe
 let pendingReview: (() => void) | null = null;
 
 /**
- * "Review antennas first": the Measure bench forward (the Coverage tab pinned first, so it stays
- * open), then the inventory's review (`openAntennaReview`: the drafts, the first one revealed).
+ * "Review antennas first": the Measure bench forward (a pinned Coverage tab stays open beside it;
+ * its pin is never changed here), then the inventory's review (`openAntennaReview`: the drafts, the first one revealed).
  * Before this project's inventory is read, the review opens once the read is in; a failed read, a
  * read of another project or a newer ask drops it.
  */
 export function openAntennaReviewOrFallback(bench: StoreApi<WorkbenchState> = workbench): void {
   pendingReview?.();
   pendingReview = null;
-  const wb = bench.getState();
-  if (wb.tabs.some((x) => x.id === 'rf')) wb.pin('rf', true);
-  wb.open('measure');
+  // Coverage keeps the pin it has: opened from the chip or Ctrl+K it is pinned and stays open
+  // beside Measure; a person who unpinned it is not overruled
+  bench.getState().open('measure');
   const projectId = rfStore.getState().projectId;
   const a = antennaStore.getState();
   if (a.status === 'ready' && a.projectId === projectId) {

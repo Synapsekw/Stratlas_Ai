@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { AntennaUnit, RfCatalogueEntry } from '@aio/schema';
+import { t } from '@aio/ui';
 import { describe, expect, it } from 'vitest';
+import { AUTOPLAN_PANEL } from '../rfDefaults';
+import { planText } from './planText';
 import { rulesPick } from './rules';
 
 const CATALOGUE = (
@@ -47,7 +50,7 @@ describe('rulesPick', () => {
     expect(p.equipment).toEqual({ kind: 'aau', aau: 'generic-aau-64t64r-n78' });
     expect(p.carrier).toMatchObject({ band: 'n78', tech: 'nr', bandwidthMhz: 100 });
     expect(p).toMatchObject({ by: 'rules', confidence: 'medium' });
-    expect(p.reason).toBe('0.50 m × 0.20 m deep face: AAU');
+    expect(planText(t, p.reason)).toBe('0.50 m × 0.20 m deep face: AAU');
   });
   it('picks panel plus RRU on B3 for a thin face', () => {
     const p = rulesPick(unit({ widthM: 0.3, depthM: 0.1 }), CATALOGUE);
@@ -67,5 +70,15 @@ describe('rulesPick', () => {
   it('treats missing measurements as a thin face with low confidence', () => {
     expect(rulesPick(unit({}), CATALOGUE).confidence).toBe('low');
     expect(rulesPick(unit({}), CATALOGUE).equipment.kind).toBe('separate');
+  });
+  it('says the band it picked, from the panel rule, as a message key', () => {
+    const p = rulesPick(unit({}), CATALOGUE);
+    expect(p.reason).toEqual([
+      { key: 'rf.autoplan.reason.panelNoSize', vars: { band: AUTOPLAN_PANEL.band } },
+    ]);
+    expect(planText(t, p.reason)).toBe(
+      `No size measured: panel and radio on ${AUTOPLAN_PANEL.band}`,
+    );
+    expect(p.carrier.band).toBe(AUTOPLAN_PANEL.band);
   });
 });

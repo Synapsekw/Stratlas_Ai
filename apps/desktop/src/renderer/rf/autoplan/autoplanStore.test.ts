@@ -8,8 +8,9 @@ import { antennaStore } from '../../telecom/antennaStore';
 import { antennasFile, unit } from '../__fixtures__/rfData';
 import { startRfRun } from '../rfTab';
 import { loadRf, resetRf, rfStore, type RfClassStat, type RfState } from '../rfStore';
+import { t } from '@aio/ui';
+import { planText, type PlanText } from './planText';
 import {
-  AUTOPLAN_MESSAGES,
   applyAutoplan,
   autoplanStore,
   canAutoplan,
@@ -22,6 +23,9 @@ import {
   switchSource,
   type AutoplanState,
 } from './autoplanStore';
+
+const en = (parts: PlanText | readonly PlanText[] | null | undefined): string =>
+  parts ? planText(t, parts) : '';
 
 type Handler = (req: Record<string, unknown>) => unknown;
 
@@ -168,6 +172,28 @@ describe('startAutoplan', () => {
     expect(autoplan().proposal?.leftOut).toEqual([{ unitId: 'ant-d1', reason: 'draft' }]);
   });
 
+  it.each(['cloud-off', 'offline-only'] as const)(
+    'with Cloud AI off (%s) defaults to Rules only and never asks the AI',
+    async (reason) => {
+      // a cloud provider is set up, but the switch (or offline-only) keeps every call local
+      mockInvoke('ai:status', {
+        ready: false,
+        reason,
+        route: { provider: 'anthropic', model: 'claude-x' },
+      });
+      mockInvoke('ai:rfPlanPreview', PREVIEW);
+      mockInvoke('ai:rfPlan', REPLY);
+      await startAutoplan();
+      expect(autoplan()).toMatchObject({ source: 'rules', phase: 'review', aiAvailable: false });
+      expect(autoplan().proposal?.rows.every((r) => r.picks[0]?.by === 'rules')).toBe(true);
+      // a Re-plan from the same state stays on the rules too
+      await startAutoplan();
+      expect(autoplan().source).toBe('rules');
+      expect(callsTo('ai:rfPlanPreview')).toHaveLength(0);
+      expect(callsTo('ai:rfPlan')).toHaveLength(0);
+    },
+  );
+
   it('defaults to rules when no provider is set up, and to ai when one is', async () => {
     await startAutoplan();
     expect(autoplan()).toMatchObject({ source: 'rules', phase: 'review', aiAvailable: false });
@@ -188,7 +214,14 @@ describe('startAutoplan', () => {
       carrier: { band: 'B1', bandwidthMhz: 10 },
     });
     expect(autoplan().proposal?.unmatchedRows).toEqual([3]);
-    expect(autoplan().warnings).toEqual(['No export row for B', 'No export row for C']);
+    expect(autoplan().warnings).toEqual([
+      { key: 'rf.autoplan.noExportRow', vars: { name: 'B' } },
+      { key: 'rf.autoplan.noExportRow', vars: { name: 'C' } },
+    ]);
+    expect(autoplan().warnings.map((w) => en(w))).toEqual([
+      'No export row for B',
+      'No export row for C',
+    ]);
   });
 
   it('refuses on a read-only project: nothing is planned or asked', async () => {
@@ -227,7 +260,7 @@ describe('startAutoplan', () => {
   it('a cell export it cannot read ends in error with rules offered', async () => {
     await startAutoplan({ csvText: 'band\nB3' });
     expect(autoplan().phase).toBe('error');
-    expect(autoplan().error).toBeTruthy();
+    expect(autoplan().error).toEqual({ key: 'rf.autoplan.error.exportNoAntennaColumn' });
     await switchSource('rules');
     expect(autoplan().phase).toBe('review');
   });
@@ -281,8 +314,10 @@ describe('the AI source', () => {
       by: 'rules',
       confidence: 'low',
     });
-    expect(rows.find((r) => r.unitId === 'ant-b')?.picks[0]?.reason).toMatch(/AI/);
-    expect(autoplan().warnings).toContain('dropped a geometry key');
+    expect(en(rows.find((r) => r.unitId === 'ant-b')?.picks[0]?.reason)).toMatch(
+      /^The AI gave no pick\. /,
+    );
+    expect(autoplan().warnings).toContainEqual({ text: 'dropped a geometry key' });
   });
 
   it('never sends a unit switched off in RF to the AI', async () => {
@@ -308,7 +343,7 @@ describe('the AI source', () => {
     await startAutoplan('ai');
     await confirmSend(false);
     expect(autoplan().phase).toBe('error');
-    expect(autoplan().error).toBe('timeout');
+    expect(autoplan().error).toEqual({ text: 'timeout' });
     expect(autoplan().preview).toBeNull();
     expect(selectChipState(rfStore.getState(), site3(), autoplan()).kind).not.toBe('planning');
     await switchSource('rules');
@@ -323,13 +358,13 @@ describe('the AI source', () => {
     await startAutoplan('ai');
     await confirmSend(false);
     expect(autoplan().phase).toBe('error');
-    expect(autoplan().error).toBe('boom');
+    expect(autoplan().error).toEqual({ text: 'boom' });
   });
 
   it('a refused preview ends in error with rules offered', async () => {
     mockInvoke('ai:rfPlanPreview', { ok: false, error: 'The project forbids AI' });
     await startAutoplan('ai');
-    expect(autoplan()).toMatchObject({ phase: 'error', error: 'The project forbids AI' });
+    expect(autoplan()).toMatchObject({ phase: 'error', error: { text: 'The project forbids AI' } });
     expect(callsTo('ai:rfPlan')).toHaveLength(0);
   });
 
@@ -468,11 +503,7 @@ describe('applyAutoplan', () => {
   it('applies and says why no run started when the project folder is not known', async () => {
     await startAutoplan('rules');
     workspace.setState({ project: null });
-    expect(await applyAutoplan(true)).toEqual({
-      ok: false,
-      code: 'failed',
-      message: AUTOPLAN_MESSAGES.noRoot,
-    });
+    expect(await applyAutoplan(true)).toEqual({ ok: false, code: 'no-root' });
     expect(rfStore.getState().dirty).toBe(true);
     expect(vi.mocked(startRfRun)).not.toHaveBeenCalled();
   });
@@ -530,10 +561,9 @@ describe('openAntennaReviewOrFallback', () => {
     // the drafts, the first one revealed; the bench is left as it is
     expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
     expect(antennaStore.getState().reveal).toBe(before + 1);
-    // the Measure bench comes forward, where the inventory and the card are, Coverage pinned first
-    expect(b.pin).toHaveBeenCalledWith('rf', true);
+    // the Measure bench comes forward, where the inventory and the card are; Coverage keeps its pin
     expect(b.open).toHaveBeenCalledWith('measure');
-    expect(b.pin.mock.invocationCallOrder[0]).toBeLessThan(b.open.mock.invocationCallOrder[0] ?? 0);
+    expect(b.pin).not.toHaveBeenCalled();
   });
 
   it("waits for this project's inventory when the one read is another project's", async () => {

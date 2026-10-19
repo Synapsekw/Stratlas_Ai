@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-import type { AntennasFile, RfSectorsFile } from '@aio/schema';
-import { RF_COVERAGE_MIN_PACK } from '@aio/schema';
+import { RF_COVERAGE_MIN_PACK, RfSectorsFile, type AntennasFile } from '@aio/schema';
 import { buildProposal } from './autoplan/proposal';
 import type { CellRow } from './cellCsv';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,6 +43,7 @@ type Call = [string, Record<string, unknown>];
 const h = vi.hoisted(() => ({
   antennas: null as AntennasFile | null,
   sectors: null as RfSectorsFile | null,
+  origins: undefined as Record<string, unknown> | undefined,
   readOnly: false,
   calls: [] as Call[],
   writeError: null as string | null,
@@ -71,6 +71,7 @@ vi.mock('../shell', () => ({
               file: structuredClone(h.sectors),
               readOnly: h.readOnly,
               orphans: [],
+              ...(h.origins ? { origins: structuredClone(h.origins) } : {}),
             },
           };
         case 'rf:listCatalogue':
@@ -91,6 +92,7 @@ vi.mock('../shell', () => ({
           if (h.writeError) return { ok: true, value: { ok: false, error: h.writeError } };
           if (h.writeDelay) await h.writeDelay;
           h.sectors = structuredClone(req.file) as RfSectorsFile;
+          h.origins = req.origins as Record<string, unknown> | undefined;
           return {
             ok: true,
             value: { ok: true, ...(h.writeWarnings ? { warnings: h.writeWarnings } : {}) },
@@ -134,6 +136,7 @@ beforeEach(() => {
   h.calls = [];
   h.antennas = null;
   h.sectors = null;
+  h.origins = undefined;
   h.readOnly = false;
   h.writeError = null;
   h.writeWarnings = undefined;
@@ -726,6 +729,32 @@ describe('applying a plan and marking hand edits', () => {
     expect(settings('ant-a').carriers[0]?.origin?.by).toBe('rules');
   });
 
+  it('a save sends a plain sectors file and the origins apart; a load merges them back', async () => {
+    await planned();
+    const before = structuredClone(s().sectors);
+    expect((await saveRf()).ok).toBe(true);
+    const sent = h.calls.find(([c]) => c === 'rf:writeSectors')?.[1];
+    expect(JSON.stringify(sent?.file)).not.toMatch(/origin/);
+    expect(RfSectorsFile.safeParse(sent?.file).success).toBe(true);
+    expect(sent?.origins).toMatchObject({
+      'ant-a': { equipment: { by: 'rules' }, carriers: { c1: { by: 'rules' } } },
+    });
+    resetRf();
+    await loadRf('p1');
+    expect(s().sectors).toEqual(before);
+  });
+
+  it('a load without a sidecar counts every value as set by the person', async () => {
+    await planned();
+    await saveRf();
+    h.origins = undefined;
+    resetRf();
+    await loadRf('p1');
+    expect(settings('ant-a').equipment).toBeDefined();
+    expect(settings('ant-a').origins).toBeUndefined();
+    expect(settings('ant-a').carriers[0]?.origin).toBeUndefined();
+  });
+
   it('applyPlan does nothing on a read only project', async () => {
     site();
     h.sectors = sectorsFile([], []);
@@ -755,6 +784,30 @@ describe('applying a plan and marking hand edits', () => {
     clearSetting('ant-a', 'etiltDeg');
     expect(settings('ant-a').origins?.equipment).toEqual({ by: 'user' });
     expect(settings('ant-a').origins?.etiltDeg).toEqual({ by: 'user' });
+  });
+
+  it('Re-plan does not refill a value the person cleared, even after a save and a load', async () => {
+    await planned();
+    clearSetting('ant-a', 'equipment');
+    clearSetting('ant-a', 'etiltDeg');
+    await saveRf();
+    resetRf();
+    await loadRf('p1');
+    expect(settings('ant-a').origins).toEqual({
+      equipment: { by: 'user' },
+      etiltDeg: { by: 'user' },
+    });
+    applyPlan(
+      buildProposal({
+        units: s().antennas?.units ?? [],
+        file: s().sectors,
+        catalogue: s().catalogue.map((c) => c.entry),
+        picks: new Map(),
+      }),
+    );
+    expect(settings('ant-a').equipment).toBeUndefined();
+    expect(settings('ant-a').etiltDeg).toBeUndefined();
+    expect(settings('ant-b').equipment).toBeDefined();
   });
 
   it('a patch with etiltDeg marks the e-tilt user and leaves the equipment alone', async () => {

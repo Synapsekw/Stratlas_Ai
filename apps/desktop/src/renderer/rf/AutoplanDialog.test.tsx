@@ -220,11 +220,24 @@ describe('AutoplanDialog', () => {
     const p = state.proposal;
     if (!p) throw new Error('no proposal');
     const rows = p.rows.map((r) =>
-      r.unitId === 'ant-u1' ? { ...r, note: 'Set the band by hand' } : r,
+      r.unitId === 'ant-u1'
+        ? {
+            ...r,
+            note: [
+              {
+                key: 'rf.autoplan.note.keptEquipment' as const,
+                vars: { band: 'B1', equipment: 'X' },
+              },
+              { key: 'rf.autoplan.note.noCarrierFits' as const },
+            ],
+          }
+        : r,
     );
     renderWith({ ...state, proposal: { ...p, rows } });
     const note = must('rf-autoplan-row-ant-u1').querySelector('.rf-autoplan-note');
-    expect(note?.textContent).toBe('Set the band by hand');
+    expect(note?.textContent).toBe(
+      "Kept your equipment: your B1 carrier doesn't fit X. No carrier fits this equipment, set the band by hand.",
+    );
   });
 
   it('lists drafts as left out with a review link', () => {
@@ -425,7 +438,7 @@ describe('AutoplanDialog', () => {
       phase: 'error',
       source: 'ai',
       aiAvailable: true,
-      error: 'The AI did not answer.',
+      error: { key: 'rf.autoplan.error.aiNoAnswer' },
     });
     const dlg = must('rf-autoplan');
     expect(dlg.textContent).toContain('The AI did not answer');
@@ -436,7 +449,12 @@ describe('AutoplanDialog', () => {
   });
 
   it('error shows a provider message it does not know as it came', () => {
-    renderWith({ phase: 'error', source: 'ai', aiAvailable: true, error: 'rate limited' });
+    renderWith({
+      phase: 'error',
+      source: 'ai',
+      aiAvailable: true,
+      error: { text: 'rate limited' },
+    });
     expect(must('rf-autoplan').textContent).toContain('rate limited');
   });
 

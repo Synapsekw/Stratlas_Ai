@@ -26,6 +26,7 @@ import { AUTOPLAN_AAU, AUTOPLAN_PANEL } from '../rfDefaults';
 import { bandwidthChoices, clampSettingsEtilt, withEquipment } from '../rfFields';
 import { entryCoversBand } from './bandFit';
 import { rulesPick } from './rules';
+import { msg, raw as rawText, type PlanText, type PlanVar } from './planText';
 import { planSectors, type LeftOut } from './sectors';
 import type { PlanPick } from './types';
 
@@ -62,7 +63,7 @@ export interface ProposalRow {
   /** The e-tilt written (clamped to the final equipment), from a cell export; absent when none. */
   etilt?: { deg: number; origin: RfOrigin };
   /** Why the row differs from its picks, e.g. that the person's equipment was kept. */
-  note?: string;
+  note?: PlanText[];
 }
 
 export interface Proposal {
@@ -80,28 +81,35 @@ function aiPickProblem(
   raw: AiPickRaw,
   unit: AntennaUnit,
   catalogue: readonly RfCatalogueEntry[],
-): string | null {
-  if (raw.unitId !== unit.id) return `it names unit ${raw.unitId}`;
+): PlanText | null {
+  if (raw.unitId !== unit.id) return msg('rf.autoplan.aiProblem.otherUnit', { unit: raw.unitId });
   const entry = catalogue.find((e) => e.id === raw.entryId);
-  if (!entry) return `${raw.entryId} is not in the catalogue`;
-  if (entry.kind === 'radio') return `${raw.entryId} is a radio, not an antenna or AAU`;
+  if (!entry) return msg('rf.autoplan.aiProblem.notInCatalogue', { id: raw.entryId });
+  if (entry.kind === 'radio') return msg('rf.autoplan.aiProblem.isRadio', { id: raw.entryId });
   const band = bandOfName(raw.band);
-  if (!band) return `${raw.band} is not a known band`;
+  if (!band) return msg('rf.autoplan.aiProblem.unknownBand', { band: raw.band });
   if (raw.tech === 'nr' ? band.nrBand === null : band.lteBands.length === 0)
-    return `${raw.band} has no ${raw.tech === 'nr' ? 'NR' : 'LTE'} layer`;
+    return msg('rf.autoplan.aiProblem.noLayer', {
+      band: raw.band,
+      tech: msg(raw.tech === 'nr' ? 'rf.autoplan.tech.nr' : 'rf.autoplan.tech.lte'),
+    });
   if (!bandwidthChoices(raw.tech, raw.band).includes(raw.bandwidthMhz))
-    return `${String(raw.bandwidthMhz)} MHz is not a ${raw.band} bandwidth`;
-  if (!entryCoversBand(entry, raw.band)) return `${entry.id} cannot do ${raw.band}`;
+    return msg('rf.autoplan.aiProblem.bandwidth', { mhz: raw.bandwidthMhz, band: raw.band });
+  if (!entryCoversBand(entry, raw.band))
+    return msg('rf.autoplan.aiProblem.cannotDo', { id: entry.id, band: raw.band });
   if (entry.kind === 'aau') {
-    return raw.radioId === undefined ? null : `${entry.id} is an AAU and has its radio built in`;
+    return raw.radioId === undefined
+      ? null
+      : msg('rf.autoplan.aiProblem.aauRadio', { id: entry.id });
   }
   if (raw.radioId === undefined) return null;
   const radio = catalogue.find((e) => e.id === raw.radioId);
-  if (!radio) return `${raw.radioId} is not in the catalogue`;
-  if (radio.kind !== 'radio') return `${raw.radioId} is not a radio`;
-  if (!entryCoversBand(radio, raw.band)) return `${radio.id} cannot do ${raw.band}`;
+  if (!radio) return msg('rf.autoplan.aiProblem.notInCatalogue', { id: raw.radioId });
+  if (radio.kind !== 'radio') return msg('rf.autoplan.aiProblem.notRadio', { id: raw.radioId });
+  if (!entryCoversBand(radio, raw.band))
+    return msg('rf.autoplan.aiProblem.cannotDo', { id: radio.id, band: raw.band });
   if (raw.bandwidthMhz > radio.maxBandwidthMhz)
-    return `${radio.id} carries at most ${String(radio.maxBandwidthMhz)} MHz`;
+    return msg('rf.autoplan.aiProblem.maxBandwidth', { id: radio.id, mhz: radio.maxBandwidthMhz });
   return null;
 }
 
@@ -117,7 +125,7 @@ export function validateAiPick(
     return {
       ...rules,
       confidence: 'low',
-      reason: `AI pick not usable: ${problem}. ${rules.reason}`,
+      reason: [msg('rf.autoplan.reason.aiUnusable', { problem }), ...rules.reason],
     };
   }
   const { band, tech, bandwidthMhz, radioId } = raw;
@@ -130,7 +138,8 @@ export function validateAiPick(
     carrier: { band, tech, bandwidthMhz, ...(radioId ? { radioUnit: radioId } : {}) },
     by: 'ai',
     confidence: raw.confidence,
-    reason: raw.reason,
+    // the AI's own words, shown as it wrote them
+    reason: [rawText(raw.reason)],
   };
 }
 
@@ -140,7 +149,7 @@ const keeps = (o: RfOrigin | undefined): boolean => {
 };
 
 const originFrom = (p: PlanPick): RfOrigin => ({ by: p.by, confidence: p.confidence });
-const low = (p: PlanPick, reason: string = p.reason): PlanPick => ({
+const low = (p: PlanPick, reason: PlanText[] = p.reason): PlanPick => ({
   ...p,
   confidence: 'low',
   reason,
@@ -173,11 +182,13 @@ function equipmentCovers(
 }
 
 /** The equipment's model names for a reason line. */
-function describe(eq: RfEquipment | undefined, catalogue: readonly RfCatalogueEntry[]): string {
-  if (!eq) return 'no equipment';
+function describe(eq: RfEquipment | undefined, catalogue: readonly RfCatalogueEntry[]): PlanVar {
+  if (!eq) return msg('rf.autoplan.equipment.none');
   const name = (id: string) => findEntry(catalogue, id)?.model ?? id;
   if (eq.kind === 'aau') return name(eq.aau);
-  return eq.radio === undefined ? name(eq.antenna) : `${name(eq.antenna)} + ${name(eq.radio)}`;
+  return eq.radio === undefined
+    ? name(eq.antenna)
+    : msg('rf.autoplan.equipment.pair', { antenna: name(eq.antenna), radio: name(eq.radio) });
 }
 
 /** The carrier made to fit the equipment: no radio or port on an AAU, else the unit's radio and ports. */
@@ -212,7 +223,15 @@ function substituteCarrier(
   return null;
 }
 
-export const NO_CARRIER_FITS = 'No carrier fits this equipment, set the band by hand';
+/** The note of a row whose equipment takes no carrier Auto-plan knows. */
+export const NO_CARRIER_FITS: PlanText = msg('rf.autoplan.note.noCarrierFits');
+
+/**
+ * Whether Re-plan keeps a group: a value the person (or a cell export) set, or one the person
+ * cleared (origin `user`, value absent), which Auto-plan must not fill again.
+ */
+const keepsGroup = (value: unknown, o: RfOrigin | undefined): boolean =>
+  value !== undefined ? keeps(o) : o?.by === 'user';
 
 /** What the plan writes for one unit, resolved so the row shows exactly that (R11). */
 function planRow(
@@ -223,12 +242,17 @@ function planRow(
   catalogue: readonly RfCatalogueEntry[],
 ): ProposalRow {
   const kept: ProposalRow['kept'] = {
-    equipment: s?.equipment !== undefined && keeps(s.origins?.equipment),
-    etiltDeg: s?.etiltDeg !== undefined && keeps(s.origins?.etiltDeg),
+    equipment: keepsGroup(s?.equipment, s?.origins?.equipment),
+    etiltDeg: keepsGroup(s?.etiltDeg, s?.origins?.etiltDeg),
     carriers: (s?.carriers ?? []).map((c) => keeps(c.origin)),
   };
   const keptCarriers = (s?.carriers ?? []).filter((_, k) => kept.carriers[k] === true);
-  const notes: string[] = [];
+  const notes: PlanText[] = [];
+  const note = (n: PlanText): void => {
+    if (!notes.some((x) => JSON.stringify(x) === JSON.stringify(n))) notes.push(n);
+  };
+  /** The person cleared the equipment: it stays empty, so no carrier can be added to it. */
+  const cleared = kept.equipment && s?.equipment === undefined;
   const [head, ...rest] = given;
   if (!head) throw new Error('planRow needs at least one pick');
 
@@ -236,10 +260,10 @@ function planRow(
   let first = head;
   const eqIn = head.equipment;
   if (eqIn.kind === 'separate' && eqIn.radio !== undefined && !findEntry(catalogue, eqIn.radio)) {
-    first = low(
-      { ...head, equipment: { kind: 'separate', antenna: eqIn.antenna } },
-      `Radio ${eqIn.radio} is not in the catalogue, so no radio is set. ${head.reason}`,
-    );
+    first = low({ ...head, equipment: { kind: 'separate', antenna: eqIn.antenna } }, [
+      msg('rf.autoplan.reason.radioMissing', { id: eqIn.radio }),
+      ...head.reason,
+    ]);
   }
 
   // Equipment: the pick's, unless the person's kept carriers would not fit it (R11 d).
@@ -248,8 +272,11 @@ function planRow(
   if (!kept.equipment) {
     const misfit = keptCarriers.find((c) => !equipmentCovers(first.equipment, c.band, catalogue));
     if (misfit)
-      notes.push(
-        `Kept your equipment: your ${misfit.band} carrier doesn't fit ${describe(first.equipment, catalogue)}`,
+      note(
+        msg('rf.autoplan.note.keptEquipment', {
+          band: misfit.band,
+          equipment: describe(first.equipment, catalogue),
+        }),
       );
     else {
       equipment = first;
@@ -269,6 +296,10 @@ function planRow(
       return true;
     });
   } else wanted = keptCarriers.length > 0 ? [] : [first];
+  if (cleared) {
+    wanted = [];
+    note(msg('rf.autoplan.note.clearedEquipment'));
+  }
 
   // Each new carrier must fit the final equipment, else the equipment's own carrier (e, f).
   const picks: PlanPick[] = [];
@@ -278,33 +309,38 @@ function planRow(
       const carrier = fitCarrier(p.carrier, finalEq, catalogue);
       picks.push(
         p.by === 'export' && !equipmentCovers(p.equipment, band, catalogue)
-          ? low(
-              { ...p, carrier },
-              `${band} doesn't fit ${describe(p.equipment, catalogue)} from the export. ${p.reason}`,
-            )
+          ? low({ ...p, carrier }, [
+              msg('rf.autoplan.reason.exportMisfit', {
+                band,
+                equipment: describe(p.equipment, catalogue),
+              }),
+              ...p.reason,
+            ])
           : { ...p, carrier },
       );
       continue;
     }
     const sub = substituteCarrier(finalEq, catalogue);
     if (!sub) {
-      if (!notes.includes(NO_CARRIER_FITS)) notes.push(NO_CARRIER_FITS);
+      note(NO_CARRIER_FITS);
       continue;
     }
-    const why = `${band} doesn't fit ${describe(finalEq, catalogue)}`;
+    const why = { band, equipment: describe(finalEq, catalogue), sub: sub.band };
     if (present.has(bandKey(sub))) {
-      notes.push(`${why}, and it already has ${sub.band}`);
+      note(msg('rf.autoplan.note.alreadyHas', why));
       continue;
     }
     present.add(bandKey(sub));
     picks.push(
-      low({ ...p, carrier: fitCarrier(sub, finalEq, catalogue) }, `${why}, so ${sub.band}`),
+      low({ ...p, carrier: fitCarrier(sub, finalEq, catalogue) }, [
+        msg('rf.autoplan.reason.substituted', why),
+      ]),
     );
   }
 
   const row: ProposalRow = { unitId, sectorId, picks, kept };
   if (notes.length > 0) {
-    row.note = notes.join('. ');
+    row.note = notes;
     row.picks = picks.map((p) => low(p));
     if (equipment) equipment = low(equipment);
   }
