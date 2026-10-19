@@ -399,7 +399,8 @@ describe('the filter box of the Measurements group', () => {
     expect(row('c')).toBeNull();
     expect(row('a')).toBeNull();
     const f = must(q('[data-testid="measure-folder"][data-folder="Fence"]'));
-    expect(f.querySelector('.tm')?.textContent).toBe('1');
+    // the folder says how many of its own, as the group does, since its eye covers them all
+    expect(f.querySelector('.tm')?.textContent).toBe('1 of 2');
     expect(q('[data-testid="tree-group-measurements"] .gcount')?.textContent).toBe('1 of 4');
     // the eyes act on all they did before the filter
     click(folderEye('Fence'));
@@ -418,6 +419,8 @@ describe('the filter box of the Measurements group', () => {
     });
     const f = () => must(q('[data-testid="measure-folder"][data-folder="Fence"]'));
     expect(f().querySelector('.chev')?.classList.contains('chev-off')).toBe(true);
+    // said to assistive tech too: the fold does nothing here
+    expect(f().getAttribute('aria-disabled')).toBe('true');
     click(f());
     keyDown(f(), 'Enter');
     expect(row('b')).not.toBeNull();
@@ -426,6 +429,8 @@ describe('the filter box of the Measurements group', () => {
     expect(row('b')).not.toBeNull();
     expect(row('c')).not.toBeNull();
     expect(f().querySelector('.chev')?.classList.contains('chev-off')).toBe(false);
+    expect(f().hasAttribute('aria-disabled')).toBe(false);
+    expect(f().querySelector('.tm')?.textContent).toBe('2');
   });
 
   it('under a filter every match shows, past the "more" cap', () => {

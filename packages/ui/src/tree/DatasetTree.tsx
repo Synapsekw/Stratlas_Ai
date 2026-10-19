@@ -904,6 +904,7 @@ export function DatasetTree(props: DatasetTreeProps) {
           className={`titem flight${allOff ? ' hidden' : ''}`}
           data-testid="measure-folder"
           data-folder={name}
+          aria-disabled={filtering || undefined}
           onClick={toggle}
           onContextMenu={noMenu.onContextMenu}
           onKeyDown={(e) => {
@@ -925,7 +926,11 @@ export function DatasetTree(props: DatasetTreeProps) {
           />
           <Icon name="folder" size={14} />
           <span className="tn">{name}</span>
-          <span className="tm">{t('tree.measure.folderCount', { count: ids.length })}</span>
+          <span className="tm">
+            {filtering
+              ? t('tree.measure.filterCount', { shown: ids.length, total: eyeIds.length })
+              : t('tree.measure.folderCount', { count: ids.length })}
+          </span>
           <VisibilityEye
             layerIds={eyeIds}
             hidden={mp.hidden}
