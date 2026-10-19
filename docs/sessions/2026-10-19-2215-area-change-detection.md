@@ -34,8 +34,9 @@ On a construction project the work sits in one part of a large site, so a whole-
 ## Open threads
 
 - At 1100 px a survey-scoped measurement row's name is squeezed to zero width by its area and date text in the Datasets tree (older than this branch; the e2e right-clicks the row icon).
-- Minors left: the "Misaligned by" volumes reason is plain English; when both area jobs are refused as misaligned only the last refusal is kept; the dialog's Close label is hard-coded English (as in the Units dialog); Escape still closes the box while a run is starting.
-- Needs a pipeline pack built from this PR (raster scope, surface mask).
+- Minors left: when both area jobs are refused as misaligned only the last refusal is kept; Escape still closes the box while a run is starting; an area run still reads and registers the whole site (cropping the compare grid to the polygon is a performance task of its own); two polygons with the same label look alike in the picker and layer names (founder: add a short id or date?); a `tools/compat` test against the 0.22 schema for area sets.
+- Older builds (0.22) read area sets as whole-map items, and a 0.22 rewrite drops `scope` and `volumesMissing`; this build infers the area from the set id suffix `-area-<id>` (contract row).
+- Needs a pipeline pack built from this PR (raster scope, surface mask); until the pack bump an old pack's refusal shows "needs newer processing tools", and the real minimum-pack gate on `jobs:start` comes with the bump.
 
 ## Next session entry point
 
