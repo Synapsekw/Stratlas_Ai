@@ -1,12 +1,19 @@
-import type {
-  CaptureLineUp,
-  Issue,
-  Layer,
-  LineUpMeasure,
-  ProjectManifest,
-  SurveyMeasurement,
+import {
+  composeShift,
+  hasTurn,
+  invertShift,
+  turnOf,
+  type CaptureLineUp,
+  type CaptureLineUpTurn,
+  type DateShift,
+  type Issue,
+  type Layer,
+  type LineUpMeasure,
+  type ProjectManifest,
+  type SurveyMeasurement,
+  type Vec3,
 } from '@aio/schema';
-import type { t as translate } from '@aio/ui';
+import { formatDate, type t as translate } from '@aio/ui';
 import { captureIndex, captureShift, layerDateShifts, shiftKey } from '@aio/workspace';
 import type { Box } from '../shell/layerBounds';
 
@@ -18,42 +25,118 @@ import type { Box } from '../shell/layerBounds';
 type T = typeof translate;
 
 const mm = (v: number) => Math.round(v * 1000) / 1000;
+// a turned line-up's shift is planned to the micrometre (the shift moves the pivot, and the pair
+// must apply as the two corrections in order); the project saves it to the millimetre, like any
+// line-up, which moves the date by under a millimetre
+const um = (v: number) => Math.round(v * 1e6) / 1e6;
+
+/**
+ * How the line-up step names a date: its label, with the date added ("Survey · 4 Sep 2024") when
+ * another date of the project has the same label. The id when there is no such date.
+ */
+export function dateLabel(
+  captures:
+    readonly Pick<ProjectManifest['captures'][number], 'id' | 'label' | 'date'>[] | undefined,
+  captureId: string,
+): string {
+  const c = captures?.find((x) => x.id === captureId);
+  if (!c) return captureId;
+  const shared = captures?.some((x) => x.id !== c.id && x.label === c.label) ?? false;
+  return shared ? `${c.label} · ${formatDate(c.date)}` : c.label;
+}
 
 export interface LineUpPlan {
   /** The date that moves (the one not kept). */
   moveId: string;
   /** Its new, absolute `lineUp`. */
   lineUp: CaptureLineUp;
+  /** Its new `lineUpTurn`, saved with `lineUp` as a pair (null: a plain shift). */
+  lineUpTurn: CaptureLineUpTurn | null;
   /** What it had before (null: none), for Undo. */
   previous: CaptureLineUp | null;
-  /** How far it moves, metres. */
+  /** The turn it had before (null: none), restored with `previous`. */
+  previousTurn: CaptureLineUpTurn | null;
+  /** How far it moves, metres: the largest move over the overlap when the fit gives it. */
   totalM: number;
-  /** The new shift is finite and within the 500 m a line-up may hold; else it cannot be saved. */
+  /**
+   * The new line-up is finite and within what a date may hold (500 m east and north, and the
+   * stored turn envelope of `CaptureLineUpTurn`: 2 degrees, scale within 2%) and the move is at
+   * most 500 m; else it cannot be saved.
+   */
   inRange: boolean;
 }
 
 /** The most a line-up may shift a date, metres east or north (`CaptureLineUp`). */
 const MAX_SHIFT_M = 500;
+/** The stored envelope of a turn (`CaptureLineUpTurn`), which composed line-ups may reach. */
+const MAX_TURN_DEG = 2;
+const MIN_SCALE = 0.98;
+const MAX_SCALE = 1.02;
 
 /**
- * The `lineUp` that brings the dates together. The measurement is the correction `m.move` still
- * needs, between the dates as placed now: keep `m.keep` and `m.move` takes its current shift plus
- * the correction; keep `m.move` and `m.keep` takes its current shift minus it.
+ * The correction `m.move` still needs, between the dates as placed now: the fit's shift, turn and
+ * scale about its pivot when `lineup-fit.json` came with the measurement, else the plain shift
+ * (an older pipeline pack). `origin` places the pivot in the local frame.
+ */
+export function correctionOf(m: LineUpMeasure, origin: Vec3): DateShift {
+  const f = m.fit;
+  if (!f) return { eastM: m.eastM, northM: m.northM };
+  return {
+    eastM: f.eastM,
+    northM: f.northM,
+    turn: {
+      rotationDeg: f.rotationDeg,
+      scale: f.scale,
+      pivotE: f.pivotE,
+      pivotN: f.pivotN,
+      pivotX: f.pivotE - origin[0],
+      pivotZ: origin[1] - f.pivotN,
+    },
+  };
+}
+
+/**
+ * The correction the date that moves takes once `keepId` is kept: the measured one when `m.keep`
+ * stays (or none is chosen yet), its inverse when `m.move` stays and `m.keep` moves onto it.
+ */
+export function stepOf(m: LineUpMeasure, keepId: string | null, origin: Vec3): DateShift {
+  const c = correctionOf(m, origin);
+  return keepId === m.move ? invertShift(c) : c;
+}
+
+const turnFits = (t: CaptureLineUpTurn | null) =>
+  !t ||
+  (Number.isFinite(t.pivotE) &&
+    Number.isFinite(t.pivotN) &&
+    Math.abs(t.rotationDeg) <= MAX_TURN_DEG &&
+    t.scale >= MIN_SCALE &&
+    t.scale <= MAX_SCALE);
+
+/**
+ * The `lineUp` and `lineUpTurn` that bring the dates together. The date that moves takes the
+ * correction on top of its current line-up (`composeShift`): keep `m.keep` and `m.move` takes the
+ * correction; keep `m.move` and `m.keep` takes its inverse. A turned pair is expressed about the
+ * newer pivot; a plain correction on a turned date keeps the date's own pivot.
  */
 export function planLineUp(
   m: LineUpMeasure,
   keepId: string,
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   at: string,
 ): LineUpPlan {
-  const keepIsKeep = keepId === m.keep;
-  const moveId = keepIsKeep ? m.move : m.keep;
-  const sign = keepIsKeep ? 1 : -1;
+  const moveId = keepId === m.keep ? m.move : m.keep;
   const now = captureShift(manifest, moveId) ?? { eastM: 0, northM: 0 };
-  const previous = manifest.captures.find((c) => c.id === moveId)?.lineUp ?? null;
+  const capture = manifest.captures.find((c) => c.id === moveId);
+  const previous = capture?.lineUp ?? null;
+  // a turn is only ever read beside its lineUp
+  const previousTurn = previous ? (capture?.lineUpTurn ?? null) : null;
+  const next = composeShift(now, stepOf(m, keepId, manifest.origin));
+  const lineUpTurn = turnOf(next);
+  const round = lineUpTurn ? um : mm;
   const spreadM = mm(m.spreadPx * m.cellM);
-  const eastM = mm(now.eastM + sign * m.eastM);
-  const northM = mm(now.northM + sign * m.northM);
+  const eastM = round(next.eastM);
+  const northM = round(next.northM);
+  const totalM = mm(m.fit?.maxMoveM ?? Math.hypot(m.eastM, m.northM));
   const fits = (v: number) => Number.isFinite(v) && Math.abs(v) <= MAX_SHIFT_M;
   return {
     moveId,
@@ -64,15 +147,17 @@ export function planLineUp(
       ...(Number.isFinite(spreadM) && spreadM >= 0 ? { spreadM } : {}),
       at,
     },
+    lineUpTurn,
     previous,
-    totalM: mm(Math.hypot(m.eastM, m.northM)),
-    inRange: fits(eastM) && fits(northM),
+    previousTurn,
+    totalM,
+    inRange: fits(eastM) && fits(northM) && fits(totalM) && turnFits(lineUpTurn),
   };
 }
 
 /** The layers that take a date's shift: those the resolver gives a shift once the date has one. */
 function movingLayers(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   captureId: string,
 ): Set<string> {
   // the resolver answers for dates that carry a shift: give this one a stand-in to ask it
@@ -83,6 +168,7 @@ function movingLayers(
         : c,
     ),
     layers: manifest.layers,
+    origin: manifest.origin,
   };
   const of = captureIndex(manifest).of;
   return new Set(Object.keys(layerDateShifts(probe)).filter((id) => of[id] === captureId));
@@ -93,7 +179,7 @@ function movingLayers(
  * survey measurements scoped to it. Site measurements never move.
  */
 export function movesWith(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   captureId: string,
   issues: readonly Issue[],
   measurements: readonly SurveyMeasurement[],
@@ -111,15 +197,34 @@ export function formatMetres(m: number): string {
   return `${(Math.abs(m) < 0.005 ? 0 : m).toFixed(2)} m`;
 }
 
-/** "2.01 m west, 0.00 m north (2.01 m in all)". */
-export function shiftWords(eastM: number, northM: number, t: T): string {
-  return t('lineUp.shift', {
+/** "turned 0.25°, scaled +0.35%": degrees and a signed percent, two decimals each. */
+export function turnWords(turn: { rotationDeg: number; scale: number }, t: T): string {
+  const fixed = (v: number) => {
+    const s = v.toFixed(2);
+    return s === '-0.00' ? '0.00' : s;
+  };
+  const pct = fixed((turn.scale - 1) * 100);
+  return t('lineUp.turn', {
+    deg: fixed(turn.rotationDeg),
+    pct: `${pct.startsWith('-') ? '' : '+'}${pct}%`,
+  });
+}
+
+/**
+ * "2.01 m west, 0.00 m north (2.01 m in all)". A turned fit gives `maxMoveM`, its largest move
+ * over the overlap (what the chip and the offer show): the shift is then the move at the pivot,
+ * "2.00 m west, 0.74 m north at the centre, up to 2.86 m at the edges".
+ */
+export function shiftWords(eastM: number, northM: number, t: T, maxMoveM?: number): string {
+  const words = {
     ew: t(eastM < 0 ? 'lineUp.west' : 'lineUp.east', { distance: formatMetres(Math.abs(eastM)) }),
     ns: t(northM < 0 ? 'lineUp.south' : 'lineUp.north', {
       distance: formatMetres(Math.abs(northM)),
     }),
-    distance: formatMetres(Math.hypot(eastM, northM)),
-  });
+  };
+  return maxMoveM !== undefined && Number.isFinite(maxMoveM)
+    ? t('lineUp.shiftTurned', { ...words, distance: formatMetres(maxMoveM) })
+    : t('lineUp.shift', { ...words, distance: formatMetres(Math.hypot(eastM, northM)) });
 }
 
 export interface LineUpPair {
@@ -151,7 +256,7 @@ function overlap(a: Box, b: Box): number {
  * ortho and a DSM is not measured. Pairs in `measured` (by key) are left out.
  */
 export function pairsToMeasure(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   extents: Readonly<Record<string, Box>>,
   measured: ReadonlySet<string>,
 ): LineUpPair[] {
@@ -205,7 +310,7 @@ export function pairsToMeasure(
  * the one whose imagery overlaps its own the most in plan. Null when no other date overlaps it.
  */
 export function partnerOf(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
   extents: Readonly<Record<string, Box>>,
   captureId: string,
 ): string | null {
@@ -231,7 +336,10 @@ export function partnerOf(
   return best?.id ?? null;
 }
 
-/** The folder tooltip line of a lined-up date ("Lined up with ... (2.01 m)"); null for none. */
+/**
+ * The folder tooltip line of a lined-up date ("Lined up with ... (2.01 m)", and with a turn
+ * "(2.01 m, turned 0.11°, scaled -0.18%)"); null for none.
+ */
 export function lineUpTip(
   manifest: Pick<ProjectManifest, 'captures'>,
   captureId: string,
@@ -239,9 +347,12 @@ export function lineUpTip(
 ): string | null {
   const c = manifest.captures.find((x) => x.id === captureId);
   if (!c?.lineUp) return null;
-  const kept = manifest.captures.find((x) => x.id === c.lineUp?.with);
+  const distance = formatMetres(Math.hypot(c.lineUp.eastM, c.lineUp.northM));
   return t('lineUp.folder', {
-    kept: kept?.label ?? c.lineUp.with,
-    distance: formatMetres(Math.hypot(c.lineUp.eastM, c.lineUp.northM)),
+    kept: dateLabel(manifest.captures, c.lineUp.with),
+    distance:
+      c.lineUpTurn && hasTurn(c.lineUpTurn)
+        ? `${distance}, ${turnWords(c.lineUpTurn, t)}`
+        : distance,
   });
 }

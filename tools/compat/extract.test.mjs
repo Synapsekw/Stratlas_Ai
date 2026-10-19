@@ -1,5 +1,5 @@
-// The committed `schema-0.8/` to `schema-0.11/` are exactly what extract-schema.mjs
-// makes from the 0.8.0, 0.9.0, 0.10.0 and 0.11.4 commits (when the clone has that history; CI's shallow
+// The committed `schema-0.8/` to `schema-0.21/` are exactly what extract-schema.mjs
+// makes from the 0.8.0, 0.9.0, 0.10.0 0.11.4 and 0.21.0 commits (when the clone has that history; CI's shallow
 // checkout skips the comparison), and the downgrade keeps to its rule: only unknown keys and refused
 // array elements go.
 import { readFileSync, readdirSync } from 'node:fs';
@@ -22,7 +22,7 @@ describe('extract-schema', () => {
     expect(js).not.toMatch(/type A|: z\.ZodString/);
   });
 
-  for (const version of ['0.8', '0.9', '0.10', '0.11']) {
+  for (const version of ['0.8', '0.9', '0.10', '0.11', '0.21']) {
     const committed = fileURLToPath(new URL(`./schema-${version}`, import.meta.url));
     it.skipIf(!hasCommit(milestone(version).commit))(
       `matches a fresh extraction of the ${version} commit`,

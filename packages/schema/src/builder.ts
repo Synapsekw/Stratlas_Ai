@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
-import { CaptureLineUp } from './dateShift';
+import { CaptureLineUp, CaptureLineUpTurn } from './dateShift';
 import { Georef, Placement } from './georef';
 import { CameraOrientation, LensModel, MediaPin } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
@@ -277,6 +277,11 @@ export const CapturePatch = z
       .optional(),
     /** The date's measured shift (`null` removes it). */
     lineUp: CaptureLineUp.nullable().optional(),
+    /**
+     * The turn and scale of the line-up (`null` removes it). Saved with `lineUp` as a pair: a
+     * `lineUp` sent without it saves a plain shift, and `lineUp: null` removes both.
+     */
+    lineUpTurn: CaptureLineUpTurn.nullable().optional(),
   })
   .strict()
   .refine(
@@ -284,7 +289,8 @@ export const CapturePatch = z
       p.label !== undefined ||
       p.colour !== undefined ||
       p.icon !== undefined ||
-      p.lineUp !== undefined,
+      p.lineUp !== undefined ||
+      p.lineUpTurn !== undefined,
     { message: 'Give label, colour, icon or lineUp' },
   );
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  geomArea,
   boxFromDrag,
   cornersOf,
   dragHandle,
@@ -106,5 +107,23 @@ describe('editing', () => {
       ] as [number, number][],
     };
     expect(dragHandle(p, 1, { x: 12, y: 1 }).points[1]).toEqual([12, 1]);
+  });
+});
+
+describe('geomArea', () => {
+  it('measures boxes, rotated boxes and polygons, and is 0 for points', () => {
+    expect(geomArea({ type: 'box', x: 5, y: 5, w: 40, h: 30 })).toBe(1200);
+    expect(geomArea({ type: 'rotbox', x: 0, y: 0, w: 40, h: 30, angleDeg: 30 })).toBeCloseTo(1200);
+    expect(
+      geomArea({
+        type: 'polygon',
+        points: [
+          [0, 0],
+          [10, 0],
+          [0, 10],
+        ],
+      }),
+    ).toBe(50);
+    expect(geomArea({ type: 'point', x: 3, y: 4 })).toBe(0);
   });
 });

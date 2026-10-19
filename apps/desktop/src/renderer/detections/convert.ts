@@ -27,9 +27,20 @@ export function itemSource(i: DetectItem): DetectionSource {
 
 export const itemKey = (i: DetectItem) => sourceKey(itemSource(i));
 
-/** Whether the project holds anything Detect with AI can look at: a photo, or a video clip. */
+/** Whether the project holds anything Detect with AI can look at: a photo, a video clip or a walk. */
 export function hasDetectable(layers: readonly Layer[]): boolean {
-  return layers.some((l) => (l.kind === 'photos' && l.items.length > 0) || l.kind === 'video');
+  return layers.some(
+    (l) => (l.kind === 'photos' && l.items.length > 0) || l.kind === 'video' || l.kind === 'walk',
+  );
+}
+
+/**
+ * The items cloud Detect with AI can send: photos and video clip frames. A 360 walk's frames
+ * are left out (only the local model reads walks), so they never reach the send.
+ */
+export function cloudItems(items: readonly DetectItem[], layers: readonly Layer[]): DetectItem[] {
+  const walks = new Set(layers.filter((l) => l.kind === 'walk').map((l) => l.id));
+  return items.filter((i) => i.kind !== 'frame' || !walks.has(i.layer));
 }
 
 /** Proposals overlapping an earlier one of the same class this much are repeats. */

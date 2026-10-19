@@ -33,7 +33,7 @@ from typing import Any
 
 import numpy as np
 
-from ..captures import capture_shift
+from ..captures import capture_similarity
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
 from .changeset import change_set, change_set_id
@@ -575,7 +575,7 @@ class ChangeRaster:
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg,
                 coverage=r["coverage"],
-                line_up=(capture_shift(m, params["from"]), capture_shift(m, params["to"])),
+                line_up=(capture_similarity(m, params["from"]), capture_similarity(m, params["to"])),
             )
             atomic_write_json(ctx.stage("work/change-set.json"), cs)
             return {"items": len(items)}
@@ -622,11 +622,13 @@ class ChangeRaster:
 
 
 def ortho_fingerprint(project, pair) -> dict[str, Any]:
-    """The files' fingerprint, plus the orthos' date shifts when either is not zero."""
+    """The files' fingerprint, plus the orthos' date shifts when either is not zero, and their
+    turns when either has one (unchanged when there are none)."""
     base = input_fingerprint(project, [f for o in pair for f in o.files])
     shifts = [list(o.shift) for o in pair]
-    if any(v for s in shifts for v in s):
-        blob = base["hash"] + json.dumps(shifts)
+    turns = [o.sim.to_turn() for o in pair]
+    if any(v for s in shifts for v in s) or any(turns):
+        blob = base["hash"] + json.dumps(shifts) + (json.dumps(turns) if any(turns) else "")
         base = {**base, "hash": hashlib.sha256(blob.encode()).hexdigest()[:32]}
     return base
 

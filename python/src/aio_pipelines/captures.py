@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import Any
+
+from .similarity import Similarity
 
 
 def capture_for_date(manifest: dict[str, Any], date: str) -> str:
@@ -138,19 +141,46 @@ def capture_shift(manifest: dict[str, Any], capture_id: str) -> Shift:
     return (0.0, 0.0)
 
 
-def date_shift(manifest: dict[str, Any], layer_id: str) -> Shift:
-    """The (east, north) metres a layer takes from its date; zero for none, a change result or an
-    undated kind."""
+def capture_similarity(manifest: dict[str, Any], capture_id: str) -> Similarity:
+    """The whole line-up a survey date carries: its ``lineUp`` shift and its ``lineUpTurn`` (turn
+    and scale about a pivot); identity for none or an unknown date. A shift under half a millimetre
+    is no shift, as in ``capture_shift``."""
+    for c in manifest.get("captures") or []:
+        if isinstance(c, dict) and c.get("id") == capture_id:
+            up = c.get("lineUp")
+            turn = c.get("lineUpTurn")
+            s = capture_shift(manifest, capture_id)
+            return Similarity.from_line_up(
+                {"eastM": s[0], "northM": s[1]},
+                turn if isinstance(up, dict) and isinstance(turn, dict) else None,
+            )
+    return Similarity(0.0, 0.0)
+
+
+def _date_capture(manifest: dict[str, Any], layer_id: str) -> str | None:
     layer = next(
         (x for x in manifest.get("layers") or [] if isinstance(x, dict) and x.get("id") == layer_id),
         None,
     )
     if layer is None or layer.get("kind") not in DATED_KINDS:
-        return (0.0, 0.0)
+        return None
     derived = layer.get("derived")
     if isinstance(derived, dict) and derived.get("kind") == "change":
-        return (0.0, 0.0)
-    cid = layer_captures(manifest).get(layer_id)
+        return None
+    return layer_captures(manifest).get(layer_id)
+
+
+def date_similarity(manifest: dict[str, Any], layer_id: str) -> Similarity:
+    """The line-up a layer takes from its date (``capture_similarity``), by the rules of
+    ``date_shift``: identity for none, a change result or an undated kind."""
+    cid = _date_capture(manifest, layer_id)
+    return capture_similarity(manifest, cid) if cid is not None else Similarity(0.0, 0.0)
+
+
+def date_shift(manifest: dict[str, Any], layer_id: str) -> Shift:
+    """The (east, north) metres a layer takes from its date; zero for none, a change result or an
+    undated kind."""
+    cid = _date_capture(manifest, layer_id)
     return capture_shift(manifest, cid) if cid is not None else (0.0, 0.0)
 
 
@@ -172,3 +202,19 @@ def shift_transform(t: list[float] | None, shift: Shift) -> list[float] | None:
     out[12] += dx
     out[14] += dz
     return out
+
+
+def similarity_transform(
+    t: list[float] | None, sim: Similarity, origin: Sequence[float]
+) -> list[float] | None:
+    """A column-major 4x4 with the line-up premultiplied (``Similarity.mat4_local``): the date's
+    line-up comes after the layer's own transform. ``t`` comes back as it is for no line-up; a pure
+    shift gives the same numbers as ``shift_transform``."""
+    if sim.is_identity():
+        return t
+    if not sim.has_turn():
+        return shift_transform(t, (sim.east_m, sim.north_m))
+    m = sim.mat4_local(origin)
+    b = list(t) if t is not None else list(_IDENTITY)
+    # column-major: out[c*4 + r] = sum_k m[k*4 + r] * b[c*4 + k]
+    return [sum(m[k * 4 + r] * b[c * 4 + k] for k in range(4)) for c in range(4) for r in range(4)]

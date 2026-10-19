@@ -1,4 +1,11 @@
-import { emptyOrientation, type Layer, type ProjectManifest } from '@aio/schema';
+import {
+  captureLineUpShift,
+  type Capture,
+  emptyOrientation,
+  shiftLocal,
+  type Layer,
+  type ProjectManifest,
+} from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import {
   boundsOf,
@@ -175,5 +182,27 @@ describe('layerBounds with a line-up', () => {
   it('frames lined-up photos and panoramas at their corrected place', async () => {
     expect(await layerBounds('ph', d)).toEqual({ min: [13, 1, 9], max: [15, 3, 13] });
     expect(await layerBounds('pn', d)).toEqual({ min: [8, 0, 4], max: [8, 0, 4] });
+  });
+  it('follows a 0.5 degree turn', async () => {
+    const turn = { rotationDeg: 0.5, scale: 1, pivotE: 1000, pivotN: 2000 };
+    const cap = { ...lined.captures[0], lineUpTurn: turn } as unknown as Capture;
+    const turned = {
+      origin: [1000, 2000, 0],
+      captures: [cap],
+      layers: lined.layers,
+    } as unknown as ProjectManifest;
+    const shift = captureLineUpShift(cap, [1000, 2000, 0]);
+    const box = await layerBounds('img', deps({ manifest: turned }));
+    expect(shift).not.toBeNull();
+    const pts = [
+      [0, 0],
+      [4, 0],
+      [0, 2],
+      [4, 2],
+    ].map(([x = 0, z = 0]) => shiftLocal([x, 0, z], shift));
+    expect(box?.min[0]).toBeCloseTo(Math.min(...pts.map((p) => p[0])), 9);
+    expect(box?.max[0]).toBeCloseTo(Math.max(...pts.map((p) => p[0])), 9);
+    expect(box?.min[2]).toBeCloseTo(Math.min(...pts.map((p) => p[2])), 9);
+    expect(box?.max[2]).toBeCloseTo(Math.max(...pts.map((p) => p[2])), 9);
   });
 });

@@ -87,6 +87,20 @@ describe('aio.detections/1 review fields', () => {
     expect(parse(frame, { run: { id: 'r', model: 'm', images: 4, costUsd: 0.02 } })).toBe(true);
   });
 
+  it('keeps a walk frame box that wraps across the 360 seam (x1 > width)', () => {
+    const wrap = {
+      ...frame,
+      frame: { layer: 'walk', t: 2 },
+      width: 3840,
+      height: 1920,
+      bbox: [3800, 900, 3880, 1100],
+      geom: { type: 'box', x: 3800, y: 900, w: 80, h: 200 },
+    };
+    const res = DetectionsFile.safeParse({ ...file, detections: [wrap] });
+    expect(res.success).toBe(true);
+    expect(res.data?.detections[0]?.bbox).toEqual([3800, 900, 3880, 1100]);
+  });
+
   it('refuses a frame and a photo together, a frame without its size, unknown run keys', () => {
     expect(parse({ ...frame, photo: 'p001' })).toBe(false);
     expect(parse({ ...frame, width: undefined })).toBe(false);

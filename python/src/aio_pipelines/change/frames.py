@@ -20,15 +20,21 @@ import json
 import math
 import re
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from ..captures import capture_shift, date_shift, local_delta
+from ..captures import capture_similarity, date_similarity, local_delta
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, now_iso
+from ..similarity import Similarity
 from .changeset import change_set, change_set_id, dump_change_set, merge_reviews, read_change_set
+
+#: Where a photo layer's date puts its positions: a local (x, z) delta added to them, or, for a
+#: turned line-up, the move of a local (x, z).
+Place = tuple[float, float] | Callable[[float, float], tuple[float, float]]
 
 NAME = "change.frames"
 DEFAULT_MAX_POSE_M = 10.0
@@ -190,28 +196,31 @@ def _rotate(q: list[float], v: tuple[float, float, float]) -> np.ndarray:
     return vv + 2 * w * np.cross(u, vv) + 2 * np.cross(u, np.cross(u, vv))
 
 
-def _pose(
-    item: dict[str, Any], delta: tuple[float, float] = (0.0, 0.0)
-) -> tuple[np.ndarray, np.ndarray] | None:
-    """Camera position and view direction in the local frame; ``delta`` (x, z) is the photo layer's
-    date shift (``captures.local_delta``), added to the position."""
+def _pose(item: dict[str, Any], delta: Place = (0.0, 0.0)) -> tuple[np.ndarray, np.ndarray] | None:
+    """Camera position and view direction in the local frame, the position where the photo
+    layer's date puts it: ``delta`` is its date shift (``captures.local_delta``, an (x, z) added)
+    or the move of a turned line-up (``_layer_delta``). Directions are not turned (stage 1)."""
     pos, q = item.get("pos"), item.get("q")
     if not (isinstance(pos, list) and isinstance(q, list) and len(pos) == 3 and len(q) == 4):
         return None
     n = math.sqrt(sum(c * c for c in q)) or 1.0
-    return np.array(pos, dtype=float) + np.array((delta[0], 0.0, delta[1])), _rotate(
-        [c / n for c in q], (0.0, 0.0, -1.0)
-    )
+    p = np.array(pos, dtype=float)
+    if callable(delta):
+        x, z = delta(float(p[0]), float(p[2]))
+        p = np.array((x, p[1], z))
+    else:
+        p = p + np.array((delta[0], 0.0, delta[1]))
+    return p, _rotate([c / n for c in q], (0.0, 0.0, -1.0))
 
 
 def pose_gap(
     pa: dict[str, Any],
     pb: dict[str, Any],
-    delta_a: tuple[float, float] = (0.0, 0.0),
-    delta_b: tuple[float, float] = (0.0, 0.0),
+    delta_a: Place = (0.0, 0.0),
+    delta_b: Place = (0.0, 0.0),
 ) -> tuple[float, float] | None:
     """Camera distance (m) and view angle (degrees) between two posed photos, each where its date
-    is lined up (``delta_*``: the local shift of its layer)."""
+    is lined up (``delta_*``: the local shift of its layer, or its turned line-up's move)."""
     a, b = _pose(pa, delta_a), _pose(pb, delta_b)
     if not a or not b:
         return None
@@ -220,20 +229,28 @@ def pose_gap(
     return d, math.degrees(math.acos(cos))
 
 
-def _layer_delta(manifest: dict[str, Any], layer_id: str) -> tuple[float, float]:
-    return local_delta(date_shift(manifest, layer_id))
+def _layer_delta(manifest: dict[str, Any], layer_id: str) -> Place:
+    sim = date_similarity(manifest, layer_id)
+    if not sim.has_turn():
+        return local_delta((sim.east_m, sim.north_m))
+    origin = manifest.get("origin") or [0, 0, 0]
+    return lambda x, z: sim.apply_local(x, z, origin)
 
 
 def _line_up_paired(
     pair: dict[str, Any], manifest: dict[str, Any], frm: str, to: str
-) -> tuple[tuple[float, float], tuple[float, float]]:
-    """The line-ups the pairs were made with (stamped by the pair step), so a line-up saved while
-    the frames are compared leaves the set Out of date; the current ones for a pairing from before
-    the stamp."""
+) -> tuple[Similarity, Similarity]:
+    """The line-ups the pairs were made with (stamped by the pair step, with their turns), so a
+    line-up saved while the frames are compared leaves the set Out of date; the current ones for a
+    pairing from before the stamp."""
     s = pair.get("lineUp")
     if s:
-        return (float(s[0][0]), float(s[0][1])), (float(s[1][0]), float(s[1][1]))
-    return capture_shift(manifest, frm), capture_shift(manifest, to)
+        turns = pair.get("lineUpTurn") or [None, None]
+        return tuple(  # type: ignore[return-value]
+            Similarity.from_line_up({"eastM": float(v[0]), "northM": float(v[1])}, t)
+            for v, t in zip(s, turns, strict=True)
+        )
+    return capture_similarity(manifest, frm), capture_similarity(manifest, to)
 
 
 def _ref_key(ref: dict[str, Any]) -> str:
@@ -352,14 +369,23 @@ class ChangeFrames:
             out.append(rec)
         ctx.log(f"{len(out)} pairs to compare between {frm} and {to}.")
         # the dates' line-ups the pairs were made with: what the change set is stamped with
-        line_up = [list(capture_shift(manifest, frm)), list(capture_shift(manifest, to))]
-        return {"from": frm, "to": to, "pairs": out, "skipped": skipped, "lineUp": line_up}
+        sims = [capture_similarity(manifest, frm), capture_similarity(manifest, to)]
+        line_up = [[s.east_m, s.north_m] for s in sims]
+        turns = [s.to_turn() for s in sims]
+        return {
+            "from": frm,
+            "to": to,
+            "pairs": out,
+            "skipped": skipped,
+            "lineUp": line_up,
+            "lineUpTurn": turns,
+        }
 
     def _pose_pairs(self, ctx, manifest, layers, captures, frm, to) -> list[dict[str, Any]]:
         max_d = number(ctx.params, "maxPoseM", DEFAULT_MAX_POSE_M) or DEFAULT_MAX_POSE_M
         max_a = number(ctx.params, "maxAngleDeg", DEFAULT_MAX_ANGLE_DEG) or DEFAULT_MAX_ANGLE_DEG
 
-        def posed(cap: str) -> list[tuple[str, dict[str, Any], tuple[float, float]]]:
+        def posed(cap: str) -> list[tuple[str, dict[str, Any], Place]]:
             return [
                 (lay["id"], it, _layer_delta(manifest, lay["id"]))
                 for lay in layers.values()

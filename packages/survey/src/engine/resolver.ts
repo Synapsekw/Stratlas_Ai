@@ -8,7 +8,7 @@
  * `aio://project/<id>/...`), once each.
  */
 import type { DesignEntry, HeightTiles, SurfaceRef } from '@aio/schema';
-import type { Resolve, ResolvedSurface, Shift } from './compare';
+import type { Resolve, ResolvedSurface, Shift, Turn } from './compare';
 import { surfaceOfCapture } from '../calc/pickers';
 import { sha256Hex } from './fingerprint';
 import { TileCache, TileSurface } from './tiles';
@@ -28,24 +28,38 @@ export interface ProjectSurfacesInput {
   cache?: TileCache;
   /** The line-up each survey date has now (`[eastM, northM]`, absent: none), for fingerprints. */
   shifts?: Readonly<Record<string, Shift>>;
+  /** The turn beside each date's line-up now (its `lineUpTurn`, absent: none), for fingerprints. */
+  turns?: Readonly<Record<string, Turn>>;
 }
 
 /**
  * The shifts of a survey-scoped ring (the capture its measurement belongs to): `ringShift` is what
  * its prepared surface sits at (its `dateShiftM`), added to the stored ring before sampling, so a
  * line-up since then does not move the answer; `ringCurrent` is the date's shift now, for the
- * fingerprint (the result reads stale until the surface is prepared again).
+ * fingerprint (the result reads stale until the surface is prepared again). A surface prepared
+ * before any line-up (no `dateShiftM`) sits where its file is: no prepared shift. `ringTurn` and
+ * `ringCurrentTurn` are the turns beside them (the surface's `dateTurn`, the date's turn now),
+ * present only when there is one.
  */
 export function ringShifts(
   surfaces: readonly HeightTiles[],
   shifts: Readonly<Record<string, Shift>> | undefined,
   capture: string | undefined,
-): { ringShift?: Shift; ringCurrent?: Shift } {
+  turns?: Readonly<Record<string, Turn>>,
+): { ringShift?: Shift; ringCurrent?: Shift; ringTurn?: Turn; ringCurrentTurn?: Turn } {
   if (capture === undefined) return {};
   const current: Shift = shifts?.[capture] ?? [0, 0];
+  const currentTurn = turns?.[capture];
   const s = surfaceOfCapture(surfaces, capture);
-  const prepared: Shift = s?.dateShiftM ? [s.dateShiftM.eastM, s.dateShiftM.northM] : current;
-  return { ringShift: prepared, ringCurrent: current };
+  // a surface prepared before any line-up sits where its file is: no shift, no turn
+  const prepared: Shift = s ? [s.dateShiftM?.eastM ?? 0, s.dateShiftM?.northM ?? 0] : current;
+  const preparedTurn = s ? s.dateTurn : currentTurn;
+  return {
+    ringShift: prepared,
+    ringCurrent: current,
+    ...(preparedTurn ? { ringTurn: preparedTurn } : {}),
+    ...(currentTurn ? { ringCurrentTurn: currentTurn } : {}),
+  };
 }
 
 export class SurfaceNotFound extends Error {}
@@ -76,6 +90,7 @@ export function projectResolver(inp: ProjectSurfacesInput): Resolve {
       fingerprint: s.fingerprint,
       ...(cap !== undefined ? { capture: cap } : {}),
       ...(cap !== undefined && inp.shifts?.[cap] ? { current: inp.shifts[cap] } : {}),
+      ...(cap !== undefined && inp.turns?.[cap] ? { currentTurn: inp.turns[cap] } : {}),
       grid: g,
     };
   };

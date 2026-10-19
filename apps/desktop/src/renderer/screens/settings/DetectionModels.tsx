@@ -1,12 +1,13 @@
 /**
  * Settings, AI providers, Detection models (BLD-10): the onnxruntime the app found and the
  * provider it runs on, the installed detector models with their cards and licences, and Import
- * model (the person confirms the licence first; main checks the card, SHA-256, licence gate and
- * layout before copying the model in).
+ * model (the person confirms the licence first; main checks the card, SHA-256, licence and
+ * layout before copying the model in). A copyleft, non-commercial or unknown licence imports with
+ * a warning: a chip on the model's row (its note as the tooltip) and a note after the import.
  */
 import { brand } from '@aio/brand';
 import type { DetectorModelInfo, InferenceRuntime } from '@aio/schema';
-import { Icon, t } from '@aio/ui';
+import { Icon, t, Tip } from '@aio/ui';
 import { useState } from 'react';
 import { bridge, shell, useCall, useShell } from '../../shell';
 import './detectionModels.css';
@@ -29,6 +30,18 @@ function ModelRow({ m, onRemove }: { m: DetectorModelInfo; onRemove: () => void 
         <span className="infer-chip">
           {t(m.where === 'user' ? 'infer.model.where.user' : 'infer.model.where.pack')}
         </span>
+        {m.licenceWarning && (
+          <Tip content={t(`infer.licence.note.${m.licenceWarning}`, { licence: c.licence })}>
+            <span
+              className="infer-chip warn"
+              data-testid="infer-licence-warning"
+              data-kind={m.licenceWarning}
+              tabIndex={0}
+            >
+              {t(`infer.licence.chip.${m.licenceWarning}`, { licence: c.licence })}
+            </span>
+          </Tip>
+        )}
         <span className="grow" />
         {m.where === 'user' && (
           <button
@@ -87,7 +100,15 @@ export function DetectionModels() {
     if (!r.ok) setError(r.error);
     else if (!r.value.ok) setError(r.value.error);
     else {
-      setDone(t('infer.import.done', { name: r.value.model.card.name }));
+      const { card, licenceWarning } = r.value.model;
+      setDone(
+        licenceWarning
+          ? t(`infer.licence.imported.${licenceWarning}`, {
+              name: card.name,
+              licence: card.licence,
+            })
+          : t('infer.import.done', { name: card.name }),
+      );
       setRefresh((n) => n + 1);
     }
   };

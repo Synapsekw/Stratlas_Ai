@@ -2,6 +2,7 @@ import type { Detection } from '@aio/annotate/detections';
 import type { ClassCatalogue, Layer, SeverityModel } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  cloudItems,
   hasDetectable,
   itemKey,
   promptTaxonomy,
@@ -256,5 +257,29 @@ describe('something to detect on', () => {
     expect(hasDetectable([mesh, photos(0)])).toBe(false);
     expect(hasDetectable([mesh, photos(2)])).toBe(true);
     expect(hasDetectable([video])).toBe(true);
+  });
+
+  it('counts a walk (360 video) as something to detect on', () => {
+    const walk = { kind: 'walk', id: 'w', durationS: 12 } as unknown as Layer;
+    expect(hasDetectable([mesh, walk])).toBe(true);
+  });
+});
+
+describe('cloudItems', () => {
+  const layers = [
+    { kind: 'photos', id: 'photos', items: [] },
+    { kind: 'video', id: 'clip' },
+    { kind: 'walk', id: 'walk' },
+  ] as unknown as Layer[];
+
+  it('keeps photos and video clip frames and drops 360 walk frames, which the cloud cannot send', () => {
+    const walkFrame: DetectItem = { kind: 'frame', layer: 'walk', t: 4 };
+    expect(cloudItems([photo, walkFrame, frame], layers)).toEqual([photo, frame]);
+    expect(cloudItems([walkFrame], layers)).toEqual([]);
+  });
+
+  it('leaves a frame of an unknown layer for the send to report', () => {
+    const gone: DetectItem = { kind: 'frame', layer: 'gone', t: 1 };
+    expect(cloudItems([gone], layers)).toEqual([gone]);
   });
 });

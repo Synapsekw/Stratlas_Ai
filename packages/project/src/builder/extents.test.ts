@@ -1,5 +1,12 @@
 import { toWgs84 } from '@aio/geo';
-import { emptyOrientation, type Layer, type OrientationFile, type Vec3 } from '@aio/schema';
+import {
+  emptyOrientation,
+  shiftLocal,
+  type DateShift,
+  type Layer,
+  type OrientationFile,
+  type Vec3,
+} from '@aio/schema';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -375,4 +382,77 @@ it('moves a dated extent by its shift', async () => {
     min: [4, 2, 1],
     max: [4, 2, 1],
   });
+});
+
+it('follows a 0.5 degree turn', async () => {
+  const root = await project();
+  const m = await readManifestFile(root);
+  await mkdir(join(root, 'clouds', 'q'), { recursive: true });
+  await writeFile(
+    join(root, 'clouds', 'q', 'index.json'),
+    JSON.stringify({ bounds: { min: [0, 1, 0], max: [200, 3, 100] } }),
+  );
+  const cloud = {
+    kind: 'pointcloud',
+    id: 'q',
+    name: 'q',
+    visible: true,
+    src: { path: 'clouds/q/index.json' },
+    format: 'png-packed',
+  } as unknown as Layer;
+  const s: DateShift = {
+    eastM: 1,
+    northM: 0,
+    turn: { rotationDeg: 0.5, scale: 1, pivotE: 0, pivotN: 0, pivotX: 0, pivotZ: 0 },
+  };
+  const e = await fullLayerExtent(root, m, cloud, null, s);
+  const pts = [
+    [0, 0],
+    [200, 0],
+    [0, 100],
+    [200, 100],
+  ].map(([x = 0, z = 0]) => shiftLocal([x, 0, z], s));
+  expect(e?.min[0]).toBeCloseTo(Math.min(...pts.map((p) => p[0])), 9);
+  expect(e?.max[0]).toBeCloseTo(Math.max(...pts.map((p) => p[0])), 9);
+  expect(e?.min[2]).toBeCloseTo(Math.min(...pts.map((p) => p[2])), 9);
+  expect(e?.max[2]).toBeCloseTo(Math.max(...pts.map((p) => p[2])), 9);
+  expect([e?.min[1], e?.max[1]]).toEqual([1, 3]);
+});
+
+/** A kit-pyramid ortho as an ODM import writes it: no manifest corners, its `tiles.json` has them. */
+async function kitOrtho(root: string, id: string): Promise<Layer> {
+  await mkdir(join(root, 'rasters', id), { recursive: true });
+  await writeFile(
+    join(root, 'rasters', id, 'tiles.json'),
+    JSON.stringify({
+      schema: 'aio.tiles/1',
+      levels: [{ z: 0, tileSize: 256, cols: 2, rows: 2, pattern: `rasters/${id}/0/{x}_{y}.webp` }],
+      corners: { tl: [10, -5, -40], tr: [110, -5, -40], bl: [10, -5, 60] },
+      crs: { epsg: 32639 },
+      topLeft: [500010, 3200040],
+      metresPerPx: [0.5],
+    }),
+  );
+  return {
+    kind: 'raster',
+    id,
+    name: id,
+    visible: true,
+    src: { path: `rasters/${id}/tiles.json` },
+    role: 'ortho',
+    format: 'kit-pyramid',
+  } as unknown as Layer;
+}
+
+it('reads a kit pyramid whose corners are only in tiles.json, when asked for full extents', async () => {
+  const root = await project();
+  const m = await readManifestFile(root);
+  m.layers.push(await kitOrtho(root, 'ortho-a'));
+  // the far-content check keeps the kinds it always saw
+  expect(await layerExtents(root, m)).toEqual([]);
+  // the line-up step reads every placed raster, a lined-up date moved by its shift
+  const s = { eastM: 3, northM: 2 };
+  expect(await layerExtents(root, m, null, { 'ortho-a': s }, { full: true })).toEqual([
+    { layerId: 'ortho-a', min: [13, -5, -42], max: [113, -5, 58] },
+  ]);
 });

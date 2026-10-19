@@ -11,6 +11,7 @@ import {
   type Detection,
   type DetectionSource,
 } from '@aio/annotate/detections';
+import { frameLayerSrc, splitWrapKey, wrapKey, wrapParts } from './frameMedia';
 import { noteImageSize } from './store';
 import { imageGeometry } from '@aio/annotate';
 import type { ImageGeom, Layer } from '@aio/schema';
@@ -25,7 +26,10 @@ type ViewTransform = imageGeometry.ViewTransform;
 export interface EditorShape {
   detection: Detection;
   color: string;
+  /** The chip text: readable class and confidence ("No safety jacket 88%"). */
   label: string;
+  /** The tooltip: the class as the model or the project names it. */
+  title?: string;
 }
 
 function mediaUrl(
@@ -40,7 +44,9 @@ function mediaUrl(
         layer?.kind === 'photos' ? layer.items.find((x) => x.id === source.photo) : undefined;
       return p ? assetUrl(projectId, p.src) : null;
     }
-    return layer?.kind === 'video' ? assetUrl(projectId, layer.src) : null;
+    // a video clip, or a walk's playback copy (the unlevelled one its detections are on)
+    const src = frameLayerSrc(layers, source.layer);
+    return src ? assetUrl(projectId, src) : null;
   } catch {
     return null;
   }
@@ -121,20 +127,41 @@ export function ReviewEditor({
       natural ? scaleGeom(d.geom, natural.width / d.size[0], natural.height / d.size[1]) : d.geom,
     [natural],
   );
+  // a box across a walk's 360 seam is drawn in two parts and is not edited here (editing would
+  // clamp it to the frame and lose the wrap)
   const items = useMemo<ShapeItem[]>(
     () =>
-      shapes.map((s) => {
+      shapes.flatMap((s): ShapeItem[] => {
         const selected = s.detection.id === currentId;
-        return {
-          key: s.detection.id,
-          geom: toImage(s.detection),
+        const geom = toImage(s.detection);
+        const parts = natural ? wrapParts(geom, natural.width) : [geom];
+        const editable = selected && !readOnly && s.detection.status !== 'accepted';
+        if (parts.length < 2)
+          return [
+            {
+              key: s.detection.id,
+              geom,
+              color: s.color,
+              label: s.label,
+              ...(s.title ? { title: s.title } : {}),
+              selected,
+              editable,
+            },
+          ];
+        const width = (g: ImageGeom | undefined) => (g?.type === 'box' ? g.w : 0);
+        const widest = width(parts[1]) > width(parts[0]) ? 1 : 0;
+        return parts.map((p, i) => ({
+          key: i === 0 ? s.detection.id : wrapKey(s.detection.id),
+          geom: p,
           color: s.color,
-          label: s.label,
+          ...(i === widest ? { label: s.label } : {}),
+          ...(s.title ? { title: s.title } : {}),
+          group: s.detection.id,
           selected,
-          editable: selected && !readOnly && s.detection.status !== 'accepted',
-        };
+          editable: false,
+        }));
       }),
-    [shapes, currentId, readOnly, toImage],
+    [shapes, currentId, readOnly, toImage, natural],
   );
 
   const back = (id: string, geom: ImageGeom, size: Size) => {
@@ -198,6 +225,7 @@ export function ReviewEditor({
           size={natural}
           tool={readOnly ? 'select' : tool}
           shapes={items}
+          look="detections"
           onCreate={(geom) => {
             if (!readOnly) onCreate(geom, natural);
           }}
@@ -210,7 +238,9 @@ export function ReviewEditor({
           onVertexRemove={(id, geom) => {
             back(id, geom, natural);
           }}
-          onSelect={onSelect}
+          onSelect={(key) => {
+            onSelect(key === null ? null : splitWrapKey(key));
+          }}
           onPan={(dx, dy) => {
             setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
           }}

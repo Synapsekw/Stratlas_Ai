@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Box } from '../shell/layerBounds';
 import { createLineUpMemory } from './lineUpMemory';
 import { createLineUpStore } from './lineUpStore';
-import { watchLineUps } from './lineUpWatch';
+import { forgetMeasures, recall, watchLineUps } from './lineUpWatch';
 import { lineUpManifest, measureOf, ortho } from './testing';
 
 const BOX: Box = { min: [0, 0, 0], max: [100, 10, 100] };
@@ -48,6 +48,16 @@ function setup(
 }
 
 describe('watchLineUps', () => {
+  it('fills the compare cache with what it measures', async () => {
+    forgetMeasures();
+    const { open, stop } = setup({ measure: measureOf({ verdict: 'aligned' }) });
+    open();
+    await flush();
+    expect(recall('d1|d2||')?.verdict).toBe('aligned');
+    stop();
+    forgetMeasures();
+  });
+
   it('offers a line-up once for a new ortho', async () => {
     const { store, open, measure, stop } = setup();
     open(lineUpManifest({ layers: [ortho('o1', 'd1')] }));

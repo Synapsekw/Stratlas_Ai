@@ -55,6 +55,8 @@ export interface DetectionStore {
   problems: { name: string; error: string }[];
   /** Detections the review cannot show (contact sheet boxes, photos it cannot find). */
   hidden: number;
+  /** The frame times (seconds, in order) the passes sampled, by walk layer (`sampledTimes`). */
+  sampled: Readonly<Record<string, readonly number[]>>;
 }
 
 const initial = (): Omit<DetectionStore, 'projectId'> => ({
@@ -67,6 +69,7 @@ const initial = (): Omit<DetectionStore, 'projectId'> => ({
   issueError: null,
   problems: [],
   hidden: 0,
+  sampled: {},
 });
 
 export const detections = createStore<DetectionStore>()(() => ({ projectId: null, ...initial() }));
@@ -288,6 +291,28 @@ function classResolver(manifest: ProjectManifest): (raw: string) => string | nul
   return (raw) => (ids.has(raw) ? raw : (byLabel.get(norm(raw)) ?? null));
 }
 
+/**
+ * The frames each walk pass looked at, from the passes' `assessed` (`t:<milliseconds>`, written
+ * by local detection on a walk), merged by layer: seconds, in order. The 360 overlay shows only
+ * the nearest sampled frame's detections, so a frame that found nothing shows nothing.
+ */
+export function sampledTimes(headers: readonly PassRecord['header'][]): Record<string, number[]> {
+  const out = new Map<string, Set<number>>();
+  for (const h of headers) {
+    if (!h.layer || !Array.isArray(h.assessed)) continue;
+    for (const a of h.assessed) {
+      const m = /^t:(\d+)$/.exec(a);
+      if (!m) continue;
+      const set = out.get(h.layer) ?? new Set<number>();
+      set.add(Number(m[1]));
+      out.set(h.layer, set);
+    }
+  }
+  return Object.fromEntries(
+    [...out].map(([layer, set]) => [layer, [...set].sort((a, b) => a - b).map((ms) => ms / 1000)]),
+  );
+}
+
 /** Read every pass of a project (once per project; `force` reads again). */
 export async function loadDetections(projectId: string, force = false): Promise<void> {
   const s = detections.getState();
@@ -355,6 +380,7 @@ export async function loadDetections(projectId: string, force = false): Promise<
     review,
     problems: res.problems,
     hidden: read.hidden,
+    sampled: sampledTimes(read.passes.map((p) => p.header)),
   });
 }
 

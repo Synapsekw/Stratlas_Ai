@@ -12,7 +12,14 @@
  * `dateShiftOf`) moves the image's corners and every tile's, so the crop shows what the person
  * clicked on.
  */
-import { isZeroShift, shiftCorners, type DateShift, type Layer, type Vec3 } from '@aio/schema';
+import {
+  isZeroShift,
+  shiftCorners,
+  shiftKey,
+  type DateShift,
+  type Layer,
+  type Vec3,
+} from '@aio/schema';
 
 export type RasterLayer = Extract<Layer, { kind: 'raster' }>;
 
@@ -45,7 +52,7 @@ export function cropWindow(at: readonly [number, number], sideM: number, size = 
  */
 export function cropKey(layerId: string, w: CropWindow, shift: DateShift | null = null): string {
   const mm = (v: number) => Math.round(v * 1000).toString();
-  const moved = shift && !isZeroShift(shift) ? `~${mm(shift.eastM)},${mm(shift.northM)}` : '';
+  const moved = shift && !isZeroShift(shift) ? `~${shiftKey(shift)}` : '';
   return `${layerId}${moved}@${mm(w.x0)},${mm(w.y1)},${mm(w.res * w.size)},${String(w.size)}`;
 }
 

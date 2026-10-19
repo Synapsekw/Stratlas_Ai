@@ -421,3 +421,70 @@ def test_a_lined_up_surface_pair_runs(tmp_path, kind):
     [fill] = by_verdict(cs, "fill")
     assert fill["volume"]["fillM3"] == pytest.approx(1000, rel=0.02)
     assert fill["at"][0] == pytest.approx(-10, abs=0.5)
+
+
+# ------------------------------------------------------------------------------ a turned line-up
+
+#: A 0.5 degree turn about the yard's south-west corner, then 2 m east.
+TURN = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": 500000.0 - 30.0, "pivotN": 3200000.0 - 30.0}
+
+
+def turn_up(project, capture, east, north, turn):
+    line_up(project, capture, east, north)
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == capture:
+            c["lineUpTurn"] = turn
+    path.write_text(json.dumps(m), "utf-8")
+    return m
+
+
+@pytest.mark.parametrize("kind", ["dsm", "grid", "cloud", "las"])
+def test_surface_follows_a_turned_line_up(tmp_path, kind):
+    from aio_pipelines.change.imagery import Grid
+    from aio_pipelines.change.surface import Surface, surface_fingerprint
+    from aio_pipelines.similarity import Similarity
+
+    surface_project(tmp_path, kinds=(kind, kind), noise=0.0)
+    spec = surface_params((kind, kind))["from"]
+    ctx = points_ctx(tmp_path)
+    plain_m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    origin = plain_m["origin"]
+    sim = Similarity.from_line_up({"eastM": 2.0, "northM": 0.0}, TURN)
+    plain = Surface(tmp_path, plain_m, spec)
+    line_up(tmp_path, "c1", 2.0, 0.0)
+    shifted = Surface(tmp_path, json.loads((tmp_path / "manifest.json").read_text("utf-8")), spec)
+    turned = Surface(tmp_path, turn_up(tmp_path, "c1", 2.0, 0.0, TURN), spec)
+
+    if kind in ("cloud", "las"):
+        before, after = plain.points(ctx), turned.points(ctx)
+        x, z = sim.apply_local(before[:, 0], before[:, 2], origin)
+        assert np.allclose(after[:, 0], x, atol=1e-6) and np.allclose(after[:, 2], z, atol=1e-6)
+        assert np.array_equal(after[:, 1], before[:, 1])  # heights never change
+    else:
+        # the box holds the turned corners
+        x0, z0, x1, z1 = plain.box
+        xs, zs = sim.apply_local(np.array([x0, x1, x0, x1]), np.array([z0, z0, z1, z1]), origin)
+        assert turned.box == pytest.approx((xs.min(), zs.min(), xs.max(), zs.max()), abs=0.11)
+
+    # the shed (local x 4..12, z -25..-15, 3 m tall) lands where the line-up puts it
+    grid = Grid(-34.0, -34.0, 0.1, 680, 680)
+    for s in (plain, turned):
+        s.footprint(ctx)
+    X, Z = np.meshgrid(grid.x0 + (np.arange(680) + 0.5) * 0.1, grid.z0 + (np.arange(680) + 0.5) * 0.1)
+
+    def shed(s):
+        h = s.heights(grid, ctx) - (1.0 + 0.01 * X - 0.004 * Z)
+        on = np.nan_to_num(h) > 2.0
+        return X[on].mean(), Z[on].mean(), X[on].max()
+
+    here = shed(plain)
+    assert here[:2] == pytest.approx((8.0, -20.0), abs=0.1)
+    got = shed(turned)
+    want = sim.apply_local(8.0, -20.0, origin)
+    assert got[:2] == pytest.approx(want, abs=0.1)
+    assert np.hypot(want[0] - 10.0, want[1] + 20.0) > 0.4  # more than the shift alone
+
+    prints = {surface_fingerprint(tmp_path, [s, s])["hash"] for s in (plain, shifted, turned)}
+    assert len(prints) == 3

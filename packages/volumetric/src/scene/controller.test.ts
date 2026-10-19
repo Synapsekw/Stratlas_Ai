@@ -1,5 +1,12 @@
 import type { EngineStage } from '@aio/engine';
-import type { AioBridge, Layer, ProjectManifest, VolumeBaseId, VolumesFile } from '@aio/schema';
+import {
+  shiftEN,
+  type AioBridge,
+  type Layer,
+  type ProjectManifest,
+  type VolumeBaseId,
+  type VolumesFile,
+} from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import {
   BufferAttribute,
@@ -95,7 +102,10 @@ const manifest: ProjectManifest = {
 const raster = (): Raster => ({ width: 2, height: 2, data: new Uint8ClampedArray(16).fill(255) });
 
 /** A loaded volumetric store over a fake worker. */
-async function ready(s2Shift?: { eastM: number; northM: number }) {
+async function ready(
+  s2Shift?: { eastM: number; northM: number },
+  lineUpTurn?: { rotationDeg: number; scale: number; pivotE: number; pivotN: number },
+) {
   const ws = createWorkspace();
   ws.getState().openProject({
     id: 'yard',
@@ -109,6 +119,7 @@ async function ready(s2Shift?: { eastM: number; northM: number }) {
               label: '10 Jan 2021',
               date: '2021-01-10',
               lineUp: { ...s2Shift, with: 's1', at: '2026-10-16T08:00:00.000Z' },
+              ...(lineUpTurn ? { lineUpTurn } : {}),
             },
           ],
         }
@@ -336,6 +347,25 @@ describe('VolumetricScene: one view of two', () => {
     v.setEpoch('e2');
     await settle(frame);
     expect(toe()).toEqual([0, 0.25, 0]);
+    v.detach();
+  });
+
+  it('moves an epoch ring with the date turn (follows a 0.5 degree turn)', async () => {
+    const turn = { rotationDeg: 0.5, scale: 1, pivotE: 1010, pivotN: 2000 };
+    const { store } = await ready({ eastM: 2, northM: -1 }, turn);
+    const { stage, scene: three, frame } = fakeStage();
+    store.getState().setAllPilesVisible(true);
+    const v = new VolumetricScene(stage, store);
+    v.attach();
+    await settle(frame);
+    const line = three.getObjectByName('volumetric')?.getObjectByName('toe');
+    const p = Array.from((line as Mesh).geometry.getAttribute('position').array.slice(0, 3));
+    // the toe's first corner is measured at E 1000, N 2000
+    const [E, N] = shiftEN([1000, 2000], store.getState().epochShift('e2'));
+    expect(p[0]).toBeCloseTo(E - 1000, 4);
+    expect(p[2]).toBeCloseTo(2000 - N, 4);
+    // a turn, not just the shift: the plain shift would give z = 1
+    expect(Math.abs((p[2] ?? 0) - 1)).toBeGreaterThan(0.05);
     v.detach();
   });
 

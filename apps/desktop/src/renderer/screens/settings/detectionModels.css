@@ -35,6 +35,11 @@
   border-radius: 8px;
   border: 1px solid var(--line-soft);
 }
+.infer-chip.warn {
+  border-color: var(--warn-line);
+  color: var(--warn-ink);
+  cursor: help;
+}
 .infer-import {
   margin-top: 12px;
 }

@@ -8,9 +8,17 @@ import { partnerOf } from './planLineUp';
  * step through `lineUpApp` (set by `lineUpSession.ts`); without it they do nothing.
  */
 
-/** Open the step for two dates; `then` runs after a saved line-up. */
-export function openLineUp(from: string, to: string, then?: () => void): void {
-  void lineUpApp.getState().store?.getState().open(from, to, then);
+/**
+ * Open the step for two dates; `then` runs after a saved line-up. `keep` chooses the date that
+ * stays (the Compare dates chip: its left-hand date); without it the person chooses.
+ */
+export function openLineUp(
+  from: string,
+  to: string,
+  then?: () => void,
+  opts?: { keep?: string },
+): void {
+  void lineUpApp.getState().store?.getState().open(from, to, then, opts);
 }
 
 /**

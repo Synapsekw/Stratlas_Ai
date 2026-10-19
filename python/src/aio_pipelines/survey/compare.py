@@ -40,9 +40,10 @@ from typing import Any
 
 import numpy as np
 
-from ..captures import capture_shift
+from ..captures import capture_similarity
 from ..params import known_keys
 from ..runtime import JobError, Step, StepContext, atomic_write_json, now_iso
+from ..similarity import Similarity
 from ..stub import exactly_one
 from .bases import TIN_STEP_M, Refused, Samples, build_base, f3
 from .grid import (
@@ -55,6 +56,7 @@ from .grid import (
     crosses_itself,
     densify,
     normal_ring,
+    prepared_line_up,
     read_tiles_json,
     ring_area,
     sample_cells,
@@ -84,6 +86,16 @@ Check = Callable[[], None]
 
 
 ZERO = (0.0, 0.0)
+#: No line-up.
+NONE = Similarity(0.0, 0.0)
+#: A date's line-up: a shift ``(east, north)``, or a ``Similarity`` with a turn and scale.
+LineUp = tuple[float, float] | Similarity
+
+
+def _line_up(v: LineUp | None) -> Similarity:
+    if v is None:
+        return NONE
+    return v if isinstance(v, Similarity) else Similarity(float(v[0]), float(v[1]))
 
 
 def _no_check() -> None:
@@ -111,10 +123,11 @@ class Resolved:
     offset: float = 0.0
     #: Where the surface has data (min E, min N, max E, max N), when known.
     extent: tuple[float, float, float, float] | None = None
-    #: The line-up the surface was prepared with (``dateShiftM`` in its tiles.json), zero for none.
-    shift: tuple[float, float] = (0.0, 0.0)
+    #: The line-up the surface was prepared with (``dateShiftM`` and ``dateTurn`` in its
+    #: tiles.json), none for none.
+    shift: LineUp = NONE
     #: The line-up its survey date has now (manifest): differs from ``shift`` until prepared again.
-    current: tuple[float, float] = (0.0, 0.0)
+    current: LineUp = NONE
     _tins: dict[tuple[float, float], Tin] = field(default_factory=dict)
 
     def tin(self, le: float, ln: float) -> Tin:
@@ -185,7 +198,7 @@ def fingerprint(
     rf: Resolved | None,
     rt: Resolved | None,
     site: dict[str, Any] | None,
-    ring_current: tuple[float, float] = (0.0, 0.0),
+    ring_current: LineUp = ZERO,
 ) -> str:
     obj: dict[str, Any] = {
         "engine": ENGINE_VERSION,
@@ -199,18 +212,19 @@ def fingerprint(
         obj["cellM"] = item["cellM"]
     if site is not None:
         obj["site"] = site
-    # the dates' shifts: a comparison made before a line-up is another one (absent when none)
-    shifts = {
-        k: list(v)
-        for k, v in (
-            ("from", rf.current if rf else ZERO),
-            ("to", rt.current if rt else ZERO),
-            ("ring", ring_current),
-        )
-        if v != ZERO
-    }
+    # the dates' line-ups: a comparison made before a line-up is another one (absent when none);
+    # a turn goes beside the shifts, so a shift alone keeps the fingerprint it had
+    sides = [
+        ("from", _line_up(rf.current if rf else None)),
+        ("to", _line_up(rt.current if rt else None)),
+        ("ring", _line_up(ring_current)),
+    ]
+    shifts = {k: [v.east_m, v.north_m] for k, v in sides if (v.east_m, v.north_m) != ZERO}
     if shifts:
         obj["lineUp"] = shifts
+    turns = {k: t for k, v in sides if (t := v.to_turn())}
+    if turns:
+        obj["lineUpTurn"] = turns
     return "sha256:" + hashlib.sha256(canonical(obj).encode("utf-8")).hexdigest()
 
 
@@ -386,15 +400,16 @@ def compare_item(
     check: Check = _no_check,
     now: str | None = None,
     grid_out: list[GridOut] | None = None,
-    ring_shift: tuple[float, float] = ZERO,
-    ring_current: tuple[float, float] | None = None,
+    ring_shift: LineUp = ZERO,
+    ring_current: LineUp | None = None,
 ) -> dict[str, Any]:
     """One ``ComparisonResult`` (``engine: 'py'``) of ``item`` over the polygon ``ring`` (E, N).
 
     ``ring`` is as stored. A survey's own measurement is stored in that survey's unshifted frame
     while its prepared surface sits where the date was lined up when it was prepared: ``ring_shift``
-    (that surface's ``dateShiftM``) is added before sampling; ``ring_current`` (the date's shift now,
-    default ``ring_shift``) joins the fingerprint, so a result reads stale after a line-up. A site-wide ring is already in the lined-up frame (no shift).
+    (that surface's ``dateShiftM``, turned by its ``dateTurn``) is put on it before sampling;
+    ``ring_current`` (the date's line-up now, default ``ring_shift``) joins the fingerprint, so a
+    result reads stale after a line-up. A site-wide ring is already in the lined-up frame (no shift).
     """
     ring_n = normal_ring(ring)
     frm, to = item["from"], item["to"]
@@ -408,8 +423,9 @@ def compare_item(
     except JobError as e:
         problem = str(e)
     fp = fingerprint(ring_n, item, rf, rt, site, ring_shift if ring_current is None else ring_current)
-    if ring_shift != ZERO:
-        ring_n = [(e + ring_shift[0], n + ring_shift[1]) for e, n in ring_n]
+    placed = _line_up(ring_shift)
+    if not placed.is_identity():
+        ring_n = [placed.apply_en(e, n) for e, n in ring_n]
     res = _result(item, side_label(frm, rf), side_label(to, rt), rf, rt, fp, now)
     if problem:
         return _refuse(res, problem)
@@ -666,13 +682,13 @@ class ProjectSurfaces:
             self._manifest = read_manifest(self.project)
         return self._manifest
 
-    def _shift_of(self, capture: str) -> tuple[float, float]:
-        """A date's line-up; zero in a folder with no manifest at all (surfaces alone)."""
+    def _shift_of(self, capture: str) -> Similarity:
+        """A date's line-up; none in a folder with no manifest at all (surfaces alone)."""
         if not (self.project / "manifest.json").is_file():
-            return ZERO
-        return capture_shift(self.manifest(), capture)
+            return NONE
+        return capture_similarity(self.manifest(), capture)
 
-    def scope_shifts(self, measurement: str) -> tuple[tuple[float, float], tuple[float, float]]:
+    def scope_shifts(self, measurement: str) -> tuple[Similarity, Similarity]:
         """``(prepared, current)`` shifts to put on a stored measurement's ring: its survey date's
         surface as prepared, and the date's line-up now (for the fingerprint). Zero for a site-wide
         or unknown measurement (those rings are already where the dates are lined up)."""
@@ -690,10 +706,10 @@ class ProjectSurfaces:
                         self._scopes[str(m.get("id"))] = str(scope.get("capture"))
         cap = self._scopes.get(measurement)
         if not cap:
-            return ZERO, ZERO
+            return NONE, NONE
         current = self._shift_of(cap)
         sid = self.surface_of_capture(cap)
-        return (_prepared_shift(self.metas()[sid]) if sid else current), current
+        return (prepared_line_up(self.metas()[sid]) if sid else current), current
 
     def captures(self) -> list[str]:
         m = self.manifest()
@@ -725,8 +741,8 @@ class ProjectSurfaces:
             capture=cap,
             grid=self._grids[sid],
             extent=_extent(meta),
-            shift=_prepared_shift(meta),
-            current=self._shift_of(str(cap)) if cap else ZERO,
+            shift=prepared_line_up(meta),
+            current=self._shift_of(str(cap)) if cap else NONE,
         )
 
     def current_previous(self) -> tuple[str | None, str | None]:
@@ -794,13 +810,6 @@ class ProjectSurfaces:
         if settings.get("calibration"):
             out["calibration"] = settings["calibration"]
         return out
-
-
-def _prepared_shift(meta: dict[str, Any]) -> tuple[float, float]:
-    d = meta.get("dateShiftM")
-    if not isinstance(d, dict):
-        return ZERO
-    return (float(d.get("eastM", 0.0)), float(d.get("northM", 0.0)))
 
 
 def _extent(meta: dict[str, Any]) -> tuple[float, float, float, float] | None:

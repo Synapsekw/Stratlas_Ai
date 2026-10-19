@@ -61,9 +61,30 @@ const issue = (id: string, code: string, capture: string, layer: string, p: XYZ)
   sightings: [{ on: 'mesh', layer, geom: { type: 'spoint', p, n: [0, 1, 0] } }],
 });
 
+/** How `turned` misplaces `d2`: 2 m east, turned 0.3° and scaled +0.4% about the site centre. */
+const TURN = { eastM: 2, northM: 0, turnDeg: 0.3, scale: 1.004 };
+/** Where `TURN` puts a point of the site (local x, z; the similarity of `createMisalignedDemo`). */
+function turnedAt([x, y, z]: XYZ): XYZ {
+  const r = (TURN.turnDeg * Math.PI) / 180;
+  const [a, b] = [TURN.scale * Math.cos(r), TURN.scale * Math.sin(r)];
+  return [a * x + b * z + TURN.eastM, y, -b * x + a * z - TURN.northM];
+}
+/**
+ * The roof of the control building B-01 (base centre -28, 24, 12 x 8 m, 4.5 m high), 1 m in from
+ * its south-west corner: of the parts of the site both dates show alike, it is the one furthest
+ * from the centre, where the turn and the scale move the later date most (about 0.3 m besides
+ * the shift).
+ */
+const CORNER: XYZ = [-33, 4.5, 27];
+
 interface Fixtures {
   /** The change demo with `d2` 2 m east of where it belongs, written before the app starts. */
   misaligned: Misaligned;
+  /**
+   * The change demo with `d2` 2 m east, turned and scaled (`TURN`), and a pin on the building
+   * corner (`CORNER`) of `d2`, stored where `d2`'s own model has it.
+   */
+  turned: Misaligned;
   /** The same, already lined up (`d2.lineUp` saved), with a pin on the tank of each date. */
   linedUp: Misaligned;
 }
@@ -105,6 +126,29 @@ const test = base.extend<Fixtures>({
       ),
     );
     await use(misaligned);
+  },
+  turned: async ({ dataRoot }, use, testInfo) => {
+    testInfo.skip(
+      !hasChangeDemo(),
+      'no change demo: run pnpm demo:build --quick (or pnpm demo:change --quick)',
+    );
+    testInfo.skip(
+      !hasPipelinePython(),
+      `no pipeline Python at ${VENV_PYTHON} (uv sync in python/)`,
+    );
+    const demo = await createMisalignedDemo(dataRoot, TURN);
+    await writeFile(
+      join(demo.root, 'issues.json'),
+      JSON.stringify(
+        {
+          schema: 'aio.issues/1',
+          issues: [issue('pin-corner', 'P01', 'd2', 'model-d2', turnedAt(CORNER))],
+        },
+        null,
+        2,
+      ),
+    );
+    await use(demo);
   },
 });
 
@@ -247,6 +291,72 @@ const quadCorner = (win: Page, side: number, layer: string) =>
     { side, layer },
   );
 
+type LonLat = [number, number];
+
+/**
+ * One map of the comparison: the four corners (lon, lat: top left, top right, bottom right,
+ * bottom left) of both dates' whole orthos, and where it draws each issue pin (lon, lat).
+ */
+const mapLook = (win: Page, side: number) =>
+  inspect(
+    win,
+    async ({ w, a }) => {
+      interface Src {
+        coordinates?: LonLat[];
+        getData?(): Promise<{
+          features?: { properties?: { issueId?: string }; geometry?: { coordinates?: LonLat } }[];
+        }>;
+      }
+      const compare = (
+        w.__stratlas as unknown as {
+          compare(): { maps: ({ map: { getSource(id: string): Src | undefined } } | null)[] };
+        }
+      ).compare();
+      const map = compare.maps[a]?.map;
+      if (!map) return null;
+      // the layer's images, a square of tiles row by row (maps controller): the whole quad is the
+      // top left of the first, the top right of the last of the first row, and so on
+      const quad = (layer: string): LonLat[] | null => {
+        const tiles: LonLat[][] = [];
+        for (let i = 0; ; i++) {
+          const c = map.getSource(`aio-raster-${layer}-${String(i)}`)?.coordinates;
+          if (!c) break;
+          tiles.push(c);
+        }
+        const n = Math.round(Math.sqrt(tiles.length));
+        if (!n || n * n !== tiles.length) return null;
+        const corner = (tile: number, k: number) => {
+          const c = tiles[tile]?.[k];
+          return c ? ([c[0], c[1]] as LonLat) : null;
+        };
+        const out = [corner(0, 0), corner(n - 1, 1), corner(n * n - 1, 2), corner(n * n - n, 3)];
+        return out.every((c) => c) ? (out as LonLat[]) : null;
+      };
+      const pins: Record<string, LonLat> = {};
+      for (const id of ['aio-issues', 'aio-issues-far']) {
+        const data = await map.getSource(id)?.getData?.();
+        for (const f of data?.features ?? []) {
+          const c = f.geometry?.coordinates;
+          const issueId = f.properties?.issueId;
+          if (issueId && c) pins[issueId] = [c[0], c[1]];
+        }
+      }
+      return { d1: quad('ortho-d1'), d2: quad('ortho-d2'), pins };
+    },
+    side,
+  );
+
+/** The (lon, lat) of local point x, z (m) of the 96 m square whose corners `quad` gives. */
+function onQuad(quad: LonLat[], x: number, z: number): LonLat {
+  const [tl, tr, , bl] = quad;
+  if (!tl || !tr || !bl) throw new Error('not a quad');
+  const [u, v] = [(x + 48) / 96, (z + 48) / 96];
+  return [
+    tl[0] + u * (tr[0] - tl[0]) + v * (bl[0] - tl[0]),
+    tl[1] + u * (tr[1] - tl[1]) + v * (bl[1] - tl[1]),
+  ];
+}
+
 /** Metres between two (lon, lat) points close together. */
 function metresApart(a: [number, number], b: [number, number]): number {
   const m = 111_320;
@@ -272,14 +382,27 @@ async function dragDivider(win: Page, to: number): Promise<void> {
 async function tankBand(
   win: Page,
 ): Promise<{ x: number; y: number; width: number; height: number }> {
-  const img = await win.locator('.pane-raster[data-side="left"] .raster-plane img').boundingBox();
+  return orthoBand(win, [-32, 14], [-24, -16]);
+}
+
+/** The strip of the earlier ortho's picture from local x `xs` and z `zs` (m), in page pixels. */
+async function orthoBand(
+  win: Page,
+  xs: [number, number],
+  zs: [number, number],
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  // the first picture is the whole ortho (its coarsest level); the finer tiles come after it
+  const img = await win
+    .locator('.pane-raster[data-side="left"] .raster-plane img')
+    .first()
+    .boundingBox();
   if (!img) throw new Error('no ortho picture');
   const at = (m: number) => (m + 48) / 96;
   return {
-    x: img.x + img.width * at(-32),
-    y: img.y + img.height * at(-24),
-    width: img.width * (at(14) - at(-32)),
-    height: img.height * (at(-16) - at(-24)),
+    x: img.x + img.width * at(xs[0]),
+    y: img.y + img.height * at(zs[0]),
+    width: img.width * (at(xs[1]) - at(xs[0])),
+    height: img.height * (at(zs[1]) - at(zs[0])),
   };
 }
 
@@ -292,9 +415,33 @@ async function verticalEdges(
   band: { x: number; y: number; width: number; height: number },
   count: number,
 ): Promise<number[]> {
+  return strongest(await edgeStrength(win, band, 'columns'), count);
+}
+
+/** The `count` strongest places of an edge profile, a few pixels apart. */
+function strongest(strength: number[], count: number): number[] {
+  const out: number[] = [];
+  const order = strength.map((v, x) => [v, x] as const).sort((a, b) => b[0] - a[0]);
+  for (const [v, x] of order) {
+    if (v <= 0 || out.length >= count) break;
+    if (out.every((c) => Math.abs(c - x) > 6)) out.push(x);
+  }
+  return out;
+}
+
+/**
+ * How strong an edge each column (or row) of `band` is: the change of brightness from the one
+ * before it to the one after it, summed down (or across) the strip. In pixels of the screenshot
+ * (device pixels).
+ */
+async function edgeStrength(
+  win: Page,
+  band: { x: number; y: number; width: number; height: number },
+  axis: 'columns' | 'rows',
+): Promise<number[]> {
   const png = (await win.screenshot({ clip: band })).toString('base64');
   return win.evaluate(
-    async ({ data, count }) => {
+    async ({ data, rows }) => {
       const blob = await (await fetch(`data:image/png;base64,${data}`)).blob();
       const bmp = await createImageBitmap(blob);
       const canvas = document.createElement('canvas');
@@ -304,27 +451,22 @@ async function verticalEdges(
       if (!ctx) return [];
       ctx.drawImage(bmp, 0, 0);
       const { data: px, width, height } = ctx.getImageData(0, 0, bmp.width, bmp.height);
-      const grey = (x: number, row: number) => {
-        const i = (row * width + x) * 4;
+      // `along` runs across the edges (columns, or rows), `down` along them
+      const [along, down] = rows ? [height, width] : [width, height];
+      const grey = (a: number, d: number) => {
+        const i = (rows ? a * width + d : d * width + a) * 4;
         return 0.3 * (px[i] ?? 0) + 0.59 * (px[i + 1] ?? 0) + 0.11 * (px[i + 2] ?? 0);
       };
       const strength: number[] = [];
-      for (let x = 0; x < width; x++) {
+      for (let x = 0; x < along; x++) {
         let sum = 0;
-        if (x >= 1 && x < width - 1)
-          for (let row = 0; row < height; row++)
-            sum += Math.abs(grey(x + 1, row) - grey(x - 1, row));
+        if (x >= 1 && x < along - 1)
+          for (let d = 0; d < down; d++) sum += Math.abs(grey(x + 1, d) - grey(x - 1, d));
         strength.push(sum);
       }
-      const out: number[] = [];
-      const order = strength.map((v, x) => [v, x] as const).sort((a, b) => b[0] - a[0]);
-      for (const [v, x] of order) {
-        if (v <= 0 || out.length >= count) break;
-        if (out.every((c) => Math.abs(c - x) > 6)) out.push(x);
-      }
-      return out;
+      return strength;
     },
-    { data: png, count },
+    { data: png, rows: axis === 'rows' },
   );
 }
 
@@ -472,7 +614,11 @@ test('imagery change refused, lined up from the Changes panel, then runs clean',
   await expect(run).toBeEnabled();
   await run.click();
   const refused = win.getByTestId('chg-misaligned');
-  await expect(refused).toHaveText(/These dates are 2\.0\d m apart\./, { timeout: 120_000 });
+  // the imagery change's own registration (the median over fine tiles spread across the
+  // overlap) reads the 2 m shift as 1.99 m
+  await expect(refused).toHaveText(/These dates are (?:1\.99|2\.0\d) m apart\./, {
+    timeout: 120_000,
+  });
 
   // 2. the step: no date is kept until one is chosen
   await win.getByTestId('chg-lineup').click();
@@ -678,4 +824,243 @@ test('undo puts the date back and keeps a pin drawn after the line-up on its fea
   const back = await drawn();
   expect(back?.[0]).toBeCloseTo(ROOF[0] + 2, 0);
   for (const k of [1, 2]) expect(back?.[k]).toBeCloseTo(lined?.[k] ?? NaN, 1);
+});
+
+test.describe('at the window size CI uses', () => {
+  test.use({ appEnv: { ...PIPELINE_ENV, QUADRION_WINDOW_SIZE: '1100x720' } });
+
+  test('turned dates line up from Compare', async ({ turned, win }, testInfo) => {
+    test.setTimeout(720_000);
+    const shot = async (name: string) => {
+      const path = testInfo.outputPath(name);
+      await win.screenshot({ path });
+      await testInfo.attach(name, { path, contentType: 'image/png' });
+    };
+    await openMisaligned(win, turned.id);
+    // about 1100 x 720 (the size asked for is the window's, give or take its frame)
+    const size = await win.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    expect(Math.abs(size.width - 1100)).toBeLessThanOrEqual(20);
+    expect(Math.abs(size.height - 720)).toBeLessThanOrEqual(20);
+
+    // 1. two maps, Compare dates: the chip measures the pair and finds it off
+    await win.keyboard.press('2');
+    await toggleCompareDates(win);
+    await expect(win.getByTestId('pane-map-compare')).toBeVisible();
+    const chip = win.getByTestId('compare-lineup');
+    await expect(chip).toHaveAttribute('data-status', 'off', { timeout: 240_000 });
+    const label = win.getByTestId('compare-lineup-label');
+    await expect(label).toHaveText(/^\d+\.\d\d m off$/);
+    // the largest move over the overlap: the 2 m shift and up to about 0.35 m of turn and scale
+    const off = Number(/^(\d+\.\d\d)/.exec((await label.textContent()) ?? '')?.[1]);
+    expect(off).toBeGreaterThanOrEqual(2);
+    expect(off).toBeLessThanOrEqual(2.6);
+    await shot('chip-off.png');
+
+    // 2. Line up: the earlier (left) date is already kept; the fit turns and scales
+    await win.getByTestId('compare-lineup-action').click();
+    const dialog = win.getByTestId('lineup-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(win.getByTestId('lineup-keep-d1')).toHaveAttribute('aria-checked', 'true');
+    await win.getByTestId('lineup-keep-d1').click();
+    await expect(win.getByTestId('lineup-keep-d1')).toHaveAttribute('aria-checked', 'true');
+    await expect(win.getByTestId('lineup-turn')).toHaveText(
+      /^turned -0\.(29|30|31)°, scaled -0\.(39|40|41)%$/,
+      { timeout: 180_000 },
+    );
+    await expect(win.getByTestId('lineup-confidence')).toHaveText(/^Confident/);
+    const confirm = win.getByTestId('lineup-confirm');
+    await expect(confirm).toBeEnabled();
+    await shot('dialog.png');
+    await confirm.click();
+    await expect(dialog).toHaveCount(0);
+    // the background offer for this pair goes with the line-up
+    await expect(win.getByTestId('lineup-offer')).toHaveCount(0);
+
+    // saved on the later date: a shift with a turn beside it, nothing on the earlier date
+    const disk = async () => {
+      const m = JSON.parse(await readFile(join(turned.root, 'manifest.json'), 'utf8')) as {
+        captures: {
+          id: string;
+          lineUp?: { with: string };
+          lineUpTurn?: { rotationDeg: number; scale: number };
+        }[];
+      };
+      return m.captures.find((c) => c.id === 'd2') ?? null;
+    };
+    await expect.poll(async () => (await disk())?.lineUp?.with ?? null).toBe('d1');
+    const d2 = await disk();
+    expect(d2?.lineUpTurn?.rotationDeg).toBeCloseTo(-TURN.turnDeg, 1);
+    expect(Math.abs((d2?.lineUpTurn?.scale ?? 0) - 1 / TURN.scale)).toBeLessThan(0.0005);
+    expect(await lineUpOnDisk(turned.root, 'd1')).toBeNull();
+
+    // 3. the chip measures the pair again and finds it lined up
+    await expect(chip).toHaveAttribute('data-status', 'lined', { timeout: 240_000 });
+    await expect(label).toHaveText('Lined up');
+    await shot('chip-lined.png');
+
+    // 4. on both maps the later ortho covers the earlier one corner for corner; the pin of the
+    // later date (on its map, the right one) stands on the building corner both orthos show
+    const looks: { d1: LonLat[] | null; d2: LonLat[] | null }[] = [];
+    for (const side of [0, 1]) {
+      await expect
+        .poll(async () => (await mapLook(win, side))?.d2 ?? null, { timeout: 60_000 })
+        .not.toBeNull();
+      const look = await mapLook(win, side);
+      if (!look?.d1 || !look.d2) throw new Error(`no ortho quads on map ${String(side)}`);
+      for (let k = 0; k < 4; k++) {
+        const [a, b] = [look.d1[k], look.d2[k]];
+        if (!a || !b) throw new Error('a quad without four corners');
+        expect(metresApart(a, b), `map ${String(side)} corner ${String(k)}`).toBeLessThan(0.1);
+      }
+      looks.push(look);
+    }
+    await expect
+      .poll(async () => (await mapLook(win, 1))?.pins['pin-corner'] ?? null, { timeout: 60_000 })
+      .not.toBeNull();
+    const pin = (await mapLook(win, 1))?.pins['pin-corner'];
+    if (!pin) throw new Error('no pin');
+    for (const [side, look] of looks.entries())
+      for (const quad of [look.d1, look.d2]) {
+        if (!quad) continue;
+        const feature = onQuad(quad, CORNER[0], CORNER[2]);
+        expect(metresApart(pin, feature), `pin on map ${String(side)}`).toBeLessThan(0.1);
+      }
+
+    // 5. Swipe, zoomed in on the building: its north and south edges stand at the same rows
+    // whichever date shows. A line-up that only shifted would leave the turn and the scale there.
+    await toggleCompareDates(win);
+    await win.keyboard.press('3');
+    await choosePane(win, 'left', 'raster', 'd1');
+    await choosePane(win, 'right', 'raster', 'd2');
+    await expect(win.getByTestId('pane-raster')).toHaveCount(2);
+    await win.getByTestId('compare-view-swipe').click();
+    const panes = win.locator('.stage-panes');
+    await expect(panes).toHaveAttribute('data-compare-view', 'swipe');
+    const divider = win.getByTestId('compare-divider');
+    const stage = await panes.boundingBox();
+    if (!stage) throw new Error('no stage');
+    await dragDivider(win, stage.x + stage.width + 40);
+    await expect(divider).toHaveAttribute('aria-valuenow', '98');
+    // the drone video of the later date floats over the stage's lower left at this size: hide it
+    // through the state its own Hide button sets
+    await win.evaluate(() => {
+      (
+        window as unknown as {
+          __stratlas: { shell: { getState(): { setVideoHidden(h: boolean): void } } };
+        }
+      ).__stratlas.shell
+        .getState()
+        .setVideoHidden(true);
+    });
+    await expect(win.getByTestId('video-window')).toHaveCount(0);
+    // zoom in at the building (the two panes follow each other) to 24 px a metre or more
+    const picture = win.locator('.pane-raster[data-side="left"] .raster-plane img').first();
+    for (let k = 0; k < 40; k++) {
+      const box = await picture.boundingBox();
+      if (!box) throw new Error('no ortho picture');
+      if (box.width / 96 >= 24) break;
+      const at = await orthoBand(win, [-28, -28], [24, 24]);
+      await win.mouse.move(at.x, at.y);
+      await win.mouse.wheel(0, -100);
+      await win.waitForTimeout(50);
+    }
+    // and bring the building to the middle of the views (a drag pans both)
+    const view = await win.locator('.pane-raster[data-side="left"]').boundingBox();
+    // (the ortho draws the roof north of the footprint, and the pane's own controls cover the
+    // top of the view: aim at the building's north edge)
+    const at = await orthoBand(win, [-28, -28], [20, 20]);
+    if (!view) throw new Error('no ortho pane');
+    await win.mouse.move(at.x, at.y);
+    await win.mouse.down();
+    await win.mouse.move(view.x + view.width / 2, view.y + view.height / 2, { steps: 8 });
+    await win.mouse.up();
+    const box = await picture.boundingBox();
+    if (!box) throw new Error('no ortho picture');
+    const perM = box.width / 96;
+    expect(perM).toBeGreaterThanOrEqual(24);
+    // what a shift-only line-up would leave on the building's south edge (x -28, z 28), north to
+    // south: the turn and the scale about the site centre, about 0.26 m, here 6 px or more
+    const r = (TURN.turnDeg * Math.PI) / 180;
+    const residual = TURN.scale * Math.sin(r) * 28 + (TURN.scale * Math.cos(r) - 1) * 28;
+    expect(residual * perM).toBeGreaterThanOrEqual(4);
+    // a strip down the middle of the building, across its roof's long edges, from under the
+    // pane's controls to the bottom of the views
+    const across = await orthoBand(win, [-30, -26], [20, 20]);
+    const band = { ...across, y: view.y + view.height * 0.22, height: view.height * 0.76 };
+    // nothing covers the strip: the probe reads the orthos
+    const seen = await win.evaluate(
+      (b) =>
+        [0.05, 0.5, 0.95].map(
+          (f) =>
+            document
+              .elementFromPoint(b.x + b.width / 2, b.y + b.height * f)
+              ?.closest('.pane-raster') != null,
+        ),
+      band,
+    );
+    expect(seen).toEqual([true, true, true]);
+    const loaded = () =>
+      win.evaluate(() =>
+        [...document.querySelectorAll<HTMLImageElement>('.pane-raster img')].every(
+          (i) => i.complete,
+        ),
+      );
+    await expect.poll(loaded).toBe(true);
+    const dpr = await win.evaluate(() => devicePixelRatio);
+    // the earlier date's two strongest edges across the roof
+    const earlier = strongest(await edgeStrength(win, band, 'rows'), 2);
+    await shot('swipe-earlier.png');
+    await dragDivider(win, stage.x - 40);
+    await expect(divider).toHaveAttribute('aria-valuenow', '2');
+    await expect.poll(loaded).toBe(true);
+    const later = await edgeStrength(win, band, 'rows');
+    await shot('swipe-later.png');
+    // Each stands at the strongest row of the later date within `reach` of it, and that within
+    // `near`. The reach stays short of what a shift-only line-up would leave there, so such a
+    // line-up would put the strongest row at the reach's end, not on the edge. (The dates differ
+    // further out: the later one has the building's shadow on its north side.)
+    const reach = Math.floor(residual * perM * dpr) - 2;
+    // An edge zoomed in is a ramp one ortho pixel wide, with a flat crest: its strongest row can
+    // fall anywhere along that crest. So `near` is a page pixel, or half an ortho pixel on the page
+    // when that is more (the quick demo CI builds has orthos of 512 px, 19 cm a pixel), and stays
+    // short of the reach's end.
+    const tiles = JSON.parse(
+      await readFile(join(turned.root, 'rasters', 'ortho-d1', 'tiles.json'), 'utf8'),
+    ) as { levels: { tileSize: number; cols: number }[] };
+    const orthoPx = Math.max(...tiles.levels.map((l) => l.tileSize * l.cols));
+    const near = Math.max(dpr, ((96 / orthoPx) * perM * dpr) / 2);
+    expect(near).toBeLessThan(reach);
+    expect(earlier).toHaveLength(2);
+    expect(Math.abs((earlier[1] ?? 0) - (earlier[0] ?? 0)) / dpr / perM).toBeGreaterThan(4);
+    for (const row of earlier) {
+      let best = row;
+      for (let k = row - reach; k <= row + reach; k++)
+        if ((later[k] ?? -1) > (later[best] ?? -1)) best = k;
+      expect(Math.abs(best - row), `the edge at row ${String(row)}`).toBeLessThanOrEqual(near);
+    }
+
+    // 6. the imagery change runs, with no misaligned notice
+    const truth = changeDemoTruth();
+    const { from, to } = truth.captures;
+    await openBench(win, 'changes');
+    const run = win.getByTestId('change-panel').getByTestId('change-producer-raster');
+    await expect(run).toBeEnabled();
+    await run.click();
+    await expect(win.getByTestId('chg-misaligned')).toHaveCount(0);
+    const file = join(turned.root, 'change', `${from}-${to}-raster.json`);
+    await expect
+      .poll(() => readFile(file, 'utf8').catch(() => null), {
+        timeout: 360_000,
+        intervals: [1000],
+      })
+      .not.toBeNull();
+    const raster = JSON.parse(await readFile(file, 'utf8')) as {
+      items: Item[];
+      registration: { ok: boolean; shiftM: number };
+    };
+    expect(raster.registration.ok).toBe(true);
+    expect(raster.registration.shiftM).toBeLessThan(0.2);
+    expectRegionsMatchTruth(raster.items, truth.changes.raster as unknown as RasterTruth);
+    await expect(win.getByTestId('chg-misaligned')).toHaveCount(0);
+  });
 });

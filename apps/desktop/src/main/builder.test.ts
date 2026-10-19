@@ -727,3 +727,42 @@ it('sends extents with the date shifts', async () => {
     { layerId: 'ph', min: [102, 10, -201], max: [102, 10, -201] },
   ]);
 });
+
+it('answers a kit-pyramid ortho with corners only in tiles.json when asked for full extents', async () => {
+  const dir = join(base, 'projects', 'kit');
+  await writeProject(
+    dir,
+    sampleManifest({
+      layers: [
+        {
+          kind: 'raster',
+          id: 'ortho',
+          name: 'Ortho',
+          visible: true,
+          src: { path: 'rasters/ortho/tiles.json' },
+          role: 'ortho',
+          format: 'kit-pyramid',
+        },
+      ],
+    }),
+    {
+      'rasters/ortho/tiles.json': JSON.stringify({
+        schema: 'aio.tiles/1',
+        levels: [
+          { z: 0, tileSize: 256, cols: 1, rows: 1, pattern: 'rasters/ortho/0/{x}_{y}.webp' },
+        ],
+        corners: { tl: [0, 0, -50], tr: [80, 0, -50], bl: [0, 0, 30] },
+        crs: { epsg: 32639 },
+        topLeft: [245884.9, 3179647.1],
+        metresPerPx: [0.5],
+      }),
+    },
+  );
+  const registry = new ProjectRegistry();
+  const projectId = registry.register(dir);
+  expect(await builderLayerExtents({ projectId }, registry)).toMatchObject({ extents: [] });
+  expect(await builderLayerExtents({ projectId, full: true }, registry)).toMatchObject({
+    ok: true,
+    extents: [{ layerId: 'ortho', min: [0, 0, -50], max: [80, 0, 30] }],
+  });
+});

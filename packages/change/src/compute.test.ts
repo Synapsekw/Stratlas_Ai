@@ -7,6 +7,7 @@ import {
 import { captureIndex } from '@aio/workspace/captures';
 import { describe, expect, it } from 'vitest';
 import { ChangeCancelled, computeInApp, type ComputeSources } from './compute';
+import { changeSetStale } from './stale';
 import { issue, SITE } from './testing';
 
 const vector = (id: string, capture: string): Layer => ({
@@ -77,6 +78,43 @@ function shifted(eastM: number, over: Partial<ComputeSources> = {}): ComputeSour
   const manifest = lineUpOf(base.manifest, 'd2', eastM);
   return { ...base, manifest, index: captureIndex(manifest) };
 }
+
+describe('a turned date without a coordinate system', () => {
+  it('a turned vector pair without a coordinate system is skipped, other kinds still run', async () => {
+    const base = sources();
+    const manifest: ProjectManifest = {
+      ...base.manifest,
+      captures: base.manifest.captures.map((c) =>
+        c.id === 'd2'
+          ? {
+              ...c,
+              lineUp: { eastM: 1, northM: 0, with: 'd1', at: '2026-10-10T00:00:00.000Z' },
+              lineUpTurn: {
+                rotationDeg: 0.5,
+                scale: 1,
+                pivotE: base.manifest.origin[0],
+                pivotN: base.manifest.origin[1],
+              },
+            }
+          : c,
+      ),
+    };
+    const notes: string[] = [];
+    const sets = await computeInApp(
+      { ...base, manifest, index: captureIndex(manifest), note: (t) => notes.push(t) },
+      'd1',
+      'd2',
+      ['issue', 'vector'],
+    );
+    expect(sets.map((s) => s.producer)).toEqual(['issues']);
+    // the set records the turn beside the shift, so it is not out of date at once
+    expect(sets[0]?.lineUpTurn?.to?.rotationDeg).toBe(0.5);
+    expect(changeSetStale(ChangeSet.parse(sets[0]), manifest)).toBe(false);
+    expect(notes).toEqual([
+      "Vector changes were skipped: a turned line-up needs the project's coordinate system.",
+    ]);
+  });
+});
 
 describe('lined-up dates in the in-app producers', () => {
   // the fence, 2 m east of itself in the later file

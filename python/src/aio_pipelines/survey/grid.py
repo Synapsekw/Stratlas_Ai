@@ -46,6 +46,7 @@ from typing import Any
 import numpy as np
 
 from ..runtime import JobError
+from ..similarity import Similarity
 
 TILE = 256
 TILE_CELLS = TILE * TILE
@@ -216,6 +217,38 @@ def read_tiles_json(folder: Path) -> dict[str, Any]:
     if meta.get("tileSize") != TILE:
         raise JobError(f"{p} has tiles of {meta.get('tileSize')} cells; this build reads {TILE}.")
     return meta
+
+
+def prepared_line_up(meta: dict[str, Any]) -> Similarity:
+    """The line-up a prepared surface's cells sit at: its ``dateShiftM`` and, beside it, its
+    ``dateTurn`` (identity for none)."""
+    d = meta.get("dateShiftM")
+    t = meta.get("dateTurn")
+    return Similarity.from_line_up(d if isinstance(d, dict) else None, t if isinstance(t, dict) else None)
+
+
+def line_up_meta(sim: Similarity) -> dict[str, Any]:
+    """``tiles.json`` fields for the line-up a surface was prepared with: ``dateShiftM`` for a
+    shift (or any turn), and ``dateTurn`` beside it for a turn; none for no line-up."""
+    out: dict[str, Any] = {}
+    turn = sim.to_turn()
+    if (sim.east_m, sim.north_m) != (0.0, 0.0) or turn:
+        out["dateShiftM"] = {"eastM": sim.east_m, "northM": sim.north_m}
+    if turn:
+        out["dateTurn"] = turn
+    return out
+
+
+def line_up_key(sim: Similarity) -> dict[str, Any]:
+    """Fingerprint fields for a line-up: none for no line-up, so a date without one keeps the
+    fingerprint it always had; a shift alone keeps the one it had before turns."""
+    out: dict[str, Any] = {}
+    if (sim.east_m, sim.north_m) != (0.0, 0.0):
+        out["dateShiftM"] = [sim.east_m, sim.north_m]
+    turn = sim.to_turn()
+    if turn:
+        out["dateTurn"] = turn
+    return out
 
 
 # ------------------------------------------------------------------------------------- sampling

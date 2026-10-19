@@ -1886,10 +1886,11 @@ export const ipc = {
   },
   /**
    * Where each placed layer lies, read from its files (local frame boxes), and what would stop a
-   * re-centre (`builder:recentre`). Layers without an extent are left out. Reads only.
+   * re-centre (`builder:recentre`). Layers without an extent are left out. Reads only. `full`
+   * also reads the kinds Properties reads (a kit pyramid's `tiles.json` corners, a COG, ...).
    */
   'builder:layerExtents': {
-    request: z.object({ projectId: z.string().min(1) }).strict(),
+    request: z.object({ projectId: z.string().min(1), full: z.boolean().optional() }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({
         ok: z.literal(true),
@@ -2495,14 +2496,18 @@ export const ipc = {
   },
 
   // ---------------------------------------------------------------- M8 local detection (C6)
-  /** Installed detector models and the onnxruntime execution provider. */
+  /**
+   * Installed detector models and the onnxruntime execution provider. A model whose licence is
+   * copyleft, non-commercial or unknown carries `licenceWarning` (its kind).
+   */
   'inference:models': {
     request: Empty,
     response: z.object({ runtime: InferenceRuntime, models: z.array(DetectorModelInfo) }),
   },
   /**
    * Copy a model folder or `model.onnx` with its `model.json` card into the models folder after a
-   * SHA-256 check, a layout probe and the person's licence acknowledgement.
+   * SHA-256 check, a layout probe and the person's licence acknowledgement. Only an empty licence
+   * is refused; a copyleft, non-commercial or unknown one imports with `model.licenceWarning`.
    */
   'inference:importModel': {
     request: z.object({ path: z.string().min(1), acceptLicence: z.boolean() }).strict(),
@@ -2517,7 +2522,8 @@ export const ipc = {
   },
   /**
    * Run a detector on photos or frames; writes `detections/model-<run>.json` (draft, `source:
-   * 'model'`). Progress: `inference:progress` with `runId`; cancel keeps the finished items.
+   * 'model'`). Progress: `inference:progress` with `runId`; cancel keeps the finished items. An
+   * item that cannot be read is `skipped`; a run where every item it tried was skipped fails.
    */
   'inference:run': {
     request: z
@@ -2539,7 +2545,15 @@ export const ipc = {
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), file: z.string(), count: z.number().int().nonnegative() }),
+      z.object({
+        ok: z.literal(true),
+        file: z.string(),
+        count: z.number().int().nonnegative(),
+        /** Items that could not be read (decode failed); not assessed, so a resume retries them. */
+        skipped: z.number().int().nonnegative().optional(),
+        /** Why the first skipped item could not be read. */
+        reason: z.string().max(2000).optional(),
+      }),
       Failure,
     ]),
   },
@@ -4130,6 +4144,9 @@ export const ipcEvents = {
     total: z.number().int().nonnegative(),
     found: z.number().int().nonnegative(),
     current: z.string().optional(),
+    /** Items so far that could not be read, and why the first one could not. */
+    skipped: z.number().int().nonnegative().optional(),
+    reason: z.string().max(2000).optional(),
   }),
   /**
    * M9: records of an open project changed under the renderer (merge, import, external edit): reload

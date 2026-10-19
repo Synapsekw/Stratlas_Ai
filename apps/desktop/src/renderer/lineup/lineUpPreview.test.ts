@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createLineUpPreview, overviewLevel, type PreviewDeps } from './lineUpPreview';
+import type { Bridge } from '../bridge';
+import {
+  createLineUpPreview,
+  overviewLevel,
+  readLineUpExtents,
+  type PreviewDeps,
+} from './lineUpPreview';
 import { cloud, lineUpManifest, ortho } from './testing';
 
 const pyramid = (id: string, capture: string) => ({
@@ -54,5 +60,26 @@ describe('line-up preview', () => {
     expect(
       await createLineUpPreview(deps({ loadTile: () => Promise.resolve(null) }))('o1'),
     ).toBeNull();
+  });
+});
+
+describe('line-up extents', () => {
+  it('asks for full extents, so a kit pyramid with its corners only in tiles.json has a box', async () => {
+    const call = vi.fn((_channel: string, req: { projectId: string; full?: boolean }) =>
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          ok: true as const,
+          // main answers the kit pyramid only when asked for full extents
+          extents: req.full ? [{ layerId: 'o1', min: [10, 0, 20], max: [110, 5, 70] }] : [],
+          recentre: { blockers: [] },
+        },
+      }),
+    );
+    const extents = () => readLineUpExtents({ call } as unknown as Bridge, 'p1');
+    expect(await extents()).toEqual({ o1: { min: [10, 0, 20], max: [110, 5, 70] } });
+    expect(call).toHaveBeenCalledWith('builder:layerExtents', { projectId: 'p1', full: true });
+    const image = await createLineUpPreview(deps({ extents }))('o1');
+    expect(image?.box).toEqual({ minX: 10, maxX: 110, minZ: 20, maxZ: 70 });
   });
 });

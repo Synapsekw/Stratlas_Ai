@@ -36,7 +36,7 @@ from typing import Any, ClassVar, Protocol
 
 import numpy as np
 
-from ..captures import Shift, capture_shift, date_shift
+from ..captures import Shift, capture_shift, date_shift, date_similarity
 from ..params import known_keys, number, text
 from ..pointcloud import PDAL_MISSING, find_pdal, pdal_env
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, replace_over
@@ -886,6 +886,9 @@ class ChangeCloud:
             a = find_layer(manifest, params["layerFrom"], "pointcloud", "point cloud")
             b = find_layer(manifest, params["layerTo"], "pointcloud", "point cloud")
             frm, to = capture_pair(params, a, b)
+            # stage 1 moves point clouds by a line-up's shift only: a turned pair would be wrong
+            if any(date_similarity(manifest, str(layer.get("id"))).has_turn() for layer in (a, b)):
+                raise JobError(TURNED)
             files = [_cloud_file(ctx.project, layer) for layer in (a, b)]
             offsets = [height_offset_m(layer) for layer in (a, b)]
             shifts = [list(date_shift(manifest, str(layer.get("id")))) for layer in (a, b)]
@@ -1148,6 +1151,10 @@ class ChangeCloud:
 
 
 INPUTS_CHANGED = "The clouds changed since this job started. Start the job again."
+TURNED = (
+    "Point cloud change doesn't follow a turned line-up yet. "
+    "Line up these dates on point clouds after the next update."
+)
 
 
 def _line_up_read(

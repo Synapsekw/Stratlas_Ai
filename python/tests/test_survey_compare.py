@@ -283,15 +283,17 @@ def pipeline():
     return all_pipelines()["survey.compare"]
 
 
+PREP = {
+    "surfaces": [
+        {"id": "dsm-c1", "name": "DSM 1", "source": {"kind": "dsm", "layer": "surf-a"}, "capture": "c1"},
+        {"id": "dsm-c2", "name": "DSM 2", "source": {"kind": "dsm", "layer": "surf-b"}, "capture": "c2"},
+    ]
+}
+
+
 def prepared(project):
     surface_project(project, pile=1000.0, pit=300.0)
-    params = {
-        "surfaces": [
-            {"id": "dsm-c1", "name": "DSM 1", "source": {"kind": "dsm", "layer": "surf-a"}, "capture": "c1"},
-            {"id": "dsm-c2", "name": "DSM 2", "source": {"kind": "dsm", "layer": "surf-b"}, "capture": "c2"},
-        ]
-    }
-    run_job(all_pipelines()["survey.prepare"], project, params, job_id="prep")
+    run_job(all_pipelines()["survey.prepare"], project, PREP, job_id="prep")
 
 
 def around(e, n, rad, k=48):
@@ -537,3 +539,63 @@ def test_a_survey_ring_uses_the_shift_its_surface_was_prepared_with(tmp_path):
     assert second["fillM3"] == pytest.approx(want["fillM3"], rel=1e-3)
     assert first["fillM3"] == pytest.approx(want["fillM3"], rel=1e-3)
     assert second["fingerprint"] != first["fingerprint"]
+
+
+def turn(project, pivot_e, pivot_n, captures=("c1", "c2")):
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] in captures:
+            c["lineUpTurn"] = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": pivot_e, "pivotN": pivot_n}
+    path.write_text(json.dumps(m), "utf-8")
+
+
+#: The shed near the north-east corner (3 m high, 8 by 10 m), 0.2 m around it.
+SHED = [
+    [ORIGIN[0] + 3.8, ORIGIN[1] + 14.8],
+    [ORIGIN[0] + 12.2, ORIGIN[1] + 14.8],
+    [ORIGIN[0] + 12.2, ORIGIN[1] + 25.2],
+    [ORIGIN[0] + 3.8, ORIGIN[1] + 25.2],
+]
+SHED_ITEM = {
+    "id": "a",
+    "from": {"kind": "reference", "mode": "level", "levelM": ORIGIN[2] + 2.0},
+    "to": {"kind": "current"},
+    "useDeadband": False,
+}
+
+
+def shed_result(project, job_id="j1", ring=SHED):
+    items = [{"measurement": "shed", "ring": ring, "item": SHED_ITEM}]
+    result, _ = run_job(pipeline(), project, {"items": items}, job_id=job_id)
+    doc = json.loads((project / result["outputs"]["commit"]["out"]).read_text("utf-8"))
+    return doc["results"][0]["result"]
+
+
+def test_a_survey_ring_follows_a_turned_line_up(tmp_path):
+    plain = tmp_path / "plain"
+    prepared(plain)
+    want = shed_result(plain)
+    moved = tmp_path / "moved"
+    prepared(moved)
+    line_up(moved, 2.0, -1.0)
+    shifted = shed_result(moved, "j0")
+    # pivot at the south-west corner: the shed, near the north-east one, moves half a metre more
+    turn(moved, ORIGIN[0] - 25.0, ORIGIN[1] - 25.0)
+    turned = shed_result(moved, "j1")
+    assert turned["fingerprint"] != shifted["fingerprint"]  # the turn reads stale too
+    run_job(all_pipelines()["survey.prepare"], moved, PREP, job_id="prep2")
+    meta = json.loads((moved / "survey/surfaces/dsm-c2/tiles.json").read_text("utf-8"))
+    assert meta["dateTurn"]["rotationDeg"] == 0.5
+    # the ring moved by the shift alone misses a strip of the turned shed
+    save_measurements(moved, measurement("shed", {"kind": "site"}))
+    only_shift = shed_result(moved, "j2", ring=[[e + 2.0, n - 1.0] for e, n in SHED])
+    assert only_shift["netM3"] < want["netM3"] * 0.97
+    # a survey's own ring is stored in its unshifted frame: the whole line-up is put on it
+    save_measurements(moved, measurement("shed", {"kind": "survey", "capture": "c2"}))
+    got = shed_result(moved, "j3")
+    assert got["status"] == "ok"
+    # resampling the turned grid blurs the shed's edge over a cell: the net is kept, while a
+    # little of it moves between fill and cut
+    assert got["netM3"] == pytest.approx(want["netM3"], rel=2e-3)
+    assert got["fillM3"] == pytest.approx(want["fillM3"], abs=1.5)

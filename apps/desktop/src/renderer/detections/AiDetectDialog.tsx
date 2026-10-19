@@ -21,7 +21,13 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { bridge, useCall, useShell } from '../shell';
 import { MediaThumb } from '../thumbs/Thumb';
-import { promptTaxonomy, sampleTimes, toDraftDetections, type DetectItem } from './convert';
+import {
+  cloudItems,
+  promptTaxonomy,
+  sampleTimes,
+  toDraftDetections,
+  type DetectItem,
+} from './convert';
 import { frameThumb, prepareItem } from './prepare';
 import { LocalDetectDialog, ModeSwitch, readMode, type DetectMode } from './LocalDetect';
 import { startDetectRun, type DetectRunner, type RunProgress } from './runner';
@@ -67,9 +73,9 @@ function visionRoute(
 export function AiDetectDialog({
   projectId,
   layers,
-  selected,
-  current,
-  unreviewed,
+  selected: allSelected,
+  current: anyCurrent,
+  unreviewed: allUnreviewed,
   durations,
   videoUrl,
   onClose,
@@ -89,6 +95,10 @@ export function AiDetectDialog({
   const manifest = useWorkspace((s) => s.project?.manifest);
   const routes = useShell((s) => s.settings.routes);
   const clips = layers.filter((l): l is Extract<Layer, { kind: 'video' }> => l.kind === 'video');
+  // the cloud cannot send 360 walk frames; the local model gets them all (below)
+  const selected = useMemo(() => cloudItems(allSelected, layers), [allSelected, layers]);
+  const current = anyCurrent && cloudItems([anyCurrent], layers).length > 0 ? anyCurrent : null;
+  const unreviewed = useMemo(() => cloudItems(allUnreviewed, layers), [allUnreviewed, layers]);
   const [scope, setScope] = useState<DetectScope>(
     selected.length > 0
       ? 'selected'
@@ -236,9 +246,10 @@ export function AiDetectDialog({
     return (
       <LocalDetectDialog
         projectId={projectId}
-        selected={selected}
-        current={current}
-        unreviewed={unreviewed}
+        layers={layers}
+        selected={allSelected}
+        current={anyCurrent}
+        unreviewed={allUnreviewed}
         onMode={setMode}
         onClose={onClose}
       />

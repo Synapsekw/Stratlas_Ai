@@ -49,6 +49,8 @@ export type ToWorker =
       minConfidence: number;
       tile?: { size: number; overlap: number };
       scale?: number;
+      /** An equirectangular frame that wraps across x = width. */
+      wrap?: boolean;
     }
   | { type: 'close'; id: number; path: string };
 
@@ -180,6 +182,7 @@ export function createWorkerCore(
         minConfidence: msg.minConfidence,
         ...(msg.tile ? { tile: msg.tile } : {}),
         ...(msg.scale ? { scale: msg.scale } : {}),
+        ...(msg.wrap ? { wrap: true } : {}),
       },
       async (input) => {
         const out = await runSession(msg.session, {

@@ -98,6 +98,23 @@ describe('the survey engine worker with a lined-up date', () => {
     }
   });
 
+  it('reads stale after a turned line-up, even one with the same shift', async () => {
+    const turn = { rotationDeg: 0.5, scale: 1, pivotE: 500000, pivotN: 3200000 };
+    const a = engine(0, lined);
+    const b = engine(0, { ...lined, turns: { c2: turn } });
+    try {
+      const req = { ring: stored, items: [item], capture: 'c2' };
+      const fa = (await a.client.run(req)).results[0];
+      const fb = (await b.client.run(req)).results[0];
+      expect(fb?.fingerprint).not.toBe(fa?.fingerprint);
+      const [fp] = await b.client.fingerprints(req);
+      expect(fp).toBe(fb?.fingerprint);
+    } finally {
+      a.close();
+      b.close();
+    }
+  });
+
   it('reads stale after a line-up the surface was not prepared with', async () => {
     const a = engine(0, lined);
     const b = engine(0, { ...lined, shifts: { c2: [4, 0] } });

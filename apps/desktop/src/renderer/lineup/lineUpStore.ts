@@ -1,5 +1,6 @@
 import type {
   CaptureLineUp,
+  CaptureLineUpTurn,
   Issue,
   LineUpMeasure,
   ProjectManifest,
@@ -16,21 +17,35 @@ import {
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Box } from '../shell/layerBounds';
 import type { LineUpMemory } from './lineUpMemory';
-import { formatMetres, movesWith, planLineUp } from './planLineUp';
+import { dateLabel, formatMetres, movesWith, planLineUp } from './planLineUp';
 
 /**
  * Line up dates: the step (measure two dates, choose the one that stays, save the other's
- * shift), the background offer, and the done notice with Undo and Redo. Writes only through the
- * deps: `builder:updateCapture` `{ lineUp }` and, for layers only the volume hints file under the
+ * shift, turn and scale), the background offer, and the done notice with Undo and Redo. Writes
+ * only through the deps: `builder:updateCapture` `{ lineUp, lineUpTurn }` (always as a pair) and, for layers only the volume hints file under the
  * moved date, an explicit `capture` (Decision 2), undone with it.
  */
 
 export interface LineUpDeps {
   workspace: StoreApi<Workspace>;
-  /** Run `change.lineup` for the two dates: its `lineup.json`, or why there is none. */
-  measure(keep: string, move: string): Promise<LineUpMeasure | { error: string }>;
-  /** One `builder:updateCapture` `{ lineUp }` write (null removes it): an error or null. */
-  saveCapture(captureId: string, lineUp: CaptureLineUp | null): Promise<string | null>;
+  /**
+   * Run `change.lineup` for the two dates: its `lineup.json`, or why there is none. Aborting
+   * `signal` gives the measurement up: its job is cancelled and the answer is an `{ error }`.
+   */
+  measure(
+    keep: string,
+    move: string,
+    signal?: AbortSignal,
+  ): Promise<LineUpMeasure | { error: string }>;
+  /**
+   * One `builder:updateCapture` `{ lineUp, lineUpTurn }` write, always the pair (a null turn is a
+   * plain shift; a null `lineUp` removes both): an error or null.
+   */
+  saveCapture(
+    captureId: string,
+    lineUp: CaptureLineUp | null,
+    lineUpTurn: CaptureLineUpTurn | null,
+  ): Promise<string | null>;
   /** File layers under a date (null: take the own `capture` off again): an error or null. */
   pinCaptures(layerIds: readonly string[], captureId: string | null): Promise<string | null>;
   hints(): CaptureHints;
@@ -70,7 +85,11 @@ export interface LineUpOfferState {
 export interface LineUpWrite {
   captureId: string;
   lineUp: CaptureLineUp | null;
+  /** The turn written with `lineUp` (null: none). */
+  turn: CaptureLineUpTurn | null;
   back: CaptureLineUp | null;
+  /** The turn written with `back`. */
+  backTurn: CaptureLineUpTurn | null;
   /** Layers filed under the date for this line-up (hint-only), and whether this write files them. */
   pins: string[];
   pin: boolean;
@@ -88,7 +107,7 @@ export interface LineUpStore {
   offer: LineUpOfferState | null;
   notice: LineUpNoticeState | null;
   /** Open the step for two dates and measure them. */
-  open(a: string, b: string, then?: () => void): Promise<void>;
+  open(a: string, b: string, then?: () => void, opts?: { keep?: string }): Promise<void>;
   choose(keepId: string): void;
   /** Save the line-up of the date not kept. */
   confirm(): Promise<void>;
@@ -109,12 +128,16 @@ export interface LineUpStore {
 const errorText = (e: unknown) =>
   e instanceof Error && e.message ? e.message : t('library.failed');
 
-const labelOf = (m: ProjectManifest | undefined, id: string) =>
-  m?.captures.find((c) => c.id === id)?.label ?? id;
+const labelOf = (m: ProjectManifest | undefined, id: string) => dateLabel(m?.captures, id);
+
+/** The measurement's verdict: the fit's when `lineup-fit.json` came with it (it may say `range`). */
+export function verdictOf(m: LineUpMeasure): NonNullable<LineUpMeasure['fit']>['verdict'] {
+  return m.fit?.verdict ?? m.verdict;
+}
 
 /** The sentence for a measurement that cannot be saved; null for one that can. */
 export function refusalOf(m: LineUpMeasure): string | null {
-  switch (m.verdict) {
+  switch (verdictOf(m)) {
     case 'ok':
       return null;
     case 'aligned':
@@ -125,6 +148,8 @@ export function refusalOf(m: LineUpMeasure): string | null {
       return t('lineUp.refuse.disagree');
     case 'overlap':
       return t('lineUp.refuse.overlap');
+    case 'range':
+      return t('lineUp.refuse.range');
   }
 }
 
@@ -139,7 +164,7 @@ function blockOf(m: ProjectManifest, measure: LineUpMeasure, keep: string | null
   if (refused || keep === null) return refused;
   return planLineUp(measure, keep, m, new Date(0).toISOString()).inRange
     ? null
-    : t('lineUp.refuse.range');
+    : t('lineUp.refuse.far');
 }
 
 /** The manifest as it will be once these layers carry `captureId` of their own. */
@@ -158,6 +183,17 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
   const manifest = () => deps.workspace.getState().project?.manifest;
 
   /**
+   * Take off the background offer of a pair one of whose dates was just written (a line-up from
+   * any entry point, Undo, Redo, a removal): it was measured where the date sat before. The
+   * background check measures the pair again where it is now.
+   */
+  const dropOfferOf = (captureId: string) => {
+    const o = store.getState().offer;
+    if (o && (o.measure.keep === captureId || o.measure.move === captureId))
+      store.setState({ offer: null });
+  };
+
+  /**
    * Write one line-up, Undo or Redo step into `projectId`: pins before the line-up, unpins after
    * it. A refused save takes the pins it put in off again. `stopped` when another project opened
    * between two writes: nothing more is written, into either project.
@@ -173,12 +209,13 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       if (gone()) return { err: null, stopped: true };
       if (err) return { err, stopped: false };
     }
-    const err = await deps.saveCapture(w.captureId, w.lineUp);
+    const err = await deps.saveCapture(w.captureId, w.lineUp, w.turn);
     if (gone()) return { err: null, stopped: true };
     if (err) {
       if (pinning) await deps.pinCaptures(w.pins, null);
       return { err, stopped: gone() };
     }
+    dropOfferOf(w.captureId);
     if (!w.pin && w.pins.length) {
       const unpinned = await deps.pinCaptures(w.pins, null);
       return { err: unpinned, stopped: gone() };
@@ -214,7 +251,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       dialog: null,
       offer: null,
       notice: null,
-      open: async (a, b, then) => {
+      open: async (a, b, then, opts) => {
         const projectId = openId();
         if (!projectId || a === b) return;
         const dialog: LineUpDialogState = {
@@ -228,6 +265,8 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
           ...(then ? { then } : {}),
         };
         set({ dialog });
+        // the Compare dates chip chooses its left-hand date; the person can still switch
+        if (opts?.keep) get().choose(opts.keep);
         await measureInto(projectId, a, b);
       },
       choose: (keepId) => {
@@ -246,7 +285,8 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
         const d = get().dialog;
         const projectId = openId();
         const m = manifest();
-        if (busy || !d?.keep || d.measure?.verdict !== 'ok' || !projectId || !m) return;
+        if (busy || !d?.keep || !d.measure || verdictOf(d.measure) !== 'ok' || !projectId || !m)
+          return;
         busy = true;
         try {
           // a date moved since the measurement (Undo, another line-up): its answer is stale
@@ -256,14 +296,16 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
           }
           const plan = planLineUp(d.measure, d.keep, m, deps.now());
           if (!plan.inRange) {
-            setDialog({ error: t('lineUp.refuse.range') });
+            setDialog({ error: t('lineUp.refuse.far') });
             return;
           }
           const pins = hintOnlyLayers(m, deps.hints(), plan.moveId);
           const { err, stopped } = await write(projectId, {
             captureId: plan.moveId,
             lineUp: plan.lineUp,
+            turn: plan.lineUpTurn,
             back: plan.previous,
+            backTurn: plan.previousTurn,
             pins,
             pin: true,
           });
@@ -286,7 +328,9 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
                 write: {
                   captureId: plan.moveId,
                   lineUp: plan.previous,
+                  turn: plan.previousTurn,
                   back: plan.lineUp,
+                  backTurn: plan.lineUpTurn,
                   pins,
                   pin: false,
                 },
@@ -306,12 +350,15 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       remove: async (captureId) => {
         const projectId = openId();
         const m = manifest();
-        const previous = m?.captures.find((c) => c.id === captureId)?.lineUp;
+        const capture = m?.captures.find((c) => c.id === captureId);
+        const previous = capture?.lineUp;
         if (busy || !projectId || !m || !previous) return;
+        const previousTurn = capture.lineUpTurn ?? null;
         busy = true;
         try {
-          const err = await deps.saveCapture(captureId, null);
+          const err = await deps.saveCapture(captureId, null, null);
           if (openId() !== projectId) return;
+          if (!err) dropOfferOf(captureId);
           set({
             notice: {
               projectId,
@@ -320,7 +367,15 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
                 ? null
                 : {
                     kind: 'undo',
-                    write: { captureId, lineUp: previous, back: null, pins: [], pin: false },
+                    write: {
+                      captureId,
+                      lineUp: previous,
+                      turn: previousTurn,
+                      back: null,
+                      backTurn: null,
+                      pins: [],
+                      pin: false,
+                    },
                   },
             },
           });
@@ -352,7 +407,14 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
                   text: t(a.kind === 'undo' ? 'lineUp.undone' : 'lineUp.redone'),
                   action: {
                     kind: a.kind === 'undo' ? 'redo' : 'undo',
-                    write: { ...w, lineUp: w.back, back: w.lineUp, pin: !w.pin },
+                    write: {
+                      ...w,
+                      lineUp: w.back,
+                      turn: w.backTurn,
+                      back: w.lineUp,
+                      backTurn: w.turn,
+                      pin: !w.pin,
+                    },
                   },
                 },
           });
@@ -368,7 +430,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
       offerFrom: (m, key) => {
         const projectId = openId();
         const man = manifest();
-        if (!projectId || !man || m.verdict !== 'ok') return;
+        if (!projectId || !man || verdictOf(m) !== 'ok') return;
         set({
           offer: {
             projectId,
@@ -379,7 +441,7 @@ export function createLineUpStore(deps: LineUpDeps): StoreApi<LineUpStore> {
               moved: labelOf(man, m.move),
               kept: labelOf(man, m.keep),
               source: t(m.source === 'ortho' ? 'lineUp.source.ortho' : 'lineUp.source.dsm'),
-              distance: formatMetres(m.totalM),
+              distance: formatMetres(m.fit?.maxMoveM ?? m.totalM),
             }),
           },
         });

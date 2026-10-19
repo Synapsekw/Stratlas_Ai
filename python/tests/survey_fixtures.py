@@ -23,6 +23,7 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE.parent.parent / "packages" / "schema" / "src" / "__fixtures__" / "survey"
 sys.path.insert(0, str(HERE.parent / "src"))
 
+from aio_pipelines.similarity import Similarity  # noqa: E402
 from aio_pipelines.survey.compare import Resolved, compare_item  # noqa: E402
 from aio_pipelines.survey.grid import TILE, ArraySurface, encode_tile  # noqa: E402
 
@@ -159,6 +160,10 @@ def rotated_rect(cx, cy, w, h, a):
     return [[E0 + cx + x * c - y * s, N0 + cy + x * s + y * c] for x, y in pts]
 
 
+#: A line-up turn of the fixtures: half a degree about a pivot 200 m south-west of the site, so it
+#: moves the ring about two metres more than the shift alone.
+TURN = {"rotationDeg": 0.5, "scale": 1.0, "pivotE": E0 - 200.0, "pivotN": N0 - 200.0}
+
 SV = lambda sid: {"kind": "survey", "surface": sid}  # noqa: E731
 
 
@@ -192,6 +197,48 @@ def cases() -> list[dict[str, Any]]:
             "ringShift": [2.0, -1.0],
             "ringCurrent": [3.5, 0.5],
         },
+    )
+    # turned: the same, with a 0.5 degree turn beside each shift (``lineUpTurn``, as a capture's
+    # turn sits beside its ``lineUp``): the ring is stored where the line-up's inverse puts the
+    # first case's ring, shifted and turned before sampling it is that ring again (the shift alone
+    # would cut the cone); the turns join the fingerprint
+    placed = Similarity.from_line_up({"eastM": 2.0, "northM": -1.0}, TURN)
+    add(
+        "cone-over-flat-turned",
+        [list(placed.inverse().apply_en(e, n)) for e, n in ring],
+        item("a", SV("flat"), SV("cone")),
+        "A survey-scoped ring on a turned line-up: shifted and turned before sampling, the turns in the fingerprint",
+        lineUp={
+            "current": {"flat": [0.0, 0.0], "cone": [3.5, 0.5]},
+            "ringShift": [2.0, -1.0],
+            "ringCurrent": [3.5, 0.5],
+        },
+        lineUpTurn={
+            "current": {"cone": TURN},
+            "ring": TURN,
+            "ringCurrent": {**TURN, "rotationDeg": 0.25},
+        },
+    )
+    # prepared before the line-up: the surface has no dateShiftM, so the stored ring is sampled
+    # where it is (no prepared shift or turn) while the date's line-up now (shift and turn) joins
+    # the fingerprint; the result is the first case's volume, read stale
+    add(
+        "cone-over-flat-prepared-before-line-up",
+        ring,
+        item("a", SV("flat"), SV("cone")),
+        "A survey-scoped ring whose surface was prepared before its date was lined up: sampled as stored, the line-up now in the fingerprint",
+        lineUp={"current": {"cone": [2.0, -1.0]}, "ringShift": [0.0, 0.0], "ringCurrent": [2.0, -1.0]},
+        lineUpTurn={"current": {"cone": TURN}, "ringCurrent": TURN},
+    )
+    # only the turn now is given for the ring: it is enough to put the current line-up in the
+    # fingerprint (with the prepared shift)
+    add(
+        "cone-over-flat-turn-now-only",
+        ring,
+        item("a", SV("flat"), SV("cone")),
+        "A ring whose date's turn now is given without its shift now: the turn joins the fingerprint",
+        lineUp={"ringShift": [0.0, 0.0]},
+        lineUpTurn={"ringCurrent": TURN},
     )
     add(
         "previous-current",
@@ -379,9 +426,9 @@ def resolver(surfs: dict[str, Any], case: dict[str, Any]):
         k = ref["kind"]
         if k == "survey":
             r = resolved(surfs[ref["surface"]], ref.get("capture"))
-            r.current = tuple(
-                ((case.get("lineUp") or {}).get("current") or {}).get(ref["surface"], (0.0, 0.0))
-            )
+            shift = ((case.get("lineUp") or {}).get("current") or {}).get(ref["surface"], (0.0, 0.0))
+            turn = ((case.get("lineUpTurn") or {}).get("current") or {}).get(ref["surface"])
+            r.current = Similarity.from_line_up({"eastM": shift[0], "northM": shift[1]}, turn)
             return r
         if k in ("current", "previous"):
             c = case["captures"][k]
@@ -393,14 +440,23 @@ def resolver(surfs: dict[str, Any], case: dict[str, Any]):
 
 def run_case(surfs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
     up = case.get("lineUp") or {}
+    turn = case.get("lineUpTurn") or {}
+
+    def line_up(shift, t):
+        return Similarity.from_line_up({"eastM": shift[0], "northM": shift[1]}, t)
+
     r = compare_item(
         case["ring"],
         case["item"],
         resolver(surfs, case),
         case.get("site"),
         now=NOW,
-        ring_shift=tuple(up.get("ringShift", (0.0, 0.0))),
-        ring_current=tuple(up["ringCurrent"]) if "ringCurrent" in up else None,
+        ring_shift=line_up(up.get("ringShift", (0.0, 0.0)), turn.get("ring")),
+        ring_current=(
+            line_up(up.get("ringCurrent", up.get("ringShift", (0.0, 0.0))), turn.get("ringCurrent"))
+            if "ringCurrent" in up or "ringCurrent" in turn
+            else None
+        ),
     )
     r.pop("computedAt", None)
     r.pop("engine", None)

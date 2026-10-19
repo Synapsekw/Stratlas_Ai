@@ -58,6 +58,17 @@ In the step:
 
 After a change run was refused for a gap, it starts again by itself once the line-up is saved.
 
+**Turn and scale.** Besides the sideways gap, {product} measures a small turn and a small scale difference between the two dates, and saves them with the shift. The step shows them next to the gap. One measurement can correct a turn of up to 1 degree and a scale difference of up to 1 %; beyond that it refuses and says the dates are too far apart. Heights are not changed. Point clouds move with the date but don't turn (see Known limits).
+
+**The Compare chip.** When two dates are open in Compare, a chip in the bar shows whether they line up:
+
+- **Lined up**: the two dates agree.
+- **{distance} off**, with **Line up**: the dates are apart by that distance. Click **Line up** to open the step.
+- **Checking line-up…**: the pair is being measured.
+- **Can't line up**: the measurement can't be trusted or the dates are too far apart.
+
+If the project is saved by an older build, the turn is dropped and the shift stays. Open the project again in this build: the chip shows the pair as off, and **Line up** restores the turn.
+
 **Undo.** The notice has **Undo**, or press Ctrl+Z. Ctrl+Y does it again. Undo also works after **Remove line-up**.
 
 **Remove line-up.** A lined-up date's folder shows "Lined up with ..." as its tool tip. **Remove line-up** is an item in the date's menu: use it to put the date back at its file position.

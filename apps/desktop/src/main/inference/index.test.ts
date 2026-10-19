@@ -1,8 +1,14 @@
-import { DetectionsFile, type IpcEvent, type ProjectManifest } from '@aio/schema';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  DetectionsFile,
+  type InferenceItem,
+  type IpcEvent,
+  type ProjectManifest,
+  type WalkFile,
+} from '@aio/schema';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectHandlers } from '../notYet';
 import {
   markerCard,
@@ -11,7 +17,10 @@ import {
   type MarkerPatch,
 } from './fixtures/markerDetector';
 import { realOrt } from './fixtures/realOrt';
+import { testFfmpeg, writeMarkerVideo } from './fixtures/walkVideo';
+import { decodeFrame, videoSize } from './frames';
 import { registerInferenceIpc, type InferenceEnv } from './index';
+import type { RgbaImage } from './tile';
 import { createInferenceHost, type ChildLike } from './utility';
 import { createWorkerCore, type FromWorker } from './worker';
 
@@ -45,11 +54,26 @@ const PHOTOS: Record<string, MarkerPatch[]> = {
   p3: [],
 };
 
+/** The synthetic walk's playback copy: equirectangular, 2:1. */
+const WALK_W = 640;
+const WALK_H = 320;
+
 let base: string;
 let root: string;
 let events: IpcEvent<'inference:progress'>[];
 let env: InferenceEnv;
 let decoded: string[];
+let frames: number[];
+let walkJson: boolean;
+/** Times the run opened its frame reader (once per run with walk frames). */
+let opened: number;
+/** Why `frames()` refuses (ffmpeg cannot start), or null. */
+let framesProblem: string | null;
+/** Stands in for ffmpeg: a frame at `t` (null: ffmpeg decodes it). */
+let fakeFrame:
+  ((t: number, width: number, height: number, signal: AbortSignal) => Promise<RgbaImage>) | null;
+/** Photos whose decode fails. */
+let badPhotos: Set<string>;
 let hook: ((e: IpcEvent<'inference:progress'>) => void) | null = null;
 
 const manifest = {
@@ -67,6 +91,16 @@ const manifest = {
       name: 'Later photos',
       items: ['p1', 'p2'].map((id) => ({ id, src: { path: `later/${id}.png` } })),
     },
+    { kind: 'video', id: 'clip', name: 'Clip', src: { path: 'video/clip.mp4' } },
+    // a 360 walk: its playback copy is made by the walk tests below
+    {
+      kind: 'walk',
+      id: 'walk-w1',
+      name: 'Walk 1',
+      record: { path: 'walks/w1/walk.json' },
+      src: { path: 'walks/w1/playback.mp4' },
+      durationS: 3,
+    },
   ],
 } as unknown as ProjectManifest;
 
@@ -76,6 +110,12 @@ beforeEach(async () => {
   await mkdir(join(root, 'detections'), { recursive: true });
   events = [];
   decoded = [];
+  frames = [];
+  walkJson = true;
+  opened = 0;
+  framesProblem = null;
+  fakeFrame = null;
+  badPhotos = new Set();
   const h = host();
   env = {
     dirs: () => Promise.resolve({ user: join(base, 'models'), pack: null }),
@@ -90,11 +130,31 @@ beforeEach(async () => {
     decode: async (_root, rel) => {
       const id = rel.replace(/^(photos|later)\/|\.png$/g, '');
       decoded.push(id);
+      if (badPhotos.has(id)) throw new Error(`Could not decode ${rel}`);
       // decoding takes a moment, as it does in the app
       await new Promise((r) => setTimeout(r, 20));
       const rgba = markerPhotoRgba(320, 320, PHOTOS[id] ?? []);
       return { width: 320, height: 320, scaledWidth: 320, scaledHeight: 320, rgba };
     },
+    frames: () => {
+      opened++;
+      if (framesProblem !== null) return Promise.reject(new Error(framesProblem));
+      const ffmpeg = testFfmpeg ?? 'ffmpeg';
+      return Promise.resolve({
+        decode: (r, rel, t, width, height, signal) => {
+          frames.push(t);
+          return fakeFrame
+            ? fakeFrame(t, width, height, signal)
+            : decodeFrame({ ffmpeg, file: join(r, rel), t, width, height, signal });
+        },
+        size: (r, rel) => videoSize(ffmpeg, join(r, rel)),
+      });
+    },
+    // the walk.json fields a run reads (the walk tests write no full walk.json)
+    readWalk: () =>
+      Promise.resolve(
+        walkJson ? ({ video: { width: WALK_W, height: WALK_H } } as unknown as WalkFile) : null,
+      ),
     readPass: async (r, name) => {
       try {
         return DetectionsFile.parse(
@@ -307,7 +367,7 @@ describe.skipIf(!ort)('runs', () => {
     expect(events.at(-1)).toEqual({ runId: 'r4', done: 5, total: 5, found: 6 });
   });
 
-  it('refuses video frames, packages, unknown models and photos', async () => {
+  it('refuses ordinary video frames, packages, unknown models, layers and photos', async () => {
     const ipc = await installed();
     const base = {
       runId: 'r3',
@@ -318,8 +378,16 @@ describe.skipIf(!ort)('runs', () => {
     };
     expect(await ipc.call('inference:run', { ...base, items: [{ layer: 'clip', t: 3 }] })).toEqual({
       ok: false,
-      error: 'Local detection works on photos. Video frames are not supported yet: pick photos.',
+      error:
+        'Local detection on ordinary video clips is not supported yet: pick photos or a 360 walk.',
     });
+    expect(await ipc.call('inference:run', { ...base, items: [{ layer: 'nope', t: 3 }] })).toEqual({
+      ok: false,
+      error: 'There is no 360 walk layer "nope" in this project.',
+    });
+    expect(
+      await ipc.call('inference:run', { ...base, items: [{ layer: 'walk-w1', t: 9 }] }),
+    ).toEqual({ ok: false, error: 'Walk 1 lasts 3 s: there is no frame at 9 s.' });
     expect(await ipc.call('inference:run', { ...base, projectId: 'pkg', items })).toMatchObject({
       ok: false,
       error: expect.stringContaining('read-only package') as string,
@@ -331,5 +399,267 @@ describe.skipIf(!ort)('runs', () => {
     expect(
       await ipc.call('inference:run', { ...base, items: [{ layer: 'photos', photo: 'p9' }] }),
     ).toEqual({ ok: false, error: 'There is no photo "p9" in Photos.' });
+  });
+});
+
+describe.skipIf(!ort)('items that cannot be read', () => {
+  const walkItems = [0.5, 1.5, 2.5].map((t) => ({ layer: 'walk-w1', t }));
+  const req = (runId: string, items: InferenceItem[] = walkItems) => ({
+    runId,
+    projectId: 'p',
+    model: 'marker-test-detector-1.0.0',
+    items,
+    classMap: {},
+    minConfidence: 0.5,
+  });
+  async function installed() {
+    const ipc = ipcOf();
+    await ipc.call('inference:importModel', { path: await modelSource(), acceptLicence: true });
+    return ipc;
+  }
+  const blank = (width: number, height: number): Promise<RgbaImage> =>
+    Promise.resolve({ width, height, rgba: new Uint8Array(width * height * 4).fill(128) });
+  const exists = (name: string) =>
+    access(join(root, 'detections', name)).then(
+      () => true,
+      () => false,
+    );
+  const codec =
+    "ffmpeg could not decode the frame at 1.500 s (exit 1): this video's codec can't be read";
+  const noFfmpeg = 'ffmpeg could not be started (ffmpeg): spawn ffmpeg ENOENT';
+
+  it('fails a run where no frame could be read, with the reason, and writes no pass', async () => {
+    const ipc = await installed();
+    fakeFrame = () => Promise.reject(new Error(noFfmpeg));
+    const r = await ipc.call('inference:run', req('f1'));
+    expect(r).toEqual({ ok: false, error: `None of the 3 frames could be read: ${noFfmpeg}` });
+    expect(await exists('model-f1.json')).toBe(false);
+    expect(events.at(-1)).toMatchObject({
+      runId: 'f1',
+      done: 3,
+      total: 3,
+      skipped: 3,
+      reason: noFfmpeg,
+    });
+  });
+
+  it('counts a frame that could not be read as skipped, and a resume retries it', async () => {
+    const ipc = await installed();
+    fakeFrame = (t, w, h) => (t === 1.5 ? Promise.reject(new Error(codec)) : blank(w, h));
+    const r = await ipc.call('inference:run', req('f2'));
+    expect(r).toEqual({
+      ok: true,
+      file: 'detections/model-f2.json',
+      count: 0,
+      skipped: 1,
+      reason: codec,
+    });
+    const pass = DetectionsFile.parse(
+      JSON.parse(await readFile(join(root, 'detections', 'model-f2.json'), 'utf8')),
+    );
+    expect(pass.assessed).toEqual(['t:500', 't:2500']);
+    expect(events.at(-1)).toMatchObject({ done: 3, total: 3, skipped: 1, reason: codec });
+    // the skipped frame is not assessed: the same run id tries it again
+    frames.length = 0;
+    fakeFrame = (_t, w, h) => blank(w, h);
+    expect(await ipc.call('inference:run', req('f2'))).toEqual({
+      ok: true,
+      file: 'detections/model-f2.json',
+      count: 0,
+    });
+    expect(frames).toEqual([1.5]);
+  });
+
+  it('counts photos that could not be read, and fails when none could', async () => {
+    const ipc = await installed();
+    badPhotos = new Set(['p2']);
+    const photos = ['p1', 'p2', 'p3'].map((photo) => ({ layer: 'photos', photo }));
+    expect(await ipc.call('inference:run', req('f3', photos))).toMatchObject({
+      ok: true,
+      count: 1,
+      skipped: 1,
+      reason: 'Could not decode photos/p2.png',
+    });
+    badPhotos = new Set(['p1', 'p2', 'p3']);
+    expect(await ipc.call('inference:run', req('f4', photos))).toEqual({
+      ok: false,
+      error: 'None of the 3 photos could be read: Could not decode photos/p1.png',
+    });
+  });
+
+  it('refuses a walk run before any frame when ffmpeg cannot be started', async () => {
+    const ipc = await installed();
+    framesProblem =
+      'Walk frames are read with ffmpeg, and it could not be started (ffmpeg): spawn ffmpeg ENOENT. Install the pipeline pack, or put ffmpeg on the PATH.';
+    expect(await ipc.call('inference:run', req('f5'))).toEqual({ ok: false, error: framesProblem });
+    expect(frames).toEqual([]);
+    expect(events).toEqual([]);
+    expect(await exists('model-f5.json')).toBe(false);
+    // a photos-only run does not need ffmpeg
+    opened = 0;
+    expect(
+      await ipc.call('inference:run', req('f6', [{ layer: 'photos', photo: 'p1' }])),
+    ).toMatchObject({ ok: true, count: 1 });
+    expect(opened).toBe(0);
+  });
+
+  it('looks ffmpeg up once per run, not per frame', async () => {
+    const ipc = await installed();
+    fakeFrame = (_t, w, h) => blank(w, h);
+    await ipc.call('inference:run', req('f7'));
+    expect(frames).toHaveLength(3);
+    expect(opened).toBe(1);
+  });
+
+  it('Stop ends a frame decode in hand at once, without counting it as skipped', async () => {
+    const ipc = await installed();
+    // a decode that only ends when the run's signal aborts (ffmpeg killed)
+    fakeFrame = (_t, _w, _h, signal) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          reject(new Error('The frame decode at 0.500 s was stopped.'));
+        });
+      });
+    const started = Date.now();
+    const running = ipc.call('inference:run', req('f8'));
+    await vi.waitFor(() => {
+      expect(frames).toEqual([0.5]);
+    });
+    await ipc.call('inference:cancel', { runId: 'f8' });
+    expect(await running).toEqual({ ok: true, file: 'detections/model-f8.json', count: 0 });
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(frames).toEqual([0.5]);
+    expect(events.at(-1)).not.toHaveProperty('skipped');
+  });
+});
+
+describe.skipIf(!ort || !testFfmpeg)('runs on 360 walk frames', { timeout: 60_000 }, () => {
+  /**
+   * Second 0: a magenta marker cut by the seam and a cyan one; 1: nothing; 2: a magenta one. The
+   * test detector sees patches up to 64 input pixels whole, so they stay small for the tiled run.
+   */
+  const SECONDS: MarkerPatch[][] = [
+    [
+      { cls: 'marker', box: [608, 120, 640, 160] },
+      { cls: 'marker', box: [0, 120, 24, 160] },
+      { cls: 'cyan-marker', box: [200, 100, 240, 140] },
+    ],
+    [],
+    [{ cls: 'marker', box: [300, 140, 340, 180] }],
+  ];
+  const items = [0.5, 1.5, 2.5].map((t) => ({ layer: 'walk-w1', t }));
+  const req = (runId: string, over: object = {}) => ({
+    runId,
+    projectId: 'p',
+    model: 'marker-test-detector-1.0.0',
+    items,
+    classMap: { marker: 'paint' },
+    minConfidence: 0.5,
+    ...over,
+  });
+  async function installed() {
+    await writeMarkerVideo(
+      testFfmpeg ?? 'ffmpeg',
+      join(root, 'walks', 'w1', 'playback.mp4'),
+      WALK_W,
+      WALK_H,
+      SECONDS,
+    );
+    const ipc = ipcOf();
+    await ipc.call('inference:importModel', { path: await modelSource(), acceptLicence: true });
+    return ipc;
+  }
+  const pass = async (name: string) =>
+    DetectionsFile.parse(JSON.parse(await readFile(join(root, 'detections', name), 'utf8')));
+  /** Within 4 px: the frame went through H.264 and a scale-down. */
+  const near = (got: readonly number[], want: readonly number[]) =>
+    got.every((v, i) => Math.abs(v - (want[i] ?? 0)) <= 4);
+  const expectFrameDrafts = (file: DetectionsFile) => {
+    // by time, then left to right (the score order differs with the decode size)
+    const dets = [...file.detections].sort(
+      (p, q) => (p.frame?.t ?? 0) - (q.frame?.t ?? 0) || p.bbox[0] - q.bbox[0],
+    );
+    expect(dets.map((d) => [d.frame?.t, d.class, d.label])).toEqual([
+      [0.5, 'cyan-marker', 'cyan-marker'],
+      // the two halves at the seam are one box that wraps: x1 past the width
+      [0.5, 'paint', undefined],
+      [2.5, 'paint', undefined],
+    ]);
+    const boxes = dets.map((d) => d.bbox);
+    expect(near(boxes[0] ?? [], [200, 100, 240, 140])).toBe(true);
+    expect(near(boxes[1] ?? [], [608, 120, 664, 160])).toBe(true);
+    expect(near(boxes[2] ?? [], [300, 140, 340, 180])).toBe(true);
+    for (const d of dets) {
+      expect(d).toMatchObject({
+        frame: { layer: 'walk-w1' },
+        space: 'source',
+        width: WALK_W,
+        height: WALK_H,
+        status: 'draft',
+        source: 'model',
+        origin: { model: 'marker-test-detector-1.0.0' },
+      });
+      expect(d.photo).toBeUndefined();
+    }
+  };
+
+  it('writes frame drafts in source pixels and merges a marker across the seam', async () => {
+    const ipc = await installed();
+    const r = await ipc.call('inference:run', req('w1'));
+    expect(r).toEqual({ ok: true, file: 'detections/model-w1.json', count: 3 });
+    const file = await pass('model-w1.json');
+    expect(file).toMatchObject({
+      source: 'model',
+      layer: 'walk-w1',
+      assessed: ['t:500', 't:1500', 't:2500'],
+      run: { id: 'w1', images: 3, detections: 3 },
+    });
+    expectFrameDrafts(file);
+    // the model input is 320 square: the 640 x 320 frame is decoded at 320 x 160
+    expect(frames).toEqual([0.5, 1.5, 2.5]);
+    expect(new Set(file.detections.map((d) => d.id)).size).toBe(3);
+    expect(events.at(-1)).toEqual({ runId: 'w1', done: 3, total: 3, found: 3 });
+    expect(events.map((e) => e.current).filter(Boolean)).toEqual(['t:500', 't:1500', 't:2500']);
+  });
+
+  it('runs wrapping tiles on a full-size frame with the same result', async () => {
+    const ipc = await installed();
+    const r = await ipc.call('inference:run', req('w2', { tile: { size: 320, overlap: 64 } }));
+    expect(r).toMatchObject({ ok: true, count: 3 });
+    expectFrameDrafts(await pass('model-w2.json'));
+  });
+
+  it('reads the frame size from the video when walk.json is unreadable', async () => {
+    walkJson = false;
+    const ipc = await installed();
+    expect(await ipc.call('inference:run', req('w3'))).toMatchObject({ ok: true, count: 3 });
+    expectFrameDrafts(await pass('model-w3.json'));
+  });
+
+  it('cancel keeps the frames done; the same run id resumes with the rest', async () => {
+    const ipc = await installed();
+    hook = (e) => {
+      if (e.done === 1) void ipc.call('inference:cancel', { runId: 'w4' });
+    };
+    expect(await ipc.call('inference:run', req('w4'))).toMatchObject({ ok: true, count: 2 });
+    expect((await pass('model-w4.json')).assessed).toEqual(['t:500']);
+    hook = null;
+    frames.length = 0;
+    expect(await ipc.call('inference:run', req('w4'))).toMatchObject({ ok: true, count: 3 });
+    expect(frames).toEqual([1.5, 2.5]);
+    expectFrameDrafts(await pass('model-w4.json'));
+  });
+
+  it('a run over photos and a walk writes a pass for each', async () => {
+    const ipc = await installed();
+    const r = await ipc.call(
+      'inference:run',
+      req('w5', { items: [{ layer: 'photos', photo: 'p1' }, ...items] }),
+    );
+    expect(r).toEqual({ ok: true, file: 'detections/model-w5-photos.json', count: 4 });
+    expect((await pass('model-w5-photos.json')).detections.map((d) => d.space)).toEqual([
+      'preview',
+    ]);
+    expectFrameDrafts(await pass('model-w5-walk-w1.json'));
   });
 });

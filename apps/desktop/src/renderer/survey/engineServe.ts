@@ -64,6 +64,7 @@ export class EngineSession {
         ...(capture !== undefined ? { capture } : {}),
         designs: this.ctx.designs,
         ...(this.ctx.shifts ? { shifts: this.ctx.shifts } : {}),
+        ...(this.ctx.turns ? { turns: this.ctx.turns } : {}),
         fetchBytes: (path) => this.fetch(joinUrl(this.ctx.base, path)),
         cache: this.cache,
       });
@@ -74,7 +75,7 @@ export class EngineSession {
 
   /** The ring of a survey-scoped measurement is stored unshifted: see `ringShifts`. */
   private ringShifts(capture: string | undefined) {
-    return ringShifts(this.ctx.surfaces, this.ctx.shifts, capture);
+    return ringShifts(this.ctx.surfaces, this.ctx.shifts, capture, this.ctx.turns);
   }
 
   async run(req: RunRequest, signal?: AbortSignal): Promise<RunReply> {
@@ -133,6 +134,7 @@ export class EngineSession {
           await side(item.to),
           this.ctx.site,
           this.ringShifts(req.capture).ringCurrent,
+          this.ringShifts(req.capture).ringCurrentTurn,
         ),
       );
     return out;

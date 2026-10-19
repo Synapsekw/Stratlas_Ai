@@ -2204,17 +2204,34 @@ export const en = {
   'infer.model.removeLabel': 'Remove {name}',
   'infer.import.accept': 'I may use the model I import under the licence on its model card',
   'infer.import.note':
-    'The card (model.json, aio.detector/1) gives the layout, input size, classes, SPDX licence and SHA-256 of model.onnx. Copyleft and non-commercial licences are refused. Weights trained with Ultralytics YOLO are AGPL-3.0 unless you hold an Ultralytics Enterprise licence.',
+    'The card (model.json, aio.detector/1) gives the layout, input size, classes, SPDX licence and SHA-256 of model.onnx. Copyleft, non-commercial and unknown licences import with a warning. Weights trained with Ultralytics YOLO are AGPL-3.0 unless you hold an Ultralytics Enterprise licence.',
   'infer.import.button': 'Import model',
   'infer.import.busy': 'Checking the model',
   'infer.import.pick': 'Choose a model (model.onnx or model.json)',
   'infer.import.filter': 'ONNX model or model card',
   'infer.import.done': 'Imported {name}.',
+  // licence warning kinds (LicenceWarning): the chip and its note on the Settings model row, the
+  // note after an import
+  'infer.licence.chip.copyleft': '{licence} · internal use',
+  'infer.licence.chip.non-commercial': '{licence} · internal use',
+  'infer.licence.chip.unknown': '{licence} · check its terms',
+  'infer.licence.note.copyleft':
+    '{licence} is copyleft: fine for internal use, check before you sell or hand out this app.',
+  'infer.licence.note.non-commercial':
+    '{licence} is for non-commercial use: fine for internal use, check before you sell or hand out this app.',
+  'infer.licence.note.unknown':
+    '{licence} is not a licence this app knows: check its terms before you sell or hand out this app.',
+  'infer.licence.imported.copyleft':
+    '{name} imported. {licence} is copyleft: fine for internal use, check before you sell or hand out this app.',
+  'infer.licence.imported.non-commercial':
+    '{name} imported. {licence} is for non-commercial use: fine for internal use, check before you sell or hand out this app.',
+  'infer.licence.imported.unknown':
+    '{name} imported. {licence} is not a licence this app knows: check its terms before you sell or hand out this app.',
   'infer.dlg.title': 'Detect',
   'infer.dlg.source': 'Detect with',
   'infer.dlg.cloud': 'Cloud vision',
   'infer.dlg.local': 'Local model',
-  'infer.dlg.what': 'Photos to check',
+  'infer.dlg.what': 'What to check',
   'infer.dlg.model': 'Model',
   'infer.dlg.noModels':
     'No detection model is installed. Import one in Settings, AI providers, Detection models.',
@@ -2229,7 +2246,8 @@ export const en = {
   'infer.dlg.classesLead':
     "Each model class becomes a class of this project. Classes left as they are keep the model's name.",
   'infer.dlg.keepName': "Keep the model's name",
-  'infer.dlg.framesNote': 'Local models check photos. Video frames are not supported yet.',
+  'infer.dlg.framesNote':
+    'Local models check photos and 360 video frames. Ordinary video clips are not supported yet.',
   'infer.dlg.run_one': 'Run on {count} photo',
   'infer.dlg.run_other': 'Run on {count} photos',
   'infer.dlg.runRest_one': 'Run the remaining {count}',
@@ -2242,6 +2260,26 @@ export const en = {
   'infer.dlg.cost': 'Cost: free, on this computer',
   'infer.dlg.stop': 'Stop',
   'infer.dlg.stopping': 'Stopping after this photo',
+  // local detection on 360 video (walk) frames; the unit after the interval is det.ai.seconds
+  'infer.dlg.scope.walk': '360 video frames',
+  'infer.dlg.walk': '360 video',
+  'infer.dlg.every': 'One frame every',
+  'infer.dlg.currentFrame': 'Current frame ({t} s)',
+  'infer.dlg.walkTile': 'Tiles across the 360 frame (for small, distant people)',
+  'infer.dlg.walkTileHint': 'Slower: the model checks every tile of each frame.',
+  'infer.dlg.runFrames_one': 'Run on {count} frame',
+  'infer.dlg.runFrames_other': 'Run on {count} frames',
+  'infer.dlg.progressFrames': '{done} of {total} frames checked, {found} found',
+  'infer.dlg.stoppingFrame': 'Stopping after this frame',
+  'infer.dlg.skippedFrames_one': '{count} frame could not be read',
+  'infer.dlg.skippedFrames_other': '{count} frames could not be read',
+  'infer.dlg.skippedPhotos_one': '{count} photo could not be read',
+  'infer.dlg.skippedPhotos_other': '{count} photos could not be read',
+  'infer.dlg.noWalk': 'Add a 360 video to detect on its frames.',
+  'infer.dlg.framesCount_one': '{count} frame',
+  'infer.dlg.framesCount_other': '{count} frames',
+  'infer.dlg.framesCapped':
+    'At most {max} frames per run. Pick a longer interval to cover the whole video.',
   // M8 C2: imagery and surface change, swipe and blend of two dates
   'imgChange.view': 'How to show the two dates',
   'imgChange.side': 'Side by side',
@@ -2322,6 +2360,9 @@ export const en = {
     '{picked} is not {file}. Pick the camera file, or process without levelling.',
   'walk.level': 'Level horizon',
   'walk.level.tip': 'Play the copy with the horizon kept level',
+  'walk.det.show': 'Show detections',
+  'walk.det.levelNote':
+    'Detections are drawn on the unlevelled video. Turn off Level horizon to see them.',
   // drone panoramas (panoramas/<layer>/<pano>/): the import preview, the Datasets rows, the offer
   'pano.add': 'Add drone panoramas',
   'pano.add.tip': 'Add a folder of drone sphere panorama frames',
@@ -4317,11 +4358,14 @@ export const en = {
   'lineUp.keepHint': 'Choose the date that stays where it is. The other date moves onto it.',
   'lineUp.measuring': 'Measuring how far apart the dates are...',
   'lineUp.shift': '{ew}, {ns} ({distance} in all)',
+  'lineUp.shiftTurned': '{ew}, {ns} at the centre, up to {distance} at the edges',
   'lineUp.east': '{distance} east',
   'lineUp.west': '{distance} west',
   'lineUp.north': '{distance} north',
   'lineUp.south': '{distance} south',
   'lineUp.confident': 'Confident: {tiles} matching areas agree within {spread}.',
+  'lineUp.turn': 'turned {deg}°, scaled {pct}',
+  'lineUp.cloudsNoTurn': "Point clouds move but don't turn yet.",
   'lineUp.moves': 'Moves with {date}: {layers} and {items}.',
   'lineUp.layers_one': '{count} dataset',
   'lineUp.layers_other': '{count} datasets',
@@ -4341,11 +4385,13 @@ export const en = {
   'lineUp.refuse.texture':
     'These dates cannot be lined up: there is too little detail to match (water, snow or bare ground, for example).',
   'lineUp.refuse.disagree':
-    'These dates cannot be lined up: parts of them point to different shifts, so one may be turned or scaled against the other. Lining up only moves a date sideways.',
+    "These dates cannot be lined up: their parts don't fit one shift, turn and scale, so part of the site may have warped or changed too much.",
   'lineUp.refuse.overlap': 'These dates hardly overlap.',
   'lineUp.refuse.aligned': 'These dates already line up (within {distance}).',
   'lineUp.refuse.range':
-    'These dates cannot be lined up: the date would move more than 500 m from where its files place it.',
+    'These dates cannot be lined up: one is turned more than 1° or scaled more than 1% against the other, or would move more than 500 m.',
+  'lineUp.refuse.far':
+    'These dates cannot be lined up: the date would move more than 500 m, turn more than 2° or scale more than 2% from where its files place it.',
   'lineUp.refuse.noImagery': 'Each date needs an ortho or a DSM to be lined up.',
   'lineUp.failed': 'The measurement did not finish: {error}',
   'lineUp.folder': 'Lined up with {kept} ({distance})',
@@ -4358,11 +4404,25 @@ export const en = {
   'lineUp.measure.unreadable': 'The measurement could not be read.',
   'lineUp.measure.timedOut': 'The measurement took too long and was stopped.',
   'lineUp.measure.switched': 'Another project was opened, so the measurement was stopped.',
+  'lineUp.measure.abandoned': 'The measurement was stopped.',
   'lineUp.read.noProject': 'No project is open.',
   'lineUp.read.failed': '{path} could not be read ({status}).',
   'lineUp.extents.failed': 'The extent of the layers could not be read.',
   'lineUp.rerun.unavailable': 'This comparison cannot be run again here.',
   'lineUp.menu.notReady': 'Line up dates is not ready yet.',
+  'compare.lineUp.lined': 'Lined up',
+  'compare.lineUp.off': '{distance} off',
+  'compare.lineUp.measuring': 'Checking line-up…',
+  'compare.lineUp.cannot': "Can't line up",
+  'compare.lineUp.action': 'Line up',
+  'compare.lineUp.label': 'Line-up of the two dates: {status}',
+  'compare.lineUp.within': 'Already within {distance}.',
+  'compare.lineUp.offBy': 'The dates sit {distance} apart.',
+  'compare.lineUp.saved': '{moved} lined up with {kept}',
+  'compare.lineUp.retry': 'Measure again',
+  'compare.lineUp.removeOf': 'Remove line-up of {date}',
+  'compare.lineUp.never': 'Neither date has been lined up.',
+  'compare.lineUp.fit': 'The fit agrees within {px} px over {tiles} matching areas.',
   'align.to.far': 'Align to...',
   'align.photoMenu.picked_one': '{count} photo picked',
   'align.photoMenu.picked_other': '{count} photos picked',

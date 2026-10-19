@@ -18,7 +18,7 @@ vi.hoisted(() => {
   };
 });
 
-import { acceptByIds, detections } from './store';
+import { acceptByIds, detections, sampledTimes } from './store';
 
 const NOW = '2026-10-15T10:00:00.000Z';
 
@@ -121,5 +121,24 @@ describe('acceptByIds', () => {
     review([det('d1')], true);
     expect(acceptByIds(['d1'])).toHaveProperty('error');
     expect(workspace.getState().issues).toHaveLength(0);
+  });
+});
+
+describe('sampledTimes', () => {
+  const header = (over: Record<string, unknown>) =>
+    ({ schema: 'aio.detections/1', source: 'model', ...over }) as never;
+
+  it('collects the sampled frame times of each walk from the passes, in seconds and in order', () => {
+    expect(
+      sampledTimes([
+        header({ layer: 'w', assessed: ['t:2000', 't:0', 't:1000'] }),
+        header({ layer: 'w', assessed: ['t:1000', 't:1500'] }),
+        header({ layer: 'v', assessed: ['t:500'] }),
+        // photo passes, and passes without a layer or a list, name no frames
+        header({ layer: 'photos', assessed: ['p001'] }),
+        header({ assessed: ['t:300'] }),
+        header({ layer: 'x', assessed: 'all' }),
+      ]),
+    ).toEqual({ w: [0, 1, 1.5, 2], v: [0.5] });
   });
 });

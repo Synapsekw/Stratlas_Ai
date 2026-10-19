@@ -127,6 +127,7 @@ describe('loadPyramid', () => {
 describe('outputRasters', () => {
   const index = parsePyramid(INDEX);
   const manifest = {
+    origin: [500000, 3200000, 0],
     captures: [
       { id: 'c1', label: 'First', date: '2026-10-07' },
       {
@@ -140,7 +141,7 @@ describe('outputRasters', () => {
       { id: 'o1', name: 'Ortho 1', kind: 'raster', capture: 'c1' },
       { id: 'o2', name: 'Ortho 2', kind: 'raster', capture: 'c2' },
     ],
-  } as unknown as Pick<ProjectManifest, 'captures' | 'layers'>;
+  } as unknown as Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>;
   const indexes = {
     [pyramidKey('p1', 'a/tiles.json')]: index,
     [pyramidKey('p1', 'b/tiles.json')]: index,
