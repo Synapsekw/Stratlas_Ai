@@ -32,6 +32,8 @@ interface Opts {
   photos?: boolean;
   ai?: 'allow' | 'forbid';
   offline?: boolean;
+  /** The Cloud AI switch in Settings is off. */
+  cloudOff?: boolean;
   open?: boolean;
   /** The chat route goes to another model than the vision route. */
   chatModel?: string;
@@ -123,7 +125,7 @@ function setup(o: Opts = {}) {
   };
   const host: AgentRuntimeHost = {
     getKey: () => Promise.resolve('test-key-not-real'),
-    cloudAllowed: () => true,
+    cloudAllowed: () => o.cloudOff !== true,
     offlineOnly: () => o.offline === true,
     emit: () => undefined,
     routes: () => routes,
@@ -348,6 +350,15 @@ describe('ai:rfPlan gates', () => {
   it('refuses offline-only before anything is sent', async () => {
     const t = setup({ offline: true });
     expect(await t.runtime.rfPlan(planReq())).toEqual({ ok: false, error: MESSAGES.offlineOnly });
+    expect(t.model.doGenerateCalls).toHaveLength(0);
+  });
+
+  it('with Cloud AI off, refuses the preview and the request before anything is read or sent', async () => {
+    const t = setup({ cloudOff: true, photos: true });
+    expect(await preview(t)).toMatchObject({ ok: false, error: MESSAGES.cloudOff });
+    expect(t.cropReads).toEqual([]);
+    const r = await t.runtime.rfPlan(planReq({ token: 'x', photos: true }));
+    expect(r).toMatchObject({ ok: false, error: MESSAGES.cloudOff });
     expect(t.model.doGenerateCalls).toHaveLength(0);
   });
 
