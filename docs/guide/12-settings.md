@@ -92,7 +92,7 @@ Integrated graphics get **Low**; laptop graphics one step lower than the desktop
 
 ## Keyboard shortcuts
 
-The same list is in **Settings**, **Keyboard**.
+The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) and Alt is ⌥ (Option); {product} shows the Mac keys there and in its tool tips.
 
 ### Anywhere
 
