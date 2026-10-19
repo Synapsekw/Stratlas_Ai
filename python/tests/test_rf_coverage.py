@@ -474,7 +474,9 @@ def test_the_origins_sidecar_is_ignored(tmp_path):
     sidecar = {
         "schema": "aio.rf-origins/1",
         "sectorsSha256": "0" * 64,
-        "antennas": {ids[0]: {"equipment": {"by": "ai", "confidence": "low"}, "carriers": {"c1": {"by": "rules"}}}},
+        "antennas": {
+            ids[0]: {"equipment": {"by": "ai", "confidence": "low"}, "carriers": {"c1": {"by": "rules"}}}
+        },
     }
     (other / "rf" / "sectors.origins.json").write_text(json.dumps(sidecar), "utf-8")
     run(plain, "rf-plain")
