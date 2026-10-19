@@ -96,7 +96,6 @@ import { Step } from '../../../rf/panel/Step';
 import { StepAntennas } from '../../../rf/panel/StepAntennas';
 import { StepSectors, UNGROUPED } from '../../../rf/panel/StepSectors';
 import { useSections } from '../sectionState';
-import { workbench } from '../workbenchStore';
 import type { TabId } from '../tabsModel';
 import '../../../rf/rf.css';
 import './benches.css';
@@ -1497,11 +1496,10 @@ function ResultsSection() {
 
 /**
  * Review in inventory, through Auto-plan's one review link (`openAntennaReviewOrFallback`). The
- * Coverage tab is pinned first, so opening the inventory does not close it.
+ * Coverage tab keeps the pin it has (opened pinned, it stays open beside the inventory); a person
+ * who unpinned it is not overruled.
  */
 function reviewAntennas(): void {
-  const wb = workbench.getState();
-  if (wb.tabs.some((x) => x.id === BENCH)) wb.pin(BENCH, true);
   openAntennaReviewOrFallback();
 }
 

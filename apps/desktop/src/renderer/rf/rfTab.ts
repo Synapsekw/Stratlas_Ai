@@ -10,11 +10,14 @@ import { focusRfUnit, startCoverage, type StartResult } from './rfStore';
 // TODO(antenna-detection merge 2): pass Edit RF… to AntennaInventory extra actions
 // TODO(stage-3): Coverage tile in the island Measure group
 /**
- * Open the Coverage tab pinned (spec F1: the stage chip and Ctrl+K), so the next panel opened
- * does not replace it. open() never duplicates a tab, brings it to the front and pins it.
+ * Open the Coverage tab (spec F1: the stage chip, Ctrl+K, the project menu), pinned when it opens,
+ * so the next panel opened does not replace it. A tab already open only comes to the front: its
+ * pin is left as it is, so a person who unpinned Coverage is never overruled (by a run, a review
+ * or another open).
  */
 export function openCoverage(bench: StoreApi<WorkbenchState> = workbench): void {
-  bench.getState().open('rf', { pinned: true });
+  const wb = bench.getState();
+  wb.open('rf', wb.tabs.some((x) => x.id === 'rf') ? undefined : { pinned: true });
 }
 
 /** Bring the RF tab to the front (opening it pinned), showing `antennaId` if given. */
@@ -25,7 +28,7 @@ export function openRfTab(antennaId?: string, bench: StoreApi<WorkbenchState> = 
 
 /**
  * Start a coverage run the person asked for. The run is an activity, not a tool the person holds
- * (integration review I2, I-R62): the RF tab is opened or kept, pinned, and the Jobs
+ * (integration review I2, I-R62): the RF tab is opened (pinned when new) or kept, and the Jobs
  * follower shows the job live. No `toolStarted`, so the drawer does not open, other panels stay
  * and the agent pane is left as it is while the job runs; closing the RF tab does not cancel it.
  */

@@ -167,6 +167,24 @@ describe('startRfRun', () => {
     expect(bench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(true);
   });
 
+  it('never pins Coverage again once the person unpinned it: open, run or reopen', async () => {
+    const bench = createWorkbenchStore(null);
+    openCoverage(bench);
+    bench.getState().pin('rf', false);
+    const pinned = () => bench.getState().tabs.find((t) => t.id === 'rf')?.pinned;
+    openCoverage(bench);
+    expect(pinned()).toBe(false);
+    expect(bench.getState().front).toBe('rf');
+    openRfTab('ant-a', bench);
+    expect(pinned()).toBe(false);
+    expect((await startRfRun('/p3', bench)).ok).toBe(true);
+    expect(pinned()).toBe(false);
+    // closed, then opened again from the chip or Ctrl+K: a new tab, pinned
+    bench.getState().close('rf');
+    openCoverage(bench);
+    expect(pinned()).toBe(true);
+  });
+
   it('while a run is in progress the drawer stays closed and the agent pane is not minimised', async () => {
     const bench = createWorkbenchStore(null);
     const pane = createAgentPaneStore(false);

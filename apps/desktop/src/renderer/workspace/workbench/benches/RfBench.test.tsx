@@ -22,6 +22,7 @@ import { autoplanStore, resetAutoplan } from '../../../rf/autoplan/autoplanStore
 import { antennaStore } from '../../../telecom/antennaStore';
 import { assumptionsText } from '../../../rf/rfText';
 import { resetRf, rfStore, setPreviewState } from '../../../rf/rfStore';
+import { openCoverage } from '../../../rf/rfTab';
 import { threeDates } from '../../__fixtures__/threeDates';
 import { sectionStore } from '../sectionState';
 import { workbench } from '../workbenchStore';
@@ -299,12 +300,22 @@ describe('RfBench', () => {
 
   it('Review in inventory with no draft still opens the Measure bench, the tab pinned', async () => {
     antennaStore.setState({ selected: null });
-    workbench.getState().open('rf');
+    openCoverage();
     await render();
     click(byTest('rf-step-review'));
     expect(antennaStore.getState().selected).toBeNull();
     expect(workbench.getState().front).toBe('measure');
     expect(workbench.getState().tabs.find((x) => x.id === 'rf')?.pinned).toBe(true);
+  });
+
+  it('Review in inventory never pins a Coverage tab the person unpinned', async () => {
+    antennaStore.setState({ selected: null });
+    openCoverage();
+    workbench.getState().pin('rf', false);
+    await render();
+    click(byTest('rf-step-review'));
+    expect(workbench.getState().front).toBe('measure');
+    expect(workbench.getState().tabs.find((x) => x.id === 'rf')?.pinned ?? false).toBe(false);
   });
 
   it('units in no sector that cannot take part are listed as not in this run', async () => {

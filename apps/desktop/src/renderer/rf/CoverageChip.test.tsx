@@ -350,6 +350,16 @@ describe('the Coverage chip', () => {
     expect(workbench.getState().front).toBe('rf');
   });
 
+  it('clicking the chip again does not pin a Coverage tab the person unpinned', () => {
+    seed(site3());
+    render();
+    click('rf-chip-open');
+    workbench.getState().pin('rf', false);
+    click('rf-chip-open');
+    expect(workbench.getState().front).toBe('rf');
+    expect(workbench.getState().tabs.find((t) => t.id === 'rf')?.pinned).toBe(false);
+  });
+
   it('narrow layout keeps the dot, Coverage and the buttons only', () => {
     seed(site3());
     // the stage beside the panels in a 1100 px window
