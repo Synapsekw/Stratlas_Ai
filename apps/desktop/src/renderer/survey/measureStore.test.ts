@@ -38,6 +38,8 @@ const io = vi.hoisted(() => ({
   writesTo: new Map<string, number>(),
   /** While set, a call on this channel waits for it before it answers. */
   gate: null as { channel: string; wait: Promise<void> } | null,
+  /** While set, a write is refused (the disk is full). */
+  writeFails: false,
 }));
 function emptyFile(): MeasurementsFile {
   return { schema: 'aio.measurements/1' as const, measurements: [] };
@@ -47,6 +49,7 @@ vi.mock('../shell', () => ({
     call: async (channel: string, payload: { file?: unknown; projectId?: string }) => {
       if (io.gate?.channel === channel) await io.gate.wait;
       if (channel === 'survey:writeMeasurements') {
+        if (io.writeFails) return { ok: true, value: { ok: false, error: 'Disk full' } };
         io.saved = MeasurementsFile.parse(JSON.parse(JSON.stringify(payload.file)) as unknown);
         io.writes++;
         const p = payload.projectId ?? '';
@@ -111,6 +114,7 @@ beforeEach(() => {
   io.readOnly = false;
   io.writesTo.clear();
   io.gate = null;
+  io.writeFails = false;
   memory = createMeasureVisibilityMemory(memoryStorage());
   setMeasureVisibilityMemory(memory);
   measureStore.setState({
@@ -521,7 +525,7 @@ describe('an autosave and the undo against what happens meanwhile', () => {
     setAutosave(false);
   });
 
-  it('a save still writing when the project is closed and opened again leaves the new load alone', async () => {
+  it('opening a project again waits for its write still in flight, then reads what it wrote', async () => {
     await loadFile([measurement('m1'), measurement('m2')]);
     measureStore.setState({ projectId: 'A' });
     setAutosave(true);
@@ -530,14 +534,34 @@ describe('an autosave and the undo against what happens meanwhile', () => {
     expect(measureStore.getState().saving).toBe(true);
     // A, then B, then A again while A's first write is still in flight
     await loadMeasurements('B');
-    await loadMeasurements('A');
-    const loaded = measureStore.getState();
-    expect(loaded.file.measurements.map((m) => m.id)).toEqual(['m1', 'm2']);
-    writeA();
+    const loadA = loadMeasurements('A');
     await flush();
-    expect(measureStore.getState().savedText).toBe(loaded.savedText);
-    expect(measureStore.getState().message).toBeNull();
-    expect(isDirty(measureStore.getState())).toBe(false);
+    // the file is not read before the write lands
+    expect(measureStore.getState().status).toBe('loading');
+    writeA();
+    await loadA;
+    await flush();
+    const loaded = measureStore.getState();
+    expect(loaded.status).toBe('ready');
+    expect(loaded.file.measurements.map((m) => m.id)).toEqual(['m2']);
+    expect(isDirty(loaded)).toBe(false);
+    expect(loaded.message).toBeNull();
+    setAutosave(false);
+  });
+
+  it('a write that fails still lets the project open again', async () => {
+    await loadFile([measurement('m1'), measurement('m2')]);
+    measureStore.setState({ projectId: 'A' });
+    setAutosave(true);
+    io.writeFails = true;
+    const writeA = gate('survey:writeMeasurements');
+    deleteMeasurements(['m1']);
+    await loadMeasurements('B');
+    const loadA = loadMeasurements('A');
+    writeA();
+    await loadA;
+    expect(measureStore.getState().status).toBe('ready');
+    expect(measureStore.getState().file.measurements.map((m) => m.id)).toEqual(['m1', 'm2']);
     setAutosave(false);
   });
 

@@ -267,6 +267,11 @@ export const UNDO_DELETES = 10;
  * is the same.
  */
 let loadEpoch = 0;
+/**
+ * Each project's writes still in flight, chained, settled whether they wrote or not: a load of
+ * that project waits for them, so it never reads the file from before a write that lands after.
+ */
+const writing = new Map<string, Promise<unknown>>();
 let newFolderSeq = 0;
 
 export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
@@ -280,6 +285,11 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   const epoch = ++loadEpoch;
   set({ ...initial(), projectId, status: projectId ? 'loading' : 'idle' });
   if (!projectId) return;
+  const pending = writing.get(projectId);
+  if (pending) {
+    await pending;
+    if (loadEpoch !== epoch) return;
+  }
   const [m, t, s] = await Promise.all([
     bridge.call('survey:readMeasurements', { projectId }),
     bridge.call('survey:readTemplates', { projectId }),
@@ -321,7 +331,13 @@ export async function saveMeasurements(): Promise<boolean> {
   const projectId = s.projectId;
   const epoch = loadEpoch;
   set({ saving: true, message: null });
-  const r = await bridge.call('survey:writeMeasurements', { projectId, file });
+  const write = bridge.call('survey:writeMeasurements', { projectId, file });
+  const chain = Promise.allSettled([writing.get(projectId), write]);
+  writing.set(projectId, chain);
+  void chain.then(() => {
+    if (writing.get(projectId) === chain) writing.delete(projectId);
+  });
+  const r = await write;
   // another project (or this one again) was opened meanwhile: that state is not this save's to
   // touch, or to save
   if (loadEpoch !== epoch || get().projectId !== projectId) return false;
