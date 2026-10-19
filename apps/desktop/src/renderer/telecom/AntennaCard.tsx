@@ -55,10 +55,10 @@ function setDragged(next: { x: number; y: number } | null): void {
   for (const l of dragListeners) l();
 }
 
-/** Forget where the card was dragged (the runner calls this when the project changes). */
 /** Marks the floating card for other stage overlays that keep clear of it (e.g. the RF coverage card). */
 export const ANTENNA_CARD_SELECTOR = '[data-antenna-card]';
 
+/** Forget where the card was dragged (the runner calls this when the project changes). */
 export function resetCardDrag(): void {
   setDragged(null);
 }
