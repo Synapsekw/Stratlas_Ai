@@ -15,6 +15,7 @@ import {
   isMenuKey,
   keyMenuPoint,
   makeActionCtx,
+  itemMeasureIds,
   measureIdOf,
   measurementsGroup,
   menuPoint,
@@ -52,6 +53,7 @@ import { watchPanoStitches } from '../panos/panoJobs';
 import { pickAndScanPanos } from '../panos/panos';
 import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
+import { filterTerms } from '../survey/measureFilter';
 import { buildMeasureItems } from '../survey/measureRows';
 import {
   deleteMeasurements,
@@ -210,15 +212,34 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const measureRenaming = useRenameRequest((st) => st.measureId);
   const dates = useWorkspace((s) => s.dates);
   const manifest = project?.manifest ?? null;
+  // the group's filter box: view state only, never saved; the rows are built from it
+  const [measureQuery, setMeasureQuery] = useState('');
+  const filteringMeasures = filterTerms(measureQuery).length > 0;
   const measureItems = useMemo(
     () =>
       buildMeasureItems(
         { file: measureFile, settings: measureSettings, templates: measureTemplates },
         manifest,
         { dates, hidden },
+        measureQuery,
       ),
-    [measureFile, measureSettings, measureTemplates, manifest, dates, hidden],
+    [measureFile, measureSettings, measureTemplates, manifest, dates, hidden, measureQuery],
   );
+  // under a filter the group still counts, and its eye covers, every measurement
+  const measureIds = useMemo(
+    () => (filteringMeasures ? measureFile.measurements.map((m) => m.id) : undefined),
+    [filteringMeasures, measureFile],
+  );
+  // a reveal of a measurement the filter hides (one just drawn, one picked in 3D) clears the
+  // filter, so the row can be shown; no measurements left, no filter (adjusted during render)
+  const [filterSeenReveal, setFilterSeenReveal] = useState(reveal?.seq);
+  if (filterSeenReveal !== reveal?.seq) {
+    setFilterSeenReveal(reveal?.seq);
+    const id = reveal?.id ?? null;
+    if (filteringMeasures && id !== null && !measureItems.flatMap(itemMeasureIds).includes(id))
+      setMeasureQuery('');
+  }
+  if (measureQuery !== '' && measureFile.measurements.length === 0) setMeasureQuery('');
   const measureHidden = useMemo(
     () => Object.fromEntries(hiddenMeasurements.map((id) => [id, true] as const)),
     [hiddenMeasurements],
@@ -243,15 +264,16 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         ? buildDatasetTree(project.manifest, issues, durations, {
             unplaced,
             measurements: measureItems,
+            measurementIds: measureIds,
           })
         : [],
-    [project, issues, durations, unplaced, measureItems],
+    [project, issues, durations, unplaced, measureItems, measureIds],
   );
   // survey dates on: the group shows once, below the date folders (no date folder holds it)
   const after = useMemo(() => {
-    const g = measurementsGroup(measureItems);
+    const g = measurementsGroup(measureItems, measureIds);
     return g ? [g] : [];
-  }, [measureItems]);
+  }, [measureItems, measureIds]);
   const t = useT();
   const index = useCaptureIndex();
   const focus = useTimeline((s) => s.focus);
@@ -301,6 +323,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setNote(null);
     setMarks(NO_MARKS);
     setEmptying(false);
+    setMeasureQuery('');
   }
   // a measurement that left the file (deleted from any menu, the 3D view, the map, the panel,
   // or taken back by Revert) is not marked any more (adjusted during render, not in an effect)
@@ -308,6 +331,15 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   if (marksFile !== measureFile) {
     setMarksFile(measureFile);
     setMarks((m) => withoutGoneMeasures(m, measureFile.measurements));
+  }
+  // nor is one the filter hides: a Delete goes only to marked rows in view
+  const [marksItems, setMarksItems] = useState(measureItems);
+  if (marksItems !== measureItems) {
+    setMarksItems(measureItems);
+    if (filteringMeasures) {
+      const shown = measureItems.flatMap(itemMeasureIds).map((id) => ({ id }));
+      setMarks((m) => withoutGoneMeasures(m, shown));
+    }
   }
   // a removal went through: what was marked is gone; Empty could not delete everything: say so
   // where the tree's notes go (adjusted during render, not in an effect)
@@ -712,6 +744,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       endNewFolder();
     },
     reveal,
+    query: measureQuery,
+    onQuery: setMeasureQuery,
   };
 
   // while rows are marked the header offers their Delete in place of the count and the add tools

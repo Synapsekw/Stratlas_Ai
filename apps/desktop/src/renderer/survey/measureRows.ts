@@ -2,7 +2,8 @@
  * The Measurements group's rows in the Datasets tree, built from the measurement store: folders
  * first (A to Z) holding their rows, then the loose rows, each sorted by name. The eye is the
  * tree's own (hidden ids are not read here); a survey measurement whose date is off screen is
- * only dimmed.
+ * only dimmed. Under a filter (the group's filter box) only the matching rows are built: a folder
+ * with none goes, one with some holds only those and keeps every id for its eye (`folderIds`).
  */
 import type { ProjectManifest, SurveyMeasurement } from '@aio/schema';
 import {
@@ -16,6 +17,7 @@ import {
 import { formatDate, measureMark, t, type TreeItem } from '@aio/ui';
 import { scopeOnScreen } from '@aio/workspace';
 import type { DatesOnScreen } from './measureDates';
+import { filterTerms, measureMatcher } from './measureFilter';
 import { MEASURE_COLOR } from './measureScene';
 import { knownTemplates, type MeasureState } from './measureStore';
 
@@ -42,8 +44,11 @@ export function buildMeasureItems(
   s: Pick<MeasureState, 'file' | 'settings' | 'templates'>,
   manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
   ws: DatesOnScreen,
+  query = '',
 ): TreeItem[] {
   const templates = knownTemplates(s);
+  const filtering = filterTerms(query).length > 0;
+  const matches = measureMatcher(query, templates);
   const row = (m: SurveyMeasurement): TreeItem => {
     const value = measureRowValue(m, s, templates);
     const scope = m.scope;
@@ -66,14 +71,16 @@ export function buildMeasureItems(
   const folders: TreeItem[] = [];
   const loose: TreeItem[] = [];
   for (const g of groupByFolder(sortMeasurements(s.file.measurements, 'name'))) {
-    if (g.folder === '') loose.push(...g.measurements.map(row));
-    else
+    const shown = filtering ? g.measurements.filter(matches) : g.measurements;
+    if (g.folder === '') loose.push(...shown.map(row));
+    else if (shown.length > 0)
       folders.push({
         id: `measure-folder:${g.folder}`,
         name: g.folder,
         folder: g.folder,
-        meta: String(g.measurements.length),
-        children: g.measurements.map(row),
+        meta: String(shown.length),
+        children: shown.map(row),
+        ...(filtering ? { folderIds: g.measurements.map((m) => m.id) } : {}),
       });
   }
   return [...folders, ...loose];

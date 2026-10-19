@@ -4,6 +4,7 @@ import {
   type ProjectManifest,
   type SurveyMeasurement,
 } from '@aio/schema';
+import { measurementsGroup } from '@aio/ui';
 import { captureIndex } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import { buildMeasureItems, measureRowValue } from './measureRows';
@@ -122,5 +123,55 @@ describe('buildMeasureItems', () => {
     expect(items.length).toBe(1 + 250);
     expect(items[1]?.name).toBe('Line 0');
     expect(items[2]?.name).toBe('Line 2');
+  });
+});
+
+describe('buildMeasureItems under a filter', () => {
+  const file = () =>
+    stateWith([
+      base('a', 'Pad 1', { fields: { crew: 'Crew A' }, folder: 'Pads' }),
+      base('b', 'Pad 2', { fields: { crew: 'Crew B' }, folder: 'Pads' }),
+      base('c', 'Fence', { folder: 'Edges' }),
+      base('d', 'Spot', { fields: { crew: 'Crew A' } }),
+      m('e', 'Kerb'),
+    ]);
+
+  it('keeps only the matching rows; a folder with none goes, one with some lists only those', () => {
+    const items = buildMeasureItems(file(), manifest, ws, 'crew a');
+    expect(items.map((i) => i.name)).toEqual(['Pads', 'Spot']);
+    expect(items[0]?.children?.map((c) => c.name)).toEqual(['Pad 1']);
+    // the folder's count is its matches; its eye still acts on all of it
+    expect(items[0]?.meta).toBe('1');
+    expect(items[0]?.folderIds).toEqual(['a', 'b']);
+  });
+
+  it('matches folder names: the whole folder shows', () => {
+    const items = buildMeasureItems(file(), manifest, ws, 'EDGES');
+    expect(items.map((i) => i.name)).toEqual(['Edges']);
+    expect(items[0]?.children?.map((c) => c.name)).toEqual(['Fence']);
+  });
+
+  it('a blank query is no filter: folders carry no ids of their own', () => {
+    const items = buildMeasureItems(file(), manifest, ws, '   ');
+    expect(items.map((i) => i.name)).toEqual(['Edges', 'Pads', 'Kerb', 'Spot']);
+    expect(items[0]?.folderIds).toBeUndefined();
+  });
+
+  it('nothing matching gives no rows, and the group stays, counting every measurement', () => {
+    const items = buildMeasureItems(file(), manifest, ws, 'nothing like this');
+    expect(items).toEqual([]);
+    const g = measurementsGroup(items, ['a', 'b', 'c', 'd', 'e']);
+    expect(g).toMatchObject({ count: 5, matched: 0, measureIds: ['a', 'b', 'c', 'd', 'e'] });
+  });
+
+  it('every match is a row, past the 500', () => {
+    const items = buildMeasureItems(
+      stateWith(Array.from({ length: 500 }, (_, i) => m(`m${String(i)}`, `Line ${String(i)}`))),
+      manifest,
+      ws,
+      'line 1',
+    );
+    // Line 1, 10 to 19, 100 to 199
+    expect(items).toHaveLength(1 + 10 + 100);
   });
 });

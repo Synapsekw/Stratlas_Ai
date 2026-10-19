@@ -406,3 +406,68 @@ describe('Datasets: measurements', () => {
     expect(measures()).toHaveLength(3);
   });
 });
+
+describe('Datasets: the measurement filter', () => {
+  const box = () => q('[data-testid="measure-filter"]');
+  const filter = (text: string) => {
+    const el = box();
+    if (!(el instanceof HTMLInputElement)) throw new Error('no filter box');
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, text);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const shown = () => qa('[data-testid="measure-row"]').map((el) => el.dataset.id);
+  const count = () => q('[data-testid="tree-group-measurements"] .gcount')?.textContent;
+
+  it.each([
+    ['survey dates off', plain],
+    ['survey dates on', dated],
+  ])('shows only the matches; the eye still covers all; clearing brings all back (%s)', (_, m) => {
+    render(m);
+    filter('fence');
+    expect(shown()).toEqual(['a', 'b']);
+    expect(count()).toBe('2 of 3');
+    click(q('[data-testid="tree-group-measurements"] > .eye'));
+    expect(measureStore.getState().hiddenMeasurements).toEqual(['a', 'b', 'c']);
+    filter('nothing here');
+    expect(shown()).toEqual([]);
+    expect(q('[data-testid="measure-filter-none"]')?.textContent).toBe('No measurements match');
+    click(q('[data-testid="measure-filter-clear"]'));
+    expect(shown()).toEqual(['a', 'b', 'c']);
+    expect(count()).toBe('3');
+  });
+
+  it('a mark on a row the filter hides goes, so Delete leaves it alone', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('c'));
+    filter('fence');
+    keyDown(row('a'), 'Delete');
+    expect(measures().map((x) => x.id)).toEqual(['b', 'c']);
+  });
+
+  it('a reveal of a measurement the filter hides clears the filter', () => {
+    render();
+    filter('fence');
+    act(() => {
+      revealMeasurement('a');
+    });
+    expect((box() as HTMLInputElement).value).toBe('fence');
+    act(() => {
+      revealMeasurement('c');
+    });
+    expect((box() as HTMLInputElement).value).toBe('');
+    expect(row('c')).not.toBeNull();
+  });
+
+  it('another project starts with no filter', () => {
+    render();
+    filter('fence');
+    act(() => {
+      workspace.getState().openProject({ id: 'p2', root: 'C:/p2', manifest: plain });
+    });
+    expect((box() as HTMLInputElement).value).toBe('');
+    expect(shown()).toEqual(['a', 'b', 'c']);
+  });
+});

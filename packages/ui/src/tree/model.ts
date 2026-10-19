@@ -33,6 +33,11 @@ export interface TreeItem {
   measure?: { id: string; color: string; dimmed: boolean; dimmedWhy?: string };
   /** A measurement folder row (`measure-folder:<name>`): its rows are `children`. */
   folder?: string;
+  /**
+   * A measurement folder under a filter: every measurement in it, the ones the filter leaves out
+   * too (its `children` are only the matches). Its eye acts on these, as it does unfiltered.
+   */
+  folderIds?: readonly string[];
 }
 
 export interface TreeGroup {
@@ -41,6 +46,13 @@ export interface TreeGroup {
   icon: IconName;
   count: number;
   items: TreeItem[];
+  /**
+   * The Measurements group under a filter: every measurement id (its `items` are only the
+   * matches). `count` and the group's eye still cover these.
+   */
+  measureIds?: readonly string[];
+  /** The Measurements group under a filter: how many measurements match (`items` hold them). */
+  matched?: number;
 }
 
 const GROUPS: { kind: TreeGroupKind; label: string; icon: IconName }[] = [
@@ -101,6 +113,11 @@ export interface TreeOptions {
   unplaced?: ReadonlySet<string> | undefined;
   /** The Measurements group's rows (measurements and folders of them). */
   measurements?: readonly TreeItem[] | undefined;
+  /**
+   * Every measurement id, when `measurements` are only the rows a filter matched: the group stays
+   * (with no match too), counts them all and its eye acts on them all.
+   */
+  measurementIds?: readonly string[] | undefined;
 }
 
 /** Prefix that keeps a measurement's row and mark id apart from layer ids. */
@@ -120,17 +137,29 @@ export function itemMeasureIds(it: TreeItem): string[] {
   return [...(it.measure ? [it.measure.id] : []), ...(it.children ?? []).flatMap(itemMeasureIds)];
 }
 
-/** Every measurement id in a group, folder rows included. */
+/** Every measurement id in a group, folder rows included (under a filter, the ones it hides too). */
 export function groupMeasureIds(g: TreeGroup): string[] {
-  return g.items.flatMap(itemMeasureIds);
+  return g.measureIds ? [...g.measureIds] : g.items.flatMap(itemMeasureIds);
 }
 
-/** The Measurements group for these rows; null when there are none. */
-export function measurementsGroup(items: readonly TreeItem[]): TreeGroup | null {
+/** Every measurement id a folder row's eye acts on (under a filter, the ones it hides too). */
+export function folderMeasureIds(it: TreeItem): string[] {
+  return it.folderIds ? [...it.folderIds] : itemMeasureIds(it);
+}
+
+/**
+ * The Measurements group for these rows; null when there are no measurements. With `all` (every
+ * measurement id, when `items` are only a filter's matches) the group stays with no match too.
+ */
+export function measurementsGroup(
+  items: readonly TreeItem[],
+  all?: readonly string[],
+): TreeGroup | null {
   const base = GROUPS.find((g) => g.kind === 'measurements');
-  const count = items.flatMap(itemMeasureIds).length;
+  const shown = items.flatMap(itemMeasureIds).length;
+  const count = all ? all.length : shown;
   if (!base || count === 0) return null;
-  return { ...base, count, items: [...items] };
+  return { ...base, count, items: [...items], ...(all ? { measureIds: all, matched: shown } : {}) };
 }
 
 function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): string | undefined {
@@ -234,9 +263,10 @@ export function buildDatasetTree(
     const drafts = issues.filter((i) => i.status === 'draft').length;
     if (drafts > 0) ann.items.push({ id: 'drafts', name: 'Drafts', meta: String(drafts) });
   }
-  const measured = measurementsGroup(opts.measurements ?? []);
+  const measured = measurementsGroup(opts.measurements ?? [], opts.measurementIds);
   if (measured) groups.set('measurements', measured);
-  return [...groups.values()].filter((g) => g.items.length > 0);
+  // a filtered Measurements group stays with no match: its filter box is where to clear it
+  return [...groups.values()].filter((g) => g.items.length > 0 || g.matched !== undefined);
 }
 
 /** Shown state of a set of layers: every one, none, or some (a mixed eye). */

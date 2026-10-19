@@ -331,6 +331,100 @@ describe('measurement rows in the dataset tree', () => {
   });
 });
 
+describe('the filter box of the Measurements group', () => {
+  const box = () => host.querySelector<HTMLInputElement>('[data-testid="measure-filter"]');
+  /** The group as the app builds it under a filter: these matches out of every id. */
+  const filtered = (items: TreeItem[], all: string[]): TreeGroup => {
+    const g = measurementsGroup(items, all);
+    if (!g) throw new Error('no measurements');
+    return g;
+  };
+  const ALL = ['b', 'c', 'a', 's1'];
+
+  it('shows in the open group and hands over what is typed', () => {
+    const p = render(props({}, { query: '', onQuery: vi.fn() }));
+    const input = box();
+    if (!input) throw new Error('no filter box');
+    expect(input.type).toBe('search');
+    expect(input.placeholder).toBe('Filter measurements');
+    expect(input.getAttribute('aria-label')).toBe('Filter measurements');
+    expect(q('[data-testid="measure-filter-clear"]')).toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        input,
+        'crew',
+      );
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(p.measures?.onQuery).toHaveBeenCalledWith('crew');
+    // a folded group, or a tree with no filter to offer, has no box
+    click(q('[data-testid="tree-group-toggle-measurements"]'));
+    expect(box()).toBeNull();
+    render(props());
+    expect(box()).toBeNull();
+  });
+
+  it('the clear button and Escape empty it; Escape on an empty box goes on to the tree', () => {
+    const onQuery = vi.fn();
+    render(props({ groups: [filtered([m('a', 'Line A')], ALL)] }, { query: 'line a', onQuery }));
+    click(q('[data-testid="measure-filter-clear"]'));
+    expect(onQuery).toHaveBeenLastCalledWith('');
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      must(box()).dispatchEvent(esc);
+    });
+    expect(onQuery).toHaveBeenCalledTimes(2);
+    expect(esc.defaultPrevented).toBe(true);
+    render(props({}, { query: '', onQuery }));
+    const esc2 = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      must(box()).dispatchEvent(esc2);
+    });
+    expect(onQuery).toHaveBeenCalledTimes(2);
+    expect(esc2.defaultPrevented).toBe(false);
+  });
+
+  it('under a filter: matches only, folders open, the header says how many of all', () => {
+    const p = render(props({}, { query: '', onQuery: vi.fn() }));
+    // the folder was folded by hand before the filter
+    click(q('[data-testid="measure-folder"][data-folder="Fence"]'));
+    expect(row('b')).toBeNull();
+    const items = [{ ...folder('Fence', [m('b', 'Line B')]), folderIds: ['b', 'c'] }];
+    render({
+      ...p,
+      groups: [filtered(items, ALL)],
+      measures: { ...must2(p.measures), query: 'b' },
+    });
+    expect(row('b')).not.toBeNull();
+    expect(row('c')).toBeNull();
+    expect(row('a')).toBeNull();
+    const f = must(q('[data-testid="measure-folder"][data-folder="Fence"]'));
+    expect(f.querySelector('.tm')?.textContent).toBe('1');
+    expect(q('[data-testid="tree-group-measurements"] .gcount')?.textContent).toBe('1 of 4');
+    // the eyes act on all they did before the filter
+    click(folderEye('Fence'));
+    expect(p.measures?.onSetVisible).toHaveBeenLastCalledWith(['b', 'c'], false);
+    click(groupEye());
+    expect(p.measures?.onSetVisible).toHaveBeenLastCalledWith(ALL, false);
+  });
+
+  it('under a filter every match shows, past the "more" cap', () => {
+    const many = Array.from({ length: 30 }, (_, i) => m(`m${String(i)}`, `M ${String(i)}`));
+    const all = [...many.map((x) => x.measure.id), 'other'];
+    render(props({ groups: [filtered(many, all)] }, { query: 'm', onQuery: vi.fn() }));
+    expect(qa('[data-testid="measure-row"]').length).toBe(30);
+    expect(qa('.titem.more')).toEqual([]);
+  });
+
+  it('no match: the group stays with its box and says so', () => {
+    render(props({ groups: [filtered([], ALL)] }, { query: 'zz', onQuery: vi.fn() }));
+    expect(box()).not.toBeNull();
+    expect(q('[data-testid="measure-filter-none"]')?.textContent).toBe('No measurements match');
+    expect(qa('[data-testid="measure-row"]')).toEqual([]);
+    expect(q('[data-testid="tree-group-measurements"] .gcount')?.textContent).toBe('0 of 4');
+  });
+});
+
 function must2<T>(v: T | undefined): T {
   if (v === undefined) throw new Error('missing');
   return v;
