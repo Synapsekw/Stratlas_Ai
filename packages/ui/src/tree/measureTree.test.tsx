@@ -421,7 +421,10 @@ describe('the filter box of the Measurements group', () => {
     const f = () => must(q('[data-testid="measure-folder"][data-folder="Fence"]'));
     expect(f().querySelector('.chev')?.classList.contains('chev-off')).toBe(true);
     // said to assistive tech too: the fold does nothing here
-    expect(f().getAttribute('aria-disabled')).toBe('true');
+    const fold = () => f().querySelector('[data-testid="measure-folder-fold"]');
+    expect(fold()?.getAttribute('aria-disabled')).toBe('true');
+    // the row itself (its name, eye and menu) is not disabled
+    expect(f().hasAttribute('aria-disabled')).toBe(false);
     click(f());
     keyDown(f(), 'Enter');
     expect(row('b')).not.toBeNull();
@@ -430,7 +433,7 @@ describe('the filter box of the Measurements group', () => {
     expect(row('b')).not.toBeNull();
     expect(row('c')).not.toBeNull();
     expect(f().querySelector('.chev')?.classList.contains('chev-off')).toBe(false);
-    expect(f().hasAttribute('aria-disabled')).toBe(false);
+    expect(fold()?.hasAttribute('aria-disabled')).toBe(false);
     expect(f().querySelector('.tm')?.textContent).toBe('2');
   });
 

@@ -919,7 +919,6 @@ export function DatasetTree(props: DatasetTreeProps) {
           className={`titem flight${allOff ? ' hidden' : ''}`}
           data-testid="measure-folder"
           data-folder={name}
-          aria-disabled={filtering || undefined}
           onClick={toggle}
           onContextMenu={noMenu.onContextMenu}
           onKeyDown={(e) => {
@@ -934,11 +933,18 @@ export function DatasetTree(props: DatasetTreeProps) {
             }
           }}
         >
-          <Icon
-            name="chev-r"
-            size={12}
-            className={`chev${open ? ' open' : ''}${filtering ? ' chev-off' : ''}`}
-          />
+          {/* the fold: under a filter it does nothing, and says so */}
+          <span
+            className="tfold"
+            data-testid="measure-folder-fold"
+            aria-disabled={filtering || undefined}
+          >
+            <Icon
+              name="chev-r"
+              size={12}
+              className={`chev${open ? ' open' : ''}${filtering ? ' chev-off' : ''}`}
+            />
+          </span>
           <Icon name="folder" size={14} />
           <span className="tn">{name}</span>
           <span className="tm">
