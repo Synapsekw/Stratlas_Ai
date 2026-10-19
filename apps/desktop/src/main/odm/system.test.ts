@@ -1,4 +1,6 @@
+import { EventEmitter } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { PassThrough } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -23,6 +25,51 @@ describe('the smoke test environment', () => {
     expect(
       odmSmokeEnv({ PATH: 'p', PYTHONHOME: 'C:\\Py', PythonPath: 'C:\\lib', PYTHONUTF8: '1' }),
     ).toEqual({ PATH: 'p', PYTHONUTF8: '1', ODM_NONINTERACTIVE: '1' });
+  });
+});
+
+/** A run.bat stand-in: its output streams, and a close only when told. */
+function fakeChild() {
+  const child = Object.assign(new EventEmitter(), {
+    pid: 4242,
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+  });
+  return child;
+}
+
+describe('the smoke test process', () => {
+  it('answers a timeout when the killed process never closes, once, and lets go of its output', async () => {
+    const child = fakeChild();
+    const killed: (number | undefined)[] = [];
+    const system = nodeOdmSystem(
+      {},
+      {
+        smokeTimeoutMs: 20,
+        closeGraceMs: 20,
+        spawnSmoke: () => child as never,
+        killTree: (pid) => killed.push(pid),
+      },
+    );
+    const r = system.runSmoke('C:\\odm');
+    child.stdout.write('compiling\n');
+    expect(await r).toEqual({ code: 1, out: 'compiling\n', timedOut: true });
+    expect(killed).toEqual([4242]);
+    expect(child.stdout.destroyed && child.stderr.destroyed).toBe(true);
+    child.emit('close', 0); // a late close changes nothing
+  });
+
+  it('keeps only the last 64 KB of the output', async () => {
+    const child = fakeChild();
+    const system = nodeOdmSystem({}, { spawnSmoke: () => child as never });
+    const r = system.runSmoke('C:\\odm');
+    child.stdout.write('x'.repeat(100_000));
+    child.stderr.write('usage: run');
+    await new Promise((ok) => setImmediate(ok));
+    child.emit('close', 0);
+    const { out } = await r;
+    expect(out.length).toBeLessThanOrEqual(64 * 1024);
+    expect(out.endsWith('usage: run')).toBe(true);
   });
 });
 

@@ -432,16 +432,12 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
     expect(silent.r).toMatchObject({ error: 'ODM installed but does not start: exit code 3' });
   });
 
-  it("a computer without Microsoft's x64 C++ runtime is told where to get it, before ODM is started", async () => {
+  it("an ODM that does not start on a computer without Microsoft's x64 C++ runtime is told where to get it", async () => {
     await rm(join(dir, 'nowin', 'System32', 'vcruntime140_1.dll'));
     await rm(join(dir, 'nowin', 'System32', 'msvcp140.dll'));
     const lines: string[] = [];
-    let smoked = false;
     const system = fakeSystem({
-      runSmoke: () => {
-        smoked = true;
-        return Promise.resolve({ code: 0, out: 'usage: run' });
-      },
+      runSmoke: () => Promise.resolve({ code: 1, out: 'ImportError: DLL load failed' }),
     });
     const { r } = await run(deps(system, { log: (l) => lines.push(l) }));
     expect(r).toMatchObject({
@@ -450,11 +446,52 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
       error:
         'ODM needs the Microsoft Visual C++ 2015-2022 Redistributable (x64), which is missing on this computer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then install ODM again.',
     });
-    expect(smoked).toBe(false);
     expect(existsSync(join(dir, 'data', 'runtime', 'odm-3.6.2'))).toBe(false);
     expect(lines.join('\n')).toMatch(/vcruntime140_1\.dll, msvcp140\.dll/);
     // the setup's log outlives the rollback, and the app log says where it is
     expect(lines.join('\n')).toContain(join(dir, 'data', 'runtime', 'logs', 'odm-setup-3.6.2.log'));
+  });
+
+  it('a C++ runtime missing from System32 is only logged when ODM starts (it ships its own)', async () => {
+    await rm(join(dir, 'nowin', 'System32', 'msvcp140.dll'));
+    const lines: string[] = [];
+    const { r } = await run(deps(fakeSystem(), { log: (l) => lines.push(l) }));
+    expect(r).toMatchObject({ ok: true, status: { state: 'installed' } });
+    expect(lines.join('\n')).toMatch(/missing from System32: msvcp140\.dll/);
+  });
+
+  it('a slow first start without the C++ runtime stays unverified, and the card names the runtime', async () => {
+    await rm(join(dir, 'nowin', 'System32', 'vcruntime140.dll'));
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    const d = deps(slow);
+    const { r } = await run(d);
+    expect(r).toMatchObject({ ok: true, status: { state: 'unverified' } });
+    const s = await odmStatus(d, false);
+    expect(s.problem?.startsWith(UNVERIFIED)).toBe(true);
+    expect(s.problem).toContain('https://aka.ms/vs/17/release/vc_redist.x64.exe');
+    expect(s.problem?.length).toBeLessThanOrEqual(500);
+  });
+
+  it('a run that printed its usage passes, even when the timer raced it', async () => {
+    const system = fakeSystem({
+      runSmoke: () =>
+        Promise.resolve({ code: 1, out: 'usage: run [options] <dataset name>', timedOut: true }),
+    });
+    const { r } = await run(deps(system));
+    expect(r).toMatchObject({ ok: true, status: { state: 'installed' } });
+  });
+
+  it('an unverified install of an older version shows the update, not the start check', async () => {
+    const d = deps(
+      fakeSystem({ runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }) }),
+    );
+    await run(d);
+    const recPath = join(dir, 'data', 'runtime', 'odm.json');
+    const rec = await readRec(join(dir, 'data'));
+    await writeFile(recPath, JSON.stringify({ ...rec, version: '3.5.6' }));
+    expect((await odmStatus(d, false)).state).toBe('update-available');
   });
 
   it('too little free space is refused before the download', async () => {

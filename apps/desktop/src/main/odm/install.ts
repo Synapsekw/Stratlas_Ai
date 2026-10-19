@@ -50,6 +50,9 @@ const STUB_NOT_BACK =
   "ODM's placeholder nvcuda.dll could not be put back. It is tried again before the next ODM run.";
 const VC_RUNTIME_MISSING =
   'ODM needs the Microsoft Visual C++ 2015-2022 Redistributable (x64), which is missing on this computer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then install ODM again.';
+/** Added to UNVERIFIED when System32 lacks part of the C++ runtime. */
+const VC_RUNTIME_HINT =
+  'The Microsoft Visual C++ 2015-2022 Redistributable (x64) is also missing; installing it from https://aka.ms/vs/17/release/vc_redist.x64.exe may help.';
 /** Why an install recorded unverified is not used yet; the card offers Try again. */
 const UNVERIFIED = `ODM did not finish starting within ${String(SMOKE_TIMEOUT_MS / 60_000)} minutes. The first start on a new computer can be slow while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.`;
 /** How much of the start check's output goes to the app log. */
@@ -165,9 +168,15 @@ export async function odmStatus(d: OdmDeps, installing: boolean): Promise<OdmSta
   if (!rec) return { ...s, state: 'not-installed' };
   if ((await filesPresent(d.system, rec.dir)) !== null)
     return { ...s, ...found, state: 'broken', problem: BROKEN };
-  if (rec.verified === false) return { ...s, ...found, state: 'unverified', problem: UNVERIFIED };
+  const outdated = compareVersions(rec.version, pin.version) < 0;
+  // an older version is offered its update (a full install) rather than another start check
+  if (rec.verified === false && !outdated) {
+    const noRuntime = await missingVcRuntime(d.env, (p) => d.system.exists(p));
+    const problem = noRuntime.length > 0 ? `${UNVERIFIED} ${VC_RUNTIME_HINT}` : UNVERIFIED;
+    return { ...s, ...found, state: 'unverified', problem };
+  }
   const problem = await stubProblem(rec.dir, setting, d.env, d.system);
-  const state = compareVersions(rec.version, pin.version) < 0 ? 'update-available' : 'installed';
+  const state = outdated ? 'update-available' : 'installed';
   return { ...s, ...found, state, ...(problem ? { problem } : {}) };
 }
 
@@ -399,12 +408,11 @@ export async function installOdm(
     progress('check');
     const missing = await filesPresent(system, target);
     if (missing !== null) return await rollback(`ODM's setup finished but ${missing} is missing.`);
-    // only reached on Windows x64 (`supported`); the per-user setup may leave the runtime out
+    // Only reached on Windows x64 (`supported`); the per-user setup may leave the runtime out.
+    // ODM brings some of it along, so a gap is only the likely cause when ODM does not start.
     const noRuntime = await missingVcRuntime(env, (p) => system.exists(p));
-    if (noRuntime.length > 0) {
+    if (noRuntime.length > 0)
       d.log?.(`ODM: the C++ runtime is missing from System32: ${noRuntime.join(', ')}`);
-      return await rollback(VC_RUNTIME_MISSING);
-    }
     // run.bat exits 0 even when it fails to start ODM: its usage text is the proof
     const started = d.now().getTime();
     const smoke = await system.runSmoke(target);
@@ -412,11 +420,15 @@ export async function installOdm(
     d.log?.(
       `ODM: start check: ${String(secs)} s, exit code ${String(smoke.code)}, ${smoke.timedOut ? 'timed out' : 'finished'}; output: ${smoke.out.slice(-SMOKE_LOG_CHARS).trim() || '(none)'}`,
     );
+    // the usage text printed counts, even when the timer stopped it just after
+    const passed = /usage: run/i.test(smoke.out) && (smoke.code === 0 || smoke.timedOut === true);
     // a slow first start is no proof of a broken install: kept, it waits for Try again
-    if (smoke.timedOut) verified = false;
-    else if (smoke.code !== 0 || !/usage: run/i.test(smoke.out))
+    if (!passed && smoke.timedOut) verified = false;
+    else if (!passed)
       return await rollback(
-        `ODM installed but does not start: ${lastLine(smoke.out) ?? `exit code ${String(smoke.code)}`}`,
+        noRuntime.length > 0
+          ? VC_RUNTIME_MISSING
+          : `ODM installed but does not start: ${lastLine(smoke.out) ?? `exit code ${String(smoke.code)}`}`,
       );
   } catch (e) {
     return await rollback(message(e));
