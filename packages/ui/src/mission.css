@@ -1509,6 +1509,10 @@ select.input option {
   color: var(--acc);
   background: none;
 }
+/* a measurement folder under the filter stays open: its chevron keeps its place, unseen */
+.titem .chev.chev-off {
+  visibility: hidden;
+}
 /* the filter box at the top of the open Measurements group, and its no-match line */
 .tfilter {
   position: relative;

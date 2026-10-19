@@ -17,7 +17,7 @@ import {
 import { formatDate, measureMark, t, type TreeItem } from '@aio/ui';
 import { scopeOnScreen } from '@aio/workspace';
 import type { DatesOnScreen } from './measureDates';
-import { filterTerms, measureMatcher } from './measureFilter';
+import { filterTerms, matchingMeasurements } from './measureFilter';
 import { MEASURE_COLOR } from './measureScene';
 import { knownTemplates, type MeasureState } from './measureStore';
 
@@ -48,7 +48,9 @@ export function buildMeasureItems(
 ): TreeItem[] {
   const templates = knownTemplates(s);
   const filtering = filterTerms(query).length > 0;
-  const matches = measureMatcher(query, templates);
+  const kept = filtering
+    ? new Set(matchingMeasurements(s.file.measurements, query, templates).map((m) => m.id))
+    : null;
   const row = (m: SurveyMeasurement): TreeItem => {
     const value = measureRowValue(m, s, templates);
     const scope = m.scope;
@@ -71,7 +73,7 @@ export function buildMeasureItems(
   const folders: TreeItem[] = [];
   const loose: TreeItem[] = [];
   for (const g of groupByFolder(sortMeasurements(s.file.measurements, 'name'))) {
-    const shown = filtering ? g.measurements.filter(matches) : g.measurements;
+    const shown = kept ? g.measurements.filter((m) => kept.has(m.id)) : g.measurements;
     if (g.folder === '') loose.push(...shown.map(row));
     else if (shown.length > 0)
       folders.push({

@@ -364,7 +364,7 @@ describe('the filter box of the Measurements group', () => {
     expect(box()).toBeNull();
   });
 
-  it('the clear button and Escape empty it; Escape on an empty box goes on to the tree', () => {
+  it('the clear button and Escape empty it; an empty box leaves Escape alone', () => {
     const onQuery = vi.fn();
     render(props({ groups: [filtered([m('a', 'Line A')], ALL)] }, { query: 'line a', onQuery }));
     click(q('[data-testid="measure-filter-clear"]'));
@@ -406,6 +406,26 @@ describe('the filter box of the Measurements group', () => {
     expect(p.measures?.onSetVisible).toHaveBeenLastCalledWith(['b', 'c'], false);
     click(groupEye());
     expect(p.measures?.onSetVisible).toHaveBeenLastCalledWith(ALL, false);
+  });
+
+  it('under a filter a folder does not fold: no chevron, and a click leaves it as it was', () => {
+    const p = render(props({}, { query: '', onQuery: vi.fn() }));
+    const items = [{ ...folder('Fence', [m('b', 'Line B')]), folderIds: ['b', 'c'] }];
+    render({
+      ...p,
+      groups: [filtered(items, ALL)],
+      measures: { ...must2(p.measures), query: 'b' },
+    });
+    const f = () => must(q('[data-testid="measure-folder"][data-folder="Fence"]'));
+    expect(f().querySelector('.chev')?.classList.contains('chev-off')).toBe(true);
+    click(f());
+    keyDown(f(), 'Enter');
+    expect(row('b')).not.toBeNull();
+    // the filter cleared: the folder is open as before it, not folded by those clicks
+    render({ ...p, measures: { ...must2(p.measures), query: '' } });
+    expect(row('b')).not.toBeNull();
+    expect(row('c')).not.toBeNull();
+    expect(f().querySelector('.chev')?.classList.contains('chev-off')).toBe(false);
   });
 
   it('under a filter every match shows, past the "more" cap', () => {

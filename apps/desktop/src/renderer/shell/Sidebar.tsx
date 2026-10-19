@@ -332,15 +332,17 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setMarksFile(measureFile);
     setMarks((m) => withoutGoneMeasures(m, measureFile.measurements));
   }
-  // nor is one the filter hides: a Delete goes only to marked rows in view
-  const [marksItems, setMarksItems] = useState(measureItems);
-  if (marksItems !== measureItems) {
-    setMarksItems(measureItems);
-    if (filteringMeasures) {
-      const shown = measureItems.flatMap(itemMeasureIds).map((id) => ({ id }));
-      setMarks((m) => withoutGoneMeasures(m, shown));
-    }
-  }
+  // A measurement row the filter hides keeps its mark (clearing the filter brings the whole
+  // multi-selection back), but the marks acted on (menu, header, Delete) are the rows in view.
+  const shownMarks = useMemo(() => {
+    if (!filteringMeasures) return marks.marked;
+    const shown = new Set(measureItems.flatMap(itemMeasureIds));
+    const inView = [...marks.marked].filter((x) => {
+      const id = measureIdOf(x);
+      return id === null || shown.has(id);
+    });
+    return inView.length === marks.marked.size ? marks.marked : new Set(inView);
+  }, [filteringMeasures, measureItems, marks.marked]);
   // a removal went through: what was marked is gone; Empty could not delete everything: say so
   // where the tree's notes go (adjusted during render, not in an effect)
   const [seenRemoval, setSeenRemoval] = useState({ removed, held });
@@ -390,7 +392,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     const f = measureStore.getState().focus;
     select(f ? [f] : [], f);
   };
-  const marked = marks.marked.size > 0;
+  /** Rows marked in view: what the menu, the header and Delete act on. */
+  const marked = shownMarks.size > 0;
   /**
    * Delete these rows. Layers go through the shared dialog, which may be cancelled, so with
    * layers among them only the layers are asked about and the measurements stay marked for a
@@ -504,7 +507,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   };
   /** A row's menu: the marked rows when it is one of them, else the row. */
   const openRow = (item: TreeItem, at: MenuPoint, from: string) => {
-    const target = rowTarget(item, marks.marked);
+    const target = rowTarget(item, shownMarks);
     if (!target) return;
     setMenu({
       target,
@@ -552,7 +555,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   };
   /** A measurement row's menu: the marked measurements when it is one of them, else the row. */
   const openMeasure = (id: string, at: MenuPoint) => {
-    const target = measureTarget(id, marks.marked);
+    const target = measureTarget(id, shownMarks);
     const name = measureFile.measurements.find((m) => m.id === id)?.label ?? id;
     setMenu({
       target,
@@ -792,7 +795,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           } else openProject(keyMenuPoint(e.target as HTMLElement));
           return;
         }
-        if (marked && e.key === 'Escape') {
+        // Escape lets go of every mark, those the filter hides too
+        if (marks.marked.size > 0 && e.key === 'Escape') {
           e.stopPropagation();
           setMarks(NO_MARKS);
           letGoOfMeasures(marks.marked);
@@ -800,7 +804,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           // the marked rows, else the focused row: layers through the shared dialog,
           // measurements at once with an Undo notice
           const row = marked ? null : e.target.closest<HTMLElement>('[data-mark]')?.dataset.mark;
-          const ids = marked ? [...marks.marked] : row ? [row] : [];
+          const ids = marked ? [...shownMarks] : row ? [row] : [];
           if (ids.length === 0) return;
           e.preventDefault();
           deleteRows(ids);
@@ -825,10 +829,10 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               className="tree-marked"
               data-testid="tree-marked-delete"
               onClick={() => {
-                deleteRows([...marks.marked]);
+                deleteRows([...shownMarks]);
               }}
             >
-              {t('tree.marked', { count: marks.marked.size })} · {t('tree.delete')}
+              {t('tree.marked', { count: shownMarks.size })} · {t('tree.delete')}
             </button>
           )}
           {!readOnly && !marking && (

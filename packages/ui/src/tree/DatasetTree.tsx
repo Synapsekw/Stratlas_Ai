@@ -892,8 +892,10 @@ export function DatasetTree(props: DatasetTreeProps) {
     const kids = it.children ?? [];
     const showingAll = filtering || folderAll[name] === true;
     const { rows, behind } = capRows(kids, showingAll, keepMeasure(mp));
+    // under a filter a folder holding matches stays open: folding it there would only fold it
+    // for later, once the filter is cleared
     const toggle = () => {
-      setFolderOpen((o) => ({ ...o, [name]: !open }));
+      if (!filtering) setFolderOpen((o) => ({ ...o, [name]: !open }));
     };
     return (
       <div key={it.id} role="treeitem" aria-expanded={open} aria-selected={false}>
@@ -916,7 +918,11 @@ export function DatasetTree(props: DatasetTreeProps) {
             }
           }}
         >
-          <Icon name="chev-r" size={12} className={`chev${open ? ' open' : ''}`} />
+          <Icon
+            name="chev-r"
+            size={12}
+            className={`chev${open ? ' open' : ''}${filtering ? ' chev-off' : ''}`}
+          />
           <Icon name="folder" size={14} />
           <span className="tn">{name}</span>
           <span className="tm">{t('tree.measure.folderCount', { count: ids.length })}</span>
@@ -982,7 +988,7 @@ export function DatasetTree(props: DatasetTreeProps) {
 
   /**
    * The filter box at the top of the open Measurements group: the clear button and Escape empty
-   * it (Escape on an empty box is left to the tree around it).
+   * it. Escape on an empty box does nothing here (the tree's own keys leave a field's keys alone).
    */
   const filterBox = (mp: MeasureTreeProps, onQuery: (query: string) => void) => {
     const query = mp.query ?? '';

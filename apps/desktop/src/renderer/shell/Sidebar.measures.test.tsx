@@ -438,13 +438,35 @@ describe('Datasets: the measurement filter', () => {
     expect(count()).toBe('3');
   });
 
-  it('a mark on a row the filter hides goes, so Delete leaves it alone', () => {
+  it('a mark the filter hides stays, but the menu, the header and Delete act on the rows in view', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    filter('fence');
+    const header = () => q('[data-testid="tree-marked-delete"]');
+    expect(header()?.textContent).toContain('2 selected');
+    contextMenu(row('a'));
+    expect(q('[data-testid="measure-menu"]')?.textContent).toContain('2 measurements');
+    keyDown(q('[data-testid="measure-menu"]'), 'Escape');
+    // clearing the filter brings the whole multi-selection back
+    filter('');
+    expect(row('c')?.classList.contains('marked')).toBe(true);
+    expect(header()?.textContent).toContain('3 selected');
+    filter('fence');
+    keyDown(row('a'), 'Delete');
+    expect(measures().map((x) => x.id)).toEqual(['c']);
+  });
+
+  it('the header Delete leaves a hidden marked row alone', () => {
     render();
     ctrlClick(name('a'));
     ctrlClick(name('c'));
     filter('fence');
-    keyDown(row('a'), 'Delete');
+    click(q('[data-testid="tree-marked-delete"]'));
     expect(measures().map((x) => x.id)).toEqual(['b', 'c']);
+    filter('');
+    expect(row('c')?.classList.contains('marked')).toBe(true);
   });
 
   it('a reveal of a measurement the filter hides clears the filter', () => {
