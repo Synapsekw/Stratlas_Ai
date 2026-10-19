@@ -20,6 +20,17 @@ export const ChangeSetId = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/, 'A change set id is a plain file name.');
 
+/**
+ * The area a scoped change run was limited to: the polygon measurement's id and its label (cut to
+ * 120). A scoped run writes its own set beside the whole-map one of the pair.
+ */
+export const ChangeScope = z
+  .object({
+    id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/),
+    name: z.string().min(1).max(120),
+  })
+  .strict();
+
 export const ChangeKind = z.enum(['issue', 'detection', 'vector', 'region', 'component', 'frame']);
 
 export const ChangeVerdict = z.enum([
@@ -290,6 +301,16 @@ export const ChangeSet = z
     /** Totals for the panel and the report (`items`, `new`, `fillM3`...). */
     stats: z.record(z.string(), z.number()).default({}),
     registration: ChangeRegistration.optional(),
+    /** Set when the run was limited to one area. */
+    scope: ChangeScope.optional(),
+    /**
+     * Written by the app on a scoped imagery set when volumes were asked for and the area's
+     * `change.surface` run was refused or failed. The next pipeline run of the set drops it.
+     */
+    volumesMissing: z
+      .object({ reason: z.string().min(1).max(300), at: IsoTime })
+      .strict()
+      .optional(),
     /** Share of the area both dates cover, 0 to 1. */
     coverage: z.number().min(0).max(1).optional(),
     /** The shifts of the two dates when the set was computed; a later difference marks it out of date. */
@@ -331,6 +352,7 @@ export const ChangeSetSummary = z.object({
   items: z.number().int().nonnegative(),
   /** Items nobody reviewed yet. */
   open: z.number().int().nonnegative(),
+  scope: ChangeScope.optional(),
 });
 
 /**
@@ -386,6 +408,7 @@ export type ChangeVerdict = z.infer<typeof ChangeVerdict>;
 export type ChangeReview = z.infer<typeof ChangeReview>;
 export type ChangeItem = z.infer<typeof ChangeItem>;
 export type ChangeRegistration = z.infer<typeof ChangeRegistration>;
+export type ChangeScope = z.infer<typeof ChangeScope>;
 export type ChangeSet = z.infer<typeof ChangeSet>;
 export type LineUpFit = z.infer<typeof LineUpFit>;
 export type LineUpMeasure = z.infer<typeof LineUpMeasure>;

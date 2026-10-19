@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TelecomAntennasParams } from './antennas';
-import { FrameRef, LonLatRing } from './change';
+import { ChangeScope, FrameRef, LonLatRing } from './change';
 import { Id, IsoDate, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
 import { Crs } from './manifest';
@@ -576,8 +576,14 @@ export const ChangeRasterParams = z
     ignore: z.array(LonLatRing).max(200).optional(),
     /** Folder for the heat map, polygons and change set; default `change/<from>-<to>-raster`. */
     out: ProjectPath.optional(),
+    /** The area this run is limited to; needs `mask`. */
+    scope: ChangeScope.optional(),
   })
-  .strict();
+  .strict()
+  .refine((p) => !p.scope || p.mask !== undefined, {
+    message: 'A scoped run needs its mask.',
+    path: ['mask'],
+  });
 
 const SurfaceInput = z.object({ layer: Id, kind: z.enum(['dsm', 'cloud']) }).strict();
 
@@ -597,9 +603,17 @@ export const ChangeSurfaceParams = z
       .array(z.object({ id: Id, name: z.string().min(1).max(120), ring: LonLatRing }).strict())
       .max(500)
       .optional(),
+    /** Only inside this polygon (lon/lat): the DoD, regions, heat map and site totals are clipped. */
+    mask: LonLatRing.optional(),
+    /** The area this run is limited to; needs `mask`. */
+    scope: ChangeScope.optional(),
     out: ProjectPath.optional(),
   })
-  .strict();
+  .strict()
+  .refine((p) => !p.scope || p.mask !== undefined, {
+    message: 'A scoped run needs its mask.',
+    path: ['mask'],
+  });
 
 /** `change.cloud` (python `aio_pipelines/change/cloud.py`). */
 export const ChangeCloudParams = z

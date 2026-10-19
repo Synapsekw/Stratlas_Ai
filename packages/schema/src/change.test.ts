@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CHANGE_VERDICTS,
+  ChangeScope,
   ChangeSet,
   ChangeThresholds,
   LineUpFit,
@@ -125,6 +126,20 @@ describe('change sets (aio.change/1)', () => {
       const r = ChangeSet.safeParse(fixture(name));
       expect(r.success, `${name}: ${r.error?.message ?? ''}`).toBe(true);
     }
+  });
+
+  it('a change set keeps its area scope', () => {
+    const scope = { id: 'pad-a', name: 'Pad A' };
+    expect(ChangeSet.parse({ ...base(), scope }).scope).toEqual(scope);
+    expect(ChangeScope.safeParse({ id: 'pad a', name: 'x' }).success).toBe(false);
+    expect(ChangeScope.safeParse({ id: 'pad-a', name: 'x'.repeat(121) }).success).toBe(false);
+    const volumesMissing = { reason: 'Misaligned by 3 m', at: '2026-10-19T08:00:00Z' };
+    expect(ChangeSet.parse({ ...base(), scope, volumesMissing }).volumesMissing).toEqual(
+      volumesMissing,
+    );
+    expect(
+      ChangeSet.safeParse({ ...base(), volumesMissing: { ...volumesMissing, reason: '' } }).success,
+    ).toBe(false);
   });
 
   it('defaults layers and stats, and keeps reviews', () => {
