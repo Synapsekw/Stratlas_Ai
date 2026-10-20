@@ -306,6 +306,12 @@ describe('JobRunner', () => {
     expect(updates.slice(at + 1).some((j) => j.live === undefined && j.status === 'running')).toBe(
       true,
     );
+    // a progress with no live at all clears it too: ODM's frozen last activity never outlives ODM
+    const back = updates.findIndex((j) => j.live?.lastActivityAt === '2026-10-20T10:01:00.000Z');
+    expect(back).toBeGreaterThan(at);
+    const plain = updates.find((j) => j.message === 'Converting');
+    expect(plain?.status).toBe('running');
+    expect(plain?.live).toBeUndefined();
     const first = job.startedAt;
     await new Promise((res) => setTimeout(res, 10));
     const again = await runner.start({ resume: job.id });

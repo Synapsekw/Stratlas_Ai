@@ -214,6 +214,7 @@ class StepContext:
         self.cancel_event = job.cancel_event
         self._last_emit = 0.0
         self._last_fraction = -1.0
+        self._had_live = False
 
     # paths
     def stage(self, rel: str) -> Path:
@@ -250,9 +251,11 @@ class StepContext:
             fraction < 1.0
             and t - self._last_emit < PROGRESS_MIN_INTERVAL_S
             and fraction - self._last_fraction < 0.05
+            and (live is not None) == self._had_live  # gaining or losing live data always goes out
         ):
             return
         self._last_emit, self._last_fraction = t, fraction
+        self._had_live = live is not None
         self.job.emit_progress(self.index, "running", fraction, message, live)
 
     def log(self, message: str, level: str = "info") -> None:

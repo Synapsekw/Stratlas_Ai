@@ -292,7 +292,10 @@ def test_align_names_its_sub_steps_with_counts_while_the_port_is_taken(odm, alig
         R.run_odm(ctx, odm, aligned, [], "dataset", "opensfm", tmp_path / "logs", rerun=False,
                   use_gpu=False, port=port)  # fmt: skip
     lives = [live for live in ctx.live if live is not None]
-    assert lives and len(lives) == len(ctx.live)
+    assert lives and len(lives) == len(ctx.live) - 1
+    # ODM has exited: the last update drops the live data, so the products step's own Python work
+    # never shows ODM's frozen last activity (and never the stuck notice)
+    assert ctx.live[-1] is None and ctx.bar[-1][0] == pytest.approx(1.0)
     assert all(ISO.fullmatch(live["lastActivityAt"]) for live in lives)
     details = [live["detail"] for live in lives if "detail" in live]
     labels = {d["label"] for d in details}

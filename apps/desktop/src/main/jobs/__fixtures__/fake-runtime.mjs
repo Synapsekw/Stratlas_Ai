@@ -65,6 +65,11 @@ async function run(id, p) {
     await new Promise((r) => setTimeout(r, 50));
     note('progress', { ...base, live: { etaSeconds: -1 } });
     await new Promise((r) => setTimeout(r, 50));
+    // the engine exits: live comes back once, then a plain progress (no live at all) clears it
+    note('progress', { ...base, live: { lastActivityAt: '2026-10-20T10:01:00.000Z' } });
+    await new Promise((r) => setTimeout(r, 50));
+    note('progress', { ...base, fraction: 0.7, message: 'Converting' });
+    await new Promise((r) => setTimeout(r, 50));
     send({ id, error: { code: -32000, message: 'Stopped', data: { jobId } } });
     return;
   }

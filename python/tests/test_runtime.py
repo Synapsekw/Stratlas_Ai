@@ -156,6 +156,25 @@ def test_progress_carries_live_when_given(tmp_path):
     assert running[1]["stepFraction"] == 0.6
 
 
+class LiveThenPlainSteps(LiveSteps):
+    def plan(self, params):
+        def go(ctx):
+            ctx.progress(0.7, "ODM", live={"lastActivityAt": "2026-10-19T10:00:00.000Z"})
+            ctx.progress(0.7, "Converting")  # at once, same fraction: still sent, it clears live
+            ctx.progress(0.7, "Again")  # nothing changes about live: throttled as before
+            return {}
+
+        return [Step("go", "Go", go)]
+
+
+def test_a_call_that_drops_live_is_never_throttled(tmp_path):
+    job, rec = run(tmp_path, LiveThenPlainSteps(), params={})
+    job.run()
+    running = [m for m in rec.of("progress") if m.get("state") == "running"]
+    assert [m.get("message") for m in running] == ["ODM", "Converting"]
+    assert "live" in running[0] and "live" not in running[1]
+
+
 def test_plain_job_error_has_no_failure(tmp_path):
     job, rec = run(tmp_path, TwoSteps(fail_in="plain"))
     with pytest.raises(JobError):

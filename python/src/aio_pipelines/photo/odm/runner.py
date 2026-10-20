@@ -714,5 +714,6 @@ def run_odm(
         ctx.log(msg, "warn")
     if use_gpu and gpu.dense is False and not gpu.fallbacks:
         ctx.log(DENSE_CPU_NOTE)
-    bar(hi, sp.message)
+    # ODM has exited: no live data, or its frozen last activity would outlive it into the Python work
+    ctx.progress(hi, sp.message)
     return OdmRun(log, gpu, start)
