@@ -89,11 +89,11 @@ describe('measurements in the views', () => {
     };
     measureStore.setState({ file: { schema: 'aio.measurements/1', measurements: [spot] } });
     const shape = shapesOf(measureStore.getState(), ws, manifest, 'grid north')[0];
-    // drawn 1 m south of the stored 200, and the label reads the drawn point (its primary value,
-    // the height, as the tree and the card show it)
-    expect(shape?.points).toEqual([[100, 199, 5]]);
+    // drawn 2 m east and 1 m south of the stored point; the label reads the drawn point (its
+    // primary value, the height, as the tree and the card show it)
+    expect(shape?.points).toEqual([[102, 199, 5]]);
     const s = measureStore.getState();
-    expect(shape?.label).toBe(labelText({ ...spot, points: [[100, 199, 5]] }, s.settings, []));
+    expect(shape?.label).toBe(labelText({ ...spot, points: [[102, 199, 5]] }, s.settings, []));
     expect(shape?.label).toBe('m-spot · 5.000');
   });
 
