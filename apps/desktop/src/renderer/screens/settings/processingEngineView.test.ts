@@ -35,6 +35,13 @@ describe('the Processing engine card', () => {
     expect(processingEngineView(base, null, true).actions).toEqual(['cancel']);
   });
 
+  it('the start check can be cancelled too, the setup cannot', () => {
+    const at = (phase: 'install' | 'check') =>
+      processingEngineView(base, { phase, bytesDone: 0, bytesTotal: 0 }, true).actions;
+    expect(at('check')).toEqual(['cancel']);
+    expect(at('install')).toEqual([]);
+  });
+
   it('installed: version, folder, GPU line and remove', () => {
     const v = processingEngineView(
       { ...base, state: 'installed', version: '3.6.2', dir: 'E:\\Q\\odm-3.6.2' },
@@ -94,7 +101,7 @@ describe('the Processing engine card', () => {
   });
 
   it('an install whose first start ran out of time asks for a start check: Try again or remove', () => {
-    const problem = 'ODM did not finish starting within 10 minutes.';
+    const problem = 'ODM is installed, but its start check has not passed yet.';
     const v = processingEngineView(
       { ...base, state: 'unverified', version: '3.6.2', dir: 'E:\\Q\\odm-3.6.2', problem },
       null,

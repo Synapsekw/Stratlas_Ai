@@ -14,6 +14,7 @@ import {
   downloadDir,
   isOurOdmFolder,
   odmInstallDir,
+  odmPreviousRecordPath,
   odmRecordPath,
   odmSetupLogPath,
   odmWorkRoot,
@@ -54,7 +55,10 @@ const VC_RUNTIME_MISSING =
 const VC_RUNTIME_HINT =
   'The Microsoft Visual C++ 2015-2022 Redistributable (x64) is also missing; installing it from https://aka.ms/vs/17/release/vc_redist.x64.exe may help.';
 /** Why an install recorded unverified is not used yet; the card offers Try again. */
-const UNVERIFIED = `ODM did not finish starting within ${String(SMOKE_TIMEOUT_MS / 60_000)} minutes. The first start on a new computer can be slow while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.`;
+/** Neutral: the check may have run out of time, been cancelled or stopped by a quit. */
+const UNVERIFIED =
+  'ODM is installed, but its start check has not passed yet. The first start on a new computer can take several minutes while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.';
+const CHECK_CANCELLED = 'The start check was cancelled. ODM stays installed until it is checked.';
 /** How much of the start check's output goes to the app log. */
 const SMOKE_LOG_CHARS = 4096;
 
@@ -76,16 +80,18 @@ const gb = (n: number) => `${(n / 1e9).toFixed(1)} GB`;
 const sameDir = (a: string, b: string) =>
   a.replace(/[\\/]+$/, '').toLowerCase() === b.replace(/[\\/]+$/, '').toLowerCase();
 
-/** `<dataRoot>/runtime/odm.json`, or null when it is missing or not a record. */
-export async function readRecord(dataRoot: string): Promise<OdmInstallRecord | null> {
+async function readRecordAt(path: string): Promise<OdmInstallRecord | null> {
   try {
-    const parsed = OdmInstallRecord.safeParse(
-      JSON.parse(await readFile(odmRecordPath(dataRoot), 'utf8')),
-    );
+    const parsed = OdmInstallRecord.safeParse(JSON.parse(await readFile(path, 'utf8')));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
+}
+
+/** `<dataRoot>/runtime/odm.json`, or null when it is missing or not a record. */
+export function readRecord(dataRoot: string): Promise<OdmInstallRecord | null> {
+  return readRecordAt(odmRecordPath(dataRoot));
 }
 
 async function filesPresent(system: OdmSystem, dir: string): Promise<string | null> {
@@ -209,8 +215,11 @@ async function parkOrWarn(d: OdmDeps, dir: string, gpu: OdmGpuSetting): Promise<
   }
 }
 
-async function writeRecord(dataRoot: string, rec: OdmInstallRecord): Promise<void> {
-  const path = odmRecordPath(dataRoot);
+async function writeRecord(
+  dataRoot: string,
+  rec: OdmInstallRecord,
+  path = odmRecordPath(dataRoot),
+): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.tmp`;
   await writeFile(tmp, `${JSON.stringify(rec, null, 2)}\n`, 'utf8');
@@ -372,21 +381,55 @@ export async function installOdm(
   // Past this point a failure removes what the setup left (folder and uninstall entry), unless
   // it was installed over our recorded ODM: that one is then reported broken until reinstalled.
   // An unverified install that fails its start check for real goes, record and all, as a failed
-  // install does. The setup's own log stays, outside that folder.
+  // install does; the working ODM an update replaced (odm-previous.json) is recorded again. The
+  // setup's own log stays, outside that folder.
   const setupLog = odmSetupLogPath(dataRoot, pin.version);
+  const previousPath = odmPreviousRecordPath(dataRoot);
+  /** The record now names `target` (written before the start check). */
+  let recorded = retry;
   const rollback = async (error: string): Promise<Failure> => {
     d.log?.(`ODM: the install failed: ${error} The setup's log: ${setupLog}`);
     if (retry || !old || !sameDir(old.dir, target)) {
       try {
         await uninstallFolder(d, target, isOurOdmFolder(target, dataRoot, env));
-        if (retry) await system.rm(odmRecordPath(dataRoot));
       } catch (e) {
         d.log?.(`ODM: could not remove the failed install in ${target}: ${message(e)}`);
+      }
+      // apart from the uninstall: a failed one must not keep the older record from coming back
+      if (recorded) {
+        try {
+          const previous = await readRecordAt(previousPath);
+          if (previous) await writeRecord(dataRoot, previous);
+          else await system.rm(odmRecordPath(dataRoot));
+          await system.rm(previousPath);
+        } catch (e) {
+          d.log?.(`ODM: the earlier install could not be recorded again: ${message(e)}`);
+        }
       }
     }
     return failed(error);
   };
 
+  /**
+   * An older version's folder of ours. ODM's setup may have uninstalled it already; the parked
+   * placeholder (unknown to its uninstaller) keeps the folder. One that cannot go is a warning.
+   */
+  const removeEarlier = async (dir: string) => {
+    try {
+      await system.rm(dir);
+    } catch (e) {
+      d.log?.(`ODM: the earlier version in ${dir} could not be removed: ${message(e)}`);
+    }
+  };
+
+  const installedAt = retry ? old.installedAt : d.now().toISOString();
+  const record = (verified: boolean): OdmInstallRecord => ({
+    schema: 'aio.odm-install/1',
+    version: pin.version,
+    dir: target,
+    installedAt,
+    ...(verified ? {} : { verified: false }),
+  });
   let verified = true;
   try {
     if (!retry) {
@@ -413,18 +456,40 @@ export async function installOdm(
     const noRuntime = await missingVcRuntime(env, (p) => system.exists(p));
     if (noRuntime.length > 0)
       d.log?.(`ODM: the C++ runtime is missing from System32: ${noRuntime.join(', ')}`);
+    // Recorded unverified before the check: a quit or a cancel during it leaves an install that
+    // Try again picks up, never a folder nobody knows of. The ODM an update replaces stays (folder
+    // and record, verified or not) until the check passes. Only one is kept: a working one already
+    // kept from an earlier slow update wins, and an unverified one in between goes now.
+    if (!recorded) {
+      if (old && !sameDir(old.dir, target)) {
+        const kept = await readRecordAt(previousPath);
+        if (!kept || old.verified !== false) await writeRecord(dataRoot, old, previousPath);
+        else if (isOurOdmFolder(old.dir, dataRoot, env)) await removeEarlier(old.dir);
+      }
+      await writeRecord(dataRoot, record(false));
+      recorded = true;
+    }
     // run.bat exits 0 even when it fails to start ODM: its usage text is the proof
     const started = d.now().getTime();
-    const smoke = await system.runSmoke(target);
+    const smoke = await system.runSmoke(target, o.signal);
     const secs = Math.round((d.now().getTime() - started) / 1000);
     d.log?.(
-      `ODM: start check: ${String(secs)} s, exit code ${String(smoke.code)}, ${smoke.timedOut ? 'timed out' : 'finished'}; output: ${smoke.out.slice(-SMOKE_LOG_CHARS).trim() || '(none)'}`,
+      `ODM: start check: ${String(secs)} s, exit code ${String(smoke.code)}, ${o.signal.aborted || smoke.stopped === true ? 'cancelled' : smoke.timedOut ? 'timed out' : 'finished'}; output: ${smoke.out.slice(-SMOKE_LOG_CHARS).trim() || '(none)'}`,
     );
+    // a cancel, or the app quitting: the check was stopped, ODM stays installed and unverified
+    if (o.signal.aborted || smoke.stopped === true) {
+      progress('cancelled');
+      return fail(CHECK_CANCELLED, 'cancelled');
+    }
     // the usage text printed counts, even when the timer stopped it just after
     const passed = /usage: run/i.test(smoke.out) && (smoke.code === 0 || smoke.timedOut === true);
     // a slow first start is no proof of a broken install: kept, it waits for Try again
-    if (!passed && smoke.timedOut) verified = false;
-    else if (!passed)
+    if (!passed && smoke.timedOut) {
+      verified = false;
+      d.log?.(
+        `ODM: did not finish starting within ${String(SMOKE_TIMEOUT_MS / 60_000)} minutes; kept, unverified, for Try again.`,
+      );
+    } else if (!passed)
       return await rollback(
         noRuntime.length > 0
           ? VC_RUNTIME_MISSING
@@ -436,22 +501,18 @@ export async function installOdm(
 
   try {
     await parkOrWarn(d, target, d.gpuSetting());
-    await writeRecord(dataRoot, {
-      schema: 'aio.odm-install/1',
-      version: pin.version,
-      dir: target,
-      installedAt: retry ? old.installedAt : d.now().toISOString(),
-      ...(verified ? {} : { verified: false }),
-    });
-    if (old && !sameDir(old.dir, target) && isOurOdmFolder(old.dir, dataRoot, env)) {
-      // ODM's setup may have uninstalled it already; the parked placeholder (unknown to its
-      // uninstaller) keeps the folder. A folder that cannot go does not fail a good install.
-      try {
-        await system.rm(old.dir);
-      } catch (e) {
-        d.log?.(`ODM: the earlier version in ${old.dir} could not be removed: ${message(e)}`);
+    await writeRecord(dataRoot, record(verified));
+    if (verified) {
+      // the older versions go once this one starts: the one an update replaced, and its record
+      const previous = await readRecordAt(previousPath);
+      for (const earlier of [previous, old]) {
+        if (!earlier || sameDir(earlier.dir, target) || !isOurOdmFolder(earlier.dir, dataRoot, env))
+          continue;
+        await removeEarlier(earlier.dir);
       }
-    }
+      await system.rm(previousPath);
+    } else if (old && !sameDir(old.dir, target))
+      d.log?.(`ODM: the earlier version in ${old.dir} is kept until this one starts.`);
     await system.rm(setup);
   } catch (e) {
     return failed(message(e));
@@ -466,16 +527,27 @@ export async function removeOdm(d: OdmDeps): Promise<OdmInstallResult> {
   const { system } = d;
   const dataRoot = d.dataRoot();
   const rec = await readRecord(dataRoot);
+  // only delete leftovers of a folder that looks like our install before uninstalling
+  const mayDelete = async (dir: string) =>
+    isOurOdmFolder(dir, dataRoot, d.env) &&
+    ((await system.exists(win32.join(dir, 'run.bat'))) ||
+      (await system.exists(win32.join(dir, 'unins000.exe'))));
   if (rec) {
     try {
-      // only delete leftovers of a folder that looks like our install before uninstalling
-      const mayDelete =
-        isOurOdmFolder(rec.dir, dataRoot, d.env) &&
-        ((await system.exists(win32.join(rec.dir, 'run.bat'))) ||
-          (await system.exists(win32.join(rec.dir, 'unins000.exe'))));
+      const ours = await mayDelete(rec.dir);
       // the uninstaller only knows nvcuda.dll: put the placeholder back first
       await parkOrWarn(d, rec.dir, 'off');
-      await uninstallFolder(d, rec.dir, mayDelete);
+      await uninstallFolder(d, rec.dir, ours);
+      // an update still waiting for its start check kept the older version: it goes too
+      const previous = await readRecordAt(odmPreviousRecordPath(dataRoot));
+      if (previous) {
+        const oursToo = await mayDelete(previous.dir);
+        await parkOrWarn(d, previous.dir, 'off');
+        await uninstallFolder(d, previous.dir, oursToo);
+      }
+      await system.rm(odmPreviousRecordPath(dataRoot));
+      // a cancelled or stopped start check left the setup behind
+      await system.rm(join(downloadDir(dataRoot), (await pinFrom(d.env)).file));
       await system.rm(odmRecordPath(dataRoot));
     } catch (e) {
       return fail(`ODM could not be removed: ${message(e)}`, 'failed');

@@ -104,7 +104,10 @@ export function processingEngineView(
     detail = status.problem ?? null;
 
   let actions: EngineAction[] = [];
-  if (installing) actions = !progress || progress.phase === 'download' ? ['cancel'] : [];
+  // the download and the start check can be stopped; the setup, once it runs, has to finish
+  if (installing)
+    actions =
+      !progress || progress.phase === 'download' || progress.phase === 'check' ? ['cancel'] : [];
   else if (status.dev) actions = [];
   else if (state === 'not-installed') actions = ['install'];
   else if (state === 'installed') actions = ['remove'];
