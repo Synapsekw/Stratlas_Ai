@@ -55,14 +55,21 @@ export function VolumeSection() {
         <div
           className="vol-secpanel overlay-box"
           role="region"
-          aria-label="Section"
+          aria-label={t('vol.section.title')}
           data-testid="vol-section"
         >
           <div className="vol-row">
             <b>
               {p
-                ? `Section · ${formatQuantity(p.lengthM, 'distance', settings.units, settings.precision)}`
-                : 'Section'}
+                ? t('vol.section.titleLength', {
+                    length: formatQuantity(
+                      p.lengthM,
+                      'distance',
+                      settings.units,
+                      settings.precision,
+                    ),
+                  })
+                : t('vol.section.title')}
             </b>
             <button
               type="button"
@@ -71,13 +78,12 @@ export function VolumeSection() {
                 volumetric.getState().clearSection();
               }}
             >
-              {section.mode === 'picking' ? 'Cancel' : 'Clear'}
+              {t(section.mode === 'picking' ? 'vol.section.cancel' : 'vol.section.clear')}
             </button>
           </div>
           {section.mode === 'picking' ? (
             <p className="vol-note">
-              Click two points on the ground: {section.points.length === 0 ? 'start' : 'end'} of the
-              line.
+              {t(section.points.length === 0 ? 'vol.section.pickStart' : 'vol.section.pickEnd')}
             </p>
           ) : p && series.length ? (
             <>

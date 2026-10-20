@@ -59,7 +59,7 @@ import {
   sameFolder,
 } from './jobs';
 import { compareStore, engineClient } from './survey/compareStore';
-import { convertAfterJob } from './survey/measureStore';
+import { convertAfterJob, knownTemplates, measureStore } from './survey/measureStore';
 import { bridge, jobs, shell, useShell } from './shell';
 import { installLastView } from './library/lastView';
 import { PanoImportDialog } from './panos/PanoImportDialog';
@@ -77,6 +77,7 @@ import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
 import { timeline, useTimelineSync } from './workspace/timeline';
 import { connectVolumeDates } from './workspace/volumeDates';
+import { connectPileFigures } from './workspace/pileFigures';
 import { connectVolumeChange } from './workspace/VolumeTools';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
@@ -370,6 +371,25 @@ export function App() {
       connectVolumeChange(volumetric, {
         site: (req, key) => engineClient().site(req, key),
         surfaces: () => compareStore.getState().surfaces,
+        onSurfaces: (listener) =>
+          compareStore.subscribe((s, p) => {
+            if (s.surfaces !== p.surfaces) listener();
+          }),
+      }),
+    [],
+  );
+  // the kit piles' 3D callouts read their volume measurements
+  useEffect(
+    () =>
+      connectPileFigures(volumetric, {
+        measurements: () => measureStore.getState().file.measurements,
+        settings: () => measureStore.getState().settings,
+        templates: () => knownTemplates(measureStore.getState()),
+        subscribe: (listener) =>
+          measureStore.subscribe((s, p) => {
+            if (s.file !== p.file || s.settings !== p.settings || s.templates !== p.templates)
+              listener();
+          }),
       }),
     [],
   );

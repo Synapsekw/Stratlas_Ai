@@ -143,14 +143,6 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | →    | Next defect in the list           |
 | ←    | Previous defect in the list       |
 
-### Editing a stockpile
-
-| Keys              | Does                              |
-| ----------------- | --------------------------------- |
-| Delete, Backspace | Delete the selected outline point |
-| Enter             | Save the outline                  |
-| Ctrl Z            | Undo the last outline change      |
-
 ### Cleaning up a point cloud
 
 | Keys                 | Does                       |

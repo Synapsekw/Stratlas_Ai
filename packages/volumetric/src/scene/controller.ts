@@ -6,8 +6,7 @@
  * layers' materials (texture and clipping, restored afterwards) and the pile callout text.
  */
 import type { EngineStage } from '@aio/engine';
-import { shiftEN, type VolumeBaseId } from '@aio/schema';
-import { t } from '@aio/ui';
+import { shiftEN } from '@aio/schema';
 import { shiftKey } from '@aio/workspace';
 import {
   BufferAttribute,
@@ -304,6 +303,8 @@ export class VolumetricScene {
       req,
       s.body,
       this.swiping(),
+      // a pile with a volume measurement draws no toe line of its own
+      Object.keys(s.pileFigures).sort(),
       chg ? '' : shiftKey(s.epochShift(epoch)),
     ]);
     if (key === this.sceneKey) return;
@@ -403,7 +404,9 @@ export class VolumetricScene {
         toe.push(
           ...local(p.toe[i] ?? 0, p.toe[i + 1] ?? 0, (p.toe[i + 2] ?? 0) + (sel ? 0.35 : 0.25)),
         );
-      if (toe.length > 6) {
+      // one outline in 3D: a pile with a volume measurement has its outline drawn by the measurement
+      const measured = s.pileFigures[p.id] !== undefined;
+      if (toe.length > 6 && !measured) {
         const tl = new LineLoop(
           lineGeometry(toe),
           new LineBasicMaterial({
@@ -822,10 +825,10 @@ export class VolumetricScene {
   }
 
   /**
-   * Pile callouts: the selected pile shows its measurement (the kit's figure on its default base,
-   * the same figure its volume measurement carries, with tonnage, height and base), piles shown on
-   * purpose their net volume, edits included. Other piles keep only their name, without a group,
-   * so no label mode lists them and hovering one names it.
+   * Pile callouts: the figure of the pile's volume measurement on that survey, as the host formats
+   * it (`pileFigures`): the selected pile with its tonnage, piles shown on purpose their value. A
+   * pile without a measurement or a result, and every other pile, keeps only its name, without a
+   * group, so no label mode lists them and hovering one names it.
    */
   private reconcileCallouts(): void {
     const s = this.store.getState();
@@ -839,23 +842,9 @@ export class VolumetricScene {
       )
       .filter((x): x is readonly [string, Object3D] => x[1] !== undefined);
     const shown = s.piles.filter((p) => s.isPileShown(p.id)).map((p) => p.id);
-    const base = s.file?.defaultBase ?? 'tin';
-    const key = JSON.stringify([
-      base,
-      shown,
-      s.selected,
-      s.density,
-      s.edits.length,
-      s.edits.map((e) => e.updatedAt),
-      roots.map((r) => r[1].uuid),
-    ]);
+    const key = JSON.stringify([shown, s.selected, s.pileFigures, roots.map((r) => r[1].uuid)]);
     if (key === this.calloutKey) return;
     this.calloutKey = key;
-    const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
-    const n1 = new Intl.NumberFormat('en-US', {
-      maximumFractionDigits: 1,
-      minimumFractionDigits: 1,
-    });
     for (const [epoch, group] of roots) {
       group.traverse((o) => {
         const tags = o.userData.aioTags as
@@ -869,14 +858,10 @@ export class VolumetricScene {
           const plain = { ...t };
           delete plain.area;
           if (!shown.includes(p.id)) return plain;
-          const ep = p.epochs[epoch];
-          const v = ep?.volumes[base].net;
-          if (v === undefined || !ep) return plain;
-          const vol = `${nf.format(Math.round(v))} m³`;
-          if (p.id !== s.selected) return { ...t, area: vol };
-          const tonnes = `${nf.format(Math.round(v * s.density))} t`;
-          const height = `${n1.format(ep.heightM)} m high`;
-          return { ...t, area: [vol, tonnes, height, baseShort(base)].join(' · ') };
+          const f = s.pileFigures[p.id]?.[epoch];
+          if (!f) return plain;
+          if (p.id !== s.selected || !f.tonnes) return { ...t, area: f.value };
+          return { ...t, area: `${f.value} · ${f.tonnes}` };
         });
       });
     }
@@ -894,11 +879,6 @@ export class VolumetricScene {
       }
     });
   }
-}
-
-/** Short name of a base for the measurement callout. */
-function baseShort(base: VolumeBaseId): string {
-  return t(`vol.baseShort.${base}`);
 }
 
 /** Points every `step` metres from a to b, both ends included. */

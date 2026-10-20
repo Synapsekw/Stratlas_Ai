@@ -27,6 +27,8 @@ export {
   type ChangeGrid,
   type ChangePair,
   type ElevationStyle,
+  type PileFigure,
+  type PileFigures,
   type VolumePrefs,
   type VolumePrefStore,
   type SectionState,

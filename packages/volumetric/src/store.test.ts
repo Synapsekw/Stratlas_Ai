@@ -212,7 +212,7 @@ describe('volumetric store: loading', () => {
     const s = store.getState();
     expect(s.status).toBe('ready');
     expect(s.epoch).toBe('e2');
-    expect(s.density).toBe(1.6);
+    expect(s.pileFigures).toEqual({});
     expect(s.piles.find((p) => p.id === 'P01')?.epochs.e2?.volumes.tin.net).toBe(70);
     expect(started[0]).toMatchObject({
       patterns: {
@@ -446,6 +446,10 @@ describe('volumetric store: cut / fill dates', () => {
     store.getState().setChange({ from: 'e2', to: 'e2' });
     store.getState().setChange({ from: 'e1', to: 'e9' });
     expect(store.getState().change).toEqual({ from: 'e1', to: 'e2' });
+    // a From later than To swaps them: the earlier survey is always From
+    store.getState().setChange({ from: 'e3', to: 'e1' });
+    expect(store.getState().change).toEqual({ from: 'e1', to: 'e3' });
+    store.getState().setChange({ from: 'e1', to: 'e2' });
     // the section line profiles the picked dates too
     store.getState().startSection();
     await store.getState().addSectionPoint([1000, 2000]);

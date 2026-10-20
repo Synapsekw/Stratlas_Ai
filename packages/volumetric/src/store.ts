@@ -121,6 +121,21 @@ export interface ChangeGrid extends ChangePair {
   grid: ChangeGridCells;
 }
 
+/** A kit pile's figure on one survey, as its volume measurement reads it (host-fed). */
+export interface PileFigure {
+  /** The measurement's primary value, formatted in the site's units. */
+  value: string;
+  /** Its tonnage from the measurement's material, or null without a density. */
+  tonnes: string | null;
+}
+
+/**
+ * The kit piles' figures from their volume measurements, by pile id and then survey epoch. A pile
+ * listed here has a measurement (which draws its outline); an epoch without an entry has no
+ * result yet. A pile not listed has no measurement.
+ */
+export type PileFigures = Readonly<Record<string, Readonly<Record<string, PileFigure>>>>;
+
 const IDLE_SECTION: SectionState = {
   mode: 'idle',
   points: [],
@@ -162,8 +177,8 @@ export interface VolumetricState {
   /** The engine's difference for `change`; null: the colours come from the surveys' heights. */
   changeGrid: ChangeGrid | null;
   body: BodyMode;
-  /** The kit's density, for the tonnage on a selected pile's callout (its carried figure). */
-  density: number;
+  /** The piles' figures from their volume measurements (the callouts read them). */
+  pileFigures: PileFigures;
   selected: string | null;
   /**
    * Piles whose volume, toe line and callout are drawn in 3D besides the selected one. Empty by
@@ -193,6 +208,8 @@ export interface VolumetricActions {
   setChange(pair: ChangePair): void;
   /** The engine's difference for a pair (the host's whole-site run); ignored for another pair. */
   setChangeGrid(grid: ChangeGrid | null): void;
+  /** The piles' figures from their volume measurements (the host's connector). */
+  setPileFigures(figures: PileFigures): void;
   /** The survey on screen: the "to" survey under the change colours, else the chosen one. */
   shownEpoch(): string;
   /**
@@ -247,7 +264,7 @@ const initial: VolumetricState = {
   change: null,
   changeGrid: null,
   body: 'lift',
-  density: 1.6,
+  pileFigures: {},
   selected: null,
   shown: [],
   elevation: DEFAULT_ELEVATION,
@@ -412,7 +429,6 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
             piles,
             layers: surveyLayers(project.manifest.layers, file.captures),
             epoch: epochs.at(-1) ?? '',
-            density: file.densityTPerM3,
             shown: prefs.showAll ? piles.map((p) => p.id) : [],
             elevation: prefs.elevation ?? DEFAULT_ELEVATION,
             service,
@@ -476,11 +492,14 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         showLayers();
       },
 
-      setChange(pair) {
+      setChange(asked) {
         const s = get();
         const epochs = epochsOf(s.file);
-        if (pair.from === pair.to || !epochs.includes(pair.from) || !epochs.includes(pair.to))
-          return;
+        const i = epochs.indexOf(asked.from);
+        const j = epochs.indexOf(asked.to);
+        if (i < 0 || j < 0 || i === j) return;
+        // the earlier survey is always From: a From picked after To swaps them
+        const pair = i < j ? asked : { from: asked.to, to: asked.from };
         if (s.surface === 'change' && s.change?.from === pair.from && s.change.to === pair.to)
           return;
         set({ surface: 'change', swipe: false, change: { ...pair }, changeGrid: null });
@@ -491,6 +510,10 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         const c = get().change;
         if (grid && (c?.from !== grid.from || c.to !== grid.to)) return;
         set({ changeGrid: grid });
+      },
+
+      setPileFigures(figures) {
+        set({ pileFigures: figures });
       },
 
       epochShift,

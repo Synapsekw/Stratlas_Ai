@@ -1,4 +1,6 @@
 import type { EngineStage } from '@aio/engine';
+import { defaultSurveySettings } from '@aio/schema';
+import { formatRow } from '@aio/survey';
 import { Icon, isShortcut, t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import {
@@ -86,7 +88,14 @@ function SwipeDivider() {
   );
 }
 
-const m1 = (v: number) => t('vol.elev.metres', { value: v.toFixed(1) });
+/**
+ * A height or height change in metres, one decimal, through the app's formatter. The 3D layer has
+ * no site settings of its own: the kit's grids are metric.
+ */
+const SITE = defaultSurveySettings();
+const PRECISION = { ...SITE.precision, distance: 1 };
+const m1 = (v: number) =>
+  formatRow({ key: 'height', label: '', value: v, kind: 'distance' }, SITE.units, PRECISION);
 
 /** Ramp, range (metres) and hillshade of the Elevation surface, with its legend. */
 function ElevationControls() {
@@ -273,12 +282,12 @@ function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boo
   return (
     <div
       className={`vol-legend overlay-box${surface === 'elev' && !view ? ' live' : ''}`}
-      aria-label="Legend"
+      aria-label={t('vol.legend.label')}
       {...(view ? { 'data-testid': 'vol-legend-view', 'data-surface-shown': surface } : {})}
     >
       {surface === 'change' && (
         <>
-          <b>Height change</b>
+          <b>{t('vol.legend.change')}</b>
           <div
             className="ramp"
             style={{
@@ -286,9 +295,9 @@ function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boo
             }}
           />
           <div className="ends">
-            <span>{`−${String(R.rangeM)} m cut`}</span>
-            <span>±{deadband.toFixed(1)}</span>
-            <span>+{R.rangeM} m fill</span>
+            <span>{t('vol.legend.cutEnd', { value: m1(-R.rangeM) })}</span>
+            <span>{t('vol.legend.deadband', { value: m1(deadband) })}</span>
+            <span>{t('vol.legend.fillEnd', { value: m1(R.rangeM) })}</span>
           </div>
         </>
       )}
@@ -297,18 +306,18 @@ function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boo
         <>
           <span className="key">
             <i className="vol-key-body" />
-            Volume above base
+            {t('vol.legend.body')}
           </span>
           <span className="key">
             <i className="vol-key-base" />
-            {base} base
+            {t('vol.legend.base', { base: base ?? '' })}
           </span>
         </>
       )}
       {anyShown && (
         <span className="key">
           <i className="line" />
-          Toe line
+          {t('vol.legend.toe')}
         </span>
       )}
       {view?.refused && (

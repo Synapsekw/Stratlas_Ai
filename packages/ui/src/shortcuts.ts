@@ -18,7 +18,6 @@ export type ShortcutScope =
   | 'global'
   | 'scene'
   | 'road'
-  | 'volumes'
   | 'cleanup'
   | 'issues'
   | 'issueList'
@@ -53,7 +52,6 @@ export const SHORTCUT_SCOPES: readonly { scope: ShortcutScope; label: MessageKey
   { scope: 'global', label: 'keys.scope.global' },
   { scope: 'scene', label: 'keys.scope.scene' },
   { scope: 'road', label: 'keys.scope.road' },
-  { scope: 'volumes', label: 'keys.scope.volumes' },
   { scope: 'cleanup', label: 'keys.scope.cleanup' },
   { scope: 'issues', label: 'keys.scope.issues' },
   { scope: 'issueList', label: 'keys.scope.issueList' },
@@ -77,11 +75,9 @@ export const SHORTCUT_SCOPES: readonly { scope: ShortcutScope; label: MessageKey
  */
 export const CONCURRENT_SCOPES: readonly (readonly [ShortcutScope, ShortcutScope])[] = [
   ['scene', 'road'],
-  ['scene', 'volumes'],
   ['scene', 'issues'],
   ['scene', 'cleanup'],
   ['road', 'issues'],
-  ['volumes', 'issues'],
   ['cleanup', 'issues'],
   ['scene', 'panorama'],
 ];
@@ -168,29 +164,6 @@ export const SHORTCUTS = [
   },
   { id: 'road.next', scope: 'road', keys: ['Right'], label: 'keys.road.next' },
   { id: 'road.prev', scope: 'road', keys: ['Left'], label: 'keys.road.prev' },
-
-  // editing a stockpile outline
-  {
-    id: 'volumes.deletePoint',
-    scope: 'volumes',
-    keys: ['Delete', 'Backspace'],
-    label: 'keys.volumes.deletePoint',
-    shadows: ['scene.drawUndo'],
-  },
-  {
-    id: 'volumes.save',
-    scope: 'volumes',
-    keys: ['Enter'],
-    label: 'keys.volumes.save',
-    shadows: ['scene.drawFinish'],
-  },
-  {
-    id: 'volumes.undo',
-    scope: 'volumes',
-    keys: ['Ctrl+Z'],
-    label: 'keys.volumes.undo',
-    shadows: ['issues.undo'],
-  },
 
   // the point cloud Clean up panel or one of its tools (renderer/pointcloud/cleanupScene.ts)
   {

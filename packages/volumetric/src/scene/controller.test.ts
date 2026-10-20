@@ -484,3 +484,57 @@ describe('VolumetricScene: one view of two', () => {
     v.detach();
   });
 });
+
+describe('VolumetricScene: piles read their volume measurements', () => {
+  const tagsOf = (three: Scene, layer: string) =>
+    three.getObjectByName(`layer:${layer}`)?.userData.aioTags as
+      { tag: string; area?: string }[] | undefined;
+  const withTags = (three: Scene) => {
+    for (const [id, e] of [
+      ['terrain-1', 'e1'],
+      ['terrain-2', 'e2'],
+    ] as const) {
+      const root = three.getObjectByName(`layer:${id}`);
+      if (root) root.userData.aioTags = [{ node: `P01_${e}`, tag: 'P01' }];
+    }
+  };
+
+  it("labels a pile with its measurement's figure, never the kit's own", async () => {
+    const { store } = await ready();
+    const { stage, scene: three, frame } = fakeStage();
+    withTags(three);
+    const v = new VolumetricScene(stage, store);
+    v.attach();
+    store.getState().select('P01');
+    await settle(frame);
+    // no measurement yet: the name only (the kit's 95 m³ is never shown)
+    expect(tagsOf(three, 'terrain-2')?.[0]?.area).toBeUndefined();
+    store.getState().setPileFigures({ P01: { e2: { value: '1,234 m³', tonnes: '1,974 t' } } });
+    await settle(frame);
+    expect(tagsOf(three, 'terrain-2')?.[0]?.area).toBe('1,234 m³ · 1,974 t');
+    // the same pile on a date its measurement has no result for: the name only
+    expect(tagsOf(three, 'terrain-1')?.[0]?.area).toBeUndefined();
+    v.detach();
+  });
+
+  it('draws no kit toe line for a pile its measurement outlines', async () => {
+    const { store } = await ready();
+    const { stage, scene: three, frame } = fakeStage();
+    const v = new VolumetricScene(stage, store);
+    v.attach();
+    store.getState().setAllPilesVisible(true);
+    await settle(frame);
+    const toes = () => {
+      let n = 0;
+      three.getObjectByName('volumetric')?.traverse((o) => {
+        if (o.name === 'toe' || o.name === 'toe-selected') n++;
+      });
+      return n;
+    };
+    expect(toes()).toBe(1);
+    store.getState().setPileFigures({ P01: {} });
+    await settle(frame);
+    expect(toes()).toBe(0);
+    v.detach();
+  });
+});

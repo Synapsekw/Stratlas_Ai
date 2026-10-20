@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { pointcloudSettings } from '@aio/pointcloud';
+import { volumetric } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -123,5 +124,40 @@ describe('the Annotate quick row (D5)', () => {
   it('keeps the Annotate tile that opens and closes the tools', () => {
     render('annotate');
     expect(button('Annotate: pins, lines, areas, cloud regions')).not.toBeNull();
+  });
+});
+
+describe('the Volumes quick row', () => {
+  afterEach(() => {
+    volumetric.setState({ status: 'idle', file: null, surface: 'photo', change: null });
+  });
+
+  it('shows the two surveys Cut / fill compares, and picks them', () => {
+    volumetric.setState({
+      status: 'ready',
+      epoch: 'e2',
+      surface: 'photo',
+      swipe: false,
+      change: null,
+      changeGrid: null,
+      file: {
+        captures: [
+          { epoch: 'e1', captureId: 'c1', date: '2026-01-12', label: '12 Jan 2026' },
+          { epoch: 'e2', captureId: 'c2', date: '2026-02-09', label: '9 Feb 2026' },
+        ],
+      } as never,
+    });
+    render('volumes');
+    expect(host.querySelector('[data-testid="vol-change-from"]')).toBeNull();
+    act(() => {
+      volumetric.getState().setSurface('change');
+    });
+    const from = host.querySelector('[data-testid="vol-change-from"]');
+    const to = host.querySelector('[data-testid="vol-change-to"]');
+    expect(from?.querySelector('[aria-pressed="true"]')?.textContent).toBe('12 Jan');
+    expect(to?.querySelector('[aria-pressed="true"]')?.textContent).toBe('9 Feb');
+    expect(host.querySelector('[data-testid="vol-change-source"]')?.textContent).toContain(
+      '12 Jan to 9 Feb',
+    );
   });
 });

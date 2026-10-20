@@ -44,6 +44,7 @@ import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
 import { toggleTimeline, useTimelineShown } from '../timelinePref';
 import { LABEL_MODES } from '../tools/display';
 import { toggleMeasure, toggleSection } from '../tools/measure';
+import { VolumeChangePicks } from '../VolumeTools';
 import {
   annotateStage,
   useAnnotateStage,
@@ -567,9 +568,12 @@ const BODIES: readonly { value: BodyMode; label: MessageKey }[] = [
   { value: 'off', label: 'island.tile.hidden' },
 ];
 
+const NO_CAPTURES: readonly { epoch: string; date: string; label: string }[] = [];
+
 function VolumeRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
-  const captures = useVolumetric((s) => s.file?.captures ?? []);
+  // a stable empty list: a fresh one on every read would re-render without end
+  const captures = useVolumetric((s) => s.file?.captures ?? NO_CAPTURES);
   const epoch = useVolumetric((s) => s.epoch);
   const swipe = useVolumetric((s) => s.swipe);
   const surface = useVolumetric((s) => s.surface);
@@ -608,6 +612,8 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
           v.setSurface(s);
         }}
       />
+      {/* the two surveys Cut / fill compares, and where its colours come from */}
+      {surface === 'change' && <VolumeChangePicks />}
       <Choice
         label={t('island.tile.bodies')}
         options={BODIES.map((b) => ({ value: b.value, label: t(b.label) }))}

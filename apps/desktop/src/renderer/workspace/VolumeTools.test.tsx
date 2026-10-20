@@ -119,6 +119,11 @@ describe('Volume tools: Cut / fill', () => {
       await vi.waitFor(() => {
         expect(volumetric.getState().changeGrid).toMatchObject({ from: 'e1', to: 'e2' });
       });
+      // the line under the picks says the dates and that the engine coloured them
+      act(() => undefined);
+      expect(host.querySelector('[data-testid="vol-change-source"]')?.textContent).toBe(
+        '12 Jan to 9 Feb, from the prepared surfaces',
+      );
     } finally {
       off();
     }
@@ -133,9 +138,43 @@ describe('Volume tools: Cut / fill', () => {
       await Promise.resolve();
       expect(site).not.toHaveBeenCalled();
       expect(volumetric.getState().changeGrid).toBeNull();
+      expect(host.querySelector('[data-testid="vol-change-source"]')?.textContent).toBe(
+        '9 Feb to 9 Mar, from the survey heights (no prepared surface yet)',
+      );
     } finally {
       off();
     }
+  });
+
+  it('asks the engine once the prepared surfaces arrive', () => {
+    const site = vi.fn(() => new Promise<SiteReply>(() => undefined));
+    let surfaces: HeightTiles[] = [];
+    const listeners = new Set<() => void>();
+    const off = connectVolumeChange(volumetric, {
+      site,
+      surfaces: () => surfaces,
+      onSurfaces: (l) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+    });
+    try {
+      render();
+      click(button('Cut / fill'));
+      expect(site).not.toHaveBeenCalled();
+      surfaces = [surface('h2', 'c2'), surface('h3', 'c3')];
+      for (const l of listeners) l();
+      expect(site).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
+  });
+
+  it('a To picked before From swaps them: the earlier survey is From', () => {
+    render();
+    click(button('Cut / fill'));
+    click(button('12 Jan', side('to')));
+    expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e2' });
   });
 });
 

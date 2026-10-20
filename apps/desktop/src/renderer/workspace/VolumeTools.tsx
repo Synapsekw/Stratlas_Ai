@@ -11,9 +11,8 @@ import {
 } from '@aio/volumetric';
 import { useId } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
+import { RunCancelled, type SiteReply } from '../survey/engineClient';
 import type { SiteRequest } from '../survey/engineProtocol';
-import type { SiteReply } from '../survey/engineClient';
-import { PopTool, Tool } from './StageTools';
 import { surveyDateLabel } from './surveyDateLabel';
 
 const SURFACES: { v: SurfaceMode; t: string; d: string }[] = [
@@ -78,6 +77,10 @@ export function VolumeChangePicks() {
   const id = useId();
   const captures = useVolumetric((s) => s.file?.captures ?? NO_CAPTURES);
   const change = useVolumetric((s) => s.change);
+  // the colours come from the survey engine once its difference for this pair has arrived
+  const engine = useVolumetric(
+    (s) => !!s.change && s.changeGrid?.from === s.change.from && s.changeGrid.to === s.change.to,
+  );
   if (!change) return null;
   const row = (side: keyof ChangePair, label: string) => {
     const other = side === 'from' ? change.to : change.from;
@@ -109,10 +112,18 @@ export function VolumeChangePicks() {
       </>
     );
   };
+  const label = (epoch: string) => {
+    const c = captures.find((x) => x.epoch === epoch);
+    return c ? surveyDateLabel(c) : epoch;
+  };
+  const dates = { from: label(change.from), to: label(change.to) };
   return (
     <div className="vol-pair" role="group" aria-label={t('island.tile.cutFill')}>
       {row('from', t('vol.from'))}
       {row('to', t('vol.to'))}
+      <p className="vol-pair-src" role="status" data-testid="vol-change-source">
+        {t(engine ? 'vol.change.engine' : 'vol.change.heights', dates)}
+      </p>
     </div>
   );
 }
@@ -205,6 +216,8 @@ export interface VolumeChangeDeps {
   site(req: SiteRequest, key?: string): Promise<SiteReply>;
   /** The project's prepared surfaces (`compareStore`). */
   surfaces(): readonly HeightTiles[];
+  /** Hear the prepared surfaces change (they arrive after the volumes, or are prepared later). */
+  onSurfaces?(listener: () => void): () => void;
 }
 
 /**
@@ -247,36 +260,22 @@ export function connectVolumeChange(
         (r) => {
           if (r.grid && asked === key) store.getState().setChangeGrid({ ...c, grid: r.grid });
         },
-        () => {
-          // cancelled by a newer pick, or the engine could not compare: the heights colour it
+        (e: unknown) => {
+          // a newer pick cancelled it; otherwise the survey heights keep colouring it
+          if (!(e instanceof RunCancelled))
+            console.warn(`Cut / fill: the engine could not compare ${c.from} with ${c.to}`, e);
         },
       );
   };
   run(store.getState());
-  return store.subscribe(run);
-}
-
-/**
- * Stage tools of a volumetric project: survey date and swipe, surface colours (photo, elevation,
- * cut and fill with its two surveys), volume bodies and the section line. State lives in the
- * volumetric store (@aio/volumetric).
- */
-export function VolumeTools() {
-  const body = useVolumetric((s) => s.body);
-  const picking = useVolumetric((s) => s.section.mode !== 'idle');
-  return (
-    <>
-      <VolumeDateSwipe />
-      <VolumeSurfaces />
-      <PopTool icon="pile" label="Volume bodies" pressed={body !== 'off'}>
-        <VolumeBodies />
-      </PopTool>
-      <Tool
-        icon="path"
-        label={SECTION_LINE_LABEL}
-        pressed={picking}
-        onClick={toggleVolumeSection}
-      />
-    </>
-  );
+  const offStore = store.subscribe(run);
+  const offSurfaces = deps.onSurfaces?.(() => {
+    // ask again: a date may have a prepared surface now
+    asked = '';
+    run(store.getState());
+  });
+  return () => {
+    offStore();
+    offSurfaces?.();
+  };
 }
