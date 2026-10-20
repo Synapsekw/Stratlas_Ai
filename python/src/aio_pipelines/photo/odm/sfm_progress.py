@@ -245,6 +245,7 @@ class SfmProgress:
             info["done"] = self._done()
             total = self._total()
             if total is not None:
+                info["done"] = min(info["done"], total)  # undistort writes several images per 360
                 info["total"] = total
             info["unit"] = sub.unit
         return info

@@ -159,6 +159,15 @@ def test_undistort_counts_tif_files() -> None:
     assert sp.detail()["done"] == 250
 
 
+def test_undistort_never_shows_more_photos_than_the_total() -> None:
+    # spherical shots write several images each: the file count can pass the photo count
+    sp = make(500)
+    sp.feed("[INFO]    Undistorting C:\\odm-work\\project\\opensfm ...")
+    sp.set_undistorted(3000)
+    assert sp.detail() == {"label": "Preparing the photos for the maps", "done": 500, "total": 500,
+                           "unit": "photos"}  # fmt: skip
+
+
 def test_estimate_only_with_a_steady_rate() -> None:
     now = [1000.0]
     sp = make(1003, lambda: now[0])
