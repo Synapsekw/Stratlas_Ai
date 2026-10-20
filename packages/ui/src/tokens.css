@@ -98,6 +98,18 @@
   --el-1: 0 0 0 1px var(--line);
   --el-2: 0 12px 32px var(--shadow);
   --el-3: 0 24px 64px var(--shadow);
+  /* volumetric charts and cut/fill: current is the accent, earlier a neutral, design its own hue
+     (no date or severity colour); cut is warm and fill cool */
+  --chart-current: var(--acc);
+  --chart-earlier: oklch(0.68 0.012 250);
+  --chart-design: oklch(0.76 0.13 320);
+  --chart-base: oklch(0.6 0.01 250);
+  --chart-grid: oklch(0.5 0.01 250 / 0.28);
+  --chart-crosshair: oklch(0.85 0.01 250 / 0.7);
+  --cut: oklch(0.72 0.16 28);
+  --fill: oklch(0.72 0.12 245);
+  --cut-a: oklch(0.72 0.16 28 / 0.28);
+  --fill-a: oklch(0.72 0.12 245 / 0.28);
   /* layers */
   --z-stage-ui: 10;
   --z-panel: 20;
@@ -176,6 +188,16 @@
   --warn-line: oklch(0.7 0.15 85 / 0.5);
   /* --s3 is 2.2:1 on the light panels: text takes a darker amber (4.5:1 on --bg-0 to --bg-3) */
   --warn-ink: oklch(0.5 0.12 75);
+  --chart-current: var(--acc);
+  --chart-earlier: oklch(0.5 0.012 250);
+  --chart-design: oklch(0.5 0.15 320);
+  --chart-base: oklch(0.55 0.01 250);
+  --chart-grid: oklch(0.5 0.01 250 / 0.2);
+  --chart-crosshair: oklch(0.3 0.012 250 / 0.7);
+  --cut: oklch(0.5 0.17 28);
+  --fill: oklch(0.5 0.12 245);
+  --cut-a: oklch(0.5 0.17 28 / 0.2);
+  --fill-a: oklch(0.5 0.12 245 / 0.2);
   --sev-ink: oklch(0.15 0.02 250);
 }
 /* More contrast: <html data-contrast='more'> when the OS asks for it (prefers-contrast: more) or
@@ -193,6 +215,10 @@
   --acc-a20: oklch(0.79 0.115 172 / 0.32);
   --ov-dim: oklch(0.96 0.008 250 / 0.8);
   --scrim: oklch(0.1 0.01 250 / 0.92);
+  --chart-earlier: oklch(0.8 0.012 250);
+  --chart-base: oklch(0.74 0.01 250);
+  --chart-grid: oklch(0.7 0.01 250 / 0.45);
+  --chart-crosshair: oklch(0.95 0.01 250 / 0.9);
 }
 :root[data-theme='light'][data-contrast='more'] {
   --fg-1: oklch(0.16 0.012 250);
@@ -206,4 +232,10 @@
   --acc-strong: oklch(0.36 0.11 172);
   --acc-a20: oklch(0.42 0.11 172 / 0.3);
   --warn-ink: oklch(0.42 0.1 75);
+  --chart-earlier: oklch(0.36 0.012 250);
+  --chart-base: oklch(0.42 0.01 250);
+  --chart-grid: oklch(0.4 0.01 250 / 0.4);
+  --chart-crosshair: oklch(0.2 0.012 250 / 0.9);
+  --cut: oklch(0.42 0.17 28);
+  --fill: oklch(0.42 0.12 245);
 }

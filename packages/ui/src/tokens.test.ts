@@ -109,6 +109,60 @@ describe('design tokens', () => {
   });
 });
 
+describe('chart and cut/fill tokens', () => {
+  const names = [
+    '--chart-current',
+    '--chart-earlier',
+    '--chart-design',
+    '--chart-base',
+    '--chart-grid',
+    '--chart-crosshair',
+    '--cut',
+    '--fill',
+    '--cut-a',
+    '--fill-a',
+  ];
+  const lightMore = ":root[data-theme='light'][data-contrast='more']";
+
+  it('chart and cut/fill tokens have dark, light and more-contrast values', () => {
+    const dark = block(':root');
+    const light = block(":root[data-theme='light']");
+    for (const k of names) {
+      expect(dark.has(k), `dark ${k}`).toBe(true);
+      expect(light.has(k), `light ${k}`).toBe(true);
+    }
+    const more = block(
+      ":root[data-contrast='more'],\n:root[data-contrast='more'] [data-surface='dark']",
+    );
+    const lm = block(lightMore);
+    for (const k of ['--chart-earlier', '--chart-grid', '--chart-crosshair']) {
+      expect(more.has(k), `more ${k}`).toBe(true);
+      expect(lm.has(k), `light more ${k}`).toBe(true);
+    }
+    expect(lm.has('--cut') && lm.has('--fill')).toBe(true);
+  });
+
+  it('--cut and --fill text pass 4.5:1 on --bg-1 in the light theme', () => {
+    const light = block(":root[data-theme='light']");
+    const bg = oklch(light.get('--bg-1') ?? '');
+    for (const k of ['--cut', '--fill'])
+      expect(contrast(oklch(light.get(k) ?? ''), bg), k).toBeGreaterThanOrEqual(4.5);
+    const lm = block(lightMore);
+    for (const k of ['--cut', '--fill'])
+      expect(contrast(oklch(lm.get(k) ?? ''), bg), `more ${k}`).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps the design hue away from the date and severity hues', () => {
+    const dark = block(':root');
+    const design = oklch(dark.get('--chart-design') ?? '')[2];
+    const others = [...dark.entries()]
+      .filter(([k]) => /^--(date-\d|s[2-5])$/.test(k))
+      .map(([, v]) => oklch(v)[2]);
+    expect(others.length).toBe(12);
+    for (const h of others) expect(Math.abs(h - design), `${h}`).toBeGreaterThanOrEqual(15);
+  });
+});
+
 /** A token's `oklch(L C h)` value, or `var(--x)` resolved in the dark block. */
 function oklch(value: string): [number, number, number] {
   const ref = /^var\((--[a-z0-9-]+)\)$/.exec(value.trim());

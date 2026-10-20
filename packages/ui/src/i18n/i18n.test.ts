@@ -56,6 +56,28 @@ describe('the English catalogue', () => {
     for (const [k, v] of Object.entries(en)) expect(v, k).not.toMatch(/[–—]/);
   });
 
+  it('has the volumetric parity strings, the card under mcard.*', () => {
+    const keys = [
+      'chart.addSurface',
+      'chart.direction',
+      'mcard.recomputeStandard',
+      'mcard.carried',
+      'mcard.allPiles',
+      'base.smart',
+      'base.mean',
+      'vol.ignoreSmaller',
+      'vol.status.ok',
+      'cleanup.straight',
+      'heat.editColours',
+      'settings.angles.dms',
+      'report.already',
+      'empty.volumes.title',
+    ];
+    for (const k of keys) expect(Object.keys(en), k).toContain(k);
+    expect(t('chart.direction', { a: 'A', b: 'B' })).toBe('A → B');
+    expect(t('mcard.spread', { pct: '3%' })).toBe('±3% across bases');
+  });
+
   it('has the strings for adding a survey date', () => {
     const keys = [
       'change.surveyDateNew',
