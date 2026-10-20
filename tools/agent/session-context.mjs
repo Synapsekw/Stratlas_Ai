@@ -1,5 +1,5 @@
 // SessionStart hook: prints a compact orientation dump (branch, worktrees, north-star section 3,
-// recent session notes, drafts) to stdout, which Claude Code injects as session context.
+// recent session notes) to stdout, which Claude Code injects as session context.
 //
 //   node tools/agent/session-context.mjs
 //
@@ -85,7 +85,15 @@ export function noteTitle(text, fallback) {
   return heading ? heading.slice(2).trim() : fallback;
 }
 
-export const isDraftName = (name) => /^_draft-.*\.md$/.test(name);
+const pad = (n) => String(n).padStart(2, '0');
+
+/** Local-time note stamp YYYY-MM-DD-HHmm (the session-note filename prefix). */
+export function noteStamp(date) {
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-` +
+    `${pad(date.getHours())}${pad(date.getMinutes())}`
+  );
+}
 
 /** The n newest dated session notes (names start YYYY-MM-DD-HHmm, so they sort by name). */
 export function newestNoteNames(names, n = 3) {
@@ -96,7 +104,7 @@ export function newestNoteNames(names, n = 3) {
     .slice(0, n);
 }
 
-/** Session note and draft file names, or empty lists when the folder is missing. */
+/** The newest session notes with their titles, or an empty list when the folder is missing. */
 export function readSessionsDir(root) {
   const dir = join(root, SESSIONS_DIR);
   let names = [];
@@ -114,7 +122,7 @@ export function readSessionsDir(root) {
     }
     return { name, title };
   });
-  return { notes, drafts: names.filter(isDraftName).sort() };
+  return { notes };
 }
 
 /** The repo-relative paths in `git status --porcelain -z` output (rename sources skipped). */
@@ -223,15 +231,12 @@ function buildContext() {
     }
   }
 
-  const { notes, drafts } = readSessionsDir(root);
+  const { notes } = readSessionsDir(root);
   if (notes.length > 0) {
     out.push('Recent session notes:');
     for (const note of notes) out.push(`  ${note.name}  ${note.title}`);
   } else {
     out.push(`No session notes yet (${SESSIONS_DIR}).`);
-  }
-  if (drafts.length > 0) {
-    out.push(`Drafts to fold in via /wrapup: ${drafts.join(', ')}`);
   }
 
   out.push(

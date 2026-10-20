@@ -45,7 +45,7 @@ Working agreements for sessions doing non-trivial work (a typo or one-liner can 
    - A single lookup in a known file or a one-line edit can stay in the main session.
 6. **Session notes and the north star are public**: no client, site, tester or person names (`node tools/agent/check-public-text.mjs <files>` catches the known client and site names).
 
-The SessionStart hook (`tools/agent/session-context.mjs`) prints the branch, worktrees and north-star section 3 at the start of every session; the Stop hook (`tools/agent/session-draft.mjs`) leaves a `docs/sessions/_draft-*.md` after a substantial session in the main checkout so nothing is lost before `/wrapup`.
+The SessionStart hook (`tools/agent/session-context.mjs`) prints the branch, worktrees and north-star section 3 at the start of every session; the Stop hook (`tools/agent/north-star-check.mjs`) warns when a plan or ADR changed but `docs/NORTH-STAR.md` did not.
 
 ## Other rules
 

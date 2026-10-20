@@ -3,7 +3,7 @@
 // orchestrator merges, one branch at a time"). Sessions never merge into main themselves.
 //
 //   node tools/agent/finish-task.mjs [--docs] [--no-rebase]   (from inside your worktree)
-//     1. refuses on main and in the main checkout, drops Stop-hook session drafts
+//     1. refuses on main and in the main checkout
 //     2. requires a clean, committed tree
 //     3. rebases the branch onto the latest origin/main, so the checks see what will land
 //     4. runs `pnpm check` (`pnpm format:check` with --docs) under a machine-wide lock
@@ -16,7 +16,7 @@
 // The lock: two worktrees running `pnpm check` at once starve each other of CPU and fail flakily, so
 // rebase plus checks run one worktree at a time.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -181,12 +181,6 @@ async function ready({ docs, rebase }) {
     fail('error: this is the main checkout. Work in your own worktree (CLAUDE.md).');
   }
 
-  const sessions = join(top, 'docs', 'sessions');
-  if (existsSync(sessions)) {
-    for (const file of readdirSync(sessions)) {
-      if (file.startsWith('_draft-')) rmSync(join(sessions, file), { force: true });
-    }
-  }
   const dirty = git(['status', '--porcelain']);
   if (dirty) fail('error: uncommitted changes; commit them first.', dirty);
 
