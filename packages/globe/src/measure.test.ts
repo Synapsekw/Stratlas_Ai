@@ -38,31 +38,30 @@ describe('the geodesic read-out (on the ellipsoid)', () => {
     expect(polygonArea(sq.slice(0, 2))).toBe(0);
   });
 
-  it('globe length in feet with imperial units', () => {
-    const r = globeReading(
-      [
-        [0, 0],
-        [0, 0.01],
-      ],
-      { distance: 'ft', area: 'ft2' },
-      { distance: 1, area: 0 },
-    );
-    // 0.01 degrees of latitude at the equator is about 1105.7 m = 3627.7 ft
-    expect(r.primary).toMatch(/^3[ ,]?6\d\d\.\d ft$/);
-    expect(r.secondary).toBe('');
+  it('words a length by size: metres below 1000 m, else kilometres', () => {
+    const along = (m: number): [number, number][] => [
+      [0, 0],
+      [0, m / 110_574],
+    ];
+    expect(globeReading(along(5)).primary).toBe('5.00 m');
+    expect(globeReading(along(850)).primary).toBe('850 m');
+    expect(globeReading(along(1500)).primary).toBe('1.50 km');
+    expect(globeReading(along(250_000)).primary).toBe('250 km');
+    expect(globeReading(along(850)).secondary).toBe('');
   });
 
-  it('globe area uses the area unit', () => {
-    const sq: [number, number][] = [
-      [0, 0],
-      [0.01, 0],
-      [0.01, 0.01],
-      [0, 0.01],
-    ];
-    const m2 = globeReading(sq, { distance: 'm', area: 'm2' }, { distance: 0, area: 0 });
-    const ha = globeReading(sq, { distance: 'm', area: 'ha' }, { distance: 0, area: 2 });
-    expect(m2.secondary).toMatch(/m²$/);
-    expect(ha.secondary).toMatch(/ha$/);
-    expect(m2.primary).toMatch(/ m$/);
+  it('words an area by size: m2 below 1 ha, ha below 1 km2, else km2', () => {
+    const square = (side: number): [number, number][] => {
+      const d = side / 110_574;
+      return [
+        [0, 0],
+        [d, 0],
+        [d, d],
+        [0, d],
+      ];
+    };
+    expect(globeReading(square(50)).secondary).toMatch(/^2\D?5\d\d m²$/);
+    expect(globeReading(square(300)).secondary).toMatch(/^9\.\d\d ha$/);
+    expect(globeReading(square(1000)).secondary).toMatch(/^1\.\d\d km²$/);
   });
 });

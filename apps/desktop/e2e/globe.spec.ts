@@ -1948,9 +1948,9 @@ test('the only tool is a distance and area read-out on the ellipsoid', async ({ 
   };
   await at(0.35, 0.7);
   await at(0.65, 0.7);
-  await expect(readout).toContainText(/Distance on the ellipsoid: \d+ m/);
+  await expect(readout.getByTestId('card-primary')).toContainText(/\d\s*(m|km)\s*Length/);
   await at(0.5, 0.85);
-  await expect(readout).toContainText(/area: [\d.]+ (m²|ha)/);
+  await expect(readout.getByTestId('card-secondary')).toContainText(/area: [\d.,]+ (m²|ha|km²)/);
   // picking is off while measuring: no card opened
   await expect(win.getByTestId('globe-card')).toHaveCount(0);
 });

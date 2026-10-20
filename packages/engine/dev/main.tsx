@@ -148,7 +148,7 @@ function App() {
     if (params.get('perf') === '1') getActiveStage()?.setPerfOverlay(true);
   }, []);
   const preset = (p: ViewPreset | 'home') => () => getActiveStage()?.setViewPreset(p);
-  const useTool = (t: 'select' | 'measure' | 'section') => () => {
+  const useTool = (t: 'select' | 'section') => () => {
     getActiveStage()?.setTool(t);
     setTool(t);
   };
@@ -186,9 +186,6 @@ function App() {
           </button>
           <button style={btn} onClick={useTool('select')}>
             Select
-          </button>
-          <button style={btn} onClick={useTool('measure')}>
-            Measure
           </button>
           <button style={btn} onClick={useTool('section')}>
             Section

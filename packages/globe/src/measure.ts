@@ -1,5 +1,5 @@
 import { formatQuantity } from '@aio/geo';
-import type { SurveyPrecision, SurveyUnits, Vec3 } from '@aio/schema';
+import type { Vec3 } from '@aio/schema';
 import { enuBasis, geodeticToEcef } from './geodesy';
 
 /**
@@ -95,17 +95,27 @@ export function polygonArea(points: readonly (readonly [number, number])[]): num
 }
 
 /**
- * The read-out's words, through the shared formatter: the path length first, and the polygon area
- * on the second line from three points. Both are geodesic, "on the ellipsoid", in the site units.
+ * The read-out's words, through the shared formatter. The Globe has no site units, so the display
+ * unit follows the size: metres below 1000 m, else kilometres; square metres below 10 000 m2,
+ * hectares below 1 km2, else square kilometres. The primary is the path length; the secondary the
+ * polygon area from three points ("" under that).
  */
-export function globeReading(
-  points: readonly (readonly [number, number])[],
-  units: Pick<SurveyUnits, 'distance' | 'area'>,
-  precision: Pick<SurveyPrecision, 'distance' | 'area'>,
-): { primary: string; secondary: string } {
-  return {
-    primary: formatQuantity(pathLength(points), 'distance', units, precision),
-    secondary:
-      points.length >= 3 ? formatQuantity(polygonArea(points), 'area', units, precision) : '',
-  };
+export function globeReading(points: readonly (readonly [number, number])[]): {
+  primary: string;
+  secondary: string;
+} {
+  const d = pathLength(points);
+  const primary =
+    d < 1000
+      ? formatQuantity(d, 'distance', 'm', d < 10 ? 2 : 0)
+      : formatQuantity(d, 'distance', 'km', d >= 100_000 ? 0 : 2);
+  if (points.length < 3) return { primary, secondary: '' };
+  const a = polygonArea(points);
+  const secondary =
+    a < 10_000
+      ? formatQuantity(a, 'area', 'm2', 0)
+      : a < 1_000_000
+        ? formatQuantity(a, 'area', 'ha', 2)
+        : formatQuantity(a, 'area', 'km2', 2);
+  return { primary, secondary };
 }

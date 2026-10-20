@@ -475,8 +475,8 @@ describe('the Globe screen', () => {
     );
     const card = q('globe-measure-card');
     expect(card?.getAttribute('data-variant')).toBe('live');
-    expect(card?.querySelector('[data-testid="card-primary"]')?.textContent).toMatch(/ m/);
-    expect(card?.querySelector('[data-testid="card-secondary"]')?.textContent).toMatch(/m²/);
+    expect(card?.querySelector('[data-testid="card-primary"]')?.textContent).toBe('2.22kmLength');
+    expect(card?.querySelector('[data-testid="card-secondary"]')?.textContent).toMatch(/ha/);
     expect(card?.querySelector('button')).toBeNull();
   });
 

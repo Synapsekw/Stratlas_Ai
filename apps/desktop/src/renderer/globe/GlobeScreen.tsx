@@ -31,17 +31,16 @@ import {
   type ProjectManifest,
   type RasterPackInfo,
   type TilesetEntry,
-  defaultSurveySettings,
 } from '@aio/schema';
 import { Icon, t, useT } from '@aio/ui';
 import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGraphics } from '../graphics';
 import { drawnBase } from '../maps/mapMenuModel';
-import { MeasureCard, type CardModel } from '../survey/card';
-import { colourName, DEFAULT_MEASURE_COLOUR } from '../survey/card/cardModel';
 import { bridge, shell, useShell } from '../shell';
 import { BrandLoader } from '../shell/BrandMotion';
+import { MeasureCard, type CardModel } from '../survey/card';
+import { colourName, DEFAULT_MEASURE_COLOUR } from '../survey/card/cardModel';
 import { rasterPacks, useRasterPacks } from '../workspace/siteTiles';
 import './globe.css';
 import { GlobeMenu } from './GlobeMenu';
@@ -79,11 +78,10 @@ const NO_PACKS: RasterPackInfo[] = [];
 
 /**
  * The temporary globe measurement as the shared card's live header, value and secondary line: no
- * chips, no chart, no saving. The Globe has no site open, so it reads in the default site units.
+ * chips, no chart, no saving. The Globe has no site open, so the units follow the size (metres or kilometres, square metres, hectares or square kilometres).
  */
 function globeCardModel(points: readonly [number, number][], tr: typeof t): CardModel {
-  const defaults = defaultSurveySettings();
-  const r = globeReading(points, defaults.units, defaults.precision);
+  const r = globeReading(points);
   return {
     icon: 'ruler',
     name: tr('globe.measureName'),
@@ -187,6 +185,7 @@ export default function GlobeScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [measuring, setMeasuring] = useState(false);
   const [measured, setMeasured] = useState<[number, number][]>([]);
+  const cardModel = useMemo(() => globeCardModel(measured, t), [measured]);
   const search = useRef<GlobeSearchHandle>(null);
   const cardEl = useRef<HTMLDivElement>(null);
   const prefs = settings ?? loaded?.settings ?? defaultGlobeSettings();
@@ -493,11 +492,7 @@ export default function GlobeScreen() {
           {measured.length < 2 ? (
             t('globe.measureHint')
           ) : (
-            <MeasureCard
-              variant="live"
-              testId="globe-measure-card"
-              model={globeCardModel(measured, t)}
-            />
+            <MeasureCard variant="live" testId="globe-measure-card" model={cardModel} />
           )}
         </div>
       ) : (
