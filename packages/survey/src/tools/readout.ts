@@ -1,12 +1,14 @@
-import type {
-  ComparisonItem,
-  ComparisonResult,
-  MeasurementFamily,
-  MeasurementTool,
-  SitePoint,
-  SurveyMeasurement,
-  SurveyPrecision,
-  SurveyUnits,
+import {
+  DEFAULT_ANGLES,
+  type AngleSettings,
+  type ComparisonItem,
+  type ComparisonResult,
+  type MeasurementFamily,
+  type MeasurementTool,
+  type SitePoint,
+  type SurveyMeasurement,
+  type SurveyPrecision,
+  type SurveyUnits,
 } from '@aio/schema';
 import { formatNumber, formatQuantity, localeOf, type NumberLocale, type Quantity } from '@aio/geo';
 import { sampleProfile, type HeightSampler } from './geometry';
@@ -18,7 +20,7 @@ import { antennaAzimuth, antennaTilt, clearance, isTelecomTool } from './telecom
  * The panel, the 3D and map labels and (G9) the reports format the same rows.
  */
 
-export type ReadoutKind = Quantity | 'bearing' | 'count' | 'text';
+export type ReadoutKind = Quantity | 'bearing' | 'angle' | 'count' | 'text';
 
 export interface ReadoutRow {
   key: string;
@@ -145,6 +147,47 @@ export interface ReadoutContext {
   stepM?: number | undefined;
 }
 
+/**
+ * The one row the card, tree, labels and island show for each tool. Points show elevation,
+ * lines their slope length, polygons the plan area, volumes the net; the rest their first row.
+ */
+export const PRIMARY_KEY: Record<MeasurementTool, string> = {
+  elevation: 'z',
+  'elevation-difference': 'z',
+  'elevation-history': 'z',
+  annotation: 'z',
+  distance: 'slope-length',
+  grade: 'grade',
+  'vertex-table': 'slope-length',
+  'berm-check': 'crest-z',
+  section: 'slope-length',
+  azimuth: 'azimuth',
+  'antenna-tilt': 'inclination',
+  clearance: 'direct-gap',
+  area: 'area',
+  volume: 'net',
+  freehand: 'vertices',
+};
+
+/** The compact second line under the primary value (at most three). */
+export const SECONDARY_KEYS: Record<MeasurementTool, readonly string[]> = {
+  elevation: ['n', 'e'],
+  'elevation-difference': ['surface-z', 'dz'],
+  'elevation-history': ['n', 'e'],
+  annotation: ['n', 'e'],
+  distance: ['horizontal', 'height-change', 'grade'],
+  grade: ['max-grade', 'height-change', 'horizontal'],
+  'vertex-table': ['horizontal', 'height-change', 'vertices'],
+  'berm-check': ['crest-width', 'base-width', 'height-left'],
+  section: ['horizontal', 'bearing'],
+  azimuth: [],
+  'antenna-tilt': [],
+  clearance: ['horizontal-gap', 'vertical-gap'],
+  area: ['perimeter', 'terrain-area'],
+  volume: ['cut', 'fill', 'area'],
+  freehand: [],
+};
+
 type Geometry = Pick<SurveyMeasurement, 'tool' | 'points'> &
   Partial<Pick<SurveyMeasurement, 'results' | 'items'>>;
 
@@ -167,10 +210,10 @@ export function allRows(m: Geometry, ctx: ReadoutContext = {}): ReadoutRow[] {
   if (isTelecomTool(m.tool)) {
     if (m.tool === 'azimuth') {
       const a = antennaAzimuth(pts);
-      out.push(row('azimuth', a.ok ? a.bearingDeg : null, 'text', a.ok ? undefined : a.message));
+      out.push(row('azimuth', a.ok ? a.bearingDeg : null, 'angle', a.ok ? undefined : a.message));
     } else if (m.tool === 'antenna-tilt') {
       const a = antennaTilt(pts);
-      out.push(row('inclination', a.ok ? a.angleDeg : null, 'text', a.ok ? undefined : a.message));
+      out.push(row('inclination', a.ok ? a.angleDeg : null, 'angle', a.ok ? undefined : a.message));
     } else {
       const gap = clearance(pts);
       for (const [key, value] of [
@@ -271,6 +314,37 @@ export function measurementReadout(
   return wanted.map((k) => byKey.get(k)).filter((r): r is ReadoutRow => r !== undefined);
 }
 
+/**
+ * The row to headline: the tool's primary key, or when that has no value (or the template
+ * leaves it out) the first row of the template's items that has one. Null when none has.
+ */
+export function primaryRow(
+  m: Geometry,
+  ctx: ReadoutContext = {},
+  items?: readonly string[],
+): ReadoutRow | null {
+  const rows = allRows(m, ctx);
+  const key = PRIMARY_KEY[m.tool];
+  const order = items && items.length > 0 ? items : DEFAULT_ITEMS[m.tool];
+  if (!items || items.length === 0 || items.includes(key)) {
+    const r = rows.find((x) => x.key === key);
+    if (r && r.value !== null) return r;
+  }
+  for (const k of order) {
+    const r = rows.find((x) => x.key === k);
+    if (r && r.value !== null) return r;
+  }
+  return null;
+}
+
+/** The compact line's rows: the tool's secondary keys that have a value. */
+export function secondaryRows(m: Geometry, ctx: ReadoutContext = {}): ReadoutRow[] {
+  const rows = allRows(m, ctx);
+  return SECONDARY_KEYS[m.tool]
+    .map((k) => rows.find((x) => x.key === k))
+    .filter((r): r is ReadoutRow => r !== undefined && r.value !== null);
+}
+
 /** Grid bearing as degrees, minutes and seconds: 045°30'00". */
 export function formatBearing(deg: number): string {
   let total = Math.round((((deg % 360) + 360) % 360) * 3600);
@@ -281,24 +355,56 @@ export function formatBearing(deg: number): string {
   return `${String(d).padStart(3, '0')}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
 }
 
+/** An angle in the site's angle unit: 15.20° or 15°12'00" (seconds round, no decimals). */
+export function formatAngle(
+  deg: number,
+  a: AngleSettings,
+  locale: NumberLocale = 'metric',
+): string {
+  if (a.angle === 'dms') {
+    const sign = deg < 0 ? '-' : '';
+    const total = Math.round(Math.abs(deg) * 3600);
+    const d = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return `${sign}${String(d)}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
+  }
+  return `${formatNumber(deg, a.precision, locale)}°`;
+}
+
+/** A bearing in the site's bearing unit: 045°30'00" or 045.50°. */
+export function formatBearingAs(
+  deg: number,
+  a: AngleSettings,
+  locale: NumberLocale = 'metric',
+): string {
+  if (a.bearing === 'dms') return formatBearing(deg);
+  const wrapped = ((deg % 360) + 360) % 360;
+  const text = formatNumber(wrapped, a.precision, locale);
+  const whole = (text.split('.')[0] ?? text).length;
+  return `${'0'.repeat(Math.max(0, 3 - whole))}${text}°`;
+}
+
 /** One row as text in the measurement's units. */
 export function formatRow(
   r: ReadoutRow,
   units: SurveyUnits,
   precision: SurveyPrecision,
   locale: NumberLocale = localeOf(units.distance),
+  angles: AngleSettings = DEFAULT_ANGLES,
 ): string {
   if (r.value === null) return r.note ?? '-';
   let text: string;
   switch (r.kind) {
     case 'bearing':
-      text = formatBearing(r.value);
+      text = formatBearingAs(r.value, angles, locale);
       break;
     case 'count':
       text = String(r.value);
       break;
+    case 'angle':
     case 'text':
-      text = `${formatNumber(r.value, 2, locale)}°`;
+      text = formatAngle(r.value, angles, locale);
       break;
     default:
       text = formatQuantity(r.value, r.kind, units, precision, locale);
