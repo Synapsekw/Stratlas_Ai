@@ -58,6 +58,11 @@ export interface Computed {
   shares: ItemShare[];
   ms: number;
   live: boolean;
+  /**
+   * Run for the heat map only: the stored results are current. A carried kit figure's item is
+   * left out of `results` (the stored figure is what is shown), so no reader shows the engine's.
+   */
+  heatOnly?: boolean;
 }
 
 export interface HeatView {
@@ -120,6 +125,8 @@ export interface CompareState {
    * (only what `computeSeries` has looked at).
    */
   seriesCurrent: Record<string, Record<string, string>>;
+  /** The inputs (`inputsKey`: items and ring) `seriesCurrent` was worked out for, per measurement. */
+  seriesInputs: Record<string, string>;
   /** Each measurement's spread across bases, for the item fingerprint in `key` (never stored). */
   spreads: Record<string, { key: string; value: BaseSpread | null | 'computing' }>;
 }
@@ -141,6 +148,7 @@ const initial = (): Omit<CompareState, 'heat' | 'dialog'> => ({
   site: null,
   showDrafts: true,
   seriesCurrent: {},
+  seriesInputs: {},
   spreads: {},
 });
 
@@ -200,6 +208,7 @@ export async function loadCompare(
 ): Promise<void> {
   const id = project?.id ?? null;
   if (id === get().projectId && get().status !== 'error' && id !== null) return;
+  carriedInputs.clear();
   set({
     ...initial(),
     projectId: id,
@@ -353,7 +362,7 @@ const HEAT_CELLS = 192;
  */
 export function compute(
   id: string,
-  opts: { live?: boolean; auto?: boolean; points?: readonly SitePoint[] } = {},
+  opts: { live?: boolean; auto?: boolean; heatOnly?: boolean; points?: readonly SitePoint[] } = {},
 ): Promise<RunReply | null> {
   const run = computeNow(id, opts);
   flights.set(id, run);
@@ -376,12 +385,15 @@ let runSeq = 0;
 
 async function computeNow(
   id: string,
-  opts: { live?: boolean; auto?: boolean; points?: readonly SitePoint[] },
+  opts: { live?: boolean; auto?: boolean; heatOnly?: boolean; points?: readonly SitePoint[] },
 ): Promise<RunReply | null> {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
   if (m?.family !== 'polygon' || m.items.length === 0 || get().status !== 'ready') return null;
   const points = opts.points ?? m.points;
   if (points.length < 3) return null;
+  // the app on its own keeps a carried kit figure, unless the person edited its points or items
+  // since (taken as accepting the standard base); a person's Recompute always accepts it
+  const accepting = !opts.auto || acceptedByEdit(m);
   set({ running: { ...get().running, [id]: true } });
   const mine = ++runSeq;
   latestRun.set(id, mine);
@@ -409,16 +421,26 @@ async function computeNow(
       set({ running: { ...get().running, [id]: false }, problems });
       return r;
     }
+    // a carried item the person has not accepted shows its stored figure, not the engine's
+    const keepCarried = opts.heatOnly === true || (opts.auto === true && !accepting);
+    const shown = keepCarried
+      ? r.results.flatMap((x) => {
+          if (!carriedItem(now, x.item)) return [x];
+          const kept = now.results.find((y) => y.item === x.item);
+          return kept ? [kept] : [];
+        })
+      : r.results;
     set({
       computed: {
         ...get().computed,
         [id]: {
           ringKey: ringKey(points),
-          results: r.results,
+          results: shown,
           heat: r.heat,
           shares: r.shares,
           ms: r.ms,
           live,
+          ...(opts.heatOnly ? { heatOnly: true } : {}),
         },
       },
       running: { ...get().running, [id]: false },
@@ -426,23 +448,23 @@ async function computeNow(
     });
     if (!live && !measureStore.getState().readOnly) {
       const byItem = new Map(r.results.map((x) => [x.item, x]));
-      const merged = (x: SurveyMeasurement) =>
+      const merged = (x: SurveyMeasurement, keep: boolean) =>
         x.items.flatMap((it) => {
           const old = x.results.find((y) => y.item === it.id);
-          // the app never replaces a carried kit figure on its own: only the person does
-          const res = opts.auto && old?.carried ? old : (byItem.get(it.id) ?? old);
+          // the app never replaces a carried kit figure on its own (nor adds one to an absent
+          // pile's): only the person does
+          const res = keep && carriedItem(x, it.id) ? old : (byItem.get(it.id) ?? old);
           return res ? [res] : [];
         });
-      if (opts.auto) setComputedResults(id, merged);
+      if (!accepting) setComputedResults(id, (x) => merged(x, true));
+      else if (opts.auto && !hasCarried(now)) setComputedResults(id, (x) => merged(x, false));
       else
         updateMeasurement(id, (x) => {
-          // a carried kit figure the person's Recompute replaces is kept as "was"
-          let next = x;
-          for (const res of r.results)
-            if (next.results.find((y) => y.item === res.item)?.carried)
-              next = replaceWithStandard(next, res);
-          return { ...next, results: merged(next) };
+          // accepted: the carried kit figures are replaced and kept as "was"
+          const next = acceptStandard(x, r.results);
+          return { ...next, results: merged(next, false) };
         });
+      if (accepting) carriedInputs.delete(id);
       set({
         current: { ...get().current, [id]: r.results.map((x) => x.fingerprint) },
       });
@@ -479,9 +501,71 @@ const inputsKey = (m: SurveyMeasurement, withRing: boolean): string =>
  */
 export async function recomputeStandard(id: string): Promise<string | null> {
   if (measureStore.getState().readOnly) return 'This project is read-only.';
+  set({ problems: Object.fromEntries(Object.entries(get().problems).filter(([k]) => k !== id)) });
   const r = await compute(id);
   if (r) return null;
-  return get().problems[id] ?? 'The measurement could not be computed.';
+  // no answer and no problem: replaced by a newer run (that one stores), or nothing to run
+  return get().problems[id] ?? null;
+}
+
+/** True when an item's figure, or any of its figures over time, was carried from the kit. */
+function carriedItem(m: SurveyMeasurement, item: string): boolean {
+  return (
+    m.results.some((r) => r.item === item && r.carried !== undefined) ||
+    (m.series ?? []).some((r) => r.item === item && r.carried !== undefined)
+  );
+}
+
+const hasCarried = (m: SurveyMeasurement): boolean =>
+  m.results.some((r) => r.carried !== undefined) ||
+  (m.series ?? []).some((r) => r.carried !== undefined);
+
+/**
+ * The inputs (`inputsKey`) each measurement with carried kit figures had when first seen. Its
+ * points or items edited since: the person is taken as accepting the standard base.
+ */
+const carriedInputs = new Map<string, string>();
+
+function noteCarried(ms: readonly SurveyMeasurement[]): void {
+  for (const m of ms)
+    if (!carriedInputs.has(m.id) && hasCarried(m)) carriedInputs.set(m.id, inputsKey(m, true));
+}
+
+function acceptedByEdit(m: SurveyMeasurement): boolean {
+  if (!hasCarried(m)) return false;
+  const was = carriedInputs.get(m.id);
+  return was !== undefined && was !== inputsKey(m, true);
+}
+
+/**
+ * The measurement with the engine's results accepted in place of the carried kit figures: each
+ * carried figure is kept as "was" (`replaceWithStandard`). A pile absent on the latest date (no
+ * stored result, carried figures over time) keeps its latest carried figure as "was" too.
+ */
+function acceptStandard(
+  m: SurveyMeasurement,
+  results: readonly ComparisonResult[],
+): SurveyMeasurement {
+  const order = get().captures.map((c) => c.id);
+  let next = m;
+  for (const res of results) {
+    if (!carriedItem(next, res.item)) continue;
+    const old = next.results.find((y) => y.item === res.item);
+    if (old) {
+      next = replaceWithStandard(next, res);
+      continue;
+    }
+    const rows = (next.series ?? []).filter((y) => y.item === res.item && y.carried);
+    const latest = rows.reduce<ComparisonResult | undefined>(
+      (a, y) => (!a || order.indexOf(seriesDate(y)) >= order.indexOf(seriesDate(a)) ? y : a),
+      undefined,
+    );
+    next = replaceWithStandard(
+      latest ? { ...next, results: [...next.results, latest] } : next,
+      res,
+    );
+  }
+  return next;
 }
 
 /** Compute every item of every given measurement (Recompute all, bulk). */
@@ -503,22 +587,27 @@ const seriesKeyOf = (r: ComparisonResult): string => `${r.item} ${seriesDate(r)}
 export function seriesStale(m: SurveyMeasurement, r: ComparisonResult): boolean {
   if (r.carried) return false;
   if (r.status === 'stale') return true;
+  // the points or items changed since the dates were looked at: stale until computed again
+  const inputs = get().seriesInputs[m.id];
+  if (inputs !== undefined && inputs !== inputsKey(m, true)) return true;
   const fp = get().seriesCurrent[m.id]?.[seriesKeyOf(r)];
   return fp !== undefined && fp !== r.fingerprint;
 }
 
 /** The series run of each measurement in flight: a second ask waits, then looks again. */
-const seriesFlights = new Map<string, Promise<void>>();
+const seriesFlights = new Map<string, Promise<boolean>>();
 
 /**
  * Compute a measurement's volume per survey date (all dates, or `opts.captures`): only the dates
  * whose row is missing or stale, for each item with a `current` side. Stored per date with its
  * fingerprint (`setSeries`: derived, not an edit). Nothing in a read-only project. A run the
- * measurement outgrew (its items or ring changed while it ran) stores nothing.
+ * measurement outgrew (its items or ring changed while it ran) stores nothing. Nothing for an item
+ * with carried kit figures: its chart shows the kit's history until the person accepts the
+ * standard base (no mixed series). True when something was stored.
  */
-export function computeSeries(id: string, opts: { captures?: string[] } = {}): Promise<void> {
-  const before = seriesFlights.get(id) ?? Promise.resolve();
-  const run = before.catch(() => undefined).then(() => computeSeriesNow(id, opts));
+export function computeSeries(id: string, opts: { captures?: string[] } = {}): Promise<boolean> {
+  const before = seriesFlights.get(id) ?? Promise.resolve(false);
+  const run = before.catch(() => false).then(() => computeSeriesNow(id, opts));
   seriesFlights.set(id, run);
   void run
     .finally(() => {
@@ -528,13 +617,15 @@ export function computeSeries(id: string, opts: { captures?: string[] } = {}): P
   return run;
 }
 
-async function computeSeriesNow(id: string, opts: { captures?: string[] }): Promise<void> {
-  if (measureStore.getState().readOnly || get().status !== 'ready') return;
+async function computeSeriesNow(id: string, opts: { captures?: string[] }): Promise<boolean> {
+  if (measureStore.getState().readOnly || get().status !== 'ready') return false;
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
-  if (m?.family !== 'polygon' || m.points.length < 3) return;
-  const items = m.items.filter(seriesApplies);
-  const captures = opts.captures ?? get().captures.map((c) => c.id);
-  if (items.length === 0 || captures.length === 0) return;
+  if (m?.family !== 'polygon' || m.points.length < 3) return false;
+  const items = m.items.filter((it) => seriesApplies(it) && !carriedItem(m, it.id));
+  // every date is fingerprinted (so `seriesCurrent` is whole for these inputs); the asked are run
+  const captures = get().captures.map((c) => c.id);
+  const wanted = new Set(opts.captures ?? captures);
+  if (items.length === 0 || captures.length === 0) return false;
   const scope = captureOf(m);
   const ring = ringOf(m.points);
   const asked = inputsKey(m, true);
@@ -550,6 +641,7 @@ async function computeSeriesNow(id: string, opts: { captures?: string[] }): Prom
         if (fp !== undefined) prints[`${item.id} ${c}`] = fp;
       });
       const need = captures.filter((c, k) => {
+        if (!wanted.has(c)) return false;
         const r = have.get(`${item.id} ${c}`);
         return !r || (!r.carried && (r.status === 'stale' || r.fingerprint !== fps[k]));
       });
@@ -558,18 +650,18 @@ async function computeSeriesNow(id: string, opts: { captures?: string[] }): Prom
     }
   } catch (e) {
     // replaced by a newer run of the same item: that one stores its dates
-    if (e instanceof RunCancelled) return;
+    if (e instanceof RunCancelled) return false;
     throw e;
   }
   const now = measureStore.getState().file.measurements.find((x) => x.id === id);
-  if (!now || inputsKey(now, true) !== asked) return;
+  if (!now || inputsKey(now, true) !== asked) return false;
   set({
-    seriesCurrent: {
-      ...get().seriesCurrent,
-      [id]: { ...get().seriesCurrent[id], ...prints },
-    },
+    seriesCurrent: { ...get().seriesCurrent, [id]: prints },
+    seriesInputs: { ...get().seriesInputs, [id]: asked },
   });
-  if (out.length > 0) setSeries(id, out);
+  if (out.length === 0) return false;
+  setSeries(id, out);
+  return true;
 }
 
 // ---------------------------------------------------------------- the spread across bases (W3)
@@ -624,7 +716,16 @@ export async function computeSpread(id: string): Promise<BaseSpread | null> {
       set({ spreads: { ...get().spreads, [id]: { key, value } } });
     return value;
   } catch (e) {
-    if (e instanceof RunCancelled) return null;
+    if (e instanceof RunCancelled) {
+      // replaced by a newer run, or the engine stopped: not computing any more
+      if (get().spreads[id]?.key === key && get().spreads[id]?.value === 'computing')
+        set({
+          spreads: Object.fromEntries(Object.entries(get().spreads).filter(([k]) => k !== id)),
+        });
+      return null;
+    }
+    // the renderer's console is the app's log (main writes it to renderer.log)
+    console.warn(`The spread across bases of ${id} could not be computed`, e);
     if (get().spreads[id]?.key === key)
       set({ spreads: { ...get().spreads, [id]: { key, value: null } } });
     return null;
@@ -668,19 +769,23 @@ export function scheduleCheck(delayMs = 120): void {
       if (focus) await flights.get(focus);
       await checkFingerprints();
       const s = measureStore.getState();
+      noteCarried(s.file.measurements);
       const m = s.file.measurements.find((x) => x.id === s.focus);
       if (m?.family !== 'polygon' || m.items.length === 0) return;
       const cur = get().current[m.id] ?? [];
+      const accepted = acceptedByEdit(m);
       const needs = m.items.some((it, k) => {
+        // a carried kit figure waits for the person: "Recompute with the standard base", or an
+        // edit of its points or items
+        if (!accepted && carriedItem(m, it.id)) return false;
         const r = m.results.find((x) => x.item === it.id);
-        // a carried kit figure waits for the person's "Recompute with the standard base"
-        return !r || (!r.carried && (r.status === 'stale' || r.fingerprint !== cur[k]));
+        return !r || r.status === 'stale' || r.fingerprint !== cur[k];
       });
       const shown = get().computed[m.id];
       if (needs) await compute(m.id, { auto: true });
       else if (!shown || shown.live || shown.ringKey !== ringKey(m.points))
         // stored results are current: compute once more for the heat map only
-        await compute(m.id, { live: true });
+        await compute(m.id, { live: true, heatOnly: true });
     })();
   }, delayMs);
 }
@@ -724,7 +829,9 @@ export function followMeasurements(): () => void {
     pushContext(projectId, surfaces, designs);
     scheduleCheck();
   });
+  noteCarried(measureStore.getState().file.measurements);
   const off = measureStore.subscribe((s, prev) => {
+    if (s.file !== prev.file) noteCarried(s.file.measurements);
     if (s.editing && s.focus && s.editing.points !== prev.editing?.points) {
       const m = s.file.measurements.find((x) => x.id === s.focus);
       if (m?.family === 'polygon' && m.items.length > 0 && s.editing.points.length >= 3)

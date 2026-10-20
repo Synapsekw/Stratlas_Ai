@@ -38,6 +38,7 @@ const {
 const { isDirty, measureStore, patchMeasurement, revertMeasurements, saveMeasurements } =
   await import('./measureStore');
 const { serveEngine } = await import('./engineServe');
+const { RunCancelled } = await import('./engineClient');
 
 const DIR = join(
   fileURLToPath(new URL('.', import.meta.url)),
@@ -425,7 +426,7 @@ describe('results over time and the spread across bases', () => {
 
   it('computeSeries computes only missing and stale dates', async () => {
     const spy = vi.spyOn(engineClient(), 'series');
-    await computeSeries('m1');
+    expect(await computeSeries('m1')).toBe(true);
     expect(stored()?.series?.map((r) => r.toCapture)).toEqual(['c1', 'c2']);
     expect(spy).toHaveBeenCalledTimes(1);
     // derived numbers, not a person's edit
@@ -433,8 +434,8 @@ describe('results over time and the spread across bases', () => {
     expect(stored()?.updatedAt).toBe(UPDATED);
     expect(stored()?.series?.some((r) => seriesStale(must(stored()), r))).toBe(false);
 
-    // nothing missing or stale: nothing run
-    await computeSeries('m1');
+    // nothing missing or stale: nothing run, nothing stored
+    expect(await computeSeries('m1')).toBe(false);
     expect(spy).toHaveBeenCalledTimes(1);
 
     // c1's row was computed from other inputs: only c1 is run again
@@ -491,9 +492,136 @@ describe('results over time and the spread across bases', () => {
       expect(s.computed.m1).toBeDefined();
       expect(s.running.m1).toBe(false);
     });
-    expect(compareStore.getState().computed.m1?.live).toBe(true);
+    // the run was for the heat map only: what is shown is the stored kit figure, not the engine's
+    const shown = compareStore.getState().computed.m1;
+    expect(shown?.heatOnly).toBe(true);
+    expect(shown?.heat.length).toBeGreaterThan(0);
+    expect(shown?.results).toHaveLength(1);
+    expect(shown?.results[0]?.carried?.epoch).toBe('e2');
+    expect(shown?.results[0]?.netM3).toBe(60);
     expect(stored()?.results[0]?.carried?.epoch).toBe('e2');
     measureStore.setState({ focus: null });
+  });
+
+  it('a carried pile absent on the latest date gets no engine figure from the check', async () => {
+    const r = await compute('m1', { live: true });
+    put({ results: [], series: [kit({ ...must(r?.results[0]), toCapture: 'c1' }, 'e1')] });
+    compareStore.setState({ computed: {}, current: {} });
+    measureStore.setState({ focus: 'm1' });
+    scheduleCheck(0);
+    await vi.waitFor(() => {
+      const s = compareStore.getState();
+      expect(s.current.m1).toHaveLength(1);
+      expect(s.computed.m1).toBeDefined();
+      expect(s.running.m1).toBe(false);
+    });
+    expect(compareStore.getState().computed.m1?.results).toEqual([]);
+    expect(stored()?.results).toEqual([]);
+    measureStore.setState({ focus: null });
+  });
+
+  it('series rows are stale after a vertex is edited, until computed again', async () => {
+    await computeSeries('m1');
+    const row = must(stored()?.series?.[1]);
+    expect(seriesStale(must(stored()), row)).toBe(false);
+    put({ points: ring.map(([e, n, z], k) => (k === 0 ? [e + 1, n, z] : [e, n, z])) });
+    expect(seriesStale(must(stored()), row)).toBe(true);
+    expect(await computeSeries('m1')).toBe(true);
+    expect(stored()?.series?.some((x) => seriesStale(must(stored()), x))).toBe(false);
+  });
+
+  it('no mixed series: an item with carried figures is not computed over time', async () => {
+    const r = await compute('m1', { live: true });
+    const fresh = must(r?.results[0]);
+    const spy = vi.spyOn(engineClient(), 'series');
+    // a carried figure on the latest date
+    put({ results: [kit(fresh, 'e2')] });
+    expect(await computeSeries('m1')).toBe(false);
+    expect(stored()?.series).toBeUndefined();
+    // only carried figures over time (absent on the latest date)
+    put({ results: [], series: [kit({ ...fresh, toCapture: 'c1' }, 'e1')] });
+    expect(await computeSeries('m1')).toBe(false);
+    expect(stored()?.series).toHaveLength(1);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('recomputeStandard accepts a pile absent on the latest date and keeps was', async () => {
+    const r = await compute('m1', { live: true });
+    const fresh = must(r?.results[0]);
+    put({
+      results: [],
+      series: [
+        kit({ ...fresh, toCapture: 'c1' }, 'e1'),
+        { ...kit({ ...fresh, toCapture: 'c2' }, 'e2'), netM3: 70, totalM3: 72 },
+      ],
+    });
+    expect(await recomputeStandard('m1')).toBeNull();
+    const m = stored();
+    expect(m?.results).toHaveLength(1);
+    expect(m?.results[0]?.carried).toBeUndefined();
+    expect(m?.series).toBeUndefined();
+    // the latest carried figure is the "was"
+    expect(m?.previousResults).toEqual([
+      expect.objectContaining({ netM3: 70, totalM3: 72, label: 'kit plane' }),
+    ]);
+  });
+
+  it('editing a carried pile accepts the standard base: the next check replaces it, keeping was', async () => {
+    const r = await compute('m1', { live: true });
+    put({ results: [kit(must(r?.results[0]), 'e2')] });
+    const off = followMeasurements();
+    try {
+      measureStore.setState({ focus: 'm1' });
+      // the person moves a vertex
+      put({ points: ring.map(([e, n, z], k) => (k === 0 ? [e + 1, n, z] : [e, n, z])) });
+      await vi.waitFor(
+        () => {
+          expect(stored()?.results[0]?.carried).toBeUndefined();
+        },
+        { timeout: 5000 },
+      );
+      const m = stored();
+      expect(m?.results[0]?.status).toBe('ok');
+      expect(m?.previousResults).toEqual([
+        expect.objectContaining({ netM3: 60, totalM3: 64, label: 'kit plane' }),
+      ]);
+      expect(m?.updatedAt).not.toBe(UPDATED);
+    } finally {
+      off();
+      measureStore.setState({ focus: null });
+    }
+  });
+
+  it('a carried pile left as it was is not taken as accepted', async () => {
+    const r = await compute('m1', { live: true });
+    put({ results: [kit(must(r?.results[0]), 'e2')] });
+    const off = followMeasurements();
+    try {
+      compareStore.setState({ computed: {}, current: {} });
+      measureStore.setState({ focus: 'm1' });
+      // a label is not an input
+      put({ label: 'Renamed' });
+      await vi.waitFor(() => {
+        const s = compareStore.getState();
+        expect(s.computed.m1).toBeDefined();
+        expect(s.running.m1).toBe(false);
+      });
+      expect(stored()?.results[0]?.carried?.epoch).toBe('e2');
+    } finally {
+      off();
+      measureStore.setState({ focus: null });
+    }
+  });
+
+  it('a cancelled spread run is no longer computing', async () => {
+    put({
+      items: [{ id: 'a', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+    });
+    const spy = vi.spyOn(engineClient(), 'spread').mockRejectedValueOnce(new RunCancelled());
+    expect(await computeSpread('m1')).toBeNull();
+    expect(compareStore.getState().spreads.m1).toBeUndefined();
+    spy.mockRestore();
   });
 
   it('read-only: computeSeries does nothing', async () => {
