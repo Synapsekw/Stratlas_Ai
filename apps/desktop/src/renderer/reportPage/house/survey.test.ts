@@ -4,13 +4,14 @@
 // against a flat design at 101 m, a landfill cell filled by 1 m per survey under a cap at 103 m,
 // and a weighbridge log. On aligned cells every volume is the analytic one (section 26: posts are
 // read exactly, interior cells have coverage 1) up to the float32 heights of the tiles, so the
-// sections, the CSVs and the panel agree to the cubic metre.
+// sections, the CSVs and the panel agree to the cubic metre. The polygons carry the results the
+// panel stored (an engine result fixture: `compareItem` on the latest survey), as a saved project
+// does; the report prints those, and works out the other survey dates in memory as the app does.
 import {
   houseReportModel,
   measurementsCsv,
   resolveReportBranding,
   stockpileCsv,
-  type SurveyReportData,
 } from '@aio/project/export';
 import {
   DesignsFile,
@@ -20,19 +21,24 @@ import {
   SurveySettings,
   defaultSurveySettings,
   type ComparisonItem,
+  type ComparisonResult,
   type SurveyMeasurement,
+  type VolumesFile,
 } from '@aio/schema';
 import { compareItem, encodeTile, projectResolver } from '@aio/survey';
+import { cardModel } from '../../survey/card/cardModel';
+import { formatQuantity } from '@aio/geo';
 import { Blob as NodeBlob } from 'node:buffer';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Pager } from './pager';
 import { SECTION_LAYOUTS, type HouseContext } from './sections';
-import { measurementPlan, sectionChart } from './survey';
+import { houseVolumes, measurementPlan } from './survey';
 import {
   buildSurveyData,
   readSurveyFiles,
   surveyPlan,
   surveySectionIds,
+  type ReportSurveyData,
   type SurveyFiles,
 } from './surveyData';
 
@@ -175,7 +181,7 @@ const PAD_ITEM: ComparisonItem = {
   useDeadband: false,
 };
 
-const measurements = MeasurementsFile.parse({
+const drawn = MeasurementsFile.parse({
   schema: 'aio.measurements/1',
   measurements: [
     vol(
@@ -299,13 +305,41 @@ function near(x: number | null | undefined, want: number): void {
 const FILES = new Map<string, unknown>();
 const BYTES = new Map<string, Uint8Array>();
 let files: SurveyFiles;
-let data: SurveyReportData;
+let data: ReportSurveyData;
+/** The measurements as the panel saved them: each polygon item's result on the latest survey. */
+let measurements: MeasurementsFile;
 
 const reader = {
   json: (p: string) => Promise.resolve(FILES.get(p) ?? null),
   text: (p: string) => Promise.resolve(p === 'survey/weighbridge.csv' ? WEIGH : null),
   bytes: (p: string) => Promise.resolve(BYTES.get(p) ?? null),
 };
+
+/** The panel's resolver: every survey, the latest on screen, no line-up. */
+const panel = () =>
+  projectResolver({
+    surfaces: CAPS.map((c) => tiles(c.id)),
+    captures: CAPS.map((c) => c.id),
+    designs: designs.designs,
+    fetchBytes: reader.bytes,
+  });
+
+/** A measurement with the results the panel stores: each item on the latest survey. */
+async function stored(m: SurveyMeasurement): Promise<SurveyMeasurement> {
+  if (m.family !== 'polygon') return m;
+  const resolve = panel();
+  const results: ComparisonResult[] = [];
+  for (const it of m.items)
+    results.push(
+      await compareItem(
+        m.points.map((q) => [q[0], q[1]]),
+        it,
+        resolve,
+        { site: { verticalDatum: settings.verticalDatum } },
+      ),
+    );
+  return { ...m, results };
+}
 
 beforeAll(async () => {
   for (const c of CAPS) {
@@ -317,6 +351,7 @@ beforeAll(async () => {
   }
   BYTES.set('survey/designs/design/pad.tin', flatTin(90, 150, 101));
   BYTES.set('survey/designs/design/cap.tin', flatTin(170, 230, 103));
+  measurements = { ...drawn, measurements: await Promise.all(drawn.measurements.map(stored)) };
   FILES.set('survey/measurements.json', measurements);
   FILES.set('survey/settings.json', settings);
   FILES.set('survey/designs.json', designs);
@@ -334,7 +369,8 @@ describe('the survey data', () => {
       { date: '2026-03-31', tonnes: 1520 },
     ]);
     const plan = surveyPlan(files);
-    expect(plan.stockpiles.map((m) => m.id)).toEqual(['m-pile', 'm-pile2']);
+    // every volume measurement, as the Volumes view lists them (so the totals agree)
+    expect(plan.stockpiles.map((m) => m.id)).toEqual(['m-pile', 'm-pile2', 'm-pad', 'm-cell']);
     expect(plan.earthworks.map((m) => m.id)).toEqual(['m-pad']);
     expect(plan.landfill.map((m) => m.id)).toEqual(['m-cell']);
     expect(plan.sections.map((m) => m.id)).toEqual(['m-sec']);
@@ -346,7 +382,19 @@ describe('the survey data', () => {
     ]);
   });
 
-  it('computes the stockpiles on the last two surveys: exact volumes, tonnes, the change', () => {
+  it('adds volume over time once a volume measurement has figures on two dates', () => {
+    expect(surveySectionIds(files)).not.toContain('volume-over-time');
+    const pile = measurements.measurements[0];
+    const r = pile?.results[0];
+    if (!pile || !r) throw new Error('fixture');
+    const dated = {
+      ...files,
+      measurements: [{ ...pile, series: [{ ...r, toCapture: 'c2', netM3: 300 }] }],
+    };
+    expect(surveySectionIds(dated)).toContain('volume-over-time');
+  });
+
+  it('computes the stockpiles on every survey: exact volumes, tonnes, the change', () => {
     const inv = data.stockpiles;
     expect([inv.current?.id, inv.previous?.id]).toEqual(['c3', 'c2']);
     const a = inv.rows.find((r) => r.id === 'm-pile');
@@ -360,17 +408,51 @@ describe('the survey data', () => {
     near(b?.currentM3, 200);
     near(b?.previousM3, 100);
     near(b?.tonnes, 300);
-    expect(inv.total.piles).toBe(2);
-    near(inv.total.currentM3, 600);
-    near(inv.total.changeM3, 200);
-    near(inv.total.tonnes, 1100);
-    expect(inv.byMaterial.map((x) => x.name)).toEqual(['Gravel 20 mm', 'Washed sand']);
+    // the pad and the landfill cell are volume measurements too, as in the Volumes view
+    expect(inv.total.piles).toBe(4);
+    const latest = data.volumes.inventory.at(-1);
+    expect(latest?.capture).toBe('c3');
+    expect(latest?.notCounted).toEqual([]);
+    near(inv.total.currentM3, latest?.totalM3 ?? Number.NaN);
+    expect(inv.byMaterial.map((x) => x.name)).toEqual(['Gravel 20 mm', 'Washed sand', '']);
     near(inv.byMaterial[0]?.tonnes, 800);
     near(inv.byMaterial[1]?.currentM3, 200);
   });
 
+  it('works the other dates out in memory and keeps the stored figure for its own date', () => {
+    const a = data.volumes.piles.find((p) => p.id === 'm-pile');
+    expect(
+      a?.rows.map((r) => [r.capture, r.valueM3 === null ? null : Math.round(r.valueM3)]),
+    ).toEqual([
+      ['c1', 200],
+      ['c2', 300],
+      ['c3', 400],
+    ]);
+    expect(a?.rows.map((r) => r.stale)).toEqual([false, false, false]);
+    // nothing is written: the saved file still has the stored result only
+    expect(measurements.measurements[0]?.series).toBeUndefined();
+  });
+
+  it('names a stale stored figure and leaves it out of the total', async () => {
+    const stale = {
+      ...files,
+      measurements: files.measurements.map((m) =>
+        m.id === 'm-pile2'
+          ? { ...m, results: m.results.map((r) => ({ ...r, fingerprint: 'sha256:before' })) }
+          : m,
+      ),
+    };
+    const d = await buildSurveyData(stale, reader.bytes, { need: 'report' });
+    const latest = d.volumes.inventory.at(-1);
+    expect(latest?.notCounted).toEqual([{ id: 'm-pile2', reason: 'stale' }]);
+    near(latest?.totalM3, (data.volumes.inventory.at(-1)?.totalM3 ?? 0) - 200);
+    expect(d.measurements.find((m) => m.id === 'm-pile2')?.comparisons[0]?.result?.status).toBe(
+      'stale',
+    );
+  });
+
   it('gives the same numbers as the panel computes (one engine, one fingerprint)', async () => {
-    const m = measurements.measurements[0];
+    const m = drawn.measurements[0];
     const item = m?.items[0];
     if (!m || !item) throw new Error('fixture');
     const resolve = projectResolver({
@@ -472,27 +554,84 @@ describe('the survey data', () => {
     const saved = {
       ...files,
       surfaces: [],
-      measurements: files.measurements.map((m) =>
-        m.id === 'm-pile'
-          ? {
-              ...m,
-              results:
-                data.measurements[0]?.comparisons.flatMap((c) => (c.result ? [c.result] : [])) ??
-                [],
-            }
-          : m,
-      ),
+      measurements: files.measurements.map((m) => (m.id === 'm-pile2' ? { ...m, results: [] } : m)),
     };
     const d = await buildSurveyData(saved, reader.bytes, { need: 'report' });
     expect(d.computed).toBe(false);
     near(d.stockpiles.rows.find((r) => r.id === 'm-pile')?.currentM3, 400);
     expect(d.stockpiles.rows.find((r) => r.id === 'm-pile2')?.current?.status).toBe('missing');
   });
+
+  it("carries an old project's kit piles over in memory, with their kit figures", async () => {
+    const read = await readSurveyFiles(kitReader(), manifest, []);
+    const pile = read?.measurements[0];
+    expect(read?.measurements).toHaveLength(1);
+    expect(pile?.tool).toBe('volume');
+    expect(pile?.results[0]?.carried?.base).toBe('tin');
+    expect(pile?.series?.map((r) => r.netM3)).toEqual([150, 175]);
+  });
+});
+
+// ---------------------------------------------------------------- an old project
+
+/** A kit survey (aio.volumes/1) of one pile on two dates, with no measurements file. */
+const KIT: VolumesFile = {
+  schema: 'aio.volumes/1',
+  densityTPerM3: 1.6,
+  deadbandM: 0.05,
+  defaultBase: 'tin',
+  bases: [{ id: 'tin', label: 'Triangulated toe' }],
+  captures: [
+    { epoch: 'e2', captureId: 'c2', date: '2026-02-28', label: 'Survey 28 February 2026' },
+    { epoch: 'e3', captureId: 'c3', date: '2026-03-31', label: 'Survey 31 March 2026' },
+  ],
+  piles: [
+    {
+      id: 'K1',
+      name: 'Kit pile 1',
+      zoneRing: [],
+      change: { fill: 25, cut: 0, net: 25 },
+      epochs: Object.fromEntries(
+        (['e2', 'e3'] as const).map((e, i) => {
+          const fc = (net: number) => ({ fill: net, cut: 0, net });
+          const net = i === 0 ? 150 : 175;
+          return [
+            e,
+            {
+              captureId: i === 0 ? 'c2' : 'c3',
+              areaM2: 100,
+              topM: 104,
+              heightM: 4,
+              ring: [
+                [10, -10],
+                [20, -10],
+                [20, -20],
+                [10, -20],
+              ],
+              volumes: { tin: fc(net), plane: fc(net + 10), avg: fc(net + 20), low: fc(net + 30) },
+            },
+          ];
+        }),
+      ),
+    },
+  ],
+  totals: {},
+  pileChange: { fill: 25, cut: 0, net: 25 },
+  siteChange: { fill: 25, cut: 0, net: 25 },
+};
+
+const kitReader = () => ({
+  json: (path: string) =>
+    Promise.resolve(
+      path === 'volumes.json' ? KIT : path === 'survey/settings.json' ? settings : null,
+    ),
+  text: () => Promise.resolve(null),
+  bytes: () => Promise.resolve(null),
 });
 
 // ---------------------------------------------------------------- the sections
 
-function layout(ids: readonly string[]): HTMLElement {
+function layout(ids: readonly string[], survey: ReportSurveyData = data): HTMLElement {
   const root = document.createElement('div');
   const pager = new Pager({
     root,
@@ -516,7 +655,7 @@ function layout(ids: readonly string[]): HTMLElement {
     text: { summary: '', method: '', findings: '' },
     images: { overview: [] },
     product: 'Quadrion AI',
-    survey: data,
+    survey,
   };
   ids.forEach((id, i) => {
     const fn = SECTION_LAYOUTS[id as keyof typeof SECTION_LAYOUTS];
@@ -528,6 +667,13 @@ function layout(ids: readonly string[]): HTMLElement {
 }
 
 const text = (el: Element) => el.textContent.replace(/\s+/g, ' ');
+
+/** A table row's cells, each one's text. */
+const cells = (tr: Element) => [...tr.querySelectorAll('td')].map((td) => td.textContent.trim());
+
+/** A volume as the site formats it (the report's and the app's `formatQuantity`). */
+const formatVolume = (m3: number) =>
+  formatQuantity(m3, 'volume', settings.units, settings.precision);
 
 describe('the survey sections', () => {
   it('print in the house report only for a project with survey data', () => {
@@ -573,8 +719,87 @@ describe('the survey sections', () => {
     expect(rows.find((r) => r.includes('Stockpile A'))).toMatch(
       /400\.0 m³.*800\.0 t.*300\.0 m³.*100\.0 m³.*200\.0 t/,
     );
-    expect(rows.find((r) => r.includes('Total'))).toMatch(/600\.0 m³.*1 100\.0 t/);
+    // the total is the Volumes view's: the latest date's current figures
+    const latest = data.volumes.inventory.at(-1);
+    const total = rows.find((r) => r.includes('Total'));
+    expect(total).toContain(formatVolume(latest?.totalM3 ?? 0));
+    expect(total).toContain('4 of 4 piles');
     expect(t).toContain('Materials summary');
+  });
+
+  it('stockpile section shows the same figure as the card', () => {
+    const root = layout(['stockpiles']);
+    const pile = measurements.measurements.find((m) => m.id === 'm-pile');
+    if (!pile) throw new Error('fixture');
+    const card = cardModel(pile, { settings, templates: files.templates, captures: CAPS });
+    expect(card.primary?.text).toBe('400.0 m³');
+    const row = [...root.querySelectorAll('table.sv-piles tr')]
+      .map(text)
+      .find((r) => r.includes('Stockpile A'));
+    expect(row).toContain(card.primary?.text ?? 'none');
+    // and the summary's figures are that total, in the site's units
+    const v = houseVolumes(data);
+    expect(v?.text.total).toBe(formatVolume(data.volumes.inventory.at(-1)?.totalM3 ?? 0));
+  });
+
+  it('old project report prints the carried kit figure, labelled', async () => {
+    const read = await readSurveyFiles(kitReader(), manifest, []);
+    if (!read) throw new Error('no kit pile');
+    const d = await buildSurveyData(read, reader.bytes, { need: 'report' });
+    const root = layout(['stockpiles', 'volume-over-time'], d);
+    const t = text(root);
+    expect(t).toContain('From an earlier version (kit tin)');
+    const row = [...root.querySelectorAll('table.sv-piles tr')]
+      .map(text)
+      .find((r) => r.includes('Kit pile 1'));
+    expect(row).toMatch(/175\.0 m³.*150\.0 m³.*25\.0 m³/);
+  });
+
+  it('template entries print as report cards in template order', async () => {
+    const withTemplate: SurveyFiles = {
+      ...files,
+      template: {
+        schema: 'aio.report-template/1',
+        entries: [
+          { kind: 'measurement', id: 'm-line', parts: ['value', 'chart'], addedAt: NOW },
+          { kind: 'section', section: 'stockpiles' },
+          { kind: 'measurement', id: 'm-pile', parts: ['value', 'chart', 'table'], addedAt: NOW },
+        ],
+      },
+    };
+    const d = await buildSurveyData(withTemplate, reader.bytes, { need: 'report' });
+    const root = layout(['measurements'], d);
+    const cards = [...root.querySelectorAll('[data-testid="report-card"]')];
+    expect(cards.map((c) => c.getAttribute('data-measure-id'))).toEqual(['m-line', 'm-pile']);
+    expect(cards[0]?.querySelector('[data-testid="report-line-profile"] svg')).not.toBeNull();
+    expect(cards[1]?.querySelector('[data-testid="report-volume-time"] svg')).not.toBeNull();
+    expect(text(cards[1] ?? root)).toContain('400.0 m³');
+    // the pile's readout table, its "table" part
+    expect(root.querySelectorAll('table.sv-readout')).toHaveLength(1);
+  });
+
+  it('volume over time section lists change since previous', () => {
+    const root = layout(['volume-over-time']);
+    const t = text(root);
+    expect(t).toContain('Volume over time');
+    const [first] = [...root.querySelectorAll('table.sv-time')];
+    const rows = [...(first?.querySelectorAll('tbody tr') ?? [])].map(cells);
+    // date, volume, change since the date before, mass (the pile has a density), status
+    expect(rows).toEqual([
+      ['31 Jan 2026', '200.0 m³', '', '400.0 t', ''],
+      ['28 Feb 2026', '300.0 m³', '100.0 m³', '600.0 t', ''],
+      ['31 Mar 2026', '400.0 m³', '100.0 m³', '800.0 t', ''],
+    ]);
+    expect(root.querySelector('[data-testid="report-volume-time"] svg')).not.toBeNull();
+    // the site inventory, stacked, with its change since the date before
+    expect(root.querySelector('[data-testid="report-inventory-time"] svg')).not.toBeNull();
+    const inv = [...root.querySelectorAll('table.sv-inv tbody tr')].map(cells);
+    expect(inv).toHaveLength(3);
+    const c3 = data.volumes.inventory.at(-1);
+    expect(inv[2]?.[0]).toBe('31 Mar 2026');
+    expect(inv[2]?.[1]).toBe(formatVolume(c3?.totalM3 ?? Number.NaN));
+    expect(inv[2]?.[2]).toBe(formatVolume(c3?.change?.m3 ?? Number.NaN));
+    expect(inv[2]?.[3]).toBe('4 of 4 piles');
   });
 
   it('prints earthworks with tolerance and progress, and the sections', () => {
@@ -585,7 +810,21 @@ describe('the survey sections', () => {
     expect(row).toMatch(/320\.0 m³/);
     expect(row).toContain('75 % (±0.150 m)');
     expect(row).toMatch(/80 %$/);
-    expect(root.querySelectorAll('svg.svsec')).toHaveLength(1);
+  });
+
+  it('earthworks section draws the shared chart with design dashed', () => {
+    const root = layout(['earthworks']);
+    const charts = root.querySelectorAll('[data-testid="report-section"]');
+    expect(charts).toHaveLength(1);
+    const kinds = [...(charts[0]?.querySelectorAll('polyline[data-kind]') ?? [])].map((p) => [
+      p.getAttribute('data-kind'),
+      p.getAttribute('stroke-dasharray'),
+    ]);
+    expect(kinds).toContainEqual(['design', '6 4']);
+    expect(kinds).toContainEqual(['current', null]);
+    expect(kinds).toContainEqual(['earlier', null]);
+    // the old hand-drawn chart is gone
+    expect(root.querySelector('svg.svsec')).toBeNull();
   });
 
   it('prints airspace remaining and compaction per lift', () => {
@@ -601,7 +840,6 @@ describe('the survey sections', () => {
 
   it('draws nothing for nothing', () => {
     expect(measurementPlan([], 'x')).toBe('');
-    expect(sectionChart({ ref: 'M1', label: 'x', lengthM: 1, profiles: [] })).toBe('');
   });
 
   it('makes the measurements CSV from the same data', () => {

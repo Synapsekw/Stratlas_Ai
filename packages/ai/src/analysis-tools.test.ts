@@ -6,10 +6,31 @@ import { getRendererTool, runRendererTool, type RendererToolContext } from './re
 import { fixtureIssue, fixtureManifest, fixtureWorkspace } from './test-fixtures';
 import { allToolSpecs, toolInputs } from './tools';
 
-/** A two-date stockpile survey in the shape of volumes.json (aio.volumes/1). */
+const fc = (net: number) => ({ fill: net, cut: 0, net });
+/** A pile on one kit epoch: its volume on each base (tin and low given, the others between). */
+const kitEpoch = (captureId: string, tin: number, low: number) => ({
+  captureId,
+  areaM2: 100,
+  topM: 10,
+  heightM: 5,
+  ring: [
+    [0, 0],
+    [10, 0],
+    [10, -10],
+  ],
+  volumes: { tin: fc(tin), plane: fc(tin), avg: fc(tin), low: fc(low) },
+});
+
+/** A two-date stockpile survey of an older project, in the kit's volumes.json (aio.volumes/1). */
 const volumes = {
   schema: 'aio.volumes/1',
+  densityTPerM3: 1.6,
+  deadbandM: 0.05,
   defaultBase: 'tin',
+  bases: [
+    { id: 'tin', label: 'Triangulated toe' },
+    { id: 'low', label: 'Lowest point' },
+  ],
   captures: [
     { epoch: 'e1', captureId: 'c1', date: '2020-12-31', label: '31 Dec 2020' },
     { epoch: 'e2', captureId: 'c2', date: '2021-01-10', label: '10 Jan 2021' },
@@ -18,26 +39,72 @@ const volumes = {
     {
       id: 'P01',
       name: 'Pile 01',
-      epochs: {
-        e1: { volumes: { tin: { net: 1000 }, low: { net: 1200 } } },
-        e2: { volumes: { tin: { net: 800 }, low: { net: 900 } } },
-      },
+      zoneRing: [],
+      epochs: { e1: kitEpoch('c1', 1000, 1200), e2: kitEpoch('c2', 800, 900) },
       change: { fill: 10, cut: 210, net: -200 },
     },
     {
       id: 'P02',
       name: 'Pile 02',
-      epochs: {
-        e1: { volumes: { tin: { net: 500 }, low: { net: 600 } } },
-        e2: { volumes: { tin: { net: 550 }, low: { net: 640 } } },
-      },
+      zoneRing: [],
+      epochs: { e1: kitEpoch('c1', 500, 600), e2: kitEpoch('c2', 550, 640) },
       change: { fill: 60, cut: 10, net: 50 },
     },
   ],
   totals: { e1: { tin: 1500, low: 1800 }, e2: { tin: 1350, low: 1540 } },
+  pileChange: fc(-150),
   siteChange: { fill: 70, cut: 220, net: -150 },
 };
 
+/** An engine result of a volume measurement's item on a date. */
+const result = (item: string, toCapture: string, netM3: number, extra = {}) => ({
+  item,
+  status: 'ok',
+  cutM3: 0,
+  fillM3: netM3,
+  netM3,
+  totalM3: netM3,
+  areaM2: 100,
+  areaCutM2: 0,
+  areaFillM2: 100,
+  areaUnchangedM2: 0,
+  uncoveredM2: 0,
+  fromLabel: 'Triangulated toe',
+  toLabel: toCapture,
+  toCapture,
+  deadbandM: 0,
+  usedDeadband: false,
+  cellM: 0.5,
+  engine: 'ts',
+  fingerprint: `sha256:${item}-${toCapture}`,
+  computedAt: '2021-01-11T00:00:00Z',
+  ...extra,
+});
+
+/** A saved project's volume measurement: its stored result on the 10 Jan survey, a series row on 31 Dec. */
+const measurements = {
+  schema: 'aio.measurements/1',
+  kitPilesConverted: [],
+  measurements: [
+    {
+      id: 'm-1',
+      family: 'polygon',
+      tool: 'volume',
+      label: 'East pile',
+      scope: { kind: 'site' },
+      points: [
+        [0, 0, 0],
+        [10, 0, 0],
+        [10, 10, 0],
+      ],
+      items: [{ id: 'it', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+      // the stored result stands for its own date: the series row of that date is not the card's
+      results: [result('it', 'c2', 720.25)],
+      series: [result('it', 'c1', 610), result('it', 'c2', 999)],
+      createdAt: '2021-01-11T00:00:00Z',
+    },
+  ],
+};
 function ctx(
   over: Partial<RendererToolContext> = {},
   ws = fixtureWorkspace(),
@@ -71,35 +138,59 @@ function surveyWorkspace() {
 }
 
 describe('compare_captures', () => {
-  it('compares stockpile volumes between two survey dates', async () => {
-    const fetchJson = vi.fn((url: string) =>
-      url.endsWith('/volumes.json') ? Promise.resolve(volumes) : Promise.reject(new Error('404')),
+  /** Project files by path: the kit's figures, a measurements file, or both. */
+  const files =
+    (by: Record<string, unknown>) =>
+    (url: string): Promise<unknown> => {
+      const hit = Object.entries(by).find(([path]) => url.endsWith(`/${path}`));
+      return hit ? Promise.resolve(hit[1]) : Promise.reject(new Error('404'));
+    };
+
+  it('assistant compare_captures returns engine figures, the same as the card', async () => {
+    const fetchJson = vi.fn(
+      files({ 'volumes.json': volumes, 'survey/measurements.json': measurements }),
     );
+    const r = await runRendererTool('compare_captures', {}, ctx({ fetchJson }, surveyWorkspace()));
+    expect(fetchJson).toHaveBeenCalledWith('aio://project/p1/survey/measurements.json');
+    // one figure per pile per date: the stored result for its own date, the series for the other
+    expect(r.result).toMatchObject({
+      kind: 'volumes',
+      unit: 'm3',
+      from: { captureId: 'c1', date: '2020-12-31', total: 610 },
+      to: { captureId: 'c2', date: '2021-01-10', total: 720.3 },
+      total: { from: 610, to: 720.3, change: 110.3, piles: 1, of: 1 },
+      piles: [{ id: 'm-1', name: 'East pile', base: 'smart', from: 610, to: 720.3, change: 110.3 }],
+    });
+    // the kit's figures are not read once the project's piles were converted
+    expect(JSON.stringify(r.result)).not.toContain('P01');
+    expect(r.summary).toBe('+110.3 m³');
+  });
+
+  it("carries an older project's kit figures over, as the app opens them", async () => {
+    const fetchJson = vi.fn(files({ 'volumes.json': volumes }));
     const r = await runRendererTool('compare_captures', {}, ctx({ fetchJson }, surveyWorkspace()));
     expect(fetchJson).toHaveBeenCalledWith('aio://project/p1/volumes.json');
     expect(r.result).toMatchObject({
       kind: 'volumes',
-      base: 'tin',
       from: { captureId: 'c1', date: '2020-12-31' },
       to: { captureId: 'c2', date: '2021-01-10' },
       total: { from: 1500, to: 1350, change: -150 },
-      siteChange: { fill: 70, cut: 220, net: -150 },
       piles: [
-        { id: 'P01', from: 1000, to: 800, change: -200 },
-        { id: 'P02', from: 500, to: 550, change: 50 },
+        { name: 'Pile 01', base: 'kit tin', carried: true, from: 1000, to: 800, change: -200 },
+        { name: 'Pile 02', base: 'kit tin', carried: true, from: 500, to: 550, change: 50 },
       ],
     });
-    expect(r.summary).toBe('-150 m³ (tin)');
+    expect(r.summary).toBe('-150.0 m³');
   });
 
-  it('uses another base and accepts dates for the captures', async () => {
-    const fetchJson = () => Promise.resolve(volumes);
+  it('uses another kit base and accepts dates for the captures', async () => {
+    const fetchJson = files({ 'volumes.json': volumes });
     const r = await runRendererTool(
       'compare_captures',
       { from: '2020-12-31', to: 'Survey 2', base: 'low' },
       ctx({ fetchJson }, surveyWorkspace()),
     );
-    expect(r.result).toMatchObject({ base: 'low', total: { from: 1800, to: 1540, change: -260 } });
+    expect(r.result).toMatchObject({ total: { from: 1800, to: 1540, change: -260 } });
   });
 
   it('falls back to issue counts by date without survey volumes', async () => {

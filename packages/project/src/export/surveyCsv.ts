@@ -27,6 +27,7 @@ export const SURVEY_SECTIONS = [
   'earthworks',
   'stockpiles',
   'landfill',
+  'volume-over-time',
 ] as const satisfies readonly ReportSectionId[];
 
 /**
@@ -230,7 +231,17 @@ export interface SectionReport {
   ref: string;
   label: string;
   lengthM: number;
-  profiles: { label: string; chainage: number[]; z: (number | null)[] }[];
+  /**
+   * Each surface's heights along the line. `kind` styles it as the profile chart does (the
+   * current survey, an earlier one, a design); `date` orders the earlier ones by age.
+   */
+  profiles: {
+    label: string;
+    chainage: number[];
+    z: (number | null)[];
+    kind?: 'current' | 'earlier' | 'design' | 'base';
+    date?: string;
+  }[];
 }
 
 export interface LiftReport {

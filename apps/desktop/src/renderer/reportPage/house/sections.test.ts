@@ -7,7 +7,7 @@ import {
 } from '@aio/project/export';
 import { ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { isFlat, locatorMap, niceStep, pileMap } from './charts';
+import { isFlat, locatorMap, niceStep } from './charts';
 import {
   auditFooter,
   coverHtml,
@@ -169,26 +169,6 @@ describe('charts and text', () => {
     expect((svg.match(/<circle/g) ?? []).length).toBe(3);
     // dark, like every map in the app
     expect(svg).toContain('class="map loc"');
-  });
-
-  it('draws stockpile toe lines with their names', () => {
-    const svg = pileMap(
-      [
-        {
-          name: 'Pile 01',
-          outline: [
-            [0, 0],
-            [10, 0],
-            [10, 10],
-          ],
-        },
-        { name: 'Pile 02', outline: null },
-      ],
-      'Piles',
-    );
-    expect((svg.match(/class="pile"/g) ?? []).length).toBe(1);
-    expect(svg).toContain('>01<');
-    expect(pileMap([{ name: 'x', outline: null }], 'Piles')).toBe('');
   });
 
   it('marks template prompts and formats heights', () => {

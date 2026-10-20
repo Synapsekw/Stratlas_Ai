@@ -1,4 +1,4 @@
-import { ProjectManifest, type RoadModel, type VolumesFile } from '@aio/schema';
+import { ProjectManifest, type RoadModel } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { sampleIssues, sampleManifest } from './fixtures';
 import {
@@ -8,6 +8,7 @@ import {
   issueAction,
   narrativeFacts,
   pciRating,
+  type HouseVolumes,
 } from './house';
 import { resolveReportBranding } from './report';
 
@@ -150,81 +151,34 @@ describe('houseReportModel', () => {
     expect(issueAction(m, map)).toBe('Monitor');
   });
 
-  it('summarises stockpile volumes on the default base, with hand corrections', () => {
-    const fc = (net: number) => ({ fill: net, cut: 0, net });
-    const vols = (n: number) => ({ tin: fc(n), plane: fc(n + 1), avg: fc(n + 2), low: fc(n + 3) });
-    const epoch = (net: number) => ({
-      captureId: 'c1',
-      areaM2: 100,
-      topM: 10,
-      heightM: 5,
-      ring: [],
-      volumes: vols(net),
-    });
-    const volumes: VolumesFile = {
-      schema: 'aio.volumes/1',
-      densityTPerM3: 1.6,
-      deadbandM: 0.05,
-      defaultBase: 'tin',
-      bases: [{ id: 'tin', label: 'Triangulated toe' }],
-      captures: [
-        { epoch: 'e1', captureId: 'c1', date: '2026-01-01', label: 'Jan' },
-        { epoch: 'e2', captureId: 'c2', date: '2026-02-01', label: 'Feb' },
+  it('summarises the site inventory the caller worked out from engine results', () => {
+    const volumes: HouseVolumes = {
+      base: 'Triangulated toe',
+      piles: 2,
+      dates: [
+        { label: 'Jan', date: '2026-01-01', totalM3: 150.4 },
+        { label: 'Feb', date: '2026-02-01', totalM3: 160.2 },
       ],
-      piles: [
-        {
-          id: 'P2',
-          name: 'Pile 2',
-          zoneRing: [],
-          change: fc(-10),
-          epochs: { e1: epoch(100) },
-        },
-        {
-          id: 'P1',
-          name: 'Pile 1',
-          zoneRing: [],
-          change: fc(5),
-          epochs: { e1: epoch(50), e2: epoch(55) },
-        },
-      ],
-      totals: {},
-      pileChange: fc(-5),
-      siteChange: fc(-7),
+      changeM3: 9.8,
+      text: { date: '2026-02-01', total: '160.2 m³', change: '9.8 m³', since: '2026-01-01' },
     };
-    const h = houseReportModel({
-      manifest: sampleManifest(),
-      issues: [],
-      branding,
-      now,
-      volumes,
-      edits: {
-        schema: 'aio.boundaries/1',
-        edits: [
-          {
-            pile: 'P1',
-            epoch: 'e2',
-            ring: [
-              [0, 0],
-              [1, 0],
-              [1, 1],
-            ],
-            volumes: vols(60),
-            areaM2: 120,
-            topM: 10,
-            heightM: 6,
-            autoNet: 55,
-            updatedAt: '2026-02-02T00:00:00Z',
-          },
-        ],
-      },
-    });
+    const h = houseReportModel({ manifest: sampleManifest(), issues: [], branding, now, volumes });
     expect(h.kind).toBe('volumetric');
-    expect(h.volumes?.piles.map((p) => [p.name, p.net, p.edited])).toEqual([
-      ['Pile 1', [50, 60], true],
-      ['Pile 2', [100, null], false],
-    ]);
-    expect(h.volumes?.totals).toEqual([150, 60]);
-    expect(narrativeFacts(h).volumes?.totalsM3).toEqual([150, 60]);
+    expect(h.volumes).toBe(volumes);
+    expect(narrativeFacts(h).volumes).toEqual({
+      base: 'Triangulated toe',
+      captures: ['2026-01-01', '2026-02-01'],
+      piles: 2,
+      totalsM3: [150, 160],
+      changeM3: 10,
+      total: '160.2 m³',
+      change: '9.8 m³',
+      since: '2026-01-01',
+      date: '2026-02-01',
+    });
+    const none = houseReportModel({ manifest: sampleManifest(), issues: [], branding, now });
+    expect(none.volumes).toBeNull();
+    expect(narrativeFacts(none).volumes).toBeNull();
   });
 
   it('rates road sample units under the headline severity', () => {

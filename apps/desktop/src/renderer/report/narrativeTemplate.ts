@@ -72,7 +72,6 @@ export function templateNarrative(
   const worst = i.worst.map((w) => `${w.code} (${w.title.toLowerCase()})`);
   const v = f.volumes;
   const r = f.road;
-  const lastVol = v?.totalsM3.at(-1);
   const data = dataLine(f.data);
 
   const summary = [
@@ -87,14 +86,23 @@ export function templateNarrative(
           ? t('narr.summary.noIssues')
           : null,
       worst.length > 0 && t('narr.summary.worst', { list: listOf(worst.slice(0, 3)) }),
+      // the site inventory's latest total, already in the site's units (the Volumes view's)
       v &&
-        lastVol !== undefined &&
-        t('narr.summary.volumes', {
-          total: num(lastVol),
-          base: v.base.toLowerCase(),
-          date: longDate(v.captures.at(-1) ?? ''),
-          change: num(v.pileChangeM3),
-        }),
+        v.date !== '' &&
+        v.total !== '-' &&
+        (v.change !== null && v.since !== null
+          ? t('narr.summary.volumes', {
+              total: v.total,
+              base: v.base,
+              date: longDate(v.date),
+              change: v.change,
+              since: longDate(v.since),
+            })
+          : t('narr.summary.volumesOne', {
+              total: v.total,
+              base: v.base,
+              date: longDate(v.date),
+            })),
       r?.networkPci != null &&
         t('narr.summary.road', { pci: num1(r.networkPci), rating: r.rating, km: num1(r.lengthKm) }),
     ),

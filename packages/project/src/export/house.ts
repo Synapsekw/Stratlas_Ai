@@ -2,7 +2,6 @@
 // type, ready to lay out. Pure and renderer safe; wording lives in the report page (i18n).
 import {
   reportSectionOn,
-  type BoundaryEditsFile,
   type Issue,
   type IssuePagesRule,
   type Layer,
@@ -10,15 +9,8 @@ import {
   type ReportContentsSettings,
   type ReportSectionId,
   type RoadModel,
-  type VolumesFile,
 } from '@aio/schema';
-import {
-  compareCodes,
-  issueLocation,
-  noDashes,
-  severityModelOf,
-  type ExportContext,
-} from './facts';
+import { issueLocation, noDashes, severityModelOf, type ExportContext } from './facts';
 import type { ProcessingSummary } from './processing';
 import { RUN_SECTIONS, SURVEY_SECTIONS } from './surveyCsv';
 import { reportModel, type ReportBranding, type ReportModel, type ReportRow } from './report';
@@ -28,8 +20,11 @@ export type HouseKind = 'inspection' | 'volumetric' | 'road' | 'fusion';
 export interface HouseInput extends ExportContext {
   branding: ReportBranding;
   contents?: ReportContentsSettings | undefined;
-  volumes?: VolumesFile | null | undefined;
-  edits?: BoundaryEditsFile | null | undefined;
+  /**
+   * The site inventory of the volume measurements, from their engine results by the Volumes
+   * view's rule (the caller works it out: `@aio/survey` `inventorySeries`); null without any.
+   */
+  volumes?: HouseVolumes | null | undefined;
   road?: RoadModel | null | undefined;
   now?: Date;
   /** M9: the audit head and the change log per issue, from the project journal. */
@@ -89,33 +84,59 @@ export interface ScaleRow {
   uncertain: { label: string; color: string } | null;
 }
 
-export interface VolumeRow {
-  id: string;
-  name: string;
-  material: string;
-  /** Net volume on the default base per capture (survey order), m³; null when absent. */
-  net: (number | null)[];
-  /** Footprint and height on the last date the pile exists. */
-  areaM2: number | null;
-  heightM: number | null;
-  /** Surface to surface change, first to last date, m³. */
-  change: number;
-  /** A toe line on some date was corrected by hand. */
-  edited: boolean;
-  /** Toe line on the last date the pile exists, `[x, z]` local metres; null without one. */
-  outline: [number, number][] | null;
+/**
+ * The site inventory a report summarises (volumetric parity W4): the volume measurements' engine
+ * results, a total per survey date of the current figures only (the rest named, never added).
+ */
+export interface HouseVolumes {
+  /** The piles' bases by their standard names ("Triangulated toe"), joined when they differ. */
+  base: string;
+  /** Volume measurements in the inventory. */
+  piles: number;
+  /** The survey dates with counted piles, oldest first, and their totals, m³. */
+  dates: { label: string; date: string; totalM3: number }[];
+  /** The latest total's change since the date before with counted piles, over the piles on both. */
+  changeM3: number | null;
+  /** The latest date, its total, the change and the date that is since, in the site's units. */
+  text: { date: string; total: string; change: string | null; since: string | null };
 }
 
-export interface VolumeSummary {
-  baseLabel: string;
-  densityTPerM3: number;
-  captures: { label: string; date: string }[];
-  piles: VolumeRow[];
-  /** Sum of the pile volumes per capture, m³. */
-  totals: number[];
-  /** Pile change first to last date. */
-  pileChange: { fill: number; cut: number; net: number };
-  siteChange: { fill: number; cut: number; net: number };
+/** A survey date's row of the site inventory (`@aio/survey` `StackRow`, the fields read here). */
+export interface InventoryDate {
+  date: string;
+  label: string;
+  totalM3: number;
+  parts: readonly unknown[];
+  change?: { m3: number } | null;
+}
+
+/**
+ * The house model's inventory from the Volumes view's rows (`inventorySeries`): the latest date's
+ * total (current figures only) and its change since the date before with counted piles. `bases`
+ * are the piles' base names; `volume` formats a volume in the site's units.
+ */
+export function houseVolumesOf(
+  rows: readonly InventoryDate[],
+  bases: readonly string[],
+  volume: (m3: number) => string,
+): HouseVolumes | null {
+  if (bases.length === 0) return null;
+  const cur = rows.at(-1);
+  const prev = cur?.change ? rows.slice(0, -1).findLast((r) => r.parts.length > 0) : undefined;
+  return {
+    base: [...new Set(bases.filter((b) => b !== ''))].join(', '),
+    piles: bases.length,
+    dates: rows
+      .filter((r) => r.parts.length > 0)
+      .map((r) => ({ label: r.label, date: r.date, totalM3: r.totalM3 })),
+    changeM3: cur?.change?.m3 ?? null,
+    text: {
+      date: cur?.date ?? '',
+      total: cur && cur.parts.length > 0 ? volume(cur.totalM3) : '-',
+      change: cur?.change ? volume(cur.change.m3) : null,
+      since: prev?.date ?? null,
+    },
+  };
 }
 
 export interface RoadSummary {
@@ -170,7 +191,7 @@ export interface HouseModel {
   placed: number;
   withPhoto: number;
   scale: ScaleRow[];
-  volumes: VolumeSummary | null;
+  volumes: HouseVolumes | null;
   road: RoadSummary | null;
   /** Issue positions for the findings map (local frame). */
   plan: PlanPoint[];
@@ -331,54 +352,6 @@ export function issueAction(m: ProjectManifest, issue: Issue): string {
   return noDashes(level?.action ?? level?.criteria ?? '');
 }
 
-function volumeSummary(v: VolumesFile, edits: BoundaryEditsFile | null): VolumeSummary {
-  const base = v.defaultBase;
-  const edited = new Map((edits?.edits ?? []).map((e) => [`${e.pile}/${e.epoch}`, e]));
-  const piles: VolumeRow[] = v.piles.map((p) => {
-    let areaM2: number | null = null;
-    let heightM: number | null = null;
-    let anyEdit = false;
-    let outline: [number, number][] | null = null;
-    const net = v.captures.map((c) => {
-      const e = p.epochs[c.epoch];
-      const fix = edited.get(`${p.id}/${c.epoch}`);
-      if (fix) {
-        anyEdit = true;
-        areaM2 = fix.areaM2;
-        outline = fix.ring.map(([x, z]) => [x, z]);
-        heightM = fix.heightM;
-        return fix.volumes[base].net;
-      }
-      if (!e) return null;
-      areaM2 = e.areaM2;
-      outline = e.ring.length >= 3 ? e.ring.map(([x, z]) => [x, z]) : outline;
-      heightM = e.heightM;
-      return e.volumes[base].net;
-    });
-    return {
-      id: p.id,
-      name: noDashes(p.name),
-      material: noDashes(p.material ?? ''),
-      net,
-      areaM2,
-      heightM,
-      change: p.change.net,
-      edited: anyEdit,
-      outline,
-    };
-  });
-  const totals = v.captures.map((_, i) => piles.reduce((sum, p) => sum + (p.net[i] ?? 0), 0));
-  return {
-    baseLabel: noDashes(v.bases.find((b) => b.id === base)?.label ?? base),
-    densityTPerM3: v.densityTPerM3,
-    captures: v.captures.map((c) => ({ label: noDashes(c.label), date: c.date })),
-    piles: piles.sort((a, b) => compareCodes(a.name, b.name)),
-    totals,
-    pileChange: v.pileChange,
-    siteChange: v.siteChange,
-  };
-}
-
 /** The rating class a PCI value falls in (ratings are highest `min` first). */
 export function pciRating(
   ratings: RoadModel['pci']['ratings'],
@@ -514,7 +487,7 @@ export function houseReportModel(input: HouseInput): HouseModel {
     placed: base.rows.filter((r) => r.position !== null || r.coords !== '').length,
     withPhoto: base.rows.filter((r) => r.photo?.src).length,
     scale: scaleRows(m, input.issues),
-    volumes: input.volumes ? volumeSummary(input.volumes, input.edits ?? null) : null,
+    volumes: input.volumes ?? null,
     road: input.road ? roadSummary(input.road) : null,
     plan,
     audit: input.audit ?? null,
@@ -549,10 +522,17 @@ export interface NarrativeFacts {
   severityScale: { label: string; criteria: string; action: string }[];
   volumes: {
     base: string;
+    /** The survey dates with counted piles, and their totals (current figures only), m³. */
     captures: string[];
     piles: number;
     totalsM3: number[];
-    pileChangeM3: number;
+    /** The latest total's change since the date before with counted piles, m³. */
+    changeM3: number | null;
+    /** The latest total, its change and the date it is since, in the site's units. */
+    total: string;
+    change: string | null;
+    since: string | null;
+    date: string;
   } | null;
   road: {
     lengthKm: number;
@@ -595,11 +575,15 @@ export function narrativeFacts(h: HouseModel): NarrativeFacts {
     ),
     volumes: h.volumes
       ? {
-          base: h.volumes.baseLabel,
-          captures: h.volumes.captures.map((c) => c.date),
-          piles: h.volumes.piles.length,
-          totalsM3: h.volumes.totals.map((t) => round(t, 0)),
-          pileChangeM3: round(h.volumes.pileChange.net, 0),
+          base: h.volumes.base,
+          captures: h.volumes.dates.map((c) => c.date),
+          piles: h.volumes.piles,
+          totalsM3: h.volumes.dates.map((d) => round(d.totalM3, 0)),
+          changeM3: h.volumes.changeM3 === null ? null : round(h.volumes.changeM3, 0),
+          total: h.volumes.text.total,
+          change: h.volumes.text.change,
+          since: h.volumes.text.since,
+          date: h.volumes.text.date,
         }
       : null,
     road: road

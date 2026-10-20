@@ -21,7 +21,6 @@ import {
 } from '@aio/project/export';
 import {
   AccuracyReport,
-  BoundaryEditsFile,
   currentNarrative,
   Issue,
   NarrativeFile,
@@ -32,7 +31,6 @@ import {
   photoRunDir,
   PhotoRunId,
   ReportContentsSettings,
-  VolumesFile,
   type NarrativeSectionId,
   type Issue as IssueT,
   type ProjectManifest,
@@ -71,6 +69,7 @@ import {
 } from './sections';
 import { layoutApprovals, parseSignOff } from '../../team/houseApprovals';
 import { readSiteRuns, runSectionIds, type SiteRuns } from './runs';
+import { houseVolumes } from './survey';
 import { buildSurveyData, readSurveyFiles, surveySectionIds, type SurveyFiles } from './surveyData';
 
 interface PageState {
@@ -159,10 +158,8 @@ async function run(): Promise<void> {
     .parse(await json(assetUrl(projectId, { path: 'issues.json' })));
   const wanted = ids ? new Set(ids.split(',')) : null;
   const issues = wanted ? file.issues.filter((i) => wanted.has(i.id)) : file.issues;
-  const [narrativeRaw, volumesRaw, editsRaw, roadRaw] = await Promise.all([
+  const [narrativeRaw, roadRaw] = await Promise.all([
     optional(projectId, 'report/narrative.json'),
-    optional(projectId, 'volumes.json'),
-    optional(projectId, 'edits/boundaries.json'),
     optional(projectId, 'road.json'),
   ]);
   const narrative = parsed(NarrativeFile, narrativeRaw, 'report/narrative.json');
@@ -278,6 +275,15 @@ async function run(): Promise<void> {
         ]),
       ),
     };
+  // the survey data: its sections, and the site inventory the summary and statistics print (the
+  // volume measurements' engine results; an old project's kit piles carried over in memory)
+  const survey =
+    surveyFiles && !only
+      ? await buildSurveyData(surveyFiles, read.bytes, {
+          need: 'report',
+          progress: progress('Computing the survey volumes'),
+        })
+      : null;
   const h: HouseModel = houseReportModel({
     manifest,
     issues,
@@ -285,8 +291,7 @@ async function run(): Promise<void> {
     shiftOf: (layerId) => dateShiftOf(manifest, layerId),
     branding,
     contents,
-    volumes: parsed(VolumesFile, volumesRaw, 'volumes.json'),
-    edits: parsed(BoundaryEditsFile, editsRaw, 'edits/boundaries.json'),
+    volumes: houseVolumes(survey),
     road: road?.ok ? road.value : null,
     audit,
     processing,
@@ -336,13 +341,6 @@ async function run(): Promise<void> {
       return null;
     }
   };
-  const survey =
-    surveyFiles && h.sections.some((id) => (SURVEY_SECTIONS as readonly string[]).includes(id))
-      ? await buildSurveyData(surveyFiles, read.bytes, {
-          need: 'report',
-          progress: progress('Computing the survey volumes'),
-        })
-      : null;
   const overview: string[] = [];
   if (snap && h.sections.includes('site')) {
     for (const [az, el] of [

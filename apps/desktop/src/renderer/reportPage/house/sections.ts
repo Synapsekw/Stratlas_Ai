@@ -5,16 +5,26 @@ import {
   type HouseModel,
   type ReportBranding,
   type ReportRow,
-  type SurveyReportData,
 } from '@aio/project/export';
 import type { NarrativeSectionId, ReportSectionId } from '@aio/schema';
 import { t } from '@aio/ui';
 import { listOf, longDate, num, num1 } from '../../report/narrativeTemplate';
 import { barChart, esc, logoUrl } from '../layout';
-import { isFlat, pileMap, planMap, sideView } from './charts';
+import { isFlat, planMap, sideView } from './charts';
 import type { Pager } from './pager';
 import { layoutHaul, layoutHydrology, type SiteRuns } from './runs';
-import { layoutEarthworks, layoutLandfill, layoutMeasurements, layoutStockpiles } from './survey';
+import {
+  formats,
+  inventoryBlock,
+  latestInventory,
+  layoutEarthworks,
+  layoutLandfill,
+  layoutMeasurements,
+  layoutStockpiles,
+  layoutVolumeOverTime,
+  pilePlan,
+} from './survey';
+import type { ReportSurveyData } from './surveyData';
 
 type Key = Parameters<typeof t>[0];
 const tk = (key: string, vars?: Record<string, string | number>) => t(key as Key, vars);
@@ -49,7 +59,7 @@ export interface HouseContext {
   /** A report of one section (the run's accuracy report PDF): its name in the frame and cover. */
   only?: { kicker: string };
   /** M11: the survey sections' data (`surveyData.ts`), when any of them prints. */
-  survey?: SurveyReportData | null;
+  survey?: ReportSurveyData | null;
   /** M11: the haul-road and hydrology runs the `haul` and `hydrology` sections print (`runs.ts`). */
   runs?: SiteRuns | null;
 }
@@ -241,10 +251,11 @@ export function layoutSummary(p: Pager, ctx: HouseContext, n: string): void {
     if (s.count > 0) items.push({ value: num(s.count), label: s.label, color: s.color });
   if (h.uncertain.length > 0)
     items.push({ value: num(h.uncertain.length), label: tk('house.kpi.uncertain') });
-  if (h.volumes) {
-    const last = h.volumes.totals.at(-1) ?? 0;
-    items.push({ value: num(last), label: tk('house.kpi.volume') });
-    items.push({ value: num(h.volumes.pileChange.net), label: tk('house.kpi.change') });
+  if (h.volumes && h.volumes.dates.length > 0) {
+    // the latest total and its change, in the site's units (the Volumes view's figures)
+    items.push({ value: h.volumes.text.total, label: tk('house.kpi.volume') });
+    if (h.volumes.text.change !== null)
+      items.push({ value: h.volumes.text.change, label: tk('house.kpi.change') });
   }
   if (h.road) {
     if (h.road.networkPci !== null)
@@ -277,25 +288,39 @@ export function layoutSummary(p: Pager, ctx: HouseContext, n: string): void {
   } else if (h.kind === 'inspection') {
     p.add(el(`<p class="empty">${txt(tk('house.noIssues'))}</p>`));
   }
-  const v = h.volumes;
-  if (v && v.piles.length > 0) {
-    const last = v.captures.length - 1;
-    const largest = [...v.piles]
-      .filter((x) => x.net[last] !== null && x.net[last] !== undefined)
-      .sort((a, b) => (b.net[last] ?? 0) - (a.net[last] ?? 0))
-      .slice(0, 8);
-    subheading(p, tk('house.volumes.largest'));
-    p.table(
-      tableMaker('grid num', [
-        tk('house.col.pile'),
-        `${longDate(v.captures[last]?.date ?? '')}, m³`,
-        tk('house.col.changeM3'),
-      ]),
-      largest.map((x) =>
-        row([`<b>${txt(x.name)}</b>`, num(x.net[last] ?? 0), num(x.change)], 'num'),
-      ),
-    );
-  }
+  largestPiles(p, ctx);
+}
+
+/** The largest piles on the latest survey date: their current figures and change since. */
+function largestPiles(p: Pager, ctx: HouseContext): void {
+  const data = ctx.survey;
+  if (!data || data.volumes.piles.length === 0) return;
+  const { cur, prev } = latestInventory(data);
+  if (!cur || cur.parts.length === 0) return;
+  const f = formats(data.basis);
+  const byId = new Map(data.volumes.piles.map((x) => [x.id, x]));
+  const before = new Map((prev?.parts ?? []).map((x) => [x.id, x.valueM3]));
+  const largest = [...cur.parts].sort((a, b) => b.valueM3 - a.valueM3).slice(0, 8);
+  subheading(p, tk('house.volumes.largest'));
+  p.table(
+    tableMaker('grid num', [
+      tk('house.col.pile'),
+      tk('house.survey.col.volumeOn', { date: longDate(cur.date) }),
+      tk('house.survey.col.change'),
+    ]),
+    largest.map((x) => {
+      const pile = byId.get(x.id);
+      const was = before.get(x.id);
+      return row(
+        [
+          `<b>${txt(pile ? `${pile.ref} ${pile.label}` : x.id)}</b>`,
+          esc(f.volume(x.valueM3)),
+          was === undefined ? '' : esc(f.volume(x.valueM3 - was)),
+        ],
+        'num',
+      );
+    }),
+  );
 }
 
 /* ------------------------------------------------------------------------------------ scope */
@@ -391,7 +416,7 @@ export function layoutSite(p: Pager, ctx: HouseContext, n: string): void {
       ),
     );
   }
-  const piles = h.volumes ? pileMap(h.volumes.piles, tk('house.pileMap')) : '';
+  const piles = pilePlan(ctx.survey, tk('house.pileMap'));
   if (piles) {
     subheading(p, tk('house.pileMap'));
     p.add(el(`<figure class="chartfig">${piles}</figure>`));
@@ -500,92 +525,17 @@ export function layoutStatistics(p: Pager, ctx: HouseContext, n: string): void {
   } else if (!h.volumes && !h.road) {
     p.add(el(`<p class="empty">${txt(tk('house.noIssues'))}</p>`));
   }
-  if (h.volumes) layoutVolumes(p, h);
+  if (h.volumes) layoutVolumes(p, ctx);
   if (h.road) layoutRoad(p, h);
 }
 
-function layoutVolumes(p: Pager, h: HouseModel): void {
-  const v = h.volumes;
-  if (!v) return;
+/** The site inventory over time (the volume measurements' engine results, the Volumes view's rule). */
+function layoutVolumes(p: Pager, ctx: HouseContext): void {
+  const data = ctx.survey;
+  if (!data || data.volumes.inventory.length === 0) return;
   subheading(p, tk('house.volumes'));
-  p.add(
-    el(
-      `<p class="caption">${txt(tk('house.volumes.intro', { base: v.baseLabel.toLowerCase(), density: num1(v.densityTPerM3) }))}</p>`,
-    ),
-  );
-  p.add(
-    el(
-      `<figure class="chartfig">${barChart(
-        v.captures.map((c, i) => ({
-          label: longDate(c.date),
-          color: 'var(--acc)',
-          count: Math.round(v.totals[i] ?? 0),
-        })),
-        FULL,
-      )}</figure>`,
-    ),
-  );
-  const head = [
-    tk('house.col.pile'),
-    tk('house.col.material'),
-    ...v.captures.map((c) => longDate(c.date)),
-    tk('house.col.area'),
-    tk('house.col.height'),
-    tk('house.col.changeM3'),
-  ];
-  const rows = v.piles.map((pile) =>
-    row(
-      [
-        `<b>${txt(pile.name)}</b>${pile.edited ? ' *' : ''}`,
-        txt(pile.material),
-        ...pile.net.map((x) => (x === null ? '' : num(x))),
-        pile.areaM2 === null ? '' : num(pile.areaM2),
-        pile.heightM === null ? '' : num1(pile.heightM),
-        num(pile.change),
-      ],
-      'num',
-    ),
-  );
-  rows.push(
-    row(
-      [
-        `<b>${txt(tk('house.volumes.total'))}</b>`,
-        '',
-        ...v.totals.map((x) => `<b>${num(x)}</b>`),
-        '',
-        '',
-        `<b>${num(v.pileChange.net)}</b>`,
-      ],
-      'num total',
-    ),
-  );
-  p.table(tableMaker('grid num', head), rows);
-  if (v.piles.some((x) => x.edited))
-    p.add(el(`<p class="caption">* ${txt(tk('house.volumes.edited'))}</p>`));
-  subheading(p, tk('house.volumes.change'));
-  p.table(
-    tableMaker('grid num', ['', tk('house.col.fill'), tk('house.col.cut'), tk('house.col.net')]),
-    [
-      row(
-        [
-          txt(tk('house.volumes.piles')),
-          num(v.pileChange.fill),
-          num(v.pileChange.cut),
-          num(v.pileChange.net),
-        ],
-        'num',
-      ),
-      row(
-        [
-          txt(tk('house.volumes.site')),
-          num(v.siteChange.fill),
-          num(v.siteChange.cut),
-          num(v.siteChange.net),
-        ],
-        'num',
-      ),
-    ],
-  );
+  p.add(el(`<p class="caption">${txt(tk('house.volumes.intro'))}</p>`));
+  inventoryBlock(p, data);
 }
 
 function layoutRoad(p: Pager, h: HouseModel): void {
@@ -1016,6 +966,7 @@ export const SECTION_LAYOUTS: Partial<
   earthworks: layoutEarthworks,
   stockpiles: layoutStockpiles,
   landfill: layoutLandfill,
+  'volume-over-time': layoutVolumeOverTime,
   haul: layoutHaul,
   hydrology: layoutHydrology,
 };

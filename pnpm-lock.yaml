@@ -239,6 +239,9 @@ importers:
       '@aio/schema':
         specifier: workspace:*
         version: link:../schema
+      '@aio/survey':
+        specifier: workspace:*
+        version: link:../survey
       '@aio/workspace':
         specifier: workspace:*
         version: link:../workspace

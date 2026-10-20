@@ -873,20 +873,71 @@ svg.overlap {
 .map .svp {
   fill: var(--acc-ink);
 }
-svg.svsec {
-  display: block;
+/* The app's charts and measurement cards (charts.css, timeChart.css, card.css), printed: the
+   foundation tokens they read, at their light-theme values (packages/ui/src/tokens.css) resolved
+   for white paper. The current survey takes the report's accent (--acc), as it does in the app. */
+.pg {
+  --bg-0: oklch(0.93 0.006 250);
+  --bg-1: oklch(1 0 0);
+  --bg-2: oklch(0.95 0.005 250);
+  --bg-3: oklch(0.91 0.007 250);
+  --line: oklch(0.86 0.008 250);
+  --line-soft: oklch(0.9 0.006 250);
+  --line-strong: oklch(0.76 0.01 250);
+  --fg-0: oklch(0.2 0.012 250);
+  --fg-1: oklch(0.34 0.012 250);
+  --fg-2: oklch(0.42 0.012 250);
+  --fg-3: oklch(0.49 0.01 250);
+  --fg-4: oklch(0.68 0.008 250);
+  --chart-current: var(--acc);
+  --chart-earlier: oklch(0.5 0.012 250);
+  --chart-design: oklch(0.5 0.15 320);
+  --chart-base: oklch(0.55 0.01 250);
+  --chart-grid: oklch(0.5 0.01 250 / 0.2);
+  --chart-crosshair: oklch(0.3 0.012 250 / 0.7);
+  --cut: oklch(0.5 0.17 28);
+  --fill: oklch(0.5 0.12 245);
+  --cut-a: oklch(0.5 0.17 28 / 0.2);
+  --fill-a: oklch(0.5 0.12 245 / 0.2);
+  --t-11: 11px;
+  --t-12: 12px;
+  --t-13: 13px;
+  --t-14: 14px;
+  --t-20: 20px;
+  --r-2: 2px;
+  --r-4: 4px;
+  --r-6: 6px;
+  --r-pill: 999px;
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 6px;
+  --sp-4: 8px;
+  --sp-5: 12px;
+  --d-1: 0ms;
+  --ease: linear;
+  --fw-title: 600;
+}
+/* a printed chart: the full body width, no hover parts, kept on one page */
+.chartfig.svc {
+  break-inside: avoid;
+}
+.chartfig.svc .pc {
+  width: 100%;
+}
+.chartfig.svc .pc-plot {
+  height: auto;
+}
+.sv-card {
+  margin: 0 0 3mm;
+  break-inside: avoid;
+}
+.sv-card .mc {
   border: 0.3mm solid var(--rule);
-  background: #ffffff;
-}
-svg.svsec text {
-  font-size: 8px;
-  fill: var(--ink-2);
-  font-family: var(--f-ui);
-}
-svg.svsec .axl {
-  stroke: var(--rule);
+  background: var(--paper);
 }
 .grid.sv-vol td:nth-child(n + 4):nth-child(-n + 7),
+.grid.sv-time td:nth-child(n + 2):nth-child(-n + 4),
+.grid.sv-inv td:nth-child(n + 2):nth-child(-n + 3),
 .grid.sv-piles td:nth-child(n + 4),
 .grid.sv-ew td:nth-child(n + 4),
 .grid.sv-mat td:nth-child(n + 2),

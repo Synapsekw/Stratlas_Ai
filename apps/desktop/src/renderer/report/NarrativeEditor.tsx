@@ -5,10 +5,13 @@ import { narrativeRequest, parseNarrativeReply, type NarrativeRequest } from '@a
 import { PROVIDER_LABELS } from '@aio/ai/routes';
 import {
   houseReportModel,
+  houseVolumesOf,
   narrativeFacts,
   resolveReportBranding,
   type NarrativeFacts,
 } from '@aio/project/export';
+import { formatQuantity, localeOf } from '@aio/geo';
+import { inventoryPiles } from '@aio/survey';
 import {
   NARRATIVE_SECTIONS,
   parseRoadModel,
@@ -23,7 +26,10 @@ import { assetUrl, dateShiftOf, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
 import { reportIfChangedOnDisk, useDiskChanged } from '../diskChanged';
+import { standardBaseName } from '../reportPage/house/surveyData';
 import { bridge } from '../shell';
+import { useMeasure } from '../survey/measureStore';
+import { useInventory } from '../survey/useInventory';
 import {
   changedParts,
   editorTexts,
@@ -60,18 +66,16 @@ const when = (iso: string) =>
     minute: '2-digit',
   });
 
-/** Volumes and road model of the open project, for the statistics the text is written from. */
+/** The road model of the open project, for the statistics the text is written from. */
 function useExtras(projectId: string | null) {
   const [extras, setExtras] = useState<{
     key: string;
-    volumes: IpcResponse<'project:readVolumes'> | null;
     road: RoadModel | null;
   } | null>(null);
   useEffect(() => {
     if (!projectId) return;
     const alive = { current: true };
     void (async () => {
-      const v = await bridge.call('project:readVolumes', { projectId });
       let road: RoadModel | null = null;
       try {
         const r = await fetch(assetUrl(projectId, { path: 'road.json' }));
@@ -82,7 +86,7 @@ function useExtras(projectId: string | null) {
       } catch {
         road = null;
       }
-      if (alive.current) setExtras({ key: projectId, volumes: v.ok ? v.value : null, road });
+      if (alive.current) setExtras({ key: projectId, road });
     })();
     return () => {
       alive.current = false;
@@ -174,6 +178,21 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
   const issues = useWorkspace((s) => s.issues);
   const projectId = project?.id ?? null;
   const extras = useExtras(projectId);
+  // the site inventory: the volume measurements' engine results by the Volumes view's rule, in
+  // the site's units (the report's summary prints the same)
+  const measurements = useMeasure((s) => s.file.measurements);
+  const settings = useMeasure((s) => s.settings);
+  const piles = useMemo(() => inventoryPiles(measurements), [measurements]);
+  const stack = useInventory(piles);
+  const volumes = useMemo(() => {
+    const units = settings.units;
+    const locale = settings.locale ?? localeOf(units.distance);
+    return houseVolumesOf(
+      stack,
+      piles.map((m) => (m.items[0] ? standardBaseName(m.items[0].from) : '')),
+      (x) => formatQuantity(x, 'volume', units, settings.precision, locale),
+    );
+  }, [stack, piles, settings]);
   const [file, setFile] = useState<NarrativeFile | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [loaded, setLoaded] = useState<string | null>(null);
@@ -194,12 +213,11 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
         issues,
         shiftOf: (layerId) => dateShiftOf(project.manifest, layerId),
         branding: resolveReportBranding(undefined, brand.productName),
-        volumes: extras.volumes?.ok ? extras.volumes.volumes : null,
-        edits: extras.volumes?.ok ? extras.volumes.edits : null,
+        volumes,
         road: extras.road,
       }),
     );
-  }, [project, issues, extras]);
+  }, [project, issues, extras, volumes]);
 
   useEffect(() => {
     if (!projectId || !facts || loaded === loadKey) return;

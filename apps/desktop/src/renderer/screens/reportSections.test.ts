@@ -3,7 +3,15 @@ import { defaultSurveySettings } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { offeredSections, sectionsWithData } from './reportSections';
 
-const DATA_SECTIONS = ['measurements', 'earthworks', 'stockpiles', 'landfill', 'haul', 'hydrology'];
+const DATA_SECTIONS = [
+  'measurements',
+  'earthworks',
+  'stockpiles',
+  'landfill',
+  'volume-over-time',
+  'haul',
+  'hydrology',
+];
 
 describe('report sections offered on the Reports screen', () => {
   it('leaves out the survey and run sections a project has no data for', () => {

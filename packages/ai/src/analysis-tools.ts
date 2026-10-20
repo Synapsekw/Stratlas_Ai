@@ -3,9 +3,23 @@
  * zone and class, export issues and show sites on the Globe. Read tools only look at the
  * workspace and project files; export_issues writes a file (approval first).
  */
-import type { GlobeSite, Issue } from '@aio/schema';
+import { formatQuantity, localeOf } from '@aio/geo';
+import {
+  BoundaryEditsFile,
+  defaultSurveySettings,
+  MEASUREMENTS_FILE,
+  MeasurementsFile,
+  SURVEY_SETTINGS_FILE,
+  SurveySettings,
+  VolumesFile,
+  type ComparisonResult,
+  type GlobeSite,
+  type Issue,
+  type SurveyMeasurement,
+  type VolumeBaseId,
+} from '@aio/schema';
+import { convertKitPiles, inventoryPiles, inventorySeries, pileSeries } from '@aio/survey';
 import { assetUrl, dateShiftOf } from '@aio/workspace';
-import { z } from 'zod';
 import { changeSetsOf, changeSummary, verdictLine } from './change-tools';
 import { issuesCsv } from './exporting';
 import { targetPoint } from './places';
@@ -63,34 +77,7 @@ function classLabels(ctx: RendererToolContext): Map<string, string> {
   );
 }
 
-// compare_captures ---------------------------------------------------------------------------
-
-const VolumeNet = z.object({ net: z.number() }).loose();
-const Volumes = z
-  .object({
-    schema: z.literal('aio.volumes/1'),
-    defaultBase: z.string(),
-    captures: z.array(
-      z.object({ epoch: z.string(), captureId: z.string(), date: z.string() }).loose(),
-    ),
-    piles: z.array(
-      z
-        .object({
-          id: z.string(),
-          name: z.string(),
-          epochs: z.record(
-            z.string(),
-            z.object({ volumes: z.record(z.string(), VolumeNet) }).loose(),
-          ),
-          change: z.object({ fill: z.number(), cut: z.number(), net: z.number() }).optional(),
-        })
-        .loose(),
-    ),
-    totals: z.record(z.string(), z.record(z.string(), z.number())),
-    siteChange: z.object({ fill: z.number(), cut: z.number(), net: z.number() }).loose().optional(),
-  })
-  .loose();
-type Volumes = z.infer<typeof Volumes>;
+/// compare_captures ---------------------------------------------------------------------------
 
 interface CaptureRef {
   id: string;
@@ -112,55 +99,152 @@ function pickCapture(all: readonly CaptureRef[], ref: string | undefined, fallba
   return found;
 }
 
-async function loadVolumes(ctx: RendererToolContext): Promise<Volumes | null> {
-  let json: unknown;
+async function projectJson(ctx: RendererToolContext, path: string): Promise<unknown> {
   try {
-    json = await ctx.fetchJson(assetUrl(project(ctx).id, { path: 'volumes.json' }));
+    return await ctx.fetchJson(assetUrl(project(ctx).id, { path }));
   } catch {
     return null;
   }
-  const r = Volumes.safeParse(json);
-  return r.success ? r.data : null;
 }
 
-function compareVolumes(v: Volumes, from: CaptureRef, to: CaptureRef, baseIn: string | undefined) {
-  const e1 = v.captures.find((c) => c.captureId === from.id)?.epoch;
-  const e2 = v.captures.find((c) => c.captureId === to.id)?.epoch;
-  if (!e1 || !e2) {
-    throw new ToolError('The survey volumes do not cover both of these captures.');
+/** The kit's local frame to the project CRS (`@aio/volumetric` `localToEN`): x east, z south. */
+const kitToSite = (origin: readonly number[], xz: readonly [number, number]) =>
+  [xz[0] + (origin[0] ?? 0), (origin[1] ?? 0) - xz[1], 0] as [number, number, number];
+
+/**
+ * The project's volume measurements as the app opens them: an old project's kit piles carried
+ * over in memory with their kit figures (`convertKitPiles`, `carry`) when the measurements file was
+ * never converted, else as saved. `base` picks the kit base the carried figures are on. Null
+ * without any.
+ */
+async function loadPiles(
+  ctx: RendererToolContext,
+  base: VolumeBaseId | undefined,
+): Promise<{ piles: SurveyMeasurement[]; settings: SurveySettings } | null> {
+  const [fileRaw, kitRaw, editsRaw, settingsRaw] = await Promise.all([
+    projectJson(ctx, MEASUREMENTS_FILE),
+    projectJson(ctx, 'volumes.json'),
+    projectJson(ctx, 'edits/boundaries.json'),
+    projectJson(ctx, SURVEY_SETTINGS_FILE),
+  ]);
+  const f = MeasurementsFile.safeParse(fileRaw);
+  const s = SurveySettings.safeParse(settingsRaw);
+  const settings = s.success ? s.data : defaultSurveySettings();
+  let file: MeasurementsFile = f.success
+    ? f.data
+    : { schema: 'aio.measurements/1', measurements: [] };
+  const kit = VolumesFile.safeParse(kitRaw);
+  if (kit.success && file.kitPilesConverted === undefined) {
+    const edits = BoundaryEditsFile.safeParse(editsRaw);
+    const origin = project(ctx).manifest.origin;
+    const byName = new Map(settings.materials.map((x) => [x.name.trim().toLowerCase(), x.id]));
+    let n = 0;
+    const c = convertKitPiles(
+      base ? { ...kit.data, defaultBase: base } : kit.data,
+      edits.success ? edits.data : null,
+      file,
+      {
+        carry: true,
+        now: ctx.now().toISOString(),
+        newId: () => `kit-${String(++n)}`,
+        toSite: (xz) => kitToSite(origin, xz),
+        materialId: (name) => byName.get(name.trim().toLowerCase()),
+      },
+    );
+    file = { ...file, measurements: [...file.measurements, ...c.added] };
   }
-  const base = baseIn ?? v.defaultBase;
-  const piles = v.piles.map((p) => {
-    const a = p.epochs[e1]?.volumes[base]?.net;
-    const b = p.epochs[e2]?.volumes[base]?.net;
+  const piles = inventoryPiles(file.measurements);
+  return piles.length > 0 ? { piles, settings } : null;
+}
+
+/**
+ * Each volume measurement's figure on the two dates, the one its card shows (`pileSeries`: its
+ * stored result for its own date, its per-date results for the others), and the site totals by
+ * the Volumes view's rule (`inventorySeries`: current figures added, the rest named).
+ */
+function compareVolumes(
+  loaded: { piles: SurveyMeasurement[]; settings: SurveySettings },
+  captures: readonly CaptureRef[],
+  from: CaptureRef,
+  to: CaptureRef,
+) {
+  const { piles, settings } = loaded;
+  const units = settings.units;
+  const fmt = (m3: number) =>
+    formatQuantity(
+      m3,
+      'volume',
+      units,
+      settings.precision,
+      settings.locale ?? localeOf(units.distance),
+    );
+  const rows = inventorySeries(piles, captures);
+  const rowFrom = rows.find((r) => r.capture === from.id);
+  const rowTo = rows.find((r) => r.capture === to.id);
+  const figure = (series: ComparisonResult[], c: CaptureRef) => {
+    const r = series.find((x) => x.toCapture === c.id);
+    return r && r.status !== 'refused' ? r : undefined;
+  };
+  const out = piles.map((m) => {
+    const { series } = pileSeries(m);
+    const a = figure(series, from);
+    const b = figure(series, to);
+    const carried = series.find((r) => r.carried)?.carried;
+    const item = m.items[0];
     return {
-      id: p.id,
-      name: p.name,
-      ...(a !== undefined ? { from: round1(a) } : {}),
-      ...(b !== undefined ? { to: round1(b) } : {}),
+      id: m.id,
+      name: m.label,
+      base: carried ? `kit ${carried.base}` : (item?.from.kind ?? null),
+      ...(carried ? { carried: true } : {}),
+      ...(a !== undefined ? { from: round1(a.netM3) } : {}),
+      ...(b !== undefined ? { to: round1(b.netM3) } : {}),
+      ...(a?.status === 'stale' || b?.status === 'stale' ? { stale: true } : {}),
       ...(a !== undefined && b !== undefined
-        ? { change: round1(b - a), changePct: a > 0 ? round1(((b - a) / a) * 100) : null }
+        ? {
+            change: round1(b.netM3 - a.netM3),
+            changePct: a.netM3 > 0 ? round1(((b.netM3 - a.netM3) / a.netM3) * 100) : null,
+          }
         : { change: null }),
-      ...(p.change ? { surfaceChange: p.change } : {}),
     };
   });
-  const tFrom = v.totals[e1]?.[base];
-  const tTo = v.totals[e2]?.[base];
+  // the total on each date of the piles counted on both (current figures only)
+  const at = (r: typeof rowFrom) => new Map((r?.parts ?? []).map((x) => [x.id, x.valueM3]));
+  const pa = at(rowFrom);
+  const pb = at(rowTo);
+  const common = [...pa.keys()].filter((id) => pb.has(id));
+  const sum = (m: Map<string, number>, ids: readonly string[]) =>
+    ids.reduce((s, id) => s + (m.get(id) ?? 0), 0);
+  const notCounted = (r: typeof rowFrom) =>
+    (r?.notCounted ?? []).map((x) => ({ id: x.id, reason: x.reason }));
   const total =
-    tFrom !== undefined && tTo !== undefined
-      ? { from: round1(tFrom), to: round1(tTo), change: round1(tTo - tFrom) }
+    common.length > 0
+      ? {
+          from: round1(sum(pa, common)),
+          to: round1(sum(pb, common)),
+          change: round1(sum(pb, common) - sum(pa, common)),
+          piles: common.length,
+          of: piles.length,
+          changeText: fmt(sum(pb, common) - sum(pa, common)),
+        }
       : null;
-  // The site cut and fill is between the survey's first and last epoch only.
-  const firstLast = v.captures[0]?.epoch === e1 && v.captures.at(-1)?.epoch === e2;
   return {
     kind: 'volumes' as const,
     unit: 'm3',
-    base,
-    from: { captureId: from.id, date: from.date },
-    to: { captureId: to.id, date: to.date },
+    note: 'Net volume of each volume measurement as its card shows it. Totals add current figures only, over the piles counted on both dates.',
+    from: {
+      captureId: from.id,
+      date: from.date,
+      total: rowFrom && rowFrom.parts.length > 0 ? round1(rowFrom.totalM3) : null,
+      notCounted: notCounted(rowFrom),
+    },
+    to: {
+      captureId: to.id,
+      date: to.date,
+      total: rowTo && rowTo.parts.length > 0 ? round1(rowTo.totalM3) : null,
+      notCounted: notCounted(rowTo),
+    },
     total,
-    ...(firstLast && v.siteChange ? { siteChange: v.siteChange } : {}),
-    piles,
+    piles: out,
   };
 }
 
@@ -189,7 +273,7 @@ define('compare_captures', async (input, ctx) => {
   }
   const from = pickCapture(captures, input.from, first);
   const to = pickCapture(captures, input.to, last);
-  const volumes = await loadVolumes(ctx);
+  const volumes = await loadPiles(ctx, input.base);
   // v2 (M8): the saved change sets of the pair, any kind, when there are any
   const [early, late] = from.date <= to.date ? [from, to] : [to, from];
   const sets = await changeSetsOf(ctx, early.id, late.id);
@@ -199,19 +283,16 @@ define('compare_captures', async (input, ctx) => {
       from: { captureId: early.id, date: early.date },
       to: { captureId: late.id, date: late.date },
       ...changeSummary(sets),
-      ...(volumes ? { volumes: compareVolumes(volumes, early, late, input.base) } : {}),
+      ...(volumes ? { volumes: compareVolumes(volumes, captures, early, late) } : {}),
     };
     return { result: r, summary: verdictLine(sets) };
   }
   if (volumes) {
-    const r = compareVolumes(volumes, from, to, input.base);
-    const change = r.total?.change;
+    const r = compareVolumes(volumes, captures, from, to);
+    const t = r.total;
     return {
       result: r,
-      summary:
-        change === undefined
-          ? 'Volumes compared'
-          : `${change > 0 ? '+' : ''}${change} m³ (${r.base})`,
+      summary: t ? `${t.change > 0 ? '+' : ''}${t.changeText}` : 'Volumes compared',
     };
   }
   const r = compareIssues(ctx.workspace.getState().issues, from, to);

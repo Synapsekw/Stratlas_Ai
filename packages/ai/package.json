@@ -21,6 +21,7 @@
     "@aio/engine": "workspace:*",
     "@aio/geo": "workspace:*",
     "@aio/schema": "workspace:*",
+    "@aio/survey": "workspace:*",
     "@aio/workspace": "workspace:*",
     "ai": "7.0.127",
     "three": "0.186.1",

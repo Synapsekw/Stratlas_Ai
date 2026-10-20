@@ -1,16 +1,19 @@
 // The survey sections' data (M11 G9, PRD SRV-13): the project's survey files read through the
-// report page's fetch, every comparison computed now by the survey engine's TypeScript executor
-// (the same arithmetic and inputs as the measurement panel, so the totals match it), and the
-// readouts formatted as the panel formats them. The PDF sections and the CSVs are made from what
-// this returns, so they always agree. Without prepared surfaces the stored results are reported
-// as they were saved (and say so).
+// report page's fetch, and the figures the app shows. A measurement's comparisons are its stored
+// results (stale when their inputs changed since, a figure carried from an earlier version as it
+// is), so a pile never prints a figure its card does not show. The volumes over time and the site
+// inventory are the Volumes view's (`pileSeries` and `inventorySeries`, its total rule): the dates
+// it would work out are worked out here in memory with the app's engine (`EngineSession`, the
+// same inputs and line-ups), nothing is written. Earthworks, sections and landfill are computed
+// now by the same engine. The readouts are formatted as the panel formats them. The PDF sections
+// and the CSVs are made from what this returns, so they always agree. Without prepared surfaces
+// the stored results are reported as they were saved (and say so).
 import {
   compaction,
   earthworksProgress,
   parseWeighbridge,
   stockpileInventory,
   surveyBasis,
-  usableVolume,
   SURVEY_SECTIONS,
   type CaptureRef,
   type ComparisonReport,
@@ -26,6 +29,7 @@ import {
   type WeighbridgeEntry,
 } from '@aio/project/export';
 import {
+  BoundaryEditsFile,
   CALIBRATION_FILE,
   defaultSurveySettings,
   DESIGNS_FILE,
@@ -34,42 +38,62 @@ import {
   isSurfaceSide,
   MEASUREMENTS_FILE,
   MeasurementsFile,
+  REPORT_TEMPLATE_FILE,
+  ReportTemplateFile,
   SiteCalibration,
   SURVEY_SETTINGS_FILE,
   SURVEY_TEMPLATES_FILE,
   SurveySettings,
   SurveyTemplatesFile,
+  turnOf,
+  VolumesFile,
+  type CaptureLineUpTurn,
   type ComparisonItem,
   type ComparisonResult,
   type DesignEntry,
   type ProjectManifest,
   type ReportSectionId,
+  type SiteMaterial,
   type SurfaceRef,
   type SurveyMeasurement,
   type SurveyTemplate,
 } from '@aio/schema';
 import {
   compareItem,
+  convertKitPiles,
   effectiveUnits,
   formatRow,
   industryTemplates,
+  inventoryPiles,
+  inventorySeries,
   lineLength,
+  surfaceKey,
   measurementReadout,
   newShared,
-  projectResolver,
+  pileSeries,
   resolveSection,
+  ringShifts,
   sampleSection,
   samplerOf,
+  seriesApplies,
   sideLabel,
   surfaceOfCapture,
-  TileCache,
   toleranceShare,
+  volumeRows,
+  type ChartSeries,
   type GridOut,
   type PointSampler,
   type Resolve,
   type SectionRef,
+  type StackRow,
+  type TimeRow,
 } from '@aio/survey';
 import { t } from '@aio/ui';
+import { localToEN } from '@aio/volumetric';
+import { captureShift } from '@aio/workspace';
+import { measurementHasChart } from '../../survey/card/chartRule';
+import type { EngineContext } from '../../survey/engineProtocol';
+import { EngineSession } from '../../survey/engineServe';
 
 type Key = Parameters<typeof t>[0];
 const tk = (key: string, vars?: Record<string, string | number>) => t(key as Key, vars);
@@ -99,6 +123,10 @@ export interface SurveyReader {
   bytes(path: string): Promise<Uint8Array | null>;
 }
 
+/** The stockpile kit's figures, read only to carry an older project's piles over (in memory). */
+export const KIT_VOLUMES_FILE = 'volumes.json';
+export const KIT_EDITS_FILE = 'edits/boundaries.json';
+
 /** The survey files of a project, parsed. */
 export interface SurveyFiles {
   manifest: ProjectManifest;
@@ -110,6 +138,8 @@ export interface SurveyFiles {
   /** The project's templates and the enabled industry sets (names, rows, fields, sets). */
   templates: SurveyTemplate[];
   weighbridge: WeighbridgeEntry[];
+  /** The report template (`report/template.json`, W8): which measurements and parts print. */
+  template?: ReportTemplateFile | null;
 }
 
 function parsed<T>(schema: { safeParse(v: unknown): { success: boolean; data?: T } }, v: unknown) {
@@ -119,25 +149,76 @@ function parsed<T>(schema: { safeParse(v: unknown): { success: boolean; data?: T
 }
 
 /**
- * Read the survey files; null when the project has no saved survey measurements. `surfaceIds` are
- * the prepared surfaces main listed (`survey/surfaces/<id>/tiles.json`).
+ * The measurements file as the app opens it (`measureStore`'s `openedWithKitPiles`), in memory
+ * only: the kit piles not converted yet added as volume measurements, their kit figures carried
+ * (stored results and series, "From an earlier version") only when the file was never converted
+ * (`kitPilesConverted` absent: an old project, or no measurements file at all). A pile the kit
+ * found after the conversion comes in without figures, for the engine. Null when there is
+ * neither a file nor a kit pile.
+ */
+export function withKitPiles(
+  file: MeasurementsFile | null,
+  volumes: VolumesFile | null,
+  edits: BoundaryEditsFile | null,
+  manifest: ProjectManifest,
+  materials: readonly SiteMaterial[],
+): MeasurementsFile | null {
+  if (!volumes) return file;
+  const base: MeasurementsFile = file ?? { schema: 'aio.measurements/1', measurements: [] };
+  const carry = base.kitPilesConverted === undefined;
+  const byName = new Map(materials.map((x) => [x.name.trim().toLowerCase(), x.id]));
+  let n = 0;
+  const c = convertKitPiles(volumes, edits, base, {
+    carry,
+    now: new Date().toISOString(),
+    newId: () => `kit-report-${String(++n)}`,
+    // the kit keeps no toe heights per vertex: Z 0, as the app converts them
+    toSite: (xz) => {
+      const [e, north] = localToEN(manifest.origin, xz);
+      return [e, north, 0];
+    },
+    materialId: (name) => byName.get(name.trim().toLowerCase()),
+  });
+  if (c.converted.length === 0) return file;
+  return {
+    ...base,
+    measurements: [...base.measurements, ...c.added],
+    kitPilesConverted: [...(base.kitPilesConverted ?? []), ...c.converted],
+  };
+}
+
+/**
+ * Read the survey files; null when the project has no survey measurements (nor kit piles to carry
+ * over). `surfaceIds` are the prepared surfaces main listed (`survey/surfaces/<id>/tiles.json`).
  */
 export async function readSurveyFiles(
   read: SurveyReader,
   manifest: ProjectManifest,
   surfaceIds: readonly string[],
 ): Promise<SurveyFiles | null> {
-  const file = parsed<MeasurementsFile>(MeasurementsFile, await read.json(MEASUREMENTS_FILE));
-  if (!file || file.measurements.length === 0) return null;
-  const [settingsRaw, calRaw, designsRaw, templatesRaw, weigh, ...tiles] = await Promise.all([
+  const [fileRaw, kitRaw, editsRaw, settingsRaw] = await Promise.all([
+    read.json(MEASUREMENTS_FILE),
+    read.json(KIT_VOLUMES_FILE),
+    read.json(KIT_EDITS_FILE),
     read.json(SURVEY_SETTINGS_FILE),
+  ]);
+  const settings = parsed<SurveySettings>(SurveySettings, settingsRaw) ?? defaultSurveySettings();
+  const file = withKitPiles(
+    parsed<MeasurementsFile>(MeasurementsFile, fileRaw),
+    parsed<VolumesFile>(VolumesFile, kitRaw),
+    parsed<BoundaryEditsFile>(BoundaryEditsFile, editsRaw),
+    manifest,
+    settings.materials,
+  );
+  if (!file || file.measurements.length === 0) return null;
+  const [calRaw, designsRaw, templatesRaw, reportRaw, weigh, ...tiles] = await Promise.all([
     read.json(CALIBRATION_FILE),
     read.json(DESIGNS_FILE),
     read.json(SURVEY_TEMPLATES_FILE),
+    read.json(REPORT_TEMPLATE_FILE),
     read.text(WEIGHBRIDGE_FILE),
     ...surfaceIds.map((id) => read.json(`survey/surfaces/${id}/tiles.json`)),
   ]);
-  const settings = parsed<SurveySettings>(SurveySettings, settingsRaw) ?? defaultSurveySettings();
   const project = parsed<SurveyTemplatesFile>(SurveyTemplatesFile, templatesRaw);
   const surfaces = tiles
     .map((x) => parsed<HeightTiles>(HeightTiles, x))
@@ -151,6 +232,7 @@ export async function readSurveyFiles(
     surfaces,
     templates: surveyTemplateList(project, settings),
     weighbridge: typeof weigh === 'string' ? parseWeighbridge(weigh) : [],
+    template: parsed<ReportTemplateFile>(ReportTemplateFile, reportRaw),
   };
 }
 
@@ -224,6 +306,7 @@ export function isLandfill(
 }
 
 export interface SurveyPlan {
+  /** The volume measurements: the Volumes view's piles (`inventoryPiles`), so the totals agree. */
   stockpiles: SurveyMeasurement[];
   earthworks: SurveyMeasurement[];
   landfill: SurveyMeasurement[];
@@ -236,7 +319,7 @@ export function surveyPlan(files: Pick<SurveyFiles, 'measurements' | 'settings' 
   const lf = new Set(landfill.map((m) => m.id));
   const earthworks = files.measurements.filter((m) => !lf.has(m.id) && designItems(m).length > 0);
   return {
-    stockpiles: files.measurements.filter((m) => !lf.has(m.id) && stockpileItem(m) !== null),
+    stockpiles: inventoryPiles(files.measurements),
     earthworks,
     landfill,
     sections:
@@ -244,6 +327,16 @@ export function surveyPlan(files: Pick<SurveyFiles, 'measurements' | 'settings' 
         ? files.measurements.filter((m) => m.tool === 'section').slice(0, 12)
         : [],
   } satisfies SurveyPlan;
+}
+
+/** The date a per-date row is for (R16): `toCapture`, else `fromCapture`. */
+const rowDate = (r: ComparisonResult): string => r.toCapture ?? r.fromCapture ?? '';
+
+/** A volume measurement with figures on two survey dates or more (stored or per date). */
+export function hasVolumeOverTime(m: SurveyMeasurement): boolean {
+  if (m.tool !== 'volume' || m.family !== 'polygon') return false;
+  const dated = pileSeries(m).series.filter((r) => r.status !== 'refused' && rowDate(r) !== '');
+  return new Set(dated.map(rowDate)).size >= 2;
 }
 
 /** The survey sections that have something to print. */
@@ -256,50 +349,108 @@ export function surveySectionIds(
     earthworks: plan.earthworks.length > 0,
     stockpiles: plan.stockpiles.length > 0,
     landfill: plan.landfill.length > 0,
+    'volume-over-time': plan.stockpiles.some(hasVolumeOverTime),
   };
   return SURVEY_SECTIONS.filter((id) => has[id]);
+}
+
+/**
+ * A base's standard name (the volume card's base picker): "Triangulated toe", "Lowest point" ...;
+ * a survey or design side by its own name.
+ */
+export function standardBaseName(ref: SurfaceRef): string {
+  switch (ref.kind) {
+    case 'smart':
+      return tk('base.smart');
+    case 'fit-plane':
+      return tk('base.plane');
+    case 'perimeter-mean':
+      return tk('base.mean');
+    case 'custom':
+      return tk('base.custom');
+    case 'reference':
+      if (ref.mode === 'perimeter-min') return tk('base.lowest');
+      if (ref.mode === 'level') return tk('base.level');
+      return sideLabel(ref, null);
+    default:
+      return sideLabel(ref, null);
+  }
 }
 
 // ---------------------------------------------------------------- the engine
 
 const ringOf = (m: SurveyMeasurement): [number, number][] => m.points.map((p) => [p[0], p[1]]);
 
-/** One engine for the report: a resolver per survey over one tile cache, results memoised. */
+/** The survey a survey-scoped measurement's ring is stored for; absent for a site-wide one. */
+const scopeOf = (m: SurveyMeasurement): string | undefined =>
+  m.scope.kind === 'survey' ? m.scope.capture : undefined;
+
+/** An item whose figures were carried over from an earlier version: never recomputed (R16). */
+const carriedItem = (m: SurveyMeasurement, item: string): boolean =>
+  m.results.some((r) => r.item === item && r.carried !== undefined) ||
+  (m.series ?? []).some((r) => r.item === item && r.carried !== undefined);
+
+/**
+ * The line-up each survey date has now and its turn, as the app hands its engine (`compareStore`'s
+ * `currentShifts` and `currentTurns`): the inputs of every fingerprint, so a figure is stale here
+ * exactly when it is in the app.
+ */
+export function lineUps(manifest: ProjectManifest): Pick<EngineContext, 'shifts' | 'turns'> {
+  const shifts: Record<string, [number, number]> = {};
+  const turns: Record<string, CaptureLineUpTurn> = {};
+  for (const c of manifest.captures) {
+    const s = captureShift(manifest, c.id);
+    if (s) shifts[c.id] = [s.eastM, s.northM];
+    const turn = turnOf(s);
+    if (turn) turns[c.id] = turn;
+  }
+  return {
+    ...(Object.keys(shifts).length > 0 ? { shifts } : {}),
+    ...(Object.keys(turns).length > 0 ? { turns } : {}),
+  };
+}
+
+/** The engine session's files come through the report's reader: its URL back to the path. */
+const ENGINE_BASE = 'aio://report/';
+const pathOf = (url: string) =>
+  url.slice(ENGINE_BASE.length).split('/').map(decodeURIComponent).join('/');
+
+/**
+ * One engine for the report: the app's own engine session (`EngineSession`, its resolvers,
+ * fingerprints and per-date runs) over the project's surfaces, designs and line-ups, results
+ * memoised.
+ */
 class Engine {
-  private cache = new TileCache();
-  private resolvers = new Map<string, Resolve>();
+  readonly session: EngineSession;
   private memo = new Map<string, Promise<ComparisonResult | null>>();
-  readonly captureIds: string[];
+  private ctx: EngineContext;
   constructor(
     private files: SurveyFiles,
-    private bytes: (path: string) => Promise<Uint8Array | null>,
+    bytes: (path: string) => Promise<Uint8Array | null>,
     captures: readonly CaptureRef[],
   ) {
-    this.captureIds = captures.map((c) => c.id);
-  }
-
-  resolver(capture: string): Resolve {
-    let r = this.resolvers.get(capture);
-    if (!r) {
-      r = projectResolver({
-        surfaces: this.files.surfaces,
-        captures: this.captureIds,
-        capture,
-        designs: this.files.designs,
-        fetchBytes: this.bytes,
-        cache: this.cache,
-      });
-      this.resolvers.set(capture, r);
-    }
-    return r;
-  }
-
-  private get site() {
-    const s = this.files.settings;
-    return {
-      verticalDatum: s.verticalDatum,
-      ...(s.calibration ? { calibration: s.calibration } : {}),
+    const s = files.settings;
+    this.ctx = {
+      base: ENGINE_BASE,
+      surfaces: files.surfaces,
+      captures: captures.map((c) => c.id),
+      designs: files.designs,
+      site: {
+        verticalDatum: s.verticalDatum,
+        ...(s.calibration ? { calibration: s.calibration } : {}),
+      },
+      ...lineUps(files.manifest),
     };
+    this.session = new EngineSession(this.ctx, (url) => bytes(pathOf(url)));
+  }
+
+  resolver(capture?: string): Resolve {
+    return this.session.resolver(capture);
+  }
+
+  /** The ring of a survey-scoped measurement is stored unshifted (`ringShifts`). */
+  private ringShift(m: SurveyMeasurement) {
+    return ringShifts(this.files.surfaces, this.ctx.shifts, scopeOf(m), this.ctx.turns);
   }
 
   /** One item on one survey, or null when the engine failed (the reason is in `problems`). */
@@ -311,7 +462,7 @@ class Engine {
       ringOf(m),
       item,
       this.resolver(capture),
-      { site: this.site, shared: newShared() },
+      { site: this.ctx.site, shared: newShared(), ...this.ringShift(m) },
       grid,
     ).catch((e: unknown) => {
       this.problems.set(key, e instanceof Error ? e.message : String(e));
@@ -326,6 +477,21 @@ class Engine {
     return this.problems.get(`${m.id}\u0000${item.id}\u0000${capture}`) ?? '';
   }
 
+  /** The fingerprint each item of a measurement would have now (nothing computed), or null. */
+  async prints(m: SurveyMeasurement): Promise<string[] | null> {
+    if (m.family !== 'polygon' || m.items.length === 0 || m.points.length < 3) return null;
+    const scope = scopeOf(m);
+    try {
+      return await this.session.fingerprints({
+        ring: ringOf(m),
+        items: m.items,
+        ...(scope !== undefined ? { capture: scope } : {}),
+      });
+    } catch {
+      return null;
+    }
+  }
+
   /** Heights of the survey on screen (or a design), for terrain readouts and sections. */
   async sampler(capture: string): Promise<PointSampler | null> {
     try {
@@ -334,6 +500,77 @@ class Engine {
       return null;
     }
   }
+}
+
+/**
+ * A measurement's stored results as its card shows them: a result whose inputs changed since it
+ * was computed (`prints`, the fingerprints now) is marked stale; a figure carried over from an
+ * earlier version is what it was, never stale (R16).
+ */
+export function storedResults(
+  m: SurveyMeasurement,
+  prints: readonly string[] | null,
+): ComparisonResult[] {
+  return m.results.map((r) => {
+    if (r.carried || r.status === 'stale') return r;
+    const k = m.items.findIndex((it) => it.id === r.item);
+    const fp = prints?.[k];
+    return fp !== undefined && fp !== r.fingerprint ? { ...r, status: 'stale' as const } : r;
+  });
+}
+
+// ---------------------------------------------------------------- volume over time
+
+/** One volume measurement over the survey dates, as its card and the Volumes view show it. */
+export interface PileOverTime {
+  id: string;
+  ref: string;
+  label: string;
+  folder: string | null;
+  material: SiteMaterial | null;
+  /** The base in words: its standard name, or the survey or design it is. */
+  base: string;
+  /** "From an earlier version (kit tin)" when its figures are carried over, else null. */
+  carried: string | null;
+  /** One row per survey date (`volumeRows` of `pileSeries`), stale rows marked. */
+  rows: TimeRow[];
+}
+
+/** The volume measurements over time and the site inventory (the Volumes view's rule). */
+export interface VolumesOverTime {
+  piles: PileOverTime[];
+  /** One row per survey date: the current figures added, the rest named (`inventorySeries`). */
+  inventory: StackRow[];
+}
+
+/** A chart a template entry prints (W8), drawn by the shared charts. */
+export type EntryChart =
+  | { kind: 'profile'; series: ChartSeries[] }
+  | {
+      kind: 'elevation';
+      rows: { capture: string; date: string; label: string; z: number | null }[];
+      /** The point's own level (an elevation difference), metres. */
+      level: number | null;
+    }
+  | { kind: 'volume'; rows: TimeRow[] };
+
+/** A measurement the report template names, with the parts to print (W8). */
+export interface ReportEntry {
+  ref: string;
+  /** The measurement with its stored results as its card shows them (stale marked). */
+  m: SurveyMeasurement;
+  parts: readonly ('value' | 'chart' | 'table')[];
+  chart: EntryChart | null;
+}
+
+/** Everything the report prints of the survey: the CSVs' data and the volumes over time. */
+export interface ReportSurveyData extends SurveyReportData {
+  volumes: VolumesOverTime;
+  /** The report template's measurement entries, in its order; empty without a template. */
+  entries: ReportEntry[];
+  /** What the cards are formatted with. */
+  settings: SurveySettings;
+  templates: SurveyTemplate[];
 }
 
 /**
@@ -381,7 +618,7 @@ async function readout(
   );
 }
 
-// ---------------------------------------------------------------- the data
+/// ---------------------------------------------------------------- the data
 
 export type SurveyNeed = 'report' | 'measurements-csv' | 'stockpile-csv';
 
@@ -390,21 +627,234 @@ export interface BuildOptions {
   progress?: (done: number, total: number) => void;
 }
 
-const refused = (reason: string): Pick<ComparisonReport, 'result' | 'reason'> => ({
-  result: null,
-  reason,
-});
+/** A per-date row's key: its item and date (`compareStore`'s `seriesKeyOf`). */
+const seriesKey = (r: ComparisonResult): string => `${r.item} ${rowDate(r)}`;
+
+/**
+ * The volume measurements over the survey dates as the app shows them, with nothing written:
+ * each one's dates the Volumes view would work out (`computeSeries`: a date with no row, or a stale
+ * one, unless its figures are carried) are worked out in memory by the app's engine, then the card's
+ * rule (`pileSeries`: the stored result stands for its own date) and the site inventory's
+ * (`inventorySeries`: current figures added, the rest named). A figure is stale when its
+ * fingerprint is not the one its inputs give now, as in the app.
+ */
+async function volumesOverTime(
+  piles: readonly SurveyMeasurement[],
+  captures: readonly CaptureRef[],
+  engine: Engine | null,
+  info: {
+    ref: (m: SurveyMeasurement) => string;
+    material: (m: SurveyMeasurement) => SiteMaterial | null;
+    tick: () => void;
+  },
+): Promise<VolumesOverTime> {
+  const ids = captures.map((c) => c.id);
+  const storedPrint = new Map<string, string>();
+  const seriesPrints = new Map<string, Record<string, string>>();
+  const failed = new Map<string, string>();
+  const filled: SurveyMeasurement[] = [];
+  for (const m of piles) {
+    const it = m.items[0];
+    let next = m;
+    if (engine && it && m.points.length >= 3) {
+      const scope = scopeOf(m);
+      const ring = ringOf(m);
+      try {
+        const [fp] = (await engine.prints(m)) ?? [];
+        if (fp !== undefined) storedPrint.set(m.id, fp);
+        if (seriesApplies(it) && !carriedItem(m, it.id)) {
+          const req = { ring, item: it, captures: ids, ...(scope !== undefined ? { scope } : {}) };
+          const fps = await engine.session.seriesFingerprints(req);
+          const prints: Record<string, string> = {};
+          ids.forEach((c, k) => {
+            const f = fps[k];
+            if (f !== undefined) prints[`${it.id} ${c}`] = f;
+          });
+          seriesPrints.set(m.id, prints);
+          const have = new Map((m.series ?? []).map((r) => [seriesKey(r), r]));
+          const need = ids.filter((c, k) => {
+            const r = have.get(`${it.id} ${c}`);
+            return !r || (!r.carried && (r.status === 'stale' || r.fingerprint !== fps[k]));
+          });
+          if (need.length > 0) {
+            const out = await engine.session.series({ ...req, captures: need });
+            const fresh = new Set(out.map(seriesKey));
+            next = {
+              ...m,
+              series: [...(m.series ?? []).filter((r) => !fresh.has(seriesKey(r))), ...out],
+            };
+          }
+        }
+      } catch (e) {
+        failed.set(m.id, e instanceof Error ? e.message : String(e));
+      }
+    }
+    filled.push(next);
+    info.tick();
+  }
+  const isStale = (m: SurveyMeasurement, r: ComparisonResult, stored: boolean): boolean => {
+    if (r.carried) return false;
+    if (r.status === 'stale') return true;
+    const fp = stored ? storedPrint.get(m.id) : seriesPrints.get(m.id)?.[seriesKey(r)];
+    return fp !== undefined && fp !== r.fingerprint;
+  };
+  const inventory = inventorySeries(filled, captures, {
+    isStale,
+    failed: (m) => failed.get(m.id),
+    ran: (m, capture) => {
+      const it = m.items[0];
+      return it !== undefined && seriesPrints.get(m.id)?.[`${it.id} ${capture}`] !== undefined;
+    },
+  });
+  return {
+    inventory,
+    piles: filled.map((m) => {
+      const { series, stored } = pileSeries(m);
+      const density = info.material(m)?.densityTPerM3;
+      const carried = series.find((r) => r.carried)?.carried;
+      const it = m.items[0];
+      return {
+        id: m.id,
+        ref: info.ref(m),
+        label: m.label,
+        folder: m.folder?.trim() ? m.folder.trim() : null,
+        material: info.material(m),
+        base: it ? standardBaseName(it.from) : '',
+        carried: carried ? tk('vol.status.carried', { base: carried.base }) : null,
+        rows: volumeRows(series, captures, {
+          isStale: (r) => isStale(m, r, r === stored),
+          ...(density !== undefined ? { densityTPerM3: density } : {}),
+        }),
+      };
+    }),
+  };
+}
+
+/** A pile on each survey for the stockpile inventory and its CSV, from its rows over time. */
+function pileVolumes(p: PileOverTime, captures: readonly CaptureRef[]): PileVolume[] {
+  return p.rows.flatMap((r) => {
+    const capture = captures.find((c) => c.id === r.capture);
+    if (!capture) return [];
+    const status: PileVolume['status'] = r.stale ? 'stale' : r.status;
+    return [
+      {
+        capture,
+        volumeM3: r.stale ? null : r.valueM3,
+        status,
+        reason: r.reason ?? (r.status === 'missing' ? tk('house.survey.notComputed') : ''),
+      },
+    ];
+  });
+}
+
+/** A surface on a profile and how the profile chart styles it (by kind, never by order). */
+interface KindRef {
+  ref: SectionRef;
+  kind: 'current' | 'earlier' | 'design';
+  date?: string;
+}
+
+/** Each surface's heights along a line (400 stations at most), with its kind and date. */
+async function sampleProfiles(
+  line: readonly (readonly [number, number])[],
+  refs: readonly KindRef[],
+  resolve: Resolve,
+): Promise<SectionReport['profiles']> {
+  const { surfaces } = await resolveSection(
+    refs.map((r) => r.ref),
+    resolve,
+  );
+  const length = lineLength(line);
+  const s = await sampleSection({ line, stepM: Math.max(0.25, length / 400) }, surfaces);
+  const byKey = new Map(refs.map((r) => [surfaceKey(r.ref), r]));
+  return s.profiles.map((p) => {
+    const k = byKey.get(p.surface);
+    return {
+      label: p.label,
+      chainage: p.chainage,
+      z: p.z,
+      ...(k ? { kind: k.kind } : {}),
+      ...(k?.date !== undefined ? { date: k.date } : {}),
+    };
+  });
+}
+
+/** A profile's surfaces as the shared chart's series. */
+export const chartSeries = (profiles: SectionReport['profiles']): ChartSeries[] =>
+  profiles.map((p, i) => ({
+    key: `${p.kind ?? 'current'}-${String(i)}`,
+    label: p.label,
+    kind: p.kind ?? 'current',
+    ...(p.date !== undefined ? { date: p.date } : {}),
+    chainage: p.chainage,
+    z: p.z,
+  }));
+
+/**
+ * The chart a template entry prints, as its card draws it (`slots.tsx`): a pile's volume over
+ * time, a line's profile on the latest survey and the one before, a point's elevation on each
+ * survey (with its own level for an elevation difference).
+ */
+async function entryChart(
+  m: SurveyMeasurement,
+  c: {
+    volumes: VolumesOverTime;
+    engine: Engine;
+    current: CaptureRef | null;
+    surveyed: readonly CaptureRef[];
+    files: SurveyFiles;
+  },
+): Promise<EntryChart | null> {
+  if (m.tool === 'volume') {
+    const p = c.volumes.piles.find((x) => x.id === m.id);
+    return p ? { kind: 'volume', rows: p.rows } : null;
+  }
+  if (m.family === 'line') {
+    const cur = c.current;
+    if (!cur || m.points.length < 2) return null;
+    const line = m.points.map((q) => [q[0], q[1]] as const);
+    const at = c.surveyed.findIndex((x) => x.id === cur.id);
+    const prev = at > 0 ? c.surveyed[at - 1] : undefined;
+    const refs: KindRef[] = [{ ref: { kind: 'current' }, kind: 'current', date: cur.date }];
+    const ps = prev ? surfaceOfCapture(c.files.surfaces, prev.id) : null;
+    if (prev && ps)
+      refs.push({ ref: { kind: 'survey', surface: ps.id }, kind: 'earlier', date: prev.date });
+    try {
+      const profiles = await sampleProfiles(line, refs, c.engine.resolver(cur.id));
+      return { kind: 'profile', series: chartSeries(profiles) };
+    } catch {
+      return null;
+    }
+  }
+  if (m.family === 'point') {
+    const pt = m.points[0];
+    if (!pt) return null;
+    const rows: { capture: string; date: string; label: string; z: number | null }[] = [];
+    for (const cap of c.surveyed) {
+      const sample = await c.engine.sampler(cap.id);
+      const h = sample ? (await sample(Float64Array.of(pt[0]), Float64Array.of(pt[1])))[0] : null;
+      rows.push({
+        capture: cap.id,
+        date: cap.date,
+        label: cap.label,
+        z: h !== null && h !== undefined && Number.isFinite(h) ? h : null,
+      });
+    }
+    return { kind: 'elevation', rows, level: m.tool === 'elevation-difference' ? pt[2] : null };
+  }
+  return null;
+}
 
 /**
  * Everything the survey sections or a survey CSV print. `need` limits the work: the report lists
- * at most `REPORT_MEASUREMENTS_MAX` measurements and the stockpiles on the last two surveys; the
- * stockpile CSV has every pile on every survey; the measurements CSV every measurement.
+ * at most `REPORT_MEASUREMENTS_MAX` measurements (or the template's); the stockpile CSV has every
+ * pile on every survey; the measurements CSV every measurement.
  */
 export async function buildSurveyData(
   files: SurveyFiles,
   bytes: (path: string) => Promise<Uint8Array | null>,
   opts: BuildOptions,
-): Promise<SurveyReportData> {
+): Promise<ReportSurveyData> {
   const { settings, manifest } = files;
   const captures: CaptureRef[] = [...manifest.captures]
     .sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? -1 : 1))
@@ -419,19 +869,31 @@ export async function buildSurveyData(
   const material = (m: SurveyMeasurement) =>
     settings.materials.find((x) => x.id === m.material) ?? null;
 
+  // the report template's measurement entries (W8), in its order
+  const byId = new Map(files.measurements.map((m) => [m.id, m]));
+  const templated =
+    opts.need === 'report'
+      ? (files.template?.entries ?? []).flatMap((e) => {
+          const m = e.kind === 'measurement' ? byId.get(e.id) : undefined;
+          return m && e.kind === 'measurement' ? [{ m, parts: e.parts }] : [];
+        })
+      : [];
+
   // work to do, for the progress
   const listed =
     opts.need === 'stockpile-csv'
       ? []
       : opts.need === 'report'
-        ? files.measurements.slice(0, REPORT_MEASUREMENTS_MAX)
+        ? templated.length > 0
+          ? templated.map((x) => x.m)
+          : files.measurements.slice(0, REPORT_MEASUREMENTS_MAX)
         : files.measurements;
-  const pileCaptures = opts.need === 'stockpile-csv' ? surveyed : surveyed.slice(-2);
+  const pileWork = opts.need === 'measurements-csv' ? [] : plan.stockpiles;
   const total =
     listed.length +
-    plan.stockpiles.length * Math.max(1, pileCaptures.length) +
+    pileWork.length +
     (opts.need === 'report'
-      ? plan.earthworks.length + plan.landfill.length + plan.sections.length
+      ? plan.earthworks.length + plan.landfill.length + plan.sections.length + templated.length
       : 0);
   let done = 0;
   const tick = () => {
@@ -443,33 +905,35 @@ export async function buildSurveyData(
   const captureOf = (m: SurveyMeasurement): CaptureRef | null =>
     m.scope.kind === 'survey' ? capRef(m.scope.capture) : current;
 
-  /** Every item of a measurement on a survey (stored results without prepared surfaces). */
-  const itemsOn = async (m: SurveyMeasurement, cap: CaptureRef | null) =>
-    Promise.all(
-      m.items.map(async (it): Promise<ComparisonReport> => {
-        const label = it.label ?? it.id;
-        if (!computed) {
-          const r = m.results.find((x) => x.item === it.id) ?? null;
-          return { item: it.id, label, result: r, reason: r ? '' : tk('house.survey.notComputed') };
-        }
-        if (!cap) return { item: it.id, label, ...refused(tk('house.survey.noSurface')) };
-        const r = await engine.result(m, it, cap.id);
-        return { item: it.id, label, result: r, reason: r ? '' : engine.problem(m, it, cap.id) };
-      }),
-    );
+  /** A measurement with its stored results as its card shows them (stale marked). */
+  const asShown = async (m: SurveyMeasurement): Promise<SurveyMeasurement> =>
+    m.family === 'polygon' && m.results.length > 0
+      ? { ...m, results: storedResults(m, computed ? await engine.prints(m) : null) }
+      : m;
+
+  /** Every item of a measurement: its stored result, never a fresh recompute. */
+  const itemsOf = (m: SurveyMeasurement): ComparisonReport[] =>
+    m.items.map((it) => {
+      const label = it.label ?? it.id;
+      const r = m.results.find((x) => x.item === it.id) ?? null;
+      return { item: it.id, label, result: r, reason: r ? '' : tk('house.survey.notComputed') };
+    });
 
   // ------------------------------------------------ measurements
   const refs = new Map(files.measurements.map((m, i) => [m.id, `M${String(i + 1)}`]));
+  const refOf = (m: SurveyMeasurement) => refs.get(m.id) ?? m.id;
   const measurements: MeasurementReport[] = [];
-  for (const m of listed) {
+  const shown = new Map<string, SurveyMeasurement>();
+  for (const raw of listed) {
+    const m = await asShown(raw);
+    shown.set(m.id, m);
     const cap = captureOf(m);
-    const comparisons = m.family === 'polygon' ? await itemsOn(m, cap) : [];
+    const comparisons = m.family === 'polygon' ? itemsOf(m) : [];
     const tpl = tplOf(m);
     const units = effectiveUnits(settings.units, m.units);
-    const results = comparisons.flatMap((c) => (c.result ? [c.result] : []));
     const terrain = m.family !== 'polygon' || ringArea(m.points) <= TERRAIN_AREA_MAX_M2;
     const sample = computed && cap && terrain ? await engine.sampler(cap.id) : null;
-    const rows = await readout({ ...m, results }, tpl?.items, sample);
+    const rows = await readout(m, tpl?.items, sample);
     const values: SurveyValue[] = rows.map((r) => ({
       key: r.key,
       label: r.label,
@@ -479,7 +943,7 @@ export async function buildSurveyData(
     }));
     const names = new Map((tpl?.fields ?? []).map((f) => [f.id, f.name]));
     measurements.push({
-      ref: refs.get(m.id) ?? m.id,
+      ref: refOf(m),
       id: m.id,
       label: m.label,
       folder: m.folder ?? null,
@@ -501,53 +965,45 @@ export async function buildSurveyData(
     tick();
   }
 
-  // ------------------------------------------------ stockpiles
-  const piles: StockpileReport[] = [];
-  for (const m of plan.stockpiles) {
-    const it = stockpileItem(m);
-    if (!it) continue;
-    const own = m.scope.kind === 'survey' ? capRef(m.scope.capture) : null;
-    const on = own ? [own] : pileCaptures;
-    const volumes: PileVolume[] = [];
-    if (!computed) {
-      const r = m.results.find((x) => x.item === it.id) ?? null;
-      const cap = capRef(r?.toCapture ?? r?.fromCapture) ?? own ?? captures.at(-1) ?? null;
-      if (cap)
-        volumes.push({
-          capture: cap,
-          volumeM3: usableVolume(r),
-          status: r?.status ?? 'missing',
-          reason: r?.reason ?? (r ? '' : tk('house.survey.notComputed')),
-        });
-      tick();
-    }
-    for (const cap of computed ? on : []) {
-      const r = await engine.result(m, it, cap.id);
-      volumes.push({
-        capture: cap,
-        volumeM3: usableVolume(r),
-        status: r?.status ?? 'missing',
-        reason: r?.reason ?? (r ? '' : engine.problem(m, it, cap.id)),
-      });
-      tick();
-    }
-    piles.push({
-      ref: refs.get(m.id) ?? m.id,
-      id: m.id,
-      label: m.label,
-      material: material(m),
-      base: sideLabel(it.from, null),
-      volumes,
-    });
-  }
+  // ------------------------------------------------ volumes over time and the stockpiles
+  const volumes = await volumesOverTime(pileWork, captures, computed ? engine : null, {
+    ref: refOf,
+    material,
+    tick,
+  });
+  const piles: StockpileReport[] = volumes.piles.map((p) => ({
+    ref: p.ref,
+    id: p.id,
+    label: p.label,
+    material: p.material,
+    base: p.carried ?? p.base,
+    volumes: pileVolumes(p, captures),
+  }));
   const stockpiles = stockpileInventory(piles, captures);
+
+  // ------------------------------------------------ the template's entries
+  const entries: ReportEntry[] = [];
+  for (const { m: raw, parts } of templated) {
+    const m = shown.get(raw.id) ?? (await asShown(raw));
+    let chart: EntryChart | null = null;
+    if (parts.includes('chart') && measurementHasChart(m))
+      chart = await entryChart(m, {
+        volumes,
+        engine,
+        current,
+        surveyed,
+        files,
+      });
+    entries.push({ ref: refOf(m), m, parts, chart });
+    tick();
+  }
 
   const earthworks: EarthworksReport[] = [];
   const sections: SectionReport[] = [];
   const landfill: LandfillReport[] = [];
+  const first = surveyed[0] ?? null;
   if (opts.need === 'report') {
     // ---------------------------------------------- earthworks
-    const first = surveyed[0] ?? null;
     for (const m of plan.earthworks) {
       for (const it of designItems(m)) {
         const tol = it.deadbandM ?? settings.deadbandM ?? 0.05;
@@ -602,27 +1058,30 @@ export async function buildSurveyData(
         tick();
         continue;
       }
-      const refsOf: SectionRef[] = [{ kind: 'current' }];
+      const refsOf: KindRef[] = [{ ref: { kind: 'current' }, kind: 'current', date: current.date }];
       const firstSurface =
         first && first.id !== current.id ? surfaceOfCapture(files.surfaces, first.id) : null;
-      if (firstSurface) refsOf.push({ kind: 'survey', surface: firstSurface.id });
+      if (first && firstSurface)
+        refsOf.push({
+          ref: { kind: 'survey', surface: firstSurface.id },
+          kind: 'earlier',
+          date: first.date,
+        });
       const seen = new Set<string>();
       for (const e of plan.earthworks)
         for (const it of designItems(e)) {
           const d = isDesign(it.to) ? it.to : it.from;
           if (d.kind !== 'design' || seen.has(`${d.design}/${d.layer}`) || seen.size >= 2) continue;
           seen.add(`${d.design}/${d.layer}`);
-          refsOf.push(d);
+          refsOf.push({ ref: d, kind: 'design' });
         }
       try {
-        const { surfaces } = await resolveSection(refsOf, engine.resolver(current.id));
         const length = lineLength(line);
-        const s = await sampleSection({ line, stepM: Math.max(0.25, length / 400) }, surfaces);
         sections.push({
-          ref: refs.get(m.id) ?? m.id,
+          ref: refOf(m),
           label: m.label,
           lengthM: length,
-          profiles: s.profiles.map((p) => ({ label: p.label, chainage: p.chainage, z: p.z })),
+          profiles: await sampleProfiles(line, refsOf, engine.resolver(current.id)),
         });
       } catch {
         // no surface to cut: the section is left out
@@ -703,5 +1162,9 @@ export async function buildSurveyData(
     earthworks,
     sections,
     landfill,
+    volumes,
+    entries,
+    settings,
+    templates: files.templates,
   };
 }
