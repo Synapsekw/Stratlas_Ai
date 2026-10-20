@@ -21,6 +21,8 @@ import {
 import { AccuracyReportView } from './AccuracyReport';
 import { defaultProducts, presetLabel } from './estimate';
 import { GcpPanel } from './GcpTable';
+import { JobLive } from './JobLive';
+import { watchdogWords } from './liveStatus';
 import { RUN_STATUS, runView, type PhaseState } from './phases';
 import { RefinedPoses } from './RefinedPoses';
 import { START_OVER } from './startOver';
@@ -197,6 +199,19 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
     await p;
     setBusy(false);
   };
+  const keptWaiting = usePhotoUi((s) => s.keptWaiting);
+  const anyActive = jobs.some(isActive);
+  // the live line counts seconds, so the clock ticks only while a job is at work
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!anyActive) return;
+    const t = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(t);
+    };
+  }, [anyActive]);
   if (!project) return null;
   // Start over: a failed or cancelled run, nothing of it at work, a project that can be changed
   const canStartOver =
@@ -411,7 +426,19 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
               </ol>
             </details>
           )}
-          {job.error && (
+          <JobLive
+            job={job}
+            now={now}
+            fallback={view.headline}
+            keptWaitingAt={keptWaiting[job.id]}
+            onCancel={() => {
+              void act(cancelRun(run, job.id));
+            }}
+            onKeepWaiting={() => {
+              photoUi.getState().keepWaiting(job.id, Date.now());
+            }}
+          />
+          {job.error && !watchdogWords(job) && (
             <p className="notice danger small" role="alert">
               <Icon name="warn" size={14} />
               {job.error}

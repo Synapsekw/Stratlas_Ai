@@ -779,3 +779,22 @@
   gap: 4px;
   margin-top: 10px;
 }
+.ph-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.ph-stuck {
+  flex-wrap: wrap;
+  margin: 0;
+}
+.ph-stuck > span:first-of-type {
+  flex: 1 1 16rem;
+  color: var(--fg-0);
+}
+.ph-stuck .ph-acts {
+  margin-top: 0;
+}
