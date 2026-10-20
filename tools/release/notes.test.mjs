@@ -7,6 +7,7 @@ import { buildFeed, platformOf } from './feed.mjs';
 import {
   groupCommits,
   parseCommit,
+  previousBuild,
   previousTag,
   readCommits,
   releaseNotes,
@@ -130,6 +131,33 @@ describe('notes between tags', () => {
 
   it('lists the whole history when there is no earlier release', () => {
     git('tag', '-d', 'v0.7.0');
+    expect(releaseNotes({ cwd: repo }).markdown).toContain('- First feature');
+  });
+
+  it('without a tag, starts at the recorded previous build', () => {
+    const built = git('rev-parse', 'HEAD~1').trim();
+    git('tag', '-d', 'v0.7.0');
+    mkdirSync(join(repo, 'tools/release'), { recursive: true });
+    writeFileSync(
+      join(repo, 'tools/release/previous-release.json'),
+      JSON.stringify({ version: '0.7.0', commit: built }),
+    );
+    expect(previousBuild('HEAD', repo)).toBe(built);
+    const n = releaseNotes({ cwd: repo });
+    expect(n.from).toBe(built);
+    expect(n.markdown).toContain('- Second feature');
+    expect(n.markdown).not.toContain('After the tag');
+    expect(n.markdown).not.toContain('First feature');
+  });
+
+  it('ignores a recorded build that is not in the history', () => {
+    git('tag', '-d', 'v0.7.0');
+    mkdirSync(join(repo, 'tools/release'), { recursive: true });
+    writeFileSync(
+      join(repo, 'tools/release/previous-release.json'),
+      JSON.stringify({ version: '0.7.0', commit: 'deadbeefdeadbeef' }),
+    );
+    expect(previousBuild('HEAD', repo)).toBeNull();
     expect(releaseNotes({ cwd: repo }).markdown).toContain('- First feature');
   });
 });
