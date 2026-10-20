@@ -35,8 +35,9 @@ export interface LiveStatus {
   stepElapsed: string | null;
   eta: string | null;
   jobElapsed: string;
-  activity: string;
-  quietMs: number;
+  /** Null unless the engine reported a parsable last-activity time: no invented proof of life. */
+  activity: string | null;
+  quietMs: number | null;
 }
 
 /** A timestamp as milliseconds, or null when absent or unparsable. */
@@ -50,14 +51,14 @@ export function liveStatus(job: JobRecord, now: number): LiveStatus {
   const live = job.live;
   const stepStart = ms(live?.stepStartedAt);
   const jobStart = ms(job.startedAt) ?? ms(job.createdAt) ?? now;
-  const last = ms(live?.lastActivityAt) ?? ms(job.updatedAt) ?? now;
-  const quietMs = Math.max(0, now - last);
+  const last = ms(live?.lastActivityAt);
+  const quietMs = last === null ? null : Math.max(0, now - last);
   return {
     line: live?.detail ? detailLine(live.detail) : null,
     stepElapsed: stepStart === null ? null : formatDuration(now - stepStart),
     eta: live?.etaSeconds === undefined ? null : etaWords(live.etaSeconds),
     jobElapsed: formatDuration(now - jobStart),
-    activity: `Last activity ${formatDuration(quietMs)} ago`,
+    activity: quietMs === null ? null : `Last activity ${formatDuration(quietMs)} ago`,
     quietMs,
   };
 }

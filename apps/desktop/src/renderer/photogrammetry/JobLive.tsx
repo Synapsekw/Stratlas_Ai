@@ -49,7 +49,12 @@ export function JobLive({
   return (
     <>
       <p className="ph-live small" data-testid="photo-job-live">
-        {line && <b>{line}</b>}
+        {line && (
+          <>
+            <b>{line}</b>
+            <span className="faint"> · </span>
+          </>
+        )}
         <span className="faint">{parts.join(' · ')}</span>
       </p>
       {showStuck(job, now, keptWaitingAt) && (

@@ -90,6 +90,19 @@ describe('JobLive', () => {
     expect(q('photo-job-stuck')).toBeNull();
   });
 
+  it('separates the headline from the first part in the text', () => {
+    show(record());
+    const text = q('photo-job-live')?.textContent ?? '';
+    expect(text).toContain('pairs · 6 min on this step');
+  });
+
+  it('shows no last activity when the engine sent none', () => {
+    show(record({ live: undefined }));
+    const text = q('photo-job-live')?.textContent ?? '';
+    expect(text).toContain('in all');
+    expect(text).not.toContain('Last activity');
+  });
+
   it('says a quiet stretch without a notice before 15 minutes', () => {
     show(withActivity(5 * 60_000));
     expect(q('photo-job-live')?.textContent).toContain('Last activity 5 min ago');

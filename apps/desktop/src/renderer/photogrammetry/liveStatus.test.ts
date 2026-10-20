@@ -83,13 +83,14 @@ describe('liveStatus', () => {
     });
   });
 
-  it('falls back to createdAt and updatedAt without live data', () => {
+  it('falls back to createdAt for the job time, and shows no activity, without live data', () => {
     const s = liveStatus(job(), T0 + 5_000);
     expect(s.line).toBeNull();
     expect(s.stepElapsed).toBeNull();
     expect(s.eta).toBeNull();
     expect(s.jobElapsed).toBe('1 min');
-    expect(s.activity).toBe('Last activity 5 s ago');
+    expect(s.activity).toBeNull();
+    expect(s.quietMs).toBeNull();
   });
 
   it('never shows negative activity for a timestamp slightly in the future', () => {
@@ -98,9 +99,10 @@ describe('liveStatus', () => {
     expect(showStuck(j, T0)).toBe(false);
   });
 
-  it('treats an unparsable timestamp as now', () => {
+  it('shows no activity for an unparsable timestamp', () => {
     const j = withActivity('nonsense');
-    expect(liveStatus(j, T0).activity).toBe('Last activity 0 s ago');
+    expect(liveStatus(j, T0).activity).toBeNull();
+    expect(liveStatus(j, T0).quietMs).toBeNull();
     expect(showStuck(j, T0 + 2 * STALL_NOTICE_MS)).toBe(false);
   });
 });
