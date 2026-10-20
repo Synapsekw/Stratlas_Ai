@@ -1,6 +1,6 @@
 """Write the two synthetic ODM console logs that test_odm_sfm_progress.py reads.
 
-Run from anywhere: ``python make_fixtures.py``. The lines follow the formats ODM 3.6.2
+Run from anywhere: ``python make_odm_log_fixtures.py``. The lines follow the formats ODM 3.6.2
 prints for its OpenSfM stage; photo names, paths, dates and numbers are made up.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
-HERE = Path(__file__).parent
+HERE = Path(__file__).parent / "fixtures" / "odm_log"
 BIN = r"C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm"
 WORK = r"C:\odm-work\project\opensfm"
 GREEN = "\x1b[32m"
