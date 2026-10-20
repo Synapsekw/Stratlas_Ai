@@ -16,7 +16,8 @@ except PackageNotFoundError:  # running from a source checkout without an instal
 PROTOCOL = "aio.pipelines/1"
 
 # App versions this pack works with (M9; pack 0.5.0 of M11 needs app 0.11; pack 0.9.0 and later need app 0.16, pack 0.17.0 needs app 0.22, the first that applies a line-up turn (captures[].lineUpTurn); pack 0.18.0 adds
-# area-scoped change jobs (optional params an older app never sends) and keeps that floor,
+# area-scoped change jobs (optional params an older app never sends) and keeps that floor, as does
+# pack 0.19.0 (live ODM progress in optional progress fields an older app ignores),
 # the first that reads aio.procmodel/2, which drawing.import and model.fit_cloud write). The app refuses a pack
 # outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).
