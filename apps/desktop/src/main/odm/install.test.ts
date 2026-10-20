@@ -390,6 +390,134 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
     expect((await odmStatus(d, false)).state).toBe('not-installed');
   });
 
+  it('records the install unverified before the start check, so a quit during it leaves Try again', async () => {
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    let during: unknown = null;
+    let signal: AbortSignal | undefined;
+    const system = fakeSystem({
+      runSmoke: async (_dir, s) => {
+        signal = s;
+        during = await readRec(join(dir, 'data'));
+        return { code: 0, out: 'usage: run' };
+      },
+    });
+    const { r } = await run(deps(system));
+    expect(r).toMatchObject({ ok: true, status: { state: 'installed' } });
+    expect(during).toMatchObject({ dir: target, verified: false });
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(await readRec(join(dir, 'data'))).not.toHaveProperty('verified');
+  });
+
+  it('a cancelled start check keeps the install unverified, on a first install and on Try again', async () => {
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const cancelling = () => {
+      const ctl = new AbortController();
+      const system = fakeSystem({
+        runSmoke: () => {
+          ctl.abort();
+          return Promise.resolve({ code: 1, out: '' });
+        },
+      });
+      const seen: OdmInstallProgress[] = [];
+      const r = installOdm(deps(system), {
+        replaceOther: false,
+        signal: ctl.signal,
+        onProgress: (p) => seen.push(p),
+      });
+      return r.then((res) => ({ r: res, seen, system }));
+    };
+    for (const attempt of ['first', 'retry']) {
+      const { r, seen, system } = await cancelling();
+      expect(r, attempt).toMatchObject({
+        ok: false,
+        code: 'cancelled',
+        error: 'The start check was cancelled. ODM stays installed until it is checked.',
+      });
+      expect(seen.at(-1)).toMatchObject({ phase: 'cancelled' });
+      expect(system.calls.filter((c) => c[0]?.endsWith('unins000.exe'))).toHaveLength(0);
+      expect(existsSync(target)).toBe(true);
+      expect((await odmStatus(deps(), false)).state).toBe('unverified');
+    }
+  });
+
+  it('an update whose first start is slow keeps the older engine until a start check passes', async () => {
+    const older = join(dir, 'data', 'runtime', 'odm-3.5.6');
+    await writeOdmFiles(older);
+    await mkdir(join(dir, 'data', 'runtime'), { recursive: true });
+    const oldRec = {
+      schema: 'aio.odm-install/1',
+      version: '3.5.6',
+      dir: older,
+      installedAt: '2026-10-01T00:00:00.000Z',
+    };
+    await writeFile(join(dir, 'data', 'runtime', 'odm.json'), JSON.stringify(oldRec));
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    expect((await run(deps(slow))).r).toMatchObject({ ok: true, status: { state: 'unverified' } });
+    expect(existsSync(older)).toBe(true);
+    const previous = join(dir, 'data', 'runtime', 'odm-previous.json');
+    expect(JSON.parse(await readFile(previous, 'utf8'))).toEqual(oldRec);
+    // a second slow start keeps it too, and the earliest working one stays the previous
+    await run(deps(slow));
+    expect(JSON.parse(await readFile(previous, 'utf8'))).toEqual(oldRec);
+    // the check passes: the older engine and its record go
+    expect((await run(deps())).r).toMatchObject({ ok: true, status: { state: 'installed' } });
+    expect(existsSync(older)).toBe(false);
+    expect(existsSync(previous)).toBe(false);
+  });
+
+  it('an update that does not start puts the older engine back, also after a slow first start', async () => {
+    const older = join(dir, 'data', 'runtime', 'odm-3.5.6');
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const recPath = join(dir, 'data', 'runtime', 'odm.json');
+    const oldRec = {
+      schema: 'aio.odm-install/1',
+      version: '3.5.6',
+      dir: older,
+      installedAt: '2026-10-01T00:00:00.000Z',
+    };
+    const broken = fakeSystem({ runSmoke: () => Promise.resolve({ code: 1, out: 'boom' }) });
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    for (const first of [null, slow]) {
+      await writeOdmFiles(older);
+      await writeFile(recPath, JSON.stringify(oldRec));
+      if (first) await run(deps(first));
+      const d = deps(broken);
+      expect((await run(d)).r).toMatchObject({ ok: false, code: 'failed' });
+      expect(await readRec(join(dir, 'data'))).toEqual(oldRec);
+      expect(existsSync(join(dir, 'data', 'runtime', 'odm-previous.json'))).toBe(false);
+      expect(existsSync(older)).toBe(true);
+      expect(existsSync(target)).toBe(false);
+      expect(await currentOdm(d)).toMatchObject({ dir: older, version: '3.5.6' });
+    }
+  });
+
+  it('remove during a slow update removes the kept older engine too', async () => {
+    const older = join(dir, 'data', 'runtime', 'odm-3.5.6');
+    await writeOdmFiles(older);
+    await mkdir(join(dir, 'data', 'runtime'), { recursive: true });
+    await writeFile(
+      join(dir, 'data', 'runtime', 'odm.json'),
+      JSON.stringify({
+        schema: 'aio.odm-install/1',
+        version: '3.5.6',
+        dir: older,
+        installedAt: '2026-10-01T00:00:00.000Z',
+      }),
+    );
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    const d = deps(slow);
+    await run(d);
+    expect(await removeOdm(d)).toMatchObject({ ok: true, status: { state: 'not-installed' } });
+    expect(existsSync(older)).toBe(false);
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-previous.json'))).toBe(false);
+  });
+
   it('remove works on an install that still needs its start check', async () => {
     const slow = fakeSystem({
       runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),

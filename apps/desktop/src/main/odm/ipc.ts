@@ -37,9 +37,11 @@ export function registerOdmIpc(
     }
   });
 
-  // Only the download can be stopped; once ODM's setup runs it has to finish.
+  // The download and the start check can be stopped; ODM's setup, once it runs, has to finish.
+  // A stopped check leaves ODM installed and unverified, for Try again.
   d.handle('odm:cancel', () => {
-    if (!running || (phase !== 'download' && phase !== 'verify')) return { ok: false };
+    if (!running || (phase !== 'download' && phase !== 'verify' && phase !== 'check'))
+      return { ok: false };
     running.abort();
     return { ok: true };
   });

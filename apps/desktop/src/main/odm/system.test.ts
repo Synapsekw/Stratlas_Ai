@@ -59,6 +59,51 @@ describe('the smoke test process', () => {
     child.emit('close', 0); // a late close changes nothing
   });
 
+  it('a cancel kills the check at once', async () => {
+    const child = fakeChild();
+    const killed: (number | undefined)[] = [];
+    const system = nodeOdmSystem(
+      {},
+      { closeGraceMs: 20, spawnSmoke: () => child as never, killTree: (pid) => killed.push(pid) },
+    );
+    const ctl = new AbortController();
+    const r = system.runSmoke('C:\\odm', ctl.signal);
+    ctl.abort();
+    expect(killed).toEqual([4242]);
+    child.emit('close', 1);
+    expect(await r).toMatchObject({ code: 1, timedOut: false });
+    // an abort before the start never spawns
+    let spawned = false;
+    const early = nodeOdmSystem(
+      {},
+      {
+        spawnSmoke: () => {
+          spawned = true;
+          return fakeChild() as never;
+        },
+      },
+    );
+    expect(await early.runSmoke('C:\\odm', ctl.signal)).toMatchObject({ code: 1 });
+    expect(spawned).toBe(false);
+  });
+
+  it('stopSmoke kills a check still running when the app quits', async () => {
+    const child = fakeChild();
+    const killed: (number | undefined)[] = [];
+    const system = nodeOdmSystem(
+      {},
+      { closeGraceMs: 20, spawnSmoke: () => child as never, killTree: (pid) => killed.push(pid) },
+    );
+    system.stopSmoke(); // nothing running: nothing killed
+    expect(killed).toEqual([]);
+    const r = system.runSmoke('C:\\odm');
+    system.stopSmoke();
+    expect(killed).toEqual([4242]);
+    expect(await r).toMatchObject({ code: 1 }); // never closed: let go after the grace
+    system.stopSmoke(); // finished: not killed again
+    expect(killed).toEqual([4242]);
+  });
+
   it('keeps only the last 64 KB of the output', async () => {
     const child = fakeChild();
     const system = nodeOdmSystem({}, { spawnSmoke: () => child as never });

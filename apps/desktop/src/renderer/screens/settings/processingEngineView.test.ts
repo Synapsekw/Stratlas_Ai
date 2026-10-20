@@ -35,6 +35,13 @@ describe('the Processing engine card', () => {
     expect(processingEngineView(base, null, true).actions).toEqual(['cancel']);
   });
 
+  it('the start check can be cancelled too, the setup cannot', () => {
+    const at = (phase: 'install' | 'check') =>
+      processingEngineView(base, { phase, bytesDone: 0, bytesTotal: 0 }, true).actions;
+    expect(at('check')).toEqual(['cancel']);
+    expect(at('install')).toEqual([]);
+  });
+
   it('installed: version, folder, GPU line and remove', () => {
     const v = processingEngineView(
       { ...base, state: 'installed', version: '3.6.2', dir: 'E:\\Q\\odm-3.6.2' },

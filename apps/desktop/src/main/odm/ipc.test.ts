@@ -169,6 +169,29 @@ describe.skipIf(process.platform !== 'win32')('ODM IPC', () => {
     expect(await call('odm:cancel')).toEqual({ ok: false });
   });
 
+  it('cancel stops the start check: ODM stays installed, waiting for Try again', async () => {
+    const checking = deferred<undefined>();
+    const { call, events } = setup({
+      fetch: () => Promise.resolve(new Response(SETUP)),
+      system: system({
+        runSmoke: (_dir, signal) => {
+          checking.resolve(undefined);
+          return new Promise((ok) => {
+            signal?.addEventListener('abort', () => {
+              ok({ code: 1, out: '' });
+            });
+          });
+        },
+      }),
+    });
+    const first = call<{ ok: boolean }>('odm:install', {});
+    await checking.promise;
+    expect(await call('odm:cancel')).toEqual({ ok: true });
+    expect(await first).toMatchObject({ ok: false, code: 'cancelled' });
+    expect(events.at(-1)).toMatchObject({ phase: 'cancelled' });
+    expect(await call('odm:status')).toMatchObject({ state: 'unverified' });
+  });
+
   it('setGpu writes the setting and answers the new status', async () => {
     const { call, gpuWrites } = setup();
     expect(await call('odm:setGpu', { gpu: 'off' })).toMatchObject({

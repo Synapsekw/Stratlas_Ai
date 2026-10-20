@@ -773,13 +773,14 @@ const surveyQaJobs = qaJobEvents({ journal: (root, drafts) => journal.appendEdit
 const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
 // ADR 0012: the ODM engine the photo jobs run (Settings, Processing tools installs it). Its
 // downloads go through a session of their own: the default one blocks the network.
+const odmSystem = nodeOdmSystem(process.env);
 const odmDeps: OdmDeps = {
   dataRoot: () => settings.current().dataRoot,
   env: process.env,
   platform: process.platform,
   arch: process.arch,
   fetch: (u, init) => session.fromPartition('quadrion-odm').fetch(u, init),
-  system: nodeOdmSystem(process.env),
+  system: odmSystem,
   gpus: async () => gpusFromInfo(await app.getGPUInfo('basic')),
   gpuSetting: () => settings.current().processing?.odm?.gpu ?? 'auto',
   offlineOnly: () => settings.current().offlineOnly === true,
@@ -2300,6 +2301,9 @@ app.on('will-quit', () => {
   // a 360 stitch must not go on in an ffmpeg nobody is waiting for
   importRuns.cancelAll();
   panoImports.cancelAll();
+  // ODM's start check (cmd, run.bat, its Python) would outlive the app; the install stays
+  // recorded unverified, for Try again
+  odmSystem.stopSmoke();
   // the journal keeps each chain's segment open between appends (T8 finding 4)
   void journal.closeAll();
 });
