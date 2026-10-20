@@ -63,24 +63,49 @@ function render(data: TimeChartData, p: { units?: SurveyUnits; interactive?: boo
   );
   return host;
 }
-const bar = (h: HTMLElement, capture: string) => h.querySelector(`[data-bar="${capture}"]`);
+const dot = (h: HTMLElement, capture: string) => h.querySelector(`[data-dot="${capture}"]`);
+const svgOf = (h: HTMLElement) => {
+  const svg = h.querySelector('svg');
+  if (!svg) throw new Error('no svg');
+  return svg;
+};
 
 describe('TimeChart', () => {
-  it('latest date is highlighted', () => {
+  it('latest date is highlighted, following TimeRow.latest', () => {
+    // `latest` sits on the middle row: a chart that recomputes it from the order would pick 'c'
     const h = render({
       kind: 'volume',
       rows: [
         row('a', '2026-09-01', 100),
-        row('b', '2026-09-15', 150, { changeM3: 50 }),
-        row('c', '2026-10-01', 130, { changeM3: -20, latest: true }),
+        row('b', '2026-09-15', 150, { changeM3: 50, latest: true }),
+        row('c', '2026-10-01', 130, { changeM3: -20 }),
       ],
     });
-    expect(bar(h, 'c')?.getAttribute('fill')).toBe('var(--chart-current)');
-    expect(bar(h, 'a')?.getAttribute('fill')).toBe('var(--chart-earlier)');
-    expect(bar(h, 'b')?.getAttribute('fill')).toBe('var(--chart-earlier)');
+    expect(dot(h, 'b')?.getAttribute('fill')).toBe('var(--chart-current)');
+    expect(dot(h, 'a')?.getAttribute('fill')).toBe('var(--chart-earlier)');
+    expect(dot(h, 'c')?.getAttribute('fill')).toBe('var(--chart-earlier)');
+    expect(Number(dot(h, 'b')?.getAttribute('r'))).toBeGreaterThan(
+      Number(dot(h, 'a')?.getAttribute('r')),
+    );
+    expect(h.querySelector('rect[data-bar]')).toBeNull();
   });
 
-  it('a missing date is a gap with its note, not a zero bar', () => {
+  it('volume is a line through its dots, broken at a missing date', () => {
+    const h = render({
+      kind: 'volume',
+      rows: [
+        row('a', '2026-09-01', 100),
+        row('b', '2026-09-10', 120),
+        row('c', '2026-09-15', null),
+        row('d', '2026-09-20', 90),
+        row('e', '2026-09-25', 95, { latest: true }),
+      ],
+    });
+    expect(h.querySelectorAll('polyline.tc-line').length).toBe(2);
+    expect(h.querySelectorAll('circle[data-dot]').length).toBe(4);
+  });
+
+  it('a missing date is a gap with its note, not a zero point', () => {
     const h = render({
       kind: 'volume',
       rows: [
@@ -89,13 +114,11 @@ describe('TimeChart', () => {
         row('c', '2026-10-01', 90, { latest: true }),
       ],
     });
-    expect(bar(h, 'b')).toBeNull();
-    const gap = h.querySelector('[data-gap="b"]');
-    expect(gap).not.toBeNull();
-    expect(gap?.textContent).toContain('No survey data');
+    expect(dot(h, 'b')).toBeNull();
+    expect(h.querySelector('[data-gap="b"]')?.textContent).toContain('No survey data');
   });
 
-  it('stale date is hatched with the stale tip', () => {
+  it('stale date is a hollow dot with the stale tip', () => {
     const h = render({
       kind: 'volume',
       rows: [
@@ -103,10 +126,25 @@ describe('TimeChart', () => {
         row('b', '2026-10-01', 90, { latest: true }),
       ],
     });
-    expect(bar(h, 'a')?.getAttribute('fill')).toMatch(/^url\(#.*hatch/);
-    expect(bar(h, 'b')?.getAttribute('fill')).toBe('var(--chart-current)');
+    expect(dot(h, 'a')?.getAttribute('fill')).toBe('var(--bg-1)');
+    expect(dot(h, 'a')?.getAttribute('stroke')).toBe('var(--chart-earlier)');
     expect(h.querySelector('[data-stale="a"]')?.textContent).toContain('Stale, recompute');
     expect(h.querySelector('[data-stale="b"]')).toBeNull();
+    expect(dot(h, 'b')?.getAttribute('fill')).toBe('var(--chart-current)');
+  });
+
+  it('a partial date is a dashed hollow dot with its tip', () => {
+    const h = render({
+      kind: 'volume',
+      rows: [
+        row('a', '2026-09-01', 100, { status: 'partial' }),
+        row('b', '2026-10-01', 90, { latest: true }),
+      ],
+    });
+    expect(dot(h, 'a')?.getAttribute('fill')).toBe('var(--bg-1)');
+    expect(dot(h, 'a')?.getAttribute('stroke-dasharray')).toBeTruthy();
+    expect(h.querySelector('[data-partial="a"]')?.textContent).toContain('Partly outside');
+    expect(dot(h, 'b')?.getAttribute('stroke-dasharray')).toBeNull();
   });
 
   it('x spacing follows dates', () => {
@@ -118,38 +156,69 @@ describe('TimeChart', () => {
         row('c', '2026-09-12', 10, { latest: true }),
       ],
     });
-    const cx = (id: string) => Number(bar(h, id)?.getAttribute('data-cx'));
+    const cx = (id: string) => Number(dot(h, id)?.getAttribute('data-cx'));
     expect((cx('c') - cx('b')) / (cx('b') - cx('a'))).toBeCloseTo(10, 1);
   });
 
-  it('stack shows the total and names missing piles', () => {
-    const rows: StackRow[] = [
-      {
-        capture: 'a',
-        date: '2026-09-01',
-        label: '01 Sep',
-        totalM3: 300,
-        parts: [
-          { id: 'p1', valueM3: 100 },
-          { id: 'p2', valueM3: 200 },
-        ],
-        missing: ['p3'],
-      },
-    ];
+  it('the value axis does not start at zero for a line', () => {
     const h = render({
-      kind: 'stack',
-      rows,
-      names: new Map([
-        ['p1', 'North'],
-        ['p2', 'East'],
-        ['p3', 'South'],
-      ]),
+      kind: 'volume',
+      rows: [row('a', '2026-09-01', 1000), row('b', '2026-09-10', 1010, { latest: true })],
     });
+    const ticks = [...h.querySelectorAll('[data-axis="z"] text')].map((n) => n.textContent);
+    expect(ticks).not.toContain('0');
+  });
+
+  const stackRows: StackRow[] = [
+    {
+      capture: 'a',
+      date: '2026-09-01',
+      label: '01 Sep',
+      totalM3: 300,
+      parts: [
+        { id: 'p1', valueM3: 100 },
+        { id: 'p2', valueM3: 200 },
+      ],
+      missing: ['p3'],
+    },
+  ];
+  const names = new Map([
+    ['p1', 'North'],
+    ['p2', 'East'],
+    ['p3', 'South'],
+  ]);
+
+  it('stack shows the total, names missing piles and has a legend', () => {
+    const h = render({ kind: 'stack', rows: stackRows, names });
     expect(h.querySelector('[data-total="a"]')?.textContent).toContain('300');
     expect(h.querySelectorAll('[data-part]').length).toBe(2);
     const note = h.querySelector('[data-testid="time-missing"]')?.textContent ?? '';
-    expect(note).toContain('1 piles have no survey data on 01 Sep');
+    expect(note).toContain('1 pile has no survey data on 01 Sep');
     expect(note).toContain('South');
+    const legend = h.querySelector('[data-testid="time-legend"]')?.textContent ?? '';
+    expect(legend).toContain('North');
+    expect(legend).toContain('East');
+  });
+
+  it('stack shades are neutral, never the latest-survey colour', () => {
+    const h = render({ kind: 'stack', rows: stackRows, names });
+    for (const r of h.querySelectorAll('[data-part]')) {
+      const fill = r.getAttribute('fill') ?? '';
+      expect(fill).not.toContain('--chart-current');
+      expect(fill).toContain('--chart-earlier');
+    }
+    const fills = [...h.querySelectorAll('[data-part]')].map((r) => r.getAttribute('fill'));
+    expect(new Set(fills).size).toBe(2);
+  });
+
+  it('missing piles use the plural form', () => {
+    const [first] = stackRows;
+    if (!first) throw new Error('fixture');
+    const two: StackRow[] = [{ ...first, missing: ['p3', 'p1'] }];
+    const h = render({ kind: 'stack', rows: two, names });
+    expect(h.querySelector('[data-testid="time-missing"]')?.textContent).toContain(
+      '2 piles have no survey data',
+    );
   });
 
   it('values follow the volume unit', () => {
@@ -158,7 +227,7 @@ describe('TimeChart', () => {
       { units: IMPERIAL },
     );
     expect(h.textContent).toContain('yd');
-    expect(bar(h, 'a')?.getAttribute('data-value')).toMatch(/130\.8/); // 100 m3 in yd3
+    expect(dot(h, 'a')?.getAttribute('data-value')).toMatch(/130\.8/); // 100 m3 in yd3
   });
 
   it('elevation draws a line with dots and breaks at a missing date', () => {
@@ -172,5 +241,55 @@ describe('TimeChart', () => {
     });
     expect(h.querySelectorAll('circle[data-dot]').length).toBe(2);
     expect(h.querySelector('[data-gap="b"]')).not.toBeNull();
+    expect(dot(h, 'c')?.getAttribute('fill')).toBe('var(--chart-current)');
+  });
+
+  it('hover shows the date, the value and the change', () => {
+    const h = render({
+      kind: 'volume',
+      rows: [
+        row('a', '2026-09-01', 100),
+        row('b', '2026-10-01', 130, { changeM3: 30, latest: true }),
+      ],
+    });
+    expect(h.querySelector('[data-testid="time-readout"]')).toBeNull();
+    const cxB = Number(dot(h, 'b')?.getAttribute('data-cx'));
+    act(() => {
+      svgOf(h).dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: cxB }));
+    });
+    const ro = h.querySelector('[data-testid="time-readout"]')?.textContent ?? '';
+    expect(ro).toContain('2026-10-01');
+    expect(ro).toContain('130');
+    expect(ro).toContain('+30');
+    expect(h.querySelector('[data-testid="time-live"]')?.textContent).toContain('2026-10-01');
+    act(() => {
+      svgOf(h).dispatchEvent(new MouseEvent('pointerout', { bubbles: true }));
+    });
+    expect(h.querySelector('[data-testid="time-readout"]')).toBeNull();
+  });
+
+  it('static mode is an image with no handlers or live region', () => {
+    const rows = [row('a', '2026-09-01', 100), row('b', '2026-10-01', 130, { latest: true })];
+    const h = render({ kind: 'volume', rows }, { interactive: false });
+    expect(svgOf(h).getAttribute('role')).toBe('img');
+    expect(h.querySelector('[data-testid="time-live"]')).toBeNull();
+    expect(h.querySelector('[tabindex]')).toBeNull();
+    act(() => {
+      svgOf(h).dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 300 }));
+    });
+    expect(h.querySelector('[data-testid="time-readout"]')).toBeNull();
+  });
+
+  it('no rows draws an empty frame without crashing', () => {
+    const h = render({ kind: 'volume', rows: [] });
+    expect(svgOf(h)).not.toBeNull();
+    expect(h.querySelectorAll('circle[data-dot]').length).toBe(0);
+  });
+
+  it('a single date is one centred dot', () => {
+    const h = render({ kind: 'volume', rows: [row('a', '2026-09-01', 100, { latest: true })] });
+    expect(h.querySelectorAll('circle[data-dot]').length).toBe(1);
+    expect(h.querySelectorAll('polyline.tc-line').length).toBe(0);
+    expect(Number(dot(h, 'a')?.getAttribute('data-cx'))).toBeCloseTo(60 + (600 - 60 - 14) / 2, 0);
   });
 });

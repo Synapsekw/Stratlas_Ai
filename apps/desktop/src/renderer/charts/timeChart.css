@@ -1,14 +1,4 @@
 /* The time chart (volumetric parity W2/W4). It shares the profile chart's .pc parts; tokens only. */
-.tc-bar {
-  transition: fill var(--d-1) var(--ease);
-}
-.tc-bar-stale {
-  stroke-width: 1;
-}
-.tc-hatch-line {
-  stroke: var(--bg-1);
-  stroke-opacity: 0.55;
-}
 .tc-part {
   stroke: var(--bg-1);
   stroke-width: 1;
@@ -26,6 +16,9 @@
   stroke: var(--bg-1);
   stroke-width: 1.5;
 }
+.tc-dot-hollow {
+  stroke-width: 2;
+}
 .tc-hit {
   fill: transparent;
 }
@@ -35,7 +28,7 @@
   stroke-dasharray: 3 4;
 }
 .tc-gap:focus-visible,
-.tc-stale:focus-visible {
+.tc-flag:focus-visible {
   outline: 2px solid var(--acc);
   outline-offset: 2px;
 }
@@ -50,8 +43,24 @@
   color: var(--fg-3);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tc-bar {
-    transition: none;
-  }
+/* the pile legend under the stacked chart */
+.tc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.tc-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.tc-legend i {
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: var(--r-2);
 }

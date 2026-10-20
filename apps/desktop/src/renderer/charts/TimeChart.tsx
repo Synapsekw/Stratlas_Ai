@@ -45,8 +45,15 @@ const DEFAULT_WIDTH = 600;
 const DEFAULT_HEIGHT = 220;
 /** Space kept before the first and after the last date, so the end bars stay inside the plot. */
 const EDGE = 22;
-const MAX_BAR = 28;
+const MAX_BAR = 28; // the stacked bars
 const MIN_BAR = 4;
+const DOT_R = 4;
+const DOT_R_LATEST = 6;
+/** The pile ramp: shares of --chart-earlier over the background, never closer than the step. */
+const STACK_MAX_SHARE = 100;
+const STACK_MIN_SHARE = 40;
+const STACK_MIN_STEP = 12;
+const STACK_SHADES = 6; // beyond this the shades repeat; the legend and hover carry the names
 const READOUT_GAP = 12;
 const LABEL_W = 64;
 
@@ -58,9 +65,11 @@ interface Col {
   t: number;
   value: number | null; // SI: m3 for volume and stack, m for elevation
   change: number | null;
+  latest: boolean; // TimeRow.latest for volume; else the newest date with a value
+  stale: boolean;
+  partial: boolean;
+  stack?: StackRow;
 }
-
-const hasValue = (c: Col): c is Col & { value: number } => c.value !== null;
 
 function columns(data: TimeChartData): Col[] {
   let prev: number | null = null;
@@ -78,6 +87,7 @@ function columns(data: TimeChartData): Col[] {
           ? value - prev
           : null;
     if (value !== null) prev = value;
+    const row = data.kind === 'volume' ? (r as TimeRow) : undefined;
     return {
       capture: r.capture,
       date: r.date,
@@ -85,9 +95,18 @@ function columns(data: TimeChartData): Col[] {
       t: Date.parse(r.date),
       value,
       change,
+      latest: row?.latest ?? false,
+      stale: row?.stale ?? false,
+      partial: row?.status === 'partial',
+      ...(data.kind === 'stack' ? { stack: r as StackRow } : {}),
     };
   });
-  return out.sort((a, b) => a.t - b.t);
+  out.sort((a, b) => a.t - b.t);
+  if (data.kind !== 'volume') {
+    const last = out.findLast((c) => c.value !== null);
+    if (last) last.latest = true;
+  }
+  return out;
 }
 
 /** Ticks every `step` display units across [lo, hi] SI, as SI values. */
@@ -160,16 +179,16 @@ export function TimeChart(p: TimeChartProps): ReactElement {
     return Math.max(MIN_BAR, Math.min(MAX_BAR, px * 0.6));
   }, [cols, span, inner]);
 
-  // y by value: bars grow from zero; elevation spans its own range
+  // y by value: the stack grows from zero; the lines span their own range
   const [yLo, yHi] = useMemo((): [number, number] => {
-    const vals = cols.filter(hasValue).map((c) => c.value);
+    const vals = cols.flatMap((c) => (c.value === null ? [] : [c.value]));
     if (vals.length === 0) return [0, 1];
     const hi = Math.max(...vals);
-    if (!isElev) return [0, hi > 0 ? hi * 1.08 : 1];
+    if (data.kind === 'stack') return [0, hi > 0 ? hi * 1.08 : 1];
     const lo = Math.min(...vals);
     const pad = Math.max(0.1, (hi - lo) * 0.12);
     return [lo - pad, hi + pad];
-  }, [cols, isElev]);
+  }, [cols, data.kind]);
   const y = (v: number) => top + plotH - ((v - yLo) / (yHi - yLo || 1)) * plotH;
   const yStep = niceStep((yHi - yLo) / factor, Math.max(2, Math.floor(plotH / 36)));
   const yTicks = ticks(yLo, yHi, factor, yStep);
@@ -190,11 +209,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- x is derived from cols, w and span
   }, [cols, w, span]);
 
-  const latestIdx = (() => {
-    for (let i = cols.length - 1; i >= 0; i--) if (cols[i]?.value != null) return i;
-    return -1;
-  })();
-  const stackColors = useMemo(() => {
+  const stackIds = useMemo(() => {
     const ids: string[] = [];
     if (data.kind === 'stack')
       for (const r of data.rows)
@@ -203,9 +218,11 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   }, [data]);
   const nameOf = (id: string) => (data.kind === 'stack' ? data.names.get(id) : undefined) ?? id;
   const partFill = (id: string) => {
-    const i = stackColors.indexOf(id);
-    const share = 100 - (i * 70) / Math.max(1, stackColors.length - 1 || 1);
-    return `color-mix(in oklch, var(--chart-current) ${String(Math.round(share))}%, var(--chart-earlier))`;
+    const n = Math.min(stackIds.length, STACK_SHADES);
+    const i = stackIds.indexOf(id) % STACK_SHADES;
+    const step = Math.max(STACK_MIN_STEP, (STACK_MAX_SHARE - STACK_MIN_SHARE) / Math.max(1, n - 1));
+    const share = Math.max(STACK_MIN_SHARE, STACK_MAX_SHARE - i * step);
+    return `color-mix(in oklch, var(--chart-earlier) ${String(Math.round(share))}%, var(--bg-1))`;
   };
 
   // the crosshair: a column under the pointer or chosen by the arrow keys
@@ -262,7 +279,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
         : 'chart.elevation',
   );
   const yTitle = t('chart.axisTitle', {
-    label: t(isElev ? 'chart.elevation' : 'house.survey.col.volume'),
+    label: t(isElev ? 'chart.elevation' : 'chart.volume'),
     unit: unitLabel(unit),
   });
 
@@ -270,12 +287,10 @@ export function TimeChart(p: TimeChartProps): ReactElement {
     v === null ? '-' : `${v > 0 && fmt(v) !== fmt(0) ? '+' : ''}${fmt(v)}`;
 
   const stackMissing = data.kind === 'stack' ? data.rows.filter((r) => r.missing.length > 0) : [];
-  const liveRow =
-    live && data.kind === 'stack' ? data.rows.find((r) => r.capture === live.capture) : undefined;
+  const liveRow = live?.stack;
   const readoutId = `${uid}-readout`;
   const cx = live ? x(live.t) : 0;
   const flip = cx > left + plotW / 2;
-  const hatch = (name: string) => `${uid}-hatch-${name}`;
 
   const columnsOf = cols.map((c) => ({ c, cx: x(c.t) }));
   const linePts = (() => {
@@ -332,25 +347,6 @@ export function TimeChart(p: TimeChartProps): ReactElement {
           aria-hidden={interactive ? true : undefined}
           {...handlers}
         >
-          <defs>
-            {(['cur', 'old'] as const).map((k) => (
-              <pattern
-                key={k}
-                id={hatch(k)}
-                width={5}
-                height={5}
-                patternUnits="userSpaceOnUse"
-                patternTransform="rotate(45)"
-              >
-                <rect
-                  width={5}
-                  height={5}
-                  fill={k === 'cur' ? 'var(--chart-current)' : 'var(--chart-earlier)'}
-                />
-                <line x1={0} y1={0} x2={0} y2={5} className="tc-hatch-line" strokeWidth={2.5} />
-              </pattern>
-            ))}
-          </defs>
           <g className="pc-grid" data-axis="z">
             {yTicks.map((v) => (
               <g key={`y${String(v)}`}>
@@ -372,10 +368,10 @@ export function TimeChart(p: TimeChartProps): ReactElement {
             {yTitle}
           </text>
           <text className="pc-axis-title" x={left} y={h - 6}>
-            {t('house.col.date')}
+            {t('chart.date')}
           </text>
 
-          {isElev &&
+          {data.kind !== 'stack' &&
             linePts.map((pts) => (
               <polyline
                 key={pts}
@@ -389,12 +385,8 @@ export function TimeChart(p: TimeChartProps): ReactElement {
               />
             ))}
 
-          {columnsOf.map(({ c, cx: px }, i) => {
-            const isLatest = i === latestIdx;
-            const colour = isLatest ? 'var(--chart-current)' : 'var(--chart-earlier)';
-            const row =
-              data.kind === 'volume' ? data.rows.find((r) => r.capture === c.capture) : undefined;
-            const stale = row?.stale === true;
+          {columnsOf.map(({ c, cx: px }) => {
+            const colour = c.latest ? 'var(--chart-current)' : 'var(--chart-earlier)';
             if (c.value === null) {
               const note = t('mcard.noData');
               const mark = (
@@ -417,25 +409,11 @@ export function TimeChart(p: TimeChartProps): ReactElement {
                 <g key={c.capture}>{mark}</g>
               );
             }
-            if (isElev) {
-              return (
-                <circle
-                  key={c.capture}
-                  data-dot={c.capture}
-                  cx={px}
-                  cy={y(c.value)}
-                  r={isLatest ? 5 : 4}
-                  fill={colour}
-                  className="tc-dot"
-                />
-              );
-            }
-            if (data.kind === 'stack') {
-              const sr = data.rows.find((r) => r.capture === c.capture);
+            if (c.stack) {
               let acc = 0;
               return (
                 <g key={c.capture} data-stack={c.capture}>
-                  {sr?.parts.map((part) => {
+                  {c.stack.parts.map((part) => {
                     const y0 = y(acc);
                     acc += part.valueM3;
                     const y1 = y(acc);
@@ -454,7 +432,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
                   })}
                   <text
                     data-total={c.capture}
-                    className={isLatest ? 'tc-total tc-total-latest' : 'tc-total'}
+                    className={c.latest ? 'tc-total tc-total-latest' : 'tc-total'}
                     x={px}
                     y={y(c.value) - 5}
                     textAnchor="middle"
@@ -464,48 +442,47 @@ export function TimeChart(p: TimeChartProps): ReactElement {
                 </g>
               );
             }
-            const barY = y(c.value);
-            const hatched = stale ? hatch(isLatest ? 'cur' : 'old') : null;
-            const badge = stale ? (
+            // a line chart dot: hollow when stale, dashed when partly outside the survey
+            const flags = [
+              ...(c.stale ? [t('mcard.stale')] : []),
+              ...(c.partial ? [t('vol.status.partial')] : []),
+            ];
+            const dot = (
+              <circle
+                data-dot={c.capture}
+                data-cx={px}
+                data-value={fmt(c.value)}
+                data-latest={c.latest ? '' : undefined}
+                cx={px}
+                cy={y(c.value)}
+                r={c.latest ? DOT_R_LATEST : DOT_R}
+                className={flags.length > 0 ? 'tc-dot tc-dot-hollow' : 'tc-dot'}
+                fill={flags.length > 0 ? 'var(--bg-1)' : colour}
+                stroke={flags.length > 0 ? colour : undefined}
+                strokeDasharray={c.partial ? '2 2' : undefined}
+              />
+            );
+            if (flags.length === 0) return <g key={c.capture}>{dot}</g>;
+            const note = flags.join('. ');
+            const mark = (
               <g
-                className="tc-stale"
-                data-stale={c.capture}
+                className="tc-flag"
+                data-stale={c.stale ? c.capture : undefined}
+                data-partial={c.partial ? c.capture : undefined}
                 tabIndex={interactive ? 0 : undefined}
-                aria-label={interactive ? `${c.label}: ${t('mcard.stale')}` : undefined}
+                aria-label={interactive ? `${c.label}: ${note}` : undefined}
               >
-                <desc>{t('mcard.stale')}</desc>
-                <rect
-                  x={px - barW / 2 - 2}
-                  y={barY - 2}
-                  width={barW + 4}
-                  height={Math.max(0, bottom - barY) + 2}
-                  className="tc-hit"
-                />
+                <desc>{note}</desc>
+                <circle cx={px} cy={y(c.value)} r={DOT_R_LATEST + 4} className="tc-hit" />
+                {dot}
               </g>
-            ) : null;
-            return (
-              <g key={c.capture}>
-                <rect
-                  data-bar={c.capture}
-                  data-cx={px}
-                  data-value={fmt(c.value)}
-                  className={stale ? 'tc-bar tc-bar-stale' : 'tc-bar'}
-                  x={px - barW / 2}
-                  y={barY}
-                  width={barW}
-                  height={Math.max(0, bottom - barY)}
-                  fill={hatched ? `url(#${hatched})` : colour}
-                  style={stale ? { stroke: colour } : undefined}
-                />
-                {badge &&
-                  (interactive ? (
-                    <Tip content={t('mcard.stale')} placement="top">
-                      {badge}
-                    </Tip>
-                  ) : (
-                    badge
-                  ))}
-              </g>
+            );
+            return interactive ? (
+              <Tip key={c.capture} content={note} placement="top">
+                {mark}
+              </Tip>
+            ) : (
+              <g key={c.capture}>{mark}</g>
             );
           })}
 
@@ -543,7 +520,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
                   ))
                 : null}
               <div className={liveRow ? 'pc-ro-row pc-ro-sep' : 'pc-ro-row'}>
-                <dt>{t(isElev ? 'chart.elevation' : 'house.survey.col.volume')}</dt>
+                <dt>{t(isElev ? 'chart.elevation' : 'chart.volume')}</dt>
                 <dd>{live.value === null ? t('mcard.noData') : fmt(live.value)}</dd>
               </div>
               <div className="pc-ro-row">
@@ -561,11 +538,21 @@ export function TimeChart(p: TimeChartProps): ReactElement {
           </p>
         )}
       </div>
+      {stackIds.length > 0 && (
+        <ul className="tc-legend" data-testid="time-legend">
+          {stackIds.map((id) => (
+            <li key={id}>
+              <i aria-hidden="true" style={{ background: partFill(id) }} />
+              {nameOf(id)}
+            </li>
+          ))}
+        </ul>
+      )}
       {stackMissing.length > 0 && (
         <ul className="tc-missing" data-testid="time-missing">
           {stackMissing.map((r) => (
             <li key={r.capture}>
-              {t('vol.missing', { n: String(r.missing.length), date: r.label })}
+              {t('vol.missing', { count: r.missing.length, date: r.label })}
               <span className="tc-missing-names"> {r.missing.map(nameOf).join(', ')}</span>
             </li>
           ))}
