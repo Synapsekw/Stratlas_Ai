@@ -76,3 +76,10 @@ it('keeps a note per run and clears it', () => {
   photoUi.getState().setNote('r1', null);
   expect(photoUi.getState().notes).toEqual({});
 });
+
+it('remembers Keep waiting per job', () => {
+  photoUi.getState().keepWaiting('j1', 1000);
+  photoUi.getState().keepWaiting('j2', 2000);
+  photoUi.getState().keepWaiting('j1', 3000);
+  expect(photoUi.getState().keptWaiting).toEqual({ j1: 3000, j2: 2000 });
+});
