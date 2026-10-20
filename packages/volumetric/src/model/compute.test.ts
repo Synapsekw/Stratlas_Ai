@@ -65,19 +65,19 @@ const ring: [number, number][] = [
 ];
 
 describe('VolumeCompute', () => {
-  it('recomputes every base and date of a pile from its 10 cm grid', async () => {
-    const { c } = compute();
-    const r = await c.recompute('P01');
-    expect(r.e1).toBeNull();
-    expect(r.e2?.tin.net).toBeCloseTo(0.8, 6);
-    expect(r.e2?.avg.net).toBeCloseTo(0.44, 6);
-  });
-
   it('loads each grid once', async () => {
     const { c, loads } = compute();
-    await c.recompute('P01');
-    await c.recompute('P01');
+    const req = {
+      epoch: 'e2',
+      base: 'tin' as const,
+      mode: 'inv' as const,
+      selected: 'P01',
+      piles: [{ id: 'P01', ring, edited: false }],
+    };
+    await c.scene(req);
+    await c.scene(req);
     expect(loads.filter((u) => u === 'piles/P01.js')).toHaveLength(1);
+    expect(loads.filter((u) => u === 'dsm_e2.js')).toHaveLength(1);
   });
 
   it('builds coarse bodies for the site and a fine body for the selected pile', async () => {
@@ -115,6 +115,36 @@ describe('VolumeCompute', () => {
     expect(Math.max(...(b?.d ?? []))).toBeCloseTo(2, 5);
   });
 
+  it('spans the change body between the two picked surveys', async () => {
+    const { c } = compute();
+    const s = await c.scene({
+      epoch: 'e1',
+      base: 'tin',
+      mode: 'chg',
+      from: 'e2',
+      to: 'e1',
+      selected: 'P01',
+      piles: [{ id: 'P01', ring, edited: false }],
+    });
+    // from the later survey back to the earlier one, the block is removed
+    const d = s.piles[0]?.body?.d ?? [];
+    expect(Math.min(...d)).toBeCloseTo(-2, 5);
+    expect(Math.max(...d)).toBeLessThanOrEqual(0);
+  });
+
+  it('draws only the toe line of a saved edit: no base is refitted for it', async () => {
+    const { c } = compute();
+    const s = await c.scene({
+      epoch: 'e2',
+      base: 'tin',
+      mode: 'inv',
+      selected: 'P01',
+      piles: [{ id: 'P01', ring, edited: true }],
+    });
+    expect(s.piles[0]?.body).toBeNull();
+    expect(s.piles[0]?.toe.length).toBeGreaterThan(0);
+  });
+
   it('drapes the toe of a change body on the survey the view shows', async () => {
     const { c } = compute();
     const toeZ = async (epoch: string) => {
@@ -136,28 +166,24 @@ describe('VolumeCompute', () => {
     expect((last[0] ?? 0) - (first[0] ?? 0)).toBeCloseTo(0.5, 5);
   });
 
-  it('recomputes an edited toe line with every base refitted, and drapes it', async () => {
-    const { c } = compute();
-    const e = await c.edit({ pile: 'P01', epoch: 'e2', ring, base: 'low' });
-    if (!e) throw new Error('no edit');
-    // the line sits on the floor (51 m) around the 2 m block of 0.4 m²
-    expect(e.result.volumes.low.fill).toBeCloseTo(0.8, 1);
-    expect(e.body.ins.some((v) => v === 1)).toBe(true);
-    expect(e.vertices).toHaveLength(4);
-    expect(e.vertices[0]?.[2]).toBeCloseTo(51, 6);
-  });
-
   it('profiles a section across both surveys', async () => {
     const { c } = compute();
     const p = await c.section([1000, 2000], [1003, 2000]);
     expect(p.fillM2).toBeGreaterThan(0);
     expect(p.cutM2).toBe(0);
+    // the picked surveys, the other way round: the same ground is cut
+    const back = await c.section([1000, 2000], [1003, 2000], 'e2', 'e1');
+    expect(back.cutM2).toBeCloseTo(p.fillM2, 9);
+    expect(back.fillM2).toBe(0);
   });
 
   it('paints the change and relief rasters on the DSM grid', async () => {
     const { c } = compute();
     const r = await c.changeRaster();
     expect([r.width, r.height]).toEqual([10, 5]);
+    // the picked surveys the other way round colour the same cells as cut, not fill
+    const back = await c.changeRaster('e2', 'e1');
+    expect([...back.data.slice(0, 4)]).not.toEqual([...r.data.slice(0, 4)]);
     const g = await c.grid();
     expect(g).toMatchObject({ w: 10, h: 5, res: 0.4, x0: 999.6, y1: 2000.4 });
     expect(g.relief[0]).toBeCloseTo(51, 6);
@@ -168,28 +194,6 @@ describe('VolumeCompute', () => {
 
   it('says which grid is missing', async () => {
     const { c } = compute();
-    await expect(c.recompute('P09')).rejects.toThrow(/P09/);
-  });
-
-  it('offers the general engine bases beside the kit ones, on the pile grid', async () => {
-    const { c } = compute();
-    const kit = await c.recompute('P01');
-    const r = await c.engineBases('P01', 'e2', ring);
-    expect(r.map((b) => b.key)).toEqual([
-      'smart',
-      'fit-plane',
-      'perimeter-mean',
-      'perimeter-min',
-      'perimeter-max',
-    ]);
-    // the block (1 m by 0.4 m, 2 m high) on a flat floor: every toe base is the floor
-    for (const b of r) {
-      expect(b.result.status, b.key).toBe('ok');
-      expect(b.result.netM3, b.key).toBeCloseTo(0.8, 6);
-      expect(b.result.engine).toBe('ts');
-    }
-    // the kit's own numbers are what they were
-    expect(kit.e2?.tin.net).toBeCloseTo(0.8, 6);
-    expect(await c.engineBases('P01', 'e9', ring)).toEqual([]);
+    await expect(c.changeRaster('e1', 'e9')).rejects.toThrow(/e9/);
   });
 });

@@ -1,8 +1,10 @@
 # @aio/volumetric
 
-Native volumetric workspace (PRD REV-3, stream N1): stockpile register with the four bases,
-volumes recomputed from the source grids in a Web Worker, cut and fill between surveys, sections
-and the boundary editor in 3D. Parity reference: the original Volumetric Survey Kit review under a
+The stockpile kit's piles in 3D: their toe lines and volume bodies, cut and fill colours between
+two picked surveys, the elevation relief, the survey swipe and the drawn section line, drawn from
+the kit's grids in a Web Worker. It computes no volume: the kit's base computation, register and
+boundary editor retired (volumetric parity W3), and every pile is a volume measurement that the
+survey engine computes (`@aio/survey`). Parity reference: the original Volumetric Survey Kit review under a
 project's `legacy/` folder. Public API: `src/index.ts`. Ownership and dependencies:
 `docs/architecture/SPEC.md` section 2 (depends on schema, engine, ui, workspace).
 
@@ -18,43 +20,42 @@ project's `legacy/` folder. Public API: `src/index.ts`. Ownership and dependenci
 
 ## Layout
 
-| Path                    | What                                                                                                              |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `src/model/kitdata.ts`  | Kit script parser and grid decoders (int16 row deltas, packed bits)                                               |
-| `src/model/volume.ts`   | `pileVolume` (the kit's `volume()`: fill, cut, net per base on the 10 cm grid), `pileChange`                      |
-| `src/model/edit.ts`     | Boundary editor maths: densify, simplify, bases refitted to an edited line (SOR membrane), `editVolumes` on 10 cm |
-| `src/model/dsm.ts`      | DSM sampling, section profile with cut and fill areas, change and relief colour rasters                           |
-| `src/model/bodies.ts`   | Body cells (surface over base, or survey over survey) for the volume body, base plate and change body             |
-| `src/model/section.ts`  | Long section along a pile's main axis                                                                             |
-| `src/model/register.ts` | Edits applied to piles, register rows, sorting, totals, CSV                                                       |
-| `src/model/compute.ts`  | `VolumeCompute`: lazy grid loading and every computation, used by the worker                                      |
-| `src/worker/`           | Worker entry, message protocol (typed arrays transferred) and `startVolumeWorker` client                          |
+| Path                    | What                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `src/model/kitdata.ts`  | Kit script parser and grid decoders (int16 row deltas, packed bits)                                   |
+| `src/model/volume.ts`   | `gridBase`: the base under a pile's 3D body (display only, never a figure)                            |
+| `src/model/edit.ts`     | Ring helpers: densify, row crossings, area                                                            |
+| `src/model/dsm.ts`      | DSM sampling, section profile with cut and fill areas, change and relief colour rasters               |
+| `src/model/bodies.ts`   | Body cells (surface over base, or survey over survey) for the volume body, base plate and change body |
+| `src/model/register.ts` | Saved boundary edits applied to the piles (`applyEdits`, from `@aio/survey`)                          |
+| `src/model/compute.ts`  | `VolumeCompute`: lazy grid loading and every computation, used by the worker                          |
+| `src/worker/`           | Worker entry, message protocol (typed arrays transferred) and `startVolumeWorker` client              |
 
 ## Workspace
 
-| Path                                 | What                                                                                                                                                                  |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/store.ts`                       | `volumetric` store: loads through IPC `project:readVolumes`, survey, base, surface, body mode, selection (in step with the scene's pile node), section, editor, saves |
-| `src/scene/controller.ts`            | `VolumetricScene`: volume bodies (lifted or in place), base plates, toe lines, change bodies, survey drapes (cut and fill, relief), swipe clipping, callouts          |
-| `src/components/VolumesPanel.tsx`    | Right panel: inventory, sortable register (fill, cut, net, change) with CSV, cut and fill by pile, pile detail with the four bases, recomputed volume, long section   |
-| `src/components/VolumetricStage.tsx` | Over the 3D pane: boundary handles, swipe divider, section and edit bars, legend, notices; section picking and body clicks                                            |
+| Path                                 | What                                                                                                                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/store.ts`                       | `volumetric` store: loads through IPC `project:readVolumes`, survey, surface and the Cut / fill pair, body mode, selection (in step with the scene's pile node), section |
+| `src/scene/controller.ts`            | `VolumetricScene`: volume bodies (lifted or in place), base plates, toe lines, change bodies, survey drapes (cut and fill, relief), swipe clipping, callouts             |
+| `src/components/VolumetricStage.tsx` | Over the 3D pane: swipe divider, legend, notices; section picking and body clicks (the section panel is the desktop's `VolumeSection`)                                   |
 
 Display model: no pile is drawn in 3D until it is selected (clicked on the terrain, in the
-register or by the agent), which flies to it and draws its toe line, body and measurement
-callout; Esc or a click on empty ground hides it. The register eyes show piles on purpose, and
+volumes view or by the agent), which flies to it and draws its toe line, body and measurement
+callout; Esc or a click on empty ground hides it. Piles can be shown on purpose, and
 "show all" plus the elevation colours (ramp, range, hillshade) are remembered per project
 (`localPrefStore`). In 3D a survey's flat ortho is hidden when its terrain mesh carries the
 photo, and the toe lines baked into the terrain models are hidden in favour of the overlay's.
 
 The app composes it: `App.tsx` loads the store when a project opens, `WorkspaceScreen` adds the
-Volumes tab, `Stage` mounts `VolumetricStage` and the Volumes toolbar group
-(`apps/desktop/src/renderer/workspace/VolumeTools.tsx`).
+Volumes tab, `Stage` mounts `VolumetricStage` and `VolumeSection`, and the Volumes bench holds the toolbar group
+(`apps/desktop/src/renderer/workspace/VolumeTools.tsx`, whose `connectVolumeChange` runs the
+survey engine's whole-site comparison of the Cut / fill pair and hands the store its difference).
 
 Seams used in other packages, read only unless noted: the stage's `onFrame`, `raycast`,
-`clippingPlanes`, `controls.enabled` (off while a handle is dragged) and `setLabelMode`; terrain
+`clippingPlanes` and `setLabelMode`; terrain
 layer groups `layer:<id>` (their material clipping planes are swapped during the swipe and
 restored); the layer root's `userData.aioTags` is replaced (never mutated) so callouts show the
-chosen base. The engine's merged terrain meshes keep their UVs, so survey photos show on the
+kit's figure on its default base (the figure the pile's volume measurement carries). The engine's merged terrain meshes keep their UVs, so survey photos show on the
 terrain itself; change and relief colours are drawn on copies of the original (pick-layer)
 meshes so the survey materials stay untouched.
 

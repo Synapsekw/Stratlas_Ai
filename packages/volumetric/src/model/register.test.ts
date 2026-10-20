@@ -1,6 +1,6 @@
 import type { BoundaryEdit, VolumesFile } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { applyEdits, registerCsv, registerRows, sortRows, totals } from './register';
+import { applyEdits } from './register';
 
 const fc = (net: number, cut = 1) => ({ fill: net + cut, cut, net });
 const v4 = (net: number) => ({
@@ -96,67 +96,5 @@ describe('applyEdits', () => {
     const f = file();
     applyEdits(f, [edit]);
     expect(f.piles[0]?.epochs.e2?.volumes.tin.net).toBe(50);
-  });
-});
-
-describe('registerRows', () => {
-  it('lists every pile on a date and base, absent piles included', () => {
-    const rows = registerRows(applyEdits(file(), []), 'e1', 'plane');
-    expect(rows.map((r) => [r.id, r.present, r.net])).toEqual([
-      ['P01', true, 110],
-      ['P02', false, null],
-    ]);
-    expect(rows[0]).toMatchObject({ fill: 111, cut: 1, change: -50, edited: false });
-  });
-
-  it('sorts by any column, absent values last', () => {
-    const rows = registerRows(applyEdits(file(), []), 'e1', 'tin');
-    expect(sortRows(rows, 'net', 'desc').map((r) => r.id)).toEqual(['P01', 'P02']);
-    expect(sortRows(rows, 'net', 'asc').map((r) => r.id)).toEqual(['P01', 'P02']);
-    expect(sortRows(rows, 'change', 'desc').map((r) => r.id)).toEqual(['P02', 'P01']);
-    expect(sortRows(rows, 'id', 'desc').map((r) => r.id)).toEqual(['P02', 'P01']);
-  });
-});
-
-describe('totals', () => {
-  it('sums net, fill, cut and area of the piles present', () => {
-    expect(totals(applyEdits(file(), [edit]), 'e2', 'tin')).toEqual({
-      net: 370,
-      fill: 372,
-      cut: 2,
-      areaM2: 220,
-      piles: 2,
-    });
-  });
-});
-
-describe('registerCsv', () => {
-  it('writes one row per pile with every date and base, change, density and boundary', () => {
-    const csv = registerCsv(file(), applyEdits(file(), [edit]), 1.6);
-    const [head, r1, r2, end] = csv.split('\n');
-    expect(head?.split(',').slice(0, 6)).toEqual([
-      'pile',
-      'name',
-      'status',
-      'e1_date',
-      'e1_area_m2',
-      'e1_height_m',
-    ]);
-    expect(head).toContain('e2_vol_tin_fill_m3,e2_vol_tin_cut_m3,e2_vol_tin_net_m3');
-    expect(head?.endsWith('change_cut_m3,change_fill_m3,change_net_m3,density_t_m3,boundary')).toBe(
-      true,
-    );
-    expect(r1?.startsWith('P01,Pile 01,matched,2020-12-31,100,5,101,1,100,')).toBe(true);
-    expect(r1?.endsWith(',1,-49,-50,1.6,edited 10 Jan 2021')).toBe(true);
-    expect(r2).toContain('P02,Pile 02,new,2020-12-31,,,');
-    expect(r2?.endsWith('automatic')).toBe(true);
-    expect(end).toBe('');
-  });
-
-  it('quotes fields that hold commas', () => {
-    const f = file();
-    const p = f.piles[0];
-    if (p) p.name = 'Pile 01, north';
-    expect(registerCsv(f, applyEdits(f, []), 1.6)).toContain('"Pile 01, north"');
   });
 });

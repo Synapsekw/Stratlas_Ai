@@ -249,7 +249,7 @@ export function useVolumesFollowDate(
     if (status !== 'ready' || !capture) return;
     const v = volumetric.getState();
     const e = v.file?.captures.find((c) => c.captureId === capture)?.epoch;
-    if (e && e !== v.epoch && !v.edit) v.setEpoch(e);
+    if (e && e !== v.epoch) v.setEpoch(e);
   }, [status, capture]);
   // the panel's date to the pane
   useEffect(() => {

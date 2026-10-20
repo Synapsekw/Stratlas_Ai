@@ -1,16 +1,12 @@
 export * from './model/kitdata';
-export * from './model/volume';
 export * from './model/dsm';
 export * from './model/edit';
 export * from './model/frame';
 export * from './model/bodies';
-export * from './model/section';
 export * from './model/register';
 export {
   VolumeCompute,
   type ComputeOptions,
-  type EditRequest,
-  type EditResponse,
   type GridInfo,
   type GridSources,
   type SceneRequest,
@@ -28,22 +24,16 @@ export {
   useVolumetric,
   volumetric,
   type BodyMode,
+  type ChangeGrid,
+  type ChangePair,
   type ElevationStyle,
   type VolumePrefs,
   type VolumePrefStore,
-  type EditSession,
   type SectionState,
   type SurfaceMode,
   type Volumetric,
   type VolumetricDeps,
 } from './store';
 export { VolumetricScene, type VolumetricView } from './scene/controller';
-/**
- * The pile register and pile detail. It has no survey date switch of its own: the host puts one
- * above it (the desktop's Volumes workbench has `VolumeDateSwipe`), so a new host must add one.
- */
-export { VolumesPanel, BaseSelect } from './components/VolumesPanel';
 export { VolumeHint, VolumetricStage, useVolumeHint } from './components/VolumetricStage';
-export { ProfileChart } from './components/ProfileChart';
 export { VolumetricStyles } from './components/styles';
-export { f0, f1, sgn } from './components/format';

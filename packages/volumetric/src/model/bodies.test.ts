@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { syntheticPile } from '../testing';
-import { changeBodyFine, coarseBody, editBody, fineBody } from './bodies';
-import { editGeometry } from './edit';
+import { changeBodyFine, coarseBody, fineBody } from './bodies';
 import { decodePile, type CoarseGrids, type DsmGrid } from './kitdata';
 
 const count = (a: Uint8Array) => a.reduce((s, v) => s + v, 0);
@@ -92,24 +91,5 @@ describe('coarseBody', () => {
     expect([...b.ins]).toEqual([1, 1, 0, 1]);
     expect(b.top[0]).toBe(53);
     expect(b.bot[0]).toBe(51);
-  });
-});
-
-describe('editBody', () => {
-  it('fills the edited ring on a regular grid', () => {
-    const surf = () => 52;
-    const g = editGeometry(
-      [
-        [0, 0],
-        [4, 0],
-        [4, 4],
-        [0, 4],
-      ],
-      surf,
-    );
-    if (!g) throw new Error('no geometry');
-    const b = editBody(g, 'low', 0.5);
-    expect(count(b.ins)).toBe(64);
-    expect(b.top[b.ins.indexOf(1)]).toBe(52);
   });
 });

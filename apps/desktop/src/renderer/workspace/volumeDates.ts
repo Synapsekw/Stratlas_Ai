@@ -4,10 +4,9 @@ import type { StoreApi } from 'zustand/vanilla';
 import type { TimelineState, VolumeDates } from './timeline';
 
 /**
- * In a stockpile project the volumes own the survey layers (swipe, cut and fill, the boundary
- * editor's lock): while they are loaded with surveys for the open project, the date bar asks them
- * for a survey and mirrors the one they show, whichever control picked it (the Volumes toolbar,
- * the volumes panel, the date bar). While the compare split is open the volumes follow the 3D
+ * In a stockpile project the volumes own the survey layers (swipe, cut and fill): while they are
+ * loaded with surveys for the open project, the date bar asks them for a survey and mirrors the
+ * one they show, whichever control picked it (the Volumes toolbar, the island, the date bar). While the compare split is open the volumes follow the 3D
  * pane's date instead (useVolumesFollowDate), so their survey is mirrored when the split closes.
  * When they load, they are asked for the date the project was left on, since they always start
  * on their last survey.

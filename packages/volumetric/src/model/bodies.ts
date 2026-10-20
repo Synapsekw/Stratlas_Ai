@@ -4,7 +4,6 @@
  * cut and fill body in 3D. Ported from the kit viewer's `src*` samplers.
  */
 import type { VolumeBaseId } from '@aio/schema';
-import { spans, type EditGeometry } from './edit';
 import type { CoarseGrids, DsmGrid, PileGrid } from './kitdata';
 import { gridBase } from './volume';
 
@@ -170,26 +169,4 @@ export function changeBodyCoarse(
   }
   b.d = d;
   return done(b);
-}
-
-/** An edited toe line filled on a regular grid of `step` metres. */
-export function editBody(g: EditGeometry, base: VolumeBaseId, step: number): BodyCells {
-  const [x0, y0, x1, y1] = g.bbox;
-  const nx = Math.ceil((x1 - x0) / step) + 1;
-  const ny = Math.ceil((y1 - y0) / step) + 1;
-  const b = cells(nx, ny, step, x0 + 0.5 * step, y1 - 0.5 * step);
-  for (let j = 0; j < ny; j++) {
-    const N = y1 - (j + 0.5) * step;
-    const xs = spans(g.ring, N);
-    for (let k = 0; k + 1 < xs.length; k += 2) {
-      const ia = Math.max(0, Math.ceil(((xs[k] ?? 0) - x0) / step - 0.5));
-      const ib = Math.min(nx - 1, Math.floor(((xs[k + 1] ?? 0) - x0) / step - 0.5));
-      for (let i = ia; i <= ib; i++) {
-        const E = x0 + (i + 0.5) * step;
-        const z = g.surf(E, N);
-        if (z != null) put(b, j * nx + i, z, g.baseAt(base, E, N));
-      }
-    }
-  }
-  return b;
 }

@@ -162,8 +162,6 @@ async function setup(opts: SetupOpts = {}) {
       Promise.resolve({ ok: true, volumes: projectId === 'm' ? volumesFile : null, edits: null }),
     startService: () =>
       ({ dispose: () => undefined }) as unknown as ReturnType<VolumetricDeps['startService']>,
-    bridge: () => null,
-    now: () => '2026-10-08T00:00:00.000Z',
   };
   const v = createVolumetricStore(deps);
   const compare = testSplit();
@@ -225,14 +223,6 @@ describe('date bar and stockpile volumes', () => {
     expect(tl.getState().focus).toBe('s1');
     expect(ws.getState().activeClip).toBe('clip-1');
     expect(ws.getState().nowMs).toBe(1_000_000 + 4_000);
-  });
-
-  it('keeps the date bar put while a boundary edit holds the survey', async () => {
-    const { tl, v } = await setup();
-    v.setState({ edit: { epoch: 'e2' } as unknown as ReturnType<typeof v.getState>['edit'] });
-    tl.getState().focusSurvey('s1');
-    expect(v.getState().epoch).toBe('e2');
-    expect(tl.getState().focus).toBe('s2');
   });
 
   it('stepping away and back saves the date only, never hides of the volume dates', async () => {

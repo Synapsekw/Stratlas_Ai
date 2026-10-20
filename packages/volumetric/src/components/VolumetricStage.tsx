@@ -1,24 +1,18 @@
 import type { EngineStage } from '@aio/engine';
-import { Icon, isShortcut, shortcutHint, t } from '@aio/ui';
+import { Icon, isShortcut, t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Raycaster, Vector2, Vector3, type Object3D } from 'three';
-import type { EN } from '../model/edit';
+import { Raycaster, Vector2, type Object3D } from 'three';
 import { CHANGE_RAMP, RAMP_IDS, rampCss } from '../model/dsm';
 import { VolumetricScene } from '../scene/controller';
 import { useVolumetric, volumetric } from '../store';
-import { f0, sgn } from './format';
-import { CUT_CSS, FILL_CSS, ProfileChart } from './ProfileChart';
-
-const short = (label: string) => label.replace(/ 20\d\d$/, '');
 
 function ndcOf(stage: EngineStage, clientX: number, clientY: number): [number, number] {
   const r = stage.renderer.domElement.getBoundingClientRect();
@@ -37,11 +31,6 @@ function pickGround(
   return [hit.point.x + o[0], o[1] - hit.point.z, hit.point.y + o[2]];
 }
 
-/** Orbit controls off while a handle is dragged. */
-function setOrbit(stage: EngineStage, on: boolean) {
-  stage.controls.enabled = on;
-}
-
 function setCursor(stage: EngineStage, cursor: string) {
   stage.renderer.domElement.style.cursor = cursor;
 }
@@ -52,321 +41,7 @@ function isTyping(t: EventTarget | null): boolean {
   );
 }
 
-/* ------------------------------------------------------------------ boundary handles */
-
-interface Drag {
-  index: number;
-  insert: boolean;
-  ring: EN[];
-  z: number[];
-  moved: boolean;
-}
-
-function Handles({ scene, stage }: { scene: VolumetricScene; stage: EngineStage }) {
-  const edit = useVolumetric((s) => s.edit);
-  const host = useRef<HTMLDivElement>(null);
-  const drag = useRef<Drag | null>(null);
-  const ring = edit?.ring ?? [];
-  const verts = edit?.live?.vertices;
-
-  // vertex heights: the worker's surface under each point, the last known while it computes
-  const vertZ = verts?.length === ring.length && !edit?.busy ? verts.map((v) => v[2]) : null;
-  const lastZ = useRef<number[]>([]);
-
-  useLayoutEffect(() => {
-    if (vertZ) lastZ.current = vertZ;
-    const el = host.current;
-    if (!el) return;
-    const place = () => {
-      const r = stage.renderer.domElement.getBoundingClientRect();
-      const own = el.getBoundingClientRect();
-      const d = drag.current;
-      const pts = d ? d.ring : ring;
-      const z = d ? d.z : (vertZ ?? lastZ.current);
-      const v = new Vector3();
-      const at = (E: number, N: number, H: number, node: HTMLElement) => {
-        v.copy(scene.world(E, N, H + 0.4)).project(stage.camera);
-        const vis = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
-        node.style.display = vis ? '' : 'none';
-        if (vis)
-          node.style.transform = `translate(${(((v.x + 1) / 2) * r.width + r.left - own.left).toFixed(1)}px, ${(((1 - v.y) / 2) * r.height + r.top - own.top).toFixed(1)}px) translate(-50%, -50%)`;
-      };
-      const n = pts.length;
-      el.querySelectorAll<HTMLElement>('[data-v]').forEach((node) => {
-        const k = Number(node.dataset.v);
-        const p = pts[k];
-        if (p) at(p[0], p[1], z[k] ?? 0, node);
-      });
-      el.querySelectorAll<HTMLElement>('[data-m]').forEach((node) => {
-        const k = Number(node.dataset.m);
-        const a = pts[k];
-        const b = pts[(k + 1) % n];
-        if (a && b && !d)
-          at((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, ((z[k] ?? 0) + (z[(k + 1) % n] ?? 0)) / 2, node);
-        else if (d) node.style.display = 'none';
-      });
-    };
-    place();
-    const off = scene.onFrame(place);
-    stage.requestRender();
-    return off;
-  });
-
-  // Delete removes the selected point, Ctrl+Z undoes
-  useEffect(() => {
-    if (!edit) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target)) return;
-      const s = volumetric.getState();
-      const ed = s.edit;
-      if (!ed) return;
-      if (isShortcut('volumes.deletePoint', e) && ed.sel >= 0) {
-        e.preventDefault();
-        void s.deleteVertex(ed.sel);
-      } else if (isShortcut('volumes.undo', e)) {
-        e.preventDefault();
-        void s.undo();
-      }
-    };
-    // capture: the outline's undo runs before the issue register's (it skips handled keys)
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('keydown', onKey, true);
-    };
-  }, [edit]);
-
-  if (!edit) return null;
-
-  const begin = (e: ReactPointerEvent<HTMLButtonElement>, index: number, insert: boolean) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const r = ring.map((q): EN => [q[0], q[1]]);
-    const z = [...(vertZ ?? lastZ.current)];
-    let k = index;
-    if (insert) {
-      const a = r[index];
-      const b = r[(index + 1) % r.length];
-      if (!a || !b) return;
-      r.splice(index + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
-      z.splice(index + 1, 0, ((z[index] ?? 0) + (z[(index + 1) % z.length] ?? 0)) / 2);
-      k = index + 1;
-    } else volumetric.getState().selectVertex(index);
-    drag.current = { index: k, insert, ring: r, z, moved: false };
-    setOrbit(stage, false);
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const move = (e: ReactPointerEvent<HTMLButtonElement>) => {
-    const d = drag.current;
-    if (!d) return;
-    const p = pickGround(stage, e.clientX, e.clientY);
-    if (!p) return;
-    d.ring[d.index] = [p[0], p[1]];
-    d.z[d.index] = p[2];
-    d.moved = true;
-    scene.setDragRing({ ring: d.ring, z: d.z });
-    stage.requestRender();
-  };
-  const end = () => {
-    const d = drag.current;
-    drag.current = null;
-    setOrbit(stage, true);
-    scene.setDragRing(null);
-    if (!d) return;
-    const p = d.ring[d.index];
-    if (!p) return;
-    lastZ.current = d.z;
-    const s = volumetric.getState();
-    if (d.insert) void s.insertVertex(d.index - 1, p);
-    else if (d.moved) void s.moveVertex(d.index, p);
-  };
-
-  return (
-    <div className="vol-handles" ref={host}>
-      {ring.map((_, k) => (
-        <button
-          key={`m${String(k)}`}
-          type="button"
-          className="vol-mh"
-          data-m={k}
-          title="Drag to add a point here"
-          aria-label={`Add a point between points ${String(k + 1)} and ${String(((k + 1) % ring.length) + 1)}`}
-          onPointerDown={(e) => {
-            begin(e, k, true);
-          }}
-          onPointerMove={move}
-          onPointerUp={end}
-          onPointerCancel={end}
-        />
-      ))}
-      {ring.map((_, k) => (
-        <button
-          key={`v${String(k)}`}
-          type="button"
-          className={`vol-vh${edit.sel === k ? ' sel' : ''}`}
-          data-v={k}
-          title="Drag to move. Select and press Delete to remove."
-          aria-label={`Boundary point ${String(k + 1)}`}
-          onPointerDown={(e) => {
-            begin(e, k, false);
-          }}
-          onPointerMove={move}
-          onPointerUp={end}
-          onPointerCancel={end}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            void volumetric.getState().deleteVertex(k);
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ bars and panels */
-
-function EditBar() {
-  const edit = useVolumetric((s) => s.edit);
-  const base = useVolumetric((s) => s.base);
-  const piles = useVolumetric((s) => s.piles);
-  const saving = useVolumetric((s) => s.saving);
-  const captures = useVolumetric((s) => s.file?.captures ?? []);
-  if (!edit) return null;
-  const auto = piles.find((p) => p.id === edit.pile)?.auto[edit.epoch]?.volumes[base].net;
-  const v = edit.live?.result.volumes[base].net;
-  const label = captures.find((c) => c.epoch === edit.epoch)?.label ?? edit.epoch;
-  let note: string;
-  if (!edit.dirty && !edit.resetToAuto)
-    note = auto === undefined ? 'No changes yet' : `No changes yet. Automatic ${f0(auto)} m³`;
-  else if (auto !== undefined && v !== undefined)
-    note = `automatic ${f0(auto)} m³ · ${sgn(v - auto)} m³`;
-  else note = 'not detected on this date';
-  return (
-    <div
-      className="vol-editbar overlay-box"
-      role="toolbar"
-      aria-label="Boundary editor"
-      data-testid="vol-editbar"
-    >
-      <div className="vol-eb-t">
-        <span>
-          Editing {edit.pile} · {short(label)}
-        </span>
-        <b data-testid="vol-edit-net">{edit.busy && !edit.live ? '·' : `${f0(v)} m³`}</b>
-        <small>{note}</small>
-        <small className="vol-eb-hint">
-          {t('vol.edit.hint', { undo: shortcutHint('volumes.undo') })}
-        </small>
-      </div>
-      <div className="vol-eb-a">
-        <button
-          type="button"
-          className="btn sm"
-          disabled={!edit.hist.length}
-          onClick={() => {
-            void volumetric.getState().undo();
-          }}
-        >
-          <Icon name="undo" size={14} />
-          Undo
-        </button>
-        <button
-          type="button"
-          className="btn sm"
-          title="Back to the automatic toe line"
-          onClick={() => {
-            void volumetric.getState().resetEdit();
-          }}
-        >
-          Automatic
-        </button>
-        <button
-          type="button"
-          className="btn sm"
-          onClick={() => {
-            volumetric.getState().cancelEdit();
-            volumetric.getState().setMessage('Edit discarded');
-          }}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="btn sm primary"
-          disabled={(!edit.dirty && !edit.resetToAuto) || saving || edit.busy}
-          onClick={() => {
-            void volumetric.getState().saveEdit();
-          }}
-        >
-          <Icon name="check" size={14} />
-          Save
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SectionPanel() {
-  const section = useVolumetric((s) => s.section);
-  const captures = useVolumetric((s) => s.file?.captures ?? []);
-  const deadband = useVolumetric((s) => s.file?.deadbandM ?? 0.1);
-  if (section.mode === 'idle') return null;
-  const first = captures[0];
-  const last = captures.at(-1);
-  const p = section.profile;
-  return (
-    <div
-      className="vol-secpanel overlay-box"
-      role="region"
-      aria-label="Section"
-      data-testid="vol-section"
-    >
-      <div className="vol-row">
-        <b>{p ? `Section · ${f0(p.lengthM)} m` : 'Section'}</b>
-        <button
-          type="button"
-          className="btn sm ghost"
-          onClick={() => {
-            volumetric.getState().clearSection();
-          }}
-        >
-          {section.mode === 'picking' ? 'Cancel' : 'Clear'}
-        </button>
-      </div>
-      {section.mode === 'picking' ? (
-        <p className="vol-note">
-          Click two points on the ground: {section.points.length === 0 ? 'start' : 'end'} of the
-          line.
-        </p>
-      ) : p ? (
-        <>
-          <ProfileChart
-            s={p.s}
-            series={[
-              { z: p.z1, label: short(first?.label ?? ''), color: 'var(--fg-3)' },
-              { z: p.z2, label: short(last?.label ?? ''), color: 'var(--acc)' },
-            ]}
-            deadband={deadband}
-            height={170}
-            label="Elevation profile along the drawn line for both survey dates"
-          />
-          <p className="vol-note">
-            Area between the two surfaces along the line:{' '}
-            <span className="vol-cut" data-testid="vol-sec-cut">
-              {f0(p.cutM2)} m² cut
-            </span>{' '}
-            ·{' '}
-            <span className="vol-fill" data-testid="vol-sec-fill">
-              {f0(p.fillM2)} m² fill
-            </span>
-          </p>
-        </>
-      ) : (
-        <p className="vol-note">Profiling…</p>
-      )}
-    </div>
-  );
-}
+/* ------------------------------------------------------------------ overlays */
 
 function SwipeDivider() {
   const swipe = useVolumetric((s) => s.swipe);
@@ -540,7 +215,7 @@ function ElevationKey() {
 
 /**
  * Whether the main view's "Click a pile" hint shows: volumes are ready, the photo shows, no pile
- * is revealed, and no swipe, section or boundary edit is under way.
+ * is revealed, and no swipe or section is under way.
  */
 export function useVolumeHint(): boolean {
   return useVolumetric(
@@ -550,8 +225,7 @@ export function useVolumeHint(): boolean {
       s.selected === null &&
       s.shown.length === 0 &&
       !s.swipe &&
-      s.section.mode === 'idle' &&
-      !s.edit,
+      s.section.mode === 'idle',
   );
 }
 
@@ -572,12 +246,14 @@ export function VolumeHint() {
 function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boolean }) {
   const chosen = useVolumetric((s) => s.surface);
   const body = useVolumetric((s) => s.body);
-  const base = useVolumetric((s) => s.file?.bases.find((b) => b.id === s.base)?.label);
+  // the 3D bodies stand on the kit's default base (display only)
+  const base = useVolumetric((s) => s.file?.bases.find((b) => b.id === s.file?.defaultBase)?.label);
   const deadband = useVolumetric((s) => s.file?.deadbandM ?? 0.1);
   const swipe = useVolumetric((s) => s.swipe);
+  const sectionOpen = useVolumetric((s) => s.section.mode !== 'idle');
   const anyShown = useVolumetric((s) => s.selected !== null || s.shown.length > 0);
-  // the swipe runs in the main view only
-  if (swipe && !view) return null;
+  // the swipe runs in the main view only; the section panel takes the legend's corner there
+  if ((swipe || sectionOpen) && !view) return null;
   // a view left uncoloured shows the photo, whatever the switch says
   const surface = view?.refused ? 'photo' : chosen;
   const R = CHANGE_RAMP;
@@ -617,31 +293,18 @@ function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boo
         </>
       )}
       {surface === 'elev' && (view ? <ElevationKey /> : <ElevationControls />)}
-      {body !== 'off' &&
-        anyShown &&
-        (surface === 'change' ? (
-          <>
-            <span className="key">
-              <i style={{ background: CUT_CSS }} />
-              Material removed
-            </span>
-            <span className="key">
-              <i style={{ background: FILL_CSS }} />
-              Material placed
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="key">
-              <i style={{ background: '#ff4d4d' }} />
-              Volume above base
-            </span>
-            <span className="key">
-              <i style={{ background: '#e6ebf2' }} />
-              {base} base
-            </span>
-          </>
-        ))}
+      {body !== 'off' && anyShown && surface !== 'change' && (
+        <>
+          <span className="key">
+            <i className="vol-key-body" />
+            Volume above base
+          </span>
+          <span className="key">
+            <i className="vol-key-base" />
+            {base} base
+          </span>
+        </>
+      )}
       {anyShown && (
         <span className="key">
           <i className="line" />
@@ -677,14 +340,14 @@ function Toast() {
 }
 
 /**
- * The volumetric layer of the 3D stage: draws through `VolumetricScene` and adds the boundary
- * handles, the swipe divider, the section and edit bars, the legend and notices. Mount it inside
- * the 3D pane, over the canvas.
+ * The volumetric layer of the 3D stage: draws through `VolumetricScene` and adds the swipe
+ * divider, the legend and notices. Mount it inside the 3D pane, over the canvas. The drawn
+ * section line's panel is the host's (the desktop's `VolumeSection`, with its profile chart).
  *
  * A pane that shows one survey date of several passes its `epoch`. The second view of a
  * comparison is mounted with `display`: it draws the same bodies, toe lines and surface colours
- * for its own date and shows the legend read only; editing, the section tool and the swipe stay
- * with the main view.
+ * for its own date and shows the legend read only; the section tool and the swipe stay with the
+ * main view.
  */
 export function VolumetricStage({
   stage,
@@ -732,24 +395,17 @@ export function VolumetricStage({
     () => scene?.drapeRefused ?? false,
   );
 
-  // Esc: stop picking a section, else hide the revealed pile (not while a boundary is edited);
-  // Enter saves a boundary edit.
+  // Esc: stop picking a section, else hide the revealed pile.
   useEffect(() => {
     if (!ready || display) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof HTMLElement && e.target.closest('dialog, [role="dialog"]')) return;
       const s = volumetric.getState();
-      if (isShortcut('scene.escape', e)) {
-        if (s.section.mode === 'picking') s.clearSection();
-        else if (s.selected && !s.edit) s.select(null);
-        else return;
-      } else if (isShortcut('volumes.save', e) && s.edit && (s.edit.dirty || s.edit.resetToAuto)) {
-        if (s.saving || s.edit.busy) return;
-        if (e.target instanceof HTMLElement && e.target.closest('button, a, tr, [role="button"]'))
-          return;
-        void s.saveEdit();
-      } else return;
+      if (!isShortcut('scene.escape', e)) return;
+      if (s.section.mode === 'picking') s.clearSection();
+      else if (s.selected) s.select(null);
+      else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
@@ -778,15 +434,13 @@ export function VolumetricStage({
     const release = stage.claimClicks((e) => {
       if (stage.tool !== 'select') return false;
       const s = volumetric.getState();
-      // a view that only draws takes no section point and guards no edit: it selects a pile
-      if (display && (s.section.mode === 'picking' || s.edit)) return false;
+      // a view that only draws takes no section point: it selects a pile
+      if (display && s.section.mode === 'picking') return false;
       if (s.section.mode === 'picking') {
         const p = pickGround(stage, e.clientX, e.clientY);
         if (p) void s.addSectionPoint([p[0], p[1]]);
         return true;
       }
-      // the scene selection stays on the pile being edited
-      if (s.edit) return true;
       if (s.body !== 'lift') return false;
       ray.setFromCamera(new Vector2(...ndcOf(stage, e.clientX, e.clientY)), stage.camera);
       const tops: Object3D[] = [];
@@ -799,10 +453,10 @@ export function VolumetricStage({
       s.select(pile);
       return true;
     });
-    // callout plates select on click: not while picking section points or editing a boundary
+    // callout plates select on click: not while picking section points
     const onClick = (e: MouseEvent) => {
       const s = volumetric.getState();
-      if (!display && (s.section.mode === 'picking' || s.edit)) e.stopPropagation();
+      if (!display && s.section.mode === 'picking') e.stopPropagation();
     };
     host.addEventListener('click', onClick, true);
     return () => {
@@ -829,13 +483,8 @@ export function VolumetricStage({
     );
   return (
     <div className="vol-stage">
-      {scene && stage && <Handles scene={scene} stage={stage} />}
       <SwipeDivider />
       <Legend hint={hint} />
-      <div className="vol-under">
-        <SectionPanel />
-        <EditBar />
-      </div>
       <Toast />
     </div>
   );

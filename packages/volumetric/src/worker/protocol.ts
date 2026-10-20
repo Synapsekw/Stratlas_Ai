@@ -3,16 +3,7 @@ import type { VolumeCompute } from '../model/compute';
 /** The operations the worker offers: the public methods of VolumeCompute. */
 export type VolumeOps = Pick<
   VolumeCompute,
-  | 'recompute'
-  | 'scene'
-  | 'edit'
-  | 'section'
-  | 'pileSection'
-  | 'changeRaster'
-  | 'reliefRaster'
-  | 'grid'
-  | 'heights'
-  | 'engineBases'
+  'scene' | 'section' | 'changeRaster' | 'reliefRaster' | 'grid' | 'heights'
 >;
 export type VolumeOp = keyof VolumeOps;
 

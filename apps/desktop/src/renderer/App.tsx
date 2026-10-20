@@ -58,6 +58,7 @@ import {
   mergeDiskIssues,
   sameFolder,
 } from './jobs';
+import { compareStore, engineClient } from './survey/compareStore';
 import { convertAfterJob } from './survey/measureStore';
 import { bridge, jobs, shell, useShell } from './shell';
 import { installLastView } from './library/lastView';
@@ -76,6 +77,7 @@ import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
 import { timeline, useTimelineSync } from './workspace/timeline';
 import { connectVolumeDates } from './workspace/volumeDates';
+import { connectVolumeChange } from './workspace/VolumeTools';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { DrawingsLayer } from './drawings/DrawingsLayer';
@@ -362,6 +364,15 @@ export function App() {
       }),
     [],
   );
+  // Volume tools' Cut / fill: the survey engine compares the two surveys picked
+  useEffect(
+    () =>
+      connectVolumeChange(volumetric, {
+        site: (req, key) => engineClient().site(req, key),
+        surfaces: () => compareStore.getState().surfaces,
+      }),
+    [],
+  );
 
   useEffect(() => {
     // Settings and library are in: tell main the first screen is up (ends the first-start
@@ -510,7 +521,8 @@ export function App() {
     const stopRoadMode = roadStore.subscribe((s, prev) => {
       if (s.status === 'ready' && prev.status !== 'ready') shell.getState().setStageMode('map');
     });
-    // a volumetric project opens its volumes (volumes.json beside the manifest)
+    // a volumetric project opens its volumes (volumes.json beside the manifest): the kit piles'
+    // outlines and 3D bodies only; their figures are their volume measurements' (survey engine)
     const stopVolumes = workspace.subscribe((s, prev) => {
       if (s.project !== prev.project) void volumetric.getState().load();
     });

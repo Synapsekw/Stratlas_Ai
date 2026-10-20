@@ -1,7 +1,6 @@
 import type { EngineStage } from '@aio/engine';
 import {
   shiftEN,
-  type AioBridge,
   type Layer,
   type ProjectManifest,
   type VolumeBaseId,
@@ -138,11 +137,8 @@ async function ready(
   const reliefRaster = vi.fn<(epoch: string) => Promise<Raster>>(() => Promise.resolve(raster()));
   const changeRaster = vi.fn(() => Promise.resolve(raster()));
   const service = {
-    recompute: vi.fn(() => Promise.resolve({})),
     scene,
-    edit: vi.fn(() => Promise.resolve(null)),
     section: vi.fn(),
-    pileSection: vi.fn(() => Promise.resolve({ s: [], z1: [], z2: [], base: [] })),
     changeRaster,
     reliefRaster,
     grid: vi.fn(() =>
@@ -151,21 +147,15 @@ async function ready(
     heights: vi.fn(() => Promise.resolve([])),
     dispose: vi.fn(),
   } as unknown as VolumeService;
-  const bridge: AioBridge = {
-    invoke: (() => Promise.resolve({ ok: true })) as AioBridge['invoke'],
-    on: () => () => undefined,
-  };
   const store = createVolumetricStore({
     workspace: ws,
     readVolumes: () => Promise.resolve({ ok: true, volumes: volumes(), edits: null }),
     startService: () => service,
-    bridge: () => bridge,
-    now: () => '2026-10-11T12:00:00.000Z',
   });
   await store.getState().load();
   expect(store.getState().status).toBe('ready');
   expect(store.getState().epoch).toBe('e2');
-  return { store, scene, reliefRaster, changeRaster };
+  return { store, scene, reliefRaster, changeRaster, grid: service.grid };
 }
 
 /** What the controller needs of a stage: a real three.js scene with both terrains loaded. */
@@ -269,6 +259,7 @@ describe('VolumetricScene: one view of two', () => {
         ],
         profile: null,
         busy: false,
+        pair: null,
       },
     });
     // no setEpoch: the date this second view shows is not one of the volume surveys
@@ -369,50 +360,31 @@ describe('VolumetricScene: one view of two', () => {
     v.detach();
   });
 
-  it('a display view draws no boundary edit', async () => {
-    const { store } = await ready();
-    const a = fakeStage();
-    const b = fakeStage();
-    const main = new VolumetricScene(a.stage, store);
-    const second = new VolumetricScene(b.stage, store, () => true, { display: true });
-    main.attach();
-    second.attach();
-    const body = {
-      nx: 1,
-      ny: 1,
-      cell: 1,
-      e0: 0,
-      n0: 0,
-      ins: new Uint8Array(1),
-      top: new Float32Array(1),
-      bot: new Float32Array(1),
-      tmax: 1,
-      bmin: 0,
-    };
-    const live = {
-      result: { volumes: v4(80), areaM2: 400, topM: 60, heightM: 8 },
-      body,
-      toe: new Float64Array([1000, 2000, 50, 1010, 2000, 50, 1010, 1990, 50]),
-      vertices: [],
-    };
-    store.setState({
-      edit: {
-        pile: 'P01',
-        epoch: 'e2',
-        ring: [],
-        sel: -1,
-        hist: [],
-        live,
-        busy: false,
-        dirty: true,
-        resetToAuto: false,
-      },
+  it('drapes the picked surveys, from the engine difference once it comes', async () => {
+    const { store, scene, changeRaster, grid } = await ready();
+    const { stage, frame, drapes } = fakeStage();
+    store.getState().setAllPilesVisible(true);
+    const v = new VolumetricScene(stage, store);
+    v.attach();
+    store.getState().setSurface('change');
+    await settle(frame);
+    // previous to current: the survey heights colour it until the engine answers
+    expect(changeRaster).toHaveBeenLastCalledWith('e1', 'e2');
+    expect(drapes()).toEqual(['drape:e2']);
+    const chg = scene.mock.calls.map((c) => c[0]).filter((r) => r.mode === 'chg');
+    expect(chg.at(-1)).toMatchObject({ from: 'e1', to: 'e2' });
+    const calls = changeRaster.mock.calls.length;
+    const asked = vi.mocked(grid).mock.calls.length;
+    store.getState().setChangeGrid({
+      from: 'e1',
+      to: 'e2',
+      grid: { dz: new Float32Array([1, 1, 1, 1]), nx: 2, ny: 2, x0: 0, y0: -2, cellM: 1 },
     });
-    const editLine = (s: Scene) => s.getObjectByName('edit-line');
-    expect(editLine(a.scene)).toBeDefined();
-    expect(editLine(b.scene)).toBeUndefined();
-    main.detach();
-    second.detach();
+    await settle(frame);
+    expect(vi.mocked(grid).mock.calls.length).toBeGreaterThan(asked);
+    expect(changeRaster.mock.calls.length).toBe(calls);
+    expect(drapes()).toEqual(['drape:e2']);
+    v.detach();
   });
 
   it('a drape over the graphics memory budget is not built, and says so once', async () => {

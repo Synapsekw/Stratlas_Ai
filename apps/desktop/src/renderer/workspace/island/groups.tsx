@@ -574,7 +574,6 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
   const swipe = useVolumetric((s) => s.swipe);
   const surface = useVolumetric((s) => s.surface);
   const body = useVolumetric((s) => s.body);
-  const editing = useVolumetric((s) => s.edit !== null);
   const v = volumetric.getState();
   const SWIPE = '\u0000swipe';
   return (
@@ -583,7 +582,7 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
         label={t('island.tile.surveyDate')}
         options={[
           ...captures.map((c) => ({ value: c.epoch, label: surveyDateLabel(c) })),
-          { value: SWIPE, label: t('island.tile.swipe'), disabled: captures.length < 2 || editing },
+          { value: SWIPE, label: t('island.tile.swipe'), disabled: captures.length < 2 },
         ]}
         value={swipe ? SWIPE : surface === 'change' ? null : epoch}
         onPick={(e) => {
@@ -601,7 +600,7 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
         options={SURFACES.map((s) => ({
           value: s.value,
           label: t(s.label),
-          disabled: s.value === 'change' && editing,
+          disabled: s.value === 'change' && captures.length < 2,
         }))}
         value={surface}
         onPick={(s) => {

@@ -3,16 +3,8 @@
  * Web Worker (worker.ts) and in tests. Grids load lazily, once, from the project's kit scripts.
  * All positions are easting and northing in the project CRS.
  */
-import type { BaseVolumes, ComparisonResult, SurfaceRef, VolumeBaseId } from '@aio/schema';
-import { compareItem } from '@aio/survey';
-import {
-  changeBodyCoarse,
-  changeBodyFine,
-  coarseBody,
-  editBody,
-  fineBody,
-  type BodyCells,
-} from './bodies';
+import type { VolumeBaseId } from '@aio/schema';
+import { changeBodyCoarse, changeBodyFine, coarseBody, fineBody, type BodyCells } from './bodies';
 import {
   changeRaster,
   heightStats,
@@ -23,14 +15,7 @@ import {
   type ReliefStyle,
   type SectionProfile,
 } from './dsm';
-import {
-  densify,
-  editGeometry,
-  editVolumes,
-  type EditGeometry,
-  type EditResult,
-  type EN,
-} from './edit';
+import { densify, type EN } from './edit';
 import { pileSurface } from './frame';
 import {
   decodeCoarse,
@@ -40,8 +25,6 @@ import {
   type DsmGrid,
   type PileGrid,
 } from './kitdata';
-import { pileLongSection, type PileSection } from './section';
-import { pileEngineSurface, pileVolumes } from './volume';
 
 /** URLs of the kit scripts. */
 export interface GridSources {
@@ -62,14 +45,18 @@ export interface ScenePileRequest {
   id: string;
   /** The toe line to draw (zone ring in change mode). */
   ring: EN[];
-  /** A hand-edited line: its body comes from the refitted bases. */
+  /** A hand-edited line (kit edits saved before the kit editor retired): no fine body under it. */
   edited: boolean;
 }
 
 export interface SceneRequest {
   epoch: string;
+  /** The base the inventory bodies stand on in 3D: display only, never a figure. */
   base: VolumeBaseId;
   mode: 'inv' | 'chg';
+  /** The two surveys a change body spans (change mode), earlier first as picked. */
+  from?: string;
+  to?: string;
   selected: string | null;
   piles: ScenePileRequest[];
 }
@@ -81,21 +68,6 @@ export interface ScenePile {
   toe: Float64Array;
   /** Base height under each toe point (inventory bodies), for the lifted base outline. */
   toeBase: Float64Array | null;
-}
-
-export interface EditRequest {
-  pile: string;
-  epoch: string;
-  ring: EN[];
-  base: VolumeBaseId;
-}
-
-export interface EditResponse {
-  result: EditResult;
-  body: BodyCells;
-  toe: Float64Array;
-  /** Each ring vertex with the surface height under it. */
-  vertices: [number, number, number][];
 }
 
 export interface GridInfo {
@@ -115,7 +87,6 @@ export class VolumeCompute {
   private readonly dsms = new Map<string, Promise<DsmGrid>>();
   private coarseP: Promise<CoarseGrids> | null = null;
   private gridP: Promise<GridInfo> | null = null;
-  private readonly editCache = new Map<string, EditGeometry | null>();
 
   constructor(private readonly o: ComputeOptions) {}
 
@@ -124,6 +95,10 @@ export class VolumeCompute {
   }
   private get last(): string {
     return this.o.epochs.at(-1) ?? '';
+  }
+  /** The surveys a change compares: the ones asked for, else the first and the last. */
+  private pair(from?: string, to?: string): [string, string] {
+    return [from ?? this.first, to ?? this.last];
   }
 
   private load<T>(url: string, what: string, decode: (t: string) => Promise<T>): Promise<T> {
@@ -183,35 +158,20 @@ export class VolumeCompute {
     return this.gridP;
   }
 
-  /** The automatic volumes of a pile recomputed from its 10 cm grid, per epoch. */
-  async recompute(id: string): Promise<Record<string, BaseVolumes | null>> {
-    const g = await this.pile(id);
-    return Object.fromEntries(this.o.epochs.map((e) => [e, pileVolumes(g, e)]));
-  }
-
   private async surface(epoch: string, pile: string | null) {
     const dsm = await this.dsm(epoch);
     const g = pile ? await this.pile(pile) : null;
     return { dsm, surf: pileSurface(g, epoch, dsm) };
   }
 
-  private async editGeom(pile: string, epoch: string, ring: EN[]): Promise<EditGeometry | null> {
-    const key = `${pile}/${epoch}/${JSON.stringify(ring)}`;
-    if (this.editCache.has(key)) return this.editCache.get(key) ?? null;
-    const { surf } = await this.surface(epoch, pile);
-    const g = editGeometry(ring, surf);
-    if (this.editCache.size > 64) this.editCache.clear();
-    this.editCache.set(key, g);
-    return g;
-  }
-
   async scene(req: SceneRequest): Promise<{ piles: ScenePile[] }> {
     const chg = req.mode === 'chg';
-    const dsm = await this.dsm(chg ? this.last : req.epoch);
-    const first = chg ? await this.dsm(this.first) : null;
+    const [from, to] = this.pair(req.from, req.to);
+    const dsm = await this.dsm(chg ? to : req.epoch);
+    const first = chg ? await this.dsm(from) : null;
     // the toe lies on the ground of the survey the view shows (a change body is the same on
-    // every date; a view of an earlier date would bury or float a toe draped on the last one)
-    const ground = chg && req.epoch !== this.last ? await this.dsm(req.epoch) : dsm;
+    // every date; a view of another date would bury or float a toe draped on the "to" one)
+    const ground = chg && req.epoch !== to ? await this.dsm(req.epoch) : dsm;
     const coarse = await this.coarse();
     const out: ScenePile[] = [];
     for (const p of req.piles) {
@@ -222,14 +182,13 @@ export class VolumeCompute {
       if (chg) {
         body =
           fine !== null
-            ? changeBodyFine(fine, this.first, this.last, this.o.deadband, 3)
+            ? changeBodyFine(fine, from, to, this.o.deadband, 3)
             : first
               ? changeBodyCoarse(coarse, first, dsm, p.id, this.o.deadband)
               : null;
       } else if (p.edited) {
-        const g = await this.editGeom(p.id, req.epoch, p.ring);
-        body = g ? editBody(g, req.base, sel ? 0.25 : 0.4) : null;
-        if (g) baseAt = (E, N) => g.baseAt(req.base, E, N);
+        // the kit's grids hold the automatic outline only: a saved edit draws its toe line
+        body = null;
       } else {
         body =
           fine !== null
@@ -242,37 +201,19 @@ export class VolumeCompute {
     return { piles: out };
   }
 
-  async edit(req: EditRequest): Promise<EditResponse | null> {
-    const g = await this.editGeom(req.pile, req.epoch, req.ring);
-    if (!g) return null;
-    const dsm = await this.dsm(req.epoch);
-    const result = editVolumes(g, dsm.x0, dsm.y1);
-    const body = editBody(g, req.base, 0.25);
-    const { toe } = drape(req.ring, g.surf, null, 0.8);
-    const vertices = req.ring.map(([E, N]): [number, number, number] => [
-      E,
-      N,
-      g.surf(E, N) ?? body.bmin,
-    ]);
-    return { result, body, toe, vertices };
+  /** The heights of two surveys (the first and the last unless asked) along a line. */
+  async section(a: EN, b: EN, from?: string, to?: string): Promise<SectionProfile> {
+    const [f, t] = this.pair(from, to);
+    return sectionProfile(await this.dsm(f), await this.dsm(t), a, b, this.o.deadband);
   }
 
-  async section(a: EN, b: EN): Promise<SectionProfile> {
-    return sectionProfile(
-      await this.dsm(this.first),
-      await this.dsm(this.last),
-      a,
-      b,
-      this.o.deadband,
-    );
-  }
-
-  async pileSection(id: string, epoch: string, base: VolumeBaseId): Promise<PileSection> {
-    return pileLongSection(await this.pile(id), epoch, base, this.first, this.last);
-  }
-
-  async changeRaster(): Promise<Raster> {
-    return changeRaster(await this.dsm(this.first), await this.dsm(this.last), this.o.deadband);
+  /**
+   * The height change between two surveys' site heights (the first and the last unless asked),
+   * coloured: the Cut / fill drape where the survey engine has no prepared surface for a date.
+   */
+  async changeRaster(from?: string, to?: string): Promise<Raster> {
+    const [f, t] = this.pair(from, to);
+    return changeRaster(await this.dsm(f), await this.dsm(t), this.o.deadband);
   }
 
   /**
@@ -289,59 +230,12 @@ export class VolumeCompute {
     return reliefRaster(await this.dsm(epoch), lo, hi, style);
   }
 
-  /**
-   * The general survey engine's bases (M11, ADR 0009) for one pile and date, on the pile's own
-   * 10 cm grid and its toe line (E, N): additional choices beside the kit's four bases, which keep
-   * their names and numbers (the kit's `tin` is a membrane, not the engine's Delaunay `smart`).
-   */
-  async engineBases(id: string, epoch: string, ring: EN[]): Promise<EngineBase[]> {
-    const g = await this.pile(id);
-    const grid = pileEngineSurface(g, epoch);
-    if (!grid || ring.length < 3) return [];
-    const resolve = () =>
-      Promise.resolve({ kind: 'grid' as const, name: id, fingerprint: `kit-${id}-${epoch}`, grid });
-    const out: EngineBase[] = [];
-    for (const b of ENGINE_BASES) {
-      const result = await compareItem(
-        ring,
-        { id: b.key, from: b.ref, to: { kind: 'survey', surface: id }, useDeadband: false },
-        resolve,
-      );
-      out.push({ key: b.key, label: b.label, result });
-    }
-    return out;
-  }
-
   /** Surface heights under points (E, N) of one survey, null where there is no data. */
   async heights(epoch: string, pile: string | null, pts: EN[]): Promise<(number | null)[]> {
     const { surf } = await this.surface(epoch, pile);
     return pts.map(([E, N]) => surf(E, N));
   }
 }
-
-/** One general engine base of a pile (`engineBases`). */
-export interface EngineBase {
-  key: string;
-  label: string;
-  result: ComparisonResult;
-}
-
-/** The engine's bases offered in the volumetric workspace, under their engine names. */
-export const ENGINE_BASES: readonly { key: string; label: string; ref: SurfaceRef }[] = [
-  { key: 'smart', label: 'Smart (Delaunay of the toe)', ref: { kind: 'smart' } },
-  { key: 'fit-plane', label: 'Best-fit plane', ref: { kind: 'fit-plane' } },
-  { key: 'perimeter-mean', label: 'Mean toe level', ref: { kind: 'perimeter-mean' } },
-  {
-    key: 'perimeter-min',
-    label: 'Lowest toe point',
-    ref: { kind: 'reference', mode: 'perimeter-min' },
-  },
-  {
-    key: 'perimeter-max',
-    label: 'Highest toe point',
-    ref: { kind: 'reference', mode: 'perimeter-max' },
-  },
-];
 
 /** Nearest-cell base height of a body (for the lifted base outline). */
 function bodyBase(b: BodyCells): (E: number, N: number) => number {

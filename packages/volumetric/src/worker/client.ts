@@ -38,16 +38,12 @@ export function connectVolumeService(
       });
     };
   const ops: Record<VolumeOp, unknown> = {
-    recompute: call('recompute'),
     scene: call('scene'),
-    edit: call('edit'),
     section: call('section'),
-    pileSection: call('pileSection'),
     changeRaster: call('changeRaster'),
     reliefRaster: call('reliefRaster'),
     grid: call('grid'),
     heights: call('heights'),
-    engineBases: call('engineBases'),
   };
   return {
     ...(ops as VolumeOps),

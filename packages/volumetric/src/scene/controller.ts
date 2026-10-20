@@ -1,7 +1,7 @@
 /**
  * The volumetric overlay in the 3D stage: volume bodies (lifted or in place) with their toe
  * lines and base plates, cut and fill bodies, the change or elevation colours draped on the
- * survey terrain, the survey swipe, the section line and the boundary being edited. It reads the
+ * survey terrain, the survey swipe and the section line. It reads the
  * volumetric store, asks the worker for geometry and touches only its own group, the terrain
  * layers' materials (texture and clipping, restored afterwards) and the pile callout text.
  */
@@ -35,13 +35,12 @@ import {
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import type { ScenePile } from '../model/compute';
-import type { Raster } from '../model/dsm';
+import { changeGridRaster, type Raster } from '../model/dsm';
 import type { EN } from '../model/edit';
 import type { SurfaceMode, Volumetric } from '../store';
 import { bodyGeometry, swipePlane, toLocalFn, type ToLocal } from './geometry';
 
 const SELECT = 0x5ad2b4;
-const EDIT = 0xffd23f;
 
 /** Visible itself and through all its parents. */
 function visibleChain(o: Object3D | null): boolean {
@@ -70,7 +69,7 @@ function lineGeometry(pts: number[]): BufferGeometry {
 /** How one 3D view draws the volumes when it is not the only view (a split comparing two dates). */
 export interface VolumetricView {
   /**
-   * Draws only: no boundary edit and no swipe (the second view of a comparison). Such a view
+   * Draws only: no section picking, no swipe (the second view of a comparison). Such a view
    * draws the survey it is given (`setEpoch`) and nothing at all without one: its pane shows a
    * date the volumes do not have, and another date's piles would be wrong there.
    */
@@ -89,11 +88,9 @@ export class VolumetricScene {
   readonly group = new Group();
   private readonly bodies = new Group();
   private readonly sectionG = new Group();
-  private readonly editG = new Group();
   private readonly unsub: (() => void)[] = [];
   private sceneKey = '';
   private sceneSeq = 0;
-  private liveDrawn: unknown = null;
   private sectionDrawn: unknown = null;
   private sectionEpoch = '';
   /** The survey this view shows; null: the one the store shows. */
@@ -109,13 +106,12 @@ export class VolumetricScene {
       root: Object3D;
       group: Group;
       material: Material;
-      /** The texture belongs to this drape (elevation); the change texture is shared. */
+      /** The drape's own texture (the relief or the change colours of its surveys). */
       texture: Texture | null;
     }
   >();
   /** Drapes being built, by survey: the key they are built for. */
   private readonly pendingDrapes = new Map<string, string>();
-  private changeTexture: Promise<Texture> | null = null;
   /** Survey orthos hidden in 3D (their terrain mesh carries the same photo), by layer id. */
   private readonly hiddenOrthos = new Map<string, Object3D>();
   /** Toe lines baked into the terrain models, hidden while attached, and the models looked at. */
@@ -128,8 +124,6 @@ export class VolumetricScene {
   private readonly clipLeft: Plane[] = [];
   private calloutKey = '';
   private readonly frameListeners = new Set<() => void>();
-  /** Edited ring vertex positions (local frame) while a handle is dragged. */
-  private dragRing: { ring: EN[]; z: number[] } | null = null;
 
   constructor(
     readonly stage: EngineStage,
@@ -139,14 +133,13 @@ export class VolumetricScene {
     private readonly view: VolumetricView = {},
   ) {
     this.group.name = 'volumetric';
-    this.group.add(this.bodies, this.sectionG, this.editG);
+    this.group.add(this.bodies, this.sectionG);
   }
 
   /** Start drawing into the stage and following the store. */
   attach(): void {
     if (this.unsub.length) return;
     this.sceneKey = '';
-    this.liveDrawn = null;
     this.sectionDrawn = null;
     this.sectionEpoch = '';
     this.calloutKey = '';
@@ -176,7 +169,6 @@ export class VolumetricScene {
     this.restoreOrthos();
     disposeGroup(this.bodies);
     disposeGroup(this.sectionG);
-    disposeGroup(this.editG);
     this.stage.scene.remove(this.group);
     this.stage.requestRender();
   }
@@ -222,7 +214,7 @@ export class VolumetricScene {
     if (this.drapeRefused !== before) for (const l of [...this.refusedListeners]) l(!before);
   }
 
-  /** Run after every rendered frame's update (handles follow the camera). */
+  /** Run after every rendered frame's update (overlays follow the camera). */
   onFrame(cb: () => void): () => void {
     this.frameListeners.add(cb);
     return () => this.frameListeners.delete(cb);
@@ -278,7 +270,6 @@ export class VolumetricScene {
     }
     this.group.visible = true;
     void this.updateBodies();
-    this.updateEdit();
     void this.updateSection();
     this.stage.requestRender();
   }
@@ -290,10 +281,8 @@ export class VolumetricScene {
     const chg = s.surface === 'change';
     const epoch = this.epoch();
     const origin = s.origin;
-    // the pile being edited is drawn by the edit itself, in the view that edits
-    const editedPile = this.view.display ? undefined : s.edit?.pile;
     const piles = s.piles
-      .filter((p) => p.id !== editedPile && s.isPileShown(p.id) && (chg || p.epochs[epoch]))
+      .filter((p) => s.isPileShown(p.id) && (chg || p.epochs[epoch]))
       .map((p) => {
         const src = chg ? p.zoneRing : (p.epochs[epoch]?.ring ?? p.zoneRing);
         return {
@@ -304,15 +293,16 @@ export class VolumetricScene {
       });
     const req = {
       epoch,
-      base: s.base,
+      // the 3D body stands on the kit's default base: display only, no figure comes from it
+      base: s.file?.defaultBase ?? ('tin' as const),
       mode: chg ? ('chg' as const) : ('inv' as const),
+      ...(chg && s.change ? { from: s.change.from, to: s.change.to } : {}),
       selected: s.selected,
       piles,
     };
     const key = JSON.stringify([
       req,
       s.body,
-      this.editing(),
       this.swiping(),
       chg ? '' : shiftKey(s.epochShift(epoch)),
     ]);
@@ -335,13 +325,12 @@ export class VolumetricScene {
     // the toe lines and solids of a survey follow its date; in change mode they are the zone's
     const local = chg ? this.local : this.localOf(this.epoch());
     const clip = this.stage.clippingPlanes;
-    const editing = this.editing();
     const swipe = this.swiping();
     // while swiping between the dates only the toe lines show: the bodies would hide the ground
-    const lifted = s.body === 'lift' && !editing && !swipe;
+    const lifted = s.body === 'lift' && !swipe;
     for (const p of piles) {
       const sel = p.id === s.selected;
-      const dim = (!!s.selected && !sel) || editing;
+      const dim = !!s.selected && !sel;
       const g = new Group();
       g.name = `vol:${p.id}`;
       g.userData.pile = p.id;
@@ -472,113 +461,8 @@ export class VolumetricScene {
     this.stage.requestRender();
   }
 
-  /** A boundary is being edited in this view (the edit and the swipe stay with the main view). */
-  private editing(): boolean {
-    return !this.view.display && !!this.store.getState().edit;
-  }
-
   private swiping(): boolean {
     return !this.view.display && this.store.getState().swipe;
-  }
-
-  private updateEdit(): void {
-    if (this.view.display) return;
-    const ed = this.store.getState().edit;
-    const live = ed?.live ?? null;
-    if (live === this.liveDrawn && !this.dragRing) return;
-    this.liveDrawn = live;
-    disposeGroup(this.editG);
-    if (!ed) return;
-    // the measured result follows its date; the line being dragged is picked on the scene
-    const local = this.localOf(ed.epoch);
-    const clip = this.stage.clippingPlanes;
-    if (live) {
-      const b = live.body;
-      if (b.tmax > -Infinity && b.ins.some((v) => v === 1)) {
-        const geo = bodyGeometry(b, local, { lifted: false, change: false });
-        const top = new BufferGeometry();
-        top.setAttribute('position', new BufferAttribute(geo.top, 3));
-        top.setIndex(new BufferAttribute(geo.index, 1));
-        top.computeVertexNormals();
-        const m = new Mesh(
-          top,
-          new MeshLambertMaterial({
-            color: 0xff4d4d,
-            transparent: true,
-            opacity: 0.45,
-            depthWrite: false,
-            side: DoubleSide,
-            clippingPlanes: clip,
-          }),
-        );
-        m.renderOrder = 3;
-        this.editG.add(m);
-        const bot = new BufferGeometry();
-        bot.setAttribute('position', new BufferAttribute(geo.bottom, 3));
-        bot.setIndex(new BufferAttribute(geo.index, 1));
-        const plate = new Mesh(
-          bot,
-          new MeshBasicMaterial({
-            color: 0xe6ebf2,
-            transparent: true,
-            opacity: 0.2,
-            depthWrite: false,
-            depthTest: false,
-            side: DoubleSide,
-            clippingPlanes: clip,
-          }),
-        );
-        plate.renderOrder = 2;
-        plate.name = 'base-plate';
-        this.editG.add(plate);
-      }
-    }
-    this.drawEditLine();
-  }
-
-  /** The yellow line of the edited toe, from the live result or the ring being dragged. */
-  private drawEditLine(): void {
-    for (const c of [...this.editG.children]) {
-      if (c.name !== 'edit-line') continue;
-      this.editG.remove(c);
-      (c as Line).geometry.dispose();
-      ((c as Line).material as Material).dispose();
-    }
-    const ed = this.store.getState().edit;
-    if (!ed) return;
-    const local = this.local;
-    const measured = this.localOf(ed.epoch);
-    const pts: number[] = [];
-    if (this.dragRing) {
-      const { ring, z } = this.dragRing;
-      ring.forEach(([E, N], k) => {
-        const a = z[k] ?? 0;
-        const next = ring[(k + 1) % ring.length];
-        const bz = z[(k + 1) % ring.length] ?? a;
-        if (!next) return;
-        for (const t of [0, 0.5])
-          pts.push(...local(E + (next[0] - E) * t, N + (next[1] - N) * t, a + (bz - a) * t + 0.4));
-      });
-    } else if (ed.live) {
-      const t = ed.live.toe;
-      for (let i = 0; i + 2 < t.length; i += 3)
-        pts.push(...measured(t[i] ?? 0, t[i + 1] ?? 0, (t[i + 2] ?? 0) + 0.4));
-    }
-    if (pts.length < 6) return;
-    const l = new LineLoop(
-      lineGeometry(pts),
-      new LineBasicMaterial({ color: EDIT, depthTest: false, transparent: true }),
-    );
-    l.renderOrder = 9;
-    l.name = 'edit-line';
-    this.editG.add(l);
-    this.stage.requestRender();
-  }
-
-  /** While a handle is dragged: the ring and vertex heights to draw (null when it is let go). */
-  setDragRing(d: { ring: EN[]; z: number[] } | null): void {
-    this.dragRing = d;
-    this.drawEditLine();
   }
 
   private async updateSection(): Promise<void> {
@@ -700,8 +584,17 @@ export class VolumetricScene {
     const out = new Map<string, { mode: SurfaceMode; key: string }>();
     if (this.blank() || this.swiping() || s.surface === 'photo') return out;
     const epoch = this.epoch();
-    if (s.surface === 'change') out.set(epoch, { mode: 'change', key: 'change' });
-    else {
+    if (s.surface === 'change') {
+      // the picked surveys, from the survey engine when its difference for them has come
+      const c = s.change;
+      const g = s.changeGrid;
+      const engine = !!c && !!g && g.from === c.from && g.to === c.to;
+      if (c)
+        out.set(epoch, {
+          mode: 'change',
+          key: `change/${c.from}/${c.to}/${engine ? 'engine' : 'dsm'}`,
+        });
+    } else {
       const r = s.reliefStyle();
       if (r)
         out.set(epoch, {
@@ -768,20 +661,24 @@ export class VolumetricScene {
     return VolumetricScene.texture(raster);
   }
 
-  /** The texture of a drape: the shared change colours, or a relief of its own. */
+  /**
+   * The texture of a drape: the change colours of the picked surveys (the survey engine's
+   * whole-site difference when the host has it, else the two surveys' site heights), or a relief.
+   */
   private surfaceTexture(epoch: string, mode: SurfaceMode): Promise<Texture | null> {
     const s = this.store.getState();
     const svc = s.service;
     if (mode === 'photo' || !svc) return Promise.resolve(null);
     if (mode === 'change') {
-      if (!this.changeTexture) {
-        const p = svc.changeRaster().then((r) => this.admit(r, epoch));
-        p.catch(() => {
-          this.changeTexture = null;
-        });
-        this.changeTexture = p;
-      }
-      return this.changeTexture;
+      const c = s.change;
+      if (!c) return Promise.resolve(null);
+      const g = s.changeGrid;
+      const deadband = s.file?.deadbandM ?? 0.1;
+      const raster =
+        g?.from === c.from && g.to === c.to
+          ? svc.grid().then((site) => changeGridRaster(site, g.grid, deadband))
+          : svc.changeRaster(c.from, c.to);
+      return raster.then((r) => this.admit(r, epoch));
     }
     const style = s.reliefStyle();
     if (!style) return Promise.resolve(null);
@@ -794,7 +691,7 @@ export class VolumetricScene {
     void this.surfaceTexture(epoch, mode).then(
       (tex) => {
         this.pendingDrapes.delete(epoch);
-        const own = mode === 'elev' ? tex : null;
+        const own = tex;
         if (!tex || !this.unsub.length) {
           own?.dispose();
           return;
@@ -866,13 +763,6 @@ export class VolumetricScene {
     for (const epoch of [...this.drapes.keys()]) this.removeDrape(epoch);
     this.pendingDrapes.clear();
     for (const epoch of [...this.refused.keys()]) this.setRefused(epoch, null);
-    void this.changeTexture?.then(
-      (t) => {
-        t.dispose();
-      },
-      () => undefined,
-    );
-    this.changeTexture = null;
   }
 
   private reconcileSwipe(): void {
@@ -932,9 +822,10 @@ export class VolumetricScene {
   }
 
   /**
-   * Pile callouts: the selected pile shows its measurement (volume on the chosen base, tonnage,
-   * height, base), piles shown on purpose their net volume, edits included. Other piles keep only
-   * their name, without a group, so no label mode lists them and hovering one names it.
+   * Pile callouts: the selected pile shows its measurement (the kit's figure on its default base,
+   * the same figure its volume measurement carries, with tonnage, height and base), piles shown on
+   * purpose their net volume, edits included. Other piles keep only their name, without a group,
+   * so no label mode lists them and hovering one names it.
    */
   private reconcileCallouts(): void {
     const s = this.store.getState();
@@ -948,8 +839,9 @@ export class VolumetricScene {
       )
       .filter((x): x is readonly [string, Object3D] => x[1] !== undefined);
     const shown = s.piles.filter((p) => s.isPileShown(p.id)).map((p) => p.id);
+    const base = s.file?.defaultBase ?? 'tin';
     const key = JSON.stringify([
-      s.base,
+      base,
       shown,
       s.selected,
       s.density,
@@ -978,14 +870,13 @@ export class VolumetricScene {
           delete plain.area;
           if (!shown.includes(p.id)) return plain;
           const ep = p.epochs[epoch];
-          const v = ep?.volumes[s.base].net;
+          const v = ep?.volumes[base].net;
           if (v === undefined || !ep) return plain;
           const vol = `${nf.format(Math.round(v))} m³`;
           if (p.id !== s.selected) return { ...t, area: vol };
           const tonnes = `${nf.format(Math.round(v * s.density))} t`;
           const height = `${n1.format(ep.heightM)} m high`;
-          const base = baseShort(s.base);
-          return { ...t, area: [vol, tonnes, height, base].join(' · ') };
+          return { ...t, area: [vol, tonnes, height, baseShort(base)].join(' · ') };
         });
       });
     }

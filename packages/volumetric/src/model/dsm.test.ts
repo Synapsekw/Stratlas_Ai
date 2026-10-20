@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DsmGrid } from './kitdata';
 import {
   changeColour,
+  changeGridRaster,
   changeRaster,
   heightStats,
   hillshade,
@@ -90,6 +91,21 @@ describe('change colours', () => {
     expect(r.data[7]).toBe(255);
     // +2 m everywhere: blue dominant
     expect(r.data[6] ?? 0).toBeGreaterThan(r.data[4] ?? 0);
+  });
+
+  it("colours the engine's difference grid on the drape grid, rows from the north", () => {
+    // a 2 x 2 engine grid of 2 m cells from (0, 0): south row cut 3 m, north row fill 3 m
+    const g = { dz: [-3, -3, 3, Number.NaN], nx: 2, ny: 2, x0: 0, y0: 0, cellM: 2 };
+    const r = changeGridRaster({ w: 4, h: 4, res: 1, x0: 0, y1: 4 }, g, 0.1);
+    expect([r.width, r.height]).toEqual([4, 4]);
+    const px = (i: number, j: number) => [...r.data.slice((j * 4 + i) * 4, (j * 4 + i) * 4 + 4)];
+    const fill = px(0, 0);
+    const cut = px(0, 3);
+    expect(fill[3]).toBe(255);
+    expect(fill[2] ?? 0).toBeGreaterThan(fill[0] ?? 0);
+    expect(cut[0] ?? 0).toBeGreaterThan(cut[2] ?? 0);
+    // no data in the engine's north-east cell: the photo shows there
+    expect(px(3, 0)[3]).toBe(0);
   });
 
   it('ramps the terrain relief from green (low) to white (high)', () => {

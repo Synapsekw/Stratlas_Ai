@@ -1,5 +1,4 @@
 import { Icon, useT } from '@aio/ui';
-import { volumetric } from '@aio/volumetric';
 import { useEffect } from 'react';
 import { lineUpApp } from '../lineup/lineUpStore';
 import { cleanup } from '../pointcloud/cleanupStore';
@@ -7,10 +6,10 @@ import { shell } from '../shell';
 import { alignCamera, alignTo, photoAlign, useAlignTo } from './alignSession';
 import { builder } from './state';
 
-/** Fields, and the panels that keep their own undo (issues, cleanup, volumes). */
+/** Fields, and the panels that keep their own undo (issues, cleanup). */
 const OWN_UNDO =
   'input, textarea, select, [contenteditable="true"], [data-testid="issue-register"], ' +
-  '[data-testid="issue-card"], [data-testid="cleanup-panel"], .vol-panel';
+  '[data-testid="issue-card"], [data-testid="cleanup-panel"]';
 
 /** Whether Ctrl+Z belongs elsewhere: another screen, a field, or a panel or tool with its own undo. */
 export function otherUndo(e: KeyboardEvent): boolean {
@@ -18,7 +17,6 @@ export function otherUndo(e: KeyboardEvent): boolean {
   if (e.target instanceof Element && e.target.closest(OWN_UNDO) !== null) return true;
   return (
     cleanup.store.getState().panelOpen ||
-    volumetric.getState().edit !== null ||
     alignCamera.getState().session !== null ||
     photoAlign.getState().session !== null ||
     // Place model, Georeference model or Calibrate video: the panel holds the layer as it opened,

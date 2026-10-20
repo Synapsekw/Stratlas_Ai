@@ -1,15 +1,6 @@
-import type {
-  AioBridge,
-  BoundaryEdit,
-  IpcChannel,
-  IpcRequest,
-  Layer,
-  ProjectManifest,
-  VolumesFile,
-} from '@aio/schema';
+import type { BoundaryEdit, Layer, ProjectManifest, VolumesFile } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
-import type { EditResponse } from './model/compute';
 import {
   createVolumetricStore,
   parseVolumePrefs,
@@ -72,6 +63,17 @@ function volumes(): VolumesFile {
   };
 }
 
+/** The volumes with a third survey date, e3 (the piles as on e2). */
+function withThird(f: VolumesFile): VolumesFile {
+  return {
+    ...f,
+    captures: [
+      ...f.captures,
+      { epoch: 'e3', captureId: 's3', date: '2021-01-20', label: '20 Jan 2021' },
+    ],
+  };
+}
+
 const layers: Layer[] = [
   {
     kind: 'mesh',
@@ -114,27 +116,6 @@ const manifest: ProjectManifest = {
   classCatalogues: [],
 };
 
-function editResponse(net: number): EditResponse {
-  const body = {
-    nx: 1,
-    ny: 1,
-    cell: 1,
-    e0: 0,
-    n0: 0,
-    ins: new Uint8Array(1),
-    top: new Float32Array(1),
-    bot: new Float32Array(1),
-    tmax: 1,
-    bmin: 0,
-  };
-  return {
-    result: { volumes: v4(net), areaM2: 400, topM: 60, heightM: 8 },
-    body,
-    toe: new Float64Array(0),
-    vertices: [],
-  };
-}
-
 function memoryPrefs(): VolumePrefStore {
   const all = new Map<string, VolumePrefs>();
   return {
@@ -152,6 +133,8 @@ function setup(
     prefs?: VolumePrefStore;
     /** The survey date `s2` lined up by this much. */
     s2Shift?: { eastM: number; northM: number };
+    /** A third survey date, e3. */
+    third?: boolean;
   } = {},
 ) {
   const ws = createWorkspace();
@@ -169,23 +152,11 @@ function setup(
       }
     : manifest;
   ws.getState().openProject({ id: 'masafi', root: 'E:/m', manifest: opened });
-  const calls: { channel: IpcChannel; req: unknown }[] = [];
-  const bridge: AioBridge = {
-    invoke: (<C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
-      calls.push({ channel, req });
-      if (channel === 'dialog:saveFile') return Promise.resolve({ path: 'C:/out.csv' });
-      return Promise.resolve({ ok: true });
-    }) as AioBridge['invoke'],
-    on: () => () => undefined,
-  };
   const service = {
-    recompute: vi.fn(() => Promise.resolve({ e1: v4(100), e2: v4(95) })),
     scene: vi.fn(() => Promise.resolve({ piles: [] })),
-    edit: vi.fn(() => Promise.resolve(editResponse(80))),
     section: vi.fn(() =>
       Promise.resolve({ lengthM: 10, s: [0, 10], z1: [1, 1], z2: [2, 2], cutM2: 0, fillM2: 10 }),
     ),
-    pileSection: vi.fn(() => Promise.resolve({ s: [], z1: [], z2: [], base: [] })),
     changeRaster: vi.fn(),
     reliefRaster: vi.fn(),
     grid: vi.fn(() =>
@@ -202,7 +173,7 @@ function setup(
       reads.push(projectId);
       return Promise.resolve({
         ok: true,
-        volumes: opts.noVolumes ? null : volumes(),
+        volumes: opts.noVolumes ? null : opts.third ? withThird(volumes()) : volumes(),
         edits: opts.edits ? { schema: 'aio.boundaries/1', edits: opts.edits } : null,
       });
     },
@@ -210,12 +181,10 @@ function setup(
       started.push(init);
       return service;
     },
-    bridge: () => bridge,
-    now: () => '2026-10-04T12:00:00.000Z',
     ...(opts.prefs ? { prefs: opts.prefs } : {}),
   };
   const store = createVolumetricStore(deps);
-  return { store, ws, calls, service, started, reads };
+  return { store, ws, service, started, reads };
 }
 
 const savedEdit: BoundaryEdit = {
@@ -236,14 +205,13 @@ const savedEdit: BoundaryEdit = {
 };
 
 describe('volumetric store: loading', () => {
-  it('opens volumes.json and the saved edits on the last survey and default base', async () => {
+  it('opens volumes.json and the saved edits on the last survey', async () => {
     const { store, started, reads } = setup({ edits: [savedEdit] });
     await store.getState().load();
     expect(reads).toEqual(['masafi']);
     const s = store.getState();
     expect(s.status).toBe('ready');
     expect(s.epoch).toBe('e2');
-    expect(s.base).toBe('tin');
     expect(s.density).toBe(1.6);
     expect(s.piles.find((p) => p.id === 'P01')?.epochs.e2?.volumes.tin.net).toBe(70);
     expect(started[0]).toMatchObject({
@@ -448,142 +416,67 @@ describe('volumetric store: elevation colours', () => {
   });
 });
 
-describe('volumetric store: boundary editor', () => {
-  it('starts from the simplified automatic line and recomputes in the worker', async () => {
-    const { store, service } = setup();
+describe('volumetric store: cut / fill dates', () => {
+  it('default pick is previous to current', async () => {
+    const { store, ws } = setup({ third: true });
     await store.getState().load();
-    store.getState().select('P01');
-    await store.getState().startEdit();
-    const e = store.getState().edit;
-    expect(e?.pile).toBe('P01');
-    expect(e?.ring).toHaveLength(4);
-    expect(e?.ring).toContainEqual([1020, 2020]);
-    expect(e?.dirty).toBe(false);
-    expect(service.edit).toHaveBeenCalled();
-    expect(store.getState().edit?.live?.result.volumes.tin.net).toBe(80);
+    store.getState().setEpoch('e2');
+    store.getState().setSurface('change');
+    expect(store.getState().change).toEqual({ from: 'e1', to: 'e2' });
+    // the colours drape on the "to" survey
+    expect(store.getState().shownEpoch()).toBe('e2');
+    expect(ws.getState().isLayerVisible('terrain-2')).toBe(true);
+    // the first survey has no previous one: it compares with the next
+    store.getState().setSurface('photo');
+    store.getState().setEpoch('e1');
+    store.getState().setSurface('change');
+    expect(store.getState().change).toEqual({ from: 'e1', to: 'e2' });
   });
 
-  it('moves, inserts and deletes points with undo', async () => {
+  it('cut/fill compares the picked surveys, not first and last', async () => {
+    const { store, service } = setup({ third: true });
+    await store.getState().load();
+    expect(store.getState().epoch).toBe('e3');
+    store.getState().setSurface('change');
+    expect(store.getState().change).toEqual({ from: 'e2', to: 'e3' });
+    store.getState().setChange({ from: 'e1', to: 'e2' });
+    expect(store.getState().change).toEqual({ from: 'e1', to: 'e2' });
+    expect(store.getState().shownEpoch()).toBe('e2');
+    // the same date on both sides, or a date the volumes do not have, is refused
+    store.getState().setChange({ from: 'e2', to: 'e2' });
+    store.getState().setChange({ from: 'e1', to: 'e9' });
+    expect(store.getState().change).toEqual({ from: 'e1', to: 'e2' });
+    // the section line profiles the picked dates too
+    store.getState().startSection();
+    await store.getState().addSectionPoint([1000, 2000]);
+    await store.getState().addSectionPoint([1010, 2000]);
+    expect(service.section).toHaveBeenCalledWith([1000, 2000], [1010, 2000], 'e1', 'e2');
+  });
+
+  it('keeps the engine grid only for the dates it was computed for', async () => {
+    const { store } = setup({ third: true });
+    await store.getState().load();
+    store.getState().setSurface('change');
+    const grid = { dz: new Float32Array(1), nx: 1, ny: 1, x0: 0, y0: 0, cellM: 1 };
+    store.getState().setChangeGrid({ from: 'e2', to: 'e3', grid });
+    expect(store.getState().changeGrid?.grid).toBe(grid);
+    store.getState().setChange({ from: 'e1', to: 'e3' });
+    expect(store.getState().changeGrid).toBeNull();
+    // a late answer for other dates is dropped
+    store.getState().setChangeGrid({ from: 'e2', to: 'e3', grid });
+    expect(store.getState().changeGrid).toBeNull();
+  });
+
+  it('has no base, register or boundary editor of its own', async () => {
     const { store } = setup();
     await store.getState().load();
-    store.getState().select('P01');
-    await store.getState().startEdit();
-    await store.getState().moveVertex(0, [999, 2001]);
-    expect(store.getState().edit?.ring[0]).toEqual([999, 2001]);
-    expect(store.getState().edit?.dirty).toBe(true);
-    await store.getState().insertVertex(0, [1010, 2001]);
-    expect(store.getState().edit?.ring).toHaveLength(5);
-    await store.getState().deleteVertex(1);
-    expect(store.getState().edit?.ring).toHaveLength(4);
-    await store.getState().undo();
-    await store.getState().undo();
-    await store.getState().undo();
-    expect(store.getState().edit?.ring[0]).toEqual([1000, 2000]);
-    expect(store.getState().edit?.dirty).toBe(false);
-  });
-
-  it('keeps at least three points', async () => {
-    const { store } = setup();
-    await store.getState().load();
-    store.getState().select('P01');
-    await store.getState().startEdit();
-    await store.getState().deleteVertex(0);
-    expect(store.getState().edit?.ring).toHaveLength(3);
-    await store.getState().deleteVertex(0);
-    expect(store.getState().edit?.ring).toHaveLength(3);
-    expect(store.getState().message).toMatch(/three points/);
-  });
-
-  it('saves the edit in the local frame through project:writeBoundaries', async () => {
-    const { store, calls } = setup();
-    await store.getState().load();
-    store.getState().select('P01');
-    await store.getState().startEdit();
-    await store.getState().moveVertex(0, [999, 2001]);
-    expect(await store.getState().saveEdit()).toBe(true);
-    const call = calls.find((c) => c.channel === 'project:writeBoundaries');
-    expect(call?.req).toMatchObject({
-      projectId: 'masafi',
-      file: {
-        schema: 'aio.boundaries/1',
-        edits: [
-          {
-            pile: 'P01',
-            epoch: 'e2',
-            volumes: v4(80),
-            autoNet: 95,
-            updatedAt: '2026-10-04T12:00:00.000Z',
-          },
-        ],
-      },
-    });
-    const req = call?.req as { file: { edits: BoundaryEdit[] } };
-    expect(req.file.edits[0]?.ring[0]).toEqual([-1, -1]);
-    const s = store.getState();
-    expect(s.edit).toBeNull();
-    expect(s.piles.find((p) => p.id === 'P01')?.edited).toEqual(['e2']);
-    expect(s.piles.find((p) => p.id === 'P01')?.epochs.e2?.volumes.tin.net).toBe(80);
-  });
-
-  it('saves an edited epoch ring without the shift', async () => {
-    const { store, calls, service } = setup({ s2Shift: { eastM: 2, northM: -1 } });
-    await store.getState().load();
-    store.getState().select('P01');
-    await store.getState().startEdit();
-    // drawn on the lined-up date: the stored corner (20, -20) shows 2 m east and 1 m south of it
-    expect(store.getState().edit?.ring).toContainEqual([1022, 2019]);
-    // the worker measures the date's own, unshifted ground
-    const asked = (
-      service.edit as unknown as { mock: { calls: [{ ring: [number, number][] }][] } }
-    ).mock.calls.at(-1)?.[0].ring;
-    expect(asked).toContainEqual([1020, 2020]);
-    await store.getState().moveVertex(0, [1001, 2001]);
-    expect(await store.getState().saveEdit()).toBe(true);
-    const call = calls.find((c) => c.channel === 'project:writeBoundaries');
-    const req = call?.req as { file: { edits: BoundaryEdit[] } };
-    // picked at (1001, 2001) on the shifted scene: stored at (999, 2002), local (-1, -2)
-    expect(req.file.edits[0]?.ring[0]).toEqual([-1, -2]);
-  });
-
-  it('never edits or saves boundaries in a read-only package', async () => {
-    const { store, calls } = setup({ edits: [savedEdit] });
-    store.getState().setReadOnly(true);
-    await store.getState().load();
-    expect(store.getState().readOnly).toBe(true);
-    store.getState().select('P01');
-    await store.getState().startEdit();
-    expect(store.getState().edit).toBeNull();
-    expect(await store.getState().revert('P01', 'e2')).toBe(false);
-    expect(store.getState().message).toMatch(/read-only/);
-    expect(calls.some((c) => c.channel === 'project:writeBoundaries')).toBe(false);
-    expect(store.getState().piles.find((p) => p.id === 'P01')?.edited).toEqual(['e2']);
-  });
-
-  it('reverts to the automatic line by removing the saved edit', async () => {
-    const { store, calls } = setup({ edits: [savedEdit] });
-    await store.getState().load();
-    store.getState().select('P01');
-    expect(await store.getState().revert('P01', 'e2')).toBe(true);
-    const req = calls.at(-1)?.req as { file: { edits: BoundaryEdit[] } };
-    expect(req.file.edits).toEqual([]);
-    expect(store.getState().piles.find((p) => p.id === 'P01')?.edited).toEqual([]);
-  });
-
-  it('continues a saved edit from its own line', async () => {
-    const { store } = setup({ edits: [savedEdit] });
-    await store.getState().load();
-    store.getState().select('P01');
-    await store.getState().startEdit();
-    expect(store.getState().edit?.ring).toEqual([
-      [1000, 2000],
-      [1005, 2000],
-      [1005, 2005],
-      [1000, 2005],
-    ]);
+    const keys = Object.keys(store.getState());
+    const gone = ['base', 'setBase', 'sort', 'exportCsv', 'recomputed', 'pileProfile', 'startEdit'];
+    for (const k of [...gone, 'saveEdit', 'edit']) expect(keys).not.toContain(k);
   });
 });
 
-describe('volumetric store: section and export', () => {
+describe('volumetric store: section', () => {
   it('profiles a section from two picked points', async () => {
     const { store, service } = setup();
     await store.getState().load();
@@ -591,17 +484,7 @@ describe('volumetric store: section and export', () => {
     expect(store.getState().section.mode).toBe('picking');
     await store.getState().addSectionPoint([1000, 2000]);
     await store.getState().addSectionPoint([1010, 2000]);
-    expect(service.section).toHaveBeenCalledWith([1000, 2000], [1010, 2000]);
+    expect(service.section).toHaveBeenCalledWith([1000, 2000], [1010, 2000], 'e1', 'e2');
     expect(store.getState().section).toMatchObject({ mode: 'done', profile: { fillM2: 10 } });
-  });
-
-  it('exports the register as CSV through the save dialog', async () => {
-    const { store, calls } = setup();
-    await store.getState().load();
-    await store.getState().exportCsv();
-    const call = calls.find((c) => c.channel === 'dialog:saveFile');
-    const req = call?.req as { defaultName: string; data: string };
-    expect(req.defaultName).toBe('Masafi stockpile register.csv');
-    expect(req.data.split('\n')[1]?.startsWith('P01,Pile 01,')).toBe(true);
   });
 });

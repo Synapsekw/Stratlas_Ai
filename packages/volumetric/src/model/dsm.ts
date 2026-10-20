@@ -289,6 +289,48 @@ export function changeRaster(first: DsmGrid, last: DsmGrid, deadband: number): R
 }
 
 /**
+ * A height difference grid of the survey engine (`dz` per cell, row 0 the southernmost, NaN for no
+ * data; the whole-site comparison's grid).
+ */
+export interface ChangeGridCells {
+  dz: ArrayLike<number>;
+  nx: number;
+  ny: number;
+  /** West and south edges of cell (0, 0), project CRS metres. */
+  x0: number;
+  y0: number;
+  cellM: number;
+}
+
+/**
+ * The survey engine's height change coloured on the site's drape grid (`w` by `h` cells of `res`
+ * from the north-west corner `x0`, `y1`, as the terrain's texture coordinates run): each drape
+ * cell takes the engine cell under its centre. Cells the engine has no data for stay transparent.
+ */
+export function changeGridRaster(
+  site: { w: number; h: number; res: number; x0: number; y1: number },
+  g: ChangeGridCells,
+  deadband: number,
+): Raster {
+  const data = new Uint8ClampedArray(site.w * site.h * 4);
+  for (let j = 0; j < site.h; j++) {
+    const N = site.y1 - (j + 0.5) * site.res;
+    const gy = Math.floor((N - g.y0) / g.cellM);
+    if (gy < 0 || gy >= g.ny) continue;
+    for (let i = 0; i < site.w; i++) {
+      const E = site.x0 + (i + 0.5) * site.res;
+      const gx = Math.floor((E - g.x0) / g.cellM);
+      if (gx < 0 || gx >= g.nx) continue;
+      const d = g.dz[gy * g.nx + gx];
+      if (d === undefined || !Number.isFinite(d)) continue;
+      const c = changeColour(d, deadband);
+      data.set([c[0], c[1], c[2], 255], (j * site.w + i) * 4);
+    }
+  }
+  return { width: site.w, height: site.h, data };
+}
+
+/**
  * Colour relief of one survey's DSM, as RGBA: the ramp between `lo` and `hi` metres, lit by the
  * hillshade when asked. Cells without data stay transparent (alpha 0): the photo shows there.
  */
