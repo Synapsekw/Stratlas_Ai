@@ -2,7 +2,7 @@
 import type { Layer, ProjectManifest, SurveyMeasurement } from '@aio/schema';
 import { captureIndex } from '@aio/workspace';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { shapesOf } from './measureScene';
+import { labelText, shapesOf } from './measureScene';
 import { measureStore } from './measureStore';
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -88,10 +88,13 @@ describe('measurements in the views', () => {
       points: [[100, 200, 5]],
     };
     measureStore.setState({ file: { schema: 'aio.measurements/1', measurements: [spot] } });
-    const label = shapesOf(measureStore.getState(), ws, manifest, 'grid north')[0]?.label ?? '';
-    // the first row is the northing: 1 m south of the stored 200
-    expect(label).toContain('199');
-    expect(label).not.toContain('200');
+    const shape = shapesOf(measureStore.getState(), ws, manifest, 'grid north')[0];
+    // drawn 1 m south of the stored 200, and the label reads the drawn point (its primary value,
+    // the height, as the tree and the card show it)
+    expect(shape?.points).toEqual([[100, 199, 5]]);
+    const s = measureStore.getState();
+    expect(shape?.label).toBe(labelText({ ...spot, points: [[100, 199, 5]] }, s.settings, []));
+    expect(shape?.label).toBe('m-spot · 5.000');
   });
 
   it('leaves a site measurement where it is', () => {

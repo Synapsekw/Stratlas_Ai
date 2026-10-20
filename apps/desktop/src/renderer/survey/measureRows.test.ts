@@ -6,8 +6,11 @@ import {
 } from '@aio/schema';
 import { measurementsGroup } from '@aio/ui';
 import { captureIndex } from '@aio/workspace';
+import { measurementFrom, TOOL_FAMILY, type MeasurementTool } from '@aio/survey';
 import { describe, expect, it, vi } from 'vitest';
-import { buildMeasureItems, measureRowValue } from './measureRows';
+import { primaryText } from './card/cardModel';
+import { buildMeasureItems } from './measureRows';
+import { labelText } from './measureScene';
 
 vi.mock('../shell', () => ({ bridge: { call: () => Promise.resolve({ ok: false }) }, jobs: {} }));
 
@@ -64,9 +67,11 @@ const manifest: ProjectManifest = {
 const index = captureIndex(manifest);
 const ws = { dates: index, hidden: {} };
 
-describe('measureRowValue', () => {
+describe('the primary value (primaryText)', () => {
   it('formats the primary value as the list did', () => {
-    expect(measureRowValue(m('d', 'Distance'), st)).toBe('25.00 m');
+    const value = (x: SurveyMeasurement, s: typeof st = st) =>
+      primaryText(x, { settings: s.settings, templates: [] });
+    expect(value(m('d', 'Distance'))).toBe('25.00 m');
     const bad = base('az', 'Az', {
       tool: 'azimuth',
       points: [
@@ -75,8 +80,53 @@ describe('measureRowValue', () => {
         [0, 0, 0],
       ],
     });
-    expect(measureRowValue(bad, st)).toBe('Invalid picks');
+    expect(value(bad)).toBe('Invalid picks');
   });
+
+  it('is the one primary picker: primaryRow formatted in the site angle units', () => {
+    const tilt = base('t', 'Tilt', {
+      tool: 'antenna-tilt',
+      points: [
+        [0, 0, 0],
+        [1, 0, 1],
+      ],
+    });
+    const angles = { angle: 'dms', bearing: 'dms', precision: 2 } as const;
+    const dms = { ...stateWith([tilt]), settings: { ...settings, angles } };
+    const items = buildMeasureItems(dms, null, ws);
+    expect(items[0]?.meta).toBe(primaryText(tilt, { settings: dms.settings, templates: [] }));
+    expect(items[0]?.meta).toBe('45°00\'00"');
+  });
+});
+
+/** A measurement of every tool, with points enough for its family. */
+const ofTool = (tool: MeasurementTool) =>
+  measurementFrom(tool, {
+    id: tool,
+    label: `My ${tool}`,
+    scope: { kind: 'site' },
+    points: [
+      [0, 0, 0],
+      [10, 0, 2],
+      [10, 8, 1],
+      [0, 8, 3],
+    ],
+    createdAt: '2026-10-20T00:00:00Z',
+  });
+
+describe('one value for the tree and the labels', () => {
+  it.each(Object.keys(TOOL_FAMILY) as MeasurementTool[])(
+    'tree value and label value are the same string for every tool (%s)',
+    (tool) => {
+      const one = ofTool(tool);
+      const s = stateWith([one]);
+      const tree = buildMeasureItems(s, null, ws)[0]?.meta ?? '';
+      const label = labelText(one, s.settings, []);
+      expect(tree).toBe(primaryText(one, { settings: s.settings, templates: [] }));
+      if (tree === '') expect(label).toBe(one.label);
+      else expect(label.startsWith(`${one.label} · ${tree}`)).toBe(true);
+    },
+  );
 });
 
 describe('buildMeasureItems', () => {

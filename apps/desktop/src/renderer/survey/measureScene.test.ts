@@ -5,6 +5,7 @@ import { measurementReadout } from '@aio/survey';
 import {
   Group,
   Mesh,
+  type MeshBasicMaterial,
   Points,
   PerspectiveCamera,
   Scene,
@@ -13,7 +14,11 @@ import {
   type Line,
 } from 'three';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { attach3d, frameOf, snapProviders } from './measureScene';
+import type { MapController } from '@aio/maps';
+import { defaultSurveySettings } from '@aio/schema';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { DEFAULT_FILL_OPACITY, DEFAULT_MEASURE_COLOUR } from './measureColours';
+import { attach3d, attachMap, frameOf, labelText, snapProviders } from './measureScene';
 import {
   editEvent,
   flipAzimuth,
@@ -397,4 +402,162 @@ it('removes saved geometry and labels from the scene when hidden, including ordi
   expect(s.stage.scene.getObjectByName('measure:distance')).toBeDefined();
   expect(document.querySelectorAll('.sv-label')).toHaveLength(2);
   s.detach();
+});
+
+// ---------------------------------------------------------------- stored style (W2)
+
+const pad = (over: Partial<SurveyMeasurement> = {}): SurveyMeasurement => ({
+  id: 'pad',
+  family: 'polygon',
+  tool: 'area',
+  label: 'Pad',
+  points: [
+    [100, 200, 300],
+    [110, 200, 300],
+    [110, 210, 300],
+    [100, 210, 300],
+  ],
+  items: [],
+  results: [],
+  scope: { kind: 'site' },
+  createdAt: '2026-10-20T00:00:00Z',
+  ...over,
+});
+
+/** A map that records the source data and the layers the measurements add. */
+function fakeMap() {
+  let data: { features: { properties: Record<string, unknown>; geometry: { type: string } }[] } = {
+    features: [],
+  };
+  const layers = new Map<
+    string,
+    { type: string; paint?: Record<string, unknown>; layout?: Record<string, unknown> }
+  >();
+  let added = false;
+  const canvas = document.createElement('canvas');
+  const map = {
+    getCanvas: () => canvas,
+    project: () => ({ x: 0, y: 0 }),
+    isStyleLoaded: () => true,
+    getSource: (id: string) =>
+      id === 'aio-survey' && added
+        ? {
+            setData: (d: typeof data) => {
+              data = d;
+            },
+          }
+        : undefined,
+    addSource: (_id: string, src: { data: typeof data }) => {
+      added = true;
+      data = src.data;
+    },
+    getLayer: (id: string) => layers.get(id),
+    addLayer: (l: { id: string; type: string; paint?: Record<string, unknown> }) => {
+      layers.set(l.id, l);
+    },
+    removeLayer: (id: string) => layers.delete(id),
+    removeSource: () => undefined,
+    on: () => undefined,
+    off: () => undefined,
+    once: () => undefined,
+  };
+  return {
+    ctl: { map } as unknown as MapController,
+    features: () => data.features,
+    layer: (type: string) => [...layers.values()].find((l) => l.type === type),
+  };
+}
+
+function mapOf(...measurements: SurveyMeasurement[]) {
+  measureStore.setState({ file: { schema: 'aio.measurements/1', measurements } });
+  const fm = fakeMap();
+  const detach = attachMap(fm.ctl, frameOf({ origin: [0, 0, 0], crs: { epsg: 32640 } }), () => 0, {
+    display: true,
+  });
+  return { ...fm, detach };
+}
+
+it('map fill uses stored fill and opacity', () => {
+  const m = mapOf(
+    pad({ style: { color: '#ef476f', fill: '#06d6a0', fillOpacity: 0.4 } }),
+    pad({ id: 'plain', label: 'Plain' }),
+  );
+  const fill = m.layer('fill');
+  expect(fill?.paint?.['fill-color']).toEqual(['get', 'fill']);
+  expect(fill?.paint?.['fill-opacity']).toEqual(['get', 'fillOpacity']);
+  const poly = (id: string) =>
+    m.features().find((f) => f.properties.id === id && f.geometry.type === 'Polygon')?.properties;
+  expect(poly('pad')).toMatchObject({ fill: '#06d6a0', fillOpacity: 0.4, color: '#ef476f' });
+  // no stored fill: the line colour at the default opacity
+  expect(poly('plain')).toMatchObject({
+    fill: DEFAULT_MEASURE_COLOUR,
+    fillOpacity: DEFAULT_FILL_OPACITY,
+  });
+  expect(DEFAULT_FILL_OPACITY).toBe(0.18);
+  m.detach();
+});
+
+it('map line width uses borderWidth', () => {
+  const m = mapOf(pad({ style: { color: '#ef476f', borderWidth: 6 } }), pad({ id: 'plain' }));
+  expect(m.layer('line')?.paint?.['line-width']).toEqual(['get', 'width']);
+  const width = (id: string) =>
+    m.features().find((f) => f.properties.id === id && f.geometry.type === 'Polygon')?.properties
+      .width;
+  expect(width('pad')).toBe(6);
+  expect(width('plain')).toBe(2);
+  m.detach();
+});
+
+it('map labels show the name and the primary value', () => {
+  const m = mapOf(pad());
+  const label = m.features().find((f) => f.properties.kind === 'label');
+  expect(label?.geometry.type).toBe('Point');
+  expect(label?.properties.label).toBe(labelText(pad(), defaultSurveySettings(), []));
+  expect(m.layer('symbol')?.layout?.['text-field']).toEqual(['get', 'label']);
+  // the label point is not drawn as a vertex dot
+  expect(m.layer('circle')).toBeDefined();
+  m.detach();
+});
+
+it('3D polygon gets a fill mesh at the stored opacity', () => {
+  const s = scene();
+  measureStore.setState({
+    file: {
+      schema: 'aio.measurements/1',
+      measurements: [pad({ style: { color: '#ef476f', fill: '#06d6a0', fillOpacity: 0.35 } })],
+    },
+  });
+  const fill = s.stage.scene.getObjectByName('measure-fill:pad') as Mesh | undefined;
+  expect(fill).toBeInstanceOf(Mesh);
+  const mat = fill?.material as MeshBasicMaterial;
+  expect(mat.opacity).toBeCloseTo(0.35);
+  expect(mat.transparent).toBe(true);
+  expect(`#${mat.color.getHexString()}`).toBe('#06d6a0');
+  // two triangles for the four corners
+  expect(fill?.geometry.index?.count ?? fill?.geometry.getAttribute('position').count).toBe(6);
+  s.detach();
+});
+
+it('3D draws a fat line when the border is wider than 1, a thin one otherwise', () => {
+  const s = scene();
+  measureStore.setState({
+    file: {
+      schema: 'aio.measurements/1',
+      measurements: [pad({ style: { color: '#ef476f', borderWidth: 4 } }), pad({ id: 'thin' })],
+    },
+  });
+  const outline = (id: string) =>
+    s.stage.scene.getObjectsByProperty('name', `measure:${id}`).find((o) => !(o instanceof Points));
+  expect(outline('pad')).toBeInstanceOf(Line2);
+  expect(outline('thin')).not.toBeInstanceOf(Line2);
+  s.detach();
+});
+
+it('label is name and primary value', () => {
+  const settings = defaultSurveySettings();
+  expect(labelText(pad(), settings, [])).toBe('Pad · 100.00 m²');
+  // with the property name shown, the value is named
+  expect(
+    labelText(pad({ style: { color: '#ef476f', showPropertyName: true } }), settings, []),
+  ).toMatch(/^Pad · .+: 100\.00 m²$/);
 });

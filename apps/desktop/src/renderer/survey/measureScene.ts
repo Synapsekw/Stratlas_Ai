@@ -7,15 +7,21 @@
 import type { EngineStage } from '@aio/engine';
 import { fromWgs84, localToProject, projectToLocal, toWgs84 } from '@aio/geo';
 import type { MapController } from '@aio/maps';
-import type { ProjectManifest, SitePoint, SurveyMeasurement, Vec3 } from '@aio/schema';
+import type {
+  ProjectManifest,
+  SitePoint,
+  SurveyMeasurement,
+  SurveySettings,
+  SurveyTemplate,
+  Vec3,
+} from '@aio/schema';
 import {
   findSnap,
-  formatRow,
   hitMidpoint,
   hitVertex,
   isClosed,
-  measurementReadout,
   measurementSnaps,
+  primaryRow,
   effectiveUnits,
   antennaAzimuth,
   isTelecomTool,
@@ -32,14 +38,27 @@ import {
   Line,
   LineBasicMaterial,
   LineLoop,
+  Mesh,
+  MeshBasicMaterial,
+  DoubleSide,
   Points,
   PointsMaterial,
+  ShapeUtils,
   Vector2,
   Vector3,
   type Material,
   type Object3D,
 } from 'three';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { StoreApi } from 'zustand/vanilla';
+import { invalidPicks, primaryText, rowText, templateItems } from './card/cardModel';
+import {
+  DEFAULT_BORDER_WIDTH,
+  DEFAULT_FILL_OPACITY,
+  DEFAULT_MEASURE_COLOUR,
+} from './measureColours';
 import { drawnPoints, measurementsOn as drawn, type DatesOnScreen } from './measureDates';
 import {
   drawEvent,
@@ -49,7 +68,6 @@ import {
   type MeasureState,
 } from './measureStore';
 
-export const MEASURE_COLOR = '#ffd166';
 const DRAFT_COLOR = '#4cc9f0';
 const SNAP_COLOR = '#ff5ccd';
 
@@ -74,7 +92,13 @@ interface Shape {
   id: string;
   points: readonly SitePoint[];
   closed: boolean;
+  /** A polygon: drawn with a translucent fill (an azimuth face is closed but not filled). */
+  filled: boolean;
   color: string;
+  /** The stored style as saved; each view puts in its own default (`measureColours`). */
+  fill: string | undefined;
+  fillOpacity: number | undefined;
+  borderWidth: number | undefined;
   selected: boolean;
   label: string | null;
   labelSize: number;
@@ -120,8 +144,7 @@ export function shapesOf(
   manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null,
   north: 'project north' | 'grid north',
 ): Shape[] {
-  const units = s.settings.units;
-  const precision = s.settings.precision;
+  const templates = knownTemplates(s);
   return drawn(s, ws).map((m) => {
     const selected = s.selected.includes(m.id);
     const live = s.editing && m.id === s.focus ? s.editing.points : null;
@@ -134,38 +157,40 @@ export function shapesOf(
       tool: m.tool,
       points,
       closed: m.tool === 'azimuth' || isClosed(m.family),
-      color: style?.color ?? MEASURE_COLOR,
+      filled: isClosed(m.family),
+      color: style?.color ?? DEFAULT_MEASURE_COLOUR,
+      fill: style?.fill,
+      fillOpacity: style?.fillOpacity,
+      borderWidth: style?.borderWidth,
       selected,
-      label:
-        only && !selected
-          ? null
-          : labelOf({ ...m, points }, units, precision, style?.showPropertyName === true, s, north),
+      label: only && !selected ? null : labelText({ ...m, points }, s.settings, templates, north),
       labelSize: style?.labelSize ?? 12,
     };
   });
 }
 
-/** The label of a measurement: its name and its first readout row. */
-function labelOf(
+/**
+ * The label of a measurement in the 3D view and on the map: its name and its primary value, the
+ * one the tree and the card show (`primaryText`). With "show property name" the value is named.
+ */
+export function labelText(
   m: SurveyMeasurement,
-  site: MeasureState['settings']['units'],
-  precision: MeasureState['settings']['precision'],
-  showName: boolean,
-  s: MeasureState,
-  north: 'project north' | 'grid north',
+  settings: SurveySettings,
+  templates: readonly SurveyTemplate[],
+  north: 'project north' | 'grid north' = 'project north',
 ): string {
-  const tpl = knownTemplates(s).find((t) => t.id === m.template);
-  const row = isTelecomTool(m.tool)
-    ? measurementReadout(m)[0]
-    : measurementReadout(m, {}, tpl?.items).find((r) => r.value !== null);
-  const value = row ? formatRow(row, effectiveUnits(site, m.units), precision) : '';
   if (isTelecomTool(m.tool)) {
+    if (invalidPicks(m)) return [m.label, 'Invalid picks: adjust endpoints'].join(' · ');
     const suffix =
       m.tool === 'azimuth' ? ` ${north}` : m.tool === 'antenna-tilt' ? ' from vertical' : '';
-    const result = row?.value === null ? 'Invalid picks: adjust endpoints' : `${value}${suffix}`;
-    return [m.label, result].filter(Boolean).join(' · ');
+    const value = primaryText(m, { settings, templates });
+    return [m.label, value ? `${value}${suffix}` : ''].filter(Boolean).join(' · ');
   }
-  const named = showName && row ? `${row.label}: ${value}` : value;
+  const row =
+    m.style?.showPropertyName === true ? primaryRow(m, {}, templateItems(m, templates)) : null;
+  const named = row
+    ? `${row.label}: ${rowText(row, m, settings)}`
+    : primaryText(m, { settings, templates });
   return [m.label, named].filter(Boolean).join(' · ');
 }
 
@@ -285,13 +310,49 @@ export function attach3d(
   const disposeGroup = () => {
     for (const c of [...group.children]) {
       group.remove(c);
-      const o = c as Line | Points;
+      const o = c as Line | Points | Mesh;
       o.geometry.dispose();
       (o.material as Material).dispose();
     }
   };
-  const addLine = (pts: readonly SitePoint[], closed: boolean, color: string, name = '') => {
+  /** Fat lines take their width in CSS pixels: they need the canvas size they are drawn at. */
+  const sizeFatLines = () => {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    for (const c of group.children) {
+      const mat = (c as Partial<Mesh>).material;
+      if (mat instanceof LineMaterial) mat.resolution.set(w, h);
+    }
+  };
+  const addLine = (
+    pts: readonly SitePoint[],
+    closed: boolean,
+    color: string,
+    name = '',
+    width = 1,
+  ) => {
     if (pts.length < 2) return;
+    if (width > 1) {
+      // a border wider than one pixel: WebGL draws basic lines one pixel wide whatever is asked
+      const first = pts[0];
+      const ring = closed && pts.length > 2 && first ? [...pts, first] : pts;
+      const g = new LineGeometry();
+      g.setPositions(ring.flatMap((p) => frame.toLocal(p)));
+      const mat = new LineMaterial({
+        color,
+        linewidth: width,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+      });
+      const fat = new Line2(g, mat);
+      fat.name = name;
+      fat.renderOrder = 40;
+      fat.frustumCulled = false;
+      fat.raycast = () => undefined;
+      group.add(fat);
+      return;
+    }
     const g = new BufferGeometry();
     g.setAttribute(
       'position',
@@ -312,6 +373,33 @@ export function attach3d(
     line.frustumCulled = false;
     line.raycast = () => undefined;
     group.add(line);
+  };
+  /** A polygon's translucent fill, triangulated in plan and kept at its vertices' heights. */
+  const addFill = (pts: readonly SitePoint[], color: string, opacity: number, name: string) => {
+    if (pts.length < 3 || opacity <= 0) return;
+    const local = pts.map((p) => frame.toLocal(p));
+    const tris = ShapeUtils.triangulateShape(
+      local.map((l) => new Vector2(l[0], l[2])),
+      [],
+    );
+    if (tris.length === 0) return;
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(local.flat(), 3));
+    g.setIndex(tris.flat());
+    const mat = new MeshBasicMaterial({
+      color,
+      opacity,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    const mesh = new Mesh(g, mat);
+    mesh.name = name;
+    mesh.renderOrder = 39;
+    mesh.frustumCulled = false;
+    mesh.raycast = () => undefined;
+    group.add(mesh);
   };
   const addPoints = (pts: readonly SitePoint[], color: string, size = 7, name = '') => {
     if (pts.length === 0) return;
@@ -382,7 +470,15 @@ export function attach3d(
     for (const sh of shapes) {
       // named after the measurement: which view draws which is read from the scene (tests)
       const name = `measure:${sh.id}`;
-      addLine(sh.points, sh.closed, sh.selected ? '#ffffff' : sh.color, name);
+      if (sh.filled)
+        addFill(
+          sh.points,
+          sh.fill ?? sh.color,
+          sh.fillOpacity ?? DEFAULT_FILL_OPACITY,
+          `measure-fill:${sh.id}`,
+        );
+      // a stored border width only: unstyled measurements keep the one-pixel 3D line
+      addLine(sh.points, sh.closed, sh.selected ? '#ffffff' : sh.color, name, sh.borderWidth ?? 1);
       addPoints(sh.points, sh.color, sh.selected ? 8 : 5, name);
       if (sh.tool === 'azimuth') addFacing(sh.points, sh.color, `measure-facing:${sh.id}`);
     }
@@ -411,6 +507,7 @@ export function attach3d(
       if (d.cursor) addPoints([d.cursor], d.snap ? SNAP_COLOR : DRAFT_COLOR, d.snap ? 12 : 6);
       if (s.tool?.tool === 'azimuth') addFacing(pts, DRAFT_COLOR, 'measure-facing:draft');
     }
+    sizeFatLines();
     placeLabels();
     stage.requestRender();
   };
@@ -447,6 +544,7 @@ export function attach3d(
     if (!display && stage.tool !== 'select' && (s.draw || s.editing)) {
       endInput();
     }
+    sizeFatLines();
     placeLabels();
   });
 
@@ -664,7 +762,7 @@ interface MapMouse {
 }
 
 const SRC = 'aio-survey';
-const LAYERS = ['aio-survey-fill', 'aio-survey-line', 'aio-survey-pt'] as const;
+const LAYERS = ['aio-survey-fill', 'aio-survey-line', 'aio-survey-pt', 'aio-survey-label'] as const;
 
 /**
  * Draw the measurements on the map and drive the active tool there. Returns the detach. With
@@ -715,7 +813,20 @@ export function attachMap(
       frame.epsg === null ? 'project north' : 'grid north',
     )) {
       const coords = sh.points.map(toLngLat);
-      const props = { color: sh.selected ? '#ffffff' : sh.color, id: sh.id };
+      const props = {
+        color: sh.selected ? '#ffffff' : sh.color,
+        fill: sh.fill ?? sh.color,
+        fillOpacity: sh.fillOpacity ?? DEFAULT_FILL_OPACITY,
+        width: sh.borderWidth ?? DEFAULT_BORDER_WIDTH,
+        id: sh.id,
+      };
+      const anchor = sh.label ? anchorOf(sh.points, sh.closed) : null;
+      if (anchor && sh.label)
+        features.push({
+          type: 'Feature',
+          properties: { kind: 'label', id: sh.id, label: sh.label, size: sh.labelSize },
+          geometry: { type: 'Point', coordinates: toLngLat(anchor) },
+        });
       if (coords.length === 1)
         features.push({
           type: 'Feature',
@@ -739,7 +850,13 @@ export function attachMap(
     if (d) {
       const pts = d.cursor && d.points.length > 0 ? [...d.points, d.cursor] : d.points;
       const coords = pts.map(toLngLat);
-      const props = { color: DRAFT_COLOR, id: 'draft' };
+      const props = {
+        color: DRAFT_COLOR,
+        fill: DRAFT_COLOR,
+        fillOpacity: DEFAULT_FILL_OPACITY,
+        width: DEFAULT_BORDER_WIDTH,
+        id: 'draft',
+      };
       if (coords.length > 1)
         features.push({
           type: 'Feature',
@@ -781,7 +898,7 @@ export function attachMap(
           type: 'fill',
           source: SRC,
           filter: ['==', ['geometry-type'], 'Polygon'],
-          paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.18 },
+          paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': ['get', 'fillOpacity'] },
         });
       if (!map.getLayer(LAYERS[1]))
         map.addLayer({
@@ -789,19 +906,40 @@ export function attachMap(
           type: 'line',
           source: SRC,
           filter: ['!=', ['geometry-type'], 'Point'],
-          paint: { 'line-color': ['get', 'color'], 'line-width': 2 },
+          paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'] },
         });
       if (!map.getLayer(LAYERS[2]))
         map.addLayer({
           id: LAYERS[2],
           type: 'circle',
           source: SRC,
-          filter: ['==', ['geometry-type'], 'Point'],
+          filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', ['get', 'kind'], 'label']],
           paint: {
             'circle-radius': 4,
             'circle-color': ['get', 'color'],
             'circle-stroke-color': '#000000',
             'circle-stroke-width': 1,
+          },
+        });
+      if (!map.getLayer(LAYERS[3]))
+        map.addLayer({
+          id: LAYERS[3],
+          type: 'symbol',
+          source: SRC,
+          filter: ['==', ['get', 'kind'], 'label'],
+          // the 3D view's label: the name and the primary value, at the label size saved
+          layout: {
+            'text-field': ['get', 'label'],
+            'text-font': ['Noto Sans Medium'],
+            'text-size': ['get', 'size'],
+            'text-anchor': 'left',
+            'text-offset': [0.6, 0],
+            'text-padding': 4,
+          },
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': '#000000',
+            'text-halo-width': 1.5,
           },
         });
     } catch {

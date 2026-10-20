@@ -111,6 +111,17 @@ describe('measurement menu actions', () => {
     expect(colourOf('m1')).toBe('#06d6a0');
   });
 
+  it('the panel picker and the menu share MEASURE_COLOURS', async () => {
+    const shared = await import('../../survey/measureColours');
+    const { MEASURE_COLOURS } = await import('./measureActions');
+    expect(MEASURE_COLOURS).toBe(shared.MEASURE_COLOURS);
+    const colour = actionsFor(one('m2'), ctx()).find((i) => i.id === 'measure.colour');
+    expect(colour?.sub.map((s) => s.swatch)).toEqual(shared.MEASURE_COLOURS.map((c) => c.hex));
+    // a measurement with no colour of its own is checked on the shared default
+    const checked = colour?.sub.find((s) => s.checked);
+    expect(checked?.swatch).toBe(shared.DEFAULT_MEASURE_COLOUR);
+  });
+
   it('moves to a folder, out of one, or into a new one', () => {
     const move = () => actionsFor(one('m1'), ctx()).find((i) => i.id === 'measure.moveToFolder');
     expect(move()?.sub.map((s) => s.id)).toEqual(['to:Fence', 'none', 'new']);

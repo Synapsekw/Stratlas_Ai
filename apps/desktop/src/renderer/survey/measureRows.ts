@@ -6,39 +6,14 @@
  * with none goes, one with some holds only those and keeps every id for its eye (`folderIds`).
  */
 import type { ProjectManifest, SurveyMeasurement } from '@aio/schema';
-import {
-  effectiveUnits,
-  formatRow,
-  groupByFolder,
-  isTelecomTool,
-  measurementReadout,
-  sortMeasurements,
-} from '@aio/survey';
+import { groupByFolder, sortMeasurements } from '@aio/survey';
 import { formatDate, measureMark, t, type TreeItem } from '@aio/ui';
 import { scopeOnScreen } from '@aio/workspace';
 import type { DatesOnScreen } from './measureDates';
 import { filterTerms, matchingMeasurements } from './measureFilter';
-import { MEASURE_COLOR } from './measureScene';
+import { primaryText } from './card/cardModel';
+import { DEFAULT_MEASURE_COLOUR } from './measureColours';
 import { knownTemplates, type MeasureState } from './measureStore';
-
-type ValueState = Pick<MeasureState, 'settings' | 'templates'>;
-
-/** A measurement's primary value as the list shows it; "" when it has no row to show. */
-export function measureRowValue(
-  m: SurveyMeasurement,
-  s: ValueState,
-  templates = knownTemplates(s),
-): string {
-  const telecom = isTelecomTool(m.tool);
-  const row = telecom
-    ? measurementReadout(m)[0]
-    : measurementReadout(m, {}, templates.find((x) => x.id === m.template)?.items).find(
-        (r) => r.value !== null,
-      );
-  if (!row) return '';
-  if (telecom && row.value === null) return t('tree.measure.invalid');
-  return formatRow(row, effectiveUnits(s.settings.units, m.units), s.settings.precision);
-}
 
 export function buildMeasureItems(
   s: Pick<MeasureState, 'file' | 'settings' | 'templates'>,
@@ -52,7 +27,8 @@ export function buildMeasureItems(
     ? new Set(matchingMeasurements(s.file.measurements, query, templates).map((m) => m.id))
     : null;
   const row = (m: SurveyMeasurement): TreeItem => {
-    const value = measureRowValue(m, s, templates);
+    // the one primary value (R1): the card, the view labels and the island read the same
+    const value = primaryText(m, { settings: s.settings, templates });
     const scope = m.scope;
     const capture =
       scope.kind === 'survey' ? manifest?.captures.find((x) => x.id === scope.capture) : undefined;
@@ -64,7 +40,7 @@ export function buildMeasureItems(
       meta: [value, date].filter(Boolean).join(' · '),
       measure: {
         id: m.id,
-        color: m.style?.color ?? MEASURE_COLOR,
+        color: m.style?.color ?? DEFAULT_MEASURE_COLOUR,
         dimmed,
         ...(dimmed ? { dimmedWhy: t('tree.measure.dimmed', { date }) } : {}),
       },

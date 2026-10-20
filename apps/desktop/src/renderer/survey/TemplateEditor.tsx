@@ -38,7 +38,7 @@ import {
 } from '@aio/survey';
 import { EmptyState, Icon, t, useFocusTrap } from '@aio/ui';
 import { useRef, useState } from 'react';
-import { MEASURE_COLOR } from './measureScene';
+import { DEFAULT_MEASURE_COLOUR } from './measureColours';
 import {
   deleteTemplate,
   openDialog,
@@ -396,7 +396,7 @@ function TemplateForm({
           Colour
           <input
             type="color"
-            value={t.style?.color ?? MEASURE_COLOR}
+            value={t.style?.color ?? DEFAULT_MEASURE_COLOUR}
             onChange={(e) => {
               onChange(setStyle(t, { ...(t.style ?? {}), color: e.target.value }));
             }}

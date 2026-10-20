@@ -12,7 +12,7 @@ import type { MeasurementStyle, SurveyMeasurement } from '@aio/schema';
 import { changeTemplate, isTelecomTool, TOOL_LABELS, type RolePicks } from '@aio/survey';
 import { Icon, IconButton, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
 import { slotsFor, usePointVsText } from './card/slots';
 import {
@@ -31,7 +31,12 @@ import {
   withDesignLayers,
 } from './measureStore';
 import { drawnPoints } from './measureDates';
-import { MEASURE_COLOR } from './measureScene';
+import {
+  DEFAULT_BORDER_WIDTH,
+  DEFAULT_FILL_OPACITY,
+  DEFAULT_MEASURE_COLOUR,
+  MEASURE_COLOURS,
+} from './measureColours';
 import { HoldNote } from './Qa';
 import { useFocusCapture } from './qaHelpers';
 import { isHeld, useQa } from './qaStore';
@@ -147,7 +152,9 @@ function PanelSections({
     (x) => x.family === m.family && (!isTelecomTool(x.tool) || x.tool === m.tool),
   );
   const setStyle = (patch: Partial<MeasurementStyle>) => {
-    patchMeasurement(m.id, { style: { color: MEASURE_COLOR, ...(m.style ?? {}), ...patch } });
+    patchMeasurement(m.id, {
+      style: { color: DEFAULT_MEASURE_COLOUR, ...(m.style ?? {}), ...patch },
+    });
   };
   const capture = m.scope.kind === 'survey' ? m.scope.capture : null;
 
@@ -264,21 +271,41 @@ function PanelSections({
       <details className="sv-sec" data-testid="survey-style">
         <summary>{t('mcard.styleLabel')}</summary>
         <fieldset className="sv-grid" disabled={ro}>
-          <label className="sv-field">
-            <span>Colour</span>
-            <input
-              type="color"
-              value={m.style?.color ?? MEASURE_COLOR}
-              onChange={(e) => {
-                setStyle({ color: e.target.value });
-              }}
-            />
-          </label>
+          <div className="sv-field">
+            <span id={`sv-colour-${m.id}`}>Colour</span>
+            {/* the one palette the right-click menu offers, then any other colour */}
+            <div className="sv-picks" role="group" aria-labelledby={`sv-colour-${m.id}`}>
+              {MEASURE_COLOURS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="sv-pick"
+                  title={t(c.label)}
+                  aria-label={t(c.label)}
+                  aria-pressed={(m.style?.color ?? DEFAULT_MEASURE_COLOUR).toLowerCase() === c.hex}
+                  data-testid={`style-colour-${c.id}`}
+                  style={{ '--sw': c.hex } as CSSProperties}
+                  onClick={() => {
+                    setStyle({ color: c.hex });
+                  }}
+                />
+              ))}
+              <input
+                type="color"
+                className="sv-pick-custom"
+                aria-label="Colour"
+                value={m.style?.color ?? DEFAULT_MEASURE_COLOUR}
+                onChange={(e) => {
+                  setStyle({ color: e.target.value });
+                }}
+              />
+            </div>
+          </div>
           <label className="sv-field">
             <span>Fill</span>
             <input
               type="color"
-              value={m.style?.fill ?? m.style?.color ?? MEASURE_COLOR}
+              value={m.style?.fill ?? m.style?.color ?? DEFAULT_MEASURE_COLOUR}
               onChange={(e) => {
                 setStyle({ fill: e.target.value });
               }}
@@ -292,7 +319,7 @@ function PanelSections({
               min={0}
               max={1}
               step={0.05}
-              value={m.style?.fillOpacity ?? 0.2}
+              value={m.style?.fillOpacity ?? DEFAULT_FILL_OPACITY}
               onChange={(e) => {
                 const v = Number(e.target.value);
                 if (v >= 0 && v <= 1) setStyle({ fillOpacity: v });
@@ -306,7 +333,7 @@ function PanelSections({
               className="sv-input"
               min={0}
               max={20}
-              value={m.style?.borderWidth ?? 2}
+              value={m.style?.borderWidth ?? DEFAULT_BORDER_WIDTH}
               onChange={(e) => {
                 const v = Number(e.target.value);
                 if (v >= 0 && v <= 20) setStyle({ borderWidth: v });

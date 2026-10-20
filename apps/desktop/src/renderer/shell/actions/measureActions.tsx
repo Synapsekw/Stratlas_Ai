@@ -7,11 +7,11 @@ import {
   type Action,
   type ActionCtx,
   type MenuTarget,
-  type MessageKey,
   type SubItem,
 } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { shell } from '../../shell';
+import { DEFAULT_MEASURE_COLOUR, MEASURE_COLOURS } from '../../survey/measureColours';
 import { focusPoint, frameOf } from '../../survey/measureScene';
 import {
   askNewFolder,
@@ -34,19 +34,8 @@ import { editBlocked } from './reasons';
 
 type Target = Extract<MenuTarget, { kind: 'measurements' }>;
 
-/** The preset colours of a measurement (not the draft or snap colours the tools draw with). */
-export const MEASURE_COLOURS: readonly { id: string; hex: string; label: MessageKey }[] = [
-  { id: 'yellow', hex: '#ffd166', label: 'actions.measure.colour.yellow' },
-  { id: 'red', hex: '#ef476f', label: 'actions.measure.colour.red' },
-  { id: 'green', hex: '#06d6a0', label: 'actions.measure.colour.green' },
-  { id: 'blue', hex: '#118ab2', label: 'actions.measure.colour.blue' },
-  { id: 'purple', hex: '#9b5de5', label: 'actions.measure.colour.purple' },
-  { id: 'orange', hex: '#f78c40', label: 'actions.measure.colour.orange' },
-  { id: 'white', hex: '#ffffff', label: 'actions.measure.colour.white' },
-  { id: 'grey', hex: '#94a3b8', label: 'actions.measure.colour.grey' },
-];
-
-const DEFAULT_COLOUR = '#ffd166';
+/** The one measurement palette (`survey/measureColours`): these swatches and the panel's picker. */
+export { MEASURE_COLOURS };
 
 /** Why an edit is greyed: a package, a reviewer who may only look, or a read-only measurements file. */
 export function measureEditBlocked(ctx: ActionCtx): string | false {
@@ -110,7 +99,8 @@ const actions: readonly Action[] = [
         label: t(c.label),
         swatch: c.hex,
         testId: `measure-colour-${c.id}`,
-        checked: ms.length > 0 && ms.every((m) => (m.style?.color ?? DEFAULT_COLOUR) === c.hex),
+        checked:
+          ms.length > 0 && ms.every((m) => (m.style?.color ?? DEFAULT_MEASURE_COLOUR) === c.hex),
       }));
     },
     run: (tg, _ctx, sub) => {

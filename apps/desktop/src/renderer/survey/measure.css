@@ -184,6 +184,47 @@ textarea.sv-input {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/* the colour picker: the one palette the right-click menu offers, then a custom colour */
+.sv-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.sv-pick {
+  all: unset;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-4);
+  background: var(--sw);
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: pointer;
+}
+.sv-pick:hover {
+  box-shadow: inset 0 0 0 1px var(--fg-2);
+}
+.sv-pick:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.sv-pick[aria-pressed='true'] {
+  box-shadow:
+    inset 0 0 0 2px var(--bg-1),
+    0 0 0 1px var(--fg-1);
+}
+.sv-pick-custom {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+fieldset:disabled .sv-pick {
+  cursor: default;
+  opacity: 0.5;
+}
 .sv-check {
   display: inline-flex;
   align-items: center;

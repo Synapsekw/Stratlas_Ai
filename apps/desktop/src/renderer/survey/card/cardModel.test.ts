@@ -9,14 +9,8 @@ import {
 import { TOOL_LABELS } from '@aio/survey';
 import { ICONS } from '@aio/ui';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  cardModel,
-  COLOUR_NAMES,
-  colourName,
-  DEFAULT_MEASURE_COLOUR,
-  splitValue,
-  TOOL_ICON,
-} from './cardModel';
+import { DEFAULT_MEASURE_COLOUR, MEASURE_COLOURS } from '../measureColours';
+import { cardModel, colourName, primaryText, splitValue, TOOL_ICON } from './cardModel';
 
 vi.mock('../../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false }) },
@@ -148,11 +142,6 @@ describe('cardModel', () => {
     expect(cardModel(measurement({ style: { color: '#ef476f' } }), ctx()).colour).toBe('#ef476f');
     expect(cardModel(measurement({}), ctx()).colour).toBe(DEFAULT_MEASURE_COLOUR);
   });
-
-  it('the default colour is the one the views draw with', async () => {
-    const { MEASURE_COLOR } = await import('../measureScene');
-    expect(DEFAULT_MEASURE_COLOUR).toBe(MEASURE_COLOR);
-  });
 });
 
 describe('cardModel secondary and colour', () => {
@@ -179,9 +168,13 @@ describe('cardModel secondary and colour', () => {
     expect(colourName('#123456')).toBe('#123456');
   });
 
-  it('the colour names are the presets the menu offers', async () => {
-    const { MEASURE_COLOURS } = await import('../../shell/actions/measureActions');
-    expect(COLOUR_NAMES).toEqual(Object.fromEntries(MEASURE_COLOURS.map((c) => [c.hex, c.label])));
+  it('names every preset of the one palette', () => {
+    for (const c of MEASURE_COLOURS) expect(colourName(c.hex)).not.toBe(c.hex);
+  });
+
+  it('the card primary is the shared primary text', () => {
+    const m = measurement({});
+    expect(cardModel(m, ctx()).primary?.text).toBe(primaryText(m, ctx()));
   });
 });
 

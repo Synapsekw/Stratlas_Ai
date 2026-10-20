@@ -37,7 +37,6 @@ import {
   telecomPointCount,
   telecomProblem,
   flipFace,
-  formatRow,
   KIT_BASE_LABEL,
   type KitConversion,
   measurementFrom,
@@ -66,6 +65,7 @@ import { shiftKey, workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
 import { authorName } from '../author';
 import { bridge } from '../shell';
+import { rowText } from './card/cardModel';
 import { designs, loadDesigns } from './designsStore';
 import { drawnPoints, scopeShift, storedPoints } from './measureDates';
 import {
@@ -1021,7 +1021,8 @@ export function liveReading(
     createdAt: '',
   });
   const row = primaryRow(m, { surface: s.surface ?? undefined }, tool.template?.items);
-  return row ? formatRow(row, s.settings.units, s.settings.precision) : null;
+  // formatted as the tree, the card and the view labels format it (site angles and locale)
+  return row ? rowText(row, m, s.settings) : null;
 }
 
 function nextLabel(base: string): string {

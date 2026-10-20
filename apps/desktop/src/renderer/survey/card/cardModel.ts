@@ -15,40 +15,22 @@ import { localeOf } from '@aio/geo';
 import {
   effectiveUnits,
   formatRow,
+  isTelecomTool,
   measurementReadout,
+  PRIMARY_KEY,
   primaryRow,
   secondaryRows,
   TOOL_LABELS,
   type ReadoutContext,
   type ReadoutRow,
 } from '@aio/survey';
-import { t, type IconName, type MessageKey } from '@aio/ui';
-
-/**
- * A measurement's colour when its style names none: `MEASURE_COLOR` (`measureScene`), repeated
- * here so the card's model loads no store (a test holds the two together).
- */
-export const DEFAULT_MEASURE_COLOUR = '#ffd166';
-
-/**
- * The names of the preset colours (`MEASURE_COLOURS`, `measureActions`), by hex, repeated here for
- * the same reason; a test holds the two together. Any other colour is named by its hex.
- */
-export const COLOUR_NAMES: Readonly<Record<string, MessageKey>> = {
-  '#ffd166': 'actions.measure.colour.yellow',
-  '#ef476f': 'actions.measure.colour.red',
-  '#06d6a0': 'actions.measure.colour.green',
-  '#118ab2': 'actions.measure.colour.blue',
-  '#9b5de5': 'actions.measure.colour.purple',
-  '#f78c40': 'actions.measure.colour.orange',
-  '#ffffff': 'actions.measure.colour.white',
-  '#94a3b8': 'actions.measure.colour.grey',
-};
+import { t, type IconName } from '@aio/ui';
+import { DEFAULT_MEASURE_COLOUR, presetOf } from '../measureColours';
 
 /** A colour as people read it: its preset name, or its hex. */
 export function colourName(hex: string): string {
-  const key = COLOUR_NAMES[hex.toLowerCase()];
-  return key ? t(key) : hex;
+  const preset = presetOf(hex);
+  return preset ? t(preset.label) : hex;
 }
 
 /** One glyph per tool (not per family): the card header, the Measure bench rows and the tree. */
@@ -98,13 +80,57 @@ export interface CardContext {
   surface?: ReadoutContext['surface'];
 }
 
-export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
-  const units = effectiveUnits(ctx.settings.units, m.units);
-  const locale = ctx.settings.locale ?? localeOf(units.distance);
-  const angles = ctx.settings.angles ?? DEFAULT_ANGLES;
-  const text = (r: ReadoutRow) => formatRow(r, units, ctx.settings.precision, locale, angles);
+/**
+ * One readout row as text: the measurement's units over the site's, the site's number locale and
+ * angle units. The card, the tree, the view labels and the island all format through here.
+ */
+export function rowText(
+  r: ReadoutRow,
+  m: Pick<SurveyMeasurement, 'units'>,
+  settings: SurveySettings,
+): string {
+  const units = effectiveUnits(settings.units, m.units);
+  return formatRow(
+    r,
+    units,
+    settings.precision,
+    settings.locale ?? localeOf(units.distance),
+    settings.angles ?? DEFAULT_ANGLES,
+  );
+}
+
+/** The template's readout items for a measurement that has one. */
+export function templateItems(
+  m: Pick<SurveyMeasurement, 'template'>,
+  templates: readonly Pick<SurveyTemplate, 'id' | 'items'>[],
+): readonly string[] | undefined {
+  return m.template ? templates.find((x) => x.id === m.template)?.items : undefined;
+}
+
+/**
+ * The one primary value (R1): `primaryRow` with the template's items, formatted by `rowText`.
+ * A telecom pick whose primary row has no value reads "Invalid picks"; any other measurement
+ * with no value reads "".
+ */
+export function primaryText(
+  m: SurveyMeasurement,
+  ctx: Pick<CardContext, 'settings' | 'templates' | 'surface'>,
+): string {
   const readout: ReadoutContext = ctx.surface ? { surface: ctx.surface } : {};
-  const items = m.template ? ctx.templates.find((x) => x.id === m.template)?.items : undefined;
+  if (isTelecomTool(m.tool) && invalidPicks(m)) return t('tree.measure.invalid');
+  const row = primaryRow(m, readout, templateItems(m, ctx.templates));
+  return row ? rowText(row, m, ctx.settings) : '';
+}
+
+/** A telecom pick whose geometry gives its primary row no value (points on top of each other). */
+export function invalidPicks(m: SurveyMeasurement): boolean {
+  return measurementReadout(m, {}, [PRIMARY_KEY[m.tool]])[0]?.value === null;
+}
+
+export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
+  const text = (r: ReadoutRow) => rowText(r, m, ctx.settings);
+  const readout: ReadoutContext = ctx.surface ? { surface: ctx.surface } : {};
+  const items = templateItems(m, ctx.templates);
   const primary = primaryRow(m, readout, items);
   const scope = m.scope;
   const colour = m.style?.color ?? DEFAULT_MEASURE_COLOUR;

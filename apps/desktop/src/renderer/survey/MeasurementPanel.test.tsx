@@ -262,3 +262,22 @@ describe('the point card', () => {
     expect(card?.querySelectorAll('input[inputmode="decimal"]').length).toBe(0);
   });
 });
+
+describe('the panel colour picker', () => {
+  it('offers the one palette the right-click menu offers, and sets the colour', async () => {
+    const { MEASURE_COLOURS } = await import('./measureColours');
+    act(() => {
+      root = createRoot(host);
+      root.render(<MeasurementPanel />);
+    });
+    const picks = [...host.querySelectorAll<HTMLButtonElement>('[data-testid^="style-colour-"]')];
+    expect(picks.map((b) => b.dataset.testid)).toEqual(
+      MEASURE_COLOURS.map((c) => `style-colour-${c.id}`),
+    );
+    act(() => {
+      picks[2]?.click();
+    });
+    const saved = measureStore.getState().file.measurements.find((x) => x.id === 'spot');
+    expect(saved?.style?.color).toBe(MEASURE_COLOURS[2]?.hex);
+  });
+});
