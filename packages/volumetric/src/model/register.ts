@@ -1,33 +1,9 @@
-import type { BoundaryEdit, PileEpoch, StockPile, VolumeBaseId, VolumesFile } from '@aio/schema';
+import type { VolumeBaseId, VolumesFile } from '@aio/schema';
+import { applyEdits, type EffectivePile } from '@aio/survey';
 import { BASE_IDS } from './volume';
 
-/** A pile with hand edits applied; `edited` lists the epochs whose toe line was corrected. */
-export type EffectivePile = StockPile & { edited: string[]; auto: Record<string, PileEpoch> };
-
-/** Piles as the register shows them: an edit replaces the automatic line and volumes. */
-export function applyEdits(file: VolumesFile, edits: readonly BoundaryEdit[]): EffectivePile[] {
-  return file.piles.map((p) => {
-    const epochs: Record<string, PileEpoch> = { ...p.epochs };
-    const edited: string[] = [];
-    for (const e of edits) {
-      if (e.pile !== p.id) continue;
-      const auto = p.epochs[e.epoch];
-      const capture = file.captures.find((c) => c.epoch === e.epoch);
-      epochs[e.epoch] = {
-        ...(auto ?? {}),
-        captureId: auto?.captureId ?? capture?.captureId ?? e.epoch,
-        ring: e.ring,
-        areaM2: e.areaM2,
-        topM: e.topM,
-        heightM: e.heightM,
-        volumes: e.volumes,
-        groundToeFrac: 1,
-      };
-      edited.push(e.epoch);
-    }
-    return { ...p, epochs, edited, auto: p.epochs };
-  });
-}
+// Moved to @aio/survey (kit pile conversion); re-exported for the kit's own callers.
+export { applyEdits, type EffectivePile };
 
 export interface RegisterRow {
   id: string;
