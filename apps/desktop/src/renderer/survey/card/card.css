@@ -1,0 +1,165 @@
+/* The shared measurement card (volumetric parity W2). It sits on its host's surface (the panel,
+   the island, the report page) and adds no frame of its own. Mission tokens only. */
+
+.mc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 1. header: icon, name, scope chip, colour, overflow */
+.mc-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.mc-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-2);
+}
+.mc-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--t-14);
+  font-weight: var(--fw-title);
+  color: var(--fg-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the name edits in place: it reads as the heading until hovered or focused */
+.mc-name-field {
+  margin-inline-start: calc(-1 * var(--sp-2));
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-4);
+  background: transparent;
+  font-family: inherit;
+  transition:
+    border-color var(--d-1) var(--ease),
+    background-color var(--d-1) var(--ease);
+}
+.mc-name-field:hover {
+  border-color: var(--line);
+}
+.mc-name-field:focus-visible {
+  border-color: var(--acc);
+  background: var(--bg-2);
+  outline: none;
+}
+.mc-scope {
+  flex: none;
+  max-width: 14ch;
+  overflow: hidden;
+}
+.mc-swatch {
+  flex: none;
+  inline-size: 12px;
+  block-size: 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+}
+
+/* 2. primary value: the number large, its unit and what it is small */
+.mc-primary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-2);
+  margin: var(--sp-2) 0 0;
+  min-width: 0;
+}
+.mc-value {
+  font-family: var(--f-mono);
+  font-size: var(--t-20);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: var(--fg-0);
+}
+.mc-unit {
+  font-family: var(--f-mono);
+  font-size: var(--t-13);
+  color: var(--fg-1);
+}
+.mc-what {
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+
+/* 3. secondary line, and "More" */
+.mc-secondary {
+  margin: 0;
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+.mc-status {
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.mc .mc-more {
+  align-self: flex-start;
+  margin-inline-start: calc(-1 * var(--sp-2));
+}
+.mc-readout {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+}
+.mc-readout th {
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) 0;
+  text-align: left;
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.mc-readout td {
+  padding: var(--sp-1) 0;
+  text-align: right;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-0);
+}
+.mc-readout tr + tr {
+  border-top: 1px solid var(--line-soft);
+}
+
+/* 4 to 7. chips, chart, detail, actions: the caller's parts, spaced as sections */
+.mc-chips,
+.mc-chart,
+.mc-detail {
+  margin-top: var(--sp-3);
+  min-width: 0;
+}
+.mc-actions {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line-soft);
+}
+.mc-act {
+  display: grid;
+  gap: var(--sp-3);
+}
+.mc-act-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-inline-start: calc(-1 * var(--sp-2));
+}
+.mc-notes {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-size: var(--t-12);
+}
+
+/* the report prints the values and the chart, nothing to press */
+.mc[data-variant='report'] .mc-name {
+  white-space: normal;
+}
