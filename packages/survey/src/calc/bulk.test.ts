@@ -1,6 +1,6 @@
 import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { bulkTotals, setSideForAll, setUnitsForAll } from './bulk';
+import { bulkTotals, inventorySeries, setSideForAll, setUnitsForAll } from './bulk';
 
 const result = (item: string, cut: number, fill: number, status: ComparisonResult['status']) =>
   ({
@@ -98,5 +98,82 @@ describe('bulk totals', () => {
     expect(u?.units).toEqual({ volume: 'yd3' });
     const [s] = setUnitsForAll([{ ...a, units: { volume: 'yd3' } }], {});
     expect(s && 'units' in s).toBe(false);
+  });
+});
+
+describe('site inventory over time', () => {
+  const captures = [
+    { id: 'c1', date: '2026-01-10', label: '10 Jan' },
+    { id: 'c2', date: '2026-02-10', label: '10 Feb' },
+    { id: 'c3', date: '2026-03-10', label: '10 Mar' },
+  ];
+  const at = (
+    capture: string,
+    net: number,
+    status: ComparisonResult['status'] = 'ok',
+  ): ComparisonResult => ({
+    ...result('pile', 0, net, status),
+    toCapture: capture,
+  });
+  const volume = (
+    id: string,
+    series: ComparisonResult[],
+    results: ComparisonResult[] = [],
+    folder?: string,
+  ): SurveyMeasurement => {
+    const m: SurveyMeasurement = pile(id, results);
+    delete m.template;
+    return {
+      ...m,
+      items: [{ id: 'pile', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+      series,
+      ...(folder !== undefined ? { folder } : {}),
+    };
+  };
+
+  it('inventory totals count missing piles per date', () => {
+    const a = volume('a', [at('c1', 100), at('c2', 120), at('c3', 130)]);
+    // refused on c2 and never computed on c3: missing there, never added as zero
+    const b = volume('b', [at('c1', 50), at('c2', 0, 'refused')]);
+    const rows = inventorySeries([a, b], captures);
+    expect(rows.map((r) => r.capture)).toEqual(['c1', 'c2', 'c3']);
+    expect(rows[0]).toMatchObject({ totalM3: 150, missing: [] });
+    expect(rows[1]).toMatchObject({ totalM3: 120, missing: ['b'] });
+    expect(rows[2]).toMatchObject({ totalM3: 130, missing: ['b'] });
+    expect(rows[0]?.parts).toEqual([
+      { id: 'a', valueM3: 100 },
+      { id: 'b', valueM3: 50 },
+    ]);
+  });
+
+  it('inventory sums engine results, never kit figures, unless carried', () => {
+    // the stored result stands for its own date over the series row of that date
+    const a = volume('a', [at('c1', 100), at('c3', 999)], [at('c3', 140)]);
+    // a pile carried over from the kit: its carried figures are its one figure per date
+    const carried = { pile: 'p1', base: 'tin' } as NonNullable<ComparisonResult['carried']>;
+    const k = volume('k', [
+      { ...at('c1', 10), carried },
+      { ...at('c2', 20), carried },
+    ]);
+    // an area or a line is never part of the inventory
+    const area: SurveyMeasurement = { ...volume('x', [at('c1', 1000)]), tool: 'area' };
+    const rows = inventorySeries([a, k, area], captures);
+    expect(rows.map((r) => r.totalM3)).toEqual([110, 20, 140]);
+    // k is absent on the last date (R16): missing there, not zero
+    expect(rows[2]?.missing).toEqual(['k']);
+    expect(rows[1]?.missing).toEqual(['a']);
+  });
+
+  it('folder filter narrows the stack', () => {
+    const a = volume('a', [at('c1', 100)], [], 'North');
+    const b = volume('b', [at('c1', 50)], [], ' North ');
+    const c = volume('c', [at('c1', 7)], [], 'South');
+    const d = volume('d', [at('c1', 3)]);
+    expect(inventorySeries([a, b, c, d], captures)[0]?.totalM3).toBe(160);
+    const north = inventorySeries([a, b, c, d], captures, { folder: 'North' });
+    expect(north[0]?.totalM3).toBe(150);
+    expect(north[0]?.parts.map((p) => p.id)).toEqual(['a', 'b']);
+    expect(inventorySeries([a, b, c, d], captures, { folder: 'South' })[0]?.totalM3).toBe(7);
+    expect(inventorySeries([a, b, c, d], captures, { folder: 'Empty' })).toEqual([]);
   });
 });
