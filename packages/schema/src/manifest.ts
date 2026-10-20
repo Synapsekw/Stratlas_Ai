@@ -14,9 +14,10 @@ export const CAPTURE_COLOURS = 8;
  * How well the survey's heights are known. Absent on every older file; the volumetric parity
  * wave 6 (W6) fills it, wave 1 never writes it.
  */
-export const CaptureVerticalAccuracy = z
-  .object({ sigmaM: z.number().nonnegative().max(10), source: AccuracySource })
-  .strict();
+export const CaptureVerticalAccuracy = z.looseObject({
+  sigmaM: z.number().nonnegative().max(10),
+  source: AccuracySource,
+});
 
 export const Capture = z.object({
   id: Id,

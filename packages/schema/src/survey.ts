@@ -314,11 +314,11 @@ export const VolumeUncertainty = z.looseObject({
 });
 export type VolumeUncertainty = z.infer<typeof VolumeUncertainty>;
 
-/** A kit figure carried over unchanged. Absent on every older file. */
+/** A kit figure carried over unchanged. `pile` is the kit pile's id. Absent on every older file. */
 export const CarriedResult = z.looseObject({
   from: z.literal('kit'),
   base: VolumeBaseId,
-  pile: z.string().min(1).max(200),
+  pile: Id,
   epoch: z.string().min(1).max(200),
 });
 export type CarriedResult = z.infer<typeof CarriedResult>;
@@ -479,10 +479,10 @@ export const PreviousResult = z.looseObject({
 });
 export type PreviousResult = z.infer<typeof PreviousResult>;
 
-/** The measurement came from a kit pile. Absent on every older file. */
+/** The measurement came from a kit pile; `pile` is its id. Absent on every older file. */
 export const MeasurementOrigin = z.looseObject({
   kind: z.literal('kit-pile'),
-  pile: z.string().min(1).max(200),
+  pile: Id,
 });
 export type MeasurementOrigin = z.infer<typeof MeasurementOrigin>;
 
@@ -504,7 +504,7 @@ export const SurveyMeasurement = z.looseObject({
   material: SurveyId.optional(),
   items: z.array(ComparisonItem).max(20),
   results: z.array(ComparisonResult).max(20),
-  /** Kit pile this was converted from. Absent on every older file. */
+  /** Kit pile (by its id) this was converted from. Absent on every older file. */
   origin: MeasurementOrigin.optional(),
   /** Results over time, one per survey date. Absent on every older file. */
   series: z.array(ComparisonResult).max(1000).optional(),
@@ -520,8 +520,8 @@ export const MeasurementsFile = z
   .looseObject({
     schema: z.literal('aio.measurements/1'),
     measurements: z.array(SurveyMeasurement).max(20_000),
-    /** Kit piles already converted (by name), so none converts twice. Absent on every older file. */
-    kitPilesConverted: z.array(z.string().min(1).max(200)).max(5000).optional(),
+    /** Ids of the kit piles already converted, so none converts twice. Absent on every older file. */
+    kitPilesConverted: z.array(Id).max(5000).optional(),
   })
   .superRefine((f, ctx) => {
     const seen = new Set<string>();

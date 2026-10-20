@@ -94,6 +94,17 @@ describe('volumetric parity contracts', () => {
     ).toEqual(DEFAULT_ANGLES);
   });
 
+  it('accuracy objects keep keys a later build adds, but the source stays closed', () => {
+    const va = { sigmaM: 0.04, source: 'rtk', basis: 'later' };
+    const cap = Capture.parse({ id: 'c1', label: 'A', date: '2026-10-20', verticalAccuracy: va });
+    expect(cap.verticalAccuracy).toEqual(va);
+    const u = { plusMinusM3: 3, sigmaM: 0.05, source: 'ppk', extra: 1 };
+    expect(ComparisonResult.parse({ ...result, uncertainty: u }).uncertainty).toEqual(u);
+    expect(
+      ComparisonResult.safeParse({ ...result, uncertainty: { ...u, source: 'guess' } }).success,
+    ).toBe(false);
+  });
+
   it('a capture carries an optional vertical accuracy', () => {
     const base = { id: 'c1', label: 'A', date: '2026-10-20' };
     expect(Capture.parse(base).verticalAccuracy).toBeUndefined();

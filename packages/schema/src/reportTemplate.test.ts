@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ReportTemplateFile, TemplateEntry, emptyReportTemplate } from './index';
+import { ReportTemplateFile, TemplateEntry, emptyReportTemplate, ipc } from './index';
 
 describe('report template', () => {
   it('emptyReportTemplate parses', () => {
@@ -20,6 +20,22 @@ describe('report template', () => {
       ],
     };
     expect(ReportTemplateFile.parse(file).entries).toHaveLength(2);
+  });
+
+  it('declares the two report template channels, with strict requests', () => {
+    const tpl = emptyReportTemplate();
+    expect(Object.keys(ipc)).toContain('report:readTemplate');
+    expect(Object.keys(ipc)).toContain('report:writeTemplate');
+    const read = ipc['report:readTemplate'];
+    const write = ipc['report:writeTemplate'];
+    expect(read.request.safeParse({ projectId: 'p1' }).success).toBe(true);
+    expect(read.request.safeParse({ projectId: 'p1', extra: 1 }).success).toBe(false);
+    expect(read.response.safeParse({ ok: true, file: null }).success).toBe(true);
+    expect(read.response.safeParse({ ok: true, file: tpl }).success).toBe(true);
+    expect(read.response.safeParse({ ok: false, error: 'x' }).success).toBe(true);
+    expect(write.request.safeParse({ projectId: 'p1', file: tpl }).success).toBe(true);
+    expect(write.request.safeParse({ projectId: 'p1', file: tpl, extra: 1 }).success).toBe(false);
+    expect(write.response.safeParse({ ok: true }).success).toBe(true);
   });
 
   it('a measurement entry needs at least one part', () => {
