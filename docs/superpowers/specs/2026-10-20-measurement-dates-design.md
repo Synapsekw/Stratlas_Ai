@@ -64,7 +64,10 @@ Coordinator calls after the founder's answers and review:
 - **Prepared surfaces first.** A move needs the target date's prepared surfaces. If they are not prepared, the drop offers **Prepare surfaces** instead of moving with stale results.
 - **Readouts follow the measurement's date.** On-screen length, area and height readouts sample the measurement's own date, not the visible stage. In scope, as a separate task.
 - **Backfill.** Legacy undated measurements are matched by height against each date's data; only clear matches are filed, with one note giving the count and an Undo. The rest sit in a temporary "Needs a date" group, the only undated state, until dragged to a date.
-- **Telecom and a re-dated layer.** When the source layer of an antenna measurement moves to another date, the measurement follows the layer with its values unchanged (same data). Flagged for the builder below.
+- **Telecom and a re-dated layer.** When the source layer of an antenna measurement moves to another date, the measurement follows the layer with its values unchanged (same data). The hand-over lists this as a call the founder can overturn.
+- **Projects with no survey dates.** There are no date folders, so measurements stay in the plain Measurements group as today. The date rule applies once the project has dates, and backfill runs then.
+- **Measured on an every-date layer** (a design, a basemap). The source layer is recorded; the date is the focused date, or the newest date when none is focused. It drags to any date like the others.
+- **Model re-picks.** A date move loads the target date's matching layer (without showing it) to pick against. If it cannot be loaded, the move is refused with a note. The builder picks the mechanism.
 
 My calls in this revision:
 
@@ -153,14 +156,10 @@ On load, for each `site`-scoped measurement, sample every date's prepared surfac
 
 ### Errors
 
-Short notes in the sidebar note slot, no dialogs: antenna measurement refused; no matching data on the target date; surfaces not prepared (with Prepare surfaces); no data under a vertex.
+Short notes in the sidebar note slot, no dialogs: antenna measurement refused; no matching data on the target date; surfaces not prepared (with Prepare surfaces); the matching layer could not be loaded; no data under a vertex.
 
 ## Open points for the builder
 
-- **Model re-picks need the counterpart loaded.** A vertical ray needs the target layer in the stage; if it is not loaded, load it for the pick, or sample a prepared `cloud` surface instead. Decide and test.
-- **Telecom on a re-dated layer.** Following with values unchanged is the simplest reading; flag it to the founder in the hand-off.
-- **Common layers.** A measurement drawn on a layer with no date (a design, a basemap) has a source but no date from it. Suggest it takes the focused date and keeps the common layer as `source`; confirm with the founder.
-- **Projects with no survey dates.** Every measurement needs a date, but such a project has none. Suggest such projects keep measuring with no date folders until their first date; confirm with the founder.
 - **Explicit surface refs.** Comparison items that name a prepared surface (`{ kind: 'survey', surface }`) rather than `current` do not follow the date; decide whether a move rewrites them to the counterpart surface.
 - **Stockpile projects** where the volumes own the date focus (`timeline.ts`:238): check drops and visibility there.
 
