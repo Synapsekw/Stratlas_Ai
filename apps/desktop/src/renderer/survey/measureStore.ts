@@ -393,9 +393,10 @@ function withConversion(file: MeasurementsFile, c: KitConversion): MeasurementsF
 
 /**
  * The file as it opens: kit piles not converted yet added, their kit figures carried only when
- * the file has never been converted (`kitPilesConverted` absent: an old project). A volumetric
- * project with no kit figures yet (the wizard's, before its build) is marked converted, so its
- * build is never taken for an old project's. The same file when nothing changes.
+ * the file has never been converted (`kitPilesConverted` absent: an old project). A writable
+ * project of any type with no kit figures yet (the wizard's, before its build) is marked
+ * converted, so a build run on it later is never taken for an old project's kit data. The same
+ * file when nothing changes.
  */
 function openedWithKitPiles(
   file: MeasurementsFile,
@@ -404,33 +405,56 @@ function openedWithKitPiles(
   materials: readonly SiteMaterial[],
   readOnly: boolean,
 ): MeasurementsFile {
-  if (!read || !manifest) return file;
+  if (!read) return file;
   if (!read.volumes) {
-    if (manifest.type === 'volumetric' && file.kitPilesConverted === undefined && !readOnly)
+    if (file.kitPilesConverted === undefined && !readOnly)
       return { ...file, kitPilesConverted: [] };
     return file;
   }
+  if (!manifest) return file;
   const carry = file.kitPilesConverted === undefined;
   const c = kitConversion(file, read.volumes, read.edits, manifest, materials, carry);
   if (c.converted.length === 0 && !carry) return file;
   return withConversion(file, c);
 }
 
-/** Write a converted file as it opened (no edit of the person's is in it yet). */
+/**
+ * Write a converted file: the baseline as saved plus the conversion, never a person's unsaved
+ * edits. `saving` holds while it is in flight, so no save starts and lands before it. A refused
+ * write says so as a refused save does, and the conversion stays to be written by the next save.
+ */
 async function writeConversion(
   projectId: string,
   file: MeasurementsFile,
   epoch: number,
 ): Promise<void> {
+  set({ saving: true });
   const r = await writeFile(projectId, file);
   if (loadEpoch !== epoch || get().projectId !== projectId) return;
-  if (r.ok && r.value.ok && get().file === file) set({ resultsUnwritten: false });
+  const ok = r.ok && r.value.ok;
+  const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
+  set({
+    saving: false,
+    ...(ok
+      ? get().savedText === text(file)
+        ? { resultsUnwritten: false }
+        : {}
+      : { message: `Not saved: ${error ?? ''}`, resultsUnwritten: true }),
+  });
+  if (ok && get().autosave && get().status === 'ready' && isDirty(get())) void saveMeasurements();
+}
+
+/** Wait until no write of the project is in flight (a person's save lands first). */
+async function writesSettled(projectId: string): Promise<boolean> {
+  for (let p = writing.get(projectId); p; p = writing.get(projectId)) await p;
+  return !get().saving;
 }
 
 /**
  * After a volumetric build: piles the build added become volume measurements without a carried
  * figure (the engine computes theirs on demand, so nothing old is silently replaced). Written at
- * once with the file as last saved; the person's unsaved edits stay unsaved.
+ * once with the file as last saved, after any save in flight; the person's unsaved edits stay
+ * unsaved.
  */
 export async function convertAfterJob(projectId: string): Promise<void> {
   const s0 = get();
@@ -439,6 +463,8 @@ export async function convertAfterJob(projectId: string): Promise<void> {
   if (!manifest) return;
   const epoch = loadEpoch;
   const r = await bridge.call('project:readVolumes', { projectId });
+  // a save in flight lands first, and the conversion goes on the baseline it leaves
+  if (!(await writesSettled(projectId))) return;
   const s = get();
   if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready' || s.readOnly)
     return;
@@ -454,9 +480,7 @@ export async function convertAfterJob(projectId: string): Promise<void> {
   if (c.converted.length === 0 && s.file.kitPilesConverted !== undefined) return;
   const baseline = withConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
   set({ file: withConversion(s.file, c), savedText: text(baseline), resultsUnwritten: true });
-  const w = await writeFile(projectId, baseline);
-  if (loadEpoch !== epoch || get().projectId !== projectId) return;
-  if (w.ok && w.value.ok && !isDirty(get())) set({ resultsUnwritten: false });
+  await writeConversion(projectId, baseline, epoch);
 }
 
 /** Write the file, chained after the project's writes in flight (a load waits for them). */

@@ -10,22 +10,34 @@ import { workspace } from '@aio/workspace';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   convertAfterJob,
+  deleteMeasurements,
   forgetMeasureWrites,
   isDirty,
   loadMeasurements,
   measureStore,
   patchMeasurement,
   replaceWithStandard,
+  saveMeasurements,
   setSeries,
 } from './measureStore';
 
 const io = vi.hoisted(() => {
   const saved: MeasurementsFile = { schema: 'aio.measurements/1', measurements: [] };
-  return { saved, writes: 0, readOnly: false, volumes: null as VolumesFile | null };
+  return {
+    saved,
+    writes: 0,
+    readOnly: false,
+    volumes: null as VolumesFile | null,
+    /** While set, a write waits for it. */
+    gate: null as Promise<void> | null,
+    /** While set, a write is refused. */
+    writeFails: false,
+  };
 });
 
 function answer(channel: string, payload: { file?: unknown }): unknown {
   if (channel === 'survey:writeMeasurements') {
+    if (io.writeFails) return { ok: true, value: { ok: false, error: 'Disk full' } };
     io.saved = MeasurementsFile.parse(JSON.parse(JSON.stringify(payload.file)) as unknown);
     io.writes++;
     return { ok: true, value: { ok: true } };
@@ -39,8 +51,10 @@ function answer(channel: string, payload: { file?: unknown }): unknown {
 
 vi.mock('../shell', () => ({
   bridge: {
-    call: (channel: string, payload: { file?: unknown }) =>
-      Promise.resolve(answer(channel, payload)),
+    call: async (channel: string, payload: { file?: unknown }) => {
+      if (channel === 'survey:writeMeasurements' && io.gate) await io.gate;
+      return answer(channel, payload);
+    },
   },
   jobs: { getState: () => ({}) },
 }));
@@ -134,6 +148,8 @@ beforeEach(() => {
   io.writes = 0;
   io.readOnly = false;
   io.volumes = null;
+  io.gate = null;
+  io.writeFails = false;
   forgetMeasureWrites();
   measureStore.setState({ autosave: false });
 });
@@ -182,22 +198,48 @@ describe('kit piles on load', () => {
     expect(measureStore.getState().file).toEqual(first);
   });
 
-  it('a project without kit figures loads as it is', async () => {
+  it('a project without kit figures keeps its measurements and is marked once', async () => {
+    await open({ schema: 'aio.measurements/1', measurements: [drawn] });
+    expect(io.writes).toBe(1);
+    expect(io.saved.kitPilesConverted).toEqual([]);
+    expect(io.saved.measurements.map((m) => m.id)).toEqual(['mine']);
+    expect(isDirty(measureStore.getState())).toBe(false);
+    await open(io.saved);
+    expect(io.writes).toBe(1);
+  });
+
+  it('a read-only project without kit figures writes nothing', async () => {
+    io.readOnly = true;
     await open({ schema: 'aio.measurements/1', measurements: [drawn] });
     expect(io.writes).toBe(0);
     expect(measureStore.getState().file.kitPilesConverted).toBeUndefined();
   });
 
-  it('a new volumetric project before its build is never treated as an old one', async () => {
-    await open({ schema: 'aio.measurements/1', measurements: [] }, 'volumetric');
-    expect(io.saved.kitPilesConverted).toEqual([]);
-    expect(io.writes).toBe(1);
-    // the build finishes while the project is closed: the next open carries nothing
+  for (const type of ['volumetric', 'inspection', undefined] as const)
+    it(`a new ${type ?? 'untyped'} project before its build is never treated as an old one`, async () => {
+      await open({ schema: 'aio.measurements/1', measurements: [] }, type);
+      expect(io.saved.kitPilesConverted).toEqual([]);
+      expect(io.writes).toBe(1);
+      // the build finishes while the project is closed: the next open carries nothing
+      io.volumes = volumes();
+      await open(io.saved, type);
+      const [m] = kitMeasurements();
+      expect(m?.results).toEqual([]);
+      expect(m?.series).toBeUndefined();
+    });
+
+  it('a deleted converted measurement stays gone after a reopen and a build', async () => {
     io.volumes = volumes();
-    await open(io.saved, 'volumetric');
-    const [m] = kitMeasurements();
-    expect(m?.results).toEqual([]);
-    expect(m?.series).toBeUndefined();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const id = kitMeasurements()[0]?.id ?? '';
+    deleteMeasurements([id]);
+    expect(await saveMeasurements()).toBe(true);
+    await open(io.saved);
+    expect(kitMeasurements()).toHaveLength(0);
+    await convertAfterJob('p1');
+    expect(kitMeasurements()).toHaveLength(0);
+    expect(io.saved.measurements).toHaveLength(0);
+    expect(io.saved.kitPilesConverted).toEqual(['P01']);
   });
 });
 
@@ -231,6 +273,60 @@ describe('after a volumetric job', () => {
     const s = measureStore.getState();
     expect(s.file.measurements.find((m) => m.id === 'mine')?.label).toBe('Renamed');
     expect(isDirty(s)).toBe(true);
+  });
+
+  it('waits for a save in flight, so the conversion never lands before it', async () => {
+    await open({ schema: 'aio.measurements/1', measurements: [drawn] });
+    patchMeasurement('mine', { label: 'Renamed' });
+    let release = (): void => undefined;
+    io.gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const saved = saveMeasurements();
+    io.volumes = volumes();
+    const job = convertAfterJob('p1');
+    // let the job read the volumes while the save is held
+    await new Promise((r) => setTimeout(r, 0));
+    io.gate = null;
+    release();
+    expect(await saved).toBe(true);
+    await job;
+    // the last write holds both the person's save and the conversion
+    expect(io.saved.measurements.find((m) => m.id === 'mine')?.label).toBe('Renamed');
+    expect(io.saved.kitPilesConverted).toEqual(['P01']);
+    expect(io.saved.measurements).toHaveLength(2);
+    const s = measureStore.getState();
+    expect(isDirty(s)).toBe(false);
+    expect(s.saving).toBe(false);
+  });
+
+  it('a file never marked converts after a build without carrying', async () => {
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    // as an older build left it: no kitPilesConverted
+    const bare: MeasurementsFile = { schema: 'aio.measurements/1', measurements: [] };
+    measureStore.setState({ file: bare, savedText: JSON.stringify(bare) });
+    io.volumes = volumes();
+    await convertAfterJob('p1');
+    const [m] = kitMeasurements();
+    expect(m?.results).toEqual([]);
+    expect(m?.series).toBeUndefined();
+    expect(io.saved.kitPilesConverted).toEqual(['P01']);
+  });
+
+  it('a refused conversion write says so and stays to be written', async () => {
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    io.volumes = volumes();
+    io.writeFails = true;
+    await convertAfterJob('p1');
+    const s = measureStore.getState();
+    expect(s.message).toBe('Not saved: Disk full');
+    expect(s.resultsUnwritten).toBe(true);
+    expect(s.saving).toBe(false);
+    expect(kitMeasurements()).toHaveLength(1);
+    // the next save writes it
+    io.writeFails = false;
+    expect(await saveMeasurements()).toBe(true);
+    expect(io.saved.kitPilesConverted).toEqual(['P01']);
   });
 
   it('another project leaves the open one alone', async () => {
