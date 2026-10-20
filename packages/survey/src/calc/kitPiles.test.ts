@@ -163,6 +163,8 @@ describe('convertKitPiles', () => {
       fromLabel: KIT_BASE_LABEL.plane,
       toLabel: '31 Dec 2020',
       computedAt: NOW,
+      // The kit's 10 cm pile grids, not the exact TIN path.
+      cellM: 0.1,
     });
     // The latest date is the headline result.
     expect(m.results).toHaveLength(1);
@@ -221,5 +223,62 @@ describe('convertKitPiles', () => {
     expect(r.fingerprint).toBe('kit:P01:e2:tin');
     expect(r.fromLabel).toBe(KIT_BASE_LABEL.tin);
     expect(r.netM3).toBe(v4(50).tin.net);
+  });
+
+  it('a pile gone by the last capture has no headline, but keeps its dated figures', () => {
+    const v = volumes();
+    v.piles = [{ ...at(v.piles, 0), epochs: { e1: ep('c1', 100, 110) } }];
+    const m = at(convertKitPiles(v, null, empty(), opts(true)).added, 0);
+    expect(m.results).toEqual([]);
+    expect(m.series?.map((r) => r.fingerprint)).toEqual(['kit:P01:e1:plane']);
+    expect(at(m.series, 0).netM3).toBe(v4(100).plane.net);
+  });
+
+  it('an empty latest toe line falls back to the latest non-empty one', () => {
+    const v = volumes();
+    const p = at(v.piles, 0);
+    v.piles = [{ ...p, epochs: { e1: ep('c1', 100), e2: { ...ep('c2', 50), ring: [] } } }];
+    const out = convertKitPiles(v, null, empty(), opts(true));
+    expect(out.converted).toEqual(['P01']);
+    const m = at(out.added, 0);
+    expect(m.points).toEqual([
+      [1000, 2000, 0],
+      [1004, 2000, 0],
+      [1004, 1997, 0],
+    ]);
+    // The figure on the last capture is still the headline.
+    expect(at(m.results, 0).fingerprint).toBe('kit:P01:e2:plane');
+  });
+
+  it('caps a long name at the schema limit and converts a duplicate pile id once', () => {
+    const v = volumes();
+    const p = at(v.piles, 0);
+    v.piles = [
+      { ...p, name: 'x'.repeat(500) },
+      { ...p, name: 'Copy' },
+    ];
+    const out = convertKitPiles(v, null, empty(), opts(true));
+    expect(out.converted).toEqual(['P01']);
+    expect(out.added).toHaveLength(1);
+    expect(at(out.added, 0).label).toHaveLength(200);
+    const written = empty({ measurements: out.added, kitPilesConverted: out.converted });
+    expect(MeasurementsFileSchema.safeParse(written).success).toBe(true);
+  });
+
+  it('converts a pile whose only date comes from an edit', () => {
+    const v = volumes();
+    v.piles = [{ ...at(v.piles, 0), epochs: {} }];
+    const out = convertKitPiles(v, edits, empty(), opts(true));
+    expect(out.converted).toEqual(['P01']);
+    const m = at(out.added, 0);
+    expect(m.points).toHaveLength(4);
+    expect(m.series).toHaveLength(1);
+    expect(at(m.results, 0)).toMatchObject({
+      netM3: v4(70).plane.net,
+      areaM2: 48,
+      toCapture: 'c2',
+      toLabel: '10 Jan 2021',
+      fingerprint: 'kit:P01:e2:plane',
+    });
   });
 });

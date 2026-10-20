@@ -26,6 +26,11 @@ export const KIT_BASE_LABEL: Record<VolumeBaseId, string> = {
   low: 'low',
 };
 
+/** The kit computed pile volumes on 10 cm grids. */
+const KIT_CELL_M = 0.1;
+/** The schema's longest measurement label. */
+const LABEL_MAX = 200;
+
 /** A pile with hand edits applied; `edited` lists the epochs whose toe line was corrected. */
 export type EffectivePile = StockPile & { edited: string[]; auto: Record<string, PileEpoch> };
 
@@ -73,8 +78,10 @@ export interface KitConversionOptions {
 
 /**
  * One volume measurement per effective pile not in `file.kitPilesConverted`. carry=true sets each
- * date's result from the kit figure of `volumes.defaultBase` (series) and the latest date as
- * results[0]; carry=false adds the item only (the engine computes).
+ * date's result from the kit figure of `volumes.defaultBase` (series) and, only when the pile is
+ * on the file's last capture, that date as results[0] (the kit's register showed a pile gone by
+ * then as absent, so it gets no headline); carry=false adds the item only (the engine computes).
+ * The outline is the latest non-empty toe line. A duplicate pile id converts once, the first.
  */
 export function convertKitPiles(
   volumes: VolumesFile,
@@ -84,6 +91,7 @@ export function convertKitPiles(
 ): KitConversion {
   const done = new Set<string>(file.kitPilesConverted ?? []);
   const base = volumes.defaultBase;
+  const lastEpoch = volumes.captures[volumes.captures.length - 1]?.epoch;
   const added: SurveyMeasurement[] = [];
   const converted: string[] = [];
 
@@ -94,8 +102,10 @@ export function convertKitPiles(
       const ep = pile.epochs[c.epoch];
       return ep ? [{ capture: c, ep }] : [];
     });
-    const latest = dates[dates.length - 1];
-    if (!latest || latest.ep.ring.length === 0) continue;
+    // The latest non-empty toe line; a pile with none has nothing to draw.
+    let outline: PileEpoch['ring'] | undefined;
+    for (const { ep } of dates) if (ep.ring.length > 0) outline = ep.ring;
+    if (!outline) continue;
 
     const itemId = opts.newId();
     const series: ComparisonResult[] = opts.carry
@@ -118,7 +128,8 @@ export function convertKitPiles(
             toCapture: ep.captureId,
             deadbandM: 0,
             usedDeadband: false,
-            cellM: 0,
+            // The kit's 10 cm pile grids (0 would claim the exact TIN path).
+            cellM: KIT_CELL_M,
             engine: 'ts',
             fingerprint: `kit:${pile.id}:${capture.epoch}:${base}`,
             computedAt: opts.now,
@@ -126,17 +137,18 @@ export function convertKitPiles(
           };
         })
       : [];
-    const headline = series[series.length - 1];
+    const last = series[series.length - 1];
+    const headline = last?.carried?.epoch === lastEpoch ? last : undefined;
     const material = pile.material ? opts.materialId(pile.material) : undefined;
 
     const m: SurveyMeasurement = {
       id: opts.newId(),
       family: 'polygon',
       tool: 'volume',
-      label: pile.name || pile.id,
+      label: (pile.name || pile.id).slice(0, LABEL_MAX),
       folder: KIT_FOLDER,
       scope: { kind: 'site' },
-      points: latest.ep.ring.map((xz) => opts.toSite(xz)),
+      points: outline.map((xz) => opts.toSite(xz)),
       ...(material ? { material } : {}),
       items: [{ id: itemId, from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
       results: headline ? [headline] : [],
@@ -146,6 +158,7 @@ export function convertKitPiles(
     };
     added.push(m);
     converted.push(pile.id);
+    done.add(pile.id);
   }
   return { added, converted };
 }
