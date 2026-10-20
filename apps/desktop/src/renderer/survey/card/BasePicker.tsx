@@ -7,7 +7,7 @@
 import { fromSI, toSI, unitLabel } from '@aio/geo';
 import type { BaseSpec, SurfaceRef, SurveyMeasurement } from '@aio/schema';
 import { customBase, effectiveUnits, sideFor, sideKey, type SideOption } from '@aio/survey';
-import { arrowFocus, Icon, Popover, useT, type MessageKey } from '@aio/ui';
+import { arrowFocus, Icon, Popover, Row, useT, type MessageKey } from '@aio/ui';
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { BaseEditor } from '../BaseEditor';
 import { useMeasure } from '../measureStore';
@@ -59,6 +59,20 @@ export const optionLabel = (o: SideOption): string => (o.note ? `${o.label} (${o
 const surfaceChoices = (surfaces: readonly SideOption[]) =>
   surfaces.filter((o) => o.group !== 'Bases' && o.key !== 'current');
 
+/**
+ * Older files' reference modes the picker no longer offers, by their plain names. They stay
+ * shown (and ticked) while a comparison uses one.
+ */
+const OLDER_MODES: Readonly<Record<string, MessageKey>> = {
+  'perimeter-max': 'base.highest',
+  'interior-max': 'base.interiorHighest',
+  'interior-min': 'base.interiorLowest',
+};
+
+/** A survey or design side that is no longer in the project, named by what it was. */
+export const missingName = (ref: SurfaceRef, t: (k: MessageKey) => string): string =>
+  t(ref.kind === 'design' ? 'vol.card.missingDesign' : 'vol.card.missingSurvey');
+
 /** A side's plain name: the base's, or the survey's or design's. */
 export function baseName(
   ref: SurfaceRef,
@@ -69,12 +83,12 @@ export function baseName(
   if (id === 'surface') {
     const key = sideKey(ref);
     const o = surfaces.find((x) => x.key === key);
-    return o ? optionLabel(o) : key;
+    return o ? optionLabel(o) : missingName(ref, t);
   }
   const b = BASES.find((x) => x.id === id);
   if (b) return t(b.name);
-  // a reference mode the picker does not offer: the engine's own name for it
-  return surfaces.find((x) => x.key === 'reference')?.label ?? t('base.level');
+  const older = ref.kind === 'reference' ? OLDER_MODES[ref.mode] : undefined;
+  return t(older ?? 'base.level');
 }
 
 export function BasePicker(p: {
@@ -162,32 +176,48 @@ export function BasePicker(p: {
           className="menu-list bp-list"
           onKeyDown={onMenuKey}
         >
+          {id === null && (
+            <Row
+              as="button"
+              kind="menu"
+              role="menuitemradio"
+              aria-checked={true}
+              selected
+              className="bp-row"
+              data-base="older"
+              onClick={() => {
+                setOpen(false);
+              }}
+              label={<RowText name={name} hint={null} on />}
+            />
+          )}
           {BASES.map((b) => {
             const on = b.id === id;
             const isSurface = b.id === 'surface';
             return (
               <div key={b.id} className="bp-entry">
-                <button
-                  type="button"
+                <Row
+                  as="button"
+                  kind="menu"
                   role="menuitemradio"
                   aria-checked={on}
                   {...(isSurface ? { 'aria-expanded': surfacesOpen } : {})}
-                  className="row bp-row"
-                  data-kind="menu"
+                  className="bp-row"
                   data-base={b.id}
-                  data-selected={on ? '' : undefined}
+                  selected={on}
                   onClick={() => {
                     if (isSurface) setSurfacesOpen((x) => !x);
                     else pickBase(b.id);
                   }}
-                >
-                  <span className="menu-lead">{on && <Icon name="check" size={12} />}</span>
-                  <span className="bp-text">
-                    <span className="bp-name">{t(b.name)}</span>
-                    <span className="bp-hint">{t(b.hint)}</span>
-                  </span>
-                  {isSurface && <Icon name={surfacesOpen ? 'chevup' : 'chevdown'} size={12} />}
-                </button>
+                  label={
+                    <RowText
+                      name={t(b.name)}
+                      hint={t(b.hint)}
+                      on={on}
+                      {...(isSurface ? { open: surfacesOpen } : {})}
+                    />
+                  }
+                />
                 {isSurface && surfacesOpen && (
                   <div
                     role="group"
@@ -197,20 +227,19 @@ export function BasePicker(p: {
                   >
                     {choices.length === 0 && <p className="bp-none">{t('vol.card.noSurfaces')}</p>}
                     {choices.map((o) => (
-                      <button
+                      <Row
                         key={o.key}
-                        type="button"
+                        as="button"
+                        kind="menu"
                         role="menuitemradio"
                         aria-checked={o.key === selectedKey}
-                        className="row bp-surface"
-                        data-kind="menu"
-                        data-selected={o.key === selectedKey ? '' : undefined}
+                        className="bp-surface"
+                        selected={o.key === selectedKey}
                         onClick={() => {
                           pick(sideFor(o, points, p.value));
                         }}
-                      >
-                        {optionLabel(o)}
-                      </button>
+                        label={optionLabel(o)}
+                      />
                     ))}
                   </div>
                 )}
@@ -228,6 +257,20 @@ export function BasePicker(p: {
         </div>
       )}
     </>
+  );
+}
+
+/** A base's row: the tick, its name and when to use it, and the chevron of the surface list. */
+function RowText(p: { name: string; hint: string | null; on: boolean; open?: boolean }) {
+  return (
+    <span className="bp-line">
+      <span className="menu-lead">{p.on && <Icon name="check" size={12} />}</span>
+      <span className="bp-text">
+        <span className="bp-name">{p.name}</span>
+        {p.hint !== null && <span className="bp-hint">{p.hint}</span>}
+      </span>
+      {p.open !== undefined && <Icon name={p.open ? 'chevup' : 'chevdown'} size={12} />}
+    </span>
   );
 }
 

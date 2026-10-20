@@ -138,15 +138,14 @@
 }
 .vd-spread,
 .vd-method,
-.vd-share,
-.vd-note {
+.vd-share {
   margin: 0;
   font-size: var(--t-12);
   font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
 .vd-method,
-.vd-note {
+.vd-ignore-hint {
   color: var(--fg-3);
 }
 .vd .vd-standard {
@@ -212,13 +211,23 @@
 .bp-pop {
   width: min(320px, calc(100vw - var(--sp-8)));
 }
-.bp-list > .bp-entry > .row.bp-row {
+.bp-list .row.bp-row {
   height: auto;
   min-height: 30px;
   padding-block: var(--sp-3);
-  align-items: flex-start;
 }
-.bp-row .menu-lead {
+/* the shared Row holds one line; a base's row wraps its hint under its name */
+.bp-row .row-label {
+  overflow: visible;
+  white-space: normal;
+}
+.bp-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.bp-line .menu-lead {
   margin-top: var(--sp-1);
 }
 .bp-text {

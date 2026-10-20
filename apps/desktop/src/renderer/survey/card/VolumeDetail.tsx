@@ -20,7 +20,6 @@ import {
   sideKey,
   sideOptions,
   sideFor,
-  SPREAD_BASES,
   swapItem,
   volumeRows,
   type SideOption,
@@ -42,7 +41,7 @@ import {
 } from '../compareStore';
 import type { ItemShare } from '../engineProtocol';
 import { updateMeasurement, useMeasure } from '../measureStore';
-import { BasePicker, baseName, DEFAULT_BASE, optionLabel } from './BasePicker';
+import { BasePicker, baseName, DEFAULT_BASE, missingName, optionLabel } from './BasePicker';
 import '../../charts/charts.css';
 import '../compare.css';
 
@@ -81,9 +80,17 @@ export function volumeStatusLine(
     return state.absent
       ? { tone: 'warn', text: t('vol.status.none') }
       : { tone: 'muted', text: t('vol.status.notComputed') };
-  if (r.status === 'refused') return { tone: 'warn', text: t('vol.status.refused') };
+  if (r.status === 'refused')
+    return {
+      tone: 'warn',
+      text: r.reason ? t('vol.card.refusedWhy', { reason: r.reason }) : t('vol.status.refused'),
+    };
   if (state.stale || r.status === 'stale') return { tone: 'warn', text: t('vol.status.stale') };
-  if (r.status === 'partial') return { tone: 'warn', text: t('vol.status.partial') };
+  if (r.status === 'partial')
+    return {
+      tone: 'warn',
+      text: r.reason ? t('vol.card.partlyWhy', { reason: r.reason }) : t('vol.status.partial'),
+    };
   return { tone: 'ok', text: t('vol.status.ok') };
 }
 
@@ -92,19 +99,19 @@ export function volumeItem(taken: readonly { id: string }[]): ComparisonItem {
   return { id: newItemId(taken), from: DEFAULT_BASE, to: { kind: 'current' }, useDeadband: false };
 }
 
-/** True when the side is one of the bases the spread is worked out over (R16). */
-const spreadBase = (ref: SurfaceRef): boolean =>
-  SPREAD_BASES.some(
-    (b) =>
-      b.kind === ref.kind &&
-      (b.kind !== 'reference' || (ref.kind === 'reference' && ref.mode === b.mode)),
-  );
-
 /** A per-date row's date (R16): the `to` capture, else the `from` one. */
 const rowDate = (r: ComparisonResult): string | undefined => r.toCapture ?? r.fromCapture;
 
-/** The item's figures over time, keyed by their date, with its stored figure for a date not run. */
-function itemSeries(m: SurveyMeasurement, item: string): ComparisonResult[] {
+/**
+ * The item's figures over time, keyed by their date. Its stored figure, when current, is the one
+ * for its own date (so the figures, the latest row and "Since" agree); a stale one only fills a
+ * date the series lacks.
+ */
+export function itemSeries(
+  m: SurveyMeasurement,
+  item: string,
+  storedCurrent: boolean,
+): ComparisonResult[] {
   const keyed = (r: ComparisonResult) => {
     const d = rowDate(r);
     return d !== undefined && r.toCapture === undefined ? { ...r, toCapture: d } : r;
@@ -112,9 +119,9 @@ function itemSeries(m: SurveyMeasurement, item: string): ComparisonResult[] {
   const series = (m.series ?? []).filter((r) => r.item === item).map(keyed);
   const stored = m.results.find((r) => r.item === item);
   const date = stored ? rowDate(stored) : undefined;
-  if (stored && date !== undefined && !series.some((r) => r.toCapture === date))
-    series.push(keyed(stored));
-  return series;
+  if (!stored || date === undefined) return series;
+  if (storedCurrent) return [...series.filter((r) => r.toCapture !== date), keyed(stored)];
+  return series.some((r) => r.toCapture === date) ? series : [...series, keyed(stored)];
 }
 
 export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
@@ -137,6 +144,8 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   // why the last Recompute could not run (said in the status line, never silent)
   const [why, setWhy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // the volume over time could not be worked out (never swallowed)
+  const [seriesFailed, setSeriesFailed] = useState(false);
   const units = effectiveUnits(settings.units, m.units);
   const locale = settings.locale ?? localeOf(units.distance);
   const capture = m.scope.kind === 'survey' ? m.scope.capture : undefined;
@@ -161,8 +170,27 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   useEffect(() => {
     if (status !== 'ready' || readOnly || !first || carriedFirst) return;
     if (!seriesApplies(first) || points.length < 3 || captures.length === 0) return;
-    void computeSeries(m.id).catch(() => false);
+    let gone = false;
+    computeSeries(m.id).then(
+      () => {
+        if (!gone) setSeriesFailed(false);
+      },
+      (e: unknown) => {
+        // the renderer's console is the app's log; the card says it in plain words
+        console.warn(`The volume over time of ${m.id} could not be worked out`, e);
+        if (!gone) setSeriesFailed(true);
+      },
+    );
+    return () => {
+      gone = true;
+    };
   }, [m.id, status, readOnly, first, carriedFirst, points, captures.length]);
+  // "the engine is still starting" and the like no longer hold once it is ready
+  const [seenStatus, setSeenStatus] = useState(status);
+  if (seenStatus !== status) {
+    setSeenStatus(status);
+    if (status === 'ready') setWhy(null);
+  }
 
   const v = (x: number) => formatQuantity(x, 'volume', units, settings.precision, locale);
   const signed = (x: number) => `${x > 0 ? '+' : ''}${v(x)}`;
@@ -220,17 +248,27 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const previous = m.previousResults?.[0];
   const material = settings.materials.find((x) => x.id === m.material) ?? null;
   const density = material?.densityTPerM3;
+  const firstStored = first ? m.results.find((r) => r.item === first.id) : undefined;
+  const firstCurrent =
+    firstStored !== undefined &&
+    firstStored.status !== 'refused' &&
+    !isStale({ current }, m, firstStored);
   const rows = first
-    ? volumeRows(itemSeries(m, first.id), captures, {
+    ? volumeRows(itemSeries(m, first.id, firstCurrent), captures, {
         ...(density !== undefined ? { densityTPerM3: density } : {}),
         isStale: (r) => seriesStale(m, r),
       })
     : [];
-  // the spread across bases: only for a base it is worked out over (R16)
-  const spreadValue =
-    first !== undefined && spreadBase(first.from) && spread !== null && spread !== 'computing'
-      ? spread
-      : null;
+  // null outside the spread bases and while the item is carried (`spreadItem`, R16)
+  const spreadValue = spread !== null && spread !== 'computing' ? spread : null;
+  // one status line: why a Recompute cannot run, the series or preparing failed, the engine
+  const problem =
+    why ??
+    (seriesFailed ? t('vol.card.seriesFailed') : null) ??
+    note ??
+    engineError ??
+    engineProblem ??
+    null;
 
   const recomputeButton = writable && haveSurfaces && !carriedFirst && (
     <Button
@@ -256,42 +294,46 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
     </button>
   );
 
+  const emptyState = status === 'ready' && !haveSurfaces && m.results.length === 0;
+  const prepareButton = (
+    <Button
+      variant="secondary"
+      busy={preparing !== null}
+      data-testid="survey-prepare"
+      onClick={() => {
+        if (manifest) void prepareSurfaces(manifest).then(setNote);
+      }}
+    >
+      {t('empty.survey.prepare')}
+    </Button>
+  );
+  const canPrepare = status === 'ready' && !haveSurfaces && writable && manifest !== null;
+  // without surfaces, carried and stale figures reach Recompute through Prepare surfaces
+  const prepareInRow = canPrepare && !emptyState ? prepareButton : null;
+
   return (
     <div className="vd" data-testid="volume-detail">
-      {status === 'ready' && !haveSurfaces && m.results.length === 0 && (
+      {emptyState && (
         <EmptyState
           icon="layers"
           title={t('empty.survey.noSurface.title')}
           body={t('empty.survey.noSurface.hint')}
-          action={
-            writable && manifest ? (
-              <Button
-                variant="secondary"
-                busy={preparing !== null}
-                data-testid="survey-prepare"
-                onClick={() => {
-                  void prepareSurfaces(manifest).then(setNote);
-                }}
-              >
-                {t('empty.survey.prepare')}
-              </Button>
-            ) : undefined
-          }
+          action={canPrepare ? prepareButton : undefined}
         />
       )}
-      {(note ?? engineError) && <p className="vd-note">{note ?? engineError}</p>}
 
       {m.items.length === 0 ? (
-        <div className="vd-item" data-testid="survey-cmp-item">
+        <div className="vd-item" data-testid="vol-new-item">
           <StatusRow
             line={volumeStatusLine(undefined, {
               computing: running,
               live: false,
               stale: false,
-              problem: why,
+              problem,
             })}
           >
             {recomputeButton}
+            {prepareInRow}
           </StatusRow>
           <div className="pc-chips vd-chips">
             <BasePicker
@@ -323,6 +365,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
               (r) => r.item === it.id && r.carried !== undefined,
             );
             const lead = k === 0;
+            const carried = stored?.carried !== undefined || carriedSeries;
             return (
               <ItemBlock
                 key={it.id}
@@ -338,9 +381,10 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
                   live: live !== null,
                   stale,
                   absent: !shown && carriedSeries,
-                  problem: lead ? (why ?? engineProblem ?? null) : null,
+                  problem: lead ? problem : null,
                 })}
                 readOnly={readOnly}
+                carried={carried}
                 onChange={(next) => {
                   patchItem(it.id, next);
                 }}
@@ -356,6 +400,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
                         </span>
                       )}
                       {recomputeButton}
+                      {prepareInRow}
                     </>
                   ) : null
                 }
@@ -431,6 +476,7 @@ function ItemBlock({
   share,
   line,
   readOnly,
+  carried,
   onChange,
   onRemove,
   statusExtra,
@@ -446,6 +492,8 @@ function ItemBlock({
   share: ItemShare | null;
   line: StatusLine;
   readOnly: boolean;
+  /** A figure carried from an earlier version: changing how it is worked out waits for accepting. */
+  carried: boolean;
   onChange: (next: ComparisonItem) => void;
   onRemove: () => void;
   statusExtra: ReactNode;
@@ -541,7 +589,7 @@ function ItemBlock({
       {result && result.status !== 'refused' && (
         <Figures result={result} share={share} units={units} />
       )}
-      <IgnoreRow item={item} m={m} readOnly={readOnly} onChange={onChange} />
+      <IgnoreRow item={item} m={m} readOnly={readOnly} carried={carried} onChange={onChange} />
     </li>
   );
 }
@@ -578,9 +626,7 @@ function ToChip({
       >
         {!known && (
           <option value={key}>
-            {isBase(value)
-              ? baseName(value, options, t)
-              : t('vol.card.notAvailable', { name: key })}
+            {isBase(value) ? baseName(value, options, t) : missingName(value, t)}
           </option>
         )}
         {surveys.length > 0 && (
@@ -694,13 +740,17 @@ function IgnoreRow({
   item,
   m,
   readOnly,
+  carried,
   onChange,
 }: {
   item: ComparisonItem;
   m: SurveyMeasurement;
   readOnly: boolean;
+  /** Carried: read-only, so editing it never accepts the standard base by accident. */
+  carried: boolean;
   onChange: (next: ComparisonItem) => void;
 }) {
+  const locked = readOnly || carried;
   const t = useT();
   const settings = useMeasure((s) => s.settings);
   const unit = effectiveUnits(settings.units, m.units).distance;
@@ -711,7 +761,7 @@ function IgnoreRow({
         <input
           type="checkbox"
           checked={item.useDeadband}
-          disabled={readOnly}
+          disabled={locked}
           data-testid="survey-use-deadband"
           onChange={(e) => {
             onChange({ ...item, useDeadband: e.target.checked, deadbandM: ignore });
@@ -726,7 +776,7 @@ function IgnoreRow({
         min={0}
         aria-label={`${t('vol.ignoreSmaller')} (${unitLabel(unit)})`}
         value={Number(fromSI(ignore, 'distance', unit).toFixed(4))}
-        readOnly={readOnly}
+        readOnly={locked}
         data-testid="survey-deadband"
         onChange={(e) => {
           const x = Number(e.target.value);
@@ -737,6 +787,11 @@ function IgnoreRow({
         }}
       />
       <span className="vd-unit">{unitLabel(unit)}</span>
+      {carried && !readOnly && (
+        <span className="vd-ignore-hint" data-testid="vol-ignore-carried">
+          {t('vol.card.ignoreCarried')}
+        </span>
+      )}
     </div>
   );
 }

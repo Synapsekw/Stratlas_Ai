@@ -666,10 +666,13 @@ async function computeSeriesNow(id: string, opts: { captures?: string[] }): Prom
 
 // ---------------------------------------------------------------- the spread across bases (W3)
 
-/** The item a measurement's spread is for: its first, when its base is one of `SPREAD_BASES`. */
+/**
+ * The item a measurement's spread is for: its first, when its base is one of `SPREAD_BASES` and
+ * its figure is not carried from the kit (the spread was not worked out from that figure).
+ */
 export function spreadItem(m: SurveyMeasurement): ComparisonItem | null {
   const it = m.family === 'polygon' ? m.items[0] : undefined;
-  if (!it) return null;
+  if (!it || carriedItem(m, it.id)) return null;
   const f = it.from;
   const ok = SPREAD_BASES.some(
     (b) =>

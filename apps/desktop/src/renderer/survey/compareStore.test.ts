@@ -33,6 +33,7 @@ const {
   scheduleCheck,
   seriesStale,
   setEnginePort,
+  spreadItem,
   setEngineStarter,
 } = await import('./compareStore');
 const { isDirty, measureStore, patchMeasurement, revertMeasurements, saveMeasurements } =
@@ -639,6 +640,22 @@ describe('results over time and the spread across bases', () => {
     expect(series).not.toHaveBeenCalled();
     expect(prints).not.toHaveBeenCalled();
     expect(spread).not.toHaveBeenCalled();
+  });
+
+  it('no spread next to a figure carried from the kit', async () => {
+    const smart = { id: 'a', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false };
+    const m: SurveyMeasurement = { ...pit, items: [smart as SurveyMeasurement['items'][number]] };
+    expect(spreadItem(m)?.id).toBe('a');
+    const r = await compute('m1', { live: true });
+    const carried = kit(must(r?.results[0]), 'e1');
+    expect(spreadItem({ ...m, results: [carried] })).toBeNull();
+    // a pile absent on the latest date: carried figures over time only
+    expect(spreadItem({ ...m, series: [carried] })).toBeNull();
+    put({ items: m.items, results: [carried] });
+    const spy = vi.spyOn(engineClient(), 'spread');
+    expect(await computeSpread('m1')).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it('spread is memoised per fingerprint', async () => {

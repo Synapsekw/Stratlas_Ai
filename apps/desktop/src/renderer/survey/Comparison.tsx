@@ -7,6 +7,7 @@
 import type { EngineStage } from '@aio/engine';
 import type { MapController } from '@aio/maps';
 import type { SurveyMeasurement } from '@aio/schema';
+import { useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { VolumeDetail } from './card/VolumeDetail';
@@ -26,11 +27,12 @@ import './compare.css';
 
 /** The comparisons section of a polygon measurement's panel. */
 export function Comparisons({ m }: { m: SurveyMeasurement }) {
+  const t = useT();
   const computed = useCompare((s) => s.computed[m.id]);
   if (m.family !== 'polygon') return null;
   return (
     <details className="sv-sec" open data-testid="survey-comparisons">
-      <summary>Comparisons ({m.items.length})</summary>
+      <summary>{t('vol.card.comparisons', { n: m.items.length })}</summary>
       <VolumeDetail m={m} />
       {m.items.length > 0 && <HeatControls m={m} computed={computed ?? null} />}
     </details>
@@ -38,11 +40,12 @@ export function Comparisons({ m }: { m: SurveyMeasurement }) {
 }
 
 function HeatControls({ m, computed }: { m: SurveyMeasurement; computed: Computed | null }) {
+  const t = useT();
   const heat = useCompare((s) => s.heat);
   const has = (computed?.heat.length ?? 0) > 0;
   return (
     <fieldset className="sv-sub" data-testid="survey-heat">
-      <legend>Heat map of the difference</legend>
+      <legend>{t('heat.panel.title')}</legend>
       <div className="sv-row sv-wrap">
         <label className="sv-check">
           <input
@@ -52,7 +55,7 @@ function HeatControls({ m, computed }: { m: SurveyMeasurement; computed: Compute
               setHeat({ show3d: e.target.checked });
             }}
           />
-          On the terrain (3D)
+          {t('heat.panel.on3d')}
         </label>
         <label className="sv-check">
           <input
@@ -62,7 +65,7 @@ function HeatControls({ m, computed }: { m: SurveyMeasurement; computed: Compute
               setHeat({ show2d: e.target.checked });
             }}
           />
-          On the map (2D)
+          {t('heat.panel.on2d')}
         </label>
         <label className="sv-check">
           <input
@@ -72,12 +75,12 @@ function HeatControls({ m, computed }: { m: SurveyMeasurement; computed: Compute
               setHeat({ contours: e.target.checked });
             }}
           />
-          Contours
+          {t('heat.panel.contours')}
         </label>
       </div>
       {m.items.length > 1 && (
         <label className="sv-field">
-          <span>Show</span>
+          <span>{t('heat.panel.show')}</span>
           <select
             className="sv-input"
             value={heat.item ?? m.items[0]?.id ?? ''}
@@ -87,17 +90,13 @@ function HeatControls({ m, computed }: { m: SurveyMeasurement; computed: Compute
           >
             {m.items.map((it, k) => (
               <option key={it.id} value={it.id}>
-                {it.label ?? `Comparison ${String(k + 1)}`}
+                {it.label ?? t('vol.card.comparisonN', { n: k + 1 })}
               </option>
             ))}
           </select>
         </label>
       )}
-      {!has && (
-        <p className="small faint">
-          A heat map shows once a comparison on the survey grid has been computed.
-        </p>
-      )}
+      {!has && <p className="small faint">{t('heat.panel.none')}</p>}
       <HeatmapStopsButton />
     </fieldset>
   );

@@ -14,7 +14,8 @@ vi.mock('../BaseEditor', () => ({
   BaseEditor: () => <div data-testid="base-editor" />,
 }));
 
-const { BasePicker, BASES, baseIdOf } = await import('./BasePicker');
+const { BasePicker, BASES, baseIdOf, baseName } = await import('./BasePicker');
+const { t } = await import('@aio/ui');
 
 const SURFACES: SideOption[] = [
   {
@@ -185,6 +186,34 @@ describe('BasePicker', () => {
       ],
     });
     expect(document.querySelector('[data-testid="base-editor"]')).not.toBeNull();
+  });
+
+  it("an older file's highest point reads plainly and shows as the ticked mode", () => {
+    picker({ kind: 'reference', mode: 'perimeter-max' });
+    expect(document.querySelector('[data-testid="survey-from"]')?.textContent).toContain(
+      'Base: Highest point',
+    );
+    open();
+    const older = document.querySelector('[role="menuitemradio"][data-base="older"]');
+    expect(older?.getAttribute('aria-checked')).toBe('true');
+    expect(older?.textContent).toBe('Highest point');
+    // the seven bases follow, none ticked
+    const list = rows().filter((r) => r.getAttribute('data-base') !== 'older');
+    expect(list).toHaveLength(7);
+    expect(list.some((r) => r.getAttribute('aria-checked') === 'true')).toBe(false);
+    expect(baseName({ kind: 'reference', mode: 'interior-min' }, SURFACES, t)).toBe(
+      'Lowest point inside',
+    );
+    expect(baseName({ kind: 'reference', mode: 'interior-max' }, SURFACES, t)).toBe(
+      'Highest point inside',
+    );
+  });
+
+  it('a survey or design no longer in the project reads as missing, not by its id', () => {
+    expect(baseName({ kind: 'survey', surface: 'gone-dsm' }, SURFACES, t)).toBe('Missing survey');
+    expect(baseName({ kind: 'design', design: 'd9', layer: 'l9' }, SURFACES, t)).toBe(
+      'Missing design',
+    );
   });
 
   it('read-only: the chip does not open', () => {

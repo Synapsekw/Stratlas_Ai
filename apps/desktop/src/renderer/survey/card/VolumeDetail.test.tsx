@@ -377,21 +377,12 @@ describe('VolumeDetail', () => {
     show(pile());
     expect(byTestId('vol-spread')[0]?.textContent).toBe('±1.8 % across bases');
 
-    // a fixed level is not one of the spread bases: no hint
+    // still being worked out (or none: a base outside the spread bases, a carried figure, which
+    // `spreadItem` rules out in compareStore): no hint
     act(() => root?.unmount());
     host.remove();
-    show(
-      pile({
-        items: [
-          {
-            id: 'a',
-            from: { kind: 'reference', mode: 'level', levelM: 9 },
-            to: { kind: 'current' },
-            useDeadband: false,
-          },
-        ],
-      }),
-    );
+    s.spread = 'computing';
+    show(pile());
     expect(byTestId('vol-spread')).toHaveLength(0);
   });
 
@@ -399,8 +390,127 @@ describe('VolumeDetail', () => {
     s.compare.surfaces = [];
     show(pile({ results: [] }));
     expect(host.textContent).toContain('No survey surface is prepared yet');
+    expect(byTestId('survey-prepare')).toHaveLength(1);
     click(byTestId('survey-prepare')[0]);
     expect(calls.prepareSurfaces).toHaveBeenCalledTimes(1);
+  });
+
+  it('a stored figure wins its own date over an older series row', () => {
+    const series = [
+      result({ toCapture: 'c1', netM3: 3070, totalM3: 3070, fingerprint: 'f1' }),
+      result({ toCapture: 'c2', netM3: 3400, totalM3: 3400, fingerprint: 'old' }),
+    ];
+    show(pile({ series, results: [result({ netM3: 3482 })] }));
+    const net = host.querySelector('[data-testid="survey-cmp-result"] tr[data-key="net"] td');
+    expect(net?.textContent).toBe(v(3482));
+    const latest = host.querySelector('[data-testid="vol-time-table"] tr[data-latest] td');
+    expect(latest?.textContent).toBe(v(3482));
+    expect(host.querySelector('[data-testid="vol-since"] dd')?.textContent).toBe(`+${v(412)}`);
+  });
+
+  it('a series that fails says so in the status line', async () => {
+    calls.computeSeries.mockRejectedValueOnce(new Error('worker died'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    show(pile());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
+      'The volume over time could not be worked out. Try Recompute.',
+    );
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('without surfaces a carried pile reaches Prepare surfaces from its status row', () => {
+    s.compare.surfaces = [];
+    const carried = result({
+      fingerprint: 'kit:p7:e1:tin',
+      carried: { from: 'kit', base: 'tin', pile: 'p7', epoch: 'e1' },
+    });
+    show(pile({ results: [carried] }));
+    expect(host.querySelectorAll('.vd-status-row [data-testid="survey-prepare"]')).toHaveLength(1);
+    expect(byTestId('survey-prepare')).toHaveLength(1);
+  });
+
+  it('without surfaces a stale pile reaches Prepare surfaces from its status row', () => {
+    s.compare.surfaces = [];
+    show(pile({ results: [result({ status: 'stale' })] }));
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('Stale, recompute');
+    expect(host.querySelectorAll('.vd-status-row [data-testid="survey-prepare"]')).toHaveLength(1);
+  });
+
+  it('a carried item keeps Ignore changes smaller than read-only, with a hint', () => {
+    const carried = result({
+      fingerprint: 'kit:p7:e1:tin',
+      carried: { from: 'kit', base: 'tin', pile: 'p7', epoch: 'e1' },
+    });
+    show(pile({ results: [carried] }));
+    const box = host.querySelector<HTMLInputElement>('[data-testid="survey-use-deadband"]');
+    const value = host.querySelector<HTMLInputElement>('[data-testid="survey-deadband"]');
+    expect(box?.disabled).toBe(true);
+    expect(value?.readOnly).toBe(true);
+    expect(byTestId('vol-ignore-carried')[0]?.textContent).toBe(
+      'Recompute with the standard base to change this',
+    );
+    // not carried: editable, no hint
+    act(() => root?.unmount());
+    host.remove();
+    show(pile());
+    expect(
+      host.querySelector<HTMLInputElement>('[data-testid="survey-use-deadband"]')?.disabled,
+    ).toBe(false);
+    expect(byTestId('vol-ignore-carried')).toHaveLength(0);
+  });
+
+  it('the why clears when the engine turns ready, and errors share the one status line', () => {
+    const carried = result({
+      fingerprint: 'kit:p7:e1:tin',
+      carried: { from: 'kit', base: 'tin', pile: 'p7', epoch: 'e1' },
+    });
+    const m = pile({ results: [carried] });
+    s.compare.status = 'loading';
+    show(m);
+    click(buttonNamed('Recompute with the standard base'));
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
+      'The volume engine is still starting. Try again in a moment.',
+    );
+    s.compare.status = 'ready';
+    act(() => root?.render(<VolumeDetail m={m} />));
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('From an earlier version (kit tin)');
+
+    s.compare.error = 'The surfaces could not be prepared.';
+    act(() => root?.render(<VolumeDetail m={m} />));
+    expect(byTestId('survey-cmp-status')).toHaveLength(1);
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
+      'The surfaces could not be prepared.',
+    );
+    expect(host.querySelector('.vd-note')).toBeNull();
+  });
+
+  it('the new-volume placeholder has its own test id', () => {
+    show(pile({ items: [], results: [] }));
+    expect(byTestId('vol-new-item')).toHaveLength(1);
+    expect(byTestId('survey-cmp-item')).toHaveLength(0);
+  });
+
+  it('a missing survey reads Missing survey, not its id', () => {
+    show(
+      pile({
+        items: [
+          {
+            id: 'a',
+            from: { kind: 'previous' },
+            to: { kind: 'survey', surface: 'gone-dsm' },
+            useDeadband: false,
+          },
+        ],
+      }),
+    );
+    const to = host.querySelector<HTMLSelectElement>('[data-testid="survey-to"]');
+    expect(to?.selectedOptions[0]?.textContent).toBe('Missing survey');
+    expect(host.textContent).not.toContain('gone-dsm');
   });
 });
 
@@ -414,10 +524,19 @@ describe('volumeStatusLine', () => {
       tone: 'warn',
       text: 'Stale, recompute',
     });
-    expect(volumeStatusLine(result({ status: 'partial' }), idle).tone).toBe('warn');
+    expect(volumeStatusLine(result({ status: 'partial' }), idle)).toEqual({
+      tone: 'warn',
+      text: 'Partly outside the survey',
+    });
+    expect(volumeStatusLine(result({ status: 'partial', reason: '23% outside' }), idle).text).toBe(
+      'Partly outside the survey: 23% outside',
+    );
     expect(volumeStatusLine(result({ status: 'refused' }), idle).text).toBe(
       'Not computed: the survey does not cover it',
     );
+    expect(
+      volumeStatusLine(result({ status: 'refused', reason: 'no survey under it' }), idle).text,
+    ).toBe('Not computed: no survey under it');
     expect(volumeStatusLine(result(), { ...idle, live: true }).text).toBe(
       'Live while you edit; saved when the edit ends.',
     );
