@@ -1,4 +1,4 @@
-"""The OpenSfM sub-step parser, fed from trimmed real logs of a 1,003-photo run."""
+"""The OpenSfM sub-step parser, fed from synthetic logs shaped like ODM 3.6.2 output."""
 
 from __future__ import annotations
 
@@ -65,13 +65,16 @@ def test_first_run_counts_features_pairs_and_placed_photos() -> None:
 def test_fraction_moves_with_the_counts_and_never_back() -> None:
     sp = make()
     last = 0.0
+    seen = False
     for line in read_lines("first-run.txt"):
         sp.feed(line)
         now = sp.fraction()
         assert now >= last
         last = now
         if 'reconstruct "' in line:
+            seen = True
             assert now == pytest.approx(0.34)
+    assert seen
     assert last > 0.34
 
 
@@ -92,11 +95,14 @@ def test_a_resumed_run_counts_done_sub_steps_and_restarts_the_count() -> None:
     for line in lines[seed + 1 : stats]:
         sp.feed(line)
     assert sp.detail()["done"] == 75
+    seen = False
     for line in lines[stats:]:
         sp.feed(line)
         if "Undistorting" in line:
+            seen = True
             assert sp.current == "undistort"
             assert sp.fraction() == pytest.approx(0.92)
+    assert seen
     sp.finish()
     assert sp.fraction() == 1.0
     assert sp.detail() is None
