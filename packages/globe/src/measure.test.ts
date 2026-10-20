@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatArea, formatLength, geodesicDistance, pathLength, polygonArea } from './measure';
+import { geodesicDistance, globeReading, pathLength, polygonArea } from './measure';
 
 const dms = (d: number, m: number, s: number) => Math.sign(d) * (Math.abs(d) + m / 60 + s / 3600);
 
@@ -36,9 +36,33 @@ describe('the geodesic read-out (on the ellipsoid)', () => {
     const up = geodesicDistance(lon, lat, lon, lat + dLat);
     expect(polygonArea(sq) / (side * up)).toBeCloseTo(1, 3);
     expect(polygonArea(sq.slice(0, 2))).toBe(0);
-    expect(formatLength(1234.5)).toBe('1.23 km');
-    expect(formatLength(850.2)).toBe('850 m');
-    expect(formatArea(32_000)).toBe('3.20 ha');
-    expect(formatArea(1_750_000)).toBe('1.75 km²');
+  });
+
+  it('globe length in feet with imperial units', () => {
+    const r = globeReading(
+      [
+        [0, 0],
+        [0, 0.01],
+      ],
+      { distance: 'ft', area: 'ft2' },
+      { distance: 1, area: 0 },
+    );
+    // 0.01 degrees of latitude at the equator is about 1105.7 m = 3627.7 ft
+    expect(r.primary).toMatch(/^3[ ,]?6\d\d\.\d ft$/);
+    expect(r.secondary).toBe('');
+  });
+
+  it('globe area uses the area unit', () => {
+    const sq: [number, number][] = [
+      [0, 0],
+      [0.01, 0],
+      [0.01, 0.01],
+      [0, 0.01],
+    ];
+    const m2 = globeReading(sq, { distance: 'm', area: 'm2' }, { distance: 0, area: 0 });
+    const ha = globeReading(sq, { distance: 'm', area: 'ha' }, { distance: 0, area: 2 });
+    expect(m2.secondary).toMatch(/m²$/);
+    expect(ha.secondary).toMatch(/ha$/);
+    expect(m2.primary).toMatch(/ m$/);
   });
 });

@@ -11,13 +11,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * What the screen reads from the app: the library's sites (or why they could not be read), the
  * open project and its issues; and what it sent to main.
  */
-const app = {
+const app = vi.hoisted(() => ({
   sites: [] as GlobeSite[],
   error: null as string | null,
   project: null as { id: string; manifest: object } | null,
   issues: [] as object[],
   sent: [] as { channel: string; payload: unknown }[],
-};
+}));
 /** What the screen gave the Globe at its last render, and the flights it asked of it. */
 const globe = {
   props: null as GlobeViewProps | null,
@@ -69,13 +69,15 @@ vi.mock('@aio/workspace', async (importOriginal) => {
   const real = await importOriginal<typeof WorkspaceModule>();
   const state = () => ({ project: app.project, issues: app.issues });
   return {
+    ...real,
     dateShiftOf: real.dateShiftOf,
     layerDateShifts: real.layerDateShifts,
     useWorkspace: (selector: (s: ReturnType<typeof state>) => unknown) => selector(state()),
-    workspace: { getState: state },
+    workspace: { getState: state, subscribe: () => () => undefined },
   };
 });
-vi.mock('../shell', () => ({
+vi.mock('../shell', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   bridge: {
     call: (channel: string, payload: unknown) => Promise.resolve(answer(channel, payload)),
   },
@@ -459,6 +461,23 @@ describe('the Globe screen', () => {
     act(() => q('globe-measure')?.click());
     expect(q('globe-readout')).toBeNull();
     expect(field()).not.toBeNull();
+  });
+
+  it('reads a measurement on the shared card: length, then area, nothing to save', async () => {
+    await mount();
+    act(() => q('globe-measure')?.click());
+    act(() =>
+      globe.props?.onMeasure?.([
+        [0, 0],
+        [0.01, 0],
+        [0.01, 0.01],
+      ]),
+    );
+    const card = q('globe-measure-card');
+    expect(card?.getAttribute('data-variant')).toBe('live');
+    expect(card?.querySelector('[data-testid="card-primary"]')?.textContent).toMatch(/ m/);
+    expect(card?.querySelector('[data-testid="card-secondary"]')?.textContent).toMatch(/m²/);
+    expect(card?.querySelector('button')).toBeNull();
   });
 
   it('says so in a notice, in the place of the field, when no site can be placed', async () => {

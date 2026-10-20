@@ -49,7 +49,6 @@ import { LayerSync } from '../layers/layerSync';
 import { FrameStats } from '../overlay/declutter';
 import { Overlay, type CalloutSpec } from '../overlay/Overlay';
 import { getAdapter as registryAdapter } from '../registry';
-import { MeasureTool } from '../tools/measure';
 import { DEFAULT_SECTION, applySection, type SectionState } from '../tools/section';
 import type {
   ClientRectLike,
@@ -187,7 +186,6 @@ export class Stage implements EngineStage {
   private readonly overlay: Overlay;
   private readonly highlight: Highlighter;
   private readonly warmup: ProgramWarmup;
-  private readonly measureTool = new MeasureTool();
   private readonly ro: ResizeObserver;
   private readonly unsubscribe: () => void;
   private readonly getAdapter: (kind: LayerKind) => LayerAdapter | undefined;
@@ -325,7 +323,7 @@ export class Stage implements EngineStage {
     // perf counters cover a whole frame; renderNow resets them
     if (r.info as Partial<WebGLRenderer['info']> | undefined) r.info.autoReset = false;
     this.highlight = new Highlighter(this.clippingPlanes);
-    this.scene.add(this.highlight.group, this.measureTool.line);
+    this.scene.add(this.highlight.group);
     this.overlay = new Overlay(opts.container, {
       onCalloutClick: (id) => {
         const group = this.groupNodes.get(id);
@@ -573,9 +571,8 @@ export class Stage implements EngineStage {
   setTool(tool: StageTool): void {
     if (tool === this._tool) return;
     this._tool = tool;
-    if (tool !== 'measure') this.clearMeasure();
     if (tool === 'section' && !this._section.enabled) this.setSection({ enabled: true });
-    this.canvas.style.cursor = tool === 'measure' || tool === 'pcselect' ? 'crosshair' : '';
+    this.canvas.style.cursor = tool === 'pcselect' ? 'crosshair' : '';
     this.emitState();
   }
 
@@ -630,12 +627,6 @@ export class Stage implements EngineStage {
 
   sectionOrigin(): Vector3 {
     return this.contentCentre.clone();
-  }
-
-  clearMeasure(): void {
-    this.measureTool.clear();
-    this.overlay.setMeasure(null, null, '');
-    this.need = true;
   }
 
   setPerfOverlay(on: boolean): void {
@@ -1140,7 +1131,6 @@ export class Stage implements EngineStage {
     this.appliedHidden.clear();
     this.setHighlight('select', null);
     this.setHighlight('hover', null);
-    this.clearMeasure();
     this.flight = null;
     this.autoFit = true;
     this.pendingCamera = null;
@@ -1677,14 +1667,6 @@ export class Stage implements EngineStage {
     if (Math.hypot(e.clientX - d[0], e.clientY - d[1]) > slop) return;
     for (const claim of this.clickClaims) if (claim(e)) return;
     const [x, y] = this.toNdc(e);
-    if (this._tool === 'measure') {
-      const hit = this.raycast(x, y);
-      if (!hit) return;
-      this.measureTool.add(hit.point);
-      this.overlay.setMeasure(this.measureTool.a, this.measureTool.b, this.measureTool.label());
-      this.need = true;
-      return;
-    }
     const picked = this.pick(x, y);
     this.opts.store
       .getState()
@@ -1700,7 +1682,7 @@ export class Stage implements EngineStage {
       const ev = this.hoverEvent;
       if (!ev || this.disposed) return;
       const [x, y] = this.toNdc(ev);
-      const aiming = this._tool === 'measure' || this._tool === 'pcselect';
+      const aiming = this._tool === 'pcselect';
       const node = aiming ? null : (this.pick(x, y)?.node ?? null);
       if (this.setHighlight('hover', node)) {
         this.need = true;
@@ -1726,10 +1708,6 @@ export class Stage implements EngineStage {
       return;
     }
     if (e.key !== 'Escape') return;
-    if (this._tool === 'measure') {
-      this.clearMeasure();
-      return;
-    }
     // Escape clears a selected component, unless a field or a dialog took it
     if (e.defaultPrevented || typing(e.target)) return;
     const store = this.opts.store.getState();
@@ -1793,7 +1771,6 @@ export class Stage implements EngineStage {
     this.disposeControls();
     this.overlay.dispose();
     this.highlight.dispose();
-    this.measureTool.dispose();
     this.env.dispose();
     this.warmup.dispose();
     this.renderer.dispose();

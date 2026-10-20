@@ -16,7 +16,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LayerAdapter, LayerHandle } from '../types';
+import type { LayerAdapter, LayerHandle, StageTool } from '../types';
 import type { Environment } from './environment';
 import { fakeWarmRenderer } from './fakeWarmRenderer';
 import { clearHiddenNodes } from './nodeVisibility';
@@ -1468,5 +1468,14 @@ describe('Stage', () => {
     expect(listener).not.toHaveBeenCalled();
     stage.dispose();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('the engine has no measure tool', () => {
+    // the one measure code path is the survey's; the stage keeps no two-click distance tool
+    expect('clearMeasure' in Stage.prototype).toBe(false);
+    const tools: StageTool[] = ['select', 'section', 'clipbox', 'pcselect'];
+    // @ts-expect-error 'measure' is no longer a stage tool
+    const gone: StageTool = 'measure';
+    expect(tools).not.toContain(gone);
   });
 });

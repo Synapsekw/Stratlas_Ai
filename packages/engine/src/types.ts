@@ -153,7 +153,7 @@ export interface RayProvider {
  * `clipbox` and `pcselect` are the point cloud cleanup tools (tools/clipbox.ts, tools/pcselect.ts):
  * the app attaches them while the tool is on; the stage only knows the cursor.
  */
-export type StageTool = 'select' | 'measure' | 'section' | 'clipbox' | 'pcselect';
+export type StageTool = 'select' | 'section' | 'clipbox' | 'pcselect';
 
 /**
  * Component callouts: `off` shows only the selected and hovered component, `key` adds one callout
@@ -188,7 +188,6 @@ export interface EngineStage extends SceneHandle {
   setSection(patch: Partial<SectionState>): void;
   /** The point section offsets are measured from (centre of the visible content). */
   sectionOrigin(): Vector3;
-  clearMeasure(): void;
   /**
    * Let an overlay take a left click on the stage before the stage selects or measures (section
    * points, boundary editing). The handler gets the pointer-up of a click that did not drag;

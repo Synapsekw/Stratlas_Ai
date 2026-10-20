@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   declutter,
   estimateLabelWidth,
-  formatMetres,
   FrameStats,
   placeCallouts,
   plateRect,
@@ -56,15 +55,6 @@ describe('estimateLabelWidth', () => {
     expect(estimateLabelWidth(['20-T-0001', 'LNG STORAGE TANK'])).toBeGreaterThan(
       estimateLabelWidth(['20-T-0001']),
     );
-  });
-});
-
-describe('formatMetres', () => {
-  it('formats distances in metres with sensible precision', () => {
-    expect(formatMetres(0.0123)).toBe('12 mm');
-    expect(formatMetres(1.23456)).toBe('1.235 m');
-    expect(formatMetres(12.3456)).toBe('12.35 m');
-    expect(formatMetres(1234.567)).toBe('1 234.6 m');
   });
 });
 

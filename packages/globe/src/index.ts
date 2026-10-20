@@ -112,7 +112,7 @@ export {
   type GlobeCamera,
   type SiteCamera,
 } from './camera';
-export { formatArea, formatLength, geodesicDistance, pathLength, polygonArea } from './measure';
+export { geodesicDistance, globeReading, pathLength, polygonArea } from './measure';
 export {
   CARD_GAP,
   CHIP,

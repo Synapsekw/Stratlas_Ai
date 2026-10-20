@@ -1,15 +1,12 @@
 import { brand } from '@aio/brand';
 import { reducedMotion } from '@aio/engine';
 import {
-  formatArea,
-  formatLength,
+  globeReading,
   globeToSite,
   issuePins,
   lastCapture,
-  pathLength,
   planCredits,
   planGlobeLayers,
-  polygonArea,
   rasterOrder,
   selectPacks,
   sitesBounds,
@@ -34,12 +31,15 @@ import {
   type ProjectManifest,
   type RasterPackInfo,
   type TilesetEntry,
+  defaultSurveySettings,
 } from '@aio/schema';
 import { Icon, t, useT } from '@aio/ui';
 import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGraphics } from '../graphics';
 import { drawnBase } from '../maps/mapMenuModel';
+import { MeasureCard, type CardModel } from '../survey/card';
+import { colourName, DEFAULT_MEASURE_COLOUR } from '../survey/card/cardModel';
 import { bridge, shell, useShell } from '../shell';
 import { BrandLoader } from '../shell/BrandMotion';
 import { rasterPacks, useRasterPacks } from '../workspace/siteTiles';
@@ -76,6 +76,26 @@ const CARD_INSETS: Insets = { top: 56, right: 56, bottom: 44, left: 12 };
  * rebuilds its layers and terrain whenever it is handed a new one.
  */
 const NO_PACKS: RasterPackInfo[] = [];
+
+/**
+ * The temporary globe measurement as the shared card's live header, value and secondary line: no
+ * chips, no chart, no saving. The Globe has no site open, so it reads in the default site units.
+ */
+function globeCardModel(points: readonly [number, number][], tr: typeof t): CardModel {
+  const defaults = defaultSurveySettings();
+  const r = globeReading(points, defaults.units, defaults.precision);
+  return {
+    icon: 'ruler',
+    name: tr('globe.measureName'),
+    tool: tr('globe.measure'),
+    scope: null,
+    colour: DEFAULT_MEASURE_COLOUR,
+    colourName: colourName(DEFAULT_MEASURE_COLOUR),
+    primary: { label: tr('globe.measureLength'), text: r.primary },
+    secondary: r.secondary === '' ? '' : tr('globe.area', { value: r.secondary }),
+    more: [],
+  };
+}
 
 /** The words on the chip of sites that gathered. */
 const clusterLabel = (count: number) => t('globe.siteCount', { count });
@@ -469,18 +489,17 @@ export default function GlobeScreen() {
       <h1 className="sr-only">{t('globe.nav')}</h1>
       {/* the top edge, in tab order: the field (the read-out while measuring), then Map */}
       {measuring ? (
-        <p className="globe-readout" data-testid="globe-readout" aria-live="polite">
+        <div className="globe-readout" data-testid="globe-readout" aria-live="polite">
           {measured.length < 2 ? (
             t('globe.measureHint')
           ) : (
-            <>
-              <span>{t('globe.distance', { value: formatLength(pathLength(measured)) })}</span>
-              {measured.length >= 3 && (
-                <span>{t('globe.area', { value: formatArea(polygonArea(measured)) })}</span>
-              )}
-            </>
+            <MeasureCard
+              variant="live"
+              testId="globe-measure-card"
+              model={globeCardModel(measured, t)}
+            />
           )}
-        </p>
+        </div>
       ) : (
         loaded.sites.length > 0 && (
           <GlobeSearch

@@ -60,13 +60,6 @@ export class Overlay {
   private readonly compass: SVGSVGElement;
   private readonly compassRose: SVGGElement;
   private readonly compassText: SVGTextElement;
-  private readonly measure: HTMLDivElement;
-  private readonly measureDots: [HTMLSpanElement, HTMLSpanElement];
-  private measureState: { a: Vector3 | null; b: Vector3 | null; text: string } = {
-    a: null,
-    b: null,
-    text: '',
-  };
   private readonly perf: HTMLDivElement;
   private readonly v = new Vector3();
   private lastHeading = Number.NaN;
@@ -147,39 +140,6 @@ export class Overlay {
     this.compassText.style.font = `500 9px ${FONT_MONO}`;
     this.compass.append(this.compassRose, this.compassText);
     root.append(this.compass);
-
-    // measure readout
-    this.measure = document.createElement('div');
-    Object.assign(this.measure.style, {
-      position: 'absolute',
-      left: '0',
-      top: '0',
-      padding: '3px 7px',
-      background: PALETTE.plateCss,
-      border: `1px solid ${PALETTE.accCss}`,
-      font: `600 11px ${FONT_MONO}`,
-      color: PALETTE.ovCss,
-      whiteSpace: 'nowrap',
-      display: 'none',
-    });
-    const dot = () => {
-      const d = document.createElement('span');
-      Object.assign(d.style, {
-        position: 'absolute',
-        left: '-4px',
-        top: '-4px',
-        width: '8px',
-        height: '8px',
-        borderRadius: '50%',
-        background: '#ffd166',
-        boxShadow: '0 0 0 1px oklch(0.13 0.01 250)',
-        display: 'none',
-      });
-      root.append(d);
-      return d;
-    };
-    this.measureDots = [dot(), dot()];
-    root.append(this.measure);
 
     this.perf = document.createElement('div');
     Object.assign(this.perf.style, {
@@ -405,33 +365,12 @@ export class Overlay {
       }
     }
 
-    // measure
-    const { a, b, text } = this.measureState;
-    const pa = a ? this.project(a, camera, width, height) : null;
-    const pb = b ? this.project(b, camera, width, height) : null;
-    this.place(this.measureDots[0], pa);
-    this.place(this.measureDots[1], pb);
-    if (pa && pb && text) {
-      this.measure.style.display = '';
-      this.measure.textContent = text;
-      this.measure.style.transform = `translate3d(${((pa[0] + pb[0]) / 2 + 8).toFixed(1)}px, ${((pa[1] + pb[1]) / 2 - 26).toFixed(1)}px, 0)`;
-    } else this.measure.style.display = 'none';
-
     // compass: the rose turns so N points at north on screen
     if (Math.abs(headingDeg - this.lastHeading) > 0.2 || Number.isNaN(this.lastHeading)) {
       this.lastHeading = headingDeg;
       this.compassRose.setAttribute('transform', `rotate(${(-headingDeg).toFixed(1)} 32 32)`);
       this.compassText.textContent = `${String(Math.round(((headingDeg % 360) + 360) % 360) % 360).padStart(3, '0')}°`;
     }
-  }
-
-  private place(el: HTMLElement, p: [number, number] | null) {
-    if (!p) {
-      el.style.display = 'none';
-      return;
-    }
-    el.style.display = '';
-    el.style.transform = `translate3d(${p[0].toFixed(1)}px, ${p[1].toFixed(1)}px, 0)`;
   }
 
   private project(
@@ -443,10 +382,6 @@ export class Overlay {
     this.v.copy(anchor).project(camera);
     if (this.v.z > 1 || this.v.z < -1) return null;
     return [((this.v.x + 1) / 2) * width, ((1 - this.v.y) / 2) * height];
-  }
-
-  setMeasure(a: Vector3 | null, b: Vector3 | null, text: string) {
-    this.measureState = { a, b, text };
   }
 
   setPerf(text: string | null) {

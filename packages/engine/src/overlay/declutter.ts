@@ -1,5 +1,3 @@
-import { formatQuantity } from '@aio/geo';
-
 export interface LabelBox {
   id: string;
   /** Screen rectangle of the expanded label, CSS pixels. */
@@ -200,12 +198,6 @@ const CHAR_PX = 6.6;
 export function estimateLabelWidth(lines: readonly string[]): number {
   const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
   return Math.ceil(longest * CHAR_PX + 22);
-}
-
-/** Space-grouped metres: 12 mm, 1.235 m, 12.35 m, 1 234.6 m (the units formatter, metric). */
-export function formatMetres(d: number): string {
-  if (d < 1) return formatQuantity(d, 'distance', 'mm', 0);
-  return formatQuantity(d, 'distance', 'm', d < 10 ? 3 : d < 1000 ? 2 : 1);
 }
 
 /** Rolling frame timing for the dev overlay. */

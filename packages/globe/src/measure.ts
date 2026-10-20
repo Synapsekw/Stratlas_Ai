@@ -1,4 +1,5 @@
-import type { Vec3 } from '@aio/schema';
+import { formatQuantity } from '@aio/geo';
+import type { SurveyPrecision, SurveyUnits, Vec3 } from '@aio/schema';
 import { enuBasis, geodeticToEcef } from './geodesy';
 
 /**
@@ -93,14 +94,18 @@ export function polygonArea(points: readonly (readonly [number, number])[]): num
   return Math.abs(twice) / 2;
 }
 
-/** "1.24 km", "850 m", "3.2 ha", "1.75 km²": the read-out's words for a length or an area. */
-export function formatLength(m: number): string {
-  return m >= 1000
-    ? `${(m / 1000).toFixed(m >= 100_000 ? 0 : 2)} km`
-    : `${m.toFixed(m < 10 ? 2 : 0)} m`;
-}
-export function formatArea(m2: number): string {
-  if (m2 >= 1_000_000) return `${(m2 / 1_000_000).toFixed(2)} km²`;
-  if (m2 >= 10_000) return `${(m2 / 10_000).toFixed(2)} ha`;
-  return `${m2.toFixed(0)} m²`;
+/**
+ * The read-out's words, through the shared formatter: the path length first, and the polygon area
+ * on the second line from three points. Both are geodesic, "on the ellipsoid", in the site units.
+ */
+export function globeReading(
+  points: readonly (readonly [number, number])[],
+  units: Pick<SurveyUnits, 'distance' | 'area'>,
+  precision: Pick<SurveyPrecision, 'distance' | 'area'>,
+): { primary: string; secondary: string } {
+  return {
+    primary: formatQuantity(pathLength(points), 'distance', units, precision),
+    secondary:
+      points.length >= 3 ? formatQuantity(polygonArea(points), 'area', units, precision) : '',
+  };
 }
