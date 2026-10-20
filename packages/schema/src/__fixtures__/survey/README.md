@@ -44,18 +44,22 @@ design refs (`{ kind: 'design', design, layer }`) name `<design>/<layer>`, and `
 Volume per survey date and the spread across bases (volumetric parity W3, W4): the Python core's
 `compare_series` and `base_spread` (`python/tests/test_survey_series.py`) and the TypeScript
 `compareSeries` and `baseSpread` (`packages/survey/src/engine/series.parity.test.ts`). Written by
-`series_cases()` in the same generator. `{ series: [...], spread: [...] }`; every case has `id`,
+`series_cases()` in the same generator. `{ series: [...], spread: [...], formula: [...] }`; every
+series and spread case has `id`,
 `note`, `ring`, `item` and `site` as in `cases.json`, and `dates`: the survey dates in order, each
 `{ capture, surface }` (`surface` an id in `surfaces.json`, or `null` for a date with no prepared
 surface). Viewed on a capture, `current` is that date's surface and `previous` the surface of the
 date before it that has one, with the messages of `ProjectSurfaces` when there is none.
 
-- **`series`**: the item run once per date, with that date as `current`; `expected` is the list of
-  results in date order, each without `engine` and `computedAt`.
+- **`series`**: the item (always with a `current` side) run once per date, with that date as
+  `current`; `expected` is the list of results in date order, each without `engine` and
+  `computedAt`, each carrying its date as `toCapture` or `fromCapture`.
 - **`spread`**: `at` is the capture viewed on; `expected` is `{ pct, nets: [{ base, netM3 }] }` (the
   item's `from` replaced by each base of `SPREAD_BASES`; `pct = (max - min) / 2 / mean` of the
   ok or partial total volumes, in percent) or `null` (`from` not a base, fewer than two results, or
-  a mean below 1e-6 m³).
+  a mean below 1e-6 m³). The spread is over the total volume, not net, because net can cross zero.
+- **`formula`**: the spread formula on `totals` alone (`spreadPct` / `spread_pct`), `expected` the
+  percentage or `null`. It holds the one-total case, which no surface can produce with these bases.
 
 ## `tiles/cone/`
 

@@ -4,7 +4,8 @@
 ``current`` and, as ``previous``, the capture with a prepared surface before it (the resolver's
 rules, ``ProjectSurfaces(project, capture)``). A fixed side (a survey with a capture, a design, a
 base) stays fixed. The ``current`` side's capture is always the date, also when the date is refused
-before its surface is resolved. Results come back in the order of the captures.
+before its surface is resolved. Results come back in the order of the captures. Only items with a
+``current`` side are run as a series (``series_applies``).
 
 **Spread across bases** (``base_spread``): for an item whose ``from`` is a base, the item run with each
 of ``SPREAD_BASES`` in its place; over the ok or partial results,
@@ -33,12 +34,11 @@ SPREAD_BASES: tuple[dict[str, Any], ...] = (
 #: A mean total below a cubic centimetre counts as 0 (a base on flat ground leaves float noise).
 MEAN_ZERO_M3 = 1e-6
 
-DATE_KINDS = ("current", "previous")
-
 
 def series_applies(item: dict[str, Any]) -> bool:
-    """True when either side follows the date (``current`` or ``previous``)."""
-    return item["from"].get("kind") in DATE_KINDS or item["to"].get("kind") in DATE_KINDS
+    """True when one side is ``current``: only then does every row carry its viewing date (an item
+    whose only date side is ``previous`` is not run as a series)."""
+    return item["from"].get("kind") == "current" or item["to"].get("kind") == "current"
 
 
 def compare_series(
@@ -76,6 +76,21 @@ def base_key(spec: dict[str, Any]) -> str:
     return str(spec["mode"] if spec["kind"] == "reference" else spec["kind"])
 
 
+def spread_pct(totals: Sequence[float]) -> float | None:
+    """``(max - min) / 2 / mean`` of ``totals`` in percent; ``None`` for fewer than 2 totals or a mean
+    below ``MEAN_ZERO_M3``. Over the total volume (fill + cut), not net, on purpose: net can cross zero.
+    """
+    if len(totals) < 2:
+        return None
+    total = 0.0
+    for t in totals:
+        total += t
+    mean = total / len(totals)
+    if mean < MEAN_ZERO_M3:
+        return None
+    return (max(totals) - min(totals)) / 2 / mean * 100
+
+
 def base_spread(
     ring: Sequence[Sequence[float]],
     item: dict[str, Any],
@@ -103,12 +118,6 @@ def base_spread(
         if r["status"] in ("ok", "partial"):
             totals.append(float(r["totalM3"]))
             nets.append({"base": base_key(spec), "netM3": float(r["netM3"])})
-    if len(totals) < 2:
-        return None
-    total = 0.0
-    for t in totals:
-        total += t
-    mean = total / len(totals)
-    if mean < MEAN_ZERO_M3:
-        return None
-    return {"pct": (max(totals) - min(totals)) / 2 / mean * 100, "nets": nets}
+    # the spread is over totalM3, not net, on purpose: net can cross zero
+    pct = spread_pct(totals)
+    return None if pct is None else {"pct": pct, "nets": nets}

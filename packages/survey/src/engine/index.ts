@@ -80,6 +80,7 @@ export {
   MEAN_ZERO_M3,
   seriesApplies,
   SPREAD_BASES,
+  spreadPct,
   type BaseSpread,
   type Ring,
 } from './series';

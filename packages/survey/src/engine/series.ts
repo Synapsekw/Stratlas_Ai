@@ -7,7 +7,7 @@
  *   and, as `previous`, the capture with a prepared surface before it (`projectResolver` viewed on
  *   that capture). A fixed side (a survey with a capture, a design, a base) stays fixed. The
  *   `current` side's capture is always the date, also when the date is refused before its surface
- *   is resolved.
+ *   is resolved. Only items with a `current` side are run as a series (`seriesApplies`).
  * - **Spread across bases** (`baseSpread`): an item whose `from` is a base, run with each of
  *   `SPREAD_BASES` in its place; over the ok or partial results,
  *   `pct = (max(totalM3) - min(totalM3)) / 2 / mean(totalM3) * 100`. The card shows it as
@@ -30,11 +30,12 @@ export const SPREAD_BASES: readonly BaseSpec[] = [
 /** A mean total below a cubic centimetre counts as 0 (a base on flat ground leaves float noise). */
 export const MEAN_ZERO_M3 = 1e-6;
 
-const DATE_KINDS: readonly string[] = ['current', 'previous'];
-
-/** True when either side follows the date (`current` or `previous`). */
+/**
+ * True when one side is `current`: only then does every row carry its viewing date (an item whose
+ * only date side is `previous` is not run as a series).
+ */
 export function seriesApplies(item: ComparisonItem): boolean {
-  return DATE_KINDS.includes(item.from.kind) || DATE_KINDS.includes(item.to.kind);
+  return item.from.kind === 'current' || item.to.kind === 'current';
 }
 
 /**
@@ -71,6 +72,19 @@ export interface BaseSpread {
 /** A base's short name in a spread: its kind, or a reference base's mode. */
 const baseKey = (b: BaseSpec): string => (b.kind === 'reference' ? b.mode : b.kind);
 
+/**
+ * `(max - min) / 2 / mean` of `totals` in percent; null for fewer than 2 totals or a mean below
+ * `MEAN_ZERO_M3`. Taken over the total volume (fill + cut), not net, on purpose: net can cross zero.
+ */
+export function spreadPct(totals: readonly number[]): number | null {
+  if (totals.length < 2) return null;
+  let total = 0;
+  for (const t of totals) total += t;
+  const mean = total / totals.length;
+  if (mean < MEAN_ZERO_M3) return null;
+  return ((Math.max(...totals) - Math.min(...totals)) / 2 / mean) * 100;
+}
+
 /** null when the item's `from` is not a base, or fewer than 2 bases give an ok or partial result, or the mean is 0. */
 export async function baseSpread(
   ring: Ring,
@@ -89,10 +103,7 @@ export async function baseSpread(
       nets.push({ base: baseKey(b), netM3: r.netM3 });
     }
   }
-  if (totals.length < 2) return null;
-  let total = 0;
-  for (const t of totals) total += t;
-  const mean = total / totals.length;
-  if (mean < MEAN_ZERO_M3) return null;
-  return { pct: ((Math.max(...totals) - Math.min(...totals)) / 2 / mean) * 100, nets };
+  // the spread is over totalM3, not net, on purpose: net can cross zero
+  const pct = spreadPct(totals);
+  return pct === null ? null : { pct, nets };
 }

@@ -1146,105 +1146,6 @@
           "toCapture": "c3"
         }
       ]
-    },
-    {
-      "id": "previous-to-design",
-      "note": "Only a previous side: the first date has none",
-      "ring": [
-        [302015.5, 2574010.0],
-        [302015.3125920446, 2574011.423504748],
-        [302014.76313972083, 2574012.75],
-        [302013.8890872965, 2574013.8890872966],
-        [302012.75, 2574014.763139721],
-        [302011.4235047481, 2574015.3125920445],
-        [302010.0, 2574015.5],
-        [302008.5764952519, 2574015.3125920445],
-        [302007.25, 2574014.763139721],
-        [302006.1109127035, 2574013.8890872966],
-        [302005.23686027917, 2574012.75],
-        [302004.6874079554, 2574011.423504748],
-        [302004.5, 2574010.0],
-        [302004.6874079554, 2574008.576495252],
-        [302005.23686027917, 2574007.25],
-        [302006.1109127035, 2574006.1109127034],
-        [302007.25, 2574005.236860279],
-        [302008.5764952519, 2574004.6874079555],
-        [302010.0, 2574004.5],
-        [302011.4235047481, 2574004.6874079555],
-        [302012.75, 2574005.236860279],
-        [302013.8890872965, 2574006.1109127034],
-        [302014.76313972083, 2574007.25],
-        [302015.3125920446, 2574008.576495252]
-      ],
-      "item": {
-        "id": "a",
-        "from": {
-          "kind": "previous"
-        },
-        "to": {
-          "kind": "design",
-          "design": "pad",
-          "layer": "top"
-        },
-        "useDeadband": false
-      },
-      "site": {
-        "verticalDatum": {
-          "kind": "project"
-        }
-      },
-      "dates": [
-        {
-          "capture": "c1",
-          "surface": "cone"
-        },
-        {
-          "capture": "c2",
-          "surface": "mound"
-        }
-      ],
-      "expected": [
-        {
-          "item": "a",
-          "status": "refused",
-          "cutM3": 0.0,
-          "fillM3": 0.0,
-          "netM3": 0.0,
-          "totalM3": 0.0,
-          "areaM2": 0.0,
-          "areaCutM2": 0.0,
-          "areaFillM2": 0.0,
-          "areaUnchangedM2": 0.0,
-          "uncoveredM2": 0.0,
-          "fromLabel": "Previous survey",
-          "toLabel": "Design pad, top",
-          "deadbandM": 0.0,
-          "usedDeadband": false,
-          "cellM": 0.0,
-          "fingerprint": "sha256:1abb133565a5258fa62d748dcf3b8f1967df8181ca289cd59cf5d471757739e0",
-          "reason": "There is no previous survey with a prepared surface."
-        },
-        {
-          "item": "a",
-          "status": "ok",
-          "cutM3": 37.41415385013431,
-          "fillM3": 3.445899879238491,
-          "netM3": -33.96825397089582,
-          "totalM3": 40.8600537293728,
-          "areaM2": 93.95131337243043,
-          "areaCutM2": 77.36319353831615,
-          "areaFillM2": 16.588119834114273,
-          "areaUnchangedM2": 0.0,
-          "uncoveredM2": 0.0,
-          "fromLabel": "Previous survey (Cone survey)",
-          "toLabel": "Pad design, Finished level",
-          "deadbandM": 0.0,
-          "usedDeadband": false,
-          "cellM": 0.5,
-          "fingerprint": "sha256:33986888330500c1764454e42610243bcb3fbf89db8d4f3dd009482bc2245ef6",
-          "fromCapture": "c1"
-        }
-      ]
     }
   ],
   "spread": [
@@ -1745,6 +1646,38 @@
           }
         ]
       }
+    }
+  ],
+  "formula": [
+    {
+      "id": "one-total",
+      "note": "One ok base: no spread",
+      "totals": [120.0],
+      "expected": null
+    },
+    {
+      "id": "no-totals",
+      "note": "No ok base: no spread",
+      "totals": [],
+      "expected": null
+    },
+    {
+      "id": "hand",
+      "note": "(300 - 100) / 2 / 200 = 50 %",
+      "totals": [100.0, 200.0, 300.0],
+      "expected": 50.0
+    },
+    {
+      "id": "equal",
+      "note": "Bases agree: 0 %",
+      "totals": [80.0, 80.0],
+      "expected": 0.0
+    },
+    {
+      "id": "zero-mean",
+      "note": "A mean below 1e-6 m3 counts as 0",
+      "totals": [0.0, 1e-7],
+      "expected": null
     }
   ]
 }

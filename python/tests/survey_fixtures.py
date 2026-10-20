@@ -27,7 +27,7 @@ from aio_pipelines.runtime import JobError  # noqa: E402
 from aio_pipelines.similarity import Similarity  # noqa: E402
 from aio_pipelines.survey.compare import Resolved, compare_item  # noqa: E402
 from aio_pipelines.survey.grid import TILE, ArraySurface, encode_tile  # noqa: E402
-from aio_pipelines.survey.series import base_spread, compare_series  # noqa: E402
+from aio_pipelines.survey.series import base_spread, compare_series, spread_pct  # noqa: E402
 
 #: A fictional desert site, UTM 31N (the demo's).
 E0, N0 = 302000.0, 2574000.0
@@ -579,13 +579,6 @@ def series_cases() -> dict[str, list[dict[str, Any]]]:
         dates(("c1", "pit"), ("c2", "cone"), ("c3", "mound")),
         "A survey pinned to its capture stays fixed",
     )
-    add(
-        "previous-to-design",
-        circle(10, 10, 5.5),
-        item("a", prev, pad),
-        dates(("c1", "cone"), ("c2", "mound")),
-        "Only a previous side: the first date has none",
-    )
 
     def add_spread(cid, ring, it, note, ds=None, at="c1"):
         spread.append(
@@ -640,7 +633,16 @@ def series_cases() -> dict[str, list[dict[str, Any]]]:
         item("a", smart, pad, cellM=0.5),
         "Bases on a design: the exact path",
     )
-    return {"series": series, "spread": spread}
+    # the spread formula on totals alone: with SPREAD_BASES a single ok base cannot happen on a
+    # surface (the two perimeter levels need the same samples and coverage), so it is pinned here
+    formula = [
+        {"id": "one-total", "note": "One ok base: no spread", "totals": [120.0]},
+        {"id": "no-totals", "note": "No ok base: no spread", "totals": []},
+        {"id": "hand", "note": "(300 - 100) / 2 / 200 = 50 %", "totals": [100.0, 200.0, 300.0]},
+        {"id": "equal", "note": "Bases agree: 0 %", "totals": [80.0, 80.0]},
+        {"id": "zero-mean", "note": "A mean below 1e-6 m3 counts as 0", "totals": [0.0, 1e-7]},
+    ]
+    return {"series": series, "spread": spread, "formula": formula}
 
 
 def run_series(surfs: dict[str, Any], doc: dict[str, list[dict[str, Any]]]) -> None:
@@ -666,6 +668,8 @@ def run_series(surfs: dict[str, Any], doc: dict[str, list[dict[str, Any]]]) -> N
             case.get("site"),
             now=NOW,
         )
+    for case in doc["formula"]:
+        case["expected"] = spread_pct(case["totals"])
 
 
 def prepared_tiles(spec: dict[str, Any]) -> tuple[dict[str, Any], dict[str, bytes]]:

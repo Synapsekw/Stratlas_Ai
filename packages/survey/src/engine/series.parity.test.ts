@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { Resolve, ResolvedSurface, SiteContext } from './compare';
-import { baseSpread, compareSeries, type BaseSpread } from './series';
+import { baseSpread, compareSeries, seriesApplies, spreadPct, type BaseSpread } from './series';
 import { ArraySurface } from './tiles';
 
 const FIXTURES = join(
@@ -83,9 +83,20 @@ const surfaces = JSON.parse(readFileSync(join(FIXTURES, 'surfaces.json'), 'utf8'
   string,
   FixtureSurface
 >;
-const { series, spread } = JSON.parse(readFileSync(join(FIXTURES, 'series.json'), 'utf8')) as {
+/** The spread formula on totals alone (a single ok base cannot happen on a surface). */
+interface FormulaCase {
+  id: string;
+  note: string;
+  totals: number[];
+  expected: number | null;
+}
+
+const { series, spread, formula } = JSON.parse(
+  readFileSync(join(FIXTURES, 'series.json'), 'utf8'),
+) as {
   series: SeriesCase[];
   spread: SpreadCase[];
+  formula: FormulaCase[];
 };
 
 function fixtureSurface(s: FixtureSurface, capture?: string): ResolvedSurface {
@@ -192,11 +203,14 @@ describe('volume per survey date against the Python core (series.json)', () => {
       c.dates.map((d) => d.capture),
       { ...(c.site ? { site: c.site } : {}), now },
     );
+    expect(seriesApplies(c.item)).toBe(true);
     expect(rs).toHaveLength(c.expected.length);
     rs.forEach((r, k) => {
       const e = c.expected[k];
       if (!e) throw new Error(`No expected result for date ${k}`);
       expect(r.engine).toBe('ts');
+      // every row carries its viewing date
+      expect([r.toCapture, r.fromCapture]).toContain(c.dates[k]?.capture);
       expect(Object.fromEntries(TEXT.map((t) => [t, r[t]]))).toEqual(
         Object.fromEntries(TEXT.map((t) => [t, e[t]])),
       );
@@ -205,6 +219,18 @@ describe('volume per survey date against the Python core (series.json)', () => {
         if (!close(r[n], e[n], scale))
           expect.fail(`date ${k} ${n}: TypeScript ${r[n]}, Python ${e[n]}`);
     });
+  });
+});
+
+describe('the spread formula against the Python core (series.json)', () => {
+  it('has the one-total case', () => {
+    expect(formula.find((c) => c.totals.length === 1)?.expected).toBeNull();
+  });
+
+  it.each(formula.map((c) => [c.id, c] as const))('%s', (_id, c) => {
+    const got = spreadPct(c.totals);
+    if (c.expected === null) expect(got).toBeNull();
+    else expect(close(got ?? NaN, c.expected, 100)).toBe(true);
   });
 });
 

@@ -5,7 +5,7 @@
 import type { ComparisonItem, SurfaceRef } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import type { Resolve, ResolvedSurface } from './compare';
-import { baseSpread, compareSeries, seriesApplies, SPREAD_BASES } from './series';
+import { baseSpread, compareSeries, seriesApplies, SPREAD_BASES, spreadPct } from './series';
 import { ArraySurface } from './tiles';
 
 const E0 = 302000;
@@ -138,9 +138,11 @@ describe('compareSeries', () => {
       ),
     ).toBe(false);
     expect(seriesApplies(item({ kind: 'smart' }, { kind: 'current' }))).toBe(true);
+    expect(seriesApplies(item({ kind: 'previous' }, { kind: 'current' }))).toBe(true);
+    // a previous side alone: its rows would not carry the viewing date
     expect(
       seriesApplies(item({ kind: 'previous' }, { kind: 'design', design: 'd', layer: 'l' })),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 
@@ -168,6 +170,36 @@ describe('baseSpread', () => {
     // a cone on flat ground: every base is the floor, so the bases agree
     expect(s?.pct).toBeGreaterThanOrEqual(0);
     expect(s?.pct).toBeLessThan(0.5);
+  });
+
+  it('gives the hand-computed spread on a tilted plane', async () => {
+    // z = 100 + 0.1 x over the square 5..25 m: smart and the best-fit plane are the ground (0 m³),
+    // the mean perimeter level (z at x = 15) gives 100 m³ fill + 100 m³ cut = 200 m³, the lowest
+    // perimeter point (x = 5) gives 0.1 * 20 * 20² / 2 = 400 m³ fill. Mean 150 m³, so
+    // (400 - 0) / 2 / 150 = 133.33 %.
+    const plane = gridOf((x) => 100 + 0.1 * x, 'Plane');
+    const at: Resolve = (ref) =>
+      ref.kind === 'current' ? Promise.resolve(plane) : Promise.reject(new Error('no'));
+    const square: [number, number][] = [
+      [E0 + 5, N0 + 5],
+      [E0 + 25, N0 + 5],
+      [E0 + 25, N0 + 25],
+      [E0 + 5, N0 + 25],
+    ];
+    const s = await baseSpread(square, item({ kind: 'smart' }, { kind: 'current' }), at, opts);
+    expect(s?.pct).toBeCloseTo(400 / 3, 6);
+    const nets = Object.fromEntries((s?.nets ?? []).map((n) => [n.base, n.netM3]));
+    expect(nets.smart).toBeCloseTo(0, 6);
+    expect(nets['fit-plane']).toBeCloseTo(0, 6);
+    expect(nets['perimeter-mean']).toBeCloseTo(0, 6);
+    expect(nets['perimeter-min']).toBeCloseTo(400, 6);
+  });
+
+  it('spreadPct: one total gives none, and (max - min) / 2 / mean by hand', () => {
+    expect(spreadPct([120])).toBeNull();
+    expect(spreadPct([])).toBeNull();
+    expect(spreadPct([100, 200, 300])).toBe(50);
+    expect(spreadPct([0, 1e-7])).toBeNull();
   });
 
   it('is null when the total is zero', async () => {

@@ -9,7 +9,13 @@ import json
 
 import pytest
 
-from aio_pipelines.survey.series import SPREAD_BASES, base_spread, compare_series, series_applies
+from aio_pipelines.survey.series import (
+    SPREAD_BASES,
+    base_spread,
+    compare_series,
+    series_applies,
+    spread_pct,
+)
 from survey_fixtures import NOW, OUT, at_resolver, series_cases
 
 STORED = json.loads((OUT / "series.json").read_text("utf-8"))
@@ -39,7 +45,7 @@ def _same_result(got: dict, want: dict) -> None:
 
 def test_the_stored_cases_are_what_the_generator_makes():
     fresh = json.loads(json.dumps(series_cases()))
-    for kind in ("series", "spread"):
+    for kind in ("series", "spread", "formula"):
         assert [c["id"] for c in fresh[kind]] == [c["id"] for c in STORED[kind]]
         for a, b in zip(fresh[kind], STORED[kind], strict=True):
             assert {k: v for k, v in b.items() if k != "expected"} == a
@@ -56,6 +62,28 @@ def test_there_are_enough_cases_of_each_kind():
     assert any("design" in (c["item"]["from"]["kind"], c["item"]["to"]["kind"]) for c in series)
     spreads = [c["expected"] for c in STORED["spread"]]
     assert any(s is None for s in spreads) and any(s is not None and s["pct"] > 0 for s in spreads)
+
+
+@pytest.mark.parametrize("case", STORED["series"], ids=[c["id"] for c in STORED["series"]])
+def test_every_row_carries_its_viewing_date(case):
+    assert series_applies(case["item"])
+    for d, r in zip(case["dates"], case["expected"], strict=True):
+        assert d["capture"] in (r.get("toCapture"), r.get("fromCapture"))
+
+
+@pytest.mark.parametrize("case", STORED["formula"], ids=[c["id"] for c in STORED["formula"]])
+def test_spread_pct_reproduces_each_formula_case(case):
+    got = spread_pct(case["totals"])
+    if case["expected"] is None:
+        assert got is None
+    else:
+        assert got == pytest.approx(case["expected"], rel=1e-12)
+
+
+def test_spread_pct_by_hand():
+    assert spread_pct([120.0]) is None
+    assert spread_pct([100.0, 200.0, 300.0]) == 50.0
+    assert spread_pct([0.0, 1e-7]) is None
 
 
 @pytest.mark.parametrize("case", STORED["series"], ids=[c["id"] for c in STORED["series"]])
@@ -107,11 +135,13 @@ def test_each_date_is_the_current_side_and_previous_follows_it():
     assert [r.get("fromCapture") for r in got[1:]] == caps[:-1]
 
 
-def test_series_applies_only_to_items_with_a_date_side():
+def test_series_applies_only_to_items_with_a_current_side():
     sv = {"kind": "survey", "surface": "a", "capture": "c1"}
     design = {"kind": "design", "design": "d", "layer": "l"}
     assert series_applies({"from": {"kind": "smart"}, "to": {"kind": "current"}})
-    assert series_applies({"from": {"kind": "previous"}, "to": design})
+    assert series_applies({"from": {"kind": "previous"}, "to": {"kind": "current"}})
+    # a previous side alone: its rows would not carry the viewing date
+    assert not series_applies({"from": {"kind": "previous"}, "to": design})
     assert not series_applies({"from": sv, "to": design})
 
 
