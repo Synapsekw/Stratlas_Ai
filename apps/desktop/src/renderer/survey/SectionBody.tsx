@@ -24,7 +24,6 @@ import { ExportFormatDialog, type ExportChoice } from '../charts/ExportFormatDia
 import { addToReport } from '../report/templateStore';
 import { useShell } from '../shell';
 import { measureEditBlocked } from '../shell/actions/measureActions';
-import { exportMeasurement } from './card/exportMeasurement';
 import { useDesigns } from './designsStore';
 import { fileBase } from './exportHelpers';
 import { useMeasure } from './measureStore';
@@ -77,11 +76,9 @@ export function pinGradeText(
   ].join(' · ');
 }
 
-const DXF_CHOICES: ExportChoice<SectionFormat>[] = DXF_FORMATS.map((format) => ({
-  format,
-  label: FORMAT_LABELS[format],
-  group: 'DXF',
-}));
+/** The DXF variants for the export dialog, named in the current language. */
+const dxfChoices = (): ExportChoice<SectionFormat>[] =>
+  DXF_FORMATS.map((format) => ({ format, label: t(FORMAT_LABELS[format]), group: 'DXF' }));
 
 /** A short line sample in a series' stroke, the chips' legend look, for the pin tables. */
 function LineKey({ series, all }: { series: ChartSeries; all: readonly ChartSeries[] }) {
@@ -169,16 +166,18 @@ export function SectionBody({ big = false }: { big?: boolean }) {
         ) || undefined
       : t('report.noProject');
 
-  /** The chart as a PNG: a measurement's through the registry's export, a station's here. */
+  /**
+   * The chart this toolbar sits under as a PNG: this body's own chart, never a lookup by
+   * measurement id, which could find another card or the other body (the dock and the window).
+   */
   const savePicture = async () => {
     try {
-      let path: string | null;
-      if (measureId) path = await exportMeasurement(measureId, 'png');
-      else {
-        const svg = root.current?.querySelector<SVGSVGElement>('svg.pc-svg');
-        if (!svg) throw new Error(t('chart.exportFailed'));
-        path = await savePng(await chartPng(svg), `${fileBase(source?.label ?? 'section')}.png`);
-      }
+      const svg = root.current?.querySelector<SVGSVGElement>('svg.pc-svg');
+      if (!svg) throw new Error(t('chart.exportFailed'));
+      const path = await savePng(
+        await chartPng(svg),
+        `${fileBase(source?.label ?? 'section')}.png`,
+      );
       noteExport('png', path ? t('section.saved', { path }) : null);
     } catch (e) {
       noteExport('png', message(e));
@@ -406,7 +405,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
         createPortal(
           <ExportFormatDialog
             title={tr('section.exportTitle')}
-            choices={DXF_CHOICES}
+            choices={dxfChoices()}
             initial="dxf-2d-xz"
             onExport={(f) => {
               setDxfOpen(false);

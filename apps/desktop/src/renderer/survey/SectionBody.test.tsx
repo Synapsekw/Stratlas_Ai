@@ -17,7 +17,18 @@ vi.mock('../shell', () => ({
   useShell: <T,>(pick: (s: { pkg: null }) => T) => pick({ pkg: null }),
 }));
 vi.mock('../shell/actions/measureActions', () => ({ measureEditBlocked: () => false }));
-vi.mock('./card/exportMeasurement', () => ({ exportMeasurement: vi.fn() }));
+const pngMock = vi.hoisted(() => ({
+  chartPng: vi.fn<(svg: SVGSVGElement) => Promise<Uint8Array>>(() =>
+    Promise.resolve(new Uint8Array([1])),
+  ),
+  savePng: vi.fn<(bytes: Uint8Array, name: string) => Promise<string | null>>(() =>
+    Promise.resolve('C:/out/x.png'),
+  ),
+}));
+vi.mock('../charts/exportChart', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  ...pngMock,
+}));
 const report = vi.hoisted(() => ({ addToReport: vi.fn(() => Promise.resolve('added')) }));
 vi.mock('../report/templateStore', () => report);
 
@@ -181,5 +192,28 @@ describe('the section body on the profile chart', () => {
     } finally {
       measureStore.setState({ settings });
     }
+  });
+
+  it('PNG saves the chart the toolbar sits under, with dock and window both open', async () => {
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <>
+          <SectionBody />
+          <SectionBody big />
+        </>,
+      ),
+    );
+    const window = host.querySelector('[data-testid="section-window-chart"]');
+    const png = window?.querySelector<HTMLButtonElement>('[data-testid="section-png"]');
+    await act(async () => {
+      png?.click();
+      await Promise.resolve();
+    });
+    const drawn = window?.querySelector('svg.pc-svg');
+    expect(drawn).not.toBeNull();
+    expect(pngMock.chartPng).toHaveBeenCalledTimes(1);
+    expect(pngMock.chartPng.mock.calls[0]?.[0]).toBe(drawn);
+    expect(pngMock.savePng.mock.calls[0]?.[1]).toBe('Section-1.png');
   });
 });

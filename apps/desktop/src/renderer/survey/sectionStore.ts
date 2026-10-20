@@ -71,14 +71,14 @@ export type SectionSource =
 /** The DXF variants `survey.section` writes (PNG and CSV are made in the app). */
 export type SectionFormat = 'dxf-2d-xy' | 'dxf-2d-xz' | 'dxf-2d-yz' | 'dxf-3d-zup' | 'dxf-3d-yup';
 
-/** The DXF variants, named for the export dialog. */
-export const FORMAT_LABELS: Record<SectionFormat, string> = {
-  'dxf-2d-xz': 'DXF 2D (XZ plane)',
-  'dxf-2d-xy': 'DXF 2D (XY plane)',
-  'dxf-2d-yz': 'DXF 2D (YZ plane)',
-  'dxf-3d-zup': 'DXF 3D (Z up)',
-  'dxf-3d-yup': 'DXF 3D (Y up)',
-};
+/** The DXF variants' names (i18n keys), for the export dialog and the save title. */
+export const FORMAT_LABELS = {
+  'dxf-2d-xz': 'section.format.dxf2dXz',
+  'dxf-2d-xy': 'section.format.dxf2dXy',
+  'dxf-2d-yz': 'section.format.dxf2dYz',
+  'dxf-3d-zup': 'section.format.dxf3dZup',
+  'dxf-3d-yup': 'section.format.dxf3dYup',
+} as const satisfies Record<SectionFormat, string>;
 
 /** The DXF variants in the export dialog's order. */
 export const DXF_FORMATS = Object.keys(FORMAT_LABELS) as readonly SectionFormat[];
@@ -649,8 +649,8 @@ export async function exportSectionCsv(
 export async function exportSection(format: SectionFormat): Promise<string | null> {
   const s = get();
   const project = workspace.getState().project;
-  if (!project) return 'No project is open.';
-  if (!s.line) return 'Draw a section first.';
+  if (!project) return t('report.noProject');
+  if (!s.line) return t('section.drawFirst');
   const refs = visibleRefs(s);
   const fail = (error: string) => {
     noteExport(format, error);
@@ -659,7 +659,7 @@ export async function exportSection(format: SectionFormat): Promise<string | nul
   if (!refs.length) return fail(t('section.showOne'));
   const chosen = await bridge.call('dialog:savePath', {
     defaultName: fileName('dxf', `-${format}`),
-    title: `Save the cross-section (${FORMAT_LABELS[format]})`,
+    title: t('section.saveTitle', { format: t(FORMAT_LABELS[format]) }),
     filters: [{ name: t('chart.dxf'), extensions: ['dxf'] }],
   });
   if (!chosen.ok) return fail(chosen.error);
@@ -669,7 +669,7 @@ export async function exportSection(format: SectionFormat): Promise<string | nul
     noteExport(format, null);
     return null;
   }
-  set({ exporting: { format, busy: true, note: 'Writing the section…' } });
+  set({ exporting: { format, busy: true, note: t('section.writing') } });
   const r = await bridge.call('jobs:start', {
     pipeline: 'survey.section',
     project: project.root,
