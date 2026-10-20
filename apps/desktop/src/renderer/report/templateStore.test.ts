@@ -2,10 +2,11 @@
 import {
   emptyMeasurements,
   emptyReportTemplate,
+  ReportTemplateFile,
   type ProjectManifest,
-  type ReportTemplateFile,
   type SitePoint,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -35,7 +36,7 @@ vi.mock('../shell', () => ({
   },
 }));
 
-const { addToReport, addManyToReport, templateStore, loadTemplate } =
+const { addToReport, addManyToReport, templateStore, loadTemplate, TEMPLATE_MAX } =
   await import('./templateStore');
 const { measureStore } = await import('../survey/measureStore');
 
@@ -112,6 +113,36 @@ describe('report template store', () => {
     disk.readError = 'report/template.json was saved by a newer version.';
     await expect(addToReport('line')).rejects.toThrow(/newer version/);
     expect(disk.writes).toBe(0);
+  });
+
+  it('says the report is full instead of a schema error, and writes nothing', async () => {
+    const at = '2026-10-20T10:00:00.000Z';
+    disk.file = {
+      ...emptyReportTemplate(),
+      entries: Array.from({ length: TEMPLATE_MAX }, (_, i) => ({
+        kind: 'measurement' as const,
+        id: `x${String(i)}`,
+        parts: ['value' as const],
+        addedAt: at,
+      })),
+    };
+    // the limit is the file's own
+    expect(ReportTemplateFile.safeParse(disk.file).success).toBe(true);
+    expect(
+      ReportTemplateFile.safeParse({
+        ...disk.file,
+        entries: [...disk.file.entries, disk.file.entries[0]],
+      }).success,
+    ).toBe(false);
+    await expect(addToReport('line')).rejects.toThrow(t('report.full', { count: TEMPLATE_MAX }));
+    expect(disk.writes).toBe(0);
+    // one there already is still "already", full or not
+    expect(await addToReport('x0')).toBe('already');
+  });
+
+  it('says no project is open, in the app language', async () => {
+    workspace.getState().closeProject();
+    await expect(addToReport('line')).rejects.toThrow(t('report.noProject'));
   });
 
   it('loads the open project template', async () => {

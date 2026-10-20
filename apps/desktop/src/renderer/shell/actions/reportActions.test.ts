@@ -128,6 +128,13 @@ describe('report and export actions', () => {
     const subs = (id: string) => item('measure.export', target([id]))?.sub.map((s) => s.id) ?? [];
     expect(subs('line')).toEqual(['csv', 'dxf', 'png']);
     expect(subs('pad')).toEqual(['csv', 'dxf']);
+    // PNG greyed until the measurement's card shows its chart
+    const pngItem = () => item('measure.export', target(['line']))?.sub.find((s) => s.id === 'png');
+    expect(pngItem()?.disabled).toBe(t('mcard.chartNotShown'));
+    document.body.innerHTML =
+      '<section data-measure-id="line"><svg class="pc-svg"></svg></section>';
+    expect(pngItem()?.disabled).toBe(false);
+    document.body.innerHTML = '';
     item('measure.export', target(['pad']))?.run('csv');
     await settle();
     expect(exporter.exportMeasurement).toHaveBeenCalledWith('pad', 'csv');

@@ -12,14 +12,13 @@ import {
 import { workspace } from '@aio/workspace';
 import { addManyToReport } from '../../report/templateStore';
 import {
-  exportFormats,
+  exportChoices,
   exportMeasurement,
   type MeasurementExportFormat,
 } from '../../survey/card/exportMeasurement';
 import { buildMeasureItems } from '../../survey/measureRows';
 import { measureStore } from '../../survey/measureStore';
 import { measureEditBlocked } from './measureActions';
-import { inPackage } from './reasons';
 
 /*
  * The measurement actions that send a measurement out (volumetric parity W2, W8): Add to report
@@ -81,13 +80,13 @@ const actions: readonly Action[] = [
     section: 'file',
     targets: ['measurements'],
     present: 'submenu',
+    // DXF greyed in a package, PNG until the measurement's chart is on screen
     submenu: (tg, ctx): SubItem[] =>
-      exportFormats(tg.clicked).map((f) => ({
-        id: f,
-        label: t(FORMAT_LABEL[f]),
-        testId: `measure-export-${f}`,
-        // the DXF is written by a pipeline job in the project folder, which a package lacks
-        ...(f === 'dxf' ? { disabled: inPackage(ctx) } : {}),
+      exportChoices(tg.clicked, { pkg: ctx.pkg }).map((c) => ({
+        id: c.format,
+        label: t(FORMAT_LABEL[c.format]),
+        testId: `measure-export-${c.format}`,
+        disabled: c.disabled,
       })),
     run: async (tg, ctx, sub) => {
       if (!isFormat(sub)) return;

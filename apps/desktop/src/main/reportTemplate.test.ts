@@ -2,8 +2,25 @@ import { emptyReportTemplate, REPORT_TEMPLATE_FILE, type ReportTemplateFile } fr
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { writeFileSync } from 'node:fs';
+import type * as NewerModule from './newer';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPackageTemplate, readTemplate, writeTemplate } from './reportTemplate';
+
+/** Run once while the write checks what is on disk: someone saving the file at that moment. */
+const during = vi.hoisted(() => ({ check: null as null | (() => void) }));
+vi.mock('./newer', async (orig) => {
+  const real = await orig<typeof NewerModule>();
+  return {
+    ...real,
+    newerThanThisBuild: (raw: unknown, family: string, what: string) => {
+      const hook = during.check;
+      during.check = null;
+      hook?.();
+      return real.newerThanThisBuild(raw, family, what);
+    },
+  };
+});
 
 let root = '';
 beforeEach(async () => {
@@ -69,6 +86,18 @@ describe('report template store', () => {
     await writeFile(join(root, REPORT_TEMPLATE_FILE), theirs);
     await expect(writeTemplate(root, withEntries('a', 'b'))).rejects.toThrow();
     expect(await onDisk()).toBe(theirs);
+  });
+
+  it('refuses a newer template saved between its check and the write', async () => {
+    // a template this app never read: the check itself is what the write compares with
+    await mkdir(join(root, 'report'));
+    await writeFile(join(root, REPORT_TEMPLATE_FILE), JSON.stringify(withEntries('a')));
+    const newer = JSON.stringify({ schema: 'aio.report-template/2', entries: [], more: 1 });
+    during.check = () => {
+      writeFileSync(join(root, REPORT_TEMPLATE_FILE), newer);
+    };
+    await expect(writeTemplate(root, withEntries('a', 'b'))).rejects.toThrow();
+    expect(await onDisk()).toBe(newer);
   });
 
   it('reads a package template in place', async () => {

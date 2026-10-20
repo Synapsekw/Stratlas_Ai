@@ -14,7 +14,7 @@ import {
 } from '@aio/schema';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isChangedOnDisk, readJson, readJsonSeen, writeJsonSeen } from './fsutil';
+import { isChangedOnDisk, readJson, readJsonSeen, seenFiles, writeJsonSeen } from './fsutil';
 import { newerThanThisBuild } from './newer';
 
 const FAMILY = 'aio.report-template';
@@ -79,11 +79,13 @@ export async function readPackageTemplate(archive: {
  */
 export async function writeTemplate(root: string, file: Template): Promise<void> {
   const path = join(root, REPORT_TEMPLATE_FILE);
-  // what is there now must be ours to replace; read without remembering, so the changed-on-disk
-  // check below still compares with what the person saw
+  // what is there now must be ours to replace. A file read here before is checked without
+  // remembering it again: the write below then refuses any change since that read. A file never
+  // read here is remembered as it is checked, so a change between this check and the write (a
+  // newer build saving it, say) is refused the same way: the check and the write see one version.
   let raw: unknown;
   try {
-    raw = await readJson(path);
+    raw = await (seenFiles.has(path) ? readJson(path) : readJsonSeen(path));
   } catch (e) {
     throw new Error(
       `The report template there could not be read (${why(e)}), so it was not replaced.`,

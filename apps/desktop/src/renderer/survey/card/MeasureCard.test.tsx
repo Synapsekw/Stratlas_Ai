@@ -211,3 +211,14 @@ describe('MeasureCard', () => {
     expect(q('card-name')?.textContent).toBe('Haul ramp');
   });
 });
+
+describe('the card names its measurement', () => {
+  it('carries the measurement id its chart is exported by, and none while drawing', () => {
+    expect(
+      renderToStaticMarkup(<MeasureCard model={MODEL} variant="detail" measureId="m1" />),
+    ).toContain('data-measure-id="m1"');
+    expect(renderToStaticMarkup(<MeasureCard model={MODEL} variant="live" />)).not.toContain(
+      'data-measure-id',
+    );
+  });
+});

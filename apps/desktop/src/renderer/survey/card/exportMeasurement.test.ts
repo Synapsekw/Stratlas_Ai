@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { emptyMeasurements, type ProjectManifest, type SitePoint } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,8 +26,8 @@ const png = vi.hoisted(() => ({
 }));
 vi.mock('../../charts/exportChart', () => png);
 
-const { exportMeasurement, measurementHasChart, exportFormats } =
-  await import('./exportMeasurement');
+const { exportMeasurement, exportChoices, chartOf } = await import('./exportMeasurement');
+const { measurementHasChart } = await import('./chartRule');
 const { measureStore } = await import('../measureStore');
 
 const manifest = {
@@ -113,20 +114,43 @@ describe('export one measurement', () => {
     expect(measurementHasChart(m('a', 'elevation'))).toBe(true);
     expect(measurementHasChart(m('a', 'area'))).toBe(false);
     expect(measurementHasChart(m('a', 'azimuth'))).toBe(false);
-    expect(exportFormats('line')).toEqual(['csv', 'dxf', 'png']);
-    expect(exportFormats('pad')).toEqual(['csv', 'dxf']);
+    const formats = (id: string) => exportChoices(id, { pkg: false }).map((c) => c.format);
+    expect(formats('line')).toEqual(['csv', 'dxf', 'png']);
+    expect(formats('pad')).toEqual(['csv', 'dxf']);
     await expect(exportMeasurement('pad', 'png')).rejects.toThrow();
     expect(png.chartPng).not.toHaveBeenCalled();
-    // the card shown for the measurement draws its chart: that picture is saved
-    document.body.innerHTML =
-      '<section class="mc" data-variant="detail"><div class="pc"><svg class="pc-svg"></svg></div>' +
-      '<div data-testid="card-actions" data-has-chart="true"></div></section>';
+    // the card of that measurement draws its chart: that picture is saved
+    document.body.innerHTML = card('line');
     expect(await exportMeasurement('line', 'png')).toBe('C:/out/Name-line.png');
     expect(png.chartPng).toHaveBeenCalledTimes(1);
   });
 
-  it('png export without the chart on screen says so', async () => {
-    await expect(exportMeasurement('line', 'png')).rejects.toThrow();
+  it('greys PNG until the measurement chart is on screen, and only by its id', async () => {
+    const pngChoice = () => exportChoices('line', { pkg: false }).find((c) => c.format === 'png');
+    expect(pngChoice()?.disabled).toBe(t('mcard.chartNotShown'));
+    await expect(exportMeasurement('line', 'png')).rejects.toThrow(t('mcard.chartNotShown'));
+    // another measurement's card, even the focused one with a chart, is not this one's picture
+    document.body.innerHTML = card('other');
+    expect(chartOf('line')).toBeNull();
+    expect(pngChoice()?.disabled).toBe(t('mcard.chartNotShown'));
+    document.body.innerHTML = card('other') + card('line');
+    expect(chartOf('line')).toBe(document.querySelectorAll('svg.pc-svg')[1]);
+    expect(pngChoice()?.disabled).toBe(false);
     expect(png.savePng).not.toHaveBeenCalled();
   });
+
+  it('greys DXF alone in a package', () => {
+    const c = exportChoices('pad', { pkg: true });
+    expect(c.find((x) => x.format === 'dxf')?.disabled).toBe(t('actions.reason.package'));
+    expect(c.find((x) => x.format === 'csv')?.disabled).toBe(false);
+  });
 });
+
+/** A measurement card as `MeasureCard` draws it, with its chart. */
+function card(id: string): string {
+  return (
+    `<section class="mc" data-variant="detail" data-measure-id="${id}">` +
+    '<div class="pc"><svg class="pc-svg"></svg></div>' +
+    '<div data-testid="card-actions" data-has-chart="true"></div></section>'
+  );
+}

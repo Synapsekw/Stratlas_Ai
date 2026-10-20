@@ -2,10 +2,9 @@
  * The card's controls (volumetric parity W2), the same on every measurement:
  *
  * - `CardMenu`, the "⋯" at the end of the header: exactly the measurement's right-click actions
- *   from the registry (rename, colour, hide, fly to, move, delete), plus Export;
- * - `CardActions`, the row at the foot of the detail card: Notes, Export and Fly to.
- *
- * "Add to report" joins both when the report templates land (Task 22).
+ *   from the registry (rename, colour, hide, fly to, move, add to report, export, delete);
+ * - `CardActions`, the row at the foot of the detail card: Notes, Export and Fly to. Its Export
+ *   lists the registry's export formats, so the row, the menu and the tree behave the same.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import {
@@ -14,28 +13,63 @@ import {
   ContextMenu,
   IconButton,
   makeActionCtx,
-  t,
   useT,
   type ResolvedItem,
 } from '@aio/ui';
-import { useWorkspace } from '@aio/workspace';
+import { useWorkspace, type Workspace } from '@aio/workspace';
 import { useId, useRef, useState, type ReactElement } from 'react';
 import { useShell } from '../../shell';
 import { registerSidebarActions } from '../../shell/actions';
 import { flyToMeasurement } from '../../shell/actions/measureActions';
 import { toastHost } from '../../shell/actions/toastHost';
 import { timeline } from '../../workspace/timeline';
-import { openExportDialog } from '../ExportDialog';
-import { patchMeasurement, select, updateMeasurement, useMeasure } from '../measureStore';
+import { patchMeasurement, updateMeasurement, useMeasure } from '../measureStore';
+import { measurementHasChart } from './chartRule';
 import './card.css';
 
 /** The longest note a measurement keeps (`SurveyMeasurement.description`). */
 export const NOTES_MAX = 4000;
 
-/** Open the survey export with this measurement chosen. */
-function exportOne(id: string): void {
-  select([id], id);
-  openExportDialog(true);
+/** The registry's items for this measurement, as its right-click menu offers them. */
+function measureItems(
+  id: string,
+  label: string,
+  ws: { project: NonNullable<Workspace['project']>; hidden: Workspace['hidden'] },
+  pkg: boolean,
+  lookOnly: boolean,
+): ResolvedItem[] {
+  registerSidebarActions();
+  return actionsFor(
+    { kind: 'measurements', ids: [id], clicked: id },
+    makeActionCtx({
+      manifest: ws.project.manifest,
+      hidden: ws.hidden,
+      focus: timeline.getState().focus,
+      pkg,
+      canEdit: !pkg && !lookOnly,
+      host: toastHost(label),
+    }),
+  );
+}
+
+/** The registry's Export formats as items of their own (the row's Export lists them). */
+function exportItems(items: readonly ResolvedItem[]): ResolvedItem[] {
+  const exp = items.find((i) => i.id === 'measure.export');
+  if (!exp) return [];
+  return exp.sub.map((s) => ({
+    id: `measure.export.${s.id}`,
+    label: s.label,
+    section: 'file',
+    disabled: s.disabled ?? false,
+    shortcut: null,
+    testId: `card-export-${s.id}`,
+    present: 'action',
+    sub: [],
+    subTitle: null,
+    run: () => {
+      exp.run(s.id);
+    },
+  }));
 }
 
 /** Whether the person may change this measurement here (not a package, not look-only). */
@@ -46,7 +80,7 @@ function useCanEdit(): boolean {
   return !pkg && !lookOnly && !readOnly;
 }
 
-/** The "⋯" menu: the registry's measurement actions, then Export. */
+/** The "⋯" menu: the registry's measurement actions. */
 export function CardMenu({ id }: { id: string }): ReactElement | null {
   const tr = useT();
   const opener = useRef<HTMLButtonElement>(null);
@@ -62,37 +96,7 @@ export function CardMenu({ id }: { id: string }): ReactElement | null {
   const label = useMeasure((s) => s.file.measurements.find((m) => m.id === id)?.label);
   if (!project || label === undefined) return null;
   /** The items, built once as the menu opens. */
-  const build = (): ResolvedItem[] => {
-    registerSidebarActions();
-    return [
-      ...actionsFor(
-        { kind: 'measurements', ids: [id], clicked: id },
-        makeActionCtx({
-          manifest: project.manifest,
-          hidden,
-          focus: timeline.getState().focus,
-          pkg: !!pkg,
-          canEdit: !pkg && !lookOnly,
-          host: toastHost(label),
-        }),
-      ),
-      {
-        id: 'measure.export',
-        label: t('mcard.export'),
-        icon: 'download',
-        section: 'file',
-        disabled: pkg ? t('actions.reason.package') : false,
-        shortcut: null,
-        testId: 'card-menu-export',
-        present: 'action',
-        sub: [],
-        subTitle: null,
-        run: () => {
-          exportOne(id);
-        },
-      },
-    ];
-  };
+  const build = (): ResolvedItem[] => measureItems(id, label, { project, hidden }, !!pkg, lookOnly);
   return (
     <>
       <IconButton
@@ -143,17 +147,27 @@ export function CardMenu({ id }: { id: string }): ReactElement | null {
  * The actions row: Notes (the measurement's description, edited in place), Export and Fly to.
  * `hasChart` marks a card whose export and report entry carry its chart (PNG; Task 22).
  */
-export function CardActions(p: { id: string; hasChart: boolean }): ReactElement {
+export function CardActions(p: { id: string; hasChart?: boolean }): ReactElement {
   const tr = useT();
   const canEdit = useCanEdit();
   const notes = useMeasure((s) => s.file.measurements.find((m) => m.id === p.id)?.description);
+  const tool = useMeasure((s) => s.file.measurements.find((m) => m.id === p.id)?.tool);
+  const label = useMeasure((s) => s.file.measurements.find((m) => m.id === p.id)?.label);
+  const project = useWorkspace((s) => s.project);
+  const hidden = useWorkspace((s) => s.hidden);
   const pkg = useShell((s) => s.pkg);
+  const lookOnly = useAnnotateReadOnly();
   const [open, setOpen] = useState(false);
   const notesId = useId();
+  const exportBtn = useRef<HTMLButtonElement>(null);
+  const [formats, setFormats] = useState<{ x: number; y: number; items: ResolvedItem[] } | null>(
+    null,
+  );
+  const hasChart = p.hasChart ?? (tool !== undefined && measurementHasChart({ tool }));
   // nothing to read and nothing to write: no Notes
   const showNotes = canEdit || (notes ?? '') !== '';
   return (
-    <div className="mc-act" data-testid="card-actions" data-has-chart={p.hasChart || undefined}>
+    <div className="mc-act" data-testid="card-actions" data-has-chart={hasChart || undefined}>
       <div className="mc-act-row">
         {showNotes && (
           <Button
@@ -170,12 +184,23 @@ export function CardActions(p: { id: string; hasChart: boolean }): ReactElement 
           </Button>
         )}
         <Button
+          ref={exportBtn}
           variant="quiet"
           icon="download"
+          aria-haspopup="menu"
+          aria-expanded={formats !== null}
           data-testid="card-export"
-          disabledReason={pkg ? tr('actions.reason.package') : undefined}
           onClick={() => {
-            exportOne(p.id);
+            if (formats || !project || label === undefined) {
+              setFormats(null);
+              return;
+            }
+            const r = exportBtn.current?.getBoundingClientRect();
+            setFormats({
+              x: r?.left ?? 0,
+              y: r?.bottom ?? 0,
+              items: exportItems(measureItems(p.id, label, { project, hidden }, !!pkg, lookOnly)),
+            });
           }}
         >
           {tr('mcard.export')}
@@ -191,6 +216,19 @@ export function CardActions(p: { id: string; hasChart: boolean }): ReactElement 
           {tr('mcard.flyTo')}
         </Button>
       </div>
+      {formats && label !== undefined && (
+        <ContextMenu
+          items={formats.items}
+          x={formats.x}
+          y={formats.y}
+          label={tr('mcard.export')}
+          title={tr('mcard.export')}
+          testId="card-export-list"
+          onClose={() => {
+            setFormats(null);
+          }}
+        />
+      )}
       {open && showNotes && (
         <NotesField
           domId={notesId}

@@ -5,7 +5,7 @@
  * - CSV: the house report's measurements CSV (`measurementsCsv`) for this measurement alone, made
  *   the way the report makes it, so the two agree; saved through `dialog:saveFile`.
  * - DXF: the `survey.export` pipeline with this one measurement id, to the place main asked for.
- * - PNG: the chart the open card draws (`chartPng`), saved through `savePng`.
+ * - PNG: the chart the measurement's card draws on screen (`chartPng`), saved through `savePng`.
  *
  * Each answers the path written, or null when the person cancels, and throws a sentence when the
  * file could not be made.
@@ -20,31 +20,9 @@ import { compareStore } from '../compareStore';
 import { defaultUnits, exportParams, fileBase } from '../exportHelpers';
 import { measureStore } from '../measureStore';
 import { waitForJob } from '../sectionStore';
+import { measurementHasChart } from './chartRule';
 
 export type MeasurementExportFormat = 'csv' | 'dxf' | 'png';
-
-/**
- * The tools whose card draws a chart (spec W2, the chart slot): lines a profile, points their
- * elevation over time, volumes their volume over time. Area, azimuth, tilt, clearance and
- * freehand draw none.
- */
-const CHART_TOOLS: ReadonlySet<SurveyMeasurement['tool']> = new Set([
-  'elevation',
-  'elevation-difference',
-  'elevation-history',
-  'annotation',
-  'distance',
-  'grade',
-  'vertex-table',
-  'berm-check',
-  'section',
-  'volume',
-]);
-
-/** Whether a measurement's card draws a chart (so it exports a PNG and reports its chart). */
-export function measurementHasChart(m: Pick<SurveyMeasurement, 'tool'>): boolean {
-  return CHART_TOOLS.has(m.tool);
-}
 
 function measurement(id: string): SurveyMeasurement {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
@@ -52,15 +30,31 @@ function measurement(id: string): SurveyMeasurement {
   return m;
 }
 
-/** The formats a measurement exports as: CSV and DXF, and PNG when it has a chart. */
-export function exportFormats(id: string): MeasurementExportFormat[] {
+/** One format a measurement exports as, and why it cannot be picked now (false: it can). */
+export interface ExportChoice {
+  format: MeasurementExportFormat;
+  disabled: string | false;
+}
+
+/**
+ * The formats a measurement exports as: CSV, DXF, and PNG when its tool draws a chart. In a
+ * package (`pkg`) the DXF is greyed: the pipeline job writes it from the project folder. The PNG
+ * is greyed until the measurement's chart is on screen, the picture it saves.
+ */
+export function exportChoices(id: string, opts: { pkg: boolean }): ExportChoice[] {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
-  return m && measurementHasChart(m) ? ['csv', 'dxf', 'png'] : ['csv', 'dxf'];
+  const out: ExportChoice[] = [
+    { format: 'csv', disabled: false },
+    { format: 'dxf', disabled: opts.pkg ? t('actions.reason.package') : false },
+  ];
+  if (m && measurementHasChart(m))
+    out.push({ format: 'png', disabled: chartOf(id) ? false : t('mcard.chartNotShown') });
+  return out;
 }
 
 function projectOpen() {
   const project = workspace.getState().project;
-  if (!project) throw new Error('No project is open.');
+  if (!project) throw new Error(t('report.noProject'));
   return project;
 }
 
@@ -155,20 +149,11 @@ async function saveDxf(m: SurveyMeasurement): Promise<string | null> {
   return out;
 }
 
-/**
- * The chart the app shows for this measurement: a chart marked with its id, else the detail
- * card's chart while that card shows it (the card whose actions row says it has a chart).
- */
-function chartOf(id: string): SVGSVGElement | null {
+/** The chart the card of this measurement draws on screen (the card carries its id), or null. */
+export function chartOf(id: string): SVGSVGElement | null {
   for (const el of document.querySelectorAll<HTMLElement>('[data-measure-id]')) {
     if (el.dataset.measureId !== id) continue;
     const svg = el.querySelector<SVGSVGElement>('svg.pc-svg');
-    if (svg) return svg;
-  }
-  if (measureStore.getState().focus !== id) return null;
-  for (const card of document.querySelectorAll<HTMLElement>('.mc[data-variant="detail"]')) {
-    if (!card.querySelector('[data-has-chart]')) continue;
-    const svg = card.querySelector<SVGSVGElement>('svg.pc-svg');
     if (svg) return svg;
   }
   return null;
@@ -177,7 +162,7 @@ function chartOf(id: string): SVGSVGElement | null {
 async function savePicture(m: SurveyMeasurement): Promise<string | null> {
   if (!measurementHasChart(m)) throw new Error(t('chart.exportFailed'));
   const svg = chartOf(m.id);
-  if (!svg) throw new Error(t('chart.exportFailed'));
+  if (!svg) throw new Error(t('mcard.chartNotShown'));
   return savePng(await chartPng(svg), `${fileBase(m.label)}.png`);
 }
 

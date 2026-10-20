@@ -9,13 +9,17 @@
  */
 import type { ReportTemplateFile, TemplateEntry } from '@aio/schema';
 import { emptyReportTemplate } from '@aio/schema';
+import { t } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge } from '../shell';
 import { measureStore } from '../survey/measureStore';
-import { measurementHasChart } from '../survey/card/exportMeasurement';
+import { measurementHasChart } from '../survey/card/chartRule';
+
+/** The most entries a template holds (`ReportTemplateFile.entries`, max 500). */
+export const TEMPLATE_MAX = 500;
 
 export type TemplateParts = Extract<TemplateEntry, { kind: 'measurement' }>['parts'];
 
@@ -35,7 +39,7 @@ export const templateStore = createStore<TemplateState>()(() => ({
 
 function openProject(): string {
   const id = workspace.getState().project?.id;
-  if (!id) throw new Error('No project is open.');
+  if (!id) throw new Error(t('report.noProject'));
   return id;
 }
 
@@ -106,6 +110,8 @@ export function addManyToReport(
       added.push(id);
       entries.push({ kind: 'measurement', id, parts: [...(parts ?? defaultParts(id))], addedAt });
     }
+    if (added.length > 0 && entries.length > TEMPLATE_MAX)
+      throw new Error(t('report.full', { count: TEMPLATE_MAX }));
     if (added.length > 0) {
       const next: ReportTemplateFile = { ...file, entries };
       const r = await bridge.call('report:writeTemplate', { projectId, file: next });

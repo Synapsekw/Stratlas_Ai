@@ -39,6 +39,11 @@ export function MeasureCard(p: {
   /** The overflow menu at the end of the header (`CardMenu`), in the live and detail variants. */
   menu?: ReactNode;
   testId?: string;
+  /**
+   * The saved measurement the card shows (`data-measure-id`): its chart is then the one the PNG
+   * export saves. Absent on a card of a measurement still being drawn.
+   */
+  measureId?: string;
 }): ReactElement {
   const { model, variant } = p;
   const slots = p.slots ?? {};
@@ -49,6 +54,7 @@ export function MeasureCard(p: {
       className="mc"
       data-variant={variant}
       data-testid={p.testId ?? 'measure-card'}
+      data-measure-id={p.measureId}
       aria-label={model.name}
     >
       <header className="mc-head">

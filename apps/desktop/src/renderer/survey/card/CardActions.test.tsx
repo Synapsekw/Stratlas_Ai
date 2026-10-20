@@ -14,7 +14,39 @@ const state = vi.hoisted(() => ({
 vi.mock('../../shell', () => ({
   useShell: (sel: (s: { pkg: boolean }) => unknown) => sel({ pkg: state.pkg }),
 }));
-vi.mock('../../shell/actions', () => ({ registerSidebarActions: () => undefined }));
+/** The registry's Export, as the report actions register it: a CSV, DXF and PNG submenu. */
+const exported = vi.hoisted(() => [] as string[]);
+vi.mock('../../shell/actions', async () => {
+  const ui = await import('@aio/ui');
+  let done = false;
+  return {
+    registerSidebarActions: () => {
+      if (done) return;
+      done = true;
+      ui.registerActions([
+        ui.defineAction<'measurements'>({
+          id: 'measure.export',
+          label: 'mcard.export',
+          section: 'file',
+          targets: ['measurements'],
+          present: 'submenu',
+          submenu: (_tg, ctx) => [
+            { id: 'csv', label: 'CSV', testId: 'measure-export-csv' },
+            {
+              id: 'dxf',
+              label: 'DXF',
+              testId: 'measure-export-dxf',
+              disabled: ctx.pkg ? 'In a package' : false,
+            },
+          ],
+          run: (tg, _ctx, sub) => {
+            exported.push(`${tg.clicked}:${String(sub)}`);
+          },
+        }),
+      ]);
+    },
+  };
+});
 vi.mock('../../shell/actions/measureActions', () => ({ flyToMeasurement: () => true }));
 vi.mock('../../shell/actions/toastHost', () => ({ toastHost: () => ({}) }));
 vi.mock('../../workspace/timeline', () => ({ timeline: { getState: () => ({ focus: null }) } }));
@@ -86,7 +118,9 @@ describe('CardMenu', () => {
     expect(opener.getAttribute('aria-label')).toBe('Actions for Haul ramp');
     await press(opener);
     expect(q('card-menu-list')).not.toBeNull();
-    expect(q('card-menu-export')).not.toBeNull();
+    // Export once: the registry's, no hand-made item beside it
+    expect(document.querySelectorAll('[data-testid="ctx-item-measure.export"]')).toHaveLength(1);
+    expect(q('card-menu-export')).toBeNull();
     expect(opener.getAttribute('aria-expanded')).toBe('true');
     await press(opener);
     expect(q('card-menu-list')).toBeNull();
@@ -119,6 +153,26 @@ describe('CardActions', () => {
     expect(q('card-notes')).toBeNull();
     expect(q('card-export')).not.toBeNull();
     expect(q('card-fly')).not.toBeNull();
+  });
+
+  it('Export lists the registry formats and exports the one picked', async () => {
+    mount(<CardActions id="m1" hasChart={false} />);
+    await press(q('card-export') ?? document.body);
+    expect(q('card-export-list')).not.toBeNull();
+    expect(q('card-export-dxf')?.hasAttribute('aria-disabled')).toBe(false);
+    await press(q('card-export-csv') ?? document.body);
+    expect(exported.at(-1)).toBe('m1:csv');
+  });
+
+  it('in a package Export stays, with only the DXF greyed', async () => {
+    state.pkg = true;
+    mount(<CardActions id="m1" hasChart={false} />);
+    const btn = q('card-export') as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    await press(btn);
+    expect(q('card-export-dxf')?.getAttribute('aria-disabled')).toBe('true');
+    expect(q('card-export-csv')).not.toBeNull();
+    expect(q('card-export-csv')?.hasAttribute('aria-disabled')).toBe(false);
   });
 
   it('keeps Notes, read only, when there is a note to read', () => {
