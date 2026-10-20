@@ -1,4 +1,6 @@
 import type { SceneHandle } from '@aio/engine';
+import { formatQuantity } from '@aio/geo';
+import { defaultSurveySettings } from '@aio/schema';
 import { crsLabel, formatEastNorth, localToProject } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
@@ -9,6 +11,11 @@ import {
   siteCursorTitle,
   useSiteDisplay,
 } from '../survey/SiteSettings';
+
+/** The elevation without site settings: the metric defaults, through the shared formatter. */
+export function elevationText(el: number): string {
+  return formatQuantity(el, 'distance', defaultSurveySettings().units, 1);
+}
 
 /** `wide`: the other bottom corner of the pane is free, so the readout may run across it. */
 export function CursorReadout({ text, wide = false }: { text: string | null; wide?: boolean }) {
@@ -81,7 +88,7 @@ export function useSceneCursor(scene: () => SceneHandle | null): {
       ]);
       // the station and offset on the active alignment are read in the project CRS (G6)
       const station = stationReadout(e2, n);
-      const at = siteCursorText(e2, n, el) ?? `${formatEastNorth(e2, n)} · EL ${el.toFixed(1)} m`;
+      const at = siteCursorText(e2, n, el) ?? `${formatEastNorth(e2, n)} · EL ${elevationText(el)}`;
       setCursor(station ? `${at} · ${station}` : at);
     });
   };

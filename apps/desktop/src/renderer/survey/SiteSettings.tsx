@@ -29,15 +29,16 @@ import {
   proj4Projector,
   type SiteTransformer,
 } from '@aio/geo';
-import type {
-  CalibrationPair,
-  CrsCatalogueEntry,
-  GeoidPackMeta,
-  SiteCalibration,
-  SurveySettings,
-  SurveyUnits,
+import {
+  DEFAULT_ANGLES,
+  type CalibrationPair,
+  type CrsCatalogueEntry,
+  type GeoidPackMeta,
+  type SiteCalibration,
+  type SurveySettings,
+  type SurveyUnits,
 } from '@aio/schema';
-import { Icon, useFocusTrap } from '@aio/ui';
+import { Icon, useFocusTrap, useT } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace, type OpenProject } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -394,6 +395,7 @@ function ResidualTable({ cal, units }: { cal: SiteCalibration; units: SurveyUnit
 }
 
 function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClose: () => void }) {
+  const t = useT();
   const dlg = useRef<HTMLDivElement>(null);
   useFocusTrap(dlg, true);
   const [draft, setDraft] = useState<SurveySettings | null>(null);
@@ -560,6 +562,7 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
     );
   };
 
+  const angles = draft.angles ?? DEFAULT_ANGLES;
   const vd = draft.verticalDatum;
   const vdValue = vd.kind === 'geoid' ? `geoid:${vd.geoid}` : vd.kind;
   const applied = Boolean(cal?.appliedAt);
@@ -723,6 +726,55 @@ function SiteSettingsDialog({ project, onClose }: { project: OpenProject; onClos
                   />
                 </label>
               ))}
+            </section>
+
+            <section className="dlg-sec" data-testid="site-angles">
+              <h3 className="caps">{t('settings.angles.title')}</h3>
+              <label className="field">
+                <span>{t('settings.angles.title')}</span>
+                <select
+                  className="input"
+                  data-testid="site-angle-style"
+                  value={angles.angle}
+                  onChange={(e) => {
+                    set({ angles: { ...angles, angle: e.target.value === 'dms' ? 'dms' : 'deg' } });
+                  }}
+                >
+                  <option value="deg">{t('settings.angles.decimal')}</option>
+                  <option value="dms">{t('settings.angles.dms')}</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>{t('settings.angles.bearings')}</span>
+                <select
+                  className="input"
+                  data-testid="site-bearing-style"
+                  value={angles.bearing}
+                  onChange={(e) => {
+                    set({
+                      angles: { ...angles, bearing: e.target.value === 'deg' ? 'deg' : 'dms' },
+                    });
+                  }}
+                >
+                  <option value="dms">{t('settings.angles.dms')}</option>
+                  <option value="deg">{t('settings.angles.decimal')}</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>{t('settings.angles.decimals')}</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  max={4}
+                  data-testid="site-angle-precision"
+                  value={angles.precision}
+                  onChange={(e) => {
+                    const v = Math.max(0, Math.min(4, Math.round(Number(e.target.value) || 0)));
+                    set({ angles: { ...angles, precision: v } });
+                  }}
+                />
+              </label>
             </section>
           </fieldset>
           <section className="dlg-sec">
