@@ -46,7 +46,7 @@ let root: Root;
 const onCancel = vi.fn();
 const onKeepWaiting = vi.fn();
 
-const show = (job: JobRecord, keptWaitingAt?: number) => {
+const show = (job: JobRecord, keptWaitingAt?: number, busy = false) => {
   act(() => {
     root.render(
       <JobLive
@@ -54,6 +54,7 @@ const show = (job: JobRecord, keptWaitingAt?: number) => {
         now={NOW}
         fallback="Working"
         keptWaitingAt={keptWaitingAt}
+        busy={busy}
         onCancel={onCancel}
         onKeepWaiting={onKeepWaiting}
       />,
@@ -84,7 +85,7 @@ describe('JobLive', () => {
     const text = q('photo-job-live')?.textContent ?? '';
     expect(text).toContain('Matching photos: 4,210 of 12,467 pairs');
     expect(text).toContain('6 min on this step');
-    expect(text).toContain('about 12 min left');
+    expect(text).toContain('about 12 min left in this step');
     expect(text).toContain('Last activity 8 s ago');
     expect(text).toContain('in all');
     expect(q('photo-job-stuck')).toBeNull();
@@ -122,6 +123,17 @@ describe('JobLive', () => {
       button('Keep waiting')?.click();
     });
     expect(onKeepWaiting).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables Cancel job while a cancel or another action is in progress', () => {
+    show(withActivity(15 * 60_000), undefined, true);
+    expect(button('Cancel job')?.disabled).toBe(true);
+    act(() => {
+      button('Cancel job')?.click();
+    });
+    expect(onCancel).not.toHaveBeenCalled();
+    show(withActivity(15 * 60_000));
+    expect(button('Cancel job')?.disabled).toBe(false);
   });
 
   it('hides the notice after Keep waiting', () => {

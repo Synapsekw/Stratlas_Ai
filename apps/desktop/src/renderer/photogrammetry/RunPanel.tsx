@@ -431,6 +431,7 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
             now={now}
             fallback={view.headline}
             keptWaitingAt={keptWaiting[job.id]}
+            busy={busy}
             onCancel={() => {
               void act(cancelRun(run, job.id));
             }}

@@ -1,5 +1,6 @@
 import type { JobRecord } from '@aio/schema';
-import { describe, expect, it } from 'vitest';
+import { setLocale, t } from '@aio/ui';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   STALL_NOTICE_MS,
   detailLine,
@@ -53,12 +54,44 @@ describe('detailLine', () => {
     );
     expect(detailLine({ label: 'Linking the matches' })).toBe('Linking the matches');
   });
+
+  // the pack's English labels and units (python sfm_progress SUBSTEPS), worded by the app
+  const PACK = [
+    ['setup', 'Getting the photos ready'],
+    ['features', 'Finding features'],
+    ['matching', 'Matching photos'],
+    ['tracks', 'Linking the matches'],
+    ['reconstruct', 'Building the 3D model'],
+    ['statistics', 'Checking the model'],
+    ['geocoords', 'Placing the model on the map'],
+    ['undistort', 'Preparing the photos for the maps'],
+  ] as const;
+
+  afterEach(() => {
+    setLocale('en');
+  });
+
+  it('has an app string for every step label the pack sends', () => {
+    for (const [key, label] of PACK) expect(t(`photo.live.step.${key}`)).toBe(label);
+  });
+
+  it('words the pack labels and units through the catalogue, and passes unknown ones through', () => {
+    setLocale('xx', {
+      'photo.live.step.matching': 'Appariement',
+      'photo.live.unit.pairs': 'paires',
+      'photo.live.countOf': '{done} sur {total}',
+    });
+    expect(detailLine({ label: 'Matching photos', done: 3, total: 9, unit: 'pairs' })).toBe(
+      'Appariement: 3 sur 9 paires',
+    );
+    expect(detailLine({ label: 'A new step', done: 2, unit: 'tiles' })).toBe('A new step: 2 tiles');
+  });
 });
 
 describe('etaWords', () => {
   it('rounds minutes up and says less than a minute', () => {
-    expect(etaWords(11.5 * 60)).toBe('about 12 min left');
-    expect(etaWords(59)).toBe('less than a minute left');
+    expect(etaWords(11.5 * 60)).toBe('about 12 min left in this step');
+    expect(etaWords(59)).toBe('less than a minute left in this step');
   });
 });
 
@@ -76,7 +109,7 @@ describe('liveStatus', () => {
     expect(liveStatus(j, T0)).toEqual({
       line: 'Matching photos: 1 of 2 pairs',
       stepElapsed: '30 s',
-      eta: 'about 10 min left',
+      eta: 'about 10 min left in this step',
       jobElapsed: '2 min',
       activity: 'Last activity 8 s ago',
       quietMs: 8_000,

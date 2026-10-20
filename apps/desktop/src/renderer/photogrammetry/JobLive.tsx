@@ -4,9 +4,9 @@
  * record and the clock, so a reopened panel says the same thing again.
  */
 import type { JobRecord } from '@aio/schema';
-import { Icon } from '@aio/ui';
+import { Icon, useT } from '@aio/ui';
 import { isActive } from '../jobs';
-import { liveStatus, showStuck, watchdogWords } from './liveStatus';
+import { STALL_NOTICE_MS, liveStatus, showStuck, watchdogWords } from './liveStatus';
 
 export interface JobLiveProps {
   job: JobRecord;
@@ -16,6 +16,8 @@ export interface JobLiveProps {
   fallback: string | null;
   /** When the person pressed Keep waiting, this session. */
   keptWaitingAt?: number | undefined;
+  /** Another action on the run is in progress: Cancel job waits, like the panel's own Cancel. */
+  busy?: boolean;
   onCancel: () => void;
   onKeepWaiting: () => void;
 }
@@ -25,9 +27,11 @@ export function JobLive({
   now,
   fallback,
   keptWaitingAt,
+  busy = false,
   onCancel,
   onKeepWaiting,
 }: JobLiveProps) {
+  const t = useT();
   const stopped = watchdogWords(job);
   if (stopped) {
     return (
@@ -41,9 +45,9 @@ export function JobLive({
   const s = liveStatus(job, now);
   const line = s.line ?? fallback;
   const parts = [
-    s.stepElapsed === null ? null : `${s.stepElapsed} on this step`,
+    s.stepElapsed === null ? null : t('photo.live.onStep', { time: s.stepElapsed }),
     s.eta,
-    `${s.jobElapsed} in all`,
+    t('photo.live.inAll', { time: s.jobElapsed }),
     s.activity,
   ].filter((p): p is string => p !== null);
   return (
@@ -60,13 +64,18 @@ export function JobLive({
       {showStuck(job, now, keptWaitingAt) && (
         <div className="notice small ph-stuck" role="alert" data-testid="photo-job-stuck">
           <Icon name="warn" size={14} />
-          <span>No progress for 15 minutes. The job may be stuck.</span>
+          <span>{t('photo.live.stuck', { minutes: STALL_NOTICE_MS / 60_000 })}</span>
           <span className="ph-acts">
-            <button type="button" className="btn sm" onClick={onCancel}>
-              Cancel job
+            <button
+              type="button"
+              className="btn sm"
+              disabled={busy || job.status === 'cancelling'}
+              onClick={onCancel}
+            >
+              {t('photo.live.cancel')}
             </button>
             <button type="button" className="btn sm ghost" onClick={onKeepWaiting}>
-              Keep waiting
+              {t('photo.live.keepWaiting')}
             </button>
           </span>
         </div>
