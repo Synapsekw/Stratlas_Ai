@@ -1,5 +1,5 @@
 // A stand-in for `python -m aio_pipelines` in unit tests: same JSON-RPC lines on stdio.
-// FAKE_MODE: ok | fail | coded (fail with a failure code) | slow (until cancelled) | stubborn (ignores cancel) | crash
+// FAKE_MODE: ok | fail | coded (fail with a failure code) | slow (until cancelled) | stubborn (ignores cancel) | crash | live (live progress, then a failure)
 import { createInterface } from 'node:readline';
 
 const mode = process.env.FAKE_MODE ?? 'ok';
@@ -49,6 +49,23 @@ async function run(id, p) {
       data: { shiftM: 2.01 },
     });
     send({ id, error: { code: -32000, message: 'x', data: { jobId } } });
+    return;
+  }
+  if (mode === 'live') {
+    const base = { jobId, step: 'two', stepIndex: 1, steps: 2, state: 'running', fraction: 0.6 };
+    note('progress', {
+      ...base,
+      live: {
+        detail: { label: 'Matching photos', done: 10, total: 20, unit: 'pairs' },
+        lastActivityAt: '2026-10-20T10:00:00.000Z',
+        stepStartedAt: '2026-10-20T09:50:00.000Z',
+        etaSeconds: 30,
+      },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    note('progress', { ...base, live: { etaSeconds: -1 } });
+    await new Promise((r) => setTimeout(r, 50));
+    send({ id, error: { code: -32000, message: 'Stopped', data: { jobId } } });
     return;
   }
   if (mode === 'crash') {
