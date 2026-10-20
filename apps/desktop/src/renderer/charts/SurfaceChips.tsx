@@ -13,13 +13,22 @@ export interface ChipOption {
   label: string;
   kind: SeriesKind;
   group: 'survey' | 'design' | 'base';
+  /** The survey date (ISO), so earlier dates shade by age on the chips as on the lines. */
+  date?: string;
 }
 
 const GROUPS: readonly ChipOption['group'][] = ['survey', 'design', 'base'];
 
-/** A short line sample in the series' stroke, dash and opacity. */
-function Swatch({ option, all }: { option: ChipOption; all: readonly ChartSeries[] }) {
-  const s = seriesStyle({ ...option, chainage: [], z: [] }, all);
+const asSeries = (o: ChipOption): ChartSeries => ({ ...o, chainage: [], z: [] });
+
+/**
+ * A short line sample in the series' stroke, dash and opacity. `peers` are the series on the
+ * chart (the chips switched on); this one is ranked among them as if it were drawn too.
+ */
+function Swatch({ option, peers }: { option: ChipOption; peers: readonly ChartSeries[] }) {
+  const self = asSeries(option);
+  const all = peers.some((x) => x.key === option.key) ? peers : [...peers, self];
+  const s = seriesStyle(self, all);
   return (
     <svg className="pc-swatch" viewBox="0 0 16 8" aria-hidden="true">
       <line
@@ -50,11 +59,11 @@ export function SurfaceChips(p: {
   const opener = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const testId = p.testId ?? 'surface-chips';
-  // the swatches of earlier dates shade by their order among the shown ones, as the lines do
-  const all = p.shown.map((o) => ({ ...o, chainage: [], z: [] }));
+  // earlier dates shade by age among the chips switched on, which are the lines the chart draws
+  const peers = p.shown.filter((o) => !p.off.has(o.key)).map(asSeries);
   const groupLabel: Record<ChipOption['group'], string> = {
-    survey: t('house.captures'),
-    design: t('measureBench.siteDesigns'),
+    survey: t('chart.group.surveys'),
+    design: t('chart.group.designs'),
     base: t('chart.base'),
   };
   const onMenuKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -74,7 +83,7 @@ export function SurfaceChips(p: {
                 p.onToggle(o.key);
               }}
             >
-              <Swatch option={o} all={all} />
+              <Swatch option={o} peers={peers} />
               <span className="pc-chip-label">{o.label}</span>
             </button>
             {o.kind !== 'current' && (
@@ -143,7 +152,7 @@ export function SurfaceChips(p: {
                         }}
                       >
                         <span className="menu-lead">
-                          <Swatch option={o} all={[...all, { ...o, chainage: [], z: [] }]} />
+                          <Swatch option={o} peers={peers} />
                         </span>
                         <span className="row-label">{o.label}</span>
                       </button>

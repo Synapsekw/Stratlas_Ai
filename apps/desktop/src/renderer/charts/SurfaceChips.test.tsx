@@ -82,6 +82,40 @@ describe('SurfaceChips', () => {
     expect(dash('cap-2') ?? '').toBe('');
   });
 
+  it('earlier swatches shade by date among the chips switched on, as the lines do', () => {
+    // keys sort the other way round from the dates, so a key ranking would invert the greys
+    const newer: ChipOption = {
+      key: 'a-new',
+      label: '01 Sep',
+      kind: 'earlier',
+      group: 'survey',
+      date: '2026-09-01',
+    };
+    const older: ChipOption = {
+      key: 'z-old',
+      label: '04 Aug',
+      kind: 'earlier',
+      group: 'survey',
+      date: '2026-08-04',
+    };
+    const opacity = (h: HTMLElement, k: string) =>
+      Number(h.querySelector(`[data-chip="${k}"] .pc-swatch line`)?.getAttribute('stroke-opacity'));
+    const props = {
+      shown: [CURRENT, newer, older],
+      addable: [],
+      onToggle: () => undefined,
+      onAdd: () => undefined,
+      onRemove: () => undefined,
+    };
+    let h = mount(<SurfaceChips {...props} off={new Set()} />);
+    expect(opacity(h, 'a-new')).toBeCloseTo(0.9);
+    expect(opacity(h, 'z-old')).toBeCloseTo(0.35);
+    // with the newer one off, the older is the only earlier line drawn: the newest grey
+    act(() => root?.render(<SurfaceChips {...props} off={new Set(['a-new'])} />));
+    h = host;
+    expect(opacity(h, 'z-old')).toBeCloseTo(0.9);
+  });
+
   it('remove takes it off', () => {
     const h = mount(<Harness />);
     const x = h.querySelector('[data-chip="cap-1"] button[aria-label="Remove 01 Sep"]');

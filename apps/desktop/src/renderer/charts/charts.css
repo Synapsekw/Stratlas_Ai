@@ -25,9 +25,9 @@
   background: var(--bg-2);
   color: var(--fg-1);
   transition:
-    background-color 120ms var(--ease),
-    border-color 120ms var(--ease),
-    color 120ms var(--ease);
+    background-color var(--d-1) var(--ease),
+    border-color var(--d-1) var(--ease),
+    color var(--d-1) var(--ease);
 }
 .pc-chip:hover {
   border-color: var(--fg-4);
@@ -94,8 +94,8 @@
   color: var(--fg-2);
   white-space: nowrap;
   transition:
-    border-color 120ms var(--ease),
-    color 120ms var(--ease);
+    border-color var(--d-1) var(--ease),
+    color var(--d-1) var(--ease);
 }
 .pc-chip-add:hover,
 .pc-chip-add[aria-expanded='true'] {
@@ -246,7 +246,7 @@
 .pc-ro-key {
   inline-size: 8px;
   block-size: 2px;
-  border-radius: 1px;
+  border-radius: var(--r-2);
 }
 
 /* under the chart: cut and fill areas on the start side, the export buttons on the end side */
@@ -275,7 +275,7 @@
   inline-size: 10px;
   block-size: 10px;
   border: 1px solid;
-  border-radius: 2px;
+  border-radius: var(--r-2);
 }
 .pc-area[data-kind='cut'] i {
   border-color: var(--cut);

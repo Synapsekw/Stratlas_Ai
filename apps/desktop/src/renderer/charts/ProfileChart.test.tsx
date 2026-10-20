@@ -124,22 +124,36 @@ describe('ProfileChart', () => {
   });
 
   it('shades cut and fill against the chosen surface and prints both areas', () => {
-    // against the design: the current is 1 m below it everywhere, so all cut
+    const areas = (el: HTMLElement) =>
+      el.querySelector('[data-testid="chart-areas"]')?.textContent ?? '';
+    const again = () => {
+      act(() => root?.unmount());
+      root = undefined;
+      host.remove();
+    };
+    // a design goes from the current to the design: the current 1 m below it is all fill
     let h = render({ shadeVs: 'design-1' });
+    expect(h.querySelectorAll('polygon.pc-fill').length).toBeGreaterThan(0);
+    expect(h.querySelectorAll('polygon.pc-cut').length).toBe(0);
+    expect(areas(h)).toContain('Cut 0.0 m²');
+    expect(areas(h)).toContain('Fill 40.0 m²'); // 1 m over 40 m
+    again();
+
+    // the current 1 m above a design is all cut (the pile above the design, as in the mockup)
+    const low: ChartSeries = { ...design, key: 'design-low', z: [99, 101, 103, 101, 99] };
+    h = render({ series: [low, current], shadeVs: 'design-low' });
     expect(h.querySelectorAll('polygon.pc-cut').length).toBeGreaterThan(0);
     expect(h.querySelectorAll('polygon.pc-fill').length).toBe(0);
-    const foot = h.querySelector('[data-testid="chart-areas"]')?.textContent ?? '';
-    // current - design is -1 m everywhere over 40 m: 40 m² cut, nothing filled
-    expect(foot).toContain('Cut 40.0 m²');
-    expect(foot).toContain('Fill 0.0 m²');
-    act(() => root?.unmount());
-    root = undefined;
-    host.remove();
+    expect(areas(h)).toContain('Cut 40.0 m²');
+    expect(areas(h)).toContain('Fill 0.0 m²');
+    again();
 
-    // against the earlier date: the current is higher in the middle, so fill
+    // an earlier date goes from it to the current: the current above it is fill
     h = render({ shadeVs: 'cap-1' });
     expect(h.querySelectorAll('polygon.pc-fill').length).toBeGreaterThan(0);
     expect(h.querySelectorAll('polygon.pc-cut').length).toBe(0);
+    expect(areas(h)).toContain('Cut 0.0 m²');
+    expect(areas(h)).toContain('Fill 50.0 m²'); // 0,1,3,1,0 m over 10 m steps
     const fill = h.querySelector('polygon.pc-fill');
     expect(fill?.getAttribute('fill')).toBeNull(); // the colour comes from charts.css tokens
 
@@ -187,6 +201,17 @@ describe('ProfileChart', () => {
     expect(txt).toContain('20.0 %'); // 2 m over 10 m
     // one dot per surface with data
     expect(h.querySelectorAll('[data-testid="chart-crosshair"] circle').length).toBe(3);
+    // one accessible name (on the focusable plot, not again on the svg), and a polite live copy
+    const plot = h.querySelector<HTMLElement>('[data-testid="chart-plot"]');
+    expect(plot?.getAttribute('aria-label')).toBe('Profile from A to B, vertical exaggeration 1:1');
+    expect(svgOf(h).hasAttribute('aria-label')).toBe(false);
+    const live = h.querySelector('[data-testid="chart-live"]');
+    expect(live?.getAttribute('aria-live')).toBe('polite');
+    expect(live?.textContent).toBe('15.00 m, Difference +2.00 m');
+    // blur while the pointer is still over the plot keeps the crosshair
+    act(() => plot?.focus());
+    act(() => plot?.blur());
+    expect(readout(h)).not.toBeNull();
     act(() => {
       // React derives pointerleave from pointerout with the element left for
       svgOf(h).dispatchEvent(
@@ -194,6 +219,7 @@ describe('ProfileChart', () => {
       );
     });
     expect(readout(h)).toBeNull();
+    expect(live?.textContent).toBe('');
   });
 
   it('arrow keys move the crosshair one sample', () => {
@@ -265,6 +291,12 @@ describe('ProfileChart', () => {
       expect(svgOf(h).getAttribute('width')).toBe('688');
       const plot = h.querySelector('[data-testid="chart-plot"]');
       expect(plot?.hasAttribute('tabindex')).toBe(false);
+      // static, the svg itself is the named image
+      expect(svgOf(h).getAttribute('role')).toBe('img');
+      expect(svgOf(h).getAttribute('aria-label')).toBe(
+        'Profile from A to B, vertical exaggeration 1:1',
+      );
+      expect(h.querySelector('[data-testid="chart-live"]')).toBeNull();
       move(h, sampleX(h, 2));
       act(() => {
         svgOf(h).dispatchEvent(

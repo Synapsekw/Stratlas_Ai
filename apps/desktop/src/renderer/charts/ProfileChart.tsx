@@ -166,8 +166,13 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
 
   const shading = useMemo(() => {
     if (!current || !target) return null;
-    // from the target to the current: fill where the current is higher (the engine's sign)
-    return cutFill(current.chainage, onStations(current.chainage, target), current.z);
+    // `dz = to - from`, fill where `dz > 0`, with the pair fixed per kind as the engine has it:
+    // an earlier survey or a base goes from the target to the current (current higher = fill);
+    // a design goes from the current to the design (current higher = cut, as in compliance.ts)
+    const targetZ = onStations(current.chainage, target);
+    return target.kind === 'design'
+      ? cutFill(current.chainage, current.z, targetZ)
+      : cutFill(current.chainage, targetZ, current.z);
   }, [current, target]);
 
   // axes in the project's distance unit
@@ -187,6 +192,8 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
   // the crosshair: a chainage under the pointer, or a sample index from the keyboard
   const stations = (current ?? ordered.at(-1))?.chainage ?? [];
   const [at, setAt] = useState<number | null>(null);
+  // blur leaves the crosshair alone while the pointer is still over the plot
+  const hovering = useRef(false);
   const live = interactive && at !== null;
   const readout = live ? hoverAt(ordered, at, target ? target.key : null) : null;
 
@@ -227,6 +234,7 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
   const strokeOf = new Map(ordered.map((s) => [s.key, seriesStyle(s, ordered)]));
   const direction = t('chart.direction', { a: p.ends.a, b: p.ends.b });
   const exaggeration = t('chart.exaggeration', { n: String(p.exaggeration) });
+  const chartLabel = t('chart.label', { a: p.ends.a, b: p.ends.b, n: String(p.exaggeration) });
   const left = PAD.left;
   const right = w - PAD.right;
   const top = PAD.top;
@@ -235,9 +243,11 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
   const handlers = interactive
     ? {
         onPointerMove: (e: PointerEvent<SVGSVGElement>) => {
+          hovering.current = true;
           setAt(chainageAt(e));
         },
         onPointerLeave: () => {
+          hovering.current = false;
           setAt(null);
         },
         onClick: (e: ReactMouseEvent<SVGSVGElement>) => {
@@ -250,6 +260,10 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
   const readoutId = `${clipId}-readout`;
   const cx = at === null ? 0 : x(at);
   const flip = cx > PAD.left + plotW / 2;
+  const delta = readout?.deltaM ?? null;
+  // signed, with no "+" on a value that rounds to zero
+  const diffText =
+    delta === null ? '-' : `${delta > 0 && dist(delta) !== dist(0) ? '+' : ''}${dist(delta)}`;
 
   return (
     <div className="pc" data-testid={testId} data-static={interactive ? undefined : ''}>
@@ -260,7 +274,7 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
         data-testid="chart-plot"
         tabIndex={interactive ? 0 : undefined}
         role={interactive ? 'group' : undefined}
-        aria-label={interactive ? `${direction}, ${exaggeration}` : undefined}
+        aria-label={interactive ? chartLabel : undefined}
         aria-describedby={readout ? readoutId : undefined}
         onKeyDown={interactive ? onKey : undefined}
         onFocus={
@@ -273,7 +287,7 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
         onBlur={
           interactive
             ? () => {
-                setAt(null);
+                if (!hovering.current) setAt(null);
               }
             : undefined
         }
@@ -282,8 +296,10 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
           className="pc-svg"
           width={w}
           height={h}
-          role="img"
-          aria-label={`${direction}, ${exaggeration}`}
+          // interactive, the focusable plot around it carries the name
+          role={interactive ? undefined : 'img'}
+          aria-label={interactive ? undefined : chartLabel}
+          aria-hidden={interactive ? true : undefined}
           {...handlers}
         >
           <defs>
@@ -312,10 +328,10 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
             ))}
           </g>
           <text className="pc-axis-title" x={left - 6} y={top - 9} textAnchor="end">
-            {`${t('chart.elevation')} (${u})`}
+            {t('chart.axisTitle', { label: t('chart.elevation'), unit: u })}
           </text>
           <text className="pc-axis-title" x={left} y={h - 6}>
-            {`${t('chart.chainage')} (${u})`}
+            {t('chart.axisTitle', { label: t('chart.chainage'), unit: u })}
           </text>
           <text className="pc-axis-note" x={right} y={h - 6} textAnchor="end">
             <tspan className="pc-direction">{direction}</tspan>
@@ -412,11 +428,7 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
               {target && (
                 <div className="pc-ro-row pc-ro-sep" data-row="diff">
                   <dt>{t('chart.diff')}</dt>
-                  <dd>
-                    {readout.deltaM === null
-                      ? '-'
-                      : `${readout.deltaM > 0 && dist(readout.deltaM) !== dist(0) ? '+' : ''}${dist(readout.deltaM)}`}
-                  </dd>
+                  <dd>{diffText}</dd>
                 </div>
               )}
               <div className={target ? 'pc-ro-row' : 'pc-ro-row pc-ro-sep'} data-row="grade">
@@ -438,6 +450,15 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
               </div>
             </dl>
           </div>
+        )}
+        {interactive && (
+          <p className="sr-only" aria-live="polite" data-testid="chart-live">
+            {readout
+              ? target
+                ? `${dist(readout.chainage)}, ${t('chart.diff')} ${diffText}`
+                : dist(readout.chainage)
+              : ''}
+          </p>
         )}
       </div>
       {(shading !== null || p.actions !== undefined) && (
