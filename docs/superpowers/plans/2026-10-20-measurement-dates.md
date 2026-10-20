@@ -14,7 +14,7 @@
 
 - Worktree only (`E:\Dev\AIO Software\.claude\worktrees\measure-dates`, branch `feat/measure-dates`); never the main checkout. `pnpm check` green; every added or changed e2e spec run the CI way.
 - Contract change (owned by Task 1): `SurveyMeasurement` gains optional `source: { layer: Id }` and optional `pickedOn: ('model' | 'ground')[]`; `aio.measurements/1` stays; `{ kind: 'site' }` scope is legacy only. Row in `docs/architecture/contract-changes.md`; the integration lead signs off before merge.
-- `pickedOn`, when present, has exactly `points.length` entries. The app never writes a file that breaks this (vertex edits, flips, copies and moves realign it), because the schema refuses such a file.
+- `pickedOn`, when present, has exactly `points.length` entries of `'model'` or `'ground'`. The app never writes one that breaks this (vertex edits, flips, copies and moves realign it). Reading is tolerant: a measurement whose `pickedOn` is malformed or the wrong length loses its `pickedOn` (its vertices take the legacy default, the source layer's kind) with a `console.warn` naming it; the rest of the file loads as it is. A bad `pickedOn` never fails the whole measurements file.
 - Measurements autosave off by default: every move, re-file, follow and backfill is an ordinary edit that waits for **Save measurements** (`changed()`, `measureStore.ts`:389). Only engine results use `setComputedResults` (:438).
 - Read-only (a package: `measureStore.readOnly`; a look-only reviewer: `isAnnotateReadOnly()` from `@aio/annotate`): no drag starts, no move, no follow write, no backfill. Sidebar gate stays `canMeasureEdit` (`Sidebar.tsx`:779).
 - No measurement is created undated in a project with survey dates. In a project with no captures the scope stays `{ kind: 'site' }` (plain Measurements group, as today) but `source` and `pickedOn` are still written.
@@ -30,7 +30,7 @@
 1. **A vertex edit on a measurement with `pickedOn`** (insert a midpoint, delete a vertex, drag one, Flip on an azimuth): `pickedOn` keeps `points.length` entries, kept vertices keep their kind, so Save is never refused. Test in Task 4.
 2. **A measurement whose date was deleted** (its `scope.capture` no longer in `manifest.captures`): it shows under "Needs a date", never vanishes from the tree. Test in Task 3.
 3. **Undo after a backfill**: the filed measurements go back to "Needs a date" and the backfill does not run again in the same session for that project. Test in Task 8.
-4. **A date move started from the map view** (no 3D stage mounted) with `model` vertices: refused with the "could not be loaded" note, nothing moved; a move with only `ground` vertices goes through. Test in Task 7.
+4. **A date move started from the map view** (no 3D stage mounted) with `model` vertices: refused with the note that says to switch to the 3D view, nothing moved; a move with only `ground` vertices goes through. A re-pick on a hidden counterpart never shows it (its eye, the 3D view and the map stay as they were). Tests in Task 7.
 5. **The new-folder row and a reveal in a dated tree**: the inline new-folder row shows only in the Measurements group of the marked measurements' date, and revealing a measurement opens its date folder. Test in Task 5.
 
 ---
@@ -55,20 +55,20 @@
 
 ## Execution DAG
 
-| Task | Depends on  | Packages                  |
-| ---- | ----------- | ------------------------- |
-| 1    | none        | `@aio/schema`, docs       |
-| 2    | none        | `@aio/desktop`            |
-| 3    | none        | `@aio/ui`, `@aio/desktop` |
-| 4    | 1           | `@aio/desktop`            |
-| 5    | 3           | `@aio/ui`                 |
-| 6    | 3           | `@aio/desktop`            |
-| 7    | 2, 4        | `@aio/desktop`            |
-| 8    | 7           | `@aio/desktop`            |
-| 9    | 5, 7        | `@aio/desktop`            |
-| 10   | 2, 7        | `@aio/desktop`            |
-| 11   | 6, 8, 9, 10 | `@aio/desktop` (e2e)      |
-| 12   | 11          | all                       |
+| Task | Depends on  | Packages                           |
+| ---- | ----------- | ---------------------------------- |
+| 1    | none        | `@aio/schema`, docs                |
+| 2    | none        | `@aio/desktop`                     |
+| 3    | none        | `@aio/ui`, `@aio/desktop`          |
+| 4    | 1           | `@aio/desktop`                     |
+| 5    | 3           | `@aio/ui`                          |
+| 6    | 3           | `@aio/desktop`                     |
+| 7    | 2, 4        | `@aio/desktop`                     |
+| 8    | 7           | `@aio/desktop`                     |
+| 9    | 5, 7        | `@aio/desktop`                     |
+| 10   | 2, 7        | `@aio/desktop`                     |
+| 11   | 6, 8, 9, 10 | `@aio/desktop` (e2e), `tools/demo` |
+| 12   | 11          | all                                |
 
 Parallel batches (no shared files inside a batch; dispatch each batch in one message):
 
@@ -97,7 +97,7 @@ Shared-file notes: `measureStore.ts` is touched by Task 4 then Task 7 (different
 
 **Interfaces:**
 
-- Produces: `MeasurementSource = z.object({ layer: Id }).strict()`, `PickedOn = z.enum(['model', 'ground'])`, `SurveyMeasurement.source?: MeasurementSource`, `SurveyMeasurement.pickedOn?: PickedOn[]` (max 100 000, as `points`), types `MeasurementSource`, `PickedOn`, all exported from `@aio/schema`.
+- Produces: `MeasurementSource = z.object({ layer: Id }).strict()`, `PickedOn = z.enum(['model', 'ground'])`, `SurveyMeasurement.source?: MeasurementSource`, `SurveyMeasurement.pickedOn?: PickedOn[]` (max 100 000, as `points`), types `MeasurementSource`, `PickedOn`, and `dropUnreadablePickedOn(raw: unknown): unknown` (returns `raw` with `pickedOn` removed from every measurement whose `pickedOn` is not an array of `'model' | 'ground'` of its `points` length, one `console.warn` per measurement naming its id), all exported from `@aio/schema`. `MeasurementsFile` becomes `z.preprocess(dropUnreadablePickedOn, <the current object with its superRefine>)`, so every reader (main's `parseAs` at `apps/desktop/src/main/survey.ts`:146, the renderer's `revertMeasurements`, the e2e seeds) is tolerant without a call of its own. Nothing uses `.shape`/`.extend` on `MeasurementsFile` (checked), so the pipe is safe.
 
 - [ ] **Step 1: Write the failing tests** in `m11.test.ts`:
 
@@ -116,28 +116,37 @@ it('measurements take an optional source layer and per-vertex pick kinds', () =>
 it('a file from before the fields still parses', () => {
   expect(MeasurementsFile.safeParse(fileOf([measurement()])).success).toBe(true);
 });
-it('refuses pickedOn that does not match the points', () => {
+it('a pickedOn of the wrong length is dropped, with a warning, and the file still loads', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   const r = MeasurementsFile.safeParse(
-    fileOf([{ ...measurement(), pickedOn: ['ground', 'ground', 'ground', 'model'] }]),
+    fileOf([
+      { ...measurement(), id: 'bad', pickedOn: ['ground', 'ground', 'ground', 'model'] },
+      { ...measurement(), id: 'good', pickedOn: ['ground', 'model', 'ground'] },
+    ]),
   );
-  expect(r.success).toBe(false);
-  expect(r.error?.issues[0]?.path).toEqual(['measurements', 0, 'pickedOn']);
+  expect(r.success).toBe(true);
+  expect(r.data?.measurements[0]).not.toHaveProperty('pickedOn');
+  expect(r.data?.measurements[1]?.pickedOn).toEqual(['ground', 'model', 'ground']);
+  expect(warn).toHaveBeenCalledTimes(1);
+  expect(String(warn.mock.calls[0]?.[0])).toContain('bad');
+  warn.mockRestore();
 });
-it('refuses a pick kind that is not model or ground', () => {
-  expect(
-    MeasurementsFile.safeParse(
-      fileOf([{ ...measurement(), pickedOn: ['air', 'ground', 'ground'] }]),
-    ).success,
-  ).toBe(false);
+it('a pickedOn with an unknown kind or of the wrong type is dropped, not fatal', () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  for (const pickedOn of [['air', 'ground', 'ground'], 'ground', [1, 2, 3]])
+    expect(
+      MeasurementsFile.parse(fileOf([{ ...measurement(), pickedOn }])).measurements[0],
+    ).not.toHaveProperty('pickedOn');
+  vi.restoreAllMocks();
 });
 ```
 
 `measurement()` is a three-point polygon helper local to the test (reuse the one the `survey files` block has, or add it); `fileOf(ms)` wraps it as `aio.measurements/1`.
 
-- [ ] **Step 2: Run to verify they fail:** `pnpm --filter @aio/schema exec vitest run src/m11.test.ts` → FAIL (unknown keys pass through the loose object, the length test passes when it should not).
-- [ ] **Step 3: Implement** the schemas and the length check (`message: 'pickedOn must have one entry per point'`, `path: ['measurements', i, 'pickedOn']`) inside the existing `superRefine`, so `SurveyMeasurement` stays a plain object.
+- [ ] **Step 2: Run to verify they fail:** `pnpm --filter @aio/schema exec vitest run src/m11.test.ts` → FAIL (unknown keys pass through the loose object, so the bad `pickedOn` comes back unchanged).
+- [ ] **Step 3: Implement** the schemas and `dropUnreadablePickedOn` (warning text: `Measurement "<id>": pickedOn dropped (it must have one model or ground entry per point).`), and wrap `MeasurementsFile` in the preprocess, so `SurveyMeasurement` stays a plain object and a bad entry costs only that measurement's `pickedOn`.
 - [ ] **Step 4: Run to verify they pass:** same command → PASS. Then `pnpm --filter @aio/schema exec vitest run` → PASS.
-- [ ] **Step 5: Docs.** Contract row text: "Measurement source, additive: `SurveyMeasurement` gains optional `source` (`{ layer }`, the layer it was measured or last re-measured on) and optional `pickedOn` (`'model' | 'ground'` per vertex, same length as `points`; a file breaking that is refused). `aio.measurements/1` stays. `scope` `{ kind: 'site' }` is legacy only: the app creates `{ kind: 'survey', capture }` with `capture` the source layer's date, and keeps `site` only in a project with no survey dates. Older readers ignore the fields." Section 27 line 729 rewritten to match.
+- [ ] **Step 5: Docs.** Contract row text: "Measurement source, additive: `SurveyMeasurement` gains optional `source` (`{ layer }`, the layer it was measured or last re-measured on) and optional `pickedOn` (`'model' | 'ground'` per vertex, same length as `points`; a malformed or mismatched `pickedOn` is dropped on read with a warning, never failing the file). `aio.measurements/1` stays. `scope` `{ kind: 'site' }` is legacy only: the app creates `{ kind: 'survey', capture }` with `capture` the source layer's date, and keeps `site` only in a project with no survey dates. Older readers ignore the fields." Section 27 line 729 rewritten to match.
 - [ ] **Step 6: Commit:** `feat(schema): measurement source layer and per-vertex pick kinds`
 
 ---
@@ -196,6 +205,8 @@ it('refuses a pick kind that is not model or ground', () => {
   - `'tree.measure.move.unprepared': 'The surfaces of {date} are not prepared yet, so nothing was moved.'`
   - `'tree.measure.move.prepare': 'Prepare surfaces'`
   - `'tree.measure.move.notLoaded': '{layer} could not be loaded to measure on, so nothing was moved.'`
+  - `'tree.measure.move.need3d': 'Switch to the 3D view to move measurements picked on a model or point cloud.'`
+  - `'tree.measure.move.hiddenLayer': 'Show {layer} in the 3D view once, then drop again: it is not loaded yet.'`
   - `'tree.measure.move.noData': '{date} has no data under every point of {name}, so nothing was moved.'`
   - `'tree.measure.move.done_one': '{count} measurement moved to {date} and measured again.'`, `'tree.measure.move.done_other': '{count} measurements moved to {date} and measured again.'`
   - `'tree.measure.backfill.done_one': '{count} older measurement was filed under its survey date.'`, `'tree.measure.backfill.done_other': '{count} older measurements were filed under their survey dates.'`
@@ -305,7 +316,7 @@ it('refuses a pick kind that is not model or ground', () => {
 
 **Interfaces:**
 
-- Consumes: Task 2 `groundAt`, `hasPrepared`; Task 4 `baseLayer`, `VertexPick`; `counterpart` (`@aio/workspace` `captures.ts`:262); `drawnPoints`/`storedPoints` (`measureDates.ts`); `computeAll` (`compareStore.ts`:440); `layerReady` (`placement/controller.ts`:107); `getActiveScene` (`@aio/engine`).
+- Consumes: Task 2 `groundAt`, `hasPrepared`; Task 4 `baseLayer`, `VertexPick`; `counterpart` (`@aio/workspace` `captures.ts`:262); `drawnPoints`/`storedPoints` (`measureDates.ts`); `computeAll` (`compareStore.ts`:440); `getActiveScene` (`@aio/engine`) and its `raycastRay`/`rayLayers`.
 - Produces (`measureMove.ts`):
 
 ```ts
@@ -314,10 +325,15 @@ export type MoveRefusal =
   | { kind: 'no-match'; id: string; layer: string }
   | { kind: 'unprepared'; capture: string }
   | { kind: 'not-loaded'; layer: string }
+  | { kind: 'need-3d' }
+  | { kind: 'hidden-layer'; layer: string }
   | { kind: 'no-data'; id: string };
+export type ModelPick =
+  | { ok: true; z: Float64Array } // NaN: a miss
+  | { ok: false; why: 'need-3d' | 'hidden-layer' | 'not-loaded' };
 export interface Repicker {
   ground(capture: string, drawn: readonly SitePoint[]): Promise<Float64Array>; // NaN: none
-  model(layer: string, drawn: readonly SitePoint[]): Promise<Float64Array | null>; // null: not loaded
+  model(layer: string, drawn: readonly SitePoint[]): Promise<ModelPick>;
 }
 export interface MoveEnv {
   manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>;
@@ -335,7 +351,7 @@ export function planMoveToDate(
 ): Promise<MovePlan>;
 ```
 
-Rules, in order: any telecom → `telecom`; each source layer (`source.layer`, else `baseLayer` of its own date) needs `counterpart(index, layer, capture)` → else `no-match`; `!hasPrepared(surfaces, capture)` → `unprepared`; re-pick at the drawn plan position by kind (`pickedOn`, else `model` when the source layer is a mesh or point cloud and `ground` otherwise): `model` via `repick.model(counterpart, ...)` (null → `not-loaded`), `ground` via `repick.ground(capture, ...)`; any NaN → `no-data`. Apply: `scope` to the target, `source` to the counterpart, new Z, points through `storedPoints` for the target, `pickedOn` kept, `folder` kept when in `folders` else removed, every result `status: 'stale'`, and an item ref `{ kind: 'survey', surface }` whose surface is of the old date rewritten to `surfaceOfCapture(surfaces, capture).id` (other dates' surfaces and designs stay). A measurement already on the target is left out of `next`. A `site` (Needs a date) measurement is filed without a re-pick: scope, `source` = `baseLayer(target)`, points re-stored to stay where drawn, no `pickedOn`.
+Rules, in order: any telecom → `telecom`; each source layer (`source.layer`, else `baseLayer` of its own date) needs `counterpart(index, layer, capture)` → else `no-match`; `!hasPrepared(surfaces, capture)` → `unprepared`; re-pick at the drawn plan position by kind (`pickedOn`, else `model` when the source layer is a mesh or point cloud and `ground` otherwise): `model` via `repick.model(counterpart, ...)` (`ok: false` → the refusal of that `why`), `ground` via `repick.ground(capture, ...)`; any NaN → `no-data`. Apply: `scope` to the target, `source` to the counterpart, new Z, points through `storedPoints` for the target, `pickedOn` kept, `folder` kept when in `folders` else removed, every result `status: 'stale'`, and an item ref `{ kind: 'survey', surface }` whose surface is of the old date rewritten to `surfaceOfCapture(surfaces, capture).id` (other dates' surfaces and designs stay). A measurement already on the target is left out of `next`. A `site` (Needs a date) measurement is filed without a re-pick: scope, `source` = `baseLayer(target)`, points re-stored to stay where drawn, no `pickedOn`.
 
 - Produces (`measureStore.ts`):
   - `interface MeasureNote { seq: number; text: string; danger: boolean; undo?: boolean; prepare?: boolean }`; state `note: MeasureNote | null`, `undoChange: { seq: number; before: SurveyMeasurement[] } | null`
@@ -345,14 +361,14 @@ Rules, in order: any telecom → `telecom`; each source layer (`source.layer`, e
 - Produces (`measureMoveRun.ts`):
   - `moveMeasurementsToDate(ids: readonly string[], capture: string): Promise<MoveOutcome>` where `MoveOutcome = { ok: true; moved: number; seq: number | null } | { ok: false; refusal: MoveRefusal }`: plans, applies undoable, runs `computeAll(movedIds)`, posts the note (`tree.measure.move.done`, `undo: true`; a refusal posts its text, `prepare: true` for `unprepared`).
   - `copyMeasurementToDate(id: string, capture: string): Promise<MoveOutcome>`: the same plan on a copy (new id, `createdAt`, author), added with `addMeasurement`.
-  - `stageRepicker(): Repicker`: `ground` = `groundAt`; `model` = with `getActiveScene()` (null → null), make the layer ray-ready (`layerReady`, which shows it), cast `raycastRay(top, down, { layer })` per point in the stage frame, then hide it again if it was hidden; null on timeout.
+  - `stageRepicker(): Repicker`: `ground` = `groundAt`. `model` never changes what the person sees: no `setLayerVisible`, no `layerReady` (that one shows the layer, `placement/controller.ts`:115), no eye flips in the tree. With no 3D stage (`getActiveScene()` null, e.g. the map view) → `need-3d`. A layer the stage can cast at now (`rayLayers().has(layer)`) → `raycastRay(top, down, { layer })` per point, from `camera.position.y + 10 000` as `stageClamp` does (`measureScene.ts`:196). A counterpart that is loaded but hidden (its root still in `stage.scene` with `userData.layerId === layer`, as `packages/ai/src/places.ts`:540 finds roots): inside one synchronous block with no `await`, set `visible = true` on the root chain, cast every point, and restore every `visible` flag before returning; `raycastRay` honours `visibleChain` (`Stage.ts`:510) and the stage draws only on animation frames, so no frame ever shows it. A counterpart point cloud that is hidden (ray providers list only shown clouds), or a layer with no root in the scene (never loaded) → `hidden-layer`; the move is refused, never shown to pick. If the builder finds the synchronous show-cast-restore unsafe (a render or `onBeforeRender` hook fired by the flag change), the same `hidden-layer` refusal applies to every hidden counterpart: refuse, never flash. `not-loaded` is kept for a root that throws or answers no hit on every point.
   - `moveRefusalText(r: MoveRefusal, manifest): string` (the Task 3 keys, `formatDate` for dates, layer and measurement names).
   - `followLayerDates(): () => void`: on a manifest change within one project, every measurement whose `source.layer` changed date (old date A to new date B, B a capture) and whose `scope.capture` is A takes scope B with its stored points unchanged and results stale (not undoable: the layer's own Undo moves the layer back and this follows it back); then `computeAll`. Nothing while read-only or before the measurements are `ready`; a layer moved to no date leaves its measurements on their date.
 - `isAnnotateReadOnly()` refuses every write path here as `readOnly` does.
 
 - [ ] **Step 1: Write the failing tests.**
-  - `measureMove.test.ts` (fake `Repicker` and a two-date index): `it('re-picks model vertices on the counterpart and ground vertices on the target ground')`: asserts `repick.model` got the counterpart id and the new Z per kind; `it('takes the counterpart by slot, then by kind, and refuses without one')`; `it('keeps the folder when the target has that name, else clears it')`; `it('refuses antenna measurements')`; `it('refuses an unprepared target before re-picking')` (`repick` never called); `it('refuses when a vertex has no data')`; `it('refuses when the model layer cannot be loaded')`; `it('marks results stale and rewrites an old-date surface ref')`; `it('stores points in the target line-up frame')` (target lined up 2 m east: stored E is drawn E minus 2); `it('files a Needs a date measurement without a re-pick')`; `it('is all or nothing: one refusal moves none')`.
-  - `measureMoveRun.test.ts` (mock `../shell` bridge and `compareStore` as `measureStore.test.ts` does; inject the repicker): `it('a move applies, recomputes the moved ids and posts one note with Undo')`; `it('Undo restores scope, source, folder, points and results')`; `it('a refusal posts its text and changes nothing')`; `it('an unprepared target offers Prepare surfaces')`; `it('with no 3D stage a model vertex is refused and a ground-only move goes through')` (Review Focus 4); `it('a layer re-dated carries its measurements, heights unchanged, and they follow it back')`; `it('an antenna measurement follows its layer with values unchanged')`; `it('nothing moves or follows in a read-only project or for a look-only reviewer')`.
+  - `measureMove.test.ts` (fake `Repicker` and a two-date index): `it('re-picks model vertices on the counterpart and ground vertices on the target ground')`: asserts `repick.model` got the counterpart id and the new Z per kind; `it('takes the counterpart by slot, then by kind, and refuses without one')`; `it('keeps the folder when the target has that name, else clears it')`; `it('refuses antenna measurements')`; `it('refuses an unprepared target before re-picking')` (`repick` never called); `it('refuses when a vertex has no data')`; `it('refuses when the model layer cannot be loaded')`; `it('maps need-3d and hidden-layer picks to their refusals')`; `it('marks results stale and rewrites an old-date surface ref')`; `it('stores points in the target line-up frame')` (target lined up 2 m east: stored E is drawn E minus 2); `it('files a Needs a date measurement without a re-pick')`; `it('is all or nothing: one refusal moves none')`.
+  - `measureMoveRun.test.ts` (mock `../shell` bridge and `compareStore` as `measureStore.test.ts` does; inject the repicker): `it('a move applies, recomputes the moved ids and posts one note with Undo')`; `it('Undo restores scope, source, folder, points and results')`; `it('a refusal posts its text and changes nothing')`; `it('an unprepared target offers Prepare surfaces')`; `it('with no 3D stage a model vertex is refused with the switch-to-3D note and a ground-only move goes through')` (Review Focus 4); `it('a hidden loaded mesh counterpart is picked without being shown')`: a fake stage whose `raycastRay` records `root.visible` at call time sees `true`, `workspace.getState().hidden` and the root's `visible` are as before afterwards, and `setLayerVisible` is never called; `it('a hidden point cloud counterpart refuses with the show-it-first note and shows nothing')`; `it('a layer re-dated carries its measurements, heights unchanged, and they follow it back')`; `it('an antenna measurement follows its layer with values unchanged')`; `it('nothing moves or follows in a read-only project or for a look-only reviewer')`.
   - `measureStore.test.ts`: `it('replaceMeasurements is one edit that waits for Save')`; `it('undoMeasureChange ignores a stale seq')`.
 - [ ] **Step 2: Run:** `pnpm --filter @aio/desktop exec vitest run src/renderer/survey/measureMove.test.ts src/renderer/survey/measureMoveRun.test.ts src/renderer/survey/measureStore.test.ts` → FAIL.
 - [ ] **Step 3: Implement** in the order planner, store API, runner, follow; start `followLayerDates()` in `useMeasureFollow`'s list.
@@ -434,6 +450,9 @@ Rules, in order: any telecom → `telecom`; each source layer (`source.layer`, e
 - Create: `apps/desktop/e2e/measurement-dates.spec.ts`
 - Modify: `apps/desktop/e2e/measurement-layers.spec.ts` (one new test)
 - Modify: `apps/desktop/e2e/island.ts:276-288` (`measureTree(win, date?: string)`: with a date, scope to `date-folder-<date>` and its Measurements group, so dated projects with several groups do not break strict mode)
+- Modify: `tools/demo/survey-demo.mjs` (after the `survey/` side files are copied, :193): every `site`-scoped measurement in the demo's `measurements.json` is written as `{ kind: 'survey', capture: <the last capture> }` with `source: { layer: 'dsm-<last>' }` (no `pickedOn`), before the `MeasurementsFile` check
+
+**Survey demos and the backfill (decided: the demo builder pre-dates its measurements).** The survey demos are built with undated measurements; once a spec prepares surfaces, the backfill would file them and leave the project unsaved, which `measureSaved` checks and Save prompts in `survey-gaps`, `survey-reports`, `survey-export` and `survey-qa` do not expect. So the builder files them under the newest date instead. That changes no number: a `site` measurement's `current` already resolves to the latest date with a surface (`resolver.ts`:113-118), and the demos have no line-up, so stored points stay. The demos then open with nothing for the backfill to do, no note and nothing unsaved, and the survey specs keep their expectations unchanged. `surveyFixtures.ts` lists `tools/demo/survey-demo.mjs` in `SOURCES` (:40), so the cached demos rebuild. A spec that focuses an earlier date now hides those measurements (they belong to the newest); if one does, it focuses the newest date before looking for them. The backfill itself is covered by the Task 8 unit tests, not by e2e.
 
 **Interfaces:**
 
@@ -466,7 +485,7 @@ Expected: the log prints `[e2e] window 1100 x 720 px at display scale 1`; all te
 **Files:** none new (fixes go to the task that owns the file).
 
 - [ ] **Step 1:** `pnpm check` → lint, format, typecheck and unit tests all PASS.
-- [ ] **Step 2:** Build the demos CI builds (`pnpm demo:build --quick` from `apps/desktop`, or at least `pnpm demo:change --quick`) and run, the CI way with `--workers=1`, the specs this change can reach: `measurement-layers`, `measurement-dates`, `measure-tools`, `telecom-measurements`, `date-annotations`, `timeline`, `survey-demo`, `survey-gaps`, `survey-reports`, `survey-export`, `survey-qa`, `line-up-dates`. Expected: all PASS. Watch for two things: the survey demos ship `site` measurements, so the backfill may file them once surfaces are prepared and leave the file unsaved; and specs that assume one Measurements group in a dated project need `measureTree(win, date)`.
+- [ ] **Step 2:** Build the demos CI builds (`pnpm demo:build --quick` from `apps/desktop`, or at least `pnpm demo:change --quick`) and run, the CI way with `--workers=1`, the specs this change can reach: `measurement-layers`, `measurement-dates`, `measure-tools`, `telecom-measurements`, `date-annotations`, `timeline`, `survey-demo`, `survey-gaps`, `survey-reports`, `survey-export`, `survey-qa`, `line-up-dates`. Expected: all PASS. `pnpm demo:build --quick` must pass `tools/demo/check-m11.mjs` with the pre-dated measurements. Expected in the survey specs: no backfill note, no unsaved measurements after opening or preparing surfaces (the demos carry no `site` measurement now). Specs that assume one Measurements group in a dated project use `measureTree(win, date)`.
 - [ ] **Step 3:** `node tools/agent/check-public-text.mjs` on the changed docs and specs → no hits.
 - [ ] **Step 4: Commit** any fix in its owning task's scope, e.g. `fix(measure): ...`.
 
@@ -477,4 +496,4 @@ The main session then runs `/wrapup` on this branch (session note with the "How 
 ## Self-review notes
 
 - Spec coverage: data model (1), source at creation incl. map rule and every-date layers (4), Selected panel (10), sidebar groups and drag (3, 5, 9), Move to folder per date (6), date move and re-measure incl. heights, prepared surfaces first, model re-picks (7), layer moved carries measurements incl. telecom (7), readouts on their date (2, 10), backfill (8), errors as notes (3, 7, 9), projects with no dates (3, 4, 8), open points decided: explicit `survey` surface refs of the old date are rewritten (7); stockpile projects need nothing special because the move and follow read the capture index, not the timeline owner (regression in Task 12 via `timeline.spec.ts`).
-- Calls this plan makes where the spec left room: a `site` measurement dragged from "Needs a date" is filed without a re-pick; a missing `pickedOn` is read from the source layer's kind; the filter query is shared by every date's group; the backfill thresholds are 0.10 m and 0.25 m; a model re-pick shows a hidden counterpart layer for the moment it takes.
+- Calls this plan makes where the spec left room: a `site` measurement dragged from "Needs a date" is filed without a re-pick; a missing `pickedOn` is read from the source layer's kind; the filter query is shared by every date's group; the backfill thresholds are 0.10 m and 0.25 m; a model re-pick never shows a hidden counterpart (picked off-screen in one synchronous block, else refused); a malformed `pickedOn` is dropped on read, never fatal; the survey demos are pre-dated by their builder.
