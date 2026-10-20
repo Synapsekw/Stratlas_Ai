@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { announced } from '../announce';
 import { DatasetTree, type DatasetTreeProps, type MeasureTreeProps } from './DatasetTree';
 import { measureMark, measurementsGroup, type TreeGroup, type TreeItem } from './model';
 
@@ -328,6 +329,145 @@ describe('measurement rows in the dataset tree', () => {
     keyDown(q('[data-testid="measure-folder-new"]'), 'Enter');
     expect(p.measures?.onNewFolder).toHaveBeenLastCalledWith(null);
     expect(p.measures?.onNewFolder).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('the filter box of the Measurements group', () => {
+  const box = () => host.querySelector<HTMLInputElement>('[data-testid="measure-filter"]');
+  /** The group as the app builds it under a filter: these matches out of every id. */
+  const filtered = (items: TreeItem[], all: string[]): TreeGroup => {
+    const g = measurementsGroup(items, all);
+    if (!g) throw new Error('no measurements');
+    return g;
+  };
+  const ALL = ['b', 'c', 'a', 's1'];
+
+  it('shows in the open group and hands over what is typed', () => {
+    const p = render(props({}, { query: '', onQuery: vi.fn() }));
+    const input = box();
+    if (!input) throw new Error('no filter box');
+    expect(input.type).toBe('search');
+    expect(input.placeholder).toBe('Filter measurements');
+    expect(input.getAttribute('aria-label')).toBe('Filter measurements');
+    expect(q('[data-testid="measure-filter-clear"]')).toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        input,
+        'crew',
+      );
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(p.measures?.onQuery).toHaveBeenCalledWith('crew');
+    // a folded group, or a tree with no filter to offer, has no box
+    click(q('[data-testid="tree-group-toggle-measurements"]'));
+    expect(box()).toBeNull();
+    render(props());
+    expect(box()).toBeNull();
+  });
+
+  it('the clear button and Escape empty it; an empty box leaves Escape alone', () => {
+    const onQuery = vi.fn();
+    render(props({ groups: [filtered([m('a', 'Line A')], ALL)] }, { query: 'line a', onQuery }));
+    click(q('[data-testid="measure-filter-clear"]'));
+    expect(onQuery).toHaveBeenLastCalledWith('');
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      must(box()).dispatchEvent(esc);
+    });
+    expect(onQuery).toHaveBeenCalledTimes(2);
+    expect(esc.defaultPrevented).toBe(true);
+    render(props({}, { query: '', onQuery }));
+    const esc2 = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      must(box()).dispatchEvent(esc2);
+    });
+    expect(onQuery).toHaveBeenCalledTimes(2);
+    expect(esc2.defaultPrevented).toBe(false);
+  });
+
+  it('under a filter: matches only, folders open, the header says how many of all', () => {
+    const p = render(props({}, { query: '', onQuery: vi.fn() }));
+    // the folder was folded by hand before the filter
+    click(q('[data-testid="measure-folder"][data-folder="Fence"]'));
+    expect(row('b')).toBeNull();
+    const items = [{ ...folder('Fence', [m('b', 'Line B')]), folderIds: ['b', 'c'] }];
+    render({
+      ...p,
+      groups: [filtered(items, ALL)],
+      measures: { ...must2(p.measures), query: 'b' },
+    });
+    expect(row('b')).not.toBeNull();
+    expect(row('c')).toBeNull();
+    expect(row('a')).toBeNull();
+    const f = must(q('[data-testid="measure-folder"][data-folder="Fence"]'));
+    // the folder says how many of its own, as the group does, since its eye covers them all
+    expect(f.querySelector('.tm')?.textContent).toBe('1 of 2');
+    expect(q('[data-testid="tree-group-measurements"] .gcount')?.textContent).toBe('1 of 4');
+    // the eyes act on all they did before the filter
+    click(folderEye('Fence'));
+    expect(p.measures?.onSetVisible).toHaveBeenLastCalledWith(['b', 'c'], false);
+    click(groupEye());
+    expect(p.measures?.onSetVisible).toHaveBeenLastCalledWith(ALL, false);
+  });
+
+  it('under a filter a folder does not fold: no chevron, and a click leaves it as it was', () => {
+    const p = render(props({}, { query: '', onQuery: vi.fn() }));
+    const items = [{ ...folder('Fence', [m('b', 'Line B')]), folderIds: ['b', 'c'] }];
+    render({
+      ...p,
+      groups: [filtered(items, ALL)],
+      measures: { ...must2(p.measures), query: 'b' },
+    });
+    const f = () => must(q('[data-testid="measure-folder"][data-folder="Fence"]'));
+    expect(f().querySelector('.chev')?.classList.contains('chev-off')).toBe(true);
+    // said to assistive tech too: the fold does nothing here
+    // said to assistive tech on the folder's treeitem: the fold does nothing here
+    const item = () => f().closest('[role="treeitem"]');
+    expect(item()?.getAttribute('aria-description')).toBe('Folders stay open while filtering');
+    expect(qa('[aria-disabled]')).toEqual([]);
+    click(f());
+    keyDown(f(), 'Enter');
+    expect(row('b')).not.toBeNull();
+    // the filter cleared: the folder is open as before it, not folded by those clicks
+    render({ ...p, measures: { ...must2(p.measures), query: '' } });
+    expect(row('b')).not.toBeNull();
+    expect(row('c')).not.toBeNull();
+    expect(f().querySelector('.chev')?.classList.contains('chev-off')).toBe(false);
+    expect(item()?.hasAttribute('aria-description')).toBe(false);
+    expect(f().querySelector('.tm')?.textContent).toBe('2');
+  });
+
+  it('under a filter every match shows, past the "more" cap', () => {
+    const many = Array.from({ length: 30 }, (_, i) => m(`m${String(i)}`, `M ${String(i)}`));
+    const all = [...many.map((x) => x.measure.id), 'other'];
+    render(props({ groups: [filtered(many, all)] }, { query: 'm', onQuery: vi.fn() }));
+    expect(qa('[data-testid="measure-row"]').length).toBe(30);
+    expect(qa('.titem.more')).toEqual([]);
+  });
+
+  it('a screen reader hears how many match as the filter changes, through the live region', () => {
+    const p = render(props({}, { query: '', onQuery: vi.fn() }));
+    const before = announced().polite;
+    const items = [{ ...folder('Fence', [m('b', 'Line B')]), folderIds: ['b', 'c'] }];
+    render({
+      ...p,
+      groups: [filtered(items, ALL)],
+      measures: { ...must2(p.measures), query: 'b' },
+    });
+    expect(announced().polite.trim()).toBe('1 of 4 measurements match');
+    render({ ...p, groups: [filtered([], ALL)], measures: { ...must2(p.measures), query: 'zz' } });
+    expect(announced().polite.trim()).toBe('No measurements match');
+    // the line in the tree is for the eye; the live region, mounted always, does the telling
+    expect(q('[data-testid="measure-filter-none"]')?.getAttribute('role')).toBeNull();
+    expect(before).not.toBe(announced().polite);
+  });
+
+  it('no match: the group stays with its box and says so', () => {
+    render(props({ groups: [filtered([], ALL)] }, { query: 'zz', onQuery: vi.fn() }));
+    expect(box()).not.toBeNull();
+    expect(q('[data-testid="measure-filter-none"]')?.textContent).toBe('No measurements match');
+    expect(qa('[data-testid="measure-row"]')).toEqual([]);
+    expect(q('[data-testid="tree-group-measurements"] .gcount')?.textContent).toBe('0 of 4');
   });
 });
 

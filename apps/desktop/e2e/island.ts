@@ -287,6 +287,12 @@ export async function measureTree(win: Page): Promise<Locator> {
   return win.getByTestId('tree-group-measurements').locator('..');
 }
 
+/** The filter box at the top of the tree's Measurements group (the group opened first). */
+export async function measureFilter(win: Page): Promise<Locator> {
+  const group = await measureTree(win);
+  return group.getByRole('searchbox', { name: 'Filter measurements', exact: true });
+}
+
 /** A measurement's row in the Datasets tree, by its label. */
 export function measureRow(win: Page, label: string): Locator {
   return win.getByTestId('measure-row').filter({ hasText: label });

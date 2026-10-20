@@ -15,6 +15,7 @@ import {
   isMenuKey,
   keyMenuPoint,
   makeActionCtx,
+  itemMeasureIds,
   measureIdOf,
   measurementsGroup,
   menuPoint,
@@ -41,7 +42,7 @@ import {
   shortcutHint,
 } from '@aio/ui';
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
 import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
@@ -52,6 +53,7 @@ import { watchPanoStitches } from '../panos/panoJobs';
 import { pickAndScanPanos } from '../panos/panos';
 import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
+import { filterTerms } from '../survey/measureFilter';
 import { buildMeasureItems } from '../survey/measureRows';
 import {
   deleteMeasurements,
@@ -144,6 +146,29 @@ function measureIdsOf(marks: Iterable<string>): string[] {
   });
 }
 
+/** A list of ids by content, whatever its order (to tell whether a selection is still the same). */
+function idsKey(ids: readonly string[]): string {
+  return JSON.stringify([...ids].sort());
+}
+
+/**
+ * Select the marked measurements in view (`ids`); the focus moves off a marked one the filter
+ * hides (`marked`: every marked measurement), so the panel never shows a row the tree hides, and
+ * onto the one measurement when only one is selected.
+ */
+function selectMarked(marked: ReadonlySet<string>, ids: string[]): void {
+  const f = measureStore.getState().focus;
+  // one measurement selected is the one the panel shows, as a plain select of one does
+  const one = ids.length === 1 ? (ids[0] ?? null) : null;
+  const focus =
+    one !== null && f !== one
+      ? one
+      : f === null || ids.includes(f) || !marked.has(f)
+        ? f
+        : (ids[0] ?? null);
+  select(ids, focus);
+}
+
 function NavItem({
   def,
   current,
@@ -210,15 +235,34 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const measureRenaming = useRenameRequest((st) => st.measureId);
   const dates = useWorkspace((s) => s.dates);
   const manifest = project?.manifest ?? null;
+  // the group's filter box: view state only, never saved; the rows are built from it
+  const [measureQuery, setMeasureQuery] = useState('');
+  const filteringMeasures = filterTerms(measureQuery).length > 0;
   const measureItems = useMemo(
     () =>
       buildMeasureItems(
         { file: measureFile, settings: measureSettings, templates: measureTemplates },
         manifest,
         { dates, hidden },
+        measureQuery,
       ),
-    [measureFile, measureSettings, measureTemplates, manifest, dates, hidden],
+    [measureFile, measureSettings, measureTemplates, manifest, dates, hidden, measureQuery],
   );
+  // under a filter the group still counts, and its eye covers, every measurement
+  const measureIds = useMemo(
+    () => (filteringMeasures ? measureFile.measurements.map((m) => m.id) : undefined),
+    [filteringMeasures, measureFile],
+  );
+  // a reveal of a measurement the filter hides (one just drawn, one picked in 3D) clears the
+  // filter, so the row can be shown; no measurements left, no filter (adjusted during render)
+  const [filterSeenReveal, setFilterSeenReveal] = useState(reveal?.seq);
+  if (filterSeenReveal !== reveal?.seq) {
+    setFilterSeenReveal(reveal?.seq);
+    const id = reveal?.id ?? null;
+    if (filteringMeasures && id !== null && !measureItems.flatMap(itemMeasureIds).includes(id))
+      setMeasureQuery('');
+  }
+  if (measureQuery !== '' && measureFile.measurements.length === 0) setMeasureQuery('');
   const measureHidden = useMemo(
     () => Object.fromEntries(hiddenMeasurements.map((id) => [id, true] as const)),
     [hiddenMeasurements],
@@ -243,15 +287,16 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         ? buildDatasetTree(project.manifest, issues, durations, {
             unplaced,
             measurements: measureItems,
+            measurementIds: measureIds,
           })
         : [],
-    [project, issues, durations, unplaced, measureItems],
+    [project, issues, durations, unplaced, measureItems, measureIds],
   );
   // survey dates on: the group shows once, below the date folders (no date folder holds it)
   const after = useMemo(() => {
-    const g = measurementsGroup(measureItems);
+    const g = measurementsGroup(measureItems, measureIds);
     return g ? [g] : [];
-  }, [measureItems]);
+  }, [measureItems, measureIds]);
   const t = useT();
   const index = useCaptureIndex();
   const focus = useTimeline((s) => s.focus);
@@ -301,6 +346,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setNote(null);
     setMarks(NO_MARKS);
     setEmptying(false);
+    setMeasureQuery('');
   }
   // a measurement that left the file (deleted from any menu, the 3D view, the map, the panel,
   // or taken back by Revert) is not marked any more (adjusted during render, not in an effect)
@@ -309,6 +355,54 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setMarksFile(measureFile);
     setMarks((m) => withoutGoneMeasures(m, measureFile.measurements));
   }
+  // A measurement row the filter hides keeps its mark (clearing the filter brings the whole
+  // multi-selection back), but the marks acted on (menu, header, Delete) are the rows in view,
+  // and so is the selection they make (the Selected panel, the 3D and map menus)
+  const shownMeasures = useMemo(
+    () => (filteringMeasures ? new Set(measureItems.flatMap(itemMeasureIds)) : null),
+    [filteringMeasures, measureItems],
+  );
+  const inView = useCallback(
+    (marked: ReadonlySet<string>): ReadonlySet<string> => {
+      if (!shownMeasures) return marked;
+      const kept = [...marked].filter((x) => {
+        const id = measureIdOf(x);
+        return id === null || shownMeasures.has(id);
+      });
+      return kept.length === marked.size ? marked : new Set(kept);
+    },
+    [shownMeasures],
+  );
+  const shownMarks = useMemo(() => inView(marks.marked), [inView, marks.marked]);
+  // the filter changed which marks are in view: the selection the marks made follows them, but
+  // only while it is still the one they made (by content): a pick in the 3D view, a plain click
+  // or a click on empty space selected something else, and that stays. A measurement that left
+  // the file (deleted from the panel, a menu or the tree) leaves the ids the marks selected as
+  // it leaves the marks and the selection, so the three never drift apart.
+  const markSelection = useRef<readonly string[] | null>(null);
+  const selectFromMarks = (marked: ReadonlySet<string>, ids: string[]) => {
+    selectMarked(marked, ids);
+    markSelection.current = ids;
+  };
+  const shownKey = idsKey(measureIdsOf(shownMarks));
+  const seenShown = useRef(shownKey);
+  useEffect(() => {
+    if (seenShown.current === shownKey) return;
+    seenShown.current = shownKey;
+    const all = new Set(measureIdsOf(marks.marked));
+    const made = markSelection.current;
+    if (all.size === 0 || made === null) {
+      markSelection.current = null;
+      return;
+    }
+    const present = new Set(measureFile.measurements.map((m) => m.id));
+    const still = made.filter((id) => present.has(id));
+    if (idsKey(measureStore.getState().selected) !== idsKey(still)) {
+      markSelection.current = null;
+      return;
+    }
+    selectFromMarks(all, measureIdsOf(shownMarks));
+  });
   // a removal went through: what was marked is gone; Empty could not delete everything: say so
   // where the tree's notes go (adjusted during render, not in an effect)
   const [seenRemoval, setSeenRemoval] = useState({ removed, held });
@@ -347,9 +441,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const onMark = (id: string, mods: MarkMods, order: readonly string[]) => {
     const next = nextMarks(marks, order, id, mods);
     setMarks(next);
-    // marked measurements are selected too, so the Selected panel totals them
-    const ids = measureIdsOf(next.marked);
-    if (ids.length > 0) select(ids);
+    // marked measurements in view are selected too, so the Selected panel totals them
+    const all = measureIdsOf(next.marked);
+    if (all.length > 0) selectFromMarks(new Set(all), measureIdsOf(inView(next.marked)));
     else letGoOfMeasures(marks.marked);
   };
   /** The marks held measurements and hold none now: only the focused one stays selected. */
@@ -358,7 +452,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     const f = measureStore.getState().focus;
     select(f ? [f] : [], f);
   };
-  const marked = marks.marked.size > 0;
+  /** Rows marked in view: what the menu, the header and Delete act on. */
+  const marked = shownMarks.size > 0;
   /**
    * Delete these rows. Layers go through the shared dialog, which may be cancelled, so with
    * layers among them only the layers are asked about and the measurements stay marked for a
@@ -472,7 +567,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   };
   /** A row's menu: the marked rows when it is one of them, else the row. */
   const openRow = (item: TreeItem, at: MenuPoint, from: string) => {
-    const target = rowTarget(item, marks.marked);
+    const target = rowTarget(item, shownMarks);
     if (!target) return;
     setMenu({
       target,
@@ -520,7 +615,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   };
   /** A measurement row's menu: the marked measurements when it is one of them, else the row. */
   const openMeasure = (id: string, at: MenuPoint) => {
-    const target = measureTarget(id, marks.marked);
+    const target = measureTarget(id, shownMarks);
     const name = measureFile.measurements.find((m) => m.id === id)?.label ?? id;
     setMenu({
       target,
@@ -712,6 +807,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       endNewFolder();
     },
     reveal,
+    query: measureQuery,
+    onQuery: setMeasureQuery,
   };
 
   // while rows are marked the header offers their Delete in place of the count and the add tools
@@ -758,7 +855,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           } else openProject(keyMenuPoint(e.target as HTMLElement));
           return;
         }
-        if (marked && e.key === 'Escape') {
+        // Escape lets go of every mark, those the filter hides too
+        if (marks.marked.size > 0 && e.key === 'Escape') {
           e.stopPropagation();
           setMarks(NO_MARKS);
           letGoOfMeasures(marks.marked);
@@ -766,7 +864,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           // the marked rows, else the focused row: layers through the shared dialog,
           // measurements at once with an Undo notice
           const row = marked ? null : e.target.closest<HTMLElement>('[data-mark]')?.dataset.mark;
-          const ids = marked ? [...marks.marked] : row ? [row] : [];
+          const ids = marked ? [...shownMarks] : row ? [row] : [];
           if (ids.length === 0) return;
           e.preventDefault();
           deleteRows(ids);
@@ -791,10 +889,10 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               className="tree-marked"
               data-testid="tree-marked-delete"
               onClick={() => {
-                deleteRows([...marks.marked]);
+                deleteRows([...shownMarks]);
               }}
             >
-              {t('tree.marked', { count: marks.marked.size })} · {t('tree.delete')}
+              {t('tree.marked', { count: shownMarks.size })} · {t('tree.delete')}
             </button>
           )}
           {!readOnly && !marking && (

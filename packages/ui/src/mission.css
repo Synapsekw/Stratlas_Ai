@@ -1509,6 +1509,57 @@ select.input option {
   color: var(--acc);
   background: none;
 }
+/* a measurement folder under the filter stays open: its chevron keeps its place, unseen */
+.titem .chev.chev-off {
+  visibility: hidden;
+}
+/* the filter box at the top of the open Measurements group, and its no-match line */
+.tfilter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 2px 6px 4px 24px;
+}
+.tfilter .input {
+  flex: 1;
+  height: 24px;
+  padding-inline: 24px;
+}
+.tfilter .input::-webkit-search-cancel-button {
+  appearance: none;
+}
+.tfilter-icon {
+  position: absolute;
+  inset-inline-start: 7px;
+  color: var(--fg-3);
+  pointer-events: none;
+}
+.tfilter-clear {
+  all: unset;
+  position: absolute;
+  inset-inline-end: 3px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-2);
+  color: var(--fg-3);
+  cursor: pointer;
+}
+.tfilter-clear:hover,
+.tfilter-clear:focus-visible {
+  color: var(--fg-0);
+  background: var(--bg-3);
+}
+.tfilter-clear:focus-visible {
+  outline: 1.5px solid var(--acc);
+  outline-offset: 1px;
+}
+.tfilter-none {
+  margin: 2px 6px 6px 30px;
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
 
 .cal {
   width: 260px;

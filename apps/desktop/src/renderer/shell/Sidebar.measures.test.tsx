@@ -17,14 +17,17 @@ import {
   askNewFolder,
   deleteMeasurements,
   isDirty,
+  revertMeasurements,
   measureStore,
   revealMeasurement,
+  select,
   setMeasureVisibilityMemory,
   undoDeleteMeasurements,
 } from '../survey/measureStore';
 import { createMeasureVisibilityMemory } from '../survey/measureVisibility';
 import { removal } from './removal';
 import { renameRequest } from './renameRequest';
+import { MeasureMenu } from '../survey/MeasureMenu';
 import { Sidebar } from './Sidebar';
 
 const mesh = {
@@ -404,5 +407,248 @@ describe('Datasets: measurements', () => {
     // the Delete key leaves a read-only file alone
     keyDown(row('a'), 'Delete');
     expect(measures()).toHaveLength(3);
+  });
+});
+
+describe('Datasets: the measurement filter', () => {
+  const box = () => q('[data-testid="measure-filter"]');
+  const filter = (text: string) => {
+    const el = box();
+    if (!(el instanceof HTMLInputElement)) throw new Error('no filter box');
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, text);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const shown = () => qa('[data-testid="measure-row"]').map((el) => el.dataset.id);
+  const count = () => q('[data-testid="tree-group-measurements"] .gcount')?.textContent;
+
+  it.each([
+    ['survey dates off', plain],
+    ['survey dates on', dated],
+  ])('shows only the matches; the eye still covers all; clearing brings all back (%s)', (_, m) => {
+    render(m);
+    filter('fence');
+    expect(shown()).toEqual(['a', 'b']);
+    expect(count()).toBe('2 of 3');
+    click(q('[data-testid="tree-group-measurements"] > .eye'));
+    expect(measureStore.getState().hiddenMeasurements).toEqual(['a', 'b', 'c']);
+    filter('nothing here');
+    expect(shown()).toEqual([]);
+    expect(q('[data-testid="measure-filter-none"]')?.textContent).toBe('No measurements match');
+    click(q('[data-testid="measure-filter-clear"]'));
+    expect(shown()).toEqual(['a', 'b', 'c']);
+    expect(count()).toBe('3');
+  });
+
+  it('a mark the filter hides stays, but the menu, the header and Delete act on the rows in view', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    filter('fence');
+    const header = () => q('[data-testid="tree-marked-delete"]');
+    expect(header()?.textContent).toContain('2 selected');
+    contextMenu(row('a'));
+    expect(q('[data-testid="measure-menu"]')?.textContent).toContain('2 measurements');
+    keyDown(q('[data-testid="measure-menu"]'), 'Escape');
+    // clearing the filter brings the whole multi-selection back
+    filter('');
+    expect(row('c')?.classList.contains('marked')).toBe(true);
+    expect(header()?.textContent).toContain('3 selected');
+    filter('fence');
+    keyDown(row('a'), 'Delete');
+    expect(measures().map((x) => x.id)).toEqual(['c']);
+  });
+
+  it('the selection follows the marks in view: the panel, and the 3D menu, leave hidden ones', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    expect(measureStore.getState().selected).toEqual(['a', 'b', 'c']);
+    filter('fence');
+    // the Selected panel totals what the store selects: the marks in view only
+    expect(measureStore.getState().selected).toEqual(['a', 'b']);
+    // the 3D view's right-click menu on a marked shape acts on the same rows
+    const menu = (at: { x: number; y: number; id: string; projectId: string } | null) => {
+      act(() => {
+        root?.render(
+          <>
+            <Sidebar />
+            <MeasureMenu at={at} onClose={() => undefined} />
+          </>,
+        );
+      });
+    };
+    menu({ x: 40, y: 50, id: 'a', projectId: 'p' });
+    expect(q('[data-testid="measure-menu"]')?.textContent).toContain('2 measurements');
+    click(q('[data-testid="ctx-item-measure.delete"]'));
+    expect(measures().map((x) => x.id)).toEqual(['c']);
+    menu(null);
+  });
+
+  it('a mark made under the filter does not select the hidden ones; clearing selects them again', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('c'));
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual(['a']);
+    ctrlClick(name('b'));
+    expect(measureStore.getState().selected).toEqual(['a', 'b']);
+    filter('nothing here');
+    expect(measureStore.getState().selected).toEqual([]);
+    filter('');
+    expect([...measureStore.getState().selected].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('a 3D pick of a marked shape the filter hides selects that shape only', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    filter('fence');
+    // what the 3D view's pick does: select the shape, reveal its row (which clears the filter)
+    act(() => {
+      select(['c'], 'c');
+      revealMeasurement('c');
+    });
+    expect((box() as HTMLInputElement).value).toBe('');
+    expect(measureStore.getState().selected).toEqual(['c']);
+  });
+
+  it('a pick of a visible marked row survives clearing the filter and an eye toggle', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    filter('fence');
+    act(() => {
+      select(['a'], 'a');
+    });
+    filter('');
+    expect(measureStore.getState().selected).toEqual(['a']);
+    filter('fence');
+    click(q('[data-testid="tree-group-measurements"] > .eye'));
+    expect(measureStore.getState().selected).toEqual(['a']);
+  });
+
+  it('a selection let go of (a click on empty space) stays empty through a filter change', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    act(() => {
+      select([]);
+    });
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual([]);
+    filter('');
+    expect(measureStore.getState().selected).toEqual([]);
+  });
+
+  it('a marked row deleted another way (the Selected panel) leaves the selection following the filter', () => {
+    render();
+    click(name('a'));
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    // the Selected panel's Delete measurement takes the focused one only (the 3D and map menus
+    // delete the same way)
+    act(() => {
+      deleteMeasurements(['a']);
+    });
+    expect(measureStore.getState().selected).toEqual(['b', 'c']);
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual(['b']);
+    filter('');
+    expect(measureStore.getState().selected).toEqual(['b', 'c']);
+  });
+
+  it('marks in view all deleted, clearing the filter selects the hidden mark again', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    filter('fence');
+    keyDown(row('a'), 'Delete');
+    expect(measures().map((x) => x.id)).toEqual(['c']);
+    expect(measureStore.getState().selected).toEqual([]);
+    filter('');
+    expect(measureStore.getState().selected).toEqual(['c']);
+  });
+
+  it('an Undo that brings a deleted mark back selects it; the filter leaves that alone', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    act(() => {
+      deleteMeasurements(['a']);
+    });
+    act(() => {
+      undoDeleteMeasurements();
+    });
+    expect(measureStore.getState().selected).toEqual(['a']);
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual(['a']);
+  });
+
+  it('a Revert that lets go of the selection is not undone by the filter', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('b'));
+    ctrlClick(name('c'));
+    act(() => {
+      deleteMeasurements(['a']);
+    });
+    act(() => {
+      revertMeasurements();
+    });
+    expect(measureStore.getState().selected).toEqual([]);
+    filter('fence');
+    expect(measureStore.getState().selected).toEqual([]);
+  });
+
+  it('a first Ctrl+click focuses the measurement it selects', () => {
+    render();
+    ctrlClick(name('b'));
+    expect(measureStore.getState().selected).toEqual(['b']);
+    expect(measureStore.getState().focus).toBe('b');
+  });
+
+  it('the header Delete leaves a hidden marked row alone', () => {
+    render();
+    ctrlClick(name('a'));
+    ctrlClick(name('c'));
+    filter('fence');
+    click(q('[data-testid="tree-marked-delete"]'));
+    expect(measures().map((x) => x.id)).toEqual(['b', 'c']);
+    filter('');
+    expect(row('c')?.classList.contains('marked')).toBe(true);
+  });
+
+  it('a reveal of a measurement the filter hides clears the filter', () => {
+    render();
+    filter('fence');
+    act(() => {
+      revealMeasurement('a');
+    });
+    expect((box() as HTMLInputElement).value).toBe('fence');
+    act(() => {
+      revealMeasurement('c');
+    });
+    expect((box() as HTMLInputElement).value).toBe('');
+    expect(row('c')).not.toBeNull();
+  });
+
+  it('another project starts with no filter', () => {
+    render();
+    filter('fence');
+    act(() => {
+      workspace.getState().openProject({ id: 'p2', root: 'C:/p2', manifest: plain });
+    });
+    expect((box() as HTMLInputElement).value).toBe('');
+    expect(shown()).toEqual(['a', 'b', 'c']);
   });
 });

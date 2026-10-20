@@ -8,6 +8,7 @@ import { expectAccessible } from './a11y';
 import { expect, test } from './fixtures';
 import {
   measureControl,
+  measureFilter,
   measureSaved,
   measureStrip,
   measureTree,
@@ -180,14 +181,19 @@ for (const kind of ['mesh', 'cloud'] as const) {
       await expectValue(win, 'azimuth', 0);
       expect((await saved(dataRoot.projectDir)).measurements[0]?.points).toEqual(azimuth.points);
 
-      // The group eye of the tree covers every measurement, and is not an edit to save.
+      // The group eye of the tree covers every measurement, even while the tree is filtered,
+      // and is not an edit to save.
       const group = (await measureTree(win)).getByTestId('tree-group-measurements');
       const footer = await measureSaved(win);
       const beforeVisibility = await saved(dataRoot.projectDir);
+      const filter = await measureFilter(win);
+      await filter.fill('Azimuth');
+      await expect(win.getByTestId('measure-row')).toHaveCount(1);
+      await expect(group.locator('.gcount')).toHaveText('1 of 3');
       await expect(win.locator('.sv-label')).toHaveCount(3);
       await group.getByRole('button', { name: 'Measurements: hide all' }).click();
       await expect(win.locator('.sv-label')).toHaveCount(0);
-      await expect(win.getByTestId('measure-row')).toHaveCount(3);
+      await expect(win.getByTestId('measure-row')).toHaveCount(1);
       await expect(footer.getByTestId('survey-list-save')).toBeDisabled();
       const anyVisible = await win.evaluate(
         (ids) => {
@@ -209,6 +215,8 @@ for (const kind of ['mesh', 'cloud'] as const) {
       await expect(win.locator('.sv-label')).toHaveCount(3);
       await expect(footer.getByTestId('survey-list-save')).toBeDisabled();
       expect(await saved(dataRoot.projectDir)).toEqual(beforeVisibility);
+      await filter.fill('');
+      await expect(win.getByTestId('measure-row')).toHaveCount(3);
       await win.screenshot({ path: testInfo.outputPath('measurement-visibility.png') });
     });
 

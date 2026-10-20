@@ -1,5 +1,6 @@
 import {
   Fragment,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -9,11 +10,13 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
+import { announce } from '../announce';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import { Tip } from '../Tip';
 import {
   eyeTarget,
+  folderMeasureIds,
   groupLayerIds,
   groupMeasureIds,
   itemMeasureIds,
@@ -135,6 +138,13 @@ export interface MeasureTreeProps {
   onNewFolder: (name: string | null) => void;
   /** Open the group (and the folder holding `id`), show the row past "more", scroll it into view. */
   reveal: { id: string | null; seq: number } | null;
+  /**
+   * The filter box at the top of the open group (no box without `onQuery`). The caller builds
+   * the group's rows from it (`measurementsGroup` with every id): under a filter the folders show
+   * open and every match shows, past "more".
+   */
+  query?: string | undefined;
+  onQuery?: ((query: string) => void) | undefined;
 }
 
 /** Measurement labels and folder names take up to 200 characters. */
@@ -312,6 +322,19 @@ export function DatasetTree(props: DatasetTreeProps) {
   });
 
   const measures = props.measures;
+  // how many the filter matches is said through the app's live region, which is always mounted
+  // (a status line added together with its text is often not read)
+  const measureGroup = measures ? groups.find((g) => g.kind === 'measurements') : undefined;
+  const matched = measureGroup?.matched;
+  const matchTotal = measureGroup?.count ?? 0;
+  useEffect(() => {
+    if (matched === undefined) return;
+    announce(
+      matched === 0
+        ? t('tree.measure.filterNone')
+        : t('tree.measure.filterMatches', { shown: matched, total: matchTotal }),
+    );
+  }, [matched, matchTotal, t]);
   /** Measurement folders opened or closed by hand (open by default), and those showing every row. */
   const [folderOpen, setFolderOpen] = useState<Record<string, boolean>>({});
   const [folderAll, setFolderAll] = useState<Record<string, boolean>>({});
@@ -869,18 +892,35 @@ export function DatasetTree(props: DatasetTreeProps) {
   };
 
   /** A folder of measurements: opens and closes (open at first), with an eye over its rows. */
-  const measureFolderRow = (it: TreeItem, name: string, mp: MeasureTreeProps) => {
+  const measureFolderRow = (
+    it: TreeItem,
+    name: string,
+    mp: MeasureTreeProps,
+    filtering: boolean,
+  ) => {
     const ids = itemMeasureIds(it);
-    const open = folderOpen[name] ?? true;
-    const allOff = ids.length > 0 && ids.every((id) => mp.hidden[id] === true);
+    // under a filter the eye still acts on the whole folder, the rows it hides too
+    const eyeIds = folderMeasureIds(it);
+    // a folder holding matches shows them, though it was folded by hand
+    const open = filtering || (folderOpen[name] ?? true);
+    const allOff = eyeIds.length > 0 && eyeIds.every((id) => mp.hidden[id] === true);
     const kids = it.children ?? [];
-    const showingAll = folderAll[name] === true;
+    const showingAll = filtering || folderAll[name] === true;
     const { rows, behind } = capRows(kids, showingAll, keepMeasure(mp));
+    // under a filter a folder holding matches stays open: folding it there would only fold it
+    // for later, once the filter is cleared
     const toggle = () => {
-      setFolderOpen((o) => ({ ...o, [name]: !open }));
+      if (!filtering) setFolderOpen((o) => ({ ...o, [name]: !open }));
     };
     return (
-      <div key={it.id} role="treeitem" aria-expanded={open} aria-selected={false}>
+      <div
+        key={it.id}
+        role="treeitem"
+        aria-expanded={open}
+        aria-selected={false}
+        // a click or Enter does not fold it under a filter: said, not left silent
+        aria-description={filtering ? t('tree.measure.filterFolderOpen') : undefined}
+      >
         <div
           tabIndex={0}
           className={`titem flight${allOff ? ' hidden' : ''}`}
@@ -900,12 +940,20 @@ export function DatasetTree(props: DatasetTreeProps) {
             }
           }}
         >
-          <Icon name="chev-r" size={12} className={`chev${open ? ' open' : ''}`} />
+          <Icon
+            name="chev-r"
+            size={12}
+            className={`chev${open ? ' open' : ''}${filtering ? ' chev-off' : ''}`}
+          />
           <Icon name="folder" size={14} />
           <span className="tn">{name}</span>
-          <span className="tm">{t('tree.measure.folderCount', { count: ids.length })}</span>
+          <span className="tm">
+            {filtering
+              ? t('tree.measure.filterCount', { shown: ids.length, total: eyeIds.length })
+              : t('tree.measure.folderCount', { count: ids.length })}
+          </span>
           <VisibilityEye
-            layerIds={ids}
+            layerIds={eyeIds}
             hidden={mp.hidden}
             onSet={mp.onSetVisible}
             labels={{
@@ -918,9 +966,10 @@ export function DatasetTree(props: DatasetTreeProps) {
         {open && (
           <div role="group" className="titems-sub">
             {rows.map((c) => measureRow(c, mp, true))}
-            {moreRow(behind, showingAll, kids.length, () => {
-              setFolderAll((o) => ({ ...o, [name]: !showingAll }));
-            })}
+            {!filtering &&
+              moreRow(behind, showingAll, kids.length, () => {
+                setFolderAll((o) => ({ ...o, [name]: !showingAll }));
+              })}
           </div>
         )}
       </div>
@@ -963,6 +1012,50 @@ export function DatasetTree(props: DatasetTreeProps) {
     );
   };
 
+  /**
+   * The filter box at the top of the open Measurements group: the clear button and Escape empty
+   * it. Escape on an empty box does nothing here (the tree's own keys leave a field's keys alone).
+   */
+  const filterBox = (mp: MeasureTreeProps, onQuery: (query: string) => void) => {
+    const query = mp.query ?? '';
+    return (
+      <div className="tfilter">
+        <Icon name="search" size={12} className="tfilter-icon" />
+        <input
+          type="search"
+          className="input"
+          data-testid="measure-filter"
+          aria-label={t('tree.measure.filter')}
+          placeholder={t('tree.measure.filter')}
+          value={query}
+          spellCheck={false}
+          onChange={(e) => {
+            onQuery(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape' || query === '') return;
+            e.preventDefault();
+            e.stopPropagation();
+            onQuery('');
+          }}
+        />
+        {query !== '' && (
+          <button
+            type="button"
+            className="tfilter-clear"
+            aria-label={t('tree.measure.filterClear')}
+            data-testid="measure-filter-clear"
+            onClick={() => {
+              onQuery('');
+            }}
+          >
+            <Icon name="x" size={12} />
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div
       className={props.nested ? 'tree tree-nested' : 'tree'}
@@ -974,9 +1067,11 @@ export function DatasetTree(props: DatasetTreeProps) {
         const expanded = !collapsed && isOpen(g.kind);
         // the Measurements group draws its own rows; its folders always show, loose rows are capped
         const mg = g.kind === 'measurements' ? measures : undefined;
+        // the group under its filter: every match shows (no "more"), the header counts them
+        const filtering = mg !== undefined && g.matched !== undefined;
         const folders = mg ? g.items.filter((it) => it.folder !== undefined) : [];
         const capped = mg ? g.items.filter((it) => it.folder === undefined) : g.items;
-        const showingAll = showAll[g.kind] === true;
+        const showingAll = filtering || showAll[g.kind] === true;
         const { rows, behind } = capRows(
           capped,
           showingAll,
@@ -1056,7 +1151,11 @@ export function DatasetTree(props: DatasetTreeProps) {
                 <Icon name="chev-r" size={12} className="chev" />
                 <Icon name={g.icon} />
                 <span className="glbl">{g.label}</span>
-                <span className="gcount">{g.count}</span>
+                <span className="gcount">
+                  {filtering
+                    ? t('tree.measure.filterCount', { shown: g.matched ?? 0, total: g.count })
+                    : g.count}
+                </span>
                 <span className="tip">
                   {g.label} · {g.count}
                 </span>
@@ -1101,22 +1200,31 @@ export function DatasetTree(props: DatasetTreeProps) {
                 />
               )}
             </div>
+            {expanded && mg?.onQuery && filterBox(mg, mg.onQuery)}
+            {expanded && filtering && g.matched === 0 && (
+              <p className="tfilter-none" data-testid="measure-filter-none">
+                {t('tree.measure.filterNone')}
+              </p>
+            )}
             {expanded && (
               <div className="titems" role="group">
                 {mg ? (
                   <>
                     {newFolderRow(mg)}
                     {folders.map((it) =>
-                      it.folder !== undefined ? measureFolderRow(it, it.folder, mg) : null,
+                      it.folder !== undefined
+                        ? measureFolderRow(it, it.folder, mg, filtering)
+                        : null,
                     )}
                     {rows.map((it) => measureRow(it, mg, false))}
                   </>
                 ) : (
                   rows.map((it) => (it.children ? flightRow(it, it.children) : row(it, false)))
                 )}
-                {moreRow(behind, showingAll, capped.length, () => {
-                  setShowAll((s) => ({ ...s, [g.kind]: !s[g.kind] }));
-                })}
+                {!filtering &&
+                  moreRow(behind, showingAll, capped.length, () => {
+                    setShowAll((s) => ({ ...s, [g.kind]: !s[g.kind] }));
+                  })}
               </div>
             )}
           </div>

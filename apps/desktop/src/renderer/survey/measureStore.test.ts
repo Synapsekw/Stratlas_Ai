@@ -12,6 +12,7 @@ import {
   startTool,
   stopTool,
   flipAzimuth,
+  forgetMeasureWrites,
   askNewFolder,
   deleteMeasurements,
   endNewFolder,
@@ -38,6 +39,8 @@ const io = vi.hoisted(() => ({
   writesTo: new Map<string, number>(),
   /** While set, a call on this channel waits for it before it answers. */
   gate: null as { channel: string; wait: Promise<void> } | null,
+  /** While set, a write is refused (the disk is full). */
+  writeFails: false,
 }));
 function emptyFile(): MeasurementsFile {
   return { schema: 'aio.measurements/1' as const, measurements: [] };
@@ -47,6 +50,7 @@ vi.mock('../shell', () => ({
     call: async (channel: string, payload: { file?: unknown; projectId?: string }) => {
       if (io.gate?.channel === channel) await io.gate.wait;
       if (channel === 'survey:writeMeasurements') {
+        if (io.writeFails) return { ok: true, value: { ok: false, error: 'Disk full' } };
         io.saved = MeasurementsFile.parse(JSON.parse(JSON.stringify(payload.file)) as unknown);
         io.writes++;
         const p = payload.projectId ?? '';
@@ -60,6 +64,9 @@ vi.mock('../shell', () => ({
   },
   jobs: { getState: () => ({}) },
 }));
+
+/** The deletion the notice offers to undo (the latest). */
+const topUndo = () => measureStore.getState().undoDeletes.at(-1) ?? null;
 
 const env = { view: '3d' as const, clampZ: () => -99, snap: () => null };
 const click = (raw: SitePoint) => {
@@ -108,6 +115,8 @@ beforeEach(() => {
   io.readOnly = false;
   io.writesTo.clear();
   io.gate = null;
+  io.writeFails = false;
+  forgetMeasureWrites();
   memory = createMeasureVisibilityMemory(memoryStorage());
   setMeasureVisibilityMemory(memory);
   measureStore.setState({
@@ -126,6 +135,9 @@ beforeEach(() => {
     saving: false,
     measurementsVisible: true,
     hiddenMeasurements: [],
+    // a test that does not load a file starts with no undo or reveal of the one before
+    undoDeletes: [],
+    reveal: null,
   });
 });
 
@@ -391,11 +403,11 @@ describe('a deletion can be undone', () => {
     const before = measureStore.getState().file;
     deleteMeasurements(['m1', 'm3']);
     expect(ids()).toEqual(['m2']);
-    expect(measureStore.getState().undoDelete?.items.map((x) => x.m.id)).toEqual(['m1', 'm3']);
+    expect(topUndo()?.items.map((x) => x.m.id)).toEqual(['m1', 'm3']);
     undoDeleteMeasurements();
     expect(measureStore.getState().file.measurements).toEqual(before.measurements);
     expect(isDirty(measureStore.getState())).toBe(false);
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
   });
 
   it('the undo puts the measurements back after later edits, without doubling one already back', async () => {
@@ -403,7 +415,7 @@ describe('a deletion can be undone', () => {
     deleteMeasurements(['m2']);
     revertMeasurements();
     // Revert brought it back already: the undo has nothing left to do
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
     deleteMeasurements(['m1']);
     // a later edit: a new measurement at the end
     measureStore.setState((s) => ({
@@ -432,14 +444,48 @@ describe('a deletion can be undone', () => {
     await three();
     deleteMeasurements(['m1']);
     dismissUndoDelete();
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
     deleteMeasurements(['m2']);
     measureStore.setState({ projectId: null });
     await loadMeasurements('p1');
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
     measureStore.setState({ readOnly: true });
     deleteMeasurements(['m1']);
-    expect(measureStore.getState().undoDelete).toBeNull();
+    expect(topUndo()).toBeNull();
+  });
+
+  it('a second deletion keeps the first one undoable: Undo takes them back latest first', async () => {
+    await three();
+    const before = measureStore.getState().file;
+    deleteMeasurements(['m1']);
+    deleteMeasurements(['m3']);
+    expect(topUndo()?.items.map((x) => x.m.id)).toEqual(['m3']);
+    undoDeleteMeasurements();
+    expect(ids()).toEqual(['m2', 'm3']);
+    expect(topUndo()?.items.map((x) => x.m.id)).toEqual(['m1']);
+    undoDeleteMeasurements();
+    expect(measureStore.getState().file.measurements).toEqual(before.measurements);
+    expect(topUndo()).toBeNull();
+  });
+
+  it('keeps the last 10 deletions; Revert trims what it brought back, Dismiss lets go of all', async () => {
+    await loadFile(Array.from({ length: 12 }, (_, i) => measurement(`m${String(i)}`)));
+    for (let i = 0; i < 12; i++) deleteMeasurements([`m${String(i)}`]);
+    expect(measureStore.getState().undoDeletes).toHaveLength(10);
+    for (let i = 0; i < 10; i++) undoDeleteMeasurements();
+    // the two oldest deletions are gone for good
+    expect(ids()).toEqual(Array.from({ length: 10 }, (_, i) => `m${String(i + 2)}`));
+    expect(topUndo()).toBeNull();
+    await three();
+    deleteMeasurements(['m1']);
+    deleteMeasurements(['m2']);
+    expect(await saveMeasurements()).toBe(true);
+    deleteMeasurements(['m3']);
+    revertMeasurements();
+    // m3 came back with Revert; m1 and m2 were saved gone, so their undos stay
+    expect(measureStore.getState().undoDeletes.map((u) => u.items[0]?.m.id)).toEqual(['m1', 'm2']);
+    dismissUndoDelete();
+    expect(measureStore.getState().undoDeletes).toEqual([]);
   });
 });
 
@@ -482,6 +528,118 @@ describe('an autosave and the undo against what happens meanwhile', () => {
     await flush();
     expect(io.writesTo.get('B') ?? 0).toBe(0);
     setAutosave(false);
+  });
+
+  it('opening a project again waits for its write still in flight, then reads what it wrote', async () => {
+    await loadFile([measurement('m1'), measurement('m2')]);
+    measureStore.setState({ projectId: 'A' });
+    setAutosave(true);
+    const writeA = gate('survey:writeMeasurements');
+    deleteMeasurements(['m1']);
+    expect(measureStore.getState().saving).toBe(true);
+    // A, then B, then A again while A's first write is still in flight
+    await loadMeasurements('B');
+    const loadA = loadMeasurements('A');
+    await flush();
+    // the file is not read before the write lands
+    expect(measureStore.getState().status).toBe('loading');
+    writeA();
+    await loadA;
+    await flush();
+    const loaded = measureStore.getState();
+    expect(loaded.status).toBe('ready');
+    expect(loaded.file.measurements.map((m) => m.id)).toEqual(['m2']);
+    expect(isDirty(loaded)).toBe(false);
+    expect(loaded.message).toBeNull();
+    setAutosave(false);
+  });
+
+  it('a write that fails still lets the project open again', async () => {
+    await loadFile([measurement('m1'), measurement('m2')]);
+    measureStore.setState({ projectId: 'A' });
+    setAutosave(true);
+    io.writeFails = true;
+    const writeA = gate('survey:writeMeasurements');
+    deleteMeasurements(['m1']);
+    await loadMeasurements('B');
+    const loadA = loadMeasurements('A');
+    writeA();
+    await loadA;
+    expect(measureStore.getState().status).toBe('ready');
+    expect(measureStore.getState().file.measurements.map((m) => m.id)).toEqual(['m1', 'm2']);
+    setAutosave(false);
+  });
+
+  /** A, then B, then A again, with each of A's two reads waiting for its own door. */
+  async function aBaWithReadsHeld(): Promise<{
+    openFirst: () => void;
+    openSecond: () => void;
+    done: Promise<unknown>;
+  }> {
+    io.saved = MeasurementsFile.parse({
+      schema: 'aio.measurements/1',
+      measurements: [measurement('m1'), measurement('m2')],
+    });
+    measureStore.setState({ projectId: null });
+    const doors: (() => void)[] = [];
+    const hold = () => {
+      let open: () => void = () => undefined;
+      const wait = new Promise<void>((r) => {
+        open = r;
+      });
+      io.gate = { channel: 'survey:readMeasurements', wait };
+      doors.push(open);
+    };
+    hold();
+    const a1 = loadMeasurements('A');
+    io.gate = null;
+    const b = loadMeasurements('B');
+    hold();
+    const a2 = loadMeasurements('A');
+    io.gate = null;
+    await flush();
+    const [openFirst = () => undefined, openSecond = () => undefined] = doors;
+    return { openFirst, openSecond, done: Promise.all([a1, b, a2]) };
+  }
+
+  it('the first read of A answering after A was opened again is not taken as loaded', async () => {
+    const { openFirst, openSecond, done } = await aBaWithReadsHeld();
+    openFirst();
+    await flush();
+    // the latest load's read is still out: nothing to show or edit yet
+    expect(measureStore.getState().status).toBe('loading');
+    openSecond();
+    await done;
+    expect(measureStore.getState().status).toBe('ready');
+    deleteMeasurements(['m1']);
+    expect(measureStore.getState().file.measurements.map((m) => m.id)).toEqual(['m2']);
+  });
+
+  it('the first read of A answering late does not put back the file over an edit', async () => {
+    const { openFirst, openSecond, done } = await aBaWithReadsHeld();
+    openSecond();
+    await flush();
+    expect(measureStore.getState().status).toBe('ready');
+    deleteMeasurements(['m1']);
+    openFirst();
+    await done;
+    await flush();
+    const s = measureStore.getState();
+    expect(s.file.measurements.map((m) => m.id)).toEqual(['m2']);
+    expect(isDirty(s)).toBe(true);
+    expect(s.undoDeletes).toHaveLength(1);
+  });
+
+  it('saving is refused unless the file is loaded', async () => {
+    for (const status of ['idle', 'loading', 'error'] as const) {
+      measureStore.setState({
+        status,
+        file: { schema: 'aio.measurements/1', measurements: [measurement('m1')] },
+      });
+      expect(await saveMeasurements()).toBe(false);
+    }
+    expect(io.writes).toBe(0);
+    expect(measureStore.getState().saving).toBe(false);
   });
 
   it('Undo while another measurement is being edited ends that edit: no geometry crosses over', async () => {

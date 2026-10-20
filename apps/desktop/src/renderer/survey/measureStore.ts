@@ -159,10 +159,11 @@ export interface MeasureState {
   /** Saved measurements hidden one by one in the views (the eye on their row; view only). */
   hiddenMeasurements: readonly string[];
   /**
-   * The last deletion, until it is undone, dismissed or replaced by the next one: the deleted
-   * measurements with where each stood in the file (`seq` makes each deletion new).
+   * The deletions that can still be undone, oldest first and at most `UNDO_DELETES`: the
+   * deleted measurements with where each stood in the file (`seq` makes each deletion new).
+   * Undo takes back the last one, then the one before it; Dismiss lets go of them all.
    */
-  undoDelete: UndoDelete | null;
+  undoDeletes: readonly UndoDelete[];
   /** The tree is asked to scroll to and select a measurement (`seq` makes each ask new). */
   reveal: { id: string | null; seq: number; openSidebar: boolean } | null;
   /** The tree is asked to open an inline new-folder row for these measurements. */
@@ -224,7 +225,7 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   editing: null,
   measurementsVisible: true,
   hiddenMeasurements: [],
-  undoDelete: null,
+  undoDeletes: [],
   reveal: null,
   newFolder: null,
   dialog: null,
@@ -258,6 +259,23 @@ export function setMeasureVisibilityMemory(m: MeasureVisibilityMemory): void {
 }
 let revealSeq = 0;
 let undoSeq = 0;
+/** How many deletions stay undoable. */
+export const UNDO_DELETES = 10;
+/**
+ * Bumped by every load that resets the state: a save or an earlier load that awaited across one
+ * (A, then B, then A again) finds it changed and leaves the new load alone, though the project id
+ * is the same.
+ */
+let loadEpoch = 0;
+/**
+ * Each project's writes still in flight, chained, settled whether they wrote or not: a load of
+ * that project waits for them, so it never reads the file from before a write that lands after.
+ */
+const writing = new Map<string, Promise<unknown>>();
+/** Forget the writes in flight (tests: a gate a test left shut must not hold the next one's load). */
+export function forgetMeasureWrites(): void {
+  writing.clear();
+}
 let newFolderSeq = 0;
 
 export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
@@ -268,14 +286,21 @@ export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
 /** Read the project's measurements, templates and site settings. */
 export async function loadMeasurements(projectId: string | null): Promise<void> {
   if (projectId === get().projectId && get().status !== 'error') return;
+  const epoch = ++loadEpoch;
   set({ ...initial(), projectId, status: projectId ? 'loading' : 'idle' });
   if (!projectId) return;
+  const pending = writing.get(projectId);
+  if (pending) {
+    await pending;
+    if (loadEpoch !== epoch) return;
+  }
   const [m, t, s] = await Promise.all([
     bridge.call('survey:readMeasurements', { projectId }),
     bridge.call('survey:readTemplates', { projectId }),
     bridge.call('survey:readSettings', { projectId }),
   ]);
-  if (get().projectId !== projectId) return;
+  // a later load (of another project, or of this one again) owns the state now
+  if (loadEpoch !== epoch) return;
   if (!m.ok || !m.value.ok) {
     const error = !m.ok ? m.error : m.value.ok ? '' : m.value.error;
     set({ status: 'error', error });
@@ -304,13 +329,22 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
 
 export async function saveMeasurements(): Promise<boolean> {
   const s = get();
-  if (!s.projectId || s.readOnly || s.saving) return false;
+  // only a file read in full is written: never the empty one of a load still under way or failed
+  if (!s.projectId || s.status !== 'ready' || s.readOnly || s.saving) return false;
   const file = s.file;
   const projectId = s.projectId;
+  const epoch = loadEpoch;
   set({ saving: true, message: null });
-  const r = await bridge.call('survey:writeMeasurements', { projectId, file });
-  // another project opened meanwhile: its state is not this save's to touch, or to save
-  if (get().projectId !== projectId) return false;
+  const write = bridge.call('survey:writeMeasurements', { projectId, file });
+  const chain = Promise.allSettled([writing.get(projectId), write]);
+  writing.set(projectId, chain);
+  void chain.then(() => {
+    if (writing.get(projectId) === chain) writing.delete(projectId);
+  });
+  const r = await write;
+  // another project (or this one again) was opened meanwhile: that state is not this save's to
+  // touch, or to save
+  if (loadEpoch !== epoch || get().projectId !== projectId) return false;
   const ok = r.ok && r.value.ok;
   const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
   set({
@@ -337,12 +371,15 @@ export function revertMeasurements(): void {
       focus: null,
       editing: null,
       message: null,
-      undoDelete: undoLeft(s.undoDelete, parsed.data),
+      undoDeletes: s.undoDeletes.flatMap((u) => {
+        const left = undoLeft(u, parsed.data);
+        return left ? [left] : [];
+      }),
     });
 }
 
 /** What an undo still has to bring back: the deleted measurements not in `file` again. */
-function undoLeft(u: UndoDelete | null, file: MeasurementsFile): UndoDelete | null {
+function undoLeft(u: UndoDelete | undefined, file: MeasurementsFile): UndoDelete | null {
   if (!u) return null;
   const present = new Set(file.measurements.map((m) => m.id));
   const items = u.items.filter((x) => !present.has(x.m.id));
@@ -460,20 +497,22 @@ export function deleteMeasurements(ids: readonly string[]): void {
       selected: s.selected.filter((id) => !gone.has(id)),
       focus: s.focus && gone.has(s.focus) ? null : s.focus,
       editing: s.focus && gone.has(s.focus) ? null : s.editing,
-      undoDelete: { items, seq: undoSeq },
+      undoDeletes: [...s.undoDeletes, { items, seq: undoSeq }].slice(-UNDO_DELETES),
     },
   );
 }
 
 /**
  * Bring the last deleted measurements back as they were (same ids, folder and style), each at
- * its old place in the file. An ordinary edit: it marks the file unsaved, or Autosave saves it.
+ * its old place in the file; the deletion before it is offered next. An ordinary edit: it marks
+ * the file unsaved, or Autosave saves it.
  */
 export function undoDeleteMeasurements(): void {
   const s = get();
-  const left = undoLeft(s.undoDelete, s.file);
+  const undoDeletes = s.undoDeletes.slice(0, -1);
+  const left = undoLeft(s.undoDeletes.at(-1), s.file);
   if (s.readOnly || !left) {
-    set({ undoDelete: null });
+    set({ undoDeletes: s.readOnly ? [] : undoDeletes });
     return;
   }
   const measurements = [...s.file.measurements];
@@ -484,13 +523,13 @@ export function undoDeleteMeasurements(): void {
   // the focus moves to what came back: an edit under way on another measurement ends
   changed(
     { ...s.file, measurements },
-    { undoDelete: null, selected: back, focus, editing: focus === s.focus ? s.editing : null },
+    { undoDeletes, selected: back, focus, editing: focus === s.focus ? s.editing : null },
   );
 }
 
-/** Let go of the last deletion's undo. */
+/** Let go of every deletion's undo (the notice closes). */
 export function dismissUndoDelete(): void {
-  set({ undoDelete: null });
+  set({ undoDeletes: [] });
 }
 
 /** Copy a measurement into another survey (a new id, scoped to that capture). */

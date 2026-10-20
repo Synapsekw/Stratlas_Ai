@@ -42,7 +42,7 @@ beforeEach(() => {
     editing: null,
     file,
     savedText: JSON.stringify(file),
-    undoDelete: null,
+    undoDeletes: [],
   });
   host = document.body.appendChild(document.createElement('div'));
   root = createRoot(host);
@@ -83,5 +83,45 @@ describe('MeasureUndoNotice', () => {
     });
     expect(q('[data-testid="measure-undo"]')).toBeNull();
     expect(ids()).toEqual(['m1', 'm3']);
+  });
+
+  it('after a second deletion, Undo takes it back and then offers the first one', () => {
+    act(() => {
+      deleteMeasurements(['m1']);
+      deleteMeasurements(['m3']);
+    });
+    expect(q('[data-testid="measure-undo"]')?.textContent).toContain('Line m3');
+    act(() => {
+      q('[data-testid="measure-undo-button"]')?.click();
+    });
+    expect(ids()).toEqual(['m2', 'm3']);
+    expect(q('[data-testid="measure-undo"]')?.textContent).toContain('Line m1');
+    act(() => {
+      q('[data-testid="measure-undo-button"]')?.click();
+    });
+    expect(ids()).toEqual(['m1', 'm2', 'm3']);
+    expect(q('[data-testid="measure-undo"]')).toBeNull();
+  });
+
+  it('a double-click on Undo takes back one deletion, not the one before it too', () => {
+    act(() => {
+      deleteMeasurements(['m1']);
+      deleteMeasurements(['m3']);
+    });
+    const press = (detail: number) => {
+      act(() => {
+        q('[data-testid="measure-undo-button"]')?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true, detail }),
+        );
+      });
+    };
+    // the two clicks of a double-click: the notice offers m1 under the pointer after the first
+    press(1);
+    press(2);
+    expect(ids()).toEqual(['m2', 'm3']);
+    expect(q('[data-testid="measure-undo"]')?.textContent).toContain('Line m1');
+    // a click of its own (or Enter, detail 0) still takes back the next one
+    press(0);
+    expect(ids()).toEqual(['m1', 'm2', 'm3']);
   });
 });
