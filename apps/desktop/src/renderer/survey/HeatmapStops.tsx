@@ -55,17 +55,12 @@ export function HeatLegend({
         <div
           data-testid="survey-heat-histogram"
           aria-label={t('heat.histogram')}
-          style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 28 }}
+          className="sv-legend-hist"
         >
           {bins.map((n, k) => (
             <span
               key={k}
-              style={{
-                flex: 1,
-                height: `${String(Math.max(n > 0 ? 6 : 0, (n / peak) * 100))}%`,
-                background: 'var(--line-strong)',
-                borderRadius: 1,
-              }}
+              style={{ height: `${String(Math.max(n > 0 ? 6 : 0, (n / peak) * 100))}%` }}
             />
           ))}
         </div>
@@ -90,8 +85,9 @@ export function HeatmapStopsButton() {
   const [open, setOpen] = useState(false);
   const readOnly = useMeasure((s) => s.readOnly);
   const settings = useMeasure((s) => s.settings);
-  const compare = useCompare((c) => c);
-  const grid = useMeasure((m) => activeHeat(compare, m));
+  const computed = useCompare((c) => c.computed);
+  const heat = useCompare((c) => c.heat);
+  const grid = useMeasure((m) => activeHeat({ computed, heat }, m));
   if (!open)
     return (
       <div className="sv-row sv-wrap">
@@ -131,9 +127,9 @@ export function HeatmapStops({ readOnly, onClose }: { readOnly: boolean; onClose
   );
   const [error, setError] = useState<string | null>(null);
   const problem = stopsProblem(draft.stops);
-  const setStops = (stops: HeatmapStop[], t: string[]) => {
+  const setStops = (stops: HeatmapStop[], nextTexts: string[]) => {
     setDraft({ ...draft, stops });
-    setTexts(t);
+    setTexts(nextTexts);
   };
   const db = deadbandFromStops(draft.stops);
   return (
@@ -163,15 +159,15 @@ export function HeatmapStops({ readOnly, onClose }: { readOnly: boolean; onClose
                   data-testid="survey-stop-value"
                   value={texts[k] ?? ''}
                   onChange={(e) => {
-                    const t = [...texts];
-                    t[k] = e.target.value;
+                    const nextTexts = [...texts];
+                    nextTexts[k] = e.target.value;
                     const v = Number(e.target.value);
                     const stops = draft.stops.map((x, i) =>
                       i === k && e.target.value !== '' && Number.isFinite(v)
                         ? { ...x, value: toSI(v, 'distance', unit) }
                         : x,
                     );
-                    setStops(stops, t);
+                    setStops(stops, nextTexts);
                   }}
                 />
               </td>

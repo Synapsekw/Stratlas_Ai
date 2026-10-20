@@ -277,20 +277,22 @@ function HaulRoadForm({ defaults }: { defaults: HaulSiteDefaults }) {
         </select>
       </label>
       {surfaces?.length === 0 && (
-        <div className="pop-row">
-          <EmptyState title={t('empty.hydro.title')} />
-          <button
-            type="button"
-            onClick={() => {
-              setNote('Preparing the surfaces. They show here when the job is done.');
-              void prepareDsms().then((e) => {
-                if (e) setNote(e);
-              });
-            }}
-          >
-            Prepare the DSMs
-          </button>
-        </div>
+        <EmptyState
+          title={t('empty.haulRoad.noSurface')}
+          action={
+            <button
+              type="button"
+              onClick={() => {
+                setNote('Preparing the surfaces. They show here when the job is done.');
+                void prepareDsms().then((e) => {
+                  if (e) setNote(e);
+                });
+              }}
+            >
+              Prepare the DSMs
+            </button>
+          }
+        />
       )}
       <label className="pop-row">
         <span>Centreline</span>

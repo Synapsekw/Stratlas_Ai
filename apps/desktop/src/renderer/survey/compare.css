@@ -65,6 +65,17 @@
   gap: 2px;
   flex: 1 1 160px;
 }
+.sv-legend-hist {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-1);
+  height: var(--sp-8);
+}
+.sv-legend-hist > span {
+  flex: 1;
+  background: var(--line-strong);
+  border-radius: var(--r-2);
+}
 .sv-legend-bar {
   height: 10px;
   border-radius: 2px;

@@ -153,7 +153,7 @@ test('a LandXML design imports, shows in the Designs panel and its alignment giv
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
 
   await openDesigns(win);
-  await expect(win.getByText('No designs yet.', { exact: false })).toBeVisible();
+  await expect(win.getByText('No designs yet', { exact: false })).toBeVisible();
   await answerOpenDialog(app, src);
   await win.getByRole('button', { name: 'Import design' }).click();
 

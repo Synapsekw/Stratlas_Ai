@@ -13,6 +13,8 @@ vi.mock('../shell', () => ({
 import { HeatLegend, HeatmapStopsButton } from './HeatmapStops';
 import { measureStore } from './measureStore';
 
+const baseSettings = measureStore.getState().settings;
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | undefined;
@@ -27,6 +29,7 @@ const render = (el: ReactElement) => {
 const q = (testId: string) => document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
 
 afterEach(() => {
+  measureStore.setState({ settings: baseSettings });
   act(() => {
     root?.unmount();
   });

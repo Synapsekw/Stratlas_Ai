@@ -5752,6 +5752,7 @@ export const en = {
   'empty.designs.hint': 'Import a LandXML, DXF, 12da or CSV design.',
   'empty.overlays.title': 'No overlays yet',
   'empty.overlays.hint': 'Add an overlay to compare it with the surveys.',
+  'empty.haulRoad.noSurface': 'No survey surface is prepared yet',
   'empty.haulRoad.runs': 'No haul-road runs yet',
   'empty.haulRoad.centreline': 'No centreline yet',
   'empty.haulRoad.centrelineHint':

@@ -213,20 +213,23 @@ export function HydroPanel({ map }: { map: boolean }) {
         <strong>Hydrology</strong>
       </div>
       {surfaces.length === 0 && !busy && (
-        <div className="pop-row">
-          <EmptyState title={t('empty.hydro.title')} body={t('empty.hydro.hint')} />
-          <button
-            type="button"
-            disabled={readOnly}
-            onClick={() => {
-              void prepareSurfaces().then((e) => {
-                setNote(e ?? 'Preparing the surfaces. The tools open when the job is done.');
-              });
-            }}
-          >
-            Prepare surfaces
-          </button>
-        </div>
+        <EmptyState
+          title={t('empty.hydro.title')}
+          body={t('empty.hydro.hint')}
+          action={
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => {
+                void prepareSurfaces().then((e) => {
+                  setNote(e ?? 'Preparing the surfaces. The tools open when the job is done.');
+                });
+              }}
+            >
+              Prepare surfaces
+            </button>
+          }
+        />
       )}
       {surfaces.length > 0 && (
         <>

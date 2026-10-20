@@ -36,7 +36,7 @@ import {
   uniqueId,
   updateField,
 } from '@aio/survey';
-import { Icon, useFocusTrap } from '@aio/ui';
+import { EmptyState, Icon, t, useFocusTrap } from '@aio/ui';
 import { useRef, useState } from 'react';
 import { MEASURE_COLOR } from './measureScene';
 import {
@@ -157,7 +157,11 @@ export function TemplateEditor() {
                   </button>
                 </li>
               ))}
-              {list.length === 0 && <li className="small faint">No templates here yet.</li>}
+              {list.length === 0 && (
+                <li>
+                  <EmptyState title={t('empty.templates.title')} />
+                </li>
+              )}
             </ul>
             <button
               type="button"
