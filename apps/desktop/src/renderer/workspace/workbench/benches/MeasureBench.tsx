@@ -1,17 +1,20 @@
 /**
  * The Measure workbench (stage island D12, D13, D16, D18, D19): search, Favourites and recent,
  * every measuring tool by family, Site data, Drawing aids, Templates, and "Saved in this project".
- * While a tool is live it morphs in place: the live card on top (the reading, the points, Undo,
- * Stop and Save with their keys) and the catalogue shrinks to a strip of tool buttons.
+ * While a tool is live it morphs in place: the live card on top (the shared measurement card in
+ * its live variant, then the points, Undo, Stop and Save with their keys) and the catalogue
+ * shrinks to a strip of tool buttons. A picked measurement shows its detail card.
  * How the sidebar follows the tools is `workbench/measureFollow.ts`.
  */
 import type { EngineStage } from '@aio/engine';
-import { unitLabel } from '@aio/geo';
-import type { SitePoint } from '@aio/schema';
+import { formatQuantity, localeOf, unitLabel } from '@aio/geo';
+import { DEFAULT_ANGLES, type SitePoint } from '@aio/schema';
 import {
   bookmarks,
+  formatBearingAs,
   industryTemplates,
   isTelecomTool,
+  measurementFrom,
   MIN_POINTS,
   parseBearing,
   templateLibrary,
@@ -30,9 +33,11 @@ import {
   type IconName,
   type MessageKey,
 } from '@aio/ui';
+import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useShell } from '../../../shell';
+import { cardModel, MeasureCard, TOOL_ICON } from '../../../survey/card';
 import { openCompareDialog } from '../../../survey/compareStore';
 import { DesignsTool } from '../../../survey/Designs';
 import { ExportTool } from '../../../survey/ExportDialog';
@@ -42,7 +47,6 @@ import { MagicPolygon } from '../../../survey/MagicPolygon';
 import { PendingNote, usePending } from '../../../survey/PendingNote';
 import {
   entryOf,
-  familyOf,
   familiesFor,
   favouritesAndRecent,
   matchesQuery,
@@ -51,12 +55,10 @@ import {
   type CatalogueEntry,
   type CatalogueTool,
   type Family,
-  type FamilyId,
 } from '../../../survey/measureCatalogue';
 import { MeasurementPanel } from '../../../survey/MeasurementPanel';
 import {
   drawEvent,
-  liveReading,
   measureStore,
   openDialog,
   setSnap,
@@ -135,18 +137,13 @@ function useToolState(stage: EngineStage | null) {
   };
 }
 
-/** The rows' icons (D12): the family's glyph; Distance and Volume have their own. */
-const FAMILY_ICON: Record<FamilyId, IconName> = {
-  point: 'point',
-  line: 'path',
-  polygon: 'polygon',
-  telecom: 'crosshair',
-  markup: 'brush',
-  section: 'section',
-};
-const TOOL_ICON: Partial<Record<CatalogueTool, IconName>> = { distance: 'ruler', volume: 'pile' };
+/**
+ * The rows' icons: the card's one glyph per tool (`TOOL_ICON`), so the tree, the bench and the
+ * card agree; the section plane is the bench's own (not a measurement).
+ */
+const BENCH_ICON: Record<'section-plane', IconName> = { 'section-plane': 'section' };
 const iconOf = (tool: CatalogueTool): IconName =>
-  TOOL_ICON[tool] ?? FAMILY_ICON[familyOf(tool) ?? 'line'];
+  tool === 'section-plane' ? BENCH_ICON[tool] : TOOL_ICON[tool];
 
 function ToolRow({
   entry,
@@ -224,8 +221,6 @@ function ToolList({
 
 // ---------------------------------------------------------------- the live morph
 
-const coord = (v: number) => v.toFixed(2);
-
 /**
  * The unsaved state on top of the bench while no tool draws (D18: in the workbench, not over the
  * stage); nothing at all when there is nothing to say, a read-only project included.
@@ -244,9 +239,32 @@ function LiveCard() {
   const t = useT();
   const tool = useMeasure((s) => s.tool);
   const draw = useMeasure((s) => s.draw);
-  const reading = useMeasure(liveReading);
-  const units = useMeasure((s) => s.settings.units);
-  if (!tool || !draw) return null;
+  const settings = useMeasure((s) => s.settings);
+  const surface = useMeasure((s) => s.surface);
+  const captures = useWorkspace((s) => s.project?.manifest.captures);
+  const units = settings.units;
+  const locale = settings.locale ?? localeOf(units.distance);
+  const angles = settings.angles ?? DEFAULT_ANGLES;
+  // the measurement as it would be saved now (the cursor as its next point), on the shared card
+  const model = useMemo(() => {
+    if (!tool || !draw) return null;
+    const pts = draw.cursor && !draw.done ? [...draw.points, draw.cursor] : draw.points;
+    const m = measurementFrom(tool.template ?? tool.tool, {
+      id: 'live',
+      label: tool.template?.name ?? TOOL_LABELS[tool.tool],
+      scope: { kind: 'site' },
+      points: pts,
+      createdAt: '',
+    });
+    const card = cardModel(m, {
+      settings,
+      templates: tool.template ? [tool.template] : [],
+      captures: captures ?? [],
+      ...(surface ? { surface } : {}),
+    });
+    return pts.length < MIN_POINTS[m.family] ? { ...card, primary: null, secondary: '' } : card;
+  }, [tool, draw, settings, surface, captures]);
+  if (!tool || !draw || !model) return null;
   // the telecom tools keep their own card: what to pick, the picks so far and the reading
   if (isTelecomTool(tool.tool)) {
     return (
@@ -261,28 +279,31 @@ function LiveCard() {
   const n = draw.points.length;
   const points: SitePoint[] = draw.points.slice(-4);
   const enough = n >= MIN_POINTS[family];
+  const coord = (v: number) => formatQuantity(v, 'coordinate', units, settings.precision, locale);
   return (
     <section
       className="meb-live"
       aria-label={t('measureBench.live', { tool: tool.template?.name ?? TOOL_LABELS[tool.tool] })}
       data-testid="survey-drawbar"
     >
-      <header className="meb-live-head">
-        <b>{tool.template?.name ?? TOOL_LABELS[tool.tool]}</b>
-        {tool.transient && <span className="meb-faint">{t('measureBench.notSaved')}</span>}
-      </header>
+      <MeasureCard model={model} variant="live" testId="measure-live-card" />
+      {tool.transient && <span className="meb-faint">{t('measureBench.notSaved')}</span>}
       {tool.prompt && (
         <span className="meb-faint" role="status" data-testid="survey-draw-prompt">
           {tool.prompt}
         </span>
       )}
-      <p className="meb-reading mono" data-testid="measure-reading">
-        {reading ?? t('measureBench.noReading')}
-      </p>
+      {!model.primary && (
+        <p className="meb-faint" data-testid="measure-reading">
+          {t('measureBench.noReading')}
+        </p>
+      )}
       <p className="meb-faint">
         {t('measureBench.points', { count: n })}
         {draw.lockedBearing !== null &&
-          t('measureBench.locked', { deg: draw.lockedBearing.toFixed(1) })}
+          t('measureBench.locked', {
+            deg: formatBearingAs(draw.lockedBearing, angles, locale),
+          })}
         {draw.snap && t('measureBench.snapped', { source: draw.snap.source, kind: draw.snap.kind })}
       </p>
       {points.length > 0 && (
@@ -308,7 +329,13 @@ function LiveCard() {
             data-testid="survey-typed-bearing"
           >
             {t('measureBench.typedBearing')} <b className="mono">{draw.typing.bearing || '...'}</b>
-            {bearing !== null ? '°' : ''}
+            {/* what was typed, read back in the site's bearing style */}
+            {bearing !== null && (
+              <span className="meb-faint mono" data-testid="survey-typed-bearing-value">
+                {' '}
+                {formatBearingAs(bearing, angles, locale)}
+              </span>
+            )}
           </span>
         </div>
       )}

@@ -441,3 +441,23 @@ textarea.sv-input {
   align-items: center;
   gap: 4px;
 }
+
+/* ---------- the measurement card in the panel (volumetric parity W2): mission tokens only ---------- */
+/* the terrain area on each survey date, as the chips of an area card; the date in focus is on */
+.mc-dates {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mc-date {
+  gap: var(--sp-3);
+  padding-inline: var(--sp-3);
+}
+.mc-date-value {
+  color: var(--fg-0);
+  font-variant-numeric: tabular-nums;
+}
+/* the heat map controls of a compared polygon keep their width in the card, as in the old panel */
+.mc .sv-sub select.sv-input {
+  min-width: 96px;
+}

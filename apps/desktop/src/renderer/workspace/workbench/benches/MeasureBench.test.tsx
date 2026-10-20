@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TIP_DELAY_MS } from '@aio/ui';
 import type { EngineStage } from '@aio/engine';
 import { emptyMeasurements, type PackageInfo, type SitePoint } from '@aio/schema';
@@ -66,6 +68,13 @@ const type = (input: HTMLInputElement, value: string) => {
   });
 };
 const q = (id: string) => host.querySelector(`[data-testid="${id}"]`);
+/** The live card's primary value, number and unit ("10 m"). */
+const primary = () => {
+  const p = q('card-primary');
+  const value = p?.querySelector('.mc-value')?.textContent ?? '';
+  const unit = p?.querySelector('.mc-unit')?.textContent ?? '';
+  return unit ? `${value} ${unit}` : value;
+};
 const shownSections = () =>
   [...host.querySelectorAll<HTMLElement>('[data-testid="survey-tools"] .wb-section')].map((s) =>
     (s.dataset.testid ?? '').replace('wb-section-', ''),
@@ -131,7 +140,7 @@ describe('the Measure workbench', () => {
     expect(measureStore.getState().tool).toMatchObject({ tool: 'distance', transient: true });
     click([0, 0, 0]);
     click([0, 10, 0]);
-    expect(q('measure-reading')?.textContent).toMatch(/^10(\.0+)? m$/);
+    expect(primary()).toMatch(/^10(\.0+)? m$/);
     expect(q('survey-finish')).toBeNull();
     const live = q('survey-drawbar');
     expect(live?.textContent).toContain('Measuring without saving');
@@ -151,7 +160,7 @@ describe('the Measure workbench', () => {
     expect(measureStore.getState().tool?.transient).toBeFalsy();
     click([0, 0, 0]);
     click([3, 4, 0]);
-    expect(q('measure-reading')?.textContent).toMatch(/^5(\.0+)? m$/);
+    expect(primary()).toMatch(/^5(\.0+)? m$/);
     const save = q('survey-finish');
     expect(save?.textContent).toContain('Save');
     expect(save?.getAttribute('aria-keyshortcuts')).toBe('Enter');
@@ -167,6 +176,40 @@ describe('the Measure workbench', () => {
     // M again puts the tool away
     press('m');
     expect(measureStore.getState().tool).toBeNull();
+  });
+
+  it('live card in the bench is the live variant', () => {
+    render();
+    press('m');
+    click([0, 0, 0]);
+    click([3, 4, 0]);
+    const card = q('survey-drawbar')?.querySelector('.mc');
+    expect(card?.getAttribute('data-variant')).toBe('live');
+    // the tool's own glyph, the same as the catalogue row and the tree
+    expect(card?.querySelector('.mc-icon [aria-label]')?.getAttribute('aria-label')).toBe(
+      'Distance',
+    );
+    // a live card has no chart, chips or actions
+    expect(card?.querySelector('.mc-chart, .mc-chips, .mc-actions')).toBeNull();
+    // the picked points through the site's coordinate formatter (its precision, not two places)
+    expect(q('survey-drawbar')?.querySelector('.meb-points')?.textContent).toContain(
+      'E 3.000 N 4.000 Z 0.000',
+    );
+    act(() => {
+      stopTool();
+    });
+  });
+
+  it('no toFixed in MeasureBench readouts', () => {
+    const src = readFileSync(join(import.meta.dirname, 'MeasureBench.tsx'), 'utf8');
+    expect(src).not.toContain('toFixed(');
+  });
+
+  it('the rows take the card icons, the section plane its own', () => {
+    const src = readFileSync(join(import.meta.dirname, 'MeasureBench.tsx'), 'utf8');
+    expect(src).toContain("from '../../../survey/card'");
+    expect(src).not.toContain('FAMILY_ICON');
+    expect(src).toMatch(/'section-plane': 'section'/);
   });
 
   it('search "slope" leaves only Line with Grade and slope', () => {
@@ -430,8 +473,10 @@ describe('a picked measurement', () => {
     expect(q('wb-section-telecom')).toBeNull();
     const card = q('wb-section-selected');
     expect(card?.querySelector('[data-testid="telecom-tools"]')).not.toBeNull();
-    const readout = card?.querySelector('[data-testid="telecom-readout"]');
-    expect(readout?.querySelector('[data-key="azimuth"] dd')?.textContent).toMatch(/\d/);
+    // the shared card, read only: its primary value is the azimuth
+    const tc = card?.querySelector('[data-testid="telecom-card"]');
+    expect(tc?.getAttribute('data-variant')).toBe('detail');
+    expect(tc?.querySelector('[data-testid="card-primary"]')?.textContent).toMatch(/\d/);
     expect(card?.querySelector('[data-testid="telecom-save"]')).toBeNull();
   });
 });

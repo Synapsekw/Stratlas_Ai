@@ -4,8 +4,8 @@
  * the RMSE table and histogram, and the hold: a failed check puts the survey on hold (a banner;
  * measurements on it are marked "survey on hold") until a person releases it with a note.
  *
- * `SurveyQaTool` is the Measure workbench's entry (QA, cleanup and crop, surveys, elevation
- * history); the open panel is the right sidebar's Survey QA tab (`QaSide`). `SurveyQaMount`
+ * `SurveyQaTool` is the Measure workbench's entry (QA, cleanup and crop, surveys; a point's
+ * elevation history is its measurement card's elevation over time); the open panel is the right sidebar's Survey QA tab (`QaSide`). `SurveyQaMount`
  * loads the project's QA state and shows the hold banner.
  */
 import type { QaLevel, SurveyQa } from '@aio/schema';
@@ -17,7 +17,6 @@ import { bridge, useCall, useShell } from '../shell';
 import { timeline } from '../workspace/timeline';
 import { PopTool } from '../workspace/StageTools';
 import { CleanupPanel } from './Cleanup';
-import { ElevationHistory } from './ElevationHistory';
 import { saveSiteSettings, useMeasure } from './measureStore';
 import { useFocusCapture } from './qaHelpers';
 import {
@@ -40,14 +39,13 @@ const LEVELS: QaLevel[] = ['strict', 'moderate', 'lenient', 'off'];
 const cm = (m: number) => `${(m * 100).toFixed(1)} cm`;
 
 const ENTRIES: {
-  panel: Exclude<QaPanel, null>;
+  panel: Exclude<QaPanel, 'history' | null>;
   label: string;
-  icon: 'shield' | 'brush' | 'clock' | 'point';
+  icon: 'shield' | 'brush' | 'clock';
 }[] = [
   { panel: 'qa', label: 'Check against points', icon: 'shield' },
   { panel: 'cleanup', label: 'Cleanup and crop', icon: 'brush' },
   { panel: 'surveys', label: 'Surveys', icon: 'clock' },
-  { panel: 'history', label: 'Elevation history', icon: 'point' },
 ];
 
 /** The survey QA entry (Measure workbench, Site data); `onPicked` after opening a panel. */
@@ -108,7 +106,6 @@ export function QaSide() {
       {panel === 'qa' && <QaPanelView />}
       {panel === 'cleanup' && <CleanupPanel />}
       {panel === 'surveys' && <SurveyPicker />}
-      {panel === 'history' && <ElevationHistory />}
     </aside>
   );
 }

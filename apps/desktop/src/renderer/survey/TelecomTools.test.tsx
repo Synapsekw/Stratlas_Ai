@@ -9,6 +9,12 @@ import { measureStore, startTool } from './measureStore';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock('./DetectAntennas', () => ({ DetectAntennas: () => null }));
+// the card's registry controls have their own tests (card/CardActions.test.tsx)
+vi.mock('./card/CardActions', () => ({
+  CardActions: () => null,
+  CardMenu: () => null,
+  NOTES_MAX: 4000,
+}));
 
 vi.mock('../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false }) },
@@ -99,5 +105,60 @@ it('Measurements reveals the picked measurement in the tree', () => {
       root.unmount();
     });
     host.remove();
+  }
+});
+
+it('telecom card is the shared card with angles in the site angle unit', () => {
+  const settings = measureStore.getState().settings;
+  measureStore.setState({
+    readOnly: false,
+    status: 'ready',
+    focus: 'tilt1',
+    tool: null,
+    draw: null,
+    editing: null,
+    settings: { ...settings, angles: { angle: 'dms', bearing: 'dms', precision: 0 } },
+    file: {
+      schema: 'aio.measurements/1',
+      measurements: [
+        {
+          id: 'tilt1',
+          family: 'line',
+          tool: 'antenna-tilt',
+          label: 'Tilt A',
+          scope: { kind: 'site' },
+          // 1 m across for 4 m up: 14.036 degrees from vertical
+          points: [
+            [0, 0, 0],
+            [1, 0, 4],
+          ],
+          items: [],
+          results: [],
+          createdAt: '2026-10-20T00:00:00Z',
+        },
+      ],
+    },
+  });
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    act(() => {
+      root.render(<TelecomTools />);
+    });
+    const card = host.querySelector('[data-testid="telecom-card"]');
+    expect(card?.classList.contains('mc')).toBe(true);
+    expect(card?.getAttribute('data-variant')).toBe('detail');
+    expect(card?.getAttribute('data-measure-id')).toBe('tilt1');
+    // the angle in degrees, minutes and seconds, as the site's settings say
+    expect(card?.querySelector('[data-testid="card-primary"]')?.textContent).toContain(`14°02'10"`);
+    // the guidance and the picks are in the card's detail
+    expect(card?.querySelector('.mc-detail #telecom-guidance')).not.toBeNull();
+  } finally {
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+    measureStore.setState({ settings, focus: null });
   }
 });

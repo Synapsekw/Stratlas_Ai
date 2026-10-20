@@ -1,30 +1,22 @@
 /**
- * One measurement's properties (M11 G3): its readouts in its units, template (changeable), custom
- * fields, style and labels, units override, scope (site or one survey: promote, demote, copy to
- * another survey), vertices (drag in the 3D view, or type coordinates); a polygon's comparison
- * items and calculators are G4's (`Comparison.tsx`, `Calculators.tsx`).
+ * One measurement's detail card (M11 G3, volumetric parity W2): the shared `MeasureCard` in its
+ * detail variant. The card holds the name, the scope chip, the colour, the primary value, the
+ * secondary line and "More"; the tool's chips, chart and detail come from `card/slots.tsx`. Under
+ * them: the template (changeable) and its custom fields, style and label, the units override, the
+ * scope (site or one survey: promote, demote, copy to another survey) and the vertices (drag in the
+ * 3D view, or type coordinates). The "⋯" menu and the actions row are the registry's.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { formatQuantity, unitLabel } from '@aio/geo';
+import { unitLabel } from '@aio/geo';
 import type { MeasurementStyle, SurveyMeasurement } from '@aio/schema';
-import {
-  changeTemplate,
-  effectiveUnits,
-  formatRow,
-  horizontalDistance,
-  measurementReadout,
-  TOOL_LABELS,
-  vertexTable,
-  formatBearing,
-  isTelecomTool,
-  type RolePicks,
-} from '@aio/survey';
-import { Icon } from '@aio/ui';
+import { changeTemplate, isTelecomTool, TOOL_LABELS, type RolePicks } from '@aio/survey';
+import { Icon, IconButton, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
+import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
+import { slotsFor } from './card/slots';
 import {
   copyToSurvey,
-  deleteMeasurements,
   editEvent,
   knownTemplates,
   openDialog,
@@ -38,15 +30,16 @@ import {
   useMeasure,
   withDesignLayers,
 } from './measureStore';
-import { Calculators } from './Calculators';
-import { Comparisons } from './Comparison';
 import { drawnPoints } from './measureDates';
 import { MEASURE_COLOR } from './measureScene';
 import { HoldNote } from './Qa';
+import { useFocusCapture } from './qaHelpers';
+import { isHeld, useQa } from './qaStore';
 
 const MAX_VERTEX_ROWS = 50;
 
 export function MeasurementPanel() {
+  const t = useT();
   const focus = useMeasure((s) => s.focus);
   const m = useMeasure((s) => s.file.measurements.find((x) => x.id === s.focus) ?? null);
   const readOnly = useMeasure((s) => s.readOnly);
@@ -55,91 +48,112 @@ export function MeasurementPanel() {
   const settings = useMeasure((s) => s.settings);
   const templates = useMeasure((s) => s.templates);
   const surface = useMeasure((s) => s.surface);
-  const editing = useMeasure((s) => s.editing);
-  const captures = useWorkspace((s) => s.project?.manifest.captures ?? []);
+  const captures = useWorkspace((s) => s.project?.manifest.captures);
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
+  const focusCapture = useFocusCapture();
+  const capture = m?.scope.kind === 'survey' ? m.scope.capture : null;
+  const held = useQa((s) => {
+    const on = capture ?? focusCapture;
+    return on ? isHeld(s.qa[on]) : false;
+  });
   // where the measurement is drawn (its date's line-up added): the readouts, the terrain samples
   // and the vertex fields are of what the person sees; edits go back through the shift
   const shown = useMemo(
     () => (m ? { ...m, points: drawnPoints(m, manifest) } : null),
     [m, manifest],
   );
-  const [copyTo, setCopyTo] = useState('');
-
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
-  const tpl = m?.template ? all.find((t) => t.id === m.template) : undefined;
-  const units = effectiveUnits(settings.units, m?.units);
-  const rows = useMemo(() => {
-    if (!shown) return [];
-    // the 3D view's terrain as the surface, sampled at a step that keeps the panel quick
-    const pts = shown.points;
-    const len = pts.reduce(
-      (s, p, i) => s + (i > 0 && pts[i - 1] ? horizontalDistance(pts[i - 1] ?? p, p) : 0),
-      0,
-    );
-    const stepM = shown.family === 'polygon' ? Math.max(0.5, len / 60) : Math.max(0.25, len / 400);
-    return measurementReadout(shown, { surface: surface ?? undefined, stepM }, tpl?.items);
-  }, [shown, surface, tpl]);
-
-  if (!m || !shown || !focus) return null;
-  const family = all.filter(
-    (t) => t.family === m.family && (!isTelecomTool(t.tool) || t.tool === m.tool),
+  const model = useMemo(
+    () =>
+      shown
+        ? cardModel(shown, {
+            settings,
+            templates: all,
+            captures: captures ?? [],
+            ...(surface ? { surface } : {}),
+          })
+        : null,
+    [shown, settings, all, captures, surface],
   );
+  const slots = useMemo(() => (m ? slotsFor(m, 'detail') : {}), [m]);
+
+  if (!m || !shown || !focus || !model) return null;
   const ro = readOnly || lookOnly;
+  return (
+    <MeasureCard
+      model={model}
+      variant="detail"
+      measureId={m.id}
+      testId="survey-panel"
+      {...(ro
+        ? {}
+        : {
+            onRename: (label: string) => {
+              patchMeasurement(m.id, { label });
+            },
+          })}
+      menu={
+        <>
+          <CardMenu id={m.id} />
+          <IconButton
+            icon="x"
+            label={t('dialog.close')}
+            data-testid="survey-panel-close"
+            onClick={() => {
+              stopEditing();
+              select([], null);
+            }}
+          />
+        </>
+      }
+      slots={{
+        ...slots,
+        ...(held ? { status: <HoldNote capture={capture} /> } : {}),
+        detail: (
+          <>
+            {slots.detail}
+            <PanelSections m={m} shown={shown} ro={ro} />
+          </>
+        ),
+      }}
+      actions={<CardActions id={m.id} />}
+    />
+  );
+}
+
+/** The template, style and label, units, scope and vertices, under the tool's own detail. */
+function PanelSections({
+  m,
+  shown,
+  ro,
+}: {
+  m: SurveyMeasurement;
+  shown: SurveyMeasurement;
+  ro: boolean;
+}) {
+  const t = useT();
+  const settings = useMeasure((s) => s.settings);
+  const templates = useMeasure((s) => s.templates);
+  const editing = useMeasure((s) => s.editing);
+  const captures = useWorkspace((s) => s.project?.manifest.captures ?? []);
+  const [copyTo, setCopyTo] = useState('');
+  const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
+  const tpl = m.template ? all.find((x) => x.id === m.template) : undefined;
+  const family = all.filter(
+    (x) => x.family === m.family && (!isTelecomTool(x.tool) || x.tool === m.tool),
+  );
   const setStyle = (patch: Partial<MeasurementStyle>) => {
     patchMeasurement(m.id, { style: { color: MEASURE_COLOR, ...(m.style ?? {}), ...patch } });
   };
   const capture = m.scope.kind === 'survey' ? m.scope.capture : null;
 
   return (
-    <section
-      className="sv-card sv-panel"
-      aria-label={`Measurement ${m.label}`}
-      data-testid="survey-panel"
-    >
-      <header className="sv-head" role="none">
-        <input
-          className="sv-input sv-title"
-          aria-label="Measurement name"
-          value={m.label}
-          readOnly={ro}
-          data-testid="survey-label"
-          onChange={(e) => {
-            if (e.target.value.trim())
-              patchMeasurement(m.id, { label: e.target.value.slice(0, 200) });
-          }}
-        />
-        <button
-          type="button"
-          className="btn ghost sm"
-          aria-label="Close the measurement"
-          onClick={() => {
-            stopEditing();
-            select([], null);
-          }}
-        >
-          <Icon name="x" size={14} />
-        </button>
-      </header>
-      <HoldNote capture={capture} />
+    <>
       <p className="small faint">
         {tpl ? `${tpl.name} · ` : ''}
         {TOOL_LABELS[m.tool]}
         {m.createdBy ? ` · by ${m.createdBy}` : ''}
       </p>
-
-      <table className="sv-readout" data-testid="survey-readout">
-        <caption className="sr-only">Results</caption>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.key} data-key={r.key}>
-              <th scope="row">{r.label}</th>
-              <td className="mono">{formatRow(r, units, settings.precision)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {m.tool === 'vertex-table' && <VertexTable m={shown} />}
 
       <details className="sv-sec" open>
         <summary>Details</summary>
@@ -151,20 +165,20 @@ export function MeasurementPanel() {
             disabled={ro}
             data-testid="survey-template"
             onChange={(e) => {
-              const t = family.find((x) => x.id === e.target.value) ?? null;
+              const next = family.find((x) => x.id === e.target.value) ?? null;
               const apply = (picks: RolePicks) => {
-                const next = changeTemplate(m, t, new Date().toISOString(), picks);
-                if (next) replaceMeasurement(next);
+                const changed = changeTemplate(m, next, new Date().toISOString(), picks);
+                if (changed) replaceMeasurement(changed);
               };
               // a template that compares to a design asks for its layers first (G9 sets)
-              if (t) void withDesignLayers(t, apply);
+              if (next) void withDesignLayers(next, apply);
               else apply({});
             }}
           >
             <option value="">None ({TOOL_LABELS[m.tool]})</option>
-            {family.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            {family.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
               </option>
             ))}
           </select>
@@ -181,24 +195,6 @@ export function MeasurementPanel() {
                 const next = { ...x };
                 if (folder) next.folder = folder;
                 else delete next.folder;
-                return next;
-              });
-            }}
-          />
-        </label>
-        <label className="sv-field">
-          <span>Description</span>
-          <textarea
-            className="sv-input"
-            rows={2}
-            value={m.description ?? ''}
-            readOnly={ro}
-            onChange={(e) => {
-              const d = e.target.value.slice(0, 4000);
-              updateMeasurement(m.id, (x) => {
-                const next = { ...x };
-                if (d) next.description = d;
-                else delete next.description;
                 return next;
               });
             }}
@@ -261,8 +257,8 @@ export function MeasurementPanel() {
         )}
       </details>
 
-      <details className="sv-sec">
-        <summary>Style and label</summary>
+      <details className="sv-sec" data-testid="survey-style">
+        <summary>{t('mcard.styleLabel')}</summary>
         <fieldset className="sv-grid" disabled={ro}>
           <label className="sv-field">
             <span>Colour</span>
@@ -350,7 +346,7 @@ export function MeasurementPanel() {
         </fieldset>
       </details>
 
-      <details className="sv-sec" open>
+      <details className="sv-sec">
         <summary>Units</summary>
         <p className="small" data-testid="survey-units-summary">
           {m.units && Object.keys(m.units).length > 0
@@ -444,7 +440,9 @@ export function MeasurementPanel() {
       </details>
 
       <details className="sv-sec">
-        <summary>Vertices ({m.points.length})</summary>
+        <summary>
+          {t('mcard.vertices')} ({m.points.length})
+        </summary>
         {!ro && (
           <button
             type="button"
@@ -459,7 +457,7 @@ export function MeasurementPanel() {
           </button>
         )}
         <table className="sv-verts">
-          <caption className="sr-only">Vertices</caption>
+          <caption className="sr-only">{t('mcard.vertices')}</caption>
           <thead>
             <tr>
               <th scope="col">#</th>
@@ -489,29 +487,7 @@ export function MeasurementPanel() {
           </p>
         )}
       </details>
-
-      {m.family === 'polygon' ? (
-        <>
-          <Comparisons m={m} />
-          <Calculators m={m} />
-        </>
-      ) : null}
-
-      {!ro && (
-        <div className="sv-row">
-          <span className="sv-grow" />
-          <button
-            type="button"
-            className="btn sm danger"
-            onClick={() => {
-              deleteMeasurements([m.id]);
-            }}
-          >
-            Delete measurement
-          </button>
-        </div>
-      )}
-    </section>
+    </>
   );
 }
 
@@ -574,41 +550,5 @@ function VertexRow({
         )}
       </td>
     </tr>
-  );
-}
-
-function VertexTable({ m }: { m: SurveyMeasurement }) {
-  const settings = useMeasure((s) => s.settings);
-  const units = effectiveUnits(settings.units, m.units);
-  const rows = vertexTable(m.points);
-  const d = (v: number) => formatQuantity(v, 'distance', units, settings.precision);
-  return (
-    <table className="sv-verts" data-testid="survey-vertex-table">
-      <caption>Vertex differences</caption>
-      <thead>
-        <tr>
-          <th scope="col">From</th>
-          <th scope="col">dE</th>
-          <th scope="col">dN</th>
-          <th scope="col">dZ</th>
-          <th scope="col">Horizontal</th>
-          <th scope="col">Bearing</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.from}>
-            <td className="mono">
-              {r.from + 1} to {r.to + 1}
-            </td>
-            <td className="mono">{d(r.dE)}</td>
-            <td className="mono">{d(r.dN)}</td>
-            <td className="mono">{d(r.dZ)}</td>
-            <td className="mono">{d(r.horizontalM)}</td>
-            <td className="mono">{formatBearing(r.bearingDeg)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }

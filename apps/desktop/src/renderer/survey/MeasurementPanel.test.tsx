@@ -11,8 +11,43 @@ vi.mock('@aio/annotate', async (orig) => ({
   useAnnotateReadOnly: () => look.only,
 }));
 
+const history = vi.hoisted(() => ({
+  rows: [] as { capture: string; label: string; date: string; z: number | null }[],
+  asked: [] as [number, number][],
+}));
+vi.mock('./card/pointHistory', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  pointHistory: (_dated: unknown, e: number, n: number) => {
+    history.asked.push([e, n]);
+    return Promise.resolve(history.rows);
+  },
+}));
+
+import type { HeightTiles } from '@aio/schema';
 import { MeasurementPanel } from './MeasurementPanel';
 import { measureStore } from './measureStore';
+import { qaStore } from './qaStore';
+
+const tiles = (id: string, capture: string) =>
+  ({
+    schema: 'aio.height-tiles/1',
+    id,
+    name: id,
+    source: { kind: 'dsm', layer: 'dsm' },
+    capture,
+    crs: { epsg: 32640 },
+    cellM: 1,
+    tileSize: 256,
+    originE: 0,
+    originN: 0,
+    cols: 1,
+    rows: 1,
+    levels: 1,
+    bounds: [0, 0, 0, 256, 256, 10],
+    tiles: [],
+    fingerprint: id,
+    preparedAt: '2026-10-20T00:00:00Z',
+  }) as HeightTiles;
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -78,11 +113,23 @@ afterEach(() => {
   host.remove();
   look.only = false;
   measureStore.setState({ focus: null, selected: [], surface: null });
+  qaStore.setState({ surfaces: [] });
+  history.asked = [];
   workspace.getState().closeProject();
 });
 
-const cell = (key: string) =>
-  host.querySelector(`[data-testid="survey-readout"] tr[data-key="${key}"] td`)?.textContent ?? '';
+/** A row of the card's full readout ("More"), by its label. */
+const cell = (label: string) => {
+  const more = host.querySelector<HTMLButtonElement>('[data-testid="card-more"]');
+  if (more?.getAttribute('aria-expanded') === 'false')
+    act(() => {
+      more.click();
+    });
+  const row = [...host.querySelectorAll('[data-testid="card-readout"] tr')].find(
+    (r) => r.querySelector('th')?.textContent === label,
+  );
+  return row?.querySelector('td')?.textContent ?? '';
+};
 
 describe('the measurement panel on a lined-up date', () => {
   it('reads out and samples the measurement where it is drawn', () => {
@@ -91,7 +138,7 @@ describe('the measurement panel on a lined-up date', () => {
       root.render(<MeasurementPanel />);
     });
     // stored at E 100, N 200; drawn 2 m east and 1 m south: the surface there is 3, the point 5
-    expect(cell('surface-z')).toContain('3.00');
+    expect(cell('Surface elevation')).toContain('3.00');
     // the terrain is sampled under the point the person sees, not the stored one
     expect(sampled).toContainEqual([102, 199]);
     expect(sampled).not.toContainEqual([100, 200]);
@@ -108,8 +155,8 @@ describe('the measurement panel on a lined-up date', () => {
       root = createRoot(host);
       root.render(<MeasurementPanel />);
     });
-    expect(cell('e')).toContain('102');
-    expect(cell('n')).toContain('199');
+    expect(cell('Easting')).toContain('102');
+    expect(cell('Northing')).toContain('199');
   });
 });
 
@@ -120,10 +167,41 @@ describe('the measurement panel for a look-only reviewer', () => {
       root = createRoot(host);
       root.render(<MeasurementPanel />);
     });
-    expect(host.querySelector('[data-testid="survey-panel"]')).not.toBeNull();
-    expect(host.querySelector<HTMLInputElement>('[data-testid="survey-label"]')?.readOnly).toBe(
-      true,
-    );
+    const card = host.querySelector('[data-testid="survey-panel"]');
+    expect(card).not.toBeNull();
+    // the shared card in its detail variant, its name a heading, not a field
+    expect(card?.getAttribute('data-variant')).toBe('detail');
+    expect(card?.getAttribute('data-measure-id')).toBe('spot');
+    expect(host.querySelector('[data-testid="card-name"]')?.tagName).toBe('H3');
     expect(host.textContent).not.toContain('Delete measurement');
+  });
+});
+
+describe('the point card', () => {
+  it('point card shows elevation over time and Survey QA has no history panel', async () => {
+    measureStore.setState({
+      file: {
+        schema: 'aio.measurements/1',
+        measurements: [{ ...spot, tool: 'elevation-history' }],
+      },
+    });
+    qaStore.setState({ surfaces: [tiles('sjan', 'jan'), tiles('sjun', 'jun')] });
+    history.rows = [
+      { capture: 'jan', label: 'January', date: '2026-01-01', z: 4.5 },
+      { capture: 'jun', label: 'June', date: '2026-06-01', z: 5 },
+    ];
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<MeasurementPanel />);
+      await Promise.resolve();
+    });
+    const card = host.querySelector('[data-testid="survey-panel"]');
+    // a real time chart: the dates on a time axis, the elevation in the site's units
+    const chart = card?.querySelector('[data-testid="elevation-time"]');
+    expect(chart).not.toBeNull();
+    // the point comes from the measurement (where it is drawn), not typed in
+    expect(history.asked).toEqual([[102, 199]]);
+    expect(card?.querySelector('[data-testid="history-e"]')).toBeNull();
+    expect(card?.querySelectorAll('input[inputmode="decimal"]').length).toBe(0);
   });
 });

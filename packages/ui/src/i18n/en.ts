@@ -4953,7 +4953,7 @@ export const en = {
   'measureBench.noReading': 'Click on the site',
   'measureBench.points_one': '{count} point',
   'measureBench.points_other': '{count} points',
-  'measureBench.locked': ' · locked {deg}°',
+  'measureBench.locked': ' · locked {deg}',
   'measureBench.snapped': ' · snapped to a {source} {kind}',
   'measureBench.typedDistance': 'Distance',
   'measureBench.typedBearing': 'Bearing',

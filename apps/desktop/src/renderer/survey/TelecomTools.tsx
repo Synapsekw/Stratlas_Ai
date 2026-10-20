@@ -1,22 +1,23 @@
 import { getActiveStage, onActiveScene } from '@aio/engine';
 import type { SitePoint, SurveyMeasurement } from '@aio/schema';
 import {
-  effectiveUnits,
-  formatRow,
   isTelecomTool,
-  measurementReadout,
+  measurementFrom,
   telecomPointCount,
+  TOOL_LABELS,
   type TelecomTool,
 } from '@aio/survey';
 import { useWorkspace } from '@aio/workspace';
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { shell, useShell } from '../shell';
+import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
 import { DetectAntennas } from './DetectAntennas';
 import {
   drawEvent,
   editEvent,
   flipAzimuth,
   isDirty,
+  knownTemplates,
   patchMeasurement,
   saveMeasurements,
   revealMeasurement,
@@ -79,7 +80,6 @@ export function startTelecomTool(t: TelecomTool): void {
  */
 export function TelecomTools() {
   const pkg = useShell((s) => s.pkg);
-  const local = useWorkspace((s) => !!s.project && !('epsg' in s.project.manifest.crs));
   const tool = useMeasure((s) => s.tool);
   const draw = useMeasure((s) => s.draw);
   const readOnly = useMeasure((s) => s.readOnly) || pkg !== null;
@@ -88,25 +88,42 @@ export function TelecomTools() {
   const message = useMeasure((s) => s.message);
   const editing = useMeasure((s) => s.editing);
   const settings = useMeasure((s) => s.settings);
+  const templates = useMeasure((s) => s.templates);
+  const captures = useWorkspace((s) => s.project?.manifest.captures);
   const dirty = useMeasure(isDirty);
   const saving = useMeasure((s) => s.saving);
   const active = tool && isTelecomTool(tool.tool) ? tool.tool : null;
   const measurement = focused && isTelecomTool(focused.tool) ? focused : null;
   const unavailable = useTelecomUnavailable();
-  const preview =
-    active && draw
-      ? {
-          tool: active,
-          points:
-            draw.cursor && draw.points.length < telecomPointCount(active)
-              ? [...draw.points, draw.cursor]
-              : draw.points,
-        }
-      : null;
-  const result =
-    preview ?? (measurement && editing ? { ...measurement, points: editing.points } : measurement);
-  const rows = result ? measurementReadout(result) : [];
-  const units = effectiveUnits(settings.units, preview ? undefined : measurement?.units);
+  const preview: SurveyMeasurement | null = useMemo(
+    () =>
+      active && draw
+        ? measurementFrom(active, {
+            id: 'live',
+            label: TOOL_LABELS[active],
+            scope: { kind: 'site' },
+            points:
+              draw.cursor && draw.points.length < telecomPointCount(active)
+                ? [...draw.points, draw.cursor]
+                : draw.points,
+            createdAt: '',
+          })
+        : null,
+    [active, draw],
+  );
+  const result = useMemo(
+    () =>
+      preview ??
+      (measurement && editing ? { ...measurement, points: editing.points } : measurement),
+    [preview, measurement, editing],
+  );
+  const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
+  // the shared card's model: angles and lengths in the site's units and angle settings
+  const model = useMemo(
+    () =>
+      result ? cardModel(result, { settings, templates: all, captures: captures ?? [] }) : null,
+    [result, settings, all, captures],
+  );
 
   return (
     <section
@@ -130,50 +147,51 @@ export function TelecomTools() {
           Measurements
         </button>
       </header>
-      <p className="telecom-help" id="telecom-guidance">
-        {unavailable ??
-          (active
-            ? GUIDANCE[active]
-            : measurement && isTelecomTool(measurement.tool)
-              ? MEANING[measurement.tool]
+      {/* a picked measurement carries its own guidance in its card */}
+      {(unavailable !== null || active !== null || measurement === null) && (
+        <p className="telecom-help" id="telecom-guidance">
+          {unavailable ??
+            (active
+              ? GUIDANCE[active]
               : 'Pick on point clouds or meshes in 3D. Heights come from the picked surface.')}
-      </p>
-      {(active === 'azimuth' || measurement?.tool === 'azimuth') && (
-        <p className="telecom-help">
-          {local
-            ? 'Project north is local; no surveyed orientation is assumed.'
-            : 'Grid north follows the project CRS; this is not true north.'}
         </p>
       )}
+      {active === 'azimuth' && <NorthNote />}
       <DetectAntennas />
-      {(active !== null || measurement !== null) && (
+      {active && draw && model && (
         <div className="telecom-result" aria-live="polite">
-          {active && draw && (
-            <span className="mono small">
-              {draw.points.length} / {telecomPointCount(active)} points picked
-            </span>
-          )}
-          {!active && measurement && (
-            <input
-              className="sv-input"
-              aria-label="Measurement name"
-              value={measurement.label}
-              readOnly={readOnly}
-              onChange={(e) => {
-                if (e.target.value.trim())
-                  patchMeasurement(measurement.id, { label: e.target.value.slice(0, 200) });
-              }}
-            />
-          )}
-          <dl data-testid="telecom-readout">
-            {rows.map((r) => (
-              <div key={r.key} data-key={r.key}>
-                <dt>{r.label}</dt>
-                <dd className="mono">{formatRow(r, units, settings.precision)}</dd>
-              </div>
-            ))}
-          </dl>
+          <MeasureCard model={model} variant="live" testId="telecom-card" />
+          <span className="mono small">
+            {draw.points.length} / {telecomPointCount(active)} points picked
+          </span>
         </div>
+      )}
+      {!active && measurement && model && (
+        <MeasureCard
+          model={model}
+          variant="detail"
+          measureId={measurement.id}
+          testId="telecom-card"
+          {...(readOnly
+            ? {}
+            : {
+                onRename: (label: string) => {
+                  patchMeasurement(measurement.id, { label });
+                },
+              })}
+          menu={<CardMenu id={measurement.id} />}
+          slots={{
+            detail: (
+              <TelecomDetail
+                measurement={measurement}
+                readOnly={readOnly}
+                unavailable={unavailable}
+                editing={editing !== null}
+              />
+            ),
+          }}
+          actions={<CardActions id={measurement.id} />}
+        />
       )}
       {message && (
         <p className="telecom-help" role="status">
@@ -197,10 +215,59 @@ export function TelecomTools() {
           </button>
         </div>
       )}
-      {!active && measurement && !readOnly && (
+      {dirty && !readOnly && (
+        <button
+          type="button"
+          className="btn sm primary"
+          disabled={saving}
+          data-testid="telecom-save"
+          onClick={() => void saveMeasurements()}
+        >
+          Save measurements
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** Which north the azimuth is measured from. */
+function NorthNote() {
+  const local = useWorkspace((s) => !!s.project && !('epsg' in s.project.manifest.crs));
+  return (
+    <p className="telecom-help">
+      {local
+        ? 'Project north is local; no surveyed orientation is assumed.'
+        : 'Grid north follows the project CRS; this is not true north.'}
+    </p>
+  );
+}
+
+/**
+ * The telecom card's detail: what the reading means, Flip direction and Edit endpoints, and the
+ * picks (the endpoint coordinates).
+ */
+function TelecomDetail({
+  measurement,
+  readOnly,
+  unavailable,
+  editing,
+}: {
+  measurement: SurveyMeasurement;
+  readOnly: boolean;
+  unavailable: string | null;
+  editing: boolean;
+}) {
+  const tool = measurement.tool as TelecomTool;
+  return (
+    <>
+      <p className="telecom-help" id="telecom-guidance">
+        {MEANING[tool]}
+      </p>
+      {tool === 'azimuth' && <NorthNote />}
+      {!readOnly && (
         <>
           <div className="telecom-actions">
-            {measurement.tool === 'azimuth' && (
+            {tool === 'azimuth' && (
               <button
                 type="button"
                 className="btn sm"
@@ -216,7 +283,7 @@ export function TelecomTools() {
               type="button"
               className="btn sm"
               disabled={unavailable !== null}
-              aria-pressed={editing !== null}
+              aria-pressed={editing}
               onClick={() => {
                 if (editing) stopEditing();
                 else startEditing();
@@ -231,18 +298,7 @@ export function TelecomTools() {
           </details>
         </>
       )}
-      {dirty && !readOnly && (
-        <button
-          type="button"
-          className="btn sm primary"
-          disabled={saving}
-          data-testid="telecom-save"
-          onClick={() => void saveMeasurements()}
-        >
-          Save measurements
-        </button>
-      )}
-    </section>
+    </>
   );
 }
 
