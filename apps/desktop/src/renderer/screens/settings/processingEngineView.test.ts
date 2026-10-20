@@ -51,7 +51,10 @@ describe('the Processing engine card', () => {
     const at = (phase: 'download' | 'verify' | 'install' | 'check') =>
       processingEngineView(base, { phase, bytesDone: 1, bytesTotal: 2 }, true);
     expect(at('verify').progress).toEqual({ label: 'Checking the download', pct: null });
-    expect(at('check').progress).toEqual({ label: 'Checking the installation', pct: null });
+    expect(at('check').progress).toEqual({
+      label: 'Starting ODM for the first time; this can take a few minutes',
+      pct: null,
+    });
     expect(processingEngineView(base, null, true).progress?.label).toBe('Installing');
     expect(phaseLabel(null)).toBe('Installing');
     expect(phaseLabel({ phase: 'download', bytesDone: 1, bytesTotal: 2 })).toBe('Downloading');
@@ -59,7 +62,7 @@ describe('the Processing engine card', () => {
       'Checking the download',
     );
     expect(phaseLabel({ phase: 'check', bytesDone: 0, bytesTotal: 0 })).toBe(
-      'Checking the installation',
+      'Starting ODM for the first time; this can take a few minutes',
     );
   });
 
@@ -88,6 +91,20 @@ describe('the Processing engine card', () => {
     expect(update.detail).toContain('uses ODM 3.6.2');
     expect(update.detail).toContain('234 MB');
     expect(processingEngineView(null, null, false).state).toBe('loading');
+  });
+
+  it('an install whose first start ran out of time asks for a start check: Try again or remove', () => {
+    const problem = 'ODM did not finish starting within 10 minutes.';
+    const v = processingEngineView(
+      { ...base, state: 'unverified', version: '3.6.2', dir: 'E:\\Q\\odm-3.6.2', problem },
+      null,
+      false,
+    );
+    expect(v.title).toBe('engine.state.unverified');
+    expect(v.tone).toBe('warn');
+    expect(v.detail).toBe(problem);
+    expect(v.warning).toBeNull();
+    expect(v.actions).toEqual(['retry', 'remove']);
   });
 
   it('shows a problem as a warning while installed or update-available', () => {

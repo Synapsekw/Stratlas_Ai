@@ -46,7 +46,12 @@ export function ProcessingEngine() {
   const has = (a: (typeof view.actions)[number]) => view.actions.includes(a);
   const loaded = view.state !== 'loading';
   const phase = installing ? phaseLabel(progress) : null;
-  const done = status?.state === 'installed' ? t('engine.state.installed') : '';
+  const done =
+    status?.state === 'installed'
+      ? t('engine.state.installed')
+      : status?.state === 'unverified'
+        ? (status.problem ?? t('engine.state.unverified'))
+        : '';
 
   // the data folder holds the install record: read again when it changes
   useEffect(() => {
@@ -182,6 +187,19 @@ export function ProcessingEngine() {
               }}
             >
               {t('engine.reinstall')}
+            </button>
+          )}
+          {has('retry') && (
+            <button
+              type="button"
+              className="btn sm primary"
+              data-testid="engine-retry"
+              onClick={() => {
+                // main sees the unverified install and reruns only its start check
+                install();
+              }}
+            >
+              {t('engine.retry')}
             </button>
           )}
           {has('remove') &&

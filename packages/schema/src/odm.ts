@@ -18,6 +18,8 @@ export const OdmState = z.enum([
   'installed',
   'update-available',
   'broken',
+  /** Installed, but its first start ran out of time: not used until a start check passes. */
+  'unverified',
 ]);
 export type OdmState = z.infer<typeof OdmState>;
 
@@ -27,6 +29,8 @@ export const OdmInstallRecord = z.looseObject({
   version: z.string().min(1).max(40),
   dir: z.string().min(1).max(2048),
   installedAt: IsoTime,
+  /** `false`: ODM's first start ran out of time and no start check has passed since. Absent: it did. */
+  verified: z.boolean().optional(),
 });
 export type OdmInstallRecord = z.infer<typeof OdmInstallRecord>;
 
@@ -42,7 +46,7 @@ export const OdmStatus = z.object({
   version: z.string().max(40).optional(),
   dir: z.string().max(2048).optional(),
   installedAt: IsoTime.optional(),
-  /** Why ODM is broken or unsupported, in words for the person. */
+  /** Why ODM is broken, unsupported or unverified, in words for the person. */
   problem: z.string().max(500).optional(),
   /** Another ODM on this computer that ODM's setup would replace (an uninstall entry or C:\ODM). */
   other: z.object({ dir: z.string().max(2048), version: z.string().max(40).optional() }).nullable(),

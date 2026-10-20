@@ -14,16 +14,32 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OdmInstallProgress } from '@aio/schema';
-import { installOdm, odmJobEnv, odmStatus, parkOdmStub, removeOdm, type OdmDeps } from './install';
+import {
+  currentOdm,
+  installOdm,
+  odmJobEnv,
+  odmStatus,
+  parkOdmStub,
+  removeOdm,
+  type OdmDeps,
+} from './install';
 import type { OdmSystem } from './system';
 
 const SETUP = Buffer.from('fake setup bytes');
+const VC_RUNTIME = ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'];
+const UNVERIFIED =
+  'ODM did not finish starting within 10 minutes. The first start on a new computer can be slow while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.';
 let dir: string;
 let server: Server;
 let url: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-odm-'));
+  // both stand-in Windows folders hold Microsoft's x64 C++ runtime; neither has NVIDIA's driver
+  for (const win of ['nowin', 'win']) {
+    await mkdir(join(dir, win, 'System32'), { recursive: true });
+    for (const f of VC_RUNTIME) await writeFile(join(dir, win, 'System32', f), '');
+  }
   server = createServer((_, res) => res.end(SETUP));
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as { port: number }).port;
@@ -135,6 +151,8 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
       '/CURRENTUSER',
     ]);
     expect(setup[5]).toBe(`/DIR=${join(dir, 'data', 'runtime', 'odm-3.6.2')}`);
+    // unquoted: Node quotes an argument with a space, and Inno takes the quoted /LOG= whole
+    expect(setup[6]).toBe(`/LOG=${join(dir, 'data', 'runtime', 'logs', 'odm-setup-3.6.2.log')}`);
     const record = await readRec(join(dir, 'data'));
     expect(record).toMatchObject({
       schema: 'aio.odm-install/1',
@@ -282,6 +300,198 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
     );
     expect(broken.r).toMatchObject({ ok: false, code: 'failed' });
     if (!broken.r.ok) expect(broken.r.error).toMatch(/does not start: boom/);
+  });
+
+  it('a start check that runs out of time says so, and the log has how long it took', async () => {
+    const lines: string[] = [];
+    let t = Date.parse('2026-10-14T10:00:00Z');
+    const system = fakeSystem({
+      runSmoke: () => {
+        t += 600_000;
+        return Promise.resolve({ code: 1, out: '', timedOut: true });
+      },
+    });
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const d = deps(system, { log: (l) => lines.push(l), now: () => new Date(t) });
+    const { r, seen } = await run(d);
+    // kept, not rolled back: the second start is usually much faster
+    expect(r).toMatchObject({ ok: true, status: { state: 'unverified', dir: target } });
+    if (r.ok) expect(r.status.problem).toBe(UNVERIFIED);
+    expect(seen.at(-1)).toMatchObject({ phase: 'done' });
+    expect(existsSync(target)).toBe(true);
+    expect(existsSync(join(dir, 'data', 'runtime', 'downloads', 'ODM_Setup_test.exe'))).toBe(false);
+    expect(await readRec(join(dir, 'data'))).toMatchObject({ dir: target, verified: false });
+    expect(lines.join('\n')).toMatch(/start check: 600 s, exit code 1, timed out/);
+    // after a restart too: shown as needing a start check, and never given to a photo job
+    expect(await odmStatus(d, false)).toMatchObject({ state: 'unverified', problem: UNVERIFIED });
+    expect(await currentOdm(d)).toBeNull();
+  });
+
+  it('Try again reruns only the start check, then ODM is ready', async () => {
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    await run(deps(slow));
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const bin = join(target, 'SuperBuild', 'install', 'bin');
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, 'nvcuda.dll'), Buffer.alloc(19_968));
+    await writeFile(join(dir, 'nowin', 'System32', 'nvcuda.dll'), 'driver');
+    const lines: string[] = [];
+    const system = fakeSystem();
+    const d = deps(system, {
+      // no download this time
+      fetch: () => Promise.reject(new Error('no download expected')),
+      log: (l) => lines.push(l),
+    });
+    const { r, seen } = await run(d);
+    expect(r).toMatchObject({ ok: true, status: { state: 'installed', dir: target } });
+    expect(system.calls).toHaveLength(0); // neither setup nor uninstaller
+    expect(seen.map((p) => p.phase)).toEqual(['check', 'done']);
+    expect(lines.join('\n')).toMatch(/start check: 0 s, exit code 0, finished/);
+    const rec = await readRec(join(dir, 'data'));
+    expect(rec).not.toHaveProperty('verified');
+    // what a passing check after an install does: the placeholder is parked
+    expect(existsSync(join(bin, 'nvcuda.dll.odm-stub'))).toBe(true);
+    expect(await currentOdm(d)).toMatchObject({ dir: target, owned: true });
+  });
+
+  it('Try again that runs out of time again keeps the install, still unverified', async () => {
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    await run(deps(slow));
+    const { r, seen } = await run(deps(slow));
+    expect(r).toMatchObject({ ok: true, status: { state: 'unverified' } });
+    expect(seen.map((p) => p.phase)).toEqual(['check', 'done']);
+    expect(slow.calls).toHaveLength(1); // the one setup of the first install
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-3.6.2'))).toBe(true);
+  });
+
+  it('Try again that fails for real removes the install, as a failed install does', async () => {
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    await run(deps(slow));
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const system = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: 'Traceback\nboom\n' }),
+    });
+    const d = deps(system);
+    const { r, seen } = await run(d);
+    expect(r).toMatchObject({
+      ok: false,
+      code: 'failed',
+      error: 'ODM installed but does not start: boom',
+    });
+    expect(seen.at(-1)).toMatchObject({ phase: 'failed' });
+    expect(system.calls.at(-1)).toEqual([join(target, 'unins000.exe')]);
+    expect(existsSync(target)).toBe(false);
+    expect((await odmStatus(d, false)).state).toBe('not-installed');
+  });
+
+  it('remove works on an install that still needs its start check', async () => {
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    const d = deps(slow);
+    await run(d);
+    const r = await removeOdm(d);
+    expect(r).toMatchObject({ ok: true, status: { state: 'not-installed' } });
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-3.6.2'))).toBe(false);
+  });
+
+  it('logs every start check: how long, the exit code and the end of its output', async () => {
+    const lines: string[] = [];
+    let t = Date.parse('2026-10-14T10:00:00Z');
+    const out = `${'x'.repeat(10_000)}\nusage: run [options] <dataset name>`;
+    const system = fakeSystem({
+      runSmoke: () => {
+        t += 26_400;
+        return Promise.resolve({ code: 0, out });
+      },
+    });
+    const { r } = await run(deps(system, { log: (l) => lines.push(l), now: () => new Date(t) }));
+    expect(r.ok).toBe(true);
+    const line = lines.find((l) => l.includes('start check')) ?? '';
+    expect(line).toMatch(/start check: 26 s, exit code 0, finished/);
+    expect(line).toContain('usage: run [options] <dataset name>');
+    expect(line.length).toBeLessThan(4096 + 200);
+    // a real failure keeps its last line in the message, and the log has the output
+    lines.length = 0;
+    const broken = await run(
+      deps(fakeSystem({ runSmoke: () => Promise.resolve({ code: 3, out: 'Traceback\nboom\n' }) }), {
+        log: (l) => lines.push(l),
+      }),
+    );
+    expect(broken.r).toMatchObject({ error: 'ODM installed but does not start: boom' });
+    expect(lines.join('\n')).toMatch(/exit code 3, finished[^]*Traceback/);
+    const silent = await run(
+      deps(fakeSystem({ runSmoke: () => Promise.resolve({ code: 3, out: '' }) })),
+    );
+    expect(silent.r).toMatchObject({ error: 'ODM installed but does not start: exit code 3' });
+  });
+
+  it("an ODM that does not start on a computer without Microsoft's x64 C++ runtime is told where to get it", async () => {
+    await rm(join(dir, 'nowin', 'System32', 'vcruntime140_1.dll'));
+    await rm(join(dir, 'nowin', 'System32', 'msvcp140.dll'));
+    const lines: string[] = [];
+    const system = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: 'ImportError: DLL load failed' }),
+    });
+    const { r } = await run(deps(system, { log: (l) => lines.push(l) }));
+    expect(r).toMatchObject({
+      ok: false,
+      code: 'failed',
+      error:
+        'ODM needs the Microsoft Visual C++ 2015-2022 Redistributable (x64), which is missing on this computer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then install ODM again.',
+    });
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-3.6.2'))).toBe(false);
+    expect(lines.join('\n')).toMatch(/vcruntime140_1\.dll, msvcp140\.dll/);
+    // the setup's log outlives the rollback, and the app log says where it is
+    expect(lines.join('\n')).toContain(join(dir, 'data', 'runtime', 'logs', 'odm-setup-3.6.2.log'));
+  });
+
+  it('a C++ runtime missing from System32 is only logged when ODM starts (it ships its own)', async () => {
+    await rm(join(dir, 'nowin', 'System32', 'msvcp140.dll'));
+    const lines: string[] = [];
+    const { r } = await run(deps(fakeSystem(), { log: (l) => lines.push(l) }));
+    expect(r).toMatchObject({ ok: true, status: { state: 'installed' } });
+    expect(lines.join('\n')).toMatch(/missing from System32: msvcp140\.dll/);
+  });
+
+  it('a slow first start without the C++ runtime stays unverified, and the card names the runtime', async () => {
+    await rm(join(dir, 'nowin', 'System32', 'vcruntime140.dll'));
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    const d = deps(slow);
+    const { r } = await run(d);
+    expect(r).toMatchObject({ ok: true, status: { state: 'unverified' } });
+    const s = await odmStatus(d, false);
+    expect(s.problem?.startsWith(UNVERIFIED)).toBe(true);
+    expect(s.problem).toContain('https://aka.ms/vs/17/release/vc_redist.x64.exe');
+    expect(s.problem?.length).toBeLessThanOrEqual(500);
+  });
+
+  it('a run that printed its usage passes, even when the timer raced it', async () => {
+    const system = fakeSystem({
+      runSmoke: () =>
+        Promise.resolve({ code: 1, out: 'usage: run [options] <dataset name>', timedOut: true }),
+    });
+    const { r } = await run(deps(system));
+    expect(r).toMatchObject({ ok: true, status: { state: 'installed' } });
+  });
+
+  it('an unverified install of an older version shows the update, not the start check', async () => {
+    const d = deps(
+      fakeSystem({ runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }) }),
+    );
+    await run(d);
+    const recPath = join(dir, 'data', 'runtime', 'odm.json');
+    const rec = await readRec(join(dir, 'data'));
+    await writeFile(recPath, JSON.stringify({ ...rec, version: '3.5.6' }));
+    expect((await odmStatus(d, false)).state).toBe('update-available');
   });
 
   it('too little free space is refused before the download', async () => {

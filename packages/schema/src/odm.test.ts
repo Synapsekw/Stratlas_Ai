@@ -41,6 +41,19 @@ describe('ODM contract', () => {
     ).toBe(true);
   });
 
+  it('an install whose first start ran out of time: the unverified state, verified false in the record', () => {
+    expect(OdmStatus.parse({ ...status, state: 'unverified' }).state).toBe('unverified');
+    const rec = {
+      schema: 'aio.odm-install/1',
+      version: '3.6.2',
+      dir: 'C:\\x',
+      installedAt: '2026-10-14T10:00:00Z',
+    };
+    expect(OdmInstallRecord.parse({ ...rec, verified: false }).verified).toBe(false);
+    expect(OdmInstallRecord.parse(rec).verified).toBeUndefined();
+    expect(OdmInstallRecord.safeParse({ ...rec, verified: 'no' }).success).toBe(false);
+  });
+
   it('keeps the GPU setting in Settings, and nothing else there', () => {
     const base = Settings.parse({
       cloudAi: false,

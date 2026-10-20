@@ -3,7 +3,7 @@ import { brand } from '@aio/brand';
 import type { OdmInstallProgress, OdmState, OdmStatus } from '@aio/schema';
 import { formatBytes, t, type MessageKey } from '@aio/ui';
 
-export type EngineAction = 'install' | 'cancel' | 'update' | 'remove' | 'reinstall';
+export type EngineAction = 'install' | 'cancel' | 'update' | 'remove' | 'reinstall' | 'retry';
 
 export interface EngineView {
   state: 'loading' | OdmState;
@@ -25,6 +25,7 @@ const TITLE: Record<OdmState, MessageKey> = {
   installed: 'engine.state.installed',
   'update-available': 'engine.state.update',
   broken: 'engine.state.broken',
+  unverified: 'engine.state.unverified',
   unsupported: 'engine.state.unsupported',
 };
 
@@ -34,6 +35,7 @@ const TONE: Record<OdmState, EngineView['tone']> = {
   installed: 'ok',
   'update-available': 'warn',
   broken: 'warn',
+  unverified: 'warn',
   unsupported: 'warn',
 };
 
@@ -98,7 +100,8 @@ export function processingEngineView(
       version: status.pinned.version,
     });
     detail = `${uses} ${size}`;
-  } else if (state === 'broken' || state === 'unsupported') detail = status.problem ?? null;
+  } else if (state === 'broken' || state === 'unsupported' || state === 'unverified')
+    detail = status.problem ?? null;
 
   let actions: EngineAction[] = [];
   if (installing) actions = !progress || progress.phase === 'download' ? ['cancel'] : [];
@@ -107,6 +110,8 @@ export function processingEngineView(
   else if (state === 'installed') actions = ['remove'];
   else if (state === 'update-available') actions = ['update', 'remove'];
   else if (state === 'broken') actions = ['reinstall', 'remove'];
+  // the start check ran out of time: Try again reruns only that check
+  else if (state === 'unverified') actions = ['retry', 'remove'];
 
   return {
     state,

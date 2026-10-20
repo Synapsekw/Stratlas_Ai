@@ -108,13 +108,35 @@ export async function findOtherOdm(d: {
   return null;
 }
 
+const system32 = (env: Record<string, string | undefined>) =>
+  win32.join(env.SYSTEMROOT ?? env.SystemRoot ?? env.windir ?? 'C:\\Windows', 'System32');
+
 /** NVIDIA's CUDA driver is installed: `%SYSTEMROOT%\System32\nvcuda.dll` exists. */
 export async function nvcudaPresent(
   env: Record<string, string | undefined>,
   exists: (p: string) => Promise<boolean>,
 ): Promise<boolean> {
-  const root = env.SYSTEMROOT ?? env.SystemRoot ?? env.windir ?? 'C:\\Windows';
-  return exists(win32.join(root, 'System32', 'nvcuda.dll'));
+  return exists(win32.join(system32(env), 'nvcuda.dll'));
+}
+
+/** Microsoft's Visual C++ 2015-2022 x64 runtime, which ODM's Python and programs load. */
+export const VC_RUNTIME_FILES: readonly string[] = [
+  'vcruntime140.dll',
+  'vcruntime140_1.dll',
+  'msvcp140.dll',
+];
+
+/**
+ * The files of the C++ runtime missing from `%SYSTEMROOT%\System32`. ODM's per-user setup may not
+ * install it without administrator rights, and still exits 0.
+ */
+export async function missingVcRuntime(
+  env: Record<string, string | undefined>,
+  exists: (p: string) => Promise<boolean>,
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const f of VC_RUNTIME_FILES) if (!(await exists(win32.join(system32(env), f)))) out.push(f);
+  return out;
 }
 
 /** The NVIDIA card's name, or null when there is none. */

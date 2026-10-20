@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   findOtherOdm,
+  missingVcRuntime,
   nvcudaPresent,
   nvidiaName,
   parseUninstallEntries,
@@ -179,6 +180,25 @@ describe('the GPU line', () => {
     expect(seen[0]?.toLowerCase()).toBe('d:\\win\\system32\\nvcuda.dll');
     expect(await nvcudaPresent({ SystemRoot: 'D:\\Win' }, () => Promise.resolve(false))).toBe(
       false,
+    );
+  });
+
+  it("lists the files of Microsoft's x64 C++ runtime missing from System32", async () => {
+    const seen: string[] = [];
+    const exists = (p: string) => {
+      seen.push(p.toLowerCase());
+      return Promise.resolve(!p.toLowerCase().endsWith('vcruntime140_1.dll'));
+    };
+    expect(await missingVcRuntime({ SYSTEMROOT: 'D:\\Win' }, exists)).toEqual([
+      'vcruntime140_1.dll',
+    ]);
+    expect(seen).toEqual([
+      'd:\\win\\system32\\vcruntime140.dll',
+      'd:\\win\\system32\\vcruntime140_1.dll',
+      'd:\\win\\system32\\msvcp140.dll',
+    ]);
+    expect(await missingVcRuntime({ SystemRoot: 'D:\\Win' }, () => Promise.resolve(true))).toEqual(
+      [],
     );
   });
 
