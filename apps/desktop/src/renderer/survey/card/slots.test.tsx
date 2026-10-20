@@ -3,17 +3,57 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   defaultSurveySettings,
+  emptyMeasurements,
   MeasurementTool,
+  type HeightTiles,
   type MeasurementFamily,
+  type ProjectManifest,
   type SurveyMeasurement,
 } from '@aio/schema';
+import { workspace } from '@aio/workspace';
 import { act, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+/** Synthetic surfaces by tile id: a height at (E, N). */
+const ground = vi.hoisted((): { at: Record<string, (e: number, n: number) => number | null> } => ({
+  at: {},
+}));
+vi.mock('./pointHistory', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  withSurface: <T,>(
+    compute: (h: { heightAt(e: number, n: number): number | null }) => T,
+    tiles: { id: string },
+  ) => Promise.resolve(compute({ heightAt: (e, n) => ground.at[tiles.id]?.(e, n) ?? null })),
+  heightAt: (tiles: { id: string }, e: number, n: number) =>
+    Promise.resolve(ground.at[tiles.id]?.(e, n) ?? null),
+}));
+const section = vi.hoisted(() => ({ opened: [] as unknown[], window: false }));
+vi.mock('../sectionStore', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  openSection: (line: unknown, source: unknown) => {
+    section.opened.push({ line, source });
+  },
+  setWindow: (open: boolean) => {
+    section.window = open;
+  },
+}));
+
 import { measureStore } from '../measureStore';
 import { qaStore } from '../qaStore';
-import { QaSide } from '../Qa';
-import { slotKinds, slotsFor, VertexTable, chartAgrees, type ChartKind } from './slots';
+import { TOOL_ICON } from './cardModel';
+import {
+  autoExaggeration,
+  BASE_KEY,
+  cardViews,
+  chartAgrees,
+  chooseVs,
+  lineOptions,
+  slotKinds,
+  slotsFor,
+  VertexTable,
+  type ChartKind,
+} from './slots';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,13 +75,13 @@ const FAMILY: Record<MeasurementTool, MeasurementFamily> = {
   freehand: 'line',
 };
 
-const of = (tool: MeasurementTool): SurveyMeasurement => ({
+const of = (tool: MeasurementTool, points?: SurveyMeasurement['points']): SurveyMeasurement => ({
   id: tool,
   family: FAMILY[tool],
   tool,
   label: tool,
   scope: { kind: 'site' },
-  points: [
+  points: points ?? [
     [0, 0, 0],
     [10, 0, 1],
     [10, 10, 2],
@@ -70,11 +110,52 @@ const SPEC: Record<MeasurementTool, ChartKind> = {
   freehand: null,
 };
 
-/** The component a slot draws, by name. */
+/** The component a slot draws, by name (a fragment: the names of its children). */
 const drawn = (n: ReactNode): string | null => {
   if (!isValidElement(n)) return null;
   const type = (n as ReactElement).type;
-  return typeof type === 'function' ? type.name : null;
+  if (typeof type === 'function') return type.name;
+  const kids = (n as ReactElement<{ children?: ReactNode }>).props.children;
+  return [kids]
+    .flat()
+    .map((k) => drawn(k))
+    .filter(Boolean)
+    .join('+');
+};
+
+const tiles = (id: string, capture?: string, design = false): HeightTiles => ({
+  schema: 'aio.height-tiles/1',
+  id,
+  name: design ? 'Design pad FG' : id,
+  source: design ? { kind: 'design', design: 'd1', layer: 'd1' } : { kind: 'dsm', layer: 'dsm' },
+  ...(capture ? { capture } : {}),
+  crs: { epsg: 32640 },
+  cellM: 1,
+  tileSize: 256,
+  originE: 0,
+  originN: 0,
+  cols: 1,
+  rows: 1,
+  levels: 1,
+  bounds: [0, 0, 0, 256, 256, 10],
+  tiles: [],
+  fingerprint: id,
+  preparedAt: '2026-10-20T00:00:00Z',
+});
+
+const manifest: ProjectManifest = {
+  schema: 'aio.project/1',
+  id: 'slots',
+  name: 'Slots',
+  crs: { epsg: 32640 },
+  origin: [0, 0, 0],
+  captures: [
+    { id: 'jan', label: 'January', date: '2026-01-01' },
+    { id: 'jun', label: 'June', date: '2026-06-01' },
+  ],
+  layers: [],
+  severityModels: [],
+  classCatalogues: [],
 };
 
 describe('the card slots by tool', () => {
@@ -92,36 +173,223 @@ describe('the card slots by tool', () => {
     }
   });
 
-  it('gives chips by type: surfaces on lines, dates on areas, none elsewhere', () => {
-    expect(drawn(slotsFor(of('distance'), 'detail').chips)).toBe('LineChips');
+  it('gives chips by type: surfaces on lines, one surface on points, dates on areas', () => {
+    for (const tool of ['distance', 'grade', 'vertex-table', 'berm-check', 'section'] as const)
+      expect(drawn(slotsFor(of(tool), 'detail').chips)).toBe('LineChips');
+    for (const tool of ['elevation', 'elevation-difference', 'annotation'] as const)
+      expect(drawn(slotsFor(of(tool), 'detail').chips)).toBe('PointChips');
     expect(drawn(slotsFor(of('area'), 'detail').chips)).toBe('AreaDates');
-    for (const tool of ['elevation', 'azimuth', 'antenna-tilt', 'clearance', 'freehand'] as const)
+    for (const tool of ['azimuth', 'antenna-tilt', 'clearance', 'freehand', 'volume'] as const)
       expect(slotsFor(of(tool), 'detail').chips).toBeUndefined();
   });
 
-  it('puts the vertex table and the volume detail in the detail slot', () => {
-    expect(drawn(slotsFor(of('vertex-table'), 'detail').detail)).toBe('VertexTable');
-    expect(slotsFor(of('volume'), 'detail').detail).toBeDefined();
-    expect(slotsFor(of('distance'), 'detail').detail).toBeUndefined();
+  it('puts each tool its own detail', () => {
+    const detail = (tool: MeasurementTool) => drawn(slotsFor(of(tool), 'detail').detail);
+    expect(detail('distance')).toBe('TerrainLengths');
+    expect(detail('grade')).toBe('TerrainLengths');
+    expect(detail('vertex-table')).toBe('VertexTable');
+    expect(detail('berm-check')).toBe('BermTable');
+    expect(detail('section')).toBe('OpenSection');
+    expect(detail('volume')).toBe('Comparisons+Calculators');
+    // an area with no comparison offers "+ Compare date"
+    expect(detail('area')).toBe('CompareArea+Calculators');
+    expect(detail('elevation')).toBeNull();
   });
 
   it('gives the live card no chips, chart or detail', () => {
     for (const tool of MeasurementTool.options) expect(slotsFor(of(tool), 'live')).toEqual({});
   });
+
+  it('gives every tool its own icon', () => {
+    const icons = MeasurementTool.options.map((tool) => TOOL_ICON[tool]);
+    expect(new Set(icons).size).toBe(icons.length);
+  });
+
+  it('offers a line the survey dates, the designs and the base', () => {
+    const dated = [
+      { capture: 'jan', label: 'January', date: '2026-01-01', tiles: tiles('sjan', 'jan') },
+      { capture: 'jun', label: 'June', date: '2026-06-01', tiles: tiles('sjun', 'jun') },
+    ];
+    const designs = [
+      { key: 'design:d1', label: 'Design pad FG', group: 'design' as const, tiles: tiles('d1') },
+    ];
+    expect(
+      lineOptions(dated, designs, 'jun', 'Line as drawn').map((o) => [o.key, o.group, o.kind]),
+    ).toEqual([
+      ['jan', 'survey', 'earlier'],
+      ['jun', 'survey', 'current'],
+      ['design:d1', 'design', 'design'],
+      [BASE_KEY, 'base', 'base'],
+    ]);
+  });
+
+  it('fits the exaggeration to the chart plot', () => {
+    const flat = { key: 'a', label: 'a', kind: 'current' as const, chainage: [0, 100], z: [0, 1] };
+    expect(autoExaggeration([flat])).toBe(20);
+    expect(autoExaggeration([{ ...flat, z: [0, 50] }])).toBe(1);
+    expect(autoExaggeration([{ ...flat, z: [5, 5] }])).toBe(1);
+  });
 });
 
 let host: HTMLDivElement;
 let root: Root | undefined;
+const render = async (node: ReactNode) => {
+  await act(async () => {
+    root ??= createRoot(host);
+    root.render(<>{node}</>);
+    await Promise.resolve();
+  });
+  // the shared loads settle, then the cards render their values
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+};
 beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
+  workspace.getState().openProject({ id: 'slots', root: 'E:/p', manifest });
+  qaStore.setState({
+    surfaces: [tiles('sjan', 'jan'), tiles('sjun', 'jun'), tiles('d1', undefined, true)],
+  });
 });
 afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   host.remove();
-  measureStore.setState({ settings: defaultSurveySettings() });
-  qaStore.setState({ panel: null });
+  measureStore.setState({ settings: defaultSurveySettings(), file: emptyMeasurements() });
+  qaStore.setState({ surfaces: [] });
+  cardViews.setState({}, true);
+  workspace.getState().closeProject();
+  ground.at = {};
+});
+
+describe('lines on the card', () => {
+  it('distance shows each shown surface terrain length: a date, a design and the base', async () => {
+    ground.at = {
+      sjun: () => 0,
+      sjan: () => 0,
+      // the design rises 0.75 m per metre east: 10 m plan is 12.5 m on it
+      d1: (e) => 0.75 * e,
+    };
+    const m = of('distance', [
+      [0, 0, 0],
+      [10, 0, 0],
+    ]);
+    act(() => {
+      cardViews.setState({
+        distance: { shown: ['jun', 'design:d1', BASE_KEY], off: [], shadeVs: null, vs: null },
+      });
+    });
+    const s = slotsFor(m, 'detail');
+    await render(
+      <>
+        {s.chips}
+        {s.chart}
+        {s.detail}
+      </>,
+    );
+    const rows = [...host.querySelectorAll('[data-testid="terrain-lengths"] tbody tr')].map((r) => [
+      r.getAttribute('data-surface'),
+      r.querySelector('td')?.textContent,
+    ]);
+    expect(rows).toEqual([
+      ['jun', '10.000 m'],
+      ['design:d1', '12.500 m'],
+      [BASE_KEY, '10.000 m'],
+    ]);
+    expect(host.querySelector('[data-testid="line-profile"]')).not.toBeNull();
+    // the ends of the profile go through the strings
+    expect(host.querySelector('[data-testid="line-chips"]')).not.toBeNull();
+  });
+
+  it('a berm check marks its berm on the profile and tables its sides', async () => {
+    // level ground, a 2 m berm: toes at 5 and 15 m, crest from 7 to 13 m
+    const berm = (e: number) => (e <= 5 ? 0 : e < 7 ? e - 5 : e <= 13 ? 2 : e < 15 ? 15 - e : 0);
+    ground.at = { sjun: berm, sjan: berm };
+    const m = of('berm-check', [
+      [0, 0, 0],
+      [20, 0, 0],
+    ]);
+    const s = slotsFor(m, 'detail');
+    await render(
+      <>
+        {s.chart}
+        {s.detail}
+      </>,
+    );
+    expect(host.querySelectorAll('[data-testid="section-chart-pin"]').length).toBe(4);
+    const side = (k: string) =>
+      [...host.querySelectorAll(`[data-testid="berm-table"] tr[data-side="${k}"] td`)].map(
+        (c) => c.textContent,
+      );
+    expect(side('left')[0]).toBe('5.000 m');
+    expect(side('left')[1]).toBe('2.000 m');
+    expect(side('right')[0]).toBe('15.000 m');
+    expect(side('crest')[0]).toBe('6.000 m');
+    expect(side('base')[0]).toBe('10.000 m');
+  });
+
+  it('a cross-section opens in the section view, its pins stay there', async () => {
+    const m = of('section', [
+      [0, 0, 0],
+      [20, 0, 0],
+    ]);
+    await render(slotsFor(m, 'detail').detail);
+    const open = host.querySelector<HTMLButtonElement>('[data-testid="card-open-section"]');
+    expect(open?.textContent).toBe('Open in section view');
+    act(() => {
+      open?.click();
+    });
+    expect(section.opened).toEqual([
+      {
+        line: [
+          [0, 0],
+          [20, 0],
+        ],
+        source: { kind: 'measurement', id: 'section', label: 'section' },
+      },
+    ]);
+    expect(section.window).toBe(true);
+    expect(host.querySelector('[data-testid="section-chart-pin"]')).toBeNull();
+  });
+});
+
+describe('points on the card', () => {
+  it('offers the dates and the designs to compare with', async () => {
+    const m = of('elevation', [[5, 5, 3]]);
+    chooseVs(m.id, 'design:d1');
+    await render(slotsFor(m, 'detail').chips);
+    const chips = [...host.querySelectorAll('[data-testid="point-chips"] [data-chip]')];
+    expect(chips.map((c) => c.getAttribute('data-chip'))).toEqual(['design:d1']);
+  });
+});
+
+describe('an area on the card', () => {
+  it('starts a comparison with "+ Compare date"', async () => {
+    const m = of('area');
+    measureStore.setState({
+      readOnly: false,
+      file: { ...emptyMeasurements(), measurements: [m] },
+    });
+    await render(slotsFor(m, 'detail').detail);
+    const add = host.querySelector<HTMLButtonElement>('[data-testid="survey-add-comparison"]');
+    expect(add?.textContent).toBe('+ Compare date');
+    act(() => {
+      add?.click();
+    });
+    expect(measureStore.getState().file.measurements[0]?.items).toHaveLength(1);
+  });
+});
+
+describe('the card choices', () => {
+  it('are forgotten once the measurement is deleted', () => {
+    const m = of('elevation');
+    measureStore.setState({ file: { ...emptyMeasurements(), measurements: [m] } });
+    chooseVs(m.id, 'jan');
+    expect(cardViews.getState()[m.id]?.vs).toBe('jan');
+    measureStore.setState({ file: emptyMeasurements() });
+    expect(cardViews.getState()[m.id]).toBeUndefined();
+  });
 });
 
 describe('the vertex table', () => {
@@ -140,21 +408,19 @@ describe('the vertex table', () => {
     });
     const cells = [...host.querySelectorAll('tbody tr:first-child td')].map((c) => c.textContent);
     // 10 m east is 32.81 ft, due east is a bearing of 090.0°
+    expect(cells[0]).toBe('1 to 2');
     expect(cells[1]).toMatch(/^32\.8\d* ft$/);
     expect(cells[5]).toBe('090.0°');
+    expect(host.querySelector('caption')?.textContent).toBe('Vertex differences');
   });
 });
 
 describe('Survey QA', () => {
   it('has no elevation history panel any more', () => {
-    qaStore.setState({ panel: 'history' as never });
-    act(() => {
-      root = createRoot(host);
-      root.render(<QaSide />);
-    });
-    expect(host.querySelector('[data-testid="elevation-history"]')).toBeNull();
-    const src = readFileSync(join(import.meta.dirname, '..', 'Qa.tsx'), 'utf8');
-    expect(src).not.toContain('ElevationHistory');
-    expect(src).not.toMatch(/panel: 'history'/);
+    const qa = readFileSync(join(import.meta.dirname, '..', 'Qa.tsx'), 'utf8');
+    expect(qa).not.toContain('ElevationHistory');
+    expect(qa).not.toMatch(/panel: 'history'/);
+    const store = readFileSync(join(import.meta.dirname, '..', 'qaStore.ts'), 'utf8');
+    expect(store).not.toMatch(/'history'/);
   });
 });

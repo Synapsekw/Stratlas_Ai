@@ -14,19 +14,26 @@ vi.mock('@aio/annotate', async (orig) => ({
 const history = vi.hoisted(() => ({
   rows: [] as { capture: string; label: string; date: string; z: number | null }[],
   asked: [] as [number, number][],
+  fail: false,
+  /** Heights of a surface at the point, by its tile id. */
+  heights: new Map<string, number>(),
 }));
 vi.mock('./card/pointHistory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   pointHistory: (_dated: unknown, e: number, n: number) => {
     history.asked.push([e, n]);
-    return Promise.resolve(history.rows);
+    return history.fail
+      ? Promise.reject(new Error('tile read failed'))
+      : Promise.resolve(history.rows);
   },
+  heightAt: (s: { id: string }) => Promise.resolve(history.heights.get(s.id) ?? null),
 }));
 
 import type { HeightTiles } from '@aio/schema';
 import { MeasurementPanel } from './MeasurementPanel';
 import { measureStore } from './measureStore';
 import { qaStore } from './qaStore';
+import { cardViews, chooseVs } from './card/slots';
 
 const tiles = (id: string, capture: string) =>
   ({
@@ -115,6 +122,9 @@ afterEach(() => {
   measureStore.setState({ focus: null, selected: [], surface: null });
   qaStore.setState({ surfaces: [] });
   history.asked = [];
+  history.fail = false;
+  history.heights.clear();
+  cardViews.setState({}, true);
   workspace.getState().closeProject();
 });
 
@@ -177,8 +187,55 @@ describe('the measurement panel for a look-only reviewer', () => {
   });
 });
 
+/** Render the panel and let its surface reads settle. */
+async function renderPanel() {
+  await act(async () => {
+    root = createRoot(host);
+    root.render(<MeasurementPanel />);
+    await Promise.resolve();
+  });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
+const design = (): HeightTiles => ({
+  ...tiles('d1', 'none'),
+  name: 'Design pad FG',
+  source: { kind: 'design', design: 'd1', layer: 'd1' },
+  capture: undefined,
+});
+
 describe('the point card', () => {
-  it('point card shows elevation over time and Survey QA has no history panel', async () => {
+  it('compares the point with a chosen design: the secondary line and a dashed level', async () => {
+    qaStore.setState({ surfaces: [tiles('sjan2', 'jan'), design()] });
+    history.rows = [{ capture: 'jan', label: 'January', date: '2026-01-01', z: 4.9 }];
+    // the point is at 5 m; the design 5.038 m under it
+    history.heights.set('d1', 5.038);
+    chooseVs('spot', 'design:d1');
+    await renderPanel();
+    const card = host.querySelector('[data-testid="survey-panel"]');
+    expect(card?.querySelector('[data-testid="card-secondary"]')?.textContent).toContain(
+      'vs Design pad FG -0.038 m',
+    );
+    const level = card?.querySelector('[data-reference="design:d1"]');
+    expect(level?.getAttribute('data-kind')).toBe('design');
+    expect(level?.querySelector('line')?.getAttribute('stroke-dasharray')).toBe('6 4');
+    // an elevation difference charts the ground on each date and its own level, dotted
+    expect(card?.querySelector('[data-reference="point"]')?.getAttribute('data-kind')).toBe('base');
+  });
+
+  it('says it could not read the surface instead of computing for ever', async () => {
+    qaStore.setState({ surfaces: [tiles('sfail', 'jan')] });
+    history.fail = true;
+    await renderPanel();
+    expect(host.querySelector('[data-testid="elevation-time-error"]')?.textContent).toBe(
+      'Could not read the surface',
+    );
+    expect(host.querySelector('[data-testid="elevation-time-busy"]')).toBeNull();
+  });
+
+  it('point card shows elevation over time from the drawn point, with no typed E and N', async () => {
     measureStore.setState({
       file: {
         schema: 'aio.measurements/1',

@@ -39,7 +39,7 @@ const LEVELS: QaLevel[] = ['strict', 'moderate', 'lenient', 'off'];
 const cm = (m: number) => `${(m * 100).toFixed(1)} cm`;
 
 const ENTRIES: {
-  panel: Exclude<QaPanel, 'history' | null>;
+  panel: Exclude<QaPanel, null>;
   label: string;
   icon: 'shield' | 'brush' | 'clock';
 }[] = [

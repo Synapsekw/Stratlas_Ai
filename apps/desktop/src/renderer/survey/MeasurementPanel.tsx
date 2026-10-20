@@ -14,7 +14,7 @@ import { Icon, IconButton, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useState } from 'react';
 import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
-import { slotsFor } from './card/slots';
+import { slotsFor, usePointVsText } from './card/slots';
 import {
   copyToSurvey,
   editEvent,
@@ -39,9 +39,14 @@ import { isHeld, useQa } from './qaStore';
 const MAX_VERTEX_ROWS = 50;
 
 export function MeasurementPanel() {
+  const m = useMeasure((s) => s.file.measurements.find((x) => x.id === s.focus) ?? null);
+  return m ? <PanelCard m={m} /> : null;
+}
+
+/** The focused measurement's detail card. */
+function PanelCard({ m }: { m: SurveyMeasurement }) {
   const t = useT();
   const focus = useMeasure((s) => s.focus);
-  const m = useMeasure((s) => s.file.measurements.find((x) => x.id === s.focus) ?? null);
   const readOnly = useMeasure((s) => s.readOnly);
   // a look-only reviewer reads the panel as the tree and the 3D menu offer it: no edits
   const lookOnly = useAnnotateReadOnly();
@@ -51,37 +56,36 @@ export function MeasurementPanel() {
   const captures = useWorkspace((s) => s.project?.manifest.captures);
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const focusCapture = useFocusCapture();
-  const capture = m?.scope.kind === 'survey' ? m.scope.capture : null;
+  const capture = m.scope.kind === 'survey' ? m.scope.capture : null;
   const held = useQa((s) => {
     const on = capture ?? focusCapture;
     return on ? isHeld(s.qa[on]) : false;
   });
   // where the measurement is drawn (its date's line-up added): the readouts, the terrain samples
   // and the vertex fields are of what the person sees; edits go back through the shift
-  const shown = useMemo(
-    () => (m ? { ...m, points: drawnPoints(m, manifest) } : null),
-    [m, manifest],
-  );
+  const shown = useMemo(() => ({ ...m, points: drawnPoints(m, manifest) }), [m, manifest]);
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
   const model = useMemo(
     () =>
-      shown
-        ? cardModel(shown, {
-            settings,
-            templates: all,
-            captures: captures ?? [],
-            ...(surface ? { surface } : {}),
-          })
-        : null,
+      cardModel(shown, {
+        settings,
+        templates: all,
+        captures: captures ?? [],
+        ...(surface ? { surface } : {}),
+      }),
     [shown, settings, all, captures, surface],
   );
-  const slots = useMemo(() => (m ? slotsFor(m, 'detail') : {}), [m]);
+  const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
+  // a point compared with a design or a date: its difference joins the secondary line
+  const vs = usePointVsText(m);
 
-  if (!m || !shown || !focus || !model) return null;
+  if (!focus) return null;
   const ro = readOnly || lookOnly;
   return (
     <MeasureCard
-      model={model}
+      model={
+        vs ? { ...model, secondary: [model.secondary, vs].filter(Boolean).join(' · ') } : model
+      }
       variant="detail"
       measureId={m.id}
       testId="survey-panel"

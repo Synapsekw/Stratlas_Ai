@@ -247,7 +247,8 @@ function LiveCard() {
   const angles = settings.angles ?? DEFAULT_ANGLES;
   // the measurement as it would be saved now (the cursor as its next point), on the shared card
   const model = useMemo(() => {
-    if (!tool || !draw) return null;
+    // a telecom tool's card is TelecomTools' own: nothing to build here on each cursor move
+    if (!tool || !draw || isTelecomTool(tool.tool)) return null;
     const pts = draw.cursor && !draw.done ? [...draw.points, draw.cursor] : draw.points;
     const m = measurementFrom(tool.template ?? tool.tool, {
       id: 'live',
@@ -264,7 +265,7 @@ function LiveCard() {
     });
     return pts.length < MIN_POINTS[m.family] ? { ...card, primary: null, secondary: '' } : card;
   }, [tool, draw, settings, surface, captures]);
-  if (!tool || !draw || !model) return null;
+  if (!tool || !draw) return null;
   // the telecom tools keep their own card: what to pick, the picks so far and the reading
   if (isTelecomTool(tool.tool)) {
     return (
@@ -273,6 +274,7 @@ function LiveCard() {
       </div>
     );
   }
+  if (!model) return null;
   const family = TOOL_FAMILY[tool.tool];
   const bearing = parseBearing(draw.typing.bearing);
   const env = { distanceUnit: units.distance };

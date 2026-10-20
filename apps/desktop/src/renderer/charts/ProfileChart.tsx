@@ -57,6 +57,11 @@ export interface ProfileChartProps {
 const PAD = { left: 60, right: 14, top: 22, bottom: 40 };
 const DEFAULT_WIDTH = 600;
 const DEFAULT_HEIGHT = 220;
+/** The plot inside the axes at the default size, for a caller that fits the exaggeration to it. */
+export const DEFAULT_PLOT = {
+  width: DEFAULT_WIDTH - PAD.left - PAD.right,
+  height: DEFAULT_HEIGHT - PAD.top - PAD.bottom,
+} as const;
 /** Space kept above and below the data, as a share of its range (at least 0.1 m). */
 const Z_MARGIN = 0.08;
 /** Readout offset from the crosshair. */

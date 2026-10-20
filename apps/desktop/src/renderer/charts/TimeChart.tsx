@@ -30,8 +30,22 @@ export type TimeChartData =
     }
   | { kind: 'stack'; rows: readonly StackRow[]; names: ReadonlyMap<string, string> };
 
+/**
+ * A level drawn across an elevation chart: a design's height at the point (dashed, as designs
+ * are on the profile chart) or the point's own height (dotted, as the base is).
+ */
+export interface TimeReference {
+  key: string;
+  label: string;
+  /** Metres. */
+  z: number;
+  kind: 'design' | 'base';
+}
+
 export interface TimeChartProps {
   data: TimeChartData;
+  /** Levels across the plot (elevation charts only). */
+  references?: readonly TimeReference[];
   units: SurveyUnits;
   precision: SurveyPrecision;
   width?: number; // width given → no ResizeObserver (static render for the report)
@@ -180,15 +194,22 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   }, [cols, span, inner]);
 
   // y by value: the stack grows from zero; the lines span their own range
+  const refs = useMemo(
+    () => (isElev ? (p.references ?? []).filter((r) => Number.isFinite(r.z)) : []),
+    [isElev, p.references],
+  );
   const [yLo, yHi] = useMemo((): [number, number] => {
-    const vals = cols.flatMap((c) => (c.value === null ? [] : [c.value]));
+    const vals = [
+      ...cols.flatMap((c) => (c.value === null ? [] : [c.value])),
+      ...refs.map((r) => r.z),
+    ];
     if (vals.length === 0) return [0, 1];
     const hi = Math.max(...vals);
     if (data.kind === 'stack') return [0, hi > 0 ? hi * 1.08 : 1];
     const lo = Math.min(...vals);
     const pad = Math.max(0.1, (hi - lo) * 0.12);
     return [lo - pad, hi + pad];
-  }, [cols, data.kind]);
+  }, [cols, refs, data.kind]);
   const y = (v: number) => top + plotH - ((v - yLo) / (yHi - yLo || 1)) * plotH;
   const yStep = niceStep((yHi - yLo) / factor, Math.max(2, Math.floor(plotH / 36)));
   const yTicks = ticks(yLo, yHi, factor, yStep);
@@ -370,6 +391,24 @@ export function TimeChart(p: TimeChartProps): ReactElement {
           <text className="pc-axis-title" x={left} y={h - 6}>
             {t('chart.date')}
           </text>
+
+          {refs.map((r) => (
+            <g key={r.key} className="tc-ref" data-reference={r.key} data-kind={r.kind}>
+              <line
+                x1={left}
+                x2={right}
+                y1={y(r.z)}
+                y2={y(r.z)}
+                fill="none"
+                stroke={r.kind === 'design' ? 'var(--chart-design)' : 'var(--chart-base)'}
+                strokeWidth={1.5}
+                strokeDasharray={r.kind === 'design' ? '6 4' : '1 3'}
+              />
+              <text className="pc-axis-note" x={right - 4} y={y(r.z) - 4} textAnchor="end">
+                {r.label}
+              </text>
+            </g>
+          ))}
 
           {data.kind !== 'stack' &&
             linePts.map((pts) => (

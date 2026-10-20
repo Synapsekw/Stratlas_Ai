@@ -19,7 +19,7 @@ import { createStore, useStore } from 'zustand';
 import type { Jobs } from '../jobs';
 import { bridge, jobs } from '../shell';
 
-export type QaPanel = 'qa' | 'cleanup' | 'surveys' | 'history' | null;
+export type QaPanel = 'qa' | 'cleanup' | 'surveys' | null;
 
 export interface QaState {
   projectId: string | null;
