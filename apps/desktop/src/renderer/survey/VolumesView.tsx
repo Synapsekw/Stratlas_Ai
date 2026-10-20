@@ -1,26 +1,27 @@
 /**
  * The volumes view (volumetric parity W3 and W4), the Volumes bench's body: every volume
  * measurement, or one folder's, as live cards in rows (a click focuses one in the detail card
- * under them), the current totals from the engine's results (`BulkTotals`, unchanged maths) and
- * the site inventory over time, the piles stacked per survey date with a table. A date where a pile
- * has no figure names it and never counts it as zero. Without a volume measurement it says so and
- * offers Draw volume and Detect piles.
+ * under them), the total on the latest survey date (`BulkTotals`) and the site inventory over time,
+ * the piles stacked per survey date with a table. Both totals are rows of one `inventorySeries`, so
+ * they agree: a total adds current figures only, and every pile left out is named with why (stale,
+ * no survey data, not computed yet, could not compute, no comparison), never counted as zero.
+ * Without a volume measurement it says so and offers Draw volume and Detect piles.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, localeOf } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
-import type { SurveyMeasurement } from '@aio/schema';
+import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
 import { inventoryPiles, inventorySeries, pileSeries, type StackRow } from '@aio/survey';
-import { Button, EmptyState, useT } from '@aio/ui';
-import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { Button, EmptyState, Tip, useT } from '@aio/ui';
+import { assetUrl, useWorkspace } from '@aio/workspace';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { TimeChart } from '../charts/TimeChart';
 import { processing } from '../processing/store';
 import { bridge, useShell } from '../shell';
-import { BulkTotals } from './BulkTotals';
+import { BulkTotals, notCountedList } from './BulkTotals';
 import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
 import { VolumeDetail } from './card/VolumeDetail';
-import { computeSeries, useCompare } from './compareStore';
+import { computeSeries, isStale, seriesStale, useCompare } from './compareStore';
 import { fileBase } from './exportHelpers';
 import {
   knownTemplates,
@@ -35,6 +36,12 @@ import './volumesView.css';
 
 /** The filter's value for every pile (folders are never empty, so it cannot clash). */
 const ALL = '';
+/** The stockpile job file the pile detection runs from (written by the new project wizard). */
+export const PILE_JOB = 'volumetric/job.json';
+
+/** What a pile's dates were last worked out for: its edits and its comparisons. */
+const stampOf = (m: SurveyMeasurement) =>
+  `${m.updatedAt ?? m.createdAt}|${JSON.stringify(m.items)}|${String(m.points.length)}`;
 
 export function VolumesView({ className }: { className?: string }): ReactElement {
   const t = useT();
@@ -46,10 +53,17 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const readOnly = useAnnotateReadOnly() || fileReadOnly;
   const status = useCompare((s) => s.status);
   const captures = useCompare((s) => s.captures);
+  const current = useCompare((s) => s.current);
+  // what `seriesStale` reads: a change re-checks the per-date figures
+  const seriesCurrent = useCompare((s) => s.seriesCurrent);
+  const seriesInputs = useCompare((s) => s.seriesInputs);
   const root = useWorkspace((s) => s.project?.root ?? null);
+  const projectId = useWorkspace((s) => s.project?.id ?? null);
   const pkg = useShell((s) => s.pkg !== null);
   const [folder, setFolder] = useState(ALL);
   const [csvError, setCsvError] = useState<string | null>(null);
+  // why working out a pile's dates failed, by pile
+  const [failed, setFailed] = useState<Record<string, string>>({});
 
   const allPiles = useMemo(() => inventoryPiles(file.measurements), [file]);
   const folders = useMemo(
@@ -60,43 +74,92 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const shown = folder !== ALL && folders.includes(folder) ? folder : ALL;
   const piles = useMemo(() => inventoryPiles(allPiles, shown), [allPiles, shown]);
   const stack = useMemo(
-    () => inventorySeries(piles, captures, { folder: shown }),
-    [piles, captures, shown],
+    () =>
+      inventorySeries(piles, captures, {
+        isStale: (m: SurveyMeasurement, r: ComparisonResult, stored: boolean) =>
+          stored ? isStale({ current }, m, r) : seriesStale(m, r),
+        failed: (m) => failed[m.id],
+      }),
+    // seriesCurrent and seriesInputs are what seriesStale reads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [piles, captures, current, failed, seriesCurrent, seriesInputs],
   );
   const names = useMemo(() => new Map(piles.map((m) => [m.id, m.label])), [piles]);
 
-  // each pile's volume per survey date, worked out when shown (carried piles keep the kit's)
-  const seriesKey = piles.map((m) => `${m.id}@${m.updatedAt ?? m.createdAt}`).join(',');
+  // each pile's volume per survey date, worked out when shown (carried piles keep the kit's);
+  // only the piles changed since their last run are run again
+  const ran = useRef(new Map<string, string>());
+  const ranFor = useRef('');
+  const runFor = `${status}|${String(readOnly)}|${captures.map((c) => c.id).join(',')}`;
   useEffect(() => {
-    if (status !== 'ready' || readOnly || captures.length === 0 || seriesKey === '') return;
+    if (ranFor.current !== runFor) {
+      ran.current.clear();
+      ranFor.current = runFor;
+    }
+    if (status !== 'ready' || readOnly || captures.length === 0) return;
+    const todo = piles.filter((m) => m.items.length > 0 && ran.current.get(m.id) !== stampOf(m));
+    if (todo.length === 0) return;
     const run = { gone: false };
     void (async () => {
-      for (const id of seriesKey.split(',').map((k) => k.slice(0, k.lastIndexOf('@')))) {
+      for (const m of todo) {
         if (run.gone) return;
-        // each card says why its own dates failed; the inventory shows the dates it has
-        await computeSeries(id).catch((e: unknown) => {
-          console.warn(`The volume over time of ${id} could not be worked out`, e);
-        });
+        const stamp = stampOf(m);
+        try {
+          await computeSeries(m.id);
+          setFailed((f) => {
+            if (!(m.id in f)) return f;
+            return Object.fromEntries(Object.entries(f).filter(([id]) => id !== m.id));
+          });
+        } catch (e) {
+          // the card says it too; here the pile is named as not counted, with why
+          console.warn(`The volume over time of ${m.id} could not be worked out`, e);
+          const why = e instanceof Error ? e.message : String(e);
+          setFailed((f) => ({ ...f, [m.id]: why }));
+        }
+        ran.current.set(m.id, stamp);
       }
     })();
     return () => {
       run.gone = true;
     };
-  }, [status, readOnly, captures.length, seriesKey]);
+  }, [status, readOnly, captures.length, piles, runFor]);
 
-  if (allPiles.length === 0)
+  // Detect piles runs from the stockpile job file: offered only when the project has one
+  const [hasJob, setHasJob] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (projectId === null || allPiles.length > 0) return;
+    let gone = false;
+    void fetch(assetUrl(projectId, { path: PILE_JOB }))
+      .then((r) => r.ok)
+      .catch(() => false)
+      .then((ok) => {
+        if (!gone) setHasJob(ok);
+      });
+    return () => {
+      gone = true;
+    };
+  }, [projectId, allPiles.length]);
+
+  if (allPiles.length === 0) {
+    const detectWhy = readOnly
+      ? t('actions.reason.readOnly')
+      : pkg
+        ? t('actions.reason.package')
+        : root === null || hasJob === false
+          ? t('vol.view.noJob')
+          : undefined;
     return (
       <div className={['vv', className].filter(Boolean).join(' ')} data-testid="volumes-view">
         <EmptyState
           icon="pile"
           title={t('empty.volumes.title')}
-          body={t('empty.volumes.hint')}
+          body={t('vol.view.emptyHint')}
           action={
             <>
               <Button
                 variant="primary"
                 icon="polygon"
-                disabled={readOnly}
+                disabledReason={readOnly ? t('actions.reason.readOnly') : undefined}
                 data-testid="volumes-draw"
                 onClick={() => {
                   startTool('volume');
@@ -106,13 +169,16 @@ export function VolumesView({ className }: { className?: string }): ReactElement
               </Button>
               <Button
                 icon="pile"
-                disabled={readOnly || pkg || root === null}
+                disabled={hasJob === null}
+                disabledReason={detectWhy}
                 data-testid="volumes-detect"
                 onClick={() => {
                   if (root !== null)
-                    processing
-                      .getState()
-                      .openDialog({ pipeline: 'volumetric.build', project: root, values: {} });
+                    processing.getState().openDialog({
+                      pipeline: 'volumetric.build',
+                      project: root,
+                      values: { job: PILE_JOB },
+                    });
                 }}
               >
                 {t('mcard.detectPiles')}
@@ -122,6 +188,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         />
       </div>
     );
+  }
 
   const focused = piles.find((m) => m.id === focus) ?? null;
   const ctx = { settings, templates: knownTemplates({ templates, settings }), captures };
@@ -132,7 +199,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const exportCsv = async () => {
     setCsvError(null);
     // the stored result stands for its own date, as on the cards and in the chart
-    const ms = piles.map((m) => ({ ...m, series: pileSeries(m) }));
+    const ms = piles.map((m) => ({ ...m, series: pileSeries(m).series }));
     const density = (m: SurveyMeasurement) =>
       settings.materials.find((x) => x.id === m.material)?.densityTPerM3 ?? null;
     const data = volumeSeriesCsv(ms, captures, units, settings.precision, { densityOf: density });
@@ -141,13 +208,15 @@ export function VolumesView({ className }: { className?: string }): ReactElement
     if (!r.ok) setCsvError(r.error);
     else if (r.value.error) setCsvError(r.value.error);
   };
+  // the chart draws the dates with counted piles (a date with none is in the table, never a 0 bar)
+  const charted = stack.filter((r) => r.parts.length > 0);
 
   return (
     <div className={['vv', className].filter(Boolean).join(' ')} data-testid="volumes-view">
       <div className="vv-bar">
         <select
           className="sv-input"
-          aria-label={t('layerProps.folder')}
+          aria-label={t('vol.view.folder')}
           value={shown}
           data-testid="volumes-folder"
           onChange={(e) => {
@@ -183,7 +252,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         {piles.map((m) => (
           <li key={m.id}>
             <PileRow
-              m={m}
+              id={m.id}
               pressed={m.id === focused?.id}
               onPick={() => {
                 select([m.id], m.id);
@@ -216,17 +285,19 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         </div>
       )}
 
-      <BulkTotals piles={piles} />
+      <BulkTotals inventory={{ piles, row: stack.at(-1), names }} />
 
       {stack.length > 0 && (
         <section className="vd-time vv-inventory" data-testid="volumes-inventory">
           <h4 className="vd-sub">{t('vol.inventory')}</h4>
-          <TimeChart
-            data={{ kind: 'stack', rows: stack, names }}
-            units={units}
-            precision={settings.precision}
-            testId="volumes-inventory-chart"
-          />
+          {charted.length > 0 && (
+            <TimeChart
+              data={{ kind: 'stack', rows: charted, names }}
+              units={units}
+              precision={settings.precision}
+              testId="volumes-inventory-chart"
+            />
+          )}
           <InventoryTable rows={stack} names={names} v={v} />
         </section>
       )}
@@ -234,14 +305,14 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   );
 }
 
-/** One pile in the list: its live card, pressed when it is the one in the detail card. */
+/** One pile in the list: its live card (read out as it is), pressed when in the detail card. */
 function PileRow({
-  m,
+  id,
   pressed,
   onPick,
   children,
 }: {
-  m: SurveyMeasurement;
+  id: string;
   pressed: boolean;
   onPick: () => void;
   children: ReactElement;
@@ -258,9 +329,8 @@ function PileRow({
       role="button"
       tabIndex={0}
       aria-pressed={pressed}
-      aria-label={m.label}
       data-testid="volumes-pile"
-      data-id={m.id}
+      data-id={id}
       onClick={onPick}
       onKeyDown={onKey}
     >
@@ -269,7 +339,10 @@ function PileRow({
   );
 }
 
-/** The inventory per date: the total, the change since the date before, and who has no figure. */
+/**
+ * The inventory per date: the total of the counted piles (partly outside the survey marked), the
+ * change over the piles counted on both dates, and every pile not counted with why.
+ */
 function InventoryTable({
   rows,
   names,
@@ -281,16 +354,7 @@ function InventoryTable({
 }) {
   const t = useT();
   const latest = rows.findLast((r) => r.parts.length > 0);
-  // each date's total (null without a figure) and the change since the last date with one
-  const lines = rows.reduce<{ r: StackRow; value: number | null; change: number | null }[]>(
-    (out, r) => {
-      const value = r.parts.length > 0 ? r.totalM3 : null;
-      const prev = out.findLast((x) => x.value !== null)?.value ?? null;
-      out.push({ r, value, change: value !== null && prev !== null ? value - prev : null });
-      return out;
-    },
-    [],
-  );
+  const nameList = (ids: readonly string[]) => ids.map((id) => names.get(id) ?? id).join(', ');
   return (
     <table className="vd-time-table" data-testid="volumes-inventory-table">
       <caption className="sr-only">{t('vol.inventory')}</caption>
@@ -299,22 +363,50 @@ function InventoryTable({
           <th scope="col">{t('chart.date')}</th>
           <th scope="col">{t('chart.volume')}</th>
           <th scope="col">{t('vol.change')}</th>
-          <th scope="col">{t('mcard.noData')}</th>
+          <th scope="col">{t('vol.view.notCounted')}</th>
         </tr>
       </thead>
       <tbody>
-        {lines.map(({ r, value, change }) => {
+        {rows.map((r) => {
+          const counted = r.parts.length > 0;
+          const partial = r.partial ?? [];
+          const change = r.change ?? null;
+          const partialNote =
+            partial.length > 0 ? t('vol.view.partial', { names: nameList(partial) }) : '';
           return (
             <tr
               key={r.capture}
+              data-capture={r.capture}
               data-latest={r === latest ? '' : undefined}
+              data-partial={partial.length > 0 ? '' : undefined}
               aria-current={r === latest ? 'date' : undefined}
             >
               <th scope="row">{r.label}</th>
-              <td>{value !== null ? v(value) : t('mcard.noData')}</td>
-              <td>{change !== null ? `${change > 0 ? '+' : ''}${v(change)}` : ''}</td>
-              <td className="vv-missing">
-                {r.missing.map((id) => names.get(id) ?? id).join(', ')}
+              <td data-testid="volumes-inventory-value">
+                {!counted ? (
+                  t('vol.view.notCounted')
+                ) : partial.length > 0 ? (
+                  <Tip content={partialNote} placement="top">
+                    <span className="vv-partial" tabIndex={0}>
+                      {v(r.totalM3)}
+                      <span className="sr-only">. {partialNote}</span>
+                    </span>
+                  </Tip>
+                ) : (
+                  v(r.totalM3)
+                )}
+              </td>
+              <td data-testid="volumes-inventory-change">
+                {change === null
+                  ? ''
+                  : `${change.m3 > 0 ? '+' : ''}${v(change.m3)}${
+                      change.piles < change.of
+                        ? ` (${t('vol.view.ofPiles', { n: change.piles, count: change.of })})`
+                        : ''
+                    }`}
+              </td>
+              <td className="vv-missing" data-testid="volumes-inventory-left">
+                {notCountedList(r.notCounted ?? [], names)}
               </td>
             </tr>
           );

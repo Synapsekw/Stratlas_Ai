@@ -6,7 +6,7 @@ import type {
   UnitsOverride,
 } from '@aio/schema';
 import { isBase, sideKey } from './pickers';
-import { stackRows, volumeRows, type StackRow, type TimeRow } from './timeline';
+import { volumeRows, type StackRow, type TimeRow } from './timeline';
 
 /**
  * Bulk selection (M11 G4, PRD SRV-1): running totals across the selected measurements of one
@@ -144,25 +144,33 @@ export function setUnitsForAll(
 const rowDate = (r: ComparisonResult): string | undefined => r.toCapture ?? r.fromCapture;
 
 /**
- * A pile's figures per date for its first comparison: its per-date series, with its stored result
- * standing for its own date (stale or not), so one pile has one figure per date. A figure carried
- * over from an earlier version counts as the pile's figure for its own dates (R16).
+ * One item's figures per date, the one rule the volume card and the inventory share: its per-date
+ * series, with its stored result standing for its own date (stale or not), so one item has one
+ * figure per date. A figure carried over from an earlier version counts as the item's figure for
+ * its own dates (R16). `stored` is that stored row (to mark it stale with the stored figures).
+ * The item is the first comparison unless named.
  */
-export function pileSeries(m: SurveyMeasurement): ComparisonResult[] {
-  const item = m.items[0];
-  if (!item) return [];
+export function pileSeries(
+  m: SurveyMeasurement,
+  item: string | undefined = m.items[0]?.id,
+): { series: ComparisonResult[]; stored: ComparisonResult | undefined } {
+  if (item === undefined) return { series: [], stored: undefined };
   const keyed = (r: ComparisonResult) => {
     const d = rowDate(r);
     return d !== undefined && r.toCapture === undefined ? { ...r, toCapture: d } : r;
   };
-  const series = (m.series ?? []).filter((r) => r.item === item.id).map(keyed);
-  const stored = m.results.find((r) => r.item === item.id);
-  const date = stored ? rowDate(stored) : undefined;
-  if (!stored || date === undefined) return series;
-  return [...series.filter((r) => r.toCapture !== date), keyed(stored)];
+  const series = (m.series ?? []).filter((r) => r.item === item).map(keyed);
+  const found = m.results.find((r) => r.item === item);
+  const date = found ? rowDate(found) : undefined;
+  if (!found || date === undefined) return { series, stored: undefined };
+  const stored = keyed(found);
+  return { series: [...series.filter((r) => r.toCapture !== date), stored], stored };
 }
 
-/** The volume measurements an inventory covers: all of them, or those in one folder. */
+/**
+ * The volume measurements an inventory covers: all of them, or those in one folder. One without
+ * a comparison is still a pile (listed, and named as not counted).
+ */
 export function inventoryPiles(
   ms: readonly SurveyMeasurement[],
   folder?: string | null,
@@ -170,36 +178,111 @@ export function inventoryPiles(
   const want = folder?.trim() ?? '';
   return ms.filter(
     (m) =>
-      m.tool === 'volume' &&
-      m.family === 'polygon' &&
-      m.items.length > 0 &&
-      (want === '' || m.folder?.trim() === want),
+      m.tool === 'volume' && m.family === 'polygon' && (want === '' || m.folder?.trim() === want),
   );
 }
 
+export interface InventoryOptions {
+  /** Narrow to one folder (leave out when `ms` is already the folder's piles). */
+  folder?: string | null;
+  quantity?: 'net' | 'total';
+  /**
+   * Whether a figure is not current: `stored` is true for the measurement's stored result (the app
+   * checks it against the current fingerprints), false for a per-date row. Without it only a
+   * figure marked stale is.
+   */
+  isStale?: (m: SurveyMeasurement, r: ComparisonResult, stored: boolean) => boolean;
+  /** Why working out a measurement's dates failed, if it did. */
+  failed?: (m: SurveyMeasurement) => string | null | undefined;
+}
+
 /**
- * The site inventory over time (W4): the volume measurements in `opts.folder` (or all of them)
- * stacked per survey date. Only the engine's stored results and per-date series are added, and a
- * carried figure counts for its own dates (R16). A pile without a figure on a date (refused there,
- * never computed, or absent) is named in that date's `missing`, never added as zero.
+ * The site inventory over time (W4), one row per survey date: the volume measurements given (or
+ * those in `opts.folder`) stacked. A total adds current figures only. A stale figure, a refused or
+ * missing one, a failed run or a measurement without a comparison is named in `notCounted` with
+ * why, never added (and never as zero); `missing` keeps the ones without survey data. A figure
+ * partly outside the survey is added and named in `partial`. A carried figure counts for its own
+ * dates (R16). The change is worked out over the piles counted on both dates.
  */
 export function inventorySeries(
   ms: readonly SurveyMeasurement[],
   captures: readonly { id: string; date: string; label: string }[],
-  opts: {
-    folder?: string | null;
-    quantity?: 'net' | 'total';
-    isStale?: (m: SurveyMeasurement, r: ComparisonResult) => boolean;
-  } = {},
+  opts: InventoryOptions = {},
 ): StackRow[] {
-  const rows = new Map<string, readonly TimeRow[]>();
-  for (const m of inventoryPiles(ms, opts.folder))
-    rows.set(
-      m.id,
-      volumeRows(pileSeries(m), captures, {
-        isStale: (r) => opts.isStale?.(m, r) ?? false,
-        ...(opts.quantity !== undefined ? { quantity: opts.quantity } : {}),
-      }),
-    );
-  return stackRows(rows);
+  const piles = inventoryPiles(ms, opts.folder);
+  if (piles.length === 0) return [];
+  const sorted = [...captures].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1,
+  );
+  const out: StackRow[] = sorted.map((c) => ({
+    capture: c.id,
+    date: c.date,
+    label: c.label,
+    totalM3: 0,
+    parts: [],
+    missing: [],
+    notCounted: [],
+    partial: [],
+    cutM3: 0,
+    fillM3: 0,
+    change: null,
+  }));
+  const at = new Map(out.map((s) => [s.capture, s]));
+  for (const m of piles) {
+    if (m.items.length === 0) {
+      for (const s of out) s.notCounted?.push({ id: m.id, reason: 'no-comparison' });
+      continue;
+    }
+    const { series, stored } = pileSeries(m);
+    const carried = series.some((r) => r.carried !== undefined);
+    const failed = opts.failed?.(m) ?? null;
+    const rows: TimeRow[] = volumeRows(series, sorted, {
+      isStale: (r) => r.status === 'stale' || (opts.isStale?.(m, r, r === stored) ?? false),
+      ...(opts.quantity !== undefined ? { quantity: opts.quantity } : {}),
+    });
+    for (const row of rows) {
+      const s = at.get(row.capture);
+      if (!s) continue;
+      if (row.valueM3 === null) {
+        // refused there, or absent on a date a carried pile has no figure for (R16)
+        if (row.status === 'refused' || carried) {
+          s.missing.push(m.id);
+          s.notCounted?.push({ id: m.id, reason: 'no-data' });
+        } else if (failed !== null)
+          s.notCounted?.push({ id: m.id, reason: 'failed', detail: failed });
+        else s.notCounted?.push({ id: m.id, reason: 'not-computed' });
+        continue;
+      }
+      if (row.stale) {
+        s.notCounted?.push({ id: m.id, reason: 'stale' });
+        continue;
+      }
+      const r = series.find((x) => x.toCapture === row.capture);
+      s.parts.push({ id: m.id, valueM3: row.valueM3 });
+      s.totalM3 += row.valueM3;
+      s.cutM3 = (s.cutM3 ?? 0) + (r?.cutM3 ?? 0);
+      s.fillM3 = (s.fillM3 ?? 0) + (r?.fillM3 ?? 0);
+      if (row.status === 'partial') s.partial?.push(m.id);
+    }
+  }
+  // the change since the nearest earlier date with counted piles, over the piles on both
+  let prev: StackRow | undefined;
+  for (const s of out) {
+    if (s.parts.length === 0) continue;
+    if (prev) {
+      const before = new Map(prev.parts.map((p) => [p.id, p.valueM3]));
+      const common = s.parts.filter((p) => before.has(p.id));
+      const of = new Set([...s.parts.map((p) => p.id), ...before.keys()]).size;
+      s.change =
+        common.length === 0
+          ? null
+          : {
+              m3: common.reduce((sum, p) => sum + p.valueM3 - (before.get(p.id) ?? 0), 0),
+              piles: common.length,
+              of,
+            };
+    }
+    prev = s;
+  }
+  return out;
 }

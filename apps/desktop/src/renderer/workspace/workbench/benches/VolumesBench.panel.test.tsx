@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { VolumesBench } from './VolumesBench';
 
-// the bench with the package's real inventory under its switches (VolumesBench.test.tsx stubs it)
+// the bench with the real volumes view under its switches (VolumesBench.test.tsx stubs it)
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: HTMLDivElement;
@@ -42,6 +42,7 @@ it('shows one Survey date switch: the inventory below has none of its own', () =
   act(() => {
     root?.render(<VolumesBench />);
   });
-  expect(host.querySelector('[data-testid="vol-register"]')).not.toBeNull();
+  // the volumes view (here with no pile yet) sits under the switches, with no date switch of its own
+  expect(host.querySelector('[data-testid="volumes-view"]')).not.toBeNull();
   expect(host.querySelectorAll('[role="group"][aria-label="Survey date"]')).toHaveLength(1);
 });

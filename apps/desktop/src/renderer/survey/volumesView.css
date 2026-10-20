@@ -58,6 +58,16 @@
   background: var(--bg-1);
 }
 
+/* a total holding a figure partly outside the survey: marked, its tip names the piles */
+.vv-partial {
+  text-decoration: underline dotted var(--fg-3);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.vv-partial:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 2px;
+}
 .vv-inventory .vv-missing {
   font-family: inherit;
   white-space: normal;

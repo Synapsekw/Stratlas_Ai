@@ -139,11 +139,77 @@ describe('site inventory over time', () => {
     expect(rows.map((r) => r.capture)).toEqual(['c1', 'c2', 'c3']);
     expect(rows[0]).toMatchObject({ totalM3: 150, missing: [] });
     expect(rows[1]).toMatchObject({ totalM3: 120, missing: ['b'] });
-    expect(rows[2]).toMatchObject({ totalM3: 130, missing: ['b'] });
+    expect(rows[1]?.notCounted).toEqual([{ id: 'b', reason: 'no-data' }]);
+    // not worked out yet is not "no survey data", and still not added
+    expect(rows[2]).toMatchObject({ totalM3: 130, missing: [] });
+    expect(rows[2]?.notCounted).toEqual([{ id: 'b', reason: 'not-computed' }]);
     expect(rows[0]?.parts).toEqual([
       { id: 'a', valueM3: 100 },
       { id: 'b', valueM3: 50 },
     ]);
+  });
+
+  it('a stale figure is named, never added, stored or per date', () => {
+    // a's stored figure (c2) is stale by its fingerprint; b's c2 row is stale by the series check
+    const a = volume('a', [at('c1', 100)], [at('c2', 120)]);
+    const b = volume('b', [at('c1', 50), { ...at('c2', 60), fingerprint: 'sha256:old' }]);
+    const rows = inventorySeries([a, b], captures, {
+      isStale: (m, r, stored) =>
+        stored ? m.id === 'a' : r.fingerprint === 'sha256:old' && r.toCapture === 'c2',
+    });
+    expect(rows[1]).toMatchObject({ totalM3: 0, parts: [], missing: [] });
+    expect(rows[1]?.notCounted).toEqual([
+      { id: 'a', reason: 'stale' },
+      { id: 'b', reason: 'stale' },
+    ]);
+    // a figure marked stale is stale without a predicate too
+    const c = volume('c', [at('c1', 5, 'stale')]);
+    expect(inventorySeries([c], captures)[0]?.notCounted).toEqual([{ id: 'c', reason: 'stale' }]);
+  });
+
+  it('the latest date counts only figures for that date (no older stored figure)', () => {
+    // a's stored figure is for c2; the latest survey is c3, where it has none yet
+    const a = volume('a', [at('c1', 100)], [at('c2', 120)]);
+    const b = volume('b', [at('c3', 40)]);
+    const latest = inventorySeries([a, b], captures).at(-1);
+    expect(latest).toMatchObject({ capture: 'c3', totalM3: 40 });
+    expect(latest?.notCounted).toEqual([{ id: 'a', reason: 'not-computed' }]);
+  });
+
+  it('names failed runs, piles without a comparison and partial figures', () => {
+    const a = volume('a', [at('c1', 100, 'partial')]);
+    const f = volume('f', []);
+    const none: SurveyMeasurement = { ...volume('n', []), items: [] };
+    const rows = inventorySeries([a, f, none], captures, {
+      failed: (m) => (m.id === 'f' ? 'the engine stopped' : null),
+    });
+    expect(rows[0]).toMatchObject({ totalM3: 100, partial: ['a'] });
+    expect(rows[0]?.notCounted).toEqual([
+      { id: 'f', reason: 'failed', detail: 'the engine stopped' },
+      { id: 'n', reason: 'no-comparison' },
+    ]);
+    expect(rows[2]?.notCounted?.map((x) => x.reason)).toEqual([
+      'not-computed',
+      'failed',
+      'no-comparison',
+    ]);
+  });
+
+  it('the change counts only the piles on both dates, never a missing one as zero', () => {
+    const a = volume('a', [at('c1', 100), at('c2', 110), at('c3', 130)]);
+    const b = volume('b', [at('c1', 50), at('c3', 70)]);
+    const c = volume('c', [at('c2', 9), at('c3', 10)]);
+    const rows = inventorySeries([a, b, c], captures);
+    expect(rows[0]?.change).toBeNull();
+    // c1 → c2: only a is on both (b gone, c new): +10 over 1 of 3 piles
+    expect(rows[1]?.change).toEqual({ m3: 10, piles: 1, of: 3 });
+    // c2 → c3: a and c on both (b back): +20 + 1 over 2 of 3
+    expect(rows[2]?.change).toEqual({ m3: 21, piles: 2, of: 3 });
+    const d = volume('d', [at('c2', 1)]);
+    const e = volume('e', [at('c1', 1)]);
+    expect(inventorySeries([d, e], captures)[1]?.change).toBeNull();
+    // cut and fill of the counted piles
+    expect(rows[2]).toMatchObject({ cutM3: 0, fillM3: 210 });
   });
 
   it('inventory sums engine results, never kit figures, unless carried', () => {
@@ -161,7 +227,8 @@ describe('site inventory over time', () => {
     expect(rows.map((r) => r.totalM3)).toEqual([110, 20, 140]);
     // k is absent on the last date (R16): missing there, not zero
     expect(rows[2]?.missing).toEqual(['k']);
-    expect(rows[1]?.missing).toEqual(['a']);
+    expect(rows[1]?.missing).toEqual([]);
+    expect(rows[1]?.notCounted).toEqual([{ id: 'a', reason: 'not-computed' }]);
   });
 
   it('folder filter narrows the stack', () => {

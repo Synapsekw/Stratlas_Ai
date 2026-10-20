@@ -16,6 +16,7 @@ import {
   isTerrain,
   itemProblem,
   newItemId,
+  pileSeries,
   seriesApplies,
   sideKey,
   sideOptions,
@@ -106,30 +107,6 @@ export function volumeStatusLine(
 /** A new volume's comparison: the default base (Triangulated toe) under the current survey. */
 export function volumeItem(taken: readonly { id: string }[]): ComparisonItem {
   return { id: newItemId(taken), from: DEFAULT_BASE, to: { kind: 'current' }, useDeadband: false };
-}
-
-/** A per-date row's date (R16): the `to` capture, else the `from` one. */
-const rowDate = (r: ComparisonResult): string | undefined => r.toCapture ?? r.fromCapture;
-
-/**
- * The item's figures over time, keyed by their date. Its stored figure is always the one for its
- * own date, stale or not, so the card never shows two numbers for one date; `stored` is that row
- * (to mark it stale with the figures).
- */
-export function itemSeries(
-  m: SurveyMeasurement,
-  item: string,
-): { series: ComparisonResult[]; stored: ComparisonResult | undefined } {
-  const keyed = (r: ComparisonResult) => {
-    const d = rowDate(r);
-    return d !== undefined && r.toCapture === undefined ? { ...r, toCapture: d } : r;
-  };
-  const series = (m.series ?? []).filter((r) => r.item === item).map(keyed);
-  const found = m.results.find((r) => r.item === item);
-  const date = found ? rowDate(found) : undefined;
-  if (!found || date === undefined) return { series, stored: undefined };
-  const stored = keyed(found);
-  return { series: [...series.filter((r) => r.toCapture !== date), stored], stored };
 }
 
 export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
@@ -268,7 +245,8 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const previous = m.previousResults?.[0];
   const material = settings.materials.find((x) => x.id === m.material) ?? null;
   const density = material?.densityTPerM3;
-  const over = first ? itemSeries(m, first.id) : { series: [], stored: undefined };
+  // the one per-date rule the inventory uses too (`pileSeries`), so the two never differ
+  const over = pileSeries(m, first?.id);
   const storedRow = over.stored;
   // the stored figure's row is stale exactly when its figures are
   const storedStale =

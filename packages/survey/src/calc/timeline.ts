@@ -56,13 +56,46 @@ export function volumeRows(
   return rows;
 }
 
+/**
+ * Why a pile's figure on a date is left out of that date's total: stale, no survey data (refused,
+ * or absent on that date), not computed yet, the run failed, or the measurement has no comparison.
+ */
+export type NotCountedReason = 'stale' | 'no-data' | 'not-computed' | 'failed' | 'no-comparison';
+
+export interface NotCounted {
+  id: string;
+  reason: NotCountedReason;
+  /** The failure's own words, for `failed`. */
+  detail?: string;
+}
+
+/** A total's change since an earlier date, over the piles counted on both (`piles` of `of`). */
+export interface StackChange {
+  m3: number;
+  piles: number;
+  of: number;
+}
+
 export interface StackRow {
   capture: string;
   date: string;
   label: string;
   totalM3: number;
   parts: { id: string; valueM3: number }[];
+  /** Piles without survey data on this date. */
   missing: string[];
+  /** Every pile left out of `totalM3`, with why (set by `inventorySeries`). */
+  notCounted?: NotCounted[];
+  /** Counted piles whose figure is partly outside the survey (set by `inventorySeries`). */
+  partial?: string[];
+  /** Cut and fill of the counted piles (set by `inventorySeries`). */
+  cutM3?: number;
+  fillM3?: number;
+  /**
+   * The change since the nearest earlier date with counted piles, over the piles counted on both;
+   * null when they have none in common (set by `inventorySeries`).
+   */
+  change?: StackChange | null;
 }
 
 /** Sums the piles per capture date; a pile without a value on a date is listed in `missing`. */
