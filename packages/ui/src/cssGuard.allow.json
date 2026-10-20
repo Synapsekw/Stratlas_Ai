@@ -264,9 +264,6 @@
   "apps/desktop/src/renderer/survey/Cleanup.tsx": {
     "title": 1
   },
-  "apps/desktop/src/renderer/survey/Comparison.tsx": {
-    "title": 1
-  },
   "apps/desktop/src/renderer/survey/Compliance.tsx": {
     "title": 1
   },

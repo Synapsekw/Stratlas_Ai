@@ -1,28 +1,4 @@
 /* G4 comparisons, base editor, heat map colours, calculators, materials and bulk totals. */
-.sv-cmp-items {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-.sv-cmp-item {
-  display: grid;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-4);
-  background: var(--bg-2);
-}
-.sv-cmp-sides {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: end;
-  gap: 4px;
-}
-.sv-cmp-sides .sv-swap {
-  margin-bottom: 2px;
-}
 .sv-field.sv-inline {
   display: flex;
   align-items: center;
@@ -30,17 +6,6 @@
 }
 .sv-field.sv-inline .sv-input {
   width: 88px;
-}
-.sv-cmp-res {
-  display: grid;
-  gap: 4px;
-}
-.sv-cmp-res.stale table {
-  opacity: 0.5;
-}
-.sv-cmp-res td.faint {
-  padding-left: 8px;
-  white-space: nowrap;
 }
 .sv-base-rows {
   max-height: 240px;
@@ -94,4 +59,285 @@
 .sv-field.sv-inline > span.faint {
   text-transform: none;
   letter-spacing: 0;
+}
+
+/* ---------- the volume card's detail (VolumeDetail, BasePicker): mission tokens only ---------- */
+.vd {
+  display: grid;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.vd-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.vd-item {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+/* several comparisons: a rule between them, never a box in the card */
+.vd-items > .vd-item + .vd-item {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line-soft);
+}
+.vd-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.vd-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* the one status line: a dot in its tone, the words, then "was" and Recompute at the end */
+.vd-status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  min-height: 24px;
+}
+.vd-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.vd-dot {
+  flex: none;
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: var(--r-pill);
+  background: var(--ok);
+}
+.vd-status[data-tone='warn'] {
+  color: var(--warn-ink);
+}
+.vd-status[data-tone='warn'] .vd-dot {
+  background: var(--warn);
+}
+.vd-status[data-tone='muted'] .vd-dot {
+  background: transparent;
+  border: 1.5px solid var(--fg-3);
+  box-sizing: border-box;
+}
+.vd-was {
+  font-family: var(--f-mono);
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+.vd-spread,
+.vd-method,
+.vd-share,
+.vd-note {
+  margin: 0;
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+.vd-method,
+.vd-note {
+  color: var(--fg-3);
+}
+.vd .vd-standard {
+  justify-self: start;
+}
+
+/* chips: Base, To and swap, + Compare date; a level field or a custom base wraps below them */
+.vd-chips {
+  row-gap: var(--sp-4);
+}
+.bp-chip-label {
+  max-inline-size: 28ch;
+}
+.bp-chip .pc-chip-main:disabled {
+  cursor: default;
+}
+.vd-to {
+  gap: var(--sp-2);
+  padding-inline-start: var(--sp-4);
+  font-size: var(--t-12);
+}
+.vd-to-name {
+  color: var(--fg-3);
+}
+.vd-select {
+  block-size: 100%;
+  max-inline-size: 24ch;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-4);
+  background: transparent;
+  font: inherit;
+  color: var(--fg-1);
+}
+.vd-select:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.bp-level,
+.bp-custom {
+  order: 1;
+  flex-basis: 100%;
+  min-width: 0;
+}
+.bp-level {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--t-12);
+}
+.bp-level-name,
+.bp-unit,
+.vd-unit {
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.bp-level .sv-input,
+.vd-ignore-value {
+  width: 88px;
+}
+
+/* the base list: two lines per base, its name and when to use it */
+.bp-pop {
+  width: min(320px, calc(100vw - var(--sp-8)));
+}
+.bp-list > .bp-entry > .row.bp-row {
+  height: auto;
+  min-height: 30px;
+  padding-block: var(--sp-3);
+  align-items: flex-start;
+}
+.bp-row .menu-lead {
+  margin-top: var(--sp-1);
+}
+.bp-text {
+  display: grid;
+  flex: 1 1 auto;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.bp-name {
+  color: inherit;
+}
+.bp-hint {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+  white-space: normal;
+}
+.bp-surfaces {
+  display: grid;
+  padding-inline-start: var(--sp-7);
+}
+.bp-surfaces > .row {
+  width: 100%;
+}
+.bp-none {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+
+/* the figures, the volume over time and the facts under it */
+.vd-res,
+.vd-time-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+}
+.vd-res th,
+.vd-time-table th {
+  padding: var(--sp-1) var(--sp-4) var(--sp-1) 0;
+  text-align: left;
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.vd-res td,
+.vd-time-table td {
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-4);
+  text-align: right;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--fg-0);
+}
+.vd-res td.vd-area {
+  color: var(--fg-3);
+}
+.vd-res tr + tr,
+.vd-time-table tbody tr {
+  border-top: 1px solid var(--line-soft);
+}
+.vd-res[data-stale] td {
+  opacity: 0.5;
+}
+.vd-time {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.vd-sub {
+  margin: 0;
+  font-size: var(--t-12);
+  font-weight: var(--fw-title);
+  color: var(--fg-1);
+}
+.vd-time-table thead th {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.vd-time-table thead th:not(:first-child) {
+  text-align: right;
+}
+.vd-time-table tr[data-latest] {
+  background: var(--bg-2);
+}
+.vd-time-table tr[data-latest] th {
+  color: var(--acc);
+  font-weight: var(--fw-title);
+}
+.vd-time-table tr[data-stale] td {
+  color: var(--fg-3);
+}
+.vd-facts {
+  display: grid;
+  margin: 0;
+  font-size: var(--t-12);
+}
+.vd-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+}
+.vd-facts > div + div {
+  border-top: 1px solid var(--line-soft);
+}
+.vd-facts dt {
+  color: var(--fg-2);
+}
+.vd-facts dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-0);
+}
+.vd-ignore {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  font-size: var(--t-12);
+  color: var(--fg-2);
 }
