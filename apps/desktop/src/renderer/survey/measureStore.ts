@@ -639,7 +639,8 @@ function setDerived(
 const SERIES_MAX = 1000;
 /** The schema's longest list of replaced results. */
 const PREVIOUS_MAX = 20;
-const seriesKey = (r: ComparisonResult) => `${r.item} ${r.toCapture ?? ''}`;
+/** A series row's date: the `to` capture, or the `from` one for an item that runs from current. */
+const seriesKey = (r: ComparisonResult) => `${r.item} ${r.toCapture ?? r.fromCapture ?? ''}`;
 
 /**
  * Store results over time (one per item and survey date) on a measurement: each replaces the

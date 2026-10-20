@@ -417,4 +417,34 @@ describe('setSeries', () => {
     expect(isDirty(s)).toBe(false);
     expect(s.resultsUnwritten).toBe(true);
   });
+
+  it('keys an item that runs from current by its from date', async () => {
+    const m: SurveyMeasurement = {
+      ...drawn,
+      id: 'k',
+      family: 'polygon',
+      tool: 'volume',
+      items: [
+        {
+          id: 'i1',
+          from: { kind: 'current' },
+          to: { kind: 'smart' },
+          useDeadband: false,
+        },
+      ],
+    };
+    await open({ schema: 'aio.measurements/1', measurements: [m] });
+    const fromDate = (c: string, netM3: number) => {
+      const r = result({ fromCapture: c, netM3 });
+      delete r.toCapture;
+      return r;
+    };
+    setSeries('k', [fromDate('c1', 1), fromDate('c2', 2)]);
+    setSeries('k', [fromDate('c1', 5)]);
+    const series = measureStore.getState().file.measurements[0]?.series ?? [];
+    expect(series.map((r) => [r.fromCapture, r.netM3])).toEqual([
+      ['c1', 5],
+      ['c2', 2],
+    ]);
+  });
 });
