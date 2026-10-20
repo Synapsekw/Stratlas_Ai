@@ -1,0 +1,301 @@
+/* The shared profile chart, its surface chips and "Shade vs" (volumetric parity W1). Tokens only. */
+
+/* ---------- the header line: chips on the start side, Shade vs on the end side ---------- */
+.pc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-5);
+}
+
+.pc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  min-inline-size: 0;
+}
+.pc-chip {
+  display: inline-flex;
+  align-items: center;
+  block-size: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  transition:
+    background-color 120ms var(--ease),
+    border-color 120ms var(--ease),
+    color 120ms var(--ease);
+}
+.pc-chip:hover {
+  border-color: var(--fg-4);
+}
+.pc-chip:not([data-on]) {
+  background: transparent;
+  color: var(--fg-3);
+}
+.pc-chip:not([data-on]) .pc-swatch {
+  opacity: 0.4;
+}
+.pc-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  block-size: 100%;
+  padding-inline: var(--sp-4);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+  color: inherit;
+  white-space: nowrap;
+}
+.pc-chip-main:has(+ .pc-chip-x) {
+  padding-inline-end: var(--sp-2);
+}
+.pc-chip-x {
+  display: grid;
+  place-items: center;
+  inline-size: 20px;
+  block-size: 20px;
+  margin-inline-end: var(--sp-1);
+  border-radius: var(--r-4);
+  color: var(--fg-3);
+}
+.pc-chip-x:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.pc-chip-main:focus-visible,
+.pc-chip-x:focus-visible,
+.pc-chip-add:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.pc-chip-label {
+  max-inline-size: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-swatch {
+  display: block;
+  inline-size: 16px;
+  block-size: 8px;
+  flex: none;
+}
+.pc-chip-add {
+  display: inline-flex;
+  align-items: center;
+  block-size: 24px;
+  padding-inline: var(--sp-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+  color: var(--fg-2);
+  white-space: nowrap;
+  transition:
+    border-color 120ms var(--ease),
+    color 120ms var(--ease);
+}
+.pc-chip-add:hover,
+.pc-chip-add[aria-expanded='true'] {
+  border-color: var(--fg-3);
+  color: var(--fg-0);
+}
+
+/* the add menu: groups headed Surveys, Designs, Base */
+.pc-add-group + .pc-add-group {
+  margin-block-start: var(--sp-2);
+  padding-block-start: var(--sp-2);
+  border-block-start: 1px solid var(--line-soft);
+}
+.pc-add-head {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.pc-add-group > .row {
+  inline-size: 100%;
+}
+
+/* ---------- Shade vs ---------- */
+.pc-shade {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.pc-shade-label {
+  font-size: var(--t-12);
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+/* ---------- the chart ---------- */
+.pc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-inline-size: 0;
+}
+.pc-plot {
+  position: relative;
+  block-size: 220px;
+  min-inline-size: 0;
+  border-radius: var(--r-4);
+}
+.pc:not([data-static]) .pc-plot {
+  cursor: crosshair;
+}
+.pc-plot:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.pc-svg {
+  display: block;
+  overflow: visible;
+}
+.pc-grid line {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.pc-grid text {
+  fill: var(--fg-3);
+  font-family: var(--f-mono);
+  font-size: var(--t-11);
+  font-variant-numeric: tabular-nums;
+}
+.pc-axis-title,
+.pc-axis-note {
+  fill: var(--fg-3);
+  font-size: var(--t-11);
+}
+.pc-direction {
+  fill: var(--fg-2);
+}
+.pc-cut {
+  fill: var(--cut-a);
+}
+.pc-fill {
+  fill: var(--fill-a);
+}
+.pc-pin line {
+  stroke: var(--fg-2);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.pc-pin circle,
+.pc-crosshair circle {
+  stroke: var(--bg-1);
+  stroke-width: 1.5;
+}
+.pc-crosshair line {
+  stroke: var(--chart-crosshair);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+/* the hover readout: one floating surface beside the crosshair */
+.pc-readout {
+  position: absolute;
+  z-index: var(--z-stage-ui);
+  min-inline-size: 150px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-2);
+  box-shadow: var(--el-2);
+  pointer-events: none;
+  font-size: var(--t-11);
+  color: var(--fg-1);
+}
+.pc-ro-head {
+  margin-block-end: var(--sp-2);
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-0);
+}
+.pc-ro-rows {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+}
+.pc-ro-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-5);
+}
+.pc-ro-row dt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.pc-ro-row dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pc-ro-sep {
+  margin-block-start: var(--sp-2);
+  padding-block-start: var(--sp-2);
+  border-block-start: 1px solid var(--line-soft);
+}
+.pc-ro-key {
+  inline-size: 8px;
+  block-size: 2px;
+  border-radius: 1px;
+}
+
+/* under the chart: cut and fill areas on the start side, the export buttons on the end side */
+.pc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-5);
+}
+.pc-areas {
+  display: inline-flex;
+  gap: var(--sp-5);
+  margin: 0;
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+.pc-area {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.pc-area i {
+  box-sizing: border-box;
+  inline-size: 10px;
+  block-size: 10px;
+  border: 1px solid;
+  border-radius: 2px;
+}
+.pc-area[data-kind='cut'] i {
+  border-color: var(--cut);
+  background: var(--cut-a);
+}
+.pc-area[data-kind='fill'] i {
+  border-color: var(--fill);
+  background: var(--fill-a);
+}
+.pc-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-inline-start: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-chip,
+  .pc-chip-add {
+    transition: none;
+  }
+}
