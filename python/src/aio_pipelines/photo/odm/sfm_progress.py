@@ -9,6 +9,7 @@ patterns come from ODM 3.6.2 (``opendm/osfm.py``) and a 1,003-photo run on
 
 from __future__ import annotations
 
+import bisect
 import re
 import time
 from collections.abc import Callable
@@ -77,6 +78,14 @@ _ETA_RECENT_WINDOW_S = 60.0
 _ETA_RECENT_MIN_SPAN_S = 20.0
 _ETA_STEADY_LOW = 0.75
 _ETA_STEADY_HIGH = 1.33
+# A missing image list is looked for again at most this often (it is asked for on every line).
+_COUNT_RETRY_S = 1.0
+# Samples older than the recent window are dropped once this many have gathered.
+_TRIM_BATCH = 256
+
+
+def _time(sample: tuple[float, int]) -> float:
+    return sample[0]
 
 
 def photo_count(project_dir: Path) -> int | None:
@@ -97,6 +106,7 @@ class SfmProgress:
         self._photo_count = photo_count
         self._clock = clock
         self._photos_total: int | None = None
+        self._count_tried_at: float | None = None
         self._index: int | None = None  # index of the current sub-step
         self._finished = False
         self._floor = 0.0
@@ -131,7 +141,13 @@ class SfmProgress:
         return len(self._names) if self.current in ("features", "reconstruct") else self._count
 
     def _record(self) -> None:
-        self._samples.append((self._clock(), self._done()))
+        now = self._clock()
+        self._samples.append((now, self._done()))
+        # only the first sample (the overall rate) and the last window (the recent rate) are used:
+        # the list stays bounded however many pairs are matched (trimmed in batches: cheap per line)
+        cut = bisect.bisect_left(self._samples, now - _ETA_RECENT_WINDOW_S, lo=1, key=_time)
+        if cut > _TRIM_BATCH:
+            del self._samples[1:cut]
 
     def feed(self, line: str) -> bool:
         line = line.strip()
@@ -195,7 +211,11 @@ class SfmProgress:
             return self._pairs_total
         if SUBSTEPS[_INDEX[step]].unit is None:
             return None
-        if self._photos_total is None:
+        now = self._clock()
+        if self._photos_total is None and (
+            self._count_tried_at is None or now - self._count_tried_at >= _COUNT_RETRY_S
+        ):
+            self._count_tried_at = now
             self._photos_total = self._photo_count()
         return self._photos_total
 
@@ -247,10 +267,13 @@ class SfmProgress:
         if last_t <= first_t:
             return None
         rate_all = (last_done - first_done) / (last_t - first_t)
-        recent = [s for s in self._samples if s[0] >= now - _ETA_RECENT_WINDOW_S]
-        if len(recent) < 2 or recent[-1][0] - recent[0][0] < _ETA_RECENT_MIN_SPAN_S:
+        i = bisect.bisect_left(self._samples, now - _ETA_RECENT_WINDOW_S, key=_time)
+        if len(self._samples) - i < 2:
             return None
-        rate_recent = (recent[-1][1] - recent[0][1]) / (recent[-1][0] - recent[0][0])
+        (t0, done0), (t1, done1) = self._samples[i], self._samples[-1]
+        if t1 - t0 < _ETA_RECENT_MIN_SPAN_S:
+            return None
+        rate_recent = (done1 - done0) / (t1 - t0)
         if rate_all <= 0 or not _ETA_STEADY_LOW <= rate_recent / rate_all <= _ETA_STEADY_HIGH:
             return None
         return float(round((total - done) / rate_all))

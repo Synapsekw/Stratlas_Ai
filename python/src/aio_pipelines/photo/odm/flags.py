@@ -53,9 +53,7 @@ def stage_window(first: str, last: str) -> tuple[float, float]:
 
 #: Each stage's share of a step: ODM's percent span, except reading the photos, which takes
 #: seconds but holds 5 % of ODM's bar (a fifth of the align step).
-STAGE_WEIGHT: dict[str, float] = {
-    s: 0.5 if s == "dataset" else STAGE_END[s] - stage_start(s) for s in STAGES
-}  # fmt: skip
+STAGE_WEIGHT: dict[str, float] = {s: 0.5 if s == "dataset" else STAGE_END[s] - stage_start(s) for s in STAGES}
 
 
 def stage_span(first: str, last: str, stage: str) -> tuple[float, float]:

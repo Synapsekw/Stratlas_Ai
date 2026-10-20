@@ -6,13 +6,13 @@ covers a window of ODM's stages; stage lines move the bar to each stage's start 
 datagram inside the running stage's own range refines it. When the port is taken, stage lines alone
 drive the bar. Inside the alignment stage OpenSfM's own lines (``sfm_progress``) name the sub-step,
 count its photos or pairs and move the bar; every update also tells the app when ODM last showed a
-sign of life (``liveness``: lines, counts, files and CPU time). Cancel ends ODM's whole process tree (``native.run_tool``). The watchdog
-(``Watchdog``) stops ODM only when, over the whole stall window, it printed nothing, sent no
-progress and its process tree used almost no CPU (OpenMVS densifies silently for hours on a large
-set); and, for a DTM, when the terrain program ran silently past its own limit (the 14 Oct hang:
-one busy core for ever). Resume: each step keeps
-ODM's output in ``<log_dir>/odm.log``; with ``rerun`` the next attempt starts ``--rerun-from`` the
-stage after the last one finished (without it ODM's own rerun skips what is done).
+sign of life (``liveness``: lines, counts, files and CPU time). Cancel ends ODM's whole process
+tree (``native.run_tool``). The watchdog (``Watchdog``) stops ODM only when, over the whole stall
+window, it printed nothing, sent no progress and its process tree used almost no CPU (OpenMVS
+densifies silently for hours on a large set); and, for a DTM, when the terrain program ran silently
+past its own limit (the 14 Oct hang: one busy core for ever). Resume: each step keeps ODM's output
+in ``<log_dir>/odm.log``; with ``rerun`` the next attempt starts ``--rerun-from`` the stage after
+the last one finished (without it ODM's own rerun skips what is done).
 
 ODM's program code is never changed. One exception (founder, 14 Oct 2026; deviation 17): in the
 ODM folder the app installed itself, the placeholder ``nvcuda.dll`` beside OpenMVS is renamed so
@@ -299,6 +299,17 @@ class StageProgress:
         with self._lock:
             if self.sfm is not None:
                 self.sfm.finish()
+
+    def current(self) -> str | None:
+        """The OpenSfM sub-step running now (its key), else None."""
+        with self._lock:
+            return self.sfm.current if self.stage == "opensfm" and self.sfm is not None else None
+
+    def detail(self) -> dict | None:
+        """The running OpenSfM sub-step's detail, without the estimate (cheap: read on every line)."""
+        with self._lock:
+            sfm = self.sfm
+            return sfm.detail() if self.stage == "opensfm" and sfm is not None else None
 
     def sub_step(self) -> tuple[dict | None, float | None, float | None]:
         """Inside ``opensfm``: the sub-step's detail, its estimate (seconds) and its start (wall
@@ -614,7 +625,7 @@ def run_odm(
     def announce() -> None:
         """One job-log line per sub-step: its label, with its total once known (or once counting
         starts without one)."""
-        detail, _, _ = sp.sub_step()
+        detail = sp.detail()
         key = detail and detail["label"]
         if key == told[0]:
             return
@@ -653,7 +664,7 @@ def run_odm(
 
     def poll(proc: subprocess.Popen) -> None:
         liveness.poll(proc.pid)
-        if sfm is not None and sfm.current == "undistort" and time.monotonic() >= next_count[0]:
+        if sp.current() == "undistort" and time.monotonic() >= next_count[0]:
             next_count[0] = time.monotonic() + UNDISTORT_EVERY_S
             with contextlib.suppress(OSError):
                 if sp.set_undistorted(sum(1 for _ in undistorted.glob("*.tif"))):

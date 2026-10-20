@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -186,3 +187,32 @@ def test_estimate_only_with_a_steady_rate() -> None:
         now[0] += 1.0
         sp.feed(f"INFO: Adding r{i}.jpg to the reconstruction")
     assert sp.eta_seconds() is None
+
+
+def test_many_pairs_keep_the_samples_bounded_and_the_lines_cheap() -> None:
+    # 50,000 pairs at 200 lines a second: only the first sample and the last minute are kept
+    now = [0.0]
+    sp = make(500, lambda: now[0])
+    sp.feed('running "C:\\odm\\opensfm" match_features "C:\\odm-work\\project\\opensfm"')
+    sp.feed("INFO: Matching 50000 image pairs")
+    t0 = time.perf_counter()
+    for i in range(50_000):
+        now[0] += 0.005
+        sp.feed(f"DEBUG: Matching a{i}.jpg and b{i}.jpg.  Matcher: FLANN")
+        sp.detail()
+        if i % 20 == 0:  # the bar's tick asks for the estimate ten times a second
+            sp.eta_seconds()
+    assert time.perf_counter() - t0 < 2.0
+    assert len(sp._samples) <= 60 / 0.005 + 258  # the last minute, plus at most one trim batch
+    assert sp.detail()["done"] == 50_000
+
+
+def test_a_missing_image_list_is_looked_for_at_most_once_a_second() -> None:
+    now, asked = [0.0], []
+    sp = SfmProgress(lambda: asked.append(now[0]), lambda: now[0])
+    sp.feed('running "C:\\odm\\opensfm" detect_features "C:\\odm-work\\project\\opensfm"')
+    for i in range(100):
+        now[0] += 0.05
+        sp.feed(f"INFO: Extracting ROOT_SIFT_GPU features for image p{i}.jpg")
+        sp.detail()
+    assert 4 <= len(asked) <= 6  # five seconds of lines
