@@ -18,7 +18,13 @@ import {
   type SurveyMeasurement,
   type VolumeBaseId,
 } from '@aio/schema';
-import { inventoryPiles, inventorySeries, openWithKitPiles, pileSeries } from '@aio/survey';
+import {
+  inventoryPiles,
+  inventorySeries,
+  openWithKitPiles,
+  pileSeries,
+  seriesDate,
+} from '@aio/survey';
 import { assetUrl, dateShiftOf } from '@aio/workspace';
 import { changeSetsOf, changeSummary, verdictLine } from './change-tools';
 import { issuesCsv } from './exporting';
@@ -118,32 +124,69 @@ async function loadPiles(
   ctx: RendererToolContext,
   base: VolumeBaseId | undefined,
 ): Promise<{ piles: SurveyMeasurement[]; settings: SurveySettings } | null> {
-  const [fileRaw, kitRaw, editsRaw, settingsRaw] = await Promise.all([
-    projectJson(ctx, MEASUREMENTS_FILE),
+  const [kitRaw, editsRaw] = await Promise.all([
     projectJson(ctx, 'volumes.json'),
     projectJson(ctx, 'edits/boundaries.json'),
+  ]);
+  const kit = VolumesFile.safeParse(kitRaw);
+  const edits = BoundaryEditsFile.safeParse(editsRaw);
+  /** The file opened with the kit's piles (`base` picks the kit base their figures are on). */
+  const opened = (file: MeasurementsFile, settings: SurveySettings) => {
+    let n = 0;
+    return openWithKitPiles(
+      file,
+      {
+        volumes: kit.success ? (base ? { ...kit.data, defaultBase: base } : kit.data) : null,
+        edits: edits.success ? edits.data : null,
+      },
+      {
+        origin: project(ctx).manifest.origin,
+        materials: settings.materials,
+        now: ctx.now().toISOString(),
+        newId: () => `kit-${String(++n)}`,
+        // the assistant reads only: nothing is written or marked
+        readOnly: true,
+      },
+    );
+  };
+  // what the app shows: its store (the dates it worked out, unsaved or in a read-only package)
+  const live = appHooks.surveyMeasurements?.(project(ctx).id) ?? null;
+  if (live) {
+    let measurements = live.measurements;
+    if (base && kit.success) {
+      // the carried figures again on the asked kit base, pile by pile
+      const fresh = opened({ schema: 'aio.measurements/1', measurements: [] }, live.settings);
+      const byPile = new Map(
+        fresh.measurements.flatMap((m) =>
+          m.origin?.kind === 'kit-pile' ? [[m.origin.pile, m]] : [],
+        ),
+      );
+      measurements = measurements.map((m) => {
+        const k = m.origin?.kind === 'kit-pile' ? byPile.get(m.origin.pile) : undefined;
+        const allCarried =
+          m.results.every((r) => r.carried) && (m.series ?? []).every((r) => r.carried);
+        const item = m.items[0]?.id;
+        if (!k || !allCarried || item === undefined) return m;
+        const kitItem = k.items[0]?.id;
+        const retag = (rs: readonly ComparisonResult[] | undefined) =>
+          (rs ?? []).map((r) => ({ ...r, item: r.item === kitItem ? item : r.item }));
+        return { ...m, results: retag(k.results), series: retag(k.series) };
+      });
+    }
+    const piles = inventoryPiles(measurements);
+    return piles.length > 0 ? { piles, settings: live.settings } : null;
+  }
+  // no store has the project open: the files on disk, opened as the app opens them
+  const [fileRaw, settingsRaw] = await Promise.all([
+    projectJson(ctx, MEASUREMENTS_FILE),
     projectJson(ctx, SURVEY_SETTINGS_FILE),
   ]);
   const f = MeasurementsFile.safeParse(fileRaw);
   const s = SurveySettings.safeParse(settingsRaw);
   const settings = s.success ? s.data : defaultSurveySettings();
-  const kit = VolumesFile.safeParse(kitRaw);
-  const edits = BoundaryEditsFile.safeParse(editsRaw);
-  let n = 0;
-  const file = openWithKitPiles(
+  const file = opened(
     f.success ? f.data : { schema: 'aio.measurements/1', measurements: [] },
-    {
-      volumes: kit.success ? (base ? { ...kit.data, defaultBase: base } : kit.data) : null,
-      edits: edits.success ? edits.data : null,
-    },
-    {
-      origin: project(ctx).manifest.origin,
-      materials: settings.materials,
-      now: ctx.now().toISOString(),
-      newId: () => `kit-${String(++n)}`,
-      // the assistant reads only: nothing is written or marked
-      readOnly: true,
-    },
+    settings,
   );
   const piles = inventoryPiles(file.measurements);
   return piles.length > 0 ? { piles, settings } : null;
@@ -177,10 +220,8 @@ function compareVolumes(
   const rows = inventorySeries(piles, captures, { isStale });
   const rowFrom = rows.find((r) => r.capture === from.id);
   const rowTo = rows.find((r) => r.capture === to.id);
-  /** A row's date (R16): `toCapture`, else `fromCapture`. */
-  const dateOf = (r: ComparisonResult) => r.toCapture ?? r.fromCapture;
   const figure = (series: ComparisonResult[], c: CaptureRef) => {
-    const r = series.find((x) => dateOf(x) === c.id);
+    const r = series.find((x) => seriesDate(x) === c.id);
     return r && r.status !== 'refused' ? r : undefined;
   };
   const out = piles.map((m) => {
@@ -262,6 +303,10 @@ function compareIssues(issues: readonly Issue[], from: CaptureRef, to: CaptureRe
   };
 }
 
+/** Said when a kit base is asked of a project without volume measurements. */
+const BASE_IGNORED =
+  'The base was ignored: it applies to stockpile volumes, and this project has no volume measurements.';
+
 define('compare_captures', async (input, ctx) => {
   const captures = [...project(ctx).manifest.captures].sort((a, b) => a.date.localeCompare(b.date));
   const first = captures[0];
@@ -274,12 +319,12 @@ define('compare_captures', async (input, ctx) => {
   const from = pickCapture(captures, input.from, first);
   const to = pickCapture(captures, input.to, last);
   const volumes = await loadPiles(ctx, input.base);
-  // the kit base applies to figures carried over from an earlier version only
+  // the kit base applies to figures carried over from an earlier version only: refused when the
+  // comparison has volumes and none is carried; without volumes it is ignored, and said so
   if (
     input.base !== undefined &&
-    !volumes?.piles.some(
-      (m) => m.results.some((r) => r.carried) || m.series?.some((r) => r.carried),
-    )
+    volumes &&
+    !volumes.piles.some((m) => m.results.some((r) => r.carried) || m.series?.some((r) => r.carried))
   )
     throw new ToolError(
       'The base applies only to stockpile figures carried over from an earlier version (the kit). This project has none: each volume measurement has its own base, as its card shows. Ask again without a base.',
@@ -294,6 +339,7 @@ define('compare_captures', async (input, ctx) => {
       to: { captureId: late.id, date: late.date },
       ...changeSummary(sets),
       ...(volumes ? { volumes: compareVolumes(volumes, captures, early, late) } : {}),
+      ...(!volumes && input.base !== undefined ? { baseIgnored: BASE_IGNORED } : {}),
     };
     return { result: r, summary: verdictLine(sets) };
   }
@@ -305,7 +351,10 @@ define('compare_captures', async (input, ctx) => {
       summary: t ? `${t.change > 0 ? '+' : ''}${t.changeText}` : 'Volumes compared',
     };
   }
-  const r = compareIssues(ctx.workspace.getState().issues, from, to);
+  const r = {
+    ...compareIssues(ctx.workspace.getState().issues, from, to),
+    ...(input.base !== undefined ? { baseIgnored: BASE_IGNORED } : {}),
+  };
   return { result: r, summary: `${r.addedBetween.total} added` };
 });
 

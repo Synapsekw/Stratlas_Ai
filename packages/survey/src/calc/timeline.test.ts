@@ -1,6 +1,6 @@
 import type { ComparisonResult } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { stackRows, volumeRows } from './timeline';
+import { seriesDate, seriesKeyOf, stackRows, volumeRows } from './timeline';
 
 const at = <T>(a: readonly T[], i: number): T => {
   const v = a[i];
@@ -82,5 +82,14 @@ describe('stackRows', () => {
     expect(out[0]).toMatchObject({ totalM3: 120, missing: [] });
     expect(out[1]).toMatchObject({ totalM3: 50, missing: ['b'] });
     expect(at(out, 1).parts).toEqual([{ id: 'a', valueM3: 50 }]);
+  });
+});
+
+describe('seriesDate and seriesKeyOf: one key per item and date', () => {
+  it('reads the to capture, else the from one', () => {
+    expect(seriesDate({ toCapture: 'c2', fromCapture: 'c1' })).toBe('c2');
+    expect(seriesDate({ fromCapture: 'c1' })).toBe('c1');
+    expect(seriesDate({})).toBe('');
+    expect(seriesKeyOf({ item: 'it', fromCapture: 'c1' })).toBe('it c1');
   });
 });

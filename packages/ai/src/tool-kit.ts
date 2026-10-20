@@ -15,6 +15,7 @@ import type {
   PhotoRun,
   PhotoRunSummary,
   SurveyMeasurement,
+  SurveySettings,
   Vec3,
   WindowKind,
 } from '@aio/schema';
@@ -211,6 +212,14 @@ export interface AppHooks {
    * `stored` for the measurement's stored result, else a per-date one. The Volumes view's rule.
    */
   volumeStale?: (m: SurveyMeasurement, r: ComparisonResult, stored: boolean) => boolean;
+  /**
+   * The measurements and site settings the app's store holds for a project, when it has that
+   * project open: what the app shows (the dates worked out, unsaved or in a read-only package).
+   * Null when it has not; the tools then read the files.
+   */
+  surveyMeasurements?: (
+    projectId: string,
+  ) => { measurements: SurveyMeasurement[]; settings: SurveySettings } | null;
 }
 
 export const appHooks: AppHooks = {};

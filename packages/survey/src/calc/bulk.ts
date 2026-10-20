@@ -6,7 +6,7 @@ import type {
   UnitsOverride,
 } from '@aio/schema';
 import { isBase, sideKey } from './pickers';
-import { volumeRows, type StackRow, type TimeRow } from './timeline';
+import { seriesDate, volumeRows, type StackRow, type TimeRow } from './timeline';
 
 /**
  * Bulk selection (M11 G4, PRD SRV-1): running totals across the selected measurements of one
@@ -140,8 +140,8 @@ export function setUnitsForAll(
 
 // ---------------------------------------------------------------- site inventory over time (W4)
 
-/** A per-date row's date (R16): the `to` capture, else the `from` one. */
-const rowDate = (r: ComparisonResult): string | undefined => r.toCapture ?? r.fromCapture;
+/** A per-date row's date (R16, `seriesDate`), undefined without one. */
+const rowDate = (r: ComparisonResult): string | undefined => seriesDate(r) || undefined;
 
 /**
  * One item's figures per date, the one rule the volume card and the inventory share: its per-date

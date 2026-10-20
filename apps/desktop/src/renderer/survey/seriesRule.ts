@@ -4,12 +4,8 @@
  * keyed, which items keep figures carried over from an earlier version, and which dates need
  * working out. Pure: no store, so the report page works the dates out exactly as the app does.
  */
-import {
-  turnOf,
-  type CaptureLineUpTurn,
-  type ComparisonResult,
-  type SurveyMeasurement,
-} from '@aio/schema';
+import { turnOf, type CaptureLineUpTurn, type SurveyMeasurement } from '@aio/schema';
+import { seriesDate, seriesKeyOf } from '@aio/survey';
 import { captureShift } from '@aio/workspace';
 
 type Manifest = Parameters<typeof captureShift>[0];
@@ -53,11 +49,8 @@ export function lineUps(manifest: Manifest | null | undefined): {
   };
 }
 
-/** The date a per-date row is for (R16): `toCapture`, else `fromCapture`. */
-export const seriesDate = (r: ComparisonResult): string => r.toCapture ?? r.fromCapture ?? '';
-
-/** A per-date row's key: its item and its date. */
-export const seriesKeyOf = (r: ComparisonResult): string => `${r.item} ${seriesDate(r)}`;
+// the per-date row's date and key are `@aio/survey`'s, re-exported for the store and the report
+export { seriesDate, seriesKeyOf };
 
 /** True when an item's figure, or any of its figures over time, was carried from the kit. */
 export function carriedItem(m: SurveyMeasurement, item: string): boolean {

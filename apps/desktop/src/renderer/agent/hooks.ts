@@ -34,6 +34,7 @@ import {
 } from '../screens/mediaView';
 import { shell } from '../shell';
 import { compareStore, isStale, seriesStale } from '../survey/compareStore';
+import { measureStore } from '../survey/measureStore';
 import { stagePrefs } from '../workspace/stagePrefs';
 import { isDockScreen } from './dockScreens';
 
@@ -216,6 +217,13 @@ export function registerAgentHooks(): () => void {
     // a volume figure is stale as the Volumes view judges it (`useInventory`)
     volumeStale: (m, r, stored) =>
       stored ? isStale(compareStore.getState(), m, r) : seriesStale(m, r),
+    // what the app shows of the project: its store, when it has the project open
+    surveyMeasurements: (projectId) => {
+      const s = measureStore.getState();
+      return s.projectId === projectId && s.status === 'ready'
+        ? { measurements: s.file.measurements, settings: s.settings }
+        : null;
+    },
   });
   readReview(workspace.getState().project);
   const offProject = workspace.subscribe((s, prev) => {

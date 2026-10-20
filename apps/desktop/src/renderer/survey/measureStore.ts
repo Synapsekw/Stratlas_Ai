@@ -44,6 +44,7 @@ import {
   MIN_POINTS,
   missingRoles,
   primaryRow,
+  seriesKeyOf,
   removeTemplate,
   templateLibrary,
   TOOL_FAMILY,
@@ -614,7 +615,6 @@ const SERIES_MAX = 1000;
 /** The schema's longest list of replaced results. */
 const PREVIOUS_MAX = 20;
 /** A series row's date: the `to` capture, or the `from` one for an item that runs from current. */
-const seriesKey = (r: ComparisonResult) => `${r.item} ${r.toCapture ?? r.fromCapture ?? ''}`;
 
 /**
  * Store results over time (one per item and survey date) on a measurement: each replaces the
@@ -624,12 +624,12 @@ const seriesKey = (r: ComparisonResult) => `${r.item} ${r.toCapture ?? r.fromCap
 export function setSeries(id: string, results: readonly ComparisonResult[]): void {
   const target = get().file.measurements.find((m) => m.id === id);
   if (!target) return;
-  const incoming = new Map(results.map((r) => [seriesKey(r), r]));
+  const incoming = new Map(results.map((r) => [seriesKeyOf(r), r]));
   const old = target.series ?? [];
-  const had = new Set(old.map(seriesKey));
+  const had = new Set(old.map(seriesKeyOf));
   const series = [
-    ...old.map((r) => incoming.get(seriesKey(r)) ?? r),
-    ...[...incoming.values()].filter((r) => !had.has(seriesKey(r))),
+    ...old.map((r) => incoming.get(seriesKeyOf(r)) ?? r),
+    ...[...incoming.values()].filter((r) => !had.has(seriesKeyOf(r))),
   ].slice(-SERIES_MAX);
   setDerived(id, { series });
 }

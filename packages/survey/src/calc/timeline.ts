@@ -1,6 +1,15 @@
 // Volume over time (pure): one row per capture date for a pile, and the stacked totals across piles.
 import type { ComparisonResult } from '@aio/schema';
 
+/** The date a per-date row is for (R16): its `to` capture, else its `from` one ('' without either). */
+export const seriesDate = (r: Pick<ComparisonResult, 'toCapture' | 'fromCapture'>): string =>
+  r.toCapture ?? r.fromCapture ?? '';
+
+/** A per-date row's key, one per item and date: the app's store, the report and the assistant. */
+export const seriesKeyOf = (
+  r: Pick<ComparisonResult, 'item' | 'toCapture' | 'fromCapture'>,
+): string => `${r.item} ${seriesDate(r)}`;
+
 export interface TimeRow {
   capture: string;
   date: string;

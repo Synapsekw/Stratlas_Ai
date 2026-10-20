@@ -1,4 +1,4 @@
-import type { GlobeSite } from '@aio/schema';
+import { defaultSurveySettings, type GlobeSite, type SurveyMeasurement } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import { dateShiftOf } from '@aio/workspace';
 import { issuesCsv } from './exporting';
@@ -231,6 +231,46 @@ describe('compare_captures', () => {
     const fetchJson = files({ 'survey/measurements.json': fromOnly });
     const r = await runRendererTool('compare_captures', {}, ctx({ fetchJson }, surveyWorkspace()));
     expect(r.result).toMatchObject({ piles: [{ id: 'm-1', from: 610, to: 650, change: 40 }] });
+  });
+
+  it('reads what the app shows: a date worked out in memory, never saved', async () => {
+    const [m] = measurements.measurements;
+    const shown = {
+      ...m,
+      // a date the app worked out (a read-only package, or before an autosave): not on disk
+      series: [{ ...result('it', 'c1', 640), fingerprint: 'sha256:memory' }, ...m.series.slice(1)],
+    };
+    const off = registerAppHooks({
+      surveyMeasurements: (id) =>
+        id === 'p1'
+          ? {
+              measurements: [shown] as unknown as SurveyMeasurement[],
+              settings: defaultSurveySettings(),
+            }
+          : null,
+    });
+    try {
+      const fetchJson = vi.fn(files({ 'survey/measurements.json': measurements }));
+      const r = await runRendererTool(
+        'compare_captures',
+        {},
+        ctx({ fetchJson }, surveyWorkspace()),
+      );
+      expect(r.result).toMatchObject({ piles: [{ id: 'm-1', from: 640, to: 720.3 }] });
+      expect(fetchJson).not.toHaveBeenCalledWith('aio://project/p1/survey/measurements.json');
+    } finally {
+      off();
+    }
+  });
+
+  it('ignores a kit base, and says so, in a project without volume measurements', async () => {
+    const r = await runRendererTool(
+      'compare_captures',
+      { base: 'low' },
+      ctx({}, surveyWorkspace()),
+    );
+    expect(r.result).toMatchObject({ kind: 'issues' });
+    expect((r.result as { baseIgnored?: string }).baseIgnored).toMatch(/ignored/);
   });
 
   it('uses another kit base and accepts dates for the captures', async () => {
