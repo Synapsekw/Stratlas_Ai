@@ -14,13 +14,16 @@ export {
 export { changeMarkers, VERDICT_COLOR, type ChangeMarker, type MarkerInput } from './overlay';
 export {
   changeStore,
+  areasOfPair,
   createChangeStore,
   runProducer,
   setsOfPair,
+  volumesNote,
   useChange,
   type ChangeRun,
   type ChangeState,
   type ChangeStore,
+  type Misaligned,
   type SelectedItem,
 } from './store';
 export {

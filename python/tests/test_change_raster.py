@@ -236,19 +236,48 @@ def test_the_default_tolerance_refuses_three_pixels(tmp_path):
         run_job(pipeline(), tmp_path, raster_params())
 
 
-def test_an_ignore_polygon_hides_a_change_and_a_mask_keeps_only_its_area(tmp_path):
+def ortho_ring(r0, c0, size):
+    """A lon/lat polygon over ``size`` cells of the synthetic ortho, from row ``r0`` and column ``c0``."""
     from rasterio.warp import transform
 
+    x0, z0 = -N * CELL / 2 + c0 * CELL, -N * CELL / 2 + r0 * CELL
+    x1, z1 = x0 + size * CELL, z0 + size * CELL
+    xs, zs = [x0, x1, x1, x0, x0], [z0, z0, z1, z1, z0]
+    lon, lat = transform("EPSG:32639", "EPSG:4326", [500000 + x for x in xs], [3200000 - z for z in zs])
+    return [[a_, b_] for a_, b_ in zip(lon, lat, strict=True)]
+
+
+def test_a_scoped_run_keeps_its_own_set_beside_the_whole_map_one(tmp_path):
     a, b = dates()
     b = paint(b, 200, 260, SQUARE)
     ortho_project(tmp_path, a, b, CELL)
+    scope = {"id": "pad-a", "name": "Pad A"}
+    run_job(pipeline(), tmp_path, raster_params(), job_id="j1")
+    run_job(pipeline(), tmp_path, raster_params(mask=ortho_ring(150, 200, 300), scope=scope), job_id="j2")
+    assert len(read_set(tmp_path)["items"]) == 1
+    scoped = json.loads((tmp_path / "change" / "c1-c2-raster-area-pad-a.json").read_text("utf-8"))
+    assert scoped["scope"] == scope
+    assert len(scoped["items"]) == 1
+    assert "scope" not in read_set(tmp_path)
+    ls = layers(tmp_path)
+    for lid in (
+        "c1-c2-raster-heat",
+        "c1-c2-raster-regions",
+        "c1-c2-raster-area-pad-a-heat",
+        "c1-c2-raster-area-pad-a-regions",
+    ):
+        assert lid in ls
+    assert ls["c1-c2-raster-area-pad-a-heat"]["name"].startswith("Pad A: imagery change heat map")
+    assert ls["c1-c2-raster-area-pad-a-regions"]["name"].startswith("Pad A: imagery change areas")
+    assert ls["c1-c2-raster-heat"]["name"].startswith("Imagery change heat map")
+    assert (tmp_path / "change" / "c1-c2-raster-area-pad-a" / "heat" / "tiles.json").is_file()
 
-    def ring(r0, c0, size):
-        x0, z0 = -N * CELL / 2 + c0 * CELL, -N * CELL / 2 + r0 * CELL
-        x1, z1 = x0 + size * CELL, z0 + size * CELL
-        xs, zs = [x0, x1, x1, x0, x0], [z0, z0, z1, z1, z0]
-        lon, lat = transform("EPSG:32639", "EPSG:4326", [500000 + x for x in xs], [3200000 - z for z in zs])
-        return [[a_, b_] for a_, b_ in zip(lon, lat, strict=True)]
+
+def test_an_ignore_polygon_hides_a_change_and_a_mask_keeps_only_its_area(tmp_path):
+    a, b = dates()
+    b = paint(b, 200, 260, SQUARE)
+    ortho_project(tmp_path, a, b, CELL)
+    ring = ortho_ring
 
     run_job(pipeline(), tmp_path, raster_params(ignore=[ring(190, 250, SQUARE + 20)]), job_id="j1")
     assert read_set(tmp_path)["items"] == []
@@ -256,6 +285,41 @@ def test_an_ignore_polygon_hides_a_change_and_a_mask_keeps_only_its_area(tmp_pat
     assert read_set(tmp_path)["items"] == []
     run_job(pipeline(), tmp_path, raster_params(mask=ring(150, 200, 300)), job_id="j3")
     assert len(read_set(tmp_path)["items"]) == 1
+
+
+AREA_SCOPE = {"id": "pad-a", "name": "Pad A"}
+AREA_SET = "c1-c2-raster-area-pad-a.json"
+
+
+def test_an_area_outside_the_overlap_is_refused_not_an_all_clear(tmp_path):
+    a, b = dates()
+    ortho_project(tmp_path, a, b, CELL)
+    params = raster_params(mask=ortho_ring(-400, -400, 100), scope=AREA_SCOPE)
+    with pytest.raises(JobError, match="no imagery on both dates"):
+        run_job(pipeline(), tmp_path, params)
+    assert not (tmp_path / "change" / AREA_SET).exists()
+
+
+def test_an_area_inside_a_gap_of_one_ortho_is_refused(tmp_path):
+    a, b = dates()
+    ortho_project(tmp_path, a, b, CELL)
+    # the earlier ortho has no first tile: a gap over rows and columns 0 to 255
+    (tmp_path / "rasters" / "ortho-a" / "0" / "0_0.png").unlink()
+    params = raster_params(mask=ortho_ring(40, 40, 100), scope=AREA_SCOPE)
+    with pytest.raises(JobError, match="no imagery on both dates"):
+        run_job(pipeline(), tmp_path, params)
+
+
+def test_an_area_reports_the_coverage_of_its_own_polygon(tmp_path):
+    a, b = dates()
+    ortho_project(tmp_path, a, b, CELL)
+    (tmp_path / "rasters" / "ortho-a" / "0" / "0_0.png").unlink()
+    # the polygon covers rows 64 to 319 and columns 128 to 383; the gap is rows and columns 0 to 255
+    params = raster_params(mask=ortho_ring(64, 128, 256), scope=AREA_SCOPE)
+    run_job(pipeline(), tmp_path, params)
+    cs = json.loads((tmp_path / "change" / AREA_SET).read_text("utf-8"))
+    # rows 64 to 255 of columns 128 to 255 are missing: 192 x 128 of 256 x 256 cells
+    assert cs["coverage"] == pytest.approx(1 - (192 * 128) / (256 * 256), abs=0.03)
 
 
 def test_a_recompute_keeps_the_reviews_and_a_backup(tmp_path):
@@ -307,6 +371,7 @@ def test_resume_after_the_orthos_changed_is_refused(tmp_path):
         (raster_params(threshold=2), "threshold"),
         (raster_params(to="c1"), "two different dates"),
         ({**raster_params(), "bogus": 1}, "does not take: bogus"),
+        ({**raster_params(), "scope": {"id": "pad-a", "name": "Pad A"}}, "needs its mask"),
     ],
 )
 def test_bad_parameters_are_refused_with_a_clear_message(tmp_path, params, message):

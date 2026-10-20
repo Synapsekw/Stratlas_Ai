@@ -143,6 +143,25 @@ describe('M8 pipeline params', () => {
     expect(p.safeParse({ ...ok, bogus: 1 }).success).toBe(false);
   });
 
+  it('change.raster and change.surface take an area scope with its mask', () => {
+    const RING = [
+      [48, 29],
+      [48.1, 29],
+      [48.1, 29.1],
+    ];
+    const scope = { id: 'pad-a', name: 'Pad A' };
+    const surface = pipelineParams('change.surface');
+    const raster = pipelineParams('change.raster');
+    const s = { from: { layer: 'd1', kind: 'dsm' }, to: { layer: 'd2', kind: 'dsm' } };
+    const r = { from: 'c1', to: 'c2', layerFrom: 'o1', layerTo: 'o2', method: 'gradient' };
+    expect(surface.safeParse({ ...s, mask: RING, scope }).success).toBe(true);
+    expect(raster.safeParse({ ...r, mask: RING, scope }).success).toBe(true);
+    for (const res of [surface.safeParse({ ...s, scope }), raster.safeParse({ ...r, scope })]) {
+      expect(res.success).toBe(false);
+      expect(res.error?.issues[0]?.message).toBe('A scoped run needs its mask.');
+    }
+  });
+
   it('takes surface, cloud and mesh change with optional capture pairs', () => {
     expect(
       pipelineParams('change.surface').safeParse({

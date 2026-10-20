@@ -9,6 +9,7 @@ import { useWorkspace } from '@aio/workspace';
 import { useShell } from '../shell';
 import { registerSidebarActions } from '../shell/actions';
 import { toastHost } from '../shell/actions/toastHost';
+import { timeline } from '../workspace/timeline';
 import type { MeasureMenuAt } from './measurePick';
 import { useMeasure } from './measureStore';
 
@@ -32,6 +33,7 @@ export function MeasureMenu({ at, onClose }: { at: MeasureMenuAt | null; onClose
     makeActionCtx({
       manifest: project.manifest,
       hidden,
+      focus: timeline.getState().focus,
       pkg: !!pkg,
       canEdit: !pkg && !lookOnly,
       host: toastHost(label),

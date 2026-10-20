@@ -450,6 +450,20 @@ def from_lonlat(manifest: dict[str, Any], ring: list[list[float]]) -> list[tuple
     return [(e - o[0], o[1] - n) for e, n in zip(E, N, strict=True)]
 
 
+def is_lonlat_ring(v: Any) -> bool:
+    """A lon/lat ring of the params: at least three ``[lon, lat]`` number pairs."""
+    return (
+        isinstance(v, list)
+        and len(v) >= 3
+        and all(
+            isinstance(p, list | tuple)
+            and len(p) == 2
+            and all(isinstance(x, int | float) and not isinstance(x, bool) for x in p)
+            for p in v
+        )
+    )
+
+
 def ring_mask(manifest: dict[str, Any], rings: list[list[list[float]]], grid: Grid) -> np.ndarray:
     """Cells of ``grid`` inside any of the lon/lat rings."""
     from rasterio import features
@@ -468,6 +482,30 @@ def ring_mask(manifest: dict[str, Any], rings: list[list[list[float]]], grid: Gr
     return features.rasterize(
         shapes, out_shape=(grid.rows, grid.cols), transform=grid.affine(), fill=0, dtype="uint8"
     ).astype(bool)
+
+
+def area_coverage(
+    manifest: dict[str, Any], ring: list[list[float]], grid: Grid, inside: np.ndarray, shared: np.ndarray
+) -> float:
+    """Share of the lon/lat polygon both dates cover: its shared cells over its own area.
+
+    ``inside`` is the polygon on ``grid`` and ``shared`` the cells of it with data on both dates.
+    Parts of the polygon off the grid count as not covered.
+    """
+    from shapely.geometry import Polygon
+
+    poly = Polygon(from_lonlat(manifest, ring))
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    cell2 = grid.cell**2
+    total = max(float(poly.area), float(inside.sum()) * cell2)
+    if total <= 0:
+        return 0.0
+    return min(1.0, float((shared & inside).sum()) * cell2 / total)
+
+
+#: Below this share of an area covered by both dates, the run says so.
+AREA_COVERAGE_WARN = 0.5
 
 
 def polygons(mask: np.ndarray, grid: Grid, simplify: float | None = None) -> list[Any]:

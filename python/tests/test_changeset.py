@@ -6,8 +6,10 @@ from pathlib import Path
 import pytest
 
 from aio_pipelines.change.changeset import (
+    SET_ID,
     change_set,
     change_set_id,
+    check_scope,
     read_change_set,
     validate_change_set,
     write_change_set,
@@ -121,3 +123,64 @@ def test_change_set_follows_a_turned_line_up():
     none = change_set("c1-c2-raster", "c1", "c2", "change.raster", [], line_up=(plain, plain))
     assert "lineUp" not in none and "lineUpTurn" not in none
     assert validate_change_set(cs) == cs
+
+
+def test_a_scoped_id_never_equals_the_whole_map_id():
+    assert change_set_id("c1", "c2", "change.raster", "pad-a") == "c1-c2-raster-area-pad-a"
+    assert change_set_id("c1", "c2", "change.raster", "pad-a") != change_set_id("c1", "c2", "change.raster")
+
+
+def test_long_scoped_ids_stay_short_and_distinct():
+    a = change_set_id("c" * 60, "d" * 60, "change.raster", "a" * 70 + "1")
+    b = change_set_id("c" * 60, "d" * 60, "change.raster", "a" * 70 + "2")
+    assert a != b
+    for sid in (a, b):
+        assert len(sid) <= 120
+        assert SET_ID.match(sid)
+        assert "-area-" in sid
+
+
+def test_a_change_set_carries_its_scope():
+    scope = {"id": "pad-a", "name": "Pad A"}
+    data = change_set("c1-c2-raster-area-pad-a", "c1", "c2", "change.raster", [], scope=scope)
+    assert data["scope"] == scope
+    assert validate_change_set(data)["scope"] == scope
+    assert "scope" not in change_set("c1-c2-raster", "c1", "c2", "change.raster", [])
+
+
+def test_a_set_with_volumes_missing_still_validates():
+    data = change_set("c1-c2-raster", "c1", "c2", "change.raster", [])
+    data["volumesMissing"] = {"reason": "Misaligned by 3 m", "at": "2026-10-19T09:00:00Z"}
+    assert validate_change_set(data)["volumesMissing"]["reason"] == "Misaligned by 3 m"
+    assert "volumesMissing" not in change_set("c1-c2-raster", "c1", "c2", "change.raster", [])
+    # the app stores a reason code with its gap or the job's own words
+    data["volumesMissing"] = {"reason": "misaligned", "shiftM": 2.01, "at": "2026-10-19T09:00:00Z"}
+    assert validate_change_set(data)["volumesMissing"]["shiftM"] == 2.01
+
+
+def test_check_scope_refuses_a_scope_without_a_mask():
+    with pytest.raises(JobError, match="needs its mask"):
+        check_scope({"scope": {"id": "pad-a", "name": "Pad A"}})
+    assert check_scope({}) is None
+    ring = [[0, 0], [1, 0], [1, 1], [0, 0]]
+    assert check_scope({"scope": {"id": "pad-a", "name": "Pad A"}, "mask": ring}) == {
+        "id": "pad-a",
+        "name": "Pad A",
+    }
+    for bad in ({"id": "pad a", "name": "x"}, {"id": "p", "name": ""}, {"id": "p", "name": "x" * 121}, "p"):
+        with pytest.raises(JobError, match="scope must be"):
+            check_scope({"scope": bad, "mask": ring})
+
+
+def test_long_ids_differing_only_past_the_cut_stay_distinct():
+    scope = "a" * 70
+    a = change_set_id("c" * 100 + "1", "d", "change.raster", scope)
+    b = change_set_id("c" * 100 + "2", "d", "change.raster", scope)
+    assert a != b
+    assert len(a) <= 120 and len(b) <= 120
+    assert SET_ID.match(a) and SET_ID.match(b)
+
+
+def test_change_set_id_refuses_a_bad_scope_id():
+    with pytest.raises(ValueError):
+        change_set_id("c1", "c2", "change.raster", "pad a")

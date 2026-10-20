@@ -3,7 +3,7 @@
  * `run_change_detection`, and the change-set reading `compare_captures` uses. Change sets come
  * from main through `window.aio` (`change:list`, `change:read`, `change:compute`).
  */
-import type { AioBridge, ChangeItem, ChangeSet } from '@aio/schema';
+import { inferChangeScope, type AioBridge, type ChangeItem, type ChangeSet } from '@aio/schema';
 import { changeToolInputs, type ChangeToolName } from './change-tool-specs';
 import {
   project,
@@ -87,7 +87,10 @@ export function capturePair(
   return a.date <= b.date ? { from: a, to: b } : { from: b, to: a };
 }
 
-/** The saved change sets of a pair (every producer). */
+/**
+ * The saved whole-map change sets of a pair (every producer). An area's sets are left out: their
+ * items repeat the whole map's for one polygon and their region ids collide with it.
+ */
 export async function changeSetsOf(
   ctx: RendererToolContext,
   from: string,
@@ -100,9 +103,10 @@ export async function changeSetsOf(
   if (!list?.ok) return [];
   const out: ChangeSet[] = [];
   for (const s of list.sets) {
-    if (s.from !== from || s.to !== to) continue;
+    // an area's set also when an older build wrote it back without its scope
+    if (s.from !== from || s.to !== to || inferChangeScope(s)) continue;
     const r = await aio.invoke('change:read', { projectId, id: s.id }).catch(() => null);
-    if (r?.ok) out.push(r.set);
+    if (r?.ok && !inferChangeScope(r.set)) out.push(r.set);
   }
   return out;
 }

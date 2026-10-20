@@ -1,7 +1,8 @@
 import { ChangeSet } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createChangeStore, setsOfPair } from './store';
+import { areasOfPair, createChangeStore, setsOfPair, volumesNote } from './store';
 
 const set = ChangeSet.parse({
   schema: 'aio.change/1',
@@ -125,5 +126,95 @@ describe('the Changes store', () => {
     s.getState().setMisaligned(refused);
     await s.getState().load('other');
     expect(s.getState().misaligned).toBeNull();
+  });
+});
+
+describe('area entries', () => {
+  const pair = { from: 'd1', to: 'd2' };
+  const mk = (id: string, producer: string, extra: object = {}) =>
+    ChangeSet.parse({ ...set, id, producer, ...extra });
+  const area = { id: 'a', name: 'Area A' };
+  const whole = mk('d1-d2-raster', 'change.raster');
+  const aRaster = mk('d1-d2-raster-area-a', 'change.raster', { scope: area });
+  const aSurface = mk('d1-d2-surface-area-a', 'change.surface', { scope: area });
+  const sets = Object.fromEntries([whole, aRaster, aSurface].map((x) => [x.id, x]));
+
+  it('the whole map and each area are separate entries', () => {
+    expect(setsOfPair(sets, pair).map((x) => x.id)).toEqual(['d1-d2-raster']);
+    expect(setsOfPair(sets, pair, 'a').map((x) => x.id)).toEqual([
+      'd1-d2-raster-area-a',
+      'd1-d2-surface-area-a',
+    ]);
+    expect(areasOfPair(sets, pair)).toEqual([area]);
+  });
+
+  it('another pair resets the area, the same pair keeps it', () => {
+    const store = createChangeStore();
+    store.getState().setPair(pair);
+    store.getState().setArea('a');
+    store.getState().setPair({ ...pair });
+    expect(store.getState().area).toBe('a');
+    store.getState().setPair({ from: 'd2', to: 'd3' });
+    expect(store.getState().area).toBeNull();
+    expect(store.getState().selected).toBeNull();
+  });
+
+  it('an area whose volumes were refused says why', () => {
+    const why = { reason: 'No elevation model on one date.', at: '2026-10-19T08:00:00Z' };
+    const refused = mk('d1-d2-raster-area-a', 'change.raster', {
+      scope: area,
+      volumesMissing: why,
+    });
+    expect(volumesNote([refused])).toBe(why.reason);
+    expect(volumesNote([refused, { ...aSurface, createdAt: '2026-10-19T09:00:00Z' }])).toBeNull();
+    expect(volumesNote([])).toBeNull();
+    expect(volumesNote([refused, mk('d1-d2-issues-area-a', 'issues', { scope: area })])).toBe(
+      why.reason,
+    );
+  });
+
+  it('words a stored reason code in the person language', () => {
+    const at = '2026-10-19T08:00:00Z';
+    const note = (missing: object) =>
+      volumesNote([
+        mk('d1-d2-raster-area-a', 'change.raster', {
+          scope: area,
+          volumesMissing: { at, ...missing },
+        }),
+      ]);
+    expect(note({ reason: 'misaligned', shiftM: 2.04 })).toBe(
+      t('change.area.why.misaligned', { shift: '2.0' }),
+    );
+    expect(note({ reason: 'failed', detail: 'Out of memory.' })).toBe('Out of memory.');
+    expect(note({ reason: 'failed' })).toBe(t('change.area.why.failed'));
+    expect(note({ reason: 'cancelled' })).toBe(t('change.area.why.cancelled'));
+    expect(note({ reason: 'notStarted' })).toBe(t('change.area.why.notStarted'));
+    expect(note({ reason: 'packTooOld' })).toBe(t('change.area.why.packTooOld'));
+    expect(note({ reason: 'unavailable', detail: 'No DSM on one date.' })).toBe(
+      'No DSM on one date.',
+    );
+  });
+
+  it('a volume run that failed after an older one still says why', () => {
+    // the surface set is from a run before the note: the latest volume run did not come through
+    const older = mk('d1-d2-surface-area-a', 'change.surface', {
+      scope: area,
+      createdAt: '2026-10-19T07:00:00Z',
+    });
+    const refused = mk('d1-d2-raster-area-a', 'change.raster', {
+      scope: area,
+      volumesMissing: { reason: 'cancelled', at: '2026-10-19T08:00:00Z' },
+    });
+    expect(volumesNote([refused, older])).toBe(t('change.area.why.cancelled'));
+    const newer = { ...older, createdAt: '2026-10-19T09:00:00Z' };
+    expect(volumesNote([refused, newer])).toBeNull();
+  });
+
+  it('groups a set an older build wrote back without its scope under its area', () => {
+    const stripped = mk('d1-d2-raster-area-a', 'change.raster');
+    const all = { whole, [stripped.id]: stripped };
+    expect(setsOfPair(all, pair).map((x) => x.id)).toEqual(['d1-d2-raster']);
+    expect(setsOfPair(all, pair, 'a').map((x) => x.id)).toEqual(['d1-d2-raster-area-a']);
+    expect(areasOfPair(all, pair)).toEqual([{ id: 'a', name: 'a' }]);
   });
 });

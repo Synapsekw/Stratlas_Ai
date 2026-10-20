@@ -1,14 +1,14 @@
 import { ChangeCollab } from '@aio/collab/ui';
-import type { ChangeItem, ChangeKind, ChangeVerdict } from '@aio/schema';
+import type { ChangeItem, ChangeKind, ChangeSet, ChangeVerdict } from '@aio/schema';
 import { useT, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from 'zustand';
 import { VERDICT_COLOR } from './overlay';
 import { changeProducers, subscribeChangeProducers, type ChangePairContext } from './producers';
 import { registerRows, verdictCounts, type RegisterRow, type ReviewStatus } from './register';
 import { changeSetStale } from './stale';
-import { changeStore, runProducer, setsOfPair, useChange } from './store';
+import { areasOfPair, changeStore, runProducer, setsOfPair, useChange, volumesNote } from './store';
 
 /**
  * The Changes panel (FUS-12): the register of the chosen date pair with filters and sort, the
@@ -41,7 +41,7 @@ export interface ChangePanelProps {
   /** Open Line up dates for the two dates (offered when a run was refused for their gap). */
   onLineUp?: (from: string, to: string) => void;
   /** Run a producer's set again (offered on an out of date set); an error sentence or null. */
-  onRerun?: (producer: string) => Promise<string | null>;
+  onRerun?: (producer: string, set?: ChangeSet) => Promise<string | null>;
   className?: string | undefined;
 }
 
@@ -170,7 +170,19 @@ export function ChangePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantPair?.from, wantPair?.to]);
 
-  const pairSets = useMemo(() => setsOfPair(s.sets, s.pair), [s.sets, s.pair]);
+  const pairSets = useMemo(() => setsOfPair(s.sets, s.pair, s.area), [s.sets, s.pair, s.area]);
+  const areas = useMemo(() => areasOfPair(s.sets, s.pair), [s.sets, s.pair]);
+  const volumesWhy = useMemo(() => (s.area ? volumesNote(pairSets) : null), [s.area, pairSets]);
+  // an area that had sets and lost them (a reload) falls back to the whole map; a fresh area
+  // whose first run is still going has none yet and stays chosen
+  const seenAreas = useRef({ key: '', ids: new Set<string>() });
+  useEffect(() => {
+    const key = s.pair ? `${s.pair.from}>${s.pair.to}` : '';
+    if (seenAreas.current.key !== key) seenAreas.current = { key, ids: new Set() };
+    for (const a of areas) seenAreas.current.ids.add(a.id);
+    if (s.area && seenAreas.current.ids.has(s.area) && !areas.some((a) => a.id === s.area))
+      changeStore.getState().setArea(null);
+  }, [s.area, s.pair, areas]);
   const rows = useMemo(
     () => registerRows(pairSets, s.filter, s.sort),
     [pairSets, s.filter, s.sort],
@@ -206,8 +218,17 @@ export function ChangePanel({
     );
 
   const pair = s.pair;
+  // a kept refusal belongs to its pair and to its area (a scoped run keeps the area in its params)
+  const refusedArea = (s.misaligned?.params?.scope as { id?: unknown } | undefined)?.id ?? null;
   const refused =
-    pair && s.misaligned?.from === pair.from && s.misaligned.to === pair.to ? s.misaligned : null;
+    pair &&
+    s.misaligned?.from === pair.from &&
+    s.misaligned.to === pair.to &&
+    refusedArea === s.area
+      ? s.misaligned
+      : null;
+  // the runs here are whole-map runs: their result is not what an area's view shows
+  const areaRunWhy = s.area ? t('change.area.runWholeMap') : null;
   const ctx = pair ? context(pair) : null;
   const label = (id: string) => captures.find((c) => c.id === id)?.label ?? id;
 
@@ -310,8 +331,8 @@ export function ChangePanel({
               type="button"
               className="chg-btn primary"
               data-testid="change-run"
-              title={t('change.run')}
-              disabled={!pair}
+              title={areaRunWhy ?? t('change.run')}
+              disabled={!pair || !!s.area}
               onClick={() => void s.compute()}
             >
               {t('change.runShort')}
@@ -325,8 +346,10 @@ export function ChangePanel({
                 type="button"
                 className="chg-btn"
                 data-testid={`change-producer-${p.id}`}
-                disabled={ok !== true || !!s.run}
-                title={ok === true ? p.label : t('change.producerMissing', { why: ok })}
+                disabled={ok !== true || !!s.run || !!s.area}
+                title={
+                  areaRunWhy ?? (ok === true ? p.label : t('change.producerMissing', { why: ok }))
+                }
                 onClick={() => {
                   if (ctx) void act(() => runProducer(p, ctx));
                 }}
@@ -336,6 +359,35 @@ export function ChangePanel({
             );
           })}
         </div>
+      )}
+      {(areas.length > 0 || s.area) && (
+        <div className="chg-bar">
+          <select
+            className="chg-input"
+            aria-label={t('change.area.picker')}
+            data-testid="change-area"
+            value={s.area ?? ''}
+            onChange={(e) => {
+              s.setArea(e.target.value || null);
+            }}
+          >
+            <option value="">{t('change.area.wholeMap')}</option>
+            {/* a chosen area with no sets yet (its first run is going, or failed) */}
+            {s.area && !areas.some((a) => a.id === s.area) && (
+              <option value={s.area}>{t('change.area.noSets')}</option>
+            )}
+            {areas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {volumesWhy && (
+        <p className="chg-note" role="note" data-testid="change-area-volumes-missing">
+          {t('change.area.volumesMissing', { why: volumesWhy })}
+        </p>
       )}
       <div className="chg-bar">
         <select
@@ -468,7 +520,7 @@ export function ChangePanel({
               className="chg-btn"
               data-testid="chg-rerun"
               onClick={() => {
-                void act(async () => (await onRerun(x.producer)) ?? null);
+                void act(async () => (await onRerun(x.producer, x)) ?? null);
               }}
             >
               {t('change.rerun')}

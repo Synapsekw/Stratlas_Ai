@@ -19,7 +19,7 @@ import { jobs, shell } from '../../shell';
 import { volumeHints } from '../../workspace/compare';
 import { cloudChangeFinished, registerCloudChangeProducers, type ChangeJob } from './cloud';
 import { ensureFramesProducer } from './frames';
-import { registerImageryProducers } from './raster';
+import { registerImageryProducers, type ProducerDeps } from './raster';
 
 /** The open project's folder; null without one, or for a package. */
 function projectRoot(): string | null {
@@ -37,7 +37,7 @@ export async function startChangeJob(
 }
 
 /** The pair context of the open project, as the Changes panel builds it. */
-function pairContext(projectId: string, from: string, to: string): ChangePairContext | null {
+export function pairContext(projectId: string, from: string, to: string): ChangePairContext | null {
   const project = workspace.getState().project;
   if (project?.id !== projectId) return null;
   const index = captureIndex(project.manifest, volumeHints(volumetric.getState()));
@@ -82,13 +82,11 @@ export async function runChangeProducers(req: {
   return out;
 }
 
-let registered = false;
+let appDeps: ProducerDeps | null = null;
 
-/** Register the producers once (a second call does nothing). */
-export function registerAppChangeProducers(): void {
-  if (registered) return;
-  registered = true;
-  registerImageryProducers({
+/** What imagery and surface change need from the app (the same for the panel and an area run). */
+export function appProducerDeps(): ProducerDeps {
+  appDeps ??= {
     root: projectRoot,
     thresholds: () => shell.getState().settings.change,
     start: async (pipeline, project, params) => {
@@ -101,7 +99,17 @@ export function registerAppChangeProducers(): void {
     setMisaligned: (m) => {
       changeStore.getState().setMisaligned(m);
     },
-  });
+  };
+  return appDeps;
+}
+
+let registered = false;
+
+/** Register the producers once (a second call does nothing). */
+export function registerAppChangeProducers(): void {
+  if (registered) return;
+  registered = true;
+  registerImageryProducers(appProducerDeps());
   registerCloudChangeProducers({
     projectRoot,
     thresholds: () => shell.getState().settings.change ?? DEFAULT_CHANGE_THRESHOLDS,

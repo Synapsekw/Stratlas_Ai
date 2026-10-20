@@ -13,6 +13,7 @@ unique item ids, two different dates); the app validates the whole file again wh
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -26,6 +27,8 @@ from ..similarity import Similarity
 CHANGE_SCHEMA = "aio.change/1"
 CHANGE_DIR = "change"
 SET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
+SCOPE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+SCOPE_NAME_MAX = 120
 #: A date's line-up as a change set records it: an (east, north) shift or the whole similarity.
 LineUp = tuple[float, float] | Similarity
 
@@ -43,14 +46,52 @@ VERDICTS: dict[str, frozenset[str]] = {
 REVIEW_STATUS = frozenset({"open", "confirmed", "dismissed"})
 
 
-def change_set_id(from_capture: str, to_capture: str, producer: str) -> str:
-    """``c1-c2-raster`` for ``change.raster``: readable, file-name safe, stable per pair."""
+def change_set_id(from_capture: str, to_capture: str, producer: str, scope_id: str | None = None) -> str:
+    """``c1-c2-raster`` for ``change.raster``: readable, file-name safe, stable per pair.
+
+    An area-scoped run adds ``-area-<scope id>``; past 120 characters the pair part is cut and a
+    12-character hash of the scope id keeps two areas apart.
+    """
     short = producer.split(".")[-1]
     raw = f"{from_capture}-{to_capture}-{short}"
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("-._")[:120]
+    base = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("-._")
+    if scope_id is None:
+        safe = base[:120]
+    else:
+        if not SCOPE_ID.match(scope_id):
+            raise ValueError(f'"{scope_id}" is not a valid scope id.')
+        safe = f"{base}-area-{scope_id}"
+        if len(safe) > 120:
+            tag = hashlib.sha1(safe.encode("utf-8")).hexdigest()[:12]
+            safe = f"{base[: 120 - 18]}-area-{tag}"
     if not safe:
         raise JobError("A change set needs a name made of letters and digits.")
     return safe
+
+
+def _valid_scope(scope: Any) -> bool:
+    return (
+        isinstance(scope, Mapping)
+        and isinstance(scope.get("id"), str)
+        and bool(SCOPE_ID.match(scope["id"]))
+        and isinstance(scope.get("name"), str)
+        and 1 <= len(scope["name"]) <= SCOPE_NAME_MAX
+    )
+
+
+def check_scope(p: Mapping[str, Any]) -> dict[str, str] | None:
+    """The ``scope`` of job params ``p`` (the area polygon's id and label), checked.
+
+    A scope without a ``mask`` is refused: a scoped run is never a whole-map run.
+    """
+    scope = p.get("scope")
+    if scope is None:
+        return None
+    if not _valid_scope(scope):
+        raise JobError("scope must be { id, name } of the area polygon.")
+    if p.get("mask") is None:
+        raise JobError("A scoped run needs its mask (the area polygon).")
+    return {"id": scope["id"], "name": scope["name"]}
 
 
 def validate_change_set(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -87,6 +128,16 @@ def validate_change_set(data: Mapping[str, Any]) -> dict[str, Any]:
             not isinstance(review, Mapping) or review.get("status") not in REVIEW_STATUS
         ):
             raise JobError(f'Item "{iid}" has an invalid review.')
+    if "scope" in data and not _valid_scope(data["scope"]):
+        raise JobError(f"The change set {sid} has an invalid scope.")
+    missing = data.get("volumesMissing")
+    if missing is not None and not (
+        isinstance(missing, Mapping)
+        and isinstance(missing.get("reason"), str)
+        and missing["reason"]
+        and isinstance(missing.get("at"), str)
+    ):
+        raise JobError(f"The change set {sid} has an invalid volumesMissing note.")
     out = dict(data)
     out["items"] = [dict(it) for it in items]
     out.setdefault("layers", [])
@@ -108,8 +159,11 @@ def change_set(
     coverage: float | None = None,
     line_up: tuple[LineUp, LineUp] | None = None,
     created_at: str | None = None,
+    scope: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build and check a change set.
+
+    ``scope`` (``{ id, name }`` of the area polygon) marks a set made for one area only.
 
     ``line_up`` is the line-up of each date (``from``, ``to``) when it was computed: an (east,
     north) shift or a ``Similarity``. Written as ``lineUp`` only when either is not zero, so the
@@ -127,6 +181,8 @@ def change_set(
         "layers": list(layers),
         "stats": dict(stats or {}),
     }
+    if scope is not None:
+        data["scope"] = {"id": scope["id"], "name": scope["name"]}
     if run is not None:
         data["run"] = dict(run)
     if registration is not None:

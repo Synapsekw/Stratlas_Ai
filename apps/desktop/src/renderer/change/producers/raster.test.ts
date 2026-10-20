@@ -9,11 +9,14 @@ import {
 } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  areaRasterParams,
+  areaSurfaceParams,
   imageryProducers,
   misalignedOf,
   orthoPair,
   rasterParams,
   registerImageryProducers,
+  startChangeRun,
   surfacePair,
   surfaceParams,
   type ProducerDeps,
@@ -166,6 +169,65 @@ describe('surface change producer', () => {
       minAreaM2: 1,
     });
     expect(ChangeSurfaceParams.safeParse(params).success).toBe(true);
+  });
+});
+
+describe('one area', () => {
+  const AREA = {
+    scope: { id: 'm-pad-a', name: 'Pad A' },
+    ring: [
+      [151.2, -33.8],
+      [151.201, -33.8],
+      [151.201, -33.801],
+    ] as [number, number][],
+  };
+
+  it('limits imagery change to the polygon and files it under the area', () => {
+    const ctx = pair([raster('o1', 'ortho')], [raster('o2', 'ortho')]);
+    const params = areaRasterParams(ctx, AREA);
+    if (typeof params === 'string') throw new Error(params);
+    const parsed = ChangeRasterParams.parse(params);
+    expect(parsed).toMatchObject({ layerFrom: 'o1', layerTo: 'o2', mask: AREA.ring });
+    expect(parsed.scope).toEqual(AREA.scope);
+    expect(areaRasterParams(pair([], [raster('o2', 'ortho')]), AREA)).toMatch(/ortho on each/);
+  });
+
+  it('limits surface change to the polygon and totals the area as one region', () => {
+    const ctx = pair([raster('d1', 'dsm', 'cog')], [raster('d2', 'dsm', 'cog')]);
+    const params = areaSurfaceParams(ctx, AREA);
+    if (typeof params === 'string') throw new Error(params);
+    const parsed = ChangeSurfaceParams.parse(params);
+    expect(parsed.mask).toEqual(AREA.ring);
+    expect(parsed.scope).toEqual(AREA.scope);
+    expect(parsed.areas).toEqual([{ id: 'm-pad-a', name: 'Pad A', ring: AREA.ring }]);
+    expect(areaSurfaceParams(pair([], []), AREA)).toMatch(/DSM or a point/);
+  });
+
+  it('a refused scoped run keeps its params for the replay', async () => {
+    const setMisaligned = vi.fn();
+    const job = {
+      id: 'job-1',
+      pipeline: 'change.raster',
+      status: 'failed',
+      failure: { code: 'misaligned', data: { from: 'c1', to: 'c2', shiftM: 2.01 } },
+    } as unknown as JobRecord;
+    const d = deps({ finished: () => Promise.resolve(job), setMisaligned });
+    const ctx = pair([raster('o1', 'ortho')], [raster('o2', 'ortho')]);
+    const params = areaRasterParams(ctx, AREA);
+    if (typeof params === 'string') throw new Error(params);
+    expect(await startChangeRun(d, { run: 0 }, 'raster', 'change.raster', params)).toEqual({
+      ok: true,
+      jobId: 'job-1',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(setMisaligned).toHaveBeenLastCalledWith({
+      from: 'c1',
+      to: 'c2',
+      shiftM: 2.01,
+      producer: 'raster',
+      params,
+    });
+    expect(params).toMatchObject({ scope: AREA.scope, mask: AREA.ring });
   });
 });
 

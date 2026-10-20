@@ -52,6 +52,7 @@ export function useChangeOverlays(split: SplitModel): void {
   const show = useChange((s) => s.show);
   const sets = useChange((s) => s.sets);
   const pair = useChange((s) => s.pair);
+  const area = useChange((s) => s.area);
   const filter = useChange((s) => s.filter);
   const selected = useChange((s) => s.selected);
   const issues = useWorkspace((s) => s.issues);
@@ -86,7 +87,7 @@ export function useChangeOverlays(split: SplitModel): void {
       clear();
       return;
     }
-    const pairSets = setsOfPair(sets, pair);
+    const pairSets = setsOfPair(sets, pair, area);
     const input = {
       sets: pairSets,
       filter,
@@ -131,6 +132,7 @@ export function useChangeOverlays(split: SplitModel): void {
   }, [
     show,
     pair,
+    area,
     sets,
     filter,
     selected,

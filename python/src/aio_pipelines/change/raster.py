@@ -36,10 +36,12 @@ import numpy as np
 from ..captures import capture_similarity
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
-from .changeset import change_set, change_set_id
+from .changeset import change_set, change_set_id, check_scope
 from .imagery import (
+    AREA_COVERAGE_WARN,
     Grid,
     Ortho,
+    area_coverage,
     cell_for,
     check_captures,
     colour_ramp,
@@ -47,6 +49,7 @@ from .imagery import (
     derived,
     find_layer,
     intersect,
+    is_lonlat_ring,
     load_arrays,
     outline,
     polygons,
@@ -340,6 +343,7 @@ class ChangeRaster:
             "maxShiftPx",
             "mask",
             "ignore",
+            "scope",
             "out",
         }
     )
@@ -357,15 +361,20 @@ class ChangeRaster:
         number(p, "minAreaM2", lo=0, hi=1e6)
         number(p, "maxShiftPx", lo=0, hi=100)
         for k in ("mask",):
-            if k in p and not _ring(p[k]):
+            if k in p and not is_lonlat_ring(p[k]):
                 raise JobError(f"{k} must be a polygon of at least three [lon, lat] points.")
-        if "ignore" in p and (not isinstance(p["ignore"], list) or not all(_ring(r) for r in p["ignore"])):
+        if "ignore" in p and (
+            not isinstance(p["ignore"], list) or not all(is_lonlat_ring(r) for r in p["ignore"])
+        ):
             raise JobError("ignore must be a list of polygons of [lon, lat] points.")
+        check_scope(p)
         text(p, "out")
         return p
 
     def plan(self, params: dict[str, Any]) -> list[Step]:
-        set_id = change_set_id(params["from"], params["to"], PRODUCER)
+        scope = check_scope(params)
+        set_id = change_set_id(params["from"], params["to"], PRODUCER, scope["id"] if scope else None)
+        label = f"{scope['name']}: imagery change" if scope else "Imagery change"
         out_dir = params.get("out") or f"change/{set_id}"
 
         def orthos(ctx: StepContext):
@@ -421,7 +430,16 @@ class ChangeRaster:
             valid = va & vb
             both = valid.copy()
             if "mask" in params:
-                valid &= ring_mask(m, [params["mask"]], grid)
+                inside = ring_mask(m, [params["mask"]], grid)
+                valid &= inside
+                # the area's own coverage: an area with no imagery on both dates is no all-clear
+                if not valid.any():
+                    raise JobError(
+                        "The area has no imagery on both dates: draw it where both orthos cover the ground."
+                    )
+                coverage = area_coverage(m, params["mask"], grid, inside, both)
+                if coverage < AREA_COVERAGE_WARN:
+                    ctx.log(f"Both dates have imagery over only {coverage:.0%} of the area.", "warn")
             if params.get("ignore"):
                 valid &= ~ring_mask(m, params["ignore"], grid)
             save_arrays(
@@ -576,6 +594,7 @@ class ChangeRaster:
                 registration=reg,
                 coverage=r["coverage"],
                 line_up=(capture_similarity(m, params["from"]), capture_similarity(m, params["to"])),
+                scope=scope,
             )
             atomic_write_json(ctx.stage("work/change-set.json"), cs)
             return {"items": len(items)}
@@ -591,7 +610,7 @@ class ChangeRaster:
                 {
                     "kind": "raster",
                     "id": f"{set_id}-heat",
-                    "name": f"Imagery change heat map, {when}",
+                    "name": f"{label} heat map, {when}",
                     "visible": True,
                     "capture": b,
                     "derived": prov,
@@ -602,7 +621,7 @@ class ChangeRaster:
                 {
                     "kind": "vector",
                     "id": f"{set_id}-regions",
-                    "name": f"Imagery change areas, {when}",
+                    "name": f"{label} areas, {when}",
                     "visible": True,
                     "capture": b,
                     "derived": dict(prov),
@@ -637,16 +656,3 @@ def _label(manifest: dict[str, Any], cid: str) -> str:
     from .imagery import capture_label
 
     return capture_label(manifest, cid)
-
-
-def _ring(v: Any) -> bool:
-    return (
-        isinstance(v, list)
-        and len(v) >= 3
-        and all(
-            isinstance(p, list | tuple)
-            and len(p) == 2
-            and all(isinstance(x, int | float) and not isinstance(x, bool) for x in p)
-            for p in v
-        )
-    )

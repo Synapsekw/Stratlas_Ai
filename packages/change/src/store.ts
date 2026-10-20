@@ -2,12 +2,16 @@ import type {
   AioBridge,
   ChangeKind,
   ChangeReview,
+  ChangeScope,
   ChangeSet,
   ChangeSetSummary,
   IpcChannel,
   IpcRequest,
   IpcResponse,
+  VolumesMissingCode,
 } from '@aio/schema';
+import { inferChangeScope, VOLUMES_MISSING_CODES } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -40,6 +44,8 @@ export interface Misaligned {
   shiftM: number;
   /** The producer that was refused (run again after the line-up). */
   producer: string;
+  /** The refused scoped job's parameters, for a replay (never a whole-map run). */
+  params?: Record<string, unknown>;
 }
 
 export interface ChangeState {
@@ -51,6 +57,8 @@ export interface ChangeState {
   sets: Record<string, ChangeSet>;
   /** The date pair the panel shows (capture ids, earlier first). */
   pair: { from: string; to: string } | null;
+  /** The area shown: a scope id; null is the whole map. */
+  area: string | null;
   filter: RegisterFilter;
   sort: RegisterSort;
   selected: SelectedItem | null;
@@ -68,6 +76,8 @@ export interface ChangeActions {
   /** Read the project's change sets (none: clear). */
   load(projectId: string | null): Promise<void>;
   setPair(pair: { from: string; to: string } | null): void;
+  /** Show one area's entry (null: the whole map). */
+  setArea(id: string | null): void;
   setFilter(patch: Partial<RegisterFilter>): void;
   setSort(sort: RegisterSort): void;
   select(sel: SelectedItem | null): void;
@@ -109,6 +119,7 @@ const initial: ChangeState = {
   problems: [],
   sets: {},
   pair: null,
+  area: null,
   filter: {},
   sort: 'verdict',
   selected: null,
@@ -153,7 +164,12 @@ export function createChangeStore() {
         });
       },
       setPair(pair) {
-        bump({ pair, selected: null });
+        const cur = get().pair;
+        if (cur && pair?.from === cur.from && pair.to === cur.to) return;
+        bump({ pair, area: null, selected: null });
+      },
+      setArea(id) {
+        bump({ area: id, selected: null });
       },
       setFilter(patch) {
         bump({ filter: { ...get().filter, ...patch } });
@@ -259,13 +275,69 @@ export function useChange<T>(selector: (s: ChangeStore) => T): T {
   return useStore(changeStore, selector);
 }
 
-/** The loaded sets of a date pair. */
+/** The loaded sets of a date pair for one area (null: the whole map). */
 export function setsOfPair(
   sets: Readonly<Record<string, ChangeSet>>,
   pair: { from: string; to: string } | null,
+  area: string | null = null,
 ): ChangeSet[] {
   if (!pair) return [];
+  // the scope also of a set an older build wrote back without it (`inferChangeScope`)
   return Object.values(sets)
-    .filter((s) => s.from === pair.from && s.to === pair.to)
+    .filter(
+      (s) => s.from === pair.from && s.to === pair.to && (inferChangeScope(s)?.id ?? null) === area,
+    )
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** The distinct areas the pair's sets were limited to, by name then id. */
+export function areasOfPair(
+  sets: Readonly<Record<string, ChangeSet>>,
+  pair: { from: string; to: string } | null,
+): ChangeScope[] {
+  if (!pair) return [];
+  const found = new Map<string, ChangeScope>();
+  for (const s of Object.values(sets)) {
+    const scope = s.from === pair.from && s.to === pair.to ? inferChangeScope(s) : undefined;
+    // a set that kept its scope names the area over one that lost it
+    if (scope && (!found.has(scope.id) || s.scope)) found.set(scope.id, scope);
+  }
+  return [...found.values()].sort(
+    (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+  );
+}
+
+type VolumesMissing = NonNullable<ChangeSet['volumesMissing']>;
+
+/** A stored reason in the person's language: a code is worded here, a sentence shows as it is. */
+function volumesWhy(v: VolumesMissing): string {
+  const code = (VOLUMES_MISSING_CODES as readonly string[]).includes(v.reason)
+    ? (v.reason as VolumesMissingCode)
+    : null;
+  switch (code) {
+    case 'misaligned':
+      return t('change.area.why.misaligned', { shift: (v.shiftM ?? 0).toFixed(1) });
+    case 'failed':
+      return v.detail ?? t('change.area.why.failed');
+    case 'unavailable':
+      return v.detail ?? t('change.area.why.failed');
+    case 'cancelled':
+    case 'notStarted':
+    case 'packTooOld':
+      return t(`change.area.why.${code}`);
+    default:
+      return v.reason;
+  }
+}
+
+/**
+ * Why an area has no volumes: the note on its imagery set, unless a surface set came in after it.
+ * Null for the whole map, or when volumes exist or were never missing.
+ */
+export function volumesNote(sets: readonly ChangeSet[]): string | null {
+  const missing = sets.find((s) => s.producer === 'change.raster')?.volumesMissing;
+  if (!missing) return null;
+  // volumes from an earlier run are no answer to the latest one
+  const after = sets.some((s) => s.producer === 'change.surface' && s.createdAt >= missing.at);
+  return after ? null : volumesWhy(missing);
 }
