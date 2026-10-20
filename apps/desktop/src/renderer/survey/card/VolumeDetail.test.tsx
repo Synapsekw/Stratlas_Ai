@@ -25,7 +25,8 @@ const calls = vi.hoisted(() => ({
   compute: vi.fn(() => Promise.resolve(null)),
   computeSeries: vi.fn(() => Promise.resolve(false)),
   recomputeStandard: vi.fn(() => Promise.resolve(null as string | null)),
-  prepareSurfaces: vi.fn(() => Promise.resolve(null)),
+  prepareSurfaces: vi.fn(() => Promise.resolve(null as string | null)),
+  prepareParams: vi.fn((): unknown => null),
   updateMeasurement: vi.fn(),
 }));
 
@@ -38,6 +39,7 @@ vi.mock('../compareStore', () => ({
   computeSeries: calls.computeSeries,
   recomputeStandard: calls.recomputeStandard,
   prepareSurfaces: calls.prepareSurfaces,
+  prepareParams: calls.prepareParams,
 }));
 vi.mock('../measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(s.measure),
@@ -511,6 +513,83 @@ describe('VolumeDetail', () => {
     const to = host.querySelector<HTMLSelectElement>('[data-testid="survey-to"]');
     expect(to?.selectedOptions[0]?.textContent).toBe('Missing survey');
     expect(host.textContent).not.toContain('gone-dsm');
+  });
+
+  it('a stale stored figure still owns its date: one number, marked stale', () => {
+    const series = [
+      result({ toCapture: 'c1', netM3: 3070, totalM3: 3070, fingerprint: 'f1' }),
+      result({ toCapture: 'c2', netM3: 3400, totalM3: 3400, fingerprint: 'older' }),
+    ];
+    show(pile({ series, results: [result({ netM3: 3482, status: 'stale' })] }));
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('Stale, recompute');
+    const figures = host.querySelector('[data-testid="survey-cmp-result"]');
+    expect(figures?.hasAttribute('data-stale')).toBe(true);
+    expect(figures?.querySelector('tr[data-key="net"] td')?.textContent).toBe(v(3482));
+    const latest = host.querySelector('[data-testid="vol-time-table"] tr[data-latest]');
+    expect(latest?.querySelector('td')?.textContent).toBe(v(3482));
+    expect(latest?.hasAttribute('data-stale')).toBe(true);
+    expect(host.querySelector('[data-testid="vol-since"] dd')?.textContent).toBe(`+${v(412)}`);
+    // the older figure for that date is nowhere on the card
+    expect(host.textContent).not.toContain(v(3400));
+  });
+
+  it('a failed series clears when its inputs change, and refused or stale come first', async () => {
+    calls.computeSeries.mockRejectedValueOnce(new Error('worker died'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const m = pile();
+    show(m);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
+      'The volume over time could not be worked out. Try Recompute.',
+    );
+    // the outline edited: another series run, the old failure no longer holds
+    const edited = { ...m, updatedAt: '2026-10-06T00:00:00.000Z' };
+    s.measure.file.measurements = [edited];
+    await act(async () => {
+      root?.render(<VolumeDetail m={edited} />);
+      await Promise.resolve();
+    });
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('Up to date');
+    warn.mockRestore();
+
+    const idle = { computing: false, live: false, stale: false, seriesFailed: true };
+    expect(volumeStatusLine(result({ status: 'refused' }), idle).text).toBe(
+      'Not computed: the survey does not cover it',
+    );
+    expect(volumeStatusLine(result(), { ...idle, stale: true }).text).toBe('Stale, recompute');
+    expect(volumeStatusLine(result(), idle).text).toBe(
+      'The volume over time could not be worked out. Try Recompute.',
+    );
+  });
+
+  it('a prepare note that nothing is left is neutral; a failure warns', async () => {
+    s.compare.surfaces = [];
+    calls.prepareSurfaces.mockResolvedValueOnce('Every survey surface is prepared.');
+    calls.prepareParams.mockReturnValueOnce(null);
+    show(pile({ results: [result({ status: 'stale' })] }));
+    await act(async () => {
+      byTestId('survey-prepare')[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    let line = byTestId('survey-cmp-status')[0];
+    expect(line?.textContent).toBe('Every survey surface is prepared.');
+    expect(line?.getAttribute('data-tone')).toBe('muted');
+
+    act(() => root?.unmount());
+    host.remove();
+    calls.prepareSurfaces.mockResolvedValueOnce('The job could not start.');
+    calls.prepareParams.mockReturnValueOnce({ surfaces: [] });
+    show(pile({ results: [result({ status: 'stale' })] }));
+    await act(async () => {
+      byTestId('survey-prepare')[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    line = byTestId('survey-cmp-status')[0];
+    expect(line?.textContent).toBe('The job could not start.');
+    expect(line?.getAttribute('data-tone')).toBe('warn');
   });
 });
 

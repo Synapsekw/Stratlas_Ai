@@ -33,6 +33,7 @@ import {
   compute,
   computeSeries,
   isStale,
+  prepareParams,
   prepareSurfaces,
   recomputeStandard,
   seriesStale,
@@ -70,22 +71,30 @@ export function volumeStatusLine(
     absent?: boolean;
     /** Why the last Recompute could not run, or the engine's problem. */
     problem?: string | null;
+    /** A neutral note (preparing found nothing left to prepare). */
+    info?: string | null;
+    /** The volume over time could not be worked out (after refused and stale). */
+    seriesFailed?: boolean;
   },
 ): StatusLine {
   if (state.problem) return { tone: 'warn', text: state.problem };
+  if (state.info) return { tone: 'muted', text: state.info };
   if (r?.carried) return { tone: 'muted', text: t('vol.status.carried', { base: r.carried.base }) };
   if (state.live) return { tone: 'muted', text: t('vol.status.live') };
   if (state.computing) return { tone: 'muted', text: t('vol.status.computing') };
   if (!r)
     return state.absent
       ? { tone: 'warn', text: t('vol.status.none') }
-      : { tone: 'muted', text: t('vol.status.notComputed') };
+      : state.seriesFailed
+        ? { tone: 'warn', text: t('vol.card.seriesFailed') }
+        : { tone: 'muted', text: t('vol.status.notComputed') };
   if (r.status === 'refused')
     return {
       tone: 'warn',
       text: r.reason ? t('vol.card.refusedWhy', { reason: r.reason }) : t('vol.status.refused'),
     };
   if (state.stale || r.status === 'stale') return { tone: 'warn', text: t('vol.status.stale') };
+  if (state.seriesFailed) return { tone: 'warn', text: t('vol.card.seriesFailed') };
   if (r.status === 'partial')
     return {
       tone: 'warn',
@@ -103,25 +112,24 @@ export function volumeItem(taken: readonly { id: string }[]): ComparisonItem {
 const rowDate = (r: ComparisonResult): string | undefined => r.toCapture ?? r.fromCapture;
 
 /**
- * The item's figures over time, keyed by their date. Its stored figure, when current, is the one
- * for its own date (so the figures, the latest row and "Since" agree); a stale one only fills a
- * date the series lacks.
+ * The item's figures over time, keyed by their date. Its stored figure is always the one for its
+ * own date, stale or not, so the card never shows two numbers for one date; `stored` is that row
+ * (to mark it stale with the figures).
  */
 export function itemSeries(
   m: SurveyMeasurement,
   item: string,
-  storedCurrent: boolean,
-): ComparisonResult[] {
+): { series: ComparisonResult[]; stored: ComparisonResult | undefined } {
   const keyed = (r: ComparisonResult) => {
     const d = rowDate(r);
     return d !== undefined && r.toCapture === undefined ? { ...r, toCapture: d } : r;
   };
   const series = (m.series ?? []).filter((r) => r.item === item).map(keyed);
-  const stored = m.results.find((r) => r.item === item);
-  const date = stored ? rowDate(stored) : undefined;
-  if (!stored || date === undefined) return series;
-  if (storedCurrent) return [...series.filter((r) => r.toCapture !== date), keyed(stored)];
-  return series.some((r) => r.toCapture === date) ? series : [...series, keyed(stored)];
+  const found = m.results.find((r) => r.item === item);
+  const date = found ? rowDate(found) : undefined;
+  if (!found || date === undefined) return { series, stored: undefined };
+  const stored = keyed(found);
+  return { series: [...series.filter((r) => r.toCapture !== date), stored], stored };
 }
 
 export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
@@ -143,9 +151,10 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const spread = useSpread(m.id);
   // why the last Recompute could not run (said in the status line, never silent)
   const [why, setWhy] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  // the volume over time could not be worked out (never swallowed)
-  const [seriesFailed, setSeriesFailed] = useState(false);
+  // what preparing the surfaces said: a failure warns, "nothing left to prepare" is neutral
+  const [note, setNote] = useState<StatusLine | null>(null);
+  // the series inputs a volume-over-time run failed for (never swallowed); other inputs clear it
+  const [failedFor, setFailedFor] = useState<string | null>(null);
   const units = effectiveUnits(settings.units, m.units);
   const locale = settings.locale ?? localeOf(units.distance);
   const capture = m.scope.kind === 'survey' ? m.scope.capture : undefined;
@@ -167,24 +176,34 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
       (m.series ?? []).some((r) => r.item === first.id && r.carried !== undefined));
   // the volume per survey date, worked out when shown (a carried pile keeps the kit's history)
   const points = m.points;
+  // what a series run is for: the item, the outline (its edits move updatedAt) and the dates
+  const seriesKey = [
+    m.id,
+    JSON.stringify(first ?? null),
+    String(points.length),
+    m.updatedAt ?? m.createdAt,
+    String(captures.length),
+  ].join('|');
   useEffect(() => {
     if (status !== 'ready' || readOnly || !first || carriedFirst) return;
     if (!seriesApplies(first) || points.length < 3 || captures.length === 0) return;
     let gone = false;
     computeSeries(m.id).then(
       () => {
-        if (!gone) setSeriesFailed(false);
+        if (!gone) setFailedFor(null);
       },
       (e: unknown) => {
         // the renderer's console is the app's log; the card says it in plain words
         console.warn(`The volume over time of ${m.id} could not be worked out`, e);
-        if (!gone) setSeriesFailed(true);
+        if (!gone) setFailedFor(seriesKey);
       },
     );
     return () => {
       gone = true;
     };
-  }, [m.id, status, readOnly, first, carriedFirst, points, captures.length]);
+  }, [m.id, status, readOnly, first, carriedFirst, points, captures.length, seriesKey]);
+  // cleared once the item stops running series (carried, read-only) or its inputs change
+  const seriesFailed = failedFor === seriesKey && !carriedFirst && !readOnly;
   // "the engine is still starting" and the like no longer hold once it is ready
   const [seenStatus, setSeenStatus] = useState(status);
   if (seenStatus !== status) {
@@ -229,6 +248,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const recompute = () => {
     const reason = blocked();
     setWhy(reason);
+    setFailedFor(null);
     if (reason) return;
     // a new volume has no comparison yet: the default base, then compute
     if (m.items.length === 0)
@@ -248,27 +268,23 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const previous = m.previousResults?.[0];
   const material = settings.materials.find((x) => x.id === m.material) ?? null;
   const density = material?.densityTPerM3;
-  const firstStored = first ? m.results.find((r) => r.item === first.id) : undefined;
-  const firstCurrent =
-    firstStored !== undefined &&
-    firstStored.status !== 'refused' &&
-    !isStale({ current }, m, firstStored);
+  const over = first ? itemSeries(m, first.id) : { series: [], stored: undefined };
+  const storedRow = over.stored;
+  // the stored figure's row is stale exactly when its figures are
+  const storedStale =
+    storedRow !== undefined && (storedRow.status === 'stale' || isStale({ current }, m, storedRow));
   const rows = first
-    ? volumeRows(itemSeries(m, first.id, firstCurrent), captures, {
+    ? volumeRows(over.series, captures, {
         ...(density !== undefined ? { densityTPerM3: density } : {}),
-        isStale: (r) => seriesStale(m, r),
+        isStale: (r) => (r === storedRow ? storedStale : seriesStale(m, r)),
       })
     : [];
   // null outside the spread bases and while the item is carried (`spreadItem`, R16)
   const spreadValue = spread !== null && spread !== 'computing' ? spread : null;
   // one status line: why a Recompute cannot run, the series or preparing failed, the engine
   const problem =
-    why ??
-    (seriesFailed ? t('vol.card.seriesFailed') : null) ??
-    note ??
-    engineError ??
-    engineProblem ??
-    null;
+    why ?? (note?.tone === 'warn' ? note.text : null) ?? engineError ?? engineProblem ?? null;
+  const info = note?.tone === 'muted' ? note.text : null;
 
   const recomputeButton = writable && haveSurfaces && !carriedFirst && (
     <Button
@@ -301,7 +317,12 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
       busy={preparing !== null}
       data-testid="survey-prepare"
       onClick={() => {
-        if (manifest) void prepareSurfaces(manifest).then(setNote);
+        if (!manifest) return;
+        // nothing left to prepare is not a failure
+        const nothingLeft = prepareParams(manifest, surfaces) === null;
+        void prepareSurfaces(manifest).then((text) => {
+          setNote(text === null ? null : { tone: nothingLeft ? 'muted' : 'warn', text });
+        });
       }}
     >
       {t('empty.survey.prepare')}
@@ -330,6 +351,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
               live: false,
               stale: false,
               problem,
+              info,
             })}
           >
             {recomputeButton}
@@ -375,6 +397,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
                 item={it}
                 options={options}
                 result={shown}
+                stale={stale}
                 share={share}
                 line={volumeStatusLine(shown, {
                   computing: running,
@@ -382,6 +405,8 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
                   stale,
                   absent: !shown && carriedSeries,
                   problem: lead ? problem : null,
+                  info: lead ? info : null,
+                  seriesFailed: lead && seriesFailed,
                 })}
                 readOnly={readOnly}
                 carried={carried}
@@ -473,6 +498,7 @@ function ItemBlock({
   item,
   options,
   result,
+  stale,
   share,
   line,
   readOnly,
@@ -489,6 +515,8 @@ function ItemBlock({
   item: ComparisonItem;
   options: SideOption[];
   result: ComparisonResult | undefined;
+  /** The stored figure no longer matches its inputs (marked with the status line). */
+  stale: boolean;
   share: ItemShare | null;
   line: StatusLine;
   readOnly: boolean;
@@ -587,7 +615,7 @@ function ItemBlock({
         {chipsExtra}
       </div>
       {result && result.status !== 'refused' && (
-        <Figures result={result} share={share} units={units} />
+        <Figures result={result} stale={stale} share={share} units={units} />
       )}
       <IgnoreRow item={item} m={m} readOnly={readOnly} carried={carried} onChange={onChange} />
     </li>
@@ -655,10 +683,12 @@ function ToChip({
 /** Cut, fill, net and total, their areas, and how they were worked out (not for a carried figure). */
 function Figures({
   result,
+  stale,
   share,
   units,
 }: {
   result: ComparisonResult;
+  stale: boolean;
   share: ItemShare | null;
   units: ReturnType<typeof effectiveUnits>;
 }) {
@@ -686,7 +716,7 @@ function Figures({
       <table
         className="vd-res"
         data-testid="survey-cmp-result"
-        data-stale={result.status === 'stale' ? '' : undefined}
+        data-stale={stale || result.status === 'stale' ? '' : undefined}
       >
         <caption className="sr-only">{t('chart.volume')}</caption>
         <tbody>
