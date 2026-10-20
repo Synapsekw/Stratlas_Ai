@@ -234,9 +234,9 @@ test.describe('on the stand-in pipelines', () => {
     // the dialog has given way to the run panel by now
     await expectAccessible(win, 'photo run, starting', { include: '[data-testid="photo-run"]' });
     await shot(win, 'create-maps-running');
-    // live progress: how long since the engine did anything, and how long it has run
+    // live progress: how long the run has taken (the stand-in engine sends no activity time, and
+    // the panel shows none rather than inventing one)
     const live = panel.getByTestId('photo-job-live');
-    await expect(live).toContainText(/Last activity \d+ (s|min) ago/);
     await expect(live).toContainText(/\d+ (s|min) in all/);
     await expect(live).not.toContainText(
       /opensfm|detect_features|match_features|create_tracks|reconstruct\b|SIFT/i,
