@@ -632,6 +632,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'rf/sectors.origins.json',
     since: '0.22',
   },
+  // the report template: which measurement figures go into the report, and in what order
+  {
+    family: 'aio.report-template',
+    version: 1,
+    home: 'project',
+    where: 'report/template.json',
+    since: '0.24',
+  },
 ];
 
 /**

@@ -100,7 +100,8 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
     expect([...current.LAYER_KINDS].sort()).toEqual([...v010.LAYER_KINDS, 'walk'].sort());
     expect(current.ProjectType.options).toEqual(v010.ProjectType.options);
     // G9 (plan "Contract changes"): the 0.10 sections in order, then the four survey sections and
-    // the haul-road and hydrology runs; settings saved with them toggled stay readable by 0.10
+    // the haul-road and hydrology runs and volume over time; settings saved with them toggled stay
+    // readable by 0.10
     // (the test below)
     expect([...current.REPORT_SECTIONS]).toEqual([
       ...v010.REPORT_SECTIONS,
@@ -110,6 +111,7 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
       'landfill',
       'haul',
       'hydrology',
+      'volume-over-time',
     ]);
     expect([...current.EXPORT_FORMATS]).toEqual([
       ...v010.EXPORT_FORMATS,

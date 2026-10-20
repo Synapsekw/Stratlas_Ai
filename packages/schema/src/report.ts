@@ -65,6 +65,8 @@ export const ReportSectionId = z.enum([
   // M11 (integration): haul-road compliance runs and hydrology runs, kept the same way
   'haul',
   'hydrology',
+  // Volumetric parity: volume over time, kept in `reportSectionsExtra` the same way
+  'volume-over-time',
 ]);
 export const REPORT_SECTIONS = ReportSectionId.options;
 

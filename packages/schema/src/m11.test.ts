@@ -86,7 +86,7 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
 
   it('keeps the 0.10 project types and report sections, plus exactly the six survey ones', () => {
     expect(ProjectType.options).toEqual(['inspection', 'volumetric', 'road', 'twin', 'fusion']);
-    // G9 (not G0): the survey sections, then the haul-road and hydrology runs (integration).
+    // G9 (not G0): the survey sections, then the haul-road and hydrology runs (integration), then volume over time (volumetric parity).
     // `ReportContentsSettings` is strict over these ids, so settings keep them in
     // `reportSectionsExtra`, which 0.10 carries over without reading.
     expect([...REPORT_SECTIONS]).toEqual([
@@ -107,6 +107,7 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
       'landfill',
       'haul',
       'hydrology',
+      'volume-over-time',
     ]);
   });
 

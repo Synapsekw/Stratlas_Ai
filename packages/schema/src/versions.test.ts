@@ -112,6 +112,11 @@ describe('readerFor', () => {
       expect(since(f)).toBe('0.16');
     expect(since('aio.engineer-spend')).toBe('0.17');
   });
+  it('the registry knows aio.report-template/1', () => {
+    expect(readerFor('aio.report-template/1').kind).toBe('current');
+    const e = SCHEMA_REGISTRY.find((r) => r.family === 'aio.report-template');
+    expect(e?.where).toBe('report/template.json');
+  });
   it('classifies current, older, newer and unknown ids', () => {
     expect(readerFor('aio.issues/1').kind).toBe('current');
     expect(readerFor('aio.nothing/1').kind).toBe('unknown');

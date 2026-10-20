@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Id, IsoDate, Vec3, err, ok, uniqueIds, type Result } from './common';
+import { AccuracySource, Id, IsoDate, Vec3, err, ok, uniqueIds, type Result } from './common';
 import { CaptureLineUp, CaptureLineUpTurn } from './dateShift';
 import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
@@ -9,6 +9,14 @@ export const SCHEMA_VERSION = 'aio.project/1' as const;
 
 /** How many colours the survey date palette has (`--date-1` to `--date-8`). */
 export const CAPTURE_COLOURS = 8;
+
+/**
+ * How well the survey's heights are known. Absent on every older file; the volumetric parity
+ * wave 6 (W6) fills it, wave 1 never writes it.
+ */
+export const CaptureVerticalAccuracy = z
+  .object({ sigmaM: z.number().nonnegative().max(10), source: AccuracySource })
+  .strict();
 
 export const Capture = z.object({
   id: Id,
@@ -31,6 +39,8 @@ export const Capture = z.object({
    * means a plain shift (also on every older project).
    */
   lineUpTurn: CaptureLineUpTurn.optional(),
+  /** Absent on every older file; W6 fills it. */
+  verticalAccuracy: CaptureVerticalAccuracy.optional(),
 });
 
 export const Crs = z.union([

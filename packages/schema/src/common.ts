@@ -94,3 +94,10 @@ export function uniqueIds<K extends string>(key: K) {
     }
   };
 }
+
+/**
+ * Where a vertical accuracy figure came from: checkpoints, PPK, RTK or a stated value. Lives here
+ * because both the survey and the project manifest use it, and they must not import each other.
+ */
+export const AccuracySource = z.enum(['checkpoints', 'ppk', 'rtk', 'stated']);
+export type AccuracySource = z.infer<typeof AccuracySource>;

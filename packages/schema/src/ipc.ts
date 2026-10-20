@@ -47,6 +47,7 @@ import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
 import { NarrativeFile, ReportContentsSettings } from './report';
+import { ReportTemplateFile } from './reportTemplate';
 import { OrientationFile } from './orientation';
 import { ReleaseNotes, UpdateStatus } from './update';
 import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds } from './change';
@@ -989,6 +990,22 @@ export const ipc = {
         volumes: VolumesFile.nullable(),
         edits: BoundaryEditsFile.nullable(),
       }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** The report template (`report/template.json`); null when the project has none. */
+  'report:readTemplate': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: ReportTemplateFile.nullable() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Replace `report/template.json` atomically, keeping a `.bak`. */
+  'report:writeTemplate': {
+    request: z.object({ projectId: z.string().min(1), file: ReportTemplateFile }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true) }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },

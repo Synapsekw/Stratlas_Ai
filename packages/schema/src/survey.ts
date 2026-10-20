@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { HexColor, Id, IsoTime, ProjectPath, Sha256Hex, Vec3 } from './common';
+import { AccuracySource, HexColor, Id, IsoTime, ProjectPath, Sha256Hex, Vec3 } from './common';
 import { CaptureLineUpTurn } from './dateShift';
 import { Crs } from './manifest';
 import { DesignId } from './designs';
 import { SiteVerticalDatum } from './geodesy';
+import { VolumeBaseId } from './volumes';
 
 /**
  * Surveying (M11): site settings, units, saved measurements, templates, the surface comparison
@@ -116,6 +117,21 @@ export const HeatmapStyle = z.looseObject({
 });
 
 /**
+ * How angles and bearings are written. Absent on every older file; `DEFAULT_ANGLES` is today's
+ * look.
+ */
+export const AngleSettings = z.looseObject({
+  /** Angles as decimal degrees or degrees, minutes, seconds. */
+  angle: z.enum(['deg', 'dms']),
+  /** Bearings as degrees, minutes, seconds or decimal degrees. */
+  bearing: z.enum(['dms', 'deg']),
+  /** Decimal places (of the second for dms). */
+  precision: z.number().int().min(0).max(4),
+});
+export type AngleSettings = z.infer<typeof AngleSettings>;
+export const DEFAULT_ANGLES: AngleSettings = { angle: 'deg', bearing: 'dms', precision: 2 };
+
+/**
  * `<project>/survey/settings.json` (`aio.survey-settings/1`): how the site is shown and exported.
  * The manifest `crs` stays what the data is stored in. Changing anything here that a result was
  * computed with marks that result stale (its `fingerprint`).
@@ -142,6 +158,8 @@ export const SurveySettings = z.looseObject({
     rmseM: z.number().positive().max(10).optional(),
   }),
   heatmap: HeatmapStyle,
+  /** Angle and bearing display. Absent on every older file: `DEFAULT_ANGLES`. */
+  angles: AngleSettings.optional(),
   /** Default deadband for new comparisons, metres. */
   deadbandM: z.number().nonnegative().max(10).optional(),
   /**
@@ -285,6 +303,26 @@ export const SurveyEngine = z.enum(['ts', 'py']);
 
 export const ComparisonStatus = z.enum(['ok', 'partial', 'refused', 'stale']);
 
+/**
+ * The volume uncertainty of a result. Absent on every older file; the volumetric parity wave 6
+ * (W6) fills it, wave 1 never writes it.
+ */
+export const VolumeUncertainty = z.looseObject({
+  plusMinusM3: z.number().nonnegative(),
+  sigmaM: z.number().nonnegative().max(10),
+  source: AccuracySource,
+});
+export type VolumeUncertainty = z.infer<typeof VolumeUncertainty>;
+
+/** A kit figure carried over unchanged. Absent on every older file. */
+export const CarriedResult = z.looseObject({
+  from: z.literal('kit'),
+  base: VolumeBaseId,
+  pile: z.string().min(1).max(200),
+  epoch: z.string().min(1).max(200),
+});
+export type CarriedResult = z.infer<typeof CarriedResult>;
+
 /** A comparison result; never shown as current when its `fingerprint` no longer matches. */
 export const ComparisonResult = z.looseObject({
   item: SurveyId,
@@ -315,6 +353,10 @@ export const ComparisonResult = z.looseObject({
   /** Hash of every input: surface hashes, design offset, base, deadband, calibration, geoid. */
   fingerprint: z.string().min(1).max(200),
   computedAt: IsoTime,
+  /** A kit figure carried over unchanged (fingerprint `kit:<pile>:<epoch>:<base>`). Absent on every older file. */
+  carried: CarriedResult.optional(),
+  /** Absent on every older file; W6 fills it, wave 1 never writes it. */
+  uncertainty: VolumeUncertainty.optional(),
 });
 
 /**
@@ -428,6 +470,22 @@ export const CustomField = z.looseObject({
 /** Per-measurement unit overrides; absent keys use the site units. */
 export const UnitsOverride = SurveyUnits.partial();
 
+/** A result a recompute replaced, kept for the record. Absent on every older file. */
+export const PreviousResult = z.looseObject({
+  netM3: z.number(),
+  totalM3: z.number().nonnegative(),
+  label: z.string().max(200),
+  replacedAt: IsoTime,
+});
+export type PreviousResult = z.infer<typeof PreviousResult>;
+
+/** The measurement came from a kit pile. Absent on every older file. */
+export const MeasurementOrigin = z.looseObject({
+  kind: z.literal('kit-pile'),
+  pile: z.string().min(1).max(200),
+});
+export type MeasurementOrigin = z.infer<typeof MeasurementOrigin>;
+
 export const SurveyMeasurement = z.looseObject({
   id: SurveyId,
   family: MeasurementFamily,
@@ -446,6 +504,12 @@ export const SurveyMeasurement = z.looseObject({
   material: SurveyId.optional(),
   items: z.array(ComparisonItem).max(20),
   results: z.array(ComparisonResult).max(20),
+  /** Kit pile this was converted from. Absent on every older file. */
+  origin: MeasurementOrigin.optional(),
+  /** Results over time, one per survey date. Absent on every older file. */
+  series: z.array(ComparisonResult).max(1000).optional(),
+  /** Results a recompute replaced. Absent on every older file. */
+  previousResults: z.array(PreviousResult).max(20).optional(),
   createdAt: IsoTime,
   createdBy: z.string().max(200).optional(),
   updatedAt: IsoTime.optional(),
@@ -456,6 +520,8 @@ export const MeasurementsFile = z
   .looseObject({
     schema: z.literal('aio.measurements/1'),
     measurements: z.array(SurveyMeasurement).max(20_000),
+    /** Kit piles already converted (by name), so none converts twice. Absent on every older file. */
+    kitPilesConverted: z.array(z.string().min(1).max(200)).max(5000).optional(),
   })
   .superRefine((f, ctx) => {
     const seen = new Set<string>();
