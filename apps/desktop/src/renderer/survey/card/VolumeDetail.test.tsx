@@ -316,9 +316,8 @@ describe('VolumeDetail', () => {
     const cells = [...(latest?.querySelectorAll('td') ?? [])].map((c) => c.textContent);
     expect(cells[0]).toBe(v(3482));
     expect(cells[1]).toBe(`+${v(412)}`);
-    expect(cells[2]).toBe(
-      formatQuantity(3482 * 1.7, 'mass', settings().units, settings().precision),
-    );
+    // tonnes shown as tonnes (the formatter's mass is SI kilograms)
+    expect(cells[2]).toBe('5 919.4 t');
     expect(byTestId('time-chart')).toHaveLength(1);
     const since = host.querySelector('[data-testid="vol-since"]');
     expect(since?.textContent).toContain('Since 05 Sep');
@@ -333,6 +332,34 @@ describe('VolumeDetail', () => {
     show(pile({ series }));
     const heads = [...host.querySelectorAll('[data-testid="vol-time-table"] th[scope="col"]')];
     expect(heads.map((x) => x.textContent)).toEqual(['Date', 'Volume', 'Change']);
+  });
+
+  it('tonnage is volume times density in tonnes, metric and imperial', () => {
+    const at = (units: SurveySettings['units']) => {
+      s.measure.settings = {
+        ...settings(),
+        units,
+        materials: [{ id: 'm2', name: 'Fill', densityTPerM3: 2 }],
+      };
+      show(pile({ material: 'm2', results: [result({ netM3: 10, totalM3: 10 })] }));
+      const cells = host.querySelectorAll('[data-testid="vol-time-table"] tr[data-latest] td');
+      const text = cells[2]?.textContent;
+      act(() => root?.unmount());
+      host.remove();
+      return text;
+    };
+    expect(at(defaultSurveySettings().units)).toBe('20.0 t');
+    // 20 t is 22.05 short tons
+    expect(
+      at({
+        ...defaultSurveySettings().units,
+        distance: 'ft',
+        volume: 'yd3',
+        density: 'ston/yd3',
+        mass: 'ston',
+      }),
+    ).toBe('22.0 sh tn');
+    show(pile());
   });
 
   it('keys series rows by the from date when an item has no to date', () => {
