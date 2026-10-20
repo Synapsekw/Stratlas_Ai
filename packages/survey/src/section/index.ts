@@ -34,4 +34,16 @@ export {
   type ShadePiece,
   type Shading,
 } from './shade';
+export {
+  hoverAt,
+  orderSeries,
+  seriesStyle,
+  shadeTargets,
+  zExtent,
+  type ChartSeries,
+  type HoverReadout,
+  type HoverRow,
+  type SeriesKind,
+  type SeriesStyle,
+} from './chart';
 export { alignmentSections, corridorRing, cutawayPlane, type StationSection } from './stations';

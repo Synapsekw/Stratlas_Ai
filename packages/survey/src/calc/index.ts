@@ -7,3 +7,4 @@ export * from './materials';
 export * from './pickers';
 export * from './bulk';
 export * from './regions';
+export * from './timeline';

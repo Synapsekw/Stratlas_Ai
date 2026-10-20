@@ -1,0 +1,92 @@
+// Volume over time (pure): one row per capture date for a pile, and the stacked totals across piles.
+import type { ComparisonResult } from '@aio/schema';
+
+export interface TimeRow {
+  capture: string;
+  date: string;
+  label: string;
+  valueM3: number | null;
+  changeM3: number | null;
+  tonnes: number | null;
+  status: ComparisonResult['status'] | 'missing';
+  reason?: string;
+  stale: boolean;
+  latest: boolean;
+}
+
+export function volumeRows(
+  series: readonly ComparisonResult[],
+  captures: readonly { id: string; date: string; label: string }[],
+  opts: {
+    densityTPerM3?: number;
+    isStale: (r: ComparisonResult) => boolean;
+    quantity?: 'net' | 'total';
+  },
+): TimeRow[] {
+  const sorted = [...captures].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1,
+  );
+  const rows: TimeRow[] = [];
+  let prev: number | null = null;
+  for (const c of sorted) {
+    const r = series.find((x) => x.toCapture === c.id);
+    const valueM3 =
+      r !== undefined && r.status !== 'refused'
+        ? opts.quantity === 'total'
+          ? r.totalM3
+          : r.netM3
+        : null;
+    rows.push({
+      capture: c.id,
+      date: c.date,
+      label: c.label,
+      valueM3,
+      changeM3: valueM3 !== null && prev !== null ? valueM3 - prev : null,
+      tonnes:
+        valueM3 !== null && opts.densityTPerM3 !== undefined ? valueM3 * opts.densityTPerM3 : null,
+      status: r ? r.status : 'missing',
+      ...(r?.reason !== undefined ? { reason: r.reason } : {}),
+      stale: r ? opts.isStale(r) : false,
+      latest: false,
+    });
+    if (valueM3 !== null) prev = valueM3;
+  }
+  const latest = rows.findLast((r) => r.valueM3 !== null);
+  if (latest) latest.latest = true;
+  return rows;
+}
+
+export interface StackRow {
+  capture: string;
+  date: string;
+  label: string;
+  totalM3: number;
+  parts: { id: string; valueM3: number }[];
+  missing: string[];
+}
+
+/** Sums the piles per capture date; a pile without a value on a date is listed in `missing`. */
+export function stackRows(rows: ReadonlyMap<string, readonly TimeRow[]>): StackRow[] {
+  const out = new Map<string, StackRow>();
+  for (const [id, list] of rows)
+    for (const r of list) {
+      let s = out.get(r.capture);
+      if (!s) {
+        s = {
+          capture: r.capture,
+          date: r.date,
+          label: r.label,
+          totalM3: 0,
+          parts: [],
+          missing: [],
+        };
+        out.set(r.capture, s);
+      }
+      if (r.valueM3 === null) s.missing.push(id);
+      else {
+        s.parts.push({ id, valueM3: r.valueM3 });
+        s.totalM3 += r.valueM3;
+      }
+    }
+  return [...out.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
