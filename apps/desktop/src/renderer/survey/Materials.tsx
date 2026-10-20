@@ -12,7 +12,7 @@ import {
   materialsToCsv,
   mergeMaterials,
 } from '@aio/survey';
-import { Icon, useFocusTrap } from '@aio/ui';
+import { EmptyState, Icon, t, useFocusTrap } from '@aio/ui';
 import { useRef, useState } from 'react';
 import { bridge } from '../shell';
 import { openCompareDialog } from './compareStore';
@@ -206,7 +206,9 @@ export function Materials() {
               })}
             </tbody>
           </table>
-          {rows.length === 0 && <p className="small faint">No materials yet.</p>}
+          {rows.length === 0 && (
+            <EmptyState title={t('empty.materials.title')} body={t('empty.materials.hint')} />
+          )}
         </div>
         {!readOnly && (
           <div className="sv-row sv-wrap">

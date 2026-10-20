@@ -52,6 +52,32 @@ export function contourInterval(h: HeatGrid): number {
   return lo === Infinity ? 0 : niceInterval(hi - lo);
 }
 
+/**
+ * How many cells fall in each of `bins` equal steps between the lowest and highest stop; changes
+ * outside the stops count in the end bins. Cells without data are left out, so the bins sum to the
+ * number of cells with a height change.
+ */
+export function heatHistogram(
+  grid: HeatGrid,
+  stops: readonly { value: number }[],
+  bins = 24,
+): number[] {
+  const out = new Array<number>(bins).fill(0);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const s of stops) {
+    lo = Math.min(lo, s.value);
+    hi = Math.max(hi, s.value);
+  }
+  if (!(hi > lo)) return out;
+  for (const v of grid.dz) {
+    if (!Number.isFinite(v)) continue;
+    const k = Math.floor(((v - lo) / (hi - lo)) * bins);
+    out[Math.min(bins - 1, Math.max(0, k))]++;
+  }
+  return out;
+}
+
 export function attachHeat3d(stage: EngineStage, frame: Frame): () => void {
   const group = new Group();
   group.name = 'aio-survey-heat';

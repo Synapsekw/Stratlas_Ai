@@ -7,16 +7,25 @@
 import { formatQuantity, fromSI, toSI, unitLabel } from '@aio/geo';
 import type { HeatmapStop, HeatmapStyle } from '@aio/schema';
 import { DEFAULT_STOPS, deadbandFromStops, heatRamp, sortStops, stopsProblem } from '@aio/survey';
-import { Icon } from '@aio/ui';
+import { Icon, useT } from '@aio/ui';
 import { useState } from 'react';
+import { useCompare } from './compareStore';
+import type { HeatGrid } from './engineProtocol';
+import { activeHeat, heatHistogram } from './heatScene';
 import { saveSiteSettings, useMeasure } from './measureStore';
 
-/** A legend strip for a ramp (CSS gradient or steps). */
+/**
+ * The heat map legend: a colour bar with the cut and fill ends in the display unit, and (when a
+ * grid is shown) a small histogram of how much of the area changed by each amount.
+ */
 export function HeatLegend({
   style,
+  grid,
 }: {
   style: Pick<HeatmapStyle, 'stops' | 'stepped' | 'inverted'>;
+  grid?: HeatGrid | null;
 }) {
+  const t = useT();
   const settings = useMeasure((s) => s.settings);
   const ramp = heatRamp(style);
   const s = ramp.legend;
@@ -33,27 +42,60 @@ export function HeatLegend({
         .join(', ')})`
     : `linear-gradient(to right, ${parts.join(', ')})`;
   const d = (v: number) => formatQuantity(v, 'distance', settings.units, settings.precision);
+  const bins = grid ? heatHistogram(grid, style.stops) : null;
+  const peak = bins ? Math.max(1, ...bins) : 1;
   return (
-    <div className="sv-legend" aria-label="Heat map legend" role="img">
+    <div
+      className="sv-legend"
+      aria-label={t('heat.legend')}
+      role="img"
+      data-testid="survey-heat-legend"
+    >
+      {bins && (
+        <div
+          data-testid="survey-heat-histogram"
+          aria-label={t('heat.histogram')}
+          style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 28 }}
+        >
+          {bins.map((n, k) => (
+            <span
+              key={k}
+              style={{
+                flex: 1,
+                height: `${String(Math.max(n > 0 ? 6 : 0, (n / peak) * 100))}%`,
+                background: 'var(--line-strong)',
+                borderRadius: 1,
+              }}
+            />
+          ))}
+        </div>
+      )}
       <div className="sv-legend-bar" style={{ background: bg }} />
       <div className="sv-row small faint mono">
-        <span>{d(lo)} cut</span>
+        <span>
+          {d(lo)} {t('heat.cut')}
+        </span>
         <span className="sv-grow" />
-        <span>{d(hi)} fill</span>
+        <span>
+          {d(hi)} {t('heat.fill')}
+        </span>
       </div>
     </div>
   );
 }
 
-/** The heat map colours editor, opened from a comparison's heat map controls. */
+/** The legend with its Edit colours action; the stops editor opens from that action. */
 export function HeatmapStopsButton() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const readOnly = useMeasure((s) => s.readOnly);
   const settings = useMeasure((s) => s.settings);
+  const compare = useCompare((c) => c);
+  const grid = useMeasure((m) => activeHeat(compare, m));
   if (!open)
     return (
       <div className="sv-row sv-wrap">
-        <HeatLegend style={settings.heatmap} />
+        <HeatLegend style={settings.heatmap} grid={grid} />
         <button
           type="button"
           className="btn sm"
@@ -62,7 +104,7 @@ export function HeatmapStopsButton() {
             setOpen(true);
           }}
         >
-          Colours and stops
+          {t('heat.editColours')}
         </button>
       </div>
     );
@@ -77,6 +119,7 @@ export function HeatmapStopsButton() {
 }
 
 export function HeatmapStops({ readOnly, onClose }: { readOnly: boolean; onClose: () => void }) {
+  const t = useT();
   const settings = useMeasure((s) => s.settings);
   const unit = settings.units.distance;
   const [draft, setDraft] = useState<HeatmapStyle>(() => ({
@@ -95,7 +138,7 @@ export function HeatmapStops({ readOnly, onClose }: { readOnly: boolean; onClose
   const db = deadbandFromStops(draft.stops);
   return (
     <fieldset className="sv-sub" data-testid="survey-heat-stops" disabled={readOnly}>
-      <legend>Heat map colours</legend>
+      <legend>{t('heat.colours')}</legend>
       <HeatLegend style={draft} />
       <table className="sv-verts">
         <caption className="sr-only">Stops</caption>

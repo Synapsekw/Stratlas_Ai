@@ -44,6 +44,7 @@ import {
 import { frameOf } from './measureScene';
 import { useMeasure } from './measureStore';
 import './haulRoad.css';
+import { EmptyState, t } from '@aio/ui';
 
 interface CentrelineOption {
   value: string;
@@ -277,7 +278,7 @@ function HaulRoadForm({ defaults }: { defaults: HaulSiteDefaults }) {
       </label>
       {surfaces?.length === 0 && (
         <div className="pop-row">
-          <span className="pop-note">No prepared surface yet.</span>
+          <EmptyState title={t('empty.hydro.title')} />
           <button
             type="button"
             onClick={() => {
@@ -308,10 +309,10 @@ function HaulRoadForm({ defaults }: { defaults: HaulSiteDefaults }) {
         </select>
       </label>
       {options.length === 0 && (
-        <p className="pop-note">
-          No centreline yet. Import a design alignment or polyline, or draw a line with the
-          measurement tools.
-        </p>
+        <EmptyState
+          title={t('empty.haulRoad.centreline')}
+          body={t('empty.haulRoad.centrelineHint')}
+        />
       )}
       <label className="pop-row">
         <span>Sections every (m)</span>
@@ -439,7 +440,7 @@ export function HaulRoadPanel() {
           </select>
         </label>
       )}
-      {runs.length === 0 && <p className="pop-note">No haul-road runs yet.</p>}
+      {runs.length === 0 && <EmptyState title={t('empty.haulRoad.runs')} />}
       {run && <RunResults run={run} />}
     </div>
   );

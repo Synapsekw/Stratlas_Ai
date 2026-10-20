@@ -8,7 +8,7 @@
 import { formatQuantity } from '@aio/geo';
 import { ComparisonResult, type SurfaceRef, type SurveyMeasurement } from '@aio/schema';
 import { deadbandFromStops, draftRegions, sideKey, sideOptions, TOOL_LABELS } from '@aio/survey';
-import { Icon, useFocusTrap } from '@aio/ui';
+import { EmptyState, Icon, t, useFocusTrap } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
@@ -420,7 +420,7 @@ export function WholeSite() {
           </fieldset>
         )}
         {site && res && site.drafts.length === 0 && !job && (
-          <p className="small faint">No region changed by more than the deadband.</p>
+          <EmptyState title={t('empty.wholeSite.title')} />
         )}
       </div>
     </div>

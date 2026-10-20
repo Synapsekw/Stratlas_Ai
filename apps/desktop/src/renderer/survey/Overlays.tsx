@@ -6,7 +6,7 @@
  * made by the `survey.overlay` job and listed in `survey/overlays.json`, never in the manifest.
  */
 import type { HeightTiles, OverlayKind, SurveyOverlay } from '@aio/schema';
-import { Icon } from '@aio/ui';
+import { EmptyState, Icon, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../shell';
@@ -159,7 +159,7 @@ export function OverlaysPanel() {
             ))}
           </div>
           {!surfaces.length && (
-            <p className="small faint">No prepared surfaces yet: prepare the surveys first.</p>
+            <EmptyState title={t('empty.hydro.title')} body={t('empty.hydro.hint')} />
           )}
           <label className="sv-field">
             <span>Surface</span>
@@ -330,7 +330,9 @@ export function OverlaysPanel() {
         </div>
       )}
       <span className="pop-title">On this site</span>
-      {!file?.overlays.length && <p className="small faint">No overlays yet.</p>}
+      {!file?.overlays.length && (
+        <EmptyState title={t('empty.overlays.title')} body={t('empty.overlays.hint')} />
+      )}
       <ul className="ov-list">
         {file?.overlays.map((o) => (
           <li key={o.id} data-testid="overlay-item" data-kind={o.kind}>

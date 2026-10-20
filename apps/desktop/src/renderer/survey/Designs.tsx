@@ -29,6 +29,7 @@ import {
 } from './designsStore';
 import { frameOf, stageClamp } from './measureScene';
 import './designs.css';
+import { EmptyState, t } from '@aio/ui';
 
 const KIND_LABEL: Record<DesignLayer['kind'], string> = {
   surface: 'Surface',
@@ -290,7 +291,7 @@ export function DesignsPanel() {
         </p>
       )}
       {list.length === 0 && !busy && (
-        <p className="pop-note">No designs yet. Import a LandXML, DXF, 12da or CSV design.</p>
+        <EmptyState title={t('empty.designs.title')} body={t('empty.designs.hint')} />
       )}
       {folders.map((folder) => (
         <section key={folder || 'none'} aria-label={folder || 'Designs'}>

@@ -29,6 +29,7 @@ import {
   watchHydroJobs,
   type HydroTab,
 } from './hydroStore';
+import { EmptyState, t } from '@aio/ui';
 
 const TABS: { id: HydroTab; label: string; pipeline: HydroPipeline; mode?: string }[] = [
   { id: 'flood', label: 'Flood to level', pipeline: 'hydro.flood' },
@@ -213,7 +214,7 @@ export function HydroPanel({ map }: { map: boolean }) {
       </div>
       {surfaces.length === 0 && !busy && (
         <div className="pop-row">
-          <span className="pop-note">No prepared surface yet. Prepare the survey DSMs first.</span>
+          <EmptyState title={t('empty.hydro.title')} body={t('empty.hydro.hint')} />
           <button
             type="button"
             disabled={readOnly}

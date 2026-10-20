@@ -7,7 +7,7 @@
  * **DTM filter** makes a bare-ground surface from a point cloud layer with a preset (PDAL), disabled
  * with the reason when the project has no cloud or the pipeline pack has no PDAL.
  */
-import { Icon } from '@aio/ui';
+import { EmptyState, Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { bridge } from '../shell';
@@ -119,6 +119,7 @@ function DtmFilterSection() {
 }
 
 export function CleanupPanel() {
+  const t = useT();
   const project = useWorkspace((s) => s.project);
   const focus = useFocusCapture();
   const surfaces = useQa((s) => s.surfaces);
@@ -169,10 +170,7 @@ export function CleanupPanel() {
       )}
       {!readOnly && <DtmFilterSection />}
       {own.length === 0 ? (
-        <p className="faint small">
-          No survey has a prepared surface yet. Run <b>Check against points</b> or prepare the
-          surfaces first.
-        </p>
+        <EmptyState title={t('empty.cleanup.noSurface')} body={t('empty.cleanup.noSurfaceHint')} />
       ) : (
         <label className="sv-field">
           <span>Surface</span>
@@ -195,7 +193,11 @@ export function CleanupPanel() {
       {surface && (
         <>
           <ul className="qa-edits" data-testid="cleanup-list">
-            {mine.length === 0 && <li className="faint small">No cleanups or crops yet.</li>}
+            {mine.length === 0 && (
+              <li>
+                <EmptyState title={t('empty.cleanup.title')} />
+              </li>
+            )}
             {mine.map((e, k) => (
               <li key={e.id} className="sv-row">
                 <label className="sv-check qa-grow">
@@ -222,8 +224,8 @@ export function CleanupPanel() {
                       });
                     }}
                   >
-                    <option value="tin">TIN</option>
-                    <option value="thin-plate">Thin-plate</option>
+                    <option value="tin">{t('cleanup.straight')}</option>
+                    <option value="thin-plate">{t('cleanup.smooth')}</option>
                   </select>
                 )}
               </li>
@@ -253,8 +255,8 @@ export function CleanupPanel() {
                     setMethod(e.target.value === 'thin-plate' ? 'thin-plate' : 'tin');
                   }}
                 >
-                  <option value="tin">TIN (flat between the edge points)</option>
-                  <option value="thin-plate">Thin-plate (follows the curve of the ground)</option>
+                  <option value="tin">{t('cleanup.straight')}</option>
+                  <option value="thin-plate">{t('cleanup.smooth')}</option>
                 </select>
               </label>
               <ul className="qa-edits" aria-label="Polygon measurements">
