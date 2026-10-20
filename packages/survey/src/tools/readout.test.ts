@@ -67,6 +67,9 @@ describe('angle formatting', () => {
     expect(formatAngle(15.2, { angle: 'dms', bearing: 'dms', precision: 0 })).toBe('15°12\'00"');
     expect(formatAngle(15.2, { angle: 'deg', bearing: 'dms', precision: 1 })).toBe('15.2°');
     expect(formatBearingAs(45.5, { angle: 'deg', bearing: 'deg', precision: 2 })).toBe('045.50°');
+    expect(formatBearingAs(359.996, { angle: 'deg', bearing: 'deg', precision: 2 })).toBe(
+      '000.00°',
+    );
     expect(formatBearingAs(45.5, DEFAULT_ANGLES)).toBe('045°30\'00"');
   });
 

@@ -93,7 +93,7 @@ export function surveyBasis(
 // ---------------------------------------------------------------- the report data
 
 /** How a readout value is shown: a quantity in the site's units, or a bearing, count or text. */
-export type SurveyValueKind = Quantity | 'bearing' | 'count' | 'text';
+export type SurveyValueKind = Quantity | 'bearing' | 'angle' | 'count' | 'text';
 
 /** One readout of a measurement, as the panel shows it (`display`) and in SI (`si`). */
 export interface SurveyValue {

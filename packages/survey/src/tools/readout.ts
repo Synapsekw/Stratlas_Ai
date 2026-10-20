@@ -379,7 +379,9 @@ export function formatBearingAs(
   locale: NumberLocale = 'metric',
 ): string {
   if (a.bearing === 'dms') return formatBearing(deg);
-  const wrapped = ((deg % 360) + 360) % 360;
+  const step = 10 ** a.precision;
+  const rounded = Math.round((((deg % 360) + 360) % 360) * step) / step;
+  const wrapped = rounded >= 360 ? 0 : rounded;
   const text = formatNumber(wrapped, a.precision, locale);
   const whole = (text.split('.')[0] ?? text).length;
   return `${'0'.repeat(Math.max(0, 3 - whole))}${text}°`;
