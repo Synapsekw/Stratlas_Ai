@@ -104,18 +104,22 @@ export function globeReading(points: readonly (readonly [number, number])[]): {
   primary: string;
   secondary: string;
 } {
-  const d = pathLength(points);
-  const primary =
-    d < 1000
-      ? formatQuantity(d, 'distance', 'm', d < 10 ? 2 : 0)
-      : formatQuantity(d, 'distance', 'km', d >= 100_000 ? 0 : 2);
-  if (points.length < 3) return { primary, secondary: '' };
-  const a = polygonArea(points);
-  const secondary =
-    a < 10_000
-      ? formatQuantity(a, 'area', 'm2', 0)
-      : a < 1_000_000
-        ? formatQuantity(a, 'area', 'ha', 2)
-        : formatQuantity(a, 'area', 'km2', 2);
-  return { primary, secondary };
+  return {
+    primary: lengthWords(pathLength(points)),
+    secondary: points.length < 3 ? '' : areaWords(polygonArea(points)),
+  };
+}
+
+/** A length in metres, in m below 1000 m and in km from there. */
+export function lengthWords(m: number): string {
+  return m < 1000
+    ? formatQuantity(m, 'distance', 'm', m < 10 ? 2 : 0)
+    : formatQuantity(m, 'distance', 'km', m >= 100_000 ? 0 : 2);
+}
+
+/** An area in square metres, in m2 below 10 000 m2, in ha below 1 km2 and in km2 from there. */
+export function areaWords(m2: number): string {
+  if (m2 < 10_000) return formatQuantity(m2, 'area', 'm2', 0);
+  if (m2 < 1_000_000) return formatQuantity(m2, 'area', 'ha', 2);
+  return formatQuantity(m2, 'area', 'km2', 2);
 }

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { geodesicDistance, globeReading, pathLength, polygonArea } from './measure';
+import {
+  areaWords,
+  geodesicDistance,
+  globeReading,
+  lengthWords,
+  pathLength,
+  polygonArea,
+} from './measure';
 
 const dms = (d: number, m: number, s: number) => Math.sign(d) * (Math.abs(d) + m / 60 + s / 3600);
 
@@ -63,5 +70,14 @@ describe('the geodesic read-out (on the ellipsoid)', () => {
     expect(globeReading(square(50)).secondary).toMatch(/^2\D?5\d\d m²$/);
     expect(globeReading(square(300)).secondary).toMatch(/^9\.\d\d ha$/);
     expect(globeReading(square(1000)).secondary).toMatch(/^1\.\d\d km²$/);
+  });
+
+  it('switches unit exactly at each boundary', () => {
+    expect(lengthWords(999)).toBe('999 m');
+    expect(lengthWords(1000)).toBe('1.00 km');
+    expect(areaWords(9999)).toMatch(/^9\D?999 m²$/);
+    expect(areaWords(10_000)).toBe('1.00 ha');
+    expect(areaWords(999_999)).toBe('100.00 ha');
+    expect(areaWords(1_000_000)).toBe('1.00 km²');
   });
 });
