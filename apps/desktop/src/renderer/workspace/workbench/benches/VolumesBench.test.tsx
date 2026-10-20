@@ -3,14 +3,12 @@ import { volumetric } from '@aio/volumetric';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as VolumetricModule from '@aio/volumetric';
 import { WIDE_TAB_PX, workbench } from '../workbenchStore';
 import { VolumesBench } from './VolumesBench';
 
-// the inventory is the package's: here only that it sits under the controls
-vi.mock('@aio/volumetric', async (importOriginal) => ({
-  ...(await importOriginal<typeof VolumetricModule>()),
-  VolumesPanel: () => <p data-testid="inventory">inventory</p>,
+// the volumes view has its own tests: here only that it sits under the controls
+vi.mock('../../../survey/VolumesView', () => ({
+  VolumesView: () => <p data-testid="inventory">inventory</p>,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

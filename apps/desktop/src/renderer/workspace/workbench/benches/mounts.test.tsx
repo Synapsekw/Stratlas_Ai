@@ -5,7 +5,6 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as AnnotateModule from '@aio/annotate';
-import type * as VolumetricModule from '@aio/volumetric';
 import type * as ChangeModule from '../../../change';
 import type * as StageToolsModule from '../../StageTools';
 import type { JobRecord } from '@aio/schema';
@@ -31,9 +30,8 @@ vi.mock('../../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card<
 vi.mock('../../SelectionCard', () => ({ SelectionCard: () => <p>selection</p> }));
 vi.mock('../../../road/RoadPanel', () => ({ RoadPanel: () => <p>road panel</p> }));
 vi.mock('../../../road/RoadSetup', () => ({ RoadSetupCard: () => null }));
-vi.mock('@aio/volumetric', async (importOriginal) => ({
-  ...(await importOriginal<typeof VolumetricModule>()),
-  VolumesPanel: () => <p data-testid="inventory">inventory</p>,
+vi.mock('../../../survey/VolumesView', () => ({
+  VolumesView: () => <p data-testid="inventory">inventory</p>,
 }));
 vi.mock('@aio/annotate', async (importOriginal) => ({
   ...(await importOriginal<typeof AnnotateModule>()),

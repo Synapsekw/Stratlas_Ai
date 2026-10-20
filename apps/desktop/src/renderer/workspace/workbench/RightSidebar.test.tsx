@@ -10,7 +10,6 @@ import { shell, useShell } from '../../shell';
 import type { LiveItem } from '../island/islandModel';
 import type * as LiveModule from '../island/useIslandLive';
 import type * as AnnotateModule from '@aio/annotate';
-import type * as VolumetricModule from '@aio/volumetric';
 import type * as ChangeModule from '../../change';
 import { agentPane } from '../../agent/agentPaneStore';
 import { RightSidebar, useSidebarSplit } from './RightSidebar';
@@ -67,10 +66,7 @@ vi.mock('../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card</p>
 vi.mock('../SelectionCard', () => ({ SelectionCard: () => <p>selection</p> }));
 vi.mock('../../road/RoadPanel', () => ({ RoadPanel: () => <p>road</p> }));
 vi.mock('../../road/RoadSetup', () => ({ RoadSetupCard: () => null }));
-vi.mock('@aio/volumetric', async (importOriginal) => ({
-  ...(await importOriginal<typeof VolumetricModule>()),
-  VolumesPanel: () => <p>volumes</p>,
-}));
+vi.mock('../../survey/VolumesView', () => ({ VolumesView: () => <p>volumes</p> }));
 vi.mock('@aio/annotate', async (importOriginal) => ({
   ...(await importOriginal<typeof AnnotateModule>()),
   IssueRegister: () => <p>register</p>,

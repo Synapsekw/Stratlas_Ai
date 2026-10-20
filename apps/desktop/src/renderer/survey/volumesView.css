@@ -1,0 +1,71 @@
+/* The volumes view (volumetric parity W3/W4): the folder filter, the piles as live cards, the one in
+   the detail card, the current totals and the site inventory over time. */
+.vv {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5) var(--sp-6);
+  min-width: 0;
+}
+.vv > .empty-state {
+  margin-block-start: var(--sp-6);
+}
+
+.vv-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.vv-bar .sv-input {
+  min-width: 0;
+  max-width: 24ch;
+}
+
+/* the piles: rows, not a grid of cards; the one in the detail card stays marked */
+.vv-piles {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-6);
+  overflow: hidden;
+}
+.vv-piles > li + li {
+  border-top: 1px solid var(--line-soft);
+}
+.vv-pile {
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+  transition: background-color var(--d-1) var(--ease);
+}
+.vv-pile:hover {
+  background: var(--bg-2);
+}
+.vv-pile[aria-pressed='true'] {
+  background: var(--acc-a12);
+}
+.vv-pile:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: -1px;
+}
+
+.vv-detail {
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+}
+
+.vv-inventory .vv-missing {
+  font-family: inherit;
+  white-space: normal;
+  color: var(--fg-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vv-pile {
+    transition: none;
+  }
+}

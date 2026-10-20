@@ -2,9 +2,12 @@
  * Bulk selection (M11 G4, PRD SRV-1): running totals of the selected measurements' comparisons
  * (best with one template, so the items line up), and one change for all of them: a side of an
  * item, or the units. Totals add current results only; stale or refused ones are counted apart.
+ *
+ * Given `piles` (the volumes view), it totals those instead of the selection, with the same maths:
+ * the current totals of the engine's results, and no change for all.
  */
 import { formatQuantity } from '@aio/geo';
-import { VolumeUnit, AreaUnit, type SurfaceRef } from '@aio/schema';
+import { VolumeUnit, AreaUnit, type SurfaceRef, type SurveyMeasurement } from '@aio/schema';
 import {
   bulkTotals,
   effectiveUnits,
@@ -17,11 +20,14 @@ import {
   type BulkSide,
 } from '@aio/survey';
 import { unitName } from '@aio/geo';
+import { useT } from '@aio/ui';
 import { useMemo, useState } from 'react';
 import { computeAll, isStale, useCompare } from './compareStore';
 import { knownTemplates, replaceMeasurement, useMeasure } from './measureStore';
 
-export function BulkTotals() {
+export function BulkTotals({ piles }: { piles?: readonly SurveyMeasurement[] } = {}) {
+  const tr = useT();
+  const inventory = piles !== undefined;
   const selected = useMeasure((s) => s.selected);
   const file = useMeasure((s) => s.file);
   const settings = useMeasure((s) => s.settings);
@@ -36,14 +42,17 @@ export function BulkTotals() {
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const ms = useMemo(
-    () => file.measurements.filter((m) => selected.includes(m.id) && m.family === 'polygon'),
-    [file, selected],
+    () =>
+      piles
+        ? piles.filter((m) => m.family === 'polygon')
+        : file.measurements.filter((m) => selected.includes(m.id) && m.family === 'polygon'),
+    [piles, file, selected],
   );
   const options = useMemo(
     () => sideOptions({ surfaces, captures, designs }),
     [surfaces, captures, designs],
   );
-  if (selected.length < 2 || ms.length === 0) return null;
+  if ((!inventory && selected.length < 2) || ms.length === 0) return null;
   const t = bulkTotals(
     ms,
     (m) => polygonAreas(m.points).horizontalM2,
@@ -81,15 +90,18 @@ export function BulkTotals() {
   return (
     <section
       className="sv-card sv-panel"
-      aria-label="Selected measurements"
+      aria-label={inventory ? tr('vol.card.total') : 'Selected measurements'}
       data-testid="survey-bulk"
+      data-inventory={inventory || undefined}
     >
       <header className="sv-head" role="none">
         <h2>
-          {ms.length} measurements{tplName ? `: ${tplName}` : ''}
+          {inventory
+            ? tr('vol.card.total')
+            : `${String(ms.length)} measurements${tplName ? `: ${tplName}` : ''}`}
         </h2>
       </header>
-      {t.mixed && (
+      {t.mixed && !inventory && (
         <p className="notice warn small" role="note">
           The selection mixes templates: items are added by their position.
         </p>
@@ -128,23 +140,25 @@ export function BulkTotals() {
           </tr>
         </tbody>
       </table>
-      <div className="sv-row sv-wrap">
-        <button
-          type="button"
-          className="btn sm"
-          disabled={busy}
-          data-testid="survey-bulk-recompute"
-          onClick={() => {
-            setBusy(true);
-            void computeAll(ms.map((m) => m.id)).finally(() => {
-              setBusy(false);
-            });
-          }}
-        >
-          {busy ? 'Computing…' : 'Recompute all'}
-        </button>
-      </div>
-      {!readOnly && t.rows.length > 0 && (
+      {!(inventory && readOnly) && (
+        <div className="sv-row sv-wrap">
+          <button
+            type="button"
+            className="btn sm"
+            disabled={busy}
+            data-testid="survey-bulk-recompute"
+            onClick={() => {
+              setBusy(true);
+              void computeAll(ms.map((m) => m.id)).finally(() => {
+                setBusy(false);
+              });
+            }}
+          >
+            {busy ? 'Computing…' : 'Recompute all'}
+          </button>
+        </div>
+      )}
+      {!readOnly && !inventory && t.rows.length > 0 && (
         <fieldset className="sv-sub">
           <legend>Change for all</legend>
           <div className="sv-row sv-wrap">
