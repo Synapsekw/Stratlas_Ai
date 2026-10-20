@@ -78,7 +78,7 @@
 .mc-value {
   font-family: var(--f-mono);
   font-size: var(--t-20);
-  font-weight: 600;
+  font-weight: var(--fw-title);
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
   color: var(--fg-0);

@@ -19,7 +19,7 @@ import {
   type ResolvedItem,
 } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useRef, useState, type ReactElement } from 'react';
+import { useId, useRef, useState, type ReactElement } from 'react';
 import { useShell } from '../../shell';
 import { registerSidebarActions } from '../../shell/actions';
 import { flyToMeasurement } from '../../shell/actions/measureActions';
@@ -50,14 +50,19 @@ function useCanEdit(): boolean {
 export function CardMenu({ id }: { id: string }): ReactElement | null {
   const tr = useT();
   const opener = useRef<HTMLButtonElement>(null);
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: ResolvedItem[] } | null>(null);
+  // a press on the opener while the menu is open: the menu's own outside press closes it first,
+  // so the click that follows must not open it again
+  const justClosed = useRef(false);
+  const pressedToClose = useRef(false);
   const project = useWorkspace((s) => s.project);
   const hidden = useWorkspace((s) => s.hidden);
   const pkg = useShell((s) => s.pkg);
   const lookOnly = useAnnotateReadOnly();
   const label = useMeasure((s) => s.file.measurements.find((m) => m.id === id)?.label);
   if (!project || label === undefined) return null;
-  const items = (): ResolvedItem[] => {
+  /** The items, built once as the menu opens. */
+  const build = (): ResolvedItem[] => {
     registerSidebarActions();
     return [
       ...actionsFor(
@@ -93,25 +98,40 @@ export function CardMenu({ id }: { id: string }): ReactElement | null {
       <IconButton
         ref={opener}
         icon="more"
-        label={tr('library.menu.button', { project: label })}
+        label={tr('mcard.menu', { name: label })}
         aria-haspopup="menu"
-        aria-expanded={at !== null}
+        aria-expanded={menu !== null}
         data-testid="card-menu"
+        onPointerDown={() => {
+          pressedToClose.current = justClosed.current;
+        }}
         onClick={() => {
+          if (pressedToClose.current) {
+            pressedToClose.current = false;
+            return;
+          }
+          if (menu) {
+            setMenu(null);
+            return;
+          }
           const r = opener.current?.getBoundingClientRect();
-          setAt(at ? null : { x: r?.left ?? 0, y: r?.bottom ?? 0 });
+          setMenu({ x: r?.left ?? 0, y: r?.bottom ?? 0, items: build() });
         }}
       />
-      {at && (
+      {menu && (
         <ContextMenu
-          items={items()}
-          x={at.x}
-          y={at.y}
+          items={menu.items}
+          x={menu.x}
+          y={menu.y}
           label={label}
           title={label}
           testId="card-menu-list"
           onClose={() => {
-            setAt(null);
+            setMenu(null);
+            justClosed.current = true;
+            setTimeout(() => {
+              justClosed.current = false;
+            }, 0);
           }}
         />
       )}
@@ -129,20 +149,26 @@ export function CardActions(p: { id: string; hasChart: boolean }): ReactElement 
   const notes = useMeasure((s) => s.file.measurements.find((m) => m.id === p.id)?.description);
   const pkg = useShell((s) => s.pkg);
   const [open, setOpen] = useState(false);
+  const notesId = useId();
+  // nothing to read and nothing to write: no Notes
+  const showNotes = canEdit || (notes ?? '') !== '';
   return (
     <div className="mc-act" data-testid="card-actions" data-has-chart={p.hasChart || undefined}>
       <div className="mc-act-row">
-        <Button
-          variant="quiet"
-          icon="anno"
-          pressed={open}
-          data-testid="card-notes"
-          onClick={() => {
-            setOpen(!open);
-          }}
-        >
-          {tr('mcard.notes')}
-        </Button>
+        {showNotes && (
+          <Button
+            variant="quiet"
+            icon="anno"
+            aria-expanded={open}
+            aria-controls={open ? notesId : undefined}
+            data-testid="card-notes"
+            onClick={() => {
+              setOpen(!open);
+            }}
+          >
+            {tr('mcard.notes')}
+          </Button>
+        )}
         <Button
           variant="quiet"
           icon="download"
@@ -165,9 +191,9 @@ export function CardActions(p: { id: string; hasChart: boolean }): ReactElement 
           {tr('mcard.flyTo')}
         </Button>
       </div>
-      {open && (
+      {open && showNotes && (
         <NotesField
-          key={notes ?? ''}
+          domId={notesId}
           id={p.id}
           initial={notes ?? ''}
           readOnly={!canEdit}
@@ -179,11 +205,26 @@ export function CardActions(p: { id: string; hasChart: boolean }): ReactElement 
 }
 
 /** The note, saved when the field is left; an emptied note is removed. */
-function NotesField(p: { id: string; initial: string; readOnly: boolean; label: string }) {
+function NotesField(p: {
+  domId: string;
+  id: string;
+  initial: string;
+  readOnly: boolean;
+  label: string;
+}) {
   const [draft, setDraft] = useState(p.initial);
+  // a note changed elsewhere (saved here, an undo) refreshes the draft; the field stays mounted
+  const [shown, setShown] = useState(p.initial);
+  if (shown !== p.initial) {
+    setShown(p.initial);
+    setDraft(p.initial);
+  }
   return (
     <textarea
+      id={p.domId}
       className="input mc-notes"
+      // opened by Notes: the person came to read or write here
+      autoFocus
       value={draft}
       maxLength={NOTES_MAX}
       rows={3}

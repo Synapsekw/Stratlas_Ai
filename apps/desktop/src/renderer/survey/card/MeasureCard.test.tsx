@@ -14,6 +14,7 @@ const MODEL: CardModel = {
   tool: 'Distance',
   scope: { label: 'October', capture: 'oct' },
   colour: '#ef476f',
+  colourName: 'Red',
   primary: { label: 'Slope length', text: '142.6 m' },
   secondary: 'Horizontal length 140.9 m · Height change 21.4 m · Grade 15.2 %',
   more: [
@@ -173,6 +174,35 @@ describe('MeasureCard', () => {
     press(input, 'Escape');
     expect(input.value).toBe('Haul ramp');
     expect(onRename).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps focus in the name when the saved name comes back', () => {
+    const onRename = vi.fn();
+    mount(<MeasureCard model={MODEL} variant="detail" onRename={onRename} />);
+    const input = q('card-name') as HTMLInputElement;
+    act(() => {
+      input.focus();
+    });
+    type(input, 'East ramp');
+    press(input, 'Enter');
+    expect(onRename).toHaveBeenCalledWith('East ramp');
+    act(() =>
+      root?.render(
+        <MeasureCard
+          model={{ ...MODEL, name: 'East ramp' }}
+          variant="detail"
+          onRename={onRename}
+        />,
+      ),
+    );
+    expect(q('card-name')).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe('East ramp');
+  });
+
+  it('names the swatch with its colour', () => {
+    mount(<MeasureCard model={MODEL} variant="detail" />);
+    expect(q('card-colour')?.getAttribute('aria-label')).toBe('Colour, Red');
   });
 
   it('shows the name as text when it cannot be renamed', () => {

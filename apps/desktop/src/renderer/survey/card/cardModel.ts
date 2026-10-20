@@ -22,13 +22,34 @@ import {
   type ReadoutContext,
   type ReadoutRow,
 } from '@aio/survey';
-import type { IconName } from '@aio/ui';
+import { t, type IconName, type MessageKey } from '@aio/ui';
 
 /**
  * A measurement's colour when its style names none: `MEASURE_COLOR` (`measureScene`), repeated
  * here so the card's model loads no store (a test holds the two together).
  */
 export const DEFAULT_MEASURE_COLOUR = '#ffd166';
+
+/**
+ * The names of the preset colours (`MEASURE_COLOURS`, `measureActions`), by hex, repeated here for
+ * the same reason; a test holds the two together. Any other colour is named by its hex.
+ */
+export const COLOUR_NAMES: Readonly<Record<string, MessageKey>> = {
+  '#ffd166': 'actions.measure.colour.yellow',
+  '#ef476f': 'actions.measure.colour.red',
+  '#06d6a0': 'actions.measure.colour.green',
+  '#118ab2': 'actions.measure.colour.blue',
+  '#9b5de5': 'actions.measure.colour.purple',
+  '#f78c40': 'actions.measure.colour.orange',
+  '#ffffff': 'actions.measure.colour.white',
+  '#94a3b8': 'actions.measure.colour.grey',
+};
+
+/** A colour as people read it: its preset name, or its hex. */
+export function colourName(hex: string): string {
+  const key = COLOUR_NAMES[hex.toLowerCase()];
+  return key ? t(key) : hex;
+}
 
 /** One glyph per tool (not per family): the card header, the Measure bench rows and the tree. */
 export const TOOL_ICON: Record<MeasurementTool, IconName> = {
@@ -57,8 +78,13 @@ export interface CardModel {
   /** The survey date a survey-scoped measurement belongs to; null for a site-wide one. */
   scope: { label: string; capture?: string } | null;
   colour: string;
+  /** The colour's name ("Yellow"), or its hex when it is not a preset. */
+  colourName: string;
   primary: { label: string; text: string } | null;
-  /** The compact line under the primary value, joined with " · "; "" when there is none. */
+  /**
+   * The compact line under the primary value, joined with " · "; "" when there is none. It never
+   * repeats the primary row.
+   */
   secondary: string;
   /** Every readout row (the template's, or the tool's default), for "More". */
   more: { label: string; text: string }[];
@@ -81,6 +107,7 @@ export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
   const items = m.template ? ctx.templates.find((x) => x.id === m.template)?.items : undefined;
   const primary = primaryRow(m, readout, items);
   const scope = m.scope;
+  const colour = m.style?.color ?? DEFAULT_MEASURE_COLOUR;
   return {
     icon: TOOL_ICON[m.tool],
     name: m.label,
@@ -92,9 +119,11 @@ export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
             capture: scope.capture,
           }
         : null,
-    colour: m.style?.color ?? DEFAULT_MEASURE_COLOUR,
+    colour,
+    colourName: colourName(colour),
     primary: primary ? { label: primary.label, text: text(primary) } : null,
     secondary: secondaryRows(m, readout)
+      .filter((r) => r.key !== primary?.key)
       .map((r) => `${r.label} ${text(r)}`)
       .join(' · '),
     more: measurementReadout(m, readout, items).map((r) => ({ label: r.label, text: text(r) })),

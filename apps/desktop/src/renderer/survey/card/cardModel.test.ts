@@ -4,11 +4,19 @@ import {
   type MeasurementTool,
   type SurveyMeasurement,
   type SurveySettings,
+  type SurveyTemplate,
 } from '@aio/schema';
 import { TOOL_LABELS } from '@aio/survey';
 import { ICONS } from '@aio/ui';
 import { describe, expect, it, vi } from 'vitest';
-import { cardModel, DEFAULT_MEASURE_COLOUR, splitValue, TOOL_ICON } from './cardModel';
+import {
+  cardModel,
+  COLOUR_NAMES,
+  colourName,
+  DEFAULT_MEASURE_COLOUR,
+  splitValue,
+  TOOL_ICON,
+} from './cardModel';
 
 vi.mock('../../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false }) },
@@ -144,6 +152,36 @@ describe('cardModel', () => {
   it('the default colour is the one the views draw with', async () => {
     const { MEASURE_COLOR } = await import('../measureScene');
     expect(DEFAULT_MEASURE_COLOUR).toBe(MEASURE_COLOR);
+  });
+});
+
+describe('cardModel secondary and colour', () => {
+  it('the secondary line never repeats the primary row', () => {
+    // the template leaves out the slope length, so the horizontal length is the primary
+    const tpl: SurveyTemplate = {
+      id: 't1',
+      name: 'Plan length',
+      family: 'line',
+      tool: 'distance',
+      items: ['horizontal', 'grade'],
+      fields: [],
+      comparisons: [],
+    };
+    const c = cardModel(measurement({ template: 't1' }), { ...ctx(), templates: [tpl] });
+    expect(c.primary?.label).toBe('Horizontal length');
+    expect(c.secondary).not.toContain('Horizontal length');
+    expect(c.secondary.split(' · ')).toHaveLength(2);
+  });
+
+  it('names the swatch colour: a preset by name, any other by its hex', () => {
+    expect(cardModel(measurement({}), ctx()).colourName).toBe('Yellow');
+    expect(colourName('#EF476F')).toBe('Red');
+    expect(colourName('#123456')).toBe('#123456');
+  });
+
+  it('the colour names are the presets the menu offers', async () => {
+    const { MEASURE_COLOURS } = await import('../../shell/actions/measureActions');
+    expect(COLOUR_NAMES).toEqual(Object.fromEntries(MEASURE_COLOURS.map((c) => [c.hex, c.label])));
   });
 });
 

@@ -5674,6 +5674,7 @@ export const en = {
   'chart.date': 'Date',
   'chart.label': 'Profile from {a} to {b}, vertical exaggeration {n}:1',
   'mcard.more': 'More',
+  'mcard.menu': 'Actions for {name}',
   'mcard.notes': 'Notes',
   'mcard.flyTo': 'Fly to',
   'mcard.hide': 'Hide',

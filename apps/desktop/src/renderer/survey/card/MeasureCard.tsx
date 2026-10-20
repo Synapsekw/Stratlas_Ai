@@ -56,7 +56,7 @@ export function MeasureCard(p: {
           <Icon name={model.icon} size={16} label={model.tool} />
         </span>
         {p.onRename && !report ? (
-          <NameField key={model.name} name={model.name} onRename={p.onRename} />
+          <NameField name={model.name} onRename={p.onRename} />
         ) : (
           <h3 className="mc-name" data-testid="card-name">
             {model.name}
@@ -67,7 +67,7 @@ export function MeasureCard(p: {
             <Chip kind="tag">{model.scope.label}</Chip>
           </span>
         )}
-        <Swatch colour={model.colour} />
+        <Swatch colour={model.colour} name={model.colourName} />
         {!report && p.menu}
       </header>
       <Primary primary={model.primary} />
@@ -98,13 +98,13 @@ function Primary({ primary }: { primary: CardModel['primary'] }) {
   );
 }
 
-function Swatch({ colour }: { colour: string }) {
+function Swatch({ colour, name }: { colour: string; name: string }) {
   const t = useT();
   return (
     <span
       className="mc-swatch"
       role="img"
-      aria-label={t('mcard.colour')}
+      aria-label={`${t('mcard.colour')}, ${name}`}
       data-testid="card-colour"
       // the measurement's own colour, as the 3D view and the map draw it
       style={{ background: colour }}
@@ -115,8 +115,14 @@ function Swatch({ colour }: { colour: string }) {
 /** The name in place: Enter or leaving the field saves, Escape puts the name back. */
 function NameField({ name, onRename }: { name: string; onRename: (name: string) => void }) {
   const t = useT();
-  // keyed on the name by the card: a new name from outside starts a fresh draft
   const [draft, setDraft] = useState(name);
+  // a new name from outside (this rename saved, an undo, the tree) starts a fresh draft; the field
+  // stays mounted, so focus stays where the person left it
+  const [shown, setShown] = useState(name);
+  if (shown !== name) {
+    setShown(name);
+    setDraft(name);
+  }
   const commit = () => {
     const next = draft.trim().slice(0, NAME_MAX);
     if (next === '') setDraft(name);
