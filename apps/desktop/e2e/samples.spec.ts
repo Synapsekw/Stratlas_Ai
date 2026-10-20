@@ -20,6 +20,7 @@ import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { closeProcessing, expect, launchApp, openPipelineForm, test } from './fixtures';
+import { volumesView } from './island';
 import { realProjectDir } from './realData';
 
 const SAMPLES = process.env.QUADRION_SAMPLES ?? '';
@@ -372,9 +373,12 @@ test('@realdata volumetric-masafi-mini: two survey dates, the delivered pile vol
       expect(Math.abs((got?.change.net ?? NaN) - want.changeNet)).toBeLessThanOrEqual(1);
     }
     await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
-    const register = win.getByTestId('vol-register');
-    await expect(register).toBeVisible({ timeout: 30_000 });
-    await expect(register.locator('tbody tr')).toHaveCount(s.piles.length);
+    // each pile the build found is a volume measurement in the Volumes view (volumetric parity
+    // W3: the kit's register is retired)
+    const view = await volumesView(win);
+    await expect(view.getByTestId('volumes-pile')).toHaveCount(s.piles.length, {
+      timeout: 30_000,
+    });
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app.close();

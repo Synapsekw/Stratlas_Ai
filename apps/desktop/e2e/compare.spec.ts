@@ -776,7 +776,10 @@ real.describe('@realdata Masafi', () => {
       win.on('pageerror', (e) => errors.push(e.message));
       await win.reload();
       await win.getByTestId('project-card').filter({ hasText: 'Masafi' }).first().click();
-      await expect(win.getByTestId('vol-register')).toBeVisible({ timeout: 30_000 });
+      // the kit's register is retired (volumetric parity W3): the scene opening is the sign
+      await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({
+        timeout: 30_000,
+      });
       await expect
         .poll(() => inspect(win, ({ w }) => w.__stratlas.volumetric.getState().status, null), {
           timeout: 30_000,

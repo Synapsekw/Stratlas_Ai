@@ -2,18 +2,21 @@
  * A volumetric project built from raw data in the app: two small synthetic survey dates (DSM and
  * ortho GeoTIFFs, a stockyard with two cone piles, one cut down between the dates) picked in the
  * new project wizard, the Volumetric Survey Kit run as a `volumetric.build` job in the
- * Processing drawer, and the project opening in the native volumetric workspace (register,
- * recomputed volumes, pile selection). Then Compare dates: both 3D views show the surface
- * colours, the selected pile and the legend, each for its own survey. Needs the development
+ * Processing drawer, and the project opening in the native volumetric workspace: each pile found
+ * is a volume measurement in the Volumes view (volumetric parity W3: the kit's register and its
+ * base maths are retired; a new project's piles carry no kit figure), and a pile can be selected.
+ * Then Compare dates: both 3D views show the surface colours, the selected pile and the legend,
+ * each for its own survey. Needs the development
  * Python with aio_pipelines (`uv sync` in python/) or QUADRION_E2E_PYTHON; skipped without it.
  */
+import { MeasurementsFile } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { closeProcessing, expect, launchApp, test } from './fixtures';
-import { islandGroup, toggleCompareDates } from './island';
+import { islandGroup, toggleCompareDates, volumesView } from './island';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const venvPython =
@@ -72,24 +75,26 @@ interface VolumesJson {
   }[];
 }
 
-async function recompute(win: Page, pile: string): Promise<Record<string, Record<string, Fcn>>> {
-  return win.evaluate(async (id) => {
-    const v = (
-      window as unknown as {
-        __stratlas: {
-          volumetric: {
-            getState(): {
-              service: {
-                recompute(p: string): Promise<Record<string, Record<string, Fcn>>>;
-              } | null;
-            };
-          };
-        };
-      }
-    ).__stratlas.volumetric.getState().service;
-    if (!v) throw new Error('no volume worker');
-    return v.recompute(id);
+interface VolumetricProbe {
+  __stratlas: {
+    volumetric: {
+      getState(): { selected: string | null; select(pile: string | null): void };
+    };
+  };
+}
+
+/** Select a stockpile in the volumetric workspace (its toe line drawn in both views). */
+async function selectPile(win: Page, pile: string): Promise<void> {
+  await win.evaluate((id) => {
+    (window as unknown as VolumetricProbe).__stratlas.volumetric.getState().select(id);
   }, pile);
+  await expect
+    .poll(() =>
+      win.evaluate(
+        () => (window as unknown as VolumetricProbe).__stratlas.volumetric.getState().selected,
+      ),
+    )
+    .toBe(pile);
 }
 
 interface Obj3 {
@@ -214,28 +219,46 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
       'ortho-2026-01-01',
     ]);
 
-    // 3. the project opens in the volumetric workspace like Masafi
+    // 3. the project opens in the volumetric workspace, as an imported stockpile project does
     await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
     await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
-    const register = win.getByTestId('vol-register');
-    await expect(register).toBeVisible({ timeout: 30_000 });
-    await expect(register.locator('tbody tr')).toHaveCount(2);
+    // each pile is a volume measurement in the Volumes view, in the Stockpiles folder; a new
+    // project's build carries no kit figure (the engine computes them once surfaces are prepared)
+    const view = await volumesView(win);
+    await expect(view.getByTestId('volumes-pile')).toHaveCount(2, { timeout: 30_000 });
+    await expect
+      .poll(
+        async () => {
+          const file = MeasurementsFile.parse(
+            JSON.parse(await readFile(join(root, 'survey', 'measurements.json'), 'utf8')),
+          );
+          return {
+            converted: [...(file.kitPilesConverted ?? [])].sort(),
+            measurements: file.measurements
+              .map((m) => ({
+                pile: m.origin?.kind === 'kit-pile' ? m.origin.pile : null,
+                tool: m.tool,
+                folder: m.folder,
+                carried: m.results.some((x) => x.carried !== undefined),
+              }))
+              .sort((a, b) => String(a.pile).localeCompare(String(b.pile))),
+          };
+        },
+        { timeout: 30_000 },
+      )
+      .toEqual({
+        converted: vols.piles.map((p) => p.id).sort(),
+        measurements: vols.piles
+          .map((p) => ({ pile: p.id, tool: 'volume', folder: 'Stockpiles', carried: false }))
+          .sort((a, b) => a.pile.localeCompare(b.pile)),
+      });
+    // no kit figure anywhere on screen: the kit's register is gone
+    await expect(win.getByTestId('vol-register')).toHaveCount(0);
+    await expect(view.getByText(/From an earlier version/)).toHaveCount(0);
     const cut = vols.piles.find((p) => p.change.net < -50);
     expect(cut, 'the pile cut down between the dates').toBeTruthy();
     const pid = cut?.id ?? '';
-    const latest = cut?.epochs.e2?.volumes.tin?.net ?? NaN;
-    await expect(register.locator(`tbody tr[data-pile="${pid}"] td.net`)).toHaveText(
-      Math.round(latest).toLocaleString('en-US'),
-    );
-    // the volume worker recomputes the published volumes from the kit grids
-    const r = await recompute(win, pid);
-    for (const [epoch, ep] of Object.entries(cut?.epochs ?? {}))
-      for (const [b, v] of Object.entries(ep.volumes))
-        expect(Math.abs((r[epoch]?.[b]?.net ?? NaN) - v.net)).toBeLessThan(
-          Math.max(0.005 * Math.abs(v.net), 0.5),
-        );
-    await register.locator(`tbody tr[data-pile="${pid}"]`).click();
-    await expect(win.getByTestId('vol-pile')).toHaveAttribute('data-pile', pid);
+    await selectPile(win, pid);
 
     // 4. Compare dates: the first survey on the left, the last on the right. One toolbar drives
     // both views; each shows the selected pile and the surface colours of its own survey.

@@ -2,11 +2,19 @@
  * A stockpile project (volumes over two surveys) reopens on the survey it was left on, not on
  * the volumes' last survey, and showing the timeline does not forget that date. A minimal
  * synthetic project: two dated terrains, a volumes file, no height grids (the volumes reach
- * `ready` without them; the grids are only fetched for a pile profile). Off-screen, no network.
+ * `ready` without them; the grids are only fetched for a pile profile). Its volumes file lists no
+ * pile, so opening it converts none to a volume measurement (volumetric parity W3) and only marks
+ * the measurements as converted. Off-screen, no network.
  */
-import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
+import {
+  MeasurementsFile,
+  ProjectManifest,
+  SCHEMA_VERSION,
+  VolumesFile,
+  type ProjectManifestInput,
+} from '@aio/schema';
 import type { Page } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, openProject, test as base, tinyGlb, type DataRoot } from './fixtures';
 import { closeIslandTools, timelineToggle } from './island';
@@ -50,25 +58,34 @@ async function writeStockpile(dataRoot: DataRoot): Promise<void> {
   const fc = { fill: 0, cut: 0, net: 0 };
   await writeFile(
     join(dir, 'volumes.json'),
-    JSON.stringify({
-      schema: 'aio.volumes/1',
-      densityTPerM3: 1.6,
-      deadbandM: 0.1,
-      defaultBase: 'tin',
-      bases: [{ id: 'tin', label: 'Triangulated toe' }],
-      captures: dates.map((d) => ({
-        epoch: d.epoch,
-        captureId: d.id,
-        date: d.date,
-        label: d.label,
-      })),
-      piles: [],
-      totals: {},
-      pileChange: fc,
-      siteChange: fc,
-    }),
+    JSON.stringify(
+      VolumesFile.parse({
+        schema: 'aio.volumes/1',
+        densityTPerM3: 1.6,
+        deadbandM: 0.1,
+        defaultBase: 'tin',
+        bases: [{ id: 'tin', label: 'Triangulated toe' }],
+        captures: dates.map((d) => ({
+          epoch: d.epoch,
+          captureId: d.id,
+          date: d.date,
+          label: d.label,
+        })),
+        piles: [],
+        totals: {},
+        pileChange: fc,
+        siteChange: fc,
+      }),
+    ),
   );
 }
+
+/** The project's measurements file as written, or null before the first write. */
+const measurementsOf = async (dataRoot: DataRoot) =>
+  readFile(join(dataRoot.root, 'projects', ID, 'survey', 'measurements.json'), 'utf8').then(
+    (t) => MeasurementsFile.parse(JSON.parse(t)),
+    () => null,
+  );
 
 /**
  * The stockpile project, written before the app starts (the library is read at launch, not on a
@@ -107,9 +124,17 @@ test.describe('stockpile survey date', () => {
   test('opens on the last survey the first time, then on the survey it was left on', async ({
     stockpile,
     win,
+    dataRoot,
   }) => {
     await openStockpile(win, stockpile.id);
     await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/2 Oct 2024/);
+    // no kit pile to convert: the file is only marked converted, with no measurement in it
+    await expect
+      .poll(async () => {
+        const f = await measurementsOf(dataRoot);
+        return f ? { converted: f.kitPilesConverted, n: f.measurements.length } : null;
+      })
+      .toEqual({ converted: [], n: 0 });
     await win.getByTestId('date-name-d1').click();
     await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     await expect.poll(async () => (await volumes(win)).epoch).toBe('e1');

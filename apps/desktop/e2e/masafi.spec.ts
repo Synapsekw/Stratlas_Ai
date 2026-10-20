@@ -1,15 +1,17 @@
 /**
  * End to end on the real Masafi stockpile project (19 piles, two surveys): the native volumetric
- * workspace. Runs only where the real data holds projects/masafi (realData.ts); skipped elsewhere.
- * The project is copied to a temporary data root (@realdata), so the boundary edit written here
- * never touches the real data.
+ * workspace, with the kit's piles opened as volume measurements carrying their delivered figures
+ * (volumetric parity W3: the kit's register, base maths and boundary editor are retired; a pile's
+ * outline is edited through its measurement's vertices). Runs only where the real data holds
+ * projects/masafi (realData.ts); skipped elsewhere. The project is copied to a temporary data root
+ * (@realdata), so the conversion written here never touches the real data.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, realDataTest } from './fixtures';
-import { islandGroup, islandTool } from './island';
+import { islandGroup, islandTool, volumesView } from './island';
 import { hasRealData, missingRealProject, realProjectDir } from './realData';
 
 const MASAFI = realProjectDir('masafi');
@@ -20,9 +22,8 @@ interface Fcn {
   net: number;
 }
 interface VolumesJson {
-  piles: { id: string; epochs: Record<string, { volumes: Record<string, Fcn> }> }[];
+  piles: { id: string; name: string; epochs: Record<string, { volumes: Record<string, Fcn> }> }[];
 }
-type Recomputed = Record<string, Record<string, Fcn> | null>;
 
 interface Inspect {
   __stratlas: {
@@ -42,7 +43,7 @@ interface Inspect {
         status: string;
         selected: string | null;
         elevation?: { ramp: string; hillshade: boolean };
-        service: { recompute(id: string): Promise<Recomputed> } | null;
+        select(pile: string | null): void;
       };
     };
   };
@@ -87,7 +88,11 @@ function boundariesOf(project: string): string | null {
 async function openMasafi(win: Page) {
   await win.getByTestId('project-card').filter({ hasText: 'Masafi' }).first().click();
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
-  await expect(win.getByTestId('vol-register')).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(() => inspect(win, ({ w }) => w.__stratlas.volumetric.getState().status, null), {
+      timeout: 30_000,
+    })
+    .toBe('ready');
   await expect
     .poll(
       () =>
@@ -157,10 +162,27 @@ async function pileOnScreen(win: Page, node: string): Promise<{ x: number; y: nu
   return { x: box.x + ((ndc.x + 1) / 2) * box.width, y: box.y + ((1 - ndc.y) / 2) * box.height };
 }
 
-const rowNet = (win: Page, pile: string) =>
-  win.locator(`[data-testid="vol-register"] tbody tr[data-pile="${pile}"] td.net`);
+/** A number the app shows ("11,379.4 m³"): its first figure. */
+const figure = (text: string): number => {
+  const m = /-?[\d ,]*\d(?:\.\d+)?/.exec(text.replaceAll(String.fromCharCode(0xa0), ' '));
+  return Number((m?.[0] ?? 'NaN').replace(/[ ,]/g, ''));
+};
 
-test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and section', async ({
+/** A pile's live card in the Volumes view, by its kit name. */
+const pileCard = (view: Locator, name: string) =>
+  view.getByTestId('volumes-pile').filter({ has: view.page().getByText(name, { exact: true }) });
+
+/** Select a pile in the volumetric workspace, as a click on it in 3D does. */
+const selectPile = (win: Page, pile: string | null) =>
+  inspect(
+    win,
+    ({ w, a }) => {
+      w.__stratlas.volumetric.getState().select(a);
+    },
+    pile,
+  );
+
+test('@realdata the stockpile project: piles as volume measurements, 3D selection, surfaces and section', async ({
   win,
 }) => {
   const errors: string[] = [];
@@ -170,47 +192,41 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
   });
   await openMasafi(win);
   const vols = JSON.parse(readFileSync(join(MASAFI, 'volumes.json'), 'utf8')) as VolumesJson;
-
-  // Register: 19 piles on 10 Jan 2021, triangulated toe, as volumes.json says.
-  await expect(win.locator('[data-testid="vol-register"] tbody tr')).toHaveCount(19);
-  await expect(rowNet(win, 'P02')).toHaveText('11,379');
-  await win.getByLabel('Base surface').first().selectOption('low');
-  await expect(rowNet(win, 'P02')).toHaveText('14,240');
-  await win.getByLabel('Base surface').first().selectOption('tin');
-  await win.locator('[data-testid="vol-register"] th button', { hasText: 'Net' }).click();
-  await expect(win.locator('[data-testid="vol-register"] tbody tr').first()).toHaveAttribute(
-    'data-pile',
-    'P02',
-  );
-
-  // Every pile, date and base recomputed in the volume worker from the 10 cm grids: within 0.5 %.
+  const p02 = vols.piles.find((p) => p.id === 'P02');
+  if (!p02) throw new Error('no P02 in volumes.json');
   const ids = vols.piles.map((p) => p.id);
-  const recomputed = await inspect(
-    win,
-    async ({ w, a: piles }) => {
-      const svc = w.__stratlas.volumetric.getState().service;
-      if (!svc) throw new Error('no volume worker');
-      const out: Record<string, Recomputed> = {};
-      for (const id of piles) out[id] = await svc.recompute(id);
-      return out;
-    },
-    ids,
-  );
-  let worst = 0;
-  let count = 0;
-  for (const p of vols.piles)
-    for (const [epoch, ep] of Object.entries(p.epochs))
-      for (const [b, v] of Object.entries(ep.volumes)) {
-        const r = recomputed[p.id]?.[epoch]?.[b];
-        if (!r) throw new Error(`${p.id} ${epoch} ${b} was not recomputed`);
-        worst = Math.max(worst, Math.abs(r.net - v.net) / Math.max(Math.abs(v.net), 10));
-        count++;
-      }
-  expect(count).toBe(152);
-  expect(worst).toBeLessThan(0.005);
 
-  // By default no pile is drawn in 3D: no bodies, toe lines or volume callouts; a hint says how.
-  await expect(win.getByTestId('vol-hint')).toBeVisible();
+  // Every kit pile is a volume measurement (volumetric parity W3): 19 in the Volumes view, each
+  // with its old figure carried and labelled; the kit's register and base maths are retired.
+  const view = await volumesView(win);
+  await expect(view.getByTestId('volumes-pile')).toHaveCount(19, { timeout: 30_000 });
+  await expect(win.getByTestId('vol-register')).toHaveCount(0);
+  await pileCard(view, p02.name || p02.id).click();
+  const card = view.getByTestId('volumes-detail');
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId('survey-cmp-status').first()).toHaveText(
+    'From an earlier version (kit tin)',
+  );
+  // the delivered figure on the triangulated toe: 11,379 m³ on 10 Jan 2021, 14,687 m³ on 31 Dec
+  const latest = p02.epochs.e2?.volumes.tin?.net ?? Number.NaN;
+  const earlier = p02.epochs.e1?.volumes.tin?.net ?? Number.NaN;
+  expect(Math.round(latest)).toBe(11_379);
+  const primary = await card.getByTestId('card-primary').locator('.mc-value').innerText();
+  expect(Math.abs(figure(primary) - latest)).toBeLessThan(0.5);
+  const rows = card.getByTestId('vol-time-table').locator('tbody tr');
+  await expect(rows).toHaveCount(2);
+  expect(
+    Math.abs(figure(await rows.nth(0).locator('td').first().innerText()) - earlier),
+  ).toBeLessThan(0.5);
+  expect(
+    Math.abs(figure(await rows.nth(1).locator('td').first().innerText()) - latest),
+  ).toBeLessThan(0.5);
+  // no surfaces prepared here: nothing to recompute with, and no area split for a carried figure
+  await expect(card.getByTestId('survey-recompute')).toHaveCount(0);
+  await expect(card.getByTestId('vol-method')).toHaveCount(0);
+
+  // By default no pile is drawn in 3D: no bodies, toe lines or volume callouts.
+  await selectPile(win, null);
   for (const id of ids) expect(await pileDrawn(win, id)).toBe(false);
   expect(await calloutText(win)).not.toContain('m³');
   // the survey's flat ortho is not drawn in 3D (its terrain carries the photo), the map has it
@@ -241,9 +257,7 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
       .toBe(true);
 
   // Selecting a pile selects its node in 3D, draws its body, base plate and toe line.
-  await win.locator('[data-testid="vol-register"] tbody tr[data-pile="P02"]').click();
-  await expect(win.getByTestId('vol-pile')).toHaveAttribute('data-pile', 'P02');
-  await expect(win.getByTestId('vol-recomputed')).toHaveText('11,379 m³', { timeout: 30_000 });
+  await selectPile(win, 'P02');
   expect(await inspect(win, ({ w }) => w.__stratlas.workspace.getState().selection, null)).toEqual({
     kind: 'asset',
     id: 'P02_e2',
@@ -263,11 +277,9 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
       ),
     )
     .toBe(true);
-  // only that pile, with its measurement on the callout; the panel has fill, cut, net and edits
+  // only that pile; its callout reads the measurement's figure, as its card shows it
   expect(await pileDrawn(win, 'P05')).toBe(false);
-  await expect.poll(() => calloutText(win)).toContain('11,379 m³ · 18,206 t');
-  await expect(win.getByTestId('vol-measure')).toContainText('11,384');
-  await expect(win.getByTestId('vol-last-edit')).toContainText('Never');
+  await expect.poll(() => calloutText(win)).toContain(primary);
 
   // Esc hides it again; a click on a pile on the terrain flies to it and reveals it.
   await win.locator('[data-scene-view] canvas').hover();
@@ -284,10 +296,7 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
     .poll(() => inspect(win, ({ w }) => w.__stratlas.volumetric.getState().selected, null))
     .toBe('P05');
   await expect.poll(() => pileDrawn(win, 'P05')).toBe(true);
-  await expect(win.getByTestId('vol-pile')).toHaveAttribute('data-pile', 'P05');
-  await win.getByRole('button', { name: 'All piles', exact: true }).click();
-  await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
-  await win.locator('[data-testid="vol-register"] tbody tr[data-pile="P02"]').click();
+  await selectPile(win, 'P02');
 
   // The other survey: its terrain shows, the other hides.
   await (
@@ -305,7 +314,6 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
       null,
     ),
   ).toEqual([true, false]);
-  await expect(win.getByTestId('vol-net')).toHaveText('14,687 m³');
   await (
     await islandGroup(win, 'volumes')
   )
@@ -367,35 +375,11 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
           ({ w }) => w.__stratlas.stage()?.scene.getObjectByName('drape:e2')?.visible ?? false,
           null,
         ),
-      {
-        timeout: 20_000,
-      },
+      { timeout: 20_000 },
     )
     .toBe(true);
-  // the panel counts the change by pile, cut to fill
-  await win.getByRole('button', { name: 'All piles', exact: true }).click();
-  await expect(win.getByTestId('vol-change').locator('button[data-pile]').first()).toHaveAttribute(
-    'data-pile',
-    'P05',
-  );
-  await expect(win.getByTestId('vol-change').locator('button[data-pile="P05"]')).toContainText(
-    '−5,116',
-  );
   await (await surfaces()).getByRole('button', { name: 'Photo' }).click();
-
-  // Piles show on purpose one by one or all at once; hiding all goes back to none.
-  await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
-  await win.getByRole('button', { name: 'Show P03 in 3D' }).click();
-  await expect.poll(() => pileDrawn(win, 'P03')).toBe(true);
-  await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
-  await expect(win.getByTestId('vol-shown-n')).toContainText('1 shown in 3D');
-  // with some shown the one button shows every pile, then hides every pile
-  await win.getByTestId('vol-eye-all').click();
-  await expect.poll(() => pileDrawn(win, 'P05')).toBe(true);
-  await expect(win.getByTestId('vol-shown-n')).toContainText('19 shown in 3D');
-  await win.getByTestId('vol-eye-all').click();
-  await expect.poll(() => pileDrawn(win, 'P03')).toBe(false);
-  await expect.poll(() => pileDrawn(win, 'P05')).toBe(false);
+  await selectPile(win, null);
 
   // Swipe shows both surveys.
   await (
@@ -447,6 +431,8 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
   await win.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
   await expect(win.getByTestId('vol-sec-cut')).toHaveText(/\d+ m² cut/, { timeout: 20_000 });
   await expect(win.getByTestId('vol-sec-fill')).toHaveText(/\d+ m² fill/);
+  // the section is drawn on the shared profile chart
+  await expect(win.getByTestId('vol-section-chart')).toBeVisible();
   expect(
     await inspect(win, ({ w }) => w.__stratlas.volumetric.getState().selected, null),
   ).toBeNull();
@@ -454,57 +440,48 @@ test('@realdata Masafi register, recomputed volumes, 3D selection, surfaces and 
   expect(errors).toEqual([]);
 });
 
-test('@realdata Masafi boundary edit in 3D is recomputed, saved to the project, and exported', async ({
+test('@realdata the stockpile project: volume over time as CSV from the Volumes view; the real data untouched', async ({
   app,
   win,
   realData,
 }) => {
-  const realBefore = boundariesOf(MASAFI);
+  const realMeasurements = join(MASAFI, 'survey', 'measurements.json');
+  const realBefore = existsSync(realMeasurements) ? readFileSync(realMeasurements, 'utf8') : null;
+  const boundariesBefore = boundariesOf(MASAFI);
   await openMasafi(win);
-  await win.locator('[data-testid="vol-register"] tbody tr[data-pile="P02"]').click();
-  await win.getByRole('button', { name: 'Edit boundary' }).click();
-  // The automatic line simplified, every base refitted to it: the original review shows 7,637 m³.
-  await expect(win.getByTestId('vol-edit-net')).toHaveText('7,637 m³', { timeout: 30_000 });
-  await win.waitForTimeout(800);
-  const handle = win.locator('.vol-vh').nth(3);
-  const hb = await handle.boundingBox();
-  if (!hb) throw new Error('no boundary handle on screen');
-  await win.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
-  await win.mouse.down();
-  await win.mouse.move(hb.x + 40, hb.y + 30, { steps: 8 });
-  await win.mouse.up();
-  await expect(win.getByTestId('vol-editbar')).toContainText('automatic 11,379 m³');
-  await win.locator('[data-testid="vol-editbar"] button', { hasText: 'Save' }).click();
-  await expect(win.getByTestId('vol-editbar')).toHaveCount(0);
+  const vols = JSON.parse(readFileSync(join(MASAFI, 'volumes.json'), 'utf8')) as VolumesJson;
+  const view = await volumesView(win);
+  await expect(view.getByTestId('volumes-pile')).toHaveCount(19, { timeout: 30_000 });
 
-  const file = JSON.parse(
-    await readFile(join(realData.projectDir, 'edits', 'boundaries.json'), 'utf8'),
-  ) as {
-    schema: string;
-    edits: { pile: string; epoch: string; ring: number[][]; volumes: { tin: Fcn } }[];
-  };
-  expect(file.schema).toBe('aio.boundaries/1');
-  expect(file.edits).toHaveLength(1);
-  expect(file.edits[0]).toMatchObject({ pile: 'P02', epoch: 'e2' });
-  const net = file.edits[0]?.volumes.tin.net ?? 0;
-  await expect(win.getByTestId('vol-net')).toHaveText(
-    `${Math.round(net).toLocaleString('en-US')} m³`,
-  );
+  // the copy is converted once and written; the real project never is
+  await expect
+    .poll(
+      async () =>
+        (
+          JSON.parse(
+            await readFile(join(realData.projectDir, 'survey', 'measurements.json'), 'utf8'),
+          ) as { kitPilesConverted?: string[] }
+        ).kitPilesConverted?.length ?? 0,
+      { timeout: 30_000 },
+    )
+    .toBe(19);
 
-  // The register carries the edit, and the CSV export says so.
-  await win.getByRole('button', { name: 'All piles', exact: true }).click();
-  await expect(rowNet(win, 'P02')).toHaveText(Math.round(net).toLocaleString('en-US'));
-  await expect(win.locator('tr[data-pile="P02"] .vol-ed')).toHaveCount(1);
-  const target = join(realData.base, 'register.csv');
+  const target = join(realData.base, 'volumes.csv');
   await app.evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
   }, target);
-  await win.getByRole('button', { name: 'CSV' }).click();
-  await expect.poll(() => existsSync(target)).toBe(true);
-  const csv = (await readFile(target, 'utf8')).trim().split('\n');
-  expect(csv).toHaveLength(20);
-  expect(csv[0]?.startsWith('pile,name,status,e1_date')).toBe(true);
-  expect(csv.find((l) => l.startsWith('P02,'))?.endsWith('edited 10 Jan 2021')).toBe(true);
-  // the real project is never written
-  expect(boundariesOf(MASAFI)).toBe(realBefore);
+  await view.getByTestId('volumes-csv').click();
+  await expect.poll(() => existsSync(target), { timeout: 30_000 }).toBe(true);
+  const csv = await readFile(target, 'utf8');
+  for (const p of vols.piles) expect(csv).toContain(p.name || p.id);
+  // a row per pile and survey date, each figure marked as carried from the kit
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim() !== '');
+  expect(lines[0]).toContain('From an earlier version');
+  expect(lines).toHaveLength(1 + 19 * 2);
+  expect(csv).toContain('2020-12-31');
+  expect(csv).toContain('2021-01-10');
+  expect(existsSync(realMeasurements) ? readFileSync(realMeasurements, 'utf8') : null).toBe(
+    realBefore,
+  );
+  expect(boundariesOf(MASAFI)).toBe(boundariesBefore);
 });
