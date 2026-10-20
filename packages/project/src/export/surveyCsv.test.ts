@@ -2,6 +2,7 @@ import {
   defaultSurveySettings,
   SiteCalibration,
   type ComparisonResult,
+  type SurveyMeasurement,
   type SurveySettings,
 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
@@ -16,6 +17,7 @@ import {
   stockpileInventory,
   surveyBasis,
   usableVolume,
+  volumeSeriesCsv,
   type CaptureRef,
   type MeasurementReport,
   type StockpileReport,
@@ -387,5 +389,75 @@ describe('the stockpile inventory CSV', () => {
     expect(total[head.indexOf('current_volume_m3')]).toBe('400');
     expect(total[head.indexOf('2026-02-28_volume_m3')]).toBe('310');
     expect(Number(total[head.indexOf('current_volume_yd³')])).toBeCloseTo(400 / 0.9144 ** 3, 6);
+  });
+});
+
+describe('the volume over time CSV', () => {
+  const caps = [
+    { id: 'c2', date: '2026-02-28', label: 'Survey 2' },
+    { id: 'c1', date: '2026-01-31', label: 'Survey 1' },
+    { id: 'c3', date: '2026-03-31', label: 'Survey 3' },
+  ];
+  const sm = (id: string, series: ComparisonResult[], folder?: string): SurveyMeasurement =>
+    ({
+      id,
+      label: `Pile ${id}`,
+      ...(folder ? { folder } : {}),
+      series,
+    }) as unknown as SurveyMeasurement;
+  const at = (net: number, toCapture: string, over: Partial<ComparisonResult> = {}) =>
+    result(net, { toCapture, ...over });
+  const rowsOf = (s: string) => lines(s).map((l) => l.split(','));
+  const { units, precision } = settings;
+
+  it('one row per measurement and date', () => {
+    const a = sm('a', [at(100, 'c1'), at(130, 'c2'), at(120, 'c3')], 'North');
+    const b = sm('b', [at(20, 'c1')]);
+    const out = rowsOf(volumeSeriesCsv([a, b], caps, units, precision));
+    expect(out[0]).toEqual([
+      'Measurement',
+      'Folder',
+      'Date',
+      'Survey',
+      'Volume (m³)',
+      'Change (m³)',
+      'Tonnage (t)',
+      'Status',
+      'From an earlier version',
+    ]);
+    expect(out).toHaveLength(7);
+    expect(out.slice(1, 4).map((r) => r[2])).toEqual(['2026-01-31', '2026-02-28', '2026-03-31']);
+    // the same answers as the survey package's `volumeRows` fixture: 100, 130, 120
+    expect(out.slice(1, 4).map((r) => r[4])).toEqual(['100', '130', '120']);
+    expect(out.slice(1, 4).map((r) => r[5])).toEqual(['', '30', '-10']);
+    expect(out[1]?.[1]).toBe('North');
+    expect(out[5]?.[7]).toBe('missing');
+  });
+
+  it('series CSV in the display units', () => {
+    const u = { ...units, volume: 'yd3' as const, mass: 'kg' as const };
+    const a = sm('a', [at(0.9144 ** 3 * 10, 'c1')]);
+    const out = rowsOf(volumeSeriesCsv([a], caps, u, precision, { densityOf: () => 2 }));
+    expect(out[0]?.slice(4, 7)).toEqual(['Volume (yd³)', 'Change (yd³)', 'Tonnage (kg)']);
+    expect(out[1]?.[4]).toBe('10');
+    expect(Number(out[1]?.[6])).toBeCloseTo(0.9144 ** 3 * 10 * 2 * 1000, 3);
+  });
+
+  it('a refused date has an empty volume and its status', () => {
+    const a = sm('a', [
+      at(100, 'c1'),
+      at(0, 'c2', { status: 'refused', reason: '23% outside the survey' }),
+      at(150, 'c3'),
+    ]);
+    const out = volumeSeriesCsv([a], caps, units, precision);
+    expect(lines(out)[2]).toBe('Pile a,,2026-02-28,Survey 2,,,,refused: 23% outside the survey,no');
+    expect(rowsOf(out)[3]?.[5]).toBe('50');
+  });
+
+  it('carried rows say yes in the last column', () => {
+    const carried = { from: 'kit' as const, base: 'smart', pile: 'p1', epoch: 'e1' };
+    const a = sm('a', [at(100, 'c1', { carried } as Partial<ComparisonResult>), at(90, 'c2')]);
+    const out = rowsOf(volumeSeriesCsv([a], caps, units, precision));
+    expect(out.slice(1, 3).map((r) => r[8])).toEqual(['yes', 'no']);
   });
 });

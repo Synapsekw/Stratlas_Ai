@@ -14,6 +14,7 @@ import type {
   MeasurementTool,
   SiteCalibration,
   SiteMaterial,
+  SurveyMeasurement,
   SurveyPrecision,
   SurveySettings,
   SurveyUnits,
@@ -667,5 +668,62 @@ export function stockpileCsv(data: SurveyReportData): string {
   };
   for (const t of inv.byMaterial) totalRow(t, 'material');
   totalRow(inv.total, 'total');
+  return csv(rows);
+}
+
+/**
+ * Volume over time: one row per measurement and survey date, in the site's display units. The row
+ * logic mirrors `volumeRows` in `@aio/survey` (this package cannot depend on it; a test pins the two
+ * to the same answers): net volume per date, the change since the previous date with a value, and
+ * tonnes when `opts.densityOf` gives a density. A refused or missing date has an empty volume and
+ * says why in Status; a figure carried over from an earlier version says yes in the last column.
+ */
+export function volumeSeriesCsv(
+  ms: readonly SurveyMeasurement[],
+  captures: readonly { id: string; date: string; label: string }[],
+  units: SurveyUnits,
+  precision: SurveyPrecision,
+  opts: { densityOf?(m: SurveyMeasurement): number | null } = {},
+): string {
+  const vu = unitLabel(units.volume);
+  const mu = unitLabel(units.mass);
+  const sorted = [...captures].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1,
+  );
+  const places = (v: number) => Number(v.toFixed(precision.volume));
+  const rows: (string | number | null)[][] = [
+    [
+      'Measurement',
+      'Folder',
+      'Date',
+      'Survey',
+      `Volume (${vu})`,
+      `Change (${vu})`,
+      `Tonnage (${mu})`,
+      'Status',
+      'From an earlier version',
+    ],
+  ];
+  for (const m of ms) {
+    const density = opts.densityOf?.(m) ?? null;
+    let prev: number | null = null;
+    for (const c of sorted) {
+      const r = m.series?.find((x) => x.toCapture === c.id);
+      const si = r !== undefined && r.status !== 'refused' ? r.netM3 : null;
+      const change = si !== null && prev !== null ? si - prev : null;
+      rows.push([
+        m.label,
+        m.folder ?? '',
+        c.date,
+        c.label,
+        si === null ? null : places(fromSI(si, 'volume', units.volume)),
+        change === null ? null : places(fromSI(change, 'volume', units.volume)),
+        si === null || density === null ? null : fromSI(si * density * 1000, 'mass', units.mass),
+        r ? (r.reason ? `${r.status}: ${r.reason}` : r.status) : 'missing',
+        r?.carried ? 'yes' : 'no',
+      ]);
+      if (si !== null) prev = si;
+    }
+  }
   return csv(rows);
 }
