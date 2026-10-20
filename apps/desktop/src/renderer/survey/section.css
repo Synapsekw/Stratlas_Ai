@@ -30,68 +30,17 @@
 .sec-main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-3);
   min-width: 0;
 }
-.sec-chart {
-  position: relative;
-  height: 220px;
-  min-width: 0;
-  cursor: crosshair;
-}
-.sec-body.big .sec-chart {
-  height: min(62vh, 640px);
-}
-.sec-chart svg {
-  display: block;
-}
-.sec-grid line {
-  stroke: var(--line-soft);
-  stroke-width: 1;
-}
-.sec-grid text {
-  fill: var(--fg-2);
-  font: 10px var(--f-mono);
-}
-.sec-fill {
-  fill: #2166ac;
-  fill-opacity: 0.35;
-}
-.sec-cut {
-  fill: #b2182b;
-  fill-opacity: 0.35;
-}
-.sec-pin {
-  stroke: var(--fg-0);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-}
-.sec-shade-note {
-  position: absolute;
-  right: 20px;
-  top: 14px;
-  margin: 0;
-  padding: 2px 6px;
-  border-radius: var(--r-4);
-  background: var(--bg-1);
+/* the chart is the shared profile chart (charts/charts.css); the window gives it more room */
+.sec-body.big .pc-plot {
+  block-size: min(62vh, 640px);
 }
 .sec-empty {
   display: grid;
   place-items: center;
   height: 220px;
-}
-.sec-surfaces {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.sec-swatch {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  flex: none;
-  border-radius: 2px;
-  border: 1px solid var(--line-strong);
 }
 .sec-pin-table caption {
   display: flex;
@@ -103,13 +52,13 @@
   text-align: left;
   font-weight: 500;
 }
-.sec-pin-table th .btn.on {
-  color: var(--acc);
+.sec-pin-table th .pc-swatch {
+  display: inline-block;
+  margin-inline-end: var(--sp-2);
+  vertical-align: middle;
 }
-.sec-download {
-  display: flex;
-  gap: 6px;
-  align-items: center;
+.sec-pin-table tr[data-reference] th {
+  color: var(--fg-0);
 }
 .sec-stations {
   display: grid;

@@ -1,10 +1,11 @@
 /**
  * The cross-section dock (M11 G5, SRV-7): docked under the view whenever a **Section** measurement
- * is focused (or a station of the active alignment is shown). One coloured line per surface, pins
- * with each surface's elevation, its delta to the reference surface and the grade in degrees,
- * percent and 1:n; vertical exaggeration 1:1 to 1:20; cut and fill shading between two lines;
- * **Enable cutaway** cuts the 3D view along the section; **Download** as DXF or CSV through the
- * `survey.section` job; the larger window (`SectionWindow`) shows the same section.
+ * is focused (or a station of the active alignment is shown). The shared profile chart (W1): the
+ * current survey with other dates and designs added as chips, each styled by its kind; pins with
+ * each surface's elevation, its delta to the "Shade vs" target and the grade; vertical
+ * exaggeration 1 to 20; cut and fill shaded against the target; **Enable cutaway** cuts the 3D
+ * view along the section; PNG, DXF…, CSV and Add to report under the chart; the larger window
+ * (`SectionWindow`) shows the same section.
  */
 import type { EngineStage } from '@aio/engine';
 import { cutawayPlane } from '@aio/survey';
@@ -35,7 +36,13 @@ function useFollowMeasurement(): void {
       const line = (s.editing && s.focus === m.id ? s.editing.points : m.points).map(
         (p) => [p[0], p[1]] as [number, number],
       );
-      openSection(line, { kind: 'measurement', id: m.id, label: m.label });
+      openSection(line, {
+        kind: 'measurement',
+        id: m.id,
+        label: m.label,
+        // a survey-scoped section is viewed on its own survey, a site-wide one on the latest
+        ...(m.scope.kind === 'survey' ? { capture: m.scope.capture } : {}),
+      });
     };
     follow();
     return measureStore.subscribe((s, prev) => {

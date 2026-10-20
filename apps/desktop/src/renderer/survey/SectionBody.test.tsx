@@ -1,0 +1,115 @@
+// @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./sectionEngine', () => ({
+  sectionEngine: () => ({
+    section: vi.fn(),
+    pin: vi.fn(),
+    setSources: vi.fn(() => Promise.resolve()),
+  }),
+}));
+vi.mock('../shell', () => ({ bridge: { call: vi.fn() } }));
+const report = vi.hoisted(() => ({ addToReport: vi.fn(() => Promise.resolve('added')) }));
+vi.mock('../report/templateStore', () => report);
+
+const { SectionBody } = await import('./SectionBody');
+const { sectionStore } = await import('./sectionStore');
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let root: Root | undefined;
+let host: HTMLDivElement;
+
+beforeEach(() => {
+  host = document.createElement('div');
+  document.body.append(host);
+  sectionStore.setState({
+    choices: [
+      {
+        key: 'survey:a',
+        ref: { kind: 'survey', surface: 'a' },
+        label: 'Survey A',
+        kind: 'survey',
+      },
+    ],
+    selected: ['survey:a'],
+    hidden: [],
+    shadeVs: null,
+    source: { kind: 'measurement', id: 'm1', label: 'Section 1' },
+    line: [
+      [0, 0],
+      [10, 0],
+    ],
+    result: {
+      stepM: 5,
+      length: 10,
+      chainage: [0, 5, 10],
+      e: [0, 5, 10],
+      n: [0, 0, 0],
+      profiles: [{ surface: 'survey:a', label: 'Survey A', chainage: [0, 5, 10], z: [1, 2, 3] }],
+      missing: [],
+    },
+    pins: [],
+    exaggeration: 5,
+  });
+});
+
+afterEach(() => {
+  act(() => root?.unmount());
+  root = undefined;
+  document.body.innerHTML = '';
+});
+
+function mount() {
+  root = createRoot(host);
+  act(() => root?.render(<SectionBody />));
+}
+
+const actionLabels = () =>
+  Array.from(host.querySelectorAll('.pc-actions button')).map((b) => b.textContent.trim());
+
+describe('the section body on the profile chart', () => {
+  it('toolbar has PNG, DXF, CSV and Add to report only', () => {
+    mount();
+    expect(actionLabels()).toEqual(['PNG', 'DXF…', 'CSV', 'Add to report']);
+    // the five DXF buttons and the format select are gone
+    expect(host.querySelector('[data-testid="section-format"]')).toBeNull();
+    // the chart carries the measurement, so the registry's PNG export finds it
+    expect(host.querySelector('[data-measure-id="m1"] svg.pc-svg')).not.toBeNull();
+  });
+
+  it('DXF opens the dialog with five variants', () => {
+    mount();
+    const dxf = Array.from(host.querySelectorAll<HTMLButtonElement>('.pc-actions button')).find(
+      (b) => b.textContent.trim() === 'DXF…',
+    );
+    act(() => dxf?.click());
+    const dialog = document.querySelector('[data-testid="export-format-dialog"]');
+    expect(dialog).not.toBeNull();
+    const radios = dialog?.querySelectorAll('input[type="radio"]') ?? [];
+    expect(radios.length).toBe(5);
+    expect(dialog?.textContent).not.toContain('CSV');
+  });
+
+  it('exaggeration slider still 1 to 20', () => {
+    mount();
+    const slider = host.querySelector<HTMLInputElement>('[data-testid="section-exaggeration"]');
+    expect(slider?.min).toBe('1');
+    expect(slider?.max).toBe('20');
+    expect(slider?.value).toBe('5');
+  });
+
+  it('Add to report adds the section measurement', async () => {
+    mount();
+    const add = Array.from(host.querySelectorAll<HTMLButtonElement>('.pc-actions button')).find(
+      (b) => b.textContent.trim() === 'Add to report',
+    );
+    await act(async () => {
+      add?.click();
+      await Promise.resolve();
+    });
+    expect(report.addToReport).toHaveBeenCalledWith('m1');
+  });
+});

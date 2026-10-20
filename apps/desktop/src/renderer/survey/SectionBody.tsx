@@ -1,29 +1,39 @@
 /**
- * The cross-section's chart, surfaces, pins and controls (M11 G5), shown in the dock and in the
- * large window: surfaces to sample, vertical exaggeration, cut and fill shading, the cutaway,
- * sections at the active alignment's stations, pins with elevation, delta and grade, and
- * **Download** as DXF or CSV.
+ * The cross-section on the shared profile chart (M11 G5; volumetric parity W1), shown in the dock
+ * and in the large window: the surfaces as chips (the current survey on by default, any other
+ * survey date or design surface added), "Shade vs" one of the shown surfaces, vertical
+ * exaggeration, the cutaway, sections at the active alignment's stations, pins with elevation,
+ * delta to the shade target and grade, and under the chart PNG, DXF…, CSV and Add to report.
  */
 import { formatQuantity } from '@aio/geo';
-import type { Grade } from '@aio/survey';
-import { Icon } from '@aio/ui';
-import { useMemo, useState } from 'react';
+import { seriesStyle, type ChartSeries, type Grade } from '@aio/survey';
+import { Icon, t, useT } from '@aio/ui';
+import { useWorkspace } from '@aio/workspace';
+import { useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ExportFormatDialog, type ExportChoice } from '../charts/ExportFormatDialog';
+import { ProfileChart, ShadeVs, SurfaceChips, type ChipOption } from '../charts';
+import { addToReport } from '../report/templateStore';
 import { useDesigns } from './designsStore';
 import { useMeasure } from './measureStore';
-import { SectionChart, type ChartLine } from './SectionChart';
 import {
   addPin,
-  colourOf,
+  addSurface,
+  currentKey,
+  DXF_FORMATS,
   exportSection,
+  exportSectionCsv,
+  exportSectionPng,
   FORMAT_LABELS,
   leaveStations,
   removePin,
+  removeSurface,
+  sectionSeries,
   setCutaway,
   setExaggeration,
-  setReference,
-  setShade,
+  setShadeVs,
   showStation,
-  toggleSurface,
+  toggleShown,
   useSection,
   type SectionFormat,
 } from './sectionStore';
@@ -35,58 +45,163 @@ export function gradeText(g: Grade | null): string {
   return `${g.degrees.toFixed(2)}° · ${g.percent.toFixed(2)}% · 1:${g.oneIn.toFixed(2)}`;
 }
 
+const DXF_CHOICES: ExportChoice<SectionFormat>[] = DXF_FORMATS.map((format) => ({
+  format,
+  label: FORMAT_LABELS[format],
+  group: 'DXF',
+}));
+
+/** A short line sample in a series' stroke, the chips' legend look, for the pin tables. */
+function LineKey({ series, all }: { series: ChartSeries; all: readonly ChartSeries[] }) {
+  const st = seriesStyle(series, all);
+  return (
+    <svg className="pc-swatch" viewBox="0 0 16 8" aria-hidden="true">
+      <line
+        x1={1}
+        x2={15}
+        y1={4}
+        y2={4}
+        stroke={st.stroke}
+        strokeWidth={st.width + 0.5}
+        strokeOpacity={st.opacity}
+        strokeDasharray={st.dash || undefined}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** The section's chart, surfaces, pins and controls (in the dock and in the window). */
 export function SectionBody({ big = false }: { big?: boolean }) {
+  const tr = useT();
   const s = useSection((x) => x);
   const settings = useMeasure((m) => m.settings);
-  // a package (player mode) shows its sections; writing one out runs a pipeline, which it never does
+  // a package (player mode) shows its sections; writing a DXF runs a pipeline, which it never does
   const readOnly = useMeasure((m) => m.readOnly);
+  const manifest = useWorkspace((w) => w.project?.manifest ?? null);
   const activeAlignment = useDesigns((d) => d.active);
-  const [format, setFormat] = useState<SectionFormat>('dxf-2d-xz');
-  const lines: ChartLine[] = useMemo(() => {
-    const out: ChartLine[] = [];
-    s.selected.forEach((key, i) => {
-      const p = s.result?.profiles.find((x) => x.surface === key);
-      const c = s.choices.find((x) => x.key === key);
-      if (p) out.push({ key, label: c?.label ?? p.label, colour: colourOf(i), z: p.z });
-    });
-    return out;
-  }, [s.selected, s.result, s.choices]);
+  const root = useRef<HTMLDivElement>(null);
+  const [dxfOpen, setDxfOpen] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
+
+  const current = currentKey(s.choices, s.source, manifest);
+  const { choices, selected, result, source } = s;
+  const all = useMemo(
+    () => sectionSeries({ choices, selected, result, source }, manifest),
+    [choices, selected, result, source, manifest],
+  );
+  const hidden = useMemo(() => new Set(s.hidden), [s.hidden]);
+  const visible = useMemo(() => all.filter((x) => !hidden.has(x.key)), [all, hidden]);
+  const currentShown = visible.some((x) => x.kind === 'current');
+  const shadeTargets = currentShown
+    ? visible.filter((x) => x.kind !== 'current').map((x) => ({ key: x.key, label: x.label }))
+    : [];
+
+  const chip = (key: string): ChipOption | null => {
+    const c = s.choices.find((x) => x.key === key);
+    if (!c) return null;
+    return {
+      key,
+      label: c.label,
+      kind: key === current ? 'current' : c.kind === 'design' ? 'design' : 'earlier',
+      group: c.kind,
+      ...(c.date ? { date: c.date } : {}),
+    };
+  };
+  const shown = s.selected.flatMap((k) => chip(k) ?? []);
+  const addable = s.choices.flatMap((c) => (s.selected.includes(c.key) ? [] : (chip(c.key) ?? [])));
+
+  // pins draw and list the shown surfaces only
+  const pins = useMemo(
+    () => s.pins.map((p) => ({ ...p, values: p.values.filter((v) => !hidden.has(v.key)) })),
+    [s.pins, hidden],
+  );
+
   const d = (v: number) => formatQuantity(v, 'distance', settings.units, settings.precision);
-  const label = (key: string) => s.choices.find((c) => c.key === key)?.label ?? key;
+  const signed = (v: number) => `${v > 0 && d(v) !== d(0) ? '+' : ''}${d(v)}`;
+  const measureId = s.source?.kind === 'measurement' ? s.source.id : undefined;
+  const busy = s.exporting?.busy === true;
+  const note = said ?? s.exporting?.note ?? null;
+  const svg = () => root.current?.querySelector<SVGSVGElement>('svg.pc-svg') ?? null;
+  const reportBlocked = readOnly
+    ? t('actions.reason.package')
+    : !measureId
+      ? 'Save the section as a measurement to add it to the report.'
+      : false;
+
+  const actions = (
+    <>
+      <button
+        type="button"
+        className="btn sm"
+        data-testid="section-png"
+        disabled={!visible.length || busy}
+        onClick={() => {
+          setSaid(null);
+          const el = svg();
+          if (el) void exportSectionPng(el);
+        }}
+      >
+        <Icon name="download" size={12} /> {tr('chart.png')}
+      </button>
+      <button
+        type="button"
+        className="btn sm"
+        data-testid="section-dxf"
+        aria-haspopup="dialog"
+        disabled={readOnly || !s.result || busy}
+        title={readOnly ? t('actions.reason.package') : undefined}
+        onClick={() => {
+          setSaid(null);
+          setDxfOpen(true);
+        }}
+      >
+        <Icon name="download" size={12} /> {`${tr('chart.dxf')}…`}
+      </button>
+      <button
+        type="button"
+        className="btn sm"
+        data-testid="section-csv"
+        disabled={!visible.length || busy}
+        onClick={() => {
+          setSaid(null);
+          void exportSectionCsv(visible, settings.units, settings.precision);
+        }}
+      >
+        <Icon name="download" size={12} /> {tr('chart.csv')}
+      </button>
+      <button
+        type="button"
+        className="btn sm"
+        data-testid="section-add-to-report"
+        disabled={reportBlocked !== false}
+        title={reportBlocked || undefined}
+        onClick={() => {
+          if (!measureId) return;
+          void addToReport(measureId).then(
+            (r) => {
+              setSaid(t(r === 'added' ? 'report.added' : 'report.already'));
+            },
+            (e: unknown) => {
+              setSaid(e instanceof Error ? e.message : String(e));
+            },
+          );
+        }}
+      >
+        <Icon name="report" size={12} /> {tr('chart.addToReport')}
+      </button>
+    </>
+  );
+
   return (
-    <div className={`sec-body${big ? ' big' : ''}`}>
+    <div ref={root} className={`sec-body${big ? ' big' : ''}`} data-measure-id={measureId}>
       <div className="sec-side">
-        <span className="pop-title">Surfaces</span>
         {s.sourcesError && <p className="small danger">{s.sourcesError}</p>}
         {!s.choices.length && !s.sourcesError && (
           <p className="small faint">
             No prepared surfaces or design surfaces yet: prepare the surveys first.
           </p>
         )}
-        <ul className="sec-surfaces">
-          {s.choices.map((c) => {
-            const i = s.selected.indexOf(c.key);
-            return (
-              <li key={c.key}>
-                <label className="pop-row" data-testid={`section-surface-${c.key}`}>
-                  <input
-                    type="checkbox"
-                    checked={i >= 0}
-                    onChange={() => {
-                      toggleSurface(c.key);
-                    }}
-                  />
-                  <span
-                    className="sec-swatch"
-                    style={{ background: i >= 0 ? colourOf(i) : 'transparent' }}
-                  />
-                  <span className="pop-grow">{c.label}</span>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
         {s.result?.missing.map((m) => (
           <p key={m.key} className="small danger">
             {m.label}: {m.reason}
@@ -106,30 +221,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
               setExaggeration(Number(e.target.value));
             }}
           />
-          <span className="mono">1:{s.exaggeration}</span>
-        </label>
-        <label className="pop-row">
-          <span>Shade</span>
-          <select
-            className="sv-input"
-            data-testid="section-shade"
-            value={s.shade ? `${s.shade.from}|${s.shade.to}` : ''}
-            onChange={(e) => {
-              const [from, to] = e.target.value.split('|');
-              setShade(from && to ? { from, to } : null);
-            }}
-          >
-            <option value="">No cut and fill</option>
-            {s.selected.flatMap((a) =>
-              s.selected
-                .filter((b) => b !== a)
-                .map((b) => (
-                  <option key={`${a}|${b}`} value={`${a}|${b}`}>
-                    {label(a)} to {label(b)}
-                  </option>
-                )),
-            )}
-          </select>
+          <span className="mono">{`${String(s.exaggeration)}:1`}</span>
         </label>
         <label className="pop-row">
           <span className="pop-grow">Enable cutaway</span>
@@ -145,27 +237,49 @@ export function SectionBody({ big = false }: { big?: boolean }) {
         {activeAlignment && <StationControls />}
       </div>
       <div className="sec-main">
+        <div className="pc-head">
+          <SurfaceChips
+            shown={shown}
+            off={hidden}
+            addable={addable}
+            onToggle={toggleShown}
+            onAdd={(key) => {
+              const c = s.choices.find((x) => x.key === key);
+              if (c) addSurface(c.ref);
+            }}
+            onRemove={removeSurface}
+            testId="section-chips"
+          />
+          <ShadeVs targets={shadeTargets} value={s.shadeVs} onChange={setShadeVs} />
+        </div>
         {s.error && (
           <p className="notice danger small" role="alert">
             <Icon name="warn" size={14} /> {s.error}
           </p>
         )}
-        {s.result ? (
-          <SectionChart
-            result={s.result}
-            lines={lines}
-            pins={s.pins}
+        {s.result && visible.length ? (
+          <ProfileChart
+            series={visible}
+            shadeVs={s.shadeVs}
             exaggeration={s.exaggeration}
-            shade={s.shade}
-            settings={settings}
+            ends={{ a: 'A', b: 'B' }}
+            units={settings.units}
+            precision={settings.precision}
+            {...(settings.angles ? { angles: settings.angles } : {})}
+            pins={pins}
             onPin={(c) => {
               void addPin(c);
             }}
             testId={big ? 'section-window-chart' : 'section-chart'}
+            actions={actions}
           />
         ) : (
           <p className="small faint sec-empty">
-            {s.busy ? 'Sampling the surfaces…' : 'Pick a surface.'}
+            {s.busy
+              ? 'Sampling the surfaces…'
+              : s.selected.length
+                ? 'Switch a surface on to draw it.'
+                : 'Add a survey or design to draw the section.'}
           </p>
         )}
         <p className="small faint">
@@ -176,8 +290,8 @@ export function SectionBody({ big = false }: { big?: boolean }) {
       </div>
       <div className="sec-pins">
         <span className="pop-title">Pins</span>
-        {!s.pins.length && <p className="small faint">Click the chart to add a pin.</p>}
-        {s.pins.map((p, i) => (
+        {!pins.length && <p className="small faint">Click the chart to add a pin.</p>}
+        {pins.map((p, i) => (
           <table
             key={`${String(p.chainage)}-${String(i)}`}
             className="sv-readout sec-pin-table"
@@ -197,74 +311,60 @@ export function SectionBody({ big = false }: { big?: boolean }) {
               </button>
             </caption>
             <tbody>
-              {p.values.map((v, k) => (
-                <tr key={v.key}>
-                  <th scope="row">
-                    <span className="sec-swatch" style={{ background: colourOf(k) }} />
-                    <button
-                      type="button"
-                      className={`btn ghost sm${k === p.reference ? ' on' : ''}`}
-                      title="Take deltas from this surface"
-                      aria-pressed={k === p.reference}
-                      onClick={() => {
-                        setReference(k);
-                      }}
-                    >
-                      {v.label}
-                    </button>
-                  </th>
-                  <td className="mono" data-testid="section-pin-z">
-                    {v.z === null ? 'no data' : d(v.z)}
-                  </td>
-                  <td className="mono" data-testid="section-pin-delta">
-                    {v.delta === null || k === p.reference
-                      ? ''
-                      : `Δ ${v.delta >= 0 ? '+' : ''}${d(v.delta)}`}
-                  </td>
-                  <td className="mono small" data-testid="section-pin-grade">
-                    {gradeText(v.grade)}
-                  </td>
-                </tr>
-              ))}
+              {p.values.map((v) => {
+                const series = visible.find((x) => x.key === v.key);
+                const isRef = s.shadeVs === null || v.key === s.shadeVs;
+                return (
+                  <tr key={v.key} data-reference={v.key === s.shadeVs ? '' : undefined}>
+                    <th scope="row">
+                      {series && <LineKey series={series} all={visible} />}
+                      <span>{series?.label ?? v.label}</span>
+                    </th>
+                    <td className="mono" data-testid="section-pin-z">
+                      {v.z === null ? 'no data' : d(v.z)}
+                    </td>
+                    <td className="mono" data-testid="section-pin-delta">
+                      {v.delta === null || isRef ? '' : `Δ ${signed(v.delta)}`}
+                    </td>
+                    <td className="mono small" data-testid="section-pin-grade">
+                      {gradeText(v.grade)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ))}
-        {!readOnly && (
-          <div className="sec-download">
-            <select
-              className="sv-input"
-              aria-label="Download format"
-              data-testid="section-format"
-              value={format}
-              onChange={(e) => {
-                setFormat(e.target.value as SectionFormat);
-              }}
-            >
-              {(Object.keys(FORMAT_LABELS) as SectionFormat[]).map((f) => (
-                <option key={f} value={f}>
-                  {FORMAT_LABELS[f]}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="btn sm"
-              data-testid="section-download"
-              disabled={!s.result || s.exporting?.busy === true}
-              onClick={() => {
-                void exportSection(format);
-              }}
-            >
-              <Icon name="download" size={12} /> Download
-            </button>
-          </div>
+        {pins.length > 0 && (
+          <p className="small faint">
+            {s.shadeVs === null
+              ? 'Pick a surface under Shade vs to see each line’s difference from it.'
+              : `Δ from ${all.find((x) => x.key === s.shadeVs)?.label ?? ''}.`}
+          </p>
         )}
-        {s.exporting?.note && (
+        {note && (
           <p className="small faint" data-testid="section-export-note" role="status">
-            {s.exporting.note}
+            {note}
           </p>
         )}
       </div>
+      {/* on the body: the dock is transformed, which would hold a fixed scrim inside it */}
+      {dxfOpen &&
+        createPortal(
+          <ExportFormatDialog
+            title="Export the cross-section"
+            choices={DXF_CHOICES}
+            initial="dxf-2d-xz"
+            onExport={(f) => {
+              setDxfOpen(false);
+              void exportSection(f);
+            }}
+            onClose={() => {
+              setDxfOpen(false);
+            }}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

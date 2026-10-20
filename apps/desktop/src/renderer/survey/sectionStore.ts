@@ -1,15 +1,26 @@
 /**
- * Cross-sections in the renderer (M11 G5, SRV-7): the section on show (the focused **Section**
- * measurement's line, or a station of the active alignment), the surfaces it samples (every
- * prepared survey surface and design surface layer of the site, up to 20), the profiles and pins
- * from the section worker, the chart's exaggeration and shading, and **Download** as DXF or CSV
- * through the `survey.section` job.
+ * Cross-sections in the renderer (M11 G5, SRV-7; volumetric parity W1): the section on show (the
+ * focused **Section** measurement's line, or a station of the active alignment), the surfaces on
+ * its chart (the current survey by default; any other survey date or design surface added as a
+ * chip, up to 20 to pick from), the profiles and pins from the section worker, the chart's
+ * exaggeration and "Shade vs" target, and the files: PNG and CSV written in the app, DXF through
+ * the `survey.section` job.
  */
-import type { AioBridge, DesignsFile, HeightTiles, IpcResponse, JobRecord } from '@aio/schema';
+import type {
+  AioBridge,
+  DesignsFile,
+  HeightTiles,
+  IpcResponse,
+  JobRecord,
+  ProjectManifest,
+  SurveyPrecision,
+  SurveyUnits,
+} from '@aio/schema';
 import {
   alignmentSections,
   clampExaggeration,
   surfaceKey,
+  type ChartSeries,
   type Pin,
   type SectionRef,
   type StationSection,
@@ -17,36 +28,36 @@ import {
 import { assetUrl, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { chartPng, savePng, seriesCsv } from '../charts/exportChart';
 import { bridge } from '../shell';
 import { designs } from './designsStore';
 import { sectionEngine, type SectionResult } from './sectionEngine';
-
-export const SECTION_COLOURS = [
-  '#4cc9f0',
-  '#f72585',
-  '#ffd166',
-  '#06d6a0',
-  '#f77f00',
-  '#b388ff',
-  '#90be6d',
-  '#ff6b6b',
-  '#48bfe3',
-  '#e9c46a',
-];
 
 export interface SectionChoice {
   key: string;
   ref: SectionRef;
   label: string;
   kind: 'survey' | 'design';
+  /** The survey date the surface was made from (surveys only). */
+  capture?: string;
+  /** That date (ISO), so earlier dates shade by age. */
+  date?: string;
 }
 
 export type SectionSource =
-  { kind: 'measurement'; id: string; label: string } | { kind: 'station'; label: string };
+  | {
+      kind: 'measurement';
+      id: string;
+      label: string;
+      /** The survey the measurement is scoped to (absent: site-wide, viewed on the latest). */
+      capture?: string;
+    }
+  | { kind: 'station'; label: string };
 
 export type SectionFormat =
   'dxf-2d-xy' | 'dxf-2d-xz' | 'dxf-2d-yz' | 'dxf-3d-zup' | 'dxf-3d-yup' | 'csv';
 
+/** The `survey.section` formats, named for the export dialog. */
 export const FORMAT_LABELS: Record<SectionFormat, string> = {
   'dxf-2d-xz': 'DXF 2D (XZ plane)',
   'dxf-2d-xy': 'DXF 2D (XY plane)',
@@ -55,6 +66,15 @@ export const FORMAT_LABELS: Record<SectionFormat, string> = {
   'dxf-3d-yup': 'DXF 3D (Y up)',
   csv: 'CSV',
 };
+
+/** The DXF variants the export dialog offers (CSV has its own button under the chart). */
+export const DXF_FORMATS: readonly SectionFormat[] = [
+  'dxf-2d-xz',
+  'dxf-2d-xy',
+  'dxf-2d-yz',
+  'dxf-3d-zup',
+  'dxf-3d-yup',
+];
 
 export interface StationMode {
   intervalM: number;
@@ -70,25 +90,28 @@ export interface SectionState {
   sourcesError: string | null;
   source: SectionSource | null;
   line: [number, number][] | null;
-  /** Keys of the sampled surfaces, in the order shown. */
+  /** Keys of the surfaces on the chart (its chips, all sampled), in the order listed. */
   selected: string[];
+  /** Keys of chips switched off: still sampled, not drawn. */
+  hidden: string[];
   result: SectionResult | null;
   busy: boolean;
   error: string | null;
   /** Pin chainages and their values. */
   pins: Pin[];
-  /** Index (in `selected`) of the surface deltas are taken from. */
-  reference: number;
   exaggeration: number;
-  /** Shade cut and fill between two lines (`to - from`). */
-  shade: { from: string; to: string } | null;
+  /**
+   * The shown surface the current survey's cut and fill is shaded against, and the pins' deltas
+   * are taken from (null: none, deltas from the current survey).
+   */
+  shadeVs: string | null;
   cutaway: boolean;
   /** The large window (the pop-out) is open. */
   window: boolean;
   /** The dock was closed for this source; it opens again for another. */
   dismissed: string | null;
   stations: StationMode | null;
-  exporting: { format: SectionFormat; note: string | null; busy: boolean } | null;
+  exporting: { format: SectionFormat | 'png'; note: string | null; busy: boolean } | null;
 }
 
 const initial = (): SectionState => ({
@@ -98,13 +121,13 @@ const initial = (): SectionState => ({
   source: null,
   line: null,
   selected: [],
+  hidden: [],
   result: null,
   busy: false,
   error: null,
   pins: [],
-  reference: 0,
   exaggeration: 5,
-  shade: null,
+  shadeVs: null,
   cutaway: false,
   window: false,
   dismissed: null,
@@ -126,23 +149,101 @@ const set = (p: Partial<SectionState>) => {
 const sourceId = (s: SectionSource | null) =>
   !s ? '' : s.kind === 'measurement' ? `m:${s.id}` : `s:${s.label}`;
 
+const manifestNow = (): ProjectManifest | null => workspace.getState().project?.manifest ?? null;
+
 /** The refs of the selected surfaces. */
 export function selectedRefs(s: Pick<SectionState, 'choices' | 'selected'>): SectionRef[] {
   return s.selected.flatMap((k) => s.choices.find((c) => c.key === k)?.ref ?? []);
 }
 
-export function colourOf(i: number): string {
-  return SECTION_COLOURS[i % SECTION_COLOURS.length] ?? '#ffffff';
+/** The survey a section is viewed on: its measurement's own, else the latest date. */
+function viewedCapture(
+  source: SectionSource | null,
+  manifest: ProjectManifest | null,
+): string | null {
+  if (source?.kind === 'measurement' && source.capture) return source.capture;
+  let latest: { id: string; date: string } | null = null;
+  for (const c of manifest?.captures ?? []) if (!latest || c.date >= latest.date) latest = c;
+  return latest?.id ?? null;
 }
+
+/**
+ * The key of the section's current survey: the first surface of the survey it is viewed on, else
+ * the surface of the latest date there is one for, else the first survey surface; null without
+ * survey surfaces.
+ */
+export function currentKey(
+  choices: readonly SectionChoice[],
+  source: SectionSource | null,
+  manifest: ProjectManifest | null,
+): string | null {
+  const surveys = choices.filter((c) => c.kind === 'survey');
+  const viewed = viewedCapture(source, manifest);
+  const own = surveys.find((c) => viewed !== null && c.capture === viewed);
+  if (own) return own.key;
+  let latest: SectionChoice | null = null;
+  for (const c of surveys) if (c.date && (!latest?.date || c.date >= latest.date)) latest = c;
+  return (latest ?? surveys[0])?.key ?? null;
+}
+
+/**
+ * The chart's series, one per sampled profile in the order listed, each kind from its surface
+ * (never from its place): the current survey `current`, other survey dates `earlier`, design
+ * surfaces `design`. A section samples no pile base, so it draws no `base` series.
+ */
+export function sectionSeries(
+  s: Pick<SectionState, 'choices' | 'selected' | 'result' | 'source'>,
+  manifest: ProjectManifest | null,
+): ChartSeries[] {
+  const current = currentKey(s.choices, s.source, manifest);
+  const out: ChartSeries[] = [];
+  for (const key of s.selected) {
+    const p = s.result?.profiles.find((x) => x.surface === key);
+    if (!p) continue;
+    const c = s.choices.find((x) => x.key === key);
+    out.push({
+      key,
+      label: c?.label ?? p.label,
+      kind: key === current ? 'current' : c?.kind === 'design' ? 'design' : 'earlier',
+      ...(c?.capture ? { capture: c.capture } : {}),
+      ...(c?.date ? { date: c.date } : {}),
+      chainage: p.chainage,
+      z: p.z,
+    });
+  }
+  return out;
+}
+
+/** Index (in `selected`, the sampled order) of the surface pins take their deltas from. */
+function referenceOf(s: SectionState): number {
+  const key = s.shadeVs ?? currentKey(s.choices, s.source, manifestNow());
+  return Math.max(0, key === null ? 0 : s.selected.indexOf(key));
+}
+
+/** `keys` in the order the surfaces are listed. */
+const inListOrder = (s: Pick<SectionState, 'choices'>, keys: readonly string[]) =>
+  s.choices.map((c) => c.key).filter((k) => keys.includes(k));
 
 // ------------------------------------------------------------------------------- the surfaces
 
-function choicesOf(surfaces: HeightTiles[], file: DesignsFile | null): SectionChoice[] {
+function choicesOf(
+  surfaces: HeightTiles[],
+  file: DesignsFile | null,
+  manifest: ProjectManifest | null,
+): SectionChoice[] {
   const out: SectionChoice[] = [];
   for (const s of surfaces) {
     if (s.source.kind === 'design') continue;
     const ref: SectionRef = { kind: 'survey', surface: s.id };
-    out.push({ key: surfaceKey(ref), ref, label: s.name, kind: 'survey' });
+    const date = manifest?.captures.find((c) => c.id === s.capture)?.date;
+    out.push({
+      key: surfaceKey(ref),
+      ref,
+      label: s.name,
+      kind: 'survey',
+      ...(s.capture ? { capture: s.capture } : {}),
+      ...(date ? { date } : {}),
+    });
   }
   for (const d of file?.designs ?? [])
     for (const l of d.layers) {
@@ -171,7 +272,7 @@ export async function loadSectionSources(projectId: string): Promise<void> {
   const dfile: DesignsFile | null =
     df.ok && df.value.ok ? df.value.file : (designs.getState().file ?? null);
   const surfaces = sf.value.surfaces;
-  const choices = choicesOf(surfaces, dfile);
+  const choices = choicesOf(surfaces, dfile, project.manifest);
   const captures = [...project.manifest.captures]
     .sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? -1 : 1))
     .map((c) => c.id);
@@ -181,11 +282,17 @@ export async function loadSectionSources(projectId: string): Promise<void> {
     designs: dfile?.designs ?? [],
     captures,
   });
-  const keep = get().selected.filter((k) => choices.some((c) => c.key === k));
+  const s = get();
+  const keep = s.selected.filter((k) => choices.some((c) => c.key === k));
+  // the current survey is on the chart by default; the others are added as chips
+  const current = currentKey(choices, s.source, project.manifest);
+  const selected = current && !keep.includes(current) ? [...keep, current] : keep;
   set({
     choices,
     sourcesError: null,
-    selected: keep.length ? keep : choices.map((c) => c.key),
+    selected: inListOrder({ choices }, selected),
+    hidden: s.hidden.filter((k) => keep.includes(k) && k !== current),
+    shadeVs: s.shadeVs !== null && keep.includes(s.shadeVs) ? s.shadeVs : null,
   });
   if (get().line) await recompute();
 }
@@ -209,10 +316,9 @@ export async function recompute(): Promise<void> {
     const line = s.line;
     const result = await sectionEngine().section({ line, refs });
     if (my !== seq) return;
+    const reference = referenceOf(get());
     const pins = await Promise.all(
-      get().pins.map((p) =>
-        sectionEngine().pin({ line, refs, chainage: p.chainage, reference: get().reference }),
-      ),
+      get().pins.map((p) => sectionEngine().pin({ line, refs, chainage: p.chainage, reference })),
     );
     if (my !== seq) return;
     set({ result, pins, busy: false });
@@ -222,17 +328,50 @@ export async function recompute(): Promise<void> {
   }
 }
 
-/** Show a section along a line (E, N). */
-export function openSection(line: [number, number][], source: SectionSource): void {
-  const same = sourceId(source) === sourceId(get().source);
-  const sameLine = JSON.stringify(line) === JSON.stringify(get().line);
+/** Pin values again (deltas from the new reference) without sampling the section again. */
+async function repin(): Promise<void> {
+  const s = get();
+  if (!s.line || !s.pins.length) return;
+  const refs = selectedRefs(s);
+  if (!refs.length) return;
+  const line = s.line;
+  const reference = referenceOf(s);
+  const my = ++seq;
+  try {
+    const pins = await Promise.all(
+      s.pins.map((p) => sectionEngine().pin({ line, refs, chainage: p.chainage, reference })),
+    );
+    if (my === seq) set({ pins });
+  } catch (e) {
+    if (my === seq) set({ error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+/**
+ * Show a section along a line (E, N). Its current survey joins the chart, switched on, when it is
+ * not there yet, so a section always opens on the survey it is viewed on.
+ */
+export function openSection(
+  line: [number, number][],
+  source: SectionSource,
+  manifest: ProjectManifest | null = manifestNow(),
+): void {
+  const s = get();
+  const same = sourceId(source) === sourceId(s.source);
+  const sameLine = JSON.stringify(line) === JSON.stringify(s.line);
+  const current = currentKey(s.choices, source, manifest);
+  const joins = current !== null && !s.selected.includes(current);
   set({
     line,
     source,
     dismissed: null,
-    ...(same ? {} : { pins: [], stations: source.kind === 'station' ? get().stations : null }),
+    ...(joins ? { selected: inListOrder(s, [...s.selected, current]) } : {}),
+    ...(current !== null && s.hidden.includes(current)
+      ? { hidden: s.hidden.filter((k) => k !== current) }
+      : {}),
+    ...(same ? {} : { pins: [], stations: source.kind === 'station' ? s.stations : null }),
   });
-  if (!same || !sameLine) void recompute();
+  if (!same || !sameLine || joins) void recompute();
 }
 
 /** Close the dock (it opens again for another section). */
@@ -244,14 +383,41 @@ export function isDismissed(s: Pick<SectionState, 'dismissed' | 'source'>): bool
   return s.dismissed !== null && s.dismissed === sourceId(s.source);
 }
 
-export function toggleSurface(key: string): void {
+/** Switch a chip off (still sampled, not drawn) or on. Switched off, it is no longer shaded. */
+export function toggleShown(key: string): void {
   const s = get();
-  const selected = s.selected.includes(key)
-    ? s.selected.filter((k) => k !== key)
-    : s.choices.map((c) => c.key).filter((k) => k === key || s.selected.includes(k));
-  const shade =
-    s.shade && selected.includes(s.shade.from) && selected.includes(s.shade.to) ? s.shade : null;
-  set({ selected, shade, reference: Math.min(s.reference, Math.max(0, selected.length - 1)) });
+  if (!s.selected.includes(key)) return;
+  if (s.hidden.includes(key)) {
+    set({ hidden: s.hidden.filter((k) => k !== key) });
+    return;
+  }
+  const clears = s.shadeVs === key;
+  set({ hidden: [...s.hidden, key], ...(clears ? { shadeVs: null } : {}) });
+  if (clears) void repin();
+}
+
+/** Put a survey date or design surface on the chart, in the order the surfaces are listed. */
+export function addSurface(ref: SectionRef): void {
+  const key = surfaceKey(ref);
+  const s = get();
+  if (!s.choices.some((c) => c.key === key) || s.selected.includes(key)) return;
+  set({
+    selected: inListOrder(s, [...s.selected, key]),
+    hidden: s.hidden.filter((k) => k !== key),
+  });
+  void recompute();
+}
+
+/** Take a surface off the chart. The current survey stays on it (its chip switches it off). */
+export function removeSurface(key: string): void {
+  const s = get();
+  if (!s.selected.includes(key)) return;
+  if (key === currentKey(s.choices, s.source, manifestNow())) return;
+  set({
+    selected: s.selected.filter((k) => k !== key),
+    hidden: s.hidden.filter((k) => k !== key),
+    ...(s.shadeVs === key ? { shadeVs: null } : {}),
+  });
   void recompute();
 }
 
@@ -261,7 +427,12 @@ export async function addPin(chainage: number): Promise<void> {
   const refs = selectedRefs(s);
   if (!refs.length) return;
   try {
-    const pin = await sectionEngine().pin({ line: s.line, refs, chainage, reference: s.reference });
+    const pin = await sectionEngine().pin({
+      line: s.line,
+      refs,
+      chainage,
+      reference: referenceOf(s),
+    });
     set({ pins: [...get().pins, pin].sort((a, b) => a.chainage - b.chainage) });
   } catch (e) {
     set({ error: e instanceof Error ? e.message : String(e) });
@@ -272,17 +443,17 @@ export function removePin(i: number): void {
   set({ pins: get().pins.filter((_, k) => k !== i) });
 }
 
-export function setReference(i: number): void {
-  set({ reference: i });
-  void recompute();
-}
-
 export function setExaggeration(x: number): void {
   set({ exaggeration: clampExaggeration(x) });
 }
 
-export function setShade(shade: { from: string; to: string } | null): void {
-  set({ shade });
+/** Shade against a shown surface (null: none); the pins' deltas follow it. */
+export function setShadeVs(key: string | null): void {
+  const s = get();
+  const next = key !== null && s.selected.includes(key) && !s.hidden.includes(key) ? key : null;
+  if (next === s.shadeVs) return;
+  set({ shadeVs: next });
+  void repin();
 }
 
 export function setCutaway(on: boolean): void {
@@ -373,10 +544,50 @@ export function waitForJob(id: string): Promise<Ended> {
   });
 }
 
+const fileName = (ext: string) => `${slug(get().source?.label ?? 'section')}.${ext}`;
+
+/** The chart (`svg`) as a PNG, where the person picks. Answers an error sentence or null. */
+export async function exportSectionPng(svg: SVGSVGElement): Promise<string | null> {
+  try {
+    const path = await savePng(await chartPng(svg), fileName('png'));
+    set({ exporting: path ? { format: 'png', busy: false, note: `Saved ${path}` } : null });
+    return null;
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    set({ exporting: { format: 'png', busy: false, note: error } });
+    return error;
+  }
+}
+
 /**
- * **Download**: ask where to save first (`dialog:savePath`), then run `survey.section` with that
- * file as its `out`, so nothing is written into the project. Answers an error sentence or null
- * (null too when the person cancels the dialog).
+ * The chart's lines as CSV (chainage and one column per surface shown, in the site units),
+ * written in the app, so a package exports it too. Answers an error sentence or null.
+ */
+export async function exportSectionCsv(
+  series: readonly ChartSeries[],
+  units: SurveyUnits,
+  precision: SurveyPrecision,
+): Promise<string | null> {
+  const fail = (error: string) => {
+    set({ exporting: { format: 'csv', busy: false, note: error } });
+    return error;
+  };
+  if (!series.length) return fail('Show at least one surface.');
+  const r = await bridge.call('dialog:saveFile', {
+    defaultName: fileName('csv'),
+    data: seriesCsv(series, units, precision),
+  });
+  if (!r.ok) return fail(r.error);
+  if (r.value.error) return fail(r.value.error);
+  const path = r.value.path;
+  set({ exporting: path ? { format: 'csv', busy: false, note: `Saved ${path}` } : null });
+  return null;
+}
+
+/**
+ * The DXF (or the job's CSV): ask where to save first (`dialog:savePath`), then run
+ * `survey.section` with that file as its `out`, so nothing is written into the project. Answers
+ * an error sentence or null (null too when the person cancels the dialog).
  */
 export async function exportSection(format: SectionFormat): Promise<string | null> {
   const s = get();
