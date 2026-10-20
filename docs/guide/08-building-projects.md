@@ -120,7 +120,7 @@ Heavy work runs in the background on this computer: making maps from photos, com
 
 Click it to open the drawer:
 
-- **Create maps from photos** turns drone photos into maps and a 3D model: see [Creating maps from photos](28-processing-photos.md).
+- **Create maps from photos** turns drone photos into maps and a 3D model: see [Creating maps from photos](46-processing-photos.md).
 - **Running** and **Finished** list this project's work, newest first. Each line has a tag: **Maps and models**, **Survey**, **AI analysis**, **Files** or **System**.
 - **Maps from photos** lists the project's runs, with **Open run**, **Create maps again**, **Export as OPF** and **Delete work files**.
 - **Running in other projects** appears only when another project is still working. Each line names its project.
