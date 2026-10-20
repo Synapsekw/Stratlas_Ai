@@ -194,6 +194,11 @@ export interface InventoryOptions {
   isStale?: (m: SurveyMeasurement, r: ComparisonResult, stored: boolean) => boolean;
   /** Why working out a measurement's dates failed, if it did. */
   failed?: (m: SurveyMeasurement) => string | null | undefined;
+  /**
+   * Whether a measurement's dates were worked out for a capture: a date that was, yet has no
+   * figure, has no survey data (not "not computed yet").
+   */
+  ran?: (m: SurveyMeasurement, capture: string) => boolean;
 }
 
 /**
@@ -244,8 +249,13 @@ export function inventorySeries(
       const s = at.get(row.capture);
       if (!s) continue;
       if (row.valueM3 === null) {
-        // refused there, or absent on a date a carried pile has no figure for (R16)
-        if (row.status === 'refused' || carried) {
+        // refused there, absent on a date a carried pile has no figure for (R16), or worked out
+        // with nothing to show; else the last run failed, or it has not run for this date yet
+        const noData =
+          row.status === 'refused' ||
+          carried ||
+          (failed === null && opts.ran?.(m, row.capture) === true);
+        if (noData) {
           s.missing.push(m.id);
           s.notCounted?.push({ id: m.id, reason: 'no-data' });
         } else if (failed !== null)

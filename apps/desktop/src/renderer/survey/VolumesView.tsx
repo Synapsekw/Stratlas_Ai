@@ -10,8 +10,8 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, localeOf } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
-import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
-import { inventoryPiles, inventorySeries, pileSeries, type StackRow } from '@aio/survey';
+import type { SurveyMeasurement } from '@aio/schema';
+import { inventoryPiles, pileSeries, type StackRow } from '@aio/survey';
 import { Button, EmptyState, Tip, useT } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
@@ -21,7 +21,7 @@ import { bridge, useShell } from '../shell';
 import { BulkTotals, notCountedList } from './BulkTotals';
 import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
 import { VolumeDetail } from './card/VolumeDetail';
-import { computeSeries, isStale, seriesStale, useCompare } from './compareStore';
+import { computeSeries, useCompare } from './compareStore';
 import { fileBase } from './exportHelpers';
 import {
   knownTemplates,
@@ -31,6 +31,7 @@ import {
   startTool,
   useMeasure,
 } from './measureStore';
+import { useInventory } from './useInventory';
 import './compare.css';
 import './volumesView.css';
 
@@ -53,10 +54,6 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const readOnly = useAnnotateReadOnly() || fileReadOnly;
   const status = useCompare((s) => s.status);
   const captures = useCompare((s) => s.captures);
-  const current = useCompare((s) => s.current);
-  // what `seriesStale` reads: a change re-checks the per-date figures
-  const seriesCurrent = useCompare((s) => s.seriesCurrent);
-  const seriesInputs = useCompare((s) => s.seriesInputs);
   const root = useWorkspace((s) => s.project?.root ?? null);
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const pkg = useShell((s) => s.pkg !== null);
@@ -73,17 +70,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   // a folder emptied or renamed elsewhere falls back to every pile
   const shown = folder !== ALL && folders.includes(folder) ? folder : ALL;
   const piles = useMemo(() => inventoryPiles(allPiles, shown), [allPiles, shown]);
-  const stack = useMemo(
-    () =>
-      inventorySeries(piles, captures, {
-        isStale: (m: SurveyMeasurement, r: ComparisonResult, stored: boolean) =>
-          stored ? isStale({ current }, m, r) : seriesStale(m, r),
-        failed: (m) => failed[m.id],
-      }),
-    // seriesCurrent and seriesInputs are what seriesStale reads
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [piles, captures, current, failed, seriesCurrent, seriesInputs],
-  );
+  const stack = useInventory(piles, failed);
   const names = useMemo(() => new Map(piles.map((m) => [m.id, m.label])), [piles]);
 
   // each pile's volume per survey date, worked out when shown (carried piles keep the kit's);
@@ -285,6 +272,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         </div>
       )}
 
+      {/* the latest survey date's row, the same the table marks latest */}
       <BulkTotals inventory={{ piles, row: stack.at(-1), names }} />
 
       {stack.length > 0 && (
@@ -353,7 +341,8 @@ function InventoryTable({
   v: (x: number) => string;
 }) {
   const t = useT();
-  const latest = rows.findLast((r) => r.parts.length > 0);
+  // the latest survey date, the same row the total above shows (counted piles or not)
+  const latest = rows.at(-1);
   const nameList = (ids: readonly string[]) => ids.map((id) => names.get(id) ?? id).join(', ');
   return (
     <table className="vd-time-table" data-testid="volumes-inventory-table">

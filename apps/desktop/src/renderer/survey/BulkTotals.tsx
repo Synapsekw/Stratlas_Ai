@@ -5,7 +5,9 @@
  *
  * Given `inventory` (the volumes view), it shows the total of the piles shown on the latest survey
  * date instead: that date's row of the site inventory (`inventorySeries`), so the total and the
- * chart come from one function. What is not counted is named with why, never added.
+ * chart come from one function. What is not counted is named with why, never added, and a total
+ * with nothing counted shows no figure (never 0). A selection of volumes is totalled the same way
+ * (`useInventory`), so the selection and the volumes view cannot disagree.
  */
 import { formatQuantity, localeOf, unitName } from '@aio/geo';
 import { AreaUnit, VolumeUnit, type SurfaceRef, type SurveyMeasurement } from '@aio/schema';
@@ -26,6 +28,9 @@ import { Button, t as tr, useT } from '@aio/ui';
 import { useMemo, useState, type ReactElement } from 'react';
 import { computeAll, isStale, useCompare } from './compareStore';
 import { knownTemplates, replaceMeasurement, useMeasure } from './measureStore';
+import { useInventory } from './useInventory';
+
+const NO_PILES: readonly SurveyMeasurement[] = [];
 
 /** Why a pile is not in a total, in words ("stale", "could not compute: …"). */
 export function notCountedReason(n: NotCounted): string {
@@ -72,6 +77,57 @@ export function BulkTotals(p: { inventory?: InventoryTotalsProps } = {}): ReactE
   return p.inventory ? <InventoryTotals {...p.inventory} /> : <SelectionTotals />;
 }
 
+/** A figure no pile is counted for: never shown as 0. */
+const NONE = '-';
+
+/**
+ * One inventory row's figures: cut, fill and net of the counted piles, and the area of those same
+ * piles. `none` when nothing is counted (or there is no row): the figures are then not shown.
+ */
+function rowFigures(row: StackRow | undefined, piles: readonly SurveyMeasurement[]) {
+  const counted = new Set(row?.parts.map((p) => p.id) ?? []);
+  return {
+    none: counted.size === 0,
+    cutM3: row?.cutM3 ?? 0,
+    fillM3: row?.fillM3 ?? 0,
+    netM3: row?.totalM3 ?? 0,
+    areaM2: piles
+      .filter((m) => counted.has(m.id))
+      .reduce((sum, m) => sum + polygonAreas(m.points).horizontalM2, 0),
+  };
+}
+
+/** The piles left out of a row's total, and those partly outside the survey, in words. */
+function RowNotes({
+  row,
+  piles,
+  names,
+}: {
+  row: StackRow | undefined;
+  piles: readonly SurveyMeasurement[];
+  names: ReadonlyMap<string, string>;
+}) {
+  const t = useT();
+  // no row: no survey date at all, so no pile has survey data
+  const left: readonly NotCounted[] =
+    row?.notCounted ?? (row ? [] : piles.map((m) => ({ id: m.id, reason: 'no-data' as const })));
+  const partial = row?.partial ?? [];
+  return (
+    <>
+      {left.length > 0 && (
+        <p className="small faint" data-testid="survey-bulk-not-counted">
+          {t('vol.view.notCountedOn', { count: left.length })}: {notCountedList(left, names)}
+        </p>
+      )}
+      {partial.length > 0 && (
+        <p className="small faint" data-testid="survey-bulk-partial">
+          {t('vol.view.partial', { names: partial.map((id) => names.get(id) ?? id).join(', ') })}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** The volumes view's total: the latest date's row, in the site's units. */
 function InventoryTotals({ piles, row, names }: InventoryTotalsProps) {
   const t = useT();
@@ -81,11 +137,11 @@ function InventoryTotals({ piles, row, names }: InventoryTotalsProps) {
   if (piles.length === 0) return null;
   const units = settings.units;
   const locale = settings.locale ?? localeOf(units.distance);
-  const v = (x: number) => formatQuantity(x, 'volume', units, settings.precision, locale);
-  const a = (x: number) => formatQuantity(x, 'area', units, settings.precision, locale);
-  const area = piles.reduce((sum, m) => sum + polygonAreas(m.points).horizontalM2, 0);
-  const left = row?.notCounted ?? [];
-  const partial = row?.partial ?? [];
+  const f = rowFigures(row, piles);
+  const v = (x: number) =>
+    f.none ? NONE : formatQuantity(x, 'volume', units, settings.precision, locale);
+  const a = (x: number) =>
+    f.none ? NONE : formatQuantity(x, 'area', units, settings.precision, locale);
   return (
     <section
       className="sv-card sv-panel"
@@ -111,30 +167,21 @@ function InventoryTotals({ piles, row, names }: InventoryTotalsProps) {
         <tbody>
           <tr data-key="total">
             <th scope="row">{t('vol.card.total')}</th>
-            <td className="mono">{v(row?.cutM3 ?? 0)}</td>
-            <td className="mono">{v(row?.fillM3 ?? 0)}</td>
+            <td className="mono">{v(f.cutM3)}</td>
+            <td className="mono">{v(f.fillM3)}</td>
             <td className="mono" data-testid="survey-bulk-net">
-              {v(row?.totalM3 ?? 0)}
+              {v(f.netM3)}
             </td>
           </tr>
           <tr data-key="area">
             <th scope="row">{t('bulk.area')}</th>
-            <td className="mono" colSpan={3}>
-              {a(area)}
+            <td className="mono" colSpan={3} data-testid="survey-bulk-area">
+              {a(f.areaM2)}
             </td>
           </tr>
         </tbody>
       </table>
-      {left.length > 0 && (
-        <p className="small faint" data-testid="survey-bulk-not-counted">
-          {t('vol.view.notCountedOn', { count: left.length })}: {notCountedList(left, names)}
-        </p>
-      )}
-      {partial.length > 0 && (
-        <p className="small faint" data-testid="survey-bulk-partial">
-          {t('vol.view.partial', { names: partial.map((id) => names.get(id) ?? id).join(', ') })}
-        </p>
-      )}
+      <RowNotes row={row} piles={piles} names={names} />
       {!readOnly && (
         <div className="sv-row sv-wrap">
           <Button
@@ -178,6 +225,11 @@ function SelectionTotals() {
     () => sideOptions({ surfaces, captures, designs }),
     [surfaces, captures, designs],
   );
+  // a selection of volumes is totalled by the volumes view's rule (the same function): the pile
+  // figure of the latest survey date, current figures only, the rest named
+  const volumes = ms.length > 0 && ms.every((m) => m.tool === 'volume');
+  const stack = useInventory(volumes ? ms : NO_PILES);
+  const names = useMemo(() => new Map(ms.map((m) => [m.id, m.label])), [ms]);
   if (selected.length < 2 || ms.length === 0) return null;
   const totals = bulkTotals(
     ms,
@@ -187,10 +239,22 @@ function SelectionTotals() {
       return r ? !isStale({ current }, m, r) : false;
     },
   );
-  const units = effectiveUnits(settings.units, ms[0]?.units);
+  const pileRow = volumes ? stack.at(-1) : undefined;
+  const pile = volumes ? rowFigures(pileRow, ms) : null;
+  // a volume total is in the site's units, as in the volumes view
+  const units = volumes ? settings.units : effectiveUnits(settings.units, ms[0]?.units);
   const locale = settings.locale ?? localeOf(units.distance);
-  const v = (x: number) => formatQuantity(x, 'volume', units, settings.precision, locale);
-  const a = (x: number) => formatQuantity(x, 'area', units, settings.precision, locale);
+  const fmt = (x: number) => formatQuantity(x, 'volume', units, settings.precision, locale);
+  const a = (x: number) =>
+    pile?.none ? NONE : formatQuantity(x, 'area', units, settings.precision, locale);
+  /** The first comparison of volumes: the pile figure, "-" when no pile is counted. */
+  const v = (x: number, index: number) => (index === 0 && pile?.none ? NONE : fmt(x));
+  const rows = totals.rows.map((r) =>
+    r.index === 0 && pile
+      ? { ...r, cutM3: pile.cutM3, fillM3: pile.fillM3, netM3: pile.netM3, missing: 0 }
+      : r,
+  );
+  const areaM2 = pile ? pile.areaM2 : totals.areaM2;
   const tplName = totals.template
     ? (knownTemplates({ templates, settings }).find((x) => x.id === totals.template)?.name ??
       totals.template)
@@ -240,29 +304,33 @@ function SelectionTotals() {
           </tr>
         </thead>
         <tbody>
-          {totals.rows.map((r) => (
+          {rows.map((r) => (
             <tr key={r.index} data-key={`row-${String(r.index)}`}>
               <th scope="row">
                 {r.label}
+                {r.index === 0 && pileRow && (
+                  <small className="faint"> {t('vol.view.totalOn', { date: pileRow.label })}</small>
+                )}
                 {r.missing > 0 && (
                   <small className="faint"> {t('bulk.leftOut', { count: r.missing })}</small>
                 )}
               </th>
-              <td className="mono">{v(r.cutM3)}</td>
-              <td className="mono">{v(r.fillM3)}</td>
+              <td className="mono">{v(r.cutM3, r.index)}</td>
+              <td className="mono">{v(r.fillM3, r.index)}</td>
               <td className="mono" data-testid="survey-bulk-net">
-                {v(r.netM3)}
+                {v(r.netM3, r.index)}
               </td>
             </tr>
           ))}
           <tr data-key="area">
             <th scope="row">{t('bulk.area')}</th>
-            <td className="mono" colSpan={3}>
-              {a(totals.areaM2)}
+            <td className="mono" colSpan={3} data-testid="survey-bulk-area">
+              {a(areaM2)}
             </td>
           </tr>
         </tbody>
       </table>
+      {volumes && <RowNotes row={pileRow} piles={ms} names={names} />}
       <div className="sv-row sv-wrap">
         <Button
           busy={busy}

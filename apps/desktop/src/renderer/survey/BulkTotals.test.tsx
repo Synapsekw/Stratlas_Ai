@@ -22,10 +22,19 @@ const s = vi.hoisted(() => ({
   },
 }));
 const computeAll = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const compare = vi.hoisted(() => ({
+  current: {},
+  surfaces: [],
+  designs: [],
+  captures: [] as { id: string; date: string; label: string }[],
+  seriesCurrent: {},
+  seriesInputs: {},
+}));
+const stale = vi.hoisted(() => new Set<string>());
 vi.mock('./compareStore', () => ({
-  useCompare: (sel: (x: unknown) => unknown) =>
-    sel({ current: {}, surfaces: [], designs: [], captures: [] }),
-  isStale: () => false,
+  useCompare: (sel: (x: unknown) => unknown) => sel(compare),
+  isStale: (_s: unknown, m: { id: string }) => stale.has(m.id),
+  seriesStale: () => false,
   computeAll,
 }));
 vi.mock('./measureStore', () => ({
@@ -78,6 +87,11 @@ let host: HTMLDivElement;
 let root: Root | undefined;
 const settings = defaultSurveySettings();
 beforeEach(() => {
+  stale.clear();
+  compare.captures = [
+    { id: 'c1', date: '2026-01-10', label: '10 Jan' },
+    { id: 'c2', date: '2026-02-10', label: '10 Feb' },
+  ];
   s.measure = {
     settings,
     readOnly: false,
@@ -112,5 +126,53 @@ describe('BulkTotals', () => {
       recompute?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(computeAll).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  const render = () => {
+    root ??= createRoot(host);
+    act(() => {
+      root?.render(<BulkTotals />);
+    });
+  };
+  const text = (id: string) => host.querySelector(`[data-testid="${id}"]`)?.textContent;
+  const v = (x: number) => formatQuantity(x, 'volume', settings.units, settings.precision);
+
+  it('selected volumes follow the volumes view rule: current figures of the latest date', () => {
+    // b is stale; c's figure is for an earlier date than the latest survey
+    const c = { ...pile('c', 7), results: [{ ...result(7), toCapture: 'c1' }] };
+    s.measure.selected = ['a', 'b', 'c'];
+    s.measure.file = { measurements: [pile('a', 10), pile('b', 5), c] };
+    stale.add('b');
+    render();
+    expect(text('survey-bulk-net')).toBe(v(10));
+    expect(host.querySelector('th[scope="row"]')?.textContent).toContain('Total on 10 Feb');
+    expect(text('survey-bulk-not-counted')).toBe(
+      '2 piles not counted: Pile b (stale), Pile c (not computed yet)',
+    );
+    // the area is the counted piles' only: one 10 x 10 triangle
+    expect(text('survey-bulk-area')).toBe(
+      formatQuantity(50, 'area', settings.units, settings.precision),
+    );
+  });
+
+  it('selected volumes with nothing counted show no figure, never 0', () => {
+    stale.add('a');
+    stale.add('b');
+    render();
+    expect(text('survey-bulk-net')).toBe('-');
+    expect(text('survey-bulk-area')).toBe('-');
+    expect(text('survey-bulk-not-counted')).toContain('Pile a (stale), Pile b (stale)');
+  });
+
+  it('other measurements keep their per-comparison totals', () => {
+    s.measure.file = {
+      measurements: [
+        { ...pile('a', 10), tool: 'area' },
+        { ...pile('b', 5), tool: 'area' },
+      ],
+    };
+    render();
+    expect(text('survey-bulk-net')).toBe(v(15));
+    expect(host.querySelector('[data-testid="survey-bulk-not-counted"]')).toBeNull();
   });
 });

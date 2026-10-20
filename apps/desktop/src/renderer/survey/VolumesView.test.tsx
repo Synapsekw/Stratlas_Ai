@@ -180,6 +180,8 @@ beforeEach(() => {
     status: 'ready',
     captures: CAPTURES,
     current: {},
+    seriesCurrent: {},
+    seriesInputs: {},
     surfaces: [],
     designs: [],
   };
@@ -337,6 +339,60 @@ describe('VolumesView', () => {
     expect(q('[data-testid="survey-bulk-net"]')?.textContent).toBe(v(30));
     expect(tableCells()[1]?.[0]).toBe(v(30));
     expect(tableCells()[1]?.[2]).toBe('Pile a (not computed yet)');
+  });
+
+  it('no false zero: nothing counted on the latest date shows no figure, with why', () => {
+    // a has a figure on c1 only; on the latest date (c2) nothing is counted
+    s.measure.file.measurements = [pile('a', { series: [result(100, 'c1')] })];
+    render();
+    expect(q('[data-testid="survey-bulk"] h2')?.textContent).toBe('Total on 10 Feb');
+    expect(q('[data-testid="survey-bulk-net"]')?.textContent).toBe('-');
+    expect(q('[data-testid="survey-bulk-area"]')?.textContent).toBe('-');
+    expect(q('[data-testid="survey-bulk-not-counted"]')?.textContent).toBe(
+      '1 pile not counted: Pile a (not computed yet)',
+    );
+    // the table's latest row is the same date the total names
+    const latest = q('[data-testid="volumes-inventory-table"] tr[data-latest]');
+    expect(latest?.getAttribute('data-capture')).toBe('c2');
+    expect(latest?.querySelector('td')?.textContent).toBe('Not counted');
+  });
+
+  it('no false zero: without a survey date there is no figure, and every pile is named', () => {
+    s.compare.captures = [];
+    s.measure.file.measurements = [pile('a', { results: [result(100, 'c1')] })];
+    render();
+    expect(q('[data-testid="survey-bulk"] h2')?.textContent).toBe('Total');
+    expect(q('[data-testid="survey-bulk-net"]')?.textContent).toBe('-');
+    expect(q('[data-testid="survey-bulk-not-counted"]')?.textContent).toBe(
+      '1 pile not counted: Pile a (no survey data)',
+    );
+    expect(q('[data-testid="volumes-inventory"]')).toBeNull();
+  });
+
+  it('the area adds only the counted piles', () => {
+    s.measure.file.measurements = [
+      pile('a', { results: [result(10, 'c2')] }),
+      pile('b', {
+        points: [
+          [0, 0, 0],
+          [20, 0, 0],
+          [20, 20, 0],
+        ],
+        results: [result(5, 'c2')],
+      }),
+    ];
+    stale.stored.add('b');
+    render();
+    expect(q('[data-testid="survey-bulk-area"]')?.textContent).toBe(
+      formatQuantity(50, 'area', settings.units, settings.precision),
+    );
+  });
+
+  it('a date the series ran for without a figure has no survey data', () => {
+    s.compare.seriesCurrent = { a: { 'a c1': 'sha256:c1', 'a c2': 'sha256:c2' } };
+    s.measure.file.measurements = [pile('a', { results: [result(10, 'c2')] })];
+    render();
+    expect(tableCells()[0]?.[2]).toBe('Pile a (no survey data)');
   });
 
   it('totals use the site units and locale, not a pile override', () => {

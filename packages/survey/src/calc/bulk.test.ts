@@ -176,6 +176,18 @@ describe('site inventory over time', () => {
     expect(latest?.notCounted).toEqual([{ id: 'a', reason: 'not-computed' }]);
   });
 
+  it('a date worked out with no figure has no survey data, not "not computed yet"', () => {
+    const a = volume('a', [at('c1', 100)]);
+    const ran = (_m: SurveyMeasurement, c: string) => c !== 'c3';
+    const rows = inventorySeries([a], captures, { ran });
+    expect(rows[1]?.notCounted).toEqual([{ id: 'a', reason: 'no-data' }]);
+    expect(rows[1]?.missing).toEqual(['a']);
+    expect(rows[2]?.notCounted).toEqual([{ id: 'a', reason: 'not-computed' }]);
+    // a failed last run says so, ran before or not
+    const failed = inventorySeries([a], captures, { ran, failed: () => 'stopped' });
+    expect(failed[1]?.notCounted).toEqual([{ id: 'a', reason: 'failed', detail: 'stopped' }]);
+  });
+
   it('names failed runs, piles without a comparison and partial figures', () => {
     const a = volume('a', [at('c1', 100, 'partial')]);
     const f = volume('f', []);
