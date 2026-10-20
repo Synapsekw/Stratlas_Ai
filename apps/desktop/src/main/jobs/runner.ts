@@ -1,6 +1,7 @@
 import {
   JobEvent,
   JobFailure,
+  JobLive,
   newJobId,
   pipelineParams,
   type IpcRequest,
@@ -162,7 +163,9 @@ export class JobRunner {
         params: withoutRetired(prev.pipeline, prev.params),
         status: 'starting',
         updatedAt: this.iso(),
+        startedAt: this.iso(),
       };
+      delete job.live;
       delete job.error;
       delete job.failure;
       delete job.finishedAt;
@@ -195,6 +198,7 @@ export class JobRunner {
         artifacts: [],
         createdAt: at.toISOString(),
         updatedAt: at.toISOString(),
+        startedAt: at.toISOString(),
       };
     }
 
@@ -345,6 +349,7 @@ export class JobRunner {
       finishedAt: this.iso(),
       steps: job.steps.map((s) => (s.state === 'running' ? { ...s, state: stepState } : s)),
     };
+    delete out.live;
     if (status === 'done') out.progress = 1;
     if (error) out.error = error;
     return out;
@@ -527,6 +532,11 @@ export class JobRunner {
             progress: fraction === undefined ? j.progress : Math.max(0, Math.min(1, fraction)),
           };
           if (message) next.message = message;
+          // live progress belongs to a running step only; an invalid one is dropped, never shown
+          const live =
+            state === 'done' || state === 'skipped' ? undefined : JobLive.safeParse(params.live);
+          if (live?.success) next.live = live.data;
+          else delete next.live;
           return next;
         });
         return;

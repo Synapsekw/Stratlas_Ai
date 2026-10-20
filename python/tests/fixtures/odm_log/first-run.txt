@@ -1,0 +1,119 @@
+[INFO]    Running dataset stage
+[INFO]    Loading dataset from: C:\odm-work\project\images
+[INFO]    Loading 1003 images
+[INFO]    Found 1003 usable images
+[INFO]    Finished dataset stage
+[INFO]    Running split stage
+[INFO]    Normal dataset, will process all at once.
+[INFO]    Finished split stage
+[INFO]    Running merge stage
+[INFO]    Finished merge stage
+[INFO]    Running opensfm stage
+[INFO]    Writing exif overrides
+[32m[INFO]    Using the camera model from the first photo[0m
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" detect_features "C:\odm-work\project\opensfm"
+2026-01-01 14:08:33,250 INFO: Extracting ROOT_SIFT_GPU features for image 00001.jpg
+2026-01-01 14:08:33,500 INFO: Extracting ROOT_SIFT_GPU features for image 00008.jpg
+2026-01-01 14:08:33,750 INFO: Extracting ROOT_SIFT_GPU features for image 00015.jpg
+2026-01-01 14:08:34,000 INFO: Extracting ROOT_SIFT_GPU features for image 00022.jpg
+2026-01-01 14:08:34,250 INFO: Extracting ROOT_SIFT_GPU features for image 00029.jpg
+2026-01-01 14:08:34,500 INFO: Extracting ROOT_SIFT_GPU features for image 00036.jpg
+2026-01-01 14:08:34,750 INFO: Extracting ROOT_SIFT_GPU features for image 00043.jpg
+2026-01-01 14:08:35,000 INFO: Extracting ROOT_SIFT_GPU features for image 00050.jpg
+2026-01-01 14:08:35,250 INFO: Extracting ROOT_SIFT_GPU features for image 00057.jpg
+2026-01-01 14:08:35,500 INFO: Extracting ROOT_SIFT_GPU features for image 00064.jpg
+2026-01-01 14:08:35,500 INFO: Loading the feature extraction settings
+2026-01-01 14:08:35,750 INFO: Extracting ROOT_SIFT_GPU features for image 00071.jpg
+2026-01-01 14:08:36,000 INFO: Extracting ROOT_SIFT_GPU features for image 00078.jpg
+2026-01-01 14:08:36,250 INFO: Extracting ROOT_SIFT_GPU features for image 00085.jpg
+2026-01-01 14:08:36,500 INFO: Extracting ROOT_SIFT_GPU features for image 00092.jpg
+2026-01-01 14:08:36,750 INFO: Extracting ROOT_SIFT_GPU features for image 00099.jpg
+2026-01-01 14:08:37,000 INFO: Extracting ROOT_SIFT_GPU features for image 00106.jpg
+2026-01-01 14:08:37,250 INFO: Extracting ROOT_SIFT_GPU features for image 00113.jpg
+2026-01-01 14:08:37,500 INFO: Extracting ROOT_SIFT_GPU features for image 00120.jpg
+2026-01-01 14:08:37,750 INFO: Extracting ROOT_SIFT_GPU features for image 00127.jpg
+2026-01-01 14:08:38,000 INFO: Extracting ROOT_SIFT_GPU features for image 00134.jpg
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" match_features "C:\odm-work\project\opensfm"
+2026-01-01 14:08:41,000 INFO: Matching 12467 image pairs
+2026-01-01 14:08:41,500 DEBUG: Matching 00001.jpg and 00004.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:42,000 DEBUG: Matching 00014.jpg and 00017.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:42,500 DEBUG: Matching 00027.jpg and 00030.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:43,000 DEBUG: Matching 00040.jpg and 00043.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:43,500 DEBUG: Matching 00053.jpg and 00056.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:44,000 DEBUG: Matching 00066.jpg and 00069.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:44,500 DEBUG: Matching 00079.jpg and 00082.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:45,000 DEBUG: Matching 00092.jpg and 00095.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:45,500 DEBUG: Matching 00105.jpg and 00108.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:46,000 DEBUG: Matching 00118.jpg and 00121.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:46,500 DEBUG: Matching 00131.jpg and 00134.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:47,000 DEBUG: Matching 00144.jpg and 00147.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:47,500 DEBUG: Matching 00157.jpg and 00160.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:48,000 DEBUG: Matching 00170.jpg and 00173.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:48,500 DEBUG: Matching 00183.jpg and 00186.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:49,000 DEBUG: Matching 00196.jpg and 00199.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:49,500 DEBUG: Matching 00209.jpg and 00212.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:50,000 DEBUG: Matching 00222.jpg and 00225.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:50,500 DEBUG: Matching 00235.jpg and 00238.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:51,000 DEBUG: Matching 00248.jpg and 00251.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:51,500 DEBUG: Matching 00261.jpg and 00264.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:52,000 DEBUG: Matching 00274.jpg and 00277.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:52,500 DEBUG: Matching 00287.jpg and 00290.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:53,000 DEBUG: Matching 00300.jpg and 00303.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:53,500 DEBUG: Matching 00313.jpg and 00316.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:54,000 DEBUG: Matching 00326.jpg and 00329.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:54,500 DEBUG: Matching 00339.jpg and 00342.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:55,000 DEBUG: Matching 00352.jpg and 00355.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:55,500 DEBUG: Matching 00365.jpg and 00368.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:56,000 DEBUG: Matching 00378.jpg and 00381.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:56,500 DEBUG: Matching 00391.jpg and 00394.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:57,000 DEBUG: Matching 00404.jpg and 00407.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:57,500 DEBUG: Matching 00417.jpg and 00420.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:58,000 DEBUG: Matching 00430.jpg and 00433.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:58,500 DEBUG: Matching 00443.jpg and 00446.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:59,000 DEBUG: Matching 00456.jpg and 00459.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:08:59,500 DEBUG: Matching 00469.jpg and 00472.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:00,000 DEBUG: Matching 00482.jpg and 00485.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:00,500 DEBUG: Matching 00495.jpg and 00498.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:01,000 DEBUG: Matching 00508.jpg and 00511.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:01,500 DEBUG: Matching 00521.jpg and 00524.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:02,000 DEBUG: Matching 00534.jpg and 00537.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:02,500 DEBUG: Matching 00547.jpg and 00550.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:03,000 DEBUG: Matching 00560.jpg and 00563.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:03,500 DEBUG: Matching 00573.jpg and 00576.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:04,000 DEBUG: Matching 00586.jpg and 00589.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:04,500 DEBUG: Matching 00599.jpg and 00602.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+2026-01-01 14:09:05,000 DEBUG: Matching 00612.jpg and 00615.jpg.  Matcher: FLANN (symmetric) T-desc: 1.009 T-robust: 0.000 T-total: 1.010 Matches: 143 Robust: 132 Success: True
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" create_tracks "C:\odm-work\project\opensfm"
+2026-01-01 14:09:09,000 INFO: reading features
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" reconstruct "C:\odm-work\project\opensfm"
+2026-01-01 14:09:11,000 INFO: Starting reconstruction with 00430.jpg and 00431.jpg
+2026-01-01 14:09:13,000 INFO: Adding 00432.jpg to the reconstruction
+2026-01-01 14:09:15,000 INFO: Adding 00433.jpg to the reconstruction
+2026-01-01 14:09:17,000 INFO: Adding 00434.jpg to the reconstruction
+2026-01-01 14:09:19,000 INFO: Adding 00435.jpg to the reconstruction
+2026-01-01 14:09:21,000 INFO: Adding 00436.jpg to the reconstruction
+2026-01-01 14:09:23,000 INFO: Adding 00437.jpg to the reconstruction
+2026-01-01 14:09:25,000 INFO: Adding 00438.jpg to the reconstruction
+2026-01-01 14:09:27,000 INFO: Adding 00439.jpg to the reconstruction
+2026-01-01 14:09:29,000 INFO: Adding 00440.jpg to the reconstruction
+2026-01-01 14:09:31,000 INFO: Adding 00441.jpg to the reconstruction
+2026-01-01 14:09:33,000 INFO: Adding 00442.jpg to the reconstruction
+2026-01-01 14:09:35,000 INFO: Adding 00443.jpg to the reconstruction
+2026-01-01 14:09:37,000 INFO: Adding 00444.jpg to the reconstruction
+2026-01-01 14:09:39,000 INFO: Adding 00445.jpg to the reconstruction
+2026-01-01 14:09:41,000 INFO: Adding 00446.jpg to the reconstruction
+2026-01-01 14:09:41,000 INFO: Shots and/or GCPs are well-conditioned.
+2026-01-01 14:09:43,000 INFO: Adding 00447.jpg to the reconstruction
+2026-01-01 14:09:45,000 INFO: Adding 00448.jpg to the reconstruction
+2026-01-01 14:09:47,000 INFO: Adding 00449.jpg to the reconstruction
+2026-01-01 14:09:49,000 INFO: Adding 00450.jpg to the reconstruction
+2026-01-01 14:09:51,000 INFO: Adding 00451.jpg to the reconstruction
+2026-01-01 14:09:53,000 INFO: Adding 00452.jpg to the reconstruction
+2026-01-01 14:09:55,000 INFO: Adding 00453.jpg to the reconstruction
+2026-01-01 14:09:57,000 INFO: Adding 00454.jpg to the reconstruction
+2026-01-01 14:09:59,000 INFO: Adding 00455.jpg to the reconstruction
+2026-01-01 14:10:01,000 INFO: Adding 00456.jpg to the reconstruction
+2026-01-01 14:10:03,000 INFO: Adding 00457.jpg to the reconstruction
+2026-01-01 14:10:05,000 INFO: Adding 00458.jpg to the reconstruction
+2026-01-01 14:10:07,000 INFO: Adding 00459.jpg to the reconstruction
+2026-01-01 14:10:07,000 INFO: Shots and/or GCPs are well-conditioned. Using naive 3D-3D alignment.

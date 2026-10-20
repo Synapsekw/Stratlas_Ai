@@ -51,6 +51,22 @@ def stage_window(first: str, last: str) -> tuple[float, float]:
     return stage_start(first), STAGE_END[last]
 
 
+#: Each stage's share of a step: ODM's percent span, except reading the photos, which takes
+#: seconds but holds 5 % of ODM's bar (a fifth of the align step).
+STAGE_WEIGHT: dict[str, float] = {s: 0.5 if s == "dataset" else STAGE_END[s] - stage_start(s) for s in STAGES}
+
+
+def stage_span(first: str, last: str, stage: str) -> tuple[float, float]:
+    """Where ``stage`` starts and ends in the step ``first``..``last`` (0..1) by ``STAGE_WEIGHT``. A
+    stage before the window sits at its start, one after it at its end."""
+    lo, hi, i = stage_index(first), stage_index(last), stage_index(stage)
+    window = STAGES[lo : hi + 1]
+    total = sum(STAGE_WEIGHT[s] for s in window)
+    before = sum(STAGE_WEIGHT[s] for s in STAGES[lo : max(lo, min(i, hi + 1))])
+    inside = STAGE_WEIGHT[stage] if stage in window else 0.0
+    return before / total, (before + inside) / total
+
+
 def stage_after(stage: str) -> str | None:
     i = stage_index(stage)
     return STAGES[i + 1] if i + 1 < len(STAGES) else None

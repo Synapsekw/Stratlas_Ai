@@ -100,3 +100,12 @@ def test_stage_windows_map_onto_odm_percent():
     assert F.stage_after("odm_postprocess") is None
     with pytest.raises(ValueError):
         F.stage_index("split")
+
+
+def test_reading_the_photos_holds_a_small_share_of_the_align_step():
+    assert F.stage_span("dataset", "opensfm", "dataset") == pytest.approx((0.0, 0.5 / 20.5))
+    assert F.stage_span("dataset", "opensfm", "opensfm") == pytest.approx((0.5 / 20.5, 1.0))
+    assert F.stage_span("openmvs", "odm_filterpoints", "openmvs") == pytest.approx((0.0, 25 / 27))
+    # stages outside the window: before it at the start, after it at the end
+    assert F.stage_span("openmvs", "odm_filterpoints", "dataset") == (0.0, 0.0)
+    assert F.stage_span("openmvs", "odm_filterpoints", "odm_meshing") == (1.0, 1.0)

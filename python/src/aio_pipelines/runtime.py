@@ -214,6 +214,7 @@ class StepContext:
         self.cancel_event = job.cancel_event
         self._last_emit = 0.0
         self._last_fraction = -1.0
+        self._had_live = False
 
     # paths
     def stage(self, rel: str) -> Path:
@@ -241,17 +242,21 @@ class StepContext:
         if self.cancel_event.is_set():
             raise Cancelled()
 
-    def progress(self, fraction: float, message: str | None = None) -> None:
+    def progress(
+        self, fraction: float, message: str | None = None, *, live: dict[str, Any] | None = None
+    ) -> None:
         fraction = min(1.0, max(0.0, float(fraction)))
         t = time.monotonic()
         if (
             fraction < 1.0
             and t - self._last_emit < PROGRESS_MIN_INTERVAL_S
             and fraction - self._last_fraction < 0.05
+            and (live is not None) == self._had_live  # gaining or losing live data always goes out
         ):
             return
         self._last_emit, self._last_fraction = t, fraction
-        self.job.emit_progress(self.index, "running", fraction, message)
+        self._had_live = live is not None
+        self.job.emit_progress(self.index, "running", fraction, message, live)
 
     def log(self, message: str, level: str = "info") -> None:
         self.job.log(message, level, self.step.name)
@@ -329,7 +334,14 @@ class Job:
             msg["step"] = step
         self.emit("log", msg)
 
-    def emit_progress(self, index: int, state: str, step_fraction: float, message: str | None = None) -> None:
+    def emit_progress(
+        self,
+        index: int,
+        state: str,
+        step_fraction: float,
+        message: str | None = None,
+        live: dict[str, Any] | None = None,
+    ) -> None:
         total = sum(self.weights) or 1.0
         fraction = (self.done + self.weights[index] * step_fraction) / total
         msg: dict[str, Any] = {
@@ -343,6 +355,8 @@ class Job:
         }
         if message:
             msg["message"] = message
+        if live:
+            msg["live"] = live
         self.emit("progress", msg)
 
     # manifests

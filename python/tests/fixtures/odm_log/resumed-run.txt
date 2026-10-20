@@ -1,0 +1,96 @@
+[INFO]    Running dataset stage
+[INFO]    Loading images database: C:\odm-work\project\images.json
+[INFO]    Found 1003 usable images
+[INFO]    Finished dataset stage
+[INFO]    Running opensfm stage
+[WARNING] C:\odm-work\project\opensfm\image_list.txt already exists, not rerunning OpenSfM setup
+[WARNING] C:\odm-work\project\opensfm\exif already exists, not rerunning photo to metadata
+[WARNING] Detect features already done: C:\odm-work\project\opensfm\features exists
+[WARNING] Match features already done: C:\odm-work\project\opensfm\matches exists
+[WARNING] Found a valid OpenSfM tracks file in: C:\odm-work\project\opensfm\tracks.csv
+[32m[INFO]    Reconstruction settings are unchanged[0m
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" reconstruct "C:\odm-work\project\opensfm"
+2026-01-01 16:08:39,978 INFO: reading tracks
+2026-01-01 16:08:40,978 INFO: Starting reconstruction with 00430.jpg and 00431.jpg
+2026-01-01 16:09:37,288 INFO: Adding 00001.jpg to the reconstruction
+2026-01-01 16:10:33,598 INFO: Adding 00002.jpg to the reconstruction
+2026-01-01 16:11:29,908 INFO: Adding 00003.jpg to the reconstruction
+2026-01-01 16:12:26,218 INFO: Adding 00004.jpg to the reconstruction
+2026-01-01 16:13:22,528 INFO: Adding 00005.jpg to the reconstruction
+2026-01-01 16:14:18,838 INFO: Adding 00006.jpg to the reconstruction
+2026-01-01 16:15:15,148 INFO: Adding 00007.jpg to the reconstruction
+2026-01-01 16:16:11,458 INFO: Adding 00008.jpg to the reconstruction
+2026-01-01 16:17:07,768 INFO: Adding 00009.jpg to the reconstruction
+2026-01-01 16:18:04,078 INFO: Adding 00010.jpg to the reconstruction
+2026-01-01 16:19:00,388 INFO: Adding 00011.jpg to the reconstruction
+2026-01-01 16:19:56,698 INFO: Adding 00012.jpg to the reconstruction
+2026-01-01 16:20:53,008 INFO: Adding 00013.jpg to the reconstruction
+2026-01-01 16:21:49,318 INFO: Adding 00014.jpg to the reconstruction
+2026-01-01 16:22:45,628 INFO: Adding 00015.jpg to the reconstruction
+2026-01-01 16:23:41,938 INFO: Adding 00016.jpg to the reconstruction
+2026-01-01 16:24:38,248 INFO: Adding 00017.jpg to the reconstruction
+2026-01-01 16:25:34,558 INFO: Adding 00018.jpg to the reconstruction
+2026-01-01 16:26:30,868 INFO: Adding 00019.jpg to the reconstruction
+2026-01-01 16:27:27,179 INFO: Adding 00020.jpg to the reconstruction
+2026-01-01 16:28:23,489 INFO: Adding 00021.jpg to the reconstruction
+2026-01-01 16:28:23,489 INFO: Adding 00021.jpg to the reconstruction
+2026-01-01 16:29:19,799 INFO: Adding 00022.jpg to the reconstruction
+2026-01-01 16:30:16,109 INFO: Adding 00023.jpg to the reconstruction
+2026-01-01 16:31:12,419 INFO: Adding 00024.jpg to the reconstruction
+2026-01-01 16:32:08,729 INFO: Adding 00025.jpg to the reconstruction
+2026-01-01 16:33:05,039 INFO: Adding 00026.jpg to the reconstruction
+2026-01-01 16:34:01,349 INFO: Adding 00027.jpg to the reconstruction
+2026-01-01 16:34:57,659 INFO: Adding 00028.jpg to the reconstruction
+2026-01-01 16:35:53,969 INFO: Adding 00029.jpg to the reconstruction
+2026-01-01 16:36:50,279 INFO: Adding 00030.jpg to the reconstruction
+2026-01-01 16:37:46,589 INFO: Adding 00031.jpg to the reconstruction
+2026-01-01 16:38:42,899 INFO: Adding 00032.jpg to the reconstruction
+2026-01-01 16:39:39,209 INFO: Adding 00033.jpg to the reconstruction
+2026-01-01 16:40:35,519 INFO: Adding 00034.jpg to the reconstruction
+2026-01-01 16:41:31,829 INFO: Adding 00035.jpg to the reconstruction
+2026-01-01 16:42:28,139 INFO: Adding 00036.jpg to the reconstruction
+2026-01-01 16:43:24,449 INFO: Adding 00037.jpg to the reconstruction
+2026-01-01 16:44:20,759 INFO: Adding 00038.jpg to the reconstruction
+2026-01-01 16:45:17,069 INFO: Adding 00039.jpg to the reconstruction
+2026-01-01 16:46:13,380 INFO: Adding 00040.jpg to the reconstruction
+2026-01-01 16:52:39,944 INFO: Adding 00041.jpg to the reconstruction
+2026-01-01 16:52:59,944 INFO: Adding 00042.jpg to the reconstruction
+2026-01-01 16:53:19,944 INFO: Adding 00043.jpg to the reconstruction
+2026-01-01 16:53:39,944 INFO: Adding 00044.jpg to the reconstruction
+2026-01-01 16:53:59,944 INFO: Adding 00045.jpg to the reconstruction
+2026-01-01 16:54:19,944 INFO: Adding 00046.jpg to the reconstruction
+2026-01-01 16:54:39,944 INFO: Adding 00047.jpg to the reconstruction
+2026-01-01 16:54:59,944 INFO: Adding 00048.jpg to the reconstruction
+2026-01-01 16:55:19,944 INFO: Adding 00049.jpg to the reconstruction
+2026-01-01 16:55:39,944 INFO: Adding 00050.jpg to the reconstruction
+2026-01-01 16:55:59,944 INFO: Adding 00051.jpg to the reconstruction
+2026-01-01 16:56:19,944 INFO: Adding 00052.jpg to the reconstruction
+2026-01-01 16:56:39,944 INFO: Adding 00053.jpg to the reconstruction
+2026-01-01 16:56:59,944 INFO: Adding 00054.jpg to the reconstruction
+2026-01-01 16:57:19,944 INFO: Adding 00055.jpg to the reconstruction
+2026-01-01 16:57:39,944 INFO: Adding 00056.jpg to the reconstruction
+2026-01-01 16:57:39,944 INFO: Running a bundle adjustment on the current model
+2026-01-01 16:57:59,944 INFO: Adding 00057.jpg to the reconstruction
+2026-01-01 16:58:19,944 INFO: Adding 00058.jpg to the reconstruction
+2026-01-01 16:58:39,944 INFO: Adding 00059.jpg to the reconstruction
+2026-01-01 16:58:59,944 INFO: Adding 00060.jpg to the reconstruction
+2026-01-01 16:59:19,944 INFO: Adding 00061.jpg to the reconstruction
+2026-01-01 16:59:39,944 INFO: Adding 00062.jpg to the reconstruction
+2026-01-01 16:59:59,944 INFO: Adding 00063.jpg to the reconstruction
+2026-01-01 17:00:19,944 INFO: Adding 00064.jpg to the reconstruction
+2026-01-01 17:00:39,944 INFO: Adding 00065.jpg to the reconstruction
+2026-01-01 17:00:59,944 INFO: Adding 00066.jpg to the reconstruction
+2026-01-01 17:01:19,944 INFO: Adding 00067.jpg to the reconstruction
+2026-01-01 17:01:39,944 INFO: Adding 00068.jpg to the reconstruction
+2026-01-01 17:01:59,944 INFO: Adding 00069.jpg to the reconstruction
+2026-01-01 17:02:19,944 INFO: Adding 00070.jpg to the reconstruction
+2026-01-01 17:02:39,944 INFO: Adding 00071.jpg to the reconstruction
+2026-01-01 17:02:59,944 INFO: Adding 00072.jpg to the reconstruction
+2026-01-01 17:03:19,944 INFO: Adding 00073.jpg to the reconstruction
+[INFO]    Export reconstruction stats
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" compute_statistics --diagram_max_points 100000 "C:\odm-work\project\opensfm"
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" export_geocoords --reconstruction --proj "+proj=utm +zone=1 +datum=WGS84 +units=m +no_defs" --offset-x 0.0 --offset-y 0.0 "C:\odm-work\project\opensfm"
+[INFO]    Undistorting C:\odm-work\project\opensfm ...
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" export_visualsfm --points "C:\odm-work\project\opensfm"
+[INFO]    running "C:\odm\SuperBuild\install\bin\opensfm\bin\opensfm" export_ply --no-cameras --point-num-views "C:\odm-work\project\opensfm"
+[INFO]    Finished opensfm stage

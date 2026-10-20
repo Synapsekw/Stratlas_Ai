@@ -1,5 +1,5 @@
 import type { JobRecord } from '@aio/schema';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -46,5 +46,20 @@ describe('JobStore.delete', () => {
     expect(s.delete('job-live')).toBe(false);
     expect(s.get('job-live')).toBeDefined();
     expect(s.delete('nope')).toBe(false);
+  });
+});
+
+describe('JobStore.load', () => {
+  it('loads a running job with live progress as interrupted, without the live progress', async () => {
+    const file = join(dir, 'jobs.json');
+    const running: JobRecord = {
+      ...job('j1', 'running', '2026-10-04T10:00:00.000Z'),
+      live: { detail: { label: 'Matching photos', done: 1, total: 2 }, etaSeconds: 5 },
+    };
+    await writeFile(file, JSON.stringify([running]));
+    const store = new JobStore(file);
+    await store.load();
+    expect(store.get('j1')?.status).toBe('interrupted');
+    expect(store.get('j1')?.live).toBeUndefined();
   });
 });
