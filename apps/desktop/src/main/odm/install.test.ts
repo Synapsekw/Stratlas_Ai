@@ -28,7 +28,7 @@ import type { OdmSystem } from './system';
 const SETUP = Buffer.from('fake setup bytes');
 const VC_RUNTIME = ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'];
 const UNVERIFIED =
-  'ODM did not finish starting within 10 minutes. The first start on a new computer can be slow while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.';
+  'ODM is installed, but its start check has not passed yet. The first start on a new computer can take several minutes while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.';
 let dir: string;
 let server: Server;
 let url: string;
@@ -322,6 +322,7 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
     expect(existsSync(join(dir, 'data', 'runtime', 'downloads', 'ODM_Setup_test.exe'))).toBe(false);
     expect(await readRec(join(dir, 'data'))).toMatchObject({ dir: target, verified: false });
     expect(lines.join('\n')).toMatch(/start check: 600 s, exit code 1, timed out/);
+    expect(lines.join('\n')).toContain('did not finish starting within 10 minutes');
     // after a restart too: shown as needing a start check, and never given to a photo job
     expect(await odmStatus(d, false)).toMatchObject({ state: 'unverified', problem: UNVERIFIED });
     expect(await currentOdm(d)).toBeNull();

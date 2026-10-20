@@ -55,7 +55,9 @@ const VC_RUNTIME_MISSING =
 const VC_RUNTIME_HINT =
   'The Microsoft Visual C++ 2015-2022 Redistributable (x64) is also missing; installing it from https://aka.ms/vs/17/release/vc_redist.x64.exe may help.';
 /** Why an install recorded unverified is not used yet; the card offers Try again. */
-const UNVERIFIED = `ODM did not finish starting within ${String(SMOKE_TIMEOUT_MS / 60_000)} minutes. The first start on a new computer can be slow while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.`;
+/** Neutral: the check may have run out of time, been cancelled or stopped by a quit. */
+const UNVERIFIED =
+  'ODM is installed, but its start check has not passed yet. The first start on a new computer can take several minutes while Windows checks the new files. Press Try again; the second start is usually much faster. If it keeps happening, send us the app log.';
 const CHECK_CANCELLED = 'The start check was cancelled. ODM stays installed until it is checked.';
 /** How much of the start check's output goes to the app log. */
 const SMOKE_LOG_CHARS = 4096;
@@ -460,8 +462,12 @@ export async function installOdm(
     // the usage text printed counts, even when the timer stopped it just after
     const passed = /usage: run/i.test(smoke.out) && (smoke.code === 0 || smoke.timedOut === true);
     // a slow first start is no proof of a broken install: kept, it waits for Try again
-    if (!passed && smoke.timedOut) verified = false;
-    else if (!passed)
+    if (!passed && smoke.timedOut) {
+      verified = false;
+      d.log?.(
+        `ODM: did not finish starting within ${String(SMOKE_TIMEOUT_MS / 60_000)} minutes; kept, unverified, for Try again.`,
+      );
+    } else if (!passed)
       return await rollback(
         noRuntime.length > 0
           ? VC_RUNTIME_MISSING
