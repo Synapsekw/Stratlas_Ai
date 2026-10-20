@@ -53,7 +53,7 @@ describe('the smoke test process', () => {
     );
     const r = system.runSmoke('C:\\odm');
     child.stdout.write('compiling\n');
-    expect(await r).toEqual({ code: 1, out: 'compiling\n', timedOut: true });
+    expect(await r).toEqual({ code: 1, out: 'compiling\n', timedOut: true, stopped: false });
     expect(killed).toEqual([4242]);
     expect(child.stdout.destroyed && child.stderr.destroyed).toBe(true);
     child.emit('close', 0); // a late close changes nothing
@@ -99,7 +99,8 @@ describe('the smoke test process', () => {
     const r = system.runSmoke('C:\\odm');
     system.stopSmoke();
     expect(killed).toEqual([4242]);
-    expect(await r).toMatchObject({ code: 1 }); // never closed: let go after the grace
+    // never closed: let go after the grace, and said to be stopped (the install takes it as a cancel)
+    expect(await r).toMatchObject({ code: 1, timedOut: false, stopped: true });
     system.stopSmoke(); // finished: not killed again
     expect(killed).toEqual([4242]);
   });

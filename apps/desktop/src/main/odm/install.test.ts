@@ -496,6 +496,103 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
     }
   });
 
+  it('a start check stopped by the app quitting is a cancel, not a failure', async () => {
+    const target = join(dir, 'data', 'runtime', 'odm-3.6.2');
+    const system = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', stopped: true }),
+    });
+    const { r, seen } = await run(deps(system));
+    expect(r).toMatchObject({ ok: false, code: 'cancelled' });
+    expect(seen.at(-1)).toMatchObject({ phase: 'cancelled' });
+    expect(system.calls.filter((c) => c[0]?.endsWith('unins000.exe'))).toHaveLength(0);
+    expect(await readRec(join(dir, 'data'))).toMatchObject({ dir: target, verified: false });
+  });
+
+  /** An older install of ours in `odm-<version>`, recorded unverified: its start check never passed. */
+  async function unverifiedOlder(version: string) {
+    const older = join(dir, 'data', 'runtime', `odm-${version}`);
+    await writeOdmFiles(older);
+    const rec = {
+      schema: 'aio.odm-install/1',
+      version,
+      dir: older,
+      installedAt: '2026-10-01T00:00:00.000Z',
+      verified: false,
+    };
+    await writeFile(join(dir, 'data', 'runtime', 'odm.json'), JSON.stringify(rec));
+    return { older, rec };
+  }
+
+  it('an update over an unverified older install removes it once the new one starts', async () => {
+    const { older } = await unverifiedOlder('3.6.0');
+    const slow = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', timedOut: true }),
+    });
+    await run(deps(slow));
+    expect(existsSync(older)).toBe(true); // tracked, not forgotten
+    expect((await run(deps())).r).toMatchObject({ ok: true, status: { state: 'installed' } });
+    expect(existsSync(older)).toBe(false);
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-previous.json'))).toBe(false);
+  });
+
+  it('an update over an unverified older install that does not start puts it back, unverified', async () => {
+    const { older, rec } = await unverifiedOlder('3.6.0');
+    const broken = fakeSystem({ runSmoke: () => Promise.resolve({ code: 1, out: 'boom' }) });
+    expect((await run(deps(broken))).r).toMatchObject({ ok: false, code: 'failed' });
+    expect(await readRec(join(dir, 'data'))).toEqual(rec);
+    expect(existsSync(older)).toBe(true);
+    expect((await odmStatus(deps(), false)).state).toBe('update-available');
+  });
+
+  it('a working older engine kept by an update stays the one put back; an unverified one between goes', async () => {
+    const working = join(dir, 'data', 'runtime', 'odm-3.5.6');
+    await writeOdmFiles(working);
+    const workingRec = {
+      schema: 'aio.odm-install/1',
+      version: '3.5.6',
+      dir: working,
+      installedAt: '2026-09-01T00:00:00.000Z',
+    };
+    await writeFile(join(dir, 'data', 'runtime', 'odm-previous.json'), JSON.stringify(workingRec));
+    const { older } = await unverifiedOlder('3.6.0');
+    const broken = fakeSystem({ runSmoke: () => Promise.resolve({ code: 1, out: 'boom' }) });
+    expect((await run(deps(broken))).r).toMatchObject({ ok: false, code: 'failed' });
+    expect(await readRec(join(dir, 'data'))).toEqual(workingRec);
+    expect(existsSync(working)).toBe(true);
+    expect(existsSync(older)).toBe(false);
+  });
+
+  it('a rollback whose uninstaller fails still puts the older record back', async () => {
+    const older = join(dir, 'data', 'runtime', 'odm-3.5.6');
+    await writeOdmFiles(older);
+    const oldRec = {
+      schema: 'aio.odm-install/1',
+      version: '3.5.6',
+      dir: older,
+      installedAt: '2026-10-01T00:00:00.000Z',
+    };
+    await writeFile(join(dir, 'data', 'runtime', 'odm.json'), JSON.stringify(oldRec));
+    const system = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: 'boom' }),
+      runUninstaller: () => Promise.reject(new Error('EPERM')),
+    });
+    expect((await run(deps(system))).r).toMatchObject({ ok: false, code: 'failed' });
+    expect(await readRec(join(dir, 'data'))).toEqual(oldRec);
+    expect(existsSync(join(dir, 'data', 'runtime', 'odm-previous.json'))).toBe(false);
+  });
+
+  it('remove after a cancelled start check also deletes the downloaded setup', async () => {
+    const system = fakeSystem({
+      runSmoke: () => Promise.resolve({ code: 1, out: '', stopped: true }),
+    });
+    const d = deps(system);
+    await run(d);
+    const download = join(dir, 'data', 'runtime', 'downloads', 'ODM_Setup_test.exe');
+    expect(existsSync(download)).toBe(true);
+    expect((await removeOdm(d)).ok).toBe(true);
+    expect(existsSync(download)).toBe(false);
+  });
+
   it('remove during a slow update removes the kept older engine too', async () => {
     const older = join(dir, 'data', 'runtime', 'odm-3.5.6');
     await writeOdmFiles(older);

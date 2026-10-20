@@ -11,7 +11,13 @@ export function registerOdmIpc(
     emit(p: OdmInstallProgress): void;
     setGpu(gpu: OdmGpuSetting): Promise<void>;
   },
-): void {
+): {
+  /**
+   * The app quits: stop a running install as Cancel does. A start check then leaves ODM installed
+   * and unverified, never a rollback racing the exit.
+   */
+  stopAll(): void;
+} {
   let running: AbortController | null = null;
   let phase: OdmInstallProgress['phase'] | null = null;
 
@@ -65,4 +71,10 @@ export function registerOdmIpc(
     }
     return { ok: true, status: await odmStatus(d, running !== null) };
   });
+
+  return {
+    stopAll: () => {
+      running?.abort();
+    },
+  };
 }
