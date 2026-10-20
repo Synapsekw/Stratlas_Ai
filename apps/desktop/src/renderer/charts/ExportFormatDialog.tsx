@@ -54,7 +54,7 @@ export function ExportFormatDialog<F extends string>(p: {
           <button
             type="button"
             className="btn ghost sm"
-            aria-label={t('chart.exportClose')}
+            aria-label={t('dialog.close')}
             onClick={() => {
               p.onClose();
             }}

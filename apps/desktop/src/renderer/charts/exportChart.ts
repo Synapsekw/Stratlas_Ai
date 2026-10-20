@@ -30,6 +30,9 @@ const PAINT = [
   'shape-rendering',
 ] as const;
 
+/** The crosshair, the hover readout and the live region. */
+const OVERLAYS = '.pc-crosshair, [data-testid="chart-crosshair"], .pc-readout, [aria-live]';
+
 const BACKGROUND_TOKEN = '--bg-1';
 
 function readBlob(blob: Blob): Promise<Uint8Array<ArrayBuffer>> {
@@ -45,17 +48,36 @@ function readBlob(blob: Blob): Promise<Uint8Array<ArrayBuffer>> {
   });
 }
 
+/**
+ * Web fonts do not reach an SVG drawn into an image, so text gets an explicit stack that ends in a
+ * generic family: the PNG then looks the same on every machine. Fonts are not embedded.
+ */
+function fontStack(family: string): string {
+  const generic = /mono/i.test(family) ? 'ui-monospace, monospace' : 'sans-serif';
+  return family ? `${family}, ${generic}` : generic;
+}
+
 /** Copy the computed paint of `from` and its descendants onto the matching nodes of `to`. */
 function inlinePaint(from: Element, to: Element): void {
   const style = getComputedStyle(from);
   for (const attr of Array.from(to.attributes)) {
-    if (attr.value.includes('var(')) to.removeAttribute(attr.name);
+    if (attr.name !== 'style' && attr.value.includes('var(')) to.removeAttribute(attr.name);
   }
-  const css = PAINT.map((p) => [p, style.getPropertyValue(p)] as const)
+  // an inline style may carry var() too: keep its plain declarations, then the computed paint
+  const kept = (to.getAttribute('style') ?? '')
+    .split(';')
+    .map((d) => d.trim())
+    .filter((d) => d !== '' && !d.includes('var('));
+  const isText = to.localName === 'text' || to.localName === 'tspan';
+  const computed = PAINT.map((p) => {
+    const v = style.getPropertyValue(p);
+    return [p, p === 'font-family' && isText ? fontStack(v) : v] as const;
+  })
     .filter(([, v]) => v !== '' && !v.includes('var('))
-    .map(([p, v]) => `${p}:${v}`)
-    .join(';');
+    .map(([p, v]) => `${p}:${v}`);
+  const css = [...kept, ...computed].join(';');
   if (css) to.setAttribute('style', css);
+  else to.removeAttribute('style');
   const a = from.children;
   const b = to.children;
   for (let i = 0; i < a.length; i++) {
@@ -72,6 +94,10 @@ export async function chartPng(svg: SVGSVGElement, scale = 2): Promise<Uint8Arra
   const height = Number(svg.getAttribute('height')) || box.height || 220;
   const clone = svg.cloneNode(true) as SVGSVGElement;
   inlinePaint(svg, clone);
+  // the hover state is not part of the picture; pins stay
+  clone.querySelectorAll(OVERLAYS).forEach((el) => {
+    el.remove();
+  });
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   clone.setAttribute('width', String(width));
   clone.setAttribute('height', String(height));

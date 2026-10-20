@@ -67,4 +67,21 @@ describe('ExportFormatDialog', () => {
     });
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('closes on the x button and on a click on the scrim', () => {
+    const onClose = vi.fn();
+    const h = mount({ onClose });
+    act(() => h.querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.click());
+    expect(onClose).toHaveBeenCalledTimes(1);
+    const scrim = h.querySelector<HTMLElement>('.sv-scrim');
+    act(() => {
+      scrim?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(2);
+    // a press inside the panel does not close it
+    act(() => {
+      h.querySelector('.xf-dialog')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
 });

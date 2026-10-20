@@ -66,42 +66,79 @@ describe('seriesCsv', () => {
   });
 });
 
+/** Run chartPng on `inner` with `computed` as every element's computed style; answers the SVG text. */
+async function draw(inner: string, computed: Record<string, string>) {
+  document.body.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">${inner}</svg>`;
+  const svg = document.querySelector<SVGSVGElement>('svg');
+  if (!svg) throw new Error('no svg');
+  vi.spyOn(window, 'getComputedStyle').mockImplementation(
+    () =>
+      ({
+        getPropertyValue: (p: string) => computed[p] ?? '',
+      }) as unknown as CSSStyleDeclaration,
+  );
+  let serialised = '';
+  class FakeImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(v: string) {
+      serialised = decodeURIComponent(v.slice(v.indexOf(',') + 1));
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+  vi.stubGlobal('Image', FakeImage);
+  const ctx = { scale: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), fillStyle: '' };
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+    ctx as unknown as CanvasRenderingContext2D,
+  );
+  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => {
+    cb(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
+  });
+  const bytes = await chartPng(svg, 2);
+  return { serialised, bytes, ctx };
+}
+
 describe('chartPng', () => {
   it('inlines var() colours before drawing', async () => {
-    document.body.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">' +
+    const { serialised, bytes, ctx } = await draw(
       '<g class="pc-grid"><line x1="0" x2="40" y1="5" y2="5" stroke="var(--chart-grid)"/></g>' +
-      '<path d="M0 0L10 10" stroke="var(--chart-current)" fill="none"/></svg>';
-    const svg = document.querySelector<SVGSVGElement>('svg');
-    if (!svg) throw new Error('no svg');
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(
-      () =>
-        ({
-          getPropertyValue: (p: string) => (p === 'stroke' ? 'rgb(1, 2, 3)' : ''),
-        }) as unknown as CSSStyleDeclaration,
+        '<path d="M0 0L10 10" stroke="var(--chart-current)" fill="none"/>',
+      { stroke: 'rgb(1, 2, 3)' },
     );
-    let serialised = '';
-    class FakeImage {
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      set src(v: string) {
-        serialised = decodeURIComponent(v.slice(v.indexOf(',') + 1));
-        queueMicrotask(() => this.onload?.());
-      }
-    }
-    vi.stubGlobal('Image', FakeImage);
-    const ctx = { scale: vi.fn(), drawImage: vi.fn(), fillRect: vi.fn(), fillStyle: '' };
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
-      ctx as unknown as CanvasRenderingContext2D,
-    );
-    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => {
-      cb(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
-    });
-    const bytes = await chartPng(svg, 2);
     expect(serialised).not.toContain('var(');
     expect(serialised).toContain('rgb(1, 2, 3)');
     expect(Array.from(bytes)).toEqual([137, 80, 78, 71]);
     expect(ctx.scale).toHaveBeenCalledWith(2, 2);
+  });
+
+  it('drops var() from an inline style and keeps its plain declarations', async () => {
+    const { serialised } = await draw(
+      '<rect width="5" height="5" style="fill: var(--x); stroke-linecap: round"/>',
+      { stroke: 'rgb(4, 5, 6)' },
+    );
+    expect(serialised).not.toContain('var(');
+    expect(serialised).toContain('stroke-linecap: round');
+    expect(serialised).toContain('stroke:rgb(4, 5, 6)');
+  });
+
+  it('gives text a font stack that ends in a generic family', async () => {
+    const mono = await draw('<text x="1" y="1">12</text>', { 'font-family': 'Plex Mono' });
+    expect(mono.serialised).toContain('font-family:Plex Mono, ui-monospace, monospace');
+    const sans = await draw('<text x="1" y="1">12</text>', { 'font-family': 'Inter' });
+    expect(sans.serialised).toContain('font-family:Inter, sans-serif');
+  });
+
+  it('leaves the crosshair, readout and live region out but keeps pins', async () => {
+    const { serialised } = await draw(
+      '<g class="pc-pin" data-testid="section-chart-pin"></g>' +
+        '<g class="pc-crosshair" data-testid="chart-crosshair"></g>' +
+        '<g class="pc-readout"></g><g aria-live="polite"></g>',
+      {},
+    );
+    expect(serialised).toContain('pc-pin');
+    expect(serialised).not.toContain('crosshair');
+    expect(serialised).not.toContain('pc-readout');
+    expect(serialised).not.toContain('aria-live');
   });
 });
 
