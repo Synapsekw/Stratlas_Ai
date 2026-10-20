@@ -87,3 +87,23 @@ describe('the engine client when the engine dies', () => {
     expect(client.stopped()).toBeNull();
   });
 });
+
+describe('per-date and spread requests', () => {
+  it('sends series, their fingerprints and spread to the engine as their own kinds', () => {
+    const { port, sent } = deadPort();
+    const client = connectEngine(port);
+    const item = {
+      id: 'a',
+      from: { kind: 'smart' as const },
+      to: { kind: 'current' as const },
+      useDeadband: false,
+    };
+    void client.series({ ring: [], item, captures: ['c1', 'c2'] }).catch(() => undefined);
+    void client.seriesFingerprints({ ring: [], item, captures: ['c1'] }).catch(() => undefined);
+    void client.spread({ ring: [], item, capture: 'c1' }).catch(() => undefined);
+    expect(sent.map((m) => m.kind)).toEqual(['series', 'seriesFingerprints', 'spread']);
+    expect(sent[0]).toMatchObject({ req: { captures: ['c1', 'c2'] } });
+    expect(sent[2]).toMatchObject({ req: { capture: 'c1' } });
+    client.dispose();
+  });
+});

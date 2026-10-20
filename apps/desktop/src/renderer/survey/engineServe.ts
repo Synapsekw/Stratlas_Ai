@@ -6,8 +6,10 @@
  */
 import type { ComparisonItem, SurfaceRef } from '@aio/schema';
 import {
+  baseSpread,
   bilinear,
   compareItem,
+  compareSeries,
   fingerprint,
   isSurface,
   newShared,
@@ -15,6 +17,7 @@ import {
   projectResolver,
   resolveCurrentPrevious,
   ringShifts,
+  seriesApplies,
   TileCache,
   toleranceShare,
   type GridOut,
@@ -30,7 +33,9 @@ import type {
   ItemShare,
   RunReply,
   RunRequest,
+  SeriesRequest,
   SiteRequest,
+  SpreadRequest,
 } from './engineProtocol';
 
 /** Fetch a project file's bytes, or null when it is missing. */
@@ -114,8 +119,19 @@ export class EngineSession {
 
   /** The fingerprint each item would have now (the inputs only, nothing is computed). */
   async fingerprints(req: RunRequest): Promise<string[]> {
-    const resolve = this.resolver(req.capture);
-    const ring = normalRing(req.ring);
+    const out: string[] = [];
+    for (const item of req.items)
+      out.push(await this.print(req.ring, item, this.resolver(req.capture), req.capture));
+    return out;
+  }
+
+  /** One item's fingerprint over a resolver, the ring stored for `scope`. */
+  private async print(
+    ring: SeriesRequest['ring'],
+    item: ComparisonItem,
+    resolve: Resolve,
+    scope: string | undefined,
+  ): Promise<string> {
     const side = async (ref: SurfaceRef): Promise<ResolvedSurface | null> => {
       if (!isSurface(ref)) return null;
       try {
@@ -124,20 +140,44 @@ export class EngineSession {
         return null;
       }
     };
+    const shifts = this.ringShifts(scope);
+    return fingerprint(
+      normalRing(ring),
+      item,
+      await side(item.from),
+      await side(item.to),
+      this.ctx.site,
+      shifts.ringCurrent,
+      shifts.ringCurrentTurn,
+    );
+  }
+
+  /** The item once per date (W4): each capture as `current`; none without a `current` side. */
+  async series(req: SeriesRequest, signal?: AbortSignal) {
+    if (!seriesApplies(req.item)) return [];
+    return compareSeries(req.ring, req.item, (c) => this.resolver(c), req.captures, {
+      site: this.ctx.site,
+      ...(signal ? { signal } : {}),
+      ...this.ringShifts(req.scope),
+    });
+  }
+
+  /** The fingerprint `series` would give each date now, in `captures` order (nothing computed). */
+  async seriesFingerprints(req: SeriesRequest): Promise<string[]> {
+    if (!seriesApplies(req.item)) return [];
     const out: string[] = [];
-    for (const item of req.items)
-      out.push(
-        await fingerprint(
-          ring,
-          item,
-          await side(item.from),
-          await side(item.to),
-          this.ctx.site,
-          this.ringShifts(req.capture).ringCurrent,
-          this.ringShifts(req.capture).ringCurrentTurn,
-        ),
-      );
+    for (const c of req.captures)
+      out.push(await this.print(req.ring, req.item, this.resolver(c), req.scope));
     return out;
+  }
+
+  /** The item's volume across `SPREAD_BASES` (W3), null when its `from` is not a base. */
+  async spread(req: SpreadRequest, signal?: AbortSignal) {
+    return baseSpread(req.ring, req.item, this.resolver(req.capture), {
+      site: this.ctx.site,
+      ...(signal ? { signal } : {}),
+      ...this.ringShifts(req.capture),
+    });
   }
 
   /** The whole-site difference on a coarse grid (draft regions), over a ring or the overlap. */
@@ -324,7 +364,13 @@ export function serveEngine(port: EnginePort, fetch: FetchBytes = fetchBytes): v
         ? s.run(msg.req, ac.signal)
         : msg.kind === 'fingerprints'
           ? s.fingerprints(msg.req)
-          : s.site(msg.req, ac.signal);
+          : msg.kind === 'series'
+            ? s.series(msg.req, ac.signal)
+            : msg.kind === 'seriesFingerprints'
+              ? s.seriesFingerprints(msg.req)
+              : msg.kind === 'spread'
+                ? s.spread(msg.req, ac.signal)
+                : s.site(msg.req, ac.signal);
     work.then(
       (value) => {
         running.delete(msg.id);

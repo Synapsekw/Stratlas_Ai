@@ -4,7 +4,7 @@
  * same key (a polygon edited while it computes), so only the latest numbers come back.
  */
 import type { ComparisonItem, ComparisonResult, SitePoint } from '@aio/schema';
-import type { ComparisonRunner } from '@aio/survey';
+import type { BaseSpread, ComparisonRunner } from '@aio/survey';
 import type {
   EngineContext,
   EnginePort,
@@ -12,7 +12,9 @@ import type {
   EngineRequest,
   RunReply,
   RunRequest,
+  SeriesRequest,
   SiteRequest,
+  SpreadRequest,
 } from './engineProtocol';
 
 /** A run that was cancelled because a newer one replaced it (or the engine stopped). */
@@ -55,6 +57,12 @@ export interface EngineClient {
   run(req: RunRequest, key?: string): Promise<RunReply>;
   fingerprints(req: RunRequest): Promise<string[]>;
   site(req: SiteRequest, key?: string): Promise<SiteReply>;
+  /** One result per date of `req.captures`, in that order (none without a `current` side). */
+  series(req: SeriesRequest, key?: string): Promise<ComparisonResult[]>;
+  /** The fingerprint each date's result would have now, in `req.captures` order. */
+  seriesFingerprints(req: SeriesRequest): Promise<string[]>;
+  /** The volume across bases, or null (a surface `from`, too few bases, a zero mean). */
+  spread(req: SpreadRequest, key?: string): Promise<BaseSpread | null>;
   /** G3's seam: one item over one ring, for a capture. */
   runner(capture?: string): ComparisonRunner;
   /** Why the engine died, or null while it runs (and after it was put away on purpose). */
@@ -137,6 +145,9 @@ export function connectEngine(port: EnginePort & { terminate?(): void }): Engine
     run: (req, key) => call<RunReply>((id) => ({ kind: 'run', id, req }), key),
     fingerprints: (req) => call<string[]>((id) => ({ kind: 'fingerprints', id, req })),
     site: (req, key) => call<SiteReply>((id) => ({ kind: 'site', id, req }), key),
+    series: (req, key) => call<ComparisonResult[]>((id) => ({ kind: 'series', id, req }), key),
+    seriesFingerprints: (req) => call<string[]>((id) => ({ kind: 'seriesFingerprints', id, req })),
+    spread: (req, key) => call<BaseSpread | null>((id) => ({ kind: 'spread', id, req }), key),
     runner: (capture) => ({
       async run(ring: readonly SitePoint[], item: ComparisonItem) {
         const r = await client.run({

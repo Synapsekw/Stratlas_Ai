@@ -263,3 +263,46 @@ describe('the survey engine worker', () => {
     expect(replies[0]?.error).toMatch(/answer could not be sent.*DataCloneError/);
   });
 });
+
+describe('per-date runs and the spread across bases', () => {
+  const item = {
+    id: 'a',
+    from: { kind: 'reference' as const, mode: 'level' as const, levelM: 100 },
+    to: { kind: 'current' as const },
+    useDeadband: false,
+  };
+
+  it('serve answers a series request with one result per capture', async () => {
+    const { client, close } = engine();
+    try {
+      const rows = await client.series({ ring, item, captures: ['c1', 'c2'] });
+      expect(rows.map((r) => r.toCapture)).toEqual(['c1', 'c2']);
+      expect(rows.every((r) => r.item === 'a' && r.engine === 'ts')).toBe(true);
+      // each date's fingerprint, without computing, matches its result
+      const prints = await client.seriesFingerprints({ ring, item, captures: ['c1', 'c2'] });
+      expect(prints).toEqual(rows.map((r) => r.fingerprint));
+      // the latest date is the run viewed on it
+      const now = await client.run({ ring, items: [item], capture: 'c2' });
+      expect(rows[1]?.fingerprint).toBe(now.results[0]?.fingerprint);
+      // no current side: no series
+      const fixed = { ...item, to: { kind: 'survey' as const, surface: 'cone' } };
+      expect(await client.series({ ring, item: fixed, captures: ['c1', 'c2'] })).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+
+  it('serve answers a spread request over the spread bases', async () => {
+    const { client, close } = engine();
+    try {
+      const s = await client.spread({ ring, item: { ...item, from: { kind: 'smart' } } });
+      expect(s?.nets.length).toBeGreaterThanOrEqual(2);
+      expect(Number.isFinite(s?.pct)).toBe(true);
+      // a surface on the from side has no spread
+      const surf = { ...item, from: { kind: 'survey' as const, surface: 'flat' } };
+      expect(await client.spread({ ring, item: surf })).toBeNull();
+    } finally {
+      close();
+    }
+  });
+});

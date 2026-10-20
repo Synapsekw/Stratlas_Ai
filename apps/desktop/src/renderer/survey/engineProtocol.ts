@@ -11,7 +11,7 @@ import type {
   HeightTiles,
   SurfaceRef,
 } from '@aio/schema';
-import type { SiteContext, ToleranceShare } from '@aio/survey';
+import type { Ring, SiteContext, ToleranceShare } from '@aio/survey';
 
 /** What the worker resolves surfaces against: one open project. */
 export interface EngineContext {
@@ -76,10 +76,37 @@ export interface SiteRequest {
   ring?: [number, number][];
 }
 
+/**
+ * One item run once per survey date (volumetric parity W4, `compareSeries`): each capture as
+ * `current`, the date before it as `previous`. Only items with a `current` side (`seriesApplies`).
+ */
+export interface SeriesRequest {
+  ring: Ring;
+  item: ComparisonItem;
+  captures: string[];
+  /**
+   * The survey a survey-scoped measurement's ring is stored for (its ring shift); absent for a
+   * site-wide ring. Not the date the item is run on: that is each of `captures`.
+   */
+  scope?: string;
+}
+
+/** An item run with each of `SPREAD_BASES` in place of its `from` base (W3, `baseSpread`). */
+export interface SpreadRequest {
+  ring: Ring;
+  item: ComparisonItem;
+  /** The survey the measurement is viewed on (resolves `current` and `previous`). */
+  capture?: string;
+}
+
 export type EngineRequest =
   | { kind: 'context'; context: EngineContext }
   | { kind: 'run'; id: number; req: RunRequest }
   | { kind: 'fingerprints'; id: number; req: RunRequest }
+  | { kind: 'series'; id: number; req: SeriesRequest }
+  /** The fingerprint a series would give each date now (nothing computed), in `captures` order. */
+  | { kind: 'seriesFingerprints'; id: number; req: SeriesRequest }
+  | { kind: 'spread'; id: number; req: SpreadRequest }
   | { kind: 'site'; id: number; req: SiteRequest }
   | { kind: 'cancel'; id: number };
 

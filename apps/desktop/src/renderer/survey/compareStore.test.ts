@@ -1,4 +1,9 @@
-import type { HeightTiles, MeasurementsFile, SurveyMeasurement } from '@aio/schema';
+import type {
+  ComparisonResult,
+  HeightTiles,
+  MeasurementsFile,
+  SurveyMeasurement,
+} from '@aio/schema';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,9 +24,14 @@ vi.mock('../author', () => ({ authorName: () => '' }));
 const {
   compareStore,
   compute,
+  computeSeries,
+  computeSpread,
   engineClient,
   followMeasurements,
+  isStale,
+  recomputeStandard,
   scheduleCheck,
+  seriesStale,
   setEnginePort,
   setEngineStarter,
 } = await import('./compareStore');
@@ -377,5 +387,185 @@ describe('a live run while editing a lined-up date', () => {
     expect(compareStore.getState().computed.m1?.ringKey).toContain('302018');
     expect(compareStore.getState().computed.m1?.ringKey).not.toContain('302020');
     off();
+  });
+});
+
+/** The value, which the test has made sure is there. */
+function must<T>(v: T | null | undefined): T {
+  if (v === null || v === undefined) throw new Error('missing');
+  return v;
+}
+
+describe('results over time and the spread across bases', () => {
+  const caps = [
+    { id: 'c1', label: 'One', date: '2026-01-01' },
+    { id: 'c2', label: 'Two', date: '2026-02-01' },
+  ];
+  /** Put a measurement in the file as it is now, with some fields changed. */
+  const put = (patch: Partial<SurveyMeasurement>) => {
+    const file = measureStore.getState().file;
+    measureStore.setState({
+      file: {
+        ...file,
+        measurements: file.measurements.map((m) => (m.id === 'm1' ? { ...m, ...patch } : m)),
+      },
+    });
+  };
+  const kit = (r: ComparisonResult, epoch: string): ComparisonResult => ({
+    ...r,
+    netM3: 60,
+    totalM3: 64,
+    fingerprint: `kit:P01:${epoch}:plane`,
+    carried: { from: 'kit', base: 'plane', pile: 'P01', epoch },
+  });
+
+  beforeEach(() => {
+    compareStore.setState({ captures: caps });
+  });
+
+  it('computeSeries computes only missing and stale dates', async () => {
+    const spy = vi.spyOn(engineClient(), 'series');
+    await computeSeries('m1');
+    expect(stored()?.series?.map((r) => r.toCapture)).toEqual(['c1', 'c2']);
+    expect(spy).toHaveBeenCalledTimes(1);
+    // derived numbers, not a person's edit
+    expect(isDirty(measureStore.getState())).toBe(false);
+    expect(stored()?.updatedAt).toBe(UPDATED);
+    expect(stored()?.series?.some((r) => seriesStale(must(stored()), r))).toBe(false);
+
+    // nothing missing or stale: nothing run
+    await computeSeries('m1');
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // c1's row was computed from other inputs: only c1 is run again
+    put({
+      series: stored()?.series?.map((r) =>
+        r.toCapture === 'c1' ? { ...r, fingerprint: 'old' } : r,
+      ),
+    });
+    const row = must(stored()?.series?.[0]);
+    expect(seriesStale(must(stored()), row)).toBe(true);
+    await computeSeries('m1');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[1]?.[0].captures).toEqual(['c1']);
+    expect(stored()?.series?.map((r) => r.fingerprint)).not.toContain('old');
+
+    // a date asked for on its own: only that one, when it is missing
+    put({ series: [] });
+    await computeSeries('m1', { captures: ['c2'] });
+    expect(spy.mock.calls[2]?.[0].captures).toEqual(['c2']);
+    expect(stored()?.series?.map((r) => r.toCapture)).toEqual(['c2']);
+    spy.mockRestore();
+  });
+
+  it('a carried result is not stale', async () => {
+    await computeSeries('m1');
+    const m = must(stored());
+    const [first, second] = m.series ?? [];
+    const carried = kit(must(first), 'e1');
+    expect(seriesStale(m, carried)).toBe(false);
+    // the result on the card: a fingerprint that is not the current one, still not stale
+    compareStore.setState({ current: { m1: ['something else'] } });
+    expect(isStale(compareStore.getState(), m, carried)).toBe(false);
+    expect(isStale(compareStore.getState(), m, must(first))).toBe(true);
+
+    // a carried date is kept, not run again
+    put({ series: [carried, must(second)] });
+    const spy = vi.spyOn(engineClient(), 'series');
+    await computeSeries('m1');
+    expect(spy).not.toHaveBeenCalled();
+    expect(stored()?.series?.[0]?.carried?.base).toBe('plane');
+    spy.mockRestore();
+  });
+
+  it('the check after a change does not replace a carried figure on its own', async () => {
+    const r = await compute('m1', { live: true });
+    put({ results: [kit(must(r?.results[0]), 'e2')] });
+    compareStore.setState({ computed: {}, current: {} });
+    measureStore.setState({ focus: 'm1' });
+    scheduleCheck(0);
+    // the check has run: fingerprints taken, the polygon computed (for its heat map only)
+    await vi.waitFor(() => {
+      const s = compareStore.getState();
+      expect(s.current.m1).toHaveLength(1);
+      expect(s.computed.m1).toBeDefined();
+      expect(s.running.m1).toBe(false);
+    });
+    expect(compareStore.getState().computed.m1?.live).toBe(true);
+    expect(stored()?.results[0]?.carried?.epoch).toBe('e2');
+    measureStore.setState({ focus: null });
+  });
+
+  it('read-only: computeSeries does nothing', async () => {
+    measureStore.setState({ readOnly: true });
+    const series = vi.spyOn(engineClient(), 'series');
+    const prints = vi.spyOn(engineClient(), 'seriesFingerprints');
+    const spread = vi.spyOn(engineClient(), 'spread');
+    await computeSeries('m1');
+    put({
+      items: [{ id: 'a', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+    });
+    expect(await computeSpread('m1')).toBeNull();
+    expect(await recomputeStandard('m1')).not.toBeNull();
+    expect(stored()?.series).toBeUndefined();
+    expect(series).not.toHaveBeenCalled();
+    expect(prints).not.toHaveBeenCalled();
+    expect(spread).not.toHaveBeenCalled();
+  });
+
+  it('spread is memoised per fingerprint', async () => {
+    put({
+      items: [{ id: 'a', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+    });
+    const spy = vi.spyOn(engineClient(), 'spread');
+    const a = await computeSpread('m1');
+    expect(a?.nets.length).toBeGreaterThanOrEqual(2);
+    expect(await computeSpread('m1')).toEqual(a);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(compareStore.getState().spreads.m1?.value).toEqual(a);
+    // not stored on the measurement
+    expect(JSON.stringify(measureStore.getState().file)).not.toContain('nets');
+
+    // other inputs, another fingerprint: computed again
+    put({ points: ring.map(([e, n, z]) => [e + 0.5, n, z]) });
+    await computeSpread('m1');
+    expect(spy).toHaveBeenCalledTimes(2);
+
+    // a base outside the spread bases has none, and nothing is run
+    put({
+      items: [
+        {
+          id: 'a',
+          from: { kind: 'reference', mode: 'level', levelM: 100 },
+          to: { kind: 'current' },
+          useDeadband: false,
+        },
+      ],
+    });
+    expect(await computeSpread('m1')).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+
+  it('recomputeStandard replaces a carried figure with the engine one and keeps was', async () => {
+    const r = await compute('m1', { live: true });
+    const fresh = must(r?.results[0]);
+    put({
+      results: [kit(fresh, 'e2')],
+      series: [kit({ ...fresh, toCapture: 'c1' }, 'e1')],
+    });
+    expect(await recomputeStandard('m1')).toBeNull();
+    const m = stored();
+    expect(m?.results).toHaveLength(1);
+    expect(m?.results[0]?.carried).toBeUndefined();
+    expect(m?.results[0]?.fingerprint).toBe(fresh.fingerprint);
+    expect(m?.previousResults).toEqual([
+      expect.objectContaining({ netM3: 60, totalM3: 64, label: 'kit plane' }),
+    ]);
+    // the carried figures over time go; the engine computes those dates on demand
+    expect(m?.series).toBeUndefined();
+    // the person accepted it: an edit
+    expect(m?.updatedAt).not.toBe(UPDATED);
+    expect(isStale(compareStore.getState(), must(m), must(m?.results[0]))).toBe(false);
   });
 });
