@@ -56,7 +56,9 @@ import {
   finishedProjectJob,
   watchJobEnds,
   mergeDiskIssues,
+  sameFolder,
 } from './jobs';
+import { convertAfterJob } from './survey/measureStore';
 import { bridge, jobs, shell, useShell } from './shell';
 import { installLastView } from './library/lastView';
 import { PanoImportDialog } from './panos/PanoImportDialog';
@@ -400,6 +402,20 @@ export function App() {
       if (!project || !finishedChangeJob(prev.jobs, s.jobs, project.root)) return;
       void changeStore.getState().load(project.id);
     });
+    // a volumetric build wrote volumes.json: piles it added become volume measurements, with no
+    // carried kit figure (the engine computes theirs)
+    const stopKitConvert = jobs.subscribe((s, prev) => {
+      const project = workspace.getState().project;
+      if (!project) return;
+      const built = s.jobs.some(
+        (j) =>
+          j.status === 'done' &&
+          j.pipeline === 'volumetric.build' &&
+          sameFolder(j.project, project.root) &&
+          prev.jobs.find((p) => p.id === j.id)?.status !== 'done',
+      );
+      if (built) void convertAfterJob(project.id);
+    });
     // the inspection pipeline merged issues.json on disk: take its issues, keep unsaved edits
     const stopIssueReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
@@ -512,6 +528,7 @@ export function App() {
       stopLineUp();
       stopChangeReload();
       stopIssueReload();
+      stopKitConvert();
       stopRoad();
       stopRoadMode();
       stopAgent();

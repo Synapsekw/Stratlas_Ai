@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyMeasurements, MeasurementsFile, type SitePoint } from '@aio/schema';
-import { measurementReadout } from '@aio/survey';
+import { initialDraw, measurementReadout } from '@aio/survey';
 import {
   drawEvent,
   editEvent,
   isDirty,
+  liveReading,
   loadMeasurements,
   measureStore,
   saveMeasurements,
@@ -664,5 +665,24 @@ describe('an autosave and the undo against what happens meanwhile', () => {
       [10, 10, 0],
       [13, 14, 0],
     ]);
+  });
+});
+
+describe('liveReading', () => {
+  it('liveReading shows the primary row', () => {
+    // distance headlines the slope length (13 m here), not the horizontal 5 m
+    measureStore.setState({
+      tool: { tool: 'distance', template: null, picks: {} },
+      draw: {
+        ...initialDraw('line'),
+        points: [
+          [0, 0, 0],
+          [3, 4, 12],
+        ],
+        done: true,
+      },
+    });
+    const reading = liveReading(measureStore.getState());
+    expect(reading).toMatch(/^13(\.0+)? m$/);
   });
 });

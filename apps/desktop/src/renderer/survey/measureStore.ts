@@ -5,6 +5,8 @@
  * Autosave is off by default (as Propeller does): changes wait for **Save measurements**.
  */
 import {
+  type BoundaryEditsFile,
+  type ComparisonResult,
   defaultSurveySettings,
   type DesignPickRef,
   emptyMeasurements,
@@ -12,13 +14,17 @@ import {
   MeasurementsFile,
   type MeasurementScope,
   type MeasurementTool,
+  type ProjectManifest,
+  type SiteMaterial,
   type SitePoint,
   type SurveyMeasurement,
   type SurveySettings,
   type SurveyTemplate,
   type SurveyTemplatesFile,
+  type VolumesFile,
 } from '@aio/schema';
 import {
+  convertKitPiles,
   DEFAULT_SNAP,
   designLayerOptions,
   designRolesOf,
@@ -32,10 +38,12 @@ import {
   telecomProblem,
   flipFace,
   formatRow,
+  KIT_BASE_LABEL,
+  type KitConversion,
   measurementFrom,
-  measurementReadout,
   MIN_POINTS,
   missingRoles,
+  primaryRow,
   removeTemplate,
   templateLibrary,
   TOOL_FAMILY,
@@ -53,6 +61,7 @@ import {
   type SnapSettings,
   type SnapSource,
 } from '@aio/survey';
+import { localToEN } from '@aio/volumetric';
 import { shiftKey, workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
 import { authorName } from '../author';
@@ -294,10 +303,11 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     await pending;
     if (loadEpoch !== epoch) return;
   }
-  const [m, t, s] = await Promise.all([
+  const [m, t, s, v] = await Promise.all([
     bridge.call('survey:readMeasurements', { projectId }),
     bridge.call('survey:readTemplates', { projectId }),
     bridge.call('survey:readSettings', { projectId }),
+    bridge.call('project:readVolumes', { projectId }),
   ]);
   // a later load (of another project, or of this one again) owns the state now
   if (loadEpoch !== epoch) return;
@@ -311,12 +321,25 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   const present = new Set(m.value.file.measurements.map((x) => x.id));
   const hidden = remembered.filter((id) => present.has(id));
   if (hidden.length < remembered.length) visibilityMemory.save(projectId, hidden);
+  const readOnly = m.value.readOnly;
+  const materials = s.ok && s.value.ok ? s.value.settings.materials : [];
+  // old stockpile kit piles open as volume measurements with their figures (W3): a conversion,
+  // not an edit, so the baseline takes it too and nothing shows as unsaved
+  const file = openedWithKitPiles(
+    m.value.file,
+    v.ok && v.value.ok ? v.value : null,
+    manifestOf(projectId),
+    materials,
+    readOnly,
+  );
+  const converted = file !== m.value.file;
   const patch: Partial<MeasureState> = {
     status: 'ready',
-    file: m.value.file,
-    savedText: text(m.value.file),
-    readOnly: m.value.readOnly,
+    file,
+    savedText: text(file),
+    readOnly,
     hiddenMeasurements: hidden,
+    ...(converted && !readOnly ? { resultsUnwritten: true } : {}),
   };
   if (t.ok && t.value.ok) patch.templates = { project: t.value.project, user: t.value.user };
   // site settings are G1's; until they exist the defaults hold (metres)
@@ -325,6 +348,126 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     patch.settingsExist = s.value.exists;
   }
   set(patch);
+  // a writable project keeps the conversion on disk at once; a package keeps it in memory only
+  if (converted && !readOnly) await writeConversion(projectId, file, epoch);
+}
+
+/** The open project's manifest, when it is this project's. */
+function manifestOf(projectId: string): ProjectManifest | null {
+  const p = workspace.getState().project;
+  return p?.id === projectId ? p.manifest : null;
+}
+
+/** Kit piles as volume measurements (`convertKitPiles`), placed through the project origin. */
+function kitConversion(
+  file: MeasurementsFile,
+  volumes: VolumesFile,
+  edits: BoundaryEditsFile | null,
+  manifest: ProjectManifest,
+  materials: readonly SiteMaterial[],
+  carry: boolean,
+): KitConversion {
+  const byName = new Map(materials.map((x) => [x.name.trim().toLowerCase(), x.id]));
+  const origin = manifest.origin;
+  return convertKitPiles(volumes, edits, file, {
+    carry,
+    now: now(),
+    newId: newMeasurementId,
+    // the kit keeps no toe heights per vertex: Z 0 (the 3D draping is display only)
+    toSite: (xz) => {
+      const [e, n] = localToEN(origin, xz);
+      return [e, n, 0];
+    },
+    materialId: (name) => byName.get(name.trim().toLowerCase()),
+  });
+}
+
+/** `file` with a conversion's measurements and pile ids added (`kitPilesConverted` always set). */
+function withConversion(file: MeasurementsFile, c: KitConversion): MeasurementsFile {
+  return {
+    ...file,
+    measurements: [...file.measurements, ...c.added],
+    kitPilesConverted: [...(file.kitPilesConverted ?? []), ...c.converted],
+  };
+}
+
+/**
+ * The file as it opens: kit piles not converted yet added, their kit figures carried only when
+ * the file has never been converted (`kitPilesConverted` absent: an old project). A volumetric
+ * project with no kit figures yet (the wizard's, before its build) is marked converted, so its
+ * build is never taken for an old project's. The same file when nothing changes.
+ */
+function openedWithKitPiles(
+  file: MeasurementsFile,
+  read: { volumes: VolumesFile | null; edits: BoundaryEditsFile | null } | null,
+  manifest: ProjectManifest | null,
+  materials: readonly SiteMaterial[],
+  readOnly: boolean,
+): MeasurementsFile {
+  if (!read || !manifest) return file;
+  if (!read.volumes) {
+    if (manifest.type === 'volumetric' && file.kitPilesConverted === undefined && !readOnly)
+      return { ...file, kitPilesConverted: [] };
+    return file;
+  }
+  const carry = file.kitPilesConverted === undefined;
+  const c = kitConversion(file, read.volumes, read.edits, manifest, materials, carry);
+  if (c.converted.length === 0 && !carry) return file;
+  return withConversion(file, c);
+}
+
+/** Write a converted file as it opened (no edit of the person's is in it yet). */
+async function writeConversion(
+  projectId: string,
+  file: MeasurementsFile,
+  epoch: number,
+): Promise<void> {
+  const r = await writeFile(projectId, file);
+  if (loadEpoch !== epoch || get().projectId !== projectId) return;
+  if (r.ok && r.value.ok && get().file === file) set({ resultsUnwritten: false });
+}
+
+/**
+ * After a volumetric build: piles the build added become volume measurements without a carried
+ * figure (the engine computes theirs on demand, so nothing old is silently replaced). Written at
+ * once with the file as last saved; the person's unsaved edits stay unsaved.
+ */
+export async function convertAfterJob(projectId: string): Promise<void> {
+  const s0 = get();
+  if (s0.projectId !== projectId || s0.status !== 'ready' || s0.readOnly) return;
+  const manifest = manifestOf(projectId);
+  if (!manifest) return;
+  const epoch = loadEpoch;
+  const r = await bridge.call('project:readVolumes', { projectId });
+  const s = get();
+  if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready' || s.readOnly)
+    return;
+  if (!r.ok || !r.value.ok || !r.value.volumes) return;
+  const c = kitConversion(
+    s.file,
+    r.value.volumes,
+    r.value.edits,
+    manifest,
+    s.settings.materials,
+    false,
+  );
+  if (c.converted.length === 0 && s.file.kitPilesConverted !== undefined) return;
+  const baseline = withConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
+  set({ file: withConversion(s.file, c), savedText: text(baseline), resultsUnwritten: true });
+  const w = await writeFile(projectId, baseline);
+  if (loadEpoch !== epoch || get().projectId !== projectId) return;
+  if (w.ok && w.value.ok && !isDirty(get())) set({ resultsUnwritten: false });
+}
+
+/** Write the file, chained after the project's writes in flight (a load waits for them). */
+function writeFile(projectId: string, file: MeasurementsFile) {
+  const write = bridge.call('survey:writeMeasurements', { projectId, file });
+  const chain = Promise.allSettled([writing.get(projectId), write]);
+  writing.set(projectId, chain);
+  void chain.then(() => {
+    if (writing.get(projectId) === chain) writing.delete(projectId);
+  });
+  return write;
 }
 
 export async function saveMeasurements(): Promise<boolean> {
@@ -335,13 +478,7 @@ export async function saveMeasurements(): Promise<boolean> {
   const projectId = s.projectId;
   const epoch = loadEpoch;
   set({ saving: true, message: null });
-  const write = bridge.call('survey:writeMeasurements', { projectId, file });
-  const chain = Promise.allSettled([writing.get(projectId), write]);
-  writing.set(projectId, chain);
-  void chain.then(() => {
-    if (writing.get(projectId) === chain) writing.delete(projectId);
-  });
-  const r = await write;
+  const r = await writeFile(projectId, file);
   // another project (or this one again) was opened meanwhile: that state is not this save's to
   // touch, or to save
   if (loadEpoch !== epoch || get().projectId !== projectId) return false;
@@ -443,18 +580,90 @@ export function setComputedResults(
   if (s.readOnly) return;
   const target = s.file.measurements.find((m) => m.id === id);
   if (!target) return;
-  const results = fn(target);
-  if (JSON.stringify(results) === JSON.stringify(target.results)) return;
+  setDerived(id, { results: fn(target) });
+}
+
+/**
+ * Put derived fields on a measurement as `setComputedResults` does: no edit, `updatedAt` stays,
+ * the baseline takes them too, and they are written with the next save. Nothing when unchanged.
+ */
+function setDerived(
+  id: string,
+  patch: Pick<SurveyMeasurement, 'results'> | Required<Pick<SurveyMeasurement, 'series'>>,
+): void {
+  const s = get();
+  if (s.readOnly) return;
+  const target = s.file.measurements.find((m) => m.id === id);
+  if (!target) return;
+  const same = Object.entries(patch).every(
+    ([k, v]) => JSON.stringify(v) === JSON.stringify(target[k]),
+  );
+  if (same) return;
   const file: MeasurementsFile = {
     ...s.file,
-    measurements: s.file.measurements.map((m) => (m.id === id ? { ...m, results } : m)),
+    measurements: s.file.measurements.map((m) => (m.id === id ? { ...m, ...patch } : m)),
   };
-  // the same results on the baseline (when it has the measurement), so only a person's edits
+  // the same fields on the baseline (when it has the measurement), so only a person's edits
   // count as unsaved; JSON text round trips keep the key order
   const saved = JSON.parse(s.savedText) as { measurements?: { id?: unknown }[] };
   if (Array.isArray(saved.measurements))
-    saved.measurements = saved.measurements.map((m) => (m.id === id ? { ...m, results } : m));
+    saved.measurements = saved.measurements.map((m) => (m.id === id ? { ...m, ...patch } : m));
   set({ file, savedText: JSON.stringify(saved), resultsUnwritten: true });
+}
+
+/** The schema's longest series. */
+const SERIES_MAX = 1000;
+/** The schema's longest list of replaced results. */
+const PREVIOUS_MAX = 20;
+const seriesKey = (r: ComparisonResult) => `${r.item} ${r.toCapture ?? ''}`;
+
+/**
+ * Store results over time (one per item and survey date) on a measurement: each replaces the
+ * entry for the same item and date, new dates are added. Derived numbers, not an edit (as
+ * `setComputedResults`). Nothing in a read-only project.
+ */
+export function setSeries(id: string, results: readonly ComparisonResult[]): void {
+  const target = get().file.measurements.find((m) => m.id === id);
+  if (!target) return;
+  const incoming = new Map(results.map((r) => [seriesKey(r), r]));
+  const old = target.series ?? [];
+  const had = new Set(old.map(seriesKey));
+  const series = [
+    ...old.map((r) => incoming.get(seriesKey(r)) ?? r),
+    ...[...incoming.values()].filter((r) => !had.has(seriesKey(r))),
+  ].slice(-SERIES_MAX);
+  setDerived(id, { series });
+}
+
+/**
+ * The measurement with a standard-base result in place of the one for the same item. A carried
+ * kit figure it replaces is kept in `previousResults` ("was X m³"), and the carried figures over
+ * time are dropped (the engine computes those dates on demand). Pure: `recomputeStandard`
+ * (compareStore) runs the engine and stores this as an edit.
+ */
+export function replaceWithStandard(
+  m: SurveyMeasurement,
+  result: ComparisonResult,
+): SurveyMeasurement {
+  const old = m.results.find((r) => r.item === result.item);
+  const results = old ? m.results.map((r) => (r === old ? result : r)) : [...m.results, result];
+  const next: SurveyMeasurement = { ...m, results };
+  if (old?.carried)
+    next.previousResults = [
+      ...(m.previousResults ?? []),
+      {
+        netM3: old.netM3,
+        totalM3: old.totalM3,
+        label: `kit ${KIT_BASE_LABEL[old.carried.base]}`,
+        replacedAt: result.computedAt,
+      },
+    ].slice(-PREVIOUS_MAX);
+  if (m.series) {
+    const series = m.series.filter((r) => !r.carried);
+    if (series.length > 0) next.series = series;
+    else delete next.series;
+  }
+  return next;
 }
 
 /** Move measurements into a folder ('' takes them out of any folder). */
@@ -768,8 +977,9 @@ export function flipAzimuth(id: string): void {
 }
 
 /**
- * The live tool's reading, as the island and the live card say it: the first readout row of the
- * shape drawn so far (to the pointer), or null while it has too few points.
+ * The live tool's reading, as the island and the live card say it: the primary readout row of
+ * the shape drawn so far (to the pointer; `primaryRow`, with the template's items when it has
+ * one), or null while it has too few points.
  */
 export function liveReading(
   s: Pick<MeasureState, 'tool' | 'draw' | 'settings' | 'surface'>,
@@ -785,8 +995,8 @@ export function liveReading(
     points: pts,
     createdAt: '',
   });
-  const first = measurementReadout(m, { surface: s.surface ?? undefined })[0];
-  return first ? formatRow(first, s.settings.units, s.settings.precision) : null;
+  const row = primaryRow(m, { surface: s.surface ?? undefined }, tool.template?.items);
+  return row ? formatRow(row, s.settings.units, s.settings.precision) : null;
 }
 
 function nextLabel(base: string): string {
