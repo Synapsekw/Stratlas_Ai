@@ -22,6 +22,7 @@ import {
 import {
   AccuracyReport,
   currentNarrative,
+  reportSectionOn,
   Issue,
   NarrativeFile,
   parseManifest,
@@ -69,7 +70,7 @@ import {
 } from './sections';
 import { layoutApprovals, parseSignOff } from '../../team/houseApprovals';
 import { readSiteRuns, runSectionIds, type SiteRuns } from './runs';
-import { houseVolumes } from './survey';
+import { houseVolumes, printsVolumeOverTime } from './survey';
 import { buildSurveyData, readSurveyFiles, surveySectionIds, type SurveyFiles } from './surveyData';
 
 interface PageState {
@@ -277,13 +278,26 @@ async function run(): Promise<void> {
     };
   // the survey data: its sections, and the site inventory the summary and statistics print (the
   // volume measurements' engine results; an old project's kit piles carried over in memory)
+  // the dates of the volume measurements are worked out only for a section that prints them
+  const datesShown = (
+    [
+      'summary',
+      'statistics',
+      'stockpiles',
+      'volume-over-time',
+    ] as const satisfies readonly ReportSectionId[]
+  ).some((id) => reportSectionOn(contents, id));
   const survey =
     surveyFiles && !only
       ? await buildSurveyData(surveyFiles, read.bytes, {
           need: 'report',
           progress: progress('Computing the survey volumes'),
+          fillDates: datesShown,
         })
       : null;
+  // volume over time prints once a pile has figures on two dates, worked out as the app does
+  if (survey && printsVolumeOverTime(survey) && !surveySections.includes('volume-over-time'))
+    surveySections.push('volume-over-time');
   const h: HouseModel = houseReportModel({
     manifest,
     issues,

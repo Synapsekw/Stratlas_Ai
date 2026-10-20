@@ -875,7 +875,8 @@ svg.overlap {
 }
 /* The app's charts and measurement cards (charts.css, timeChart.css, card.css), printed: the
    foundation tokens they read, at their light-theme values (packages/ui/src/tokens.css) resolved
-   for white paper. The current survey takes the report's accent (--acc), as it does in the app. */
+   for white paper. The current survey takes the report's accent (--acc), as it does in the app.
+   printTokens.test.ts pins every value here to tokens.css. */
 .pg {
   --bg-0: oklch(0.93 0.006 250);
   --bg-1: oklch(1 0 0);

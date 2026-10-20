@@ -16,7 +16,6 @@
 import { useEffect } from 'react';
 import { SPREAD_BASES, seriesApplies, type BaseSpread, type DraftRegion } from '@aio/survey';
 import type {
-  CaptureLineUpTurn,
   ComparisonItem,
   ComparisonResult,
   DesignEntry,
@@ -27,7 +26,6 @@ import type {
   SurveyMeasurement,
   SurveyPrepareParams,
 } from '@aio/schema';
-import { turnOf } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
 import { captureShift, shiftKey, workspace } from '@aio/workspace';
 import { bridge } from '../shell';
@@ -35,6 +33,7 @@ import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } fro
 import { designs as designsStore } from './designsStore';
 import type { EnginePort, HeatGrid, ItemShare, RunReply } from './engineProtocol';
 import { storedPoints } from './measureDates';
+import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from './seriesRule';
 import {
   measureStore,
   replaceWithStandard,
@@ -244,32 +243,6 @@ export async function refreshSurfaces(): Promise<void> {
   scheduleCheck();
 }
 
-/** The line-up each survey date has now, for the engine's fingerprints (dates without one left out). */
-export function currentShifts(
-  manifest: Parameters<typeof captureShift>[0] | null | undefined,
-): Record<string, [number, number]> {
-  const out: Record<string, [number, number]> = {};
-  if (!manifest) return out;
-  for (const c of manifest.captures) {
-    const s = captureShift(manifest, c.id);
-    if (s) out[c.id] = [s.eastM, s.northM];
-  }
-  return out;
-}
-
-/** The turn beside each survey date's line-up now, for the engine's fingerprints (dates without one left out). */
-export function currentTurns(
-  manifest: Parameters<typeof captureShift>[0] | null | undefined,
-): Record<string, CaptureLineUpTurn> {
-  const out: Record<string, CaptureLineUpTurn> = {};
-  if (!manifest) return out;
-  for (const c of manifest.captures) {
-    const t = turnOf(captureShift(manifest, c.id));
-    if (t) out[c.id] = t;
-  }
-  return out;
-}
-
 /** Every date's line-up as one key, the turn included: a change of any of it pushes the context again. */
 function shiftsKeyOf(manifest: Parameters<typeof captureShift>[0] | null | undefined): string {
   if (!manifest) return '';
@@ -281,15 +254,13 @@ function shiftsKeyOf(manifest: Parameters<typeof captureShift>[0] | null | undef
 function pushContext(projectId: string, surfaces: HeightTiles[], designs: DesignEntry[]): void {
   const settings = measureStore.getState().settings;
   const manifest = workspace.getState().project?.manifest;
-  const shifts = currentShifts(manifest);
-  const turns = currentTurns(manifest);
   client().setContext({
     base: `aio://project/${encodeURIComponent(projectId)}/`,
     surfaces,
     captures: get().captures.map((c) => c.id),
     designs,
-    ...(Object.keys(shifts).length > 0 ? { shifts } : {}),
-    ...(Object.keys(turns).length > 0 ? { turns } : {}),
+    // the same line-ups the report's engine is handed (`seriesRule.ts`)
+    ...lineUps(manifest),
     site: {
       verticalDatum: settings.verticalDatum,
       ...(settings.calibration ? { calibration: settings.calibration } : {}),
@@ -508,14 +479,6 @@ export async function recomputeStandard(id: string): Promise<string | null> {
   return get().problems[id] ?? null;
 }
 
-/** True when an item's figure, or any of its figures over time, was carried from the kit. */
-function carriedItem(m: SurveyMeasurement, item: string): boolean {
-  return (
-    m.results.some((r) => r.item === item && r.carried !== undefined) ||
-    (m.series ?? []).some((r) => r.item === item && r.carried !== undefined)
-  );
-}
-
 const hasCarried = (m: SurveyMeasurement): boolean =>
   m.results.some((r) => r.carried !== undefined) ||
   (m.series ?? []).some((r) => r.carried !== undefined);
@@ -575,10 +538,6 @@ export async function computeAll(ids: readonly string[]): Promise<void> {
 
 // ---------------------------------------------------------------- results over time (W4)
 
-/** The date a per-date row is for (R16: `toCapture`, else `fromCapture`). */
-const seriesDate = (r: ComparisonResult): string => r.toCapture ?? r.fromCapture ?? '';
-const seriesKeyOf = (r: ComparisonResult): string => `${r.item} ${seriesDate(r)}`;
-
 /**
  * True when a stored per-date result is not current: marked stale, or its date's inputs changed
  * since (its fingerprint is not the one `computeSeries` last worked out). A carried kit figure
@@ -618,7 +577,8 @@ export function computeSeries(id: string, opts: { captures?: string[] } = {}): P
 }
 
 async function computeSeriesNow(id: string, opts: { captures?: string[] }): Promise<boolean> {
-  if (measureStore.getState().readOnly || get().status !== 'ready') return false;
+  // a read-only project (a package) works its dates out too: held in memory, never written
+  if (get().status !== 'ready') return false;
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
   if (m?.family !== 'polygon' || m.points.length < 3) return false;
   const items = m.items.filter((it) => seriesApplies(it) && !carriedItem(m, it.id));
@@ -629,7 +589,6 @@ async function computeSeriesNow(id: string, opts: { captures?: string[] }): Prom
   const scope = captureOf(m);
   const ring = ringOf(m.points);
   const asked = inputsKey(m, true);
-  const have = new Map((m.series ?? []).map((r) => [seriesKeyOf(r), r]));
   const prints: Record<string, string> = {};
   const out: ComparisonResult[] = [];
   try {
@@ -640,11 +599,7 @@ async function computeSeriesNow(id: string, opts: { captures?: string[] }): Prom
         const fp = fps[k];
         if (fp !== undefined) prints[`${item.id} ${c}`] = fp;
       });
-      const need = captures.filter((c, k) => {
-        if (!wanted.has(c)) return false;
-        const r = have.get(`${item.id} ${c}`);
-        return !r || (!r.carried && (r.status === 'stale' || r.fingerprint !== fps[k]));
-      });
+      const need = datesToRun(m, item.id, captures, fps, wanted);
       if (need.length > 0)
         out.push(...(await client().series({ ...req, captures: need }, `series:${id}:${item.id}`)));
     }

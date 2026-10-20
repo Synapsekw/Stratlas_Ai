@@ -625,21 +625,26 @@ describe('results over time and the spread across bases', () => {
     spy.mockRestore();
   });
 
-  it('read-only: computeSeries does nothing', async () => {
+  it('read-only: computeSeries holds the dates in memory and writes nothing', async () => {
     measureStore.setState({ readOnly: true });
     const series = vi.spyOn(engineClient(), 'series');
-    const prints = vi.spyOn(engineClient(), 'seriesFingerprints');
     const spread = vi.spyOn(engineClient(), 'spread');
-    await computeSeries('m1');
+    const before = measureStore.getState().savedText;
+    // a client opening a package sees the whole volume history, as the report prints it
+    expect(await computeSeries('m1')).toBe(true);
+    expect(series).toHaveBeenCalled();
+    expect(stored()?.series?.map((r) => r.toCapture)).toEqual(['c1', 'c2']);
+    expect(measureStore.getState().resultsUnwritten).toBe(false);
+    expect(writes()).toBe(0);
+    expect(measureStore.getState().savedText).not.toBe(before);
+    // nothing else is computed or stored in a read-only project
     put({
       items: [{ id: 'a', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
     });
     expect(await computeSpread('m1')).toBeNull();
     expect(await recomputeStandard('m1')).not.toBeNull();
-    expect(stored()?.series).toBeUndefined();
-    expect(series).not.toHaveBeenCalled();
-    expect(prints).not.toHaveBeenCalled();
     expect(spread).not.toHaveBeenCalled();
+    expect(writes()).toBe(0);
   });
 
   it('no spread next to a figure carried from the kit', async () => {

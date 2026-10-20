@@ -24,7 +24,8 @@ import {
   type VolumesFile,
 } from '@aio/schema';
 import {
-  convertKitPiles,
+  openWithKitPiles,
+  withKitConversion,
   DEFAULT_SNAP,
   designLayerOptions,
   designRolesOf,
@@ -38,7 +39,7 @@ import {
   telecomProblem,
   flipFace,
   KIT_BASE_LABEL,
-  type KitConversion,
+  kitConversion,
   measurementFrom,
   MIN_POINTS,
   missingRoles,
@@ -60,7 +61,6 @@ import {
   type SnapSettings,
   type SnapSource,
 } from '@aio/survey';
-import { localToEN } from '@aio/volumetric';
 import { shiftKey, workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
 import { authorName } from '../author';
@@ -358,45 +358,19 @@ function manifestOf(projectId: string): ProjectManifest | null {
   return p?.id === projectId ? p.manifest : null;
 }
 
-/** Kit piles as volume measurements (`convertKitPiles`), placed through the project origin. */
-function kitConversion(
-  file: MeasurementsFile,
-  volumes: VolumesFile,
-  edits: BoundaryEditsFile | null,
-  manifest: ProjectManifest,
-  materials: readonly SiteMaterial[],
-  carry: boolean,
-): KitConversion {
-  const byName = new Map(materials.map((x) => [x.name.trim().toLowerCase(), x.id]));
-  const origin = manifest.origin;
-  return convertKitPiles(volumes, edits, file, {
-    carry,
-    now: now(),
-    newId: newMeasurementId,
-    // the kit keeps no toe heights per vertex: Z 0 (the 3D draping is display only)
-    toSite: (xz) => {
-      const [e, n] = localToEN(origin, xz);
-      return [e, n, 0];
-    },
-    materialId: (name) => byName.get(name.trim().toLowerCase()),
-  });
-}
-
-/** `file` with a conversion's measurements and pile ids added (`kitPilesConverted` always set). */
-function withConversion(file: MeasurementsFile, c: KitConversion): MeasurementsFile {
-  return {
-    ...file,
-    measurements: [...file.measurements, ...c.added],
-    kitPilesConverted: [...(file.kitPilesConverted ?? []), ...c.converted],
-  };
-}
+/** How kit piles are placed and named in this project (`@aio/survey` `KitOpenOptions`). */
+const kitOptions = (origin: readonly number[], materials: readonly SiteMaterial[]) => ({
+  origin,
+  materials,
+  now: now(),
+  newId: newMeasurementId,
+});
 
 /**
- * The file as it opens: kit piles not converted yet added, their kit figures carried only when
- * the file has never been converted (`kitPilesConverted` absent: an old project). A writable
- * project of any type with no kit figures yet (the wizard's, before its build) is marked
- * converted, so a build run on it later is never taken for an old project's kit data. The same
- * file when nothing changes.
+ * The file as it opens (`openWithKitPiles`, the one rule the report and the assistant use too):
+ * kit piles not converted yet added, their kit figures carried only when the file has never been
+ * converted. Without the volumes read, or without the manifest the kit's frame hangs from, the
+ * file as it is.
  */
 function openedWithKitPiles(
   file: MeasurementsFile,
@@ -406,16 +380,11 @@ function openedWithKitPiles(
   readOnly: boolean,
 ): MeasurementsFile {
   if (!read) return file;
-  if (!read.volumes) {
-    if (file.kitPilesConverted === undefined && !readOnly)
-      return { ...file, kitPilesConverted: [] };
-    return file;
-  }
-  if (!manifest) return file;
-  const carry = file.kitPilesConverted === undefined;
-  const c = kitConversion(file, read.volumes, read.edits, manifest, materials, carry);
-  if (c.converted.length === 0 && !carry) return file;
-  return withConversion(file, c);
+  if (read.volumes && !manifest) return file;
+  return openWithKitPiles(file, read, {
+    ...kitOptions(manifest?.origin ?? [0, 0, 0], materials),
+    readOnly,
+  });
 }
 
 /**
@@ -473,13 +442,12 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     s.file,
     r.value.volumes,
     r.value.edits,
-    manifest,
-    s.settings.materials,
     false,
+    kitOptions(manifest.origin, s.settings.materials),
   );
   if (c.converted.length === 0 && s.file.kitPilesConverted !== undefined) return;
-  const baseline = withConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
-  set({ file: withConversion(s.file, c), savedText: text(baseline), resultsUnwritten: true });
+  const baseline = withKitConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
+  set({ file: withKitConversion(s.file, c), savedText: text(baseline), resultsUnwritten: true });
   await writeConversion(projectId, baseline, epoch);
 }
 
@@ -610,13 +578,15 @@ export function setComputedResults(
 /**
  * Put derived fields on a measurement as `setComputedResults` does: no edit, `updatedAt` stays,
  * the baseline takes them too, and they are written with the next save. Nothing when unchanged.
+ * A read-only project (a package) holds a measurement's dates (`series`) in memory, so a client
+ * sees its whole volume history as the report prints it; nothing is ever written there.
  */
 function setDerived(
   id: string,
   patch: Pick<SurveyMeasurement, 'results'> | Required<Pick<SurveyMeasurement, 'series'>>,
 ): void {
   const s = get();
-  if (s.readOnly) return;
+  if (s.readOnly && !('series' in patch)) return;
   const target = s.file.measurements.find((m) => m.id === id);
   if (!target) return;
   const same = Object.entries(patch).every(
@@ -632,7 +602,11 @@ function setDerived(
   const saved = JSON.parse(s.savedText) as { measurements?: { id?: unknown }[] };
   if (Array.isArray(saved.measurements))
     saved.measurements = saved.measurements.map((m) => (m.id === id ? { ...m, ...patch } : m));
-  set({ file, savedText: JSON.stringify(saved), resultsUnwritten: true });
+  set({
+    file,
+    savedText: JSON.stringify(saved),
+    ...(s.readOnly ? {} : { resultsUnwritten: true }),
+  });
 }
 
 /** The schema's longest series. */

@@ -162,3 +162,73 @@ export function convertKitPiles(
   }
   return { added, converted };
 }
+
+// ---------------------------------------------------------------- opening a project
+
+/**
+ * A kit local-frame point (`[x, z]`: x east, z south of the project origin) in the project CRS,
+ * as `@aio/volumetric`'s `localToEN` places it. Z is 0: the kit keeps no toe heights per vertex
+ * (the 3D draping is display only).
+ */
+export function kitToSite(origin: readonly number[], xz: readonly [number, number]): SitePoint {
+  return [xz[0] + (origin[0] ?? 0), (origin[1] ?? 0) - xz[1], 0];
+}
+
+export interface KitOpenOptions {
+  /** The project origin (`manifest.origin`) the kit's local frame hangs from. */
+  origin: readonly number[];
+  /** The site materials: a kit material name finds its id (case and spaces ignored). */
+  materials: readonly { id: SurveyId; name: string }[];
+  now: string;
+  newId: () => string;
+}
+
+/** Kit piles as volume measurements (`convertKitPiles`), placed through the project origin. */
+export function kitConversion(
+  file: MeasurementsFile,
+  volumes: VolumesFile,
+  edits: BoundaryEditsFile | null,
+  carry: boolean,
+  opts: KitOpenOptions,
+): KitConversion {
+  const byName = new Map(opts.materials.map((x) => [x.name.trim().toLowerCase(), x.id]));
+  return convertKitPiles(volumes, edits, file, {
+    carry,
+    now: opts.now,
+    newId: opts.newId,
+    toSite: (xz) => kitToSite(opts.origin, xz),
+    materialId: (name) => byName.get(name.trim().toLowerCase()),
+  });
+}
+
+/** `file` with a conversion's measurements and pile ids added (`kitPilesConverted` always set). */
+export function withKitConversion(file: MeasurementsFile, c: KitConversion): MeasurementsFile {
+  return {
+    ...file,
+    measurements: [...file.measurements, ...c.added],
+    kitPilesConverted: [...(file.kitPilesConverted ?? []), ...c.converted],
+  };
+}
+
+/**
+ * The measurements file as it opens (the app, the report and the assistant alike): kit piles not
+ * converted yet added, their kit figures carried only when the file has never been converted
+ * (`kitPilesConverted` absent: an old project). A writable project with no kit figures yet (the
+ * wizard's, before its build) is marked converted, so a build run on it later is never taken for
+ * an old project's kit data; a read-only one is left as it is. The same file when nothing changes.
+ */
+export function openWithKitPiles(
+  file: MeasurementsFile,
+  kit: { volumes: VolumesFile | null; edits: BoundaryEditsFile | null },
+  opts: KitOpenOptions & { readOnly: boolean },
+): MeasurementsFile {
+  if (!kit.volumes) {
+    if (file.kitPilesConverted === undefined && !opts.readOnly)
+      return { ...file, kitPilesConverted: [] };
+    return file;
+  }
+  const carry = file.kitPilesConverted === undefined;
+  const c = kitConversion(file, kit.volumes, kit.edits, carry, opts);
+  if (c.converted.length === 0 && !carry) return file;
+  return withKitConversion(file, c);
+}

@@ -27,6 +27,8 @@ import {
 } from '@aio/schema';
 import { compareItem, encodeTile, projectResolver } from '@aio/survey';
 import { cardModel } from '../../survey/card/cardModel';
+import { withSurface } from '../../survey/card/pointHistory';
+import { drawnPoints } from '../../survey/measureDates';
 import { formatQuantity } from '@aio/geo';
 import { Blob as NodeBlob } from 'node:buffer';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -847,5 +849,179 @@ describe('the survey sections', () => {
     const lines = csv.replace(String.fromCharCode(0xfeff), '').split('\r\n');
     const net = lines.find((l) => l.startsWith('M1,m-pile,') && l.includes('pile.net'));
     expect(net).toContain(',400.0 m³,400,m³,400,m3,ok,');
+  });
+});
+
+// ---------------------------------------------------------------- the report card is the app's
+
+/** A line or point measurement drawn on the site (no comparison). */
+const drawnOn = (
+  id: string,
+  tool: SurveyMeasurement['tool'],
+  family: SurveyMeasurement['family'],
+  points: [number, number, number][],
+  extra: Partial<SurveyMeasurement> = {},
+): SurveyMeasurement => ({
+  id,
+  family,
+  tool,
+  label: id,
+  scope: { kind: 'site' },
+  points,
+  items: [],
+  results: [],
+  createdAt: NOW,
+  ...extra,
+});
+
+/** The app's detail card of a measurement: drawn points, the survey's heights under it. */
+async function appCard(m: SurveyMeasurement, on: SurveyFiles, capture = 'c3') {
+  const s = on.surfaces.find((x) => x.capture === capture);
+  if (!s) throw new Error('no surface');
+  const drawn = { ...m, points: drawnPoints(m, on.manifest) };
+  const ctx = { settings: on.settings, templates: on.templates, captures: CAPS };
+  return withSurface(
+    (h) => cardModel(drawn, { ...ctx, surface: h }),
+    s,
+    (c, r) => reader.bytes(`survey/surfaces/${s.id}/0/${String(c)}_${String(r)}.bin`),
+  );
+}
+
+/** The report's cards of `extra` measurements, printed through the report template. */
+async function reportCards(on: SurveyFiles, extra: SurveyMeasurement[]) {
+  const d = await buildSurveyData(
+    {
+      ...on,
+      measurements: [...on.measurements, ...extra],
+      template: {
+        schema: 'aio.report-template/1',
+        entries: extra.map((m) => ({
+          kind: 'measurement' as const,
+          id: m.id,
+          parts: ['value' as const],
+          addedAt: NOW,
+        })),
+      },
+    },
+    reader.bytes,
+    { need: 'report' },
+  );
+  return new Map(d.entries.map((e) => [e.m.id, e.card]));
+}
+
+describe('the report card is the app card', () => {
+  it('berm-check headline, elevation difference and terrain area match the app card', async () => {
+    const berm = drawnOn('m-berm', 'berm-check', 'line', [
+      [E0 + 15, N0 + 30, 100],
+      [E0 + 45, N0 + 30, 100],
+    ]);
+    const diff = drawnOn('m-diff', 'elevation-difference', 'point', [[E0 + 30, N0 + 30, 101]]);
+    const area = drawnOn('m-area', 'area', 'polygon', ring(20, 40));
+    const cards = await reportCards(files, [berm, diff, area]);
+    for (const m of [berm, diff, area]) expect(cards.get(m.id)).toEqual(await appCard(m, files));
+    // the berm's crest is the pile top on the survey (104 m), read from the surface
+    expect(cards.get('m-berm')?.primary?.text).toMatch(/^104\.0+/);
+    // the point's ground and its difference to it join the secondary line
+    expect(cards.get('m-diff')?.secondary).toMatch(/104\.0+/);
+    expect(cards.get('m-diff')?.secondary).toMatch(/3\.0+/);
+    // terrain area: the surface under the polygon, more than its plan area of 400 m²
+    const terrain = cards.get('m-area')?.more.find((r) => /terrain/i.test(r.label));
+    expect(terrain?.text).toMatch(/m²$/);
+  });
+
+  it('a lined-up survey-scoped measurement prints where the app draws it', async () => {
+    const lined: SurveyFiles = {
+      ...files,
+      manifest: ProjectManifest.parse({
+        ...manifest,
+        captures: CAPS.map((c) =>
+          c.id === 'c3' ? { ...c, lineUp: { eastM: 2, northM: 1, with: 'c2', at: NOW } } : c,
+        ),
+      }),
+    };
+    const point = drawnOn('m-lined', 'elevation', 'point', [[E0 + 30, N0 + 30, 102]], {
+      scope: { kind: 'survey', capture: 'c3' },
+    });
+    const cards = await reportCards(lined, [point]);
+    const app = await appCard(point, lined);
+    expect(cards.get('m-lined')).toEqual(app);
+    // its easting and northing are the drawn ones (the date's line-up added), not the stored ones
+    const stored = cardModel(point, { settings, templates: files.templates, captures: CAPS });
+    expect(cards.get('m-lined')?.secondary).not.toBe(stored.secondary);
+  });
+});
+
+describe('the report follows the site number style', () => {
+  it('the KPIs, the table and the card agree in the imperial style', async () => {
+    const imperial: SurveyFiles = {
+      ...files,
+      settings: { ...settings, locale: 'imperial' },
+      template: {
+        schema: 'aio.report-template/1',
+        entries: [{ kind: 'measurement', id: 'm-cell', parts: ['value'], addedAt: NOW }],
+      },
+    };
+    const d = await buildSurveyData(imperial, reader.bytes, { need: 'report' });
+    const root = layout(['stockpiles'], d);
+    const total = d.volumes.inventory.at(-1)?.totalM3 ?? Number.NaN;
+    const want = formatQuantity(total, 'volume', settings.units, settings.precision, 'imperial');
+    expect(want).toContain(',');
+    const tiles = [...root.querySelectorAll('.tile b')].map((b) => b.textContent);
+    expect(tiles).toContain(want);
+    const totalRow = [...root.querySelectorAll('table.sv-piles tr.total')].map(cells)[0];
+    expect(totalRow).toContain(want);
+    // the cell's card and its row: the same figure, in the same style
+    const card = d.entries.find((e) => e.m.id === 'm-cell')?.card.primary?.text;
+    expect(card).toBe('1,600.0 m³');
+    const row = [...root.querySelectorAll('table.sv-piles tr')]
+      .map(cells)
+      .find((r) => r.includes('Cell 1'));
+    expect(row).toContain(card);
+  });
+});
+
+describe('the stockpile table and the volume over time section', () => {
+  it('prints a stale figure marked, and leaves it out of the total', async () => {
+    const stale = {
+      ...files,
+      measurements: files.measurements.map((m) =>
+        m.id === 'm-pile2'
+          ? { ...m, results: m.results.map((r) => ({ ...r, fingerprint: 'sha256:before' })) }
+          : m,
+      ),
+    };
+    const d = await buildSurveyData(stale, reader.bytes, { need: 'report' });
+    const root = layout(['stockpiles'], d);
+    const tr = [...root.querySelectorAll('table.sv-piles tr')].find((r) =>
+      text(r).includes('Stockpile B'),
+    );
+    expect(tr?.className).toContain('flag');
+    expect(cells(tr ?? root)).toContain('200.0 m³');
+    expect(text(root)).toContain('Stockpile B (stale)');
+    const totalRow = [...root.querySelectorAll('table.sv-piles tr.total')].map(cells)[0];
+    expect(totalRow).toContain(formatVolume(d.volumes.inventory.at(-1)?.totalM3 ?? 0));
+    expect(totalRow).toContain('3 of 4 piles');
+  });
+
+  it('lists every pile over time when the template names no volume measurement', async () => {
+    const d = await buildSurveyData(
+      {
+        ...files,
+        template: {
+          schema: 'aio.report-template/1',
+          entries: [{ kind: 'measurement', id: 'm-line', parts: ['value'], addedAt: NOW }],
+        },
+      },
+      reader.bytes,
+      { need: 'report' },
+    );
+    const root = layout(['volume-over-time'], d);
+    expect(root.querySelectorAll('table.sv-time')).toHaveLength(4);
+  });
+
+  it('reads only the stored dates when no section prints the others', async () => {
+    const d = await buildSurveyData(files, reader.bytes, { need: 'report', fillDates: false });
+    const a = d.volumes.piles.find((p) => p.id === 'm-pile');
+    expect(a?.rows.map((r) => r.valueM3 === null)).toEqual([true, true, false]);
   });
 });

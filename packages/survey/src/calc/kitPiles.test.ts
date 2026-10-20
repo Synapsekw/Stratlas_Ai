@@ -1,7 +1,13 @@
 import type { BoundaryEditsFile, MeasurementsFile, VolumesFile } from '@aio/schema';
 import { MeasurementsFile as MeasurementsFileSchema } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { KIT_BASE_LABEL, KIT_FOLDER, convertKitPiles } from './kitPiles';
+import {
+  KIT_BASE_LABEL,
+  KIT_FOLDER,
+  convertKitPiles,
+  kitToSite,
+  openWithKitPiles,
+} from './kitPiles';
 
 const at = <T>(a: readonly T[] | undefined, i: number): T => {
   const v = a?.[i];
@@ -280,5 +286,51 @@ describe('convertKitPiles', () => {
       toLabel: '10 Jan 2021',
       fingerprint: 'kit:P01:e2:plane',
     });
+  });
+});
+
+describe('openWithKitPiles: the file as the app, the report and the assistant open it', () => {
+  const opts = (readOnly: boolean) => {
+    let n = 0;
+    return {
+      origin: [1000, 2000, 0],
+      materials: [{ id: 'sand', name: ' sand ' }],
+      now: '2026-10-20T00:00:00Z',
+      newId: () => `id-${String(++n)}`,
+      readOnly,
+    };
+  };
+  const empty = (): MeasurementsFile => ({ schema: 'aio.measurements/1', measurements: [] });
+
+  it('places kit points through the origin: x east, z south, Z 0', () => {
+    expect(kitToSite([1000, 2000, 50], [4, 3])).toEqual([1004, 1997, 0]);
+  });
+
+  it("carries an old project's kit figures, with materials by name", () => {
+    const file = openWithKitPiles(empty(), { volumes: volumes(), edits: null }, opts(true));
+    expect(file.kitPilesConverted).toEqual(['P01', 'P02']);
+    const [p1] = file.measurements;
+    expect(p1?.material).toBe('sand');
+    expect(p1?.points[1]).toEqual([1004, 2000, 0]);
+    expect(p1?.series?.every((r) => r.carried?.base === 'plane')).toBe(true);
+  });
+
+  it('adds a pile found after the conversion without figures, and keeps the file otherwise', () => {
+    const once = openWithKitPiles(empty(), { volumes: volumes(), edits: null }, opts(false));
+    expect(openWithKitPiles(once, { volumes: volumes(), edits: null }, opts(false))).toBe(once);
+    const v = volumes();
+    v.piles.push({ ...at(v.piles, 1), id: 'P03', name: 'Pile 03' });
+    const later = openWithKitPiles(once, { volumes: v, edits: null }, opts(false));
+    const added = later.measurements.at(-1);
+    expect(added?.label).toBe('Pile 03');
+    expect(added?.results).toEqual([]);
+    expect(added?.series).toBeUndefined();
+  });
+
+  it('marks a writable file without kit figures converted; a read-only one stays as it is', () => {
+    const file = empty();
+    const writable = openWithKitPiles(file, { volumes: null, edits: null }, opts(false));
+    expect(writable.kitPilesConverted).toEqual([]);
+    expect(openWithKitPiles(file, { volumes: null, edits: null }, opts(true))).toBe(file);
   });
 });

@@ -6,7 +6,14 @@
 // cards are the app's own components (`ProfileChart`, `TimeChart`, `MeasureCard`) printed as
 // static markup, and every pile figure is the one its card and the Volumes view show (the data
 // comes from `surveyData.ts`), so the report agrees with the app.
-import { formatQuantity, unitLabel } from '@aio/geo';
+import {
+  formatNumber,
+  formatQuantity,
+  localeOf,
+  unitFactor,
+  unitLabel,
+  type NumberLocale,
+} from '@aio/geo';
 import { houseVolumesOf } from '@aio/project/export';
 import type {
   ComparisonReport,
@@ -14,7 +21,7 @@ import type {
   MeasurementReport,
   SurveyBasis,
 } from '@aio/project/export';
-import { DEFAULT_ANGLES, type ComparisonResult } from '@aio/schema';
+import { DEFAULT_ANGLES, type ComparisonResult, type SurveySettings } from '@aio/schema';
 import {
   TOOL_LABELS,
   type ChartSeries,
@@ -25,11 +32,11 @@ import {
 import { t } from '@aio/ui';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DEFAULT_PLOT, ProfileChart } from '../../charts/ProfileChart';
+import { autoExaggeration, plotOf } from '../../charts/exaggeration';
+import { ProfileChart } from '../../charts/ProfileChart';
 import { TimeChart, type TimeReference } from '../../charts/TimeChart';
-import { cardModel } from '../../survey/card/cardModel';
 import { MeasureCard } from '../../survey/card/MeasureCard';
-import { longDate, num1 } from '../../report/narrativeTemplate';
+import { longDate } from '../../report/narrativeTemplate';
 import { esc } from '../layout';
 import { niceStep } from './charts';
 import type { Pager } from './pager';
@@ -61,23 +68,42 @@ const CHART_H = 200;
 
 // ---------------------------------------------------------------- formatting
 
-/** The formatters of a site: the panel's units, precision and locale. */
-export function formats(b: SurveyBasis) {
+/** The site's number style: its own choice, else its distance unit's system (as the app's). */
+export const localeOfSite = (
+  b: Pick<SurveyBasis, 'units'>,
+  s?: Pick<SurveySettings, 'locale'> | null,
+): NumberLocale => s?.locale ?? localeOf(b.units.distance);
+
+/** The formatters of a site: the panel's units, precision and number style (`settings.locale`). */
+export function formats(b: SurveyBasis, s?: Pick<SurveySettings, 'locale'> | null) {
+  const loc = localeOfSite(b, s);
   return {
-    volume: (m3: number) => formatQuantity(m3, 'volume', b.units, b.precision),
-    area: (m2: number) => formatQuantity(m2, 'area', b.units, b.precision),
-    distance: (m: number) => formatQuantity(m, 'distance', b.units, b.precision),
+    locale: loc,
+    volume: (m3: number) => formatQuantity(m3, 'volume', b.units, b.precision, loc),
+    area: (m2: number) => formatQuantity(m2, 'area', b.units, b.precision, loc),
+    distance: (m: number) => formatQuantity(m, 'distance', b.units, b.precision, loc),
     /** Tonnes (mass is SI kilograms in `@aio/geo`). */
-    mass: (tonnes: number) => formatQuantity(tonnes * 1000, 'mass', b.units, b.precision),
-    density: (tPerM3: number) => formatQuantity(tPerM3, 'density', b.units, 3),
+    mass: (tonnes: number) => formatQuantity(tonnes * 1000, 'mass', b.units, b.precision, loc),
+    density: (tPerM3: number) => formatQuantity(tPerM3, 'density', b.units, 3, loc),
+    /** A share (0 to 1) as a percentage, to one decimal (none when it is whole). */
+    pct: (share: number) => {
+      const v = Math.round(share * 1000) / 10;
+      return `${formatNumber(v, Number.isInteger(v) ? 0 : 1, loc)} %`;
+    },
   };
 }
 type Formats = ReturnType<typeof formats>;
 
-const pct = (share: number) => `${num1(share * 100)} %`;
+/** The formatters of the report's survey data: its basis and its settings' number style. */
+const formatsOf = (data: ReportSurveyData) => formats(data.basis, data.settings);
 
 /** What the numbers were computed and shown with, one line each. */
-export function basisLines(b: SurveyBasis): string[] {
+export function basisLines(b: SurveyBasis, s?: Pick<SurveySettings, 'locale'> | null): string[] {
+  const loc = localeOfSite(b, s);
+  // a calibration's residuals are small: millimetres on a metric site, inches on another
+  const small = loc === 'metric' ? 'mm' : 'in';
+  const rms = (m: number | null) =>
+    m === null ? '-' : formatQuantity(m, 'distance', small, 1, loc);
   const heights =
     b.verticalDatum === 'geoid'
       ? tk('house.survey.basis.heights.geoid', {
@@ -87,8 +113,8 @@ export function basisLines(b: SurveyBasis): string[] {
   const cal = b.calibration
     ? tk('house.survey.basis.cal', {
         name: b.calibration.name,
-        h: b.calibration.rmsH === null ? '-' : `${num1(b.calibration.rmsH * 1000)} mm`,
-        v: b.calibration.rmsV === null ? '-' : `${num1(b.calibration.rmsV * 1000)} mm`,
+        h: rms(b.calibration.rmsH),
+        v: rms(b.calibration.rmsV),
       })
     : tk('house.survey.basis.calNone');
   const u = b.units;
@@ -110,7 +136,7 @@ export function basisLines(b: SurveyBasis): string[] {
 }
 
 function basisBlock(p: Pager, data: ReportSurveyData): void {
-  const lines = basisLines(data.basis);
+  const lines = basisLines(data.basis, data.settings);
   p.add(el(`<div class="sv-basis">${lines.map((l) => `<span>${txt(l)}</span>`).join('')}</div>`));
   const cur = data.current;
   p.add(
@@ -169,33 +195,6 @@ const markup = (node: ReactElement): string => renderToStaticMarkup(node);
 const figure = (html: string, cls = '') =>
   el(`<figure class="chartfig svc${cls ? ` ${cls}` : ''}">${html}</figure>`);
 
-/** The report chart's plot: its size less the profile chart's padding (default size less plot). */
-const PLOT = {
-  width: FULL - (600 - DEFAULT_PLOT.width),
-  height: CHART_H - (220 - DEFAULT_PLOT.height),
-};
-
-/**
- * The vertical exaggeration that fills the report chart's plot, in the card's whole steps (the
- * card's `autoExaggeration`, for this plot's shape).
- */
-export function exaggeration(series: readonly ChartSeries[]): number {
-  let c1 = 0;
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const s of series) {
-    c1 = Math.max(c1, s.chainage.at(-1) ?? 0);
-    for (const z of s.z)
-      if (z !== null) {
-        lo = Math.min(lo, z);
-        hi = Math.max(hi, z);
-      }
-  }
-  if (!(hi > lo) || c1 <= 0) return 1;
-  const fill = (c1 / (hi - lo)) * (PLOT.height / PLOT.width);
-  return [20, 10, 5, 2, 1].find((x) => x <= fill) ?? 1;
-}
-
 interface ChartUnits {
   units: SurveyBasis['units'];
   precision: SurveyBasis['precision'];
@@ -218,7 +217,7 @@ function profileChart(
     <ProfileChart
       series={series}
       shadeVs={shadeVs}
-      exaggeration={exaggeration(series)}
+      exaggeration={autoExaggeration(series, plotOf(FULL, CHART_H))}
       ends={{ a: tk('mcard.endA'), b: tk('mcard.endB') }}
       {...chartUnits(data)}
       angles={data.settings.angles ?? DEFAULT_ANGLES}
@@ -280,6 +279,9 @@ export function measurementPlan(
   items: readonly Pick<MeasurementReport, 'ref' | 'family' | 'outline'>[],
   label: string,
   size = { width: FULL, height: 340 },
+  site: { units: Pick<SurveyBasis['units'], 'distance'>; locale?: NumberLocale } = {
+    units: { distance: 'm' },
+  },
 ): string {
   const pts = items.flatMap((m) => m.outline);
   if (pts.length === 0) return '';
@@ -317,9 +319,14 @@ export function measurementPlan(
         : `<path class="svl" d="${d}"/>${tag}`;
     })
     .join('');
-  const step = niceStep((maxE - minE) / 5);
+  // a round step in the site's distance unit, labelled in it
+  const factor = unitFactor('distance', site.units.distance);
+  const stepUnits = niceStep((maxE - minE) / factor / 5);
+  const step = stepUnits * factor;
+  const decimals = Math.max(0, Math.ceil(-Math.log10(stepUnits) - 1e-9));
+  const stepText = formatQuantity(step, 'distance', site.units.distance, decimals, site.locale);
   const sy = height - 6;
-  const scale = `<g class="scale"><line x1="${ox.toFixed(1)}" y1="${String(sy)}" x2="${(ox + step * k).toFixed(1)}" y2="${String(sy)}"/><text x="${(ox + step * k + 4).toFixed(1)}" y="${String(sy + 3)}">${esc(String(step))} m</text></g>`;
+  const scale = `<g class="scale"><line x1="${ox.toFixed(1)}" y1="${String(sy)}" x2="${(ox + step * k).toFixed(1)}" y2="${String(sy)}"/><text x="${(ox + step * k + 4).toFixed(1)}" y="${String(sy + 3)}">${esc(stepText)}</text></g>`;
   const north = `<g class="north" transform="translate(${(width - 14).toFixed(1)},16)"><path d="M0,-10 L5,6 L0,3 L-5,6 Z"/><text y="18" text-anchor="middle">N</text></g>`;
   return `<svg class="map" viewBox="0 0 ${String(width)} ${String(height)}" width="100%" role="img" aria-label="${esc(label)}">${shapes}${scale}${north}</svg>`;
 }
@@ -331,6 +338,11 @@ export function pilePlan(data: ReportSurveyData | null | undefined, label: strin
   return measurementPlan(
     data.measurements.filter((m) => ids.has(m.id)),
     label,
+    undefined,
+    {
+      units: data.basis.units,
+      locale: localeOfSite(data.basis, data.settings),
+    },
   );
 }
 
@@ -355,11 +367,7 @@ function cardStatus(e: ReportEntry): string | null {
 
 /** One template entry as its report card (W8): the card, its chart and its readout table. */
 function entryCard(e: ReportEntry, data: ReportSurveyData): string {
-  const model = cardModel(e.m, {
-    settings: data.settings,
-    templates: data.templates,
-    captures: data.captures,
-  });
+  const model = e.card;
   const status = cardStatus(e);
   const chart = e.chart && e.parts.includes('chart') ? entryChart(e.chart, data) : null;
   return markup(
@@ -391,10 +399,13 @@ function readoutTable(p: Pager, m: MeasurementReport): void {
 export function layoutMeasurements(p: Pager, ctx: HouseContext, n: string): void {
   const data = ctx.survey;
   if (!data) return;
-  const f = formats(data.basis);
+  const f = formatsOf(data);
   heading(p, `${n} · ${tk('house.survey.kicker')}`, tk('house.sec.measurements'));
   basisBlock(p, data);
-  const plan = measurementPlan(data.measurements, tk('house.survey.plan'));
+  const plan = measurementPlan(data.measurements, tk('house.survey.plan'), undefined, {
+    units: data.basis.units,
+    locale: localeOfSite(data.basis, data.settings),
+  });
   if (plan) {
     subheading(p, tk('house.survey.plan'));
     p.add(el(`<figure class="chartfig">${plan}</figure>`));
@@ -550,7 +561,7 @@ function rowStatus(r: TimeRow, p: PileOverTime): string {
 
 /** A pile's volume on every survey date: its time chart and its table (date, volume, change). */
 function pileOverTime(p: Pager, pile: PileOverTime, data: ReportSurveyData): void {
-  const f = formats(data.basis);
+  const f = formatsOf(data);
   subheading(p, `${pile.ref} · ${pile.label}`);
   if (pile.carried) p.add(el(`<p class="caption">${txt(pile.carried)}</p>`));
   if (pile.rows.some((r) => r.valueM3 !== null))
@@ -584,7 +595,7 @@ function pileOverTime(p: Pager, pile: PileOverTime, data: ReportSurveyData): voi
  * date's total (current figures only), its change and the piles left out with why.
  */
 export function inventoryBlock(p: Pager, data: ReportSurveyData): void {
-  const f = formats(data.basis);
+  const f = formatsOf(data);
   const inv = data.volumes.inventory;
   if (inv.length === 0) return;
   const names = new Map(data.volumes.piles.map((x) => [x.id, `${x.ref} ${x.label}`]));
@@ -641,10 +652,12 @@ export function inventoryBlock(p: Pager, data: ReportSurveyData): void {
 function overTimePiles(data: ReportSurveyData): PileOverTime[] {
   if (data.entries.length === 0) return data.volumes.piles;
   const byId = new Map(data.volumes.piles.map((x) => [x.id, x]));
-  return data.entries.flatMap((e) => {
+  const named = data.entries.flatMap((e) => {
     const pile = byId.get(e.m.id);
     return pile ? [pile] : [];
   });
+  // a template of other measurements only: every pile, as without one
+  return named.length > 0 ? named : data.volumes.piles;
 }
 
 export function layoutVolumeOverTime(p: Pager, ctx: HouseContext, n: string): void {
@@ -677,19 +690,23 @@ export function latestInventory(data: ReportSurveyData): {
  * The site inventory the house model summarises (KPIs, the narrative): the Volumes view's figures,
  * in the site's units; null without a volume measurement.
  */
+/** Whether volume over time prints: a pile with figures on two dates or more, as worked out. */
+export const printsVolumeOverTime = (data: ReportSurveyData): boolean =>
+  data.volumes.piles.some((x) => x.rows.filter((r) => r.valueM3 !== null).length >= 2);
+
 export function houseVolumes(data: ReportSurveyData | null | undefined): HouseVolumes | null {
   if (!data) return null;
   return houseVolumesOf(
     data.volumes.inventory,
-    data.volumes.piles.map((x) => x.base),
-    formats(data.basis).volume,
+    data.volumes.piles.map((x) => x.carried ?? x.base),
+    formatsOf(data).volume,
   );
 }
 
 export function layoutStockpiles(p: Pager, ctx: HouseContext, n: string): void {
   const data = ctx.survey;
   if (!data) return;
-  const f = formats(data.basis);
+  const f = formatsOf(data);
   heading(p, `${n} · ${tk('house.survey.kicker')}`, tk('house.sec.stockpiles'));
   basisBlock(p, data);
   const piles = data.volumes.piles;
@@ -755,6 +772,11 @@ export function layoutStockpiles(p: Pager, ctx: HouseContext, n: string): void {
     const w = on(prev, pile.id);
     const d = density(pile);
     const change = v !== null && w !== null ? v - w : null;
+    // a stale figure prints as the card shows it, marked, and is never added to the total
+    const staleRow = cur
+      ? pile.rows.find((r) => r.capture === cur.capture && r.stale && r.valueM3 !== null)
+      : undefined;
+    const shownM3 = v ?? staleRow?.valueM3 ?? null;
     const flagged = left.has(pile.id) || pile.carried !== null;
     return row(
       [
@@ -766,8 +788,10 @@ export function layoutStockpiles(p: Pager, ctx: HouseContext, n: string): void {
             : tk('house.survey.noMaterial'),
         ),
         d === null ? '' : esc(f.density(d)),
-        v === null ? '' : esc(f.volume(v)),
-        v === null || tonnesOf(pile, v) === null ? '' : esc(f.mass(tonnesOf(pile, v) ?? 0)),
+        shownM3 === null ? '' : esc(f.volume(shownM3)),
+        shownM3 === null || tonnesOf(pile, shownM3) === null
+          ? ''
+          : esc(f.mass(tonnesOf(pile, shownM3) ?? 0)),
         ...(prev
           ? [
               w === null ? '' : esc(f.volume(w)),
@@ -776,7 +800,7 @@ export function layoutStockpiles(p: Pager, ctx: HouseContext, n: string): void {
             ]
           : []),
       ],
-      'num',
+      staleRow ? 'num flag' : 'num',
     );
   });
   rows.push(
@@ -879,7 +903,7 @@ export function layoutStockpiles(p: Pager, ctx: HouseContext, n: string): void {
 export function layoutEarthworks(p: Pager, ctx: HouseContext, n: string): void {
   const data = ctx.survey;
   if (!data) return;
-  const f = formats(data.basis);
+  const f = formatsOf(data);
   heading(p, `${n} · ${tk('house.survey.kicker')}`, tk('house.sec.earthworks'));
   basisBlock(p, data);
   const first = data.earthworks.find((e) => e.first)?.first?.capture;
@@ -913,8 +937,8 @@ export function layoutEarthworks(p: Pager, ctx: HouseContext, n: string): void {
         r ? esc(f.volume(r.cutM3)) : '',
         r ? esc(f.volume(r.fillM3)) : '',
         r ? esc(f.volume(r.netM3)) : txt(e.reason),
-        e.tolerance ? esc(`${pct(e.tolerance.share)} (±${f.distance(e.toleranceM)})`) : '',
-        e.progress === null ? '' : esc(pct(e.progress)),
+        e.tolerance ? esc(`${f.pct(e.tolerance.share)} (±${f.distance(e.toleranceM)})`) : '',
+        e.progress === null ? '' : esc(f.pct(e.progress)),
       ],
       'num',
     );
@@ -969,7 +993,7 @@ export function layoutEarthworks(p: Pager, ctx: HouseContext, n: string): void {
 export function layoutLandfill(p: Pager, ctx: HouseContext, n: string): void {
   const data = ctx.survey;
   if (!data) return;
-  const f = formats(data.basis);
+  const f = formatsOf(data);
   heading(p, `${n} · ${tk('house.survey.kicker')}`, tk('house.sec.landfill'));
   basisBlock(p, data);
   p.add(el(`<p class="nar">${txt(tk('house.survey.lf.intro'))}</p>`));

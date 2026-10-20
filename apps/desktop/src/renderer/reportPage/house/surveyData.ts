@@ -45,9 +45,7 @@ import {
   SURVEY_TEMPLATES_FILE,
   SurveySettings,
   SurveyTemplatesFile,
-  turnOf,
   VolumesFile,
-  type CaptureLineUpTurn,
   type ComparisonItem,
   type ComparisonResult,
   type DesignEntry,
@@ -60,7 +58,6 @@ import {
 } from '@aio/schema';
 import {
   compareItem,
-  convertKitPiles,
   effectiveUnits,
   formatRow,
   industryTemplates,
@@ -70,6 +67,7 @@ import {
   surfaceKey,
   measurementReadout,
   newShared,
+  openWithKitPiles,
   pileSeries,
   resolveSection,
   ringShifts,
@@ -82,18 +80,23 @@ import {
   volumeRows,
   type ChartSeries,
   type GridOut,
+  type HeightSampler,
   type PointSampler,
   type Resolve,
   type SectionRef,
   type StackRow,
   type TimeRow,
 } from '@aio/survey';
-import { t } from '@aio/ui';
-import { localToEN } from '@aio/volumetric';
-import { captureShift } from '@aio/workspace';
+import { localeOf } from '@aio/geo';
+import { DEFAULT_ANGLES } from '@aio/schema';
+import { t, type MessageKey } from '@aio/ui';
+import { baseName } from '../../survey/card/baseNames';
+import { cardModel, type CardModel } from '../../survey/card/cardModel';
 import { measurementHasChart } from '../../survey/card/chartRule';
 import type { EngineContext } from '../../survey/engineProtocol';
 import { EngineSession } from '../../survey/engineServe';
+import { drawnPoints } from '../../survey/measureDates';
+import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from '../../survey/seriesRule';
 
 type Key = Parameters<typeof t>[0];
 const tk = (key: string, vars?: Record<string, string | number>) => t(key as Key, vars);
@@ -149,12 +152,11 @@ function parsed<T>(schema: { safeParse(v: unknown): { success: boolean; data?: T
 }
 
 /**
- * The measurements file as the app opens it (`measureStore`'s `openedWithKitPiles`), in memory
- * only: the kit piles not converted yet added as volume measurements, their kit figures carried
- * (stored results and series, "From an earlier version") only when the file was never converted
- * (`kitPilesConverted` absent: an old project, or no measurements file at all). A pile the kit
- * found after the conversion comes in without figures, for the engine. Null when there is
- * neither a file nor a kit pile.
+ * The measurements file as the app opens it (`@aio/survey` `openWithKitPiles`, the rule the
+ * measure store and the assistant use too), in memory only: the kit piles not converted yet added
+ * as volume measurements, their kit figures carried ("From an earlier version") only when the
+ * file was never converted (`kitPilesConverted` absent: an old project, or no measurements file at
+ * all). Null when there is neither a file nor a kit pile.
  */
 export function withKitPiles(
   file: MeasurementsFile | null,
@@ -164,27 +166,19 @@ export function withKitPiles(
   materials: readonly SiteMaterial[],
 ): MeasurementsFile | null {
   if (!volumes) return file;
-  const base: MeasurementsFile = file ?? { schema: 'aio.measurements/1', measurements: [] };
-  const carry = base.kitPilesConverted === undefined;
-  const byName = new Map(materials.map((x) => [x.name.trim().toLowerCase(), x.id]));
   let n = 0;
-  const c = convertKitPiles(volumes, edits, base, {
-    carry,
-    now: new Date().toISOString(),
-    newId: () => `kit-report-${String(++n)}`,
-    // the kit keeps no toe heights per vertex: Z 0, as the app converts them
-    toSite: (xz) => {
-      const [e, north] = localToEN(manifest.origin, xz);
-      return [e, north, 0];
+  return openWithKitPiles(
+    file ?? { schema: 'aio.measurements/1', measurements: [] },
+    { volumes, edits },
+    {
+      origin: manifest.origin,
+      materials,
+      now: new Date().toISOString(),
+      newId: () => `kit-report-${String(++n)}`,
+      // nothing is written from the report: no file is marked converted
+      readOnly: true,
     },
-    materialId: (name) => byName.get(name.trim().toLowerCase()),
-  });
-  if (c.converted.length === 0) return file;
-  return {
-    ...base,
-    measurements: [...base.measurements, ...c.added],
-    kitPilesConverted: [...(base.kitPilesConverted ?? []), ...c.converted],
-  };
+  );
 }
 
 /**
@@ -329,14 +323,11 @@ export function surveyPlan(files: Pick<SurveyFiles, 'measurements' | 'settings' 
   } satisfies SurveyPlan;
 }
 
-/** The date a per-date row is for (R16): `toCapture`, else `fromCapture`. */
-const rowDate = (r: ComparisonResult): string => r.toCapture ?? r.fromCapture ?? '';
-
 /** A volume measurement with figures on two survey dates or more (stored or per date). */
 export function hasVolumeOverTime(m: SurveyMeasurement): boolean {
   if (m.tool !== 'volume' || m.family !== 'polygon') return false;
-  const dated = pileSeries(m).series.filter((r) => r.status !== 'refused' && rowDate(r) !== '');
-  return new Set(dated.map(rowDate)).size >= 2;
+  const dated = pileSeries(m).series.filter((r) => r.status !== 'refused' && seriesDate(r) !== '');
+  return new Set(dated.map(seriesDate)).size >= 2;
 }
 
 /** The survey sections that have something to print. */
@@ -355,26 +346,16 @@ export function surveySectionIds(
 }
 
 /**
- * A base's standard name (the volume card's base picker): "Triangulated toe", "Lowest point" ...;
- * a survey or design side by its own name.
+ * A base's standard name, as the volume card's base picker names it (`baseNames.ts`):
+ * "Triangulated toe", "Lowest point" ...; a survey or design side by its own name.
  */
 export function standardBaseName(ref: SurfaceRef): string {
-  switch (ref.kind) {
-    case 'smart':
-      return tk('base.smart');
-    case 'fit-plane':
-      return tk('base.plane');
-    case 'perimeter-mean':
-      return tk('base.mean');
-    case 'custom':
-      return tk('base.custom');
-    case 'reference':
-      if (ref.mode === 'perimeter-min') return tk('base.lowest');
-      if (ref.mode === 'level') return tk('base.level');
-      return sideLabel(ref, null);
-    default:
-      return sideLabel(ref, null);
-  }
+  return baseName(
+    ref,
+    [],
+    (k: MessageKey) => t(k),
+    (r) => sideLabel(r, null),
+  );
 }
 
 // ---------------------------------------------------------------- the engine
@@ -384,31 +365,6 @@ const ringOf = (m: SurveyMeasurement): [number, number][] => m.points.map((p) =>
 /** The survey a survey-scoped measurement's ring is stored for; absent for a site-wide one. */
 const scopeOf = (m: SurveyMeasurement): string | undefined =>
   m.scope.kind === 'survey' ? m.scope.capture : undefined;
-
-/** An item whose figures were carried over from an earlier version: never recomputed (R16). */
-const carriedItem = (m: SurveyMeasurement, item: string): boolean =>
-  m.results.some((r) => r.item === item && r.carried !== undefined) ||
-  (m.series ?? []).some((r) => r.item === item && r.carried !== undefined);
-
-/**
- * The line-up each survey date has now and its turn, as the app hands its engine (`compareStore`'s
- * `currentShifts` and `currentTurns`): the inputs of every fingerprint, so a figure is stale here
- * exactly when it is in the app.
- */
-export function lineUps(manifest: ProjectManifest): Pick<EngineContext, 'shifts' | 'turns'> {
-  const shifts: Record<string, [number, number]> = {};
-  const turns: Record<string, CaptureLineUpTurn> = {};
-  for (const c of manifest.captures) {
-    const s = captureShift(manifest, c.id);
-    if (s) shifts[c.id] = [s.eastM, s.northM];
-    const turn = turnOf(s);
-    if (turn) turns[c.id] = turn;
-  }
-  return {
-    ...(Object.keys(shifts).length > 0 ? { shifts } : {}),
-    ...(Object.keys(turns).length > 0 ? { turns } : {}),
-  };
-}
 
 /** The engine session's files come through the report's reader: its URL back to the path. */
 const ENGINE_BASE = 'aio://report/';
@@ -561,6 +517,11 @@ export interface ReportEntry {
   m: SurveyMeasurement;
   parts: readonly ('value' | 'chart' | 'table')[];
   chart: EntryChart | null;
+  /**
+   * Its card, as the app's detail card shows it: drawn where the app draws it (the date's
+   * line-up added) with the survey's heights under it.
+   */
+  card: CardModel;
 }
 
 /** Everything the report prints of the survey: the CSVs' data and the volumes over time. */
@@ -574,64 +535,55 @@ export interface ReportSurveyData extends SurveyReportData {
 }
 
 /**
- * The readout rows with terrain values from an async sampler: the tools ask a synchronous sampler,
- * so the points they ask for are collected first (every height 0), sampled in one go, then asked
- * again with the answers.
+ * A synchronous height sampler from an async one, for the tools' terrain questions: `ask` runs
+ * with every height 0 to collect the points the tools ask for, those are sampled in one go, and
+ * the sampler answers them (the app's `withSurface` does the same for the card). Undefined
+ * without a sampler.
  */
-async function readout(
-  m: SurveyMeasurement,
-  items: readonly string[] | undefined,
+async function presampled(
+  ask: (s: HeightSampler) => void,
   sample: PointSampler | null,
-) {
-  if (!sample) return measurementReadout(m, {}, items);
+): Promise<HeightSampler | undefined> {
+  if (!sample) return undefined;
   const es: number[] = [];
   const ns: number[] = [];
-  measurementReadout(
-    m,
-    {
-      surface: {
-        heightAt: (e, n) => {
-          es.push(e);
-          ns.push(n);
-          return 0;
-        },
-      },
+  ask({
+    heightAt: (e, n) => {
+      es.push(e);
+      ns.push(n);
+      return 0;
     },
-    items,
-  );
+  });
   const hs = es.length
     ? await sample(Float64Array.from(es), Float64Array.from(ns))
     : new Float64Array();
   const at = new Map<string, number>();
   es.forEach((e, i) => at.set(`${String(e)},${String(ns[i])}`, hs[i] ?? Number.NaN));
-  return measurementReadout(
-    m,
-    {
-      surface: {
-        heightAt: (e, n) => {
-          const h = at.get(`${String(e)},${String(n)}`);
-          return h === undefined || !Number.isFinite(h) ? null : h;
-        },
-      },
+  return {
+    heightAt: (e, n) => {
+      const h = at.get(`${String(e)},${String(n)}`);
+      return h === undefined || !Number.isFinite(h) ? null : h;
     },
-    items,
-  );
+  };
 }
 
-/// ---------------------------------------------------------------- the data
+// ---------------------------------------------------------------- the data
 
 export type SurveyNeed = 'report' | 'measurements-csv' | 'stockpile-csv';
 
 export interface BuildOptions {
   need: SurveyNeed;
   progress?: (done: number, total: number) => void;
+  /**
+   * Work out the dates of the volume measurements the app has not yet (in memory): when a
+   * section or the summary prints them. Off, only their stored dates are read. Default on.
+   */
+  fillDates?: boolean;
 }
 
-/** A per-date row's key: its item and date (`compareStore`'s `seriesKeyOf`). */
-const seriesKey = (r: ComparisonResult): string => `${r.item} ${rowDate(r)}`;
-
 /**
- * The volume measurements over the survey dates as the app shows them, with nothing written:
+ * The volume measurements over the survey dates as the app shows them, with nothing written
+ * (with `fill` off only the stored dates, for a report that prints none of them):
  * each one's dates the Volumes view would work out (`computeSeries`: a date with no row, or a stale
  * one, unless its figures are carried) are worked out in memory by the app's engine, then the card's
  * rule (`pileSeries`: the stored result stands for its own date) and the site inventory's
@@ -642,6 +594,7 @@ async function volumesOverTime(
   piles: readonly SurveyMeasurement[],
   captures: readonly CaptureRef[],
   engine: Engine | null,
+  fill: boolean,
   info: {
     ref: (m: SurveyMeasurement) => string;
     material: (m: SurveyMeasurement) => SiteMaterial | null;
@@ -671,17 +624,13 @@ async function volumesOverTime(
             if (f !== undefined) prints[`${it.id} ${c}`] = f;
           });
           seriesPrints.set(m.id, prints);
-          const have = new Map((m.series ?? []).map((r) => [seriesKey(r), r]));
-          const need = ids.filter((c, k) => {
-            const r = have.get(`${it.id} ${c}`);
-            return !r || (!r.carried && (r.status === 'stale' || r.fingerprint !== fps[k]));
-          });
+          const need = fill ? datesToRun(m, it.id, ids, fps) : [];
           if (need.length > 0) {
             const out = await engine.session.series({ ...req, captures: need });
-            const fresh = new Set(out.map(seriesKey));
+            const fresh = new Set(out.map(seriesKeyOf));
             next = {
               ...m,
-              series: [...(m.series ?? []).filter((r) => !fresh.has(seriesKey(r))), ...out],
+              series: [...(m.series ?? []).filter((r) => !fresh.has(seriesKeyOf(r))), ...out],
             };
           }
         }
@@ -695,7 +644,7 @@ async function volumesOverTime(
   const isStale = (m: SurveyMeasurement, r: ComparisonResult, stored: boolean): boolean => {
     if (r.carried) return false;
     if (r.status === 'stale') return true;
-    const fp = stored ? storedPrint.get(m.id) : seriesPrints.get(m.id)?.[seriesKey(r)];
+    const fp = stored ? storedPrint.get(m.id) : seriesPrints.get(m.id)?.[seriesKeyOf(r)];
     return fp !== undefined && fp !== r.fingerprint;
   };
   const inventory = inventorySeries(filled, captures, {
@@ -924,22 +873,33 @@ export async function buildSurveyData(
   const refOf = (m: SurveyMeasurement) => refs.get(m.id) ?? m.id;
   const measurements: MeasurementReport[] = [];
   const shown = new Map<string, SurveyMeasurement>();
+  const cards = new Map<string, CardModel>();
+  const cardCtx = { settings, templates: files.templates, captures };
+  const angles = settings.angles ?? DEFAULT_ANGLES;
   for (const raw of listed) {
     const m = await asShown(raw);
     shown.set(m.id, m);
+    // where the app draws it (its date's line-up added): its readouts, heights and card are of that
+    const drawn: SurveyMeasurement = { ...m, points: drawnPoints(m, manifest) };
     const cap = captureOf(m);
     const comparisons = m.family === 'polygon' ? itemsOf(m) : [];
     const tpl = tplOf(m);
     const units = effectiveUnits(settings.units, m.units);
+    const locale = settings.locale ?? localeOf(units.distance);
     const terrain = m.family !== 'polygon' || ringArea(m.points) <= TERRAIN_AREA_MAX_M2;
     const sample = computed && cap && terrain ? await engine.sampler(cap.id) : null;
-    const rows = await readout(m, tpl?.items, sample);
+    const surface = await presampled((h) => {
+      measurementReadout(drawn, { surface: h }, tpl?.items);
+      cardModel(drawn, { ...cardCtx, surface: h });
+    }, sample);
+    const rows = measurementReadout(drawn, surface ? { surface } : {}, tpl?.items);
+    cards.set(m.id, cardModel(drawn, { ...cardCtx, ...(surface ? { surface } : {}) }));
     const values: SurveyValue[] = rows.map((r) => ({
       key: r.key,
       label: r.label,
       si: r.value,
       kind: r.kind,
-      display: formatRow(r, units, settings.precision),
+      display: formatRow(r, units, settings.precision, locale, angles),
     }));
     const names = new Map((tpl?.fields ?? []).map((f) => [f.id, f.name]));
     measurements.push({
@@ -960,17 +920,23 @@ export async function buildSurveyData(
         name: names.get(id) ?? id,
         value: String(v),
       })),
-      outline: m.points.map((p) => [p[0], p[1]]),
+      outline: drawn.points.map((p) => [p[0], p[1]]),
     });
     tick();
   }
 
   // ------------------------------------------------ volumes over time and the stockpiles
-  const volumes = await volumesOverTime(pileWork, captures, computed ? engine : null, {
-    ref: refOf,
-    material,
-    tick,
-  });
+  const volumes = await volumesOverTime(
+    pileWork,
+    captures,
+    computed ? engine : null,
+    opts.fillDates ?? true,
+    {
+      ref: refOf,
+      material,
+      tick,
+    },
+  );
   const piles: StockpileReport[] = volumes.piles.map((p) => ({
     ref: p.ref,
     id: p.id,
@@ -985,16 +951,18 @@ export async function buildSurveyData(
   const entries: ReportEntry[] = [];
   for (const { m: raw, parts } of templated) {
     const m = shown.get(raw.id) ?? (await asShown(raw));
+    const drawn: SurveyMeasurement = { ...m, points: drawnPoints(m, manifest) };
     let chart: EntryChart | null = null;
     if (parts.includes('chart') && measurementHasChart(m))
-      chart = await entryChart(m, {
+      chart = await entryChart(drawn, {
         volumes,
         engine,
         current,
         surveyed,
         files,
       });
-    entries.push({ ref: refOf(m), m, parts, chart });
+    const card = cards.get(m.id) ?? cardModel(drawn, cardCtx);
+    entries.push({ ref: refOf(m), m, parts, chart, card });
     tick();
   }
 

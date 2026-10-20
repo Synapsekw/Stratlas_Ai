@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { dateShiftOf } from '@aio/workspace';
 import { issuesCsv } from './exporting';
 import { getRendererTool, runRendererTool, type RendererToolContext } from './renderer-tools';
+import { registerAppHooks } from './tool-kit';
 import { fixtureIssue, fixtureManifest, fixtureWorkspace } from './test-fixtures';
 import { allToolSpecs, toolInputs } from './tools';
 
@@ -84,7 +85,8 @@ const result = (item: string, toCapture: string, netM3: number, extra = {}) => (
 /** A saved project's volume measurement: its stored result on the 10 Jan survey, a series row on 31 Dec. */
 const measurements = {
   schema: 'aio.measurements/1',
-  kitPilesConverted: [],
+  // the kit's piles were converted when the project was opened
+  kitPilesConverted: ['P01', 'P02'],
   measurements: [
     {
       id: 'm-1',
@@ -181,6 +183,54 @@ describe('compare_captures', () => {
       ],
     });
     expect(r.summary).toBe('-150.0 m³');
+  });
+
+  it('refuses a kit base when no figure is carried over, and says why', async () => {
+    const fetchJson = files({ 'survey/measurements.json': measurements });
+    await expect(
+      runRendererTool('compare_captures', { base: 'low' }, ctx({ fetchJson }, surveyWorkspace())),
+    ).rejects.toThrow(/carried over from an earlier version/);
+  });
+
+  it('judges staleness as the app does: a stale figure is flagged and left out of the total', async () => {
+    const off = registerAppHooks({
+      volumeStale: (_m, r, stored) => stored && r.toCapture === 'c2',
+    });
+    try {
+      const fetchJson = files({ 'survey/measurements.json': measurements });
+      const r = await runRendererTool(
+        'compare_captures',
+        {},
+        ctx({ fetchJson }, surveyWorkspace()),
+      );
+      expect(r.result).toMatchObject({
+        to: { total: null, notCounted: [{ id: 'm-1', reason: 'stale' }] },
+        total: null,
+        piles: [{ id: 'm-1', stale: true, from: 610, to: 720.3 }],
+      });
+    } finally {
+      off();
+    }
+  });
+
+  it('finds a figure by its date when the row names only its from side', async () => {
+    const [m] = measurements.measurements;
+    const fromOnly = {
+      ...measurements,
+      measurements: [
+        {
+          ...m,
+          results: [],
+          series: [
+            { ...result('it', 'c1', 610), toCapture: undefined, fromCapture: 'c1' },
+            { ...result('it', 'c2', 650), toCapture: undefined, fromCapture: 'c2' },
+          ],
+        },
+      ],
+    };
+    const fetchJson = files({ 'survey/measurements.json': fromOnly });
+    const r = await runRendererTool('compare_captures', {}, ctx({ fetchJson }, surveyWorkspace()));
+    expect(r.result).toMatchObject({ piles: [{ id: 'm-1', from: 610, to: 650, change: 40 }] });
   });
 
   it('uses another kit base and accepts dates for the captures', async () => {

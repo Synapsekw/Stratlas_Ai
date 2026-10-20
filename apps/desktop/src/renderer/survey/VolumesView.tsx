@@ -51,7 +51,8 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const templates = useMeasure((s) => s.templates);
   const focus = useMeasure((s) => s.focus);
   const fileReadOnly = useMeasure((s) => s.readOnly);
-  const readOnly = useAnnotateReadOnly() || fileReadOnly;
+  const lookOnly = useAnnotateReadOnly();
+  const readOnly = lookOnly || fileReadOnly;
   const status = useCompare((s) => s.status);
   const captures = useCompare((s) => s.captures);
   const root = useWorkspace((s) => s.project?.root ?? null);
@@ -75,13 +76,14 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   // only the piles changed since their last run are run again
   const ran = useRef(new Map<string, string>());
   const ranFor = useRef('');
-  const runFor = `${status}|${String(readOnly)}|${captures.map((c) => c.id).join(',')}`;
+  const runFor = `${status}|${String(lookOnly)}|${captures.map((c) => c.id).join(',')}`;
   useEffect(() => {
     if (ranFor.current !== runFor) {
       ran.current.clear();
       ranFor.current = runFor;
     }
-    if (status !== 'ready' || readOnly || captures.length === 0) return;
+    // a read-only project works its dates out too, held in memory and never written
+    if (status !== 'ready' || lookOnly || captures.length === 0) return;
     const todo = piles.filter((m) => m.items.length > 0 && ran.current.get(m.id) !== stampOf(m));
     if (todo.length === 0) return;
     const run = { gone: false };
@@ -103,7 +105,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
     return () => {
       run.gone = true;
     };
-  }, [status, readOnly, captures.length, piles, runFor]);
+  }, [status, lookOnly, captures.length, piles, runFor]);
 
   // Detect piles runs from the stockpile job file: offered only when the project has one
   const [hasJob, setHasJob] = useState<boolean | null>(null);

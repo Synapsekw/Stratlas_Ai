@@ -112,7 +112,8 @@ export function volumeItem(taken: readonly { id: string }[]): ComparisonItem {
 export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const t = useT();
   const fileReadOnly = useMeasure((s) => s.readOnly);
-  const readOnly = useAnnotateReadOnly() || fileReadOnly;
+  const lookOnly = useAnnotateReadOnly();
+  const readOnly = lookOnly || fileReadOnly;
   const settings = useMeasure((s) => s.settings);
   const status = useCompare((s) => s.status);
   const surfaces = useCompare((s) => s.surfaces);
@@ -162,7 +163,9 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
     String(captures.length),
   ].join('|');
   useEffect(() => {
-    if (status !== 'ready' || readOnly || !first || carriedFirst) return;
+    // a read-only project works its dates out too, held in memory (a look-only reviewer's
+    // would be written with the next save, so not there)
+    if (status !== 'ready' || lookOnly || !first || carriedFirst) return;
     if (!seriesApplies(first) || points.length < 3 || captures.length === 0) return;
     let gone = false;
     computeSeries(m.id).then(
@@ -178,9 +181,9 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
     return () => {
       gone = true;
     };
-  }, [m.id, status, readOnly, first, carriedFirst, points, captures.length, seriesKey]);
+  }, [m.id, status, lookOnly, first, carriedFirst, points, captures.length, seriesKey]);
   // cleared once the item stops running series (carried, read-only) or its inputs change
-  const seriesFailed = failedFor === seriesKey && !carriedFirst && !readOnly;
+  const seriesFailed = failedFor === seriesKey && !carriedFirst && !lookOnly;
   // "the engine is still starting" and the like no longer hold once it is ready
   const [seenStatus, setSeenStatus] = useState(status);
   if (seenStatus !== status) {
@@ -822,7 +825,9 @@ function OverTime({
   const settings = useMeasure((s) => s.settings);
   const units = effectiveUnits(settings.units, m.units);
   const locale = settings.locale ?? localeOf(units.distance);
-  const mass = (x: number) => formatQuantity(x, 'mass', units, settings.precision, locale);
+  // tonnes in, the formatter's mass is SI kilograms (as Calculators and the CSV)
+  const mass = (tonnes: number) =>
+    formatQuantity(tonnes * 1000, 'mass', units, settings.precision, locale);
   return (
     <section className="vd-time" aria-label={t('vol.overTime')}>
       <h4 className="vd-sub">{t('vol.overTime')}</h4>

@@ -7,89 +7,32 @@
 import { fromSI, toSI, unitLabel } from '@aio/geo';
 import type { BaseSpec, SurfaceRef, SurveyMeasurement } from '@aio/schema';
 import { customBase, effectiveUnits, sideFor, sideKey, type SideOption } from '@aio/survey';
-import { arrowFocus, Icon, Popover, Row, useT, type MessageKey } from '@aio/ui';
+import { arrowFocus, Icon, Popover, Row, useT } from '@aio/ui';
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { BaseEditor } from '../BaseEditor';
 import { useMeasure } from '../measureStore';
 import '../../charts/charts.css';
 import '../compare.css';
 
-export type BaseId = 'smart' | 'lowest' | 'plane' | 'level' | 'mean' | 'surface' | 'custom';
+import { BASES, baseIdOf, baseName, optionLabel, type BaseId } from './baseNames';
 
-/** The seven bases in the picker's order: the default (Triangulated toe) first. */
-export const BASES: readonly { id: BaseId; name: MessageKey; hint: MessageKey }[] = [
-  { id: 'smart', name: 'base.smart', hint: 'base.smartHint' },
-  { id: 'lowest', name: 'base.lowest', hint: 'base.lowestHint' },
-  { id: 'plane', name: 'base.plane', hint: 'base.planeHint' },
-  { id: 'level', name: 'base.level', hint: 'base.levelHint' },
-  { id: 'mean', name: 'base.mean', hint: 'base.meanHint' },
-  { id: 'surface', name: 'base.surface', hint: 'base.surfaceHint' },
-  { id: 'custom', name: 'base.custom', hint: 'base.customHint' },
-];
+// the bases and their plain names live in one pure module, shared with the report
+export {
+  BASES,
+  baseIdOf,
+  baseName,
+  missingName,
+  optionLabel,
+  OLDER_MODES,
+  type BaseId,
+} from './baseNames';
 
 /** The default base of a new volume: a triangulated surface through the pile's toe. */
 export const DEFAULT_BASE: BaseSpec = { kind: 'smart' };
 
-/**
- * Which of the seven bases a side is. Lowest point and Fixed level are reference bases (the
- * lowest point on the perimeter, a typed level); a survey or design side is "surface". Null for a
- * reference mode the picker does not offer (an older file's highest point, say).
- */
-export function baseIdOf(ref: SurfaceRef): BaseId | null {
-  switch (ref.kind) {
-    case 'smart':
-      return 'smart';
-    case 'fit-plane':
-      return 'plane';
-    case 'perimeter-mean':
-      return 'mean';
-    case 'custom':
-      return 'custom';
-    case 'reference':
-      return ref.mode === 'perimeter-min' ? 'lowest' : ref.mode === 'level' ? 'level' : null;
-    default:
-      return 'surface';
-  }
-}
-
-/** A surface option as the pickers show it: "Previous survey (01 Sep)". */
-export const optionLabel = (o: SideOption): string => (o.note ? `${o.label} (${o.note})` : o.label);
-
 /** The surveys and designs a base can be (never the current survey: that is what is measured). */
 const surfaceChoices = (surfaces: readonly SideOption[]) =>
   surfaces.filter((o) => o.group !== 'Bases' && o.key !== 'current');
-
-/**
- * Older files' reference modes the picker no longer offers, by their plain names. They stay
- * shown (and ticked) while a comparison uses one.
- */
-const OLDER_MODES: Readonly<Record<string, MessageKey>> = {
-  'perimeter-max': 'base.highest',
-  'interior-max': 'base.interiorHighest',
-  'interior-min': 'base.interiorLowest',
-};
-
-/** A survey or design side that is no longer in the project, named by what it was. */
-export const missingName = (ref: SurfaceRef, t: (k: MessageKey) => string): string =>
-  t(ref.kind === 'design' ? 'vol.card.missingDesign' : 'vol.card.missingSurvey');
-
-/** A side's plain name: the base's, or the survey's or design's. */
-export function baseName(
-  ref: SurfaceRef,
-  surfaces: readonly SideOption[],
-  t: (k: MessageKey) => string,
-): string {
-  const id = baseIdOf(ref);
-  if (id === 'surface') {
-    const key = sideKey(ref);
-    const o = surfaces.find((x) => x.key === key);
-    return o ? optionLabel(o) : missingName(ref, t);
-  }
-  const b = BASES.find((x) => x.id === id);
-  if (b) return t(b.name);
-  const older = ref.kind === 'reference' ? OLDER_MODES[ref.mode] : undefined;
-  return t(older ?? 'base.level');
-}
 
 export function BasePicker(p: {
   value: BaseSpec | SurfaceRef;

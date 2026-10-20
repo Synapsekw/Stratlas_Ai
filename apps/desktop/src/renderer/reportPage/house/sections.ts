@@ -297,7 +297,7 @@ function largestPiles(p: Pager, ctx: HouseContext): void {
   if (!data || data.volumes.piles.length === 0) return;
   const { cur, prev } = latestInventory(data);
   if (!cur || cur.parts.length === 0) return;
-  const f = formats(data.basis);
+  const f = formats(data.basis, data.settings);
   const byId = new Map(data.volumes.piles.map((x) => [x.id, x]));
   const before = new Map((prev?.parts ?? []).map((x) => [x.id, x.valueM3]));
   const largest = [...cur.parts].sort((a, b) => b.valueM3 - a.valueM3).slice(0, 8);

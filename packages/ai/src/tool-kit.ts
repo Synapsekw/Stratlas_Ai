@@ -5,6 +5,7 @@
 import type { SceneHandle } from '@aio/engine';
 import type {
   AccuracyReport,
+  ComparisonResult,
   GcpFile,
   GlobeSite,
   Issue,
@@ -13,6 +14,7 @@ import type {
   PhotoProduct,
   PhotoRun,
   PhotoRunSummary,
+  SurveyMeasurement,
   Vec3,
   WindowKind,
 } from '@aio/schema';
@@ -204,6 +206,11 @@ export interface AppHooks {
   placeOnModel?: (req: PlaceOnModelRequest) => Promise<PlaceOnModelResult>;
   /** Add a place on a mesh or point cloud layer to an existing issue. */
   addSighting?: (req: AddSightingRequest) => Promise<AddSightingResult>;
+  /**
+   * Whether a volume measurement's figure is stale as the app judges it (its fingerprints now):
+   * `stored` for the measurement's stored result, else a per-date one. The Volumes view's rule.
+   */
+  volumeStale?: (m: SurveyMeasurement, r: ComparisonResult, stored: boolean) => boolean;
 }
 
 export const appHooks: AppHooks = {};

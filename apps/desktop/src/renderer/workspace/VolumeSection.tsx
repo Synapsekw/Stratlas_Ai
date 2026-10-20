@@ -11,7 +11,7 @@ import type { ChartSeries } from '@aio/survey';
 import { useT } from '@aio/ui';
 import { useVolumetric, volumetric } from '@aio/volumetric';
 import { ProfileChart } from '../charts';
-import { autoExaggeration } from '../survey/card/slots';
+import { autoExaggeration } from '../charts/exaggeration';
 import { useMeasure } from '../survey/measureStore';
 import { surveyDateLabel } from './surveyDateLabel';
 

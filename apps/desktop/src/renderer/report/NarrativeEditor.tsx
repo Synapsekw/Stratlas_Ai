@@ -11,7 +11,7 @@ import {
   type NarrativeFacts,
 } from '@aio/project/export';
 import { formatQuantity, localeOf } from '@aio/geo';
-import { inventoryPiles } from '@aio/survey';
+import { inventoryPiles, pileSeries } from '@aio/survey';
 import {
   NARRATIVE_SECTIONS,
   parseRoadModel,
@@ -189,7 +189,12 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
     const locale = settings.locale ?? localeOf(units.distance);
     return houseVolumesOf(
       stack,
-      piles.map((m) => (m.items[0] ? standardBaseName(m.items[0].from) : '')),
+      piles.map((m) => {
+        // a pile carried over from an earlier version is named so, as on its card
+        const carried = pileSeries(m).series.find((r) => r.carried)?.carried;
+        if (carried) return t('vol.status.carried', { base: carried.base });
+        return m.items[0] ? standardBaseName(m.items[0].from) : '';
+      }),
       (x) => formatQuantity(x, 'volume', units, settings.precision, locale),
     );
   }, [stack, piles, settings]);

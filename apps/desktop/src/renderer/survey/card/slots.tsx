@@ -52,7 +52,8 @@ import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
-import { DEFAULT_PLOT, ProfileChart } from '../../charts/ProfileChart';
+import { autoExaggeration } from '../../charts/exaggeration';
+import { ProfileChart } from '../../charts/ProfileChart';
 import { ShadeVs } from '../../charts/ShadeVs';
 import { SurfaceChips, type ChipOption } from '../../charts/SurfaceChips';
 import { TimeChart, type TimeReference } from '../../charts/TimeChart';
@@ -600,23 +601,8 @@ function LineChips({ m }: { m: SurveyMeasurement }): ReactElement | null {
   );
 }
 
-/** A vertical exaggeration that fills the chart's default plot, in whole steps from 1 to 20. */
-export function autoExaggeration(series: readonly ChartSeries[]): number {
-  let c1 = 0;
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const s of series) {
-    c1 = Math.max(c1, s.chainage.at(-1) ?? 0);
-    for (const z of s.z)
-      if (z !== null) {
-        lo = Math.min(lo, z);
-        hi = Math.max(hi, z);
-      }
-  }
-  if (!(hi > lo) || c1 <= 0) return 1;
-  const fill = (c1 / (hi - lo)) * (DEFAULT_PLOT.height / DEFAULT_PLOT.width);
-  return [20, 10, 5, 2, 1].find((x) => x <= fill) ?? 1;
-}
+/** The exaggeration that fills the chart (one rule for the card, the pile section and the report). */
+export { autoExaggeration };
 
 /** The series a berm is found on: the current survey, else the first survey shown. */
 const bermSeries = (visible: readonly ChartSeries[]) =>

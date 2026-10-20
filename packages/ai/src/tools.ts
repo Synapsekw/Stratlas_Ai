@@ -315,7 +315,9 @@ export const toolInputs = {
       base: z
         .enum(['tin', 'plane', 'avg', 'low'])
         .optional()
-        .describe('Stockpile base for volumes; default the survey default'),
+        .describe(
+          'Kit base of stockpile figures carried over from an earlier version (old projects only); refused when no figure is carried',
+        ),
     })
     .strict(),
   measure_distance: z.object({ from: Target, to: Target }).strict(),
@@ -553,7 +555,7 @@ const BUILT_IN: ToolSpec[] = [
   }),
   spec('compare_captures', {
     description:
-      'Compare two capture dates. When the change sets of the dates are saved: counts of what changed per kind (issues, detections, map layers, regions, model parts, frames) and verdict (new, resolved, grown...), plus volumes for stockpile surveys. Otherwise for stockpile surveys: volume per pile and in total at each date and the change; else issue counts at each date and the issues added between them.',
+      'Compare two capture dates. When the change sets of the dates are saved: counts of what changed per kind (issues, detections, map layers, regions, model parts, frames) and verdict (new, resolved, grown...), plus volumes. Volumes are the figures of the volume measurements as their cards show them: one net volume per pile per date (stale or carried-over figures flagged), and the totals of the current figures of the piles counted on both dates, with what is not counted and why. Without volume measurements: issue counts at each date and the issues added between them.',
     scope: 'project',
     risk: 'read',
   }),
