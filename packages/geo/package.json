@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "CRS registry, float64 project origin, transforms, quadtree tiling.",
+  "description": "CRS registry, float64 project origin, transforms, site calibration and placement maths.",
   "exports": {
     ".": "./src/index.ts",
     "./catalogue/epsg.json.gz": "./src/catalogue/epsg.json.gz"
