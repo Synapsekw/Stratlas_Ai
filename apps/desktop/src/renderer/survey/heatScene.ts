@@ -76,7 +76,8 @@ export function heatHistogram(
   for (const v of grid.dz) {
     if (!Number.isFinite(v)) continue;
     const k = Math.floor(((v - lo) / (hi - lo)) * bins);
-    out[Math.min(bins - 1, Math.max(0, k))]++;
+    const at = Math.min(bins - 1, Math.max(0, k));
+    out[at] = (out[at] ?? 0) + 1;
   }
   return out;
 }
