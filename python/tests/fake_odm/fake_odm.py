@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
 import os
@@ -227,12 +228,48 @@ def _geo_positions(path: str) -> dict[str, tuple[float, float, float]]:
     return out
 
 
+def say_sfm(project: Path) -> None:
+    """OpenSfM-shaped lines over the fake's own photos (ODM 3.6.2's sub-steps), each followed by a
+    pause of ``FAKE_ODM_LINE_S`` seconds."""
+    pause = float(os.environ.get("FAKE_ODM_LINE_S", "0"))
+    names = [p.name for p in sorted((project / "images").iterdir())]
+    program, sfm = Path(__file__).parent / "opensfm", project / "opensfm"
+
+    def say(line: str) -> None:
+        print(line, flush=True)
+        time.sleep(pause)
+
+    def running(command: str) -> None:
+        say(f'[INFO]    running "{program}" {command} "{sfm}"')
+
+    running("detect_features")
+    for name in names:
+        say(f"Extracting SIFT features for image {name}")
+    running("match_features")
+    say(f"INFO: Matching {max(0, len(names) - 1)} image pairs")
+    for one, two in itertools.pairwise(names):
+        say(f"DEBUG: Matching {one} and {two}.  Matcher: FLANN")
+    running("create_tracks")
+    running("reconstruct")
+    if len(names) >= 2:
+        say(f"Starting reconstruction with {names[0]} and {names[1]}")
+    for name in names[2:]:
+        say(f"Adding {name} to the reconstruction")
+    say("[INFO]    Export reconstruction stats")
+    running("export_geocoords")
+
+
 def stage_opensfm(project: Path, a: argparse.Namespace, gpu_bad: str) -> None:
     if gpu_on(a):
         if "features-fallback" in gpu_bad:
             print("[WARNING] GPU SIFT extraction failed, fallback to CPU", flush=True)
         else:
             print("[INFO]    Using GPU for extracting SIFT features", flush=True)
+    reconstruct(project, a)
+    say_sfm(project)
+
+
+def reconstruct(project: Path, a: argparse.Namespace) -> None:
     sfm = project / "opensfm"
     sfm.mkdir(parents=True, exist_ok=True)
     truth_file = project / ".fake" / "truth.json"
