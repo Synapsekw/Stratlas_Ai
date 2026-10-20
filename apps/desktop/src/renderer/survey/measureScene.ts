@@ -30,6 +30,7 @@ import {
   type SnapProvider,
   type ToScreen,
 } from '@aio/survey';
+import { t } from '@aio/ui';
 import { workspace, type Workspace } from '@aio/workspace';
 import {
   BufferGeometry,
@@ -180,11 +181,19 @@ export function labelText(
   north: 'project north' | 'grid north' = 'project north',
 ): string {
   if (isTelecomTool(m.tool)) {
-    if (invalidPicks(m)) return [m.label, 'Invalid picks: adjust endpoints'].join(' · ');
-    const suffix =
-      m.tool === 'azimuth' ? ` ${north}` : m.tool === 'antenna-tilt' ? ' from vertical' : '';
+    if (invalidPicks(m))
+      return [m.label, t('mcard.label.adjust', { state: t('tree.measure.invalid') })].join(' · ');
     const value = primaryText(m, { settings, templates });
-    return [m.label, value ? `${value}${suffix}` : ''].filter(Boolean).join(' · ');
+    const said = !value
+      ? ''
+      : m.tool === 'azimuth'
+        ? t(north === 'grid north' ? 'mcard.label.gridNorth' : 'mcard.label.projectNorth', {
+            value,
+          })
+        : m.tool === 'antenna-tilt'
+          ? t('mcard.label.fromVertical', { value })
+          : value;
+    return [m.label, said].filter(Boolean).join(' · ');
   }
   const row =
     m.style?.showPropertyName === true ? primaryRow(m, {}, templateItems(m, templates)) : null;
@@ -315,10 +324,17 @@ export function attach3d(
       (o.material as Material).dispose();
     }
   };
-  /** Fat lines take their width in CSS pixels: they need the canvas size they are drawn at. */
-  const sizeFatLines = () => {
+  /**
+   * Fat lines take their width in CSS pixels: they need the canvas size they are drawn at. Set
+   * after each rebuild (new materials) and otherwise only when the canvas size changes.
+   */
+  let sized = '';
+  const sizeFatLines = (force = false) => {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    const key = `${String(w)}x${String(h)}`;
+    if (!force && key === sized) return;
+    sized = key;
     for (const c of group.children) {
       const mat = (c as Partial<Mesh>).material;
       if (mat instanceof LineMaterial) mat.resolution.set(w, h);
@@ -477,8 +493,14 @@ export function attach3d(
           sh.fillOpacity ?? DEFAULT_FILL_OPACITY,
           `measure-fill:${sh.id}`,
         );
-      // a stored border width only: unstyled measurements keep the one-pixel 3D line
-      addLine(sh.points, sh.closed, sh.selected ? '#ffffff' : sh.color, name, sh.borderWidth ?? 1);
+      // the stored border width, else the map's and the panel's default
+      addLine(
+        sh.points,
+        sh.closed,
+        sh.selected ? '#ffffff' : sh.color,
+        name,
+        sh.borderWidth ?? DEFAULT_BORDER_WIDTH,
+      );
       addPoints(sh.points, sh.color, sh.selected ? 8 : 5, name);
       if (sh.tool === 'azimuth') addFacing(sh.points, sh.color, `measure-facing:${sh.id}`);
     }
@@ -507,7 +529,7 @@ export function attach3d(
       if (d.cursor) addPoints([d.cursor], d.snap ? SNAP_COLOR : DRAFT_COLOR, d.snap ? 12 : 6);
       if (s.tool?.tool === 'azimuth') addFacing(pts, DRAFT_COLOR, 'measure-facing:draft');
     }
-    sizeFatLines();
+    sizeFatLines(true);
     placeLabels();
     stage.requestRender();
   };

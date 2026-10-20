@@ -272,7 +272,7 @@ function PanelSections({
         <summary>{t('mcard.styleLabel')}</summary>
         <fieldset className="sv-grid" disabled={ro}>
           <div className="sv-field">
-            <span id={`sv-colour-${m.id}`}>Colour</span>
+            <span id={`sv-colour-${m.id}`}>{t('mcard.colour')}</span>
             {/* the one palette the right-click menu offers, then any other colour */}
             <div className="sv-picks" role="group" aria-labelledby={`sv-colour-${m.id}`}>
               {MEASURE_COLOURS.map((c) => (
@@ -280,7 +280,6 @@ function PanelSections({
                   key={c.id}
                   type="button"
                   className="sv-pick"
-                  title={t(c.label)}
                   aria-label={t(c.label)}
                   aria-pressed={(m.style?.color ?? DEFAULT_MEASURE_COLOUR).toLowerCase() === c.hex}
                   data-testid={`style-colour-${c.id}`}
@@ -293,7 +292,7 @@ function PanelSections({
               <input
                 type="color"
                 className="sv-pick-custom"
-                aria-label="Colour"
+                aria-label={t('mcard.colour')}
                 value={m.style?.color ?? DEFAULT_MEASURE_COLOUR}
                 onChange={(e) => {
                   setStyle({ color: e.target.value });
@@ -302,7 +301,7 @@ function PanelSections({
             </div>
           </div>
           <label className="sv-field">
-            <span>Fill</span>
+            <span>{t('mcard.fill')}</span>
             <input
               type="color"
               value={m.style?.fill ?? m.style?.color ?? DEFAULT_MEASURE_COLOUR}

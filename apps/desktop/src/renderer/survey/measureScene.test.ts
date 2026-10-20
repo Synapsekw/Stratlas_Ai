@@ -17,7 +17,11 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { MapController } from '@aio/maps';
 import { defaultSurveySettings } from '@aio/schema';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
-import { DEFAULT_FILL_OPACITY, DEFAULT_MEASURE_COLOUR } from './measureColours';
+import {
+  DEFAULT_BORDER_WIDTH,
+  DEFAULT_FILL_OPACITY,
+  DEFAULT_MEASURE_COLOUR,
+} from './measureColours';
 import { attach3d, attachMap, frameOf, labelText, snapProviders } from './measureScene';
 import {
   editEvent,
@@ -431,7 +435,12 @@ function fakeMap() {
   };
   const layers = new Map<
     string,
-    { type: string; paint?: Record<string, unknown>; layout?: Record<string, unknown> }
+    {
+      type: string;
+      filter?: unknown;
+      paint?: Record<string, unknown>;
+      layout?: Record<string, unknown>;
+    }
   >();
   let added = false;
   const canvas = document.createElement('canvas');
@@ -515,7 +524,12 @@ it('map labels show the name and the primary value', () => {
   expect(label?.properties.label).toBe(labelText(pad(), defaultSurveySettings(), []));
   expect(m.layer('symbol')?.layout?.['text-field']).toEqual(['get', 'label']);
   // the label point is not drawn as a vertex dot
-  expect(m.layer('circle')).toBeDefined();
+  expect(m.layer('circle')?.filter).toEqual([
+    'all',
+    ['==', ['geometry-type'], 'Point'],
+    ['!=', ['get', 'kind'], 'label'],
+  ]);
+  expect(m.layer('symbol')?.filter).toEqual(['==', ['get', 'kind'], 'label']);
   m.detach();
 });
 
@@ -543,13 +557,20 @@ it('3D draws a fat line when the border is wider than 1, a thin one otherwise', 
   measureStore.setState({
     file: {
       schema: 'aio.measurements/1',
-      measurements: [pad({ style: { color: '#ef476f', borderWidth: 4 } }), pad({ id: 'thin' })],
+      measurements: [
+        pad({ style: { color: '#ef476f', borderWidth: 4 } }),
+        pad({ id: 'thin', style: { color: '#ef476f', borderWidth: 1 } }),
+        pad({ id: 'plain' }),
+      ],
     },
   });
   const outline = (id: string) =>
     s.stage.scene.getObjectsByProperty('name', `measure:${id}`).find((o) => !(o instanceof Points));
   expect(outline('pad')).toBeInstanceOf(Line2);
+  expect((outline('pad') as Line2 | undefined)?.material.linewidth).toBe(4);
   expect(outline('thin')).not.toBeInstanceOf(Line2);
+  // no stored width: the shared default (2), as the map and the panel use
+  expect((outline('plain') as Line2 | undefined)?.material.linewidth).toBe(DEFAULT_BORDER_WIDTH);
   s.detach();
 });
 
