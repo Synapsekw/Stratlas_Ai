@@ -167,6 +167,50 @@ describe('menu parity with the menus before the registry', () => {
 });
 
 describe('measurement items', () => {
+  it('actions appear in the measurement menu and the card overflow', async () => {
+    const { registerMeasureActions } = await import('./measureActions');
+    const { registerReportActions } = await import('./reportActions');
+    const { measureStore } = await import('../../survey/measureStore');
+    const { emptyMeasurements } = await import('@aio/schema');
+    const line = {
+      id: 'm1',
+      family: 'line' as const,
+      tool: 'distance' as const,
+      label: 'Line',
+      scope: { kind: 'site' as const },
+      items: [],
+      results: [],
+      points: [
+        [0, 0, 0],
+        [3, 4, 0],
+      ] as [number, number, number][],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    measureStore.setState({
+      file: { ...emptyMeasurements(), measurements: [line, { ...line, id: 'm2' }] },
+    });
+    const more = [registerMeasureActions(), registerReportActions()];
+    try {
+      // the Datasets row and the card's "⋯" ask the registry for the same target
+      const one = offered({ kind: 'measurements', ids: ['m1'], clicked: 'm1' });
+      for (const id of [
+        'ctx-item-measure.addToReport',
+        'ctx-item-measure.export',
+        'measure-export-csv',
+        'measure-export-dxf',
+        'measure-export-png',
+      ])
+        expect(one, id).toContain(id);
+      // several marked: Add to report takes them all; Export acts on one
+      const two = offered({ kind: 'measurements', ids: ['m1', 'm2'], clicked: 'm1' });
+      expect(two).toContain('ctx-item-measure.addToReport');
+      expect(two).not.toContain('ctx-item-measure.export');
+    } finally {
+      for (const off of more) off();
+    }
+  });
+
   it('a dataset row offers no measurement items', () => {
     expect(
       offered({ kind: 'layers', layerIds: ['v'] }).some((id) => id.startsWith('ctx-item-measure.')),

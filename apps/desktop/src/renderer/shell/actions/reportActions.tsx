@@ -1,0 +1,112 @@
+import {
+  announce,
+  defineAction,
+  itemMeasureIds,
+  registerActions,
+  t,
+  type Action,
+  type ActionCtx,
+  type MenuTarget,
+  type SubItem,
+} from '@aio/ui';
+import { workspace } from '@aio/workspace';
+import { addManyToReport } from '../../report/templateStore';
+import {
+  exportFormats,
+  exportMeasurement,
+  type MeasurementExportFormat,
+} from '../../survey/card/exportMeasurement';
+import { buildMeasureItems } from '../../survey/measureRows';
+import { measureStore } from '../../survey/measureStore';
+import { measureEditBlocked } from './measureActions';
+import { inPackage } from './reasons';
+
+/*
+ * The measurement actions that send a measurement out (volumetric parity W2, W8): Add to report
+ * (the marked measurements, in the order the Datasets tree lists them) and Export (the one the
+ * menu opened on, as CSV, DXF or, where its tool draws a chart, PNG). Registered on the
+ * measurement rows, so the card's "⋯" menu, built from the same registry, offers them too.
+ */
+
+type Target = Extract<MenuTarget, { kind: 'measurements' }>;
+
+/** `ids` in the order the Datasets tree lists them (ids the tree does not list go last). */
+function inTreeOrder(ids: readonly string[]): string[] {
+  const ws = workspace.getState();
+  const tree = buildMeasureItems(measureStore.getState(), ws.project?.manifest ?? null, {
+    dates: ws.dates,
+    hidden: ws.hidden,
+  }).flatMap(itemMeasureIds);
+  const want = new Set(ids);
+  const ordered = tree.filter((id) => want.has(id));
+  const listed = new Set(ordered);
+  return [...ordered, ...ids.filter((id) => !listed.has(id))];
+}
+
+const FORMAT_LABEL = {
+  csv: 'chart.csv',
+  dxf: 'chart.dxf',
+  png: 'chart.png',
+} as const satisfies Record<MeasurementExportFormat, string>;
+
+const isFormat = (s: string | undefined): s is MeasurementExportFormat =>
+  s === 'csv' || s === 'dxf' || s === 'png';
+
+const actions: readonly Action[] = [
+  defineAction<'measurements'>({
+    id: 'measure.addToReport',
+    label: 'chart.addToReport',
+    icon: 'report',
+    section: 'file',
+    targets: ['measurements'],
+    multi: true,
+    disabled: (_tg: Target, ctx: ActionCtx) => measureEditBlocked(ctx),
+    run: async (tg, ctx) => {
+      try {
+        const r = await addManyToReport(inTreeOrder(tg.ids));
+        const said = t(r.added.length > 0 ? 'report.added' : 'report.already');
+        announce(said);
+        ctx.host.note(said);
+      } catch (e) {
+        const why = e instanceof Error ? e.message : String(e);
+        announce(why, 'assertive');
+        ctx.host.note(why, true);
+      }
+    },
+  }),
+  defineAction<'measurements'>({
+    id: 'measure.export',
+    label: 'mcard.export',
+    icon: 'download',
+    section: 'file',
+    targets: ['measurements'],
+    present: 'submenu',
+    submenu: (tg, ctx): SubItem[] =>
+      exportFormats(tg.clicked).map((f) => ({
+        id: f,
+        label: t(FORMAT_LABEL[f]),
+        testId: `measure-export-${f}`,
+        // the DXF is written by a pipeline job in the project folder, which a package lacks
+        ...(f === 'dxf' ? { disabled: inPackage(ctx) } : {}),
+      })),
+    run: async (tg, ctx, sub) => {
+      if (!isFormat(sub)) return;
+      try {
+        const path = await exportMeasurement(tg.clicked, sub);
+        if (path === null) return;
+        const said = t('announce.exportDone', { file: path });
+        announce(said);
+        ctx.host.note(said);
+      } catch (e) {
+        const why = e instanceof Error ? e.message : String(e);
+        announce(why, 'assertive');
+        ctx.host.note(why, true);
+      }
+    },
+  }),
+];
+
+/** Register Add to report and Export on the measurement rows. */
+export function registerReportActions(): () => void {
+  return registerActions(actions);
+}

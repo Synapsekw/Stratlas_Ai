@@ -258,6 +258,7 @@ import {
 import { createRf, rfBuiltinDir } from './rf';
 import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
 import { readPackageVolumes, readVolumes, writeBoundaries } from './boundaries';
+import { readPackageTemplate, readTemplate, templateError, writeTemplate } from './reportTemplate';
 import { folderFiles, packageFiles, readDetectionPasses, writeDetectionPass } from './detections';
 import { createMaskAssist, loadOnnxRuntime } from './maskAssist';
 import { resolveInside } from './protocol/paths';
@@ -1052,6 +1053,32 @@ function registerIpc(): void {
     const pkg = registry.package(projectId);
     if (pkg) return readPackageVolumes(pkg.archive);
     return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('report:readTemplate', async ({ projectId }) => {
+    try {
+      const root = registry.root(projectId);
+      if (root !== undefined) return { ok: true, file: await readTemplate(root) };
+      const pkg = registry.package(projectId);
+      if (pkg) return { ok: true, file: await readPackageTemplate(pkg.archive) };
+    } catch (e) {
+      return { ok: false, error: templateError(e) };
+    }
+    return { ok: false, error: `Project "${projectId}" is not open.` };
+  });
+  handle('report:writeTemplate', async ({ projectId, file }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Its report template cannot be changed.',
+      };
+    const r = openRoot(projectId);
+    if ('error' in r) return { ok: false, error: r.error };
+    try {
+      await writeTemplate(r.root, file);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: templateError(e) };
+    }
   });
   handle('project:writeBoundaries', ({ projectId, file }) => {
     if (registry.package(projectId))
