@@ -164,6 +164,32 @@ describe('BulkTotals', () => {
     expect(text('survey-bulk-not-counted')).toContain('Pile a (stale), Pile b (stale)');
   });
 
+  it('a mixed selection totals its volumes by the same rule as the volumes view', async () => {
+    const { setSeriesFailed } = await import('./useInventory');
+    // a counts; b is stale; d's figure is for an earlier date and its dates failed; c is an area
+    const d = { ...pile('d', 7), results: [{ ...result(7), toCapture: 'c1' }] };
+    s.measure.selected = ['a', 'b', 'c', 'd'];
+    s.measure.file = {
+      measurements: [pile('a', 10), pile('b', 5), { ...pile('c', 3), tool: 'area' }, d],
+    };
+    stale.add('b');
+    setSeriesFailed('d', 'the engine stopped');
+    try {
+      render();
+      // the pile figure of a, plus the area tool's current figure: never b's or d's
+      expect(text('survey-bulk-net')).toBe(v(13));
+      expect(text('survey-bulk-not-counted')).toBe(
+        '2 piles not counted: Pile b (stale), Pile d (could not compute: the engine stopped)',
+      );
+      // the counted pile's area and the area tool's
+      expect(text('survey-bulk-area')).toBe(
+        formatQuantity(100, 'area', settings.units, settings.precision),
+      );
+    } finally {
+      setSeriesFailed('d', null);
+    }
+  });
+
   it('other measurements keep their per-comparison totals', () => {
     s.measure.file = {
       measurements: [

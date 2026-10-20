@@ -6,8 +6,9 @@
  * Given `inventory` (the volumes view), it shows the total of the piles shown on the latest survey
  * date instead: that date's row of the site inventory (`inventorySeries`), so the total and the
  * chart come from one function. What is not counted is named with why, never added, and a total
- * with nothing counted shows no figure (never 0). A selection of volumes is totalled the same way
- * (`useInventory`), so the selection and the volumes view cannot disagree.
+ * with nothing counted shows no figure (never 0). In a selection, the volumes' pile figure is
+ * totalled the same way (`useInventory`), mixed with other tools or not, so the selection and the
+ * volumes view cannot disagree.
  */
 import { formatQuantity, localeOf, unitName } from '@aio/geo';
 import { AreaUnit, VolumeUnit, type SurfaceRef, type SurveyMeasurement } from '@aio/schema';
@@ -225,36 +226,48 @@ function SelectionTotals() {
     () => sideOptions({ surfaces, captures, designs }),
     [surfaces, captures, designs],
   );
-  // a selection of volumes is totalled by the volumes view's rule (the same function): the pile
-  // figure of the latest survey date, current figures only, the rest named
-  const volumes = ms.length > 0 && ms.every((m) => m.tool === 'volume');
-  const stack = useInventory(volumes ? ms : NO_PILES);
+  // the volumes' pile figure (their first comparison) follows the volumes view's rule, the same
+  // function: the latest survey date, current figures only, the rest named. The other tools, and
+  // the volumes' other comparisons, keep the per-comparison totals
+  const vols = useMemo(() => ms.filter((m) => m.tool === 'volume'), [ms]);
+  const stack = useInventory(vols.length > 0 ? vols : NO_PILES);
   const names = useMemo(() => new Map(ms.map((m) => [m.id, m.label])), [ms]);
   if (selected.length < 2 || ms.length === 0) return null;
-  const totals = bulkTotals(
-    ms,
-    (m) => polygonAreas(m.points).horizontalM2,
-    (m, item) => {
-      const r = m.results.find((x) => x.item === item);
-      return r ? !isStale({ current }, m, r) : false;
-    },
-  );
-  const pileRow = volumes ? stack.at(-1) : undefined;
-  const pile = volumes ? rowFigures(pileRow, ms) : null;
+  const isCurrent = (m: SurveyMeasurement, item: string) => {
+    const r = m.results.find((x) => x.item === item);
+    return r ? !isStale({ current }, m, r) : false;
+  };
+  const areaOf = (m: SurveyMeasurement) => polygonAreas(m.points).horizontalM2;
+  const totals = bulkTotals(ms, areaOf, isCurrent);
+  const others = ms.filter((m) => m.tool !== 'volume');
+  const otherTotals = bulkTotals(others, areaOf, isCurrent);
+  const otherFirst = otherTotals.rows[0];
+  const pileRow = vols.length > 0 ? stack.at(-1) : undefined;
+  const pile = vols.length > 0 ? rowFigures(pileRow, vols) : null;
+  // nothing to add in the first comparison: no pile counted and no other figure current
+  const firstNone = pile !== null && pile.none && (otherFirst?.counted ?? 0) === 0;
   // a volume total is in the site's units, as in the volumes view
-  const units = volumes ? settings.units : effectiveUnits(settings.units, ms[0]?.units);
+  const units = pile ? settings.units : effectiveUnits(settings.units, ms[0]?.units);
   const locale = settings.locale ?? localeOf(units.distance);
   const fmt = (x: number) => formatQuantity(x, 'volume', units, settings.precision, locale);
+  const areaNone = pile !== null && pile.none && others.length === 0;
   const a = (x: number) =>
-    pile?.none ? NONE : formatQuantity(x, 'area', units, settings.precision, locale);
-  /** The first comparison of volumes: the pile figure, "-" when no pile is counted. */
-  const v = (x: number, index: number) => (index === 0 && pile?.none ? NONE : fmt(x));
+    areaNone ? NONE : formatQuantity(x, 'area', units, settings.precision, locale);
+  /** The first comparison holds the pile figure: "-" when nothing in it is counted. */
+  const v = (x: number, index: number) => (index === 0 && firstNone ? NONE : fmt(x));
   const rows = totals.rows.map((r) =>
     r.index === 0 && pile
-      ? { ...r, cutM3: pile.cutM3, fillM3: pile.fillM3, netM3: pile.netM3, missing: 0 }
+      ? {
+          ...r,
+          cutM3: pile.cutM3 + (otherFirst?.cutM3 ?? 0),
+          fillM3: pile.fillM3 + (otherFirst?.fillM3 ?? 0),
+          netM3: pile.netM3 + (otherFirst?.netM3 ?? 0),
+          // the piles left out are named under the table, with why
+          missing: otherFirst?.missing ?? 0,
+        }
       : r,
   );
-  const areaM2 = pile ? pile.areaM2 : totals.areaM2;
+  const areaM2 = pile ? pile.areaM2 + otherTotals.areaM2 : totals.areaM2;
   const tplName = totals.template
     ? (knownTemplates({ templates, settings }).find((x) => x.id === totals.template)?.name ??
       totals.template)
@@ -330,7 +343,7 @@ function SelectionTotals() {
           </tr>
         </tbody>
       </table>
-      {volumes && <RowNotes row={pileRow} piles={ms} names={names} />}
+      {vols.length > 0 && <RowNotes row={pileRow} piles={vols} names={names} />}
       <div className="sv-row sv-wrap">
         <Button
           busy={busy}

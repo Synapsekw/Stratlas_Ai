@@ -31,7 +31,7 @@ import {
   startTool,
   useMeasure,
 } from './measureStore';
-import { useInventory } from './useInventory';
+import { setSeriesFailed, useInventory } from './useInventory';
 import './compare.css';
 import './volumesView.css';
 
@@ -59,8 +59,6 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const pkg = useShell((s) => s.pkg !== null);
   const [folder, setFolder] = useState(ALL);
   const [csvError, setCsvError] = useState<string | null>(null);
-  // why working out a pile's dates failed, by pile
-  const [failed, setFailed] = useState<Record<string, string>>({});
 
   const allPiles = useMemo(() => inventoryPiles(file.measurements), [file]);
   const folders = useMemo(
@@ -70,7 +68,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   // a folder emptied or renamed elsewhere falls back to every pile
   const shown = folder !== ALL && folders.includes(folder) ? folder : ALL;
   const piles = useMemo(() => inventoryPiles(allPiles, shown), [allPiles, shown]);
-  const stack = useInventory(piles, failed);
+  const stack = useInventory(piles);
   const names = useMemo(() => new Map(piles.map((m) => [m.id, m.label])), [piles]);
 
   // each pile's volume per survey date, worked out when shown (carried piles keep the kit's);
@@ -93,15 +91,11 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         const stamp = stampOf(m);
         try {
           await computeSeries(m.id);
-          setFailed((f) => {
-            if (!(m.id in f)) return f;
-            return Object.fromEntries(Object.entries(f).filter(([id]) => id !== m.id));
-          });
+          setSeriesFailed(m.id, null);
         } catch (e) {
-          // the card says it too; here the pile is named as not counted, with why
+          // the card says it too; every total names the pile as not counted, with why
           console.warn(`The volume over time of ${m.id} could not be worked out`, e);
-          const why = e instanceof Error ? e.message : String(e);
-          setFailed((f) => ({ ...f, [m.id]: why }));
+          setSeriesFailed(m.id, e instanceof Error ? e.message : String(e));
         }
         ran.current.set(m.id, stamp);
       }
