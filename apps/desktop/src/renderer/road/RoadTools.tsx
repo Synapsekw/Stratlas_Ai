@@ -195,8 +195,13 @@ export function toggleMeasure(mode: MeasureMode = 'line'): void {
 type OpenProject = ReturnType<typeof workspace.getState>['project'];
 
 /** Save is offered in a writable project that has surveys, on a CRS the map can place. */
-export function canSaveRoadMeasure(project: OpenProject, readOnly: boolean): boolean {
-  if (!project || readOnly || project.manifest.captures.length === 0) return false;
+export function canSaveRoadMeasure(
+  project: OpenProject,
+  store: { readOnly: boolean; status: string; projectId: string | null },
+): boolean {
+  // the site's measurements must be loaded for this project, or the save would be lost
+  if (store.status !== 'ready' || store.projectId !== project?.id) return false;
+  if (store.readOnly || project.manifest.captures.length === 0) return false;
   return frameProjection(project.manifest.crs, project.manifest.origin) !== null;
 }
 
@@ -208,7 +213,7 @@ export function saveRoadMeasure(): SurveyMeasurement | null {
   const project = workspace.getState().project;
   const m = roadStore.getState().measure;
   const ms = measureStore.getState();
-  if (!m.mode || !project || !canSaveRoadMeasure(project, ms.readOnly)) return null;
+  if (!m.mode || !project || !canSaveRoadMeasure(project, ms)) return null;
   const proj = frameProjection(project.manifest.crs, project.manifest.origin);
   if (!proj) return null;
   const origin = project.manifest.origin;
@@ -222,6 +227,8 @@ export function saveRoadMeasure(): SurveyMeasurement | null {
       ([lon, lat]) => {
         const [x, , z] = proj.toLocal(lon, lat);
         const [e, n] = localToEN(origin, [x, z]);
+        // a saved road line is a normal survey measurement, so its card may show a slope length
+        // from the survey surface; that is accepted
         return [e, n, ms.surface?.heightAt(e, n) ?? 0];
       },
       newMeasurementId(),
@@ -240,7 +247,7 @@ export function MeasureBar() {
   const t = useT();
   const m = useRoad((s) => s.measure);
   const settings = useMeasure((s) => s.settings);
-  const readOnly = useMeasure((s) => s.readOnly);
+  const store = useMeasure((s) => s);
   const project = useWorkspace((s) => s.project);
   const projectId = project?.id ?? null;
   const hasSurveys = (project?.manifest.captures.length ?? 0) > 0;
@@ -250,7 +257,7 @@ export function MeasureBar() {
   }, [hasSurveys, projectId]);
   if (!m.mode) return null;
   const model = roadCardModel(m.mode, m.vertices, settings);
-  const canSave = model !== null && canSaveRoadMeasure(project, readOnly);
+  const canSave = model !== null && canSaveRoadMeasure(project, store);
   return (
     <div className="ann-subbar overlay-box rr-measure" role="group" aria-label="Measure">
       <div className="seg" role="group" aria-label="Measure mode">

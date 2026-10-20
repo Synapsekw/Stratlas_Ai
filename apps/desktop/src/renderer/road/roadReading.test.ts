@@ -19,7 +19,7 @@ const ring: [number, number][] = [
 ];
 
 describe('roadReading', () => {
-  it('road distance matches lineMetrics horizontal for the same points', () => {
+  it('road distance is the geodesic length of the same points, as lineMetrics horizontal', () => {
     const r = roadReading('line', line, settings);
     expect(r).not.toBeNull();
     // the survey tools on the same length laid out in metres
@@ -40,7 +40,8 @@ describe('roadReading', () => {
     // the map's geodesic length and the tangent plane agree to well under a tenth of a percent
     const shown = formatRow(row, settings.units, settings.precision);
     expect(r?.primary).toMatch(/ m$/);
-    expect(Number.parseFloat(r?.primary ?? '')).toBeCloseTo(Number.parseFloat(shown), 1);
+    expect(Math.abs(Number.parseFloat(r?.primary ?? '') - m) / m).toBeLessThan(1e-3);
+    expect(Number.parseFloat(shown)).toBeCloseTo(m, 2);
     expect(r?.secondary).toBe('');
   });
 

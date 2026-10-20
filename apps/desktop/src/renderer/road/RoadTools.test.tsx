@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { lonLatToUtm } from '@aio/maps';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -38,11 +39,16 @@ function project(captures: number) {
 let root: Root | null = null;
 const save = () => document.querySelector('[data-testid="measure-save"]');
 
-function open(opts: { captures: number; readOnly: boolean }) {
+function open(opts: {
+  captures: number;
+  readOnly: boolean;
+  status?: 'ready' | 'loading';
+  projectId?: string;
+}) {
   workspace.setState({ project: project(opts.captures) });
   measureStore.setState({
-    projectId: 'p1',
-    status: 'ready',
+    projectId: opts.projectId ?? 'p1',
+    status: opts.status ?? 'ready',
     readOnly: opts.readOnly,
     autosave: false,
     file: { schema: 'aio.measurements/1', measurements: [] },
@@ -87,6 +93,19 @@ describe('the road measure bar', () => {
     expect(save()).toBeNull();
   });
 
+  it('save waits for the site measurements of the open project', () => {
+    open({ captures: 1, readOnly: false, status: 'loading' });
+    expect(save()).toBeNull();
+    act(() => {
+      root?.unmount();
+    });
+    document.body.innerHTML = '';
+    open({ captures: 1, readOnly: false, projectId: 'other' });
+    expect(save()).toBeNull();
+    expect(saveRoadMeasure()).toBeNull();
+    expect(measureStore.getState().file.measurements).toEqual([]);
+  });
+
   it('saved road measurement is a site-scoped distance', () => {
     open({ captures: 1, readOnly: false });
     act(() => {
@@ -100,8 +119,14 @@ describe('the road measure bar', () => {
       scope: { kind: 'site' },
     });
     expect(saved[0]?.points).toHaveLength(2);
-    // placed in the project frame (UTM metres), not as degrees
-    expect(saved[0]?.points[0]?.[0]).toBeGreaterThan(1000);
+    // placed in the project frame: easting and northing of each point, height 0 (no surface)
+    LINE.forEach(([lon, lat], i) => {
+      const [e, n] = lonLatToUtm(lon, lat, 32, false);
+      const p = saved[0]?.points[i];
+      expect(p?.[0]).toBeCloseTo(e, 6);
+      expect(p?.[1]).toBeCloseTo(n, 6);
+      expect(p?.[2]).toBe(0);
+    });
     // the measure goes on with a fresh line
     expect(roadStore.getState().measure.vertices).toEqual([]);
     expect(saveRoadMeasure()).toBeNull();
