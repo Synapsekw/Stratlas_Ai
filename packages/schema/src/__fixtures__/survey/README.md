@@ -39,6 +39,24 @@ design refs (`{ kind: 'design', design, layer }`) name `<design>/<layer>`, and `
 - `lineUpTurn` (optional): the turns beside those shifts, `{ current?: { <surface id>: turn }, ring?, ringCurrent? }`, each turn `{ rotationDeg, scale, pivotE, pivotN }` (a capture's `lineUpTurn`): the stored ring is shifted and turned by `ring` before sampling; only the "now" turns join the fingerprint (as `lineUpTurn`, beside `lineUp`). The ring's line-up now is `ringCurrent` (default `ringShift`) with `ringCurrentTurn` when either is given, else `ringShift` with `ring`. A surface prepared before its date was lined up has `ringShift` `[0, 0]` and no `ring` turn;
 - `expected`: the Python core's `ComparisonResult` without `engine` and `computedAt`.
 
+## `series.json`
+
+Volume per survey date and the spread across bases (volumetric parity W3, W4): the Python core's
+`compare_series` and `base_spread` (`python/tests/test_survey_series.py`) and the TypeScript
+`compareSeries` and `baseSpread` (`packages/survey/src/engine/series.parity.test.ts`). Written by
+`series_cases()` in the same generator. `{ series: [...], spread: [...] }`; every case has `id`,
+`note`, `ring`, `item` and `site` as in `cases.json`, and `dates`: the survey dates in order, each
+`{ capture, surface }` (`surface` an id in `surfaces.json`, or `null` for a date with no prepared
+surface). Viewed on a capture, `current` is that date's surface and `previous` the surface of the
+date before it that has one, with the messages of `ProjectSurfaces` when there is none.
+
+- **`series`**: the item run once per date, with that date as `current`; `expected` is the list of
+  results in date order, each without `engine` and `computedAt`.
+- **`spread`**: `at` is the capture viewed on; `expected` is `{ pct, nets: [{ base, netM3 }] }` (the
+  item's `from` replaced by each base of `SPREAD_BASES`; `pct = (max - min) / 2 / mean` of the
+  ok or partial total volumes, in percent) or `null` (`from` not a base, fewer than two results, or
+  a mean below 1e-6 m³).
+
 ## `tiles/cone/`
 
 The `cone` grid prepared as `aio.height-tiles/1` by the Python tile writer (`tiles.json` and

@@ -23,9 +23,11 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE.parent.parent / "packages" / "schema" / "src" / "__fixtures__" / "survey"
 sys.path.insert(0, str(HERE.parent / "src"))
 
+from aio_pipelines.runtime import JobError  # noqa: E402
 from aio_pipelines.similarity import Similarity  # noqa: E402
 from aio_pipelines.survey.compare import Resolved, compare_item  # noqa: E402
 from aio_pipelines.survey.grid import TILE, ArraySurface, encode_tile  # noqa: E402
+from aio_pipelines.survey.series import base_spread, compare_series  # noqa: E402
 
 #: A fictional desert site, UTM 31N (the demo's).
 E0, N0 = 302000.0, 2574000.0
@@ -463,6 +465,209 @@ def run_case(surfs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
     return r
 
 
+# ------------------------------------------------------------------- volume per date, base spread
+
+
+def dates(*pairs: tuple[str, str | None]) -> list[dict[str, Any]]:
+    """Survey dates in order: each capture and its prepared surface (``None``: none)."""
+    return [{"capture": c, "surface": s} for c, s in pairs]
+
+
+def at_resolver(surfs: dict[str, Any], ds: list[dict[str, Any]], capture: str):
+    """The dates viewed on ``capture``, by ``ProjectSurfaces``' rules and with its messages."""
+    caps = [d for d in ds if d["surface"] is not None]
+    k = next((i for i, d in enumerate(caps) if d["capture"] == capture), -1)
+
+    def resolve(ref: dict[str, Any]) -> Resolved:
+        kind = ref["kind"]
+        if kind == "survey":
+            return resolved(surfs[ref["surface"]], ref.get("capture"))
+        if kind in ("current", "previous"):
+            j = k if kind == "current" else k - 1
+            if k < 0 or j < 0:
+                raise JobError(f"There is no {kind} survey with a prepared surface.")
+            return resolved(surfs[caps[j]["surface"]], caps[j]["capture"])
+        if kind == "design":
+            return resolved(surfs[f"{ref['design']}/{ref['layer']}"])
+        raise JobError(f'"{kind}" is not a surface.')
+
+    return resolve
+
+
+def series_cases() -> dict[str, list[dict[str, Any]]]:
+    """Cases of ``series.json`` (without ``expected``): an item over every survey date, and the
+    spread across bases. ``main`` fills ``expected`` and writes the file."""
+    series: list[dict[str, Any]] = []
+    spread: list[dict[str, Any]] = []
+    cur, prev = {"kind": "current"}, {"kind": "previous"}
+    smart = {"kind": "smart"}
+    pad = {"kind": "design", "design": "pad", "layer": "top"}
+    sub = {"kind": "design", "design": "pad", "layer": "sub"}
+
+    def add(cid, ring, it, ds, note):
+        series.append({"id": cid, "note": note, "ring": ring, "item": it, "site": SITE, "dates": ds})
+
+    ring = circle(10, 10, 8)
+    mound_ring = circle(9, 11, 7.2, 30)
+    add(
+        "smart-two-dates",
+        ring,
+        item("a", smart, cur),
+        dates(("c1", "flat"), ("c2", "cone")),
+        "A stockpile on two dates: nothing, then a cone",
+    )
+    add(
+        "smart-three-dates",
+        mound_ring,
+        item("a", smart, cur),
+        dates(("c1", "flat"), ("c2", "mound"), ("c3", "cone")),
+        "A stockpile on three dates, each its own surface",
+    )
+    add(
+        "previous-current-three-dates",
+        ring,
+        item("a", prev, cur),
+        dates(("c1", "flat"), ("c2", "cone"), ("c3", "pit")),
+        "Previous follows the date: the first date has none and is refused",
+    )
+    add(
+        "refused-date-no-surface",
+        mound_ring,
+        item("a", smart, cur),
+        dates(("c1", "cone"), ("c2", None), ("c3", "mound")),
+        "A date with no prepared surface is refused, the others computed",
+    )
+    add(
+        "previous-skips-a-date",
+        ring,
+        item("a", prev, cur),
+        dates(("c1", "flat"), ("c2", None), ("c3", "cone")),
+        "Previous is the date before with a prepared surface",
+    )
+    add(
+        "partial-date",
+        ring,
+        item("a", SV("flat"), cur),
+        dates(("c1", "cone"), ("c2", "cone-holes")),
+        "A fixed survey to each date: the second has holes, partly outside the survey",
+    )
+    add(
+        "outside-on-every-date",
+        circle(19, 10, 4),
+        item("a", SV("flat"), cur),
+        dates(("c1", "cone"), ("c2", "mound")),
+        "A polygon mostly outside the surveys is refused on every date",
+    )
+    add(
+        "design-to-date",
+        circle(10, 10, 5.5),
+        item("a", pad, cur),
+        dates(("c1", "cone"), ("c2", "mound"), ("c3", "pit")),
+        "A fixed design side against each date (grid path)",
+    )
+    add(
+        "date-to-design",
+        circle(10, 10, 5.5),
+        item("a", cur, sub),
+        dates(("c1", "flat"), ("c2", "cone")),
+        "Each date against a design with an offset",
+    )
+    add(
+        "fixed-survey-with-capture",
+        ring,
+        item("a", {"kind": "survey", "surface": "flat", "capture": "c0"}, cur),
+        dates(("c1", "pit"), ("c2", "cone"), ("c3", "mound")),
+        "A survey pinned to its capture stays fixed",
+    )
+    add(
+        "previous-to-design",
+        circle(10, 10, 5.5),
+        item("a", prev, pad),
+        dates(("c1", "cone"), ("c2", "mound")),
+        "Only a previous side: the first date has none",
+    )
+
+    def add_spread(cid, ring, it, note, ds=None, at="c1"):
+        spread.append(
+            {
+                "id": cid,
+                "note": note,
+                "ring": ring,
+                "item": it,
+                "site": SITE,
+                "dates": ds or dates(("c1", "mound")),
+                "at": at,
+            }
+        )
+
+    add_spread("mound-smart", mound_ring, item("a", smart, SV("mound")), "A mound on a slope: bases differ")
+    add_spread(
+        "cone-current",
+        rotated_rect(10, 10, 12, 8, 0.4),
+        item("a", {"kind": "fit-plane"}, cur),
+        "The current date's cone, from a best-fit plane item",
+        ds=dates(("c1", "flat"), ("c2", "cone")),
+        at="c2",
+    )
+    add_spread(
+        "partial-bases",
+        circle(17, 10, 4),
+        item("a", smart, SV("cone")),
+        "Partly outside the survey: partial results count",
+    )
+    add_spread(
+        "refused-bases",
+        circle(19, 10, 4),
+        item("a", smart, SV("cone")),
+        "Mostly outside the survey: every base refused, no spread",
+    )
+    add_spread(
+        "surface-to-surface",
+        ring,
+        item("a", SV("flat"), SV("cone")),
+        "A surface-to-surface item has no spread",
+    )
+    add_spread(
+        "base-on-to-side",
+        mound_ring,
+        item("a", SV("mound"), {"kind": "fit-plane"}),
+        "A base on the To side: no spread (only From is replaced)",
+    )
+    add_spread("flat-zero", ring, item("a", smart, SV("flat")), "Flat ground: a zero mean, no spread")
+    add_spread(
+        "design-exact",
+        circle(10, 10, 5, 12),
+        item("a", smart, pad, cellM=0.5),
+        "Bases on a design: the exact path",
+    )
+    return {"series": series, "spread": spread}
+
+
+def run_series(surfs: dict[str, Any], doc: dict[str, list[dict[str, Any]]]) -> None:
+    """Fills ``expected`` of every case of ``doc`` (``series_cases()``) from the Python core."""
+    for case in doc["series"]:
+        rs = compare_series(
+            case["ring"],
+            case["item"],
+            lambda c, case=case: at_resolver(surfs, case["dates"], c),
+            [d["capture"] for d in case["dates"]],
+            case.get("site"),
+            now=NOW,
+        )
+        for r in rs:
+            r.pop("computedAt", None)
+            r.pop("engine", None)
+        case["expected"] = rs
+    for case in doc["spread"]:
+        case["expected"] = base_spread(
+            case["ring"],
+            case["item"],
+            at_resolver(surfs, case["dates"], case["at"]),
+            case.get("site"),
+            now=NOW,
+        )
+
+
 def prepared_tiles(spec: dict[str, Any]) -> tuple[dict[str, Any], dict[str, bytes]]:
     """A fixture grid as prepared height tiles (one tile), for the TypeScript codec test."""
     k = np.array([np.nan if v is None else float(v) for v in spec["z"]]).reshape(spec["ny"], spec["nx"])
@@ -505,6 +710,9 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "surfaces.json").write_text(json.dumps(surfs, separators=(",", ":")) + "\n", "utf-8", newline="")
     (OUT / "cases.json").write_text(json.dumps({"cases": cs}, indent=1) + "\n", "utf-8", newline="")
+    sd = series_cases()
+    run_series(surfs, sd)
+    (OUT / "series.json").write_text(json.dumps(sd, indent=1) + "\n", "utf-8", newline="")
     meta, files = prepared_tiles(surfs["cone"])
     tdir = OUT / "tiles" / "cone"
     (tdir / "0").mkdir(parents=True, exist_ok=True)
@@ -521,6 +729,13 @@ def main() -> None:
     for case in cs:
         e = case["expected"]
         print(f"{case['id']:24s} {e['status']:8s} fill {e['fillM3']:10.4f} cut {e['cutM3']:10.4f}")
+    for case in sd["series"]:
+        print(f"{case['id']:30s}", [(r["status"], round(r["netM3"], 3)) for r in case["expected"]])
+    for case in sd["spread"]:
+        e = case["expected"]
+        print(
+            f"{case['id']:30s}", None if e is None else (round(e["pct"], 3), [n["base"] for n in e["nets"]])
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1750 @@
+{
+  "series": [
+    {
+      "id": "smart-two-dates",
+      "note": "A stockpile on two dates: nothing, then a cone",
+      "ring": [
+        [302018.0, 2574010.0],
+        [302017.7274066103, 2574012.0705523607],
+        [302016.92820323026, 2574014.0],
+        [302015.6568542495, 2574015.6568542495],
+        [302014.0, 2574016.9282032303],
+        [302012.07055236085, 2574017.7274066103],
+        [302010.0, 2574018.0],
+        [302007.92944763915, 2574017.7274066103],
+        [302006.0, 2574016.9282032303],
+        [302004.3431457505, 2574015.6568542495],
+        [302003.07179676974, 2574014.0],
+        [302002.2725933897, 2574012.0705523607],
+        [302002.0, 2574010.0],
+        [302002.2725933897, 2574007.9294476393],
+        [302003.07179676974, 2574006.0],
+        [302004.3431457505, 2574004.3431457505],
+        [302006.0, 2574003.0717967697],
+        [302007.92944763915, 2574002.2725933897],
+        [302010.0, 2574002.0],
+        [302012.07055236085, 2574002.2725933897],
+        [302014.0, 2574003.0717967697],
+        [302015.6568542495, 2574004.3431457505],
+        [302016.92820323026, 2574006.0],
+        [302017.7274066103, 2574007.9294476393]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "smart"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "flat"
+        },
+        {
+          "capture": "c2",
+          "surface": "cone"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 2.1243353805390077e-13,
+          "fillM3": 2.240118618023629e-13,
+          "netM3": 1.1578323748462132e-14,
+          "totalM3": 4.364453998562637e-13,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 14.948681294070994,
+          "areaFillM2": 15.763433395932697,
+          "areaUnchangedM2": 168.06091194830637,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Smart base (triangulated perimeter)",
+          "toLabel": "Current survey (Flat ground)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:f290886035869b4debdf373cc8b485b31dfdcd700ecd08666b325116a54827c8",
+          "toCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 5.611413618667875e-14,
+          "fillM3": 205.29687500000006,
+          "netM3": 205.296875,
+          "totalM3": 205.2968750000001,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 3.948681294070995,
+          "areaFillM2": 156.51343339593268,
+          "areaUnchangedM2": 38.31091194830637,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Smart base (triangulated perimeter)",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:1f4c21af7f197e54afaf4383c79dfe8c863f1a3a018a1a23762609743b436a71",
+          "toCapture": "c2"
+        }
+      ]
+    },
+    {
+      "id": "smart-three-dates",
+      "note": "A stockpile on three dates, each its own surface",
+      "ring": [
+        [302016.2, 2574011.0],
+        [302016.04266272526, 2574012.496964174],
+        [302015.57752729504, 2574013.92850383],
+        [302014.8249223595, 2574015.2320538163],
+        [302013.8177403658, 2574016.3506427435],
+        [302012.6, 2574017.235382907],
+        [302011.2249223595, 2574017.8476069174],
+        [302009.75260493555, 2574018.160557647],
+        [302008.24739506445, 2574018.160557647],
+        [302006.7750776405, 2574017.8476069174],
+        [302005.4, 2574017.235382907],
+        [302004.1822596342, 2574016.3506427435],
+        [302003.1750776405, 2574015.2320538163],
+        [302002.42247270496, 2574013.92850383],
+        [302001.95733727474, 2574012.496964174],
+        [302001.8, 2574011.0],
+        [302001.95733727474, 2574009.503035826],
+        [302002.42247270496, 2574008.07149617],
+        [302003.1750776405, 2574006.7679461837],
+        [302004.1822596342, 2574005.6493572565],
+        [302005.4, 2574004.764617093],
+        [302006.7750776405, 2574004.1523930826],
+        [302008.24739506445, 2574003.839442353],
+        [302009.75260493555, 2574003.839442353],
+        [302011.2249223595, 2574004.1523930826],
+        [302012.6, 2574004.764617093],
+        [302013.8177403658, 2574005.6493572565],
+        [302014.8249223595, 2574006.7679461837],
+        [302015.57752729504, 2574008.07149617],
+        [302016.04266272526, 2574009.503035826]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "smart"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "flat"
+        },
+        {
+          "capture": "c2",
+          "surface": "mound"
+        },
+        {
+          "capture": "c3",
+          "surface": "cone"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 1.1753114723120605e-13,
+          "fillM3": 8.713478126776864e-14,
+          "netM3": -3.039636596343741e-14,
+          "totalM3": 2.046659284989747e-13,
+          "areaM2": 161.67213077935895,
+          "areaCutM2": 8.270519232420101,
+          "areaFillM2": 6.131565132008321,
+          "areaUnchangedM2": 147.27004641493045,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Smart base (triangulated perimeter)",
+          "toLabel": "Current survey (Flat ground)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:37f834a03548ce4547ecd458197e15b43565a2441f566b9fee5f31f01da403a6",
+          "toCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.012103260273070321,
+          "fillM3": 134.31643678145696,
+          "netM3": 134.30433352118388,
+          "totalM3": 134.32854004173004,
+          "areaM2": 161.67213077935895,
+          "areaCutM2": 26.220330568652,
+          "areaFillM2": 135.4518002107069,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Smart base (triangulated perimeter)",
+          "toLabel": "Current survey (Mound on a slope)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:417029ade879344603e73179cd123fb8379b22a21433f15c55c065b5a4985bc2",
+          "toCapture": "c2"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.14062403542427074,
+          "fillM3": 174.3873722875032,
+          "netM3": 174.24674825207893,
+          "totalM3": 174.5279963229275,
+          "areaM2": 161.67213077935895,
+          "areaCutM2": 8.092301021270298,
+          "areaFillM2": 136.69163104160407,
+          "areaUnchangedM2": 16.888198716484492,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Smart base (triangulated perimeter)",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:665f14dd5cb662da3b561e76603de4599288274711e89d3a0d538018ba66532c",
+          "toCapture": "c3"
+        }
+      ]
+    },
+    {
+      "id": "previous-current-three-dates",
+      "note": "Previous follows the date: the first date has none and is refused",
+      "ring": [
+        [302018.0, 2574010.0],
+        [302017.7274066103, 2574012.0705523607],
+        [302016.92820323026, 2574014.0],
+        [302015.6568542495, 2574015.6568542495],
+        [302014.0, 2574016.9282032303],
+        [302012.07055236085, 2574017.7274066103],
+        [302010.0, 2574018.0],
+        [302007.92944763915, 2574017.7274066103],
+        [302006.0, 2574016.9282032303],
+        [302004.3431457505, 2574015.6568542495],
+        [302003.07179676974, 2574014.0],
+        [302002.2725933897, 2574012.0705523607],
+        [302002.0, 2574010.0],
+        [302002.2725933897, 2574007.9294476393],
+        [302003.07179676974, 2574006.0],
+        [302004.3431457505, 2574004.3431457505],
+        [302006.0, 2574003.0717967697],
+        [302007.92944763915, 2574002.2725933897],
+        [302010.0, 2574002.0],
+        [302012.07055236085, 2574002.2725933897],
+        [302014.0, 2574003.0717967697],
+        [302015.6568542495, 2574004.3431457505],
+        [302016.92820323026, 2574006.0],
+        [302017.7274066103, 2574007.9294476393]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "previous"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "flat"
+        },
+        {
+          "capture": "c2",
+          "surface": "cone"
+        },
+        {
+          "capture": "c3",
+          "surface": "pit"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "refused",
+          "cutM3": 0.0,
+          "fillM3": 0.0,
+          "netM3": 0.0,
+          "totalM3": 0.0,
+          "areaM2": 0.0,
+          "areaCutM2": 0.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Previous survey",
+          "toLabel": "Current survey",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.0,
+          "fingerprint": "sha256:84393aa718ffa8a154361601bb386f46479bb9dd7e2587f4a2963a8c28bcf670",
+          "reason": "There is no previous survey with a prepared surface.",
+          "toCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.0,
+          "fillM3": 205.296875,
+          "netM3": 205.296875,
+          "totalM3": 205.296875,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 0.0,
+          "areaFillM2": 154.0,
+          "areaUnchangedM2": 44.77302663831006,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Previous survey (Flat ground)",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:76b07c40395fb0f4a5fd822c4edfa930a516d2b8e48fd442764cec375ae3cbf9",
+          "fromCapture": "c1",
+          "toCapture": "c2"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 272.2890625,
+          "fillM3": 0.0,
+          "netM3": -272.2890625,
+          "totalM3": 272.2890625,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 154.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 44.77302663831006,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Previous survey (Cone survey)",
+          "toLabel": "Current survey (Pit)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:51955d96d390468c93298f41e3326cac90a74903db98f1509c0b6753d5b89ea4",
+          "fromCapture": "c2",
+          "toCapture": "c3"
+        }
+      ]
+    },
+    {
+      "id": "refused-date-no-surface",
+      "note": "A date with no prepared surface is refused, the others computed",
+      "ring": [
+        [302016.2, 2574011.0],
+        [302016.04266272526, 2574012.496964174],
+        [302015.57752729504, 2574013.92850383],
+        [302014.8249223595, 2574015.2320538163],
+        [302013.8177403658, 2574016.3506427435],
+        [302012.6, 2574017.235382907],
+        [302011.2249223595, 2574017.8476069174],
+        [302009.75260493555, 2574018.160557647],
+        [302008.24739506445, 2574018.160557647],
+        [302006.7750776405, 2574017.8476069174],
+        [302005.4, 2574017.235382907],
+        [302004.1822596342, 2574016.3506427435],
+        [302003.1750776405, 2574015.2320538163],
+        [302002.42247270496, 2574013.92850383],
+        [302001.95733727474, 2574012.496964174],
+        [302001.8, 2574011.0],
+        [302001.95733727474, 2574009.503035826],
+        [302002.42247270496, 2574008.07149617],
+        [302003.1750776405, 2574006.7679461837],
+        [302004.1822596342, 2574005.6493572565],
+        [302005.4, 2574004.764617093],
+        [302006.7750776405, 2574004.1523930826],
+        [302008.24739506445, 2574003.839442353],
+        [302009.75260493555, 2574003.839442353],
+        [302011.2249223595, 2574004.1523930826],
+        [302012.6, 2574004.764617093],
+        [302013.8177403658, 2574005.6493572565],
+        [302014.8249223595, 2574006.7679461837],
+        [302015.57752729504, 2574008.07149617],
+        [302016.04266272526, 2574009.503035826]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "smart"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "cone"
+        },
+        {
+          "capture": "c2",
+          "surface": null
+        },
+        {
+          "capture": "c3",
+          "surface": "mound"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.14062403542427074,
+          "fillM3": 174.3873722875032,
+          "netM3": 174.24674825207893,
+          "totalM3": 174.5279963229275,
+          "areaM2": 161.67213077935895,
+          "areaCutM2": 8.092301021270298,
+          "areaFillM2": 136.69163104160407,
+          "areaUnchangedM2": 16.888198716484492,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Smart base (triangulated perimeter)",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:cf86dbfdf95e8e0e8f585413f962c84875f14945e28863113bb7bb5700921f1f",
+          "toCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "refused",
+          "cutM3": 0.0,
+          "fillM3": 0.0,
+          "netM3": 0.0,
+          "totalM3": 0.0,
+          "areaM2": 0.0,
+          "areaCutM2": 0.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Smart base (triangulated perimeter)",
+          "toLabel": "Current survey",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.0,
+          "fingerprint": "sha256:442f8bc222391b9ffdc4a8d8219b17d72931ee35a2a4e599f7f545b635718a68",
+          "reason": "There is no current survey with a prepared surface.",
+          "toCapture": "c2"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.012103260273070321,
+          "fillM3": 134.31643678145696,
+          "netM3": 134.30433352118388,
+          "totalM3": 134.32854004173004,
+          "areaM2": 161.67213077935895,
+          "areaCutM2": 26.220330568652,
+          "areaFillM2": 135.4518002107069,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Smart base (triangulated perimeter)",
+          "toLabel": "Current survey (Mound on a slope)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:797988b5ac7725d6fcd96cf54f25b7eec4bcab089787751dda1fa088bde70ee9",
+          "toCapture": "c3"
+        }
+      ]
+    },
+    {
+      "id": "previous-skips-a-date",
+      "note": "Previous is the date before with a prepared surface",
+      "ring": [
+        [302018.0, 2574010.0],
+        [302017.7274066103, 2574012.0705523607],
+        [302016.92820323026, 2574014.0],
+        [302015.6568542495, 2574015.6568542495],
+        [302014.0, 2574016.9282032303],
+        [302012.07055236085, 2574017.7274066103],
+        [302010.0, 2574018.0],
+        [302007.92944763915, 2574017.7274066103],
+        [302006.0, 2574016.9282032303],
+        [302004.3431457505, 2574015.6568542495],
+        [302003.07179676974, 2574014.0],
+        [302002.2725933897, 2574012.0705523607],
+        [302002.0, 2574010.0],
+        [302002.2725933897, 2574007.9294476393],
+        [302003.07179676974, 2574006.0],
+        [302004.3431457505, 2574004.3431457505],
+        [302006.0, 2574003.0717967697],
+        [302007.92944763915, 2574002.2725933897],
+        [302010.0, 2574002.0],
+        [302012.07055236085, 2574002.2725933897],
+        [302014.0, 2574003.0717967697],
+        [302015.6568542495, 2574004.3431457505],
+        [302016.92820323026, 2574006.0],
+        [302017.7274066103, 2574007.9294476393]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "previous"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "flat"
+        },
+        {
+          "capture": "c2",
+          "surface": null
+        },
+        {
+          "capture": "c3",
+          "surface": "cone"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "refused",
+          "cutM3": 0.0,
+          "fillM3": 0.0,
+          "netM3": 0.0,
+          "totalM3": 0.0,
+          "areaM2": 0.0,
+          "areaCutM2": 0.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Previous survey",
+          "toLabel": "Current survey",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.0,
+          "fingerprint": "sha256:84393aa718ffa8a154361601bb386f46479bb9dd7e2587f4a2963a8c28bcf670",
+          "reason": "There is no previous survey with a prepared surface.",
+          "toCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "refused",
+          "cutM3": 0.0,
+          "fillM3": 0.0,
+          "netM3": 0.0,
+          "totalM3": 0.0,
+          "areaM2": 0.0,
+          "areaCutM2": 0.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Previous survey",
+          "toLabel": "Current survey",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.0,
+          "fingerprint": "sha256:84393aa718ffa8a154361601bb386f46479bb9dd7e2587f4a2963a8c28bcf670",
+          "reason": "There is no previous survey with a prepared surface.",
+          "toCapture": "c2"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.0,
+          "fillM3": 205.296875,
+          "netM3": 205.296875,
+          "totalM3": 205.296875,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 0.0,
+          "areaFillM2": 154.0,
+          "areaUnchangedM2": 44.77302663831006,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Previous survey (Flat ground)",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:d18773f779e8b8bb61f74e2372ea4655f4e8d812f9e64396237ad8dd5d32e152",
+          "fromCapture": "c1",
+          "toCapture": "c3"
+        }
+      ]
+    },
+    {
+      "id": "partial-date",
+      "note": "A fixed survey to each date: the second has holes, partly outside the survey",
+      "ring": [
+        [302018.0, 2574010.0],
+        [302017.7274066103, 2574012.0705523607],
+        [302016.92820323026, 2574014.0],
+        [302015.6568542495, 2574015.6568542495],
+        [302014.0, 2574016.9282032303],
+        [302012.07055236085, 2574017.7274066103],
+        [302010.0, 2574018.0],
+        [302007.92944763915, 2574017.7274066103],
+        [302006.0, 2574016.9282032303],
+        [302004.3431457505, 2574015.6568542495],
+        [302003.07179676974, 2574014.0],
+        [302002.2725933897, 2574012.0705523607],
+        [302002.0, 2574010.0],
+        [302002.2725933897, 2574007.9294476393],
+        [302003.07179676974, 2574006.0],
+        [302004.3431457505, 2574004.3431457505],
+        [302006.0, 2574003.0717967697],
+        [302007.92944763915, 2574002.2725933897],
+        [302010.0, 2574002.0],
+        [302012.07055236085, 2574002.2725933897],
+        [302014.0, 2574003.0717967697],
+        [302015.6568542495, 2574004.3431457505],
+        [302016.92820323026, 2574006.0],
+        [302017.7274066103, 2574007.9294476393]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "survey",
+          "surface": "flat"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "cone"
+        },
+        {
+          "capture": "c2",
+          "surface": "cone-holes"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.0,
+          "fillM3": 205.296875,
+          "netM3": 205.296875,
+          "totalM3": 205.296875,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 0.0,
+          "areaFillM2": 154.0,
+          "areaUnchangedM2": 44.77302663831006,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Flat ground",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:bed6b97c1d700dbf1f5099b716c9d83559795409717e5e90fdd1368aaf0dfc81",
+          "toCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "partial",
+          "cutM3": 0.0,
+          "fillM3": 204.8662109375,
+          "netM3": 204.8662109375,
+          "totalM3": 204.8662109375,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 0.0,
+          "areaFillM2": 152.5,
+          "areaUnchangedM2": 41.421420672834245,
+          "uncoveredM2": 4.851605965475819,
+          "fromLabel": "Flat ground",
+          "toLabel": "Current survey (Cone with holes)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:278b5acc2807384863b19f503345d1af36498555c83d4f1201fd3d2a9874f1d9",
+          "toCapture": "c2",
+          "reason": "2% outside the survey"
+        }
+      ]
+    },
+    {
+      "id": "outside-on-every-date",
+      "note": "A polygon mostly outside the surveys is refused on every date",
+      "ring": [
+        [302023.0, 2574010.0],
+        [302022.86370330513, 2574011.0352761806],
+        [302022.4641016151, 2574012.0],
+        [302021.82842712477, 2574012.828427125],
+        [302021.0, 2574013.4641016154],
+        [302020.0352761804, 2574013.8637033054],
+        [302019.0, 2574014.0],
+        [302017.9647238196, 2574013.8637033054],
+        [302017.0, 2574013.4641016154],
+        [302016.17157287523, 2574012.828427125],
+        [302015.5358983849, 2574012.0],
+        [302015.13629669487, 2574011.0352761806],
+        [302015.0, 2574010.0],
+        [302015.13629669487, 2574008.9647238194],
+        [302015.5358983849, 2574008.0],
+        [302016.17157287523, 2574007.171572875],
+        [302017.0, 2574006.5358983846],
+        [302017.9647238196, 2574006.1362966946],
+        [302019.0, 2574006.0],
+        [302020.0352761804, 2574006.1362966946],
+        [302021.0, 2574006.5358983846],
+        [302021.82842712477, 2574007.171572875],
+        [302022.4641016151, 2574008.0],
+        [302022.86370330513, 2574008.9647238194]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "survey",
+          "surface": "flat"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "cone"
+        },
+        {
+          "capture": "c2",
+          "surface": "mound"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "refused",
+          "cutM3": 0.0,
+          "fillM3": 0.0,
+          "netM3": 0.0,
+          "totalM3": 0.0,
+          "areaM2": 49.69325666156218,
+          "areaCutM2": 0.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 16.978280828162777,
+          "fromLabel": "Flat ground",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:468d282d6454a9b735cb7009b4464cd5e404e92c4745b065887bb89e07a83f4b",
+          "toCapture": "c1",
+          "reason": "34% outside the survey"
+        },
+        {
+          "item": "a",
+          "status": "refused",
+          "cutM3": 0.0,
+          "fillM3": 0.0,
+          "netM3": 0.0,
+          "totalM3": 0.0,
+          "areaM2": 49.69325666156218,
+          "areaCutM2": 0.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 16.978280828162777,
+          "fromLabel": "Flat ground",
+          "toLabel": "Current survey (Mound on a slope)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:099362cfcbcc40c0570de6b3e969398df91949e8ac270e76def65495b03cf290",
+          "toCapture": "c2",
+          "reason": "34% outside the survey"
+        }
+      ]
+    },
+    {
+      "id": "design-to-date",
+      "note": "A fixed design side against each date (grid path)",
+      "ring": [
+        [302015.5, 2574010.0],
+        [302015.3125920446, 2574011.423504748],
+        [302014.76313972083, 2574012.75],
+        [302013.8890872965, 2574013.8890872966],
+        [302012.75, 2574014.763139721],
+        [302011.4235047481, 2574015.3125920445],
+        [302010.0, 2574015.5],
+        [302008.5764952519, 2574015.3125920445],
+        [302007.25, 2574014.763139721],
+        [302006.1109127035, 2574013.8890872966],
+        [302005.23686027917, 2574012.75],
+        [302004.6874079554, 2574011.423504748],
+        [302004.5, 2574010.0],
+        [302004.6874079554, 2574008.576495252],
+        [302005.23686027917, 2574007.25],
+        [302006.1109127035, 2574006.1109127034],
+        [302007.25, 2574005.236860279],
+        [302008.5764952519, 2574004.6874079555],
+        [302010.0, 2574004.5],
+        [302011.4235047481, 2574004.6874079555],
+        [302012.75, 2574005.236860279],
+        [302013.8890872965, 2574006.1109127034],
+        [302014.76313972083, 2574007.25],
+        [302015.3125920446, 2574008.576495252]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "design",
+          "design": "pad",
+          "layer": "top"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "cone"
+        },
+        {
+          "capture": "c2",
+          "surface": "mound"
+        },
+        {
+          "capture": "c3",
+          "surface": "pit"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 3.445899879238491,
+          "fillM3": 37.41415385013431,
+          "netM3": 33.96825397089582,
+          "totalM3": 40.8600537293728,
+          "areaM2": 93.95131337243043,
+          "areaCutM2": 16.588119834114273,
+          "areaFillM2": 77.36319353831615,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Pad design, Finished level",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:f0ac659b27ab1dc9932246a579393a9e6f337011be949335afd525a08fa3b67c",
+          "toCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 32.126535625668424,
+          "fillM3": 32.359305934035,
+          "netM3": 0.2327703083665753,
+          "totalM3": 64.48584155970343,
+          "areaM2": 93.95131337243043,
+          "areaCutM2": 52.3042055949751,
+          "areaFillM2": 41.48021729482441,
+          "areaUnchangedM2": 0.16689048263090972,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Pad design, Finished level",
+          "toLabel": "Current survey (Mound on a slope)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:678b7e0653201630bb96a7d555d8521526a921013ee1859fdbffe5838253b3c3",
+          "toCapture": "c2"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 211.0424477351723,
+          "fillM3": 0.0,
+          "netM3": -211.0424477351723,
+          "totalM3": 211.0424477351723,
+          "areaM2": 93.95131337243043,
+          "areaCutM2": 93.95131337243043,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Pad design, Finished level",
+          "toLabel": "Current survey (Pit)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:f563327b20e588ea297cc063e12abe9f61d49abed4680335b24448803c3ad634",
+          "toCapture": "c3"
+        }
+      ]
+    },
+    {
+      "id": "date-to-design",
+      "note": "Each date against a design with an offset",
+      "ring": [
+        [302015.5, 2574010.0],
+        [302015.3125920446, 2574011.423504748],
+        [302014.76313972083, 2574012.75],
+        [302013.8890872965, 2574013.8890872966],
+        [302012.75, 2574014.763139721],
+        [302011.4235047481, 2574015.3125920445],
+        [302010.0, 2574015.5],
+        [302008.5764952519, 2574015.3125920445],
+        [302007.25, 2574014.763139721],
+        [302006.1109127035, 2574013.8890872966],
+        [302005.23686027917, 2574012.75],
+        [302004.6874079554, 2574011.423504748],
+        [302004.5, 2574010.0],
+        [302004.6874079554, 2574008.576495252],
+        [302005.23686027917, 2574007.25],
+        [302006.1109127035, 2574006.1109127034],
+        [302007.25, 2574005.236860279],
+        [302008.5764952519, 2574004.6874079555],
+        [302010.0, 2574004.5],
+        [302011.4235047481, 2574004.6874079555],
+        [302012.75, 2574005.236860279],
+        [302013.8890872965, 2574006.1109127034],
+        [302014.76313972083, 2574007.25],
+        [302015.3125920446, 2574008.576495252]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "current"
+        },
+        "to": {
+          "kind": "design",
+          "design": "pad",
+          "layer": "sub"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "flat"
+        },
+        {
+          "capture": "c2",
+          "surface": "cone"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.0,
+          "fillM3": 117.73328617161654,
+          "netM3": 117.73328617161654,
+          "totalM3": 117.73328617161654,
+          "areaM2": 93.95131337243043,
+          "areaCutM2": 0.0,
+          "areaFillM2": 93.95131337243043,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Current survey (Flat ground)",
+          "toLabel": "Pad design, Subgrade (offset -0.300 m)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:b3601a9fc6fd650e5c2654d252b33c0b0f05c6250214c54b67932086ff690425",
+          "fromCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 62.60845086980891,
+          "fillM3": 0.45480288718428813,
+          "netM3": -62.153647982624626,
+          "totalM3": 63.0632537569932,
+          "areaM2": 93.95131337243043,
+          "areaCutM2": 89.88109844585512,
+          "areaFillM2": 4.0702149265753205,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Current survey (Cone survey)",
+          "toLabel": "Pad design, Subgrade (offset -0.300 m)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:33dea5d024bc0f0d1f674b91dcba00051035c2c27cfec674af527f645c89fc09",
+          "fromCapture": "c2"
+        }
+      ]
+    },
+    {
+      "id": "fixed-survey-with-capture",
+      "note": "A survey pinned to its capture stays fixed",
+      "ring": [
+        [302018.0, 2574010.0],
+        [302017.7274066103, 2574012.0705523607],
+        [302016.92820323026, 2574014.0],
+        [302015.6568542495, 2574015.6568542495],
+        [302014.0, 2574016.9282032303],
+        [302012.07055236085, 2574017.7274066103],
+        [302010.0, 2574018.0],
+        [302007.92944763915, 2574017.7274066103],
+        [302006.0, 2574016.9282032303],
+        [302004.3431457505, 2574015.6568542495],
+        [302003.07179676974, 2574014.0],
+        [302002.2725933897, 2574012.0705523607],
+        [302002.0, 2574010.0],
+        [302002.2725933897, 2574007.9294476393],
+        [302003.07179676974, 2574006.0],
+        [302004.3431457505, 2574004.3431457505],
+        [302006.0, 2574003.0717967697],
+        [302007.92944763915, 2574002.2725933897],
+        [302010.0, 2574002.0],
+        [302012.07055236085, 2574002.2725933897],
+        [302014.0, 2574003.0717967697],
+        [302015.6568542495, 2574004.3431457505],
+        [302016.92820323026, 2574006.0],
+        [302017.7274066103, 2574007.9294476393]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "survey",
+          "surface": "flat",
+          "capture": "c0"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "pit"
+        },
+        {
+          "capture": "c2",
+          "surface": "cone"
+        },
+        {
+          "capture": "c3",
+          "surface": "mound"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 66.9921875,
+          "fillM3": 0.0,
+          "netM3": -66.9921875,
+          "totalM3": 66.9921875,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 100.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 98.77302663831006,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Flat ground",
+          "toLabel": "Current survey (Pit)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:bb48d8f52780fb31a24fd8d839c68268524210594eb4b518b071c4cd4da80863",
+          "fromCapture": "c0",
+          "toCapture": "c1"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 0.0,
+          "fillM3": 205.296875,
+          "netM3": 205.296875,
+          "totalM3": 205.296875,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 0.0,
+          "areaFillM2": 154.0,
+          "areaUnchangedM2": 44.77302663831006,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Flat ground",
+          "toLabel": "Current survey (Cone survey)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:7ebdca6494f175feca9c954319de6991ea04b76c07ab6681e47d9c00e40f06d4",
+          "fromCapture": "c0",
+          "toCapture": "c2"
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 2.6780836824373098,
+          "fillM3": 176.74796961216828,
+          "netM3": 174.06988592973096,
+          "totalM3": 179.4260532946056,
+          "areaM2": 198.77302663831,
+          "areaCutM2": 20.71581118608909,
+          "areaFillM2": 177.80721545222096,
+          "areaUnchangedM2": 0.25,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Flat ground",
+          "toLabel": "Current survey (Mound on a slope)",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:98309e168f5b25324eac5c05561ab9a9ad61ab0d192e7a3b67441b76df07a405",
+          "fromCapture": "c0",
+          "toCapture": "c3"
+        }
+      ]
+    },
+    {
+      "id": "previous-to-design",
+      "note": "Only a previous side: the first date has none",
+      "ring": [
+        [302015.5, 2574010.0],
+        [302015.3125920446, 2574011.423504748],
+        [302014.76313972083, 2574012.75],
+        [302013.8890872965, 2574013.8890872966],
+        [302012.75, 2574014.763139721],
+        [302011.4235047481, 2574015.3125920445],
+        [302010.0, 2574015.5],
+        [302008.5764952519, 2574015.3125920445],
+        [302007.25, 2574014.763139721],
+        [302006.1109127035, 2574013.8890872966],
+        [302005.23686027917, 2574012.75],
+        [302004.6874079554, 2574011.423504748],
+        [302004.5, 2574010.0],
+        [302004.6874079554, 2574008.576495252],
+        [302005.23686027917, 2574007.25],
+        [302006.1109127035, 2574006.1109127034],
+        [302007.25, 2574005.236860279],
+        [302008.5764952519, 2574004.6874079555],
+        [302010.0, 2574004.5],
+        [302011.4235047481, 2574004.6874079555],
+        [302012.75, 2574005.236860279],
+        [302013.8890872965, 2574006.1109127034],
+        [302014.76313972083, 2574007.25],
+        [302015.3125920446, 2574008.576495252]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "previous"
+        },
+        "to": {
+          "kind": "design",
+          "design": "pad",
+          "layer": "top"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "cone"
+        },
+        {
+          "capture": "c2",
+          "surface": "mound"
+        }
+      ],
+      "expected": [
+        {
+          "item": "a",
+          "status": "refused",
+          "cutM3": 0.0,
+          "fillM3": 0.0,
+          "netM3": 0.0,
+          "totalM3": 0.0,
+          "areaM2": 0.0,
+          "areaCutM2": 0.0,
+          "areaFillM2": 0.0,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Previous survey",
+          "toLabel": "Design pad, top",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.0,
+          "fingerprint": "sha256:1abb133565a5258fa62d748dcf3b8f1967df8181ca289cd59cf5d471757739e0",
+          "reason": "There is no previous survey with a prepared surface."
+        },
+        {
+          "item": "a",
+          "status": "ok",
+          "cutM3": 37.41415385013431,
+          "fillM3": 3.445899879238491,
+          "netM3": -33.96825397089582,
+          "totalM3": 40.8600537293728,
+          "areaM2": 93.95131337243043,
+          "areaCutM2": 77.36319353831615,
+          "areaFillM2": 16.588119834114273,
+          "areaUnchangedM2": 0.0,
+          "uncoveredM2": 0.0,
+          "fromLabel": "Previous survey (Cone survey)",
+          "toLabel": "Pad design, Finished level",
+          "deadbandM": 0.0,
+          "usedDeadband": false,
+          "cellM": 0.5,
+          "fingerprint": "sha256:33986888330500c1764454e42610243bcb3fbf89db8d4f3dd009482bc2245ef6",
+          "fromCapture": "c1"
+        }
+      ]
+    }
+  ],
+  "spread": [
+    {
+      "id": "mound-smart",
+      "note": "A mound on a slope: bases differ",
+      "ring": [
+        [302016.2, 2574011.0],
+        [302016.04266272526, 2574012.496964174],
+        [302015.57752729504, 2574013.92850383],
+        [302014.8249223595, 2574015.2320538163],
+        [302013.8177403658, 2574016.3506427435],
+        [302012.6, 2574017.235382907],
+        [302011.2249223595, 2574017.8476069174],
+        [302009.75260493555, 2574018.160557647],
+        [302008.24739506445, 2574018.160557647],
+        [302006.7750776405, 2574017.8476069174],
+        [302005.4, 2574017.235382907],
+        [302004.1822596342, 2574016.3506427435],
+        [302003.1750776405, 2574015.2320538163],
+        [302002.42247270496, 2574013.92850383],
+        [302001.95733727474, 2574012.496964174],
+        [302001.8, 2574011.0],
+        [302001.95733727474, 2574009.503035826],
+        [302002.42247270496, 2574008.07149617],
+        [302003.1750776405, 2574006.7679461837],
+        [302004.1822596342, 2574005.6493572565],
+        [302005.4, 2574004.764617093],
+        [302006.7750776405, 2574004.1523930826],
+        [302008.24739506445, 2574003.839442353],
+        [302009.75260493555, 2574003.839442353],
+        [302011.2249223595, 2574004.1523930826],
+        [302012.6, 2574004.764617093],
+        [302013.8177403658, 2574005.6493572565],
+        [302014.8249223595, 2574006.7679461837],
+        [302015.57752729504, 2574008.07149617],
+        [302016.04266272526, 2574009.503035826]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "smart"
+        },
+        "to": {
+          "kind": "survey",
+          "surface": "mound"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "mound"
+        }
+      ],
+      "at": "c1",
+      "expected": {
+        "pct": 21.791763302269967,
+        "nets": [
+          {
+            "base": "smart",
+            "netM3": 134.30433352118388
+          },
+          {
+            "base": "fit-plane",
+            "netM3": 134.3170127894619
+          },
+          {
+            "base": "perimeter-mean",
+            "netM3": 134.31701278946025
+          },
+          {
+            "base": "perimeter-min",
+            "netM3": 201.92621304088044
+          }
+        ]
+      }
+    },
+    {
+      "id": "cone-current",
+      "note": "The current date's cone, from a best-fit plane item",
+      "ring": [
+        [302006.0313074052, 2574003.97924597],
+        [302017.0840393333, 2574008.6522660777],
+        [302013.9686925948, 2574016.02075403],
+        [302002.9159606667, 2574011.3477339223]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "fit-plane"
+        },
+        "to": {
+          "kind": "current"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "flat"
+        },
+        {
+          "capture": "c2",
+          "surface": "cone"
+        }
+      ],
+      "at": "c2",
+      "expected": {
+        "pct": 49.02972676869793,
+        "nets": [
+          {
+            "base": "smart",
+            "netM3": 60.7713155564633
+          },
+          {
+            "base": "fit-plane",
+            "netM3": 99.06258395659844
+          },
+          {
+            "base": "perimeter-mean",
+            "netM3": 99.0625839565988
+          },
+          {
+            "base": "perimeter-min",
+            "netM3": 169.4686285133833
+          }
+        ]
+      }
+    },
+    {
+      "id": "partial-bases",
+      "note": "Partly outside the survey: partial results count",
+      "ring": [
+        [302021.0, 2574010.0],
+        [302020.86370330513, 2574011.0352761806],
+        [302020.4641016151, 2574012.0],
+        [302019.82842712477, 2574012.828427125],
+        [302019.0, 2574013.4641016154],
+        [302018.0352761804, 2574013.8637033054],
+        [302017.0, 2574014.0],
+        [302015.9647238196, 2574013.8637033054],
+        [302015.0, 2574013.4641016154],
+        [302014.17157287523, 2574012.828427125],
+        [302013.5358983849, 2574012.0],
+        [302013.13629669487, 2574011.0352761806],
+        [302013.0, 2574010.0],
+        [302013.13629669487, 2574008.9647238194],
+        [302013.5358983849, 2574008.0],
+        [302014.17157287523, 2574007.171572875],
+        [302015.0, 2574006.5358983846],
+        [302015.9647238196, 2574006.1362966946],
+        [302017.0, 2574006.0],
+        [302018.0352761804, 2574006.1362966946],
+        [302019.0, 2574006.5358983846],
+        [302019.82842712477, 2574007.171572875],
+        [302020.4641016151, 2574008.0],
+        [302020.86370330513, 2574008.9647238194]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "smart"
+        },
+        "to": {
+          "kind": "survey",
+          "surface": "cone"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "mound"
+        }
+      ],
+      "at": "c1",
+      "expected": {
+        "pct": 44.331005230348744,
+        "nets": [
+          {
+            "base": "smart",
+            "netM3": -11.432573364214878
+          },
+          {
+            "base": "fit-plane",
+            "netM3": 1.6478352570998362
+          },
+          {
+            "base": "perimeter-mean",
+            "netM3": -14.680738979741385
+          },
+          {
+            "base": "perimeter-min",
+            "netM3": 19.71809250794401
+          }
+        ]
+      }
+    },
+    {
+      "id": "refused-bases",
+      "note": "Mostly outside the survey: every base refused, no spread",
+      "ring": [
+        [302023.0, 2574010.0],
+        [302022.86370330513, 2574011.0352761806],
+        [302022.4641016151, 2574012.0],
+        [302021.82842712477, 2574012.828427125],
+        [302021.0, 2574013.4641016154],
+        [302020.0352761804, 2574013.8637033054],
+        [302019.0, 2574014.0],
+        [302017.9647238196, 2574013.8637033054],
+        [302017.0, 2574013.4641016154],
+        [302016.17157287523, 2574012.828427125],
+        [302015.5358983849, 2574012.0],
+        [302015.13629669487, 2574011.0352761806],
+        [302015.0, 2574010.0],
+        [302015.13629669487, 2574008.9647238194],
+        [302015.5358983849, 2574008.0],
+        [302016.17157287523, 2574007.171572875],
+        [302017.0, 2574006.5358983846],
+        [302017.9647238196, 2574006.1362966946],
+        [302019.0, 2574006.0],
+        [302020.0352761804, 2574006.1362966946],
+        [302021.0, 2574006.5358983846],
+        [302021.82842712477, 2574007.171572875],
+        [302022.4641016151, 2574008.0],
+        [302022.86370330513, 2574008.9647238194]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "smart"
+        },
+        "to": {
+          "kind": "survey",
+          "surface": "cone"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "mound"
+        }
+      ],
+      "at": "c1",
+      "expected": null
+    },
+    {
+      "id": "surface-to-surface",
+      "note": "A surface-to-surface item has no spread",
+      "ring": [
+        [302018.0, 2574010.0],
+        [302017.7274066103, 2574012.0705523607],
+        [302016.92820323026, 2574014.0],
+        [302015.6568542495, 2574015.6568542495],
+        [302014.0, 2574016.9282032303],
+        [302012.07055236085, 2574017.7274066103],
+        [302010.0, 2574018.0],
+        [302007.92944763915, 2574017.7274066103],
+        [302006.0, 2574016.9282032303],
+        [302004.3431457505, 2574015.6568542495],
+        [302003.07179676974, 2574014.0],
+        [302002.2725933897, 2574012.0705523607],
+        [302002.0, 2574010.0],
+        [302002.2725933897, 2574007.9294476393],
+        [302003.07179676974, 2574006.0],
+        [302004.3431457505, 2574004.3431457505],
+        [302006.0, 2574003.0717967697],
+        [302007.92944763915, 2574002.2725933897],
+        [302010.0, 2574002.0],
+        [302012.07055236085, 2574002.2725933897],
+        [302014.0, 2574003.0717967697],
+        [302015.6568542495, 2574004.3431457505],
+        [302016.92820323026, 2574006.0],
+        [302017.7274066103, 2574007.9294476393]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "survey",
+          "surface": "flat"
+        },
+        "to": {
+          "kind": "survey",
+          "surface": "cone"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "mound"
+        }
+      ],
+      "at": "c1",
+      "expected": null
+    },
+    {
+      "id": "base-on-to-side",
+      "note": "A base on the To side: no spread (only From is replaced)",
+      "ring": [
+        [302016.2, 2574011.0],
+        [302016.04266272526, 2574012.496964174],
+        [302015.57752729504, 2574013.92850383],
+        [302014.8249223595, 2574015.2320538163],
+        [302013.8177403658, 2574016.3506427435],
+        [302012.6, 2574017.235382907],
+        [302011.2249223595, 2574017.8476069174],
+        [302009.75260493555, 2574018.160557647],
+        [302008.24739506445, 2574018.160557647],
+        [302006.7750776405, 2574017.8476069174],
+        [302005.4, 2574017.235382907],
+        [302004.1822596342, 2574016.3506427435],
+        [302003.1750776405, 2574015.2320538163],
+        [302002.42247270496, 2574013.92850383],
+        [302001.95733727474, 2574012.496964174],
+        [302001.8, 2574011.0],
+        [302001.95733727474, 2574009.503035826],
+        [302002.42247270496, 2574008.07149617],
+        [302003.1750776405, 2574006.7679461837],
+        [302004.1822596342, 2574005.6493572565],
+        [302005.4, 2574004.764617093],
+        [302006.7750776405, 2574004.1523930826],
+        [302008.24739506445, 2574003.839442353],
+        [302009.75260493555, 2574003.839442353],
+        [302011.2249223595, 2574004.1523930826],
+        [302012.6, 2574004.764617093],
+        [302013.8177403658, 2574005.6493572565],
+        [302014.8249223595, 2574006.7679461837],
+        [302015.57752729504, 2574008.07149617],
+        [302016.04266272526, 2574009.503035826]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "survey",
+          "surface": "mound"
+        },
+        "to": {
+          "kind": "fit-plane"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "mound"
+        }
+      ],
+      "at": "c1",
+      "expected": null
+    },
+    {
+      "id": "flat-zero",
+      "note": "Flat ground: a zero mean, no spread",
+      "ring": [
+        [302018.0, 2574010.0],
+        [302017.7274066103, 2574012.0705523607],
+        [302016.92820323026, 2574014.0],
+        [302015.6568542495, 2574015.6568542495],
+        [302014.0, 2574016.9282032303],
+        [302012.07055236085, 2574017.7274066103],
+        [302010.0, 2574018.0],
+        [302007.92944763915, 2574017.7274066103],
+        [302006.0, 2574016.9282032303],
+        [302004.3431457505, 2574015.6568542495],
+        [302003.07179676974, 2574014.0],
+        [302002.2725933897, 2574012.0705523607],
+        [302002.0, 2574010.0],
+        [302002.2725933897, 2574007.9294476393],
+        [302003.07179676974, 2574006.0],
+        [302004.3431457505, 2574004.3431457505],
+        [302006.0, 2574003.0717967697],
+        [302007.92944763915, 2574002.2725933897],
+        [302010.0, 2574002.0],
+        [302012.07055236085, 2574002.2725933897],
+        [302014.0, 2574003.0717967697],
+        [302015.6568542495, 2574004.3431457505],
+        [302016.92820323026, 2574006.0],
+        [302017.7274066103, 2574007.9294476393]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "smart"
+        },
+        "to": {
+          "kind": "survey",
+          "surface": "flat"
+        },
+        "useDeadband": false
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "mound"
+        }
+      ],
+      "at": "c1",
+      "expected": null
+    },
+    {
+      "id": "design-exact",
+      "note": "Bases on a design: the exact path",
+      "ring": [
+        [302015.0, 2574010.0],
+        [302014.3301270189, 2574012.5],
+        [302012.5, 2574014.330127019],
+        [302010.0, 2574015.0],
+        [302007.5, 2574014.330127019],
+        [302005.6698729811, 2574012.5],
+        [302005.0, 2574010.0],
+        [302005.6698729811, 2574007.5],
+        [302007.5, 2574005.669872981],
+        [302010.0, 2574005.0],
+        [302012.5, 2574005.669872981],
+        [302014.3301270189, 2574007.5]
+      ],
+      "item": {
+        "id": "a",
+        "from": {
+          "kind": "smart"
+        },
+        "to": {
+          "kind": "design",
+          "design": "pad",
+          "layer": "top"
+        },
+        "useDeadband": false,
+        "cellM": 0.5
+      },
+      "site": {
+        "verticalDatum": {
+          "kind": "project"
+        }
+      },
+      "dates": [
+        {
+          "capture": "c1",
+          "surface": "mound"
+        }
+      ],
+      "at": "c1",
+      "expected": {
+        "pct": 23.712250542306414,
+        "nets": [
+          {
+            "base": "smart",
+            "netM3": 59.76512379528077
+          },
+          {
+            "base": "fit-plane",
+            "netM3": 49.34845712899104
+          },
+          {
+            "base": "perimeter-mean",
+            "netM3": 49.34845712899052
+          },
+          {
+            "base": "perimeter-min",
+            "netM3": 79.30308574333463
+          }
+        ]
+      }
+    }
+  ]
+}

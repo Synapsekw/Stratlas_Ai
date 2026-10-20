@@ -75,6 +75,15 @@ export {
 } from './tin';
 export { Accumulator, type Accumulated } from './accumulate';
 export {
+  baseSpread,
+  compareSeries,
+  MEAN_ZERO_M3,
+  seriesApplies,
+  SPREAD_BASES,
+  type BaseSpread,
+  type Ring,
+} from './series';
+export {
   projectResolver,
   ringShifts,
   SurfaceNotFound,
