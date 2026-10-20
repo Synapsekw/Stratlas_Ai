@@ -64,13 +64,30 @@ async function pick(win: Page, p: [number, number, number]) {
   await win.mouse.click(at.x, at.y);
 }
 
+/** Secondary rows of the card by their labels (`ITEM_LABELS`); the others are the primary value. */
+const SECONDARY_LABEL: Record<string, string> = {
+  'horizontal-gap': 'Horizontal separation',
+  'vertical-gap': 'Absolute vertical gap',
+};
+
+/**
+ * A value on the measurement's card: the primary value (azimuth, inclination, direct gap) or a row
+ * of its secondary line. The live card while picking, else the detail card (in the telecom tools
+ * or in the measurement panel).
+ */
 async function expectValue(win: Page, key: string, expected: number) {
+  const card = win.locator('[data-testid="telecom-card"], [data-testid="survey-panel"]').first();
   await expect
-    .poll(async () =>
-      Number.parseFloat(
-        await win.getByTestId('telecom-readout').locator(`[data-key="${key}"] dd`).innerText(),
-      ),
-    )
+    .poll(async () => {
+      const label = SECONDARY_LABEL[key];
+      if (!label)
+        return Number.parseFloat(
+          await card.getByTestId('card-primary').locator('.mc-value').innerText(),
+        );
+      const line = await card.getByTestId('card-secondary').innerText();
+      const m = new RegExp(`${label} (-?[\\d.,]+)`).exec(line);
+      return m?.[1] ? Number.parseFloat(m[1].replace(/,/g, '')) : Number.NaN;
+    })
     .toBeCloseTo(expected, 1);
 }
 

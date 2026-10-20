@@ -1,8 +1,9 @@
 /**
  * Volumes and comparisons in the real app (M11 G4, PRD SRV-1 and SRV-2) on the synthetic
  * earthworks demo (three surveys, survey_synth.py): the surveys are prepared through the real
- * `survey.prepare` job, then the borrow pit gets three comparison items (survey to survey, previous
- * to current, a reference level Set to lowest). The numbers are checked against the demo's
+ * `survey.prepare` job, then the borrow pit gets three comparison items on the volume card (survey
+ * to survey, previous to current, the base "Lowest point"). The numbers are checked against the
+ * demo's
  * truth.json and against G2's executor run here on the same prepared tiles; the deadband toggle
  * changes them; a custom base set to one level equals that typed level and a vertex edit moves the
  * volume; bulk totals add two piles; axe on the panel. Off-screen, zero network.
@@ -15,7 +16,8 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { markMeasure, measureControl, measureSaved, measureTree, selectMeasure } from './island';
+import { markMeasure, measureControl, measureSaved, measureTree } from './island';
+import { focusMeasure, pickBase, volumeSettled } from './measureCard';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -33,20 +35,10 @@ async function openList(win: Page): Promise<void> {
   await measureTree(win);
 }
 
-async function focus(win: Page, label: string): Promise<Locator> {
-  await selectMeasure(win, label);
-  const panel = win.getByTestId('survey-panel');
-  await expect(panel.getByRole('textbox', { name: 'Measurement name' })).toHaveValue(label);
-  return panel;
-}
+const focus = (win: Page, label: string): Promise<Locator> => focusMeasure(win, label);
 
 /** Every item shows a result, none stale or computing. */
-async function settled(panel: Locator, n: number): Promise<void> {
-  await expect(panel.getByTestId('survey-cmp-item')).toHaveCount(n);
-  await expect(panel.getByTestId('survey-cmp-result')).toHaveCount(n, { timeout: 60_000 });
-  await expect(panel.getByText('Stale, recompute')).toHaveCount(0, { timeout: 60_000 });
-  await expect(panel.getByTestId('survey-recompute')).toHaveText('Recompute', { timeout: 60_000 });
-}
+const settled = (panel: Locator, n: number): Promise<void> => volumeSettled(panel, n);
 
 /** Save and read back the measurement with its results. */
 async function saved(win: Page, dir: string, id: string) {
@@ -93,7 +85,7 @@ async function engineOn(dir: string) {
 }
 
 test.describe('volumes and comparisons', () => {
-  test('a polygon with three comparisons, the deadband, Set to lowest, a custom base and bulk totals', async ({
+  test('a polygon with three comparisons, the deadband, Lowest point, a custom base and bulk totals', async ({
     earthworksProject,
     win,
   }) => {
@@ -125,19 +117,25 @@ test.describe('volumes and comparisons', () => {
     await expect(panel.getByTestId('survey-prepare')).toHaveCount(0, { timeout: 300_000 });
     await settled(panel, 1);
 
-    // three items: survey to survey (d1 to d2), previous to current (d2 to d3), a reference level
+    // three items: survey to survey (d1 to d2), previous to current (d2 to d3), the lowest point
     await panel.getByTestId('survey-add-comparison').click();
     await panel.getByTestId('survey-add-comparison').click();
     const items = panel.getByTestId('survey-cmp-item');
     await expect(items).toHaveCount(3);
+    // with two items or more each one has a name field and a remove button (the new third one
+    // is unnamed, so both say "Comparison 3")
+    await expect(panel.getByRole('textbox', { name: 'Comparison 3', exact: true })).toBeVisible();
+    await expect(
+      panel.getByRole('button', { name: 'Remove Comparison 3', exact: true }),
+    ).toBeVisible();
     const first = items.nth(0);
-    await first.getByTestId('survey-from').selectOption('survey:dsm-d1');
+    // "Previous survey or design": the first survey (2 March 2026), to the second
+    await pickBase(first, 'surface', '2 March 2026');
     await first.getByTestId('survey-to').selectOption('survey:dsm-d2');
     const third = items.nth(2);
-    await third.getByTestId('survey-from').selectOption('reference');
-    await expect(third.getByTestId('survey-ref-level')).toBeVisible();
-    await third.getByTestId('survey-ref-lowest').click();
-    await expect(third.getByTestId('survey-ref-lowest')).toHaveAttribute('aria-pressed', 'true');
+    // "Lowest point": a reference base, with no level to type
+    await pickBase(third, 'lowest');
+    await expect(third.getByTestId('survey-ref-level')).toHaveCount(0);
     await settled(panel, 3);
 
     let pit = await saved(win, dir, 'm-pit');
@@ -155,7 +153,7 @@ test.describe('volumes and comparisons', () => {
     expect([r2.fromCapture, r2.toCapture]).toEqual(['d2', 'd3']);
     expect(Math.abs(r2.fillM3 - t23.fillM3) / t23.fillM3).toBeLessThan(0.01);
 
-    // Set to lowest equals a typed level at the perimeter minimum of the current survey
+    // Lowest point equals a typed level at the perimeter minimum of the current survey
     const { resolve } = await engineOn(dir);
     const ring = pit.points.map((p): [number, number] => [p[0], p[1]]);
     const cur = await resolve({ kind: 'current' });
@@ -193,7 +191,7 @@ test.describe('volumes and comparisons', () => {
 
     // a custom base with every vertex at one level equals that typed level
     const level = Math.round((lowest - 0.5) * 1000) / 1000;
-    await third.getByTestId('survey-from').selectOption('custom');
+    await pickBase(third, 'custom');
     const editor = third.getByTestId('survey-base-editor');
     await expect(editor.getByTestId('survey-base-row')).toHaveCount(4);
     await editor.getByTestId('survey-base-level').fill(String(level));

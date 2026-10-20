@@ -14,7 +14,8 @@ import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
 import { pdfText } from './pdf';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureTree, selectMeasure } from './island';
+import { measureTree } from './island';
+import { focusMeasure, volumeSettled } from './measureCard';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -54,8 +55,7 @@ const flat = (s: string) => s.replace(/\s+/g, '').toLowerCase();
 /** Open the measurements in the tree and focus a measurement by its label. */
 async function focus(win: Page, label: string): Promise<void> {
   await measureTree(win);
-  await selectMeasure(win, label);
-  await expect(win.getByTestId('survey-label')).toHaveValue(label);
+  await focusMeasure(win, label);
 }
 
 /** Prepare every survey's DSM through the panel (the real `survey.prepare` job). */
@@ -72,7 +72,7 @@ async function panelPile(win: Page, label: string): Promise<{ volume: string; to
   const panel = win.getByTestId('survey-panel');
   const result = panel.getByTestId('survey-cmp-item').first().getByTestId('survey-cmp-result');
   await expect(result).toBeVisible({ timeout: 120_000 });
-  await expect(panel.getByTestId('survey-recompute')).toHaveText('Recompute', { timeout: 120_000 });
+  await volumeSettled(panel, await panel.getByTestId('survey-cmp-item').count(), 120_000);
   const volume = (await result.locator('tr[data-key="net"] td').first().innerText()).trim();
   const tonnes = (await panel.getByTestId('survey-calc-tonnes').innerText()).trim();
   return { volume, tonnes };
@@ -162,15 +162,21 @@ test('quarry: the stockpile report PDF and inventory CSV match the panel', async
     volumes += v;
     tonnes += t;
   }
+  // the inventory lists every volume measurement (the engine's results), not only the three
+  // stockpiles: the total is the sum of every row with a current figure, and holds the piles'
+  const rows = csv.filter((x) => x[0] === 'pile');
+  expect(rows.length).toBeGreaterThanOrEqual(PILES.length);
+  const sum = (key: string) =>
+    rows.reduce((s, x) => s + (x[col(key)] ? Number(x[col(key)]) : 0), 0);
   const total = csv.find((x) => x[0] === 'total');
-  expect(Number(total?.[col('current_volume_m3')])).toBeCloseTo(volumes, 6);
-  expect(Number(total?.[col('current_tonnes')])).toBeCloseTo(tonnes, 6);
-  // the materials summary: one total row per material
-  expect(csv.filter((x) => x[0] === 'material').map((x) => x[4])).toEqual([
-    'Crushed rock 20 mm',
-    'Washed sand',
-    'Base course',
-  ]);
+  expect(Number(total?.[col('current_volume_m3')])).toBeCloseTo(sum('current_volume_m3'), 6);
+  expect(Number(total?.[col('current_tonnes')])).toBeCloseTo(sum('current_tonnes'), 6);
+  expect(sum('current_volume_m3')).toBeGreaterThanOrEqual(volumes - 1e-6);
+  expect(sum('current_tonnes')).toBeGreaterThanOrEqual(tonnes - 1e-6);
+  // the materials summary: one total row per material, the piles' three among them
+  expect(csv.filter((x) => x[0] === 'material').map((x) => x[4])).toEqual(
+    expect.arrayContaining(['Crushed rock 20 mm', 'Washed sand', 'Base course']),
+  );
 
   await runExport(win, /Survey report \(PDF\)/);
   const pdf = await pdfText(

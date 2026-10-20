@@ -304,7 +304,8 @@ test('a package of a survey project shows its measurements read only, drawn, wit
     await selectMeasure(pw, 'Cone (synthetic)');
     const panel = pw.getByTestId('survey-panel');
     await expect(panel).toBeVisible();
-    await expect(panel.getByTestId('survey-label')).toHaveAttribute('readonly', '');
+    await expect(panel.getByTestId('card-name')).toHaveText('Cone (synthetic)');
+    await expect(panel.getByRole('textbox', { name: 'Rename' })).toHaveCount(0);
     await expect(panel.getByRole('button', { name: 'Delete measurement' })).toHaveCount(0);
     await expect(panel.getByRole('button', { name: 'Edit vertices in the view' })).toHaveCount(0);
 

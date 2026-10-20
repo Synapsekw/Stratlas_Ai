@@ -138,6 +138,17 @@ async function pickGroupTab(win: Page, g: GroupId, bench: Locator): Promise<void
     });
 }
 
+/**
+ * The Volumes view (volumetric parity W3, W4) in the Volumes workbench: every volume measurement
+ * as a live card (`volumes-pile`), the focused one's detail card (`volumes-detail`), the totals and
+ * the site inventory over time (`volumes-inventory`).
+ */
+export async function volumesView(win: Page): Promise<Locator> {
+  const view = (await islandGroup(win, 'volumes')).getByTestId('volumes-view');
+  await expect(view).toBeVisible();
+  return view;
+}
+
 /** A tool button of a group's full set (the set opened, so it shows). */
 export async function islandTool(win: Page, g: GroupId, name: string | RegExp): Promise<Locator> {
   const full = await islandGroup(win, g);

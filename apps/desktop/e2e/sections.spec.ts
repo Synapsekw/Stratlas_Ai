@@ -1,9 +1,10 @@
 /**
- * Cross-sections in the real app (M11 G5, SRV-7) on the synthetic earthworks demo: two surveys
- * prepared by `survey.prepare`, a **Cross-section** measurement across the pad opens the dock with
- * a line per survey and per design surface; a click pins a chainage with values, deltas and
- * grades; the exaggeration goes to 1:4; the large window opens; **Download** writes a DXF (2D XZ)
- * through `survey.section` and the save dialog. Off-screen, zero network, pipeline Python needed.
+ * Cross-sections in the real app (M11 G5, SRV-7; volumetric parity W1) on the synthetic earthworks
+ * demo: two surveys prepared by `survey.prepare`, a **Cross-section** measurement across the pad
+ * opens the dock on the shared profile chart with the current survey; the earlier survey and the
+ * pad design join as chips; Shade vs the earlier survey gives a click's pin its deltas and grades;
+ * the exaggeration goes to 4:1; the large window opens; **DXF…** writes a DXF (2D XZ) through
+ * `survey.section` and the save dialog. Off-screen, zero network, pipeline Python needed.
  */
 import type { MeasurementsFile } from '@aio/schema';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -16,7 +17,7 @@ import { measureControl, measureTree, selectMeasure } from './island';
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
 
-test('a section across the pad: two surveys and the design, a pin, 1:4, the window, a DXF', async ({
+test('a section across the pad: two surveys and the design, a pin, 4:1, the window, a DXF', async ({
   earthworksProject,
   app,
   win,
@@ -55,27 +56,57 @@ test('a section across the pad: two surveys and the design, a pin, 1:4, the wind
   await expect(dock).toBeVisible();
   const chart = dock.getByTestId('section-chart');
   await expect(chart).toBeVisible({ timeout: 60_000 });
-  for (const key of ['survey:dsm-d1', 'survey:dsm-d2', 'design:earthworks-design/pad'])
-    await expect(chart.locator(`polyline[data-surface="${key}"]`).first()).toBeAttached({
-      timeout: 60_000,
-    });
+  // the dock opens on the current survey (the latest prepared one) alone
+  const line = (key: string) => chart.locator(`polyline[data-series="${key}"]`).first();
+  await expect(line('survey:dsm-d2')).toBeAttached({ timeout: 60_000 });
+  await expect(line('survey:dsm-d2')).toHaveAttribute('data-kind', 'current');
+  await expect(line('survey:dsm-d1')).toHaveCount(0);
 
-  // pin the middle of the pad: every surface has a value, deltas to the first survey
-  const box = await chart.locator('svg').boundingBox();
+  // the earlier survey and the pad design join as chips, from "+ Add survey or design"
+  const chips = dock.getByTestId('section-chips');
+  const add = async (group: 'Surveys' | 'Designs', name?: RegExp) => {
+    await chips.getByTestId('section-chips-add').click();
+    const menu = win.getByRole('menu', { name: '+ Add survey or design' });
+    const items = menu.getByRole('group', { name: group }).getByRole('menuitem');
+    await (name ? items.filter({ hasText: name }) : items).first().click();
+  };
+  await add('Surveys');
+  await expect(line('survey:dsm-d1')).toBeAttached({ timeout: 60_000 });
+  await expect(line('survey:dsm-d1')).toHaveAttribute('data-kind', 'earlier');
+  await add('Designs', /pad/i);
+  await expect(line('design:earthworks-design/pad')).toBeAttached({ timeout: 60_000 });
+  await expect(line('design:earthworks-design/pad')).toHaveAttribute('data-kind', 'design');
+  await expect(chips.locator('[data-chip]')).toHaveCount(3);
+
+  // Shade vs the earlier survey: the cut and fill between it and the current survey show
+  const shade = dock.getByRole('group', { name: 'Shade vs' });
+  await shade.getByRole('button').first().click();
+  await expect(shade.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(chart.getByTestId('chart-areas')).toBeVisible();
+
+  // pin the middle of the pad: every surface has a value, deltas from the Shade vs target
+  const box = await chart.locator('svg.pc-svg').boundingBox();
   if (!box) throw new Error('no chart');
   await win.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   const pin = dock.getByTestId('section-pin');
   await expect(pin).toHaveCount(1);
+  await expect(pin.getByTestId('section-pin-z')).toHaveCount(3);
   await expect(pin.getByTestId('section-pin-z').first()).toContainText(' m');
-  await expect(pin.getByTestId('section-pin-delta').nth(2)).toContainText('Δ');
+  // the target's own row has no delta; the current survey and the design have one each
+  await expect(pin.getByTestId('section-pin-delta').filter({ hasText: 'Δ' })).toHaveCount(2);
+  await expect(pin.locator('tr[data-reference]')).toHaveCount(1);
   await expect(pin.getByTestId('section-pin-grade').first()).toContainText('%');
   // the pad is at 122 m, about 2 m over the ground in the middle
-  const padZ = await pin.getByTestId('section-pin-z').nth(2).innerText();
+  const padZ = await pin
+    .locator('tr', { has: win.locator('th', { hasText: /pad/i }) })
+    .getByTestId('section-pin-z')
+    .innerText();
   expect(Number.parseFloat(padZ)).toBeCloseTo(122, 1);
 
-  // exaggeration 1:4
+  // exaggeration 4:1, on the slider and in the chart's note
   await dock.getByTestId('section-exaggeration').fill('4');
-  await expect(dock).toContainText('1:4');
+  await expect(dock).toContainText('4:1');
+  await expect(chart.locator('.pc-axis-note')).toContainText('Vertical exaggeration 4:1');
   await expectAccessible(win, 'Cross-section dock', { include: '[data-testid="section-dock"]' });
 
   // the large window, then back to the dock
@@ -86,7 +117,7 @@ test('a section across the pad: two surveys and the design, a pin, 1:4, the wind
   await win.keyboard.press('Escape');
   await expect(big).toHaveCount(0);
 
-  // Download as DXF (2D XZ) through the save dialog
+  // DXF… opens the one export dialog with five variants; 2D XZ is the default
   const out = join(dataRoot.base, 'out');
   await mkdir(out, { recursive: true });
   await app.evaluate(
@@ -99,13 +130,20 @@ test('a section across the pad: two surveys and the design, a pin, 1:4, the wind
     },
     out.replace(/\\/g, '/'),
   );
-  await dock.getByTestId('section-format').selectOption('dxf-2d-xz');
-  await dock.getByTestId('section-download').click();
+  await dock.getByTestId('section-dxf').click();
+  const dialog = win.getByTestId('export-format-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('radio')).toHaveCount(5);
+  await expect(dialog.getByRole('radio', { checked: true })).toHaveCount(1);
+  await dialog.getByTestId('export-go').click();
+  await expect(dialog).toHaveCount(0);
   await expect(dock.getByTestId('section-export-note')).toContainText('Saved', {
     timeout: 120_000,
   });
   const dxf = await readFile(join(out, 'Section-across-the-pad-dxf-2d-xz.dxf'), 'utf8');
   expect(dxf).toContain('AC1024');
-  expect(dxf).toContain('01 Survey 1 DSM');
+  // only the lines drawn: both surveys (named by their surfaces) and the design
+  expect(dxf).toMatch(/\d\d Survey 1 DSM/);
+  expect(dxf).toMatch(/\d\d Survey 2 DSM/);
   expect(dxf).toContain('Section chainage');
 });

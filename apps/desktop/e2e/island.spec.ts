@@ -424,6 +424,12 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     // inside the window, its one Survey date switch in view, and the centre still the view's
     const bench = await islandGroup(win, 'volumes');
     await expect(bench.getByTestId('volumes-bench')).toBeVisible();
+    // under the controls, the volumes view (volumetric parity W3): every volume measurement, or
+    // its empty state offering Draw volume
+    const view = bench.getByTestId('volumes-view');
+    await expect(
+      view.locator('[data-testid="volumes-pile"], [data-testid="volumes-draw"]').first(),
+    ).toBeVisible();
     await islandSettled(win);
     await shot(win, info, 'island-volumes-bench-1100.png');
     const set = await win.evaluate(() => {

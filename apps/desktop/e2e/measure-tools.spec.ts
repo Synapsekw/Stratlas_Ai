@@ -77,7 +77,8 @@ test.describe('survey measurement tools', () => {
 
     const panel = win.getByTestId('survey-panel');
     await expect(panel).toBeVisible();
-    await expect(panel.getByTestId('survey-readout')).toContainText(' m');
+    // the card's primary value: the line's length
+    await expect(panel.getByTestId('card-primary').locator('.mc-unit')).toHaveText('m');
     await expectAccessible(win, 'Survey measurement panel', {
       include: '[data-testid="survey-side"]',
     });
@@ -110,7 +111,8 @@ test.describe('survey measurement tools', () => {
     });
     await dialog.getByTestId('survey-units-save').click();
     await expect(dialog).toHaveCount(0);
-    await expect(panel.getByTestId('survey-readout')).toContainText('US ft');
+    await expect(panel.getByTestId('card-primary').locator('.mc-unit')).toHaveText('US ft');
+    await expect(panel.getByTestId('card-secondary')).toContainText('US ft');
     await expect(panel.getByTestId('survey-units-summary')).toContainText('US ft');
     await (await measureSaved(win)).getByTestId('survey-list-save').click();
     await expect

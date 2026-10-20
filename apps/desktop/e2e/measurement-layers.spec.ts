@@ -21,6 +21,9 @@ const N = 3200000;
 
 const SEED = MeasurementsFile.parse({
   schema: 'aio.measurements/1',
+  // no stockpile kit piles to convert: marked so, as a project the app has opened before (a first
+  // open would write this mark, and the specs below compare the file byte for byte)
+  kitPilesConverted: [],
   measurements: [
     {
       id: 'pad-a',
@@ -145,6 +148,9 @@ test('right-click a shape in 3D opens its menu; a left click selects it; not whi
     'ctx-item-measure.visibility',
     'ctx-item-measure.flyTo',
     'ctx-item-measure.moveToFolder',
+    // Add to report and Export (a submenu of CSV, DXF and PNG) send it out (W2, W8)
+    'ctx-item-measure.addToReport',
+    'ctx-item-measure.export',
     'ctx-item-measure.delete',
   ]);
   await expect(menu.getByTestId('ctx-item-measure.visibility')).toHaveText('Hide');
@@ -155,7 +161,7 @@ test('right-click a shape in 3D opens its menu; a left click selects it; not whi
   // a left click on the shape selects it, in the panel and in the tree
   await win.mouse.click(x, y);
   // (the panel shows the name in its name field, not as text)
-  await expect(win.getByTestId('survey-panel').getByTestId('survey-label')).toHaveValue('Pad A');
+  await expect(win.getByTestId('survey-panel').getByTestId('card-name')).toHaveValue('Pad A');
   await expect(measureRow(win, 'Pad A')).toHaveClass(/sel/);
 
   // while a tool draws, a right-click is the tool's, not the measurement's

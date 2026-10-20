@@ -75,7 +75,7 @@ test.describe('measurement templates', () => {
 
     // set the Crew on the second pad, then find it by its Crew in the tree's filter box
     const panel = win.getByTestId('survey-panel');
-    await expect(panel.getByTestId('survey-label')).toHaveValue('Pad check 2');
+    await expect(panel.getByTestId('card-name')).toHaveValue('Pad check 2');
     await panel.getByTestId('survey-field-crew').selectOption('North');
     const filter = await measureFilter(win);
     await filter.fill('north');

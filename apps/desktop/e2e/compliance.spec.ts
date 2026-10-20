@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
 import { measureSaved, measureTree, selectMeasure, siteDataButton } from './island';
+import { volumeSettled } from './measureCard';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -29,12 +30,7 @@ async function open(win: Page, p: SurveyDemoProject): Promise<void> {
 }
 
 /** Every item shows a result, none stale or computing. */
-async function settled(panel: Locator, n: number): Promise<void> {
-  await expect(panel.getByTestId('survey-cmp-item')).toHaveCount(n);
-  await expect(panel.getByTestId('survey-cmp-result')).toHaveCount(n, { timeout: 60_000 });
-  await expect(panel.getByText('Stale, recompute')).toHaveCount(0, { timeout: 60_000 });
-  await expect(panel.getByTestId('survey-recompute')).toHaveText('Recompute', { timeout: 60_000 });
-}
+const settled = (panel: Locator, n: number): Promise<void> => volumeSettled(panel, n);
 
 interface Result {
   item: string;
@@ -90,7 +86,7 @@ test('compliance presets compute cut/fill and remaining to the pad design, with 
   await measureTree(win);
   await selectMeasure(win, 'Pad to design');
   const panel = win.getByTestId('survey-panel');
-  await expect(panel.getByRole('textbox', { name: 'Measurement name' })).toHaveValue(
+  await expect(panel.getByRole('textbox', { name: 'Rename', exact: true })).toHaveValue(
     'Pad to design',
   );
   // the surveys as height tiles, through the real survey.prepare job

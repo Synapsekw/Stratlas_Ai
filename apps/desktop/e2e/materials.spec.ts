@@ -15,6 +15,7 @@ import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
 import { measureControl, measureSaved, measureTree, selectMeasure } from './island';
+import { volumeSettled } from './measureCard';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -79,7 +80,7 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   await expect(panel.getByTestId('survey-prepare')).toHaveCount(0, { timeout: 240_000 });
   const lift = panel.getByTestId('survey-cmp-item').first();
   await expect(lift.getByTestId('survey-cmp-result')).toBeVisible({ timeout: 60_000 });
-  await expect(panel.getByTestId('survey-recompute')).toHaveText('Recompute', { timeout: 60_000 });
+  await volumeSettled(panel, await panel.getByTestId('survey-cmp-item').count());
   await (await measureSaved(win)).getByTestId('survey-list-save').click();
   await expect(win.getByTestId('survey-saved')).toContainText('Measurements saved.');
   let file = await readJson<MeasurementsFile>(join(dir, 'survey', 'measurements.json'));
@@ -95,6 +96,8 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   // a material gives tonnes; a weighed tonnage gives the density it achieved
   const calc = panel.getByTestId('survey-calculators');
   await calc.getByTestId('survey-material').selectOption('cover');
+  // the volume card names the material too
+  await expect(panel.getByTestId('vol-material')).toContainText('Daily cover soil');
   await expect(calc.getByTestId('survey-calc')).toContainText('m³');
   await expect(calc.getByTestId('survey-calc-tonnes')).toContainText(
     formatQuantity(volume * 1.7 * 1000, 'mass', settings.units, settings.precision),
