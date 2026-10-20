@@ -1,0 +1,57 @@
+/* The time chart (volumetric parity W2/W4). It shares the profile chart's .pc parts; tokens only. */
+.tc-bar {
+  transition: fill var(--d-1) var(--ease);
+}
+.tc-bar-stale {
+  stroke-width: 1;
+}
+.tc-hatch-line {
+  stroke: var(--bg-1);
+  stroke-opacity: 0.55;
+}
+.tc-part {
+  stroke: var(--bg-1);
+  stroke-width: 1;
+}
+.tc-total {
+  fill: var(--fg-2);
+  font-family: var(--f-mono);
+  font-size: var(--t-11);
+  font-variant-numeric: tabular-nums;
+}
+.tc-total-latest {
+  fill: var(--fg-0);
+}
+.tc-dot {
+  stroke: var(--bg-1);
+  stroke-width: 1.5;
+}
+.tc-hit {
+  fill: transparent;
+}
+.tc-gap line {
+  stroke: var(--fg-4);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+.tc-gap:focus-visible,
+.tc-stale:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.tc-missing {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.tc-missing-names {
+  color: var(--fg-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-bar {
+    transition: none;
+  }
+}

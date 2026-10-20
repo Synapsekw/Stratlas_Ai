@@ -3,3 +3,4 @@
 export { ProfileChart, type ProfileChartProps } from './ProfileChart';
 export { ShadeVs } from './ShadeVs';
 export { SurfaceChips, type ChipOption } from './SurfaceChips';
+export { TimeChart, type TimeChartData, type TimeChartProps } from './TimeChart';
