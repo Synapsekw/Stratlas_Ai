@@ -380,11 +380,12 @@
   min-width: 240px;
 }
 .rr-measure {
+  align-items: center;
   gap: 8px;
   padding: 3px 4px;
 }
 .rr-measure-v {
-  min-width: 120px;
+  min-width: 200px;
   font-size: var(--t-12);
   color: var(--fg-0);
 }

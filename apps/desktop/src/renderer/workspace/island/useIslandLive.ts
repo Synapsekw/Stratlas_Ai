@@ -17,7 +17,7 @@ import { jobTitle } from '../../processing/pipelines';
 import { useJobs, useShell } from '../../shell';
 import { useNetworkUp } from '../../shell/connection';
 import { useRoad } from '../../road/store';
-import { measureText } from '../../road/useRoadMap';
+import { roadReading } from '../../road/roadReading';
 import { liveReading, useMeasure } from '../../survey/measureStore';
 import type { LiveItem, ToolSource } from './islandModel';
 
@@ -182,15 +182,18 @@ function useToolLive(): LiveInput['tool'] {
   const active = useMeasure((s) => s.tool);
   const reading = useMeasure(liveReading);
   const road = useRoad((s) => s.measure);
+  const settings = useMeasure((s) => s.settings);
   const annotating = useShell((s) => s.annotating);
   return useMemo(
     () =>
       liveTool({
         measure: active ? { label: toolLabel(active.tool, active.template), reading } : null,
-        road: road.mode ? { reading: measureText(road.mode, road.vertices) } : null,
+        road: road.mode
+          ? { reading: roadReading(road.mode, road.vertices, settings)?.primary ?? null }
+          : null,
         annotating,
       }),
-    [active, reading, road, annotating],
+    [active, reading, road, settings, annotating],
   );
 }
 

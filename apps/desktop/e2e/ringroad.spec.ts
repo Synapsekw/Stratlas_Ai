@@ -122,7 +122,7 @@ test('@realdata the Ring Road opens in the native road workspace with its map ov
   if (!c) throw new Error('no map canvas');
   await win.mouse.click(c.x + c.width * 0.3, c.y + c.height * 0.5);
   await win.mouse.click(c.x + c.width * 0.6, c.y + c.height * 0.5);
-  await expect(win.getByTestId('measure-value')).toHaveText(/^\d+\.\d\d (k?m)$/);
+  await expect(win.getByTestId('card-primary')).toContainText(/\d[\d,.]* (k?m)/);
   await win.getByRole('button', { name: 'Done', exact: true }).click();
 
   // In 3D the defects lie draped on the ortho.

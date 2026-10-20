@@ -9,6 +9,16 @@ vi.mock('../shell', () => ({
   useShell: () => undefined,
 }));
 
+vi.mock('../survey/measureStore', () => ({
+  addMeasurement: () => undefined,
+  loadMeasurements: () => Promise.resolve(),
+  measureStore: { getState: () => ({}) },
+  newMeasurementId: () => 'm',
+  useMeasure: () => undefined,
+}));
+
+vi.mock('../survey/card', () => ({ MeasureCard: () => null }));
+
 const { useRoadKeys } = await import('./RoadTools');
 const { roadStore, setFilter } = await import('./store');
 

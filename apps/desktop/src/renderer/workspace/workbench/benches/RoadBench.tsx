@@ -11,7 +11,8 @@ import {
   toggleMeasure,
 } from '../../../road/RoadTools';
 import { setRoad, useRoad } from '../../../road/store';
-import { measureText } from '../../../road/useRoadMap';
+import { roadReading } from '../../../road/roadReading';
+import { useMeasure } from '../../../survey/measureStore';
 import { useShell } from '../../../shell';
 import { Section } from '../Section';
 import './benches.css';
@@ -22,7 +23,8 @@ export function RoadBench() {
   const measure = useRoad((s) => s.measure);
   // the close-up and the measure are the map's: not in the 3D view
   const onMap = useShell((s) => s.stageMode) !== '3d';
-  const reading = measure.mode ? measureText(measure.mode, measure.vertices) : null;
+  const settings = useMeasure((s) => s.settings);
+  const reading = measure.mode ? roadReading(measure.mode, measure.vertices, settings) : null;
   const mapOnly = onMap ? undefined : t('roadBench.mapOnly');
   return (
     <div className="wb-scroll" data-testid="road-bench">
@@ -66,7 +68,11 @@ export function RoadBench() {
           >
             {t('roadBench.measureButton')}
           </Button>
-          <p className="pop-note">{reading ?? t('roadBench.measureHint')}</p>
+          <p className="pop-note">
+            {reading
+              ? [reading.primary, reading.secondary].filter(Boolean).join(' · ')
+              : t('roadBench.measureHint')}
+          </p>
         </div>
       </Section>
     </div>

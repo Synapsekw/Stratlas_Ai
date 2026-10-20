@@ -1,13 +1,26 @@
 import { PhotoViewer } from '@aio/annotate';
-import { Icon, isShortcut, matchShortcut } from '@aio/ui';
+import { frameProjection } from '@aio/maps';
+import type { SurveyMeasurement } from '@aio/schema';
+import { Button, Icon, isShortcut, matchShortcut, useT } from '@aio/ui';
+import { localToEN } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo } from 'react';
+import { authorName } from '../author';
+import { MeasureCard } from '../survey/card';
+import {
+  addMeasurement,
+  loadMeasurements,
+  measureStore,
+  newMeasurementId,
+  useMeasure,
+} from '../survey/measureStore';
 import { isTyping } from '../keys';
 import { shell } from '../shell';
 import { pciRating } from './model';
 import { densityLegend } from './overlays';
 import { roadStore, setRoad, useRoad, type MeasureMode } from './store';
-import { filteredDefects, focusDefect, measureText, useFilteredDefects } from './useRoadMap';
+import { roadCardModel, roadMeasurement } from './roadReading';
+import { filteredDefects, focusDefect, useFilteredDefects } from './useRoadMap';
 
 const SIZES = ['10', '20', '50'];
 
@@ -179,11 +192,65 @@ export function toggleMeasure(mode: MeasureMode = 'line'): void {
   setRoad({ measure: m.mode ? { mode: null, vertices: [] } : { mode, vertices: [] } });
 }
 
+type OpenProject = ReturnType<typeof workspace.getState>['project'];
+
+/** Save is offered in a writable project that has surveys, on a CRS the map can place. */
+export function canSaveRoadMeasure(project: OpenProject, readOnly: boolean): boolean {
+  if (!project || readOnly || project.manifest.captures.length === 0) return false;
+  return frameProjection(project.manifest.crs, project.manifest.origin) !== null;
+}
+
+/**
+ * Save the current road measure as a site-scoped `distance` or `area` measurement, placed in the
+ * project frame (height from the survey surface when one is chosen, else 0).
+ */
+export function saveRoadMeasure(): SurveyMeasurement | null {
+  const project = workspace.getState().project;
+  const m = roadStore.getState().measure;
+  const ms = measureStore.getState();
+  if (!m.mode || !project || !canSaveRoadMeasure(project, ms.readOnly)) return null;
+  const proj = frameProjection(project.manifest.crs, project.manifest.origin);
+  if (!proj) return null;
+  const origin = project.manifest.origin;
+  const mode = m.mode;
+  const need = mode === 'line' ? 2 : 3;
+  if (m.vertices.length < need) return null;
+  const saved: SurveyMeasurement = {
+    ...roadMeasurement(
+      mode,
+      m.vertices,
+      ([lon, lat]) => {
+        const [x, , z] = proj.toLocal(lon, lat);
+        const [e, n] = localToEN(origin, [x, z]);
+        return [e, n, ms.surface?.heightAt(e, n) ?? 0];
+      },
+      newMeasurementId(),
+    ),
+    createdAt: new Date().toISOString(),
+  };
+  const by = authorName();
+  if (by) saved.createdBy = by;
+  addMeasurement(saved);
+  setRoad({ measure: { mode, vertices: [] } });
+  return saved;
+}
+
 /** The measure readout under the stage toolbar while measuring on the map. */
 export function MeasureBar() {
+  const t = useT();
   const m = useRoad((s) => s.measure);
+  const settings = useMeasure((s) => s.settings);
+  const readOnly = useMeasure((s) => s.readOnly);
+  const project = useWorkspace((s) => s.project);
+  const projectId = project?.id ?? null;
+  const hasSurveys = (project?.manifest.captures.length ?? 0) > 0;
+  // the site's measurements are read here so a save lands in the file the survey tools write
+  useEffect(() => {
+    if (hasSurveys && projectId) void loadMeasurements(projectId);
+  }, [hasSurveys, projectId]);
   if (!m.mode) return null;
-  const value = measureText(m.mode, m.vertices);
+  const model = roadCardModel(m.mode, m.vertices, settings);
+  const canSave = model !== null && canSaveRoadMeasure(project, readOnly);
   return (
     <div className="ann-subbar overlay-box rr-measure" role="group" aria-label="Measure">
       <div className="seg" role="group" aria-label="Measure mode">
@@ -205,9 +272,15 @@ export function MeasureBar() {
           </button>
         ))}
       </div>
-      <span className="mono rr-measure-v" data-testid="measure-value">
-        {value ?? (m.mode === 'line' ? 'Click two or more points' : 'Click three or more points')}
-      </span>
+      <div className="rr-measure-v">
+        {model ? (
+          <MeasureCard model={model} variant="live" testId="measure-card" />
+        ) : (
+          <span className="faint">
+            {m.mode === 'line' ? 'Click two or more points' : 'Click three or more points'}
+          </span>
+        )}
+      </div>
       <button
         type="button"
         className="btn sm ghost"
@@ -218,6 +291,18 @@ export function MeasureBar() {
       >
         Clear
       </button>
+      {canSave && (
+        <Button
+          variant="primary"
+          size="sm"
+          data-testid="measure-save"
+          onClick={() => {
+            saveRoadMeasure();
+          }}
+        >
+          {t('road.measure.save')}
+        </Button>
+      )}
       <button
         type="button"
         className="btn sm"

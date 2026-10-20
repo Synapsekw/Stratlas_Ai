@@ -1,16 +1,9 @@
-import {
-  frameProjection,
-  lineLengthM,
-  polygonAreaM2,
-  type MapDrawSeam,
-  type MapLngLat,
-  type MapOverlay,
-} from '@aio/maps';
+import { frameProjection, type MapDrawSeam, type MapLngLat, type MapOverlay } from '@aio/maps';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { filterDefects, pointAtKm, sortDefects, type DefectRow } from './model';
 import { densityCollection, roadOverlays } from './overlays';
-import { roadStore, setRoad, useRoad, type MeasureMode, type RoadState } from './store';
+import { roadStore, setRoad, useRoad, type RoadState } from './store';
 
 /** True while the open project is a road survey with its road model loaded. */
 export function useIsRoad(): boolean {
@@ -118,18 +111,6 @@ export function useRoadMap(): RoadMapProps | null {
 
   if (!ready) return null;
   return { overlays, issueFilter, issueColorBy: colorBy, measure: seam };
-}
-
-/** Length (line) or area (polygon) of the current measure, formatted; null with too few points. */
-export function measureText(mode: MeasureMode, vertices: readonly MapLngLat[]): string | null {
-  if (mode === 'line') {
-    if (vertices.length < 2) return null;
-    const m = lineLengthM(vertices);
-    return m < 1000 ? `${m.toFixed(2)} m` : `${(m / 1000).toFixed(3)} km`;
-  }
-  if (vertices.length < 3) return null;
-  const a = polygonAreaM2(vertices);
-  return a < 100 ? `${a.toFixed(2)} m²` : `${Math.round(a).toLocaleString('en-GB')} m²`;
 }
 
 /** Move the map and the 3D view to a chainage on the centreline. */
