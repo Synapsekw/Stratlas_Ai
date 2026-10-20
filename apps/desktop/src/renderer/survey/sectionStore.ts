@@ -22,15 +22,18 @@ import {
   surfaceKey,
   type ChartSeries,
   type Pin,
+  type SeriesKind,
   type SectionRef,
   type StationSection,
 } from '@aio/survey';
+import { formatDate, t } from '@aio/ui';
 import { assetUrl, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
-import { chartPng, savePng, seriesCsv } from '../charts/exportChart';
+import { sectionCsv } from '../charts/exportChart';
 import { bridge } from '../shell';
 import { designs } from './designsStore';
+import { fileBase } from './exportHelpers';
 import { sectionEngine, type SectionResult } from './sectionEngine';
 
 export interface SectionChoice {
@@ -42,7 +45,18 @@ export interface SectionChoice {
   capture?: string;
   /** That date (ISO), so earlier dates shade by age. */
   date?: string;
+  /** What the survey surface is made from (a derived surface: what it was derived from). */
+  surface?: SurfaceType;
+  /** A derived surface (a cleanup or a crop of another). */
+  edited?: boolean;
 }
+
+export type SurfaceType = 'dsm' | 'dtm' | 'cloud';
+
+/** Which of a survey's surfaces is its current one: a DSM first, then DTM, then the cloud. */
+const TYPE_RANK: Record<SurfaceType, number> = { dsm: 0, dtm: 1, cloud: 2 };
+const preference = (c: SectionChoice) =>
+  (c.surface ? TYPE_RANK[c.surface] : 3) * 2 + (c.edited ? 1 : 0);
 
 export type SectionSource =
   | {
@@ -54,27 +68,23 @@ export type SectionSource =
     }
   | { kind: 'station'; label: string };
 
-export type SectionFormat =
-  'dxf-2d-xy' | 'dxf-2d-xz' | 'dxf-2d-yz' | 'dxf-3d-zup' | 'dxf-3d-yup' | 'csv';
+/** The DXF variants `survey.section` writes (PNG and CSV are made in the app). */
+export type SectionFormat = 'dxf-2d-xy' | 'dxf-2d-xz' | 'dxf-2d-yz' | 'dxf-3d-zup' | 'dxf-3d-yup';
 
-/** The `survey.section` formats, named for the export dialog. */
+/** The DXF variants, named for the export dialog. */
 export const FORMAT_LABELS: Record<SectionFormat, string> = {
   'dxf-2d-xz': 'DXF 2D (XZ plane)',
   'dxf-2d-xy': 'DXF 2D (XY plane)',
   'dxf-2d-yz': 'DXF 2D (YZ plane)',
   'dxf-3d-zup': 'DXF 3D (Z up)',
   'dxf-3d-yup': 'DXF 3D (Y up)',
-  csv: 'CSV',
 };
 
-/** The DXF variants the export dialog offers (CSV has its own button under the chart). */
-export const DXF_FORMATS: readonly SectionFormat[] = [
-  'dxf-2d-xz',
-  'dxf-2d-xy',
-  'dxf-2d-yz',
-  'dxf-3d-zup',
-  'dxf-3d-yup',
-];
+/** The DXF variants in the export dialog's order. */
+export const DXF_FORMATS = Object.keys(FORMAT_LABELS) as readonly SectionFormat[];
+
+/** What a note under the pins is about: a file written, or Add to report. */
+export type ExportKind = SectionFormat | 'csv' | 'png' | 'report';
 
 export interface StationMode {
   intervalM: number;
@@ -111,7 +121,7 @@ export interface SectionState {
   /** The dock was closed for this source; it opens again for another. */
   dismissed: string | null;
   stations: StationMode | null;
-  exporting: { format: SectionFormat | 'png'; note: string | null; busy: boolean } | null;
+  exporting: { format: ExportKind; note: string | null; busy: boolean } | null;
 }
 
 const initial = (): SectionState => ({
@@ -151,9 +161,19 @@ const sourceId = (s: SectionSource | null) =>
 
 const manifestNow = (): ProjectManifest | null => workspace.getState().project?.manifest ?? null;
 
-/** The refs of the selected surfaces. */
+/** The refs of the selected surfaces (all sampled, switched on or off). */
 export function selectedRefs(s: Pick<SectionState, 'choices' | 'selected'>): SectionRef[] {
   return s.selected.flatMap((k) => s.choices.find((c) => c.key === k)?.ref ?? []);
+}
+
+/** The refs of the surfaces drawn: on the chart and switched on. */
+export function visibleRefs(
+  s: Pick<SectionState, 'choices' | 'selected' | 'hidden'>,
+): SectionRef[] {
+  return selectedRefs({
+    choices: s.choices,
+    selected: s.selected.filter((k) => !s.hidden.includes(k)),
+  });
 }
 
 /** The survey a section is viewed on: its measurement's own, else the latest date. */
@@ -167,10 +187,14 @@ function viewedCapture(
   return latest?.id ?? null;
 }
 
+/** The surface of `surveys` most preferred as a survey's current one (DSM, edited DSM, DTM ...). */
+const preferred = (surveys: readonly SectionChoice[]): SectionChoice | undefined =>
+  [...surveys].sort((a, b) => preference(a) - preference(b))[0];
+
 /**
- * The key of the section's current survey: the first surface of the survey it is viewed on, else
- * the surface of the latest date there is one for, else the first survey surface; null without
- * survey surfaces.
+ * The key of the section's current survey: among the surfaces of the survey it is viewed on (else
+ * of the latest date that has one, else all of them), the DSM, then an edited DSM, then the DTM,
+ * then the cloud; never by list order. Null without survey surfaces.
  */
 export function currentKey(
   choices: readonly SectionChoice[],
@@ -179,23 +203,33 @@ export function currentKey(
 ): string | null {
   const surveys = choices.filter((c) => c.kind === 'survey');
   const viewed = viewedCapture(source, manifest);
-  const own = surveys.find((c) => viewed !== null && c.capture === viewed);
-  if (own) return own.key;
-  let latest: SectionChoice | null = null;
-  for (const c of surveys) if (c.date && (!latest?.date || c.date >= latest.date)) latest = c;
-  return (latest ?? surveys[0])?.key ?? null;
+  const own = surveys.filter((c) => viewed !== null && c.capture === viewed);
+  if (own.length) return preferred(own)?.key ?? null;
+  let latest: string | null = null;
+  for (const c of surveys) if (c.date && (latest === null || c.date > latest)) latest = c.date;
+  const pool = latest === null ? surveys : surveys.filter((c) => c.date === latest);
+  return preferred(pool)?.key ?? null;
 }
 
 /**
- * The chart's series, one per sampled profile in the order listed, each kind from its surface
- * (never from its place): the current survey `current`, other survey dates `earlier`, design
- * surfaces `design`. A section samples no pile base, so it draws no `base` series.
+ * How a surface is drawn, from the surface (never its place in the list): the current survey
+ * `current`, another surface of the current survey's date `same-date`, other survey dates
+ * `earlier`, design surfaces `design`. A section samples no pile base, so never `base`.
  */
+export function kindOf(choice: SectionChoice, current: SectionChoice | null): SeriesKind {
+  if (choice.kind === 'design') return 'design';
+  if (choice.key === current?.key) return 'current';
+  if (current?.capture !== undefined && choice.capture === current.capture) return 'same-date';
+  return 'earlier';
+}
+
+/** The chart's series, one per sampled profile in the order listed, each with `kindOf`. */
 export function sectionSeries(
   s: Pick<SectionState, 'choices' | 'selected' | 'result' | 'source'>,
   manifest: ProjectManifest | null,
 ): ChartSeries[] {
-  const current = currentKey(s.choices, s.source, manifest);
+  const key0 = currentKey(s.choices, s.source, manifest);
+  const current = s.choices.find((c) => c.key === key0) ?? null;
   const out: ChartSeries[] = [];
   for (const key of s.selected) {
     const p = s.result?.profiles.find((x) => x.surface === key);
@@ -204,7 +238,7 @@ export function sectionSeries(
     out.push({
       key,
       label: c?.label ?? p.label,
-      kind: key === current ? 'current' : c?.kind === 'design' ? 'design' : 'earlier',
+      kind: c ? kindOf(c, current) : 'earlier',
       ...(c?.capture ? { capture: c.capture } : {}),
       ...(c?.date ? { date: c.date } : {}),
       chainage: p.chainage,
@@ -232,17 +266,47 @@ function choicesOf(
   manifest: ProjectManifest | null,
 ): SectionChoice[] {
   const out: SectionChoice[] = [];
-  for (const s of surfaces) {
-    if (s.source.kind === 'design') continue;
+  const byId = new Map(surfaces.map((s) => [s.id, s]));
+  /** A surface's type, following a derived one back to what it was made from. */
+  const typeOf = (s: HeightTiles): SurfaceType | undefined => {
+    let at: HeightTiles | undefined = s;
+    for (let hops = 0; at && hops < 20; hops++) {
+      const src: HeightTiles['source'] = at.source;
+      if (src.kind === 'dsm' || src.kind === 'dtm' || src.kind === 'cloud') return src.kind;
+      if (src.kind !== 'derived') return undefined;
+      at = byId.get(src.of);
+    }
+    return undefined;
+  };
+  const surveys = surfaces.filter((s) => s.source.kind !== 'design');
+  const perCapture = new Map<string, number>();
+  for (const s of surveys)
+    if (s.capture) perCapture.set(s.capture, (perCapture.get(s.capture) ?? 0) + 1);
+  for (const s of surveys) {
     const ref: SectionRef = { kind: 'survey', surface: s.id };
     const date = manifest?.captures.find((c) => c.id === s.capture)?.date;
+    const surface = typeOf(s);
+    const edited = s.source.kind === 'derived';
+    // a date with one surface reads as its date; with more, each says what it is ("20 Oct, DTM")
+    const typeText = surface
+      ? edited
+        ? t('section.surface.edited', { type: t(`section.surface.${surface}`) })
+        : t(`section.surface.${surface}`)
+      : s.name;
+    const label = !date
+      ? s.name
+      : s.capture && (perCapture.get(s.capture) ?? 0) > 1
+        ? t('section.dateType', { date: formatDate(date), type: typeText })
+        : formatDate(date);
     out.push({
       key: surfaceKey(ref),
       ref,
-      label: s.name,
+      label,
       kind: 'survey',
       ...(s.capture ? { capture: s.capture } : {}),
       ...(date ? { date } : {}),
+      ...(surface ? { surface } : {}),
+      ...(edited ? { edited } : {}),
     });
   }
   for (const d of file?.designs ?? [])
@@ -391,7 +455,10 @@ export function toggleShown(key: string): void {
     set({ hidden: s.hidden.filter((k) => k !== key) });
     return;
   }
-  const clears = s.shadeVs === key;
+  // off, the target is no longer shaded; with the current off, nothing is
+  const clears =
+    s.shadeVs !== null &&
+    (s.shadeVs === key || key === currentKey(s.choices, s.source, manifestNow()));
   set({ hidden: [...s.hidden, key], ...(clears ? { shadeVs: null } : {}) });
   if (clears) void repin();
 }
@@ -501,12 +568,6 @@ export function leaveStations(): void {
 
 // ------------------------------------------------------------------------------------ download
 
-const slug = (s: string) =>
-  s
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^[-._]+|[-._]+$/g, '')
-    .slice(0, 60) || 'section';
-
 type Ended = { ok: true } | { ok: false; error: string };
 
 function ended(job: JobRecord): Ended | null {
@@ -544,24 +605,19 @@ export function waitForJob(id: string): Promise<Ended> {
   });
 }
 
-const fileName = (ext: string) => `${slug(get().source?.label ?? 'section')}.${ext}`;
+/** The section's file name, as the measurement exports name theirs (`fileBase`). */
+const fileName = (ext: string, suffix = '') =>
+  `${fileBase(get().source?.label ?? 'section')}${suffix}.${ext}`;
 
-/** The chart (`svg`) as a PNG, where the person picks. Answers an error sentence or null. */
-export async function exportSectionPng(svg: SVGSVGElement): Promise<string | null> {
-  try {
-    const path = await savePng(await chartPng(svg), fileName('png'));
-    set({ exporting: path ? { format: 'png', busy: false, note: `Saved ${path}` } : null });
-    return null;
-  } catch (e) {
-    const error = e instanceof Error ? e.message : String(e);
-    set({ exporting: { format: 'png', busy: false, note: error } });
-    return error;
-  }
+/** Say how an export ended under the pins: where it went, or why it did not. */
+export function noteExport(format: ExportKind, note: string | null): void {
+  set({ exporting: note === null ? null : { format, busy: false, note } });
 }
 
 /**
- * The chart's lines as CSV (chainage and one column per surface shown, in the site units),
- * written in the app, so a package exports it too. Answers an error sentence or null.
+ * The section's lines as CSV: chainage, E and N of every station, then one column per surface
+ * drawn (`sectionCsv`, in the site units), written in the app, so a package exports it too.
+ * Answers an error sentence or null.
  */
 export async function exportSectionCsv(
   series: readonly ChartSeries[],
@@ -569,49 +625,48 @@ export async function exportSectionCsv(
   precision: SurveyPrecision,
 ): Promise<string | null> {
   const fail = (error: string) => {
-    set({ exporting: { format: 'csv', busy: false, note: error } });
+    noteExport('csv', error);
     return error;
   };
-  if (!series.length) return fail('Show at least one surface.');
+  const result = get().result;
+  if (!series.length || !result) return fail(t('section.showOne'));
   const r = await bridge.call('dialog:saveFile', {
     defaultName: fileName('csv'),
-    data: seriesCsv(series, units, precision),
+    data: sectionCsv(result, series, units, precision),
   });
   if (!r.ok) return fail(r.error);
   if (r.value.error) return fail(r.value.error);
   const path = r.value.path;
-  set({ exporting: path ? { format: 'csv', busy: false, note: `Saved ${path}` } : null });
+  noteExport('csv', path ? t('section.saved', { path }) : null);
   return null;
 }
 
 /**
- * The DXF (or the job's CSV): ask where to save first (`dialog:savePath`), then run
- * `survey.section` with that file as its `out`, so nothing is written into the project. Answers
- * an error sentence or null (null too when the person cancels the dialog).
+ * The DXF: ask where to save first (`dialog:savePath`), then run `survey.section` with that file
+ * as its `out`, so nothing is written into the project. Only the surfaces drawn go in, as in the
+ * PNG and the CSV. Answers an error sentence or null (null too when the person cancels).
  */
 export async function exportSection(format: SectionFormat): Promise<string | null> {
   const s = get();
   const project = workspace.getState().project;
   if (!project) return 'No project is open.';
   if (!s.line) return 'Draw a section first.';
-  const refs = selectedRefs(s);
-  if (!refs.length) return 'Pick at least one surface.';
-  const ext = format === 'csv' ? 'csv' : 'dxf';
-  const name = `${slug(s.source?.label ?? 'section')}-${format}.${ext}`;
+  const refs = visibleRefs(s);
   const fail = (error: string) => {
-    set({ exporting: { format, busy: false, note: error } });
+    noteExport(format, error);
     return error;
   };
+  if (!refs.length) return fail(t('section.showOne'));
   const chosen = await bridge.call('dialog:savePath', {
-    defaultName: name,
+    defaultName: fileName('dxf', `-${format}`),
     title: `Save the cross-section (${FORMAT_LABELS[format]})`,
-    filters: [{ name: ext === 'csv' ? 'CSV' : 'DXF', extensions: [ext] }],
+    filters: [{ name: t('chart.dxf'), extensions: ['dxf'] }],
   });
   if (!chosen.ok) return fail(chosen.error);
   if (chosen.value.error) return fail(chosen.value.error);
   const out = chosen.value.path;
   if (!out) {
-    set({ exporting: null });
+    noteExport(format, null);
     return null;
   }
   set({ exporting: { format, busy: true, note: 'Writing the section…' } });
@@ -625,6 +680,6 @@ export async function exportSection(format: SectionFormat): Promise<string | nul
   if (!started.ok) return fail(started.error);
   const done = await waitForJob(started.job.id);
   if (!done.ok) return fail(done.error);
-  set({ exporting: { format, busy: false, note: `Saved ${out}` } });
+  noteExport(format, t('section.saved', { path: out }));
   return null;
 }

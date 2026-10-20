@@ -2,7 +2,7 @@
 import type { SurveyUnits } from '@aio/schema';
 import type { ChartSeries } from '@aio/survey';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { chartPng, seriesCsv } from './exportChart';
+import { chartPng, sectionCsv, seriesCsv } from './exportChart';
 
 const METRIC = {
   distance: 'm',
@@ -63,6 +63,27 @@ describe('seriesCsv', () => {
     const other: ChartSeries = { ...DESIGN, chainage: [0, 15], z: [1, 2] };
     const rows = seriesCsv([CURRENT, other], METRIC, PRECISION).trimEnd().split('\n').slice(1);
     expect(rows).toEqual(['0.00,100.00,1.00', '10.00,,', '15.00,,2.00', '20.00,102.50,']);
+  });
+});
+
+describe('sectionCsv', () => {
+  const STATIONS = {
+    chainage: [0, 10, 20],
+    e: [551140.12345, 551150.5, 551160],
+    n: [2331400, 2331400.25, 2331400.5],
+  };
+
+  it('keeps E and N of every station to 3 decimals, then the surfaces', () => {
+    const lines = sectionCsv(STATIONS, [CURRENT, DESIGN], METRIC, PRECISION).trimEnd().split('\n');
+    expect(lines[0]).toBe('Chainage (m),E (m),N (m),05 Oct (m),"Pad, final (m)"');
+    expect(lines[1]).toBe('0.00,551140.123,2331400.000,100.00,99.00');
+    expect(lines[2]).toBe('10.00,551150.500,2331400.250,,99.50');
+  });
+
+  it('writes E and N in the display length unit', () => {
+    const lines = sectionCsv(STATIONS, [CURRENT], FEET, PRECISION).trimEnd().split('\n');
+    expect(lines[0]).toBe('Chainage (ft),E (ft),N (ft),05 Oct (ft)');
+    expect(lines[3]?.split(',')[1]).toBe((551160 / 0.3048).toFixed(3));
   });
 });
 

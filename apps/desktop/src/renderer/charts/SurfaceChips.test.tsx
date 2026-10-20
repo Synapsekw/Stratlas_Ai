@@ -116,6 +116,31 @@ describe('SurfaceChips', () => {
     expect(opacity(h, 'z-old')).toBeCloseTo(0.9);
   });
 
+  it('a same-date swatch is the current colour, finer and dashed, and can be removed', () => {
+    const DTM: ChipOption = {
+      key: 'cap-2-dtm',
+      label: '05 Oct, DTM',
+      kind: 'same-date',
+      group: 'survey',
+      date: '2026-10-05',
+    };
+    const el = mount(
+      <SurfaceChips
+        shown={[CURRENT, DTM]}
+        off={new Set()}
+        addable={[]}
+        onToggle={vi.fn()}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const line = el.querySelector('[data-chip="cap-2-dtm"] .pc-swatch line');
+    expect(line?.getAttribute('stroke')).toBe('var(--chart-current)');
+    expect(line?.getAttribute('stroke-dasharray')).toBe('3 2');
+    expect(line?.getAttribute('stroke-width')).toBe('2');
+    expect(el.querySelector('[data-chip="cap-2-dtm"] .pc-chip-x')).not.toBeNull();
+  });
+
   it('remove takes it off', () => {
     const h = mount(<Harness />);
     const x = h.querySelector('[data-chip="cap-1"] button[aria-label="Remove 01 Sep"]');

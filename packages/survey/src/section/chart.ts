@@ -2,7 +2,11 @@
 // and the hover readout. No drawing here; the chart component reads these.
 import { gradeOf, type Grade } from './profile';
 
-export type SeriesKind = 'current' | 'earlier' | 'design' | 'base';
+/**
+ * How a line is drawn: the current survey, another surface of the current survey (`same-date`,
+ * say its DTM beside its DSM), an earlier survey, a design, or a pile's base.
+ */
+export type SeriesKind = 'current' | 'same-date' | 'earlier' | 'design' | 'base';
 
 export interface ChartSeries {
   key: string;
@@ -16,7 +20,7 @@ export interface ChartSeries {
 
 export interface SeriesStyle {
   stroke: string;
-  dash: '' | '6 4' | '1 3';
+  dash: '' | '6 4' | '3 2' | '1 3';
   width: number;
   opacity: number;
 }
@@ -36,6 +40,9 @@ export function seriesStyle(s: ChartSeries, all: readonly ChartSeries[]): Series
   switch (s.kind) {
     case 'current':
       return { stroke: 'var(--chart-current)', dash: '', width: 2, opacity: 1 };
+    case 'same-date':
+      // the current survey's colour, finer and dashed; outside the earlier dates' age ramp
+      return { stroke: 'var(--chart-current)', dash: '3 2', width: 1.5, opacity: 1 };
     case 'design':
       return { stroke: 'var(--chart-design)', dash: '6 4', width: 1.5, opacity: 1 };
     case 'base':
@@ -58,9 +65,15 @@ export function seriesStyle(s: ChartSeries, all: readonly ChartSeries[]): Series
   }
 }
 
-const DRAW_RANK: Record<SeriesKind, number> = { base: 0, design: 1, earlier: 2, current: 3 };
+const DRAW_RANK: Record<SeriesKind, number> = {
+  base: 0,
+  design: 1,
+  earlier: 2,
+  'same-date': 3,
+  current: 4,
+};
 
-/** Base, designs, earlier dates oldest first, current last, so the current line draws on top. */
+/** Base, designs, earlier dates oldest first, the same date, current last, so the current line draws on top. */
 export function orderSeries(all: readonly ChartSeries[]): ChartSeries[] {
   return [...all].sort((a, b) => DRAW_RANK[a.kind] - DRAW_RANK[b.kind] || byAge(a, b));
 }

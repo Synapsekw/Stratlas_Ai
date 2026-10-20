@@ -5,16 +5,28 @@
  * exaggeration, the cutaway, sections at the active alignment's stations, pins with elevation,
  * delta to the shade target and grade, and under the chart PNG, DXF…, CSV and Add to report.
  */
-import { formatQuantity } from '@aio/geo';
-import { seriesStyle, type ChartSeries, type Grade } from '@aio/survey';
-import { Icon, t, useT } from '@aio/ui';
+import { useAnnotateReadOnly } from '@aio/annotate';
+import { formatQuantity, localeOf } from '@aio/geo';
+import {
+  DEFAULT_ANGLES,
+  type AngleSettings,
+  type SurveyPrecision,
+  type SurveyUnits,
+} from '@aio/schema';
+import { formatAngle, seriesStyle, shadeTargets, type ChartSeries, type Grade } from '@aio/survey';
+import { Button, Icon, makeActionCtx, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ExportFormatDialog, type ExportChoice } from '../charts/ExportFormatDialog';
 import { ProfileChart, ShadeVs, SurfaceChips, type ChipOption } from '../charts';
+import { chartPng, savePng } from '../charts/exportChart';
+import { ExportFormatDialog, type ExportChoice } from '../charts/ExportFormatDialog';
 import { addToReport } from '../report/templateStore';
+import { useShell } from '../shell';
+import { measureEditBlocked } from '../shell/actions/measureActions';
+import { exportMeasurement } from './card/exportMeasurement';
 import { useDesigns } from './designsStore';
+import { fileBase } from './exportHelpers';
 import { useMeasure } from './measureStore';
 import {
   addPin,
@@ -23,9 +35,10 @@ import {
   DXF_FORMATS,
   exportSection,
   exportSectionCsv,
-  exportSectionPng,
   FORMAT_LABELS,
+  kindOf,
   leaveStations,
+  noteExport,
   removePin,
   removeSurface,
   sectionSeries,
@@ -38,11 +51,30 @@ import {
   type SectionFormat,
 } from './sectionStore';
 
-export function gradeText(g: Grade | null): string {
-  if (!g) return 'n/a';
-  // below 1 in a million it reads flat (a plane's rounding, not a slope)
-  if (Math.abs(g.ratio) < 1e-6) return '0.00° · 0.00% · flat';
-  return `${g.degrees.toFixed(2)}° · ${g.percent.toFixed(2)}% · 1:${g.oneIn.toFixed(2)}`;
+/** Below this a grade reads flat (a plane's rounding, not a slope). */
+const FLAT = 1e-6;
+
+/**
+ * A pin's grade as the site settings write it: the angle in the angle unit (`formatAngle`), the
+ * percent and the 1:n ratio in the site grade precision.
+ */
+export function pinGradeText(
+  g: Grade | null,
+  units: SurveyUnits,
+  precision: SurveyPrecision,
+  angles: AngleSettings = DEFAULT_ANGLES,
+): string {
+  if (!g) return '-';
+  const flat = Math.abs(g.ratio) < FLAT;
+  const ratio = flat ? 0 : g.ratio;
+  const deg = flat ? 0 : g.degrees;
+  const as = (style: SurveyUnits['grade']) =>
+    formatQuantity(ratio, 'grade', { ...units, grade: style }, precision);
+  return [
+    formatAngle(deg, angles, localeOf(units.distance)),
+    as('percent'),
+    flat ? t('section.flat') : as('ratio-1-n'),
+  ].join(' · ');
 }
 
 const DXF_CHOICES: ExportChoice<SectionFormat>[] = DXF_FORMATS.map((format) => ({
@@ -71,6 +103,8 @@ function LineKey({ series, all }: { series: ChartSeries; all: readonly ChartSeri
   );
 }
 
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 /** The section's chart, surfaces, pins and controls (in the dock and in the window). */
 export function SectionBody({ big = false }: { big?: boolean }) {
   const tr = useT();
@@ -78,38 +112,40 @@ export function SectionBody({ big = false }: { big?: boolean }) {
   const settings = useMeasure((m) => m.settings);
   // a package (player mode) shows its sections; writing a DXF runs a pipeline, which it never does
   const readOnly = useMeasure((m) => m.readOnly);
+  const pkg = useShell((x) => x.pkg);
+  const lookOnly = useAnnotateReadOnly();
   const manifest = useWorkspace((w) => w.project?.manifest ?? null);
   const activeAlignment = useDesigns((d) => d.active);
   const root = useRef<HTMLDivElement>(null);
   const [dxfOpen, setDxfOpen] = useState(false);
-  const [said, setSaid] = useState<string | null>(null);
 
-  const current = currentKey(s.choices, s.source, manifest);
   const { choices, selected, result, source } = s;
+  const current = useMemo(() => {
+    const key = currentKey(choices, source, manifest);
+    return choices.find((c) => c.key === key) ?? null;
+  }, [choices, source, manifest]);
   const all = useMemo(
     () => sectionSeries({ choices, selected, result, source }, manifest),
     [choices, selected, result, source, manifest],
   );
   const hidden = useMemo(() => new Set(s.hidden), [s.hidden]);
   const visible = useMemo(() => all.filter((x) => !hidden.has(x.key)), [all, hidden]);
-  const currentShown = visible.some((x) => x.kind === 'current');
-  const shadeTargets = currentShown
-    ? visible.filter((x) => x.kind !== 'current').map((x) => ({ key: x.key, label: x.label }))
-    : [];
+  // shading is against the current survey, so with it off there is nothing to shade
+  const targets = visible.some((x) => x.kind === 'current') ? shadeTargets(visible) : [];
 
   const chip = (key: string): ChipOption | null => {
-    const c = s.choices.find((x) => x.key === key);
+    const c = choices.find((x) => x.key === key);
     if (!c) return null;
     return {
       key,
       label: c.label,
-      kind: key === current ? 'current' : c.kind === 'design' ? 'design' : 'earlier',
+      kind: kindOf(c, current),
       group: c.kind,
       ...(c.date ? { date: c.date } : {}),
     };
   };
-  const shown = s.selected.flatMap((k) => chip(k) ?? []);
-  const addable = s.choices.flatMap((c) => (s.selected.includes(c.key) ? [] : (chip(c.key) ?? [])));
+  const shown = selected.flatMap((k) => chip(k) ?? []);
+  const addable = choices.flatMap((c) => (selected.includes(c.key) ? [] : (chip(c.key) ?? [])));
 
   // pins draw and list the shown surfaces only
   const pins = useMemo(
@@ -119,77 +155,90 @@ export function SectionBody({ big = false }: { big?: boolean }) {
 
   const d = (v: number) => formatQuantity(v, 'distance', settings.units, settings.precision);
   const signed = (v: number) => `${v > 0 && d(v) !== d(0) ? '+' : ''}${d(v)}`;
-  const measureId = s.source?.kind === 'measurement' ? s.source.id : undefined;
+  const grade = (g: Grade | null) =>
+    pinGradeText(g, settings.units, settings.precision, settings.angles);
+  const measureId = source?.kind === 'measurement' ? source.id : undefined;
   const busy = s.exporting?.busy === true;
-  const note = said ?? s.exporting?.note ?? null;
-  const svg = () => root.current?.querySelector<SVGSVGElement>('svg.pc-svg') ?? null;
-  const reportBlocked = readOnly
-    ? t('actions.reason.package')
-    : !measureId
-      ? 'Save the section as a measurement to add it to the report.'
-      : false;
+  const empty = visible.length ? undefined : t('section.showOne');
+  const dxfBlocked = readOnly || pkg ? t('actions.reason.package') : empty;
+  const reportBlocked = !measureId
+    ? t('section.reportHint')
+    : manifest
+      ? measureEditBlocked(
+          makeActionCtx({ manifest, pkg: !!pkg, canEdit: !pkg && !lookOnly && !readOnly }),
+        ) || undefined
+      : t('report.noProject');
+
+  /** The chart as a PNG: a measurement's through the registry's export, a station's here. */
+  const savePicture = async () => {
+    try {
+      let path: string | null;
+      if (measureId) path = await exportMeasurement(measureId, 'png');
+      else {
+        const svg = root.current?.querySelector<SVGSVGElement>('svg.pc-svg');
+        if (!svg) throw new Error(t('chart.exportFailed'));
+        path = await savePng(await chartPng(svg), `${fileBase(source?.label ?? 'section')}.png`);
+      }
+      noteExport('png', path ? t('section.saved', { path }) : null);
+    } catch (e) {
+      noteExport('png', message(e));
+    }
+  };
 
   const actions = (
     <>
-      <button
-        type="button"
-        className="btn sm"
+      <Button
+        icon="download"
         data-testid="section-png"
-        disabled={!visible.length || busy}
+        disabledReason={empty}
+        disabled={busy}
         onClick={() => {
-          setSaid(null);
-          const el = svg();
-          if (el) void exportSectionPng(el);
+          void savePicture();
         }}
       >
-        <Icon name="download" size={12} /> {tr('chart.png')}
-      </button>
-      <button
-        type="button"
-        className="btn sm"
+        {tr('chart.png')}
+      </Button>
+      <Button
+        icon="download"
         data-testid="section-dxf"
         aria-haspopup="dialog"
-        disabled={readOnly || !s.result || busy}
-        title={readOnly ? t('actions.reason.package') : undefined}
+        disabledReason={dxfBlocked}
+        disabled={busy}
         onClick={() => {
-          setSaid(null);
           setDxfOpen(true);
         }}
       >
-        <Icon name="download" size={12} /> {`${tr('chart.dxf')}…`}
-      </button>
-      <button
-        type="button"
-        className="btn sm"
+        {`${tr('chart.dxf')}…`}
+      </Button>
+      <Button
+        icon="download"
         data-testid="section-csv"
-        disabled={!visible.length || busy}
+        disabledReason={empty}
+        disabled={busy}
         onClick={() => {
-          setSaid(null);
           void exportSectionCsv(visible, settings.units, settings.precision);
         }}
       >
-        <Icon name="download" size={12} /> {tr('chart.csv')}
-      </button>
-      <button
-        type="button"
-        className="btn sm"
+        {tr('chart.csv')}
+      </Button>
+      <Button
+        icon="report"
         data-testid="section-add-to-report"
-        disabled={reportBlocked !== false}
-        title={reportBlocked || undefined}
+        disabledReason={reportBlocked}
         onClick={() => {
           if (!measureId) return;
           void addToReport(measureId).then(
             (r) => {
-              setSaid(t(r === 'added' ? 'report.added' : 'report.already'));
+              noteExport('report', t(r === 'added' ? 'report.added' : 'report.already'));
             },
             (e: unknown) => {
-              setSaid(e instanceof Error ? e.message : String(e));
+              noteExport('report', message(e));
             },
           );
         }}
       >
-        <Icon name="report" size={12} /> {tr('chart.addToReport')}
-      </button>
+        {tr('chart.addToReport')}
+      </Button>
     </>
   );
 
@@ -197,31 +246,33 @@ export function SectionBody({ big = false }: { big?: boolean }) {
     <div ref={root} className={`sec-body${big ? ' big' : ''}`} data-measure-id={measureId}>
       <div className="sec-side">
         {s.sourcesError && <p className="small danger">{s.sourcesError}</p>}
-        {!s.choices.length && !s.sourcesError && (
+        {!choices.length && !s.sourcesError && (
           <p className="small faint">
             No prepared surfaces or design surfaces yet: prepare the surveys first.
           </p>
         )}
-        {s.result?.missing.map((m) => (
+        {result?.missing.map((m) => (
           <p key={m.key} className="small danger">
             {m.label}: {m.reason}
           </p>
         ))}
         <label className="pop-row">
-          <span>Exaggeration</span>
+          <span>{tr('section.exaggeration')}</span>
           <input
             type="range"
             min={1}
             max={20}
             step={1}
             value={s.exaggeration}
-            aria-label="Vertical exaggeration"
+            aria-label={tr('section.exaggerationLabel')}
             data-testid="section-exaggeration"
             onChange={(e) => {
               setExaggeration(Number(e.target.value));
             }}
           />
-          <span className="mono">{`${String(s.exaggeration)}:1`}</span>
+          <span className="mono">
+            {tr('section.exaggerationValue', { n: String(s.exaggeration) })}
+          </span>
         </label>
         <label className="pop-row">
           <span className="pop-grow">Enable cutaway</span>
@@ -244,20 +295,20 @@ export function SectionBody({ big = false }: { big?: boolean }) {
             addable={addable}
             onToggle={toggleShown}
             onAdd={(key) => {
-              const c = s.choices.find((x) => x.key === key);
+              const c = choices.find((x) => x.key === key);
               if (c) addSurface(c.ref);
             }}
             onRemove={removeSurface}
             testId="section-chips"
           />
-          <ShadeVs targets={shadeTargets} value={s.shadeVs} onChange={setShadeVs} />
+          <ShadeVs targets={targets} value={s.shadeVs} onChange={setShadeVs} />
         </div>
         {s.error && (
           <p className="notice danger small" role="alert">
             <Icon name="warn" size={14} /> {s.error}
           </p>
         )}
-        {s.result && visible.length ? (
+        {result && visible.length ? (
           <ProfileChart
             series={visible}
             shadeVs={s.shadeVs}
@@ -276,15 +327,15 @@ export function SectionBody({ big = false }: { big?: boolean }) {
         ) : (
           <p className="small faint sec-empty">
             {s.busy
-              ? 'Sampling the surfaces…'
-              : s.selected.length
-                ? 'Switch a surface on to draw it.'
-                : 'Add a survey or design to draw the section.'}
+              ? tr('section.sampling')
+              : selected.length
+                ? tr('section.switchOn')
+                : tr('section.addSurface')}
           </p>
         )}
         <p className="small faint">
-          {s.result
-            ? `${d(s.result.length)} long, sampled every ${d(s.result.stepM)}. Click the chart to pin a chainage.`
+          {result
+            ? `${d(result.length)} long, sampled every ${d(result.stepM)}. Click the chart to pin a chainage.`
             : ''}
         </p>
       </div>
@@ -327,7 +378,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
                       {v.delta === null || isRef ? '' : `Δ ${signed(v.delta)}`}
                     </td>
                     <td className="mono small" data-testid="section-pin-grade">
-                      {gradeText(v.grade)}
+                      {grade(v.grade)}
                     </td>
                   </tr>
                 );
@@ -338,13 +389,15 @@ export function SectionBody({ big = false }: { big?: boolean }) {
         {pins.length > 0 && (
           <p className="small faint">
             {s.shadeVs === null
-              ? 'Pick a surface under Shade vs to see each line’s difference from it.'
-              : `Δ from ${all.find((x) => x.key === s.shadeVs)?.label ?? ''}.`}
+              ? tr('section.pickShade')
+              : tr('section.deltaFrom', {
+                  name: all.find((x) => x.key === s.shadeVs)?.label ?? '',
+                })}
           </p>
         )}
-        {note && (
+        {s.exporting?.note && (
           <p className="small faint" data-testid="section-export-note" role="status">
-            {note}
+            {s.exporting.note}
           </p>
         )}
       </div>
@@ -352,7 +405,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
       {dxfOpen &&
         createPortal(
           <ExportFormatDialog
-            title="Export the cross-section"
+            title={tr('section.exportTitle')}
             choices={DXF_CHOICES}
             initial="dxf-2d-xz"
             onExport={(f) => {

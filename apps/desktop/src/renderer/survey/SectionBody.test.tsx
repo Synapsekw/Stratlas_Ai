@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import type { ProjectManifest } from '@aio/schema';
+import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./sectionEngine', () => ({
@@ -10,19 +12,38 @@ vi.mock('./sectionEngine', () => ({
     setSources: vi.fn(() => Promise.resolve()),
   }),
 }));
-vi.mock('../shell', () => ({ bridge: { call: vi.fn() } }));
+vi.mock('../shell', () => ({
+  bridge: { call: vi.fn() },
+  useShell: <T,>(pick: (s: { pkg: null }) => T) => pick({ pkg: null }),
+}));
+vi.mock('../shell/actions/measureActions', () => ({ measureEditBlocked: () => false }));
+vi.mock('./card/exportMeasurement', () => ({ exportMeasurement: vi.fn() }));
 const report = vi.hoisted(() => ({ addToReport: vi.fn(() => Promise.resolve('added')) }));
 vi.mock('../report/templateStore', () => report);
 
 const { SectionBody } = await import('./SectionBody');
 const { sectionStore } = await import('./sectionStore');
+const { measureStore } = await import('./measureStore');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | undefined;
 let host: HTMLDivElement;
 
+const manifest: ProjectManifest = {
+  schema: 'aio.project/1',
+  id: 'p',
+  name: 'P',
+  crs: { epsg: 32640 },
+  origin: [0, 0, 0],
+  captures: [],
+  layers: [],
+  severityModels: [],
+  classCatalogues: [],
+};
+
 beforeEach(() => {
+  workspace.getState().openProject({ id: 'p', root: 'E:/p', manifest });
   host = document.createElement('div');
   document.body.append(host);
   sectionStore.setState({
@@ -111,5 +132,54 @@ describe('the section body on the profile chart', () => {
       await Promise.resolve();
     });
     expect(report.addToReport).toHaveBeenCalledWith('m1');
+  });
+
+  it('pin deltas follow the site units, in feet', () => {
+    const settings = measureStore.getState().settings;
+    measureStore.setState({
+      settings: { ...settings, units: { ...settings.units, distance: 'ft' } },
+    });
+    sectionStore.setState({
+      choices: [
+        {
+          key: 'survey:a',
+          ref: { kind: 'survey', surface: 'a' },
+          label: 'Survey A',
+          kind: 'survey',
+        },
+        {
+          key: 'design:d/p',
+          ref: { kind: 'design', design: 'd', layer: 'p' },
+          label: 'Pad',
+          kind: 'design',
+        },
+      ],
+      selected: ['survey:a', 'design:d/p'],
+      shadeVs: 'design:d/p',
+      pins: [
+        {
+          chainage: 5,
+          e: 5,
+          n: 0,
+          reference: 1,
+          values: [
+            { key: 'survey:a', label: 'Survey A', z: 2, delta: 0.3048, grade: null },
+            { key: 'design:d/p', label: 'Pad', z: 1.6952, delta: 0, grade: null },
+          ],
+        },
+      ],
+    });
+    try {
+      mount();
+      const deltas = Array.from(host.querySelectorAll('[data-testid="section-pin-delta"]')).map(
+        (x) => x.textContent,
+      );
+      // 0.3048 m is one foot, in the site distance precision
+      expect(deltas[0]).toBe('Δ +1.000 ft');
+      // the shade target's own row has no delta
+      expect(deltas[1]).toBe('');
+    } finally {
+      measureStore.setState({ settings });
+    }
   });
 });

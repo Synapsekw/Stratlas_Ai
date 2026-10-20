@@ -84,6 +84,33 @@ describe('chart model', () => {
     expect(orderSeries(all).map((s) => s.key)).toEqual(['b', 'd', 'e', 'c']);
   });
 
+  it('same-date is the current colour, finer and dashed, outside the age ramp', () => {
+    const all = [
+      mk('c', 'current', [1, 2], '2026-03-01'),
+      mk('t', 'same-date', [1, 2], '2026-03-01'),
+      mk('e', 'earlier', [1, 2], '2026-01-01'),
+      mk('f', 'earlier', [1, 2], '2026-02-01'),
+    ];
+    expect(seriesStyle(at(all, 1), all)).toEqual({
+      stroke: 'var(--chart-current)',
+      dash: '3 2',
+      width: 1.5,
+      opacity: 1,
+    });
+    // the earlier ramp counts the earlier dates only
+    expect(seriesStyle(at(all, 2), all).opacity).toBeCloseTo(0.35);
+    expect(seriesStyle(at(all, 3), all).opacity).toBeCloseTo(0.9);
+    expect(orderSeries([...all].reverse()).map((s) => s.key)).toEqual(['e', 'f', 't', 'c']);
+  });
+
+  it('same-date is a shade target and never the current', () => {
+    const vis = [mk('t', 'same-date', [10, 10]), mk('c', 'current', [12, 14])];
+    expect(shadeTargets(vis)).toEqual([{ key: 't', label: 't' }]);
+    const r = hoverAt(vis, 0, 't');
+    expect(r.deltaM).toBeCloseTo(2);
+    expect(r.grade?.ratio).toBeCloseTo(0.2);
+  });
+
   it('shadeTargets lists only visible non-current series', () => {
     const vis = [
       mk('c', 'current', [1, 2]),

@@ -1,4 +1,5 @@
-import type { ProjectManifest } from '@aio/schema';
+import type { HeightTiles, ProjectManifest } from '@aio/schema';
+import { workspace } from '@aio/workspace';
 import type { Pin } from '@aio/survey';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SectionResult } from './sectionEngine';
@@ -10,11 +11,15 @@ const engine = vi.hoisted(() => ({
   setSources: vi.fn(() => Promise.resolve()),
 }));
 vi.mock('./sectionEngine', () => ({ sectionEngine: () => engine }));
-vi.mock('../shell', () => ({ bridge: { call: vi.fn() } }));
+const call = vi.hoisted(() => vi.fn());
+vi.mock('../shell', () => ({ bridge: { call } }));
 
 const {
   addSurface,
   currentKey,
+  exportSection,
+  kindOf,
+  loadSectionSources,
   openSection,
   removeSurface,
   sectionSeries,
@@ -200,5 +205,114 @@ describe('section store on the profile chart', () => {
     await vi.waitFor(() => {
       expect(sectionStore.getState().pins[0]?.reference).toBe(1);
     });
+  });
+  it('another surface of the current survey is same-date, and the DSM is current', () => {
+    const jun = (id: string, surface: 'dsm' | 'dtm' | 'cloud', edited = false): SectionChoice => ({
+      key: `survey:${id}`,
+      ref: { kind: 'survey', surface: id },
+      label: id,
+      kind: 'survey',
+      capture: 'jun',
+      date: '2026-06-01',
+      surface,
+      ...(edited ? { edited } : {}),
+    });
+    // listed cloud, DTM, edited DSM, DSM: the DSM is current whatever the order
+    const list = [jun('cl', 'cloud'), jun('t', 'dtm'), jun('ed', 'dsm', true), jun('s', 'dsm')];
+    expect(currentKey(list, null, manifest)).toBe('survey:s');
+    expect(currentKey(list.slice(0, 3), null, manifest)).toBe('survey:ed');
+    expect(currentKey(list.slice(0, 2), null, manifest)).toBe('survey:t');
+    const current = list[3] ?? null;
+    expect(list.map((c) => kindOf(c, current))).toEqual([
+      'same-date',
+      'same-date',
+      'same-date',
+      'current',
+    ]);
+    const jan = CHOICES[2];
+    const design = CHOICES[0];
+    if (!jan || !design) throw new Error('fixture');
+    expect(kindOf(jan, current)).toBe('earlier');
+    expect(kindOf(design, current)).toBe('design');
+  });
+
+  it('switching the current chip off clears shadeVs', () => {
+    sectionStore.setState({
+      choices: CHOICES,
+      selected: ['survey:jun-dsm', 'survey:jan-dsm'],
+      hidden: [],
+      shadeVs: 'survey:jan-dsm',
+      source: { kind: 'measurement', id: 'm', label: 'M' },
+    });
+    workspace.getState().openProject({ id: 'p', root: 'E:/p', manifest });
+    toggleShown('survey:jun-dsm');
+    expect(sectionStore.getState().shadeVs).toBeNull();
+    expect(sectionStore.getState().hidden).toEqual(['survey:jun-dsm']);
+  });
+
+  it('on first load only the current survey is on the chart', async () => {
+    workspace.getState().openProject({ id: 'p', root: 'E:/p', manifest });
+    const tiles = (id: string, capture: string, kind: 'dsm' | 'dtm') =>
+      ({ id, name: id, capture, source: { kind, layer: id } }) as unknown as HeightTiles;
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'survey:surfaces'
+          ? {
+              ok: true,
+              value: {
+                ok: true,
+                surfaces: [
+                  tiles('jun-dtm', 'jun', 'dtm'),
+                  tiles('jan-dsm', 'jan', 'dsm'),
+                  tiles('jun-dsm', 'jun', 'dsm'),
+                ],
+              },
+            }
+          : { ok: true, value: { ok: true, file: { designs: [] } } },
+      ),
+    );
+    sectionStore.setState({ projectId: null });
+    await loadSectionSources('p');
+    const s = sectionStore.getState();
+    expect(s.choices.map((c) => c.key)).toEqual([
+      'survey:jun-dtm',
+      'survey:jan-dsm',
+      'survey:jun-dsm',
+    ]);
+    expect(s.selected).toEqual(['survey:jun-dsm']);
+    expect(s.hidden).toEqual([]);
+    // two surfaces on one date say which they are
+    expect(s.choices[0]?.label).toMatch(/DTM$/);
+  });
+
+  it('the DXF holds only the surfaces drawn', async () => {
+    workspace.getState().openProject({ id: 'p', root: 'E:/p', manifest });
+    sectionStore.setState({
+      choices: CHOICES,
+      selected: ['design:d/pad', 'survey:jun-dsm', 'survey:jan-dsm'],
+      hidden: ['survey:jan-dsm'],
+      source: { kind: 'measurement', id: 'm', label: 'Section (a)' },
+      line: [
+        [0, 0],
+        [10, 0],
+      ],
+    });
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'dialog:savePath'
+          ? { ok: true, value: { path: 'C:/out/x.dxf' } }
+          : { ok: false, error: 'stop here' },
+      ),
+    );
+    await exportSection('dxf-2d-xz');
+    const save = call.mock.calls.find((c) => c[0] === 'dialog:savePath') as
+      [string, { defaultName: string }] | undefined;
+    expect(save?.[1].defaultName).toBe('Section-(a)-dxf-2d-xz.dxf');
+    const start = call.mock.calls.find((c) => c[0] === 'jobs:start') as
+      [string, { params: { surfaces: unknown[] } }] | undefined;
+    expect(start?.[1].params.surfaces).toEqual([
+      { kind: 'design', design: 'd', layer: 'pad' },
+      { kind: 'survey', surface: 'jun-dsm' },
+    ]);
   });
 });

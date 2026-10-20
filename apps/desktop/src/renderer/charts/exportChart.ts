@@ -182,6 +182,61 @@ export function seriesCsv(
   return `${out.join('\n')}\n`;
 }
 
+/** Decimals of a section CSV's E and N: a fixed survey precision, in the display length unit. */
+const SECTION_EN_DECIMALS = 3;
+
+/**
+ * A cross-section as CSV: chainage, E and N of every station, then one column per surface, in
+ * the site distance unit (E and N always to 3 decimals). Every header names its unit; a surface
+ * with no ground at a station leaves the cell empty.
+ */
+export function sectionCsv(
+  stations: { chainage: readonly number[]; e: readonly number[]; n: readonly number[] },
+  series: readonly ChartSeries[],
+  units: SurveyUnits,
+  precision: SurveyPrecision,
+): string {
+  const unit = unitLabel(units.distance);
+  const at = (si: number, decimals: number) =>
+    fromSI(si, 'distance', units.distance).toFixed(decimals);
+  const byKey = series.map((s) => {
+    const m = new Map<string, number | null>();
+    const n = Math.min(s.chainage.length, s.z.length);
+    for (let i = 0; i < n; i++) {
+      const z = s.z[i];
+      m.set(rowKey(s.chainage[i] ?? 0), z != null && Number.isFinite(z) ? z : null);
+    }
+    return m;
+  });
+  const out = [
+    [
+      `${t('chart.chainage')} (${unit})`,
+      `${t('section.easting')} (${unit})`,
+      `${t('section.northing')} (${unit})`,
+      ...series.map((s) => `${s.label} (${unit})`),
+    ]
+      .map(cell)
+      .join(','),
+  ];
+  const count = Math.min(stations.chainage.length, stations.e.length, stations.n.length);
+  for (let i = 0; i < count; i++) {
+    const c = stations.chainage[i] ?? 0;
+    const k = rowKey(c);
+    out.push(
+      [
+        at(c, precision.distance),
+        at(stations.e[i] ?? 0, SECTION_EN_DECIMALS),
+        at(stations.n[i] ?? 0, SECTION_EN_DECIMALS),
+        ...byKey.map((m) => {
+          const z = m.get(k);
+          return z == null ? '' : at(z, precision.distance);
+        }),
+      ].join(','),
+    );
+  }
+  return `${out.join('\n')}\n`;
+}
+
 /**
  * Ask where, then write the image there. Answers the path, or null when the person cancels;
  * throws a sentence when the file could not be written.

@@ -292,11 +292,7 @@
     "zIndex": 2
   },
   "apps/desktop/src/renderer/survey/section.css": {
-    "colour": 2,
     "zIndex": 2
-  },
-  "apps/desktop/src/renderer/survey/SectionBody.tsx": {
-    "title": 1
   },
   "apps/desktop/src/renderer/survey/SiteSettings.tsx": {
     "title": 3
