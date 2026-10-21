@@ -23,15 +23,16 @@ export function WebsiteUpdatesPanel() {
   const busy = useWebsiteUpdates((state) => state.busy);
   const actionError = useWebsiteUpdates((state) => state.error);
   const offline = useShell((state) => state.settings.offlineOnly === true);
-  const enabled = useShell((state) => state.settings.websiteAutoUpdate);
+  const enabled = useShell((state) => state.settings.websiteAutoUpdate !== false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const working = busy || signingIn || s?.phase === 'applying';
   const transferring =
     s?.phase === 'checking' || s?.phase === 'downloading' || s?.phase === 'verifying';
-  const blocked = offline || working;
+  const working =
+    (busy && !transferring) || (signingIn && !s?.accountEmail) || s?.phase === 'applying';
+  const blocked = offline || !enabled || working;
   const signIn = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (blocked || !email.trim() || !password) return;

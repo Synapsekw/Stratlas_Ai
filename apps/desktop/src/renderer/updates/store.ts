@@ -14,6 +14,8 @@ export function createWebsiteUpdateStore(
   bridge: Bridge,
   listen?: (listener: (status: WebsiteUpdateStatus) => void) => () => void,
 ) {
+  let commandId = 0;
+  let revision = 0;
   return createStore<WebsiteUpdates>()((set, get) => ({
     status: null,
     error: null,
@@ -24,6 +26,7 @@ export function createWebsiteUpdateStore(
       const stop = listen?.((status) => {
         if (!live) return;
         eventReceived = true;
+        revision++;
         set({ status, error: null });
       });
       void bridge.call('websiteUpdate:status', {}).then((r) => {
@@ -37,16 +40,22 @@ export function createWebsiteUpdateStore(
       };
     },
     command: async (command) => {
-      if (get().busy) return;
+      if (get().busy && command !== 'signOut') return;
+      const id = ++commandId;
+      const startedAt = revision;
       set({ busy: true, error: null });
       const r = await bridge.call(`websiteUpdate:${command}`, {});
+      if (id !== commandId) return;
       set({
         busy: false,
-        error: !r.ok
-          ? r.error
-          : r.value.ok
+        error:
+          command === 'check' && startedAt !== revision
             ? null
-            : (r.value.error ?? 'The update action could not finish. Try again.'),
+            : !r.ok
+              ? r.error
+              : r.value.ok
+                ? null
+                : (r.value.error ?? 'The update action could not finish. Try again.'),
       });
     },
   }));

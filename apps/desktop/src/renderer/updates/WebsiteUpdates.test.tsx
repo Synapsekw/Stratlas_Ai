@@ -60,6 +60,18 @@ async function fill(selector: string, value: string) {
   });
 }
 describe('website updates interface', () => {
+  it('keeps sign-out and the automatic switch available during a background transfer', async () => {
+    websiteUpdates.setState({
+      busy: true,
+      status: { ...status, accountEmail: 'engineer@example.test', phase: 'downloading' },
+    });
+    await render();
+    expect(host.querySelector<HTMLButtonElement>('[role=switch]')?.disabled).toBe(false);
+    expect(
+      [...host.querySelectorAll('button')].find((button) => button.textContent === 'Sign out')
+        ?.disabled,
+    ).toBe(false);
+  });
   it('clears the sign-in password after a failed request and shows recovery guidance', async () => {
     vi.spyOn(bridge, 'call').mockResolvedValue({
       ok: true,

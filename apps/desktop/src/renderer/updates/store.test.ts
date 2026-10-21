@@ -18,11 +18,29 @@ const idle: WebsiteUpdateStatus = {
 };
 
 describe('website update status session', () => {
+  it('allows sign-out to supersede an in-flight check without a stale error', async () => {
+    let finish: ((value: unknown) => void) | undefined;
+    const bridge = {
+      call: (channel: string) =>
+        channel === 'websiteUpdate:check'
+          ? new Promise<unknown>((resolve) => {
+              finish = resolve;
+            })
+          : Promise.resolve({ ok: true, value: { ok: true } }),
+    } as Bridge;
+    const store = createWebsiteUpdateStore(bridge);
+    const pending = store.getState().command('check');
+    await store.getState().command('signOut');
+    expect(store.getState().busy).toBe(false);
+    finish?.({ ok: false, error: 'Cancelled check' });
+    await pending;
+    expect(store.getState().error).toBeNull();
+  });
   it('keeps live download progress when the initial snapshot arrives late', async () => {
     let answer: ((value: unknown) => void) | undefined;
     const bridge = {
       call: () =>
-        new Promise((resolve) => {
+        new Promise<unknown>((resolve) => {
           answer = resolve;
         }),
     } as Bridge;
