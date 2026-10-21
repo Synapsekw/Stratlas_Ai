@@ -372,9 +372,11 @@ def test_three_quaternion_of_a_nadir_camera_looks_down():
     assert np.allclose(M @ [0, 1, 0], [0, 0, -1], atol=1e-9)
 
 
-def _layer_run(odm, project, poses, origin, datum=None, exif=()):
+def _layer_run(odm, project, poses, origin, datum=None, exif=(), exif_pos=None, orientation=None):
     """A photos layer of review copies (no EXIF) at ``poses``, plus photos with their own GPS
-    (``exif``: synthetic_jpeg keyword sets), run through photo.align; geo.txt rows by photo id."""
+    (``exif``: synthetic_jpeg keyword sets; ``exif_pos`` their layer poses), run through
+    photo.align with ``orientation`` as the project's orientation.json photo corrections; geo.txt
+    rows by photo id."""
     from PIL import Image as PILImage
 
     items = []
@@ -395,7 +397,11 @@ def _layer_run(odm, project, poses, origin, datum=None, exif=()):
     for k, kw in enumerate(exif):
         synthetic_jpeg(project / "photos" / f"e{k}.jpg", **kw)
         # the layer has a pose for these too: the photo's own GPS wins
-        items.append({"id": f"e{k}", "src": {"path": f"photos/e{k}.jpg"}, "pos": [0.0, 999.0, 0.0]})
+        pos = exif_pos[k] if exif_pos else [0.0, 999.0, 0.0]
+        items.append({"id": f"e{k}", "src": {"path": f"photos/e{k}.jpg"}, "pos": pos})
+    if orientation is not None:
+        doc = {"schema": "aio.orientation/1", "clips": {}, "photos": {"photos": orientation}}
+        (project / "orientation.json").write_text(json.dumps(doc), "utf-8")
     manifest = {
         "schema": "aio.project/1",
         "crs": {"epsg": 32639},
@@ -451,6 +457,25 @@ def test_a_mixed_layer_keeps_each_photos_own_height_rule(odm, project):
     for k in range(3):
         assert rows[f"e{k}"][1] == pytest.approx(SITE_LAT + k * 1e-4, abs=1e-6)
         assert rows[f"e{k}"][2] == pytest.approx(90.0 + k - 31.5, abs=1e-3)
+
+
+def test_a_corrected_gps_photo_goes_to_odm_at_its_corrected_place(odm, project):
+    """Edit position: a GPS photo with an offsetM in orientation.json is sent to ODM (geo.txt) at
+    its imported pose plus the offset, not at its EXIF GPS; the others keep their own GPS."""
+    from pyproj import Transformer
+
+    origin = [245884.9, 3179597.1, 12.5]
+    exif = [{"lat": SITE_LAT + k * 1e-4, "lon": SITE_LON, "alt": 90.0} for k in range(3)]
+    to_grid = Transformer.from_crs(4326, 32639, always_xy=True)
+    exif_pos = []
+    for kw in exif:
+        e, n = to_grid.transform(kw["lon"], kw["lat"])
+        exif_pos.append([e - origin[0], 90.0 - origin[2], origin[1] - n])
+    moved = {"e1": {"yawDeg": 0, "pitchDeg": 0, "rollDeg": 0, "offsetM": [0, -100, 0]}}
+    rows, _ = _layer_run(odm, project, [], origin, None, exif, exif_pos, moved)
+    assert rows["e1"][1] == pytest.approx(SITE_LAT + 1e-4, abs=1e-7)
+    assert rows["e1"][2] == pytest.approx(90.0 - 100, abs=1e-3)
+    assert rows["e0"][2] == pytest.approx(90.0, abs=1e-3) and rows["e2"][2] == pytest.approx(90.0, abs=1e-3)
 
 
 def test_rtk_photos_in_a_layer_leave_the_layer_heights_unconverted(odm, project, monkeypatch):

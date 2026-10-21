@@ -67,6 +67,7 @@ from . import accuracy as A
 from . import bundle as B
 from . import crs as C
 from . import gcp as G
+from .corrections import corrected_pos, placed_by_hand, read_offsets
 from .exif import PhotoMeta, apply_ppk, inspect_photos, list_folder_photos, read_photo, read_ppk
 from .model import SparseModel, rotmat_to_qvec
 from .odm import flags as OF
@@ -207,7 +208,9 @@ def staged(name: str, fn):
 
 
 def photo_list(ctx: StepContext, params: dict[str, Any]) -> tuple[list[tuple[str, Path]], dict[str, Any]]:
-    """``(key, path)`` of the run's photos, and per-key extras from a photos layer (its poses)."""
+    """``(key, path)`` of the run's photos, and per-key extras from a photos layer: its records with
+    ``pos`` corrected by orientation.json (``corrections``) and ``placed_by_hand`` set when the place
+    is a hand placement (moved or pinned)."""
     src = params["photos"]
     if "folders" in src:
         folders = [Path(f) if Path(f).is_absolute() else ctx.project / f for f in src["folders"]]
@@ -216,6 +219,7 @@ def photo_list(ctx: StepContext, params: dict[str, Any]) -> tuple[list[tuple[str
     layer = next((ly for ly in manifest.get("layers", []) if ly.get("id") == src["layer"]), None)
     if layer is None or layer.get("kind") != "photos":
         raise JobError(f'The project has no photos layer "{src["layer"]}".')
+    offsets = read_offsets(ctx.project, lambda msg: ctx.log(msg, "warn"))
     out, extra = [], {}
     for item in layer.get("items") or []:
         ref = item.get("src") or {}
@@ -225,15 +229,19 @@ def photo_list(ctx: StepContext, params: dict[str, Any]) -> tuple[list[tuple[str
         path = safe_project_path(ctx.project, rel)
         key = str(item.get("id") or rel)
         out.append((key, path))
-        extra[key] = item
+        off = offsets.get((str(src["layer"]), str(item.get("id"))))
+        pos = corrected_pos(item, off)
+        extra[key] = {**item, **({"pos": pos} if pos else {}), "placed_by_hand": placed_by_hand(item, off)}
     if not out:
         raise JobError("The photos layer has no photos.")
     return out, extra
 
 
 def layer_meta(meta: PhotoMeta, item: dict[str, Any], manifest: dict[str, Any]) -> None:
-    """A review copy without EXIF: position from the layer's pose, field of view from its lens."""
-    if not meta.has_gps and item.get("pos") and manifest.get("crs") and manifest.get("origin"):
+    """Position from the layer's (corrected) pose for a review copy without EXIF GPS or a photo
+    placed by hand (Edit position, a pin); field of view from the layer's lens."""
+    by_layer = not meta.has_gps or item.get("placed_by_hand")
+    if by_layer and item.get("pos") and manifest.get("crs") and manifest.get("origin"):
         o = manifest["origin"]
         x, y, z = item["pos"]
         lon, lat = C.crs_to_geodetic(C.crs_of(manifest["crs"]), [o[0] + x], [o[1] - z])

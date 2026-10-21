@@ -19,7 +19,9 @@ PROTOCOL = "aio.pipelines/1"
 # area-scoped change jobs (optional params an older app never sends) and keeps that floor, as does
 # pack 0.19.0 (live ODM progress in optional progress fields an older app ignores),
 # the first that reads aio.procmodel/2, which drawing.import and model.fit_cloud write, and
-# pack 0.20.0 (survey.series, a library module for volume over time that no job calls yet)).
+# pack 0.20.0 (survey.series, a library module for volume over time that no job calls yet) and
+# pack 0.21.0 (photo.align reads orientation.json offsets and pins; an older app's projects
+# read the same)).
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).
 APP_RANGE = ">=0.22.0 <2.0.0"
