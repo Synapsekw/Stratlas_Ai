@@ -43,6 +43,7 @@ Volumes and measurements had grown as separate looks and engines. Wave 1 makes t
 - Waves 2 and 3: PPK from raw files, the geoid, the ± on volumes, repeat reports, AI pile detection on real piles.
 - Founder review of ADR 0013 and the contract rows; a real-job validation run.
 - A BVH for terrain meshes (slow terrain area without prepared surfaces); template section entries (W8).
+- A pile detached from the kit (no longer linked) shows no kit tonnes; pick a site material for it.
 - Follow-ups from the landing review: the Reports screen does not offer the Volume over time toggle when the report works the dates out itself; the house report still runs the earthworks, landfill and section engines when those sections are off; elevation history for typed coordinates in read-only projects; a kit-project report e2e asserting the carried totals; a kit's swell factor is not carried into the kit material (it was never shown before); a road line is saved at one height, the mean surface height under it (its card reads the terrain length from the surface).
 - Lands via the stage-island train for 0.25.0, after the measure-dates branch. `pnpm check`, the Python suite and about 25 CI-like e2e specs (5 new) were green.
 

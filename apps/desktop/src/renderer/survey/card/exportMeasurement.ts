@@ -92,6 +92,8 @@ async function csvOf(m: SurveyMeasurement): Promise<string> {
       surfaces: cs.surfaces,
       templates: surveyTemplateList(ms.templates.project, ms.settings),
       weighbridge: [],
+      // a kit pile weighs by the kit's density, as on its card (`pileMaterial`)
+      kit: ms.kitDensity,
     },
     bytes,
     { need: 'measurements-csv' },

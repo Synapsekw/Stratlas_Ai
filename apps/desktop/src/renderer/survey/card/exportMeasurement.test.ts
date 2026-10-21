@@ -93,6 +93,23 @@ describe('export one measurement', () => {
     expect(csv).not.toContain(',line,');
   });
 
+  it("a kit pile's CSV carries the kit's material, as the card weighs it", async () => {
+    measureStore.setState({
+      file: {
+        ...emptyMeasurements(),
+        measurements: [{ ...m('pile', 'volume'), origin: { kind: 'kit-pile', pile: 'P01' } }],
+      },
+      kitDensity: { densityTPerM3: 1.6, names: { P01: 'Sand' } },
+    });
+    await exportMeasurement('pile', 'csv');
+    const csv = String(calls.find((c) => c.channel === 'dialog:saveFile')?.req.data);
+    const rows = csv.trim().split('\n').slice(1);
+    expect(rows.length).toBeGreaterThan(0);
+    // the measurement CSV's material column (the stockpile CSV has the density and tonnes)
+    for (const row of rows) expect(row).toMatch(/^M1,pile,Name pile,,,volume,[^,]*,Sand,/);
+    measureStore.setState({ kitDensity: null });
+  });
+
   it('exports DXF through the survey export, for that measurement alone', async () => {
     expect(await exportMeasurement('line', 'dxf')).toBe('C:/out/line.dxf');
     const start = calls.find((c) => c.channel === 'jobs:start');
