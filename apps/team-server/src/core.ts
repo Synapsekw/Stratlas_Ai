@@ -9,7 +9,14 @@
  * journal does not list for that actor (and that no valid certificate vouches for) gets nothing
  * of the journal's role, and its ops do not verify as that actor's.
  */
-import { checkOp, compareHlc, parseHlc, verifyCert, verifySignature } from '@aio/journal';
+import {
+  checkOp,
+  compareHlc,
+  parseHlc,
+  pinFromGenesis,
+  verifyCert,
+  verifySignature,
+} from '@aio/journal';
 import {
   CLOCK_AHEAD_HOLD_MS,
   EnrolRequest,
@@ -24,12 +31,13 @@ import {
   type Receipt,
   type RefusalCode,
   type Role,
+  type TeamGenesis,
   type TeamProject,
 } from '@aio/schema';
 import { checkDeviceRecord, inviteHash, serverCert } from './auth/enrol';
 import type { ServerIdentity } from './identity';
 import { makeReceipt } from './receipts';
-import { clientMaySend, permissionFor, TeamState } from './roles';
+import { ProjectTeam, REFUSAL_CODES } from './team';
 import { decodeSince, encodeCursor, sinceFor } from './since';
 import type { EnrolledDevice, Store } from './store/store';
 
@@ -89,7 +97,7 @@ const grant = (d: EnrolledDevice, projectId: string | null): Role | null =>
  */
 export function bindingHolds(
   d: EnrolledDevice,
-  t: TeamState,
+  t: ProjectTeam,
   devices: Devices,
   depth = 0,
 ): boolean {
@@ -107,7 +115,12 @@ export function bindingHolds(
 }
 
 /** The role a device has in a project now (null: none): revocations, binding, journal, invite. */
-function roleIn(t: TeamState, d: EnrolledDevice, projectId: string, devices: Devices): Role | null {
+function roleIn(
+  t: ProjectTeam,
+  d: EnrolledDevice,
+  projectId: string,
+  devices: Devices,
+): Role | null {
   if (d.revokedAt !== null || t.revokedAt(d.device) !== null) return null;
   if (!bindingHolds(d, t, devices)) return null;
   return t.inJournal(d.actor) ? t.roleNow(d.actor) : grant(d, projectId);
@@ -117,19 +130,48 @@ export function createCore(options: CoreOptions) {
   const { store, identity } = options;
   const now = options.now ?? (() => new Date());
   const exclusive = mutex();
-  const teams = new Map<string, TeamState>();
+  const teams = new Map<string, ProjectTeam>();
 
-  async function team(projectId: string): Promise<TeamState> {
+  /**
+   * Pin the genesis once the project has a team (on the server: the first history its owner
+   * pushed, trust on first use), so no op dated earlier can make itself the first owner later.
+   */
+  async function pinIfShared(projectId: string, t: ProjectTeam): Promise<void> {
+    if (t.pin || !t.shared) return;
+    const raws: Record<string, unknown>[] = [];
+    for await (const op of store.allOps(projectId)) raws.push(op);
+    const pin = t.genesisPin(raws);
+    const first = pin ? raws.find((r) => r.id === pin.op) : undefined;
+    const dev = typeof first?.dev === 'string' ? first.dev : null;
+    const device = dev ? t.deviceKey(dev) : null;
+    if (!pin || !dev || !device) return;
+    const genesis: TeamGenesis = {
+      op: pin.op,
+      device: dev,
+      key: device.key,
+      at: pin.at,
+      heads: { ...pin.heads },
+    };
+    await store.setProjectGenesis(projectId, genesis);
+    t.setPin(pin);
+  }
+
+  async function team(projectId: string): Promise<ProjectTeam> {
     let t = teams.get(projectId);
     if (t) return t;
-    t = new TeamState();
-    for await (const op of store.allOps(projectId)) t.apply(op);
+    const genesis = (await store.project(projectId))?.genesis;
+    t = new ProjectTeam(genesis ? pinFromGenesis(genesis) : null);
+    const ops: Op[] = [];
+    for await (const op of store.allOps(projectId)) ops.push(op);
+    t.add(ops);
     teams.set(projectId, t);
+    // a project stored before the server pinned genesis is pinned now
+    await pinIfShared(projectId, t);
     return t;
   }
 
-  async function allTeams(): Promise<{ projectId: string; t: TeamState }[]> {
-    const out: { projectId: string; t: TeamState }[] = [];
+  async function allTeams(): Promise<{ projectId: string; t: ProjectTeam }[]> {
+    const out: { projectId: string; t: ProjectTeam }[] = [];
     for (const p of await store.projects())
       out.push({ projectId: p.teamProjectId, t: await team(p.teamProjectId) });
     return out;
@@ -184,7 +226,7 @@ export function createCore(options: CoreOptions) {
   function certifiedBy(
     record: DeviceRecord,
     enrolled: readonly EnrolledDevice[],
-    states: readonly { t: TeamState }[],
+    states: readonly { t: ProjectTeam }[],
   ): { actor: string; device: string } | null {
     const devices = new Map(enrolled.map((e) => [e.device, e]));
     const at = now().toISOString();
@@ -341,9 +383,11 @@ export function createCore(options: CoreOptions) {
           .filter((e) => e.revokedAt === null && bindingHolds(e, t, devices))
           .map((e) => e.device),
       );
-      const fromJournal = t.members(({ devices: ds, certified }) =>
-        ds.some((x) => here.has(x)) ? 'server' : certified ? 'owner' : 'self',
-      );
+      const fromJournal = t
+        .members()
+        .map((m) =>
+          m.devices.some((x) => here.has(x.id)) ? { ...m, verification: 'server' as const } : m,
+        );
       const named = new Set(fromJournal.map((m) => m.actor));
       const granted = new Map<string, Member>();
       for (const e of enrolled) {
@@ -369,12 +413,13 @@ export function createCore(options: CoreOptions) {
     },
 
     /**
-     * Check and store pushed ops: schema, hash, chain (seq, link and a clock that moves forward),
-     * signature, revocation, membership and role. The role must allow the op at its own clock
-     * reading and also as the server knows the team now: an op that reaches the server after a
-     * demotion, a removal or a stricter policy cannot be dated back to before it, and no new op of
-     * a revoked device is taken. Accepted ops are countersigned. `forbidden` is set when nothing
-     * was accepted and something was refused for role, membership or revocation (HTTP 403).
+     * Check and store pushed ops. The server checks what only it can: schema, hash, chain (seq,
+     * link and a clock that moves forward), a clock more than a day ahead, a key the project or an
+     * accepted enrolment gives the device, and devices revoked on this server. Membership, roles,
+     * journal revocations and the genesis are then judged with the journal's own team logic on the
+     * stored and the pushed ops together, so the server's verdict is the one every app reaches on
+     * the same ops. Accepted ops are countersigned. `forbidden` is set when nothing was accepted
+     * and something was refused for role, membership or revocation (HTTP 403).
      */
     async push(
       d: EnrolledDevice,
@@ -433,12 +478,13 @@ export function createCore(options: CoreOptions) {
             createdAt: now().toISOString(),
             createdBy: d.actor,
           };
-          // the creator owns the history written before sharing
-          t.applyTeam(share.op);
         }
+        const forget = async () => {
+          if (!(await store.project(projectId))) teams.delete(projectId);
+        };
         const pusherRole = roleIn(t, d, projectId, byDevice);
         if (pusherRole === null) {
-          if (!(await store.project(projectId))) teams.delete(projectId);
+          await forget();
           throw new ServerRefusal(
             403,
             'forbidden',
@@ -447,102 +493,136 @@ export function createCore(options: CoreOptions) {
               : 'You are not a member of this project.',
           );
         }
+        // until its owner has added the team, a project takes history only from that owner
+        const creator = project.createdBy;
+        if (!t.shared && !t.pin && d.actor !== creator) {
+          await forget();
+          throw new ServerRefusal(
+            403,
+            'forbidden',
+            'The owner who shared this project has not added the team yet.',
+          );
+        }
 
         const heads = new Map(Object.entries(await store.heads(projectId)));
+        const clocks = new Map<string, string>();
         const known = await store.hasOps(
           projectId,
           valid.map((v) => v.op.id),
         );
-        const accepted: Op[] = [];
+        const refusals = new Map<string, { code: RefusalCode; message: string }>();
+        const candidates: { op: Op; raw: Record<string, unknown> }[] = [];
         const seen = new Set<string>();
         const nowMs = now().getTime();
-        let roleRefusals = 0;
+
+        // what only the server checks, in clock order (a chain's ops come in seq order)
+        for (const { op, raw } of valid) {
+          if (known.has(op.id) || seen.has(op.id)) {
+            result.duplicates.push(op.id);
+            continue;
+          }
+          const no = (code: RefusalCode, message: string) => {
+            refusals.set(op.id, { code, message });
+          };
+          const check = checkOp(raw);
+          if (!check.id || check.payload === false) {
+            no('hash', 'The op does not match its hash.');
+            continue;
+          }
+          if (parseHlc(op.hlc).ms - nowMs > CLOCK_AHEAD_HOLD_MS) {
+            no('clock-ahead', 'The op was written by a clock more than a day ahead.');
+            continue;
+          }
+          const head = heads.get(op.chain);
+          const expected = (head?.seq ?? 0) + 1;
+          if (op.seq > expected) {
+            no('gap', `Ops ${expected} to ${op.seq - 1} of this chain are missing.`);
+            continue;
+          }
+          if (op.seq < expected || op.prev !== (head?.id ?? null)) {
+            no('chain', 'The op does not continue its chain (a fork or an edited history).');
+            continue;
+          }
+          const last = clocks.get(op.chain) ?? t.clockOf(op.chain);
+          if (last !== null && compareHlc(op.hlc, last) <= 0) {
+            no('chain', 'The op is dated before the op it follows in its chain.');
+            continue;
+          }
+          // the key: from the journal, else from an enrolment the project accepts
+          const listed = t.deviceKey(op.dev);
+          const author = byDevice.get(op.dev);
+          const key = listed
+            ? listed.actor === op.act
+              ? listed.key
+              : null
+            : author?.actor === op.act && bindingHolds(author, t, byDevice)
+              ? author.key
+              : null;
+          if (key === null) {
+            no('non-member', 'The device that wrote the op is not a member device.');
+            continue;
+          }
+          if (typeof op.sig !== 'string' || !verifySignature(key, 'aio.op/1', op.id, op.sig)) {
+            no('signature', 'The op signature does not verify.');
+            continue;
+          }
+          // revoked on this server by its admin: no new op of the device is taken
+          if ((author?.revokedAt ?? null) !== null) {
+            no('revoked', 'The device that wrote the op was revoked on this server.');
+            continue;
+          }
+          if (pusherRole === 'client' && op.act !== d.actor) {
+            no('role', 'A client sends only their own replies.');
+            continue;
+          }
+          if (!t.shared && !t.pin && op.kind === 'member.add' && op.act !== creator) {
+            no('non-member', 'Only the owner who shared this project adds its first members.');
+            continue;
+          }
+          heads.set(op.chain, { seq: op.seq, id: op.id });
+          clocks.set(op.chain, op.hlc);
+          seen.add(op.id);
+          candidates.push({ op, raw });
+        }
+
+        // the journal's verdict on the stored and pushed ops together; a refused op takes the
+        // rest of its chain with it (the server stores no gap), so judge again until it holds
+        let live = candidates;
+        for (;;) {
+          const { verdicts } = t.replay(live);
+          const out = new Set<string>();
+          const cut = new Map<string, number>();
+          for (const { op } of live) {
+            const v = verdicts.get(op.id);
+            if (v && !v.ok) {
+              refusals.set(op.id, { code: REFUSAL_CODES[v.code], message: v.reason });
+              out.add(op.id);
+              cut.set(op.chain, Math.min(cut.get(op.chain) ?? op.seq, op.seq));
+            }
+          }
+          if (out.size === 0) break;
+          for (const { op } of live) {
+            const from = cut.get(op.chain);
+            if (from !== undefined && op.seq > from && !out.has(op.id)) {
+              refusals.set(op.id, {
+                code: 'gap',
+                message: 'An earlier op of this chain was refused.',
+              });
+              out.add(op.id);
+            }
+          }
+          live = live.filter(({ op }) => !out.has(op.id));
+        }
+        for (const { op } of valid) {
+          const r = refusals.get(op.id);
+          if (r) result.refused.push(refuse(op.id, r.code, r.message));
+        }
+        const roleRefusals = [...refusals.values()].filter(
+          (r) => r.code === 'role' || r.code === 'non-member' || r.code === 'revoked',
+        ).length;
+        const accepted = live.map(({ raw }) => raw as Op);
 
         try {
-          for (const { op, raw } of valid) {
-            if (known.has(op.id) || seen.has(op.id)) {
-              result.duplicates.push(op.id);
-              continue;
-            }
-            const no = (code: RefusalCode, message: string) => {
-              if (code === 'role' || code === 'non-member' || code === 'revoked') roleRefusals++;
-              result.refused.push(refuse(op.id, code, message));
-            };
-            const check = checkOp(raw);
-            if (!check.id || check.payload === false) {
-              no('hash', 'The op does not match its hash.');
-              continue;
-            }
-            if (parseHlc(op.hlc).ms - nowMs > CLOCK_AHEAD_HOLD_MS) {
-              no('clock-ahead', 'The op was written by a clock more than a day ahead.');
-              continue;
-            }
-            const head = heads.get(op.chain);
-            const expected = (head?.seq ?? 0) + 1;
-            if (op.seq > expected) {
-              no('gap', `Ops ${expected} to ${op.seq - 1} of this chain are missing.`);
-              continue;
-            }
-            if (op.seq < expected || op.prev !== (head?.id ?? null)) {
-              no('chain', 'The op does not continue its chain (a fork or an edited history).');
-              continue;
-            }
-            const last = t.clockOf(op.chain);
-            if (last !== null && compareHlc(op.hlc, last) <= 0) {
-              no('chain', 'The op is dated before the op it follows in its chain.');
-              continue;
-            }
-            // the key: from the journal, else from an enrolment the project accepts
-            const listed = t.deviceKey(op.dev);
-            const author = byDevice.get(op.dev);
-            const key = listed
-              ? listed.actor === op.act
-                ? listed.key
-                : null
-              : author?.actor === op.act && bindingHolds(author, t, byDevice)
-                ? author.key
-                : null;
-            if (key === null) {
-              no('non-member', 'The device that wrote the op is not a member device.');
-              continue;
-            }
-            if (typeof op.sig !== 'string' || !verifySignature(key, 'aio.op/1', op.id, op.sig)) {
-              no('signature', 'The op signature does not verify.');
-              continue;
-            }
-            // judged at receipt: no new op of a revoked device, whatever its clock says
-            if (t.revokedAt(op.dev) !== null || (author?.revokedAt ?? null) !== null) {
-              no('revoked', 'The device that wrote the op was revoked.');
-              continue;
-            }
-            const inJournal = t.inJournal(op.act);
-            const fallback = author ? grant(author, projectId) : null;
-            const roleThen = inJournal ? t.roleAt(op.act, op.hlc) : fallback;
-            const roleNow = inJournal ? t.roleNow(op.act) : fallback;
-            if (roleThen === null || roleNow === null) {
-              no('non-member', 'The author is not a member, or was not when the op was written.');
-              continue;
-            }
-            if (pusherRole === 'client' && op.act !== d.actor) {
-              no('role', 'A client sends only their own replies.');
-              continue;
-            }
-            const permission = permissionFor(op);
-            if (
-              ((roleThen === 'client' || roleNow === 'client') && !clientMaySend(op)) ||
-              (permission !== null &&
-                (!t.allows(roleThen, permission, op.hlc) || !t.allows(roleNow, permission)))
-            ) {
-              const who = roleThen === roleNow ? roleThen : `${roleThen} (now ${roleNow})`;
-              no('role', `A ${who} may not do this (${op.kind}).`);
-              continue;
-            }
-            heads.set(op.chain, { seq: op.seq, id: op.id });
-            seen.add(op.id);
-            t.apply(op);
-            accepted.push(raw as Op);
-          }
-
           if (accepted.length > 0) {
             if (!(await store.project(projectId))) await store.createProject(project);
             const { stored } = await store.appendOps(projectId, accepted);
@@ -556,12 +636,14 @@ export function createCore(options: CoreOptions) {
             await store.appendReceipts(receipts);
             result.accepted.push(...stored);
             result.receipts.push(...receipts);
+            t.add(accepted);
+            await pinIfShared(projectId, t);
           }
         } catch (e) {
           teams.delete(projectId);
           throw e;
         }
-        if (accepted.length === 0 && !(await store.project(projectId))) teams.delete(projectId);
+        if (accepted.length === 0) await forget();
         return { ...result, forbidden: accepted.length === 0 && roleRefusals > 0 };
       });
     },

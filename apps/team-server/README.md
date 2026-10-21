@@ -7,8 +7,9 @@ app cannot disagree on state. Synapse hosts no customer data. Admin guide: `docs
 
 - `src/server.ts`: `buildServer(...)`, the Fastify routes; every route but health is signed per
   device (RFC 9421, `src/auth/signatures.ts`).
-- `src/core.ts`: push checks, pulls with cursors, members, enrolment; `src/roles.ts`: roles at
-  each op's clock reading; `src/receipts.ts`: the server's receipt chain.
+- `src/core.ts`: push checks, pulls with cursors, members, enrolment; `src/team.ts`: the team
+  judged with the journal's own logic (`judgeOp`, `orderForTeam`, `teamFences`, the pinned
+  genesis), so the server's verdicts are the app's; `src/receipts.ts`: the server's receipt chain.
 - `src/store/`: the append-only `Store` interface, `memory.ts` (tests, trials) and `postgres.ts`
   with `migrations/*.sql` (UPDATE, DELETE and TRUNCATE refused on ops and receipts).
 - `src/blobs/`: `fs.ts` (default) and `s3.ts` (interface only in the preview).

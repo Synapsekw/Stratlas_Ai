@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Heads, Op, Receipt, TeamProject } from '@aio/schema';
+import { TeamGenesis, type Heads, type Op, type Receipt, type TeamProject } from '@aio/schema';
 import pg from 'pg';
 import type { EnrolledDevice, Invite, Store } from './store';
 
@@ -73,6 +73,13 @@ export async function migrate(pool: pg.Pool, dir = migrationsDir()): Promise<str
 }
 
 const parseOp = (raw: string) => JSON.parse(raw) as Op;
+
+/** A stored genesis pin, when the project has one (a damaged value counts as none). */
+function genesisOf(raw: string | null): { genesis?: TeamGenesis } {
+  if (raw === null) return {};
+  const parsed = TeamGenesis.safeParse(JSON.parse(raw));
+  return parsed.success ? { genesis: parsed.data } : {};
+}
 
 interface DeviceRow {
   raw: EnrolledDevice;
@@ -158,8 +165,9 @@ export function createPostgresStore(options: PostgresOptions): Store & { pool: p
         name: string;
         created_at: string;
         created_by: string;
+        genesis: string | null;
       }>(
-        'SELECT team_project_id, name, created_at, created_by FROM projects ORDER BY team_project_id',
+        'SELECT team_project_id, name, created_at, created_by, genesis FROM projects ORDER BY team_project_id',
       );
       return rows.rows.map((r): TeamProject => ({
         schema: 'aio.team/1',
@@ -167,13 +175,18 @@ export function createPostgresStore(options: PostgresOptions): Store & { pool: p
         name: r.name,
         createdAt: r.created_at,
         createdBy: r.created_by,
+        ...genesisOf(r.genesis),
       }));
     },
     async project(id) {
-      const r = await q<{ name: string; created_at: string; created_by: string }>(
-        'SELECT name, created_at, created_by FROM projects WHERE team_project_id = $1',
-        [id],
-      );
+      const r = await q<{
+        name: string;
+        created_at: string;
+        created_by: string;
+        genesis: string | null;
+      }>('SELECT name, created_at, created_by, genesis FROM projects WHERE team_project_id = $1', [
+        id,
+      ]);
       const row = r.rows[0];
       return row
         ? {
@@ -182,14 +195,27 @@ export function createPostgresStore(options: PostgresOptions): Store & { pool: p
             name: row.name,
             createdAt: row.created_at,
             createdBy: row.created_by,
+            ...genesisOf(row.genesis),
           }
         : null;
     },
     async createProject(p) {
       await q(
-        'INSERT INTO projects (team_project_id, name, created_at, created_by) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
-        [p.teamProjectId, p.name, p.createdAt, p.createdBy],
+        'INSERT INTO projects (team_project_id, name, created_at, created_by, genesis) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+        [
+          p.teamProjectId,
+          p.name,
+          p.createdAt,
+          p.createdBy,
+          p.genesis ? JSON.stringify(p.genesis) : null,
+        ],
       );
+    },
+    async setProjectGenesis(id, genesis) {
+      await q('UPDATE projects SET genesis = $2 WHERE team_project_id = $1 AND genesis IS NULL', [
+        id,
+        JSON.stringify(genesis),
+      ]);
     },
 
     async heads(id) {

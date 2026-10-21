@@ -1,4 +1,4 @@
-import type { DeviceRecord, Heads, Op, Receipt, Role, TeamProject } from '@aio/schema';
+import type { DeviceRecord, Heads, Op, Receipt, Role, TeamGenesis, TeamProject } from '@aio/schema';
 
 /** A device enrolled with this server (an invite code plus its self-signed public record). */
 export interface EnrolledDevice {
@@ -58,6 +58,8 @@ export interface Store {
   projects(): Promise<TeamProject[]>;
   project(teamProjectId: string): Promise<TeamProject | null>;
   createProject(project: TeamProject): Promise<void>;
+  /** Pin a project's genesis (once; a pinned project keeps its pin). */
+  setProjectGenesis(teamProjectId: string, genesis: TeamGenesis): Promise<void>;
 
   heads(teamProjectId: string): Promise<Heads>;
   /** Which of these op ids the project holds. */

@@ -71,7 +71,11 @@ describe.skipIf(!url)('Postgres store', () => {
     const versions = await store.pool.query<{ version: string }>(
       'SELECT version FROM schema_migrations',
     );
-    expect(versions.rows.map((r) => r.version)).toEqual(['001_init', '002_security']);
+    expect(versions.rows.map((r) => r.version)).toEqual([
+      '001_init',
+      '002_security',
+      '003_team_genesis',
+    ]);
     await store.close();
   });
 

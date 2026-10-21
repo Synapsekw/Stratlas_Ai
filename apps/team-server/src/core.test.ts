@@ -108,7 +108,7 @@ describe('op checks (the server refuses what the desktop would quarantine)', () 
     expect(codes(r)).toEqual(['schema', 'schema']);
   });
 
-  it('checks the role at each op clock reading, and as the server knows it on receipt', async () => {
+  it('checks the role at each op clock reading, whatever order ops arrive in', async () => {
     const O = new ChainWriter(omar, T0 + 3_600_000);
     const before = O.next('issue.patch', issue, { set: { severity: 3 } }); // 10:01
     const after = O.next('issue.patch', issue, { set: { severity: 4 } }, T0 + 3 * 3_600_000); // 12:00
@@ -120,15 +120,11 @@ describe('op checks (the server refuses what the desktop would quarantine)', () 
       T0 + 2 * 3_600_000,
     );
     expect((await push(rana, [demote])).accepted).toEqual([demote.id]);
-    // Omar's 10:01 edit was a reviewer's when he wrote it, but it reaches the server after the
-    // demotion, the server judges at receipt too: an op it gets now cannot be dated back to
-    // before the demotion (security review 2026-10-21); the op after it then misses its parent
+    // the demotion says nothing of what Rana had seen, so Omar's 10:01 edit keeps his role then
+    // (as in every app); a demotion with `seen` fences what she had not seen (security.test.ts)
     const r = await push(omar, [after, before]);
-    expect(r.accepted).toEqual([]);
-    expect(r.refused).toMatchObject([
-      { id: before.id, code: 'role' },
-      { id: after.id, code: 'gap' },
-    ]);
+    expect(r.accepted).toEqual([before.id]);
+    expect(r.refused).toMatchObject([{ id: after.id, code: 'role' }]);
   });
 
   it('refuses ops from a device the journal revoked', async () => {

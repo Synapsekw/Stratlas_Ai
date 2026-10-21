@@ -41,6 +41,11 @@ export function createMemoryStore(): Store {
       if (!projects.has(p.teamProjectId)) projects.set(p.teamProjectId, clone(p));
       return Promise.resolve();
     },
+    setProjectGenesis(id, genesis) {
+      const p = projects.get(id);
+      if (p && !p.genesis) p.genesis = clone(genesis);
+      return Promise.resolve();
+    },
 
     heads(id) {
       const out: Heads = {};

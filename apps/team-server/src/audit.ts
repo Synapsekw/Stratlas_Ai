@@ -5,11 +5,10 @@
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { checkOp, verifySignature } from '@aio/journal';
+import { checkOp, replayTeam, verifySignature } from '@aio/journal';
 import { SEGMENT_MAX_OPS, segmentFileName, type Op, type Receipt } from '@aio/schema';
 import type { ServerIdentity } from './identity';
 import { verifyReceipts } from './receipts';
-import { TeamState, TEAM_KINDS } from './roles';
 import type { Store } from './store/store';
 
 export const AUDIT_EXPORT_SCHEMA = 'aio.server-audit/1';
@@ -137,9 +136,7 @@ export function verifyAuditExport(dir: string): AuditVerdict {
     }
   }
   // signatures: keys from the project's own member ops, in clock order
-  const team = new TeamState();
-  for (const { op } of [...all].sort((a, b) => (a.op.hlc < b.op.hlc ? -1 : 1)))
-    if (TEAM_KINDS.has(op.kind)) team.apply(op);
+  const team = replayTeam(all.map((a) => a.raw)).state;
   const records = new Map<string, { actor: string; key: string }>();
   const devicesDir = join(dir, 'journal', 'devices');
   for (const f of readdirSync(devicesDir).filter((n) => n.endsWith('.json'))) {
@@ -153,7 +150,7 @@ export function verifyAuditExport(dir: string): AuditVerdict {
   for (const { op, where } of all) {
     const fromRecord = records.get(op.dev);
     const key =
-      team.deviceKey(op.dev)?.key ?? (fromRecord?.actor === op.act ? fromRecord.key : undefined);
+      team.devices.get(op.dev)?.key ?? (fromRecord?.actor === op.act ? fromRecord.key : undefined);
     if (!key) problems.push(`${where}: no member op names the device that signed it`);
     else if (typeof op.sig !== 'string' || !verifySignature(key, 'aio.op/1', op.id, op.sig))
       problems.push(`${where}: the signature does not verify`);

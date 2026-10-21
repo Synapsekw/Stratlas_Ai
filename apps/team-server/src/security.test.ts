@@ -197,7 +197,7 @@ describe('security: who a device may be, and what it may do', () => {
       expect((await core.push(d, TEST_TEAM, [op])).accepted).toEqual([op.id]);
     });
 
-    it("accepts a second device certified by one of the person's own devices", async () => {
+    it("lets a device certified by one of the person's own devices read, not write", async () => {
       const cert = certifyDevice(
         rana.signer,
         rana.actor,
@@ -210,12 +210,13 @@ describe('security: who a device may be, and what it may do', () => {
       const d = await dev(second);
       expect(d.actor).toBe(rana.actor);
       await expect(core.heads(d, TEST_TEAM)).resolves.toMatchObject({ project: TEST_TEAM });
+      // its ops count once an owner lists the device in the journal, as in every app
       const S2 = new ChainWriter(second, T0 + 2 * HOUR);
       const op = S2.next('issue.patch', issue, { set: { severity: 2 } });
-      expect((await core.push(d, TEST_TEAM, [op])).accepted).toEqual([op.id]);
+      expect(codes(await core.push(d, TEST_TEAM, [op]))).toEqual(['non-member']);
     });
 
-    it('accepts a device an owner certified, and refuses one a viewer certified', async () => {
+    it('enrols a device an owner certified, and refuses one a viewer certified', async () => {
       const omar2 = impostor('omar2', omar);
       const byOwner = certifyDevice(
         rana.signer,
@@ -227,10 +228,10 @@ describe('security: who a device may be, and what it may do', () => {
       const ok = impostor('omar2', omar, [byOwner]);
       await enrol(ok, 'viewer');
       const d = await dev(ok);
-      // the journal role applies: a reviewer
-      const O2 = new ChainWriter(ok, T0 + 2 * HOUR);
-      const op = O2.next('issue.patch', issue, { set: { severity: 2 } });
-      expect((await core.push(d, TEST_TEAM, [op])).accepted).toEqual([op.id]);
+      // it reads as the journal's reviewer
+      await expect(core.pull(d, TEST_TEAM, undefined, 10)).resolves.toMatchObject({
+        more: false,
+      });
 
       const omar3 = impostor('omar3', omar);
       const byViewer = certifyDevice(
@@ -316,14 +317,15 @@ describe('security: who a device may be, and what it may do', () => {
       expect(codes(await push(omar, [back]))).toEqual(['chain']);
     });
 
-    it('judges ops received after a demotion with the role the server knows now', async () => {
+    it('judges an op a demotion had not seen, dated before it, after it', async () => {
       const O = new ChainWriter(omar, T0 + HOUR);
       const early = O.next('issue.patch', issue, { set: { severity: 3 } });
       expect((await push(omar, [early])).accepted).toEqual([early.id]);
+      // Rana had seen Omar's first op when she made him a viewer
       const demote = R.next(
         'member.role',
         { rec: 'member', id: omar.actor },
-        { actor: omar.actor, role: 'viewer' },
+        { actor: omar.actor, role: 'viewer', seen: { [omar.chain]: 1 } },
         T0 + 3 * HOUR,
       );
       expect((await push(rana, [demote])).accepted).toEqual([demote.id]);
@@ -333,7 +335,21 @@ describe('security: who a device may be, and what it may do', () => {
       expect(codes(r)).toEqual(['role']);
     });
 
-    it('refuses every new op of a revoked device, whatever its clock says', async () => {
+    it('refuses an op of a revoked device the revocation had not seen, whatever its clock', async () => {
+      const revoke = R.next(
+        'device.revoke',
+        { rec: 'device', id: omar.signer.device },
+        { device: omar.signer.device, seen: {} },
+        T0 + 3 * HOUR,
+      );
+      expect((await push(rana, [revoke])).accepted).toEqual([revoke.id]);
+      const O = new ChainWriter(omar, T0 + HOUR);
+      const backdated = O.next('issue.patch', issue, { set: { severity: 1 } });
+      // Rana forwards it (Omar's own device may no longer push)
+      expect(codes(await push(rana, [backdated]))).toEqual(['revoked']);
+    });
+
+    it('keeps an op dated before a revocation that says nothing of what it saw', async () => {
       const revoke = R.next(
         'device.revoke',
         { rec: 'device', id: omar.signer.device },
@@ -342,9 +358,11 @@ describe('security: who a device may be, and what it may do', () => {
       );
       expect((await push(rana, [revoke])).accepted).toEqual([revoke.id]);
       const O = new ChainWriter(omar, T0 + HOUR);
-      const backdated = O.next('issue.patch', issue, { set: { severity: 1 } });
-      // Rana forwards it (Omar's own device may no longer push)
-      expect(codes(await push(rana, [backdated]))).toEqual(['revoked']);
+      const honest = O.next('issue.patch', issue, { set: { severity: 1 } });
+      const late = O.next('issue.patch', issue, { set: { severity: 2 } }, T0 + 4 * HOUR);
+      const r = await push(rana, [honest, late]);
+      expect(r.accepted).toEqual([honest.id]);
+      expect(codes(r)).toEqual(['revoked']);
     });
 
     it('refuses new ops of a device revoked on the server, whatever its clock says', async () => {

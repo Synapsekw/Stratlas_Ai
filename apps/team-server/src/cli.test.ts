@@ -25,7 +25,7 @@ function cli(store: Store, env: NodeJS.ProcessEnv = {}) {
   return { run, out, err };
 }
 
-/** A store with a shared project: Rana (owner) and Omar (reviewer), five ops, their receipts. */
+/** A store with a shared project: Rana (owner) and Omar (reviewer), six ops, their receipts. */
 async function populated(keyFile: string) {
   const { rana, omar } = testPeople();
   const store = createMemoryStore();
@@ -58,9 +58,10 @@ async function populated(keyFile: string) {
       { teamProjectId: TEST_TEAM, name: 'Demo' },
     ),
     R.next('member.add', { rec: 'member', id: rana.actor }, memberAdd(rana, 'owner')),
+    R.next('member.add', { rec: 'member', id: omar.actor }, memberAdd(omar, 'reviewer')),
     R.next('issue.create', issue, { record: { id: 'i_f01', code: 'F01' } }),
   ]);
-  // Omar was invited to the server, not yet added by Rana: his ops count by the invite's role
+  // Omar's ops count once Rana added him (as in every app)
   await core.push(omarDevice, TEST_TEAM, [
     O.next('issue.patch', issue, { set: { severity: 4 } }),
     O.next('issue.patch', issue, { set: { severity: 5 } }),
@@ -122,7 +123,7 @@ describe('admin command line', () => {
     expect(await run('export-audit', '--project', TEST_TEAM, '--out', exported)).toBe(0);
     expect(await run('verify', exported)).toBe(0);
     expect(out.at(-1)).toBe('Verified: no problems.');
-    expect(out.at(-2)).toBe('5 ops in 2 chains, 5 countersigned.');
+    expect(out.at(-2)).toBe('6 ops in 2 chains, 6 countersigned.');
     // edit one op on disk: the export no longer verifies
     const { omar } = testPeople();
     const seg = join(exported, 'journal', 'ops', omar.chain, '000001.jsonl');
