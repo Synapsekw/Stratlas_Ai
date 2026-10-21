@@ -335,12 +335,15 @@ export function measurementPlan(
   return `<svg class="map" viewBox="0 0 ${String(width)} ${String(height)}" width="100%" role="img" aria-label="${esc(label)}">${shapes}${scale}${north}</svg>`;
 }
 
-/** The volume measurements from above (the site page's stockpile map), or ''. */
+/**
+ * Every pile from above (the site page's stockpile map), or '': drawn from the stockpile inventory,
+ * so it holds the piles the inventory counts, whatever the report template or the measurement
+ * list's limit leaves out of the listed measurements.
+ */
 export function pilePlan(data: ReportSurveyData | null | undefined, label: string): string {
   if (!data) return '';
-  const ids = new Set(data.volumes.piles.map((p) => p.id));
   return measurementPlan(
-    data.measurements.filter((m) => ids.has(m.id)),
+    data.volumes.piles.map((p) => ({ ref: p.ref, family: 'polygon' as const, outline: p.outline })),
     label,
     undefined,
     {

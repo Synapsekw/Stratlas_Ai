@@ -34,7 +34,7 @@ import { Blob as NodeBlob } from 'node:buffer';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Pager } from './pager';
 import { SECTION_LAYOUTS, type HouseContext } from './sections';
-import { houseVolumes, measurementPlan } from './survey';
+import { houseVolumes, measurementPlan, pilePlan } from './survey';
 import {
   buildSurveyData,
   readSurveyFiles,
@@ -761,6 +761,23 @@ describe('the survey sections', () => {
     // material Stockpile material, density 1.6, and 280 t on the latest date
     expect(csv).toMatch(/Kit pile 1,Stockpile material,,1\.6,/);
     expect(csv).toContain(',280,');
+  });
+
+  it('the stockpile map draws every pile, whatever the template lists', async () => {
+    const lineOnly: SurveyFiles = {
+      ...files,
+      template: {
+        schema: 'aio.report-template/1',
+        entries: [{ kind: 'measurement', id: 'm-line', parts: ['value'], addedAt: NOW }],
+      },
+    };
+    const d = await buildSurveyData(lineOnly, reader.bytes, { need: 'report' });
+    // the template lists one line: no pile is among the listed measurements
+    expect(d.measurements.map((m) => m.id)).toEqual(['m-line']);
+    expect(d.volumes.piles.length).toBeGreaterThan(1);
+    const svg = pilePlan(d, 'Stockpiles');
+    expect(svg).toContain('<svg');
+    for (const p of d.volumes.piles) expect(svg).toContain(`>${p.ref}<`);
   });
 
   it('template entries print as report cards in template order', async () => {

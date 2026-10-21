@@ -488,6 +488,8 @@ export interface PileOverTime {
   carried: string | null;
   /** One row per survey date (`volumeRows` of `pileSeries`), stale rows marked. */
   rows: TimeRow[];
+  /** Its outline (E, N) in the project CRS, as drawn: the site page's stockpile map. */
+  outline: [number, number][];
 }
 
 /** The volume measurements over time and the site inventory (the Volumes view's rule). */
@@ -576,6 +578,8 @@ async function volumesOverTime(
   info: {
     ref: (m: SurveyMeasurement) => string;
     material: (m: SurveyMeasurement) => SiteMaterial | null;
+    /** The outline as drawn (E, N). */
+    outline: (m: SurveyMeasurement) => [number, number][];
     tick: () => void;
   },
 ): Promise<VolumesOverTime> {
@@ -652,6 +656,7 @@ async function volumesOverTime(
           isStale: (r) => isStale(m, r, r === stored),
           ...(density !== undefined ? { densityTPerM3: density } : {}),
         }),
+        outline: info.outline(m),
       };
     }),
   };
@@ -917,6 +922,7 @@ export async function buildSurveyData(
     {
       ref: refOf,
       material,
+      outline: (m) => drawnPoints(m, manifest).map((p): [number, number] => [p[0], p[1]]),
       tick,
     },
   );
