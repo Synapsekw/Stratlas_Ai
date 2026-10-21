@@ -269,6 +269,13 @@ describe('security: who a device may be, and what it may do', () => {
       const again = await enrol(sami, 'owner');
       expect(again.role).toBe('viewer');
       expect((await dev(sami)).role).toBe('viewer');
+      // it still needs a valid code: a used one is refused
+      const used = makeInvite('owner', null, NOW);
+      await store.addInvite(used.invite);
+      await core.enrol({ code: used.code, device: sami.record }, sami.signer.device);
+      expect(
+        await refusal(core.enrol({ code: used.code, device: sami.record }, sami.signer.device)),
+      ).toEqual({ status: 403, code: 'invite' });
       const other = { ...testPeople().sami };
       const claimsRana = deviceRecord(other.signer, {
         actor: rana.actor,

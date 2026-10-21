@@ -152,6 +152,8 @@ export interface LoopbackServer {
   close(): Promise<void>;
 }
 
+const identities = new WeakMap<Store, ServerIdentity>();
+
 /** A server on 127.0.0.1 over TLS with the TEST-ONLY certificate (memory store, temp blobs). */
 export async function startLoopbackServer(
   options: { store?: Store; port?: number; name?: string } = {},
@@ -160,7 +162,9 @@ export async function startLoopbackServer(
   const store = options.store ?? createMemoryStore();
   await store.init();
   const blobDir = mkdtempSync(join(tmpdir(), 'aio-team-blobs-'));
-  const identity = ephemeralIdentity();
+  // a server started again on the same store keeps its key (as the key file on the data volume)
+  const identity = identities.get(store) ?? ephemeralIdentity();
+  identities.set(store, identity);
   const app = buildServer({
     store,
     blobs: createFsBlobStore(blobDir),

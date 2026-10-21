@@ -300,14 +300,26 @@ export function createCore(options: CoreOptions) {
         const before = await store.device(record.id);
         if (before?.revokedAt)
           throw new ServerRefusal(403, 'revoked', 'This device was revoked on this server.');
+        const at = now().toISOString();
+        const takeInvite = async () => {
+          const invite = await store.takeInvite(inviteHash(parsed.data.code), at, record.id);
+          if (!invite)
+            throw new ServerRefusal(
+              403,
+              'invite',
+              'This invite code is not valid. It may be mistyped, used or expired.',
+            );
+          return invite;
+        };
         if (before) {
-          // enrolled already: it keeps who it is and the role it has
+          // enrolled already: a valid code still, but it keeps who it is and the role it has
           if (before.actor !== record.actor || before.key !== record.key)
             throw new ServerRefusal(
               403,
               'actor',
               'This device is enrolled on this server as another person.',
             );
+          await takeInvite();
           return answer(before, await projectsOf(before));
         }
         const enrolled = await store.devices();
@@ -328,14 +340,7 @@ export function createCore(options: CoreOptions) {
         const certified = taken ? certifiedBy(record, enrolled, states) : null;
         if (taken && !certified) throw actorTaken();
 
-        const at = now().toISOString();
-        const invite = await store.takeInvite(inviteHash(parsed.data.code), at, record.id);
-        if (!invite)
-          throw new ServerRefusal(
-            403,
-            'invite',
-            'This invite code is not valid. It may be mistyped, used or expired.',
-          );
+        const invite = await takeInvite();
         const device: EnrolledDevice = {
           device: record.id,
           actor: record.actor,
