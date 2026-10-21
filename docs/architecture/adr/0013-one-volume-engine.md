@@ -1,0 +1,38 @@
+# ADR 0013: One volume engine
+
+- Status: **Proposed, 21 Oct 2026 (volumetric parity, wave 1), pending founder review.** Supersedes in part [ADR 0009](0009-survey-engine.md) decision 5: the stockpile kit no longer keeps "`volumes.json` and the old base names unchanged" for what the user sees. ADR 0009 decisions 1 to 4 and 6 still stand.
+- Deciders: founder (the design and the approved mockups); the build's rulings, recorded below
+- Spec and plan: `docs/superpowers/specs/2026-10-20-volumetric-parity-design.md` (Wave 1: W1 to W5), `docs/superpowers/plans/2026-10-20-volumetric-parity-wave1.md`
+- Code: `packages/survey/src/engine/series.ts`, `packages/survey/src/calc/kitPiles.ts`, `packages/survey/src/calc/bulk.ts` (`pileSeries`); `apps/desktop/src/renderer/survey/compareStore.ts` (`computeSeries`, `recomputeStandard`), `measureStore.ts` (`convertAfterJob`, `replaceWithStandard`); `python/src/aio_pipelines/survey/series.py` (pack 0.20.0)
+- Contracts: `@aio/schema` `survey.ts` (`origin`, `series`, `previousResults`, `kitPilesConverted`, `carried`, `uncertainty`), `manifest.ts` (`Capture.verticalAccuracy`), `reportTemplate.ts`; rows of 20 Oct 2026 in `contract-changes.md`; shared fixtures `packages/schema/src/__fixtures__/survey/series.json`
+
+## Context
+
+ADR 0009 made the stockpile kit a client of the survey engine but kept its four bases, its `volumes.json` figures and its register for display. A volumetric project then showed two volumes for one pile: the kit's (`tin`, a smooth membrane over the toe) and the engine's (`smart`, a triangulation of the toe line), with the engine's bases offered as "More bases". Which one counts was left to the founder. The volumetric parity design settles it: one engine, one figure per pile per date, and no figure that changes without the user knowing.
+
+## Decision
+
+1. **The survey engine is the only volume engine.** The kit's base maths (`gridBase` as a figure, `BASE_IDS`, `pileVolumes`) no longer produce any figure the user sees; the 3D volume bodies still stand on the kit's default base as a picture only. Pile detection stays in the kit: a detected pile becomes a volume measurement and the engine computes its volume.
+2. **The default base is `smart`, shown as "Triangulated toe".** The base picker offers seven bases: Triangulated toe (default), Lowest point, Best-fit plane, Fixed level, Average edge level, Previous survey or design, and Custom. Lowest point and Fixed level map to `reference` bases (`perimeter-min`, a fixed level).
+3. **The spread across bases.** For an item whose `from` is a base, the engine runs it once with each of `SPREAD_BASES` (`smart`, `fit-plane`, `perimeter-mean`, `reference` `perimeter-min`) and takes, over the ok or partial results, `pct = (max(totalM3) - min(totalM3)) / 2 / mean(totalM3) * 100`, shown as "±{pct} across bases". It is null with fewer than 2 ok bases or a mean below 1e-6 m³ (`MEAN_ZERO_M3`, float noise on flat ground). It is taken over the total (fill + cut), not net, because net can cross zero and make the ratio meaningless. It is shown only when the item's base is one of `SPREAD_BASES` (hidden for Fixed level, Custom, and Previous survey or design) and hidden while the result is carried.
+4. **Kit piles are carried, then accepted.**
+   - Conversion is idempotent: `MeasurementsFile.kitPilesConverted` lists the kit pile ids already converted, and a pile converts once. The first writable open of an old project (the field `undefined` and kit figures present) converts and marks the file; a project built after this change gets `kitPilesConverted: []` from the kit build hook before its first open, so it is never treated as old.
+   - A converted pile keeps the kit's figure of `volumes.defaultBase` per date as a carried result (`carried: { from: 'kit', base, pile, epoch }`, fingerprint `kit:<pile>:<epoch>:<base>`). A carried result is never stale: it shows "From an earlier version (kit <base>)" until the user accepts the standard base. The cut/fill area split and the method line are hidden for carried results, and no engine series runs for a carried item, so a line never mixes kit and engine bases.
+   - **Recompute with the standard base**, Recompute all, or editing the points or items of a carried measurement counts as acceptance: the engine result replaces the carried one, and the old figure is kept in `previousResults` as "was".
+   - A pile absent on the last capture gets `results: []` (no headline, shown absent on the latest date, as the kit showed it); its series keeps its earlier dates.
+   - A read-only project (a package) converts in memory only and never writes.
+   - Piles a kit job adds after the first open are added as items without a carried figure; the engine computes them on demand.
+5. **Volume over time, on demand.** `computeSeries` runs an item once per capture, with that capture as `current` and the capture before it with a prepared surface as `previous`; a fixed side (a survey with a capture, a design, a base) stays fixed. Rows are stored per date in `SurveyMeasurement.series`, keyed by `toCapture ?? fromCapture`. Only items with a `current` side run as a series (`seriesApplies`): an item whose only date side is `previous` has no viewing date. A stored result always wins its own date, stale or not, and is marked stale on both. In a read-only project the series is computed in memory and never written, in the app and in the report, so a package opened elsewhere still shows the full history.
+6. **Totals add only current figures.** Bulk totals, the inventory and the report add a pile's figure only when it is current (ok or partial, not stale). Stale, refused, missing and failed figures are listed by name under "Not counted", never added and never shown as zero. Totals are sums in TypeScript only (`pileSeries`, one per-date function used by the card, the inventory and the report); no executor computes a total.
+7. **Shading direction follows the target kind.** Against a design, current above the design is cut (material to remove); against an earlier survey or a base, current above it is fill (material added). This matches the compliance presets and the approved mockup.
+8. **Reserved fields for Wave 2 (W6).** `ComparisonResult.uncertainty` (`plusMinusM3`, `sigmaM`, `source`) and `Capture.verticalAccuracy` (`sigmaM`, `source`) are in the schema as loose objects so that older builds pass them through; wave 1 never writes them.
+9. **Parity.** The series and spread rules have a Python implementation (`survey/series.py`) and a TypeScript one (`engine/series.ts`), held together by the shared fixtures in `series.json` (pytest `tests/test_survey_series.py`, Vitest `series.parity.test.ts`), as ADR 0009 decision 4 requires.
+
+## Consequences
+
+- One figure per pile per date. The recomputed figure can differ from the kit's old `tin` figure, which has no engine equivalent; the user sees both ("was") when accepting, never a silent change.
+- The boundary editor is retired: vertex editing covers outlines, but per-date toe edits are no longer possible.
+- Older builds keep the new fields (loose objects) but show a carried result as "Stale, recompute", and 0.23 or earlier also shows the kit piles in the old Volumes panel next to the converted measurements (downgrade caveat in `contract-changes.md`).
+- Series cost one engine run per date per item, paid on demand and stored, not on every open.
+- The pipeline pack gains `survey.series` (0.20.0), a library module no job calls yet; `APP_RANGE` is unchanged.
+- Validation on real jobs is still pending: the figures are checked against synthetic surfaces and the demo projects only.

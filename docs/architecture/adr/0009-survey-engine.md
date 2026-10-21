@@ -1,6 +1,6 @@
 # ADR 0009: Survey engine (one specification, two executors)
 
-- Status: **Accepted, 7 Oct 2026 (founder: go with the recommendations)**. M11 decision 3 of "Decisions already taken" (one general comparison engine, built by unifying the stockpile kit and `change.surface`, not as a third engine). Written at G0, 8 Oct 2026.
+- Status: **Decision 5 superseded in part by [ADR 0013](0013-one-volume-engine.md)** (one volume engine, 21 Oct 2026, pending founder review): the stockpile kit shows engine figures, not its own bases. **Accepted, 7 Oct 2026 (founder: go with the recommendations)**. M11 decision 3 of "Decisions already taken" (one general comparison engine, built by unifying the stockpile kit and `change.surface`, not as a third engine). Written at G0, 8 Oct 2026.
 - Deciders: founder; integration lead (M11)
 - Plan: `docs/plans/2026-10-07-m11-surveying.md`, "The surface engine: options and recommendation"
 - Contracts: `@aio/schema` `survey.ts` (`SurfaceRef`, `BaseSpec`, `ComparisonItem`, `ComparisonResult`, `HeightTiles`), `designs.ts` (`TinHeader`), `jobs.ts` (`survey.prepare`, `survey.compare`); data-conventions section 26; code: `python/src/aio_pipelines/survey/` (`prepare.py`, `compare.py`, `grid.py`, `bases.py`, `tin.py`), `packages/survey/src/engine/` (G2); shared fixtures `packages/schema/src/__fixtures__/survey/`
