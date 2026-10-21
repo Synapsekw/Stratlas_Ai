@@ -49,6 +49,26 @@ def _rat(v):
         return v[0] / v[1]
 
 
+MAX_ALTITUDE_M = 20000.0
+
+
+def _gps_altitude(v) -> float | None:
+    """EXIF GPSAltitude in metres, or None when it is not plausible. Some cameras write a negative
+    altitude into the unsigned RATIONAL type (numerator 0xffffee6a for -4.502 m): a numerator with
+    the top bit set is read as a signed 32-bit value. Over 20 km in magnitude counts as unreadable."""
+    num = getattr(v, "numerator", None)
+    den = getattr(v, "denominator", None)
+    if num is None and isinstance(v, tuple) and len(v) == 2:
+        num, den = v
+    if isinstance(num, int) and isinstance(den, int) and den:
+        if num >= 2**31:
+            num -= 2**32
+        alt = num / den
+    else:
+        alt = _rat(v)
+    return alt if abs(alt) <= MAX_ALTITUDE_M else None
+
+
 def _dms(v, ref):
     d = _rat(v[0]) + _rat(v[1]) / 60 + _rat(v[2]) / 3600
     return -d if ref in ("S", "W") else d
@@ -80,8 +100,9 @@ def read_meta(path) -> dict[str, Any]:
         try:
             out["latitude"] = _dms(g[2], g.get(1, "N"))
             out["longitude"] = _dms(g[4], g.get(3, "E"))
-            if 6 in g:
-                out["altitude"] = _rat(g[6]) * (-1 if g.get(5) == 1 else 1)
+            alt = _gps_altitude(g[6]) if 6 in g else None
+            if alt is not None:
+                out["altitude"] = alt * (-1 if g.get(5) == 1 else 1)
             if 17 in g:
                 out["img_direction"] = _rat(g[17])
         except (KeyError, ZeroDivisionError, TypeError, IndexError):

@@ -1,5 +1,7 @@
+import io
 import json
 import math
+import struct
 import threading
 
 import pytest
@@ -180,3 +182,76 @@ def test_params_are_checked():
         AikCameras().validate({"photos": "x", "bogus": 1})
     with pytest.raises(JobError, match="list of 3 numbers"):
         AikCameras().validate({"photos": "x", "origin": [1, 2]})
+
+
+def _raw_exif_jpeg(path, alt_type, alt_num, alt_den=1000, xmp_in_exif=None):
+    """A JPEG whose Exif block is built by hand (big-endian TIFF): GPS lat/lon and a GPSAltitude of
+    TIFF type ``alt_type`` (5 RATIONAL, 10 SRATIONAL) holding ``alt_num / alt_den`` as stored, ref 0.
+    ``xmp_in_exif`` is an XMP packet placed inside the Exif APP1 payload after the TIFF data."""
+
+    def rat(n, d, signed=False):
+        return struct.pack(">ii" if signed else ">II", n, d)
+
+    entries = [  # (tag, type, count, value bytes)
+        (1, 2, 2, b"N\x00"),
+        (2, 5, 3, rat(29, 1) + rat(1, 1) + rat(40, 1)),
+        (3, 2, 2, b"E\x00"),
+        (4, 5, 3, rat(48, 1) + rat(8, 1) + rat(8, 1)),
+        (5, 1, 1, b"\x00"),
+        (6, alt_type, 1, rat(alt_num, alt_den, signed=alt_type == 10)),
+    ]
+    # layout: header (8 bytes), IFD0 with one entry, the GPS IFD, then out-of-line values
+    ifd0_at = 8
+    gps_at = ifd0_at + 2 + 12 + 4
+    data_at = gps_at + 2 + 12 * len(entries) + 4
+    ifd0 = struct.pack(">H", 1) + struct.pack(">HHII", 0x8825, 4, 1, gps_at) + struct.pack(">I", 0)
+    gps = struct.pack(">H", len(entries))
+    extra = b""
+    for tag, typ, count, val in entries:
+        if len(val) <= 4:
+            gps += struct.pack(">HHI", tag, typ, count) + val.ljust(4, b"\x00")
+        else:
+            gps += struct.pack(">HHII", tag, typ, count, data_at + len(extra))
+            extra += val
+    gps += struct.pack(">I", 0)
+    tiff = b"MM\x00\x2a" + struct.pack(">I", ifd0_at) + ifd0 + gps + extra
+    payload = b"Exif\x00\x00" + tiff + (xmp_in_exif or b"")
+    seg = b"\xff\xe1" + struct.pack(">H", len(payload) + 2) + payload
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 48), (90, 110, 130)).save(buf, "JPEG")
+    data = buf.getvalue()
+    path.write_bytes(data[:2] + seg + data[2:])
+    return path
+
+
+def test_wrapped_unsigned_gps_altitude_reads_as_signed(tmp_path):
+    # -4.502 m written as an unsigned RATIONAL: numerator 0xffffee6a, denominator 1000
+    m = read_meta(_raw_exif_jpeg(tmp_path / "t.jpg", 5, 0xFFFFEE6A))
+    assert m["altitude"] == pytest.approx(-4.502)
+    assert m["latitude"] == pytest.approx(29 + 1 / 60 + 40 / 3600)
+
+
+def test_signed_negative_gps_altitude_is_unchanged(tmp_path):
+    assert read_meta(_raw_exif_jpeg(tmp_path / "s.jpg", 10, -31501))["altitude"] == pytest.approx(-31.501)
+    assert read_meta(_raw_exif_jpeg(tmp_path / "p.jpg", 5, 12345))["altitude"] == pytest.approx(12.345)
+
+
+def test_gps_altitude_over_20_km_is_left_out(tmp_path):
+    m = read_meta(_raw_exif_jpeg(tmp_path / "h.jpg", 5, 25_000_000))  # 25 km
+    assert "altitude" not in m
+    assert "latitude" in m and "longitude" in m
+
+
+def test_xmp_packet_inside_the_exif_block_is_read(tmp_path):
+    # guard: the XT2 writes its XMP inside the Exif APP1; the head scan already finds it
+    xmp = (
+        b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description>'
+        b"<drone-dji:AbsoluteAltitude>-31.501320</drone-dji:AbsoluteAltitude>"
+        b"<drone-dji:RelativeAltitude>+14.700000</drone-dji:RelativeAltitude>"
+        b"<drone-dji:GimbalYawDegree>-120.5</drone-dji:GimbalYawDegree>"
+        b"</rdf:Description></rdf:RDF></x:xmpmeta>"
+    )
+    m = read_meta(_raw_exif_jpeg(tmp_path / "x.jpg", 10, -31501, xmp_in_exif=xmp))
+    assert m["AbsoluteAltitude"] == pytest.approx(-31.50132)
+    assert m["RelativeAltitude"] == pytest.approx(14.7)
+    assert m["GimbalYawDegree"] == pytest.approx(-120.5)
