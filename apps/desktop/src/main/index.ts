@@ -284,6 +284,7 @@ import { resolveInside } from './protocol/paths';
 import { writeCentreline } from './centreline';
 import { createAioHandler } from './protocol/handler';
 import { APP_CSP, cspForUrl } from './csp';
+import { checkDataRootChange, createPickedFolders, dataRootError } from './dataRoot';
 import { saveFile } from './saveFile';
 import { savePath } from './exports/savePath';
 import { aiGates } from './aiGates';
@@ -990,6 +991,9 @@ const detectQueue = detectLane({
   },
 });
 
+/** Folders main's folder dialog returned; a data folder change must name one (`dataRoot.ts`). */
+const pickedFolders = createPickedFolders();
+
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, journal.wrap(channel, handler));
   ipcMain.handle(channel, (_e, req: unknown) =>
@@ -1017,6 +1021,14 @@ function registerIpc(): void {
 
   handle('settings:get', () => settings.get());
   handle('settings:set', async (patch) => {
+    if (patch.dataRoot !== undefined) {
+      const refused = await checkDataRootChange(
+        patch.dataRoot,
+        settings.current().dataRoot,
+        pickedFolders,
+      );
+      if (refused) throw new Error(refused);
+    }
     const pending = settings.set(patch);
     // current() includes the queued patch, so cancellation precedes the disk write.
     if (
@@ -1436,6 +1448,9 @@ function registerIpc(): void {
         : which === 'logs'
           ? logsDir
           : app.getPath('userData');
+    // openPath runs a file, so only ever hand it a local folder that exists
+    const refused = await dataRootError(dir);
+    if (refused) return { ok: false, error: refused };
     const error = await shell.openPath(dir);
     return error ? { ok: false, error } : { ok: true };
   });
@@ -1629,7 +1644,9 @@ function registerIpc(): void {
     const r = win
       ? await dialog.showOpenDialog(win, options)
       : await dialog.showOpenDialog(options);
-    return { path: r.canceled ? null : (r.filePaths[0] ?? null) };
+    const path = r.canceled ? null : (r.filePaths[0] ?? null);
+    if (path) pickedFolders.remember(path);
+    return { path };
   });
 
   handle('export:run', (req) => exportJobs.run(req));
