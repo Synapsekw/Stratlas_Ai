@@ -338,7 +338,8 @@ const crashes = createCrashStore(join(app.getPath('userData'), 'crash-reports'),
   electron: process.versions.electron,
   platform: `${process.platform} ${release()} ${arch()}`,
 });
-const devUrl = process.env.ELECTRON_RENDERER_URL;
+// Only an unpackaged build loads the dev server (legacyEnv.ts also drops the variable when packaged).
+const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 
 // aio:// serves project files and map packs with range requests.
 // Test and agent runs (isolated profiles) keep their windows off-screen; see windowMode.ts.
@@ -562,6 +563,7 @@ const e2eRun = process.env.QUADRION_E2E === '1';
  * isolated profile of an e2e run can ask for it, so a person's installation never runs it.
  */
 const fakeOnlineTiles =
+  !app.isPackaged &&
   e2eRun &&
   process.env.QUADRION_ONLINE_TILES_TEST === '1' &&
   Boolean(process.env.QUADRION_USER_DATA);
@@ -724,7 +726,9 @@ const projectNames = new Map<string, string>();
  * Only an isolated profile can ask for it, so a person's installation never runs it.
  */
 const scripted =
-  process.env.QUADRION_AI_TEST_PROVIDER === '1' && Boolean(process.env.QUADRION_USER_DATA);
+  !app.isPackaged &&
+  process.env.QUADRION_AI_TEST_PROVIDER === '1' &&
+  Boolean(process.env.QUADRION_USER_DATA);
 /**
  * QUADRION_AI_TEST_SCRIPT=workspace-400: the scripted Anthropic stands in for an organisation key
  * and answers the workspace 400 until Settings has a workspace ID (agent panel fix, e2e).
