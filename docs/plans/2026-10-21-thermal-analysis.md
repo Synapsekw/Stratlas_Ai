@@ -10,15 +10,15 @@
 
 **Architecture:** The physics lives once, in the pipeline pack: a `thermal.decode` job writes one float32 °C raster per photo plus a small JSON beside it, under a new top-level project folder `thermal/` that older builds ignore. The renderer reads those rasters over `aio://project/...` and does everything visual (palette lookup, range, isotherm, readings) in TypeScript with no job. All person-made thermal state (settings per photo, readings, hot spots, references, severity thresholds, alignment nudges) lives in one sidecar `thermal/thermal.json` (`aio.thermal/1`). A confirmed hot spot is also an ordinary `Issue` in `issues.json` with image sightings, class "Hot spot" and severity model "Thermal ΔT"; its temperatures stay in the sidecar, keyed by the issue id.
 
-**Tech stack:** TypeScript strict, zod (`@aio/schema`), React 19 + zustand, canvas 2D, MapLibre via `@aio/maps`, Vitest, Playwright with Electron, Python 3.13 (`aio_pipelines`, numpy, scipy, pillow, ctypes), pytest; prebuilt ExifTool (Windows standalone) and DJI Thermal SDK 1.7 (Windows DLLs) bundled in the pack.
+**Tech stack:** TypeScript strict, zod (`@aio/schema`), React 19 + zustand, canvas 2D, MapLibre via `@aio/maps`, Vitest, Playwright with Electron, Python 3.13 (`aio_pipelines`, numpy, scipy, pillow, ctypes), pytest; prebuilt ExifTool (Windows standalone) and DJI Thermal SDK v1.9 (Windows DLLs, 20260526) bundled in the pack.
 
 ## Milestones (one PR each)
 
 | PR  | Milestone             | Lands                                                                                                                                                                          | Pack   | App        |
 | --- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | ---------- |
-| M1  | Decoders and settings | `aio.thermal/1` and raster contracts, FLIR and DJI decoders, ExifTool and TSDK in the pack with notices, `thermal.decode` job, bench shell with palette, hover °C and settings | 0.21.0 | next minor |
+| M1  | Decoders and settings | `aio.thermal/1` and raster contracts, FLIR and DJI decoders, ExifTool and TSDK in the pack with notices, `thermal.decode` job, bench shell with palette, hover °C and settings | 0.22.0 | next minor |
 | M2  | Bench tools           | Spot, box, line (profile), polygon, isotherm, range drag, view switch with the visual twin, lens table and nudge                                                               | none   | next minor |
-| M3  | Hot spots and issues  | `thermal.hotspots` job, list (confirm, dismiss, reference, add to existing), "Thermal ΔT" grading with editable levels, issues, map and 3D pins                                | 0.22.0 | next minor |
+| M3  | Hot spots and issues  | `thermal.hotspots` job, list (confirm, dismiss, reference, add to existing), "Thermal ΔT" grading with editable levels, issues, map and 3D pins                                | 0.23.0 | next minor |
 | M4  | Report and CSV        | `thermal` report section, `thermal-csv` export                                                                                                                                 | none   | next minor |
 
 Pack numbers assume photo position edit takes 0.20.0 (it bumps for its ODM change); if `main` holds a later pack at merge time, take the next minor. App numbers: the next minor after `main` at merge time (0.25.0 is taken by the measurement-dates train). Each milestone is the bump rule of `docs/release/README.md:24-30`: version in `python/pyproject.toml`, then `uv lock` in `python/`; `APP_RANGE` (`python/src/aio_pipelines/__init__.py:24`, `>=0.22.0 <2.0.0`, pinned by `python/tests/test_app_range.py:28`) stays; `apps/desktop/src/main/jobs/packVersions.test.ts` must stay green.
@@ -27,7 +27,7 @@ Pack numbers assume photo position edit takes 0.20.0 (it bumps for its ODM chang
 
 ## Global Constraints
 
-- Windows only. Offline: nothing here calls a web service at run time. Prebuilt binaries only (ExifTool standalone Windows build, DJI TSDK 1.7 Windows DLLs, January 2025), pinned by URL and sha256 in a lock file, as ffmpeg is (`tools/pipeline-pack/ffmpeg-lock.json`).
+- Windows only. Offline: nothing here calls a web service at run time. Prebuilt binaries only (ExifTool standalone Windows build, DJI Thermal SDK v1.9 Windows DLLs, 20260526), pinned by URL and sha256 in a lock file, as ffmpeg is (`tools/pipeline-pack/ffmpeg-lock.json`).
 - **Degrees Celsius only.** Temperatures stored and shown in °C, one decimal in the UI and CSV, full float in files.
 - **Defaults (design):** emissivity 0.95; distance = the photo's height above take-off when known (`dji.relAlt`, or `pos` height minus the take-off height of the project's height rule), else 10 m; air 25 °C; humidity 50 %; reflected temperature = air temperature (stored as `null`).
 - **Severity defaults (design):** model "Thermal ΔT", levels Watch (ΔT 4 to 15 °C), Serious (16 to 40 °C), Critical (above 40 °C). Below 4 °C detection proposes nothing; a hand-confirmed hot spot below 4 °C is Watch. Levels, names and thresholds editable per project.
@@ -49,6 +49,12 @@ Pack numbers assume photo position edit takes 0.20.0 (it bumps for its ODM chang
 4. **Thermal detection runs from metadata in main, not at import.** A cheap TypeScript probe of the review copy's head (`thermal:probe`) marks thermal photos for the action and the filmstrip, so existing projects need no re-import. Review copies of thermal photos are byte-for-byte copies (640 x 512 and 1280 x 1024 are under the 2560 px resize limit, `packages/project/src/builder/raw.ts:545-549`), so the APP1/APP3 records survive and the decoder reads `photos/<id>.jpg`.
 5. **Shipped FLIR decoder is a Python APP1 parser; ExifTool is bundled as the check.** `thermal.decode` cross-checks the raw values of the first photo of each camera model in a run against bundled ExifTool (`-b -RawThermalImage`, `-j` for the constants); any difference marks that model's photos `unverified` with no raster. This keeps the per-photo path fast and in-process while honouring "every decoder is checked against a known value".
 
+Departures found while building M1:
+
+6. **DJI Thermal SDK v1.9, not 1.7.** The pack bundles DJI Thermal SDK v1.9 (20260526), the newest release when M1 was built (`tools/pipeline-pack/thermal-tools-lock.json`); the decoder id in every `settingsKey` is `dji-tsdk/1.9`.
+7. **Pack 0.22.0 for M1, not 0.21.0.** Photo position edit (`feat/photo-position-edit`) merges first and takes pack 0.21.0, so M1 takes 0.22.0 and `THERMAL_MIN_PACK = '0.22.0'` (bumped after the rebase onto `main`; the task texts below still say 0.21.0). M3 then takes the next minor, 0.23.0, with `THERMAL_HOTSPOTS_MIN_PACK` to match.
+8. **The spec's XT2 notes were corrected.** The XT2 stores its raw image as plain little-endian 16-bit words in the FFF RawData record (not a TIFF; ExifTool wraps it in one only when it extracts it), and `flyr` does not read a wrong offset: on a private XT2 sample our decoder, ExifTool's raw values and the stored constants agree exactly, and the photo's own settings (emissivity 1, distance 0) give about -38 to 101 °C. The spec says so now.
+
 ## Contract changes
 
 Three rows in `docs/architecture/contract-changes.md` (header `| Date | Change | Why | Streams affected | Approved by |`), one per milestone PR that changes contracts. Exact text:
@@ -56,7 +62,7 @@ Three rows in `docs/architecture/contract-changes.md` (header `| Date | Change |
 M1 (task 1.10):
 
 ```
-| 2026-10-21 | Thermal analysis, additive. New project folder `thermal/` (older builds ignore it): `thermal/thermal.json` (`aio.thermal/1`: `defaults` and per-photo `photos["<layerId>/<photoId>"].settings` {emissivity, distanceM, airC, humidityPct, reflectedC or null = air}; `readings[]`; `hotspots[]` {id, issueId?, state proposed, confirmed or dismissed, origin detection or manual, sightings[] {layer, photo, box, peakC, meanC}, reference {kind surroundings or reading, readingId?, valueC}, peakC, meanC, deltaC, severity, reviewedSeverity?, changedSinceReview?, leaveOut?, note}; `grading.levels[]` {value, minDeltaC}; `alignment[layerId]` {dx, dy, scale}), `thermal/rasters/<layerId>/<photoId>.f32` (little-endian float32 °C, row-major) with `<photoId>.json` (`aio.thermalRaster/1`: width, height, family flir or dji-tsdk, camera, constants?, settings used, clamped[], minC, maxC, medianC, decoder, settingsKey) and `thermal/rasters/<layerId>/index.json` (status per photo: ok, unsupported, unverified, implausible, with reason). `PipelineName` gains `thermal.decode` (`ThermalDecodeParams` {layerId, photos?, force?}; `THERMAL_MIN_PACK = '0.21.0'`). IPC `thermal:probe` {projectId, layerId} to {ok, photos: {photoId, family, make, model}[]}, `thermal:read` {projectId} to {ok, file or null}, `thermal:write` {projectId, file} (atomic, `.bak`, refused for packages and read-only projects). `versions.ts` lists both families. | Thermal analysis M1 (`docs/plans/2026-10-21-thermal-analysis.md`) | @aio/schema, @aio/project, desktop, pipelines, pipeline pack | Founder, thermal analysis design of 2026-10-21; sign-off at merge |
+| 2026-10-21 | Thermal analysis, additive. New project folder `thermal/` (older builds ignore it): `thermal/thermal.json` (`aio.thermal/1`: `defaults` and per-photo `photos["<layerId>/<photoId>"].settings` {emissivity, distanceM, airC, humidityPct, reflectedC or null = air}; `readings[]`; `hotspots[]` {id, issueId?, state proposed, confirmed or dismissed, origin detection or manual, sightings[] {layer, photo, box, peakC, meanC}, reference {kind surroundings or reading, readingId?, valueC}, peakC, meanC, deltaC, severity, reviewedSeverity?, changedSinceReview?, leaveOut?, note}; `grading.levels[]` {value, minDeltaC}; `alignment[layerId]` {dx, dy, scale}), `thermal/rasters/<layerId>/<photoId>.f32` (little-endian float32 °C, row-major, no header) with `<photoId>.json` (`aio.thermalRaster/1`: width, height, family flir or dji-tsdk, camera, constants?, settings used, clamped[], minC, maxC, medianC, decoder, settingsKey) and `thermal/rasters/<layerId>/index.json` (`aio.thermalRaster/1`; `photos[photoId]` {status ok, unsupported, unverified or implausible; reason when not ok; settingsKey, the sha256 of the settings, decoder id and the photo's size and modified time it was decided with, so an unchanged photo is skipped whatever its status (absent when the photo was missing, its id could not name a file or its settings could not be used); check, FLIR photos only: the ExifTool cross-check ok, mismatch, error or skipped}; top-level `crosscheck` ok, failed or skipped (no ExifTool); only ok photos have a raster; the schema's objects are plain, so the extra fields pass the app's reader). `PipelineName` gains `thermal.decode` (`ThermalDecodeParams` {layerId, photos?, force?}; `THERMAL_MIN_PACK = '0.22.0'`; pipeline pack 0.22.0 bundles ExifTool 13.59 and the DJI Thermal SDK v1.9 (20260526) with their notices). IPC `thermal:probe` {projectId, layerId} to {ok, photos: {photoId, family flir, dji-tsdk or null, make, model}[]}, `thermal:read` {projectId} to {ok, file or null}, `thermal:write` {projectId, file} (atomic, `.bak`, refused for packages, never over a newer or changed file). `versions.ts` lists `aio.thermal`, `aio.thermalRaster` and `aio.thermalCandidates` (since 0.26). | Thermal analysis M1 (`docs/plans/2026-10-21-thermal-analysis.md`) | @aio/schema, @aio/project, desktop, pipelines, pipeline pack | Founder, thermal analysis design of 2026-10-21; sign-off at merge |
 ```
 
 M3 (task 3.8):
@@ -116,24 +122,26 @@ Each contract PR adds a compat test in `tools/compat/` against the newest frozen
 
 ## M1 tasks
 
+**Status (21 Oct 2026):** tasks 1.1 to 1.10 built on `feat/thermal-analysis`; task 1.11 (verification) runs before the merge. Departures 6 to 8 above.
+
 ### Task 1.1: thermal contracts (`@aio/schema`)
 
 **Files:** `packages/schema/src/thermal.ts` (new), `thermal.test.ts` (new), `index.ts`, `versions.ts`, `jobs.ts`, `jobs.test.ts`, `ipc.ts`
 
 **Interfaces (produces):** `THERMAL_SCHEMA = 'aio.thermal/1'`, `THERMAL_RASTER_SCHEMA = 'aio.thermalRaster/1'`, `THERMAL_CANDIDATES_SCHEMA = 'aio.thermalCandidates/1'`; zod and types `ThermalSettings`, `ThermalFamily = 'flir' | 'dji-tsdk'`, `ThermalPhotoStatus = 'ok' | 'unsupported' | 'unverified' | 'implausible'`, `ThermalRasterMeta`, `ThermalRasterIndex`, `ThermalReading`, `HotSpot`, `HotSpotSighting`, `ThermalReference`, `ThermalGrading`, `ThermalFile`, `ThermalCandidate`, `ThermalCandidatesFile`; `thermalPhotoKey(layerId, photoId): string` (`"<layerId>/<photoId>"`); `DEFAULT_GRADING` (values 1, 2, 3 with `minDeltaC` 4, 16, 40.1; a hot spot takes the highest level whose `minDeltaC` its ΔT, rounded to 0.1 °C, reaches); `ThermalDecodeParams`, `ThermalHotspotsParams` (the latter used in M3); `THERMAL_MIN_PACK = '0.21.0'`; IPC `thermal:probe`, `thermal:read`, `thermal:write`.
 
-- [ ] Failing tests in `thermal.test.ts`:
+- [x] Failing tests in `thermal.test.ts`:
   - `ThermalSettings` accepts `{ emissivity: 0.95, distanceM: 18, airC: 32, humidityPct: 60, reflectedC: null }`; refuses emissivity 0 or above 1, humidity above 100, distance negative;
   - `ThermalReading.geom` is `point`, `box`, `polygon` (the `ImageGeom` shapes of `annotation.ts`) or `{ type: 'line', points: Vec2[] (min 2) }`; `stats { maxC, minC, meanC }`;
   - `HotSpot` with `state: 'confirmed'` and no `issueId` is refused (refine); `severity` is an int or null; `reference.kind: 'reading'` without `readingId` is refused;
   - `ThermalFile` round-trips a full example and an empty `{ schema, photos: {}, readings: [], hotspots: [] }` (grading and alignment optional; missing grading means `DEFAULT_GRADING`);
   - `ThermalRasterMeta` requires `width * height` positive ints, `settingsKey` a 64-hex string;
   - `DEFAULT_GRADING.levels` equals `[{ value: 1, minDeltaC: 4 }, { value: 2, minDeltaC: 16 }, { value: 3, minDeltaC: 40.1 }]` and the grading refine refuses non-ascending `minDeltaC`.
-- [ ] Objects are plain `z.object` (not strict) so later additive fields pass older readers, as `Issue` does.
-- [ ] `versions.ts`: rows `{ family: 'aio.thermal', version: 1, home: 'project', where: 'thermal/thermal.json', since: <M1 app version> }` and the same for `aio.thermalRaster` (`thermal/rasters/*/*.json`) and `aio.thermalCandidates` (`thermal/candidates.json`).
-- [ ] `jobs.ts`: `thermal.decode` in `PipelineName` and `PIPELINES` (title "Decode thermal photos"), `ThermalDecodeParams` `{ layerId: Id, photos?: Id[], force?: boolean }` in the params map; `jobs.test.ts` name list.
-- [ ] `ipc.ts`: the three channels as in the M1 contract row; `Failure` for errors.
-- [ ] `pnpm --filter @aio/schema test thermal jobs`, `pnpm typecheck`.
+- [x] Objects are plain `z.object` (not strict) so later additive fields pass older readers, as `Issue` does.
+- [x] `versions.ts`: rows `{ family: 'aio.thermal', version: 1, home: 'project', where: 'thermal/thermal.json', since: <M1 app version> }` and the same for `aio.thermalRaster` (`thermal/rasters/*/*.json`) and `aio.thermalCandidates` (`thermal/candidates.json`).
+- [x] `jobs.ts`: `thermal.decode` in `PipelineName` and `PIPELINES` (title "Decode thermal photos"), `ThermalDecodeParams` `{ layerId: Id, photos?: Id[], force?: boolean }` in the params map; `jobs.test.ts` name list.
+- [x] `ipc.ts`: the three channels as in the M1 contract row; `Failure` for errors.
+- [x] `pnpm --filter @aio/schema test thermal jobs`, `pnpm typecheck`.
 
 ### Task 1.2: FLIR record decoder and physics (Python)
 
@@ -141,40 +149,40 @@ Each contract PR adds a compat test in `tools/compat/` against the newest frozen
 
 **Interfaces (produces):** `read_flir(path: Path) -> FlirRecord | None` with `FlirRecord(raw: np.ndarray[uint16, (h, w)], planck: Planck(r1, r2, b, f, o), atmos: Atmos(alpha1, alpha2, beta1, beta2, x), make: str, model: str, stored: ThermalSettingsPy)`; `to_celsius(raw: np.ndarray, planck: Planck, atmos: Atmos, settings: ThermalSettingsPy) -> np.ndarray[float32]`; `ThermalSettingsPy` dataclass mirroring `ThermalSettings`.
 
-- [ ] `thermal_fixtures.py`: `make_flir_jpeg(path, temps_c: np.ndarray, planck, atmos, settings, raw_format='tiff' | 'png', model='XT2')` builds a JPEG whose APP1 segments carry a FLIR FFF record split across several `FLIR\0` APP1 chunks (chunk index and count bytes as FLIR writes them), a CameraInfo record with the constants and stored settings, and a RawData record holding the raw image (16-bit TIFF, as the XT2 writes it; PNG variant with FLIR's byte-swapped words). Raw values come from the **inverse** of the reference formula, so the expected temperatures are known.
-- [ ] `thermal_reference.py`: an independent, deliberately plain implementation of the standard FLIR formula (atmospheric transmission from distance, air temperature and humidity with Alpha1/2, Beta1/2, X; window omitted; reflected and atmospheric radiance subtracted; Planck inverse `B / ln(R1 / (R2 * (S + O)) + F) - 273.15`), pixel by pixel in plain Python floats. It must not import `physics.py`.
-- [ ] Failing tests in `test_thermal_flir.py`:
+- [x] `thermal_fixtures.py`: `make_flir_jpeg(path, temps_c: np.ndarray, planck, atmos, settings, raw_format='tiff' | 'png', model='XT2')` builds a JPEG whose APP1 segments carry a FLIR FFF record split across several `FLIR\0` APP1 chunks (chunk index and count bytes as FLIR writes them), a CameraInfo record with the constants and stored settings, and a RawData record holding the raw image (16-bit TIFF, as the XT2 writes it; PNG variant with FLIR's byte-swapped words). Raw values come from the **inverse** of the reference formula, so the expected temperatures are known.
+- [x] `thermal_reference.py`: an independent, deliberately plain implementation of the standard FLIR formula (atmospheric transmission from distance, air temperature and humidity with Alpha1/2, Beta1/2, X; window omitted; reflected and atmospheric radiance subtracted; Planck inverse `B / ln(R1 / (R2 * (S + O)) + F) - 273.15`), pixel by pixel in plain Python floats. It must not import `physics.py`.
+- [x] Failing tests in `test_thermal_flir.py`:
   - `test_reads_split_app1_record`: `read_flir` on the TIFF fixture returns the exact raw array and constants;
   - `test_png_raw_byte_order`: PNG variant gives the same raw array;
   - `test_matches_reference_to_0_01c` (acceptance 1): over a 64 x 48 field from -20 to 120 °C and three settings sets (emissivity 0.95 / 0.7, distance 1 / 18 / 60 m, humidity 20 / 60 / 95 %), `abs(to_celsius - reference).max() <= 0.01`;
   - `test_round_trip_known_field`: decode of a fixture built from a known field returns it within 0.05 °C;
   - `test_not_flir_returns_none`: a plain JPEG, a truncated record, and a JPEG whose FLIR chunks are out of order or missing one return `None` (never partial numbers);
   - `test_settings_change_moves_values`: emissivity 0.95 to 0.80 raises a hot pixel above ambient and leaves a pixel at reflected temperature unchanged within 0.01 °C.
-- [ ] Implement the parser over raw bytes (no third-party JPEG reader); `physics.py` vectorised with numpy float64, cast to float32 at the end.
-- [ ] `ruff format`, `ruff check`, `pytest python/tests/test_thermal_flir.py`.
+- [x] Implement the parser over raw bytes (no third-party JPEG reader); `physics.py` vectorised with numpy float64, cast to float32 at the end.
+- [x] `ruff format`, `ruff check`, `pytest python/tests/test_thermal_flir.py`.
 
 ### Task 1.3: DJI Thermal SDK binding (Python)
 
 **Files:** `python/src/aio_pipelines/thermal/dji_tsdk.py` (new), `python/tests/test_thermal_dji.py` (new)
 
-**Interfaces (produces):** `is_dji_rjpeg(head: bytes) -> tuple[str, str] | None` (make, model when the head has DJI's thermal APP3 segments and the XMP model is in `TSDK_MODELS`); `TSDK_MODELS: frozenset[str]` (the TSDK 1.7 list: H20T, H20N, H30T, M30T, M2EA, M3T, M3TD, M4T and the rest of the 1.7 release notes); `TSDK_RANGES` (distance 1 to 25 m, humidity 20 to 100 %, emissivity 0.10 to 1.00, reflection -40 to 500 °C, ambient -40 to 80 °C; check against the 1.7 header `dirp_api.h`); `clamp_for_tsdk(s) -> tuple[ThermalSettingsPy, list[str]]`; `class Tsdk: __init__(dll_dir: Path)`, `measure(path: Path, settings) -> np.ndarray[float32]` (via `dirp_create_from_rjpeg`, `dirp_get_rjpeg_resolution`, `dirp_set_measurement_params`, `dirp_measure_ex`, `dirp_destroy`; raises `TsdkError(code)` on a non-zero return).
+**Interfaces (produces):** `is_dji_rjpeg(head: bytes) -> tuple[str, str] | None` (make, model when the head has DJI's thermal APP3 segments and the XMP model is in `TSDK_MODELS`); `TSDK_MODELS: frozenset[str]` (the DJI Thermal SDK v1.9 list: H20T, H20N, H30T, M30T, M2EA, M3T, M3TD, M4T and the rest of the 1.7 release notes); `TSDK_RANGES` (distance 1 to 25 m, humidity 20 to 100 %, emissivity 0.10 to 1.00, reflection -40 to 500 °C, ambient -40 to 80 °C; check against the 1.7 header `dirp_api.h`); `clamp_for_tsdk(s) -> tuple[ThermalSettingsPy, list[str]]`; `class Tsdk: __init__(dll_dir: Path)`, `measure(path: Path, settings) -> np.ndarray[float32]` (via `dirp_create_from_rjpeg`, `dirp_get_rjpeg_resolution`, `dirp_set_measurement_params`, `dirp_measure_ex`, `dirp_destroy`; raises `TsdkError(code)` on a non-zero return).
 
-- [ ] Failing tests:
+- [x] Failing tests:
   - `clamp_for_tsdk` with distance 40 m returns 25 m and `["distanceM"]`; values inside the ranges come back unchanged with `[]`;
   - `Tsdk` against a fake library object (inject a ctypes-like stub through a `_load` seam) passes the clamped params and maps a non-zero return to `TsdkError`; the handle is destroyed on error;
   - `is_dji_rjpeg` on a synthetic head (APP3 marker plus XMP `drone-dji` with `Model="M30T"`) gives `("DJI", "M30T")`; an XT2 head gives `None` (the XT2 is not on DJI's list and always takes the FLIR route);
   - `test_tsdk_samples_match_sdk` (acceptance 2), skipped unless `find_tool("dji_tsdk")` is found: for each sample R-JPEG in the SDK's `dataset/` folder, our `measure` equals the SDK's own `dji_irp.exe -a measure --measurefmt float32` output byte for byte.
-- [ ] `ruff`, pytest.
+- [x] `ruff`, pytest.
 
 ### Task 1.4: ExifTool and DJI TSDK in the pack, with notices
 
 **Files:** `tools/pipeline-pack/thermal-tools.mjs` (new), `thermal-tools-lock.json` (new), `tools/pipeline-pack/build.mjs`, `python/src/aio_pipelines/photo/native.py`, its test, `tools/release/native-libs.json`, `tools/release/notices.mjs`, `notices.test.mjs`, `tools/release/native-licences.mjs` (if it needs to accept the DJI licence ref)
 
-- [ ] Lock file entries `{ name, version, url, sha256, unpack, files }` for ExifTool (the standalone Windows 64-bit zip of the newest release at least two weeks old; unpack `exiftool(-k).exe` renamed to `exiftool.exe` plus its `exiftool_files/` folder into `tools/exiftool/`) and DJI Thermal SDK 1.7 (`dji_thermal_sdk_v1.7_20241205` or the January 2025 build the design names; unpack `utility/bin/windows/release_x64/*` into `tools/dji-tsdk/`, plus its `License.txt`). Builder pins the exact URLs and hashes.
-- [ ] `installThermalTools(packDir, { offline })` in `thermal-tools.mjs` verifies sha256 before unpacking (fail the build on mismatch), modelled on `installFfmpeg` in `ffmpeg.mjs`; `build.mjs` calls it, with `--no-thermal-tools` to skip. Test: a `.test.mjs` with a fake download that has the wrong hash fails, the right one unpacks the listed files.
-- [ ] `native.py` `TOOLS`: `"exiftool": ("QUADRION_EXIFTOOL", "exiftool")` and `"dji_tsdk": ("QUADRION_DJI_TSDK", "dji-tsdk")`; for `dji_tsdk` `find_tool` returns the folder holding `libdirp.dll` (test with a temp folder and the env var).
-- [ ] Notices: two entries in `native-libs.json` in the ffmpeg entry's format: ExifTool (`"spdx": "Artistic-1.0-Perl OR GPL-1.0-or-later"`, `"includes": [{ "name": "Strawberry Perl runtime", "spdx": "Artistic-1.0-Perl OR GPL-1.0-or-later" }]`, `"files": ["tools/exiftool/**"]`, `"linkage": "separate-process"` or the file's existing word for a separate executable) and DJI Thermal SDK (`"spdx": "LicenseRef-DJI-Thermal-SDK"`, `"files": ["tools/dji-tsdk/**"]`, `"linkage": "shared"`, `"note"` quoting where the licence text sits; the generated notices include the full `License.txt`). `notices.test.mjs` asserts both sections appear; `native-licences.mjs` accepts the `LicenseRef`.
-- [ ] CI: the Python job fetches the lock's two archives into an `actions/cache` keyed on the lock file's hash and sets `QUADRION_EXIFTOOL` and `QUADRION_DJI_TSDK`, so the cross-check and acceptance tests run in CI (if the DJI licence forbids CI download, the acceptance 2 test stays local; note it in the PR).
+- [x] Lock file entries `{ name, version, url, sha256, unpack, files }` for ExifTool (the standalone Windows 64-bit zip of the newest release at least two weeks old; unpack `exiftool(-k).exe` renamed to `exiftool.exe` plus its `exiftool_files/` folder into `tools/exiftool/`) and DJI Thermal SDK 1.7 (`dji_thermal_sdk_v1.7_20241205` or the January 2025 build the design names; unpack `utility/bin/windows/release_x64/*` into `tools/dji-tsdk/`, plus its `License.txt`). Builder pins the exact URLs and hashes.
+- [x] `installThermalTools(packDir, { offline })` in `thermal-tools.mjs` verifies sha256 before unpacking (fail the build on mismatch), modelled on `installFfmpeg` in `ffmpeg.mjs`; `build.mjs` calls it, with `--no-thermal-tools` to skip. Test: a `.test.mjs` with a fake download that has the wrong hash fails, the right one unpacks the listed files.
+- [x] `native.py` `TOOLS`: `"exiftool": ("QUADRION_EXIFTOOL", "exiftool")` and `"dji_tsdk": ("QUADRION_DJI_TSDK", "dji-tsdk")`; for `dji_tsdk` `find_tool` returns the folder holding `libdirp.dll` (test with a temp folder and the env var).
+- [x] Notices: two entries in `native-libs.json` in the ffmpeg entry's format: ExifTool (`"spdx": "Artistic-1.0-Perl OR GPL-1.0-or-later"`, `"includes": [{ "name": "Strawberry Perl runtime", "spdx": "Artistic-1.0-Perl OR GPL-1.0-or-later" }]`, `"files": ["tools/exiftool/**"]`, `"linkage": "separate-process"` or the file's existing word for a separate executable) and DJI Thermal SDK (`"spdx": "LicenseRef-DJI-Thermal-SDK"`, `"files": ["tools/dji-tsdk/**"]`, `"linkage": "shared"`, `"note"` quoting where the licence text sits; the generated notices include the full `License.txt`). `notices.test.mjs` asserts both sections appear; `native-licences.mjs` accepts the `LicenseRef`.
+- [x] CI: the Python job fetches the lock's two archives into an `actions/cache` keyed on the lock file's hash and sets `QUADRION_EXIFTOOL` and `QUADRION_DJI_TSDK`, so the cross-check and acceptance tests run in CI (if the DJI licence forbids CI download, the acceptance 2 test stays local; note it in the PR).
 
 ### Task 1.5: `thermal.decode` job (Python)
 
@@ -182,7 +190,7 @@ Each contract PR adds a compat test in `tools/compat/` against the newest frozen
 
 **Interfaces:** consumes 1.1 (`ThermalDecodeParams`, file shapes), 1.2, 1.3, 1.4 (`find_tool`). Produces the raster files, `index.json`, and the job result `{ decoded, skipped, unsupported, unverified, implausible }`.
 
-- [ ] Failing tests (temp project with a photos layer of synthetic photos, sidecar settings):
+- [x] Failing tests (temp project with a photos layer of synthetic photos, sidecar settings):
   - `test_the_pack_lists_thermal_decode` and `test_params_follow_thermal_decode_params` (the `rf.coverage` test pattern);
   - FLIR photos decode to `thermal/rasters/<layer>/<id>.f32` (length `w*h*4`) and `.json` with `settingsKey = sha256(canonical settings JSON + decoder id + source size + mtime)`; per-photo settings from `thermal.json` win over `defaults`, which win over the design defaults (distance from the photo's height above take-off when the item has one);
   - a second run with nothing changed skips every photo; changing one photo's emissivity re-decodes only that photo; `force` re-decodes all;
@@ -191,7 +199,7 @@ Each contract PR adds a compat test in `tools/compat/` against the newest frozen
   - **plausibility:** a fixture whose decoded median is 150 °C is `implausible` with no raster;
   - DJI photos go through `Tsdk` (stubbed) with clamped settings recorded in `clamped`;
   - output is staged and committed with `commit_tree`, paths through `safe_project_path`; a read-only project fails the job with a clear error.
-- [ ] Register in `pipelines.py` `all_pipelines()`; bump `pyproject.toml` to 0.21.0; `uv lock` in `python/`.
+- [x] Register in `pipelines.py` `all_pipelines()`; bump `pyproject.toml` to 0.21.0; `uv lock` in `python/`.
 
 ### Task 1.6: probe, sidecar IPC and job wiring (`@aio/project`, main)
 
@@ -199,15 +207,15 @@ Each contract PR adds a compat test in `tools/compat/` against the newest frozen
 
 **Interfaces (produces):** `thermalFamily(head: Uint8Array): { family: ThermalFamily; make: string; model: string } | null` (FLIR: an APP1 starting `FLIR\0`; DJI: the TSDK marker and model list mirrored from 1.3 as `TSDK_MODELS` in TS, one test pins that both lists are equal by reading the Python file); handlers for `thermal:probe`, `thermal:read`, `thermal:write`; `thermalPackRefusal(runtime, pipeline): string | null`.
 
-- [ ] Failing tests: probe on a synthetic head built in the test (SOI plus an APP1 starting `FLIR�`) gives `flir`; a plain JPEG with Exif only gives null (once photo position edit has landed, add cases on its `xt2Thermal` and `xt2Visual` helpers); on a synthetic DJI head gives `dji-tsdk`. `thermal:probe` reads only the first 256 KB of each `photos/<id>.jpg`; `thermal:write` writes atomically with `.bak`, refuses packages and read-only projects, and refuses a file that fails `ThermalFile`; `thermal:read` returns `file: null` when absent and the error text for a corrupt file. `jobs:start` with `thermal.decode` on a pack below 0.21.0 is refused with the update text (the `antennaPackRefusal` pattern).
-- [ ] Register handlers and the refusal in main `index.ts`; `renderer/jobs.ts` and `processing/pipelines.ts` entries for `thermal.decode` (not listed in the Processing screen's user-facing groups; the bench starts it).
+- [x] Failing tests: probe on a synthetic head built in the test (SOI plus an APP1 starting `FLIR�`) gives `flir`; a plain JPEG with Exif only gives null (once photo position edit has landed, add cases on its `xt2Thermal` and `xt2Visual` helpers); on a synthetic DJI head gives `dji-tsdk`. `thermal:probe` reads only the first 256 KB of each `photos/<id>.jpg`; `thermal:write` writes atomically with `.bak`, refuses packages and read-only projects, and refuses a file that fails `ThermalFile`; `thermal:read` returns `file: null` when absent and the error text for a corrupt file. `jobs:start` with `thermal.decode` on a pack below 0.21.0 is refused with the update text (the `antennaPackRefusal` pattern).
+- [x] Register handlers and the refusal in main `index.ts`; `renderer/jobs.ts` and `processing/pipelines.ts` entries for `thermal.decode` (not listed in the Processing screen's user-facing groups; the bench starts it).
 
 ### Task 1.7: strings, M1 set (`@aio/ui`)
 
 **Files:** `packages/ui/src/i18n/en.ts`, `i18n.test.ts`
 
-- [ ] Add `wb.tab.thermal` "Thermal", `actions.thermal.analyse` "Analyse thermal", and a `thermal.` group: `palette.iron` "Iron", `palette.rainbow` "Rainbow", `palette.whiteHot` "White hot", `palette.blackHot` "Black hot", `palette.arctic` "Arctic", `range.auto` "Auto range", `hover` "{temp} °C", `settings.line` "Emissivity {e} · Distance {d} m · Air {a} °C · Humidity {h}%", `settings.edit` "Edit", `settings.emissivity`, `settings.distance`, `settings.air`, `settings.humidity`, `settings.reflected` "Reflected temperature", `settings.reflectedSameAsAir` "Same as air", `settings.applyPhoto` "This photo", `settings.applySelected_other` "{count} selected photos", `settings.applyAll` "Whole dataset", `settings.clamped` "The camera's SDK limits {field}; it used {value}.", `decoding_other` "Reading temperatures of {count} photos", `status.unsupported` "Not a supported thermal camera ({model}). Shown as an ordinary photo.", `status.unverified` "Temperatures held back: the reading did not match the reference tool.", `status.implausible` "Temperatures held back: the values are outside physical limits.", `readOnly` "Open the project folder to analyse thermal photos.", `none` "No thermal photos in this dataset.", `filmstrip` "Thermal photos".
-- [ ] Catalogue test passes.
+- [x] Add `wb.tab.thermal` "Thermal", `actions.thermal.analyse` "Analyse thermal", and a `thermal.` group: `palette.iron` "Iron", `palette.rainbow` "Rainbow", `palette.whiteHot` "White hot", `palette.blackHot` "Black hot", `palette.arctic` "Arctic", `range.auto` "Auto range", `hover` "{temp} °C", `settings.line` "Emissivity {e} · Distance {d} m · Air {a} °C · Humidity {h}%", `settings.edit` "Edit", `settings.emissivity`, `settings.distance`, `settings.air`, `settings.humidity`, `settings.reflected` "Reflected temperature", `settings.reflectedSameAsAir` "Same as air", `settings.applyPhoto` "This photo", `settings.applySelected_other` "{count} selected photos", `settings.applyAll` "Whole dataset", `settings.clamped` "The camera's SDK limits {field}; it used {value}.", `decoding_other` "Reading temperatures of {count} photos", `status.unsupported` "Not a supported thermal camera ({model}). Shown as an ordinary photo.", `status.unverified` "Temperatures held back: the reading did not match the reference tool.", `status.implausible` "Temperatures held back: the values are outside physical limits.", `readOnly` "Open the project folder to analyse thermal photos.", `none` "No thermal photos in this dataset.", `filmstrip` "Thermal photos".
+- [x] Catalogue test passes.
 
 ### Task 1.8: renderer thermal core (pure)
 
@@ -215,25 +223,25 @@ Each contract PR adds a compat test in `tools/compat/` against the newest frozen
 
 **Interfaces (produces):** `loadRaster(projectId, layerId, photoId): Promise<ThermalRaster | null>` with `ThermalRaster { width; height; data: Float32Array; meta: ThermalRasterMeta }` (fetches `aio://project/<id>/thermal/rasters/...`; length or schema mismatch gives null); `PALETTES: Record<PaletteId, Uint8ClampedArray /* 256 x RGBA */>` for `iron | rainbow | whiteHot | blackHot | arctic`; `colourise(r, range: [number, number], palette, isotherm?: { aboveC: number; rgba: [number, number, number, number] }, out?: ImageData): ImageData`; `autoRange(r): [number, number]` (1st and 99th percentile of finite values); `tempAt(r, x, y): number | null` (nearest pixel; null outside or NaN); `effectiveSettings(file, layerId, photoId, item, takeoffH): ThermalSettings`; `applySettings(file, keys: string[], patch): ThermalFile`; `useThermal` zustand store (`open(projectId, layerId, photoId?)`, `file`, `index`, `probe`, `current`, `palette`, `range`, `saveSettings(keys, patch)` which writes `thermal:write` then starts `thermal.decode` for those photos and reloads their rasters when the job ends).
 
-- [ ] Failing tests: palette LUTs have 256 entries and their ends (`whiteHot` 0 black, 255 white; `blackHot` reversed); `colourise` maps min to entry 0 and max to 255, clamps outside, paints isotherm pixels at or above `aboveC` and leaves NaN transparent; `autoRange` ignores NaN and a few extreme pixels; `effectiveSettings` precedence (photo, defaults, design defaults; distance from height above take-off, else 10 m); `applySettings` to selected keys leaves others alone; store: `saveSettings` writes once, starts one job with exactly those photo ids, and never clears readings or hot spots.
+- [x] Failing tests: palette LUTs have 256 entries and their ends (`whiteHot` 0 black, 255 white; `blackHot` reversed); `colourise` maps min to entry 0 and max to 255, clamps outside, paints isotherm pixels at or above `aboveC` and leaves NaN transparent; `autoRange` ignores NaN and a few extreme pixels; `effectiveSettings` precedence (photo, defaults, design defaults; distance from height above take-off, else 10 m); `applySettings` to selected keys leaves others alone; store: `saveSettings` writes once, starts one job with exactly those photo ids, and never clears readings or hot spots.
 
 ### Task 1.9: bench shell UI
 
 **Files:** `workspace/workbench/tabsModel.ts`, `RightSidebar.tsx`, `workbenchStore.ts`, `workspace/island/groups.tsx`, `workspace/workbench/benches/ThermalBench.tsx` + test, `renderer/thermal/ThermalStage.tsx`, `PaletteBar.tsx`, `SettingsLine.tsx`, `SettingsEditor.tsx`, `Filmstrip.tsx` + tests (new), `shell/actions/thermalActions.tsx` + test (new), `shell/actions/index.ts`
 
-- [ ] `thermal` added to `TAB_IDS`, `FrontBody` maps it to `ThermalBench`; wide like Volumes if `isWide` applies.
-- [ ] Action `thermal.analyse` (`defineAction<'layers' | 'photos'>`, `section: 'open'`, `targets: ['layers', 'photos']`, `appliesTo` when the probe for that layer finds at least one thermal photo, else hidden; `run` calls `useThermal.getState().open(...)` and `workbench.getState().open('thermal')`). Registered from `registerSidebarActions()`. Tests on `actionsFor`.
-- [ ] Bench (mockup layout): stage canvas with `colourise` output, palette bar with min and max labels, palette picker, Auto range, the hover temperature under the pointer (`thermal-hover`), the settings line (`thermal-settings-line`) with Edit opening `SettingsEditor` (`Popover`; scope This photo, selected, Whole dataset); filmstrip of thermal photos only (`thermal-filmstrip`, one `thermal-thumb-<photoId>` each); status notes from `index.json` (`thermal-status`); a "Reading temperatures" progress line while the job runs; read-only note for packages.
-- [ ] Component tests: hover shows `tempAt` with one decimal; an `unverified` photo shows its note and no hover number; saving settings for the whole dataset calls `saveSettings` with every thermal photo key.
+- [x] `thermal` added to `TAB_IDS`, `FrontBody` maps it to `ThermalBench`; wide like Volumes if `isWide` applies.
+- [x] Action `thermal.analyse` (`defineAction<'layers' | 'photos'>`, `section: 'open'`, `targets: ['layers', 'photos']`, `appliesTo` when the probe for that layer finds at least one thermal photo, else hidden; `run` calls `useThermal.getState().open(...)` and `workbench.getState().open('thermal')`). Registered from `registerSidebarActions()`. Tests on `actionsFor`.
+- [x] Bench (mockup layout): stage canvas with `colourise` output, palette bar with min and max labels, palette picker, Auto range, the hover temperature under the pointer (`thermal-hover`), the settings line (`thermal-settings-line`) with Edit opening `SettingsEditor` (`Popover`; scope This photo, selected, Whole dataset); filmstrip of thermal photos only (`thermal-filmstrip`, one `thermal-thumb-<photoId>` each); status notes from `index.json` (`thermal-status`); a "Reading temperatures" progress line while the job runs; read-only note for packages.
+- [x] Component tests: hover shows `tempAt` with one decimal; an `unverified` photo shows its note and no hover number; saving settings for the whole dataset calls `saveSettings` with every thermal photo key.
 
 ### Task 1.10: e2e, compat and docs (M1)
 
 **Files:** `apps/desktop/e2e/thermal-bench.spec.ts`, `e2e/thermalFixture.ts`, `e2e/thermal-fixture.py` (new), `tools/compat/thermal-additive.test.mjs` (new), `docs/architecture/contract-changes.md`, `docs/architecture/data-conventions.md`, the photos page of the user guide, the spec and this plan (status updates)
 
-- [ ] `thermal-fixture.py` (run with the pipeline Python, as `photo-fixture.py` is) writes three synthetic photos with `thermal_fixtures.make_flir_jpeg`: two thermals with a known 3 x 3 hot patch at 85.0 °C on a 30.0 °C background (settings stored in the record: emissivity 0.95, distance 10 m, air 25 °C, humidity 50 %), and one visual twin. `thermalFixture.ts` builds a project around them (pattern of `pinFixture.ts`).
-- [ ] Spec (skips without `hasPipelinePython()`): right-click the photos dataset, Analyse thermal; the bench opens and decodes; hover the patch centre shows `85.0 °C` (within 0.1); Edit settings, emissivity 0.80, This photo: the hover reading at the patch rises and the background stays near 30 °C; the filmstrip lists the two thermals, not the visual.
-- [ ] Compat test: the 0.21 schema still parses the manifest and every existing-family file of the fixture project after a decode.
-- [ ] M1 contract row (exact text above); data-conventions: a `thermal/` paragraph in the folder list (lines 21-37) with the file names and that rasters are derived and can be deleted; guide paragraph "Analyse thermal photos". `check-public-text.mjs` on each doc.
+- [x] `thermal-fixture.py` (run with the pipeline Python, as `photo-fixture.py` is) writes three synthetic photos with `thermal_fixtures.make_flir_jpeg`: two thermals with a known 3 x 3 hot patch at 85.0 °C on a 30.0 °C background (settings stored in the record: emissivity 0.95, distance 10 m, air 25 °C, humidity 50 %), and one visual twin. `thermalFixture.ts` builds a project around them (pattern of `pinFixture.ts`).
+- [x] Spec (skips without `hasPipelinePython()`): right-click the photos dataset, Analyse thermal; the bench opens and decodes; hover the patch centre shows `85.0 °C` (within 0.1); Edit settings, emissivity 0.80, This photo: the hover reading at the patch rises and the background stays near 30 °C; the filmstrip lists the two thermals, not the visual.
+- [x] Compat test: the 0.21 schema still parses the manifest and every existing-family file of the fixture project after a decode.
+- [x] M1 contract row (exact text above); data-conventions: a `thermal/` paragraph in the folder list (lines 21-37) with the file names and that rasters are derived and can be deleted; guide paragraph "Analyse thermal photos". `check-public-text.mjs` on each doc.
 
 ### Task 1.11: verification (M1)
 

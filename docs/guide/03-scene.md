@@ -246,6 +246,23 @@ Projects imported with an older build may hold drone photos at the wrong height 
 
 A thermal photo (a name ending `_R`) that carries no drone metadata takes the place and view direction of its visual twin from the same capture: the photo numbered one after it (or one before), taken within 3 seconds. It shows **Edited**, and **Reset to original** puts it at the place its own file gives. A thermal photo with no twin keeps its own place, and the import says to check it.
 
+## Analyse thermal photos
+
+Radiometric photos from a drone's thermal camera carry a temperature for every pixel. {product} reads two kinds: FLIR-core cameras such as the DJI Zenmuse XT2, and the DJI thermal cameras that DJI's Thermal SDK reads (such as the H20T, H30T, M30T, Mavic 3T and Matrice 4T).
+
+1. Right-click a photo set that holds thermal photos (its row in the sidebar), or a thermal photo, and choose **Analyse thermal**. The **Thermal** tab opens in the right panel.
+2. The first time, **Reading temperatures of** a number of photos shows while {product} reads them. This needs processing tools 0.22.0 or later (**Settings**, **Processing tools**).
+3. Point at the photo: the temperature under the pointer shows beside it, in °C to one decimal.
+4. Under the photo, the palette bar shows the colours from the coldest to the hottest temperature in view. Pick another palette (**Iron**, **Rainbow**, **White hot**, **Black hot**, **Arctic**), or **Auto range** to fit the colours to this photo again.
+5. The line under it gives the settings the temperatures are worked out with: emissivity, distance, air temperature and humidity. **Edit** changes them, with the reflected temperature too (the same as the air unless you set it). Save with **This photo**, the photos you marked in the filmstrip, or **Whole dataset**; those photos are read again with the new settings.
+6. The filmstrip at the bottom lists the set's thermal photos only, not their visual twins. Click one to show it; **Ctrl** and a click marks it for **Edit**.
+
+Unless you change them, the settings are emissivity 0.95, the drone's height above its take-off point as the distance (10 m when the photo does not say), air 25 °C and humidity 50 %.
+
+A photo {product} cannot read reliably shows no temperatures, only why: a camera it does not support shows as an ordinary photo, and temperatures that do not match the reference tool or are outside physical limits are held back. In a package, or when you may only look, the tab shows the temperatures already worked out and says **Open the project folder to analyse thermal photos.**
+
+The settings and temperatures are kept in the project's `thermal/` folder. The temperatures can always be worked out again from the photos.
+
 ## The right panel
 
 The right panel (the right sidebar) is the workbench: one row of tabs over the front tab's content, and the AI agent below it.
