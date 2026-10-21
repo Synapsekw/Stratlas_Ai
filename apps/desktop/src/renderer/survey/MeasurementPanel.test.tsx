@@ -172,7 +172,7 @@ describe('the measurement panel scope, source and copy', () => {
     });
     mount();
     expect(host.querySelector('[data-testid="survey-scope-date"]')?.textContent).toBe(
-      'Needs a date: drag it onto a survey date in the Datasets list.',
+      'Needs a date: drag it onto a survey date in the Datasets list, or right-click it there and choose Move to date.',
     );
   });
 

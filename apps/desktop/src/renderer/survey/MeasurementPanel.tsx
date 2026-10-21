@@ -409,7 +409,8 @@ export function MeasurementPanel() {
         ) : (
           captures.length > 0 && (
             <p className="small" data-testid="survey-scope-date">
-              Needs a date: drag it onto a survey date in the Datasets list.
+              Needs a date: drag it onto a survey date in the Datasets list, or right-click it there
+              and choose Move to date.
             </p>
           )
         )}

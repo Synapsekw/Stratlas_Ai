@@ -4369,6 +4369,7 @@ export const en = {
   'actions.measure.newFolder': 'New folder…',
   'actions.measure.inFolder': 'Already in this folder',
   'actions.measure.spansDates': 'The marked measurements are on different dates',
+  'actions.measure.moveToDate': 'Move to date',
   'actions.measure.delete': 'Delete',
   'actions.measure.deleteCount_one': 'Delete {count} measurement',
   'actions.measure.deleteCount_other': 'Delete {count} measurements',

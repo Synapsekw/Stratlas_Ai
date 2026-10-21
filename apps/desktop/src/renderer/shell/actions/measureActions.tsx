@@ -1,3 +1,4 @@
+import { isAnnotateReadOnly } from '@aio/annotate';
 import { getActiveScene } from '@aio/engine';
 import {
   defineAction,
@@ -11,9 +12,11 @@ import {
   type SubItem,
 } from '@aio/ui';
 import type { ProjectManifest, SurveyMeasurement } from '@aio/schema';
+import { isTelecomTool } from '@aio/survey';
 import { workspace } from '@aio/workspace';
 import { shell } from '../../shell';
 import { measureFoldersOf, needsDate } from '../../survey/measureRows';
+import { moveMeasurementsToDate } from '../../survey/measureMoveRun';
 import { focusPoint, frameOf } from '../../survey/measureScene';
 import {
   askNewFolder,
@@ -25,12 +28,13 @@ import {
   setMeasurementsHidden,
 } from '../../survey/measureStore';
 import { renameRequest } from '../renameRequest';
-import { editBlocked } from './reasons';
+import { dateLabel, editBlocked } from './reasons';
 
 /*
  * The right-click actions of the measurement rows in the Datasets tree: rename, colour, hide or
- * show, fly to, move to a folder and delete. Several marked rows take Colour, Hide or Show, Move
- * and Delete together; Rename and Fly to act on the row the menu opened on.
+ * show, fly to, move to a folder, move to another survey date and delete. Several marked rows take
+ * Colour, Hide or Show, the Moves and Delete together; Rename and Fly to act on the row the menu
+ * opened on.
  */
 
 type Target = Extract<MenuTarget, { kind: 'measurements' }>;
@@ -208,6 +212,37 @@ const actions: readonly Action[] = [
       if (sub === 'new') askNewFolder(tg.ids);
       else if (sub === 'none') setFolder(tg.ids, '');
       else if (sub?.startsWith('to:')) setFolder(tg.ids, sub.slice(3));
+    },
+  }),
+  defineAction<'measurements'>({
+    id: 'measure.moveToDate',
+    label: 'actions.measure.moveToDate',
+    section: 'edit',
+    targets: ['measurements'],
+    multi: true,
+    present: 'submenu',
+    appliesTo: (_tg, ctx) => ctx.manifest.captures.length > 0,
+    // the keyboard path of dropping rows on a survey date folder (the same move, note and Undo)
+    disabled: (tg, ctx) => {
+      const why = measureEditBlocked(ctx);
+      if (why) return why;
+      if (isAnnotateReadOnly()) return t('actions.reason.readOnly');
+      return marked(tg).some((m) => isTelecomTool(m.tool)) ? t('tree.measure.move.telecom') : false;
+    },
+    submenu: (tg, ctx): SubItem[] => {
+      const key = dateKeyOf(marked(tg), ctx.manifest);
+      return [...ctx.manifest.captures]
+        .filter((c) => c.id !== key)
+        .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+        .map((c) => ({
+          id: c.id,
+          label: dateLabel(c),
+          swatch: ctx.tags[c.id]?.colour ?? '',
+          testId: `measure-date-to-${c.id}`,
+        }));
+    },
+    run: (tg, _ctx, sub) => {
+      if (sub && !isAnnotateReadOnly()) void moveMeasurementsToDate(tg.ids, sub);
     },
   }),
   defineAction<'measurements'>({
