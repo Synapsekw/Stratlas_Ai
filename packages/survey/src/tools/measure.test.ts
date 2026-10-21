@@ -8,6 +8,9 @@ import {
   gradeStyles,
   lineMetrics,
   polygonAreas,
+  TERRAIN_AREA_MAX_CELLS,
+  TERRAIN_LINE_MAX_STATIONS,
+  terrainArea,
   vertexTable,
 } from './measure';
 import { measurementReadout } from './readout';
@@ -225,5 +228,82 @@ describe('readouts', () => {
       note: 'Not computed yet',
     });
     expect(rows.find((r) => r.key === 'area')?.value).toBe(50);
+  });
+});
+
+describe('terrain sample budget', () => {
+  /** A counting sampler: how many heights a computation asked for. */
+  const counted = (s: HeightSampler) => {
+    let n = 0;
+    return {
+      sampler: {
+        heightAt: (e: number, nn: number) => {
+          n++;
+          return s.heightAt(e, nn);
+        },
+      } satisfies HeightSampler,
+      count: () => n,
+    };
+  };
+
+  /**
+   * A stockpile on a yard: a rounded cone 12 m high and 90 m across, with a rough skin (ripples a
+   * few metres long, 0.15 m high), the kind of terrain a pile's toe sits on in a real survey.
+   */
+  const pile: HeightSampler = {
+    heightAt: (e, n) => {
+      const x = e - E0 - 50;
+      const y = n - N0 - 50;
+      const r = Math.hypot(x, y);
+      const body = r < 45 ? 12 * Math.cos(((r / 45) * Math.PI) / 2) ** 1.5 : 0;
+      return 30 + body + 0.15 * Math.sin(x * 2.1) * Math.cos(y * 1.7) + 0.08 * Math.sin(x + y * 3);
+    },
+  };
+  /** A toe drawn around it: a 48-sided ring about 94 m across. */
+  const toe = Array.from({ length: 48 }, (_, k) => {
+    const a = (k / 48) * 2 * Math.PI;
+    const r = 47 + 1.5 * Math.sin(5 * a);
+    return at(50 + r * Math.cos(a), 50 + r * Math.sin(a));
+  });
+
+  it('asks a pile-sized polygon for at most the budget of heights', () => {
+    const c = counted(pile);
+    polygonAreas(toe, c.sampler);
+    expect(c.count()).toBeLessThanOrEqual((TERRAIN_AREA_MAX_CELLS + 1) ** 2);
+  });
+
+  it('leaves a pile terrain area as it was, and a wider one within 1 % of it', () => {
+    // the figure before the budget: half-metre cells, up to 500 a side
+    const before = (ring: readonly Pt[]) => terrainArea(ring, pile, 0.5, 500).areaM2;
+    // a stockpile under 100 m across keeps its half-metre cells: the same figure
+    expect(polygonAreas(toe, pile).terrainM2).toBeCloseTo(before(toe), 6);
+    // a yard boundary twice as wide is cut in 0.95 m cells: within 1 % on this rough skin
+    const yard = toe.map((p) => at(2 * (p[0] - E0) - 50, 2 * (p[1] - N0) - 50));
+    const a = polygonAreas(yard, pile).terrainM2 ?? 0;
+    expect(Math.abs(a - before(yard)) / before(yard)).toBeLessThan(0.01);
+  });
+
+  it('works out a site-sized polygon within the sample and time budget', () => {
+    // a 2 km x 1.5 km boundary over the rough pile surface: half-metre cells would be 12 million
+    const big = [at(0, 0), at(2000, 0), at(2000, 1500), at(0, 1500)];
+    const c = counted(pile);
+    const t0 = performance.now();
+    const a = polygonAreas(big, c.sampler);
+    const ms = performance.now() - t0;
+    expect(a.terrainM2).toBeGreaterThan(a.horizontalM2);
+    expect(c.count()).toBeLessThanOrEqual((TERRAIN_AREA_MAX_CELLS + 1) ** 2);
+    expect(ms).toBeLessThan(1000);
+  });
+
+  it('samples a long line at most the station budget, plus its vertices', () => {
+    const c = counted(pile);
+    const line = [at(0, 0), at(5000, 0), at(5000, 4000), at(9000, 4000)];
+    const m = lineMetrics(line, c.sampler);
+    expect(m.terrainM).not.toBeNull();
+    expect(c.count()).toBeLessThanOrEqual(TERRAIN_LINE_MAX_STATIONS + line.length + 1);
+    // a short line keeps its quarter-metre stations
+    const s = counted(pile);
+    lineMetrics([at(0, 0), at(100, 0)], s.sampler);
+    expect(s.count()).toBe(401);
   });
 });

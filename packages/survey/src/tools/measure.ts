@@ -81,6 +81,20 @@ export function profileLength(profile: Profile): { lengthM: number; coveredM: nu
   return { lengthM, coveredM };
 }
 
+/**
+ * The most stations a terrain length samples (plus the vertices): a line longer than 500 m is
+ * sampled more coarsely than `stepM`, so its cost stays bounded whatever its length.
+ */
+export const TERRAIN_LINE_MAX_STATIONS = 2000;
+
+/**
+ * The most cells a terrain area cuts its polygon into along its longer side, so it asks for at
+ * most (200 + 1)² heights. Up to 100 m across (a stockpile) the cells stay half a metre and the
+ * area is unchanged; a wider polygon is cut more coarsely, within 1 % of the half-metre figure on
+ * rough ground (measure.test.ts).
+ */
+export const TERRAIN_AREA_MAX_CELLS = 200;
+
 export function lineMetrics(
   points: readonly Pt[],
   surface?: HeightSampler,
@@ -103,7 +117,8 @@ export function lineMetrics(
   let terrainM: number | null = null;
   let terrainCoverage = 0;
   if (surface && points.length > 1) {
-    const { lengthM, coveredM } = profileLength(sampleProfile(points, surface, stepM));
+    const step = Math.max(stepM, horizontalM / TERRAIN_LINE_MAX_STATIONS);
+    const { lengthM, coveredM } = profileLength(sampleProfile(points, surface, step));
     terrainCoverage = horizontalM > 0 ? coveredM / horizontalM : 0;
     terrainM = coveredM > 0 ? lengthM : null;
   }
@@ -349,12 +364,14 @@ export interface PolygonAreas {
 /**
  * Surface area of `surface` inside the ring: the plan is cut into `stepM` cells, each cell's
  * coverage by the polygon is clipped exactly, and its surface is two triangles through the
- * corner heights. Exact for a plane at any step.
+ * corner heights. Exact for a plane at any step. At most `maxCells` cells along the longer side
+ * (`TERRAIN_AREA_MAX_CELLS`), so a large polygon asks for a bounded number of heights.
  */
 export function terrainArea(
   ring: readonly Pt[],
   surface: HeightSampler,
   stepM: number,
+  maxCells = TERRAIN_AREA_MAX_CELLS,
 ): { areaM2: number; uncoveredM2: number } {
   if (ring.length < 3) return { areaM2: 0, uncoveredM2: 0 };
   const o = ring[0] ?? [0, 0, 0];
@@ -370,9 +387,9 @@ export function terrainArea(
     maxX = Math.max(maxX, x);
     maxY = Math.max(maxY, y);
   }
-  // at most about 250,000 cells
+  // at most maxCells a side: (maxCells + 1)² corner heights
   const span = Math.max(maxX - minX, maxY - minY);
-  const step = Math.max(stepM, span / 500);
+  const step = Math.max(stepM, span / maxCells);
   const cols = Math.max(1, Math.ceil((maxX - minX) / step));
   const rows = Math.max(1, Math.ceil((maxY - minY) / step));
   const h = (x: number, y: number) => surface.heightAt(x + o[0], y + o[1]);
