@@ -188,9 +188,12 @@ def parse_boxes(text: str) -> list[tuple[list[float], str]] | None:
         if not isinstance(b, list) or len(b) != 4:
             continue
         try:
-            out.append(([float(v) for v in b], str(d.get("note", ""))))
+            box = [float(v) for v in b]
         except (TypeError, ValueError):
             continue
+        # json reads NaN and Infinity; one in a pass file makes the whole pass unreadable
+        if all(math.isfinite(v) for v in box):
+            out.append((box, str(d.get("note", ""))))
     return out
 
 

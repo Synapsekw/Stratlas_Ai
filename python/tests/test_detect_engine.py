@@ -87,6 +87,16 @@ def test_parse_garbage_is_none():
     assert parse_boxes("[]") == []
 
 
+def test_parse_drops_non_finite_numbers():
+    # Python's json reads NaN and Infinity; a pass file must never hold them
+    reply = (
+        '[{"bbox_2d": [NaN, 2, 30, 40]}, {"bbox_2d": [1, Infinity, 30, 40]},'
+        ' {"bbox_2d": [1, 2, -Infinity, 40]}, {"bbox_2d": [1, 2, 30, 1e999]},'
+        ' {"bbox_2d": ["nan", 2, 30, 40]}, {"bbox_2d": [5, 6, 70, 80], "note": "ok"}]'
+    )
+    assert parse_boxes(reply) == [([5.0, 6.0, 70.0, 80.0], "ok")]
+
+
 def test_merge_drops_mostly_inside():
     big = cand((0, 0, 100, 100))
     # The small box is 100 x 10; 70 px of it lies inside the big one.
