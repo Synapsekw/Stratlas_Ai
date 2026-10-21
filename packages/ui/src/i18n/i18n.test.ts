@@ -300,3 +300,55 @@ describe('RF coverage texts', () => {
     expect(t('rf.autoplan.left.draft')).not.toMatch(/include drafts/i);
   });
 });
+
+describe('the thermal bench strings', () => {
+  it('has the workbench tab, the analyse action and the thermal group', () => {
+    const keys = [
+      'wb.tab.thermal',
+      'actions.thermal.analyse',
+      'thermal.palette.iron',
+      'thermal.palette.rainbow',
+      'thermal.palette.whiteHot',
+      'thermal.palette.blackHot',
+      'thermal.palette.arctic',
+      'thermal.range.auto',
+      'thermal.hover',
+      'thermal.settings.line',
+      'thermal.settings.edit',
+      'thermal.settings.emissivity',
+      'thermal.settings.distance',
+      'thermal.settings.air',
+      'thermal.settings.humidity',
+      'thermal.settings.reflected',
+      'thermal.settings.reflectedSameAsAir',
+      'thermal.settings.applyPhoto',
+      'thermal.settings.applySelected_one',
+      'thermal.settings.applySelected_other',
+      'thermal.settings.applyAll',
+      'thermal.settings.clamped',
+      'thermal.decoding_one',
+      'thermal.decoding_other',
+      'thermal.status.unsupported',
+      'thermal.status.unverified',
+      'thermal.status.implausible',
+      'thermal.readOnly',
+      'thermal.none',
+      'thermal.filmstrip',
+    ];
+    for (const k of keys) {
+      const v = (en as Record<string, string>)[k];
+      expect(v, k).toBeTruthy();
+      expect(v, k).not.toMatch(/[–—]/);
+    }
+    expect(en['wb.tab.thermal']).toBe('Thermal');
+    expect(en['actions.thermal.analyse']).toBe('Analyse thermal');
+    expect(t('thermal.hover', { temp: '42.5' })).toBe('42.5 °C');
+    expect(t('thermal.settings.line', { e: '0.95', d: '10', a: '20', h: '50' })).toBe(
+      'Emissivity 0.95 · Distance 10 m · Air 20 °C · Humidity 50%',
+    );
+    expect(t('thermal.settings.applySelected', { count: 1 })).toBe('1 selected photo');
+    expect(t('thermal.settings.applySelected', { count: 3 })).toBe('3 selected photos');
+    expect(t('thermal.decoding', { count: 1 })).toBe('Reading temperatures of 1 photo');
+    expect(t('thermal.decoding', { count: 4 })).toBe('Reading temperatures of 4 photos');
+  });
+});

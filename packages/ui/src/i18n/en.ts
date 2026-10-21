@@ -4339,6 +4339,7 @@ export const en = {
   'actions.area.reason.noEarlier': 'No earlier survey',
   'actions.area.reason.noImagery': 'Imagery change needs an ortho on each date.',
   'actions.group.add360': 'Add 360 video...',
+  'actions.thermal.analyse': 'Analyse thermal',
   'actions.layer.show': 'Show',
   'actions.layer.hide': 'Hide',
   'actions.layer.zoomTo': 'Zoom to',
@@ -4703,6 +4704,7 @@ export const en = {
   'wb.tab.cleanup': 'Point cloud cleanup',
   // Engineering model review workbench
   'wb.tab.review': 'Model review',
+  'wb.tab.thermal': 'Thermal',
   'eng.review.model': 'Model and sources',
   'eng.review.details': 'Review parts',
   'eng.review.mode': 'Model review mode',
@@ -6063,6 +6065,37 @@ export const en = {
     'Thermal photo without position data and no visual twin found: check its position.',
   'position.say.twins_one': '1 thermal photo placed at its visual twin.',
   'position.say.twins_other': '{count} thermal photos placed at their visual twins.',
+  // Thermal bench (thermal analysis M1): the palettes, the range, the per-photo settings
+  'thermal.palette.iron': 'Iron',
+  'thermal.palette.rainbow': 'Rainbow',
+  'thermal.palette.whiteHot': 'White hot',
+  'thermal.palette.blackHot': 'Black hot',
+  'thermal.palette.arctic': 'Arctic',
+  'thermal.range.auto': 'Auto range',
+  'thermal.hover': '{temp} °C',
+  'thermal.settings.line': 'Emissivity {e} · Distance {d} m · Air {a} °C · Humidity {h}%',
+  'thermal.settings.edit': 'Edit',
+  'thermal.settings.emissivity': 'Emissivity',
+  'thermal.settings.distance': 'Distance (m)',
+  'thermal.settings.air': 'Air temperature (°C)',
+  'thermal.settings.humidity': 'Humidity (%)',
+  'thermal.settings.reflected': 'Reflected temperature',
+  'thermal.settings.reflectedSameAsAir': 'Same as air',
+  'thermal.settings.applyPhoto': 'This photo',
+  'thermal.settings.applySelected_one': '{count} selected photo',
+  'thermal.settings.applySelected_other': '{count} selected photos',
+  'thermal.settings.applyAll': 'Whole dataset',
+  'thermal.settings.clamped': "The camera's SDK limits {field}; it used {value}.",
+  'thermal.decoding_one': 'Reading temperatures of {count} photo',
+  'thermal.decoding_other': 'Reading temperatures of {count} photos',
+  'thermal.status.unsupported':
+    'Not a supported thermal camera ({model}). Shown as an ordinary photo.',
+  'thermal.status.unverified':
+    'Temperatures held back: the reading did not match the reference tool.',
+  'thermal.status.implausible': 'Temperatures held back: the values are outside physical limits.',
+  'thermal.readOnly': 'Open the project folder to analyse thermal photos.',
+  'thermal.none': 'No thermal photos in this dataset.',
+  'thermal.filmstrip': 'Thermal photos',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
