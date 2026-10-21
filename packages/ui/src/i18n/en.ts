@@ -6100,6 +6100,22 @@ export const en = {
   'thermal.readOnly': 'Open the project folder to analyse thermal photos.',
   'thermal.none': 'No thermal photos in this dataset.',
   'thermal.filmstrip': 'Thermal photos',
+  // ---- local detectors (Analytics pack) ----
+  'jobs.detect.vlm': 'Running detectors',
+  'detect.preset.hw.noGpu':
+    'No NVIDIA graphics card found. Detectors need one with at least 8 GB of memory.',
+  'detect.preset.hw.tooSmall':
+    'This computer has {total} GB of graphics memory; detectors need 8 GB.',
+  'detect.preset.hw.tooBusy':
+    'Only {free} GB of graphics memory is free; detectors need about 6.5 GB. Close the 3D view or other programs that use the graphics card and run again.',
+  'detect.preset.hw.mac': 'Not available on this computer yet.',
+  'detect.preset.pack.missing': 'Install the Analytics pack in Settings to run detectors.',
+  'detect.preset.server.stopped': 'The detector model stopped. Run the remaining photos again.',
+  'detect.preset.server.failed': 'The detector model did not start: {reason}',
+  'detect.preset.queued':
+    'Another detector or processing run is using the graphics card. This one starts when it finishes.',
+  'detect.preset.modelMismatch':
+    'This detector was tuned on a different model, so its results may differ.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

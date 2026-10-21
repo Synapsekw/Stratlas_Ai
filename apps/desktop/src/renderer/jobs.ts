@@ -1068,6 +1068,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'rf.coverage': [],
   // started by the thermal bench, never from a form
   'thermal.decode': [],
+  // empty on purpose: detectors start from the photo review, never from a form
+  'detect.vlm': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

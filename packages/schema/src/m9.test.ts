@@ -104,17 +104,23 @@ describe('M9 additive rule: no new field inside existing records', () => {
     ]);
     expect(IssueStatus.options).toEqual(['draft', 'reviewed', 'approved', 'closed']);
     expect(keysOf(ChangeReview)).toEqual(['at', 'by', 'issueId', 'note', 'status']);
+    // detectorId, detectorVersion, modelSha256 and threshold (2026-10-21) come from local detectors.
     expect(keysOf(DetectionOrigin)).toEqual([
       'author',
+      'detectorId',
+      'detectorVersion',
       'model',
+      'modelSha256',
       'promptVersion',
       'provider',
       'runId',
+      'threshold',
     ]);
     // suggestedNew (2026-10-15) is display-only and safe for an 0.8 build to strip.
     expect(keysOf(Detection)).toMatchInlineSnapshot(`
       [
         "bbox",
+        "belowThreshold",
         "class",
         "component",
         "confidence",
@@ -128,6 +134,8 @@ describe('M9 additive rule: no new field inside existing records', () => {
         "note",
         "origin",
         "photo",
+        "rejectNote",
+        "rejectReason",
         "reviewedAt",
         "reviewedBy",
         "severity",
@@ -137,6 +145,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
         "status",
         "suggestedNew",
         "uncertain",
+        "unscored",
         "updatedAt",
         "width",
       ]

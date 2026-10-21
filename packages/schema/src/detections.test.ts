@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DETECTIONS_SCHEMA, DetectionsFile, pipelineParams } from './index';
+import { DETECTIONS_SCHEMA, DetectionOrigin, DetectionsFile, pipelineParams } from './index';
 
 const file = {
   schema: DETECTIONS_SCHEMA,
@@ -130,5 +130,22 @@ describe('inspection.run params', () => {
     expect(p.safeParse({ minConfidence: 2 }).success).toBe(false);
     expect(p.safeParse({ profile: 'bridge' }).success).toBe(false);
     expect(p.safeParse({ grid: 4 }).success).toBe(false);
+  });
+});
+
+describe('detector origin', () => {
+  it('keeps detector origin fields', () => {
+    const origin = {
+      runId: 'run-1',
+      model: 'qwen',
+      detectorId: 'corrosion-spike',
+      detectorVersion: 2,
+      modelSha256: 'a'.repeat(64),
+      threshold: 0.8,
+    };
+    expect(DetectionOrigin.parse(origin)).toEqual(origin);
+  });
+  it('refuses an unknown key in origin', () => {
+    expect(DetectionOrigin.safeParse({ detectorId: 'x', colour: 'red' }).success).toBe(false);
   });
 });

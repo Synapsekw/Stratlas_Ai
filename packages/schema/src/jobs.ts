@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { TelecomAntennasParams } from './antennas';
 import { ThermalDecodeParams } from './thermal';
+import { DetectVlmParams } from './analytics';
 import { ChangeScope, FrameRef, LonLatRing } from './change';
 import { Id, IsoDate, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
@@ -102,6 +103,8 @@ export const PipelineName = z.enum([
   'rf.coverage',
   // Thermal analysis (pipeline pack THERMAL_MIN_PACK)
   'thermal.decode',
+  // Local vision-model detectors (Analytics pack)
+  'detect.vlm',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -377,6 +380,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Decode thermal photos',
     description:
       'Turns radiometric thermal photos into temperature rasters in degrees Celsius, using the scene settings, and records which photos could not be read.',
+  },
+  {
+    name: 'detect.vlm',
+    title: 'Run detectors',
+    description:
+      'Find defects in photos with the detectors of the Analytics pack, on this computer.',
   },
 ];
 
@@ -1315,6 +1324,7 @@ const PARAMS = {
   'telecom.antennas': TelecomAntennasParams,
   'rf.coverage': RfCoverageParams,
   'thermal.decode': ThermalDecodeParams,
+  'detect.vlm': DetectVlmParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

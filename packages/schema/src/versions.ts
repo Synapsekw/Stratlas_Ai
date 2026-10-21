@@ -662,6 +662,21 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'thermal/candidates.json',
     since: '0.26',
   },
+  // Local vision-model detectors (analytics.ts)
+  {
+    family: 'aio.vlm-detector',
+    version: 1,
+    home: 'project',
+    where: 'detectors/<id>/detector.json (also userData detectors/)',
+    since: '0.25',
+  },
+  {
+    family: 'aio.analytics-pack',
+    version: 1,
+    home: 'pack',
+    where: 'analytics pack manifest.json',
+    since: '0.25',
+  },
 ];
 
 /**

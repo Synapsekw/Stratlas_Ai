@@ -130,6 +130,7 @@ import {
   RasterPackInfo,
   TerrainImportRequest,
 } from './globe';
+import { DetectorWhere, HardwareCheck, LedgerEntry, VlmDetector } from './analytics';
 import { TilesetEntry, TilesetsFile } from './tilesets';
 import { WalkFile } from './walks';
 import { WalkProcessSummary } from './walkProcess';
@@ -587,6 +588,17 @@ export const PackJob = PackRegion.extend({
 });
 
 const Ok = z.object({ ok: z.boolean(), error: z.string().optional() });
+const DetectorFailure = z.object({ ok: z.literal(false), error: z.string() });
+const AnalyticsPackInstallResult = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), version: z.string() }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+    /** `exists`: that version is installed (ask, then send `replace`); `busy`: an install is running. */
+    code: z.enum(['exists', 'cancelled', 'busy']).optional(),
+    version: z.string().optional(),
+  }),
+]);
 
 const OpenResult = z.discriminatedUnion('ok', [
   z.object({
@@ -4153,6 +4165,105 @@ export const ipc = {
   'panos:cancelImport': {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.object({ ok: z.boolean() }),
+  },
+  // ---------------------------------------------------------------- local detectors (Analytics pack)
+  /** What is installed, and an archive found in a place the app looks (Downloads). */
+  'analyticsPack:status': {
+    request: Empty,
+    response: z.object({
+      installed: z.object({ version: z.string(), dir: z.string() }).nullable(),
+      offer: z.object({ path: z.string(), version: z.string() }).nullable(),
+    }),
+  },
+  'analyticsPack:find': {
+    request: Empty,
+    response: z.object({
+      archives: z.array(z.object({ path: z.string(), version: z.string() })),
+    }),
+  },
+  /** Native open dialog for an Analytics pack archive. */
+  'analyticsPack:choose': { request: Empty, response: z.object({ path: z.string().nullable() }) },
+  'analyticsPack:install': {
+    request: z.object({ path: z.string().min(1), replace: z.boolean().optional() }).strict(),
+    response: AnalyticsPackInstallResult,
+  },
+  'analyticsPack:cancel': { request: Empty, response: Ok },
+  'analyticsPack:remove': {
+    request: z.object({ version: z.string().min(1) }).strict(),
+    response: z.union([Ok, DetectorFailure]),
+  },
+  'analytics:hardware': { request: Empty, response: HardwareCheck },
+  'detectors:list': {
+    request: z.object({ projectId: z.string().optional() }).strict(),
+    response: z.object({
+      items: z.array(
+        z.object({ where: DetectorWhere, detector: VlmDetector, modelMismatch: z.boolean() }),
+      ),
+    }),
+  },
+  'detectors:save': {
+    request: z
+      .object({
+        where: z.enum(['project', 'library']),
+        projectId: z.string().optional(),
+        detector: VlmDetector,
+      })
+      .strict(),
+    response: z.union([z.object({ ok: z.literal(true), version: z.number() }), DetectorFailure]),
+  },
+  'detectors:remove': {
+    request: z
+      .object({
+        where: z.enum(['project', 'library']),
+        projectId: z.string().optional(),
+        id: z.string().min(1),
+      })
+      .strict(),
+    response: z.union([Ok, DetectorFailure]),
+  },
+  'detectors:export': {
+    request: z
+      .object({
+        where: DetectorWhere,
+        projectId: z.string().optional(),
+        id: z.string().min(1),
+        includeSamples: z.boolean(),
+        path: z.string().optional(),
+      })
+      .strict(),
+    response: z.union([z.object({ ok: z.literal(true), path: z.string() }), DetectorFailure]),
+  },
+  'detectors:import': {
+    request: z
+      .object({
+        path: z.string().optional(),
+        where: z.enum(['project', 'library']),
+        projectId: z.string().optional(),
+        onConflict: z.enum(['update', 'keep-both']).optional(),
+      })
+      .strict(),
+    response: z.union([
+      z.object({ ok: z.literal(true), id: z.string() }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string(),
+        conflict: z.object({ id: z.string(), have: z.number(), incoming: z.number() }).optional(),
+      }),
+    ]),
+  },
+  /** A reviewer verdict on a candidate, with the crop it was judged on. */
+  'ledger:append': {
+    request: z.object({ entry: LedgerEntry, cropJpegBase64: z.string() }).strict(),
+    response: z.union([Ok, DetectorFailure]),
+  },
+  'ledger:stats': {
+    request: z.object({ detectorId: z.string().min(1) }).strict(),
+    response: z.object({
+      accepted: z.number(),
+      rejected: z.number(),
+      misses: z.number(),
+      suggestedThreshold: z.number().nullable(),
+    }),
   },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 

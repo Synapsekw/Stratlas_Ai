@@ -72,3 +72,5 @@ export * from './modelCorrections';
 export * from './websiteUpdate';
 // Thermal analysis: aio.thermal/1, rasters, hot spots, thermal.decode params
 export * from './thermal';
+// Local vision-model detectors and the Analytics pack
+export * from './analytics';

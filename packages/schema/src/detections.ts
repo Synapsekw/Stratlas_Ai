@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Box, Point2, Polygon, RotBox } from './annotation';
+import { RejectReason } from './analytics';
 import { Id, IsoTime } from './common';
 
 /**
@@ -62,6 +63,11 @@ export const DetectionOrigin = z
     model: z.string().optional(),
     promptVersion: z.string().optional(),
     runId: z.string().optional(),
+    /** Local detectors (`detect.vlm`): the detector and version, the model and the bar used. */
+    detectorId: z.string().optional(),
+    detectorVersion: z.number().int().optional(),
+    modelSha256: z.string().optional(),
+    threshold: z.number().min(0).max(1).optional(),
   })
   .strict();
 
@@ -103,6 +109,13 @@ export const Detection = z
     suggestedNew: z.boolean().optional(),
     /** Marked uncertain by the reviewer or the model. */
     uncertain: z.boolean().optional(),
+    /** A local detector kept this candidate but scored it under the detector threshold. */
+    belowThreshold: z.boolean().optional(),
+    /** A local detector could not score this candidate. */
+    unscored: z.boolean().optional(),
+    /** Why a reviewer rejected it (feeds the detector ledger). */
+    rejectReason: RejectReason.optional(),
+    rejectNote: z.string().max(200).optional(),
     origin: DetectionOrigin.optional(),
     /**
      * The issue a person made from (or added) this detection in the review. The pipeline does not

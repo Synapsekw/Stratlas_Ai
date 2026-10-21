@@ -76,6 +76,7 @@ export const PIPELINE_GROUP: Record<PipelineName, PipelineGroupId> = {
   'telecom.antennas': 'survey',
   'rf.coverage': 'rf',
   'thermal.decode': 'survey',
+  'detect.vlm': 'inspection',
   'drawing.import': 'import',
   'design.import': 'import',
   'opf.import': 'import',
@@ -138,6 +139,7 @@ const PLAIN_TITLES: Partial<Record<PipelineName, string>> = {
 /** Pipelines whose job title is a catalogue string. */
 const TITLE_KEYS: Partial<Record<PipelineName, MessageKey>> = {
   'telecom.antennas': 'jobs.telecom.antennas',
+  'detect.vlm': 'jobs.detect.vlm',
 };
 
 /** A job's title in the list and its details: plain words where there are any, else the pipeline's. */
@@ -193,6 +195,7 @@ export const JOB_KIND: Record<PipelineName, JobKind> = {
   'telecom.antennas': 'survey',
   'rf.coverage': 'survey',
   'thermal.decode': 'survey',
+  'detect.vlm': 'ai',
   'drawing.import': 'files',
   'design.import': 'files',
   'opf.import': 'files',

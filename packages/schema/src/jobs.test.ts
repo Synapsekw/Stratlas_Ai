@@ -108,6 +108,7 @@ describe('pipeline params', () => {
       'telecom.antennas',
       'rf.coverage',
       'thermal.decode',
+      'detect.vlm',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });
