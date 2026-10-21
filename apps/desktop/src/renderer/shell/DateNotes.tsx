@@ -13,6 +13,8 @@ export interface DateNote {
   undo?: { moved: MovedLayer[]; target: string | null };
   measureUndo?: number;
   prepare?: boolean;
+  /** The seq of the measurement store's note this line shows (`measureStore.note`). */
+  storeSeq?: number;
 }
 
 /**

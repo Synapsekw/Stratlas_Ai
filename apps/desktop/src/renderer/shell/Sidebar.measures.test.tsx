@@ -14,6 +14,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const lookOnly = vi.hoisted(() => ({ on: false }));
+const prepare = vi.hoisted(() => ({ fn: vi.fn<() => Promise<string | null>>() }));
+vi.mock('../survey/compareStore', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  prepareSurfaces: () => prepare.fn(),
+}));
 vi.mock('@aio/annotate', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useAnnotateReadOnly: () => lookOnly.on,
@@ -824,12 +829,102 @@ describe('Datasets: measurements under survey dates', () => {
     expect(q('[data-testid="date-note-prepare"]')).not.toBeNull();
   });
 
+  const prepareNote = () => {
+    act(() => {
+      setMeasureNote({ text: 'Not prepared.', danger: true, prepare: true });
+    });
+  };
+  const settle = async () => {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
+  it('Prepare surfaces started takes the refusal away, its store note too', async () => {
+    prepare.fn.mockReset().mockResolvedValue(null);
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    prepareNote();
+    click(q('[data-testid="date-note-prepare"]'));
+    expect(q('[data-testid="date-note-prepare"]')).toBeNull();
+    await settle();
+    expect(prepare.fn).toHaveBeenCalledTimes(1);
+    expect(q('[data-testid="date-note"]')).toBeNull();
+    expect(measureStore.getState().note).toBeNull();
+  });
+
+  it('nothing left to prepare is said plainly, a failure as danger', async () => {
+    prepare.fn.mockReset().mockResolvedValue('Every survey surface is prepared.');
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    prepareNote();
+    click(q('[data-testid="date-note-prepare"]'));
+    await settle();
+    const n = q('[data-testid="date-note"]');
+    expect(n?.textContent).toContain('Every survey surface is prepared.');
+    expect(n?.textContent).not.toContain('Not prepared.');
+    expect(n?.classList.contains('danger')).toBe(false);
+    prepare.fn.mockResolvedValue('The job could not start.');
+    prepareNote();
+    click(q('[data-testid="date-note-prepare"]'));
+    await settle();
+    expect(q('[data-testid="date-note"]')?.textContent).toContain('The job could not start.');
+    expect(q('[data-testid="date-note"]')?.classList.contains('danger')).toBe(true);
+  });
+
+  it('a note reshaped by a stale Undo still follows the store: Dismiss clears it there', () => {
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    act(() => {
+      replaceMeasurements([onDate('a', 'c2')], { undoable: true });
+      setMeasureNote({ text: 'Moved.', danger: false, undo: true });
+    });
+    const seq = measureStore.getState().note?.seq ?? -1;
+    // a stale Undo (the store says no): the note stays without it
+    act(() => {
+      measureStore.setState({ undoChange: null });
+    });
+    click(q('[data-testid="date-undo"]'));
+    expect(q('[data-testid="date-undo"]')).toBeNull();
+    expect(measureStore.getState().note?.seq).toBe(seq);
+    // the store updating the same note still reaches the slot
+    act(() => {
+      const n = measureStore.getState().note;
+      if (n) measureStore.setState({ note: { ...n, text: 'Moved, again.' } });
+    });
+    expect(q('[data-testid="date-note"]')?.textContent).toContain('Moved, again.');
+    click(q('[data-testid="date-note"] button[aria-label="Dismiss"]'));
+    expect(q('[data-testid="date-note"]')).toBeNull();
+    expect(measureStore.getState().note).toBeNull();
+  });
+
+  it('a note reshaped by Prepare clears when the store lets go of it', () => {
+    prepare.fn.mockReset().mockReturnValue(new Promise(() => undefined));
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    prepareNote();
+    click(q('[data-testid="date-note-prepare"]'));
+    act(() => {
+      setMeasureNote(null);
+    });
+    expect(q('[data-testid="date-note"]')).toBeNull();
+  });
+
   it('a reveal of no measurement opens no dated tree', () => {
     seed([onDate('a', 'c1'), measurement('c')]);
     render(dated);
+    openDate('c1');
+    const head = () =>
+      folderOfDate('c1')
+        ?.querySelector('[data-testid="tree-group-measurements"]')
+        ?.closest('[role="treeitem"]') ?? null;
+    // fold the date's Measurements group by hand
+    click(head()?.querySelector('.tgroup-btn') ?? null);
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
     act(() => {
       revealMeasurement(null);
     });
-    expect(q('[data-testid="date-folder-c1"]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
   });
 });

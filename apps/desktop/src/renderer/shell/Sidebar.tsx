@@ -143,6 +143,9 @@ function withoutGoneMeasures(m: Marks, present: readonly { id: string }[]): Mark
   return { marked, anchor: m.anchor !== null && gone(m.anchor) ? null : m.anchor };
 }
 
+/** What `prepareSurfaces` says when every surface is prepared already: no failure. */
+const ALL_PREPARED = 'Every survey surface is prepared.';
+
 /** The measurement ids among marks (a measurement row marks `measure:<id>`). */
 function measureIdsOf(marks: Iterable<string>): string[] {
   return [...marks].flatMap((m) => {
@@ -356,14 +359,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   );
   const after = useMemo(() => {
     if (!datesOn) return [];
-    const m = project?.manifest ?? null;
-    const items = buildMeasureItems(measureState, m, { dates, hidden }, measureQuery, null);
+    const items = buildMeasureItems(measureState, manifest, { dates, hidden }, measureQuery, null);
     const ids = filteringMeasures
-      ? measureState.file.measurements.filter((x) => needsDate(x, m)).map((x) => x.id)
+      ? measureState.file.measurements.filter((x) => needsDate(x, manifest)).map((x) => x.id)
       : undefined;
     const g = measurementsGroup(items, ids, t('tree.measure.needsDate'));
     return g ? [g] : [];
-  }, [datesOn, project, measureState, dates, hidden, measureQuery, filteringMeasures, t]);
+  }, [datesOn, manifest, measureState, dates, hidden, measureQuery, filteringMeasures, t]);
   // filing datasets under dates and naming the folders edits the manifest: not in a package,
   // and not for a reviewer who may only look
   const lookOnly = useAnnotateReadOnly();
@@ -400,25 +402,24 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const storeProject = useMeasure((s) => s.projectId);
   const liveNote = storeNote !== null && storeProject === projectId ? storeNote : null;
   const [seenStoreNote, setSeenStoreNote] = useState<MeasureNote | null>(null);
-  const [fromStore, setFromStore] = useState<DateNote | null>(null);
+  // the slot shows the store's note `seq` (matched by seq: Undo and Prepare reshape the note)
+  const showsStore = (seq: number | undefined) => seq !== undefined && note?.storeSeq === seq;
   if (seenStoreNote !== liveNote) {
     setSeenStoreNote(liveNote);
     if (liveNote !== null) {
-      const n: DateNote = {
-        text: liveNote.text,
-        danger: liveNote.danger,
-        ...(liveNote.undo === true ? { measureUndo: liveNote.seq } : {}),
-        ...(liveNote.prepare === true ? { prepare: true } : {}),
-      };
       const same = seenStoreNote?.seq === liveNote.seq;
-      if (!same || (fromStore !== null && note === fromStore)) {
-        setNote(n);
-        setFromStore(n);
-      }
-    } else {
-      if (fromStore !== null && note === fromStore) setNote(null);
-      setFromStore(null);
-    }
+      if (!same || showsStore(liveNote.seq))
+        setNote({
+          text: liveNote.text,
+          danger: liveNote.danger,
+          storeSeq: liveNote.seq,
+          ...(liveNote.undo === true ? { measureUndo: liveNote.seq } : {}),
+          // a Prepare already asked for stays asked
+          ...(liveNote.prepare === true && (!same || note?.prepare === true)
+            ? { prepare: true }
+            : {}),
+        });
+    } else if (showsStore(seenStoreNote?.seq)) setNote(null);
   }
   // a measurement that left the file (deleted from any menu, the 3D view, the map, the panel,
   // or taken back by Revert) is not marked any more (adjusted during render, not in an effect)
@@ -1049,7 +1050,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           // the Undo went stale (a later edit): the note stays, without it
           setNote((n) => {
             if (n?.measureUndo !== seq) return n;
-            return { text: n.text, danger: n.danger, ...(n.prepare ? { prepare: true } : {}) };
+            const next = { ...n };
+            delete next.measureUndo;
+            return next;
           });
         }}
         onPrepare={() => {
@@ -1057,22 +1060,28 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           // the button goes once asked, so a second click does not start it again
           setNote((n) => {
             if (n?.prepare !== true) return n;
-            return {
-              text: n.text,
-              danger: n.danger,
-              ...(n.measureUndo !== undefined ? { measureUndo: n.measureUndo } : {}),
-            };
+            const next = { ...n };
+            delete next.prepare;
+            return next;
           });
+          // what comes back replaces the refusal: the store's note goes with it
+          const settle = (next: DateNote | null) => {
+            if (measureStore.getState().note?.prepare === true) setMeasureNote(null);
+            setNote(next);
+          };
           void prepareSurfaces(project.manifest)
             .then((error) => {
-              if (error) setNote({ text: error, danger: true });
+              // started: the refusal no longer holds; nothing left to prepare is no failure
+              if (error === null) settle(null);
+              else settle({ text: error, danger: error !== ALL_PREPARED });
             })
             .catch((e: unknown) => {
-              setNote({ text: String(e), danger: true });
+              settle({ text: String(e), danger: true });
             });
         }}
         onDismiss={() => {
-          if (note !== null && note === fromStore) setMeasureNote(null);
+          if (note?.storeSeq !== undefined && measureStore.getState().note?.seq === note.storeSeq)
+            setMeasureNote(null);
           setNote(null);
         }}
       />
