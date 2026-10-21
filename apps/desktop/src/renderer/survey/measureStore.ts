@@ -24,6 +24,7 @@ import {
   type VolumesFile,
 } from '@aio/schema';
 import {
+  changesFile,
   openWithKitPiles,
   withKitConversion,
   DEFAULT_SNAP,
@@ -446,7 +447,7 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     false,
     kitOptions(manifest.origin, s.settings.materials),
   );
-  if (c.converted.length === 0 && s.file.kitPilesConverted !== undefined) return;
+  if (!changesFile(c) && s.file.kitPilesConverted !== undefined) return;
   const baseline = withKitConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
   set({ file: withKitConversion(s.file, c), savedText: text(baseline), resultsUnwritten: true });
   await writeConversion(projectId, baseline, epoch);

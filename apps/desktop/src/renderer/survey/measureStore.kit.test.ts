@@ -263,6 +263,29 @@ describe('after a volumetric job', () => {
     expect(isDirty(measureStore.getState())).toBe(false);
   });
 
+  it('a rebuild that renumbers the piles relinks the measurement, never duplicates it', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const [kept] = kitMeasurements();
+    // the rebuild finds a new pile far to the west first, so the old pile is now P02
+    const west = (e: ReturnType<typeof ep>) => ({
+      ...e,
+      ring: ring.map(([x, z]) => [x - 500, z] as [number, number]),
+    });
+    io.volumes = volumes([
+      pile('P01', { e2: west(ep('c2', 7)) }),
+      pile('P02', { e1: ep('c1', 100), e2: ep('c2', 50) }),
+    ]);
+    await convertAfterJob('p1');
+    const after = kitMeasurements();
+    expect(after).toHaveLength(2);
+    expect(after.find((m) => m.id === kept?.id)?.origin?.pile).toBe('P02');
+    expect(after.find((m) => m.id !== kept?.id)?.origin?.pile).toBe('P01');
+    expect(io.saved.kitPilesConverted).toEqual(['P01', 'P02']);
+    expect(io.saved.measurements.find((m) => m.id === kept?.id)?.origin?.pile).toBe('P02');
+    expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
   it("keeps the person's unsaved edits unsaved and off the disk", async () => {
     await open({ schema: 'aio.measurements/1', measurements: [drawn] });
     patchMeasurement('mine', { label: 'Renamed' });

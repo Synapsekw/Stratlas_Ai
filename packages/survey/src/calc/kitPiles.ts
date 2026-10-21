@@ -1,6 +1,7 @@
 // Volumetric parity W3: the old stockpile kit's piles become engine volume measurements. The kit's
 // stored figures are carried over unchanged as results labelled "From an earlier version (kit
-// <base>)"; nothing here recomputes a volume. Everything is keyed by the kit pile's id.
+// <base>)"; nothing here recomputes a volume. A build numbers its piles afresh, so a pile already
+// converted is found again by its outline (`matchPiles`) and its measurement follows the new id.
 import type {
   BoundaryEdit,
   BoundaryEditsFile,
@@ -63,6 +64,137 @@ export interface KitConversion {
   added: SurveyMeasurement[];
   /** Kit pile ids converted by this call; append them to `kitPilesConverted`. */
   converted: string[];
+  /** Kit-pile measurements a rebuild renumbered: their `origin.pile` becomes `pile`. */
+  relinked: { id: string; pile: string }[];
+  /** Kit-pile measurements whose pile is gone and whose number another pile now has. */
+  detached: string[];
+}
+
+/** The share of the smaller outline two piles must have in common to be one pile. */
+export const SAME_PILE_SHARE = 0.5;
+/** Samples per side of the grid `overlapShare` counts the common area on. */
+const OVERLAP_GRID = 64;
+
+type Ring2 = readonly (readonly [number, number])[];
+
+function ringArea(r: Ring2): number {
+  let a = 0;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const p = r[i];
+    const q = r[j];
+    if (p && q) a += (q[0] + p[0]) * (q[1] - p[1]);
+  }
+  return Math.abs(a) / 2;
+}
+
+function inRing(x: number, y: number, r: Ring2): boolean {
+  let inside = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const p = r[i];
+    const q = r[j];
+    if (!p || !q) continue;
+    if (p[1] > y !== q[1] > y && x < ((q[0] - p[0]) * (y - p[1])) / (q[1] - p[1]) + p[0])
+      inside = !inside;
+  }
+  return inside;
+}
+
+function bbox(r: Ring2): [number, number, number, number] {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const [x, y] of r) {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  }
+  return [x0, y0, x1, y1];
+}
+
+/**
+ * The area two outlines have in common over the smaller one's area (0 to 1), counted on a grid
+ * over their common bounding box: close enough to tell one pile from its neighbour.
+ */
+export function overlapShare(a: Ring2, b: Ring2): number {
+  if (a.length < 3 || b.length < 3) return 0;
+  const smaller = Math.min(ringArea(a), ringArea(b));
+  if (!(smaller > 0)) return 0;
+  const [ax0, ay0, ax1, ay1] = bbox(a);
+  const [bx0, by0, bx1, by1] = bbox(b);
+  const x0 = Math.max(ax0, bx0);
+  const y0 = Math.max(ay0, by0);
+  const x1 = Math.min(ax1, bx1);
+  const y1 = Math.min(ay1, by1);
+  if (!(x1 > x0 && y1 > y0)) return 0;
+  const dx = (x1 - x0) / OVERLAP_GRID;
+  const dy = (y1 - y0) / OVERLAP_GRID;
+  let n = 0;
+  for (let i = 0; i < OVERLAP_GRID; i++) {
+    const x = x0 + (i + 0.5) * dx;
+    for (let j = 0; j < OVERLAP_GRID; j++) {
+      const y = y0 + (j + 0.5) * dy;
+      if (inRing(x, y, a) && inRing(x, y, b)) n++;
+    }
+  }
+  return Math.min(1, (n * dx * dy) / smaller);
+}
+
+/** Whether a conversion changes the file (a measurement added, relinked or detached). */
+export const changesFile = (c: KitConversion): boolean =>
+  c.converted.length > 0 || c.relinked.length > 0 || c.detached.length > 0;
+
+interface KitLink {
+  m: SurveyMeasurement;
+  pile: string;
+  ring: Ring2;
+}
+
+/**
+ * Which existing kit-pile measurement each built pile is (C1): a build numbers its piles afresh,
+ * so a pile is matched by outline. First a pile and the measurement holding its number, when they
+ * overlap; then the closest overlap left (at least `SAME_PILE_SHARE` of the smaller outline);
+ * then a pile whose number a measurement still holds with no better match keeps it. One
+ * measurement per pile.
+ */
+function matchPiles(
+  piles: readonly { id: string; ring: Ring2 }[],
+  links: readonly KitLink[],
+): Map<string, KitLink> {
+  const match = new Map<string, KitLink>();
+  const taken = new Set<KitLink>();
+  const holder = new Map<string, KitLink>();
+  for (const l of links) if (!holder.has(l.pile)) holder.set(l.pile, l);
+  for (const p of piles) {
+    const l = holder.get(p.id);
+    if (l && overlapShare(p.ring, l.ring) >= SAME_PILE_SHARE) {
+      match.set(p.id, l);
+      taken.add(l);
+    }
+  }
+  const pairs: { p: string; l: KitLink; share: number }[] = [];
+  for (const p of piles) {
+    if (match.has(p.id)) continue;
+    for (const l of links) {
+      if (taken.has(l)) continue;
+      const share = overlapShare(p.ring, l.ring);
+      if (share >= SAME_PILE_SHARE) pairs.push({ p: p.id, l, share });
+    }
+  }
+  pairs.sort((x, y) => y.share - x.share);
+  for (const { p, l } of pairs) {
+    if (match.has(p) || taken.has(l)) continue;
+    match.set(p, l);
+    taken.add(l);
+  }
+  for (const p of piles) {
+    const l = holder.get(p.id);
+    if (match.has(p.id) || !l || taken.has(l)) continue;
+    match.set(p.id, l);
+    taken.add(l);
+  }
+  return match;
 }
 
 export interface KitConversionOptions {
@@ -82,6 +214,8 @@ export interface KitConversionOptions {
  * on the file's last capture, that date as results[0] (the kit's register showed a pile gone by
  * then as absent, so it gets no headline); carry=false adds the item only (the engine computes).
  * The outline is the latest non-empty toe line. A duplicate pile id converts once, the first.
+ * A pile that overlaps an existing kit-pile measurement (`matchPiles`) is that measurement: it is
+ * relinked to the pile's new id, never added again.
  */
 export function convertKitPiles(
   volumes: VolumesFile,
@@ -95,17 +229,53 @@ export function convertKitPiles(
   const added: SurveyMeasurement[] = [];
   const converted: string[] = [];
 
-  for (const pile of applyEdits(volumes, edits?.edits ?? [])) {
-    if (done.has(pile.id)) continue;
-    // Dates the pile is on, in survey order (first to last).
+  // Each pile once (a duplicate id converts once, the first), with the dates it is on, in survey
+  // order, and its latest non-empty toe line: a pile with none has nothing to draw.
+  const seen = new Set<string>();
+  const piles = applyEdits(volumes, edits?.edits ?? []).flatMap((pile) => {
+    if (seen.has(pile.id)) return [];
+    seen.add(pile.id);
     const dates = volumes.captures.flatMap((c) => {
       const ep = pile.epochs[c.epoch];
       return ep ? [{ capture: c, ep }] : [];
     });
-    // The latest non-empty toe line; a pile with none has nothing to draw.
     let outline: PileEpoch['ring'] | undefined;
     for (const { ep } of dates) if (ep.ring.length > 0) outline = ep.ring;
-    if (!outline) continue;
+    if (!outline) return [];
+    const site = outline.map((xz) => opts.toSite(xz));
+    const ring: Ring2 = site.map((p) => [p[0], p[1]] as const);
+    return [{ pile, dates, site, ring, id: pile.id }];
+  });
+
+  // The kit-pile measurements already made, matched to this build's piles by outline (C1).
+  const links: KitLink[] = file.measurements.flatMap((m) =>
+    m.origin?.kind === 'kit-pile'
+      ? [{ m, pile: m.origin.pile, ring: m.points.map((p) => [p[0], p[1]] as const) }]
+      : [],
+  );
+  const match = matchPiles(piles, links);
+  const relinked: { id: string; pile: string }[] = [];
+  for (const [pile, l] of match) if (l.pile !== pile) relinked.push({ id: l.m.id, pile });
+  // a number moved to another measurement is free; one left on an unmatched measurement is gone
+  const moved = new Set(relinked.map((r) => r.pile));
+  const freed = new Set(
+    links.filter((l) => relinked.some((r) => r.id === l.m.id)).map((l) => l.pile),
+  );
+  const matched = new Set([...match.values()].map((l) => l.m.id));
+  const detached = links
+    .filter((l) => !matched.has(l.m.id) && moved.has(l.pile))
+    .map((l) => l.m.id);
+  for (const l of links) if (detached.includes(l.m.id)) freed.add(l.pile);
+
+  for (const { pile, dates, site } of piles) {
+    if (match.has(pile.id)) {
+      if (!done.has(pile.id)) converted.push(pile.id);
+      done.add(pile.id);
+      continue;
+    }
+    // converted before (its measurement may have been deleted), unless a rebuild gave its number
+    // to a new pile
+    if (done.has(pile.id) && !freed.has(pile.id)) continue;
 
     const itemId = opts.newId();
     const series: ComparisonResult[] = opts.carry
@@ -148,7 +318,7 @@ export function convertKitPiles(
       label: (pile.name || pile.id).slice(0, LABEL_MAX),
       folder: KIT_FOLDER,
       scope: { kind: 'site' },
-      points: outline.map((xz) => opts.toSite(xz)),
+      points: site,
       ...(material ? { material } : {}),
       items: [{ id: itemId, from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
       results: headline ? [headline] : [],
@@ -157,10 +327,10 @@ export function convertKitPiles(
       createdAt: opts.now,
     };
     added.push(m);
-    converted.push(pile.id);
+    if (!done.has(pile.id)) converted.push(pile.id);
     done.add(pile.id);
   }
-  return { added, converted };
+  return { added, converted, relinked, detached };
 }
 
 // ---------------------------------------------------------------- opening a project
@@ -201,11 +371,24 @@ export function kitConversion(
   });
 }
 
-/** `file` with a conversion's measurements and pile ids added (`kitPilesConverted` always set). */
+/**
+ * `file` with a conversion's measurements and pile ids added (`kitPilesConverted` always set), its
+ * renumbered piles relinked and the measurements of piles gone detached (no `origin`).
+ */
 export function withKitConversion(file: MeasurementsFile, c: KitConversion): MeasurementsFile {
+  const relink = new Map(c.relinked.map((r) => [r.id, r.pile]));
+  const detached = new Set(c.detached);
+  const measurements = file.measurements.map((m) => {
+    const pile = relink.get(m.id);
+    if (pile !== undefined && m.origin) return { ...m, origin: { ...m.origin, pile } };
+    if (!detached.has(m.id)) return m;
+    const rest = { ...m };
+    delete rest.origin;
+    return rest;
+  });
   return {
     ...file,
-    measurements: [...file.measurements, ...c.added],
+    measurements: [...measurements, ...c.added],
     kitPilesConverted: [...(file.kitPilesConverted ?? []), ...c.converted],
   };
 }
@@ -229,6 +412,6 @@ export function openWithKitPiles(
   }
   const carry = file.kitPilesConverted === undefined;
   const c = kitConversion(file, kit.volumes, kit.edits, carry, opts);
-  if (c.converted.length === 0 && !carry) return file;
+  if (!changesFile(c) && !carry) return file;
   return withKitConversion(file, c);
 }

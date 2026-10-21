@@ -7,6 +7,8 @@ import {
   convertKitPiles,
   kitToSite,
   openWithKitPiles,
+  overlapShare,
+  withKitConversion,
 } from './kitPiles';
 
 const at = <T>(a: readonly T[] | undefined, i: number): T => {
@@ -332,5 +334,135 @@ describe('openWithKitPiles: the file as the app, the report and the assistant op
     const writable = openWithKitPiles(file, { volumes: null, edits: null }, opts(false));
     expect(writable.kitPilesConverted).toEqual([]);
     expect(openWithKitPiles(file, { volumes: null, edits: null }, opts(true))).toBe(file);
+  });
+});
+
+describe('overlapShare', () => {
+  const sq = (x: number, y = 0, size = 10): [number, number][] => [
+    [x, y],
+    [x + size, y],
+    [x + size, y + size],
+    [x, y + size],
+  ];
+  it('is the intersection over the smaller area', () => {
+    expect(overlapShare(sq(0), sq(0))).toBeCloseTo(1, 2);
+    expect(overlapShare(sq(0), sq(5))).toBeCloseTo(0.5, 1);
+    expect(overlapShare(sq(0), sq(2, 2, 4))).toBeCloseTo(1, 2);
+    expect(overlapShare(sq(0), sq(20))).toBe(0);
+    expect(overlapShare(sq(0), [])).toBe(0);
+  });
+});
+
+describe('a rebuild that renumbers piles (piles match by outline, not by id)', () => {
+  const sq = (x: number, size = 10): [number, number][] => [
+    [x, 0],
+    [x + size, 0],
+    [x + size, size],
+    [x, size],
+  ];
+  const onRing = (id: string, r: [number, number][], net = 10) => ({
+    id,
+    name: `Pile ${id}`,
+    zoneRing: r,
+    change: fc(0),
+    epochs: { e2: { ...ep('c2', net), ring: r } },
+  });
+  const build = (piles: ReturnType<typeof onRing>[]): VolumesFile => ({ ...volumes(), piles });
+  /** The file after the first build: A at x 0 as P01 ("Pile P01"), B at x 100 as P02. */
+  const first = () => {
+    const start = empty({ kitPilesConverted: [] });
+    const out = convertKitPiles(
+      build([onRing('P01', sq(0)), onRing('P02', sq(100))]),
+      null,
+      start,
+      opts(false),
+    );
+    return withKitConversion(start, out);
+  };
+  const pileOf = (f: MeasurementsFile, label: string) =>
+    f.measurements.find((m) => m.label === label)?.origin?.pile;
+  const later = () => {
+    let n = 100;
+    return { ...opts(false), newId: () => `n${String(++n)}` };
+  };
+
+  it('relinks the measurements when the numbers shift, and makes no duplicate', () => {
+    const before = first();
+    // the rebuild finds a new pile west of A, so A is now P02 and B P03
+    const v = build([onRing('P01', sq(-100)), onRing('P02', sq(1)), onRing('P03', sq(101))]);
+    const c = convertKitPiles(v, null, before, later());
+    const after = withKitConversion(before, c);
+    const kit = after.measurements.filter((m) => m.origin?.kind === 'kit-pile');
+    expect(kit).toHaveLength(3);
+    expect(pileOf(after, 'Pile P01')).toBe('P02');
+    expect(pileOf(after, 'Pile P02')).toBe('P03');
+    // the really new pile gets one measurement, under the number it has now
+    expect(c.added).toHaveLength(1);
+    expect(at(c.added, 0).origin?.pile).toBe('P01');
+    expect(kit.map((m) => m.origin?.pile).sort()).toEqual(['P01', 'P02', 'P03']);
+    expect(after.kitPilesConverted).toEqual(['P01', 'P02', 'P03']);
+  });
+
+  it('swapped numbers swap the links and add nothing', () => {
+    const before = first();
+    const v = build([onRing('P01', sq(100)), onRing('P02', sq(0))]);
+    const c = convertKitPiles(v, null, before, later());
+    expect(c.added).toEqual([]);
+    const after = withKitConversion(before, c);
+    expect(pileOf(after, 'Pile P01')).toBe('P02');
+    expect(pileOf(after, 'Pile P02')).toBe('P01');
+    expect(after.kitPilesConverted).toEqual(['P01', 'P02']);
+  });
+
+  it('under half of the smaller area is not the same pile', () => {
+    const before = first();
+    // A is gone; B is now P01, and a new pile grazing A's old place (20 %) is P02
+    const v = build([onRing('P01', sq(100)), onRing('P02', sq(8))]);
+    const c = convertKitPiles(v, null, before, later());
+    const after = withKitConversion(before, c);
+    expect(pileOf(after, 'Pile P02')).toBe('P01');
+    // the grazing pile is new; A's measurement no longer names a kit pile
+    expect(c.added.map((m) => m.origin?.pile)).toEqual(['P02']);
+    expect(after.measurements.find((m) => m.label === 'Pile P01')?.origin).toBeUndefined();
+    const ids = after.measurements.flatMap((m) => (m.origin ? [m.origin.pile] : []));
+    expect(ids.sort()).toEqual(['P01', 'P02']);
+  });
+
+  it('the same build again changes nothing', () => {
+    const before = first();
+    const v = build([onRing('P01', sq(0)), onRing('P02', sq(100))]);
+    const c = convertKitPiles(v, null, before, later());
+    expect(c).toEqual({ added: [], converted: [], relinked: [], detached: [] });
+  });
+
+  it('openWithKitPiles keeps the relinks, and opening again changes nothing', () => {
+    const o = (newId: () => string) => ({
+      origin: [0, 0, 0],
+      materials: [],
+      now: NOW,
+      newId,
+      readOnly: false,
+    });
+    let k = 0;
+    const placed = openWithKitPiles(
+      empty({ kitPilesConverted: [] }),
+      { volumes: build([onRing('P01', sq(0)), onRing('P02', sq(100))]), edits: null },
+      o(() => `k${String(++k)}`),
+    );
+    const kit = { volumes: build([onRing('P01', sq(100)), onRing('P02', sq(0))]), edits: null };
+    const relinked = openWithKitPiles(
+      placed,
+      kit,
+      o(() => 'x'),
+    );
+    expect(relinked).not.toBe(placed);
+    expect(relinked.measurements.map((m) => m.origin?.pile)).toEqual(['P02', 'P01']);
+    expect(
+      openWithKitPiles(
+        relinked,
+        kit,
+        o(() => 'x'),
+      ),
+    ).toBe(relinked);
   });
 });
