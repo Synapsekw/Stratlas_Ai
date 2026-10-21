@@ -513,6 +513,7 @@ const MeasurementsFileStrict = z
 /**
  * Tolerant on read (a bad `pickedOn` is dropped). Typed as the strict schema so request types
  * derived from it keep the object input type; the preprocess only widens it to unknown.
+ * At runtime it is a preprocess pipe: `.shape`, `.extend`, `.pick` and such typecheck but throw.
  */
 export const MeasurementsFile = z.preprocess(
   dropUnreadablePickedOn,

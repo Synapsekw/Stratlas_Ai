@@ -326,7 +326,8 @@ describe('planMoveToDate', () => {
     const filed = plan.next[0];
     expect(filed?.scope).toEqual({ kind: 'survey', capture: 'jun' });
     expect(filed?.source).toEqual({ layer: 'dsm-jun' });
-    expect(filed).not.toHaveProperty('pickedOn');
+    // ground picks fit any source of the date: kept
+    expect(filed?.pickedOn).toEqual(['ground', 'ground', 'ground']);
     // stays where drawn: the June shift taken off, heights as they were
     expect(filed?.points).toEqual([
       [-2, 0, 1],
@@ -335,6 +336,47 @@ describe('planMoveToDate', () => {
     ]);
     expect(repick.ground).not.toHaveBeenCalled();
     expect(repick.model).not.toHaveBeenCalled();
+  });
+
+  it('keeps the source and picks of a Needs a date measurement on a layer of the target', async () => {
+    const plan = await planMoveToDate(
+      [
+        m('a', {
+          scope: { kind: 'site' },
+          source: { layer: 'model-jun' },
+          pickedOn: ['model', 'ground', 'model'],
+        }),
+      ],
+      'jun',
+      envOf(LAYERS, fakeRepick()),
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.next[0]?.source).toEqual({ layer: 'model-jun' });
+    expect(plan.next[0]?.pickedOn).toEqual(['model', 'ground', 'model']);
+  });
+
+  it("files on the target's base layer when the source is of another date", async () => {
+    const plan = await planMoveToDate(
+      [
+        m('a', {
+          scope: { kind: 'site' },
+          source: { layer: 'model-jan' },
+          pickedOn: ['model', 'ground', 'model'],
+        }),
+        m('b', { scope: { kind: 'site' }, source: { layer: 'model-jun' }, pickedOn: ['model'] }),
+      ],
+      'jun',
+      envOf(LAYERS, fakeRepick()),
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    // model picks of another date's model do not fit the target's DSM: dropped
+    expect(plan.next[0]?.source).toEqual({ layer: 'dsm-jun' });
+    expect(plan.next[0]).not.toHaveProperty('pickedOn');
+    // picks the wrong length are dropped, the source of the target kept
+    expect(plan.next[1]?.source).toEqual({ layer: 'model-jun' });
+    expect(plan.next[1]).not.toHaveProperty('pickedOn');
   });
 
   it('leaves out a measurement already on the target', async () => {

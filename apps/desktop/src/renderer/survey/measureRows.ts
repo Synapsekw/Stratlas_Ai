@@ -100,8 +100,10 @@ export function buildMeasureItems(
     const scope = m.scope;
     const capture =
       scope.kind === 'survey' ? manifest?.captures.find((x) => x.id === scope.capture) : undefined;
-    // under a date folder the date is the folder's: said again it only crowds out the name
-    const date = capture && on === undefined ? formatDate(capture.date) : '';
+    // under a date folder the date is the folder's: said again it only crowds out the name (the
+    // dimmed note still names it)
+    const dateLabel = capture ? formatDate(capture.date) : '';
+    const date = on === undefined ? dateLabel : '';
     const dimmed = scope.kind === 'survey' && !scopeOnScreen(scope, ws.dates, ws.hidden);
     return {
       id: measureMark(m.id),
@@ -112,7 +114,7 @@ export function buildMeasureItems(
         color: m.style?.color ?? MEASURE_COLOR,
         dimmed,
         ...(isTelecomTool(m.tool) ? { telecom: true } : {}),
-        ...(dimmed ? { dimmedWhy: t('tree.measure.dimmed', { date }) } : {}),
+        ...(dimmed ? { dimmedWhy: t('tree.measure.dimmed', { date: dateLabel }) } : {}),
       },
     };
   };

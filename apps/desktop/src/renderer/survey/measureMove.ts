@@ -175,7 +175,13 @@ export async function planMoveToDate(
   }
 
   for (const m of filed) {
-    const layer = baseLayer(index, manifest, capture);
+    // its own source stays when it is a layer of the target date (or common to every date)
+    const own = m.source?.layer;
+    const keep =
+      own !== undefined &&
+      manifest.layers.some((l) => l.id === own) &&
+      (index.of[own] ?? capture) === capture;
+    const layer = keep ? own : baseLayer(index, manifest, capture);
     const out: SurveyMeasurement = {
       ...m,
       scope: target,
@@ -185,7 +191,9 @@ export async function planMoveToDate(
     };
     if (layer) out.source = { layer };
     else delete out.source;
-    delete out.pickedOn;
+    // its picks stay when they fit its points and its source (model picks need their own layer)
+    const aligned = m.pickedOn?.length === m.points.length;
+    if (!aligned || (!keep && m.pickedOn?.some((k) => k !== 'ground'))) delete out.pickedOn;
     next.push(withFolder(out, folders));
   }
   // in the order they were given

@@ -118,6 +118,19 @@ describe('buildMeasureItems', () => {
     expect(buildMeasureItems(stateWith([s1]), manifest, ws)[0]?.meta).toBe('25.00 m · 2 Oct 2024');
   });
 
+  it('still names the date in the dimmed note under its date folder', () => {
+    const s1 = base('s1', 'S', { scope: { kind: 'survey', capture: 'oct' } });
+    const under = buildMeasureItems(
+      stateWith([s1]),
+      manifest,
+      { dates: index, hidden: { octMesh: true } },
+      '',
+      'oct',
+    );
+    expect(under[0]?.meta).toBe('25.00 m');
+    expect(under[0]?.measure?.dimmedWhy).toBe('Hidden with 2 Oct 2024');
+  });
+
   it('builds 500 rows sorted, one folder pass', () => {
     const items = buildMeasureItems(
       stateWith(

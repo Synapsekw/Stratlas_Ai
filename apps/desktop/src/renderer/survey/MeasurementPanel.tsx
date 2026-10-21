@@ -40,7 +40,7 @@ import {
 import { Calculators } from './Calculators';
 import { Comparisons } from './Comparison';
 import { drawnPoints } from './measureDates';
-import { dateSampler } from './dateSurfaces';
+import { drawnSampler } from './dateSurfaces';
 import { readoutOn } from './dateReadout';
 import { copyMeasurementToDate } from './measureMoveRun';
 import { MEASURE_COLOR } from './measureScene';
@@ -92,7 +92,8 @@ export function MeasurementPanel() {
   useEffect(() => {
     if (!shown || !dateId) return;
     let live = true;
-    void dateSampler(dateId)
+    // the drawn points (the date's line-up now) read where the prepared surface holds them
+    void drawnSampler(dateId, manifest)
       .then((sample) => (sample ? readoutOn(shown, tpl?.items, sample, { stepM }) : null))
       .then((r) => {
         if (live) setOnDate(r ? { of: shown, rows: r } : null);
@@ -101,7 +102,7 @@ export function MeasurementPanel() {
     return () => {
       live = false;
     };
-  }, [shown, dateId, tpl, stepM]);
+  }, [shown, dateId, tpl, stepM, manifest]);
   const shownRows = onDate?.of === shown ? onDate.rows : rows;
 
   if (!m || !shown || !focus) return null;

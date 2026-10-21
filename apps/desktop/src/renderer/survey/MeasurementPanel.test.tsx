@@ -16,7 +16,8 @@ const run = vi.hoisted(() => ({
 }));
 vi.mock('./measureMoveRun', () => ({ copyMeasurementToDate: run.copy }));
 
-import { setDateSurfaceSource } from './dateSurfaces';
+import { compareStore } from './compareStore';
+import { groundAt, setDateSurfaceSource } from './dateSurfaces';
 import { MeasurementPanel } from './MeasurementPanel';
 import { measureStore } from './measureStore';
 
@@ -226,5 +227,43 @@ describe('the measurement panel scope, source and copy', () => {
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(cell('surface-z')).toContain('7.00');
+  });
+
+  it('reads a date re-lined-up after preparing where groundAt reads it', async () => {
+    // June's surface was prepared at 0.5 m east; June is lined up 2 m east and 1 m south now
+    compareStore.setState({
+      surfaces: [
+        {
+          id: 's-jun',
+          name: 's-jun',
+          capture: 'jun',
+          source: { kind: 'photogrammetry' },
+          fingerprint: 's-jun',
+          dateShiftM: { eastM: 0.5, northM: 0 },
+        } as never,
+      ],
+    });
+    const asked: [number, number][] = [];
+    setDateSurfaceSource(() =>
+      Promise.resolve((es: Float64Array, ns: Float64Array) => {
+        es.forEach((e, i) => asked.push([e, ns[i] ?? Number.NaN]));
+        return Promise.resolve(Float64Array.from(es, () => 7));
+      }),
+    );
+    try {
+      mount();
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      const panel = [...asked];
+      asked.length = 0;
+      await groundAt('jun', [[102, 199, 0]], manifest);
+      // drawn (102, 199), back by the line-up now, on by the prepared one: (100.5, 200)
+      expect(asked).toEqual([[100.5, 200]]);
+      expect(panel).toContainEqual([100.5, 200]);
+      expect(panel).not.toContainEqual([102, 199]);
+    } finally {
+      compareStore.setState({ surfaces: [] });
+    }
   });
 });

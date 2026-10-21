@@ -30,7 +30,7 @@ import {
   type SiteTiles,
 } from './compareStore';
 import { magicStatus, projectOutline, unavailableText } from './MagicPolygon';
-import { storedPoints } from './measureDates';
+import { storedFromPrepared } from './dateSurfaces';
 import { creationDating } from './measureSource';
 import { addMeasurement, measureStore, newMeasurementId, useMeasure } from './measureStore';
 import { snapRegion } from './snapRegions';
@@ -251,7 +251,8 @@ export function WholeSite() {
         folder: 'Whole-site regions',
         scope: dating.scope,
         ...(dating.source ? { source: dating.source } : {}),
-        points: storedPoints(
+        // the ring is in the prepared surfaces' frame, not where the date is lined up now
+        points: storedFromPrepared(
           d.ring.map(([e, nn]): SitePoint => [e, nn, height(e, nn)]),
           dating.scope,
           manifest,

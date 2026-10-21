@@ -5,6 +5,7 @@ import {
   shiftEN,
   type DateShift,
   type HeightTiles,
+  type MeasurementScope,
   type ProjectManifest,
   type SitePoint,
 } from '@aio/schema';
@@ -82,28 +83,74 @@ function preparedShift(s: HeightTiles | null, origin: readonly number[]): DateSh
   return out;
 }
 
+type Dated = Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>;
+
 /**
- * The ground height under each drawn point on the date's prepared surface, NaN where there is
- * none. A drawn point sits where the date is lined up now; the surface sits where it was prepared,
- * so the point is moved back by the date's line-up (its turn too) and on by the line-up the
- * surface was prepared with (as `ringShifts` does for a ring).
+ * The line-up the date's prepared surface sits at: the frame of a ring found on that surface (a
+ * whole-site region). A date without a prepared surface: its line-up now (as `ringShifts`).
+ */
+export function preparedShiftOf(capture: string, manifest: Dated): DateShift | null {
+  const s = surfaceOfCapture(compareStore.getState().surfaces, capture);
+  return s ? preparedShift(s, manifest.origin) : captureShift(manifest, capture);
+}
+
+/**
+ * Points found on a date's prepared surface (a whole-site region's ring) to what is saved for a
+ * scope: the prepared line-up subtracted, so the engine (which adds it back) reads the same spot.
+ * A site-wide scope keeps them as they are.
+ */
+export function storedFromPrepared(
+  points: readonly SitePoint[],
+  scope: MeasurementScope,
+  manifest: Dated | null,
+): SitePoint[] {
+  const s = scope.kind === 'survey' && manifest ? preparedShiftOf(scope.capture, manifest) : null;
+  return s ? points.map((p) => shiftEN(p, s, -1)) : [...points];
+}
+
+/**
+ * The date's prepared surface as a sampler of drawn points, null when the date has none. A drawn
+ * point sits where the date is lined up now; the surface sits where it was prepared, so the point
+ * is moved back by the date's line-up (its turn too) and on by the line-up the surface was
+ * prepared with (as `ringShifts` does for a ring). Without a manifest the points go as they are.
+ */
+export async function drawnSampler(
+  capture: string,
+  manifest: Dated | null,
+): Promise<PointSampler | null> {
+  const sample = await dateSampler(capture);
+  if (!sample || !manifest) return sample;
+  const now = captureShift(manifest, capture);
+  const s = surfaceOfCapture(compareStore.getState().surfaces, capture);
+  const prepared = preparedShift(s, manifest.origin);
+  return (es, ns, signal) => {
+    const e = new Float64Array(es.length);
+    const n = new Float64Array(es.length);
+    for (let i = 0; i < es.length; i++) {
+      const p = shiftEN(shiftEN([es[i] ?? 0, ns[i] ?? 0], now, -1), prepared);
+      e[i] = p[0] ?? 0;
+      n[i] = p[1] ?? 0;
+    }
+    return sample(e, n, signal);
+  };
+}
+
+/**
+ * The ground height under each drawn point on the date's prepared surface (`drawnSampler`), NaN
+ * where there is none.
  */
 export async function groundAt(
   capture: string,
   drawn: readonly SitePoint[],
-  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>,
+  manifest: Dated,
 ): Promise<Float64Array> {
   const none = () => new Float64Array(drawn.length).fill(Number.NaN);
-  const sample = await dateSampler(capture);
+  const sample = await drawnSampler(capture, manifest);
   if (!sample || drawn.length === 0) return none();
-  const now = captureShift(manifest, capture);
-  const s = surfaceOfCapture(compareStore.getState().surfaces, capture);
-  const prepared = preparedShift(s, manifest.origin);
-  const at = drawn.map((p) => shiftEN(shiftEN(p, now, -1), prepared));
   try {
     return await sample(
-      Float64Array.from(at, (p) => p[0]),
-      Float64Array.from(at, (p) => p[1]),
+      Float64Array.from(drawn, (p) => p[0]),
+      Float64Array.from(drawn, (p) => p[1]),
     );
   } catch {
     return none();
