@@ -125,10 +125,13 @@ describe('report and export actions', () => {
     await settle();
     expect(report.removeFromReport).toHaveBeenCalledWith(['line', 'pad']);
     expect(notes.at(-1)).toEqual({ text: t('report.removed'), danger: false });
-    // the template not read yet: offered, and the answer says when nothing was in it
+    // the template not read yet: not offered (its read starts)
     report.inTemplate = null;
+    expect(item('measure.removeFromReport', target(['line']))).toBeUndefined();
+    // read, and the measurement went from it meanwhile: the answer says so
+    report.inTemplate = ['line'];
     report.removeFromReport.mockResolvedValueOnce({ removed: [] });
-    item('measure.removeFromReport', target(['pad']))?.run();
+    item('measure.removeFromReport', target(['line']))?.run();
     await settle();
     expect(notes.at(-1)).toEqual({ text: t('report.notIn'), danger: false });
     // greyed where Add to report is

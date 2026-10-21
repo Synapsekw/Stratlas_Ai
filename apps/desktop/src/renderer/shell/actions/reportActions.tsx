@@ -23,7 +23,7 @@ import { measureEditBlocked } from './measureActions';
 /*
  * The measurement actions that send a measurement out (volumetric parity W2, W8): Add to report
  * (the marked measurements, in the order the Datasets tree lists them), Remove from report (offered
- * while one of them is in the report template) and Export (the one the
+ * while one of them is in the report template as read) and Export (the one the
  * menu opened on, as CSV, DXF or, where its tool draws a chart, PNG). Registered on the
  * measurement rows, so the card's "⋯" menu, built from the same registry, offers them too.
  */
@@ -81,8 +81,8 @@ const actions: readonly Action[] = [
     section: 'file',
     targets: ['measurements'],
     multi: true,
-    // offered while one of them is in the template (or the template is not read yet)
-    appliesTo: (tg: Target) => reportHolds(tg.ids) !== false,
+    // offered while one of them is in the template (once it is read: asking starts the read)
+    appliesTo: (tg: Target) => reportHolds(tg.ids) === true,
     disabled: (_tg: Target, ctx: ActionCtx) => measureEditBlocked(ctx),
     run: async (tg, ctx) => {
       try {

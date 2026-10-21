@@ -11,7 +11,7 @@ import {
 } from '@aio/schema';
 import { Button, formatBytes, Icon, SevChip, t } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FocusZone } from '../FocusZone';
 import { actionAllowed, exportUnavailable } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
@@ -55,13 +55,16 @@ function ProjectReport(props: {
 }) {
   const contents = useShell((s) => s.settings.reportContents);
   const pkg = useShell((s) => s.pkg);
+  const heading = useRef<HTMLHeadingElement>(null);
   const toggle = (id: ReportSectionId) => {
     const sections = { ...contents?.sections, [id]: !reportSectionOn(contents, id) };
     saveContents({ ...contents, sections });
   };
   return (
     <section className="sblock" data-testid="house-report">
-      <h2>{t('reports.house.title')}</h2>
+      <h2 ref={heading} tabIndex={-1}>
+        {t('reports.house.title')}
+      </h2>
       <p className="muted rep-note">{t('reports.house.text')}</p>
       <p className="faint small rep-note">{t('reports.brandingHint')}</p>
       <fieldset className="rep-sections">
@@ -79,7 +82,7 @@ function ProjectReport(props: {
           </label>
         ))}
       </fieldset>
-      <TemplateNote readOnly={Boolean(pkg)} />
+      <TemplateNote readOnly={Boolean(pkg)} returnTo={() => heading.current} />
       <label className="rep-pages">
         <span className="caps">{t('reports.house.issuePages')}</span>
         <select

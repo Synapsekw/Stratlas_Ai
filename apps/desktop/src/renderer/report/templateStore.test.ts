@@ -19,6 +19,8 @@ const disk = vi.hoisted(() => ({
   /** Measurement saves, in the order they came, with the template writes ("template"). */
   order: [] as string[],
   measureWriteFails: false,
+  /** While set, a measurements write waits for it. */
+  gate: null as Promise<void> | null,
 }));
 vi.mock('../shell', () => ({
   bridge: {
@@ -32,10 +34,11 @@ vi.mock('../shell', () => ({
         });
       if (channel === 'survey:writeMeasurements') {
         disk.order.push('measurements');
-        return Promise.resolve({
+        const answer = {
           ok: true,
           value: disk.measureWriteFails ? { ok: false, error: 'Disk full' } : { ok: true },
-        });
+        };
+        return disk.gate ? disk.gate.then(() => answer) : Promise.resolve(answer);
       }
       if (channel === 'report:writeTemplate') {
         disk.order.push('template');
@@ -58,7 +61,7 @@ const {
   loadTemplate,
   TEMPLATE_MAX,
 } = await import('./templateStore');
-const { isDirty, measureStore } = await import('../survey/measureStore');
+const { isDirty, measureStore, saveMeasurements } = await import('../survey/measureStore');
 
 const manifest = { captures: [], layers: [] } as unknown as ProjectManifest;
 const m = (id: string, tool: 'distance' | 'area') => ({
@@ -89,6 +92,7 @@ beforeEach(() => {
   disk.writes = 0;
   disk.order = [];
   disk.measureWriteFails = false;
+  disk.gate = null;
   workspace.getState().openProject({ id: 'p1', root: '/p1', manifest });
   measureStore.setState({
     projectId: null,
@@ -199,6 +203,25 @@ describe('report template store', () => {
     expect(ids()).toEqual(['fresh:value+chart']);
   });
 
+  it('Add to report right after Save waits for that save instead of refusing', async () => {
+    loaded();
+    measureStore.setState((s) => ({
+      file: { ...s.file, measurements: [...s.file.measurements, m('fresh', 'distance')] },
+    }));
+    let open: () => void = () => undefined;
+    disk.gate = new Promise<void>((r) => {
+      open = r;
+    });
+    const saving = saveMeasurements();
+    expect(measureStore.getState().saving).toBe(true);
+    const adding = addToReport('fresh');
+    open();
+    expect(await saving).toBe(true);
+    expect(await adding).toBe('added');
+    // one save, the person's: nothing left to save before the add
+    expect(disk.order).toEqual(['measurements', 'template']);
+  });
+
   it('refuses with "Save the measurements first" when the save cannot be made', async () => {
     loaded();
     measureStore.setState((s) => ({
@@ -233,8 +256,18 @@ describe('report template store', () => {
     expect(await removeFromReport(['line', 'nowhere'])).toEqual({ removed: ['line'] });
     expect(ids()).toEqual(['pad:value']);
     expect(templateStore.getState().file).toEqual(disk.file);
+    // the sections and what a later build added stay; only the measurements go
+    const at = '2026-10-20T10:00:00.000Z';
+    disk.file = {
+      ...emptyReportTemplate(),
+      entries: [
+        { kind: 'section', section: 'summary' },
+        { kind: 'measurement', id: 'pad', parts: ['value'], addedAt: at },
+        { kind: 'banner', text: 'later build' },
+      ],
+    };
     await clearReportTemplate();
-    expect(disk.file?.entries).toEqual([]);
+    expect(disk.file.entries.map((e) => e.kind)).toEqual(['section', 'banner']);
     // nothing there: nothing written
     const writes = disk.writes;
     expect(await removeFromReport(['pad'])).toEqual({ removed: [] });

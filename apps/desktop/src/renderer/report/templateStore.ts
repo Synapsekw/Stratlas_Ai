@@ -20,7 +20,7 @@ import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge } from '../shell';
-import { isDirty, measureStore, saveMeasurements } from '../survey/measureStore';
+import { isDirty, measureStore, saveMeasurements, writesSettled } from '../survey/measureStore';
 import { measurementHasChart } from '../survey/card/chartRule';
 
 /** The most entries a template holds (`ReportTemplateFile.entries`, max 500). */
@@ -108,7 +108,12 @@ function loadedFor(projectId: string) {
  * save cannot be made.
  */
 async function savedFirst(projectId: string): Promise<void> {
-  const s = loadedFor(projectId);
+  let s = loadedFor(projectId);
+  // a save in flight (Save pressed just before) lands first; then look again
+  if (s?.saving) {
+    await writesSettled(projectId);
+    s = loadedFor(projectId);
+  }
   if (!s || (!isDirty(s) && !s.resultsUnwritten)) return;
   if (s.readOnly || !(await saveMeasurements())) throw new Error(t('report.saveFirst'));
 }
@@ -185,16 +190,22 @@ export function removeFromReport(ids: readonly string[]): Promise<{ removed: str
   });
 }
 
-/** Empty the template ("Clear report template"): the report lists every measurement again. */
+/**
+ * Take every measurement out of the template ("Clear report template"): the report lists every
+ * measurement again. Section entries, and entries a later build added, stay.
+ */
 export function clearReportTemplate(): Promise<void> {
   return queued(async () => {
     const projectId = openProject();
     const file = await read(projectId);
-    if (!file || file.entries.length === 0) {
+    if (!file?.entries.some(isMeasurementEntry)) {
       templateStore.setState({ projectId, file, error: null });
       return;
     }
-    await write(projectId, { ...file, entries: [] });
+    await write(projectId, {
+      ...file,
+      entries: file.entries.filter((e) => !isMeasurementEntry(e)),
+    });
   });
 }
 

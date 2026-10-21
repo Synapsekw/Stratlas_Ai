@@ -26,6 +26,7 @@ vi.mock('../shell', () => ({
 
 const { TemplateNote } = await import('./TemplateNote');
 const { loadTemplate } = await import('./templateStore');
+const { measureStore } = await import('../survey/measureStore');
 
 const manifest = { captures: [], layers: [] } as unknown as ProjectManifest;
 const at = '2026-10-20T10:00:00.000Z';
@@ -51,13 +52,17 @@ afterEach(() => {
   workspace.getState().closeProject();
 });
 
+/** A stable element outside the note: focus goes there after a clear. */
+let heading: HTMLElement;
 async function show(readOnly: boolean) {
   await loadTemplate();
   host = document.createElement('div');
-  document.body.append(host);
+  heading = document.createElement('h2');
+  heading.tabIndex = -1;
+  document.body.append(heading, host);
   root = createRoot(host);
   await act(async () => {
-    root?.render(<TemplateNote readOnly={readOnly} />);
+    root?.render(<TemplateNote readOnly={readOnly} returnTo={() => heading} />);
     await Promise.resolve();
   });
 }
@@ -79,14 +84,34 @@ describe('the report template on the Reports screen', () => {
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(disk.file?.entries).toEqual([]);
-    // nothing chosen any more: the note goes
+    // nothing chosen any more: the note goes, and focus lands on the section heading
     expect(q('report-template-note')).toBeNull();
+    expect(document.activeElement).toBe(heading);
   });
 
   it('a package shows the note without the clear button', async () => {
     await show(true);
     expect(q('report-template-note')).not.toBeNull();
     expect(q('report-template-clear')).toBeNull();
+  });
+
+  it('counts only measurements that still exist', async () => {
+    const m = (id: string) => ({ id }) as never;
+    measureStore.setState({
+      projectId: 'p1',
+      status: 'ready',
+      file: { schema: 'aio.measurements/1', measurements: [m('a')] },
+    });
+    await show(false);
+    expect(q('report-template-note')?.textContent).toContain(
+      t('report.template.count', { count: 1 }),
+    );
+    // none left: the report lists everything again, so the note does not claim otherwise
+    act(() => {
+      measureStore.setState({ file: { schema: 'aio.measurements/1', measurements: [] } });
+    });
+    expect(q('report-template-note')).toBeNull();
+    measureStore.setState({ projectId: null, status: 'idle' });
   });
 
   it('no template: nothing shown', async () => {

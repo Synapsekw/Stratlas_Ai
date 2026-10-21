@@ -5775,6 +5775,7 @@ export const en = {
   'base.plane': 'Best-fit plane',
   'base.planeHint': 'a flat, level pad',
   'base.level': 'Fixed level',
+  'base.levelTo': 'Fixed level compared with',
   'base.levelHint': 'a known floor height',
   'base.surface': 'Previous survey or design',
   'base.surfaceHint': 'the measured ground underneath, the most accurate when it exists',
@@ -5934,7 +5935,7 @@ export const en = {
   'report.template.clear': 'Clear report template',
   'report.template.clearTitle': 'Clear the report template?',
   'report.template.clearText':
-    'The report then lists every measurement again, as it did before Add to report was used. The measurements themselves are not changed.',
+    'This takes out only the measurements chosen with Add to report; the report then lists every measurement again. The measurements themselves are not changed.',
   'report.template.cleared': 'Report template cleared',
   'mcard.chartNotShown': 'Open the measurement to export its chart',
   'empty.survey.noSurface.title': 'No survey surface is prepared yet',

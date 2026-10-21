@@ -476,7 +476,7 @@ async function writeConversion(
 }
 
 /** Wait until no write of the project is in flight (a person's save lands first). */
-async function writesSettled(projectId: string): Promise<boolean> {
+export async function writesSettled(projectId: string): Promise<boolean> {
   for (let p = writing.get(projectId); p; p = writing.get(projectId)) await p;
   return !get().saving;
 }
