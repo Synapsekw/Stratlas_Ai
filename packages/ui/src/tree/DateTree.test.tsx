@@ -692,7 +692,7 @@ describe('DateTree: dragging a measurement', () => {
     const oct = q('date-folder-oct');
     expect(oct?.className).toContain('drop-no');
     expect(oct?.className).not.toContain('drop-can');
-    expect(oct?.getAttribute('title')).toBe(
+    expect(oct?.getAttribute('aria-description')).toBe(
       'Antenna measurements stay on the date they were picked on.',
     );
     // the drop still reaches the caller, which refuses it with the same words

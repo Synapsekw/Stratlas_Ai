@@ -258,7 +258,7 @@ export function DateTree(props: DateTreeProps) {
             aria-selected={focused}
             className={`dfolder${focused ? ' focused' : ''}${empty ? ' empty' : ''}${dropClass(f.id, dropCapture(f))}`}
             data-testid={`date-folder-${f.id}`}
-            title={
+            aria-description={
               drag?.kind === 'measurements' && drag.telecom && offers(f.id, dropCapture(f))
                 ? t('tree.measure.move.telecom')
                 : undefined
