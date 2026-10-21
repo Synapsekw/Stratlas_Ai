@@ -474,9 +474,9 @@ const inputsKey = (m: SurveyMeasurement, withRing: boolean): string =>
  */
 export async function recomputeStandard(id: string): Promise<string | null> {
   if (measureStore.getState().readOnly) return 'This project is read-only.';
-  if (get().status !== 'ready') return t('vol.recompute.notReady');
+  if (get().status !== 'ready') return t('vol.card.engineStarting');
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
-  if (m && m.points.length < 3) return t('vol.recompute.fewPoints');
+  if (m && m.points.length < 3) return t('vol.card.needPoints');
   set({ problems: Object.fromEntries(Object.entries(get().problems).filter(([k]) => k !== id)) });
   const r = await compute(id);
   if (r) return null;

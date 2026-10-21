@@ -702,10 +702,10 @@ describe('results over time and the spread across bases', () => {
     const r = await compute('m1', { live: true });
     put({ results: [kit(must(r?.results[0]), 'e2')] });
     compareStore.setState({ status: 'loading' });
-    expect(await recomputeStandard('m1')).toBe(t('vol.recompute.notReady'));
+    expect(await recomputeStandard('m1')).toBe(t('vol.card.engineStarting'));
     compareStore.setState({ status: 'ready' });
     put({ points: ring.slice(0, 2) });
-    expect(await recomputeStandard('m1')).toBe(t('vol.recompute.fewPoints'));
+    expect(await recomputeStandard('m1')).toBe(t('vol.card.needPoints'));
     // the carried figure stays
     expect(stored()?.results[0]?.carried).toBeDefined();
   });
