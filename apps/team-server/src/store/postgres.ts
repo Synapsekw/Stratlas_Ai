@@ -23,6 +23,12 @@ export function migrationsDir(): string {
 
 export interface PostgresOptions {
   connectionString: string;
+  /**
+   * Run the migrations as this role (the tables' owner), while the server itself connects as
+   * `connectionString` (the `aio_app` role, which may only read and append the history). Absent:
+   * the migrations run on `connectionString`.
+   */
+  migrationConnectionString?: string;
   /** Run in this schema (tests use a throw-away schema per run). */
   schema?: string;
   migrations?: string;
@@ -108,13 +114,28 @@ export function createPostgresStore(options: PostgresOptions): Store & { pool: p
   });
   const q = <R extends pg.QueryResultRow>(text: string, values: unknown[] = []) =>
     pool.query<R>(text, values);
+  let nonceWrites = 0;
 
   return {
     kind: 'postgres',
     pool,
     async init() {
-      if (options.schema) await q(`CREATE SCHEMA IF NOT EXISTS ${options.schema}`);
-      await migrate(pool, options.migrations);
+      if (!options.migrationConnectionString) {
+        if (options.schema) await q(`CREATE SCHEMA IF NOT EXISTS ${options.schema}`);
+        await migrate(pool, options.migrations);
+        return;
+      }
+      const owner = new pg.Pool({
+        connectionString: options.migrationConnectionString,
+        max: 1,
+        ...(options.schema ? { options: `-c search_path=${options.schema}` } : {}),
+      });
+      try {
+        if (options.schema) await owner.query(`CREATE SCHEMA IF NOT EXISTS ${options.schema}`);
+        await migrate(owner, options.migrations);
+      } finally {
+        await owner.end();
+      }
     },
     close: () => pool.end(),
 
@@ -315,6 +336,34 @@ export function createPostgresStore(options: PostgresOptions): Store & { pool: p
         'UPDATE devices SET revoked_at = COALESCE(revoked_at, $2), revoke_reason = COALESCE(revoke_reason, $3) WHERE device = $1',
         [id, at, reason],
       );
+      return (r.rowCount ?? 0) > 0;
+    },
+
+    async useNonce(device, nonce, nowMs, windowMs) {
+      const expired = nowMs - windowMs;
+      const r = await q(
+        `INSERT INTO request_nonces (device, nonce, seen_ms) VALUES ($1, $2, $3)
+         ON CONFLICT (device, nonce) DO UPDATE SET seen_ms = EXCLUDED.seen_ms
+           WHERE request_nonces.seen_ms <= $4
+         RETURNING 1`,
+        [device, nonce, nowMs, expired],
+      );
+      if (++nonceWrites % 500 === 0)
+        await q('DELETE FROM request_nonces WHERE seen_ms <= $1', [expired]);
+      return r.rowCount === 1;
+    },
+
+    async addBlobUpload(sha256, device, at) {
+      await q(
+        'INSERT INTO blob_uploads (sha256, device, uploaded_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        [sha256, device, at],
+      );
+    },
+    async blobUploadedBy(sha256, device) {
+      const r = await q('SELECT 1 FROM blob_uploads WHERE sha256 = $1 AND device = $2', [
+        sha256,
+        device,
+      ]);
       return (r.rowCount ?? 0) > 0;
     },
   };

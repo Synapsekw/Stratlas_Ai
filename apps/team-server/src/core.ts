@@ -2,8 +2,14 @@
  * What the Team Server does, without HTTP: check and store pushed ops, countersign them, page
  * them out, enrol devices and list members. It stores and forwards; it never merges, so the
  * server and the app cannot disagree on state.
+ *
+ * Who a device is (security review 2026-10-21): a device is bound to the actor it enrolled as only
+ * when that actor was new to this server, or with a certificate from one of that person's devices
+ * or from an owner. A project's journal has the last word: where it names the actor, a device the
+ * journal does not list for that actor (and that no valid certificate vouches for) gets nothing
+ * of the journal's role, and its ops do not verify as that actor's.
  */
-import { checkOp, compareHlc, parseHlc, verifySignature } from '@aio/journal';
+import { checkOp, compareHlc, parseHlc, verifyCert, verifySignature } from '@aio/journal';
 import {
   CLOCK_AHEAD_HOLD_MS,
   EnrolRequest,
@@ -11,6 +17,7 @@ import {
   OP_PAYLOADS,
   ProjectSharePayload,
   TEAM_SCHEMA,
+  type DeviceRecord,
   type EnrolResponse,
   type Member,
   type PushResult,
@@ -22,7 +29,7 @@ import {
 import { checkDeviceRecord, inviteHash, serverCert } from './auth/enrol';
 import type { ServerIdentity } from './identity';
 import { makeReceipt } from './receipts';
-import { clientMaySend, permissionFor, TeamState, TEAM_KINDS } from './roles';
+import { clientMaySend, permissionFor, TeamState } from './roles';
 import { decodeSince, encodeCursor, sinceFor } from './since';
 import type { EnrolledDevice, Store } from './store/store';
 
@@ -50,6 +57,10 @@ export interface CoreOptions {
 }
 
 const READ_ROLES: readonly Role[] = ['owner', 'reviewer', 'viewer'];
+const EDIT_ROLES: readonly Role[] = ['owner', 'reviewer'];
+
+/** How many certificates deep a binding may be vouched for (device by device). */
+const MAX_CERT_DEPTH = 4;
 
 /** One write at a time: ops, receipts and the roles cache stay in step. */
 function mutex() {
@@ -63,6 +74,45 @@ function mutex() {
 
 const refuse = (id: string, code: RefusalCode, message: string) => ({ id, code, message });
 
+type Devices = ReadonlyMap<string, EnrolledDevice>;
+
+/** The role an enrolled device's invite gives in a project; null when it gives none. */
+const grant = (d: EnrolledDevice, projectId: string | null): Role | null =>
+  d.revokedAt === null && (d.project === null || d.project === projectId) ? d.role : null;
+
+/**
+ * Does the project accept this device as its actor? Yes when the journal lists the device for the
+ * actor (or it shared the project), when the journal does not name the actor at all (the invite
+ * decides), or when a certificate vouches for it: one of the person's own devices that holds, or
+ * a device of someone who is an owner of this project now. Never when the journal gives the
+ * device to someone else.
+ */
+export function bindingHolds(
+  d: EnrolledDevice,
+  t: TeamState,
+  devices: Devices,
+  depth = 0,
+): boolean {
+  const listed = t.deviceKey(d.device);
+  if (listed) return listed.actor === d.actor && listed.key === d.key;
+  if (t.binds(d.actor, d.device)) return true;
+  if (!t.inJournal(d.actor)) return true;
+  const c = d.certifiedBy;
+  if (!c || depth >= MAX_CERT_DEPTH) return false;
+  const issuer = devices.get(c.device);
+  if (issuer?.actor !== c.actor || issuer.revokedAt !== null) return false;
+  if (t.revokedAt(issuer.device) !== null) return false;
+  if (!bindingHolds(issuer, t, devices, depth + 1)) return false;
+  return c.actor === d.actor || t.roleNow(c.actor) === 'owner';
+}
+
+/** The role a device has in a project now (null: none): revocations, binding, journal, invite. */
+function roleIn(t: TeamState, d: EnrolledDevice, projectId: string, devices: Devices): Role | null {
+  if (d.revokedAt !== null || t.revokedAt(d.device) !== null) return null;
+  if (!bindingHolds(d, t, devices)) return null;
+  return t.inJournal(d.actor) ? t.roleNow(d.actor) : grant(d, projectId);
+}
+
 export function createCore(options: CoreOptions) {
   const { store, identity } = options;
   const now = options.now ?? (() => new Date());
@@ -73,19 +123,26 @@ export function createCore(options: CoreOptions) {
     let t = teams.get(projectId);
     if (t) return t;
     t = new TeamState();
-    for await (const op of store.allOps(projectId)) if (TEAM_KINDS.has(op.kind)) t.apply(op);
+    for await (const op of store.allOps(projectId)) t.apply(op);
     teams.set(projectId, t);
     return t;
   }
 
-  /** The role an enrolled device's invite gives in a project; null when it gives none. */
-  const grant = (d: EnrolledDevice, projectId: string): Role | null =>
-    d.revokedAt === null && (d.project === null || d.project === projectId) ? d.role : null;
+  async function allTeams(): Promise<{ projectId: string; t: TeamState }[]> {
+    const out: { projectId: string; t: TeamState }[] = [];
+    for (const p of await store.projects())
+      out.push({ projectId: p.teamProjectId, t: await team(p.teamProjectId) });
+    return out;
+  }
 
-  /** The role a device's person has in a project now: the journal's, else the invite's. */
+  /** The enrolled devices a binding check may need (only certified bindings look them up). */
+  async function devicesFor(d: EnrolledDevice): Promise<Devices> {
+    if (!d.certifiedBy) return new Map();
+    return new Map((await store.devices()).map((e) => [e.device, e]));
+  }
+
   async function roleOf(d: EnrolledDevice, projectId: string): Promise<Role | null> {
-    const t = await team(projectId);
-    return t.inJournal(d.actor) ? t.roleNow(d.actor) : grant(d, projectId);
+    return roleIn(await team(projectId), d, projectId, await devicesFor(d));
   }
 
   async function projectOr404(projectId: string): Promise<TeamProject> {
@@ -96,6 +153,8 @@ export function createCore(options: CoreOptions) {
 
   async function readAccess(d: EnrolledDevice, projectId: string): Promise<void> {
     await projectOr404(projectId);
+    if ((await team(projectId)).revokedAt(d.device) !== null)
+      throw new ServerRefusal(403, 'forbidden', 'This device was revoked in this project.');
     const role = await roleOf(d, projectId);
     if (role === null || !READ_ROLES.includes(role)) {
       throw new ServerRefusal(
@@ -116,6 +175,67 @@ export function createCore(options: CoreOptions) {
     }
     return out;
   }
+
+  /**
+   * The certificate in a device record that lets it take an actor another device already has: from
+   * one of that person's devices that holds the actor everywhere, or from an owner (a server-wide
+   * owner invite, or an owner in a project's journal). Null when none verifies.
+   */
+  function certifiedBy(
+    record: DeviceRecord,
+    enrolled: readonly EnrolledDevice[],
+    states: readonly { t: TeamState }[],
+  ): { actor: string; device: string } | null {
+    const devices = new Map(enrolled.map((e) => [e.device, e]));
+    const at = now().toISOString();
+    for (const cert of record.certs) {
+      if (cert.level !== 'owner' || cert.device !== record.id || cert.actor !== record.actor)
+        continue;
+      if (cert.expiresAt !== undefined && cert.expiresAt <= at) continue;
+      const issuer = devices.get(cert.issuer.device);
+      if (issuer?.revokedAt !== null) continue;
+      if (cert.issuer.actor !== undefined && cert.issuer.actor !== issuer.actor) continue;
+      if (!verifyCert(cert, issuer.key)) continue;
+      if (states.some(({ t }) => t.revokedAt(issuer.device) !== null)) continue;
+      const holdsEverywhere = states.every(({ t }) => bindingHolds(issuer, t, devices));
+      if (issuer.actor === record.actor) {
+        if (holdsEverywhere) return { actor: issuer.actor, device: issuer.device };
+        continue;
+      }
+      const owner =
+        (holdsEverywhere && issuer.role === 'owner' && issuer.project === null) ||
+        states.some(
+          ({ t }) => t.roleNow(issuer.actor) === 'owner' && bindingHolds(issuer, t, devices),
+        );
+      if (owner) return { actor: issuer.actor, device: issuer.device };
+    }
+    return null;
+  }
+
+  function answer(
+    device: EnrolledDevice,
+    projects: { teamProjectId: string; name: string }[],
+  ): EnrolResponse {
+    return {
+      server: {
+        id: identity.id,
+        name: options.name,
+        version: options.version,
+        fingerprint: options.fingerprint,
+        publicKey: identity.publicKey,
+      },
+      cert: serverCert(identity, device, now().toISOString()),
+      role: device.role,
+      projects,
+    };
+  }
+
+  const actorTaken = () =>
+    new ServerRefusal(
+      403,
+      'actor',
+      "Another device already uses this person's identity on this server. Enrol with a certificate from one of that person's devices or from an owner, or with a new identity.",
+    );
 
   return {
     identity,
@@ -138,6 +258,34 @@ export function createCore(options: CoreOptions) {
         const before = await store.device(record.id);
         if (before?.revokedAt)
           throw new ServerRefusal(403, 'revoked', 'This device was revoked on this server.');
+        if (before) {
+          // enrolled already: it keeps who it is and the role it has
+          if (before.actor !== record.actor || before.key !== record.key)
+            throw new ServerRefusal(
+              403,
+              'actor',
+              'This device is enrolled on this server as another person.',
+            );
+          return answer(before, await projectsOf(before));
+        }
+        const enrolled = await store.devices();
+        const states = await allTeams();
+        if (
+          states.some(({ t }) => {
+            const listed = t.deviceKey(record.id);
+            return listed !== null && listed.actor !== record.actor;
+          })
+        )
+          throw actorTaken();
+        // an owner listed this device for this actor in a project: the journal vouches for it
+        const listed = states.some(({ t }) => t.binds(record.actor, record.id));
+        const taken =
+          !listed &&
+          (enrolled.some((e) => e.actor === record.actor) ||
+            states.some(({ t }) => t.inJournal(record.actor) && !t.binds(record.actor, record.id)));
+        const certified = taken ? certifiedBy(record, enrolled, states) : null;
+        if (taken && !certified) throw actorTaken();
+
         const at = now().toISOString();
         const invite = await store.takeInvite(inviteHash(parsed.data.code), at, record.id);
         if (!invite)
@@ -158,19 +306,10 @@ export function createCore(options: CoreOptions) {
           revokedAt: null,
           revokeReason: null,
           record,
+          ...(certified ? { certifiedBy: certified } : {}),
         };
         await store.putDevice(device);
-        return {
-          server: {
-            id: identity.id,
-            name: options.name,
-            version: options.version,
-            fingerprint: options.fingerprint,
-          },
-          cert: serverCert(identity, device, at),
-          role: invite.role,
-          projects: await projectsOf(device),
-        };
+        return answer(device, await projectsOf(device));
       });
     },
 
@@ -196,15 +335,21 @@ export function createCore(options: CoreOptions) {
       await readAccess(d, projectId);
       const t = await team(projectId);
       const enrolled = await store.devices();
-      const here = new Set(enrolled.map((e) => e.device));
-      const fromJournal = t.members(({ devices, certified }) =>
-        devices.some((x) => here.has(x)) ? 'server' : certified ? 'owner' : 'self',
+      const devices = new Map(enrolled.map((e) => [e.device, e]));
+      const here = new Set(
+        enrolled
+          .filter((e) => e.revokedAt === null && bindingHolds(e, t, devices))
+          .map((e) => e.device),
+      );
+      const fromJournal = t.members(({ devices: ds, certified }) =>
+        ds.some((x) => here.has(x)) ? 'server' : certified ? 'owner' : 'self',
       );
       const named = new Set(fromJournal.map((m) => m.actor));
       const granted = new Map<string, Member>();
       for (const e of enrolled) {
         const role = grant(e, projectId);
         if (role === null || named.has(e.actor) || t.inJournal(e.actor)) continue;
+        if (t.deviceKey(e.device) !== null || t.revokedAt(e.device) !== null) continue;
         const m = granted.get(e.actor);
         const dev = { id: e.device, key: e.key, revoked: false };
         if (m) m.devices.push(dev);
@@ -224,8 +369,11 @@ export function createCore(options: CoreOptions) {
     },
 
     /**
-     * Check and store pushed ops: schema, hash, chain, signature, revocation, membership and role
-     * at each op's clock reading. Accepted ops are countersigned. `forbidden` is set when nothing
+     * Check and store pushed ops: schema, hash, chain (seq, link and a clock that moves forward),
+     * signature, revocation, membership and role. The role must allow the op at its own clock
+     * reading and also as the server knows the team now: an op that reaches the server after a
+     * demotion, a removal or a stricter policy cannot be dated back to before it, and no new op of
+     * a revoked device is taken. Accepted ops are countersigned. `forbidden` is set when nothing
      * was accepted and something was refused for role, membership or revocation (HTTP 403).
      */
     async push(
@@ -260,11 +408,14 @@ export function createCore(options: CoreOptions) {
 
         let project = await store.project(projectId);
         const t = await team(projectId);
+        const enrolled = await store.devices();
+        const byDevice = new Map(enrolled.map((e) => [e.device, e]));
         if (!project) {
           const share = valid.find(
             ({ op }) =>
               op.kind === 'project.share' &&
               op.act === d.actor &&
+              op.dev === d.device &&
               ProjectSharePayload.safeParse(op.payload).data?.teamProjectId === projectId,
           );
           if (!share)
@@ -283,22 +434,20 @@ export function createCore(options: CoreOptions) {
             createdBy: d.actor,
           };
           // the creator owns the history written before sharing
-          t.apply(share.op);
+          t.applyTeam(share.op);
         }
-        const pusherRole = t.inJournal(d.actor) ? t.roleNow(d.actor) : grant(d, projectId);
-        if (pusherRole === null)
-          throw new ServerRefusal(403, 'forbidden', 'You are not a member of this project.');
+        const pusherRole = roleIn(t, d, projectId, byDevice);
+        if (pusherRole === null) {
+          if (!(await store.project(projectId))) teams.delete(projectId);
+          throw new ServerRefusal(
+            403,
+            'forbidden',
+            t.revokedAt(d.device) !== null
+              ? 'This device was revoked in this project.'
+              : 'You are not a member of this project.',
+          );
+        }
 
-        const enrolled = await store.devices();
-        const byDevice = new Map(enrolled.map((e) => [e.device, e]));
-        const grantOf = (actor: string): Role | null => {
-          for (const e of enrolled)
-            if (e.actor === actor) {
-              const g = grant(e, projectId);
-              if (g) return g;
-            }
-          return null;
-        };
         const heads = new Map(Object.entries(await store.heads(projectId)));
         const known = await store.hasOps(
           projectId,
@@ -338,14 +487,21 @@ export function createCore(options: CoreOptions) {
               no('chain', 'The op does not continue its chain (a fork or an edited history).');
               continue;
             }
-            const fromJournal = t.deviceKey(op.dev);
-            const fromServer = byDevice.get(op.dev);
-            const key =
-              fromJournal?.actor === op.act
-                ? fromJournal.key
-                : fromServer?.actor === op.act
-                  ? fromServer.key
-                  : null;
+            const last = t.clockOf(op.chain);
+            if (last !== null && compareHlc(op.hlc, last) <= 0) {
+              no('chain', 'The op is dated before the op it follows in its chain.');
+              continue;
+            }
+            // the key: from the journal, else from an enrolment the project accepts
+            const listed = t.deviceKey(op.dev);
+            const author = byDevice.get(op.dev);
+            const key = listed
+              ? listed.actor === op.act
+                ? listed.key
+                : null
+              : author?.actor === op.act && bindingHolds(author, t, byDevice)
+                ? author.key
+                : null;
             if (key === null) {
               no('non-member', 'The device that wrote the op is not a member device.');
               continue;
@@ -354,17 +510,17 @@ export function createCore(options: CoreOptions) {
               no('signature', 'The op signature does not verify.');
               continue;
             }
-            const revoked = t.revokedAt(op.dev);
-            const serverRevoked = fromServer?.revokedAt
-              ? Date.parse(fromServer.revokedAt) <= parseHlc(op.hlc).ms
-              : false;
-            if ((revoked !== null && compareHlc(revoked, op.hlc) <= 0) || serverRevoked) {
-              no('revoked', 'The device was revoked before it wrote the op.');
+            // judged at receipt: no new op of a revoked device, whatever its clock says
+            if (t.revokedAt(op.dev) !== null || (author?.revokedAt ?? null) !== null) {
+              no('revoked', 'The device that wrote the op was revoked.');
               continue;
             }
-            const role = t.inJournal(op.act) ? t.roleAt(op.act, op.hlc) : grantOf(op.act);
-            if (role === null) {
-              no('non-member', 'The author was not a member when the op was written.');
+            const inJournal = t.inJournal(op.act);
+            const fallback = author ? grant(author, projectId) : null;
+            const roleThen = inJournal ? t.roleAt(op.act, op.hlc) : fallback;
+            const roleNow = inJournal ? t.roleNow(op.act) : fallback;
+            if (roleThen === null || roleNow === null) {
+              no('non-member', 'The author is not a member, or was not when the op was written.');
               continue;
             }
             if (pusherRole === 'client' && op.act !== d.actor) {
@@ -373,10 +529,12 @@ export function createCore(options: CoreOptions) {
             }
             const permission = permissionFor(op);
             if (
-              (role === 'client' && !clientMaySend(op)) ||
-              (permission !== null && !t.allows(role, permission, op.hlc))
+              ((roleThen === 'client' || roleNow === 'client') && !clientMaySend(op)) ||
+              (permission !== null &&
+                (!t.allows(roleThen, permission, op.hlc) || !t.allows(roleNow, permission)))
             ) {
-              no('role', `A ${role} may not do this (${op.kind}).`);
+              const who = roleThen === roleNow ? roleThen : `${roleThen} (now ${roleNow})`;
+              no('role', `A ${who} may not do this (${op.kind}).`);
               continue;
             }
             heads.set(op.chain, { seq: op.seq, id: op.id });
@@ -406,6 +564,38 @@ export function createCore(options: CoreOptions) {
         if (accepted.length === 0 && !(await store.project(projectId))) teams.delete(projectId);
         return { ...result, forbidden: accepted.length === 0 && roleRefusals > 0 };
       });
+    },
+
+    /**
+     * May this device read a blob: it sent every byte of it, or it may read a project whose
+     * journal names the blob (`blob.add`)?
+     */
+    async mayReadBlob(d: EnrolledDevice, sha256: string): Promise<boolean> {
+      if (await store.blobUploadedBy(sha256, d.device)) return true;
+      for (const { projectId, t } of await allTeams()) {
+        if (!t.hasBlob(sha256)) continue;
+        const role = await roleOf(d, projectId);
+        if (role !== null && READ_ROLES.includes(role)) return true;
+      }
+      return false;
+    },
+
+    /** May this device upload blobs: it may edit in a project, or its invite lets it edit? */
+    async mayUploadBlob(d: EnrolledDevice): Promise<boolean> {
+      const projects = await store.projects();
+      for (const p of projects) {
+        const role = await roleOf(d, p.teamProjectId);
+        if (role !== null && EDIT_ROLES.includes(role)) return true;
+      }
+      // the project of its invite before it is on the server, or every project to come
+      const open = d.project === null || !projects.some((p) => p.teamProjectId === d.project);
+      const role = open ? grant(d, d.project) : null;
+      return role !== null && EDIT_ROLES.includes(role);
+    },
+
+    /** The device sent every byte of a blob (it may read it back). */
+    async uploadedBlob(d: EnrolledDevice, sha256: string): Promise<void> {
+      await store.addBlobUpload(sha256, d.device, now().toISOString());
     },
   };
 }

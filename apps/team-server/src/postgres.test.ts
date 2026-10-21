@@ -71,7 +71,7 @@ describe.skipIf(!url)('Postgres store', () => {
     const versions = await store.pool.query<{ version: string }>(
       'SELECT version FROM schema_migrations',
     );
-    expect(versions.rows.map((r) => r.version)).toEqual(['001_init']);
+    expect(versions.rows.map((r) => r.version)).toEqual(['001_init', '002_security']);
     await store.close();
   });
 
@@ -88,6 +88,65 @@ describe.skipIf(!url)('Postgres store', () => {
       await expect(store.pool.query(sql), sql).rejects.toThrow(/append-only/);
     }
     expect(Object.keys(await store.heads(TEST_TEAM))).toHaveLength(1);
+    await store.close();
+  });
+
+  it('runs the server as aio_app, which may only read and append the history', async () => {
+    const admin = new pg.Pool({ connectionString: url });
+    const exists = await admin.query("SELECT 1 FROM pg_roles WHERE rolname = 'aio_app'");
+    const password = randomBytes(12).toString('hex');
+    await admin.query(
+      `${exists.rowCount ? 'ALTER' : 'CREATE'} ROLE aio_app LOGIN NOSUPERUSER NOINHERIT PASSWORD '${password}'`,
+    );
+    await admin.end();
+    const app = new URL(url ?? '');
+    app.username = 'aio_app';
+    app.password = password;
+    const schema = `aio_test_${randomBytes(6).toString('hex')}`;
+    schemas.push(schema);
+    const store = createPostgresStore({
+      connectionString: app.href,
+      migrationConnectionString: url ?? '',
+      schema,
+      max: 2,
+    });
+    await store.init();
+    const core = createCore({
+      store,
+      identity: ephemeralIdentity(),
+      name: 'pg',
+      version: '0',
+      fingerprint: '0'.repeat(64),
+    });
+    const { rana } = testPeople();
+    const { code, invite } = makeInvite('owner', null, new Date());
+    await store.addInvite(invite);
+    await core.enrol({ code, device: rana.record }, rana.signer.device);
+    const d = await store.device(rana.signer.device);
+    if (!d) throw new Error('not enrolled');
+    const R = new ChainWriter(rana);
+    const r = await core.push(d, TEST_TEAM, [
+      R.next(
+        'project.share',
+        { rec: 'project', id: TEST_TEAM },
+        { teamProjectId: TEST_TEAM, name: 'Demo' },
+      ),
+    ]);
+    expect(r.accepted).toHaveLength(1);
+    expect(await store.useNonce(d.device, 'n'.repeat(22), 1000, 600_000)).toBe(true);
+    expect(await store.useNonce(d.device, 'n'.repeat(22), 2000, 600_000)).toBe(false);
+    await store.addBlobUpload('a'.repeat(64), d.device, new Date().toISOString());
+    expect(await store.blobUploadedBy('a'.repeat(64), d.device)).toBe(true);
+    for (const sql of [
+      "UPDATE ops SET raw = '{}'",
+      'DELETE FROM receipts',
+      'TRUNCATE ops CASCADE',
+      'ALTER TABLE ops DISABLE TRIGGER ops_append_only',
+    ]) {
+      await expect(store.pool.query(sql), sql).rejects.toThrow(
+        /permission denied|must be owner|append-only/,
+      );
+    }
     await store.close();
   });
 

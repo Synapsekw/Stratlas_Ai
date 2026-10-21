@@ -12,6 +12,8 @@ export function createMemoryStore(): Store {
   const receipts: Receipt[] = [];
   const invites = new Map<string, Invite>();
   const devices = new Map<string, EnrolledDevice>();
+  const nonces = new Map<string, number>();
+  const uploads = new Set<string>();
 
   const opsOf = (team: string) => {
     let m = ops.get(team);
@@ -115,5 +117,21 @@ export function createMemoryStore(): Store {
       }
       return Promise.resolve(true);
     },
+
+    useNonce(device, nonce, nowMs, windowMs) {
+      if (nonces.size > 10_000)
+        for (const [k, at] of nonces) if (nowMs - at >= windowMs) nonces.delete(k);
+      const key = `${device} ${nonce}`;
+      const at = nonces.get(key);
+      if (at !== undefined && nowMs - at < windowMs) return Promise.resolve(false);
+      nonces.set(key, nowMs);
+      return Promise.resolve(true);
+    },
+
+    addBlobUpload(sha256, device) {
+      uploads.add(`${sha256} ${device}`);
+      return Promise.resolve();
+    },
+    blobUploadedBy: (sha256, device) => Promise.resolve(uploads.has(`${sha256} ${device}`)),
   };
 }

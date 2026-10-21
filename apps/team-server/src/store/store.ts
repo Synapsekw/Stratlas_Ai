@@ -17,6 +17,11 @@ export interface EnrolledDevice {
   revokeReason: string | null;
   /** The device record as the app sent it. */
   record: DeviceRecord;
+  /**
+   * The certificate that let this device enrol as an actor another device already had (one of
+   * that person's devices, or an owner). Absent: the actor was new to this server.
+   */
+  certifiedBy?: { actor: string; device: string };
 }
 
 /** A one-time invite code. Only its SHA-256 is kept. */
@@ -86,4 +91,14 @@ export interface Store {
   device(deviceId: string): Promise<EnrolledDevice | null>;
   devices(): Promise<EnrolledDevice[]>;
   revokeDevice(deviceId: string, at: string, reason: string | null): Promise<boolean>;
+
+  /**
+   * Remember a request nonce of a device; false when it was already used less than `windowMs`
+   * ago (a replay). Kept in the database, so a restart does not open a replay window.
+   */
+  useNonce(device: string, nonce: string, nowMs: number, windowMs: number): Promise<boolean>;
+
+  /** A device sent every byte of a blob (it may read the blob back, before any op names it). */
+  addBlobUpload(sha256: string, device: string, at: string): Promise<void>;
+  blobUploadedBy(sha256: string, device: string): Promise<boolean>;
 }

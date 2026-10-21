@@ -39,7 +39,7 @@ describe('request signatures, server side', () => {
     body: Buffer.from(vector.request.body),
   };
 
-  it('verify the pinned client vector', () => {
+  it('verify the pinned client vector', async () => {
     expect(
       signatureBase({
         method: 'POST',
@@ -50,46 +50,55 @@ describe('request signatures, server side', () => {
         created: vector.nowMs / 1000,
       }),
     ).toBe(vector.base);
-    expect(verifyRequest(req, () => key, new NonceCache(), vector.nowMs)).toEqual({
+    expect(await verifyRequest(req, () => key, new NonceCache(), vector.nowMs)).toEqual({
       ok: true,
       device: vector.headers['x-aio-device'],
     });
   });
 
-  it('refuse a replay, an edited body, another target, an old request and a forgery', () => {
+  it('refuse a replay, an edited body, another target, an old request and a forgery', async () => {
     const nonces = new NonceCache();
-    expect(verifyRequest(req, () => key, nonces, vector.nowMs).ok).toBe(true);
-    expect(verifyRequest(req, () => key, nonces, vector.nowMs + 1000)).toEqual({
+    expect((await verifyRequest(req, () => key, nonces, vector.nowMs)).ok).toBe(true);
+    expect(await verifyRequest(req, () => key, nonces, vector.nowMs + 1000)).toEqual({
       ok: false,
       why: 'replay',
     });
     const fresh = () => new NonceCache();
     expect(
-      verifyRequest({ ...req, body: Buffer.from('{"ops":[1]}') }, () => key, fresh(), vector.nowMs),
+      await verifyRequest(
+        { ...req, body: Buffer.from('{"ops":[1]}') },
+        () => key,
+        fresh(),
+        vector.nowMs,
+      ),
     ).toEqual({ ok: false, why: 'digest' });
     expect(
-      verifyRequest({ ...req, url: `${req.url}?x=1` }, () => key, fresh(), vector.nowMs),
+      await verifyRequest({ ...req, url: `${req.url}?x=1` }, () => key, fresh(), vector.nowMs),
     ).toEqual({ ok: false, why: 'signature' });
-    expect(verifyRequest({ ...req, method: 'PUT' }, () => key, fresh(), vector.nowMs)).toEqual({
+    expect(
+      await verifyRequest({ ...req, method: 'PUT' }, () => key, fresh(), vector.nowMs),
+    ).toEqual({
       ok: false,
       why: 'signature',
     });
-    expect(verifyRequest(req, () => key, fresh(), vector.nowMs + 301_000)).toEqual({
+    expect(await verifyRequest(req, () => key, fresh(), vector.nowMs + 301_000)).toEqual({
       ok: false,
       why: 'expired',
     });
     const other = testPeople().omar.signer.publicKey;
-    expect(verifyRequest(req, () => other, fresh(), vector.nowMs)).toEqual({
+    expect(await verifyRequest(req, () => other, fresh(), vector.nowMs)).toEqual({
       ok: false,
       why: 'signature',
     });
-    expect(verifyRequest(req, () => null, fresh(), vector.nowMs)).toEqual({
+    expect(await verifyRequest(req, () => null, fresh(), vector.nowMs)).toEqual({
       ok: false,
       why: 'unknown-device',
     });
     const unsigned = { ...vector.headers };
     delete unsigned.signature;
-    expect(verifyRequest({ ...req, headers: unsigned }, () => key, fresh(), vector.nowMs)).toEqual({
+    expect(
+      await verifyRequest({ ...req, headers: unsigned }, () => key, fresh(), vector.nowMs),
+    ).toEqual({
       ok: false,
       why: 'missing',
     });

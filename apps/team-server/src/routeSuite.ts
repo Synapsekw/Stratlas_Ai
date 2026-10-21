@@ -12,7 +12,9 @@ import { verifyReceipts } from './receipts';
 import type { Store } from './store/store';
 import {
   ChainWriter,
+  deviceRecord,
   memberAdd,
+  person,
   startLoopbackServer,
   TEST_TEAM,
   testPeople,
@@ -73,7 +75,12 @@ export function routeSuite(name: string, makeStore: () => Promise<Store>) {
       const health = await serverHealth(
         createHttpClient({ baseUrl: server.origin, fingerprint: server.fingerprint }),
       );
-      expect(health).toEqual({ ok: true, version: '0.1.0-test', protocol: { min: 1, max: 1 } });
+      expect(health).toEqual({
+        ok: true,
+        version: '0.1.0-test',
+        protocol: { min: 1, max: 1 },
+        server: { id: server.identity.id, publicKey: server.identity.publicKey },
+      });
     });
 
     it('enrols a device with an invite code and certifies it', async () => {
@@ -114,9 +121,45 @@ export function routeSuite(name: string, makeStore: () => Promise<Store>) {
         code: 'unauthorized',
       });
       await enrolDevice(client, code, lina.record);
-      await expect(enrolDevice(client, code, lina.record)).rejects.toMatchObject({
+      // a used code
+      const kai = person('kai', 'Kai Example', 'KE');
+      const kaiClient = createHttpClient({
+        baseUrl: server.origin,
+        fingerprint: server.fingerprint,
+        signer: kai.signer,
+      });
+      await expect(enrolDevice(kaiClient, code, kai.record)).rejects.toMatchObject({
         code: 'forbidden',
       });
+    });
+
+    it('keeps the actor and role of a device that enrols again', async () => {
+      const client = createHttpClient({
+        baseUrl: server.origin,
+        fingerprint: server.fingerprint,
+        signer: lina.signer,
+      });
+      const again = await enrolDevice(client, await server.invite('owner'), lina.record);
+      expect(again.role).toBe('reviewer');
+      expect(again.server.publicKey).toBe(server.identity.publicKey);
+    });
+
+    it("refuses an invite that claims someone else's identity", async () => {
+      const mallory = person('mallory', 'Mallory Example', 'ME');
+      const record = deviceRecord(mallory.signer, {
+        actor: rana.actor,
+        name: rana.name,
+        initials: rana.initials,
+      });
+      const client = createHttpClient({
+        baseUrl: server.origin,
+        fingerprint: server.fingerprint,
+        signer: mallory.signer,
+      });
+      await expect(
+        enrolDevice(client, await server.invite('viewer'), record),
+      ).rejects.toMatchObject({ code: 'forbidden' });
+      expect(await server.store.device(mallory.signer.device)).toBeNull();
     });
 
     it('creates the project when its owner shares it, and countersigns every op', async () => {

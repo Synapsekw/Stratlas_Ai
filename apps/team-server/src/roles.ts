@@ -8,6 +8,7 @@
  */
 import { compareHlc } from '@aio/journal';
 import {
+  BlobAddPayload,
   DeviceRevokePayload,
   MemberAddPayload,
   MemberRemovePayload,
@@ -67,9 +68,25 @@ export class TeamState {
   private readonly keys = new Map<string, { actor: string; key: string }>();
   private readonly revokes = new Map<string, string>();
   private readonly policies: PolicyEvent[] = [];
+  /** The device that shared the project, bound to the creator by that op. */
+  private readonly sharedBy = new Map<string, string>();
+  /** The clock reading of each chain's last stored op (clocks only move forward in a chain). */
+  private readonly chainClock = new Map<string, string>();
+  /** Blobs the project names (`blob.add`): who may read them on this server. */
+  private readonly blobs = new Set<string>();
 
-  /** Take in an accepted op (only the team kinds change anything). */
+  /** Take in an accepted op, in the order the server received it. */
   apply(op: Op): void {
+    this.chainClock.set(op.chain, op.hlc);
+    if (op.kind === 'blob.add') {
+      const p = BlobAddPayload.safeParse(op.payload);
+      if (p.success) this.blobs.add(p.data.sha256);
+    }
+    this.applyTeam(op);
+  }
+
+  /** Take in only who may do what (a team kind); the chain clocks do not move. */
+  applyTeam(op: Op): void {
     if (!TEAM_KINDS.has(op.kind)) return;
     const payload: unknown = op.payload;
     switch (op.kind) {
@@ -77,6 +94,7 @@ export class TeamState {
         if (!ProjectSharePayload.safeParse(payload).success) return;
         if (this.creator === null) {
           this.creator = op.act;
+          this.sharedBy.set(op.dev, op.act);
           this.roleEvents.push({ hlc: BEGINNING, actor: op.act, role: 'owner' });
         }
         return;
@@ -164,6 +182,21 @@ export class TeamState {
     return role;
   }
 
+  /** Does the project bind this device to this actor (a `member.add`, or the share itself)? */
+  binds(actor: string, device: string): boolean {
+    return this.keys.get(device)?.actor === actor || this.sharedBy.get(device) === actor;
+  }
+
+  /** The clock reading of a chain's last stored op; null for a new chain. */
+  clockOf(chain: string): string | null {
+    return this.chainClock.get(chain) ?? null;
+  }
+
+  /** Does a `blob.add` of this project name the blob? */
+  hasBlob(sha256: string): boolean {
+    return this.blobs.has(sha256);
+  }
+
   /** A device key named by a `member.add` op. */
   deviceKey(device: string): { actor: string; key: string } | null {
     return this.keys.get(device) ?? null;
@@ -174,22 +207,26 @@ export class TeamState {
     return this.revokes.get(device) ?? null;
   }
 
-  private policyAt(hlc: string): Required<Omit<PolicyEvent, 'hlc'>> {
+  /** The policy at a clock reading; null: the latest. */
+  private policyAt(hlc: string | null): Required<Omit<PolicyEvent, 'hlc'>> {
     const out = { viewersMayComment: false, closeBy: 'owner' as 'owner' | 'owner-or-reviewer' };
     for (const p of this.policies) {
-      if (!atOrBefore(p.hlc, hlc)) break;
+      if (hlc !== null && !atOrBefore(p.hlc, hlc)) break;
       if (p.viewersMayComment !== undefined) out.viewersMayComment = p.viewersMayComment;
       if (p.closeBy !== undefined) out.closeBy = p.closeBy;
     }
     return out;
   }
 
-  /** Does `role` hold `permission` at `hlc` (policy switches included)? */
-  allows(role: Role, permission: Permission, hlc: string): boolean {
+  /**
+   * Does `role` hold `permission` at `hlc` (policy switches included)? Without `hlc`: under the
+   * policy the server knows now.
+   */
+  allows(role: Role, permission: Permission, hlc?: string): boolean {
     const rule = PERMISSIONS[permission];
     if ((rule.roles as readonly Role[]).includes(role)) return true;
     if (!('policy' in rule)) return false;
-    const policy = this.policyAt(hlc);
+    const policy = this.policyAt(hlc ?? null);
     if (rule.policy.switch === 'viewersMayComment')
       return policy.viewersMayComment && role === rule.policy.adds;
     return policy.closeBy === 'owner-or-reviewer' && role === rule.policy.adds;

@@ -82,7 +82,12 @@ function openStore(config: ServerConfig, io: CliIo, memory: boolean): Store {
     throw new ConfigError(
       'Set DATABASE_URL to the Postgres database (or run serve --memory for a trial).',
     );
-  return createPostgresStore({ connectionString: config.databaseUrl });
+  return createPostgresStore({
+    connectionString: config.databaseUrl,
+    ...(config.migrationDatabaseUrl
+      ? { migrationConnectionString: config.migrationDatabaseUrl }
+      : {}),
+  });
 }
 
 async function serve(config: ServerConfig, store: Store, memory: boolean, io: CliIo) {
@@ -94,7 +99,7 @@ async function serve(config: ServerConfig, store: Store, memory: boolean, io: Cl
           endpoint: io.env.AIO_S3_ENDPOINT ?? '',
           bucket: io.env.AIO_S3_BUCKET ?? '',
         })
-      : createFsBlobStore(config.blobDir);
+      : createFsBlobStore(config.blobDir, { partialQuotaBytes: config.partialQuotaBytes });
   const app = buildServer({
     store,
     blobs,
@@ -104,7 +109,8 @@ async function serve(config: ServerConfig, store: Store, memory: boolean, io: Cl
     ...(config.tls ? { https: { cert: config.tls.cert, key: config.tls.key } } : {}),
     ...(config.fingerprint ? { fingerprint: config.fingerprint } : {}),
     ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
-    trustProxy: config.behindProxy,
+    trustProxy: config.behindProxy ? config.trustedProxies : false,
+    requireSignedHeaders: config.requireSignedHeaders,
     logger: config.log,
   });
   await app.listen({ host: config.host, port: config.port });

@@ -108,7 +108,7 @@ describe('op checks (the server refuses what the desktop would quarantine)', () 
     expect(codes(r)).toEqual(['schema', 'schema']);
   });
 
-  it('checks the role at each op clock reading, whatever order ops arrive in', async () => {
+  it('checks the role at each op clock reading, and as the server knows it on receipt', async () => {
     const O = new ChainWriter(omar, T0 + 3_600_000);
     const before = O.next('issue.patch', issue, { set: { severity: 3 } }); // 10:01
     const after = O.next('issue.patch', issue, { set: { severity: 4 } }, T0 + 3 * 3_600_000); // 12:00
@@ -120,9 +120,15 @@ describe('op checks (the server refuses what the desktop would quarantine)', () 
       T0 + 2 * 3_600_000,
     );
     expect((await push(rana, [demote])).accepted).toEqual([demote.id]);
+    // Omar's 10:01 edit was a reviewer's when he wrote it, but it reaches the server after the
+    // demotion, the server judges at receipt too: an op it gets now cannot be dated back to
+    // before the demotion (security review 2026-10-21); the op after it then misses its parent
     const r = await push(omar, [after, before]);
-    expect(r.accepted).toEqual([before.id]);
-    expect(r.refused).toMatchObject([{ id: after.id, code: 'role' }]);
+    expect(r.accepted).toEqual([]);
+    expect(r.refused).toMatchObject([
+      { id: before.id, code: 'role' },
+      { id: after.id, code: 'gap' },
+    ]);
   });
 
   it('refuses ops from a device the journal revoked', async () => {
@@ -134,7 +140,11 @@ describe('op checks (the server refuses what the desktop would quarantine)', () 
     );
     await push(rana, [revoke]);
     const O = new ChainWriter(omar, T0 + 3 * 3_600_000);
-    const r = await push(omar, [O.next('issue.patch', issue, { set: { severity: 3 } })]);
+    const op = O.next('issue.patch', issue, { set: { severity: 3 } });
+    // the device itself may no longer push
+    await expect(push(omar, [op])).rejects.toMatchObject({ status: 403 });
+    // nor does anyone else get its new ops in
+    const r = await push(rana, [op]);
     expect(codes(r)).toEqual(['revoked']);
     expect(r.forbidden).toBe(true);
   });
