@@ -5,10 +5,15 @@ type Env = Record<string, string | undefined>;
 
 const isWin = (platform: NodeJS.Platform) => platform === 'win32';
 
-/** `%SystemRoot%\System32`, where Windows keeps its own programs. */
+/**
+ * `%SystemRoot%\System32`, where Windows keeps its own programs. Only a drive-letter root is
+ * taken from the environment: a missing, relative or UNC root, or one with a NUL in it, falls back
+ * to `C:\Windows`, so a tampered `SystemRoot` cannot point a system program at a share.
+ */
 export function system32(env: Env = process.env): string {
-  const root = env.SystemRoot ?? env.SYSTEMROOT ?? env.windir ?? 'C:\\Windows';
-  return win32.join(isAbsolute(root) || win32.isAbsolute(root) ? root : 'C:\\Windows', 'System32');
+  const root = env.SystemRoot ?? env.SYSTEMROOT ?? env.windir ?? '';
+  const base = /^[A-Za-z]:[\\/]/.test(root) && !root.includes('\0') ? root : 'C:\\Windows';
+  return win32.join(base, 'System32');
 }
 
 /** A Windows program by its full System32 path (`taskkill`, `reg`, `cmd`, `powershell` ...). */

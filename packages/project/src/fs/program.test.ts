@@ -63,7 +63,14 @@ describe('systemProgram', () => {
     );
   });
 
-  it('ignores a relative SystemRoot', () => {
+  it('ignores a missing, relative, UNC or NUL-bearing SystemRoot', () => {
+    expect(system32({})).toBe('C:\\Windows\\System32');
     expect(system32({ SystemRoot: 'evil' })).toBe('C:\\Windows\\System32');
+    expect(system32({ SystemRoot: '\\\\server\\share' })).toBe('C:\\Windows\\System32');
+    expect(system32({ SystemRoot: '/windows' })).toBe('C:\\Windows\\System32');
+    expect(system32({ SystemRoot: 'D:\\Win\0x' })).toBe('C:\\Windows\\System32');
+    expect(systemProgram('powershell', { SystemRoot: '\\\\server\\share' })).toBe(
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    );
   });
 });
