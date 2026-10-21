@@ -640,6 +640,28 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'report/template.json',
     since: '0.25',
   },
+  // Thermal analysis (thermal.ts): a new folder, so older builds never read it
+  {
+    family: 'aio.thermal',
+    version: 1,
+    home: 'project',
+    where: 'thermal/thermal.json',
+    since: '0.26',
+  },
+  {
+    family: 'aio.thermalRaster',
+    version: 1,
+    home: 'project',
+    where: 'thermal/rasters/*/*.json',
+    since: '0.26',
+  },
+  {
+    family: 'aio.thermalCandidates',
+    version: 1,
+    home: 'project',
+    where: 'thermal/candidates.json',
+    since: '0.26',
+  },
 ];
 
 /**

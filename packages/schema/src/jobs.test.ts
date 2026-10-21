@@ -107,6 +107,7 @@ describe('pipeline params', () => {
       'pointcloud.clean',
       'telecom.antennas',
       'rf.coverage',
+      'thermal.decode',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });

@@ -70,3 +70,5 @@ export * from './rf';
 export * from './componentObservation';
 export * from './modelCorrections';
 export * from './websiteUpdate';
+// Thermal analysis: aio.thermal/1, rasters, hot spots, thermal.decode params
+export * from './thermal';

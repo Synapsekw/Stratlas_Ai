@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TelecomAntennasParams } from './antennas';
+import { ThermalDecodeParams } from './thermal';
 import { ChangeScope, FrameRef, LonLatRing } from './change';
 import { Id, IsoDate, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
@@ -99,6 +100,8 @@ export const PipelineName = z.enum([
   'telecom.antennas',
   // RF coverage prediction (pipeline pack RF_COVERAGE_MIN_PACK)
   'rf.coverage',
+  // Thermal analysis (pipeline pack THERMAL_MIN_PACK)
+  'thermal.decode',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -368,6 +371,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Predicting coverage',
     description:
       'Signal strength (RSRP) around a telecom site from the antenna units and their RF settings: path loss per sector, then composite, best server and overlap grids. Flat ground, no buildings.',
+  },
+  {
+    name: 'thermal.decode',
+    title: 'Decode thermal photos',
+    description:
+      'Turns radiometric thermal photos into temperature rasters in degrees Celsius, using the scene settings, and records which photos could not be read.',
   },
 ];
 
@@ -1305,6 +1314,7 @@ const PARAMS = {
   'pointcloud.clean': PointcloudCleanParams,
   'telecom.antennas': TelecomAntennasParams,
   'rf.coverage': RfCoverageParams,
+  'thermal.decode': ThermalDecodeParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

@@ -31,6 +31,7 @@ import { ProjectManifest } from './manifest';
 import { ClassCatalogue, LibraryClass, SeverityModel } from './severity';
 import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
 import { AntennaAiLabel, AntennasFile } from './antennas';
+import { ThermalFamily, ThermalFile } from './thermal';
 import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
 import {
@@ -2434,6 +2435,38 @@ export const ipc = {
   /** Write `telecom/antennas.json` atomically (`.bak`, journaled); refused for packages. */
   'telecom:writeAntennas': {
     request: z.object({ projectId: ProjectId, file: AntennasFile }).strict(),
+    response: OkOrFailure,
+  },
+  // ---------------------------------------------------------------- thermal analysis
+  /** Which photos of a layer are radiometric, and which decoder family would read them. */
+  'thermal:probe': {
+    request: z.object({ projectId: ProjectId, layerId: Id }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        photos: z.array(
+          z.object({
+            photoId: Id,
+            family: ThermalFamily.nullable(),
+            make: z.string().nullable(),
+            model: z.string().nullable(),
+          }),
+        ),
+      }),
+      Failure,
+    ]),
+  },
+  /** Read `thermal/thermal.json`; `file` is null when none has been written yet. */
+  'thermal:read': {
+    request: z.object({ projectId: ProjectId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), file: ThermalFile.nullable() }),
+      Failure,
+    ]),
+  },
+  /** Write `thermal/thermal.json` atomically (`.bak`); refused for packages and read-only projects. */
+  'thermal:write': {
+    request: z.object({ projectId: ProjectId, file: ThermalFile }).strict(),
     response: OkOrFailure,
   },
   /**

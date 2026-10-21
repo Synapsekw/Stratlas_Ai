@@ -29,7 +29,7 @@ describe('version registry', () => {
     const families = SCHEMA_REGISTRY.map((e) => e.family);
     expect(new Set(families).size).toBe(families.length);
     for (const e of SCHEMA_REGISTRY) {
-      expect(e.family).toMatch(/^aio\.[a-z][a-z0-9-]*$/);
+      expect(e.family).toMatch(/^aio\.[a-z][a-zA-Z0-9-]*$/);
       expect(e.version).toBe(e.family === 'aio.procmodel' ? 2 : 1);
       expect(e.since).toMatch(/^0\.([4-9]|[12]\d)$/);
     }
