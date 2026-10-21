@@ -239,6 +239,14 @@ export function inventorySeries(
     change: null,
   }));
   const at = new Map(out.map((s) => [s.capture, s]));
+  // the kit's last date: the latest date any carried figure is on. A carried pile without a
+  // figure on a later date needs a recompute there; on an earlier one it was absent (R16).
+  let kitLast = '';
+  for (const m of piles)
+    for (const r of pileSeries(m).series) {
+      const d = r.carried !== undefined ? at.get(r.toCapture ?? '')?.date : undefined;
+      if (d !== undefined && d > kitLast) kitLast = d;
+    }
   for (const m of piles) {
     if (m.items.length === 0) {
       for (const s of out) s.notCounted?.push({ id: m.id, reason: 'no-comparison' });
@@ -255,11 +263,12 @@ export function inventorySeries(
       const s = at.get(row.capture);
       if (!s) continue;
       if (row.valueM3 === null) {
-        // refused there, absent on a date a carried pile has no figure for (R16), or worked out
-        // with nothing to show; else the last run failed, or it has not run for this date yet
+        // refused there, absent on a kit date a carried pile has no figure for (R16), or worked
+        // out with nothing to show; else the last run failed, or it has not run for this date yet
+        // (a carried pile on a date after the kit's last one too)
         const noData =
           row.status === 'refused' ||
-          carried ||
+          (carried && row.date <= kitLast) ||
           (failed === null && opts.ran?.(m, row.capture) === true);
         if (noData) {
           s.missing.push(m.id);

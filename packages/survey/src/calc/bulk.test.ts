@@ -237,10 +237,29 @@ describe('site inventory over time', () => {
     const area: SurveyMeasurement = { ...volume('x', [at('c1', 1000)]), tool: 'area' };
     const rows = inventorySeries([a, k, area], captures);
     expect(rows.map((r) => r.totalM3)).toEqual([110, 20, 140]);
-    // k is absent on the last date (R16): missing there, not zero
-    expect(rows[2]?.missing).toEqual(['k']);
+    // c3 is a survey after the kit's last date: k needs a recompute there, it is not "no data"
+    expect(rows[2]?.missing).toEqual([]);
+    expect(rows[2]?.notCounted).toEqual([{ id: 'k', reason: 'not-computed' }]);
     expect(rows[1]?.missing).toEqual([]);
     expect(rows[1]?.notCounted).toEqual([{ id: 'a', reason: 'not-computed' }]);
+  });
+
+  it("a carried pile absent on one of the kit's dates has no data there (R16)", () => {
+    const carried = { pile: 'p1', base: 'tin' } as NonNullable<ComparisonResult['carried']>;
+    // the kit's dates run to c2 (j is on it); k is gone by c2
+    const k = volume('k', [{ ...at('c1', 10), carried }]);
+    const j = volume('j', [
+      { ...at('c1', 5), carried },
+      { ...at('c2', 6), carried },
+    ]);
+    const rows = inventorySeries([k, j], captures);
+    expect(rows[1]?.missing).toEqual(['k']);
+    expect(rows[1]?.notCounted).toEqual([{ id: 'k', reason: 'no-data' }]);
+    // after the kit's last date both need a recompute
+    expect(rows[2]?.notCounted).toEqual([
+      { id: 'k', reason: 'not-computed' },
+      { id: 'j', reason: 'not-computed' },
+    ]);
   });
 
   it('folder filter narrows the stack', () => {
