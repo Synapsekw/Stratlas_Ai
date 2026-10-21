@@ -7,7 +7,8 @@ import {
 import { mkdir, stat, realpath } from 'node:fs/promises';
 import { join, relative, isAbsolute } from 'node:path';
 import { readJson, writeJsonAtomic } from '../fsutil';
-import { installPackArchive } from '../jobs/packInstall';
+import { installPackArchive, peekPackManifest, PACK_LIMITS } from '../jobs/packInstall';
+import { isDeepStrictEqual } from 'node:util';
 import { downloadVerified, sha256Of } from './download';
 import type { WebsiteClient } from './websiteClient';
 import {
@@ -42,10 +43,24 @@ export function createWebsiteStorage(d: {
     if (!st.isFile() || st.size !== a.bytes || (await sha256Of(path(a))) !== a.sha256)
       throw new Error('The staged artifact failed verification.');
   }
-  async function verifyKit(root: string, ref: ManagedKit, target: string) {
+  async function verifyKit(
+    root: string,
+    ref: ManagedKit,
+    target: string,
+    archive: WebsiteArtifact,
+  ) {
     const dir = managedKitDirectory(root, ref);
     const realRoot = await realpath(dir);
     const m = PipelinePackManifest.parse(await readJson(join(dir, 'manifest.json')));
+    const original = PipelinePackManifest.parse(
+      await peekPackManifest(path(archive), {
+        maxBytes: archive.bytes,
+        maxEntries: PACK_LIMITS.maxEntries,
+        maxManifestBytes: PACK_LIMITS.maxManifestBytes,
+      }),
+    );
+    if (!isDeepStrictEqual(m, original))
+      throw new Error('The processing kit manifest does not match its verified archive.');
     if (
       m.version !== ref.version ||
       m.platform !== 'win32-x64' ||
@@ -95,7 +110,7 @@ export function createWebsiteStorage(d: {
           throw new Error('The processing kit archive could not be verified.');
       }
       signal.throwIfAborted();
-      await verifyKit(root, ref, check.targetAppVersion);
+      await verifyKit(root, ref, check.targetAppVersion, check.pipeline);
     }
     signal.throwIfAborted();
     if (root !== d.dataRoot()) throw new Error('The data folder changed during verification.');

@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { PipelinePackManifest } from '@aio/schema';
 import { createWebsiteStorage } from './websiteStorage';
 import { fakePackArchive } from '../jobs/packArchive.fakes';
 import { findPack } from '../jobs/pack';
@@ -109,6 +110,13 @@ describe('website artifact storage', () => {
       await expect(storage.verify(check, new AbortController().signal)).rejects.toThrow(
         /verification/,
       );
+      const manifestPath = join(dir, 'manifest.json');
+      const manifest = PipelinePackManifest.parse(
+        JSON.parse(await readFile(manifestPath, 'utf8')) as unknown,
+      );
+      manifest.files['python/python.exe'] = { size: 8, sha256: hash(Buffer.from('tampered')) };
+      await writeFile(manifestPath, JSON.stringify(manifest));
+      await expect(storage.verify(check, new AbortController().signal)).rejects.toThrow(/manifest/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
