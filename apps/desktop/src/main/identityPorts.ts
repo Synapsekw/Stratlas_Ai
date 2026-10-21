@@ -17,6 +17,7 @@ import { deviceRecord, type IdentityService, type TeamJournal } from './identity
 import type { JournalIdentity, JournalService } from './journal';
 import type { DevicePort } from './sync/ports';
 import type { DeviceSource } from './teamServer';
+import { teamPinOf } from './teamPin';
 
 /** T1: who signs the journal. Without a stored key the device is named but nothing is signed. */
 export function journalIdentity(
@@ -103,16 +104,16 @@ export function collabIdentity(service: IdentityService): CollabIdentity {
 /** T3: the members as T2 replays them (verified, roles at the end of the history). */
 export function collabMembers(): CollabMembers {
   return {
-    list(_root, ops) {
-      const replay = replayTeam(ops as unknown as Record<string, unknown>[]);
-      return Promise.resolve(
-        replay.members.map((m) => ({
-          actor: m.actor,
-          name: m.name,
-          initials: m.initials,
-          role: m.role,
-        })),
-      );
+    async list(root, ops) {
+      const replay = replayTeam(ops as unknown as Record<string, unknown>[], {
+        pin: await teamPinOf(root),
+      });
+      return replay.members.map((m) => ({
+        actor: m.actor,
+        name: m.name,
+        initials: m.initials,
+        role: m.role,
+      }));
     },
   };
 }
@@ -152,6 +153,6 @@ export function teamJournal(journalOf: () => JournalService): TeamJournal {
 export async function collabOps(journal: JournalService, root: string): Promise<CollabOp[]> {
   const ops: Op[] = await journal.store.ops(root);
   const raws = ops as unknown as Record<string, unknown>[];
-  const replay = replayTeam(raws, { verdicts: 'all' });
+  const replay = replayTeam(raws, { verdicts: 'all', pin: await teamPinOf(root) });
   return ops.filter((o) => replay.verdicts.get(o.id)?.ok !== false);
 }

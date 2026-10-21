@@ -8,6 +8,7 @@ import { createInbox, type Inbox, type OpDraft as MergeDraft, type Projection } 
 import type { Conflict, IpcEvent, Op, QuarantineEntry, RecordRef } from '@aio/schema';
 import type { DraftOp } from '@aio/journal';
 import type { JournalService, JournalTx } from '../journal';
+import { teamPinOf } from '../teamPin';
 import type { DevicePort, JournalPort, MergePort, ProjectCtx } from './ports';
 
 type Notice = IpcEvent<'sync:notice'>['notices'][number];
@@ -78,6 +79,8 @@ export function createTeamEngine(d: TeamEngineDeps): TeamEngine {
       viewer: me.actor,
       keys: () => Promise.resolve(keys),
       now,
+      // the genesis this copy pinned (team.json): no backdated op makes itself the first owner
+      pin: () => teamPinOf(t.root),
       async append(draft: MergeDraft) {
         await t.append([draft as unknown as DraftOp]);
         if (draft.kind === 'issue.recode') {
@@ -175,7 +178,12 @@ export function createTeamEngine(d: TeamEngineDeps): TeamEngine {
     const me = await d.device.me();
     const keys = await keysOf(root);
     const { project } = await import('@aio/merge');
-    const p = project(await d.journal.store.ops(root), { viewer: me.actor, keys, now: now() });
+    const p = project(await d.journal.store.ops(root), {
+      viewer: me.actor,
+      keys,
+      now: now(),
+      pin: await teamPinOf(root),
+    });
     counted.set(root, { stamp, conflicts: p.conflicts.length, quarantined: p.quarantined.length });
     return { conflicts: p.conflicts.length, quarantined: p.quarantined.length };
   }

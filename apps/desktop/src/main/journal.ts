@@ -55,7 +55,7 @@ import {
   loadJournal,
   pageEntries,
   randomId,
-  rolesFrom,
+  replayTeam,
   opsOf,
   sealCheckpoint,
   sealDeviceRecord,
@@ -99,6 +99,7 @@ import type { AuditSummary } from '@aio/project/export';
 import { projectCacheKey } from '@aio/sync/blobs';
 import { writeJsonAtomic } from './fsutil';
 import { assertWritable } from './realDataGuard';
+import { teamPinOf, teamPinState } from './teamPin';
 import { type Handle } from './notYet';
 import { ISSUES_SCHEMA } from './project';
 import { createJournalStore, type JournalStore } from './sync/journalStore';
@@ -1292,8 +1293,10 @@ export function createJournalService(deps: JournalServiceDeps) {
         ? { ok: false, error: 'Verify for packages comes with the package history.' }
         : { ok: false, error: `Project "${projectId}" is not open.` };
     }
+    const team = await teamPinState(f.root);
     const report: VerifyReport = await verifyJournalParallel(f.files, {
       ...(deps.now ? { now: new Date(deps.now()) } : {}),
+      ...(team ? { team } : {}),
     });
     return { ok: true, report };
   }
@@ -1314,7 +1317,12 @@ export function createJournalService(deps: JournalServiceDeps) {
     if (!hit) return { ok: false, error: 'There is no such entry in this history.' };
     if (!('payload' in hit.raw)) return { ok: false, error: 'This entry is already redacted.' };
     const shared = (await readText(join(f.root, 'team.json'))) !== null;
-    if (shared && rolesFrom(ops).get(id.actor) !== 'owner') {
+    // roles as the team replays them (signed, pinned genesis), not as any op claims them
+    const team = replayTeam(
+      ops.map((o) => o.raw),
+      { pin: await teamPinOf(f.root) },
+    );
+    if (shared && team.members.find((m) => m.actor === id.actor)?.role !== 'owner') {
       return { ok: false, error: 'Only an owner of this team project can redact its history.' };
     }
     return serial(st, async () => {

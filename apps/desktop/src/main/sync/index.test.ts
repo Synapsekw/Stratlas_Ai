@@ -15,7 +15,8 @@ import { collectHandlers } from '../notYet';
 import { createTeamConfigStore } from './config';
 import { createTeamEngine } from './engine';
 import { registerSyncIpc } from './index';
-import { createSyncService, safeJoin, type ServerTransport } from './service';
+import { acceptedBlobPaths, createSyncService, safeJoin, type ServerTransport } from './service';
+import { teamPinState } from '../teamPin';
 import type { Heads, Op } from '@aio/schema';
 
 /**
@@ -263,6 +264,20 @@ describe('sync IPC', () => {
       teamProjectId: string;
     };
     expect(team.teamProjectId).toMatch(/^t_[a-z2-7]{26}$/);
+  });
+
+  it('sharing pins the genesis in team.json, signed by the owner device', async () => {
+    const dir = join(base, 'a');
+    await writeProject(dir, [issue('i1', 'F01')]);
+    const a = await machine('Rana Example', 'RE', dir);
+    await a.ipc.call('team:share', { projectId: 'p', mode: 'exchange' });
+    const state = await teamPinState(dir);
+    expect(state).toMatchObject({ status: 'signed' });
+    const me = await a.device.me();
+    const genesis = (await a.journal.store.ops(dir)).find(
+      (o) => o.kind === 'member.add' && o.act === me.actor,
+    );
+    expect(state?.status === 'signed' && state.pin.op).toBe(genesis?.id);
   });
 });
 
@@ -643,6 +658,46 @@ describe('exchange files between two copies', () => {
     expect(await b.ipc.call('team:status', { projectId: 'p' })).toMatchObject({
       status: { mode: 'exchange', name: 'Pipe rack review' },
     });
+  });
+});
+
+describe('exchange files from outside the team (security review)', () => {
+  it('refuses a file from someone who is not a member before writing anything', async () => {
+    const aDir = join(base, 'a');
+    await writeProject(aDir, [issue('i1', 'F01')]);
+    const a = await machine('Rana Example', 'RE', aDir);
+    await a.ipc.call('team:share', { projectId: 'p', mode: 'exchange' });
+    // Mallory has a copy of the shared folder (team.json included) but was never added
+    const mDir = join(base, 'm');
+    await cp(aDir, mDir, { recursive: true });
+    const m = await machine('Mallory Example', 'ME', mDir);
+    await editIssue(mDir, 'i1', { severity: 5 });
+    const file = join(base, 'mallory.aiosync');
+    m.saveAs(file);
+    expect(
+      await m.ipc.call('exchange:export', { jobId: 'j', projectId: 'p', kind: 'bundle' }),
+    ).toMatchObject({ ok: true });
+    const teamBefore = await readFile(join(aDir, 'team.json'), 'utf8');
+    const devicesBefore = (await a.journal.store.devices(aDir)).map((r) => r.id).sort();
+    const r = await a.ipc.call('exchange:import', { jobId: 'j', projectId: 'p', path: file });
+    expect(r).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/Mallory Example is not a member/) as unknown,
+    });
+    expect(await readFile(join(aDir, 'team.json'), 'utf8')).toBe(teamBefore);
+    expect((await a.journal.store.devices(aDir)).map((d) => d.id).sort()).toEqual(devicesBefore);
+    expect((await readIssues(aDir)).find((i) => i.id === 'i1')?.severity).toBe(1);
+  });
+
+  it('places only files that an accepted op names', () => {
+    const op = (id: string, sha: string, path: string) =>
+      ({ id, kind: 'blob.add', payload: { sha256: sha, path } }) as unknown as Op;
+    const ops = [op('a', 'a'.repeat(64), 'photos/a.jpg'), op('b', 'b'.repeat(64), 'photos/b.jpg')];
+    const verdicts = new Map([
+      ['a', { ok: true as const }],
+      ['b', { ok: false as const, code: 'not-member' as const, reason: 'x' }],
+    ]);
+    expect([...acceptedBlobPaths(ops, { verdicts }).values()]).toEqual(['photos/a.jpg']);
   });
 });
 

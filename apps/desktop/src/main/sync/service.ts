@@ -1,6 +1,13 @@
 import { mkdir, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, normalize, relative, sep } from 'node:path';
-import { checkOp, randomId } from '@aio/journal';
+import {
+  checkOp,
+  genesisOf,
+  pinFromGenesis,
+  randomId,
+  replayTeam,
+  type TeamReplay,
+} from '@aio/journal';
 import {
   TEAM_FILE,
   TEAM_SCHEMA,
@@ -35,6 +42,7 @@ import {
 } from '@aio/sync/exchange';
 import { createHubTransport, HubUnreachable, type HubFs, type HubTransport } from '@aio/sync/hub';
 import { readJson, writeJsonAtomic } from '../fsutil';
+import { ensureTeamPin, teamPinOf, trustedTeamFile } from '../teamPin';
 import { createTeamConfigStore, type TeamConfigStore } from './config';
 import { createJournalStore, type JournalStore } from './journalStore';
 import type { DevicePort, JournalPort, MergePort, ProjectCtx } from './ports';
@@ -180,6 +188,15 @@ export function createSyncService(d: SyncServiceDeps) {
     return rec;
   }
 
+  /**
+   * Pin the team genesis in team.json before ops from another copy come in (a project shared by
+   * an older version is pinned on first use; signed when this device shared it).
+   */
+  async function pinBeforeIngest(ctx: ProjectCtx): Promise<void> {
+    const ops = await store.ops(ctx.root);
+    await ensureTeamPin(ctx.root, ops, await d.device.signer());
+  }
+
   /** Check each op against its device key: its own hashes and, when signed, the signature. */
   function verified(
     ops: readonly Op[],
@@ -245,6 +262,7 @@ export function createSyncService(d: SyncServiceDeps) {
     await d.journal.flush(ctx);
     const hub = hubFor(ctx, cfg.hubPath, team.teamProjectId);
     const state = await loadState(ctx);
+    await pinBeforeIngest(ctx);
     try {
       if (!(await hub.check())) await hub.ensure(team, now());
       const mine = await ownRecord(ctx);
@@ -300,6 +318,7 @@ export function createSyncService(d: SyncServiceDeps) {
     progress('pull');
     await d.journal.flush(ctx);
     const state = await loadState(ctx);
+    await pinBeforeIngest(ctx);
     try {
       const server = await d.serverTransport(cfg.serverId, team.teamProjectId);
       await ownRecord(ctx);
@@ -513,7 +532,8 @@ export function createSyncService(d: SyncServiceDeps) {
             (t) => t.teamProjectId === req.teamProjectId,
           );
           if (!found) throw new SyncError('This team project is not in the shared folder.');
-          team = found;
+          // the hub folder is writable by anyone with access: keep its pin only when signed
+          team = trustedTeamFile(found);
           await writeJsonAtomic(join(ctx.root, TEAM_FILE), team);
         }
         if (!team) {
@@ -538,6 +558,9 @@ export function createSyncService(d: SyncServiceDeps) {
           const owner = await d.shareAsOwner?.(req.projectId);
           if (owner && !owner.ok) throw new SyncError(owner.error);
         }
+        // pin the genesis (signed by this device when it shared), before the hub gets team.json
+        await pinBeforeIngest(ctx);
+        team = (await readTeam(ctx.root)) ?? team;
         await ownRecord(ctx);
         if (req.mode === 'hub' && req.hubPath) {
           const hub = hubFor(ctx, req.hubPath, team.teamProjectId);
@@ -790,14 +813,36 @@ export function createSyncService(d: SyncServiceDeps) {
           total: opened.ops.length,
         });
         await d.journal.flush(ctx);
-        if (!local) await joinFrom(ctx, opened);
-        await store.addDevices(ctx.root, opened.devices);
+        // authorise before anything is written: the sender must be a member of the team as this
+        // copy replays it with the file (pinned genesis; a joining copy pins what the file says)
+        if (local) await pinBeforeIngest(ctx);
+        const before = (await store.ops(ctx.root)) as unknown as Record<string, unknown>[];
+        const combined = [...before, ...(opened.ops as unknown as Record<string, unknown>[])];
+        const joinPin = local ? null : genesisOf(combined);
+        const replay = replayTeam(combined, {
+          verdicts: 'all',
+          pin: local ? await teamPinOf(ctx.root) : joinPin ? pinFromGenesis(joinPin) : null,
+        });
+        const refusal = senderRefusal(replay, opened);
+        if (refusal) throw new SyncError(refusal);
+        if (!local) {
+          await joinFrom(ctx, opened);
+          await ensureTeamPin(ctx.root, combined, await d.device.signer());
+        }
+        // device records of the team and of the history it accepts, never a stranger's
+        const trusted = new Set(replay.state.devices.keys());
+        for (const o of opened.ops) if (replay.verdicts.get(o.id)?.ok !== false) trusted.add(o.dev);
+        await store.addDevices(
+          ctx.root,
+          opened.devices.filter((r) => typeof r.id === 'string' && trusted.has(r.id)),
+        );
         const view = await localView(ctx, opened);
         const plan = planFor(opened, view);
         if (plan.forks.length > 0)
           throw new SyncError(plan.forks[0]?.message ?? 'The file does not follow this copy.');
-        // blobs first: a bundle's files are in place before the ops that name them apply
-        const paths = blobPathsOf([...view.ops, ...opened.ops]);
+        // blobs first: a bundle's files are in place before the ops that name them apply, and
+        // only files an accepted op names (a held op never places a file)
+        const paths = acceptedBlobPaths([...view.ops, ...opened.ops], replay);
         let blobs = 0;
         for (const b of opened.header.blobs) {
           const rel = paths.get(b.sha256);
@@ -908,6 +953,34 @@ export type SyncService = ReturnType<typeof createSyncService>;
 function teamName(opened: OpenedExchange): string {
   const share = opened.ops.find((o) => o.kind === 'project.share');
   return (share?.payload as { name?: string } | undefined)?.name ?? opened.header.teamProjectId;
+}
+
+/**
+ * Why an exchange file's sender may not change this project, or null: its device must belong to a
+ * member who is not removed, and not be revoked, in the team the copy replays with the file.
+ */
+export function senderRefusal(
+  replay: TeamReplay,
+  opened: Pick<OpenedExchange, 'header'>,
+): string | null {
+  const from = opened.header.from;
+  if (!replay.shared) {
+    return 'The exchange file was refused: it does not carry the team of this project, so its sender cannot be checked.';
+  }
+  const device = replay.state.devices.get(from.device);
+  const member = device ? replay.state.members.get(device.actor) : undefined;
+  if (!device || !member || member.removed || device.actor !== from.actor) {
+    return `The exchange file was refused: ${from.name} is not a member of this team project. Ask an owner to add them first.`;
+  }
+  if (device.revokedAt !== undefined) {
+    return 'The exchange file was refused: it comes from a device that was removed from the team.';
+  }
+  return null;
+}
+
+/** sha256 to path from the `blob.add` ops the team accepts (verdicts of `replayTeam` 'all'). */
+export function acceptedBlobPaths(ops: readonly Op[], replay: Pick<TeamReplay, 'verdicts'>) {
+  return blobPathsOf(ops.filter((o) => replay.verdicts.get(o.id)?.ok !== false));
 }
 
 /** sha256 to project-relative path, from `blob.add` ops. */

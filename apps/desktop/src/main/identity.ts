@@ -47,6 +47,7 @@ import { createPrivateKey, generateKeyPairSync, type KeyObject } from 'node:cryp
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
+import { teamPinOf } from './teamPin';
 import type { KeyEntry } from './keys';
 import type { Handle } from './notYet';
 
@@ -436,6 +437,24 @@ function cardFileName(identity: Identity): string {
   return `${clean}${IDENTITY_CARD_EXTENSION}`;
 }
 
+/**
+ * What this copy has seen of some devices' chains: the last seq per chain. Written into a
+ * revocation, removal or role change, so ops of those devices it had not seen and dated before it
+ * are judged after it (`@aio/journal` `orderForTeam`): they cannot dodge it by backdating.
+ */
+export function seenHeads(
+  ops: readonly Record<string, unknown>[],
+  devices: readonly string[],
+): Record<string, number> {
+  const seen: Record<string, number> = {};
+  for (const o of ops) {
+    if (typeof o.dev !== 'string' || !devices.includes(o.dev)) continue;
+    if (typeof o.chain !== 'string' || typeof o.seq !== 'number') continue;
+    seen[o.chain] = Math.max(seen[o.chain] ?? 0, o.seq);
+  }
+  return seen;
+}
+
 /** A sealed op by this person that is never written: to ask the team "would this apply?". */
 function draftOp(
   actor: string,
@@ -486,7 +505,7 @@ export function createIdentityService(deps: IdentityServiceDeps) {
     root: string,
   ): Promise<{ ops: Record<string, unknown>[]; replay: TeamReplay }> {
     const ops = await deps.journal.ops(root);
-    return { ops, replay: replayTeam(ops) };
+    return { ops, replay: replayTeam(ops, { pin: await teamPinOf(root) }) };
   }
 
   /** Is the person allowed to change the team, with the reason when not. */
@@ -513,7 +532,8 @@ export function createIdentityService(deps: IdentityServiceDeps) {
     ops: Record<string, unknown>[],
   ): Promise<Failure | { ok: true }> {
     const draft = draftOp(identity.actor, key, entry, ops);
-    const verdict = replayTeam([...ops, draft]).verdicts.get(draft.id);
+    const pin = await teamPinOf(root);
+    const verdict = replayTeam([...ops, draft], { pin }).verdicts.get(draft.id);
     if (verdict && !verdict.ok) return fail(verdict.reason, 'forbidden');
     await deps.journal.publishDevice(root, deviceRecord(identity, key.signer, deps.app, now()));
     await deps.journal.append(root, identity.actor, key, entry);
@@ -534,7 +554,7 @@ export function createIdentityService(deps: IdentityServiceDeps) {
   /** Shared changes need a team: members:setRole, members:remove, members:revokeDevice. */
   async function change(
     projectId: string,
-    entry: (replay: TeamReplay) => TeamEntry | Failure,
+    entry: (replay: TeamReplay, ops: readonly Record<string, unknown>[]) => TeamEntry | Failure,
   ): Promise<{ ok: true } | Failure> {
     const where = folder(projectId);
     if ('ok' in where) return where;
@@ -545,13 +565,17 @@ export function createIdentityService(deps: IdentityServiceDeps) {
     if ('ok' in key) return key;
     const refusal = adminRefusal(replay, identity, key);
     if (refusal) return fail(refusal, 'forbidden');
-    const e = entry(replay);
+    const e = entry(replay, ops);
     if ('ok' in e) return e;
     return write(where.root, identity, key, e, ops);
   }
 
   const memberOf = (replay: TeamReplay, actor: string) =>
     replay.members.find((m) => m.actor === actor);
+
+  /** The devices of a member (revoked ones too). */
+  const devicesOf = (replay: TeamReplay, actor: string) =>
+    memberOf(replay, actor)?.devices.map((d) => d.id) ?? [];
 
   return {
     /** For T1's journal service: who writes and with which key. */
@@ -764,31 +788,35 @@ export function createIdentityService(deps: IdentityServiceDeps) {
     },
 
     setRole(req: IpcRequest<'members:setRole'>) {
-      return change(req.projectId, (replay) =>
+      return change(req.projectId, (replay, ops) =>
         memberOf(replay, req.actor)
           ? {
               kind: 'member.role',
               target: { rec: 'member', id: req.actor },
-              payload: { actor: req.actor, role: req.role satisfies Role },
+              payload: {
+                actor: req.actor,
+                role: req.role satisfies Role,
+                seen: seenHeads(ops, devicesOf(replay, req.actor)),
+              },
             }
           : fail('This person is not a member of the project.'),
       );
     },
 
     remove(req: IpcRequest<'members:remove'>) {
-      return change(req.projectId, (replay) =>
+      return change(req.projectId, (replay, ops) =>
         memberOf(replay, req.actor)
           ? {
               kind: 'member.remove',
               target: { rec: 'member', id: req.actor },
-              payload: { actor: req.actor },
+              payload: { actor: req.actor, seen: seenHeads(ops, devicesOf(replay, req.actor)) },
             }
           : fail('This person is not a member of the project.'),
       );
     },
 
     revokeDevice(req: IpcRequest<'members:revokeDevice'>) {
-      return change(req.projectId, (replay) => {
+      return change(req.projectId, (replay, ops) => {
         const owner = replay.members.find((m) => m.devices.some((d) => d.id === req.device));
         if (!owner) return fail('This device is not part of the team.');
         if (owner.devices.find((d) => d.id === req.device)?.revoked) {
@@ -797,7 +825,11 @@ export function createIdentityService(deps: IdentityServiceDeps) {
         return {
           kind: 'device.revoke',
           target: { rec: 'device', id: req.device },
-          payload: { device: req.device, ...(req.reason ? { reason: req.reason } : {}) },
+          payload: {
+            device: req.device,
+            ...(req.reason ? { reason: req.reason } : {}),
+            seen: seenHeads(ops, [req.device]),
+          },
         };
       });
     },

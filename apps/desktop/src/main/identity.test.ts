@@ -14,6 +14,7 @@ import {
   profileUserData,
   profileVaultService,
   registerIdentityIpc,
+  seenHeads,
   type IdentityService,
   type TeamJournal,
 } from './identity';
@@ -421,6 +422,12 @@ describe('identity IPC', () => {
     expect(list.ok && list.members.map((m) => m.name)).toEqual(['Rana Example']);
     // the journal holds no refused op: refusals are checked before writing
     expect((await opsIn(project)).length).toBe(5);
+    // revocation, removal and demotion say what the owner had seen of the target's chains
+    for (const o of await opsIn(project)) {
+      if (o.kind === 'device.revoke' || o.kind === 'member.remove' || o.kind === 'member.role') {
+        expect((o.payload as { seen?: unknown }).seen).toEqual({});
+      }
+    }
   });
 
   it('refuses changes in a package and an own card, and lists nothing there', async () => {
@@ -482,5 +489,18 @@ describe('identity IPC', () => {
       error: expect.stringMatching(/credential store/) as unknown,
     });
     warn.mockRestore();
+  });
+});
+
+describe('seen heads of a team change', () => {
+  it('takes the last seq of each chain of the target devices only', () => {
+    const ops = [
+      { dev: 'd_a', chain: 'd_a.r_1', seq: 3 },
+      { dev: 'd_a', chain: 'd_a.r_1', seq: 5 },
+      { dev: 'd_a', chain: 'd_a.r_2', seq: 1 },
+      { dev: 'd_b', chain: 'd_b.r_1', seq: 9 },
+    ];
+    expect(seenHeads(ops, ['d_a'])).toEqual({ 'd_a.r_1': 5, 'd_a.r_2': 1 });
+    expect(seenHeads(ops, [])).toEqual({});
   });
 });
