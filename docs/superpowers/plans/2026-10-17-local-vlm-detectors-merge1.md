@@ -7,7 +7,7 @@
 **Architecture:**
 
 - **Engine and job.** The detector recipe (spec §4) is a Python module, `aio_pipelines/detect/engine.py`, used by both the new pipeline `detect.vlm` and the bench harness. The pipeline talks to `llama-server` over loopback HTTP and writes `detections/vlm-<run>.json` (`aio.detections/1`, `source: 'model'`).
-- **Main process.** Main owns the model server (`main/analytics/server.ts`: spawn, health, state file, 10-minute idle stop, kill on quit). It also owns the hardware check, the Analytics pack (the pipeline-pack installer generalised with a `PackKind`), detector storage (`.aiodet` = gzipped tar), the ledger, and the `jobs:start` gate that resolves detectors and points the job at the server.
+- **Main process.** Main owns the model server (`main/analytics/server.ts`: spawn, health, state file, stop as soon as the last detector run ends, kill on quit). It also owns the hardware check, the Analytics pack (the pipeline-pack installer generalised with a `PackKind`), detector storage (`.aiodet` = gzipped tar), the ledger, and the `jobs:start` gate that resolves detectors and points the job at the server.
 - **Renderer.** Only job-table lines (no new UI).
 
 **Tech Stack:** Python 3.13 (Pillow, urllib, pytest), zod v4 (`@aio/schema`), Electron main (node:child_process, `tar`), vitest, Playwright Electron, llama.cpp `llama-server`, Qwen2.5-VL-7B-Instruct GGUF Q4_K_M.
@@ -24,7 +24,7 @@
 ## Global Constraints
 
 - **Model:** Qwen2.5-VL-7B-Instruct, GGUF Q4_K_M plus its `mmproj`, Apache-2.0. **Runtime:** llama.cpp `llama-server`, MIT, pinned release, win-x64 only in v1. No Mac (founder).
-- **Server:** `127.0.0.1`, random free port. Args: `--ctx-size 8192`, `-ngl 99`, `--parallel 1`, `--no-webui`. Idle stop after 600 000 ms with no `detect.vlm` job running. Killed at quit (`will-quit`).
+- **Server:** `127.0.0.1`, random free port. Args: `--ctx-size 8192`, `-ngl 99`, `--parallel 1`, `--no-webui`. Stopped as soon as no `detect.vlm` job is running or queued (no idle hold; founder, 21 Oct). Killed at quit (`will-quit`).
 - **Hardware minimum:** an NVIDIA GPU with total VRAM ≥ 8192 MB and free VRAM ≥ 6656 MB at job start. No CPU fallback. Messages are exactly those in Task 2's `en.ts` block.
 - **Recipe defaults:**
   - tiles `n = 2`, `overlap = 0.2`; send size 1344 × 1008
@@ -165,7 +165,6 @@ export const VLM_DETECTOR_SCHEMA = 'aio.vlm-detector/1';
 export const DETECTOR_FILE_EXTENSION = '.aiodet';
 export const VLM_MIN_VRAM_MB = 8192;
 export const VLM_MIN_FREE_VRAM_MB = 6656;
-export const VLM_IDLE_STOP_MS = 600_000;
 export const VLM_DEFAULT_THRESHOLD = 0.8;
 export const VLM_DEFAULT_TILES = { n: 2, overlap: 0.2, sendW: 1344, sendH: 1008 } as const;
 export const VLM_SERVER_STATE = 'runtime/analytics-server.json'; // under the data root
@@ -248,12 +247,12 @@ IPC channels (each `request` strict; `Failure` is `{ ok: false, error: string }`
 'jobs.detect.vlm': 'Running detectors',
 'detect.preset.hw.noGpu': 'No NVIDIA graphics card found. Detectors need one with at least 8 GB of memory.',
 'detect.preset.hw.tooSmall': 'This computer has {total} GB of graphics memory; detectors need 8 GB.',
-'detect.preset.hw.tooBusy': 'Only {free} GB of graphics memory is free; detectors need 6.5 GB. Close other programs that use the graphics card and run again.',
+'detect.preset.hw.tooBusy': 'Only {free} GB of graphics memory is free; detectors need about 6.5 GB. Close the 3D view or other programs that use the graphics card and run again.',
 'detect.preset.hw.mac': 'Not available on this computer yet.',
 'detect.preset.pack.missing': 'Install the Analytics pack in Settings to run detectors.',
 'detect.preset.server.stopped': 'The detector model stopped. Run the remaining photos again.',
 'detect.preset.server.failed': 'The detector model did not start: {reason}',
-'detect.preset.queued': 'Another detector run is going. This one starts when it finishes.',
+'detect.preset.queued': 'Another detector or processing run is using the graphics card. This one starts when it finishes.',
 'detect.preset.modelMismatch': 'This detector was tuned on a different model, so its results may differ.',
 ```
 
@@ -585,8 +584,8 @@ export class VlmServer {
     pack: AnalyticsPack,
     gpuIndex: number | null,
   ): Promise<{ ok: true; state: VlmServerState } | { ok: false; error: string }>;
-  busy(): void; // a detect.vlm job started: cancel the idle timer
-  idle(): void; // no detect.vlm job running: stop after VLM_IDLE_STOP_MS
+  busy(): void; // a detect.vlm job started
+  idle(): void; // no detect.vlm job running or queued: stop now
   stop(): Promise<void>;
   stopSync(): void; // kill tree, delete state file
 }
@@ -608,7 +607,7 @@ export async function detectJobGate(
 
 **Gate rules:**
 
-- **Order:** pack missing → `detect.preset.pack.missing`; then hardware not ok → its reason; then `ensure` fails → `detect.preset.server.failed`; then a `detect.vlm` job already running → queue.
+- **Order:** pack missing → `detect.preset.pack.missing`; then hardware not ok → its reason; then `ensure` fails → `detect.preset.server.failed`; then a `detect.vlm` job or a GPU pipeline job already running → queue. The GPU pipelines are a `GPU_PIPELINES` set in `packages/schema/src/analytics.ts` (photo processing with ODM, local ONNX detection, SAM; the implementer lists their `PipelineName` values).
 - **The request it passes on:**
   - `params.serverFile` = absolute state path
   - `params.model` = `manifest.model.id`
@@ -617,15 +616,15 @@ export async function detectJobGate(
 - **Resume:** it runs again and rewrites the state file.
 - **Test seam:** `QUADRION_VLM_SERVER_URL` set → skip the pack, hardware and spawn steps, and write a state file with that URL (e2e only, as `QUADRION_PIPELINE_PACK`).
 - **Spawn:** args are the Global Constraints args plus `--model`, `--mmproj`, `--port`, `--host 127.0.0.1`. When `gpuIndex !== null`, env sets `CUDA_VISIBLE_DEVICES=<gpuIndex>`.
-- **Queue:** a FIFO in `index.ts`. When a `detect.vlm` job ends (`done | failed | cancelled`), the next queued request goes through the gate again. While queued, the request answers `{ ok: false, error: detect.preset.queued }` (as `PANO_QUEUED`).
+- **Queue:** a FIFO in `index.ts`. When a `detect.vlm` or GPU pipeline job ends (`done | failed | cancelled`), the next queued request goes through the gate again; when nothing is left, `vlmServer.idle()` stops the server. While queued, the request answers `{ ok: false, error: detect.preset.queued }` (as `PANO_QUEUED`).
 
 - [ ] **Step 1: Write the failing tests:**
   - `server.test.ts` (fake spawn and fetch, fake timers):
     - `starts once and reuses`
     - `waits for health then writes state`
     - `health never ok kills and fails with reason`
-    - `idle stops after 600000 ms and deletes state`
-    - `busy cancels idle`
+    - `idle stops at once and deletes state`
+    - `does not stop while a queued run waits`
     - `stopSync kills the child`
     - `a crash clears state so the next ensure restarts`
   - `gate.test.ts`:
@@ -634,6 +633,7 @@ export async function detectJobGate(
     - `injects serverFile, model and sha`
     - `replaces detector bodies with stored copies`
     - `queues while one runs`
+    - `queues while a GPU pipeline job runs`
     - `resume re-ensures the server and rewrites the state file`
     - `QUADRION_VLM_SERVER_URL skips pack, hardware and spawn`
 - [ ] **Step 2: Run** `pnpm vitest run apps/desktop/src/main/analytics`. Expected: FAIL.

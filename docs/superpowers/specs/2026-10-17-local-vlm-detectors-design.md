@@ -56,7 +56,7 @@ A throwaway test ran Qwen2.5-VL-7B (Q4_K_M, 6 GB, through Ollama 0.40.5 on an RT
 - **Useful only at a very low threshold, or not accurate enough** (founder). The quality bar and the live hit rate exist so this is visible, not guessed.
 - **Silent failure.** A run that reports nothing because of a parse or coordinate error must say it failed, not "no defects found".
 - **Freezing the app.** Inference runs in a child process; the Electron main thread only coordinates.
-- **Leaving GPU memory taken after a run.** The server stops when it has been idle (see below) and when the app quits.
+- **Leaving GPU memory taken after a run.** The server stops as soon as the last detector run ends, and when the app quits (founder, 21 Oct: the 3D view and processing need the graphics card back).
 - **A prompt edit that makes a detector worse on the user's own past reviews** replacing the old version without warning.
 - **Client photos leaving the machine.** Sample photos inside an exported `.aiodet` are opt-out, with a warning.
 
@@ -107,12 +107,13 @@ A throwaway test ran Qwen2.5-VL-7B (Q4_K_M, 6 GB, through Ollama 0.40.5 on an RT
 - **Mac:** always "Not available on this computer yet" in v1.
 - **Minimums (my call, to confirm with the founder):** NVIDIA with 8 GB VRAM total and at least 6.5 GB free at start.
 - **Below the minimum,** Settings and the run dialog show the reason: "This computer has 4 GB of GPU memory; detectors need 8 GB." The run button stays disabled.
-- **At start,** a detector job queues behind AIO's own GPU jobs (local ONNX detection, SAM, other detector runs) rather than failing (my call). If free VRAM is still too low once it starts, because another program is using the GPU, the job fails with that reason rather than spilling to the CPU.
+- **At start,** a detector job waits behind AIO's own GPU jobs (photo processing, local ONNX detection, SAM, other detector runs) rather than failing, and no detector run starts while one of them is running (founder, 21 Oct). If free VRAM is still too low once it starts, because another program is using the GPU, the job fails with that reason rather than spilling to the CPU.
+- **Before a run (founder, 21 Oct),** the run dialog reads free VRAM. When it is under the minimum it says how much is free, that detectors need about 6.5 GB, and to close the 3D view or other programs that use the graphics card.
 
 ### 3. The model server
 
 - **Ownership:** main starts `llama-server` as a child process, bound to `127.0.0.1` on a random free port, with `--model`, `--mmproj`, `--ctx-size 8192`, `-ngl 99`, `--parallel 1` and no web UI. It follows the ODM `killTree` / inference utility-host patterns, and its health is checked through `/health` before the first request.
-- **Lifetime:** it starts on the first detector run. It stops after 10 minutes idle (my call), when the user removes the pack, and at app quit (`shutdownSync`). One server at a time serves one job queue.
+- **Lifetime:** it starts on the first detector run. It stops as soon as no detector job is running or waiting (founder, 21 Oct: no idle hold, the next run pays a 10 to 20 s load), when the user removes the pack, and at app quit (`shutdownSync`). One server at a time serves one job queue.
 - **API:** the OpenAI-compatible `/v1/chat/completions`, with an image as a data URL, `temperature: 0`, and `logprobs: true, top_logprobs: 10` for the crop check.
 - **Verify first (risk):**
   - The spike used Ollama. The first build task repeats the spike's corrosion run through `llama-server` and confirms three things: boxes come back in the same pixel frame of the sent image (sizes a multiple of 28); `logprobs` / `top_logprobs` are returned for the first token; and the scores match Ollama's to within about ±0.05.
@@ -262,7 +263,7 @@ Process per set, using the dev harness in `tools/detectors/` (Merge 1):
   - score computation from logprobs (case variants, missing tokens)
   - the failure paths (unparseable reply, every tile failed) that must not read as "no detections"
 - **Pack tests:** manifest schema, the install checks (bad sha, wrong platform, appRange), and the size limit, reusing the `packInstall` tests.
-- **Server lifecycle tests:** start, health, idle stop, kill on quit, and the port in use.
+- **Server lifecycle tests:** start, health, stop when the last run ends, kill on quit, and the port in use.
 - **Hardware check tests:** parsing `nvidia-smi` output and the minimum messages.
 - **Detector file tests:** schema, `.aiodet` zip round trip, the import conflict choice, and the model-mismatch warning.
 - **Ledger tests:** threshold suggestion, the check-before-replacing comparison, and dataset export format.
