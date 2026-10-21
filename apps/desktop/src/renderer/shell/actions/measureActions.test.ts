@@ -6,6 +6,10 @@ import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const go = vi.hoisted(() => vi.fn());
+const moveToDate = vi.hoisted(() => vi.fn(() => Promise.resolve({ ok: true, moved: 1, seq: 1 })));
+const flags = vi.hoisted(() => ({ annotateReadOnly: false }));
+vi.mock('../../survey/measureMoveRun', () => ({ moveMeasurementsToDate: moveToDate }));
+vi.mock('@aio/annotate', () => ({ isAnnotateReadOnly: () => flags.annotateReadOnly }));
 vi.mock('../../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false, error: 'Not configured' }) },
   shell: { getState: () => ({ screen: 'scene', go }) },
@@ -67,6 +71,8 @@ beforeEach(() => {
   });
   renameRequest.getState().done();
   go.mockClear();
+  moveToDate.mockClear();
+  flags.annotateReadOnly = false;
 });
 afterEach(() => {
   off();
@@ -120,6 +126,89 @@ describe('measurement menu actions', () => {
     expect(folderOf('m1')).toBeUndefined();
     move()?.run('new');
     expect(measureStore.getState().newFolder?.ids).toEqual(['m1']);
+  });
+
+  describe('with survey dates', () => {
+    const dated = {
+      ...manifest,
+      captures: [
+        { id: 'd1', label: '2026-01-01', date: '2026-01-01' },
+        { id: 'd2', label: '2026-06-01', date: '2026-06-01' },
+        { id: 'd3', label: '2026-09-01', date: '2026-09-01' },
+      ],
+    } as unknown as ProjectManifest;
+    const on = (id: string, capture: string, folder?: string) => ({
+      ...m(id, folder),
+      scope: { kind: 'survey' as const, capture },
+    });
+    const setup = (list: ReturnType<typeof on>[]) => {
+      workspace.getState().closeProject();
+      workspace.getState().openProject({ id: 'p1', root: '/p1', manifest: dated });
+      const file = { ...emptyMeasurements(), measurements: list };
+      measureStore.setState({ file, savedText: JSON.stringify(file) });
+    };
+    const move = (target: MenuTarget) =>
+      actionsFor(target, makeActionCtx({ manifest: dated })).find(
+        (i) => i.id === 'measure.moveToFolder',
+      );
+
+    it('Move to folder lists only the folders of the marked measurements date', () => {
+      setup([on('a', 'd1'), on('b', 'd1', 'Piles'), on('c', 'd2', 'Pads')]);
+      expect(move(one('a'))?.sub.map((s) => s.id)).toEqual(['to:Piles', 'none', 'new']);
+    });
+
+    it('Move to folder is disabled across dates with the reason', () => {
+      setup([on('a', 'd1', 'Piles'), on('c', 'd2', 'Pads')]);
+      const sub = move({ kind: 'measurements', ids: ['a', 'c'], clicked: 'a' })?.sub ?? [];
+      expect(sub.length).toBeGreaterThan(0);
+      for (const s of sub) expect(s.disabled, s.id).toBe(t('actions.measure.spansDates'));
+    });
+
+    const toDate = (target: MenuTarget, c = makeActionCtx({ manifest: dated })) =>
+      actionsFor(target, c).find((i) => i.id === 'measure.moveToDate');
+
+    it('Move to date lists the other survey dates, newest first, and moves there', () => {
+      setup([on('a', 'd2'), on('b', 'd1')]);
+      const item = toDate(one('a'));
+      expect(item?.disabled).toBe(false);
+      expect(item?.sub.map((s) => s.id)).toEqual(['d3', 'd1']);
+      item?.run('d1');
+      expect(moveToDate).toHaveBeenCalledWith(['a'], 'd1');
+    });
+
+    it('Move to date lists every date for a Needs a date measurement', () => {
+      setup([{ ...m('a'), scope: { kind: 'site' as const } } as unknown as ReturnType<typeof on>]);
+      expect(toDate(one('a'))?.sub.map((s) => s.id)).toEqual(['d3', 'd2', 'd1']);
+    });
+
+    it('Move to date is disabled for antenna measurements with the reason', () => {
+      setup([{ ...on('a', 'd1'), tool: 'antenna-tilt' } as unknown as ReturnType<typeof on>]);
+      expect(toDate(one('a'))?.disabled).toBe(t('tree.measure.move.telecom'));
+    });
+
+    it('Move to date is disabled while the measurements are read-only', () => {
+      setup([on('a', 'd1')]);
+      measureStore.setState({ readOnly: true });
+      expect(toDate(one('a'))?.disabled).toBe(t('actions.reason.package'));
+      measureStore.setState({ readOnly: false });
+      flags.annotateReadOnly = true;
+      expect(toDate(one('a'))?.disabled).toBe(t('actions.reason.readOnly'));
+      toDate(one('a'))?.run('d2');
+      expect(moveToDate).not.toHaveBeenCalled();
+    });
+
+    it('a project with no dates still lists every folder', () => {
+      setup([]);
+      workspace.getState().closeProject();
+      workspace.getState().openProject({ id: 'p1', root: '/p1', manifest });
+      const file = {
+        ...emptyMeasurements(),
+        measurements: [m('a'), m('b', 'Fence'), m('c', 'Gate')],
+      };
+      measureStore.setState({ file, savedText: JSON.stringify(file) });
+      const sub = actionsFor(one('a'), ctx()).find((i) => i.id === 'measure.moveToFolder')?.sub;
+      expect(sub?.map((s) => s.id)).toEqual(['to:Fence', 'to:Gate', 'none', 'new']);
+    });
   });
 
   it('a read-only package greys the edits and keeps Hide and Fly to', () => {

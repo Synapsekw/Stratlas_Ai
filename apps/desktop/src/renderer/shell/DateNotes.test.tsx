@@ -19,6 +19,8 @@ let host: HTMLDivElement;
 let root: Root | undefined;
 const onUndo = vi.fn();
 const onDismiss = vi.fn();
+const onMeasureUndo = vi.fn();
+const onPrepare = vi.fn();
 const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 function mount(collapsed: boolean, note: DateNote | null, canEdit = true) {
   root = createRoot(host);
@@ -30,6 +32,8 @@ function mount(collapsed: boolean, note: DateNote | null, canEdit = true) {
         note={note}
         onPromptResult={() => undefined}
         onUndo={onUndo}
+        onMeasureUndo={onMeasureUndo}
+        onPrepare={onPrepare}
         onDismiss={onDismiss}
       />,
     ),
@@ -47,6 +51,8 @@ beforeEach(() => {
   prompt.mockReset();
   onUndo.mockReset();
   onDismiss.mockReset();
+  onMeasureUndo.mockReset();
+  onPrepare.mockReset();
 });
 afterEach(() => {
   act(() => root?.unmount());
@@ -74,5 +80,30 @@ describe('DateNotes', () => {
     mount(false, null, false);
     expect(q('date-prompt')).toBeNull();
     expect(q('date-note')).toBeNull();
+  });
+
+  it('a measurement note offers Undo with its seq', () => {
+    mount(false, { text: '2 measurements moved.', danger: false, measureUndo: 7 });
+    expect(q('date-note-prepare')).toBeNull();
+    act(() => q('date-undo')?.click());
+    expect(onMeasureUndo).toHaveBeenCalledWith(7);
+    expect(onUndo).not.toHaveBeenCalled();
+  });
+
+  it('an unprepared note offers Prepare surfaces', () => {
+    mount(false, { text: 'Not prepared.', danger: true, prepare: true });
+    expect(q('date-undo')).toBeNull();
+    const b = q('date-note-prepare');
+    expect(b?.textContent).toBe('Prepare surfaces');
+    act(() => b?.click());
+    expect(onPrepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('a layer note keeps its own Undo', () => {
+    mount(false, moved);
+    expect(q('date-note-prepare')).toBeNull();
+    act(() => q('date-undo')?.click());
+    expect(onUndo).toHaveBeenCalledWith(moved.undo);
+    expect(onMeasureUndo).not.toHaveBeenCalled();
   });
 });

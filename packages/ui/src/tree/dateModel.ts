@@ -1,7 +1,13 @@
 import type { Capture, Issue, ProjectManifest } from '@aio/schema';
 import { issuesByCapture } from '@aio/workspace';
 import { ICONS, type IconName } from '../icons/paths';
-import { buildDatasetTree, treeLayerIds, type TreeGroup, type TreeOptions } from './model';
+import {
+  buildDatasetTree,
+  treeLayerIds,
+  type TreeGroup,
+  type TreeItem,
+  type TreeOptions,
+} from './model';
 
 export const EVERY_DATE = 'every';
 
@@ -73,8 +79,20 @@ export function buildDateTree(
     /** The sentence for a lined-up date; absent or undefined: nothing to say. */
     lineUp?: (c: Capture) => string | undefined;
   },
-  opts: TreeOptions = {},
+  opts: TreeOptions & {
+    /** One survey date's Measurements group rows (and every id of them under a filter). */
+    measurementsOf?: (
+      capture: string,
+    ) => { items: readonly TreeItem[]; ids?: readonly string[] } | undefined;
+  } = {},
 ): DateFolder[] {
+  const { measurementsOf, ...treeOpts } = opts;
+  // the Every date folder never holds measurements
+  const everyOpts: TreeOptions = {
+    ...treeOpts,
+    measurements: undefined,
+    measurementIds: undefined,
+  };
   const folders: DateFolder[] = [];
   const common = manifest.layers.filter((l) => !(l.id in dates.of));
   // an issue sits in the folder of its survey date (the folder eye hides it with the layers)
@@ -83,7 +101,7 @@ export function buildDateTree(
     { ...manifest, layers: common },
     byDate.undated,
     durations,
-    opts,
+    everyOpts,
   );
   if (everyGroups.length > 0) {
     folders.push({
@@ -100,9 +118,14 @@ export function buildDateTree(
   for (const c of newestFirst) {
     const layers = manifest.layers.filter((l) => dates.of[l.id] === c.id);
     const own = byDate.dated[c.id] ?? [];
+    const mine = measurementsOf?.(c.id);
     const groups =
-      layers.length > 0 || own.length > 0
-        ? buildDatasetTree({ ...manifest, layers }, own, durations, opts)
+      layers.length > 0 || own.length > 0 || (mine?.items.length ?? 0) > 0 || mine?.ids?.length
+        ? buildDatasetTree({ ...manifest, layers }, own, durations, {
+            ...treeOpts,
+            measurements: mine?.items,
+            measurementIds: mine?.ids,
+          })
         : [];
     const label = labels.dateLabel(c);
     const name = captureName(c, label);

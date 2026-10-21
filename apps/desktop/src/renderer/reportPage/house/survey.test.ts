@@ -468,6 +468,27 @@ describe('the survey data', () => {
     expect(csv).toContain('pile,m-pile,M1,Stockpile A,Gravel 20 mm,G20,2,');
   });
 
+  it('keeps the history of a pile filed under its survey date: a column per prepared survey', async () => {
+    const dated: SurveyFiles = {
+      ...files,
+      measurements: files.measurements.map((m) =>
+        m.id === 'm-pile' ? { ...m, scope: { kind: 'survey', capture: 'c3' } } : m,
+      ),
+    };
+    const all = await buildSurveyData(dated, reader.bytes, { need: 'stockpile-csv' });
+    const a = all.stockpiles.rows.find((r) => r.id === 'm-pile');
+    expect(a?.volumes.map((v) => v.capture.id)).toEqual(['c1', 'c2', 'c3']);
+    a?.volumes.forEach((v, i) => {
+      near(v.volumeM3, 200 + 100 * i);
+    });
+    expect(stockpileCsv(all)).toContain('2026-01-31_volume_m3');
+    // the report's last two surveys too
+    const report = await buildSurveyData(dated, reader.bytes, { need: 'report' });
+    const r = report.stockpiles.rows.find((x) => x.id === 'm-pile');
+    near(r?.currentM3, 400);
+    near(r?.previousM3, 300);
+  });
+
   it('reports the saved results, and says so, when no surface is prepared', async () => {
     const saved = {
       ...files,

@@ -726,7 +726,8 @@ This section is the single written specification of a surface comparison (ADR 00
 **Saved measurements** (`survey/measurements.json`, `MeasurementsFile`, `aio.measurements/1`): `measurements[]` (`SurveyMeasurement`, at most 20,000, ids unique). The annotation `Measurement` (`annotation.ts`) is unchanged; survey measurements are a separate family.
 
 - `id`, `family` (`point`, `line`, `polygon`, `markup`) and `tool`: point `elevation`, `elevation-difference`, `elevation-history`, `annotation`; line `distance`, `grade`, `vertex-table`, `berm-check`, `section`; polygon `area`, `volume`; markup `freehand`.
-- `template?`, `label`, `folder?`, `scope` (`{ kind: 'site' }`, or `{ kind: 'survey', capture }` for one survey; promote and demote switch it).
+- `template?`, `label`, `folder?`, `scope` (`{ kind: 'survey', capture }`, with `capture` the date of the source layer; `{ kind: 'site' }` is legacy only and is kept just in a project with no survey dates).
+- `source?` (`{ layer }`, the layer the measurement was measured or last re-measured on) and `pickedOn?` (`'model'` or `'ground'` per vertex, same length as `points`). A malformed or mismatched `pickedOn` is dropped on read with a warning and never fails the file; older files without the fields still load.
 - `points`: vertices (E, N, Z) in the project CRS, float64, 1 to 100,000; a polygon is closed implicitly (the last point does not repeat the first).
 - `style?` (`MeasurementStyle`: `color`, `fill`, `fillOpacity`, `borderWidth`, `labelSize`, `labelOnlyWhenSelected`, `showPropertyName`), `units?` (`UnitsOverride`: any subset of the site units of section 25), `description?`, `fields?` (custom field values by field id, text or number), `material?` (a site material id).
 - `items` (up to 20 `ComparisonItem`s) and `results` (up to 20 `ComparisonResult`s), section 26.

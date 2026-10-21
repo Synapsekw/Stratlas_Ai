@@ -57,8 +57,10 @@ import { shiftKey, workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
 import { authorName } from '../author';
 import { bridge } from '../shell';
+import { timeline } from '../workspace/timeline';
 import { designs, loadDesigns } from './designsStore';
 import { drawnPoints, scopeShift, storedPoints } from './measureDates';
+import { alignPicks, creationDating, realignPickedOn, type VertexPick } from './measureSource';
 import {
   createMeasureVisibilityMemory,
   measureStorage,
@@ -114,6 +116,18 @@ export interface RolePrompt {
   picks: RolePicks;
   then: (picks: RolePicks) => void;
   error: string | null;
+}
+
+/**
+ * A short line about measurements in the sidebar's note slot (a date move, a refusal). `undo`
+ * offers Undo (`undoMeasureChange(seq)`), `prepare` offers Prepare surfaces.
+ */
+export interface MeasureNote {
+  seq: number;
+  text: string;
+  danger: boolean;
+  undo?: boolean;
+  prepare?: boolean;
 }
 
 /** Measurements a deletion took out, each with its index in the file before it. */
@@ -174,6 +188,10 @@ export interface MeasureState {
   surface: HeightSampler | null;
   /** Asking for the design layers of a template's roles before it is used. */
   rolePrompt: RolePrompt | null;
+  /** The note the sidebar shows about measurements (null: none). */
+  note: MeasureNote | null;
+  /** The last undoable replacement (a date move): the measurements as they were before it. */
+  undoChange: { seq: number; before: SurveyMeasurement[] } | null;
 }
 
 const now = () => new Date().toISOString();
@@ -197,6 +215,9 @@ function savedEdit(
   return edited.map((p) => was.get(p.join(',')) ?? storedPoints([p], m.scope, manifest)[0] ?? p);
 }
 const text = (f: MeasurementsFile) => JSON.stringify(f);
+
+/** What each vertex of the drawing in progress was picked on (one entry per drawn point). */
+let drawPicks: VertexPick[] = [];
 
 let counter = 0;
 /** A new file-name-safe measurement id. */
@@ -230,6 +251,8 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   newFolder: null,
   dialog: null,
   rolePrompt: null,
+  note: null,
+  undoChange: null,
 });
 
 export const measureStore = createStore<MeasureState>()(() => ({
@@ -277,6 +300,8 @@ export function forgetMeasureWrites(): void {
   writing.clear();
 }
 let newFolderSeq = 0;
+/** Seq of undoable replacements and of measurement notes (one counter: each is new). */
+let changeSeq = 0;
 
 export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
   text(s.file) !== s.savedText;
@@ -371,6 +396,7 @@ export function revertMeasurements(): void {
       focus: null,
       editing: null,
       message: null,
+      ...dropUndo(s),
       undoDeletes: s.undoDeletes.flatMap((u) => {
         const left = undoLeft(u, parsed.data);
         return left ? [left] : [];
@@ -386,8 +412,38 @@ function undoLeft(u: UndoDelete | undefined, file: MeasurementsFile): UndoDelete
   return items.length === 0 ? null : { ...u, items };
 }
 
+/** A measurement as an undoable replacement left it: everything but its computed results. */
+const asReplaced = (m: SurveyMeasurement | undefined): string =>
+  m ? JSON.stringify({ ...m, results: undefined, updatedAt: undefined }) : '';
+
+/** The measurements as the undoable replacement left them, by id (with `undoChange`). */
+let undoAfter = new Map<string, string>();
+
+/** The patch that lets go of the undo (its note stays, without Undo). */
+function dropUndo(s: MeasureState): Partial<MeasureState> {
+  if (!s.undoChange) return {};
+  const seq = s.undoChange.seq;
+  if (s.note?.seq !== seq || !s.note.undo) return { undoChange: null };
+  const note = { ...s.note };
+  delete note.undo;
+  return { undoChange: null, note };
+}
+
+/**
+ * A person's edit (or a follow) to a measurement the undoable replacement changed lets go of that
+ * undo, so Undo never puts back an older version over it. Recomputed results do not count.
+ */
+function undoAfterEdit(file: MeasurementsFile): Partial<MeasureState> {
+  const s = get();
+  if (!s.undoChange) return {};
+  const now = new Map(file.measurements.map((m) => [m.id, m]));
+  for (const [id, was] of undoAfter) if (asReplaced(now.get(id)) !== was) return dropUndo(s);
+  return {};
+}
+
 function changed(file: MeasurementsFile, extra: Partial<MeasureState> = {}): void {
-  set({ file, message: null, ...extra });
+  const undo = 'undoChange' in extra ? {} : undoAfterEdit(file);
+  set({ file, message: null, ...undo, ...extra });
   if (get().autosave) void saveMeasurements();
 }
 
@@ -455,6 +511,80 @@ export function setComputedResults(
   if (Array.isArray(saved.measurements))
     saved.measurements = saved.measurements.map((m) => (m.id === id ? { ...m, results } : m));
   set({ file, savedText: JSON.stringify(saved), resultsUnwritten: true });
+}
+
+/**
+ * Replace measurements by id as one edit (it waits for Save, or Autosave saves it); ids not in the
+ * file are left out. With `undoable` the ones replaced are kept for `undoMeasureChange` and the
+ * undo's seq is returned. No-op and null while read-only.
+ */
+export function replaceMeasurements(
+  next: readonly SurveyMeasurement[],
+  opts: { undoable?: boolean } = {},
+): number | null {
+  const s = get();
+  if (s.readOnly || next.length === 0) return null;
+  const byId = new Map(next.map((m) => [m.id, m]));
+  const before = s.file.measurements.filter((m) => byId.has(m.id));
+  if (before.length === 0) return null;
+  const t = now();
+  const file: MeasurementsFile = {
+    ...s.file,
+    measurements: s.file.measurements.map((m) => {
+      const n = byId.get(m.id);
+      return n ? { ...n, updatedAt: t } : m;
+    }),
+  };
+  if (!opts.undoable) {
+    changed(file);
+    return null;
+  }
+  const seq = ++changeSeq;
+  undoAfter = new Map(
+    file.measurements.filter((m) => byId.has(m.id)).map((m) => [m.id, asReplaced(m)]),
+  );
+  changed(file, { undoChange: { seq, before } });
+  return seq;
+}
+
+/**
+ * Put back the measurements of the undoable replacement `seq` as they were before it (by id).
+ * True when it did; false (nothing changes) for a stale seq: a later replacement took its place,
+ * or one of those measurements was edited, deleted or followed its layer since (the undo is let
+ * go then, and the note no longer offers it).
+ */
+export function undoMeasureChange(seq: number): boolean {
+  const s = get();
+  const u = s.undoChange;
+  if (u?.seq !== seq) return false;
+  const note = s.note?.seq === seq ? { note: null } : {};
+  if (s.readOnly) {
+    set({ undoChange: null, ...note });
+    return false;
+  }
+  const byId = new Map(u.before.map((m) => [m.id, m]));
+  changed(
+    {
+      ...s.file,
+      measurements: s.file.measurements.map((m) => byId.get(m.id) ?? m),
+    },
+    { undoChange: null, ...note },
+  );
+  return true;
+}
+
+/**
+ * Show a note about measurements (null clears it). A note with `undo` takes the seq of the
+ * undoable replacement it offers to undo, so `undoMeasureChange(note.seq)` undoes it.
+ */
+export function setMeasureNote(n: Omit<MeasureNote, 'seq'> | null): void {
+  if (!n) {
+    set({ note: null });
+    return;
+  }
+  const u = get().undoChange;
+  const seq = n.undo && u ? u.seq : ++changeSeq;
+  set({ note: { ...n, seq } });
 }
 
 /** Move measurements into a folder ('' takes them out of any folder). */
@@ -686,6 +816,7 @@ export function startTool(tool: MeasurementTool, opts: StartToolOptions = {}): v
   const projectId = get().projectId;
   const begin = (picks: RolePicks) => {
     if ((get().readOnly && !transient) || get().projectId !== projectId) return;
+    drawPicks = [];
     set({
       tool: { tool, template, picks, ...(forOther ?? {}), ...(transient ? { transient } : {}) },
       draw: initialDraw(TOOL_FAMILY[tool]),
@@ -755,6 +886,7 @@ export function cancelRoles(): void {
 }
 
 export function stopTool(): void {
+  drawPicks = [];
   set({ tool: null, draw: null });
 }
 
@@ -763,7 +895,11 @@ export function flipAzimuth(id: string): void {
   const s = get();
   const m = s.file.measurements.find((x) => x.id === id);
   if (m?.tool !== 'azimuth' || s.readOnly) return;
-  patchMeasurement(id, { points: flipFace(m.points) });
+  const flipped = flipFace(m.points);
+  patchMeasurement(id, {
+    points: flipped,
+    ...(m.pickedOn ? { pickedOn: realignPickedOn(m.points, flipped, m.pickedOn) } : {}),
+  });
   if (s.focus === id && s.editing) set({ editing: initialEdit(flipFace(s.editing.points)) });
 }
 
@@ -809,9 +945,11 @@ export function setDrawInterceptor(f: DrawInterceptor | null): void {
 }
 
 /** Feed a drawing event; a finished shape becomes a measurement (unsaved until Save). */
-export function drawEvent(e: DrawEvent, env: DrawEnv): void {
+export function drawEvent(e: DrawEvent, env: DrawEnv, pick?: VertexPick): void {
   const s = get();
   if (!s.draw || !s.tool || (s.readOnly && !s.tool.transient)) return;
+  // a drawing replaced from outside (Suggest boundaries) leaves the picks the length of its points
+  drawPicks = alignPicks(drawPicks, s.draw.points.length, null);
   const telecom = isTelecomTool(s.tool.tool);
   // a finished line measured without saving stays on the canvas until the next click
   if (s.tool.transient && s.draw.done && e.type === 'move') return;
@@ -834,6 +972,7 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
     }
     next = { ...next, done: true };
   }
+  drawPicks = alignPicks(drawPicks, next.points.length, pick ?? null);
   if (next.cancelled) {
     stopTool();
     return;
@@ -844,18 +983,30 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
   }
   if (next.done) {
     const { tool, template, picks } = s.tool;
-    const m = measurementFrom(
-      template ?? tool,
-      {
-        id: newMeasurementId(),
-        label: nextLabel(template?.name ?? TOOL_LABELS[tool]),
-        points: next.points,
-        scope: { kind: 'site' },
-        createdAt: now(),
-        createdBy: authorName() || undefined,
-      },
-      picks,
-    );
+    // the first vertex's layer says the measurement's date; its points are saved in that date's frame
+    const manifest = openManifest();
+    const dating = creationDating(drawPicks, {
+      index: workspace.getState().dates,
+      manifest: manifest ?? { layers: [] },
+      focus: timeline.getState().focus,
+    });
+    const m: SurveyMeasurement = {
+      ...measurementFrom(
+        template ?? tool,
+        {
+          id: newMeasurementId(),
+          label: nextLabel(template?.name ?? TOOL_LABELS[tool]),
+          points: storedPoints(next.points, dating.scope, manifest),
+          scope: dating.scope,
+          createdAt: now(),
+          createdBy: authorName() || undefined,
+        },
+        picks,
+      ),
+      ...(dating.source ? { source: dating.source } : {}),
+      pickedOn: dating.pickedOn,
+    };
+    drawPicks = [];
     addMeasurement(m);
     if (telecom) {
       stopTool();
@@ -904,9 +1055,14 @@ export function editEvent(e: EditEvent): void {
   set({ editing: next });
   if (e.type === 'up' || e.type === 'delete' || e.type === 'set' || e.type === 'escape') {
     const manifest = openManifest();
-    if (JSON.stringify(next.points) !== JSON.stringify(drawnPoints(m, manifest)))
+    const was = drawnPoints(m, manifest);
+    if (JSON.stringify(next.points) !== JSON.stringify(was))
       patchMeasurement(m.id, {
         points: savedEdit(next.points, m, manifest),
+        // vertices dragged or typed keep their kind; inserted and deleted ones realign it
+        ...(m.pickedOn && next.points.length !== was.length
+          ? { pickedOn: realignPickedOn(was, next.points, m.pickedOn) }
+          : {}),
         results: m.results.map((r) => ({ ...r, status: 'stale' as const })),
       });
   }

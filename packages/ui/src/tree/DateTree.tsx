@@ -10,6 +10,7 @@ import {
   menuPoint,
   type DatasetTreeProps,
   type GroupFold,
+  type MeasureTreeProps,
   type MenuPoint,
 } from './DatasetTree';
 import { RenameField } from './RenameField';
@@ -17,6 +18,7 @@ import { EVERY_DATE, dateIcon, dropCapture, type DateFolder } from './dateModel'
 import {
   datableLayerIds,
   groupDatableLayerIds,
+  groupMeasureIds,
   type TreeGroup,
   type TreeGroupKind,
   type TreeItem,
@@ -66,6 +68,12 @@ export interface DateTreeProps extends Omit<
    * drag onto the date folders. Left out in a read-only project.
    */
   onMove?: ((layerIds: string[], capture: string | null) => void) | undefined;
+  /**
+   * File measurements under another survey date. With it (and `measures.dragMeasureIds`) a
+   * measurement drag is offered to every date folder but its own. An antenna measurement is shown
+   * refused on them, and a drop still reaches here: the caller says why it stays.
+   */
+  onMoveMeasures?: ((ids: string[], capture: string) => void) | undefined;
   /** Right-click, the menu key or the "more" button on a folder. */
   onFolderMenu?: ((m: DateFolderMenuRequest) => void) | undefined;
   /** Right-click or the menu key on a dataset row or a group header that can be filed under a date. */
@@ -93,6 +101,7 @@ export function DateTree(props: DateTreeProps) {
     onFocus,
     hidden,
     onMove,
+    onMoveMeasures,
     onFolderMenu,
     onItemMenu,
     renaming,
@@ -108,20 +117,78 @@ export function DateTree(props: DateTreeProps) {
     ...(focus ? { [focus]: true } : {}),
   }));
   /** The rows being dragged and the folder they came from. */
-  const [drag, setDrag] = useState<{ ids: string[]; from: string } | null>(null);
+  const [drag, setDrag] = useState<{
+    kind: 'layers' | 'measurements';
+    ids: string[];
+    from: string;
+    telecom: boolean;
+  } | null>(null);
   /** The folder the drag is over, when it would take the drop. */
   const [over, setOver] = useState<string | null>(null);
 
+  /** The folder a reveal had to open: its tree mounts with the reveal still to honour. */
+  const [revealOpened, setRevealOpened] = useState<string | null>(null);
   // A new focus opens its folder and collapses the rest. Adjusted during render, not in an effect.
   const [seen, setSeen] = useState(focus);
   if (focus !== seen) {
     setSeen(focus);
+    setRevealOpened(null);
     if (focus) setOpen((o) => ({ [EVERY_DATE]: o[EVERY_DATE] ?? true, [focus]: true }));
   }
 
+  // A reveal of a measurement opens the date folder holding it. Adjusted during render, as the
+  // focus is; a folder it had to open mounts its tree with the reveal still to honour.
+  const reveal = rest.measures?.reveal;
+  const [seenReveal, setSeenReveal] = useState(reveal?.seq ?? 0);
+  if (reveal && reveal.seq !== seenReveal) {
+    setSeenReveal(reveal.seq);
+    const id = reveal.id;
+    const holder =
+      id === null
+        ? undefined
+        : folders.find((f) =>
+            f.groups.some((g) => g.kind === 'measurements' && groupMeasureIds(g).includes(id)),
+          );
+    if (holder) {
+      if (open[holder.id] !== true) setRevealOpened(holder.id);
+      setOpen((o) => ({ ...o, [holder.id]: true }));
+    }
+  }
+
+  /** The measurement tree props of the tree under folder `from`: its drags report here. */
+  const measuresFor = (from: string): MeasureTreeProps | undefined => {
+    const mp = rest.measures;
+    if (!mp) return mp;
+    // a new-folder request that names no measurement belongs to the focused date alone
+    const nf = mp.newFolder?.ids.length === 0 && from !== focus ? null : mp.newFolder;
+    if (!onMoveMeasures) return nf === mp.newFolder ? mp : { ...mp, newFolder: nf };
+    return {
+      ...mp,
+      newFolder: nf,
+      onDragMeasures: (d) => {
+        mp.onDragMeasures?.(d);
+        if (d) setDrag({ kind: 'measurements', ids: d.ids, from, telecom: d.telecom });
+        else {
+          setDrag(null);
+          setOver(null);
+        }
+      },
+    };
+  };
+
+  /**
+   * Whether the drag is offered to a folder: a layer drag to every folder but its own; a
+   * measurement drag to every date folder (one with a capture) but its own.
+   */
+  const offers = (id: string, capture: string | null) => {
+    if (!drag || drag.from === id) return false;
+    if (drag.kind === 'layers') return onMove !== undefined;
+    return onMoveMeasures !== undefined && capture !== null;
+  };
+
   /** Drop wiring of a folder: every folder takes the drag but the one it came from. */
   const dropOn = (id: string, capture: string | null) => {
-    if (!onMove || !drag || drag.from === id) return {};
+    if (!drag || !offers(id, capture)) return {};
     return {
       onDragOver: (e: DragEvent<HTMLElement>) => {
         e.preventDefault();
@@ -136,18 +203,27 @@ export function DateTree(props: DateTreeProps) {
       onDrop: (e: DragEvent<HTMLElement>) => {
         e.preventDefault();
         const ids = drag.ids;
+        const kind = drag.kind;
         setDrag(null);
         setOver(null);
-        onMove(ids, capture);
+        if (kind === 'layers') onMove?.(ids, capture);
+        else if (capture !== null) onMoveMeasures?.(ids, capture);
       },
     };
   };
-  const dropClass = (id: string) =>
-    !onMove || !drag || drag.from === id ? '' : over === id ? ' drop-can drop-over' : ' drop-can';
+  const dropClass = (id: string, capture: string | null) => {
+    if (!drag || !offers(id, capture)) return '';
+    // an antenna measurement is shown refused; the drop still reaches the caller, who says why
+    if (drag.kind === 'measurements' && drag.telecom) return ' drop-no';
+    return over === id ? ' drop-can drop-over' : ' drop-can';
+  };
 
   // No Every date folder (every layer is dated): a drag still needs somewhere to drop "no date".
   const spareEvery =
-    onMove && drag && drag.from !== EVERY_DATE && !folders.some((f) => f.id === EVERY_DATE);
+    onMove &&
+    drag?.kind === 'layers' &&
+    drag.from !== EVERY_DATE &&
+    !folders.some((f) => f.id === EVERY_DATE);
 
   return (
     <div
@@ -167,6 +243,7 @@ export function DateTree(props: DateTreeProps) {
         const editing = f.capture !== null && renaming === f.capture.id;
         const toggle = () => {
           setOpen((o) => ({ ...o, [f.id]: !expanded }));
+          setRevealOpened(null);
         };
         const swatch = icon ? (
           <Icon name={icon} size={14} className="dicon" />
@@ -179,8 +256,13 @@ export function DateTree(props: DateTreeProps) {
             role="treeitem"
             aria-expanded={expanded}
             aria-selected={focused}
-            className={`dfolder${focused ? ' focused' : ''}${empty ? ' empty' : ''}${dropClass(f.id)}`}
+            className={`dfolder${focused ? ' focused' : ''}${empty ? ' empty' : ''}${dropClass(f.id, dropCapture(f))}`}
             data-testid={`date-folder-${f.id}`}
+            aria-description={
+              drag?.kind === 'measurements' && drag.telecom && offers(f.id, dropCapture(f))
+                ? t('tree.measure.move.telecom')
+                : undefined
+            }
             style={tag ? ({ '--dtag': tag.colour } as CSSProperties) : undefined}
             {...dropOn(f.id, dropCapture(f))}
           >
@@ -309,6 +391,8 @@ export function DateTree(props: DateTreeProps) {
             {expanded && f.groups.length > 0 && (
               <DatasetTree
                 {...rest}
+                measures={measuresFor(f.id)}
+                honourReveal={revealOpened === f.id}
                 hidden={hidden}
                 groups={f.groups}
                 collapsed={false}
@@ -318,7 +402,7 @@ export function DateTree(props: DateTreeProps) {
                 onDragItem={
                   onMove
                     ? (ids) => {
-                        setDrag(ids ? { ids, from: f.id } : null);
+                        setDrag(ids ? { kind: 'layers', ids, from: f.id, telecom: false } : null);
                         if (!ids) setOver(null);
                       }
                     : undefined
@@ -361,7 +445,7 @@ export function DateTree(props: DateTreeProps) {
       {/* Below the folders, so nothing moves under the pointer when the drag starts. */}
       {spareEvery && (
         <div
-          className={`dfolder dfolder-spare${dropClass(EVERY_DATE)}`}
+          className={`dfolder dfolder-spare${dropClass(EVERY_DATE, null)}`}
           data-testid={`date-folder-${EVERY_DATE}`}
           {...dropOn(EVERY_DATE, null)}
         >
@@ -376,7 +460,14 @@ export function DateTree(props: DateTreeProps) {
         </div>
       )}
       {after && after.length > 0 && (
-        <DatasetTree {...rest} hidden={hidden} groups={after} collapsed={false} nested />
+        <DatasetTree
+          {...rest}
+          measures={measuresFor('needs-date')}
+          hidden={hidden}
+          groups={after}
+          collapsed={false}
+          nested
+        />
       )}
     </div>
   );

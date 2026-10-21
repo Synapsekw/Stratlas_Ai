@@ -26,7 +26,8 @@ test('a section across the pad: two surveys and the design, a pin, 1:4, the wind
   const root = earthworksProject.dir;
   await prepareSurveys(win, root);
 
-  // a Cross-section measurement across the pad (E 551140 to 551260 at N 2331400)
+  // a Cross-section measurement across the pad (E 551140 to 551260 at N 2331400), filed under the
+  // newest survey (an undated one whose heights match no survey would wait under Needs a date)
   const mfile = join(root, 'survey', 'measurements.json');
   const m = JSON.parse(await readFile(mfile, 'utf8')) as MeasurementsFile;
   m.measurements.push({
@@ -34,7 +35,7 @@ test('a section across the pad: two surveys and the design, a pin, 1:4, the wind
     family: 'line',
     tool: 'section',
     label: 'Section across the pad',
-    scope: { kind: 'site' },
+    scope: { kind: 'survey', capture: 'd3' },
     points: [
       [551140, 2331400, 120],
       [551260, 2331400, 121.2],
@@ -48,7 +49,7 @@ test('a section across the pad: two surveys and the design, a pin, 1:4, the wind
   // the tool is on the toolbar
   await openDemo(win, earthworksProject.name, earthworksProject.id);
   await expect(await measureControl(win, 'survey-tool-section')).toBeVisible();
-  await measureTree(win);
+  await measureTree(win, 'd3');
   await selectMeasure(win, 'Section across the pad');
 
   const dock = win.getByTestId('section-dock');

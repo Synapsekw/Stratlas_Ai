@@ -13,17 +13,17 @@ import {
   formatRow,
   horizontalDistance,
   measurementReadout,
+  type ReadoutRow,
   TOOL_LABELS,
   vertexTable,
   formatBearing,
   isTelecomTool,
   type RolePicks,
 } from '@aio/survey';
-import { Icon } from '@aio/ui';
+import { formatDate, Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  copyToSurvey,
   deleteMeasurements,
   editEvent,
   knownTemplates,
@@ -31,7 +31,6 @@ import {
   patchMeasurement,
   replaceMeasurement,
   select,
-  setScope,
   startEditing,
   stopEditing,
   updateMeasurement,
@@ -41,6 +40,9 @@ import {
 import { Calculators } from './Calculators';
 import { Comparisons } from './Comparison';
 import { drawnPoints } from './measureDates';
+import { drawnSampler } from './dateSurfaces';
+import { readoutOn } from './dateReadout';
+import { copyMeasurementToDate } from './measureMoveRun';
 import { MEASURE_COLOR } from './measureScene';
 import { HoldNote } from './Qa';
 
@@ -69,17 +71,39 @@ export function MeasurementPanel() {
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
   const tpl = m?.template ? all.find((t) => t.id === m.template) : undefined;
   const units = effectiveUnits(settings.units, m?.units);
-  const rows = useMemo(() => {
-    if (!shown) return [];
-    // the 3D view's terrain as the surface, sampled at a step that keeps the panel quick
+  // the 3D view's terrain as the surface, sampled at a step that keeps the panel quick
+  const stepM = useMemo(() => {
+    if (!shown) return 0.25;
     const pts = shown.points;
     const len = pts.reduce(
       (s, p, i) => s + (i > 0 && pts[i - 1] ? horizontalDistance(pts[i - 1] ?? p, p) : 0),
       0,
     );
-    const stepM = shown.family === 'polygon' ? Math.max(0.5, len / 60) : Math.max(0.25, len / 400);
-    return measurementReadout(shown, { surface: surface ?? undefined, stepM }, tpl?.items);
-  }, [shown, surface, tpl]);
+    return shown.family === 'polygon' ? Math.max(0.5, len / 60) : Math.max(0.25, len / 400);
+  }, [shown]);
+  const rows = useMemo(
+    () =>
+      shown ? measurementReadout(shown, { surface: surface ?? undefined, stepM }, tpl?.items) : [],
+    [shown, surface, tpl, stepM],
+  );
+  // the readouts on the measurement's own date: its prepared surface, when it has one
+  const dateId = m?.scope.kind === 'survey' ? m.scope.capture : null;
+  const [onDate, setOnDate] = useState<{ of: unknown; rows: ReadoutRow[] } | null>(null);
+  useEffect(() => {
+    if (!shown || !dateId) return;
+    let live = true;
+    // the drawn points (the date's line-up now) read where the prepared surface holds them
+    void drawnSampler(dateId, manifest)
+      .then((sample) => (sample ? readoutOn(shown, tpl?.items, sample, { stepM }) : null))
+      .then((r) => {
+        if (live) setOnDate(r ? { of: shown, rows: r } : null);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [shown, dateId, tpl, stepM, manifest]);
+  const shownRows = onDate?.of === shown ? onDate.rows : rows;
 
   if (!m || !shown || !focus) return null;
   const family = all.filter(
@@ -90,6 +114,8 @@ export function MeasurementPanel() {
     patchMeasurement(m.id, { style: { color: MEASURE_COLOR, ...(m.style ?? {}), ...patch } });
   };
   const capture = m.scope.kind === 'survey' ? m.scope.capture : null;
+  const dateCapture = captures.find((x) => x.id === capture);
+  const dateLabel = dateCapture ? formatDate(dateCapture.date) : null;
 
   return (
     <section
@@ -131,7 +157,7 @@ export function MeasurementPanel() {
       <table className="sv-readout" data-testid="survey-readout">
         <caption className="sr-only">Results</caption>
         <tbody>
-          {rows.map((r) => (
+          {shownRows.map((r) => (
             <tr key={r.key} data-key={r.key}>
               <th scope="row">{r.label}</th>
               <td className="mono">{formatRow(r, units, settings.precision)}</td>
@@ -376,38 +402,25 @@ export function MeasurementPanel() {
 
       <details className="sv-sec">
         <summary>Scope</summary>
-        <p className="small">
-          {capture
-            ? `Only in ${captures.find((c) => c.id === capture)?.label ?? capture}`
-            : 'Whole site: shown with every survey'}
-        </p>
-        {!ro && (
-          <div className="sv-row sv-wrap">
-            {capture ? (
-              <button
-                type="button"
-                className="btn sm"
-                onClick={() => {
-                  setScope(m.id, { kind: 'site' });
-                }}
-              >
-                Promote to the whole site
-              </button>
-            ) : (
-              captures.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="btn sm"
-                  onClick={() => {
-                    setScope(m.id, { kind: 'survey', capture: c.id });
-                  }}
-                >
-                  Only in {c.label}
-                </button>
-              ))
-            )}
-          </div>
+        {dateLabel ? (
+          <p className="small" data-testid="survey-scope-date">
+            Survey date: {dateLabel}
+          </p>
+        ) : (
+          captures.length > 0 && (
+            <p className="small" data-testid="survey-scope-date">
+              Needs a date: drag it onto a survey date in the Datasets list, or right-click it there
+              and choose Move to date.
+            </p>
+          )
+        )}
+        {(m.source ?? dateLabel) && (
+          <p className="small" data-testid="survey-scope-source">
+            Measured on:{' '}
+            {m.source
+              ? (manifest?.layers.find((l) => l.id === m.source?.layer)?.name ?? m.source.layer)
+              : 'not recorded'}
+          </p>
         )}
         {!ro && captures.length > 0 && (
           <div className="sv-row">
@@ -433,7 +446,7 @@ export function MeasurementPanel() {
               className="btn sm"
               disabled={!copyTo}
               onClick={() => {
-                copyToSurvey(m.id, copyTo);
+                void copyMeasurementToDate(m.id, copyTo);
                 setCopyTo('');
               }}
             >

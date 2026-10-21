@@ -6,13 +6,20 @@
  * the accepted measurement computes its own exact volumes.
  */
 import { formatQuantity } from '@aio/geo';
-import { ComparisonResult, type SurfaceRef, type SurveyMeasurement } from '@aio/schema';
+import {
+  ComparisonResult,
+  type PickedOn,
+  type SitePoint,
+  type SurfaceRef,
+  type SurveyMeasurement,
+} from '@aio/schema';
 import { deadbandFromStops, draftRegions, sideKey, sideOptions, TOOL_LABELS } from '@aio/survey';
 import { Icon, useFocusTrap } from '@aio/ui';
-import { assetUrl, useWorkspace } from '@aio/workspace';
+import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
 import { bridge } from '../shell';
+import { timeline } from '../workspace/timeline';
 import {
   compareStore,
   engineClient,
@@ -23,6 +30,8 @@ import {
   type SiteTiles,
 } from './compareStore';
 import { magicStatus, projectOutline, unavailableText } from './MagicPolygon';
+import { storedFromPrepared } from './dateSurfaces';
+import { creationDating } from './measureSource';
 import { addMeasurement, measureStore, newMeasurementId, useMeasure } from './measureStore';
 import { snapRegion } from './snapRegions';
 
@@ -217,6 +226,18 @@ export function WholeSite() {
     const by = authorName();
     const surface = measureStore.getState().surface;
     const height = (e: number, n: number) => surface?.heightAt(e, n) ?? 0;
+    // the regions belong to the date of the surface they end on, measured on its DSM
+    const manifest = project?.manifest ?? null;
+    const to = site.to;
+    const prepared = to.kind === 'survey' ? surfaces.find((x) => x.id === to.surface) : undefined;
+    const dating = creationDating(
+      prepared?.source.kind === 'dsm' ? [{ layer: prepared.source.layer, on: 'ground' }] : [],
+      {
+        index: workspace.getState().dates,
+        manifest: manifest ?? { layers: [] },
+        focus: prepared?.capture ?? timeline.getState().focus,
+      },
+    );
     let n = 0;
     for (const k of [...picked].sort((x, y) => x - y)) {
       const d = site.drafts[k];
@@ -228,8 +249,15 @@ export function WholeSite() {
         tool: 'volume',
         label: `${d.kind === 'cut' ? 'Cut' : 'Fill'} region ${String(k + 1)}`,
         folder: 'Whole-site regions',
-        scope: { kind: 'site' },
-        points: d.ring.map(([e, nn]) => [e, nn, height(e, nn)]),
+        scope: dating.scope,
+        ...(dating.source ? { source: dating.source } : {}),
+        // the ring is in the prepared surfaces' frame, not where the date is lined up now
+        points: storedFromPrepared(
+          d.ring.map(([e, nn]): SitePoint => [e, nn, height(e, nn)]),
+          dating.scope,
+          manifest,
+        ),
+        pickedOn: d.ring.map((): PickedOn => 'ground'),
         items: [
           {
             id: `c${String(k + 1)}`,

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { emptyMeasurements, ProjectManifest, type RemoveTarget, type SitePoint } from '@aio/schema';
+import {
+  emptyMeasurements,
+  ProjectManifest,
+  type RemoveTarget,
+  type SitePoint,
+  type SurveyMeasurement,
+} from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -7,9 +13,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const lookOnly = vi.hoisted(() => ({ on: false }));
+const prepare = vi.hoisted(() => ({ fn: vi.fn<() => Promise<string | null>>() }));
+vi.mock('../survey/compareStore', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  prepareSurfaces: () => prepare.fn(),
+}));
 vi.mock('@aio/annotate', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  useAnnotateReadOnly: () => false,
+  useAnnotateReadOnly: () => lookOnly.on,
+  isAnnotateReadOnly: () => lookOnly.on,
 }));
 
 import { shell } from '../shell';
@@ -17,10 +30,13 @@ import {
   askNewFolder,
   deleteMeasurements,
   isDirty,
+  renameMeasurement,
   revertMeasurements,
   measureStore,
+  replaceMeasurements,
   revealMeasurement,
   select,
+  setMeasureNote,
   setMeasureVisibilityMemory,
   undoDeleteMeasurements,
 } from '../survey/measureStore';
@@ -142,6 +158,7 @@ const folderOf = (id: string) => measures().find((m) => m.id === id)?.folder;
 
 beforeEach(() => {
   asked.length = 0;
+  lookOnly.on = false;
   setMeasureVisibilityMemory(createMeasureVisibilityMemory(memoryStorage()));
   const file = {
     ...emptyMeasurements(),
@@ -650,5 +667,264 @@ describe('Datasets: the measurement filter', () => {
     });
     expect((box() as HTMLInputElement).value).toBe('');
     expect(shown()).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('Datasets: measurements under survey dates', () => {
+  const onDate = (id: string, capture: string, folder?: string): SurveyMeasurement => ({
+    ...measurement(id, folder),
+    scope: { kind: 'survey', capture },
+  });
+  const seed = (ms: SurveyMeasurement[]) => {
+    const file = { ...emptyMeasurements(), measurements: ms };
+    measureStore.setState({ file, savedText: JSON.stringify(file) });
+  };
+  const folderOfDate = (id: string) => q(`[data-testid="date-folder-${id}"]`);
+  const openDate = (id: string) => {
+    click(folderOfDate(id)?.querySelector('.dchev') ?? null);
+  };
+  const rowsIn = (el: Element | null) =>
+    [...(el?.querySelectorAll<HTMLElement>('[data-testid="measure-row"]') ?? [])].map(
+      (r) => r.dataset.id,
+    );
+  const needsGroup = () =>
+    qa('[data-testid="tree-group-measurements"]').find((g) =>
+      g.textContent.includes('Needs a date'),
+    ) ?? null;
+
+  it('a dated measurement is listed in its date folder, a legacy one under Needs a date', () => {
+    seed([onDate('a', 'c1', 'Fence'), onDate('b', 'c2'), measurement('c')]);
+    render(dated);
+    openDate('c1');
+    openDate('c2');
+    expect(rowsIn(folderOfDate('c1'))).toEqual(['a']);
+    expect(rowsIn(folderOfDate('c2'))).toEqual(['b']);
+    // the date's folder row is that date's own
+    expect(
+      folderOfDate('c1')?.querySelector('[data-testid="measure-folder"][data-folder="Fence"]'),
+    ).not.toBeNull();
+    // the Every date folder holds none, and the one with no date sits below the dates
+    expect(rowsIn(folderOfDate('every'))).toEqual([]);
+    expect(needsGroup()).not.toBeNull();
+    const all = qa('[data-testid="measure-row"]').map((r) => r.dataset.id);
+    expect(all).toHaveLength(3);
+    expect(all.at(-1)).toBe('c');
+  });
+
+  it('no Needs a date group when every measurement has a date', () => {
+    seed([onDate('a', 'c1'), onDate('b', 'c2')]);
+    render(dated);
+    expect(needsGroup()).toBeNull();
+  });
+
+  it('a measurement on a date the project no longer has is under Needs a date', () => {
+    seed([onDate('a', 'gone')]);
+    render(dated);
+    expect(needsGroup()).not.toBeNull();
+    expect(row('a')).not.toBeNull();
+    expect(row('a')?.closest('[data-testid^="date-folder-"]')).toBeNull();
+  });
+
+  it.each([
+    [
+      'in a package',
+      () => {
+        shell.setState({ pkg: { header: { readOnly: true, exports: [] } } as never });
+      },
+    ],
+    [
+      'for a look-only reviewer',
+      () => {
+        lookOnly.on = true;
+      },
+    ],
+    [
+      'with a read-only measurements file',
+      () => {
+        measureStore.setState({ readOnly: true });
+      },
+    ],
+  ])('measurement rows do not drag %s', (_, lock) => {
+    seed([onDate('a', 'c1', 'Fence'), measurement('c')]);
+    lock();
+    render(dated);
+    openDate('c1');
+    expect(row('a')).not.toBeNull();
+    expect(row('c')).not.toBeNull();
+    expect(row('a')?.getAttribute('draggable')).toBeNull();
+    expect(row('c')?.getAttribute('draggable')).toBeNull();
+    expect(
+      q('[data-testid="measure-folder"][data-folder="Fence"]')?.getAttribute('draggable'),
+    ).toBeNull();
+  });
+
+  it('measurement rows drag where they may be edited', () => {
+    seed([onDate('a', 'c1'), measurement('c')]);
+    render(dated);
+    openDate('c1');
+    expect(row('a')?.getAttribute('draggable')).toBe('true');
+    expect(row('c')?.getAttribute('draggable')).toBe('true');
+  });
+
+  it('a project with no dates keeps the one Measurements group', () => {
+    seed([onDate('a', 'c1'), measurement('c')]);
+    render(plain);
+    expect(qa('[data-testid="tree-group-measurements"]')).toHaveLength(1);
+    expect(needsGroup()).toBeNull();
+    expect(qa('[data-testid="measure-row"]').map((r) => r.dataset.id)).toEqual(['a', 'c']);
+  });
+
+  it('a measurement note in the store shows in the sidebar, its Undo undoes the move', () => {
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    const before = measures()[0];
+    act(() => {
+      const next = { ...onDate('a', 'c2') };
+      const seq = replaceMeasurements([next], { undoable: true });
+      expect(seq).not.toBeNull();
+      setMeasureNote({ text: '1 measurement moved.', danger: false, undo: true });
+    });
+    expect(q('[data-testid="date-note"]')?.textContent).toContain('1 measurement moved.');
+    expect(measures()[0]?.scope).toEqual({ kind: 'survey', capture: 'c2' });
+    click(q('[data-testid="date-undo"]'));
+    expect(measures()[0]?.scope).toEqual(before?.scope);
+    expect(q('[data-testid="date-note"]')).toBeNull();
+  });
+
+  it('a later edit of a moved measurement takes the Undo off the note', () => {
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    act(() => {
+      replaceMeasurements([onDate('a', 'c2')], { undoable: true });
+      setMeasureNote({ text: 'Moved.', danger: false, undo: true });
+    });
+    expect(q('[data-testid="date-undo"]')).not.toBeNull();
+    act(() => {
+      renameMeasurement('a', 'Edited');
+    });
+    expect(q('[data-testid="date-note"]')?.textContent).toContain('Moved.');
+    expect(q('[data-testid="date-undo"]')).toBeNull();
+    expect(labelOf('a')).toBe('Edited');
+  });
+
+  it('a look-only reviewer cannot undo a measurement move from the note', () => {
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    act(() => {
+      replaceMeasurements([onDate('a', 'c2')], { undoable: true });
+      setMeasureNote({ text: 'Moved.', danger: false, undo: true });
+    });
+    lookOnly.on = true;
+    click(q('[data-testid="date-undo"]'));
+    expect(measures()[0]?.scope).toEqual({ kind: 'survey', capture: 'c2' });
+  });
+
+  it('a refusal for want of surfaces offers Prepare surfaces', () => {
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    act(() => {
+      setMeasureNote({ text: 'Not prepared.', danger: true, prepare: true });
+    });
+    expect(q('[data-testid="date-note"]')?.classList.contains('danger')).toBe(true);
+    expect(q('[data-testid="date-note-prepare"]')).not.toBeNull();
+  });
+
+  const prepareNote = () => {
+    act(() => {
+      setMeasureNote({ text: 'Not prepared.', danger: true, prepare: true });
+    });
+  };
+  const settle = async () => {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
+  it('Prepare surfaces started takes the refusal away, its store note too', async () => {
+    prepare.fn.mockReset().mockResolvedValue(null);
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    prepareNote();
+    click(q('[data-testid="date-note-prepare"]'));
+    expect(q('[data-testid="date-note-prepare"]')).toBeNull();
+    await settle();
+    expect(prepare.fn).toHaveBeenCalledTimes(1);
+    expect(q('[data-testid="date-note"]')).toBeNull();
+    expect(measureStore.getState().note).toBeNull();
+  });
+
+  it('nothing left to prepare is said plainly, a failure as danger', async () => {
+    prepare.fn.mockReset().mockResolvedValue('Every survey surface is prepared.');
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    prepareNote();
+    click(q('[data-testid="date-note-prepare"]'));
+    await settle();
+    const n = q('[data-testid="date-note"]');
+    expect(n?.textContent).toContain('Every survey surface is prepared.');
+    expect(n?.textContent).not.toContain('Not prepared.');
+    expect(n?.classList.contains('danger')).toBe(false);
+    prepare.fn.mockResolvedValue('The job could not start.');
+    prepareNote();
+    click(q('[data-testid="date-note-prepare"]'));
+    await settle();
+    expect(q('[data-testid="date-note"]')?.textContent).toContain('The job could not start.');
+    expect(q('[data-testid="date-note"]')?.classList.contains('danger')).toBe(true);
+  });
+
+  it('a note reshaped by a stale Undo still follows the store: Dismiss clears it there', () => {
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    act(() => {
+      replaceMeasurements([onDate('a', 'c2')], { undoable: true });
+      setMeasureNote({ text: 'Moved.', danger: false, undo: true });
+    });
+    const seq = measureStore.getState().note?.seq ?? -1;
+    // a stale Undo (the store says no): the note stays without it
+    act(() => {
+      measureStore.setState({ undoChange: null });
+    });
+    click(q('[data-testid="date-undo"]'));
+    expect(q('[data-testid="date-undo"]')).toBeNull();
+    expect(measureStore.getState().note?.seq).toBe(seq);
+    // the store updating the same note still reaches the slot
+    act(() => {
+      const n = measureStore.getState().note;
+      if (n) measureStore.setState({ note: { ...n, text: 'Moved, again.' } });
+    });
+    expect(q('[data-testid="date-note"]')?.textContent).toContain('Moved, again.');
+    click(q('[data-testid="date-note"] button[aria-label="Dismiss"]'));
+    expect(q('[data-testid="date-note"]')).toBeNull();
+    expect(measureStore.getState().note).toBeNull();
+  });
+
+  it('a note reshaped by Prepare clears when the store lets go of it', () => {
+    prepare.fn.mockReset().mockReturnValue(new Promise(() => undefined));
+    seed([onDate('a', 'c1')]);
+    render(dated);
+    prepareNote();
+    click(q('[data-testid="date-note-prepare"]'));
+    act(() => {
+      setMeasureNote(null);
+    });
+    expect(q('[data-testid="date-note"]')).toBeNull();
+  });
+
+  it('a reveal of no measurement opens no dated tree', () => {
+    seed([onDate('a', 'c1'), measurement('c')]);
+    render(dated);
+    openDate('c1');
+    const head = () =>
+      folderOfDate('c1')
+        ?.querySelector('[data-testid="tree-group-measurements"]')
+        ?.closest('[role="treeitem"]') ?? null;
+    // fold the date's Measurements group by hand
+    click(head()?.querySelector('.tgroup-btn') ?? null);
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
+    act(() => {
+      revealMeasurement(null);
+    });
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
   });
 });

@@ -11,6 +11,13 @@ vi.mock('@aio/annotate', async (orig) => ({
   useAnnotateReadOnly: () => look.only,
 }));
 
+const run = vi.hoisted(() => ({
+  copy: vi.fn(() => Promise.resolve({ ok: true, moved: 1, seq: null })),
+}));
+vi.mock('./measureMoveRun', () => ({ copyMeasurementToDate: run.copy }));
+
+import { compareStore } from './compareStore';
+import { groundAt, setDateSurfaceSource } from './dateSurfaces';
 import { MeasurementPanel } from './MeasurementPanel';
 import { measureStore } from './measureStore';
 
@@ -32,7 +39,7 @@ const manifest: ProjectManifest = {
       lineUp: { eastM: 2, northM: -1, with: 'jan', at: '2026-10-16T08:00:00Z' },
     },
   ],
-  layers: [],
+  layers: [{ id: 'ortho-jun', name: 'June ortho', kind: 'raster' } as never],
   severityModels: [],
   classCatalogues: [],
 };
@@ -77,6 +84,8 @@ afterEach(() => {
   root = undefined;
   host.remove();
   look.only = false;
+  setDateSurfaceSource(null);
+  run.copy.mockClear();
   measureStore.setState({ focus: null, selected: [], surface: null });
   workspace.getState().closeProject();
 });
@@ -125,5 +134,136 @@ describe('the measurement panel for a look-only reviewer', () => {
       true,
     );
     expect(host.textContent).not.toContain('Delete measurement');
+  });
+});
+
+const mount = () => {
+  act(() => {
+    root = createRoot(host);
+    root.render(<MeasurementPanel />);
+  });
+};
+const openScope = () => {
+  for (const d of host.querySelectorAll('details')) d.open = true;
+};
+
+describe('the measurement panel scope, source and copy', () => {
+  it('shows the date and the source layer, with no Promote to the whole site', () => {
+    measureStore.setState({
+      file: {
+        schema: 'aio.measurements/1',
+        measurements: [{ ...spot, source: { layer: 'ortho-jun' } }],
+      },
+    });
+    mount();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')?.textContent).toContain(
+      'Survey date:',
+    );
+    expect(host.querySelector('[data-testid="survey-scope-source"]')?.textContent).toContain(
+      'Measured on: June ortho',
+    );
+    expect(host.textContent).not.toContain('Promote to the whole site');
+    expect(host.textContent).not.toContain('Only in');
+  });
+
+  it('a legacy measurement says it needs a date', () => {
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [{ ...spot, scope: { kind: 'site' } }] },
+    });
+    mount();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')?.textContent).toBe(
+      'Needs a date: drag it onto a survey date in the Datasets list, or right-click it there and choose Move to date.',
+    );
+  });
+
+  it('no date line in a project with no survey dates', () => {
+    workspace.getState().openProject({
+      id: 'two-dates',
+      root: 'E:/p',
+      manifest: { ...manifest, captures: [] },
+    });
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [{ ...spot, scope: { kind: 'site' } }] },
+    });
+    mount();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')).toBeNull();
+  });
+
+  it('a measurement whose date was deleted says it needs a date', () => {
+    measureStore.setState({
+      file: {
+        schema: 'aio.measurements/1',
+        measurements: [{ ...spot, scope: { kind: 'survey', capture: 'gone' } }],
+      },
+    });
+    mount();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')?.textContent).toContain(
+      'Needs a date',
+    );
+    expect(host.textContent).not.toContain('gone');
+  });
+
+  it('Copy re-measures through copyMeasurementToDate', () => {
+    mount();
+    openScope();
+    const sel = host.querySelector<HTMLSelectElement>('select[aria-label="Copy to survey"]');
+    expect(sel).not.toBeNull();
+    act(() => {
+      if (!sel) return;
+      sel.value = 'jan';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const copy = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Copy');
+    act(() => copy?.click());
+    expect(run.copy).toHaveBeenCalledWith('spot', 'jan');
+  });
+
+  it('readouts sample the measurement date surface, not the stage', async () => {
+    setDateSurfaceSource(() =>
+      Promise.resolve((e: Float64Array) => Promise.resolve(Float64Array.from(e, () => 7))),
+    );
+    mount();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(cell('surface-z')).toContain('7.00');
+  });
+
+  it('reads a date re-lined-up after preparing where groundAt reads it', async () => {
+    // June's surface was prepared at 0.5 m east; June is lined up 2 m east and 1 m south now
+    compareStore.setState({
+      surfaces: [
+        {
+          id: 's-jun',
+          name: 's-jun',
+          capture: 'jun',
+          source: { kind: 'photogrammetry' },
+          fingerprint: 's-jun',
+          dateShiftM: { eastM: 0.5, northM: 0 },
+        } as never,
+      ],
+    });
+    const asked: [number, number][] = [];
+    setDateSurfaceSource(() =>
+      Promise.resolve((es: Float64Array, ns: Float64Array) => {
+        es.forEach((e, i) => asked.push([e, ns[i] ?? Number.NaN]));
+        return Promise.resolve(Float64Array.from(es, () => 7));
+      }),
+    );
+    try {
+      mount();
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      const panel = [...asked];
+      asked.length = 0;
+      await groundAt('jun', [[102, 199, 0]], manifest);
+      // drawn (102, 199), back by the line-up now, on by the prepared one: (100.5, 200)
+      expect(asked).toEqual([[100.5, 200]]);
+      expect(panel).toContainEqual([100.5, 200]);
+      expect(panel).not.toContainEqual([102, 199]);
+    } finally {
+      compareStore.setState({ surfaces: [] });
+    }
   });
 });

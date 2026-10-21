@@ -30,7 +30,14 @@ export interface TreeItem {
   /** The row is a drawing's plan (its picture): it takes the drawing controls. */
   drawing?: true;
   /** A measurement row (its `id` is `measureMark(measure.id)`). */
-  measure?: { id: string; color: string; dimmed: boolean; dimmedWhy?: string };
+  measure?: {
+    id: string;
+    color: string;
+    dimmed: boolean;
+    dimmedWhy?: string;
+    /** An antenna measurement: it never moves to another survey date. */
+    telecom?: boolean;
+  };
   /** A measurement folder row (`measure-folder:<name>`): its rows are `children`. */
   folder?: string;
   /**
@@ -154,12 +161,19 @@ export function folderMeasureIds(it: TreeItem): string[] {
 export function measurementsGroup(
   items: readonly TreeItem[],
   all?: readonly string[],
+  label?: string,
 ): TreeGroup | null {
   const base = GROUPS.find((g) => g.kind === 'measurements');
   const shown = items.flatMap(itemMeasureIds).length;
   const count = all ? all.length : shown;
   if (!base || count === 0) return null;
-  return { ...base, count, items: [...items], ...(all ? { measureIds: all, matched: shown } : {}) };
+  return {
+    ...base,
+    ...(label ? { label } : {}),
+    count,
+    items: [...items],
+    ...(all ? { measureIds: all, matched: shown } : {}),
+  };
 }
 
 function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): string | undefined {

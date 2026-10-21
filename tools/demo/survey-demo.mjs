@@ -196,6 +196,16 @@ export async function buildSurveyDemo({ out, site, quick = false, python, log = 
     await cp(join(set, 'survey'), join(root, 'survey'), { recursive: true });
     const sv = (f) => join(root, 'survey', f);
     const readSv = async (f) => JSON.parse(await readFile(sv(f), 'utf8'));
+    // every measurement under the newest survey date, measured on its DSM: the app would file
+    // undated ones itself once a date is prepared, and leave the project unsaved. No number
+    // changes: a site measurement already reads the latest date with a surface.
+    const measurements = await readSv('measurements.json');
+    for (const ms of measurements.measurements ?? [])
+      if (ms.scope?.kind === 'site') {
+        ms.scope = { kind: 'survey', capture: last };
+        ms.source = { layer: `dsm-${last}` };
+      }
+    await writeFile(sv('measurements.json'), json(measurements));
     check(schema.SurveySettings, await readSv('settings.json'), 'survey/settings.json');
     const designs = check(schema.DesignsFile, await readSv('designs.json'), 'survey/designs.json');
     check(schema.MeasurementsFile, await readSv('measurements.json'), 'survey/measurements.json');

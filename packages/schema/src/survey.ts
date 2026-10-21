@@ -408,6 +408,15 @@ export const MeasurementScope = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('survey'), capture: Id }).strict(),
 ]);
 
+/**
+ * The layer a measurement was measured, or last re-measured, on. Loose: a field a later version
+ * adds is kept, never a reason to refuse the whole file.
+ */
+export const MeasurementSource = z.looseObject({ layer: Id });
+
+/** What a vertex was picked on: the 3D model or the ground (height map). */
+export const PickedOn = z.enum(['model', 'ground']);
+
 export const MeasurementStyle = z.looseObject({
   color: HexColor,
   fill: HexColor.optional(),
@@ -436,6 +445,10 @@ export const SurveyMeasurement = z.looseObject({
   label: z.string().min(1).max(200),
   folder: z.string().max(200).optional(),
   scope: MeasurementScope,
+  /** The layer it was measured, or last re-measured, on. Absent on older files. */
+  source: MeasurementSource.optional(),
+  /** Pick kind per vertex, same length as `points`; a bad one is dropped on read. */
+  pickedOn: z.array(PickedOn).max(100_000).optional(),
   /** Vertices (E, N, Z) in the project CRS; a polygon is closed implicitly. */
   points: z.array(SitePoint).min(1).max(100_000),
   style: MeasurementStyle.optional(),
@@ -451,8 +464,38 @@ export const SurveyMeasurement = z.looseObject({
   updatedAt: IsoTime.optional(),
 });
 
+/**
+ * Drops a `pickedOn` that is not an array of `model` or `ground` with one entry per point, from
+ * each measurement that has one, with a warning naming it. A bad `pickedOn` never fails the file.
+ */
+export function dropUnreadablePickedOn(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null) return raw;
+  const list = (raw as { measurements?: unknown }).measurements;
+  if (!Array.isArray(list)) return raw;
+  const dropped: string[] = [];
+  const measurements = list.map((m: unknown) => {
+    if (typeof m !== 'object' || m === null || !('pickedOn' in m)) return m;
+    const { pickedOn, points } = m as { pickedOn: unknown; points?: unknown };
+    const ok =
+      Array.isArray(pickedOn) &&
+      Array.isArray(points) &&
+      pickedOn.length === points.length &&
+      pickedOn.every((k) => k === 'model' || k === 'ground');
+    if (ok) return m;
+    const rest: Record<string, unknown> = { ...(m as Record<string, unknown>) };
+    delete rest.pickedOn;
+    const id = (m as { id?: unknown }).id;
+    dropped.push(typeof id === 'string' ? id : '?');
+    console.warn(
+      `Measurement "${typeof id === 'string' ? id : '?'}": pickedOn dropped (it must have one model or ground entry per point).`,
+    );
+    return rest;
+  });
+  return dropped.length > 0 ? { ...raw, measurements } : raw;
+}
+
 /** `<project>/survey/measurements.json` (`aio.measurements/1`), written atomically with `.bak`. */
-export const MeasurementsFile = z
+const MeasurementsFileStrict = z
   .looseObject({
     schema: z.literal('aio.measurements/1'),
     measurements: z.array(SurveyMeasurement).max(20_000),
@@ -469,6 +512,16 @@ export const MeasurementsFile = z
       seen.add(m.id);
     }
   });
+
+/**
+ * Tolerant on read (a bad `pickedOn` is dropped). Typed as the strict schema so request types
+ * derived from it keep the object input type; the preprocess only widens it to unknown.
+ * At runtime it is a preprocess pipe: `.shape`, `.extend`, `.pick` and such typecheck but throw.
+ */
+export const MeasurementsFile = z.preprocess(
+  dropUnreadablePickedOn,
+  MeasurementsFileStrict,
+) as unknown as typeof MeasurementsFileStrict;
 
 export const emptyMeasurements = (): MeasurementsFile => ({
   schema: 'aio.measurements/1',
@@ -676,6 +729,8 @@ export type HeightTiles = z.infer<typeof HeightTiles>;
 export type MeasurementFamily = z.infer<typeof MeasurementFamily>;
 export type MeasurementTool = z.infer<typeof MeasurementTool>;
 export type MeasurementScope = z.infer<typeof MeasurementScope>;
+export type MeasurementSource = z.infer<typeof MeasurementSource>;
+export type PickedOn = z.infer<typeof PickedOn>;
 export type MeasurementStyle = z.infer<typeof MeasurementStyle>;
 export type CustomField = z.infer<typeof CustomField>;
 export type UnitsOverride = z.infer<typeof UnitsOverride>;
