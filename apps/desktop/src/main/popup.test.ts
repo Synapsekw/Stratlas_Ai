@@ -1,10 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { popupAction } from './popup';
+import { externalLinkAllowed, linkHost, popupAction } from './popup';
 
 describe('popupAction', () => {
-  it('hands https links to the system browser', () => {
-    const url = 'https://www.google.com/maps/search/?api=1&query=29.3,47.9';
-    expect(popupAction(url)).toEqual({ kind: 'external', url });
+  it('hands links to the app link hosts to the system browser', () => {
+    for (const url of [
+      'https://github.com/OpenDroneMap/ODM/blob/master/LICENSE',
+      'https://opendronemap.org/odm/',
+      'https://apps.mapbox.com/feedback/',
+    ])
+      expect(popupAction(url)).toEqual({ kind: 'external', url });
+  });
+
+  it('refuses https links to any other host', () => {
+    for (const url of [
+      'https://www.google.com/maps/search/?api=1&query=29.3,47.9',
+      'https://evil.test/',
+      'https://github.com.evil.test/',
+      'https://github.com:8443/',
+      'https://user:pw@github.com/',
+    ])
+      expect(popupAction(url), url).toEqual({ kind: 'deny' });
+  });
+
+  it('allows the configured privacy policy host', () => {
+    const extra = [linkHost('https://legal.example.org/privacy')].filter(
+      (h): h is string => h !== null,
+    );
+    expect(externalLinkAllowed('https://legal.example.org/privacy', extra)).toBe(true);
+    expect(linkHost('http://legal.example.org/')).toBeNull();
   });
 
   it('refuses a project file: nothing in the app opens a window of its own', () => {

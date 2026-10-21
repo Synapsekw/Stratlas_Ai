@@ -7,7 +7,7 @@ import {
   createProviderRegistry,
   createScriptedProvider,
 } from '@aio/ai/main';
-import { brand, urlSchemes } from '@aio/brand';
+import { brand, privacyPolicyLink, urlSchemes } from '@aio/brand';
 import {
   ChangeThresholds,
   DETECTOR_FILE_EXTENSION,
@@ -263,7 +263,7 @@ import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode, windowSize } from './w
 import { installMenu } from './menu';
 import { appUserModelId } from './appUserModel';
 import { linkPathFromArgv, parseAppLink } from './appLink';
-import { popupAction } from './popup';
+import { externalLinkAllowed, linkHost, popupAction } from './popup';
 import {
   checkExport,
   createPackageJobs,
@@ -2161,7 +2161,9 @@ function registerIpc(): void {
     handle,
     keys: mapKeys,
     tiles: onlineTiles,
-    openExternal: (url) => void shell.openExternal(url),
+    openExternal: (url) => {
+      if (externalLinkAllowed(url, EXTRA_LINK_HOSTS)) void shell.openExternal(url);
+    },
   });
 
   // M11: one module per stream (G1 geodesy and geoid packs; G2, G3 and G6 survey; G12 survey AI).
@@ -2477,10 +2479,13 @@ function hardenSession(): void {
   });
 }
 
+/** The privacy policy's host (brand.json), the one link host that is configured, not listed. */
+const EXTRA_LINK_HOSTS = [linkHost(privacyPolicyLink())].filter((h): h is string => h !== null);
+
 app.on('web-contents-created', (_e, contents) => {
   // Never navigate away from the app, open windows inside it or attach webviews.
   contents.setWindowOpenHandler(({ url }) => {
-    const action = popupAction(url);
+    const action = popupAction(url, EXTRA_LINK_HOSTS);
     if (action.kind === 'external') void shell.openExternal(action.url);
     return { action: 'deny' };
   });
