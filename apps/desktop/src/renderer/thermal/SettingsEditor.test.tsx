@@ -80,6 +80,7 @@ describe('SettingsEditor', () => {
     act(() => {
       byId('thermal-apply-photo')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    expect(onApply).toHaveBeenCalledWith('photo', { ...settings, humidityPct: 70 });
+    // only what the person changed: the other photos keep their own distance and the rest
+    expect(onApply).toHaveBeenCalledWith('photo', { humidityPct: 70 });
   });
 });

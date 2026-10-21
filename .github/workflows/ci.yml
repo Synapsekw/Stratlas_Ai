@@ -388,9 +388,16 @@ jobs:
       - name: ExifTool and DJI Thermal SDK (as in the pack)
         if: runner.os == 'Windows'
         continue-on-error: true
+        # a failed fetch is a warning on the run, so the skipped tests are not a silent skip
         run: |
-          node ../tools/pipeline-pack/thermal-tools.mjs --out "$RUNNER_TEMP/thermal" --cache "$RUNNER_TEMP/thermal-cache" --dataset "$RUNNER_TEMP/thermal-dataset" | tee "$RUNNER_TEMP/thermal.log"
-          grep -E '^(QUADRION_EXIFTOOL|QUADRION_DJI_TSDK|QUADRION_DJI_TSDK_DATASET)=' "$RUNNER_TEMP/thermal.log" >> "$GITHUB_ENV"
+          skip() {
+            echo "::warning title=Thermal tools not fetched::$1 The thermal cross-check and DJI SDK tests skip in this run."
+            exit 1
+          }
+          node ../tools/pipeline-pack/thermal-tools.mjs --out "$RUNNER_TEMP/thermal" --cache "$RUNNER_TEMP/thermal-cache" --dataset "$RUNNER_TEMP/thermal-dataset" | tee "$RUNNER_TEMP/thermal.log" \
+            || skip "Fetching ExifTool and the DJI Thermal SDK failed (see this step's log)."
+          grep -E '^(QUADRION_EXIFTOOL|QUADRION_DJI_TSDK|QUADRION_DJI_TSDK_DATASET)=' "$RUNNER_TEMP/thermal.log" >> "$GITHUB_ENV" \
+            || skip "The thermal tools script printed no tool paths."
       - name: Cache photo set renders
         uses: actions/cache@v4
         with:

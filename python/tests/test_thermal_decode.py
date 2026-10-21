@@ -535,6 +535,38 @@ def test_dji_photos_without_the_sdk_are_unsupported(tmp_path, tools):
     assert "DJI Thermal SDK" in index(root)["photos"]["d1"]["reason"]
 
 
+def test_dji_photos_left_unread_for_want_of_the_sdk_decode_once_it_is_there(tmp_path, tools, monkeypatch):
+    pj = Project(tmp_path)
+    _dji_jpeg(pj.photo("d1"))
+    root = pj.save()
+    out, _ = decode(root, "j1")
+    assert out["unsupported"] == 1
+    # still no SDK: nothing to try again
+    out, _ = decode(root, "j2")
+    assert out["skipped"] == 1
+
+    # the SDK is installed but will not load: tried, still unsupported
+    tools["dji_tsdk"] = str(tmp_path / "sdk")
+
+    class Unloadable(FakeTsdk):
+        def __init__(self, dll_dir):
+            raise OSError("the library could not be loaded")
+
+    monkeypatch.setattr(tp, "Tsdk", Unloadable)
+    out, _ = decode(root, "j3")
+    assert out["unsupported"] == 1
+    assert "could not be loaded" in index(root)["photos"]["d1"]["reason"]
+
+    # once it loads, the photo is read
+    FakeTsdk.instances.clear()
+    monkeypatch.setattr(tp, "Tsdk", FakeTsdk)
+    out, _ = decode(root, "j4")
+    assert (out["decoded"], out["skipped"]) == (1, 0)
+    assert index(root)["photos"]["d1"]["status"] == "ok"
+    out, _ = decode(root, "j5")
+    assert out["skipped"] == 1
+
+
 # ---------------------------------------------------------------------------- read-only
 
 

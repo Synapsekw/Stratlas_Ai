@@ -6093,6 +6093,10 @@ export const en = {
   'thermal.status.unverified':
     'Temperatures held back: the reading did not match the reference tool.',
   'thermal.status.implausible': 'Temperatures held back: the values are outside physical limits.',
+  'thermal.status.stale':
+    'The settings changed since this photo was decoded, so its temperatures are held back. Open the dataset again to decode it.',
+  'thermal.status.missing':
+    'The temperatures of this photo are missing. Open the dataset again to decode it.',
   'thermal.readOnly': 'Open the project folder to analyse thermal photos.',
   'thermal.none': 'No thermal photos in this dataset.',
   'thermal.filmstrip': 'Thermal photos',

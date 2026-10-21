@@ -1,8 +1,9 @@
 /**
  * The one line under the thermal photo with the settings its temperatures are computed with
  * ("Emissivity 0.95 · Distance 18 m · Air 32 °C · Humidity 60%") and Edit, which opens the
- * settings editor. A read-only bench shows the line without Edit. When the camera's SDK clamped a
- * value, a note says which and what it used.
+ * settings editor. A read-only bench shows the line without Edit. With a raster on show the line
+ * is the settings the raster was decoded with; when the camera's SDK clamped a value, a note says
+ * which and what it used.
  */
 import type { ThermalSettings } from '@aio/schema';
 import { Button, useT } from '@aio/ui';
@@ -22,11 +23,12 @@ export function SettingsLine({
   onApply,
 }: {
   settings: ThermalSettings;
-  /** Settings the camera's SDK held to its limits (from the raster's sidecar). */
+  /** Settings the camera's SDK held to its limits (the raster's, whose settings `settings` are). */
   clamped: readonly string[];
   readOnly: boolean;
   selected: number;
-  onApply: (scope: SettingsScope, settings: ThermalSettings) => void;
+  /** The fields the person changed, for the scope picked. */
+  onApply: (scope: SettingsScope, patch: Partial<ThermalSettings>) => void;
 }) {
   const t = useT();
   const opener = useRef<HTMLButtonElement>(null);

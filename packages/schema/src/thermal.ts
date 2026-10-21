@@ -216,7 +216,8 @@ export type ThermalCandidatesFile = z.infer<typeof ThermalCandidatesFile>;
 /** `thermal.decode`: decode the radiometric photos of a layer into rasters. */
 export const ThermalDecodeParams = z.object({
   layerId: Id,
-  photos: z.array(Id).optional(),
+  /** The photos to decode; left out, the whole layer. Never empty (the job refuses it). */
+  photos: z.array(Id).min(1).optional(),
   force: z.boolean().optional(),
 });
 export type ThermalDecodeParams = z.infer<typeof ThermalDecodeParams>;

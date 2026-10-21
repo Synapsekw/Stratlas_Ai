@@ -48,19 +48,54 @@ export function effectiveSettings(
   };
 }
 
+const FIELDS: readonly (keyof ThermalSettings)[] = [
+  'emissivity',
+  'distanceM',
+  'airC',
+  'humidityPct',
+  'reflectedC',
+];
+
+const same = (a: number | null, b: number | null): boolean =>
+  a === null || b === null ? a === b : Math.abs(a - b) <= 1e-9;
+
 /**
- * A copy of `file` with `patch` applied to the photos in `keys` (`"<layerId>/<photoId>"`); a photo
- * with no settings yet starts from the file's defaults, else the design defaults. Nothing else
- * (readings, hot spots, grading, other photos) changes.
+ * Whether a photo's settings `want` are not what its raster was decoded with (`used`). A field the
+ * camera's SDK clamped (`clamped`) differs by design and is not compared.
+ */
+export function settingsDiffer(
+  want: ThermalSettings,
+  used: ThermalSettings,
+  clamped: readonly string[],
+): boolean {
+  return FIELDS.some((k) => !clamped.includes(k) && !same(want[k], used[k]));
+}
+
+/** The fields of `next` that differ from `from`: what a person changed in the editor. */
+export function changedSettings(
+  from: ThermalSettings,
+  next: ThermalSettings,
+): Partial<ThermalSettings> {
+  const patch: Partial<ThermalSettings> = {};
+  for (const k of FIELDS) if (!same(from[k], next[k])) Object.assign(patch, { [k]: next[k] });
+  return patch;
+}
+
+/**
+ * A copy of `file` with `patch` applied to the photos in `keys` (`"<layerId>/<photoId>"`). A photo
+ * with no settings yet starts from its effective settings: `bases[key]` when given (what its raster
+ * was decoded with, so a height-based distance stays), else the file's defaults, else the design
+ * defaults. Nothing else (readings, hot spots, grading, other photos) changes.
  */
 export function applySettings(
   file: ThermalFile,
   keys: readonly string[],
   patch: Partial<ThermalSettings>,
+  bases: Readonly<Record<string, ThermalSettings>> = {},
 ): ThermalFile {
   const photos = { ...file.photos };
   for (const key of keys) {
-    const base = photos[key]?.settings ?? file.defaults ?? DESIGN_DEFAULTS;
+    const base = photos[key]?.settings ?? bases[key] ?? file.defaults ?? DESIGN_DEFAULTS;
     photos[key] = { ...photos[key], settings: { ...base, ...patch } };
   }
   return { ...file, photos };

@@ -2464,7 +2464,11 @@ export const ipc = {
       Failure,
     ]),
   },
-  /** Write `thermal/thermal.json` atomically (`.bak`); refused for packages and read-only projects. */
+  /**
+   * Write `thermal/thermal.json` atomically (`.bak`). Refused (`code: 'read-only'`) for a package;
+   * a project folder that cannot be written, an invalid file, or a newer file on disk fails with
+   * the reason.
+   */
   'thermal:write': {
     request: z.object({ projectId: ProjectId, file: ThermalFile }).strict(),
     response: OkOrFailure,

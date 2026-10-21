@@ -2,11 +2,14 @@
  * The measurement settings of a thermal photo, in a popover under the settings line's Edit:
  * emissivity, distance, air temperature, humidity and the reflected temperature (same as the air
  * unless set). The scope buttons are the save: This photo, the photos marked in the filmstrip (when
- * more than one), or the whole dataset. A value out of range leaves them greyed.
+ * more than one), or the whole dataset. A value out of range leaves them greyed. Only the fields
+ * the person changed are applied, so the other photos keep the rest of their own settings (a
+ * distance from each photo's height, say).
  */
 import type { ThermalSettings } from '@aio/schema';
 import { Button, Popover, useT, type MessageKey } from '@aio/ui';
 import { useState, type RefObject } from 'react';
+import { changedSettings } from './settings';
 
 export type SettingsScope = 'photo' | 'selected' | 'all';
 
@@ -67,7 +70,8 @@ interface EditorProps {
   settings: ThermalSettings;
   /** Photos marked in the filmstrip; the selected scope shows for more than one. */
   selected: number;
-  onApply: (scope: SettingsScope, settings: ThermalSettings) => void;
+  /** The fields changed from `settings`, for the scope picked. */
+  onApply: (scope: SettingsScope, patch: Partial<ThermalSettings>) => void;
 }
 
 /** Mounted only while open, so each opening starts from the photo's settings. */
@@ -81,7 +85,7 @@ function EditorBody({ onClose, opener, settings, selected, onApply }: EditorProp
   const parsed = settingsOf(form);
   const apply = (scope: SettingsScope) => {
     if (!parsed) return;
-    onApply(scope, parsed);
+    onApply(scope, changedSettings(settings, parsed));
     onClose();
   };
   return (

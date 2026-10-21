@@ -230,7 +230,8 @@ describe('ThermalBench', () => {
     click(byId('thermal-settings-edit'));
     typeInto(byId('thermal-setting-emissivity'), '0.8');
     click(byId('thermal-apply-all'));
-    expect(saveSettings).toHaveBeenCalledWith(['th/r1', 'th/r2'], { ...settings, emissivity: 0.8 });
+    // only the field changed: every photo keeps its own distance and the rest
+    expect(saveSettings).toHaveBeenCalledWith(['th/r1', 'th/r2'], { emissivity: 0.8 });
     expect(byId('thermal-settings-editor')).toBeNull();
   });
 
@@ -238,7 +239,7 @@ describe('ThermalBench', () => {
     render();
     click(byId('thermal-settings-edit'));
     click(byId('thermal-apply-photo'));
-    expect(saveSettings).toHaveBeenLastCalledWith(['th/r1'], settings);
+    expect(saveSettings).toHaveBeenLastCalledWith(['th/r1'], {});
     // Ctrl and a click marks
     for (const id of ['r1', 'r2'])
       act(() => {
@@ -249,7 +250,7 @@ describe('ThermalBench', () => {
     click(byId('thermal-settings-edit'));
     expect(byId('thermal-apply-selected')?.textContent).toBe('2 selected photos');
     click(byId('thermal-apply-selected'));
-    expect(saveSettings).toHaveBeenLastCalledWith(['th/r1', 'th/r2'], settings);
+    expect(saveSettings).toHaveBeenLastCalledWith(['th/r1', 'th/r2'], {});
   });
 
   it('the filmstrip lists the thermal photos only, and a click shows one', () => {
@@ -294,7 +295,8 @@ describe('ThermalBench', () => {
     expect(d instanceof HTMLInputElement ? d.value : null).toBe('42');
   });
 
-  it("a photo's own settings win over the raster's", () => {
+  it('settings changed since the decode: the new ones, no temperatures, and why', () => {
+    // the decode after the save failed or was cancelled: the raster is of the old settings
     useThermal.setState({
       file: {
         schema: 'aio.thermal/1',
@@ -305,6 +307,71 @@ describe('ThermalBench', () => {
     });
     render();
     expect(byId('thermal-settings-line')?.textContent).toContain('Distance 7 m');
+    expect(byId('thermal-status')?.textContent).toBe(
+      'The settings changed since this photo was decoded, so its temperatures are held back. Open the dataset again to decode it.',
+    );
+    expect(byId('thermal-canvas')).toBeNull();
+    expect(byId('thermal-hover')).toBeNull();
+    expect(byId('thermal-range-min')?.textContent).toBe('');
+    // the settings can still be applied again
+    expect(byId('thermal-settings-edit')).not.toBeNull();
+  });
+
+  it('a value the SDK held shows as used, with its note, and the temperatures stay', () => {
+    const r = raster();
+    useThermal.setState({
+      file: {
+        schema: 'aio.thermal/1',
+        photos: { 'th/r1': { settings: { ...settings, distanceM: 80 } } },
+        readings: [],
+        hotspots: [],
+      },
+      current: {
+        ...r,
+        meta: { ...r.meta, settings: { ...settings, distanceM: 25 }, clamped: ['distanceM'] },
+      },
+    });
+    render();
+    expect(byId('thermal-settings-line')?.textContent).toContain('Distance 25 m');
+    expect(byId('thermal-clamped-distanceM')?.textContent).toBe(
+      "The camera's SDK limits Distance (m); it used 25.",
+    );
+    expect(byId('thermal-status')).toBeNull();
+    hoverAt(15, 25);
+    expect(byId('thermal-hover')?.textContent).toBe('85.0 °C');
+  });
+
+  it('an ok photo whose raster cannot be read says so', () => {
+    useThermal.setState({ current: null, currentOf: 'r1' });
+    render();
+    expect(byId('thermal-status')?.textContent).toBe(
+      'The temperatures of this photo are missing. Open the dataset again to decode it.',
+    );
+    expect(byId('thermal-canvas')).toBeNull();
+  });
+
+  it('while the raster loads there is no note', () => {
+    useThermal.setState({ current: null, currentOf: null });
+    render();
+    expect(byId('thermal-status')).toBeNull();
+  });
+
+  it('an implausible photo shows its note, no temperature and no Edit', () => {
+    useThermal.setState({
+      photoId: 'r2',
+      current: null,
+      currentOf: 'r2',
+      index: { ...index, photos: { ...index.photos, r2: { status: 'implausible' } } },
+    });
+    render();
+    expect(byId('thermal-status')?.textContent).toBe(
+      'Temperatures held back: the values are outside physical limits.',
+    );
+    expect(byId('thermal-canvas')).toBeNull();
+    expect(byId('thermal-hover')).toBeNull();
+    expect(byId('thermal-range-min')?.textContent).toBe('');
+    expect(byId('thermal-settings-line')).not.toBeNull();
+    expect(byId('thermal-settings-edit')).toBeNull();
   });
 
   it('without a raster the line shows the defaults', () => {

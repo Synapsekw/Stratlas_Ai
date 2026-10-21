@@ -1,6 +1,12 @@
 import type { ThermalFile, ThermalSettings } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { DESIGN_DEFAULTS, applySettings, effectiveSettings } from './settings';
+import {
+  DESIGN_DEFAULTS,
+  applySettings,
+  changedSettings,
+  effectiveSettings,
+  settingsDiffer,
+} from './settings';
 
 const S = (o: Partial<ThermalSettings> = {}): ThermalSettings => ({
   emissivity: 0.9,
@@ -70,5 +76,46 @@ describe('applySettings', () => {
   it('starts a new photo from the file defaults when there are some', () => {
     const g = applySettings(file({ defaults: S() }), ['L/c'], { airC: 1 });
     expect(g.photos['L/c']?.settings).toEqual(S({ airC: 1 }));
+  });
+  it('starts a photo with no settings of its own from its own effective settings', () => {
+    // b's raster was decoded at 42 m (its height): applying an emissivity keeps that distance
+    const f = file({ photos: { 'L/a': { settings: S() } } });
+    const g = applySettings(
+      f,
+      ['L/a', 'L/b'],
+      { emissivity: 0.5 },
+      {
+        'L/b': { ...DESIGN_DEFAULTS, distanceM: 42 },
+      },
+    );
+    expect(g.photos['L/a']?.settings).toEqual(S({ emissivity: 0.5 }));
+    expect(g.photos['L/b']?.settings).toEqual({
+      ...DESIGN_DEFAULTS,
+      distanceM: 42,
+      emissivity: 0.5,
+    });
+  });
+});
+
+describe('changedSettings', () => {
+  it('keeps only the fields that differ from where the form started', () => {
+    expect(changedSettings(S(), S())).toEqual({});
+    expect(changedSettings(S(), S({ emissivity: 0.5, reflectedC: null }))).toEqual({
+      emissivity: 0.5,
+      reflectedC: null,
+    });
+  });
+});
+
+describe('settingsDiffer', () => {
+  it('compares every field but the clamped ones', () => {
+    expect(settingsDiffer(S(), S(), [])).toBe(false);
+    expect(settingsDiffer(S(), S({ emissivity: 0.8 }), [])).toBe(true);
+    expect(settingsDiffer(S({ reflectedC: null }), S(), [])).toBe(true);
+    // the SDK held the distance to 25 m: asking for 80 m is what made that raster
+    expect(settingsDiffer(S({ distanceM: 80 }), S({ distanceM: 25 }), ['distanceM'])).toBe(false);
+    expect(settingsDiffer(S({ distanceM: 80, airC: 3 }), S({ distanceM: 25 }), ['distanceM'])).toBe(
+      true,
+    );
   });
 });

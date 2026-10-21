@@ -16,7 +16,9 @@ Steps:
      Without ExifTool (tests and dev runs) the photos decode and the index says
      ``crosscheck: "skipped"``; the pack build's smoke test requires it present;
    - a DJI R-JPEG goes through the DJI Thermal SDK with its settings clamped into the SDK's
-     ranges, the clamped names recorded in the raster's ``clamped``;
+     ranges, the clamped names recorded in the raster's ``clamped``; one left unread because the
+     SDK was missing or would not load is marked ``sdk: "unavailable"`` and read again once the
+     SDK is installed;
    - anything else is ``unsupported``, with the reason.
 
    A decoded photo outside the plausibility bounds is ``implausible``. Only ``ok`` photos get a
@@ -164,6 +166,7 @@ class ThermalDecode:
             f.unlink()
 
         exiftool = find_tool("exiftool")
+        sdk_there = find_tool("dji_tsdk") is not None
         verdicts: dict[str, tuple[str, str | None]] = {}  # camera -> (ok, mismatch or error; why)
         tsdk: list[Any] = []  # the SDK, loaded on the first DJI photo
         entries: dict[str, dict[str, Any]] = {}
@@ -208,11 +211,15 @@ class ThermalDecode:
             # a photo decoded without a cross-check (no ExifTool, or ExifTool failed) is decoded
             # again once ExifTool is there; a genuine mismatch stays until settings change or force
             unchecked = isinstance(old, dict) and old.get("check") in ("skipped", "error")
+            # likewise a DJI photo left unread because the SDK was missing or would not load is
+            # read again once the SDK is installed
+            no_sdk = isinstance(old, dict) and old.get("sdk") == "unavailable"
             if (
                 not force
                 and isinstance(old, dict)
                 and old.get("settingsKey") == key
                 and not (unchecked and exiftool is not None)
+                and not (no_sdk and sdk_there)
                 and self._intact(out_dir, pid, old, key)
             ):
                 entries[pid] = old
@@ -220,8 +227,10 @@ class ThermalDecode:
                 continue
 
             check: str | None = None
+            sdk_missing = False
             if dji:
                 status, reason, t, meta = self._dji(tsdk, path, settings, f"{dji[0]} {dji[1]}")
+                sdk_missing = not tsdk
             elif rec is not None:
                 flir_tried = True
                 status, reason, t, meta, check = self._flir(rec, pid, path, settings, exiftool, verdicts)
@@ -243,6 +252,8 @@ class ThermalDecode:
                 entry["reason"] = reason
             if check is not None:
                 entry["check"] = check
+            if sdk_missing:
+                entry["sdk"] = "unavailable"
             entries[pid] = entry
             if status == "ok" and t is not None and meta is not None:
                 h, w = t.shape

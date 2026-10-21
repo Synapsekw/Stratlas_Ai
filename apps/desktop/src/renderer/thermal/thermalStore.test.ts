@@ -1,4 +1,10 @@
-import type { IpcChannel, ThermalFile, ThermalRasterIndex, ThermalSettings } from '@aio/schema';
+import type {
+  IpcChannel,
+  ThermalFile,
+  ThermalRasterIndex,
+  ThermalRasterMeta,
+  ThermalSettings,
+} from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import type { Bridge, Res } from '../bridge';
 import { autoRange } from './autoRange';
@@ -30,6 +36,20 @@ const INDEX: ThermalRasterIndex = {
   schema: 'aio.thermalRaster/1',
   photos: { a: { status: 'ok' } },
 };
+const metaOf = (settings: ThermalSettings, clamped: string[] = []): ThermalRasterMeta => ({
+  schema: 'aio.thermalRaster/1',
+  width: 2,
+  height: 1,
+  family: 'flir',
+  camera: 'XT2',
+  settings,
+  clamped,
+  minC: 0,
+  maxC: 1,
+  medianC: 0,
+  decoder: 'aio-flir/1',
+  settingsKey: 'a'.repeat(64),
+});
 const raster = (v: number): ThermalRaster => ({
   width: 2,
   height: 1,
@@ -54,6 +74,7 @@ function setupDeferred() {
         pending.set(photoId, r);
       }),
     loadIndex: () => Promise.resolve(INDEX),
+    loadMeta: () => Promise.resolve(metaOf(S)),
     decode: () => Promise.resolve(null),
   });
   const deps = {
@@ -68,7 +89,13 @@ function setupDeferred() {
   return { store, deps };
 }
 
-function setup(index: ThermalRasterIndex | null = INDEX) {
+function setup(
+  index: ThermalRasterIndex | null = INDEX,
+  opts: {
+    metas?: Record<string, ThermalRasterMeta | null>;
+    rasters?: Record<string, ThermalRaster | null>;
+  } = {},
+) {
   const calls: { channel: IpcChannel; req: unknown }[] = [];
   const decodes: { layerId: string; photos: string[] }[] = [];
   const loads: string[] = [];
@@ -98,9 +125,14 @@ function setup(index: ThermalRasterIndex | null = INDEX) {
     bridge,
     loadRaster: (_p, _l, photoId) => {
       loads.push(photoId);
-      return Promise.resolve(raster(value));
+      const r = opts.rasters?.[photoId];
+      return Promise.resolve(r === undefined ? raster(value) : r);
     },
     loadIndex: () => Promise.resolve(index),
+    loadMeta: (_p, _l, photoId) => {
+      const m = opts.metas?.[photoId];
+      return Promise.resolve(m === undefined ? metaOf(S) : m);
+    },
     decode: (layerId, photos) => {
       decodes.push({ layerId, photos });
       value = 50;
@@ -157,6 +189,7 @@ describe('the thermal store', () => {
           });
         return Promise.resolve(indexCalls === 1 ? null : INDEX);
       },
+      loadMeta: () => Promise.resolve(null),
       decode: () => Promise.resolve(null),
     });
     await store.getState().open('p', 'L', 'b');
@@ -270,6 +303,7 @@ describe('the thermal store', () => {
       },
       loadRaster: () => Promise.resolve(null),
       loadIndex: () => Promise.resolve(null),
+      loadMeta: () => Promise.resolve(null),
       decode: () => {
         decodes.push({ layerId: 'x', photos: [] });
         return Promise.resolve(null);
@@ -279,5 +313,82 @@ describe('the thermal store', () => {
     await bad.getState().saveSettings(['L/a'], { airC: 1 });
     expect(decodes).toHaveLength(0);
     expect(bad.getState().error).toBe('read only');
+  });
+
+  it('a photo whose raster did not load is the shown one, with no raster', async () => {
+    const { store } = setup(INDEX, { rasters: { a: null } });
+    await store.getState().open('p', 'L', 'a');
+    expect(store.getState().currentOf).toBe('a');
+    expect(store.getState().current).toBeNull();
+  });
+
+  it('decodeMissing also decodes rasters made with other settings, or missing or broken', async () => {
+    const all = { a: 'ok', b: 'ok', c: 'ok', d: 'ok', e: 'ok' } as const;
+    const { store, decodes } = setup(
+      {
+        schema: 'aio.thermalRaster/1',
+        photos: Object.fromEntries(Object.entries(all).map(([k, v]) => [k, { status: v }])),
+      },
+      {
+        metas: {
+          // a: decoded before its own settings changed (a failed or cancelled decode)
+          a: metaOf({ ...S, emissivity: 0.5 }),
+          // b: the index says ok, but its sidecar is gone
+          b: null,
+          // c: no settings of its own, so any raster settings are its own
+          c: metaOf({ ...S, distanceM: 42 }),
+          // e: held to the SDK's limits, nothing else changed
+          e: metaOf({ ...S, distanceM: 25 }, ['distanceM']),
+        },
+        // d: the sidecar reads but the temperatures do not
+        rasters: { d: null },
+      },
+    );
+    const file: ThermalFile = {
+      ...FILE,
+      photos: {
+        'L/a': { settings: S },
+        'L/d': { settings: S },
+        'L/e': { settings: { ...S, distanceM: 80 } },
+      },
+    };
+    await store.getState().open('p', 'L', 'd');
+    store.setState({
+      file,
+      probe: Object.keys(all).map((id) => ({
+        photoId: id,
+        family: 'flir',
+        make: null,
+        model: null,
+      })),
+    });
+    await store.getState().decodeMissing();
+    expect(decodes).toEqual([{ layerId: 'L', photos: ['a', 'b', 'd'] }]);
+  });
+
+  it('saveSettings starts a photo without its own settings from what its raster used', async () => {
+    const { store, calls } = setup(
+      { schema: 'aio.thermalRaster/1', photos: { a: { status: 'ok' }, b: { status: 'ok' } } },
+      { metas: { b: metaOf({ ...S, distanceM: 42, airC: 99 }, ['airC']), c: null } },
+    );
+    await store.getState().open('p', 'L', 'a');
+    await store.getState().saveSettings(['L/a', 'L/b', 'L/c'], { emissivity: 0.5 });
+    const w = calls.find((c) => c.channel === 'thermal:write')?.req as { file: ThermalFile };
+    expect(w.file.photos['L/a']?.settings).toEqual({ ...S, emissivity: 0.5 });
+    // b keeps its 42 m; the clamped air is not what it asked for, so that comes from the defaults
+    expect(w.file.photos['L/b']?.settings).toEqual({
+      ...S,
+      distanceM: 42,
+      airC: 25,
+      emissivity: 0.5,
+    });
+    // c has no raster: the design defaults
+    expect(w.file.photos['L/c']?.settings).toEqual({
+      emissivity: 0.5,
+      distanceM: 10,
+      airC: 25,
+      humidityPct: 50,
+      reflectedC: null,
+    });
   });
 });

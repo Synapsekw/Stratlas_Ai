@@ -2,7 +2,8 @@
  * The Thermal bench (thermal analysis M1), the `thermal` workbench tab: one thermal photo of a
  * dataset with its temperatures. From the top: the read-only note (a package or a reviewer), the
  * "Reading temperatures" line while a decode runs, the photo with the temperature under the
- * pointer, the photo's status note when its temperatures are held back, the palette bar, the
+ * pointer, the photo's status note when its temperatures are held back (by the decoder, or because
+ * its raster is missing or was decoded with settings it no longer has), the palette bar, the
  * settings line with Edit, and the filmstrip of the dataset's thermal photos.
  *
  * Room is kept for the M2 tool rail (above the photo) and the M3 hot-spot list (above the
@@ -17,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useJobs, useShell } from '../../../shell';
 import { Filmstrip, type StripPhoto } from '../../../thermal/Filmstrip';
 import { PaletteBar } from '../../../thermal/PaletteBar';
-import { effectiveSettings } from '../../../thermal/settings';
+import { effectiveSettings, settingsDiffer } from '../../../thermal/settings';
 import type { SettingsScope } from '../../../thermal/SettingsEditor';
 import { SettingsLine } from '../../../thermal/SettingsLine';
 import { ThermalStage } from '../../../thermal/ThermalStage';
@@ -88,32 +89,45 @@ export function ThermalBench() {
   const model = [probed?.make, probed?.model].filter(Boolean).join(' ') || (entry?.reason ?? '');
   const held = entry !== undefined && entry.status !== 'ok' ? entry.status : null;
   // only the raster of the photo on show: another's may still be there while this one loads
-  const raster = held !== null || th.currentOf !== photoId ? null : th.current;
+  const loadedHere = held === null && th.currentOf === photoId;
+  const raster = loadedHere ? th.current : null;
+  // the index says decoded, but the raster is not there or does not read
+  const missing = loadedHere && raster === null && entry?.status === 'ok';
   // thermal.json read (or failed): the set's photos are known from here on
   const loaded = th.file !== null || th.error !== null;
 
-  // A photo's own settings first; else what its raster was decoded with (the job reads the
-  // photo's height, which the renderer cannot see); else the defaults.
   const item = layer?.items.find((i) => i.id === photoId);
   const own =
     th.layerId && photoId !== null
       ? th.file?.photos[thermalPhotoKey(th.layerId, photoId)]?.settings
       : undefined;
+  // A raster decoded with settings the photo no longer has (the decode after a save failed or was
+  // cancelled) is not this photo's temperatures: they are held back until it is decoded again.
+  // A value the camera's SDK clamped differs by design.
+  const stale =
+    raster !== null &&
+    own !== undefined &&
+    settingsDiffer(own, raster.meta.settings, raster.meta.clamped);
+  const shown = stale ? null : raster;
+  const note = held ?? (stale ? 'stale' : missing ? 'missing' : null);
+
+  // What the raster on show was decoded with (the job reads the photo's height, which the
+  // renderer cannot see, and the SDK may clamp); else the photo's own settings; else the defaults.
   const settings: ThermalSettings | null =
+    shown?.meta.settings ??
     own ??
-    raster?.meta.settings ??
     (th.layerId && photoId !== null && item
       ? effectiveSettings(th.file, th.layerId, photoId, item.pos ? { pos: item.pos } : {}, null)
       : null);
 
-  const apply = (scope: SettingsScope, next: ThermalSettings) => {
+  const apply = (scope: SettingsScope, patch: Partial<ThermalSettings>) => {
     const layerId = th.layerId;
     if (!layerId || photoId === null) return;
     const ids =
       scope === 'photo' ? [photoId] : scope === 'selected' ? [...marked] : photos.map((p) => p.id);
     void th.saveSettings(
       ids.map((id) => thermalPhotoKey(layerId, id)),
-      next,
+      patch,
     );
   };
 
@@ -153,19 +167,19 @@ export function ThermalBench() {
         <>
           {/* M2: the tool rail and the view switch sit here */}
           <ThermalStage
-            raster={raster}
+            raster={shown}
             range={th.range}
             palette={th.palette}
             plain={held === 'unsupported' && item ? plainUrl(project.id, item.src) : null}
           />
-          {held !== null && (
+          {note !== null && (
             <p className="th-note th-held" role="status" data-testid="thermal-status">
-              {t(`thermal.status.${held}`, { model })}
+              {t(`thermal.status.${note}`, { model })}
             </p>
           )}
           <PaletteBar
             palette={th.palette}
-            range={raster ? th.range : null}
+            range={shown ? th.range : null}
             rangeAuto={th.rangeAuto}
             onPalette={(p) => {
               th.setPalette(p);
@@ -177,7 +191,7 @@ export function ThermalBench() {
           {settings && (
             <SettingsLine
               settings={settings}
-              clamped={raster?.meta.clamped ?? []}
+              clamped={shown?.meta.clamped ?? []}
               readOnly={readOnly || held !== null}
               selected={marked.size}
               onApply={apply}

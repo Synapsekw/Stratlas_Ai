@@ -183,7 +183,7 @@ import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
 import { antennaPackRefusal } from './telecomPack';
 import { registerThermalIpc } from './thermal';
-import { thermalPackRefusal } from './thermalPack';
+import { THERMAL_PACK_FEATURE, thermalPackRefusal } from './thermalPack';
 import { RF_PACK_FEATURE, rfPackRefusal } from './rfPack';
 import { registerSurveyAiIpc } from './surveyAi';
 import { createSegmenter } from './inference/segment';
@@ -2158,6 +2158,7 @@ function registerIpc(): void {
             COMPONENT_EVIDENCE_PACK_FEATURE,
             RF_PACK_FEATURE,
             CLEAN_PACK_FEATURE,
+            THERMAL_PACK_FEATURE,
           ],
     places: () =>
       packArchivePlaces({
