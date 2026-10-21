@@ -118,6 +118,18 @@ export interface RolePrompt {
   error: string | null;
 }
 
+/**
+ * A short line about measurements in the sidebar's note slot (a date move, a refusal). `undo`
+ * offers Undo (`undoMeasureChange(seq)`), `prepare` offers Prepare surfaces.
+ */
+export interface MeasureNote {
+  seq: number;
+  text: string;
+  danger: boolean;
+  undo?: boolean;
+  prepare?: boolean;
+}
+
 /** Measurements a deletion took out, each with its index in the file before it. */
 export interface UndoDelete {
   items: { m: SurveyMeasurement; index: number }[];
@@ -176,6 +188,10 @@ export interface MeasureState {
   surface: HeightSampler | null;
   /** Asking for the design layers of a template's roles before it is used. */
   rolePrompt: RolePrompt | null;
+  /** The note the sidebar shows about measurements (null: none). */
+  note: MeasureNote | null;
+  /** The last undoable replacement (a date move): the measurements as they were before it. */
+  undoChange: { seq: number; before: SurveyMeasurement[] } | null;
 }
 
 const now = () => new Date().toISOString();
@@ -235,6 +251,8 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   newFolder: null,
   dialog: null,
   rolePrompt: null,
+  note: null,
+  undoChange: null,
 });
 
 export const measureStore = createStore<MeasureState>()(() => ({
@@ -282,6 +300,8 @@ export function forgetMeasureWrites(): void {
   writing.clear();
 }
 let newFolderSeq = 0;
+/** Seq of undoable replacements and of measurement notes (one counter: each is new). */
+let changeSeq = 0;
 
 export const isDirty = (s: Pick<MeasureState, 'file' | 'savedText'>): boolean =>
   text(s.file) !== s.savedText;
@@ -460,6 +480,74 @@ export function setComputedResults(
   if (Array.isArray(saved.measurements))
     saved.measurements = saved.measurements.map((m) => (m.id === id ? { ...m, results } : m));
   set({ file, savedText: JSON.stringify(saved), resultsUnwritten: true });
+}
+
+/**
+ * Replace measurements by id as one edit (it waits for Save, or Autosave saves it); ids not in the
+ * file are left out. With `undoable` the ones replaced are kept for `undoMeasureChange` and the
+ * undo's seq is returned. No-op and null while read-only.
+ */
+export function replaceMeasurements(
+  next: readonly SurveyMeasurement[],
+  opts: { undoable?: boolean } = {},
+): number | null {
+  const s = get();
+  if (s.readOnly || next.length === 0) return null;
+  const byId = new Map(next.map((m) => [m.id, m]));
+  const before = s.file.measurements.filter((m) => byId.has(m.id));
+  if (before.length === 0) return null;
+  const t = now();
+  const file: MeasurementsFile = {
+    ...s.file,
+    measurements: s.file.measurements.map((m) => {
+      const n = byId.get(m.id);
+      return n ? { ...n, updatedAt: t } : m;
+    }),
+  };
+  if (!opts.undoable) {
+    changed(file);
+    return null;
+  }
+  const seq = ++changeSeq;
+  changed(file, { undoChange: { seq, before } });
+  return seq;
+}
+
+/**
+ * Put back the measurements of the undoable replacement `seq` as they were before it (by id; one
+ * since deleted stays deleted). A stale seq (a later replacement took its place) does nothing.
+ */
+export function undoMeasureChange(seq: number): void {
+  const s = get();
+  const u = s.undoChange;
+  if (u?.seq !== seq) return;
+  const note = s.note?.seq === seq ? { note: null } : {};
+  if (s.readOnly) {
+    set({ undoChange: null, ...note });
+    return;
+  }
+  const byId = new Map(u.before.map((m) => [m.id, m]));
+  changed(
+    {
+      ...s.file,
+      measurements: s.file.measurements.map((m) => byId.get(m.id) ?? m),
+    },
+    { undoChange: null, ...note },
+  );
+}
+
+/**
+ * Show a note about measurements (null clears it). A note with `undo` takes the seq of the
+ * undoable replacement it offers to undo, so `undoMeasureChange(note.seq)` undoes it.
+ */
+export function setMeasureNote(n: Omit<MeasureNote, 'seq'> | null): void {
+  if (!n) {
+    set({ note: null });
+    return;
+  }
+  const u = get().undoChange;
+  const seq = n.undo && u ? u.seq : ++changeSeq;
+  set({ note: { ...n, seq } });
 }
 
 /** Move measurements into a folder ('' takes them out of any folder). */

@@ -39,6 +39,9 @@ import {
   dismissUndoDelete,
   setAutosave,
   undoDeleteMeasurements,
+  replaceMeasurements,
+  setMeasureNote,
+  undoMeasureChange,
 } from './measureStore';
 import { createMeasureVisibilityMemory } from './measureVisibility';
 
@@ -820,5 +823,63 @@ describe('a new measurement takes its source layer and date', () => {
     expect(copy?.scope).toEqual({ kind: 'survey', capture: 'jun' });
     expect(copy?.pickedOn).toEqual(['model', 'ground', 'model']);
     expect(MeasurementsFile.safeParse(measureStore.getState().file).success).toBe(true);
+  });
+});
+
+describe('replacing measurements as one undoable edit', () => {
+  it('replaceMeasurements is one edit that waits for Save', async () => {
+    await loadFile([measurement('a'), measurement('b'), measurement('c')]);
+    const sets = vi.fn();
+    const off = measureStore.subscribe(sets);
+    const [a, b] = measureStore.getState().file.measurements;
+    if (!a || !b) throw new Error('not loaded');
+    const seq = replaceMeasurements(
+      [
+        { ...a, folder: 'One' },
+        { ...b, folder: 'Two' },
+      ],
+      { undoable: true },
+    );
+    off();
+    expect(sets).toHaveBeenCalledTimes(1);
+    expect(seq).not.toBeNull();
+    expect(measureStore.getState().file.measurements.map((m) => m.folder)).toEqual([
+      'One',
+      'Two',
+      undefined,
+    ]);
+    expect(isDirty(measureStore.getState())).toBe(true);
+    expect(io.writes).toBe(0);
+    setMeasureNote({ text: 'Moved.', danger: false, undo: true });
+    expect(measureStore.getState().note?.seq).toBe(seq);
+    undoMeasureChange(seq ?? -1);
+    expect(measureStore.getState().file.measurements.map((m) => m.folder)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(measureStore.getState().note).toBeNull();
+    expect(measureStore.getState().undoChange).toBeNull();
+    expect(isDirty(measureStore.getState())).toBe(false);
+    // read-only: nothing is replaced
+    measureStore.setState({ readOnly: true });
+    expect(replaceMeasurements([{ ...a, folder: 'X' }], { undoable: true })).toBeNull();
+    expect(measureStore.getState().file.measurements[0]?.folder).toBeUndefined();
+  });
+
+  it('undoMeasureChange ignores a stale seq', async () => {
+    await loadFile([measurement('a')]);
+    const a = measureStore.getState().file.measurements[0];
+    if (!a) throw new Error('not loaded');
+    const first = replaceMeasurements([{ ...a, folder: 'One' }], { undoable: true }) ?? -1;
+    const second = replaceMeasurements([{ ...a, folder: 'Two' }], { undoable: true }) ?? -1;
+    expect(second).not.toBe(first);
+    undoMeasureChange(first);
+    expect(measureStore.getState().file.measurements[0]?.folder).toBe('Two');
+    undoMeasureChange(second);
+    expect(measureStore.getState().file.measurements[0]?.folder).toBe('One');
+    // used once
+    undoMeasureChange(second);
+    expect(measureStore.getState().file.measurements[0]?.folder).toBe('One');
   });
 });

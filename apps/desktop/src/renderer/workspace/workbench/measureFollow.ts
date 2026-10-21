@@ -11,6 +11,7 @@ import { isIssueEditing } from '../../issueCard/state';
 import { roadStore, setRoad, type RoadState } from '../../road/store';
 import { hydro } from '../../survey/hydroStore';
 import { measureFavourites, type FavouritesState } from '../../survey/measureCatalogue';
+import { followLayerDates } from '../../survey/measureMoveRun';
 import { measureStore, stopTool, type MeasureState } from '../../survey/measureStore';
 import { overlays, setOverlaysOpen } from '../../survey/overlaysStore';
 import { openQaPanel, qaStore } from '../../survey/qaStore';
@@ -155,13 +156,17 @@ export function followRoadMeasure(
   };
 }
 
-/** While mounted: the Measure and Road tabs follow the tools, and the survey panels are tabs. */
+/**
+ * While mounted: the Measure and Road tabs follow the tools, the survey panels are tabs, and
+ * measurements follow a layer put on another date.
+ */
 export function useMeasureFollow(): void {
   useEffect(() => {
     const off = [
       followMeasureTool(),
       followRoadMeasure(),
       followRecent(),
+      followLayerDates(),
       linkPanelTab(
         'overlays',
         overlays,
