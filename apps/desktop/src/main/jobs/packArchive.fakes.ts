@@ -130,12 +130,11 @@ export function fakePackFiles(
   return { 'manifest.json': manifest, ...files };
 }
 
-/** The tar entries of a fake pack archive: `pipeline-pack-<version>/` with `fakePackFiles`. */
-export function fakePackEntries(version: string, o: FakePackOptions = {}): FakeTarEntry[] {
-  const top = o.top ?? `pipeline-pack-${version}`;
+/** The tar entries of `files` in the folder `top`: each folder once, before its first file. */
+function entriesOf(top: string, files: Record<string, string | Buffer>): FakeTarEntry[] {
   const entries: FakeTarEntry[] = [{ path: `${top}/`, type: 'dir' }];
   const dirs = new Set<string>();
-  for (const [name, data] of Object.entries(fakePackFiles(version, o))) {
+  for (const [name, data] of Object.entries(files)) {
     const parts = name.split('/');
     for (let i = 1; i < parts.length; i++) {
       const dir = parts.slice(0, i).join('/');
@@ -146,6 +145,12 @@ export function fakePackEntries(version: string, o: FakePackOptions = {}): FakeT
     entries.push({ path: `${top}/${name}`, data });
   }
   return entries;
+}
+
+/** The tar entries of a fake pack archive: `pipeline-pack-<version>/` with `fakePackFiles`. */
+export function fakePackEntries(version: string, o: FakePackOptions = {}): FakeTarEntry[] {
+  const top = o.top ?? `pipeline-pack-${version}`;
+  return entriesOf(top, fakePackFiles(version, o));
 }
 
 /** A fake pack archive as CI names and builds it: `pipeline-pack-<version>-<arch>.tar.gz`. */
@@ -216,19 +221,7 @@ export function fakeAnalyticsPackEntries(
   o: FakeAnalyticsPackOptions = {},
 ): FakeTarEntry[] {
   const top = o.top ?? `analytics-pack-${version}`;
-  const entries: FakeTarEntry[] = [{ path: `${top}/`, type: 'dir' }];
-  const dirs = new Set<string>();
-  for (const [name, data] of Object.entries(fakeAnalyticsPackFiles(version, o))) {
-    const parts = name.split('/');
-    for (let i = 1; i < parts.length; i++) {
-      const dir = parts.slice(0, i).join('/');
-      if (dirs.has(dir)) continue;
-      dirs.add(dir);
-      entries.push({ path: `${top}/${dir}/`, type: 'dir' });
-    }
-    entries.push({ path: `${top}/${name}`, data });
-  }
-  return entries;
+  return entriesOf(top, fakeAnalyticsPackFiles(version, o));
 }
 
 /** A fake Analytics pack archive as the builder names it: `analytics-pack-<version>-win-x64.tar.gz`. */

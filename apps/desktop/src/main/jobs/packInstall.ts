@@ -111,6 +111,12 @@ export interface PackKind {
   /** Why this app may not use a pack with this `appRange`, or null. */
   rangeRefusal(appRange: string | undefined, app: PackApp): string | null;
   limits: PackLimits;
+  /**
+   * The archive is mostly incompressible (a model): a gzip trailer smaller than the archive has
+   * wrapped at 4 GiB, so the unpacked size is the smallest `stated + n * 4 GiB` that is at least
+   * the archive's size. Without it, such a trailer falls back to three times the archive.
+   */
+  trailerWraps?: true;
 }
 
 /** The pipeline pack, exactly as the installer has always handled it. */
@@ -186,6 +192,7 @@ export const ANALYTICS_PACK: PackKind = {
       'Analytics pack',
     ) ?? null,
   limits: { maxEntries: 10_000, maxBytes: 12 * 2 ** 30, maxManifestBytes: 4 * 2 ** 20 },
+  trailerWraps: true,
 };
 
 /** "a" or "an" before `word`. */
@@ -789,11 +796,26 @@ export async function freeBytesOf(dir: string): Promise<number | null> {
 }
 
 /**
- * About how large the archive is unpacked: a gzip file ends with its unpacked size (modulo 4 GiB),
- * a plain tar is its own size. A size the trailer cannot be right about falls back to three times
- * the archive (pack 0.5.0 unpacks to 2.8 times its archive).
+ * About how large an archive of `size` bytes is unpacked, from the size its gzip trailer states
+ * (modulo 4 GiB; null for a plain tar, which is its own size). A stated size below the archive's
+ * falls back to three times the archive (pipeline pack 0.5.0 unpacks to 2.8 times its archive),
+ * unless the kind's trailer wraps (`PackKind.trailerWraps`).
  */
-async function unpackedEstimate(archive: string, size: number): Promise<number> {
+export function estimateUnpacked(
+  size: number,
+  stated: number | null,
+  kind: PackKind = PIPELINE_PACK,
+): number {
+  if (stated === null) return size;
+  if (stated >= size) return stated;
+  return kind.trailerWraps ? stated + Math.ceil((size - stated) / 2 ** 32) * 2 ** 32 : size * 3;
+}
+
+/** The free bytes an install of `need` unpacked bytes asks for: `need` and a margin. */
+export const spaceNeeded = (need: number): number => need + Math.max(64 * 2 ** 20, need * 0.02);
+
+/** `estimateUnpacked` for the archive file at `archive`. */
+async function unpackedEstimate(archive: string, size: number, kind: PackKind): Promise<number> {
   if (size < 18) return size;
   const fh = await open(archive, 'r');
   try {
@@ -801,9 +823,8 @@ async function unpackedEstimate(archive: string, size: number): Promise<number> 
     const tail = Buffer.alloc(4);
     await fh.read(head, 0, 2, 0);
     await fh.read(tail, 0, 4, size - 4);
-    if (head[0] !== 0x1f || head[1] !== 0x8b) return size;
-    const stated = tail.readUInt32LE(0);
-    return stated >= size ? stated : size * 3;
+    const gz = head[0] === 0x1f && head[1] === 0x8b;
+    return estimateUnpacked(size, gz ? tail.readUInt32LE(0) : null, kind);
   } finally {
     await fh.close();
   }
@@ -878,12 +899,11 @@ export async function installPackArchive(
     if (o.signal?.aborted) throw cancelled(kind);
     report({ bytesTotal: st.size }, true);
 
-    const need = await unpackedEstimate(archive, st.size);
+    const need = await unpackedEstimate(archive, st.size, kind);
     const free = await (o.freeBytes ?? freeBytesOf)(runtimeDir);
-    const margin = Math.max(64 * 2 ** 20, need * 0.02);
-    if (free !== null && free < need + margin) {
+    if (free !== null && free < spaceNeeded(need)) {
       throw refused(
-        `Not enough free disk space: the ${kind.label} ${verb(kind, 'need')} about ${mb(need + margin)} in ${runtimeDir}, and ${mb(free)} is free. Free some space and try again.`,
+        `Not enough free disk space: the ${kind.label} ${verb(kind, 'need')} about ${mb(spaceNeeded(need))} in ${runtimeDir}, and ${mb(free)} is free. Free some space and try again.`,
       );
     }
 

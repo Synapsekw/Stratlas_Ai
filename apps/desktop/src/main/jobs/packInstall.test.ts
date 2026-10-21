@@ -49,6 +49,8 @@ import {
   registerPipelinePackIpc,
   ANALYTICS_PACK,
   PIPELINE_PACK,
+  estimateUnpacked,
+  spaceNeeded,
   type InstallOptions,
   type PipelinePackIpcDeps,
 } from './packInstall';
@@ -1369,5 +1371,51 @@ describe('the Analytics pack', () => {
       schema: 'aio.analytics-pack/1',
     });
     expect(await peekPackManifest(good)).toBeNull();
+  });
+});
+
+describe('the Analytics pack and free disk space', () => {
+  it('a ~7 GB free disk takes the real pack, whose gzip trailer wrapped at 4 GiB', () => {
+    // the pack as built on 21 Oct: 6,213,856,572 bytes archived, 6,783,188,532 unpacked
+    const archived = 6_213_856_572;
+    const unpacked = 6_783_188_532;
+    const stated = unpacked % 2 ** 32; // what the trailer holds: less than the archive
+    expect(stated).toBeLessThan(archived);
+    const free = 7_000_000_000;
+    const need = estimateUnpacked(archived, stated, ANALYTICS_PACK);
+    expect(need).toBe(unpacked);
+    expect(spaceNeeded(need)).toBeLessThanOrEqual(free);
+    // the pipeline pack keeps its fallback of three times the archive
+    expect(estimateUnpacked(archived, stated)).toBe(archived * 3);
+    expect(estimateUnpacked(archived, stated, PIPELINE_PACK)).toBe(archived * 3);
+    // a trailer that did not wrap, and a plain tar, read as before for both kinds
+    expect(estimateUnpacked(1000, 2800, ANALYTICS_PACK)).toBe(2800);
+    expect(estimateUnpacked(1000, null, ANALYTICS_PACK)).toBe(1000);
+    // more than one wrap: the smallest size at least the archive's
+    expect(estimateUnpacked(9 * 2 ** 30, 2 ** 30, ANALYTICS_PACK)).toBe(2 ** 30 + 2 * 2 ** 32);
+  });
+
+  it('installs with the free space it needs and refuses with less, in its own words', async () => {
+    const path = await archive(
+      'analytics-pack-0.1.0-win-x64.tar.gz',
+      fakeAnalyticsPackArchive('0.1.0'),
+    );
+    const need = spaceNeeded(estimateUnpacked(0, null)); // the 64 MB margin of a tiny archive
+    const short = await install(path, {
+      kind: ANALYTICS_PACK,
+      freeBytes: () => Promise.resolve(10 * 2 ** 20),
+    });
+    expect(short).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(
+        /^Not enough free disk space: the Analytics pack needs about \d+ MB in .+, and 10 MB is free\. Free some space and try again\.$/,
+      ) as string,
+    });
+    expect(
+      await install(path, {
+        kind: ANALYTICS_PACK,
+        freeBytes: () => Promise.resolve(need + 2 ** 20),
+      }),
+    ).toMatchObject({ ok: true, version: '0.1.0' });
   });
 });
