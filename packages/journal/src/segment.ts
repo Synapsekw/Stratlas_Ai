@@ -1,3 +1,5 @@
+import { parseStrictJson } from './strict';
+
 /** One line of a segment file, kept raw for hashing and exact error positions. */
 export type SegmentLine =
   | { line: number; ok: true; raw: Record<string, unknown> }
@@ -10,7 +12,7 @@ export function readSegment(text: string): SegmentLine[] {
     const s = l.trim();
     if (s === '') return;
     try {
-      const raw = JSON.parse(s) as unknown;
+      const raw = parseStrictJson(s);
       out.push(
         raw !== null && typeof raw === 'object' && !Array.isArray(raw)
           ? { line: i + 1, ok: true, raw: raw as Record<string, unknown> }

@@ -1,4 +1,5 @@
 import { readSegment, type SegmentLine } from './segment';
+import { parseStrictJson } from './strict';
 
 /** A journal as files: project-relative path (forward slashes) to text. */
 export type JournalFiles = ReadonlyMap<string, string>;
@@ -28,7 +29,7 @@ const CHECKPOINT_RE = /^journal\/checkpoints\/[^/]+\.json$/;
 
 function parseObject(text: string): Record<string, unknown> | null {
   try {
-    const v = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as unknown;
+    const v = parseStrictJson(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
     return v !== null && typeof v === 'object' && !Array.isArray(v)
       ? (v as Record<string, unknown>)
       : null;
