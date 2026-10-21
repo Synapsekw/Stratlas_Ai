@@ -82,6 +82,7 @@ export async function selectManagedKit(
 }
 export async function clearManagedSelection(root: string, version: string) {
   const s = await read(root);
+  if (!Object.hasOwn(s.apps, version)) return;
   Reflect.deleteProperty(s.apps, version);
   await mkdir(base(root), { recursive: true });
   await writeJsonAtomic(file(root), s);
