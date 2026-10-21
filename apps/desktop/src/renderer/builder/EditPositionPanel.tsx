@@ -35,8 +35,12 @@ function Panel({ panel }: { panel: PositionPanel }) {
       : { x: '', y: '', z: '' },
   );
   const kind = (a: Axis): MetresKind => (one ? a : 'shift');
-  const value = (a: Axis): number | null =>
-    !one && text[a].trim() === '' ? 0 : parseMetres(text[a], kind(a));
+  const value = (a: Axis): number | null => {
+    if (panel.mode === 'many') return text[a].trim() === '' ? 0 : parseMetres(text[a], kind(a));
+    // a field showing the current value keeps it exact: its text is rounded to the mm
+    const cur = panel.current[a];
+    return text[a] === fmt(cur) ? cur : parseMetres(text[a], kind(a));
+  };
   const values = { x: value('x'), y: value('y'), z: value('z') };
   const ok = AXES.every((a) => values[a] !== null);
   const save = () => {

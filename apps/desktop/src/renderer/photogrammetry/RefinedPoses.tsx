@@ -9,7 +9,7 @@ import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { bridge } from '../shell';
-import { reloadManifest } from './actions';
+import { reloadAfterPoseSwap } from './actions';
 import { formatResidual } from './report';
 
 interface Preview {
@@ -73,7 +73,7 @@ export function RefinedPoses({ run, data }: { run: string; data: PhotoRun | null
     else if (!r.value.ok) setError(r.value.error);
     else {
       setPreview(r.value);
-      await reloadManifest();
+      await reloadAfterPoseSwap();
     }
   };
 

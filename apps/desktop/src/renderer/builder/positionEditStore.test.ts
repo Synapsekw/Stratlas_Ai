@@ -233,6 +233,31 @@ describe('positionEdit store', () => {
     expect(store.getState().panel).toBeNull();
   });
 
+  it('a reload of the corrections (a re-read, a pose swap) takes the notice and the panel away', async () => {
+    const { store, ws } = setup();
+    store.getState().open([pick('a')]);
+    await store.getState().save({ x: 1, y: 1, z: 20 });
+    expect(store.getState().notice?.action?.kind).toBe('undo');
+    store.getState().open([pick('b')]);
+    // its own writes leave them be
+    ws.getState().setOrientation(ws.getState().orientation);
+    expect(store.getState().notice).not.toBeNull();
+    expect(store.getState().panel).not.toBeNull();
+    // loadOrientation starts by dropping the file: the stored offsets no longer hold
+    ws.getState().setOrientation(null, false);
+    expect(store.getState().notice).toBeNull();
+    expect(store.getState().panel).toBeNull();
+  });
+
+  it("the panel's exact X and Y with a new Z move an unedited photo up only", async () => {
+    const { store, entry } = setup();
+    store.getState().open([pick('a')]);
+    const panel = store.getState().panel;
+    if (panel?.mode !== 'one') throw new Error('one photo');
+    await store.getState().save({ ...panel.current, z: panel.current.z + 2.5 });
+    expect(entry('a')?.offsetM).toEqual([0, 2.5, 0]);
+  });
+
   it('a write error shows its text and leaves the notice without Undo', async () => {
     const { store } = setup({ fail: 'Disk full' });
     store.getState().open([pick('a')]);

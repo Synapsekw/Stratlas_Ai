@@ -136,6 +136,26 @@ describe('EditPositionPanel', () => {
     expect(save).toHaveBeenCalledWith({ x: 12.5, y: -3.25, z: 46.25 });
   });
 
+  it('keeps the exact value of a field that was not changed', () => {
+    // a photo drawn at sub-mm values: the fields show them to the mm only
+    show({ ...ONE, current: { x: 12.34567, y: -3.00049, z: 41.00012 } });
+    type(input('z'), '43.5');
+    act(() => {
+      byId('position-save')?.click();
+    });
+    expect(save).toHaveBeenCalledWith({ x: 12.34567, y: -3.00049, z: 43.5 });
+  });
+
+  it('a field typed back to its shown text keeps the exact value', () => {
+    show({ ...ONE, current: { x: 12.34567, y: -3.25, z: 41 } });
+    type(input('x'), '12.3');
+    type(input('x'), '12.346');
+    act(() => {
+      byId('position-save')?.click();
+    });
+    expect(save).toHaveBeenCalledWith({ x: 12.34567, y: -3.25, z: 41 });
+  });
+
   it('saves on Enter', () => {
     show(ONE);
     act(() => {

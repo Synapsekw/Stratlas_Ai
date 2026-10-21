@@ -5,6 +5,7 @@
  */
 import type { Layer, PhotoPreset, PhotoSource, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
+import { loadOrientation } from '../builder/orientationFile';
 import { bridge, jobs } from '../shell';
 import { productsFor } from './estimate';
 import { wizardInitialOf } from './startOver';
@@ -239,4 +240,14 @@ export async function reloadManifest(): Promise<void> {
   const r = await bridge.call('project:open', { path: p.root });
   const ws = workspace.getState();
   if (r.ok && r.value.ok && ws.project?.id === p.id) ws.replaceManifest(r.value.manifest);
+}
+
+/**
+ * After "Use refined poses": the manifest and the photo corrections read again. Main removed the
+ * refined photos' corrections from `orientation.json`; a workspace keeping them would draw the move
+ * twice and write them back with the next edit.
+ */
+export async function reloadAfterPoseSwap(): Promise<void> {
+  await reloadManifest();
+  await loadOrientation();
 }

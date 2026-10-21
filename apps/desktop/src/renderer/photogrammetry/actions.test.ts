@@ -20,11 +20,13 @@ vi.mock('../shell', () => ({
   bridge: { call: (...a: unknown[]) => call(...a) as unknown },
   jobs: { getState: () => ({ refresh: () => Promise.resolve() }) },
 }));
+const loadOrientation = vi.fn(() => Promise.resolve());
+vi.mock('../builder/orientationFile', () => ({ loadOrientation: () => loadOrientation() }));
 vi.mock('@aio/workspace', () => ({
   workspace: { getState: () => ({ project: open.project, replaceManifest }) },
 }));
 
-import { fileUnderDate, openStartOver, startProducts } from './actions';
+import { fileUnderDate, openStartOver, reloadAfterPoseSwap, startProducts } from './actions';
 import { photoUi, type PendingProducts } from './store';
 
 const base = { root: 'D:/Projects/site/', preset: 'standard', products: ['ortho'] } as const;
@@ -36,6 +38,7 @@ const paramsOfStart = () =>
 beforeEach(() => {
   call.mockReset();
   replaceManifest.mockReset();
+  loadOrientation.mockClear();
   open.project = { id: 'p1', root: 'D:\\Projects\\site', manifest: { layers: [] } };
 });
 
@@ -667,5 +670,24 @@ describe('Start over', () => {
     call.mockResolvedValueOnce({ ok: true, value: { ok: false, error: 'No run r9.' } });
     expect(await openStartOver('p', 'r9', [])).toBe('No run r9.');
     expect(photoUi.getState().view).toBeNull();
+  });
+});
+
+describe('reloadAfterPoseSwap', () => {
+  it('reads the manifest and then the photo corrections again', async () => {
+    const order: string[] = [];
+    const manifest = { layers: [] };
+    call.mockImplementation((channel: string) => {
+      order.push(channel);
+      return Promise.resolve({ ok: true, value: { ok: true, manifest } });
+    });
+    loadOrientation.mockImplementationOnce(() => {
+      order.push('loadOrientation');
+      return Promise.resolve();
+    });
+    await reloadAfterPoseSwap();
+    // main dropped the refined photos' corrections: the workspace must not keep the old ones
+    expect(order).toEqual(['project:open', 'loadOrientation']);
+    expect(replaceManifest).toHaveBeenCalledWith(manifest);
   });
 });

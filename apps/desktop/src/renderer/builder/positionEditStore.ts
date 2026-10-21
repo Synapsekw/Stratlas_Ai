@@ -357,6 +357,14 @@ export function createPositionEditStore(deps: PositionEditDeps): StoreApi<Positi
   });
   // the panel and the notice belong to the project they were raised for
   deps.workspace.subscribe((s, prev) => {
+    // the corrections are read again (a re-read, a pose swap, an import): the offsets the notice
+    // and the panel hold no longer say where the photos are
+    if (prev.orientationLoaded && !s.orientationLoaded) {
+      const st = store.getState();
+      if (st.panel) store.setState({ panel: null });
+      if (st.notice) st.dismiss();
+      return;
+    }
     if (s.project?.id === prev.project?.id) return;
     const id = s.project?.id ?? null;
     const st = store.getState();
