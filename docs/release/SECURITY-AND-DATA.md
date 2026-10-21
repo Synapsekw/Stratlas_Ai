@@ -56,7 +56,9 @@ Verify (in the app) checks the whole history and names exactly what is wrong: an
 - Each person has a name and initials; each computer has its own signing key. A name is self-asserted and shown as "unverified" until the project owner certifies it (decision 5).
 - Roles: owner, reviewer, viewer and client. On a Team Server the server enforces them. In a shared folder or with transfer files, roles are recorded and tamper-evident but cannot be enforced against someone who edits files by hand; the history shows such edits as "changed outside Quadrion AI".
 - Approvals are always a person's: the built-in AI assistant can comment and list work but can never approve.
-- A lost or retired computer's key is revoked by the owner; later changes signed by it are refused.
+- A lost or retired computer's key is revoked by the owner; later changes signed by it are refused. A revocation, a removal or a demotion records which changes of that person the owner had seen, so a change dated back to just before it, or written on a new copy of the folder, is held too.
+- When a project is shared, the app records in `team.json` which change made its first owner, signed by the owner's computer. No other change can make itself the owner later, however it is dated. A project shared by an older version records it the first time it syncs or imports a transfer file with this version (Verify names a shared project that does not record it yet).
+- A transfer file is taken in only when the person who sent it is a member of the team; nothing from it is written before that check.
 
 ## Application hardening
 
@@ -74,5 +76,7 @@ Verify (in the app) checks the whole history and names exactly what is wrong: an
 ## Known limits
 
 - Roles are not enforced in shared-folder and transfer-file modes (above).
+- A project that is not shared has no roles: anyone who can write to its folder can add changes to its history, and release a held change. Share a project before other people can write to its folder.
+- A copy that joins a team trusts what it first sees of that team (the shared folder's `team.json` when the owner signed it, else the first history it takes in). Check with the owner that you joined the right project.
 - Packages use the WinZip AES key derivation, which is weaker than modern password hashing: use long passphrases, and send the passphrase by a different channel than the package.
 - No real-time co-editing and no email notifications in 1.0.
