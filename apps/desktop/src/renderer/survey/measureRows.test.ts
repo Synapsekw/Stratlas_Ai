@@ -111,6 +111,13 @@ describe('buildMeasureItems', () => {
     expect(shown[0]?.measure).toMatchObject({ dimmed: false, color: '#ffd166' });
   });
 
+  it('leaves the date out of the meta under its date folder (the folder says it)', () => {
+    const s1 = base('s1', 'S', { scope: { kind: 'survey', capture: 'oct' } });
+    const under = buildMeasureItems(stateWith([s1]), manifest, ws, '', 'oct');
+    expect(under[0]?.meta).toBe('25.00 m');
+    expect(buildMeasureItems(stateWith([s1]), manifest, ws)[0]?.meta).toBe('25.00 m · 2 Oct 2024');
+  });
+
   it('builds 500 rows sorted, one folder pass', () => {
     const items = buildMeasureItems(
       stateWith(

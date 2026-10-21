@@ -978,6 +978,13 @@ select.input option {
   font: 400 11px/1 var(--f-mono);
   color: var(--fg-3);
   flex: none;
+  /* a long value (a measurement's) never takes the name's room: past half the row it ellipsizes */
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* room for descenders under the clip (line-height 1) */
+  padding-block: 2px;
 }
 .titem .eye {
   color: var(--fg-3);

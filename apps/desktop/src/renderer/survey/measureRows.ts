@@ -100,7 +100,8 @@ export function buildMeasureItems(
     const scope = m.scope;
     const capture =
       scope.kind === 'survey' ? manifest?.captures.find((x) => x.id === scope.capture) : undefined;
-    const date = capture ? formatDate(capture.date) : '';
+    // under a date folder the date is the folder's: said again it only crowds out the name
+    const date = capture && on === undefined ? formatDate(capture.date) : '';
     const dimmed = scope.kind === 'survey' && !scopeOnScreen(scope, ws.dates, ws.hidden);
     return {
       id: measureMark(m.id),
