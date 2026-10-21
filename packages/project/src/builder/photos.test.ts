@@ -69,7 +69,7 @@ describe('photoRef', () => {
 describe('photo heights (data-conventions 3a)', () => {
   const o = origin(47.98, 29.38, 100);
   const frame = { epsg: 32639, origin: o, utcOffsetMin: 180 };
-  // a DJI photo of Al-Zour flight 1: 113.7 m above take-off, absolute = relative + 41.9
+  // a DJI photo from a real survey flight: 113.7 m above take-off, absolute = relative + 41.9
   const meta = {
     gps: { lat: 29.38, lon: 47.98, alt: 155.6 },
     dji: { lat: 29.38, lon: 47.98, absAlt: 155.6, relAlt: 113.7 },
