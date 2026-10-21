@@ -3,7 +3,8 @@ import type { IpcEvent, ReleaseNotes, Settings } from '@aio/schema';
 import { app, dialog, session, shell, type BrowserWindow } from 'electron';
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { existsSync } from 'node:fs';
 import originalFs from 'original-fs';
 import { createOnlineUpdater } from './online';
 import {
@@ -18,6 +19,7 @@ import {
   type StartupDecision,
 } from './rollback';
 import { probeWithPowerShell, verifyInstaller } from './verify';
+import { runUpdateHandover } from './workGate';
 
 /** A first start that has not drawn its first screen after this long counts as failed. */
 export const READY_TIMEOUT_MS = 90_000;
@@ -47,6 +49,7 @@ const fileExists = async (p: string) => {
 
 export interface UpdateServiceDeps {
   settings: () => Settings;
+  acquireRestart?: () => (() => void) | null;
   /** Resolves once the settings changes asked for so far are written (see OnlineDeps). */
   settled?: () => Promise<void>;
   log: (level: 'info' | 'warn' | 'error', line: string) => void;
@@ -104,7 +107,7 @@ export function createUpdateService(d: UpdateServiceDeps) {
   });
 
   /** Keep this version, then hand over to the installer. */
-  async function runInstaller(
+  async function runInstallerUnlocked(
     path: string,
     version: string,
   ): Promise<{ ok: boolean; error?: string }> {
@@ -134,6 +137,10 @@ export function createUpdateService(d: UpdateServiceDeps) {
     try {
       // --updated: electron-builder's installer skips its pages and installs over this folder.
       const child = spawn(path, ['--updated'], { detached: true, stdio: 'ignore' });
+      await new Promise<void>((resolve, reject) => {
+        child.once('spawn', resolve);
+        child.once('error', reject);
+      });
       child.unref();
     } catch (e) {
       return { ok: false, error: `The installer did not start: ${String(e)}` };
@@ -144,6 +151,21 @@ export function createUpdateService(d: UpdateServiceDeps) {
     }, 300);
     return { ok: true };
   }
+
+  function runInstaller(path: string, version: string): Promise<{ ok: boolean; error?: string }> {
+    return runUpdateHandover(d.acquireRestart, process.platform !== 'darwin', () =>
+      runInstallerUnlocked(path, version),
+    );
+  }
+
+  const websiteUnsupported =
+    process.platform !== 'win32' || process.arch !== 'x64'
+      ? 'Website installation currently supports Windows x64 only.'
+      : 'unavailable' in install
+        ? install.unavailable
+        : !existsSync(join(dirname(process.execPath), `Uninstall ${brand.productName}.exe`))
+          ? 'Website installation requires an installed NSIS copy of the app.'
+          : null;
 
   const online = createOnlineUpdater({
     settings: d.settings,
@@ -164,7 +186,7 @@ export function createUpdateService(d: UpdateServiceDeps) {
   });
 
   /** Hand over to the kept previous version, which replaces this one and starts. */
-  async function startRollback(): Promise<{ ok: boolean; error?: string }> {
+  async function startRollbackUnlocked(): Promise<{ ok: boolean; error?: string }> {
     if ('unavailable' in install) return { ok: false, error: install.unavailable };
     const prev = await rollback.previousExe();
     if (!prev) return { ok: false, error: 'There is no previous version kept on this computer.' };
@@ -187,6 +209,23 @@ export function createUpdateService(d: UpdateServiceDeps) {
       app.quit();
     }, 300);
     return { ok: true };
+  }
+
+  async function startRollback(): Promise<{ ok: boolean; error?: string }> {
+    const release = d.acquireRestart?.();
+    if (d.acquireRestart && !release)
+      return {
+        ok: false,
+        error: 'Finish processing, imports and tool installation before restarting.',
+      };
+    let started = false;
+    try {
+      const result = await startRollbackUnlocked();
+      started = result.ok;
+      return result;
+    } finally {
+      if (!started) release?.();
+    }
   }
 
   async function offer(from: string, to: string, why: string): Promise<boolean> {
@@ -252,6 +291,16 @@ export function createUpdateService(d: UpdateServiceDeps) {
 
   return {
     rollback,
+    websiteUnsupported,
+    verifyWebsiteInstaller: (path: string, version: string) =>
+      verifyInstaller(path, { ...verifyDeps(version), currentVersion: '0.0.0' }),
+    async installWebsite(path: string, version: string): Promise<{ ok: boolean; error?: string }> {
+      if (websiteUnsupported) return { ok: false, error: websiteUnsupported };
+      const verified = await verifyInstaller(path, verifyDeps(version));
+      if (!verified.ok) return verified;
+      // The website coordinator already owns the restart gate through app.quit.
+      return runInstallerUnlocked(path, version);
+    },
 
     /** Before the first window: count this start; true when the app is handing over to a rollback. */
     async startup(): Promise<boolean> {

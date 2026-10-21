@@ -3,6 +3,7 @@ import type { FfmpegBin } from '@aio/project/builder';
 import { access, readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { readJson } from '../fsutil';
+import { readManagedSelection, managedKitDirectory } from '../update/managedKits';
 
 /** A usable pipeline runtime: the pack folder and its Python. */
 export interface PackInfo {
@@ -105,6 +106,14 @@ export async function findPack(o: {
           pack: null,
           runtime: { found: false, problem: `${single} is not a valid processing tools folder.` },
         };
+  }
+  if (o.app) {
+    const managed = await readManagedSelection(o.dataRoot, o.app.version);
+    if (managed) {
+      const pack = await readPack(managedKitDirectory(o.dataRoot, managed), o.app);
+      if (pack && !('refused' in pack) && pack.version === managed.version)
+        return { pack, runtime: { found: true, version: pack.version, dir: pack.dir } };
+    }
   }
   const runtimeDir = join(o.dataRoot, 'runtime');
   let names: string[];

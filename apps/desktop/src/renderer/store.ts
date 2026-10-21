@@ -48,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   direction: 'ltr',
   offlineOnly: false,
   updateCheck: false,
+  websiteAutoUpdate: true,
   updateUrl: '',
 };
 

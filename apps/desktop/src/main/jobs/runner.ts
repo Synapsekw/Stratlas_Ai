@@ -24,6 +24,8 @@ export type Spawn = (command: string, args: string[], options: SpawnOptions) => 
 
 export interface JobRunnerDeps {
   store: JobStore;
+  /** Reserve the update work gate before the first asynchronous start operation. */
+  enterWork?: () => () => void;
   findPack: () => Promise<{ pack: PackInfo | null; runtime: RuntimeInfo }>;
   emit: (event: JobEvent) => void;
   spawn?: Spawn;
@@ -144,7 +146,25 @@ export class JobRunner {
     return this.live.has(id);
   }
 
+  hasActiveWork(): boolean {
+    return this.live.size > 0;
+  }
+
   async start(req: IpcRequest<'jobs:start'>): Promise<IpcResponse<'jobs:start'>> {
+    let release: (() => void) | undefined;
+    try {
+      release = this.deps.enterWork?.();
+    } catch {
+      return { ok: false, error: 'An update restart is in progress.' };
+    }
+    try {
+      return await this.startReserved(req);
+    } finally {
+      release?.();
+    }
+  }
+
+  private async startReserved(req: IpcRequest<'jobs:start'>): Promise<IpcResponse<'jobs:start'>> {
     let job: JobRecord;
     if ('resume' in req) {
       const prev = this.deps.store.get(req.resume);

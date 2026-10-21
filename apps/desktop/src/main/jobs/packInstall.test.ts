@@ -19,6 +19,7 @@ import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validated } from '../ipc';
 import { findPack } from './pack';
+import { selectManagedKit, readManagedSelection } from '../update/managedKits';
 import {
   fakePackArchive,
   fakePackEntries,
@@ -1088,6 +1089,31 @@ describe('pipeline pack IPC', () => {
     return { call, events, trashed, chosen };
   }
 
+  it('clears only the installation root selection when the data folder changes during extraction', async () => {
+    const firstRoot = dataRoot;
+    const secondRoot = join(root, 'other-data');
+    const selection = { version: '0.4.0', sha256: 'a'.repeat(64), appRange: '>=0.11.0 <2.0.0' };
+    await selectManagedKit(firstRoot, APP.version, selection);
+    await selectManagedKit(firstRoot, '0.12.0', selection);
+    await selectManagedKit(secondRoot, APP.version, selection);
+    const path = await archive('pipeline-pack-0.5.0-win-x64.tar.gz', fakePackArchive('0.5.0'));
+    const { call } = setup({
+      emit: () => {
+        dataRoot = secondRoot;
+      },
+    });
+    expect(await call('pipelinePack:install', { path })).toMatchObject({
+      ok: true,
+      version: '0.5.0',
+    });
+    expect(await readManagedSelection(firstRoot, APP.version)).toBeNull();
+    expect(await readManagedSelection(firstRoot, '0.12.0')).toEqual(selection);
+    expect(await readManagedSelection(secondRoot, APP.version)).toEqual(selection);
+    expect((await findPack({ dataRoot: firstRoot, env: {}, app: APP })).pack?.version).toBe(
+      '0.5.0',
+    );
+  });
+
   it('finds an archive in Downloads, installs it, then lists and removes the old pack', async () => {
     await mkdir(join(root, 'downloads'), { recursive: true });
     const path = join(root, 'downloads', 'pipeline-pack-0.5.0-win-x64.tar.gz');
@@ -1114,6 +1140,8 @@ describe('pipeline pack IPC', () => {
       status: { state: 'ok', version: '0.5.0', installing: false },
     });
     expect(r.status.others.map((p) => p.name)).toEqual(['pipeline-pack-0.2.0']);
+    // A plain manual install must not create website-update metadata.
+    expect((await readdir(runtime)).sort()).toEqual(['pipeline-pack-0.2.0', 'pipeline-pack-0.5.0']);
     expect(events.at(-1)?.phase).toBe('done');
     // nothing newer is left to offer
     expect(await call('pipelinePack:find')).toMatchObject({ offer: null });

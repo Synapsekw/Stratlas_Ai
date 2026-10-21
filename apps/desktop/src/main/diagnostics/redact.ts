@@ -218,6 +218,7 @@ export const SETTINGS_RULES = {
   motion: 'keep',
   offlineOnly: 'keep',
   updateCheck: 'keep',
+  websiteAutoUpdate: 'keep',
   updateUrl: 'url',
   anthropicWorkspaceId: 'mask',
   reportBranding: { fields: { companyName: 'presence', accent: 'keep', logo: 'presence' } },

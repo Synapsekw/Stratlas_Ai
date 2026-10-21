@@ -40,6 +40,7 @@ export function defaultSettings(dataRoot: string): Settings {
     direction: 'ltr',
     offlineOnly: false,
     updateCheck: false,
+    websiteAutoUpdate: true,
     updateUrl: '',
   };
 }
