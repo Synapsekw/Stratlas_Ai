@@ -42,6 +42,7 @@ from .survey.prepare import SurveyPrepare
 from .survey.qa import SurveyQa
 from .survey.section import SurveySection
 from .telecom.pipeline import TelecomAntennas
+from .thermal.pipeline import ThermalDecode
 from .tiles.cloud import TilesCloud
 from .tiles.mesh import TilesMesh
 from .volumetric.build import VolumetricBuild
@@ -106,5 +107,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         TelecomAntennas(),
         # RF coverage prediction (pipeline pack RF_COVERAGE_MIN_PACK)
         RfCoverage(),
+        # Thermal analysis (pipeline pack THERMAL_MIN_PACK)
+        ThermalDecode(),
     ]
     return {p.name: p for p in items}
