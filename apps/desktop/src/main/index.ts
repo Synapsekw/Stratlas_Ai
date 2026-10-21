@@ -240,7 +240,7 @@ import { createPackManager } from './packs/manager';
 import { buildSource, findLatestBuild } from './packs/pmtiles';
 import { restoreArgs } from './update/rollback';
 import { createUpdateService, runRestore } from './update/service';
-import { createUpdateWorkGate } from './update/workGate';
+import { createUpdateWorkGate, runWithUpdateWork } from './update/workGate';
 import { createWebsiteClient } from './update/websiteClient';
 import { createWebsiteStorage } from './update/websiteStorage';
 import { createWebsiteUpdater } from './update/websiteUpdater';
@@ -948,22 +948,9 @@ const panoLane = stitchLane({
 
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, journal.wrap(channel, handler));
-  ipcMain.handle(channel, async (_e, req: unknown) => {
-    // Reserve long-running mutations before their first await. Status, cancellation and the
-    // updater's own handover remain callable while restart holds the exclusive gate.
-    const work =
-      channel === 'settings:set' ||
-      (!/^(websiteUpdate|update):/.test(channel) &&
-        /:(?:start|resume|run|import|importModel|importCatalogue|install|remove|download|export|create|save|convert|process|stitch|build|apply|commit|setGpu)/i.test(
-          channel,
-        ));
-    const release = work ? updateWorkGate.enter() : null;
-    try {
-      return await run(req);
-    } finally {
-      release?.();
-    }
-  });
+  ipcMain.handle(channel, (_e, req: unknown) =>
+    runWithUpdateWork(channel, updateWorkGate, () => run(req)),
+  );
 }
 
 /** The OS account name, when the platform has one. */

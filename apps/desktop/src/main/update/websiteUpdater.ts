@@ -403,8 +403,10 @@ export function createWebsiteUpdater(d: WebsiteUpdaterDeps) {
       applying = true;
       send({ phase: 'applying', restartAvailable: false, error: null });
       let undo: (() => Promise<void>) | null = null;
+      let verified = false;
       try {
         await d.verify(stage.check, new AbortController().signal);
+        verified = true;
         stage = { ...stage, phase: 'applying' };
         await d.store.write(stage);
         undo = await d.activate(stage.check);
@@ -414,6 +416,23 @@ export function createWebsiteUpdater(d: WebsiteUpdaterDeps) {
         } else d.relaunch();
         return { ok: true };
       } catch {
+        if (!verified) {
+          stage = { ...stage, phase: 'download' };
+          await d.store.write(stage).catch(() => undefined);
+          applying = false;
+          release();
+          display(stage);
+          send({
+            phase: 'error',
+            restartAvailable: false,
+            restartReason: null,
+            error: 'The saved update failed verification. Check again to download and verify it.',
+          });
+          return {
+            ok: false,
+            error: 'The saved update failed verification. Check again to download and verify it.',
+          };
+        }
         try {
           await undo?.();
         } catch {

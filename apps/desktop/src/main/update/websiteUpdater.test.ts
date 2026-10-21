@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createWebsiteUpdater, type WebsiteStage, type WebsiteUpdaterDeps } from './websiteUpdater';
 import { createUpdateWorkGate } from './workGate';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const artifact = {
   releaseId: '00000000-0000-4000-8000-000000000001',
   artifactId: '00000000-0000-4000-8000-000000000002',
@@ -74,6 +77,41 @@ function fixture() {
   };
 }
 describe('website update transaction', () => {
+  it.each(['deleted', 'corrupt'])(
+    'allows a fresh download after a %s ready artifact fails restart verification',
+    async (damage) => {
+      const dir = await mkdtemp(join(tmpdir(), 'website-retry-'));
+      const file = join(dir, 'artifact');
+      try {
+        const f = fixture();
+        let downloads = 0;
+        f.d.download = async () => {
+          downloads++;
+          await writeFile(file, 'verified bytes');
+        };
+        f.d.verify = async () => {
+          if ((await readFile(file, 'utf8')) !== 'verified bytes')
+            throw new Error('Integrity failure');
+        };
+        const u = createWebsiteUpdater(f.d);
+        await u.startup();
+        expect(u.status().phase).toBe('ready');
+        if (damage === 'deleted') await rm(file);
+        else await writeFile(file, 'tampered');
+        expect((await u.restart()).ok).toBe(false);
+        expect(u.status().phase).toBe('error');
+        expect(u.status().restartAvailable).toBe(false);
+        expect(u.status().app?.verified).toBe(false);
+        expect(f.getStage()?.phase).toBe('download');
+        expect(f.install).not.toHaveBeenCalled();
+        expect(await u.check()).toEqual({ ok: true });
+        expect(downloads).toBe(4);
+        expect(u.status().phase).toBe('ready');
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
   it('stages both components without installation then applies under the work gate', async () => {
     const f = fixture();
     const u = createWebsiteUpdater(f.d);

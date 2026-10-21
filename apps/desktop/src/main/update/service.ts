@@ -19,6 +19,7 @@ import {
   type StartupDecision,
 } from './rollback';
 import { probeWithPowerShell, verifyInstaller } from './verify';
+import { runUpdateHandover } from './workGate';
 
 /** A first start that has not drawn its first screen after this long counts as failed. */
 export const READY_TIMEOUT_MS = 90_000;
@@ -151,24 +152,10 @@ export function createUpdateService(d: UpdateServiceDeps) {
     return { ok: true };
   }
 
-  async function runInstaller(
-    path: string,
-    version: string,
-  ): Promise<{ ok: boolean; error?: string }> {
-    const release = d.acquireRestart?.();
-    if (d.acquireRestart && !release)
-      return {
-        ok: false,
-        error: 'Finish processing, imports and tool installation before restarting.',
-      };
-    let started = false;
-    try {
-      const result = await runInstallerUnlocked(path, version);
-      started = result.ok;
-      return result;
-    } finally {
-      if (!started) release?.();
-    }
+  function runInstaller(path: string, version: string): Promise<{ ok: boolean; error?: string }> {
+    return runUpdateHandover(d.acquireRestart, process.platform !== 'darwin', () =>
+      runInstallerUnlocked(path, version),
+    );
   }
 
   const websiteUnsupported =

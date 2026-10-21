@@ -1227,9 +1227,10 @@ export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
       };
     }
     running = new AbortController();
+    const installRoot = d.dataRoot();
     try {
       const r = await installPackArchive(path, {
-        dataRoot: d.dataRoot(),
+        dataRoot: installRoot,
         app: d.app,
         platform: d.platform,
         ...(replace === true ? { replace } : {}),
@@ -1240,7 +1241,7 @@ export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
       });
       running = null;
       if (!r.ok) return r;
-      await clearManagedSelection(d.dataRoot(), d.app.version);
+      await clearManagedSelection(installRoot, d.app.version);
       return { ok: true, version: r.version, status: await status() };
     } finally {
       running = null;
