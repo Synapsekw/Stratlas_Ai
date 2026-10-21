@@ -1,7 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { emptyMeasurements, MeasurementsFile, type SitePoint } from '@aio/schema';
-import { measurementReadout } from '@aio/survey';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  emptyMeasurements,
+  MeasurementsFile,
+  type Layer,
+  type PickedOn,
+  type ProjectManifest,
+  type SitePoint,
+} from '@aio/schema';
+import { measurementReadout } from '@aio/survey';
+import { captureIndex, workspace } from '@aio/workspace';
+import { timeline } from '../workspace/timeline';
+import type { VertexPick } from './measureSource';
+import {
+  copyToSurvey,
   drawEvent,
   editEvent,
   isDirty,
@@ -664,5 +675,150 @@ describe('an autosave and the undo against what happens meanwhile', () => {
       [10, 10, 0],
       [13, 14, 0],
     ]);
+  });
+});
+
+describe('a new measurement takes its source layer and date', () => {
+  const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const layers: Layer[] = [
+    {
+      kind: 'raster',
+      id: 'dsm-jan',
+      name: 'DSM',
+      visible: true,
+      role: 'dsm',
+      format: 'cog',
+      src: { path: 'rasters/dsm-jan.tif' },
+      capture: 'jan',
+    },
+    {
+      kind: 'mesh',
+      id: 'model-jun',
+      name: 'Model',
+      visible: true,
+      src: { path: 'models/model-jun.glb' },
+      transform: I,
+      capture: 'jun',
+    },
+  ];
+  /** June is lined up 20 m south of January. */
+  const manifest: ProjectManifest = {
+    schema: 'aio.project/1',
+    id: 'p1',
+    name: 'Dated',
+    crs: { epsg: 32640 },
+    origin: [0, 0, 0],
+    captures: [
+      { id: 'jan', label: 'January', date: '2026-01-01' },
+      {
+        id: 'jun',
+        label: 'June',
+        date: '2026-06-01',
+        lineUp: { eastM: 0, northM: -20, with: 'jan', at: '2026-10-16T08:00:00Z' },
+      },
+    ],
+    layers,
+    severityModels: [],
+    classCatalogues: [],
+  };
+  const on = (layer: string | null, kind: PickedOn): VertexPick => ({ layer, on: kind });
+  const clickOn = (raw: SitePoint, pick?: VertexPick) => {
+    drawEvent({ type: 'click', raw, screen: { x: 1, y: 1 }, shift: true }, env, pick);
+  };
+  const triangle = (picks: VertexPick[]) => {
+    startTool('area');
+    clickOn([0, 0, 0], picks[0]);
+    clickOn([10, 0, 0], picks[1]);
+    clickOn([10, 10, 0], picks[2]);
+    drawEvent({ type: 'finish' }, env);
+    const m = measureStore.getState().file.measurements[0];
+    if (!m) throw new Error('no measurement was drawn');
+    return m;
+  };
+
+  beforeEach(() => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/p', manifest });
+    workspace.getState().setDates(captureIndex(manifest));
+    timeline.setState({ focus: null });
+  });
+  afterEach(() => {
+    workspace.setState({ project: null, dates: null });
+    timeline.setState({ focus: null });
+  });
+
+  it('a drawn polygon is scoped to its first vertex layer date with one kind per vertex', () => {
+    const m = triangle([
+      on('model-jun', 'model'),
+      on('dsm-jan', 'ground'),
+      on('model-jun', 'model'),
+    ]);
+    expect(m.scope).toEqual({ kind: 'survey', capture: 'jun' });
+    expect(m.source).toEqual({ layer: 'model-jun' });
+    expect(m.pickedOn).toEqual(['model', 'ground', 'model']);
+    // drawn points are saved in the date's frame: June's 20 m shift taken off
+    expect(m.points[0]?.[0]).toBe(0);
+    expect(Math.abs(m.points[0]?.[1] ?? 0)).toBe(20);
+    expect(MeasurementsFile.safeParse(measureStore.getState().file).success).toBe(true);
+  });
+
+  it('a typed point takes the last layer on the ground, and no pick falls back to the base layer', () => {
+    timeline.setState({ focus: 'jan' });
+    const m = triangle([]);
+    expect(m.scope).toEqual({ kind: 'survey', capture: 'jan' });
+    expect(m.source).toEqual({ layer: 'dsm-jan' });
+    expect(m.pickedOn).toEqual(['ground', 'ground', 'ground']);
+  });
+
+  it('a project with no dates keeps site scope and still records the source', () => {
+    workspace.setState({ dates: null });
+    const m = triangle([on('dsm-jan', 'ground'), on('dsm-jan', 'ground'), on('dsm-jan', 'ground')]);
+    expect(m.scope).toEqual({ kind: 'site' });
+    expect(m.source).toEqual({ layer: 'dsm-jan' });
+  });
+
+  it('a vertex edit keeps pickedOn as long as points', async () => {
+    const m = triangle([on('dsm-jan', 'model'), on('dsm-jan', 'ground'), on('dsm-jan', 'model')]);
+    select([m.id], m.id);
+    startEditing();
+    const now = () => measureStore.getState().file.measurements[0];
+    const aligned = () => {
+      expect(now()?.pickedOn).toHaveLength(now()?.points.length ?? -1);
+    };
+    editEvent({ type: 'down-mid', seg: 0 });
+    editEvent({ type: 'up' });
+    expect(now()?.pickedOn).toEqual(['model', 'model', 'ground', 'model']);
+    aligned();
+    editEvent({ type: 'delete', vertex: 2 });
+    expect(now()?.pickedOn).toEqual(['model', 'model', 'model']);
+    aligned();
+    editEvent({ type: 'set', vertex: 0, coords: { z: 3 } });
+    aligned();
+    expect(now()?.points).toHaveLength(3);
+    expect(await saveMeasurements()).toBe(true);
+    expect(MeasurementsFile.safeParse(io.saved).success).toBe(true);
+    expect(io.saved.measurements[0]?.pickedOn).toHaveLength(3);
+  });
+
+  it('Flip keeps pickedOn aligned', () => {
+    startTool('azimuth');
+    clickOn([0, 0, 0], on('dsm-jan', 'model'));
+    clickOn([0, 0, 2], on('dsm-jan', 'ground'));
+    clickOn([2, 0, 0], on('dsm-jan', 'model'));
+    const m = measureStore.getState().file.measurements[0];
+    expect(m?.pickedOn).toEqual(['model', 'ground', 'model']);
+    if (!m) return;
+    flipAzimuth(m.id);
+    const flipped = measureStore.getState().file.measurements[0];
+    expect(flipped?.points[1]).toEqual([2, 0, 0]);
+    expect(flipped?.pickedOn).toEqual(['model', 'model', 'ground']);
+  });
+
+  it('copyToSurvey keeps pickedOn', () => {
+    const m = triangle([on('dsm-jan', 'model'), on('dsm-jan', 'ground'), on('dsm-jan', 'model')]);
+    copyToSurvey(m.id, 'jun');
+    const copy = measureStore.getState().file.measurements.find((x) => x.id !== m.id);
+    expect(copy?.scope).toEqual({ kind: 'survey', capture: 'jun' });
+    expect(copy?.pickedOn).toEqual(['model', 'ground', 'model']);
+    expect(MeasurementsFile.safeParse(measureStore.getState().file).success).toBe(true);
   });
 });

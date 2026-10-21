@@ -57,8 +57,10 @@ import { shiftKey, workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
 import { authorName } from '../author';
 import { bridge } from '../shell';
+import { timeline } from '../workspace/timeline';
 import { designs, loadDesigns } from './designsStore';
 import { drawnPoints, scopeShift, storedPoints } from './measureDates';
+import { alignPicks, creationDating, realignPickedOn, type VertexPick } from './measureSource';
 import {
   createMeasureVisibilityMemory,
   measureStorage,
@@ -197,6 +199,9 @@ function savedEdit(
   return edited.map((p) => was.get(p.join(',')) ?? storedPoints([p], m.scope, manifest)[0] ?? p);
 }
 const text = (f: MeasurementsFile) => JSON.stringify(f);
+
+/** What each vertex of the drawing in progress was picked on (one entry per drawn point). */
+let drawPicks: VertexPick[] = [];
 
 let counter = 0;
 /** A new file-name-safe measurement id. */
@@ -686,6 +691,7 @@ export function startTool(tool: MeasurementTool, opts: StartToolOptions = {}): v
   const projectId = get().projectId;
   const begin = (picks: RolePicks) => {
     if ((get().readOnly && !transient) || get().projectId !== projectId) return;
+    drawPicks = [];
     set({
       tool: { tool, template, picks, ...(forOther ?? {}), ...(transient ? { transient } : {}) },
       draw: initialDraw(TOOL_FAMILY[tool]),
@@ -755,6 +761,7 @@ export function cancelRoles(): void {
 }
 
 export function stopTool(): void {
+  drawPicks = [];
   set({ tool: null, draw: null });
 }
 
@@ -763,7 +770,11 @@ export function flipAzimuth(id: string): void {
   const s = get();
   const m = s.file.measurements.find((x) => x.id === id);
   if (m?.tool !== 'azimuth' || s.readOnly) return;
-  patchMeasurement(id, { points: flipFace(m.points) });
+  const flipped = flipFace(m.points);
+  patchMeasurement(id, {
+    points: flipped,
+    ...(m.pickedOn ? { pickedOn: realignPickedOn(m.points, flipped, m.pickedOn) } : {}),
+  });
   if (s.focus === id && s.editing) set({ editing: initialEdit(flipFace(s.editing.points)) });
 }
 
@@ -809,9 +820,11 @@ export function setDrawInterceptor(f: DrawInterceptor | null): void {
 }
 
 /** Feed a drawing event; a finished shape becomes a measurement (unsaved until Save). */
-export function drawEvent(e: DrawEvent, env: DrawEnv): void {
+export function drawEvent(e: DrawEvent, env: DrawEnv, pick?: VertexPick): void {
   const s = get();
   if (!s.draw || !s.tool || (s.readOnly && !s.tool.transient)) return;
+  // a drawing replaced from outside (Suggest boundaries) leaves the picks the length of its points
+  drawPicks = alignPicks(drawPicks, s.draw.points.length, null);
   const telecom = isTelecomTool(s.tool.tool);
   // a finished line measured without saving stays on the canvas until the next click
   if (s.tool.transient && s.draw.done && e.type === 'move') return;
@@ -834,6 +847,7 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
     }
     next = { ...next, done: true };
   }
+  drawPicks = alignPicks(drawPicks, next.points.length, pick ?? null);
   if (next.cancelled) {
     stopTool();
     return;
@@ -844,18 +858,30 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
   }
   if (next.done) {
     const { tool, template, picks } = s.tool;
-    const m = measurementFrom(
-      template ?? tool,
-      {
-        id: newMeasurementId(),
-        label: nextLabel(template?.name ?? TOOL_LABELS[tool]),
-        points: next.points,
-        scope: { kind: 'site' },
-        createdAt: now(),
-        createdBy: authorName() || undefined,
-      },
-      picks,
-    );
+    // the first vertex's layer says the measurement's date; its points are saved in that date's frame
+    const manifest = openManifest();
+    const dating = creationDating(drawPicks, {
+      index: workspace.getState().dates,
+      manifest: manifest ?? { layers: [] },
+      focus: timeline.getState().focus,
+    });
+    const m: SurveyMeasurement = {
+      ...measurementFrom(
+        template ?? tool,
+        {
+          id: newMeasurementId(),
+          label: nextLabel(template?.name ?? TOOL_LABELS[tool]),
+          points: storedPoints(next.points, dating.scope, manifest),
+          scope: dating.scope,
+          createdAt: now(),
+          createdBy: authorName() || undefined,
+        },
+        picks,
+      ),
+      ...(dating.source ? { source: dating.source } : {}),
+      pickedOn: dating.pickedOn,
+    };
+    drawPicks = [];
     addMeasurement(m);
     if (telecom) {
       stopTool();
@@ -904,9 +930,14 @@ export function editEvent(e: EditEvent): void {
   set({ editing: next });
   if (e.type === 'up' || e.type === 'delete' || e.type === 'set' || e.type === 'escape') {
     const manifest = openManifest();
-    if (JSON.stringify(next.points) !== JSON.stringify(drawnPoints(m, manifest)))
+    const was = drawnPoints(m, manifest);
+    if (JSON.stringify(next.points) !== JSON.stringify(was))
       patchMeasurement(m.id, {
         points: savedEdit(next.points, m, manifest),
+        // vertices dragged or typed keep their kind; inserted and deleted ones realign it
+        ...(m.pickedOn && next.points.length !== was.length
+          ? { pickedOn: realignPickedOn(was, next.points, m.pickedOn) }
+          : {}),
         results: m.results.map((r) => ({ ...r, status: 'stale' as const })),
       });
   }
