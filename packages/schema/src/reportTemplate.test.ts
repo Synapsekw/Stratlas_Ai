@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ReportTemplateFile, TemplateEntry, emptyReportTemplate, ipc } from './index';
+import {
+  ReportTemplateFile,
+  TemplateEntry,
+  emptyReportTemplate,
+  ipc,
+  isMeasurementEntry,
+  isSectionEntry,
+  knownParts,
+} from './index';
 
 describe('report template', () => {
   it('emptyReportTemplate parses', () => {
@@ -43,7 +51,35 @@ describe('report template', () => {
     expect(TemplateEntry.safeParse(e).success).toBe(false);
   });
 
-  it('an unknown entry kind is refused', () => {
-    expect(TemplateEntry.safeParse({ kind: 'banner', text: 'x' }).success).toBe(false);
+  it("a later build's additions are kept, not refused: entry kinds, parts and sections", () => {
+    const file = {
+      ...emptyReportTemplate(),
+      layout: { columns: 2 },
+      entries: [
+        { kind: 'banner', text: 'Site A', colour: 'red' },
+        {
+          kind: 'measurement',
+          id: 'm-1',
+          parts: ['value', 'photo'],
+          addedAt: '2026-10-20T08:00:00Z',
+          note: 'x',
+        },
+        { kind: 'section', section: 'drone-photos' },
+      ],
+    };
+    const read = ReportTemplateFile.parse(file);
+    // written back as it was read: nothing a later build saved is lost
+    expect(read).toEqual(file);
+    const [banner, m, section] = read.entries;
+    expect(banner && isMeasurementEntry(banner)).toBe(false);
+    expect(banner && isSectionEntry(banner)).toBe(false);
+    expect(m && isMeasurementEntry(m) ? knownParts(m) : null).toEqual(['value']);
+    expect(section && isSectionEntry(section) ? section.section : null).toBe('drone-photos');
+  });
+
+  it('a known entry kind still has to be well formed', () => {
+    expect(TemplateEntry.safeParse({ kind: 'measurement', parts: ['value'] }).success).toBe(false);
+    expect(TemplateEntry.safeParse({ kind: 'section' }).success).toBe(false);
+    expect(TemplateEntry.safeParse({ text: 'no kind' }).success).toBe(false);
   });
 });

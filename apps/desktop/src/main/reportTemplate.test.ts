@@ -1,4 +1,9 @@
-import { emptyReportTemplate, REPORT_TEMPLATE_FILE, type ReportTemplateFile } from '@aio/schema';
+import {
+  emptyReportTemplate,
+  isMeasurementEntry,
+  REPORT_TEMPLATE_FILE,
+  type ReportTemplateFile,
+} from '@aio/schema';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,12 +57,33 @@ describe('report template store', () => {
     expect(await readTemplate(root)).toEqual(withEntries('a'));
     await writeTemplate(root, withEntries('a', 'b'));
     expect(
-      (await readTemplate(root))?.entries.map((e) => (e.kind === 'measurement' ? e.id : '')),
+      (await readTemplate(root))?.entries.map((e) => (isMeasurementEntry(e) ? e.id : '')),
     ).toEqual(['a', 'b']);
     const bak = JSON.parse(await readFile(join(root, `${REPORT_TEMPLATE_FILE}.bak`), 'utf8')) as {
       entries: unknown[];
     };
     expect(bak.entries).toHaveLength(1);
+  });
+
+  it("reads a later build's additions and keeps them when it saves", async () => {
+    const later = {
+      ...withEntries('a'),
+      entries: [
+        { kind: 'banner', text: 'Site A' },
+        { ...entry('a'), parts: ['value', 'photo'] },
+        { kind: 'section', section: 'drone-photos' },
+      ],
+    };
+    await mkdir(join(root, 'report'));
+    await writeFile(join(root, REPORT_TEMPLATE_FILE), JSON.stringify(later));
+    const read = await readTemplate(root);
+    expect(read).toEqual(later);
+    if (!read) throw new Error('no template');
+    await writeTemplate(root, { ...read, entries: [...read.entries, entry('b')] });
+    expect(JSON.parse(await onDisk())).toEqual({
+      ...later,
+      entries: [...later.entries, entry('b')],
+    });
   });
 
   it('refuses an unreadable or invalid template and never writes over it', async () => {

@@ -2,6 +2,7 @@
 import {
   emptyMeasurements,
   emptyReportTemplate,
+  isMeasurementEntry,
   ReportTemplateFile,
   type ProjectManifest,
   type SitePoint,
@@ -60,7 +61,7 @@ const m = (id: string, tool: 'distance' | 'area') => ({
 
 const ids = () =>
   (disk.file?.entries ?? []).map((e) =>
-    e.kind === 'measurement' ? `${e.id}:${e.parts.join('+')}` : '',
+    isMeasurementEntry(e) ? `${e.id}:${e.parts.join('+')}` : '',
   );
 
 beforeEach(() => {

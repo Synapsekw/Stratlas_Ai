@@ -7,8 +7,8 @@
  * saved by a newer build): a template is never written over without what is in it. Adds run one
  * at a time, so two quick adds do not lose one another.
  */
-import type { ReportTemplateFile, TemplateEntry } from '@aio/schema';
-import { emptyReportTemplate } from '@aio/schema';
+import type { ReportTemplateFile, TemplatePart } from '@aio/schema';
+import { emptyReportTemplate, isMeasurementEntry } from '@aio/schema';
 import { t } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect } from 'react';
@@ -21,7 +21,7 @@ import { measurementHasChart } from '../survey/card/chartRule';
 /** The most entries a template holds (`ReportTemplateFile.entries`, max 500). */
 export const TEMPLATE_MAX = 500;
 
-export type TemplateParts = Extract<TemplateEntry, { kind: 'measurement' }>['parts'];
+export type TemplateParts = TemplatePart[];
 
 interface TemplateState {
   /** The project the template was read for. */
@@ -96,7 +96,7 @@ export function addManyToReport(
   const run = queue.then(async () => {
     const projectId = openProject();
     const file = (await read(projectId)) ?? emptyReportTemplate();
-    const there = new Set(file.entries.flatMap((e) => (e.kind === 'measurement' ? [e.id] : [])));
+    const there = new Set(file.entries.flatMap((e) => (isMeasurementEntry(e) ? [e.id] : [])));
     const added: string[] = [];
     const already: string[] = [];
     const addedAt = new Date().toISOString();

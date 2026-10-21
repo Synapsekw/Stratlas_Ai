@@ -5,7 +5,12 @@
  * name and its primary value, as the card shows them); a second add says "Already in the report"
  * and adds nothing. Off-screen, zero network.
  */
-import { MeasurementsFile, ReportTemplateFile } from '@aio/schema';
+import {
+  isMeasurementEntry,
+  isSectionEntry,
+  MeasurementsFile,
+  ReportTemplateFile,
+} from '@aio/schema';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -173,7 +178,9 @@ test('adding twice says Already in the report', async ({ win, dataRoot }) => {
   expect(await addFromMenu(win, line)).toContain('Added to the report');
   await expect
     .poll(async () =>
-      (await templateOf(dir))?.entries.map((e) => (e.kind === 'measurement' ? e.id : e.section)),
+      (await templateOf(dir))?.entries.map((e) =>
+        isMeasurementEntry(e) ? e.id : isSectionEntry(e) ? e.section : e.kind,
+      ),
     )
     .toEqual(['pad-a', 'line-b']);
 });

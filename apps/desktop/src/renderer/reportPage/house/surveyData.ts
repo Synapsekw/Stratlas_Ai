@@ -35,7 +35,9 @@ import {
   DESIGNS_FILE,
   DesignsFile,
   HeightTiles,
+  isMeasurementEntry,
   isSurfaceSide,
+  knownParts,
   MEASUREMENTS_FILE,
   MeasurementsFile,
   REPORT_TEMPLATE_FILE,
@@ -55,6 +57,7 @@ import {
   type SurfaceRef,
   type SurveyMeasurement,
   type SurveyTemplate,
+  type TemplatePart,
 } from '@aio/schema';
 import {
   allRows,
@@ -510,7 +513,7 @@ export interface ReportEntry {
   ref: string;
   /** The measurement with its stored results as its card shows them (stale marked). */
   m: SurveyMeasurement;
-  parts: readonly ('value' | 'chart' | 'table')[];
+  parts: readonly TemplatePart[];
   chart: EntryChart | null;
   /**
    * Its card, as the app's detail card shows it: drawn where the app draws it (the date's
@@ -798,8 +801,12 @@ export async function buildSurveyData(
   const templated =
     opts.need === 'report'
       ? (files.template?.entries ?? []).flatMap((e) => {
-          const m = e.kind === 'measurement' ? byId.get(e.id) : undefined;
-          return m && e.kind === 'measurement' ? [{ m, parts: e.parts }] : [];
+          // an entry, or a part, a later build added is kept in the file and not printed here
+          const m = isMeasurementEntry(e) ? byId.get(e.id) : undefined;
+          if (!m || !isMeasurementEntry(e)) return [];
+          const parts = knownParts(e);
+          const shownParts: readonly TemplatePart[] = parts.length > 0 ? parts : ['value'];
+          return [{ m, parts: shownParts }];
         })
       : [];
 

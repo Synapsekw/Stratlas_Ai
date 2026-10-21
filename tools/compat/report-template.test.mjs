@@ -74,6 +74,26 @@ describe('volumetric parity contracts are additive', () => {
     expect(r.data.angles).toEqual(current.DEFAULT_ANGLES);
   });
 
+  it('a later build may add entry kinds, parts and sections to the report template', () => {
+    const later = {
+      schema: 'aio.report-template/1',
+      entries: [
+        { kind: 'banner', text: 'x' },
+        {
+          kind: 'measurement',
+          id: 'm-1',
+          parts: ['value', 'photo'],
+          addedAt: '2026-10-20T08:00:00Z',
+        },
+        { kind: 'section', section: 'drone-photos' },
+      ],
+      layout: { columns: 2 },
+    };
+    const r = current.ReportTemplateFile.safeParse(later);
+    expect(r.success).toBe(true);
+    expect(r.data).toEqual(later);
+  });
+
   it('the report template is a family 0.21 does not know', () => {
     expect(current.SCHEMA_REGISTRY.some((e) => e.family === 'aio.report-template')).toBe(true);
     expect(v021.SCHEMA_REGISTRY.some((e) => e.family === 'aio.report-template')).toBe(false);
