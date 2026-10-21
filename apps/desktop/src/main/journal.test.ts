@@ -493,6 +493,22 @@ describe('journal service', () => {
       expect(JSON.stringify(e[0])).toContain('telecom/antennas.json');
     });
 
+    it('journals thermal:write against thermal/thermal.json', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const write = s.journal.wrap('thermal:write', ({ file }) => {
+        put(root, 'thermal/thermal.json', file);
+        return { ok: true as const };
+      });
+      const file = { schema: 'aio.thermal/1', photos: {}, readings: [], hotspots: [] } as never;
+      expect(await write({ projectId: 'p', file })).toEqual({ ok: true });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]).toMatchObject({ kind: 'record.external' });
+      expect(JSON.stringify(e[0])).toContain('thermal/thermal.json');
+    });
+
     it('records a photo:writeGcp as one op on the run gcp.json', async () => {
       const { root, userData } = setup();
       const s = service(root, userData);

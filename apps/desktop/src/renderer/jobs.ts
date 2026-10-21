@@ -1066,6 +1066,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'telecom.antennas': [],
   // empty on purpose: the RF tab launches rf.coverage in a later task, never from a form
   'rf.coverage': [],
+  // started by the thermal bench, never from a form
+  'thermal.decode': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

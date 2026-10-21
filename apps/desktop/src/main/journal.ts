@@ -229,6 +229,12 @@ const WRITERS: Partial<
     rel: ANTENNAS_FILE,
     after: r.file,
   }),
+  // thermal analysis readings and hot spots: one record.external op per save
+  'thermal:write': (r: IpcRequest<'thermal:write'>) => ({
+    projectId: r.projectId,
+    rel: 'thermal/thermal.json',
+    after: r.file,
+  }),
   // M10 3D Tiles list and ground control: one record.external op per save, labelled
   'tilesets:write': (r: IpcRequest<'tilesets:write'>) => ({
     projectId: r.projectId,

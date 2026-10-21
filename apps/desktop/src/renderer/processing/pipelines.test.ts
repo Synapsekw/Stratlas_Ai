@@ -1,6 +1,7 @@
 import { PipelineName, PIPELINES } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  BENCH_ONLY,
   groupedPipelines,
   JOB_KIND,
   jobKind,
@@ -28,9 +29,13 @@ describe('pipelines by area (the Advanced list)', () => {
   it('lists each pipeline once, none missing, in the areas of the brief', () => {
     const groups = groupedPipelines(PIPELINES);
     const listed = groups.flatMap((g) => g.pipelines.map((p) => p.name));
-    expect(listed).toHaveLength(PIPELINES.length);
-    expect(new Set(listed).size).toBe(PIPELINES.length);
-    expect([...listed].sort()).toEqual(PIPELINES.map((p) => p.name).sort());
+    const offered = PIPELINES.filter((p) => !BENCH_ONLY.has(p.name));
+    expect(listed).toHaveLength(offered.length);
+    expect(new Set(listed).size).toBe(offered.length);
+    expect([...listed].sort()).toEqual(offered.map((p) => p.name).sort());
+    // started by a bench, never offered as a form
+    expect(listed).not.toContain('thermal.decode');
+    expect(PIPELINE_GROUP['thermal.decode']).toBeDefined();
     expect(groups.map((g) => g.label)).toEqual([
       'Photos to maps',
       'Inspection',
@@ -64,7 +69,7 @@ describe('pipelines by area (the Advanced list)', () => {
     const groups = groupedPipelines(grown);
     expect(groups.at(-1)).toMatchObject({ id: 'other', label: 'Other' });
     expect(groups.at(-1)?.pipelines.map((p) => p.name)).toEqual(['new.thing']);
-    expect(groups.flatMap((g) => g.pipelines)).toHaveLength(grown.length);
+    expect(groups.flatMap((g) => g.pipelines)).toHaveLength(grown.length - BENCH_ONLY.size);
   });
 });
 

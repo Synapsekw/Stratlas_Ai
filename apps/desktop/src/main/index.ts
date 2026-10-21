@@ -182,6 +182,8 @@ import { registerSurveyIpc } from './survey';
 import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
 import { antennaPackRefusal } from './telecomPack';
+import { registerThermalIpc } from './thermal';
+import { thermalPackRefusal } from './thermalPack';
 import { RF_PACK_FEATURE, rfPackRefusal } from './rfPack';
 import { registerSurveyAiIpc } from './surveyAi';
 import { createSegmenter } from './inference/segment';
@@ -1532,7 +1534,8 @@ function registerIpc(): void {
       pipeline === 'model.evidence' ||
       pipeline === 'pointcloud.clean' ||
       pipeline === 'telecom.antennas' ||
-      pipeline === 'rf.coverage'
+      pipeline === 'rf.coverage' ||
+      pipeline === 'thermal.decode'
     ) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
@@ -1550,6 +1553,7 @@ function registerIpc(): void {
         )) ??
         antennaPackRefusal(pipeline, version) ??
         rfPackRefusal(pipeline, version) ??
+        thermalPackRefusal(pipeline, version) ??
         cleanPackRefusal(pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
@@ -2095,6 +2099,8 @@ function registerIpc(): void {
   registerSurveyIpc({ handle, ...survey, userData: () => app.getPath('userData') });
   // telecom antenna detection (files and pack gate: telecom.ts, telecomPack.ts)
   registerTelecomIpc({ handle, projects: registry });
+  // thermal analysis (files and probe: thermal.ts; pack gate: thermalPack.ts)
+  registerThermalIpc({ handle, projects: registry });
   registerSurveyOverlaysIpc({ handle, ...survey });
   registerGeodesyIpc({ handle, ...survey });
   registerSurveyQaIpc({ handle, ...survey });

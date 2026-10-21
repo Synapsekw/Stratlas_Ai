@@ -17,3 +17,5 @@ export function detectPackageKind(files: readonly string[]): PackageKind | null 
   if (any(/3d report\.html$/) || any(/review\.html$/) || any(/^data\/.*\.js$/)) return 'aik';
   return null;
 }
+
+export * from './thermal';

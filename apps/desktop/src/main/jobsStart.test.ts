@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import { evidenceJobPackRefusal, evidencePackRefusal } from './evidencePack';
+import { thermalPackRefusal } from './thermalPack';
 
 /** Exercise the registered IPC callback without starting Electron or a pipeline process. */
 function jobsStart(
@@ -67,6 +68,7 @@ function jobsStart(
     cleanPackRefusal: () => null,
     antennaPackRefusal: () => null,
     rfPackRefusal: () => null,
+    thermalPackRefusal,
     evidenceJobPackRefusal,
     laneSphere: () => null,
   }) as (req: IpcRequest<'jobs:start'>) => Promise<{ ok: boolean; error?: string }>;
@@ -110,6 +112,22 @@ describe('jobs:start resume feature gate', () => {
     });
     expect(await resumed.handle({ resume: 'saved-evidence' })).toMatchObject({ ok: false });
     expect(resumed.start).not.toHaveBeenCalled();
+  });
+
+  it('refuses thermal.decode on a pack below 0.21.0 with the update text', async () => {
+    const req = {
+      pipeline: 'thermal.decode' as const,
+      project: 'synthetic',
+      params: { layerId: 'ph' },
+    };
+    const old = jobsStart('0.20.0', 'failed');
+    expect(await old.handle(req)).toEqual({
+      ok: false,
+      error: thermalPackRefusal('thermal.decode', '0.20.0'),
+    });
+    expect(old.start).not.toHaveBeenCalled();
+    const current = jobsStart('0.21.0', 'failed');
+    expect(await current.handle(req)).toEqual({ ok: true });
   });
 
   it('allows new component evidence on the component-processing pack', async () => {

@@ -75,6 +75,7 @@ export const PIPELINE_GROUP: Record<PipelineName, PipelineGroupId> = {
   'pointcloud.clean': 'import',
   'telecom.antennas': 'survey',
   'rf.coverage': 'rf',
+  'thermal.decode': 'survey',
   'drawing.import': 'import',
   'design.import': 'import',
   'opf.import': 'import',
@@ -103,14 +104,18 @@ export function ungroupedPipelines(list: readonly PipelineInfo[] = PIPELINES): s
   return list.filter((p) => groupOf(p.name) === undefined).map((p) => p.name);
 }
 
+/** Pipelines only a bench starts (with its own parameters): never offered in the Advanced list. */
+export const BENCH_ONLY: ReadonlySet<string> = new Set<PipelineName>(['thermal.decode']);
+
 /**
  * The pipelines by area, for the `<optgroup>`s of the Advanced list: every pipeline of `list`
  * exactly once, in the list's order inside its area. A pipeline without an area is never hidden:
  * it shows in a last group, **Other**.
  */
 export function groupedPipelines<T extends PipelineInfo>(
-  list: readonly T[],
+  all: readonly T[],
 ): { id: PipelineGroupId | 'other'; label: string; pipelines: T[] }[] {
+  const list = all.filter((p) => !BENCH_ONLY.has(p.name));
   const groups: { id: PipelineGroupId | 'other'; label: string; pipelines: T[] }[] =
     PIPELINE_GROUPS.map((g) => ({
       ...g,
@@ -187,6 +192,7 @@ export const JOB_KIND: Record<PipelineName, JobKind> = {
   'pointcloud.clean': 'files',
   'telecom.antennas': 'survey',
   'rf.coverage': 'survey',
+  'thermal.decode': 'survey',
   'drawing.import': 'files',
   'design.import': 'files',
   'opf.import': 'files',
