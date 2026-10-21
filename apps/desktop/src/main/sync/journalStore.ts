@@ -174,7 +174,11 @@ export function createJournalStore(): JournalStore {
       for (const f of await list(dir)) {
         if (!/^d_[a-z2-7]{52}\.json$/.test(f)) continue;
         try {
-          const d = DeviceRecord.safeParse(JSON.parse(await readFile(join(dir, f), 'utf8')));
+          // the key must hash to the id the file is named after, and sign the record: a file
+          // cannot hand another device's id a key of its own (its ops would check against it)
+          const raw = JSON.parse(await readFile(join(dir, f), 'utf8')) as Record<string, unknown>;
+          if (raw.id !== f.slice(0, -'.json'.length) || !deviceRecordValid(raw)) continue;
+          const d = DeviceRecord.safeParse(raw);
           if (d.success) out.push(d.data);
         } catch {
           // a device file mid-copy: read again next time

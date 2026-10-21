@@ -1,6 +1,6 @@
 import type { KeyObject } from 'node:crypto';
 import { CHECKPOINT_SCHEMA, type Checkpoint } from '@aio/schema';
-import { contentHash, sha256Hex } from './hash';
+import { contentHash, deviceIdFromKey, sha256Hex } from './hash';
 import type { Signer } from './sign';
 import { verifySignature } from './sign';
 
@@ -104,9 +104,21 @@ export function checkCheckpoint(
   return { id, root, signature };
 }
 
-/** Check the self-signature of a device record (`aio.device/1` over the hash without `sig`). */
+/**
+ * Check a device record: its id is the hash of its key (so a record cannot claim another device's
+ * id with its own key), and it is signed by that key (`aio.device/1` over the hash without `sig`).
+ */
 export function checkDeviceRecord(raw: Record<string, unknown>): boolean {
-  if (typeof raw.key !== 'string' || typeof raw.sig !== 'string') return false;
+  if (typeof raw.key !== 'string' || typeof raw.sig !== 'string' || typeof raw.id !== 'string') {
+    return false;
+  }
+  let id: string;
+  try {
+    id = deviceIdFromKey(Buffer.from(raw.key, 'base64url'));
+  } catch {
+    return false;
+  }
+  if (id !== raw.id) return false;
   return verifySignature(raw.key, 'aio.device/1', contentHash(without(raw, ['sig'])), raw.sig);
 }
 

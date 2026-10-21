@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { checkDeviceRecord, sealDeviceRecord } from './checkpoint';
 import { loadJournalFiles } from './fixtureFiles';
+import { signerFromSeed } from './sign';
 import { verifyJournal } from './verify';
 
 const fixtures = fileURLToPath(new URL('../../schema/src/__fixtures__/journal/', import.meta.url));
@@ -82,5 +84,28 @@ describe('verifyJournal', () => {
     const r = verifyJournal(files, { now: NOW, quarantined: new Set([first.id]) });
     expect(r.ok).toBe(true);
     expect(r.counts.quarantined).toBe(1);
+  });
+
+  it('refuses a device record whose key does not hash to the device id it is filed under', () => {
+    const files = loadJournalFiles(join(fixtures, 'valid'));
+    const [path] = [...files].find(([p]) => p.startsWith('journal/devices/')) ?? [''];
+    const id = path.slice('journal/devices/'.length, -'.json'.length);
+    const mallory = signerFromSeed('77'.repeat(32));
+    // self-signed by another key, but claiming the existing device id
+    const forged = sealDeviceRecord(
+      {
+        ...(JSON.parse(files.get(path) ?? '{}') as Record<string, unknown>),
+        sig: undefined,
+        id,
+        key: mallory.publicKey,
+      },
+      mallory,
+    );
+    expect(checkDeviceRecord(forged)).toBe(false);
+    files.set(path, JSON.stringify(forged));
+    const r = verifyJournal(files, { now: NOW });
+    expect(r.problems).toContainEqual(
+      expect.objectContaining({ code: 'bad-signature', file: path }),
+    );
   });
 });
