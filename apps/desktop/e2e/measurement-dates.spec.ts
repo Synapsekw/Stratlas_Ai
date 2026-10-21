@@ -4,9 +4,9 @@
  * under it and leaves the view when another date is focused; dragged onto that date's folder it
  * is measured again there (its heights now the second survey's, over Stockpile B, which the
  * second survey adds) and waits for Save; a move onto a date with no prepared surfaces is refused
- * with the offer to prepare them; an antenna measurement stays on its date; and a DSM dragged to
- * another date takes the measurements made on it along. Off-screen, zero network, pipeline Python
- * needed.
+ * with the offer to prepare them; the row menu's Move to date moves it back without a drag; an
+ * antenna measurement stays on its date; and a DSM dragged to another date takes the measurements
+ * made on it along. Off-screen, zero network, pipeline Python needed.
  */
 import { MeasurementsFile } from '@aio/schema';
 import type { Locator, Page } from '@playwright/test';
@@ -205,13 +205,15 @@ test('measurements file under their dates, move between dates and follow their l
         ? { x: Math.round(host.left + Number(m[1])), y: Math.round(host.top + Number(m[2])) }
         : null;
     });
+  // still over three reads in a row: a read taken before the flight starts is not settled
   let at = await anchorOf();
+  let still = 0;
   await expect(async () => {
     const now = await anchorOf();
-    const still = now !== null && at !== null && now.x === at.x && now.y === at.y;
+    still = now !== null && at !== null && now.x === at.x && now.y === at.y ? still + 1 : 0;
     at = now;
-    expect(still, 'the view has settled on the pile').toBe(true);
-  }).toPass({ timeout: 15_000, intervals: [400] });
+    expect(still, 'the view has settled on the pile').toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: 20_000, intervals: [400] });
   if (!at) throw new Error('no anchor for the seeded pile');
   const { x: px, y: py } = at;
   const corners = [
@@ -298,6 +300,20 @@ test('measurements file under their dates, move between dates and follow their l
     kind: 'survey',
     capture: 'd2',
   });
+
+  // (4b) without a drag: the row menu's Move to date (the other dates only) takes it back
+  await note.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await expect(note).toHaveCount(0);
+  await measureTree(win, 'd2');
+  await rowIn(win, 'd2', drawnId).click({ button: 'right' });
+  await win.getByTestId('ctx-item-measure.moveToDate').click();
+  await expect(win.getByTestId('measure-date-to-d3')).toBeVisible();
+  await expect(win.getByTestId('measure-date-to-d2')).toHaveCount(0);
+  await win.getByTestId('measure-date-to-d1').click();
+  await expect(note).toContainText('measured again', { timeout: 60_000 });
+  await measureTree(win, 'd1');
+  await expect(rowIn(win, 'd1', drawnId)).toHaveCount(1);
+  await expect(rowIn(win, 'd2', drawnId)).toHaveCount(0);
 
   // (5) an antenna measurement stays on the date it was picked on (the last note put away first:
   // it sits over the top of the list, where the drag is held)

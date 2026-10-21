@@ -145,6 +145,7 @@ test('right-click a shape in 3D opens its menu; a left click selects it; not whi
     'ctx-item-measure.visibility',
     'ctx-item-measure.flyTo',
     'ctx-item-measure.moveToFolder',
+    'ctx-item-measure.moveToDate',
     'ctx-item-measure.delete',
   ]);
   await expect(menu.getByTestId('ctx-item-measure.visibility')).toHaveText('Hide');
