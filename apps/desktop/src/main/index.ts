@@ -783,7 +783,8 @@ const agent = createAgentRuntime(
     policy: async (projectId) => {
       const root = registry.root(projectId);
       // Packages are guarded by cloudAllowed above; a folder project may also forbid in its manifest.
-      return root === undefined ? 'allow' : readAiPolicy(root).catch(() => 'allow' as const);
+      // A policy that cannot be read fails closed: no project data goes to a cloud provider.
+      return root === undefined ? 'allow' : readAiPolicy(root).catch(() => 'forbid' as const);
     },
     recordUsage: (projectId, usage) => {
       const root = registry.root(projectId);
@@ -1560,7 +1561,7 @@ function registerIpc(): void {
     if (root === undefined) return { alwaysAllow: false, policy: 'allow' as const, usage: [] };
     const [state, policy, cloudDrawings] = await Promise.all([
       aiProjects.get(root),
-      readAiPolicy(root),
+      readAiPolicy(root).catch(() => 'forbid' as const),
       readCloudDrawings(root),
     ]);
     return { ...state, policy, cloudDrawings };
