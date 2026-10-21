@@ -31,10 +31,13 @@ and files stay on your machines.
 2. Put the certificate and its key in `tls/server.crt` and `tls/server.key` next to it. The key
    must be readable by the server's user (65532):
    `sudo chown 65532 tls/server.key && sudo chmod 600 tls/server.key`.
-3. Write a long random database password into `.env`: `DB_PASSWORD=...`.
-4. Start: `docker compose up -d`. The server creates its database tables and its own signing key
+3. Copy the `apps/team-server/initdb` folder next to it too: on the first start it creates the
+   `aio_app` role the server runs as.
+4. Write two long random passwords into `.env`: `DB_PASSWORD=...` (the database owner, used only
+   to apply migrations) and `APP_DB_PASSWORD=...` (the `aio_app` role).
+5. Start: `docker compose up -d`. The server creates its database tables and its own signing key
    (`/data/server-key.pem` in the `data` volume) on first start.
-5. Name the server and get the first owner invite:
+6. Name the server and get the first owner invite:
 
    ```
    docker compose exec server /nodejs/bin/node /app/dist/main.mjs create-team --name "Survey team"
@@ -76,9 +79,21 @@ The person opens **Settings**, **Data folder**, **Team server**, enters the serv
   set `AIO_BEHIND_TLS_PROXY=1`, `AIO_PUBLIC_URL=https://team.example.com` and
   `AIO_TLS_FINGERPRINT` (the SHA-256 of the proxy's certificate) instead of the certificate files.
 - **History is append-only.** The database refuses UPDATE, DELETE and TRUNCATE on the history
-  and receipt tables for every user. For defence in depth, create a role `aio_app` before the
-  first start and let the server connect as it: the first migration grants it only SELECT and
-  INSERT on those tables.
+  and receipt tables for every user (a trigger). The example `compose.yaml` also runs the server
+  as a role that owns nothing, `aio_app` (`DATABASE_URL`), while the migrations run as the
+  database owner (`AIO_MIGRATION_DATABASE_URL`). The migrations grant `aio_app` only SELECT and
+  INSERT on the history and receipt tables. Never point `DATABASE_URL` at the owner or a
+  superuser: a superuser can switch the trigger off.
+- **Identities are bound at enrolment.** An invite code lets a device join as a new person, or
+  as a person the server already knows only with a certificate from one of that person's devices
+  or from an owner. A project's member list always has the last word on which devices are whose.
+- **Project files stay in their projects.** A device reads a file only when a project it may read
+  names the file, or when it sent every byte of that file itself. Only owners and reviewers send
+  files. Each device's unfinished uploads are its own, count against a quota
+  (`AIO_BLOB_PARTIAL_QUOTA_GB`) and are deleted after 7 days without progress.
+- **Behind a reverse proxy** the server listens on `127.0.0.1` and trusts `X-Forwarded-For` only
+  from `127.0.0.1` by default. When the proxy runs elsewhere (another container), set `AIO_HOST`
+  to the address it reaches and `AIO_TRUSTED_PROXIES` to the proxy's address or network.
 - **Logs** are structured and never contain project content, signatures or invite codes.
 - **Rate limits** slow down code guessing and floods (enrolment: 20 attempts per address per 10
   minutes).
@@ -112,16 +127,27 @@ Restore reads the whole file first and writes nothing if the file is damaged or 
 does not verify. Test a restore on a spare VM now and then; CI does it on every change.
 
 **Upgrade:** back up, change the image tag in `compose.yaml`, then `docker compose up -d`. The
-server applies new database migrations on start. The app checks the server's protocol version
+server applies new database migrations on start.
+
+**Upgrading a server installed before 21 October 2026** to the `aio_app` role: add
+`APP_DB_PASSWORD=...` to `.env`, create the role once, then start with the new `compose.yaml`
+(its first migration after the upgrade grants the role what it needs):
+
+````
+docker compose exec db psql -U aio -d aio -c "CREATE ROLE aio_app LOGIN NOSUPERUSER NOINHERIT PASSWORD '<APP_DB_PASSWORD>'"
+docker compose up -d
+``` The app checks the server's protocol version
 and says so when the app or the server needs an update.
 
 ## Audit
 
 Export one project's history as the server holds it, with the server's receipts and public key:
 
-```
+````
+
 docker compose exec server /nodejs/bin/node /app/dist/main.mjs export-audit --project t_... --out /data/audit-t_...
 docker compose exec server /nodejs/bin/node /app/dist/main.mjs verify /data/audit-t_...
+
 ```
 
 The export uses the journal's own folder layout (`journal/ops/...`, `journal/devices/...`), so
@@ -131,12 +157,16 @@ the app's **Verify** reads the same files, and its result matches `verify`.
 
 | Variable                                | Default                | Meaning                                                   |
 | --------------------------------------- | ---------------------- | --------------------------------------------------------- |
-| `DATABASE_URL`                          | none (required)        | The Postgres database                                     |
+| `DATABASE_URL`                          | none (required)        | The Postgres database, as the role the server runs as     |
+| `AIO_MIGRATION_DATABASE_URL`            | `DATABASE_URL`         | The same database as its owner, for the migrations        |
 | `AIO_TLS_CERT_FILE`, `AIO_TLS_KEY_FILE` | none                   | The server ends TLS itself                                |
 | `AIO_BEHIND_TLS_PROXY`                  | off                    | `1`: plain HTTP behind a proxy that ends TLS              |
 | `AIO_PUBLIC_URL`                        | none                   | The address people use (required behind a proxy)          |
 | `AIO_TLS_FINGERPRINT`                   | none                   | The proxy certificate's SHA-256, shown at enrolment       |
-| `AIO_HOST`, `AIO_PORT`                  | `0.0.0.0`, `8443`      | Where the server listens                                  |
+| `AIO_HOST`, `AIO_PORT`                  | `0.0.0.0`, `8443`      | Where the server listens (`127.0.0.1` behind a proxy)     |
+| `AIO_TRUSTED_PROXIES`                   | `127.0.0.1,::1`        | Proxy addresses or networks whose forwarded headers count |
+| `AIO_REQUIRE_SIGNED_HEADERS`            | off                    | `1`: refuse unsigned content types (once every app is updated) |
+| `AIO_BLOB_PARTIAL_QUOTA_GB`             | `64`                   | Unfinished uploads per device                             |
 | `AIO_DATA_DIR`                          | `/data`                | Server key and project files                              |
 | `AIO_SERVER_KEY_FILE`                   | `/data/server-key.pem` | The server's signing key (a Docker secret is better)      |
 | `AIO_BLOB_STORE`                        | `fs`                   | Where project files live (`s3` is not in the preview yet) |
@@ -150,7 +180,8 @@ the app's **Verify** reads the same files, and its result matches `verify`.
 - One server process per database (no cluster).
 - Clients do not download shared packages from the server yet, and the free player does not
   write reply files yet.
-- Project files are not kept apart per project on the server's disk.
+- Project files are stored once on the server's disk, whatever project names them (who may
+  read them is checked per project).
 - The app shows no live server status.
 - A certificate renewed by a trusted CA is not accepted on its own yet (see "Keep it safe").
 
@@ -164,3 +195,4 @@ chapter "Team server (preview)".
 
 Node.js, Fastify, node-postgres and zod (MIT, BSD, ISC), Postgres (PostgreSQL licence). No
 PostGIS, no MinIO, nothing GPL or AGPL in the image; CI checks it on every change.
+```
