@@ -21,6 +21,9 @@ import { validated } from '../ipc';
 import { findPack } from './pack';
 import { selectManagedKit, readManagedSelection } from '../update/managedKits';
 import {
+  FAKE_ANALYTICS_SERVER,
+  fakeAnalyticsPackArchive,
+  fakeAnalyticsPackEntries,
   fakePackArchive,
   fakePackEntries,
   fakePackFiles,
@@ -44,6 +47,8 @@ import {
   packArchivePlaces,
   peekPackManifest,
   registerPipelinePackIpc,
+  ANALYTICS_PACK,
+  PIPELINE_PACK,
   type InstallOptions,
   type PipelinePackIpcDeps,
 } from './packInstall';
@@ -1216,5 +1221,153 @@ describe('pipeline pack IPC', () => {
     });
     expect(trashed).toEqual([]);
     expect(await tree(root)).toEqual(before);
+  });
+});
+
+describe('the Analytics pack', () => {
+  const installAnalytics = (path: string, o: Partial<InstallOptions> = {}) =>
+    install(path, { kind: ANALYTICS_PACK, ...o });
+
+  it('installs an analytics-pack archive into runtime/analytics-pack-<v>', async () => {
+    const path = await archive(
+      'analytics-pack-0.1.0-win-x64.tar.gz',
+      fakeAnalyticsPackArchive('0.1.0'),
+    );
+    const progress: PackInstallProgress[] = [];
+    const r = await installAnalytics(path, {
+      onProgress: (p) => progress.push(p),
+      progressEveryMs: 0,
+    });
+    const dir = join(runtime, 'analytics-pack-0.1.0');
+    expect(r).toEqual({ ok: true, version: '0.1.0', dir, replaced: false });
+    expect((await readdir(runtime)).sort()).toEqual([
+      'analytics-pack-0.1.0',
+      'pipeline-pack-0.2.0',
+    ]);
+    expect(await readFile(join(dir, ...FAKE_ANALYTICS_SERVER.split('/')), 'utf8')).toContain(
+      'llama-server',
+    );
+    expect(progress.at(-1)?.phase).toBe('done');
+    // the pipeline pack is not disturbed, and each kind lists only its own folders
+    expect((await findPack({ dataRoot, env: {}, app: APP })).pack?.version).toBe('0.2.0');
+    expect((await listPacks(dataRoot, ANALYTICS_PACK)).map((p) => [p.name, p.valid])).toEqual([
+      ['analytics-pack-0.1.0', true],
+    ]);
+    expect((await listPacks(dataRoot)).map((p) => p.name)).toEqual(['pipeline-pack-0.2.0']);
+    // a second install of the same version asks first, in the Analytics pack's words
+    expect(await installAnalytics(path)).toEqual({
+      ok: false,
+      error: 'Analytics pack 0.1.0 is already installed.',
+      code: 'exists',
+      version: '0.1.0',
+    });
+  });
+
+  it('refuses a pipeline-pack archive offered as analytics', async () => {
+    const path = await archive('analytics-pack-0.5.0-win-x64.tar.gz', fakePackArchive('0.5.0'));
+    const before = await tree(root);
+    expect(await installAnalytics(path)).toEqual({
+      ok: false,
+      error:
+        'This archive is not an Analytics pack file: it starts with pipeline-pack-0.5.0, not an analytics-pack-<version> folder.',
+    });
+    expect(await tree(root)).toEqual(before);
+    // and the other way round: an Analytics pack is not processing tools
+    const other = await archive(
+      'pipeline-pack-0.1.0-win-x64.tar.gz',
+      fakeAnalyticsPackArchive('0.1.0'),
+    );
+    expect(await install(other)).toEqual({
+      ok: false,
+      error:
+        'This archive is not a processing tools file: it starts with analytics-pack-0.1.0, not a pipeline-pack-<version> folder.',
+    });
+  });
+
+  it('refuses an analytics manifest whose llama-server is missing', async () => {
+    const path = await archive(
+      'analytics-pack-0.1.0-win-x64.tar.gz',
+      fakeTarGz(fakeAnalyticsPackEntries('0.1.0', { server: false })),
+    );
+    const before = await tree(root);
+    expect(await installAnalytics(path)).toEqual({
+      ok: false,
+      error: `This file has no llama-server at ${FAKE_ANALYTICS_SERVER}: it is incomplete. It was not installed.`,
+    });
+    expect(await tree(root)).toEqual(before);
+  });
+
+  it('refuses an Analytics pack for another app, another computer or with a check-build manifest', async () => {
+    const later = await archive(
+      'analytics-pack-0.1.0-win-x64.tar.gz',
+      fakeAnalyticsPackArchive('0.1.0', { appRange: '>=0.25.0 <2.0.0' }),
+    );
+    expect(await installAnalytics(later)).toEqual({
+      ok: false,
+      error:
+        'This Analytics pack works with Quadrion AI >=0.25.0 <2.0.0, and this is 0.11.0. Install the Analytics pack made for this version.',
+    });
+    // a --no-model check build writes "none" as the model checksum: never installed
+    const dev = await archive(
+      'analytics-pack-0.2.0-win-x64.tar.gz',
+      fakeAnalyticsPackArchive('0.2.0', {
+        manifest: (m) => {
+          (m.model as Record<string, unknown>).sha256 = 'none';
+        },
+      }),
+    );
+    expect(await installAnalytics(dev)).toEqual({
+      ok: false,
+      error:
+        "This file's manifest.json is not one this app can read (aio.analytics-pack/1). It was not installed.",
+    });
+    const mac = await archive(
+      'analytics-pack-0.3.0-win-x64.tar.gz',
+      fakeAnalyticsPackArchive('0.3.0', { platform: 'macos-arm64' }),
+    );
+    expect(await installAnalytics(mac)).toEqual({
+      ok: false,
+      error:
+        'This Analytics pack is for macos-arm64, and this computer is Windows (x64). Pick the file made for this computer.',
+    });
+    expect(await readdir(runtime)).toEqual(['pipeline-pack-0.2.0']);
+  });
+
+  it('packArchiveName knows analytics-pack-0.1.0-win-x64.tar.gz', () => {
+    const name = 'analytics-pack-0.1.0-win-x64.tar.gz';
+    expect(packArchiveName(name, PLATFORM, ANALYTICS_PACK)).toEqual({ version: '0.1.0' });
+    expect(
+      packArchiveName('analytics-pack-0.1.0-win-x64 (1).tar.gz', PLATFORM, ANALYTICS_PACK),
+    ).toEqual({ version: '0.1.0' });
+    expect(packArchiveName(name, PLATFORM)).toBeNull();
+    expect(packArchiveName(name, PLATFORM, PIPELINE_PACK)).toBeNull();
+    expect(
+      packArchiveName('pipeline-pack-0.5.0-win-x64.tar.gz', PLATFORM, ANALYTICS_PACK),
+    ).toBeNull();
+    expect(packArchiveName(name, 'darwin-arm64', ANALYTICS_PACK)).toBeNull();
+  });
+
+  it('finds Analytics pack archives by name and reads their manifest', async () => {
+    const dir = join(root, 'downloads');
+    await mkdir(dir);
+    const good = join(dir, 'analytics-pack-0.1.0-win-x64.tar.gz');
+    await writeFile(good, fakeAnalyticsPackArchive('0.1.0'));
+    await writeFile(
+      join(dir, 'analytics-pack-0.2.0-win-x64.tar.gz'),
+      fakeAnalyticsPackArchive('0.2.0', { appRange: '>=9.0.0' }),
+    );
+    await writeFile(join(dir, 'pipeline-pack-0.5.0-win-x64.tar.gz'), fakePackArchive('0.5.0'));
+    const found = await findPackArchives({
+      places: [{ dir, where: 'downloads' }],
+      platform: PLATFORM,
+      app: APP,
+      kind: ANALYTICS_PACK,
+    });
+    expect(found.map((a) => a.version)).toEqual(['0.1.0']);
+    expect(await peekPackManifest(good, {}, ANALYTICS_PACK)).toMatchObject({
+      version: '0.1.0',
+      schema: 'aio.analytics-pack/1',
+    });
+    expect(await peekPackManifest(good)).toBeNull();
   });
 });

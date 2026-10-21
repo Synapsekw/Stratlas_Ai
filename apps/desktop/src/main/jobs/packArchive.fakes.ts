@@ -151,3 +151,88 @@ export function fakePackEntries(version: string, o: FakePackOptions = {}): FakeT
 /** A fake pack archive as CI names and builds it: `pipeline-pack-<version>-<arch>.tar.gz`. */
 export const fakePackArchive = (version: string, o: FakePackOptions = {}): Buffer =>
   fakeTarGz(fakePackEntries(version, o));
+
+// ---------------------------------------------------------------- the Analytics pack
+
+export interface FakeAnalyticsPackOptions {
+  /** `win-x64` by default, as tools/analytics-pack/build.mjs writes it. */
+  platform?: string;
+  /** `>=0.11.0 <2.0.0` by default (the unit tests' app is 0.11.0). */
+  appRange?: string;
+  /** False leaves llama-server out of the archive (the manifest still names it). */
+  server?: boolean;
+  /** The archive's top folder; `analytics-pack-<version>` by default. */
+  top?: string;
+  /** Change the manifest before it is written. */
+  manifest?: (m: Record<string, unknown>) => void;
+}
+
+export const FAKE_ANALYTICS_SERVER = 'llama/llama-server.exe';
+export const FAKE_ANALYTICS_GGUF = 'model/model-q4_k_m.gguf';
+export const FAKE_ANALYTICS_MMPROJ = 'model/mmproj-f16.gguf';
+
+const sumOf = (data: string | Buffer) => {
+  const b = Buffer.from(data);
+  return { size: b.length, sha256: createHash('sha256').update(b).digest('hex') };
+};
+
+/** The files of a fake Analytics pack `version` (a few bytes each), manifest first. */
+export function fakeAnalyticsPackFiles(
+  version: string,
+  o: FakeAnalyticsPackOptions = {},
+): Record<string, string | Buffer> {
+  const gguf = `fake model of analytics pack ${version}`;
+  const files: Record<string, string | Buffer> = {
+    [FAKE_ANALYTICS_SERVER]: `fake llama-server of analytics pack ${version}`,
+    [FAKE_ANALYTICS_GGUF]: gguf,
+    [FAKE_ANALYTICS_MMPROJ]: `fake mmproj of analytics pack ${version}`,
+  };
+  const listed = Object.fromEntries(Object.entries(files).map(([n, d]) => [n, sumOf(d)]));
+  const m: Record<string, unknown> = {
+    schema: 'aio.analytics-pack/1',
+    version,
+    appRange: o.appRange ?? '>=0.11.0 <2.0.0',
+    platform: o.platform ?? 'win-x64',
+    createdAt: '2026-10-17T10:00:00Z',
+    runtime: { name: 'llama.cpp', release: 'b0000', executable: FAKE_ANALYTICS_SERVER },
+    model: {
+      id: 'fake-vl',
+      licence: 'Apache-2.0',
+      gguf: FAKE_ANALYTICS_GGUF,
+      mmproj: FAKE_ANALYTICS_MMPROJ,
+      sha256: sumOf(gguf).sha256,
+    },
+    detectors: [],
+    files: listed,
+  };
+  o.manifest?.(m);
+  if (o.server === false) Reflect.deleteProperty(files, FAKE_ANALYTICS_SERVER);
+  return { 'manifest.json': JSON.stringify(m), ...files };
+}
+
+/** The tar entries of a fake Analytics pack archive: `analytics-pack-<version>/`, manifest first. */
+export function fakeAnalyticsPackEntries(
+  version: string,
+  o: FakeAnalyticsPackOptions = {},
+): FakeTarEntry[] {
+  const top = o.top ?? `analytics-pack-${version}`;
+  const entries: FakeTarEntry[] = [{ path: `${top}/`, type: 'dir' }];
+  const dirs = new Set<string>();
+  for (const [name, data] of Object.entries(fakeAnalyticsPackFiles(version, o))) {
+    const parts = name.split('/');
+    for (let i = 1; i < parts.length; i++) {
+      const dir = parts.slice(0, i).join('/');
+      if (dirs.has(dir)) continue;
+      dirs.add(dir);
+      entries.push({ path: `${top}/${dir}/`, type: 'dir' });
+    }
+    entries.push({ path: `${top}/${name}`, data });
+  }
+  return entries;
+}
+
+/** A fake Analytics pack archive as the builder names it: `analytics-pack-<version>-win-x64.tar.gz`. */
+export const fakeAnalyticsPackArchive = (
+  version: string,
+  o: FakeAnalyticsPackOptions = {},
+): Buffer => fakeTarGz(fakeAnalyticsPackEntries(version, o));

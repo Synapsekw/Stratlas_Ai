@@ -17,8 +17,14 @@ import { clearManagedSelection } from '../update/managedKits';
  *   a forged one.
  *
  * A failure or a cancel removes the temporary folder and leaves `runtime` as it was. No network.
+ *
+ * The same installer takes the Analytics pack (`analytics-pack-<version>`, `ANALYTICS_PACK`):
+ * a `PackKind` carries the folder prefix, the manifest, the file that must be there and the words
+ * of its messages. Without a kind everything is the pipeline pack's, exactly as before.
  */
 import {
+  ANALYTICS_PACK_PREFIX,
+  AnalyticsPackManifest,
   PIPELINES,
   PipelinePackManifest,
   packRangeRefusal,
@@ -49,6 +55,7 @@ import { dirname, join, posix } from 'node:path';
 import { Parser, type ReadEntry } from 'tar';
 import type { Handler } from '../ipc';
 import { isWithin } from '../realDataGuard';
+import { readJson } from '../fsutil';
 import { compareVersions, findPack, PACK_DIR, readPack, type PackApp } from './pack';
 
 // ---------------------------------------------------------------- limits and names
@@ -66,6 +73,64 @@ export const PACK_LIMITS: PackLimits = {
   maxEntries: 250_000,
   maxBytes: 6 * 2 ** 30,
   maxManifestBytes: 64 * 2 ** 20,
+};
+
+/** The parts of a pack manifest the installer reads, whatever the kind. */
+export interface PackManifestCore {
+  version: string;
+  platform: string;
+  appRange?: string | undefined;
+  files: Record<string, { size: number; sha256: string }>;
+}
+
+/**
+ * One kind of pack the installer handles: the pipeline pack (the processing tools) or the
+ * Analytics pack (llama-server and the vision model). Everything the installer says and checks
+ * that differs between the two lives here.
+ */
+export interface PackKind {
+  id: 'pipeline' | 'analytics';
+  prefix: 'pipeline-pack' | 'analytics-pack';
+  /** Words for messages: 'processing tools' | 'Analytics pack'. */
+  label: string;
+  /** The same words at the start of a sentence. */
+  title: string;
+  /** Whether `label` takes a plural verb ("the processing tools are"). */
+  plural: boolean;
+  /** The manifest's schema, named when a manifest cannot be read. */
+  schema: string;
+  /** What `required` names, for the person: 'Python' | 'llama-server'. */
+  requiredName: string;
+  /** A pack folder in `<data folder>/runtime/`: `<prefix>-<version>`. */
+  dir: RegExp;
+  parse(raw: unknown): { ok: true; m: PackManifestCore } | { ok: false; error: string };
+  /** A file that must exist after unpacking (python executable | llama-server executable). */
+  required(m: unknown): string;
+  /** Does a manifest's `platform` name this computer (`win32-x64`)? */
+  fitsPlatform(manifestPlatform: string, platform: string): boolean;
+  /** Why this app may not use a pack with this `appRange`, or null. */
+  rangeRefusal(appRange: string | undefined, app: PackApp): string | null;
+  limits: PackLimits;
+}
+
+/** The pipeline pack, exactly as the installer has always handled it. */
+export const PIPELINE_PACK: PackKind = {
+  id: 'pipeline',
+  prefix: 'pipeline-pack',
+  label: 'processing tools',
+  title: 'Processing tools',
+  plural: true,
+  schema: 'aio.pipeline-pack/1',
+  requiredName: 'Python',
+  dir: PACK_DIR,
+  parse: (raw) => {
+    const r = PipelinePackManifest.safeParse(raw);
+    return r.success ? { ok: true, m: r.data } : { ok: false, error: r.error.message };
+  },
+  required: (m) => (m as PipelinePackManifest).python.executable,
+  fitsPlatform: (manifestPlatform, platform) => manifestPlatform === platform,
+  rangeRefusal: (appRange, app) => packRangeRefusal(appRange, app.version, app.name),
+  limits: PACK_LIMITS,
 };
 
 /** Files up to this size are read whole before they are written. */
@@ -94,6 +159,42 @@ const PLATFORM_NAMES: Readonly<Record<string, string>> = {
 };
 const platformName = (p: string) => PLATFORM_NAMES[p] ?? p;
 
+/**
+ * The Analytics pack (tools/analytics-pack/build.mjs): llama-server and a vision model of about
+ * 5 GB in a few dozen files. Its manifest names the platform as the archive name does (`win-x64`).
+ */
+export const ANALYTICS_PACK: PackKind = {
+  id: 'analytics',
+  prefix: ANALYTICS_PACK_PREFIX,
+  label: 'Analytics pack',
+  title: 'Analytics pack',
+  plural: false,
+  schema: 'aio.analytics-pack/1',
+  requiredName: 'llama-server',
+  dir: new RegExp(`^${ANALYTICS_PACK_PREFIX}-(.+)$`),
+  parse: (raw) => {
+    const r = AnalyticsPackManifest.safeParse(raw);
+    return r.success ? { ok: true, m: r.data } : { ok: false, error: r.error.message };
+  },
+  required: (m) => (m as AnalyticsPackManifest).runtime.executable,
+  fitsPlatform: (manifestPlatform, platform) =>
+    manifestPlatform === platform ||
+    (ARCHIVE_LABELS[platform] ?? []).includes(manifestPlatform.toLowerCase()),
+  rangeRefusal: (appRange, app) =>
+    packRangeRefusal(appRange, app.version, app.name)?.replaceAll(
+      'pipeline pack',
+      'Analytics pack',
+    ) ?? null,
+  limits: { maxEntries: 10_000, maxBytes: 12 * 2 ** 30, maxManifestBytes: 4 * 2 ** 20 },
+};
+
+/** "a" or "an" before `word`. */
+const an = (word: string) => (/^[aeiou]/i.test(word) ? 'an' : 'a');
+/** The verbs that go with a kind's `label`. */
+const be = (k: PackKind) => (k.plural ? 'are' : 'is');
+const was = (k: PackKind) => (k.plural ? 'were' : 'was');
+const verb = (k: PackKind, plural: string) => (k.plural ? plural : `${plural}s`);
+
 const mb = (bytes: number) =>
   bytes >= 2 ** 30
     ? `${(bytes / 2 ** 30).toFixed(1)} GB`
@@ -108,8 +209,15 @@ const shown = (p: string) =>
  * The version in a pack archive's file name when the name is for `platform`
  * (`pipeline-pack-0.5.0-win-x64.tar.gz`, a browser's ` (1)` copy included), else null.
  */
-export function packArchiveName(name: string, platform: string): { version: string } | null {
-  const m = /^pipeline-pack-(.+?)-([a-z0-9]+-[a-z0-9]+)(?: \(\d+\))?\.(?:tar\.gz|tgz)$/i.exec(name);
+export function packArchiveName(
+  name: string,
+  platform: string,
+  kind: PackKind = PIPELINE_PACK,
+): { version: string } | null {
+  const m = new RegExp(
+    `^${kind.prefix}-(.+?)-([a-z0-9]+-[a-z0-9]+)(?: \\(\\d+\\))?\\.(?:tar\\.gz|tgz)$`,
+    'i',
+  ).exec(name);
   const version = m?.[1];
   const label = m?.[2]?.toLowerCase();
   if (version === undefined || label === undefined || !VERSION.test(version)) return null;
@@ -133,14 +241,14 @@ export class PackRefused extends Error {
 }
 
 const refused = (message: string) => new PackRefused(message);
-const cancelled = () =>
-  new PackRefused(
-    'Installing the processing tools was cancelled. Nothing was changed.',
-    'cancelled',
-  );
+const cancelled = (k: PackKind) =>
+  new PackRefused(`Installing the ${k.label} was cancelled. Nothing was changed.`, 'cancelled');
 
 /** The answer for a failed install: the refusal's own words, or a sentence for a system error. */
-export function installProblem(e: unknown): {
+export function installProblem(
+  e: unknown,
+  k: PackKind = PIPELINE_PACK,
+): {
   error: string;
   code?: RefusalCode;
   version?: string;
@@ -160,13 +268,12 @@ export function installProblem(e: unknown): {
   }
   if (code === 'ENOSPC') {
     return {
-      error:
-        'The disk filled up while the processing tools were being unpacked. Free some space and try again. Nothing was changed.',
+      error: `The disk filled up while the ${k.label} ${was(k)} being unpacked. Free some space and try again. Nothing was changed.`,
     };
   }
   if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
     return {
-      error: `The processing tools could not be written into the data folder (${err.message}). Check that the folder can be written to. Nothing was changed.`,
+      error: `The ${k.label} could not be written into the data folder (${err.message}). Check that the folder can be written to. Nothing was changed.`,
     };
   }
   if (
@@ -175,12 +282,11 @@ export function installProblem(e: unknown): {
     /zlib|unexpected end of file/i.test(err.message)
   ) {
     return {
-      error:
-        'This is not a complete processing tools file: it is damaged or was cut short. Copy or download it again. Nothing was changed.',
+      error: `This is not a complete ${k.label} file: it is damaged or was cut short. Copy or download it again. Nothing was changed.`,
     };
   }
   return {
-    error: `The processing tools could not be installed: ${err.message} Nothing was changed.`,
+    error: `The ${k.label} could not be installed: ${err.message} Nothing was changed.`,
   };
 }
 
@@ -243,6 +349,7 @@ interface Unpacked {
 }
 
 interface UnpackOptions {
+  kind: PackKind;
   limits: PackLimits;
   win32: boolean;
   signal: AbortSignal | undefined;
@@ -394,7 +501,7 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
     declared += bytes;
     if (declared > o.limits.maxBytes) {
       throw refused(
-        `The archive unpacks to more than ${mb(o.limits.maxBytes)}, which no processing tools file does. It was not installed.`,
+        `The archive unpacks to more than ${mb(o.limits.maxBytes)}, which no ${o.kind.label} file does. It was not installed.`,
       );
     }
   };
@@ -403,7 +510,7 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
     entries += 1;
     if (entries > o.limits.maxEntries) {
       throw refused(
-        `The archive holds more than ${o.limits.maxEntries.toLocaleString('en-US')} entries, which no processing tools file does. It was not installed.`,
+        `The archive holds more than ${o.limits.maxEntries.toLocaleString('en-US')} entries, which no ${o.kind.label} file does. It was not installed.`,
       );
     }
     const path = archiveSegments(entry.path, o.win32);
@@ -412,17 +519,18 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
     }
     const [first = '', ...rel] = path.segments;
     if (s.top === null) {
-      const version = PACK_DIR.exec(first)?.[1];
+      const version = o.kind.dir.exec(first)?.[1];
       if (version === undefined || !VERSION.test(version)) {
+        const { label, prefix } = o.kind;
         throw refused(
-          `This archive is not a processing tools file: it starts with ${shown(first)}, not a pipeline-pack-<version> folder.`,
+          `This archive is not ${an(label)} ${label} file: it starts with ${shown(first)}, not ${an(prefix)} ${prefix}-<version> folder.`,
         );
       }
       s.top = first;
       await o.onTop(first);
     } else if (first !== s.top) {
       throw refused(
-        `The archive holds ${shown(first)} beside ${s.top}; the processing tools come as one folder. It was not installed.`,
+        `The archive holds ${shown(first)} beside ${s.top}; the ${o.kind.label} ${verb(o.kind, 'come')} as one folder. It was not installed.`,
       );
     }
     const dest = join(tmp, ...rel);
@@ -517,7 +625,7 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
     });
   });
   const onAbort = () => {
-    fail(cancelled());
+    fail(cancelled(o.kind));
   };
   if (o.signal?.aborted) onAbort();
   o.signal?.addEventListener('abort', onAbort, { once: true });
@@ -550,8 +658,9 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
     await settled();
     if (s.failure) throw s.failure;
     if (s.top === null) {
+      const { label, prefix } = o.kind;
       throw refused(
-        'This is not a processing tools file: it holds no pipeline-pack-<version> folder.',
+        `This is not ${an(label)} ${label} file: it holds no ${prefix}-<version> folder.`,
       );
     }
     return { top: s.top, files, links, entries };
@@ -567,12 +676,13 @@ async function unpack(archive: string, tmp: string, o: UnpackOptions): Promise<U
 async function checkUnpacked(
   tmp: string,
   u: Unpacked,
-  o: { app: PackApp; platform: string; limits: PackLimits; win32: boolean },
-): Promise<PipelinePackManifest> {
+  o: { kind: PackKind; app: PackApp; platform: string; limits: PackLimits; win32: boolean },
+): Promise<PackManifestCore> {
+  const k = o.kind;
   const listed = u.files.get('manifest.json');
   if (!listed) {
     throw refused(
-      'This archive is not a processing tools file: it has no manifest.json. It was not installed.',
+      `This archive is not ${an(k.label)} ${k.label} file: it has no manifest.json. It was not installed.`,
     );
   }
   let raw: unknown;
@@ -583,24 +693,24 @@ async function checkUnpacked(
   } catch {
     throw refused("This file's manifest.json cannot be read. It was not installed.");
   }
-  const parsed = PipelinePackManifest.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = k.parse(raw);
+  if (!parsed.ok) {
     throw refused(
-      "This file's manifest.json is not one this app can read (aio.pipeline-pack/1). It was not installed.",
+      `This file's manifest.json is not one this app can read (${k.schema}). It was not installed.`,
     );
   }
-  const m = parsed.data;
-  if (!VERSION.test(m.version) || u.top !== `pipeline-pack-${m.version}`) {
+  const m = parsed.m;
+  if (!VERSION.test(m.version) || u.top !== `${k.prefix}-${m.version}`) {
     throw refused(
       `This file's folder (${shown(u.top)}) and its manifest (version ${shown(m.version)}) disagree. It was not installed.`,
     );
   }
-  if (m.platform !== o.platform) {
+  if (!k.fitsPlatform(m.platform, o.platform)) {
     throw refused(
-      `These processing tools are for ${platformName(m.platform)}, and this computer is ${platformName(o.platform)}. Pick the file made for this computer.`,
+      `${k.plural ? 'These' : 'This'} ${k.label} ${be(k)} for ${platformName(m.platform)}, and this computer is ${platformName(o.platform)}. Pick the file made for this computer.`,
     );
   }
-  const range = packRangeRefusal(m.appRange, o.app.version, o.app.name);
+  const range = k.rangeRefusal(m.appRange, o.app);
   if (range) throw refused(range);
 
   // links may only lead to something inside the pack, wherever their chain ends
@@ -614,11 +724,12 @@ async function checkUnpacked(
     }
   }
 
-  const exe = archiveSegments(m.python.executable, o.win32);
-  const python = exe.ok ? await stat(join(tmp, ...exe.segments)).catch(() => null) : null;
-  if (!python?.isFile()) {
+  const required = k.required(m);
+  const exe = archiveSegments(required, o.win32);
+  const found = exe.ok ? await stat(join(tmp, ...exe.segments)).catch(() => null) : null;
+  if (!found?.isFile()) {
     throw refused(
-      `This file has no Python at ${shown(m.python.executable)}: it is incomplete. It was not installed.`,
+      `This file has no ${k.requiredName} at ${shown(required)}: it is incomplete. It was not installed.`,
     );
   }
 
@@ -727,6 +838,8 @@ export interface InstallOptions {
    * is checked like any link: it must really lead to something inside the pack.
    */
   makeLink?: (target: string, path: string) => Promise<void>;
+  /** Which pack the archive must be; the pipeline pack by default. */
+  kind?: PackKind;
 }
 
 export type InstallResult =
@@ -734,7 +847,8 @@ export type InstallResult =
   | { ok: false; error: string; code?: RefusalCode; version?: string };
 
 /**
- * Install the pack archive at `archive` into `<data folder>/runtime/pipeline-pack-<version>`.
+ * Install the pack archive at `archive` into `<data folder>/runtime/<prefix>-<version>`
+ * (`pipeline-pack-<version>` unless `o.kind` names another kind).
  * See the top of this file for the rules. Never throws: a failure is an answer, and it leaves
  * `runtime` as it was.
  */
@@ -742,8 +856,9 @@ export async function installPackArchive(
   archive: string,
   o: InstallOptions,
 ): Promise<InstallResult> {
+  const kind = o.kind ?? PIPELINE_PACK;
   const runtimeDir = join(o.dataRoot, 'runtime');
-  const limits = { ...PACK_LIMITS, ...o.limits };
+  const limits = { ...kind.limits, ...o.limits };
   const win32 = o.win32 ?? process.platform === 'win32';
   const last: PackInstallProgress = { phase: 'unpack', bytesDone: 0, bytesTotal: 0, entries: 0 };
   let sentAt = 0;
@@ -757,10 +872,10 @@ export async function installPackArchive(
   let tmp: string | null = null;
   let releaseActivation: (() => void) | undefined;
   try {
-    o.assertWritable?.(runtimeDir, 'pipeline pack install');
+    o.assertWritable?.(runtimeDir, `${kind.id} pack install`);
     const st = await stat(archive).catch(() => null);
     if (!st?.isFile()) throw refused(`${archive} is not a file that can be read.`);
-    if (o.signal?.aborted) throw cancelled();
+    if (o.signal?.aborted) throw cancelled(kind);
     report({ bytesTotal: st.size }, true);
 
     const need = await unpackedEstimate(archive, st.size);
@@ -768,7 +883,7 @@ export async function installPackArchive(
     const margin = Math.max(64 * 2 ** 20, need * 0.02);
     if (free !== null && free < need + margin) {
       throw refused(
-        `Not enough free disk space: the processing tools need about ${mb(need + margin)} in ${runtimeDir}, and ${mb(free)} is free. Free some space and try again.`,
+        `Not enough free disk space: the ${kind.label} ${verb(kind, 'need')} about ${mb(need + margin)} in ${runtimeDir}, and ${mb(free)} is free. Free some space and try again.`,
       );
     }
 
@@ -783,15 +898,16 @@ export async function installPackArchive(
     const existing = async (top: string) =>
       (await lstat(join(runtimeDir, top)).catch(() => null)) !== null;
     const unpacked = await unpack(archive, tmp, {
+      kind,
       limits,
       win32,
       signal: o.signal,
       makeLink: o.makeLink ?? ((target, path) => symlink(target, path)),
       onTop: async (top) => {
         if (o.replace !== true && (await existing(top))) {
-          const version = PACK_DIR.exec(top)?.[1] ?? '';
+          const version = kind.dir.exec(top)?.[1] ?? '';
           throw new PackRefused(
-            `Processing tools ${version} are already installed.`,
+            `${kind.title} ${version} ${be(kind)} already installed.`,
             'exists',
             version,
           );
@@ -804,21 +920,22 @@ export async function installPackArchive(
 
     report({ phase: 'check', bytesDone: st.size, entries: unpacked.entries }, true);
     const manifest = await checkUnpacked(tmp, unpacked, {
+      kind,
       app: o.app,
       platform: o.platform,
       limits,
       win32,
     });
-    if (o.signal?.aborted) throw cancelled();
+    if (o.signal?.aborted) throw cancelled(kind);
 
     releaseActivation = await o.beforeActivate?.();
-    if (o.signal?.aborted) throw cancelled();
+    if (o.signal?.aborted) throw cancelled(kind);
     report({ phase: 'activate' }, true);
     const dest = join(runtimeDir, unpacked.top);
     const replaced = await existing(unpacked.top);
     if (replaced && o.replace !== true) {
       throw new PackRefused(
-        `Processing tools ${manifest.version} are already installed.`,
+        `${kind.title} ${manifest.version} ${be(kind)} already installed.`,
         'exists',
         manifest.version,
       );
@@ -830,7 +947,7 @@ export async function installPackArchive(
         await renameDir(dest, aside, 3);
       } catch {
         throw refused(
-          `Processing tools ${manifest.version} are in use and could not be replaced. Wait for running jobs to finish, then try again.`,
+          `${kind.title} ${manifest.version} ${be(kind)} in use and could not be replaced. Wait for running jobs to finish, then try again.`,
         );
       }
     }
@@ -845,7 +962,7 @@ export async function installPackArchive(
     report({ phase: 'done' }, true);
     return { ok: true, version: manifest.version, dir: dest, replaced };
   } catch (e) {
-    const problem = installProblem(e);
+    const problem = installProblem(e, kind);
     report({ phase: problem.code === 'cancelled' ? 'cancelled' : 'failed' }, true);
     return { ok: false, ...problem };
   } finally {
@@ -873,17 +990,38 @@ async function folderBytes(dir: string, cap = 300_000): Promise<number> {
   return bytes;
 }
 
-/** Every `pipeline-pack-<version>` folder in `<data folder>/runtime/`, newest first. */
-export async function listPacks(dataRoot: string): Promise<InstalledPack[]> {
+/**
+ * Read one installed pack folder of `kind`: its manifest must parse and its required file must be
+ * there; null otherwise. The pipeline pack is read by `readPack`, as it always was.
+ */
+export async function readKindPack(
+  dir: string,
+  kind: PackKind,
+): Promise<{ version: string; manifest?: PackManifestCore } | null> {
+  if (kind.id === 'pipeline') {
+    const pack = await readPack(dir);
+    return pack && !('refused' in pack) ? pack : null;
+  }
+  const parsed = kind.parse(await readJson(join(dir, 'manifest.json')).catch(() => null));
+  if (!parsed.ok) return null;
+  const exe = archiveSegments(kind.required(parsed.m), false);
+  const st = exe.ok ? await stat(join(dir, ...exe.segments)).catch(() => null) : null;
+  return st?.isFile() ? { version: parsed.m.version, manifest: parsed.m } : null;
+}
+
+/** Every `<prefix>-<version>` folder of `kind` in `<data folder>/runtime/`, newest first. */
+export async function listPacks(
+  dataRoot: string,
+  kind: PackKind = PIPELINE_PACK,
+): Promise<InstalledPack[]> {
   const runtimeDir = join(dataRoot, 'runtime');
   const names = await readdir(runtimeDir, { withFileTypes: true }).catch(() => []);
   const out: InstalledPack[] = [];
   for (const e of names) {
-    const named = PACK_DIR.exec(e.name)?.[1];
+    const named = kind.dir.exec(e.name)?.[1];
     if (named === undefined || !e.isDirectory()) continue;
     const dir = join(runtimeDir, e.name);
-    const pack = await readPack(dir);
-    const read = pack && !('refused' in pack) ? pack : null;
+    const read = await readKindPack(dir, kind);
     const listed = Object.values(read?.manifest?.files ?? {});
     out.push({
       name: e.name,
@@ -1026,6 +1164,7 @@ export function packArchivePlaces(o: {
 export async function peekPackManifest(
   archive: string,
   o: { maxBytes?: number; maxEntries?: number; maxManifestBytes?: number } = {},
+  kind: PackKind = PIPELINE_PACK,
 ): Promise<unknown> {
   const maxBytes = o.maxBytes ?? 8 * 2 ** 20;
   const maxEntries = o.maxEntries ?? 32;
@@ -1047,7 +1186,7 @@ export async function peekPackManifest(
       const isManifest =
         p.ok &&
         p.segments.length === 2 &&
-        PACK_DIR.test(p.segments[0] ?? '') &&
+        kind.dir.test(p.segments[0] ?? '') &&
         p.segments[1] === 'manifest.json' &&
         entry.type === 'File' &&
         entry.size <= maxManifest;
@@ -1102,13 +1241,16 @@ export async function findPackArchives(o: {
   app: PackApp;
   /** How many of the newest candidates have their manifest read. */
   check?: number;
+  /** Which pack to look for; the pipeline pack by default. */
+  kind?: PackKind;
 }): Promise<PackArchive[]> {
+  const kind = o.kind ?? PIPELINE_PACK;
   const found: (PackArchive & { mtimeMs: number })[] = [];
   const seen = new Set<string>();
   for (const place of o.places) {
     const names = await readdir(place.dir).catch(() => []);
     for (const name of names) {
-      const named = packArchiveName(name, o.platform);
+      const named = packArchiveName(name, o.platform, kind);
       if (!named) continue;
       const path = join(place.dir, name);
       const key = process.platform === 'win32' ? path.toLowerCase() : path;
@@ -1130,12 +1272,12 @@ export async function findPackArchives(o: {
   for (const c of found) {
     if (checked < (o.check ?? 3)) {
       checked += 1;
-      const m = PipelinePackManifest.safeParse(await peekPackManifest(c.path));
-      if (m.success) {
+      const m = kind.parse(await peekPackManifest(c.path, {}, kind));
+      if (m.ok) {
         const fits =
-          m.data.version === c.version &&
-          m.data.platform === o.platform &&
-          packRangeRefusal(m.data.appRange, o.app.version, o.app.name) === null;
+          m.m.version === c.version &&
+          kind.fitsPlatform(m.m.platform, o.platform) &&
+          kind.rangeRefusal(m.m.appRange, o.app) === null;
         if (!fits) continue;
       }
     }
@@ -1164,7 +1306,14 @@ type Channel =
   | 'pipelinePack:choose'
   | 'pipelinePack:install'
   | 'pipelinePack:cancel'
-  | 'pipelinePack:remove';
+  | 'pipelinePack:remove'
+  // the Analytics pack's (analytics/packIpc.ts): one set of deps serves both
+  | 'analyticsPack:status'
+  | 'analyticsPack:find'
+  | 'analyticsPack:choose'
+  | 'analyticsPack:install'
+  | 'analyticsPack:cancel'
+  | 'analyticsPack:remove';
 
 export interface PipelinePackIpcDeps {
   handle: <C extends Channel>(channel: C, handler: Handler<C>) => void;
