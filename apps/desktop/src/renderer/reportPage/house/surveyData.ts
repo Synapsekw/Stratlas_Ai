@@ -54,7 +54,6 @@ import {
   formatRow,
   industryTemplates,
   lineLength,
-  measurementReadout,
   newShared,
   projectResolver,
   resolveSection,
@@ -70,6 +69,7 @@ import {
   type SectionRef,
 } from '@aio/survey';
 import { t } from '@aio/ui';
+import { readoutOn } from '../../survey/dateReadout';
 
 type Key = Parameters<typeof t>[0];
 const tk = (key: string, vars?: Record<string, string | number>) => t(key as Key, vars);
@@ -336,51 +336,6 @@ class Engine {
   }
 }
 
-/**
- * The readout rows with terrain values from an async sampler: the tools ask a synchronous sampler,
- * so the points they ask for are collected first (every height 0), sampled in one go, then asked
- * again with the answers.
- */
-async function readout(
-  m: SurveyMeasurement,
-  items: readonly string[] | undefined,
-  sample: PointSampler | null,
-) {
-  if (!sample) return measurementReadout(m, {}, items);
-  const es: number[] = [];
-  const ns: number[] = [];
-  measurementReadout(
-    m,
-    {
-      surface: {
-        heightAt: (e, n) => {
-          es.push(e);
-          ns.push(n);
-          return 0;
-        },
-      },
-    },
-    items,
-  );
-  const hs = es.length
-    ? await sample(Float64Array.from(es), Float64Array.from(ns))
-    : new Float64Array();
-  const at = new Map<string, number>();
-  es.forEach((e, i) => at.set(`${String(e)},${String(ns[i])}`, hs[i] ?? Number.NaN));
-  return measurementReadout(
-    m,
-    {
-      surface: {
-        heightAt: (e, n) => {
-          const h = at.get(`${String(e)},${String(n)}`);
-          return h === undefined || !Number.isFinite(h) ? null : h;
-        },
-      },
-    },
-    items,
-  );
-}
-
 // ---------------------------------------------------------------- the data
 
 export type SurveyNeed = 'report' | 'measurements-csv' | 'stockpile-csv';
@@ -469,7 +424,7 @@ export async function buildSurveyData(
     const results = comparisons.flatMap((c) => (c.result ? [c.result] : []));
     const terrain = m.family !== 'polygon' || ringArea(m.points) <= TERRAIN_AREA_MAX_M2;
     const sample = computed && cap && terrain ? await engine.sampler(cap.id) : null;
-    const rows = await readout({ ...m, results }, tpl?.items, sample);
+    const rows = await readoutOn({ ...m, results }, tpl?.items, sample);
     const values: SurveyValue[] = rows.map((r) => ({
       key: r.key,
       label: r.label,
