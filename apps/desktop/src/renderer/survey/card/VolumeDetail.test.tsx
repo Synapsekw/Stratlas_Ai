@@ -413,6 +413,29 @@ describe('VolumeDetail', () => {
     expect(rows[1]?.querySelector('td')?.textContent).toBe('No survey data');
   });
 
+  it('the heat map run on focus is not an edit: absent stays absent, current stays up to date', () => {
+    const series = [
+      result({
+        toCapture: 'c1',
+        netM3: 3070,
+        fingerprint: 'kit:p7:e1:tin',
+        carried: { from: 'kit', base: 'tin', pile: 'p7', epoch: 'e1' },
+      }),
+    ];
+    // the run for the heat map only (stored results current): live, heatOnly, carried left out
+    const heatRun = (results: ReturnType<typeof result>[]) => ({
+      m1: { results, heat: [], shares: [], ms: 1, live: true, heatOnly: true, ringKey: '' },
+    });
+    s.compare.computed = heatRun([]);
+    show(pile({ results: [], series }));
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('No survey data');
+    act(() => root?.unmount());
+    host.remove();
+    s.compare.computed = heatRun([result()]);
+    show(pile());
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('Up to date');
+  });
+
   it('spread hint formats ±1.8 % across bases', () => {
     s.spread = { pct: 1.8, nets: [] };
     show(pile());
