@@ -382,6 +382,17 @@
   font-size: var(--t-12);
   color: var(--fg-1);
 }
+.rep-template {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.rep-template .caps {
+  color: var(--fg-3);
+}
+.rep-template p {
+  margin: 0;
+}
 .rep-pages {
   display: grid;
   gap: 4px;

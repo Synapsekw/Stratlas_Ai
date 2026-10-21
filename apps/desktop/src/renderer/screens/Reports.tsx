@@ -19,6 +19,7 @@ import { AuditScreen } from '../audit/AuditScreen';
 import { closeAuditTrail, openAuditTrail, useAuditOpen } from '../audit/auditView';
 import { NarrativeEditor } from '../report/NarrativeEditor';
 import { PdfViewer } from '../report/PdfViewer';
+import { TemplateNote } from '../report/TemplateNote';
 import { ExtractPackage } from '../shell/ExtractPackage';
 import { shell, useCall, useShell } from '../shell';
 import { NoProject } from './NoProject';
@@ -53,6 +54,7 @@ function ProjectReport(props: {
   onText: () => void;
 }) {
   const contents = useShell((s) => s.settings.reportContents);
+  const pkg = useShell((s) => s.pkg);
   const toggle = (id: ReportSectionId) => {
     const sections = { ...contents?.sections, [id]: !reportSectionOn(contents, id) };
     saveContents({ ...contents, sections });
@@ -77,6 +79,7 @@ function ProjectReport(props: {
           </label>
         ))}
       </fieldset>
+      <TemplateNote readOnly={Boolean(pkg)} />
       <label className="rep-pages">
         <span className="caps">{t('reports.house.issuePages')}</span>
         <select

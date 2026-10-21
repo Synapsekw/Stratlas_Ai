@@ -10,7 +10,7 @@ import {
   type SubItem,
 } from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { addManyToReport } from '../../report/templateStore';
+import { addManyToReport, removeFromReport, reportHolds } from '../../report/templateStore';
 import {
   exportChoices,
   exportMeasurement,
@@ -22,7 +22,8 @@ import { measureEditBlocked } from './measureActions';
 
 /*
  * The measurement actions that send a measurement out (volumetric parity W2, W8): Add to report
- * (the marked measurements, in the order the Datasets tree lists them) and Export (the one the
+ * (the marked measurements, in the order the Datasets tree lists them), Remove from report (offered
+ * while one of them is in the report template) and Export (the one the
  * menu opened on, as CSV, DXF or, where its tool draws a chart, PNG). Registered on the
  * measurement rows, so the card's "⋯" menu, built from the same registry, offers them too.
  */
@@ -64,6 +65,29 @@ const actions: readonly Action[] = [
       try {
         const r = await addManyToReport(inTreeOrder(tg.ids));
         const said = t(r.added.length > 0 ? 'report.added' : 'report.already');
+        announce(said);
+        ctx.host.note(said);
+      } catch (e) {
+        const why = e instanceof Error ? e.message : String(e);
+        announce(why, 'assertive');
+        ctx.host.note(why, true);
+      }
+    },
+  }),
+  defineAction<'measurements'>({
+    id: 'measure.removeFromReport',
+    label: 'report.removeFromReport',
+    icon: 'x',
+    section: 'file',
+    targets: ['measurements'],
+    multi: true,
+    // offered while one of them is in the template (or the template is not read yet)
+    appliesTo: (tg: Target) => reportHolds(tg.ids) !== false,
+    disabled: (_tg: Target, ctx: ActionCtx) => measureEditBlocked(ctx),
+    run: async (tg, ctx) => {
+      try {
+        const r = await removeFromReport(tg.ids);
+        const said = t(r.removed.length > 0 ? 'report.removed' : 'report.notIn');
         announce(said);
         ctx.host.note(said);
       } catch (e) {
