@@ -34,7 +34,7 @@ import numpy as np
 
 from .. import __version__
 from ..params import known_keys, text
-from ..runtime import JobError, Step, StepContext, atomic_write_json, replace_over
+from ..runtime import JobError, Step, StepContext, atomic_write_json, replace_over, safe_project_path
 from . import colmap
 from .geometry import (
     ZUP_TO_GLTF,
@@ -114,7 +114,10 @@ def _photo_lookup(
         if it is not None:
             p = (it.get("src") or {}).get("path")
             if isinstance(p, str):
-                return (project / p).resolve(), it
+                try:  # a photo path must stay inside the project, through links too
+                    return safe_project_path(project, p).resolve(), it
+                except JobError:
+                    return None, it
             return None, it
         return None, None
 
@@ -446,7 +449,10 @@ def _build(ctx: StepContext, run_id: str) -> dict[str, Any]:
         if not isinstance(rel, str) or Path(rel).suffix.lower() not in (".tif", ".tiff"):
             continue
         role = next((r for r, rx in OUTPUT_ROLES if rx.search(Path(rel).name)), None)
-        src = ctx.project / rel
+        try:
+            src = safe_project_path(ctx.project, rel)
+        except JobError:  # an output listed outside the project (or through a link) is not exported
+            continue
         if role is None or not src.is_file():
             continue
         name = Path(rel).name

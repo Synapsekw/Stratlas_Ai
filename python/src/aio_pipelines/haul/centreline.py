@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 
 from ..design import alignment as al_math
-from ..runtime import JobError
+from ..runtime import JobError, safe_project_path
 
 #: A polyline's direction at a chainage: the chord over this many metres either side.
 DIRECTION_HALF_M = 5.0
@@ -216,7 +216,7 @@ def resolve_centreline(project: Path, spec: Any) -> tuple[Centreline, dict[str, 
     if entry is None or layer is None:
         raise JobError(f'The design layer "{did}, {lid}" is not in the designs list.')
     name = f"{entry.get('name') or did}, {layer.get('name') or lid}"
-    path = project / "survey" / "designs" / did / str(layer.get("file"))
+    path = safe_project_path(project, f"survey/designs/{did}/{layer.get('file')}")
     kind = layer.get("kind")
     if kind == "alignment":
         doc = _read_json(path, f'The alignment "{name}"')

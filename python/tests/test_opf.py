@@ -567,3 +567,34 @@ def test_not_an_opf_project(tmp_path):
         OpfImport().validate({"src": "D:/x/project.p4d"})
     with pytest.raises(JobError, match="products must be one of"):
         OpfImport().validate({"src": "D:/x/project.opf", "products": ["hologram"]})
+
+
+def test_an_export_photo_path_out_of_the_project_is_not_followed(tmp_path):
+    import os
+
+    from aio_pipelines.opf.exporter import _photo_lookup
+
+    project = tmp_path / "project"
+    (project / "photos").mkdir(parents=True)
+    (project / "photos" / "in.jpg").write_bytes(b"x")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "out.jpg").write_bytes(b"secret")
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(outside), str(project / "escape"))
+    else:
+        (project / "escape").symlink_to(outside, target_is_directory=True)
+    items = [
+        {"id": "a", "src": {"path": "photos/in.jpg"}},
+        {"id": "b", "src": {"path": "escape/out.jpg"}},
+        {"id": "c", "src": {"path": "../outside/out.jpg"}},
+    ]
+    manifest = {"layers": [{"id": "ph", "kind": "photos", "items": items}]}
+    find = _photo_lookup(project, {"photos": {"source": {"layer": "ph"}}}, manifest)
+    path, item = find("a")
+    assert path == (project / "photos" / "in.jpg").resolve() and item is items[0]
+    for pid in ("b", "c"):
+        path, item = find(pid)
+        assert path is None and item is items[["a", "b", "c"].index(pid)]

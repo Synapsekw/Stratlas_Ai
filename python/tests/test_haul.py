@@ -440,3 +440,34 @@ def test_a_missing_surface_or_a_surface_layer_is_refused(tmp_path, road):
             job_id="h7",
         )
     assert not (tmp_path / "survey" / "haul").exists()
+
+
+def _junction(link, target) -> None:
+    import os
+
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+@pytest.mark.parametrize("via", ["dots", "junction"])
+def test_a_centreline_file_outside_the_project_is_refused(tmp_path, via):
+    from aio_pipelines.haul.centreline import resolve_centreline
+
+    project = tmp_path / "project"
+    (project / "survey" / "designs" / "d1").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "a.json").write_text("{}", "utf-8")
+    if via == "junction":
+        _junction(project / "survey" / "designs" / "d1" / "escape", outside)
+        file = "escape/a.json"
+    else:
+        file = "../../../../outside/a.json"
+    designs = {"designs": [{"id": "d1", "layers": [{"id": "l1", "kind": "alignment", "file": file}]}]}
+    (project / "survey" / "designs.json").write_text(json.dumps(designs), "utf-8")
+    with pytest.raises(JobError, match="inside the project"):
+        resolve_centreline(project, {"design": "d1", "layer": "l1"})
