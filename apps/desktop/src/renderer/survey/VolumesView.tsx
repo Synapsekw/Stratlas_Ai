@@ -298,13 +298,14 @@ export function VolumesView({ className }: { className?: string }): ReactElement
 
 /**
  * The focused pile's detail card: the measurement panel's card (`MeasurementPanel`), built from
- * the same context (the points where they are drawn, the project's dates, the terrain under them)
- * with the same slots (`slotsFor`: chips, comparisons, Calculators), so the two never differ.
+ * the same context (the points where they are drawn, the project's dates) with the same slots
+ * (`slotsFor`: chips, comparisons, Calculators), so the two never differ. Not the terrain under
+ * the pile: the 3D stage's height picker samples a pile's terrain area cell by cell, which on a
+ * real survey holds the window for minutes (a pile's volume never reads it).
  */
 function DetailCard({ m, readOnly }: { m: SurveyMeasurement; readOnly: boolean }) {
   const settings = useMeasure((s) => s.settings);
   const templates = useMeasure((s) => s.templates);
-  const surface = useMeasure((s) => s.surface);
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const shown = useMemo(() => ({ ...m, points: drawnPoints(m, manifest) }), [m, manifest]);
   const model = useMemo(
@@ -313,9 +314,8 @@ function DetailCard({ m, readOnly }: { m: SurveyMeasurement; readOnly: boolean }
         settings,
         templates: knownTemplates({ templates, settings }),
         captures: manifest?.captures ?? [],
-        ...(surface ? { surface } : {}),
       }),
-    [shown, settings, templates, manifest, surface],
+    [shown, settings, templates, manifest],
   );
   const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
   return (
