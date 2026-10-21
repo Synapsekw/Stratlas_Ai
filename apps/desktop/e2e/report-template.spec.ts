@@ -184,3 +184,35 @@ test('adding twice says Already in the report', async ({ win, dataRoot }) => {
     )
     .toEqual(['pad-a', 'line-b']);
 });
+
+test('Add to report on an unsaved measurement saves it first, so the report prints it', async ({
+  win,
+  dataRoot,
+}) => {
+  const dir = dataRoot.projectDir;
+  await openTiny(win);
+  await measureTree(win);
+  const card = await focusMeasure(win, 'Line B');
+  // an edit that waits for Save (autosave is off): the file on disk still has the old name
+  const name = card.getByTestId('card-name');
+  await name.fill('Line B, edited');
+  await name.press('Enter');
+  const onDisk = async () =>
+    MeasurementsFile.parse(
+      JSON.parse(await readFile(join(dir, 'survey', 'measurements.json'), 'utf8')),
+    ).measurements.find((m) => m.id === 'line-b')?.label;
+  expect(await onDisk()).toBe('Line B');
+
+  expect(await addFromMenu(win, card)).toContain('Added to the report');
+  // saved first: the report reads the file on disk, and finds the measurement as the card shows it
+  await expect.poll(onDisk).toBe('Line B, edited');
+  await expect
+    .poll(async () => (await templateOf(dir))?.entries ?? null)
+    .toEqual([expect.objectContaining({ kind: 'measurement', id: 'line-b' })]);
+
+  // and Remove from report, from the same menu, takes it out again
+  await card.getByTestId('card-menu').click();
+  const menu = win.getByTestId('card-menu-list');
+  await menu.getByTestId('ctx-item-measure.removeFromReport').click();
+  await expect.poll(async () => (await templateOf(dir))?.entries ?? null).toEqual([]);
+});

@@ -5916,7 +5916,22 @@ export const en = {
   'report.added': 'Added to the report',
   'report.already': 'Already in the report',
   'report.noProject': 'No project is open.',
-  'report.full': 'The report holds at most {count} entries. Remove some, then add again.',
+  'report.full':
+    'The report holds at most {count} entries. Remove some with Remove from report, or clear the report template on the Reports screen, then add again.',
+  'report.saveFirst': 'Save the measurements first',
+  'report.removed': 'Removed from the report',
+  'report.notIn': 'Not in the report',
+  'report.removeFromReport': 'Remove from report',
+  'report.template.title': 'Report template',
+  'report.template.count_one':
+    'The survey sections print the {count} measurement chosen with Add to report.',
+  'report.template.count_other':
+    'The survey sections print the {count} measurements chosen with Add to report.',
+  'report.template.clear': 'Clear report template',
+  'report.template.clearTitle': 'Clear the report template?',
+  'report.template.clearText':
+    'The report then lists every measurement again, as it did before Add to report was used. The measurements themselves are not changed.',
+  'report.template.cleared': 'Report template cleared',
   'mcard.chartNotShown': 'Open the measurement to export its chart',
   'empty.survey.noSurface.title': 'No survey surface is prepared yet',
   'empty.survey.noSurface.hint': 'Volumes need the surveys as height tiles.',
