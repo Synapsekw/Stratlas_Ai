@@ -283,6 +283,11 @@ let loadEpoch = 0;
  * that project waits for them, so it never reads the file from before a write that lands after.
  */
 const writing = new Map<string, Promise<unknown>>();
+/**
+ * Projects open with the kit-pile mark in memory only: opening writes nothing without kit data to
+ * convert, so the mark goes with the first save, or when a stockpile build starts.
+ */
+const markUnwritten = new Set<string>();
 /** Forget the writes in flight (tests: a gate a test left shut must not hold the next one's load). */
 export function forgetMeasureWrites(): void {
   writing.clear();
@@ -335,13 +340,17 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     readOnly,
   );
   const converted = file !== m.value.file;
+  // only old kit data is converted on disk at once; a mark alone stays in memory
+  const kitRead = v.ok && v.value.ok && v.value.volumes !== null;
+  if (converted && !readOnly && !kitRead) markUnwritten.add(projectId);
+  else markUnwritten.delete(projectId);
   const patch: Partial<MeasureState> = {
     status: 'ready',
     file,
     savedText: text(file),
     readOnly,
     hiddenMeasurements: hidden,
-    ...(converted && !readOnly ? { resultsUnwritten: true } : {}),
+    ...(converted && !readOnly && kitRead ? { resultsUnwritten: true } : {}),
   };
   if (t.ok && t.value.ok) patch.templates = { project: t.value.project, user: t.value.user };
   // site settings are G1's; until they exist the defaults hold (metres)
@@ -351,7 +360,50 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   }
   set(patch);
   // a writable project keeps the conversion on disk at once; a package keeps it in memory only
-  if (converted && !readOnly) await writeConversion(projectId, file, epoch);
+  if (converted && !readOnly && kitRead) await writeConversion(projectId, file, epoch);
+}
+
+const folderKey = (root: string) => root.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+
+/**
+ * A job is about to start (the pipeline dialog, the new project wizard): a stockpile build of the
+ * open project marks it (`markForStockpileBuild`). Another pipeline, or a folder that is not the
+ * open project, is left alone.
+ */
+export async function markBeforeBuild(pipeline: string, root: string): Promise<void> {
+  if (pipeline !== 'volumetric.build') return;
+  const p = workspace.getState().project;
+  if (!p || folderKey(p.root) !== folderKey(root)) return;
+  await markForStockpileBuild(p.id);
+}
+
+/**
+ * A stockpile build (`volumetric.build`) is about to start: a project with no kit data yet gets
+ * the kit-pile mark on disk, so piles the build adds are never taken for an old project's, even
+ * when the project is closed before the build ends. The open project writes its baseline as last
+ * saved (never a person's unsaved edits); one not loaded here has its file marked as it is.
+ */
+export async function markForStockpileBuild(projectId: string): Promise<void> {
+  const s0 = get();
+  if (s0.projectId === projectId && s0.status === 'ready') {
+    if (s0.readOnly || !markUnwritten.has(projectId)) return;
+    const epoch = loadEpoch;
+    if (!(await writesSettled(projectId))) return;
+    const s = get();
+    if (loadEpoch !== epoch || s.projectId !== projectId || !markUnwritten.has(projectId)) return;
+    const baseline = JSON.parse(s.savedText) as MeasurementsFile;
+    const r = await writeFile(projectId, baseline);
+    if (r.ok && r.value.ok) markUnwritten.delete(projectId);
+    return;
+  }
+  const [m, v] = await Promise.all([
+    bridge.call('survey:readMeasurements', { projectId }),
+    bridge.call('project:readVolumes', { projectId }),
+  ]);
+  if (!m.ok || !m.value.ok || m.value.readOnly) return;
+  if (!v.ok || !v.value.ok || v.value.volumes) return;
+  if (m.value.file.kitPilesConverted !== undefined) return;
+  await writeFile(projectId, { ...m.value.file, kitPilesConverted: [] });
 }
 
 /** The open project's manifest, when it is this project's. */
@@ -401,6 +453,7 @@ async function writeConversion(
 ): Promise<void> {
   set({ saving: true });
   const r = await writeFile(projectId, file);
+  if (r.ok && r.value.ok && file.kitPilesConverted !== undefined) markUnwritten.delete(projectId);
   if (loadEpoch !== epoch || get().projectId !== projectId) return;
   const ok = r.ok && r.value.ok;
   const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
@@ -470,6 +523,7 @@ export async function saveMeasurements(): Promise<boolean> {
   const epoch = loadEpoch;
   set({ saving: true, message: null });
   const r = await writeFile(projectId, file);
+  if (r.ok && r.value.ok && file.kitPilesConverted !== undefined) markUnwritten.delete(projectId);
   // another project (or this one again) was opened meanwhile: that state is not this save's to
   // touch, or to save
   if (loadEpoch !== epoch || get().projectId !== projectId) return false;

@@ -14,6 +14,8 @@ import {
   forgetMeasureWrites,
   isDirty,
   loadMeasurements,
+  markBeforeBuild,
+  markForStockpileBuild,
   measureStore,
   patchMeasurement,
   replaceWithStandard,
@@ -198,14 +200,17 @@ describe('kit piles on load', () => {
     expect(measureStore.getState().file).toEqual(first);
   });
 
-  it('a project without kit figures keeps its measurements and is marked once', async () => {
+  it('opening a project without kit data writes nothing; the mark goes with the first save', async () => {
     await open({ schema: 'aio.measurements/1', measurements: [drawn] });
-    expect(io.writes).toBe(1);
+    const s = measureStore.getState();
+    // marked in memory only, and not an edit
+    expect(s.file.kitPilesConverted).toEqual([]);
+    expect(isDirty(s)).toBe(false);
+    expect(io.writes).toBe(0);
+    expect(io.saved.kitPilesConverted).toBeUndefined();
+    expect(await saveMeasurements()).toBe(true);
     expect(io.saved.kitPilesConverted).toEqual([]);
     expect(io.saved.measurements.map((m) => m.id)).toEqual(['mine']);
-    expect(isDirty(measureStore.getState())).toBe(false);
-    await open(io.saved);
-    expect(io.writes).toBe(1);
   });
 
   it('a read-only project without kit figures writes nothing', async () => {
@@ -216,10 +221,13 @@ describe('kit piles on load', () => {
   });
 
   for (const type of ['volumetric', 'inspection', undefined] as const)
-    it(`a new ${type ?? 'untyped'} project before its build is never treated as an old one`, async () => {
+    it(`a new ${type ?? 'untyped'} project is marked when its stockpile build starts`, async () => {
       await open({ schema: 'aio.measurements/1', measurements: [] }, type);
+      expect(io.writes).toBe(0);
+      await markForStockpileBuild('p1');
       expect(io.saved.kitPilesConverted).toEqual([]);
       expect(io.writes).toBe(1);
+      expect(isDirty(measureStore.getState())).toBe(false);
       // the build finishes while the project is closed: the next open carries nothing
       io.volumes = volumes();
       await open(io.saved, type);
@@ -227,6 +235,39 @@ describe('kit piles on load', () => {
       expect(m?.results).toEqual([]);
       expect(m?.series).toBeUndefined();
     });
+
+  it('a build started for a project the store has not loaded marks its file on disk', async () => {
+    io.saved = { schema: 'aio.measurements/1', measurements: [drawn] };
+    measureStore.setState({ projectId: null, status: 'idle' });
+    await markForStockpileBuild('p1');
+    expect(io.writes).toBe(1);
+    expect(io.saved.kitPilesConverted).toEqual([]);
+    expect(io.saved.measurements.map((m) => m.id)).toEqual(['mine']);
+    // marked already: nothing more
+    await markForStockpileBuild('p1');
+    expect(io.writes).toBe(1);
+  });
+
+  it('only a stockpile build of the open project marks it, by its folder', async () => {
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    await markBeforeBuild('survey.prepare', 'E:/p1');
+    await markBeforeBuild('volumetric.build', 'E:/other');
+    expect(io.writes).toBe(0);
+    await markBeforeBuild('volumetric.build', 'e:\\p1\\');
+    expect(io.writes).toBe(1);
+    expect(io.saved.kitPilesConverted).toEqual([]);
+  });
+
+  it('a build started where kit data or a mark is already on disk writes nothing', async () => {
+    io.volumes = volumes();
+    measureStore.setState({ projectId: null, status: 'idle' });
+    await markForStockpileBuild('p1');
+    expect(io.writes).toBe(0);
+    io.volumes = null;
+    await open({ schema: 'aio.measurements/1', measurements: [], kitPilesConverted: ['P01'] });
+    await markForStockpileBuild('p1');
+    expect(io.writes).toBe(0);
+  });
 
   it('a deleted converted measurement stays gone after a reopen, and comes back after a build', async () => {
     io.volumes = volumes();

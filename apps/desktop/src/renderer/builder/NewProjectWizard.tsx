@@ -299,6 +299,11 @@ function Wizard() {
     // the store selects the job it has just started: take its id before `created` reads the list
     const startedId = jobError ? undefined : (jobs.getState().selected ?? undefined);
     await builder.getState().created(r.value.path);
+    // the build's project, now open, is marked so its piles are never taken for old kit ones
+    if (build && !jobError)
+      await (
+        await import('../survey/measureStore')
+      ).markBeforeBuild('volumetric.build', r.value.path);
     const extra = pickedEntries(library, picked, template);
     if (extra.length > 0) {
       const e = await addLibraryClasses(extra);

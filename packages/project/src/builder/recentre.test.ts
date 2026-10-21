@@ -123,25 +123,6 @@ it('refuses with reasons when the project holds issues or other placed files', a
   expect(b).toEqual(expect.arrayContaining(['1 issue', 'files in "flights"']));
 });
 
-it('an opened project marked for kit piles, with no measurement, can still be re-centred', async () => {
-  const root = await withModelAndCloud();
-  // the first open writes the kit-pile mark (volumetric parity W3); its earlier version is a .bak
-  await mkdir(join(root, 'survey'), { recursive: true });
-  const marked = { schema: 'aio.measurements/1', measurements: [], kitPilesConverted: [] };
-  await writeFile(join(root, 'survey', 'measurements.json'), JSON.stringify(marked));
-  await writeFile(
-    join(root, 'survey', 'measurements.json.bak'),
-    JSON.stringify({ schema: 'aio.measurements/1', measurements: [] }),
-  );
-  expect(await recentreBlockers(root, await readManifestFile(root))).toEqual([]);
-  // one measurement drawn is placed against the origin: refused
-  await writeFile(
-    join(root, 'survey', 'measurements.json'),
-    JSON.stringify({ ...marked, measurements: [{ id: 'm1' }] }),
-  );
-  expect(await recentreBlockers(root, await readManifestFile(root))).toEqual(['files in "survey"']);
-});
-
 it('writes nothing when refused', async () => {
   const root = await withModelAndCloud();
   await mkdir(join(root, 'survey'), { recursive: true });

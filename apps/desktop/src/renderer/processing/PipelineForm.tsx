@@ -168,6 +168,9 @@ export function PipelineForm({
       return;
     }
     setBusy(true);
+    // a stockpile build of the open project marks it first (volumetric parity W3)
+    if (pipeline === 'volumetric.build')
+      await (await import('../survey/measureStore')).markBeforeBuild(pipeline, project.trim());
     const err = await jobs
       .getState()
       .start({ pipeline, project: project.trim(), params: built.params });
