@@ -228,6 +228,24 @@ export async function readSurveyFiles(
   };
 }
 
+/**
+ * The survey data a house report prints: one that cannot be worked out (a tile that will not read,
+ * say) leaves the survey parts out of the report, logged, rather than failing a report that
+ * prints other things too. A survey report has nothing else to print, so it fails with the reason.
+ */
+export async function surveyOrNone(
+  build: () => Promise<ReportSurveyData>,
+  surveyOnly: boolean,
+): Promise<ReportSurveyData | null> {
+  try {
+    return await build();
+  } catch (e) {
+    if (surveyOnly) throw e;
+    console.warn('Report: the survey volumes could not be worked out and are left out', e);
+    return null;
+  }
+}
+
 /** The project's templates and the enabled industry sets (a project template wins its id). */
 export function surveyTemplateList(
   project: SurveyTemplatesFile | null,

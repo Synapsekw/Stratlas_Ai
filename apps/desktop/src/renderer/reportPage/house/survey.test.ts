@@ -39,6 +39,7 @@ import {
   buildSurveyData,
   readSurveyFiles,
   surveyPlan,
+  surveyOrNone,
   surveySectionIds,
   type ReportSurveyData,
   type SurveyFiles,
@@ -761,6 +762,13 @@ describe('the survey sections', () => {
     // material Stockpile material, density 1.6, and 280 t on the latest date
     expect(csv).toMatch(/Kit pile 1,Stockpile material,,1\.6,/);
     expect(csv).toContain(',280,');
+  });
+
+  it('a survey that cannot be worked out leaves its parts out of a house report only', async () => {
+    const fails = () => Promise.reject(new Error('tile unreadable'));
+    expect(await surveyOrNone(fails, false)).toBeNull();
+    await expect(surveyOrNone(fails, true)).rejects.toThrow('tile unreadable');
+    expect(await surveyOrNone(() => Promise.resolve(data), false)).toBe(data);
   });
 
   it('the stockpile map draws every pile, whatever the template lists', async () => {

@@ -71,7 +71,13 @@ import {
 import { layoutApprovals, parseSignOff } from '../../team/houseApprovals';
 import { readSiteRuns, runSectionIds, type SiteRuns } from './runs';
 import { houseVolumes, printsVolumeOverTime } from './survey';
-import { buildSurveyData, readSurveyFiles, surveySectionIds, type SurveyFiles } from './surveyData';
+import {
+  buildSurveyData,
+  readSurveyFiles,
+  surveyOrNone,
+  surveySectionIds,
+  type SurveyFiles,
+} from './surveyData';
 
 interface PageState {
   state: 'loading' | 'ready' | 'error';
@@ -287,14 +293,22 @@ async function run(): Promise<void> {
       'volume-over-time',
     ] as const satisfies readonly ReportSectionId[]
   ).some((id) => reportSectionOn(contents, id));
+  const files = surveyFiles;
   const survey =
-    surveyFiles && !only
-      ? await buildSurveyData(surveyFiles, read.bytes, {
-          need: 'report',
-          progress: progress('Computing the survey volumes'),
-          fillDates: datesShown,
-        })
+    files && !only
+      ? await surveyOrNone(
+          () =>
+            buildSurveyData(files, read.bytes, {
+              need: 'report',
+              progress: progress('Computing the survey volumes'),
+              fillDates: datesShown,
+            }),
+          surveyOnly,
+        )
       : null;
+  // left out: its sections go too (the haul-road and hydrology runs stay)
+  if (files && !only && !survey)
+    surveySections.splice(0, surveySections.length, ...runSectionIds(runs));
   // volume over time prints once a pile has figures on two dates, worked out as the app does
   if (survey && printsVolumeOverTime(survey) && !surveySections.includes('volume-over-time'))
     surveySections.push('volume-over-time');
