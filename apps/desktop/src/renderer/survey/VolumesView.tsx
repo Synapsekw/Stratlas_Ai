@@ -10,7 +10,7 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, localeOf } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
-import type { SurveyMeasurement } from '@aio/schema';
+import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
 import { inventoryPiles, pileSeries, surfacesStamp, type StackRow } from '@aio/survey';
 import { Button, EmptyState, Tip, useT } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
@@ -20,9 +20,10 @@ import { processing } from '../processing/store';
 import { bridge, useShell } from '../shell';
 import { BulkTotals, notCountedList } from './BulkTotals';
 import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
-import { VolumeDetail } from './card/VolumeDetail';
-import { computeSeries, useCompare } from './compareStore';
+import { slotsFor } from './card/slots';
+import { computeSeries, isStale, seriesStale, useCompare } from './compareStore';
 import { fileBase } from './exportHelpers';
+import { drawnPoints } from './measureDates';
 import {
   knownTemplates,
   measureFolders,
@@ -58,6 +59,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const status = useCompare((s) => s.status);
   const captures = useCompare((s) => s.captures);
   const surfaces = useCompare((s) => s.surfaces);
+  const current = useCompare((s) => s.current);
   const root = useWorkspace((s) => s.project?.root ?? null);
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const pkg = useShell((s) => s.pkg !== null);
@@ -187,10 +189,22 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const exportCsv = async () => {
     setCsvError(null);
     // the stored result stands for its own date, as on the cards and in the chart
-    const ms = piles.map((m) => ({ ...m, series: pileSeries(m).series }));
+    const stored = new Map<string, ComparisonResult | undefined>();
+    const ms = piles.map((m) => {
+      const over = pileSeries(m);
+      stored.set(m.id, over.stored);
+      return { ...m, series: over.series };
+    });
     const density = (m: SurveyMeasurement) =>
       settings.materials.find((x) => x.id === m.material)?.densityTPerM3 ?? null;
-    const data = volumeSeriesCsv(ms, captures, units, settings.precision, { densityOf: density });
+    // the card's stale rule: the stored figure by the fingerprints, a dated one by the series
+    const staleRow = (m: SurveyMeasurement, r: ComparisonResult) =>
+      r.status === 'stale' ||
+      (r === stored.get(m.id) ? isStale({ current }, m, r) : seriesStale(m, r));
+    const data = volumeSeriesCsv(ms, captures, units, settings.precision, {
+      densityOf: density,
+      isStale: staleRow,
+    });
     const name = shown === ALL ? t('vol.inventory') : `${t('vol.inventory')} ${shown}`;
     const r = await bridge.call('dialog:saveFile', { defaultName: `${fileBase(name)}.csv`, data });
     if (!r.ok) setCsvError(r.error);
@@ -256,22 +270,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
 
       {focused && (
         <div className="vv-detail">
-          <MeasureCard
-            model={cardModel(focused, ctx)}
-            variant="detail"
-            measureId={focused.id}
-            testId="volumes-detail"
-            slots={{ detail: <VolumeDetail m={focused} /> }}
-            menu={<CardMenu id={focused.id} />}
-            actions={<CardActions id={focused.id} />}
-            {...(readOnly
-              ? {}
-              : {
-                  onRename: (name: string) => {
-                    renameMeasurement(focused.id, name);
-                  },
-                })}
-          />
+          <DetailCard m={focused} readOnly={readOnly} />
         </div>
       )}
 
@@ -293,6 +292,48 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * The focused pile's detail card: the measurement panel's card (`MeasurementPanel`), built from
+ * the same context (the points where they are drawn, the project's dates, the terrain under them)
+ * with the same slots (`slotsFor`: chips, comparisons, Calculators), so the two never differ.
+ */
+function DetailCard({ m, readOnly }: { m: SurveyMeasurement; readOnly: boolean }) {
+  const settings = useMeasure((s) => s.settings);
+  const templates = useMeasure((s) => s.templates);
+  const surface = useMeasure((s) => s.surface);
+  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
+  const shown = useMemo(() => ({ ...m, points: drawnPoints(m, manifest) }), [m, manifest]);
+  const model = useMemo(
+    () =>
+      cardModel(shown, {
+        settings,
+        templates: knownTemplates({ templates, settings }),
+        captures: manifest?.captures ?? [],
+        ...(surface ? { surface } : {}),
+      }),
+    [shown, settings, templates, manifest, surface],
+  );
+  const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
+  return (
+    <MeasureCard
+      model={model}
+      variant="detail"
+      measureId={m.id}
+      testId="volumes-detail"
+      slots={slots}
+      menu={<CardMenu id={m.id} />}
+      actions={<CardActions id={m.id} />}
+      {...(readOnly
+        ? {}
+        : {
+            onRename: (name: string) => {
+              renameMeasurement(m.id, name);
+            },
+          })}
+    />
   );
 }
 

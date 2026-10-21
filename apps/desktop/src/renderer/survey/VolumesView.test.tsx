@@ -60,6 +60,16 @@ vi.mock('./card/VolumeDetail', () => ({
     <div data-testid="volume-detail" data-id={m.id} />
   ),
 }));
+// the panel's own slots: the detail card is the same card as the measurement panel's
+vi.mock('./card/slots', () => ({
+  slotsFor: (m: SurveyMeasurement, variant: string) =>
+    variant === 'detail'
+      ? {
+          chips: <div data-testid="slot-chips" data-id={m.id} />,
+          detail: <div data-testid="slot-detail" data-id={m.id} />,
+        }
+      : {},
+}));
 vi.mock('./card/CardActions', () => ({
   CardActions: () => null,
   CardMenu: () => null,
@@ -307,13 +317,21 @@ describe('VolumesView', () => {
         series: [result(40, 'c1', { carried: { pile: 'p1', base: 'tin' } as never })],
         results: [],
       }),
+      // the kit's dates run to c2: j is carried on both
+      pile('j', {
+        series: [
+          result(5, 'c1', { carried: { pile: 'p2', base: 'tin' } as never }),
+          result(6, 'c2', { carried: { pile: 'p2', base: 'tin' } as never }),
+        ],
+        results: [],
+      }),
     ];
     render();
     const cells = qa('[data-testid="volumes-inventory-table"] tbody tr').map((tr) =>
       [...tr.querySelectorAll('td')].map((td) => td.textContent),
     );
-    expect(cells[0]?.[0]).toBe(v(140));
-    expect(cells[1]?.[0]).toBe(v(110));
+    expect(cells[0]?.[0]).toBe(v(145));
+    expect(cells[1]?.[0]).toBe(v(116));
     expect(cells[1]?.[2]).toContain('Pile k (no survey data)');
     expect(q('[data-testid="time-missing"]')?.textContent).toContain('1 pile has no survey data');
     // the dates are worked out for the piles shown
@@ -508,7 +526,7 @@ describe('VolumesView', () => {
   it('clicking a pile focuses it in the detail card', () => {
     s.measure.file.measurements = [pile('a'), pile('b')];
     render();
-    expect(q('[data-testid="volume-detail"]')).toBeNull();
+    expect(q('[data-testid="slot-detail"]')).toBeNull();
     click(qa('[data-testid="volumes-pile"]')[1]);
     expect(calls.select).toHaveBeenCalledWith(['b'], 'b');
     // the pick is the view's own: the sidebar leaves the view in front
@@ -516,7 +534,11 @@ describe('VolumesView', () => {
     s.measure.focus = 'b';
     s.measure.selected = ['b'];
     render();
-    expect(q('[data-testid="volume-detail"]')?.getAttribute('data-id')).toBe('b');
+    // the panel's slots (chips, comparisons and Calculators), not a card of its own
+    expect(
+      q('[data-testid="volumes-detail"] [data-testid="slot-detail"]')?.getAttribute('data-id'),
+    ).toBe('b');
+    expect(q('[data-testid="volumes-detail"] [data-testid="slot-chips"]')).not.toBeNull();
     expect(q('.mc[data-variant="detail"]')?.getAttribute('data-measure-id')).toBe('b');
     expect(qa('[data-testid="volumes-pile"]')[1]?.getAttribute('aria-pressed')).toBe('true');
   });
@@ -538,5 +560,22 @@ describe('VolumesView', () => {
     expect(lines[0]).toContain('Tonnage');
     // the stored result stands for its date; tonnes = 10 m3 x 2 t/m3
     expect(lines.find((l) => l.includes('2026-02-10'))).toMatch(/,20(\.0+)?,/);
+  });
+
+  it('the CSV says stale for a stale figure, as the cards and the totals do', async () => {
+    s.measure.file.measurements = [
+      pile('a', { series: [result(8, 'c1')], results: [result(10, 'c2')] }),
+    ];
+    stale.stored.add('a');
+    render();
+    await act(async () => {
+      button('CSV')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    const req = calls.saveFile.mock.calls.at(-1)?.[1];
+    const lines = req?.data.split(/\r?\n/) ?? [];
+    expect(lines.find((l) => l.includes('2026-02-10'))).toMatch(/,stale,/);
+    expect(lines.find((l) => l.includes('2026-01-10'))).toMatch(/,ok,/);
+    stale.stored.clear();
   });
 });
