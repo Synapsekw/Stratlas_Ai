@@ -87,6 +87,8 @@ interface Col {
   t: number;
   value: number | null; // SI: m3 for volume and stack, m for elevation
   change: number | null;
+  /** Stack: the change counts only the piles counted on both dates, `piles` of `of`. */
+  changeOf?: { piles: number; of: number };
   latest: boolean; // TimeRow.latest for volume; else the newest date with a value
   stale: boolean;
   partial: boolean;
@@ -102,12 +104,17 @@ function columns(data: TimeChartData): Col[] {
         : data.kind === 'elevation'
           ? (r as { z: number | null }).z
           : (r as StackRow).totalM3;
+    // the inventory's change is over the piles counted on both dates (`StackRow.change`, as the
+    // table under it), never this total minus the last one
+    const stackChange = data.kind === 'stack' ? ((r as StackRow).change ?? null) : null;
     const change =
       data.kind === 'volume'
         ? (r as TimeRow).changeM3
-        : value !== null && prev !== null
-          ? value - prev
-          : null;
+        : data.kind === 'stack'
+          ? (stackChange?.m3 ?? null)
+          : value !== null && prev !== null
+            ? value - prev
+            : null;
     if (value !== null) prev = value;
     const row = data.kind === 'volume' ? (r as TimeRow) : undefined;
     return {
@@ -117,6 +124,9 @@ function columns(data: TimeChartData): Col[] {
       t: Date.parse(r.date),
       value,
       change,
+      ...(stackChange && stackChange.piles < stackChange.of
+        ? { changeOf: { piles: stackChange.piles, of: stackChange.of } }
+        : {}),
       latest: row?.latest ?? false,
       stale: row?.stale ?? false,
       partial: row?.status === 'partial',
@@ -314,6 +324,13 @@ export function TimeChart(p: TimeChartProps): ReactElement {
 
   const signed = (v: number | null) =>
     v === null ? '-' : `${v > 0 && fmt(v) !== fmt(0) ? '+' : ''}${fmt(v)}`;
+  /** A column's change, with "(n of m piles)" when not every pile is in it (the table's text). */
+  const changeText = (c: Col) =>
+    `${signed(c.change)}${
+      c.change !== null && c.changeOf
+        ? ` (${t('vol.view.ofPiles', { n: c.changeOf.piles, count: c.changeOf.of })})`
+        : ''
+    }`;
 
   // a date's notes (stale, partly outside the survey): the marks' tips, and the plot's read-out,
   // the one tab stop (the svg is hidden, so its marks are never focused)
@@ -570,7 +587,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
               </div>
               <div className="pc-ro-row">
                 <dt>{t('vol.change')}</dt>
-                <dd>{signed(live.change)}</dd>
+                <dd>{changeText(live)}</dd>
               </div>
             </dl>
             {liveNote !== '' && <p className="pc-ro-note">{liveNote}</p>}
@@ -579,7 +596,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
         {interactive && (
           <p className="sr-only" aria-live="polite" data-testid="time-live">
             {live
-              ? `${live.label}, ${live.value === null ? t('mcard.noData') : fmt(live.value)}, ${t('vol.change')} ${signed(live.change)}${liveNote !== '' ? `. ${liveNote}` : ''}`
+              ? `${live.label}, ${live.value === null ? t('mcard.noData') : fmt(live.value)}, ${t('vol.change')} ${changeText(live)}${liveNote !== '' ? `. ${liveNote}` : ''}`
               : ''}
           </p>
         )}

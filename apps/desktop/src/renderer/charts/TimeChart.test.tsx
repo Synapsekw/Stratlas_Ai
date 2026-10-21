@@ -211,6 +211,51 @@ describe('TimeChart', () => {
     expect(new Set(fills).size).toBe(2);
   });
 
+  it("stack change is the inventory's, over the piles counted on both dates", () => {
+    // date 1: A 100 + B 60; date 2: only A (110), B stale. Not 110 - 160 = -50
+    const rows: StackRow[] = [
+      {
+        capture: 'a',
+        date: '2026-09-01',
+        label: '01 Sep',
+        totalM3: 160,
+        parts: [
+          { id: 'p1', valueM3: 100 },
+          { id: 'p2', valueM3: 60 },
+        ],
+        missing: [],
+        change: null,
+      },
+      {
+        capture: 'b',
+        date: '2026-10-01',
+        label: '01 Oct',
+        totalM3: 110,
+        parts: [{ id: 'p1', valueM3: 110 }],
+        missing: [],
+        change: { m3: 10, piles: 1, of: 2 },
+      },
+    ];
+    const h = render({ kind: 'stack', rows, names });
+    const plot = h.querySelector<HTMLElement>('[data-testid="time-plot"]');
+    act(() => {
+      plot?.focus();
+    });
+    const live = h.querySelector('[data-testid="time-live"]')?.textContent ?? '';
+    const readout = h.querySelector('[data-testid="time-readout"]')?.textContent ?? '';
+    expect(live).toContain('+10');
+    expect(live).not.toContain('-50');
+    expect(live).toContain('1 of 2 piles');
+    expect(readout).toContain('+10');
+    expect(readout).toContain('1 of 2 piles');
+    act(() => {
+      plot?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    });
+    // no earlier date with piles in common: no change, never a made-up one
+    const first = h.querySelector('[data-testid="time-live"]')?.textContent ?? '';
+    expect(first).toContain('Change -');
+  });
+
   it('missing piles use the plural form', () => {
     const [first] = stackRows;
     if (!first) throw new Error('fixture');
