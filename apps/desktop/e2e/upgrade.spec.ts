@@ -184,8 +184,22 @@ test('the first edit in this build starts the journal, signed by this device', a
   await nav(win, 'Projects');
   await win.getByTestId('project-card').filter({ hasText: NAME }).first().click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 60_000 });
-  // opening alone takes the 0.8 files as the baseline: no journal yet
-  expect(existsSync(join(data.projectDir, 'journal'))).toBe(false);
+  // opening converts the 0.8 stockpile kit piles into volume measurements (volumetric parity W3):
+  // the 0.8 files are the baseline, and the conversion is the journal's first record
+  const opsDir = join(data.projectDir, 'journal', 'ops');
+  await expect
+    .poll(
+      async () =>
+        (
+          JSON.parse(
+            await readFile(join(data.projectDir, 'survey', 'measurements.json'), 'utf8').catch(
+              () => '{}',
+            ),
+          ) as { kitPilesConverted?: string[] }
+        ).kitPilesConverted ?? null,
+      { timeout: 15_000 },
+    )
+    .toEqual(['P01', 'P02']);
 
   await nav(win, 'Issues');
   await win.getByRole('listbox', { name: 'Issues' }).getByRole('option').first().click();
@@ -195,21 +209,37 @@ test('the first edit in this build starts the journal, signed by this device', a
   await title.fill('Journal starts here');
   await title.press('Enter');
 
-  const opsDir = join(data.projectDir, 'journal', 'ops');
   await expect.poll(() => existsSync(opsDir), { timeout: 15_000 }).toBe(true);
   expect((await stat(join(data.projectDir, 'journal'))).isDirectory()).toBe(true);
   const [chain] = await readdir(opsDir);
   if (!chain) throw new Error('no chain');
-  const text = await readFile(join(opsDir, chain, '000001.jsonl'), 'utf8');
-  const ops = text
-    .trim()
-    .split('\n')
-    .map((l) => JSON.parse(l) as { kind: string; sig?: string; payload?: unknown });
-  expect(
-    ops.some(
-      (o) => o.kind === 'issue.patch' && JSON.stringify(o.payload).includes('Journal starts here'),
-    ),
-  ).toBe(true);
+  interface Op {
+    kind: string;
+    sig?: string;
+    payload?: unknown;
+  }
+  const readOps = async (): Promise<Op[]> =>
+    (await readFile(join(opsDir, chain, '000001.jsonl'), 'utf8').catch(() => ''))
+      .split('\n')
+      .filter((l) => l.trim() !== '')
+      .map((l) => JSON.parse(l) as Op);
+  // the chain file is there before its first line is: wait for the edit's op
+  await expect
+    .poll(
+      async () =>
+        (await readOps()).some(
+          (o) =>
+            o.kind === 'issue.patch' && JSON.stringify(o.payload).includes('Journal starts here'),
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  const ops = await readOps();
+  // before the edit, only the conversion: one measurement per kit pile
+  expect(ops.filter((o) => o.kind !== 'issue.patch').map((o) => o.kind)).toEqual([
+    'measurement.create',
+    'measurement.create',
+  ]);
   expect(ops.every((o) => typeof o.sig === 'string')).toBe(true);
   // this device's public record is beside the chain; its key stayed in the test vault
   const device = chain.split('.')[0] ?? '';

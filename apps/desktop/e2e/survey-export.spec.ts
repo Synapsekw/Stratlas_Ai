@@ -38,7 +38,6 @@ test('the design as LandXML and DXF, a DSM as GeoTIFF in WGS 84, measurements as
   const root = earthworksProject.dir;
   await prepareSurveys(win, root);
   const survey = join(root, 'survey');
-  const before = (await listFiles(survey)).sort();
 
   // the save dialog answers the offered name in our folder
   const out = join(dataRoot.base, 'exports');
@@ -55,6 +54,19 @@ test('the design as LandXML and DXF, a DSM as GeoTIFF in WGS 84, measurements as
   );
 
   await openDemo(win, earthworksProject.name, earthworksProject.id);
+  // the first open marks the file for kit piles (volumetric parity W3): the baseline is after it
+  await expect
+    .poll(
+      async () =>
+        (
+          JSON.parse(await readFile(join(survey, 'measurements.json'), 'utf8')) as {
+            kitPilesConverted?: string[];
+          }
+        ).kitPilesConverted ?? null,
+      { timeout: 30_000 },
+    )
+    .toEqual([]);
+  const before = (await listFiles(survey)).sort();
   await (await measureControl(win, 'survey-export-open')).click();
   const dlg = win.getByTestId('survey-export-dialog');
   await expect(dlg).toBeVisible();

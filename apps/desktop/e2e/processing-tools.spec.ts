@@ -167,10 +167,9 @@ test('the start notice leads to Settings, where a pack file installs and process
     await expect(page.getByTestId('tools-needs')).toHaveCount(0);
     // the pack is in place, with nothing half-unpacked beside it
     const runtime = join(dataRoot.root, 'runtime');
-    expect((await readdir(runtime)).sort()).toEqual([
-      `pipeline-pack-${PACK_VERSION}`,
-      'pipeline-pack-0.2.0',
-    ]);
+    expect((await readdir(runtime)).sort()).toEqual(
+      [`pipeline-pack-${PACK_VERSION}`, 'pipeline-pack-0.2.0'].sort(),
+    );
     expect(existsSync(join(runtime, `pipeline-pack-${PACK_VERSION}`, 'python', 'python.exe'))).toBe(
       true,
     );
