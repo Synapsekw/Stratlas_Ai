@@ -263,13 +263,15 @@ class DetectVlm:
             assessed: list[str] = []
             dets: list[dict[str, Any]] = []
             for pi, photo in enumerate(photos):
-                ran = False
+                # assessed only when every detector of the run has a result for the photo: one
+                # that failed must not read as "checked, nothing found"
+                ran_all = True
                 for entry in detectors:
                     det = entry["detector"]
                     staged = ctx.stage(_result_name(pi, photo["id"], det["id"]))
                     if not staged.exists():
+                        ran_all = False
                         continue
-                    ran = True
                     result = json.loads(staged.read_text("utf-8"))
                     for k, c in enumerate(result["candidates"]):
                         score = c.get("score")
@@ -300,7 +302,7 @@ class DetectVlm:
                             "threshold": entry["threshold"],
                         }
                         dets.append(d)
-                if ran:
+                if ran_all:
                     assessed.append(photo["id"])
             doc = {
                 "schema": DETECTIONS_SCHEMA,

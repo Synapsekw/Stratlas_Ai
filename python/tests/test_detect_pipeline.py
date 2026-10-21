@@ -272,6 +272,41 @@ def test_two_detectors_one_pass(tmp_path):
     assert doc["run"]["images"] == 2 and doc["run"]["detections"] == 8
 
 
+def test_photo_is_assessed_only_when_every_detector_ran(tmp_path):
+    root = make_project(tmp_path / "p")
+    dets = [
+        {"where": "project", "detector": detector("rust-spots", "rust"), "threshold": 0.8},
+        {
+            "where": "shipped",
+            "detector": detector("loose-bolt", "bolt", looksLike="a loose bolt"),
+            "threshold": 0.5,
+        },
+    ]
+    state = {"bolt_asks": 0}
+
+    def handle(body):
+        if body.get("logprobs"):
+            return logprob_response([("Yes", -0.1), ("No", -3.0)])
+        if "a loose bolt" in json.dumps(body):
+            state["bolt_asks"] += 1
+            # the bolt detector answers on p1 and fails on p2 (asked twice)
+            return text_response(BOXES) if state["bolt_asks"] == 1 else 500
+        return text_response(BOXES)
+
+    with FakeVlm(handle) as vlm:
+        run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1", "p2"), detectors=dets))
+    doc = pass_of(root)
+    # p2 had no bolt result: listing it would read as "checked for bolts, none found"
+    assert doc["assessed"] == ["p1"]
+    assert doc["run"]["images"] == 1
+    # the rust candidates on p2 are still kept
+    assert {(d["photo"], d["class"]) for d in doc["detections"]} == {
+        ("p1", "rust"),
+        ("p1", "bolt"),
+        ("p2", "rust"),
+    }
+
+
 def test_changed_photo_refuses_resume(tmp_path):
     root = make_project(tmp_path / "p")
     with FakeVlm(scoring([0.9])) as vlm:
