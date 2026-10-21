@@ -259,7 +259,13 @@ test('Settings, Advanced holds every pipeline by area and every job on this comp
   const values = await pick
     .locator('option')
     .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
-  expect([...values].sort()).toEqual(PIPELINES.map((p) => p.name).sort());
+  // thermal.decode is started from the Thermal bench only (BENCH_ONLY in processing/pipelines.ts)
+  const benchOnly = new Set<string>(['thermal.decode']);
+  expect([...values].sort()).toEqual(
+    PIPELINES.map((p) => p.name)
+      .filter((n) => !benchOnly.has(n))
+      .sort(),
+  );
 
   await pick.selectOption('pointcloud.to_copc');
   const info = PIPELINES.find((p) => p.name === 'pointcloud.to_copc');
