@@ -135,7 +135,9 @@ export function decompress(
     case Compression.brotli:
       return inflateCapped(what, maxBytes, (o) => zlib.brotliDecompressSync(b, o));
     case Compression.zstd:
-      return inflateCapped(what, maxBytes, (o) => zlib.zstdDecompressSync(b, o));
+      return inflateCapped(what, maxBytes, (o) =>
+        zlib.zstdDecompressSync(b, { maxOutputLength: o.maxOutputLength }),
+      );
     default:
       throw new Error(`The map pack uses an unknown compression (${String(compression)}).`);
   }

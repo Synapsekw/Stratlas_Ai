@@ -193,10 +193,10 @@ describe('runExport', () => {
       ],
     });
     const sighting = (path: string) => ({
-      on: 'image',
+      on: 'image' as const,
       layer: 'photos',
       photo: 'p1',
-      geom: { type: 'mask', src: { path } },
+      geom: { type: 'mask' as const, src: { path } },
     });
     const issuesFile = (path: string) =>
       JSON.stringify({

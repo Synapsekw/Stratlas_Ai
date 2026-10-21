@@ -144,7 +144,8 @@ describe('issuesCsv', () => {
         title: '=HYPERLINK("http://evil","x")',
         note: '-2+3',
         author: '@SUM(A1)',
-        source: '+cmd',
+        // not a valid source; the guard must still neutralise it
+        source: '+cmd' as (typeof first)['source'],
       },
       ...rest,
     ];
