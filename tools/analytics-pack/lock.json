@@ -1,0 +1,35 @@
+{
+  "runtime": {
+    "name": "llama.cpp",
+    "release": "b11489",
+    "assets": [
+      {
+        "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11489/llama-b11489-bin-win-cuda-13.4-x64.zip",
+        "sha256": "f2c407f114c312fab3411156dbc5cd3153b4fc6ee51812ad844718846b95a952",
+        "size": 153309913
+      },
+      {
+        "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11489/cudart-llama-bin-win-cuda-13.4-x64.zip",
+        "sha256": "738f8c251ac22b70c3ae6f83a10cf222725df0395246a2cf58f32bdb85fbe668",
+        "size": 423535356
+      }
+    ],
+    "executable": "llama/llama-server.exe"
+  },
+  "model": {
+    "id": "qwen2.5-vl-7b-instruct-q4_k_m",
+    "licence": "Apache-2.0",
+    "gguf": {
+      "url": "https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF/resolve/508edd0afaa66bb9e9f40587acc2184f02daf1f6/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+      "sha256": "9258bf05b12686d097ff3b6b18d968ab393649780aa2b3cd67fec43d50554392",
+      "size": 4683072032,
+      "file": "model/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
+    },
+    "mmproj": {
+      "url": "https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF/resolve/508edd0afaa66bb9e9f40587acc2184f02daf1f6/mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf",
+      "sha256": "c24a7f5fcfc68286f0a217023b6738e73bea4f11787a43e8238d4bb1b8604cde",
+      "size": 1354162912,
+      "file": "model/mmproj-qwen2.5-vl-7b-instruct-f16.gguf"
+    }
+  }
+}
