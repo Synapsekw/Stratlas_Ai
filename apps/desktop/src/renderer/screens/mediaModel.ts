@@ -1,5 +1,6 @@
 import { panoOpenable } from '@aio/engine';
-import type { AssetRef, Layer, PanoRef } from '@aio/schema';
+import { isPositionEdited, photoCorrection } from '@aio/geo';
+import type { AssetRef, Layer, OrientationFile, PanoRef, PhotoRef } from '@aio/schema';
 import { DEFAULT_CLIP_MS, flightGroups, formatCount, t } from '@aio/ui';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
@@ -89,4 +90,16 @@ const EQUIRECT_TOLERANCE = 0.02;
 export function isNear2to1(w: number, h: number): boolean {
   if (!(w > 0) || !(h > 0)) return false;
   return Math.abs(w / h - 2) < EQUIRECT_TOLERANCE;
+}
+
+/**
+ * Whether a photo tile shows "Edited": its hand correction moves it (Edit position, or a thermal
+ * placed at its visual twin). A pinned photo stays at its pin, so a correction does not count.
+ */
+export function isPhotoEdited(
+  file: OrientationFile | null | undefined,
+  layerId: string,
+  photo: PhotoRef,
+): boolean {
+  return photo.pin === undefined && isPositionEdited(photoCorrection(file, layerId, photo.id));
 }

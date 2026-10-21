@@ -1,6 +1,6 @@
 import type { AssetRef, PanoRef, PhotoRef } from '@aio/schema';
 import { actionsFor, Button, Chip, ContextMenu, useT, type MenuTarget } from '@aio/ui';
-import { assetUrl } from '@aio/workspace';
+import { assetUrl, workspace } from '@aio/workspace';
 import {
   useCallback,
   useEffect,
@@ -15,19 +15,32 @@ import { mediaName } from '../pins/placePin';
 import { usePinActionCtx } from '../shell/actions/pinActions';
 import { photoSize } from '../thumbs/photoSize';
 import { isNear2to1 } from './mediaModel';
+import { mediaPicks, menuPicks, tileTarget } from './mediaSelect';
 import './MediaPins.css';
 
 /*
  * Pinned media on the Media tiles (pinned media design): "Not placed" on a photo or 360 with no
  * place on the site, "Not lined up yet" on a pinned 360 with no heading, "Looks like a 360" with
- * Treat as 360 on a 2:1 photo, and the pin actions on a right-click of a tile.
+ * Treat as 360 on a 2:1 photo, "Edited" on a photo moved with Edit position, and the pin and
+ * photo actions on a right-click of a tile (of every picked photo when it is among the picks).
  */
 
-/** The menu target of a tile: a photo keeps `photos`, a 360 is `media`. */
-function targetOf(k: MediaKey): MenuTarget {
-  return k.kind === 'photo'
-    ? { kind: 'photos', picks: [{ layerId: k.layerId, photoId: k.itemId }] }
-    : { kind: 'media', picks: [k] };
+/** The menu target of one tile on its own (its chips, Place on site from a click). */
+const targetOf = (k: MediaKey): MenuTarget => tileTarget(k);
+
+/**
+ * The menu target of a right-click on a tile: every picked photo when the tile is among the
+ * picks, else that tile alone, and the picks are reset to it.
+ */
+function menuTargetOf(k: MediaKey): MenuTarget {
+  if (k.kind !== 'photo') return targetOf(k);
+  const projectId = workspace.getState().project?.id;
+  const s = mediaPicks.getState();
+  const picks = projectId !== undefined && s.projectId === projectId ? s.picks : [];
+  const hit = { layerId: k.layerId, photoId: k.itemId };
+  const m = menuPicks(picks, hit);
+  if (m.reset && projectId !== undefined) s.reset(projectId, m.picks);
+  return { kind: 'photos', picks: m.picks };
 }
 
 /** One observer per scroll list: a tile's header is read once it comes into view. */
@@ -108,12 +121,15 @@ export function PhotoTile({
   projectId,
   layerId,
   photo,
+  edited = false,
   onMenu,
   children,
 }: {
   projectId: string;
   layerId: string;
   photo: PhotoRef;
+  /** Moved with Edit position (`isPhotoEdited`): the tile shows "Edited". */
+  edited?: boolean;
   onMenu: (e: MouseEvent, k: MediaKey) => void;
   children: ReactNode;
 }): ReactElement {
@@ -137,7 +153,13 @@ export function PhotoTile({
       }}
     >
       {children}
-      <PhotoPinChips projectId={projectId} layerId={layerId} photo={photo} seen={seen} />
+      <PhotoPinChips
+        projectId={projectId}
+        layerId={layerId}
+        photo={photo}
+        seen={seen}
+        edited={edited}
+      />
     </div>
   );
 }
@@ -148,17 +170,19 @@ function PhotoPinChips({
   layerId,
   photo,
   seen,
+  edited,
 }: {
   projectId: string;
   layerId: string;
   photo: PhotoRef;
   seen: boolean;
+  edited: boolean;
 }): ReactElement | null {
   const t = useT();
   const looks360 = useLooks360(projectId, photo, seen);
   const ctxOf = usePinActionCtx();
   const placed = photo.pos !== undefined;
-  if (placed && !looks360) return null;
+  if (placed && !looks360 && !edited) return null;
   const key: MediaKey = { kind: 'photo', layerId, itemId: photo.id };
   const as360 = looks360
     ? (() => {
@@ -169,6 +193,11 @@ function PhotoPinChips({
   return (
     <div className="m-pin-chips">
       {!placed && <NotPlaced itemId={photo.id} />}
+      {edited && (
+        <span className="m-pin-chip" data-testid="media-tile-edited" data-item={photo.id}>
+          <Chip kind="tag">{t('position.edited')}</Chip>
+        </span>
+      )}
       {looks360 && (
         <>
           <Chip kind="tag" tone="acc">
@@ -220,10 +249,15 @@ export function useTileMenu(): {
   menu: ReactElement | null;
 } {
   const ctxOf = usePinActionCtx();
-  const [at, setAt] = useState<{ x: number; y: number; k: MediaKey } | null>(null);
+  const [at, setAt] = useState<{
+    x: number;
+    y: number;
+    k: MediaKey;
+    target: MenuTarget;
+  } | null>(null);
   const open = useCallback((e: MouseEvent, k: MediaKey) => {
     e.preventDefault();
-    setAt({ x: e.clientX, y: e.clientY, k });
+    setAt({ x: e.clientX, y: e.clientY, k, target: menuTargetOf(k) });
   }, []);
   const close = useCallback(() => {
     setAt(null);
@@ -240,7 +274,7 @@ export function useTileMenu(): {
   );
   const ctx = at ? ctxOf(at.k) : null;
   const item = at && ctx ? mediaItem(ctx.manifest, at.k) : null;
-  const items = at && ctx ? actionsFor(targetOf(at.k), ctx) : [];
+  const items = at && ctx ? actionsFor(at.target, ctx) : [];
   const menu =
     at && item && items.length > 0 ? (
       <ContextMenu items={items} x={at.x} y={at.y} label={mediaName(item)} onClose={close} />

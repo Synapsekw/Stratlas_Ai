@@ -1,9 +1,10 @@
-import type { Layer } from '@aio/schema';
+import type { Layer, OrientationFile, PhotoRef } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   flightCards,
   flightOf,
   isNear2to1,
+  isPhotoEdited,
   mediaSummary,
   panoCard,
   showsClipList,
@@ -110,5 +111,43 @@ describe('isNear2to1', () => {
     expect(isNear2to1(4000, 3000)).toBe(false);
     expect(isNear2to1(2600, 1280)).toBe(false);
     expect(isNear2to1(2560, 0)).toBe(false);
+  });
+});
+
+describe('isPhotoEdited', () => {
+  const photo = (id: string, extra: Partial<PhotoRef> = {}): PhotoRef => ({
+    id,
+    src: { path: `photos/${id}.jpg` },
+    pos: [1, 2, 3],
+    ...extra,
+  });
+  const file: OrientationFile = {
+    schema: 'aio.orientation/1',
+    clips: {},
+    photos: {
+      set: {
+        moved: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, -100, 0] },
+        turned: { yawDeg: 5, pitchDeg: 0, rollDeg: 0 },
+        tiny: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0.0001, 0, 0] },
+        pinned: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [3, 0, 0] },
+      },
+    },
+  };
+
+  it('marks a photo whose correction moves it', () => {
+    expect(isPhotoEdited(file, 'set', photo('moved'))).toBe(true);
+    expect(isPhotoEdited(file, 'other', photo('moved'))).toBe(false);
+  });
+
+  it('does not mark a turn only, an offset under 0.5 mm, no entry or no file', () => {
+    expect(isPhotoEdited(file, 'set', photo('turned'))).toBe(false);
+    expect(isPhotoEdited(file, 'set', photo('tiny'))).toBe(false);
+    expect(isPhotoEdited(file, 'set', photo('none'))).toBe(false);
+    expect(isPhotoEdited(null, 'set', photo('moved'))).toBe(false);
+  });
+
+  it('does not mark a pinned photo: its pin wins over a correction', () => {
+    const pinned = photo('pinned', { pin: { ground: [0, 0, 0], eyeM: 1.6 } });
+    expect(isPhotoEdited(file, 'set', pinned)).toBe(false);
   });
 });

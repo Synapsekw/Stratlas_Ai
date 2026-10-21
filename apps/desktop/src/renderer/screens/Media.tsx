@@ -32,6 +32,7 @@ import {
 import {
   flightCards,
   flightOf,
+  isPhotoEdited,
   mediaSummary,
   panoCard,
   showsClipList,
@@ -47,6 +48,7 @@ import {
   useMediaView,
 } from './mediaView';
 import { PanoPinChips, PhotoTile, useTileMenu } from './MediaPins';
+import { isPicked, mediaPicks, useMediaPicks } from './mediaSelect';
 import { NoProject } from './NoProject';
 import { PageHeader } from '../shell/PageHeader';
 
@@ -253,6 +255,20 @@ export function MediaScreen() {
     () => noPhotoMatches(photoSets, findings, view),
     [photoSets, findings, view],
   );
+  const shownSets = useMemo(
+    () => photoSets.map((set) => ({ set, items: photosInView(set.items, set.id, findings, view) })),
+    [photoSets, findings, view],
+  );
+  // the photo tiles as shown, in order: a Shift click picks the range between two of them
+  const tileOrder = useMemo(
+    () =>
+      shownSets.flatMap(({ set, items }) =>
+        items.slice(0, PHOTO_LIMIT).map((p) => ({ layerId: set.id, photoId: p.id })),
+      ),
+    [shownSets],
+  );
+  const orientation = useWorkspace((s) => s.orientation);
+  const picks = useMediaPicks((s) => s);
   const [openFlight, setOpenFlight] = useState<string | null>(null);
   const tileMenu = useTileMenu();
   const shownFlight = flights.find((f) => f.id === openFlight) ?? flightOf(flights, activeClip);
@@ -274,6 +290,19 @@ export function MediaScreen() {
         : null,
     [photoLayerId, photoId],
   );
+  // the picks follow a photo selected elsewhere (3D, the map, an issue): a photo that is not among
+  // them becomes the one pick, so a Ctrl click here starts from the open photo
+  const projectId = project?.id;
+  useEffect(() => {
+    if (!projectId) return;
+    const s = mediaPicks.getState();
+    if (!photoId || !photoLayerId) {
+      if (s.picks.length <= 1) s.clear();
+      return;
+    }
+    const open = { layerId: photoLayerId, photoId };
+    if (!isPicked(s, projectId, open)) s.reset(projectId, [open]);
+  }, [projectId, photoId, photoLayerId]);
   const photoRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!photoId) return;
@@ -311,6 +340,7 @@ export function MediaScreen() {
   );
 
   const viewerOpen = photo !== null || issueId !== null;
+  const hasPicks = picks.projectId === project.id && picks.picks.length > 0;
 
   const page = (
     <section className={`screen media${viewerOpen ? ' with-viewer' : ''}`} aria-label="Media">
@@ -499,9 +529,8 @@ export function MediaScreen() {
               <p>No photos match this filter.</p>
             </div>
           )}
-          {photoSets.map((set) => {
+          {shownSets.map(({ set, items }) => {
             const filtered = onlyFindings || severity !== null || scope !== null;
-            const items = photosInView(set.items, set.id, findings, view);
             if (filtered && items.length === 0) return null;
             return (
               <section className="m-sec" key={set.id}>
@@ -516,7 +545,12 @@ export function MediaScreen() {
                 <div className="m-grid">
                   {items.slice(0, PHOTO_LIMIT).map((p) => {
                     const f = findings.get(photoKey(set.id, p.id));
-                    const on = photo?.photoId === p.id && photo.layerId === set.id;
+                    const hit = { layerId: set.id, photoId: p.id };
+                    const picked = isPicked(picks, project.id, hit);
+                    // the picked tiles show as selected; with no picks, the open photo does
+                    const on = hasPicks
+                      ? picked
+                      : photo?.photoId === p.id && photo.layerId === set.id;
                     const when = p.takenAt ? ` · ${formatDate(p.takenAt)}` : '';
                     const what = f
                       ? ` · ${f.label ? t('media.findings.tile', { count: f.count, severity: f.label }) : t('media.findings.tileUngraded', { count: f.count })}`
@@ -527,15 +561,21 @@ export function MediaScreen() {
                         projectId={project.id}
                         layerId={set.id}
                         photo={p}
+                        edited={isPhotoEdited(orientation, set.id, p)}
                         onMenu={tileMenu.open}
                       >
                         <button
                           type="button"
                           data-photo={p.id}
                           data-findings={f ? f.count : undefined}
+                          data-picked={picked ? 'true' : undefined}
                           className={`m-card sq${on ? ' on' : ''}${f ? ' has-f' : ''}`}
                           style={f ? { ['--c' as string]: f.color } : undefined}
-                          onClick={() => {
+                          onClick={(e) => {
+                            const mods = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
+                            mediaPicks.getState().click(project.id, hit, mods, tileOrder);
+                            // Ctrl or Shift only picks; a plain click also opens the photo
+                            if (mods.ctrl || mods.shift) return;
                             workspace.getState().select({ kind: 'photo', id: p.id, layer: set.id });
                           }}
                           title={`${p.id}${when}${what}`}
