@@ -304,6 +304,20 @@ function modelTable(entries) {
   ].join('\n');
 }
 
+/** The Analytics pack (tools/analytics-pack/lock.json): fixed text, the pins are in the lock. */
+export const ANALYTICS_PACK_NOTICES = `## Analytics pack
+
+The Analytics pack (\`tools/analytics-pack\`) is a separate archive, installed by the person like the pipeline pack. It carries the local vision model for detectors; the app starts its server on 127.0.0.1 only and sends nothing off the computer. Each download is pinned by URL, size and SHA-256 in \`tools/analytics-pack/lock.json\` and refused when the hash differs.
+
+| Component | Licence | Source |
+| --------- | ------- | ------ |
+| llama.cpp \`llama-server\` (release b11489) | MIT | https://github.com/ggml-org/llama.cpp |
+| Qwen2.5-VL-7B-Instruct, GGUF Q4_K_M and its mmproj | Apache-2.0 | https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF |
+| NVIDIA CUDA runtime libraries (cudart, cuBLAS), from llama.cpp's \`cudart\` archive | NVIDIA CUDA Toolkit EULA, redistributable runtime terms | https://docs.nvidia.com/cuda/eula/index.html |
+
+The NVIDIA libraries are redistributed unmodified as the CUDA Toolkit licence allows for its runtime components; they are not covered by the MIT or Apache-2.0 licences above.
+`;
+
 /** The program the app downloads at run time (ODM): fixed text, the pin is in the app's main process. */
 const DOWNLOADED_AT_RUN_TIME = `## Downloaded at run time
 
@@ -408,6 +422,8 @@ ${
 ${nativeSections(native, data, models)}`
     : ''
 }
+
+${ANALYTICS_PACK_NOTICES}
 
 ${DOWNLOADED_AT_RUN_TIME}`;
 }

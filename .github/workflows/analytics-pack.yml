@@ -1,0 +1,48 @@
+name: analytics-pack
+
+# Builds the Analytics pack (llama.cpp, the Qwen2.5-VL model and its mmproj, shipped detectors)
+# on demand. Never runs on push or tag; the model is a 6 GB download, so the cache is kept.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analytics-pack:
+    name: analytics pack (win-x64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - uses: actions/cache@v4
+        with:
+          path: analytics-cache
+          key: analytics-pack-${{ hashFiles('tools/analytics-pack/lock.json') }}
+
+      # Every download is pinned in tools/analytics-pack/lock.json and refused on a hash mismatch.
+      - name: Build the Analytics pack
+        run: node tools/analytics-pack/build.mjs --out runtime --cache analytics-cache
+
+      # manifest.json is the first entry of the archive.
+      - name: Size budget
+        run: |
+          pack="$(ls -d runtime/analytics-pack-*/ | head -n 1)"
+          node tools/release/budgets.mjs --pack "$pack" --archive "$(ls runtime/analytics-pack-*-win-x64.tar.gz)" --budget analytics
+          sha256sum runtime/analytics-pack-*-win-x64.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: analytics-pack-win-x64
+          path: runtime/analytics-pack-*-win-x64.tar.gz
+          retention-days: 30
+          if-no-files-found: error

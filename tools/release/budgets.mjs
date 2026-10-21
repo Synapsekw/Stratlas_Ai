@@ -3,7 +3,7 @@
 // apps/desktop/e2e/perf.spec.ts; this file holds the M9 journal budgets and the release ones.
 //
 // Size budgets of M10 decision 6, checked in CI after a build:
-//   node tools/release/budgets.mjs --pack <pipeline-pack folder> [--archive <its .tar.gz>]
+//   node tools/release/budgets.mjs --pack <pipeline-pack folder> [--archive <its .tar.gz>] [--budget analytics]
 //   node tools/release/budgets.mjs --installers <apps/desktop/dist>
 //
 // The journal budgets run through an adapter, so the journal (T1) and merge (T4) streams plug in
@@ -45,6 +45,12 @@ export const BUDGETS = Object.freeze({
    * packed, so the budget stays. Packs 0.9.0 to 0.11.0 (bentley.import, model.evidence) add Python sources only.
    */
   pack: Object.freeze({ unpackedBytes: 1_300_000_000, compressedBytes: 500_000_000 }),
+  /**
+   * The Analytics pack (llama.cpp with its CUDA runtime, Qwen2.5-VL Q4_K_M and its mmproj, about
+   * 6.6 GB unpacked): its own budget, 7.5 GB unpacked and 6.5 GB archived. Checked with
+   * `--pack <folder> --archive <.tar.gz> --budget analytics`.
+   */
+  analyticsPack: Object.freeze({ unpackedBytes: 7_500_000_000, compressedBytes: 6_500_000_000 }),
   /**
    * Installer growth over the 0.9.0 installer, per installer file: 15 MB for CesiumJS and
    * 3DTilesRendererJS (M10 decision 6) plus 5 MB for the M11 survey tools (founder, 10 Oct 2026).
@@ -225,19 +231,21 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     options: {
       pack: { type: 'string' },
       archive: { type: 'string' },
+      budget: { type: 'string' },
       installers: { type: 'string' },
     },
   });
   const problems = [];
   if (values.pack) {
+    const budget = values.budget === 'analytics' ? BUDGETS.analyticsPack : BUDGETS.pack;
     const size = {
       unpackedBytes: folderBytes(values.pack),
       compressedBytes: values.archive ? statSync(values.archive).size : undefined,
     };
     process.stdout.write(
-      `pack: ${mb(size.unpackedBytes)} unpacked${size.compressedBytes === undefined ? '' : `, ${mb(size.compressedBytes)} archived`} (budget ${mb(BUDGETS.pack.unpackedBytes)} and ${mb(BUDGETS.pack.compressedBytes)})\n`,
+      `pack: ${mb(size.unpackedBytes)} unpacked${size.compressedBytes === undefined ? '' : `, ${mb(size.compressedBytes)} archived`} (budget ${mb(budget.unpackedBytes)} and ${mb(budget.compressedBytes)})\n`,
     );
-    problems.push(...packBudgetProblems(size));
+    problems.push(...packBudgetProblems(size, budget));
   }
   if (values.installers) {
     const files = readdirSync(values.installers)

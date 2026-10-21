@@ -777,6 +777,18 @@ From `tools/release/data-sources.json`; every imagery and terrain pack we build 
 | NZGeoid2016                            | geoid pack (optional)                     | CC-BY-4.0                          | Land Information New Zealand (LINZ), NZGeoid2016, CC BY 4.0                                                                                                                                           |
 | CGG2013a                               | geoid pack (optional)                     | Open Government Licence - Canada   | Contains information licensed under the Open Government Licence - Canada (NRCan, CGG2013a)                                                                                                            |
 
+## Analytics pack
+
+The Analytics pack (`tools/analytics-pack`) is a separate archive, installed by the person like the pipeline pack. It carries the local vision model for detectors; the app starts its server on 127.0.0.1 only and sends nothing off the computer. Each download is pinned by URL, size and SHA-256 in `tools/analytics-pack/lock.json` and refused when the hash differs.
+
+| Component                                                                         | Licence                                                 | Source                                                      |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
+| llama.cpp `llama-server` (release b11489)                                         | MIT                                                     | https://github.com/ggml-org/llama.cpp                       |
+| Qwen2.5-VL-7B-Instruct, GGUF Q4_K_M and its mmproj                                | Apache-2.0                                              | https://huggingface.co/ggml-org/Qwen2.5-VL-7B-Instruct-GGUF |
+| NVIDIA CUDA runtime libraries (cudart, cuBLAS), from llama.cpp's `cudart` archive | NVIDIA CUDA Toolkit EULA, redistributable runtime terms | https://docs.nvidia.com/cuda/eula/index.html                |
+
+The NVIDIA libraries are redistributed unmodified as the CUDA Toolkit licence allows for its runtime components; they are not covered by the MIT or Apache-2.0 licences above.
+
 ## Downloaded at run time
 
 Software that is not part of the installer, the Team Server image or the pipeline pack: the person downloads it from its own project through the app, and it is never redistributed by us.

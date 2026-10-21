@@ -17,6 +17,7 @@
     "test:e2e": "pnpm -F @aio/desktop test:e2e",
     "dev": "pnpm -F @aio/desktop dev",
     "build": "pnpm -F @aio/desktop build",
+    "analytics-pack": "node tools/analytics-pack/build.mjs",
     "fixtures": "node tools/fixtures/build.mjs",
     "fixtures:journal": "node packages/schema/src/__fixtures__/journal/generate.mjs",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",

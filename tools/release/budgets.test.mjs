@@ -76,6 +76,19 @@ describe('size budgets (M10 decision 6)', () => {
     ]);
   });
 
+  it('holds the Analytics pack to its own budget', () => {
+    expect(BUDGETS.analyticsPack).toEqual({
+      unpackedBytes: 7_500_000_000,
+      compressedBytes: 6_500_000_000,
+    });
+    expect(
+      packBudgetProblems({ unpackedBytes: 6.6e9, compressedBytes: 5.5e9 }, BUDGETS.analyticsPack),
+    ).toEqual([]);
+    expect(
+      packBudgetProblems({ unpackedBytes: 7.6e9, compressedBytes: 6.6e9 }, BUDGETS.analyticsPack),
+    ).toHaveLength(2);
+  });
+
   it('refuses an installer more than 20 MB over its 0.9.0 baseline, reports one without', () => {
     const base = BUDGETS.installer.baseline090['win-x64-setup.exe'];
     const r = installerBudgetProblems([
