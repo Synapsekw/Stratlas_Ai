@@ -10,10 +10,31 @@ export const IsoTime = z.iso.datetime({ offset: true });
 export const IsoDate = z.iso.date();
 export const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Colour must be #rrggbb');
 
-/** A file in the project package (content hash) or a path relative to the package root / external.json. */
+/**
+ * True for a relative path that stays inside the folder it is relative to: no `..` segment, no
+ * leading slash or backslash (a root or UNC path), no drive letter, no NUL byte. Either separator.
+ */
+export function isInsidePath(p: string): boolean {
+  if (p.includes('\u0000')) return false;
+  const n = p.replace(/\\/g, '/');
+  return !n.startsWith('/') && !/^[A-Za-z]:/.test(n) && !n.split('/').includes('..');
+}
+
+/**
+ * A file in the project package (content hash) or a path relative to the package root. A path
+ * never leaves the project folder (contract change of 21 Oct 2026): every viewer resolved it
+ * inside the root already, so a `..` or absolute path never showed and is now refused on parse.
+ */
 export const AssetRef = z.union([
   z.object({ hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
-  z.object({ path: z.string().min(1) }).strict(),
+  z
+    .object({
+      path: z
+        .string()
+        .min(1)
+        .refine(isInsidePath, { message: 'Asset paths must stay inside the project folder.' }),
+    })
+    .strict(),
 ]);
 
 /**
@@ -24,13 +45,7 @@ export const ProjectPath = z
   .string()
   .min(1)
   .max(260)
-  .refine(
-    (p) => {
-      const n = p.replace(/\\/g, '/');
-      return !n.startsWith('/') && !/^[A-Za-z]:/.test(n) && !n.split('/').includes('..');
-    },
-    { message: 'Output paths must stay inside the project folder.' },
-  );
+  .refine(isInsidePath, { message: 'Output paths must stay inside the project folder.' });
 
 // ---- M9 primitives shared by the journal, identity, collaboration, exchange and sync contracts ----
 

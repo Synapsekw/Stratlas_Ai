@@ -176,6 +176,50 @@ describe('runExport', () => {
     expect(r.count).toBe(2);
   });
 
+  it('never copies a kit mask from outside the project into the ZIP', async () => {
+    const { mkdir, symlink, writeFile } = await import('node:fs/promises');
+    const outside = join(dir, 'outside');
+    await mkdir(outside);
+    await writeFile(join(outside, 'id_mask.png'), 'SECRET-OUTSIDE');
+    const manifest = sampleManifest({
+      layers: [
+        {
+          kind: 'photos',
+          id: 'photos',
+          name: 'Photos',
+          visible: true,
+          items: [{ id: 'p1', src: { path: 'photos/p1.jpg' } }],
+        },
+      ],
+    });
+    const sighting = (path: string) => ({
+      on: 'image',
+      layer: 'photos',
+      photo: 'p1',
+      geom: { type: 'mask', src: { path } },
+    });
+    const issuesFile = (path: string) =>
+      JSON.stringify({
+        schema: 'aio.issues/1',
+        issues: [sampleIssue({ id: 'a', code: 'F01', sightings: [sighting(path)] })],
+      });
+    // a junction inside the project that points out of it (no admin rights needed on Windows)
+    const root = await writeProject(join(dir, 'project'), manifest, {
+      'issues.json': issuesFile('escape/id_mask.png'),
+    });
+    await symlink(outside, join(root, 'escape'), 'junction');
+    const out = join(dir, 'masks.zip');
+    await runExport({ root, format: 'masks-zip', outPath: out });
+    expect((await readFile(out)).toString('latin1')).not.toContain('SECRET-OUTSIDE');
+
+    // a `..` path is refused when the issues are read, so nothing leaks either
+    await writeFile(join(root, 'issues.json'), issuesFile('../outside/id_mask.png'));
+    const out2 = join(dir, 'masks2.zip');
+    await runExport({ root, format: 'masks-zip', outPath: out2 }).catch(() => null);
+    const zip2 = await readFile(out2).catch(() => Buffer.alloc(0));
+    expect(zip2.toString('latin1')).not.toContain('SECRET-OUTSIDE');
+  });
+
   it('stops when cancelled and leaves no file behind', async () => {
     const root = await project();
     const out = join(dir, 'masks.zip');

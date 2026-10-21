@@ -7,7 +7,7 @@ import {
   type OrientationFile,
   type Vec3,
 } from '@aio/schema';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -455,4 +455,26 @@ it('reads a kit pyramid whose corners are only in tiles.json, when asked for ful
   expect(await layerExtents(root, m, null, { 'ortho-a': s }, { full: true })).toEqual([
     { layerId: 'ortho-a', min: [13, -5, -42], max: [113, -5, 58] },
   ]);
+});
+
+it('reads no layer file that lies outside the project', async () => {
+  const root = await project();
+  const outside = join(dir, 'outside');
+  await mkdir(outside, { recursive: true });
+  await writeFile(
+    join(outside, 'index.json'),
+    JSON.stringify({ bounds: { min: [0, 1, 2], max: [3, 4, 5] } }),
+  );
+  await symlink(outside, join(root, 'escape'), 'junction');
+  const m = await readManifestFile(root);
+  const packed = (path: string): Layer => ({
+    kind: 'pointcloud',
+    id: 'p',
+    name: 'p',
+    visible: true,
+    src: { path },
+    format: 'png-packed',
+  });
+  expect(await layerExtent(root, m, packed('escape/index.json'))).toBeNull();
+  expect(await layerExtent(root, m, packed('../outside/index.json'))).toBeNull();
 });

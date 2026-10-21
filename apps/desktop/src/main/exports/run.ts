@@ -17,10 +17,11 @@ import {
   rasterizeMask,
   ZipWriter,
 } from '@aio/project/export/node';
+import { fileInside } from '@aio/project/fs';
 import type { ExportFormat } from '@aio/schema';
 import { dateShiftOf } from '@aio/workspace';
 import { open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 import { readIssues, readManifest } from '../project';
 
 export interface ExportJob {
@@ -95,7 +96,13 @@ function check(signal?: AbortSignal): void {
 }
 
 /** Read up to 1 MB of a file's head, enough for any JPEG SOF after EXIF. */
-async function headerSize(path: string): Promise<{ width: number; height: number } | null> {
+/** The pixel size of a project photo, read from its header; null when it is not a file inside root. */
+async function headerSize(
+  root: string,
+  rel: string,
+): Promise<{ width: number; height: number } | null> {
+  const path = await fileInside(root, rel);
+  if (path === null) return null;
   const fh = await open(path, 'r').catch(() => null);
   if (!fh) return null;
   try {
@@ -143,7 +150,7 @@ async function photoSizes(
   let done = 0;
   for (const [key, src] of wanted) {
     check(signal);
-    sizes.set(key, src ? await headerSize(join(root, src)) : null);
+    sizes.set(key, src ? await headerSize(root, src) : null);
     done++;
     if (done % 25 === 0 || done === wanted.size)
       progress({ phase: 'Reading photo sizes', done, total: wanted.size });
@@ -170,14 +177,16 @@ async function writeMasks(
       const written: string[] = [];
       if (p.kind === 'kit') {
         for (const rel of kitMaskSiblings(p.mask)) {
-          const data = await readFile(join(root, rel)).catch(() => null);
+          // a kit mask path comes from the project: read it only if it stays inside the root
+          const path = await fileInside(root, rel);
+          const data = path === null ? null : await readFile(path).catch(() => null);
           if (!data) continue;
           const name = `${folder}/${basename(rel)}`;
           await zip.add(name, data);
           written.push(name);
         }
       } else {
-        const size = p.src ? await headerSize(join(root, p.src)) : null;
+        const size = p.src ? await headerSize(root, p.src) : null;
         if (size) {
           const mask = rasterizeMask(p.shapes, size.width, size.height);
           const maskName = `${folder}/${p.photo}_mask.png`;

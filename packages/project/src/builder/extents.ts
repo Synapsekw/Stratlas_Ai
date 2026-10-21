@@ -2,8 +2,8 @@ import { correctPos, fromWgs84, photoCorrection, projectToLocal } from '@aio/geo
 import { cloudFrameOrigin, shiftCorners, shiftedBox } from '@aio/schema';
 import type { DateShift, Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { open, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { readTiffGeo, tiffCorners } from './tiff';
+import { requireInside } from '../fs/inside';
 
 const applyMat4 = (t: readonly number[], p: Vec3): Vec3 => {
   const e = (i: number) => t[i] ?? 0;
@@ -98,13 +98,13 @@ export async function layerExtent(
 ): Promise<LocalExtent | null> {
   try {
     if (l.kind === 'mesh' && 'path' in l.src) {
-      const b = glbBounds(await glbJson(join(root, l.src.path)));
+      const b = glbBounds(await glbJson(await requireInside(root, l.src.path)));
       return b ? shiftedBox(boxOf(corners(b).map((p) => applyMat4(l.transform, p))), shift) : null;
     }
     if (l.kind === 'pointcloud' && 'path' in l.src) {
       if (l.format === 'copc') {
         // COPC is in the project CRS (data-conventions section 4)
-        const b = lasBounds(await readHead(join(root, l.src.path), 227));
+        const b = lasBounds(await readHead(await requireInside(root, l.src.path), 227));
         return b
           ? boxOf(
               corners(b).map((p) =>
@@ -117,7 +117,7 @@ export async function layerExtent(
           : null;
       }
       if (l.format === 'png-packed') {
-        const idx = JSON.parse(await readFile(join(root, l.src.path), 'utf8')) as {
+        const idx = JSON.parse(await readFile(await requireInside(root, l.src.path), 'utf8')) as {
           bounds?: LocalExtent;
         };
         const off = l.heightOffsetM ?? 0;
@@ -254,10 +254,12 @@ async function unshiftedExtent(
     if (l.kind === 'panoramas') return boxOf(l.items.flatMap((p) => (p.pos ? [p.pos] : [])));
     if (l.kind === 'vector' && 'path' in l.src)
       return fromLonLat(
-        geojsonLonLat(JSON.parse(await readFile(join(root, l.src.path), 'utf8')) as unknown),
+        geojsonLonLat(
+          JSON.parse(await readFile(await requireInside(root, l.src.path), 'utf8')) as unknown,
+        ),
       );
     if (l.kind === 'raster' && 'path' in l.src) {
-      const file = join(root, l.src.path);
+      const file = await requireInside(root, l.src.path);
       if (l.format === 'kit-pyramid') {
         const idx = JSON.parse(await readFile(file, 'utf8')) as {
           corners?: { tl: Vec3; tr: Vec3; bl: Vec3 };

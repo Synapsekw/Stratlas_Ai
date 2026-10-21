@@ -105,6 +105,41 @@ describe('evidencePolicy', () => {
     await writeFile(join(root, 'chunk.png'), 'changed points');
     expect(await engineeringSourceStamp(root, setup)).not.toBe(before);
   });
+  it('refuses a source or point chunk outside the project', async () => {
+    await writeFile(join(root, '..', 'outside.png'), 'not the project');
+    await writeFile(
+      join(root, 'index.json'),
+      JSON.stringify({ chunks: [{ file: '../outside.png' }] }),
+    );
+    await writeManifestFile(root, {
+      ...manifest,
+      layers: [
+        {
+          id: 'scan',
+          name: 'Scan',
+          kind: 'pointcloud',
+          src: { path: 'index.json' },
+          format: 'png-packed',
+          visible: true,
+        },
+      ],
+    });
+    const setup: EngineerSetup = {
+      sources: { clouds: [{ layer: 'scan' }], meshes: [], photos: [] },
+      family: 'auto',
+      scope: 'asset',
+      detail: 'fast',
+      placement: 'from-source',
+    };
+    await expect(engineeringSourceStamp(root, setup)).rejects.toThrow(/inside the project/);
+    await writeFile(join(root, 'index.json'), JSON.stringify({ chunks: [] }));
+    await expect(
+      engineeringSourceStamp(root, {
+        ...setup,
+        sources: { ...setup.sources, photos: [{ path: '../outside.png' }] },
+      }),
+    ).rejects.toThrow(/inside the project/);
+  });
   it('invalidates measurements when a selected source changes in place or its cloud offset changes', async () => {
     const layer = {
       id: 'scan',

@@ -5,7 +5,8 @@ import {
   type ProjectManifest,
   type EngineerSetup,
 } from '@aio/schema';
-import { join, resolve } from 'node:path';
+import { requireInside } from '@aio/project/fs';
+import { join } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { readAiPolicy } from './aiProjects';
@@ -44,7 +45,9 @@ export async function engineeringSourceStamp(root: string, setup: EngineerSetup)
   for (const layer of layers) {
     if ('src' in layer && 'path' in layer.src) files.push(layer.src.path);
     if (layer.kind === 'pointcloud' && layer.format === 'png-packed' && 'path' in layer.src) {
-      const index = JSON.parse(await readFile(resolve(root, layer.src.path), 'utf8')) as {
+      const index = JSON.parse(
+        await readFile(await requireInside(root, layer.src.path), 'utf8'),
+      ) as {
         chunks?: { file?: unknown }[];
       };
       for (const chunk of index.chunks ?? []) {
@@ -55,7 +58,7 @@ export async function engineeringSourceStamp(root: string, setup: EngineerSetup)
   }
   const identity = await Promise.all(
     [...new Set(files)].sort().map(async (path) => {
-      const s = await stat(resolve(root, path));
+      const s = await stat(await requireInside(root, path));
       return [path, s.size, s.mtimeMs, s.ctimeMs];
     }),
   );

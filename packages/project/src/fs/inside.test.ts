@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { resolveInside } from './paths';
+import { fileInside, resolveInside } from './inside';
 
 let base: string;
 let root: string;
@@ -66,5 +66,19 @@ describe('resolveInside', () => {
   it('returns 404 for a missing file and for a directory', async () => {
     expect(await resolveInside(root, 'nope.json')).toEqual({ ok: false, status: 404 });
     expect(await resolveInside(root, 'video')).toEqual({ ok: false, status: 404 });
+  });
+});
+
+describe('fileInside', () => {
+  it('gives the real path of a file inside, either separator', async () => {
+    expect(await fileInside(root, 'video\\clip 1.mp4')).toBe(
+      await realpath(join(root, 'video', 'clip 1.mp4')),
+    );
+  });
+
+  it('gives null for a path out of the root or through a junction', async () => {
+    expect(await fileInside(root, '../sibling.txt')).toBeNull();
+    expect(await fileInside(root, 'escape/secret.txt')).toBeNull();
+    expect(await fileInside(root, join(base, 'sibling.txt'))).toBeNull();
   });
 });
