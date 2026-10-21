@@ -11,16 +11,16 @@ The Analytics pack carries the local vision model for detectors: llama.cpp `llam
 
 ## Smoke check
 
-`smoke.py` starts the server with the pack's arguments and checks three things: boxes come back in the pixel frame of the sent image, yes/no logprobs score a clear case at or above 0.9 and an empty one at or below 0.1, and the logprobs have the shape the engine reads.
+`smoke.py` starts the server as the app does: the pack's arguments, plus a random key per launch in the `LLAMA_API_KEY` environment variable (never on the command line). It then checks four things: a request without the key is refused with HTTP 401, boxes come back in the pixel frame of the sent image, yes/no logprobs score a clear case at or above 0.9 and an empty one at or below 0.1, and the logprobs have the shape the engine reads. `test_smoke.py` tests the key handling against a stub server (`uv run --project python pytest tools/analytics-pack/test_smoke.py`).
 
 ```bash
 python tools/analytics-pack/smoke.py --server <dir>/llama-server.exe --model <model.gguf> --mmproj <mmproj.gguf>
 ```
 
-Result on an RTX 5070 Ti (16 GB), 21 Oct 2026: `SMOKE OK`. The server was healthy in 4.1 s. The red square came back as `[899, 298, 1102, 503]` against `[900, 300, 1100, 500]` (3 px worst corner). P(yes) was 1.000 on the square and 0.026 on plain grey. A 1344 x 1008 image is about 1,750 prompt tokens, read in about 0.7 s, and generation ran at about 140 tokens per second.
+Result on an RTX 5070 Ti (16 GB), 21 Oct 2026: `SMOKE OK`. The server was healthy in 4.1 s. The red square came back as `[899, 298, 1102, 503]` against `[900, 300, 1100, 500]` (3 px worst corner). P(yes) was 1.000 on the square and 0.026 on plain grey. A 1344 x 1008 image is about 1,750 prompt tokens, read in about 0.7 s, and generation ran at about 140 tokens per second. That run still passed the key with `--api-key`; the environment-variable start and its 401 check have not yet been run on a GPU.
 
 Server notes from the run:
 
 - `--no-webui` is deprecated in this release; the pack and the smoke check use `--no-ui`.
-- With no API key the server allows any web origin (CORS). The pack and the smoke check start it with a random `--api-key` per launch, passed to the job through the state file, so a web page in a browser cannot call it.
+- With no API key the server allows any web origin (CORS). The app and the smoke check start it with a random key per launch in `LLAMA_API_KEY` (b11489's `--help` lists `--api-key` as `env: LLAMA_API_KEY`), so the key never shows in the process list. The app passes the key to the job through the state file, so a web page in a browser cannot call the server. The smoke check's 401 check fails if a later release stops reading that variable.
 - Qwen-VL grounding wants at least 1,024 image tokens. The 1344 x 1008 tiles give about 1,700, so `--image-min-tokens` is not needed.

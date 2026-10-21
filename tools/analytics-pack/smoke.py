@@ -1,8 +1,10 @@
 """Smoke check for the Analytics pack runtime: llama-server plus Qwen2.5-VL on this machine.
 
-Starts the server with the pack's arguments, then checks that boxes come back in the pixel frame
-of the sent image and that yes/no logprobs score as the detector engine expects. Prints SMOKE OK
-or the failing check, and always stops the server.
+Starts the server with the pack's arguments and the per-launch key in the environment
+(`LLAMA_API_KEY`, never on the command line, as the app does), then checks that a request without
+the key is refused with HTTP 401, that boxes come back in the pixel frame of the sent image and
+that yes/no logprobs score as the detector engine expects. Prints SMOKE OK or the failing check,
+and always stops the server.
 
     python tools/analytics-pack/smoke.py --server <llama-server.exe> --model <gguf> --mmproj <gguf>
 """
@@ -12,6 +14,7 @@ import base64
 import io
 import json
 import math
+import os
 import re
 import secrets
 import socket
@@ -42,6 +45,57 @@ def image_url(img: Image.Image) -> str:
 
 
 API_KEY = secrets.token_hex(16)
+
+
+def server_args(server: str, model: str, mmproj: str, port: int) -> list[str]:
+    """The pack's llama-server arguments. The key is not among them: see server_env."""
+    return [
+        server,
+        "--model",
+        model,
+        "--mmproj",
+        mmproj,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+        "--ctx-size",
+        "8192",
+        "-ngl",
+        "99",
+        "--parallel",
+        "1",
+        "--no-ui",
+    ]
+
+
+def server_env(key: str) -> dict[str, str]:
+    """The server's environment: this one plus the per-launch key, as the app passes it."""
+    return {**os.environ, "LLAMA_API_KEY": key}
+
+
+def check_key_required(base: str) -> str | None:
+    """A chat request without the key must be refused with HTTP 401. Returns the failure or None.
+
+    llama-server ignores a Bearer token when it has no key, so if the environment variable were
+    ignored (or renamed in a later release) every other check would still pass.
+    """
+    req = urllib.request.Request(
+        base + "/v1/chat/completions",
+        data=json.dumps(
+            {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            status = r.status
+    except urllib.error.HTTPError as e:
+        status = e.code
+    print(f"no key: HTTP {status}")
+    if status != 401:
+        return f"no key: expected HTTP 401 without the key, got {status}; LLAMA_API_KEY was not applied"
+    return None
 
 
 def chat(base: str, img: Image.Image, text: str, **extra) -> dict:
@@ -99,6 +153,10 @@ def run_checks(base: str) -> list[str]:
     square = grey.copy()
     ImageDraw.Draw(square).rectangle(SQUARE, fill=(220, 30, 30))
     failures = []
+
+    keyless = check_key_required(base)
+    if keyless:
+        failures.append(keyless)
 
     t = time.monotonic()
     resp = chat(
@@ -160,28 +218,11 @@ def main() -> int:
 
     port = free_port()
     base = f"http://127.0.0.1:{port}"
-    args = [
-        a.server,
-        "--model",
-        a.model,
-        "--mmproj",
-        a.mmproj,
-        "--host",
-        "127.0.0.1",
-        "--port",
-        str(port),
-        "--ctx-size",
-        "8192",
-        "-ngl",
-        "99",
-        "--parallel",
-        "1",
-        "--no-ui",
-        "--api-key",
-        API_KEY,
-    ]
+    args = server_args(a.server, a.model, a.mmproj, port)
     with open("smoke-server.log", "w", encoding="utf-8") as log:
-        proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(
+            args, stdout=log, stderr=subprocess.STDOUT, env=server_env(API_KEY)
+        )
         try:
             t = time.monotonic()
             wait_healthy(base, proc)
