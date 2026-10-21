@@ -462,7 +462,11 @@ export async function buildSurveyData(
     const it = stockpileItem(m);
     if (!it) continue;
     const own = m.scope.kind === 'survey' ? capRef(m.scope.capture) : null;
-    const on = own ? [own] : pileCaptures;
+    // the inventory is a history: a pile filed under its date is still measured on every survey
+    // (its own date too, though not prepared, to say why it has no volume there)
+    const on = own
+      ? captures.filter((c) => c.id === own.id || pileCaptures.includes(c))
+      : pileCaptures;
     const volumes: PileVolume[] = [];
     if (!computed) {
       const r = m.results.find((x) => x.item === it.id) ?? null;
