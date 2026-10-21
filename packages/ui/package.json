@@ -6,7 +6,7 @@
   "description": "Mission design tokens, components, icons, panels.",
   "exports": {
     ".": "./src/index.ts",
-    "./i18n": "./src/i18n/index.ts",
+    "./i18n/en": "./src/i18n/en.ts",
     "./tokens.css": "./src/tokens.css",
     "./fonts.css": "./src/fonts.css",
     "./mission.css": "./src/mission.css"

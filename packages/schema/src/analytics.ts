@@ -177,6 +177,8 @@ export const HardwareCheck = z.discriminatedUnion('ok', [
     .object({
       ok: z.literal(true),
       gpu: z.string(),
+      /** nvidia-smi index of the chosen GPU, for CUDA_VISIBLE_DEVICES. */
+      gpuIndex: z.number().int().nonnegative(),
       totalMb: z.number().int().nonnegative(),
       freeMb: z.number().int().nonnegative(),
     })

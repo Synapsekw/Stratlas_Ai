@@ -1,5 +1,5 @@
 import { VLM_MIN_FREE_VRAM_MB, VLM_MIN_VRAM_MB, type HardwareCheck } from '@aio/schema';
-import { t } from '@aio/ui/i18n';
+import { en } from '@aio/ui/i18n/en';
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -37,11 +37,20 @@ export function parseNvidiaSmi(csv: string): Gpu[] {
   return gpus;
 }
 
-const noGpu = (): HardwareCheck => ({ ok: false, reason: t('detect.preset.hw.noGpu') });
+type HwKey = 'noGpu' | 'tooSmall' | 'tooBusy' | 'mac';
+
+/** The `detect.preset.hw.*` text from the catalogue, with `{name}` placeholders filled. */
+function t(key: HwKey, vars: Record<string, string | number> = {}): string {
+  return en[`detect.preset.hw.${key}`].replace(/\{(\w+)\}/g, (whole, n: string) =>
+    n in vars ? String(vars[n]) : whole,
+  );
+}
+
+const noGpu = (): HardwareCheck => ({ ok: false, reason: t('noGpu') });
 
 /** Whether this computer can run the detector model now: an NVIDIA card with enough total and free memory. */
 export async function checkHardware(d: HardwareDeps): Promise<HardwareCheck> {
-  if (d.platform === 'darwin') return { ok: false, reason: t('detect.preset.hw.mac') };
+  if (d.platform === 'darwin') return { ok: false, reason: t('mac') };
   const programFiles = process.env.ProgramFiles ?? 'C:/Program Files';
   const candidates = [
     'nvidia-smi',
@@ -63,31 +72,28 @@ export async function checkHardware(d: HardwareDeps): Promise<HardwareCheck> {
   if (best.totalMb < VLM_MIN_VRAM_MB) {
     return {
       ok: false,
-      reason: t('detect.preset.hw.tooSmall', { total: Math.floor(best.totalMb / 1024) }),
+      reason: t('tooSmall', { total: Math.floor(best.totalMb / 1024) }),
     };
   }
   if (best.freeMb < VLM_MIN_FREE_VRAM_MB) {
     return {
       ok: false,
-      reason: t('detect.preset.hw.tooBusy', { free: (best.freeMb / 1024).toFixed(1) }),
+      reason: t('tooBusy', { free: (best.freeMb / 1024).toFixed(1) }),
     };
   }
   const result: HardwareCheck = {
     ok: true,
     gpu: best.name,
+    gpuIndex: best.index,
     totalMb: best.totalMb,
     freeMb: best.freeMb,
   };
-  picked.set(result, best.index);
   return result;
 }
 
-// HardwareCheck (a strict wire type) has no index field, so the pick is remembered per result object
-const picked = new WeakMap<HardwareCheck, number>();
-
-/** The index nvidia-smi gave the GPU the check picked, for CUDA_VISIBLE_DEVICES; null when not ok or when `check` did not come from checkHardware. */
+/** The index nvidia-smi gave the GPU the check picked, for CUDA_VISIBLE_DEVICES; null when not ok. */
 export function pickedGpuIndex(check: HardwareCheck): number | null {
-  return picked.get(check) ?? null;
+  return check.ok ? check.gpuIndex : null;
 }
 
 /** Production `exec`: no shell, 5 s timeout. Rejects when the program is missing. */
