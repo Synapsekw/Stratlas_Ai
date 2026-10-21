@@ -117,6 +117,13 @@ export interface PackKind {
    * the archive's size. Without it, such a trailer falls back to three times the archive.
    */
   trailerWraps?: true;
+  /**
+   * A tag in this kind's temporary folder names in `runtime/` (`.install-<tag>-<hex>.tmp`), so
+   * each kind's cleanup of a killed install touches only its own folders and two kinds can
+   * install at once. The pipeline pack has none: its names stay `.install-<hex>.tmp`, and since
+   * a tag holds letters that are not hex digits the pipeline pattern never matches a tagged name.
+   */
+  tempTag?: string;
 }
 
 /** The pipeline pack, exactly as the installer has always handled it. */
@@ -146,7 +153,12 @@ const WRITES_AT_ONCE = 16;
 
 /** A version that is safe as part of a folder name. */
 const VERSION = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
+/** This kind's temporary folders in `runtime/`: `.install-[<tag>-]<hex>.tmp` and `.replaced-…`. */
 const TEMP_DIR = /^\.(install|replaced)-[0-9a-f]+\.tmp$/;
+const tempDirOf = (kind: PackKind) =>
+  kind.tempTag
+    ? new RegExp(String.raw`^\.(install|replaced)-${kind.tempTag}-[0-9a-f]+\.tmp$`)
+    : TEMP_DIR;
 const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 
 /** How CI and people name a pack archive for each platform a pack is built for. */
@@ -193,6 +205,7 @@ export const ANALYTICS_PACK: PackKind = {
     ) ?? null,
   limits: { maxEntries: 10_000, maxBytes: 12 * 2 ** 30, maxManifestBytes: 4 * 2 ** 20 },
   trailerWraps: true,
+  tempTag: 'analytics',
 };
 
 /** "a" or "an" before `word`. */
@@ -779,7 +792,8 @@ async function renameDir(from: string, to: string, tries = 8): Promise<void> {
 const removeDir = (dir: string) =>
   rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 
-const tempName = (kind: 'install' | 'replaced') => `.${kind}-${randomBytes(6).toString('hex')}.tmp`;
+const tempName = (what: 'install' | 'replaced', kind: PackKind) =>
+  `.${what}-${kind.tempTag ? `${kind.tempTag}-` : ''}${randomBytes(6).toString('hex')}.tmp`;
 
 /** Free bytes on the volume of `dir` (of its nearest folder that exists); null when unknown. */
 export async function freeBytesOf(dir: string): Promise<number | null> {
@@ -908,11 +922,13 @@ export async function installPackArchive(
     }
 
     await mkdir(runtimeDir, { recursive: true });
-    // what an install that was killed left behind (one install runs at a time)
+    // what an install of this kind that was killed left behind (one install of a kind runs at a
+    // time; the other kind's folders may belong to an install that is running now)
+    const tempDir = tempDirOf(kind);
     for (const n of await readdir(runtimeDir)) {
-      if (TEMP_DIR.test(n)) await removeDir(join(runtimeDir, n)).catch(() => undefined);
+      if (tempDir.test(n)) await removeDir(join(runtimeDir, n)).catch(() => undefined);
     }
-    tmp = join(runtimeDir, tempName('install'));
+    tmp = join(runtimeDir, tempName('install', kind));
     await mkdir(tmp);
 
     const existing = async (top: string) =>
@@ -962,7 +978,7 @@ export async function installPackArchive(
     }
     let aside: string | null = null;
     if (replaced) {
-      aside = join(runtimeDir, tempName('replaced'));
+      aside = join(runtimeDir, tempName('replaced', kind));
       try {
         await renameDir(dest, aside, 3);
       } catch {

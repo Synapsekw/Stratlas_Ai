@@ -1335,6 +1335,60 @@ describe('the Analytics pack', () => {
     expect(await readdir(runtime)).toEqual(['pipeline-pack-0.2.0']);
   });
 
+  it('each kind clears only its own temporary folders, so the two kinds can install at once', async () => {
+    const pipelineLeft = ['.install-0123abcd.tmp', '.replaced-00ff.tmp'];
+    const analyticsLeft = ['.install-analytics-0123abcd.tmp', '.replaced-analytics-00ff.tmp'];
+    for (const n of [...pipelineLeft, ...analyticsLeft]) await mkdir(join(runtime, n));
+    const temps = async () => (await readdir(runtime)).filter((n) => n.startsWith('.')).sort();
+
+    const analytics = await archive(
+      'analytics-pack-0.1.0-win-x64.tar.gz',
+      fakeAnalyticsPackArchive('0.1.0'),
+    );
+    expect(await installAnalytics(analytics)).toMatchObject({ ok: true });
+    expect(await temps()).toEqual(pipelineLeft.slice().sort());
+
+    for (const n of analyticsLeft) await mkdir(join(runtime, n));
+    const pipeline = await archive('pipeline-pack-0.5.0-win-x64.tar.gz', fakePackArchive('0.5.0'));
+    expect(await install(pipeline)).toMatchObject({ ok: true });
+    expect(await temps()).toEqual(analyticsLeft.slice().sort());
+  });
+
+  it('a pipeline install during an Analytics install leaves its unpacked folder, and the other way round', async () => {
+    const analytics = await archive(
+      'analytics-pack-0.1.0-win-x64.tar.gz',
+      fakeAnalyticsPackArchive('0.1.0'),
+    );
+    const pipeline = await archive('pipeline-pack-0.5.0-win-x64.tar.gz', fakePackArchive('0.5.0'));
+    let during: string[] = [];
+    let inner: unknown;
+    const outer = await installAnalytics(analytics, {
+      beforeActivate: async () => {
+        during = (await readdir(runtime)).filter((n) => n.startsWith('.'));
+        inner = await install(pipeline);
+        return () => undefined;
+      },
+    });
+    expect(during).toEqual([expect.stringMatching(/^\.install-analytics-[0-9a-f]+\.tmp$/)]);
+    expect(inner).toMatchObject({ ok: true, version: '0.5.0' });
+    expect(outer).toMatchObject({ ok: true, version: '0.1.0' });
+
+    const outer2 = await install(pipeline, {
+      replace: true,
+      beforeActivate: async () => {
+        inner = await installAnalytics(analytics, { replace: true });
+        return () => undefined;
+      },
+    });
+    expect(inner).toMatchObject({ ok: true, version: '0.1.0', replaced: true });
+    expect(outer2).toMatchObject({ ok: true, version: '0.5.0', replaced: true });
+    expect((await readdir(runtime)).sort()).toEqual([
+      'analytics-pack-0.1.0',
+      'pipeline-pack-0.2.0',
+      'pipeline-pack-0.5.0',
+    ]);
+  });
+
   it('packArchiveName knows analytics-pack-0.1.0-win-x64.tar.gz', () => {
     const name = 'analytics-pack-0.1.0-win-x64.tar.gz';
     expect(packArchiveName(name, PLATFORM, ANALYTICS_PACK)).toEqual({ version: '0.1.0' });
