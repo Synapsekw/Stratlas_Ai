@@ -411,7 +411,12 @@ describe('recompute with the standard base', () => {
     const next = replaceWithStandard(m, fresh);
     expect(next.results).toEqual([fresh]);
     expect(next.previousResults).toEqual([
-      { netM3: 60, totalM3: 64, label: 'kit plane', replacedAt: '2026-10-20T10:00:00.000Z' },
+      {
+        netM3: 60,
+        totalM3: 64,
+        label: 'kit, Best-fit plane',
+        replacedAt: '2026-10-20T10:00:00.000Z',
+      },
     ]);
     expect(next.series).toEqual([engineDate]);
     // the input is not changed
