@@ -27,9 +27,12 @@ interface QuarryTruth {
   pit: { sumpCutM3: number };
 }
 
-/** A number the app shows ("1 234.5 m³", "+56.7 m³"): its first figure, signed. */
+/**
+ * A number the app shows ("1 234.5 m³", "+56.7 m³"): its first figure, signed. Its digit groups
+ * may be split by any space (the card's primary value uses a narrow no-break one).
+ */
 const figure = (text: string): number => {
-  const m = /[-+−]?[\d ,]*\d(?:\.\d+)?/.exec(text.replaceAll(String.fromCharCode(0xa0), ' '));
+  const m = /[-+−]?[\d ,]*\d(?:\.\d+)?/.exec(text.replace(/\s/g, ' '));
   return Number((m?.[0] ?? 'NaN').replace(/[ ,+]/g, '').replace('−', '-'));
 };
 
