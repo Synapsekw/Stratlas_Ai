@@ -18,7 +18,7 @@ import {
   moveMeasurementsToDate,
   setMoveRepicker,
 } from './measureMoveRun';
-import { measureStore, undoMeasureChange } from './measureStore';
+import { measureStore, renameMeasurement, undoMeasureChange } from './measureStore';
 
 const flags = vi.hoisted((): { annotateReadOnly: boolean; scene: unknown } => ({
   annotateReadOnly: false,
@@ -321,6 +321,53 @@ describe('moving measurements to another date', () => {
     expect(measureStore.getState().note?.text).toBe(
       t('tree.measure.move.hiddenLayer', { layer: 'Cloud' }),
     );
+  });
+
+  it('a shown counterpart with no hit anywhere refuses as not loaded', async () => {
+    setMoveRepicker(null);
+    load([m('a', { source: { layer: 'model-jan' }, pickedOn: ['model', 'model', 'model'] })]);
+    const { raycastRay } = fakeStage('model-jun', ['model-jun']);
+    raycastRay.mockReturnValue(null);
+    const was = file();
+    const out = await moveMeasurementsToDate(['a'], 'jun');
+    expect(out).toEqual({ ok: false, refusal: { kind: 'not-loaded', layer: 'model-jun' } });
+    expect(file()).toBe(was);
+  });
+
+  it('an edit while the re-picks are out drops the move and keeps the edit', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    setMoveRepicker({
+      ...fake,
+      ground: async (c, drawn) => {
+        await gate;
+        return fake.ground(c, drawn);
+      },
+    });
+    load([m('a'), m('b')]);
+    const run = moveMeasurementsToDate(['a'], 'jun');
+    await Promise.resolve();
+    renameMeasurement('a', 'Renamed while moving');
+    release();
+    expect(await run).toEqual({ ok: true, moved: 0, seq: null });
+    expect(byId('a')?.label).toBe('Renamed while moving');
+    expect(byId('a')?.scope).toEqual({ kind: 'survey', capture: 'jan' });
+    expect(measureStore.getState().undoChange).toBeNull();
+    // an edit of another measurement does not stop it
+    const again = moveMeasurementsToDate(['a'], 'jun');
+    renameMeasurement('b', 'Other');
+    expect(await again).toMatchObject({ ok: true, moved: 1 });
+    expect(byId('b')?.label).toBe('Other');
+  });
+
+  it('a move, then an edit of it, then Undo keeps the edit', async () => {
+    load([m('a')]);
+    const out = await moveMeasurementsToDate(['a'], 'jun');
+    renameMeasurement('a', 'Edited');
+    expect(undoMeasureChange(out.ok ? (out.seq ?? -1) : -1)).toBe(false);
+    expect(byId('a')?.label).toBe('Edited');
+    expect(byId('a')?.scope).toEqual({ kind: 'survey', capture: 'jun' });
+    expect(measureStore.getState().note?.undo).toBeUndefined();
   });
 
   it('a shown counterpart is cast at as it is', async () => {

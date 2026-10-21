@@ -56,6 +56,35 @@ describe('groundAt', () => {
     expect(Array.from(h)).toEqual([7]);
   });
 
+  it('turns a drawn point back by a turned line-up before sampling', async () => {
+    // the date is turned 90 degrees about (0, 0) now; its surface was prepared before the turn
+    const turned = {
+      ...manifest,
+      captures: [
+        {
+          id: 'd3',
+          label: 'three',
+          date: '2026-03-01',
+          lineUp: { eastM: 0, northM: 0 },
+          lineUpTurn: { rotationDeg: 90, scale: 1, pivotE: 0, pivotN: 0 },
+        },
+      ],
+    } as unknown as Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>;
+    compareStore.setState({ surfaces: [surface('s3', 'd3')] });
+    const asked: { es: number[]; ns: number[] } = { es: [], ns: [] };
+    setDateSurfaceSource(() =>
+      Promise.resolve((es, ns) => {
+        asked.es.push(...es);
+        asked.ns.push(...ns);
+        return Promise.resolve(Float64Array.from(es, () => 7));
+      }),
+    );
+    // stored (10, 0) is drawn at (0, 10) after the turn: the surface is read at (10, 0)
+    await groundAt('d3', [[0, 10, 0]], turned);
+    expect(asked.es[0]).toBeCloseTo(10, 9);
+    expect(asked.ns[0]).toBeCloseTo(0, 9);
+  });
+
   it('is all NaN for a date without a prepared surface', async () => {
     setDateSurfaceSource(() => Promise.resolve(null));
     const h = await groundAt(

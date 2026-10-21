@@ -7,17 +7,9 @@
 import { isAnnotateReadOnly } from '@aio/annotate';
 import { getActiveScene, type SceneHandle } from '@aio/engine';
 import { localToProject, projectToLocal } from '@aio/geo';
-import {
-  shiftEN,
-  type DateShift,
-  type HeightTiles,
-  type ProjectManifest,
-  type SitePoint,
-  type SurveyMeasurement,
-} from '@aio/schema';
-import { surfaceOfCapture } from '@aio/survey';
+import type { ProjectManifest, SitePoint, SurveyMeasurement } from '@aio/schema';
 import { formatDate, t } from '@aio/ui';
-import { captureIndex, captureShift, workspace, type CaptureIndex } from '@aio/workspace';
+import { captureIndex, workspace, type CaptureIndex } from '@aio/workspace';
 import { Vector3, type Object3D } from 'three';
 import { authorName } from '../author';
 import { compareStore, computeAll } from './compareStore';
@@ -49,42 +41,6 @@ const indexOf = (manifest: ProjectManifest): CaptureIndex =>
   workspace.getState().dates ?? captureIndex(manifest);
 
 // ---------------------------------------------------------------- the stage re-picker
-
-/** The shift a prepared surface's cells sit at (its `dateShiftM` with its `dateTurn`). */
-function preparedShift(s: HeightTiles, origin: readonly number[]): DateShift | null {
-  if (!s.dateShiftM && !s.dateTurn) return null;
-  const out: DateShift = { eastM: s.dateShiftM?.eastM ?? 0, northM: s.dateShiftM?.northM ?? 0 };
-  const turn = s.dateTurn;
-  if (turn)
-    out.turn = {
-      ...turn,
-      pivotX: turn.pivotE - (origin[0] ?? 0),
-      pivotZ: (origin[1] ?? 0) - turn.pivotN,
-    };
-  return out;
-}
-
-/**
- * Drawn points as `groundAt` should get them so that a turned line-up samples right: `groundAt`
- * moves a point by the difference of the two shifts' east and north only, so the point is handed
- * over already turned (back by the date's line-up now, on by the surface's), less that difference.
- */
-function turnedForGround(
-  capture: string,
-  drawn: readonly SitePoint[],
-  manifest: Dated,
-): SitePoint[] {
-  const s = surfaceOfCapture(compareStore.getState().surfaces, capture);
-  const now = captureShift(manifest, capture);
-  if (!s || (!now?.turn && !s.dateTurn)) return [...drawn];
-  const prepared = preparedShift(s, manifest.origin);
-  const dE = (s.dateShiftM?.eastM ?? 0) - (now?.eastM ?? 0);
-  const dN = (s.dateShiftM?.northM ?? 0) - (now?.northM ?? 0);
-  return drawn.map((p) => {
-    const q = shiftEN(shiftEN(p, now, -1), prepared);
-    return [q[0] - dE, q[1] - dN, p[2]];
-  });
-}
 
 const visibleChain = (o: Object3D | null): boolean => {
   for (let p = o; p; p = p.parent) if (!p.visible) return false;
@@ -120,11 +76,14 @@ function pickModel(layer: string, drawn: readonly SitePoint[]): ModelPick {
   const roots = scene.scene.children.filter((o) => o.userData.layerId === layer);
   const shown = scene.rayLayers ? scene.rayLayers().has(layer) : roots.some(visibleChain);
   if (shown) {
+    let z: Float64Array;
     try {
-      return { ok: true, z: castDown(scene, layer, drawn, origin) };
+      z = castDown(scene, layer, drawn, origin);
     } catch {
       return { ok: false, why: 'not-loaded' };
     }
+    // no hit on every point: the layer has nothing there to measure on yet
+    return z.every((v) => Number.isNaN(v)) ? { ok: false, why: 'not-loaded' } : { ok: true, z };
   }
   const kind = manifest.layers.find((l) => l.id === layer)?.kind;
   // a hidden cloud is not in the ray providers; a layer never loaded has no root
@@ -160,7 +119,7 @@ export function stageRepicker(): Repicker {
     ground(capture, drawn) {
       const manifest = openProject()?.manifest;
       if (!manifest) return Promise.resolve(new Float64Array(drawn.length).fill(Number.NaN));
-      return groundAt(capture, turnedForGround(capture, drawn, manifest), manifest);
+      return groundAt(capture, drawn, manifest);
     },
     model: (layer, drawn) => Promise.resolve(pickModel(layer, drawn)),
   };
@@ -233,6 +192,19 @@ function foldersOn(capture: string): Set<string> {
   return out;
 }
 
+/** A measurement as a move or copy reads it: everything but its computed results. */
+const asPlanned = (m: SurveyMeasurement | undefined) =>
+  m ? JSON.stringify({ ...m, results: undefined, updatedAt: undefined }) : '';
+
+/**
+ * Whether the measurements a plan was made from are still as they were (an edit, a delete or a
+ * follow while the re-picks were out makes the plan stale: it is dropped, never written).
+ */
+function unchanged(ms: readonly SurveyMeasurement[]): boolean {
+  const now = new Map(measureStore.getState().file.measurements.map((m) => [m.id, m]));
+  return ms.every((m) => asPlanned(now.get(m.id)) === asPlanned(m));
+}
+
 async function plan(ms: readonly SurveyMeasurement[], capture: string, manifest: ProjectManifest) {
   return planMoveToDate(ms, capture, {
     manifest,
@@ -259,8 +231,10 @@ export async function moveMeasurementsToDate(
   if (ms.length === 0) return NOTHING;
   const projectId = measureStore.getState().projectId;
   const p = await plan(ms, capture, project.manifest);
-  // another project opened (or the file became read-only) while the re-picks were out
-  if (refused() || measureStore.getState().projectId !== projectId) return NOTHING;
+  // another project opened, the file became read-only, or the measurements were edited while the
+  // re-picks were out: nothing is written
+  if (refused() || measureStore.getState().projectId !== projectId || !unchanged(ms))
+    return NOTHING;
   if (!p.ok) return refuse(p.refusal, project.manifest, capture);
   if (p.next.length === 0) return NOTHING;
   const seq = replaceMeasurements(p.next, { undoable: true });
@@ -288,7 +262,8 @@ export async function copyMeasurementToDate(id: string, capture: string): Promis
   if (!m) return NOTHING;
   const projectId = measureStore.getState().projectId;
   const p = await plan([m], capture, project.manifest);
-  if (refused() || measureStore.getState().projectId !== projectId) return NOTHING;
+  if (refused() || measureStore.getState().projectId !== projectId || !unchanged([m]))
+    return NOTHING;
   if (!p.ok) return refuse(p.refusal, project.manifest, capture);
   const base = p.next[0] ?? m;
   const copy: SurveyMeasurement = {

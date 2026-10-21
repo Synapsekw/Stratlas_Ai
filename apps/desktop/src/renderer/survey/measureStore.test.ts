@@ -42,6 +42,7 @@ import {
   replaceMeasurements,
   setMeasureNote,
   undoMeasureChange,
+  updateMeasurement,
 } from './measureStore';
 import { createMeasureVisibilityMemory } from './measureVisibility';
 
@@ -865,6 +866,29 @@ describe('replacing measurements as one undoable edit', () => {
     measureStore.setState({ readOnly: true });
     expect(replaceMeasurements([{ ...a, folder: 'X' }], { undoable: true })).toBeNull();
     expect(measureStore.getState().file.measurements[0]?.folder).toBeUndefined();
+  });
+
+  it('an edit after the replacement lets go of its undo: Undo does nothing and the edit stays', async () => {
+    await loadFile([measurement('a'), measurement('b')]);
+    const [a, b] = measureStore.getState().file.measurements;
+    if (!a || !b) throw new Error('not loaded');
+    const seq = replaceMeasurements([{ ...a, folder: 'One' }], { undoable: true }) ?? -1;
+    setMeasureNote({ text: 'Moved.', danger: false, undo: true });
+    // an edit of another measurement keeps the undo
+    renameMeasurement('b', 'Other');
+    expect(measureStore.getState().undoChange?.seq).toBe(seq);
+    // recomputed results keep it too
+    updateMeasurement('a', (m) => ({ ...m, results: [] }));
+    expect(measureStore.getState().undoChange?.seq).toBe(seq);
+    // an edit of the moved one lets go of it
+    renameMeasurement('a', 'Renamed');
+    expect(measureStore.getState().undoChange).toBeNull();
+    expect(measureStore.getState().note?.undo).toBeUndefined();
+    expect(measureStore.getState().note?.text).toBe('Moved.');
+    expect(undoMeasureChange(seq)).toBe(false);
+    const now = measureStore.getState().file.measurements[0];
+    expect(now?.label).toBe('Renamed');
+    expect(now?.folder).toBe('One');
   });
 
   it('undoMeasureChange ignores a stale seq', async () => {

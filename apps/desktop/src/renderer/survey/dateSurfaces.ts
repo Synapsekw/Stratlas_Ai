@@ -1,7 +1,13 @@
 // A survey date's prepared surfaces as a height sampler (the surface the date's own measurements
 // are read on), and the ground heights under drawn points. Uses the prepared surfaces the compare
 // store holds; a date without one has no sampler.
-import type { HeightTiles, ProjectManifest, SitePoint } from '@aio/schema';
+import {
+  shiftEN,
+  type DateShift,
+  type HeightTiles,
+  type ProjectManifest,
+  type SitePoint,
+} from '@aio/schema';
 import {
   projectResolver,
   samplerOf,
@@ -62,11 +68,25 @@ export function dateSampler(capture: string): Promise<PointSampler | null> {
   return run;
 }
 
+/** The line-up a prepared surface's cells sit at: its `dateShiftM` with its `dateTurn`. */
+function preparedShift(s: HeightTiles | null, origin: readonly number[]): DateShift | null {
+  if (!s || (!s.dateShiftM && !s.dateTurn)) return null;
+  const out: DateShift = { eastM: s.dateShiftM?.eastM ?? 0, northM: s.dateShiftM?.northM ?? 0 };
+  const turn = s.dateTurn;
+  if (turn)
+    out.turn = {
+      ...turn,
+      pivotX: turn.pivotE - (origin[0] ?? 0),
+      pivotZ: (origin[1] ?? 0) - turn.pivotN,
+    };
+  return out;
+}
+
 /**
  * The ground height under each drawn point on the date's prepared surface, NaN where there is
  * none. A drawn point sits where the date is lined up now; the surface sits where it was prepared,
- * so the point is moved back by the date's line-up and on by the shift the surface was prepared
- * with (as `ringShifts` does for a ring).
+ * so the point is moved back by the date's line-up (its turn too) and on by the line-up the
+ * surface was prepared with (as `ringShifts` does for a ring).
  */
 export async function groundAt(
   capture: string,
@@ -78,12 +98,12 @@ export async function groundAt(
   if (!sample || drawn.length === 0) return none();
   const now = captureShift(manifest, capture);
   const s = surfaceOfCapture(compareStore.getState().surfaces, capture);
-  const dE = (s?.dateShiftM?.eastM ?? 0) - (now?.eastM ?? 0);
-  const dN = (s?.dateShiftM?.northM ?? 0) - (now?.northM ?? 0);
+  const prepared = preparedShift(s, manifest.origin);
+  const at = drawn.map((p) => shiftEN(shiftEN(p, now, -1), prepared));
   try {
     return await sample(
-      Float64Array.from(drawn, (p) => p[0] + dE),
-      Float64Array.from(drawn, (p) => p[1] + dN),
+      Float64Array.from(at, (p) => p[0]),
+      Float64Array.from(at, (p) => p[1]),
     );
   } catch {
     return none();

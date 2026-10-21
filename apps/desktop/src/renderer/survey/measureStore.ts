@@ -396,6 +396,7 @@ export function revertMeasurements(): void {
       focus: null,
       editing: null,
       message: null,
+      ...dropUndo(s),
       undoDeletes: s.undoDeletes.flatMap((u) => {
         const left = undoLeft(u, parsed.data);
         return left ? [left] : [];
@@ -411,8 +412,38 @@ function undoLeft(u: UndoDelete | undefined, file: MeasurementsFile): UndoDelete
   return items.length === 0 ? null : { ...u, items };
 }
 
+/** A measurement as an undoable replacement left it: everything but its computed results. */
+const asReplaced = (m: SurveyMeasurement | undefined): string =>
+  m ? JSON.stringify({ ...m, results: undefined, updatedAt: undefined }) : '';
+
+/** The measurements as the undoable replacement left them, by id (with `undoChange`). */
+let undoAfter = new Map<string, string>();
+
+/** The patch that lets go of the undo (its note stays, without Undo). */
+function dropUndo(s: MeasureState): Partial<MeasureState> {
+  if (!s.undoChange) return {};
+  const seq = s.undoChange.seq;
+  if (s.note?.seq !== seq || !s.note.undo) return { undoChange: null };
+  const note = { ...s.note };
+  delete note.undo;
+  return { undoChange: null, note };
+}
+
+/**
+ * A person's edit (or a follow) to a measurement the undoable replacement changed lets go of that
+ * undo, so Undo never puts back an older version over it. Recomputed results do not count.
+ */
+function undoAfterEdit(file: MeasurementsFile): Partial<MeasureState> {
+  const s = get();
+  if (!s.undoChange) return {};
+  const now = new Map(file.measurements.map((m) => [m.id, m]));
+  for (const [id, was] of undoAfter) if (asReplaced(now.get(id)) !== was) return dropUndo(s);
+  return {};
+}
+
 function changed(file: MeasurementsFile, extra: Partial<MeasureState> = {}): void {
-  set({ file, message: null, ...extra });
+  const undo = 'undoChange' in extra ? {} : undoAfterEdit(file);
+  set({ file, message: null, ...undo, ...extra });
   if (get().autosave) void saveMeasurements();
 }
 
@@ -509,22 +540,27 @@ export function replaceMeasurements(
     return null;
   }
   const seq = ++changeSeq;
+  undoAfter = new Map(
+    file.measurements.filter((m) => byId.has(m.id)).map((m) => [m.id, asReplaced(m)]),
+  );
   changed(file, { undoChange: { seq, before } });
   return seq;
 }
 
 /**
- * Put back the measurements of the undoable replacement `seq` as they were before it (by id; one
- * since deleted stays deleted). A stale seq (a later replacement took its place) does nothing.
+ * Put back the measurements of the undoable replacement `seq` as they were before it (by id).
+ * True when it did; false (nothing changes) for a stale seq: a later replacement took its place,
+ * or one of those measurements was edited, deleted or followed its layer since (the undo is let
+ * go then, and the note no longer offers it).
  */
-export function undoMeasureChange(seq: number): void {
+export function undoMeasureChange(seq: number): boolean {
   const s = get();
   const u = s.undoChange;
-  if (u?.seq !== seq) return;
+  if (u?.seq !== seq) return false;
   const note = s.note?.seq === seq ? { note: null } : {};
   if (s.readOnly) {
     set({ undoChange: null, ...note });
-    return;
+    return false;
   }
   const byId = new Map(u.before.map((m) => [m.id, m]));
   changed(
@@ -534,6 +570,7 @@ export function undoMeasureChange(seq: number): void {
     },
     { undoChange: null, ...note },
   );
+  return true;
 }
 
 /**
