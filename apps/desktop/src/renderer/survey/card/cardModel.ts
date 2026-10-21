@@ -161,6 +161,7 @@ export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
  * card sets the number large and the unit small. A value with no space (15°12'00") is all number.
  */
 export function splitValue(text: string): { value: string; unit: string } {
-  const at = /^(\S*\d\S*)\s+(.+)$/.exec(text);
+  // the number, its digit groups split by a space too ("2 714.7"), then a space and the unit
+  const at = /^(\S*\d(?:\s\d{3}(?:[.,]\d+)?)*\S*)\s+(.+)$/.exec(text);
   return at ? { value: at[1] ?? text, unit: at[2] ?? '' } : { value: text, unit: '' };
 }

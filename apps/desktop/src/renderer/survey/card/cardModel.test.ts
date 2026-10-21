@@ -184,4 +184,12 @@ describe('splitValue', () => {
     expect(splitValue('1,234.5 m³')).toEqual({ value: '1,234.5', unit: 'm³' });
     expect(splitValue(`15°12'00"`)).toEqual({ value: `15°12'00"`, unit: '' });
   });
+
+  it('keeps digit groups split by a space in the number ("2 714.7 m³")', () => {
+    for (const gap of [' ', ' ', ' '])
+      expect(splitValue(`2${gap}714.7 m³`)).toEqual({ value: `2${gap}714.7`, unit: 'm³' });
+    expect(splitValue('-1 234 567.8 m³')).toEqual({ value: '-1 234 567.8', unit: 'm³' });
+    expect(splitValue('12 m')).toEqual({ value: '12', unit: 'm' });
+    expect(splitValue('1 076.39 ft²')).toEqual({ value: '1 076.39', unit: 'ft²' });
+  });
 });
