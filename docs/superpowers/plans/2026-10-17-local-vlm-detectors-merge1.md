@@ -24,7 +24,7 @@
 ## Global Constraints
 
 - **Model:** Qwen2.5-VL-7B-Instruct, GGUF Q4_K_M plus its `mmproj`, Apache-2.0. **Runtime:** llama.cpp `llama-server`, MIT, pinned release, win-x64 only in v1. No Mac (founder).
-- **Server:** `127.0.0.1`, random free port. Args: `--ctx-size 8192`, `-ngl 99`, `--parallel 1`, `--no-webui`. Stopped as soon as no `detect.vlm` job is running or queued (no idle hold; founder, 21 Oct). Killed at quit (`will-quit`).
+- **Server:** `127.0.0.1`, random free port. Args: `--ctx-size 8192`, `-ngl 99`, `--parallel 1`, `--no-ui`, and `--api-key <random per launch>` (without a key the server accepts any web origin; the key goes to the job in the state file and every request sends it as a Bearer token; found by the Task 1 smoke run). Stopped as soon as no `detect.vlm` job is running or queued (no idle hold; founder, 21 Oct). Killed at quit (`will-quit`).
 - **Hardware minimum:** an NVIDIA GPU with total VRAM ≥ 8192 MB and free VRAM ≥ 6656 MB at job start. No CPU fallback. Messages are exactly those in Task 2's `en.ts` block.
 - **Recipe defaults:**
   - tiles `n = 2`, `overlap = 0.2`; send size 1344 × 1008
