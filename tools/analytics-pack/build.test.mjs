@@ -153,6 +153,7 @@ describe('analytics pack build', () => {
     const { packDir } = await build({ noModel: true });
     const manifest = JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'));
     expect(manifest.model.sha256).toBe('none');
+    expect(AnalyticsPackManifest.safeParse(manifest).success).toBe(false);
     expect(existsSync(join(packDir, 'model'))).toBe(false);
     expect(Object.keys(manifest.files).some((f) => f.startsWith('model/'))).toBe(false);
     expect(calls.some((u) => u.endsWith('.gguf'))).toBe(false);

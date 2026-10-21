@@ -46,11 +46,13 @@ export const BUDGETS = Object.freeze({
    */
   pack: Object.freeze({ unpackedBytes: 1_300_000_000, compressedBytes: 500_000_000 }),
   /**
-   * The Analytics pack (llama.cpp with its CUDA runtime, Qwen2.5-VL Q4_K_M and its mmproj, about
-   * 6.6 GB unpacked): its own budget, 7.5 GB unpacked and 6.5 GB archived. Checked with
+   * The Analytics pack (llama.cpp with its CUDA runtime, Qwen2.5-VL Q4_K_M and its mmproj). The
+   * archive is about 6.6 GB: the runtime about 0.58 GB zipped, the model 4.68 GB and the mmproj
+   * 1.35 GB (gguf files do not compress); unpacked it is a little more, about 6.9 GB (founder
+   * ruling K: 8 GB unpacked, 7 GB archived). Checked with
    * `--pack <folder> --archive <.tar.gz> --budget analytics`.
    */
-  analyticsPack: Object.freeze({ unpackedBytes: 7_500_000_000, compressedBytes: 6_500_000_000 }),
+  analyticsPack: Object.freeze({ unpackedBytes: 8_000_000_000, compressedBytes: 7_000_000_000 }),
   /**
    * Installer growth over the 0.9.0 installer, per installer file: 15 MB for CesiumJS and
    * 3DTilesRendererJS (M10 decision 6) plus 5 MB for the M11 survey tools (founder, 10 Oct 2026).
