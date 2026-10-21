@@ -17,6 +17,11 @@
  * - the RF Auto-plan request (its instructions say "plan the radio coverage") gets picks for the
  *   units it lists (`rfPlanReply`): the generic panel and radio on B3 for each, except the last
  *   unit, whose pick names an entry the catalogue does not have (`RF_UNKNOWN_ENTRY`);
+ * - the `detect.vlm` job's two prompts, which carry no model name (`vlmReply`): a detect prompt
+ *   ("You are a detector for drone inspection photos.") gets two boxes (`VLM_BOXES`, in pixels of
+ *   the 1344 x 1008 frame sent), a check prompt ("This is a crop from a drone inspection photo.")
+ *   gets Yes and No with `top_logprobs`, scoring `VLM_HIGH` for the crop of the large box and
+ *   `VLM_LOW` for the small one (told apart by the width of the JPEG sent);
  * - anything else gets a fixed greeting.
  * A model without tools answers a request with tools with the 400 Ollama gives; a model without
  * vision refuses images the same way.
@@ -63,6 +68,18 @@ export const DETECT_REPLY = {
   ],
 };
 
+/** What the fake finds on every photo: a large and a small box, `[x1, y1, x2, y2]` in pixels of
+ * the 1344 x 1008 frame the job sends. */
+export const VLM_BOXES = [
+  { bbox_2d: [100, 100, 500, 400], label: 'patch', note: 'large patch, upper left' },
+  { bbox_2d: [800, 600, 900, 680], label: 'patch', note: 'small patch, lower right' },
+] as const;
+/** The check scores: the large box is likely a match, the small one is not. */
+export const VLM_HIGH = 0.95;
+export const VLM_LOW = 0.6;
+/** A crop wider than this many pixels is the large box's (the small one is about 100 px). */
+const VLM_LARGE_CROP_PX = 250;
+
 /** The entry id the fake's RF plan gives its last unit: not in any catalogue. */
 export const RF_UNKNOWN_ENTRY = 'fake-entry-not-in-catalogue';
 /** The equipment the fake's RF plan picks for the other units (in the bundled catalogue). */
@@ -99,6 +116,7 @@ export function rfPlanReply(userText: string): string {
 interface ChatPart {
   type: string;
   text?: string;
+  image_url?: { url?: string };
 }
 interface ChatMessage {
   role: string;
@@ -173,6 +191,55 @@ function lastToolCalled(messages: ChatMessage[]): string | null {
     if (name) return name;
   }
   return null;
+}
+
+/** The width of the first JPEG image of the newest message (its SOF marker), or 0. */
+function jpegWidth(messages: ChatMessage[]): number {
+  const last = messages.at(-1);
+  const part = Array.isArray(last?.content)
+    ? last.content.find((p) => p.type === 'image_url')
+    : undefined;
+  const url = part?.image_url?.url ?? '';
+  const b = Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
+  for (let i = 2; i + 9 < b.length;) {
+    if (b[i] !== 0xff) return 0;
+    const marker = b[i + 1] ?? 0;
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker))
+      return b.readUInt16BE(i + 7);
+    i += 2 + b.readUInt16BE(i + 2);
+  }
+  return 0;
+}
+
+function vlmCompletion(message: unknown, logprobs: unknown = null) {
+  return {
+    id: 'chatcmpl-fake',
+    object: 'chat.completion',
+    created: 1,
+    model: 'vlm-fake',
+    choices: [{ index: 0, message, logprobs, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 40, completion_tokens: 8, total_tokens: 48 },
+  };
+}
+
+/**
+ * The reply to a `detect.vlm` prompt (these requests name no model), or null for any other:
+ * the two boxes as JSON text, or the token `Yes` with `No` beside it in `top_logprobs`.
+ */
+function vlmReply(body: ChatBody): unknown {
+  const text = lastUserText(body.messages);
+  if (text.startsWith('You are a detector for drone inspection photos.'))
+    return vlmCompletion({ role: 'assistant', content: JSON.stringify(VLM_BOXES) });
+  if (!text.startsWith('This is a crop from a drone inspection photo.')) return null;
+  const p = jpegWidth(body.messages) > VLM_LARGE_CROP_PX ? VLM_HIGH : VLM_LOW;
+  const top = [
+    { token: 'Yes', logprob: Math.log(p) },
+    { token: 'No', logprob: Math.log(1 - p) },
+  ];
+  return vlmCompletion(
+    { role: 'assistant', content: 'Yes' },
+    { content: [{ token: 'Yes', logprob: Math.log(p), top_logprobs: top }] },
+  );
 }
 
 function script(body: ChatBody): Reply {
@@ -319,6 +386,12 @@ export async function startFakeLlm(opts: FakeLlmOptions): Promise<FakeLlm> {
       }
       if (method === 'POST' && path === '/v1/chat/completions') {
         const body = JSON.parse(raw) as ChatBody;
+        const vlm = vlmReply(body);
+        if (vlm) {
+          record.image = hasImage(body.messages);
+          json(res, 200, vlm);
+          return;
+        }
         record.model = body.model;
         record.image = hasImage(body.messages);
         if (body.tools) record.tools = body.tools.map((t) => t.function.name);
