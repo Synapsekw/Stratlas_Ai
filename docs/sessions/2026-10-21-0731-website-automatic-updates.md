@@ -20,6 +20,7 @@ related:
 - The website companion is [draft PR14](https://github.com/Synapsekw/Quadrion_Web_Site/pull/14), stacked on upload-fix PR13: authenticated compatible release selection, draft metadata editing, tar.gz uploads and database publication guards.
 - Website 165 tests, build and public scan passed. Desktop `pnpm check` passed with four test workers: 1,222 test files and 13,180 tests passed, with 14 existing skips. Desktop build and all five CI-style Electron update scenarios passed at 1100x720, scale 1, WARP, with all demos built.
 - Independent task and integration reviews passed after regression fixes for restart races, corrupt-stage retry and recovery, and case-insensitive published package extensions. The final test run retained the usual assertions and time limits; four workers avoided load-related timeouts seen in the earlier highly parallel run.
+- The later manual-install correction leaves managed metadata untouched when this app has no managed selection. It passed independent review, 69 focused tests and TypeScript, followed by a fresh desktop build and all 12 processing-tools and update Electron scenarios. The existing runtime-directory assertion passes unchanged.
 
 ## Why
 
