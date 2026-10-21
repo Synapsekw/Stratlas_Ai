@@ -53,3 +53,33 @@ export function linkPathFromArgv(
   }
   return null;
 }
+
+/**
+ * The question main asks before it opens a package a link named: a web page can hand the OS a
+ * `<urlScheme>://open?path=...` link, so the person confirms they expect that file. Cancel is the
+ * default (Enter or Escape opens nothing).
+ */
+export function linkOpenPrompt(
+  path: string,
+  productName: string,
+): {
+  type: 'question';
+  buttons: string[];
+  defaultId: number;
+  cancelId: number;
+  title: string;
+  message: string;
+  detail: string;
+  noLink: true;
+} {
+  return {
+    type: 'question',
+    buttons: ['Open', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: productName,
+    message: `A link asks ${productName} to open a package.`,
+    detail: `${path}\n\nOpen it only if you started this yourself. Packages open read-only.`,
+    noLink: true,
+  };
+}

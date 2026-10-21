@@ -262,7 +262,7 @@ import { createWebsiteUpdateFixture } from './update/websiteFixture';
 import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode, windowSize } from './windowMode';
 import { installMenu } from './menu';
 import { appUserModelId } from './appUserModel';
-import { linkPathFromArgv, parseAppLink } from './appLink';
+import { linkOpenPrompt, linkPathFromArgv, parseAppLink } from './appLink';
 import { externalLinkAllowed, linkHost, popupAction } from './popup';
 import {
   checkExport,
@@ -448,8 +448,19 @@ const policy = new ProjectPolicy(registry);
 /** The last local model server discovery reached in this run (kind and version, for diagnostics). */
 let localServerSeen: LocalServerSeen | null = null;
 // A `.aio` the app was started with (double-click); the renderer takes it once at start.
-let pendingOpenPath: string | null =
-  packagePathFromArgv(process.argv) ?? linkPathFromArgv(process.argv, urlSchemes);
+// A path from a `<urlScheme>://` link (a web page can make one) opens only after the person
+// confirms it (`confirmLinkOpen`); a double-clicked package opens straight away.
+const argvPackage = packagePathFromArgv(process.argv);
+let pendingOpenPath: string | null = argvPackage ?? linkPathFromArgv(process.argv, urlSchemes);
+let pendingFromLink = argvPackage === null && pendingOpenPath !== null;
+
+/** Ask the person before a package a link named opens. */
+async function confirmLinkOpen(path: string): Promise<boolean> {
+  const options = linkOpenPrompt(path, brand.productName);
+  const win = mainWindow;
+  const r = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+  return r.response === 0;
+}
 // An isolated profile (tests, demos) gets its own vault service, so it never reads or writes the
 // person's real API keys.
 const keyService = profileVaultService(
@@ -1233,9 +1244,12 @@ function registerIpc(): void {
   handle('package:extract', (req) => packageJobs.extract(req));
   handle('package:cancel', (req) => packageJobs.cancel(req));
 
-  handle('app:takeOpenPath', () => {
+  handle('app:takeOpenPath', async () => {
     const path = pendingOpenPath;
+    const fromLink = pendingFromLink;
     pendingOpenPath = null;
+    pendingFromLink = false;
+    if (path && fromLink && !(await confirmLinkOpen(path))) return { path: null };
     return { path };
   });
   handle('project:readVolumes', ({ projectId }) => {
@@ -2334,11 +2348,21 @@ function registerIpc(): void {
   registerLedgerIpc({ handle, userData: app.getPath('userData') });
 }
 
-/** Hand a package path to the renderer (second launch, macOS open-file). */
-function openPathInApp(path: string): void {
+/**
+ * Hand a package path to the renderer (second launch, macOS open-file). `fromLink`: a
+ * `<urlScheme>://` link named it, so the person confirms first.
+ */
+function openPathInApp(path: string, fromLink = false): void {
   const win = mainWindow;
   if (!win) {
     pendingOpenPath = path;
+    pendingFromLink = fromLink;
+    return;
+  }
+  if (fromLink) {
+    void confirmLinkOpen(path).then((ok) => {
+      if (ok) openPathInApp(path);
+    });
     return;
   }
   if (win.isMinimized()) win.restore();
@@ -2351,7 +2375,10 @@ function openPathInApp(path: string): void {
 app.on('open-file', (e, path) => {
   e.preventDefault();
   if (app.isReady()) openPathInApp(path);
-  else pendingOpenPath = path;
+  else {
+    pendingOpenPath = path;
+    pendingFromLink = false;
+  }
 });
 
 // macOS hands `<urlScheme>://` links (Info.plist CFBundleURLTypes) to the app as an event; the
@@ -2361,13 +2388,19 @@ app.on('open-url', (e, url) => {
   const link = parseAppLink(url, urlSchemes);
   if (!link) return;
   if (!app.isReady()) {
-    if (link.kind === 'open') pendingOpenPath = link.path;
+    if (link.kind === 'open') {
+      pendingOpenPath = link.path;
+      pendingFromLink = true;
+    }
     return;
   }
   if (!mainWindow) {
-    if (link.kind === 'open') pendingOpenPath = link.path;
+    if (link.kind === 'open') {
+      pendingOpenPath = link.path;
+      pendingFromLink = true;
+    }
     mainWindow = createWindow();
-  } else if (link.kind === 'open') openPathInApp(link.path);
+  } else if (link.kind === 'open') openPathInApp(link.path, true);
   else {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
@@ -2520,9 +2553,10 @@ if (restore) {
     smoke: process.env.QUADRION_SMOKE === '1',
   });
   app.on('second-instance', (_e, argv) => {
-    const path = packagePathFromArgv(argv) ?? linkPathFromArgv(argv, urlSchemes);
+    const file = packagePathFromArgv(argv);
+    const path = file ?? linkPathFromArgv(argv, urlSchemes);
     if (path) {
-      openPathInApp(path);
+      openPathInApp(path, file === null);
       return;
     }
     const win = mainWindow;

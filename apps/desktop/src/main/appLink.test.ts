@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkPathFromArgv, parseAppLink } from './appLink';
+import { linkOpenPrompt, linkPathFromArgv, parseAppLink } from './appLink';
 
 const link = (path: string) => `quadrion://open?path=${encodeURIComponent(path)}`;
 
@@ -59,5 +59,15 @@ describe('parseAppLink', () => {
     expect(parseAppLink('aio://project/x/model.glb', 'quadrion', 'darwin')).toBeNull();
     expect(parseAppLink('https://example.com/a.aio', 'quadrion', 'darwin')).toBeNull();
     expect(parseAppLink('not a url', 'quadrion', 'darwin')).toBeNull();
+  });
+});
+
+describe('linkOpenPrompt', () => {
+  it('names the file and defaults to Cancel', () => {
+    const p = linkOpenPrompt('D:/x/site.aio', 'Quadrion AI');
+    expect(p.buttons[p.defaultId]).toBe('Cancel');
+    expect(p.cancelId).toBe(p.defaultId);
+    expect(p.detail).toContain('D:/x/site.aio');
+    expect(p.message).not.toMatch(/[\u2013\u2014]/);
   });
 });
