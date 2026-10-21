@@ -1,0 +1,22 @@
+{
+  "schema": "aio.vlm-detector/1",
+  "id": "corrosion-metal",
+  "name": "Corrosion on metal",
+  "version": 1,
+  "classId": "corrosion",
+  "assetTypes": ["plant", "chimney"],
+  "looksLike": "corrosion on metal: orange-brown rust, rust streaks running down a surface, flaking or blistered paint with rust underneath, pitted or scaled steel",
+  "ignore": "intact red or orange painted bands, dirt, sand, shadows, steam, or staining on concrete",
+  "question": "Answer yes only if you can see rust on a METAL object (pipe, duct cladding, steel beam, plate, loose steel). Answer no for painted bands, a concrete chimney or wall, dirt or streak staining on concrete, steam, or clean metal.",
+  "tiles": { "n": 2, "overlap": 0.2, "sendW": 1344, "sendH": 1008 },
+  "threshold": 0.8,
+  "tunedOn": {
+    "model": "qwen2.5-vl-7b-instruct-q4_k_m",
+    "modelSha256": "9258bf05b12686d097ff3b6b18d968ab393649780aa2b3cd67fec43d50554392"
+  },
+  "author": "Quadrion",
+  "createdAt": "2026-10-21T00:00:00Z",
+  "updatedAt": "2026-10-21T00:00:00Z",
+  "source": "shipped",
+  "status": "experimental"
+}
