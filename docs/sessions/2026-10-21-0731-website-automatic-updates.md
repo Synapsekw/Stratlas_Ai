@@ -18,7 +18,8 @@ related:
 - This PR adds website account sign-in, automatic checks/background transfers, verified local staging and user-controlled Restart and update; offline-only and manual update workflows remain available.
 - Managed kits stay outside legacy discovery and are selected by app version; the main-process work gate protects restart, and previous app/kit recovery is retained. Additive IPC/settings contracts are recorded.
 - The website companion is [draft PR14](https://github.com/Synapsekw/Quadrion_Web_Site/pull/14), stacked on upload-fix PR13: authenticated compatible release selection, draft metadata editing, tar.gz uploads and database publication guards.
-- Website165 tests/build/public scan passed; desktop focused unit tests and five CI-style Electron scenarios passed with all demos built. Final desktop repository checks and backend review are pending.
+- Website 165 tests, build and public scan passed. Desktop `pnpm check` passed with four test workers: 1,222 test files and 13,180 tests passed, with 14 existing skips. Desktop build and all five CI-style Electron update scenarios passed at 1100x720, scale 1, WARP, with all demos built.
+- Independent task and integration reviews passed after regression fixes for restart races, corrupt-stage retry and recovery, and case-insensitive published package extensions. The final test run retained the usual assertions and time limits; four workers avoided load-related timeouts seen in the earlier highly parallel run.
 
 ## Why
 
