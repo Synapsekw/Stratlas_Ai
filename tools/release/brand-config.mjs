@@ -195,6 +195,7 @@ export function postBuildSteps(builderArgs) {
   const store = isStoreBuild(builderArgs);
   return [
     'check-bundle.mjs',
+    'check-fuses.mjs',
     'smoke-packaged.mjs',
     ...(store ? [] : ['feed.mjs']),
     '../guide/build-pdf.mjs',

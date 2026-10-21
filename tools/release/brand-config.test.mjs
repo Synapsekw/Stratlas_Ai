@@ -68,8 +68,12 @@ describe('Store builds', () => {
   it('leave the update feed alone, since the Store installs its own updates', () => {
     expect(postBuildSteps(['--win', 'appx'])).not.toContain('feed.mjs');
     expect(postBuildSteps(['--win', 'appx'])).toContain('smoke-packaged.mjs');
+    // the fuses are read back from every packaged binary, Store build included
+    expect(postBuildSteps(['--win'])).toContain('check-fuses.mjs');
+    expect(postBuildSteps(['--win', 'appx'])).toContain('check-fuses.mjs');
     expect(postBuildSteps(['--win'])).toEqual([
       'check-bundle.mjs',
+      'check-fuses.mjs',
       'smoke-packaged.mjs',
       'feed.mjs',
       '../guide/build-pdf.mjs',

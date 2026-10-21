@@ -27,6 +27,7 @@
 // Online: downloads CPython once into <out>/.cache, wheels through uv's cache and PDAL's conda
 // packages through micromamba's cache (pdal.mjs).
 import { spawnSync } from 'node:child_process';
+import { signBytes } from '../release/ed25519.mjs';
 import { createHash } from 'node:crypto';
 import {
   createReadStream,
@@ -502,6 +503,17 @@ async function main() {
       files,
     };
     writeFileSync(join(tmp, 'manifest.json'), `${JSON.stringify(manifest, null, 1)}\n`);
+    // 5b. With the publisher's key (QUADRION_PACK_SIGNING_KEY, a PEM file kept offline), sign the
+    // manifest: the app checks manifest.sig against signing.pipelinePackKey in brand.json
+    const signingKey = process.env.QUADRION_PACK_SIGNING_KEY;
+    if (signingKey) {
+      const sig = signBytes(
+        readFileSync(signingKey, 'utf8'),
+        readFileSync(join(tmp, 'manifest.json')),
+      );
+      writeFileSync(join(tmp, 'manifest.sig'), `${sig}\n`);
+      say('  manifest signed (manifest.sig)');
+    }
 
     // 6. Size budget of decision 6 (the archive's budget is checked where it is made, in CI)
     const bytes = Object.values(files).reduce((a, f) => a + f.size, 0);

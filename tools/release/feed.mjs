@@ -7,6 +7,7 @@
 //
 // Usage (from the repository root or apps/desktop):
 //   node tools/release/feed.mjs [--dist apps/desktop/dist] [--base-url https://host/path/]
+// With QUADRION_FEED_SIGNING_KEY=<private.pem> it also writes stratlas-update.json.sig.
 import { createHash } from 'node:crypto';
 import {
   createReadStream,
@@ -18,6 +19,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { signFile } from './ed25519.mjs';
 import { appVersion, releaseNotes } from './notes.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -102,6 +104,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     previous,
   });
   writeFileSync(out, `${JSON.stringify(feed, null, 2)}\n`);
+  // With the publisher's key (QUADRION_FEED_SIGNING_KEY, a PEM file kept offline) the feed gets
+  // its detached signature, which the app checks against signing.updateFeedKey in brand.json.
+  const signingKey = process.env.QUADRION_FEED_SIGNING_KEY;
+  if (signingKey)
+    process.stdout.write(`[feed] signed -> ${signFile(readFileSync(signingKey, 'utf8'), out)}\n`);
   const platforms = Object.keys(feed.files);
   process.stdout.write(
     `[feed] ${version}: ${platforms.length ? platforms.join(', ') : 'no installers found'} -> ${out}\n`,
