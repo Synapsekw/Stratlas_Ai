@@ -238,12 +238,13 @@ function compareVolumes(
       name: m.label,
       base: carried ? `kit, ${kitBaseLabel(carried.base)}` : (item?.from.kind ?? null),
       ...(carried ? { carried: true } : {}),
-      ...(a !== undefined ? { from: round1(a.netM3) } : {}),
-      ...(b !== undefined ? { to: round1(b.netM3) } : {}),
+      ...(a !== undefined ? { from: round1(a.netM3), fromText: fmt(a.netM3) } : {}),
+      ...(b !== undefined ? { to: round1(b.netM3), toText: fmt(b.netM3) } : {}),
       ...(staleAt(a) || staleAt(b) ? { stale: true } : {}),
       ...(a !== undefined && b !== undefined
         ? {
             change: round1(b.netM3 - a.netM3),
+            changeText: fmt(b.netM3 - a.netM3),
             changePct: a.netM3 > 0 ? round1(((b.netM3 - a.netM3) / a.netM3) * 100) : null,
           }
         : { change: null }),

@@ -163,6 +163,11 @@ describe('compare_captures', () => {
       total: { from: 610, to: 720.3, change: 110.3, piles: 1, of: 1 },
       piles: [{ id: 'm-1', name: 'East pile', base: 'smart', from: 610, to: 720.3, change: 110.3 }],
     });
+    // each pile's figures in the site units too, as the total's change
+    const [pile] = (r.result as { piles: Record<string, unknown>[] }).piles;
+    expect(pile?.fromText).toMatch(/^610(\.0)? m³$/);
+    expect(pile?.toText).toMatch(/^720\.3 m³$/);
+    expect(pile?.changeText).toMatch(/^110\.3 m³$/);
     // the kit's figures are not read once the project's piles were converted
     expect(JSON.stringify(r.result)).not.toContain('P01');
     expect(r.summary).toBe('+110.3 m³');
