@@ -12,6 +12,7 @@ import {
   deriveAesKeys,
   type AesKeys,
 } from './aes';
+import { archiveSegments, caseFoldKey } from '../fs/names';
 import {
   CENTRAL_HEADER_BYTES,
   EOCD_BYTES,
@@ -118,11 +119,16 @@ function parseExtras(extra: Buffer): Extras {
   return out;
 }
 
-/** Member names that cannot escape the package or confuse the protocol. */
+/**
+ * Member names that cannot escape the package, confuse the protocol or land on Windows as
+ * something else: no backslash, `..` or `.` segment, and none of the names Windows cannot
+ * hold (`:` for an alternate data stream, a trailing dot or space, `CON`, `NUL`, `COM1` ...),
+ * checked as on Windows wherever the package is opened.
+ */
 function safeName(name: string): boolean {
-  if (name === '' || name.includes('\0') || name.includes('\\')) return false;
-  if (name.startsWith('/') || /^[a-z]:/i.test(name)) return false;
-  return !name.split('/').some((s) => s === '..' || s === '.');
+  if (name.includes('\\')) return false;
+  if (name.split('/').some((s) => s === '.')) return false;
+  return archiveSegments(name, true).ok;
 }
 
 /**
@@ -183,6 +189,7 @@ export async function openZip(file: string): Promise<ZipArchive> {
 
   const cd = await readAt(file, cdOffset, cdSize);
   const entries = new Map<string, ZipEntry>();
+  const seen = new Set<string>();
   let p = 0;
   for (let n = 0; n < entriesCount; n++) {
     if (p + CENTRAL_HEADER_BYTES > cd.length || cd.readUInt32LE(p) !== SIG_CENTRAL) {
@@ -213,6 +220,10 @@ export async function openZip(file: string): Promise<ZipArchive> {
     p += CENTRAL_HEADER_BYTES + nlen + xlen + clen;
     if (name.endsWith('/')) continue;
     if (!safeName(name)) continue;
+    // two names Windows would see as one file: the first one wins, as it is listed first
+    const folded = caseFoldKey(name);
+    if (seen.has(folded)) continue;
+    seen.add(folded);
     const encrypted = (flags & FLAG_ENCRYPTED) !== 0;
     const stored = method === METHOD_STORE && !encrypted;
     const aesStored =

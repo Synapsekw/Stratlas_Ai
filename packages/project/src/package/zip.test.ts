@@ -199,3 +199,28 @@ describe('AES-256 (WinZip AE-2)', () => {
     expect((await stat(out)).size).toBeGreaterThan(1028);
   });
 });
+
+describe('member names', () => {
+  it('skips names Windows cannot hold or would read as another member', async () => {
+    const names = [
+      'ok.txt',
+      'photos/a.jpg',
+      'notes.txt:hidden',
+      'CON',
+      'photos/nul.json',
+      'com1.txt',
+      'trailing.',
+      'trailing ',
+      'OK.TXT',
+      'Photos/A.jpg',
+      'x/../y.txt',
+    ];
+    const out = join(dir, 'names.aio');
+    await writeZip(
+      out,
+      names.map((name) => ({ name, data: Buffer.from(name) })),
+    );
+    const zip = await openZip(out);
+    expect([...zip.entries.keys()]).toEqual(['ok.txt', 'photos/a.jpg']);
+  });
+});
