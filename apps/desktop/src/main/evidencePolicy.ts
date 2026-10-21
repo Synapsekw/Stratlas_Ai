@@ -6,7 +6,7 @@ import {
   type EngineerSetup,
 } from '@aio/schema';
 import { requireInside } from '@aio/project/fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { readAiPolicy } from './aiProjects';
@@ -26,6 +26,15 @@ export interface EvidencePolicy {
   scans: boolean;
 }
 
+/**
+ * An absolute source file the person picked, on this computer: never a share on another computer
+ * or a device path (`\\server\share`, `\\?\`, `\\.\`), which reading its size would reach out to.
+ */
+function pickedFilePath(p: string): string {
+  if (/^[\\/]{2}/.test(p)) throw new Error(`A selected file must be on this computer: ${p}`);
+  return p;
+}
+
 /** Local cache identity, including exactly the offsets/transforms used by the scene. */
 export async function engineeringSourceStamp(root: string, setup: EngineerSetup): Promise<string> {
   const manifest = JSON.parse(
@@ -37,11 +46,16 @@ export async function engineeringSourceStamp(root: string, setup: EngineerSetup)
     throw new Error(
       'A selected source layer is no longer in this project. Choose the sources again.',
     );
-  const files = [
+  const picked = [
     ...setup.sources.photos,
     ...(setup.sources.drawings ?? []),
     ...(setup.sources.cameraPoses ? [setup.sources.cameraPoses] : []),
   ].map((s) => s.path);
+  // Photos, drawings and camera poses may be files the person added from anywhere on this
+  // computer (Add photos), named by an absolute path, as the job reads them
+  // (engineer/observations.py). A relative one, and every layer file below, stays in the project.
+  const outside = new Set(picked.filter((p) => isAbsolute(p)));
+  const files = picked.filter((p) => !outside.has(p));
   for (const layer of layers) {
     if ('src' in layer && 'path' in layer.src) files.push(layer.src.path);
     if (layer.kind === 'pointcloud' && layer.format === 'png-packed' && 'path' in layer.src) {
@@ -56,9 +70,12 @@ export async function engineeringSourceStamp(root: string, setup: EngineerSetup)
       }
     }
   }
+  const inProject = new Set(files);
   const identity = await Promise.all(
-    [...new Set(files)].sort().map(async (path) => {
-      const s = await stat(await requireInside(root, path));
+    [...new Set([...files, ...outside])].sort().map(async (path) => {
+      const s = await stat(
+        inProject.has(path) ? await requireInside(root, path) : pickedFilePath(path),
+      );
       return [path, s.size, s.mtimeMs, s.ctimeMs];
     }),
   );

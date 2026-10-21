@@ -140,6 +140,27 @@ describe('evidencePolicy', () => {
       }),
     ).rejects.toThrow(/inside the project/);
   });
+  it('stamps photos and drawings picked from files outside the project', async () => {
+    await writeManifestFile(root, manifest);
+    const photo = join(dir, 'picked.jpg');
+    await writeFile(photo, 'a photo');
+    const setup: EngineerSetup = {
+      sources: { clouds: [], meshes: [], photos: [{ path: photo }], drawings: [{ path: photo }] },
+      family: 'auto',
+      scope: 'asset',
+      detail: 'fast',
+      placement: 'from-source',
+    };
+    const before = await engineeringSourceStamp(root, setup);
+    await writeFile(photo, 'another photo');
+    expect(await engineeringSourceStamp(root, setup)).not.toBe(before);
+    await expect(
+      engineeringSourceStamp(root, {
+        ...setup,
+        sources: { ...setup.sources, photos: [{ path: '\\\\server\\share\\a.jpg' }] },
+      }),
+    ).rejects.toThrow(/on this computer/);
+  });
   it('invalidates measurements when a selected source changes in place or its cloud offset changes', async () => {
     const layer = {
       id: 'scan',
