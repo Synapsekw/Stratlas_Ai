@@ -431,7 +431,7 @@ describe('a rebuild that renumbers piles (piles match by outline, not by id)', (
     const before = first();
     // the rebuild finds a new pile west of A, so A is now P02 and B P03
     const v = build([onRing('P01', sq(-100)), onRing('P02', sq(1)), onRing('P03', sq(101))]);
-    const c = convertKitPiles(v, null, before, later());
+    const c = convertKitPiles(v, null, before, { ...later(), rebuilt: true });
     const after = withKitConversion(before, c);
     const kit = after.measurements.filter((m) => m.origin?.kind === 'kit-pile');
     expect(kit).toHaveLength(3);
@@ -459,7 +459,7 @@ describe('a rebuild that renumbers piles (piles match by outline, not by id)', (
     const before = first();
     // A is gone; B is now P01, and a new pile grazing A's old place (20 %) is P02
     const v = build([onRing('P01', sq(100)), onRing('P02', sq(8))]);
-    const c = convertKitPiles(v, null, before, later());
+    const c = convertKitPiles(v, null, before, { ...later(), rebuilt: true });
     const after = withKitConversion(before, c);
     expect(pileOf(after, 'Pile P02')).toBe('P01');
     // the grazing pile is new; A's measurement no longer names a kit pile
@@ -474,7 +474,7 @@ describe('a rebuild that renumbers piles (piles match by outline, not by id)', (
     const a = before.measurements.find((m) => m.label === 'Pile P01');
     // A (P01) is gone, B keeps P02, a new pile far away takes P01
     const v = build([onRing('P01', sq(500)), onRing('P02', sq(100))]);
-    const c = convertKitPiles(v, null, before, later());
+    const c = convertKitPiles(v, null, before, { ...later(), rebuilt: true });
     expect(c.added.map((m) => m.origin?.pile)).toEqual(['P01']);
     const after = withKitConversion(before, c);
     const kept = after.measurements.find((m) => m.id === a?.id);
@@ -508,6 +508,37 @@ describe('a rebuild that renumbers piles (piles match by outline, not by id)', (
     const v = build([onRing('P01', sq(0)), onRing('P02', sq(100)), onRing('P03', sq(101))]);
     const c = convertKitPiles(v, null, file, { ...later(), rebuilt: true });
     expect(c.added).toEqual([]);
+  });
+
+  it("opening after the person moved a pile's outline adds nothing and keeps its link", () => {
+    const before = first();
+    // A's measurement dragged off its toe line (under half of it still in common)
+    const moved = {
+      ...before,
+      measurements: before.measurements.map((m) =>
+        m.label === 'Pile P01'
+          ? { ...m, points: m.points.map((p): [number, number, number] => [p[0] + 8, p[1], p[2]]) }
+          : m,
+      ),
+    };
+    const v = build([onRing('P01', sq(0)), onRing('P02', sq(100))]);
+    const c = convertKitPiles(v, null, moved, later());
+    expect(c).toEqual({ added: [], converted: [], relinked: [], detached: [] });
+    const opened = openWithKitPiles(
+      moved,
+      { volumes: v, edits: null },
+      {
+        origin: [0, 0, 0],
+        materials: [],
+        now: NOW,
+        newId: () => 'x',
+        readOnly: false,
+      },
+    );
+    expect(opened).toBe(moved);
+    // a build does look again: the moved measurement no longer covers P01, so P01 comes back
+    const rebuilt = convertKitPiles(v, null, moved, { ...later(), rebuilt: true });
+    expect(rebuilt.added.map((m) => m.origin?.pile)).toEqual(['P01']);
   });
 
   it('the same build again changes nothing', () => {

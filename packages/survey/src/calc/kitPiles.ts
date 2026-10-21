@@ -209,7 +209,9 @@ export interface KitConversionOptions {
   materialId: (name: string | null) => SurveyId | undefined;
   /**
    * Right after a volumetric build (Detect piles): a pile already converted comes back unless an
-   * existing kit-pile measurement overlaps it. Without it (opening a project), it stays converted.
+   * existing kit-pile measurement overlaps it, and a measurement whose pile is gone loses its link.
+   * Without it (opening a project), a converted pile stays converted and every link is kept, so
+   * moving a pile's outline never brings the pile back.
    */
   rebuilt?: boolean;
 }
@@ -262,16 +264,20 @@ export function convertKitPiles(
   const match = matchPiles(piles, links);
   const relinked: { id: string; pile: string }[] = [];
   for (const [pile, l] of match) if (l.pile !== pile) relinked.push({ id: l.m.id, pile });
-  // a number a relinked measurement held is free; an unmatched measurement whose number a pile of
-  // this build carries lost its pile (that pile is elsewhere): it keeps its figures, not the link
+  // After a build only (the kit numbers its piles afresh then): a number a relinked measurement
+  // held is free; an unmatched measurement whose number a pile of this build carries lost its pile
+  // (that pile is elsewhere): it keeps its figures, not the link. On opening, an unmatched
+  // measurement is one the person moved: it keeps its link, and its pile is not added again.
   const freed = new Set(
-    links.filter((l) => relinked.some((r) => r.id === l.m.id)).map((l) => l.pile),
+    opts.rebuilt
+      ? links.filter((l) => relinked.some((r) => r.id === l.m.id)).map((l) => l.pile)
+      : [],
   );
   const matched = new Set([...match.values()].map((l) => l.m.id));
   const built = new Set(piles.map((p) => p.id));
-  const detached = links
-    .filter((l) => !matched.has(l.m.id) && built.has(l.pile))
-    .map((l) => l.m.id);
+  const detached = opts.rebuilt
+    ? links.filter((l) => !matched.has(l.m.id) && built.has(l.pile)).map((l) => l.m.id)
+    : [];
   for (const l of links) if (detached.includes(l.m.id)) freed.add(l.pile);
 
   for (const { pile, dates, site, ring } of piles) {
