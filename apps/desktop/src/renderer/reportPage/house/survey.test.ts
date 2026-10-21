@@ -750,7 +750,7 @@ describe('the survey sections', () => {
     const d = await buildSurveyData(read, reader.bytes, { need: 'report' });
     const root = layout(['stockpiles', 'volume-over-time'], d);
     const t = text(root);
-    expect(t).toContain('From an earlier version (kit tin)');
+    expect(t).toContain('From an earlier version (kit, Triangulated)');
     const row = [...root.querySelectorAll('table.sv-piles tr')]
       .map(text)
       .find((r) => r.includes('Kit pile 1'));

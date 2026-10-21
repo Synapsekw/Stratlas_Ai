@@ -565,7 +565,7 @@ describe('results over time and the spread across bases', () => {
     expect(m?.series).toBeUndefined();
     // the latest carried figure is the "was"
     expect(m?.previousResults).toEqual([
-      expect.objectContaining({ netM3: 70, totalM3: 72, label: 'kit plane' }),
+      expect.objectContaining({ netM3: 70, totalM3: 72, label: 'kit, Best-fit plane' }),
     ]);
   });
 
@@ -586,7 +586,7 @@ describe('results over time and the spread across bases', () => {
       const m = stored();
       expect(m?.results[0]?.status).toBe('ok');
       expect(m?.previousResults).toEqual([
-        expect.objectContaining({ netM3: 60, totalM3: 64, label: 'kit plane' }),
+        expect.objectContaining({ netM3: 60, totalM3: 64, label: 'kit, Best-fit plane' }),
       ]);
       expect(m?.updatedAt).not.toBe(UPDATED);
     } finally {
@@ -723,7 +723,7 @@ describe('results over time and the spread across bases', () => {
     expect(m?.results[0]?.carried).toBeUndefined();
     expect(m?.results[0]?.fingerprint).toBe(fresh.fingerprint);
     expect(m?.previousResults).toEqual([
-      expect.objectContaining({ netM3: 60, totalM3: 64, label: 'kit plane' }),
+      expect.objectContaining({ netM3: 60, totalM3: 64, label: 'kit, Best-fit plane' }),
     ]);
     // the carried figures over time go; the engine computes those dates on demand
     expect(m?.series).toBeUndefined();

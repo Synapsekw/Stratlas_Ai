@@ -20,6 +20,7 @@ import {
 } from '@aio/schema';
 import {
   inventoryPiles,
+  kitBaseLabel,
   inventorySeries,
   openWithKitPiles,
   pileSeries,
@@ -235,7 +236,7 @@ function compareVolumes(
     return {
       id: m.id,
       name: m.label,
-      base: carried ? `kit ${carried.base}` : (item?.from.kind ?? null),
+      base: carried ? `kit, ${kitBaseLabel(carried.base)}` : (item?.from.kind ?? null),
       ...(carried ? { carried: true } : {}),
       ...(a !== undefined ? { from: round1(a.netM3) } : {}),
       ...(b !== undefined ? { to: round1(b.netM3) } : {}),

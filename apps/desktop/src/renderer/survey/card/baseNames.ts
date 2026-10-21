@@ -55,6 +55,20 @@ export const OLDER_MODES: Readonly<Record<string, MessageKey>> = {
   'interior-min': 'base.interiorLowest',
 };
 
+/** The old stockpile kit's bases (a carried figure's `carried.base`) by their plain names. */
+export const KIT_BASES: Readonly<Record<string, MessageKey>> = {
+  tin: 'base.kitTin',
+  plane: 'base.plane',
+  avg: 'base.mean',
+  low: 'base.lowest',
+};
+
+/** A kit base's plain name ("Best-fit plane"); an id this build does not know as it is. */
+export const kitBaseName = (base: string, t: (k: MessageKey) => string): string => {
+  const key = KIT_BASES[base];
+  return key ? t(key) : base;
+};
+
 /** A survey or design side that is no longer in the project, named by what it was. */
 export const missingName = (ref: SurfaceRef, t: (k: MessageKey) => string): string =>
   t(ref.kind === 'design' ? 'vol.card.missingDesign' : 'vol.card.missingSurvey');

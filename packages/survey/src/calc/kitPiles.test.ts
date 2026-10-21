@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   KIT_BASE_LABEL,
   KIT_FOLDER,
+  kitBaseLabel,
   convertKitPiles,
   kitToSite,
   openWithKitPiles,
@@ -334,6 +335,16 @@ describe('openWithKitPiles: the file as the app, the report and the assistant op
     const writable = openWithKitPiles(file, { volumes: null, edits: null }, opts(false));
     expect(writable.kitPilesConverted).toEqual([]);
     expect(openWithKitPiles(file, { volumes: null, edits: null }, opts(true))).toBe(file);
+  });
+});
+
+describe('kit base names', () => {
+  it("names the kit bases plainly, and a later build's base as it is", () => {
+    expect(kitBaseLabel('tin')).toBe('Triangulated');
+    expect(kitBaseLabel('plane')).toBe('Best-fit plane');
+    expect(kitBaseLabel('avg')).toBe('Average edge level');
+    expect(kitBaseLabel('low')).toBe('Lowest point');
+    expect(kitBaseLabel('later')).toBe('later');
   });
 });
 

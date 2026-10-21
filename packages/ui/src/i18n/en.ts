@@ -5769,6 +5769,8 @@ export const en = {
   'base.custom': 'Custom',
   'base.customHint': "edit the base's points",
   'base.mean': 'Average edge level',
+  // the old stockpile kit's triangulated base (carried figures only, never a live base)
+  'base.kitTin': 'Triangulated',
   'base.meanHint': "a rough check against the toe's average height",
   'vol.ignoreSmaller': 'Ignore changes smaller than',
   'vol.highPrecision': 'High precision',
@@ -5836,7 +5838,7 @@ export const en = {
   'vol.status.stale': 'Stale, recompute',
   'vol.status.computing': 'Computing',
   'vol.status.live': 'Live while you edit; saved when the edit ends.',
-  'vol.status.carried': 'From an earlier version (kit {base})',
+  'vol.status.carried': 'From an earlier version (kit, {base})',
   'vol.status.none': 'No survey data',
   'vol.status.notComputed': 'Not computed yet',
   'vol.card.baseChip': 'Base: {name}',

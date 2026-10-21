@@ -19,13 +19,20 @@ import type {
 /** The Datasets folder converted kit piles land in. */
 export const KIT_FOLDER = 'Stockpiles';
 
-/** The kit base named in "From an earlier version (kit <base>)". */
-export const KIT_BASE_LABEL: Record<VolumeBaseId, string> = {
-  tin: 'tin',
-  plane: 'plane',
-  avg: 'avg',
-  low: 'low',
+/**
+ * The kit bases by their plain names, as a carried figure's stored labels name them (the app
+ * names them through the en.ts `base.*` keys, `kitBaseName`).
+ */
+export const KIT_BASE_LABEL: Readonly<Record<VolumeBaseId, string>> = {
+  tin: 'Triangulated',
+  plane: 'Best-fit plane',
+  avg: 'Average edge level',
+  low: 'Lowest point',
 };
+
+/** A kit base's plain name; an id this build does not know (a later build's) as it is. */
+export const kitBaseLabel = (base: string): string =>
+  (KIT_BASE_LABEL as Readonly<Record<string, string>>)[base] ?? base;
 
 /** The kit computed pile volumes on 10 cm grids. */
 const KIT_CELL_M = 0.1;

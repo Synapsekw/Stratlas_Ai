@@ -12,6 +12,7 @@ import {
 } from '@aio/project/export';
 import { formatQuantity, localeOf } from '@aio/geo';
 import { inventoryPiles, pileSeries } from '@aio/survey';
+import { kitBaseName } from '../survey/card/baseNames';
 import {
   NARRATIVE_SECTIONS,
   parseRoadModel,
@@ -192,7 +193,7 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
       piles.map((m) => {
         // a pile carried over from an earlier version is named so, as on its card
         const carried = pileSeries(m).series.find((r) => r.carried)?.carried;
-        if (carried) return t('vol.status.carried', { base: carried.base });
+        if (carried) return t('vol.status.carried', { base: kitBaseName(carried.base, t) });
         return m.items[0] ? standardBaseName(m.items[0].from) : '';
       }),
       (x) => formatQuantity(x, 'volume', units, settings.precision, locale),

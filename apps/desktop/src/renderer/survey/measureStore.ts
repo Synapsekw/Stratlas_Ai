@@ -39,7 +39,7 @@ import {
   telecomPointCount,
   telecomProblem,
   flipFace,
-  KIT_BASE_LABEL,
+  kitBaseLabel,
   kitConversion,
   measurementFrom,
   MIN_POINTS,
@@ -654,7 +654,7 @@ export function replaceWithStandard(
       {
         netM3: old.netM3,
         totalM3: old.totalM3,
-        label: `kit ${KIT_BASE_LABEL[old.carried.base]}`,
+        label: `kit, ${kitBaseLabel(old.carried.base)}`,
         replacedAt: result.computedAt,
       },
     ].slice(-PREVIOUS_MAX);

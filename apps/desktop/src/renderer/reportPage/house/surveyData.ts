@@ -90,7 +90,7 @@ import {
 import { localeOf } from '@aio/geo';
 import { DEFAULT_ANGLES } from '@aio/schema';
 import { t, type MessageKey } from '@aio/ui';
-import { baseName } from '../../survey/card/baseNames';
+import { baseName, kitBaseName } from '../../survey/card/baseNames';
 import { cardModel, type CardModel } from '../../survey/card/cardModel';
 import { measurementHasChart } from '../../survey/card/chartRule';
 import type { EngineContext } from '../../survey/engineProtocol';
@@ -486,7 +486,7 @@ export interface PileOverTime {
   material: SiteMaterial | null;
   /** The base in words: its standard name, or the survey or design it is. */
   base: string;
-  /** "From an earlier version (kit tin)" when its figures are carried over, else null. */
+  /** "From an earlier version (kit, Triangulated)" when its figures are carried over, else null. */
   carried: string | null;
   /** One row per survey date (`volumeRows` of `pileSeries`), stale rows marked. */
   rows: TimeRow[];
@@ -669,7 +669,7 @@ async function volumesOverTime(
         folder: m.folder?.trim() ? m.folder.trim() : null,
         material: info.material(m),
         base: it ? standardBaseName(it.from) : '',
-        carried: carried ? tk('vol.status.carried', { base: carried.base }) : null,
+        carried: carried ? tk('vol.status.carried', { base: kitBaseName(carried.base, tk) }) : null,
         rows: volumeRows(series, captures, {
           isStale: (r) => isStale(m, r, r === stored),
           ...(density !== undefined ? { densityTPerM3: density } : {}),

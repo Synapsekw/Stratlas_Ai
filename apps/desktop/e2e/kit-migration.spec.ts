@@ -3,9 +3,9 @@
  * two survey dates and a fictional stockpile kit result (`volumes.json`, two piles, and one toe
  * line corrected by hand in `edits/boundaries.json`), opens with each kit pile as a volume
  * measurement in the Stockpiles folder showing exactly its old figure, labelled "From an earlier
- * version (kit tin)", with nothing marked unsaved; the conversion is written once and never again,
- * so a pile deleted afterwards stays deleted; a package of it shows the same figures and writes
- * nothing. No pipeline Python: nothing is computed. Off-screen, zero network.
+ * version (kit, Triangulated)", with nothing marked unsaved; the conversion is written once and
+ * never again, so a pile deleted afterwards stays deleted; a package of it shows the same figures
+ * and writes nothing. No pipeline Python: nothing is computed. Off-screen, zero network.
  */
 import { BoundaryEditsFile, MeasurementsFile, ProjectManifest, VolumesFile } from '@aio/schema';
 import type { Locator, Page } from '@playwright/test';
@@ -186,7 +186,7 @@ async function expectNorthCarried(win: Page, readOnly = false): Promise<void> {
     await expect(card.getByRole('textbox', { name: 'Rename' })).toHaveCount(0);
   } else card = await focusMeasure(win, 'Pile North');
   await expect(card.getByTestId('survey-cmp-status').first()).toHaveText(
-    'From an earlier version (kit tin)',
+    'From an earlier version (kit, Triangulated)',
   );
   expect(figure(await card.getByTestId('card-primary').innerText())).toBeCloseTo(
     NORTH_E2_EDITED,
@@ -381,7 +381,7 @@ test('the Volumes view lists the kit piles; picking one shows its carried figure
   const detail = view.getByTestId('volumes-detail');
   await expect(detail).toBeVisible();
   await expect(detail.getByTestId('survey-cmp-status').first()).toHaveText(
-    'From an earlier version (kit tin)',
+    'From an earlier version (kit, Triangulated)',
   );
   expect(figure(await detail.getByTestId('card-primary').innerText())).toBeCloseTo(
     NORTH_E2_EDITED,

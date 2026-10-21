@@ -205,7 +205,7 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
   const card = view.getByTestId('volumes-detail');
   await expect(card).toBeVisible();
   await expect(card.getByTestId('survey-cmp-status').first()).toHaveText(
-    'From an earlier version (kit tin)',
+    'From an earlier version (kit, Triangulated)',
   );
   // the delivered figure on the triangulated toe: 11,379 m³ on 10 Jan 2021, 14,687 m³ on 31 Dec
   const latest = p02.epochs.e2?.volumes.tin?.net ?? Number.NaN;

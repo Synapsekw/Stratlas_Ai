@@ -187,7 +187,9 @@ describe('VolumeDetail', () => {
     });
     const m = pile({ results: [carried] });
     show(m);
-    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('From an earlier version (kit tin)');
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
+      'From an earlier version (kit, Triangulated)',
+    );
     expect(buttonNamed('Recompute with the standard base')).toBeDefined();
     // no cut/fill area split and no method line for a carried figure
     expect(host.querySelector('[data-testid="survey-cmp-result"] .vd-area')).toBeNull();
@@ -199,7 +201,9 @@ describe('VolumeDetail', () => {
     host.remove();
     s.compare.surfaces = [];
     show(m);
-    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('From an earlier version (kit tin)');
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
+      'From an earlier version (kit, Triangulated)',
+    );
     expect(buttonNamed('Recompute with the standard base')).toBeUndefined();
 
     act(() => root?.unmount());
@@ -514,7 +518,9 @@ describe('VolumeDetail', () => {
     );
     s.compare.status = 'ready';
     act(() => root?.render(<VolumeDetail m={m} />));
-    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe('From an earlier version (kit tin)');
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
+      'From an earlier version (kit, Triangulated)',
+    );
 
     s.compare.error = 'The surfaces could not be prepared.';
     act(() => root?.render(<VolumeDetail m={m} />));
@@ -680,7 +686,7 @@ describe('volumeStatusLine', () => {
     // a carried figure is never stale
     expect(volumeStatusLine(carried, { ...idle, stale: true })).toEqual({
       tone: 'muted',
-      text: 'From an earlier version (kit plane)',
+      text: 'From an earlier version (kit, Best-fit plane)',
     });
   });
 });

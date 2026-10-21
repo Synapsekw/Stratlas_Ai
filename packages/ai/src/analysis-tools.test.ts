@@ -178,8 +178,22 @@ describe('compare_captures', () => {
       to: { captureId: 'c2', date: '2021-01-10' },
       total: { from: 1500, to: 1350, change: -150 },
       piles: [
-        { name: 'Pile 01', base: 'kit tin', carried: true, from: 1000, to: 800, change: -200 },
-        { name: 'Pile 02', base: 'kit tin', carried: true, from: 500, to: 550, change: 50 },
+        {
+          name: 'Pile 01',
+          base: 'kit, Triangulated',
+          carried: true,
+          from: 1000,
+          to: 800,
+          change: -200,
+        },
+        {
+          name: 'Pile 02',
+          base: 'kit, Triangulated',
+          carried: true,
+          from: 500,
+          to: 550,
+          change: 50,
+        },
       ],
     });
     expect(r.summary).toBe('-150.0 m³');

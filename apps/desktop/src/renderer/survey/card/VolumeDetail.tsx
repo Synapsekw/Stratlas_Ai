@@ -27,6 +27,7 @@ import {
   type SideOption,
   type TimeRow,
 } from '@aio/survey';
+import { kitBaseName } from './baseNames';
 import { Button, EmptyState, t, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
@@ -81,7 +82,11 @@ export function volumeStatusLine(
 ): StatusLine {
   if (state.problem) return { tone: 'warn', text: state.problem };
   if (state.info) return { tone: 'muted', text: state.info };
-  if (r?.carried) return { tone: 'muted', text: t('vol.status.carried', { base: r.carried.base }) };
+  if (r?.carried)
+    return {
+      tone: 'muted',
+      text: t('vol.status.carried', { base: kitBaseName(r.carried.base, t) }),
+    };
   if (state.live) return { tone: 'muted', text: t('vol.status.live') };
   if (state.computing) return { tone: 'muted', text: t('vol.status.computing') };
   if (!r)

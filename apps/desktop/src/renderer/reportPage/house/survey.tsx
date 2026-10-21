@@ -29,6 +29,7 @@ import {
   type StackRow,
   type TimeRow,
 } from '@aio/survey';
+import { kitBaseName } from '../../survey/card/baseNames';
 import { t } from '@aio/ui';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -156,7 +157,7 @@ const statusText = (s: ComparisonResult['status'] | 'missing') =>
 /** The status of a result with its reason ("Partial: 3% outside the survey"). */
 function statusOf(r: ComparisonResult | null, reason: string): string {
   if (!r) return reason || statusText('missing');
-  if (r.carried) return tk('vol.status.carried', { base: r.carried.base });
+  if (r.carried) return tk('vol.status.carried', { base: kitBaseName(r.carried.base, tk) });
   const s = statusText(r.status);
   return [s, r.reason ?? ''].filter(Boolean).join(': ');
 }
@@ -360,7 +361,7 @@ const resultText = (m: MeasurementReport) =>
 function cardStatus(e: ReportEntry): string | null {
   const r = e.m.results.find((x) => x.item === e.m.items[0]?.id);
   if (!r) return e.m.tool === 'volume' ? tk('vol.status.notComputed') : null;
-  if (r.carried) return tk('vol.status.carried', { base: r.carried.base });
+  if (r.carried) return tk('vol.status.carried', { base: kitBaseName(r.carried.base, tk) });
   if (r.status === 'stale') return tk('vol.status.stale');
   return null;
 }
