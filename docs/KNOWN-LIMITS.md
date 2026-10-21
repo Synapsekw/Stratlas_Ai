@@ -167,6 +167,16 @@ These limits were seen on the founder's own real projects in the data folder (no
 - The licence box is ticked before the model card is shown.
 - The memory the model runtime uses is not capped.
 
+### Local vision-model detectors (Analytics pack)
+
+- Detectors run only on Windows with an NVIDIA graphics card that has at least 8 GB of video memory in total and 6.5 GB free when the run starts. There is no CPU fallback and no Mac version.
+- The Analytics pack is about 6.2 GB archived and 6.8 GB unpacked, and it is a separate install from the pipeline pack. Until the Settings section arrives (the next merge), it is installed through IPC or by pointing `QUADRION_ANALYTICS_PACK` at an unpacked pack folder. A pack built with `--no-model` is for testing only and cannot be installed.
+- A detector run waits while photo processing (align, georef, products) or another detector run is using the graphics card. The model server stops as soon as nothing is running or queued, so each run pays the start-up time.
+- Detectors find what their written prompt describes, one class per detector. Open-ended detection ("find anything unusual") stays with the cloud model; the local route does not replace it.
+- Scores are the model's own confidence and are not calibrated. Results are drafts for review, never accepted automatically.
+- One detector ships so far (corrosion on metal, experimental). The run dialog, the review controls and the detector library have no screen yet.
+- Detector runs add Python code, so the release needs a new pipeline pack version.
+
 ### Local AI agent
 
 - Local model quality and speed depend on the person's hardware; without a graphics card an answer can take tens of seconds.

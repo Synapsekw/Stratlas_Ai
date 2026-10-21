@@ -60,7 +60,7 @@
 
 The founder took the open decisions on 6 Oct 2026. Every "decision N" in this plan refers to this list.
 
-1. **Local AI agent.** Works with the person's own installed server (Ollama, LM Studio or a llama.cpp server), with a guided setup page. Nothing is bundled: no `llama-server` sidecar, no GGUF download, and no `bundled` server kind in `LocalModelSettings`.
+1. **Local AI agent.** Works with the person's own installed server (Ollama, LM Studio or a llama.cpp server), with a guided setup page. Nothing is bundled: no `llama-server` sidecar, no GGUF download, and no `bundled` server kind in `LocalModelSettings`. Reversed for the Analytics pack only (founder, 2026-10-17): `llama-server` and the Qwen2.5-VL GGUF ship in `analytics-pack-<ver>`; the person's own server route is unchanged.
 2. **Local detection.** onnxruntime ships inside the app as `onnxruntime-node` (not in the pipeline pack). No detector models ship: people import their own ONNX with a model card that carries its licence. MobileSAM is not shipped yet.
 3. **Issues across dates.** "Resolved" only proposes. A person confirms; only then does the status become `closed`, with `resolvedIn`. Never automatic.
 4. **Models from drawings (BLD-11 scope).** DXF only (no DWG). Parts are tanks and vessels, buildings (extrusions), boxes (skids, racks) and pipes. No IFC export in M8.
