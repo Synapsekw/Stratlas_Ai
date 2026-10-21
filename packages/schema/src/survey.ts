@@ -492,26 +492,32 @@ export function dropUnreadablePickedOn(raw: unknown): unknown {
 }
 
 /** `<project>/survey/measurements.json` (`aio.measurements/1`), written atomically with `.bak`. */
+const MeasurementsFileStrict = z
+  .looseObject({
+    schema: z.literal('aio.measurements/1'),
+    measurements: z.array(SurveyMeasurement).max(20_000),
+  })
+  .superRefine((f, ctx) => {
+    const seen = new Set<string>();
+    for (const m of f.measurements) {
+      if (seen.has(m.id))
+        ctx.addIssue({
+          code: 'custom',
+          message: `Duplicate measurement "${m.id}"`,
+          path: ['measurements'],
+        });
+      seen.add(m.id);
+    }
+  });
+
+/**
+ * Tolerant on read (a bad `pickedOn` is dropped). Typed as the strict schema so request types
+ * derived from it keep the object input type; the preprocess only widens it to unknown.
+ */
 export const MeasurementsFile = z.preprocess(
   dropUnreadablePickedOn,
-  z
-    .looseObject({
-      schema: z.literal('aio.measurements/1'),
-      measurements: z.array(SurveyMeasurement).max(20_000),
-    })
-    .superRefine((f, ctx) => {
-      const seen = new Set<string>();
-      for (const m of f.measurements) {
-        if (seen.has(m.id))
-          ctx.addIssue({
-            code: 'custom',
-            message: `Duplicate measurement "${m.id}"`,
-            path: ['measurements'],
-          });
-        seen.add(m.id);
-      }
-    }),
-);
+  MeasurementsFileStrict,
+) as unknown as typeof MeasurementsFileStrict;
 
 export const emptyMeasurements = (): MeasurementsFile => ({
   schema: 'aio.measurements/1',
