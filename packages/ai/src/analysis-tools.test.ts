@@ -238,7 +238,10 @@ describe('compare_captures', () => {
     const shown = {
       ...m,
       // a date the app worked out (a read-only package, or before an autosave): not on disk
-      series: [{ ...result('it', 'c1', 640), fingerprint: 'sha256:memory' }, ...m.series.slice(1)],
+      series: [
+        { ...result('it', 'c1', 640), fingerprint: 'sha256:memory' },
+        ...(m?.series ?? []).slice(1),
+      ],
     };
     const off = registerAppHooks({
       surveyMeasurements: (id) =>
