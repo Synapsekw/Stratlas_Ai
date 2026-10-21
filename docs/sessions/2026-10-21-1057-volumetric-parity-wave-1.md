@@ -19,7 +19,7 @@ related:
 - Volume over time across every survey date: card chart and table, a Volumes view with site inventory, a "Not counted" list, a CSV and a report section.
 - Report template stored in the project (travels in .aio exports), Add to report, single-measurement export; the PDF uses the same chart and card. The assistant reads engine figures.
 - Fixes: a window freeze opening a pile card on large real surveys, and tonnage 1000x too small. Pack 0.20.0; contract changes additive.
-- After the landing review: Recompute all keeps figures from an earlier version (replacing them is its own confirmed action); old projects keep their tonnage at the kit's density; the inventory chart's change matches its table; a saved road line keeps one height rule; a To side on a level or custom base is editable; Add to report saves unsaved measurements first; Remove from report and Clear report template; the report template file is open to later additions; moving a converted pile no longer brings it back; the stockpile map shows every pile.
+- After the landing review: Recompute all keeps figures from an earlier version (replacing them is its own confirmed action); old projects keep their tonnage at the kit's density, worked out when read; the inventory chart's change matches its table; a saved road line keeps one height rule; a To side on a level or custom base is editable; Add to report saves unsaved measurements first; Remove from report and Clear report template; the report template file is open to later additions; moving a converted pile no longer brings it back; the stockpile map shows every pile.
 
 ## Why
 
@@ -43,7 +43,7 @@ Volumes and measurements had grown as separate looks and engines. Wave 1 makes t
 - Waves 2 and 3: PPK from raw files, the geoid, the ± on volumes, repeat reports, AI pile detection on real piles.
 - Founder review of ADR 0013 and the contract rows; a real-job validation run.
 - A BVH for terrain meshes (slow terrain area without prepared surfaces); template section entries (W8).
-- Follow-ups from the landing review: the Reports screen does not offer the Volume over time toggle when the report works the dates out itself; the house report still runs the earthworks, landfill and section engines when those sections are off; elevation history for typed coordinates in read-only projects; a kit-project report e2e asserting the carried totals; a kit's swell factor is not carried into the kit material (it was never shown before); a road line is saved without heights (its card reads the terrain length from the surface).
+- Follow-ups from the landing review: the Reports screen does not offer the Volume over time toggle when the report works the dates out itself; the house report still runs the earthworks, landfill and section engines when those sections are off; elevation history for typed coordinates in read-only projects; a kit-project report e2e asserting the carried totals; a kit's swell factor is not carried into the kit material (it was never shown before); a road line is saved at one height, the mean surface height under it (its card reads the terrain length from the surface).
 - Lands via the stage-island train for 0.25.0, after the measure-dates branch. `pnpm check`, the Python suite and about 25 CI-like e2e specs (5 new) were green.
 
 ## Next session entry point
