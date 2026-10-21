@@ -8,7 +8,7 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, toSI, unitLabel } from '@aio/geo';
 import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
-import { DENSITY_DECIMALS, effectiveUnits, materialReadout } from '@aio/survey';
+import { DENSITY_DECIMALS, effectiveUnits, materialReadout, pileMaterial } from '@aio/survey';
 import { useState } from 'react';
 import { openCompareDialog, setTonnes, useCompare } from './compareStore';
 import { updateMeasurement, useMeasure } from './measureStore';
@@ -20,6 +20,7 @@ const volumeOf = (r: ComparisonResult, basis: Basis) =>
 
 export function Calculators({ m }: { m: SurveyMeasurement }) {
   const settings = useMeasure((s) => s.settings);
+  const kit = useMeasure((s) => s.kitDensity);
   const fileReadOnly = useMeasure((s) => s.readOnly);
   const readOnly = useAnnotateReadOnly() || fileReadOnly;
   const typed = useCompare((s) => s.tonnes[m.id] ?? null);
@@ -28,7 +29,7 @@ export function Calculators({ m }: { m: SurveyMeasurement }) {
   const [text, setText] = useState(typed === null ? '' : String(typed));
   if (m.family !== 'polygon') return null;
   const units = effectiveUnits(settings.units, m.units);
-  const material = settings.materials.find((x) => x.id === m.material) ?? null;
+  const material = pileMaterial(m, settings.materials, kit);
   const item = m.items.find((x) => x.id === itemId) ?? m.items[0];
   const r = item ? m.results.find((x) => x.item === item.id) : undefined;
   const usable = r && r.status !== 'refused' ? r : null;

@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest';
 import {
   KIT_BASE_LABEL,
   KIT_FOLDER,
-  KIT_MATERIAL_ID,
   KIT_MATERIAL_NAME,
   kitBaseLabel,
-  withKitMaterials,
+  kitDensity,
+  pileMaterial,
   convertKitPiles,
   kitToSite,
   openWithKitPiles,
@@ -18,6 +18,11 @@ import {
 const at = <T>(a: readonly T[] | undefined, i: number): T => {
   const v = a?.[i];
   if (v === undefined) throw new Error('missing item');
+  return v;
+};
+
+const must = <T>(v: T | undefined): T => {
+  if (v === undefined) throw new Error('missing');
   return v;
 };
 
@@ -122,7 +127,7 @@ function opts(carry: boolean) {
       2000 - z,
       0,
     ],
-    materialId: (name: string | null) => (name === 'Sand' ? 'mat-sand' : undefined),
+    materialId: (name: string) => (name === 'Sand' ? 'mat-sand' : undefined),
   };
 }
 
@@ -338,24 +343,25 @@ describe('openWithKitPiles: the file as the app, the report and the assistant op
     const v = volumes();
     const file = openWithKitPiles(empty(), { volumes: v, edits: null }, none);
     const [p1, p2] = file.measurements;
-    // a kit material name with no site material, and no material at all (material null)
-    expect(p1?.material).toBe(`${KIT_MATERIAL_ID}-sand`);
-    expect(p2?.material).toBe(KIT_MATERIAL_ID);
-    const base = { materials: [{ id: 'other', name: 'Other', densityTPerM3: 2 }] };
-    const settings = withKitMaterials(base, v, file.measurements);
-    const density = (id: string | undefined) =>
-      settings.materials.find((x) => x.id === id)?.densityTPerM3;
-    expect(density(p1?.material)).toBe(1.6);
-    expect(density(p2?.material)).toBe(1.6);
-    expect(settings.materials.find((x) => x.id === p2?.material)?.name).toBe(KIT_MATERIAL_NAME);
-    expect(settings.materials.find((x) => x.id === p1?.material)?.name).toBe('Sand');
-    // the site's own materials stay first, and a second pass adds nothing
-    expect(settings.materials[0]?.id).toBe('other');
-    expect(withKitMaterials(settings, v, file.measurements)).toBe(settings);
-    // no kit data, or no measurement using a kit material: the settings as they are
-    expect(withKitMaterials(base, null, file.measurements)).toBe(base);
-    expect(withKitMaterials(base, v, [])).toBe(base);
-    // a site material named as the kit's is used instead
+    // nothing invented in the file: no material id the site does not have
+    expect(p1?.material).toBeUndefined();
+    expect(p2?.material).toBeUndefined();
+    const kit = kitDensity(v);
+    const site = [{ id: 'other', name: 'Other', densityTPerM3: 2 }];
+    // worked out at read time from the kit: its density, named after its material or not at all
+    const m1 = pileMaterial(must(p1), site, kit);
+    const m2 = pileMaterial(must(p2), site, kit);
+    expect(m1?.densityTPerM3).toBe(1.6);
+    expect(m1?.name).toBe('Sand');
+    expect(m2?.densityTPerM3).toBe(1.6);
+    expect(m2?.name).toBe(KIT_MATERIAL_NAME);
+    // a site material the person chose wins; one deleted since falls back to the kit's density
+    expect(pileMaterial({ ...must(p1), material: 'other' }, site, kit)?.densityTPerM3).toBe(2);
+    expect(pileMaterial({ ...must(p1), material: 'gone' }, site, kit)?.densityTPerM3).toBe(1.6);
+    // no kit data, or not a kit pile: only the site's own
+    expect(pileMaterial(must(p1), site, null)).toBeNull();
+    expect(pileMaterial({ material: undefined, origin: undefined }, site, kit)).toBeNull();
+    // a site material named as the kit's is stored at conversion, as before
     const named = openWithKitPiles(empty(), { volumes: v, edits: null }, opts(false));
     expect(named.measurements[0]?.material).toBe('sand');
   });

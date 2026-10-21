@@ -26,6 +26,7 @@ import {
   volumeRows,
   type SideOption,
   type TimeRow,
+  pileMaterial,
 } from '@aio/survey';
 import { kitBaseName } from './baseNames';
 import { Button, EmptyState, t, useT } from '@aio/ui';
@@ -263,7 +264,8 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   // a run for the heat map only (on focus, stored results current) is not an edit in progress
   const live = computed?.live && !computed.heatOnly ? computed : null;
   const previous = m.previousResults?.[0];
-  const material = settings.materials.find((x) => x.id === m.material) ?? null;
+  const kit = useMeasure((s) => s.kitDensity);
+  const material = pileMaterial(m, settings.materials, kit);
   const density = material?.densityTPerM3;
   // the one per-date rule the inventory uses too (`pileSeries`), so the two never differ
   const over = pileSeries(m, first?.id);

@@ -13,7 +13,14 @@ import type {
   SurveyTemplate,
   VolumesFile,
 } from '@aio/schema';
-import { effectiveUnits, pileSeries, primaryRow, seriesDate } from '@aio/survey';
+import {
+  effectiveUnits,
+  kitDensity,
+  pileMaterial,
+  pileSeries,
+  primaryRow,
+  seriesDate,
+} from '@aio/survey';
 import { t } from '@aio/ui';
 import type { PileFigure, PileFigures, Volumetric } from '@aio/volumetric';
 import type { StoreApi } from 'zustand/vanilla';
@@ -47,13 +54,19 @@ function resultsOn(
  * or by `opts.isStale`, the card's predicate) reads "…, stale", as the card marks it.
  */
 export function pileFigures(
-  volumes: Pick<VolumesFile, 'captures'> | null,
+  volumes:
+    (Pick<VolumesFile, 'captures'> & Partial<Pick<VolumesFile, 'densityTPerM3' | 'piles'>>) | null,
   measurements: readonly SurveyMeasurement[],
   settings: SurveySettings,
   templates: readonly SurveyTemplate[],
   opts: { isStale?: PileStale } = {},
 ): PileFigures {
   if (!volumes) return {};
+  // a kit pile weighs by the kit's density unless the person picked a site material
+  const kit =
+    volumes.densityTPerM3 !== undefined
+      ? kitDensity({ densityTPerM3: volumes.densityTPerM3, piles: volumes.piles ?? [] })
+      : null;
   const out: Record<string, Record<string, PileFigure>> = {};
   for (const m of measurements) {
     if (m.origin?.kind !== 'kit-pile') continue;
@@ -61,9 +74,7 @@ export function pileFigures(
     const items = templateItems(m, templates);
     const units = effectiveUnits(settings.units, m.units);
     const locale = settings.locale ?? localeOf(units.distance);
-    const density = m.material
-      ? settings.materials.find((x) => x.id === m.material)?.densityTPerM3
-      : undefined;
+    const density = pileMaterial(m, settings.materials, kit)?.densityTPerM3;
     const on = resultsOn(m, volumes.captures);
     for (const c of volumes.captures) {
       const hit = on.get(c.captureId);

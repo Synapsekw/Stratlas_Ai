@@ -205,8 +205,8 @@ export interface KitConversionOptions {
   newId: () => string;
   /** A kit local-frame point (`[x, z]`, x east, z south) to the project CRS `[E, N, Z]`. */
   toSite: (xz: readonly [number, number]) => SitePoint;
-  /** The site material id for a kit material name (null: the pile names none), if any. */
-  materialId: (name: string | null) => SurveyId | undefined;
+  /** The site material id for a kit material name, if one exists. */
+  materialId: (name: string) => SurveyId | undefined;
   /**
    * Right after a volumetric build (Detect piles): a pile already converted comes back unless an
    * existing kit-pile measurement overlaps it, and a measurement whose pile is gone loses its link.
@@ -326,7 +326,7 @@ export function convertKitPiles(
       : [];
     const last = series[series.length - 1];
     const headline = last?.carried?.epoch === lastEpoch ? last : undefined;
-    const material = opts.materialId(pile.material ?? null);
+    const material = pile.material ? opts.materialId(pile.material) : undefined;
 
     const m: SurveyMeasurement = {
       id: opts.newId(),
@@ -374,64 +374,47 @@ export interface KitOpenOptions {
 
 // ---------------------------------------------------------------- the kit's density
 
-/** The id of the material a kit pile gets when no site material has its material's name. */
-export const KIT_MATERIAL_ID = 'kit-material';
-/** That material's name when the kit pile names no material. */
+/** The name a kit pile's material reads when the kit names none. */
 export const KIT_MATERIAL_NAME = 'Stockpile material';
 
-const nameKey = (name: string): string => name.trim().toLowerCase();
-
-/** The kit material id for a kit material name (null or blank: the one unnamed kit material). */
-export function kitMaterialId(name: string | null): SurveyId {
-  const slug = nameKey(name ?? '')
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  return slug ? `${KIT_MATERIAL_ID}-${slug}` : KIT_MATERIAL_ID;
+/** What a kit pile weighs by: the kit's density, and each pile's material name (by pile id). */
+export interface KitDensity {
+  densityTPerM3: number;
+  names: Readonly<Record<string, string>>;
 }
 
-/**
- * The site materials the kit's piles need and the site does not have: one per kit material name
- * (or none) that no site material has, at the kit's density (`volumes.densityTPerM3`), so an old
- * project keeps its tonnes. Held in memory with the settings (`withKitMaterials`); saving the site
- * settings keeps them.
- */
-export function kitMaterials(
-  volumes: VolumesFile,
-  materials: readonly { id: SurveyId; name: string }[],
-): SiteMaterial[] {
-  const named = new Set(materials.map((x) => nameKey(x.name)));
-  const out = new Map<SurveyId, SiteMaterial>();
+/** The kit's density and material names, or null without kit data. */
+export function kitDensity(
+  volumes: Pick<VolumesFile, 'densityTPerM3' | 'piles'> | null | undefined,
+): KitDensity | null {
+  if (!volumes) return null;
+  const names: Record<string, string> = {};
   for (const p of volumes.piles) {
-    const name = p.material?.trim() ? p.material.trim() : null;
-    if (name && named.has(nameKey(name))) continue;
-    const id = kitMaterialId(name);
-    if (!out.has(id))
-      out.set(id, {
-        id,
-        name: (name ?? KIT_MATERIAL_NAME).slice(0, 120),
-        densityTPerM3: volumes.densityTPerM3,
-      });
+    const name = p.material?.trim();
+    if (name && !(p.id in names)) names[p.id] = name.slice(0, 120);
   }
-  return [...out.values()];
+  return { densityTPerM3: volumes.densityTPerM3, names };
 }
 
 /**
- * The site settings with the kit materials the measurements use (`kitMaterials`) added after the
- * site's own; the same settings when none is missing or there is no kit data.
+ * The material a measurement is weighed by: the site material it names, else, for a pile carried
+ * over from the kit (`origin` kit-pile), the kit's density under the kit's material name, worked
+ * out at read time and never stored. Null when there is neither. The card, the Volumes view and its
+ * CSV, the 3D callouts, the calculators and the report all read it here, so they agree.
  */
-export function withKitMaterials<S extends { materials: readonly SiteMaterial[] }>(
-  settings: S,
-  volumes: VolumesFile | null,
-  measurements: readonly SurveyMeasurement[],
-): S {
-  if (!volumes) return settings;
-  const have = new Set(settings.materials.map((x) => x.id));
-  const used = new Set(measurements.flatMap((m) => (m.material ? [m.material] : [])));
-  const add = kitMaterials(volumes, settings.materials).filter(
-    (x) => used.has(x.id) && !have.has(x.id),
-  );
-  return add.length === 0 ? settings : { ...settings, materials: [...settings.materials, ...add] };
+export function pileMaterial(
+  m: Pick<SurveyMeasurement, 'material' | 'origin'>,
+  materials: readonly SiteMaterial[],
+  kit: KitDensity | null | undefined,
+): SiteMaterial | null {
+  const own = m.material ? materials.find((x) => x.id === m.material) : undefined;
+  if (own) return own;
+  if (m.origin?.kind !== 'kit-pile' || !kit) return null;
+  return {
+    id: 'kit',
+    name: kit.names[m.origin.pile] ?? KIT_MATERIAL_NAME,
+    densityTPerM3: kit.densityTPerM3,
+  };
 }
 
 /** Kit piles as volume measurements (`convertKitPiles`), placed through the project origin. */
@@ -442,14 +425,13 @@ export function kitConversion(
   carry: boolean,
   opts: KitOpenOptions,
 ): KitConversion {
-  const byName = new Map(opts.materials.map((x) => [nameKey(x.name), x.id]));
+  const byName = new Map(opts.materials.map((x) => [x.name.trim().toLowerCase(), x.id]));
   return convertKitPiles(volumes, edits, file, {
     carry,
     now: opts.now,
     newId: opts.newId,
     toSite: (xz) => kitToSite(opts.origin, xz),
-    // a site material by the kit material's name, else the kit's own density (`kitMaterials`)
-    materialId: (name) => (name ? byName.get(nameKey(name)) : undefined) ?? kitMaterialId(name),
+    materialId: (name) => byName.get(name.trim().toLowerCase()),
     ...(opts.rebuilt ? { rebuilt: true } : {}),
   });
 }

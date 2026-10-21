@@ -11,7 +11,13 @@ import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, localeOf } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
 import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
-import { inventoryPiles, pileSeries, surfacesStamp, type StackRow } from '@aio/survey';
+import {
+  inventoryPiles,
+  pileMaterial,
+  pileSeries,
+  surfacesStamp,
+  type StackRow,
+} from '@aio/survey';
 import { Button, EmptyState, Tip, useT } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
@@ -51,6 +57,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const t = useT();
   const file = useMeasure((s) => s.file);
   const settings = useMeasure((s) => s.settings);
+  const kitDensityOf = useMeasure((s) => s.kitDensity);
   const templates = useMeasure((s) => s.templates);
   const focus = useMeasure((s) => s.focus);
   const fileReadOnly = useMeasure((s) => s.readOnly);
@@ -197,7 +204,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
       return { ...m, series: over.series };
     });
     const density = (m: SurveyMeasurement) =>
-      settings.materials.find((x) => x.id === m.material)?.densityTPerM3 ?? null;
+      pileMaterial(m, settings.materials, kitDensityOf)?.densityTPerM3 ?? null;
     // the card's stale rule: the stored figure by the fingerprints, a dated one by the series
     const staleRow = (m: SurveyMeasurement, r: ComparisonResult) =>
       r.status === 'stale' ||

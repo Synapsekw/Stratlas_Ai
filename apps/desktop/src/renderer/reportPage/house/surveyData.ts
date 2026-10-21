@@ -71,8 +71,10 @@ import {
   surfaceKey,
   measurementReadout,
   newShared,
+  kitDensity,
   openWithKitPiles,
-  withKitMaterials,
+  pileMaterial,
+  type KitDensity,
   pileSeries,
   resolveSection,
   ringShifts,
@@ -137,6 +139,8 @@ export interface SurveyFiles {
   weighbridge: WeighbridgeEntry[];
   /** The report template (`report/template.json`, W8): which measurements and parts print. */
   template?: ReportTemplateFile | null;
+  /** The stockpile kit's density, for its piles' tonnes (`pileMaterial`); null without kit data. */
+  kit?: KitDensity | null;
 }
 
 function parsed<T>(schema: { safeParse(v: unknown): { success: boolean; data?: T } }, v: unknown) {
@@ -190,19 +194,16 @@ export async function readSurveyFiles(
     read.json(KIT_EDITS_FILE),
     read.json(SURVEY_SETTINGS_FILE),
   ]);
-  const siteSettings =
-    parsed<SurveySettings>(SurveySettings, settingsRaw) ?? defaultSurveySettings();
+  const settings = parsed<SurveySettings>(SurveySettings, settingsRaw) ?? defaultSurveySettings();
   const kit = parsed<VolumesFile>(VolumesFile, kitRaw);
   const file = withKitPiles(
     parsed<MeasurementsFile>(MeasurementsFile, fileRaw),
     kit,
     parsed<BoundaryEditsFile>(BoundaryEditsFile, editsRaw),
     manifest,
-    siteSettings.materials,
+    settings.materials,
   );
   if (!file || file.measurements.length === 0) return null;
-  // a kit pile no site material matches keeps the kit's density (its tonnes), as in the app
-  const settings = withKitMaterials(siteSettings, kit, file.measurements);
   const [calRaw, designsRaw, templatesRaw, reportRaw, weigh, ...tiles] = await Promise.all([
     read.json(CALIBRATION_FILE),
     read.json(DESIGNS_FILE),
@@ -225,6 +226,7 @@ export async function readSurveyFiles(
     templates: surveyTemplateList(project, settings),
     weighbridge: typeof weigh === 'string' ? parseWeighbridge(weigh) : [],
     template: parsed<ReportTemplateFile>(ReportTemplateFile, reportRaw),
+    kit: kitDensity(kit),
   };
 }
 
@@ -816,8 +818,7 @@ export async function buildSurveyData(
   const capRef = (id: string | undefined) => captures.find((c) => c.id === id) ?? null;
   const tplOf = (m: SurveyMeasurement) => files.templates.find((x) => x.id === m.template);
   const plan = surveyPlan(files);
-  const material = (m: SurveyMeasurement) =>
-    settings.materials.find((x) => x.id === m.material) ?? null;
+  const material = (m: SurveyMeasurement) => pileMaterial(m, settings.materials, files.kit);
 
   // the report template's measurement entries (W8), in its order
   const byId = new Map(files.measurements.map((m) => [m.id, m]));

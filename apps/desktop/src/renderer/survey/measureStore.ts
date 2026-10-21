@@ -25,8 +25,9 @@ import {
 } from '@aio/schema';
 import {
   changesFile,
+  kitDensity,
   openWithKitPiles,
-  withKitMaterials,
+  type KitDensity,
   withKitConversion,
   DEFAULT_SNAP,
   designLayerOptions,
@@ -153,6 +154,8 @@ export interface MeasureState {
   message: string | null;
   autosave: boolean;
   settings: SurveySettings;
+  /** The stockpile kit's density and material names, for its piles' tonnes; null without kit data. */
+  kitDensity: KitDensity | null;
   /** The site settings came from `survey/settings.json` (false: the defaults). */
   settingsExist: boolean;
   templates: { project: SurveyTemplatesFile | null; user: SurveyTemplatesFile };
@@ -228,6 +231,7 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   saving: false,
   message: null,
   settings: defaultSurveySettings(),
+  kitDensity: null,
   settingsExist: false,
   templates: { project: null, user: emptySurveyTemplates() },
   tool: null,
@@ -359,12 +363,8 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     patch.settings = s.value.settings;
     patch.settingsExist = s.value.exists;
   }
-  // a kit pile no site material matches keeps the kit's density (its tonnes), in memory
-  patch.settings = withKitMaterials(
-    patch.settings ?? defaultSurveySettings(),
-    v.ok && v.value.ok ? v.value.volumes : null,
-    file.measurements,
-  );
+  // a kit pile weighs by the kit's density unless the person picked a site material (`pileMaterial`)
+  patch.kitDensity = kitDensity(v.ok && v.value.ok ? v.value.volumes : null);
   set(patch);
   // a writable project keeps the conversion on disk at once; a package keeps it in memory only
   if (converted && !readOnly && kitRead) await writeConversion(projectId, file, epoch);
@@ -511,7 +511,7 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     file,
     savedText: text(baseline),
     resultsUnwritten: true,
-    settings: withKitMaterials(s.settings, r.value.volumes, file.measurements),
+    kitDensity: kitDensity(r.value.volumes),
   });
   await writeConversion(projectId, baseline, epoch);
 }
