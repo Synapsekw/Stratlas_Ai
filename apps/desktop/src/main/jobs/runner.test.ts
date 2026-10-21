@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { odmJobEnv } from '../odm/install';
-import { JobRunner, jobDir } from './runner';
+import { JobRunner, jobBaseEnv, jobDir } from './runner';
 import { JobStore } from './store';
 
 const FAKE = join(import.meta.dirname, '__fixtures__', 'fake-runtime.mjs');
@@ -395,5 +395,36 @@ describe('JobRunner', () => {
     const again = new JobStore(join(base, 'jobs.json'));
     await again.load();
     expect(again.all().map((j) => j.id)).toEqual(['j-running']);
+  });
+});
+
+describe('jobBaseEnv', () => {
+  const base = {
+    PATH: 'C:/Windows/System32',
+    COMSPEC: 'C:/Windows/System32/cmd.exe',
+    AIO_ODM: 'C:/odm',
+    QUADRION_ODM_DIR: 'C:/odm',
+    GITHUB_TOKEN: 'secret',
+    PYTHONPATH: 'C:/elsewhere',
+    FAKE_ODM_PYTHON: 'C:/venv/python.exe',
+    FAKE_ODM_UDP_PORT: '0',
+  };
+
+  it('keeps what programs need and drops secrets and Python overrides', () => {
+    const env = jobBaseEnv(base);
+    expect(env.PATH).toBe(base.PATH);
+    expect(env.COMSPEC).toBe(base.COMSPEC);
+    expect(env.AIO_ODM).toBe(base.AIO_ODM);
+    expect(env.GITHUB_TOKEN).toBeUndefined();
+    expect(env.PYTHONPATH).toBeUndefined();
+    expect(env.NoDefaultCurrentDirectoryInExePath).toBe('1');
+  });
+
+  it("hands the fake ODM's settings to a job only in an end to end run", () => {
+    expect(jobBaseEnv(base).FAKE_ODM_PYTHON).toBeUndefined();
+    const e2e = jobBaseEnv({ ...base, QUADRION_E2E: '1' });
+    expect(e2e.FAKE_ODM_PYTHON).toBe(base.FAKE_ODM_PYTHON);
+    expect(e2e.FAKE_ODM_UDP_PORT).toBe('0');
+    expect(e2e.GITHUB_TOKEN).toBeUndefined();
   });
 });

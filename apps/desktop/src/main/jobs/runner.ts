@@ -125,13 +125,22 @@ const ENV_KEEP_PREFIX = [
   'LC_',
 ];
 
+/**
+ * The settings of the end to end tests' stand-in for ODM (`python/tests/fake_odm`: its `run.bat`
+ * starts `%FAKE_ODM_PYTHON%`), kept only in an end to end run (`QUADRION_E2E=1`, which a packaged
+ * build drops, packagedEnv.ts).
+ */
+const ENV_KEEP_E2E_PREFIX = ['FAKE_ODM_'];
+
 /** The environment a job's runtime starts with, from the app's (see {@link ENV_KEEP}). */
 export function jobBaseEnv(source: NodeJS.ProcessEnv): Record<string, string> {
+  const prefixes =
+    source.QUADRION_E2E === '1' ? [...ENV_KEEP_PREFIX, ...ENV_KEEP_E2E_PREFIX] : ENV_KEEP_PREFIX;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(source)) {
     const u = k.toUpperCase();
     if (v === undefined || ENV_DROP.has(u)) continue;
-    if (ENV_KEEP.has(u) || ENV_KEEP_PREFIX.some((p) => u.startsWith(p))) out[k] = v;
+    if (ENV_KEEP.has(u) || prefixes.some((p) => u.startsWith(p))) out[k] = v;
   }
   // Python's shutil.which (and cmd.exe) must not look in the current folder first on Windows
   out.NoDefaultCurrentDirectoryInExePath = '1';
