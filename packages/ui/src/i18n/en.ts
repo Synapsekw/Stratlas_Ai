@@ -581,6 +581,30 @@ export const en = {
     '{count} datasets hold photos from several days. Move them by hand.',
   'tree.dates.label': 'Datasets by survey date',
   'tree.dates.every': 'Every date',
+  'tree.measure.needsDate': 'Needs a date',
+  'tree.measure.move.telecom': 'Antenna measurements stay on the date they were picked on.',
+  'tree.measure.move.noMatch': '{date} has no data like {layer}, so nothing was moved.',
+  'tree.measure.move.unprepared':
+    'The surfaces of {date} are not prepared yet, so nothing was moved.',
+  'tree.measure.move.prepare': 'Prepare surfaces',
+  'tree.measure.move.notLoaded': '{layer} could not be loaded to measure on, so nothing was moved.',
+  'tree.measure.move.need3d':
+    'Switch to the 3D view to move measurements picked on a model or point cloud.',
+  'tree.measure.move.hiddenLayer':
+    'Show {layer} in the 3D view once, then try again: it is not loaded yet.',
+  'tree.measure.move.noData':
+    '{date} has no data under every point of {name}, so nothing was moved.',
+  'tree.measure.move.done_one': '{count} measurement moved to {date} and measured again.',
+  'tree.measure.move.done_other': '{count} measurements moved to {date} and measured again.',
+  'tree.measure.backfill.done_one': '{count} older measurement was filed under its survey date.',
+  'tree.measure.backfill.done_other':
+    '{count} older measurements were filed under their survey dates.',
+  'tree.measure.move.sameSurface':
+    '{name} already compares with {date}, so on {date} it would show no change. Nothing was moved.',
+  'tree.measure.move.noHeightMap':
+    '{date} has no height map to measure on the ground, so nothing was moved.',
+  'tree.measure.move.noMatchAny':
+    '{date} has no matching data to measure on, so nothing was moved.',
   'tree.measure.folderName': 'Name of the new folder',
   'tree.measure.dimmed': 'Hidden with {date}',
   'tree.measure.invalid': 'Invalid picks',
@@ -4336,6 +4360,8 @@ export const en = {
   'actions.measure.noFolder': 'No folder',
   'actions.measure.newFolder': 'New folder…',
   'actions.measure.inFolder': 'Already in this folder',
+  'actions.measure.spansDates': 'The marked measurements are on different dates',
+  'actions.measure.moveToDate': 'Move to date',
   'actions.measure.delete': 'Delete',
   'actions.measure.deleteCount_one': 'Delete {count} measurement',
   'actions.measure.deleteCount_other': 'Delete {count} measurements',
@@ -5732,7 +5758,11 @@ export const en = {
   'mcard.fill': 'Fill',
   'mcard.fillOpacity': 'Fill opacity',
   'mcard.borderWidth': 'Border width',
-  'mcard.onlyIn': 'Only in {label}',
+  'mcard.scope.date': 'Survey date: {date}',
+  'mcard.scope.needsDate':
+    'Needs a date: drag it onto a survey date in the Datasets list, or right-click it there and choose Move to date.',
+  'mcard.scope.source': 'Measured on: {layer}',
+  'mcard.scope.notRecorded': 'not recorded',
   'mcard.copyToSurvey': 'Copy to survey',
   'mcard.copyToAnother': 'Copy to another survey',
   'mcard.vertexAxis': 'Vertex {n} {axis}',

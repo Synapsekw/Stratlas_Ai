@@ -51,6 +51,7 @@ import {
   type ComparisonItem,
   type ComparisonResult,
   type DesignEntry,
+  type MeasurementScope,
   type ProjectManifest,
   type ReportSectionId,
   type SiteMaterial,
@@ -103,6 +104,7 @@ import { measurementHasChart } from '../../survey/card/chartRule';
 import { presample, readsSurface } from '../../survey/card/terrain';
 import type { EngineContext } from '../../survey/engineProtocol';
 import { EngineSession } from '../../survey/engineServe';
+import { drawnShifts, onDrawnPoints } from '../../survey/dateReadout';
 import { drawnPoints } from '../../survey/measureDates';
 import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from '../../survey/seriesRule';
 
@@ -555,6 +557,20 @@ export interface ReportSurveyData extends SurveyReportData {
 }
 
 /**
+ * A sampler of a date's prepared surface for points where the app draws them (the scope's date
+ * line-up now added): moved back to where they are stored, then on by the line-up the surface was
+ * prepared with, as the panel's card reads them (`onDrawnPoints`).
+ */
+function drawnOnSurface(
+  sample: PointSampler,
+  scope: MeasurementScope,
+  surface: HeightTiles | null,
+  manifest: ProjectManifest,
+): PointSampler {
+  return onDrawnPoints(sample, drawnShifts(scope, surface, manifest));
+}
+
+/**
  * A synchronous height sampler from an async one, for the tools' terrain questions: `ask` runs
  * with every height 0 to collect the places the tools ask for, each is sampled once in one go,
  * and the sampler answers them (`presample`, as the app's card reads its terrain). Undefined
@@ -783,7 +799,16 @@ async function entryChart(
     if (!pt) return null;
     const rows: { capture: string; date: string; label: string; z: number | null }[] = [];
     for (const cap of c.surveyed) {
-      const sample = await c.engine.sampler(cap.id);
+      const raw = await c.engine.sampler(cap.id);
+      // the point where it is drawn, read on each date's surface where that was prepared
+      const sample = raw
+        ? drawnOnSurface(
+            raw,
+            { kind: 'survey', capture: cap.id },
+            surfaceOfCapture(c.files.surfaces, cap.id),
+            c.files.manifest,
+          )
+        : null;
       const h = sample ? (await sample(Float64Array.of(pt[0]), Float64Array.of(pt[1])))[0] : null;
       rows.push({
         capture: cap.id,
@@ -895,7 +920,12 @@ export async function buildSurveyData(
     // the terrain only where a row it prints reads it (a pile's never does), each place once, as
     // the app's card reads it (`useCardTerrain`); the readouts bound how many places a polygon asks
     const terrain = readsSurface(m.tool, tpl?.items);
-    const sample = computed && cap && terrain ? await engine.sampler(cap.id) : null;
+    const onCap = computed && cap && terrain ? await engine.sampler(cap.id) : null;
+    // the drawn points read where the date's surface was prepared (its line-up then), as the panel
+    const sample =
+      onCap && cap
+        ? drawnOnSurface(onCap, m.scope, surfaceOfCapture(files.surfaces, cap.id), manifest)
+        : null;
     const surface = await presampled((h) => {
       allRows(drawn, { surface: h });
     }, sample);

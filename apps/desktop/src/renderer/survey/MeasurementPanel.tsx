@@ -3,28 +3,26 @@
  * detail variant. The card holds the name, the scope chip, the colour, the primary value, the
  * secondary line and "More"; the tool's chips, chart and detail come from `card/slots.tsx`. Under
  * them: the template (changeable) and its custom fields, style and label, the units override, the
- * scope (site or one survey: promote, demote, copy to another survey) and the vertices (drag in the
+ * survey date it is filed under, the layer it was measured on, copy to another date, and the vertices (drag in the
  * 3D view, or type coordinates). The "⋯" menu and the actions row are the registry's.
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { unitLabel } from '@aio/geo';
 import type { MeasurementStyle, SurveyMeasurement } from '@aio/schema';
 import { changeTemplate, isTelecomTool, TOOL_LABELS, type RolePicks } from '@aio/survey';
-import { Icon, IconButton, useT } from '@aio/ui';
+import { formatDate, Icon, IconButton, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useState, type CSSProperties } from 'react';
 import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
 import { templateItems } from './card/cardModel';
 import { slotsFor, useCardTerrain, usePointVsText } from './card/slots';
 import {
-  copyToSurvey,
   editEvent,
   knownTemplates,
   openDialog,
   patchMeasurement,
   replaceMeasurement,
   select,
-  setScope,
   startEditing,
   stopEditing,
   updateMeasurement,
@@ -38,6 +36,7 @@ import {
   DEFAULT_MEASURE_COLOUR,
   MEASURE_COLOURS,
 } from './measureColours';
+import { copyMeasurementToDate } from './measureMoveRun';
 import { HoldNote } from './Qa';
 import { useFocusCapture } from './qaHelpers';
 import { isHeld, useQa } from './qaStore';
@@ -149,6 +148,7 @@ function PanelSections({
   const templates = useMeasure((s) => s.templates);
   const editing = useMeasure((s) => s.editing);
   const captures = useWorkspace((s) => s.project?.manifest.captures ?? []);
+  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const [copyTo, setCopyTo] = useState('');
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
   const tpl = m.template ? all.find((x) => x.id === m.template) : undefined;
@@ -161,6 +161,8 @@ function PanelSections({
     });
   };
   const capture = m.scope.kind === 'survey' ? m.scope.capture : null;
+  const dateCapture = captures.find((x) => x.id === capture);
+  const dateLabel = dateCapture ? formatDate(dateCapture.date) : null;
 
   return (
     <>
@@ -406,38 +408,25 @@ function PanelSections({
 
       <details className="sv-sec">
         <summary>Scope</summary>
-        <p className="small">
-          {capture
-            ? t('mcard.onlyIn', { label: captures.find((c) => c.id === capture)?.label ?? capture })
-            : 'Whole site: shown with every survey'}
-        </p>
-        {!ro && (
-          <div className="sv-row sv-wrap">
-            {capture ? (
-              <button
-                type="button"
-                className="btn sm"
-                onClick={() => {
-                  setScope(m.id, { kind: 'site' });
-                }}
-              >
-                Promote to the whole site
-              </button>
-            ) : (
-              captures.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="btn sm"
-                  onClick={() => {
-                    setScope(m.id, { kind: 'survey', capture: c.id });
-                  }}
-                >
-                  {t('mcard.onlyIn', { label: c.label })}
-                </button>
-              ))
-            )}
-          </div>
+        {dateLabel ? (
+          <p className="small" data-testid="survey-scope-date">
+            {t('mcard.scope.date', { date: dateLabel })}
+          </p>
+        ) : (
+          captures.length > 0 && (
+            <p className="small" data-testid="survey-scope-date">
+              {t('mcard.scope.needsDate')}
+            </p>
+          )
+        )}
+        {(m.source ?? dateLabel) && (
+          <p className="small" data-testid="survey-scope-source">
+            {t('mcard.scope.source', {
+              layer: m.source
+                ? (manifest?.layers.find((l) => l.id === m.source?.layer)?.name ?? m.source.layer)
+                : t('mcard.scope.notRecorded'),
+            })}
+          </p>
         )}
         {!ro && captures.length > 0 && (
           <div className="sv-row">
@@ -463,7 +452,7 @@ function PanelSections({
               className="btn sm"
               disabled={!copyTo}
               onClick={() => {
-                copyToSurvey(m.id, copyTo);
+                void copyMeasurementToDate(m.id, copyTo);
                 setCopyTo('');
               }}
             >

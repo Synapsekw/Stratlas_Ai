@@ -475,3 +475,139 @@ function must2<T>(v: T | undefined): T {
   if (v === undefined) throw new Error('missing');
   return v;
 }
+
+/** A drag event as the browser sends it (jsdom has no DragEvent), with a data transfer to fill. */
+function fireDrag(el: Element | null | undefined, type: string) {
+  if (!el) throw new Error(`no element for ${type}`);
+  const e = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(e, 'dataTransfer', {
+    value: { effectAllowed: 'none', dropEffect: 'none', setData: vi.fn() },
+  });
+  Object.defineProperty(e, 'relatedTarget', { value: null });
+  act(() => {
+    el.dispatchEvent(e);
+  });
+}
+const folderEl = (name: string) => q(`[data-testid="measure-folder"][data-folder="${name}"]`);
+const header = () => q('[data-testid="tree-group-measurements"]');
+/** The ids a row carries, a folder row's every child. */
+const carry = (it: TreeItem): string[] =>
+  it.measure ? [it.measure.id] : (it.children ?? []).flatMap(carry);
+
+describe('DatasetTree: dragging measurements between folders', () => {
+  const two: TreeItem[] = [
+    folder('Piles', [m('p1', 'Pile 1')]),
+    folder('Fence', [m('b', 'Line B'), m('c', 'Line C')]),
+    m('a', 'Line A'),
+  ];
+
+  it('rows and folder rows drag only with dragMeasureIds', () => {
+    render(props({}, {}, two));
+    expect(row('a')?.getAttribute('draggable')).toBeNull();
+    expect(folderEl('Fence')?.getAttribute('draggable')).toBeNull();
+    render(props({}, { dragMeasureIds: carry }, two));
+    expect(row('a')?.getAttribute('draggable')).toBe('true');
+    expect(folderEl('Fence')?.getAttribute('draggable')).toBe('true');
+  });
+
+  it('a row dropped on a folder files it there, on the header takes it out', () => {
+    const onDropToFolder = vi.fn();
+    render(props({}, { dragMeasureIds: carry, onDropToFolder }, two));
+    fireDrag(row('a'), 'dragstart');
+    expect(folderEl('Piles')?.className).toContain('drop-can');
+    fireDrag(folderEl('Piles'), 'dragover');
+    expect(folderEl('Piles')?.className).toContain('drop-over');
+    fireDrag(folderEl('Piles'), 'drop');
+    expect(onDropToFolder).toHaveBeenLastCalledWith(['a'], 'Piles');
+    // a loose row is already out of any folder: the header is no target for it
+    fireDrag(row('a'), 'dragstart');
+    expect(header()?.className).not.toContain('drop-can');
+    fireDrag(row('b'), 'dragstart');
+    expect(header()?.className).toContain('drop-can');
+    expect(folderEl('Fence')?.className).not.toContain('drop-can');
+    fireDrag(header(), 'drop');
+    expect(onDropToFolder).toHaveBeenLastCalledWith(['b'], '');
+    expect(onDropToFolder).toHaveBeenCalledTimes(2);
+  });
+
+  it('a folder row carries every measurement in it', () => {
+    const onDropToFolder = vi.fn();
+    const onDragMeasures = vi.fn();
+    render(props({}, { dragMeasureIds: carry, onDropToFolder, onDragMeasures }, two));
+    fireDrag(folderEl('Fence'), 'dragstart');
+    expect(onDragMeasures).toHaveBeenLastCalledWith({ ids: ['b', 'c'], telecom: false });
+    fireDrag(folderEl('Piles'), 'drop');
+    expect(onDropToFolder).toHaveBeenCalledWith(['b', 'c'], 'Piles');
+    expect(onDragMeasures).toHaveBeenLastCalledWith(null);
+  });
+
+  it('reports an antenna measurement in the drag', () => {
+    const onDragMeasures = vi.fn();
+    const items = [m('t', 'Antenna', { telecom: true }), m('a', 'Line A')];
+    render(props({}, { dragMeasureIds: carry, onDragMeasures }, items));
+    fireDrag(row('t'), 'dragstart');
+    expect(onDragMeasures).toHaveBeenLastCalledWith({ ids: ['t'], telecom: true });
+  });
+
+  it('a layer drag does not light measurement targets', () => {
+    const onDropToFolder = vi.fn();
+    render(props({}, { dragMeasureIds: carry, onDropToFolder }, two));
+    expect(folderEl('Piles')?.className).not.toContain('drop-can');
+    expect(header()?.className).not.toContain('drop-can');
+    // a drop on a folder with no measurement drag in flight is nothing
+    fireDrag(folderEl('Piles'), 'drop');
+    expect(onDropToFolder).not.toHaveBeenCalled();
+  });
+
+  it('a reveal scrolls only the tree holding the measurement', () => {
+    const scroll = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      value: function (this: Element) {
+        scroll(this);
+      },
+      configurable: true,
+      writable: true,
+    });
+    const trees = (reveal: { id: string | null; seq: number } | null) => {
+      const p = props({}, { reveal }, two);
+      return (
+        <>
+          <DatasetTree {...p} nested groups={[group([m('x', 'Other X')])]} />
+          <DatasetTree {...p} nested groups={[group(two)]} />
+        </>
+      );
+    };
+    root ??= createRoot(host);
+    act(() => root?.render(trees(null)));
+    act(() => root?.render(trees({ id: 'b', seq: 1 })));
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.calls[0]?.[0]).toBe(row('b'));
+  });
+
+  it('a new-folder request with no ids still shows its field in a single tree', () => {
+    const p = props({}, { newFolder: { ids: [], seq: 1 } }, two);
+    root ??= createRoot(host);
+    act(() => root?.render(<DatasetTree {...p} groups={[group(two)]} />));
+    expect(qa('[data-testid="measure-folder-new"]').length).toBe(1);
+  });
+
+  it('the new-folder row shows only in the group holding the asked measurement', () => {
+    const other = [m('x', 'Other X')];
+    const p = props({}, { newFolder: { ids: ['b'], seq: 1 } }, two);
+    root ??= createRoot(host);
+    act(() => {
+      root?.render(
+        <>
+          <DatasetTree {...p} nested groups={[group(other)]} />
+          <DatasetTree {...p} nested groups={[group(two)]} />
+        </>,
+      );
+    });
+    expect(qa('[data-testid="measure-folder-new"]').length).toBe(1);
+    const holder = must(q('[data-testid="measure-folder-new"]')).closest(
+      '[role="tree"],[role="group"]',
+    );
+    expect(holder?.textContent).toContain('Line A');
+  });
+});

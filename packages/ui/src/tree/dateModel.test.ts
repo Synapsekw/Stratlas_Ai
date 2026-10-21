@@ -203,3 +203,24 @@ describe('drawings in the date tree', () => {
     expect(folders.find((f) => f.id === 'c')?.groups[0]?.items[0]?.meta).toBe('not placed');
   });
 });
+
+describe('buildDateTree measurements', () => {
+  const row = { id: 'measure:m1', name: 'M', measure: { id: 'm1', color: '#fff', dimmed: false } };
+  const withM = buildDateTree(manifest, [], {}, { captures, of }, labels, {
+    measurementsOf: (id) => (id === 'b' ? { items: [row] } : undefined),
+  });
+  it("puts each date's Measurements group in its folder", () => {
+    const b = withM.find((f) => f.id === 'b');
+    const g = b?.groups.find((x) => x.kind === 'measurements');
+    expect(g?.count).toBe(1);
+    expect(withM.find((f) => f.id === 'c')?.groups.some((x) => x.kind === 'measurements')).toBe(
+      false,
+    );
+    expect(
+      withM.find((f) => f.id === EVERY_DATE)?.groups.some((x) => x.kind === 'measurements'),
+    ).toBe(false);
+  });
+  it('a date with only measurements is not empty', () => {
+    expect(withM.find((f) => f.id === 'b')?.groups).toHaveLength(1);
+  });
+});

@@ -68,6 +68,7 @@ import {
   measureStore,
   type MeasureState,
 } from './measureStore';
+import { mapPickLayer, type VertexPick } from './measureSource';
 
 const DRAFT_COLOR = '#4cc9f0';
 const SNAP_COLOR = '#ff5ccd';
@@ -259,6 +260,21 @@ function isReferenceSurface(object: Object3D): boolean {
 }
 
 /**
+ * What a 3D hit sits on: the layer of the nearest ancestor that names one (`aioLayer`, else the
+ * mesh and cloud adapters' `layerId`), and `ground` for a flat reference surface (a raster plate
+ * or the ground plane), `model` for measured geometry.
+ */
+export function hitPick(object: Object3D | null): VertexPick {
+  if (!object) return { layer: null, on: 'ground' };
+  let layer: string | null = null;
+  for (let node: Object3D | null = object; node && layer === null; node = node.parent) {
+    const id: unknown = node.userData.aioLayer ?? node.userData.layerId;
+    if (typeof id === 'string') layer = id;
+  }
+  return { layer, on: isReferenceSurface(object) ? 'ground' : 'model' };
+}
+
+/**
  * Draw the measurements in the 3D stage and drive the active tool and vertex editing there.
  * Returns the detach. With `opts.display` the view draws only (see `MeasureViewOptions`).
  */
@@ -302,7 +318,10 @@ export function attach3d(
       distanceUnit: effectiveUnits(s.settings.units).distance,
     };
   };
-  const pick = (e: { clientX: number; clientY: number }): SitePoint | null => {
+  const pick = (e: {
+    clientX: number;
+    clientY: number;
+  }): { p: SitePoint; at: VertexPick } | null => {
     const r = canvas.getBoundingClientRect();
     const ndc = new Vector2(
       ((e.clientX - r.left) / r.width) * 2 - 1,
@@ -312,7 +331,9 @@ export function attach3d(
     const s = measureStore.getState();
     const tool = s.tool?.tool ?? s.file.measurements.find((m) => m.id === s.focus)?.tool;
     if (tool && isTelecomTool(tool) && (!hit || isReferenceSurface(hit.object))) return null;
-    return hit ? frame.toSite([hit.point.x, hit.point.y, hit.point.z]) : null;
+    return hit
+      ? { p: frame.toSite([hit.point.x, hit.point.y, hit.point.z]), at: hitPick(hit.object) }
+      : null;
   };
 
   // -------------------------------------------------- drawing objects
@@ -578,20 +599,21 @@ export function attach3d(
   const onMove = (e: PointerEvent) => {
     const s = measureStore.getState();
     if (s.editing && dragging) {
-      const p = pick(e);
-      if (p) editEvent({ type: 'drag', p });
+      const hit = pick(e);
+      if (hit) editEvent({ type: 'drag', p: hit.p });
       return;
     }
     if (!s.draw) return;
-    const raw = pick(e);
-    if (!raw) {
+    const hit = pick(e);
+    const raw = hit?.p;
+    if (!hit || !raw) {
       last = null;
       if (s.tool && isTelecomTool(s.tool.tool) && s.draw.cursor)
         measureStore.setState({ draw: { ...s.draw, cursor: null } });
       return;
     }
     last = { raw, screen: { x: e.clientX, y: e.clientY }, shift: e.shiftKey };
-    drawEvent({ type: 'move', ...last }, env());
+    drawEvent({ type: 'move', ...last }, env(), hit.at);
   };
   const onDown = (e: PointerEvent) => {
     const s = measureStore.getState();
@@ -642,11 +664,12 @@ export function attach3d(
       t - lastClick.t <= 450;
     lastClick = { x: e.clientX, y: e.clientY, t };
     if (repeat) return true;
-    const raw = pick(e);
-    if (raw)
+    const hit = pick(e);
+    if (hit)
       drawEvent(
-        { type: 'click', raw, screen: { x: e.clientX, y: e.clientY }, shift: e.shiftKey },
+        { type: 'click', raw: hit.p, screen: { x: e.clientX, y: e.clientY }, shift: e.shiftKey },
         env(),
+        hit.at,
       );
     else if (s.tool && isTelecomTool(s.tool.tool))
       measureStore.setState({
@@ -994,15 +1017,16 @@ export function attachMap(
       t - lastClick.t <= 450;
     lastClick = { ...sc, t };
     if (repeat) return;
-    drawEvent(
-      {
-        type: 'click',
-        raw: site(e.lngLat.lng, e.lngLat.lat),
-        screen: sc,
-        shift: e.originalEvent.shiftKey,
-      },
-      env(),
-    );
+    const raw = site(e.lngLat.lng, e.lngLat.lat);
+    // a map click is a ground pick on the topmost shown raster under it
+    const ws = dates.getState();
+    const manifest = openManifest();
+    const layer =
+      manifest && ws.dates ? mapPickLayer(manifest, ws.dates, ws.hidden, frame.toLocal(raw)) : null;
+    drawEvent({ type: 'click', raw, screen: sc, shift: e.originalEvent.shiftKey }, env(), {
+      layer,
+      on: 'ground',
+    });
   };
   const onDbl = (e: MapMouse) => {
     if (!measureStore.getState().draw) return;

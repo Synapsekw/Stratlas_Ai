@@ -18,10 +18,16 @@ export function measureStorage(): Storage | null {
   }
 }
 
-/** Storage-backed memory; a session map keeps the ids when storage is blocked or missing. */
-export function createMeasureVisibilityMemory(storage: Storage | null): MeasureVisibilityMemory {
+/**
+ * Storage-backed memory of ids per project (under `base`, the hidden ids by default); a session
+ * map keeps the ids when storage is blocked or missing.
+ */
+export function createMeasureVisibilityMemory(
+  storage: Storage | null,
+  base: string = HIDDEN_KEY,
+): MeasureVisibilityMemory {
   const session = new Map<string, string[]>();
-  const key = (projectId: string) => `${HIDDEN_KEY}:${projectId}`;
+  const key = (projectId: string) => `${base}:${projectId}`;
   return {
     load(projectId) {
       try {

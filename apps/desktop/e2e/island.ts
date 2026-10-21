@@ -286,16 +286,26 @@ export async function siteDataButton(win: Page, name: string): Promise<Locator> 
 /**
  * The Measurements group of the Datasets tree, in the left sidebar on the Scene: the sidebar
  * unfolded from its rail (the Scene folds it in a narrow window) and the group open. Returns the
- * group, its head row and its rows (`measure-row`, `measure-folder`).
+ * group, its head row and its rows (`measure-row`, `measure-folder`). In a project with survey
+ * dates each date folder holds its own Measurements group: `date` (a capture id) picks that
+ * date's, its folder opened with its arrow first (the focus stays where it was).
  */
-export async function measureTree(win: Page): Promise<Locator> {
+export async function measureTree(win: Page, date?: string): Promise<Locator> {
   const handle = win.getByTestId('panel-handle-left');
   if ((await handle.getAttribute('aria-expanded')) !== 'true') await handle.click();
   await expect(handle).toHaveAttribute('aria-expanded', 'true');
-  const toggle = win.getByTestId('tree-group-toggle-measurements');
+  let scope: Page | Locator = win;
+  if (date !== undefined) {
+    const folder = win.getByTestId(`date-folder-${date}`);
+    if ((await folder.getAttribute('aria-expanded')) !== 'true')
+      await folder.getByRole('button', { name: /^Expand/ }).click();
+    await expect(folder).toHaveAttribute('aria-expanded', 'true');
+    scope = folder;
+  }
+  const toggle = scope.getByTestId('tree-group-toggle-measurements');
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  return win.getByTestId('tree-group-measurements').locator('..');
+  return scope.getByTestId('tree-group-measurements').locator('..');
 }
 
 /** The filter box at the top of the tree's Measurements group (the group opened first). */

@@ -22,7 +22,7 @@ import {
   DEFAULT_FILL_OPACITY,
   DEFAULT_MEASURE_COLOUR,
 } from './measureColours';
-import { attach3d, attachMap, frameOf, labelText, snapProviders } from './measureScene';
+import { attach3d, attachMap, frameOf, hitPick, labelText, snapProviders } from './measureScene';
 import {
   editEvent,
   flipAzimuth,
@@ -146,6 +146,32 @@ it.each([new Mesh(), new Points(), Object.assign(new Mesh(), { userData: { type:
     s.detach();
   },
 );
+
+it('hitPick names the layer of a mesh hit as a model pick', () => {
+  const root = new Group();
+  root.userData.layerId = 'terrain-1';
+  const child = new Group();
+  const mesh = new Mesh();
+  child.add(mesh);
+  root.add(child);
+  expect(hitPick(mesh)).toEqual({ layer: 'terrain-1', on: 'model' });
+  root.userData.aioLayer = 'adapter-1';
+  expect(hitPick(mesh)).toEqual({ layer: 'adapter-1', on: 'model' });
+  expect(hitPick(new Mesh())).toEqual({ layer: null, on: 'model' });
+  expect(hitPick(null)).toEqual({ layer: null, on: 'ground' });
+});
+
+it('hitPick calls a raster or the ground plane a ground pick', () => {
+  const root = new Group();
+  root.userData.aioRaster = true;
+  root.userData.aioLayer = 'dsm-1';
+  const plate = new Mesh();
+  root.add(plate);
+  expect(hitPick(plate)).toEqual({ layer: 'dsm-1', on: 'ground' });
+  const plane = new Mesh();
+  plane.name = 'env:ground';
+  expect(hitPick(plane)).toEqual({ layer: null, on: 'ground' });
+});
 
 it('renders the facing arrow in local north and reverses it when flipped', () => {
   const s = scene();

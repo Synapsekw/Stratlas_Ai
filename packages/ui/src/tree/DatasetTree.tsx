@@ -69,6 +69,11 @@ export interface DatasetTreeProps {
   /** Rendered inside a date folder: the root is a group, not a second tree. */
   nested?: boolean | undefined;
   /**
+   * Set by a tree that mounts this one because of a reveal (a date folder opened for it): the
+   * pending reveal is honoured at mount instead of being taken as already seen.
+   */
+  honourReveal?: boolean | undefined;
+  /**
    * Rows that can be dragged (onto a survey date folder): the layers a row carries, none for a
    * row that stays put. With `onDragItem`, which hears the layers when a drag starts and null when
    * it ends.
@@ -145,6 +150,18 @@ export interface MeasureTreeProps {
    */
   query?: string | undefined;
   onQuery?: ((query: string) => void) | undefined;
+  /**
+   * The measurement ids a drag of this row carries (a row: its id; a folder row: every id in it).
+   * Without it nothing drags (read-only).
+   */
+  dragMeasureIds?: ((item: TreeItem) => string[]) | undefined;
+  /**
+   * A folder row, or the group header (`''`: out of any folder), took a drop of measurements.
+   * Not called for the folder they are already in.
+   */
+  onDropToFolder?: ((ids: string[], folder: string) => void) | undefined;
+  /** A measurement drag started (the ids, and whether an antenna is among them) or ended (null). */
+  onDragMeasures?: ((drag: { ids: string[]; telecom: boolean } | null) => void) | undefined;
 }
 
 /** Measurement labels and folder names take up to 200 characters. */
@@ -343,22 +360,32 @@ export function DatasetTree(props: DatasetTreeProps) {
    * on a new `seq`, as the unplace request is: open the group and the folder that holds it.
    */
   const [revealed, setRevealed] = useState<string | null>(null);
-  const [seenReveal, setSeenReveal] = useState(measures?.reveal?.seq ?? 0);
+  /** Whether the current reveal was found in this tree (in a dated tree, one of several). */
+  const [revealMine, setRevealMine] = useState(false);
+  const [seenReveal, setSeenReveal] = useState(
+    props.honourReveal === true ? 0 : (measures?.reveal?.seq ?? 0),
+  );
   if (measures?.reveal && measures.reveal.seq !== seenReveal) {
     const { id, seq } = measures.reveal;
     setSeenReveal(seq);
-    setRevealed(id);
-    setOpen((o) => ({ ...o, measurements: true }));
-    const holder =
-      id === null
-        ? undefined
-        : groups
-            .find((g) => g.kind === 'measurements')
-            ?.items.find((it) => it.folder !== undefined && itemMeasureIds(it).includes(id));
-    const name = holder?.folder;
-    if (name !== undefined) {
-      setFolderOpen((o) => ({ ...o, [name]: true }));
-      setFolderAll((o) => ({ ...o, [name]: true }));
+    // in a dated tree several of these are drawn: only the one holding the measurement acts
+    const here =
+      id === null || (measureGroup !== undefined && groupMeasureIds(measureGroup).includes(id));
+    setRevealMine(here);
+    if (here) {
+      setRevealed(id);
+      setOpen((o) => ({ ...o, measurements: true }));
+      const holder =
+        id === null
+          ? undefined
+          : groups
+              .find((g) => g.kind === 'measurements')
+              ?.items.find((it) => it.folder !== undefined && itemMeasureIds(it).includes(id));
+      const name = holder?.folder;
+      if (name !== undefined) {
+        setFolderOpen((o) => ({ ...o, [name]: true }));
+        setFolderAll((o) => ({ ...o, [name]: true }));
+      }
     }
   }
   /** The reveal last scrolled to; a later one scrolls once its row (or the group) is drawn. */
@@ -366,6 +393,10 @@ export function DatasetTree(props: DatasetTreeProps) {
   const measureHead = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     if (scrolledReveal.current === seenReveal || collapsed) return;
+    if (!revealMine) {
+      scrolledReveal.current = seenReveal;
+      return;
+    }
     const el = revealed === null ? measureHead.current : rowEls.current.get(measureMark(revealed));
     if (!el) return;
     scrolledReveal.current = seenReveal;
@@ -781,6 +812,87 @@ export function DatasetTree(props: DatasetTreeProps) {
     );
   };
 
+  /** The measurements being dragged inside this tree, and the target under them. */
+  const [measureDrag, setMeasureDrag] = useState<string[] | null>(null);
+  const [measureOver, setMeasureOver] = useState<string | null>(null);
+  // the caller's callback is read through a ref, so the listeners below do not churn each render
+  const dragMeasuresChanged = useRef(measures?.onDragMeasures);
+  useEffect(() => {
+    dragMeasuresChanged.current = measures?.onDragMeasures;
+  });
+  // A moved row may unmount before its dragend fires: the drop that ends any drag clears this too.
+  useEffect(() => {
+    if (!measureDrag) return;
+    const end = () => {
+      setMeasureDrag(null);
+      setMeasureOver(null);
+      dragMeasuresChanged.current?.(null);
+    };
+    document.addEventListener('dragend', end);
+    document.addEventListener('drop', end);
+    return () => {
+      document.removeEventListener('dragend', end);
+      document.removeEventListener('drop', end);
+    };
+  }, [measureDrag]);
+  /** Whether an antenna measurement is in `it` or under it. */
+  const hasTelecom = (it: TreeItem): boolean =>
+    it.measure?.telecom === true || (it.children ?? []).some(hasTelecom);
+  /** Drag wiring of a measurement row or folder row: none where nothing may drag. */
+  const measureDragSource = (it: TreeItem, mp: MeasureTreeProps) => {
+    const ids = mp.dragMeasureIds?.(it) ?? [];
+    if (ids.length === 0) return {};
+    return {
+      draggable: true,
+      onDragStart: (e: DragEvent<HTMLElement>) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', it.name);
+        setMeasureDrag(ids);
+        mp.onDragMeasures?.({ ids, telecom: hasTelecom(it) });
+      },
+      onDragEnd: () => {
+        setMeasureDrag(null);
+        setMeasureOver(null);
+        mp.onDragMeasures?.(null);
+      },
+    };
+  };
+  /**
+   * Drop wiring of a folder row (`folder` its name) or of the group header (`''`). `inHome` says
+   * the dragged rows are already there, which makes it no target.
+   */
+  const measureDropOn = (
+    key: string,
+    folder: string,
+    inHome: (ids: string[]) => boolean,
+    mp: MeasureTreeProps,
+  ) => {
+    if (!measureDrag || !mp.onDropToFolder || inHome(measureDrag)) return { cls: '' };
+    const drop = mp.onDropToFolder;
+    return {
+      cls: measureOver === key ? ' drop-can drop-over' : ' drop-can',
+      onDragOver: (e: DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (measureOver !== key) setMeasureOver(key);
+      },
+      onDragLeave: (e: DragEvent<HTMLElement>) => {
+        const to = e.relatedTarget;
+        if (to instanceof Node && e.currentTarget.contains(to)) return;
+        setMeasureOver((o) => (o === key ? null : o));
+      },
+      onDrop: (e: DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        const ids = measureDrag;
+        setMeasureDrag(null);
+        setMeasureOver(null);
+        mp.onDragMeasures?.(null);
+        drop(ids, folder);
+      },
+    };
+  };
+
   /** A measurement row: swatch, label (or its name field), value and its own eye. */
   const measureRow = (it: TreeItem, mp: MeasureTreeProps, sub: boolean) => {
     const ms = it.measure;
@@ -803,6 +915,7 @@ export function DatasetTree(props: DatasetTreeProps) {
         className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${marked ? ' marked' : ''}${off ? ' hidden' : ''}${ms.dimmed ? ' dim' : ''}`}
         data-testid="measure-row"
         data-id={ms.id}
+        {...measureDragSource(it, mp)}
         data-mark={props.onMark ? mark : undefined}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -912,6 +1025,13 @@ export function DatasetTree(props: DatasetTreeProps) {
     const toggle = () => {
       if (!filtering) setFolderOpen((o) => ({ ...o, [name]: !open }));
     };
+    const homeIds = new Set(eyeIds);
+    const { cls: dropCls, ...dropProps } = measureDropOn(
+      `folder:${name}`,
+      name,
+      (ids) => ids.every((id) => homeIds.has(id)),
+      mp,
+    );
     return (
       <div
         key={it.id}
@@ -923,9 +1043,11 @@ export function DatasetTree(props: DatasetTreeProps) {
       >
         <div
           tabIndex={0}
-          className={`titem flight${allOff ? ' hidden' : ''}`}
+          className={`titem flight${allOff ? ' hidden' : ''}${dropCls}`}
           data-testid="measure-folder"
           data-folder={name}
+          {...measureDragSource(it, mp)}
+          {...dropProps}
           onClick={toggle}
           onContextMenu={noMenu.onContextMenu}
           onKeyDown={(e) => {
@@ -977,9 +1099,12 @@ export function DatasetTree(props: DatasetTreeProps) {
   };
 
   /** The name field of a folder being made, at the top of the group; Escape or empty cancels. */
-  const newFolderRow = (mp: MeasureTreeProps) => {
+  const newFolderRow = (mp: MeasureTreeProps, g: TreeGroup) => {
     const nf = mp.newFolder;
     if (!nf || nf.seq === newFolderDone) return null;
+    // in a dated tree several groups are drawn: the field shows in the one holding the rows
+    const held = new Set(groupMeasureIds(g));
+    if (nf.ids.length > 0 && !nf.ids.some((id) => held.has(id))) return null;
     let named = false;
     return (
       <div
@@ -1089,6 +1214,12 @@ export function DatasetTree(props: DatasetTreeProps) {
         const groupMenu = mg ? undefined : props.onGroupMenu;
         const groupDrag = carried.length > 0 && props.onDragItem !== undefined;
         const action = collapsed ? undefined : props.groupAction?.(g);
+        const folderHomes = new Set(
+          mg ? folders.flatMap((it) => (it.folder !== undefined ? folderMeasureIds(it) : [])) : [],
+        );
+        const { cls: headCls, ...headDrop } = mg
+          ? measureDropOn('head', '', (ids) => ids.every((id) => !folderHomes.has(id)), mg)
+          : { cls: '' };
         const fold: GroupFold = {
           expanded,
           toggle: () => {
@@ -1101,9 +1232,10 @@ export function DatasetTree(props: DatasetTreeProps) {
         return (
           <div key={g.kind} role="treeitem" aria-expanded={expanded} aria-selected={false}>
             <div
-              className="tgroup-row"
+              className={`tgroup-row${headCls}`}
               data-testid={`tree-group-${g.kind}`}
               ref={mg ? measureHead : undefined}
+              {...headDrop}
               {...(groupDrag
                 ? {
                     draggable: true,
@@ -1210,7 +1342,7 @@ export function DatasetTree(props: DatasetTreeProps) {
               <div className="titems" role="group">
                 {mg ? (
                   <>
-                    {newFolderRow(mg)}
+                    {newFolderRow(mg, g)}
                     {folders.map((it) =>
                       it.folder !== undefined
                         ? measureFolderRow(it, it.folder, mg, filtering)

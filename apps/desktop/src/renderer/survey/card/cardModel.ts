@@ -58,7 +58,7 @@ export interface CardModel {
   name: string;
   /** The tool's name, for the icon's accessible label. */
   tool: string;
-  /** The survey date a survey-scoped measurement belongs to; null for a site-wide one. */
+  /** The survey date a measurement belongs to; null for a site-wide one or a date since deleted. */
   scope: { label: string; capture?: string } | null;
   colour: string;
   /** The colour's name ("Yellow"), or its hex when it is not a preset. */
@@ -150,18 +150,15 @@ export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
   const items = templateItems(m, ctx.templates);
   const primary = primaryRow(m, readout, items);
   const scope = m.scope;
+  // a date the project no longer has is no chip: the measurement needs a date (measurement dates)
+  const dated =
+    scope.kind === 'survey' ? ctx.captures.find((c) => c.id === scope.capture) : undefined;
   const colour = m.style?.color ?? DEFAULT_MEASURE_COLOUR;
   return {
     icon: TOOL_ICON[m.tool],
     name: m.label,
     tool: TOOL_LABELS[m.tool],
-    scope:
-      scope.kind === 'survey'
-        ? {
-            label: ctx.captures.find((c) => c.id === scope.capture)?.label ?? scope.capture,
-            capture: scope.capture,
-          }
-        : null,
+    scope: dated ? { label: dated.label, capture: dated.id } : null,
     colour,
     colourName: colourName(colour),
     primary: primary ? { label: primary.label, text: text(primary) } : null,

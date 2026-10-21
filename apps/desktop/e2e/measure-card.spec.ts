@@ -28,6 +28,7 @@ const N0 = N - 2;
 /** The ground on the first date: a plane rising 10 % to the east; the second date 0.5 m higher. */
 const ground = (e: number, n: number, lift: number) => 10 + 0.1 * (e - E) + 0.02 * (n - N) + lift;
 
+/** Filed under the newest survey date (an undated one waits under Needs a date, or the backfill moves it). */
 const SEED = MeasurementsFile.parse({
   schema: 'aio.measurements/1',
   kitPilesConverted: [],
@@ -38,7 +39,7 @@ const SEED = MeasurementsFile.parse({
       family: 'line',
       tool: 'distance',
       label: 'Line B',
-      scope: { kind: 'site' },
+      scope: { kind: 'survey', capture: 'capture-2' },
       points: [
         [E + 0.6, N + 0.7, 10.5],
         [E + 3.6, N + 4.7, 11.5],
@@ -52,7 +53,7 @@ const SEED = MeasurementsFile.parse({
       family: 'point',
       tool: 'elevation',
       label: 'Spot C',
-      scope: { kind: 'site' },
+      scope: { kind: 'survey', capture: 'capture-2' },
       points: [[E + 2, N + 2, ground(E + 2, N + 2, 0.5)]],
       items: [],
       results: [],
@@ -63,7 +64,7 @@ const SEED = MeasurementsFile.parse({
       family: 'polygon',
       tool: 'area',
       label: 'Pad A',
-      scope: { kind: 'site' },
+      scope: { kind: 'survey', capture: 'capture-2' },
       style: { color: '#3b82f6', fillOpacity: 0.6 },
       points: [
         [E + 5, N + 5, 0],
@@ -196,7 +197,7 @@ test('distance card: primary, secondary line with Horizontal · Height · Grade,
   win,
 }) => {
   await openTiny(win);
-  await measureTree(win);
+  await measureTree(win, 'capture-2');
   const card = await focusMeasure(win, 'Line B');
 
   // the primary value is the slope length, 5.099 m (3, 4 and a 1 m rise)
@@ -248,7 +249,7 @@ test('distance card: primary, secondary line with Horizontal · Height · Grade,
 
 test('point card shows elevation over time; Survey QA has no history tab', async ({ win }) => {
   await openTiny(win);
-  await measureTree(win);
+  await measureTree(win, 'capture-2');
   const card = await focusMeasure(win, 'Spot C');
 
   // the elevation on every survey date, the latest marked
@@ -286,7 +287,7 @@ test('switching units to imperial changes the card, the tree value and the map l
 }) => {
   await openTiny(win);
   await stageMode(win, 'Map');
-  await measureTree(win);
+  await measureTree(win, 'capture-2');
   const card = await focusMeasure(win, 'Line B');
   const metric = await primaryText(card);
   expect(metric).toMatch(/ m$/);
@@ -314,7 +315,7 @@ test('switching units to imperial changes the card, the tree value and the map l
 test('stored fill opacity is drawn on the map', async ({ win }) => {
   await openTiny(win);
   await stageMode(win, 'Map');
-  await measureTree(win);
+  await measureTree(win, 'capture-2');
   // the map's fill reads each measurement's own opacity
   await expect
     .poll(

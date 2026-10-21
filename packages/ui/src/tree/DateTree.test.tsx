@@ -599,3 +599,165 @@ describe('DateTree: groups below the date folders', () => {
     ]);
   });
 });
+
+describe('DateTree: dragging a measurement', () => {
+  const measured = (ids: string[], telecom = false): TreeGroup => ({
+    kind: 'measurements',
+    label: 'Measurements',
+    icon: 'measure',
+    count: ids.length,
+    items: ids.map((id) => ({
+      id: `measure:${id}`,
+      name: `Line ${id}`,
+      measure: { id, color: '#ffd166', dimmed: false, ...(telecom ? { telecom } : {}) },
+    })),
+  });
+  const withMeasures = (nov: string[], oct: string[], telecom = false): DateFolder[] =>
+    folders.map((f) =>
+      f.id === 'nov'
+        ? { ...f, groups: [...f.groups, measured(nov, telecom)] }
+        : f.id === 'oct'
+          ? { ...f, groups: [...f.groups, measured(oct)] }
+          : f,
+    );
+  const ids = (it: { measure?: { id: string } | undefined; children?: unknown }) =>
+    it.measure ? [it.measure.id] : [];
+  const measuresProps = (over: Partial<NonNullable<DateTreeProps['measures']>> = {}) => ({
+    hidden: {},
+    selectedId: null,
+    onSetVisible: vi.fn(),
+    onSelect: vi.fn(),
+    onMenu: vi.fn(),
+    renaming: null,
+    onRename: vi.fn(),
+    onRenameEnd: vi.fn(),
+    newFolder: null,
+    onNewFolder: vi.fn(),
+    reveal: null,
+    dragMeasureIds: ids,
+    ...over,
+  });
+  const base = (extra: Partial<DateTreeProps> = {}): Partial<DateTreeProps> => ({
+    folders: withMeasures(['a'], ['b']),
+    defaultOpen: ['models', 'measurements'],
+    measures: measuresProps(),
+    ...extra,
+  });
+  const mrow = (id: string) => host.querySelector(`[data-testid="measure-row"][data-id="${id}"]`);
+
+  it('offers other date folders, not its own or Every date', () => {
+    renderWith(base({ onMoveMeasures: vi.fn() }));
+    expect(mrow('a')?.getAttribute('draggable')).toBe('true');
+    fire(mrow('a'), 'dragstart');
+    expect(q('date-folder-oct')?.className).toContain('drop-can');
+    expect(q('date-folder-sep')?.className).toContain('drop-can');
+    expect(q('date-folder-nov')?.className).not.toContain('drop-can');
+    expect(q('date-folder-every')?.className).not.toContain('drop-can');
+    expect(q('date-folder-every')?.className).not.toContain('drop-no');
+    // no spare Every date place for a measurement drag
+    expect(host.querySelector('.dfolder-spare')).toBeNull();
+    fire(mrow('a'), 'dragend');
+    expect(q('date-folder-oct')?.className).not.toContain('drop-can');
+  });
+
+  it('a drop on another date calls onMoveMeasures with that capture', () => {
+    const onMoveMeasures = vi.fn();
+    renderWith(base({ onMoveMeasures }));
+    fire(mrow('a'), 'dragstart');
+    fire(q('date-folder-oct'), 'dragover');
+    expect(q('date-folder-oct')?.className).toContain('drop-over');
+    fire(q('date-folder-oct'), 'drop');
+    expect(onMoveMeasures).toHaveBeenCalledTimes(1);
+    expect(onMoveMeasures).toHaveBeenCalledWith(['a'], 'oct');
+    // a drop on Every date is not a move
+    fire(mrow('a'), 'dragstart');
+    fire(q('date-folder-every'), 'drop');
+    expect(onMoveMeasures).toHaveBeenCalledTimes(1);
+  });
+
+  it('a measurement from the Needs a date group is offered to every date', () => {
+    const onMoveMeasures = vi.fn();
+    renderWith(base({ onMoveMeasures, after: [measured(['n'])] }));
+    fire(mrow('n'), 'dragstart');
+    for (const id of ['nov', 'oct', 'sep'])
+      expect(q(`date-folder-${id}`)?.className).toContain('drop-can');
+    fire(q('date-folder-sep'), 'drop');
+    expect(onMoveMeasures).toHaveBeenCalledWith(['n'], 'sep');
+  });
+
+  it('an antenna drag shows the date folder refused with the reason', () => {
+    const onMoveMeasures = vi.fn();
+    renderWith(base({ folders: withMeasures(['a'], ['b'], true), onMoveMeasures }));
+    fire(mrow('a'), 'dragstart');
+    const oct = q('date-folder-oct');
+    expect(oct?.className).toContain('drop-no');
+    expect(oct?.className).not.toContain('drop-can');
+    expect(oct?.getAttribute('aria-description')).toBe(
+      'Antenna measurements stay on the date they were picked on.',
+    );
+    // the drop still reaches the caller, which refuses it with the same words
+    fire(oct, 'drop');
+    expect(onMoveMeasures).toHaveBeenCalledWith(['a'], 'oct');
+  });
+
+  it('nothing drags without onMoveMeasures and dragMeasureIds (read-only)', () => {
+    renderWith(base({ measures: measuresProps({ dragMeasureIds: undefined }) }));
+    expect(mrow('a')?.getAttribute('draggable')).toBeNull();
+    fire(mrow('a'), 'dragstart');
+    expect(q('date-folder-oct')?.className).not.toContain('drop-can');
+    // rows may drag within their date, but no date folder takes the drag
+    host.replaceChildren();
+    renderWith(base());
+    fire(mrow('a'), 'dragstart');
+    expect(q('date-folder-oct')?.className).not.toContain('drop-can');
+  });
+
+  it('a new-folder request naming no measurement shows in the focused date only', () => {
+    renderWith(
+      base({
+        measures: measuresProps({ newFolder: { ids: [], seq: 1 } }),
+        after: [measured(['n'])],
+      }),
+    );
+    act(() => {
+      host
+        .querySelector('[data-testid="date-folder-oct"] .dchev')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    const fields = host.querySelectorAll('[data-testid="measure-folder-new"]');
+    expect(fields.length).toBe(1);
+    expect(fields[0]?.closest('[data-testid="date-folder-nov"]')).not.toBeNull();
+  });
+
+  it('a reveal opens the date folder holding the measurement', () => {
+    const root = createRoot(host);
+    const props = (reveal: { id: string | null; seq: number } | null): DateTreeProps => ({
+      folders: withMeasures(['a'], ['b']),
+      tags,
+      focus: 'nov',
+      onFocus: vi.fn(),
+      hidden: {},
+      selectedId: null,
+      activeClip: null,
+      onToggleVisible: vi.fn(),
+      onSelect: vi.fn(),
+      defaultOpen: ['models'],
+      measures: measuresProps({ reveal }),
+    });
+    act(() => {
+      root.render(<DateTree {...props(null)} />);
+    });
+    expect(q('date-folder-oct')?.getAttribute('aria-expanded')).toBe('false');
+    expect(mrow('b')).toBeNull();
+    act(() => {
+      root.render(<DateTree {...props({ id: 'b', seq: 1 })} />);
+    });
+    expect(q('date-folder-oct')?.getAttribute('aria-expanded')).toBe('true');
+    // the Measurements group of that date opened too, the other date's stayed as it was
+    expect(mrow('b')).not.toBeNull();
+    expect(mrow('a')?.closest('[data-testid="date-folder-nov"]')).not.toBeNull();
+    act(() => {
+      root.unmount();
+    });
+  });
+});

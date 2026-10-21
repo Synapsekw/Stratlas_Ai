@@ -17,6 +17,8 @@ const history = vi.hoisted(() => ({
   fail: false,
   /** Reading a prepared surface's tiles for the terrain rows fails. */
   tilesFail: false,
+  /** The places the prepared surface's tiles were asked for. */
+  tilesAsked: [] as [number, number][],
   /** Heights of a surface at the point, by its tile id. */
   heights: new Map<string, number>(),
 }));
@@ -30,11 +32,18 @@ vi.mock('./card/pointHistory', async (orig) => ({
   },
   heightAt: (s: { id: string }) => Promise.resolve(history.heights.get(s.id) ?? null),
   // a prepared surface's tiles under a card's terrain rows: a read that fails, or flat at 7 m
-  tilesSampler: () => (es: Float64Array) =>
-    history.tilesFail
+  tilesSampler: () => (es: Float64Array, ns: Float64Array) => {
+    es.forEach((e, i) => history.tilesAsked.push([e, ns[i] ?? Number.NaN]));
+    return history.tilesFail
       ? Promise.reject(new Error('tile read failed'))
-      : Promise.resolve(new Float64Array(es.length).fill(7)),
+      : Promise.resolve(new Float64Array(es.length).fill(7));
+  },
 }));
+
+const run = vi.hoisted(() => ({
+  copy: vi.fn(() => Promise.resolve({ ok: true, moved: 1, seq: null })),
+}));
+vi.mock('./measureMoveRun', () => ({ copyMeasurementToDate: run.copy }));
 
 import type { HeightTiles } from '@aio/schema';
 import { MeasurementPanel } from './MeasurementPanel';
@@ -81,7 +90,7 @@ const manifest: ProjectManifest = {
       lineUp: { eastM: 2, northM: -1, with: 'jan', at: '2026-10-16T08:00:00Z' },
     },
   ],
-  layers: [],
+  layers: [{ id: 'ortho-jun', name: 'June ortho', kind: 'raster' } as never],
   severityModels: [],
   classCatalogues: [],
 };
@@ -126,9 +135,11 @@ afterEach(() => {
   root = undefined;
   host.remove();
   look.only = false;
+  run.copy.mockClear();
   measureStore.setState({ focus: null, selected: [], surface: null });
   qaStore.setState({ surfaces: [] });
   history.asked = [];
+  history.tilesAsked = [];
   history.fail = false;
   history.heights.clear();
   cardViews.setState({}, true);
@@ -430,5 +441,99 @@ describe('the panel colour picker', () => {
     });
     const saved = measureStore.getState().file.measurements.find((x) => x.id === 'spot');
     expect(saved?.style?.color).toBe(MEASURE_COLOURS[2]?.hex);
+  });
+});
+
+const mountPanel = () => {
+  act(() => {
+    root = createRoot(host);
+    root.render(<MeasurementPanel />);
+  });
+};
+const openScope = () => {
+  for (const d of host.querySelectorAll('details')) d.open = true;
+};
+
+describe('the measurement panel scope, source and copy', () => {
+  it('shows the date and the source layer, with no Promote to the whole site', () => {
+    measureStore.setState({
+      file: {
+        schema: 'aio.measurements/1',
+        measurements: [{ ...spot, source: { layer: 'ortho-jun' } }],
+      },
+    });
+    mountPanel();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')?.textContent).toContain(
+      'Survey date:',
+    );
+    expect(host.querySelector('[data-testid="survey-scope-source"]')?.textContent).toContain(
+      'Measured on: June ortho',
+    );
+    expect(host.textContent).not.toContain('Promote to the whole site');
+    expect(host.textContent).not.toContain('Only in');
+  });
+
+  it('a legacy measurement says it needs a date', () => {
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [{ ...spot, scope: { kind: 'site' } }] },
+    });
+    mountPanel();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')?.textContent).toBe(
+      'Needs a date: drag it onto a survey date in the Datasets list, or right-click it there and choose Move to date.',
+    );
+  });
+
+  it('no date line in a project with no survey dates', () => {
+    workspace.getState().openProject({
+      id: 'two-dates',
+      root: 'E:/p',
+      manifest: { ...manifest, captures: [] },
+    });
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [{ ...spot, scope: { kind: 'site' } }] },
+    });
+    mountPanel();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')).toBeNull();
+  });
+
+  it('a measurement whose date was deleted says it needs a date', () => {
+    measureStore.setState({
+      file: {
+        schema: 'aio.measurements/1',
+        measurements: [{ ...spot, scope: { kind: 'survey', capture: 'gone' } }],
+      },
+    });
+    mountPanel();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')?.textContent).toContain(
+      'Needs a date',
+    );
+    expect(host.textContent).not.toContain('gone');
+  });
+
+  it('Copy re-measures through copyMeasurementToDate', () => {
+    mountPanel();
+    openScope();
+    const sel = host.querySelector<HTMLSelectElement>('select[aria-label="Copy to survey"]');
+    expect(sel).not.toBeNull();
+    act(() => {
+      if (!sel) return;
+      sel.value = 'jan';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const copy = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Copy');
+    act(() => copy?.click());
+    expect(run.copy).toHaveBeenCalledWith('spot', 'jan');
+  });
+
+  it('reads a date re-lined-up after preparing where its prepared surface holds the point', async () => {
+    // June's surface was prepared at 0.5 m east; June is lined up 2 m east and 1 m south now
+    qaStore.setState({
+      surfaces: [{ ...tiles('s-jun', 'jun'), dateShiftM: { eastM: 0.5, northM: 0 } }],
+    });
+    await renderPanel();
+    // drawn (102, 199), back by the line-up now, on by the prepared one: (100.5, 200)
+    expect(history.tilesAsked).toContainEqual([100.5, 200]);
+    expect(history.tilesAsked).not.toContainEqual([102, 199]);
+    expect(cell('Surface elevation')).toContain('7.00');
   });
 });

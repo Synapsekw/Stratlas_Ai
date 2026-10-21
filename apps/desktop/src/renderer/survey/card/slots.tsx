@@ -62,6 +62,7 @@ import { SurfaceChips, type ChipOption } from '../../charts/SurfaceChips';
 import { TimeChart, type TimeReference } from '../../charts/TimeChart';
 import { Calculators } from '../Calculators';
 import { Comparisons } from '../Comparison';
+import { drawnShifts, onDrawnPoints } from '../dateReadout';
 import { drawnPoints } from '../measureDates';
 import { measureStore, updateMeasurement, useMeasure } from '../measureStore';
 import { useFocusCapture } from '../qaHelpers';
@@ -403,6 +404,7 @@ export function useCardTerrain(
   opts: { delayMs?: number } = {},
 ): CardTerrain {
   const project = useWorkspace((s) => s.project?.id ?? null);
+  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const stage = useMeasure((s) => s.surface);
   const dated = useDatedSurfaces();
   const focus = useFocusCapture();
@@ -410,11 +412,14 @@ export function useCardTerrain(
   const capture = shown?.scope.kind === 'survey' ? shown.scope.capture : focus;
   const tiles =
     (dated.find((d) => d.capture === capture) ?? (site ? dated.at(-1) : undefined))?.tiles ?? null;
+  // the drawn points read where the prepared surface holds them: back by the date's line-up now,
+  // on by the one the surface was prepared with (as the report and `drawnSampler` read them)
+  const shifts = tiles && shown && manifest ? drawnShifts(shown.scope, tiles, manifest) : null;
   const source =
     !shown || !readsSurface(shown.tool, items)
       ? null
       : tiles
-        ? `tiles:${tiles.id}:${tiles.fingerprint}`
+        ? `tiles:${tiles.id}:${tiles.fingerprint}:${JSON.stringify(shifts)}`
         : stage
           ? `stage:${String(stageId(stage))}`
           : null;
@@ -436,7 +441,10 @@ export function useCardTerrain(
     if (!key || !shown || now || terrains.has(key)) return;
     const ctl = new AbortController();
     const sample = tiles
-      ? tilesSampler(tiles, surfaceTiles(project ?? '', tiles), ctl.signal)
+      ? onDrawnPoints(tilesSampler(tiles, surfaceTiles(project ?? '', tiles), ctl.signal), {
+          now: shifts?.now ?? null,
+          prepared: shifts?.prepared ?? null,
+        })
       : stage
         ? sliced(stage, { signal: ctl.signal })
         : null;

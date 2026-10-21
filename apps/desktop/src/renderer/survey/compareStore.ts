@@ -561,8 +561,11 @@ function acceptStandard(
  * Compute every item of every given measurement (Recompute all, bulk). A figure carried from an
  * earlier version stays as it is: replacing those is `recomputeCarried`, its own confirmed action.
  */
-export async function computeAll(ids: readonly string[]): Promise<void> {
-  for (const id of ids) await compute(id, { keepCarried: true });
+export async function computeAll(
+  ids: readonly string[],
+  opts: { auto?: boolean } = {},
+): Promise<void> {
+  for (const id of ids) await compute(id, { ...opts, keepCarried: true });
 }
 
 /** The given measurements that still hold a figure carried from an earlier version. */

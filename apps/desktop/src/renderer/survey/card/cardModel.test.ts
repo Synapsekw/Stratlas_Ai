@@ -136,6 +136,9 @@ describe('cardModel', () => {
     const c = cardModel(measurement({ scope: { kind: 'survey', capture: 'oct' } }), ctx());
     expect(c.scope).toEqual({ label: 'October', capture: 'oct' });
     expect(cardModel(measurement({}), ctx()).scope).toBeNull();
+    // a date the project no longer has: no chip (it needs a date), never the bare capture id
+    const gone = cardModel(measurement({ scope: { kind: 'survey', capture: 'gone' } }), ctx());
+    expect(gone.scope).toBeNull();
   });
 
   it('takes the colour from the style, else the measurement default', () => {
