@@ -4,7 +4,8 @@
 // ship (build-time tools such as sharp). Run from apps/desktop after `electron-vite build`.
 // When a packaged app is in dist/, also requires onnxruntime-node's native files in
 // app.asar.unpacked (on Windows onnxruntime_binding.node, onnxruntime.dll and DirectML.dll).
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { findPackagedApp, missingOnnxFiles, onnxBinaryDir } from './onnx-probe.mjs';
 
@@ -27,7 +28,29 @@ export function loads(text, name) {
   );
 }
 
+// The entries Electron starts. A main entry that is empty or does not parse gives an app with no
+// main process (electron-vite's CommonJS shim inside a string once emptied out/main/index.js
+// without an error; the build now refuses that too, apps/desktop/src/build/esmShim.ts).
+const ENTRIES = [
+  'out/main/index.js',
+  'out/main/exportWorker.js',
+  'out/main/inferenceWorker.js',
+  'out/preload/index.cjs',
+];
+
 const problems = [];
+for (const entry of ENTRIES) {
+  if (!existsSync(entry)) {
+    problems.push(`${entry} is missing`);
+    continue;
+  }
+  if (readFileSync(entry, 'utf8').trim() === '') {
+    problems.push(`${entry} is empty`);
+    continue;
+  }
+  const check = spawnSync(process.execPath, ['--check', entry], { encoding: 'utf8' });
+  if (check.status !== 0) problems.push(`${entry} does not parse:\n${check.stderr}`);
+}
 for (const root of ROOTS) {
   for (const file of files(root)) {
     const text = readFileSync(file, 'utf8');

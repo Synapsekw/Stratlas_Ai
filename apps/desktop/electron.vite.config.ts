@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, normalize, resolve } from 'node:path';
 import { minify, type Plugin } from 'vite';
 import { offlineSource } from '../../packages/globe/src/offline';
+import { esmShimPlacement } from './src/build/esmShim';
 import { APP_CSP, cspMetaTag, inlineScripts } from './src/main/csp';
 import { licenseEntries } from './src/main/licenses';
 
@@ -271,7 +272,8 @@ function buildStamp(): { time: string; commit: string; version: string } {
 
 export default defineConfig({
   main: {
-    plugins: [licenses(), releaseNotes()],
+    // esmShimPlacement: electron-vite's CommonJS shim finds its place by regex (src/build/esmShim.ts)
+    plugins: [licenses(), releaseNotes(), esmShimPlacement()],
     build: {
       externalizeDeps: {
         exclude: [
