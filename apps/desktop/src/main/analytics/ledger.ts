@@ -1,6 +1,6 @@
 /**
  * The local review ledger: one JSON line per reviewer verdict on a detector candidate, with the crop
- * it was judged on, kept on this computer under `<userData>/detectors/ledger` (the caller passes that
+ * it was judged on, kept on this computer under `<userData>/detector-ledger` (the caller passes that
  * folder). It only ever suggests a better threshold; nothing leaves the machine.
  */
 import { LedgerEntry } from '@aio/schema';

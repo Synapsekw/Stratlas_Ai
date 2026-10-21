@@ -1,6 +1,7 @@
 /**
  * The `ledger:*` channels over ledger.ts. Registered by the job wiring (Task 8). The ledger lives
- * in `<userData>/detectors/ledger`.
+ * in `<userData>/detector-ledger`, outside the detector library (`<userData>/detectors/<id>`), so
+ * removing or replacing a library detector whose id is `ledger` cannot touch it.
  */
 import type { IpcChannel } from '@aio/schema';
 import { join } from 'node:path';
@@ -15,8 +16,13 @@ export interface LedgerIpcDeps {
   userData: string;
 }
 
+/** Where the ledger lives: its own folder, never inside the detector library. */
+export function ledgerDir(userData: string): string {
+  return join(userData, 'detector-ledger');
+}
+
 export function registerLedgerIpc(d: LedgerIpcDeps): void {
-  const dir = join(d.userData, 'detectors', 'ledger');
+  const dir = ledgerDir(d.userData);
   d.handle('ledger:append', async ({ entry, cropJpegBase64 }) => {
     try {
       if (cropJpegBase64.length > MAX_CROP_BASE64)
