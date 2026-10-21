@@ -354,20 +354,23 @@ describe('walk pose file: record paths stay inside the project', () => {
       await writeFile(join(outside, 'walk.json'), JSON.stringify({ source: {} }));
       await writeFile(join(outside, 'raw-path.json'), JSON.stringify(rawPath()));
       await writeFile(join(outside, 'pose.json'), 'keep');
-      await updateManifestFile(root, (m) => ({
-        manifest: {
-          ...m,
-          layers: m.layers.map((l) =>
-            l.id === 'walk-w' && l.kind === 'walk' ? { ...l, record: { path: record } } : l,
-          ),
-        },
-      }));
-      // placing writes nothing outside, clearing removes nothing outside
+      const m0 = await readManifestFile(root);
+      const bad = {
+        ...m0,
+        layers: m0.layers.map((l) =>
+          l.id === 'walk-w' && l.kind === 'walk' ? { ...l, record: { path: record } } : l,
+        ),
+      };
+      // a project file cannot hold such a record any more (AssetRef stays inside the project)
+      await expect(updateManifestFile(root, () => ({ manifest: bad }))).rejects.toThrow(
+        /inside the project folder/,
+      );
+      // and a manifest given in memory still writes nothing outside, clears nothing outside
       const placed = await writeWalkPose(
         root,
         {
-          ...(await readManifestFile(root)),
-          layers: (await readManifestFile(root)).layers.map((l) =>
+          ...bad,
+          layers: bad.layers.map((l) =>
             l.id === 'walk-w' && l.kind === 'walk' ? { ...l, place: cal() } : l,
           ),
         },
@@ -376,9 +379,9 @@ describe('walk pose file: record paths stay inside the project', () => {
       expect(placed.flight).toBeNull();
       expect(await readFile(join(outside, 'pose.json'), 'utf8')).toBe('keep');
       expect(await exists(join(outside, 'pose.json.tmp'))).toBe(false);
-      await writeWalkPose(root, await readManifestFile(root), 'walk-w');
+      await writeWalkPose(root, bad, 'walk-w');
       expect(await readFile(join(outside, 'pose.json'), 'utf8')).toBe('keep');
-      const inputs = await readWalkInputs(root, walkOf(await readManifestFile(root)));
+      const inputs = await readWalkInputs(root, walkOf(bad));
       expect(inputs.raw).toBeNull();
     });
   }

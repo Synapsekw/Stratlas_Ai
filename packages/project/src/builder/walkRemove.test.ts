@@ -143,17 +143,18 @@ describe('removeWalk: record paths stay inside the project', () => {
       await mkdir(join(root, 'evil'), { recursive: true });
       await writeFile(join(root, 'evil', 'walk.json'), 'keep');
       const m0 = await readManifestFile(root);
-      await writeManifestFile(root, {
-        ...m0,
-        layers: m0.layers.map((l) =>
-          l.id === 'walk-w1' && l.kind === 'walk' ? { ...l, record: { path: record } } : l,
-        ),
-      });
+      // a project file cannot hold such a record any more (AssetRef stays inside the project)
+      await expect(
+        writeManifestFile(root, {
+          ...m0,
+          layers: m0.layers.map((l) =>
+            l.id === 'walk-w1' && l.kind === 'walk' ? { ...l, record: { path: record } } : l,
+          ),
+        }),
+      ).rejects.toThrow(/inside the project folder/);
       const m = await removeWalk(root, 'walk-w1', () => NOW);
       expect(m.layers.some((l) => l.id === 'walk-w1')).toBe(false);
-      expect(await exists(join(root, '.trash'))).toBe(false);
       expect(await exists(join(root, 'evil', 'walk.json'))).toBe(true);
-      expect(await exists(join(root, 'walks', 'w1', 'walk.json'))).toBe(true);
       expect(await exists(join(root, 'manifest.json'))).toBe(true);
     });
   }
