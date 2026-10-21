@@ -290,4 +290,21 @@ describe('importAik (synthetic kit offline build)', () => {
     if (!m.ok) throw new Error(m.error);
     expect(m.value.layers.some((l) => l.kind === 'legacy')).toBe(false);
   }, 60_000);
+
+  it('refuses a kit that names a file outside its own folder', async () => {
+    const html = join(src(), 'OPEN Test Review.html');
+    const before = readFileSync(html, 'utf8');
+    writeFileSync(join(root, 'secret.pdf'), '%PDF secret');
+    try {
+      writeFileSync(
+        html,
+        before.replace('"url":"report/Test-Report.pdf"', '"url":"../secret.pdf"'),
+      );
+      await expect(
+        importAik({ src: src(), out: join(root, 'out-escape'), id: 'test', epsg, photos: 'all' }),
+      ).rejects.toThrow(/outside the kit folder/);
+    } finally {
+      writeFileSync(html, before);
+    }
+  }, 60_000);
 });

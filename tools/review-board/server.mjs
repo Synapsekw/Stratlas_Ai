@@ -13,6 +13,7 @@ import { createServer } from 'node:http';
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { refuseNonLocal } from './local.mjs';
 import { parseDoc } from './parse.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
@@ -140,6 +141,8 @@ const json = (res, code, value) =>
 
 const server = createServer(async (req, res) => {
   try {
+    const refused = refuseNonLocal(req, PORT);
+    if (refused) return send(res, 403, 'text/plain', refused);
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     if (req.method === 'GET' && url.pathname === '/') {
       return send(res, 200, 'text/html; charset=utf-8', await readFile(join(here, 'index.html')));

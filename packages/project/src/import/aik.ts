@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { Layer, PhotoRef, ProjectManifestInput, Vec3 } from '@aio/schema';
 import {
@@ -124,7 +124,16 @@ async function pool<T>(items: readonly T[], n: number, fn: (t: T) => Promise<unk
 /** Import an Asset Inspection Kit offline build (EBSM, DAMAC, ...) as a native project. */
 export async function importAik(opts: AikImportOptions): Promise<AikImportResult> {
   const log = opts.log ?? (() => undefined);
-  const src = (...p: string[]) => join(opts.src, ...p);
+  // kit paths (data chunks, photo ids, the report) come from the kit's own JSON: never let one
+  // read a file outside the kit folder
+  const kitRoot = resolve(opts.src);
+  const src = (...p: string[]) => {
+    const full = resolve(kitRoot, ...p);
+    const rel = relative(kitRoot, full);
+    if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
+      throw new Error(`The kit names a file outside the kit folder: ${p.join('/')}`);
+    return full;
+  };
   const job = (...p: string[]) => src('_rebuild', 'job', ...p);
   const w = new PackageWriter(opts.out);
 
