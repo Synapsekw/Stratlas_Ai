@@ -251,6 +251,19 @@ describe('moving measurements to another date', () => {
     expect(text).not.toMatch(/like ,/);
   });
 
+  it('a date with no height map says so and offers no Prepare', async () => {
+    load(
+      [m('a', { source: { layer: 'model-jan' }, pickedOn: ['ground', 'ground', 'ground'] })],
+      LAYERS.filter((l) => l.id !== 'dsm-jun'),
+    );
+    compareStore.setState({ surfaces: [surface('s-jan', 'jan')] });
+    const out = await moveMeasurementsToDate(['a'], 'jun');
+    expect(out).toEqual({ ok: false, refusal: { kind: 'no-height-map', capture: 'jun' } });
+    const note = measureStore.getState().note;
+    expect(note?.text).toBe(t('tree.measure.move.noHeightMap', { date: formatDate('2026-06-01') }));
+    expect(note).not.toHaveProperty('prepare');
+  });
+
   it('refuses antenna measurements itself', async () => {
     load([m('a'), m('t', { tool: 'antenna-tilt', family: 'line' })]);
     const was = file();

@@ -22,6 +22,8 @@ export type MoveRefusal =
   | { kind: 'telecom' }
   | { kind: 'no-match'; id: string; layer: string }
   | { kind: 'unprepared'; capture: string }
+  /** The target has no height map (DSM) to prepare, and a vertex or a comparison needs one. */
+  | { kind: 'no-height-map'; capture: string }
   | { kind: 'not-loaded'; layer: string }
   | { kind: 'need-3d' }
   | { kind: 'hidden-layer'; layer: string }
@@ -105,7 +107,9 @@ interface Remeasure {
 
 /**
  * Plan a move of `ms` to `capture`. Rules, in order: any antenna measurement refuses; every
- * source layer needs a counterpart on the target; the target needs a prepared surface; every
+ * source layer needs a counterpart on the target; the target needs a prepared surface when a
+ * vertex is picked on the ground or a comparison reads the old date (none to prepare: its own
+ * refusal); every
  * vertex is picked again by its kind and needs an answer. A measurement already on the target is
  * left out; a site-wide one is filed on the target without a re-pick.
  */
@@ -136,8 +140,23 @@ export async function planMoveToDate(
   }
   // `hasPrepared` (dateSurfaces) without its store: the planner stays pure
   const surfaceTo = surfaceOfCapture(surfaces, capture)?.id;
-  if (todo.length > 0 && surfaceTo === undefined)
-    return { ok: false, refusal: { kind: 'unprepared', capture } };
+  // the target's ground is needed by a ground vertex, or by a comparison of the old date
+  const onDate = (ref: SurfaceRef, from: string) =>
+    ref.kind === 'survey' && surfaces.find((s) => s.id === ref.surface)?.capture === from;
+  const needsGround = todo.some(
+    (r) =>
+      r.kinds.includes('ground') ||
+      r.m.items.some((it) => onDate(it.from, r.from) || onDate(it.to, r.from)),
+  );
+  if (needsGround && surfaceTo === undefined) {
+    const dsm = manifest.layers.some(
+      (l) =>
+        l.kind === 'raster' &&
+        l.role === 'dsm' &&
+        (l.capture === capture || index.of[l.id] === capture),
+    );
+    return { ok: false, refusal: { kind: dsm ? 'unprepared' : 'no-height-map', capture } };
+  }
 
   const next: SurveyMeasurement[] = [];
   for (const r of todo) {

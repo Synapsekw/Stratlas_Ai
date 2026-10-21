@@ -219,6 +219,36 @@ describe('planMoveToDate', () => {
     expect(repick.model).not.toHaveBeenCalled();
   });
 
+  it('moves a model-only measurement to a date with no prepared surface', async () => {
+    const repick = fakeRepick();
+    const plan = await planMoveToDate(
+      [m('a', { source: { layer: 'model-jan' }, pickedOn: ['model', 'model', 'model'] })],
+      'jun',
+      envOf(
+        LAYERS.filter((l) => l.id !== 'dsm-jun'),
+        repick,
+        { surfaces: [surface('s-jan', 'jan')] },
+      ),
+    );
+    expect(plan.ok).toBe(true);
+    expect(plan.ok && plan.next[0]?.source).toEqual({ layer: 'model-jun' });
+    expect(repick.ground).not.toHaveBeenCalled();
+  });
+
+  it('refuses a ground move to a date with no height map, not as unprepared', async () => {
+    const repick = fakeRepick();
+    const plan = await planMoveToDate(
+      [m('a', { source: { layer: 'model-jan' }, pickedOn: ['model', 'ground', 'model'] })],
+      'jun',
+      envOf(
+        LAYERS.filter((l) => l.id !== 'dsm-jun'),
+        repick,
+        { surfaces: [surface('s-jan', 'jan')] },
+      ),
+    );
+    expect(plan).toEqual({ ok: false, refusal: { kind: 'no-height-map', capture: 'jun' } });
+  });
+
   it('refuses when a vertex has no data', async () => {
     const repick = fakeRepick({
       ground: (_c, drawn) => Promise.resolve(Float64Array.from(drawn, (_p, i) => (i ? NaN : 1))),

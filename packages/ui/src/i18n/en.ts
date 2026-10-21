@@ -603,6 +603,8 @@ export const en = {
     '{count} older measurements were filed under their survey dates.',
   'tree.measure.move.sameSurface':
     '{name} already compares with {date}, so on {date} it would show no change. Nothing was moved.',
+  'tree.measure.move.noHeightMap':
+    '{date} has no height map to measure on the ground, so nothing was moved.',
   'tree.measure.move.noMatchAny':
     '{date} has no matching data to measure on, so nothing was moved.',
   'tree.measure.folderName': 'Name of the new folder',

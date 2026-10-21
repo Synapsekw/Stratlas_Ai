@@ -156,6 +156,8 @@ export function moveRefusalText(r: MoveRefusal, manifest: Dated, target?: string
     }
     case 'unprepared':
       return t('tree.measure.move.unprepared', { date: dateName(manifest, r.capture) });
+    case 'no-height-map':
+      return t('tree.measure.move.noHeightMap', { date: dateName(manifest, r.capture) });
     case 'not-loaded':
       return t('tree.measure.move.notLoaded', { layer: layerName(manifest, r.layer) });
     case 'need-3d':
