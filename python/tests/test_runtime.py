@@ -235,6 +235,63 @@ def test_project_paths_never_escape_the_project(tmp_path, bad):
         safe_project_path(tmp_path, bad)
 
 
+def _link_out(link: Path, target: Path, kind: str) -> None:
+    """``link`` pointing at the folder ``target``: a junction (Windows only) or a symlink."""
+    if kind == "junction":
+        if os.name != "nt":
+            pytest.skip("junctions are a Windows feature")
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+        return
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as e:  # Windows without Developer Mode or the symlink privilege
+        pytest.skip(f"symlinks are not allowed here: {e}")
+
+
+@pytest.mark.parametrize("kind", ["junction", "symlink"])
+def test_project_paths_never_escape_through_a_link(tmp_path, kind):
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("secret", "utf-8")
+    _link_out(project / "escape", outside, kind)
+    with pytest.raises(JobError, match="inside the project"):
+        safe_project_path(project, "escape/secret.txt")
+    with pytest.raises(JobError, match="inside the project"):
+        safe_project_path(project, "escape/new/output.json")  # an output that does not exist yet
+    with pytest.raises(JobError, match="inside the project"):
+        safe_project_path(project, "escape")
+
+
+@pytest.mark.parametrize("kind", ["junction", "symlink"])
+def test_a_link_that_stays_inside_the_project_is_kept(tmp_path, kind):
+    project = tmp_path / "project"
+    (project / "real").mkdir(parents=True)
+    (project / "real" / "a.txt").write_text("a", "utf-8")
+    _link_out(project / "alias", project / "real", kind)
+    assert safe_project_path(project, "alias/a.txt") == project / "alias" / "a.txt"
+
+
+def test_normal_project_paths_keep_working(tmp_path):
+    (tmp_path / "survey").mkdir()
+    (tmp_path / "survey" / "designs.json").write_text("{}", "utf-8")
+    assert safe_project_path(tmp_path, "survey/designs.json") == tmp_path / "survey" / "designs.json"
+    assert safe_project_path(tmp_path, r"survey\designs.json") == tmp_path / "survey" / "designs.json"
+    assert safe_project_path(tmp_path, "new/dir/out.tif") == tmp_path / "new" / "dir" / "out.tif"
+    assert safe_project_path(tmp_path, "./photos/p1.jpg") == tmp_path / "photos" / "p1.jpg"
+
+
+def test_a_project_reached_through_a_link_still_works(tmp_path):
+    real = tmp_path / "real-project"
+    (real / "photos").mkdir(parents=True)
+    linked = tmp_path / "linked-project"
+    _link_out(linked, real, "junction" if os.name == "nt" else "symlink")
+    assert safe_project_path(linked, "photos") == linked / "photos"
+
+
 def test_invalid_job_ids_are_refused(tmp_path):
     with pytest.raises(JobError):
         Job("../evil", TwoSteps(), tmp_path, {"text": "x"}, Recorder(), threading.Event())

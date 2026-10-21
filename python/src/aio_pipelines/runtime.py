@@ -192,15 +192,32 @@ class AtomicPath:
             self.tmp.unlink()
 
 
+def really_inside(root: Path, path: Path) -> bool:
+    """Whether ``path`` still lies inside ``root`` once links and junctions on the way are followed
+    (both sides resolved, so a project reached through a link works). A path that does not exist
+    yet is judged by its existing part; one that cannot be resolved is not inside."""
+    try:
+        return path.resolve().is_relative_to(root.resolve())
+    except (OSError, RuntimeError, ValueError):  # RuntimeError: a link loop
+        return False
+
+
 def safe_project_path(project: Path, rel: str) -> Path:
-    """Resolve a project-relative output path; refuse anything that could leave the project."""
+    """Resolve a project-relative path; refuse anything that could leave the project, by its name
+    (absolute, a drive, ``..``) or through a link or junction inside the project that points out
+    of it (the app's ``resolveInside`` rule)."""
     if not isinstance(rel, str) or not rel.strip():
         raise JobError("An output path is empty.")
     norm = rel.replace("\\", "/")
     pp = PurePosixPath(norm)
     if pp.is_absolute() or re.match(r"^[A-Za-z]:", norm) or ".." in pp.parts:
         raise JobError(f'The output path "{rel}" must stay inside the project folder.')
-    return project.joinpath(*pp.parts)
+    path = project.joinpath(*pp.parts)
+    if not really_inside(project, path):
+        raise JobError(
+            f'The path "{rel}" leads outside the project through a link; it must stay inside the project folder.'
+        )
+    return path
 
 
 class StepContext:

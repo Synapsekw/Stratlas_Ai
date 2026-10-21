@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from ..runtime import JobError, atomic_write_bytes
+from ..runtime import JobError, atomic_write_bytes, safe_project_path
 
 KIT_DEFAULT_HFOV = 70.0  # kit cameras.py: no focal length -> 70 degrees
 
@@ -94,10 +94,10 @@ def asset_path(project: Path, ref: Any) -> Path | None:
     """A layer ``AssetRef`` with a path, resolved inside the project (hash refs are not used here)."""
     if not isinstance(ref, dict) or not isinstance(ref.get("path"), str):
         return None
-    rel = ref["path"].replace("\\", "/")
-    if rel.startswith("/") or ".." in rel.split("/") or (len(rel) > 1 and rel[1] == ":"):
+    try:
+        return safe_project_path(project, ref["path"])  # by name and through links
+    except JobError:
         return None
-    return project.joinpath(*rel.split("/"))
 
 
 def mesh_layers(manifest: dict[str, Any], ids: list[str] | None = None) -> list[dict[str, Any]]:

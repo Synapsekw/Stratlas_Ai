@@ -584,3 +584,24 @@ def test_a_turned_line_up_turns_the_camera_like_the_points():
     # 30 degrees counter-clockwise: a camera looking east now looks east-north-east (-z is north)
     east = turn_q(look_q([0, 0, 0], [1, 0, 0]), 30.0)
     assert rotate(east, [0, 0, -1]) == pytest.approx([math.cos(math.pi / 6), 0, -0.5], abs=1e-9)
+
+
+def test_a_layer_asset_behind_a_junction_out_of_the_project_is_not_read(tmp_path):
+    import os
+
+    from aio_pipelines.inspection.frame import asset_path
+
+    project = tmp_path / "project"
+    (project / "models").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "m.glb").write_bytes(b"x")
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(outside), str(project / "escape"))
+    else:
+        (project / "escape").symlink_to(outside, target_is_directory=True)
+    assert asset_path(project, {"path": "models/m.glb"}) == project / "models" / "m.glb"
+    assert asset_path(project, {"path": "escape/m.glb"}) is None
+    assert asset_path(project, {"path": "../outside/m.glb"}) is None
