@@ -371,3 +371,13 @@ describe('kit findings to issues', () => {
     for (const i of issues) expect(validateIssueAgainstModel(i, model).ok).toBe(true);
   });
 });
+
+describe('kit file limits', () => {
+  it('refuses a gzipped kit file that unpacks beyond the limit', async () => {
+    const { decodeKitFile } = await import('./aik-model');
+    const bomb = gzipSync(Buffer.alloc(4 << 20)).toString('base64');
+    const entry = { chunks: ['c0'], gz: true } as Parameters<typeof decodeKitFile>[0];
+    expect(() => decodeKitFile(entry, () => bomb, 1 << 20)).toThrow(/unpacks to more than/);
+    expect(decodeKitFile(entry, () => bomb).length).toBe(4 << 20);
+  });
+});

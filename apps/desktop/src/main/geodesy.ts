@@ -32,6 +32,7 @@ import { gunzipSync } from 'node:zlib';
 import { isChangedOnDisk, readJsonSeen, writeJsonSeen } from './fsutil';
 import { newerOnDisk, newerThanThisBuild } from './newer';
 import type { Handle } from './notYet';
+import { INFLATE_LIMITS, inflateCapped } from '@aio/project/fs';
 
 /** The project registry slice this module needs. */
 export interface GeodesyProjects {
@@ -98,8 +99,16 @@ export function bundledCatalogue(): Promise<CrsCatalogue> {
 }
 
 /** Read a gzip catalogue file. */
-export async function loadCatalogueFile(path: string): Promise<CrsCatalogue> {
-  return parseCatalogue(gunzipSync(await readFile(path)).toString('utf8'));
+export async function loadCatalogueFile(
+  path: string,
+  maxBytes: number = INFLATE_LIMITS.catalogue,
+): Promise<CrsCatalogue> {
+  const packed = await readFile(path);
+  return parseCatalogue(
+    inflateCapped('The coordinate system catalogue', maxBytes, (o) =>
+      gunzipSync(packed, o),
+    ).toString('utf8'),
+  );
 }
 
 // ---------------------------------------------------------------- survey settings (helpers)

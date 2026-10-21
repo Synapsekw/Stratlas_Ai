@@ -68,6 +68,7 @@ import {
   type PixelAffine,
 } from './tiles';
 import { PackageWriter } from './writer';
+import { inflateCapped } from '../fs/inflate';
 
 // Source formats (the plant twin artifact) ----------------------------------------------------------
 
@@ -184,7 +185,11 @@ export function decodeModelZip(b64: string): { name: string; glb: Uint8Array } {
   const xlen = zip.readUInt16LE(28);
   const name = zip.subarray(30, 30 + nlen).toString('utf8');
   const data = zip.subarray(30 + nlen + xlen, 30 + nlen + xlen + csize);
-  const glb = method === 0 ? data : inflateRawSync(data);
+  // the entry's own size is the cap: a deflated stream never unpacks past it
+  const glb =
+    method === 0
+      ? data
+      : inflateCapped(`Model zip entry ${name}`, usize, (o) => inflateRawSync(data, o));
   if (glb.length !== usize)
     throw new Error(`Model zip: ${name} is ${glb.length} bytes, expected ${usize}`);
   return { name, glb: new Uint8Array(glb) };

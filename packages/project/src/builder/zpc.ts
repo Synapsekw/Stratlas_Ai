@@ -97,7 +97,8 @@ async function tileHead(fh: Awaited<ReturnType<typeof open>>, e: Entry): Promise
   if (e.method === 0) return readAt(fh, data, HEADER_BYTES);
   const raw = await readAt(fh, data, Math.min(e.compressed, DEFLATE_BYTES));
   try {
-    return inflateRawSync(raw, { finishFlush: constants.Z_SYNC_FLUSH });
+    // a head of at most DEFLATE_BYTES packed bytes; capped all the same
+    return inflateRawSync(raw, { finishFlush: constants.Z_SYNC_FLUSH, maxOutputLength: 64 << 20 });
   } catch {
     return null;
   }

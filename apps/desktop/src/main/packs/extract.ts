@@ -23,6 +23,7 @@ import {
   type Entry,
   type FullHeader,
 } from './format';
+import { INFLATE_LIMITS } from '@aio/project/fs';
 
 /** A PMTiles archive read by byte ranges. */
 export interface RangeSource {
@@ -509,7 +510,9 @@ async function badTiles(
     for (let k = i; k < j; k++) {
       const [off, len] = sorted[k] ?? [0, 0];
       try {
-        gunzipSync(buf.subarray(off - first, off - first + len));
+        gunzipSync(buf.subarray(off - first, off - first + len), {
+          maxOutputLength: INFLATE_LIMITS.mapPack,
+        });
       } catch {
         bad.push([off, len]);
       }

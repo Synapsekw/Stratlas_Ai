@@ -14,6 +14,7 @@ import { fromWgs84 } from '@aio/geo';
 import { fitSimilarity2D } from './fit';
 import { composeFrame, mapDir, mapPoint, mapQuat, rotateY, type FrameMap } from './frames';
 import { cameraQuatLookAlong, roundVec, sub } from './math';
+import { INFLATE_LIMITS, inflateCapped } from '../fs/inflate';
 
 /**
  * Asset Inspection Kit offline builds (EBSM, DAMAC and later jobs): the `window.KIT` document of
@@ -135,9 +136,12 @@ export function parseKitDataCall(text: string): { key: string; b64: string } {
 export function decodeKitFile(
   entry: z.infer<typeof KitFileEntry>,
   readChunk: (chunk: string) => string,
+  maxBytes: number = INFLATE_LIMITS.kitFile,
 ): Uint8Array {
   const bytes = Buffer.concat(entry.chunks.map((c) => Buffer.from(readChunk(c), 'base64')));
-  return new Uint8Array(entry.gz ? gunzipSync(bytes) : bytes);
+  return new Uint8Array(
+    entry.gz ? inflateCapped('Kit file', maxBytes, (o) => gunzipSync(bytes, o)) : bytes,
+  );
 }
 
 // ---- profile -----------------------------------------------------------------------------------

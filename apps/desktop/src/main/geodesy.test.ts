@@ -187,3 +187,17 @@ describe('settingsPatch', () => {
     expect(settingsPatch({ a: 1 }, { a: 1 })).toBeNull();
   });
 });
+
+describe('loadCatalogueFile limits', () => {
+  it('refuses a catalogue that unpacks beyond the limit', async () => {
+    const { gzipSync } = await import('node:zlib');
+    const dir = await mkdtemp(join(tmpdir(), 'aio-cat-'));
+    try {
+      const file = join(dir, 'bomb.json.gz');
+      await writeFile(file, gzipSync(Buffer.alloc(4 << 20, 0x20)));
+      await expect(loadCatalogueFile(file, 1 << 20)).rejects.toThrow(/unpacks to more than/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

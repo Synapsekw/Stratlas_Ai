@@ -3,7 +3,7 @@ import { cloudFrameOrigin, shiftCorners, shiftedBox } from '@aio/schema';
 import type { DateShift, Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { open, readFile } from 'node:fs/promises';
 import { readTiffGeo, tiffCorners } from './tiff';
-import { requireInside } from '../fs/inside';
+import { requireInside } from '../fs';
 
 const applyMat4 = (t: readonly number[], p: Vec3): Vec3 => {
   const e = (i: number) => t[i] ?? 0;

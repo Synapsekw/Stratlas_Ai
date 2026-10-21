@@ -1,4 +1,5 @@
 import { inflateSync } from 'node:zlib';
+import { inflateCapped } from '../fs/inflate';
 
 /**
  * Small GeoTIFF reader for orthophotos and DSMs that fit in memory: classic TIFF (not BigTIFF),
@@ -225,7 +226,9 @@ function decompress(c: number, data: Uint8Array, expected: number): Uint8Array {
       return lzwDecode(data, expected);
     case 8:
     case 32946:
-      return new Uint8Array(inflateSync(data));
+      return new Uint8Array(
+        inflateCapped('TIFF strip', expected + 65536, (o) => inflateSync(data, o)),
+      );
     case 32773:
       return packBits(data, expected);
     default:

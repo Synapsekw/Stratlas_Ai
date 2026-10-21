@@ -36,3 +36,13 @@ describe('directories', () => {
     expect(parseDirectory(serializeDirectory(entries))).toEqual(entries);
   });
 });
+
+describe('decompress limits', () => {
+  it('refuses a directory or tile that unpacks beyond the limit', async () => {
+    const { gzipSync } = await import('node:zlib');
+    const { decompress, Compression } = await import('./format');
+    const bomb = gzipSync(Buffer.alloc(4 << 20));
+    expect(() => decompress(bomb, Compression.gzip, 1 << 20)).toThrow(/unpacks to more than/);
+    expect(decompress(bomb, Compression.gzip).length).toBe(4 << 20);
+  });
+});

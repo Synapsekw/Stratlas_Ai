@@ -1,4 +1,5 @@
 import { deflateSync, inflateSync } from 'node:zlib';
+import { inflateCapped } from '../fs/inflate';
 
 /** Minimal PNG codec for 8-bit RGB/RGBA, non-interlaced images (point cloud chunks). */
 export interface RawImage {
@@ -60,7 +61,9 @@ export function decodePng(buf: Uint8Array): RawImage {
     p += 12 + len;
   }
   const channels: 3 | 4 = colorType === 6 ? 4 : 3;
-  const raw = inflateSync(Buffer.concat(idat));
+  const raw = inflateCapped('PNG image data', height * (width * channels + 1) + 65536, (o) =>
+    inflateSync(Buffer.concat(idat), o),
+  );
   const stride = width * channels;
   const data = new Uint8Array(height * stride);
   let prev = new Uint8Array(stride);

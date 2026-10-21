@@ -1,5 +1,6 @@
 import { inflateSync } from 'node:zlib';
 import { z } from 'zod';
+import { inflateCapped } from '../fs/inflate';
 
 /**
  * Volumetric Survey Kit offline builds keep their data in scripts that load from file://:
@@ -25,7 +26,9 @@ const jsonBody = (s: string): unknown =>
 
 /** Int16 grid stored as row-wise deltas (zlib + base64), as the kit's `package.py` writes it. */
 export function decodeDeltaI16(b64: string, w: number, h: number): Int16Array {
-  const raw = inflateSync(Buffer.from(b64, 'base64'));
+  const raw = inflateCapped('Kit grid', w * h * 2 + 65536, (o) =>
+    inflateSync(Buffer.from(b64, 'base64'), o),
+  );
   if (raw.length < w * h * 2)
     throw new Error(`Grid holds ${raw.length} bytes, expected ${w * h * 2}`);
   const d = new Int16Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + w * h * 2));
@@ -43,7 +46,9 @@ export function decodeDeltaI16(b64: string, w: number, h: number): Int16Array {
 
 /** Bit mask packed most significant bit first (numpy `packbits`), zlib + base64. */
 export function decodeBits(b64: string, n: number): Uint8Array {
-  const u = inflateSync(Buffer.from(b64, 'base64'));
+  const u = inflateCapped('Kit mask', Math.ceil(n / 8) + 65536, (o) =>
+    inflateSync(Buffer.from(b64, 'base64'), o),
+  );
   const out = new Uint8Array(n);
   for (let i = 0; i < n; i++) out[i] = ((u[i >> 3] ?? 0) >> (7 - (i & 7))) & 1;
   return out;

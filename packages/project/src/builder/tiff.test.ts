@@ -232,3 +232,14 @@ describe('the header of a TIFF file, wherever its directory lies', () => {
     await expect(readTiffHeaderFile(cut)).rejects.toThrow('cut short');
   });
 });
+
+describe('decompression limits', () => {
+  it('refuses a strip that unpacks far beyond its size', () => {
+    const bomb = () => new Uint8Array(deflateSync(Buffer.alloc(32 << 20)));
+    const t = makeTiff(
+      { width: 2, height: 2, samples: 3, bits: 8, values: rgb(2, 2), compression: 8 },
+      bomb,
+    );
+    expect(() => decodeTiff(t)).toThrow(/unpacks to more than/);
+  });
+});

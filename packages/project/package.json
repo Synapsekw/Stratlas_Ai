@@ -11,7 +11,7 @@
     "./package": "./src/package/index.ts",
     "./export": "./src/export/index.ts",
     "./export/node": "./src/export/node.ts",
-    "./fs": "./src/fs/inside.ts",
+    "./fs": "./src/fs/index.ts",
     "./builder": "./src/builder/index.ts",
     "./builder/testing": "./src/builder/testing.ts"
   },

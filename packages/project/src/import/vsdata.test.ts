@@ -134,3 +134,14 @@ describe('pile volume (mirrors the kit viewer)', () => {
     expect(pileVolume(g, 'e1', 'tin')).toBeNull();
   });
 });
+
+describe('decompression limits', () => {
+  // 32 MB of zeros packed into a few kilobytes
+  const bomb = deflateSync(Buffer.alloc(32 << 20)).toString('base64');
+
+  it('refuses a grid that unpacks far beyond its size', async () => {
+    const { decodeDeltaI16, decodeBits } = await import('./vsdata');
+    expect(() => decodeDeltaI16(bomb, 2, 2)).toThrow(/unpacks to more than/);
+    expect(() => decodeBits(bomb, 16)).toThrow(/unpacks to more than/);
+  });
+});

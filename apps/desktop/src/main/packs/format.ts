@@ -1,6 +1,7 @@
 // PMTiles v3 reading and writing for the extract (https://github.com/protomaps/PMTiles/blob/main/spec/v3/spec.md):
 // the full header, varint directories, internal compression and Hilbert tile ids.
 import * as zlib from 'node:zlib';
+import { INFLATE_LIMITS, inflateCapped } from '@aio/project/fs';
 
 export const HEADER_LEN = 127;
 /** Readers fetch this much first; header plus root directory must fit (spec). */
@@ -114,18 +115,27 @@ export function writeFullHeader(h: FullHeader): Buffer {
   return b;
 }
 
-export function decompress(data: Uint8Array, compression: number): Buffer {
+/**
+ * Unpack a PMTiles directory or tile. `maxBytes` caps what it may unpack to (a decompression
+ * bomb in a hostile pack is refused, not inflated).
+ */
+export function decompress(
+  data: Uint8Array,
+  compression: number,
+  maxBytes: number = INFLATE_LIMITS.mapPack,
+): Buffer {
   const b = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  const what = 'A map pack directory or tile';
   switch (compression) {
     case Compression.none:
     case Compression.unknown:
       return b;
     case Compression.gzip:
-      return zlib.gunzipSync(b);
+      return inflateCapped(what, maxBytes, (o) => zlib.gunzipSync(b, o));
     case Compression.brotli:
-      return zlib.brotliDecompressSync(b);
+      return inflateCapped(what, maxBytes, (o) => zlib.brotliDecompressSync(b, o));
     case Compression.zstd:
-      return zlib.zstdDecompressSync(b);
+      return inflateCapped(what, maxBytes, (o) => zlib.zstdDecompressSync(b, o));
     default:
       throw new Error(`The map pack uses an unknown compression (${String(compression)}).`);
   }
