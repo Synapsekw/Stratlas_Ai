@@ -7,7 +7,7 @@
  * selection totals both call it, so their totals and reasons cannot differ.
  */
 import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
-import { inventorySeries, type StackRow } from '@aio/survey';
+import { inventorySeries, seriesKeyOf, type StackRow } from '@aio/survey';
 import { useMemo } from 'react';
 import { createStore, useStore } from 'zustand';
 import { isStale, seriesStale, useCompare } from './compareStore';
@@ -26,6 +26,10 @@ export function setSeriesFailed(id: string, why: string | null): void {
   } else if (failed[id] !== why) failures.setState({ failed: { ...failed, [id]: why } });
 }
 
+/** Why working out a measurement's dates last failed (the card and every total read this). */
+export const useSeriesFailed = (id: string): string | undefined =>
+  useStore(failures, (s) => s.failed[id]);
+
 export function useInventory(piles: readonly SurveyMeasurement[]): StackRow[] {
   const failed = useStore(failures, (s) => s.failed);
   const captures = useCompare((s) => s.captures);
@@ -41,7 +45,10 @@ export function useInventory(piles: readonly SurveyMeasurement[]): StackRow[] {
         failed: (m) => failed[m.id],
         ran: (m, capture) => {
           const item = m.items[0];
-          return item !== undefined && seriesCurrent[m.id]?.[`${item.id} ${capture}`] !== undefined;
+          return (
+            item !== undefined &&
+            seriesCurrent[m.id]?.[seriesKeyOf({ item: item.id, toCapture: capture })] !== undefined
+          );
         },
       }),
     // seriesInputs is read by seriesStale

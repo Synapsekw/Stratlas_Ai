@@ -53,6 +53,7 @@ vi.mock('@aio/workspace', () => ({
 }));
 
 const { VolumeDetail, volumeStatusLine } = await import('./VolumeDetail');
+const { setSeriesFailed } = await import('../useInventory');
 
 const NOW = '2026-10-05T00:00:00.000Z';
 const RING: [number, number, number][] = [
@@ -461,6 +462,24 @@ describe('VolumeDetail', () => {
     );
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('reads the one failure record the totals read (setSeriesFailed)', async () => {
+    // the volumes view's run failed; the card's own run is still going
+    calls.computeSeries.mockReturnValueOnce(new Promise<boolean>(() => undefined));
+    const m = pile();
+    setSeriesFailed(m.id, 'worker died');
+    show(m);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
+      'The volume over time could not be worked out. Try Recompute.',
+    );
+    act(() => {
+      setSeriesFailed(m.id, null);
+    });
+    expect(byTestId('survey-cmp-status')[0]?.textContent ?? '').not.toContain('could not');
   });
 
   it('without surfaces a carried pile reaches Prepare surfaces from its status row', () => {

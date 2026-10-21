@@ -1,6 +1,6 @@
 import type { ComparisonResult } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { seriesDate, seriesKeyOf, stackRows, surfacesStamp, volumeRows } from './timeline';
+import { seriesDate, seriesKeyOf, surfacesStamp, volumeRows } from './timeline';
 
 const at = <T>(a: readonly T[], i: number): T => {
   const v = a[i];
@@ -65,23 +65,6 @@ describe('volumeRows', () => {
     const rows = volumeRows([res('c1', 100)], caps, { isStale: () => true });
     expect(at(rows, 0).stale).toBe(true);
     expect(at(rows, 1).stale).toBe(false);
-  });
-});
-
-describe('stackRows', () => {
-  it('stackRows sums parts and lists piles missing on a date', () => {
-    const a = volumeRows([res('c1', 100), res('c2', 50)], caps, { isStale });
-    const b = volumeRows([res('c1', 20)], caps, { isStale });
-    const out = stackRows(
-      new Map([
-        ['a', a],
-        ['b', b],
-      ]),
-    );
-    expect(out.map((r) => r.capture)).toEqual(['c1', 'c2', 'c3']);
-    expect(out[0]).toMatchObject({ totalM3: 120, missing: [] });
-    expect(out[1]).toMatchObject({ totalM3: 50, missing: ['b'] });
-    expect(at(out, 1).parts).toEqual([{ id: 'a', valueM3: 50 }]);
   });
 });
 

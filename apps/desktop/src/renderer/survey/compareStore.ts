@@ -564,7 +564,8 @@ const seriesFlights = new Map<string, Promise<boolean>>();
 /**
  * Compute a measurement's volume per survey date (all dates, or `opts.captures`): only the dates
  * whose row is missing or stale, for each item with a `current` side. Stored per date with its
- * fingerprint (`setSeries`: derived, not an edit). Nothing in a read-only project. A run the
+ * fingerprint (`setSeries`: derived, not an edit). A read-only project (a package) works its dates
+ * out too, held in memory and never written. A run the
  * measurement outgrew (its items or ring changed while it ran) stores nothing. Nothing for an item
  * with carried kit figures: its chart shows the kit's history until the person accepts the
  * standard base (no mixed series). True when something was stored.

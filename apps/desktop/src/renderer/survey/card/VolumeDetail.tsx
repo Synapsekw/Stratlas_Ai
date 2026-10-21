@@ -45,6 +45,7 @@ import {
 } from '../compareStore';
 import type { ItemShare } from '../engineProtocol';
 import { updateMeasurement, useMeasure } from '../measureStore';
+import { setSeriesFailed, useSeriesFailed } from '../useInventory';
 import { BasePicker, baseName, DEFAULT_BASE, missingName, optionLabel } from './BasePicker';
 import '../../charts/charts.css';
 import '../compare.css';
@@ -137,8 +138,8 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const [why, setWhy] = useState<string | null>(null);
   // what preparing the surfaces said: a failure warns, "nothing left to prepare" is neutral
   const [note, setNote] = useState<StatusLine | null>(null);
-  // the series inputs a volume-over-time run failed for (never swallowed); other inputs clear it
-  const [failedFor, setFailedFor] = useState<string | null>(null);
+  // why its volume over time last failed: the one record the totals read too (never swallowed)
+  const failedWhy = useSeriesFailed(m.id);
   const units = effectiveUnits(settings.units, m.units);
   const locale = settings.locale ?? localeOf(units.distance);
   const capture = m.scope.kind === 'survey' ? m.scope.capture : undefined;
@@ -178,20 +179,20 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
     let gone = false;
     computeSeries(m.id).then(
       () => {
-        if (!gone) setFailedFor(null);
+        if (!gone) setSeriesFailed(m.id, null);
       },
       (e: unknown) => {
         // the renderer's console is the app's log; the card says it in plain words
         console.warn(`The volume over time of ${m.id} could not be worked out`, e);
-        if (!gone) setFailedFor(seriesKey);
+        if (!gone) setSeriesFailed(m.id, e instanceof Error ? e.message : String(e));
       },
     );
     return () => {
       gone = true;
     };
   }, [m.id, status, lookOnly, first, carriedFirst, points, captures.length, seriesKey]);
-  // cleared once the item stops running series (carried, read-only) or its inputs change
-  const seriesFailed = failedFor === seriesKey && !carriedFirst && !lookOnly;
+  // not shown once the item stops running series (carried, read-only); a new run replaces it
+  const seriesFailed = failedWhy !== undefined && !carriedFirst && !lookOnly;
   // "the engine is still starting" and the like no longer hold once it is ready
   const [seenStatus, setSeenStatus] = useState(status);
   if (seenStatus !== status) {
@@ -236,7 +237,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const recompute = () => {
     const reason = blocked();
     setWhy(reason);
-    setFailedFor(null);
+    setSeriesFailed(m.id, null);
     if (reason) return;
     // a new volume has no comparison yet: the default base, then compute
     if (m.items.length === 0)
@@ -839,7 +840,12 @@ function OverTime({
   return (
     <section className="vd-time" aria-label={t('vol.overTime')}>
       <h3 className="vd-sub">{t('vol.overTime')}</h3>
-      <TimeChart data={{ kind: 'volume', rows }} units={units} precision={settings.precision} />
+      <TimeChart
+        data={{ kind: 'volume', rows }}
+        units={units}
+        precision={settings.precision}
+        locale={locale}
+      />
       <table className="vd-time-table" data-testid="vol-time-table">
         <caption className="sr-only">{t('vol.card.overTimeTable')}</caption>
         <thead>

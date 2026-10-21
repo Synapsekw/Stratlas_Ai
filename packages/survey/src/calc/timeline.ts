@@ -116,29 +116,3 @@ export interface StackRow {
    */
   change?: StackChange | null;
 }
-
-/** Sums the piles per capture date; a pile without a value on a date is listed in `missing`. */
-export function stackRows(rows: ReadonlyMap<string, readonly TimeRow[]>): StackRow[] {
-  const out = new Map<string, StackRow>();
-  for (const [id, list] of rows)
-    for (const r of list) {
-      let s = out.get(r.capture);
-      if (!s) {
-        s = {
-          capture: r.capture,
-          date: r.date,
-          label: r.label,
-          totalM3: 0,
-          parts: [],
-          missing: [],
-        };
-        out.set(r.capture, s);
-      }
-      if (r.valueM3 === null) s.missing.push(id);
-      else {
-        s.parts.push({ id, valueM3: r.valueM3 });
-        s.totalM3 += r.valueM3;
-      }
-    }
-  return [...out.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-}

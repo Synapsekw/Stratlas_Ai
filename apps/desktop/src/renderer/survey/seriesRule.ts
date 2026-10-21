@@ -75,7 +75,7 @@ export function datesToRun(
   const have = new Map((m.series ?? []).map((r) => [seriesKeyOf(r), r]));
   return captures.filter((c, k) => {
     if (!wanted.has(c)) return false;
-    const r = have.get(`${item} ${c}`);
+    const r = have.get(seriesKeyOf({ item, toCapture: c }));
     return !r || (!r.carried && (r.status === 'stale' || r.fingerprint !== fps[k]));
   });
 }
