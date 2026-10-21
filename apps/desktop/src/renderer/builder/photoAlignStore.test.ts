@@ -121,6 +121,42 @@ describe('align photo to map', () => {
     expect(item('p2')?.correction?.yawDeg).toBe(-10);
   });
 
+  it('gives the flight the turn only: each photo keeps its own position edit', async () => {
+    const { store, ws, item } = setup();
+    const a = () => store.getState();
+    // p1 and p3 were moved with Edit position; p2 has a move of its own
+    ws.getState().setOrientation(
+      withPhotoFixes(ws.getState().orientation, 'photos', {
+        p1: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, 46, 0] },
+        p2: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [1, 46, 0] },
+      }),
+    );
+    a().start('photos', 'p2');
+    // the session starts at the photo's corrected place
+    expect(a().pose()?.pos).toEqual([21, 86, 0]);
+    a().turn({ yaw: 80 });
+    await a().done();
+    await a().applyToFlight();
+    expect(item('p1')?.correction).toEqual({
+      yawDeg: -10,
+      pitchDeg: 0,
+      rollDeg: 0,
+      offsetM: [0, 46, 0],
+    });
+    expect(item('p3')?.correction).toEqual({ yawDeg: -10, pitchDeg: 0, rollDeg: 0 });
+    const p1 = item('p1');
+    expect(p1 && correctedPhoto(p1, p1.correction).pos).toEqual([10, 86, 0]);
+    // undo puts each photo back as it was
+    await a().applyNotice();
+    expect(item('p1')?.correction).toEqual({
+      yawDeg: 0,
+      pitchDeg: 0,
+      rollDeg: 0,
+      offsetM: [0, 46, 0],
+    });
+    expect(item('p3')?.correction).toBeUndefined();
+  });
+
   it('draws a photo of a lined-up date shifted after the correction, and saves the correction alone', async () => {
     const { store, saves } = setup(true, true);
     const a = () => store.getState();

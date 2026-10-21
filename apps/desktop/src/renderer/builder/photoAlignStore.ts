@@ -38,7 +38,10 @@ export interface PhotoSession {
 export interface PhotoNotice {
   text: string;
   action: { kind: 'undo' | 'redo'; layerId: string; fixes: Fixes } | null;
-  /** The other photos of the flight the same correction could go to. */
+  /**
+   * The other photos of the flight the same turn could go to (rotations only: each photo keeps
+   * its own position edit).
+   */
   flight: { layerId: string; ids: string[]; corr: PhotoCorrection } | null;
 }
 
@@ -73,7 +76,7 @@ export interface PhotoAlignActions {
   /** Remove a photo's correction (saved), with Undo. */
   resetSaved(layerId: string, photoId: string): Promise<void>;
   applyNotice(): Promise<void>;
-  /** Give the other photos of the flight the same correction. */
+  /** Give the other photos of the flight the same turn, each keeping its own position edit. */
   applyToFlight(): Promise<void>;
   dismissNotice(): void;
 }
@@ -249,12 +252,15 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
           set({ say: { text: err, tone: 'bad' } });
           return;
         }
-        const others = next ? flightOthers(s.layerId, p) : [];
+        const turn: PhotoCorrection | null = next
+          ? { yawDeg: next.yawDeg, pitchDeg: next.pitchDeg, rollDeg: next.rollDeg }
+          : null;
+        const others = turn && !isNoCorrection(turn) ? flightOthers(s.layerId, p) : [];
         set({
           notice: {
             text: next ? t('align.photoAlign.saved') : t('align.photoAlign.cleared'),
             action: { kind: 'undo', layerId: s.layerId, fixes: { [s.photoId]: s.original } },
-            flight: next && others.length ? { layerId: s.layerId, ids: others, corr: next } : null,
+            flight: turn && others.length ? { layerId: s.layerId, ids: others, corr: turn } : null,
           },
         });
         end();
@@ -314,8 +320,13 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
         const before: Fixes = {};
         const fixes: Fixes = {};
         for (const id of f.ids) {
-          before[id] = savedOf(f.layerId, id);
-          fixes[id] = f.corr;
+          const was = savedOf(f.layerId, id);
+          before[id] = was;
+          const fix: PhotoCorrection = {
+            ...f.corr,
+            ...(was?.offsetM ? { offsetM: was.offsetM } : {}),
+          };
+          fixes[id] = isNoCorrection(fix) ? null : fix;
         }
         const err = await deps.save(f.layerId, fixes);
         set({

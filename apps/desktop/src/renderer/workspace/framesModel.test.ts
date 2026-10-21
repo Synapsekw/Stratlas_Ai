@@ -1,4 +1,4 @@
-import type { Layer, Vec3 } from '@aio/schema';
+import { emptyOrientation, type Layer, type OrientationFile, type Vec3 } from '@aio/schema';
 import { captureIndex } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import {
@@ -201,5 +201,29 @@ describe('lined-up dates', () => {
     const set = ls[0];
     expect(set?.kind === 'photos' && set.items[1]?.pos).toEqual([2, 30, 0]);
     expect(ls[1]).toBe(clip);
+  });
+
+  it('searches photos at their corrected positions, shifted after the correction', () => {
+    const orientation: OrientationFile = {
+      ...emptyOrientation(),
+      photos: { ph: { p1: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, -20, 5] } } },
+    };
+    const shifted = placedLayers(
+      [photos('ph', ['p0', 'p1'])],
+      () => ({ eastM: 1, northM: 0 }),
+      orientation,
+    );
+    const a = shifted[0];
+    expect(a?.kind === 'photos' && a.items[1]?.pos).toEqual([2, 10, 5]);
+    // a set with no line-up still moves by its correction
+    const plain = placedLayers([photos('ph', ['p0', 'p1'])], () => null, orientation);
+    const b = plain[0];
+    expect(b?.kind === 'photos' && b.items[1]?.pos).toEqual([1, 10, 5]);
+    // a pinned photo stays at its pin
+    const pinned = photos('ph', ['p0', 'p1']);
+    if (pinned.kind === 'photos' && pinned.items[1])
+      pinned.items[1] = { ...pinned.items[1], pin: { ground: [1, 28.4, 0], eyeM: 1.6 } };
+    const c = placedLayers([pinned], () => null, orientation)[0];
+    expect(c?.kind === 'photos' && c.items[1]?.pos).toEqual([1, 30, 0]);
   });
 });

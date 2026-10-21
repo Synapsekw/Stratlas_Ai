@@ -183,14 +183,16 @@ export function FramesPane() {
       createViewFollower(
         pick.bCapture && flights
           ? viewSources(
-              project ? placedLayers(layers, (id) => dateShiftOf(project.manifest, id)) : layers,
+              project
+                ? placedLayers(layers, (id) => dateShiftOf(project.manifest, id), orientation)
+                : layers,
               pick.bCapture,
               pick.of,
               flights,
             )
           : [],
       ),
-    [layers, pick, flights, project],
+    [layers, pick, flights, project, orientation],
   );
 
   if (!project || !index) return null;

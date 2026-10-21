@@ -1,6 +1,13 @@
-import { shiftedLayer, shiftLocal, type DateShift, type Layer } from '@aio/schema';
+import { correctedPhoto, photoCorrection } from '@aio/geo';
+import {
+  shiftedLayer,
+  shiftLocal,
+  type DateShift,
+  type Layer,
+  type OrientationFile,
+} from '@aio/schema';
 import { calibratedVideoPose, type Flight, type FramesMode, type ViewPose } from '@aio/video';
-import type { CaptureIndex, Selection } from '@aio/workspace';
+import { workspace, type CaptureIndex, type Selection } from '@aio/workspace';
 import { createStore } from 'zustand/vanilla';
 import type { SplitPref } from './splitModel';
 
@@ -166,20 +173,25 @@ export function placedVideoPose(
 }
 
 /**
- * The layers as the other date's views are searched: clips with their offset moved, photos with
- * their positions moved (their hand correction is added on top by the search).
+ * The layers as the other date's views are searched: clips with their offset moved, photos at
+ * their corrected place and direction (`correctedPhoto`, orientation.json; the workspace's file
+ * when none is given) and then moved by their date's line-up.
  */
 export function placedLayers(
   layers: readonly Layer[],
   shiftOf: (layerId: string) => DateShift | null,
+  orientation: OrientationFile | null = workspace.getState().orientation,
 ): Layer[] {
   return layers.map((l) => {
     const s = shiftOf(l.id);
-    if (!s) return l;
-    if (l.kind !== 'photos') return shiftedLayer(l, s);
+    if (l.kind !== 'photos') return s ? shiftedLayer(l, s) : l;
+    if (!s && !orientation?.photos[l.id]) return l;
     return {
       ...l,
-      items: l.items.map((p) => (p.pos ? { ...p, pos: shiftLocal(p.pos, s) } : p)),
+      items: l.items.map((item) => {
+        const p = correctedPhoto(item, photoCorrection(orientation, l.id, item.id));
+        return s && p.pos ? { ...p, pos: shiftLocal(p.pos, s) } : p;
+      }),
     };
   });
 }
