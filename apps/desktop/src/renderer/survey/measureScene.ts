@@ -1025,7 +1025,9 @@ export function attachMap(
       s.hiddenMeasurements !== prev.hiddenMeasurements ||
       s.draw !== prev.draw ||
       s.selected !== prev.selected ||
-      s.editing !== prev.editing
+      s.editing !== prev.editing ||
+      s.settings !== prev.settings ||
+      s.templates !== prev.templates
     )
       draw();
     if (!display) canvas.style.cursor = s.draw ? 'crosshair' : '';

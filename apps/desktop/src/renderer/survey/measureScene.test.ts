@@ -533,6 +533,21 @@ it('map labels show the name and the primary value', () => {
   m.detach();
 });
 
+it('map labels follow a change of the site units', () => {
+  const settings = defaultSurveySettings();
+  measureStore.setState({ settings });
+  const m = mapOf(pad());
+  const label = () => m.features().find((f) => f.properties.kind === 'label')?.properties.label;
+  expect(label()).toBe(labelText(pad(), settings, []));
+  expect(label()).toMatch(/m²/);
+  const feet = { ...settings, units: { ...settings.units, area: 'ft2' as const } };
+  measureStore.setState({ settings: feet });
+  expect(label()).toBe(labelText(pad(), feet, []));
+  expect(label()).toMatch(/ft²/);
+  m.detach();
+  measureStore.setState({ settings });
+});
+
 it('3D polygon gets a fill mesh at the stored opacity', () => {
   const s = scene();
   measureStore.setState({
