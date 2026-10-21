@@ -3,7 +3,7 @@ import type { IpcEvent, ReleaseNotes, Settings } from '@aio/schema';
 import { app, dialog, session, shell, type BrowserWindow } from 'electron';
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join, dirname, extname } from 'node:path';
 import { existsSync } from 'node:fs';
 import originalFs from 'original-fs';
 import { createOnlineUpdater } from './online';
@@ -18,7 +18,8 @@ import {
   type RollbackFs,
   type StartupDecision,
 } from './rollback';
-import { probeWithPowerShell, verifyInstaller } from './verify';
+import { runCommand, stageInstaller, verifyMacImage } from './stage';
+import { probeWithPowerShell, verifyInstaller, type VerifyDeps, type VerifyResult } from './verify';
 import { runUpdateHandover } from './workGate';
 
 /** A first start that has not drawn its first screen after this long counts as failed. */
@@ -96,15 +97,61 @@ export function createUpdateService(d: UpdateServiceDeps) {
     },
   });
 
-  const verifyDeps = (expectedVersion?: string) => ({
+  const verifyDeps = (expectedVersion?: string): VerifyDeps => ({
     platform: process.platform,
     currentVersion: current,
-    publisher: brand.company,
+    // exact CN or O of the Authenticode certificate; empty until the certificate is bought, and
+    // then every installer is refused (verify.ts)
     signingIdentity: brand.signing?.windowsPublisher,
     expectedVersion,
     exists: fileExists,
     probe: probeWithPowerShell,
   });
+
+  /** Private copies of installers, checked and then run (stage.ts). */
+  const verifiedDir = join(dir, 'verified');
+  const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+  /**
+   * Copy a Windows installer into the private folder, check the copy, and answer with its path:
+   * the file that passed the check is the one that runs.
+   */
+  async function stageAndVerify(
+    path: string,
+    deps: VerifyDeps,
+  ): Promise<(VerifyResult & { ok: true; path: string }) | { ok: false; error: string }> {
+    // the cheap refusals (platform, extension, missing file) before anything is copied
+    if (
+      deps.platform !== 'win32' ||
+      extname(path).toLowerCase() !== '.exe' ||
+      !(await fileExists(path))
+    ) {
+      const r = await verifyInstaller(path, deps);
+      if (!r.ok) return r;
+    }
+    let staged: string;
+    try {
+      staged = await stageInstaller(path, verifiedDir);
+    } catch (e) {
+      return { ok: false, error: `The installer could not be copied for checking: ${message(e)}` };
+    }
+    const r = await verifyInstaller(staged, deps);
+    return r.ok ? { ...r, path: staged } : r;
+  }
+
+  /** macOS: copy the downloaded disk image, check the copy's signature and team, answer its path. */
+  async function stageAndVerifyMac(
+    path: string,
+  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+    let staged: string;
+    try {
+      staged = await stageInstaller(path, verifiedDir);
+    } catch (e) {
+      return { ok: false, error: `The disk image could not be copied for checking: ${message(e)}` };
+    }
+    const r = await verifyMacImage(staged, brand.signing?.macTeamId, runCommand);
+    return r.ok ? { ok: true, path: staged } : r;
+  }
 
   /** Keep this version, then hand over to the installer. */
   async function runInstallerUnlocked(
@@ -175,11 +222,16 @@ export function createUpdateService(d: UpdateServiceDeps) {
     arch: process.arch,
     // Its own session: the default session blocks every http(s) request (hardenSession).
     fetch: (url, init) => session.fromPartition('stratlas-updates').fetch(url, init),
+    // https only in an installed app; the e2e tests' local feed is plain http on 127.0.0.1
+    allowLoopbackHttp: !app.isPackaged,
+    feedKey: brand.signing?.updateFeedKey,
     downloadsDir: join(dir, 'downloads'),
     verify: async (path, version) => {
-      if (process.platform !== 'win32') return { ok: true }; // the feed's SHA-256; Gatekeeper on start
-      const r = await verifyInstaller(path, verifyDeps(version));
-      return r.ok ? { ok: true } : r;
+      const r =
+        process.platform === 'darwin'
+          ? await stageAndVerifyMac(path)
+          : await stageAndVerify(path, verifyDeps(version));
+      return r.ok ? { ok: true, path: r.path } : r;
     },
     install: runInstaller,
     onProgress: d.progress,
@@ -296,10 +348,10 @@ export function createUpdateService(d: UpdateServiceDeps) {
       verifyInstaller(path, { ...verifyDeps(version), currentVersion: '0.0.0' }),
     async installWebsite(path: string, version: string): Promise<{ ok: boolean; error?: string }> {
       if (websiteUnsupported) return { ok: false, error: websiteUnsupported };
-      const verified = await verifyInstaller(path, verifyDeps(version));
+      const verified = await stageAndVerify(path, verifyDeps(version));
       if (!verified.ok) return verified;
       // The website coordinator already owns the restart gate through app.quit.
-      return runInstallerUnlocked(path, version);
+      return runInstallerUnlocked(verified.path, version);
     },
 
     /** Before the first window: count this start; true when the app is handing over to a rollback. */
@@ -357,9 +409,10 @@ export function createUpdateService(d: UpdateServiceDeps) {
               .rm(previousShortcut(prev.version), { force: true })
               .catch(() => undefined);
         }
-        await originalFs.promises
-          .rm(join(dir, 'downloads'), { recursive: true, force: true })
-          .catch(() => undefined);
+        for (const done of ['downloads', 'verified'])
+          await originalFs.promises
+            .rm(join(dir, done), { recursive: true, force: true })
+            .catch(() => undefined);
       }
     },
 
@@ -374,9 +427,9 @@ export function createUpdateService(d: UpdateServiceDeps) {
 
     async installFile(path: string): Promise<{ ok: boolean; error?: string }> {
       if (store) return { ok: false, error: STORE_UPDATES };
-      const r = await verifyInstaller(path, verifyDeps());
+      const r = await stageAndVerify(path, verifyDeps());
       if (!r.ok) return { ok: false, error: r.error };
-      return runInstaller(path, r.version);
+      return runInstaller(r.path, r.version);
     },
 
     check: () =>

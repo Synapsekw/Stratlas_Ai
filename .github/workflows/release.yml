@@ -217,7 +217,7 @@ jobs:
             if (-not $sig.TimeStamperCertificate) { $problems += "$($file.Name): no timestamp" }
             if ($cn -cne $env:EXPECTED_PUBLISHER) { $problems += "$($file.Name): signer CN '$cn' is not WIN_PUBLISHER_NAME '$($env:EXPECTED_PUBLISHER)'" }
             if ($pinned -and $cn -cne $pinned -and $o -cne $pinned) { $problems += "$($file.Name): signer is not signing.windowsPublisher '$pinned' (brand.json); the app would refuse this update" }
-            if (-not $pinned -and -not $cn.Contains($brand.company) -and -not $o.Contains($brand.company)) { $problems += "$($file.Name): signer CN/O does not name '$($brand.company)'; the app would refuse this update" }
+            if (-not $pinned) { $problems += "$($file.Name): signing.windowsPublisher in brand.json is empty; the app refuses every update until it names the certificate's CN exactly" }
           }
           $calls = if (Test-Path "$env:RUNNER_TEMP/win-sign.log") { @(Get-Content "$env:RUNNER_TEMP/win-sign.log").Count } else { 'n/a (signed by electron-builder itself)' }
           "Windows signing: $($files.Count) exe files signed and verified; sign hook calls: $calls" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append

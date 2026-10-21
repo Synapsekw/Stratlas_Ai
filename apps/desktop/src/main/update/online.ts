@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { downloadVerified, type FetchLike } from './download';
-import { feedUrl, parseFeed, platformKey } from './feed';
+import { feedSignatureError, feedUrl, parseFeed, platformKey, signatureUrl } from './feed';
 import { compareVersions } from './verify';
 
 export interface OnlineSettings {
@@ -29,8 +29,25 @@ export interface OnlineDeps {
   fetch: FetchLike;
   /** Folder for downloaded installers (`<userData>/updates/downloads`). */
   downloadsDir: string;
-  /** Signature and version check of the downloaded file (Windows Authenticode). */
-  verify: (path: string, version: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * Plain http to 127.0.0.1 / localhost (an unpackaged build: the e2e tests' local feed). A
+   * packaged app passes false and reads feeds and installers over https only.
+   */
+  allowLoopbackHttp?: boolean;
+  /**
+   * The Ed25519 public key pinned in brand.json (`signing.updateFeedKey`, base64). When set, the
+   * feed must come with a valid detached signature (`<feed>.sig`), so the SHA-256 it names is the
+   * publisher's.
+   */
+  feedKey?: string | undefined;
+  /**
+   * Signature and version check of the downloaded file (Windows Authenticode). `path`, when
+   * given, is the private copy that was checked: the one `install` then runs.
+   */
+  verify: (
+    path: string,
+    version: string,
+  ) => Promise<{ ok: true; path?: string } | { ok: false; error: string }>;
   /** Keep this version for rollback, then run the installer (and quit on Windows). */
   install: (path: string, version: string) => Promise<{ ok: boolean; error?: string }>;
   onProgress?: (p: Progress) => void;
@@ -69,9 +86,13 @@ export function createOnlineUpdater(d: OnlineDeps) {
       found = null;
       let url: string;
       try {
-        url = feedUrl(d.settings().updateUrl ?? '');
-      } catch {
-        return { ok: false, error: 'The update address is not a valid web address.' };
+        url = feedUrl(d.settings().updateUrl ?? '', d.allowLoopbackHttp ?? false);
+      } catch (e) {
+        return {
+          ok: false,
+          error:
+            e instanceof TypeError ? 'The update address is not a valid web address.' : message(e),
+        };
       }
       let text: string;
       try {
@@ -87,8 +108,24 @@ export function createOnlineUpdater(d: OnlineDeps) {
       } catch (e) {
         return { ok: false, error: `The update check failed: ${message(e)}` };
       }
+      if (d.feedKey) {
+        const sigUrl = signatureUrl(url);
+        let signature: string;
+        try {
+          const res = await d.fetch(sigUrl, { headers: { 'Cache-Control': 'no-cache' } });
+          if (!res.ok) {
+            await res.body?.cancel();
+            return { ok: false, error: `The update feed is not signed (no ${sigUrl}).` };
+          }
+          signature = await res.text();
+        } catch (e) {
+          return { ok: false, error: `The update check failed: ${message(e)}` };
+        }
+        const bad = feedSignatureError(text, signature, d.feedKey);
+        if (bad) return { ok: false, error: bad };
+      }
       const key = platformKey(d.platform, d.arch);
-      const parsed = parseFeed(text, url, key);
+      const parsed = parseFeed(text, url, key, d.allowLoopbackHttp ?? false);
       if (!parsed.ok) return parsed;
       const { feed, file } = parsed;
       const available = compareVersions(feed.version, d.currentVersion) > 0;
@@ -137,7 +174,7 @@ export function createOnlineUpdater(d: OnlineDeps) {
         const v = await d.verify(path, f.version);
         if (!v.ok) return { ok: false, error: v.error };
         d.onProgress?.({ received: f.size, total: f.size, phase: 'keep' });
-        return await d.install(path, f.version);
+        return await d.install(v.path ?? path, f.version);
       } catch (e) {
         return { ok: false, error: `The update could not be downloaded: ${message(e)}` };
       } finally {

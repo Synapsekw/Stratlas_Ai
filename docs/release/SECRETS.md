@@ -40,7 +40,7 @@ Tried in this order; the first whose values are all set is used, and only that o
 | 3     | Certificate file (`.pfx`) | `WIN_CSC_LINK`                                                                                                  | Only for a certificate allowed to live in a file                                           |
 | 4     | Custom command            | `WIN_SIGN_COMMAND`                                                                                              | Any other cloud HSM; SSL.com eSigner is the documented fallback                            |
 
-After the build, `release.yml` checks every `.exe` in the installers and the unpacked app: `signtool verify /pa` must pass, the signature must be timestamped, and the signer's subject CN must equal `WIN_PUBLISHER_NAME` (default: `signing.windowsPublisher` in `packages/brand/brand.json`, else the company). It also applies the app's own update check (ADR 0003): the signer must equal `signing.windowsPublisher` when that is set, otherwise its CN or O must contain the company. Any failure fails the release.
+After the build, `release.yml` checks every `.exe` in the installers and the unpacked app: `signtool verify /pa` must pass, the signature must be timestamped, and the signer's subject CN must equal `WIN_PUBLISHER_NAME` (default: `signing.windowsPublisher` in `packages/brand/brand.json`, else the company). It also applies the app's own update check (ADR 0003): the signer's CN or O must equal `signing.windowsPublisher` exactly. While that field is empty (no certificate yet) the app installs no update itself and a signed release fails this check. Any failure fails the release.
 
 ### Publisher name (all routes)
 

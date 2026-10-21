@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, type KeyObject, sign } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -18,9 +18,12 @@ let base: string;
 let dir: string;
 let requests: string[];
 let feed: unknown;
+/** Answers `<feed>.sig` from the feed's bytes when set. */
+let feedSig: ((text: string) => string) | null;
 
 beforeEach(async () => {
   requests = [];
+  feedSig = null;
   feed = {
     schema: 'aio.update-feed/1',
     version: '0.8.0',
@@ -35,6 +38,8 @@ beforeEach(async () => {
     if (req.url === '/feed/stratlas-update.json') {
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify(feed));
+    } else if (req.url === '/feed/stratlas-update.json.sig' && feedSig !== null) {
+      res.end(feedSig(JSON.stringify(feed)));
     } else if (req.url?.startsWith('/feed/QuadrionAI-0.8.0')) {
       res.end(installer);
     } else {
@@ -72,6 +77,8 @@ function make(settings: Partial<typeof on> = {}, over: Partial<OnlineDeps> = {})
       return fetch(url, init);
     },
     downloadsDir: dir,
+    // the test feed is on 127.0.0.1 over http, as in an unpackaged build
+    allowLoopbackHttp: true,
     verify: () => Promise.resolve({ ok: true }),
     install: (path, version) => {
       installed.push(`${version} ${path}`);
@@ -82,6 +89,47 @@ function make(settings: Partial<typeof on> = {}, over: Partial<OnlineDeps> = {})
   });
   return { updater, installed, progress, fetches: () => fetches };
 }
+
+describe('online update, https and the feed signature', () => {
+  const pair = generateKeyPairSync('ed25519');
+  const pub = (pair.publicKey.export({ format: 'jwk' }) as { x: string }).x;
+  const feedKey = Buffer.from(pub, 'base64url').toString('base64');
+  const signWith = (k: KeyObject) => (text: string) =>
+    sign(null, Buffer.from(text, 'utf8'), k).toString('base64');
+
+  it('refuses a plain http feed unless loopback http is allowed (an unpackaged build)', async () => {
+    const { updater, fetches } = make({}, { allowLoopbackHttp: false });
+    expect(await updater.check()).toMatchObject({ ok: false, error: matching(/https/) });
+    expect(fetches()).toBe(0);
+  });
+
+  it('accepts a feed with a valid signature under the pinned key', async () => {
+    feedSig = signWith(pair.privateKey);
+    const { updater } = make({}, { feedKey });
+    expect(await updater.check()).toMatchObject({ ok: true, available: true });
+    expect(requests).toContain('/feed/stratlas-update.json.sig');
+  });
+
+  it('refuses an unsigned feed, or one signed with another key, when a key is pinned', async () => {
+    const { updater } = make({}, { feedKey });
+    expect(await updater.check()).toMatchObject({ ok: false, error: matching(/not signed/) });
+    feedSig = signWith(generateKeyPairSync('ed25519').privateKey);
+    expect(await make({}, { feedKey }).updater.check()).toMatchObject({
+      ok: false,
+      error: matching(/does not match/),
+    });
+  });
+
+  it('runs the private copy the verify step checked', async () => {
+    const { updater, installed } = make(
+      {},
+      { verify: () => Promise.resolve({ ok: true, path: 'C:/private/copy.exe' }) },
+    );
+    await updater.check();
+    expect(await updater.downloadAndInstall()).toEqual({ ok: true });
+    expect(installed).toEqual(['0.8.0 C:/private/copy.exe']);
+  });
+});
 
 describe('online update', () => {
   // updates.spec.ts:35, flaky on Windows CI: Check now came right after the switch and the

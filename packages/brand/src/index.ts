@@ -29,10 +29,21 @@ export interface Brand {
    */
   store?: { identityName: string; publisher: string; publisherDisplayName: string };
   /**
-   * Code-signing identity the app accepts for updates (ADR 0003). `windowsPublisher` is the exact
-   * CN (or O) of the Authenticode certificate; absent, the signer must name `company`.
+   * Code-signing identities the app accepts (ADR 0003). Empty until the founder fills them in:
+   * - `windowsPublisher`: the exact CN (or O) of the Authenticode certificate. Empty, the app
+   *   installs no update itself (the person runs the installer).
+   * - `macTeamId`: the Apple Developer team ID of the signed .dmg. Empty, no macOS update opens.
+   * - `updateFeedKey`: base64 of the raw 32-byte Ed25519 public key that signs the update feed
+   *   (`<feed>.sig`). Set, an unsigned or wrongly signed feed is refused.
+   * - `pipelinePackKey`: base64 of the raw 32-byte Ed25519 public key that signs pipeline pack
+   *   manifests. Empty, a pack installs only after the person confirms it is unsigned code.
    */
-  signing?: { windowsPublisher?: string };
+  signing?: {
+    windowsPublisher?: string;
+    macTeamId?: string;
+    updateFeedKey?: string;
+    pipelinePackKey?: string;
+  };
   /**
    * Public https address of the privacy policy, linked from Settings, Privacy and cloud. Empty
    * until the policy is published; the link shows only when it is set.

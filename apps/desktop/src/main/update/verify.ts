@@ -14,11 +14,10 @@ export interface Probe {
 export interface VerifyDeps {
   platform: string;
   currentVersion: string;
-  /** The signer subject must name this company (from @aio/brand). */
-  publisher: string;
   /**
-   * Exact signing identity from brand.json (`signing.windowsPublisher`), when configured: the
-   * certificate's CN or O must equal it. Without it, CN or O must contain `publisher`.
+   * Exact signing identity from brand.json (`signing.windowsPublisher`): the certificate's CN or
+   * O must equal it, character for character. Unset or empty (no certificate bought yet), no
+   * installer is accepted: the app never falls back to a looser match.
    */
   signingIdentity?: string | undefined;
   /** The installer must hold exactly this version (an update the feed announced). */
@@ -62,16 +61,17 @@ export function subjectParts(subject: string): Map<string, string> {
   return out;
 }
 
-/** The certificate's common name or organisation is (or, without `exact`, contains) `expected`. */
-export function signerMatches(subject: string, expected: string, exact: boolean): boolean {
-  const want = expected.trim().toLowerCase();
+/** The certificate's common name or organisation equals `expected` exactly. */
+export function signerMatches(subject: string, expected: string): boolean {
+  const want = expected.trim();
   if (!want) return false;
   const parts = subjectParts(subject);
-  return ['CN', 'O'].some((k) => {
-    const v = parts.get(k)?.toLowerCase();
-    return v !== undefined && (exact ? v === want : v.includes(want));
-  });
+  return ['CN', 'O'].some((k) => parts.get(k) === want);
 }
+
+/** Why no installer can be accepted while brand.json names no publisher. */
+export const NO_PUBLISHER =
+  'Updates cannot be installed by the app yet: this build has no publisher name configured (signing.windowsPublisher in brand.json). Run the new installer yourself.';
 
 /** "1.2.3.0" to "1.2.3": electron-builder writes a four-part file version. */
 const threePart = (v: string) => parts(v).slice(0, 3).join('.');
@@ -114,10 +114,12 @@ export async function verifyInstaller(path: string, d: VerifyDeps): Promise<Veri
       error: `The installer's signature is not valid (${probe.status}). It may have been changed after signing.`,
     };
   }
-  if (!signerMatches(probe.signer, d.signingIdentity ?? d.publisher, Boolean(d.signingIdentity))) {
+  const identity = d.signingIdentity?.trim();
+  if (!identity) return { ok: false, error: NO_PUBLISHER };
+  if (!signerMatches(probe.signer, identity)) {
     return {
       ok: false,
-      error: `The installer is signed by "${probe.signer}", not by ${d.signingIdentity ?? d.publisher}.`,
+      error: `The installer is signed by "${probe.signer}", not by ${identity}.`,
     };
   }
   const raw = probe.productVersion.trim() || probe.fileVersion.trim();

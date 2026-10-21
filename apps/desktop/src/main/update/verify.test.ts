@@ -18,7 +18,7 @@ function deps(
   return {
     platform: 'win32',
     currentVersion: '0.1.0',
-    publisher: 'Synapse Solutions',
+    signingIdentity: 'Synapse Solutions FZ-LLC',
     exists: () => Promise.resolve(true),
     probe: () => Promise.resolve({ ...signed, ...probe }),
     ...over,
@@ -59,17 +59,38 @@ describe('verifyInstaller', () => {
     expect(r).toMatchObject({ ok: false, error: matching(/Contoso/) });
   });
 
-  it('looks for the company in the CN or O only, not anywhere in the subject', async () => {
+  it('looks for the publisher in the CN or O only, not anywhere in the subject', async () => {
     const r = await verifyInstaller(
       'C:/d/Setup.exe',
-      deps({ signer: 'CN=Mallory, OU=Synapse Solutions fans, C=AE' }),
+      deps({ signer: 'CN=Mallory, OU=Synapse Solutions FZ-LLC, C=AE' }),
     );
     expect(r).toMatchObject({ ok: false, error: matching(/Mallory/) });
   });
 
-  it('requires the exact identity from brand.json when one is configured', async () => {
+  it('refuses every installer while brand.json names no publisher (no looser match)', async () => {
+    for (const signingIdentity of [undefined, '', '  ']) {
+      const r = await verifyInstaller('C:/d/Setup.exe', deps({}, { signingIdentity }));
+      expect(r).toMatchObject({ ok: false, error: matching(/no publisher name configured/) });
+    }
+  });
+
+  it('still says an unsigned installer is unsigned when no publisher is configured', async () => {
+    const r = await verifyInstaller(
+      'C:/d/Setup.exe',
+      deps({ status: 'NotSigned', signer: '' }, { signingIdentity: '' }),
+    );
+    expect(r).toMatchObject({ ok: false, error: matching(/not signed/) });
+  });
+
+  it('requires the exact identity, not a name that contains it or differs in case', async () => {
     const exact = { signingIdentity: 'Synapse Solutions FZ-LLC' };
     expect(await verifyInstaller('C:/d/Setup.exe', deps({}, exact))).toMatchObject({ ok: true });
+    expect(
+      await verifyInstaller(
+        'C:/d/Setup.exe',
+        deps({ signer: 'CN=synapse solutions fz-llc, C=AE' }, exact),
+      ),
+    ).toMatchObject({ ok: false });
     expect(
       await verifyInstaller(
         'C:/d/Setup.exe',
