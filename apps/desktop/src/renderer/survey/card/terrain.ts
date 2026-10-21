@@ -93,6 +93,10 @@ export async function presample(
 /** What a card may read from the 3D view in its render: a few places, a few milliseconds. */
 export const NOW_BUDGET = { places: 8, ms: 8 };
 
+/** Milliseconds, for the budgets (the tests drive their own). */
+export type Clock = () => number;
+const clock: Clock = () => performance.now();
+
 /**
  * Read a few places with a synchronous sampler now, in the render, so a point's card shows its
  * ground with its first paint: nothing when more than `budget.places` are asked, and no further
@@ -103,13 +107,14 @@ export function readNow(
   h: HeightSampler,
   asked: Asked,
   budget: { places: number; ms: number } = NOW_BUDGET,
+  now: Clock = clock,
 ): Float64Array | null {
   const n = asked.es.length;
   if (n > budget.places) return null;
   const out = new Float64Array(n);
-  const start = performance.now();
+  const start = now();
   for (let k = 0; k < n; k++) {
-    if (performance.now() - start >= budget.ms) return null;
+    if (now() - start >= budget.ms) return null;
     out[k] = h.heightAt(asked.es[k] ?? NaN, asked.ns[k] ?? NaN) ?? NaN;
   }
   return out;
@@ -159,17 +164,23 @@ export async function readTerrain(
  */
 export function sliced(
   h: HeightSampler,
-  opts: { sliceMs?: number; signal?: AbortSignal; yieldTo?: () => Promise<void> } = {},
+  opts: {
+    sliceMs?: number;
+    signal?: AbortSignal;
+    yieldTo?: () => Promise<void>;
+    now?: Clock;
+  } = {},
 ): SampleMany {
   const sliceMs = opts.sliceMs ?? 12;
   const yieldTo = opts.yieldTo ?? nextTask;
+  const now = opts.now ?? clock;
   return async (es, ns) => {
     const out = new Float64Array(es.length);
-    let start = performance.now();
+    let start = now();
     for (let k = 0; k < es.length; k++) {
-      if (performance.now() - start >= sliceMs) {
+      if (now() - start >= sliceMs) {
         await yieldTo();
-        start = performance.now();
+        start = now();
       }
       opts.signal?.throwIfAborted();
       out[k] = h.heightAt(es[k] ?? NaN, ns[k] ?? NaN) ?? NaN;

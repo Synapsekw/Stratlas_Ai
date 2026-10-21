@@ -29,12 +29,14 @@ const toe = Array.from({ length: 48 }, (_, k) => {
   return at(50 + 47 * Math.cos(a), 50 + 47 * Math.sin(a));
 });
 
-/** Spend about `ms` milliseconds, as a raycast through a large mesh does. */
-const busy = (ms: number) => {
-  const end = performance.now() + ms;
-  while (performance.now() < end) {
-    /* spin */
-  }
+/**
+ * A fake clock, in milliseconds: a raycast through a large mesh costs `ms` on it, so the tests
+ * check the budgets against what the code measured, never against the wall clock.
+ */
+let clockMs = 0;
+const now = () => clockMs;
+const spend = (ms: number) => {
+  clockMs += ms;
 };
 
 describe('which cards read the terrain', () => {
@@ -86,49 +88,74 @@ describe('presampling the terrain', () => {
 });
 
 describe('sampling the 3D stage a slice at a time', () => {
-  it('hands the main thread back between slices, never holding it much past a slice', async () => {
+  it('hands the main thread back between slices, never holding it past a slice and one read', async () => {
+    clockMs = 0;
     const slices: number[] = [];
-    let start = performance.now();
+    let start = now();
     const sample = sliced(
       {
         heightAt: () => {
-          busy(2);
+          spend(2);
           return 1;
         },
       },
       {
         sliceMs: 10,
+        now,
         yieldTo: () => {
-          slices.push(performance.now() - start);
-          return new Promise<void>((r) => {
-            setTimeout(() => {
-              start = performance.now();
-              r();
-            }, 0);
-          });
+          slices.push(now() - start);
+          start = now();
+          return Promise.resolve();
         },
       },
     );
     const zs = await sample(new Float64Array(40), new Float64Array(40));
     expect(Array.from(zs).every((z) => z === 1)).toBe(true);
-    // 40 samples of 2 ms in slices of 10 ms: the thread is given back several times
-    expect(slices.length).toBeGreaterThanOrEqual(5);
-    expect(Math.max(...slices)).toBeLessThan(10 + 2 + 5);
+    // 40 reads of 2 ms in slices of 10 ms: five reads a slice, the thread given back 7 times
+    expect(slices).toEqual([10, 10, 10, 10, 10, 10, 10]);
+  });
+
+  it('a slow read ends its slice: one read past the slice at most', async () => {
+    clockMs = 0;
+    const slices: number[] = [];
+    let start = now();
+    const sample = sliced(
+      {
+        heightAt: () => {
+          spend(7);
+          return 1;
+        },
+      },
+      {
+        sliceMs: 10,
+        now,
+        yieldTo: () => {
+          slices.push(now() - start);
+          start = now();
+          return Promise.resolve();
+        },
+      },
+    );
+    await sample(new Float64Array(6), new Float64Array(6));
+    expect(slices.length).toBe(2);
+    for (const s of slices) expect(s).toBeLessThanOrEqual(10 + 7);
   });
 
   it('stops when the card is closed', async () => {
+    clockMs = 0;
     const ctl = new AbortController();
     let calls = 0;
     const sample = sliced(
       {
         heightAt: () => {
           calls++;
-          busy(1);
+          spend(1);
           return 1;
         },
       },
       {
         sliceMs: 3,
+        now,
         signal: ctl.signal,
         yieldTo: () => {
           ctl.abort();
@@ -137,7 +164,8 @@ describe('sampling the 3D stage a slice at a time', () => {
       },
     );
     await expect(sample(new Float64Array(100), new Float64Array(100))).rejects.toBeDefined();
-    expect(calls).toBeLessThan(100);
+    // the first slice's three reads, then the close
+    expect(calls).toBe(3);
   });
 });
 
@@ -155,27 +183,37 @@ describe('reading in the render', () => {
         return 4;
       },
     };
-    expect(Array.from(readNow(h, places(1)) ?? [])).toEqual([4]);
+    expect(Array.from(readNow(h, places(1), NOW_BUDGET, now) ?? [])).toEqual([4]);
     calls = 0;
-    expect(readNow(h, places(NOW_BUDGET.places + 1))).toBeNull();
+    expect(readNow(h, places(NOW_BUDGET.places + 1), NOW_BUDGET, now)).toBeNull();
     expect(calls).toBe(0);
   });
 
   it('never holds the render past its time budget plus one read', () => {
     // 3D raycasts of 5 ms: the budget of 8 ms allows two, then gives up
+    clockMs = 0;
     let calls = 0;
     const h: HeightSampler = {
       heightAt: () => {
         calls++;
-        busy(5);
+        spend(5);
         return 1;
       },
     };
-    const t0 = performance.now();
-    expect(readNow(h, places(NOW_BUDGET.places))).toBeNull();
-    const ms = performance.now() - t0;
-    expect(calls).toBeLessThanOrEqual(2);
-    expect(ms).toBeLessThan(NOW_BUDGET.ms + 5 + 4);
+    expect(readNow(h, places(NOW_BUDGET.places), NOW_BUDGET, now)).toBeNull();
+    expect(calls).toBe(2);
+    expect(clockMs).toBeLessThanOrEqual(NOW_BUDGET.ms + 5);
+    // reads that fit the budget are all read
+    clockMs = 0;
+    calls = 0;
+    const quick: HeightSampler = {
+      heightAt: () => {
+        calls++;
+        spend(1);
+        return 2;
+      },
+    };
+    expect(Array.from(readNow(quick, places(4), NOW_BUDGET, now) ?? [])).toEqual([2, 2, 2, 2]);
   });
 });
 
