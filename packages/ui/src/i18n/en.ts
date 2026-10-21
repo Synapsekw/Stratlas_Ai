@@ -5843,6 +5843,10 @@ export const en = {
   'bulk.recomputeCarried.text_other':
     'Their figures from the earlier version are replaced by the standard base (triangulated toe) and kept as "was". Their earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
   'bulk.recomputeCarried.yes': 'Recompute with the standard base',
+  'bulk.recomputeCarried.done_one':
+    'Recomputed {count} earlier-version pile with the standard base',
+  'bulk.recomputeCarried.done_other':
+    'Recomputed {count} earlier-version piles with the standard base',
   'bulk.changeForAll': 'Change for all',
   'bulk.whichComparison': 'Comparison to change',
   'bulk.whichSide': 'Side to change',

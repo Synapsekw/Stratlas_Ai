@@ -16,6 +16,11 @@ export interface ConfirmDialogProps {
   /** A confirming button styled as removing something. */
   danger?: boolean;
   testId?: string;
+  /**
+   * Where focus goes when the dialog closes; undefined (or null) for the button that opened it.
+   * Give a stable element when the confirmed action removes that button.
+   */
+  returnTo?: () => HTMLElement | null | undefined;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -28,7 +33,11 @@ export function ConfirmDialog(p: ConfirmDialogProps) {
   const cancel = () => {
     if (!p.busy) p.onCancel();
   };
-  useFocusTrap(dlg, true, { onEscape: cancel, initial: () => keep.current });
+  useFocusTrap(dlg, true, {
+    onEscape: cancel,
+    initial: () => keep.current,
+    ...(p.returnTo ? { returnTo: p.returnTo } : {}),
+  });
   const test = p.testId ?? 'confirm';
   return createPortal(
     <div

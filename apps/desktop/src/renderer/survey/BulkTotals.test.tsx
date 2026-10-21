@@ -39,6 +39,9 @@ vi.mock('./compareStore', () => ({
   computeAll,
   recomputeCarried,
   hasCarried: (m: SurveyMeasurement) => m.results.some((r) => r.carried !== undefined),
+  // a pile whose points the person edited is accepted by Recompute all: not kept
+  keepsCarried: (m: SurveyMeasurement) =>
+    m.results.some((r) => r.carried !== undefined) && m.label !== 'edited',
 }));
 vi.mock('./measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(s.measure),
@@ -47,6 +50,7 @@ vi.mock('./measureStore', () => ({
 }));
 
 const { BulkTotals } = await import('./BulkTotals');
+const { announced } = await import('@aio/ui');
 
 const result = (net: number): ComparisonResult => ({
   item: 'a',
@@ -176,12 +180,44 @@ describe('BulkTotals', () => {
       await Promise.resolve();
     });
     expect(recomputeCarried).toHaveBeenCalledWith(['b']);
+    // done: said aloud, and focus on a button that stays (Recompute all)
+    expect(Object.values(announced())).toContain(
+      'Recomputed 1 earlier-version pile with the standard base',
+    );
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('survey-bulk-recompute');
     // read-only: no way to replace them
     s.measure.readOnly = true;
     act(() => {
       root?.render(<BulkTotals />);
     });
     expect(q('survey-bulk-recompute-carried')).toBeNull();
+  });
+
+  it('the kept count leaves out piles Recompute all accepts (edited); the buttons point at it', () => {
+    const carried = (id: string, label: string) => {
+      const p = pile(id, 5);
+      return {
+        ...p,
+        label,
+        results: p.results.map((r) => ({
+          ...r,
+          carried: { from: 'kit' as const, base: 'plane', pile: id, epoch: 'e1' },
+        })),
+      };
+    };
+    s.measure.file = { measurements: [carried('a', 'kept'), carried('b', 'edited')] };
+    root = createRoot(host);
+    act(() => {
+      root?.render(<BulkTotals />);
+    });
+    const note = document.querySelector('[data-testid="survey-bulk-carried-note"]');
+    expect(note?.textContent).toContain('1 pile');
+    // the action still offers both: it accepts every earlier-version pile
+    const own = document.querySelector('[data-testid="survey-bulk-recompute-carried"]');
+    expect(own?.textContent).toContain('2 earlier-version piles');
+    const all = document.querySelector('[data-testid="survey-bulk-recompute"]');
+    expect(all?.getAttribute('aria-describedby')).toBe(note?.id);
+    expect(own?.getAttribute('aria-describedby')).toBe(note?.id);
   });
 
   const render = () => {

@@ -25,10 +25,17 @@ import {
   type NotCounted,
   type StackRow,
 } from '@aio/survey';
-import { Button, t as tr, useT } from '@aio/ui';
-import { useMemo, useState, type ReactElement } from 'react';
+import { announce, Button, t as tr, useT } from '@aio/ui';
+import { useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { ConfirmDialog } from '../shell/ConfirmDialog';
-import { computeAll, hasCarried, isStale, recomputeCarried, useCompare } from './compareStore';
+import {
+  computeAll,
+  hasCarried,
+  isStale,
+  keepsCarried,
+  recomputeCarried,
+  useCompare,
+} from './compareStore';
 import { knownTemplates, replaceMeasurement, useMeasure } from './measureStore';
 import { useInventory } from './useInventory';
 
@@ -146,13 +153,23 @@ function RecomputeButtons({
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
   const [why, setWhy] = useState<string | null>(null);
+  const noteId = useId();
+  const all = useRef<HTMLButtonElement>(null);
+  /** The recompute was confirmed: focus goes to Recompute all, which stays. */
+  const confirmed = useRef(false);
+  // the action replaces every earlier-version figure; Recompute all keeps only the ones not
+  // edited since (an edited one is taken as accepted)
   const carried = ms.filter(hasCarried);
   const n = carried.length;
+  const kept = ms.filter(keepsCarried).length;
+  const describedBy = kept > 0 ? { 'aria-describedby': noteId } : {};
   return (
     <>
       <div className="sv-row sv-wrap">
         <Button
+          ref={all}
           busy={busy}
+          {...describedBy}
           data-testid="survey-bulk-recompute"
           onClick={() => {
             setBusy(true);
@@ -167,9 +184,11 @@ function RecomputeButtons({
           <Button
             variant="quiet"
             disabled={busy}
+            {...describedBy}
             data-testid="survey-bulk-recompute-carried"
             onClick={() => {
               setWhy(null);
+              confirmed.current = false;
               setAsking(true);
             }}
           >
@@ -177,9 +196,9 @@ function RecomputeButtons({
           </Button>
         )}
       </div>
-      {n > 0 && (
-        <p className="small faint" data-testid="survey-bulk-carried-note">
-          {t('bulk.carriedKept', { count: n })}
+      {kept > 0 && (
+        <p className="small faint" id={noteId} data-testid="survey-bulk-carried-note">
+          {t('bulk.carriedKept', { count: kept })}
         </p>
       )}
       {why && (
@@ -193,14 +212,17 @@ function RecomputeButtons({
           yes={t('bulk.recomputeCarried.yes')}
           busy={busy}
           testId="survey-bulk-carried-confirm"
+          returnTo={() => (confirmed.current ? all.current : null)}
           onCancel={() => {
             setAsking(false);
           }}
           onConfirm={() => {
             setBusy(true);
+            confirmed.current = true;
             void recomputeCarried(carried.map((m) => m.id))
               .then((r) => {
                 setWhy(r[0] ?? null);
+                if (r.length === 0) announce(t('bulk.recomputeCarried.done', { count: n }));
               })
               .finally(() => {
                 setBusy(false);

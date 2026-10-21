@@ -504,6 +504,12 @@ export const hasCarried = (m: SurveyMeasurement): boolean =>
   (m.series ?? []).some((r) => r.carried !== undefined);
 
 /**
+ * The measurement holds a figure carried from an earlier version that Recompute all keeps: one
+ * whose points or items were not edited since (an edit is taken as accepting the standard base).
+ */
+export const keepsCarried = (m: SurveyMeasurement): boolean => hasCarried(m) && !acceptedByEdit(m);
+
+/**
  * The inputs (`inputsKey`) each measurement with carried kit figures had when first seen. Its
  * points or items edited since: the person is taken as accepting the standard base.
  */

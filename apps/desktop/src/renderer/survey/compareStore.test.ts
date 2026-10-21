@@ -31,7 +31,9 @@ const {
   computeSpread,
   engineClient,
   followMeasurements,
+  hasCarried,
   isStale,
+  keepsCarried,
   recomputeCarried,
   recomputeStandard,
   scheduleCheck,
@@ -616,6 +618,22 @@ describe('results over time and the spread across bases', () => {
     } finally {
       off();
       measureStore.setState({ focus: null });
+    }
+  });
+
+  it('Recompute all keeps a carried pile only while its points are as they were', async () => {
+    const r = await compute('m1', { live: true });
+    const off = followMeasurements();
+    try {
+      put({ results: [kit(must(r?.results[0]), 'e2')] });
+      expect(keepsCarried(must(stored()))).toBe(true);
+      put({ label: 'Renamed' });
+      expect(keepsCarried(must(stored()))).toBe(true);
+      put({ points: ring.map((p): [number, number, number] => [p[0] + 1, p[1], p[2]]) });
+      expect(hasCarried(must(stored()))).toBe(true);
+      expect(keepsCarried(must(stored()))).toBe(false);
+    } finally {
+      off();
     }
   });
 
