@@ -117,6 +117,28 @@ function shiftable(l: Layer): boolean {
 }
 
 /**
+ * A `survey/` folder holding only the measurements file (and its `.bak`) with no measurement in
+ * it: what the first open of any project writes to mark it for kit piles (volumetric parity W3).
+ * Nothing in it is placed against the origin.
+ */
+async function onlyEmptyMeasurements(dir: string): Promise<boolean> {
+  const names = await readdir(dir);
+  if (names.length === 0) return false;
+  for (const name of names) {
+    if (name !== 'measurements.json' && name !== 'measurements.json.bak') return false;
+    try {
+      const doc = JSON.parse(await readFile(join(dir, name), 'utf8')) as {
+        measurements?: unknown;
+      };
+      if (!Array.isArray(doc.measurements) || doc.measurements.length > 0) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Why the project's origin cannot be moved: one reason per layer, issue count or file placed
  * against the origin that a re-centre would not shift. Empty when it can be moved.
  */
@@ -142,6 +164,7 @@ export async function recentreBlockers(root: string, m: ProjectManifest): Promis
   for (const e of await readdir(root, { withFileTypes: true })) {
     if (SHIFTABLE_TOP.has(e.name) || e.name.startsWith('manifest.json')) continue;
     if (e.isDirectory()) {
+      if (e.name === 'survey' && (await onlyEmptyMeasurements(join(root, e.name)))) continue;
       if ((await readdir(join(root, e.name))).length > 0) out.push(`files in "${e.name}"`);
     } else out.push(`"${e.name}"`);
   }
