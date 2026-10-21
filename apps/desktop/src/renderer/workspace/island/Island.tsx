@@ -32,7 +32,7 @@ import { useTimeline } from '../timeline';
 import type { TabId } from '../workbench/tabsModel';
 import { MODES, type GroupCtx } from './groups';
 import { drawerStore } from '../workbench/drawerStore';
-import { liveTab } from '../workbench/view';
+import { liveTab, useHasVolumeMeasurements } from '../workbench/view';
 import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
@@ -127,7 +127,10 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const video = useWorkspace((x) =>
     (x.project?.manifest.layers ?? []).some((l) => l.kind === 'video'),
   );
-  const volumes = useVolumetric((x) => x.status === 'ready');
+  // the stockpile kit's project, or any with a volume measurement (its piles are in the view)
+  const kitVolumes = useVolumetric((x) => x.status === 'ready');
+  const piles = useHasVolumeMeasurements();
+  const volumes = kitVolumes || piles;
   const road = useRoad((x) => x.status === 'ready');
   const groups = islandGroups({ map, mode: tools, clouds, volumes, video, road, pkg });
   const group = groups.includes(s.group) ? s.group : 'view';

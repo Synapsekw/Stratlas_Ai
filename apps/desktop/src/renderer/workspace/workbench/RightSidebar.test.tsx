@@ -12,6 +12,7 @@ import type * as LiveModule from '../island/useIslandLive';
 import type * as AnnotateModule from '@aio/annotate';
 import type * as ChangeModule from '../../change';
 import { agentPane } from '../../agent/agentPaneStore';
+import { measureStore } from '../../survey/measureStore';
 import { RightSidebar, useSidebarSplit } from './RightSidebar';
 import { useIslandLinked } from './view';
 import { workbench } from './workbenchStore';
@@ -146,6 +147,7 @@ afterEach(() => {
   root = undefined;
   host.remove();
   volumetric.setState({ status: 'idle' });
+  measureStore.setState({ file: { schema: 'aio.measurements/1', measurements: [] } });
   workspace.getState().closeProject();
   vi.restoreAllMocks();
 });
@@ -211,6 +213,33 @@ describe('RightSidebar', () => {
       'build',
     );
   });
+  it('shows Volumes for a project with a volume measurement, without the stockpile kit', () => {
+    render();
+    expect(tabIds()).not.toContain('wb-tab-volumes');
+    act(() => {
+      measureStore.setState({
+        file: {
+          schema: 'aio.measurements/1',
+          measurements: [
+            {
+              id: 'sp1',
+              family: 'polygon',
+              tool: 'volume',
+              label: 'Stockpile 1',
+              scope: { kind: 'site' },
+              points: [],
+              items: [],
+              results: [],
+              createdAt: '2026-10-20T00:00:00Z',
+            },
+          ],
+        },
+      });
+    });
+    expect(volumetric.getState().status).toBe('idle');
+    expect(tabIds()).toContain('wb-tab-volumes');
+  });
+
   it('renders the tabs in model order, Changes keeping its test id', () => {
     withVolumesAndDates();
     render();

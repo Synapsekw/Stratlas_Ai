@@ -132,6 +132,14 @@ describe('the Volumes quick row', () => {
     volumetric.setState({ status: 'idle', file: null, surface: 'photo', change: null });
   });
 
+  it('without the stockpile kit (a survey project with volumes) has only All tools', () => {
+    volumetric.setState({ status: 'idle', file: null });
+    render('volumes');
+    expect(choice('Survey date')).toBeNull();
+    expect(choice('Surface')).toBeNull();
+    expect(button('Volumes: All tools')).not.toBeNull();
+  });
+
   it('shows the two surveys Cut / fill compares, and picks them', () => {
     volumetric.setState({
       status: 'ready',

@@ -10,6 +10,7 @@ import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
 import { PANEL_ID } from '../../shell/PanelHandle';
 import { lineUpApp } from '../../lineup/lineUpStore';
+import { measureStore } from '../../survey/measureStore';
 import { timeline } from '../timeline';
 import { useSplit } from '../SplitPanes';
 import { drawerStore } from '../workbench/drawerStore';
@@ -198,6 +199,34 @@ describe('Island', () => {
     expect(tab('Display')).toBeDefined();
     expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('View');
     expect(button('Whole site')).not.toBeNull();
+  });
+
+  it('offers Volumes in a project with a volume measurement, without the stockpile kit', async () => {
+    await render();
+    openTools();
+    expect(tab('Volumes')).toBeUndefined();
+    act(() => {
+      measureStore.setState({
+        file: {
+          schema: 'aio.measurements/1',
+          measurements: [
+            {
+              id: 'sp1',
+              family: 'polygon',
+              tool: 'volume',
+              label: 'Stockpile 1',
+              scope: { kind: 'site' },
+              points: [],
+              items: [],
+              results: [],
+              createdAt: '2026-10-20T00:00:00Z',
+            },
+          ],
+        },
+      });
+    });
+    expect(tab('Volumes')).toBeDefined();
+    measureStore.setState({ file: { schema: 'aio.measurements/1', measurements: [] } });
   });
 
   it('previews a group on hover while the picked tab stays selected', async () => {

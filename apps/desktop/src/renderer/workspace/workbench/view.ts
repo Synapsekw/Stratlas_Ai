@@ -4,9 +4,11 @@
  * linked. Small on purpose: the Stage and the island import it, so they do not pull the whole
  * sidebar and every bench into their module graph.
  */
+import { inventoryPiles } from '@aio/survey';
 import { useVolumetric } from '@aio/volumetric';
 import { canCompare, useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
+import { useMeasure } from '../../survey/measureStore';
 import { useCaptureIndex } from '../compare';
 import { pickLive, type LiveItem, type ToolSource } from '../island/islandModel';
 import { useIslandLive } from '../island/useIslandLive';
@@ -41,14 +43,30 @@ export function islandLinked(front: TabId, primary: LiveItem | null): boolean {
 
 const SELECTION: Tab = { id: 'selection', live: false, pinned: false, fixed: true };
 
+/** The stockpile kit's store is loaded: its 3D tools (date, Swipe, surfaces, bodies) apply. */
+export function useKitVolumes(): boolean {
+  return useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
+}
+
 /**
- * The tabs the sidebar shows and the one in front: Volumes only in a volumetric project and
- * Changes only with two dates to compare, as before; a front tab that is not shown is Selection.
+ * The project has a volume measurement: a pile is one, and the inventory lives in the Volumes
+ * view, kit or not (a survey project's piles are reached there too).
+ */
+export function useHasVolumeMeasurements(): boolean {
+  return useMeasure((s) => inventoryPiles(s.file.measurements).length > 0);
+}
+
+/**
+ * The tabs the sidebar shows and the one in front: Volumes in a volumetric project or one with a
+ * volume measurement, and Changes only with two dates to compare; a front tab that is not shown
+ * is Selection.
  */
 export function useWorkbenchView(): { tabs: Tab[]; front: Tab } {
   const all = useWorkbench((s) => s.tabs);
   const chosen = useWorkbench((s) => s.front);
-  const volumes = useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
+  const kit = useKitVolumes();
+  const piles = useHasVolumeMeasurements();
+  const volumes = kit || piles;
   const captureIx = useCaptureIndex();
   const dated = captureIx !== null && canCompare(captureIx);
   const tabs = useMemo(

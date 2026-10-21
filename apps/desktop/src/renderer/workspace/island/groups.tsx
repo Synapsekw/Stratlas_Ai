@@ -571,6 +571,13 @@ const BODIES: readonly { value: BodyMode; label: MessageKey }[] = [
 const NO_CAPTURES: readonly { epoch: string; date: string; label: string }[] = [];
 
 function VolumeRow({ ctx }: { ctx: GroupCtx }) {
+  const kit = useVolumetric((s) => s.status === 'ready');
+  // without the stockpile kit (a survey project's piles) there are no 3D tiles, only the bench
+  return kit ? <KitVolumeRow ctx={ctx} /> : <AllTools g="volumes" ctx={ctx} />;
+}
+
+/** The stockpile kit's tiles: its survey date and Swipe, the surface colours and the bodies. */
+function KitVolumeRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
   // a stable empty list: a fresh one on every read would re-render without end
   const captures = useVolumetric((s) => s.file?.captures ?? NO_CAPTURES);
