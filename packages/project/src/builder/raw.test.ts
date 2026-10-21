@@ -25,6 +25,7 @@ import {
   type VideoTools,
 } from './raw';
 import { makeTiff, withExif } from './testing';
+import { xt2Thermal, xt2Visual } from './xt2Fixture';
 
 let dir: string;
 beforeEach(async () => {
@@ -724,6 +725,126 @@ describe('importRawFiles', () => {
       ['unknown', 'skipped'],
     ]);
     expect(r.items[0]?.message).toMatch(/SRT/);
+  });
+});
+
+describe('thermal twins of a raw import (photo position edit)', () => {
+  // the FLIR core rounds lat/lon and wraps a negative altitude; the visual twin is DJI written
+  const visual = (time: string) =>
+    xt2Visual({
+      dateTimeOriginal: `2026:03:03 ${time}`,
+      lat: 29.02771,
+      lon: 48.13531,
+      absAlt: -4.501,
+      relAlt: 14.7,
+      gimbal: { yaw: 63.1, pitch: -90, roll: 0 },
+    });
+  const thermal = (time: string) =>
+    xt2Thermal({ dateTimeOriginal: `2026:03:03 ${time}`, lat: 29.0277, lon: 48.1353, alt: -4.502 });
+  const items = (m: ProjectManifest) =>
+    m.layers.flatMap((l) => (l.kind === 'photos' ? l.items : []));
+  type Fixes = Parameters<NonNullable<ImportDeps['saveCorrections']>>[0];
+
+  it('places a thermal without DJI XMP at its visual twin, saved after the manifest', async () => {
+    const root = await project();
+    const t = join(dir, 'X_0005_R.JPG');
+    const v = join(dir, 'X_0006.jpg');
+    await writeFile(t, thermal('10:00:00'));
+    await writeFile(v, visual('10:00:01'));
+    const calls: Fixes[] = [];
+    let thermalSaved = false;
+    const r = await importRawFiles(
+      root,
+      [t, v],
+      deps({
+        saveCorrections: async (fixes) => {
+          calls.push(fixes);
+          thermalSaved = items(await readManifest(root)).some((p) => p.id === 'x-0005-r');
+        },
+      }),
+    );
+    const m = await readManifest(root);
+    const [th, vi] = items(m);
+    if (!th?.pos || !vi?.pos) throw new Error('photos not placed');
+    // its own place stays the imported pos; the correction moves it onto the twin
+    expect(th.pos[1]).toBeLessThan(1e5);
+    expect(th.q).toEqual(vi.q);
+    expect(calls).toHaveLength(1);
+    expect(thermalSaved).toBe(true);
+    const fix = calls[0]?.[0];
+    expect(calls[0]).toHaveLength(1);
+    expect(fix?.layerId).toBe('photos-2026-03-03');
+    expect(fix?.photoId).toBe('x-0005-r');
+    fix?.offsetM.forEach((o, i) => {
+      expect(o).toBeCloseTo((vi.pos?.[i] ?? 0) - (th.pos?.[i] ?? 0), 4);
+    });
+    expect(r.items[0]?.message).toBe(
+      'Thermal photo without position data: placed at its visual twin X_0006.jpg.',
+    );
+    expect(r.items[1]?.message).toBeUndefined();
+  });
+
+  it('finds the twin among the photos already in the project', async () => {
+    const root = await project();
+    const v = join(dir, 'X_0006.jpg');
+    await writeFile(v, visual('10:00:01'));
+    await importRawFiles(root, [v], deps());
+    const t = join(dir, 'X_0005_R.JPG');
+    await writeFile(t, thermal('10:00:00'));
+    const calls: Fixes[] = [];
+    const r = await importRawFiles(
+      root,
+      [t],
+      deps({
+        saveCorrections: (fixes) => {
+          calls.push(fixes);
+          return Promise.resolve();
+        },
+      }),
+    );
+    expect(calls[0]?.map((f) => [f.layerId, f.photoId])).toEqual([
+      ['photos-2026-03-03-2', 'x-0005-r'],
+    ]);
+    expect(r.items[0]?.message).toMatch(/visual twin x-0006\./);
+  });
+
+  it('keeps a thermal with no twin in 3 s at its own place, and says so for a wrapped altitude', async () => {
+    const root = await project();
+    const t = join(dir, 'X_0005_R.JPG');
+    const v = join(dir, 'X_0006.jpg');
+    await writeFile(t, thermal('10:00:00'));
+    await writeFile(v, visual('10:00:05'));
+    let called = false;
+    const r = await importRawFiles(
+      root,
+      [t, v],
+      deps({
+        saveCorrections: () => {
+          called = true;
+          return Promise.resolve();
+        },
+      }),
+    );
+    expect(called).toBe(false);
+    expect(items(await readManifest(root))[0]?.q).toBeUndefined();
+    expect(r.items[0]?.message).toMatch(
+      /Thermal photo without position data and no visual twin found: check its position\.$/,
+    );
+  });
+
+  it('reports a correction that could not be saved on the thermal row', async () => {
+    const root = await project();
+    const t = join(dir, 'X_0005_R.JPG');
+    const v = join(dir, 'X_0006.jpg');
+    await writeFile(t, thermal('10:00:00'));
+    await writeFile(v, visual('10:00:01'));
+    const r = await importRawFiles(
+      root,
+      [t, v],
+      deps({ saveCorrections: () => Promise.reject(new Error('disk full')) }),
+    );
+    expect(r.items[0]?.status).toBe('imported');
+    expect(r.items[0]?.message).toMatch(/not saved \(disk full\)\.$/);
   });
 });
 

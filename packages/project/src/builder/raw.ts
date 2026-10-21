@@ -36,7 +36,7 @@ import {
   type ClaimedStems,
   type DrawingImages,
 } from './drawings';
-import { readPhotoMeta } from './exif';
+import { readPhotoMeta, type PhotoMeta } from './exif';
 import { placeImportedGlb, readGlbJsonFromFile, type ImportedPlacement } from './glbGeoref';
 import { mergeImport } from './importMerge';
 import { modelTextures } from './modelTextures';
@@ -53,6 +53,7 @@ import {
   tiffCorners,
   tiffGeoreferenced,
 } from './tiff';
+import { findTwin, needsTwin, twinFix, type TwinCandidate } from './thermalTwin';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
 import { NO_WALK_FILES, markWalkLayer, missingWalkLayers, walkLayerOf } from './walkLayers';
 import { isStitched360, isWalkFile, proxyOwner } from './walkSource';
@@ -169,6 +170,19 @@ export interface ImportDeps {
    * A chosen day goes to the conversion as `surveyDate`; the job files the layer under it.
    */
   cloudDates?: Readonly<Record<string, string | null>>;
+  /**
+   * Save the thermal twin corrections of this import (`orientation.json`, main): called once,
+   * after the manifest is saved, when a thermal `_R` photo without DJI XMP took its visual
+   * twin's place. Without it the twins' view directions are still set on the items.
+   */
+  saveCorrections?: (fixes: readonly TwinPlacement[]) => Promise<void>;
+}
+
+/** A thermal photo placed at its visual twin: the correction `offsetM` (local frame) to save. */
+export interface TwinPlacement {
+  layerId: string;
+  photoId: string;
+  offsetM: Vec3;
 }
 
 export interface ImportResult {
@@ -361,6 +375,8 @@ export async function importRawFiles(
   const created = new Set<string>();
   const newPhotos: PhotoRef[] = [];
   const photoRows: ImportItem[] = [];
+  /** Each new photo's file name and metadata, for the thermal twin pass. */
+  const photoFiles: { ref: PhotoRef; name: string; meta: PhotoMeta; row: ImportItem }[] = [];
   const photoLayers = () => m.layers.flatMap((l) => (l.kind === 'photos' ? [l] : []));
   /** Import a drawing and remember the layers it made. */
   const drawingIn = async (file: string): Promise<ImportItem> => {
@@ -570,6 +586,7 @@ export async function importRawFiles(
           ...(heightSource ? { heightSource } : {}),
         };
         photoRows.push(row);
+        photoFiles.push({ ref, name, meta, row });
         items.push(row);
       } else if (VIDEO.has(ext)) {
         const srt = await sibling(file, '.srt', paths);
@@ -927,6 +944,47 @@ export async function importRawFiles(
       if (!later) tick(name);
     }
   }
+  // a thermal photo without DJI metadata takes the place and view direction of its visual twin,
+  // among this import's photos and the project's (photo position edit, 21 Oct 2026)
+  const twinOffsets: { photoId: string; offsetM: Vec3 }[] = [];
+  const thermals = photoFiles.filter((p) => needsTwin(p.name, p.meta));
+  if (thermals.length > 0) {
+    const candidate = (name: string, p: PhotoRef, needs: boolean): TwinCandidate => ({
+      name,
+      ...(p.takenAt !== undefined ? { takenAt: p.takenAt } : {}),
+      ...(p.pos ? { pos: p.pos } : {}),
+      ...(p.q ? { q: p.q } : {}),
+      ...(needs ? { needsTwin: true } : {}),
+    });
+    const candidates: TwinCandidate[] = [
+      ...photoFiles.map((p) => candidate(p.name, p.ref, needsTwin(p.name, p.meta))),
+      ...atStart.layers.flatMap((l) =>
+        l.kind === 'photos' ? l.items.map((p) => candidate(p.id, p, false)) : [],
+      ),
+    ];
+    for (const t of thermals) {
+      const twin = findTwin(
+        { name: t.name, ...(t.ref.takenAt !== undefined ? { takenAt: t.ref.takenAt } : {}) },
+        candidates,
+      );
+      const fix = twin ? twinFix(t.ref, twin) : null;
+      if (twin && fix) {
+        if (fix.q) t.ref.q = fix.q;
+        twinOffsets.push({ photoId: t.ref.id, offsetM: fix.offsetM });
+        t.row.message = [
+          `Thermal photo without position data: placed at its visual twin ${twin.name}.`,
+          ...(fix.q ? [] : ['No gimbal angles, so the view direction is unknown.']),
+        ].join(' ');
+      } else if (t.meta.gps?.altWrapped || t.meta.gps?.altDropped) {
+        t.row.message = [
+          t.row.message,
+          'Thermal photo without position data and no visual twin found: check its position.',
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
+    }
+  }
   // one import is one survey date: the day most files carry; every layer it made is filed under it
   const day = importDay(days);
   /** The date this import added to its copy, if it added one. */
@@ -941,6 +999,7 @@ export async function importRawFiles(
   }
   // its photos are a layer of their own, never added to an earlier flight's, so the import card
   // can re-date them alone: `photos-<day>`, `photos-<day>-2` ... or `photos`, `photos-2` undated
+  let photosLayerId: string | undefined;
   if (newPhotos.length > 0) {
     const base = day === null ? 'photos' : `photos-${day}`;
     const id = uniqueId(base, layerIdTaken(m));
@@ -954,6 +1013,7 @@ export async function importRawFiles(
       ...(captureId !== undefined ? { capture: captureId } : {}),
     });
     for (const r of photoRows) r.layerId = id;
+    photosLayerId = id;
   }
   const placed = items.filter((i) => i.status === 'imported' && i.heightSource);
   // a datum the person set at this import becomes the project's, so later imports agree
@@ -994,6 +1054,19 @@ export async function importRawFiles(
   for (const i of items) {
     const id = i.layerId === undefined ? undefined : saved.renamed.get(i.layerId);
     if (id !== undefined) i.layerId = id;
+  }
+  // the twins' corrections name the photos layer as it was saved
+  if (photosLayerId !== undefined && twinOffsets.length > 0 && deps.saveCorrections) {
+    const layerId = saved.renamed.get(photosLayerId) ?? photosLayerId;
+    try {
+      await deps.saveCorrections(twinOffsets.map((t) => ({ layerId, ...t })));
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      const placed = new Set(twinOffsets.map((t) => t.photoId));
+      for (const t of thermals)
+        if (placed.has(t.ref.id))
+          t.row.message = `${t.row.message ?? ''} Its place at the twin was not saved (${why}).`;
+    }
   }
   // the save above is not held up by a stitch; the manifest handed back is read again after it
   let manifest = saved.manifest;

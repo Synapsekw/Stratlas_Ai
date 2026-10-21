@@ -8,7 +8,8 @@ import type {
   ProxyEncoder,
   VideoTools,
 } from '@aio/project/builder';
-import { PROCMODEL_DIR, ProcModelId } from '@aio/schema';
+import { withPositionOffset } from '@aio/geo';
+import { PROCMODEL_DIR, ProcModelId, emptyOrientation } from '@aio/schema';
 import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/schema';
 import { layerDateShifts } from '@aio/workspace';
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
@@ -18,7 +19,7 @@ import { basename, extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { createImportRuns } from './importRuns';
 import { writeBytesAtomic } from './modelBuilder';
-import { readOrientation } from './orientation';
+import { readOrientation, writeOrientation } from './orientation';
 import { readManifest, type ProjectRegistry } from './project';
 import { stitchProgress, walkToolsFor } from './walks';
 
@@ -348,6 +349,29 @@ export function outsidePanoFolder(root: string, files: readonly string[]): strin
   return files.filter((f) => !fold(f).startsWith(dir));
 }
 
+type TwinPlacements = Parameters<NonNullable<ImportDeps['saveCorrections']>>[0];
+
+/**
+ * Thermal photos an import placed at their visual twins (`importRawFiles` `saveCorrections`):
+ * each gets `offsetM` in `orientation.json` with rotations 0, as a fresh correction (Reset puts it
+ * back); every other entry of the file stays. One write, refused like any orientation save when
+ * the file on disk is newer.
+ */
+export async function saveTwinCorrections(root: string, fixes: TwinPlacements): Promise<void> {
+  // a twin at the photo's own place (under 0.5 mm) needs no entry
+  const moves = fixes.flatMap((f) => {
+    const c = withPositionOffset(undefined, f.offsetM);
+    return c ? [{ ...f, c }] : [];
+  });
+  if (moves.length === 0) return;
+  const o = await readOrientation(root);
+  if (!o.ok) throw new Error(o.error);
+  const file = o.file ? structuredClone(o.file) : emptyOrientation();
+  for (const f of moves) file.photos[f.layerId] = { ...file.photos[f.layerId], [f.photoId]: f.c };
+  const w = await writeOrientation(root, file);
+  if (!w.ok) throw new Error(w.error);
+}
+
 export async function builderImport(
   req: IpcRequest<'builder:import'>,
   d: BuilderImportDeps,
@@ -396,6 +420,7 @@ export async function builderImport(
       // the survey day Add data chose for each cloud (pointcloud.to_copc surveyDate)
       ...(req.cloudDates ? { cloudDates: req.cloudDates } : {}),
       onProgress: progress.file,
+      saveCorrections: (fixes) => saveTwinCorrections(root, fixes),
     });
     return {
       ok: true,

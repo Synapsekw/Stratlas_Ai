@@ -381,6 +381,54 @@ describe('folder imports and removeCapture', () => {
     expect(again.ok && again.createdCaptures).toEqual([]);
   });
 
+  it('saves a thermal twin placement in orientation.json and keeps the other corrections', async () => {
+    const dir = join(base, 'projects', 'twins');
+    await writeProject(dir, sampleManifest());
+    const kept = { yawDeg: 4, pitchDeg: 0, rollDeg: 0 };
+    await writeFile(
+      join(dir, 'orientation.json'),
+      JSON.stringify({ schema: 'aio.orientation/1', clips: {}, photos: { other: { p: kept } } }),
+    );
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const thermal = join(base, 'X_0005_R.JPG');
+    const visual = join(base, 'X_0006.jpg');
+    await writeFile(
+      thermal,
+      withExif({ dateTimeOriginal: '2024:11:06 10:00:00', lat: 25.2, lon: 55.3, alt: 30 }),
+    );
+    await writeFile(
+      visual,
+      withExif({
+        dateTimeOriginal: '2024:11:06 10:00:01',
+        lat: 25.20005,
+        lon: 55.30005,
+        alt: 31,
+        dji: { GimbalYawDegree: '+10', GimbalPitchDegree: '-40', GimbalRollDegree: '0' },
+      }),
+    );
+    const r = await builderImport(
+      { projectId, paths: [thermal, visual] },
+      { registry, images, emit: () => undefined },
+    );
+    if (!r.ok) throw new Error(r.error);
+    const layerId = r.items[0]?.layerId ?? '';
+    const layer = r.manifest.layers.find((l) => l.id === layerId);
+    if (layer?.kind !== 'photos') throw new Error('no photos layer');
+    const [th, vi] = layer.items;
+    const file = JSON.parse(await readFile(join(dir, 'orientation.json'), 'utf8')) as {
+      photos: Record<string, Record<string, { offsetM?: number[] }>>;
+    };
+    expect(file.photos.other).toEqual({ p: kept });
+    const fix = file.photos[layerId]?.['x-0005-r'];
+    expect(fix).toMatchObject({ yawDeg: 0, pitchDeg: 0, rollDeg: 0 });
+    expect(fix?.offsetM).toHaveLength(3);
+    fix?.offsetM?.forEach((o, i) => {
+      expect(o).toBeCloseTo((vi?.pos?.[i] ?? 0) - (th?.pos?.[i] ?? 0), 4);
+    });
+    expect(th?.q).toEqual(vi?.q);
+  });
+
   it('answers an error for a folder over the limit and for an empty folder', async () => {
     const dir = join(base, 'projects', 'big');
     await writeProject(dir, sampleManifest());
