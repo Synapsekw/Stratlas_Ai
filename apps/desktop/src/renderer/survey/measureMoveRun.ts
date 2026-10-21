@@ -148,11 +148,12 @@ export function moveRefusalText(r: MoveRefusal, manifest: Dated, target?: string
   switch (r.kind) {
     case 'telecom':
       return t('tree.measure.move.telecom');
-    case 'no-match':
-      return t('tree.measure.move.noMatch', {
-        date: dateName(manifest, target),
-        layer: layerName(manifest, r.layer),
-      });
+    case 'no-match': {
+      const layer = r.layer ? layerName(manifest, r.layer) : '';
+      return layer
+        ? t('tree.measure.move.noMatch', { date: dateName(manifest, target), layer })
+        : t('tree.measure.move.noMatchAny', { date: dateName(manifest, target) });
+    }
     case 'unprepared':
       return t('tree.measure.move.unprepared', { date: dateName(manifest, r.capture) });
     case 'not-loaded':
@@ -161,12 +162,12 @@ export function moveRefusalText(r: MoveRefusal, manifest: Dated, target?: string
       return t('tree.measure.move.need3d');
     case 'hidden-layer':
       return t('tree.measure.move.hiddenLayer', { layer: layerName(manifest, r.layer) });
-    case 'no-data': {
+    case 'no-data':
+    case 'same-surface': {
       const m = measureStore.getState().file.measurements.find((x) => x.id === r.id);
-      return t('tree.measure.move.noData', {
-        date: dateName(manifest, target),
-        name: m?.label ?? r.id,
-      });
+      const key =
+        r.kind === 'no-data' ? 'tree.measure.move.noData' : 'tree.measure.move.sameSurface';
+      return t(key, { date: dateName(manifest, target), name: m?.label ?? r.id });
     }
   }
 }

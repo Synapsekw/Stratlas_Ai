@@ -593,7 +593,7 @@ export const en = {
   'tree.measure.move.need3d':
     'Switch to the 3D view to move measurements picked on a model or point cloud.',
   'tree.measure.move.hiddenLayer':
-    'Show {layer} in the 3D view once, then drop again: it is not loaded yet.',
+    'Show {layer} in the 3D view once, then try again: it is not loaded yet.',
   'tree.measure.move.noData':
     '{date} has no data under every point of {name}, so nothing was moved.',
   'tree.measure.move.done_one': '{count} measurement moved to {date} and measured again.',
@@ -601,6 +601,10 @@ export const en = {
   'tree.measure.backfill.done_one': '{count} older measurement was filed under its survey date.',
   'tree.measure.backfill.done_other':
     '{count} older measurements were filed under their survey dates.',
+  'tree.measure.move.sameSurface':
+    '{name} already compares with {date}, so on {date} it would show no change. Nothing was moved.',
+  'tree.measure.move.noMatchAny':
+    '{date} has no matching data to measure on, so nothing was moved.',
   'tree.measure.folderName': 'Name of the new folder',
   'tree.measure.dimmed': 'Hidden with {date}',
   'tree.measure.invalid': 'Invalid picks',

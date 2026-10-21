@@ -25,7 +25,9 @@ export type MoveRefusal =
   | { kind: 'not-loaded'; layer: string }
   | { kind: 'need-3d' }
   | { kind: 'hidden-layer'; layer: string }
-  | { kind: 'no-data'; id: string };
+  | { kind: 'no-data'; id: string }
+  /** A comparison of two surveys would compare the target's surface with itself. */
+  | { kind: 'same-surface'; id: string };
 
 export type ModelPick =
   | { ok: true; z: Float64Array } // NaN: a miss
@@ -58,9 +60,14 @@ function defaultKind(manifest: MoveEnv['manifest'], layer: string | undefined): 
   return kind && MODEL_KINDS.has(kind) ? 'model' : 'ground';
 }
 
-/** The capture a measurement belongs to, or null for a site-wide (Needs a date) one. */
-const captureOf = (m: SurveyMeasurement): string | null =>
-  m.scope.kind === 'survey' ? m.scope.capture : null;
+/**
+ * The capture a measurement belongs to, or null for a site-wide (Needs a date) one; a date no
+ * longer in the project counts as none (it shows under Needs a date too).
+ */
+const captureOf = (m: SurveyMeasurement, manifest: MoveEnv['manifest']): string | null =>
+  m.scope.kind === 'survey' && manifest.captures.some((c) => c.id === m.scope.capture)
+    ? m.scope.capture
+    : null;
 
 /** The folder kept when the target date has one of that name, else none. */
 function withFolder(m: SurveyMeasurement, folders: ReadonlySet<string>): SurveyMeasurement {
@@ -82,6 +89,10 @@ function rewriteRef(
   const of = surfaces.find((s) => s.id === ref.surface)?.capture;
   return of === from ? { ...ref, surface: to } : ref;
 }
+
+/** Whether a comparison already compared one surface with itself before the move. */
+const sameBefore = (it: SurveyMeasurement['items'][number] | undefined): boolean =>
+  it?.from.kind === 'survey' && it.to.kind === 'survey' && it.from.surface === it.to.surface;
 
 interface Remeasure {
   m: SurveyMeasurement;
@@ -108,7 +119,7 @@ export async function planMoveToDate(
   const filed: SurveyMeasurement[] = [];
   const todo: Remeasure[] = [];
   for (const m of ms) {
-    const from = captureOf(m);
+    const from = captureOf(m, manifest);
     if (from === capture) continue;
     if (from === null) {
       filed.push(m);
@@ -159,16 +170,22 @@ export async function planMoveToDate(
     if (z.some((v) => !Number.isFinite(v)))
       return { ok: false, refusal: { kind: 'no-data', id: r.m.id } };
     const drawn = r.drawn.map((p, i): SitePoint => [p[0], p[1], z[i] ?? p[2]]);
+    const items = r.m.items.map((it) => ({
+      ...it,
+      from: rewriteRef(it.from, surfaces, r.from, surfaceTo),
+      to: rewriteRef(it.to, surfaces, r.from, surfaceTo),
+    }));
+    // a comparison of the old date with the target would read 0 cut and fill: refused instead
+    const self = (a: SurfaceRef, b: SurfaceRef) =>
+      a.kind === 'survey' && b.kind === 'survey' && a.surface === b.surface;
+    if (items.some((it, i) => self(it.from, it.to) && !sameBefore(r.m.items[i])))
+      return { ok: false, refusal: { kind: 'same-surface', id: r.m.id } };
     const moved: SurveyMeasurement = {
       ...r.m,
       scope: target,
       source: { layer: r.layer },
       points: storedPoints(drawn, target, manifest),
-      items: r.m.items.map((it) => ({
-        ...it,
-        from: rewriteRef(it.from, surfaces, r.from, surfaceTo),
-        to: rewriteRef(it.to, surfaces, r.from, surfaceTo),
-      })),
+      items,
       results: r.m.results.map((x) => ({ ...x, status: 'stale' as const })),
     };
     next.push(withFolder(moved, folders));

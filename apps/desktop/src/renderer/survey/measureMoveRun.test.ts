@@ -16,6 +16,7 @@ import {
   copyMeasurementToDate,
   followLayerDates,
   moveMeasurementsToDate,
+  moveRefusalText,
   setMoveRepicker,
 } from './measureMoveRun';
 import { measureStore, renameMeasurement, undoMeasureChange } from './measureStore';
@@ -230,6 +231,24 @@ describe('moving measurements to another date', () => {
       danger: true,
     });
     expect(computeAll).not.toHaveBeenCalled();
+  });
+
+  it('names the measurement that would compare a surface with itself', () => {
+    load([m('a')]);
+    const manifest = workspace.getState().project?.manifest;
+    if (!manifest) throw new Error('no project');
+    expect(moveRefusalText({ kind: 'same-surface', id: 'a' }, manifest, 'jun')).toBe(
+      t('tree.measure.move.sameSurface', { date: formatDate('2026-06-01'), name: 'Area a' }),
+    );
+  });
+
+  it('a refusal with no layer to name says so without an empty name', () => {
+    load([m('a')]);
+    const manifest = workspace.getState().project?.manifest;
+    if (!manifest) throw new Error('no project');
+    const text = moveRefusalText({ kind: 'no-match', id: 'a', layer: '' }, manifest, 'jun');
+    expect(text).toBe(t('tree.measure.move.noMatchAny', { date: formatDate('2026-06-01') }));
+    expect(text).not.toMatch(/like ,/);
   });
 
   it('refuses antenna measurements itself', async () => {

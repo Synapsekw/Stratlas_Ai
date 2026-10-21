@@ -302,6 +302,22 @@ describe('planMoveToDate', () => {
     expect(moved?.items[1]?.from).toEqual({ kind: 'survey', surface: 's-mar' });
   });
 
+  it('refuses a comparison that would compare the target surface with itself', async () => {
+    const repick = fakeRepick();
+    const item = {
+      id: 'i1',
+      from: { kind: 'survey', surface: 's-jan' },
+      to: { kind: 'survey', surface: 's-jun' },
+      useDeadband: false,
+    };
+    const plan = await planMoveToDate(
+      [m('a', { items: [item] } as unknown as Partial<SurveyMeasurement>)],
+      'jun',
+      envOf(LAYERS, repick),
+    );
+    expect(plan).toEqual({ ok: false, refusal: { kind: 'same-surface', id: 'a' } });
+  });
+
   it('stores points in the target line-up frame', async () => {
     const repick = fakeRepick();
     // June lined up 2 m east: a point drawn at E 10 is stored at E 8
@@ -387,6 +403,20 @@ describe('planMoveToDate', () => {
       envOf(LAYERS, repick),
     );
     expect(plan.ok && plan.next.map((x) => x.id)).toEqual(['b']);
+  });
+
+  it('files a measurement whose date was deleted like a Needs a date one', async () => {
+    const repick = fakeRepick();
+    const plan = await planMoveToDate(
+      [m('a', { scope: { kind: 'survey', capture: 'gone' } })],
+      'jun',
+      envOf(LAYERS, repick),
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.next[0]?.scope).toEqual({ kind: 'survey', capture: 'jun' });
+    expect(plan.next[0]?.source).toEqual({ layer: 'dsm-jun' });
+    expect(repick.ground).not.toHaveBeenCalled();
   });
 
   it('is all or nothing: one refusal moves none', async () => {
