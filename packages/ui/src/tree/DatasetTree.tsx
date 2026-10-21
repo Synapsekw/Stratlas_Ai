@@ -360,6 +360,8 @@ export function DatasetTree(props: DatasetTreeProps) {
    * on a new `seq`, as the unplace request is: open the group and the folder that holds it.
    */
   const [revealed, setRevealed] = useState<string | null>(null);
+  /** Whether the current reveal was found in this tree (in a dated tree, one of several). */
+  const [revealMine, setRevealMine] = useState(false);
   const [seenReveal, setSeenReveal] = useState(
     props.honourReveal === true ? 0 : (measures?.reveal?.seq ?? 0),
   );
@@ -369,6 +371,7 @@ export function DatasetTree(props: DatasetTreeProps) {
     // in a dated tree several of these are drawn: only the one holding the measurement acts
     const here =
       id === null || (measureGroup !== undefined && groupMeasureIds(measureGroup).includes(id));
+    setRevealMine(here);
     if (here) {
       setRevealed(id);
       setOpen((o) => ({ ...o, measurements: true }));
@@ -390,6 +393,10 @@ export function DatasetTree(props: DatasetTreeProps) {
   const measureHead = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     if (scrolledReveal.current === seenReveal || collapsed) return;
+    if (!revealMine) {
+      scrolledReveal.current = seenReveal;
+      return;
+    }
     const el = revealed === null ? measureHead.current : rowEls.current.get(measureMark(revealed));
     if (!el) return;
     scrolledReveal.current = seenReveal;
@@ -808,14 +815,18 @@ export function DatasetTree(props: DatasetTreeProps) {
   /** The measurements being dragged inside this tree, and the target under them. */
   const [measureDrag, setMeasureDrag] = useState<string[] | null>(null);
   const [measureOver, setMeasureOver] = useState<string | null>(null);
-  const dragMeasuresChanged = measures?.onDragMeasures;
+  // the caller's callback is read through a ref, so the listeners below do not churn each render
+  const dragMeasuresChanged = useRef(measures?.onDragMeasures);
+  useEffect(() => {
+    dragMeasuresChanged.current = measures?.onDragMeasures;
+  });
   // A moved row may unmount before its dragend fires: the drop that ends any drag clears this too.
   useEffect(() => {
     if (!measureDrag) return;
     const end = () => {
       setMeasureDrag(null);
       setMeasureOver(null);
-      dragMeasuresChanged?.(null);
+      dragMeasuresChanged.current?.(null);
     };
     document.addEventListener('dragend', end);
     document.addEventListener('drop', end);
@@ -823,7 +834,7 @@ export function DatasetTree(props: DatasetTreeProps) {
       document.removeEventListener('dragend', end);
       document.removeEventListener('drop', end);
     };
-  }, [measureDrag, dragMeasuresChanged]);
+  }, [measureDrag]);
   /** Whether an antenna measurement is in `it` or under it. */
   const hasTelecom = (it: TreeItem): boolean =>
     it.measure?.telecom === true || (it.children ?? []).some(hasTelecom);

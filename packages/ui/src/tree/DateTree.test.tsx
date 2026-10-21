@@ -712,6 +712,23 @@ describe('DateTree: dragging a measurement', () => {
     expect(q('date-folder-oct')?.className).not.toContain('drop-can');
   });
 
+  it('a new-folder request naming no measurement shows in the focused date only', () => {
+    renderWith(
+      base({
+        measures: measuresProps({ newFolder: { ids: [], seq: 1 } }),
+        after: [measured(['n'])],
+      }),
+    );
+    act(() => {
+      host
+        .querySelector('[data-testid="date-folder-oct"] .dchev')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    const fields = host.querySelectorAll('[data-testid="measure-folder-new"]');
+    expect(fields.length).toBe(1);
+    expect(fields[0]?.closest('[data-testid="date-folder-nov"]')).not.toBeNull();
+  });
+
   it('a reveal opens the date folder holding the measurement', () => {
     const root = createRoot(host);
     const props = (reveal: { id: string | null; seq: number } | null): DateTreeProps => ({

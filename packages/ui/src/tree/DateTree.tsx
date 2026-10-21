@@ -158,9 +158,13 @@ export function DateTree(props: DateTreeProps) {
   /** The measurement tree props of the tree under folder `from`: its drags report here. */
   const measuresFor = (from: string): MeasureTreeProps | undefined => {
     const mp = rest.measures;
-    if (!mp || !onMoveMeasures) return mp;
+    if (!mp) return mp;
+    // a new-folder request that names no measurement belongs to the focused date alone
+    const nf = mp.newFolder?.ids.length === 0 && from !== focus ? null : mp.newFolder;
+    if (!onMoveMeasures) return nf === mp.newFolder ? mp : { ...mp, newFolder: nf };
     return {
       ...mp,
+      newFolder: nf,
       onDragMeasures: (d) => {
         mp.onDragMeasures?.(d);
         if (d) setDrag({ kind: 'measurements', ids: d.ids, from, telecom: d.telecom });

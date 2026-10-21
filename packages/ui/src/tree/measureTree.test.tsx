@@ -559,6 +559,39 @@ describe('DatasetTree: dragging measurements between folders', () => {
     expect(onDropToFolder).not.toHaveBeenCalled();
   });
 
+  it('a reveal scrolls only the tree holding the measurement', () => {
+    const scroll = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      value: function (this: Element) {
+        scroll(this);
+      },
+      configurable: true,
+      writable: true,
+    });
+    const trees = (reveal: { id: string | null; seq: number } | null) => {
+      const p = props({}, { reveal }, two);
+      return (
+        <>
+          <DatasetTree {...p} nested groups={[group([m('x', 'Other X')])]} />
+          <DatasetTree {...p} nested groups={[group(two)]} />
+        </>
+      );
+    };
+    root ??= createRoot(host);
+    act(() => root?.render(trees(null)));
+    act(() => root?.render(trees({ id: 'b', seq: 1 })));
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.calls[0]?.[0]).toBe(row('b'));
+  });
+
+  it('a new-folder request with no ids still shows its field in a single tree', () => {
+    const p = props({}, { newFolder: { ids: [], seq: 1 } }, two);
+    root ??= createRoot(host);
+    act(() => root?.render(<DatasetTree {...p} groups={[group(two)]} />));
+    expect(qa('[data-testid="measure-folder-new"]').length).toBe(1);
+  });
+
   it('the new-folder row shows only in the group holding the asked measurement', () => {
     const other = [m('x', 'Other X')];
     const p = props({}, { newFolder: { ids: ['b'], seq: 1 } }, two);
