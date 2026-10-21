@@ -133,7 +133,7 @@ describe('the road measure bar', () => {
     expect(saveRoadMeasure()).toBeNull();
   });
 
-  it('one height rule per line: saved without heights, its length the one shown live', () => {
+  it('one height rule per line: one level for the whole line, its length the one shown live', () => {
     open({ captures: 1, readOnly: false });
     // a surface under the first point only: the second is off the survey mesh
     const [e0] = lonLatToUtm(LINE[0]?.[0] ?? 0, LINE[0]?.[1] ?? 0, 32, false);
@@ -153,15 +153,23 @@ describe('the road measure bar', () => {
       save()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     const [saved] = measureStore.getState().file.measurements;
-    // no vertex at 245 next to one at 0: the line keeps no heights at all
-    expect(saved?.points.map((p) => p[2])).toEqual([0, 0]);
+    // never 245 next to 0: the whole line at the mean height of the vertices on the surface, so it
+    // sits on the terrain in 3D and its slope length is its horizontal length
+    expect(saved?.points.map((p) => p[2])).toEqual([245, 245]);
     const s = measureStore.getState();
     const text = primaryText(saved ?? (null as never), { settings: s.settings, templates: [] });
     expect(text.replace(/\s+/g, ' ')).toBe(liveText.replace(/\s+/g, ' '));
     // and says so
     expect(document.querySelector('[data-testid="measure-saved-note"]')?.textContent).toContain(
-      'without heights',
+      'one height',
     );
+    measureStore.setState({ surface: null });
+  });
+
+  it('with no vertex on a surface, the line is saved at height 0', () => {
+    open({ captures: 1, readOnly: false });
+    measureStore.setState({ surface: { heightAt: () => null } });
+    expect(saveRoadMeasure()?.points.map((p) => p[2])).toEqual([0, 0]);
     measureStore.setState({ surface: null });
   });
 });

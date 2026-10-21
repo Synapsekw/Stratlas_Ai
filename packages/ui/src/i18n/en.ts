@@ -4877,7 +4877,7 @@ export const en = {
   'road.measure.area': 'Area',
   'road.measure.save': 'Save',
   'road.measure.savedFlat':
-    'Saved to Measure without heights, so its length is the horizontal length shown here. Its card reads the terrain length from the survey surface.',
+    'Saved to Measure at one height (the survey surface under it), so its length is the horizontal length shown here. Its card reads the terrain length from the survey surface.',
   'roadBench.mapOnly': 'Works on the map',
   'stage.env.needs3d': 'Open the 3D view to set the sky, the time of day and the water.',
   'stage.cutaway.needs3d': 'Open the 3D view to cut the model open.',

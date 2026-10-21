@@ -222,11 +222,25 @@ function roadToSite(project: OpenProject): ((p: MapLngLat) => SitePoint) | null 
 }
 
 /**
+ * One height for a whole road line: the mean survey-surface height of the vertices on the surface,
+ * else 0. A vertex on the mesh next to one off it would otherwise read as a drop of the mesh's
+ * whole height; one level keeps the slope length the horizontal one and the line on the terrain.
+ */
+function lineLevel(points: readonly SitePoint[]): number {
+  const surface = measureStore.getState().surface;
+  if (!surface) return 0;
+  const zs = points.flatMap((p) => {
+    const z = surface.heightAt(p[0], p[1]);
+    return z !== null && Number.isFinite(z) ? [z] : [];
+  });
+  return zs.length > 0 ? zs.reduce((a, z) => a + z, 0) / zs.length : 0;
+}
+
+/**
  * Save the current road measure as a site-scoped `distance` or `area` measurement, placed in the
- * project frame without heights (z 0 at every vertex): one rule for the whole line, so its saved
- * length is the horizontal length the live card showed. A vertex on the survey mesh next to one
- * off it would otherwise read as a drop of the mesh's whole height. The saved card still reads the
- * terrain length from the survey surface.
+ * project frame at one height for the whole line (`lineLevel`), so its saved length is the
+ * horizontal length the live card showed. The saved card still reads the terrain length from the
+ * survey surface.
  */
 export function saveRoadMeasure(): SurveyMeasurement | null {
   const project = workspace.getState().project;
@@ -237,8 +251,11 @@ export function saveRoadMeasure(): SurveyMeasurement | null {
   const mode = m.mode;
   const need = mode === 'line' ? 2 : 3;
   if (m.vertices.length < need) return null;
+  const flat = roadMeasurement(mode, m.vertices, toSite, newMeasurementId());
+  const z = lineLevel(flat.points);
   const saved: SurveyMeasurement = {
-    ...roadMeasurement(mode, m.vertices, toSite, newMeasurementId()),
+    ...flat,
+    points: flat.points.map((p): SitePoint => [p[0], p[1], z]),
     createdAt: new Date().toISOString(),
   };
   const by = authorName();
