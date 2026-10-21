@@ -2,11 +2,17 @@ import { Icon, useT } from '@aio/ui';
 import type { MovedLayer } from './dateFolders';
 import { DatePrompt, type DatePromptNote } from './DatePrompt';
 
-/** A line under the Datasets header: what a move or a new date did, or why it failed. */
+/**
+ * A line under the Datasets header: what a move or a new date did, or why it failed. `undo` puts
+ * layers back; `measureUndo` is the seq of a measurement move to undo (`undoMeasureChange`);
+ * `prepare` offers Prepare surfaces (a measurement move refused for want of them).
+ */
 export interface DateNote {
   text: string;
   danger: boolean;
   undo?: { moved: MovedLayer[]; target: string | null };
+  measureUndo?: number;
+  prepare?: boolean;
 }
 
 /**
@@ -19,6 +25,8 @@ export function DateNotes({
   note,
   onPromptResult,
   onUndo,
+  onMeasureUndo,
+  onPrepare,
   onDismiss,
 }: {
   collapsed: boolean;
@@ -26,6 +34,8 @@ export function DateNotes({
   note: DateNote | null;
   onPromptResult: (note: DatePromptNote) => void;
   onUndo: (undo: NonNullable<DateNote['undo']>) => void;
+  onMeasureUndo: (seq: number) => void;
+  onPrepare: () => void;
   onDismiss: () => void;
 }) {
   const t = useT();
@@ -40,16 +50,27 @@ export function DateNotes({
           data-testid="date-note"
         >
           <span>{note.text}</span>
-          {note.undo && (
+          {(note.undo !== undefined || note.measureUndo !== undefined) && (
             <button
               type="button"
               className="dtree-undo"
               data-testid="date-undo"
               onClick={() => {
                 if (note.undo) onUndo(note.undo);
+                else if (note.measureUndo !== undefined) onMeasureUndo(note.measureUndo);
               }}
             >
               {t('tree.dates.move.undo')}
+            </button>
+          )}
+          {note.prepare === true && (
+            <button
+              type="button"
+              className="dtree-undo"
+              data-testid="date-note-prepare"
+              onClick={onPrepare}
+            >
+              {t('tree.measure.move.prepare')}
             </button>
           )}
           <button

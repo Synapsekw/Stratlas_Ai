@@ -1,4 +1,4 @@
-import { useAnnotateReadOnly } from '@aio/annotate';
+import { isAnnotateReadOnly, useAnnotateReadOnly } from '@aio/annotate';
 import {
   ariaKeys,
   Button,
@@ -54,7 +54,9 @@ import { pickAndScanPanos } from '../panos/panos';
 import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
 import { filterTerms } from '../survey/measureFilter';
-import { buildMeasureItems } from '../survey/measureRows';
+import { prepareSurfaces } from '../survey/compareStore';
+import { moveMeasurementsToDate } from '../survey/measureMoveRun';
+import { buildMeasureItems, needsDate } from '../survey/measureRows';
 import {
   deleteMeasurements,
   endNewFolder,
@@ -63,8 +65,11 @@ import {
   revealMeasurement,
   select,
   setFolder,
+  setMeasureNote,
   setMeasurementsHidden,
+  undoMeasureChange,
   useMeasure,
+  type MeasureNote,
 } from '../survey/measureStore';
 import { walkBadge, walkGroupAction } from '../walks/walkBadge';
 import { openWalk, placeWalk, removeWalkPlacement, useWalks } from '../walks/walks';
@@ -238,15 +243,15 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   // the group's filter box: view state only, never saved; the rows are built from it
   const [measureQuery, setMeasureQuery] = useState('');
   const filteringMeasures = filterTerms(measureQuery).length > 0;
+  const measureState = useMemo(
+    () => ({ file: measureFile, settings: measureSettings, templates: measureTemplates }),
+    [measureFile, measureSettings, measureTemplates],
+  );
+  // every measurement's rows: the one group with survey dates off, and what the filter and the
+  // marks read either way
   const measureItems = useMemo(
-    () =>
-      buildMeasureItems(
-        { file: measureFile, settings: measureSettings, templates: measureTemplates },
-        manifest,
-        { dates, hidden },
-        measureQuery,
-      ),
-    [measureFile, measureSettings, measureTemplates, manifest, dates, hidden, measureQuery],
+    () => buildMeasureItems(measureState, manifest, { dates, hidden }, measureQuery),
+    [measureState, manifest, dates, hidden, measureQuery],
   );
   // under a filter the group still counts, and its eye covers, every measurement
   const measureIds = useMemo(
@@ -292,16 +297,14 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         : [],
     [project, issues, durations, unplaced, measureItems, measureIds],
   );
-  // survey dates on: the group shows once, below the date folders (no date folder holds it)
-  const after = useMemo(() => {
-    const g = measurementsGroup(measureItems, measureIds);
-    return g ? [g] : [];
-  }, [measureItems, measureIds]);
   const t = useT();
   const index = useCaptureIndex();
   const focus = useTimeline((s) => s.focus);
   const datesOn = !collapsed && index !== null && index.captures.length > 0;
   const tags = useMemo(() => (index ? dateTags(index.captures) : {}), [index]);
+  // survey dates on: each date folder holds its own Measurements group (Every date none), and the
+  // measurements of no date (the legacy whole site, or a date since deleted) show once below the
+  // date folders as "Needs a date", only while there are some. One filter for every group.
   const folders = useMemo(
     () =>
       project && index && datesOn
@@ -315,11 +318,52 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               dateLabel: (c) => formatDate(c.date),
               lineUp: (c) => lineUpTip(project.manifest, c.id, t) ?? undefined,
             },
-            { unplaced },
+            {
+              unplaced,
+              measurementsOf: (c) => {
+                const items = buildMeasureItems(
+                  measureState,
+                  project.manifest,
+                  { dates, hidden },
+                  measureQuery,
+                  c,
+                );
+                if (!filteringMeasures) return { items };
+                // under a filter the date's group counts, and its eye covers, all of the date's
+                const ids = measureState.file.measurements
+                  .filter((m) => m.scope.kind === 'survey' && m.scope.capture === c)
+                  .filter((m) => !needsDate(m, project.manifest))
+                  .map((m) => m.id);
+                return { items, ids };
+              },
+            },
           )
         : [],
-    [project, index, datesOn, issues, durations, t, unplaced],
+    [
+      project,
+      index,
+      datesOn,
+      issues,
+      durations,
+      t,
+      unplaced,
+      measureState,
+      dates,
+      hidden,
+      measureQuery,
+      filteringMeasures,
+    ],
   );
+  const after = useMemo(() => {
+    if (!datesOn) return [];
+    const m = project?.manifest ?? null;
+    const items = buildMeasureItems(measureState, m, { dates, hidden }, measureQuery, null);
+    const ids = filteringMeasures
+      ? measureState.file.measurements.filter((x) => needsDate(x, m)).map((x) => x.id)
+      : undefined;
+    const g = measurementsGroup(items, ids, t('tree.measure.needsDate'));
+    return g ? [g] : [];
+  }, [datesOn, project, measureState, dates, hidden, measureQuery, filteringMeasures, t]);
   // filing datasets under dates and naming the folders edits the manifest: not in a package,
   // and not for a reviewer who may only look
   const lookOnly = useAnnotateReadOnly();
@@ -347,6 +391,34 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setMarks(NO_MARKS);
     setEmptying(false);
     setMeasureQuery('');
+  }
+  // A new note from the measurement store (a date move, its refusal, a backfill) takes the note
+  // slot; the same note changed (a later edit took its Undo away) changes the slot only while it
+  // shows that note; when the store lets go of it (its Undo ran, a load), the slot clears too.
+  // Adjusted during render, as the project's is.
+  const storeNote = useMeasure((s) => s.note);
+  const storeProject = useMeasure((s) => s.projectId);
+  const liveNote = storeNote !== null && storeProject === projectId ? storeNote : null;
+  const [seenStoreNote, setSeenStoreNote] = useState<MeasureNote | null>(null);
+  const [fromStore, setFromStore] = useState<DateNote | null>(null);
+  if (seenStoreNote !== liveNote) {
+    setSeenStoreNote(liveNote);
+    if (liveNote !== null) {
+      const n: DateNote = {
+        text: liveNote.text,
+        danger: liveNote.danger,
+        ...(liveNote.undo === true ? { measureUndo: liveNote.seq } : {}),
+        ...(liveNote.prepare === true ? { prepare: true } : {}),
+      };
+      const same = seenStoreNote?.seq === liveNote.seq;
+      if (!same || (fromStore !== null && note === fromStore)) {
+        setNote(n);
+        setFromStore(n);
+      }
+    } else {
+      if (fromStore !== null && note === fromStore) setNote(null);
+      setFromStore(null);
+    }
   }
   // a measurement that left the file (deleted from any menu, the 3D view, the map, the panel,
   // or taken back by Revert) is not marked any more (adjusted during render, not in an effect)
@@ -802,11 +874,17 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       renameRequest.getState().done();
     },
     newFolder: canMeasureEdit ? newFolder : null,
+    // measurement and folder rows drag onto their date's folders, and onto other dates
+    dragMeasureIds: canMeasureEdit ? itemMeasureIds : undefined,
+    onDropToFolder: (ids, folder) => {
+      if (canMeasureEdit && !isAnnotateReadOnly()) setFolder(ids, folder);
+    },
     onNewFolder: (name) => {
       if (name && newFolder) setFolder(newFolder.ids, name);
       endNewFolder();
     },
-    reveal,
+    // a reveal of no measurement would open every date's group: the dated trees are not asked
+    reveal: datesOn && reveal?.id === null ? null : reveal,
     query: measureQuery,
     onQuery: setMeasureQuery,
   };
@@ -962,7 +1040,39 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           setNote(null);
           void undoDateMove(pending.moved, pending.target).then(failed);
         }}
+        onMeasureUndo={(seq) => {
+          if (!canMeasureEdit || isAnnotateReadOnly()) return;
+          if (undoMeasureChange(seq)) {
+            setNote(null);
+            return;
+          }
+          // the Undo went stale (a later edit): the note stays, without it
+          setNote((n) => {
+            if (n?.measureUndo !== seq) return n;
+            return { text: n.text, danger: n.danger, ...(n.prepare ? { prepare: true } : {}) };
+          });
+        }}
+        onPrepare={() => {
+          if (!canMeasureEdit || isAnnotateReadOnly()) return;
+          // the button goes once asked, so a second click does not start it again
+          setNote((n) => {
+            if (n?.prepare !== true) return n;
+            return {
+              text: n.text,
+              danger: n.danger,
+              ...(n.measureUndo !== undefined ? { measureUndo: n.measureUndo } : {}),
+            };
+          });
+          void prepareSurfaces(project.manifest)
+            .then((error) => {
+              if (error) setNote({ text: error, danger: true });
+            })
+            .catch((e: unknown) => {
+              setNote({ text: String(e), danger: true });
+            });
+        }}
         onDismiss={() => {
+          if (note !== null && note === fromStore) setMeasureNote(null);
           setNote(null);
         }}
       />
@@ -987,6 +1097,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           {...markProps}
           onFolderMenu={openFolder}
           onMove={canEdit ? onMove : undefined}
+          onMoveMeasures={
+            canMeasureEdit
+              ? (ids, capture) => {
+                  if (!isAnnotateReadOnly()) void moveMeasurementsToDate(ids, capture);
+                }
+              : undefined
+          }
           onItemMenu={onDatesMenu}
           renaming={canEdit ? renaming : null}
           onRenameStart={canEdit ? setRenaming : undefined}

@@ -1236,6 +1236,25 @@ select.input option {
   outline: 2px solid var(--dtag, var(--acc));
   background: color-mix(in oklch, var(--dtag, var(--acc)) 14%, transparent);
 }
+/* an antenna measurement dragged onto another date: shown refused (the drop says why) */
+.dfolder.drop-no {
+  border-radius: var(--r-4);
+  outline: 1px dashed var(--danger);
+  outline-offset: -1px;
+  cursor: not-allowed;
+}
+/* dragging measurements onto a measurement folder or the Measurements header of their date */
+.titem.drop-can,
+.tgroup-row.drop-can {
+  border-radius: var(--r-4);
+  outline: 1px dashed var(--fg-4);
+  outline-offset: -1px;
+}
+.titem.drop-over,
+.tgroup-row.drop-over {
+  outline: 2px solid var(--acc);
+  background: color-mix(in oklch, var(--acc) 14%, transparent);
+}
 /* Every date as a drop place while every dataset is dated: kept in view at the foot of the list */
 .dfolder-spare {
   position: sticky;
