@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { compareVersions, parseProbe, probeFailure, verifyInstaller, type Probe } from './verify';
+import {
+  compareVersions,
+  parseProbe,
+  powershellPath,
+  probeFailure,
+  verifyInstaller,
+  type Probe,
+} from './verify';
+
+describe('powershellPath', () => {
+  it('uses the full path under SystemRoot, never a PATH lookup', () => {
+    expect(powershellPath({ SystemRoot: 'D:\\Win' })).toBe(
+      'D:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    );
+  });
+  it('falls back to C:\\Windows when SystemRoot is missing or not a full path', () => {
+    const want = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+    expect(powershellPath({})).toBe(want);
+    expect(powershellPath({ SystemRoot: 'evil' })).toBe(want);
+    expect(powershellPath({ SystemRoot: '\\\\server\\share' })).toBe(want);
+  });
+});
 
 /** Asymmetric matcher typed as unknown, so object literals stay type-safe. */
 const matching = (re: RegExp): unknown => expect.stringMatching(re);

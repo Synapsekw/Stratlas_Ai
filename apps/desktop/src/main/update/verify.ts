@@ -1,5 +1,16 @@
 import { execFile } from 'node:child_process';
-import { extname } from 'node:path';
+import { extname, win32 } from 'node:path';
+
+/**
+ * Windows PowerShell by its full path under the system folder, never looked up through PATH (a
+ * `powershell.exe` earlier on PATH, or in the working folder, would answer the signature check).
+ * `SystemRoot` comes from the environment, `C:\\Windows` when it is missing or not a full path.
+ */
+export function powershellPath(env: Record<string, string | undefined> = process.env): string {
+  const root = env.SystemRoot ?? env.SYSTEMROOT ?? '';
+  const base = /^[A-Za-z]:[\\/]/.test(root) && !root.includes('\0') ? root : 'C:\\Windows';
+  return win32.join(base, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+}
 
 /** What Windows says about an installer file. */
 export interface Probe {
@@ -218,7 +229,7 @@ export function probeFailure(
 export function probeWithPowerShell(path: string): Promise<Probe> {
   return new Promise((resolve, reject) => {
     execFile(
-      'powershell.exe',
+      powershellPath(),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PROBE_SCRIPT],
       {
         env: { ...process.env, AIO_INSTALLER: path },
