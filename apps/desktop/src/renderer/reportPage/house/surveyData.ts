@@ -69,7 +69,7 @@ import {
   type SectionRef,
 } from '@aio/survey';
 import { t } from '@aio/ui';
-import { readoutOn } from '../../survey/dateReadout';
+import { onPreparedSurface, readoutOn } from '../../survey/dateReadout';
 
 type Key = Parameters<typeof t>[0];
 const tk = (key: string, vars?: Record<string, string | number>) => t(key as Key, vars);
@@ -423,7 +423,12 @@ export async function buildSurveyData(
     const units = effectiveUnits(settings.units, m.units);
     const results = comparisons.flatMap((c) => (c.result ? [c.result] : []));
     const terrain = m.family !== 'polygon' || ringArea(m.points) <= TERRAIN_AREA_MAX_M2;
-    const sample = computed && cap && terrain ? await engine.sampler(cap.id) : null;
+    const raw = computed && cap && terrain ? await engine.sampler(cap.id) : null;
+    // the stored points read where the date's surface was prepared (its line-up then), as the panel
+    const sample =
+      raw && cap
+        ? onPreparedSurface(raw, surfaceOfCapture(files.surfaces, cap.id), manifest.origin)
+        : raw;
     const rows = await readoutOn({ ...m, results }, tpl?.items, sample);
     const values: SurveyValue[] = rows.map((r) => ({
       key: r.key,

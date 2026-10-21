@@ -18,6 +18,7 @@ import {
 } from '@aio/survey';
 import { captureShift } from '@aio/workspace';
 import { compareStore } from './compareStore';
+import { preparedShift } from './dateReadout';
 import { fetchBytes } from './sectionEngine';
 
 /** True when the date has a prepared surface of its own. */
@@ -67,20 +68,6 @@ export function dateSampler(capture: string): Promise<PointSampler | null> {
     byKey.set(key, run);
   }
   return run;
-}
-
-/** The line-up a prepared surface's cells sit at: its `dateShiftM` with its `dateTurn`. */
-function preparedShift(s: HeightTiles | null, origin: readonly number[]): DateShift | null {
-  if (!s || (!s.dateShiftM && !s.dateTurn)) return null;
-  const out: DateShift = { eastM: s.dateShiftM?.eastM ?? 0, northM: s.dateShiftM?.northM ?? 0 };
-  const turn = s.dateTurn;
-  if (turn)
-    out.turn = {
-      ...turn,
-      pivotX: turn.pivotE - (origin[0] ?? 0),
-      pivotZ: (origin[1] ?? 0) - turn.pivotN,
-    };
-  return out;
 }
 
 type Dated = Pick<ProjectManifest, 'captures' | 'layers' | 'origin'>;
