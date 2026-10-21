@@ -13,6 +13,7 @@ import io
 import json
 import math
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -40,6 +41,9 @@ def image_url(img: Image.Image) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+API_KEY = secrets.token_hex(16)
+
+
 def chat(base: str, img: Image.Image, text: str, **extra) -> dict:
     body = {
         "messages": [
@@ -57,7 +61,10 @@ def chat(base: str, img: Image.Image, text: str, **extra) -> dict:
     req = urllib.request.Request(
         base + "/v1/chat/completions",
         data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {API_KEY}",
+        },
     )
     with urllib.request.urlopen(req, timeout=300) as r:
         return json.load(r)
@@ -65,7 +72,9 @@ def chat(base: str, img: Image.Image, text: str, **extra) -> dict:
 
 def p_yes(resp: dict) -> float:
     top = resp["choices"][0]["logprobs"]["content"][0]["top_logprobs"]
-    yes = sum(math.exp(t["logprob"]) for t in top if t["token"].strip().lower() == "yes")
+    yes = sum(
+        math.exp(t["logprob"]) for t in top if t["token"].strip().lower() == "yes"
+    )
     no = sum(math.exp(t["logprob"]) for t in top if t["token"].strip().lower() == "no")
     return yes / (yes + no) if yes + no > 0 else 0.0
 
@@ -99,10 +108,15 @@ def run_checks(base: str) -> list[str]:
         max_tokens=128,
     )
     text = resp["choices"][0]["message"]["content"]
-    m = re.search(r"\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]", text)
+    m = re.search(
+        r"\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]",
+        text,
+    )
     box = [float(v) for v in json.loads(m.group(0))] if m else None
     off = max(abs(a - b) for a, b in zip(box, SQUARE)) if box else None
-    print(f"pixel frame: box={box} worst corner off={off} px ({time.monotonic() - t:.1f} s)")
+    print(
+        f"pixel frame: box={box} worst corner off={off} px ({time.monotonic() - t:.1f} s)"
+    )
     if box is None or off > CORNER_TOLERANCE_PX:
         failures.append(f"pixel frame: expected about {list(SQUARE)}, got {text!r}")
 
@@ -113,19 +127,27 @@ def run_checks(base: str) -> list[str]:
     r_grey = chat(base, grey, ask, **lp)
     try:
         top = r_sq["choices"][0]["logprobs"]["content"][0]["top_logprobs"]
-        shape_ok = isinstance(top, list) and all("token" in x and "logprob" in x for x in top)
+        shape_ok = isinstance(top, list) and all(
+            "token" in x and "logprob" in x for x in top
+        )
     except (KeyError, IndexError, TypeError):
         shape_ok = False
     print(f"logprobs shape ok: {shape_ok}")
     if not shape_ok:
-        failures.append(f"logprobs shape: {json.dumps(r_sq['choices'][0].get('logprobs'))[:300]}")
+        failures.append(
+            f"logprobs shape: {json.dumps(r_sq['choices'][0].get('logprobs'))[:300]}"
+        )
     else:
         y_sq, y_grey = p_yes(r_sq), p_yes(r_grey)
-        print(f"scores: P(yes) square={y_sq:.3f} grey={y_grey:.3f} ({time.monotonic() - t:.1f} s)")
+        print(
+            f"scores: P(yes) square={y_sq:.3f} grey={y_grey:.3f} ({time.monotonic() - t:.1f} s)"
+        )
         if y_sq < 0.9:
             failures.append(f"scores: P(yes) on the square is {y_sq:.3f}, want >= 0.9")
         if y_grey > 0.1:
-            failures.append(f"scores: P(yes) on plain grey is {y_grey:.3f}, want <= 0.1")
+            failures.append(
+                f"scores: P(yes) on plain grey is {y_grey:.3f}, want <= 0.1"
+            )
     return failures
 
 
@@ -139,23 +161,37 @@ def main() -> int:
     port = free_port()
     base = f"http://127.0.0.1:{port}"
     args = [
-        a.server, "--model", a.model, "--mmproj", a.mmproj,
-        "--host", "127.0.0.1", "--port", str(port),
-        "--ctx-size", "8192", "-ngl", "99", "--parallel", "1", "--no-webui",
+        a.server,
+        "--model",
+        a.model,
+        "--mmproj",
+        a.mmproj,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+        "--ctx-size",
+        "8192",
+        "-ngl",
+        "99",
+        "--parallel",
+        "1",
+        "--no-ui",
+        "--api-key",
+        API_KEY,
     ]
-    log = open("smoke-server.log", "w", encoding="utf-8")
-    proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
-    try:
-        t = time.monotonic()
-        wait_healthy(base, proc)
-        print(f"server healthy in {time.monotonic() - t:.1f} s")
-        failures = run_checks(base)
-    except Exception as e:  # noqa: BLE001 - the smoke check reports any failure as one line
-        failures = [f"server: {e} (see smoke-server.log)"]
-    finally:
-        proc.kill()
-        proc.wait()
-        log.close()
+    with open("smoke-server.log", "w", encoding="utf-8") as log:
+        proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            t = time.monotonic()
+            wait_healthy(base, proc)
+            print(f"server healthy in {time.monotonic() - t:.1f} s")
+            failures = run_checks(base)
+        except Exception as e:  # noqa: BLE001 - the smoke check reports any failure as one line
+            failures = [f"server: {e} (see smoke-server.log)"]
+        finally:
+            proc.kill()
+            proc.wait()
 
     if failures:
         for f in failures:

@@ -21,6 +21,6 @@ Result on an RTX 5070 Ti (16 GB), 21 Oct 2026: `SMOKE OK`. The server was health
 
 Server notes from the run:
 
-- `--no-webui` is deprecated in this release; `--no-ui` is the new spelling.
-- With no API key the server allows any web origin (CORS). The pack starts it with a random `--api-key` per launch, passed to the job through the state file, so a web page in a browser cannot call it.
+- `--no-webui` is deprecated in this release; the pack and the smoke check use `--no-ui`.
+- With no API key the server allows any web origin (CORS). The pack and the smoke check start it with a random `--api-key` per launch, passed to the job through the state file, so a web page in a browser cannot call it.
 - Qwen-VL grounding wants at least 1,024 image tokens. The 1344 x 1008 tiles give about 1,700, so `--image-min-tokens` is not needed.
