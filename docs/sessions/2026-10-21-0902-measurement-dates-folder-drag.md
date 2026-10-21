@@ -31,6 +31,7 @@ The founder could not drag measurements into folders and wanted every measuremen
 2. In 3D, draw a polygon on a date's DSM or cloud: it appears in that date's Measurements group.
 3. Right-click it > Move to folder > New folder; drag it out and back in.
 4. Drag it onto another date folder: the note says it was measured again; the Selected panel shows the new Survey date and Measured on, and the values change. Undo in the note restores it.
+   Or right-click the row > Move to date > another date: the same move and note, no drag needed.
 5. Drag an antenna measurement to another date: refused, antennas stay on their date.
 6. Drag a DSM layer to another date: its measurements follow.
 7. Open an older project with undated measurements: a note says how many were filed (Undo available); the rest sit under "Needs a date".
@@ -40,6 +41,10 @@ The founder could not drag measurements into folders and wanted every measuremen
 - Evidence: `pnpm check` green (13213 tests); e2e the CI way 41/41 across 12 specs, then 11/11 after the last fix wave. Two unit tests (`compareStore.test.ts`, `main/packages.test.ts`) time out at 5 s under full parallel load on this PC.
 - Whole-site region starting heights still come from stage terrain; a stale move is dropped silently on a race; follow ignores volume-hint-only dates; the `.titem .tm` 50 percent cap is global; `copyToSurvey` and `setScope` are unused in `measureStore`.
 - Calls to overturn if wrong: backfill thresholds; a Needs-a-date drag files without measuring again; antennas follow a moved layer with values unchanged; a layer move keeps the folder name; the report keeps per-date columns.
+
+## Review fixes
+
+The release review of this PR found seven points; all are fixed in this PR, each with tests. A comparison of survey A with survey B, moved onto B, is refused (it would compare B with itself and show 0 cut and fill). The measurement row menu has a Move to date submenu, the keyboard path of the folder drop (disabled for antennas and while read-only), and the panel's Needs a date line names it. A measurement whose date was deleted is filed like a Needs a date one, and a no-match note without a layer name reads cleanly. The backfill stores its recomputed results as derived numbers, so only the filing is unsaved, and an Undo (or Revert) of the filing is remembered per project in localStorage so later sessions do not file those again. `MeasurementSource` is a loose object (contract row updated). A model-only measurement moves to a date with no prepared ground, and a date with no height map gets its own refusal without Prepare. The report samples terrain through the line-up the surface was prepared with, as the panel does. The measurement-dates e2e now waits for three still reads before drawing (a read before the flight started passed at once). Evidence: `pnpm check` green (13275 tests); e2e the CI way: measurement-dates 3/3 with repeat-each, measurement-layers and sections 7/7. Left: the review's optional nit on exporting `MeasurementsFileStrict`; the declined-backfill memory is per computer, not in the project.
 
 ## Next session entry point
 
