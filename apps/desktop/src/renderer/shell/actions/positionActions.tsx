@@ -51,6 +51,7 @@ export const POSITION_ACTIONS: Action[] = [
     section: 'edit',
     targets: ['photos'],
     multi: true,
+    appliesTo: (tg) => tg.picks.length > 0,
     disabled: (tg, ctx) => editBlocked(ctx) || editReason(editablePicks(tg.picks, ctx.manifest)),
     run: (tg) => {
       positionEdit.getState().open(tg.picks, menuPoint());

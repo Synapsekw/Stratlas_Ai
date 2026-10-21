@@ -62,6 +62,10 @@ afterEach(() => {
 });
 
 describe('photos.editPosition', () => {
+  it('is not offered when no photo is picked', () => {
+    expect(item(photos(), 'photos.editPosition')).toBeUndefined();
+  });
+
   it('is offered on one photo and opens the panel at the menu point', () => {
     window.dispatchEvent(new MouseEvent('contextmenu', { clientX: 120, clientY: 80 }));
     expect(menuPoint()).toEqual({ x: 120, y: 80 });
