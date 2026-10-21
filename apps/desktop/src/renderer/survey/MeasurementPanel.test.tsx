@@ -263,6 +263,67 @@ describe('the point card', () => {
   });
 });
 
+describe('the terrain under a large polygon', () => {
+  /** A pile's toe about 94 m across, site-wide, drawn where it is stored. */
+  const ring = Array.from({ length: 48 }, (_, k): [number, number, number] => {
+    const a = (k / 48) * 2 * Math.PI;
+    return [1000 + 47 * Math.cos(a), 2000 + 47 * Math.sin(a), 30];
+  });
+  const polygon = (tool: 'area' | 'volume'): SurveyMeasurement => ({
+    ...spot,
+    id: 'spot',
+    family: 'polygon',
+    tool,
+    scope: { kind: 'site' },
+    points: ring,
+  });
+  /** The 3D stage's height picker: counts its raycasts. */
+  let rays = 0;
+  beforeEach(() => {
+    rays = 0;
+    measureStore.setState({
+      surface: {
+        heightAt: () => {
+          rays++;
+          return 3;
+        },
+      },
+    });
+  });
+
+  it("opens a pile's card without asking the 3D view for any terrain", async () => {
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [polygon('volume')] },
+    });
+    await renderPanel();
+    expect(host.querySelector('[data-testid="survey-panel"]')).not.toBeNull();
+    expect(rays).toBe(0);
+  });
+
+  it("works out an area's terrain after the card shows, each place asked once", async () => {
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [polygon('area')] },
+    });
+    act(() => {
+      root = createRoot(host);
+      root.render(<MeasurementPanel />);
+    });
+    // the card is up at once; its terrain area is still being read
+    expect(host.querySelector('[data-testid="survey-panel"]')).not.toBeNull();
+    expect(cell('Terrain area')).toBe('Computing');
+    // the reads come in slices, off the render; let them finish
+    for (let i = 0; i < 200 && cell('Terrain area') === 'Computing'; i++)
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+    // a flat surface: the terrain area is the plan area
+    expect(cell('Terrain area')).toBe(cell('Horizontal area'));
+    // every place once (half-metre cells over a 94 m toe), not once per row the card reads
+    expect(rays).toBeGreaterThan(30_000);
+    expect(rays).toBeLessThanOrEqual(201 * 201);
+  });
+});
+
 describe('the panel colour picker', () => {
   it('offers the one palette the right-click menu offers, and sets the colour', async () => {
     const { MEASURE_COLOURS } = await import('./measureColours');

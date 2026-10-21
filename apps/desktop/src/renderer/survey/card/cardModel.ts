@@ -26,6 +26,7 @@ import {
 } from '@aio/survey';
 import { t, type IconName } from '@aio/ui';
 import { DEFAULT_MEASURE_COLOUR, presetOf } from '../measureColours';
+import { SURFACE_ROWS } from './terrain';
 
 /** A colour as people read it: its preset name, or its hex. */
 export function colourName(hex: string): string {
@@ -78,6 +79,8 @@ export interface CardContext {
   captures: readonly { id: string; label: string }[];
   /** The surface under the measurement, for terrain lengths, areas and heights above it. */
   surface?: ReadoutContext['surface'];
+  /** The surface is still being read (`useCardTerrain`): its rows read "Computing". */
+  terrainPending?: boolean;
 }
 
 /**
@@ -128,7 +131,15 @@ export function invalidPicks(m: SurveyMeasurement): boolean {
 }
 
 export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
-  const text = (r: ReadoutRow) => rowText(r, m, ctx.settings);
+  // a row of the surface still being read says so, not "No surface under it"
+  const text = (r: ReadoutRow) =>
+    rowText(
+      ctx.terrainPending && r.value === null && SURFACE_ROWS.has(r.key)
+        ? { ...r, note: t('mcard.computing') }
+        : r,
+      m,
+      ctx.settings,
+    );
   const readout: ReadoutContext = ctx.surface ? { surface: ctx.surface } : {};
   const items = templateItems(m, ctx.templates);
   const primary = primaryRow(m, readout, items);

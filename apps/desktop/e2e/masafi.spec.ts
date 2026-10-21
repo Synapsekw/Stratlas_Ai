@@ -204,6 +204,20 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
   await pileCard(view, p02.name || p02.id).click();
   const card = view.getByTestId('volumes-detail');
   await expect(card).toBeVisible();
+  // the pile's card never holds the window: it reads no terrain (a pile shows no terrain row), and
+  // a card that does reads it off the render; the next frame comes at once, not minutes later
+  const frameMs = await win.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const t0 = performance.now();
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve(performance.now() - t0);
+          });
+        });
+      }),
+  );
+  expect(frameMs).toBeLessThan(2_000);
   await expect(card.getByTestId('survey-cmp-status').first()).toHaveText(
     'From an earlier version (kit, Triangulated)',
   );

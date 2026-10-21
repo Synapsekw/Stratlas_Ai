@@ -20,7 +20,8 @@ import { processing } from '../processing/store';
 import { bridge, useShell } from '../shell';
 import { BulkTotals, notCountedList } from './BulkTotals';
 import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
-import { slotsFor } from './card/slots';
+import { templateItems } from './card/cardModel';
+import { slotsFor, useCardTerrain } from './card/slots';
 import { computeSeries, isStale, seriesStale, useCompare } from './compareStore';
 import { fileBase } from './exportHelpers';
 import { drawnPoints } from './measureDates';
@@ -298,24 +299,27 @@ export function VolumesView({ className }: { className?: string }): ReactElement
 
 /**
  * The focused pile's detail card: the measurement panel's card (`MeasurementPanel`), built from
- * the same context (the points where they are drawn, the project's dates) with the same slots
- * (`slotsFor`: chips, comparisons, Calculators), so the two never differ. Not the terrain under
- * the pile: the 3D stage's height picker samples a pile's terrain area cell by cell, which on a
- * real survey holds the window for minutes (a pile's volume never reads it).
+ * the same context (the points where they are drawn, the project's dates, the terrain under them
+ * as `useCardTerrain` reads it) with the same slots (`slotsFor`: chips, comparisons,
+ * Calculators), so the two never differ.
  */
 function DetailCard({ m, readOnly }: { m: SurveyMeasurement; readOnly: boolean }) {
   const settings = useMeasure((s) => s.settings);
   const templates = useMeasure((s) => s.templates);
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const shown = useMemo(() => ({ ...m, points: drawnPoints(m, manifest) }), [m, manifest]);
+  const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
+  const { surface, terrainPending } = useCardTerrain(shown, templateItems(m, all));
   const model = useMemo(
     () =>
       cardModel(shown, {
         settings,
-        templates: knownTemplates({ templates, settings }),
+        templates: all,
         captures: manifest?.captures ?? [],
+        ...(surface ? { surface } : {}),
+        ...(terrainPending ? { terrainPending } : {}),
       }),
-    [shown, settings, templates, manifest],
+    [shown, settings, all, manifest, surface, terrainPending],
   );
   const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
   return (

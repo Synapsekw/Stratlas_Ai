@@ -57,6 +57,7 @@ import {
   type SurveyTemplate,
 } from '@aio/schema';
 import {
+  allRows,
   compareItem,
   effectiveUnits,
   formatRow,
@@ -93,6 +94,7 @@ import { t, type MessageKey } from '@aio/ui';
 import { baseName, kitBaseName } from '../../survey/card/baseNames';
 import { cardModel, type CardModel } from '../../survey/card/cardModel';
 import { measurementHasChart } from '../../survey/card/chartRule';
+import { presample, readsSurface } from '../../survey/card/terrain';
 import type { EngineContext } from '../../survey/engineProtocol';
 import { EngineSession } from '../../survey/engineServe';
 import { drawnPoints } from '../../survey/measureDates';
@@ -106,18 +108,6 @@ export const WEIGHBRIDGE_FILE = 'survey/weighbridge.csv';
 
 /** The report lists at most this many measurements; the measurements CSV has every one. */
 export const REPORT_MEASUREMENTS_MAX = 300;
-
-/** Terrain areas are sampled for polygons up to this size (0.5 m apart: about 800,000 heights). */
-const TERRAIN_AREA_MAX_M2 = 200_000;
-
-const ringArea = (pts: readonly (readonly number[])[]) => {
-  let a = 0;
-  pts.forEach((p, i) => {
-    const q = pts[(i + 1) % pts.length] ?? p;
-    a += (p[0] ?? 0) * (q[1] ?? 0) - (q[0] ?? 0) * (p[1] ?? 0);
-  });
-  return Math.abs(a) / 2;
-};
 
 /** Project files the survey data is read from (the report page's `aio://` fetch). */
 export interface SurveyReader {
@@ -536,35 +526,15 @@ export interface ReportSurveyData extends SurveyReportData {
 
 /**
  * A synchronous height sampler from an async one, for the tools' terrain questions: `ask` runs
- * with every height 0 to collect the points the tools ask for, those are sampled in one go, and
- * the sampler answers them (the app's `withSurface` does the same for the card). Undefined
+ * with every height 0 to collect the places the tools ask for, each is sampled once in one go,
+ * and the sampler answers them (`presample`, as the app's card reads its terrain). Undefined
  * without a sampler.
  */
 async function presampled(
   ask: (s: HeightSampler) => void,
   sample: PointSampler | null,
 ): Promise<HeightSampler | undefined> {
-  if (!sample) return undefined;
-  const es: number[] = [];
-  const ns: number[] = [];
-  ask({
-    heightAt: (e, n) => {
-      es.push(e);
-      ns.push(n);
-      return 0;
-    },
-  });
-  const hs = es.length
-    ? await sample(Float64Array.from(es), Float64Array.from(ns))
-    : new Float64Array();
-  const at = new Map<string, number>();
-  es.forEach((e, i) => at.set(`${String(e)},${String(ns[i])}`, hs[i] ?? Number.NaN));
-  return {
-    heightAt: (e, n) => {
-      const h = at.get(`${String(e)},${String(n)}`);
-      return h === undefined || !Number.isFinite(h) ? null : h;
-    },
-  };
+  return sample ? presample(ask, (es, ns) => sample(es, ns)) : undefined;
 }
 
 // ---------------------------------------------------------------- the data
@@ -886,11 +856,12 @@ export async function buildSurveyData(
     const tpl = tplOf(m);
     const units = effectiveUnits(settings.units, m.units);
     const locale = settings.locale ?? localeOf(units.distance);
-    const terrain = m.family !== 'polygon' || ringArea(m.points) <= TERRAIN_AREA_MAX_M2;
+    // the terrain only where a row it prints reads it (a pile's never does), each place once, as
+    // the app's card reads it (`useCardTerrain`); the readouts bound how many places a polygon asks
+    const terrain = readsSurface(m.tool, tpl?.items);
     const sample = computed && cap && terrain ? await engine.sampler(cap.id) : null;
     const surface = await presampled((h) => {
-      measurementReadout(drawn, { surface: h }, tpl?.items);
-      cardModel(drawn, { ...cardCtx, surface: h });
+      allRows(drawn, { surface: h });
     }, sample);
     const rows = measurementReadout(drawn, surface ? { surface } : {}, tpl?.items);
     cards.set(m.id, cardModel(drawn, { ...cardCtx, ...(surface ? { surface } : {}) }));

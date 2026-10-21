@@ -33,6 +33,7 @@ import {
   type SurveyMeasurement,
 } from '@aio/schema';
 import {
+  allRows,
   bermCheck,
   defaultItem,
   effectiveUnits,
@@ -45,6 +46,7 @@ import {
   vertexTable,
   type BermCheck,
   type ChartSeries,
+  type HeightSampler,
   type Pin,
 } from '@aio/survey';
 import { Button, useT } from '@aio/ui';
@@ -70,10 +72,12 @@ import {
   heightAt,
   pointHistory,
   surfaceTiles,
+  tilesSampler,
   withSurface,
   type DatedSurface,
   type PointHistoryRow,
 } from './pointHistory';
+import { answer, collect, presample, readsSurface, sampleNow, sliced } from './terrain';
 import '../../charts/charts.css';
 
 export type ChipsKind = 'surfaces' | 'vs' | 'area-dates' | null;
@@ -336,6 +340,113 @@ function useLoadNote(l: Loaded<unknown>, testId: string): ReactElement | null {
   if (l.status === 'error') return <Note text={t('mcard.loadFailed')} testId={`${testId}-error`} />;
   if (l.status === 'idle') return <Note text={t('mcard.noData')} testId={`${testId}-none`} />;
   return null;
+}
+
+// ---------------------------------------------------------------- the terrain under the card
+
+/** At most this many places are read from the 3D view in the render (a point, a short line). */
+const STAGE_NOW = 512;
+
+/** The terrain read for a card, by its inputs (or the read failed), most recent last. */
+const terrains = new Map<string, HeightSampler | 'error'>();
+const MAX_TERRAINS = 32;
+function remember(key: string, got: HeightSampler | 'error'): void {
+  terrains.delete(key);
+  terrains.set(key, got);
+  while (terrains.size > MAX_TERRAINS) {
+    const first = terrains.keys().next();
+    if (first.done) break;
+    terrains.delete(first.value);
+  }
+}
+
+/** A number naming each 3D view height picker (a new view gives a new one). */
+const stageIds = new WeakMap<HeightSampler, number>();
+let stageCount = 0;
+function stageId(h: HeightSampler): number {
+  let id = stageIds.get(h);
+  if (id === undefined) {
+    id = ++stageCount;
+    stageIds.set(h, id);
+  }
+  return id;
+}
+
+/** Every place a measurement's readouts sample the surface (they ask the same whatever it gives). */
+const askRows = (m: SurveyMeasurement) => (h: HeightSampler) => {
+  allRows(m, { surface: h });
+};
+
+/**
+ * The surface a card reads its terrain rows from (`CardContext` `surface`), or that it is still
+ * being read (`terrainPending`), for the measurement panel and the Volumes view alike. Only a
+ * card that shows such a row reads it (a pile's never does). The surface is the prepared one of
+ * the measurement's survey (a site-wide measurement's: the date in focus, else the latest), the
+ * one its dates and the report read; without one, the 3D view's terrain. The places the readouts
+ * sample are read once, off the render: from the tiles, or from the 3D view a slice at a time
+ * (each sample there is a raycast through the whole terrain), so a large polygon never holds the
+ * window. A few places (a point, a short line) are read from the 3D view at once.
+ */
+export function useCardTerrain(
+  shown: SurveyMeasurement,
+  items?: readonly string[],
+): { surface?: HeightSampler; terrainPending?: boolean } {
+  const project = useWorkspace((s) => s.project?.id ?? null);
+  const stage = useMeasure((s) => s.surface);
+  const dated = useDatedSurfaces();
+  const focus = useFocusCapture();
+  const site = shown.scope.kind === 'site';
+  const capture = shown.scope.kind === 'survey' ? shown.scope.capture : focus;
+  const tiles =
+    (dated.find((d) => d.capture === capture) ?? (site ? dated.at(-1) : undefined))?.tiles ?? null;
+  const source = !readsSurface(shown.tool, items)
+    ? null
+    : tiles
+      ? `tiles:${tiles.id}:${tiles.fingerprint}`
+      : stage
+        ? `stage:${String(stageId(stage))}`
+        : null;
+  const key = source ? `${source}|${shown.tool}|${JSON.stringify(shown.points)}` : null;
+  // a few places from the 3D view: read now, so the card shows them with its first paint
+  const now = useMemo(() => {
+    if (!key || tiles || !stage || terrains.has(key)) return null;
+    const asked = collect(askRows(shown));
+    return asked.es.length <= STAGE_NOW ? answer(asked, sampleNow(stage, asked)) : null;
+    // `key` names every input read here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  const [, setRead] = useState(0);
+  useEffect(() => {
+    if (!key || now || terrains.has(key)) return;
+    const ctl = new AbortController();
+    const sample = tiles
+      ? tilesSampler(tiles, surfaceTiles(project ?? '', tiles))
+      : stage
+        ? sliced(stage, { signal: ctl.signal })
+        : null;
+    if (!sample) return;
+    presample(askRows(shown), sample).then(
+      (s) => {
+        remember(key, s);
+        if (!ctl.signal.aborted) setRead((n) => n + 1);
+      },
+      () => {
+        // closed before it finished: nothing kept; a tile read that failed: no surface
+        if (ctl.signal.aborted) return;
+        remember(key, 'error');
+        setRead((n) => n + 1);
+      },
+    );
+    return () => {
+      ctl.abort();
+    };
+    // `key` names every input read here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, now]);
+  if (!key) return {};
+  const got = now ?? terrains.get(key);
+  if (got === undefined) return { terrainPending: true };
+  return got === 'error' ? {} : { surface: got };
 }
 
 // ---------------------------------------------------------------- points: vs and over time
@@ -827,14 +938,12 @@ function AreaDates({ m }: { m: SurveyMeasurement }): ReactElement | null {
       ? `area|${project}|${JSON.stringify(ring)}|${surfacesKey(dated.map(fromDated))}`
       : null,
     async () => {
-      let span = 0;
-      for (const p of ring)
-        for (const q of ring) span = Math.max(span, Math.abs(p[0] - q[0]), Math.abs(p[1] - q[1]));
-      const step = Math.max(0.5, span / 120);
+      // the readout's own cells (half a metre, at most TERRAIN_AREA_MAX_CELLS a side), so the
+      // date in focus reads what the card's terrain area row reads
       const r = await Promise.all(
         dated.map(async (d) => {
           const a = await withSurface(
-            (h) => polygonAreas(ring, h, step),
+            (h) => polygonAreas(ring, h),
             d.tiles,
             surfaceTiles(project ?? '', d.tiles),
           );

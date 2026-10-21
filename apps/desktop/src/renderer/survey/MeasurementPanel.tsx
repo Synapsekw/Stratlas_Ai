@@ -14,7 +14,8 @@ import { Icon, IconButton, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo, useState, type CSSProperties } from 'react';
 import { CardActions, CardMenu, cardModel, MeasureCard } from './card';
-import { slotsFor, usePointVsText } from './card/slots';
+import { templateItems } from './card/cardModel';
+import { slotsFor, useCardTerrain, usePointVsText } from './card/slots';
 import {
   copyToSurvey,
   editEvent,
@@ -57,7 +58,6 @@ function PanelCard({ m }: { m: SurveyMeasurement }) {
   const lookOnly = useAnnotateReadOnly();
   const settings = useMeasure((s) => s.settings);
   const templates = useMeasure((s) => s.templates);
-  const surface = useMeasure((s) => s.surface);
   const captures = useWorkspace((s) => s.project?.manifest.captures);
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const focusCapture = useFocusCapture();
@@ -70,6 +70,8 @@ function PanelCard({ m }: { m: SurveyMeasurement }) {
   // and the vertex fields are of what the person sees; edits go back through the shift
   const shown = useMemo(() => ({ ...m, points: drawnPoints(m, manifest) }), [m, manifest]);
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
+  // the terrain under it, read off the render (the Volumes view's card reads it the same way)
+  const { surface, terrainPending } = useCardTerrain(shown, templateItems(m, all));
   const model = useMemo(
     () =>
       cardModel(shown, {
@@ -77,8 +79,9 @@ function PanelCard({ m }: { m: SurveyMeasurement }) {
         templates: all,
         captures: captures ?? [],
         ...(surface ? { surface } : {}),
+        ...(terrainPending ? { terrainPending } : {}),
       }),
-    [shown, settings, all, captures, surface],
+    [shown, settings, all, captures, surface, terrainPending],
   );
   const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
   // a point compared with a design or a date: its difference joins the secondary line

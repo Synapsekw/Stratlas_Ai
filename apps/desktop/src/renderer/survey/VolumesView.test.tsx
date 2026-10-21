@@ -28,6 +28,7 @@ const calls = vi.hoisted(() => ({
   computeSeries: vi.fn<(id: string) => Promise<boolean>>(() => Promise.resolve(false)),
   computeAll: vi.fn(() => Promise.resolve()),
   select: vi.fn(),
+  terrain: vi.fn(),
   startTool: vi.fn(),
   openDialog: vi.fn(),
   saveFile: vi.fn<
@@ -62,6 +63,11 @@ vi.mock('./card/VolumeDetail', () => ({
 }));
 // the panel's own slots: the detail card is the same card as the measurement panel's
 vi.mock('./card/slots', () => ({
+  // the panel's terrain read: the detail card asks it for the points where the pile is drawn
+  useCardTerrain: (m: SurveyMeasurement) => {
+    calls.terrain(m.id);
+    return {};
+  },
   slotsFor: (m: SurveyMeasurement, variant: string) =>
     variant === 'detail'
       ? {
@@ -541,6 +547,8 @@ describe('VolumesView', () => {
     expect(q('[data-testid="volumes-detail"] [data-testid="slot-chips"]')).not.toBeNull();
     expect(q('.mc[data-variant="detail"]')?.getAttribute('data-measure-id')).toBe('b');
     expect(qa('[data-testid="volumes-pile"]')[1]?.getAttribute('aria-pressed')).toBe('true');
+    // and the panel's terrain read, so its terrain rows read what the panel's do
+    expect(calls.terrain).toHaveBeenCalledWith('b');
   });
 
   it('exports the volume over time as CSV with the material density', async () => {

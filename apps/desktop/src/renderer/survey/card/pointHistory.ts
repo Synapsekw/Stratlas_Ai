@@ -7,6 +7,7 @@
  */
 import type { HeightTiles } from '@aio/schema';
 import { bilinear, TileSurface, type HeightSampler } from '@aio/survey';
+import { presample, type SampleMany } from './terrain';
 
 export type FetchTile = (col: number, row: number) => Promise<Uint8Array | null>;
 
@@ -51,29 +52,20 @@ export async function withSurface<T>(
   s: HeightTiles,
   fetchTile: FetchTile,
 ): Promise<T> {
-  const es: number[] = [];
-  const ns: number[] = [];
-  compute({
-    heightAt: (e, n) => {
-      es.push(e);
-      ns.push(n);
-      return 0;
-    },
-  });
+  return compute(await presample(compute, tilesSampler(s, fetchTile)));
+}
+
+/** Many places of one prepared surface at once, with the engine's sampler (NaN: no data). */
+export function tilesSampler(s: HeightTiles, fetchTile: FetchTile): SampleMany {
   const g = new TileSurface(s.id, s, fetchTile);
-  const zs = await bilinear(
-    g,
-    Float64Array.from(es, (e) => e - s.originE),
-    Float64Array.from(ns, (n) => n - s.originN),
-    0,
-    0,
-  );
-  const at = new Map<string, number | null>();
-  es.forEach((e, k) => {
-    const z = zs[k];
-    at.set(`${String(e)},${String(ns[k])}`, z !== undefined && Number.isFinite(z) ? z : null);
-  });
-  return compute({ heightAt: (e, n) => at.get(`${String(e)},${String(n)}`) ?? null });
+  return (es, ns) =>
+    bilinear(
+      g,
+      es.map((e) => e - s.originE),
+      ns.map((n) => n - s.originN),
+      0,
+      0,
+    );
 }
 
 /** A survey date with its prepared surface. */
