@@ -188,7 +188,7 @@ def process(
     """Run the kit's process step. ``work``, when given, receives the arrays the kit's
     ``process.py`` saved under ``out/work/`` for ``package.py``: ``zones`` (zones05.npy),
     ``labels`` per epoch (lab05_<e>.npy) and ``piledata`` ((pile, epoch) -> pile_bases dict,
-    piledata.pkl)."""
+    piledata.npz)."""
     G = job["grid"]
     R10 = G["dsm_res"]
     R = R10 * F

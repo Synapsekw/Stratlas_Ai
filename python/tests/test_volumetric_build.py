@@ -470,3 +470,64 @@ def test_a_laz_goes_through_pdal(tmp_path, project):
     doc = json.loads((project / "volumes.json").read_text("utf-8"))
     e = doc["piles"][0]["epochs"]["e1"]
     assert e["volumes"]["plane"]["net"] == pytest.approx(cone(12 * e["heightM"] / 8, e["heightM"]), rel=0.08)
+
+
+class _Planted:
+    """A pickle that runs code when it is loaded: it leaves a marker file."""
+
+    def __init__(self, marker):
+        self.marker = str(marker)
+
+    def __reduce__(self):
+        return (exec, (f"open({self.marker!r}, 'w').write('ran')",))
+
+
+def test_a_resumed_job_never_unpickles_a_file_from_the_project(tmp_path, project):
+    """A job folder is project data: a planted pickle in it must not run on resume."""
+    import pickle
+
+    manifest(project)
+    cfg = {"epochs": surveys(tmp_path, [{"A": 8.0}])}
+    ev = threading.Event()
+
+    def emit(method, msg):
+        if method == "progress" and msg.get("step") == "process" and msg["state"] == "done":
+            ev.set()
+
+    with pytest.raises(Cancelled):
+        Job("p1", VolumetricBuild(), project, {"config": cfg}, emit, ev).run()
+    work = project / "jobs" / "p1" / "staging" / "work"
+    assert not list(work.glob("*.pkl")), "piledata is written in a format that cannot run code"
+    marker = tmp_path / "ran.txt"
+    (work / "piledata.pkl").write_bytes(pickle.dumps(_Planted(marker)))
+    result, _ = run_job(VolumetricBuild(), project, {"config": cfg}, job_id="p1")
+    assert result["status"] == "done"
+    assert not marker.exists()
+
+
+def test_piledata_round_trips_without_pickle(tmp_path):
+    from aio_pipelines.volumetric.piledata import load_piledata, save_piledata
+
+    pd = {
+        ("P01", "e1"): {
+            "bbox5": (1, 5, 2, 9),
+            "z": np.arange(6.0).reshape(2, 3),
+            "m": np.array([[True, False, True], [False, True, False]]),
+            "toe": np.zeros((2, 3), bool),
+            "tg": np.ones((2, 3), bool),
+            "bases": {k: np.full((2, 3), float(i)) for i, k in enumerate(("low", "avg", "plane", "tin"))},
+            "ground_toe_frac": 0.25,
+        }
+    }
+    path = tmp_path / "piledata.npz"
+    save_piledata(path, pd)
+    with np.load(path, allow_pickle=False) as z:  # loads with pickles refused
+        assert len(z.files) > 0
+    back = load_piledata(path)
+    d = back[("P01", "e1")]
+    assert d["bbox5"] == (1, 5, 2, 9)
+    assert d["ground_toe_frac"] == 0.25
+    assert np.array_equal(d["z"], pd[("P01", "e1")]["z"])
+    assert d["m"].dtype == bool and np.array_equal(d["m"], pd[("P01", "e1")]["m"])
+    for k in ("low", "avg", "plane", "tin"):
+        assert np.array_equal(d["bases"][k], pd[("P01", "e1")]["bases"][k])

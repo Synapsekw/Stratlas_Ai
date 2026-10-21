@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import json
 import math
-import pickle
 import re
 import shutil
 from datetime import date as Date
@@ -131,6 +130,9 @@ def _sources(e: dict) -> list[str]:
 
 class VolumetricBuild:
     name = "volumetric.build"
+    # 2: the process step's pile data moved from a pickle to an .npz (never unpickle project
+    # files). An older interrupted job starts over instead of looking for the old file.
+    checkpoint_version = "2"
     title = "Volumetric survey"
     description = (
         "Runs the Volumetric Survey Kit on raw DSM and ortho GeoTIFFs (or point clouds) per date: "
@@ -307,6 +309,7 @@ class VolumetricBuild:
         def process(ctx: StepContext) -> dict[str, Any]:
             import numpy as np
 
+            from .piledata import save_piledata
             from .process import process as run_process
 
             job = self._job(ctx)
@@ -319,7 +322,7 @@ class VolumetricBuild:
             np.save(ctx.stage("work/zones05.npy"), work["zones"])
             for e, lab in work["labels"].items():
                 np.save(ctx.stage(f"work/lab05_{e}.npy"), lab)
-            atomic_write_bytes(ctx.stage("work/piledata.pkl"), pickle.dumps(work["piledata"]))
+            save_piledata(ctx.stage("work/piledata.npz"), work["piledata"])
             atomic_write_json(ctx.stage("piles.json"), res)
             return {"piles": len(res["piles"])}
 
@@ -327,11 +330,12 @@ class VolumetricBuild:
             import numpy as np
 
             from .package import package as run_package
+            from .piledata import load_piledata
 
             job = self._job(ctx)
             Z10 = {e["id"]: np.load(ctx.stage(f"work/dsm_{e['id']}.npy")) for e in job["epochs"]}
             res = json.loads(ctx.stage("piles.json").read_text("utf-8"))
-            PD = pickle.loads(ctx.stage("work/piledata.pkl").read_bytes())
+            PD = load_piledata(ctx.stage("work/piledata.npz"))
             ZL = np.load(ctx.stage("work/zones05.npy"))
             out = ctx.stage(f"out/{KIT_DIR}")
             kit_job = {k: v for k, v in job.items() if not k.startswith("_")}
