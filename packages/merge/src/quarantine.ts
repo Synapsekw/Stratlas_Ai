@@ -141,7 +141,8 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
   const approvalAuthors = new Map<string, string>();
   const applied: OpNode[] = [];
   const quarantined = new Map<string, { node: OpNode; reason: RefusalCode; message: string }>();
-  const releases = new Set<string>();
+  /** Released op ids, with the device that released and whether the project was shared then. */
+  const releases = new Map<string, { dev: string; shared: boolean }>();
   const clock = new Map<string, ClockNotice>();
 
   const roleOf = (actor: string): Role | undefined => {
@@ -233,7 +234,8 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
         const c = typeof p.conflict === 'string' ? p.conflict : '';
         const owner = !isShared(team) || roleOf(op.act) === 'owner';
         if (c.startsWith(RELEASE_PREFIX) && p.choice !== 'ours' && owner) {
-          releases.add(c.slice(RELEASE_PREFIX.length));
+          const id = c.slice(RELEASE_PREFIX.length);
+          if (!releases.has(id)) releases.set(id, { dev: op.dev, shared: isShared(team) });
         }
         break;
       }
@@ -262,7 +264,16 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
   }
 
   const released: string[] = [];
-  for (const id of [...releases].sort()) {
+  // a release written before the project was shared has no role behind it: once shared, it
+  // counts only from a device of a current owner (an outsider cannot backdate one in)
+  const ownerDevice = (dev: string): boolean => {
+    const d = team.devices.get(dev);
+    return d !== undefined && d.revokedAt === undefined && roleOf(d.actor) === 'owner';
+  };
+  const releasable = [...releases]
+    .filter(([, r]) => r.shared || !isShared(team) || ownerDevice(r.dev))
+    .map(([id]) => id);
+  for (const id of releasable.sort()) {
     const q = quarantined.get(id);
     if (!q) continue;
     quarantined.delete(id);

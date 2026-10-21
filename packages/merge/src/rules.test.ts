@@ -579,6 +579,28 @@ describe('quarantine: backdated history (security review)', () => {
     );
   });
 
+  it('a release backdated before the share by an outsider releases nothing', () => {
+    const { sim, pin } = shared();
+    // a viewer's edit is held; an outsider tries to release it from "before" the share
+    sim.write(2, 'issue.patch', f(), { set: { severity: 5 } });
+    sim.syncAll();
+    const held = project(sim.all(), { pin }).quarantined[0];
+    if (!held) throw new Error('nothing held');
+    const release = forge(
+      sim,
+      3,
+      'conflict.resolve',
+      { rec: 'issue', id: 'i_f02' },
+      { conflict: `quarantine:${held.op}`, choice: 'theirs' },
+      { ms: 1000 },
+    );
+    for (const opts of [{ pin }, {}]) {
+      const p = project([...sim.all(), release], opts);
+      expect(p.quarantined.map((q) => q.op)).toContain(held.op);
+      expect(p.issues[0]?.record.severity).toBe(2);
+    }
+  });
+
   it('an op dated before the op it follows in its chain is held', () => {
     const { sim, pin } = shared();
     const omar = sim.person(1);
