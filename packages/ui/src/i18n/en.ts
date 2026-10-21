@@ -6019,6 +6019,50 @@ export const en = {
   'photo.live.keepWaiting': 'Keep waiting',
   'photo.live.stopped':
     'The processing engine was stopped after {minutes} minutes with no activity. The work so far is kept; press Resume to try again.',
+  'position.edit': 'Edit position',
+  'position.reset': 'Reset to original',
+  'position.title_one': 'Position',
+  'position.title_other': 'Shift {count} photos',
+  'position.x': 'X east',
+  'position.y': 'Y north',
+  'position.z': 'Z height',
+  'position.unit': 'm',
+  'position.hint.one': "Site metres from the origin; height in the project's height system.",
+  'position.hint.many': 'Every selected photo moves by this amount and keeps its spacing.',
+  'position.original': 'Original: {x}, {y}, {z}',
+  'position.save': 'Save',
+  'position.cancel': 'Cancel',
+  'position.edited': 'Edited',
+  'position.say.saved_one': 'Moved 1 photo.',
+  'position.say.saved_other': 'Moved {count} photos.',
+  'position.say.reset_one': 'Put 1 photo back where it was imported.',
+  'position.say.reset_other': 'Put {count} photos back where they were imported.',
+  'position.say.undone': 'Undid the position change.',
+  'position.say.redone': 'Redid the position change.',
+  'position.why.pinned': 'Pinned: use Move pin.',
+  'position.why.unplaced': 'Not placed: use Place on site.',
+  'position.why.notEdited': 'Not edited.',
+  'position.invalid': 'Enter a number in range.',
+  'position.reread': 'Re-read photo positions',
+  'position.reread.confirm':
+    'Read heights and view directions again from the photo files. Photos you moved by hand stay where you put them.',
+  'position.reread.refined':
+    "Processing refined these photos' positions; re-reading replaces them.",
+  'position.reread.pickFolder_one':
+    '1 photo has no metadata in the project. Choose the folder with the original files.',
+  'position.reread.pickFolder_other':
+    '{count} photos have no metadata in the project. Choose the folder with the original files.',
+  'position.say.reread_one': 'Re-read 1 photo.',
+  'position.say.reread_other': 'Re-read {count} photos.',
+  'position.say.rereadKept_one': '1 moved by hand kept its place.',
+  'position.say.rereadKept_other': '{count} moved by hand kept their place.',
+  'position.say.rereadMissing_one': '1 not found in that folder.',
+  'position.say.rereadMissing_other': '{count} not found in that folder.',
+  'position.twin.used': 'Thermal photo without position data: placed at its visual twin {name}.',
+  'position.twin.none':
+    'Thermal photo without position data and no visual twin found: check its position.',
+  'position.say.twins_one': '1 thermal photo placed at its visual twin.',
+  'position.say.twins_other': '{count} thermal photos placed at their visual twins.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

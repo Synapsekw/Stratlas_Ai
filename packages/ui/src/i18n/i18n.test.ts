@@ -223,6 +223,63 @@ describe('the English catalogue', () => {
     );
   });
 
+  it('has the strings for editing photo positions', () => {
+    const keys = [
+      'position.edit',
+      'position.reset',
+      'position.title_one',
+      'position.title_other',
+      'position.x',
+      'position.y',
+      'position.z',
+      'position.unit',
+      'position.hint.one',
+      'position.hint.many',
+      'position.original',
+      'position.save',
+      'position.cancel',
+      'position.edited',
+      'position.say.saved_one',
+      'position.say.saved_other',
+      'position.say.reset_one',
+      'position.say.reset_other',
+      'position.say.undone',
+      'position.say.redone',
+      'position.why.pinned',
+      'position.why.unplaced',
+      'position.why.notEdited',
+      'position.invalid',
+      'position.reread',
+      'position.reread.confirm',
+      'position.reread.refined',
+      'position.reread.pickFolder_one',
+      'position.reread.pickFolder_other',
+      'position.say.reread_one',
+      'position.say.reread_other',
+      'position.say.rereadKept_one',
+      'position.say.rereadKept_other',
+      'position.say.rereadMissing_one',
+      'position.say.rereadMissing_other',
+      'position.twin.used',
+      'position.twin.none',
+      'position.say.twins_one',
+      'position.say.twins_other',
+    ];
+    for (const k of keys) {
+      const v = (en as Record<string, string>)[k];
+      expect(v, k).toBeTruthy();
+      expect(v, k).not.toMatch(/[–—]/);
+    }
+    expect(t('position.title', { count: 1 })).toBe('Position');
+    expect(t('position.title', { count: 2 })).toBe('Shift 2 photos');
+    expect(t('position.say.saved', { count: 1 })).toBe('Moved 1 photo.');
+    expect(t('position.say.saved', { count: 3 })).toBe('Moved 3 photos.');
+    expect(t('position.say.reset', { count: 1 })).toBe('Put 1 photo back where it was imported.');
+    expect(t('position.say.twins', { count: 1 })).toBe(
+      '1 thermal photo placed at its visual twin.',
+    );
+  });
+
   it('finds missing keys and placeholder mismatches in a translation', () => {
     expect(placeholders('{count} of {total}')).toEqual(['count', 'total']);
     const bad: Catalogue = { 'library.count_one': '{n} مشروع', 'nope.key': 'x' };
