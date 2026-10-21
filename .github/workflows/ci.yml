@@ -375,6 +375,22 @@ jobs:
         run: |
           node ../tools/pipeline-pack/ffmpeg.mjs --out "$RUNNER_TEMP/ffmpeg" | tee "$RUNNER_TEMP/ffmpeg.log"
           grep '^QUADRION_FFMPEG=' "$RUNNER_TEMP/ffmpeg.log" >> "$GITHUB_ENV"
+      # ExifTool and the DJI Thermal SDK as the pack has them (prebuilt Windows x64 archives pinned
+      # by SHA-256 in thermal-tools-lock.json), so the thermal cross-check and SDK tests run. The
+      # archives are cached by the lock's hash. DJI's License.txt offers the SDK's utility/bin files
+      # under the MIT licence; if a fetch ever fails the variables stay unset and those tests skip.
+      - name: Cache the thermal tool archives
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/thermal-cache
+          key: thermal-tools-${{ runner.os }}-${{ hashFiles('tools/pipeline-pack/thermal-tools-lock.json') }}
+      - name: ExifTool and DJI Thermal SDK (as in the pack)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: |
+          node ../tools/pipeline-pack/thermal-tools.mjs --out "$RUNNER_TEMP/thermal" --cache "$RUNNER_TEMP/thermal-cache" --dataset "$RUNNER_TEMP/thermal-dataset" | tee "$RUNNER_TEMP/thermal.log"
+          grep -E '^(QUADRION_EXIFTOOL|QUADRION_DJI_TSDK|QUADRION_DJI_TSDK_DATASET)=' "$RUNNER_TEMP/thermal.log" >> "$GITHUB_ENV"
       - name: Cache photo set renders
         uses: actions/cache@v4
         with:

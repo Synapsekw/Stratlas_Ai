@@ -11,6 +11,8 @@ photogrammetry itself runs in OpenDroneMap (``odm/``), not through these tools.
 | ``pdal``      | ``AIO_PDAL``          | ``tools/pdal/`` (shipped)  | BSD-3 (conda-forge build, GPL/LGPL deps) |
 | ``untwine``   | ``AIO_UNTWINE``       | ``tools/pdal/`` (shipped)  | GPL-3.0-or-later (conda-forge build)     |
 | ``ffmpeg``    | ``QUADRION_FFMPEG``   | ``tools/ffmpeg/`` (shipped) | conda-forge build (``walk/ffmpeg.py``)  |
+| ``exiftool``  | ``QUADRION_EXIFTOOL`` | ``tools/exiftool/`` (shipped) | Artistic-1.0-Perl OR GPL-1.0-or-later |
+| ``dji_tsdk``  | ``QUADRION_DJI_TSDK`` | ``tools/dji-tsdk/`` (shipped) | DJI Thermal SDK (folder with ``libdirp``) |
 
 ``run_tool`` runs one cancellably: output to files (a full pipe would block the child), stdin
 closed, no console window, and on cancel the whole process tree is killed (on Windows
@@ -45,14 +47,33 @@ from ..runtime import Cancelled, JobError, StepContext
 TOOLS = {
     "ffmpeg": ("QUADRION_FFMPEG", "ffmpeg"),
     "untwine": ("AIO_UNTWINE", "pdal"),
+    "exiftool": ("QUADRION_EXIFTOOL", "exiftool"),
+    "dji_tsdk": ("QUADRION_DJI_TSDK", "dji-tsdk"),
 }
 GB = 1024**3
+DJI_TSDK_LIBRARY = "libdirp.dll" if os.name == "nt" else "libdirp.so"
+
+
+def _find_dji_tsdk(env: str | None, folder: str) -> str | None:
+    """The folder of the DJI Thermal SDK (the one holding ``libdirp``): the variable names it (or
+    the library in it), else ``<pack>/tools/dji-tsdk``. The folder is the answer, not a program,
+    because the SDK is a set of libraries that must be loaded from one place."""
+    if env:
+        p = Path(env)
+        if p.is_file() and p.name == DJI_TSDK_LIBRARY:
+            return str(p.parent)
+        return str(p) if (p / DJI_TSDK_LIBRARY).is_file() else None
+    pack = Path(sys.prefix).parent / "tools" / folder
+    return str(pack) if (pack / DJI_TSDK_LIBRARY).is_file() else None
 
 
 def find_tool(name: str) -> str | None:
-    """The path of a native tool, or None when this pack does not have it."""
+    """The path of a native tool, or None when this pack does not have it. For ``dji_tsdk`` that
+    is the folder holding ``libdirp``."""
     env_name, folder = TOOLS[name]
     env = os.environ.get(env_name)
+    if name == "dji_tsdk":
+        return _find_dji_tsdk(env, folder)
     if env:
         return env if Path(env).is_file() else None
     exe = f"{name}.exe" if os.name == "nt" else name

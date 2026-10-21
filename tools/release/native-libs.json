@@ -948,6 +948,46 @@
         }
       ],
       "note": "conda-forge's prebuilt GPL ffmpeg (tools/pipeline-pack/ffmpeg.mjs), pruned to ffmpeg, ffprobe and the libraries they load; every package with its licence is in tools/pipeline-pack/ffmpeg-lock.json and the pack's tools/ffmpeg/conda-packages.json, their licence files in tools/ffmpeg/licenses"
+    },
+    {
+      "name": "ExifTool",
+      "version": "13.59 (Windows 64-bit package)",
+      "spdx": "Artistic-1.0-Perl OR GPL-1.0-or-later",
+      "source": "https://exiftool.org/",
+      "files": ["tools/exiftool/**"],
+      "linkage": "executable",
+      "includes": [
+        {
+          "name": "Strawberry Perl runtime",
+          "spdx": "Artistic-1.0-Perl OR GPL-1.0-or-later"
+        }
+      ],
+      "note": "Phil Harvey's ExifTool, run by the pipelines as a separate program (tools/pipeline-pack/thermal-tools.mjs); the package carries its own Perl runtime, whose licences are in tools/exiftool/exiftool_files/Licenses_Strawberry_Perl.zip"
+    },
+    {
+      "name": "DJI Thermal SDK",
+      "version": "1.9 (20260526, Windows x64)",
+      "spdx": "LicenseRef-DJI-Thermal-SDK",
+      "source": "https://www.dji.com/downloads/softwares/dji-thermal-sdk",
+      "files": ["tools/dji-tsdk/**"],
+      "linkage": "shared",
+      "exception": "dji-thermal-sdk",
+      "licenceFile": "tools/release/licences/dji-thermal-sdk-License.txt",
+      "includes": [
+        {
+          "name": "libexif, libiconv, libintl (dynamic, unmodified)",
+          "spdx": "LGPL-2.1-only"
+        },
+        {
+          "name": "SimpleIni, argagg",
+          "spdx": "MIT"
+        },
+        {
+          "name": "TinyEXIF (modified)",
+          "spdx": "BSD-2-Clause"
+        }
+      ],
+      "note": "The prebuilt library and tools of DJI's Thermal SDK (tools/pipeline-pack/thermal-tools.mjs). DJI's License.txt, shipped as tools/dji-tsdk/License.txt and quoted in full in the third-party notices, offers the utility/bin portions under the MIT licence; the libv_* libraries may be used only together with libdirp. Other parts of the SDK fall under DJI's SDK End User License Agreement (https://developer.dji.com/policies/eula/) and are not shipped"
     }
   ]
 }

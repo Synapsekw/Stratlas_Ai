@@ -246,6 +246,13 @@ export function nativeInventory(
     bundled,
     pdal: conda(lockDoc),
     ffmpeg: conda(ffmpegLockDoc),
+    // licences quoted in full: a row's `licenceFile` (repo-relative) is its licence text
+    licenceTexts: libsDoc.libs
+      .filter((r) => r.licenceFile)
+      .map((r) => ({
+        name: r.name,
+        text: readFileSync(join(repo, r.licenceFile), 'utf8').replaceAll('\r\n', '\n').trimEnd(),
+      })),
   };
 }
 
@@ -345,7 +352,17 @@ The \`ffmpeg\` and \`ffprobe\` tools of the pack (\`tools/ffmpeg\`), installed f
 ${table(native.ffmpeg)}
 `
     : ''
-}`);
+}${
+      native.licenceTexts?.length
+        ? `
+### Thermal tools
+
+ExifTool (\`tools/exiftool\`, Artistic License or GPL, with its own Perl runtime) and the DJI Thermal SDK (\`tools/dji-tsdk\`), both prebuilt Windows x64 archives pinned by SHA-256 in \`tools/pipeline-pack/thermal-tools-lock.json\`. ExifTool runs as a separate program. The SDK's libraries are loaded by the pipelines; DJI's licence for them is quoted in full below and also ships as \`tools/dji-tsdk/License.txt\`. The libraries it links dynamically (libexif, libiconv, libintl) are LGPL-2.1 and replaceable.
+
+${native.licenceTexts.map((t) => `#### ${t.name} licence\n\n\`\`\`text\n${t.text}\n\`\`\``).join('\n\n')}
+`
+        : ''
+    }`);
   }
   if (models?.length) {
     out.push(`## Pipeline pack models

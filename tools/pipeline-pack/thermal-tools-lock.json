@@ -1,0 +1,75 @@
+{
+  "$comment": "Prebuilt thermal tools of the pipeline pack (tools/pipeline-pack/thermal-tools.mjs): the archives the build downloads, each refused unless its SHA-256 matches. `unpack` maps entries of the archive (a path ending in `/` is a whole folder) to paths under `dest`; `files` are the files that must exist afterwards. Change a pin by hand only after downloading the new archive and hashing it.",
+  "schema": "thermal-tools-lock/1",
+  "tools": [
+    {
+      "name": "exiftool",
+      "version": "13.59",
+      "licence": "Artistic-1.0-Perl OR GPL-1.0-or-later",
+      "url": "https://sourceforge.net/projects/exiftool/files/exiftool-13.59_64.zip/download",
+      "sha256": "44b512b25af500724ba579d0a53c8fc5851628b692dd5e5d94ae4a15c2cba9ec",
+      "size": 11183675,
+      "dest": "tools/exiftool",
+      "unpack": [
+        { "from": "exiftool-13.59_64/exiftool(-k).exe", "to": "exiftool.exe" },
+        { "from": "exiftool-13.59_64/exiftool_files/", "to": "exiftool_files/" }
+      ],
+      "files": [
+        "exiftool.exe",
+        "exiftool_files/exiftool.pl",
+        "exiftool_files/libgcc_s_seh-1.dll",
+        "exiftool_files/liblzma-5__.dll",
+        "exiftool_files/libstdc++-6.dll",
+        "exiftool_files/libwinpthread-1.dll",
+        "exiftool_files/LICENSE",
+        "exiftool_files/Licenses_Strawberry_Perl.zip",
+        "exiftool_files/perl.exe",
+        "exiftool_files/perl532.dll",
+        "exiftool_files/readme_windows.txt",
+        "exiftool_files/windows_exiftool.txt"
+      ]
+    },
+    {
+      "name": "dji-tsdk",
+      "version": "1.9 (20260526)",
+      "licence": "LicenseRef-DJI-Thermal-SDK",
+      "url": "https://terra-1-g.djicdn.com/2640963bcd8e45c0a4f0cb9829739d6b/TSDK/v1.9/dji_thermal_sdk_v1.9_20260526.zip",
+      "sha256": "9345dc8d403ecc413c212e545d690b8bc843b3189157f3687bddd1c38e1d76eb",
+      "size": 73701242,
+      "dest": "tools/dji-tsdk",
+      "dataset": "dji_thermal_sdk_v1.9_20260526/dataset/",
+      "unpack": [
+        {
+          "from": "dji_thermal_sdk_v1.9_20260526/utility/bin/windows/release_x64/",
+          "to": ""
+        },
+        { "from": "dji_thermal_sdk_v1.9_20260526/License.txt", "to": "License.txt" }
+      ],
+      "files": [
+        "License.txt",
+        "dji_ircm.exe",
+        "dji_irp.exe",
+        "dji_irp_omp.exe",
+        "libdirp.dll",
+        "libdirp.lib",
+        "libexif.dll",
+        "libiconv-2.dll",
+        "libintl-8.dll",
+        "libv_cirp.dll",
+        "libv_cirp.lib",
+        "libv_dirp.dll",
+        "libv_dirp.lib",
+        "libv_girp.dll",
+        "libv_girp.lib",
+        "libv_hirp.dll",
+        "libv_hirp.lib",
+        "libv_iirp.dll",
+        "libv_iirp.lib",
+        "libv_list.ini",
+        "MicroIA_Release_x64.dll",
+        "MicroJPEG_Release_x64.dll",
+        "MicroTA_Release_x64.dll"
+      ]
+    }
+  ]
+}

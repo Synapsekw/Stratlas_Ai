@@ -238,7 +238,7 @@ Generated from `tools/release/native-libs.json`, `tools/pipeline-pack/pdal-lock.
 
 ### Inside the Python wheels and CPython
 
-55 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), LGPL-2.1-or-later (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 AND GPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND BSD-3-Clause AND ISC AND MIT AND (FTL OR GPL-2.0-or-later) AND HPND AND (LGPL-2.1-or-later OR MPL-2.0 OR GPL-2.0-or-later) AND Zlib AND LGPL-2.0-or-later AND LGPL-3.0-or-later AND MPL-2.0 AND X11 AND BSD-2-Clause AND BSD-3-Clause-Clear AND WTFPL AND BSD-2-Clause-Patent AND CC0-1.0 AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND LGPL-2.1-or-later AND GPL-2.0-or-later AND BSL-1.0 AND Apache-2.0 AND BSD-2-Clause AND MIT AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1 AND curl AND blessing AND IJG AND Zlib AND libpng-2.0 AND libtiff AND bzip2-1.0.6 AND 0BSD AND (BSD-3-Clause OR GPL-2.0-only) AND Apache-2.0 WITH LLVM-exception (1), BSD-3-Clause AND MIT AND Apache-2.0 AND LGPL-2.1-only AND GPL-2.0-or-later AND MPL-1.1 AND Zlib AND curl AND blessing AND HPND AND 0BSD AND BSD-2-Clause AND ISC AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND (Apache-2.0 WITH LLVM-exception) (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND Zlib AND 0BSD AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND HPND AND (GPL-2.0-only OR FTL) AND (LGPL-2.1-only OR MPL-1.1) (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
+57 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), LGPL-2.1-or-later (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 AND GPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND BSD-3-Clause AND ISC AND MIT AND (FTL OR GPL-2.0-or-later) AND HPND AND (LGPL-2.1-or-later OR MPL-2.0 OR GPL-2.0-or-later) AND Zlib AND LGPL-2.0-or-later AND LGPL-3.0-or-later AND MPL-2.0 AND X11 AND BSD-2-Clause AND BSD-3-Clause-Clear AND WTFPL AND BSD-2-Clause-Patent AND CC0-1.0 AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), Apache-2.0 WITH LLVM-exception (1), Artistic-1.0-Perl OR GPL-1.0-or-later (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND LGPL-2.1-or-later AND GPL-2.0-or-later AND BSL-1.0 AND Apache-2.0 AND BSD-2-Clause AND MIT AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1 AND curl AND blessing AND IJG AND Zlib AND libpng-2.0 AND libtiff AND bzip2-1.0.6 AND 0BSD AND (BSD-3-Clause OR GPL-2.0-only) AND Apache-2.0 WITH LLVM-exception (1), BSD-3-Clause AND MIT AND Apache-2.0 AND LGPL-2.1-only AND GPL-2.0-or-later AND MPL-1.1 AND Zlib AND curl AND blessing AND HPND AND 0BSD AND BSD-2-Clause AND ISC AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND (Apache-2.0 WITH LLVM-exception) (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND Zlib AND 0BSD AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND HPND AND (GPL-2.0-only OR FTL) AND (LGPL-2.1-only OR MPL-1.1) (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-DJI-Thermal-SDK (1), LicenseRef-Microsoft-VC-Redist (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
 
 | Package                                    | Version                                               | Licence                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -246,6 +246,8 @@ Generated from `tools/release/native-libs.json`, `tools/pipeline-pack/pdal-lock.
 | brotli                                     | 1.x (Pillow macOS)                                    | MIT                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | cpython                                    | 3.13 (python-build-standalone)                        | PSF-2.0                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | curl                                       | 8.x (rasterio)                                        | curl                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| DJI Thermal SDK                            | 1.9 (20260526, Windows x64)                           | LicenseRef-DJI-Thermal-SDK                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ExifTool                                   | 13.59 (Windows 64-bit package)                        | Artistic-1.0-Perl OR GPL-1.0-or-later                                                                                                                                                                                                                                                                                                                                                                                                       |
 | expat                                      | 2.x (rasterio)                                        | MIT                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ffmpeg (conda-forge)                       | 9.0.2 (GPL build, conda-forge)                        | GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND Zlib AND 0BSD AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND HPND AND (GPL-2.0-only OR FTL) AND (LGPL-2.1-only OR MPL-1.1)                                                                                                                                                         |
 | freetype                                   | 2.14 (Pillow macOS)                                   | FTL OR GPL-2.0-or-later                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -410,6 +412,10 @@ What the pycolmap and opencv-python-headless wheels carry, as their projects sta
 | OpenSSL, Vulkan loader (in ffmpeg)                                                                                                                                  | 9.0.2 (GPL build, conda-forge) | Apache-2.0                                                                        |
 | libjpeg-turbo, libpng, libtiff, zlib, bzip2, xz, zstd (in ffmpeg)                                                                                                   | 9.0.2 (GPL build, conda-forge) | IJG AND libpng-2.0 AND HPND AND Zlib AND bzip2-1.0.6 AND 0BSD AND BSD-3-Clause    |
 | libplacebo, libass, OpenVINO, glslang, shaderc (in ffmpeg, macOS)                                                                                                   | 9.0.2 (GPL build, conda-forge) | LGPL-2.1-or-later AND ISC AND Apache-2.0 AND BSD-3-Clause                         |
+| Strawberry Perl runtime (in ExifTool)                                                                                                                               | 13.59 (Windows 64-bit package) | Artistic-1.0-Perl OR GPL-1.0-or-later                                             |
+| libexif, libiconv, libintl (dynamic, unmodified) (in DJI Thermal SDK)                                                                                               | 1.9 (20260526, Windows x64)    | LGPL-2.1-only                                                                     |
+| SimpleIni, argagg (in DJI Thermal SDK)                                                                                                                              | 1.9 (20260526, Windows x64)    | MIT                                                                               |
+| TinyEXIF (modified) (in DJI Thermal SDK)                                                                                                                            | 1.9 (20260526, Windows x64)    | BSD-2-Clause                                                                      |
 
 ### PDAL from conda-forge
 
@@ -581,6 +587,163 @@ The `ffmpeg` and `ffprobe` tools of the pack (`tools/ffmpeg`), installed from co
 | x264                                             | 1!164.3095     | GPL-2.0-or-later                              |
 | x265                                             | 3.5            | GPL-2.0-or-later                              |
 | zstd                                             | 1.5.7          | BSD-3-Clause                                  |
+
+### Thermal tools
+
+ExifTool (`tools/exiftool`, Artistic License or GPL, with its own Perl runtime) and the DJI Thermal SDK (`tools/dji-tsdk`), both prebuilt Windows x64 archives pinned by SHA-256 in `tools/pipeline-pack/thermal-tools-lock.json`. ExifTool runs as a separate program. The SDK's libraries are loaded by the pipelines; DJI's licence for them is quoted in full below and also ships as `tools/dji-tsdk/License.txt`. The libraries it links dynamically (libexif, libiconv, libintl) are LGPL-2.1 and replaceable.
+
+#### DJI Thermal SDK licence
+
+```text
+The following portions of the DJI's Thermal SDK ("Software" referred to in the terms below) are made available to you under the terms of the MIT License provided below.
+
+Thermal-SDK
+├── doc
+│   └── index.html
+├── License.txt
+├── Readme.md
+├── sample
+│   ├── build.bat
+│   ├── build.sh
+│   ├── CMakeLists.txt
+│   ├── dji_ircm.cpp
+│   ├── dji_irp_omp.cpp
+│   ├── dji_irp.cpp
+│   ├── libv_cirp_api.cpp
+│   └── libv_list.ini
+├── tsdk-core
+│   └── api
+│       ├── dirp_api.h
+│       └── dirp_wrapper.h
+└── utility
+    └── bin
+        ├── windows
+        │   ├── release_x86
+        │   │   ├── dji_ircm.exe
+        │   │   ├── dji_irp.exe
+        │   │   └── dji_irp_omp.exe
+        │   └── release_x64
+        │       ├── dji_ircm.exe
+        │       ├── dji_irp.exe
+        │       └── dji_irp_omp.exe
+        └── linux
+            ├── release_x86
+            │   ├── dji_ircm
+            │   ├── dji_irp
+            │   └── dji_irp_omp
+            └── release_x64
+                ├── dji_ircm
+                ├── dji_irp
+                └── dji_irp_omp
+
+All files whose names start with "libv_" and extend with ".so", ".dll" or ".lib" must be used together with libdirp.dll or libdirp.so. And they are not allowed to be used alone or for other purposes.
+These files exist in the following directories.
+
+Thermal-SDK
+├── tsdk-core
+│   └── lib
+│       ├── windows
+│       │   ├── release_x86
+│       │   └── release_x64
+│       └── linux
+│           ├── release_x86
+│           └── release_x64
+└── utility
+    └── bin
+        ├── windows
+        │   ├── release_x86
+        │   └── release_x64
+        └── linux
+            ├── release_x86
+            └── release_x64
+
+Unless otherwise agreed, all other portions of DJI’s Thermal SDK are and will be made available under the SDK End User License Agreement (EULA). A copy of the SDK EULA is distributed with this software and is available at https://developer.dji.com/policies/eula/.
+-------------------------------------------------------------
+Copyright (c) 2020-2023 DJI.
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+===============================================================
+DJI’s Thermal SDK sample codes use unmodified open source code of argagg (https://github.com/vietjtnguyen/argagg), which is licensed under MIT license. A copy of the MIT license is provided below and is also available at https://github.com/vietjtnguyen/argagg/blob/master/LICENSE
+-------------------------------------------------------------
+Copyright (c) 2017 Viet The Nguyen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+===============================================================
+DJI’s Thermal SDK library use unmodified open source code of SimpleIni (https://github.com/brofield/simpleini), which is licensed under MIT license. A copy of the MIT license is provided below and is also available at https://github.com/brofield/simpleini/blob/master/LICENCE.txt
+-------------------------------------------------------------
+Copyright (c) 2006-2013 Brodie Thiesfield
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+===============================================================
+DJI’s Thermal SDK library use modified open source code of TinyEXIF (https://github.com/cdcseacave/TinyEXIF), which is licensed under BSD 2-Clause license. License is available in source code at https://github.com/cdcseacave/TinyEXIF/blob/master/TinyEXIF.h
+-------------------------------------------------------------
+Copyright (c) 2015-2017 Seacave
+cdc.seacave@gmail.com
+All rights reserved.
+
+Based on the easyexif library (2013 version)
+  https://github.com/mayanklahiri/easyexif
+of Mayank Lahiri (mlahiri@gmail.com).
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+ - Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+ - Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY EXPRESS
+OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN
+NO EVENT SHALL THE FREEBSD PROJECT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+===============================================================
+DJI’s Thermal SDK library use unmodified open source code of libexif (https://github.com/libexif/libexif), libiconv(https://www.gnu.org/software/libiconv), libintl(https://www.gnu.org/software/gettext) for dynamic linking, which are licensed under LGPL(Version 2.1) license. A copy of the LGPL(Version 2.1) license is available at https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html#TOC1
+-------------------------------------------------------------
+```
 
 ## Pipeline pack models
 

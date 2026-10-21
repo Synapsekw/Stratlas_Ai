@@ -121,6 +121,26 @@ describe('licence inventory', () => {
     expect(md).toContain('| Copernicus DEM GLO-30 | terrain | X | © DLR |');
   });
 
+  it('lists ExifTool and the DJI Thermal SDK with the SDK licence in full', () => {
+    const native = nativeInventory();
+    const byName = new Map(native.libs.map((l) => [l.name, l]));
+    expect(byName.get('ExifTool')?.license).toBe('Artistic-1.0-Perl OR GPL-1.0-or-later');
+    expect(byName.get('DJI Thermal SDK')?.license).toBe('LicenseRef-DJI-Thermal-SDK');
+    expect(native.bundled.map((b) => b.name)).toContain('Strawberry Perl runtime (in ExifTool)');
+    expect(native.licenceTexts.map((t) => t.name)).toEqual(['DJI Thermal SDK']);
+    const md = render([], [], native);
+    expect(md).toContain('### Thermal tools');
+    expect(md).toContain('#### DJI Thermal SDK licence');
+    expect(md).toContain('| ExifTool | 13.59 (Windows 64-bit package) |');
+    expect(md).toContain(
+      '| DJI Thermal SDK | 1.9 (20260526, Windows x64) | LicenseRef-DJI-Thermal-SDK |',
+    );
+    expect(md).toContain('must be used together with libdirp.dll or libdirp.so');
+    const committed = readFileSync(NOTICES, 'utf8');
+    expect(committed).toContain('### Thermal tools');
+    expect(committed).toContain('must be used together with libdirp.dll or libdirp.so');
+  });
+
   it('lists the model weights the pipeline pack carries', () => {
     const models = modelInventory();
     expect(models.map((m) => [m.name, m.license])).toEqual([['MobileSAM', 'Apache-2.0']]);

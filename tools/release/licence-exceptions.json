@@ -130,6 +130,13 @@
       "licence": "LicenseRef-Microsoft-VC-Redist",
       "use": "Microsoft Visual C++ runtime DLLs (vcruntime140, msvcp140, vcomp140 and their siblings) that CPython and the Windows wheels ship, redistributable under the Visual Studio licence terms, unmodified. Already in pipeline packs 0.2 and 0.3.",
       "approved": "2026-10-08"
+    },
+    {
+      "name": "dji-thermal-sdk",
+      "ecosystem": "native",
+      "licence": "LicenseRef-DJI-Thermal-SDK",
+      "use": "DJI Thermal SDK 1.9 (libdirp, the libv_* libraries and the sample tools) in tools/dji-tsdk, unmodified. DJI's License.txt offers these utility/bin files under the MIT licence; the libv_* libraries may be used only together with libdirp. Full text in THIRD-PARTY-NOTICES.md.",
+      "approved": "2026-10-21"
     }
   ],
   "elections": [

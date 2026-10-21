@@ -3,7 +3,7 @@
 // aio_pipelines, as a folder outside the repository and the installer, with a manifest of every
 // file's size and SHA-256 (the pack is signed file by file in CI and verified by the app later).
 //
-//   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force] [--no-pdal] [--no-ffmpeg] [--no-sam]
+//   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force] [--no-pdal] [--no-ffmpeg] [--no-sam] [--no-thermal-tools]
 //
 // Everything is prebuilt (founder decision of 8 Oct 2026, ADR 0008 amended): the photogrammetry
 // engines are wheels in uv.lock (pycolmap and opencv-python-headless, for Windows x64
@@ -17,6 +17,9 @@
 // walk pipeline needs; --no-ffmpeg leaves it out.
 // The boundary model for Suggest boundaries (MobileSAM, ADR 0011) goes into models/sam from pinned,
 // checksummed downloads (sam.mjs); --no-sam leaves it out.
+// ExifTool and the DJI Thermal SDK (thermal analysis) go into tools/exiftool and tools/dji-tsdk from
+// pinned, checksummed prebuilt archives (thermal-tools.mjs, Windows x64 only); --no-thermal-tools
+// leaves them out.
 //
 // Output: <out>/pipeline-pack-<version>/{python/, tools/, manifest.json}, built in a temp folder next to
 // it and renamed into place when complete. The app finds the newest pack in
@@ -43,6 +46,7 @@ import { runGate } from '../release/native-licences.mjs';
 import { checkFfmpegTool, FFMPEG_SPEC, installFfmpeg } from './ffmpeg.mjs';
 import { checkPdal, checkUntwine, installPdal, untwineExe } from './pdal.mjs';
 import { installSam, SAM_MODEL } from './sam.mjs';
+import { installThermalTools, thermalToolProblems } from './thermal-tools.mjs';
 import { envVar } from '../../packages/brand/src/env.ts';
 
 export const PBS_RELEASE = '20260924';
@@ -115,8 +119,14 @@ export function tarCommand(
  * The manifest's `tools`: each native tool the pack carries in tools/ (null when the build left it
  * out), with its conda inventory. `ffmpeg` is checkFfmpegTool's result plus the conda spec.
  */
-export function packTools({ pdal, ffmpeg }) {
+export function packTools({ pdal, ffmpeg, thermal = null }) {
   return {
+    ...(thermal
+      ? {
+          exiftool: { path: 'tools/exiftool', version: thermal.exiftool },
+          djiTsdk: { path: 'tools/dji-tsdk', version: thermal.djiTsdk },
+        }
+      : {}),
     pdal: pdal ? { path: 'tools/pdal', packages: 'tools/pdal/conda-packages.json' } : null,
     ffmpeg: ffmpeg
       ? {
@@ -278,6 +288,7 @@ async function main() {
       'no-pdal': { type: 'boolean', default: false },
       'no-ffmpeg': { type: 'boolean', default: false },
       'no-sam': { type: 'boolean', default: false },
+      'no-thermal-tools': { type: 'boolean', default: false },
       // the old source build's options, ignored since 8 Oct 2026
       native: { type: 'string' },
       strict: { type: 'boolean', default: false },
@@ -382,6 +393,19 @@ async function main() {
       : await installSam({ cache, dest: join(tmp, 'models', 'sam'), log: say });
     if (!sam) say('  --no-sam: this pack has no boundary model');
 
+    // 2d. ExifTool and the DJI Thermal SDK (prebuilt Windows x64 archives, SHA-256 checked)
+    let thermal = null;
+    if (values['no-thermal-tools']) say('  --no-thermal-tools: this pack has no thermal tools');
+    else if (platform !== 'win32-x64')
+      say(`  thermal tools: Windows x64 only, none for ${platform}`);
+    else {
+      const installed = await installThermalTools(tmp, { cache, log: say });
+      const problems = thermalToolProblems(tmp);
+      if (problems.length > 0) fail(`thermal tools incomplete: ${problems.join(', ')}`);
+      const version = (n) => installed.find((t) => t.name === n)?.version ?? '';
+      thermal = { exiftool: version('exiftool'), djiTsdk: version('dji-tsdk') };
+    }
+
     // 3. Trim what the pack never runs, then precompile so a signed, read-only pack never writes .pyc
     const lib =
       process.platform === 'win32'
@@ -472,7 +496,7 @@ async function main() {
           ? `models/sam (${SAM_MODEL.name} ${SAM_MODEL.version}, ${SAM_MODEL.licence})`
           : null,
       },
-      tools: packTools({ pdal: Boolean(pdal), ffmpeg }),
+      tools: packTools({ pdal: Boolean(pdal), ffmpeg, thermal }),
       createdAt: new Date().toISOString(),
       pipelines,
       files,
