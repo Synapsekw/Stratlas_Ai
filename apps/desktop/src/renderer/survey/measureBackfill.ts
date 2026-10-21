@@ -9,8 +9,8 @@ import type { HeightTiles, PickedOn, ProjectManifest, SurveyMeasurement } from '
 import { surfaceOfCapture } from '@aio/survey';
 import { t } from '@aio/ui';
 import { captureIndex, workspace, type CaptureIndex } from '@aio/workspace';
-import { compareStore } from './compareStore';
-import { groundAt } from './dateSurfaces';
+import { compareStore, computeAll } from './compareStore';
+import { groundAt, hasPrepared } from './dateSurfaces';
 import { storedPoints } from './measureDates';
 import type { Repicker } from './measureMove';
 import { baseLayer } from './measureSource';
@@ -52,6 +52,8 @@ function filedOn(
     // a site-wide measurement is drawn where it is stored
     points: storedPoints(m.points, scope, manifest),
     pickedOn,
+    // measured against its date's data now: the site-wide results are worked out again
+    results: m.results.map((r) => ({ ...r, status: 'stale' as const })),
   };
   if (layer) out.source = { layer };
   else delete out.source;
@@ -110,13 +112,25 @@ export async function planBackfill(
 
 // ---------------------------------------------------------------- the runner
 
-/** Projects whose backfill ran this session (or is running). */
-const done = new Set<string>();
+/**
+ * A project's backfill this session: `running`; `waiting` (it ran while no date had a prepared
+ * surface and left site-wide measurements unfiled: it runs once more, height matching only, when
+ * a date's surface is prepared); `done`. `filed` holds the ids it filed, never filed again (an
+ * Undo puts them back for good).
+ */
+interface Run {
+  phase: 'running' | 'waiting' | 'done';
+  filed: Set<string>;
+}
+const runs = new Map<string, Run>();
 
 /** Tests: forget which projects were backfilled. */
 export function forgetBackfills(): void {
-  done.clear();
+  runs.clear();
 }
+
+const anyPrepared = (manifest: ProjectManifest, surfaces: readonly HeightTiles[]) =>
+  manifest.captures.some((c) => hasPrepared(surfaces, c.id));
 
 /** The open project when a backfill may run on it now, else null. */
 function ready(): { id: string; manifest: ProjectManifest } | null {
@@ -127,33 +141,55 @@ function ready(): { id: string; manifest: ProjectManifest } | null {
   if (cs.status !== 'ready' || cs.projectId !== project.id) return null;
   if (ms.readOnly || isAnnotateReadOnly()) return null;
   if (project.manifest.captures.length === 0) return null;
-  if (!ms.file.measurements.some((m) => m.scope.kind === 'site')) return null;
   return { id: project.id, manifest: project.manifest };
 }
 
-async function run(id: string, manifest: ProjectManifest): Promise<void> {
-  const before = measureStore.getState().file.measurements.filter((m) => m.scope.kind === 'site');
+/** The site-wide measurements the backfill may still file. */
+function candidates(r: Run | undefined): SurveyMeasurement[] {
+  return measureStore
+    .getState()
+    .file.measurements.filter((m) => m.scope.kind === 'site' && !r?.filed.has(m.id));
+}
+
+async function run(
+  id: string,
+  manifest: ProjectManifest,
+  r: Run,
+  was: Run['phase'] | null,
+  retry: () => void,
+): Promise<void> {
+  const before = candidates(r);
+  const surfaces = compareStore.getState().surfaces;
+  const prepared = anyPrepared(manifest, surfaces);
   const filed = await planBackfill(before, {
     manifest,
     index: workspace.getState().dates ?? captureIndex(manifest),
-    surfaces: compareStore.getState().surfaces,
+    surfaces,
     ground: (capture, drawn) => groundAt(capture, drawn, manifest),
   });
-  const now = ready();
   const current = new Map(measureStore.getState().file.measurements.map((m) => [m.id, m]));
   // another project, a read-only file, or the measurements changed while the heights were read:
-  // nothing is written, and the next change tries again
-  if (now?.id !== id || before.some((m) => current.get(m.id) !== m)) {
-    done.delete(id);
+  // nothing is written, and it tries again now
+  if (ready()?.id !== id || before.some((m) => current.get(m.id) !== m)) {
+    if (was) r.phase = was;
+    else runs.delete(id);
+    retry();
     return;
   }
+  // with no prepared date nothing could be height matched: those wait for a prepared surface
+  r.phase = prepared || filed.length === before.length ? 'done' : 'waiting';
   if (filed.length === 0) return;
   const seq = replaceMeasurements(filed, { undoable: true });
   if (seq === null) return;
+  for (const m of filed) r.filed.add(m.id);
   setMeasureNote({
     text: t('tree.measure.backfill.done', { count: filed.length }),
     danger: false,
     undo: true,
+  });
+  // measured against their date's data: the engine results are worked out again there
+  await computeAll(filed.map((m) => m.id)).catch((e: unknown) => {
+    console.warn('Recomputing the filed measurements failed', e);
   });
 }
 
@@ -161,16 +197,26 @@ async function run(id: string, manifest: ProjectManifest): Promise<void> {
  * File older measurements under their survey dates once per project and session: when the
  * measurements and the prepared surfaces are both loaded for the open project, it has survey
  * dates and at least one site-wide measurement, and nothing is read-only (a package or a
- * look-only reviewer). One undoable edit and one note; nothing filed, no note. Undo puts them back
- * and it does not run again. Returns unsubscribe.
+ * look-only reviewer). One undoable edit and one note; nothing filed, no note. While no date has a
+ * prepared surface, the measurements it cannot match wait: it runs once more when one is
+ * prepared. Undo puts them back and they are not filed again. Returns unsubscribe.
  */
 export function followBackfill(): () => void {
   const check = () => {
     const p = ready();
-    if (!p || done.has(p.id)) return;
-    done.add(p.id);
-    void run(p.id, p.manifest).catch(() => {
-      done.delete(p.id);
+    if (!p) return;
+    const r = runs.get(p.id);
+    if (r && r.phase !== 'waiting') return;
+    if (r && !anyPrepared(p.manifest, compareStore.getState().surfaces)) return;
+    if (candidates(r).length === 0) return;
+    const was = r?.phase ?? null;
+    const next: Run = r ?? { phase: 'running', filed: new Set() };
+    next.phase = 'running';
+    runs.set(p.id, next);
+    void run(p.id, p.manifest, next, was, check).catch((e: unknown) => {
+      console.warn('Filing older measurements under their survey dates failed', e);
+      if (was) next.phase = was;
+      else runs.delete(p.id);
     });
   };
   const off = [

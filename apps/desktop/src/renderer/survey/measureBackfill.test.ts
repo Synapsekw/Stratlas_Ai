@@ -8,7 +8,7 @@ import type {
 } from '@aio/schema';
 import { t } from '@aio/ui';
 import { captureIndex, workspace } from '@aio/workspace';
-import { compareStore } from './compareStore';
+import { compareStore, computeAll } from './compareStore';
 import { setDateSurfaceSource } from './dateSurfaces';
 import {
   BACKFILL_MARGIN_M,
@@ -27,6 +27,10 @@ vi.mock('../shell', () => ({
   jobs: { getState: () => ({}) },
 }));
 vi.mock('@aio/annotate', () => ({ isAnnotateReadOnly: () => flags.annotateReadOnly }));
+vi.mock('./compareStore', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  computeAll: vi.fn(() => Promise.resolve()),
+}));
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const raster = (id: string, capture: string, role: 'dsm' | 'ortho' = 'dsm'): Layer => ({
@@ -111,8 +115,9 @@ function groundOf(h: Record<string, number | number[]>): BackfillEnv['ground'] {
 function env(
   h: Record<string, number | number[]>,
   surfaces: readonly HeightTiles[] = SURFACES,
+  layers: Layer[] = LAYERS,
 ): BackfillEnv & { calls: string[] } {
-  const manifest = manifestOf();
+  const manifest = { ...manifestOf(), layers };
   const calls: string[] = [];
   const g = groundOf(h);
   return {
@@ -162,10 +167,18 @@ describe('planning the backfill', () => {
   });
 
   it('takes the base layer when the matched surface is not a DSM', async () => {
+    // June has only an ortho (its surface was prepared from a cloud)
+    const layers = [raster('dsm-jan', 'jan'), raster('ortho-jun', 'jun', 'ortho')];
     const surfaces = [surface('s-jan', 'jan', 'dsm-jan'), surface('s-jun', 'jun')];
-    const out = await planBackfill([m('a')], env({ jan: 3, jun: 7.05 }, surfaces));
+    const out = await planBackfill([m('a')], env({ jan: 3, jun: 7.05 }, surfaces, layers));
     expect(out[0]?.scope).toEqual({ kind: 'survey', capture: 'jun' });
-    expect(out[0]?.source).toEqual({ layer: 'dsm-jun' });
+    expect(out[0]?.source).toEqual({ layer: 'ortho-jun' });
+  });
+
+  it('marks the filed results stale', async () => {
+    const r = { item: 'i1', status: 'ok' } as unknown as SurveyMeasurement['results'][number];
+    const out = await planBackfill([m('a', { results: [r] })], env({ jan: 7, jun: 2 }));
+    expect(out[0]?.results).toEqual([{ item: 'i1', status: 'stale' }]);
   });
 
   it('leaves a measurement that matches two dates alike', async () => {
@@ -282,6 +295,26 @@ describe('the backfill on a project', () => {
     offNotes();
   });
 
+  it('keeps one run when the surfaces refresh with dates still unmatched', async () => {
+    // a matches no date: the run is spent all the same, because dates were prepared
+    setDateSurfaceSource(() =>
+      Promise.resolve((es: Float64Array) => Promise.resolve(Float64Array.from(es, () => 0))),
+    );
+    load([m('a')]);
+    prepared();
+    const off = followBackfill();
+    await settle();
+    setDateSurfaceSource((capture) =>
+      Promise.resolve((es: Float64Array) =>
+        Promise.resolve(Float64Array.from(es, () => (capture === 'jan' ? 7 : 3))),
+      ),
+    );
+    compareStore.setState({ surfaces: [...SURFACES] });
+    await settle();
+    expect(scopes()).toEqual([{ kind: 'site' }]);
+    off();
+  });
+
   it('posts no note when nothing is filed', async () => {
     setDateSurfaceSource(() =>
       Promise.resolve((es: Float64Array) => Promise.resolve(Float64Array.from(es, () => 0))),
@@ -334,10 +367,12 @@ describe('the backfill on a project', () => {
   it('drops a plan when the measurements changed while the heights were read', async () => {
     const held: (() => void)[] = [];
     setDateSurfaceSource(
-      () =>
+      (capture) =>
         new Promise((r) => {
           held.push(() => {
-            r((es: Float64Array) => Promise.resolve(Float64Array.from(es, () => 7)));
+            r((es: Float64Array) =>
+              Promise.resolve(Float64Array.from(es, () => (capture === 'jan' ? 7 : 3))),
+            );
           });
         }),
     );
@@ -349,11 +384,72 @@ describe('the backfill on a project', () => {
       file: { ...file, measurements: file.measurements.map((x) => ({ ...x, label: 'Renamed' })) },
     });
     expect(held.length).toBeGreaterThan(0);
+    const first = held.splice(0);
+    for (const h of first) h();
+    await settle();
+    await settle();
+    // the first plan is dropped and a new one starts right away, on the renamed measurement
+    expect(measureStore.getState().note).toBeNull();
+    expect(scopes()).toEqual([{ kind: 'site' }]);
+    expect(held.length).toBeGreaterThan(0);
     for (const h of held) h();
     await settle();
     await settle();
-    expect(measureStore.getState().note).toBeNull();
-    expect(scopes()).toEqual([{ kind: 'site' }]);
+    expect(scopes()).toEqual([{ kind: 'survey', capture: 'jan' }]);
+    expect(measureStore.getState().file.measurements[0]?.label).toBe('Renamed');
     off();
+  });
+
+  it('recomputes the filed measurements on their date', async () => {
+    vi.mocked(computeAll).mockClear();
+    load([m('a'), m('b', { scope: { kind: 'survey', capture: 'jun' } })]);
+    prepared();
+    const off = followBackfill();
+    await settle();
+    expect(computeAll).toHaveBeenCalledWith(['a']);
+    off();
+  });
+
+  it('files what it can with no prepared date, and height matches once a surface is prepared', async () => {
+    load([
+      m('a'),
+      m('b', { source: { layer: 'dsm-jun' } }),
+      m('c', { source: { layer: 'dsm-jun' } }),
+    ]);
+    // the surfaces have loaded, but no date has one yet
+    compareStore.setState({ projectId: 'p1', status: 'ready', surfaces: [] });
+    const notes: { seq: number }[] = [];
+    const offNotes = measureStore.subscribe((s, prev) => {
+      if (s.note !== prev.note && s.note) notes.push(s.note);
+    });
+    const off = followBackfill();
+    await settle();
+    expect(scopes()).toEqual([
+      { kind: 'site' },
+      { kind: 'survey', capture: 'jun' },
+      { kind: 'survey', capture: 'jun' },
+    ]);
+    expect(notes).toHaveLength(1);
+    // Undo puts b and c back for good
+    expect(undoMeasureChange(notes[0]?.seq ?? -1)).toBe(true);
+    expect(scopes()[1]).toEqual({ kind: 'site' });
+    // Prepare surfaces: a is height matched now, b and c are not filed again
+    compareStore.setState({ surfaces: SURFACES });
+    await settle();
+    expect(scopes()).toEqual([
+      { kind: 'survey', capture: 'jan' },
+      { kind: 'site' },
+      { kind: 'site' },
+    ]);
+    expect(notes).toHaveLength(2);
+    expect(measureStore.getState().note?.text).toBe(t('tree.measure.backfill.done', { count: 1 }));
+    // once: after its Undo, a later refresh does not run it again
+    expect(undoMeasureChange(notes[1]?.seq ?? -1)).toBe(true);
+    compareStore.setState({ surfaces: [...SURFACES] });
+    await settle();
+    expect(scopes()).toEqual([{ kind: 'site' }, { kind: 'site' }, { kind: 'site' }]);
+    expect(notes).toHaveLength(2);
+    off();
+    offNotes();
   });
 });
