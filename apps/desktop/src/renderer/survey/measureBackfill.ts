@@ -14,7 +14,17 @@ import { groundAt, hasPrepared } from './dateSurfaces';
 import { storedPoints } from './measureDates';
 import type { Repicker } from './measureMove';
 import { baseLayer } from './measureSource';
-import { measureStore, replaceMeasurements, setMeasureNote } from './measureStore';
+import {
+  measureStore,
+  replaceMeasurements,
+  setMeasureNote,
+  type MeasureState,
+} from './measureStore';
+import {
+  createMeasureVisibilityMemory,
+  measureStorage,
+  type MeasureVisibilityMemory,
+} from './measureVisibility';
 
 /** A stored height within this of a date's surface counts as picked on it (m). */
 export const BACKFILL_TOL_M = 0.1;
@@ -116,13 +126,29 @@ export async function planBackfill(
  * A project's backfill this session: `running`; `waiting` (it ran while no date had a prepared
  * surface and left site-wide measurements unfiled: it runs once more, height matching only, when
  * a date's surface is prepared); `done`. `filed` holds the ids it filed, never filed again (an
- * Undo puts them back for good).
+ * Undo puts them back for good); `undo` is its last filing while that can still be undone.
  */
 interface Run {
   phase: 'running' | 'waiting' | 'done';
   filed: Set<string>;
+  undo?: { seq: number; ids: readonly string[] };
 }
 const runs = new Map<string, Run>();
+
+/** Where the measurements a person put back with Undo are remembered, per project. */
+export const BACKFILL_DECLINED_KEY = 'quadrion.measure.backfillDeclined';
+/**
+ * The ids an Undo of the backfill put back, per project in this renderer's localStorage (view
+ * state of this computer, never written to `measurements.json`): never filed again, in any session.
+ */
+let declined: MeasureVisibilityMemory = createMeasureVisibilityMemory(
+  measureStorage(),
+  BACKFILL_DECLINED_KEY,
+);
+/** Tests: remember declined ids here instead. */
+export function setBackfillDeclined(m: MeasureVisibilityMemory): void {
+  declined = m;
+}
 
 /** Tests: forget which projects were backfilled. */
 export function forgetBackfills(): void {
@@ -145,10 +171,13 @@ function ready(): { id: string; manifest: ProjectManifest } | null {
 }
 
 /** The site-wide measurements the backfill may still file. */
-function candidates(r: Run | undefined): SurveyMeasurement[] {
+function candidates(id: string, r: Run | undefined): SurveyMeasurement[] {
+  const no = new Set(declined.load(id));
   return measureStore
     .getState()
-    .file.measurements.filter((m) => m.scope.kind === 'site' && !r?.filed.has(m.id));
+    .file.measurements.filter(
+      (m) => m.scope.kind === 'site' && !r?.filed.has(m.id) && !no.has(m.id),
+    );
 }
 
 async function run(
@@ -158,7 +187,7 @@ async function run(
   was: Run['phase'] | null,
   retry: () => void,
 ): Promise<void> {
-  const before = candidates(r);
+  const before = candidates(id, r);
   const surfaces = compareStore.getState().surfaces;
   const prepared = anyPrepared(manifest, surfaces);
   const filed = await planBackfill(before, {
@@ -182,13 +211,18 @@ async function run(
   const seq = replaceMeasurements(filed, { undoable: true });
   if (seq === null) return;
   for (const m of filed) r.filed.add(m.id);
+  r.undo = { seq, ids: filed.map((m) => m.id) };
   setMeasureNote({
     text: t('tree.measure.backfill.done', { count: filed.length }),
     danger: false,
     undo: true,
   });
-  // measured against their date's data: the engine results are worked out again there
-  await computeAll(filed.map((m) => m.id)).catch((e: unknown) => {
+  // measured against their date's data: the engine results are worked out again there, as derived
+  // numbers (only the filing is an unsaved change)
+  await computeAll(
+    filed.map((m) => m.id),
+    { auto: true },
+  ).catch((e: unknown) => {
     console.warn('Recomputing the filed measurements failed', e);
   });
 }
@@ -199,7 +233,9 @@ async function run(
  * dates and at least one site-wide measurement, and nothing is read-only (a package or a
  * look-only reviewer). One undoable edit and one note; nothing filed, no note. While no date has a
  * prepared surface, the measurements it cannot match wait: it runs once more when one is
- * prepared. Undo puts them back and they are not filed again. Returns unsubscribe.
+ * prepared. Undo (or Revert) puts them back and they are not filed again, in this session or a
+ * later one. The recomputed results are derived numbers: only the filing is an unsaved change.
+ * Returns unsubscribe.
  */
 export function followBackfill(): () => void {
   const check = () => {
@@ -208,7 +244,7 @@ export function followBackfill(): () => void {
     const r = runs.get(p.id);
     if (r && r.phase !== 'waiting') return;
     if (r && !anyPrepared(p.manifest, compareStore.getState().surfaces)) return;
-    if (candidates(r).length === 0) return;
+    if (candidates(p.id, r).length === 0) return;
     const was = r?.phase ?? null;
     const next: Run = r ?? { phase: 'running', filed: new Set() };
     next.phase = 'running';
@@ -219,8 +255,23 @@ export function followBackfill(): () => void {
       else runs.delete(p.id);
     });
   };
+  // the backfill's Undo let go: the ones it put back under Needs a date are remembered as declined
+  const watchUndo = (s: MeasureState, prev: MeasureState) => {
+    for (const [id, r] of runs) {
+      const u = r.undo;
+      if (!u || prev.undoChange?.seq !== u.seq || s.undoChange?.seq === u.seq) continue;
+      delete r.undo;
+      if (s.projectId !== id) continue;
+      const now = new Map(s.file.measurements.map((m) => [m.id, m]));
+      const back = u.ids.filter((x) => now.get(x)?.scope.kind === 'site');
+      if (back.length > 0) declined.save(id, [...new Set([...declined.load(id), ...back])]);
+    }
+  };
   const off = [
-    measureStore.subscribe(check),
+    measureStore.subscribe((s, prev) => {
+      watchUndo(s, prev);
+      check();
+    }),
     compareStore.subscribe(check),
     workspace.subscribe(check),
   ];

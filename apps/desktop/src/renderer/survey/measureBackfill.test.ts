@@ -16,9 +16,11 @@ import {
   followBackfill,
   forgetBackfills,
   planBackfill,
+  setBackfillDeclined,
   type BackfillEnv,
 } from './measureBackfill';
 import { measureStore, undoMeasureChange } from './measureStore';
+import { createMeasureVisibilityMemory } from './measureVisibility';
 
 const flags = vi.hoisted((): { annotateReadOnly: boolean } => ({ annotateReadOnly: false }));
 
@@ -244,6 +246,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
   flags.annotateReadOnly = false;
   forgetBackfills();
+  setBackfillDeclined(createMeasureVisibilityMemory(null));
   compareStore.setState({ projectId: null, status: 'idle', surfaces: [] });
   // January's ground matches the stored heights, June's does not
   setDateSurfaceSource((capture) =>
@@ -293,6 +296,28 @@ describe('the backfill on a project', () => {
     expect(notes).toHaveLength(1);
     off();
     offNotes();
+  });
+
+  it('an Undo sticks in the next session, and other measurements are still filed', async () => {
+    const memory = createMeasureVisibilityMemory(null);
+    setBackfillDeclined(memory);
+    load([m('a')]);
+    prepared();
+    let off = followBackfill();
+    await settle();
+    expect(scopes()).toEqual([{ kind: 'survey', capture: 'jan' }]);
+    expect(undoMeasureChange(measureStore.getState().note?.seq ?? -1)).toBe(true);
+    await settle();
+    expect(memory.load('p1')).toEqual(['a']);
+    off();
+    // a new session: the project opened again, with one more older measurement
+    forgetBackfills();
+    load([m('a'), m('b')]);
+    prepared();
+    off = followBackfill();
+    await settle();
+    expect(scopes()).toEqual([{ kind: 'site' }, { kind: 'survey', capture: 'jan' }]);
+    off();
   });
 
   it('keeps one run when the surfaces refresh with dates still unmatched', async () => {
@@ -406,7 +431,8 @@ describe('the backfill on a project', () => {
     prepared();
     const off = followBackfill();
     await settle();
-    expect(computeAll).toHaveBeenCalledWith(['a']);
+    // derived numbers: only the filing itself is an unsaved change
+    expect(computeAll).toHaveBeenCalledWith(['a'], { auto: true });
     off();
   });
 

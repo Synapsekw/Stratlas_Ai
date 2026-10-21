@@ -64,10 +64,11 @@ function defaultKind(manifest: MoveEnv['manifest'], layer: string | undefined): 
  * The capture a measurement belongs to, or null for a site-wide (Needs a date) one; a date no
  * longer in the project counts as none (it shows under Needs a date too).
  */
-const captureOf = (m: SurveyMeasurement, manifest: MoveEnv['manifest']): string | null =>
-  m.scope.kind === 'survey' && manifest.captures.some((c) => c.id === m.scope.capture)
-    ? m.scope.capture
-    : null;
+function captureOf(m: SurveyMeasurement, manifest: MoveEnv['manifest']): string | null {
+  if (m.scope.kind !== 'survey') return null;
+  const { capture } = m.scope;
+  return manifest.captures.some((c) => c.id === capture) ? capture : null;
+}
 
 /** The folder kept when the target date has one of that name, else none. */
 function withFolder(m: SurveyMeasurement, folders: ReadonlySet<string>): SurveyMeasurement {

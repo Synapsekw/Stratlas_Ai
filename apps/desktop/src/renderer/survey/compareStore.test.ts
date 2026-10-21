@@ -19,6 +19,7 @@ vi.mock('../author', () => ({ authorName: () => '' }));
 const {
   compareStore,
   compute,
+  computeAll,
   engineClient,
   followMeasurements,
   scheduleCheck,
@@ -148,6 +149,14 @@ describe('results the app computes on its own', () => {
     expect(stored()?.label).toBe('Pit');
     expect(stored()?.results).toHaveLength(1);
     expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  it('computeAll passes auto on: the results are no person edit', async () => {
+    await computeAll(['m1'], { auto: true });
+    expect(stored()?.results).toHaveLength(1);
+    expect(stored()?.updatedAt).toBe(UPDATED);
+    expect(isDirty(measureStore.getState())).toBe(false);
+    expect(writes()).toBe(0);
   });
 
   it('a person Recompute is an edit (autosave writes it)', async () => {

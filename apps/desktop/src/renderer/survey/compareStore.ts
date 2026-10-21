@@ -437,8 +437,11 @@ const inputsKey = (m: SurveyMeasurement, withRing: boolean): string =>
   ]);
 
 /** Compute every item of every given measurement (Recompute all, bulk). */
-export async function computeAll(ids: readonly string[]): Promise<void> {
-  for (const id of ids) await compute(id);
+export async function computeAll(
+  ids: readonly string[],
+  opts: { auto?: boolean } = {},
+): Promise<void> {
+  for (const id of ids) await compute(id, opts);
 }
 
 // ---------------------------------------------------------------- following the focus
