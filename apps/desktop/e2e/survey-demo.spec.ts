@@ -77,21 +77,14 @@ test('the app lists and opens each survey demo, with no network', async ({
   const projects = [earthworksProject, quarryProject, landfillProject, surveyProject];
   const entries = await win.evaluate(() => window.aio.invoke('library:list', {}));
   for (const p of projects) expect(entries.find((e) => e.id === p.id)?.name).toBe(p.name);
-  const measurements = async (p: SurveyDemoProject) =>
-    MeasurementsFile.parse(await readJson(join(p.dir, 'survey', 'measurements.json')));
-  const before = new Map<string, string[]>();
-  for (const p of projects)
-    before.set(
-      p.id,
-      (await measurements(p)).measurements.map((m) => m.id),
-    );
+  // opening writes nothing: a demo has no stockpile kit data to convert (volumetric parity W3;
+  // the kit-pile mark is kept in memory until a save or a stockpile build)
+  const file = (p: SurveyDemoProject) => join(p.dir, 'survey', 'measurements.json');
+  const before = new Map<string, string>();
+  for (const p of projects) before.set(p.id, await readFile(file(p), 'utf8'));
+  for (const p of projects) await open(win, p);
   for (const p of projects) {
-    await open(win, p);
-    // a demo has no stockpile kit result: the first open marks it so (volumetric parity W3),
-    // so a later stockpile build is never taken for an old project's, and adds no measurement
-    await expect
-      .poll(async () => (await measurements(p)).kitPilesConverted ?? null, { timeout: 30_000 })
-      .toEqual([]);
-    expect((await measurements(p)).measurements.map((m) => m.id)).toEqual(before.get(p.id));
+    expect(await readFile(file(p), 'utf8')).toBe(before.get(p.id));
+    expect(existsSync(`${file(p)}.bak`)).toBe(false);
   }
 });

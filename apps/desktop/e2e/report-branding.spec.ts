@@ -181,15 +181,7 @@ test('the issue register is neutral by default and carries the branding set in S
     expect(copied).toHaveLength(1);
     expect(copied[0]).toMatch(/^logo-[a-z0-9]+\.png$/);
     expect(existsSync(join(projectDir, 'branding'))).toBe(false);
-    // nothing of the branding in the project; the first open's kit-pile mark (volumetric parity
-    // W3) is the one file the app adds: survey/measurements.json, with no measurement
-    expect((await readdir(projectDir)).sort()).toEqual([
-      'issues.json',
-      'manifest.json',
-      'models',
-      'survey',
-    ]);
-    expect(await readdir(join(projectDir, 'survey'))).toEqual(['measurements.json']);
+    expect((await readdir(projectDir)).sort()).toEqual(['issues.json', 'manifest.json', 'models']);
 
     await exportRegister(win);
     const [branded] = await pdfPages(pdf);
