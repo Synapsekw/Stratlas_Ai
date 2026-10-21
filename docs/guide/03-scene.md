@@ -226,6 +226,26 @@ Right-click the pin (in 3D or on the map) or the tile:
 
 A photo whose image is twice as wide as it is high shows **Looks like a 360** on its tile. **Treat as 360** (on the tile or in the photo's menu) moves it to the 360s of its survey date. **Treat as photo** on a 360 moves it back. The file stays where it is, and a pin goes with it. Neither is offered in a package. A photo with marks on it must have them removed first, and a stitched drone panorama cannot become a photo.
 
+## Edit a photo's position
+
+A photo that came in at the wrong place or height (a drone whose altitude reading is off, for example) can be moved by typing where it should be. The photo file and its imported position are never changed: the edit is kept beside them, the photo shows **Edited**, and **Reset to original** puts it back.
+
+1. Right-click a photo (its Media tile, its marker in 3D or on the map) and choose **Edit position**. The panel shows **X east**, **Y north** (site metres from the project origin) and **Z height** (in the project's height system), and the original values under them.
+2. Type the new values and press **Save** (or **Enter**). The marker on the map and the camera in 3D move, and the tile shows **Edited**. **Esc** or **Cancel** leaves the photo as it was.
+3. To move many photos together, pick them in Media first: **Ctrl**-click adds or removes a photo, **Shift**-click adds the range up to it. Right-click one of the picked photos and choose **Edit position**. The panel says "Shift N photos": the values you type are added to every picked photo, so they keep their spacing. Type only the axis you need (for example Z 46 to raise them all 46 m); an empty field counts as 0.
+4. The notice after a save has **Undo** (and then **Redo**); **Ctrl+Z** and **Ctrl+Y** work while it shows.
+5. **Reset to original** (on the photo's menu, or on the panel of an edited photo) puts it back where it was imported. A direction set with **Align photo to map** stays.
+
+A pinned photo cannot be edited this way (its pin is its place: use **Move pin**), and neither can a photo that is **Not placed** (use **Place on site**). 360s are not covered yet. Processing uses the edited positions: the photos go to the photogrammetry run at the place you gave them.
+
+### Re-read photo positions
+
+Projects imported with an older build may hold drone photos at the wrong height and without a view direction (DJI Zenmuse XT2 photos in particular). Right-click the photos dataset in the sidebar and choose **Re-read photo positions**: heights and view directions are read again from the photo files. If the project's copies carry no metadata, it asks for the folder with the original photos. Photos you moved by hand stay where you put them, and the notice says how many were re-read. Running it again changes nothing.
+
+### Thermal photos placed at their visual twin
+
+A thermal photo (a name ending `_R`) that carries no drone metadata takes the place and view direction of its visual twin from the same capture: the photo numbered one after it (or one before), taken within 3 seconds. It shows **Edited**, and **Reset to original** puts it at the place its own file gives. A thermal photo with no twin keeps its own place, and the import says to check it.
+
 ## The right panel
 
 The right panel (the right sidebar) is the workbench: one row of tabs over the front tab's content, and the AI agent below it.
