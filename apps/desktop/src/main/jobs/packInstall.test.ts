@@ -1,5 +1,5 @@
 import { PIPELINES, type IpcChannel, type PackInstallProgress } from '@aio/schema';
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes, sign as signBytes } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import {
   lstat,
@@ -794,6 +794,70 @@ describe('installPackArchive', () => {
   });
 });
 
+describe('signed packs', () => {
+  const pair = generateKeyPairSync('ed25519');
+  const packKey = Buffer.from(
+    (pair.publicKey.export({ format: 'jwk' }) as { x: string }).x,
+    'base64url',
+  ).toString('base64');
+  const signer =
+    (key = pair.privateKey) =>
+    (manifest: Buffer) =>
+      signBytes(null, manifest, key).toString('base64');
+
+  it('installs a pack whose manifest is signed with the pinned key', async () => {
+    const path = await archive('p.tar.gz', fakePackArchive('0.5.0', { sign: signer() }));
+    expect(await install(path, { packKey })).toMatchObject({ ok: true, version: '0.5.0' });
+  });
+
+  it('refuses an unsigned pack, or one signed with another key, when a key is pinned', async () => {
+    const unsigned = await archive('u.tar.gz', fakePackArchive('0.5.0'));
+    expect(await install(unsigned, { packKey })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/not signed/) as unknown,
+    });
+    const other = signer(generateKeyPairSync('ed25519').privateKey);
+    const forged = await archive('f.tar.gz', fakePackArchive('0.5.0', { sign: other }));
+    expect(await install(forged, { packKey })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/does not match/) as unknown,
+    });
+    expect(existsSync(join(runtime, 'pipeline-pack-0.5.0'))).toBe(false);
+  });
+
+  it('refuses a signed pack that holds a file its manifest does not list', async () => {
+    const path = await archive(
+      'x.tar.gz',
+      fakePackArchive('0.5.0', {
+        sign: signer(),
+        unlisted: { 'python/Lib/site-packages/evil.pth': 'import os' },
+      }),
+    );
+    expect(await install(path, { packKey })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/does not list/) as unknown,
+    });
+  });
+
+  it('without a key, asks before activating an unsigned pack and stops on no', async () => {
+    const path = await archive('p.tar.gz', fakePackArchive('0.5.0'));
+    const asked: string[] = [];
+    const no = (v: string) => {
+      asked.push(v);
+      return Promise.resolve(false);
+    };
+    expect(await install(path, { confirmUnsigned: no })).toMatchObject({
+      ok: false,
+      code: 'cancelled',
+    });
+    expect(asked).toEqual(['0.5.0']);
+    expect(existsSync(join(runtime, 'pipeline-pack-0.5.0'))).toBe(false);
+    expect(await install(path, { confirmUnsigned: () => Promise.resolve(true) })).toMatchObject({
+      ok: true,
+    });
+  });
+});
+
 describe('archive paths', () => {
   it('splits a path into safe names', () => {
     expect(archiveSegments('./pipeline-pack-1.0.0/python//bin/python3', false)).toEqual({
@@ -1063,6 +1127,7 @@ describe('pipeline pack IPC', () => {
     const events: PackInstallProgress[] = [];
     const trashed: string[] = [];
     const chosen: (string | null)[] = [];
+    let pick: string | null = null;
     registerPipelinePackIpc({
       // every request and answer goes through the frozen contract, as in the app
       handle: (channel, handler) => {
@@ -1079,7 +1144,7 @@ describe('pipeline pack IPC', () => {
       ],
       chooseFile: (startDir) => {
         chosen.push(startDir);
-        return Promise.resolve(null);
+        return Promise.resolve(pick);
       },
       trash: async (dir) => {
         trashed.push(dir);
@@ -1093,8 +1158,25 @@ describe('pipeline pack IPC', () => {
       if (!h) throw new Error(`no handler for ${channel}`);
       return h(request) as Promise<T>;
     };
-    return { call, events, trashed, chosen };
+    /** The person picks `path` in main's dialog: an install may then name it. */
+    const choose = async (path: string) => {
+      pick = path;
+      await call('pipelinePack:choose');
+      pick = null;
+    };
+    return { call, events, trashed, chosen, choose };
   }
+
+  it('refuses to install a path main did not offer or the person did not pick', async () => {
+    const path = await archive('pipeline-pack-0.5.0-win-x64.tar.gz', fakePackArchive('0.5.0'));
+    const { call, choose } = setup();
+    expect(await call('pipelinePack:install', { path })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/Install from a file/) as unknown,
+    });
+    await choose(path);
+    expect(await call('pipelinePack:install', { path })).toMatchObject({ ok: true });
+  });
 
   it('clears only the installation root selection when the data folder changes during extraction', async () => {
     const firstRoot = dataRoot;
@@ -1104,11 +1186,12 @@ describe('pipeline pack IPC', () => {
     await selectManagedKit(firstRoot, '0.12.0', selection);
     await selectManagedKit(secondRoot, APP.version, selection);
     const path = await archive('pipeline-pack-0.5.0-win-x64.tar.gz', fakePackArchive('0.5.0'));
-    const { call } = setup({
+    const { call, choose } = setup({
       emit: () => {
         dataRoot = secondRoot;
       },
     });
+    await choose(path);
     expect(await call('pipelinePack:install', { path })).toMatchObject({
       ok: true,
       version: '0.5.0',
@@ -1183,7 +1266,8 @@ describe('pipeline pack IPC', () => {
         r(null);
       };
     });
-    const { call, events } = setup({ freeBytes: () => gate });
+    const { call, events, choose } = setup({ freeBytes: () => gate });
+    await choose(path);
     expect(await call('pipelinePack:cancel')).toEqual({ ok: false });
     const first = call('pipelinePack:install', { path });
     expect(await call('pipelinePack:install', { path })).toEqual({
@@ -1212,7 +1296,8 @@ describe('pipeline pack IPC', () => {
         name: 'RealDataWriteRefusedError',
       });
     });
-    const { call, trashed } = setup({ assertWritable: guard });
+    const { call, trashed, choose } = setup({ assertWritable: guard });
+    await choose(path);
     expect(await call('pipelinePack:install', { path })).toEqual({
       ok: false,
       error: `refused pipeline pack install of ${runtime}`,

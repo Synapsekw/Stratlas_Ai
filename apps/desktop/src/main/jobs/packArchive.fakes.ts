@@ -79,6 +79,10 @@ export interface FakePackOptions {
   top?: string;
   /** Change the manifest before it is written (a wrong checksum, a file that is not there). */
   manifest?: (m: Record<string, unknown>) => void;
+  /** Sign the manifest bytes: the answer (base64) is written as `manifest.sig`. */
+  sign?: (manifest: Buffer) => string;
+  /** Files in the archive that the manifest does not list. */
+  unlisted?: Record<string, string>;
 }
 
 /** The manifest `fakePackEntries` writes: every file listed with its size and SHA-256. */
@@ -127,7 +131,8 @@ export function fakePackFiles(
   };
   const manifest = JSON.stringify(fakePackManifest(version, files, o));
   if (o.python === false) Reflect.deleteProperty(files, python);
-  return { 'manifest.json': manifest, ...files };
+  const sig = o.sign ? { 'manifest.sig': o.sign(Buffer.from(manifest, 'utf8')) } : {};
+  return { 'manifest.json': manifest, ...sig, ...files, ...o.unlisted };
 }
 
 /** The tar entries of `files` in the folder `top`: each folder once, before its first file. */

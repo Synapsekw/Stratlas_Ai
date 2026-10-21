@@ -13,8 +13,11 @@ import { clearManagedSelection } from '../update/managedKits';
  * - the manifest must parse (`PipelinePackManifest`), name this computer's platform, include this
  *   app in its `appRange` (`packRangeRefusal`), and its Python must be there;
  * - every file the manifest lists must be there with its size and SHA-256 (hashed while it is
- *   written). The pack carries no signature, so this catches a damaged or cut-short archive, not
- *   a forged one.
+ *   written), which catches a damaged or cut-short archive;
+ * - with a publisher key pinned in brand.json (`signing.pipelinePackKey`), `manifest.sig` must be a
+ *   valid Ed25519 signature of `manifest.json` and every file must be one the manifest lists, so a
+ *   forged pack is refused too. Without a key the pack is unsigned code: the person installing it
+ *   from Settings confirms that in a main-side dialog (`confirmUnsigned`) before it is activated.
  *
  * A failure or a cancel removes the temporary folder and leaves `runtime` as it was. No network.
  *
@@ -35,6 +38,7 @@ import {
   type PipelinePackStatus,
 } from '@aio/schema';
 import { createHash, randomBytes } from 'node:crypto';
+import { ed25519Valid } from '../ed25519';
 import { constants, createReadStream, createWriteStream } from 'node:fs';
 import {
   copyFile,
@@ -51,7 +55,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join, posix } from 'node:path';
+import { dirname, join, posix, resolve } from 'node:path';
 import { Parser, type ReadEntry } from 'tar';
 import type { Handler } from '../ipc';
 import { isWithin } from '../realDataGuard';
@@ -769,6 +773,48 @@ async function checkUnpacked(
   return m;
 }
 
+/** The detached signature of `manifest.json` in a signed pack. */
+export const PACK_SIGNATURE = 'manifest.sig';
+
+/**
+ * A signed pack: `manifest.sig` is a valid Ed25519 signature of the exact `manifest.json` bytes
+ * under the pinned key, and the archive holds no file the manifest does not list (an extra file,
+ * a `.pth` or `sitecustomize.py`, would run with the pack's Python).
+ */
+async function checkSignature(
+  tmp: string,
+  u: Unpacked,
+  m: PackManifestCore,
+  packKey: string,
+  k: PackKind,
+): Promise<void> {
+  const sig = u.files.get(PACK_SIGNATURE);
+  if (!sig || sig.size > 4096) {
+    throw refused(
+      `This ${k.label} file is not signed by the publisher. It was not installed.`,
+    );
+  }
+  const [manifest, signature] = await Promise.all([
+    readFile(join(tmp, 'manifest.json')),
+    readFile(join(tmp, PACK_SIGNATURE), 'utf8'),
+  ]);
+  const valid = ed25519Valid(manifest, signature, packKey);
+  if (valid === null) throw refused('The pinned pack key is not a valid Ed25519 public key.');
+  if (!valid) {
+    throw refused(
+      `This ${k.label} file's signature does not match: it was changed or not signed by the publisher. It was not installed.`,
+    );
+  }
+  for (const name of u.files.keys()) {
+    if (name === 'manifest.json' || name === PACK_SIGNATURE) continue;
+    if (!Object.hasOwn(m.files, name)) {
+      throw refused(
+        `This file holds ${shown(name)}, which its signed manifest does not list. It was not installed.`,
+      );
+    }
+  }
+}
+
 const LOCKED = new Set(['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY']);
 
 /**
@@ -868,6 +914,16 @@ export interface InstallOptions {
   /** Least time between two progress reports of one phase, 150 ms by default. */
   progressEveryMs?: number;
   /**
+   * The publisher's Ed25519 public key (brand.json `signing.pipelinePackKey`, base64). Set, the
+   * pack must carry a valid `manifest.sig` and nothing its manifest does not list.
+   */
+  packKey?: string | undefined;
+  /**
+   * Without `packKey`: asked, after every check and before activation, whether to install the
+   * unsigned pack of `version`; false refuses it. Not given, an unsigned pack installs as before.
+   */
+  confirmUnsigned?: (version: string) => Promise<boolean>;
+  /**
    * Make the symbolic link an archive entry asks for (tests: a junction where Windows allows no
    * links, or a link that is not what its name says); `fs.symlink` by default. Whatever it makes
    * is checked like any link: it must really lead to something inside the pack.
@@ -962,6 +1018,14 @@ export async function installPackArchive(
       limits,
       win32,
     });
+    if (o.signal?.aborted) throw cancelled(kind);
+    if (o.packKey) await checkSignature(tmp, unpacked, manifest, o.packKey, kind);
+    else if (o.confirmUnsigned && !(await o.confirmUnsigned(manifest.version))) {
+      throw new PackRefused(
+        `${kind.title} ${manifest.version} ${was(kind)} not installed: ${kind.plural ? 'they are' : 'it is'} not signed by the publisher.`,
+        'cancelled',
+      );
+    }
     if (o.signal?.aborted) throw cancelled(kind);
 
     releaseActivation = await o.beforeActivate?.();
@@ -1367,6 +1431,10 @@ export interface PipelinePackIpcDeps {
   emit: (p: PackInstallProgress) => void;
   assertWritable?: (path: string, op: string) => void;
   freeBytes?: (dir: string) => Promise<number | null>;
+  /** brand.json `signing.pipelinePackKey`: set, only signed packs install. */
+  packKey?: string | undefined;
+  /** Without a key: the main-side "this is unsigned code" question (`InstallOptions`). */
+  confirmUnsigned?: (version: string) => Promise<boolean>;
 }
 
 /** Whether the start notice may show: not in an automated run, unless QUADRION_PACK_NOTICE=1. */
@@ -1375,8 +1443,20 @@ export function packNoticeAllowed(env: Record<string, string | undefined>): bool
   return env.QUADRION_PACK_NOTICE !== '0' && env.QUADRION_E2E !== '1';
 }
 
+/** A path as the install allowlist compares it (Windows paths ignore case). */
+const pathKey = (p: string) =>
+  process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p);
+
 export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
   let running: AbortController | null = null;
+  /**
+   * The archives main itself named (found in the known places, or picked in its own dialog): an
+   * install request must name one of them, never a path the renderer made up.
+   */
+  const named = new Set<string>();
+  const remember = (p: string | null | undefined) => {
+    if (p) named.add(pathKey(p));
+  };
   const status = () =>
     packStatus({
       dataRoot: d.dataRoot(),
@@ -1397,6 +1477,7 @@ export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
       findPackArchives({ places: places(), platform: d.platform, app: d.app }),
     ]);
     const offer = packOffer(s, archives);
+    remember(offer?.path);
     const newest = archives[0];
     return {
       offer,
@@ -1406,10 +1487,18 @@ export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
 
   d.handle('pipelinePack:status', status);
   d.handle('pipelinePack:find', find);
-  d.handle('pipelinePack:choose', async () => ({
-    path: await d.chooseFile((await find()).startDir),
-  }));
+  d.handle('pipelinePack:choose', async () => {
+    const path = await d.chooseFile((await find()).startDir);
+    remember(path);
+    return { path };
+  });
   d.handle('pipelinePack:install', async ({ path, replace }) => {
+    if (!named.has(pathKey(path))) {
+      return {
+        ok: false,
+        error: 'Choose the processing tools file with Install from a file.',
+      };
+    }
     if (running) {
       return {
         ok: false,
@@ -1429,6 +1518,8 @@ export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
         onProgress: d.emit,
         ...(d.assertWritable ? { assertWritable: d.assertWritable } : {}),
         ...(d.freeBytes ? { freeBytes: d.freeBytes } : {}),
+        ...(d.packKey ? { packKey: d.packKey } : {}),
+        ...(d.confirmUnsigned ? { confirmUnsigned: d.confirmUnsigned } : {}),
       });
       running = null;
       if (!r.ok) return r;

@@ -1,7 +1,7 @@
 import { packRangeRefusal, PipelinePackManifest, type RuntimeInfo } from '@aio/schema';
 import type { FfmpegBin } from '@aio/project/builder';
-import { access, readdir } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { access, readdir, realpath } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { readJson } from '../fsutil';
 import { readManagedSelection, managedKitDirectory } from '../update/managedKits';
 
@@ -63,9 +63,35 @@ export async function readPack(
     const refused = packRangeRefusal(m.data.appRange, appInfo.version, appInfo.name);
     if (refused) return { refused };
   }
-  const python = join(dir, ...m.data.python.executable.split('/'));
-  if (!(await exists(python))) return null;
+  const python = await packPython(dir, m.data.python.executable);
+  if (python === null) return null;
   return { dir, version: m.data.version, python, manifest: m.data };
+}
+
+/**
+ * The pack's Python from its manifest's `python.executable`, only when it is a file inside the
+ * pack folder, also once every link on the way is followed: a relative path of plain segments
+ * (no drive, no root, no `..`) whose real path stays under the pack's real path. Null otherwise.
+ */
+export async function packPython(dir: string, executable: string): Promise<string | null> {
+  const segments = executable.split(/[\\/]/);
+  if (
+    executable === '' ||
+    isAbsolute(executable) ||
+    /^[A-Za-z]:/.test(executable) ||
+    segments.some((s) => s === '' || s === '.' || s === '..' || s.includes(':') || s.includes('\0'))
+  )
+    return null;
+  const python = join(dir, ...segments);
+  if (!(await exists(python))) return null;
+  try {
+    const [root, real] = await Promise.all([realpath(dir), realpath(python)]);
+    const rel = relative(root, real);
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null;
+  } catch {
+    return null;
+  }
+  return python;
 }
 
 /**

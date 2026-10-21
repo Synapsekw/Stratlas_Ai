@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { compareVersions, findFfmpeg, findPack, findPdal } from './pack';
+import { compareVersions, findFfmpeg, findPack, findPdal, packPython } from './pack';
 
 let root: string;
 
@@ -176,5 +176,33 @@ describe('findFfmpeg', () => {
     const top = join(pack, 'tools', 'ffmpeg', 'ffmpeg.exe');
     await touch(top);
     expect(await findFfmpeg({ python }, {}, 'win32')).toEqual({ ffmpeg: top });
+  });
+});
+
+describe('packPython', () => {
+  let root: string;
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'aio-packpy-'));
+    await mkdir(join(root, 'pack', 'python'), { recursive: true });
+    await writeFile(join(root, 'pack', 'python', 'python.exe'), '');
+    await writeFile(join(root, 'outside.exe'), '');
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('finds a Python inside the pack', async () => {
+    const dir = join(root, 'pack');
+    expect(await packPython(dir, 'python/python.exe')).toBe(join(dir, 'python', 'python.exe'));
+  });
+
+  it('refuses a Python outside the pack, absolute or through ..', async () => {
+    const dir = join(root, 'pack');
+    expect(await packPython(dir, '../outside.exe')).toBeNull();
+    expect(await packPython(dir, 'python/../../outside.exe')).toBeNull();
+    expect(await packPython(dir, join(root, 'outside.exe'))).toBeNull();
+    expect(await packPython(dir, 'C:/Windows/System32/cmd.exe')).toBeNull();
+    expect(await packPython(dir, '')).toBeNull();
+    expect(await packPython(dir, 'python/missing.exe')).toBeNull();
   });
 });

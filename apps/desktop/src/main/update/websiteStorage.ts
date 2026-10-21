@@ -1,3 +1,4 @@
+import { brand } from '@aio/brand';
 import {
   type WebsiteArtifact,
   type WebsiteUpdateCheck,
@@ -10,6 +11,9 @@ import { readJson, writeJsonAtomic } from '../fsutil';
 import { installPackArchive, peekPackManifest, PACK_LIMITS } from '../jobs/packInstall';
 import { isDeepStrictEqual } from 'node:util';
 import { downloadVerified, sha256Of } from './download';
+
+/** brand.json `signing.pipelinePackKey`: set, a kit from the website must be signed too. */
+const PACK_KEY = brand.signing?.pipelinePackKey;
 import type { WebsiteClient } from './websiteClient';
 import {
   managedKitDataRoot,
@@ -112,6 +116,7 @@ export function createWebsiteStorage(d: {
           app: { version: check.targetAppVersion },
           platform: 'win32-x64',
           signal,
+          packKey: PACK_KEY,
         });
         if (!result.ok || result.version !== ref.version)
           throw new Error('The processing kit archive could not be verified.');
@@ -132,6 +137,7 @@ export function createWebsiteStorage(d: {
           app: { version: check.targetAppVersion },
           platform: 'win32-x64',
           signal,
+          packKey: PACK_KEY,
           replace: true,
           beforeActivate: async () => {
             const release = d.acquireRepair?.();
