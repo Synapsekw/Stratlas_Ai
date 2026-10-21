@@ -1,6 +1,6 @@
 import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { bulkTotals, inventorySeries, setSideForAll, setUnitsForAll } from './bulk';
+import { bulkTotals, inventorySeries, pileSeries, setSideForAll, setUnitsForAll } from './bulk';
 
 const result = (item: string, cut: number, fill: number, status: ComparisonResult['status']) =>
   ({
@@ -254,5 +254,46 @@ describe('site inventory over time', () => {
     expect(north[0]?.parts.map((p) => p.id)).toEqual(['a', 'b']);
     expect(inventorySeries([a, b, c, d], captures, { folder: 'South' })[0]?.totalM3).toBe(7);
     expect(inventorySeries([a, b, c, d], captures, { folder: 'Empty' })).toEqual([]);
+  });
+});
+
+describe('pileSeries: one figure per date', () => {
+  const dated = (capture: string, net: number, over: Partial<ComparisonResult> = {}) => ({
+    ...result('pile', 0, net, 'ok'),
+    toCapture: capture,
+    ...over,
+  });
+  it('an item fixed to two surveys has no volume over time: rows left from a current side go', () => {
+    const m: SurveyMeasurement = {
+      ...pile('p', [dated('c2', -20)]),
+      items: [
+        {
+          id: 'pile',
+          from: { kind: 'survey', surface: 'dsm-1', capture: 'c1' },
+          to: { kind: 'survey', surface: 'dsm-2', capture: 'c2' },
+          useDeadband: false,
+        },
+      ],
+      series: [dated('c1', 0, { status: 'stale' }), dated('c3', 5, { status: 'stale' })],
+    };
+    const { series, stored } = pileSeries(m);
+    expect(series.map((r) => r.toCapture)).toEqual(['c2']);
+    expect(stored?.netM3).toBe(-20);
+  });
+
+  it('keeps a figure carried from the kit, whatever the item', () => {
+    const m: SurveyMeasurement = {
+      ...pile('p', []),
+      items: [
+        {
+          id: 'pile',
+          from: { kind: 'survey', surface: 'dsm-1', capture: 'c1' },
+          to: { kind: 'survey', surface: 'dsm-2', capture: 'c2' },
+          useDeadband: false,
+        },
+      ],
+      series: [dated('c1', 7, { carried: { base: 'tin' } as never })],
+    };
+    expect(pileSeries(m).series.map((r) => r.netM3)).toEqual([7]);
   });
 });

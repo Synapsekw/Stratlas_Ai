@@ -147,7 +147,7 @@ const rowDate = (r: ComparisonResult): string | undefined => seriesDate(r) || un
  * One item's figures per date, the one rule the volume card and the inventory share: its per-date
  * series, with its stored result standing for its own date (stale or not), so one item has one
  * figure per date. A figure carried over from an earlier version counts as the item's figure for
- * its own dates (R16). `stored` is that stored row (to mark it stale with the stored figures).
+ * its own dates (R16). An item fixed to its dates (no current side) has its stored figure only. `stored` is that stored row (to mark it stale with the stored figures).
  * The item is the first comparison unless named.
  */
 export function pileSeries(
@@ -159,7 +159,13 @@ export function pileSeries(
     const d = rowDate(r);
     return d !== undefined && r.toCapture === undefined ? { ...r, toCapture: d } : r;
   };
-  const series = (m.series ?? []).filter((r) => r.item === item).map(keyed);
+  // an item with no current side has no volume over time (R16, `seriesApplies`): rows worked out
+  // before it was fixed to its dates are left out, a figure carried from the kit stays
+  const it = m.items.find((x) => x.id === item);
+  const fixed = it !== undefined && it.from.kind !== 'current' && it.to.kind !== 'current';
+  const series = (m.series ?? [])
+    .filter((r) => r.item === item && (!fixed || r.carried !== undefined))
+    .map(keyed);
   const found = m.results.find((r) => r.item === item);
   const date = found ? rowDate(found) : undefined;
   if (!found || date === undefined) return { series, stored: undefined };
