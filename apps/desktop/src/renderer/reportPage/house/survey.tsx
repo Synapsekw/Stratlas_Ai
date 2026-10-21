@@ -199,10 +199,13 @@ const figure = (html: string, cls = '') =>
 interface ChartUnits {
   units: SurveyBasis['units'];
   precision: SurveyBasis['precision'];
+  locale: NumberLocale;
 }
+/** The charts' units, precision and number style: the site's, as the cards print them. */
 const chartUnits = (data: ReportSurveyData): ChartUnits => ({
   units: data.basis.units,
   precision: data.basis.precision,
+  locale: localeOfSite(data.basis, data.settings),
 });
 
 /** The profile chart, static: designs dashed, earlier surveys grey, cut and fill vs a design. */

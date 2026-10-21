@@ -429,7 +429,7 @@ function ElevationOverTime({ m }: { m: SurveyMeasurement }): ReactElement {
   const project = useWorkspace((s) => s.project?.id ?? null);
   const dated = useDatedSurfaces();
   const point = useDrawn(m)[0];
-  const { settings, units } = useFormat(m);
+  const { settings, units, locale } = useFormat(m);
   const { option, surfaceZ } = usePointVs(m);
   const e = point?.[0];
   const n = point?.[1];
@@ -454,6 +454,7 @@ function ElevationOverTime({ m }: { m: SurveyMeasurement }): ReactElement {
       references={references}
       units={units}
       precision={settings.precision}
+      locale={locale}
       testId="elevation-time"
     />
   );
@@ -656,7 +657,7 @@ export function bermPins(pts: readonly SitePoint[], series: ChartSeries, berm: B
 function LineProfile({ m }: { m: SurveyMeasurement }): ReactElement | null {
   const t = useT();
   const { pts, series, visible, view, shown, any } = useLine(m);
-  const { settings, units, angles } = useFormat(m);
+  const { settings, units, angles, locale } = useFormat(m);
   const note = useLoadNote(series, 'line-profile');
   if (!any) return <Note text={t('mcard.noData')} testId="line-profile-none" />;
   if (note) return note;
@@ -683,6 +684,7 @@ function LineProfile({ m }: { m: SurveyMeasurement }): ReactElement | null {
         ends={{ a: t('mcard.endA'), b: t('mcard.endB') }}
         units={units}
         precision={settings.precision}
+        locale={locale}
         angles={angles}
         {...(berm ? { pins: bermPins(pts, berm.series, berm.berm) } : {})}
         testId="line-profile"

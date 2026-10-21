@@ -5,7 +5,14 @@
  * gap, never a zero. Built from the profile chart's parts (axis titles, grid, crosshair, readout and
  * its aria-live copy), and with `width` and `interactive={false}` it renders statically for the report.
  */
-import { formatNumber, formatQuantity, localeOf, unitFactor, unitLabel } from '@aio/geo';
+import {
+  formatNumber,
+  formatQuantity,
+  localeOf,
+  unitFactor,
+  unitLabel,
+  type NumberLocale,
+} from '@aio/geo';
 import type { SurveyPrecision, SurveyUnits } from '@aio/schema';
 import { niceStep, type StackRow, type TimeRow } from '@aio/survey';
 import { Tip, useT } from '@aio/ui';
@@ -20,7 +27,6 @@ import {
   type ReactElement,
 } from 'react';
 import './charts.css';
-import './timeChart.css';
 
 export type TimeChartData =
   | { kind: 'volume'; rows: readonly TimeRow[] }
@@ -48,6 +54,8 @@ export interface TimeChartProps {
   references?: readonly TimeReference[];
   units: SurveyUnits;
   precision: SurveyPrecision;
+  /** The site locale numbers group by (as the cards); else the distance unit's. */
+  locale?: NumberLocale;
   width?: number; // width given → no ResizeObserver (static render for the report)
   height?: number;
   interactive?: boolean; // false: no crosshair, no tips (report)
@@ -167,8 +175,8 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const factor = isElev
     ? unitFactor('distance', p.units.distance)
     : unitFactor('volume', p.units.volume);
-  const locale = localeOf(p.units.distance);
-  const fmt = (v: number) => formatQuantity(v, quantity, p.units, p.precision);
+  const locale = p.locale ?? localeOf(p.units.distance);
+  const fmt = (v: number) => formatQuantity(v, quantity, p.units, p.precision, locale);
 
   const plotW = Math.max(1, w - PAD.left - PAD.right);
   const plotH = Math.max(1, h - PAD.top - PAD.bottom);

@@ -1,6 +1,6 @@
 import type { HeightTiles } from '@aio/schema';
 import { surfaceOfCapture } from '@aio/survey';
-import { t } from '@aio/ui';
+import { t, type MessageKey } from '@aio/ui';
 import {
   useVolumetric,
   volumetric,
@@ -15,16 +15,16 @@ import { RunCancelled, type SiteReply } from '../survey/engineClient';
 import type { SiteRequest } from '../survey/engineProtocol';
 import { surveyDateLabel } from './surveyDateLabel';
 
-const SURFACES: { v: SurfaceMode; t: string; d: string }[] = [
-  { v: 'photo', t: 'Photo', d: 'Orthomosaic draped on the terrain' },
-  { v: 'elev', t: 'Elevation', d: 'Colour relief of the ground' },
-  { v: 'change', t: 'Cut / fill', d: 'Height change between the two surveys picked below' },
+const SURFACES: { v: SurfaceMode; t: MessageKey; d: MessageKey }[] = [
+  { v: 'photo', t: 'vol.surfaceMode.photo', d: 'vol.surfaceMode.photoHint' },
+  { v: 'elev', t: 'vol.surfaceMode.elev', d: 'vol.surfaceMode.elevHint' },
+  { v: 'change', t: 'vol.surfaceMode.change', d: 'vol.surfaceMode.changeHint' },
 ];
 
-const BODIES: { v: BodyMode; t: string; d: string }[] = [
-  { v: 'lift', t: 'Lifted', d: 'Each volume floats above its base' },
-  { v: 'place', t: 'In place', d: 'Volume tinted on the pile itself' },
-  { v: 'off', t: 'Hidden', d: 'Terrain and toe lines only' },
+const BODIES: { v: BodyMode; t: MessageKey; d: MessageKey }[] = [
+  { v: 'lift', t: 'vol.bodies.lift', d: 'vol.bodies.liftHint' },
+  { v: 'place', t: 'vol.bodies.place', d: 'vol.bodies.placeHint' },
+  { v: 'off', t: 'vol.bodies.off', d: 'vol.bodies.offHint' },
 ];
 
 const NO_CAPTURES: readonly { epoch: string; date: string; label: string }[] = [];
@@ -37,7 +37,7 @@ export function VolumeDateSwipe() {
   const surface = useVolumetric((s) => s.surface);
   const v = volumetric.getState();
   return (
-    <div className="seg vol-dates" role="group" aria-label="Survey date">
+    <div className="seg vol-dates" role="group" aria-label={t('vol.surveyDate')}>
       {captures.map((c) => (
         <button
           key={c.epoch}
@@ -142,14 +142,14 @@ export function VolumeSurfaces() {
             key={s.v}
             type="button"
             aria-pressed={surface === s.v}
-            title={s.d}
+            title={t(s.d)}
             disabled={s.v === 'change' && dates < 2}
             onClick={() => {
               if (swipe) v.setSwipe(false);
               v.setSurface(s.v);
             }}
           >
-            {s.t}
+            {t(s.t)}
           </button>
         ))}
       </div>
@@ -164,7 +164,7 @@ export function VolumeBodies({ compact = false }: { compact?: boolean }) {
   const v = volumetric.getState();
   if (compact)
     return (
-      <div className="seg vol-bodies" role="group" aria-label="Volume bodies">
+      <div className="seg vol-bodies" role="group" aria-label={t('vol.bodies')}>
         {BODIES.map((b) => (
           <button
             key={b.v}
@@ -174,13 +174,13 @@ export function VolumeBodies({ compact = false }: { compact?: boolean }) {
               v.setBody(b.v);
             }}
           >
-            {b.t}
+            {t(b.t)}
           </button>
         ))}
       </div>
     );
   return (
-    <div className="pop-list" role="group" aria-label="Volume bodies">
+    <div className="pop-list" role="group" aria-label={t('vol.bodies')}>
       {BODIES.map((b) => (
         <button
           key={b.v}
@@ -191,8 +191,8 @@ export function VolumeBodies({ compact = false }: { compact?: boolean }) {
             v.setBody(b.v);
           }}
         >
-          <b>{b.t}</b>
-          <small>{b.d}</small>
+          <b>{t(b.t)}</b>
+          <small>{t(b.d)}</small>
         </button>
       ))}
     </div>

@@ -285,6 +285,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
               data={{ kind: 'stack', rows: charted, names }}
               units={units}
               precision={settings.precision}
+              locale={locale}
               testId="volumes-inventory-chart"
             />
           )}

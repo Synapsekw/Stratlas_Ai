@@ -5,7 +5,7 @@
  * shown survey and that survey. The cut and fill areas are the chart's own. The line, its picking and its profile live in the volumetric store
  * (@aio/volumetric); the chart is the desktop's, so the package keeps no chart of its own.
  */
-import { formatQuantity } from '@aio/geo';
+import { formatQuantity, localeOf } from '@aio/geo';
 import type { ChartSeries } from '@aio/survey';
 import { useT } from '@aio/ui';
 import { useVolumetric, volumetric } from '@aio/volumetric';
@@ -91,6 +91,7 @@ export function VolumeSection() {
               ends={{ a: 'A', b: 'B' }}
               units={settings.units}
               precision={settings.precision}
+              locale={settings.locale ?? localeOf(settings.units.distance)}
               {...(settings.angles ? { angles: settings.angles } : {})}
               height={170}
               testId="vol-section-chart"

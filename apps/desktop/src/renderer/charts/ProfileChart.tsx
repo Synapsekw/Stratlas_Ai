@@ -6,7 +6,14 @@
  * and click (or Enter) to pin. With `width` and `interactive={false}` it renders statically for
  * the report. Cross-sections, line measurements, the pile detail and the report all draw this.
  */
-import { formatNumber, formatQuantity, localeOf, unitFactor, unitLabel } from '@aio/geo';
+import {
+  formatNumber,
+  formatQuantity,
+  localeOf,
+  unitFactor,
+  unitLabel,
+  type NumberLocale,
+} from '@aio/geo';
 import type { AngleSettings, SurveyPrecision, SurveyUnits } from '@aio/schema';
 import {
   chartScale,
@@ -42,6 +49,8 @@ export interface ProfileChartProps {
   ends: { a: string; b: string };
   units: SurveyUnits;
   precision: SurveyPrecision;
+  /** The site locale numbers group by (as the cards); else the distance unit's. */
+  locale?: NumberLocale;
   angles?: AngleSettings;
   pins?: readonly Pin[];
   onPin?(chainage: number): void;
@@ -183,7 +192,7 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
   // axes in the project's distance unit
   const unit = p.units.distance;
   const factor = unitFactor('distance', unit);
-  const locale = localeOf(unit);
+  const locale = p.locale ?? localeOf(unit);
   const cStep = niceStep((c1 - c0) / factor, Math.max(2, Math.floor(plotW / 90)));
   const cTicks = ticks(c0, c1, factor, cStep);
   const [zLo, zHi] = sc.zRange;
@@ -191,8 +200,8 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
   const zTicks = ticks(zLo, zHi, factor, zStep);
   const tick = (v: number, step: number) => formatNumber(v / factor, stepDecimals(step), locale);
   const u = unitLabel(unit);
-  const dist = (v: number) => formatQuantity(v, 'distance', p.units, p.precision);
-  const area = (v: number) => formatQuantity(v, 'area', p.units, p.precision);
+  const dist = (v: number) => formatQuantity(v, 'distance', p.units, p.precision, locale);
+  const area = (v: number) => formatQuantity(v, 'area', p.units, p.precision, locale);
 
   // the crosshair: a chainage under the pointer, or a sample index from the keyboard
   const stations = (current ?? ordered.at(-1))?.chainage ?? [];
@@ -228,6 +237,8 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
       p.onPin(at);
       return;
     } else if (e.key === 'Escape') {
+      // the crosshair goes; the panel or dialog around the chart stays open
+      e.stopPropagation();
       setAt(null);
       return;
     }

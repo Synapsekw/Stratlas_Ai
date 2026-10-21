@@ -311,7 +311,7 @@ function PanelSections({
             />
           </label>
           <label className="sv-field">
-            <span>Fill opacity</span>
+            <span>{t('mcard.fillOpacity')}</span>
             <input
               type="number"
               className="sv-input"
@@ -326,7 +326,7 @@ function PanelSections({
             />
           </label>
           <label className="sv-field">
-            <span>Border width</span>
+            <span>{t('mcard.borderWidth')}</span>
             <input
               type="number"
               className="sv-input"
@@ -404,7 +404,7 @@ function PanelSections({
         <summary>Scope</summary>
         <p className="small">
           {capture
-            ? `Only in ${captures.find((c) => c.id === capture)?.label ?? capture}`
+            ? t('mcard.onlyIn', { label: captures.find((c) => c.id === capture)?.label ?? capture })
             : 'Whole site: shown with every survey'}
         </p>
         {!ro && (
@@ -429,7 +429,7 @@ function PanelSections({
                     setScope(m.id, { kind: 'survey', capture: c.id });
                   }}
                 >
-                  Only in {c.label}
+                  {t('mcard.onlyIn', { label: c.label })}
                 </button>
               ))
             )}
@@ -439,13 +439,13 @@ function PanelSections({
           <div className="sv-row">
             <select
               className="sv-input sv-grow"
-              aria-label="Copy to survey"
+              aria-label={t('mcard.copyToSurvey')}
               value={copyTo}
               onChange={(e) => {
                 setCopyTo(e.target.value);
               }}
             >
-              <option value="">Copy to another survey</option>
+              <option value="">{t('mcard.copyToAnother')}</option>
               {captures
                 .filter((c) => c.id !== capture)
                 .map((c) => (
@@ -532,6 +532,7 @@ function VertexRow({
   order: 'NEZ' | 'ENZ';
   ro: boolean;
 }) {
+  const t = useT();
   const p = m.points[i];
   if (!p) return null;
   const cell = (axis: 0 | 1 | 2) => (
@@ -540,7 +541,7 @@ function VertexRow({
         className="sv-input mono"
         type="number"
         step="0.001"
-        aria-label={`Vertex ${String(i + 1)} ${['E', 'N', 'Z'][axis] ?? ''}`}
+        aria-label={t('mcard.vertexAxis', { n: i + 1, axis: ['E', 'N', 'Z'][axis] ?? '' })}
         defaultValue={p[axis].toFixed(3)}
         readOnly={ro}
         onBlur={(e) => {
@@ -568,7 +569,7 @@ function VertexRow({
           <button
             type="button"
             className="btn ghost sm"
-            aria-label={`Delete vertex ${String(i + 1)}`}
+            aria-label={t('mcard.deleteVertex', { n: i + 1 })}
             onClick={() => {
               startEditing();
               editEvent({ type: 'delete', vertex: i });

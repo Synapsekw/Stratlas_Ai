@@ -315,6 +315,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
             ends={{ a: 'A', b: 'B' }}
             units={settings.units}
             precision={settings.precision}
+            locale={settings.locale ?? localeOf(settings.units.distance)}
             {...(settings.angles ? { angles: settings.angles } : {})}
             pins={pins}
             onPin={(c) => {
@@ -340,7 +341,7 @@ export function SectionBody({ big = false }: { big?: boolean }) {
       </div>
       <div className="sec-pins">
         <span className="pop-title">Pins</span>
-        {!pins.length && <p className="small faint">Click the chart to add a pin.</p>}
+        {!pins.length && <p className="small faint">{tr('section.addPinHint')}</p>}
         {pins.map((p, i) => (
           <table
             key={`${String(p.chainage)}-${String(i)}`}

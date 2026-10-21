@@ -1,7 +1,7 @@
 import type { EngineStage } from '@aio/engine';
 import { defaultSurveySettings } from '@aio/schema';
 import { formatRow } from '@aio/survey';
-import { Icon, isShortcut, t } from '@aio/ui';
+import { Icon, isShortcut, t, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import {
   useCallback,
@@ -247,6 +247,14 @@ export function VolumeHint() {
   );
 }
 
+/** The kit's bases by their plain names, as the volume cards name them. */
+const KIT_BASE_NAME: Readonly<Record<string, MessageKey>> = {
+  tin: 'base.kitTin',
+  plane: 'base.plane',
+  avg: 'base.mean',
+  low: 'base.lowest',
+};
+
 /**
  * The legend of a 3D view. `view` is the second view of a comparison: the same keys read only
  * (the ramp and range are set on the main view's legend and hold for both), no hint, and one
@@ -255,8 +263,12 @@ export function VolumeHint() {
 function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boolean }) {
   const chosen = useVolumetric((s) => s.surface);
   const body = useVolumetric((s) => s.body);
-  // the 3D bodies stand on the kit's default base (display only)
-  const base = useVolumetric((s) => s.file?.bases.find((b) => b.id === s.file?.defaultBase)?.label);
+  // the 3D bodies stand on the kit's default base (display only), named as the cards name it
+  const base = useVolumetric((s) => {
+    const id = s.file?.defaultBase;
+    const key = id !== undefined ? KIT_BASE_NAME[id] : undefined;
+    return key ? t(key) : (s.file?.bases.find((b) => b.id === id)?.label ?? id);
+  });
   const deadband = useVolumetric((s) => s.file?.deadbandM ?? 0.1);
   const swipe = useVolumetric((s) => s.swipe);
   const sectionOpen = useVolumetric((s) => s.section.mode !== 'idle');

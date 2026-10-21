@@ -222,6 +222,32 @@ describe('ProfileChart', () => {
     expect(live?.textContent).toBe('');
   });
 
+  it('Escape clears the crosshair and goes no further', () => {
+    const h = render();
+    const plot = h.querySelector<HTMLElement>('[data-testid="chart-plot"]');
+    act(() => plot?.focus());
+    let heard = 0;
+    const outer = () => {
+      heard++;
+    };
+    document.body.addEventListener('keydown', outer);
+    act(() => {
+      plot?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(heard).toBe(0);
+    document.body.removeEventListener('keydown', outer);
+  });
+
+  it('numbers group by the locale given, as the cards do', () => {
+    const big: ChartSeries = { ...current, chainage: [0, 1500, 3000], z: [1, 2, 3] };
+    const h = render({ series: [big], locale: 'imperial' });
+    expect(h.textContent).toMatch(/1,000/);
+    act(() => root?.unmount());
+    root = undefined;
+    host.remove();
+    expect(render({ series: [big], locale: 'metric' }).textContent).toMatch(/1 000/);
+  });
+
   it('arrow keys move the crosshair one sample', () => {
     const h = render();
     const plot = h.querySelector<HTMLElement>('[data-testid="chart-plot"]');

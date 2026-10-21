@@ -873,7 +873,7 @@ svg.overlap {
 .map .svp {
   fill: var(--acc-ink);
 }
-/* The app's charts and measurement cards (charts.css, timeChart.css, card.css), printed: the
+/* The app's charts and measurement cards (charts.css, card.css), printed: the
    foundation tokens they read, at their light-theme values (packages/ui/src/tokens.css) resolved
    for white paper. The current survey takes the report's accent (--acc), as it does in the app.
    printTokens.test.ts pins every value here to tokens.css. */
