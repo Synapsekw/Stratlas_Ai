@@ -81,8 +81,17 @@ describe('volumetric parity contracts', () => {
       uncertainty: { plusMinusM3: 3, sigmaM: 0.05, source: 'checkpoints' },
     });
     expect(r.carried?.base).toBe('plane');
+    // a base a later build adds still opens here (the name is resolved at display)
     expect(
-      ComparisonResult.safeParse({ ...result, carried: { ...carried, base: 'nope' } }).success,
+      ComparisonResult.parse({ ...result, carried: { ...carried, base: 'later-base' } }).carried
+        ?.base,
+    ).toBe('later-base');
+    expect(
+      ComparisonResult.safeParse({ ...result, carried: { ...carried, base: '' } }).success,
+    ).toBe(false);
+    expect(
+      ComparisonResult.safeParse({ ...result, carried: { ...carried, base: 'x'.repeat(41) } })
+        .success,
     ).toBe(false);
   });
 
@@ -94,14 +103,28 @@ describe('volumetric parity contracts', () => {
     ).toEqual(DEFAULT_ANGLES);
   });
 
-  it('accuracy objects keep keys a later build adds, but the source stays closed', () => {
+  it('accuracy objects keep keys and sources a later build adds', () => {
     const va = { sigmaM: 0.04, source: 'rtk', basis: 'later' };
     const cap = Capture.parse({ id: 'c1', label: 'A', date: '2026-10-20', verticalAccuracy: va });
     expect(cap.verticalAccuracy).toEqual(va);
     const u = { plusMinusM3: 3, sigmaM: 0.05, source: 'ppk', extra: 1 };
     expect(ComparisonResult.parse({ ...result, uncertainty: u }).uncertainty).toEqual(u);
+    const later = { ...u, source: 'lidar-strip' };
+    expect(ComparisonResult.parse({ ...result, uncertainty: later }).uncertainty).toEqual(later);
     expect(
-      ComparisonResult.safeParse({ ...result, uncertainty: { ...u, source: 'guess' } }).success,
+      Capture.parse({
+        id: 'c1',
+        label: 'A',
+        date: '2026-10-20',
+        verticalAccuracy: { ...va, source: 'later' },
+      }).verticalAccuracy?.source,
+    ).toBe('later');
+    expect(
+      ComparisonResult.safeParse({ ...result, uncertainty: { ...u, source: '' } }).success,
+    ).toBe(false);
+    expect(
+      ComparisonResult.safeParse({ ...result, uncertainty: { ...u, source: 'x'.repeat(41) } })
+        .success,
     ).toBe(false);
   });
 

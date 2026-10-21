@@ -96,8 +96,11 @@ export function uniqueIds<K extends string>(key: K) {
 }
 
 /**
- * Where a vertical accuracy figure came from: checkpoints, PPK, RTK or a stated value. Lives here
- * because both the survey and the project manifest use it, and they must not import each other.
+ * Where a vertical accuracy figure came from. This build writes `ACCURACY_SOURCES`: checkpoints,
+ * PPK, RTK or a stated value. Open (a short id, its wording resolved at display), so a source a
+ * later build adds never makes this one refuse the file. Lives here because both the survey and
+ * the project manifest use it, and they must not import each other.
  */
-export const AccuracySource = z.enum(['checkpoints', 'ppk', 'rtk', 'stated']);
+export const ACCURACY_SOURCES = ['checkpoints', 'ppk', 'rtk', 'stated'] as const;
+export const AccuracySource = z.string().min(1).max(40);
 export type AccuracySource = z.infer<typeof AccuracySource>;

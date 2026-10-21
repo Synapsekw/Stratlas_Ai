@@ -4,7 +4,6 @@ import { CaptureLineUpTurn } from './dateShift';
 import { Crs } from './manifest';
 import { DesignId } from './designs';
 import { SiteVerticalDatum } from './geodesy';
-import { VolumeBaseId } from './volumes';
 
 /**
  * Surveying (M11): site settings, units, saved measurements, templates, the surface comparison
@@ -314,10 +313,14 @@ export const VolumeUncertainty = z.looseObject({
 });
 export type VolumeUncertainty = z.infer<typeof VolumeUncertainty>;
 
-/** A kit figure carried over unchanged. `pile` is the kit pile's id. Absent on every older file. */
+/**
+ * A kit figure carried over unchanged. `pile` is the kit pile's id. `base` is the kit base's id
+ * (this build writes a `VolumeBaseId`): open, its name resolved at display, so a base a later
+ * build adds never makes this one refuse the file. Absent on every older file.
+ */
 export const CarriedResult = z.looseObject({
   from: z.literal('kit'),
-  base: VolumeBaseId,
+  base: z.string().min(1).max(40),
   pile: Id,
   epoch: z.string().min(1).max(200),
 });
