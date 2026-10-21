@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { programFromEnv } from '../fs/program';
 
 const run = promisify(execFile);
 
-const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
-const FFPROBE = process.env.FFPROBE ?? 'ffprobe';
+// looked up on the PATH's absolute folders only, never in the current folder
+const ffmpegExe = () => programFromEnv(process.env.FFMPEG, 'ffmpeg');
+const ffprobeExe = () => programFromEnv(process.env.FFPROBE, 'ffprobe');
 
 export interface VideoInfo {
   codec: string;
@@ -20,7 +22,7 @@ export const CHROMIUM_CODECS = new Set(['h264', 'hevc', 'vp9', 'av1']);
 
 export async function probeVideo(file: string): Promise<VideoInfo> {
   const { stdout } = await run(
-    FFPROBE,
+    ffprobeExe(),
     [
       '-v',
       'error',
@@ -58,7 +60,7 @@ export async function probeVideo(file: string): Promise<VideoInfo> {
 }
 
 async function ffmpeg(args: string[]): Promise<void> {
-  await run(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', ...args], {
+  await run(ffmpegExe(), ['-hide_banner', '-loglevel', 'error', '-y', ...args], {
     maxBuffer: 1 << 24,
   });
 }

@@ -12,6 +12,7 @@ import {
   type FfmpegBin,
   type ProxyEncoder,
 } from './proxy';
+import { programPath } from '../fs/program';
 
 const run = promisify(execFile);
 
@@ -197,7 +198,8 @@ export function progressSeconds(chunk: string): number | null {
   return last;
 }
 
-const ffmpegOf = (b?: FfmpegBin) => b?.ffmpeg ?? process.env.FFMPEG ?? 'ffmpeg';
+// the pack's program, else one on the PATH's absolute folders (never the current folder)
+const ffmpegOf = (b?: FfmpegBin) => programPath(b?.ffmpeg ?? process.env.FFMPEG ?? 'ffmpeg');
 
 export type FfmpegCheck =
   | { ok: true; v360: boolean; version: string }

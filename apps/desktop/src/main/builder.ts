@@ -22,6 +22,7 @@ import { writeBytesAtomic } from './modelBuilder';
 import { readOrientation, writeOrientation } from './orientation';
 import { readManifest, type ProjectRegistry } from './project';
 import { stitchProgress, walkToolsFor } from './walks';
+import { programPath } from '@aio/project/fs';
 
 const run = promisify(execFile);
 
@@ -250,7 +251,7 @@ export async function ffmpegPoster(
   bin?: FfmpegBin,
 ): Promise<void> {
   await run(
-    bin?.ffmpeg ?? process.env.FFMPEG ?? 'ffmpeg',
+    programPath(bin?.ffmpeg ?? process.env.FFMPEG ?? 'ffmpeg'),
     [
       '-hide_banner',
       '-loglevel',

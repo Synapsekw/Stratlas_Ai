@@ -3,9 +3,11 @@ import { writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { promisify } from 'node:util';
 import { encodePng, type RawImage } from './png';
+import { programFromEnv } from '../fs/program';
 
 const run = promisify(execFile);
-const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
+// looked up on the PATH's absolute folders only, never in the current folder
+const ffmpegExe = () => programFromEnv(process.env.FFMPEG, 'ffmpeg');
 
 /** One image drawn onto a canvas: scaled to `w` x `h` (pixels) with its top-left at `x`, `y`. */
 export interface CanvasLayer {
@@ -86,7 +88,7 @@ export async function composeImage(o: ComposeOptions): Promise<void> {
     args.push('-q:v', String(qv));
   } else throw new Error(`composeImage: unsupported output ${o.out}`);
   args.push(o.out);
-  await run(FFMPEG, args, { maxBuffer: 1 << 24 });
+  await run(ffmpegExe(), args, { maxBuffer: 1 << 24 });
 }
 
 /** Where a line art raster gets its transparency from. */
@@ -200,7 +202,10 @@ export async function readRgba(
   const pad = W !== width || H !== height ? `,pad=${W}:${H}:0:0:color=black@0.0` : '';
   const args = ['-hide_banner', '-loglevel', 'error', '-i', src, '-vf', `format=rgba${pad}`];
   args.push('-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-');
-  const { stdout } = await run(FFMPEG, args, { encoding: 'buffer', maxBuffer: W * H * 4 + 1024 });
+  const { stdout } = await run(ffmpegExe(), args, {
+    encoding: 'buffer',
+    maxBuffer: W * H * 4 + 1024,
+  });
   if (stdout.length !== W * H * 4)
     throw new Error(`readRgba: ${src} decoded to ${stdout.length} bytes, expected ${W * H * 4}`);
   return { width: W, height: H, channels: 4, data: new Uint8Array(stdout) };

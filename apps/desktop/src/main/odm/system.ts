@@ -9,6 +9,7 @@ import {
 import { access, rename, rm, stat, statfs } from 'node:fs/promises';
 import { dirname, win32 } from 'node:path';
 import type { Readable } from 'node:stream';
+import { systemProgram } from '@aio/project/fs';
 
 /** What the ODM installer needs of the computer; the tests pass a fake. */
 export interface OdmSystem {
@@ -69,7 +70,10 @@ export function killTree(pid: number | undefined): void {
   if (pid === undefined) return;
   if (process.platform === 'win32')
     // it also runs as the app quits: never block that for long
-    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, timeout: 5000 });
+    spawnSync(systemProgram('taskkill'), ['/pid', String(pid), '/T', '/F'], {
+      windowsHide: true,
+      timeout: 5000,
+    });
   else process.kill(pid, 'SIGKILL');
 }
 
@@ -111,13 +115,18 @@ export function nodeOdmSystem(
   const spawnSmoke =
     opts.spawnSmoke ??
     ((dir: string): SmokeChild =>
-      spawn('cmd.exe', ['/d', '/s', '/c', `""${win32.join(dir, 'run.bat')}" --help"`], {
-        cwd: dir,
-        env: odmSmokeEnv(env),
-        windowsHide: true,
-        windowsVerbatimArguments: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }));
+      // System32's cmd.exe by its full path: a bare name is searched in `cwd` (the ODM folder) first
+      spawn(
+        systemProgram('cmd', env),
+        ['/d', '/s', '/c', `""${win32.join(dir, 'run.bat')}" --help"`],
+        {
+          cwd: dir,
+          env: odmSmokeEnv(env),
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      ));
   const run = (file: string, args: string[]): Promise<number> => {
     const opts: SpawnOptions = { windowsHide: true, stdio: 'ignore' };
     // End to end tests stand a Node script in for ODM's setup, run by Electron as Node.
@@ -206,7 +215,7 @@ export function nodeOdmSystem(
     regQuery: (key, search) =>
       new Promise((ok, fail) => {
         execFile(
-          'reg',
+          systemProgram('reg', env),
           search ? ['query', key, '/s', '/f', search, '/d'] : ['query', key],
           { windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
           (err, stdout) => {

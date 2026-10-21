@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { rename, rm } from 'node:fs/promises';
 import { promisify } from 'node:util';
+import { programPath } from '../fs/program';
 
 const run = promisify(execFile);
 
@@ -202,8 +203,9 @@ export interface FfmpegBin {
   ffprobe?: string;
 }
 
-const ffmpegOf = (b?: FfmpegBin) => b?.ffmpeg ?? process.env.FFMPEG ?? 'ffmpeg';
-const ffprobeOf = (b?: FfmpegBin) => b?.ffprobe ?? process.env.FFPROBE ?? 'ffprobe';
+// the pack's program, else one on the PATH's absolute folders (never the current folder)
+const ffmpegOf = (b?: FfmpegBin) => programPath(b?.ffmpeg ?? process.env.FFMPEG ?? 'ffmpeg');
+const ffprobeOf = (b?: FfmpegBin) => programPath(b?.ffprobe ?? process.env.FFPROBE ?? 'ffprobe');
 
 /** Hardware H.264 encoding if this machine really has it (a listed encoder can still fail). */
 export async function detectProxyEncoder(bin?: FfmpegBin): Promise<ProxyEncoder> {

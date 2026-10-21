@@ -21,6 +21,7 @@ import type { InferenceEnv } from './index';
 import { listModels } from './models';
 import { createInferenceHost, remoteOrt, type ChildLike, type InferenceHost } from './utility';
 import type { FromWorker, ToWorker } from './worker';
+import { programPath } from '@aio/project/fs';
 
 /** Default memory cap of the inference process (V8 heap; onnxruntime's own memory is native). */
 export const DEFAULT_MEMORY_CAP_MB = 4096;
@@ -176,7 +177,7 @@ export function electronInference(deps: ElectronInferenceDeps): { env: Inference
     },
     frames: async () => {
       // once per run: the pack's ffmpeg (or the PATH's), and a check that it starts
-      const ffmpeg = (await deps.ffmpeg()) ?? 'ffmpeg';
+      const ffmpeg = programPath((await deps.ffmpeg()) ?? 'ffmpeg');
       const problem = await ffmpegProblem(ffmpeg);
       if (problem) throw new Error(problem);
       const inside = async (root: string, rel: string) => {
