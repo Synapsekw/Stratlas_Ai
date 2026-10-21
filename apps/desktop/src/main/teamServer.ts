@@ -8,19 +8,32 @@
  *
  * `teamServers(...)` is also what the sync module (T5) uses for a server-mode project:
  * `transport(serverId, teamProjectId)` is an `HttpTransport` pinned to the accepted certificate.
+ *
+ * The server's signing key (2026-10-21) is pinned too: at enrolment, or for an enrolment from an
+ * older server, on the next contact once the server names it. Push receipts are then checked
+ * against it, and a server that later names another key is refused.
  */
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Signer } from '@aio/journal';
-import { DeviceCert, ServerInfo, type DeviceRecord } from '@aio/schema';
+import {
+  DeviceCert,
+  PublicKeyB64,
+  ServerInfo,
+  type DeviceRecord,
+  type ServerKey,
+} from '@aio/schema';
 import {
   createHttpClient,
   createHttpTransport,
   enrolDevice,
   probeFingerprint,
+  serverCertProblem,
   serverHealth,
+  serverIdFromKey,
   serverOrigin,
   TeamServerError,
+  type HttpClient,
   type HttpTransport,
 } from '@aio/sync/http';
 import { z } from 'zod';
@@ -39,7 +52,11 @@ export type DeviceSource = () => Promise<DeviceIdentity | null>;
 export const SERVERS_FILE = join('team', 'servers.json');
 export const SERVERS_SCHEMA = 'aio.team-servers/1';
 
-const StoredServer = ServerInfo.extend({ cert: DeviceCert });
+const StoredServer = ServerInfo.extend({
+  cert: DeviceCert,
+  /** The server's signing key (absent for an enrolment from an older server, until pinned). */
+  publicKey: PublicKeyB64.optional(),
+});
 const ServersFile = z.object({
   schema: z.literal(SERVERS_SCHEMA),
   servers: z.array(StoredServer),
@@ -55,6 +72,40 @@ export interface TeamServerDeps {
 
 const OFFLINE =
   'Offline only is on, so this computer makes no network connections. Turn it off in Settings, Privacy and cloud to connect to a team server.';
+
+const KEY_CHANGED =
+  "This team server's signing key changed since this computer connected to it. Ask your IT team before you connect again.";
+
+const ENROL_KEY_MISMATCH =
+  'This team server named two different signing keys while connecting. Ask your IT team before you connect.';
+
+/**
+ * The signing key a new enrolment pins: the enrol answer's, else the one health named. Both must
+ * agree and belong to the enrolled server id; a key only health named must have signed the
+ * device certificate (the enrol answer's own key is checked by `enrolDevice`).
+ */
+function enrolKey(
+  enrolled: { id: string; publicKey?: string | undefined },
+  named: ServerKey | undefined,
+  cert: DeviceCert,
+  record: DeviceRecord,
+): string | undefined {
+  if (named && named.id !== enrolled.id) throw new TeamServerError('protocol', ENROL_KEY_MISMATCH);
+  if (enrolled.publicKey && named && named.publicKey !== enrolled.publicKey)
+    throw new TeamServerError('protocol', ENROL_KEY_MISMATCH);
+  const publicKey = enrolled.publicKey ?? named?.publicKey;
+  if (publicKey === undefined) return undefined;
+  if (serverIdFromKey(publicKey) !== enrolled.id)
+    throw new TeamServerError('protocol', ENROL_KEY_MISMATCH);
+  const problem = serverCertProblem({ id: enrolled.id, publicKey }, cert, record);
+  if (problem) {
+    throw new TeamServerError(
+      'protocol',
+      `The team server sent a device certificate that does not verify: ${problem}. Ask your IT team before you connect.`,
+    );
+  }
+  return publicKey;
+}
 
 function failure(e: unknown) {
   if (e instanceof TeamServerError) {
@@ -89,8 +140,29 @@ export function teamServers(deps: TeamServerDeps) {
   const publicInfo = (s: StoredServer): ServerInfo => {
     const info: Partial<StoredServer> = { ...s };
     delete info.cert;
+    delete info.publicKey;
     return ServerInfo.parse(info);
   };
+
+  const clientFor = (server: StoredServer, signer: Signer): HttpClient =>
+    createHttpClient({ baseUrl: server.url, fingerprint: server.fingerprint, signer });
+
+  /**
+   * Health over the pinned certificate, holding the server to its signing key: a server that names
+   * another id or key than the pinned one is refused; an enrolment without a pinned key pins the
+   * key the server names for its own id.
+   */
+  async function healthPinned(server: StoredServer, client: HttpClient) {
+    const health = await serverHealth(client);
+    const named = health.server;
+    if (!named) return { health, server };
+    if (named.id !== server.id || (server.publicKey && named.publicKey !== server.publicKey))
+      throw new TeamServerError('fingerprint', KEY_CHANGED);
+    if (server.publicKey) return { health, server };
+    const pinned: StoredServer = { ...server, publicKey: named.publicKey };
+    await write(read().map((s) => (s.id === server.id ? pinned : s)));
+    return { health, server: pinned };
+  }
 
   return {
     list: (): ServerInfo[] => read().map(publicInfo),
@@ -116,13 +188,18 @@ export function teamServers(deps: TeamServerDeps) {
             error:
               'This computer has no device key: the system vault is not available. Ask your IT team to check the Windows Credential Manager or the macOS Keychain.',
           };
-        const client = createHttpClient({
-          baseUrl: origin,
-          fingerprint: req.fingerprint,
-          signer: device.signer,
-        });
-        const health = await serverHealth(client);
-        const r = await enrolDevice(client, req.code, device.record);
+        const pinned = req.fingerprint;
+        const connect = (coverHeaders: boolean) =>
+          createHttpClient({
+            baseUrl: origin,
+            fingerprint: pinned,
+            signer: device.signer,
+            coverHeaders,
+          });
+        const health = await serverHealth(connect(false));
+        // a server that names its signing key also checks signed content types
+        const r = await enrolDevice(connect(health.server !== undefined), req.code, device.record);
+        const publicKey = enrolKey(r.server, health.server, r.cert, device.record);
         const server: StoredServer = {
           id: r.server.id,
           url: origin,
@@ -132,6 +209,7 @@ export function teamServers(deps: TeamServerDeps) {
           enrolledAt: now().toISOString(),
           role: r.role,
           cert: r.cert,
+          ...(publicKey ? { publicKey } : {}),
         };
         await write([...read().filter((s) => s.id !== server.id && s.url !== origin), server]);
         return { ok: true as const, server: publicInfo(server) };
@@ -155,13 +233,7 @@ export function teamServers(deps: TeamServerDeps) {
       const device = await deps.device();
       if (!device) return { ok: false as const, error: 'This computer has no device key.' };
       try {
-        const health = await serverHealth(
-          createHttpClient({
-            baseUrl: server.url,
-            fingerprint: server.fingerprint,
-            signer: device.signer,
-          }),
-        );
+        const { health } = await healthPinned(server, clientFor(server, device.signer));
         return {
           ok: true as const,
           server: { ...publicInfo(server), version: health.version, reachable: true, checkedAt },
@@ -185,18 +257,22 @@ export function teamServers(deps: TeamServerDeps) {
     /** The sync transport of a server-mode project (T5), pinned to the accepted certificate. */
     async transport(serverId: string, teamProjectId: string): Promise<HttpTransport> {
       if (deps.offlineOnly()) throw new TeamServerError('unreachable', OFFLINE);
-      const server = read().find((s) => s.id === serverId);
-      if (!server)
+      const stored = read().find((s) => s.id === serverId);
+      if (!stored)
         throw new TeamServerError('not-found', 'This server is not connected on this computer.');
       const device = await deps.device();
       if (!device) throw new TeamServerError('unauthorized', 'This computer has no device key.');
+      const { server } = await healthPinned(stored, clientFor(stored, device.signer));
       return createHttpTransport({
+        // a server that names its signing key also checks signed content types and ranges
         client: createHttpClient({
-          baseUrl: server.url,
-          fingerprint: server.fingerprint,
+          baseUrl: stored.url,
+          fingerprint: stored.fingerprint,
           signer: device.signer,
+          coverHeaders: server.publicKey !== undefined,
         }),
         teamProjectId,
+        ...(server.publicKey ? { server: { id: server.id, publicKey: server.publicKey } } : {}),
       });
     },
   };

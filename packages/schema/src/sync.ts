@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { FetchPolicy } from './blobs';
-import { Hlc, IsoTime, Sha256Hex, SignatureB64 } from './common';
+import { Hlc, IsoTime, PublicKeyB64, Sha256Hex, SignatureB64 } from './common';
 import { Heads, TeamProjectId } from './exchange';
 import {
   ActorId,
@@ -136,11 +136,27 @@ export const SIGNED_REQUEST_COMPONENTS = [
   'x-aio-nonce',
 ] as const;
 
+/**
+ * Components a signature also covers when the request carries them, after the required ones and
+ * in this order (2026-10-21). A server verifies whatever of these the `Signature-Input` lists; it
+ * may refuse a request that carries one of these headers without covering it.
+ */
+export const SIGNED_REQUEST_OPTIONAL_COMPONENTS = ['content-type', 'content-range'] as const;
+
+/** The server's signing key as the app pins it: `id` is `srv_` and the hash of `publicKey`. */
+export const ServerKey = z.object({
+  id: z.string().min(1).max(64),
+  /** Raw Ed25519 public key, base64url: it signs receipts and device certificates. */
+  publicKey: PublicKeyB64,
+});
+
 export const HealthResponse = z.object({
   ok: z.boolean(),
   version: z.string(),
   /** The protocol range the server speaks. */
   protocol: z.object({ min: z.number().int(), max: z.number().int() }),
+  /** The server's signing key (absent from servers before 2026-10-21). */
+  server: ServerKey.optional(),
 });
 
 export const EnrolRequest = z.object({
@@ -156,6 +172,8 @@ export const EnrolResponse = z.object({
     version: z.string(),
     /** SHA-256 of the server certificate, pinned at enrolment. */
     fingerprint: Sha256Hex,
+    /** The server's signing key, pinned at enrolment (absent from servers before 2026-10-21). */
+    publicKey: PublicKeyB64.optional(),
   }),
   cert: DeviceCert,
   role: Role,
@@ -255,5 +273,6 @@ export type QuarantineEntry = z.infer<typeof QuarantineEntry>;
 export type TeamStatus = z.infer<typeof TeamStatus>;
 export type ServerInfo = z.infer<typeof ServerInfo>;
 export type HealthResponse = z.infer<typeof HealthResponse>;
+export type ServerKey = z.infer<typeof ServerKey>;
 export type EnrolRequest = z.infer<typeof EnrolRequest>;
 export type EnrolResponse = z.infer<typeof EnrolResponse>;

@@ -180,6 +180,12 @@ export interface HttpClientOptions extends PinOptions {
   onFingerprint?: (fingerprint: string) => void;
   /** Largest buffered response body (ops pages, members). */
   maxBodyBytes?: number;
+  /**
+   * Also sign `content-type` and `content-range` (`SIGNED_REQUEST_OPTIONAL_COMPONENTS`). Only for a
+   * server that speaks it (one that names its signing key in health, 2026-10-21 or later): an
+   * older server refuses a signature over components it does not know.
+   */
+  coverHeaders?: boolean;
 }
 
 export interface RequestOptions {
@@ -224,7 +230,12 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
     const body = opts.body ?? '';
     const signed =
       (opts.sign ?? true) && options.signer
-        ? signRequest(options.signer, { method, url: url.href, body })
+        ? signRequest(options.signer, {
+            method,
+            url: url.href,
+            body,
+            ...(options.coverHeaders ? { headers: opts.headers } : {}),
+          })
         : {};
     const headers: Record<string, string> = {
       host: url.host,

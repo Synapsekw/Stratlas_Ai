@@ -27,14 +27,18 @@ export {
   signatureParams,
   signRequest,
   SIGNATURE_LABEL,
+  type OptionalComponent,
   type SignedParts,
 } from './signature';
+export { receiptProblem, serverCertProblem, serverIdFromKey } from './receipts';
 export { chainKey, decodeSince, encodeSince, SINCE_MAX_LENGTH } from './since';
 export { CLIENT_PROTOCOL, enrolDevice, serverHealth } from './server';
 export {
   BLOB_PART_BYTES,
   createHttpTransport,
   PUSH_BATCH,
+  PUSH_BATCH_BYTES,
+  pushBatches,
   type HttpTransport,
   type HttpTransportOptions,
 } from './transport';

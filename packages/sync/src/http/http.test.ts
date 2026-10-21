@@ -1,8 +1,8 @@
-import { X509Certificate } from 'node:crypto';
+import { createHash, X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
-import { signerFromSeed } from '@aio/journal';
+import { signerFromSeed, verifySignature } from '@aio/journal';
 import type { Heads } from '@aio/schema';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -14,6 +14,7 @@ import {
   probeFingerprint,
   serverOrigin,
   signatureBase,
+  signatureParams,
   signRequest,
   TeamServerError,
 } from './index';
@@ -45,6 +46,65 @@ describe('request signatures (RFC 9421)', () => {
         created: Math.floor(vector.nowMs / 1000),
       }),
     ).toBe(vector.base);
+  });
+
+  it('without content headers stay byte-identical to the pinned vector', () => {
+    const signer = signerFromSeed(vector.seed);
+    const headers = signRequest(
+      signer,
+      { ...vector.request, headers: { accept: 'application/json', host: 'team.example.com' } },
+      { now: vector.nowMs, nonce: vector.headers['x-aio-nonce'] ?? '' },
+    );
+    expect(headers).toEqual(vector.headers);
+  });
+
+  it('also cover content-type and content-range when the request carries them', () => {
+    const signer = signerFromSeed(vector.seed);
+    const created = Math.floor(vector.nowMs / 1000);
+    const nonce = vector.headers['x-aio-nonce'] ?? '';
+    const headers = signRequest(
+      signer,
+      {
+        ...vector.request,
+        // names in any case, values trimmed, listed in the protocol order whatever the order here
+        headers: { 'Content-Range': ' bytes 0-9/10 ', 'Content-Type': 'application/json' },
+      },
+      { now: vector.nowMs, nonce },
+    );
+    const params = `("@method" "@target-uri" "content-digest" "x-aio-device" "x-aio-nonce" "content-type" "content-range");created=${created};keyid="${signer.device}";alg="ed25519"`;
+    expect(headers['signature-input']).toBe(`aio=${params}`);
+    expect(signatureParams(signer.device, created, ['content-range', 'content-type'])).toBe(params);
+    const base = signatureBase({
+      method: vector.request.method,
+      url: vector.request.url,
+      digest: headers['content-digest'] ?? '',
+      device: signer.device,
+      nonce,
+      created,
+      optional: { 'content-type': 'application/json', 'content-range': 'bytes 0-9/10' },
+    });
+    const lines = base.split('\n');
+    expect(lines.slice(5)).toEqual([
+      '"content-type": application/json',
+      '"content-range": bytes 0-9/10',
+      `"@signature-params": ${params}`,
+    ]);
+    expect(lines.slice(0, 5)).toEqual(vector.base.split('\n').slice(0, 5));
+    // the signature is over this extended base
+    const hash = createHash('sha256').update(base, 'utf8').digest('hex');
+    const sig = Buffer.from(
+      (headers.signature ?? '').replace(/^aio=:/, '').replace(/:$/, ''),
+      'base64',
+    ).toString('base64url');
+    expect(verifySignature(signer.publicKey, 'aio.request/1', hash, sig)).toBe(true);
+
+    // only content-type: only it is added
+    const onlyType = signRequest(
+      signer,
+      { ...vector.request, headers: { 'content-type': 'application/json' } },
+      { now: vector.nowMs, nonce },
+    );
+    expect(onlyType['signature-input']).toContain('"x-aio-nonce" "content-type");created=');
   });
 
   it('use a fresh nonce on every request', () => {
@@ -113,6 +173,7 @@ describe('pinned TLS', () => {
   const other = new X509Certificate(fixture('other-test-only.crt'));
   const expected = certFingerprint(new X509Certificate(cert).raw);
   const seen: string[] = [];
+  const inputs: string[] = [];
   let server: Server;
   let origin = '';
 
@@ -121,6 +182,7 @@ describe('pinned TLS', () => {
       seen.push(
         `${req.method ?? ''} ${req.url ?? ''} ${String(req.headers['x-aio-device'] ?? '-')}`,
       );
+      inputs.push(String(req.headers['signature-input'] ?? ''));
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify({ ok: true }));
     });
@@ -172,6 +234,29 @@ describe('pinned TLS', () => {
       code: 'fingerprint',
     });
     expect(seen.length).toBe(before);
+  });
+
+  it('signs the content type and range it sends, to a server that speaks it', async () => {
+    const signer = signerFromSeed(vector.seed);
+    const older = createHttpClient({ baseUrl: origin, fingerprint: expected, signer });
+    await older.request('PUT', '/v1/blobs/x', {
+      body: 'abc',
+      headers: { 'content-type': 'application/octet-stream', 'content-range': 'bytes 0-2/3' },
+    });
+    expect(inputs.at(-1)).toMatch(/"x-aio-nonce"\);created=/);
+    const client = createHttpClient({
+      baseUrl: origin,
+      fingerprint: expected,
+      signer,
+      coverHeaders: true,
+    });
+    await client.request('PUT', '/v1/blobs/x', {
+      body: 'abc',
+      headers: { 'content-type': 'application/octet-stream', 'content-range': 'bytes 0-2/3' },
+    });
+    expect(inputs.at(-1)).toMatch(/"x-aio-nonce" "content-type" "content-range"\);created=/);
+    await client.request('GET', '/v1/health');
+    expect(inputs.at(-1)).toMatch(/"x-aio-nonce"\);created=/);
   });
 
   it('names an address that does not answer', async () => {

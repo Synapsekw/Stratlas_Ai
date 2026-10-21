@@ -1,6 +1,8 @@
 /**
  * The two calls before a device can sync: `health` (unsigned, also the protocol check) and
- * `enrol` (an invite code and this device's public record, signed by the same key).
+ * `enrol` (an invite code and this device's public record, signed by the same key). A server from
+ * 2026-10-21 names its signing key in both; the app checks the key is the server's id and that the
+ * device certificate is signed by it.
  */
 import {
   EnrolResponse,
@@ -10,6 +12,7 @@ import {
   type IdentityCard,
 } from '@aio/schema';
 import { errorFor, TeamServerError, type HttpClient } from './client';
+import { serverCertProblem, serverIdFromKey } from './receipts';
 import { routePath } from './routes';
 
 /** The `aio.sync/1` version this app speaks. */
@@ -34,6 +37,12 @@ export async function serverHealth(client: HttpClient): Promise<HealthResponse> 
       `This team server speaks protocol ${health.protocol.min} to ${health.protocol.max}; this app speaks ${CLIENT_PROTOCOL}. Update the app or the server.`,
     );
   }
+  if (health.server && health.server.id !== serverIdFromKey(health.server.publicKey)) {
+    throw new TeamServerError(
+      'protocol',
+      'This team server names a signing key that does not belong to it. Ask your IT team before you connect.',
+    );
+  }
   return health;
 }
 
@@ -50,5 +59,21 @@ export async function enrolDevice(
     headers: { 'content-type': 'application/json' },
   });
   if (res.status !== 200) throw errorFor(res, 'Enrolling');
-  return parse(EnrolResponse, res.body);
+  const enrolled = parse(EnrolResponse, res.body);
+  const { id, publicKey } = enrolled.server;
+  if (publicKey === undefined) return enrolled; // a server from before 2026-10-21
+  if (id !== serverIdFromKey(publicKey)) {
+    throw new TeamServerError(
+      'protocol',
+      'This team server names a signing key that does not belong to it. Ask your IT team before you connect.',
+    );
+  }
+  const problem = serverCertProblem({ id, publicKey }, enrolled.cert, device);
+  if (problem) {
+    throw new TeamServerError(
+      'protocol',
+      `The team server sent a device certificate that does not verify: ${problem}. Ask your IT team before you connect.`,
+    );
+  }
+  return enrolled;
 }

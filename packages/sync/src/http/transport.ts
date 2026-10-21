@@ -14,9 +14,11 @@ import {
   type Op,
   type PullPage,
   type PushResult,
+  type ServerKey,
 } from '@aio/schema';
 import type { SyncTransport } from '../transport';
 import { errorFor, TeamServerError, type HttpClient } from './client';
+import { receiptProblem, serverIdFromKey } from './receipts';
 import { routePath } from './routes';
 import { encodeSince } from './since';
 
@@ -24,6 +26,8 @@ import { encodeSince } from './since';
 export const BLOB_PART_BYTES = 8 * 1024 * 1024;
 /** Ops per push request (the protocol allows up to 5000). */
 export const PUSH_BATCH = 1000;
+/** Largest JSON body of a push request (the server takes up to 8 MB); one larger op goes alone. */
+export const PUSH_BATCH_BYTES = 6 * 1024 * 1024;
 
 export interface HttpTransportOptions {
   client: HttpClient;
@@ -31,6 +35,13 @@ export interface HttpTransportOptions {
   /** Ops per pull page (1 to 5000). */
   pageSize?: number;
   partBytes?: number;
+  /** Largest push body in bytes (tests); default `PUSH_BATCH_BYTES`. */
+  pushBatchBytes?: number;
+  /**
+   * The server signing key pinned at enrolment. When given, every push receipt must verify
+   * against it; without it (an enrolment from an older server) receipts are kept unchecked.
+   */
+  server?: ServerKey | undefined;
 }
 
 export interface HttpTransport extends SyncTransport {
@@ -62,6 +73,29 @@ function parse<T>(schema: { parse(v: unknown): T }, body: Buffer): T {
   }
 }
 
+/** `{"ops":[` and `]}` around the ops of a push body. */
+const PUSH_ENVELOPE_BYTES = Buffer.byteLength('{"ops":[]}');
+
+/** Split ops into push requests of at most `PUSH_BATCH` ops and `maxBytes` of JSON body. */
+export function pushBatches(ops: readonly Op[], maxBytes = PUSH_BATCH_BYTES): Op[][] {
+  const batches: Op[][] = [];
+  let batch: Op[] = [];
+  let bytes = PUSH_ENVELOPE_BYTES;
+  for (const op of ops) {
+    const size = Buffer.byteLength(JSON.stringify(op));
+    // `+ 1`: the comma before every op but the first
+    if (batch.length > 0 && (batch.length >= PUSH_BATCH || bytes + 1 + size > maxBytes)) {
+      batches.push(batch);
+      batch = [];
+      bytes = PUSH_ENVELOPE_BYTES;
+    }
+    bytes += (batch.length > 0 ? 1 : 0) + size;
+    batch.push(op);
+  }
+  if (batch.length > 0) batches.push(batch);
+  return batches;
+}
+
 async function* chunked(
   data: AsyncIterable<Uint8Array>,
   size: number,
@@ -91,8 +125,13 @@ export function createHttpTransport({
   teamProjectId,
   pageSize = 1000,
   partBytes = BLOB_PART_BYTES,
+  pushBatchBytes = PUSH_BATCH_BYTES,
+  server,
 }: HttpTransportOptions): HttpTransport {
   const project = { id: teamProjectId };
+  if (server && server.id !== serverIdFromKey(server.publicKey)) {
+    throw new TeamServerError('fingerprint', 'The pinned server key does not match the server.');
+  }
 
   async function ok(method: string, path: string, what: string, body?: unknown) {
     const res = await client.request(method, path, body === undefined ? {} : json(body));
@@ -121,8 +160,7 @@ export function createHttpTransport({
 
     async pushOps(ops: readonly Op[]): Promise<PushResult> {
       const out: PushResult = { accepted: [], duplicates: [], refused: [], receipts: [] };
-      for (let i = 0; i < ops.length; i += PUSH_BATCH) {
-        const batch = ops.slice(i, i + PUSH_BATCH);
+      for (const batch of pushBatches(ops, pushBatchBytes)) {
         const res = await client.request('POST', routePath('ops', project), json({ ops: batch }));
         // a 403 still lists each refused op (role, membership, revocation)
         const refused =
@@ -130,6 +168,13 @@ export function createHttpTransport({
         if (!refused && (res.status < 200 || res.status >= 300))
           throw errorFor(res, 'Sending changes');
         const r = refused ?? parse(PushOpsResponse, res.body);
+        const problem = server ? receiptProblem(server, new Set(batch.map((o) => o.id)), r) : null;
+        if (problem) {
+          throw new TeamServerError(
+            'protocol',
+            `The team server sent a receipt that does not verify (${problem}). Ask your IT team to check the server.`,
+          );
+        }
         out.accepted.push(...r.accepted);
         out.duplicates.push(...r.duplicates);
         out.refused.push(...r.refused);
