@@ -142,7 +142,9 @@ describe('aio:// handler', () => {
   it('serves HTML under legacy/ as a plain file', async () => {
     const res = await get('aio://project/p1/legacy/Old%20Review.html');
     expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    // as text, never as a page the app would run (mime.ts)
+    expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     expect(res.headers.get('content-security-policy')).toBeNull();
     const onDisk = await readFile(join(base, 'p1', 'legacy', 'Old Review.html'));
     expect(res.headers.get('content-length')).toBe(String(onDisk.length));
@@ -158,7 +160,7 @@ describe('aio:// handler', () => {
 
   it('serves the files under legacy/ unchanged (older projects keep their grids there)', async () => {
     const res = await get('aio://project/p1/legacy/data/site.js');
-    expect(res.headers.get('content-type')).toBe('text/javascript; charset=utf-8');
+    expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
     expect(res.headers.get('content-security-policy')).toBeNull();
     expect(await res.text()).toBe('window.SITE=1;');
   });
@@ -193,8 +195,8 @@ describe('mimeFor', () => {
     ['a.pmtiles', 'application/vnd.pmtiles'],
     ['a.pdf', 'application/pdf'],
     ['a.bin', 'application/octet-stream'],
-    ['a.htm', 'text/html; charset=utf-8'],
-    ['a.mjs', 'text/javascript; charset=utf-8'],
+    ['a.htm', 'text/plain; charset=utf-8'],
+    ['a.mjs', 'text/plain; charset=utf-8'],
     ['a.woff2', 'font/woff2'],
     ['a.woff', 'font/woff'],
     ['a.ttf', 'font/ttf'],

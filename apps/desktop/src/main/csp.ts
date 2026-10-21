@@ -32,6 +32,9 @@ export const APP_CSP_DIRECTIVES: readonly string[] = [
   "connect-src 'self' aio: data: blob:",
   "worker-src 'self' blob:",
   "font-src 'self' data:",
+  // no plug-ins and no frames: nothing in the app embeds a page
+  "object-src 'none'",
+  "frame-src 'none'",
 ];
 
 /** The app policy as a header value (dev, and any response main can add a header to). */
@@ -61,12 +64,20 @@ export function cspMetaTag(policy: string): string {
   return `<meta http-equiv="Content-Security-Policy" content="${escapeAttr(metaPolicy(policy))}" />`;
 }
 
+/**
+ * The policy on aio:// files when one is opened as a page (a project's own HTML or SVG): no
+ * script, no plug-in, no frame, a unique origin. As a subresource (an image, a fetch) the
+ * response's policy does not apply, so the app reads these files as before.
+ */
+export const AIO_FILE_CSP =
+  "default-src 'none'; img-src aio: data: blob:; media-src aio: blob:; style-src 'unsafe-inline'; sandbox";
+
 /** Chromium's own pages (the built-in PDF viewer, DevTools) bring their own policy. */
 const BROWSER_PAGES = ['chrome:', 'chrome-extension:', 'devtools:'];
 
 /**
  * The CSP for a response: none for Chromium's own pages and for project PDFs (the built-in
- * viewer renders them), else the app policy.
+ * viewer renders them), the locked file policy for every other aio:// file, else the app policy.
  */
 export function cspForUrl(url: string, appCsp: string): string | null {
   let u: URL;
@@ -76,8 +87,9 @@ export function cspForUrl(url: string, appCsp: string): string | null {
     return appCsp;
   }
   if (BROWSER_PAGES.includes(u.protocol)) return null;
-  if (u.protocol !== 'aio:' || u.host !== 'project') return appCsp;
-  return /\.pdf$/i.test(u.pathname) ? null : appCsp;
+  if (u.protocol !== 'aio:') return appCsp;
+  if (u.host === 'project' && /\.pdf$/i.test(u.pathname)) return null;
+  return AIO_FILE_CSP;
 }
 
 /**

@@ -284,6 +284,7 @@ import { resolveInside } from './protocol/paths';
 import { writeCentreline } from './centreline';
 import { createAioHandler } from './protocol/handler';
 import { APP_CSP, cspForUrl } from './csp';
+import { isAppSender, rendererUrlAllowed } from './rendererUrl';
 import { checkDataRootChange, createPickedFolders, dataRootError } from './dataRoot';
 import { saveFile } from './saveFile';
 import { savePath } from './exports/savePath';
@@ -340,6 +341,8 @@ const crashes = createCrashStore(join(app.getPath('userData'), 'crash-reports'),
 });
 // Only an unpackaged build loads the dev server (legacyEnv.ts also drops the variable when packaged).
 const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
+/** The main window's page in a build (the only page that may call main without a dev server). */
+const RENDERER_INDEX = join(import.meta.dirname, '../renderer/index.html');
 
 // aio:// serves project files and map packs with range requests.
 // Test and agent runs (isolated profiles) keep their windows off-screen; see windowMode.ts.
@@ -1000,9 +1003,18 @@ const pickedFolders = createPickedFolders();
 
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, journal.wrap(channel, handler));
-  ipcMain.handle(channel, (_e, req: unknown) =>
-    runWithUpdateWork(channel, updateWorkGate, () => run(req)),
-  );
+  ipcMain.handle(channel, (e, req: unknown) => {
+    // only the app's own page, in the top frame, may call main (rendererUrl.ts)
+    const frame = e.senderFrame;
+    if (
+      !isAppSender(frame ? { url: frame.url, top: frame.parent === null } : null, {
+        indexFile: RENDERER_INDEX,
+        devUrl,
+      })
+    )
+      throw new Error(`Refused ${channel}: the call did not come from the app's own page.`);
+    return runWithUpdateWork(channel, updateWorkGate, () => run(req));
+  });
 }
 
 /** The OS account name, when the platform has one. */
@@ -2412,7 +2424,7 @@ function createWindow(): BrowserWindow {
     });
   }
   if (devUrl) void win.loadURL(devUrl);
-  else void win.loadFile(join(import.meta.dirname, '../renderer/index.html'));
+  else void win.loadFile(RENDERER_INDEX);
   return win;
 }
 
@@ -2439,9 +2451,7 @@ async function smokeReport(win: BrowserWindow): Promise<void> {
 
 /** Offline by construction: the renderer may reach only the app, aio:// and the dev server. */
 function isAllowedRendererUrl(url: string): boolean {
-  if (devUrl && url.startsWith(new URL(devUrl).origin)) return true;
-  const proto = url.slice(0, url.indexOf(':') + 1);
-  return !['http:', 'https:', 'ws:', 'wss:', 'ftp:'].includes(proto);
+  return rendererUrlAllowed(url, devUrl);
 }
 
 function hardenSession(): void {

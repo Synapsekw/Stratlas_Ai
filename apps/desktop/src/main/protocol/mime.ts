@@ -23,10 +23,13 @@ const TYPES: Record<string, string> = {
   '.srt': 'text/plain; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.csv': 'text/csv; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.htm': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
+  // Project HTML and scripts are served as text: aio:// never hands out active content (the app
+  // has shown no project page since the retired viewer, 11 Oct 2026).
+  '.html': 'text/plain; charset=utf-8',
+  '.htm': 'text/plain; charset=utf-8',
+  '.xhtml': 'text/plain; charset=utf-8',
+  '.js': 'text/plain; charset=utf-8',
+  '.mjs': 'text/plain; charset=utf-8',
   '.map': 'application/json',
   '.xml': 'application/xml',
   '.gif': 'image/gif',

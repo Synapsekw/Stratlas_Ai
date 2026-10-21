@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  AIO_FILE_CSP,
   APP_CSP,
   APP_CSP_DIRECTIVES,
   cspForUrl,
@@ -37,6 +38,11 @@ describe('app CSP', () => {
     expect(script).not.toContain("'unsafe-inline'");
   });
 
+  it('allows no plug-in and no frame', () => {
+    expect(APP_CSP_DIRECTIVES).toContain("object-src 'none'");
+    expect(APP_CSP_DIRECTIVES).toContain("frame-src 'none'");
+  });
+
   it('reaches nothing remote', () => {
     expect(APP_CSP).not.toMatch(/https?:|wss?:|\*/);
   });
@@ -61,13 +67,16 @@ describe('cspForUrl', () => {
     expect(cspForUrl('aio://project/p1/report/Volume%20Report.PDF', app)).toBe(null);
     expect(cspForUrl('aio://project/p1/legacy/Volume%20Report.pdf', app)).toBe(null);
   });
-  it('gives HTML under legacy/ the app policy, like any project file', () => {
-    expect(cspForUrl('aio://project/p1/legacy/Old%20Review.html', app)).toBe(app);
+  it('locks every other aio:// file opened as a page: no script, a sandbox', () => {
+    expect(cspForUrl('aio://project/p1/legacy/Old%20Review.html', app)).toBe(AIO_FILE_CSP);
+    expect(cspForUrl('aio://project/p1/legacy/data/site.js', app)).toBe(AIO_FILE_CSP);
+    expect(cspForUrl('aio://project/p1/drawing.svg', app)).toBe(AIO_FILE_CSP);
+    expect(cspForUrl('aio://packs/gcc.pdf', app)).toBe(AIO_FILE_CSP);
+    expect(AIO_FILE_CSP).toContain("default-src 'none'");
+    expect(AIO_FILE_CSP).toContain('sandbox');
+    expect(AIO_FILE_CSP).not.toContain('script-src');
   });
-  it('keeps the app policy for everything else', () => {
-    expect(cspForUrl('aio://project/p1/legacy/data/site.js', app)).toBe(app);
-    expect(cspForUrl('aio://project/p1/report.html', app)).toBe(app);
-    expect(cspForUrl('aio://packs/gcc.pdf', app)).toBe(app);
+  it('keeps the app policy for the app', () => {
     expect(cspForUrl('file:///C:/app/index.html', app)).toBe(app);
     expect(cspForUrl('not a url', app)).toBe(app);
   });

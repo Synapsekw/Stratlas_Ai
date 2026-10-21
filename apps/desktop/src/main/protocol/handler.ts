@@ -50,7 +50,12 @@ const COVER = /^[0-9a-f]{64}\.jpg$/;
 
 // Only the app itself can reach aio://, so a wildcard origin is safe and lets loaders that set
 // crossOrigin (three.js, MapLibre, <video crossorigin>) read the bytes from the file:// page.
-const COMMON = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-cache' };
+const COMMON = {
+  'Access-Control-Allow-Origin': '*',
+  'Cache-Control': 'no-cache',
+  // the browser keeps the type we send (project HTML and scripts go out as text, mime.ts)
+  'X-Content-Type-Options': 'nosniff',
+};
 
 function status(code: number): Response {
   const text = code === 403 ? 'Forbidden' : code === 405 ? 'Method not allowed' : 'Not found';
