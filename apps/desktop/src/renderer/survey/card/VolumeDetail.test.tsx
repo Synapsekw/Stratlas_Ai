@@ -611,6 +611,8 @@ describe('VolumeDetail', () => {
     show(m);
     const level = host.querySelector<HTMLInputElement>('[data-testid="survey-to-level"]');
     expect(level?.value).toBe('102.500');
+    // named for its side: the level the survey is compared with
+    expect(level?.getAttribute('aria-label')).toBe('Fixed level compared with (m)');
     act(() => {
       if (!level) return;
       // React hears the value only through the input's own setter

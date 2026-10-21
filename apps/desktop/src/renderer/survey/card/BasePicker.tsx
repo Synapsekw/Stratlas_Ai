@@ -206,6 +206,8 @@ export function BaseFields(p: {
   readOnly: boolean;
   onChange: (v: SurfaceRef) => void;
   testId?: string;
+  /** The side it is on: the To side's level reads "Fixed level compared with". */
+  side?: 'from' | 'to';
 }): ReactElement | null {
   if (p.value.kind === 'reference' && p.value.mode === 'level')
     return (
@@ -215,6 +217,7 @@ export function BaseFields(p: {
         readOnly={p.readOnly}
         onChange={p.onChange}
         testId={p.testId ?? 'survey-ref-level'}
+        name={p.side === 'to' ? 'base.levelTo' : 'base.level'}
       />
     );
   if (p.value.kind === 'custom' && p.m)
@@ -247,12 +250,14 @@ function LevelField({
   readOnly,
   onChange,
   testId,
+  name,
 }: {
   value: Extract<SurfaceRef, { kind: 'reference' }>;
   m: SurveyMeasurement | undefined;
   readOnly: boolean;
   onChange: (v: SurfaceRef) => void;
   testId: string;
+  name: 'base.level' | 'base.levelTo';
 }) {
   const t = useT();
   const settings = useMeasure((s) => s.settings);
@@ -272,12 +277,12 @@ function LevelField({
   }
   return (
     <label className="bp-level">
-      <span className="bp-level-name">{t('base.level')}</span>
+      <span className="bp-level-name">{t(name)}</span>
       <input
         className="sv-input mono"
         type="number"
         step="0.001"
-        aria-label={`${t('base.level')} (${unitLabel(unit)})`}
+        aria-label={`${t(name)} (${unitLabel(unit)})`}
         data-testid={testId}
         value={text}
         readOnly={readOnly}

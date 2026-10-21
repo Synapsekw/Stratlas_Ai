@@ -620,6 +620,7 @@ function ItemBlock({
           m={m}
           readOnly={readOnly}
           testId="survey-to-level"
+          side="to"
           onChange={(ref) => {
             setSide('to', ref);
           }}
