@@ -55,6 +55,9 @@ vi.mock('../panos/panos', () => ({
   panoImport: { setState: vi.fn(), subscribe: vi.fn(() => () => undefined) },
 }));
 vi.mock('./pick', () => ({ terrainHeightAt: () => null }));
+// an import can write photo corrections (thermal twins): the store reads orientation.json again
+const { loadOrientation } = vi.hoisted(() => ({ loadOrientation: vi.fn(() => Promise.resolve()) }));
+vi.mock('./orientationFile', () => ({ loadOrientation }));
 // drawing the pages of a PDF needs the app window; the store only has to wait for it
 const finishStaged = vi.fn();
 vi.mock('../drawings/importFlow', () => ({
@@ -100,6 +103,7 @@ beforeEach(() => {
   call.mockReset();
   replaceManifest.mockReset();
   finishStaged.mockReset();
+  loadOrientation.mockClear();
   openProject = P1;
   cloudScan = noClouds;
   cloudCalls.length = 0;
@@ -110,6 +114,29 @@ beforeEach(() => {
     cloudDatesPrompt: null,
     queued: 0,
     importNotice: null,
+  });
+});
+
+describe('importFiles, photo corrections', () => {
+  it('reads orientation.json again after an import that returns a manifest', async () => {
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:altitudePlan'
+        ? Promise.resolve(planned(plan()))
+        : Promise.resolve(imported),
+    );
+    await b().importFiles(['a.jpg']);
+    expect(replaceManifest).toHaveBeenCalledTimes(1);
+    expect(loadOrientation).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves orientation.json alone when the import failed', async () => {
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:altitudePlan'
+        ? Promise.resolve(planned(plan()))
+        : Promise.resolve({ ok: true, value: { ok: false, error: 'no', items: [] } }),
+    );
+    await b().importFiles(['a.jpg']);
+    expect(loadOrientation).not.toHaveBeenCalled();
   });
 });
 

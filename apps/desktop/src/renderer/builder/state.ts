@@ -18,6 +18,7 @@ import { fisheyeSkipNote } from '../panos/skipText';
 import { bridge, shell } from '../shell';
 import { heightsPrompt, needsTakeoff, type HeightsPrompt } from './heights';
 import { DROPPED_NOTE, QUEUED_NOTE } from './importSummary';
+import { loadOrientation } from './orientationFile';
 import { terrainHeightAt } from './pick';
 
 /** What an import read its survey date from (the import card's "Read from ..." line). */
@@ -551,8 +552,13 @@ async function importNow(
     });
     return;
   }
-  if (workspace.getState().project?.id === project.id)
+  if (workspace.getState().project?.id === project.id) {
     workspace.getState().replaceManifest(r.value.manifest);
+    // the import may have written photo corrections (a thermal photo placed at its visual twin)
+    loadOrientation().catch((e: unknown) => {
+      console.warn('orientation.json not read after the import', e);
+    });
+  }
   // nothing was left to import (every file was a sphere frame the panorama import took): no card
   if (r.value.items.length === 0 && r.value.files?.length === 0) {
     builder.setState({ importing: null, importResult: null });

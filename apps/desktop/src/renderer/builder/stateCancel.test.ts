@@ -37,6 +37,7 @@ vi.mock('../panos/panos', () => ({
   panoImport: { setState: vi.fn(), subscribe: vi.fn(() => () => undefined) },
 }));
 vi.mock('./pick', () => ({ terrainHeightAt: () => null }));
+vi.mock('./orientationFile', () => ({ loadOrientation: () => Promise.resolve() }));
 // drawing the pages of a PDF needs the app window; the store only has to wait for it
 const finishStaged = vi.fn();
 vi.mock('../drawings/importFlow', () => ({
