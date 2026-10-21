@@ -421,6 +421,11 @@ export async function builderImport(
       ...(req.cloudDates ? { cloudDates: req.cloudDates } : {}),
       onProgress: progress.file,
       saveCorrections: (fixes) => saveTwinCorrections(root, fixes),
+      // a thermal goes to where its twin is drawn, hand corrections included
+      corrections: async () => {
+        const o = await readOrientation(root);
+        return o.ok ? (o.file?.photos ?? null) : null;
+      },
     });
     return {
       ok: true,

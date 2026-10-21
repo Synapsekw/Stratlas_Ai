@@ -240,7 +240,7 @@ A pinned photo cannot be edited this way (its pin is its place: use **Move pin**
 
 ### Re-read photo positions
 
-Projects imported with an older build may hold drone photos at the wrong height and without a view direction (DJI Zenmuse XT2 photos in particular). Right-click the photos dataset in the sidebar and choose **Re-read photo positions**: heights and view directions are read again from the photo files. If the project's copies carry no metadata, it asks for the folder with the original photos. Photos you moved by hand stay where you put them, and the notice says how many were re-read. Running it again changes nothing.
+Projects imported with an older build may hold drone photos at the wrong height and without a view direction (DJI Zenmuse XT2 photos in particular). Right-click the photos dataset in the sidebar and choose **Re-read photo positions**: heights and view directions are read again from the photo files. If the project's copies carry no metadata, it asks for the folder with the original photos. Photos you moved by hand stay where you put them. A photo you turned with **Align photo to map** keeps its turn, which now applies on top of the re-read view direction, so check its direction afterwards. The notice says how many were re-read. Running it again changes nothing.
 
 ### Thermal photos placed at their visual twin
 

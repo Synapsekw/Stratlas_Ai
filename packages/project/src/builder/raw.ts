@@ -1,4 +1,5 @@
 import {
+  correctPos,
   defaultUtcOffsetMin,
   fromWgs84,
   isKnownCrs,
@@ -14,6 +15,7 @@ import type {
   ImportItem,
   LensModel,
   Mat4,
+  OrientationFile,
   PhotoRef,
   ProjectManifest,
   Vec3,
@@ -176,6 +178,12 @@ export interface ImportDeps {
    * twin's place. Without it the twins' view directions are still set on the items.
    */
   saveCorrections?: (fixes: readonly TwinPlacement[]) => Promise<void>;
+  /**
+   * The project's photo corrections (`orientation.json` photos, main), read once when a thermal
+   * needs a twin: a twin already in the project is aimed at where it is drawn (its place with its
+   * correction). Without it, or when it fails, those twins count at their imported place.
+   */
+  corrections?: () => Promise<Readonly<OrientationFile['photos']> | null>;
 }
 
 /** A thermal photo placed at its visual twin: the correction `offsetM` (local frame) to save. */
@@ -956,10 +964,17 @@ export async function importRawFiles(
       ...(p.q ? { q: p.q } : {}),
       ...(needs ? { needsTwin: true } : {}),
     });
+    // a project photo is aimed at where it is drawn (with its correction); a pinned one is drawn
+    // at its pin, so it is never a twin (as in a re-read)
+    const saved = (await deps.corrections?.().catch(() => null)) ?? {};
+    const drawn = (layerId: string, p: PhotoRef): PhotoRef =>
+      p.pos ? { ...p, pos: correctPos(p.pos, saved[layerId]?.[p.id]) } : p;
     const candidates: TwinCandidate[] = [
       ...photoFiles.map((p) => candidate(p.name, p.ref, needsTwin(p.name, p.meta))),
       ...atStart.layers.flatMap((l) =>
-        l.kind === 'photos' ? l.items.map((p) => candidate(p.id, p, false)) : [],
+        l.kind === 'photos'
+          ? l.items.filter((p) => !p.pin).map((p) => candidate(p.id, drawn(l.id, p), false))
+          : [],
       ),
     ];
     for (const t of thermals) {

@@ -1,4 +1,4 @@
-import { defaultUtcOffsetMin, isPositionEdited, withPositionOffset } from '@aio/geo';
+import { correctPos, defaultUtcOffsetMin, isPositionEdited, withPositionOffset } from '@aio/geo';
 import type {
   OrientationFile,
   PhotoCorrection,
@@ -127,8 +127,11 @@ async function folderIndex(folder: string): Promise<Map<string, string[]>> {
   return out;
 }
 
-/** The review copy's id as a file name the twin rule reads: `x-0005-r` to `x-0005_r.jpg`. */
-const idName = (id: string) => `${id.replace(/-r$/i, '_r')}.jpg`;
+/**
+ * The review copy's id as a file name the twin rule reads: `x-0005-r` (and `x-0005-r-2`, the id
+ * with a uniqueness suffix) to `x-0005_r.jpg`.
+ */
+const idName = (id: string) => `${id.replace(/-r(?:-\d+)?$/i, '_r')}.jpg`;
 
 /** The file of one photo: its review copy when it kept the metadata, else the originals folder. */
 async function findSource(
@@ -173,6 +176,8 @@ function plan(
   found: ReadonlyMap<string, Found>,
   corrections: Readonly<Record<string, PhotoCorrection>>,
   frame: PhotoFrame,
+  /** Every layer's corrections (`orientation.json` photos), for twins in other layers. */
+  all: Readonly<OrientationFile['photos']>,
 ): Plan {
   const out = new Map(Object.entries(corrections));
   let changedCorrections = false;
@@ -219,18 +224,22 @@ function plan(
   let twins = 0;
   if (thermals.length > 0) {
     const thermalIds = new Set(thermals.map((t) => t.item.id));
-    const candidate = (p: PhotoRef): TwinCandidate => ({
+    // a twin is aimed at where it is drawn: its place with its correction (this layer's as
+    // re-anchored above); pinned photos are never twins (they are drawn at their pin)
+    const candidate = (p: PhotoRef, c?: PhotoCorrection): TwinCandidate => ({
       name: p.id,
       ...(p.takenAt !== undefined ? { takenAt: p.takenAt } : {}),
-      ...(p.pos ? { pos: p.pos } : {}),
+      ...(p.pos ? { pos: correctPos(p.pos, c) } : {}),
       ...(p.q ? { q: p.q } : {}),
       ...(thermalIds.has(p.id) ? { needsTwin: true } : {}),
     });
     const candidates = [
-      ...items.filter((p) => !p.pin).map(candidate),
+      ...items.filter((p) => !p.pin).map((p) => candidate(p, out.get(p.id))),
       ...m.layers.flatMap((l) =>
         l.kind === 'photos' && l.id !== layer.id
-          ? l.items.filter((p) => !p.pin).map((p) => ({ ...candidate(p), needsTwin: false }))
+          ? l.items
+              .filter((p) => !p.pin)
+              .map((p) => ({ ...candidate(p, all[l.id]?.[p.id]), needsTwin: false }))
           : [],
       ),
     ];
@@ -339,13 +348,20 @@ export async function rereadPhotoLayer(
   });
   if (o.dryRun) {
     const file = await o.orientation.read();
-    const p = plan(start, layer, found, file?.photos[layerId] ?? {}, frame);
+    const p = plan(start, layer, found, file?.photos[layerId] ?? {}, frame, file?.photos ?? {});
     return { ok: true, manifest: start, ...counts(p) };
   }
   const saved = await updateManifestFile(root, async (m) => {
     const target = photosLayer(m, layerId);
     const before = await o.orientation.read();
-    const p = plan(m, target, found, before?.photos[layerId] ?? {}, frameOf(m));
+    const p = plan(
+      m,
+      target,
+      found,
+      before?.photos[layerId] ?? {},
+      frameOf(m),
+      before?.photos ?? {},
+    );
     if (p.reread === 0) return { manifest: null, counts: counts(p) };
     if (p.changedCorrections) await o.orientation.write(withLayer(before, layerId, p.corrections));
     const next: ProjectManifest = {

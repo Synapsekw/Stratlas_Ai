@@ -202,6 +202,69 @@ describe('rereadPhotoLayer', () => {
     near(add(thermal.pos ?? [0, 0, 0], c?.offsetM ?? [0, 0, 0]), twin.pos ?? [0, 0, 0]);
   });
 
+  const thermal5 = () =>
+    xt2Thermal({
+      dateTimeOriginal: '2024:11:06 10:00:01',
+      lat: LAT + 0.0001,
+      lon: LON,
+      alt: -4.502,
+    });
+
+  it("places a thermal at its twin's corrected place after a shift of both", async () => {
+    const root = await project([stale('x-0005-r'), stale('x-0006')], {
+      'x-0005-r': thermal5(),
+      'x-0006': visual(14.7),
+    });
+    // "select all, shift Z": both photos carry a move
+    const shift: Vec3 = [0, 5, 0];
+    const file = emptyOrientation();
+    file.photos.photos = {
+      'x-0005-r': { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: shift },
+      'x-0006': { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: shift },
+    };
+    const { o, io } = orientation(file);
+    const r = await rereadPhotoLayer(root, 'photos', { orientation: io });
+    expect(r).toMatchObject({ ok: true, reread: 2, twins: 1, kept: 1 });
+    const thermal = await item(root, 'x-0005-r');
+    const twin = await item(root, 'x-0006');
+    const ct = o.file?.photos.photos?.['x-0005-r'];
+    const cv = o.file?.photos.photos?.['x-0006'];
+    const drawnTwin = add(twin.pos ?? [0, 0, 0], cv?.offsetM ?? [0, 0, 0]);
+    // the twin kept its shifted place, and the thermal sits on it
+    near(drawnTwin, add([1, -46, -1], shift));
+    near(add(thermal.pos ?? [0, 0, 0], ct?.offsetM ?? [0, 0, 0]), drawnTwin);
+  });
+
+  it("places a thermal at a twin of another layer by that twin's correction", async () => {
+    const root = await project([stale('x-0005-r')], { 'x-0005-r': thermal5() });
+    const m = await readManifestFile(root);
+    m.layers.push({
+      kind: 'photos',
+      id: 'visual',
+      name: 'Visual',
+      visible: true,
+      items: [stale('x-0006', { pos: [3, 14, -2] })],
+    });
+    await writeManifestFile(root, m);
+    const file = emptyOrientation();
+    file.photos.visual = { 'x-0006': { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, 2, 0] } };
+    const { o, io } = orientation(file);
+    const r = await rereadPhotoLayer(root, 'photos', { orientation: io });
+    expect(r).toMatchObject({ ok: true, twins: 1 });
+    const thermal = await item(root, 'x-0005-r');
+    const c = o.file?.photos.photos?.['x-0005-r'];
+    near(add(thermal.pos ?? [0, 0, 0], c?.offsetM ?? [0, 0, 0]), [3, 16, -2]);
+  });
+
+  it('knows a thermal by an id with a uniqueness suffix', async () => {
+    const root = await project([stale('x-0005-r-2'), stale('x-0006')], {
+      'x-0005-r-2': thermal5(),
+      'x-0006': visual(14.7),
+    });
+    const r = await rereadPhotoLayer(root, 'photos', { orientation: orientation().io });
+    expect(r).toMatchObject({ ok: true, reread: 2, twins: 1 });
+  });
+
   it('answers the counts of a dry run and writes nothing', async () => {
     const root = await project([stale('x-0006')], { 'x-0006': visual(14.7) });
     const text = await readFile(join(root, 'manifest.json'), 'utf8');

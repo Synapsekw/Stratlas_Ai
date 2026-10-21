@@ -808,6 +808,55 @@ describe('thermal twins of a raw import (photo position edit)', () => {
     expect(r.items[0]?.message).toMatch(/visual twin x-0006\./);
   });
 
+  it("aims a thermal at a project twin's corrected place, and never at a pinned one", async () => {
+    const root = await project();
+    const v = join(dir, 'X_0006.jpg');
+    await writeFile(v, visual('10:00:01'));
+    await importRawFiles(root, [v], deps());
+    const twin = items(await readManifest(root))[0];
+    if (!twin?.pos) throw new Error('twin not placed');
+    const t = join(dir, 'X_0005_R.JPG');
+    await writeFile(t, thermal('10:00:00'));
+    const calls: Fixes[] = [];
+    const save = (fixes: Fixes) => {
+      calls.push(fixes);
+      return Promise.resolve();
+    };
+    const r = await importRawFiles(
+      root,
+      [t],
+      deps({
+        saveCorrections: save,
+        corrections: () =>
+          Promise.resolve({
+            'photos-2026-03-03': {
+              'x-0006': { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, 3, 0] },
+            },
+          }),
+      }),
+    );
+    const th = items(r.manifest).find((p) => p.id === 'x-0005-r');
+    if (!th?.pos) throw new Error('thermal not placed');
+    const want = [twin.pos[0], twin.pos[1] + 3, twin.pos[2]];
+    calls[0]?.[0]?.offsetM.forEach((o, i) => {
+      expect(o).toBeCloseTo((want[i] ?? 0) - (th.pos?.[i] ?? 0), 4);
+    });
+    expect(calls).toHaveLength(1);
+
+    // a pinned photo is drawn at its pin: it is no twin
+    const m = await readManifest(root);
+    for (const l of m.layers)
+      if (l.kind === 'photos')
+        l.items = l.items
+          .filter((p) => p.id !== 'x-0005-r')
+          .map((p) => (p.id === 'x-0006' ? { ...p, pin: { ground: [0, 0, 0], eyeM: 1.6 } } : p));
+    await writeManifestFile(root, m);
+    calls.length = 0;
+    const again = await importRawFiles(root, [t], deps({ saveCorrections: save }));
+    expect(calls).toHaveLength(0);
+    expect(again.items[0]?.message ?? '').not.toMatch(/visual twin x-0006/);
+  });
+
   it('keeps a thermal with no twin in 3 s at its own place, and says so for a wrapped altitude', async () => {
     const root = await project();
     const t = join(dir, 'X_0005_R.JPG');
