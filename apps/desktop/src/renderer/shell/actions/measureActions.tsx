@@ -10,13 +10,14 @@ import {
   type MessageKey,
   type SubItem,
 } from '@aio/ui';
+import type { ProjectManifest, SurveyMeasurement } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { shell } from '../../shell';
+import { measureFoldersOf, needsDate } from '../../survey/measureRows';
 import { focusPoint, frameOf } from '../../survey/measureScene';
 import {
   askNewFolder,
   deleteMeasurements,
-  measureFolders,
   measureStore,
   revealMeasurement,
   setFolder,
@@ -69,6 +70,25 @@ export function flyToMeasurement(id: string): boolean {
 }
 
 const blocked = (_tg: Target, ctx: ActionCtx): string | false => measureEditBlocked(ctx);
+
+const SPANS = Symbol('spans');
+
+/**
+ * The date the marked measurements share: a capture id, null for "Needs a date", undefined when
+ * the project has no dates, or SPANS when they sit on different ones.
+ */
+function dateKeyOf(
+  ms: readonly SurveyMeasurement[],
+  manifest: ProjectManifest | null,
+): string | null | undefined | typeof SPANS {
+  if (!manifest || manifest.captures.length === 0) return undefined;
+  const keys = new Set(
+    ms.map((m) => (m.scope.kind === 'survey' && !needsDate(m, manifest) ? m.scope.capture : null)),
+  );
+  if (keys.size > 1) return SPANS;
+  const [only] = keys;
+  return keys.size === 1 ? only : undefined;
+}
 
 /** The marked measurements that are in the saved file. */
 function marked(tg: Target) {
@@ -150,23 +170,37 @@ const actions: readonly Action[] = [
     disabled: blocked,
     submenu: (tg): SubItem[] => {
       const ms = marked(tg);
-      const folders = measureFolders(measureStore.getState().file);
+      const manifest = workspace.getState().project?.manifest ?? null;
+      const key = dateKeyOf(ms, manifest);
+      const apart = key === SPANS ? { disabled: t('actions.measure.spansDates') } : null;
+      const folders = measureFoldersOf(
+        measureStore.getState().file,
+        key === SPANS ? undefined : key,
+        manifest,
+      );
       return [
         ...folders.map((f) => ({
           id: `to:${f}`,
           label: f,
           icon: 'folder' as const,
           testId: `measure-folder-to-${f}`,
-          ...(ms.length > 0 && ms.every((m) => m.folder?.trim() === f)
-            ? { disabled: t('actions.measure.inFolder') }
-            : {}),
+          ...(apart ??
+            (ms.length > 0 && ms.every((m) => m.folder?.trim() === f)
+              ? { disabled: t('actions.measure.inFolder') }
+              : {})),
         })),
-        { id: 'none', label: t('actions.measure.noFolder'), testId: 'measure-folder-to-none' },
+        {
+          id: 'none',
+          label: t('actions.measure.noFolder'),
+          testId: 'measure-folder-to-none',
+          ...apart,
+        },
         {
           id: 'new',
           label: t('actions.measure.newFolder'),
           icon: 'plus' as const,
           testId: 'measure-folder-new',
+          ...apart,
         },
       ];
     },

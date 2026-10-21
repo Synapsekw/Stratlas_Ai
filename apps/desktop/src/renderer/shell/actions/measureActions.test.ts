@@ -122,6 +122,52 @@ describe('measurement menu actions', () => {
     expect(measureStore.getState().newFolder?.ids).toEqual(['m1']);
   });
 
+  describe('with survey dates', () => {
+    const dated = {
+      ...manifest,
+      captures: [{ id: 'd1' }, { id: 'd2' }],
+    } as unknown as ProjectManifest;
+    const on = (id: string, capture: string, folder?: string) => ({
+      ...m(id, folder),
+      scope: { kind: 'survey' as const, capture },
+    });
+    const setup = (list: ReturnType<typeof on>[]) => {
+      workspace.getState().closeProject();
+      workspace.getState().openProject({ id: 'p1', root: '/p1', manifest: dated });
+      const file = { ...emptyMeasurements(), measurements: list };
+      measureStore.setState({ file, savedText: JSON.stringify(file) });
+    };
+    const move = (target: MenuTarget) =>
+      actionsFor(target, makeActionCtx({ manifest: dated })).find(
+        (i) => i.id === 'measure.moveToFolder',
+      );
+
+    it('Move to folder lists only the folders of the marked measurements date', () => {
+      setup([on('a', 'd1'), on('b', 'd1', 'Piles'), on('c', 'd2', 'Pads')]);
+      expect(move(one('a'))?.sub.map((s) => s.id)).toEqual(['to:Piles', 'none', 'new']);
+    });
+
+    it('Move to folder is disabled across dates with the reason', () => {
+      setup([on('a', 'd1', 'Piles'), on('c', 'd2', 'Pads')]);
+      const sub = move({ kind: 'measurements', ids: ['a', 'c'], clicked: 'a' })?.sub ?? [];
+      expect(sub.length).toBeGreaterThan(0);
+      for (const s of sub) expect(s.disabled, s.id).toBe(t('actions.measure.spansDates'));
+    });
+
+    it('a project with no dates still lists every folder', () => {
+      setup([]);
+      workspace.getState().closeProject();
+      workspace.getState().openProject({ id: 'p1', root: '/p1', manifest });
+      const file = {
+        ...emptyMeasurements(),
+        measurements: [m('a'), m('b', 'Fence'), m('c', 'Gate')],
+      };
+      measureStore.setState({ file, savedText: JSON.stringify(file) });
+      const sub = actionsFor(one('a'), ctx()).find((i) => i.id === 'measure.moveToFolder')?.sub;
+      expect(sub?.map((s) => s.id)).toEqual(['to:Fence', 'to:Gate', 'none', 'new']);
+    });
+  });
+
   it('a read-only package greys the edits and keeps Hide and Fly to', () => {
     measureStore.setState({ readOnly: true });
     const items = actionsFor(one('m1'), ctx({ pkg: true, canEdit: false }));
