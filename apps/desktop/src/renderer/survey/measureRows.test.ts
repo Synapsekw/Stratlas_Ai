@@ -7,7 +7,7 @@ import {
 import { measurementsGroup } from '@aio/ui';
 import { captureIndex } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
-import { buildMeasureItems, measureRowValue } from './measureRows';
+import { buildMeasureItems, measureFoldersOf, measureRowValue, needsDate } from './measureRows';
 
 vi.mock('../shell', () => ({ bridge: { call: () => Promise.resolve({ ok: false }) }, jobs: {} }));
 
@@ -173,5 +173,66 @@ describe('buildMeasureItems under a filter', () => {
     );
     // Line 1, 10 to 19, 100 to 199
     expect(items).toHaveLength(1 + 10 + 100);
+  });
+});
+
+describe('rows per survey date', () => {
+  const dated = (
+    id: string,
+    label: string,
+    capture: string,
+    over: Partial<SurveyMeasurement> = {},
+  ) => base(id, label, { scope: { kind: 'survey', capture }, ...over });
+  const mixed = stateWith([
+    dated('a', 'A', 'oct'),
+    dated('b', 'B', 'sep'),
+    base('c', 'Site one', {}),
+    dated('d', 'Gone', 'gone'),
+  ]);
+  const ids = (items: ReturnType<typeof buildMeasureItems>) =>
+    items.flatMap((i) => i.children ?? [i]).map((i) => i.measure?.id);
+
+  const byId = (id: string): SurveyMeasurement =>
+    mixed.file.measurements.find((x) => x.id === id) ?? base(id, id, {});
+
+  it("builds only the given date's rows and folders", () => {
+    expect(ids(buildMeasureItems(mixed, manifest, ws, '', 'oct'))).toEqual(['a']);
+    expect(ids(buildMeasureItems(mixed, manifest, ws, '', 'sep'))).toEqual(['b']);
+  });
+  it('keeps the same folder name under two dates apart', () => {
+    const s = stateWith([
+      dated('a', 'A', 'sep', { folder: 'Piles' }),
+      dated('b', 'B', 'oct', { folder: 'Piles' }),
+    ]);
+    const sep = buildMeasureItems(s, manifest, ws, '', 'sep');
+    const oct = buildMeasureItems(s, manifest, ws, '', 'oct');
+    expect(sep.map((i) => i.id)).toEqual(['measure-folder:sep:Piles']);
+    expect(oct.map((i) => i.id)).toEqual(['measure-folder:oct:Piles']);
+    expect(ids(sep)).toEqual(['a']);
+    expect(ids(oct)).toEqual(['b']);
+  });
+  it('Needs a date holds site measurements and those of a deleted date only', () => {
+    expect(ids(buildMeasureItems(mixed, manifest, ws, '', null)).sort()).toEqual(['c', 'd']);
+    expect(ids(buildMeasureItems(mixed, manifest, ws, '', 'oct'))).not.toContain('c');
+    expect(needsDate(byId('d'), manifest)).toBe(true);
+    expect(needsDate(byId('a'), manifest)).toBe(false);
+    const f = stateWith([base('x', 'X', { folder: 'F' })]);
+    expect(buildMeasureItems(f, manifest, ws, '', null)[0]?.id).toBe('measure-folder:needs:F');
+  });
+  it('flags antenna rows as telecom', () => {
+    const s = stateWith([dated('t', 'T', 'oct', { tool: 'azimuth' }), dated('u', 'U', 'oct')]);
+    const rows = buildMeasureItems(s, manifest, ws, '', 'oct');
+    expect(rows.find((r) => r.measure?.id === 't')?.measure?.telecom).toBe(true);
+    expect(rows.find((r) => r.measure?.id === 'u')?.measure?.telecom).toBeUndefined();
+  });
+  it("measureFoldersOf lists one date's folders", () => {
+    const s = stateWith([
+      dated('a', 'A', 'sep', { folder: 'Zed' }),
+      dated('b', 'B', 'oct', { folder: 'alpha' }),
+      dated('c', 'C', 'oct', { folder: 'Piles' }),
+    ]);
+    expect(measureFoldersOf(s.file, 'oct', manifest)).toEqual(['alpha', 'Piles']);
+    expect(measureFoldersOf(s.file, 'sep', manifest)).toEqual(['Zed']);
+    expect(measureFoldersOf(s.file, undefined)).toEqual(['alpha', 'Piles', 'Zed']);
   });
 });
