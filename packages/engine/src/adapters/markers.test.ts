@@ -92,6 +92,28 @@ describe('MarkerLayer on a MarkerView', () => {
     expect(host.querySelector('[data-markers=photo]')).toBeNull();
   });
 
+  it('rings a plate holding an edited member, and drops the ring when none is', () => {
+    const { host, view, frame } = fakeView();
+    let edited = true;
+    const layer = new MarkerLayer({
+      view,
+      kind: 'photo',
+      sites,
+      member: (i) => ({ id: String(i), edited: i === 0 && edited }),
+      open: vi.fn(),
+      selected: () => new Set(),
+    });
+    frame();
+    expect(icons(host).map((e) => e.dataset.edited)).toEqual(['true', undefined]);
+    edited = false;
+    layer.refresh();
+    frame();
+    expect(icons(host).map((e) => e.dataset.edited)).toEqual([undefined, undefined]);
+    // the ring is painted by the layer's stylesheet
+    expect(document.head.textContent).toContain(".aio-mk[data-edited='true'] .aio-mk-p");
+    layer.dispose();
+  });
+
   it('tells whether a point is on any marker over a surface', () => {
     const { surface, view, frame } = fakeView();
     expect(markersHit(surface, 100, 100)).toBe(false);

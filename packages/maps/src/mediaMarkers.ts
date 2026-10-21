@@ -7,7 +7,7 @@ import {
   type MarkerSite,
   type MarkerView,
 } from '@aio/engine';
-import { correctedPhoto, photoCorrection } from '@aio/geo';
+import { correctedPhoto, isPositionEdited, photoCorrection } from '@aio/geo';
 import { shiftLocal, type AssetRef, type PanoRef, type PhotoRef, type Vec3 } from '@aio/schema';
 import { dateShiftOf, type Workspace } from '@aio/workspace';
 import type { Map as MapLibreMap } from 'maplibre-gl';
@@ -104,6 +104,8 @@ interface Placed<T> {
   layerId: string;
   item: T;
   pos: Vec3;
+  /** A photo moved by hand (Edit position); a pinned photo never is (its pin is its place). */
+  edited?: boolean;
 }
 
 export interface MapMediaMarkersOptions {
@@ -169,8 +171,11 @@ export class MapMediaMarkers {
       const shift = m ? dateShiftOf(m, l.id) : null;
       if (l.kind === 'photos') {
         for (const item of l.items) {
-          const c = correctedPhoto(item, photoCorrection(s.orientation, l.id, item.id));
-          if (c.pos) photos.push({ layerId: l.id, item, pos: shiftLocal(c.pos, shift) });
+          const fix = photoCorrection(s.orientation, l.id, item.id);
+          const c = correctedPhoto(item, fix);
+          if (!c.pos) continue;
+          const edited = !item.pin && isPositionEdited(fix);
+          photos.push({ layerId: l.id, item, pos: shiftLocal(c.pos, shift), edited });
         }
       } else if (l.kind === 'panoramas') {
         for (const item of l.items.filter(hasPos))
@@ -213,7 +218,13 @@ export class MapMediaMarkers {
     const p = this.photos[i];
     if (!p) return { id: '' };
     const full = this.o.url(p.item.src);
-    return { id: p.item.id, takenAt: p.item.takenAt, full, thumb: thumbOf(full) };
+    return {
+      id: p.item.id,
+      takenAt: p.item.takenAt,
+      full,
+      thumb: thumbOf(full),
+      edited: p.edited,
+    };
   }
 
   private panoMember(i: number): MarkerMember {

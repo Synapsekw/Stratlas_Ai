@@ -198,6 +198,20 @@ describe('MapMediaMarkers', () => {
     m.dispose();
   });
 
+  it('marks a photo whose position was edited, not a turned or pinned one', () => {
+    const { map, container, proj } = fakeMap();
+    const m = new MapMediaMarkers({ map, proj, url });
+    const { s } = state();
+    const moved = { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, 5, 0] };
+    const turned = { yawDeg: 10, pitchDeg: 0, rollDeg: 0 };
+    const edited = () => shown(container, 'photo').map((e) => e.dataset.edited);
+    m.update({ ...s, orientation: { photos: { ph: { gps: moved, pinned: moved } } } } as never);
+    expect(edited()).toEqual(['true', undefined]);
+    m.update({ ...s, orientation: { photos: { ph: { gps: turned } } } } as never);
+    expect(edited()).toEqual([undefined, undefined]);
+    m.dispose();
+  });
+
   it('names the item under a point', () => {
     const { map, proj } = fakeMap();
     const m = new MapMediaMarkers({ map, proj, url });
