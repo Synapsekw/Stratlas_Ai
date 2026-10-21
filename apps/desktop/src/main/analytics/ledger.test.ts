@@ -103,4 +103,13 @@ describe('ledger', () => {
     );
     expect(await readLedger(dir, 'chimney')).toHaveLength(1);
   });
+
+  it('an append after a torn last line keeps earlier entries and the new one', async () => {
+    const a = entry('accepted', 0.9);
+    const b = entry('rejected', 0.3);
+    await appendLedger(dir, a, jpeg);
+    await appendFile(join(dir, 'chimney.jsonl'), '{"detectorId":"chim');
+    await appendLedger(dir, b, jpeg);
+    expect(await readLedger(dir, 'chimney')).toEqual([a, b]);
+  });
 });

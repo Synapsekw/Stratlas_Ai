@@ -12,6 +12,8 @@ const ID_RULE = /^[a-z0-9][a-z0-9-]{1,60}$/;
 const MAX_CROP_BYTES = 2 * 1024 * 1024;
 const MIN_SCORED = 20;
 
+export const isLedgerId = (id: string): boolean => ID_RULE.test(id);
+
 function safeId(id: string): string {
   if (!ID_RULE.test(id)) throw new Error('That detector id is not a valid file name.');
   return id;
@@ -32,7 +34,12 @@ export async function appendLedger(dir: string, e: LedgerEntry, cropJpeg: Buffer
       .map((m) => (m ? Number(m[1]) : 0));
     const n = Math.max(0, ...taken) + 1;
     await writeFile(join(cropDir, `${n}.jpg`), cropJpeg, { flag: 'wx' });
-    await appendFile(join(dir, `${id}.jsonl`), `${JSON.stringify(entry)}\n`, 'utf8');
+    const file = join(dir, `${id}.jsonl`);
+    // A crash can leave a last line without its newline; end it so this entry starts its own line.
+    const existing = await readFile(file).catch(() => null);
+    const lead =
+      existing && existing.length > 0 && existing[existing.length - 1] !== 0x0a ? '\n' : '';
+    await appendFile(file, `${lead}${JSON.stringify(entry)}\n`, 'utf8');
   };
   const next = queue.then(run, run);
   queue = next.catch(() => undefined);
