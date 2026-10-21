@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const s = vi.hoisted(() => ({
   compare: Object.create(null) as Record<string, unknown>,
   measure: {} as {
+    status: 'idle' | 'loading' | 'ready' | 'error';
     settings: SurveySettings;
     readOnly: boolean;
     selected: string[];
@@ -83,6 +84,7 @@ vi.stubGlobal(
 );
 
 const { VolumesView } = await import('./VolumesView');
+const { takeVolumesPick } = await import('./volumesPick');
 
 const NOW = '2026-10-05T00:00:00.000Z';
 const CAPTURES = [
@@ -186,6 +188,7 @@ beforeEach(() => {
     designs: [],
   };
   s.measure = {
+    status: 'ready',
     settings,
     readOnly: false,
     selected: [],
@@ -219,6 +222,19 @@ describe('VolumesView', () => {
       project: 'C:/p',
       values: { job: 'volumetric/job.json' },
     });
+  });
+
+  it('looks for the job file only once the measurements are read (no 404 while loading)', async () => {
+    s.measure.status = 'loading';
+    render();
+    await flush();
+    expect(fetch).not.toHaveBeenCalled();
+    // read, with piles: nothing to look for either
+    s.measure.status = 'ready';
+    s.measure.file = { measurements: [pile('a')] };
+    render();
+    await flush();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('Detect piles is greyed with why when the job file is missing', async () => {
@@ -495,6 +511,8 @@ describe('VolumesView', () => {
     expect(q('[data-testid="volume-detail"]')).toBeNull();
     click(qa('[data-testid="volumes-pile"]')[1]);
     expect(calls.select).toHaveBeenCalledWith(['b'], 'b');
+    // the pick is the view's own: the sidebar leaves the view in front
+    expect(takeVolumesPick('b')).toBe(true);
     s.measure.focus = 'b';
     s.measure.selected = ['b'];
     render();

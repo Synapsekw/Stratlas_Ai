@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
+import { pickInVolumesView } from '../../survey/volumesPick';
 import { followMeasureTool, followRoadMeasure } from './measureFollow';
 import { personToolLive } from './tabsModel';
 import { createWorkbenchStore } from './workbenchStore';
@@ -82,5 +83,20 @@ describe('followMeasureTool', () => {
     store.setState({ tool: null });
     expect(personToolLive(bench.getState().tabs)).toBe(false);
     again();
+  });
+
+  it("a pile picked in the Volumes view's list stays there; a pick elsewhere brings Measure", () => {
+    const bench = createWorkbenchStore(null);
+    const store = measure();
+    const off = followMeasureTool(store as never, bench);
+    bench.getState().show('volumes');
+    // the view's own detail card shows the pile
+    pickInVolumesView('p1');
+    store.setState({ focus: 'p1' });
+    expect(bench.getState().front).toBe('volumes');
+    // another pile picked in the tree: the Measure tab comes forward, as before
+    store.setState({ focus: 'p2' });
+    expect(bench.getState().front).toBe('measure');
+    off();
   });
 });

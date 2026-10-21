@@ -13,6 +13,7 @@ import { hydro } from '../../survey/hydroStore';
 import { measureFavourites, type FavouritesState } from '../../survey/measureCatalogue';
 import { measureStore, stopTool, type MeasureState } from '../../survey/measureStore';
 import { overlays, setOverlaysOpen } from '../../survey/overlaysStore';
+import { takeVolumesPick } from '../../survey/volumesPick';
 import { openQaPanel, qaStore } from '../../survey/qaStore';
 import { followTool, showBench } from './followTool';
 import type { TabId } from './tabsModel';
@@ -46,7 +47,7 @@ export function showMeasureBench(bench: StoreApi<WorkbenchState> = workbench): v
  * front unless an issue is being edited); stopping one that opened the tab closes it again. A
  * drawing for another panel (a one-shot shape, or one started from a survey panel's tab) leaves
  * that panel in front. Opening the measurements list, or picking a measurement while no tool
- * draws, brings the Measure tab forward. Closing the live tab with its X stops the drawing
+ * draws, brings the Measure tab forward (not a pile picked in the Volumes view's list, which shows it). Closing the live tab with its X stops the drawing
  * (`linkLiveTab`). Returns unsubscribe.
  */
 export function followMeasureTool(
@@ -73,7 +74,7 @@ export function followMeasureTool(
       // a telecom tool stops on its last pick: its reading stays in view
       if (isTelecomTool(prev.tool.tool) && s.focus && s.focus !== focusAtStart) follow();
     }
-    if (!s.tool && s.focus && s.focus !== prev.focus) follow();
+    if (!s.tool && s.focus && s.focus !== prev.focus && !takeVolumesPick(s.focus)) follow();
   });
   return () => {
     offTab();

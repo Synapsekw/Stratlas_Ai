@@ -82,6 +82,18 @@ describe('MeasureCard', () => {
       expect(q(gone), gone).toBeNull();
   });
 
+  it('a live card is no landmark (it sits in a pile row, beside its detail card of one name)', () => {
+    mount(<MeasureCard model={MODEL} variant="live" />);
+    const live = q('measure-card');
+    expect(live?.tagName).toBe('DIV');
+    expect(live?.hasAttribute('aria-label')).toBe(false);
+    act(() => root?.unmount());
+    host.remove();
+    mount(<MeasureCard model={MODEL} variant="detail" />);
+    expect(q('measure-card')?.tagName).toBe('SECTION');
+    expect(q('measure-card')?.getAttribute('aria-label')).toBe(MODEL.name);
+  });
+
   it('detail variant shows every part in order', () => {
     mount(
       <MeasureCard

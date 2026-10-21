@@ -32,6 +32,7 @@ import {
   useMeasure,
 } from './measureStore';
 import { setSeriesFailed, useInventory } from './useInventory';
+import { pickInVolumesView } from './volumesPick';
 import './compare.css';
 import './volumesView.css';
 
@@ -51,6 +52,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const templates = useMeasure((s) => s.templates);
   const focus = useMeasure((s) => s.focus);
   const fileReadOnly = useMeasure((s) => s.readOnly);
+  const read = useMeasure((s) => s.status === 'ready');
   const lookOnly = useAnnotateReadOnly();
   const readOnly = lookOnly || fileReadOnly;
   const status = useCompare((s) => s.status);
@@ -109,10 +111,11 @@ export function VolumesView({ className }: { className?: string }): ReactElement
     };
   }, [status, lookOnly, captures.length, piles, runFor]);
 
-  // Detect piles runs from the stockpile job file: offered only when the project has one
+  // Detect piles runs from the stockpile job file: offered only when the project has one, looked
+  // for once the measurements are read and none is a pile (a project with piles fetches nothing)
   const [hasJob, setHasJob] = useState<boolean | null>(null);
   useEffect(() => {
-    if (projectId === null || allPiles.length > 0) return;
+    if (projectId === null || !read || allPiles.length > 0) return;
     let gone = false;
     void fetch(assetUrl(projectId, { path: PILE_JOB }))
       .then((r) => r.ok)
@@ -123,7 +126,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
     return () => {
       gone = true;
     };
-  }, [projectId, allPiles.length]);
+  }, [projectId, read, allPiles.length]);
 
   if (allPiles.length === 0) {
     const detectWhy = readOnly
@@ -240,6 +243,8 @@ export function VolumesView({ className }: { className?: string }): ReactElement
               id={m.id}
               pressed={m.id === focused?.id}
               onPick={() => {
+                // shown in the detail card below: the sidebar stays on this view
+                pickInVolumesView(m.id);
                 select([m.id], m.id);
               }}
             >

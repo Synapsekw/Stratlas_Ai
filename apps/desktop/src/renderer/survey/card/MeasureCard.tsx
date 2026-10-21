@@ -49,13 +49,15 @@ export function MeasureCard(p: {
   const slots = p.slots ?? {};
   const report = variant === 'report';
   const detail = variant === 'detail';
+  // a live card sits in a pile row (a button) beside the detail card of the same name: no landmark
+  const Box = variant === 'live' ? 'div' : 'section';
   return (
-    <section
+    <Box
       className="mc"
       data-variant={variant}
       data-testid={p.testId ?? 'measure-card'}
       data-measure-id={p.measureId}
-      aria-label={model.name}
+      aria-label={variant === 'live' ? undefined : model.name}
     >
       <header className="mc-head">
         <span className="mc-icon">
@@ -88,7 +90,7 @@ export function MeasureCard(p: {
       {(detail || report) && slots.chart && <div className="mc-chart">{slots.chart}</div>}
       {detail && slots.detail && <div className="mc-detail">{slots.detail}</div>}
       {detail && p.actions && <div className="mc-actions">{p.actions}</div>}
-    </section>
+    </Box>
   );
 }
 
