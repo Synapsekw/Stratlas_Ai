@@ -48,6 +48,9 @@ FRACTIONS_WARNING = "model answered in fractions"
 
 Box = tuple[float, float, float, float]
 
+# The server is on loopback: never let HTTP_PROXY or a system proxy carry a photo elsewhere.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 
 @dataclass
 class Candidate:
@@ -112,7 +115,7 @@ class VlmClient:
             self.url + "/v1/chat/completions", data=json.dumps(body).encode(), headers=headers
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            with _OPENER.open(req, timeout=self.timeout) as r:
                 data = json.load(r)
         except urllib.error.HTTPError as e:
             raise VlmError(f"server answered HTTP {e.code}") from e

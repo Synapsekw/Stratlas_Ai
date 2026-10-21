@@ -205,3 +205,15 @@ def test_api_key_is_sent_as_bearer():
         VlmClient(fake.url).chat(b"x", "hi")
     assert fake.headers[0]["Authorization"] == "Bearer k3y"
     assert "Authorization" not in fake.headers[1]
+
+
+def test_requests_bypass_any_proxy(monkeypatch):
+    # An unreachable proxy: if the call went through it, the chat would fail.
+    for var in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.setenv(var, "http://127.0.0.1:9")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    with FakeVlm(lambda req: text_response("[]")) as fake:
+        text, _ = VlmClient(fake.url).chat(b"x", "hi")
+    assert text == "[]"
+    assert len(fake.requests) == 1
