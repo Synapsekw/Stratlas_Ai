@@ -11,7 +11,7 @@ import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, localeOf } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
 import type { SurveyMeasurement } from '@aio/schema';
-import { inventoryPiles, pileSeries, type StackRow } from '@aio/survey';
+import { inventoryPiles, pileSeries, surfacesStamp, type StackRow } from '@aio/survey';
 import { Button, EmptyState, Tip, useT } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
@@ -55,6 +55,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const readOnly = lookOnly || fileReadOnly;
   const status = useCompare((s) => s.status);
   const captures = useCompare((s) => s.captures);
+  const surfaces = useCompare((s) => s.surfaces);
   const root = useWorkspace((s) => s.project?.root ?? null);
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const pkg = useShell((s) => s.pkg !== null);
@@ -73,10 +74,11 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const names = useMemo(() => new Map(piles.map((m) => [m.id, m.label])), [piles]);
 
   // each pile's volume per survey date, worked out when shown (carried piles keep the kit's);
-  // only the piles changed since their last run are run again
+  // only the piles changed since their last run are run again, every pile once the dates or the
+  // prepared surfaces change (a run made before Prepare surfaces is redone)
   const ran = useRef(new Map<string, string>());
   const ranFor = useRef('');
-  const runFor = `${status}|${String(lookOnly)}|${captures.map((c) => c.id).join(',')}`;
+  const runFor = `${status}|${String(lookOnly)}|${captures.map((c) => c.id).join(',')}|${surfacesStamp(surfaces)}`;
   useEffect(() => {
     if (ranFor.current !== runFor) {
       ran.current.clear();
@@ -273,7 +275,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
 
       {stack.length > 0 && (
         <section className="vd-time vv-inventory" data-testid="volumes-inventory">
-          <h4 className="vd-sub">{t('vol.inventory')}</h4>
+          <h3 className="vd-sub">{t('vol.inventory')}</h3>
           {charted.length > 0 && (
             <TimeChart
               data={{ kind: 'stack', rows: charted, names }}

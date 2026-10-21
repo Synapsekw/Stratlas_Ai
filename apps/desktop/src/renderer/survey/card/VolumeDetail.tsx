@@ -21,6 +21,7 @@ import {
   sideKey,
   sideOptions,
   sideFor,
+  surfacesStamp,
   swapItem,
   volumeRows,
   type SideOption,
@@ -154,13 +155,15 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
       (m.series ?? []).some((r) => r.item === first.id && r.carried !== undefined));
   // the volume per survey date, worked out when shown (a carried pile keeps the kit's history)
   const points = m.points;
-  // what a series run is for: the item, the outline (its edits move updatedAt) and the dates
+  // what a series run is for: the item, the outline (its edits move updatedAt), the dates and the
+  // prepared surfaces (a run made before Prepare surfaces is redone once they are there)
   const seriesKey = [
     m.id,
     JSON.stringify(first ?? null),
     String(points.length),
     m.updatedAt ?? m.createdAt,
     String(captures.length),
+    surfacesStamp(surfaces),
   ].join('|');
   useEffect(() => {
     // a read-only project works its dates out too, held in memory (a look-only reviewer's
@@ -830,7 +833,7 @@ function OverTime({
     formatQuantity(tonnes * 1000, 'mass', units, settings.precision, locale);
   return (
     <section className="vd-time" aria-label={t('vol.overTime')}>
-      <h4 className="vd-sub">{t('vol.overTime')}</h4>
+      <h3 className="vd-sub">{t('vol.overTime')}</h3>
       <TimeChart data={{ kind: 'volume', rows }} units={units} precision={settings.precision} />
       <table className="vd-time-table" data-testid="vol-time-table">
         <caption className="sr-only">{t('vol.card.overTimeTable')}</caption>

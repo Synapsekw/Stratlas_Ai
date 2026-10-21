@@ -1,7 +1,9 @@
 /* The volumes view (volumetric parity W3/W4): the folder filter, the piles as live cards, the one in
    the detail card, the current totals and the site inventory over time. */
+/* every row its content height: in the bench's fixed height the view scrolls, never a row */
 .vv {
   display: grid;
+  grid-auto-rows: max-content;
   align-content: start;
   gap: var(--sp-5);
   padding: var(--sp-4) var(--sp-5) var(--sp-6);
@@ -30,7 +32,8 @@
   list-style: none;
   border: 1px solid var(--line-soft);
   border-radius: var(--r-6);
-  overflow: hidden;
+  /* clips the rows to the corners without making a scroll container (one would shrink to 0) */
+  overflow: clip;
 }
 .vv-piles > li + li {
   border-top: 1px solid var(--line-soft);

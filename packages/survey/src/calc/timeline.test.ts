@@ -1,6 +1,6 @@
 import type { ComparisonResult } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { seriesDate, seriesKeyOf, stackRows, volumeRows } from './timeline';
+import { seriesDate, seriesKeyOf, stackRows, surfacesStamp, volumeRows } from './timeline';
 
 const at = <T>(a: readonly T[], i: number): T => {
   const v = a[i];
@@ -82,6 +82,17 @@ describe('stackRows', () => {
     expect(out[0]).toMatchObject({ totalM3: 120, missing: [] });
     expect(out[1]).toMatchObject({ totalM3: 50, missing: ['b'] });
     expect(at(out, 1).parts).toEqual([{ id: 'a', valueM3: 50 }]);
+  });
+});
+
+describe('surfacesStamp: the prepared surfaces a series run used', () => {
+  it('changes when a surface is prepared, re-prepared or removed, not with their order', () => {
+    const a = { id: 's1', fingerprint: 'f1' };
+    const b = { id: 's2', fingerprint: 'f2' };
+    expect(surfacesStamp([])).toBe('');
+    expect(surfacesStamp([a, b])).toBe(surfacesStamp([b, a]));
+    expect(surfacesStamp([a])).not.toBe(surfacesStamp([a, b]));
+    expect(surfacesStamp([a, b])).not.toBe(surfacesStamp([a, { ...b, fingerprint: 'f3' }]));
   });
 });
 

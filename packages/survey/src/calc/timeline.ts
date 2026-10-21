@@ -10,6 +10,16 @@ export const seriesKeyOf = (
   r: Pick<ComparisonResult, 'item' | 'toCapture' | 'fromCapture'>,
 ): string => `${r.item} ${seriesDate(r)}`;
 
+/**
+ * What a volume-over-time run was worked out on: the prepared surfaces, by id and fingerprint
+ * (order aside). A run made before Prepare surfaces, or on surfaces since re-prepared, is redone.
+ */
+export const surfacesStamp = (surfaces: readonly { id: string; fingerprint?: string }[]): string =>
+  surfaces
+    .map((x) => `${x.id}:${x.fingerprint ?? ''}`)
+    .sort()
+    .join(',');
+
 export interface TimeRow {
   capture: string;
   date: string;

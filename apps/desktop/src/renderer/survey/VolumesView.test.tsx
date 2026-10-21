@@ -460,6 +460,35 @@ describe('VolumesView', () => {
     });
   });
 
+  it('works every pile out again once Prepare surfaces brings surfaces', async () => {
+    s.measure.file.measurements = [pile('a'), pile('b')];
+    render();
+    await flush();
+    expect(calls.computeSeries.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
+    calls.computeSeries.mockClear();
+    // nothing changed: no run
+    render();
+    await flush();
+    expect(calls.computeSeries).not.toHaveBeenCalled();
+    // the prepare job read the surfaces back: the runs made without them are redone
+    s.compare = {
+      ...s.compare,
+      surfaces: [
+        { id: 's1', capture: 'c1', fingerprint: 'f1' },
+        { id: 's2', capture: 'c2', fingerprint: 'f2' },
+      ],
+    };
+    render();
+    await flush();
+    expect(calls.computeSeries.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
+  });
+
+  it('heads the inventory one level under the sidebar heading (h2), never skipping one', () => {
+    s.measure.file.measurements = [pile('a', { results: [result(10, 'c2')] })];
+    render();
+    expect(q('[data-testid="volumes-inventory"] .vd-sub')?.tagName).toBe('H3');
+  });
+
   it('clicking a pile focuses it in the detail card', () => {
     s.measure.file.measurements = [pile('a'), pile('b')];
     render();

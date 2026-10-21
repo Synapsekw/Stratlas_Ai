@@ -298,6 +298,13 @@ describe('VolumeDetail', () => {
     }
   });
 
+  it('heads Volume over time one level under the sidebar heading (h2), never skipping one', () => {
+    show(pile({ series: [result({ toCapture: 'c1', fingerprint: 'f1' })] }));
+    const sub = host.querySelector('.vd-sub');
+    expect(sub?.textContent).toBe('Volume over time');
+    expect(sub?.tagName).toBe('H3');
+  });
+
   it('over-time table shows change and tonnage', () => {
     const series = [
       result({ toCapture: 'c1', netM3: 3070, totalM3: 3070, fingerprint: 'f1' }),
@@ -590,6 +597,29 @@ describe('VolumeDetail', () => {
     expect(volumeStatusLine(result(), idle).text).toBe(
       'The volume over time could not be worked out. Try Recompute.',
     );
+  });
+
+  it('works the volume over time out again once Prepare surfaces brings surfaces', async () => {
+    s.compare.surfaces = [];
+    const m = pile();
+    show(m);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(calls.computeSeries).toHaveBeenCalledTimes(1);
+    // the same inputs again: no second run
+    await act(async () => {
+      root?.render(<VolumeDetail m={m} />);
+      await Promise.resolve();
+    });
+    expect(calls.computeSeries).toHaveBeenCalledTimes(1);
+    // the prepare job read the surfaces back: the run made without them is redone
+    s.compare.surfaces = [tiles('s1', 'c1'), tiles('s2', 'c2')];
+    await act(async () => {
+      root?.render(<VolumeDetail m={m} />);
+      await Promise.resolve();
+    });
+    expect(calls.computeSeries).toHaveBeenCalledTimes(2);
   });
 
   it('a prepare note that nothing is left is neutral; a failure warns', async () => {
