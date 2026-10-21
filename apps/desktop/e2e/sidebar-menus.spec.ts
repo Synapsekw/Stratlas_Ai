@@ -1,7 +1,8 @@
 /**
  * Right-click menus across the Datasets sidebar (15 Oct 2026): empty space, a date folder, a group
  * heading and a row of each kind the demo holds, each opened by right-click and by Shift+F10, show
- * their items and run one action each. A photo pin on the map opens the photo menu with Align to.
+ * their items and run one action each. A photo pin on the map opens the photo menu with Align to
+ * and Edit position.
  * Synthetic data only; off-screen; zero network.
  */
 import type { Locator, Page } from '@playwright/test';
@@ -278,4 +279,5 @@ test('a photo pin on the map opens the photo menu with Align to', async ({ demoP
   if (await list.isVisible().catch(() => false)) await list.getByRole('menuitem').first().click();
   await expect(win.getByTestId('photo-menu')).toBeVisible();
   await expect(win.getByTestId('photo-menu-alignTo')).toBeVisible();
+  await expect(win.getByTestId('ctx-item-photos.editPosition')).toBeVisible();
 });
