@@ -632,6 +632,7 @@ const websiteStorage = createWebsiteStorage({
   dir: join(app.getPath('userData'), 'updates', 'website'),
   dataRoot: () => settings.current().dataRoot,
   currentVersion: app.getVersion(),
+  acquireRepair: () => updateWorkGate.acquire(),
   client: websiteClient,
   verifyInstaller: updates.verifyWebsiteInstaller,
 });

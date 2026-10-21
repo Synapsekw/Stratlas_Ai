@@ -34,7 +34,11 @@ export interface WebsiteUpdaterDeps {
     signal: AbortSignal,
     progress: (received: number, total: number) => void,
   ) => Promise<void>;
-  verify: (check: WebsiteUpdateCheck, signal: AbortSignal) => Promise<void>;
+  verify: (
+    check: WebsiteUpdateCheck,
+    signal: AbortSignal,
+    repairInactive?: boolean,
+  ) => Promise<void>;
   activate: (check: WebsiteUpdateCheck) => Promise<() => Promise<void>>;
   recover: (stage: WebsiteStage) => Promise<boolean>;
   recoveryAvailable: () => Promise<boolean>;
@@ -168,7 +172,7 @@ export function createWebsiteUpdater(d: WebsiteUpdaterDeps) {
       current(c);
     }
     send({ phase: 'verifying' });
-    await d.verify(check, c.signal);
+    await d.verify(check, c.signal, true);
     current(c);
     const complete: WebsiteStage = { ...stage, phase: 'ready' };
     await d.store.write(complete);

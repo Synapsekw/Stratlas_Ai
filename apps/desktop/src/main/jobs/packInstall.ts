@@ -709,6 +709,8 @@ export interface InstallOptions {
   /** Replace an installed pack of the same version (the person said yes). */
   replace?: boolean;
   signal?: AbortSignal;
+  /** Optional exclusive activation lease, acquired after extraction and verification; always released. */
+  beforeActivate?: () => Promise<() => void>;
   onProgress?: (p: PackInstallProgress) => void;
   /** Free bytes for `<data folder>/runtime` (tests); `freeBytesOf` by default. */
   freeBytes?: (dir: string) => Promise<number | null>;
@@ -753,6 +755,7 @@ export async function installPackArchive(
     o.onProgress?.({ ...last });
   };
   let tmp: string | null = null;
+  let releaseActivation: (() => void) | undefined;
   try {
     o.assertWritable?.(runtimeDir, 'pipeline pack install');
     const st = await stat(archive).catch(() => null);
@@ -808,6 +811,8 @@ export async function installPackArchive(
     });
     if (o.signal?.aborted) throw cancelled();
 
+    releaseActivation = await o.beforeActivate?.();
+    if (o.signal?.aborted) throw cancelled();
     report({ phase: 'activate' }, true);
     const dest = join(runtimeDir, unpacked.top);
     const replaced = await existing(unpacked.top);
@@ -844,6 +849,7 @@ export async function installPackArchive(
     report({ phase: problem.code === 'cancelled' ? 'cancelled' : 'failed' }, true);
     return { ok: false, ...problem };
   } finally {
+    releaseActivation?.();
     if (tmp) await removeDir(tmp).catch(() => undefined);
   }
 }

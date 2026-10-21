@@ -43,6 +43,19 @@ export async function readManagedSelection(
 export async function managedKitRecovery(root: string, version: string) {
   return (await read(root)).apps[version]?.previous !== undefined;
 }
+/** Repair is destructive: unreadable selection state protects every digest, across app versions. */
+export async function managedKitProtected(root: string, sha256: string): Promise<boolean> {
+  try {
+    const raw = await readJson(file(root));
+    if (raw === undefined) return false;
+    const selections = Selections.parse(raw);
+    return Object.values(selections.apps).some(
+      (entry) => entry.current.sha256 === sha256 || entry.previous?.sha256 === sha256,
+    );
+  } catch {
+    return true;
+  }
+}
 export async function selectManagedKit(
   root: string,
   version: string,

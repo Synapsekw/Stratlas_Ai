@@ -18,6 +18,7 @@ import {
   selectManagedKit,
   managedKitSnapshot,
   restoreManagedKitSnapshot,
+  managedKitProtected,
   type ManagedKit,
 } from './managedKits';
 import type { WebsiteStage } from './websiteUpdater';
@@ -31,6 +32,8 @@ export function createWebsiteStorage(d: {
   dir: string;
   dataRoot: () => string;
   currentVersion: string;
+  /** Shared main-process work gate: repair holds it only during final directory replacement. */
+  acquireRepair?: () => (() => void) | null;
   client: Pick<WebsiteClient, 'grant' | 'binary'>;
   verifyInstaller: (path: string, version: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
@@ -86,7 +89,7 @@ export function createWebsiteStorage(d: {
         throw new Error('A processing kit file failed verification.');
     }
   }
-  async function verify(check: WebsiteUpdateCheck, signal: AbortSignal) {
+  async function verify(check: WebsiteUpdateCheck, signal: AbortSignal, repairInactive = false) {
     const root = d.dataRoot();
     for (const artifact of [check.app, check.pipeline]) {
       signal.throwIfAborted();
@@ -110,7 +113,43 @@ export function createWebsiteStorage(d: {
           throw new Error('The processing kit archive could not be verified.');
       }
       signal.throwIfAborted();
-      await verifyKit(root, ref, check.targetAppVersion, check.pipeline);
+      try {
+        await verifyKit(root, ref, check.targetAppVersion, check.pipeline);
+      } catch (error) {
+        if (!repairInactive) throw error;
+        signal.throwIfAborted();
+        if (await managedKitProtected(root, ref.sha256))
+          throw new Error(
+            'A selected or previous processing kit cannot be repaired in the background.',
+            { cause: error },
+          );
+        const result = await installPackArchive(path(check.pipeline), {
+          dataRoot: managedKitDataRoot(root, ref),
+          app: { version: check.targetAppVersion },
+          platform: 'win32-x64',
+          signal,
+          replace: true,
+          beforeActivate: async () => {
+            const release = d.acquireRepair?.();
+            if (!release)
+              throw new Error('Finish active work before repairing the staged processing kit.');
+            try {
+              signal.throwIfAborted();
+              if (root !== d.dataRoot() || (await managedKitProtected(root, ref.sha256)))
+                throw new Error('The processing kit selection changed during repair.');
+              return release;
+            } catch (error) {
+              release();
+              throw error;
+            }
+          },
+        });
+        if (!result.ok || result.version !== ref.version)
+          throw new Error('The inactive staged processing kit could not be repaired.', {
+            cause: error,
+          });
+        await verifyKit(root, ref, check.targetAppVersion, check.pipeline);
+      }
     }
     signal.throwIfAborted();
     if (root !== d.dataRoot()) throw new Error('The data folder changed during verification.');

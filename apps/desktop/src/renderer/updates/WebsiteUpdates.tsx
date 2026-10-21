@@ -234,7 +234,6 @@ export function WebsiteUpdateNotice() {
       className="nav-item"
       data-testid="website-update-ready"
       aria-label="Updates ready. View update details"
-      title="Updates ready. View update details"
       onClick={() => {
         shell.getState().openSettingsPage('about');
       }}
