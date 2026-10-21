@@ -144,6 +144,7 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'theme',
         'updateCheck',
         'updateUrl',
+        'websiteAutoUpdate',
       ].sort(),
     );
   });

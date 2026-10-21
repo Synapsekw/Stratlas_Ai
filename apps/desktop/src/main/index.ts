@@ -240,6 +240,12 @@ import { createPackManager } from './packs/manager';
 import { buildSource, findLatestBuild } from './packs/pmtiles';
 import { restoreArgs } from './update/rollback';
 import { createUpdateService, runRestore } from './update/service';
+import { createUpdateWorkGate } from './update/workGate';
+import { createWebsiteClient } from './update/websiteClient';
+import { createWebsiteStorage } from './update/websiteStorage';
+import { createWebsiteUpdater } from './update/websiteUpdater';
+import { managedKitRecovery, rollbackManagedKit } from './update/managedKits';
+import { createWebsiteUpdateFixture } from './update/websiteFixture';
 import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode, windowSize } from './windowMode';
 import { installMenu } from './menu';
 import { appUserModelId } from './appUserModel';
@@ -496,7 +502,12 @@ function applyTheme(theme: Settings['theme']): void {
 }
 
 function broadcast<
-  E extends 'packs:job' | 'update:progress' | 'pipelinePack:progress' | 'odm:progress',
+  E extends
+    | 'packs:job'
+    | 'update:progress'
+    | 'websiteUpdate:status'
+    | 'pipelinePack:progress'
+    | 'odm:progress',
 >(event: E, payload: IpcEvent<E>): void {
   const parsed = ipcEvents[event].safeParse(payload);
   if (!parsed.success) return;
@@ -568,7 +579,17 @@ const onlineTiles = createOnlineTiles({
 
 // Updates (ADR 0003): from a file, or from the optional feed only when the person presses Check
 // now; a copy of this version is kept before any installer runs, for rollback.
+let websiteFixtureBusy = false;
+const updateWorkGate = createUpdateWorkGate(
+  () =>
+    websiteFixtureBusy ||
+    jobs.hasActiveWork() ||
+    panoLane.running() !== null ||
+    panoLane.waiting().length > 0 ||
+    packs.jobs().some((p) => p.state === 'running' || p.state === 'verifying'),
+);
 const updates = createUpdateService({
+  acquireRestart: () => updateWorkGate.acquire(),
   settings: () => settings.current(),
   settled: () => settings.settled(),
   log: (level, line) => {
@@ -579,6 +600,91 @@ const updates = createUpdateService({
   },
   notes: releaseNotes,
 });
+
+const websitePolicy = () => ({
+  enabled: settings.current().websiteAutoUpdate !== false,
+  offline: settings.current().offlineOnly === true,
+});
+const websiteClient = createWebsiteClient({
+  allowed: () => websitePolicy().enabled && !websitePolicy().offline,
+  fetch: (url, init) => session.fromPartition('quadrion-website-updates').fetch(url, init),
+  secret: registerSecret,
+  vault: {
+    read: () => new Entry(brand.appId, 'website-refresh').getPassword(),
+    write: (value) => {
+      const entry = new Entry(brand.appId, 'website-refresh');
+      if (value !== null) entry.setPassword(value);
+      else {
+        try {
+          entry.deletePassword();
+        } catch {
+          /* An absent entry is already signed out. */
+        }
+        if (entry.getPassword()) {
+          entry.setPassword('');
+          if (entry.getPassword()) throw new Error('The website credential could not be removed.');
+        }
+      }
+    },
+  },
+});
+const websiteStorage = createWebsiteStorage({
+  dir: join(app.getPath('userData'), 'updates', 'website'),
+  dataRoot: () => settings.current().dataRoot,
+  currentVersion: app.getVersion(),
+  client: websiteClient,
+  verifyInstaller: updates.verifyWebsiteInstaller,
+});
+const websiteUpdater =
+  !app.isPackaged &&
+  e2eRun &&
+  Boolean(process.env.QUADRION_USER_DATA) &&
+  process.env.QUADRION_WEBSITE_UPDATE_TEST === '1'
+    ? createWebsiteUpdateFixture({
+        policy: websitePolicy,
+        gate: updateWorkGate,
+        setBusy: (busy) => {
+          websiteFixtureBusy = busy;
+        },
+        emit: (status) => {
+          broadcast('websiteUpdate:status', status);
+        },
+      })
+    : createWebsiteUpdater({
+        currentVersion: app.getVersion(),
+        unsupportedReason:
+          process.env.QUADRION_PIPELINE_PACK || process.env.QUADRION_PIPELINE_PYTHON
+            ? 'Website installation is unavailable while processing tools are overridden by the environment.'
+            : updates.websiteUnsupported,
+        policy: websitePolicy,
+        pipelineVersion: async () => {
+          const found = await findPack({
+            dataRoot: settings.current().dataRoot,
+            env: process.env,
+            app: packApp,
+          });
+          return found.pack?.version ?? null;
+        },
+        client: websiteClient,
+        store: websiteStorage.store,
+        download: (artifact, signal, progress) =>
+          websiteStorage.download(artifact, signal, progress),
+        verify: websiteStorage.verify,
+        activate: (check) => websiteStorage.activate(check),
+        recover: (stage) => websiteStorage.recover(stage),
+        recoveryAvailable: () => managedKitRecovery(settings.current().dataRoot, app.getVersion()),
+        rollbackKit: () => rollbackManagedKit(settings.current().dataRoot, app.getVersion()),
+        install: (artifact) =>
+          updates.installWebsite(websiteStorage.path(artifact), artifact.version),
+        relaunch: () => {
+          app.relaunch();
+          app.quit();
+        },
+        gate: updateWorkGate,
+        emit: (status) => {
+          broadcast('websiteUpdate:status', status);
+        },
+      });
 
 function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
@@ -798,6 +904,7 @@ const odmGuard = guardOdmHandle({
 });
 const jobs = new JobRunner({
   store: jobStore,
+  enterWork: () => updateWorkGate.enter(),
   // M10: the photo jobs' memory cap (75 % of this computer's memory; no Settings field)
   jobEnv: async (job) => ({
     ...photoJobEnv(job.pipeline, totalmem(), process.env),
@@ -841,7 +948,22 @@ const panoLane = stitchLane({
 
 function handle<C extends IpcChannel>(channel: C, handler: Handler<C>): void {
   const run = validated(channel, journal.wrap(channel, handler));
-  ipcMain.handle(channel, (_e, req: unknown) => run(req));
+  ipcMain.handle(channel, async (_e, req: unknown) => {
+    // Reserve long-running mutations before their first await. Status, cancellation and the
+    // updater's own handover remain callable while restart holds the exclusive gate.
+    const work =
+      channel === 'settings:set' ||
+      (!/^(websiteUpdate|update):/.test(channel) &&
+        /:(?:start|resume|run|import|importModel|importCatalogue|install|remove|download|export|create|save|convert|process|stitch|build|apply|commit|setGpu)/i.test(
+          channel,
+        ));
+    const release = work ? updateWorkGate.enter() : null;
+    try {
+      return await run(req);
+    } finally {
+      release?.();
+    }
+  });
 }
 
 /** The OS account name, when the platform has one. */
@@ -864,7 +986,15 @@ function registerIpc(): void {
 
   handle('settings:get', () => settings.get());
   handle('settings:set', async (patch) => {
-    const next = await settings.set(patch);
+    const pending = settings.set(patch);
+    // current() includes the queued patch, so cancellation precedes the disk write.
+    if (
+      patch.offlineOnly !== undefined ||
+      patch.websiteAutoUpdate !== undefined ||
+      patch.dataRoot !== undefined
+    )
+      websiteUpdater.policyChanged();
+    const next = await pending;
     if (patch.theme) applyTheme(next.theme);
     return next;
   });
@@ -1284,6 +1414,12 @@ function registerIpc(): void {
     },
   });
 
+  handle('websiteUpdate:status', () => websiteUpdater.status());
+  handle('websiteUpdate:signIn', ({ email, password }) => websiteUpdater.signIn(email, password));
+  handle('websiteUpdate:signOut', () => websiteUpdater.signOut());
+  handle('websiteUpdate:check', () => websiteUpdater.check());
+  handle('websiteUpdate:restart', () => websiteUpdater.restart());
+  handle('websiteUpdate:rollbackKit', () => websiteUpdater.rollbackKit());
   handle('update:verifyFile', ({ path }) => updates.verifyFile(path));
   handle('update:installFile', ({ path }) => updates.installFile(path));
   handle('update:check', () => updates.check());
@@ -1292,6 +1428,7 @@ function registerIpc(): void {
   handle('update:status', () => updates.status());
   handle('update:rollback', () => updates.startRollback());
   handle('app:rendererReady', async () => {
+    await websiteUpdater.rendererReady();
     await updates.rendererReady();
     return { ok: true };
   });
@@ -2266,6 +2403,7 @@ if (restore) {
 
     // After an update: count this start, or offer to return to the kept previous version.
     if (await updates.startup()) return;
+    await websiteUpdater.startup(true);
     mainWindow = createWindow();
     updates.watchWindow(mainWindow);
     app.on('activate', () => {
@@ -2299,6 +2437,7 @@ app.on('before-quit', (e) => {
 
 // Running pipelines stop with the app; their jobs show as interrupted and resume later.
 app.on('will-quit', () => {
+  websiteUpdater.stop();
   jobs.shutdownSync();
   // a 360 stitch must not go on in an ffmpeg nobody is waiting for
   importRuns.cancelAll();

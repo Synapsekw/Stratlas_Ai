@@ -49,6 +49,7 @@ import { DetectionsFile } from './detections';
 import { NarrativeFile, ReportContentsSettings } from './report';
 import { OrientationFile } from './orientation';
 import { ReleaseNotes, UpdateStatus } from './update';
+import { WebsiteUpdateStatus, WebsiteUpdateResult } from './websiteUpdate';
 import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds } from './change';
 import { ProcModel, ProcModelId, ProcModelSummary } from './procmodel';
 import { Detail, EngineerProposal, EngineerRun, EngineerSetup, RunId } from './engineer';
@@ -505,6 +506,7 @@ export const Settings = z.object({
   offlineOnly: z.boolean().optional(),
   /** Allow the "Check now" button for online updates (ADR 0003). Default false. */
   updateCheck: z.boolean().optional(),
+  websiteAutoUpdate: z.boolean().optional(),
   /**
    * Address of the update feed: the `stratlas-update.json` file itself, or the folder that holds
    * it (ending in `/`). Empty when not set.
@@ -1684,6 +1686,17 @@ export const ipc = {
   'update:status': { request: Empty, response: UpdateStatus },
   /** Return to the kept previous version: it replaces this one and starts. */
   'update:rollback': { request: Empty, response: Ok },
+  'websiteUpdate:status': { request: Empty, response: WebsiteUpdateStatus },
+  'websiteUpdate:signIn': {
+    request: z
+      .object({ email: z.email().max(320), password: z.string().min(1).max(4096) })
+      .strict(),
+    response: WebsiteUpdateResult,
+  },
+  'websiteUpdate:signOut': { request: Empty, response: WebsiteUpdateResult },
+  'websiteUpdate:check': { request: Empty, response: WebsiteUpdateResult },
+  'websiteUpdate:restart': { request: Empty, response: WebsiteUpdateResult },
+  'websiteUpdate:rollbackKit': { request: Empty, response: WebsiteUpdateResult },
   /** The renderer has drawn its first screen; ends the first-start watch after an update. */
   'app:rendererReady': { request: Empty, response: Ok },
   /** Start a pipeline job on a project folder, or resume a cancelled, failed or interrupted one. */
@@ -4100,6 +4113,7 @@ export const ipcEvents = {
     action: z.enum(['settings', 'palette', 'guide', 'exportDiagnostics']),
   }),
   /** Download progress of `update:downloadAndInstall`. */
+  'websiteUpdate:status': WebsiteUpdateStatus,
   'update:progress': z.object({
     received: z.number().nonnegative(),
     total: z.number().nonnegative(),

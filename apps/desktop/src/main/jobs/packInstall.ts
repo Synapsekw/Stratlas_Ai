@@ -1,3 +1,4 @@
+import { clearManagedSelection } from '../update/managedKits';
 /**
  * Install and look after pipeline packs from inside the app (Settings, Processing tools).
  *
@@ -1239,6 +1240,7 @@ export function registerPipelinePackIpc(d: PipelinePackIpcDeps): void {
       });
       running = null;
       if (!r.ok) return r;
+      await clearManagedSelection(d.dataRoot(), d.app.version);
       return { ok: true, version: r.version, status: await status() };
     } finally {
       running = null;
