@@ -723,3 +723,22 @@ def test_an_ok_raster_that_turns_implausible_or_unverified_is_deleted(tmp_path, 
     assert index(root)["photos"]["p2"]["status"] == "unverified"
     assert not (root / RASTERS / "p2.f32").exists()
     assert not (root / RASTERS / "p2.json").exists()
+
+
+def test_a_photo_behind_a_junction_out_of_the_project_is_not_read(tmp_path):
+    project = tmp_path / "project"
+    (project / "photos").mkdir(parents=True)
+    (project / "photos" / "in.jpg").write_bytes(b"x")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.jpg").write_bytes(b"secret")
+    link = project / "escape"
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(outside), str(link))
+    else:
+        link.symlink_to(outside, target_is_directory=True)
+    assert tp._photo_path(project, {"src": {"path": "photos/in.jpg"}}) == project / "photos" / "in.jpg"
+    assert tp._photo_path(project, {"src": {"path": "escape/secret.jpg"}}) is None
+    assert tp._photo_path(project, {"src": {"path": "../outside/secret.jpg"}}) is None

@@ -93,9 +93,16 @@ def _photo_path(project: Path, item: dict[str, Any]) -> Path | None:
     if not isinstance(rel, str):
         return None
     try:
-        return safe_project_path(project, rel)
+        path = safe_project_path(project, rel)
     except JobError:
         return None
+    # A link or junction inside the project may point out of it: read only what really is inside.
+    try:
+        if not path.resolve().is_relative_to(project.resolve()):
+            return None
+    except OSError:
+        return None
+    return path
 
 
 class ThermalDecode:
