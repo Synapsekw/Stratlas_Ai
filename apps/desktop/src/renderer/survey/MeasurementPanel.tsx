@@ -95,7 +95,7 @@ export function MeasurementPanel() {
     void dateSampler(dateId)
       .then((sample) => (sample ? readoutOn(shown, tpl?.items, sample, { stepM }) : null))
       .then((r) => {
-        if (live && r) setOnDate({ of: shown, rows: r });
+        if (live) setOnDate(r ? { of: shown, rows: r } : null);
       })
       .catch(() => undefined);
     return () => {
@@ -113,6 +113,8 @@ export function MeasurementPanel() {
     patchMeasurement(m.id, { style: { color: MEASURE_COLOR, ...(m.style ?? {}), ...patch } });
   };
   const capture = m.scope.kind === 'survey' ? m.scope.capture : null;
+  const dateCapture = captures.find((x) => x.id === capture);
+  const dateLabel = dateCapture ? formatDate(dateCapture.date) : null;
 
   return (
     <section
@@ -399,25 +401,23 @@ export function MeasurementPanel() {
 
       <details className="sv-sec">
         <summary>Scope</summary>
-        {capture ? (
-          <>
-            <p className="small" data-testid="survey-scope-date">
-              Survey date:{' '}
-              {(() => {
-                const c = captures.find((x) => x.id === capture);
-                return c ? formatDate(c.date) : capture;
-              })()}
-            </p>
-            <p className="small" data-testid="survey-scope-source">
-              Measured on:{' '}
-              {m.source
-                ? (manifest?.layers.find((l) => l.id === m.source?.layer)?.name ?? m.source.layer)
-                : 'not recorded'}
-            </p>
-          </>
-        ) : (
+        {dateLabel ? (
           <p className="small" data-testid="survey-scope-date">
-            Needs a date: drag it onto a survey date in the Datasets list.
+            Survey date: {dateLabel}
+          </p>
+        ) : (
+          captures.length > 0 && (
+            <p className="small" data-testid="survey-scope-date">
+              Needs a date: drag it onto a survey date in the Datasets list.
+            </p>
+          )
+        )}
+        {(m.source ?? dateLabel) && (
+          <p className="small" data-testid="survey-scope-source">
+            Measured on:{' '}
+            {m.source
+              ? (manifest?.layers.find((l) => l.id === m.source?.layer)?.name ?? m.source.layer)
+              : 'not recorded'}
           </p>
         )}
         {!ro && captures.length > 0 && (

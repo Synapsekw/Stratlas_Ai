@@ -175,6 +175,33 @@ describe('the measurement panel scope, source and copy', () => {
     );
   });
 
+  it('no date line in a project with no survey dates', () => {
+    workspace.getState().openProject({
+      id: 'two-dates',
+      root: 'E:/p',
+      manifest: { ...manifest, captures: [] },
+    });
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [{ ...spot, scope: { kind: 'site' } }] },
+    });
+    mount();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')).toBeNull();
+  });
+
+  it('a measurement whose date was deleted says it needs a date', () => {
+    measureStore.setState({
+      file: {
+        schema: 'aio.measurements/1',
+        measurements: [{ ...spot, scope: { kind: 'survey', capture: 'gone' } }],
+      },
+    });
+    mount();
+    expect(host.querySelector('[data-testid="survey-scope-date"]')?.textContent).toContain(
+      'Needs a date',
+    );
+    expect(host.textContent).not.toContain('gone');
+  });
+
   it('Copy re-measures through copyMeasurementToDate', () => {
     mount();
     openScope();
