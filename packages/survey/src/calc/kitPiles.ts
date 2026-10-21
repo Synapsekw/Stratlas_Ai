@@ -8,6 +8,7 @@ import type {
   ComparisonResult,
   MeasurementsFile,
   PileEpoch,
+  SiteMaterial,
   SitePoint,
   StockPile,
   SurveyId,
@@ -204,8 +205,8 @@ export interface KitConversionOptions {
   newId: () => string;
   /** A kit local-frame point (`[x, z]`, x east, z south) to the project CRS `[E, N, Z]`. */
   toSite: (xz: readonly [number, number]) => SitePoint;
-  /** The site material id for a kit material name, if one exists. */
-  materialId: (name: string) => SurveyId | undefined;
+  /** The site material id for a kit material name (null: the pile names none), if any. */
+  materialId: (name: string | null) => SurveyId | undefined;
   /**
    * Right after a volumetric build (Detect piles): a pile already converted comes back unless an
    * existing kit-pile measurement overlaps it. Without it (opening a project), it stays converted.
@@ -319,7 +320,7 @@ export function convertKitPiles(
       : [];
     const last = series[series.length - 1];
     const headline = last?.carried?.epoch === lastEpoch ? last : undefined;
-    const material = pile.material ? opts.materialId(pile.material) : undefined;
+    const material = opts.materialId(pile.material ?? null);
 
     const m: SurveyMeasurement = {
       id: opts.newId(),
@@ -365,6 +366,68 @@ export interface KitOpenOptions {
   rebuilt?: boolean;
 }
 
+// ---------------------------------------------------------------- the kit's density
+
+/** The id of the material a kit pile gets when no site material has its material's name. */
+export const KIT_MATERIAL_ID = 'kit-material';
+/** That material's name when the kit pile names no material. */
+export const KIT_MATERIAL_NAME = 'Stockpile material';
+
+const nameKey = (name: string): string => name.trim().toLowerCase();
+
+/** The kit material id for a kit material name (null or blank: the one unnamed kit material). */
+export function kitMaterialId(name: string | null): SurveyId {
+  const slug = nameKey(name ?? '')
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return slug ? `${KIT_MATERIAL_ID}-${slug}` : KIT_MATERIAL_ID;
+}
+
+/**
+ * The site materials the kit's piles need and the site does not have: one per kit material name
+ * (or none) that no site material has, at the kit's density (`volumes.densityTPerM3`), so an old
+ * project keeps its tonnes. Held in memory with the settings (`withKitMaterials`); saving the site
+ * settings keeps them.
+ */
+export function kitMaterials(
+  volumes: VolumesFile,
+  materials: readonly { id: SurveyId; name: string }[],
+): SiteMaterial[] {
+  const named = new Set(materials.map((x) => nameKey(x.name)));
+  const out = new Map<SurveyId, SiteMaterial>();
+  for (const p of volumes.piles) {
+    const name = p.material?.trim() ? p.material.trim() : null;
+    if (name && named.has(nameKey(name))) continue;
+    const id = kitMaterialId(name);
+    if (!out.has(id))
+      out.set(id, {
+        id,
+        name: (name ?? KIT_MATERIAL_NAME).slice(0, 120),
+        densityTPerM3: volumes.densityTPerM3,
+      });
+  }
+  return [...out.values()];
+}
+
+/**
+ * The site settings with the kit materials the measurements use (`kitMaterials`) added after the
+ * site's own; the same settings when none is missing or there is no kit data.
+ */
+export function withKitMaterials<S extends { materials: readonly SiteMaterial[] }>(
+  settings: S,
+  volumes: VolumesFile | null,
+  measurements: readonly SurveyMeasurement[],
+): S {
+  if (!volumes) return settings;
+  const have = new Set(settings.materials.map((x) => x.id));
+  const used = new Set(measurements.flatMap((m) => (m.material ? [m.material] : [])));
+  const add = kitMaterials(volumes, settings.materials).filter(
+    (x) => used.has(x.id) && !have.has(x.id),
+  );
+  return add.length === 0 ? settings : { ...settings, materials: [...settings.materials, ...add] };
+}
+
 /** Kit piles as volume measurements (`convertKitPiles`), placed through the project origin. */
 export function kitConversion(
   file: MeasurementsFile,
@@ -373,13 +436,14 @@ export function kitConversion(
   carry: boolean,
   opts: KitOpenOptions,
 ): KitConversion {
-  const byName = new Map(opts.materials.map((x) => [x.name.trim().toLowerCase(), x.id]));
+  const byName = new Map(opts.materials.map((x) => [nameKey(x.name), x.id]));
   return convertKitPiles(volumes, edits, file, {
     carry,
     now: opts.now,
     newId: opts.newId,
     toSite: (xz) => kitToSite(opts.origin, xz),
-    materialId: (name) => byName.get(name.trim().toLowerCase()),
+    // a site material by the kit material's name, else the kit's own density (`kitMaterials`)
+    materialId: (name) => (name ? byName.get(nameKey(name)) : undefined) ?? kitMaterialId(name),
     ...(opts.rebuilt ? { rebuilt: true } : {}),
   });
 }

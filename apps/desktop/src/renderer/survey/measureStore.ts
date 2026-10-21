@@ -26,6 +26,7 @@ import {
 import {
   changesFile,
   openWithKitPiles,
+  withKitMaterials,
   withKitConversion,
   DEFAULT_SNAP,
   designLayerOptions,
@@ -358,6 +359,12 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     patch.settings = s.value.settings;
     patch.settingsExist = s.value.exists;
   }
+  // a kit pile no site material matches keeps the kit's density (its tonnes), in memory
+  patch.settings = withKitMaterials(
+    patch.settings ?? defaultSurveySettings(),
+    v.ok && v.value.ok ? v.value.volumes : null,
+    file.measurements,
+  );
   set(patch);
   // a writable project keeps the conversion on disk at once; a package keeps it in memory only
   if (converted && !readOnly && kitRead) await writeConversion(projectId, file, epoch);
@@ -499,7 +506,13 @@ export async function convertAfterJob(projectId: string): Promise<void> {
   });
   if (!changesFile(c) && s.file.kitPilesConverted !== undefined) return;
   const baseline = withKitConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
-  set({ file: withKitConversion(s.file, c), savedText: text(baseline), resultsUnwritten: true });
+  const file = withKitConversion(s.file, c);
+  set({
+    file,
+    savedText: text(baseline),
+    resultsUnwritten: true,
+    settings: withKitMaterials(s.settings, r.value.volumes, file.measurements),
+  });
   await writeConversion(projectId, baseline, epoch);
 }
 

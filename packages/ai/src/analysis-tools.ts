@@ -23,6 +23,7 @@ import {
   kitBaseLabel,
   inventorySeries,
   openWithKitPiles,
+  withKitMaterials,
   pileSeries,
   seriesDate,
 } from '@aio/survey';
@@ -190,7 +191,9 @@ async function loadPiles(
     settings,
   );
   const piles = inventoryPiles(file.measurements);
-  return piles.length > 0 ? { piles, settings } : null;
+  // a kit pile no site material matches keeps the kit's density (its tonnes), as in the app
+  const withKit = withKitMaterials(settings, kit.success ? kit.data : null, file.measurements);
+  return piles.length > 0 ? { piles, settings: withKit } : null;
 }
 
 /**

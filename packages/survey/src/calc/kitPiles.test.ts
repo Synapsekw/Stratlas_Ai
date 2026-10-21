@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest';
 import {
   KIT_BASE_LABEL,
   KIT_FOLDER,
+  KIT_MATERIAL_ID,
+  KIT_MATERIAL_NAME,
   kitBaseLabel,
+  withKitMaterials,
   convertKitPiles,
   kitToSite,
   openWithKitPiles,
@@ -119,7 +122,7 @@ function opts(carry: boolean) {
       2000 - z,
       0,
     ],
-    materialId: (name: string) => (name === 'Sand' ? 'mat-sand' : undefined),
+    materialId: (name: string | null) => (name === 'Sand' ? 'mat-sand' : undefined),
   };
 }
 
@@ -328,6 +331,33 @@ describe('openWithKitPiles: the file as the app, the report and the assistant op
     expect(added?.label).toBe('Pile 03');
     expect(added?.results).toEqual([]);
     expect(added?.series).toBeUndefined();
+  });
+
+  it("keeps the kit's density when no site material matches: tonnes stay", () => {
+    const none = { ...opts(false), materials: [] };
+    const v = volumes();
+    const file = openWithKitPiles(empty(), { volumes: v, edits: null }, none);
+    const [p1, p2] = file.measurements;
+    // a kit material name with no site material, and no material at all (material null)
+    expect(p1?.material).toBe(`${KIT_MATERIAL_ID}-sand`);
+    expect(p2?.material).toBe(KIT_MATERIAL_ID);
+    const base = { materials: [{ id: 'other', name: 'Other', densityTPerM3: 2 }] };
+    const settings = withKitMaterials(base, v, file.measurements);
+    const density = (id: string | undefined) =>
+      settings.materials.find((x) => x.id === id)?.densityTPerM3;
+    expect(density(p1?.material)).toBe(1.6);
+    expect(density(p2?.material)).toBe(1.6);
+    expect(settings.materials.find((x) => x.id === p2?.material)?.name).toBe(KIT_MATERIAL_NAME);
+    expect(settings.materials.find((x) => x.id === p1?.material)?.name).toBe('Sand');
+    // the site's own materials stay first, and a second pass adds nothing
+    expect(settings.materials[0]?.id).toBe('other');
+    expect(withKitMaterials(settings, v, file.measurements)).toBe(settings);
+    // no kit data, or no measurement using a kit material: the settings as they are
+    expect(withKitMaterials(base, null, file.measurements)).toBe(base);
+    expect(withKitMaterials(base, v, [])).toBe(base);
+    // a site material named as the kit's is used instead
+    const named = openWithKitPiles(empty(), { volumes: v, edits: null }, opts(false));
+    expect(named.measurements[0]?.material).toBe('sand');
   });
 
   it('marks a writable file without kit figures converted; a read-only one stays as it is', () => {

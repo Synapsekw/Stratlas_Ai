@@ -755,6 +755,12 @@ describe('the survey sections', () => {
       .map(text)
       .find((r) => r.includes('Kit pile 1'));
     expect(row).toMatch(/175\.0 m³.*150\.0 m³.*25\.0 m³/);
+    // the kit's density (no site material matches the pile's null material): tonnes print
+    expect(row).toMatch(/175\.0 m³.*280\.0 t/);
+    const csv = stockpileCsv(await buildSurveyData(read, reader.bytes, { need: 'stockpile-csv' }));
+    // material Stockpile material, density 1.6, and 280 t on the latest date
+    expect(csv).toMatch(/Kit pile 1,Stockpile material,,1\.6,/);
+    expect(csv).toContain(',280,');
   });
 
   it('template entries print as report cards in template order', async () => {

@@ -7,6 +7,7 @@ import {
   type VolumesFile,
 } from '@aio/schema';
 import { workspace } from '@aio/workspace';
+import { pileFigures } from '../workspace/pileFigures';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   convertAfterJob,
@@ -177,6 +178,12 @@ describe('kit piles on load', () => {
     expect(io.saved.kitPilesConverted).toEqual(['P01']);
     expect(io.saved.measurements.map((x) => x.id)).toContain(m?.id);
     expect(io.saved.measurements.map((x) => x.id)).toContain('mine');
+    // the pile names no material and the site has none: the kit's density stays, so the card,
+    // the Volumes view and its CSV still show tonnes
+    const material = s.settings.materials.find((x) => x.id === m?.material);
+    expect(material?.densityTPerM3).toBe(1.6);
+    const figures = pileFigures(io.volumes, s.file.measurements, s.settings, []);
+    expect(figures.P01?.e2?.tonnes).toContain('96');
   });
 
   it('a read-only project converts in memory and writes nothing', async () => {
