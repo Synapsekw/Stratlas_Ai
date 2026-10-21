@@ -151,6 +151,8 @@ test('Add to report from the card overflow, then the house report PDF contains t
   expect(text).toContain(flat('Survey measurements'));
   expect(text).toContain(flat('Pad A'));
   expect(text).toContain(flat(value));
+  // the printout changed: a measurement the template does not list is left out
+  expect(text).not.toContain(flat('Line B'));
 });
 
 test('adding twice says Already in the report', async ({ win, dataRoot }) => {
