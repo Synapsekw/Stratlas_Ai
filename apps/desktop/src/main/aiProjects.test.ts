@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createAiProjectStore, projectKey, readAiPolicy } from './aiProjects';
+import { createAiProjectStore, projectKey, readAiPolicy, readAiPolicyDetail } from './aiProjects';
 import { listConversations, loadConversation, saveConversation } from './conversations';
 import { sampleManifest, writeProject } from './testing';
 
@@ -154,6 +154,23 @@ describe('package AI policy', () => {
     expect(await readAiPolicy(a)).toBe('forbid');
     expect(await readAiPolicy(b)).toBe('forbid');
     expect(await readAiPolicy(c)).toBe('allow');
-    expect(await readAiPolicy(join(dir, 'missing'))).toBe('allow');
+  });
+
+  it('fails closed: a missing, unreadable or malformed manifest forbids cloud AI, with the reason', async () => {
+    expect(await readAiPolicy(join(dir, 'missing'))).toBe('forbid');
+    const bad = join(dir, 'bad');
+    await mkdir(bad, { recursive: true });
+    await writeFile(join(bad, 'manifest.json'), '{ "name": "half', 'utf8');
+    expect(await readAiPolicy(bad)).toBe('forbid');
+    const arr = join(dir, 'arr');
+    await mkdir(arr, { recursive: true });
+    await writeFile(join(arr, 'manifest.json'), '[1, 2]', 'utf8');
+    expect(await readAiPolicy(arr)).toBe('forbid');
+    const detail = await readAiPolicyDetail(bad);
+    expect(detail).toMatchObject({ policy: 'forbid' });
+    expect(detail.reason).toMatch(/manifest/i);
+    expect(await readAiPolicyDetail(await writeProject(join(dir, 'ok')))).toEqual({
+      policy: 'allow',
+    });
   });
 });

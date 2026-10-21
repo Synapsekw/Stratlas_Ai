@@ -157,18 +157,34 @@ export function createAiProjectStore(
 /**
  * The project's AI policy from its raw manifest. A customer package may carry `aiPolicy: 'forbid'`
  * (stream N4); the frozen manifest schema strips unknown keys, so read the file itself and accept
- * the field at the top level or under `package`. Only an explicit `forbid` blocks cloud providers.
+ * the field at the top level or under `package`. It fails closed: a manifest that is missing,
+ * unreadable or not a JSON object forbids cloud providers too (a policy that cannot be read is not
+ * a permission), and `reason` says why in words a person can act on.
  */
-export async function readAiPolicy(root: string): Promise<AiPolicy> {
+export async function readAiPolicyDetail(
+  root: string,
+): Promise<{ policy: AiPolicy; reason?: string }> {
+  const unreadable = {
+    policy: 'forbid' as const,
+    reason:
+      "Cloud AI is off for this project because its manifest.json could not be read, so its AI policy is unknown. Repair or restore the project's manifest.json, or use a local model.",
+  };
   let raw: unknown;
   try {
     const text = await readFile(join(root, 'manifest.json'), 'utf8');
     raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as unknown;
   } catch {
-    return 'allow';
+    return unreadable;
   }
-  if (typeof raw !== 'object' || raw === null) return 'allow';
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return unreadable;
   const m = raw as { aiPolicy?: unknown; package?: { aiPolicy?: unknown } };
   const value = m.aiPolicy ?? m.package?.aiPolicy;
-  return value === 'forbid' ? 'forbid' : 'allow';
+  return value === 'forbid'
+    ? { policy: 'forbid', reason: 'This project forbids cloud AI in its manifest.' }
+    : { policy: 'allow' };
+}
+
+/** The project's AI policy (`readAiPolicyDetail` without the reason): fails closed. */
+export async function readAiPolicy(root: string): Promise<AiPolicy> {
+  return (await readAiPolicyDetail(root)).policy;
 }
