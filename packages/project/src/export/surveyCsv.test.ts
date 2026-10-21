@@ -173,6 +173,22 @@ describe('the stockpile inventory', () => {
     ]);
   });
 
+  it('the previous survey is the last earlier one with counted piles, as the inventory takes it', () => {
+    // c2 has an entry but no volume on it: the change is since c1
+    const inv2 = stockpileInventory(
+      [
+        pile('a', gravel, [
+          [C1, 200],
+          [C2, null],
+          [C3, 400],
+        ]),
+      ],
+      [C1, C2, C3],
+    );
+    expect([inv2.current?.id, inv2.previous?.id]).toEqual(['c3', 'c1']);
+    expect(inv2.total.changeM3).toBe(200);
+  });
+
   it('has no previous survey and no change with one survey', () => {
     const one = stockpileInventory([pile('a', gravel, [[C3, 40]])], [C1, C2, C3]);
     expect(one.previous).toBeNull();
@@ -440,7 +456,22 @@ describe('the volume over time CSV', () => {
     const out = rowsOf(volumeSeriesCsv([a], caps, u, precision, { densityOf: () => 2 }));
     expect(out[0]?.slice(4, 7)).toEqual(['Volume (yd³)', 'Change (yd³)', 'Tonnage (kg)']);
     expect(out[1]?.[4]).toBe('10');
-    expect(Number(out[1]?.[6])).toBeCloseTo(0.9144 ** 3 * 10 * 2 * 1000, 3);
+    // tonnage at the mass precision (the volume's, as the cards format it)
+    expect(out[1]?.[6]).toBe(
+      String(Number((0.9144 ** 3 * 10 * 2 * 1000).toFixed(precision.volume))),
+    );
+  });
+
+  it('a stale row says stale, not ok', () => {
+    const a = sm('a', [at(100, 'c1'), at(130, 'c2', { fingerprint: 'old' })]);
+    const out = rowsOf(
+      volumeSeriesCsv([a], caps, units, precision, {
+        isStale: (_m, r) => r.fingerprint === 'old',
+      }),
+    );
+    expect(out.slice(1, 3).map((r) => r[7])).toEqual(['ok', 'stale']);
+    // its figure is printed, marked
+    expect(out[2]?.[4]).toBe('130');
   });
 
   it('a refused date has an empty volume and its status', () => {
@@ -456,7 +487,7 @@ describe('the volume over time CSV', () => {
 
   it('carried rows say yes in the last column', () => {
     const carried = { from: 'kit' as const, base: 'smart', pile: 'p1', epoch: 'e1' };
-    const a = sm('a', [at(100, 'c1', { carried } as Partial<ComparisonResult>), at(90, 'c2')]);
+    const a = sm('a', [at(100, 'c1', { carried }), at(90, 'c2')]);
     const out = rowsOf(volumeSeriesCsv([a], caps, units, precision));
     expect(out.slice(1, 3).map((r) => r[8])).toEqual(['yes', 'no']);
   });

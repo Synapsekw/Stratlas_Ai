@@ -307,7 +307,11 @@ export function stockpileInventory(
     piles.some((p) => p.volumes.some((v) => v.capture.id === c.id)),
   );
   const current = dated.at(-1) ?? null;
-  const previous = dated.length > 1 ? (dated.at(-2) ?? null) : null;
+  // the last earlier survey with counted piles, the rule the inventory over time uses
+  const counted = dated.filter((c) =>
+    piles.some((p) => p.volumes.some((v) => v.capture.id === c.id && v.volumeM3 !== null)),
+  );
+  const previous = counted.filter((c) => c !== current).at(-1) ?? null;
   const on = (p: StockpileReport, c: CaptureRef | null) =>
     c ? (p.volumes.find((v) => v.capture.id === c.id) ?? null) : null;
   const rows: StockpileRow[] = piles.map((p) => {
@@ -687,14 +691,20 @@ export function stockpileCsv(data: SurveyReportData): string {
  * logic mirrors `volumeRows` in `@aio/survey` (this package cannot depend on it; a test pins the two
  * to the same answers): net volume per date, the change since the previous date with a value, and
  * tonnes when `opts.densityOf` gives a density. A refused or missing date has an empty volume and
- * says why in Status; a figure carried over from an earlier version says yes in the last column.
+ * says why in Status; a stale one (`opts.isStale`, the card's rule) says "stale" with its figure;
+ * a figure carried over from an earlier version says yes in the last column. Tonnage is rounded
+ * to the mass precision (the volume's, as the cards format it).
  */
 export function volumeSeriesCsv(
   ms: readonly SurveyMeasurement[],
   captures: readonly { id: string; date: string; label: string }[],
   units: SurveyUnits,
   precision: SurveyPrecision,
-  opts: { densityOf?(m: SurveyMeasurement): number | null } = {},
+  opts: {
+    densityOf?(m: SurveyMeasurement): number | null;
+    /** Whether a row's figure is not current (the card's and the inventory's rule). */
+    isStale?(m: SurveyMeasurement, r: ComparisonResult): boolean;
+  } = {},
 ): string {
   const vu = unitLabel(units.volume);
   const mu = unitLabel(units.mass);
@@ -715,6 +725,10 @@ export function volumeSeriesCsv(
       'From an earlier version',
     ],
   ];
+  const statusOf = (m: SurveyMeasurement, r: ComparisonResult): string => {
+    const status = r.status !== 'refused' && opts.isStale?.(m, r) === true ? 'stale' : r.status;
+    return r.reason ? `${status}: ${r.reason}` : status;
+  };
   for (const m of ms) {
     const density = opts.densityOf?.(m) ?? null;
     let prev: number | null = null;
@@ -729,8 +743,11 @@ export function volumeSeriesCsv(
         c.label,
         si === null ? null : places(fromSI(si, 'volume', units.volume)),
         change === null ? null : places(fromSI(change, 'volume', units.volume)),
-        si === null || density === null ? null : fromSI(si * density * 1000, 'mass', units.mass),
-        r ? (r.reason ? `${r.status}: ${r.reason}` : r.status) : 'missing',
+        // mass has no precision of its own: the volume's, as `formatQuantity` takes it
+        si === null || density === null
+          ? null
+          : places(fromSI(si * density * 1000, 'mass', units.mass)),
+        r ? statusOf(m, r) : 'missing',
         r?.carried ? 'yes' : 'no',
       ]);
       if (si !== null) prev = si;
