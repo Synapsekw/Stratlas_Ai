@@ -34,6 +34,7 @@ These limits were seen on the founder's own real projects in the data folder (no
 ## Reports, packages and maps
 
 - Report branding is one setting for all projects (no per-project override yet).
+- The report template (`report/template.json`, filled by **Add to report**) lists measurements only: section entries in it are kept but ignored when printing (they come with a later wave). There is no template editor yet. When the template cannot be read, the report prints its default measurement list.
 - Road project reports default to issue pages for all but the lowest level (a page per defect on a long road would be over 2,000 pages); pick **Every graded issue** to print them all.
 - The street map under a site in 3D is flat: it lies just under the lowest model, point cloud, orthophoto or elevation model that is showing, and it does not follow the terrain (turn on **Terrain around the site** for a landscape that does). It is drawn as up to three nested pictures, so street names can be cut where two of them meet, and far from the site it is coarser.
 
@@ -311,7 +312,7 @@ These limits were seen on the founder's own real projects in the data folder (no
 
 ### Volumes, designs and views
 
-- The stockpile kit no longer computes volumes: its piles are volume measurements on the survey engine. A pile from a project made before the change keeps the kit's figure as a stored result, "From an earlier version (kit <base>)", until **Recompute with the standard base** is chosen; the kit's `tin` base (a smooth membrane over the toe) has no engine equivalent, so the recomputed figure (Triangulated toe, a triangulation of the toe line) can differ from it. The 3D volume bodies still stand on the kit's default base, as a picture only.
+- The stockpile kit no longer computes volumes: its piles are volume measurements on the survey engine. A pile from a project made before the change keeps the kit's figure as a stored result, "From an earlier version (kit, <base>)", until **Recompute with the standard base** is chosen; the kit's `tin` base (a smooth membrane over the toe) has no engine equivalent, so the recomputed figure (Triangulated toe, a triangulation of the toe line) can differ from it. The 3D volume bodies still stand on the kit's default base, as a picture only.
 - The kit's boundary editor is retired: a pile's outline is edited with the measurement's vertex editing, which edits one outline for every date. Editing a pile's toe on one date only is no longer possible.
 - Picking a pile on the 3D stage while the **Volumes** view is in front opens the **Measure** tab; only a pick from the Volumes view's own list keeps the view in front.
 - Volume figures, the volume over time and the spread across bases are checked against synthetic surfaces and the demo projects; a check against a real job's volumes (and against another tool's figures for the same job) is still to come.

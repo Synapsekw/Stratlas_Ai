@@ -32,7 +32,7 @@ ADR 0009 made the stockpile kit a client of the survey engine but kept its four 
 
 - One figure per pile per date. The recomputed figure can differ from the kit's old `tin` figure, which has no engine equivalent; the user sees both ("was") when accepting, never a silent change.
 - The boundary editor is retired: vertex editing covers outlines, but per-date toe edits are no longer possible.
-- Older builds keep the new fields (loose objects) but show a carried result as "Stale, recompute", and 0.23 or earlier also shows the kit piles in the old Volumes panel next to the converted measurements (downgrade caveat in `contract-changes.md`).
+- Older builds keep the new fields (loose objects) but show a carried result as "Stale, recompute", and 0.24 or earlier also shows the kit piles in the old Volumes panel next to the converted measurements (downgrade caveat in `contract-changes.md`).
 - Series cost one engine run per date per item, paid on demand and stored, not on every open.
 - The pipeline pack gains `survey.series` (0.20.0), a library module no job calls yet; `APP_RANGE` is unchanged.
 - Validation on real jobs is still pending: the figures are checked against synthetic surfaces and the demo projects only.

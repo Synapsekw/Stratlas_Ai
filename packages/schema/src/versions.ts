@@ -638,7 +638,7 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     version: 1,
     home: 'project',
     where: 'report/template.json',
-    since: '0.24',
+    since: '0.25',
   },
 ];
 
