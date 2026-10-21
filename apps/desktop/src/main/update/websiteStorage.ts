@@ -40,7 +40,11 @@ export function createWebsiteStorage(d: {
   let verifiedRoot: string | null = null;
   let writes: Promise<void> = Promise.resolve();
   const path = (a: WebsiteArtifact) =>
-    join(d.dir, 'artifacts', a.sha256 + (a.filename.endsWith('.exe') ? '.exe' : '.tar.gz'));
+    join(
+      d.dir,
+      'artifacts',
+      a.sha256 + (a.filename.toLowerCase().endsWith('.exe') ? '.exe' : '.tar.gz'),
+    );
   async function verifyBytes(a: WebsiteArtifact) {
     const st = await stat(path(a));
     if (!st.isFile() || st.size !== a.bytes || (await sha256Of(path(a))) !== a.sha256)
@@ -213,6 +217,13 @@ export function createWebsiteStorage(d: {
     },
     async recover(stage: WebsiteStage) {
       if (stage.check.targetAppVersion !== d.currentVersion) return false;
+      // A kit-only journal is written before selection activation. A different selection
+      // means activation never completed, or explicit recovery already restored it.
+      // Read strictly: damaged selector data must not look like a completed rollback.
+      if (!stage.check.app && stage.check.pipeline && stage.sourceAppVersion === d.currentVersion) {
+        const current = await readManagedSelection(d.dataRoot(), d.currentVersion, true);
+        if (current?.sha256 !== stage.check.pipeline.sha256) return false;
+      }
       await verify(stage.check, new AbortController().signal);
       if (stage.check.pipeline) {
         const ref = kitRef(stage.check.pipeline);

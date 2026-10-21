@@ -65,7 +65,7 @@ export function validateWebsiteCheck(check: WebsiteUpdateCheck, current: string)
     throw new Error('The website target does not match this app.');
   if (check.pipeline) {
     if (
-      !check.pipeline.filename.endsWith('.tar.gz') ||
+      !check.pipeline.filename.toLowerCase().endsWith('.tar.gz') ||
       packRangeRefusal(check.pipeline.appRange, check.targetAppVersion)
     )
       throw new Error('The website processing kit is incompatible.');
@@ -290,6 +290,15 @@ export function createWebsiteUpdater(d: WebsiteUpdaterDeps) {
           state.currentPipelineVersion = await d.pipelineVersion();
           state.recoveryAvailable = await d.recoveryAvailable();
           send({ phase: 'idle' });
+        } else if (
+          stage.phase === 'applying' &&
+          !stage.check.app &&
+          stage.sourceAppVersion === d.currentVersion
+        ) {
+          // A verified selector mismatch abandons this kit-only activation. Keep app
+          // installer recovery journals on their existing path below.
+          await d.store.write(null);
+          stage = null;
         } else if (stage.sourceAppVersion === d.currentVersion) {
           try {
             validateWebsiteCheck(stage.check, d.currentVersion);
@@ -476,8 +485,21 @@ export function createWebsiteUpdater(d: WebsiteUpdaterDeps) {
           error: 'Finish processing, imports and tool installation before restarting.',
         };
       try {
-        if (!(await d.recoveryAvailable())) throw new Error('No previous processing kit.');
-        await d.rollbackKit();
+        const kitStage =
+          stage?.phase === 'applying' &&
+          !stage.check.app &&
+          stage.sourceAppVersion === d.currentVersion
+            ? stage
+            : null;
+        if (await d.recoveryAvailable()) await d.rollbackKit();
+        else if (!kitStage || (await d.recover(kitStage)))
+          throw new Error('No previous processing kit.');
+        // Persist retirement after the selector change. If this write fails, the old
+        // journal plus strict selector comparison makes retry/startup idempotent.
+        if (kitStage) {
+          await d.store.write(null);
+          stage = null;
+        }
         d.relaunch();
         return { ok: true };
       } catch {

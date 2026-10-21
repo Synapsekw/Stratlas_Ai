@@ -26,18 +26,24 @@ export const managedKitDataRoot = (root: string, kit: ManagedKit) =>
   join(base(root), Kit.parse(kit).sha256);
 export const managedKitDirectory = (root: string, kit: ManagedKit) =>
   join(managedKitDataRoot(root, kit), 'runtime', 'pipeline-pack-' + kit.version);
-async function read(root: string): Promise<z.infer<typeof Selections>> {
+async function read(root: string, strict = false): Promise<z.infer<typeof Selections>> {
   try {
-    return Selections.parse(await readJson(file(root)));
-  } catch {
+    const raw = await readJson(file(root));
+    if (raw === undefined) return { schema: 'quadrion.kit-selection/1', apps: {} };
+    return Selections.parse(raw);
+  } catch (error) {
+    if (strict) throw error;
     return { schema: 'quadrion.kit-selection/1', apps: {} };
   }
 }
 export async function readManagedSelection(
   root: string,
   version: string,
+  strict = false,
 ): Promise<ManagedKit | null> {
-  const kit = (await read(root)).apps[version]?.current;
+  const kit = (await read(root, strict)).apps[version]?.current;
+  if (strict && kit && packRangeRefusal(kit.appRange, version))
+    throw new Error('The selected processing kit is incompatible.');
   return kit && !packRangeRefusal(kit.appRange, version) ? kit : null;
 }
 export async function managedKitRecovery(root: string, version: string) {

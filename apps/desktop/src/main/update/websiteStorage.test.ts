@@ -8,8 +8,14 @@ import { writeFileSync } from 'node:fs';
 import { createWebsiteStorage } from './websiteStorage';
 import { fakePackArchive } from '../jobs/packArchive.fakes';
 import { findPack } from '../jobs/pack';
-import { managedKitDirectory, readManagedSelection, selectManagedKit } from './managedKits';
-import { createWebsiteUpdater } from './websiteUpdater';
+import {
+  managedKitDirectory,
+  readManagedSelection,
+  selectManagedKit,
+  managedKitRecovery,
+  rollbackManagedKit,
+} from './managedKits';
+import { createWebsiteUpdater, type WebsiteUpdaterDeps } from './websiteUpdater';
 import { createUpdateWorkGate } from './workGate';
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const meta = (bytes: Buffer) => ({
@@ -50,7 +56,7 @@ function retryFixture(root: string) {
     verifyInstaller: () => Promise.resolve({ ok: true }),
     client: { grant: () => Promise.resolve('https://storage.example/url'), binary },
   });
-  const updater = createWebsiteUpdater({
+  const deps: WebsiteUpdaterDeps = {
     currentVersion: '0.24.0',
     unsupportedReason: null,
     policy: () => ({ enabled: true, offline: false }),
@@ -67,15 +73,17 @@ function retryFixture(root: string) {
     verify: storage.verify,
     activate: (c) => storage.activate(c),
     recover: (s) => storage.recover(s),
-    recoveryAvailable: () => Promise.resolve(false),
-    rollbackKit: () => Promise.resolve(),
+    recoveryAvailable: () => managedKitRecovery(root, '0.24.0'),
+    rollbackKit: () => rollbackManagedKit(root, '0.24.0'),
     install: () => Promise.resolve({ ok: false }),
     relaunch: () => undefined,
     gate,
     emit: () => undefined,
     schedule: () => () => undefined,
-  });
+  };
+  const updater = createWebsiteUpdater(deps);
   return {
+    deps,
     storage,
     updater,
     check,
@@ -92,6 +100,213 @@ function retryFixture(root: string) {
   };
 }
 describe('website artifact storage', () => {
+  it.each([
+    'none',
+    'previous-kit',
+    'journal-cleanup',
+    'journal-retry',
+    'selector-write',
+    'invalid-selector',
+    'before-activation',
+  ])('recovers a kit-only applying transaction across startup: %s', async (failure) => {
+    const root = await mkdtemp(join(tmpdir(), 'website-rollback-'));
+    try {
+      const f = retryFixture(root);
+      await f.updater.startup();
+      const previous = { ...f.ref, version: '0.19.0', sha256: 'b'.repeat(64) };
+      if (failure === 'previous-kit') await selectManagedKit(root, '0.24.0', previous);
+      const succeeds = failure === 'none' || failure === 'previous-kit';
+      if (failure === 'before-activation') {
+        const saved = (await f.storage.store.read()) as Record<string, unknown>;
+        await writeFile(
+          join(root, 'stage', 'stage-v1.json'),
+          JSON.stringify({ ...saved, phase: 'applying' }),
+        );
+      } else expect(await f.updater.restart()).toEqual({ ok: true });
+      await writeFile(f.python, 'tampered');
+      const selector = join(root, 'runtime', '.website-kits', 'selection-v1.json');
+      if (failure === 'invalid-selector') await writeFile(selector, '{}');
+      const make = (overrides: Partial<WebsiteUpdaterDeps> = {}) => {
+        const gate = createUpdateWorkGate();
+        let relaunched = false;
+        const updater = createWebsiteUpdater({
+          ...f.deps,
+          gate,
+          policy: () => ({ enabled: true, offline: true }),
+          relaunch: () => {
+            relaunched = true;
+          },
+          ...overrides,
+        });
+        return { updater, gate, relaunched: () => relaunched };
+      };
+      let writeFailed = false;
+      const first = make(
+        failure.startsWith('journal-')
+          ? {
+              store: {
+                read: f.storage.store.read,
+                write: (stage) => {
+                  if (!writeFailed) {
+                    writeFailed = true;
+                    return Promise.reject(new Error('disk write refused'));
+                  }
+                  return f.storage.store.write(stage);
+                },
+              },
+            }
+          : failure === 'selector-write'
+            ? {
+                rollbackKit: () => Promise.reject(new Error('selector write refused')),
+              }
+            : {},
+      );
+      await first.updater.startup();
+      if (failure === 'before-activation') {
+        expect(await f.storage.store.read()).toBeNull();
+        expect(first.updater.status().phase).toBe('paused');
+        first.gate.enter()();
+        return;
+      }
+      expect(first.updater.status().phase).toBe('error');
+      expect(() => first.gate.enter()).toThrow();
+      if (failure === 'invalid-selector') {
+        expect((await first.updater.rollbackKit()).ok).toBe(false);
+        expect(await f.storage.store.read()).toMatchObject({ phase: 'applying' });
+        expect(await readFile(selector, 'utf8')).toBe('{}');
+        return;
+      }
+      expect((await first.updater.rollbackKit()).ok).toBe(succeeds);
+      expect(first.relaunched()).toBe(succeeds);
+      if (failure === 'selector-write') {
+        expect(await readManagedSelection(root, '0.24.0')).toEqual(f.ref);
+        expect(await f.storage.store.read()).toMatchObject({ phase: 'applying' });
+        const retry = make();
+        await retry.updater.startup();
+        expect(await retry.updater.rollbackKit()).toEqual({ ok: true });
+      } else
+        expect(await readManagedSelection(root, '0.24.0')).toEqual(
+          failure === 'previous-kit' ? previous : null,
+        );
+      if (failure === 'journal-retry')
+        expect(await first.updater.rollbackKit()).toEqual({ ok: true });
+      const next = make();
+      await next.updater.startup();
+      expect(next.updater.status().phase).toBe('paused');
+      expect(await f.storage.store.read()).toBeNull();
+      next.gate.enter()();
+      await expect(next.updater.rendererReady()).resolves.toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('preserves an app-update applying journal when selected kit differs and installer evidence is missing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'website-app-recovery-'));
+    try {
+      const f = retryFixture(root);
+      const app = {
+        releaseId: f.check.pipeline.releaseId,
+        artifactId: '00000000-0000-4000-8000-000000000003',
+        version: '0.24.0',
+        platform: 'win-x64' as const,
+        filename: 'Setup.exe',
+        bytes: 1,
+        sha256: 'c'.repeat(64),
+        notes: 'app',
+      };
+      await f.storage.store.write({
+        schema: 'quadrion.website-stage/1',
+        sourceAppVersion: '0.23.0',
+        phase: 'applying',
+        check: { ...f.check, app },
+      });
+      const updater = createWebsiteUpdater({
+        ...f.deps,
+        policy: () => ({ enabled: true, offline: true }),
+      });
+      await updater.startup();
+      expect(updater.status().phase).toBe('error');
+      expect(await f.storage.store.read()).toMatchObject({ phase: 'applying', check: { app } });
+      expect(() => f.gate.enter()).toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it.each(['app', 'kit'])(
+    'stages website-valid uppercase %s names using canonical local extensions',
+    async (uppercase) => {
+      const root = await mkdtemp(join(tmpdir(), 'website-uppercase-'));
+      try {
+        const kitBytes = fakePackArchive('0.20.0', { appRange: '>=0.24.0 <2.0.0' });
+        const appBytes = Buffer.from('synthetic installer');
+        const kit = {
+          ...meta(kitBytes),
+          filename: uppercase === 'kit' ? 'kit.TAR.GZ' : 'kit.tar.gz',
+        };
+        const app = {
+          releaseId: kit.releaseId,
+          artifactId: '00000000-0000-4000-8000-000000000003',
+          version: '0.25.0',
+          platform: 'win-x64' as const,
+          filename: uppercase === 'app' ? 'Setup.EXE' : 'Setup.exe',
+          bytes: appBytes.length,
+          sha256: hash(appBytes),
+          notes: 'app',
+        };
+        const check = {
+          schema: 'quadrion.updates/1' as const,
+          targetAppVersion: '0.25.0',
+          app,
+          pipeline: kit,
+        };
+        const storage = createWebsiteStorage({
+          dir: join(root, 'stage'),
+          dataRoot: () => root,
+          currentVersion: '0.24.0',
+          verifyInstaller: async (path) => ({
+            ok: path.endsWith('.exe') && (await readFile(path)).equals(appBytes),
+          }),
+          client: {
+            grant: (a) => Promise.resolve('https://storage.example/' + a.filename),
+            binary: (url) =>
+              Promise.resolve(
+                new Response(
+                  new Uint8Array(url.toLowerCase().endsWith('setup.exe') ? appBytes : kitBytes),
+                ),
+              ),
+          },
+        });
+        const f = retryFixture(root);
+        const updater = createWebsiteUpdater({
+          ...f.deps,
+          store: storage.store,
+          download: (a, signal, progress) => storage.download(a, signal, progress),
+          verify: storage.verify,
+          client: { ...f.deps.client, check: () => Promise.resolve(check) },
+        });
+        expect(await updater.check()).toEqual({ ok: true });
+        expect(updater.status().phase).toBe('ready');
+        expect(await readFile(storage.path(app))).toEqual(appBytes);
+        expect(
+          await readFile(
+            join(
+              managedKitDirectory(root, {
+                version: kit.version,
+                sha256: kit.sha256,
+                appRange: kit.appRange,
+              }),
+              'python',
+              'python.exe',
+            ),
+            'utf8',
+          ),
+        ).toBe('fake python of pack 0.20.0');
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('rechecks all selections under the shared work gate immediately before replacement', async () => {
     const root = await mkdtemp(join(tmpdir(), 'website-repair-race-'));
     try {

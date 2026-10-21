@@ -43,6 +43,8 @@ export async function runWithUpdateWork<T>(
 ): Promise<T> {
   const work =
     channel === 'settings:set' ||
+    channel === 'detections:maskAssist' ||
+    channel === 'ai:detect' ||
     (!/^(websiteUpdate|update):/.test(channel) &&
       /:(?:start|resume|run|import|importModel|importCatalogue|install|remove|download|export|extract|compute|create|save|convert|process|stitch|build|apply|commit|setGpu)/i.test(
         channel,

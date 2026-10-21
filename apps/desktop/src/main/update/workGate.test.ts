@@ -19,7 +19,7 @@ describe('update work gate', () => {
     busy = false;
     expect(gate.acquire()).not.toBeNull();
   });
-  it.each(['package:extract', 'change:compute'] as const)(
+  it.each(['package:extract', 'change:compute', 'detections:maskAssist', 'ai:detect'] as const)(
     'gates pending %s work and refuses starts during restart',
     async (channel) => {
       const gate = createUpdateWorkGate();
@@ -39,6 +39,17 @@ describe('update work gate', () => {
       expect(release).not.toBeNull();
       await expect(runWithUpdateWork(channel, gate, () => Promise.resolve())).rejects.toThrow(
         /restart/,
+      );
+      release?.();
+    },
+  );
+  it.each(['detections:maskAssistStatus', 'ai:status'] as const)(
+    'allows status-only %s while restarting',
+    async (channel) => {
+      const gate = createUpdateWorkGate();
+      const release = gate.acquire();
+      expect(await runWithUpdateWork(channel, gate, () => Promise.resolve('status'))).toBe(
+        'status',
       );
       release?.();
     },
