@@ -61,7 +61,7 @@ async function prepared(win: Page, p: SurveyDemoProject): Promise<void> {
   const m = MeasurementsFile.parse(JSON.parse(await readFile(mfile, 'utf8')));
   const across = {
     family: 'line' as const,
-    scope: { kind: 'site' as const },
+    scope: { kind: 'survey' as const, capture: 'd2' },
     points: [
       [551140, 2331400, 120],
       [551260, 2331400, 121.2],
@@ -76,7 +76,7 @@ async function prepared(win: Page, p: SurveyDemoProject): Promise<void> {
   );
   await writeFile(mfile, JSON.stringify(MeasurementsFile.parse(m), null, 1));
   await openDemo(win, p.name, p.id);
-  await measureTree(win);
+  await measureTree(win, 'd2');
 }
 
 /** Add a survey or design from the chips' "+ Add survey or design" menu. */
