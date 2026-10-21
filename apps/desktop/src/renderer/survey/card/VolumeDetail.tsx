@@ -46,7 +46,14 @@ import {
 import type { ItemShare } from '../engineProtocol';
 import { updateMeasurement, useMeasure } from '../measureStore';
 import { setSeriesFailed, useSeriesFailed } from '../useInventory';
-import { BasePicker, baseName, DEFAULT_BASE, missingName, optionLabel } from './BasePicker';
+import {
+  BaseFields,
+  BasePicker,
+  baseName,
+  DEFAULT_BASE,
+  missingName,
+  optionLabel,
+} from './BasePicker';
 import '../../charts/charts.css';
 import '../compare.css';
 
@@ -605,6 +612,17 @@ function ItemBlock({
         )}
         {chipsExtra}
       </div>
+      {showTo && isBase(item.to) && (
+        <BaseFields
+          value={item.to}
+          m={m}
+          readOnly={readOnly}
+          testId="survey-to-level"
+          onChange={(ref) => {
+            setSide('to', ref);
+          }}
+        />
+      )}
       {result && result.status !== 'refused' && (
         <Figures result={result} stale={stale} share={share} units={units} />
       )}

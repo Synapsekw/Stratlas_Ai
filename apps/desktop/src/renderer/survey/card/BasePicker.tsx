@@ -191,16 +191,39 @@ export function BasePicker(p: {
           })}
         </div>
       </Popover>
-      {p.value.kind === 'reference' && p.value.mode === 'level' && (
-        <LevelField value={p.value} m={p.m} readOnly={p.readOnly} onChange={change} />
-      )}
-      {p.value.kind === 'custom' && p.m && (
-        <div className="bp-custom">
-          <BaseEditor m={p.m} base={p.value} disabled={p.readOnly} onChange={change} />
-        </div>
-      )}
+      <BaseFields value={p.value} m={p.m} readOnly={p.readOnly} onChange={change} />
     </>
   );
+}
+
+/**
+ * A fixed level's field and a custom base's point editor, under whichever side holds the base
+ * (the From picker, or the To chip of a comparison measured against a base).
+ */
+export function BaseFields(p: {
+  value: BaseSpec | SurfaceRef;
+  m: SurveyMeasurement | undefined;
+  readOnly: boolean;
+  onChange: (v: SurfaceRef) => void;
+  testId?: string;
+}): ReactElement | null {
+  if (p.value.kind === 'reference' && p.value.mode === 'level')
+    return (
+      <LevelField
+        value={p.value}
+        m={p.m}
+        readOnly={p.readOnly}
+        onChange={p.onChange}
+        testId={p.testId ?? 'survey-ref-level'}
+      />
+    );
+  if (p.value.kind === 'custom' && p.m)
+    return (
+      <div className="bp-custom">
+        <BaseEditor m={p.m} base={p.value} disabled={p.readOnly} onChange={p.onChange} />
+      </div>
+    );
+  return null;
 }
 
 /** A base's row: the tick, its name and when to use it, and the chevron of the surface list. */
@@ -223,11 +246,13 @@ function LevelField({
   m,
   readOnly,
   onChange,
+  testId,
 }: {
   value: Extract<SurfaceRef, { kind: 'reference' }>;
   m: SurveyMeasurement | undefined;
   readOnly: boolean;
   onChange: (v: SurfaceRef) => void;
+  testId: string;
 }) {
   const t = useT();
   const settings = useMeasure((s) => s.settings);
@@ -253,7 +278,7 @@ function LevelField({
         type="number"
         step="0.001"
         aria-label={`${t('base.level')} (${unitLabel(unit)})`}
-        data-testid="survey-ref-level"
+        data-testid={testId}
         value={text}
         readOnly={readOnly}
         onChange={(e) => {

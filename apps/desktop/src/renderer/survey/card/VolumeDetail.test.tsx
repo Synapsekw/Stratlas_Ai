@@ -597,6 +597,51 @@ describe('VolumeDetail', () => {
     expect(host.textContent).not.toContain('gone-dsm');
   });
 
+  it('a To side on a fixed level or a custom base can be edited again', () => {
+    const m = pile({
+      items: [
+        {
+          id: 'a',
+          from: { kind: 'current' },
+          to: { kind: 'reference', mode: 'level', levelM: 102.5 },
+          useDeadband: false,
+        },
+      ],
+    });
+    show(m);
+    const level = host.querySelector<HTMLInputElement>('[data-testid="survey-to-level"]');
+    expect(level?.value).toBe('102.500');
+    act(() => {
+      if (!level) return;
+      // React hears the value only through the input's own setter
+      Reflect.set(HTMLInputElement.prototype, 'value', '101.25', level);
+      level.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(calls.updateMeasurement).toHaveBeenCalled();
+    const update = calls.updateMeasurement.mock.calls.at(-1) as unknown as [
+      string,
+      (x: SurveyMeasurement) => SurveyMeasurement,
+    ];
+    expect(update[1](m).items[0]?.to).toEqual({ kind: 'reference', mode: 'level', levelM: 101.25 });
+    act(() => root?.unmount());
+    root = undefined;
+    host.remove();
+    // a custom base on the To side shows its point editor
+    show(
+      pile({
+        items: [
+          {
+            id: 'a',
+            from: { kind: 'current' },
+            to: { kind: 'custom', vertices: [] } as never,
+            useDeadband: false,
+          },
+        ],
+      }),
+    );
+    expect(byTestId('base-editor')).toHaveLength(1);
+  });
+
   it('a stale stored figure still owns its date: one number, marked stale', () => {
     const series = [
       result({ toCapture: 'c1', netM3: 3070, totalM3: 3070, fingerprint: 'f1' }),
