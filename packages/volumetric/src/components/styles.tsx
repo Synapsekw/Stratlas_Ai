@@ -11,10 +11,8 @@ const css = `
 .vol-stage > * { pointer-events: auto; }
 .vol-under { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: flex-end; justify-content: center; gap: var(--sp-5); pointer-events: none; }
 .vol-under > * { pointer-events: auto; }
-.vol-secpanel { width: min(440px, 100%); padding: 10px 12px; display: grid; gap: var(--sp-4); background: var(--bg-1); border-color: var(--line-strong); box-shadow: 0 12px 32px oklch(0 0 0 / .45); margin-right: auto; }
+.vol-secpanel { width: min(440px, 100%); padding: 10px 12px; display: grid; gap: var(--sp-4); background: var(--bg-1); border-color: var(--line-strong); box-shadow: var(--el-2); margin-right: auto; }
 .vol-secpanel b { font: 600 var(--t-12)/1 var(--f-ui); color: var(--fg-0); }
-.vol-secpanel .vol-cut { color: var(--cut); }
-.vol-secpanel .vol-fill { color: var(--fill); }
 .vol-legend { position: absolute; left: 12px; bottom: 56px; display: grid; gap: var(--sp-2); padding: 8px 10px; font-size: var(--t-11); color: var(--fg-1); background: var(--scrim); max-width: 220px; pointer-events: none; }
 .vol-legend b { font-weight: 600; color: var(--fg-0); }
 .vol-legend .ramp { height: 8px; border-radius: 2px; width: 180px; }

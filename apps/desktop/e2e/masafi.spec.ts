@@ -430,11 +430,14 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
   await win.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.4, { steps: 12 });
   expect(await camera()).toEqual(before);
   await win.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
-  // the shared chart's wording (chart.cutArea, chart.fillArea): 'Cut 42.41 m²'
-  await expect(win.getByTestId('vol-sec-cut')).toHaveText(/^Cut [\d\s,.]+ m²$/, {
+  // the shared chart's own areas (chart.cutArea, chart.fillArea): 'Cut 42.41 m²', and no second
+  // pair of figures under the chart
+  const areas = win.getByTestId('vol-section').getByTestId('chart-areas');
+  await expect(areas.locator('[data-kind="cut"]')).toHaveText(/^Cut [\d\s,.]+ m²$/, {
     timeout: 20_000,
   });
-  await expect(win.getByTestId('vol-sec-fill')).toHaveText(/^Fill [\d\s,.]+ m²$/);
+  await expect(areas.locator('[data-kind="fill"]')).toHaveText(/^Fill [\d\s,.]+ m²$/);
+  await expect(win.getByTestId('vol-section').getByText(/^Cut [\d\s,.]+ m²$/)).toHaveCount(1);
   // the section is drawn on the shared profile chart
   await expect(win.getByTestId('vol-section-chart')).toBeVisible();
   expect(
