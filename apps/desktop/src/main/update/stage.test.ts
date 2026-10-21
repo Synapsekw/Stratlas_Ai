@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { stageInstaller, verifyMacImage, type Run, type RunResult } from './stage';
+import { CODESIGN, SPCTL, stageInstaller, verifyMacImage, type Run, type RunResult } from './stage';
 
 describe('stageInstaller', () => {
   let dir: string;
@@ -30,7 +30,7 @@ describe('verifyMacImage', () => {
   const runner =
     (over: Partial<Record<'verify' | 'show' | 'spctl', RunResult>> = {}): Run =>
     (file, args) => {
-      if (file === 'spctl') return Promise.resolve(over.spctl ?? ok);
+      if (file === SPCTL) return Promise.resolve(over.spctl ?? ok);
       if (args[0] === '--verify') return Promise.resolve(over.verify ?? ok);
       return Promise.resolve(
         over.show ?? {
@@ -40,6 +40,18 @@ describe('verifyMacImage', () => {
         },
       );
     };
+
+  it('runs codesign and spctl by their full system paths', async () => {
+    const files: string[] = [];
+    const inner = runner();
+    const recording: Run = (file, args) => {
+      files.push(file);
+      return inner(file, args);
+    };
+    await verifyMacImage('/x.dmg', 'ABCDE12345', recording);
+    expect(files).toEqual([CODESIGN, CODESIGN, SPCTL]);
+    expect(files.every((f) => f.startsWith('/usr/'))).toBe(true);
+  });
 
   it('refuses without a pinned team', async () => {
     expect(await verifyMacImage('/x.dmg', undefined, runner())).toMatchObject({

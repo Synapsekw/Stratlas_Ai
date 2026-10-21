@@ -42,17 +42,17 @@ export async function verifyMacImage(
       error:
         'Updates cannot be installed by the app on macOS yet: this build has no Apple team configured (signing.macTeamId in brand.json). Open the new .dmg yourself.',
     };
-  const v = await run('codesign', ['--verify', '--strict', '--verbose=2', path]);
+  const v = await run(CODESIGN, ['--verify', '--strict', '--verbose=2', path]);
   if (v.code !== 0)
     return { ok: false, error: `The disk image's signature is not valid: ${firstLine(v.stderr)}` };
-  const d = await run('codesign', ['-dvv', path]);
+  const d = await run(CODESIGN, ['-dvv', path]);
   const found = /^TeamIdentifier=(.+)$/m.exec(`${d.stdout}\n${d.stderr}`)?.[1]?.trim();
   if (d.code !== 0 || found !== team)
     return {
       ok: false,
       error: `The disk image is signed by team ${found ?? 'unknown'}, not by ${team}.`,
     };
-  const g = await run('spctl', [
+  const g = await run(SPCTL, [
     '--assess',
     '--type',
     'open',
@@ -69,6 +69,10 @@ export async function verifyMacImage(
 function firstLine(s: string): string {
   return (s.split(/\r?\n/).find((l) => l.trim()) ?? 'no detail').trim().slice(0, 300);
 }
+
+/** macOS signing tools by their full system paths, never looked up through PATH. */
+export const CODESIGN = '/usr/bin/codesign';
+export const SPCTL = '/usr/sbin/spctl';
 
 /** Run a command without a shell and collect its output (never rejects). */
 export const runCommand: Run = (file, args) =>
