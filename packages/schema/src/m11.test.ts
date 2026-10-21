@@ -263,6 +263,13 @@ describe('survey files', () => {
     });
   });
 
+  it('a source with a field from a later version still parses and keeps it', () => {
+    const m = { ...measurement('m-1'), source: { layer: 'dsm-d1', kind: 'dsm' } };
+    const r = MeasurementsFile.safeParse(fileOf([m]));
+    expect(r.success).toBe(true);
+    expect(r.data?.measurements[0]?.source).toEqual({ layer: 'dsm-d1', kind: 'dsm' });
+  });
+
   it('a file from before the fields still parses', () => {
     expect(MeasurementsFile.safeParse(fileOf([measurement('m-1')])).success).toBe(true);
   });

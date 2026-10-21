@@ -408,8 +408,11 @@ export const MeasurementScope = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('survey'), capture: Id }).strict(),
 ]);
 
-/** The layer a measurement was measured, or last re-measured, on. */
-export const MeasurementSource = z.object({ layer: Id }).strict();
+/**
+ * The layer a measurement was measured, or last re-measured, on. Loose: a field a later version
+ * adds is kept, never a reason to refuse the whole file.
+ */
+export const MeasurementSource = z.looseObject({ layer: Id });
 
 /** What a vertex was picked on: the 3D model or the ground (height map). */
 export const PickedOn = z.enum(['model', 'ground']);
