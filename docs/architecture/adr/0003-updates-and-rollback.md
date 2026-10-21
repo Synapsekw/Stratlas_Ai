@@ -33,3 +33,15 @@ electron-builder's blockmap path diffs the new installer against the previous in
 - After a return the Windows "Apps" list still shows the newer version number until the next install; the files and shortcuts are the older version's.
 - macOS installs from the DMG by hand; rollback there uses the same kept copy and restore but has had less testing than Windows (stream D4).
 - An interrupted download, a refused signature or a failed copy leaves the installed version untouched.
+
+## Amendment: website app and kit updates, 21 October 2026
+
+The founder approved automatic checks and background downloads from the private Quadrion website for both the app and processing kit, with installation waiting for **Restart and update**. This supersedes the manual-only online behavior above for the website channel; the legacy static feed and local-file workflows remain available.
+
+The website channel uses `quadrion.updates/1` metadata from the authenticated member API. A release must be explicitly eligible, published, verified and compatible with the target app. Checks reserve no download links. Short-lived private download grants are obtained immediately before a transfer and renewed with bounded retries; digest-addressed partial files support resumption. Installer signature/version verification and archive manifest, path, compatibility and hash checks remain mandatory.
+
+Website credentials stay in main and the OS vault. The renderer sees only account identity and update status. Automatic updates default on but require a signed-in account; offline-only disables all updater networking. Disabling or signing out aborts current requests and invalidates stale results. A fully downloaded, verified update can be applied without network access.
+
+Staging does not activate tools or restart the app. Managed processing kits live outside the legacy `runtime/pipeline-pack-*` scan, so a kept old executable cannot discover the newly downloaded kit. A separate versioned selection/transaction record connects a kit to its app version and retains the preceding selection for recovery. Restart uses a main-process work gate and refuses while processing or installation work is active.
+
+The initial automatic installation target is the installed Windows x64 NSIS app. Store, portable, development and other builds report their limitation. First-time adoption requires installing a build containing this updater; earlier builds cannot acquire functionality they do not have. Website migration and function deployment precede publishing eligible app/kit releases. See the [approved update specification](../../superpowers/specs/2026-10-21-website-auto-updates.md).
