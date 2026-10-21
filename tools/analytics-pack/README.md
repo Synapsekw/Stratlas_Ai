@@ -17,7 +17,7 @@ The Analytics pack carries the local vision model for detectors: llama.cpp `llam
 python tools/analytics-pack/smoke.py --server <dir>/llama-server.exe --model <model.gguf> --mmproj <mmproj.gguf>
 ```
 
-Result on an RTX 5070 Ti (16 GB), 21 Oct 2026: `SMOKE OK`. The server was healthy in 4.1 s. The red square came back as `[899, 298, 1102, 503]` against `[900, 300, 1100, 500]` (3 px worst corner). P(yes) was 1.000 on the square and 0.026 on plain grey. A 1344 x 1008 image is about 1,750 prompt tokens, read in about 0.7 s, and generation ran at about 140 tokens per second. That run still passed the key with `--api-key`; the environment-variable start and its 401 check have not yet been run on a GPU.
+Result on an RTX 5070 Ti (16 GB), 21 Oct 2026: `SMOKE OK`. The server was healthy in 4.1 s. The red square came back as `[899, 298, 1102, 503]` against `[900, 300, 1100, 500]` (3 px worst corner). P(yes) was 1.000 on the square and 0.026 on plain grey. A 1344 x 1008 image is about 1,750 prompt tokens, read in about 0.7 s, and generation ran at about 140 tokens per second. A second run on the same machine against the built pack (key in `LLAMA_API_KEY`) was also `SMOKE OK`, and the request without the key got HTTP 401.
 
 Server notes from the run:
 
