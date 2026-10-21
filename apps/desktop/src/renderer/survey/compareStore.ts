@@ -26,6 +26,7 @@ import type {
   SurveyMeasurement,
   SurveyPrepareParams,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { createStore, useStore } from 'zustand';
 import { captureShift, shiftKey, workspace } from '@aio/workspace';
 import { bridge } from '../shell';
@@ -468,14 +469,18 @@ const inputsKey = (m: SurveyMeasurement, withRing: boolean): string =>
  * "Recompute with the standard base" (W3): the person's Recompute of a measurement whose figure
  * was carried over from the kit. The engine's result replaces the carried one, which is kept in
  * the measurement's history ("was X m³"), and the carried figures over time go (their dates are
- * computed on demand). An edit. Null when done, else why not (nothing in a read-only project).
+ * computed on demand). An edit. Null when done (or replaced by a newer run, which stores), else
+ * why not: a read-only project, the engine not ready, an outline of fewer than 3 points.
  */
 export async function recomputeStandard(id: string): Promise<string | null> {
   if (measureStore.getState().readOnly) return 'This project is read-only.';
+  if (get().status !== 'ready') return t('vol.recompute.notReady');
+  const m = measureStore.getState().file.measurements.find((x) => x.id === id);
+  if (m && m.points.length < 3) return t('vol.recompute.fewPoints');
   set({ problems: Object.fromEntries(Object.entries(get().problems).filter(([k]) => k !== id)) });
   const r = await compute(id);
   if (r) return null;
-  // no answer and no problem: replaced by a newer run (that one stores), or nothing to run
+  // no answer and no problem: replaced by a newer run (that one stores)
   return get().problems[id] ?? null;
 }
 

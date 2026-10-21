@@ -5828,6 +5828,8 @@ export const en = {
   'bulk.volumeUnit': 'Volume unit for all',
   'bulk.areaUnit': 'Area unit for all',
   'bulk.choose': 'Choose',
+  'vol.recompute.notReady': 'The volume engine is still starting. Try again in a moment.',
+  'vol.recompute.fewPoints': 'The outline needs at least 3 points to compute a volume.',
   'vol.status.ok': 'Up to date',
   'vol.status.partial': 'Partly outside the survey',
   'vol.status.refused': 'Not computed: the survey does not cover it',

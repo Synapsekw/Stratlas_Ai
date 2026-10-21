@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ProjectManifest } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -695,6 +696,18 @@ describe('results over time and the spread across bases', () => {
     expect(await computeSpread('m1')).toBeNull();
     expect(spy).toHaveBeenCalledTimes(2);
     spy.mockRestore();
+  });
+
+  it('recomputeStandard says why when nothing ran: engine not ready, too few points', async () => {
+    const r = await compute('m1', { live: true });
+    put({ results: [kit(must(r?.results[0]), 'e2')] });
+    compareStore.setState({ status: 'loading' });
+    expect(await recomputeStandard('m1')).toBe(t('vol.recompute.notReady'));
+    compareStore.setState({ status: 'ready' });
+    put({ points: ring.slice(0, 2) });
+    expect(await recomputeStandard('m1')).toBe(t('vol.recompute.fewPoints'));
+    // the carried figure stays
+    expect(stored()?.results[0]?.carried).toBeDefined();
   });
 
   it('recomputeStandard replaces a carried figure with the engine one and keeps was', async () => {
