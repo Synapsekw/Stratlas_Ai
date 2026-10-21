@@ -301,7 +301,14 @@ describe('importAik (synthetic kit offline build)', () => {
         before.replace('"url":"report/Test-Report.pdf"', '"url":"../secret.pdf"'),
       );
       await expect(
-        importAik({ src: src(), out: join(root, 'out-escape'), id: 'test', epsg, photos: 'all' }),
+        importAik({
+          src: src(),
+          out: join(root, 'out-escape'),
+          id: 'test',
+          epsg,
+          utcOffset: '+03:00',
+          photos: 'all',
+        }),
       ).rejects.toThrow(/outside the kit folder/);
     } finally {
       writeFileSync(html, before);
