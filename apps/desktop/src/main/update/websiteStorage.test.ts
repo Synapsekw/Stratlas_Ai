@@ -86,7 +86,7 @@ describe('website artifact storage', () => {
         verifyInstaller: vi.fn(() => Promise.resolve({ ok: true })),
         client: {
           grant: () => Promise.resolve('https://storage.example/url'),
-          binary: () => Promise.resolve(new Response(bytes)),
+          binary: () => Promise.resolve(new Response(new Uint8Array(bytes))),
         },
       });
       await storage.download(artifact, new AbortController().signal, () => undefined);

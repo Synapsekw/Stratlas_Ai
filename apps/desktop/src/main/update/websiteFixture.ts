@@ -7,7 +7,7 @@ export function createWebsiteUpdateFixture(d: {
   gate: UpdateWorkGate;
   setBusy: (busy: boolean) => void;
   emit: (status: WebsiteUpdateStatus) => void;
-}) {
+}): ReturnType<typeof createWebsiteUpdater> {
   let email: string | null = null;
   let stage: WebsiteStage | null = null;
   let ready = false;
