@@ -91,14 +91,19 @@ function Anchored({ anchor, onClose }: { anchor: 'above' | 'below'; onClose: () 
     </>
   );
 }
-const renderAnchored = (anchor: 'above' | 'below', onClose: () => void, winWidth = 1000) => {
-  // the opener sits at x 100..180, y 600..624; the popover is 200 x 150
+const renderAnchored = (
+  anchor: 'above' | 'below',
+  onClose: () => void,
+  winWidth = 1000,
+  { openerTop = 600, popHeight = 150 } = {},
+) => {
+  // the opener sits at x 100..180, y 600..624 by default; the popover is 200 x 150
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
     this: HTMLElement,
   ) {
     return this.dataset.testid === 'opener'
-      ? new DOMRect(100, 600, 80, 24)
-      : new DOMRect(0, 0, 200, 150);
+      ? new DOMRect(100, openerTop, 80, 24)
+      : new DOMRect(0, 0, 200, popHeight);
   });
   vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(winWidth);
   vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(700);
@@ -122,9 +127,48 @@ describe('Popover anchored to its opener', () => {
     expect(pop?.style.top).toBe('auto');
   });
   it('opens below the opener', () => {
-    const pop = renderAnchored('below', vi.fn());
-    expect(pop?.style.top).toBe('628px');
+    const pop = renderAnchored('below', vi.fn(), 1000, { openerTop: 100 });
+    expect(pop?.style.top).toBe('128px');
     expect(pop?.style.bottom).toBe('auto');
+  });
+  it('flips above when the window has no room below, and scrolls inside what is left', () => {
+    // 150 px tall under an opener at 600..624 in a 700 px window: 64 px below, 588 px above
+    const pop = renderAnchored('below', vi.fn());
+    expect(pop?.style.top).toBe('auto');
+    expect(pop?.style.bottom).toBe('104px');
+    expect(pop?.style.maxHeight).toBe('588px');
+    expect(pop?.style.overflowY).toBe('auto');
+  });
+  it('fits a menu taller than either side to the larger one, scrolling', () => {
+    // 900 px of menu under an opener at 300..324 in a 700 px window: 364 px below, 288 above
+    const pop = renderAnchored('below', vi.fn(), 1000, { openerTop: 300, popHeight: 900 });
+    expect(pop?.style.top).toBe('328px');
+    expect(pop?.style.maxHeight).toBe('364px');
+    expect(pop?.style.overflowY).toBe('auto');
+  });
+  it('sits above the floating panel it opens from (a dock over the stage), not under it', () => {
+    root = createRoot(host);
+    function InDock({ z }: { z: string }) {
+      const opener = useRef<HTMLButtonElement>(null);
+      return (
+        <section style={{ position: 'fixed', zIndex: z }}>
+          <button ref={opener} type="button">
+            open
+          </button>
+          <Popover open onClose={vi.fn()} opener={opener} anchor="below" className="docked">
+            <span>x</span>
+          </Popover>
+        </section>
+      );
+    }
+    // a panel above the popover layer (40): the portal root lifts it to the top layer
+    act(() => root?.render(<InDock z="55" />));
+    const layer = () =>
+      document.body.querySelector('.docked')?.parentElement?.getAttribute('data-layer') ?? null;
+    expect(layer()).toBe('top');
+    // a panel under it keeps the popover layer
+    act(() => root?.render(<InDock z="20" />));
+    expect(layer()).toBeNull();
   });
   it('stays inside the window on the right', () => {
     // 200 px wide in a 250 px window: 250 - 200 - 8
