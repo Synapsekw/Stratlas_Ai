@@ -64,7 +64,8 @@ const obj = (v: unknown): Record<string, unknown> =>
 
 export function isRecordsOp(node: OpNode): boolean {
   const { kind, target } = node.op;
-  if (kind in KIND_REC) return KIND_REC[kind]?.includes(target.rec) ?? false;
+  // own keys only: a kind such as `toString` from an op is not in the table
+  if (Object.hasOwn(KIND_REC, kind)) return KIND_REC[kind]?.includes(target.rec) ?? false;
   if (kind === 'record.external') {
     return Object.values(KIND_REC).some((recs) => recs.includes(target.rec));
   }
@@ -116,7 +117,10 @@ export function projectRecords(applied: readonly OpNode[], index: OpIndex): Reco
     if (!entry) {
       entry = {
         ref: { rec: target.rec, id: target.id, ...(target.in ? { in: target.in } : {}) },
-        log: new FieldLog(GROUPS[target.rec] ?? [], QUIET[target.rec] ?? []),
+        log: new FieldLog(
+          Object.hasOwn(GROUPS, target.rec) ? (GROUPS[target.rec] ?? []) : [],
+          Object.hasOwn(QUIET, target.rec) ? (QUIET[target.rec] ?? []) : [],
+        ),
         order: node.order,
       };
       logs.set(key, entry);

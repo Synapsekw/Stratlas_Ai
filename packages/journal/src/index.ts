@@ -53,7 +53,7 @@ export {
 } from './query';
 export { rolesFrom, stripPayload } from './redact';
 export { readSegment, writeSegmentLine, type SegmentLine } from './segment';
-export { parseStrictJson, strictJsonProblem } from './strict';
+export { parseStrictJson, setOwn, strictJsonProblem } from './strict';
 export {
   publicKeyObject,
   signerFromKey,

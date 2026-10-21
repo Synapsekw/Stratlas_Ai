@@ -10,6 +10,7 @@ import { checkCheckpoint, checkDeviceRecord, merkleRoot, type ChainHead } from '
 import { loadJournal, type JournalFiles, type LoadedJournal } from './load';
 import { replayTeam } from './members';
 import { checkOp } from './op';
+import { setOwn } from './strict';
 import { publicKeyObject } from './sign';
 import type { TeamPinState } from './teamPin';
 
@@ -429,7 +430,7 @@ export function verifyLoaded(j: LoadedJournal, opts: VerifyOptions = {}): Verify
 
   // ---- the audit head: the Merkle root over every chain's head
   const heads: Record<string, ChainHead> = {};
-  for (const c of chains) if (c.head) heads[c.chain] = c.head;
+  for (const c of chains) if (c.head) setOwn(heads, c.chain, c.head);
   chains.sort((a, b) => (a.chain < b.chain ? -1 : a.chain > b.chain ? 1 : 0));
   return {
     ok: problems.length === 0,

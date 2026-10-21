@@ -1,4 +1,4 @@
-import { canonicalJson, contentHash } from '@aio/journal';
+import { canonicalJson, contentHash, setOwn } from '@aio/journal';
 import type { Conflict, QuarantineEntry, RecordRef } from '@aio/schema';
 import { RELEASE_PREFIX } from './quarantine';
 import type { Write } from './registers';
@@ -107,7 +107,7 @@ export function writeDrafts(
       },
     ];
   }
-  const kind = PATCH_KIND[target.rec];
+  const kind = Object.hasOwn(PATCH_KIND, target.rec) ? PATCH_KIND[target.rec] : undefined;
   if (!kind) return [];
   // a group (class with its severity model) is written whole
   const group = field === 'classId' || (target.rec === 'change-item' && field === 'status');
@@ -116,7 +116,7 @@ export function writeDrafts(
   const unset: string[] = [];
   for (const [f, v] of Object.entries(values)) {
     if (v === null || v === undefined) unset.push(f);
-    else set[f] = v;
+    else setOwn(set, f, v);
   }
   return [
     {

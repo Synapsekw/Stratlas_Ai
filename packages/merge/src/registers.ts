@@ -1,4 +1,4 @@
-import { canonicalJson } from '@aio/journal';
+import { canonicalJson, setOwn } from '@aio/journal';
 import type { OpIndex, OpNode } from './causal';
 
 /** One value written to a field by an op (`absent`: the op removed the field). */
@@ -67,7 +67,7 @@ export class FieldLog {
       }
       const lead = group[0] ?? f;
       const g = grouped.get(lead) ?? {};
-      g[f] = w.absent ? null : w.value;
+      setOwn(g, f, w.absent ? null : w.value);
       grouped.set(lead, g);
     }
     for (const [lead, value] of grouped) this.push(this.checked, lead, writeOf(node, value));
@@ -98,7 +98,7 @@ export class FieldLog {
       const w = this.winner(f);
       if (!w) continue;
       if (w.absent) unset.push(f);
-      else set[f] = w.value;
+      else setOwn(set, f, w.value);
     }
     return { set, unset };
   }

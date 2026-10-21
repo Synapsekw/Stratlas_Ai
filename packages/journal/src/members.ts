@@ -586,6 +586,8 @@ export function orderForTeam<T>(
   return keyed.map((k) => k.item);
 }
 
+const CHAIN_ID = /^d_[a-z2-7]{52}\.r_[a-z2-7]{16}$/;
+
 const ROLE_RANK: Record<Role, number> = { owner: 3, reviewer: 2, viewer: 1, client: 1 };
 
 function seenOf(payload: unknown): Record<string, number> | null {
@@ -595,6 +597,8 @@ function seenOf(payload: unknown): Record<string, number> | null {
   }
   const out: Record<string, number> = {};
   for (const [chain, seq] of Object.entries(seen as Record<string, unknown>)) {
+    // chain ids only: a key such as `__proto__` is not a chain and never a field
+    if (!CHAIN_ID.test(chain)) continue;
     if (typeof seq === 'number' && Number.isSafeInteger(seq) && seq >= 0) out[chain] = seq;
   }
   return out;

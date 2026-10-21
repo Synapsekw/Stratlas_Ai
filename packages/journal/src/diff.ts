@@ -1,3 +1,4 @@
+import { setOwn } from './strict';
 import type { EditCommand, OpKind, RecordRef, Via } from '@aio/schema';
 import { canonicalJson } from './canonical';
 import { contentHash } from './hash';
@@ -38,20 +39,25 @@ export function diffFields(before: Obj | null, after: Obj | null, skip: string[]
   const set: Obj = {};
   const unset: string[] = [];
   const was: Obj = {};
+  // own fields only: `__proto__` in a file is a field, never the inherited prototype
   const b = before ?? {};
   const a = after ?? {};
+  const at = (o: Obj, k: string): unknown => (Object.hasOwn(o, k) ? o[k] : undefined);
   for (const k of Object.keys(a)) {
-    if (skip.includes(k) || a[k] === undefined) continue;
-    if (b[k] === undefined || !same(a[k], b[k])) {
-      set[k] = a[k];
-      if (b[k] !== undefined) was[k] = b[k];
+    const av = at(a, k);
+    const bv = at(b, k);
+    if (skip.includes(k) || av === undefined) continue;
+    if (bv === undefined || !same(av, bv)) {
+      setOwn(set, k, av);
+      if (bv !== undefined) setOwn(was, k, bv);
     }
   }
   for (const k of Object.keys(b)) {
-    if (skip.includes(k) || b[k] === undefined) continue;
-    if (a[k] === undefined) {
+    const bv = at(b, k);
+    if (skip.includes(k) || bv === undefined) continue;
+    if (at(a, k) === undefined) {
       unset.push(k);
-      was[k] = b[k];
+      setOwn(was, k, bv);
     }
   }
   const out: FieldPatch = {};

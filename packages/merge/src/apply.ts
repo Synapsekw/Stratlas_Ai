@@ -7,6 +7,7 @@ import {
   Issue,
   NARRATIVE_MAX_VERSIONS,
   NarrativeFile,
+  NarrativeSectionId,
   PROCMODEL_DIR,
   ProcModel,
   readVersioned,
@@ -224,16 +225,29 @@ export function applyNarrative(
   p: Pick<Projection, 'narrative'>,
 ): Applied<NarrativeFile> {
   const base: NarrativeFile = file ?? { schema: 'aio.narrative/1', parts: {} };
-  const parts: Record<string, { versions: unknown[] }> = {};
+  // a part name comes from an op (untrusted): a Map, and only the sections the file knows, so
+  // `__proto__` or `constructor` never reaches an object's prototype
+  const parts = new Map<string, { versions: unknown[] }>();
+  const problems: string[] = [];
   for (const [part, value] of Object.entries(base.parts)) {
-    parts[part] = { versions: [...value.versions] };
+    parts.set(part, { versions: [...value.versions] });
   }
   for (const n of p.narrative) {
-    const list = (parts[n.part] ??= { versions: [] }).versions;
+    if (!NarrativeSectionId.safeParse(n.part).success) {
+      problems.push(
+        `Report text: "${n.part}" is not a part of the report; its version was skipped.`,
+      );
+      continue;
+    }
+    let entry = parts.get(n.part);
+    if (!entry) {
+      entry = { versions: [] };
+      parts.set(n.part, entry);
+    }
     const key = canonicalJson(n.version);
-    if (!list.some((v) => canonicalJson(v) === key)) list.push(n.version);
+    if (!entry.versions.some((v) => canonicalJson(v) === key)) entry.versions.push(n.version);
   }
-  for (const part of Object.values(parts)) {
+  for (const part of parts.values()) {
     const at = (v: unknown) => {
       const c = obj(v).createdAt;
       return typeof c === 'string' ? c : '';
@@ -244,10 +258,10 @@ export function applyNarrative(
       .map((x) => x.v)
       .slice(-NARRATIVE_MAX_VERSIONS);
   }
-  const r = NarrativeFile.safeParse({ ...base, parts });
+  const r = NarrativeFile.safeParse({ ...base, parts: Object.fromEntries(parts) });
   return r.success
-    ? { value: r.data, problems: [] }
-    : { value: base, problems: [`Report text: ${r.error.issues[0]?.message ?? ''}`] };
+    ? { value: r.data, problems }
+    : { value: base, problems: [...problems, `Report text: ${r.error.issues[0]?.message ?? ''}`] };
 }
 
 /** Project-relative files (forward slashes) whose content the projection decides. */

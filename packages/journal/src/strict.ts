@@ -93,3 +93,11 @@ export function parseStrictJson(text: string): unknown {
   if (problem) throw new Error(problem);
   return value;
 }
+
+/**
+ * Set `obj[key]` as a plain own property, whatever the key: `__proto__` from a file or an op stays
+ * a field and never becomes the object's prototype (security review, Oct 2026).
+ */
+export function setOwn(obj: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(obj, key, { value, enumerable: true, writable: true, configurable: true });
+}

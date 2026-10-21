@@ -1,4 +1,4 @@
-import { contentHash } from '@aio/journal';
+import { contentHash, setOwn } from '@aio/journal';
 import { Issue } from '@aio/schema';
 import type { OpIndex, OpNode } from '../causal';
 import { sideOf, type ConflictSeed } from '../conflicts';
@@ -298,8 +298,10 @@ export function projectIssues(
       continue;
     }
     const record: Record<string, unknown> = { id: s.id };
-    for (const k of ISSUE_KEYS) if (k in set) record[k] = set[k];
-    for (const k of Object.keys(set).sort()) if (!(k in record)) record[k] = set[k];
+    for (const k of ISSUE_KEYS) if (Object.hasOwn(set, k)) setOwn(record, k, set[k]);
+    for (const k of Object.keys(set).sort()) {
+      if (!Object.hasOwn(record, k)) setOwn(record, k, set[k]);
+    }
     issues.push({
       id: s.id,
       state: deadBy.has(s.id) ? 'deleted' : 'live',
