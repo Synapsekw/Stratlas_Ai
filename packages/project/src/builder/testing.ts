@@ -3,6 +3,8 @@
  * without client data. Not used by the app.
  */
 
+export * from './xt2Fixture';
+
 export interface FixtureExif {
   make?: string;
   model?: string;

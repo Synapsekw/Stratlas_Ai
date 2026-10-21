@@ -16,7 +16,8 @@
  * - `builder:updateLayers`, `builder:updateCapture`, `builder:updateClasses`, `builder:addSeverityModel`, `builder:removeCapture`, `walks:remove` and
  *   `builder:ensureCapture` are diffed after they write (their result is computed in the
  *   handler), and so are `tilesets:import` (the imported tileset's name as the label),
- *   `photo:applyPoses` with `apply: true` and `builder:remove` (every journaled file its plan
+ *   `photo:applyPoses` with `apply: true` and `builder:rereadPhotos` without `dryRun` (the
+ *   manifest and `orientation.json`), and `builder:remove` (every journaled file its plan
  *   names: the manifest, `tilesets.json`, change sets and detections);
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
  *   as attributed ops (`via.external`, "changed outside Quadrion AI"), except the open's own
@@ -1086,9 +1087,37 @@ export function createJournalService(deps: JournalServiceDeps) {
                   reconcileLabelled(st, TILESETS_FILE, `Imported 3D Tiles "${entry.name}"`),
                 );
               } else if ((req as IpcRequest<'photo:applyPoses'>).apply) {
-                await serial(st, () => reconcile(st, ['manifest.json'], undefined));
+                // the swap also moves the corrections of the refined photos out of orientation.json
+                await serial(st, () =>
+                  reconcile(st, ['manifest.json', 'orientation.json'], undefined),
+                );
               }
             }
+          } catch (e) {
+            console.warn(`Journal: could not record ${channel} in ${root} (${String(e)}).`);
+          }
+        }
+        return r;
+      };
+    }
+    if (channel === 'builder:rereadPhotos') {
+      // the re-read rewrites the layer's items and re-anchors their corrections: one step
+      return async (req) => {
+        const r = await handler(req);
+        const { projectId, dryRun } = req as IpcRequest<'builder:rereadPhotos'>;
+        const root = deps.projects.root(projectId);
+        if (
+          (r as { ok: boolean }).ok &&
+          dryRun !== true &&
+          root !== undefined &&
+          !deps.projects.package(projectId)
+        ) {
+          try {
+            const st = await load(root);
+            if (st.meta.journal === 'on')
+              await serial(st, () =>
+                reconcile(st, ['manifest.json', 'orientation.json'], undefined),
+              );
           } catch (e) {
             console.warn(`Journal: could not record ${channel} in ${root} (${String(e)}).`);
           }

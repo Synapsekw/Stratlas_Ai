@@ -229,3 +229,9 @@ export {
   type StitchOutcome,
 } from './panos';
 export { lasHeaderDay, zpcHeaderDay } from './zpc';
+export {
+  rereadPhotoLayer,
+  type RereadOptions,
+  type RereadOrientation,
+  type RereadResult,
+} from './reread';

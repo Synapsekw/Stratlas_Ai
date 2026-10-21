@@ -1978,6 +1978,43 @@ export const ipc = {
     ]),
   },
   /**
+   * Re-read the photos of one photos layer from their files with the fixed XMP reader (photo
+   * position edit, 21 Oct 2026): each item's imported `pos` (height by the project's height rule)
+   * and `q` (gimbal angles) are rewritten; pinned items are left alone; a photo with a hand
+   * correction keeps its corrected place (its `offsetM` in `orientation.json` is re-anchored); a
+   * thermal `_R` photo without DJI XMP takes its visual twin's place again. A review copy without
+   * metadata is read from `folder` (the originals); without one, `needsFolder` names how many.
+   * `dryRun` writes nothing and answers the counts it would give. `refined`: processing gave the
+   * layer refined poses, which a re-read replaces.
+   */
+  'builder:rereadPhotos': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        layerId: z.string().min(1),
+        folder: z.string().min(1).max(2048).optional(),
+        dryRun: z.boolean().optional(),
+      })
+      .strict(),
+    response: z.union([
+      z.object({
+        ok: z.literal(true),
+        manifest: ProjectManifest,
+        reread: z.number().int().nonnegative(),
+        kept: z.number().int().nonnegative(),
+        twins: z.number().int().nonnegative(),
+        notFound: z.number().int().nonnegative(),
+        refined: z.boolean(),
+      }),
+      z.object({
+        ok: z.literal(false),
+        needsFolder: z.literal(true),
+        missing: z.number().int().nonnegative(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
    * Rename a survey date (`Capture.label`) or set the colour and icon of its folder. Only the
    * manifest's `captures` entry changes: no layer, no file and no date. Backed up and validated
    * like `builder:updateLayers`.

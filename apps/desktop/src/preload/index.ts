@@ -127,6 +127,7 @@ const CHANNELS = {
   'layer:export': true,
   'layer:reveal': true,
   'builder:recentre': true,
+  'builder:rereadPhotos': true,
   'builder:updateCapture': true,
   'builder:updateClasses': true,
   'builder:addSeverityModel': true,

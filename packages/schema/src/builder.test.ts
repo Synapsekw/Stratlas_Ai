@@ -191,6 +191,32 @@ describe('builder ipc contracts', () => {
     ).toBe(false);
   });
 
+  it('validates a re-read of photo positions and its three answers', () => {
+    const req = ipc['builder:rereadPhotos'].request;
+    expect(req.safeParse({ projectId: 'p', layerId: 'photos' }).success).toBe(true);
+    expect(
+      req.safeParse({ projectId: 'p', layerId: 'photos', folder: 'C:/orig', dryRun: true }).success,
+    ).toBe(true);
+    expect(req.safeParse({ projectId: 'p', layerId: '' }).success).toBe(false);
+    expect(req.safeParse({ projectId: 'p', layerId: 'photos', extra: 1 }).success).toBe(false);
+    const res = ipc['builder:rereadPhotos'].response;
+    const done = {
+      ok: true,
+      manifest: { ...base },
+      reread: 2,
+      kept: 1,
+      twins: 1,
+      notFound: 0,
+      refined: false,
+    };
+    expect(res.safeParse(done).success).toBe(true);
+    expect(res.safeParse({ ...done, reread: -1 }).success).toBe(false);
+    const needs = res.safeParse({ ok: false, needsFolder: true, missing: 3 });
+    expect(needs.success && !needs.data.ok && 'needsFolder' in needs.data).toBe(true);
+    expect(res.safeParse({ ok: false, error: 'No such layer' }).success).toBe(true);
+    expect(res.safeParse({ ok: false }).success).toBe(false);
+  });
+
   it('patches either a mesh transform or a video calibration', () => {
     const req = ipc['builder:updateLayers'].request;
     const mat = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];

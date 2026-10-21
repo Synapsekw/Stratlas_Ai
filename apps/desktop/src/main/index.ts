@@ -223,6 +223,7 @@ import {
   trashAnswer,
   type RemovalDeps,
 } from './removal';
+import { builderRereadPhotos } from './reread';
 import { captureConsole, exportLogs } from './logs';
 import { openProjectSizes } from './diagnostics/bundle';
 import { createCrashStore } from './diagnostics/crash';
@@ -1826,6 +1827,7 @@ function registerIpc(): void {
     'builder:recentre',
     (req) => packageRefusal(req.projectId) ?? builderRecentre(req, registry),
   );
+  handle('builder:rereadPhotos', (req) => builderRereadPhotos(req, registry));
   handle(
     'builder:updateCapture',
     (req) => packageRefusal(req.projectId) ?? builderUpdateCapture(req, registry),

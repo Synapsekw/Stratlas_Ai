@@ -7,6 +7,7 @@ import { registerPinActions } from './pinActions';
 import { registerPositionActions } from './positionActions';
 import { registerProjectActions } from './projectActions';
 import { registerReportActions } from './reportActions';
+import { registerRereadActions } from './rereadActions';
 import { registerRfActions } from './rfActions';
 
 let done = false;
@@ -21,6 +22,7 @@ export function registerSidebarActions(): void {
   registerKindActions();
   registerPinActions();
   registerPositionActions();
+  registerRereadActions();
   registerMeasureActions();
   registerReportActions();
   registerAreaActions();

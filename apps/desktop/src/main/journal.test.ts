@@ -651,6 +651,65 @@ describe('journal service', () => {
       expect(e[0]?.target).toEqual({ rec: 'manifest', id: 'ph', in: 'layers' });
     });
 
+    it('records the corrections photo:applyPoses moves out of orientation.json', async () => {
+      const { root, userData } = setup();
+      put(root, 'orientation.json', { schema: 'aio.orientation/1', clips: {}, photos: { ph: {} } });
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const apply = s.journal.wrap('photo:applyPoses', () => {
+        put(root, 'manifest.json', {
+          schema: 'aio.project/1',
+          layers: [{ id: 'ph', kind: 'photos', cameras: 'new' }],
+        });
+        put(root, 'orientation.json', { schema: 'aio.orientation/1', clips: {}, photos: {} });
+        return Promise.resolve({
+          ok: true as const,
+          cameras: 1,
+          medianMoveM: 0,
+          maxMoveM: 0,
+          applied: true,
+        });
+      });
+      await apply({ projectId: 'p', run: 'r1', layer: 'ph', apply: true });
+      const ids = (await hist(s)).map((x) => x.target.id);
+      expect(ids).toContain('ph');
+      expect(ids).toContain('orientation.json');
+    });
+
+    it('records builder:rereadPhotos with its orientation change, none for a dry run', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const reread = s.journal.wrap('builder:rereadPhotos', ({ dryRun }) => {
+        if (!dryRun) {
+          put(root, 'manifest.json', {
+            schema: 'aio.project/1',
+            layers: [{ id: 'ph', kind: 'photos', items: 'reread' }],
+          });
+          put(root, 'orientation.json', {
+            schema: 'aio.orientation/1',
+            clips: {},
+            photos: { ph: { a: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, 1, 0] } } },
+          });
+        }
+        return Promise.resolve({
+          ok: true as const,
+          manifest: {} as never,
+          reread: 1,
+          kept: 1,
+          twins: 0,
+          notFound: 0,
+          refined: false,
+        });
+      });
+      await reread({ projectId: 'p', layerId: 'ph', dryRun: true });
+      expect(await hist(s)).toHaveLength(0);
+      await reread({ projectId: 'p', layerId: 'ph' });
+      const ids = (await hist(s)).map((x) => x.target.id);
+      expect(ids).toContain('ph');
+      expect(ids).toContain('orientation.json');
+    });
+
     it('records builder:recentre as one external manifest step, never a per-layer undo', async () => {
       const { root, userData } = setup();
       const s = service(root, userData);
