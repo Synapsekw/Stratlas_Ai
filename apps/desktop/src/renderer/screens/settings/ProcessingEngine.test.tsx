@@ -122,7 +122,7 @@ describe('the Processing engine card', () => {
   });
 
   it('a start check that ran out of time: says why, and Try again asks main to install', async () => {
-    const problem = 'ODM did not finish starting within 10 minutes.';
+    const problem = 'ODM is installed, but its start check has not passed yet.';
     await mount(
       status({ state: 'unverified', version: '3.6.2', dir: 'E:\\Q\\odm-3.6.2', problem }),
     );

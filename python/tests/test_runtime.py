@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,52 @@ def test_job_error_code_reaches_job_json(tmp_path):
     assert manifest["failure"] == {"code": "misaligned", "data": {"shiftM": 2.01}}
     event = rec.of("error")[0]
     assert event["code"] == "misaligned" and event["data"] == {"shiftM": 2.01}
+
+
+class LiveSteps:
+    name = "test.live"
+    title = "Live"
+    description = "test"
+
+    def validate(self, params):
+        return params
+
+    def plan(self, params):
+        def go(ctx):
+            ctx.progress(0.5, "x", live={"lastActivityAt": "2026-10-19T10:00:00.000Z"})
+            time.sleep(0.25)
+            ctx.progress(0.6)
+            return {}
+
+        return [Step("go", "Go", go)]
+
+
+def test_progress_carries_live_when_given(tmp_path):
+    job, rec = run(tmp_path, LiveSteps(), params={})
+    job.run()
+    running = [m for m in rec.of("progress") if m.get("state") == "running"]
+    assert running[0]["live"] == {"lastActivityAt": "2026-10-19T10:00:00.000Z"}
+    assert "live" not in running[1]
+    assert running[1]["stepFraction"] == 0.6
+
+
+class LiveThenPlainSteps(LiveSteps):
+    def plan(self, params):
+        def go(ctx):
+            ctx.progress(0.7, "ODM", live={"lastActivityAt": "2026-10-19T10:00:00.000Z"})
+            ctx.progress(0.7, "Converting")  # at once, same fraction: still sent, it clears live
+            ctx.progress(0.7, "Again")  # nothing changes about live: throttled as before
+            return {}
+
+        return [Step("go", "Go", go)]
+
+
+def test_a_call_that_drops_live_is_never_throttled(tmp_path):
+    job, rec = run(tmp_path, LiveThenPlainSteps(), params={})
+    job.run()
+    running = [m for m in rec.of("progress") if m.get("state") == "running"]
+    assert [m.get("message") for m in running] == ["ODM", "Converting"]
+    assert "live" in running[0] and "live" not in running[1]
 
 
 def test_plain_job_error_has_no_failure(tmp_path):

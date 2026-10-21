@@ -25,6 +25,14 @@ export function odmRecordPath(dataRoot: string): string {
   return join(dataRoot, 'runtime', 'odm.json');
 }
 
+/**
+ * `<dataRoot>/runtime/odm-previous.json`: the working ODM an update replaces, kept with its folder
+ * until the new version's start check passes, and put back when the new one does not start.
+ */
+export function odmPreviousRecordPath(dataRoot: string): string {
+  return join(dataRoot, 'runtime', 'odm-previous.json');
+}
+
 /** Where the setup is downloaded to. */
 export function downloadDir(dataRoot: string): string {
   return join(dataRoot, 'runtime', 'downloads');

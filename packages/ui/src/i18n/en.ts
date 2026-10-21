@@ -5924,6 +5924,36 @@ export const en = {
   'empty.cleanup.noSurfaceHint': 'Run Check against points or prepare the surveys first.',
   'empty.hydro.title': 'No prepared surface yet',
   'empty.hydro.hint': 'Prepare the survey surfaces first.',
+
+  // The live line under a photo job's progress bar and its "may be stuck" notice
+  // (photogrammetry/JobLive.tsx). The step labels match the pack's English labels.
+  'photo.live.step.setup': 'Getting the photos ready',
+  'photo.live.step.features': 'Finding features',
+  'photo.live.step.matching': 'Matching photos',
+  'photo.live.step.tracks': 'Linking the matches',
+  'photo.live.step.reconstruct': 'Building the 3D model',
+  'photo.live.step.statistics': 'Checking the model',
+  'photo.live.step.geocoords': 'Placing the model on the map',
+  'photo.live.step.undistort': 'Preparing the photos for the maps',
+  'photo.live.unit.photos': 'photos',
+  'photo.live.unit.pairs': 'pairs',
+  'photo.live.unit.photosPlaced': 'photos placed',
+  'photo.live.detail': '{label}: {n}',
+  'photo.live.countOf': '{done} of {total}',
+  'photo.live.countUnit': '{n} {unit}',
+  'photo.live.seconds': '{s} s',
+  'photo.live.minutes': '{min} min',
+  'photo.live.hours': '{h} h {min} min',
+  'photo.live.etaSoon': 'less than a minute left in this step',
+  'photo.live.eta': 'about {min} min left in this step',
+  'photo.live.onStep': '{time} on this step',
+  'photo.live.inAll': '{time} in all',
+  'photo.live.lastActivity': 'Last activity {time} ago',
+  'photo.live.stuck': 'No progress for {minutes} minutes. The job may be stuck.',
+  'photo.live.cancel': 'Cancel job',
+  'photo.live.keepWaiting': 'Keep waiting',
+  'photo.live.stopped':
+    'The processing engine was stopped after {minutes} minutes with no activity. The work so far is kept; press Resume to try again.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

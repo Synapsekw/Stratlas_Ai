@@ -1358,6 +1358,24 @@ export const JobFailure = z.object({
 });
 export type JobFailure = z.infer<typeof JobFailure>;
 
+/** What a long step is doing right now, sent by the pipelines; optional, so an older pack sends none. */
+export const JobLiveDetail = z.object({
+  label: z.string().min(1).max(80),
+  done: z.number().int().nonnegative().optional(),
+  total: z.number().int().nonnegative().optional(),
+  unit: z.string().min(1).max(40).optional(),
+});
+export type JobLiveDetail = z.infer<typeof JobLiveDetail>;
+
+/** Live progress of a step that measures its own activity; optional, so an older pack or app still works. */
+export const JobLive = z.object({
+  detail: JobLiveDetail.optional(),
+  stepStartedAt: z.string().optional(),
+  lastActivityAt: z.string().optional(),
+  etaSeconds: z.number().nonnegative().optional(),
+});
+export type JobLive = z.infer<typeof JobLive>;
+
 export const JobRecord = z.object({
   id: JobId,
   pipeline: PipelineName,
@@ -1376,7 +1394,11 @@ export const JobRecord = z.object({
   artifacts: z.array(JobArtifact),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** When the current attempt started; set on start and on resume. Older records have none. */
+  startedAt: z.string().optional(),
   finishedAt: z.string().optional(),
+  /** Live progress, only while a step that measures activity runs. */
+  live: JobLive.optional(),
   /** Pack version that ran the job last. */
   packVersion: z.string().optional(),
 });

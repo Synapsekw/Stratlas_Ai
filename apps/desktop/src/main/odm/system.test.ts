@@ -53,10 +53,56 @@ describe('the smoke test process', () => {
     );
     const r = system.runSmoke('C:\\odm');
     child.stdout.write('compiling\n');
-    expect(await r).toEqual({ code: 1, out: 'compiling\n', timedOut: true });
+    expect(await r).toEqual({ code: 1, out: 'compiling\n', timedOut: true, stopped: false });
     expect(killed).toEqual([4242]);
     expect(child.stdout.destroyed && child.stderr.destroyed).toBe(true);
     child.emit('close', 0); // a late close changes nothing
+  });
+
+  it('a cancel kills the check at once', async () => {
+    const child = fakeChild();
+    const killed: (number | undefined)[] = [];
+    const system = nodeOdmSystem(
+      {},
+      { closeGraceMs: 20, spawnSmoke: () => child as never, killTree: (pid) => killed.push(pid) },
+    );
+    const ctl = new AbortController();
+    const r = system.runSmoke('C:\\odm', ctl.signal);
+    ctl.abort();
+    expect(killed).toEqual([4242]);
+    child.emit('close', 1);
+    expect(await r).toMatchObject({ code: 1, timedOut: false });
+    // an abort before the start never spawns
+    let spawned = false;
+    const early = nodeOdmSystem(
+      {},
+      {
+        spawnSmoke: () => {
+          spawned = true;
+          return fakeChild() as never;
+        },
+      },
+    );
+    expect(await early.runSmoke('C:\\odm', ctl.signal)).toMatchObject({ code: 1 });
+    expect(spawned).toBe(false);
+  });
+
+  it('stopSmoke kills a check still running when the app quits', async () => {
+    const child = fakeChild();
+    const killed: (number | undefined)[] = [];
+    const system = nodeOdmSystem(
+      {},
+      { closeGraceMs: 20, spawnSmoke: () => child as never, killTree: (pid) => killed.push(pid) },
+    );
+    system.stopSmoke(); // nothing running: nothing killed
+    expect(killed).toEqual([]);
+    const r = system.runSmoke('C:\\odm');
+    system.stopSmoke();
+    expect(killed).toEqual([4242]);
+    // never closed: let go after the grace, and said to be stopped (the install takes it as a cancel)
+    expect(await r).toMatchObject({ code: 1, timedOut: false, stopped: true });
+    system.stopSmoke(); // finished: not killed again
+    expect(killed).toEqual([4242]);
   });
 
   it('keeps only the last 64 KB of the output', async () => {

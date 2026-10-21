@@ -32,6 +32,7 @@ export class JobStore {
       const job = r.data;
       if (ACTIVE.has(job.status)) {
         job.status = 'interrupted';
+        delete job.live;
         job.updatedAt = now().toISOString();
         job.steps = job.steps.map((s) =>
           s.state === 'running' ? { ...s, state: 'cancelled' } : s,

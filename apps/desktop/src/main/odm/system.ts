@@ -16,9 +16,13 @@ export interface OdmSystem {
   runSetup(file: string, args: string[]): Promise<number>;
   /**
    * `run.bat --help` in an ODM folder: its exit code, everything it printed, and whether it was
-   * stopped for taking longer than `SMOKE_TIMEOUT_MS` (absent counts as no).
+   * stopped for taking longer than `SMOKE_TIMEOUT_MS` (absent counts as no). `signal` stops it;
+   * `stopped`: `stopSmoke` did, as the app quits.
    */
-  runSmoke(dir: string): Promise<{ code: number; out: string; timedOut?: boolean }>;
+  runSmoke(
+    dir: string,
+    signal?: AbortSignal,
+  ): Promise<{ code: number; out: string; timedOut?: boolean; stopped?: boolean }>;
   runUninstaller(file: string, args: string[]): Promise<number>;
   /**
    * `reg query` output, `''` when nothing is found: with `search`, every value below `key` whose
@@ -63,7 +67,8 @@ function exitCode(child: Pick<ChildProcess, 'once'>): Promise<number> {
 function killTree(pid: number | undefined): void {
   if (pid === undefined) return;
   if (process.platform === 'win32')
-    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true });
+    // it also runs as the app quits: never block that for long
+    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, timeout: 5000 });
   else process.kill(pid, 'SIGKILL');
 }
 
@@ -93,7 +98,12 @@ export function nodeOdmSystem(
     spawnSmoke?: (dir: string) => SmokeChild;
     killTree?: (pid: number | undefined) => void;
   } = {},
-): OdmSystem {
+): OdmSystem & {
+  /** Kill every start check still running: the app quits, and ODM must not outlive it. */
+  stopSmoke(): void;
+} {
+  /** The running start checks, each by the function that stops it. */
+  const live = new Set<() => void>();
   const smokeTimeoutMs = opts.smokeTimeoutMs ?? SMOKE_TIMEOUT_MS;
   const closeGraceMs = opts.closeGraceMs ?? SMOKE_CLOSE_GRACE_MS;
   const kill = opts.killTree ?? killTree;
@@ -123,8 +133,12 @@ export function nodeOdmSystem(
   return {
     runSetup: run,
     runUninstaller: run,
-    runSmoke: (dir) =>
+    runSmoke: (dir, signal) =>
       new Promise((ok, fail) => {
+        if (signal?.aborted) {
+          ok({ code: 1, out: '', timedOut: false, stopped: false });
+          return;
+        }
         const child = spawnSmoke(dir);
         let out = '';
         const add = (c: Buffer | string) => {
@@ -134,31 +148,48 @@ export function nodeOdmSystem(
         child.stdout.on('data', add);
         child.stderr.on('data', add);
         let timedOut = false;
+        // stopped by stopSmoke: the app quits, and the install takes it as a cancel
+        let stopped = false;
         let settled = false;
+        let stopping = false;
         let grace: ReturnType<typeof setTimeout> | undefined;
-        const settle = (then: () => void) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          clearTimeout(grace);
-          then();
-        };
-        const timer = setTimeout(() => {
-          timedOut = true;
+        /** Kill the tree once (time out, cancel or quit); a stuck close lets go after the grace. */
+        const stop = () => {
+          if (stopping || settled) return;
+          stopping = true;
           kill(child.pid);
           // a grandchild can hold the pipes open after the kill, and `close` waits for them
           grace = setTimeout(() => {
             child.stdout.destroy();
             child.stderr.destroy();
             settle(() => {
-              ok({ code: 1, out, timedOut: true });
+              ok({ code: 1, out, timedOut, stopped });
             });
           }, closeGraceMs);
+        };
+        const quit = () => {
+          if (!settled) stopped = true;
+          stop();
+        };
+        const timer = setTimeout(() => {
+          timedOut = true;
+          stop();
         }, smokeTimeoutMs);
+        const settle = (then: () => void) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          clearTimeout(grace);
+          live.delete(quit);
+          signal?.removeEventListener('abort', stop);
+          then();
+        };
+        live.add(quit);
+        signal?.addEventListener('abort', stop);
         exitCode(child).then(
           (code) => {
             settle(() => {
-              ok({ code, out, timedOut });
+              ok({ code, out, timedOut, stopped });
             });
           },
           (e: unknown) => {
@@ -168,6 +199,9 @@ export function nodeOdmSystem(
           },
         );
       }),
+    stopSmoke: () => {
+      for (const stop of [...live]) stop();
+    },
     regQuery: (key, search) =>
       new Promise((ok, fail) => {
         execFile(

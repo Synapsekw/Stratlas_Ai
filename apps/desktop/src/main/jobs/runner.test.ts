@@ -285,6 +285,42 @@ describe('JobRunner', () => {
     await finished(runner, r.job.id);
   });
 
+  it('keeps live progress while a step runs and drops it when the job ends', async () => {
+    const { runner, events } = setup('live');
+    const r = await runner.start({ ...START, project });
+    if (!r.ok) throw new Error(r.error);
+    const job = await finished(runner, r.job.id);
+    expect(job.live).toBeUndefined();
+    expect(job.startedAt).toBeDefined();
+    const updates = events.flatMap((e) => (e.type === 'update' ? [e.job] : []));
+    const at = updates.findIndex((j) => j.live?.detail?.label === 'Matching photos');
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(updates[at]?.live?.detail).toEqual({
+      label: 'Matching photos',
+      done: 10,
+      total: 20,
+      unit: 'pairs',
+    });
+    expect(updates[at]?.live?.etaSeconds).toBe(30);
+    // the next progress carries an invalid live, which clears it
+    expect(updates.slice(at + 1).some((j) => j.live === undefined && j.status === 'running')).toBe(
+      true,
+    );
+    // a progress with no live at all clears it too: ODM's frozen last activity never outlives ODM
+    const back = updates.findIndex((j) => j.live?.lastActivityAt === '2026-10-20T10:01:00.000Z');
+    expect(back).toBeGreaterThan(at);
+    const plain = updates.find((j) => j.message === 'Converting');
+    expect(plain?.status).toBe('running');
+    expect(plain?.live).toBeUndefined();
+    const first = job.startedAt;
+    await new Promise((res) => setTimeout(res, 10));
+    const again = await runner.start({ resume: job.id });
+    expect(again.ok && again.job.live).toBeUndefined();
+    expect(again.ok && again.job.startedAt).toBeDefined();
+    expect(again.ok && again.job.startedAt).not.toBe(first);
+    await finished(runner, job.id);
+  });
+
   it('an index left with running jobs loads them as interrupted', async () => {
     const file = join(base, 'jobs.json');
     const job: JobRecord = {

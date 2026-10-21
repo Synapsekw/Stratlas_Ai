@@ -39,3 +39,7 @@ Testers on fresh Windows PCs got "ODM installed but does not start: exit code 1"
 ## Next session entry point
 
 After this lands, wait for the founder to ask for an installer build, then read the new log from a tester PC to confirm the cause.
+
+## Follow-up (fix/odm-check-cancel)
+
+The merge review of the first PR found two issues, fixed in a follow-up PR. The start check can be cancelled and is stopped when the app quits. The install is saved as unverified before the check starts, so a quit or cancel mid-check leaves Try again and Remove rather than a stray folder. An update keeps the previous working ODM until the new version passes its check. The unverified card text is now neutral about why the check did not pass.

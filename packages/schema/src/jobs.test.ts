@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ipc,
   ipcEvents,
+  JobLive,
   JobRecord,
   newJobId,
   PipelineAddonManifest,
@@ -162,6 +163,25 @@ describe('job ids, records and events', () => {
     expect(
       JobRecord.safeParse({ ...failed, failure: { code: 'Bad Code', data: {} } }).success,
     ).toBe(false);
+  });
+
+  it('a job record carries live progress and its start, both optional', () => {
+    const live = {
+      detail: { label: 'Matching photos', done: 4210, total: 12467, unit: 'pairs' },
+      stepStartedAt: '2026-10-19T10:01:00.000Z',
+      lastActivityAt: '2026-10-19T10:05:00.000Z',
+      etaSeconds: 720,
+    };
+    const parsed = JobRecord.parse({ ...record, startedAt: '2026-10-19T10:00:00.000Z', live });
+    expect(parsed.live?.detail?.total).toBe(12467);
+    expect(parsed.startedAt).toBe('2026-10-19T10:00:00.000Z');
+    expect(JobRecord.parse(record).live).toBeUndefined();
+  });
+
+  it('refuses a bad live object', () => {
+    expect(JobLive.safeParse({ etaSeconds: -1 }).success).toBe(false);
+    expect(JobLive.safeParse({ detail: { label: '' } }).success).toBe(false);
+    expect(JobLive.safeParse({ detail: { label: 'x', done: 1.5 } }).success).toBe(false);
   });
 
   it('validates a job record and the jobs:event union', () => {

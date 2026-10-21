@@ -2,7 +2,7 @@
 
 One note per working block, written by `/wrapup` (`.claude/commands/wrapup.md`) as `YYYY-MM-DD-HHmm-<slug>.md`. They carry what git cannot: why the work happened, how to test it, what is left open and where the next session starts. [../NORTH-STAR.md](../NORTH-STAR.md) is the live snapshot; these are the history behind it.
 
-`_draft-*.md` files are left by the Stop hook (`tools/agent/session-draft.mjs`) after a substantial session in the main checkout; the next `/wrapup` folds them into a note and deletes them. They are never committed.
+The Stop hook (`tools/agent/north-star-check.mjs`) writes no notes: it only warns when a plan or ADR changed but `docs/NORTH-STAR.md` did not, so the `/wrapup` note is the only record of a block.
 
 The repository is public: no client, site, tester or person names, no paths to client data, no screenshots of client projects. `/wrapup` checks each note with `tools/agent/check-public-text.mjs` before committing it.
 

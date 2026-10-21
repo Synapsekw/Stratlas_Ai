@@ -1,4 +1,5 @@
 import json
+import re
 import socket
 import sys
 import threading
@@ -21,10 +22,12 @@ class Ctx:
     def __init__(self):
         self.cancel_event = threading.Event()
         self.bar: list[tuple[float, str | None]] = []
+        self.live: list[dict | None] = []
         self.logs: list[tuple[str, str]] = []
 
-    def progress(self, f, m=None):
+    def progress(self, f, m=None, *, live=None):
         self.bar.append((f, m))
+        self.live.append(live)
 
     def log(self, m, level="info"):
         self.logs.append((m, level))
@@ -184,9 +187,10 @@ def test_stage_lines_reach_the_runner_while_odm_runs(tmp_path, monkeypatch):
     project.mkdir(parents=True)
 
     class Watching(Ctx):
-        def progress(self, f, m=None):
-            super().progress(f, m)
-            if m == "Aligning the photos":  # the Running line was read: let the stand-in finish
+        def progress(self, f, m=None, *, live=None):
+            super().progress(f, m, live=live)
+            # the Running line was read (it starts the first sub-step): let the stand-in finish
+            if m == "Getting the photos ready":
                 (tmp_path / "go").touch()
 
     R.run_odm(Watching(), R.OdmInstall(odm_dir, "3.6.2"), project, [], "opensfm", "opensfm", tmp_path / "logs",
@@ -272,6 +276,42 @@ def test_align_runs_to_opensfm_with_progress_and_the_gpu_line(odm, aligned, tmp_
     assert "Finished opensfm stage" in run.log.read_text()
 
 
+ENGINE_WORDS = re.compile(r"opensfm|detect_features|create_tracks|reconstruct\b")
+ISO = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z")
+
+
+def test_align_names_its_sub_steps_with_counts_while_the_port_is_taken(odm, aligned, tmp_path, monkeypatch):
+    (aligned / ".fake" / "opensfm.done.json").unlink()  # a fresh alignment: the fake runs opensfm again
+    n = len(list((aligned / "images").iterdir()))
+    port = _free_port()
+    monkeypatch.setenv("FAKE_ODM_UDP_PORT", str(port))
+    monkeypatch.setenv("FAKE_ODM_LINE_S", "0.05")
+    ctx = Ctx()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as busy:
+        busy.bind(("127.0.0.1", port))  # taken, and nobody reads it: the lines alone drive the bar
+        R.run_odm(ctx, odm, aligned, [], "dataset", "opensfm", tmp_path / "logs", rerun=False,
+                  use_gpu=False, port=port)  # fmt: skip
+    lives = [live for live in ctx.live if live is not None]
+    assert lives and len(lives) == len(ctx.live) - 1
+    # ODM has exited: the last update drops the live data, so the products step's own Python work
+    # never shows ODM's frozen last activity (and never the stuck notice)
+    assert ctx.live[-1] is None and ctx.bar[-1][0] == pytest.approx(1.0)
+    assert all(ISO.fullmatch(live["lastActivityAt"]) for live in lives)
+    details = [live["detail"] for live in lives if "detail" in live]
+    labels = {d["label"] for d in details}
+    assert {"Finding features", "Matching photos", "Building the 3D model"} <= labels
+    assert any(
+        d["label"] == "Matching photos" and d.get("total") == n - 1 and d.get("unit") == "pairs"
+        and set(d) == {"label", "done", "total", "unit"}
+        for d in details
+    )  # fmt: skip
+    assert not any(ENGINE_WORDS.search(text) for text in labels | {m or "" for _, m in ctx.bar})
+    fractions = [f for f, _ in ctx.bar]
+    assert fractions == sorted(fractions)
+    assert len({f for f in fractions if f < 1.0}) >= 5
+    assert (f"Matching photos: {n - 1} pairs", "info") in ctx.logs
+
+
 def test_udp_refines_progress_and_stdout_takes_over_when_the_port_is_taken(
     odm, aligned, tmp_path, monkeypatch
 ):
@@ -315,9 +355,10 @@ def test_a_stalled_odm_is_stopped_with_a_plain_message(odm, aligned, tmp_path, m
     monkeypatch.setenv("FAKE_ODM_HANG", "odm_meshing")  # prints its stage line, then nothing
     monkeypatch.setenv("FAKE_ODM_PIDS", str(pids))
     monkeypatch.setenv(R.STALL_ENV, "0.05")  # three seconds
-    with pytest.raises(JobError, match="ODM stopped making progress in the meshing stage"):
+    with pytest.raises(JobError, match="ODM stopped making progress in the meshing stage") as stalled:
         R.run_odm(Ctx(), odm, aligned, [], "openmvs", "odm_georeferencing", tmp_path / "logs",
                   rerun=True, use_gpu=False, port=_free_port())  # fmt: skip
+    assert stalled.value.code == "odm-stalled" and stalled.value.data == {"minutes": 0.05}
     from aio_pipelines.photo.proctree import process_started
 
     time.sleep(1.0)
@@ -330,9 +371,17 @@ def test_a_silent_but_busy_odm_is_not_stopped(odm, aligned, tmp_path, monkeypatc
     monkeypatch.setenv("FAKE_ODM_BUSY", "openmvs")  # prints its stage line, then works silently
     monkeypatch.setenv("FAKE_ODM_BUSY_S", "8")
     monkeypatch.setenv(R.STALL_ENV, "0.05")  # three seconds
-    run = R.run_odm(Ctx(), odm, aligned, [], "openmvs", "odm_filterpoints", tmp_path / "logs",
+    ctx = Ctx()
+    run = R.run_odm(ctx, odm, aligned, [], "openmvs", "odm_filterpoints", tmp_path / "logs",
                     rerun=True, use_gpu=False, port=_free_port())  # fmt: skip
     assert "Finished odm_filterpoints stage" in run.log.read_text()
+    # no line during the silent stretch, yet the CPU time keeps the last activity moving on
+    silent = {
+        live["lastActivityAt"]
+        for (f, m), live in zip(ctx.bar, ctx.live, strict=True)
+        if m == "Dense matching" and f < 0.5 and live
+    }
+    assert len(silent) >= 2
 
 
 def test_a_silent_terrain_program_fails_the_dtm_plainly(odm, aligned, tmp_path, monkeypatch):

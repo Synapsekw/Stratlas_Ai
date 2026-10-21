@@ -139,9 +139,11 @@ class _Within:
         self._ctx, self._lo, self._hi = ctx, lo, hi
         self._shown = 0.0
 
-    def progress(self, fraction: float, message: str | None = None) -> None:
+    def progress(
+        self, fraction: float, message: str | None = None, *, live: dict[str, Any] | None = None
+    ) -> None:
         self._shown = max(self._shown, min(1.0, max(0.0, float(fraction))))
-        self._ctx.progress(self._lo + (self._hi - self._lo) * self._shown, message)
+        self._ctx.progress(self._lo + (self._hi - self._lo) * self._shown, message, live=live)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._ctx, name)

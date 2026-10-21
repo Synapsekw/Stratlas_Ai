@@ -51,6 +51,8 @@ export interface PhotoUi {
   held: string[];
   /** A line under a run in its panel (Start over's old run that stayed). */
   notes: Record<string, string>;
+  /** When the person pressed Keep waiting on a job's stuck notice (memory only, never saved). */
+  keptWaiting: Record<string, number>;
   /** Bumped after a write, so open panels read the run again. */
   version: number;
   openWizard: (initial?: WizardInitial) => void;
@@ -65,6 +67,7 @@ export interface PhotoUi {
   /** Hold a run id (true) or free it again after a refused start (false). */
   holdRun: (run: string, hold: boolean) => void;
   setNote: (run: string, note: string | null) => void;
+  keepWaiting: (jobId: string, at: number) => void;
   bump: () => void;
 }
 
@@ -77,6 +80,7 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
   dateWarnings: {},
   held: [],
   notes: {},
+  keptWaiting: {},
   version: 0,
   holdRun: (run, hold) => {
     set((s) => ({ held: [...s.held.filter((r) => r !== run), ...(hold ? [run] : [])] }));
@@ -131,6 +135,9 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
       if (warning) dateWarnings[run] = warning;
       return { dateWarnings };
     });
+  },
+  keepWaiting: (jobId, at) => {
+    set((s) => ({ keptWaiting: { ...s.keptWaiting, [jobId]: at } }));
   },
   setNote: (run, note) => {
     set((s) => {

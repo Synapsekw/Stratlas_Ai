@@ -55,6 +55,20 @@ async function foldRight(win: Page): Promise<void> {
   await expect(win.locator('.ws')).toHaveClass(/right-off/);
 }
 
+/**
+ * Dock the floating video and wait for the dock's divider. On CI's software renderer a click can
+ * land while the floating window still moves (a sidebar folding, the island settling) and dock
+ * nothing, so the click is tried again until the divider shows.
+ */
+async function dockVideo(win: Page): Promise<void> {
+  const button = win.getByRole('button', { name: 'Dock the video window' });
+  const divider = win.getByRole('separator', { name: 'Resize the video dock' });
+  await expect(async () => {
+    if (!(await divider.isVisible())) await button.click({ timeout: 2_000 });
+    await expect(divider).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
 /** A live tool (M, Distance) slides the Measure bench in as the drawer; wait until it is in. */
 async function openDrawer(win: Page): Promise<Locator> {
   await win.locator('[data-scene-view] canvas').first().focus();
@@ -190,7 +204,7 @@ test('docked, the video shares the stage across a divider, under or beside the v
   // by side, so the video docks under them
   await islandGroup(win, 'volumes');
   await win.keyboard.press('Escape');
-  await win.getByRole('button', { name: 'Dock the video window' }).click();
+  await dockVideo(win);
 
   const divider = win.getByRole('separator', { name: 'Resize the video dock' });
   const views = win.locator('.stage-views');
@@ -408,7 +422,7 @@ test('a click through the volumes hint picks the pile under it', async ({ win },
   // Volumes in front and the video docked, as above: the hint has its corner
   await islandGroup(win, 'volumes');
   await win.keyboard.press('Escape');
-  await win.getByRole('button', { name: 'Dock the video window' }).click();
+  await dockVideo(win);
   const hint = win.getByTestId('vol-hint');
   await expect(hint).toBeVisible(VIEW_READY);
   const box = await hint.boundingBox();
@@ -556,7 +570,7 @@ test('in Split, the pane headers keep clear of the corners and the video, and ea
     .toEqual([]);
 
   // docked beside the views: two dividers, the split's inside the views
-  await win.getByRole('button', { name: 'Dock the video window' }).click();
+  await dockVideo(win);
   const dockDivider = win.getByRole('separator', { name: 'Resize the video dock' });
   const splitDivider = win.getByRole('separator', { name: 'Resize the two sides' });
   await expect(dockDivider).toHaveAttribute('aria-orientation', 'vertical');
@@ -641,7 +655,7 @@ test.describe('right to left', () => {
     await expect(win.locator('html')).toHaveAttribute('dir', 'rtl');
     await openTankFarm(win);
     await foldRight(win);
-    await win.getByRole('button', { name: 'Dock the video window' }).click();
+    await dockVideo(win);
     const divider = win.getByRole('separator', { name: 'Resize the video dock' });
     await expect(divider).toHaveAttribute('aria-orientation', 'vertical');
     const views = await win.locator('.stage-views').boundingBox();

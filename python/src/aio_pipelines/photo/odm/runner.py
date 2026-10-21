@@ -4,13 +4,15 @@ Progress: ODM prints ``Running <stage> stage`` and ``Finished <stage> stage``; i
 ``PGUP/<pid>/<project>/<percent>`` datagrams to 127.0.0.1:6367 (what NodeODM listens to). A step
 covers a window of ODM's stages; stage lines move the bar to each stage's start and end, and a
 datagram inside the running stage's own range refines it. When the port is taken, stage lines alone
-drive the bar. Cancel ends ODM's whole process tree (``native.run_tool``). The watchdog
-(``Watchdog``) stops ODM only when, over the whole stall window, it printed nothing, sent no
-progress and its process tree used almost no CPU (OpenMVS densifies silently for hours on a large
-set); and, for a DTM, when the terrain program ran silently past its own limit (the 14 Oct hang:
-one busy core for ever). Resume: each step keeps
-ODM's output in ``<log_dir>/odm.log``; with ``rerun`` the next attempt starts ``--rerun-from`` the
-stage after the last one finished (without it ODM's own rerun skips what is done).
+drive the bar. Inside the alignment stage OpenSfM's own lines (``sfm_progress``) name the sub-step,
+count its photos or pairs and move the bar; every update also tells the app when ODM last showed a
+sign of life (``liveness``: lines, counts, files and CPU time). Cancel ends ODM's whole process
+tree (``native.run_tool``). The watchdog (``Watchdog``) stops ODM only when, over the whole stall
+window, it printed nothing, sent no progress and its process tree used almost no CPU (OpenMVS
+densifies silently for hours on a large set); and, for a DTM, when the terrain program ran silently
+past its own limit (the 14 Oct hang: one busy core for ever). Resume: each step keeps ODM's output
+in ``<log_dir>/odm.log``; with ``rerun`` the next attempt starts ``--rerun-from`` the stage after
+the last one finished (without it ODM's own rerun skips what is done).
 
 ODM's program code is never changed. One exception (founder, 14 Oct 2026; deviation 17): in the
 ODM folder the app installed itself, the placeholder ``nvcuda.dll`` beside OpenMVS is renamed so
@@ -34,7 +36,9 @@ from pathlib import Path
 
 from ...runtime import JobError, StepContext, replace_over
 from .. import native, proctree
-from .flags import STAGE_END, gpu_wanted, odm_threads, stage_after, stage_index, stage_start, stage_window
+from .flags import STAGE_END, gpu_wanted, odm_threads, stage_after, stage_index, stage_span, stage_start
+from .liveness import Liveness, iso_at
+from .sfm_progress import SfmProgress, photo_count
 
 ODM_ENV, VERSION_ENV, GPU_ENV = "AIO_ODM", "AIO_ODM_VERSION", "AIO_ODM_GPU"
 WORK_ENV = "AIO_ODM_WORK"  # the same name as project.WORK_ENV (Task 5); kept here so this module stands alone
@@ -76,6 +80,7 @@ BUSY_SHARE = 0.01
 DEM_ENV = "AIO_ODM_DEM_MIN"
 DEM_DEFAULT_MIN = 30.0
 DEM_PROGRAM = "renderdem"  # ODM's DSM and DTM program; with no ground points it never finishes
+UNDISTORT_EVERY_S = 2.0  # how often the undistorted photos are counted while ODM writes them
 _DROP_ENV = (
     "PYTHON",
     "VIRTUAL_ENV",
@@ -227,40 +232,93 @@ def parse_datagram(data: bytes, project_name: str) -> float | None:
 
 class StageProgress:
     """ODM's stage lines and datagrams as the fraction of one step's window; never steps back
-    (ODM's split and merge stages send 5 then 0, and skipped stages still send theirs)."""
+    (ODM's split and merge stages send 5 then 0, and skipped stages still send theirs). Each stage
+    holds its ``stage_span`` of the step. Inside ``opensfm`` the OpenSfM sub-steps (``sfm``) move
+    the bar; a datagram stays a backup there."""
 
-    def __init__(self, first: str, last: str):
-        self.lo, self.hi = stage_window(first, last)
+    def __init__(self, first: str, last: str, sfm: SfmProgress | None = None):
+        self.first, self.last, self.sfm = first, last, sfm
         self.stage: str | None = None
         self.fraction: float | None = None
         self.message: str | None = None
         self.last_activity = time.monotonic()
+        self.stage_started_at: float | None = None  # wall clock
+        self._udp_within = 0.0  # the running stage's share done by ODM's datagrams
         self._lock = threading.Lock()
 
-    def _set(self, pct: float) -> float:
-        span = self.hi - self.lo
-        f = min(1.0, max(0.0, (pct - self.lo) / span)) if span > 0 else 1.0
-        with self._lock:
-            self.fraction = f if self.fraction is None else max(self.fraction, f)
-            return self.fraction
+    def _set(self, stage: str, within: float) -> float:
+        """Under the lock: the bar at ``within`` (0..1) of ``stage``, never back."""
+        if stage == "opensfm" and self.sfm is not None:
+            within = max(within, self.sfm.fraction())
+        lo, hi = stage_span(self.first, self.last, stage)
+        f = min(1.0, max(0.0, lo + (hi - lo) * within))
+        self.fraction = f if self.fraction is None else max(self.fraction, f)
+        return self.fraction
 
     def feed_line(self, line: str) -> float | None:
         self.last_activity = time.monotonic()
-        m = STAGE_LINE.search(ANSI.sub("", line))
-        if m is None or m.group(2) not in STAGE_END:
-            return None
-        stage = m.group(2)
-        if m.group(1) == "Running":
-            self.stage, self.message = stage, STAGE_WORDS[stage]
-            return self._set(stage_start(stage))
-        return self._set(STAGE_END[stage])
+        clean = ANSI.sub("", line)
+        m = STAGE_LINE.search(clean)
+        with self._lock:
+            if m is not None and m.group(2) in STAGE_END:
+                stage = m.group(2)
+                if m.group(1) == "Running":
+                    self.stage, self.message = stage, STAGE_WORDS[stage]
+                    self.stage_started_at, self._udp_within = time.time(), 0.0
+                    if stage == "opensfm" and self.sfm is not None:
+                        self.sfm.feed(clean)  # the sub-steps start with the stage
+                    return self._set(stage, 0.0)
+                if stage == "opensfm" and self.sfm is not None:
+                    self.sfm.finish()
+                return self._set(stage, 1.0)
+            if self.stage == "opensfm" and self.sfm is not None and self.sfm.feed(clean):
+                return self._set("opensfm", self._udp_within)
+        return None
 
     def feed_udp(self, percent: float) -> float | None:
         self.last_activity = time.monotonic()
         stage = self.stage
         if stage is None or not stage_start(stage) <= percent <= STAGE_END[stage]:
             return None
-        return self._set(percent)
+        span = STAGE_END[stage] - stage_start(stage)
+        with self._lock:
+            within = (percent - stage_start(stage)) / span if span > 0 else 1.0
+            self._udp_within = max(self._udp_within, within)
+            return self._set(stage, self._udp_within)
+
+    def set_undistorted(self, n: int) -> bool:
+        """The undistorted photos written so far (inside ``opensfm``); True when the count rose."""
+        with self._lock:
+            if self.stage != "opensfm" or self.sfm is None or not self.sfm.set_undistorted(n):
+                return False
+            self._set("opensfm", self._udp_within)
+            return True
+
+    def finish(self) -> None:
+        """ODM ended well: the alignment is done, even if its last lines were not read in time."""
+        with self._lock:
+            if self.sfm is not None:
+                self.sfm.finish()
+
+    def current(self) -> str | None:
+        """The OpenSfM sub-step running now (its key), else None."""
+        with self._lock:
+            return self.sfm.current if self.stage == "opensfm" and self.sfm is not None else None
+
+    def detail(self) -> dict | None:
+        """The running OpenSfM sub-step's detail, without the estimate (cheap: read on every line)."""
+        with self._lock:
+            sfm = self.sfm
+            return sfm.detail() if self.stage == "opensfm" and sfm is not None else None
+
+    def sub_step(self) -> tuple[dict | None, float | None, float | None]:
+        """Inside ``opensfm``: the sub-step's detail, its estimate (seconds) and its start (wall
+        clock); otherwise no detail, no estimate and the stage's start."""
+        with self._lock:
+            sfm = self.sfm
+            if self.stage == "opensfm" and sfm is not None and sfm.current is not None:
+                return sfm.detail(), sfm.eta_seconds(), sfm.step_started_at
+            return None, None, self.stage_started_at
 
 
 class UdpProgress:
@@ -406,7 +464,9 @@ class Watchdog:
             words = STAGE_WORDS.get(self.sp.stage or "", self.sp.stage or "current").lower()
             raise OdmStalled(
                 f"ODM stopped making progress in the {words} stage: nothing for {self.stall / 60:g} minutes. "
-                "Start the job again, or try the Fast preset."
+                "Start the job again, or try the Fast preset.",
+                code="odm-stalled",
+                data={"minutes": self.stall / 60},
             )
 
     @staticmethod
@@ -530,20 +590,59 @@ def run_odm(
     if start and start != first and stage_index(start) > stage_index(first):
         ctx.log(f"Resuming ODM from the {STAGE_WORDS.get(start, start).lower()} stage.")
     dense_capable = ensure_dense_gpu(odm, use_gpu)
-    sp = StageProgress(first, last)
+    # the OpenSfM sub-steps only when ODM aligns in this run (it names skipped stages too)
+    aligns = stage_index(start or first) <= stage_index("opensfm") <= stage_index(last)
+    sfm = SfmProgress(lambda: photo_count(project_dir)) if aligns else None
+    sp = StageProgress(first, last, sfm)
+    liveness = Liveness(project_dir)
     lo, hi = progress
     # run_tool calls it every 0.1 s; raising there ends ODM's whole tree (its BaseException path)
     watchdog = Watchdog(sp, stall_seconds(), dem_seconds() if dtm else None)
     shown = [0.0]
+    told: list[str | None] = [None, None]  # the sub-step logged, the sub-step waiting for its total
+
+    def bar(fraction: float, fallback: str | None) -> None:
+        detail, eta, started = sp.sub_step()
+        live: dict = {"lastActivityAt": iso_at(liveness.last_at)}
+        if started is not None:
+            live["stepStartedAt"] = iso_at(started)
+        if detail is not None:
+            live["detail"] = detail
+        if eta is not None:
+            live["etaSeconds"] = eta
+        ctx.progress(fraction, (detail or {}).get("label") or sp.message or fallback, live=live)
 
     class _Bar:  # run_tool's view of the context: ODM's stage words and ODM's own fraction
         cancel_event = ctx.cancel_event
 
         @staticmethod
         def progress(f: float, m: str | None = None) -> None:
+            # called on every poll tick too, so activity seen only in CPU time or files still goes out
             real = sp.fraction if sp.fraction is not None else 0.2 * f
             shown[0] = max(shown[0], real)
-            ctx.progress(lo + (hi - lo) * shown[0], sp.message or m)
+            bar(lo + (hi - lo) * shown[0], m)
+
+    def announce() -> None:
+        """One job-log line per sub-step: its label, with its total once known (or once counting
+        starts without one)."""
+        detail = sp.detail()
+        key = detail and detail["label"]
+        if key == told[0]:
+            return
+        if told[1] is not None and told[1] != key:  # ended before its total was known
+            ctx.log(told[1])
+            told[0] = told[1]
+        told[1] = None
+        if detail is None:
+            return
+        if "total" in detail:
+            ctx.log(f"{key}: {detail['total']:,} {detail['unit']}")
+        elif "unit" not in detail or detail["done"]:
+            ctx.log(key)
+        else:
+            told[1] = key
+            return
+        told[0] = key
 
     def ground_failed() -> OdmGroundFailed:
         return OdmGroundFailed(
@@ -554,7 +653,24 @@ def run_odm(
         # ODM swallows a failed SMRF ground classification and its DTM would then spin for ever
         if dtm and GROUND_FAIL.search(line):
             raise ground_failed()
-        return sp.feed_line(line)
+        liveness.touch()
+        f = sp.feed_line(line)
+        if sfm is not None:
+            announce()
+        return f
+
+    undistorted = project_dir / "opensfm" / "undistorted" / "images"
+    next_count = [0.0]
+
+    def poll(proc: subprocess.Popen) -> None:
+        liveness.poll(proc.pid)
+        if sp.current() == "undistort" and time.monotonic() >= next_count[0]:
+            next_count[0] = time.monotonic() + UNDISTORT_EVERY_S
+            with contextlib.suppress(OSError):
+                if sp.set_undistorted(sum(1 for _ in undistorted.glob("*.tif"))):
+                    liveness.touch()
+                    announce()
+        watchdog(proc)
 
     with UdpProgress(port, project_dir.name, sp.feed_udp) as udp:
         if not udp.available:
@@ -563,7 +679,7 @@ def run_odm(
             native.run_tool(
                 _Bar, odm_command(odm, project_dir, args), "ODM", log_dir, expected_s=3600.0,
                 progress=(0.0, 1.0), memory_limit=odm_memory_cap() or 0,
-                env=odm_env(os.environ, use_gpu), on_output=watch, fail=exit_error, on_poll=watchdog,
+                env=odm_env(os.environ, use_gpu), on_output=watch, fail=exit_error, on_poll=poll,
                 log_name=last_out.stem,
             )  # fmt: skip
         except JobError as e:
@@ -572,6 +688,9 @@ def run_odm(
             if isinstance(e, native.ToolMemoryExceeded):
                 raise JobError(OOM) from None
             raise
+    sp.finish()  # run_tool stops reading when ODM exits: no stale sub-step on the last update
+    if sfm is not None:
+        announce()
     text = last_out.read_text("utf-8", errors="replace") if last_out.exists() else ""
     err = last_err.read_text("utf-8", errors="replace") if last_err.exists() else ""
     if dtm and GROUND_FAIL.search(text + err):  # ODM ended before its line was read
@@ -595,5 +714,6 @@ def run_odm(
         ctx.log(msg, "warn")
     if use_gpu and gpu.dense is False and not gpu.fallbacks:
         ctx.log(DENSE_CPU_NOTE)
+    # ODM has exited: no live data, or its frozen last activity would outlive it into the Python work
     ctx.progress(hi, sp.message)
     return OdmRun(log, gpu, start)
