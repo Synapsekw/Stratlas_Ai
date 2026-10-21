@@ -1313,6 +1313,10 @@ export function registerPhotogrammetryIpc({
     }
     const file = parseCamerasFile(raw);
     if (typeof file === 'string') return { ok: false, error: file };
+    // the photos the run sent to ODM at their corrected place (photo.align of pack 0.20.0 on); a
+    // file without the list, from an older pack, placed every photo by its own GPS
+    const listed = z.array(z.string()).safeParse(file.correctionsHonoured);
+    const honoured = new Set(listed.success ? listed.data : []);
     /** What the swap does to a manifest: the refusal, or the layer, its refined poses and moves. */
     const plan = (manifest: ProjectManifest, orientation: OrientationFile | null) => {
       const target = manifest.layers.find((l): l is PhotosLayer => l.id === layer);
@@ -1330,10 +1334,18 @@ export function registerPhotogrammetryIpc({
           ok: false as const,
           error: `None of the run's refined cameras belongs to the layer "${target.name}".`,
         };
-      // the refined poses already hold the corrections of their photos: these are moved aside
+      // the refined poses hold their photos' directions, and the places the run honoured: those
+      // corrections are moved aside (`removed`, as they were). A hand move the run did not use
+      // (it sent the photo's own GPS) stays on top of the refined pose (`kept`, place only)
       const removed: Record<string, PhotoCorrection> = {};
-      for (const [id, c] of Object.entries(corrections ?? {})) if (refined.has(id)) removed[id] = c;
-      return { ok: true as const, target, refined, moves, removed };
+      const kept: Record<string, PhotoCorrection> = {};
+      for (const [id, c] of Object.entries(corrections ?? {})) {
+        if (!refined.has(id)) continue;
+        removed[id] = c;
+        if (!honoured.has(id) && c.offsetM?.some((v) => Math.abs(v) >= 5e-4))
+          kept[id] = { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: c.offsetM };
+      }
+      return { ok: true as const, target, refined, moves, removed, kept };
     };
     /** The orientation file, read for this request: preview and apply measure the same way. */
     const orientationNow = async () => {
@@ -1356,8 +1368,10 @@ export function registerPhotogrammetryIpc({
       if (!o.ok) return { manifest: null, reply: o };
       const p = plan(manifest, o.file);
       if (!p.ok) return { manifest: null, reply: p };
-      const { target, refined, moves, removed } = p;
+      const { target, refined, moves, removed, kept } = p;
       const hasRemoved = Object.keys(removed).length > 0;
+      /** The orientation file as it was, written back when the manifest save fails after it. */
+      let restore: OrientationFile | null = null;
       // the poses before, kept in the run folder so the swap can be undone by hand
       await writeJsonAtomic(
         runPath(root, run, POSES_BACKUP),
@@ -1370,16 +1384,20 @@ export function registerPhotogrammetryIpc({
             ...(it.q ? { q: it.q } : {}),
             ...(it.lens ? { lens: it.lens } : {}),
           })),
-          // their hand corrections in orientation.json (photo id to correction), taken out below
+          // their hand corrections in orientation.json (photo id to correction) as they were, before
+          // they are taken out (or cut to the place a run did not use) below
           ...(hasRemoved ? { corrections: removed } : {}),
         },
         { backup: true },
       );
       if (hasRemoved && o.file) {
         // written atomically with a .bak, after the poses backup that keeps what it removes
-        const layerPhotos = Object.fromEntries(
-          Object.entries(o.file.photos[target.id] ?? {}).filter(([id]) => !(id in removed)),
-        );
+        const layerPhotos = {
+          ...Object.fromEntries(
+            Object.entries(o.file.photos[target.id] ?? {}).filter(([id]) => !(id in removed)),
+          ),
+          ...kept,
+        };
         const photos = Object.fromEntries(
           Object.entries(o.file.photos).filter(([id]) => id !== target.id),
         );
@@ -1397,6 +1415,7 @@ export function registerPhotogrammetryIpc({
               error: w.error ?? 'The camera directions were not saved.',
             },
           };
+        restore = o.file;
       }
       const items = target.items.map((it) => {
         const r = refined.get(it.id);
@@ -1406,7 +1425,19 @@ export function registerPhotogrammetryIpc({
         ...manifest,
         layers: manifest.layers.map((l) => (l.id === target.id ? { ...target, items } : l)),
       };
-      return { manifest: next, reply: { ok: true as const, ...moves, applied: true } };
+      const before = restore;
+      return {
+        manifest: next,
+        reply: { ok: true as const, ...moves, applied: true },
+        // the corrections follow the poses: a manifest that was not saved puts them back
+        ...(before
+          ? {
+              afterFail: async () => {
+                await writeOrientation(root, before);
+              },
+            }
+          : {}),
+      };
     });
     return reply;
   });

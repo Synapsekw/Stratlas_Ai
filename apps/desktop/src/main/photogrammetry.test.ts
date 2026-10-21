@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectHandlers } from './notYet';
+import type * as OrientationModule from './orientation';
 import {
   estimateRun,
   gpusFromInfo,
@@ -40,6 +41,22 @@ import {
   type PhotoSystem,
 } from './photogrammetry';
 import { sampleManifest } from './testing';
+
+/** Run once after the next orientation.json write (a test stands something in the way). */
+const orientationHook = vi.hoisted(() => ({ afterWrite: null as null | (() => Promise<void>) }));
+vi.mock('./orientation', async (importOriginal) => {
+  const real = await importOriginal<typeof OrientationModule>();
+  return {
+    ...real,
+    writeOrientation: async (...args: Parameters<typeof real.writeOrientation>) => {
+      const r = await real.writeOrientation(...args);
+      const after = orientationHook.afterWrite;
+      orientationHook.afterWrite = null;
+      await after?.();
+      return r;
+    },
+  };
+});
 
 const GB = 1024 ** 3;
 const RUN = '20261007-0915';
@@ -1126,12 +1143,13 @@ describe('photo IPC', () => {
     // p1 refined near its corrected place (100 m below the imported one); p3 is not in the run
     await writeFile(
       join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
-      JSON.stringify(
-        g2Cameras([
+      JSON.stringify({
+        ...g2Cameras([
           ['p1', [0, -39.6, 0]],
           ['p2', [10, 60.2, 0]],
         ]),
-      ),
+        correctionsHonoured: ['p1', 'p2'],
+      }),
     );
     const preview = await ipc.call('photo:applyPoses', {
       projectId: 'p',
@@ -1169,6 +1187,80 @@ describe('photo IPC', () => {
       p1: orientation.photos.photos.p1,
       p2: orientation.photos.photos.p2,
     });
+  });
+
+  it('keeps the place corrections a run did not use, dropping only their directions', async () => {
+    const orientation = {
+      schema: 'aio.orientation/1',
+      clips: {},
+      photos: {
+        photos: {
+          p1: { yawDeg: 4, pitchDeg: 0, rollDeg: 0, offsetM: [0, -100, 0] },
+          p2: { yawDeg: 12, pitchDeg: -3, rollDeg: 0 },
+          p3: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, 2, 0] },
+        },
+      },
+    };
+    await writeFile(join(root, 'orientation.json'), JSON.stringify(orientation));
+    // p1 went to ODM at its EXIF GPS (it is not listed); p3 at its corrected place. A file of a
+    // pack before 0.20.0 has no list at all and so honoured none
+    const cams = g2Cameras([
+      ['p1', [0, 60.2, 0]],
+      ['p2', [10, 60.2, 0]],
+      ['p3', [20, 62, 0]],
+    ]);
+    for (const honoured of [['p3'], undefined]) {
+      await writeFile(join(root, 'orientation.json'), JSON.stringify(orientation));
+      await writeFile(join(root, 'manifest.json'), JSON.stringify(photosManifest()));
+      await writeFile(
+        join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
+        JSON.stringify(honoured ? { ...cams, correctionsHonoured: honoured } : cams),
+      );
+      const applied = await ipc.call('photo:applyPoses', {
+        projectId: 'p',
+        run: RUN,
+        layer: 'photos',
+        apply: true,
+      });
+      expect(applied).toMatchObject({ ok: true, applied: true, cameras: 3 });
+      const after = JSON.parse(await readFile(join(root, 'orientation.json'), 'utf8')) as {
+        photos: Record<string, Record<string, unknown>>;
+      };
+      // the hand move stays on top of the refined pose; its direction is the refined one now
+      const p1 = { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, -100, 0] };
+      expect(after.photos).toEqual({
+        photos: honoured ? { p1 } : { p1, p3: orientation.photos.photos.p3 },
+      });
+      const kept = JSON.parse(
+        await readFile(join(root, 'photogrammetry', RUN, 'cameras.json.bak'), 'utf8'),
+      ) as { corrections?: Record<string, unknown> };
+      // as they were before the swap, kept or not
+      expect(kept.corrections).toEqual(orientation.photos.photos);
+    }
+  });
+
+  it('puts orientation.json back when the manifest save fails', async () => {
+    const orientation = {
+      schema: 'aio.orientation/1',
+      clips: {},
+      photos: { photos: { p1: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, 1, 0] } } },
+    };
+    const text = JSON.stringify(orientation);
+    await writeFile(join(root, 'orientation.json'), text);
+    await writeFile(
+      join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
+      JSON.stringify({ ...g2Cameras([['p1', [0.3, 61, 0]]]), correctionsHonoured: ['p1'] }),
+    );
+    // the manifest cannot be replaced once the corrections are written: a folder stands in its way
+    orientationHook.afterWrite = async () => {
+      await rm(join(root, 'manifest.json'));
+      await mkdir(join(root, 'manifest.json'));
+    };
+    const r = await ipc
+      .call('photo:applyPoses', { projectId: 'p', run: RUN, layer: 'photos', apply: true })
+      .catch((e: unknown) => ({ ok: false as const, error: String(e) }));
+    expect(r).toMatchObject({ ok: false });
+    expect(JSON.parse(await readFile(join(root, 'orientation.json'), 'utf8'))).toEqual(orientation);
   });
 
   it('leaves orientation.json alone when no refined photo has a correction', async () => {

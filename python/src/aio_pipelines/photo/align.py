@@ -24,7 +24,11 @@ Run files (data-conventions section 21), every JSON file with its ``schema``:
   ``heights``, ``georeferenced``.
 - ``sparse/photos.json`` (``aio.photo-list/1``): ``imageRoot`` and per photo key its ``name``
   below it (the path COLMAP read), size and GNSS prior.
-- ``cameras-sfm.json`` (``aio.photo-cameras/1``): refined poses in the project's local frame.
+- ``cameras-sfm.json`` (``aio.photo-cameras/1``): refined poses in the project's local frame, and
+  ``correctionsHonoured``: the photo ids ODM got at their place in the layer with its hand
+  correction (orientation.json ``offsetM``, a pin) applied, also kept in ``run.json``. The app
+  takes those photos' corrections out when it swaps in the refined poses and keeps the others (a
+  file without the key, from a pack before 0.20.0, honoured none).
 - ``report/align.json`` (``aio.photo-align/1``) and ``report/accuracy.json``.
 
 Photo keys are the photos layer's photo ids, or the path below the chosen folder (the folder's
@@ -848,6 +852,8 @@ class PhotoAlign:
             "hardware": hardware_probe(ctx.project),
             "warnings": (insp.warnings + h_warn)[:1000],
             "frames": {"enu": {"lon": lon0, "lat": lat0, "h": h0}, "origin": list(origin)},
+            # sent to ODM at the layer's place, hand correction included (geo.txt), not their GPS
+            "correctionsHonoured": sorted(m.key for m in ok if m.from_layer),
         }
         state["stages"][0]["state"] = "running"
         RunState(ctx).save(state)
@@ -1138,6 +1144,12 @@ def cameras_sfm(grid_model: SparseModel, state: dict[str, Any], info: dict[str, 
             for c in grid_model.cameras.values()
         ],
         "cameras": items,
+        # from run.json, so photo.georef's rewrite of this file keeps it
+        **(
+            {"correctionsHonoured": list(state["correctionsHonoured"])}
+            if isinstance(state.get("correctionsHonoured"), list)
+            else {}
+        ),
     }
 
 

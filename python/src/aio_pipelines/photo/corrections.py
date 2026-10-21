@@ -7,7 +7,9 @@ record's ``pos`` stays the imported original. A pinned photo (``pin`` on the pho
 ``pos`` already, and the app ignores corrections for it (the pin is its hand placement).
 
 photo.align sends a photo placed by hand (a non-zero offset, or a pin) to ODM at that place instead
-of its EXIF GPS. Directions are not read here: ODM's priors keep the photo's own gimbal angles.
+of its EXIF GPS, and lists the photos it so placed (``correctionsHonoured`` in ``run.json`` and
+``cameras-sfm.json``): only their corrections are taken out when the app swaps in the refined poses.
+Directions are not read here: ODM's priors keep the photo's own gimbal angles.
 """
 
 from __future__ import annotations

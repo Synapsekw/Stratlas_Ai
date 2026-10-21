@@ -66,6 +66,8 @@ def test_align_a_folder_end_to_end(odm, project, photo_mini):
     assert run["engine"]["name"] == "odm" and run["engine"]["version"] == "3.6.2"
     assert run["versions"]["odm"] == "3.6.2"
     assert (base / "sparse" / "frame.json").is_file() and (base / "cameras-sfm.json").is_file()
+    # a folder run reads every place from the photos: it honours no hand correction
+    assert json.loads((base / "cameras-sfm.json").read_text())["correctionsHonoured"] == []
     align = json.loads((base / "report" / "align.json").read_text())
     assert align["mapper"] == "opensfm"
     assert align["images"]["registered"] == len(_linked(project) - _no_gps(photo_mini))
@@ -476,6 +478,12 @@ def test_a_corrected_gps_photo_goes_to_odm_at_its_corrected_place(odm, project):
     assert rows["e1"][1] == pytest.approx(SITE_LAT + 1e-4, abs=1e-7)
     assert rows["e1"][2] == pytest.approx(90.0 - 100, abs=1e-3)
     assert rows["e0"][2] == pytest.approx(90.0, abs=1e-3) and rows["e2"][2] == pytest.approx(90.0, abs=1e-3)
+    # the run says which photos it placed at their layer place, correction included: the app takes
+    # those corrections out when it swaps in the refined poses, and keeps the others
+    base = project / "photogrammetry" / "r1"
+    cams = json.loads((base / "cameras-sfm.json").read_text("utf-8"))
+    assert cams["correctionsHonoured"] == ["e1"]
+    assert json.loads((base / "run.json").read_text("utf-8"))["correctionsHonoured"] == ["e1"]
 
 
 def test_rtk_photos_in_a_layer_leave_the_layer_heights_unconverted(odm, project, monkeypatch):
