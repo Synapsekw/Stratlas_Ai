@@ -10,7 +10,8 @@ license = "MIT"
 # (decision 8: the Intel Mac pack has no photogrammetry; pycolmap has no Intel Mac wheel).
 dependencies = [
   "numpy>=2.1",
-  "pillow>=11.0",
+  # 13.0 fixes the TIFF, GIF, EPS and PDF decoder CVEs of 12.x
+  "pillow>=13.0",
   "pyyaml>=6.0",
   "scipy>=1.14",
   "scikit-image>=0.24",
@@ -49,6 +50,8 @@ packages = ["src/aio_pipelines"]
 [tool.uv]
 # The pack runs CPython 3.13 from python-build-standalone; lock for Windows and macOS only.
 environments = ["sys_platform == 'win32'", "sys_platform == 'darwin'"]
+# certifi before 2026.10.19 still trusts the compromised eMudhra root.
+constraint-dependencies = ["certifi>=2026.10.19"]
 
 [tool.ruff]
 line-length = 110
