@@ -11,12 +11,12 @@ import {
   OP_PERMISSION,
   permits,
   PolicySetPayload,
+  Role,
   roleRefusal,
   verifiedAtLeast,
   type DeviceCert,
   type Member,
   type Permission,
-  type Role,
   type TeamPolicy,
   type VerificationLevel,
 } from '@aio/schema';
@@ -48,6 +48,7 @@ export type RefusalCode =
   | 'edited'
   | 'bad-certificate'
   | 'last-owner'
+  | 'clock-back'
   | 'invalid';
 
 export type Verdict = { ok: true } | { ok: false; code: RefusalCode; reason: string };
@@ -71,15 +72,37 @@ interface DeviceState {
   revokedAt?: string;
 }
 
+/**
+ * What a copy pins about its team when the project is shared (`team.json` `genesis`): the op that
+ * made the first owner, its clock reading, and the history the project was shared with (the last
+ * seq of each chain at that moment). With a pin, no other op can make itself the first owner, and
+ * an op dated before the share that is not part of that history is judged as if written after it.
+ */
+export interface TeamPin {
+  /** Id of the owner's first `member.add`. */
+  op: string;
+  /** Its clock reading. */
+  at: string;
+  /** Last seq per chain of the history before the share. */
+  heads: Readonly<Record<string, number>>;
+}
+
 /** The team at one clock reading. Built by `replayTeam`; read by `canApply`. */
 export interface TeamState {
   members: Map<string, MemberState>;
   devices: Map<string, DeviceState>;
   policy: TeamPolicy;
+  /** The pinned genesis, when this copy has one (absent: a project shared by an older version). */
+  pin?: TeamPin;
 }
 
-export function emptyTeam(): TeamState {
-  return { members: new Map(), devices: new Map(), policy: DEFAULT_TEAM_POLICY };
+export function emptyTeam(pin?: TeamPin | null): TeamState {
+  return {
+    members: new Map(),
+    devices: new Map(),
+    policy: DEFAULT_TEAM_POLICY,
+    ...(pin ? { pin } : {}),
+  };
 }
 
 /** A project is shared once it has a member; a project that is not shared has no roles. */
@@ -204,7 +227,9 @@ export function canApply(op: Op, state: TeamState, check?: OpCheck): Verdict {
   if (!member || member.removed) {
     return refuse('not-member', `${nameOf(state, op.act)} is not a member of this project.`);
   }
-  if (device.revokedAt !== undefined && compareHlc(op.hlc, device.revokedAt) > 0) {
+  // the replay judges ops in team order (`orderForTeam`): an op judged after the revocation is
+  // later than it, or was moved after it because the owner who revoked had not seen it
+  if (device.revokedAt !== undefined) {
     return refuse(
       'revoked-device',
       `This change was made on a device of ${member.name} after an owner revoked it.`,
@@ -307,6 +332,7 @@ function cloneTeam(state: TeamState): TeamState {
     members: new Map([...state.members].map(([k, v]) => [k, { ...v }])),
     devices: new Map([...state.devices].map(([k, v]) => [k, { ...v }])),
     policy: state.policy,
+    ...(state.pin ? { pin: state.pin } : {}),
   };
 }
 
@@ -433,7 +459,13 @@ function applyTeamOp(state: TeamState, op: Op): TeamState | Verdict {
 }
 
 /** The first member: the owner who shares the project adds themself with their own device. */
-function bootstrap(op: Op, raw: Record<string, unknown>): Verdict {
+function bootstrap(op: Op, raw: Record<string, unknown>, pin?: TeamPin): Verdict {
+  if (pin && op.id !== pin.op) {
+    return refuse(
+      'not-member',
+      'This change claims to make the first owner of the team, but it is not the change this copy recorded when the project was shared.',
+    );
+  }
   const p = MemberAddPayload.safeParse(op.payload);
   const first = p.success ? p.data : null;
   const device = first?.devices.find((d) => d.id === op.dev);
@@ -451,6 +483,11 @@ function bootstrap(op: Op, raw: Record<string, unknown>): Verdict {
   return { ok: true };
 }
 
+/** Is the op part of the history a pin says the project was shared with? */
+function pinned(pin: TeamPin, op: Op): boolean {
+  return op.id === pin.op || (pin.heads[op.chain] ?? 0) >= op.seq;
+}
+
 /** Team ops: they change the members, devices or policy when they apply. */
 export function isTeamKind(kind: string): boolean {
   return TEAM_KINDS.has(kind);
@@ -459,7 +496,7 @@ export function isTeamKind(kind: string): boolean {
 /**
  * One step of the replay: the verdict on `op` against the team as it is, and the team after it
  * (unchanged unless a team op applied). The merge engine's quarantine gate walks ops with it in
- * the same clock order, so desktop, merge and server judge every op the same way.
+ * the same team order (`orderForTeam`), so desktop and merge judge every op the same way.
  */
 export function judgeOp(
   state: TeamState,
@@ -469,7 +506,15 @@ export function judgeOp(
   const team = TEAM_KINDS.has(op.kind);
   let verdict: Verdict;
   if (!isShared(state)) {
-    verdict = op.kind === 'member.add' ? bootstrap(op, raw) : { ok: true };
+    if (state.pin && !pinned(state.pin, op)) {
+      // not the history the project was shared with, and no team to judge it by yet
+      verdict = refuse(
+        'not-member',
+        'This change is not part of the history this project was shared with, and it does not come from a member of the team.',
+      );
+    } else {
+      verdict = op.kind === 'member.add' ? bootstrap(op, raw, state.pin) : { ok: true };
+    }
     if (verdict.ok && team && op.kind !== 'member.add') {
       verdict = refuse(
         'not-member',
@@ -487,6 +532,141 @@ export function judgeOp(
   return { verdict, state };
 }
 
+// ---------------------------------------------------------------- team order
+
+/**
+ * A team change that says which ops of its target its author had seen (`seen`: last seq per
+ * chain): a revocation, a removal or a demotion, and the pinned genesis for every device. An op of
+ * the target it does not cover and dated before it is judged right after it, so a revoked, removed
+ * or demoted person cannot write "earlier" ops, or open a new chain dated earlier, to dodge it.
+ */
+export interface TeamFence {
+  /** The fencing op (the genesis for a pin). */
+  id: string;
+  hlc: string;
+  /** Whose ops it fences: devices, an actor, or everyone (`all`, the genesis). */
+  devices: readonly string[];
+  actor?: string;
+  all?: boolean;
+  /** Last seq per chain its author had seen. */
+  seen: Readonly<Record<string, number>>;
+}
+
+const before = (a: { hlc: string; id: string }, b: { hlc: string; id: string }): number =>
+  compareHlc(a.hlc, b.hlc) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+function fences(fence: TeamFence, op: Op): boolean {
+  if (fence.id === op.id) return false;
+  if (!(fence.all === true || fence.devices.includes(op.dev) || fence.actor === op.act)) {
+    return false;
+  }
+  if ((fence.seen[op.chain] ?? 0) >= op.seq) return false;
+  return before(fence, op) > 0;
+}
+
+/**
+ * Ops in the order the team judges them: clock order (ties by id), except that an op a fence did
+ * not see and that is dated before it comes right after the latest such fence. Pure and the same
+ * for any arrival order, so every copy judges the same way.
+ */
+export function orderForTeam<T>(
+  items: readonly T[],
+  opOf: (item: T) => Op,
+  fenceList: readonly TeamFence[],
+): T[] {
+  const keyed = items.map((item) => {
+    const op = opOf(item);
+    let anchor: TeamFence | null = null;
+    for (const f of fenceList) {
+      if (fences(f, op) && (!anchor || before(f, anchor) > 0)) anchor = f;
+    }
+    return { item, op, at: anchor ?? op, moved: anchor ? 1 : 0 };
+  });
+  keyed.sort((a, b) => before(a.at, b.at) || a.moved - b.moved || before(a.op, b.op));
+  return keyed.map((k) => k.item);
+}
+
+const ROLE_RANK: Record<Role, number> = { owner: 3, reviewer: 2, viewer: 1, client: 1 };
+
+function seenOf(payload: unknown): Record<string, number> | null {
+  const seen = asObj(payload).seen;
+  if (seen === undefined || seen === null || typeof seen !== 'object' || Array.isArray(seen)) {
+    return null;
+  }
+  const out: Record<string, number> = {};
+  for (const [chain, seq] of Object.entries(seen as Record<string, unknown>)) {
+    if (typeof seq === 'number' && Number.isSafeInteger(seq) && seq >= 0) out[chain] = seq;
+  }
+  return out;
+}
+
+/** The fence an applied team op sets, judged against the team just before it. */
+function fenceOf(prev: TeamState, op: Op): TeamFence | null {
+  const seen = seenOf(op.payload);
+  if (!seen) return null;
+  const p = asObj(op.payload);
+  const devicesOf = (actor: string) =>
+    [...prev.devices].filter(([, d]) => d.actor === actor).map(([id]) => id);
+  if (op.kind === 'device.revoke' && typeof p.device === 'string') {
+    return { id: op.id, hlc: op.hlc, devices: [p.device], seen };
+  }
+  if (op.kind === 'member.remove' && typeof p.actor === 'string') {
+    return { id: op.id, hlc: op.hlc, devices: devicesOf(p.actor), actor: p.actor, seen };
+  }
+  if (op.kind === 'member.role' && typeof p.actor === 'string') {
+    const was = prev.members.get(p.actor)?.role;
+    const role = Role.safeParse(p.role);
+    // a promotion fences nothing: ops before it keep the role they were written under
+    if (!was || !role.success || role.data === was || ROLE_RANK[role.data] > ROLE_RANK[was]) {
+      return null;
+    }
+    return { id: op.id, hlc: op.hlc, devices: devicesOf(p.actor), actor: p.actor, seen };
+  }
+  return null;
+}
+
+/** The genesis as a fence over every device: ops before it must be the history it pinned. */
+function genesisFence(pin: TeamPin): TeamFence {
+  return { id: pin.op, hlc: pin.at, devices: [], all: true, seen: pin.heads };
+}
+
+/** The pin for a genesis op among `raws`: its clock reading and the history before it. */
+export function pinOf(raws: readonly Record<string, unknown>[], genesis: string): TeamPin | null {
+  const ops: Op[] = [];
+  for (const raw of raws) {
+    const p = Op.safeParse(raw);
+    if (p.success) ops.push(p.data);
+  }
+  const g = ops.find((o) => o.id === genesis);
+  if (!g) return null;
+  const byChain = new Map<string, Op[]>();
+  for (const o of ops) {
+    const list = byChain.get(o.chain) ?? [];
+    list.push(o);
+    byChain.set(o.chain, list);
+  }
+  const heads: Record<string, number> = {};
+  for (const [chain, list] of byChain) {
+    list.sort((a, b) => a.seq - b.seq);
+    let head = 0;
+    for (const o of list) {
+      if (o.seq !== head + 1 || before(o, g) > 0) break;
+      head = o.seq;
+    }
+    if (head > 0) heads[chain] = head;
+  }
+  return { op: g.id, at: g.hlc, heads };
+}
+
+/** An op whose clock reading is not after the op before it in its chain (a backdated op). */
+export function clockGoesBack(op: Op, prevHlc: string | undefined): Verdict | null {
+  if (prevHlc === undefined || compareHlc(op.hlc, prevHlc) > 0) return null;
+  return refuse(
+    'clock-back',
+    'The clock reading of this change is earlier than the change before it from the same device, so it was dated back.',
+  );
+}
+
 export interface TeamReplay {
   shared: boolean;
   state: TeamState;
@@ -494,7 +674,7 @@ export interface TeamReplay {
   policy: TeamPolicy;
   /** Verdict per op id: team ops always, every op with `verdicts: 'all'`. */
   verdicts: Map<string, Verdict>;
-  /** The ops that are held (kept, not applied), in clock order. */
+  /** The ops that are held (kept, not applied), in team order. */
   quarantined: {
     op: string;
     kind: string;
@@ -505,32 +685,25 @@ export interface TeamReplay {
   }[];
 }
 
-/**
- * Replay ops in clock order (ties by id) into the team, judging each op against the team at its
- * clock reading. `verdicts: 'all'` also judges every other op (quarantine on import); the default
- * judges the team ops only, which is what the members list needs.
- */
-export function replayTeam(
-  raws: readonly Record<string, unknown>[],
-  opts: { verdicts?: 'team' | 'all' } = {},
-): TeamReplay {
-  const all = opts.verdicts === 'all';
-  const seen = new Set<string>();
-  const ops: { op: Op; raw: Record<string, unknown> }[] = [];
-  for (const raw of raws) {
-    const parsed = Op.safeParse(raw);
-    if (!parsed.success || seen.has(parsed.data.id)) continue;
-    seen.add(parsed.data.id);
-    if (all || TEAM_KINDS.has(parsed.data.kind)) ops.push({ op: parsed.data, raw });
-  }
-  ops.sort((a, b) => compareHlc(a.op.hlc, b.op.hlc) || (a.op.id < b.op.id ? -1 : 1));
+interface Entry {
+  op: Op;
+  raw: Record<string, unknown>;
+}
 
-  let state = emptyTeam();
+/** Judge entries already in team order: the team, the verdicts and the fences that applied. */
+function judgeAll(entries: readonly Entry[], pin: TeamPin | null, hlcOf: Map<string, string>) {
+  let state = emptyTeam(pin);
   const verdicts = new Map<string, Verdict>();
   const quarantined: TeamReplay['quarantined'] = [];
-  for (const { op, raw } of ops) {
-    const step = judgeOp(state, op, raw);
+  const applied: TeamFence[] = [];
+  for (const { op, raw } of entries) {
+    const back = clockGoesBack(op, op.prev === null ? undefined : hlcOf.get(op.prev));
+    const step = back ? { verdict: back, state } : judgeOp(state, op, raw);
     const verdict = step.verdict;
+    if (verdict.ok && TEAM_KINDS.has(op.kind)) {
+      const f = fenceOf(state, op);
+      if (f) applied.push(f);
+    }
     state = step.state;
     verdicts.set(op.id, verdict);
     if (!verdict.ok) {
@@ -544,6 +717,85 @@ export function replayTeam(
       });
     }
   }
+  return { state, verdicts, quarantined, fences: applied };
+}
+
+/**
+ * The ops to judge (parsed; `keep` picks which by kind) and every op's clock reading by id, read
+ * from the raw lines (a chain's predecessor may be any kind).
+ */
+function entriesOf(raws: readonly Record<string, unknown>[], keep: (kind: string) => boolean) {
+  const seen = new Set<string>();
+  const entries: Entry[] = [];
+  const hlcOf = new Map<string, string>();
+  for (const raw of raws) {
+    if (typeof raw.id !== 'string' || seen.has(raw.id)) continue;
+    if (typeof raw.hlc === 'string') hlcOf.set(raw.id, raw.hlc);
+    if (typeof raw.kind !== 'string' || !keep(raw.kind)) continue;
+    const parsed = Op.safeParse(raw);
+    if (!parsed.success) continue;
+    seen.add(parsed.data.id);
+    entries.push({ op: parsed.data, raw });
+  }
+  return { entries, hlcOf };
+}
+
+const teamKind = (kind: string) => TEAM_KINDS.has(kind);
+
+const fenceKey = (fs: readonly TeamFence[]) =>
+  fs
+    .map((f) => f.id)
+    .sort()
+    .join(',');
+
+function fencesOf(
+  entries: readonly Entry[],
+  pin: TeamPin | null,
+  hlcOf: Map<string, string>,
+): TeamFence[] {
+  const team = entries.filter((e) => teamKind(e.op.kind));
+  const base = pin ? [genesisFence(pin)] : [];
+  let current: TeamFence[] = base;
+  for (let round = 0; round < 8; round += 1) {
+    const ordered = orderForTeam(team, (e) => e.op, current);
+    const next = [...base, ...judgeAll(ordered, pin, hlcOf).fences];
+    if (fenceKey(next) === fenceKey(current)) return next;
+    current = next;
+  }
+  return current;
+}
+
+/**
+ * The fences of a history: the pinned genesis, and each revocation, removal or demotion that
+ * applies and says what its author had seen. Which of those apply depends on the order, which
+ * depends on the fences, so the team ops are replayed until the set no longer changes (a few
+ * rounds at most; the same for the same ops in any order).
+ */
+export function teamFences(
+  raws: readonly Record<string, unknown>[],
+  pin?: TeamPin | null,
+): TeamFence[] {
+  const { entries, hlcOf } = entriesOf(raws, teamKind);
+  return fencesOf(entries, pin ?? null, hlcOf);
+}
+
+/**
+ * Replay ops in team order (`orderForTeam`) into the team, judging each op against the team at its
+ * place. `verdicts: 'all'` also judges every other op (quarantine on import); the default judges
+ * the team ops only, which is what the members list needs. `pin`: the genesis this copy pinned.
+ */
+export function replayTeam(
+  raws: readonly Record<string, unknown>[],
+  opts: { verdicts?: 'team' | 'all'; pin?: TeamPin | null } = {},
+): TeamReplay {
+  const pin = opts.pin ?? null;
+  const { entries, hlcOf } = entriesOf(raws, opts.verdicts === 'all' ? () => true : teamKind);
+  const fenceList = fencesOf(entries, pin, hlcOf);
+  const { state, verdicts, quarantined } = judgeAll(
+    orderForTeam(entries, (e) => e.op, fenceList),
+    pin,
+    hlcOf,
+  );
   return {
     shared: isShared(state),
     state,

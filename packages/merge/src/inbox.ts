@@ -1,3 +1,4 @@
+import type { TeamPin } from '@aio/journal';
 import type { Conflict, Op, QuarantineEntry } from '@aio/schema';
 import { mergeStateFiles, type MergedFile } from './apply';
 import { releaseDraft, resolveDrafts, type OpDraft } from './conflicts';
@@ -17,6 +18,8 @@ export interface InboxDeps {
   keys?: () => Promise<ReadonlyMap<string, string>>;
   /** This machine's time (clock-ahead hold). */
   now?: () => number;
+  /** The genesis this copy pinned when the project was shared (`team.json`); null when none. */
+  pin?: () => Promise<TeamPin | null>;
   /** Seal, sign and append one op through the journal service (op first, then state). */
   append: (draft: OpDraft) => Promise<void>;
   /** Read a project-relative state file; null when absent. */
@@ -54,6 +57,7 @@ export function createInbox(deps: InboxDeps): Inbox {
       viewer: deps.viewer,
       ...(deps.keys ? { keys: await deps.keys() } : {}),
       ...(deps.now ? { now: deps.now() } : {}),
+      ...(deps.pin ? { pin: await deps.pin() } : {}),
     });
   const refresh = async (): Promise<Projection> => {
     let p = await current();

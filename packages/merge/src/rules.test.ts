@@ -1,3 +1,4 @@
+import { pinOf, sealOp } from '@aio/journal';
 import type { Op } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { project, resolveDrafts, releaseDraft, writeDrafts, type OpDraft } from './index';
@@ -436,6 +437,174 @@ describe('quarantine', () => {
     const q = project(near.all(), { now });
     expect(q.quarantined).toEqual([]);
     expect(q.clock[0]?.level).toBe('notice');
+  });
+});
+
+describe('quarantine: backdated history (security review)', () => {
+  /** An op as an attacker writes it: any clock reading, any chain of their own device. */
+  function forge(
+    sim: TeamSim,
+    who: number,
+    kind: string,
+    target: Op['target'],
+    payload: unknown,
+    at: { ms: number; seq?: number; prev?: string | null; replica?: string },
+  ): Op {
+    const p = sim.person(who);
+    return sealOp(
+      {
+        v: 1,
+        chain: `${p.device}.r_${(at.replica ?? 'z').repeat(16)}`,
+        dev: p.device,
+        act: p.actor,
+        seq: at.seq ?? 1,
+        hlc: `${String(at.ms).padStart(13, '0')}.0000.${p.device}`,
+        prev: at.prev ?? null,
+        kind,
+        target,
+      },
+      payload,
+      p.signer,
+    );
+  }
+
+  function shared() {
+    const sim = new TeamSim({ people: 4, sign: true });
+    shareTeam(sim, ['owner', 'reviewer', 'viewer']);
+    sim.write(0, 'issue.create', f(), { record: issueRecord('i_f02', 'F02', 'Rana Example', AT) });
+    sim.syncAll();
+    const genesis = sim.all().find((o) => o.kind === 'member.add' && o.act === sim.person(0).actor);
+    const pin = genesis ? pinOf(sim.all(), genesis.id) : null;
+    if (!pin) throw new Error('No genesis');
+    return { sim, pin };
+  }
+
+  it('a 1970 self-made owner and share are held once the copy pinned its genesis', () => {
+    const { sim, pin } = shared();
+    const m = sim.person(3);
+    const card = {
+      actor: m.actor,
+      name: m.name,
+      initials: m.initials,
+      role: 'owner',
+      devices: [{ id: m.device, key: m.signer.publicKey }],
+    };
+    const share = forge(
+      sim,
+      3,
+      'project.share',
+      { rec: 'project', id: 'x' },
+      {
+        teamProjectId: 'x',
+        name: 'Mine',
+      },
+      { ms: 1000 },
+    );
+    const add = forge(sim, 3, 'member.add', { rec: 'member', id: m.actor }, card, {
+      ms: 2000,
+      seq: 2,
+      prev: share.id,
+    });
+    const edit = forge(
+      sim,
+      3,
+      'issue.patch',
+      f(),
+      { set: { severity: 5 } },
+      {
+        ms: 3000,
+        seq: 3,
+        prev: add.id,
+      },
+    );
+    const ops = [...sim.all(), share, add, edit];
+    // without the pin the forged history takes the team (what the pin closes)
+    expect(project(ops).team.teamProjectId).toBe('x');
+    const p = project(ops, { pin });
+    expect(p.team.teamProjectId).toBe('t');
+    expect(p.team.members.has(m.actor)).toBe(false);
+    expect(p.issues[0]?.record.severity).toBe(2);
+    expect(p.quarantined.map((q) => q.op).sort()).toEqual([share.id, add.id, edit.id].sort());
+  });
+
+  it('a revoked device writing just before the revocation, or on a new chain, is held', () => {
+    const { sim, pin } = shared();
+    const omar = sim.person(1);
+    sim.write(1, 'issue.patch', f(), { set: { title: 'Before' } });
+    sim.syncAll();
+    sim.advance(60_000);
+    const seen = Object.fromEntries(
+      sim
+        .known(0)
+        .filter((o) => o.dev === omar.device)
+        .map((o) => [o.chain, o.seq]),
+    );
+    const revoke = sim.write(
+      0,
+      'device.revoke',
+      { rec: 'device', id: omar.device },
+      {
+        device: omar.device,
+        seen,
+      },
+    );
+    const ms = Number(revoke.hlc.slice(0, 13)) - 1;
+    const chainOps = sim.known(1).filter((o) => o.chain === omar.chain);
+    const head = chainOps.sort((a, b) => b.seq - a.seq)[0];
+    const dodge = sealOp(
+      {
+        v: 1,
+        chain: omar.chain,
+        dev: omar.device,
+        act: omar.actor,
+        seq: (head?.seq ?? 0) + 1,
+        hlc: `${String(ms)}.0000.${omar.device}`,
+        prev: head?.id ?? null,
+        kind: 'issue.patch',
+        target: f(),
+      },
+      { set: { note: 'Dodged' } },
+      omar.signer,
+    );
+    const fresh = forge(sim, 1, 'issue.patch', f(), { set: { severity: 4 } }, { ms: ms - 10 });
+    const p = project([...sim.all(), dodge, fresh], { pin });
+    expect(p.issues[0]?.record.title).toBe('Before');
+    expect(p.issues[0]?.record.note).toBe('');
+    expect(p.issues[0]?.record.severity).toBe(2);
+    expect(p.quarantined.map((q) => [q.op, q.reason]).sort()).toEqual(
+      [
+        [dodge.id, 'revoked'],
+        [fresh.id, 'revoked'],
+      ].sort(),
+    );
+  });
+
+  it('an op dated before the op it follows in its chain is held', () => {
+    const { sim, pin } = shared();
+    const omar = sim.person(1);
+    sim.write(1, 'issue.patch', f(), { set: { title: 'Fine' } });
+    const last = sim
+      .known(1)
+      .filter((o) => o.chain === omar.chain)
+      .sort((a, b) => b.seq - a.seq)[0];
+    const back = sealOp(
+      {
+        v: 1,
+        chain: omar.chain,
+        dev: omar.device,
+        act: omar.actor,
+        seq: (last?.seq ?? 0) + 1,
+        hlc: `${String(Number(last?.hlc.slice(0, 13) ?? 0) - 5)}.0000.${omar.device}`,
+        prev: last?.id ?? null,
+        kind: 'issue.patch',
+        target: f(),
+      },
+      { set: { note: 'Backdated' } },
+      omar.signer,
+    );
+    const p = project([...sim.all(), back], { pin });
+    expect(p.quarantined.map((q) => [q.op, q.reason])).toEqual([[back.id, 'chain']]);
+    expect(p.issues[0]?.record.title).toBe('Fine');
   });
 });
 

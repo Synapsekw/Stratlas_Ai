@@ -1,12 +1,16 @@
 import {
   checkOp,
+  clockGoesBack,
   emptyTeam,
   isShared,
   judgeOp,
+  orderForTeam,
   parseHlc,
   permissionFor as opPermission,
   permits,
+  teamFences,
   type RefusalCode as TeamRefusalCode,
+  type TeamPin,
   type TeamState,
 } from '@aio/journal';
 import {
@@ -33,6 +37,11 @@ export interface GateOptions {
   refused?: ReadonlyMap<string, Refusal>;
   /** This machine's time (ms): ops more than 24 hours ahead are held in quarantine. */
   now?: number;
+  /**
+   * The genesis this copy pinned when the project was shared (`team.json`): only that op makes
+   * the first owner, and ops dated before it must be the history it was shared with.
+   */
+  pin?: TeamPin | null;
 }
 
 /** The prefix of a `conflict.resolve` op's `conflict` that releases a quarantined op. */
@@ -108,6 +117,7 @@ const TEAM_REFUSALS: Record<TeamRefusalCode, RefusalCode> = {
   'last-owner': 'role',
   'bad-certificate': 'role',
   'revoked-device': 'revoked',
+  'clock-back': 'chain',
   unsigned: 'signature',
   'bad-signature': 'signature',
   edited: 'hash',
@@ -125,7 +135,7 @@ const TEAM_REFUSALS: Record<TeamRefusalCode, RefusalCode> = {
  */
 export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
   // the team as T2 replays it (members, devices, roles, policy), judged op by op in clock order
-  let team: TeamState = emptyTeam();
+  let team: TeamState = emptyTeam(opts.pin);
   let teamProjectId: string | undefined;
   const commentAuthors = new Map<string, string>();
   const approvalAuthors = new Map<string, string>();
@@ -149,6 +159,9 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
       if (!check.id || check.payload === false) return { reason: 'hash', message: MESSAGES.hash };
       if (check.signature === false) return { reason: 'signature', message: MESSAGES.signature };
     }
+    // a chain's clock only moves forward: an op dated before its predecessor was backdated
+    const back = clockGoesBack(op, op.prev === null ? undefined : index.byId.get(op.prev)?.op.hlc);
+    if (back && !back.ok) return { reason: 'chain', message: back.reason };
     if (opts.now !== undefined) {
       const ahead = parseHlc(op.hlc).ms - opts.now;
       if (ahead > CLOCK_AHEAD_NOTICE_MS) {
@@ -229,8 +242,14 @@ export function gate(index: OpIndex, opts: GateOptions = {}): Gate {
     }
   };
 
-  for (const node of index.nodes) {
-    if (node.vc === null) continue;
+  // team order: clock order, but an op a revocation, removal or demotion (or the pinned genesis)
+  // had not seen and that is dated before it is judged right after it (`orderForTeam`)
+  const live = index.nodes.filter((n) => n.vc !== null);
+  const fences = teamFences(
+    live.map((n) => n.op as unknown as Record<string, unknown>),
+    opts.pin,
+  );
+  for (const node of orderForTeam(live, (n) => n.op, fences)) {
     pending = null;
     const r = refuse(node);
     if (r) {
