@@ -45,6 +45,8 @@ vi.mock('./compareStore', () => ({
   seriesStale: (m: { id: string }) => stale.series.has(m.id),
   computeSeries: calls.computeSeries,
   computeAll: calls.computeAll,
+  recomputeCarried: vi.fn(() => Promise.resolve([])),
+  hasCarried: (m: SurveyMeasurement) => m.results.some((r) => r.carried !== undefined),
 }));
 vi.mock('./measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(s.measure),

@@ -27,7 +27,8 @@ import {
 } from '@aio/survey';
 import { Button, t as tr, useT } from '@aio/ui';
 import { useMemo, useState, type ReactElement } from 'react';
-import { computeAll, isStale, useCompare } from './compareStore';
+import { ConfirmDialog } from '../shell/ConfirmDialog';
+import { computeAll, hasCarried, isStale, recomputeCarried, useCompare } from './compareStore';
 import { knownTemplates, replaceMeasurement, useMeasure } from './measureStore';
 import { useInventory } from './useInventory';
 
@@ -129,12 +130,96 @@ function RowNotes({
   );
 }
 
+/**
+ * Recompute all, and (when some piles still hold a figure carried from an earlier version) the
+ * separate, confirmed "Recompute N earlier-version piles with the standard base". Recompute all
+ * leaves those carried figures as they are.
+ */
+function RecomputeButtons({
+  ms,
+  readOnly,
+}: {
+  ms: readonly SurveyMeasurement[];
+  readOnly: boolean;
+}) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [why, setWhy] = useState<string | null>(null);
+  const carried = ms.filter(hasCarried);
+  const n = carried.length;
+  return (
+    <>
+      <div className="sv-row sv-wrap">
+        <Button
+          busy={busy}
+          data-testid="survey-bulk-recompute"
+          onClick={() => {
+            setBusy(true);
+            void computeAll(ms.map((m) => m.id)).finally(() => {
+              setBusy(false);
+            });
+          }}
+        >
+          {busy ? t('bulk.computing') : t('bulk.recomputeAll')}
+        </Button>
+        {!readOnly && n > 0 && (
+          <Button
+            variant="quiet"
+            disabled={busy}
+            data-testid="survey-bulk-recompute-carried"
+            onClick={() => {
+              setWhy(null);
+              setAsking(true);
+            }}
+          >
+            {t('bulk.recomputeCarried', { count: n })}
+          </Button>
+        )}
+      </div>
+      {n > 0 && (
+        <p className="small faint" data-testid="survey-bulk-carried-note">
+          {t('bulk.carriedKept', { count: n })}
+        </p>
+      )}
+      {why && (
+        <p className="notice warn small" role="alert">
+          {why}
+        </p>
+      )}
+      {asking && (
+        <ConfirmDialog
+          title={t('bulk.recomputeCarried.title', { count: n })}
+          yes={t('bulk.recomputeCarried.yes')}
+          busy={busy}
+          testId="survey-bulk-carried-confirm"
+          onCancel={() => {
+            setAsking(false);
+          }}
+          onConfirm={() => {
+            setBusy(true);
+            void recomputeCarried(carried.map((m) => m.id))
+              .then((r) => {
+                setWhy(r[0] ?? null);
+              })
+              .finally(() => {
+                setBusy(false);
+                setAsking(false);
+              });
+          }}
+        >
+          <p style={{ margin: 0 }}>{t('bulk.recomputeCarried.text', { count: n })}</p>
+        </ConfirmDialog>
+      )}
+    </>
+  );
+}
+
 /** The volumes view's total: the latest date's row, in the site's units. */
 function InventoryTotals({ piles, row, names }: InventoryTotalsProps) {
   const t = useT();
   const settings = useMeasure((s) => s.settings);
   const readOnly = useMeasure((s) => s.readOnly);
-  const [busy, setBusy] = useState(false);
   if (piles.length === 0) return null;
   const units = settings.units;
   const locale = settings.locale ?? localeOf(units.distance);
@@ -183,22 +268,7 @@ function InventoryTotals({ piles, row, names }: InventoryTotalsProps) {
         </tbody>
       </table>
       <RowNotes row={row} piles={piles} names={names} />
-      {!readOnly && (
-        <div className="sv-row sv-wrap">
-          <Button
-            busy={busy}
-            data-testid="survey-bulk-recompute"
-            onClick={() => {
-              setBusy(true);
-              void computeAll(piles.map((m) => m.id)).finally(() => {
-                setBusy(false);
-              });
-            }}
-          >
-            {busy ? t('bulk.computing') : t('bulk.recomputeAll')}
-          </Button>
-        </div>
-      )}
+      {!readOnly && <RecomputeButtons ms={piles} readOnly={readOnly} />}
     </section>
   );
 }
@@ -217,7 +287,6 @@ function SelectionTotals() {
   const [index, setIndex] = useState(0);
   const [side, setSide] = useState<BulkSide>('to');
   const [key, setKey] = useState('');
-  const [busy, setBusy] = useState(false);
   const ms = useMemo(
     () => file.measurements.filter((m) => selected.includes(m.id) && m.family === 'polygon'),
     [file, selected],
@@ -344,20 +413,7 @@ function SelectionTotals() {
         </tbody>
       </table>
       {vols.length > 0 && <RowNotes row={pileRow} piles={vols} names={names} />}
-      <div className="sv-row sv-wrap">
-        <Button
-          busy={busy}
-          data-testid="survey-bulk-recompute"
-          onClick={() => {
-            setBusy(true);
-            void computeAll(ms.map((m) => m.id)).finally(() => {
-              setBusy(false);
-            });
-          }}
-        >
-          {busy ? t('bulk.computing') : t('bulk.recomputeAll')}
-        </Button>
-      </div>
+      <RecomputeButtons ms={ms} readOnly={readOnly} />
       {!readOnly && totals.rows.length > 0 && (
         <fieldset className="sv-sub">
           <legend>{t('bulk.changeForAll')}</legend>

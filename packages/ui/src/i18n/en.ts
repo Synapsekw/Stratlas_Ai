@@ -5828,6 +5828,19 @@ export const en = {
   'bulk.area': 'Horizontal area',
   'bulk.computing': 'Computing…',
   'bulk.recomputeAll': 'Recompute all',
+  'bulk.recomputeCarried_one': 'Recompute {count} earlier-version pile with the standard base',
+  'bulk.recomputeCarried_other': 'Recompute {count} earlier-version piles with the standard base',
+  'bulk.carriedKept_one':
+    'Recompute all keeps the figure of {count} pile from an earlier version as it is.',
+  'bulk.carriedKept_other':
+    'Recompute all keeps the figures of {count} piles from an earlier version as they are.',
+  'bulk.recomputeCarried.title_one': 'Recompute {count} earlier-version pile?',
+  'bulk.recomputeCarried.title_other': 'Recompute {count} earlier-version piles?',
+  'bulk.recomputeCarried.text_one':
+    'Its figure from the earlier version is replaced by the standard base (triangulated toe) and kept as "was". Its earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
+  'bulk.recomputeCarried.text_other':
+    'Their figures from the earlier version are replaced by the standard base (triangulated toe) and kept as "was". Their earlier dates are worked out again from the surveys; a date with no prepared survey then shows no figure.',
+  'bulk.recomputeCarried.yes': 'Recompute with the standard base',
   'bulk.changeForAll': 'Change for all',
   'bulk.whichComparison': 'Comparison to change',
   'bulk.whichSide': 'Side to change',

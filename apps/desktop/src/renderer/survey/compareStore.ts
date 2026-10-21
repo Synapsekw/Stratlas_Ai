@@ -334,7 +334,13 @@ const HEAT_CELLS = 192;
  */
 export function compute(
   id: string,
-  opts: { live?: boolean; auto?: boolean; heatOnly?: boolean; points?: readonly SitePoint[] } = {},
+  opts: {
+    live?: boolean;
+    auto?: boolean;
+    heatOnly?: boolean;
+    keepCarried?: boolean;
+    points?: readonly SitePoint[];
+  } = {},
 ): Promise<RunReply | null> {
   const run = computeNow(id, opts);
   flights.set(id, run);
@@ -357,15 +363,23 @@ let runSeq = 0;
 
 async function computeNow(
   id: string,
-  opts: { live?: boolean; auto?: boolean; heatOnly?: boolean; points?: readonly SitePoint[] },
+  opts: {
+    live?: boolean;
+    auto?: boolean;
+    heatOnly?: boolean;
+    keepCarried?: boolean;
+    points?: readonly SitePoint[];
+  },
 ): Promise<RunReply | null> {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
   if (m?.family !== 'polygon' || m.items.length === 0 || get().status !== 'ready') return null;
   const points = opts.points ?? m.points;
   if (points.length < 3) return null;
-  // the app on its own keeps a carried kit figure, unless the person edited its points or items
-  // since (taken as accepting the standard base); a person's Recompute always accepts it
-  const accepting = !opts.auto || acceptedByEdit(m);
+  // the app on its own, and Recompute all (`keepCarried`), keep a carried kit figure unless the
+  // person edited its points or items since (taken as accepting the standard base); a person's
+  // Recompute of the one pile always accepts it
+  const keeping = opts.auto === true || (opts.keepCarried === true && hasCarried(m));
+  const accepting = !keeping || acceptedByEdit(m);
   set({ running: { ...get().running, [id]: true } });
   const mine = ++runSeq;
   latestRun.set(id, mine);
@@ -394,7 +408,7 @@ async function computeNow(
       return r;
     }
     // a carried item the person has not accepted shows its stored figure, not the engine's
-    const keepCarried = opts.heatOnly === true || (opts.auto === true && !accepting);
+    const keepCarried = opts.heatOnly === true || (keeping && !accepting);
     const shown = keepCarried
       ? r.results.flatMap((x) => {
           if (!carriedItem(now, x.item)) return [x];
@@ -484,7 +498,8 @@ export async function recomputeStandard(id: string): Promise<string | null> {
   return get().problems[id] ?? null;
 }
 
-const hasCarried = (m: SurveyMeasurement): boolean =>
+/** The measurement still holds a figure carried from an earlier version (now or over time). */
+export const hasCarried = (m: SurveyMeasurement): boolean =>
   m.results.some((r) => r.carried !== undefined) ||
   (m.series ?? []).some((r) => r.carried !== undefined);
 
@@ -536,9 +551,34 @@ function acceptStandard(
   return next;
 }
 
-/** Compute every item of every given measurement (Recompute all, bulk). */
+/**
+ * Compute every item of every given measurement (Recompute all, bulk). A figure carried from an
+ * earlier version stays as it is: replacing those is `recomputeCarried`, its own confirmed action.
+ */
 export async function computeAll(ids: readonly string[]): Promise<void> {
-  for (const id of ids) await compute(id);
+  for (const id of ids) await compute(id, { keepCarried: true });
+}
+
+/** The given measurements that still hold a figure carried from an earlier version. */
+export function carriedIds(ids: readonly string[]): string[] {
+  const all = measureStore.getState().file.measurements;
+  return ids.filter((id) => {
+    const m = all.find((x) => x.id === id);
+    return m !== undefined && hasCarried(m);
+  });
+}
+
+/**
+ * "Recompute N earlier-version piles with the standard base": `recomputeStandard` for each of
+ * the given measurements that holds a carried figure. The reasons any could not be done.
+ */
+export async function recomputeCarried(ids: readonly string[]): Promise<string[]> {
+  const why: string[] = [];
+  for (const id of carriedIds(ids)) {
+    const r = await recomputeStandard(id);
+    if (r) why.push(r);
+  }
+  return why;
 }
 
 // ---------------------------------------------------------------- results over time (W4)

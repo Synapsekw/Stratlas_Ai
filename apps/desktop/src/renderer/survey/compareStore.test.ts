@@ -24,12 +24,15 @@ vi.mock('../author', () => ({ authorName: () => '' }));
 
 const {
   compareStore,
+  carriedIds,
   compute,
+  computeAll,
   computeSeries,
   computeSpread,
   engineClient,
   followMeasurements,
   isStale,
+  recomputeCarried,
   recomputeStandard,
   scheduleCheck,
   seriesStale,
@@ -730,5 +733,37 @@ describe('results over time and the spread across bases', () => {
     // the person accepted it: an edit
     expect(m?.updatedAt).not.toBe(UPDATED);
     expect(isStale(compareStore.getState(), must(m), must(m?.results[0]))).toBe(false);
+  });
+
+  it('Recompute all keeps carried kit figures and their history', async () => {
+    // a pile with no carried figure: Recompute all stores it as the person's edit
+    await computeAll(['m1']);
+    expect(stored()?.updatedAt).not.toBe(UPDATED);
+    put({ updatedAt: UPDATED });
+    const r = await compute('m1', { live: true });
+    const fresh = must(r?.results[0]);
+    put({
+      results: [kit(fresh, 'e2')],
+      series: [kit({ ...fresh, toCapture: 'c1' }, 'e1')],
+    });
+    expect(carriedIds(['m1'])).toEqual(['m1']);
+    await computeAll(['m1']);
+    const m = stored();
+    expect(m?.results[0]?.carried?.epoch).toBe('e2');
+    expect(m?.results[0]?.netM3).toBe(60);
+    expect(m?.series?.[0]?.carried?.epoch).toBe('e1');
+    expect(m?.previousResults).toBeUndefined();
+    // nothing the person changed
+    expect(m?.updatedAt).toBe(UPDATED);
+  });
+
+  it('recomputeCarried accepts the standard base for each carried pile, keeping was', async () => {
+    const r = await compute('m1', { live: true });
+    put({ results: [kit(must(r?.results[0]), 'e2')] });
+    expect(await recomputeCarried(['m1'])).toEqual([]);
+    const m = stored();
+    expect(m?.results[0]?.carried).toBeUndefined();
+    expect(m?.previousResults).toHaveLength(1);
+    expect(carriedIds(['m1'])).toEqual([]);
   });
 });

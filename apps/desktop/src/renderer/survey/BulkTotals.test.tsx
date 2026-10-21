@@ -22,6 +22,7 @@ const s = vi.hoisted(() => ({
   },
 }));
 const computeAll = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const recomputeCarried = vi.hoisted(() => vi.fn(() => Promise.resolve([] as string[])));
 const compare = vi.hoisted(() => ({
   current: {},
   surfaces: [],
@@ -36,6 +37,8 @@ vi.mock('./compareStore', () => ({
   isStale: (_s: unknown, m: { id: string }) => stale.has(m.id),
   seriesStale: () => false,
   computeAll,
+  recomputeCarried,
+  hasCarried: (m: SurveyMeasurement) => m.results.some((r) => r.carried !== undefined),
 }));
 vi.mock('./measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(s.measure),
@@ -126,6 +129,59 @@ describe('BulkTotals', () => {
       recompute?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(computeAll).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  it('Recompute all leaves carried piles; their own action asks first', async () => {
+    const old = pile('b', 5);
+    s.measure.file = {
+      measurements: [
+        pile('a', 10),
+        {
+          ...old,
+          results: old.results.map((r) => ({
+            ...r,
+            carried: { from: 'kit' as const, base: 'plane', pile: 'P01', epoch: 'e1' },
+          })),
+        },
+      ],
+    };
+    root = createRoot(host);
+    act(() => {
+      root?.render(<BulkTotals />);
+    });
+    const q = (id: string) => document.querySelector(`[data-testid="${id}"]`);
+    expect(q('survey-bulk-carried-note')?.textContent).toContain('1 pile');
+    const own = q('survey-bulk-recompute-carried');
+    expect(own?.textContent).toBe('Recompute 1 earlier-version pile with the standard base');
+    act(() => {
+      own?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    // asks in the app's own dialog, nothing run yet
+    expect(q('survey-bulk-carried-confirm')?.getAttribute('role')).toBe('alertdialog');
+    expect(recomputeCarried).not.toHaveBeenCalled();
+    act(() => {
+      q('survey-bulk-carried-confirm-cancel')?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      );
+    });
+    expect(q('survey-bulk-carried-confirm')).toBeNull();
+    expect(recomputeCarried).not.toHaveBeenCalled();
+    act(() => {
+      own?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      q('survey-bulk-carried-confirm-yes')?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+    expect(recomputeCarried).toHaveBeenCalledWith(['b']);
+    // read-only: no way to replace them
+    s.measure.readOnly = true;
+    act(() => {
+      root?.render(<BulkTotals />);
+    });
+    expect(q('survey-bulk-recompute-carried')).toBeNull();
   });
 
   const render = () => {
