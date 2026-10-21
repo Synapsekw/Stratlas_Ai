@@ -83,7 +83,7 @@ interface VolumetricProbe {
   };
 }
 
-/** Select a stockpile in the volumetric workspace (its toe line drawn in both views). */
+/** Select a stockpile in the volumetric workspace (its pile drawn in both views). */
 async function selectPile(win: Page, pile: string): Promise<void> {
   await win.evaluate((id) => {
     (window as unknown as VolumetricProbe).__stratlas.volumetric.getState().select(id);
@@ -112,7 +112,10 @@ interface Views {
   };
 }
 
-/** What the volumes overlay draws on each 3D view: the surveys draped, and the pile's toe line. */
+/**
+ * What the volumes overlay draws on each 3D view: the surveys draped, and the selected pile (its
+ * outline is its volume measurement's now, so the kit draws no toe line of its own for it).
+ */
 function overlays(win: Page, pile: string) {
   return win.evaluate((id) => {
     const w = window as unknown as Views;
@@ -122,7 +125,7 @@ function overlays(win: Page, pile: string) {
         drapes: (group?.children ?? [])
           .filter((c) => c.name.startsWith('drape:') && c.visible)
           .map((c) => c.name.slice('drape:'.length)),
-        toe: group?.getObjectByName(`vol:${id}`)?.getObjectByName('toe-selected') !== undefined,
+        pile: group?.getObjectByName(`vol:${id}`) !== undefined,
       };
     };
     return { main: of(w.__stratlas.stage()), second: of(w.__stratlas.compare().second) };
@@ -272,11 +275,11 @@ test('a volumetric project from two raw survey dates: wizard, Processing drawer,
     const second = win.getByTestId('pane-3d-compare');
     await expect
       .poll(() => overlays(win, pid), { timeout: 60_000 })
-      .toEqual({ main: { drapes: [], toe: true }, second: { drapes: [], toe: true } });
+      .toEqual({ main: { drapes: [], pile: true }, second: { drapes: [], pile: true } });
     await surfaceColours(win, 'Elevation');
     await expect
       .poll(() => overlays(win, pid), { timeout: 60_000 })
-      .toEqual({ main: { drapes: ['e1'], toe: true }, second: { drapes: ['e2'], toe: true } });
+      .toEqual({ main: { drapes: ['e1'], pile: true }, second: { drapes: ['e2'], pile: true } });
     // the right view has the legend too, read only, with the range the left legend sets
     const legend = second.getByTestId('vol-legend-view');
     await expect(legend).toHaveAttribute('data-surface-shown', 'elev');

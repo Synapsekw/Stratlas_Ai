@@ -35,7 +35,8 @@ export async function pickBase(
   const menu = item.page().getByRole('menu', { name: 'Choose the base', exact: true });
   await expect(menu).toBeVisible();
   const row = menu.locator(`[data-base="${base}"]`);
-  await row.click();
+  // a side already on a survey or design opens with that list unfolded: a press would fold it
+  if (base !== 'surface' || (await row.getAttribute('aria-expanded')) !== 'true') await row.click();
   if (base === 'surface') {
     if (surface === undefined) throw new Error('pickBase: name the survey or design');
     await menu

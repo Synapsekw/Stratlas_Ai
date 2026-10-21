@@ -256,7 +256,8 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
       )
       .toBe(true);
 
-  // Selecting a pile selects its node in 3D, draws its body, base plate and toe line.
+  // Selecting a pile selects its node in 3D and draws its body and base plate (its outline is its
+  // volume measurement's: the kit draws no toe line of its own for a measured pile).
   await selectPile(win, 'P02');
   expect(await inspect(win, ({ w }) => w.__stratlas.workspace.getState().selection, null)).toEqual({
     kind: 'asset',
@@ -271,7 +272,7 @@ test('@realdata the stockpile project: piles as volume measurements, 3D selectio
           const s = w.__stratlas.stage()?.scene;
           const g = s?.getObjectByName('vol:P02') as
             { getObjectByName(n: string): unknown } | undefined;
-          return !!g && !!g.getObjectByName('base-plate') && !!g.getObjectByName('toe-selected');
+          return !!g && !!g.getObjectByName('base-plate') && !g.getObjectByName('toe-selected');
         },
         null,
       ),

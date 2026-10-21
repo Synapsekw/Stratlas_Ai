@@ -143,8 +143,6 @@ test('quarry: the stockpile report PDF and inventory CSV match the panel', async
   expect(col('2026-01-31_volume_m3')).toBeGreaterThan(0);
   expect(col('2026-03-31_volume_m3')).toBeGreaterThan(0);
   const truth = p.truth as unknown as QuarryTruth;
-  let volumes = 0;
-  let tonnes = 0;
   for (const pile of PILES) {
     const r = csv.find((x) => x[0] === 'pile' && x[1] === `m-${pile.id}`);
     if (!r) throw new Error(`no row for ${pile.id}`);
@@ -159,20 +157,21 @@ test('quarry: the stockpile report PDF and inventory CSV match the panel', async
     // and the volume is the analytic one (quick grid, 1 m cells)
     const want = truth.stockpiles[pile.id]?.dates.m3?.volumeM3 ?? 0;
     expect(Math.abs(v - want) / want).toBeLessThan(0.02);
-    volumes += v;
-    tonnes += t;
   }
   // the inventory lists every volume measurement (the engine's results), not only the three
-  // stockpiles: the total is the sum of every row with a current figure, and holds the piles'
+  // stockpiles (the pit's month-on-month change too): the total is the sum of every row with a
+  // current figure
   const rows = csv.filter((x) => x[0] === 'pile');
   expect(rows.length).toBeGreaterThanOrEqual(PILES.length);
   const sum = (key: string) =>
     rows.reduce((s, x) => s + (x[col(key)] ? Number(x[col(key)]) : 0), 0);
   const total = csv.find((x) => x[0] === 'total');
   expect(Number(total?.[col('current_volume_m3')])).toBeCloseTo(sum('current_volume_m3'), 6);
-  expect(Number(total?.[col('current_tonnes')])).toBeCloseTo(sum('current_tonnes'), 6);
-  expect(sum('current_volume_m3')).toBeGreaterThanOrEqual(volumes - 1e-6);
-  expect(sum('current_tonnes')).toBeGreaterThanOrEqual(tonnes - 1e-6);
+  // a total tonnage only when every counted row has one: the pit has no material, so none
+  const counted = rows.filter((x) => x[col('current_volume_m3')]);
+  if (counted.every((x) => x[col('current_tonnes')]))
+    expect(Number(total?.[col('current_tonnes')])).toBeCloseTo(sum('current_tonnes'), 6);
+  else expect(total?.[col('current_tonnes')] ?? '').toBe('');
   // the materials summary: one total row per material, the piles' three among them
   expect(csv.filter((x) => x[0] === 'material').map((x) => x[4])).toEqual(
     expect.arrayContaining(['Crushed rock 20 mm', 'Washed sand', 'Base course']),

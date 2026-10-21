@@ -287,9 +287,12 @@ for (const kind of ['mesh', 'cloud'] as const) {
       await expect(win.getByTestId('panel-handle-left')).toHaveAttribute('aria-expanded', 'true');
       await expect(win.getByTestId('tree-group-measurements')).toHaveCount(0);
       await expect(win.getByTestId('measure-row')).toHaveCount(0);
-      await expect(
-        readFile(join(dataRoot.projectDir, 'survey', 'measurements.json')),
-      ).rejects.toThrow();
+      // nothing saved: the first open writes only the mark that no kit pile needs converting
+      // (volumetric parity W3), never a measurement
+      const file = await readFile(join(dataRoot.projectDir, 'survey', 'measurements.json'), 'utf8')
+        .then((t) => MeasurementsFile.parse(JSON.parse(t)))
+        .catch(() => null);
+      expect(file?.measurements ?? []).toEqual([]);
     });
   });
 }

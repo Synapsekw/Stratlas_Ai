@@ -100,7 +100,9 @@ test.describe('survey measurement tools', () => {
     const onLast = steps.some((b) => Math.abs(b - locked) < 1e-6);
     expect(onStep || onLast, `bearing ${String(locked)}`).toBe(true);
 
-    // US survey feet for this measurement only
+    // US survey feet for this measurement only, from the card's folded Units section
+    const units = panel.locator('details.sv-sec', { has: win.getByTestId('survey-units-summary') });
+    if ((await units.getAttribute('open')) === null) await units.locator('summary').click();
     await panel.getByTestId('survey-units-measurement').click();
     const dialog = win.getByTestId('survey-units-dialog');
     await expect(dialog).toBeVisible();

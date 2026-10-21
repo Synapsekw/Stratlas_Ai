@@ -20,14 +20,17 @@ import {
   tinyManifest,
   type DataRoot,
 } from './fixtures';
-import { measureRow, measureSaved, measureTree } from './island';
+import { measureRow, measureSaved, measureTree, volumesView } from './island';
 import { focusMeasure } from './measureCard';
 
-/** The kit's figures (net on its default base, `tin`), per pile and date. */
-const NORTH_E1 = 10.25;
+/**
+ * The kit's figures (net on its default base, `tin`), per pile and date: exact at the site's
+ * volume precision (one decimal), so the card shows them as they are.
+ */
+const NORTH_E1 = 10.4;
 /** The hand-corrected toe line of the north pile on the second date: its figure wins. */
 const NORTH_E2_EDITED = 12.5;
-const NORTH_E2_AUTO = 11.75;
+const NORTH_E2_AUTO = 11.8;
 const SOUTH_E1 = 4.5;
 
 const fc = (net: number) => ({ fill: net, cut: 0, net });
@@ -359,4 +362,29 @@ test('in a package the figures show and nothing is written', async ({ app, win, 
   const after = await stat(pkg);
   expect(after.mtimeMs).toBe(before.mtimeMs);
   expect(await readFile(pkg)).toEqual(bytes);
+});
+
+test('the Volumes view lists the kit piles; picking one shows its carried figure', async ({
+  win,
+}) => {
+  await openTiny(win);
+  const view = await volumesView(win);
+  const piles = view.getByTestId('volumes-pile');
+  await expect(piles).toHaveCount(2, { timeout: 30_000 });
+  // the list is as tall as its rows: none is clipped away by it
+  const heights = await view.locator('.vv-piles').evaluate((ul) => ({
+    list: ul.getBoundingClientRect().height,
+    rows: [...ul.children].reduce((s, li) => s + li.getBoundingClientRect().height, 0),
+  }));
+  expect(heights.list).toBeGreaterThanOrEqual(heights.rows);
+  await piles.filter({ hasText: 'Pile North' }).click({ timeout: 15_000 });
+  const detail = view.getByTestId('volumes-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail.getByTestId('survey-cmp-status').first()).toHaveText(
+    'From an earlier version (kit tin)',
+  );
+  expect(figure(await detail.getByTestId('card-primary').innerText())).toBeCloseTo(
+    NORTH_E2_EDITED,
+    1,
+  );
 });
