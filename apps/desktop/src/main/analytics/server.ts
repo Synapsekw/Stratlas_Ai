@@ -3,15 +3,17 @@
  * and a free port with a random API key per launch, and recorded in `<data folder>/runtime/
  * analytics-server.json` (`VLM_SERVER_STATE`) once `/health` answers. It runs only while a
  * detector run is running or waiting (founder, 21 Oct): `idle()` stops it at once, and it is
- * killed as the app quits (`stopSync`).
+ * killed as the app quits (`stopSync`). The key goes to llama-server in `LLAMA_API_KEY`, never on
+ * its command line (other local users can read command lines). A server left behind by a crashed
+ * app is found through its state file at the next start and killed (`sweep`).
  */
 import type { VlmServerState } from '@aio/schema';
-import { spawn as nodeSpawn } from 'node:child_process';
+import { execFile, spawn as nodeSpawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { rmSync } from 'node:fs';
-import { mkdir, rm, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { killTree } from '../odm/system';
 import type { AnalyticsPack } from './pack';
 
@@ -26,6 +28,9 @@ export const VLM_PACK_IN_USE =
   'The Analytics pack is in use by a detector run. Wait for it to finish, then try again.';
 const PACK_CHANGING = 'The Analytics pack is being changed. Try again when that has finished.';
 
+/** The executable of llama-server, whatever folder it runs from. */
+const LLAMA_SERVER_IMAGE = /^llama-server(\.exe)?$/i;
+
 /** What the server needs of its process. */
 export interface ChildLike {
   pid?: number | undefined;
@@ -39,12 +44,18 @@ export interface ServerDeps {
   freePort: () => Promise<number>;
   now: () => number;
   setTimer: (fn: () => void, ms: number) => { clear(): void };
-  /** `<dataRoot>/runtime/analytics-server.json`; null deletes it. */
-  writeState: (s: VlmServerState | null) => Promise<void>;
+  /** `<dataRoot>/runtime/analytics-server.json` now; a launch keeps the path it started with. */
+  statePath: () => string;
+  /** Write the state file (owner only); null deletes it. */
+  writeState: (file: string, s: VlmServerState | null) => Promise<void>;
+  /** The state file's JSON, null when there is none. */
+  readState: (file: string) => Promise<unknown>;
+  /** The executable name of a running process (`llama-server.exe`), null when none runs. */
+  processImage: (pid: number) => Promise<string | null>;
   /** Kill the process and its children (`odm/system.ts`'s `killTree`). */
   killTree: (pid: number | undefined) => void;
   /** Delete the state file now (the app quits). */
-  deleteStateSync: () => void;
+  deleteStateSync: (file: string) => void;
   /** 32 hex characters, new for each launch. */
   randomKey?: () => string;
 }
@@ -53,6 +64,8 @@ export type EnsureResult = { ok: true; state: VlmServerState } | { ok: false; er
 
 interface Live {
   child: ChildLike;
+  /** The state file this launch writes, fixed at launch. */
+  file: string;
   dir: string;
   exited: boolean;
   code: number | null;
@@ -70,23 +83,54 @@ export class VlmServer {
   private starting: { dir: string; done: Promise<EnsureResult> } | null = null;
   /** Pack folders being removed or replaced; `'*'` holds every pack. */
   private readonly holds = new Map<string, number>();
-  private runs = 0;
+  /** The leftover check of `sweep`; every start waits for it. */
+  private swept: Promise<void> = Promise.resolve();
 
   constructor(private readonly d: ServerDeps) {}
+
+  /**
+   * At app start: a state file left by an app that crashed or was killed names a llama-server
+   * that may still hold the graphics memory. Kill it when that pid still runs llama-server (a
+   * reused pid of another program is left alone), and delete the file either way.
+   */
+  sweep(): Promise<void> {
+    this.swept = (async () => {
+      const file = this.d.statePath();
+      const raw = await this.d.readState(file).catch(() => null);
+      if (raw === null || raw === undefined) return;
+      const pid =
+        typeof raw === 'object' && 'pid' in raw && typeof raw.pid === 'number' ? raw.pid : null;
+      if (pid !== null && Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
+        const image = await this.d.processImage(pid).catch(() => null);
+        if (image !== null && LLAMA_SERVER_IMAGE.test(basename(image))) {
+          try {
+            this.d.killTree(pid);
+          } catch {
+            // gone meanwhile
+          }
+        }
+      }
+      await this.d.writeState(file, null).catch(() => undefined);
+    })();
+    return this.swept;
+  }
 
   /** Start the server from `pack`, or reuse the one running from it; waits for /health (120 s). */
   async ensure(pack: AnalyticsPack, gpuIndex: number | null): Promise<EnsureResult> {
     const dir = folder(pack.dir);
     if (this.holds.has(dir) || this.holds.has('*')) return { ok: false, error: PACK_CHANGING };
-    if (this.starting) {
+    await this.swept;
+    // another start may have begun while this one waited: never two at once
+    while (this.starting) {
       const s = this.starting;
       const r = await s.done;
-      if (s.dir === dir || !r.ok) return r;
+      // the start that just ended is ours to reuse unless yet another one began meanwhile
+      if (this.startingNow() === null && (s.dir === dir || !r.ok)) return r;
     }
     const live = this.live;
     if (live?.state && !live.exited && live.dir === dir) {
       // a resume reads the file again: write it every time
-      await this.d.writeState(live.state);
+      await this.d.writeState(live.file, live.state);
       return { ok: true, state: live.state };
     }
     // marked as starting before the first await, so a second ensure shares this start
@@ -112,15 +156,9 @@ export class VlmServer {
     );
   }
 
-  /** A detector run started on the server. */
-  busy(): void {
-    this.runs += 1;
-  }
-
   /** No detector run is running or waiting: stop now (not while a start is still loading). */
   idle(): void {
     if (this.starting) return;
-    this.runs = 0;
     void this.stop();
   }
 
@@ -129,7 +167,7 @@ export class VlmServer {
     this.live = null;
     if (!live) return;
     if (!live.exited) this.d.killTree(live.child.pid);
-    await this.d.writeState(null).catch(() => undefined);
+    await this.d.writeState(live.file, null).catch(() => undefined);
   }
 
   /** The app quits: kill the tree and delete the state file before returning. */
@@ -137,9 +175,13 @@ export class VlmServer {
     const live = this.live;
     this.live = null;
     this.starting = null;
-    if (live && !live.exited) this.d.killTree(live.child.pid);
     try {
-      this.d.deleteStateSync();
+      if (live && !live.exited) this.d.killTree(live.child.pid);
+    } catch {
+      // the quit goes on; the next start sweeps what is left
+    }
+    try {
+      this.d.deleteStateSync(live?.file ?? this.d.statePath());
     } catch {
       // nothing to delete
     }
@@ -178,7 +220,8 @@ export class VlmServer {
     };
     if (!LOOPBACK.test(state.url))
       throw new Error(`QUADRION_VLM_SERVER_URL must be http://127.0.0.1:<port>, not ${url}.`);
-    await this.d.writeState(state);
+    await this.swept;
+    await this.d.writeState(this.d.statePath(), state);
     return state;
   }
 
@@ -187,6 +230,7 @@ export class VlmServer {
   }
 
   private async launch(pack: AnalyticsPack, gpuIndex: number | null): Promise<EnsureResult> {
+    const file = this.d.statePath();
     const port = await this.d.freePort();
     const apiKey = this.key();
     const url = `http://127.0.0.1:${port}`;
@@ -206,18 +250,26 @@ export class VlmServer {
       '--parallel',
       '1',
       '--no-ui',
-      '--api-key',
-      apiKey,
     ];
-    const env: Record<string, string> =
-      gpuIndex !== null ? { CUDA_VISIBLE_DEVICES: String(gpuIndex) } : {};
+    // in the environment, not on the command line: llama-server reads LLAMA_API_KEY
+    const env: Record<string, string> = {
+      LLAMA_API_KEY: apiKey,
+      ...(gpuIndex !== null ? { CUDA_VISIBLE_DEVICES: String(gpuIndex) } : {}),
+    };
     let child: ChildLike;
     try {
       child = this.d.spawn(pack.server, args, env);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
-    const live: Live = { child, dir: folder(pack.dir), exited: false, code: null, state: null };
+    const live: Live = {
+      child,
+      file,
+      dir: folder(pack.dir),
+      exited: false,
+      code: null,
+      state: null,
+    };
     this.live = live;
     child.on('exit', (code) => {
       if (live.exited) return;
@@ -226,7 +278,7 @@ export class VlmServer {
       // a crash: the next ensure starts it again, and the job finds no stale file
       if (this.live === live) {
         this.live = null;
-        if (live.state) void this.d.writeState(null).catch(() => undefined);
+        if (live.state) void this.d.writeState(live.file, null).catch(() => undefined);
       }
     });
 
@@ -246,8 +298,13 @@ export class VlmServer {
       startedAt: new Date(this.d.now()).toISOString(),
     };
     live.state = state;
-    await this.d.writeState(state);
+    await this.d.writeState(live.file, state);
     return { ok: true, state };
+  }
+
+  /** The start in progress, read afresh after an await. */
+  private startingNow(): { dir: string; done: Promise<EnsureResult> } | null {
+    return this.starting;
   }
 
   /** The process ended, or another start or a stop took its place. */
@@ -287,6 +344,33 @@ export class VlmServer {
       timer.clear();
     }
   }
+}
+
+/** The executable of a running process (`tasklist` on Windows, `ps` elsewhere); null when none. */
+export function processImage(pid: number): Promise<string | null> {
+  const win = process.platform === 'win32';
+  const file = win ? 'tasklist' : 'ps';
+  const args = win
+    ? ['/FI', `PID eq ${String(pid)}`, '/FO', 'CSV', '/NH']
+    : ['-p', String(pid), '-o', 'comm='];
+  return new Promise((ok) => {
+    execFile(file, args, { timeout: 5000, windowsHide: true }, (err, stdout) => {
+      if (err) {
+        ok(null);
+        return;
+      }
+      ok(parseProcessImage(stdout, pid, win));
+    });
+  });
+}
+
+/** The image name in `tasklist /FO CSV /NH` (or `ps -o comm=`) output for `pid`, else null. */
+export function parseProcessImage(stdout: string, pid: number, win: boolean): string | null {
+  const line = stdout.trim().split(/\r?\n/)[0]?.trim() ?? '';
+  if (!win) return line || null;
+  // "llama-server.exe","1234","Console",...; "INFO: No tasks are running ..." when there is none
+  const m = /^"([^"]+)","(\d+)"/.exec(line);
+  return m?.[1] !== undefined && m[2] === String(pid) ? m[1] : null;
 }
 
 /** Production deps: the state file at `statePath()`, the process tree killed as ODM's is. */
@@ -335,20 +419,32 @@ export function nodeVlmServerDeps(statePath: () => string): ServerDeps {
         },
       };
     },
-    writeState: async (s) => {
-      const file = statePath();
+    statePath,
+    writeState: async (file, s) => {
       if (s === null) {
         await rm(file, { force: true });
         return;
       }
       await mkdir(dirname(file), { recursive: true });
       const tmp = `${file}.${String(process.pid)}.tmp`;
-      await writeFile(tmp, `${JSON.stringify(s, null, 2)}\n`, 'utf8');
+      // it holds the key: owner only
+      await writeFile(tmp, `${JSON.stringify(s, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
       await rename(tmp, file);
     },
+    readState: async (file) => {
+      const text = await readFile(file, 'utf8').catch(() => null);
+      if (text === null) return null;
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        // a torn file: still a leftover to delete
+        return {};
+      }
+    },
+    processImage,
     killTree,
-    deleteStateSync: () => {
-      rmSync(statePath(), { force: true });
+    deleteStateSync: (file) => {
+      rmSync(file, { force: true });
     },
   };
 }

@@ -2,7 +2,13 @@ import { ANALYTICS_PACK_SCHEMA, VlmServerState, type AnalyticsPackManifest } fro
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalyticsPack } from './pack';
-import { VLM_HEALTH_TIMEOUT_MS, VlmServer, type ChildLike, type ServerDeps } from './server';
+import {
+  parseProcessImage,
+  VLM_HEALTH_TIMEOUT_MS,
+  VlmServer,
+  type ChildLike,
+  type ServerDeps,
+} from './server';
 
 const SHA = 'c'.repeat(64);
 const KEY = '0123456789abcdef0123456789abcdef';
@@ -49,7 +55,14 @@ function harness(health: () => number = () => 200) {
   const spawned: { exe: string; args: string[]; env: Record<string, string> }[] = [];
   const states: (VlmServerState | null)[] = [];
   const killed: (number | undefined)[] = [];
-  let deletedSync = 0;
+  const deletedSync: string[] = [];
+  const writes: { file: string; state: VlmServerState | null }[] = [];
+  /** The state file path now, a leftover file's JSON, and the image of each running pid. */
+  const files = {
+    path: 'D:/data/runtime/analytics-server.json',
+    leftover: null as unknown,
+    images: new Map<number, string>(),
+  };
   const asked: { url: string; auth: string | null }[] = [];
   const fetch: typeof globalThis.fetch = (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -74,26 +87,33 @@ function harness(health: () => number = () => 200) {
         },
       };
     },
-    writeState: (s) => {
+    statePath: () => files.path,
+    writeState: (file, s) => {
       states.push(s);
+      writes.push({ file, state: s });
       return Promise.resolve();
     },
+    readState: () => Promise.resolve(files.leftover),
+    processImage: (pid) => Promise.resolve(files.images.get(pid) ?? null),
     killTree: (pid) => {
       killed.push(pid);
     },
-    deleteStateSync: () => {
-      deletedSync += 1;
+    deleteStateSync: (file) => {
+      deletedSync.push(file);
     },
     randomKey: () => KEY,
   };
   return {
     server: new VlmServer(deps),
+    deps,
     children,
     spawned,
     states,
     killed,
     asked,
-    deletedSync: () => deletedSync,
+    files,
+    writes,
+    deletedSync,
   };
 }
 
@@ -129,10 +149,10 @@ describe('VlmServer', () => {
       '--parallel',
       '1',
       '--no-ui',
-      '--api-key',
-      KEY,
     ]);
-    expect(env).toEqual({ CUDA_VISIBLE_DEVICES: '0' });
+    // the key never goes on the command line
+    expect(args.join(' ')).not.toContain(KEY);
+    expect(env).toEqual({ LLAMA_API_KEY: KEY, CUDA_VISIBLE_DEVICES: '0' });
     expect(h.server.serves(pack().dir)).toBe(true);
   });
 
@@ -144,7 +164,7 @@ describe('VlmServer', () => {
     ]);
     expect(a.ok && b.ok).toBe(true);
     expect(h.spawned).toHaveLength(1);
-    expect(at(h.spawned, 0).env).toEqual({});
+    expect(at(h.spawned, 0).env).toEqual({ LLAMA_API_KEY: KEY });
   });
 
   it('waits for health then writes state', async () => {
@@ -195,7 +215,6 @@ describe('VlmServer', () => {
   it('idle stops at once and deletes state', async () => {
     const h = harness();
     await h.server.ensure(pack(), 0);
-    h.server.busy();
     h.server.idle();
     await vi.advanceTimersByTimeAsync(0);
     expect(h.killed).toEqual([4000]);
@@ -218,7 +237,6 @@ describe('VlmServer', () => {
     expect((await p).ok).toBe(true);
     expect(h.killed).toEqual([]);
     // and nothing else stops it: no idle timer
-    h.server.busy();
     await vi.advanceTimersByTimeAsync(6 * 3600_000);
     expect(h.killed).toEqual([]);
     expect(h.server.serves(pack().dir)).toBe(true);
@@ -229,8 +247,107 @@ describe('VlmServer', () => {
     await h.server.ensure(pack(), 0);
     h.server.stopSync();
     expect(h.killed).toEqual([4000]);
-    expect(h.deletedSync()).toBe(1);
+    expect(h.deletedSync).toEqual(['D:/data/runtime/analytics-server.json']);
     expect(h.server.serves(pack().dir)).toBe(false);
+  });
+
+  it('stopSync deletes the state file even when the kill throws', async () => {
+    const h = harness();
+    const throwing = new VlmServer({
+      ...h.deps,
+      killTree: () => {
+        throw new Error('taskkill missing');
+      },
+    });
+    await throwing.ensure(pack(), 0);
+    expect(() => {
+      throwing.stopSync();
+    }).not.toThrow();
+    expect(h.deletedSync).toEqual(['D:/data/runtime/analytics-server.json']);
+  });
+
+  it('stop and stopSync delete the file the launch wrote, after a data folder change', async () => {
+    const h = harness();
+    await h.server.ensure(pack(), 0);
+    h.files.path = 'E:/moved/runtime/analytics-server.json';
+    await h.server.stop();
+    expect(at(h.writes, -1)).toEqual({
+      file: 'D:/data/runtime/analytics-server.json',
+      state: null,
+    });
+    h.files.path = 'D:/data/runtime/analytics-server.json';
+    await h.server.ensure(pack(), 0);
+    h.files.path = 'E:/moved/runtime/analytics-server.json';
+    h.server.stopSync();
+    expect(h.deletedSync).toEqual(['D:/data/runtime/analytics-server.json']);
+  });
+
+  it('a third ensure that arrives during a pack switch does not start a second server', async () => {
+    let ready = false;
+    const h = harness(() => (ready ? 200 : 503));
+    const first = h.server.ensure(pack(), 0);
+    await vi.advanceTimersByTimeAsync(600);
+    const other = h.server.ensure(pack('D:/data/runtime/analytics-pack-1.1.0'), 0);
+    const third = h.server.ensure(pack('D:/data/runtime/analytics-pack-1.1.0'), 0);
+    ready = true;
+    await vi.advanceTimersByTimeAsync(2_000);
+    const rs = await Promise.all([first, other, third]);
+    expect(rs.map((r) => r.ok)).toEqual([true, true, true]);
+    // one for the first pack, one for the second: never two at once for the second
+    expect(h.spawned).toHaveLength(2);
+  });
+
+  it('sweep kills a leftover llama-server and deletes its file', async () => {
+    const h = harness();
+    h.files.leftover = { pid: 777, url: 'http://127.0.0.1:1' };
+    h.files.images.set(777, 'llama-server.exe');
+    await h.server.sweep();
+    expect(h.killed).toEqual([777]);
+    expect(h.writes).toEqual([{ file: 'D:/data/runtime/analytics-server.json', state: null }]);
+  });
+
+  it('sweep leaves a reused pid of another program alone and deletes the file', async () => {
+    const h = harness();
+    h.files.leftover = { pid: 778 };
+    h.files.images.set(778, 'notepad.exe');
+    await h.server.sweep();
+    expect(h.killed).toEqual([]);
+    expect(h.writes).toEqual([{ file: 'D:/data/runtime/analytics-server.json', state: null }]);
+  });
+
+  it('sweep of a dead pid only deletes the file; no file, nothing', async () => {
+    const h = harness();
+    h.files.leftover = { pid: 779 };
+    await h.server.sweep();
+    expect(h.killed).toEqual([]);
+    expect(h.writes).toHaveLength(1);
+    const clean = harness();
+    await clean.server.sweep();
+    expect(clean.writes).toEqual([]);
+  });
+
+  it('a start waits for the sweep, so it never deletes the new file', async () => {
+    const h = harness();
+    h.files.leftover = { pid: 777 };
+    h.files.images.set(777, 'llama-server.exe');
+    void h.server.sweep();
+    await h.server.ensure(pack(), 0);
+    expect(h.writes.map((w) => w.state?.pid ?? null)).toEqual([null, 4000]);
+  });
+
+  it('reads the image name from tasklist output', () => {
+    expect(
+      parseProcessImage('"llama-server.exe","777","Console","1","5,000 K"\r\n', 777, true),
+    ).toBe('llama-server.exe');
+    expect(
+      parseProcessImage(
+        'INFO: No tasks are running which match the specified criteria.',
+        777,
+        true,
+      ),
+    ).toBeNull();
+    expect(parseProcessImage('"other.exe","7770","Console"', 777, true)).toBeNull();
+    expect(parseProcessImage('llama-server\n', 777, false)).toBe('llama-server');
   });
 
   it('a crash clears state so the next ensure restarts', async () => {

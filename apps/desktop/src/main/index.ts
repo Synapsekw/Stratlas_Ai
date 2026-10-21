@@ -2518,6 +2518,9 @@ if (restore) {
       console.warn('Map pack jobs could not be restored', e);
     });
     await jobStore.load();
+    // a detector model server left by a crashed or killed app would hold the graphics memory and
+    // refuse every run as too busy; only this first instance looks (starts wait for it)
+    void vlmServer.sweep();
     // before the first tile can be asked for: until it is read, online satellite is off
     await onlineSettings.load();
     protocol.handle(

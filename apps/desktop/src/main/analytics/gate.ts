@@ -166,7 +166,7 @@ export function detectLane(d: {
   /** The job runner's start. */
   start: (req: StartRequest) => Promise<StartResponse>;
   jobs: () => readonly Pick<JobRecord, 'id' | 'pipeline' | 'status'>[];
-  server: Pick<VlmServer, 'busy' | 'idle'>;
+  server: Pick<VlmServer, 'idle'>;
   log: (line: string) => void;
 }) {
   const waiting: StartRequest[] = [];
@@ -193,9 +193,7 @@ export function detectLane(d: {
         else if (!waiting.some((w) => same(w, req))) waiting.push(req);
         return { ok: false, error: DETECT_QUEUED };
       }
-      const r = await d.start(a.req);
-      if (r.ok) d.server.busy();
-      return r;
+      return await d.start(a.req);
     } finally {
       passing -= 1;
     }

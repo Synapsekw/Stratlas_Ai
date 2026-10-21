@@ -241,7 +241,7 @@ const job = (id: string, pipeline: string, status: string) =>
 
 function lane() {
   const jobs: JobRecord[] = [];
-  const server = { busy: vi.fn(), idle: vi.fn() };
+  const server = { idle: vi.fn() };
   const log = vi.fn();
   const gate = vi.fn((req: StartRequest, running: () => boolean) =>
     Promise.resolve(running() ? { queue: true as const } : { req }),
@@ -271,7 +271,6 @@ describe('detectLane', () => {
     const t = lane();
     const a = await t.l.start(newRequest());
     expect(a.ok).toBe(true);
-    expect(t.server.busy).toHaveBeenCalledTimes(1);
     expect(await t.l.start(newRequest())).toEqual({ ok: false, error: DETECT_QUEUED });
     expect(DETECT_QUEUED).toBe(en['detect.preset.queued']);
     expect(t.l.waiting()).toHaveLength(1);
