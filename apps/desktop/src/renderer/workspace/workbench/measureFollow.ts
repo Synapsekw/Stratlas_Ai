@@ -10,6 +10,7 @@ import type { StoreApi } from 'zustand/vanilla';
 import { isIssueEditing } from '../../issueCard/state';
 import { roadStore, setRoad, type RoadState } from '../../road/store';
 import { hydro } from '../../survey/hydroStore';
+import { followBackfill } from '../../survey/measureBackfill';
 import { measureFavourites, type FavouritesState } from '../../survey/measureCatalogue';
 import { followLayerDates } from '../../survey/measureMoveRun';
 import { measureStore, stopTool, type MeasureState } from '../../survey/measureStore';
@@ -158,7 +159,8 @@ export function followRoadMeasure(
 
 /**
  * While mounted: the Measure and Road tabs follow the tools, the survey panels are tabs, and
- * measurements follow a layer put on another date.
+ * measurements follow a layer put on another date, and older measurements are filed under
+ * their survey dates once.
  */
 export function useMeasureFollow(): void {
   useEffect(() => {
@@ -167,6 +169,7 @@ export function useMeasureFollow(): void {
       followRoadMeasure(),
       followRecent(),
       followLayerDates(),
+      followBackfill(),
       linkPanelTab(
         'overlays',
         overlays,
