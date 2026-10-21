@@ -11,6 +11,7 @@ from .change.mesh import ChangeMesh
 from .change.raster import ChangeRaster
 from .change.surface import ChangeSurface
 from .design.importer import DesignImport
+from .detect.pipeline import DetectVlm
 from .drawing.pipeline import DrawingImport
 from .engineer.pipeline import ModelEvidence
 from .geodesy.calibration import GeoCalibration
@@ -109,5 +110,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         RfCoverage(),
         # Thermal analysis (pipeline pack THERMAL_MIN_PACK)
         ThermalDecode(),
+        # Local vision-model detectors (Analytics pack)
+        DetectVlm(),
     ]
     return {p.name: p for p in items}
