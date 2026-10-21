@@ -152,7 +152,12 @@ describe('VlmServer', () => {
     ]);
     // the key never goes on the command line
     expect(args.join(' ')).not.toContain(KEY);
-    expect(env).toEqual({ LLAMA_API_KEY: KEY, CUDA_VISIBLE_DEVICES: '0' });
+    // nvidia-smi numbers cards in PCI bus order; CUDA does too only when told to
+    expect(env).toEqual({
+      LLAMA_API_KEY: KEY,
+      CUDA_DEVICE_ORDER: 'PCI_BUS_ID',
+      CUDA_VISIBLE_DEVICES: '0',
+    });
     expect(h.server.serves(pack().dir)).toBe(true);
   });
 

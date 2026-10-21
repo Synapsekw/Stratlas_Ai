@@ -67,7 +67,12 @@ export async function checkHardware(d: HardwareDeps): Promise<HardwareCheck> {
       // not on PATH here; try the next place
     }
   }
-  const best = gpus.reduce<Gpu | null>((a, g) => (a && a.freeMb >= g.freeMb ? a : g), null);
+  // among the cards big enough first, then the most free; tooSmall only when none is big enough
+  const big = gpus.filter((g) => g.totalMb >= VLM_MIN_VRAM_MB);
+  const best = (big.length > 0 ? big : gpus).reduce<Gpu | null>(
+    (a, g) => (a && a.freeMb >= g.freeMb ? a : g),
+    null,
+  );
   if (!best) return noGpu();
   if (best.totalMb < VLM_MIN_VRAM_MB) {
     return {

@@ -24,6 +24,40 @@ describe('hardware check', () => {
     expect(pickedGpuIndex(r)).toBe(1);
   });
 
+  it('several GPUs: picks among cards with 8192 MB or more first, then the most free', async () => {
+    // a small card with more free memory does not win over a big one with enough free
+    const csv = '0, NVIDIA RTX A1000, 8000, 7900\n1, NVIDIA GeForce RTX 4080, 16376, 7000\n';
+    expect(await checkHardware({ platform: 'win32', exec: ok(csv) })).toEqual({
+      ok: true,
+      gpu: 'NVIDIA GeForce RTX 4080',
+      gpuIndex: 1,
+      totalMb: 16376,
+      freeMb: 7000,
+    });
+    const three =
+      '0, NVIDIA T400, 4096, 4000\n1, RTX A4000, 16376, 7000\n2, RTX 4070, 12282, 11000\n';
+    expect(await checkHardware({ platform: 'win32', exec: ok(three) })).toMatchObject({
+      ok: true,
+      gpuIndex: 2,
+    });
+  });
+
+  it('several GPUs: a busy big card is tooBusy, not tooSmall from a small idle card', async () => {
+    const csv = '0, NVIDIA T600, 4096, 3990\n1, NVIDIA GeForce RTX 4080, 16376, 3584\n';
+    expect(await checkHardware({ platform: 'win32', exec: ok(csv) })).toEqual({
+      ok: false,
+      reason: en['detect.preset.hw.tooBusy'].replace('{free}', '3.5'),
+    });
+  });
+
+  it('several GPUs, none with 8192 MB: tooSmall', async () => {
+    const csv = '0, NVIDIA T600, 4096, 3990\n1, GTX 1060, 6144, 3000\n';
+    expect(await checkHardware({ platform: 'win32', exec: ok(csv) })).toEqual({
+      ok: false,
+      reason: en['detect.preset.hw.tooSmall'].replace('{total}', '4'),
+    });
+  });
+
   it('no nvidia-smi is "No NVIDIA graphics card found"', async () => {
     const r = await checkHardware({ platform: 'win32', exec: enoent });
     expect(r).toEqual({ ok: false, reason: en['detect.preset.hw.noGpu'] });

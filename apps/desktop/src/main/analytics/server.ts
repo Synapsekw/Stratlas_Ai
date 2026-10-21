@@ -254,7 +254,11 @@ export class VlmServer {
     // in the environment, not on the command line: llama-server reads LLAMA_API_KEY
     const env: Record<string, string> = {
       LLAMA_API_KEY: apiKey,
-      ...(gpuIndex !== null ? { CUDA_VISIBLE_DEVICES: String(gpuIndex) } : {}),
+      // nvidia-smi's index is in PCI bus order; CUDA counts fastest first unless told otherwise,
+      // so on a machine with two different cards the index could name the other one
+      ...(gpuIndex !== null
+        ? { CUDA_DEVICE_ORDER: 'PCI_BUS_ID', CUDA_VISIBLE_DEVICES: String(gpuIndex) }
+        : {}),
     };
     let child: ChildLike;
     try {
