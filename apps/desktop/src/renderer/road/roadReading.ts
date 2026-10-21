@@ -53,14 +53,19 @@ export function roadMeasurement(
 
 const enough = (mode: MeasureMode, n: number) => n >= (mode === 'line' ? 2 : 3);
 
-/** The live card's model, or null with too few points. A road has no heights: plan figures only. */
+/**
+ * The live card's model, or null with too few points. A road has no heights: plan figures only.
+ * `toPoint` places the points as a save would (the project frame), so the live figure is the
+ * saved one; without it, a tangent plane at the first point.
+ */
 export function roadCardModel(
   mode: MeasureMode,
   vertices: readonly MapLngLat[],
   settings: SurveySettings,
+  toPoint?: (p: MapLngLat) => SitePoint,
 ): CardModel | null {
   if (!enough(mode, vertices.length)) return null;
-  const m = roadMeasurement(mode, vertices);
+  const m = toPoint ? roadMeasurement(mode, vertices, toPoint) : roadMeasurement(mode, vertices);
   const model = cardModel(m, { settings, templates: [], captures: [] });
   if (mode === 'polygon') return model;
   // a flat line: the horizontal length is the figure, the slope rows would repeat it

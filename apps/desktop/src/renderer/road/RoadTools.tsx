@@ -1,10 +1,10 @@
 import { PhotoViewer } from '@aio/annotate';
-import { frameProjection } from '@aio/maps';
-import type { SurveyMeasurement } from '@aio/schema';
+import { frameProjection, type MapLngLat } from '@aio/maps';
+import type { SitePoint, SurveyMeasurement } from '@aio/schema';
 import { Button, Icon, isShortcut, matchShortcut, useT } from '@aio/ui';
 import { localToEN } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { authorName } from '../author';
 import { MeasureCard } from '../survey/card';
 import {
@@ -206,33 +206,39 @@ export function canSaveRoadMeasure(
 }
 
 /**
+ * A map point in the project frame (easting, northing), with no height; null when the map cannot
+ * place the project's CRS.
+ */
+function roadToSite(project: OpenProject): ((p: MapLngLat) => SitePoint) | null {
+  if (!project) return null;
+  const proj = frameProjection(project.manifest.crs, project.manifest.origin);
+  if (!proj) return null;
+  const origin = project.manifest.origin;
+  return ([lon, lat]) => {
+    const [x, , z] = proj.toLocal(lon, lat);
+    const [e, n] = localToEN(origin, [x, z]);
+    return [e, n, 0];
+  };
+}
+
+/**
  * Save the current road measure as a site-scoped `distance` or `area` measurement, placed in the
- * project frame (height from the survey surface when one is chosen, else 0).
+ * project frame without heights (z 0 at every vertex): one rule for the whole line, so its saved
+ * length is the horizontal length the live card showed. A vertex on the survey mesh next to one
+ * off it would otherwise read as a drop of the mesh's whole height. The saved card still reads the
+ * terrain length from the survey surface.
  */
 export function saveRoadMeasure(): SurveyMeasurement | null {
   const project = workspace.getState().project;
   const m = roadStore.getState().measure;
-  const ms = measureStore.getState();
-  if (!m.mode || !project || !canSaveRoadMeasure(project, ms)) return null;
-  const proj = frameProjection(project.manifest.crs, project.manifest.origin);
-  if (!proj) return null;
-  const origin = project.manifest.origin;
+  if (!m.mode || !project || !canSaveRoadMeasure(project, measureStore.getState())) return null;
+  const toSite = roadToSite(project);
+  if (!toSite) return null;
   const mode = m.mode;
   const need = mode === 'line' ? 2 : 3;
   if (m.vertices.length < need) return null;
   const saved: SurveyMeasurement = {
-    ...roadMeasurement(
-      mode,
-      m.vertices,
-      ([lon, lat]) => {
-        const [x, , z] = proj.toLocal(lon, lat);
-        const [e, n] = localToEN(origin, [x, z]);
-        // a saved road line is a normal survey measurement, so its card may show a slope length
-        // from the survey surface; that is accepted
-        return [e, n, ms.surface?.heightAt(e, n) ?? 0];
-      },
-      newMeasurementId(),
-    ),
+    ...roadMeasurement(mode, m.vertices, toSite, newMeasurementId()),
     createdAt: new Date().toISOString(),
   };
   const by = authorName();
@@ -249,6 +255,9 @@ export function MeasureBar() {
   const settings = useMeasure((s) => s.settings);
   const store = useMeasure((s) => s);
   const project = useWorkspace((s) => s.project);
+  // the fresh (empty) line a save left: the note stays while it is the line, and goes with the
+  // next point or a Clear
+  const [savedLine, setSavedLine] = useState<readonly MapLngLat[] | null>(null);
   const projectId = project?.id ?? null;
   const hasSurveys = (project?.manifest.captures.length ?? 0) > 0;
   // the site's measurements are read here so a save lands in the file the survey tools write
@@ -256,7 +265,9 @@ export function MeasureBar() {
     if (hasSurveys && projectId) void loadMeasurements(projectId);
   }, [hasSurveys, projectId]);
   if (!m.mode) return null;
-  const model = roadCardModel(m.mode, m.vertices, settings);
+  // measured in the project frame a save places it in, so the saved figure is the one shown
+  const toSite = roadToSite(project);
+  const model = roadCardModel(m.mode, m.vertices, settings, toSite ?? undefined);
   const canSave = model !== null && canSaveRoadMeasure(project, store);
   return (
     <div className="ann-subbar overlay-box rr-measure" role="group" aria-label="Measure">
@@ -287,6 +298,11 @@ export function MeasureBar() {
             {m.mode === 'line' ? 'Click two or more points' : 'Click three or more points'}
           </span>
         )}
+        {savedLine !== null && savedLine === m.vertices && (
+          <p className="small faint" role="status" data-testid="measure-saved-note">
+            {t('road.measure.savedFlat')}
+          </p>
+        )}
       </div>
       <button
         type="button"
@@ -304,7 +320,7 @@ export function MeasureBar() {
           size="sm"
           data-testid="measure-save"
           onClick={() => {
-            saveRoadMeasure();
+            if (saveRoadMeasure()) setSavedLine(roadStore.getState().measure.vertices);
           }}
         >
           {t('road.measure.save')}
