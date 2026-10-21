@@ -13,12 +13,23 @@ import {
   findPackArchives,
   installPackArchive,
   listPacks,
+  PackRefused,
   type ArchivePlace,
   type PipelinePackIpcDeps,
 } from '../jobs/packInstall';
 import { findAnalyticsPack } from './pack';
+import { VLM_PACK_IN_USE } from './server';
 
-export function registerAnalyticsPackIpc(d: PipelinePackIpcDeps): void {
+export interface AnalyticsPackIpcDeps extends PipelinePackIpcDeps {
+  /**
+   * Keep the model server off a pack folder (every pack when `dir` is left out) while it is
+   * removed or replaced: the release, or null when the server runs from it now (`VlmServer.hold`).
+   * Windows file locks are not relied on.
+   */
+  hold?: (dir?: string) => (() => void) | null;
+}
+
+export function registerAnalyticsPackIpc(d: AnalyticsPackIpcDeps): void {
   let running: AbortController | null = null;
   const places = (): ArchivePlace[] => [
     ...d.places(),
@@ -50,6 +61,13 @@ export function registerAnalyticsPackIpc(d: PipelinePackIpcDeps): void {
       path: await d.chooseFile(newest ? dirname(newest.path) : (d.places().at(-1)?.dir ?? null)),
     };
   });
+  /** An install that replaces a pack: no server may run from any of them while it moves in. */
+  const holdAll = (): Promise<() => void> => {
+    const release = d.hold ? d.hold() : () => undefined;
+    return release === null
+      ? Promise.reject(new PackRefused(VLM_PACK_IN_USE))
+      : Promise.resolve(release);
+  };
   d.handle('analyticsPack:install', async ({ path, replace }) => {
     if (running) {
       return { ok: false, error: 'The Analytics pack is being installed already.', code: 'busy' };
@@ -63,6 +81,8 @@ export function registerAnalyticsPackIpc(d: PipelinePackIpcDeps): void {
         platform: d.platform,
         ...(replace === true ? { replace } : {}),
         signal: running.signal,
+        // replacing the installed version: not under a running server
+        ...(replace === true ? { beforeActivate: holdAll } : {}),
         ...(d.assertWritable ? { assertWritable: d.assertWritable } : {}),
         ...(d.freeBytes ? { freeBytes: d.freeBytes } : {}),
       });
@@ -80,6 +100,8 @@ export function registerAnalyticsPackIpc(d: PipelinePackIpcDeps): void {
     const name = `${ANALYTICS_PACK.prefix}-${version}`;
     const pack = (await listPacks(d.dataRoot(), ANALYTICS_PACK)).find((p) => p.name === name);
     if (!pack) return { ok: false, error: `There is no ${name} in ${runtimeDir}.` };
+    const release = d.hold ? d.hold(pack.dir) : () => undefined;
+    if (release === null) return { ok: false, error: VLM_PACK_IN_USE };
     try {
       d.assertWritable?.(pack.dir, 'analytics pack remove');
       // a real folder of runtime, never what a link there points at
@@ -90,6 +112,8 @@ export function registerAnalyticsPackIpc(d: PipelinePackIpcDeps): void {
         ok: false,
         error: `${name} could not be moved to the bin: ${e instanceof Error ? e.message : String(e)}`,
       };
+    } finally {
+      release();
     }
     return { ok: true };
   });

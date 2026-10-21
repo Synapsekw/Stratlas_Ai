@@ -64,7 +64,8 @@ function exitCode(child: Pick<ChildProcess, 'once'>): Promise<number> {
   });
 }
 
-function killTree(pid: number | undefined): void {
+/** Kill a process and everything it started; quick enough to run as the app quits. */
+export function killTree(pid: number | undefined): void {
   if (pid === undefined) return;
   if (process.platform === 'win32')
     // it also runs as the app quits: never block that for long

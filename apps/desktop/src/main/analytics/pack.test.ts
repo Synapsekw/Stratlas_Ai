@@ -12,9 +12,9 @@ import {
   fakeAnalyticsPackFiles,
   type FakeAnalyticsPackOptions,
 } from '../jobs/packArchive.fakes';
-import type { PipelinePackIpcDeps } from '../jobs/packInstall';
 import { findAnalyticsPack } from './pack';
-import { registerAnalyticsPackIpc } from './packIpc';
+import { registerAnalyticsPackIpc, type AnalyticsPackIpcDeps } from './packIpc';
+import { VLM_PACK_IN_USE } from './server';
 
 const APP = { version: '0.11.0', name: 'Quadrion AI' };
 const PLATFORM = 'win32-x64';
@@ -94,7 +94,7 @@ describe('findAnalyticsPack', () => {
 describe('Analytics pack IPC', () => {
   type Handlers = Partial<Record<IpcChannel, (raw: unknown) => Promise<unknown>>>;
 
-  function setup(over: Partial<PipelinePackIpcDeps> = {}) {
+  function setup(over: Partial<AnalyticsPackIpcDeps> = {}) {
     const handlers: Handlers = {};
     const trashed: string[] = [];
     const chosen: (string | null)[] = [];
@@ -197,5 +197,34 @@ describe('Analytics pack IPC', () => {
       error: expect.stringContaining('could not be moved to the bin') as string,
     });
     expect(trashed).toEqual([]);
+  });
+
+  it('refuses to remove or replace a pack while the model server runs from it', async () => {
+    const dir = await writeAnalyticsPack('0.1.0');
+    let serving: string | null = dir;
+    const hold = vi.fn((d?: string) =>
+      serving !== null && (d === undefined || d === serving) ? null : () => undefined,
+    );
+    const { call, trashed } = setup({ hold });
+    expect(await call('analyticsPack:remove', { version: '0.1.0' })).toEqual({
+      ok: false,
+      error: VLM_PACK_IN_USE,
+    });
+    const path = join(root, 'analytics-pack-0.1.0-win-x64.tar.gz');
+    await writeFile(path, fakeAnalyticsPackArchive('0.1.0'));
+    expect(await call('analyticsPack:install', { path, replace: true })).toMatchObject({
+      ok: false,
+      error: VLM_PACK_IN_USE,
+    });
+    expect(await readdir(runtime)).toEqual(['analytics-pack-0.1.0']);
+    expect(trashed).toEqual([]);
+
+    serving = null;
+    expect(await call('analyticsPack:install', { path, replace: true })).toEqual({
+      ok: true,
+      version: '0.1.0',
+    });
+    expect(await call('analyticsPack:remove', { version: '0.1.0' })).toEqual({ ok: true });
+    expect(trashed).toEqual([dir]);
   });
 });

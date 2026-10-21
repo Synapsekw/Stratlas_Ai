@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoTime } from './common';
+import type { PipelineName } from './jobs';
 
 /**
  * Local vision-model detectors (the Analytics pack). A detector is a folder
@@ -19,6 +20,19 @@ export const VLM_DEFAULT_THRESHOLD = 0.8;
 export const VLM_DEFAULT_TILES = { n: 2, overlap: 0.2, sendW: 1344, sendH: 1008 } as const;
 /** Where main records the running server, under the data root. */
 export const VLM_SERVER_STATE = 'runtime/analytics-server.json';
+
+/**
+ * Pipelines that use the graphics card: a `detect.vlm` start waits while one of them is at work.
+ * `detect.vlm` itself (the model server takes about 6.5 GB) and the three ODM photo jobs (ODM
+ * runs its feature extraction and dense matching on the GPU, `photo/odm/flags.py`). Local ONNX
+ * detection and SAM mask assist run in main, not as jobs, so they are not pipelines.
+ */
+export const GPU_PIPELINES: ReadonlySet<PipelineName> = new Set<PipelineName>([
+  'detect.vlm',
+  'photo.align',
+  'photo.georef',
+  'photo.products',
+]);
 
 /** Pass file name for a run: `vlm-<runId>.json` in `detections/`. */
 export const vlmPassName = (runId: string): string =>

@@ -1,0 +1,327 @@
+import {
+  ANALYTICS_PACK_SCHEMA,
+  GPU_PIPELINES,
+  VLM_DETECTOR_SCHEMA,
+  type AnalyticsPackManifest,
+  type HardwareCheck,
+  type JobRecord,
+  type VlmDetector,
+  type VlmServerState,
+} from '@aio/schema';
+import { en } from '@aio/ui/i18n/en';
+import { join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { DETECT_QUEUED, detectJobGate, detectLane, type GateDeps, type StartRequest } from './gate';
+import type { AnalyticsPack } from './pack';
+
+const SHA = 'd'.repeat(64);
+const TUNED = 'e'.repeat(64);
+const KEY = 'f'.repeat(32);
+const DATA = 'D:/data';
+
+const manifest: AnalyticsPackManifest = {
+  schema: ANALYTICS_PACK_SCHEMA,
+  version: '1.0.0',
+  appRange: '>=0.25.0 <2.0.0',
+  platform: 'win-x64',
+  createdAt: '2026-10-01T00:00:00.000Z',
+  runtime: { name: 'llama.cpp', release: 'b1', executable: 'llama/llama-server.exe' },
+  model: { id: 'qwen-vl', licence: 'Apache-2.0', gguf: 'm.gguf', mmproj: 'p.gguf', sha256: SHA },
+  detectors: [],
+  files: {},
+};
+const PACK: AnalyticsPack = {
+  version: '1.0.0',
+  dir: 'D:/data/runtime/analytics-pack-1.0.0',
+  manifest,
+  server: 'D:/data/runtime/analytics-pack-1.0.0/llama/llama-server.exe',
+  gguf: 'D:/data/runtime/analytics-pack-1.0.0/m.gguf',
+  mmproj: 'D:/data/runtime/analytics-pack-1.0.0/p.gguf',
+};
+
+const det = (id: string, looksLike: string): VlmDetector => ({
+  schema: VLM_DETECTOR_SCHEMA,
+  id,
+  name: `Detector ${id}`,
+  version: 1,
+  classId: 'defect',
+  assetTypes: ['roof'],
+  looksLike,
+  ignore: '',
+  question: 'Is this a defect?',
+  tiles: { n: 2, overlap: 0.2, sendW: 1344, sendH: 1008 },
+  threshold: 0.8,
+  tunedOn: { model: 'qwen-tuned', modelSha256: TUNED },
+  author: 'tester',
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z',
+  source: 'user',
+  status: 'experimental',
+});
+
+const STATE: VlmServerState = {
+  url: 'http://127.0.0.1:51234',
+  pid: 4000,
+  apiKey: KEY,
+  modelSha256: SHA,
+  startedAt: '2026-10-21T00:00:00.000Z',
+};
+
+const newRequest = (): StartRequest => ({
+  pipeline: 'detect.vlm',
+  project: 'D:/projects/site',
+  params: {
+    run: 'run-abc',
+    layer: 'photos',
+    photos: ['p1'],
+    detectors: [
+      { where: 'library', detector: det('rust', 'INJECTED prompt text'), threshold: 0.7 },
+      { where: 'shipped', detector: det('crack', 'also injected'), threshold: 0.9 },
+    ],
+    serverFile: 'C:/elsewhere.json',
+  },
+});
+
+function deps(over: Partial<GateDeps> = {}) {
+  const server = {
+    ensure: vi.fn(() => Promise.resolve({ ok: true as const, state: STATE })),
+    attach: vi.fn((url: string) => Promise.resolve({ ...STATE, url })),
+    serves: vi.fn(() => false),
+  };
+  const hardware = vi.fn((): Promise<HardwareCheck> =>
+    Promise.resolve({ ok: true, gpu: 'GPU', gpuIndex: 1, totalMb: 16000, freeMb: 15000 }),
+  );
+  const findPack = vi.fn(() => Promise.resolve(PACK as AnalyticsPack | null));
+  const resolve = vi.fn((_o: unknown, refs: { where: string; id: string }[]) =>
+    Promise.resolve(refs.map((r) => det(r.id, `stored ${r.where} ${r.id}`))),
+  );
+  const d: GateDeps = {
+    env: {},
+    dataRoot: DATA,
+    projectDir: 'D:/projects/site',
+    userData: 'C:/user',
+    findPack,
+    hardware,
+    server,
+    resolve,
+    running: () => false,
+    ...over,
+  };
+  return { d, server, hardware, findPack, resolve };
+}
+
+describe('detectJobGate', () => {
+  it('missing pack refuses with pack.missing', async () => {
+    const { d, server } = deps({ findPack: () => Promise.resolve(null) });
+    expect(await detectJobGate(newRequest(), d)).toEqual({
+      refuse: en['detect.preset.pack.missing'],
+    });
+    expect(server.ensure).not.toHaveBeenCalled();
+  });
+
+  it('hardware refusal passes its reason', async () => {
+    const { d, server } = deps({
+      hardware: () => Promise.resolve({ ok: false, reason: 'Too little memory.' }),
+    });
+    expect(await detectJobGate(newRequest(), d)).toEqual({ refuse: 'Too little memory.' });
+    expect(server.ensure).not.toHaveBeenCalled();
+  });
+
+  it('a server that does not start refuses with server.failed', async () => {
+    const { d, server } = deps();
+    server.ensure.mockResolvedValueOnce({ ok: false, error: 'it did not answer' } as never);
+    expect(await detectJobGate(newRequest(), d)).toEqual({
+      refuse: en['detect.preset.server.failed'].replace('{reason}', 'it did not answer'),
+    });
+  });
+
+  it('skips the hardware check when the server already runs from this pack', async () => {
+    const { d, server, hardware } = deps();
+    server.serves.mockReturnValue(true);
+    const r = await detectJobGate(newRequest(), d);
+    expect('req' in r).toBe(true);
+    expect(hardware).not.toHaveBeenCalled();
+  });
+
+  it('injects serverFile, model and sha', async () => {
+    const { d, server } = deps();
+    const r = await detectJobGate(newRequest(), d);
+    if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');
+    expect(r.req.params).toMatchObject({
+      serverFile: join(DATA, 'runtime/analytics-server.json'),
+      model: 'qwen-vl',
+      modelSha256: SHA,
+    });
+    expect(server.ensure).toHaveBeenCalledWith(PACK, 1);
+  });
+
+  it('replaces detector bodies with stored copies', async () => {
+    const { d, resolve } = deps();
+    const r = await detectJobGate(newRequest(), d);
+    if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');
+    expect(resolve).toHaveBeenCalledWith(
+      { pack: PACK, userData: 'C:/user', projectDir: 'D:/projects/site' },
+      [
+        { where: 'library', id: 'rust' },
+        { where: 'shipped', id: 'crack' },
+      ],
+    );
+    const items = r.req.params.detectors as { detector: VlmDetector; threshold: number }[];
+    expect(items.map((i) => i.detector.looksLike)).toEqual([
+      'stored library rust',
+      'stored shipped crack',
+    ]);
+    expect(items.map((i) => i.threshold)).toEqual([0.7, 0.9]);
+  });
+
+  it('a detector that is gone refuses', async () => {
+    const { d, server } = deps({
+      resolve: () =>
+        Promise.reject(new Error('The detector "rust" (library) is not there any more.')),
+    });
+    expect(await detectJobGate(newRequest(), d)).toEqual({
+      refuse: 'The detector "rust" (library) is not there any more.',
+    });
+    expect(server.ensure).not.toHaveBeenCalled();
+  });
+
+  it('queues while one runs', async () => {
+    const { d, server } = deps({ running: () => true });
+    expect(await detectJobGate(newRequest(), d)).toEqual({ queue: true });
+    expect(server.ensure).not.toHaveBeenCalled();
+  });
+
+  it('queues while a GPU pipeline job runs', async () => {
+    const jobs = [{ pipeline: 'photo.align', status: 'running' }];
+    const { d } = deps({
+      running: () => jobs.some((j) => GPU_PIPELINES.has(j.pipeline as never)),
+    });
+    expect(GPU_PIPELINES.has('photo.align')).toBe(true);
+    expect(await detectJobGate(newRequest(), d)).toEqual({ queue: true });
+  });
+
+  it('resume re-ensures the server and rewrites the state file', async () => {
+    const { d, server, resolve } = deps();
+    const r = await detectJobGate({ resume: 'job-1' }, d);
+    expect(r).toEqual({ req: { resume: 'job-1' } });
+    // ensure writes the state file every time, a reused server included
+    expect(server.ensure).toHaveBeenCalledWith(PACK, 1);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('QUADRION_VLM_SERVER_URL skips pack, hardware and spawn', async () => {
+    const { d, server, hardware, findPack } = deps({
+      env: { QUADRION_VLM_SERVER_URL: 'http://127.0.0.1:40000' },
+    });
+    const r = await detectJobGate(newRequest(), d);
+    if (!('req' in r) || !('params' in r.req)) throw new Error('expected a request');
+    expect(findPack).not.toHaveBeenCalled();
+    expect(hardware).not.toHaveBeenCalled();
+    expect(server.ensure).not.toHaveBeenCalled();
+    expect(server.attach).toHaveBeenCalledWith('http://127.0.0.1:40000', TUNED);
+    expect(r.req.params).toMatchObject({
+      serverFile: join(DATA, 'runtime/analytics-server.json'),
+      model: 'qwen-tuned',
+      modelSha256: TUNED,
+    });
+  });
+
+  it('a request without detectors refuses', async () => {
+    const { d } = deps();
+    const req = newRequest();
+    if ('params' in req) req.params.detectors = [];
+    expect('refuse' in (await detectJobGate(req, d))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------- the queue
+
+const job = (id: string, pipeline: string, status: string) =>
+  ({ id, pipeline, status }) as unknown as JobRecord;
+
+function lane() {
+  const jobs: JobRecord[] = [];
+  const server = { busy: vi.fn(), idle: vi.fn() };
+  const log = vi.fn();
+  const gate = vi.fn((req: StartRequest, running: () => boolean) =>
+    Promise.resolve(running() ? { queue: true as const } : { req }),
+  );
+  let n = 0;
+  const start = vi.fn((req: StartRequest) => {
+    n += 1;
+    const pipeline = 'pipeline' in req ? req.pipeline : 'detect.vlm';
+    const j = job(`job-${n}`, pipeline, 'starting');
+    jobs.push(j);
+    return Promise.resolve({ ok: true as const, job: j });
+  });
+  const l = detectLane({ gate, start, jobs: () => jobs, server, log });
+  const end = async (id: string, status = 'done') => {
+    const i = jobs.findIndex((j) => j.id === id);
+    const was = jobs[i];
+    if (!was) throw new Error(`no job ${id}`);
+    const now = job(id, was.pipeline, status);
+    jobs[i] = now;
+    await l.settled({ type: 'update', job: now });
+  };
+  return { l, jobs, server, gate, start, end, log };
+}
+
+describe('detectLane', () => {
+  it('starts, queues behind a running one and starts it when that ends', async () => {
+    const t = lane();
+    const a = await t.l.start(newRequest());
+    expect(a.ok).toBe(true);
+    expect(t.server.busy).toHaveBeenCalledTimes(1);
+    expect(await t.l.start(newRequest())).toEqual({ ok: false, error: DETECT_QUEUED });
+    expect(DETECT_QUEUED).toBe(en['detect.preset.queued']);
+    expect(t.l.waiting()).toHaveLength(1);
+    await t.end('job-1');
+    expect(t.start).toHaveBeenCalledTimes(2);
+    expect(t.l.waiting()).toHaveLength(0);
+    expect(t.server.idle).not.toHaveBeenCalled();
+    await t.end('job-2', 'failed');
+    expect(t.server.idle).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for a photo job, then runs', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.align', 'running'));
+    expect(await t.l.start(newRequest())).toEqual({ ok: false, error: DETECT_QUEUED });
+    await t.end('photo', 'cancelled');
+    expect(t.start).toHaveBeenCalledTimes(1);
+    expect(t.server.idle).not.toHaveBeenCalled();
+  });
+
+  it('a queued request the gate refuses is logged and the next one goes', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.products', 'running'));
+    await t.l.start(newRequest());
+    await t.l.start(newRequest());
+    t.gate.mockResolvedValueOnce({ refuse: 'No pack.' } as never);
+    await t.end('photo');
+    expect(t.log).toHaveBeenCalledWith(expect.stringContaining('No pack.'));
+    expect(t.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('a refused start leaves the server stopped', async () => {
+    const t = lane();
+    t.gate.mockResolvedValueOnce({ refuse: 'No.' } as never);
+    expect(await t.l.start(newRequest())).toEqual({ ok: false, error: 'No.' });
+    expect(t.server.idle).toHaveBeenCalledTimes(1);
+  });
+
+  it('two starts at once: the second waits', async () => {
+    const t = lane();
+    const [a, b] = await Promise.all([t.l.start(newRequest()), t.l.start(newRequest())]);
+    expect(a.ok).toBe(true);
+    expect(b).toEqual({ ok: false, error: DETECT_QUEUED });
+  });
+
+  it('ignores jobs that do not use the graphics card', async () => {
+    const t = lane();
+    t.jobs.push(job('walk', 'walk.process', 'running'));
+    expect((await t.l.start(newRequest())).ok).toBe(true);
+    await t.end('walk');
+    expect(t.server.idle).not.toHaveBeenCalled();
+  });
+});

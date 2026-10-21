@@ -10,8 +10,10 @@ import {
 import { brand, urlSchemes } from '@aio/brand';
 import {
   ChangeThresholds,
+  DETECTOR_FILE_EXTENSION,
   ipcEvents,
   PACKAGE_EXTENSION,
+  VLM_SERVER_STATE,
   type IpcChannel,
   type IpcEvent,
   type IpcRequest,
@@ -205,6 +207,14 @@ import { validated, type Handler } from './ipc';
 import { findPack, findPdal, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
 import { findFfmpeg } from './jobs/pack';
 import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
+import { resolveDetectors } from './analytics/detectors';
+import { registerDetectorsIpc } from './analytics/detectorsIpc';
+import { detectJobGate, detectLane } from './analytics/gate';
+import { checkHardware, execNvidiaSmi } from './analytics/hardware';
+import { registerLedgerIpc } from './analytics/ledgerIpc';
+import { findAnalyticsPack } from './analytics/pack';
+import { registerAnalyticsPackIpc } from './analytics/packIpc';
+import { nodeVlmServerDeps, VlmServer } from './analytics/server';
 import { createKeyVault } from './keys';
 import { createClassLibraryStore } from './classLibrary';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
@@ -940,12 +950,41 @@ const jobs = new JobRunner({
       },
     });
     if (safe) void surveyQaJobs(safe);
+    // a GPU job ended: the next waiting detector run starts, or the model server stops
+    void detectQueue.settled(event).catch((e: unknown) => {
+      appLog.write('warn', [`The detector queue did not move on: ${String(e)}`]);
+    });
   },
 });
 /** Drone panorama stitches run one at a time on this computer; the others wait in line. */
 const panoLane = stitchLane({
   start: (req) => jobs.start(req as IpcRequest<'jobs:start'>),
   started: fileLaneRun,
+  log: (line) => {
+    appLog.write('warn', [line]);
+  },
+});
+/** The detector model server (`llama-server` from the Analytics pack), only while a run needs it. */
+const vlmServer = new VlmServer(
+  nodeVlmServerDeps(() => join(settings.current().dataRoot, VLM_SERVER_STATE)),
+);
+/** `detect.vlm` starts: one at a time, never beside a GPU pipeline job; the others wait in line. */
+const detectQueue = detectLane({
+  gate: (req, running) =>
+    detectJobGate(req, {
+      env: process.env,
+      dataRoot: settings.current().dataRoot,
+      projectDir: 'project' in req ? req.project : (jobs.get(req.resume)?.project ?? ''),
+      userData: app.getPath('userData'),
+      findPack: findAnalyticsPack,
+      hardware: () => checkHardware({ platform: process.platform, exec: execNvidiaSmi }),
+      server: vlmServer,
+      resolve: resolveDetectors,
+      running,
+    }),
+  start: (req) => jobs.start(req),
+  jobs: () => jobStore.all(),
+  server: vlmServer,
   log: (line) => {
     appLog.write('warn', [line]);
   },
@@ -1557,6 +1596,9 @@ function registerIpc(): void {
         cleanPackRefusal(pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
+    // a detector run: the Analytics pack, the graphics card and the model server first, and it
+    // waits while the card is taken (detect.preset.queued, as PANO_QUEUED)
+    if (pipeline === 'detect.vlm') return detectQueue.start(req);
     // a drone panorama stitch waits for the one running (one at a time on this computer)
     const sphere = laneSphere(req, (id) => jobs.get(id));
     if (sphere) {
@@ -2185,6 +2227,76 @@ function registerIpc(): void {
     },
     assertWritable,
   });
+
+  // Local detectors (Analytics pack): the pack, the hardware check, the detector library, the
+  // review ledger. No window opens a detector run by itself: only an explicit jobs:start does.
+  registerAnalyticsPackIpc({
+    handle,
+    dataRoot: () => settings.current().dataRoot,
+    env: process.env,
+    app: packApp,
+    platform: `${process.platform}-${process.arch}`,
+    features: [],
+    places: () =>
+      packArchivePlaces({
+        exe: app.getPath('exe'),
+        portableDir: process.env.PORTABLE_EXECUTABLE_DIR,
+        downloads: app.getPath('downloads'),
+      }),
+    chooseFile: async (startDir) => {
+      const win = targetWindow();
+      const options = {
+        title: 'Choose the Analytics pack file (.tar.gz)',
+        properties: ['openFile' as const],
+        filters: [{ name: 'Analytics pack', extensions: ['gz', 'tgz', 'tar'] }],
+        ...(startDir ? { defaultPath: startDir } : {}),
+      };
+      const r = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options);
+      return r.canceled ? null : (r.filePaths[0] ?? null);
+    },
+    trash: (dir) => shell.trashItem(dir),
+    // no progress channel for this pack yet
+    emit: () => undefined,
+    assertWritable,
+    hold: (dir) => vlmServer.hold(dir),
+  });
+  handle('analytics:hardware', () =>
+    checkHardware({ platform: process.platform, exec: execNvidiaSmi }),
+  );
+  registerDetectorsIpc({
+    handle,
+    pack: () => findAnalyticsPack({ dataRoot: settings.current().dataRoot, env: process.env }),
+    userData: () => app.getPath('userData'),
+    projectDir: (projectId) => registry.root(projectId) ?? null,
+    chooseOpen: async () => {
+      const win = targetWindow();
+      const options = {
+        title: 'Choose a detector file',
+        properties: ['openFile' as const],
+        filters: [{ name: 'Detector', extensions: [DETECTOR_FILE_EXTENSION.slice(1)] }],
+      };
+      const r = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options);
+      return r.canceled ? null : (r.filePaths[0] ?? null);
+    },
+    chooseSave: async (defaultName) => {
+      const win = targetWindow();
+      const options = {
+        title: 'Export the detector',
+        defaultPath: join(app.getPath('downloads'), defaultName),
+        filters: [{ name: 'Detector', extensions: [DETECTOR_FILE_EXTENSION.slice(1)] }],
+      };
+      const r = win
+        ? await dialog.showSaveDialog(win, options)
+        : await dialog.showSaveDialog(options);
+      return r.canceled || !r.filePath ? null : r.filePath;
+    },
+    assertWritable,
+  });
+  registerLedgerIpc({ handle, userData: app.getPath('userData') });
 }
 
 /** Hand a package path to the renderer (second launch, macOS open-file). */
@@ -2470,6 +2582,8 @@ app.on('will-quit', () => {
   // it, the install stays recorded unverified, for Try again; stopSmoke catches any other check.
   odmIpc?.stopAll();
   odmSystem.stopSmoke();
+  // llama-server holds about 6.5 GB of graphics memory: it must not outlive the app
+  vlmServer.stopSync();
   // the journal keeps each chain's segment open between appends (T8 finding 4)
   void journal.closeAll();
 });
