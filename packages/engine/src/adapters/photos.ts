@@ -1,3 +1,4 @@
+import { isPositionEdited, photoCorrection } from '@aio/geo';
 import type { Layer, PhotoRef } from '@aio/schema';
 import { workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import {
@@ -312,6 +313,11 @@ export function createPhotosAdapter(
             thumb: full?.startsWith('aio://project/')
               ? full.replace(/^aio:\/\/project\//, 'aio://thumb/')
               : undefined,
+            // moved by hand (Edit position); a pin is the photo's own place, never "edited"
+            edited:
+              p !== undefined &&
+              !p.pin &&
+              isPositionEdited(photoCorrection(store.getState().orientation, layer.id, p.id)),
           };
         },
         open: select,

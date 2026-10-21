@@ -331,4 +331,53 @@ describe('photo frustums', () => {
     expect(host.querySelector('[data-markers]')).toBeNull();
     host.remove();
   });
+
+  it('rings the marker of a photo moved by hand, not a pinned one', async () => {
+    const moved = {
+      yawDeg: 0,
+      pitchDeg: 0,
+      rollDeg: 0,
+      offsetM: [0, 5, 0] as [number, number, number],
+    };
+    const set: PhotosLayer = {
+      kind: 'photos',
+      id: 'set',
+      name: 'Photos',
+      visible: true,
+      items: [
+        { id: 'moved', src: { path: 'photos/m.jpg' }, pos: [-5, 2, 0] },
+        {
+          id: 'pinned',
+          src: { path: 'photos/p.jpg' },
+          pos: [5, 2, 0],
+          pin: { ground: [5, 0, 0], eyeM: 2 },
+        },
+      ],
+    };
+    const store = createWorkspace();
+    store.setState({
+      orientation: {
+        schema: 'aio.orientation/1',
+        updatedAt: '2026-10-21T00:00:00Z',
+        photos: { set: { moved, pinned: moved } },
+      },
+    } as never);
+    const host = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
+    host.append(canvas);
+    document.body.append(host);
+    const h = handle(canvas);
+    h.camera.position.set(0, 2, 20);
+    h.camera.lookAt(0, 2, 0);
+    h.camera.updateMatrixWorld();
+    const lh = await createPhotosAdapter(store).create(set, { url: () => '', scene: h });
+    click(canvas, 1, 1);
+    const icons = [...host.querySelectorAll<HTMLElement>('[data-markers=photo] .aio-mk')].filter(
+      (e) => e.style.display !== 'none',
+    );
+    expect(icons.map((e) => e.dataset.edited)).toEqual(['true', undefined]);
+    lh.dispose();
+    host.remove();
+  });
 });
