@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 import {
   Alignment,
@@ -229,6 +229,8 @@ const measurement = (id: string) => ({
   createdAt: NOW,
 });
 
+const fileOf = (measurements: unknown[]) => ({ schema: 'aio.measurements/1', measurements });
+
 describe('survey files', () => {
   it('reads site settings, their defaults and the userData survey defaults', () => {
     expect(SurveySettings.parse(defaultSurveySettings())).toEqual(defaultSurveySettings());
@@ -247,6 +249,47 @@ describe('survey files', () => {
     expect(
       SurveyDefaults.safeParse({ schema: 'aio.survey-defaults/1', order: 'ENZ' }).success,
     ).toBe(true);
+  });
+
+  it('measurements take an optional source layer and per-vertex pick kinds', () => {
+    const m = {
+      ...measurement('m-1'),
+      source: { layer: 'dsm-d1' },
+      pickedOn: ['ground', 'model', 'ground'],
+    };
+    expect(MeasurementsFile.parse(fileOf([m])).measurements[0]).toMatchObject({
+      source: { layer: 'dsm-d1' },
+      pickedOn: ['ground', 'model', 'ground'],
+    });
+  });
+
+  it('a file from before the fields still parses', () => {
+    expect(MeasurementsFile.safeParse(fileOf([measurement('m-1')])).success).toBe(true);
+  });
+
+  it('a pickedOn of the wrong length is dropped, with a warning, and the file still loads', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const r = MeasurementsFile.safeParse(
+      fileOf([
+        { ...measurement('bad'), pickedOn: ['ground', 'ground', 'ground', 'model'] },
+        { ...measurement('good'), pickedOn: ['ground', 'model', 'ground'] },
+      ]),
+    );
+    expect(r.success).toBe(true);
+    expect(r.data?.measurements[0]).not.toHaveProperty('pickedOn');
+    expect(r.data?.measurements[1]?.pickedOn).toEqual(['ground', 'model', 'ground']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('bad');
+    warn.mockRestore();
+  });
+
+  it('a pickedOn with an unknown kind or of the wrong type is dropped, not fatal', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    for (const pickedOn of [['air', 'ground', 'ground'], 'ground', [1, 2, 3]])
+      expect(
+        MeasurementsFile.parse(fileOf([{ ...measurement('m-1'), pickedOn }])).measurements[0],
+      ).not.toHaveProperty('pickedOn');
+    vi.restoreAllMocks();
   });
 
   it('reads measurements.json and refuses duplicate ids', () => {
