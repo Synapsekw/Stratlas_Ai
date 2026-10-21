@@ -5795,6 +5795,8 @@ export const en = {
   'vol.view.notCountedOn_one': '{count} pile not counted',
   'vol.view.notCountedOn_other': '{count} piles not counted',
   'vol.notCounted.stale': 'stale',
+  // a pile's 3D callout whose figure is stale, as the card marks it
+  'vol.callout.stale': '{value}, stale',
   'vol.notCounted.noData': 'no survey data',
   'vol.notCounted.notComputed': 'not computed yet',
   'vol.notCounted.failed': 'could not compute',

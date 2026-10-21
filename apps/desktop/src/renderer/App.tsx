@@ -58,7 +58,7 @@ import {
   mergeDiskIssues,
   sameFolder,
 } from './jobs';
-import { compareStore, engineClient } from './survey/compareStore';
+import { compareStore, engineClient, isStale, seriesStale } from './survey/compareStore';
 import { convertAfterJob, knownTemplates, measureStore } from './survey/measureStore';
 import { bridge, jobs, shell, useShell } from './shell';
 import { installLastView } from './library/lastView';
@@ -385,11 +385,27 @@ export function App() {
         measurements: () => measureStore.getState().file.measurements,
         settings: () => measureStore.getState().settings,
         templates: () => knownTemplates(measureStore.getState()),
-        subscribe: (listener) =>
-          measureStore.subscribe((s, p) => {
+        // the card's stale rule: the stored result by the fingerprints, a dated row by the series
+        isStale: (m, r, stored) =>
+          stored ? isStale(compareStore.getState(), m, r) : seriesStale(m, r),
+        subscribe: (listener) => {
+          const offMeasures = measureStore.subscribe((s, p) => {
             if (s.file !== p.file || s.settings !== p.settings || s.templates !== p.templates)
               listener();
-          }),
+          });
+          const offCompare = compareStore.subscribe((s, p) => {
+            if (
+              s.current !== p.current ||
+              s.seriesCurrent !== p.seriesCurrent ||
+              s.seriesInputs !== p.seriesInputs
+            )
+              listener();
+          });
+          return () => {
+            offMeasures();
+            offCompare();
+          };
+        },
       }),
     [],
   );

@@ -13,30 +13,45 @@ import type {
   SurveyTemplate,
   VolumesFile,
 } from '@aio/schema';
-import { effectiveUnits, primaryRow } from '@aio/survey';
+import { effectiveUnits, pileSeries, primaryRow, seriesDate } from '@aio/survey';
+import { t } from '@aio/ui';
 import type { PileFigure, PileFigures, Volumetric } from '@aio/volumetric';
 import type { StoreApi } from 'zustand/vanilla';
 import { rowText, templateItems } from '../survey/card/cardModel';
 
+/** Whether a figure is stale: `stored` for the measurement's stored result (the card's rule). */
+export type PileStale = (m: SurveyMeasurement, r: ComparisonResult, stored: boolean) => boolean;
+
 /**
- * The measurement's result on one survey date: its stored result for that date (it wins its own
- * date), else the per-date series row, else a stored result that names no date.
+ * The measurement's figure per survey: the card's per-date rule (`pileSeries`: its stored result
+ * stands for its own date), and a stored result that names no date on the latest survey only,
+ * when no dated row is there.
  */
-function resultOn(m: SurveyMeasurement, capture: string): ComparisonResult | undefined {
+function resultsOn(
+  m: SurveyMeasurement,
+  captures: VolumesFile['captures'],
+): Map<string, { r: ComparisonResult; stored: boolean }> {
+  const { series, stored } = pileSeries(m);
+  const out = new Map(series.map((r) => [r.toCapture ?? '', { r, stored: r === stored }]));
   const item = m.items[0]?.id;
-  const first = m.results.find((r) => r.item === item) ?? m.results[0];
-  if (first?.toCapture === capture) return first;
-  const row = m.series?.find((r) => r.toCapture === capture && (!item || r.item === item));
-  if (row) return row;
-  return first && first.toCapture === undefined ? first : undefined;
+  const undated = m.results.find((r) => r.item === item && seriesDate(r) === '');
+  const latest = [...captures].sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+  const last = latest[latest.length - 1];
+  if (undated && last && !out.has(last.captureId))
+    out.set(last.captureId, { r: undated, stored: true });
+  return out;
 }
 
-/** Every kit pile's figure per survey epoch, from its volume measurement. */
+/**
+ * Every kit pile's figure per survey epoch, from its volume measurement. A stale figure (marked,
+ * or by `opts.isStale`, the card's predicate) reads "…, stale", as the card marks it.
+ */
 export function pileFigures(
   volumes: Pick<VolumesFile, 'captures'> | null,
   measurements: readonly SurveyMeasurement[],
   settings: SurveySettings,
   templates: readonly SurveyTemplate[],
+  opts: { isStale?: PileStale } = {},
 ): PileFigures {
   if (!volumes) return {};
   const out: Record<string, Record<string, PileFigure>> = {};
@@ -49,14 +64,18 @@ export function pileFigures(
     const density = m.material
       ? settings.materials.find((x) => x.id === m.material)?.densityTPerM3
       : undefined;
+    const on = resultsOn(m, volumes.captures);
     for (const c of volumes.captures) {
-      const r = resultOn(m, c.captureId);
-      if (!r) continue;
+      const hit = on.get(c.captureId);
+      if (!hit) continue;
+      const { r, stored } = hit;
       const row = primaryRow({ ...m, results: [r] }, {}, items);
       if (row?.value == null) continue;
       const net = r.netM3;
+      const value = rowText(row, m, settings);
+      const stale = r.status === 'stale' || (opts.isStale?.(m, r, stored) ?? false);
       per[c.epoch] = {
-        value: rowText(row, m, settings),
+        value: stale ? t('vol.callout.stale', { value }) : value,
         tonnes:
           density !== undefined
             ? // tonnes to kilograms, the SI mass the formatter takes
@@ -73,7 +92,9 @@ export interface PileFigureDeps {
   measurements(): readonly SurveyMeasurement[];
   settings(): SurveySettings;
   templates(): readonly SurveyTemplate[];
-  /** Hear a change to the measurements, the settings or the templates. */
+  /** Whether a figure is stale (the card's predicate); without it only a marked one is. */
+  isStale?: PileStale;
+  /** Hear a change to the measurements, the settings, the templates or what is stale. */
   subscribe(listener: () => void): () => void;
 }
 
@@ -83,7 +104,9 @@ export function connectPileFigures(store: StoreApi<Volumetric>, deps: PileFigure
   const sync = () => {
     const s = store.getState();
     const file = s.status === 'ready' ? s.file : null;
-    const figures = pileFigures(file, deps.measurements(), deps.settings(), deps.templates());
+    const figures = pileFigures(file, deps.measurements(), deps.settings(), deps.templates(), {
+      ...(deps.isStale ? { isStale: deps.isStale } : {}),
+    });
     const text = JSON.stringify(figures);
     if (text === last && text === JSON.stringify(s.pileFigures)) return;
     last = text;

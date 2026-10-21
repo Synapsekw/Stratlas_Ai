@@ -102,6 +102,42 @@ describe('pile figures from the volume measurements', () => {
     expect(f).toEqual({ P01: {} });
   });
 
+  it('marks a stale figure as the card does, by the same predicate', () => {
+    const ms = [pile({ results: [result(1350, 'c2')], series: [result(900, 'c1')] })];
+    const stale = pileFigures({ captures: CAPTURES }, ms, settings, [], {
+      isStale: (_m, r, stored) => stored && r.netM3 === 1350,
+    });
+    expect(stale.P01?.e2?.value).toMatch(/^1\D?350.*, stale$/);
+    expect(stale.P01?.e1?.value).not.toMatch(/stale/);
+    // a row the store marks stale is stale without a predicate
+    const marked = pile({ results: [{ ...result(1350, 'c2'), status: 'stale' }], series: [] });
+    expect(figures([marked]).P01?.e2?.value).toMatch(/, stale$/);
+  });
+
+  it('shows a result that names no date on the latest date only', () => {
+    const f = figures([pile({ results: [result(640, undefined)], series: [] })]);
+    expect(f.P01?.e2?.value).toMatch(/640/);
+    expect(f.P01?.e1).toBeUndefined();
+  });
+
+  it('a dated row wins the latest date over a result with no date', () => {
+    const f = figures([pile({ results: [result(640, undefined)], series: [result(700, 'c2')] })]);
+    expect(f.P01?.e2?.value).toMatch(/700/);
+  });
+
+  it('follows the pile a rebuild renumbered the measurement to', () => {
+    const a = pile({ id: 'a', origin: { kind: 'kit-pile', pile: 'P02' } });
+    const b = pile({
+      id: 'b',
+      results: [result(300, 'c2')],
+      series: [],
+      origin: { kind: 'kit-pile', pile: 'P01' },
+    });
+    const f = figures([a, b]);
+    expect(f.P02?.e2?.value).toMatch(/^1\D?200/);
+    expect(f.P01?.e2?.value).toMatch(/^300/);
+  });
+
   it('leaves out measurements that are not kit piles', () => {
     const plain: SurveyMeasurement = { ...pile() };
     delete plain.origin;
