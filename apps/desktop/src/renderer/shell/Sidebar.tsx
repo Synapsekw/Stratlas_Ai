@@ -1,4 +1,5 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
+import { WebsiteUpdateNotice } from '../updates/WebsiteUpdates';
 import {
   ariaKeys,
   Button,
@@ -1116,6 +1117,7 @@ export function Sidebar({ resize }: SidebarProps = {}) {
       {/* the dataset tree is the Scene's; on the other screens the space stays empty */}
       <div className="sb-scroll">{screen === 'scene' && <Datasets collapsed={collapsed} />}</div>
       <div className="sb-foot">
+        <WebsiteUpdateNotice />
         <SidebarStatus />
         <div className="sb-foot-row">
           <NavItem

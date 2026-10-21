@@ -7,6 +7,7 @@ import { bridge, shell, useCall, useShell } from '../../shell';
 import { BrandLockup } from '../../shell/BrandMark';
 import { Diagnostics } from './Diagnostics';
 import { ReleaseNotesView } from './ReleaseNotes';
+import { WebsiteUpdatesPanel } from '../../updates/WebsiteUpdates';
 
 const PHASE: Record<IpcEvent<'update:progress'>['phase'], string> = {
   download: 'Downloading',
@@ -533,6 +534,7 @@ export function About() {
       <Diagnostics />
       <div className="sblock">
         <h2>Updates</h2>
+        <WebsiteUpdatesPanel />
         {a?.store ? (
           <p className="help">
             This copy comes from the Microsoft Store, which installs its updates.

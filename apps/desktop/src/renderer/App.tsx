@@ -64,6 +64,7 @@ import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
 import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
+import { websiteUpdates } from './updates/session';
 import { useFold } from './shell/useFold';
 import { isSidebarFolded } from './store';
 import { openAgent } from './shell/RightHeader';
@@ -336,6 +337,7 @@ function useSidebarSplit() {
 }
 
 export function App() {
+  useEffect(() => websiteUpdates.getState().start(), []);
   const sidebar = useSidebarSplit();
   const { containerRef: sidebarSplitRef, separatorProps: sidebarResize } = sidebar;
   const theme = useShell((s) => s.settings.theme);
