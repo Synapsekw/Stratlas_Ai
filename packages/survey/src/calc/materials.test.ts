@@ -24,6 +24,13 @@ describe('site materials as CSV', () => {
     expect(back.materials).toEqual(SITE);
   });
 
+  it('keeps a name that a spreadsheet would run as a formula as text, and reads it back', () => {
+    const risky = [{ id: 'x', name: '=HYPERLINK("http://x")', code: '-1', densityTPerM3: 1.6 }];
+    const csv = materialsToCsv(risky);
+    expect(csv).toContain(`"'=HYPERLINK(""http://x"")",'-1,1.6`);
+    expect(materialsFromCsv(csv).materials).toEqual(risky);
+  });
+
   it('reads a semicolon file with a BOM, decimal commas, columns in any order and bad rows', () => {
     const text =
       BOM +

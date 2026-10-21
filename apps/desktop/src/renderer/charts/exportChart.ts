@@ -7,7 +7,7 @@
  * picks the place and the main process writes the bytes, so nothing lands in the project.
  */
 import { fromSI, unitLabel } from '@aio/geo';
-import type { SurveyPrecision, SurveyUnits } from '@aio/schema';
+import { csvText, type SurveyPrecision, type SurveyUnits } from '@aio/schema';
 import type { ChartSeries } from '@aio/survey';
 import { t } from '@aio/ui';
 import { bridge } from '../shell';
@@ -133,7 +133,11 @@ export async function chartPng(svg: SVGSVGElement, scale = 2): Promise<Uint8Arra
   return readBlob(blob);
 }
 
-const cell = (s: string): string => (/[",\n\r]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s);
+// header cells are text (surface names): formula-guarded; the number rows are written as they are
+const cell = (text: string): string => {
+  const s = csvText(text);
+  return /[",\n\r]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+};
 /** Chainages from different series are the same row when they agree to a micrometre. */
 const rowKey = (c: number): string => c.toFixed(6);
 

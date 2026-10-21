@@ -8,7 +8,7 @@
  * `@aio/rf` `readGridTiff` (the coverage layer reads the same grids in the renderer); it is how
  * the composite grids of a run are loaded for the exports.
  */
-import type { RfThresholds } from '@aio/schema';
+import { csvText, type RfThresholds } from '@aio/schema';
 
 /** The georeferencing of a run's grid (`RfRun.grid`). */
 export interface GridGeo {
@@ -441,7 +441,11 @@ export interface ClassAreasInput {
   sectors: readonly { id: string; name: string }[];
 }
 
-const csvCell = (s: string): string => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+/** A text cell (sector id or name): formula-guarded, quoted when needed. */
+const csvCell = (text: string): string => {
+  const s = csvText(text);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
 
 /**
  * Area in square metres of each RSRP class per best server sector, and in total. `none` is

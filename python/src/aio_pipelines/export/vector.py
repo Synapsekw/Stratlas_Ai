@@ -30,6 +30,7 @@ from xml.sax.saxutils import escape
 
 import numpy as np
 
+from ..csvsafe import csv_text
 from ..runtime import AtomicPath, JobError, replace_over
 
 
@@ -73,9 +74,9 @@ def write_points_csv(path: Path, rows: list[PointRow], order: str) -> None:
         w.writerow(["Point", "Latitude", "Longitude", "Height", "Code"])
     for p in rows:
         if order == "ENZ":
-            w.writerow([p.id, r(p.x), r(p.y), r(p.z), p.code or ""])
+            w.writerow([csv_text(p.id), r(p.x), r(p.y), r(p.z), csv_text(p.code or "")])
         else:  # NEZ and geo: northing or latitude first
-            w.writerow([p.id, r(p.y), r(p.x), r(p.z), p.code or ""])
+            w.writerow([csv_text(p.id), r(p.y), r(p.x), r(p.z), csv_text(p.code or "")])
     with AtomicPath(path) as tmp:
         tmp.write_bytes(buf.getvalue().encode("utf-8"))
 

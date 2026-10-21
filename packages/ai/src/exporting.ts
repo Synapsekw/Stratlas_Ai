@@ -1,5 +1,5 @@
 /** Plain-text exports: the issue CSV of export_issues and a conversation as Markdown (AI-8). */
-import type { Conversation, DateShift, Issue } from '@aio/schema';
+import { csvText, type Conversation, type DateShift, type Issue } from '@aio/schema';
 import { issuePoint } from './tool-kit';
 
 const CSV_HEAD = [
@@ -36,21 +36,21 @@ export function issuesCsv(
   const rows = issues.map((i) => {
     const p = issuePoint(i, shiftOf);
     const xyz = p ? p.map((n) => n.toFixed(3)) : ['', '', ''];
+    // a person's text is formula-guarded; numbers (severity, x y z) are written as they are
+    const text = (v: string) => cell(csvText(v));
     return [
-      i.code,
-      i.title,
-      classLabels.get(i.classId) ?? i.classId,
-      i.severity,
-      i.status,
-      i.source,
-      i.author,
-      i.createdAt,
-      i.updatedAt,
-      ...xyz,
-      i.note,
-    ]
-      .map(cell)
-      .join(',');
+      text(i.code),
+      text(i.title),
+      text(classLabels.get(i.classId) ?? i.classId),
+      cell(i.severity),
+      text(i.status),
+      text(i.source),
+      text(i.author),
+      cell(i.createdAt),
+      cell(i.updatedAt),
+      ...xyz.map(cell),
+      text(i.note),
+    ].join(',');
   });
   return [CSV_HEAD.join(','), ...rows].join('\r\n') + '\r\n';
 }

@@ -1,4 +1,4 @@
-import { SiteMaterial } from '@aio/schema';
+import { csvText, csvUntext, SiteMaterial } from '@aio/schema';
 
 /**
  * Site materials (M11 G4, data-conventions section 27): `survey/settings.json` `materials`, each
@@ -26,7 +26,8 @@ export const MAX_MATERIALS = 500;
 
 const BOM = new RegExp(`^${String.fromCharCode(0xfeff)}`);
 
-function cell(v: string): string {
+function cell(text: string): string {
+  const v = csvText(text);
   return /[",;\r\n]/.test(v) || /^\s|\s$/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
@@ -137,7 +138,7 @@ export function materialsFromCsv(text: string): MaterialsImport {
     return { materials: [], problems: ['The first row must name the columns, with id and name.'] };
   const col = (r: string[], name: (typeof MATERIAL_CSV_COLUMNS)[number]) => {
     const k = header.indexOf(name);
-    return k < 0 ? '' : (r[k] ?? '').trim();
+    return k < 0 ? '' : csvUntext((r[k] ?? '').trim());
   };
   const materials: SiteMaterial[] = [];
   const seen = new Set<string>();

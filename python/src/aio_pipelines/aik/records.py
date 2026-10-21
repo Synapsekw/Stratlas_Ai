@@ -14,6 +14,7 @@ from collections import Counter, OrderedDict
 
 import numpy as np
 
+from ..csvsafe import csv_text as guard_cell
 from . import masks as M
 
 COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
@@ -361,7 +362,7 @@ def csv_text(R):
     def q(v):
         if v is None:
             return ""
-        s = str(v)
+        s = str(guard_cell(v))
         return '"' + s.replace('"', '""') + '"' if re.search(r'[",\n]', s) else s
 
     by = {p["id"]: p for p in R["photos"]}

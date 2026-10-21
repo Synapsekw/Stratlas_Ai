@@ -5,7 +5,7 @@
  * checks it with no dependencies). Both fall under the package export kind `files`.
  */
 import { writeFile } from 'node:fs/promises';
-import type { AuditEntry, IpcRequest, IpcResponse } from '@aio/schema';
+import { csvText, type AuditEntry, type IpcRequest, type IpcResponse } from '@aio/schema';
 import { matchesFilter } from '@aio/journal';
 import type { JournalService } from '../journal';
 
@@ -15,7 +15,7 @@ const BOM = String.fromCharCode(0xfeff);
 
 /** One CSV cell: quoted when needed; a leading formula character is neutralised for Excel. */
 function cell(v: string): string {
-  const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  const safe = csvText(v);
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 

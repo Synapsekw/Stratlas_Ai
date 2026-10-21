@@ -1,3 +1,4 @@
+import { csvText } from '@aio/schema';
 import {
   classInfo,
   epsgOf,
@@ -37,6 +38,17 @@ export const CSV_COLUMNS = [
 ] as const;
 
 const BOM = String.fromCharCode(0xfeff);
+
+/** Columns written as numbers: never formula-guarded, so a negative coordinate stays a number. */
+const NUMERIC: ReadonlySet<(typeof CSV_COLUMNS)[number]> = new Set([
+  'severity',
+  'sightings',
+  'easting',
+  'northing',
+  'height',
+  'lon',
+  'lat',
+]);
 
 const fixed = (v: number | null | undefined, digits: number) =>
   v === null || v === undefined || !Number.isFinite(v) ? '' : v.toFixed(digits);
@@ -84,7 +96,7 @@ export function issuesCsv(ctx: ExportContext): string {
       source: issue.source,
       note: issue.note,
     };
-    lines.push(CSV_COLUMNS.map((c) => cell(row[c])).join(','));
+    lines.push(CSV_COLUMNS.map((c) => cell(NUMERIC.has(c) ? row[c] : csvText(row[c]))).join(','));
   }
   return `${BOM}${lines.join('\r\n')}\r\n`;
 }

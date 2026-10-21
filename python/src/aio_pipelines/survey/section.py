@@ -37,6 +37,7 @@ from typing import Any
 
 import numpy as np
 
+from ..csvsafe import csv_text
 from ..params import known_keys
 from ..runtime import AtomicPath, JobError, Step, StepContext
 from .compare import ProjectSurfaces, Resolved
@@ -307,7 +308,7 @@ def _z_at(sec: Section, z: np.ndarray, c: float) -> float | None:
 def write_csv(sec: Section, path: Path) -> dict[str, Any]:
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(["chainage_m", "e", "n", *[p.label for p in sec.profiles]])
+    w.writerow(["chainage_m", "e", "n", *[csv_text(p.label) for p in sec.profiles]])
     for k in range(len(sec.chainage)):
         row = [repr(float(sec.chainage[k])), repr(float(sec.e[k])), repr(float(sec.n[k]))]
         for p in sec.profiles:

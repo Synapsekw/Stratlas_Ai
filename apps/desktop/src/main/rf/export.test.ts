@@ -285,4 +285,15 @@ describe('classAreasCsv', () => {
     expect(lines[2]).toBe('sec-b,B,0,0,100,100,100,200');
     expect(lines[3]).toBe('all,All sectors,100,100,100,100,100,400');
   });
+
+  it('keeps a sector name that a spreadsheet would run as a formula as text', () => {
+    const csv = classAreasCsv({
+      rsrp: Float32Array.from([-70]),
+      bestServer: Float32Array.from([0]),
+      grid: g(1, 1),
+      thresholds,
+      sectors: [{ id: '@id', name: '=HYPERLINK("http://x")' }],
+    });
+    expect(csv.split('\r\n')[1]).toBe(`'@id,"'=HYPERLINK(""http://x"")",100,0,0,0,0,100`);
+  });
 });

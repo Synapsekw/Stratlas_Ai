@@ -492,3 +492,13 @@ describe('the volume over time CSV', () => {
     expect(out.slice(1, 3).map((r) => r[8])).toEqual(['yes', 'no']);
   });
 });
+
+describe('the formula guard', () => {
+  const AREA = { key: 'area', label: 'Area', si: 1, kind: 'area' as const, display: '1 m²' };
+  it('keeps a label starting with a minus, a tab or a plus as text', () => {
+    for (const label of ['-1+1 pile', '+1 pile', '@x pile'])
+      expect(
+        measurementsCsv(data({ measurements: [measurement({ label, values: [AREA] })] })),
+      ).toContain(`,'${label},`);
+  });
+});

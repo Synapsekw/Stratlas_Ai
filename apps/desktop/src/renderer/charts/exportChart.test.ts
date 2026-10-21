@@ -52,6 +52,19 @@ describe('seriesCsv', () => {
     expect(lines[3]).toBe('20.00,102.50,100.00');
   });
 
+  it('keeps a surface name that a spreadsheet would run as a formula as text', () => {
+    const lines = seriesCsv([{ ...CURRENT, label: '=1+1' }], METRIC, PRECISION).split('\n');
+    expect(lines[0]).toBe("Chainage (m),'=1+1 (m)");
+    const section = sectionCsv(
+      { chainage: [0], e: [-1], n: [-2] },
+      [{ ...CURRENT, label: '@x' }],
+      METRIC,
+      PRECISION,
+    ).split('\n');
+    expect(section[0]).toContain(",'@x (m)");
+    expect(section[1]?.startsWith("'")).toBe(false);
+  });
+
   it('converts to feet', () => {
     const lines = seriesCsv([CURRENT], FEET, PRECISION).trimEnd().split('\n');
     expect(lines[0]).toBe('Chainage (ft),05 Oct (ft)');

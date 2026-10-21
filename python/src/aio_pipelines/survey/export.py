@@ -50,6 +50,7 @@ from typing import Any
 
 import numpy as np
 
+from ..csvsafe import csv_text
 from ..design.model import (
     CHAIN_BREAKLINE,
     CHAIN_OUTER,
@@ -1170,7 +1171,7 @@ def export_section(ctx: StepContext, params: dict[str, Any], frame: Frame, out: 
                 for k in range(len(z)):
                     rows.append(
                         [
-                            label,
+                            csv_text(label),
                             repr(float(ch[k])),
                             repr(float(x[k])),
                             repr(float(y[k])),

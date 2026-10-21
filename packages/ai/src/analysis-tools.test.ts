@@ -405,6 +405,15 @@ describe('issues of a lined-up date', () => {
     const csv = issuesCsv([at([10, 5, -20])], new Map(), (id) => dateShiftOf(m, id));
     expect(csv.split('\r\n')[1]).toContain('12.000,5.000,-21.000');
   });
+
+  it('keeps text that a spreadsheet would run as a formula as text', () => {
+    const issue = { ...at([10, 5, -20]), title: '=1+1', note: '-cmd', author: '@me' };
+    const row = issuesCsv([issue], new Map()).split('\r\n')[1] ?? '';
+    expect(row).toContain(",'=1+1,");
+    expect(row).toContain(",'@me,");
+    expect(row.endsWith(",'-cmd")).toBe(true);
+    expect(row).toContain(',10.000,5.000,-20.000,');
+  });
 });
 
 describe('summaries', () => {

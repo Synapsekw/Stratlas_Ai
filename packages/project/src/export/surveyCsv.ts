@@ -19,6 +19,7 @@ import type {
   SurveySettings,
   SurveyUnits,
 } from '@aio/schema';
+import { csvText } from '@aio/schema';
 import { noDashes } from './facts';
 
 /** The house report's survey sections, in print order (each prints only with data). */
@@ -456,7 +457,7 @@ function cell(v: string | number | null | undefined): string {
   if (v === null || v === undefined) return '';
   if (typeof v === 'number') return Number.isFinite(v) ? String(round(v)) : '';
   // a person's text that a spreadsheet would run as a formula is kept as text
-  const s = /^[=+@]/.test(v) ? `'${noDashes(v)}` : noDashes(v);
+  const s = csvText(noDashes(v));
   return /[",\r\n]/.test(s) || /^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

@@ -135,6 +135,32 @@ describe('issuesCsv', () => {
     expect(rows[1]?.[col('severity_label')]).toBe('Uncertain');
   });
 
+  it('keeps a person’s text that a spreadsheet would run as a formula as text', () => {
+    const [first, ...rest] = sampleIssues();
+    if (!first) throw new Error('fixture');
+    const issues = [
+      {
+        ...first,
+        title: '=HYPERLINK("http://evil","x")',
+        note: '-2+3',
+        author: '@SUM(A1)',
+        source: '+cmd',
+      },
+      ...rest,
+    ];
+    const rows = parseCsv(issuesCsv({ manifest: sampleManifest(), issues }));
+    const col = (name: string) => CSV_COLUMNS.indexOf(name as (typeof CSV_COLUMNS)[number]);
+    const row = rows.find((r) => r[col('id')] === first.id) ?? [];
+    expect(row[col('title')]).toBe(`'=HYPERLINK("http://evil","x")`);
+    expect(row[col('note')]).toBe(`'-2+3`);
+    expect(row[col('author')]).toBe(`'@SUM(A1)`);
+    expect(row[col('source')]).toBe(`'+cmd`);
+    // numbers stay numbers, negative ones too
+    for (const r of rows.slice(1))
+      for (const c of ['severity', 'sightings', 'easting', 'northing', 'height', 'lon', 'lat'])
+        expect(r[col(c)]?.startsWith("'")).toBe(false);
+  });
+
   it('keeps the header when there are no issues', () => {
     expect(parseCsv(issuesCsv({ manifest: sampleManifest(), issues: [] }))).toHaveLength(1);
   });
