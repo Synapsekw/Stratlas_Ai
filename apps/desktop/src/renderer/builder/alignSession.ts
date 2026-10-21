@@ -9,6 +9,7 @@ import { boundsOf, groundAt } from '../shell/layerBounds';
 import { createAlignStore, type AlignStore } from './alignStore';
 import { createAlignToStore, type AlignToStore } from './alignToStore';
 import { createPhotoAlignStore, type PhotoAlignStore } from './photoAlignStore';
+import { createPositionEditStore, type PositionEditStore } from './positionEditStore';
 import {
   retryOrientation,
   saveOrientationEdit,
@@ -80,6 +81,24 @@ export const alignTo = createAlignToStore({
 
 export function useAlignTo<T>(selector: (s: AlignToStore) => T): T {
   return useStore(alignTo, selector);
+}
+
+/** Edit position: the panel for the picked photos and the notice after a save, with Undo. */
+export const positionEdit = createPositionEditStore({
+  workspace,
+  save: (change) =>
+    saveOrientationEdit((file) =>
+      Object.entries(change(file)).reduce(
+        (f, [layerId, fx]) => withPhotoFixes(f, layerId, fx),
+        file ?? emptyOrientation(),
+      ),
+    ),
+  pkg: () => shell.getState().pkg !== null,
+  reload: retryOrientation,
+});
+
+export function usePositionEdit<T>(selector: (s: PositionEditStore) => T): T {
+  return useStore(positionEdit, selector);
 }
 
 const videoOf = (layerId: string) => {
