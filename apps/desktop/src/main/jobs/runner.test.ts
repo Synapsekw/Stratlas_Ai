@@ -218,6 +218,30 @@ describe('JobRunner', () => {
     }
   });
 
+  it('hands a job only the environment a pipeline needs, never the app’s secrets', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'ghp_secret');
+    vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'secret');
+    vi.stubEnv('QUADRION_PANO_WIDTH', '2048');
+    vi.stubEnv('CUDA_VISIBLE_DEVICES', '0');
+    vi.stubEnv('Path', 'C:\\Windows\\System32');
+    try {
+      const { runner, envs } = setup('ok');
+      const r = await runner.start({ ...START, project });
+      if (!r.ok) throw new Error(r.error);
+      await finished(runner, r.job.id);
+      const env = envs[0] ?? {};
+      expect(env.GITHUB_TOKEN).toBeUndefined();
+      expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+      expect(env.QUADRION_PANO_WIDTH).toBe('2048');
+      expect(env.CUDA_VISIBLE_DEVICES).toBe('0');
+      expect(Object.keys(env).some((k) => k.toUpperCase() === 'PATH')).toBe(true);
+      // Python's shutil.which must not look in the current folder first on Windows
+      expect(env.NoDefaultCurrentDirectoryInExePath).toBe('1');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('a job environment that cannot be worked out does not stop the job', async () => {
     const { runner, envs } = setup('ok', {
       jobEnv: () => Promise.reject(new Error('the runtime folder cannot be read')),

@@ -64,6 +64,81 @@ const ENV_DROP = new Set([
 ]);
 
 /**
+ * The app's environment variables a job may see (upper case; Windows names are not case
+ * sensitive): what Windows programs, Python, PROJ and GDAL, ODM and the GPU drivers need, and
+ * the app's own settings. Anything else (tokens, keys, a developer's shell) stays with the app.
+ */
+const ENV_KEEP = new Set([
+  'PATH',
+  'PATHEXT',
+  'SYSTEMROOT',
+  'SYSTEMDRIVE',
+  'WINDIR',
+  'COMSPEC',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'HOME',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PROGRAMDATA',
+  'ALLUSERSPROFILE',
+  'PUBLIC',
+  'PROGRAMFILES',
+  'PROGRAMFILES(X86)',
+  'PROGRAMW6432',
+  'COMMONPROGRAMFILES',
+  'COMMONPROGRAMFILES(X86)',
+  'COMMONPROGRAMW6432',
+  'DRIVERDATA',
+  'USERNAME',
+  'USERDOMAIN',
+  'COMPUTERNAME',
+  'OS',
+  'NUMBER_OF_PROCESSORS',
+  'PROCESSOR_ARCHITECTURE',
+  'PROCESSOR_IDENTIFIER',
+  'PROCESSOR_LEVEL',
+  'PROCESSOR_REVISION',
+  'LANG',
+  'LANGUAGE',
+  'TZ',
+  'FFMPEG',
+  'FFPROBE',
+  'OMP_NUM_THREADS',
+  'MKL_NUM_THREADS',
+  'OPENBLAS_NUM_THREADS',
+  'NUMEXPR_MAX_THREADS',
+  'KMP_DUPLICATE_LIB_OK',
+]);
+const ENV_KEEP_PREFIX = [
+  'QUADRION_',
+  'STRATLAS_',
+  'AIO_',
+  'CUDA_',
+  'NVIDIA_',
+  'PROJ_',
+  'GDAL_',
+  'LC_',
+];
+
+/** The environment a job's runtime starts with, from the app's (see {@link ENV_KEEP}). */
+export function jobBaseEnv(source: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(source)) {
+    const u = k.toUpperCase();
+    if (v === undefined || ENV_DROP.has(u)) continue;
+    if (ENV_KEEP.has(u) || ENV_KEEP_PREFIX.some((p) => u.startsWith(p))) out[k] = v;
+  }
+  // Python's shutil.which (and cmd.exe) must not look in the current folder first on Windows
+  out.NoDefaultCurrentDirectoryInExePath = '1';
+  return out;
+}
+
+/**
  * Params a pipeline no longer takes, dropped from a saved job before it resumes and from a
  * request before it is checked: `photo.products` lost `dense` when ODM took over (ADR 0012),
  * and jobs saved before that still carry it.
@@ -376,12 +451,7 @@ export class JobRunner {
   }
 
   private launch(job: JobRecord, pack: PackInfo, extra: Record<string, string>): void {
-    const env: NodeJS.ProcessEnv = {
-      ...Object.fromEntries(
-        Object.entries(process.env).filter(([k]) => !ENV_DROP.has(k.toUpperCase())),
-      ),
-      ...extra,
-    };
+    const env: NodeJS.ProcessEnv = { ...jobBaseEnv(process.env), ...extra };
     const child = this.spawn(pack.python, ['-I', '-u', '-X', 'utf8', '-m', 'aio_pipelines'], {
       cwd: pack.dir,
       env,
