@@ -9,6 +9,7 @@ import { registerProjectActions } from './projectActions';
 import { registerReportActions } from './reportActions';
 import { registerRereadActions } from './rereadActions';
 import { registerRfActions } from './rfActions';
+import { registerThermalActions } from './thermalActions';
 
 let done = false;
 
@@ -27,4 +28,5 @@ export function registerSidebarActions(): void {
   registerReportActions();
   registerAreaActions();
   registerRfActions();
+  registerThermalActions();
 }

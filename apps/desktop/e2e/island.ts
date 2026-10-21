@@ -371,6 +371,7 @@ const TAB_NAME: Record<TabId, string> = {
   cutaway: 'Cutaway',
   rf: 'Coverage',
   review: 'Model review',
+  thermal: 'Thermal',
 };
 
 /**

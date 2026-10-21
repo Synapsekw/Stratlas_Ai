@@ -46,6 +46,8 @@ import { EnvironmentTab } from '../../environment/EnvironmentTool';
 import { CutawayTab } from '../CutawayTool';
 import { RoadBench } from './benches/RoadBench';
 import { VolumesBench } from './benches/VolumesBench';
+// Thermal bench (thermal analysis M1)
+import { ThermalBench } from './benches/ThermalBench';
 // Display and Point cloud benches
 import { CleanupTab } from '../../pointcloud/CleanupTab';
 import { useBenchFollow } from './benchFollow';
@@ -288,6 +290,8 @@ export function FrontBody({ front, road }: { front: TabId; road: boolean }) {
         <RfBench />
       </>
     );
+  // Thermal bench (thermal analysis M1): the photo, its palette, settings and the filmstrip
+  if (front === 'thermal') return <ThermalBench />;
   return lastBody(front);
 }
 

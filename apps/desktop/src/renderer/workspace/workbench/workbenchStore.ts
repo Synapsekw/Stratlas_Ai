@@ -21,8 +21,12 @@ const KEY = 'quadrion.workbench';
 const FIXED: readonly TabId[] = ['selection', 'issues', 'volumes', 'changes'];
 /** Volumes and Changes open at least this wide (D17, founder 16 Oct). */
 export const WIDE_TAB_PX = 470;
-/** The tabs that open at least `WIDE_TAB_PX` wide (the RF tab's sliders need it too, D20). */
-const isWide = (id: TabId): boolean => id === 'volumes' || id === 'changes' || id === 'rf';
+/**
+ * The tabs that open at least `WIDE_TAB_PX` wide (the RF tab's sliders need it too, D20; the
+ * Thermal bench's photo too).
+ */
+const isWide = (id: TabId): boolean =>
+  id === 'volumes' || id === 'changes' || id === 'rf' || id === 'thermal';
 const fixedTabs = (): Tab[] =>
   FIXED.map((id) => ({
     id,

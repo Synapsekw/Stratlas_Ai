@@ -25,6 +25,8 @@ export const TAB_IDS = [
   'cutaway',
   // RF coverage bench (rf-coverage T9): a panel tab, at least 470 px wide (workbenchStore.ts, D20)
   'rf',
+  // Thermal bench (thermal analysis M1): a wide panel tab, the photo needs the room
+  'thermal',
 ] as const;
 
 export type TabId = (typeof TAB_IDS)[number];

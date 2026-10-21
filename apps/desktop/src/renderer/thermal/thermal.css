@@ -1,0 +1,258 @@
+/* The Thermal bench (thermal analysis M1): the photo in a dark well so the palette reads true, the
+   palette bar, the settings line, the notes and the filmstrip. Spacing, type, radii, layers and
+   shadows come from the tokens; the palette colours are painted into canvases, never written here. */
+
+.th-bench {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-4);
+  padding-block: var(--sp-4) var(--sp-6);
+  padding-inline: var(--sp-5);
+  min-inline-size: 0;
+}
+
+/* ----------------------------------------------------------------------- notes */
+.th-note {
+  margin: 0;
+  font-size: var(--t-12);
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+.th-readonly {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-4);
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.th-held {
+  color: var(--warn-ink);
+}
+.th-error {
+  color: var(--danger-ink);
+}
+.th-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.th-progress-dot {
+  inline-size: var(--sp-3);
+  block-size: var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  animation: th-pulse 1.2s var(--ease) infinite alternate;
+}
+@keyframes th-pulse {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .th-progress-dot {
+    animation: none;
+  }
+}
+
+/* ----------------------------------------------------------------------- stage */
+.th-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  box-shadow: var(--el-1);
+  overflow: hidden;
+}
+.th-stage-empty {
+  aspect-ratio: 5 / 4;
+}
+.th-photo {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+/* an unsupported camera's photo: a picture, nothing to read */
+.th-plain {
+  cursor: default;
+}
+/* the reading beside the pointer, never under it */
+.th-hover {
+  position: absolute;
+  pointer-events: none;
+  translate: var(--sp-5) calc(-100% - var(--sp-3));
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+  box-shadow: var(--el-2);
+  color: var(--fg-0);
+  font: 600 var(--t-13) / 1.3 var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------------- palette bar */
+.th-bar {
+  display: grid;
+  gap: var(--sp-3);
+}
+.th-scale {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.th-end {
+  min-inline-size: 7ch;
+  font: var(--t-12) / 1 var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+.th-end:last-child {
+  text-align: end;
+}
+.th-ramp {
+  display: block;
+  inline-size: 100%;
+  block-size: var(--sp-4);
+  border-radius: var(--r-2);
+  box-shadow: var(--el-1);
+}
+.th-bar-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.th-swatches {
+  display: flex;
+  gap: var(--sp-2);
+}
+.th-swatch {
+  display: block;
+  inline-size: var(--sp-8);
+  block-size: var(--sp-5);
+  padding: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+  cursor: pointer;
+}
+.th-swatch:hover {
+  border-color: var(--line-strong);
+}
+.th-swatch[aria-pressed='true'] {
+  border-color: var(--acc);
+  box-shadow: var(--el-1);
+}
+.th-swatch:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.th-swatch-ramp {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  border-radius: var(--r-2);
+}
+
+/* ----------------------------------------------------------------------- settings */
+.th-settings {
+  display: grid;
+  gap: var(--sp-2);
+}
+.th-settings-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+}
+.th-settings-line {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  font-variant-numeric: tabular-nums;
+}
+.th-editor {
+  inline-size: 280px;
+}
+.th-editor-form {
+  padding-block: var(--sp-2);
+}
+.th-field {
+  display: grid;
+  grid-template-columns: 1fr 9ch;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.th-field input[type='number'] {
+  inline-size: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.th-reflected {
+  grid-template-columns: 1fr;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.th-reflected legend {
+  padding: 0;
+  margin-block-end: var(--sp-2);
+}
+.th-check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.th-editor-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/* ----------------------------------------------------------------------- filmstrip */
+.th-strip {
+  display: flex;
+  gap: var(--sp-3);
+  overflow-x: auto;
+  padding-block: var(--sp-2) var(--sp-3);
+  scrollbar-width: thin;
+}
+.th-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  inline-size: 72px;
+  aspect-ratio: 5 / 4;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  overflow: hidden;
+  cursor: pointer;
+}
+.th-thumb .m-thumb,
+.th-thumb img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+.th-thumb[aria-pressed='true'] {
+  border-color: var(--acc);
+  box-shadow: var(--el-1);
+}
+.th-thumb.marked {
+  outline: 2px solid var(--acc-a40);
+  outline-offset: -2px;
+}
+.th-thumb:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
