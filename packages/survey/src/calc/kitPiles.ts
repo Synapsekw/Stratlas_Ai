@@ -148,9 +148,9 @@ export function overlapShare(a: Ring2, b: Ring2): number {
   return Math.min(1, (n * dx * dy) / smaller);
 }
 
-/** Whether a conversion changes the file (a measurement added, relinked or detached). */
+/** Whether a conversion changes the file (a measurement added, relinked or detached, an id). */
 export const changesFile = (c: KitConversion): boolean =>
-  c.converted.length > 0 || c.relinked.length > 0 || c.detached.length > 0;
+  c.added.length > 0 || c.converted.length > 0 || c.relinked.length > 0 || c.detached.length > 0;
 
 interface KitLink {
   m: SurveyMeasurement;
@@ -161,9 +161,8 @@ interface KitLink {
 /**
  * Which existing kit-pile measurement each built pile is (C1): a build numbers its piles afresh,
  * so a pile is matched by outline. First a pile and the measurement holding its number, when they
- * overlap; then the closest overlap left (at least `SAME_PILE_SHARE` of the smaller outline);
- * then a pile whose number a measurement still holds with no better match keeps it. One
- * measurement per pile.
+ * overlap; then the closest overlap left (at least `SAME_PILE_SHARE` of the smaller outline).
+ * A number alone never matches. One measurement per pile.
  */
 function matchPiles(
   piles: readonly { id: string; ring: Ring2 }[],
@@ -195,12 +194,6 @@ function matchPiles(
     match.set(p, l);
     taken.add(l);
   }
-  for (const p of piles) {
-    const l = holder.get(p.id);
-    if (match.has(p.id) || !l || taken.has(l)) continue;
-    match.set(p.id, l);
-    taken.add(l);
-  }
   return match;
 }
 
@@ -213,6 +206,11 @@ export interface KitConversionOptions {
   toSite: (xz: readonly [number, number]) => SitePoint;
   /** The site material id for a kit material name, if one exists. */
   materialId: (name: string) => SurveyId | undefined;
+  /**
+   * Right after a volumetric build (Detect piles): a pile already converted comes back unless an
+   * existing kit-pile measurement overlaps it. Without it (opening a project), it stays converted.
+   */
+  rebuilt?: boolean;
 }
 
 /**
@@ -263,26 +261,31 @@ export function convertKitPiles(
   const match = matchPiles(piles, links);
   const relinked: { id: string; pile: string }[] = [];
   for (const [pile, l] of match) if (l.pile !== pile) relinked.push({ id: l.m.id, pile });
-  // a number moved to another measurement is free; one left on an unmatched measurement is gone
-  const moved = new Set(relinked.map((r) => r.pile));
+  // a number a relinked measurement held is free; an unmatched measurement whose number a pile of
+  // this build carries lost its pile (that pile is elsewhere): it keeps its figures, not the link
   const freed = new Set(
     links.filter((l) => relinked.some((r) => r.id === l.m.id)).map((l) => l.pile),
   );
   const matched = new Set([...match.values()].map((l) => l.m.id));
+  const built = new Set(piles.map((p) => p.id));
   const detached = links
-    .filter((l) => !matched.has(l.m.id) && moved.has(l.pile))
+    .filter((l) => !matched.has(l.m.id) && built.has(l.pile))
     .map((l) => l.m.id);
   for (const l of links) if (detached.includes(l.m.id)) freed.add(l.pile);
 
-  for (const { pile, dates, site } of piles) {
+  for (const { pile, dates, site, ring } of piles) {
     if (match.has(pile.id)) {
       if (!done.has(pile.id)) converted.push(pile.id);
       done.add(pile.id);
       continue;
     }
-    // converted before (its measurement may have been deleted), unless a rebuild gave its number
-    // to a new pile
-    if (done.has(pile.id) && !freed.has(pile.id)) continue;
+    // converted before and its number not freed: on opening, its measurement was deleted, so it
+    // stays gone; after a build, only a pile an existing kit-pile measurement overlaps is skipped
+    // (a pile the person deleted can come back, never a new pile under an old number)
+    if (done.has(pile.id) && !freed.has(pile.id)) {
+      if (!opts.rebuilt) continue;
+      if (links.some((l) => overlapShare(ring, l.ring) >= SAME_PILE_SHARE)) continue;
+    }
 
     const itemId = opts.newId();
     const series: ComparisonResult[] = opts.carry
@@ -358,6 +361,8 @@ export interface KitOpenOptions {
   materials: readonly { id: SurveyId; name: string }[];
   now: string;
   newId: () => string;
+  /** Right after a volumetric build (`KitConversionOptions.rebuilt`). */
+  rebuilt?: boolean;
 }
 
 /** Kit piles as volume measurements (`convertKitPiles`), placed through the project origin. */
@@ -375,6 +380,7 @@ export function kitConversion(
     newId: opts.newId,
     toSite: (xz) => kitToSite(opts.origin, xz),
     materialId: (name) => byName.get(name.trim().toLowerCase()),
+    ...(opts.rebuilt ? { rebuilt: true } : {}),
   });
 }
 

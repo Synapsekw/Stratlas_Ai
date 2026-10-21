@@ -439,6 +439,47 @@ describe('a rebuild that renumbers piles (piles match by outline, not by id)', (
     expect(ids.sort()).toEqual(['P01', 'P02']);
   });
 
+  it("a number alone is not the same pile: a far-away new pile under a gone pile's number is new", () => {
+    const before = first();
+    const a = before.measurements.find((m) => m.label === 'Pile P01');
+    // A (P01) is gone, B keeps P02, a new pile far away takes P01
+    const v = build([onRing('P01', sq(500)), onRing('P02', sq(100))]);
+    const c = convertKitPiles(v, null, before, later());
+    expect(c.added.map((m) => m.origin?.pile)).toEqual(['P01']);
+    const after = withKitConversion(before, c);
+    const kept = after.measurements.find((m) => m.id === a?.id);
+    // A's measurement keeps its figures and loses its kit link
+    expect(kept?.origin).toBeUndefined();
+    expect(kept?.results).toEqual(a?.results);
+    expect(kept?.points).toEqual(a?.points);
+    expect(pileOf(after, 'Pile P02')).toBe('P02');
+    expect(after.kitPilesConverted).toEqual(['P01', 'P02']);
+  });
+
+  it('after a build, a converted pile with no measurement over it comes back', () => {
+    const start = first();
+    // the person deleted A's measurement
+    const deleted = {
+      ...start,
+      measurements: start.measurements.filter((m) => m.label !== 'Pile P01'),
+    };
+    const v = build([onRing('P01', sq(0)), onRing('P02', sq(100))]);
+    const rebuilt = convertKitPiles(v, null, deleted, { ...later(), rebuilt: true });
+    expect(rebuilt.added.map((m) => m.origin?.pile)).toEqual(['P01']);
+    expect(rebuilt.converted).toEqual([]);
+    // opening the project again (no build) leaves it deleted
+    expect(convertKitPiles(v, null, deleted, later()).added).toEqual([]);
+  });
+
+  it('after a build, a converted pile an existing kit-pile measurement covers is skipped', () => {
+    const start = first();
+    const file = { ...start, kitPilesConverted: ['P01', 'P02', 'P03'] };
+    // P03 lies on B, whose measurement P02 already takes
+    const v = build([onRing('P01', sq(0)), onRing('P02', sq(100)), onRing('P03', sq(101))]);
+    const c = convertKitPiles(v, null, file, { ...later(), rebuilt: true });
+    expect(c.added).toEqual([]);
+  });
+
   it('the same build again changes nothing', () => {
     const before = first();
     const v = build([onRing('P01', sq(0)), onRing('P02', sq(100))]);

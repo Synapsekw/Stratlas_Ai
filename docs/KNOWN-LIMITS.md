@@ -313,6 +313,7 @@ These limits were seen on the founder's own real projects in the data folder (no
 ### Volumes, designs and views
 
 - The stockpile kit no longer computes volumes: its piles are volume measurements on the survey engine. A pile from a project made before the change keeps the kit's figure as a stored result, "From an earlier version (kit, <base>)", until **Recompute with the standard base** is chosen; the kit's `tin` base (a smooth membrane over the toe) has no engine equivalent, so the recomputed figure (Triangulated toe, a triangulation of the toe line) can differ from it. The 3D volume bodies still stand on the kit's default base, as a picture only.
+- A kit pile measurement you delete can come back after **Detect piles** runs again: a pile is known by its outline, not its number, so one with no measurement over it is added.
 - The kit's boundary editor is retired: a pile's outline is edited with the measurement's vertex editing, which edits one outline for every date. Editing a pile's toe on one date only is no longer possible.
 - Picking a pile on the 3D stage while the **Volumes** view is in front opens the **Measure** tab; only a pick from the Volumes view's own list keeps the view in front.
 - Volume figures, the volume over time and the spread across bases are checked against synthetic surfaces and the demo projects; a check against a real job's volumes (and against another tool's figures for the same job) is still to come.

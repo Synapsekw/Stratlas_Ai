@@ -228,7 +228,7 @@ describe('kit piles on load', () => {
       expect(m?.series).toBeUndefined();
     });
 
-  it('a deleted converted measurement stays gone after a reopen and a build', async () => {
+  it('a deleted converted measurement stays gone after a reopen, and comes back after a build', async () => {
     io.volumes = volumes();
     await open({ schema: 'aio.measurements/1', measurements: [] });
     const id = kitMeasurements()[0]?.id ?? '';
@@ -236,9 +236,12 @@ describe('kit piles on load', () => {
     expect(await saveMeasurements()).toBe(true);
     await open(io.saved);
     expect(kitMeasurements()).toHaveLength(0);
+    // Detect piles found it again with no measurement over it: the lesser evil is to add it
+    // back (a number alone never stands for a pile, KNOWN-LIMITS)
     await convertAfterJob('p1');
-    expect(kitMeasurements()).toHaveLength(0);
-    expect(io.saved.measurements).toHaveLength(0);
+    expect(kitMeasurements().map((m) => m.origin?.pile)).toEqual(['P01']);
+    expect(kitMeasurements()[0]?.results).toEqual([]);
+    expect(io.saved.measurements).toHaveLength(1);
     expect(io.saved.kitPilesConverted).toEqual(['P01']);
   });
 });

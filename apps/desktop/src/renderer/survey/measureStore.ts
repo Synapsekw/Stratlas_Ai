@@ -440,13 +440,10 @@ export async function convertAfterJob(projectId: string): Promise<void> {
   if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready' || s.readOnly)
     return;
   if (!r.ok || !r.value.ok || !r.value.volumes) return;
-  const c = kitConversion(
-    s.file,
-    r.value.volumes,
-    r.value.edits,
-    false,
-    kitOptions(manifest.origin, s.settings.materials),
-  );
+  const c = kitConversion(s.file, r.value.volumes, r.value.edits, false, {
+    ...kitOptions(manifest.origin, s.settings.materials),
+    rebuilt: true,
+  });
   if (!changesFile(c) && s.file.kitPilesConverted !== undefined) return;
   const baseline = withKitConversion(JSON.parse(s.savedText) as MeasurementsFile, c);
   set({ file: withKitConversion(s.file, c), savedText: text(baseline), resultsUnwritten: true });
