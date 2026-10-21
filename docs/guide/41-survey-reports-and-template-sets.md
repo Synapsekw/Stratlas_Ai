@@ -31,3 +31,13 @@ The report's sections:
 Each section states the coordinate system, datum, geoid, calibration and units it was computed with. A result that is out of date shows **Stale, recompute** in the report too.
 
 The same sections can be part of the project report: **Reports**, **Project report**, **Sections**. See also [Reports and exports](10-reports-and-exports.md).
+
+**Volume over time** prints each volume measurement's volume on every survey date, with the site totals per date and the piles each total leaves out. A date without survey data is left blank, never 0.
+
+## Add to report and the report template
+
+**Add to report**, in a measurement card's "⋯" menu or under its chart, puts the measurement on the project's report list. It says "Added to the report", or "Already in the report" when it is there. The list is kept with the project, in `report/template.json`, and travels in a package.
+
+- The first **Add to report** switches the **Survey measurements** section from every measurement to the report list: from then on the section prints only the measurements added, in the order you added them.
+- The list prints in the **Survey measurements** section only. With that section off, the measurements added print nowhere.
+- There is no editor for the list yet. If the list cannot be read, the report prints every measurement, as before the first add.

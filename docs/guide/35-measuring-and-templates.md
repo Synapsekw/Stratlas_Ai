@@ -61,6 +61,17 @@ Click a measurement, in the view or in the list, to open its panel under **Selec
 - **Vertices**: **Edit vertices in the view** (drag a vertex, **Alt**+click deletes it, the blue dots insert one), or type N, E and Z in the table;
 - for polygons, **Comparisons** and **Material and calculators**.
 
+## The measurement card
+
+Every measurement shows as one card: while you draw it, in the measurement panel, in the **Volumes** view and in the printed report. The card has:
+
+- its name (click it to rename) and its main figure in large type, with the other figures under it;
+- **chips** under the figures that say what it is measured against: for a volume, "Base: Triangulated toe" or "From: ..." and **To**, with **+ Compare date** to add a comparison; for a line, the surveys and designs its profile shows. Click a chip to change it;
+- a status line when there is something to say: "Stale, recompute", "Partly outside the survey", "From an earlier version (kit, ...)", or why it could not be computed;
+- a chart, for a line's profile or a volume's volume over time;
+- a foot row: **Notes**, **Export** and **Fly to**;
+- the "⋯" menu: **Rename**, **Colour**, **Show** or **Hide**, **Fly to**, **Move to folder**, **Add to report**, **Export** and **Delete**. The same actions are on the measurement's right-click menu.
+
 ## Templates
 
 **Templates** opens **Measurement templates**, with tabs **This project** and **My library**. A template sets the tool, the result rows and their order, custom fields (**Text**, **Number** or **Dropdown** with its choices), the default comparisons of a polygon, the colour, and a description. Tick **Bookmark on the toolbar** to list it under **Templates** in the **Measure** workbench. **Copy to my library** keeps a template for other projects.

@@ -47,6 +47,33 @@ Select several measurements in the list: the totals add their comparisons up. **
 
 **Snap to ortho edges** moves the ticked regions' boundaries to the edges seen in the ortho, with the same local model as **Suggest boundaries** ([Measuring and templates](35-measuring-and-templates.md)). A region is snapped only when the edge in the ortho matches it; otherwise it stays as it was, and the panel says why. Snapped regions are still drafts.
 
+## The base
+
+A volume's card names its base in a chip, for example "Base: Triangulated toe". Click it to pick another:
+
+- **Triangulated toe**, the default: the surveying norm for piles on uneven ground;
+- **Lowest point**: bins, bunkers, piles against walls;
+- **Best-fit plane**: a flat, level pad;
+- **Fixed level**: a known floor height;
+- **Average edge level**: a rough check against the toe's average height;
+- **Previous survey or design**: the measured ground underneath, the most accurate when it exists;
+- **Custom**: edit the base's points.
+
+The volume, its volume over time and the totals follow. Next to a pile's volume, "±3% across bases" says how far the figure moves between the bases that suit a pile.
+
+**Recompute** works the volume out again; "Stale, recompute" on a card means a surface, a base or the outline changed since. When a recompute cannot run, the card says why, for example while the volume engine is still starting, or when the outline has fewer than three points.
+
+## Volume over time
+
+A volume measurement with **Current survey** on one side has a volume on every survey date: the same comparison, worked out against each survey in turn. It shows in four places, with the same figures:
+
+- **The card**: **Volume over time**, a chart and a table with the volume, the change since the previous date and, with a material, the tonnage. A date without survey data is left blank, never 0; a stale figure is drawn hollow and marked.
+- **The Volumes view**: **Site inventory over time** stacks the piles per date (see [Volumes and roads](09-volumes-and-roads.md#the-volumes-view)).
+- **The report**: the **Volume over time** section prints each pile's dates and the totals.
+- **The CSV**: **CSV** in the Volumes view saves one row per pile and date, in the site's units, with its status ("ok", "stale", "partial", "refused" or "missing") and whether the figure came from an earlier version.
+
+A total adds current figures only: a stale, refused or missing figure is named, never added. A pile whose figures were carried from an earlier version keeps them on their own dates until **Recompute with the standard base**.
+
 ## Stockpile projects
 
-Stockpile projects keep their four bases and their figures. In a pile's details, **More bases (survey engine)** adds the engine's bases as extra choices. The engine's smart base is a triangulation of the toe line, while the kit's TIN base is a smooth surface over the toe, so their figures differ. The register and the totals keep the four original bases.
+The piles of a stockpile project are volume measurements in the **Stockpiles** folder, with the bases above. A project from an earlier version keeps the old register's figures, marked "From an earlier version", until you choose **Recompute with the standard base** (see [Volumes and roads](09-volumes-and-roads.md#piles-from-an-earlier-version)).
