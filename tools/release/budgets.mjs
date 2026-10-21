@@ -47,10 +47,9 @@ export const BUDGETS = Object.freeze({
   pack: Object.freeze({ unpackedBytes: 1_300_000_000, compressedBytes: 500_000_000 }),
   /**
    * The Analytics pack (llama.cpp with its CUDA runtime, Qwen2.5-VL Q4_K_M and its mmproj). The
-   * archive is about 6.6 GB: the runtime about 0.58 GB zipped, the model 4.68 GB and the mmproj
-   * 1.35 GB (gguf files do not compress); unpacked it is a little more, about 6.9 GB (founder
-   * ruling K: 8 GB unpacked, 7 GB archived). Checked with
-   * `--pack <folder> --archive <.tar.gz> --budget analytics`.
+   * gguf model files do not compress. Pack 0.1.0 measured 6,213,856,572 bytes archived (6.21 GB)
+   * and 6,783,188,532 bytes unpacked (6.78 GB). Budget: 8 GB unpacked, 7 GB archived (controller
+   * decision of 21 Oct 2026). Checked with `--pack <folder> --archive <.tar.gz> --budget analytics`.
    */
   analyticsPack: Object.freeze({ unpackedBytes: 8_000_000_000, compressedBytes: 7_000_000_000 }),
   /**
