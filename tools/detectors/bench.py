@@ -31,6 +31,7 @@ from aio_pipelines.inspection.frame import asset_path, photo_layers, read_manife
 Box = tuple[float, float, float, float]
 
 TUNE_SHARE = 3  # of 10
+REVIEW_LONG_EDGE = 2560  # the app's review copies; truth boxes are in their pixels
 SHEET_COLS, SHEET_ROWS = 4, 3
 CELL_W, CELL_H = 480, 360
 GREEN = (40, 220, 80)
@@ -183,6 +184,14 @@ def run(args: argparse.Namespace) -> int:
     for pid, path in photos.items():
         with Image.open(path) as im:
             sizes[pid] = (im.width, im.height)
+    off_grid = sorted(pid for pid, (w, h) in sizes.items() if max(w, h) != REVIEW_LONG_EDGE)
+    if off_grid:
+        print(
+            f"Warning: {len(off_grid)} of {len(sizes)} photos have a long edge other than "
+            f"{REVIEW_LONG_EDGE} px (for example {', '.join(off_grid[:3])}). Truth is recorded in "
+            "review-copy pixels, so recall and false alarms on them may be off.",
+            file=sys.stderr,
+        )
     classes = set(args.truth_class or [])
     truth = load_truth(project, classes, sizes)
 
@@ -236,6 +245,7 @@ def run(args: argparse.Namespace) -> int:
         "draftsPerPhoto": len(above) / len(ids) if ids else None,
         "unmatchedDrafts": sum(1 for d in above if not d["matched"]),
         "failedPhotos": failed,
+        "reviewGridMismatch": len(off_grid),
         "split": args.split,
         "threshold": args.threshold,
         "detector": detector.get("id"),

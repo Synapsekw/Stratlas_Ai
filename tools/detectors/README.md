@@ -22,8 +22,11 @@ uv run --project python python tools/detectors/bench.py \
 
 ## Output
 
-- `report.json`: `photos, truth, found, recall, drafts, draftsPerPhoto, unmatchedDrafts`
-  (`drafts` and `draftsPerPhoto` count drafts at or above the threshold).
+- `report.json`: `photos, truth, found, recall, drafts, draftsPerPhoto, unmatchedDrafts,
+failedPhotos, reviewGridMismatch` (`drafts` and `draftsPerPhoto` count drafts at or above the
+  threshold). Truth is recorded in the app's review copies (long edge 2560 px), so
+  `reviewGridMismatch` counts photos whose long edge is not 2560 px, and the bench warns on stderr
+  when there are any: recall and false alarms on those photos may be off.
 - `sheet-<n>.jpg`: contact sheets. Truth in green, drafts with their scores; drafts under the
   threshold are dimmer.
 - `drafts.json`: every draft with photo, box, score, note and whether it matched, for the person's

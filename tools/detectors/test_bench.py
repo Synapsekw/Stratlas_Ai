@@ -227,3 +227,15 @@ def test_api_key_is_sent(project):
         _run(project, srv.url, "--api-key", "k3y", "--limit", "1")
         assert srv.headers
         assert all(h.get("Authorization") == "Bearer k3y" for h in srv.headers)
+
+
+def test_photos_off_the_review_grid_are_warned_and_counted(project, capsys):
+    # truth is in review-copy pixels (long edge 2560); one portrait review copy, nine small photos
+    portrait = project["root"] / "photos" / f"{project['ids'][8]}.jpg"
+    Image.new("RGB", (1920, 2560), (40, 40, 40)).save(portrait, "JPEG", quality=80)
+    with FakeVlm(_handler) as srv:
+        report = _run(project, srv.url)
+    assert report["reviewGridMismatch"] == 9
+    err = capsys.readouterr().err
+    assert "9 of 10 photos" in err
+    assert "2560" in err
