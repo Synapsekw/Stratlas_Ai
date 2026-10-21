@@ -64,3 +64,11 @@
   block-size: 10px;
   border-radius: var(--r-2);
 }
+/* a date's notes in the read-out (stale, partly outside the survey): the marks' tips, said here */
+.pc-ro-note {
+  margin: var(--sp-2) 0 0;
+  padding-block-start: var(--sp-2);
+  border-block-start: 1px solid var(--line-soft);
+  color: var(--fg-2);
+  white-space: normal;
+}

@@ -268,6 +268,41 @@ describe('TimeChart', () => {
     expect(h.querySelector('[data-testid="time-readout"]')).toBeNull();
   });
 
+  it('one tab stop: no focusable mark in the hidden svg, the plot reads the notes out', () => {
+    const h = render({
+      kind: 'volume',
+      rows: [
+        row('a', '2026-08-01', 90, { stale: true }),
+        row('b', '2026-09-01', null),
+        row('c', '2026-10-01', 130, { status: 'partial', latest: true }),
+      ],
+    });
+    const svg = svgOf(h);
+    expect(svg.getAttribute('aria-hidden')).toBe('true');
+    expect(svg.querySelectorAll('[tabindex], [aria-label]')).toHaveLength(0);
+    const plot = h.querySelector<HTMLElement>('[data-testid="time-plot"]');
+    expect(plot?.getAttribute('tabindex')).toBe('0');
+    const live = () => h.querySelector('[data-testid="time-live"]')?.textContent ?? '';
+    const readout = () => h.querySelector('[data-testid="time-readout"]')?.textContent ?? '';
+    const press = (key: string) => {
+      act(() => {
+        plot?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      });
+    };
+    act(() => {
+      plot?.focus();
+    });
+    // the latest date first: partly outside the survey
+    expect(live()).toContain('2026-10-01');
+    expect(live()).toContain('Partly outside');
+    expect(readout()).toContain('Partly outside');
+    press('ArrowLeft');
+    expect(live()).toContain('No survey data');
+    press('ArrowLeft');
+    expect(live()).toContain('Stale, recompute');
+    expect(readout()).toContain('Stale, recompute');
+  });
+
   it('static mode is an image with no handlers or live region', () => {
     const rows = [row('a', '2026-09-01', 100), row('b', '2026-10-01', 130, { latest: true })];
     const h = render({ kind: 'volume', rows }, { interactive: false });

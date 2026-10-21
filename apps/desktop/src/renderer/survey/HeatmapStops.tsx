@@ -47,16 +47,13 @@ export function HeatLegend({
   return (
     <div
       className="sv-legend"
-      aria-label={t('heat.legend')}
+      // one image: its parts are presentational, so the histogram is named here
+      aria-label={bins ? `${t('heat.legend')}. ${t('heat.histogram')}` : t('heat.legend')}
       role="img"
       data-testid="survey-heat-legend"
     >
       {bins && (
-        <div
-          data-testid="survey-heat-histogram"
-          aria-label={t('heat.histogram')}
-          className="sv-legend-hist"
-        >
+        <div data-testid="survey-heat-histogram" className="sv-legend-hist">
           {bins.map((n, k) => (
             <span
               key={k}

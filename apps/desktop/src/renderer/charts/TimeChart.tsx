@@ -307,6 +307,14 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const signed = (v: number | null) =>
     v === null ? '-' : `${v > 0 && fmt(v) !== fmt(0) ? '+' : ''}${fmt(v)}`;
 
+  // a date's notes (stale, partly outside the survey): the marks' tips, and the plot's read-out,
+  // the one tab stop (the svg is hidden, so its marks are never focused)
+  const flagsOf = (c: { stale?: boolean; partial?: boolean }) => [
+    ...(c.stale ? [t('mcard.stale')] : []),
+    ...(c.partial ? [t('vol.status.partial')] : []),
+  ];
+  const liveNote = live ? flagsOf(live).join('. ') : '';
+
   const stackMissing = data.kind === 'stack' ? data.rows.filter((r) => r.missing.length > 0) : [];
   const liveRow = live?.stack;
   const readoutId = `${uid}-readout`;
@@ -429,12 +437,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
             if (c.value === null) {
               const note = t('mcard.noData');
               const mark = (
-                <g
-                  className="tc-gap"
-                  data-gap={c.capture}
-                  tabIndex={interactive ? 0 : undefined}
-                  aria-label={interactive ? `${c.label}: ${note}` : undefined}
-                >
+                <g className="tc-gap" data-gap={c.capture}>
                   <desc>{note}</desc>
                   <rect x={px - 8} y={top} width={16} height={plotH} className="tc-hit" />
                   <line x1={px} x2={px} y1={top} y2={bottom} />
@@ -482,10 +485,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
               );
             }
             // a line chart dot: hollow when stale, dashed when partly outside the survey
-            const flags = [
-              ...(c.stale ? [t('mcard.stale')] : []),
-              ...(c.partial ? [t('vol.status.partial')] : []),
-            ];
+            const flags = flagsOf(c);
             const dot = (
               <circle
                 data-dot={c.capture}
@@ -508,8 +508,6 @@ export function TimeChart(p: TimeChartProps): ReactElement {
                 className="tc-flag"
                 data-stale={c.stale ? c.capture : undefined}
                 data-partial={c.partial ? c.capture : undefined}
-                tabIndex={interactive ? 0 : undefined}
-                aria-label={interactive ? `${c.label}: ${note}` : undefined}
               >
                 <desc>{note}</desc>
                 <circle cx={px} cy={y(c.value)} r={DOT_R_LATEST + 4} className="tc-hit" />
@@ -567,12 +565,13 @@ export function TimeChart(p: TimeChartProps): ReactElement {
                 <dd>{signed(live.change)}</dd>
               </div>
             </dl>
+            {liveNote !== '' && <p className="pc-ro-note">{liveNote}</p>}
           </div>
         )}
         {interactive && (
           <p className="sr-only" aria-live="polite" data-testid="time-live">
             {live
-              ? `${live.label}, ${live.value === null ? t('mcard.noData') : fmt(live.value)}, ${t('vol.change')} ${signed(live.change)}`
+              ? `${live.label}, ${live.value === null ? t('mcard.noData') : fmt(live.value)}, ${t('vol.change')} ${signed(live.change)}${liveNote !== '' ? `. ${liveNote}` : ''}`
               : ''}
           </p>
         )}

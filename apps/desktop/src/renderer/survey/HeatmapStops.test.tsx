@@ -60,6 +60,17 @@ describe('the heat map legend', () => {
     expect(q('survey-heat-histogram')?.children).toHaveLength(24);
   });
 
+  it('is one image named for the legend and its histogram (no label on a role-less div)', () => {
+    render(<HeatLegend style={measureStore.getState().settings.heatmap} grid={grid} />);
+    const legend = q('survey-heat-legend');
+    expect(legend?.getAttribute('role')).toBe('img');
+    expect(legend?.getAttribute('aria-label')).toBe(
+      'Height change. How much of the area changed by each amount',
+    );
+    const hist = q('survey-heat-histogram');
+    expect(hist?.hasAttribute('aria-label') && !hist.hasAttribute('role')).toBe(false);
+  });
+
   it('stops editor opens from Edit colours', () => {
     render(<HeatmapStopsButton />);
     expect(q('survey-heat-stops')).toBeNull();
