@@ -425,10 +425,10 @@ describe('poses and runs', () => {
   it('measures how far each camera moves', () => {
     const m = poseMoves(
       [
-        { id: 'a', pos: [0, 0, 0] },
-        { id: 'b', pos: [0, 0, 0] },
-        { id: 'c', pos: [0, 0, 0] },
-        { id: 'd' },
+        { id: 'a', src: { path: 'a.jpg' }, pos: [0, 0, 0] },
+        { id: 'b', src: { path: 'b.jpg' }, pos: [0, 0, 0] },
+        { id: 'c', src: { path: 'c.jpg' }, pos: [0, 0, 0] },
+        { id: 'd', src: { path: 'd.jpg' } },
       ],
       new Map([
         ['a', { pos: [3, 4, 0] }],
@@ -438,6 +438,38 @@ describe('poses and runs', () => {
       ]),
     );
     expect(m).toEqual({ cameras: 3, medianMoveM: 2, maxMoveM: 5 });
+  });
+
+  it('measures the move from where the photo is drawn: its corrected place', () => {
+    const items = [
+      { id: 'a', src: { path: 'a.jpg' }, pos: [0, 100, 0] as [number, number, number] },
+      { id: 'b', src: { path: 'b.jpg' }, pos: [0, 0, 0] as [number, number, number] },
+    ];
+    const refined = new Map([
+      ['a', { pos: [0, 0.5, 0] }],
+      ['b', { pos: [0, 2, 0] }],
+    ]);
+    // a: corrected 100 m down, refined half a metre above the corrected place
+    const m = poseMoves(items, refined, {
+      a: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, -100, 0] },
+    });
+    expect(m).toEqual({ cameras: 2, medianMoveM: 1.25, maxMoveM: 2 });
+    // a pinned photo stays at its pin: its correction is ignored, as every view does
+    const pinned = poseMoves(
+      [
+        {
+          id: 'a',
+          src: { path: 'a.jpg' },
+          pos: [0, 100, 0],
+          pin: { ground: [0, 98.4, 0], eyeM: 1.6 },
+        },
+      ],
+      refined,
+      {
+        a: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, -100, 0] },
+      },
+    );
+    expect(pinned.maxMoveM).toBeCloseTo(99.5, 6);
   });
 
   it('summarises a run with its products in the contract order', () => {
@@ -1075,6 +1107,102 @@ describe('photo IPC', () => {
         apply: false,
       }),
     ).toMatchObject({ ok: false });
+  });
+
+  it('swaps refined poses against corrected places and moves their corrections aside', async () => {
+    const orientation = {
+      schema: 'aio.orientation/1',
+      clips: {},
+      photos: {
+        photos: {
+          p1: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [0, -100, 0] },
+          p2: { yawDeg: 12, pitchDeg: -3, rollDeg: 0 },
+          p3: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [1, 0, 0] },
+        },
+        other: { q1: { yawDeg: 5, pitchDeg: 0, rollDeg: 0 } },
+      },
+    };
+    await writeFile(join(root, 'orientation.json'), JSON.stringify(orientation));
+    // p1 refined near its corrected place (100 m below the imported one); p3 is not in the run
+    await writeFile(
+      join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
+      JSON.stringify(
+        g2Cameras([
+          ['p1', [0, -39.6, 0]],
+          ['p2', [10, 60.2, 0]],
+        ]),
+      ),
+    );
+    const preview = await ipc.call('photo:applyPoses', {
+      projectId: 'p',
+      run: RUN,
+      layer: 'photos',
+      apply: false,
+    });
+    expect(preview).toMatchObject({ ok: true, cameras: 2, applied: false });
+    if (!preview.ok) return;
+    expect(preview.maxMoveM).toBeCloseTo(0.4, 6);
+    const applied = await ipc.call('photo:applyPoses', {
+      projectId: 'p',
+      run: RUN,
+      layer: 'photos',
+      apply: true,
+    });
+    expect(applied).toMatchObject({ ok: true, applied: true, cameras: 2 });
+    if (!applied.ok) return;
+    expect(applied.maxMoveM).toBeCloseTo(0.4, 6);
+    // the refined pose already holds the correction: drawing both would move the photo twice
+    const after = JSON.parse(await readFile(join(root, 'orientation.json'), 'utf8')) as {
+      photos: Record<string, Record<string, unknown>>;
+    };
+    expect(after.photos).toEqual({
+      photos: { p3: orientation.photos.photos.p3 },
+      other: orientation.photos.other,
+    });
+    expect(JSON.parse(await readFile(join(root, 'orientation.json.bak'), 'utf8'))).toEqual(
+      orientation,
+    );
+    const kept = JSON.parse(
+      await readFile(join(root, 'photogrammetry', RUN, 'cameras.json.bak'), 'utf8'),
+    ) as { corrections?: Record<string, unknown> };
+    expect(kept.corrections).toEqual({
+      p1: orientation.photos.photos.p1,
+      p2: orientation.photos.photos.p2,
+    });
+  });
+
+  it('leaves orientation.json alone when no refined photo has a correction', async () => {
+    await writeFile(
+      join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
+      JSON.stringify(g2Cameras([['p1', [0.3, 60.4, 0]]])),
+    );
+    await ipc.call('photo:applyPoses', { projectId: 'p', run: RUN, layer: 'photos', apply: true });
+    expect(existsSync(join(root, 'orientation.json'))).toBe(false);
+    const kept = JSON.parse(
+      await readFile(join(root, 'photogrammetry', RUN, 'cameras.json.bak'), 'utf8'),
+    ) as object;
+    expect(kept).not.toHaveProperty('corrections');
+  });
+
+  it('refuses the swap while orientation.json cannot be read', async () => {
+    await writeFile(
+      join(root, 'orientation.json'),
+      JSON.stringify({ schema: 'aio.orientation/1', photos: 3 }),
+    );
+    await writeFile(
+      join(root, 'photogrammetry', RUN, 'cameras-sfm.json'),
+      JSON.stringify(g2Cameras([['p1', [0.3, 60.4, 0]]])),
+    );
+    const before = await readFile(join(root, 'manifest.json'), 'utf8');
+    expect(
+      await ipc.call('photo:applyPoses', {
+        projectId: 'p',
+        run: RUN,
+        layer: 'photos',
+        apply: true,
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('orientation.json') as unknown });
+    expect(await readFile(join(root, 'manifest.json'), 'utf8')).toBe(before);
   });
 
   it('applies refined poses onto what a save on its way writes, not over it', async () => {

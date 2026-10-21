@@ -10,6 +10,7 @@
  * size) and nothing else.
  */
 import { envVar } from '@aio/brand/env';
+import { correctedPhoto } from '@aio/geo';
 import {
   AccuracyReport,
   GcpFile,
@@ -23,6 +24,9 @@ import {
   type Layer,
   type OdmGpuSetting,
   type OdmState,
+  type OrientationFile,
+  type PhotoCorrection,
+  type PhotoRef,
   type Quat,
   type Vec3,
   type PhotoCameraGroup,
@@ -43,6 +47,7 @@ import type { Handler } from './ipc';
 import { compareVersions } from './jobs/pack';
 import type { Handle } from './notYet';
 import { nvcudaPresent } from './odm/detect';
+import { readOrientation, writeOrientation } from './orientation';
 import type { OdmChannel } from './odm/ipc';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
@@ -730,16 +735,21 @@ export interface PoseMoves {
   maxMoveM: number;
 }
 
-/** How far each camera of the layer moves to its refined position. */
+/**
+ * How far each camera of the layer moves to its refined position, from where it is drawn: its
+ * imported pose with its hand correction (`corrections`, the layer's entries of `orientation.json`).
+ */
 export function poseMoves(
-  items: readonly { id: string; pos?: readonly number[] | undefined }[],
+  items: readonly PhotoRef[],
   refined: ReadonlyMap<string, { pos: readonly number[] }>,
+  corrections?: Readonly<Record<string, PhotoCorrection>>,
 ): PoseMoves {
   const moves: number[] = [];
   for (const it of items) {
     const r = refined.get(it.id);
-    if (!r || !it.pos) continue;
-    const [x = 0, y = 0, z = 0] = it.pos;
+    const pos = correctedPhoto(it, corrections?.[it.id]).pos;
+    if (!r || !pos) continue;
+    const [x, y, z] = pos;
     const [a = 0, b = 0, c = 0] = r.pos;
     moves.push(Math.hypot(a - x, b - y, c - z));
   }
@@ -1179,6 +1189,9 @@ export function registerPhotogrammetryIpc({
       return { ok: false, error: `There is no photos layer "${photos.layer}" in this project.` };
     const files: string[] = [];
     const located = new Set<string>();
+    // the photos as they are drawn; an orientation file that cannot be read corrects nothing here
+    const o = await readOrientation(root).catch(() => null);
+    const corrections = o?.ok ? o.file?.photos[layer.id] : undefined;
     // align.py layer_meta places a pose only in a project with a CRS (EPSG or WKT) and an origin;
     // the manifest schema requires both, so every pose counts
     for (const it of layer.items) {
@@ -1187,7 +1200,7 @@ export function registerPhotogrammetryIpc({
       if (relative(root, p).startsWith('..')) continue;
       files.push(p);
       // the run places a photo without GPS by its pose (align.py layer_meta)
-      if (it.pos) located.add(p);
+      if (correctedPhoto(it, corrections?.[it.id]).pos) located.add(p);
     }
     const epsg = 'epsg' in manifest.crs ? manifest.crs.epsg : undefined;
     return { ok: true, files, located, ...(epsg !== undefined ? { epsg } : {}) };
@@ -1301,7 +1314,7 @@ export function registerPhotogrammetryIpc({
     const file = parseCamerasFile(raw);
     if (typeof file === 'string') return { ok: false, error: file };
     /** What the swap does to a manifest: the refusal, or the layer, its refined poses and moves. */
-    const plan = (manifest: ProjectManifest) => {
+    const plan = (manifest: ProjectManifest, orientation: OrientationFile | null) => {
       const target = manifest.layers.find((l): l is PhotosLayer => l.id === layer);
       if (target?.kind !== 'photos')
         return {
@@ -1310,26 +1323,41 @@ export function registerPhotogrammetryIpc({
         };
       const refined = refinedPoses(file, manifest, target.items);
       if (typeof refined === 'string') return { ok: false as const, error: refined };
-      const moves = poseMoves(target.items, refined);
+      const corrections = orientation?.photos[target.id];
+      const moves = poseMoves(target.items, refined, corrections);
       if (moves.cameras === 0)
         return {
           ok: false as const,
           error: `None of the run's refined cameras belongs to the layer "${target.name}".`,
         };
-      return { ok: true as const, target, refined, moves };
+      // the refined poses already hold the corrections of their photos: these are moved aside
+      const removed: Record<string, PhotoCorrection> = {};
+      for (const [id, c] of Object.entries(corrections ?? {})) if (refined.has(id)) removed[id] = c;
+      return { ok: true as const, target, refined, moves, removed };
+    };
+    /** The orientation file, read for this request: preview and apply measure the same way. */
+    const orientationNow = async () => {
+      const o = await readOrientation(root);
+      return o.ok ? { ok: true as const, file: o.file } : { ok: false as const, error: o.error };
     };
     const { readManifestFile, updateManifestFile } = await lib();
     if (!apply) {
-      const p = plan(await readManifestFile(root));
-      return p.ok ? { ok: true, ...p.moves, applied: false } : p;
+      const o = await orientationNow();
+      if (!o.ok) return o;
+      const p = plan(await readManifestFile(root), o.file);
+      if (!p.ok) return p;
+      return { ok: true, ...p.moves, applied: false };
     }
 
     // decided and written on the manifest as it is when this save's turn comes, so the swap
     // neither replaces a save made at the same moment nor puts back a layer that has gone
     const { reply } = await updateManifestFile(root, async (manifest) => {
-      const p = plan(manifest);
+      const o = await orientationNow();
+      if (!o.ok) return { manifest: null, reply: o };
+      const p = plan(manifest, o.file);
       if (!p.ok) return { manifest: null, reply: p };
-      const { target, refined, moves } = p;
+      const { target, refined, moves, removed } = p;
+      const hasRemoved = Object.keys(removed).length > 0;
       // the poses before, kept in the run folder so the swap can be undone by hand
       await writeJsonAtomic(
         runPath(root, run, POSES_BACKUP),
@@ -1342,9 +1370,34 @@ export function registerPhotogrammetryIpc({
             ...(it.q ? { q: it.q } : {}),
             ...(it.lens ? { lens: it.lens } : {}),
           })),
+          // their hand corrections in orientation.json (photo id to correction), taken out below
+          ...(hasRemoved ? { corrections: removed } : {}),
         },
         { backup: true },
       );
+      if (hasRemoved && o.file) {
+        // written atomically with a .bak, after the poses backup that keeps what it removes
+        const layerPhotos = Object.fromEntries(
+          Object.entries(o.file.photos[target.id] ?? {}).filter(([id]) => !(id in removed)),
+        );
+        const photos = Object.fromEntries(
+          Object.entries(o.file.photos).filter(([id]) => id !== target.id),
+        );
+        if (Object.keys(layerPhotos).length) photos[target.id] = layerPhotos;
+        const w = await writeOrientation(root, {
+          ...o.file,
+          updatedAt: now().toISOString(),
+          photos,
+        });
+        if (!w.ok)
+          return {
+            manifest: null,
+            reply: {
+              ok: false as const,
+              error: w.error ?? 'The camera directions were not saved.',
+            },
+          };
+      }
       const items = target.items.map((it) => {
         const r = refined.get(it.id);
         return r ? { ...it, pos: r.pos, q: r.q, ...(r.lens ? { lens: r.lens } : {}) } : it;
