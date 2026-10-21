@@ -1313,7 +1313,7 @@ export function registerPhotogrammetryIpc({
     }
     const file = parseCamerasFile(raw);
     if (typeof file === 'string') return { ok: false, error: file };
-    // the photos the run sent to ODM at their corrected place (photo.align of pack 0.20.0 on); a
+    // the photos the run sent to ODM at their corrected place (photo.align of pack 0.21.0 on); a
     // file without the list, from an older pack, placed every photo by its own GPS
     const listed = z.array(z.string()).safeParse(file.correctionsHonoured);
     const honoured = new Set(listed.success ? listed.data : []);

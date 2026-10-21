@@ -28,7 +28,7 @@ Run files (data-conventions section 21), every JSON file with its ``schema``:
   ``correctionsHonoured``: the photo ids ODM got at their place in the layer with its hand
   correction (orientation.json ``offsetM``, a pin) applied, also kept in ``run.json``. The app
   takes those photos' corrections out when it swaps in the refined poses and keeps the others (a
-  file without the key, from a pack before 0.20.0, honoured none).
+  file without the key, from a pack before 0.21.0, honoured none).
 - ``report/align.json`` (``aio.photo-align/1``) and ``report/accuracy.json``.
 
 Photo keys are the photos layer's photo ids, or the path below the chosen folder (the folder's

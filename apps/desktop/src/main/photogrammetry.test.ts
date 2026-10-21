@@ -1203,7 +1203,7 @@ describe('photo IPC', () => {
     };
     await writeFile(join(root, 'orientation.json'), JSON.stringify(orientation));
     // p1 went to ODM at its EXIF GPS (it is not listed); p3 at its corrected place. A file of a
-    // pack before 0.20.0 has no list at all and so honoured none
+    // pack before 0.21.0 has no list at all and so honoured none
     const cams = g2Cameras([
       ['p1', [0, 60.2, 0]],
       ['p2', [10, 60.2, 0]],
