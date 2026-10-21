@@ -186,7 +186,7 @@ Each contract PR adds a compat test in `tools/compat/` against the newest frozen
 
 ### Task 1.5: `thermal.decode` job (Python)
 
-**Files:** `python/src/aio_pipelines/thermal/pipeline.py`, `raster.py`, `crosscheck.py` (new), `python/src/aio_pipelines/pipelines.py`, `python/tests/test_thermal_decode.py` (new), `python/pyproject.toml` (0.21.0), `python/uv.lock`
+**Files:** `python/src/aio_pipelines/thermal/pipeline.py`, `raster.py`, `crosscheck.py` (new), `python/src/aio_pipelines/pipelines.py`, `python/tests/test_thermal_decode.py` (new), `python/pyproject.toml` (0.22.0), `python/uv.lock`
 
 **Interfaces:** consumes 1.1 (`ThermalDecodeParams`, file shapes), 1.2, 1.3, 1.4 (`find_tool`). Produces the raster files, `index.json`, and the job result `{ decoded, skipped, unsupported, unverified, implausible }`.
 
@@ -199,7 +199,7 @@ Each contract PR adds a compat test in `tools/compat/` against the newest frozen
   - **plausibility:** a fixture whose decoded median is 150 °C is `implausible` with no raster;
   - DJI photos go through `Tsdk` (stubbed) with clamped settings recorded in `clamped`;
   - output is staged and committed with `commit_tree`, paths through `safe_project_path`; a read-only project fails the job with a clear error.
-- [x] Register in `pipelines.py` `all_pipelines()`; bump `pyproject.toml` to 0.21.0; `uv lock` in `python/`.
+- [x] Register in `pipelines.py` `all_pipelines()`; bump `pyproject.toml` to 0.22.0; `uv lock` in `python/`.
 
 ### Task 1.6: probe, sidecar IPC and job wiring (`@aio/project`, main)
 

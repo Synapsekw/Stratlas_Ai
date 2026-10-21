@@ -114,7 +114,7 @@ describe('jobs:start resume feature gate', () => {
     expect(resumed.start).not.toHaveBeenCalled();
   });
 
-  it('refuses thermal.decode on a pack below 0.21.0 with the update text', async () => {
+  it('refuses thermal.decode on a pack below 0.22.0 with the update text', async () => {
     const req = {
       pipeline: 'thermal.decode' as const,
       project: 'synthetic',
@@ -126,7 +126,7 @@ describe('jobs:start resume feature gate', () => {
       error: thermalPackRefusal('thermal.decode', '0.20.0'),
     });
     expect(old.start).not.toHaveBeenCalled();
-    const current = jobsStart('0.21.0', 'failed');
+    const current = jobsStart('0.22.0', 'failed');
     expect(await current.handle(req)).toEqual({ ok: true });
   });
 

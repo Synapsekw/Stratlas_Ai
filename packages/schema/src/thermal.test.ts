@@ -208,6 +208,6 @@ describe('candidates and params', () => {
     expect(ThermalDecodeParams.safeParse({}).success).toBe(false);
     // an empty list is refused, as the job refuses it: leave `photos` out for the whole layer
     expect(ThermalDecodeParams.safeParse({ layerId: 'l1', photos: [] }).success).toBe(false);
-    expect(THERMAL_MIN_PACK).toBe('0.21.0');
+    expect(THERMAL_MIN_PACK).toBe('0.22.0');
   });
 });

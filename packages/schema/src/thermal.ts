@@ -13,7 +13,7 @@ export const THERMAL_RASTER_SCHEMA = 'aio.thermalRaster/1';
 export const THERMAL_CANDIDATES_SCHEMA = 'aio.thermalCandidates/1';
 
 /** The oldest pipeline pack with `thermal.decode`. */
-export const THERMAL_MIN_PACK = '0.21.0';
+export const THERMAL_MIN_PACK = '0.22.0';
 
 /** Which decoder read the photo. */
 export const ThermalFamily = z.enum(['flir', 'dji-tsdk']);

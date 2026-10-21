@@ -1,5 +1,5 @@
 /*
- * The `thermal.decode` job needs the processing tools of pack 0.21.0 or later. `jobs:start` asks
+ * The `thermal.decode` job needs the processing tools of pack 0.22.0 or later. `jobs:start` asks
  * here first, so an older pack gets the update message, not a failed job (as `telecomPack.ts`).
  */
 import { THERMAL_MIN_PACK } from '@aio/schema';
