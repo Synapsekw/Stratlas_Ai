@@ -12,6 +12,7 @@ import {
   useT,
   type IconName,
   type PhotoPick,
+  type ResolvedItem,
 } from '@aio/ui';
 import { DEFAULT_PHOTO_LENS } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -42,6 +43,39 @@ const PIN_ACTIONS: readonly string[] = [
   'media.direction',
   'media.remove',
 ];
+
+/** Edit position and Reset to original: a single photo's menu and the several-picked menu. */
+const POSITION_ACTIONS: readonly string[] = ['photos.editPosition', 'photos.resetPosition'];
+
+/** A registry item as a row of these menus; with `why`, a greyed one says why after its label. */
+function RegistryItem({
+  it,
+  close,
+  why = false,
+}: {
+  it: ResolvedItem;
+  close: () => void;
+  why?: boolean;
+}) {
+  const off = it.disabled !== false;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="dmenu-item"
+      disabled={off}
+      data-testid={it.testId}
+      onClick={() => {
+        close();
+        it.run();
+      }}
+    >
+      <Icon name={it.icon ?? 'pin'} size={14} />
+      <span>{it.label}</span>
+      {why && it.disabled && <span className="faint">{it.disabled}</span>}
+    </button>
+  );
+}
 
 interface MenuPhoto {
   layerId: string;
@@ -380,6 +414,16 @@ export function PhotoMenu() {
     const l = project.manifest.layers.find((x) => x.id === p.layerId);
     return l?.kind === 'photos' && l.items.find((i) => i.id === p.photoId)?.pin !== undefined;
   });
+  const positionItems = (picked: PhotoPick[]) =>
+    actionsFor(
+      { kind: 'photos', picks: picked },
+      makeActionCtx({
+        manifest: project.manifest,
+        canEdit: !pkg && !lookOnly,
+        pkg: !!pkg,
+        host: toastHost(t('position.edit')),
+      }),
+    ).filter((i) => POSITION_ACTIONS.includes(i.id));
   if (pickedHere)
     return createPortal(
       <div
@@ -412,6 +456,9 @@ export function PhotoMenu() {
             <span>{t('align.photoMenu.alignTo')}</span>
           </button>
         )}
+        {positionItems([...picks]).map((pi) => (
+          <RegistryItem key={pi.id} it={pi} close={close} why />
+        ))}
         <button
           type="button"
           role="menuitem"
@@ -533,21 +580,10 @@ export function PhotoMenu() {
           setAlignAt({ x: menu.x, y: menu.y, picks: [photoIdsOf(photo.id)] });
         })}
       {pinItems.map((pi) => (
-        <button
-          key={pi.id}
-          type="button"
-          role="menuitem"
-          className="dmenu-item"
-          disabled={pi.disabled !== false}
-          data-testid={pi.testId}
-          onClick={() => {
-            close();
-            pi.run();
-          }}
-        >
-          <Icon name={pi.icon ?? 'pin'} size={14} />
-          <span>{pi.label}</span>
-        </button>
+        <RegistryItem key={pi.id} it={pi} close={close} />
+      ))}
+      {positionItems([photoIdsOf(photo.id)]).map((pi) => (
+        <RegistryItem key={pi.id} it={pi} close={close} why />
       ))}
       {item('open', 'photo', t('align.photoMenu.open'), () => {
         openPhoto(set.id, photo.id, menu.from);

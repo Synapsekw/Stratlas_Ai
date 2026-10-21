@@ -9,6 +9,7 @@ import { alignCamera, photoAlign, useAlign, usePhotoAlign } from './alignSession
 import { AlignModel } from './AlignModel';
 import { CalibrateVideo } from './CalibrateVideo';
 import { DroneMenu } from './DroneMenu';
+import { EditPositionPanel } from './EditPositionPanel';
 import { loadOrientation } from './orientationFile';
 import { PhotoMenu } from './PhotoMenu';
 import { PhotoPickInput } from './PhotoPickInput';
@@ -89,6 +90,7 @@ export function BuilderLayer() {
       {screen === 'scene' && projectId && <PhotoPickInput />}
       {screen === 'scene' && aligning && <AlignCamera />}
       {screen === 'scene' && aligningPhoto && <AlignPhoto />}
+      {projectId && <EditPositionPanel />}
     </>
   );
 }

@@ -805,3 +805,60 @@
   gap: 6px;
   justify-items: start;
 }
+
+/* ---------- edit position: the panel at the photo menu point ---------- */
+.pos-opener {
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.pos-panel {
+  width: 280px;
+}
+.pos-form {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+}
+.pos-title {
+  margin: 0;
+  font-size: var(--t-title);
+  font-weight: var(--fw-title);
+  color: var(--fg-0);
+}
+.pos-hint,
+.pos-orig,
+.pos-bad {
+  margin: 0;
+  font-size: var(--t-11);
+  line-height: 1.4;
+}
+.pos-bad {
+  color: var(--s5);
+}
+.pos-row {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.pos-row .input {
+  min-width: 0;
+  text-align: end;
+}
+.pos-row .input[aria-invalid='true'] {
+  border-color: var(--s5);
+}
+.pos-axis {
+  color: var(--fg-2);
+}
+.pos-acts {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+}
+.pos-grow {
+  flex: 1;
+}

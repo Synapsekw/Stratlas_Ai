@@ -1,5 +1,14 @@
 import type { AssetRef, PanoRef, PhotoRef } from '@aio/schema';
-import { actionsFor, Button, Chip, ContextMenu, useT, type MenuTarget } from '@aio/ui';
+import {
+  actionsFor,
+  Button,
+  Chip,
+  ContextMenu,
+  targetCount,
+  t as translate,
+  useT,
+  type MenuTarget,
+} from '@aio/ui';
 import { assetUrl, workspace } from '@aio/workspace';
 import {
   useCallback,
@@ -275,9 +284,19 @@ export function useTileMenu(): {
   const ctx = at ? ctxOf(at.k) : null;
   const item = at && ctx ? mediaItem(ctx.manifest, at.k) : null;
   const items = at && ctx ? actionsFor(at.target, ctx) : [];
+  const picked = at ? targetCount(at.target) : 0;
+  const many = picked > 1 ? picked : 0;
   const menu =
     at && item && items.length > 0 ? (
-      <ContextMenu items={items} x={at.x} y={at.y} label={mediaName(item)} onClose={close} />
+      <ContextMenu
+        items={items}
+        x={at.x}
+        y={at.y}
+        // several picked tiles: the menu is on all of them, not the tile it opened on
+        label={many ? translate('actions.header.photos', { count: many }) : mediaName(item)}
+        title={many ? translate('actions.header.photos', { count: many }) : undefined}
+        onClose={close}
+      />
     ) : null;
   return { open, place, menu };
 }

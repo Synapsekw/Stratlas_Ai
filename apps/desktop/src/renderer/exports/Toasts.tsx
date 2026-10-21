@@ -4,6 +4,7 @@ import { useStore } from 'zustand';
 import { AlignNotice } from '../builder/AlignNotice';
 import { AlignToNotice } from '../builder/AlignToNotice';
 import { DropNotice } from '../builder/DropNotice';
+import { EditPositionNotice } from '../builder/EditPositionNotice';
 import { PhotoAlignNotice } from '../builder/PhotoAlignNotice';
 import { photoPicks, usePhotoPicks } from '../builder/photoPicks';
 import { DiskChangedNotice } from '../DiskChangedNotice';
@@ -59,6 +60,7 @@ export function Toasts() {
       <AlignNotice />
       <PhotoAlignNotice />
       <AlignToNotice />
+      <EditPositionNotice />
       <DropNotice />
       <LineUpOffer />
       <LineUpNotice />
