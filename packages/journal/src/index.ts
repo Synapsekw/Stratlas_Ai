@@ -64,5 +64,6 @@ export {
   type SigningDomain,
 } from './sign';
 export * from './members';
+export { genesisOf, pinFromGenesis, pinTeamFile, readTeamPin, type TeamPinState } from './teamPin';
 export { verifyJournalParallel, verifyOpSignatures } from './parallel';
 export { verifyJournal, verifyLoaded, type VerifyOptions } from './verify';

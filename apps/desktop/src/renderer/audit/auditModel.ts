@@ -548,6 +548,8 @@ const PROBLEM_KEYS = {
   'revoked-device': 'audit.problem.revoked-device',
   'checkpoint-mismatch': 'audit.problem.checkpoint-mismatch',
   'clock-ahead': 'audit.problem.clock-ahead',
+  'clock-back': 'audit.problem.clock-back',
+  'team-unpinned': 'audit.problem.team-unpinned',
 } as const satisfies Record<VerifyProblem['code'], MessageKey>;
 
 /** Where a problem sits: "Line 2 of journal/ops/<chain>/000001.jsonl", the file, or "An entry". */

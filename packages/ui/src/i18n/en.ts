@@ -2765,6 +2765,9 @@ export const en = {
   'audit.problem.revoked-device': '{where} was signed by a device after it was revoked.',
   'audit.problem.checkpoint-mismatch': '{where} does not match its checkpoint.',
   'audit.problem.clock-ahead': '{where} has a clock reading far in the future.',
+  'audit.problem.clock-back': '{where} is dated before the entry it follows: it was dated back.',
+  'audit.problem.team-unpinned':
+    '{where} does not record which change made the first owner of this team. Sync once with this version to record it.',
   'audit.problem.other': '{where} has a problem.',
   'audit.export.csv': 'Export audit (CSV)',
   'audit.export.json': 'Export audit (JSON)',

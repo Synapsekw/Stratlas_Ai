@@ -285,12 +285,27 @@ export const MemberAddPayload = z.object({
   /** The owner certificate, when an owner certified the card. */
   cert: DeviceCert.optional(),
 });
-export const MemberRolePayload = z.object({ actor: ActorId, role: Role });
-export const MemberRemovePayload = z.object({ actor: ActorId });
+/**
+ * What the owner writing a revocation, removal or demotion had seen of its target's chains: the
+ * last seq per chain (`<device>.<replica>`). An op of the target that is not covered and dated
+ * before the change is judged right after it, so it cannot be dodged by backdating (security
+ * review, Oct 2026). Optional: changes written before it are judged by clock reading alone.
+ */
+export const SeenHeads = z.record(
+  z.string().regex(/^d_[a-z2-7]{52}\.r_[a-z2-7]{16}$/, 'A chain id is <device>.<replica>.'),
+  z.number().int().min(0),
+);
+export const MemberRolePayload = z.object({
+  actor: ActorId,
+  role: Role,
+  seen: SeenHeads.optional(),
+});
+export const MemberRemovePayload = z.object({ actor: ActorId, seen: SeenHeads.optional() });
 export const MemberLinkPayload = AccountLink;
 export const DeviceRevokePayload = z.object({
   device: DeviceId,
   reason: z.string().max(500).optional(),
+  seen: SeenHeads.optional(),
 });
 
 export type ActorId = z.infer<typeof ActorId>;

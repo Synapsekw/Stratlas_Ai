@@ -30,13 +30,34 @@ export const TeamProjectId = z
   .string()
   .regex(/^t_[a-z2-7]{26}$/, 'A team project id is t_ and 26 base32 letters.');
 
-/** `<project>/team.json` (`aio.team/1`). */
+/**
+ * The genesis a copy pins when the project is shared (security review, Oct 2026): the owner's
+ * first `member.add`, the device that wrote it and its key, its clock reading, and the history the
+ * project was shared with (last seq per chain). Only this op makes the first owner, and an op dated
+ * before it that is not part of that history is held.
+ */
+export const TeamGenesis = z.object({
+  op: OpId,
+  device: DeviceId,
+  key: PublicKeyB64,
+  at: Hlc,
+  heads: z.record(ChainId, Seq),
+});
+
+/**
+ * `<project>/team.json` (`aio.team/1`). `genesis` and `sig` are additive: a file without them is a
+ * project shared by an older version (pinned on first open, trust on first use). `sig` is the
+ * genesis device's signature (domain `aio.team/1`) over the canonical file without `sig`; a pin a
+ * copy made itself (a member who joined) has no `sig` and is trusted locally only.
+ */
 export const TeamProject = z.object({
   schema: z.literal(TEAM_SCHEMA),
   teamProjectId: TeamProjectId,
   name: z.string().min(1).max(200),
   createdAt: IsoTime,
   createdBy: ActorId,
+  genesis: TeamGenesis.optional(),
+  sig: SignatureB64.optional(),
 });
 
 /** The heads of a set of chains: what a copy has, or what it knew of a peer. */
@@ -160,6 +181,7 @@ export const PackageReplyPolicy = z.object({
 
 export type TeamProjectId = z.infer<typeof TeamProjectId>;
 export type TeamProject = z.infer<typeof TeamProject>;
+export type TeamGenesis = z.infer<typeof TeamGenesis>;
 export type Heads = z.infer<typeof Heads>;
 export type ExchangeKind = z.infer<typeof ExchangeKind>;
 export type ExchangeHeader = z.infer<typeof ExchangeHeader>;

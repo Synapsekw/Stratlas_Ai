@@ -60,6 +60,8 @@ export const SIGNING_DOMAINS = {
   exchange: 'aio.exchange/1',
   receipt: 'aio.receipt/1',
   request: 'aio.request/1',
+  /** `team.json`'s pinned genesis, signed by the owner device that shared the project. */
+  team: 'aio.team/1',
 } as const;
 
 /** An op id: SHA-256 of the canonical op without `id`, `payload` and `sig` (it covers `ph`). */
@@ -567,6 +569,13 @@ export const VerifyCode = z.enum([
   'revoked-device',
   'checkpoint-mismatch',
   'clock-ahead',
+  /** An op is dated at or before the op it follows in its chain (a backdated op). */
+  'clock-back',
+  /**
+   * A shared project whose `team.json` pins no genesis (shared by an older version), or whose pin
+   * does not verify: its first owner is taken from the history, not from what this copy recorded.
+   */
+  'team-unpinned',
 ]);
 
 export const VerifyProblem = z.object({

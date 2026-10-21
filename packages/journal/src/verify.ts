@@ -8,8 +8,10 @@ import {
 } from '@aio/schema';
 import { checkCheckpoint, checkDeviceRecord, merkleRoot, type ChainHead } from './checkpoint';
 import { loadJournal, type JournalFiles, type LoadedJournal } from './load';
+import { replayTeam } from './members';
 import { checkOp } from './op';
 import { publicKeyObject } from './sign';
+import type { TeamPinState } from './teamPin';
 
 export type { JournalFiles } from './load';
 
@@ -23,6 +25,11 @@ export interface VerifyOptions {
    * Ops not in the map are checked here.
    */
   signatures?: ReadonlyMap<string, boolean>;
+  /**
+   * The project's `team.json`, when it has one: a shared project should pin its genesis
+   * (`team-unpinned` otherwise), and team ops are judged with that pin.
+   */
+  team?: TeamPinState;
 }
 
 /** One op as Verify saw it, in chain order. */
@@ -77,7 +84,6 @@ export function verifyLoaded(j: LoadedJournal, opts: VerifyOptions = {}): Verify
   const byId = new Map<string, SeenOp>();
   const stripped: SeenOp[] = [];
   const redactedIds = new Set<string>();
-  const revoked = new Map<string, string>();
   const unknownDevices = new Set<string>();
   const aheadMs = now.getTime() + CLOCK_AHEAD_NOTICE_MS;
 
@@ -183,11 +189,6 @@ export function verifyLoaded(j: LoadedJournal, opts: VerifyOptions = {}): Verify
         if (raw.kind === 'comment.redact' && check.id && Array.isArray(payload?.ops)) {
           for (const x of payload.ops) if (typeof x === 'string') redactedIds.add(x);
         }
-        if (raw.kind === 'device.revoke' && check.id && typeof payload?.device === 'string') {
-          const hlc = str(raw.hlc) ?? '';
-          const prev = revoked.get(payload.device);
-          if (prev === undefined || hlc < prev) revoked.set(payload.device, hlc);
-        }
         const hlc = str(raw.hlc);
         if (hlc && Number(hlc.slice(0, 13)) > aheadMs) {
           add({
@@ -247,6 +248,19 @@ export function verifyLoaded(j: LoadedJournal, opts: VerifyOptions = {}): Verify
       const prev = o.raw.prev;
       const ok =
         o.seq === 1 ? prev === null : before?.seq === o.seq - 1 ? prev === before.id : true; // a gap: already named
+      const hlc = str(o.raw.hlc);
+      const prevHlc = before?.seq === o.seq - 1 ? str(before.raw.hlc) : undefined;
+      if (ok && hlc !== undefined && prevHlc !== undefined && hlc <= prevHlc) {
+        add({
+          code: 'clock-back',
+          file: o.file,
+          line: o.line,
+          chain: c.chain,
+          seq: o.seq,
+          op: o.id,
+          message: `Line ${String(o.line)} is dated at or before the entry before it in chain ${short(c.chain)}: it was dated back.`,
+        });
+      }
       if (!ok) {
         add({
           code: 'fork',
@@ -288,24 +302,42 @@ export function verifyLoaded(j: LoadedJournal, opts: VerifyOptions = {}): Verify
     });
   }
 
-  // ---- revoked devices: ops after the revocation
-  for (const [dev, hlc] of revoked) {
-    for (const [chain, ops] of byChain) {
-      if (!chain.startsWith(`${dev}.`)) continue;
-      for (const o of ops) {
-        if ((str(o.raw.hlc) ?? '') > hlc) {
-          add({
-            code: 'revoked-device',
-            file: o.file,
-            line: o.line,
-            chain,
-            seq: o.seq,
-            op: o.id,
-            message: `Line ${String(o.line)} was written after its device was revoked.`,
-          });
-        }
+  // ---- revoked devices: only revocations the team accepts (an owner's, at that point), and the
+  // ops they hold: written after the revocation, or dated back before it but not seen by it
+  const pin =
+    opts.team?.status === 'signed' || opts.team?.status === 'local' ? opts.team.pin : null;
+  const raws = [...byId.values()].map((o) => o.raw);
+  const teamReplay = replayTeam(raws, { pin });
+  const anyRevoked = [...teamReplay.state.devices.values()].some((d) => d.revokedAt !== undefined);
+  if (anyRevoked) {
+    const all = replayTeam(raws, { verdicts: 'all', pin });
+    for (const o of byId.values()) {
+      if (all.verdicts.get(o.id)?.ok !== false) continue;
+      const v = all.verdicts.get(o.id);
+      if (v && !v.ok && v.code === 'revoked-device') {
+        add({
+          code: 'revoked-device',
+          file: o.file,
+          line: o.line,
+          chain: str(o.raw.chain) ?? '',
+          seq: o.seq,
+          op: o.id,
+          message: `Line ${String(o.line)} was written after its device was revoked.`,
+        });
       }
     }
+  }
+
+  // ---- the team pin: a shared project names the op that made its first owner
+  if (opts.team && (opts.team.status === 'none' || opts.team.status === 'invalid')) {
+    add({
+      code: 'team-unpinned',
+      file: 'team.json',
+      message:
+        opts.team.status === 'none'
+          ? 'This shared project does not record which change made its first owner (it was shared by an older version). Sync it once with this version to record it.'
+          : `The record of who made this team does not verify: ${opts.team.reason} Ask the owner to share the project again.`,
+    });
   }
 
   // ---- references from other chains (deps) and checkpoints: truncated tails

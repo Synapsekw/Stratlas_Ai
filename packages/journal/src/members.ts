@@ -674,6 +674,8 @@ export interface TeamReplay {
   policy: TeamPolicy;
   /** Verdict per op id: team ops always, every op with `verdicts: 'all'`. */
   verdicts: Map<string, Verdict>;
+  /** The op that made the first owner (the genesis), when the project is shared. */
+  genesis?: string;
   /** The ops that are held (kept, not applied), in team order. */
   quarantined: {
     op: string;
@@ -696,6 +698,7 @@ function judgeAll(entries: readonly Entry[], pin: TeamPin | null, hlcOf: Map<str
   const verdicts = new Map<string, Verdict>();
   const quarantined: TeamReplay['quarantined'] = [];
   const applied: TeamFence[] = [];
+  let genesis: string | undefined;
   for (const { op, raw } of entries) {
     const back = clockGoesBack(op, op.prev === null ? undefined : hlcOf.get(op.prev));
     const step = back ? { verdict: back, state } : judgeOp(state, op, raw);
@@ -704,6 +707,7 @@ function judgeAll(entries: readonly Entry[], pin: TeamPin | null, hlcOf: Map<str
       const f = fenceOf(state, op);
       if (f) applied.push(f);
     }
+    if (genesis === undefined && !isShared(state) && isShared(step.state)) genesis = op.id;
     state = step.state;
     verdicts.set(op.id, verdict);
     if (!verdict.ok) {
@@ -717,7 +721,7 @@ function judgeAll(entries: readonly Entry[], pin: TeamPin | null, hlcOf: Map<str
       });
     }
   }
-  return { state, verdicts, quarantined, fences: applied };
+  return { state, verdicts, quarantined, fences: applied, genesis };
 }
 
 /**
@@ -791,13 +795,14 @@ export function replayTeam(
   const pin = opts.pin ?? null;
   const { entries, hlcOf } = entriesOf(raws, opts.verdicts === 'all' ? () => true : teamKind);
   const fenceList = fencesOf(entries, pin, hlcOf);
-  const { state, verdicts, quarantined } = judgeAll(
+  const { state, verdicts, quarantined, genesis } = judgeAll(
     orderForTeam(entries, (e) => e.op, fenceList),
     pin,
     hlcOf,
   );
   return {
     shared: isShared(state),
+    ...(genesis !== undefined ? { genesis } : {}),
     state,
     members: membersOf(state),
     policy: state.policy,

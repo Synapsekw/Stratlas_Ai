@@ -2,6 +2,8 @@ import type { Op } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { randomId } from './hash';
 import { pinOf, replayTeam, type TeamPin } from './members';
+import { genesisOf, pinTeamFile, readTeamPin } from './teamPin';
+import { verifyJournal } from './verify';
 import { sealOp } from './op';
 import { signerFromSeed, type Signer } from './sign';
 
@@ -259,5 +261,106 @@ describe('revocation, removal and demotion cannot be dodged by backdating', () =
     const a = replayTeam(j.ops, { verdicts: 'all', pin });
     const b = replayTeam([...j.ops].reverse(), { verdicts: 'all', pin });
     expect([...b.verdicts.entries()].sort()).toEqual([...a.verdicts.entries()].sort());
+  });
+});
+
+describe('team.json pin', () => {
+  const file = {
+    schema: 'aio.team/1' as const,
+    teamProjectId: `t_${'a'.repeat(26)}`,
+    name: 'P',
+    createdAt: '2026-10-07T10:00:00.000Z',
+    createdBy: `a_${'b'.repeat(26)}`,
+  };
+
+  it('finds the genesis of a history shared by an older version and pins it', () => {
+    const { rana, genesis, j, pin } = team();
+    const g = genesisOf(j.ops);
+    expect(g).toMatchObject({ op: genesis.id, device: rana.signer.device, at: genesis.hlc });
+    expect(g?.heads).toEqual(pin.heads);
+    expect(genesisOf([])).toBeNull();
+  });
+
+  it('the owner device signs the pin; any change to the file breaks it', () => {
+    const { rana, j } = team();
+    const g = genesisOf(j.ops);
+    if (!g) throw new Error('no genesis');
+    const signed = pinTeamFile(file, g, rana.signer);
+    expect(signed.sig).toBeTypeOf('string');
+    expect(readTeamPin(signed)).toMatchObject({ status: 'signed', pin: { op: g.op } });
+    expect(readTeamPin({ ...signed, name: 'Renamed' })).toMatchObject({ status: 'invalid' });
+    const other = { ...g, op: 'f'.repeat(64) };
+    expect(readTeamPin({ ...signed, genesis: other })).toMatchObject({ status: 'invalid' });
+  });
+
+  it('a joined copy pins without a signature; a key that is not the device is refused', () => {
+    const { omar, j } = team();
+    const g = genesisOf(j.ops);
+    if (!g) throw new Error('no genesis');
+    expect(readTeamPin(pinTeamFile(file, g, omar.signer))).toMatchObject({ status: 'local' });
+    expect(readTeamPin(file)).toEqual({ status: 'none' });
+    expect(readTeamPin({ ...file, genesis: { ...g, key: omar.signer.publicKey } })).toMatchObject({
+      status: 'invalid',
+    });
+  });
+});
+
+describe('Verify and the team', () => {
+  const NOW = new Date(T0 + 86_400_000);
+  /** The ops as journal files, one segment per chain (no device records: not under test). */
+  function files(ops: readonly Op[]) {
+    const byChain = new Map<string, Op[]>();
+    for (const o of ops) byChain.set(o.chain, [...(byChain.get(o.chain) ?? []), o]);
+    return new Map(
+      [...byChain].map(([chain, list]) => [
+        `journal/ops/${chain}/000001.jsonl`,
+        list
+          .sort((a, b) => a.seq - b.seq)
+          .map(
+            (o) => `${JSON.stringify(o)}
+`,
+          )
+          .join(''),
+      ]),
+    );
+  }
+  const codes = (r: ReturnType<typeof verifyJournal>, code: string) =>
+    r.problems.filter((p) => p.code === code).map((p) => p.op);
+
+  it('trusts a revocation only from an owner', () => {
+    const { rana, omar, j } = team();
+    j.write(rana, 'member.add', card(omar, 'reviewer'));
+    // a reviewer revokes the owner's device: not accepted, so nothing counts as revoked
+    j.write(omar, 'device.revoke', { device: rana.signer.device });
+    j.write(rana, 'issue.patch', patch, { target: issue });
+    expect(codes(verifyJournal(files(j.ops), { now: NOW }), 'revoked-device')).toEqual([]);
+    // the owner revokes the reviewer's device: what follows from it is named
+    j.write(rana, 'device.revoke', { device: omar.signer.device });
+    const late = j.write(omar, 'issue.patch', patch, { target: issue });
+    expect(codes(verifyJournal(files(j.ops), { now: NOW }), 'revoked-device')).toEqual([late.id]);
+  });
+
+  it('names an op dated back from the op before it in its chain', () => {
+    const { rana, j } = team();
+    const back = j.write(rana, 'issue.patch', patch, { ms: T0 - 10_000, target: issue });
+    expect(codes(verifyJournal(files(j.ops), { now: NOW }), 'clock-back')).toEqual([back.id]);
+  });
+
+  it('names a shared project without a pin, or with a pin that does not verify', () => {
+    const { j } = team();
+    const f = files(j.ops);
+    const none = verifyJournal(f, { now: NOW, team: { status: 'none' } });
+    expect(none.problems).toContainEqual(
+      expect.objectContaining({ code: 'team-unpinned', file: 'team.json' }),
+    );
+    const bad = verifyJournal(f, { now: NOW, team: { status: 'invalid', reason: 'Changed.' } });
+    expect(codes(bad, 'team-unpinned')).toHaveLength(1);
+    const g = genesisOf(j.ops);
+    if (!g) throw new Error('no genesis');
+    const ok = verifyJournal(f, {
+      now: NOW,
+      team: { status: 'local', pin: { op: g.op, at: g.at, heads: g.heads }, genesis: g },
+    });
+    expect(codes(ok, 'team-unpinned')).toEqual([]);
   });
 });
