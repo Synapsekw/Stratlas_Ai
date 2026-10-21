@@ -43,6 +43,7 @@ import {
   profileLength,
   sampleProfile,
   slopeDistance,
+  TOOL_FAMILY,
   vertexTable,
   type BermCheck,
   type ChartSeries,
@@ -77,7 +78,7 @@ import {
   type DatedSurface,
   type PointHistoryRow,
 } from './pointHistory';
-import { answer, collect, presample, readsSurface, sampleNow, sliced } from './terrain';
+import { answer, collect, readNow, readsSurface, readTerrain, sliced } from './terrain';
 import '../../charts/charts.css';
 
 export type ChipsKind = 'surfaces' | 'vs' | 'area-dates' | null;
@@ -344,13 +345,14 @@ function useLoadNote(l: Loaded<unknown>, testId: string): ReactElement | null {
 
 // ---------------------------------------------------------------- the terrain under the card
 
-/** At most this many places are read from the 3D view in the render (a point, a short line). */
-const STAGE_NOW = 512;
-
-/** The terrain read for a card, by its inputs (or the read failed), most recent last. */
-const terrains = new Map<string, HeightSampler | 'error'>();
+/**
+ * The terrain read for a card, by its inputs, most recent last. Only a read that found data is
+ * kept: a failed read, or one made before the terrain had loaded (no data anywhere), is read
+ * again the next time a card asks.
+ */
+const terrains = new Map<string, HeightSampler>();
 const MAX_TERRAINS = 32;
-function remember(key: string, got: HeightSampler | 'error'): void {
+function remember(key: string, got: HeightSampler): void {
   terrains.delete(key);
   terrains.set(key, got);
   while (terrains.size > MAX_TERRAINS) {
@@ -377,64 +379,79 @@ const askRows = (m: SurveyMeasurement) => (h: HeightSampler) => {
   allRows(m, { surface: h });
 };
 
+/** What a card's terrain rows read (`CardContext`): the surface, or still reading, or failed. */
+export interface CardTerrain {
+  surface?: HeightSampler;
+  terrainPending?: boolean;
+  terrainError?: boolean;
+}
+
 /**
- * The surface a card reads its terrain rows from (`CardContext` `surface`), or that it is still
- * being read (`terrainPending`), for the measurement panel and the Volumes view alike. Only a
- * card that shows such a row reads it (a pile's never does). The surface is the prepared one of
- * the measurement's survey (a site-wide measurement's: the date in focus, else the latest), the
- * one its dates and the report read; without one, the 3D view's terrain. The places the readouts
- * sample are read once, off the render: from the tiles, or from the 3D view a slice at a time
- * (each sample there is a raycast through the whole terrain), so a large polygon never holds the
- * window. A few places (a point, a short line) are read from the 3D view at once.
+ * The surface a card reads its terrain rows from, for the measurement panel, the Volumes view
+ * and the live card alike. Only a card that shows such a row reads it (a pile's never does). The
+ * surface is the prepared one of the measurement's survey (a site-wide measurement's: the date in
+ * focus, else the latest), the one its dates and the report read; without one, the 3D view's
+ * terrain. The places the readouts sample are read once, off the render: from the tiles, or from
+ * the 3D view a slice at a time (each sample there is a raycast through the whole terrain), so a
+ * large polygon never holds the window. A point's ground is read in the render, within
+ * `NOW_BUDGET`. `delayMs` waits before reading (the live card: a drawing that moves on first
+ * never reads); a closed card, or one whose inputs changed, stops its read.
  */
 export function useCardTerrain(
-  shown: SurveyMeasurement,
+  shown: SurveyMeasurement | null,
   items?: readonly string[],
-): { surface?: HeightSampler; terrainPending?: boolean } {
+  opts: { delayMs?: number } = {},
+): CardTerrain {
   const project = useWorkspace((s) => s.project?.id ?? null);
   const stage = useMeasure((s) => s.surface);
   const dated = useDatedSurfaces();
   const focus = useFocusCapture();
-  const site = shown.scope.kind === 'site';
-  const capture = shown.scope.kind === 'survey' ? shown.scope.capture : focus;
+  const site = shown?.scope.kind === 'site';
+  const capture = shown?.scope.kind === 'survey' ? shown.scope.capture : focus;
   const tiles =
     (dated.find((d) => d.capture === capture) ?? (site ? dated.at(-1) : undefined))?.tiles ?? null;
-  const source = !readsSurface(shown.tool, items)
-    ? null
-    : tiles
-      ? `tiles:${tiles.id}:${tiles.fingerprint}`
-      : stage
-        ? `stage:${String(stageId(stage))}`
-        : null;
-  const key = source ? `${source}|${shown.tool}|${JSON.stringify(shown.points)}` : null;
-  // a few places from the 3D view: read now, so the card shows them with its first paint
+  const source =
+    !shown || !readsSurface(shown.tool, items)
+      ? null
+      : tiles
+        ? `tiles:${tiles.id}:${tiles.fingerprint}`
+        : stage
+          ? `stage:${String(stageId(stage))}`
+          : null;
+  const key = source && shown ? `${source}|${shown.tool}|${JSON.stringify(shown.points)}` : null;
+  // a point's ground from the 3D view: read now, within the budget, for the first paint (a line
+  // or a polygon asks for more places, and is never collected in the render)
   const now = useMemo(() => {
-    if (!key || tiles || !stage || terrains.has(key)) return null;
+    if (!key || !shown || tiles || !stage || terrains.has(key)) return null;
+    if (TOOL_FAMILY[shown.tool] !== 'point') return null;
     const asked = collect(askRows(shown));
-    return asked.es.length <= STAGE_NOW ? answer(asked, sampleNow(stage, asked)) : null;
+    const zs = readNow(stage, asked);
+    return zs ? answer(asked, zs) : null;
     // `key` names every input read here
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  const [, setRead] = useState(0);
+  // this card's own last read (a kept one is in `terrains`; a failed or empty one only here)
+  const [read, setRead] = useState<{ key: string; surface?: HeightSampler } | null>(null);
   useEffect(() => {
-    if (!key || now || terrains.has(key)) return;
+    if (!key || !shown || now || terrains.has(key)) return;
     const ctl = new AbortController();
     const sample = tiles
-      ? tilesSampler(tiles, surfaceTiles(project ?? '', tiles))
+      ? tilesSampler(tiles, surfaceTiles(project ?? '', tiles), ctl.signal)
       : stage
         ? sliced(stage, { signal: ctl.signal })
         : null;
     if (!sample) return;
-    presample(askRows(shown), sample).then(
-      (s) => {
-        remember(key, s);
-        if (!ctl.signal.aborted) setRead((n) => n + 1);
+    readTerrain(askRows(shown), sample, {
+      signal: ctl.signal,
+      ...(opts.delayMs ? { delayMs: opts.delayMs } : {}),
+    }).then(
+      (r) => {
+        if (!r.empty) remember(key, r.surface);
+        if (!ctl.signal.aborted) setRead({ key, surface: r.surface });
       },
       () => {
-        // closed before it finished: nothing kept; a tile read that failed: no surface
-        if (ctl.signal.aborted) return;
-        remember(key, 'error');
-        setRead((n) => n + 1);
+        // closed or moved on before it finished: nothing to show; a read that failed: say so
+        if (!ctl.signal.aborted) setRead({ key });
       },
     );
     return () => {
@@ -444,9 +461,9 @@ export function useCardTerrain(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, now]);
   if (!key) return {};
-  const got = now ?? terrains.get(key);
-  if (got === undefined) return { terrainPending: true };
-  return got === 'error' ? {} : { surface: got };
+  const got = now ?? terrains.get(key) ?? (read?.key === key ? (read.surface ?? 'error') : null);
+  if (got === null) return { terrainPending: true };
+  return got === 'error' ? { terrainError: true } : { surface: got };
 }
 
 // ---------------------------------------------------------------- points: vs and over time

@@ -81,6 +81,8 @@ export interface CardContext {
   surface?: ReadoutContext['surface'];
   /** The surface is still being read (`useCardTerrain`): its rows read "Computing". */
   terrainPending?: boolean;
+  /** Reading the surface failed: its rows read "Could not read the surface". */
+  terrainError?: boolean;
 }
 
 /**
@@ -131,12 +133,16 @@ export function invalidPicks(m: SurveyMeasurement): boolean {
 }
 
 export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
-  // a row of the surface still being read says so, not "No surface under it"
+  // a row of the surface still being read, or that could not be read, says so, not "No surface
+  // under it"
+  const terrainNote = ctx.terrainPending
+    ? t('mcard.computing')
+    : ctx.terrainError
+      ? t('mcard.loadFailed')
+      : null;
   const text = (r: ReadoutRow) =>
     rowText(
-      ctx.terrainPending && r.value === null && SURFACE_ROWS.has(r.key)
-        ? { ...r, note: t('mcard.computing') }
-        : r,
+      terrainNote && r.value === null && SURFACE_ROWS.has(r.key) ? { ...r, note: terrainNote } : r,
       m,
       ctx.settings,
     );

@@ -71,7 +71,7 @@ function PanelCard({ m }: { m: SurveyMeasurement }) {
   const shown = useMemo(() => ({ ...m, points: drawnPoints(m, manifest) }), [m, manifest]);
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
   // the terrain under it, read off the render (the Volumes view's card reads it the same way)
-  const { surface, terrainPending } = useCardTerrain(shown, templateItems(m, all));
+  const { surface, terrainPending, terrainError } = useCardTerrain(shown, templateItems(m, all));
   const model = useMemo(
     () =>
       cardModel(shown, {
@@ -80,8 +80,9 @@ function PanelCard({ m }: { m: SurveyMeasurement }) {
         captures: captures ?? [],
         ...(surface ? { surface } : {}),
         ...(terrainPending ? { terrainPending } : {}),
+        ...(terrainError ? { terrainError } : {}),
       }),
-    [shown, settings, all, captures, surface, terrainPending],
+    [shown, settings, all, captures, surface, terrainPending, terrainError],
   );
   const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
   // a point compared with a design or a date: its difference joins the secondary line

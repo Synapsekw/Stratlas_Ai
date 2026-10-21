@@ -309,7 +309,7 @@ function DetailCard({ m, readOnly }: { m: SurveyMeasurement; readOnly: boolean }
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const shown = useMemo(() => ({ ...m, points: drawnPoints(m, manifest) }), [m, manifest]);
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
-  const { surface, terrainPending } = useCardTerrain(shown, templateItems(m, all));
+  const { surface, terrainPending, terrainError } = useCardTerrain(shown, templateItems(m, all));
   const model = useMemo(
     () =>
       cardModel(shown, {
@@ -318,8 +318,9 @@ function DetailCard({ m, readOnly }: { m: SurveyMeasurement; readOnly: boolean }
         captures: manifest?.captures ?? [],
         ...(surface ? { surface } : {}),
         ...(terrainPending ? { terrainPending } : {}),
+        ...(terrainError ? { terrainError } : {}),
       }),
-    [shown, settings, all, manifest, surface, terrainPending],
+    [shown, settings, all, manifest, surface, terrainPending, terrainError],
   );
   const slots = useMemo(() => slotsFor(m, 'detail'), [m]);
   return (

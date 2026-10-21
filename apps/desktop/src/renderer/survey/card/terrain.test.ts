@@ -1,6 +1,15 @@
 import { polygonAreas, type HeightSampler } from '@aio/survey';
 import { describe, expect, it } from 'vitest';
-import { collect, presample, readsSurface, sliced } from './terrain';
+import {
+  collect,
+  NOW_BUDGET,
+  presample,
+  readNow,
+  readsSurface,
+  readTerrain,
+  sliced,
+  type Asked,
+} from './terrain';
 
 const E0 = 512_340;
 const N0 = 2_710_250;
@@ -129,5 +138,75 @@ describe('sampling the 3D stage a slice at a time', () => {
     );
     await expect(sample(new Float64Array(100), new Float64Array(100))).rejects.toBeDefined();
     expect(calls).toBeLessThan(100);
+  });
+});
+
+describe('reading in the render', () => {
+  const places = (n: number): Asked => ({
+    es: Float64Array.from({ length: n }, (_, k) => k),
+    ns: new Float64Array(n),
+  });
+
+  it('reads a few places now, and nothing when more are asked than the budget', () => {
+    let calls = 0;
+    const h: HeightSampler = {
+      heightAt: () => {
+        calls++;
+        return 4;
+      },
+    };
+    expect(Array.from(readNow(h, places(1)) ?? [])).toEqual([4]);
+    calls = 0;
+    expect(readNow(h, places(NOW_BUDGET.places + 1))).toBeNull();
+    expect(calls).toBe(0);
+  });
+
+  it('never holds the render past its time budget plus one read', () => {
+    // 3D raycasts of 5 ms: the budget of 8 ms allows two, then gives up
+    let calls = 0;
+    const h: HeightSampler = {
+      heightAt: () => {
+        calls++;
+        busy(5);
+        return 1;
+      },
+    };
+    const t0 = performance.now();
+    expect(readNow(h, places(NOW_BUDGET.places))).toBeNull();
+    const ms = performance.now() - t0;
+    expect(calls).toBeLessThanOrEqual(2);
+    expect(ms).toBeLessThan(NOW_BUDGET.ms + 5 + 4);
+  });
+});
+
+describe('reading off the render', () => {
+  it('says when the surface had no data anywhere (the terrain not loaded yet)', async () => {
+    const none = await readTerrain(
+      (h) => polygonAreas(toe, h),
+      (es) => Promise.resolve(new Float64Array(es.length).fill(NaN)),
+    );
+    expect(none.empty).toBe(true);
+    const some = await readTerrain(
+      (h) => polygonAreas(toe, h),
+      (es, ns) =>
+        Promise.resolve(Float64Array.from(es, (e, k) => pile.heightAt(e, ns[k] ?? 0) ?? NaN)),
+    );
+    expect(some.empty).toBe(false);
+  });
+
+  it('a card closed before the read starts reads nothing', async () => {
+    const ctl = new AbortController();
+    let asked = 0;
+    const read = readTerrain(
+      (h) => polygonAreas(toe, h),
+      (es) => {
+        asked += es.length;
+        return Promise.resolve(new Float64Array(es.length));
+      },
+      { signal: ctl.signal },
+    );
+    ctl.abort();
+    await expect(read).rejects.toBeDefined();
+    expect(asked).toBe(0);
   });
 });

@@ -55,8 +55,15 @@ export async function withSurface<T>(
   return compute(await presample(compute, tilesSampler(s, fetchTile)));
 }
 
-/** Many places of one prepared surface at once, with the engine's sampler (NaN: no data). */
-export function tilesSampler(s: HeightTiles, fetchTile: FetchTile): SampleMany {
+/**
+ * Many places of one prepared surface at once, with the engine's sampler (NaN: no data). An abort
+ * (the card closed) stops reading tiles.
+ */
+export function tilesSampler(
+  s: HeightTiles,
+  fetchTile: FetchTile,
+  signal?: AbortSignal,
+): SampleMany {
   const g = new TileSurface(s.id, s, fetchTile);
   return (es, ns) =>
     bilinear(
@@ -65,6 +72,7 @@ export function tilesSampler(s: HeightTiles, fetchTile: FetchTile): SampleMany {
       ns.map((n) => n - s.originN),
       0,
       0,
+      signal,
     );
 }
 

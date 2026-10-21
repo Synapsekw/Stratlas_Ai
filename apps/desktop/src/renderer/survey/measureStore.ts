@@ -992,7 +992,11 @@ export function liveReading(
     points: pts,
     createdAt: '',
   });
-  const row = primaryRow(m, { surface: s.surface ?? undefined }, tool.template?.items);
+  // on each cursor move: the 3D view's terrain only under a point (one raycast). A line's or a
+  // polygon's would be thousands, and its primary row is not a terrain row (a berm's crest reads
+  // its vertices here; its card reads the terrain once the pointer rests)
+  const surface = m.family === 'point' ? (s.surface ?? undefined) : undefined;
+  const row = primaryRow(m, { surface }, tool.template?.items);
   // formatted as the tree, the card and the view labels format it (site angles and locale)
   return row ? rowText(row, m, s.settings) : null;
 }

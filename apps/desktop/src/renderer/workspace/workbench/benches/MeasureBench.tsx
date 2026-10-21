@@ -38,6 +38,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useShell } from '../../../shell';
 import { cardModel, MeasureCard, TOOL_ICON } from '../../../survey/card';
+import { useCardTerrain } from '../../../survey/card/slots';
 import { openCompareDialog } from '../../../survey/compareStore';
 import { DesignsTool } from '../../../survey/Designs';
 import { ExportTool } from '../../../survey/ExportDialog';
@@ -234,37 +235,53 @@ function PendingCard() {
   );
 }
 
+/** How long the pointer rests before the live card reads the terrain under the drawing. */
+const LIVE_TERRAIN_DELAY_MS = 250;
+
 /** The live tool on top of the bench: its reading, its points and Undo, Stop and Save (D13). */
 function LiveCard() {
   const t = useT();
   const tool = useMeasure((s) => s.tool);
   const draw = useMeasure((s) => s.draw);
   const settings = useMeasure((s) => s.settings);
-  const surface = useMeasure((s) => s.surface);
   const captures = useWorkspace((s) => s.project?.manifest.captures);
   const units = settings.units;
   const locale = settings.locale ?? localeOf(units.distance);
   const angles = settings.angles ?? DEFAULT_ANGLES;
   // the measurement as it would be saved now (the cursor as its next point), on the shared card
-  const model = useMemo(() => {
+  const live = useMemo(() => {
     // a telecom tool's card is TelecomTools' own: nothing to build here on each cursor move
     if (!tool || !draw || isTelecomTool(tool.tool)) return null;
     const pts = draw.cursor && !draw.done ? [...draw.points, draw.cursor] : draw.points;
-    const m = measurementFrom(tool.template ?? tool.tool, {
+    return measurementFrom(tool.template ?? tool.tool, {
       id: 'live',
       label: tool.template?.name ?? TOOL_LABELS[tool.tool],
       scope: { kind: 'site' },
       points: pts,
       createdAt: '',
     });
-    const card = cardModel(m, {
+  }, [tool, draw]);
+  // the terrain under it only when the card shows a terrain row (a pile's never does), read as
+  // the panel reads it, once the pointer rests: never on each cursor move
+  const { surface, terrainPending, terrainError } = useCardTerrain(
+    live && live.points.length >= MIN_POINTS[live.family] ? live : null,
+    tool?.template?.items,
+    { delayMs: LIVE_TERRAIN_DELAY_MS },
+  );
+  const model = useMemo(() => {
+    if (!live) return null;
+    const card = cardModel(live, {
       settings,
-      templates: tool.template ? [tool.template] : [],
+      templates: tool?.template ? [tool.template] : [],
       captures: captures ?? [],
       ...(surface ? { surface } : {}),
+      ...(terrainPending ? { terrainPending } : {}),
+      ...(terrainError ? { terrainError } : {}),
     });
-    return pts.length < MIN_POINTS[m.family] ? { ...card, primary: null, secondary: '' } : card;
-  }, [tool, draw, settings, surface, captures]);
+    return live.points.length < MIN_POINTS[live.family]
+      ? { ...card, primary: null, secondary: '' }
+      : card;
+  }, [live, tool, settings, surface, terrainPending, terrainError, captures]);
   if (!tool || !draw) return null;
   // the telecom tools keep their own card: what to pick, the picks so far and the reading
   if (isTelecomTool(tool.tool)) {

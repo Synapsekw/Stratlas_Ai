@@ -15,6 +15,8 @@ const history = vi.hoisted(() => ({
   rows: [] as { capture: string; label: string; date: string; z: number | null }[],
   asked: [] as [number, number][],
   fail: false,
+  /** Reading a prepared surface's tiles for the terrain rows fails. */
+  tilesFail: false,
   /** Heights of a surface at the point, by its tile id. */
   heights: new Map<string, number>(),
 }));
@@ -27,6 +29,11 @@ vi.mock('./card/pointHistory', async (orig) => ({
       : Promise.resolve(history.rows);
   },
   heightAt: (s: { id: string }) => Promise.resolve(history.heights.get(s.id) ?? null),
+  // a prepared surface's tiles under a card's terrain rows: a read that fails, or flat at 7 m
+  tilesSampler: () => (es: Float64Array) =>
+    history.tilesFail
+      ? Promise.reject(new Error('tile read failed'))
+      : Promise.resolve(new Float64Array(es.length).fill(7)),
 }));
 
 import type { HeightTiles } from '@aio/schema';
@@ -279,16 +286,99 @@ describe('the terrain under a large polygon', () => {
   });
   /** The 3D stage's height picker: counts its raycasts. */
   let rays = 0;
+  /** The terrain's height (null: its mesh has not loaded yet). */
+  let ground: number | null = 3;
   beforeEach(() => {
     rays = 0;
+    ground = 3;
     measureStore.setState({
       surface: {
         heightAt: () => {
           rays++;
-          return 3;
+          return ground;
         },
       },
     });
+  });
+  afterEach(() => {
+    history.tilesFail = false;
+  });
+  /** Let the card's terrain read finish (it reads in slices, off the render). */
+  const settle = async (label: string) => {
+    for (let i = 0; i < 200 && cell(label) === 'Computing'; i++)
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+  };
+  const mount = () => {
+    act(() => {
+      root = createRoot(host);
+      root.render(<MeasurementPanel />);
+    });
+  };
+
+  it("never reads a line's terrain in the render", () => {
+    measureStore.setState({
+      file: {
+        schema: 'aio.measurements/1',
+        measurements: [
+          {
+            ...spot,
+            family: 'line',
+            tool: 'distance',
+            scope: { kind: 'site' },
+            points: [
+              [1000, 2000, 30],
+              [1060, 2000, 30],
+            ],
+          },
+        ],
+      },
+    });
+    mount();
+    // 241 places along 60 m: none read while the card renders, all of them a slice at a time after
+    expect(rays).toBe(0);
+    expect(cell('Terrain length')).toBe('Computing');
+  });
+
+  it('reads the terrain again once it has loaded, instead of keeping "no surface"', async () => {
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [polygon('area')] },
+    });
+    ground = null;
+    mount();
+    await settle('Terrain area');
+    expect(cell('Terrain area')).toBe('No surface under it');
+    act(() => root?.unmount());
+    // the mesh has loaded now: the card opened again reads it
+    ground = 3;
+    mount();
+    await settle('Terrain area');
+    expect(cell('Terrain area')).toBe(cell('Horizontal area'));
+  });
+
+  it('says it could not read the surface when the read fails, not that there is none', async () => {
+    qaStore.setState({ surfaces: [tiles('sjun-fail', 'jun')] });
+    history.tilesFail = true;
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [polygon('area')] },
+    });
+    mount();
+    await settle('Terrain area');
+    expect(cell('Terrain area')).toBe('Could not read the surface');
+    // the prepared surface is read, not the 3D view
+    expect(rays).toBe(0);
+  });
+
+  it("reads a site-wide area's terrain from the latest prepared surface", async () => {
+    qaStore.setState({ surfaces: [tiles('sjun-ok', 'jun')] });
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [polygon('area')] },
+    });
+    mount();
+    await settle('Terrain area');
+    expect(cell('Terrain area')).toBe(cell('Horizontal area'));
+    expect(rays).toBe(0);
   });
 
   it("opens a pile's card without asking the 3D view for any terrain", async () => {

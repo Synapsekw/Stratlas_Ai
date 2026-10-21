@@ -524,3 +524,73 @@ describe('unsaved changes (D18)', () => {
     });
   });
 });
+
+describe('the live card and the terrain under a drawing', () => {
+  /** The 3D view's height picker: counts its raycasts. */
+  let rays = 0;
+  const move = (raw: SitePoint) => {
+    act(() => {
+      drawEvent({ type: 'move', raw, screen: { x: 2, y: 2 }, shift: false }, env);
+    });
+  };
+  /** Let the pointer rest past the live card's wait, and the read finish. */
+  const rest = async () => {
+    for (let i = 0; i < 40; i++)
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+  };
+  beforeEach(() => {
+    rays = 0;
+    measureStore.setState({
+      surface: {
+        heightAt: () => {
+          rays++;
+          return 2;
+        },
+      },
+    });
+  });
+  afterEach(() => {
+    measureStore.setState({ surface: null });
+  });
+
+  /** Draw a 90 m square's corners, then move the pointer about. */
+  const drawSquare = () => {
+    click([0, 0, 0]);
+    click([90, 0, 0]);
+    click([90, 90, 0]);
+    for (const x of [10, 20, 30, 40]) move([x, 95, 0]);
+  };
+
+  it('drawing a pile reads no terrain, while moving or at rest', async () => {
+    render();
+    act(() => {
+      startTool('volume');
+    });
+    drawSquare();
+    expect(rays).toBe(0);
+    await rest();
+    expect(rays).toBe(0);
+    act(() => {
+      stopTool();
+    });
+  });
+
+  it("an area's terrain row is read once the pointer rests, never on each cursor move", async () => {
+    render();
+    act(() => {
+      startTool('area');
+    });
+    drawSquare();
+    // four cursor moves over a 90 m polygon: not one raycast in the render or on the move
+    expect(rays).toBe(0);
+    await rest();
+    // read once, for where the pointer rests: within the cell budget
+    expect(rays).toBeGreaterThan(0);
+    expect(rays).toBeLessThanOrEqual(201 * 201);
+    act(() => {
+      stopTool();
+    });
+  });
+});

@@ -90,15 +90,67 @@ export async function presample(
   return answer(asked, zs);
 }
 
-/** Read every place with a synchronous sampler at once (a few places: no slicing needed). */
-export function sampleNow(h: HeightSampler, asked: Asked): Float64Array {
-  return Float64Array.from(asked.es, (e, k) => h.heightAt(e, asked.ns[k] ?? NaN) ?? NaN);
+/** What a card may read from the 3D view in its render: a few places, a few milliseconds. */
+export const NOW_BUDGET = { places: 8, ms: 8 };
+
+/**
+ * Read a few places with a synchronous sampler now, in the render, so a point's card shows its
+ * ground with its first paint: nothing when more than `budget.places` are asked, and no further
+ * read once `budget.ms` has passed (the render holds at most the budget plus one read). Null
+ * unless every place was read; the caller then reads them off the render (`sliced`).
+ */
+export function readNow(
+  h: HeightSampler,
+  asked: Asked,
+  budget: { places: number; ms: number } = NOW_BUDGET,
+): Float64Array | null {
+  const n = asked.es.length;
+  if (n > budget.places) return null;
+  const out = new Float64Array(n);
+  const start = performance.now();
+  for (let k = 0; k < n; k++) {
+    if (performance.now() - start >= budget.ms) return null;
+    out[k] = h.heightAt(asked.es[k] ?? NaN, asked.ns[k] ?? NaN) ?? NaN;
+  }
+  return out;
+}
+
+/** A terrain read: the sampler answering it, and whether the surface had no data at any place. */
+export interface TerrainRead {
+  surface: HeightSampler;
+  empty: boolean;
 }
 
 const nextTask = () =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   });
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/**
+ * `presample` off the render: it starts in a later task (after `delayMs`, so a drawing that
+ * moves on first never reads), records the places, reads them with `sample` and answers them.
+ * An abort before or during the read rejects.
+ */
+export async function readTerrain(
+  ask: (h: HeightSampler) => void,
+  sample: SampleMany,
+  opts: { signal?: AbortSignal; delayMs?: number } = {},
+): Promise<TerrainRead> {
+  await (opts.delayMs ? wait(opts.delayMs) : nextTask());
+  opts.signal?.throwIfAborted();
+  const asked = collect(ask);
+  const zs = asked.es.length > 0 ? await sample(asked.es, asked.ns) : new Float64Array();
+  opts.signal?.throwIfAborted();
+  return {
+    surface: answer(asked, zs),
+    empty: asked.es.length > 0 && Array.from(zs).every((z) => !Number.isFinite(z)),
+  };
+}
 
 /**
  * Many places from a synchronous sampler (the 3D stage's raycasts), a slice of at most about
