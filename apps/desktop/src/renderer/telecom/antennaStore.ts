@@ -125,6 +125,8 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
   watchJobs();
   const seq = ++loadSeq;
   const same = get().projectId === projectId && get().root === root;
+  // a read error's message goes on the next good read, even when no file was there to keep
+  const wasError = get().status === 'error';
   const previousRunId = same ? (get().file?.run.id ?? null) : null;
   if (same) set({ status: get().file ? get().status : 'loading' });
   // the reveal count carries on: the inventory section tells a new reveal by it; the labels
@@ -159,7 +161,7 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
     file,
     readOnly: r.value.readOnly,
     // a message on screen (a refused write, a failed run) stays; a read error's goes
-    message: same && get().status !== 'error' ? get().message : null,
+    message: same && !wasError && get().status !== 'error' ? get().message : null,
     selected: selected && ids.has(selected) ? selected : null,
     hidden: Object.fromEntries(
       Object.keys(hidden)

@@ -229,6 +229,16 @@ describe('loading', () => {
     });
   });
 
+  it('clears a first read error once a later read of the same project succeeds', async () => {
+    bridgeCall.mockResolvedValueOnce({ ok: false, error: 'Disk gone.' });
+    await loadAntennas('p1', '/p');
+    expect(state()).toMatchObject({ status: 'error', message: 'Disk gone.', file: null });
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+    expect(state()).toMatchObject({ status: 'ready', message: null });
+    expect(state().file?.units.length).toBe(3);
+  });
+
   it('forgets a selection whose unit is gone after a reload', async () => {
     h.disk.file = sampleFile();
     await loadAntennas('p1', '/p');
