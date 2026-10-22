@@ -86,6 +86,13 @@ Each is our call (builder check, 22 Oct). They take precedence over anything abo
 5. **Which cloud, and when AI runs.** Flagging works on the cloud layer and survey date active in the tower view, with that layer's `heightOffsetM`. AI labelling runs automatically per flag only when AI labelling is already enabled with consent; otherwise the kind is `other` until the next labelling run. The measuring job never touches the network.
 6. **Rejecting and deleting.** A rejected flagged unit is kept (status `rejected`, shown under the Rejected filter). Only an explicit **Delete**, offered on flagged units alone, removes one.
 
+## Founder answers (22 Oct)
+
+They take precedence over everything above.
+
+1. **Flagging needs a prior detection run** (it uses that run's tower axis): accepted. With no inventory the **Flag antenna** tool is disabled with the message "Run antenna detection first".
+2. **Reset to measured.** Next to each typed value on the antenna card there is a **Reset to measured** control. It clears the person's value so the measured one shows again, and the box is rebuilt from the values that remain. It is hidden when there is no measured value to go back to (a not-measured unit, or a value nothing ever measured). To make this possible, typing over a measured value keeps that measured value in the unit (`measured`), and a redraw refreshes it.
+
 ## Left to the builder
 
 - How the point selection reaches Python, and the nearest-cluster method.
