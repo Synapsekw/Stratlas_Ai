@@ -119,4 +119,10 @@ describe('reading the inventory for the gate', () => {
       'unreadable',
     );
   });
+
+  it('is unreadable when the inventory path is there but cannot be accessed', async () => {
+    const root = project();
+    mkdirSync(join(root, 'telecom', 'antennas.json'), { recursive: true });
+    expect(await readAntennaInventory('telecom.antennas', root)).toBe('unreadable');
+  });
 });

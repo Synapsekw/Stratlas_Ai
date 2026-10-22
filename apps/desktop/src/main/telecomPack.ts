@@ -2,7 +2,8 @@
  * The `telecom.antennas` job needs the processing tools of pack 0.14.0 or later. `jobs:start` asks
  * here first, so an older pack gets the update message, not a failed job (as `evidencePack.ts`).
  */
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { resolveInside } from '@aio/project/fs';
 import {
   ANTENNAS_FILE,
@@ -28,11 +29,25 @@ export async function readAntennaInventory(
   if (!project || (pipeline !== 'telecom.antennas' && pipeline !== 'telecom.flag')) return null;
   try {
     const at = await resolveInside(project, ANTENNAS_FILE);
-    if (!at.ok) return at.status === 404 ? null : 'unreadable';
+    if (!at.ok) {
+      if (at.status !== 404) return 'unreadable';
+      // resolveInside says 404 for any failure: only a path that is truly not there is absent
+      return (await isAbsent(join(project, ANTENNAS_FILE))) ? null : 'unreadable';
+    }
     const r = AntennasFile.safeParse(JSON.parse(await readFile(at.path, 'utf8')));
     return r.success ? r.data : 'unreadable';
   } catch {
     return 'unreadable';
+  }
+}
+
+/** True only when nothing is at `path` (ENOENT); a path that is there or cannot be checked is not. */
+async function isAbsent(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return false;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT';
   }
 }
 
