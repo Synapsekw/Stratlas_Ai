@@ -190,9 +190,11 @@ def _inferred_depth(front: Face, w: float, h: float, crown: np.ndarray, tree: cK
     return float(min(MAX_D, np.percentile(t, 99) / 0.99))
 
 
-def _group_unit(
+def unit_from_faces(
     group: list[Face], axis_point: np.ndarray, crown: np.ndarray, tree: cKDTree | None = None
 ) -> Unit:
+    """One box (no kind yet) from a front face and the faces paired with it; with the front alone,
+    its depth is inferred from the `crown` points behind it (`_inferred_depth`)."""
     tallest = max(f.height for f in group)
     n0 = group[0].normal
     fronts = [f for f in group if f.height >= FRONT_MIN_HEIGHT_SHARE * tallest]
@@ -225,6 +227,9 @@ def _group_unit(
         support=int(sum(f.support for f in group)),
         dish=None,
     )
+
+
+_group_unit = unit_from_faces
 
 
 def _inside(p: np.ndarray, u: Unit, margin: float) -> bool:
@@ -563,7 +568,7 @@ def pair_faces(
                 group[0] = pair[0]
                 group.append(pair[1])
                 used.add(j)
-        units.append(_group_unit(group, axis_point, crown, tree))
+        units.append(unit_from_faces(group, axis_point, crown, tree))
     dropped: list[tuple[str, Unit]] = []
     boxes: list[Unit] = []
     for u in units:
