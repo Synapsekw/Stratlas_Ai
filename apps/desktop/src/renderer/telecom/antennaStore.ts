@@ -14,10 +14,14 @@ import {
   type AntennaUserFields,
   type IpcResponse,
   type JobRecord,
+  type Vec3,
 } from '@aio/schema';
+import type { PointSelection } from '@aio/engine';
 import { t } from '@aio/ui';
 import { createStore, useStore } from 'zustand';
 import { bridge, jobs } from '../shell';
+import { flagParams, newFlagId } from './antennaFlag';
+import { boxWithValues, canReset, withTyped, withoutTyped, type TypedKey } from './antennaTyped';
 import { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode } from './antennaVisibility';
 
 export { isAntennaDrawn, type AntennaFilter, type AntennaLabelMode };
@@ -50,6 +54,10 @@ export interface AntennaState {
   reveal: number;
   /** Which labels the 3D view shows; for the session only, never written to the file. */
   labelMode: AntennaLabelMode;
+  /** The flag tool: null when off; `unit` is the unit being redrawn, null for a new one. */
+  flagging: { unit: string | null } | null;
+  /** The `telecom.flag` job going, and the unit it adds or redraws. */
+  flagJob: { id: string; unit: string } | null;
 }
 
 export interface AiPreview {
@@ -78,6 +86,8 @@ const initial = (): AntennaState => ({
   aiNote: null,
   reveal: 0,
   labelMode: 'all',
+  flagging: null,
+  flagJob: null,
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -95,6 +105,12 @@ const get = () => antennaStore.getState();
 let loadSeq = 0;
 /** A finished run's AI offer, made once the inventory read after it is in (whichever read). */
 let offerAfterLoad: { projectId: string; before: string | null } | null = null;
+/** A finished flag job's follow-up (select, box, AI offer), made once the read after it is in. */
+let flagAfterLoad: { projectId: string; unit: string; redraw: boolean } | null = null;
+/** A `telecom.flag` start waiting for its job id: a second start is refused meanwhile. */
+let flagStarting = false;
+/** Whether the flag job going redraws a unit that exists (one flag job at a time). */
+let flagRedraw = false;
 /** Writes run one after the other so a quick second click builds on the first. */
 let queue: Promise<void> = Promise.resolve();
 
@@ -154,6 +170,11 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
     offerAfterLoad = null;
     offerAiLabels(projectId, before);
   }
+  if (flagAfterLoad?.projectId === projectId) {
+    const after = flagAfterLoad;
+    flagAfterLoad = null;
+    void afterFlag(after.projectId, after.unit, after.redraw);
+  }
 }
 
 // ---------------------------------------------------------------- the job
@@ -170,6 +191,7 @@ function watchJobs(): void {
 }
 
 function onJobs(list: readonly JobRecord[]): void {
+  onFlagJob(list);
   const { jobId, running } = get();
   if (!jobId || !running) return;
   const job = list.find((j) => j.id === jobId);
@@ -196,6 +218,34 @@ function onJobs(list: readonly JobRecord[]): void {
     case 'cancelled':
     case 'interrupted':
       set({ running: false, jobId: null });
+      return;
+    default:
+      return;
+  }
+}
+
+/** The `telecom.flag` job, watched beside detection: neither ends the other. */
+function onFlagJob(list: readonly JobRecord[]): void {
+  const { flagJob } = get();
+  if (!flagJob) return;
+  const job = list.find((j) => j.id === flagJob.id);
+  if (!job) return;
+  switch (job.status) {
+    case 'done': {
+      const { projectId, root } = get();
+      set({ flagJob: null, message: null });
+      if (projectId && root) {
+        flagAfterLoad = { projectId, unit: flagJob.unit, redraw: flagRedraw };
+        void loadAntennas(projectId, root);
+      }
+      return;
+    }
+    case 'failed':
+      set({ flagJob: null, message: job.error ?? null });
+      return;
+    case 'cancelled':
+    case 'interrupted':
+      set({ flagJob: null });
       return;
     default:
       return;
@@ -230,6 +280,105 @@ export async function runDetection(opts?: { towerHint?: [number, number] }): Pro
   // the job may already have finished by the time the answer arrives
   const store: Partial<typeof jobs> = jobs;
   if (store.getState) onJobs(store.getState().jobs);
+}
+
+// ---------------------------------------------------------------- flagging
+
+/** Whether a flag job is going or starting. */
+const flagBusy = (): boolean => flagStarting || get().flagJob !== null;
+
+/**
+ * Turn the flag tool on: for a new unit, or with `unitId` to redraw that unit's outline. Refused
+ * while detection runs, read-only, with no inventory yet (flagging uses its run) and while a flag
+ * job goes.
+ */
+export function beginFlag(unitId?: string): void {
+  const s = get();
+  if (s.running || s.readOnly || !s.file || !s.root || flagBusy()) return;
+  if (unitId !== undefined && !s.file.units.some((u) => u.id === unitId)) return;
+  set({ flagging: { unit: unitId ?? null } });
+}
+
+export function endFlag(): void {
+  set({ flagging: null });
+}
+
+/**
+ * The outline is closed: start `telecom.flag` on the kept points of cloud layer `layer` (a new
+ * id, or the redrawn unit's) and turn the tool off. The job's end reloads (`onFlagJob`).
+ */
+export async function startFlag(o: {
+  sel: PointSelection;
+  bounds: { min: Vec3; max: Vec3 };
+  anchor: Vec3;
+  layer: string;
+}): Promise<void> {
+  const s = get();
+  const tool = s.flagging;
+  set({ flagging: null });
+  if (!tool || s.running || s.readOnly || !s.file || !s.root || flagBusy()) return;
+  watchJobs();
+  const redraw = tool.unit !== null;
+  const unit = tool.unit ?? newFlagId();
+  const root = s.root;
+  flagStarting = true;
+  set({ message: null });
+  const r = await bridge
+    .call('jobs:start', {
+      pipeline: 'telecom.flag',
+      project: root,
+      params: flagParams({
+        unit,
+        redraw,
+        layer: o.layer,
+        sel: o.sel,
+        bounds: o.bounds,
+        anchor: o.anchor,
+      }),
+    })
+    .finally(() => {
+      flagStarting = false;
+    });
+  if (get().root !== root) return;
+  if (!r.ok || !r.value.ok) {
+    set({ message: !r.ok ? r.error : r.value.ok ? '' : r.value.error });
+    return;
+  }
+  flagRedraw = redraw;
+  set({ flagJob: { id: r.value.job.id, unit } });
+  // the job may already have finished by the time the answer arrives
+  const store: Partial<typeof jobs> = jobs;
+  if (store.getState) onJobs(store.getState().jobs);
+}
+
+/** A typed value of the measured geometry (the ones that move the box). */
+const TYPED_KEYS: readonly TypedKey[] = [
+  'azimuthGridDeg',
+  'downtiltDeg',
+  'centreHeightM',
+  'widthM',
+  'heightM',
+  'depthM',
+];
+
+/**
+ * After a finished flag job's read: select and reveal the unit; after a redraw that kept typed
+ * values, rebuild its box from them once (the job measured a new box, the typed values win); then
+ * offer AI labels for that unit alone when the project has them on.
+ */
+async function afterFlag(projectId: string, id: string, redraw: boolean): Promise<void> {
+  const found = get().file?.units.find((u) => u.id === id);
+  if (!found) return;
+  revealAntenna(id);
+  if (redraw && TYPED_KEYS.some((k) => found[k]?.basis === 'user'))
+    await change((file) => ({
+      ...file,
+      units: file.units.map((u) => (u.id === id ? { ...u, box: boxWithValues(u) } : u)),
+    }));
+  if (get().projectId !== projectId || !getAiLabelPref(projectId)) return;
+  const u = get().file?.units.find((x) => x.id === id);
+  if (!u || u.kindBasis === 'user' || u.status === 'rejected') return;
+  previewAiLabels(projectId, [id]);
 }
 
 /** Drop the "click the tower" request. */
@@ -290,6 +439,50 @@ export function patchUnitUser(id: string, fields: AntennaUserFields): Promise<vo
         return { ...u, user };
       }),
     };
+  });
+}
+
+/** Change one unit; nothing is written when it is not in the file or `edit` returns null. */
+function changeUnit(id: string, edit: (u: AntennaUnit) => AntennaUnit | null): Promise<void> {
+  return change((file) => {
+    const u = file.units.find((x) => x.id === id);
+    const next = u ? edit(u) : null;
+    if (!next) return null;
+    return { ...file, units: file.units.map((x) => (x.id === id ? next : x)) };
+  });
+}
+
+/** A value the person typed: basis `user`, the measured one kept, the box moved. */
+export function setTypedValue(id: string, key: TypedKey, value: number): Promise<void> {
+  return changeUnit(id, (u) => withTyped(u, key, value));
+}
+
+/** Reset to measured; nothing is written when there is no measured value to go back to. */
+export function resetTypedValue(id: string, key: TypedKey): Promise<void> {
+  return changeUnit(id, (u) => (canReset(u, key) ? withoutTyped(u, key) : null));
+}
+
+/** The kind the person picks: basis `user`, any AI label dropped. */
+export function setUnitKind(id: string, kind: AntennaKind): Promise<void> {
+  return changeUnit(id, (u) => {
+    const next: AntennaUnit = { ...u, kind, kindBasis: 'user' };
+    delete next.ai;
+    return next;
+  });
+}
+
+/** Delete a unit a person flagged; a detected unit is only ever rejected. */
+export async function deleteFlaggedUnit(id: string): Promise<void> {
+  await change((file) =>
+    file.units.some((u) => u.id === id && u.origin === 'flagged')
+      ? { ...file, units: file.units.filter((u) => u.id !== id) }
+      : null,
+  );
+  const { file, selected, hidden } = get();
+  if (file?.units.some((u) => u.id === id)) return;
+  set({
+    selected: selected === id ? null : selected,
+    hidden: Object.fromEntries(Object.entries(hidden).filter(([k]) => k !== id)),
   });
 }
 
@@ -500,6 +693,11 @@ function offerAiLabels(projectId: string, before: string | null): void {
     .map((u) => u.id)
     .slice(0, MAX_AI_UNITS);
   if (unitIds.length === 0) return;
+  previewAiLabels(projectId, unitIds);
+}
+
+/** Ask for the send preview of `unitIds`; the person's yes sends them (`sendAiLabels`). */
+function previewAiLabels(projectId: string, unitIds: string[]): void {
   void bridge.call('ai:antennaLabelPreview', { projectId, unitIds }).then((r) => {
     if (get().projectId !== projectId) return;
     const v = unwrap(r);

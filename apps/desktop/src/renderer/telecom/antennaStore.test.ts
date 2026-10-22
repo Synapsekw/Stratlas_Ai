@@ -6,13 +6,22 @@ import {
   TOWER_HINT_NEEDED,
   type AntennaKind,
   type AntennaStatus,
+  type AntennaUnit,
   type JobRecord,
 } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { boxWithValues, userValue } from './antennaTyped';
 import {
   antennaStore,
   applyAiLabels,
+  beginFlag,
   cancelHint,
+  deleteFlaggedUnit,
+  endFlag,
+  resetTypedValue,
+  setTypedValue,
+  setUnitKind,
+  startFlag,
   cycleLabelMode,
   decideAntenna,
   getAiLabelPref,
@@ -66,6 +75,20 @@ vi.mock('../shell', async () => {
           h.disk.file = structuredClone(req.file) as AntennasFile;
           return { ok: true, value: { ok: true } };
         }
+        if (channel === 'ai:antennaLabelPreview')
+          return {
+            ok: true,
+            value: {
+              ok: true,
+              provider: 'prov',
+              model: 'm1',
+              cloud: true,
+              photosAllowed: true,
+              crops: [],
+              missing: [],
+              token: 'tok',
+            },
+          };
         if (channel === 'jobs:start')
           return {
             ok: true,
@@ -154,6 +177,10 @@ beforeEach(() => {
     note: null,
     cloudLayer: null,
     labelMode: 'all',
+    aiPreview: null,
+    aiNote: null,
+    flagging: null,
+    flagJob: null,
   });
   localStorage.clear();
 });
@@ -850,5 +877,251 @@ describe('labels mode', () => {
     await loadAntennas('p2', '/q');
     expect(state().labelMode).toBe('off');
     expect(h.calls.filter(([c]) => c === 'telecom:writeAntennas')).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------- flagging
+
+const flagSel = {
+  sel: {
+    shape: 'lasso' as const,
+    polygon: [
+      [0, 0],
+      [0.1, 0],
+      [0.1, 0.1],
+    ] as [number, number][],
+    viewProj: Array.from({ length: 16 }, (_, i) => (i % 5 === 0 ? 1 : 0)),
+  },
+  bounds: {
+    min: [0, 0, 0] as [number, number, number],
+    max: [1, 1, 1] as [number, number, number],
+  },
+  anchor: [0.5, 0.5, 0.5] as [number, number, number],
+  layer: 'cloud-7',
+};
+
+/** The sample file with one more unit: the first one as a flagged unit `id`. */
+function withFlagged(id: string, extra: Partial<AntennaUnit> = {}): AntennasFile {
+  const f = sampleFile();
+  const base = need(f.units[0]);
+  return {
+    ...f,
+    units: [
+      ...f.units,
+      { ...base, id, name: 'F1', origin: 'flagged', status: 'accepted', ...extra },
+    ],
+  };
+}
+
+const previews = () => h.calls.filter(([c]) => c === 'ai:antennaLabelPreview');
+
+describe('flagging', () => {
+  beforeEach(async () => {
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+  });
+
+  it('beginFlag is refused while detection runs', async () => {
+    await runDetection();
+    beginFlag();
+    expect(state().flagging).toBeNull();
+    emitJob({ id: 'j1', status: 'cancelled' });
+    beginFlag();
+    expect(state().flagging).toEqual({ unit: null });
+    endFlag();
+    expect(state().flagging).toBeNull();
+    beginFlag('ant-a3');
+    expect(state().flagging).toEqual({ unit: 'ant-a3' });
+  });
+
+  it('beginFlag is refused read-only, with no inventory, and while a flag job runs', async () => {
+    h.disk.readOnly = true;
+    await loadAntennas('p1', '/p');
+    beginFlag();
+    expect(state().flagging).toBeNull();
+    h.disk = { file: null, readOnly: false };
+    await loadAntennas('p1', '/p');
+    beginFlag();
+    expect(state().flagging).toBeNull();
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+    beginFlag();
+    await startFlag(flagSel);
+    beginFlag();
+    expect(state().flagging).toBeNull();
+  });
+
+  it('startFlag sends telecom.flag with the selection and ends the tool', async () => {
+    beginFlag();
+    await startFlag(flagSel);
+    const start = need(starts()[0])[1] as {
+      pipeline: string;
+      project: string;
+      params: { unit: string; redraw?: true; cloud: unknown; selection: unknown };
+    };
+    expect(start.pipeline).toBe('telecom.flag');
+    expect(start.project).toBe('/p');
+    expect(start.params.unit).toMatch(/^ant-f-[a-z0-9]+-[a-z0-9]{4}$/);
+    expect(start.params.redraw).toBeUndefined();
+    expect(start.params.cloud).toEqual({ layer: 'cloud-7' });
+    expect(start.params.selection).toEqual({
+      polygon: flagSel.sel.polygon,
+      viewProj: flagSel.sel.viewProj,
+      bounds: flagSel.bounds,
+      anchor: flagSel.anchor,
+    });
+    expect(state().flagging).toBeNull();
+    expect(state().flagJob).toEqual({ id: 'j1', unit: start.params.unit });
+  });
+
+  it('a redraw keeps the unit id', async () => {
+    beginFlag('ant-a3');
+    await startFlag(flagSel);
+    expect(lastStart().params).toMatchObject({ unit: 'ant-a3', redraw: true });
+  });
+
+  it('a flag job and the detection job do not end each other', async () => {
+    beginFlag();
+    await startFlag(flagSel);
+    expect(state().flagJob?.id).toBe('j1');
+    await runDetection();
+    expect(state().jobId).toBe('j2');
+    jobsStore.setState({
+      jobs: [
+        { id: 'j1', status: 'running' },
+        { id: 'j2', status: 'failed', error: 'Out of memory.' },
+      ],
+    });
+    expect(state().running).toBe(false);
+    expect(state().flagJob?.id).toBe('j1');
+    jobsStore.setState({ jobs: [{ id: 'j1', status: 'cancelled' }] });
+    expect(state().flagJob).toBeNull();
+  });
+
+  it('a failed flag job shows its error', async () => {
+    beginFlag();
+    await startFlag(flagSel);
+    emitJob({ id: 'j1', status: 'failed', error: 'Too few points.' });
+    expect(state().flagJob).toBeNull();
+    expect(state().message).toBe('Too few points.');
+  });
+
+  it('a finished flag job reloads and selects the new unit', async () => {
+    beginFlag();
+    await startFlag(flagSel);
+    const id = need(state().flagJob).unit;
+    h.disk.file = withFlagged(id);
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(state().selected).toBe(id);
+    });
+    expect(state().file?.units.some((u) => u.id === id)).toBe(true);
+    expect(state().flagJob).toBeNull();
+    expect(previews()).toHaveLength(0);
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('a finished flag job offers AI labels for that unit only when the preference is on', async () => {
+    setAiLabelPref('p1', true);
+    beginFlag();
+    await startFlag(flagSel);
+    const id = need(state().flagJob).unit;
+    h.disk.file = withFlagged(id, { kind: 'other', kindBasis: 'geometry' });
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(state().aiPreview).not.toBeNull();
+    });
+    expect(previews()).toHaveLength(1);
+    expect(need(previews()[0])[1]).toEqual({ projectId: 'p1', unitIds: [id] });
+    expect(state().aiPreview?.unitIds).toEqual([id]);
+  });
+
+  it('a finished redraw rebuilds the box from the typed values it kept', async () => {
+    beginFlag('ant-a3');
+    await startFlag(flagSel);
+    const f = sampleFile();
+    const u = need(f.units[0]);
+    // the job measured a new box; the typed azimuth still wins
+    f.units[0] = {
+      ...u,
+      origin: 'flagged',
+      azimuthGridDeg: userValue(200),
+      box: { ...u.box, centre: [11, 21, 32] },
+    };
+    h.disk.file = f;
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(writes()).toHaveLength(1);
+    });
+    const expected = boxWithValues(need(f.units[0]));
+    await vi.waitFor(() => {
+      expect(unit(0).box).toEqual(expected);
+    });
+    expect(need(need(h.disk.file).units[0]).box).toEqual(expected);
+    expect(state().selected).toBe('ant-a3');
+  });
+});
+
+describe('typed values and kinds', () => {
+  beforeEach(async () => {
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+  });
+
+  it('setTypedValue writes a user value and moves the box', async () => {
+    const before = structuredClone(unit(0));
+    await setTypedValue(before.id, 'azimuthGridDeg', 90);
+    const after = unit(0);
+    expect(after.azimuthGridDeg).toEqual(userValue(90));
+    expect(after.measured?.azimuthGridDeg).toEqual(before.azimuthGridDeg);
+    expect(after.box).not.toEqual(before.box);
+    // outward normal now points grid east (downtilt 4 degrees kept)
+    expect(after.box.axes[2][0]).toBeCloseTo(Math.cos((4 * Math.PI) / 180));
+    expect(writes()).toHaveLength(1);
+    expect(AntennasFile.safeParse(state().file).success).toBe(true);
+  });
+
+  it('resetTypedValue brings back the measured value', async () => {
+    const before = structuredClone(unit(0));
+    await setTypedValue(before.id, 'widthM', 0.5);
+    expect(unit(0).box.extents[0]).toBe(0.5);
+    await resetTypedValue(before.id, 'widthM');
+    expect(unit(0).widthM).toEqual(before.widthM);
+    expect(unit(0).box.extents[0]).toBe(0.3);
+    expect(unit(0).measured).toBeUndefined();
+    expect(writes()).toHaveLength(2);
+    // nothing to go back to: nothing written
+    await resetTypedValue(before.id, 'widthM');
+    expect(writes()).toHaveLength(2);
+  });
+
+  it("setUnitKind marks the kind as the person's", async () => {
+    const id = unit(0).id;
+    await applyAiLabels(okLabels([{ unitId: id, label: 'dish', reason: 'r' }]), 'ai-1', 'p1');
+    expect(unit(0).ai).toBeDefined();
+    await setUnitKind(id, 'other');
+    expect(unit(0).kind).toBe('other');
+    expect(unit(0).kindBasis).toBe('user');
+    expect(Object.keys(unit(0))).not.toContain('ai');
+  });
+
+  it('deleteFlaggedUnit leaves a detected unit alone', async () => {
+    const id = unit(0).id;
+    await deleteFlaggedUnit(id);
+    expect(writes()).toHaveLength(0);
+    expect(file().units).toHaveLength(3);
+  });
+
+  it('deleteFlaggedUnit removes a flagged unit and forgets its selection and hiding', async () => {
+    h.disk.file = withFlagged('ant-f-x');
+    await loadAntennas('p1', '/p');
+    selectAntenna('ant-f-x');
+    toggleAntennaHidden('ant-f-x');
+    toggleAntennaHidden(unit(0).id);
+    await deleteFlaggedUnit('ant-f-x');
+    expect(file().units.map((u) => u.id)).not.toContain('ant-f-x');
+    expect(need(h.disk.file).units).toHaveLength(3);
+    expect(state().selected).toBeNull();
+    expect(state().hidden).toEqual({ [unit(0).id]: true });
   });
 });
