@@ -622,3 +622,36 @@ it('clears the reply and shows the error when a resend is saved but not sent', a
   );
   expect(host.textContent).not.toContain('Sent. The proposal appears here');
 });
+
+it('offers Send again for a proposal that went stale', () => {
+  render(
+    props({
+      requests: [{ ...request, id: 'fix-1', status: 'stale' }],
+      selectedRequestId: 'fix-1',
+    }),
+  );
+  expect(button('Send again').disabled).toBe(false);
+});
+
+it('asks to confirm the send preview instead of saying Sent', async () => {
+  const p = modelWide({ onSubmit: vi.fn().mockResolvedValue({ preview: true }) });
+  render(p);
+  write(area(BOX), 'remove the ladder');
+  await click('Send');
+  expect(host.textContent).toContain('Confirm the send preview in the AI pane to send it.');
+  expect(host.textContent).not.toContain('Sent. The proposal appears here');
+});
+
+it('asks to confirm the send preview after sending waiting requests', async () => {
+  const p = props({ requests: [request], onSend: vi.fn().mockResolvedValue({ preview: true }) });
+  render(p);
+  await click('Send 1 request to AI');
+  expect(host.textContent).toContain('Confirm the send preview in the AI pane to send it.');
+});
+
+it('names the saved request list for assistive technology', () => {
+  render(props({ requests: [request] }));
+  expect(host.querySelector('ul[aria-label="Saved requests"] li')?.textContent).toContain(
+    request.comment,
+  );
+});

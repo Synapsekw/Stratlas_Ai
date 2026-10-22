@@ -42,7 +42,12 @@ type Action = void | Promise<void>;
 export interface SendFailure {
   sendError: string;
 }
-type SendAction = Action | SendFailure | Promise<SendFailure | undefined>;
+/** A send that stopped at the AI pane's send preview: the person still has to confirm it there. */
+export interface SendPreview {
+  preview: true;
+}
+type SendAction =
+  Action | SendFailure | SendPreview | Promise<SendFailure | SendPreview | undefined>;
 
 export interface CorrectionComposerDraft {
   targetMode: 'part' | 'pin';
@@ -96,7 +101,7 @@ export interface CorrectionPanelProps {
     send: boolean;
   }) => SendAction;
   onSelectRequest: (id: string) => void;
-  onSend: (ids: string[]) => Action;
+  onSend: (ids: string[]) => Action | SendPreview | Promise<SendPreview | undefined>;
   onViewChange: (view: 'before' | 'after') => void;
   onFocusTarget: (target: CorrectionTargetView) => void;
   onAccept: (proposalId: string) => Action;

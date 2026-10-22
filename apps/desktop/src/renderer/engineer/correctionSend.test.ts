@@ -6,6 +6,7 @@ import {
   allowCloudKinds,
   saveThenSend,
   sendCorrections,
+  sendToAgent,
 } from './correctionSend';
 
 afterEach(() => {
@@ -95,6 +96,73 @@ describe('sendCorrections', () => {
 
   it('resolves with nothing when saving only', async () => {
     await expect(saveThenSend({ save: () => Promise.resolve('fix-1') })).resolves.toBeUndefined();
+  });
+});
+
+describe('sendToAgent', () => {
+  const NOT_SENT = 'The AI did not start.';
+  const agent = (
+    before: { busy?: boolean; preview?: object | null; turns?: unknown[] },
+    after: { busy?: boolean; preview?: object | null; turns?: unknown[] },
+  ) => {
+    let state = { busy: false, preview: null, turns: [], ...before };
+    return {
+      getState: () => state,
+      send: vi.fn(() => {
+        state = { ...state, ...after };
+        return Promise.resolve();
+      }),
+    };
+  };
+
+  it('says sent when a run started', async () => {
+    await expect(sendToAgent(agent({}, { busy: true }), 'fix', NOT_SENT)).resolves.toBe('sent');
+    await expect(sendToAgent(agent({}, { turns: [1, 2] }), 'fix', NOT_SENT)).resolves.toBe('sent');
+  });
+  it('says preview when the send stopped at a new send preview', async () => {
+    await expect(sendToAgent(agent({}, { preview: {} }), 'fix', NOT_SENT)).resolves.toBe('preview');
+  });
+  it('throws when the agent returned without sending', async () => {
+    await expect(sendToAgent(agent({}, {}), 'fix', NOT_SENT)).rejects.toThrow(NOT_SENT);
+    const open = {};
+    await expect(sendToAgent(agent({ preview: open }, {}), 'fix', NOT_SENT)).rejects.toThrow(
+      NOT_SENT,
+    );
+  });
+});
+
+describe('saveThenSend selection and outcome', () => {
+  it('selects the saved request only once it was sent, so a failed send keeps Send in reach', async () => {
+    const select = vi.fn();
+    await saveThenSend({
+      save: () => Promise.resolve('fix-1'),
+      send: () => Promise.reject(new Error('no route')),
+      select,
+    });
+    expect(select).not.toHaveBeenCalled();
+    await saveThenSend({
+      save: () => Promise.resolve('fix-2'),
+      send: () => Promise.resolve(),
+      select,
+    });
+    expect(select).toHaveBeenLastCalledWith('fix-2');
+    await saveThenSend({ save: () => Promise.resolve('fix-3'), select });
+    expect(select).toHaveBeenLastCalledWith('fix-3');
+  });
+  it('reports a send that waits on the send preview', async () => {
+    await expect(
+      saveThenSend({
+        save: () => Promise.resolve('fix-1'),
+        send: () => Promise.resolve('preview'),
+      }),
+    ).resolves.toEqual({ preview: true });
+    await expect(
+      sendCorrections({
+        ids: ['fix-1'],
+        prepare: () => Promise.resolve('{}'),
+        send: () => Promise.resolve('preview'),
+      }),
+    ).resolves.toBe('preview');
   });
 });
 

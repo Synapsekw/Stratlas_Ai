@@ -23,7 +23,13 @@ import {
   useCorrectionDraft,
   type CorrectionActionKind,
 } from './correctionDraft';
-import { afterDecision, allowCloudKinds, saveThenSend, sendCorrections } from './correctionSend';
+import {
+  afterDecision,
+  allowCloudKinds,
+  saveThenSend,
+  sendCorrections,
+  sendToAgent,
+} from './correctionSend';
 import { requiredKinds } from './correctionSession';
 import { engineerHost, modelCorrections, useHost, useRun } from './host';
 import { prepareCorrectionSubmission } from './correctionTools';
@@ -235,7 +241,7 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
             agentPane.getState().setMode('normal');
             showBench('review');
             setAgentTask('build');
-            await agent.send(text);
+            return sendToAgent(agent, text, t('eng.correction.error.notSent'));
           },
         }),
       report,
@@ -433,12 +439,13 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
                 ...(camera ? { camera: { position: camera.position, target: camera.target } } : {}),
                 evidence: evidenceIds.map((id) => ({ kind: evidenceKind(id), ref: id })),
               });
-              setRequestId(created.id);
               setPin(undefined);
               setView('before');
               return created.id;
             }),
           ...(send ? { send: (id: string) => sendToAi([id, ...openIds(id)], false) } : {}),
+          // a failed send leaves the composer open, where Send counts the saved open request
+          select: setRequestId,
         })
       }
       onSelectRequest={(id) => {
@@ -450,7 +457,9 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
         if (r?.camera) getActiveStage()?.restoreView(r.camera, false);
         else if (r) focus(targetView(r));
       }}
-      onSend={(ids) => sendToAi(ids, false)}
+      onSend={async (ids) =>
+        (await sendToAi(ids, false)) === 'preview' ? { preview: true as const } : undefined
+      }
       onViewChange={setView}
       onFocusTarget={focus}
       onAccept={(id) =>

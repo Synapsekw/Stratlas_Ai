@@ -188,7 +188,10 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
           ? t('eng.correction.tooLong', { limit: formatCount(TEXT_LIMIT) })
           : t('eng.correction.radiusHint')));
   const saveReasonId = saveReason === sendReason ? `${id}-send-reason` : `${id}-save-reason`;
-  const resendable = selected?.status === 'rejected' || selected?.status === 'proposed';
+  const resendable =
+    selected?.status === 'rejected' ||
+    selected?.status === 'proposed' ||
+    selected?.status === 'stale';
   const resendReason =
     lockReason ??
     (reply.length > TEXT_LIMIT
@@ -222,13 +225,15 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
     p.onPinModeChange(mode === 'pin' && !validPin);
   }
 
-  /** The request was saved; say it was sent, or why sending failed. */
+  /** The request was saved; say it was sent, waits on the send preview, or why sending failed. */
   function settleSend(result: unknown, done: MessageKey) {
     const sendError =
       typeof result === 'object' && result !== null && 'sendError' in result
         ? String(result.sendError)
         : '';
     if (sendError) setActionError(sendError);
+    else if (typeof result === 'object' && result !== null && 'preview' in result)
+      setNotice('eng.correction.confirmPreview');
     else setNotice(done);
   }
 
@@ -468,8 +473,8 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                 if (!typed) {
                   void perform(
                     () => p.onSend(queued.map((request) => request.id)),
-                    () => {
-                      setNotice('eng.correction.sent');
+                    (result) => {
+                      settleSend(result, 'eng.correction.sent');
                     },
                     'sending',
                   );
@@ -532,7 +537,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
           <EmptyState title={t('eng.correction.empty')} body={t('eng.correction.emptyBody')} />
         ) : (
           <>
-            <ul className="eng-correction-queue">
+            <ul className="eng-correction-queue" aria-label={t('eng.correction.requests')}>
               {p.requests.map((request) => (
                 <li key={request.id} data-selected={request.id === selected?.id}>
                   <ActionRow>

@@ -3922,6 +3922,7 @@ export const en = {
     'The scale is provisional: sizes in this proposal are model units, not measured metres. Set a reference height to fix the scale.',
   'eng.correction.resend': 'Send again',
   'eng.correction.sent': 'Sent. The proposal appears here for Before and After review.',
+  'eng.correction.confirmPreview': 'Confirm the send preview in the AI pane to send it.',
   'eng.correction.discard': 'Discard draft',
   'eng.correction.busy': 'Saving or preparing the correction…',
   'eng.correction.requests': 'Saved requests',
@@ -3968,6 +3969,8 @@ export const en = {
   'eng.correction.reviewer': 'Reviewer',
   'eng.correction.error.save': 'The action could not be saved. Try again.',
   'eng.correction.error.running': 'A correction action is already running.',
+  'eng.correction.error.notSent':
+    'The AI did not start on this request. It is saved; check the AI pane and press Send again.',
   'eng.correction.error.pin': 'Pick a surface location first.',
   'eng.correction.error.conversation': 'Finish or cancel the current AI conversation first.',
   'eng.correction.error.model': 'Configure an available AI model in Settings before sending.',
