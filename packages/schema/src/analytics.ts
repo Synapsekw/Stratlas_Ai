@@ -218,6 +218,10 @@ export const LedgerEntry = z
     corrected: Box4.optional(),
     photo: z.object({ project: z.string(), layer: z.string(), id: z.string() }).strict(),
     at: IsoTime,
+    /** The review's id for the candidate: when it has several lines, the latest one counts. */
+    detectionId: z.string().max(300).optional(),
+    /** The crop file in `crops/<detectorId>/`, set by the app when it writes the line. */
+    crop: z.string().max(40).optional(),
   })
   .strict();
 export type LedgerEntry = z.infer<typeof LedgerEntry>;

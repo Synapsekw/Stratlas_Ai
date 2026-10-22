@@ -37,7 +37,10 @@ describe('ledger', () => {
     const b = entry('rejected', 0.4, { reason: undefined, note: 'shadow' });
     await appendLedger(dir, a, jpeg);
     await appendLedger(dir, b, jpeg);
-    expect(await readLedger(dir, 'chimney')).toEqual([a, b]);
+    expect(await readLedger(dir, 'chimney')).toEqual([
+      { ...a, crop: '1.jpg' },
+      { ...b, crop: '2.jpg' },
+    ]);
     expect((await readdir(join(dir, 'crops', 'chimney'))).sort()).toEqual(['1.jpg', '2.jpg']);
   });
 
@@ -60,6 +63,51 @@ describe('ledger', () => {
         entry('miss', null),
       ]),
     ).toEqual({ accepted: 1, rejected: 1, misses: 2 });
+  });
+
+  it('the entry records its crop file', async () => {
+    await appendLedger(dir, entry('accepted', 0.9, { detectionId: 'd1' }), jpeg);
+    await appendLedger(dir, entry('miss', null), jpeg);
+    const read = await readLedger(dir, 'chimney');
+    expect(read.map((e) => e.crop)).toEqual(['1.jpg', '2.jpg']);
+    expect(read[0]?.detectionId).toBe('d1');
+  });
+
+  it('a crop name sent by the caller is replaced by the one written', async () => {
+    await appendLedger(dir, entry('accepted', 0.9, { crop: '../../x.jpg' }), jpeg);
+    expect((await readLedger(dir, 'chimney'))[0]?.crop).toBe('1.jpg');
+  });
+
+  it('stats count the latest line per detection', () => {
+    expect(
+      ledgerStats([
+        entry('accepted', 0.9, { detectionId: 'd1' }),
+        entry('rejected', 0.9, { detectionId: 'd1' }),
+        entry('accepted', 0.8, { detectionId: 'd2' }),
+      ]),
+    ).toEqual({ accepted: 1, rejected: 1, misses: 0 });
+    expect(
+      ledgerStats([
+        entry('accepted', 0.9, { detectionId: 'd1' }),
+        entry('rejected', 0.9, { detectionId: 'd1' }),
+      ]),
+    ).toEqual({ accepted: 0, rejected: 1, misses: 0 });
+  });
+
+  it('lines without detectionId all count', () => {
+    expect(
+      ledgerStats([entry('accepted', 0.9), entry('accepted', 0.9), entry('miss', null)]),
+    ).toEqual({ accepted: 2, rejected: 0, misses: 1 });
+  });
+
+  it('the suggested threshold uses the latest line per detection', () => {
+    // 20 detections accepted at 0.9, but one was then rejected: only 19 scored lines count as accepted
+    const es = [
+      ...Array.from({ length: 20 }, (_, i) => entry('accepted', 0.9, { detectionId: `d${i}` })),
+      entry('rejected', 0.9, { detectionId: 'd0' }),
+    ];
+    expect(suggestThreshold(es)).not.toBeNull();
+    expect(suggestThreshold(es.slice(0, 19).concat(es.slice(20)))).toBeNull();
   });
 
   it('suggest is null under 20', () => {
@@ -110,6 +158,9 @@ describe('ledger', () => {
     await appendLedger(dir, a, jpeg);
     await appendFile(join(dir, 'chimney.jsonl'), '{"detectorId":"chim');
     await appendLedger(dir, b, jpeg);
-    expect(await readLedger(dir, 'chimney')).toEqual([a, b]);
+    expect(await readLedger(dir, 'chimney')).toEqual([
+      { ...a, crop: '1.jpg' },
+      { ...b, crop: '2.jpg' },
+    ]);
   });
 });

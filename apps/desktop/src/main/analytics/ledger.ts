@@ -39,7 +39,8 @@ export async function appendLedger(dir: string, e: LedgerEntry, cropJpeg: Buffer
     const existing = await readFile(file).catch(() => null);
     const lead =
       existing && existing.length > 0 && existing[existing.length - 1] !== 0x0a ? '\n' : '';
-    await appendFile(file, `${lead}${JSON.stringify(entry)}\n`, 'utf8');
+    const line: LedgerEntry = { ...entry, crop: `${n}.jpg` };
+    await appendFile(file, `${lead}${JSON.stringify(line)}\n`, 'utf8');
   };
   const next = queue.then(run, run);
   queue = next.catch(() => undefined);
@@ -69,13 +70,25 @@ export async function readLedger(dir: string, detectorId: string): Promise<Ledge
   return out;
 }
 
-export function ledgerStats(entries: readonly LedgerEntry[]): {
+/**
+ * A candidate reviewed twice (accepted, then reopened and rejected) has two lines: only the latest
+ * counts. Lines without a `detectionId` all count. Order is the file's.
+ */
+function latestPerDetection(entries: readonly LedgerEntry[]): LedgerEntry[] {
+  const last = new Map<string, number>();
+  entries.forEach((e, i) => {
+    if (e.detectionId !== undefined) last.set(e.detectionId, i);
+  });
+  return entries.filter((e, i) => e.detectionId === undefined || last.get(e.detectionId) === i);
+}
+
+export function ledgerStats(all: readonly LedgerEntry[]): {
   accepted: number;
   rejected: number;
   misses: number;
 } {
   const s = { accepted: 0, rejected: 0, misses: 0 };
-  for (const e of entries) {
+  for (const e of latestPerDetection(all)) {
     if (e.verdict === 'accepted') s.accepted++;
     else if (e.verdict === 'rejected') s.rejected++;
     else s.misses++;
@@ -89,10 +102,10 @@ export function ledgerStats(entries: readonly LedgerEntry[]): {
  * Candidates are each distinct score and 0.50 to 0.95 in 0.05 steps; ties go to the higher one.
  * Null until 20 accepted or rejected entries carry a score.
  */
-export function suggestThreshold(entries: readonly LedgerEntry[]): number | null {
+export function suggestThreshold(all: readonly LedgerEntry[]): number | null {
   const scored: { score: number; accepted: boolean }[] = [];
   let misses = 0;
-  for (const e of entries) {
+  for (const e of latestPerDetection(all)) {
     if (e.verdict === 'miss') misses++;
     else if (typeof e.score === 'number')
       scored.push({ score: e.score, accepted: e.verdict === 'accepted' });

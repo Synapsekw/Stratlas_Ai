@@ -134,6 +134,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
         "note",
         "origin",
         "photo",
+        "proposedBox",
         "rejectNote",
         "rejectReason",
         "reviewedAt",

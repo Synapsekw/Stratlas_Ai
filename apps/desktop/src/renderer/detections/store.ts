@@ -28,7 +28,7 @@ import {
 } from '@aio/annotate/detections';
 import type { DetectionsFile, ProjectManifest } from '@aio/schema';
 import { t } from '@aio/ui';
-import { workspace } from '@aio/workspace';
+import { assetUrl, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { authorName } from '../author';
@@ -36,6 +36,7 @@ import { beforeJobStart } from '../bridge';
 import { offerPlacement } from '../placement';
 import { bridge } from '../shell';
 import { acceptLabel, planBatch, rejectLabel, undoStep, type BatchPlan } from './batch';
+import { logMiss, logReview, type LedgerCtx, type MissPass } from './detectors/ledgerLog';
 
 export type DetectionSaveState = 'saved' | 'pending' | 'saving' | 'error';
 
@@ -260,10 +261,91 @@ beforeJobStart(async () => {
   return state === 'error' ? t('jobs.unsaved.detections', { error: error ?? '' }).trim() : null;
 });
 
+/** The photo the review shows for a detection (the same URL the editor loads), or null. */
+function ledgerCtx(projectId: string, d: Detection): LedgerCtx {
+  const layer = d.source.layer;
+  let photoUrl: string | null = null;
+  try {
+    const l = workspace.getState().project?.manifest.layers.find((x) => x.id === layer);
+    const p =
+      d.source.kind === 'photo' && l?.kind === 'photos'
+        ? l.items.find((x) => x.id === (d.source as { photo: string }).photo)
+        : undefined;
+    if (p) photoUrl = assetUrl(projectId, p.src);
+  } catch {
+    // no URL: the ledger logs the reason and the review goes on
+  }
+  return { projectId, layer, photoUrl };
+}
+
+/** The local-detector passes (`vlm-*`) of the review, with the photos and detectors of each. */
+function missPasses(review: ReviewState): MissPass[] {
+  const out = new Map<string, MissPass>();
+  for (const d of review.detections) {
+    const det = d.origin.kind === 'model' ? d.origin.detector : undefined;
+    if (!det || !d.pass.startsWith('vlm-')) continue;
+    const assessed = passes.get(d.pass)?.header.assessed;
+    const pass = out.get(d.pass) ?? {
+      name: d.pass,
+      assessed: Array.isArray(assessed) ? assessed : [],
+      detectors: [],
+    };
+    // the detector's class is the class its candidates carry
+    if (!pass.detectors.some((x) => x.id === det.id && x.classId === d.classId))
+      (pass.detectors as MissPass['detectors'][number][]).push({
+        id: det.id,
+        version: det.version,
+        modelSha256: det.modelSha256,
+        classId: d.classId,
+      });
+    out.set(d.pass, pass);
+  }
+  return [...out.values()];
+}
+
+/** Decisions on local-detector drafts, and hand-drawn findings, go to the detector ledger. */
+function logDecisions(action: ReviewAction, before: ReviewState, after: ReviewState): void {
+  const projectId = detections.getState().projectId;
+  if (!projectId) return;
+  const wasDraft = new Set(before.detections.filter((d) => d.status === 'draft').map((d) => d.id));
+  const now = new Map(after.detections.map((d) => [d.id, d]));
+  const verdicts: [string, 'accepted' | 'rejected'][] = [];
+  switch (action.type) {
+    case 'accepted':
+      verdicts.push([action.id, 'accepted']);
+      break;
+    case 'acceptedMany':
+      for (const i of action.items) verdicts.push([i.id, 'accepted']);
+      break;
+    case 'reject':
+      verdicts.push([action.id, 'rejected']);
+      break;
+    case 'rejectMany':
+      for (const id of action.ids) verdicts.push([id, 'rejected']);
+      break;
+    case 'add': {
+      const found = missPasses(after);
+      for (const d of action.detections) {
+        const added = now.get(d.id);
+        if (added) void logMiss(added, found, ledgerCtx(projectId, added));
+      }
+      return;
+    }
+    default:
+      return;
+  }
+  for (const [id, verdict] of verdicts) {
+    const d = now.get(id);
+    if (d?.status === verdict && wasDraft.has(id))
+      void logReview(d, verdict, ledgerCtx(projectId, d));
+  }
+}
+
 export function dispatch(action: ReviewAction): void {
   const s = detections.getState();
   const review = reviewReducer(s.review, action);
   if (review === s.review) return;
+  if (!s.readOnly) logDecisions(action, s.review, review);
   const changed = review.revision !== s.review.revision;
   detections.setState({
     review,
