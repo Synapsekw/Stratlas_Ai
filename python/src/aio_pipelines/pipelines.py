@@ -42,6 +42,7 @@ from .survey.overlay import SurveyOverlay
 from .survey.prepare import SurveyPrepare
 from .survey.qa import SurveyQa
 from .survey.section import SurveySection
+from .telecom.flag_pipeline import TelecomFlag
 from .telecom.pipeline import TelecomAntennas
 from .thermal.pipeline import ThermalDecode
 from .tiles.cloud import TilesCloud
@@ -106,6 +107,8 @@ def all_pipelines() -> dict[str, Pipeline]:
         PointcloudClean(),
         # Telecom (pipeline pack 0.14.0)
         TelecomAntennas(),
+        # Antenna flagging (pipeline pack TELECOM_FLAG_MIN_PACK)
+        TelecomFlag(),
         # RF coverage prediction (pipeline pack RF_COVERAGE_MIN_PACK)
         RfCoverage(),
         # Thermal analysis (pipeline pack THERMAL_MIN_PACK)
