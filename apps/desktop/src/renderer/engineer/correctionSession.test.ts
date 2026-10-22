@@ -102,4 +102,95 @@ describe('persisted model correction session', () => {
     await expect(pending).rejects.toThrow(/project or model changed/);
     expect(h.run().corrections).toBeUndefined();
   });
+  it('sends only open requests', async () => {
+    const h = harness();
+    const a = h.model().assemblies.find((a) => a.kind === 'flue');
+    if (!a) throw Error('fixture');
+    await h.api.create({
+      id: 'fix-one',
+      target: { kind: 'part', partId: a.id },
+      comment: 'Change radius.',
+    });
+    await h.api.propose('fix-one', {
+      explanation: 'Requested size.',
+      patch: [{ op: 'replace', assembly: { ...a, params: { ...a.params, rOuter: 1.05 } } }],
+    });
+    expect(() => h.api.submission(['fix-one'])).toThrow(
+      'Only open correction requests can be sent.',
+    );
+  });
+  it('sends the whole model and its bounds for a model-wide request', async () => {
+    const h = harness();
+    await h.api.create({
+      id: 'fix-all',
+      target: { kind: 'model' },
+      comment: 'The whole stack is too short.',
+    });
+    const { data } = h.api.submission(['fix-all']);
+    expect(data.components.length).toBe(h.model().assemblies.length);
+    expect(data.bounds).not.toBeNull();
+    expect(data.scale).toBe('provisional');
+  });
+  it('resend reopens a rejected request with a reply', async () => {
+    const h = harness();
+    const a = h.model().assemblies.find((a) => a.kind === 'flue');
+    if (!a) throw Error('fixture');
+    await h.api.create({
+      id: 'fix-one',
+      target: { kind: 'part', partId: a.id },
+      comment: 'Change radius.',
+    });
+    await h.api.propose('fix-one', {
+      explanation: 'Requested size.',
+      patch: [{ op: 'replace', assembly: { ...a, params: { ...a.params, rOuter: 1.05 } } }],
+    });
+    await h.api.reject('fix-one');
+    await h.api.resend('fix-one', 'Try 1.1 m instead.');
+    const r = h.run().corrections?.[0];
+    expect(r?.status).toBe('open');
+    expect(r?.history.length).toBeGreaterThan(0);
+    expect(JSON.stringify(r)).toContain('Try 1.1 m instead.');
+  });
+  it('resend after a stale proposal rebases on the current model', async () => {
+    const h = harness();
+    const a = h.model().assemblies.find((a) => a.kind === 'flue');
+    if (!a) throw Error('fixture');
+    await h.api.create({
+      id: 'fix-one',
+      target: { kind: 'part', partId: a.id },
+      comment: 'Change radius.',
+    });
+    await h.api.propose('fix-one', {
+      explanation: 'Requested size.',
+      patch: [{ op: 'replace', assembly: { ...a, params: { ...a.params, rOuter: 1.05 } } }],
+    });
+    await h.api.resend('fix-one');
+    const r = h.run().corrections?.[0];
+    expect(r?.status).toBe('open');
+    expect(r?.baseFingerprint).toBeTruthy();
+  });
+  it('replying at the history cap keeps eight rounds', async () => {
+    const h = harness();
+    const a = h.model().assemblies.find((a) => a.kind === 'flue');
+    if (!a) throw Error('fixture');
+    await h.api.create({
+      id: 'fix-one',
+      target: { kind: 'part', partId: a.id },
+      comment: 'Change radius.',
+    });
+    const propose = () =>
+      h.api.propose('fix-one', {
+        explanation: 'Requested size.',
+        patch: [{ op: 'replace', assembly: { ...a, params: { ...a.params, rOuter: 1.05 } } }],
+      });
+    for (let i = 0; i < 8; i++) {
+      await propose();
+      await h.api.reply('fix-one', `round ${i}`);
+    }
+    await propose();
+    expect(h.run().corrections?.[0]?.history.length).toBe(8);
+    await h.api.reply('fix-one', 'once more');
+    expect(h.run().corrections?.[0]?.history.length).toBe(8);
+    expect(h.run().corrections?.[0]?.status).toBe('open');
+  });
 });

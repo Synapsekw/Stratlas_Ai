@@ -2,11 +2,11 @@ import {
   acceptModelCorrection,
   buildCorrectionCandidate,
   createModelCorrection,
+  modelCorrectionBounds,
   meshAssemblies,
   proposeModelCorrection,
-  rebaseModelCorrection,
   rejectModelCorrection,
-  replyToModelCorrection,
+  resendModelCorrection,
 } from '@aio/modelling';
 import type {
   CorrectionProposalInput,
@@ -22,6 +22,34 @@ export interface CorrectionContext {
   model: ProcModel;
   busy: boolean;
   save(requests: ModelCorrection[], model?: ProcModel, expected?: ProcModel): Promise<void>;
+}
+
+/** Only an open request may be sent; a proposed or closed one is resent first. */
+export const isSendable = (status: ModelCorrection['status']): boolean => status === 'open';
+
+/** Which source kinds a send of these requests would upload. */
+export function requiredKinds(
+  run: EngineerRun,
+  model: ProcModel,
+  requests: Pick<ModelCorrection, 'target' | 'evidence'>[],
+): { drawings: boolean; scans: boolean; photos: boolean } {
+  const refs = model.assemblies.flatMap((a) => a.sources);
+  return {
+    drawings:
+      (run.setup.sources.drawings?.length ?? 0) > 0 ||
+      model.sources?.some((s) => s.kind === 'drawing' || s.kind === 'plan') === true ||
+      refs.some((s) => s.kind === 'drawing') ||
+      requests.some((r) => r.evidence?.some((s) => s.kind === 'drawing')),
+    scans:
+      run.setup.sources.clouds.length > 0 ||
+      run.setup.sources.meshes.length > 0 ||
+      refs.some((s) => s.kind === 'cloud' || s.kind === 'mesh') ||
+      requests.some((r) => r.target.kind === 'pin'),
+    photos:
+      run.setup.sources.photos.length > 0 ||
+      refs.some((s) => s.kind === 'photo') ||
+      requests.some((r) => r.evidence?.some((s) => s.kind === 'photo')),
+  };
 }
 
 /** Uses the current project at each boundary. No source uploads or provider calls occur here. */
@@ -62,11 +90,12 @@ export function createCorrectionSession(
       if (!ids.length || ids.length > 10)
         throw new Error('Choose between one and ten correction requests.');
       const requests = [...new Set(ids)].map((id) => find(current(), id));
-      if (requests.some((r) => r.status !== 'open' && r.status !== 'proposed'))
+      if (!requests.every((r) => isSendable(r.status)))
         throw new Error('Only open correction requests can be sent.');
       const selected = new Set(
         requests.flatMap((r) => (r.target.kind === 'part' ? [r.target.partId] : [])),
       );
+      const wholeModel = requests.some((r) => r.target.kind === 'model');
       const data = {
         modelId: model.id,
         requests: requests.map(({ id, target, comment, evidence, replies, baseFingerprint }) => ({
@@ -80,30 +109,18 @@ export function createCorrectionSession(
         materials: model.materials,
         coordinateFrame:
           'Assembly coordinates are model-local metres. Pin projectPosition is display only.',
-        components: model.assemblies.filter((a) => selected.has(a.id)),
+        scale: model.scale?.status ?? 'provisional',
+        components: wholeModel
+          ? model.assemblies
+          : model.assemblies.filter((a) => selected.has(a.id)),
+        ...(wholeModel ? { bounds: modelCorrectionBounds(model) } : {}),
       };
-      const refs = model.assemblies.flatMap((a) => a.sources);
       return {
         projectId,
         runId: run.id,
         model,
         data,
-        required: {
-          drawings:
-            (run.setup.sources.drawings?.length ?? 0) > 0 ||
-            model.sources?.some((s) => s.kind === 'drawing' || s.kind === 'plan') === true ||
-            refs.some((s) => s.kind === 'drawing') ||
-            requests.some((r) => r.evidence?.some((s) => s.kind === 'drawing')),
-          scans:
-            run.setup.sources.clouds.length > 0 ||
-            run.setup.sources.meshes.length > 0 ||
-            refs.some((s) => s.kind === 'cloud' || s.kind === 'mesh') ||
-            requests.some((r) => r.target.kind === 'pin'),
-          photos:
-            run.setup.sources.photos.length > 0 ||
-            refs.some((s) => s.kind === 'photo') ||
-            requests.some((r) => r.evidence?.some((s) => s.kind === 'photo')),
-        },
+        required: requiredKinds(run, model, requests),
       };
     },
     async create(input: ModelCorrectionInput) {
@@ -148,11 +165,13 @@ export function createCorrectionSession(
       const ctx = current(true);
       await save(ctx, rejectModelCorrection(find(ctx, id), now()));
     },
+    async resend(id: string, reply?: string) {
+      const ctx = current(true);
+      await save(ctx, await resendModelCorrection(ctx.model, find(ctx, id), reply, now()));
+    },
     async reply(id: string, comment: string) {
       const ctx = current(true);
-      const replied = replyToModelCorrection(find(ctx, id), comment, now());
-      const request = await rebaseModelCorrection(ctx.model, replied, now());
-      await save(ctx, request);
+      await save(ctx, await resendModelCorrection(ctx.model, find(ctx, id), comment, now()));
     },
   };
 }
