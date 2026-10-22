@@ -30,6 +30,7 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { PALETTE } from '../palette';
 import { daylight, DESERT_SKY, SKY_GAIN, type Daylight } from './daylight';
 import { createGroundUniforms, LandMask, type GroundUniforms } from './groundShading';
+import { warmPmrem, type CompileAhead } from './pmremWarmup';
 import { fitShadow } from './shadowFit';
 import { waterNormalPixels } from './waterNormals';
 
@@ -141,9 +142,14 @@ const WATER_NORMAL = /* glsl */ `
   normal = normalize( ( viewMatrix * vec4( nW, 0.0 ) ).xyz );
 }`;
 
+const WATER_NORMAL_SIZE = 256;
+/** The water's normal map: the same for every stage, so made once (64 to 80 ms of script). */
+let waterPixels: Uint8Array | null = null;
+
 function waterNormalTexture(): DataTexture {
-  const size = 256;
-  const tex = new DataTexture(waterNormalPixels(size), size, size, RGBAFormat);
+  const size = WATER_NORMAL_SIZE;
+  waterPixels ??= waterNormalPixels(size);
+  const tex = new DataTexture(waterPixels, size, size, RGBAFormat);
   tex.wrapS = RepeatWrapping;
   tex.wrapT = RepeatWrapping;
   tex.minFilter = LinearMipmapLinearFilter;
@@ -155,6 +161,18 @@ function waterNormalTexture(): DataTexture {
 }
 
 const lin = (hex: number) => new Color(hex);
+
+/** Edge of one face of the studio's light map, and of the sky's (rebuilt as the sun moves). */
+const STUDIO_ENV_SIZE = 256;
+const SKY_ENV_SIZE = 128;
+
+function newPmrem(renderer: WebGLRenderer): PMREMGenerator | null {
+  try {
+    return new PMREMGenerator(renderer);
+  } catch {
+    return null; // no WebGL (tests)
+  }
+}
 
 /**
  * World-space size of one step of a 24-bit depth buffer at distance `dist` from a perspective
@@ -213,14 +231,23 @@ export class Environment {
   private readonly envScene = new Scene();
   readonly grid: GridHelper;
   private readonly fog: Fog;
-  private readonly normals: DataTexture;
+  /** Made with the water. */
+  private normals: DataTexture | null = null;
   private readonly waterTime = { value: 0 };
   private readonly waterLayers = { value: 3 };
   private water: Mesh | null = null;
   private waterMat: MeshStandardMaterial | null = null;
   private waterLevel: number | null = null;
   private landMask: LandMask | null = null;
-  private pmrem: PMREMGenerator | null = null;
+  /** Draws the sky's light map; the studio's is drawn once by a generator of its own. */
+  private readonly pmrem: PMREMGenerator | null;
+  /** The light maps' programs being made ahead of them (`prepare`). */
+  private readonly warming = new Set<Promise<void>>();
+  /** The sky light map's programs: not asked for yet, being made, or made. */
+  private skyWarm: 'cold' | 'warming' | 'ready' = 'cold';
+  /** What the warm-ups made that must outlive them (`warmPmrem`), let go with the environment. */
+  private readonly warmReleases: (() => void)[] = [];
+  private disposed = false;
   private studioEnv: Texture | null = null;
   private studioTarget: WebGLRenderTarget | null = null;
   private skyEnv: WebGLRenderTarget | null = null;
@@ -257,9 +284,14 @@ export class Environment {
     maskSize: 2048,
   };
 
+  /**
+   * `compileAhead` makes the light maps' shader programs ahead of the frames that draw them (the
+   * stage's warm-up); without it they are made as the light maps are drawn, blocking the window.
+   */
   constructor(
     private readonly scene: Scene,
     private readonly renderer: WebGLRenderer,
+    private readonly compileAhead: CompileAhead | null = null,
   ) {
     this.fog = new Fog(lin(PALETTE.skyHorizon), 2000, 12000);
     scene.fog = this.fog;
@@ -321,12 +353,7 @@ export class Environment {
     gm.depthWrite = false;
     scene.add(this.grid);
 
-    this.normals = waterNormalTexture();
-    try {
-      this.pmrem = new PMREMGenerator(renderer);
-    } catch {
-      this.pmrem = null; // no WebGL (tests)
-    }
+    this.pmrem = newPmrem(renderer);
     this.buildStudioEnv();
     this.applyMode();
     this.setContentRadius(50);
@@ -459,34 +486,96 @@ export class Environment {
     this.shadowForced = true;
   }
 
-  /** Image-based light for the studio: a brighter copy of the gradient dome, built once. */
+  /**
+   * Image-based light for the studio: a brighter copy of the gradient dome, built once, by a
+   * generator let go after it. With `compileAhead` it is built once its programs are made.
+   */
   private buildStudioEnv() {
-    if (!this.pmrem) return;
-    try {
-      const scene = new Scene();
-      const mat = this.domeMat.clone();
-      mat.uniforms.uZenith = { value: new Color(0.32, 0.38, 0.46) };
-      mat.uniforms.uHorizon = { value: new Color(0.62, 0.64, 0.66) };
-      const sphere = new SphereGeometry(100, 32, 16);
-      scene.add(new Mesh(sphere, mat));
-      // keep the target, not only its texture: disposing the texture leaves the framebuffer
-      this.studioTarget = this.pmrem.fromScene(scene, 0, 1, 500);
-      this.studioEnv = this.studioTarget.texture;
+    const pmrem = newPmrem(this.renderer);
+    if (!pmrem) return;
+    const scene = new Scene();
+    const mat = this.domeMat.clone();
+    mat.uniforms.uZenith = { value: new Color(0.32, 0.38, 0.46) };
+    mat.uniforms.uHorizon = { value: new Color(0.62, 0.64, 0.66) };
+    const sphere = new SphereGeometry(100, 32, 16);
+    scene.add(new Mesh(sphere, mat));
+    const warm = this.compileAhead
+      ? warmPmrem(this.renderer, pmrem, STUDIO_ENV_SIZE, scene, this.compileAhead)
+      : null;
+    const build = () => {
+      if (!this.disposed)
+        try {
+          // keep the target, not only its texture: disposing the texture leaves the framebuffer
+          this.studioTarget = pmrem.fromScene(scene, 0, 1, 500, { size: STUDIO_ENV_SIZE });
+          this.studioEnv = this.studioTarget.texture;
+          if (this._mode === 'studio') this.scene.environment = this.studioEnv;
+        } catch {
+          this.studioEnv = null;
+        }
+      warm?.release();
       mat.dispose();
       sphere.dispose();
-    } catch {
-      this.studioEnv = null;
+      pmrem.dispose();
+    };
+    if (warm?.ready) this.track(warm.ready.then(build));
+    else build();
+  }
+
+  private track(p: Promise<void>): void {
+    this.warming.add(p);
+    void p.finally(() => this.warming.delete(p));
+  }
+
+  /** Start making the sky light map's programs, once; true while they are made. */
+  private warmSky(): boolean {
+    if (this.skyWarm === 'cold' && this.pmrem && this.compileAhead) {
+      const warm = warmPmrem(
+        this.renderer,
+        this.pmrem,
+        SKY_ENV_SIZE,
+        this.envScene,
+        this.compileAhead,
+      );
+      // the map is drawn again as the sun moves: what the warm-up made stays as long
+      this.warmReleases.push(warm.release);
+      if (warm.ready) {
+        this.skyWarm = 'warming';
+        this.track(
+          warm.ready.then(() => {
+            this.skyWarm = 'ready';
+          }),
+        );
+      } else this.skyWarm = 'ready';
     }
+    return this.skyWarm === 'warming';
+  }
+
+  /**
+   * Make the light maps' programs ahead of the frames that use them (the stage's first frame
+   * waits for this): the studio's, started with the environment, and the sky's while the sky
+   * shows. Resolves once the light map of the backdrop shown is drawn, as the materials it lights
+   * are made for its size. Null when nothing is made ahead (no `compileAhead`, or every program
+   * is there): the maps are then drawn in the first frame, as before.
+   */
+  prepare(): Promise<void> | null {
+    if (this._mode === 'sky' && this.envDirty) this.warmSky();
+    if (this.warming.size === 0) return null;
+    return Promise.all([...this.warming]).then(() => {
+      if (this.disposed) return;
+      this.envAt = -Infinity;
+      this.rebuildSkyEnv(performance.now());
+    });
   }
 
   /** Rebuild the sky light map from the sky dome; at most a few times a second while dragging. */
   private rebuildSkyEnv(now: number): boolean {
     if (!this.pmrem || !this.envDirty || this._mode !== 'sky') return false;
+    if (this.warmSky()) return true; // its programs are being made
     if (now - this.envAt < 150) return true; // still pending
     this.envDirty = false;
     this.envAt = now;
     try {
-      const next = this.pmrem.fromScene(this.envScene, 0, 1, 1000, { size: 128 });
+      const next = this.pmrem.fromScene(this.envScene, 0, 1, 1000, { size: SKY_ENV_SIZE });
       this.skyEnv?.dispose();
       this.skyEnv = next;
       this.scene.environment = next.texture;
@@ -589,6 +678,7 @@ export class Environment {
       return;
     }
     if (!this.water) {
+      const normals = (this.normals ??= waterNormalTexture());
       const mat = new MeshStandardMaterial({
         color: 0x0f4a4d,
         roughness: 0.1,
@@ -597,7 +687,7 @@ export class Environment {
       });
       mat.name = 'aio:water';
       mat.onBeforeCompile = (shader) => {
-        shader.uniforms.uWaterNormals = { value: this.normals };
+        shader.uniforms.uWaterNormals = { value: normals };
         shader.uniforms.uWaterTime = this.waterTime;
         shader.uniforms.uWaterLayers = this.waterLayers;
         shader.vertexShader = shader.vertexShader
@@ -663,7 +753,9 @@ export class Environment {
 
   /** The idle loop should draw a frame (water animation, a pending sky light map). */
   wantsFrame(now: number): boolean {
-    if (this.envDirty && this._mode === 'sky' && this.pmrem) return true;
+    // a sky light map waits for its programs, then draws
+    if (this.envDirty && this._mode === 'sky' && this.pmrem && this.skyWarm !== 'warming')
+      return true;
     if (!this.water || this.q.water !== 'full' || this.q.waterFps <= 0) return false;
     return now - this.lastWaterFrame >= 1000 / this.q.waterFps;
   }
@@ -755,6 +847,7 @@ export class Environment {
   }
 
   dispose() {
+    this.disposed = true;
     this.setWater(null);
     this.scene.remove(
       this.dome,
@@ -780,7 +873,8 @@ export class Environment {
     this.studioTarget?.dispose();
     this.skyEnv?.dispose();
     this.landMask?.dispose();
-    this.normals.dispose();
+    this.normals?.dispose();
     this.pmrem?.dispose();
+    for (const release of this.warmReleases.splice(0)) release();
   }
 }

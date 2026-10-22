@@ -181,13 +181,19 @@ export class Stage implements EngineStage {
   private readonly controlsRoot: Node;
   readonly clippingPlanes: Plane[] = [];
   readonly canvas: HTMLCanvasElement;
+  /** The canvas's parent, the stage's own (see the constructor). */
+  private readonly host: HTMLDivElement;
 
   private readonly env: Environment;
   private readonly overlay: Overlay;
   private readonly highlight: Highlighter;
   private readonly warmup: ProgramWarmup;
   private readonly ro: ResizeObserver;
-  private readonly unsubscribe: () => void;
+  private unsubscribe: () => void;
+  /** The workspace as it was when the stage was parked (`park`); null while it shows. */
+  private parkedAt: Workspace | null = null;
+  /** Whether the renderer draws with antialiasing (fixed when it is made). */
+  readonly antialias = engineConfig().quality.antialias !== false;
   private readonly getAdapter: (kind: LayerKind) => LayerAdapter | undefined;
   private readonly raycaster = new Raycaster();
   private readonly ndc = new Vector2();
@@ -278,6 +284,14 @@ export class Stage implements EngineStage {
   };
   private dataWaterLevel: number | null = null;
   private maskDirty = false;
+  /**
+   * Warm-ups the frames wait for (`warmFirst`, `warmContent`): the programs of what the frame
+   * would draw are being made, and drawing now would make them in the frame, blocking the window.
+   * The first frame waits from the start, until the stage's own scene is made.
+   */
+  private warming = 1;
+  /** Content came, went or changed visibility: what is drawn may need new programs. */
+  private contentDirty = false;
 
   constructor(private readonly opts: StageOptions) {
     this.getAdapter = opts.getAdapter ?? registryAdapter;
@@ -291,7 +305,13 @@ export class Stage implements EngineStage {
     });
     this.canvas.tabIndex = 0;
     this.canvas.setAttribute('aria-label', '3D scene');
-    opts.container.appendChild(this.canvas);
+    // the stage's own box: the canvas, its overlay and what layers hang on the canvas's parent
+    // (photo markers) move together when a parked stage shows in another view (`resume`)
+    this.host = document.createElement('div');
+    this.host.className = 'aio-stage-host';
+    Object.assign(this.host.style, { position: 'absolute', inset: '0' });
+    this.host.appendChild(this.canvas);
+    opts.container.prepend(this.host);
 
     const r = (opts.createRenderer ?? createDefaultRenderer)(this.canvas);
     r.outputColorSpace = SRGBColorSpace;
@@ -317,14 +337,16 @@ export class Stage implements EngineStage {
       this.autoFit = false;
     });
 
-    this.env = new Environment(this.scene, r);
+    this.env = new Environment(this.scene, r, (object, camera, scene) =>
+      this.warmup.compile(object, camera, scene),
+    );
     this.env.setQuality(this.envQuality());
     this.applyEnvironment();
     // perf counters cover a whole frame; renderNow resets them
     if (r.info as Partial<WebGLRenderer['info']> | undefined) r.info.autoReset = false;
     this.highlight = new Highlighter(this.clippingPlanes);
     this.scene.add(this.highlight.group);
-    this.overlay = new Overlay(opts.container, {
+    this.overlay = new Overlay(this.host, {
       onCalloutClick: (id) => {
         const group = this.groupNodes.get(id);
         if (group) {
@@ -364,7 +386,66 @@ export class Stage implements EngineStage {
     if (state.camera) this.handleCamera(state.camera);
     this.unsubscribe = opts.store.subscribe(this.onStore);
 
+    this.warmFirst();
     this.raf = requestAnimationFrame(this.loop);
+  }
+
+  /**
+   * The first frame waits for the programs of the stage's own scene: the light maps first (the
+   * materials they light are made for them), then the backdrop, the ground and whatever has
+   * loaded. Made ahead, the driver compiles them on its own threads (about 1.5 s of a frozen
+   * window at the first open of a project otherwise); the view stays empty meanwhile.
+   */
+  private warmFirst(): void {
+    const scene = () =>
+      this.disposed
+        ? null
+        : this.warmup.compile(drawnObjects(this.scene, this.camera), this.camera, this.scene);
+    const env = this.env.prepare();
+    this.contentDirty = false;
+    const first = env ? env.then(() => scene() ?? undefined) : scene();
+    if (!first) this.warmed();
+    else void first.then(this.warmed);
+  }
+
+  private readonly warmed = () => {
+    this.warming--;
+    this.need = true;
+  };
+
+  /** The receivers' material versions as the last frame was drawn (`receiversChanged`). */
+  private readonly drawnVersions = new WeakMap<Material, number>();
+
+  private receiverMaterials(): Material[] {
+    const out: Material[] = [];
+    for (const mesh of this.receivers)
+      if (Array.isArray(mesh.material)) out.push(...mesh.material);
+      else out.push(mesh.material);
+    return out;
+  }
+
+  /** A receiver's material was changed since the last frame: it may need another program. */
+  private receiversChanged(): boolean {
+    for (const m of this.receiverMaterials())
+      if (this.drawnVersions.get(m) !== m.version) return true;
+    return false;
+  }
+
+  private noteReceivers(): void {
+    for (const m of this.receiverMaterials()) this.drawnVersions.set(m, m.version);
+  }
+
+  /** Make the programs of content that came or showed before a frame draws it (`warming`). */
+  private warmContent(): void {
+    this.contentDirty = false;
+    const ready = this.warmup.compile(
+      drawnObjects(this.scene, this.camera),
+      this.camera,
+      this.scene,
+    );
+    if (!ready) return;
+    this.warming++;
+    void ready.then(this.warmed);
   }
 
   /* ----------------------------------------------------------------------- SceneHandle */
@@ -860,8 +941,18 @@ export class Stage implements EngineStage {
 
   /** Render immediately (also used by resize so the canvas is never left blank). */
   renderNow(dtMs = 0, now = performance.now()): void {
-    if (this.disposed || this.width < 1 || this.height < 1) return;
+    if (this.disposed || this.parkedAt || this.width < 1 || this.height < 1) return;
+    // the programs of what would be drawn are being made: the last frame stays meanwhile
+    if (this.warming > 0) return;
     for (const cb of this.frameCbs) cb(dtMs);
+    // a receiver's material asks for another program (the video projector's patch), or content
+    // came: its programs are made before a frame draws it (not while a section switch waits)
+    if (!this.contentDirty && !this.sectionDrawn && this.receiversChanged())
+      this.contentDirty = true;
+    if (this.contentDirty) {
+      this.warmContent();
+      if (this.warming > 0) return;
+    }
     const t = performance.now();
     if (this.maskDirty) this.buildLandMask();
     if (this.env.update(this.camera, this.controls.target, (t - this.t0) / 1000, now))
@@ -881,6 +972,7 @@ export class Stage implements EngineStage {
     } finally {
       if (asked) this.swapSection(asked, this._section.enabled);
     }
+    this.noteReceivers();
     this.lastRenderMs = performance.now() - t;
     this.overlay.update(
       this.camera,
@@ -904,6 +996,55 @@ export class Stage implements EngineStage {
    */
   memoryEstimate(): number {
     return estimateGpuBytes([this.scene]) + this.targetBytes();
+  }
+
+  /** True while the stage is parked (`park`). */
+  get parked(): boolean {
+    return this.parkedAt !== null;
+  }
+
+  /**
+   * Keep the stage for later while another screen shows (its view unmounted): its canvas and
+   * overlay leave the page, nothing is drawn, no key or pointer reaches it and it stops following
+   * the workspace. Its renderer, programs, light maps and loaded layers stay, so `resume` shows
+   * it again without building any of them anew (about 300 ms of blocked window per return).
+   */
+  park(): void {
+    if (this.disposed || this.parkedAt) return;
+    this.parkedAt = this.opts.store.getState();
+    this.unsubscribe();
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    if (this.hoverRaf) cancelAnimationFrame(this.hoverRaf);
+    this.hoverRaf = 0;
+    this.hoverEvent = null;
+    this.downAt = null;
+    this.ro.disconnect();
+    window.removeEventListener('keydown', this.onKey);
+    // the pointer left with the screen
+    if (this.setHighlight('hover', null)) this.rebuildCallouts();
+    this.canvas.style.cursor = '';
+    this.host.remove();
+  }
+
+  /**
+   * Show a parked stage in `container`: what changed in the workspace meanwhile (a selection, a
+   * camera request, layers shown or hidden, an edited manifest) is applied, then it draws.
+   */
+  resume(container: HTMLElement): void {
+    const was = this.parkedAt;
+    if (this.disposed || !was) return;
+    this.parkedAt = null;
+    container.prepend(this.host);
+    window.addEventListener('keydown', this.onKey);
+    this.ro.observe(container);
+    const rect = container.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) this.resize(rect.width, rect.height);
+    this.unsubscribe = this.opts.store.subscribe(this.onStore);
+    this.onStore(this.opts.store.getState(), was);
+    this.need = true;
+    this.lastNow = 0;
+    this.raf = requestAnimationFrame(this.loop);
   }
 
   /** True between a lost WebGL context and its restore (nothing draws meanwhile). */
@@ -1182,6 +1323,7 @@ export class Stage implements EngineStage {
 
   /** Called when layers load, unload or change visibility. */
   private contentChanged() {
+    this.contentDirty = true;
     const box = this.contentBox();
     let terrain = false;
     for (const [root] of this.targets) {
@@ -1780,6 +1922,7 @@ export class Stage implements EngineStage {
     // renderer's dispose listeners; losing the context frees its GPU copies now.
     (this.renderer as Partial<WebGLRenderer>).forceContextLoss?.();
     this.canvas.remove();
+    this.host.remove();
     this.frameCbs.clear();
     this.providers.clear();
     this.holders.clear();

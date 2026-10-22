@@ -22,6 +22,8 @@ export interface FakeWarm {
   /** The clipping plane counts `compile` saw, one per material compiled, in order. */
   compiled: string[];
   lost: boolean;
+  /** With the parallel compile extension: programs made from now on are linked at once. */
+  instant: boolean;
   /** With the parallel compile extension: the compiler is done with every program. */
   finish(): void;
   /** Without it: the graphics process has reached every fence. */
@@ -50,6 +52,7 @@ export function fakeWarmRenderer(opts: {
     flushes: 0,
     compiled: [],
     lost: false,
+    instant: opts.instant === true,
     finish() {
       for (const p of programs) p.ready = true;
     },
@@ -104,7 +107,7 @@ export function fakeWarmRenderer(opts: {
               program: {},
               asked: 0,
               // without the extension a program cannot say; three answers true
-              ready: !opts.parallel || opts.instant === true,
+              ready: !opts.parallel || state.instant,
               getUniforms() {
                 made.asked += 1;
                 return {};

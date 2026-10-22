@@ -441,6 +441,42 @@ describe('Stage', () => {
       stage.dispose();
     });
 
+    it('parks while another screen shows and resumes with what changed meanwhile', async () => {
+      const { stage, store, calls } = await open();
+      const before = calls.render;
+      // a layer's markers hang on the canvas's parent (photos): they go and come with it
+      const marker = document.createElement('i');
+      stage.canvas.parentElement?.appendChild(marker);
+      stage.park();
+      expect(stage.parked).toBe(true);
+      expect(container.contains(marker)).toBe(false);
+      expect(container.querySelector('canvas')).toBeNull();
+      expect(container.querySelector('.aio-stage-overlay')).toBeNull();
+      // it no longer follows the workspace, nor the keyboard, nor draws
+      store.getState().select({ kind: 'asset', id: 'flue-1', layer: 'chimney' });
+      expect(stage.selected).toBeNull();
+      store.getState().select(null);
+      store.getState().select({ kind: 'asset', id: 'flue-1', layer: 'chimney' });
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(store.getState().selection).toMatchObject({ id: 'flue-1' });
+      stage.renderNow();
+      expect(calls.render).toBe(before);
+      // back on screen, in another container: the layer it had, the selection made meanwhile
+      const next = document.createElement('div');
+      document.body.appendChild(next);
+      stage.resume(next);
+      expect(stage.parked).toBe(false);
+      expect(next.querySelector('canvas')).toBe(stage.canvas);
+      expect(next.querySelector('.aio-stage-overlay')).not.toBeNull();
+      expect(next.contains(marker)).toBe(true);
+      expect(stage.selected?.component?.name).toBe('Flue 1');
+      expect(stage.layerLoaded('chimney')).toBe(true);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(store.getState().selection).toBeNull();
+      stage.dispose();
+      next.remove();
+    });
+
     it('reports the hovered component with its record', async () => {
       const { stage, press, canvas } = await open();
       const events: unknown[] = [];
@@ -1005,6 +1041,8 @@ describe('Stage', () => {
         return 1;
       });
       const wall = new Mesh(new BoxGeometry(4, 4, 4), new MeshStandardMaterial({ name: 'wall' }));
+      // the stage's own scene draws at once here: its first frame's wait has tests of its own
+      warm.lost = true;
       const stage: Stage = new Stage({
         container,
         store: createWorkspace(),
@@ -1023,6 +1061,7 @@ describe('Stage', () => {
       stage.scene.add(wall);
       stage.addProjectionReceiver(wall);
       for (const cb of observers) cb([{ contentRect: { width: 800, height: 600 } }]);
+      warm.lost = false;
       let now = 0;
       /** The next animation frame. */
       const tick = () => {
@@ -1195,6 +1234,113 @@ describe('Stage', () => {
       expect(done).toEqual(['tile', 'other']);
       // nothing compiles for a disposed stage
       await expect(stage.compileAhead(other)).resolves.toBeUndefined();
+    });
+
+    /** A stage on a renderer that makes programs ahead, its first frame not drawn yet. */
+    function makeCold(adapter?: LayerAdapter) {
+      const warm = fakeWarmRenderer({ parallel: true });
+      const { renderer, calls } = fakeRenderer();
+      let frame: FrameRequestCallback = () => undefined;
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        frame = cb;
+        return 1;
+      });
+      const store = createWorkspace();
+      const stage = new Stage({
+        container,
+        store,
+        resolveUrl: (_id, ref) => ('path' in ref ? ref.path : ref.hash),
+        createRenderer: () =>
+          Object.assign(renderer, warm.renderer, {
+            properties: { ...warm.renderer.properties, has: () => false },
+          }),
+        getAdapter: () => adapter,
+      });
+      live.push(stage);
+      for (const cb of observers) cb([{ contentRect: { width: 800, height: 600 } }]);
+      let now = 0;
+      const tick = () => {
+        now += 16;
+        frame(now);
+      };
+      /** The compiler finishes what it has, as often as the warm-ups ask for more. */
+      const compiled = async () => {
+        for (let i = 0; i < 4; i++) {
+          warm.finish();
+          await polled();
+        }
+      };
+      return { stage, store, warm, calls, tick, compiled };
+    }
+
+    it('draws its first frame once the programs of its own scene are made', async () => {
+      const { stage, warm, calls, tick, compiled } = makeCold();
+      // the backdrop, the ground and the grid were sent to the compiler, not drawn
+      expect(warm.programs.length).toBeGreaterThan(0);
+      expect(calls.render).toBe(0);
+      stage.requestRender();
+      tick();
+      expect(calls.render).toBe(0);
+      await compiled();
+      tick();
+      expect(calls.render).toBe(1);
+      // every program was asked about outside the frame, when its answers were ready
+      expect(warm.programs.every((p) => p.asked === 1)).toBe(true);
+      stage.dispose();
+    });
+
+    it('makes the programs of a layer that loads before a frame draws it', async () => {
+      const tank = new MeshStandardMaterial({ name: 'tank' });
+      const adapter: LayerAdapter = {
+        kind: 'mesh',
+        create: async (_layer, ctx) => {
+          await Promise.resolve();
+          const mesh = new Mesh(new BoxGeometry(10, 10, 10), tank);
+          ctx.scene.scene.add(mesh);
+          return { setVisible: () => undefined, dispose: () => undefined };
+        },
+      };
+      const { stage, store, warm, calls, tick, compiled } = makeCold(adapter);
+      await compiled();
+      tick();
+      const before = calls.render;
+      store.getState().openProject(project([meshLayer('plant')]));
+      await flush();
+      tick();
+      // the tank's program is being made: the last frame stays on screen
+      expect(warm.programs.some((p) => p.key.startsWith('tank/'))).toBe(true);
+      expect(calls.render).toBe(before);
+      await compiled();
+      tick();
+      expect(calls.render).toBe(before + 1);
+      stage.dispose();
+    });
+
+    it('makes the program a receiver is patched to (video projection) before drawing it', async () => {
+      const { stage, warm, calls, tick, compiled } = makeCold();
+      const wall = new Mesh(new BoxGeometry(4, 4, 4), new MeshStandardMaterial({ name: 'wall' }));
+      stage.scene.add(wall);
+      stage.addProjectionReceiver(wall);
+      await compiled();
+      stage.requestRender();
+      tick();
+      await compiled();
+      stage.requestRender();
+      tick();
+      const before = calls.render;
+      expect(before).toBeGreaterThan(0);
+      // the projector's patch: another program for the same material
+      wall.material.name = 'wall+projector';
+      wall.material.needsUpdate = true;
+      stage.requestRender();
+      tick();
+      expect(calls.render).toBe(before);
+      expect(warm.programs.some((p) => p.key.startsWith('wall+projector/'))).toBe(true);
+      await compiled();
+      stage.requestRender();
+      tick();
+      expect(calls.render).toBe(before + 1);
+      stage.dispose();
     });
 
     it('draws at once on a renderer that cannot make programs ahead', async () => {

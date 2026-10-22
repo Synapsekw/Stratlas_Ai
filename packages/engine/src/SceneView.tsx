@@ -4,6 +4,7 @@ import type { StoreApi } from 'zustand/vanilla';
 import { engineConfig } from './config';
 import { FONT_UI, PALETTE } from './palette';
 import { setActiveScene } from './registry';
+import { parkStage, takeParkedStage } from './stage/parking';
 import { Stage } from './stage/Stage';
 import type { EngineStage } from './types';
 
@@ -61,25 +62,31 @@ export function SceneView({ className, store, primary = true, onStage }: SceneVi
     // one object for the stage's life; its onStage follows the latest prop
     const cfg = init.current;
     const { store: source, primary: publish } = cfg;
-    let stage: Stage;
-    try {
-      const cfg = engineConfig();
-      stage = new Stage({
-        container: el,
-        store: source ?? workspace,
-        resolveUrl: cfg.resolveUrl,
-        devTools: cfg.devTools,
-      });
-    } catch (e) {
-      console.error('3D view could not start', e);
-      return;
-    }
-    if (publish) setActiveScene(stage);
-    cfg.onStage?.(stage);
+    const followed = source ?? workspace;
+    // the main view's stage was kept while another screen showed (stage/parking.ts)
+    // (only a `Stage` is ever parked)
+    let stage = publish ? (takeParkedStage(followed, el) as Stage | null) : null;
+    if (!stage)
+      try {
+        const cfg = engineConfig();
+        stage = new Stage({
+          container: el,
+          store: followed,
+          resolveUrl: cfg.resolveUrl,
+          devTools: cfg.devTools,
+        });
+      } catch (e) {
+        console.error('3D view could not start', e);
+        return;
+      }
+    const shown = stage;
+    if (publish) setActiveScene(shown);
+    cfg.onStage?.(shown);
     return () => {
       cfg.onStage?.(null);
       if (publish) setActiveScene(null);
-      stage.dispose();
+      // kept for the way back to this screen, for as long as the project stays open
+      if (!publish || !parkStage(shown, followed)) shown.dispose();
     };
   }, [error]);
 

@@ -8,7 +8,7 @@
  *
  * `graphicsReport()` is the snapshot diagnostics read (tier, detection facts, memory now).
  */
-import { getActiveStage, type EngineStage, type GpuEvent } from '@aio/engine';
+import { getActiveStage, releaseParkedStage, type EngineStage, type GpuEvent } from '@aio/engine';
 import type { StoreApi } from 'zustand/vanilla';
 import { GPU_TIERS, graphics, type GraphicsState, type PressureReason } from './graphics';
 
@@ -93,6 +93,8 @@ export function createMemoryWatch(opts: MemoryWatchOptions = {}): MemoryWatch {
       if (e.type !== 'context-lost') return;
       // the context comes back by itself; what it held must fit a smaller budget this time
       store.getState().relieve('context-lost');
+      // the 3D stage kept for the way back to the Scene screen holds a context of its own
+      releaseParkedStage();
       last = performance.now();
     },
     check,

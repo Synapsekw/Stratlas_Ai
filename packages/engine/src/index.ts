@@ -10,6 +10,7 @@ export {
   onActiveScene,
 } from './registry';
 export { SceneView, type SceneViewProps } from './SceneView';
+export { releaseParkedStage } from './stage/parking';
 export {
   FAR_M,
   configureEngine,
