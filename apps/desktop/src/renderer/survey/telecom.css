@@ -102,9 +102,13 @@
 .telecom-note {
   margin-inline: var(--sp-4);
 }
-/* the inventory's wrapper only listens for clicks: its section lays out as a bench child */
+/* the inventory's wrapper listens for clicks and stacks the note, the Flag antenna tool and the
+   section at the bench's gap (.meb); it keeps a box of its own (not display: contents), so it
+   measures and scrolls into view like any other bench child */
 .telecom-section {
-  display: contents;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
 }
 /* the 3D antenna labels: .sv-label from measure.css does the rest; a label with an align is
    placed by its transform alone (see antennaLabels.ts) */
