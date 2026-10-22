@@ -1,11 +1,16 @@
 import { getActiveStage } from '@aio/engine';
 import { pinTargetRefusal } from '@aio/modelling';
-import type { ModelCorrection, ModelCorrectionInput, ProcModel } from '@aio/schema';
+import type {
+  ModelCorrection,
+  ModelCorrectionInput,
+  ProcModel,
+  ProjectManifest,
+} from '@aio/schema';
 import { useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Matrix4 } from 'three';
-import { appAgentSession, setAgentTask } from '../agent/session';
+import { agentTask, appAgentSession, setAgentTask } from '../agent/session';
 import { agentPane } from '../agent/agentPaneStore';
 import { bridge, shell, useShell } from '../shell';
 import { showBench } from '../workspace/workbench/followTool';
@@ -18,31 +23,19 @@ import {
   useCorrectionDraft,
   type CorrectionActionKind,
 } from './correctionDraft';
-import { afterDecision, saveThenSend, sendCorrections } from './correctionSend';
+import { afterDecision, allowCloudKinds, saveThenSend, sendCorrections } from './correctionSend';
 import { requiredKinds } from './correctionSession';
 import { engineerHost, modelCorrections, useHost, useRun } from './host';
 import { prepareCorrectionSubmission } from './correctionTools';
 
-type Kind = 'photos' | 'scans' | 'drawings';
-
-/** The project's own consent ("Allow for this project", as in the evidence preview), then a reload. */
-async function allowCloudKinds(missing: Kind[]): Promise<void> {
-  const project = workspace.getState().project;
-  if (!project) return;
-  const photos = missing.includes('photos');
-  const scans = missing.includes('scans');
-  if (photos || scans)
-    await bridge.call('ai:setCloudEvidence', {
-      projectId: project.id,
-      ...(photos ? { photos: true } : {}),
-      ...(scans ? { scans: true } : {}),
-    });
-  if (missing.includes('drawings'))
-    await bridge.call('ai:setCloudDrawings', { projectId: project.id, allow: true });
-  const r = await bridge.call('project:open', { path: project.root });
-  const ws = workspace.getState();
-  if (r.ok && r.value.ok && ws.project?.id === project.id) ws.replaceManifest(r.value.manifest);
-}
+const allowDeps = {
+  call: bridge.call.bind(bridge),
+  project: () => workspace.getState().project,
+  replaceManifest: (projectId: string, manifest: ProjectManifest) => {
+    const ws = workspace.getState();
+    if (ws.project?.id === projectId) ws.replaceManifest(manifest);
+  },
+};
 
 /** App wiring only; CorrectionPanel remains portable to the sidebar workbench. */
 export function CorrectionWorkbench({ layerId }: { layerId: string }) {
@@ -77,10 +70,12 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
       setAgentTask('build');
       void agent.refresh();
     };
+    const before = agentTask();
     check();
     globalThis.addEventListener('focus', check);
     return () => {
       globalThis.removeEventListener('focus', check);
+      setAgentTask(before);
     };
   }, [agent]);
   const [pinMode, setPinMode] = useState(false);
@@ -297,7 +292,7 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
             fix: {
               label: t('eng.ev.allow'),
               onClick: () => {
-                allowCloudKinds(blocked.missing).catch((e: unknown) => {
+                allowCloudKinds(blocked.missing, allowDeps).catch((e: unknown) => {
                   setError(e instanceof Error ? e.message : String(e));
                 });
               },
@@ -455,7 +450,7 @@ export function CorrectionWorkbench({ layerId }: { layerId: string }) {
         if (r?.camera) getActiveStage()?.restoreView(r.camera, false);
         else if (r) focus(targetView(r));
       }}
-      onSend={(ids) => sendToAi(ids)}
+      onSend={(ids) => sendToAi(ids, false)}
       onViewChange={setView}
       onFocusTarget={focus}
       onAccept={(id) =>

@@ -1,10 +1,16 @@
 import { correctionPrompt } from '@aio/ai';
+import type { ProjectManifest } from '@aio/schema';
+import type { Bridge, Res } from '../bridge';
 import type { SendFailure } from './CorrectionPanel.types';
 
 export const SEND_TIMEOUT_MESSAGE =
   'The AI did not answer in time. Your request is saved; press Send to try again.';
 
-/** The promise, or the timeout message once `ms` have passed without it settling. */
+/**
+ * The promise, or the timeout message once `ms` have passed without it settling. A timed-out step
+ * is not cancelled: a send may still start later. The agentBusy blocker keeps a second press from
+ * sending the same requests twice while that reply runs.
+ */
 function bounded<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -59,4 +65,42 @@ export function afterDecision(
 ): void {
   if (decision === 'accept') ui.setRequestId(undefined);
   ui.setView('before');
+}
+
+/** A bridge answer that is itself ok-or-failure: its value, or its error thrown. */
+function must<T extends { ok: boolean }>(r: Res<T>): Extract<T, { ok: true }> {
+  if (!r.ok) throw new Error(r.error);
+  if (!r.value.ok)
+    throw new Error((r.value as { error?: string }).error ?? 'The request was refused.');
+  return r.value as Extract<T, { ok: true }>;
+}
+
+/**
+ * The project's own consent for the missing kinds ("Allow for this project", as in the evidence
+ * preview), then the manifest again so the blocker sees it. A refusal is thrown, for the panel.
+ */
+export async function allowCloudKinds(
+  missing: readonly ('photos' | 'scans' | 'drawings')[],
+  deps: {
+    call: Bridge['call'];
+    project: () => { id: string; root: string } | null | undefined;
+    replaceManifest: (projectId: string, manifest: ProjectManifest) => void;
+  },
+): Promise<void> {
+  const project = deps.project();
+  if (!project) return;
+  const photos = missing.includes('photos');
+  const scans = missing.includes('scans');
+  if (photos || scans)
+    must(
+      await deps.call('ai:setCloudEvidence', {
+        projectId: project.id,
+        ...(photos ? { photos: true } : {}),
+        ...(scans ? { scans: true } : {}),
+      }),
+    );
+  if (missing.includes('drawings'))
+    must(await deps.call('ai:setCloudDrawings', { projectId: project.id, allow: true }));
+  const opened = must(await deps.call('project:open', { path: project.root }));
+  deps.replaceManifest(project.id, opened.manifest);
 }

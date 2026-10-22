@@ -10,7 +10,13 @@ import type {
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shell } from '../shell';
-import { appAgentSession, setAgentTask, setAgentWindow, startAgentSession } from './session';
+import {
+  agentTask,
+  appAgentSession,
+  setAgentTask,
+  setAgentWindow,
+  startAgentSession,
+} from './session';
 
 interface Call {
   channel: IpcChannel;
@@ -213,6 +219,13 @@ describe('the one agent session of the app', () => {
 
     expect(session.getState().turns).toEqual([]);
     expect(b.sent('ai:saveConversation').at(-1)?.projectId).toBe('a');
+  });
+
+  it('reads back the task last set, so a panel can restore it', () => {
+    setAgentTask('build');
+    expect(agentTask()).toBe('build');
+    setAgentTask(undefined);
+    expect(agentTask()).toBeUndefined();
   });
 
   it('sends with the window and the task the screen set', async () => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SEND_TIMEOUT_MESSAGE,
   afterDecision,
+  allowCloudKinds,
   saveThenSend,
   sendCorrections,
 } from './correctionSend';
@@ -109,5 +110,61 @@ describe('afterDecision', () => {
     afterDecision('reject', ui);
     expect(ui.setRequestId).not.toHaveBeenCalled();
     expect(ui.setView).toHaveBeenCalledWith('before');
+  });
+});
+
+describe('allowCloudKinds', () => {
+  const project = { id: 'p1', root: 'C:/p1' };
+  const manifest = { id: 'p1', aiCloudPhotos: true };
+  const deps = (answers: Record<string, unknown>) => {
+    const call = vi.fn((channel: string) => Promise.resolve(answers[channel]));
+    const replaceManifest = vi.fn();
+    return {
+      call,
+      replaceManifest,
+      deps: {
+        call: call as never,
+        project: () => project,
+        replaceManifest,
+      },
+    };
+  };
+
+  it('grants each missing kind and reloads the manifest', async () => {
+    const d = deps({
+      'ai:setCloudEvidence': { ok: true, value: { ok: true } },
+      'ai:setCloudDrawings': { ok: true, value: { ok: true } },
+      'project:open': { ok: true, value: { ok: true, manifest } },
+    });
+    await allowCloudKinds(['photos', 'scans', 'drawings'], d.deps);
+    expect(d.call).toHaveBeenCalledWith('ai:setCloudEvidence', {
+      projectId: 'p1',
+      photos: true,
+      scans: true,
+    });
+    expect(d.call).toHaveBeenCalledWith('ai:setCloudDrawings', { projectId: 'p1', allow: true });
+    expect(d.replaceManifest).toHaveBeenCalledWith('p1', manifest);
+  });
+
+  it('throws the refusal when main refuses the grant', async () => {
+    const d = deps({
+      'ai:setCloudEvidence': {
+        ok: true,
+        value: { ok: false, error: 'This project is a read-only package.' },
+      },
+    });
+    await expect(allowCloudKinds(['photos'], d.deps)).rejects.toThrow(
+      'This project is a read-only package.',
+    );
+    expect(d.replaceManifest).not.toHaveBeenCalled();
+  });
+
+  it('throws when the bridge call itself fails', async () => {
+    const d = deps({
+      'ai:setCloudDrawings': { ok: false, error: 'The app bridge is not available.' },
+    });
+    await expect(allowCloudKinds(['drawings'], d.deps)).rejects.toThrow(
+      'The app bridge is not available.',
+    );
   });
 });

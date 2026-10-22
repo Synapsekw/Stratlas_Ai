@@ -46,6 +46,11 @@ export function setAgentWindow(window: WindowKind): void {
   session?.setWindow(window);
 }
 
+/** The route last set with setAgentTask, so a panel that changes it can put it back. */
+export function agentTask(): AiTask | undefined {
+  return currentTask;
+}
+
 /** The route the next message goes to (`build` while the Model builder is open); default chat. */
 export function setAgentTask(task: AiTask | undefined): void {
   currentTask = task;

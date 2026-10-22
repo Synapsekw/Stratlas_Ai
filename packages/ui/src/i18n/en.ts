@@ -3916,7 +3916,6 @@ export const en = {
   'eng.correction.blocker.permission':
     'This project keeps {kinds} on this computer. Allow cloud AI for them in project settings, or choose a local model.',
   'eng.correction.blocker.openSettings': 'Open AI settings',
-  'eng.correction.blocker.openProject': 'Open project settings',
   'eng.correction.pinHintOnly':
     'This model has no known scale or placement yet: the pin is kept as a view hint and the request goes to the whole model.',
   'eng.correction.scaleProvisional':
