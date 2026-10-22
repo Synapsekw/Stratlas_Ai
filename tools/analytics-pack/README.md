@@ -16,6 +16,10 @@ The pack carries the licence of both components in `licences/`, each pinned in `
 - `licences/llama.cpp-LICENSE.txt`: the MIT licence, from the llama.cpp repository at tag `b11489`.
 - `licences/Qwen2.5-VL-7B-Instruct-LICENSE.txt`: the Apache-2.0 text from Qwen's own repository (`QwenLM/Qwen2.5-VL`, pinned at commit `96588727`), because the model repositories on Hugging Face ship no LICENSE file. The model card declares Apache-2.0.
 
+## Signing
+
+When `QUADRION_PACK_SIGNING_KEY` names the publisher's private key (a PEM file kept offline, never in git), `build.mjs` writes `manifest.sig`, an Ed25519 signature of the exact `manifest.json` bytes, as the pipeline pack build does. The app checks it against `signing.pipelinePackKey` in brand.json. Without that key pinned, the app asks before it installs an unsigned pack.
+
 ## Smoke check
 
 `smoke.py` starts the server as the app does: the pack's arguments, plus a random key per launch in the `LLAMA_API_KEY` environment variable (never on the command line). It then checks four things: a request without the key is refused with HTTP 401, boxes come back in the pixel frame of the sent image, yes/no logprobs score a clear case at or above 0.9 and an empty one at or below 0.1, and the logprobs have the shape the engine reads. `test_smoke.py` tests the key handling against a stub server (`uv run --project python pytest tools/analytics-pack/test_smoke.py`).

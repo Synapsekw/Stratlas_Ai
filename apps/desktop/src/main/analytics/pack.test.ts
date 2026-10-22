@@ -1,5 +1,5 @@
 import type { IpcChannel } from '@aio/schema';
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, sign as signBytes } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -297,12 +297,41 @@ describe('Analytics pack IPC', () => {
     expect(new Set(phases)).toContain('unpack');
   });
 
+  const pair = generateKeyPairSync('ed25519');
+  const packKey = Buffer.from(
+    (pair.publicKey.export({ format: 'jwk' }) as { x: string }).x,
+    'base64url',
+  ).toString('base64');
+  const signer =
+    (key = pair.privateKey) =>
+    (manifest: Buffer) =>
+      signBytes(null, manifest, key).toString('base64');
+
+  it('with a publisher key, a pack signed with it installs and a forged one is refused', async () => {
+    const confirmUnsigned = vi.fn(() => Promise.resolve(true));
+    const { call } = setup({ packKey, confirmUnsigned });
+    const forged = join(root, 'analytics-pack-0.2.0-win-x64.tar.gz');
+    const other = signer(generateKeyPairSync('ed25519').privateKey);
+    await writeFile(forged, fakeAnalyticsPackArchive('0.2.0', { sign: other }));
+    expect(await call('analyticsPack:install', { path: forged })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/does not match/) as unknown,
+    });
+    expect(await call('analyticsPack:status')).toMatchObject({ installed: null });
+
+    const signed = join(root, 'analytics-pack-0.1.0-win-x64.tar.gz');
+    await writeFile(signed, fakeAnalyticsPackArchive('0.1.0', { sign: signer() }));
+    expect(await call('analyticsPack:install', { path: signed })).toEqual({
+      ok: true,
+      version: '0.1.0',
+    });
+    expect(confirmUnsigned).not.toHaveBeenCalled();
+    expect(await call('analyticsPack:status')).toMatchObject({
+      installed: { version: '0.1.0' },
+    });
+  });
+
   it('with a publisher key, an unsigned pack is refused', async () => {
-    const pair = generateKeyPairSync('ed25519');
-    const packKey = Buffer.from(
-      (pair.publicKey.export({ format: 'jwk' }) as { x: string }).x,
-      'base64url',
-    ).toString('base64');
     const confirmUnsigned = vi.fn(() => Promise.resolve(true));
     const { call } = setup({ packKey, confirmUnsigned });
     const path = join(root, 'analytics-pack-0.1.0-win-x64.tar.gz');

@@ -6173,6 +6173,7 @@ export const en = {
   'detect.preset.settings.card': 'Graphics card',
   'detect.preset.settings.hw.ok': '{gpu} · {total} GB · {free} GB free',
   'detect.preset.settings.hw.checking': 'Checking the graphics card',
+  'detect.preset.settings.hw.failed': 'Could not check the graphics card.',
   'detect.preset.settings.hw.recheck': 'Check again',
   'detect.preset.settings.version': 'Version',
   'detect.preset.settings.none': 'Not installed',

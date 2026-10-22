@@ -25,6 +25,8 @@ export interface AnalyticsPack {
   replace: { path: string; version: string } | null;
   /** The graphics card check; null until main answered. */
   hardware: HardwareCheck | null;
+  /** The check itself failed (main did not answer): why, for the log; null otherwise. */
+  hardwareError: string | null;
   checking: boolean;
   /** Read the status and check the graphics card. */
   load(): Promise<void>;
@@ -43,6 +45,8 @@ export function createAnalyticsPackStore(
   on: AioBridge['on'] | undefined,
 ): StoreApi<AnalyticsPack> {
   let following = false;
+  /** The latest graphics card check: an older answer arriving after it is dropped. */
+  let checkSeq = 0;
   return createStore<AnalyticsPack>()((set, get) => {
     const readStatus = async () => {
       const r = await b.call('analyticsPack:status', {});
@@ -58,6 +62,7 @@ export function createAnalyticsPackStore(
       note: null,
       replace: null,
       hardware: null,
+      hardwareError: null,
       checking: false,
 
       load: async () => {
@@ -121,9 +126,15 @@ export function createAnalyticsPackStore(
       },
 
       checkHardware: async () => {
+        const seq = ++checkSeq;
         set({ checking: true });
         const r = await b.call('analytics:hardware', {});
-        set(r.ok ? { hardware: r.value, checking: false } : { error: r.error, checking: false });
+        if (seq !== checkSeq) return;
+        set(
+          r.ok
+            ? { hardware: r.value, hardwareError: null, checking: false }
+            : { hardware: null, hardwareError: r.error, checking: false },
+        );
       },
     };
   });

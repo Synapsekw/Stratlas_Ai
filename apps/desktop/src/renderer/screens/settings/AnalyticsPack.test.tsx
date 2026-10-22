@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   answers: new Map<string, (req: unknown) => unknown>(),
   calls: [] as { channel: string; req: unknown }[],
+  platform: 'win32',
 }));
+
+vi.mock('../../shell/caption', () => ({ rendererPlatform: () => h.platform }));
 
 vi.mock('../../shell', () => ({
   bridge: {
@@ -52,6 +55,7 @@ let root: Root | undefined;
 beforeEach(() => {
   h.answers.clear();
   h.calls.length = 0;
+  h.platform = 'win32';
   analyticsPack.setState(analyticsPack.getInitialState());
   host = document.createElement('div');
   document.body.append(host);
@@ -181,8 +185,29 @@ describe('Settings, Analytics pack', () => {
     expect(q('ap-hw')?.textContent).toContain('13.2 GB free');
   });
 
+  it('a failed hardware check says so, with Check again', async () => {
+    h.answers.set('analyticsPack:status', () => INSTALLED);
+    root = createRoot(host);
+    act(() => root?.render(<AnalyticsPack />));
+    await flush();
+    expect(q('ap-hw')?.textContent).toContain('Could not check the graphics card.');
+    h.answers.set('analytics:hardware', () => CARD);
+    await act(async () => {
+      q('ap-hw-recheck')?.click();
+      await Promise.resolve();
+    });
+    await flush();
+    expect(q('ap-hw')?.textContent).toContain('13.2 GB free');
+  });
+
   it('on a Mac the section says it is not available', async () => {
-    await show(NONE, { ok: false, code: 'mac', reason: 'Not available on this computer yet.' });
+    h.platform = 'darwin';
+    // the check has not answered: the install controls must not show meanwhile
+    h.answers.set('analyticsPack:status', () => NONE);
+    h.answers.set('analytics:hardware', () => new Promise(() => undefined));
+    root = createRoot(host);
+    act(() => root?.render(<AnalyticsPack />));
+    await flush();
     expect(q('ap-hw')?.textContent).toContain('Not available on this computer yet.');
     expect(q('ap-hw-recheck')).toBeNull();
     expect(q('ap-install')).toBeNull();

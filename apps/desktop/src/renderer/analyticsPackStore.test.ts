@@ -80,6 +80,51 @@ describe('the Analytics pack store', () => {
     expect(s.getState()).toMatchObject({ hardware: CARD, checking: false });
   });
 
+  it('only the latest hardware check lands, and checking clears only for it', async () => {
+    const pending: ((v: HardwareCheck) => void)[] = [];
+    const bridge: Bridge = {
+      call: () =>
+        new Promise((resolve) => {
+          pending.push((value) => {
+            resolve({ ok: true, value } as Res<never>);
+          });
+        }),
+    };
+    const s = createAnalyticsPackStore(bridge, undefined);
+    const first = s.getState().checkHardware();
+    const second = s.getState().checkHardware();
+    const busy: HardwareCheck = { ok: false, code: 'tooBusy', reason: 'busy' };
+    pending[1]?.(CARD);
+    await second;
+    expect(s.getState()).toMatchObject({ hardware: CARD, checking: false });
+    // the older answer comes in late: dropped
+    pending[0]?.(busy);
+    await first;
+    expect(s.getState()).toMatchObject({ hardware: CARD, checking: false });
+
+    const third = s.getState().checkHardware();
+    const fourth = s.getState().checkHardware();
+    pending[2]?.(busy);
+    await third;
+    // the latest has not answered yet: still checking
+    expect(s.getState().checking).toBe(true);
+    pending[3]?.(CARD);
+    await fourth;
+    expect(s.getState()).toMatchObject({ hardware: CARD, checking: false });
+  });
+
+  it('a failed hardware check says so and stops checking', async () => {
+    const { bridge } = fakeBridge({});
+    const s = createAnalyticsPackStore(bridge, undefined);
+    await s.getState().checkHardware();
+    expect(s.getState()).toMatchObject({
+      hardware: null,
+      hardwareError: 'no analytics:hardware',
+      checking: false,
+      error: null,
+    });
+  });
+
   it('progress events update progress', async () => {
     let installed = false;
     const listeners: ((p: PackInstallProgress) => void)[] = [];

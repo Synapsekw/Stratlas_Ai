@@ -7,7 +7,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
+  min-inline-size: 0;
   color: var(--fg-0);
 }
 .ap-section .ap-hw.faint {
@@ -27,7 +27,8 @@
   color: var(--fg-0);
 }
 .ap-section .ap-unusable {
-  margin: 0 0 10px;
+  margin-block: 0 10px;
+  margin-inline: 0;
   padding-block: 8px;
   padding-inline: 28px 12px;
   border: 1px solid var(--warn-line);
@@ -42,7 +43,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 8px;
-  min-width: 0;
+  min-inline-size: 0;
 }
 .ap-section .ap-offer .mono {
   overflow-wrap: anywhere;

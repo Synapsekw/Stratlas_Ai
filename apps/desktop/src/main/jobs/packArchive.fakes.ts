@@ -175,6 +175,8 @@ export interface FakeAnalyticsPackOptions {
   top?: string;
   /** Change the manifest before it is written. */
   manifest?: (m: Record<string, unknown>) => void;
+  /** Sign the manifest bytes: the answer (base64) is written as `manifest.sig`. */
+  sign?: (manifest: Buffer) => string;
 }
 
 export const FAKE_ANALYTICS_SERVER = 'llama/llama-server.exe';
@@ -217,7 +219,9 @@ export function fakeAnalyticsPackFiles(
   };
   o.manifest?.(m);
   if (o.server === false) Reflect.deleteProperty(files, FAKE_ANALYTICS_SERVER);
-  return { 'manifest.json': JSON.stringify(m), ...files };
+  const manifest = JSON.stringify(m);
+  const sig = o.sign ? { 'manifest.sig': o.sign(Buffer.from(manifest, 'utf8')) } : {};
+  return { 'manifest.json': manifest, ...sig, ...files };
 }
 
 /** The tar entries of a fake Analytics pack archive: `analytics-pack-<version>/`, manifest first. */

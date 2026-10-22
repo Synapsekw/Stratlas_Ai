@@ -11,6 +11,7 @@ import { Icon, t, Tip } from '@aio/ui';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { analyticsPack, useAnalyticsPack } from '../../analyticsPack';
 import { useShell } from '../../shell';
+import { rendererPlatform } from '../../shell/caption';
 import { progressText } from './packProgress';
 import './analyticsPack.css';
 
@@ -28,7 +29,34 @@ function Path({ path, testid }: { path: string; testid?: string }) {
 }
 
 /** "NVIDIA GeForce RTX 5070 Ti · 16 GB · 13.2 GB free", or why detectors cannot run here. */
-function Hardware({ hardware, checking }: { hardware: HardwareCheck | null; checking: boolean }) {
+function Hardware({
+  hardware,
+  failed,
+  checking,
+  mac,
+}: {
+  hardware: HardwareCheck | null;
+  failed: boolean;
+  checking: boolean;
+  mac: boolean;
+}) {
+  // known from the platform, before (and whatever) the check answers
+  if (mac) {
+    return (
+      <span className="ap-hw warn" data-testid="ap-hw">
+        <Icon name="warn" size={14} />
+        {t('detect.preset.hw.mac')}
+      </span>
+    );
+  }
+  if (failed && !checking) {
+    return (
+      <span className="ap-hw warn" data-testid="ap-hw">
+        <Icon name="warn" size={14} />
+        {t('detect.preset.settings.hw.failed')}
+      </span>
+    );
+  }
   if (!hardware || checking) {
     return (
       <span className="ap-hw faint" role="status" data-testid="ap-hw">
@@ -252,6 +280,7 @@ export function AnalyticsPack() {
   const dataRoot = useShell((s) => s.settings.dataRoot);
   const status = useAnalyticsPack((s) => s.status);
   const hardware = useAnalyticsPack((s) => s.hardware);
+  const failed = useAnalyticsPack((s) => s.hardwareError !== null);
   const checking = useAnalyticsPack((s) => s.checking);
   const installing = useAnalyticsPack((s) => s.installing);
   // the data folder holds the packs: read again when it changes
@@ -259,17 +288,18 @@ export function AnalyticsPack() {
     void analyticsPack.getState().load();
   }, [dataRoot]);
   const refused = hardware?.ok === false ? hardware : null;
-  // nothing to install on a Mac: the hardware line says so
-  const mac = refused?.code === 'mac';
+  // nothing to install on a Mac: the hardware line says so (from the platform, so the install
+  // controls never show while the first check runs)
+  const mac = rendererPlatform() === 'darwin' || refused?.code === 'mac';
   return (
     <div className="sblock ap-section" data-testid="analytics-pack">
       <h2>{t('detect.preset.settings.title')}</h2>
       <p className="help">{t('detect.preset.settings.help')}</p>
       <div className="about-kv ap-info">
         <span>{t('detect.preset.settings.card')}</span>
-        <Hardware hardware={hardware} checking={checking} />
+        <Hardware hardware={hardware} failed={failed} checking={checking} mac={mac} />
         <span>
-          {refused && !mac && !checking && (
+          {(refused !== null || failed) && !mac && !checking && (
             <button
               type="button"
               className="btn sm ghost"
