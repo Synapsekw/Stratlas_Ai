@@ -8,12 +8,14 @@
  * Other screens get here with `openProcessingTools()` (renderer/processingTools.ts).
  */
 import { brand } from '@aio/brand';
-import type { InstalledPack, PackInstallProgress, PipelinePackStatus } from '@aio/schema';
+import type { InstalledPack, PipelinePackStatus } from '@aio/schema';
 import { formatBytes, Icon, t, type IconName, type MessageKey } from '@aio/ui';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { AdvancedPipelines } from '../../processing/AdvancedPipelines';
 import { processingTools, resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { useShell } from '../../shell';
+import { AnalyticsPack } from './AnalyticsPack';
+import { progressText } from './packProgress';
 import { ProcessingEngine } from './ProcessingEngine';
 import './processingTools.css';
 
@@ -35,22 +37,6 @@ const WHERE = {
   app: 'tools.where.app',
   runtime: 'tools.where.runtime',
 } as const satisfies Record<string, MessageKey>;
-
-/** The sentence under the progress bar, and how far it is (null: no figure to show). */
-export function progressText(p: PackInstallProgress | null): { text: string; pct: number | null } {
-  if (!p || p.phase === 'unpack') {
-    const total = p?.bytesTotal ?? 0;
-    const done = Math.min(p?.bytesDone ?? 0, total);
-    if (total <= 0) return { text: t('tools.progress.label'), pct: null };
-    const files = t('tools.progress.files', { files: (p?.entries ?? 0).toLocaleString('en-US') });
-    return {
-      text: `${t('tools.progress.unpack', { done: formatBytes(done), total: formatBytes(total) })}, ${files}`,
-      pct: Math.round((done / total) * 100),
-    };
-  }
-  if (p.phase === 'check') return { text: t('tools.progress.check'), pct: 100 };
-  return { text: t('tools.progress.activate'), pct: 100 };
-}
 
 function Status({ status }: { status: PipelinePackStatus | null }) {
   const state = status ? STATE[status.state] : null;
@@ -352,6 +338,7 @@ export function ProcessingTools() {
         <Status status={status} />
         <Install />
       </div>
+      <AnalyticsPack />
       {/* a development pack is not ours to manage: its folders are left alone */}
       {status && status.state !== 'dev' && (
         <OtherPacks packs={status.others} disabled={installing} />

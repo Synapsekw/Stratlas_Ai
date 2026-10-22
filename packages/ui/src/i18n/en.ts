@@ -6165,6 +6165,36 @@ export const en = {
   'detect.preset.reject.other': 'Other reason',
   'detect.preset.reject.none': 'Reject without a reason',
   'detect.preset.reject.notePlaceholder': 'What is it? For example, a painted band',
+  'detect.preset.settings.title': 'Analytics pack',
+  'detect.preset.settings.help':
+    'Runs detectors on this computer, with no internet. It needs an NVIDIA graphics card with 8 GB of memory and takes about 7 GB of disk.',
+  'detect.preset.settings.licence':
+    'Includes llama.cpp (MIT) and Qwen2.5-VL-7B-Instruct (Apache-2.0).',
+  'detect.preset.settings.card': 'Graphics card',
+  'detect.preset.settings.hw.ok': '{gpu} · {total} GB · {free} GB free',
+  'detect.preset.settings.hw.checking': 'Checking the graphics card',
+  'detect.preset.settings.hw.recheck': 'Check again',
+  'detect.preset.settings.version': 'Version',
+  'detect.preset.settings.none': 'Not installed',
+  'detect.preset.settings.location': 'Location',
+  'detect.preset.settings.remove': 'Remove',
+  'detect.preset.settings.removeConfirm': 'Move version {version} to the bin',
+  'detect.preset.settings.keep': 'Keep',
+  'detect.preset.settings.install': 'Install or update from file',
+  'detect.preset.settings.installHint':
+    'Choose the Analytics pack file, analytics-pack-<version>-<platform>.tar.gz. It is checked, then installed into the data folder. Nothing is downloaded.',
+  'detect.preset.settings.choose': 'Choose file',
+  'detect.preset.settings.offerTitle': 'A newer version is on this computer',
+  'detect.preset.settings.offer': 'Install version {version}',
+  'detect.preset.settings.progress': 'Installing the Analytics pack',
+  'detect.preset.settings.cancel': 'Cancel',
+  'detect.preset.settings.replace.title': 'Version {version} is already installed.',
+  'detect.preset.settings.replace.text': 'Replace it with the one in this file?',
+  'detect.preset.settings.replace.yes': 'Replace version {version}',
+  'detect.preset.settings.replace.no': 'Keep it',
+  'detect.preset.settings.installed':
+    'Analytics pack {version} is installed. Detectors use it from now on.',
+  'detect.preset.settings.removed': 'Analytics pack {version} was moved to the bin.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

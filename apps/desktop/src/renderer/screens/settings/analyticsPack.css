@@ -1,0 +1,74 @@
+/* Settings, Processing tools, Analytics pack (the local detector model). */
+.ap-section .ap-info {
+  margin-block-end: 10px;
+  padding-block: 8px;
+}
+.ap-section .ap-hw {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--fg-0);
+}
+.ap-section .ap-hw.faint {
+  color: var(--fg-2);
+}
+.ap-section .ap-hw.ok svg {
+  color: var(--ok);
+}
+.ap-section .ap-hw.warn svg {
+  flex: none;
+  color: var(--warn-ink);
+}
+.ap-section .ap-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-0);
+}
+.ap-section .ap-unusable {
+  margin: 0 0 10px;
+  padding-block: 8px;
+  padding-inline: 28px 12px;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-4);
+  background: var(--s3-a);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  line-height: 1.55;
+}
+.ap-section .ap-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.ap-section .ap-offer .mono {
+  overflow-wrap: anywhere;
+}
+.ap-section .notice .btn {
+  flex: none;
+}
+.ap-section .ap-acts {
+  display: flex;
+  gap: 6px;
+  margin-inline-start: auto;
+  flex: none;
+}
+.ap-section .ap-progress {
+  display: grid;
+  gap: 8px;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.ap-section .ap-progress-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ap-section .ap-licence {
+  margin-block: 10px 0;
+}
