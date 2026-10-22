@@ -87,4 +87,38 @@ describe('bounded model correction records', () => {
       EngineerRun.safeParse({ ...run, corrections: Array(101).fill(correction()) }).success,
     ).toBe(false);
   });
+
+  it('accepts a model-wide target and refuses extra keys on it', () => {
+    expect(CorrectionTarget.safeParse({ kind: 'model' }).success).toBe(true);
+    expect(CorrectionTarget.safeParse({ kind: 'model', partId: 'x' }).success).toBe(false);
+  });
+
+  it('caps a model-wide proposal at 20 operations, a part proposal stays at 32', () => {
+    const ops = (n: number) => Array.from({ length: n }, (_, i) => ({ op: 'remove', id: `p${i}` }));
+    const record = (target: unknown, n: number) => ({
+      ...correction(),
+      target,
+      status: 'proposed',
+      proposal: {
+        explanation: 'Remove them.',
+        patch: ops(n),
+        createdAt: NOW,
+        before: [],
+        candidateFingerprint: `sha256:${'1'.repeat(64)}`,
+      },
+    });
+    expect(ModelCorrection.safeParse(record({ kind: 'model' }, 20)).success).toBe(true);
+    expect(ModelCorrection.safeParse(record({ kind: 'model' }, 21)).success).toBe(false);
+    expect(ModelCorrection.safeParse(record({ kind: 'part', partId: 'p0' }, 21)).success).toBe(
+      true,
+    );
+    const old = record({ kind: 'model' }, 21).proposal;
+    expect(
+      ModelCorrection.safeParse({
+        ...correction(),
+        target: { kind: 'model' },
+        history: [{ proposal: old, disposition: 'rejected', at: NOW }],
+      }).success,
+    ).toBe(false);
+  });
 });

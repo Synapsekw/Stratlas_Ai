@@ -6,7 +6,11 @@ import { ProcModelId } from './procmodel';
 /** Bounded review instructions; comments are user content, never tool instructions. */
 const Comment = z.string().trim().min(1).max(4000);
 export const CorrectionFingerprint = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+/** A model-wide request may carry at most this many operations (part and pin keep 32). */
+export const MODEL_WIDE_PATCH_LIMIT = 20;
 export const CorrectionTarget = z.discriminatedUnion('kind', [
+  /** A request about the whole model: no part, no pin. */
+  z.object({ kind: z.literal('model') }).strict(),
   z.object({ kind: z.literal('part'), partId: z.string().min(1).max(80) }).strict(),
   z
     .object({
@@ -87,6 +91,22 @@ export const ModelCorrection = ModelCorrectionInput.extend({
         message: 'A proposed or accepted correction needs its proposal.',
         path: ['proposal'],
       });
+    if (request.target.kind === 'model') {
+      if (request.proposal && request.proposal.patch.length > MODEL_WIDE_PATCH_LIMIT)
+        ctx.addIssue({
+          code: 'custom',
+          message: `A model-wide proposal has at most ${MODEL_WIDE_PATCH_LIMIT} operations.`,
+          path: ['proposal', 'patch'],
+        });
+      request.history.forEach((round, i) => {
+        if (round.proposal.patch.length > MODEL_WIDE_PATCH_LIMIT)
+          ctx.addIssue({
+            code: 'custom',
+            message: `A model-wide proposal has at most ${MODEL_WIDE_PATCH_LIMIT} operations.`,
+            path: ['history', i, 'proposal', 'patch'],
+          });
+      });
+    }
     if (JSON.stringify(request).length > 256_000)
       ctx.addIssue({
         code: 'custom',
