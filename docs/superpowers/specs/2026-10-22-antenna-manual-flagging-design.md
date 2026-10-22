@@ -15,7 +15,7 @@ This piece is independent of the engineering model typed corrections (`2026-10-2
 1. **Flag a missed antenna.** A **Flag antenna** tool in the tower view. The person draws an outline (a polygon, in screen space) around the antenna on the 3D point cloud. The app takes the points inside it, measures the unit from them and adds it to the inventory.
 2. **Measure it with the code we already have.** The outlined points go through the existing measuring steps in `python/src/aio_pipelines/telecom/` (`faces.py`, `boxes.py`, `measure.py`) to get the box, azimuth, downtilt, plumb, size and centre height, each with its basis and quality as today. The optional AI labelling (`apps/desktop/src/main/telecomAi.ts`) sets the kind, under the same consent rules as detection.
 3. **Never lose what the person flagged.** A flagged unit is marked as person-made, so a re-run of detection (`merge.py`) never drops it and the geometry rule in `packages/schema/src/antennas.ts:109-125` does not reject it for missing values.
-4. **Too few points still counts.** If the outline holds too few points to measure (a small radio unit), the unit is added at the outline's centre on the cloud, marked "not measured", with a small default box, so the person can type the values.
+4. **Too few points still counts.** If the outline holds too few points to measure (a small radio unit), the unit is added at the outline's centre on the cloud, marked "not measured", with no made-up numbers, so the person can type the values (see "Decisions after review", 1).
 5. **Fix a wrong antenna**, two ways, from its card (`AntennaCard.tsx`):
    - **Redraw:** draw a new outline; the unit is measured again from those points, keeping its id, name, status and typed fields.
    - **Type values:** azimuth, downtilt, height (centre elevation) and size (width, height, depth). A typed value is stored with basis `user`, shown as the person's, and wins over any measured value, including after a re-run.
@@ -74,6 +74,17 @@ Accept, reject and hide (`antennaStore.ts:272`, `:406`), the typed equipment fie
 - **Schema tests:** flagged and not-measured units validate; detected units still need their values.
 - **Renderer unit tests:** polygon selection and nearest-cluster filtering; store actions for add, redraw and typed values.
 - **E2E:** extend or add to `apps/desktop/e2e/telecom-antennas.spec.ts`: on the demo, flag an antenna by drawing an outline, see it in the inventory, type an azimuth, re-run detection, and check it is still there with the typed value. Run it the way CI does (`CONTRIBUTING.md`, "End to end the way CI runs it").
+
+## Decisions after review
+
+Each is our call (builder check, 22 Oct). They take precedence over anything above that reads differently.
+
+1. **Not-measured units carry no invented sizes.** When `origin` is `flagged`, `widthM`, `heightM`, `depthM` and the other measured values are optional. The 3D box is a small placeholder drawn at the clicked point and labelled "not measured". Centre height uses the existing `elevationDeg`-style value only if it is a centre height; it is not (`elevationDeg` is a dish's pointing angle), so `AntennaUnit` gains an optional `centreHeightM` (`AntennaValue`, basis `user` when typed).
+2. **A re-run next to a flagged unit.** The flagged unit takes part in matching and always wins: it keeps its own geometry and user values, and the matched detected duplicate is absorbed rather than added beside it. Only its `support` and `photos` may refresh.
+3. **Redrawing a detected unit makes it `flagged`.** Its geometry is then the person's, so re-runs keep the redraw.
+4. **Typed values move the box.** Azimuth, downtilt and size typed by the person rebuild the box axes and extents in the renderer store, so the box and the card agree.
+5. **Which cloud, and when AI runs.** Flagging works on the cloud layer and survey date active in the tower view, with that layer's `heightOffsetM`. AI labelling runs automatically per flag only when AI labelling is already enabled with consent; otherwise the kind is `other` until the next labelling run. The measuring job never touches the network.
+6. **Rejecting and deleting.** A rejected flagged unit is kept (status `rejected`, shown under the Rejected filter). Only an explicit **Delete**, offered on flagged units alone, removes one.
 
 ## Left to the builder
 

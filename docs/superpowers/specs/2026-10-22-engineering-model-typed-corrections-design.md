@@ -67,6 +67,14 @@ Read-only investigation on `main` at `4a8c2ad60`:
 - **E2E (new):** drive the Corrections panel on a model produced by the normal pipeline fixture (provisional scale; see `apps/desktop/e2e/engineering-flow.spec.ts` and `engineering-fixture.py`), with scripted AI tool replies: type "remove the ladder", send, see the Before/After, accept, and check the model changed. Run it the way CI does.
 - Live AI quality stays unproven until a founder evaluation with a real provider.
 
+## Decisions after review
+
+Each is our call (builder check, 22 Oct).
+
+1. **What a model-wide request may change.** The AI may add, remove or replace any components, capped at 20 operations per proposal. Additions must sit inside the model's bounding box expanded by 10%. The Before/After review is the main guard: it highlights every changed part and lists the operations.
+2. **Metres on a provisional-scale model.** A change such as "the top section is 3 m" applies in model units only. The review shows a note that the scale is provisional and points to setting a reference height. Setting the scale from a correction is out of scope.
+3. **Resend.** Resending reopens the same request record, re-based on the current model fingerprint. Its history appends a new round and keeps the earlier rounds. No parent link between requests.
+
 ## Left to the builder
 
 - The pin approach on provisional models (above).
