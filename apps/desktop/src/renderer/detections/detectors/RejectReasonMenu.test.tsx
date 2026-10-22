@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useRef } from 'react';
+import { act, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RejectReasonMenu } from './RejectReasonMenu';
@@ -83,5 +83,41 @@ describe('RejectReasonMenu', () => {
       input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
     expect(onPick).toHaveBeenCalledWith('looks-like-but-is-not', 'a painted band');
+  });
+
+  it('closes on Escape and gives focus back to the opener', async () => {
+    function H() {
+      const opener = useRef<HTMLButtonElement>(null);
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button ref={opener} type="button" data-testid="opener">
+            Reject
+          </button>
+          <RejectReasonMenu
+            open={open}
+            opener={opener}
+            onPick={() => undefined}
+            onClose={() => {
+              setOpen(false);
+            }}
+          />
+        </>
+      );
+    }
+    act(() => {
+      root.render(<H />);
+    });
+    act(() => {
+      item('Wrong class')?.focus();
+    });
+    await act(async () => {
+      item('Wrong class')?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      await Promise.resolve();
+    });
+    expect(document.body.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(host.querySelector('[data-testid="opener"]'));
   });
 });

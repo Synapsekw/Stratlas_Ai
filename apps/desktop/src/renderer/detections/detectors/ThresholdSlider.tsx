@@ -28,6 +28,10 @@ export function ThresholdSlider({
       step={step}
       value={value}
       aria-label={label}
+      // the slider's keys (arrows, Home, End) are its own, not the review's shortcuts
+      onKeyDown={(e) => {
+        e.stopPropagation();
+      }}
       onChange={(e) => {
         onChange(Number(e.target.value));
       }}

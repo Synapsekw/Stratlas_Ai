@@ -17,8 +17,9 @@ export interface DetectorPassRow {
 
 type Header = Pick<DetectionsFile, 'detectors' | 'run' | 'createdAt'>;
 
-/** Where the slider starts when a pass names no bar at all (the slider's lowest stop). */
+/** The slider's ends: a bar outside them is shown at the nearest end, as the slider does. */
 const FLOOR = 0.3;
+const CEIL = 0.95;
 
 /**
  * One row per local-detector pass (`vlm-*`): the detectors it ran, when, the bar and how many
@@ -53,7 +54,10 @@ export function detectorPassRows(
       pass,
       detectorName: [...new Set(names)].join(', '),
       runAt: header?.run?.at ?? header?.createdAt ?? null,
-      threshold: passThreshold[pass] ?? (bars.length > 0 ? Math.min(...bars) : FLOOR),
+      threshold: Math.min(
+        CEIL,
+        Math.max(FLOOR, passThreshold[pass] ?? (bars.length > 0 ? Math.min(...bars) : FLOOR)),
+      ),
       shown,
       hidden,
     });

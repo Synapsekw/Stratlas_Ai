@@ -59,6 +59,28 @@ describe('DetectorPasses', () => {
     });
     expect(onThreshold).toHaveBeenCalledWith('vlm-run-a.json', 0.6);
   });
+
+  it('keeps the slider keys to the slider, so the review does not step', () => {
+    const reviewKey = vi.fn();
+    act(() => {
+      root.render(
+        <div onKeyDown={reviewKey}>
+          <DetectorPasses passes={[row]} onThreshold={() => undefined} />
+        </div>,
+      );
+    });
+    const slider = host.querySelector<HTMLInputElement>('input[type="range"]');
+    const down = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      slider?.dispatchEvent(down);
+    });
+    expect(reviewKey).not.toHaveBeenCalled();
+    expect(down.defaultPrevented).toBe(false);
+  });
 });
 
 const model = (
@@ -114,6 +136,12 @@ describe('detectorPassRows', () => {
     expect(a?.runAt).toBe('2026-10-20T09:00:00Z');
     const [b] = detectorPassRows(list, new Map(), {});
     expect(b?.detectorName).toBe('det-vlm-1.json');
+  });
+
+  it('keeps a bar outside the slider range at the slider end, so label and slider agree', () => {
+    const low = [model('a', 'vlm-1.json', 0.9, 0.1)];
+    expect(detectorPassRows(low, new Map(), {})[0]?.threshold).toBe(0.3);
+    expect(detectorPassRows(low, new Map(), { 'vlm-1.json': 0.99 })[0]?.threshold).toBe(0.95);
   });
 
   it('leaves out passes that are not local-detector passes', () => {

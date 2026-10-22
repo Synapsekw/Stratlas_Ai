@@ -267,7 +267,7 @@ export function Inspector(p: InspectorProps) {
           {d.uncertain && <span className="det-chip unc">{t('det.uncertain')}</span>}
         </div>
         <OriginLine d={d} />
-        {isDetectorDraft(d) && (
+        {detector && (
           <ScoreBadge
             score={d.confidence}
             threshold={p.threshold ?? null}

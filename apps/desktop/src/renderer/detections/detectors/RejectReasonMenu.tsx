@@ -1,6 +1,13 @@
 import type { RejectReason } from '@aio/schema';
 import { Popover, useT, type MessageKey } from '@aio/ui';
-import { useState, type KeyboardEvent, type ReactElement, type RefObject } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactElement,
+  type RefObject,
+} from 'react';
 
 export interface RejectReasonMenuProps {
   open: boolean;
@@ -29,6 +36,10 @@ export function RejectReasonMenu({
   const t = useT();
   const [asking, setAsking] = useState(false);
   const [text, setText] = useState('');
+  const noteRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (asking) noteRef.current?.focus();
+  }, [asking]);
   const reset = () => {
     setAsking(false);
     setText('');
@@ -73,7 +84,7 @@ export function RejectReasonMenu({
         {asking && (
           <input
             className="ann-input det-vlm-note"
-            ref={(el) => el?.focus()}
+            ref={noteRef}
             value={text}
             placeholder={t('detect.preset.reject.notePlaceholder')}
             aria-label={t('detect.preset.reject.notePlaceholder')}
