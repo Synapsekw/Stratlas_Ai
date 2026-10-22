@@ -297,4 +297,41 @@ describe('AntennaInventory', () => {
     key(host.querySelector('button[aria-label="Hide A1 in 3D"]')!, 'Enter');
     expect(h.onSelect).toHaveBeenCalledTimes(2);
   });
+  it('Flag antenna is disabled with a reason without an inventory', () => {
+    const onFlag = vi.fn();
+    show({ file: null, onFlag });
+    const b = host.querySelector<HTMLElement>('[data-testid="antenna-flag"]')!;
+    expect(b.textContent).toContain('Flag antenna');
+    expect(b.getAttribute('aria-disabled')).toBe('true');
+    const id = b.getAttribute('aria-describedby');
+    expect(host.querySelector(`[id="${id ?? ''}"]`)?.textContent).toBe(
+      'Run antenna detection first',
+    );
+    click(b);
+    expect(onFlag).not.toHaveBeenCalled();
+  });
+
+  it('Flag antenna shows in an empty inventory and beside Hide all', () => {
+    const onFlag = vi.fn();
+    show({ file: fileOf([]), onFlag });
+    const b = host.querySelector<HTMLElement>('[data-testid="antenna-flag"]')!;
+    expect(b.getAttribute('aria-disabled')).toBeNull();
+    click(b);
+    expect(onFlag).toHaveBeenCalledTimes(1);
+    show({ file: fileOf([mk('ant-1', 'panel')]), onFlag });
+    const flag = host.querySelector<HTMLElement>('[data-testid="antenna-flag"]')!;
+    expect(flag.parentElement).toBe(
+      host.querySelector('[data-testid="antenna-hide-all"]')!.parentElement,
+    );
+    show({ file: fileOf([mk('ant-1', 'panel')]), onFlag, flagReason: 'Busy' });
+    expect(host.querySelector('[data-testid="antenna-flag"]')!.getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+  });
+
+  it('a flagged row shows its chip', () => {
+    show({ file: fileOf([mk('ant-1', 'panel', { origin: 'flagged' }), mk('ant-2', 'panel')]) });
+    const chips = rows().map((r) => r.querySelector('[data-testid="antenna-origin"]')?.textContent);
+    expect(chips).toEqual(['Flagged by you', undefined]);
+  });
 });

@@ -22,6 +22,10 @@ export interface AntennaInventoryProps {
   onFilter: (f: AntennaFilter) => void;
   onHideAll: () => void;
   onShowAll: () => void;
+  /** Turn the Flag antenna tool on. */
+  onFlag?: () => void;
+  /** Why Flag antenna is unavailable now (detection or a flag job running), or null. */
+  flagReason?: string | null;
 }
 
 const FILTERS: readonly AntennaFilter[] = ['draft', 'accepted', 'rejected', 'all'];
@@ -60,6 +64,31 @@ function rowAzimuth(unit: AntennaUnit, north: North): string | null {
   if (north === null) return azimuthLines(unit)?.primary ?? null;
   return formatDeg(
     unit.convergenceDeg === null ? grid.value : trueAzimuth(grid.value, unit.convergenceDeg),
+  );
+}
+
+/** Flag antenna: outline a unit the detection missed. Needs a detection run (its inventory). */
+function FlagButton({
+  props,
+}: {
+  props: Pick<AntennaInventoryProps, 'file' | 'readOnly' | 'onFlag' | 'flagReason'>;
+}): ReactElement {
+  const reason = !props.file
+    ? t('telecom.antennas.flag.needsRun')
+    : props.readOnly
+      ? t('telecom.antennas.readOnly')
+      : (props.flagReason ?? undefined);
+  return (
+    <Button
+      size="sm"
+      icon="flag"
+      data-testid="antenna-flag"
+      tip={t('telecom.antennas.flag.tip')}
+      {...(reason ? { disabledReason: reason } : {})}
+      onClick={props.onFlag}
+    >
+      {t('telecom.antennas.flag.button')}
+    </Button>
   );
 }
 
@@ -132,6 +161,11 @@ function UnitRow({
               {t(`telecom.antennas.status.${unit.status}`)}
             </Chip>
           </span>
+          {unit.origin === 'flagged' ? (
+            <span style={CHIP} data-testid="antenna-origin">
+              <Chip kind="tag">{t('telecom.antennas.origin.flagged')}</Chip>
+            </span>
+          ) : null}
           {unit.notFoundInLatest ? (
             <span style={CHIP}>
               <Chip kind="tag">{t('telecom.antennas.notFound')}</Chip>
@@ -161,6 +195,7 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
       <EmptyState
         title={t('telecom.antennas.empty.none.title')}
         body={t('telecom.antennas.empty.none.body')}
+        action={<FlagButton props={props} />}
       />
     );
   if (file.units.length === 0)
@@ -168,6 +203,7 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
       <EmptyState
         title={t('telecom.antennas.empty.nothing.title')}
         body={t('telecom.antennas.empty.nothing.body')}
+        action={<FlagButton props={props} />}
       />
     );
   const antennas = file.units.filter((u) => u.kind !== 'other').length;
@@ -194,6 +230,7 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
         <Button size="sm" data-testid="antenna-show-all" onClick={props.onShowAll}>
           {t('telecom.antennas.showAll')}
         </Button>
+        <FlagButton props={props} />
       </div>
       <p className="mono" data-testid="antenna-summary" style={{ margin: 0 }}>
         {summary}

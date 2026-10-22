@@ -9,16 +9,19 @@
  * fold hides it. The boxes, the
  * inventory read and the AI send preview are `AntennaRunner`'s; the "Detect antennas" button is in
  * the Telecom family (`survey/DetectAntennas.tsx`), the CSV export next to "Export survey data"
- * (`AntennaCsvTool.tsx`).
+ * (`AntennaCsvTool.tsx`). While the store's `flagging` is set the Flag antenna tool
+ * (`AntennaFlagTool`) shows above the section, so folding it does not disarm the outline.
  */
 import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type MouseEvent, type ReactElement } from 'react';
 import { Section } from '../workspace/workbench/Section';
 import { useSections } from '../workspace/workbench/sectionState';
+import { AntennaFlagTool } from './AntennaFlagTool';
 import { AntennaInventory } from './AntennaInventory';
 import { useAntennaClouds } from './AntennaRunner';
 import {
+  beginFlag,
   hideAllAntennas,
   selectAntenna,
   setAntennaFilter,
@@ -98,6 +101,12 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
   if (!antennaSectionMatches(query)) return null;
   const searching = query.trim() !== '';
 
+  const flagReason = s.running
+    ? t('telecom.antennas.running')
+    : s.flagJob
+      ? t('jobs.telecom.flag')
+      : null;
+
   const listed = file?.units.filter((u) => u.status !== 'rejected').length ?? 0;
 
   // while a pick holds the section open its header click would look dead: it ends the hold and
@@ -116,6 +125,7 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
           {t('telecom.antennas.ai.skipped', { reason: s.aiNote })}
         </p>
       )}
+      {s.flagging !== null && <AntennaFlagTool key={s.flagging.unit ?? ''} />}
       <Section
         bench={BENCH}
         id={SECTION}
@@ -154,6 +164,10 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
             onFilter={setAntennaFilter}
             onHideAll={hideAllAntennas}
             onShowAll={showAllAntennas}
+            onFlag={() => {
+              beginFlag();
+            }}
+            flagReason={flagReason}
             note={s.note}
           />
         </div>
