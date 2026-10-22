@@ -1,5 +1,6 @@
 """Tests for the vlm detector engine, against a fake llama-server (no GPU, no network)."""
 
+import json
 import socket
 
 import pytest
@@ -227,3 +228,22 @@ def test_requests_bypass_any_proxy(monkeypatch):
         text, _ = VlmClient(fake.url).chat(b"x", "hi")
     assert text == "[]"
     assert len(fake.requests) == 1
+
+
+def test_detect_and_check_use_their_own_timeouts(monkeypatch):
+    from aio_pipelines.detect import engine
+
+    seen: list[tuple[bool, float]] = []
+    real_open = engine._OPENER.open
+
+    def recording_open(req, timeout=None):
+        seen.append((bool(json.loads(req.data).get("logprobs")), timeout))
+        return real_open(req, timeout=timeout)
+
+    monkeypatch.setattr(engine._OPENER, "open", recording_open)
+    img = Image.new("RGB", (800, 600), (120, 90, 60))
+    with FakeVlm(tile_handler(boxes_json([100, 100, 300, 300]))) as fake:
+        run_detector(VlmClient(fake.url), img, ONE_TILE)
+    assert seen
+    assert {t for is_check, t in seen if not is_check} == {120}
+    assert {t for is_check, t in seen if is_check} == {60}

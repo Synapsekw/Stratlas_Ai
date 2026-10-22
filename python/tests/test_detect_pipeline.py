@@ -52,14 +52,20 @@ def detector(det_id="rust-spots", class_id="rust", n=1, **extra) -> dict:
     }
 
 
-def make_project(root: Path, sizes=((400, 300), (400, 300), (400, 300))) -> Path:
+def make_project(root: Path, sizes=((400, 300), (400, 300), (400, 300)), classes=("rust", "bolt")) -> Path:
     root.mkdir(parents=True)
     items = []
     for i, (w, h) in enumerate(sizes, 1):
         (root / "photos").mkdir(exist_ok=True)
         Image.new("RGB", (w, h), (120, 90, 60)).save(root / "photos" / f"p{i}.jpg")
         items.append({"id": f"p{i}", "src": {"path": f"photos/p{i}.jpg"}})
-    manifest = {"schema": "aio.project/1", "layers": [{"id": "ph", "kind": "photos", "items": items}]}
+    manifest = {
+        "schema": "aio.project/1",
+        "layers": [{"id": "ph", "kind": "photos", "items": items}],
+        "classCatalogues": [
+            {"assetType": "tower", "classes": [{"id": c, "label": c.title()} for c in classes]}
+        ],
+    }
     (root / "manifest.json").write_text(json.dumps(manifest), "utf-8")
     return root
 
@@ -342,3 +348,41 @@ def test_validate_rejects_bad_params(tmp_path, mutate):
 def test_validate_accepts_good_params(tmp_path):
     p = params(str((tmp_path / "s.json").resolve()))
     assert pipeline().validate(dict(p))["run"] == "run-a"
+
+
+def test_class_missing_from_project_suggests_new(tmp_path):
+    root = make_project(tmp_path / "p", classes=("bolt",))
+    det = detector("corrosion-metal", class_id="corrosion", name="Corrosion on metal")
+    with FakeVlm(scoring([0.9])) as vlm:
+        run_job(
+            pipeline(),
+            root,
+            params(
+                state_file(root, vlm.url),
+                photos=("p1",),
+                detectors=[{"where": "project", "detector": det, "threshold": 0.8}],
+            ),
+        )
+    dets = pass_of(root)["detections"]
+    assert dets
+    for d in dets:
+        assert d["class"] == "" and d["label"] == "Corrosion on metal" and d["suggestedNew"] is True
+
+
+def test_class_in_project_is_kept(tmp_path):
+    root = make_project(tmp_path / "p", classes=("corrosion",))
+    det = detector("corrosion-metal", class_id="corrosion", name="Corrosion on metal")
+    with FakeVlm(scoring([0.9])) as vlm:
+        run_job(
+            pipeline(),
+            root,
+            params(
+                state_file(root, vlm.url),
+                photos=("p1",),
+                detectors=[{"where": "project", "detector": det, "threshold": 0.8}],
+            ),
+        )
+    dets = pass_of(root)["detections"]
+    assert dets
+    for d in dets:
+        assert d["class"] == "corrosion" and "suggestedNew" not in d and "label" not in d

@@ -34,6 +34,8 @@ MERGE_SHARE = 0.6
 CROP_PAD = 0.15
 CROP_MAX = 896
 JPEG_QUALITY = 92
+DETECT_TIMEOUT_S = 120
+CHECK_TIMEOUT_S = 60
 
 DETECT = (
     "You are a detector for drone inspection photos. Find: {looksLike}\n"
@@ -87,10 +89,17 @@ class VlmClient:
         self.timeout = timeout
 
     def chat(
-        self, jpeg: bytes, text: str, *, logprobs: bool = False, max_tokens: int = 1024
+        self,
+        jpeg: bytes,
+        text: str,
+        *,
+        logprobs: bool = False,
+        max_tokens: int = 1024,
+        timeout: float | None = None,
     ) -> tuple[str, list[dict] | None]:
         """Send one image then one text part. Returns the reply text and, with ``logprobs``, the
-        top logprobs of the first token as a list of ``{token, logprob}``."""
+        top logprobs of the first token as a list of ``{token, logprob}``. ``timeout`` (seconds) overrides
+        the client's default for this call."""
         image_url = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
         body: dict = {
             "messages": [
@@ -115,7 +124,7 @@ class VlmClient:
             self.url + "/v1/chat/completions", data=json.dumps(body).encode(), headers=headers
         )
         try:
-            with _OPENER.open(req, timeout=self.timeout) as r:
+            with _OPENER.open(req, timeout=self.timeout if timeout is None else timeout) as r:
                 data = json.load(r)
         except urllib.error.HTTPError as e:
             raise VlmError(f"server answered HTTP {e.code}") from e
@@ -236,7 +245,7 @@ def _detect_tile(client: VlmClient, jpeg: bytes, prompt: str) -> list[tuple[list
     """Ask once, retry once. None if both replies were unusable. VlmUnavailable propagates."""
     for _ in range(2):
         try:
-            text, _top = client.chat(jpeg, prompt)
+            text, _top = client.chat(jpeg, prompt, timeout=DETECT_TIMEOUT_S)
         except VlmError:
             continue
         got = parse_boxes(text)
@@ -258,7 +267,7 @@ def _check(client: VlmClient, src: Image.Image, box: Box, prompt: str) -> float 
     )
     crop.thumbnail((CROP_MAX, CROP_MAX))
     try:
-        _text, top = client.chat(_jpeg(crop), prompt, logprobs=True, max_tokens=1)
+        _text, top = client.chat(_jpeg(crop), prompt, logprobs=True, max_tokens=1, timeout=CHECK_TIMEOUT_S)
     except VlmError:
         return None
     return score_from_top(top) if top else None

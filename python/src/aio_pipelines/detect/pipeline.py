@@ -12,7 +12,8 @@ Steps (each resumable):
    from the staged results and moves it into the project.
 
 Every candidate is kept; one scored under its detector's threshold carries ``belowThreshold``, one
-the model could not score carries ``unscored`` and no ``confidence``.
+the model could not score carries ``unscored`` and no ``confidence``. A detector whose class is not
+in the project's catalogues writes ``class: ""``, ``label`` (its name) and ``suggestedNew``.
 """
 
 from __future__ import annotations
@@ -192,7 +193,20 @@ class DetectVlm:
                 ctx.progress((k + 1) / max(1, len(found)))
             if not photos:
                 raise JobError(NO_PHOTOS)
-            return {"photos": photos, "skipped": len(params["photos"]) - len(photos)}
+            manifest = _manifest(ctx.project)
+            class_ids = sorted(
+                {
+                    c["id"]
+                    for cat in manifest.get("classCatalogues", [])
+                    for c in cat.get("classes", [])
+                    if isinstance(c, dict) and isinstance(c.get("id"), str)
+                }
+            )
+            return {
+                "photos": photos,
+                "skipped": len(params["photos"]) - len(photos),
+                "classIds": class_ids,
+            }
 
         def detect_step(ctx: StepContext) -> dict[str, Any]:
             from PIL import Image
@@ -258,6 +272,7 @@ class DetectVlm:
         def commit_step(ctx: StepContext) -> dict[str, Any]:
             ctx.progress(0.0, "Saving the detections")
             photos: list[dict[str, Any]] = ctx.outputs("prepare")["photos"]
+            class_ids = set(ctx.outputs("prepare")["classIds"])
             model = params["model"]
             created = now_iso()
             assessed: list[str] = []
@@ -281,6 +296,11 @@ class DetectVlm:
                             "class": det["classId"],
                             "severity": "uncertain",
                         }
+                        if det["classId"] not in class_ids:
+                            # the project lacks the class: offer the detector's name as a new one
+                            d["class"] = ""
+                            d["label"] = det["name"]
+                            d["suggestedNew"] = True
                         if score is not None:
                             d["confidence"] = round(float(score), 4)
                         d["note"] = c.get("note", "")
