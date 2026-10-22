@@ -36,6 +36,8 @@ const PACK_CHANGING = 'The Analytics pack is being changed. Try again when that 
 
 /** Lines of server output kept in memory, and how many (at most how long) a failed start shows. */
 const OUTPUT_LINES = 20;
+/** The most kept of one line, ended or not (the end is kept). */
+const LINE_CHARS = 4096;
 const REASON_LINES = 3;
 const REASON_CHARS = 300;
 
@@ -312,7 +314,8 @@ export class VlmServer {
     this.live = live;
     this.latest = live;
     child.on('output', (text) => {
-      const parts = (live.partial + text).split(/\r?\n/);
+      // the end of each line kept, so a server that never ends one cannot fill the memory
+      const parts = (live.partial + text).split(/\r?\n/).map((l) => l.slice(-LINE_CHARS));
       live.partial = parts.pop() ?? '';
       live.lines.push(...parts);
       if (live.lines.length > OUTPUT_LINES) live.lines.splice(0, live.lines.length - OUTPUT_LINES);

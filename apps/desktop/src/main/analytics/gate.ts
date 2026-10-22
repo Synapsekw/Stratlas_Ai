@@ -24,7 +24,7 @@ import { en } from '@aio/ui/i18n/en';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { resolveDetectors } from './detectors';
-import type { AnalyticsPack } from './pack';
+import type { AnalyticsPack, UnusablePack } from './pack';
 import type { VlmServer } from './server';
 
 export type StartRequest = IpcRequest<'jobs:start'>;
@@ -46,6 +46,11 @@ export interface GateDeps {
     dataRoot: string;
     env: Record<string, string | undefined>;
   }) => Promise<AnalyticsPack | null>;
+  /** `unusablePacks` for this app and computer, newest first. */
+  unusable: (o: {
+    dataRoot: string;
+    env: Record<string, string | undefined>;
+  }) => Promise<UnusablePack[]>;
   /** The `checkHardware` result for this start. */
   hardware: () => Promise<HardwareCheck>;
   server: Pick<VlmServer, 'ensure' | 'attach' | 'serves'>;
@@ -93,8 +98,13 @@ export async function detectJobGate(req: StartRequest, d: GateDeps): Promise<Gat
     };
   }
 
-  const pack = await d.findPack({ dataRoot: d.dataRoot, env: d.env });
-  if (!pack) return { refuse: en['detect.preset.pack.missing'] };
+  const where = { dataRoot: d.dataRoot, env: d.env };
+  const pack = await d.findPack(where);
+  if (!pack) {
+    // a pack that is there but cannot be used says why, not "install the pack"
+    const [newest] = await d.unusable(where);
+    return { refuse: newest?.reason ?? en['detect.preset.pack.missing'] };
+  }
   // nothing loads on the card while it is taken: the start waits in the queue
   if (d.running()) return { queue: true };
 

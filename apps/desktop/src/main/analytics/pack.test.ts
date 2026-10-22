@@ -154,6 +154,19 @@ describe('findAnalyticsPack', () => {
         }),
       },
     ]);
+    // a manifest that is there but cannot be read is not called missing
+    await writeAnalyticsPack('0.4.0', {
+      manifest: (m) => {
+        (m.model as Record<string, unknown>).sha256 = 'none';
+      },
+    });
+    expect((await unusablePacks({ dataRoot, env: {}, ...HERE }))[0]).toEqual({
+      version: '0.4.0',
+      reason: fill(en['detect.preset.pack.damaged'], {
+        version: '0.4.0',
+        file: 'a readable manifest.json',
+      }),
+    });
     // the folder QUADRION_ANALYTICS_PACK names is checked the same way
     const dev = await writeAnalyticsPack('0.0.7', { dir: join(root, 'dev'), appRange: '>=9.0.0' });
     const env = { QUADRION_ANALYTICS_PACK: dev };

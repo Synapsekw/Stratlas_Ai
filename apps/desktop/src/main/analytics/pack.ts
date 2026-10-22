@@ -57,13 +57,15 @@ async function checkAnalyticsPack(
   named: string,
   o: Pick<PackPlace, 'app' | 'platform'>,
 ): Promise<AnalyticsPack | UnusablePack> {
-  const parsed = AnalyticsPackManifest.safeParse(
-    await readJson(join(dir, 'manifest.json')).catch(() => null),
-  );
+  const manifestFile = join(dir, 'manifest.json');
+  const parsed = AnalyticsPackManifest.safeParse(await readJson(manifestFile).catch(() => null));
   if (!parsed.success) {
+    // one that is there but cannot be read (or is not one this app knows) is not called missing
+    const there = (await stat(manifestFile).catch(() => null))?.isFile() ?? false;
+    const file = there ? 'a readable manifest.json' : 'manifest.json';
     return {
       version: named,
-      reason: presetText('detect.preset.pack.damaged', { version: named, file: 'manifest.json' }),
+      reason: presetText('detect.preset.pack.damaged', { version: named, file }),
     };
   }
   const manifest = parsed.data;

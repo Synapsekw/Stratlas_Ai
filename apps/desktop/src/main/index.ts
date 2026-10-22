@@ -213,7 +213,7 @@ import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
 import { registerLedgerIpc } from './analytics/ledgerIpc';
 import { detectPackRefusal } from './analytics/detectPack';
-import { findAnalyticsPack } from './analytics/pack';
+import { findAnalyticsPack, unusablePacks } from './analytics/pack';
 import { registerAnalyticsPackIpc } from './analytics/packIpc';
 import { nodeVlmServerDeps, VlmServer } from './analytics/server';
 import { createKeyVault } from './keys';
@@ -1003,6 +1003,7 @@ const detectQueue = detectLane({
       projectDir: 'project' in req ? req.project : (jobs.get(req.resume)?.project ?? ''),
       userData: app.getPath('userData'),
       findPack: (o) => findAnalyticsPack({ ...o, app: packApp, platform: packPlatform }),
+      unusable: (o) => unusablePacks({ ...o, app: packApp, platform: packPlatform }),
       hardware: () => checkHardware({ platform: process.platform, exec: execNvidiaSmi }),
       server: vlmServer,
       resolve: resolveDetectors,

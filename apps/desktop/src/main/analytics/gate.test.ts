@@ -101,6 +101,7 @@ function deps(over: Partial<GateDeps> = {}) {
     projectDir: 'D:/projects/site',
     userData: 'C:/user',
     findPack,
+    unusable: () => Promise.resolve([]),
     hardware,
     server,
     resolve,
@@ -115,6 +116,21 @@ describe('detectJobGate', () => {
     const { d, server } = deps({ findPack: () => Promise.resolve(null) });
     expect(await detectJobGate(newRequest(), d)).toEqual({
       refuse: en['detect.preset.pack.missing'],
+    });
+    expect(server.ensure).not.toHaveBeenCalled();
+  });
+
+  it('no usable pack but an unusable one refuses with its reason, the newest first', async () => {
+    const { d, server } = deps({
+      findPack: () => Promise.resolve(null),
+      unusable: () =>
+        Promise.resolve([
+          { version: '2.0.0', reason: 'Analytics pack 2.0.0 does not fit.' },
+          { version: '1.0.0', reason: 'Analytics pack 1.0.0 is broken.' },
+        ]),
+    });
+    expect(await detectJobGate(newRequest(), d)).toEqual({
+      refuse: 'Analytics pack 2.0.0 does not fit.',
     });
     expect(server.ensure).not.toHaveBeenCalled();
   });

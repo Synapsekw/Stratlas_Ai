@@ -205,6 +205,39 @@ describe('hardware check', () => {
     ]);
   });
 
+  it('falls back when nvidia-smi exits naming compute_cap as not a valid field', async () => {
+    const asked: string[][] = [];
+    const r = await checkHardware({
+      platform: 'win32',
+      exec: (_file, args) => {
+        asked.push(args);
+        return Promise.resolve(
+          args.some((a) => a.includes('compute_cap'))
+            ? { code: 2, stdout: 'Field "compute_cap" is not a valid field to query.' }
+            : { code: 0, stdout: '0, RTX 4070, 12282, 11000, 591.86' },
+        );
+      },
+    });
+    expect(r).toMatchObject({ ok: true, gpuIndex: 0 });
+    expect(asked).toHaveLength(2);
+  });
+
+  it('does not ask again without compute_cap when nvidia-smi times out', async () => {
+    const asked: string[][] = [];
+    const r = await checkHardware({
+      platform: 'win32',
+      exec: (file, args) => {
+        asked.push(args);
+        // what execFile says of a run it killed: the command line, compute_cap included
+        return Promise.reject(new Error(`Command failed: ${file} ${args.join(' ')}`));
+      },
+    });
+    expect(r).toMatchObject({ ok: false, code: 'noGpu' });
+    // once per place nvidia-smi may be, never the shorter query
+    expect(asked).toHaveLength(2);
+    expect(asked.every((a) => a[0]?.endsWith(',compute_cap'))).toBe(true);
+  });
+
   it('every refusal carries its code', async () => {
     const checks = [
       checkHardware({ platform: 'darwin', exec: ok('') }),

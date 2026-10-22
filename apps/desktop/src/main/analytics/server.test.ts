@@ -270,6 +270,18 @@ describe('VlmServer', () => {
     expect(h.server.lastOutput()).toEqual([]);
   });
 
+  it('holds at most 4 KB of a line, ended or not', async () => {
+    const h = harness();
+    await h.server.ensure(pack(), 0);
+    const child = at(h.children, 0);
+    // a server that prints without ever ending the line
+    for (let i = 0; i < 100; i += 1) child.emit('output', 'x'.repeat(1024));
+    expect(at(h.server.lastOutput(), -1)).toHaveLength(4096);
+    child.emit('output', `${'y'.repeat(10_000)}\nend`);
+    expect(h.server.lastOutput().map((l) => l.length)).toEqual([4096, 3]);
+    expect(at(h.server.lastOutput(), 0)).toMatch(/^y+$/);
+  });
+
   it('a missing executable says so', async () => {
     const h = harness(() => 503);
     const p = h.server.ensure(pack(), 0);

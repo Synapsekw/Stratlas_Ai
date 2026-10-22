@@ -68,14 +68,20 @@ const refuse = (
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/**
+ * What an nvidia-smi too old for `compute_cap` says (`Field "compute_cap" is not a valid field to
+ * query.`). Only this asks again: a timeout's message names the field too, as part of the command.
+ */
+const FIELD_ERROR = /not a valid field/i;
+
 /** The cards one nvidia-smi reports; null when it cannot be run or fails. */
 async function queryGpus(d: HardwareDeps, file: string): Promise<Gpu[] | null> {
   try {
     const r = await d.exec(file, smiArgs(true));
     if (r.code === 0) return parseNvidiaSmi(r.stdout, true);
-    if (!r.stdout.includes('compute_cap')) return null;
+    if (!FIELD_ERROR.test(r.stdout)) return null;
   } catch (e) {
-    if (!message(e).includes('compute_cap')) return null;
+    if (!FIELD_ERROR.test(message(e))) return null;
   }
   // an older nvidia-smi rejects the compute_cap field: ask again without it
   try {
