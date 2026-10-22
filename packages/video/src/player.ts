@@ -47,7 +47,7 @@ export class ClipPlayer {
     v.addEventListener('error', this.onError);
     v.addEventListener('seeked', this.emit);
     v.addEventListener('play', this.emit);
-    v.addEventListener('pause', this.emit);
+    v.addEventListener('pause', this.onPause);
     // the clock moves every frame; of the rest of the workspace only these steer the sync
     const offClock = clockOf(videoStore()).subscribe(this.apply);
     const offWs = videoStore().subscribe((s, p) => {
@@ -183,6 +183,18 @@ export class ClipPlayer {
     }
     if (fresh) for (const l of this.frameListeners) l();
   }
+
+  /**
+   * The video paused without being asked to: taking it out of the page pauses it (the video
+   * window closes, or the Scene screen is left while the 3D view that shows the clip is kept,
+   * stage/parking.ts). While the workspace still plays, this video is the clock (the app's own
+   * loop stands back for it), so without playing on, the clock would stop until the next seek.
+   */
+  private readonly onPause = () => {
+    this.emit();
+    const kind = this.lastAction?.kind;
+    if (!this.video.ended && (kind === 'drive' || kind === 'follow')) this.apply();
+  };
 
   /** Applies the sync decision for the current workspace state. */
   readonly apply = () => {
