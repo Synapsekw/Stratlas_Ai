@@ -21,8 +21,9 @@ PROTOCOL = "aio.pipelines/1"
 # the first that reads aio.procmodel/2, which drawing.import and model.fit_cloud write,
 # pack 0.20.0 (survey.series, a library module for volume over time that no job calls yet),
 # pack 0.21.0 (photo.align reads orientation.json offsets and pins; an older app's projects
-# read the same) and pack 0.22.0 (adds thermal.decode, which only an app with the thermal bench
-# starts)).
+# read the same), pack 0.22.0 (adds thermal.decode, which only an app with the thermal bench
+# starts) and pack 0.23.0 (adds telecom.flag, which only an app with antenna flagging starts)).
+# Each keeps the floor.
 # The app refuses a pack outside the range; the syntax is read by `appRangeAllows` in packages/schema/src/versions.ts
 # (space-separated >=, >, <=, <, =).
 APP_RANGE = ">=0.22.0 <2.0.0"
