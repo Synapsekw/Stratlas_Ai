@@ -9,7 +9,7 @@ import { antennaStore, useAntennas } from './antennaStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const h = vi.hoisted(() => ({ writes: 0 }));
+const h = vi.hoisted(() => ({ writes: 0, fail: false }));
 
 vi.mock('../shell', async () => {
   const { createStore } = await import('zustand/vanilla');
@@ -18,6 +18,7 @@ vi.mock('../shell', async () => {
     bridge: {
       call: vi.fn((channel: string) => {
         if (channel === 'telecom:writeAntennas') {
+          if (h.fail) return Promise.resolve({ ok: false, error: 'disk full' });
           h.writes++;
           return Promise.resolve({ ok: true, value: { ok: true } });
         }
@@ -103,6 +104,7 @@ let mount: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
   h.writes = 0;
+  h.fail = false;
   mount = document.createElement('div');
   document.body.append(mount);
   root = createRoot(mount);
@@ -222,6 +224,67 @@ describe('AntennaTypedValues', () => {
     blur(input('azimuthGridDeg')!);
     await settle();
     expect(h.writes).toBe(0);
+  });
+
+  it('the same number written differently writes nothing', async () => {
+    load(unit());
+    show();
+    type(input('azimuthGridDeg')!, '168.0');
+    enter(input('azimuthGridDeg')!);
+    blur(input('azimuthGridDeg')!);
+    await settle();
+    expect(stored().azimuthGridDeg).toEqual(measured(168));
+    expect(h.writes).toBe(0);
+  });
+
+  it('an entry whose write failed can be committed again', async () => {
+    load(unit());
+    show();
+    h.fail = true;
+    type(input('widthM')!, '0.5');
+    enter(input('widthM')!);
+    await settle();
+    expect(stored().widthM).toEqual(measured(0.42));
+    h.fail = false;
+    enter(input('widthM')!);
+    await settle();
+    expect(stored().widthM).toEqual(typed(0.5));
+    expect(h.writes).toBe(1);
+  });
+
+  it('without the convergence the azimuth is in project north', () => {
+    load(unit());
+    show();
+    expect(mount.textContent).toContain('Azimuth, project north (°)');
+    expect(input('azimuthGridDeg')!.value).toBe('168');
+  });
+
+  it('with the convergence the azimuth reads and is typed in true north, stored as grid', async () => {
+    load(unit({ convergenceDeg: 1.1 }));
+    show();
+    expect(mount.textContent).toContain('Azimuth, true north (°)');
+    expect(input('azimuthGridDeg')!.value).toBe('169.1');
+    type(input('azimuthGridDeg')!, '271');
+    enter(input('azimuthGridDeg')!);
+    await settle();
+    expect(stored().azimuthGridDeg!.value).toBeCloseTo(269.9, 9);
+    expect(stored().azimuthGridDeg!.basis).toBe('user');
+    expect(input('azimuthGridDeg')!.value).toBe('271');
+  });
+
+  it('a true azimuth of 0 or 360 wraps round through grid and back', async () => {
+    load(unit({ convergenceDeg: 1.1 }));
+    show();
+    type(input('azimuthGridDeg')!, '360');
+    enter(input('azimuthGridDeg')!);
+    await settle();
+    expect(stored().azimuthGridDeg!.value).toBeCloseTo(358.9, 9);
+    expect(input('azimuthGridDeg')!.value).toBe('0');
+    // 0 is what it already shows: nothing more is written
+    type(input('azimuthGridDeg')!, '0');
+    enter(input('azimuthGridDeg')!);
+    await settle();
+    expect(h.writes).toBe(1);
   });
 
   it('a dish has no downtilt input', () => {

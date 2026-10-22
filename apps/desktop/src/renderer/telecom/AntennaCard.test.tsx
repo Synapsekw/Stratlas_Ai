@@ -774,6 +774,21 @@ describe('AntennaCard editing', () => {
     expect(h.writes).toBe(0);
   });
 
+  it('a typed true azimuth is what the card Azimuth reads', async () => {
+    load(three());
+    show();
+    const el = q('antenna-typed-azimuthGridDeg') as HTMLInputElement;
+    act(() => {
+      Reflect.set(HTMLInputElement.prototype, 'value', '271', el);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    act(() => {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await settle();
+    expect(value('azimuth')).toBe('271.0°');
+  });
+
   it('Reset to measured on the card puts the measured value back', async () => {
     load([
       unit('a1', {

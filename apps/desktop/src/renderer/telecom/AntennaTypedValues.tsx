@@ -2,10 +2,13 @@
  * "Your values" on the antenna card: the azimuth, downtilt, centre elevation and size a person
  * types over the measured ones (or types in for a flagged unit too thin to measure). A value
  * commits on Enter or when the field is left; Reset to measured brings back the kept measured one.
+ * The azimuth reads in the north the card's Azimuth shows (true when the file has the convergence,
+ * else project north) and is stored as grid azimuth.
  */
 import type { AntennaUnit } from '@aio/schema';
 import { Button, t, type MessageKey } from '@aio/ui';
 import { useId, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import { trueAzimuth } from './antennaFormat';
 import { resetTypedValue, setTypedValue } from './antennaStore';
 import { TYPED_RANGE, canReset, isNotMeasured, parseTyped, type TypedKey } from './antennaTyped';
 
@@ -22,7 +25,7 @@ interface Field {
 }
 
 const FIELDS: readonly Field[] = [
-  { key: 'azimuthGridDeg', label: 'telecom.antennas.typed.azimuth', dp: 1 },
+  { key: 'azimuthGridDeg', label: 'telecom.antennas.typed.azimuth.true', dp: 1 },
   { key: 'downtiltDeg', label: 'telecom.antennas.typed.downtilt', dp: 1 },
   { key: 'centreHeightM', label: 'telecom.antennas.typed.centre', dp: 2 },
   { key: 'widthM', label: 'telecom.antennas.typed.width', dp: 2 },
@@ -30,10 +33,36 @@ const FIELDS: readonly Field[] = [
   { key: 'depthM', label: 'telecom.antennas.typed.depth', dp: 2 },
 ];
 
+/** The field's label: the azimuth names its north. */
+function labelOf(unit: AntennaUnit, f: Field): string {
+  if (f.key !== 'azimuthGridDeg') return t(f.label);
+  return t(
+    unit.convergenceDeg === null
+      ? 'telecom.antennas.typed.azimuth.project'
+      : 'telecom.antennas.typed.azimuth.true',
+  );
+}
+
+/** A stored value as the field shows it: the azimuth turned to true north when it can be. */
+function shown(unit: AntennaUnit, key: TypedKey, v: number): number {
+  return key === 'azimuthGridDeg' && unit.convergenceDeg !== null
+    ? trueAzimuth(v, unit.convergenceDeg)
+    : v;
+}
+
+/** A value the field shows as it is stored: a true azimuth back to grid. */
+function stored(unit: AntennaUnit, key: TypedKey, v: number): number {
+  const conv = unit.convergenceDeg;
+  return key === 'azimuthGridDeg' && conv !== null ? (((v - conv) % 360) + 360) % 360 : v;
+}
+
 /** The value the field starts from: the unit's, or for the centre the box's; empty when none. */
 function prefill(unit: AntennaUnit, f: Field): string {
   const v = unit[f.key]?.value ?? (f.key === 'centreHeightM' ? unit.box.centre[2] : undefined);
-  return v === undefined ? '' : String(Number(v.toFixed(f.dp)));
+  if (v === undefined) return '';
+  // 359.96 shows as 0, the same as the card's value
+  const n = Number(shown(unit, f.key, v).toFixed(f.dp));
+  return String(f.key === 'azimuthGridDeg' && n === 360 ? 0 : n);
 }
 
 const GRID: CSSProperties = {
@@ -58,8 +87,9 @@ function TypedField(props: {
   const { unit, field, start, readOnly } = props;
   const [text, setText] = useState(start);
   const [bad, setBad] = useState(false);
-  // Enter then leaving the field is one entry, not two writes
-  const committed = useRef(start);
+  // the value being written: Enter then leaving the field is one entry, not two writes; cleared
+  // when the write ends, so an entry whose write failed can be committed again
+  const pending = useRef<number | null>(null);
   const errId = useId();
   const [lo, hi] = TYPED_RANGE[field.key];
 
@@ -71,18 +101,21 @@ function TypedField(props: {
       setText(start);
       return;
     }
-    if (entry === committed.current) return;
     const v = parseTyped(field.key, entry);
     setBad(v === null);
     if (v === null) return;
-    committed.current = entry;
-    void setTypedValue(unit.id, field.key, v);
+    // the same number as shown (168.0 over 168) keeps the value as it is
+    if ((start !== '' && v === Number(start)) || v === pending.current) return;
+    pending.current = v;
+    void setTypedValue(unit.id, field.key, stored(unit, field.key, v)).finally(() => {
+      pending.current = null;
+    });
   };
 
   return (
     <div style={{ display: 'grid', gap: 'var(--sp-1)', alignContent: 'start', minWidth: 0 }}>
       <label style={LABEL}>
-        {t(field.label)}
+        {labelOf(unit, field)}
         <input
           type="text"
           inputMode="decimal"
