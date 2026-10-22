@@ -150,4 +150,5 @@ export {
   resendModelCorrection,
   pinTargetRefusal,
   modelCorrectionBounds,
+  type CorrectionBounds,
 } from './engineer/corrections';
