@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
   removed: 0,
   drawn: [] as Float32Array[],
   layers: [] as (string | undefined)[],
+  noStage: false,
+  sceneListeners: new Set<() => void>(),
 }));
 
 const stage = {
@@ -26,7 +28,11 @@ const stage = {
 
 vi.mock('@aio/engine', async (importOriginal) => ({
   ...(await importOriginal<typeof EngineModule>()),
-  getActiveStage: () => stage,
+  getActiveStage: () => (h.noStage ? null : stage),
+  onActiveScene: (cb: () => void) => {
+    h.sceneListeners.add(cb);
+    return () => h.sceneListeners.delete(cb);
+  },
   PolygonClickTool: class {
     constructor(_stage: unknown, opts: (typeof h.tools)[number]['opts']) {
       h.tools.push({ opts, off: 0 });
@@ -91,6 +97,7 @@ let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
   h.tools = [];
+  h.noStage = false;
   h.points = new Float32Array(0);
   h.hit = null;
   h.removed = 0;
@@ -214,5 +221,26 @@ describe('AntennaFlagTool', () => {
     });
     expect(h.tools[0]!.off).toBe(1);
     root = createRoot(host);
+  });
+
+  it('with no active stage, Cancel in the hint ends the tool, and a stage arriving arms it', () => {
+    act(() => {
+      root.unmount();
+    });
+    h.tools = [];
+    h.noStage = true;
+    root = createRoot(host);
+    act(() => {
+      root.render(<AntennaFlagTool />);
+    });
+    expect(h.tools).toHaveLength(0);
+    expect(q('antenna-flag-hint')).not.toBeNull();
+    click(q('antenna-flag-cancel')!);
+    expect(endFlag).toHaveBeenCalledTimes(1);
+    h.noStage = false;
+    act(() => {
+      for (const cb of h.sceneListeners) cb();
+    });
+    expect(h.tools).toHaveLength(1);
   });
 });

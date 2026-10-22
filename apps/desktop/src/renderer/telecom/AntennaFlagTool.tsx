@@ -7,11 +7,11 @@
  * Cancel. With no points kept the unit is placed where the outline's middle meets the cloud; with
  * no hit there either, Measure waits for an outline drawn over the cloud.
  */
-import { PolygonClickTool, getActiveStage, type PointSelection } from '@aio/engine';
+import { PolygonClickTool, getActiveStage, onActiveScene, type PointSelection } from '@aio/engine';
 import { collectDrawn } from '@aio/pointcloud';
 import type { Vec3 } from '@aio/schema';
 import { Button, t } from '@aio/ui';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
 import { selectionTest } from '../pointcloud/cleanupScene';
 import { flagSelection, nearestCluster, type FlagSelection } from './antennaFlag';
 import { useAntennaClouds } from './AntennaRunner';
@@ -59,10 +59,11 @@ export function AntennaFlagTool(): ReactElement {
 
   useEffect(() => clearHighlight, []);
 
+  // the tool arms on the stage active now, and again on the one that replaces it
+  const stage = useSyncExternalStore(onActiveScene, getActiveStage, getActiveStage);
   const drawing = review === null;
   useEffect(() => {
     if (!drawing) return;
-    const stage = getActiveStage();
     if (!stage) return;
     const tool = new PolygonClickTool(stage, {
       onClose: (sel) => {
@@ -92,13 +93,31 @@ export function AntennaFlagTool(): ReactElement {
       },
     });
     return tool.attach();
-  }, [drawing, round]);
+  }, [drawing, round, stage]);
+
+  // Cancel shows in every state, so the tool can always be left (even with no stage to draw on)
+  const cancel = (
+    <Button
+      size="sm"
+      variant="quiet"
+      data-testid="antenna-flag-cancel"
+      onClick={() => {
+        clearHighlight();
+        endFlag();
+      }}
+    >
+      {t('telecom.antennas.flag.cancel')}
+    </Button>
+  );
 
   if (review === null)
     return (
-      <p className="telecom-help telecom-note" role="status" data-testid="antenna-flag-hint">
-        {t('telecom.antennas.flag.drawing')}
-      </p>
+      <div>
+        <p className="telecom-help telecom-note" role="status" data-testid="antenna-flag-hint">
+          {t('telecom.antennas.flag.drawing')}
+        </p>
+        <div className="telecom-actions">{cancel}</div>
+      </div>
     );
 
   const flag = review.flag;
@@ -139,17 +158,7 @@ export function AntennaFlagTool(): ReactElement {
         >
           {t('telecom.antennas.flag.again')}
         </Button>
-        <Button
-          size="sm"
-          variant="quiet"
-          data-testid="antenna-flag-cancel"
-          onClick={() => {
-            clearHighlight();
-            endFlag();
-          }}
-        >
-          {t('telecom.antennas.flag.cancel')}
-        </Button>
+        {cancel}
       </div>
     </div>
   );
