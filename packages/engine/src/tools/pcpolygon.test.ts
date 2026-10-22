@@ -101,6 +101,37 @@ describe('PolygonClickTool', () => {
     off();
   });
 
+  it('leaves Enter and Backspace to a focused text field, select or editable element', () => {
+    const { events, counts, click, tool } = setup();
+    const off = tool.attach();
+    click(50, 25);
+    click(150, 25);
+    click(100, 80);
+    const editable = document.createElement('div');
+    editable.contentEditable = 'true';
+    // jsdom does not compute isContentEditable from the attribute
+    Object.defineProperty(editable, 'isContentEditable', { value: true });
+    const fields = [
+      document.createElement('input'),
+      document.createElement('textarea'),
+      document.createElement('select'),
+      editable,
+    ];
+    for (const el of fields) {
+      document.body.append(el);
+      for (const k of ['Enter', 'Backspace']) {
+        const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+        el.dispatchEvent(e);
+      }
+      el.remove();
+    }
+    expect(events).toEqual([]);
+    expect(counts.at(-1)).toBe(3);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(events).toHaveLength(1);
+    off();
+  });
+
   it('cancels on Escape and clears the vertices', () => {
     const { tool, events, click, key } = setup();
     const off = tool.attach();

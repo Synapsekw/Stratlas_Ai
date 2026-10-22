@@ -2,7 +2,8 @@
  * Click-by-click outline tool (antenna flagging): each click on the view adds a vertex, a
  * double-click, Enter or `close()` with at least 3 vertices reports the outline as a lasso
  * selection (NDC polygon plus the camera's view-projection at that moment). Backspace and `undo()`
- * drop the last vertex, Escape cancels. Clicks come through `stage.claimClicks`, which only passes
+ * drop the last vertex, Escape cancels; Enter and Backspace in a text field, select or editable
+ * element stay the field's. Clicks come through `stage.claimClicks`, which only passes
  * a press and release under 4 px apart, so orbiting never adds vertices.
  */
 import { Matrix4 } from 'three';
@@ -12,6 +13,14 @@ import { MAX_LASSO_VERTICES, type PointSelection } from './pcselect';
 const SVG = 'http://www.w3.org/2000/svg';
 /** A click this close (CSS pixels) to the last vertex is the second click of a double-click. */
 const SAME_SPOT_PX = 4;
+
+/** Whether a key goes to a field that edits text or picks a value (its Enter and Backspace). */
+const editing = (t: EventTarget | null): boolean =>
+  t instanceof HTMLElement &&
+  (t.isContentEditable ||
+    t.tagName === 'INPUT' ||
+    t.tagName === 'TEXTAREA' ||
+    t.tagName === 'SELECT');
 
 export class PolygonClickTool {
   private vertices: [number, number][] = [];
@@ -71,11 +80,11 @@ export class PolygonClickTool {
         this.reset();
         this.opts.onCancel();
       } else if (e.key === 'Enter') {
-        if (!this.vertices.length) return;
+        if (!this.vertices.length || editing(e.target)) return;
         e.stopImmediatePropagation();
         this.close();
       } else if (e.key === 'Backspace') {
-        if (!this.vertices.length) return;
+        if (!this.vertices.length || editing(e.target)) return;
         e.stopImmediatePropagation();
         this.undo();
       }
