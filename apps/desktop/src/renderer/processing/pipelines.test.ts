@@ -6,6 +6,7 @@ import {
   JOB_KIND,
   jobKind,
   jobTitle,
+  jobTitleFor,
   KIND_LABEL,
   PIPELINE_GROUP,
   PIPELINE_GROUPS,
@@ -80,6 +81,36 @@ describe('job titles', () => {
     expect(jobTitle('photo.georef')).toBe('Maps from photos: ground control');
     expect(jobTitle('system.selftest')).toBe('Check the pipeline pack');
     expect(jobTitle('road.build')).toBe('Road survey');
+  });
+});
+
+describe('detector job titles', () => {
+  const det = (name: string) => ({ where: { kind: 'all' }, detector: { name }, threshold: 0.5 });
+  const many = (n: number) => Array.from({ length: n }, (_, i) => `p${i}`);
+  const job = (detectors: unknown, photos: unknown[] = []) => ({
+    pipeline: 'detect.vlm' as const,
+    params: { run: 'run-1', layer: 'l1', photos, detectors },
+  });
+
+  it('one detector: Finding corrosion on metal in 240 photos', () => {
+    expect(jobTitleFor(job([det('Corrosion on metal')], many(240)))).toBe(
+      'Finding corrosion on metal in 240 photos',
+    );
+  });
+
+  it('several: Running 3 detectors on 240 photos', () => {
+    expect(jobTitleFor(job([det('A'), det('B'), det('C')], many(240)))).toBe(
+      'Running 3 detectors on 240 photos',
+    );
+  });
+
+  it('missing params fall back to Running detectors', () => {
+    expect(jobTitleFor({ pipeline: 'detect.vlm', params: {} })).toBe('Running detectors');
+    expect(jobTitleFor(job([], many(2)))).toBe('Running detectors');
+  });
+
+  it('leaves every other pipeline to jobTitle', () => {
+    expect(jobTitleFor({ pipeline: 'road.build', params: {} })).toBe(jobTitle('road.build'));
   });
 });
 

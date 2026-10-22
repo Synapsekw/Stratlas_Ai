@@ -52,7 +52,7 @@ vi.mock('@aio/annotate', () => ({ useTaxonomy: () => ({ classById: new Map(), cl
 vi.mock('../author', () => ({ authorName: () => 'tester' }));
 vi.mock('../media', () => ({ useMedia: () => ({ durations: {} }) }));
 vi.mock('../shell', () => ({
-  bridge: { call: vi.fn() },
+  bridge: { call: vi.fn(() => Promise.resolve({ ok: true, value: { items: [] } })) },
   shell: { getState: () => ({ go: vi.fn() }) },
   useCall: () => null,
 }));

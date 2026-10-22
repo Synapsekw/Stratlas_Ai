@@ -58,6 +58,27 @@ function show(job: JobRecord) {
 }
 const openRun = () => host.querySelector('[data-testid="job-open-run"]');
 
+describe('a resumable detector job', () => {
+  const buttons = () => [...host.querySelectorAll('.jd-acts button')].map((b) => b.textContent);
+
+  it('a resumable detector job offers Run the remaining', () => {
+    show({
+      ...photoJob('D:\\Sites\\A'),
+      pipeline: 'detect.vlm',
+      status: 'cancelled',
+      params: { run: 'run-1', photos: ['a', 'b'], detectors: [{ detector: { name: 'Rust' } }] },
+    });
+    expect(buttons()).toContain('Run the remaining');
+    expect(buttons()).not.toContain('Resume');
+    expect(host.querySelector('h2')?.textContent).toBe('Finding rust in 2 photos');
+  });
+
+  it('other pipelines still say Resume', () => {
+    show({ ...photoJob('D:\\Sites\\A'), status: 'failed' });
+    expect(buttons()).toContain('Resume');
+  });
+});
+
 describe('a job in the drawer (folded)', () => {
   it('folds the settings and the log away and shows the job id with the facts', () => {
     show(photoJob('D:\\Sites\\A'));

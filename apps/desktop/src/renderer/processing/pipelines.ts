@@ -3,8 +3,8 @@
  * title, and its kind (the tag on a row of the project's Processing drawer). The pipeline titles
  * and descriptions are the frozen contract of `@aio/schema`; the plain words live here.
  */
-import { PIPELINES, type PipelineName } from '@aio/schema';
-import { t, type MessageKey } from '@aio/ui';
+import { PIPELINES, type JobRecord, type PipelineName } from '@aio/schema';
+import { formatCount, t, type MessageKey } from '@aio/ui';
 
 // ---------------------------------------------------------------- pipelines by area
 
@@ -147,6 +147,25 @@ export function jobTitle(name: PipelineName): string {
   const key = TITLE_KEYS[name];
   if (key) return t(key);
   return PLAIN_TITLES[name] ?? PIPELINES.find((p) => p.name === name)?.title ?? name;
+}
+
+/**
+ * A job's title from the job itself: a detector run names its detector and its photos, every
+ * other pipeline reads as `jobTitle`. Params are read loosely: a record from an older build or
+ * a hand-edited file still gets a title.
+ */
+export function jobTitleFor(job: Pick<JobRecord, 'pipeline' | 'params'>): string {
+  if (job.pipeline !== 'detect.vlm') return jobTitle(job.pipeline);
+  const p = job.params as { photos?: unknown; detectors?: unknown } | null | undefined;
+  const detectors = Array.isArray(p?.detectors) ? (p.detectors as unknown[]) : [];
+  const count = Array.isArray(p?.photos) ? p.photos.length : 0;
+  if (detectors.length === 0 || count === 0) return jobTitle(job.pipeline);
+  if (detectors.length > 1) {
+    return t('detect.preset.job.many', { n: detectors.length, count: formatCount(count) });
+  }
+  const name = (detectors[0] as { detector?: { name?: unknown } } | null)?.detector?.name;
+  if (typeof name !== 'string' || name === '') return jobTitle(job.pipeline);
+  return t('detect.preset.job.one', { name: name.toLowerCase(), count: formatCount(count) });
 }
 
 // ---------------------------------------------------------------- the kind of a job

@@ -48,3 +48,26 @@
   inline-size: calc(100% - 16px);
   margin: 4px 8px;
 }
+
+/* Detector runs waiting for the graphics card, above the pass strip. */
+.det-vlm-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-block: 6px;
+  padding-inline: 16px;
+  border-block-end: 1px solid var(--line);
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.det-vlm-queued,
+.det-vlm-queue-failed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+}
+.det-vlm-queue-failed {
+  color: var(--danger);
+}

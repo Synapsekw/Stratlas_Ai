@@ -30,6 +30,7 @@ import { ContactSheet, type SheetItem } from '../detections/ContactSheet';
 import { hasDetectable, itemKey, type DetectItem } from '../detections/convert';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
 import { frameLayerSrc } from '../detections/frameMedia';
+import { DetectorQueue } from '../detections/detectors/DetectorQueue';
 import { DetectorPasses } from '../detections/detectors/DetectorPasses';
 import { detectorPassRows } from '../detections/detectors/passRows';
 import { Inspector } from '../detections/Inspector';
@@ -627,6 +628,7 @@ export function DetectionsScreen() {
         <span className="det-keys faint">{t('det.keys')}</span>
       </div>
 
+      <DetectorQueue />
       {detectorRows.length > 0 && (
         <DetectorPasses
           passes={detectorRows}

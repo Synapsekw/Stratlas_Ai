@@ -11,7 +11,7 @@ import { canResume, isActive, sameFolder } from '../jobs';
 import { photoUi, runOfJob } from '../photogrammetry/store';
 import { jobs, useJobs, useShell } from '../shell';
 import { Bar, clock, duration, pct, STATUS, StatusChip } from './JobParts';
-import { jobTitle } from './pipelines';
+import { jobTitleFor } from './pipelines';
 
 const STEP_ICON: Record<JobStep['state'], IconName | null> = {
   pending: null,
@@ -149,7 +149,7 @@ export function JobDetail({
     >
       <header className="jd-h">
         <div className="jd-t">
-          <h2>{jobTitle(job.pipeline)}</h2>
+          <h2>{jobTitleFor(job)}</h2>
           {!folded && <span className="mono faint">{job.id}</span>}
         </div>
         <StatusChip status={job.status} />
@@ -172,7 +172,7 @@ export function JobDetail({
               onClick={() => void act(jobs.getState().start({ resume: job.id }))}
             >
               <Icon name="refresh" size={14} />
-              Resume
+              {job.pipeline === 'detect.vlm' ? t('detect.preset.job.runRemaining') : 'Resume'}
             </button>
           )}
           {run && (

@@ -6148,6 +6148,14 @@ export const en = {
   'detect.preset.gpuBusy':
     'A detector run is using the graphics card. Start this when it finishes, or cancel the detector run.',
   'detect.preset.queue.notWaiting': 'This detector run is no longer waiting.',
+  'detect.preset.queue.label': 'Waiting detector runs',
+  'detect.preset.queue.row': 'Waiting for the graphics card: {names}, {count} photos',
+  'detect.preset.queue.cancel': 'Cancel',
+  'detect.preset.queue.failed': 'A waiting detector run did not start: {error}',
+  'detect.preset.queue.dismiss': 'Dismiss',
+  'detect.preset.job.one': 'Finding {name} in {count} photos',
+  'detect.preset.job.many': 'Running {n} detectors on {count} photos',
+  'detect.preset.job.runRemaining': 'Run the remaining',
   'detect.preset.modelMismatch':
     'This detector was tuned on a different model, so its results may differ.',
   'detect.preset.score.none': 'No score',

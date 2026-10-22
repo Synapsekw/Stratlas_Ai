@@ -13,7 +13,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { isActive, type JobEntry } from '../../jobs';
 import { useMedia } from '../../media';
 import { projectJobs } from '../../processing/model';
-import { jobTitle } from '../../processing/pipelines';
+import { jobTitleFor } from '../../processing/pipelines';
 import { useJobs, useShell } from '../../shell';
 import { useNetworkUp } from '../../shell/connection';
 import { useRoad } from '../../road/store';
@@ -233,7 +233,7 @@ export function liveJobs(
     .running.filter((j: JobEntry) => isActive(j) && !j.quiet)
     .map((j) => ({
       id: j.id,
-      label: jobTitle(j.pipeline),
+      label: jobTitleFor(j),
       progress: j.progress,
       startedMs: Date.parse(j.createdAt) || 0,
     }));

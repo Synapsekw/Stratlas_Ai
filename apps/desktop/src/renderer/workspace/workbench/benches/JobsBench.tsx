@@ -10,7 +10,7 @@ import { useMemo, useState } from 'react';
 import { isActive } from '../../../jobs';
 import { duration, pct, StatusChip, useNow } from '../../../processing/JobParts';
 import { projectJobs, projectLabel, runningElsewhere } from '../../../processing/model';
-import { jobTitle } from '../../../processing/pipelines';
+import { jobTitleFor } from '../../../processing/pipelines';
 import { processing } from '../../../processing/store';
 import { jobs, useJobs, useShell } from '../../../shell';
 import './benches.css';
@@ -44,7 +44,7 @@ function JobRing({ job }: { job: JobRecord }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(done * 100)}
-      aria-label={t('bench.jobs.progress', { title: jobTitle(job.pipeline) })}
+      aria-label={t('bench.jobs.progress', { title: jobTitleFor(job) })}
     >
       <circle className="jb-ring-track" cx={12} cy={12} r={RING_R} />
       <circle
@@ -113,7 +113,7 @@ function JobItem({
         label={
           <span className="jb-head">
             <JobRing job={job} />
-            <span className="jb-title">{jobTitle(job.pipeline)}</span>
+            <span className="jb-title">{jobTitleFor(job)}</span>
           </span>
         }
         count={pct(job.progress)}
