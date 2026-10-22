@@ -11,6 +11,7 @@ export {
   type ModelRoute,
 } from './routes';
 export { capsFor, engineerReady, type LocalCaps, type ModelCaps } from './capabilities';
+export { CORRECTION_PROMPT_LEAD, correctionPrompt } from './correctionPrompt';
 export { SendDialog } from './SendDialog';
 // The engineer call itself runs in main ('@aio/ai/main'); the renderer gets its prompt and types.
 export {

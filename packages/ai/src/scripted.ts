@@ -12,6 +12,7 @@ import {
   type LanguageModelV4Prompt,
   type LanguageModelV4StreamPart,
 } from '@ai-sdk/provider';
+import { CORRECTION_PROMPT_LEAD } from './correctionPrompt';
 import { DETECT_MARKER } from './detect';
 import { ENGINEER_SYSTEM_LEAD } from './engineerPrompt';
 import type { ModelProvider } from './providers';
@@ -115,10 +116,54 @@ function resultsSinceUser(prompt: LanguageModelV4Prompt): number {
   return n;
 }
 
+/**
+ * The scripted answer to a correction review (`correctionPrompt`): list the requests, then remove
+ * the ladder for a request that asks for it. Null for other prompts or when there is nothing to do.
+ */
+export function scriptedCorrectionTurn(
+  prompt: LanguageModelV4Prompt,
+): { kind: 'tool'; tool: string; input: Record<string, unknown> } | null {
+  const text = lastUserText(prompt);
+  if (!text.startsWith(CORRECTION_PROMPT_LEAD)) return null;
+  const turn = resultsSinceUser(prompt);
+  if (turn === 0) return { kind: 'tool', tool: 'list_model_corrections', input: {} };
+  if (turn !== 1) return null;
+  const marker = 'Submitted review data:\n';
+  const at = text.indexOf(marker);
+  if (at < 0) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(text.slice(at + marker.length));
+  } catch {
+    return null;
+  }
+  const { requests, components } = (data ?? {}) as { requests?: unknown; components?: unknown };
+  const request = (Array.isArray(requests) ? (requests as Record<string, unknown>[]) : []).find(
+    (r) => typeof r.comment === 'string' && r.comment.includes('remove the ladder'),
+  );
+  const ladder = (Array.isArray(components) ? (components as Record<string, unknown>[]) : []).find(
+    (c) => c.kind === 'ladder',
+  );
+  if (typeof request?.id !== 'string' || typeof ladder?.id !== 'string') return null;
+  return {
+    kind: 'tool',
+    tool: 'propose_model_correction',
+    input: {
+      requestId: request.id,
+      proposal: {
+        explanation: 'Scripted: the ladder is removed as the reviewer asked.',
+        patch: [{ op: 'remove', id: ladder.id }],
+      },
+    },
+  };
+}
+
 /** What the script answers for a prompt. Exported for tests. */
 export function scriptedTurn(
   prompt: LanguageModelV4Prompt,
 ): { kind: 'text'; text: string } | { kind: 'tool'; tool: string; input: Record<string, unknown> } {
+  const correction = scriptedCorrectionTurn(prompt);
+  if (correction) return correction;
   const directives = scriptedDirectives(lastUserText(prompt));
   const next = directives[resultsSinceUser(prompt)];
   if (next) return { kind: 'tool', tool: next.tool, input: next.input };

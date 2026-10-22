@@ -664,9 +664,9 @@ export const COMPACT_TOOLS: Readonly<Record<string, string>> = {
   edit_model_part: 'Change one part of a model.',
   build_model: 'Build the 3D model from its parts.',
   list_model_corrections:
-    'Read human model correction requests, pins, evidence references and component parameters.',
+    'Read human correction requests (component, pin, model-wide), evidence and parameters.',
   propose_model_correction:
-    'Propose a scoped model correction for human Before/After review. Never applies it.',
+    'Propose a scoped or model-wide correction (max 20 ops) for human review. Never applies it.',
   view_model_correction_evidence:
     'View a prepared image attached to a submitted correction, subject to cloud permissions.',
   // the show tools

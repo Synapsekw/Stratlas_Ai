@@ -18,4 +18,10 @@ describe('model correction proposal tools', () => {
     ).toBe(false);
     expect(schema?.safeParse({ requestId: 'fix-1', georef: {}, proposal: {} }).success).toBe(false);
   });
+  it('describes the model-wide target', () => {
+    const propose = getToolSpec('propose_model_correction')?.meta.description ?? '';
+    expect(propose).toContain('whole model');
+    expect(propose).toContain('20');
+    expect(getToolSpec('list_model_corrections')?.meta.description).toContain('model-wide');
+  });
 });

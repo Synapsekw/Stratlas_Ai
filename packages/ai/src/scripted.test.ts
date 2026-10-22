@@ -1,8 +1,16 @@
-import { EngineerProposal, type EngineerSetup } from '@aio/schema';
+import { CorrectionProposalInput, EngineerProposal, type EngineerSetup } from '@aio/schema';
+import type { LanguageModelV4Prompt } from '@ai-sdk/provider';
 import { describe, expect, it } from 'vitest';
+import { correctionPrompt } from './correctionPrompt';
 import { runEngineer, type EngineerCall, type EngineerHost } from './engineer';
 import { createProviderRegistry } from './providers';
-import { createScriptedProvider, SCRIPT, SCRIPTED_ENGINEER, scriptedTurn } from './scripted';
+import {
+  createScriptedProvider,
+  SCRIPT,
+  SCRIPTED_ENGINEER,
+  scriptedCorrectionTurn,
+  scriptedTurn,
+} from './scripted';
 import { getToolSpec } from './tools';
 
 const PNG =
@@ -162,5 +170,50 @@ describe('scripted engineer replies', () => {
       // `invalid` is out of range on purpose (the first reply of `#engineer invalid`)
       expect(EngineerProposal.safeParse(clean).success, name).toBe(name !== 'invalid');
     }
+  });
+});
+
+describe('scripted model corrections', () => {
+  const data = JSON.stringify({
+    requests: [{ id: 'fix-1', target: { kind: 'model' }, comment: 'remove the ladder' }],
+    components: [{ id: 'ladder-1', kind: 'ladder' }],
+  });
+  const user = (text: string): LanguageModelV4Prompt => [
+    { role: 'user', content: [{ type: 'text', text }] },
+  ];
+  it('lists the requests, then proposes removing the ladder', () => {
+    const first = scriptedTurn(user(correctionPrompt(data)));
+    expect(first).toEqual({ kind: 'tool', tool: 'list_model_corrections', input: {} });
+    const prompt: LanguageModelV4Prompt = [
+      ...user(correctionPrompt(data)),
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool-call', toolCallId: 'c1', toolName: 'list_model_corrections', input: {} },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'c1',
+            toolName: 'list_model_corrections',
+            output: { type: 'json', value: {} },
+          },
+        ],
+      },
+    ];
+    const second = scriptedTurn(prompt);
+    expect(second.kind).toBe('tool');
+    if (second.kind !== 'tool') return;
+    expect(second.tool).toBe('propose_model_correction');
+    expect(second.input.requestId).toBe('fix-1');
+    const proposal = second.input.proposal as { patch: unknown };
+    expect(proposal.patch).toEqual([{ op: 'remove', id: 'ladder-1' }]);
+    expect(CorrectionProposalInput.safeParse(proposal).success).toBe(true);
+  });
+  it('answers nothing special without the lead', () => {
+    expect(scriptedCorrectionTurn(user('hello'))).toBeNull();
   });
 });
