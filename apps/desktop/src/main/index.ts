@@ -9,8 +9,6 @@ import {
 } from '@aio/ai/main';
 import { brand, privacyPolicyLink, urlSchemes } from '@aio/brand';
 import {
-  ANTENNAS_FILE,
-  AntennasFile,
   ChangeThresholds,
   DETECTOR_FILE_EXTENSION,
   ipcEvents,
@@ -37,7 +35,7 @@ import {
   shell,
 } from 'electron';
 import { existsSync } from 'node:fs';
-import { readFile, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { arch, release, totalmem, userInfo } from 'node:os';
 import { join } from 'node:path';
 import licenses from 'virtual:licenses';
@@ -185,24 +183,7 @@ import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geo
 import { registerSurveyIpc } from './survey';
 import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
-import { antennaPackRefusal } from './telecomPack';
-import { fileInside } from '@aio/project/fs';
-
-/** The antenna inventory for the pack gate, or null when absent or unreadable. */
-async function antennaInventory(
-  pipeline: string,
-  project: string | undefined,
-): Promise<AntennasFile | null> {
-  if (!project || (pipeline !== 'telecom.antennas' && pipeline !== 'telecom.flag')) return null;
-  try {
-    const path = await fileInside(project, ANTENNAS_FILE);
-    if (!path) return null;
-    const r = AntennasFile.safeParse(JSON.parse(await readFile(path, 'utf8')));
-    return r.success ? r.data : null;
-  } catch {
-    return null;
-  }
-}
+import { antennaPackRefusal, readAntennaInventory } from './telecomPack';
 import { registerThermalIpc } from './thermal';
 import { THERMAL_PACK_FEATURE, thermalPackRefusal } from './thermalPack';
 import { RF_PACK_FEATURE, rfPackRefusal } from './rfPack';
@@ -1677,7 +1658,7 @@ function registerIpc(): void {
         antennaPackRefusal(
           pipeline,
           version,
-          await antennaInventory(
+          await readAntennaInventory(
             pipeline,
             'project' in req ? req.project : jobs.get(req.resume)?.project,
           ),
