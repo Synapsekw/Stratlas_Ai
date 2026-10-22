@@ -135,27 +135,27 @@ export function antennaMeasure(
   const pushUpOut: Vec3 = [upOut[0] / n, upOut[1] / n, upOut[2] / n];
   const at = (s: Vec3) => boxPoint(unit, centre, s);
 
-  const lines: { key: string; from: Vec3; to: Vec3; push: Vec3; value: number }[] = [
+  const lines: { key: string; from: Vec3; to: Vec3; push: Vec3; value: number | undefined }[] = [
     {
       key: 'w',
       from: at([-1, 1, 1]),
       to: at([1, 1, 1]),
       push: pushUpOut,
-      value: unit.widthM?.value ?? unit.box.extents[0],
+      value: unit.widthM?.value,
     },
     {
       key: 'h',
       from: at([1, -1, 1]),
       to: at([1, 1, 1]),
       push: out,
-      value: unit.heightM?.value ?? unit.box.extents[1],
+      value: unit.heightM?.value,
     },
     {
       key: 'd',
       from: at([1, -1, -1]),
       to: at([1, -1, 1]),
       push: across,
-      value: unit.depthM?.value ?? unit.box.extents[2],
+      value: unit.depthM?.value,
     },
   ];
 
@@ -163,6 +163,8 @@ export function antennaMeasure(
   const ticks: [Vec3, Vec3][] = [];
   const spots: AntennaLabelSpot[] = [];
   for (const l of lines) {
+    // a size nobody measured or typed gets no line and no number
+    if (l.value === undefined) continue;
     const a = add(l.from, l.push, DIM_OFFSET_M);
     const b = add(l.to, l.push, DIM_OFFSET_M);
     main.push([a, b]);
@@ -188,7 +190,7 @@ export function antennaMeasure(
     key: `${unit.id}:name`,
     text: t('telecom.antennas.label.name', {
       name: unit.name,
-      height: metres(unit.heightM?.value ?? unit.box.extents[1]),
+      height: unit.heightM ? metres(unit.heightM.value) : t('telecom.antennas.notMeasured'),
     }),
     at: nameAnchor(unit, frame, shift),
     kind: 'name',

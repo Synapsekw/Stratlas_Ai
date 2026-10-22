@@ -189,6 +189,13 @@ describe('antennaMeasure', () => {
       expect(m.spots.filter((s) => s.kind === 'dim')).toEqual([]);
     });
 
+    it('draws only the dimension a flagged unit has, never a placeholder size', () => {
+      const u: AntennaUnit = { ...bare(), widthM: val(0.45) };
+      const m = antennaMeasure(u, frame, null);
+      expect(m.spots.filter((s) => s.kind === 'dim').map((s) => s.text)).toEqual(['0.45 m']);
+      expect(m.spots.find((s) => s.kind === 'name')?.text).toBe('A12 · Not measured');
+    });
+
     it('labels it Not measured', () => {
       const m = antennaMeasure(bare(), frame, null);
       expect(m.spots.map((s) => s.text)).toEqual(['A12 · Not measured']);
