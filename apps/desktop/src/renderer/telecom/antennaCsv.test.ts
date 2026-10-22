@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { AntennasFile, type AntennaUnit } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { antennasToCsv, CSV_COLUMNS } from './antennaCsv';
+import { userValue, withTyped } from './antennaTyped';
 
 const contract = JSON.parse(
   readFileSync(
@@ -108,8 +109,57 @@ describe('antennasToCsv', () => {
       { ...f, units: [{ ...rest, status: 'accepted', origin: 'flagged', support: 0 }] },
       { includeDrafts: false },
     );
-    for (const c of ['widthM', 'heightM', 'depthM', 'depthBasis', 'azimuthGridDeg', 'residualMm'])
+    for (const c of [
+      'widthM',
+      'widthBasis',
+      'heightM',
+      'heightBasis',
+      'depthM',
+      'depthBasis',
+      'azimuthGridDeg',
+      'residualMm',
+      'altitudeBasis',
+    ])
       expect(cell(csv, 1, c)).toBe('');
     expect(cell(csv, 1, 'origin')).toBe('flagged');
+
+    // a centre elevation typed on it reads as the person's
+    const typedAlt = antennasToCsv(
+      {
+        ...f,
+        units: [{ ...rest, status: 'accepted', origin: 'flagged', centreHeightM: userValue(30) }],
+      },
+      { includeDrafts: false },
+    );
+    expect(cell(typedAlt, 1, 'altitudeBasis')).toBe('user');
+  });
+
+  it('gives the basis of each size and the centre elevation', () => {
+    const f = sample();
+    const first = f.units[0];
+    if (!first) throw new Error('fixture has no unit');
+    const plain = antennasToCsv({ ...f, units: [first] }, { includeDrafts: false });
+    for (const c of ['widthBasis', 'heightBasis', 'depthBasis', 'altitudeBasis'])
+      expect(cell(plain, 1, c)).toBe('measured');
+    let u = withTyped(first, 'widthM', 0.5);
+    u = withTyped(u, 'heightM', 2.1);
+    u = withTyped(u, 'centreHeightM', 33);
+    const csv = antennasToCsv({ ...f, units: [u] }, { includeDrafts: false });
+    expect(cell(csv, 1, 'widthM')).toBe('0.5');
+    expect(cell(csv, 1, 'widthBasis')).toBe('user');
+    expect(cell(csv, 1, 'heightBasis')).toBe('user');
+    expect(cell(csv, 1, 'depthBasis')).toBe('measured');
+    expect(cell(csv, 1, 'altitudeM')).toBe('33');
+    expect(cell(csv, 1, 'altitudeBasis')).toBe('user');
+  });
+
+  it('keeps the fit residual when a person typed the azimuth and the width', () => {
+    const f = sample();
+    const first = f.units[0];
+    if (!first) throw new Error('fixture has no unit');
+    const u = withTyped(withTyped(first, 'azimuthGridDeg', 200), 'widthM', 0.5);
+    const csv = antennasToCsv({ ...f, units: [u] }, { includeDrafts: false });
+    expect(cell(csv, 1, 'azimuthBasis')).toBe('user');
+    expect(cell(csv, 1, 'residualMm')).toBe('4');
   });
 });

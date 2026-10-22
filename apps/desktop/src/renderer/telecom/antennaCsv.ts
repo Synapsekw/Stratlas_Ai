@@ -1,4 +1,4 @@
-import type { AntennasFile, AntennaUnit, AntennaValue } from '@aio/schema';
+import type { AntennaMeasured, AntennasFile, AntennaUnit, AntennaValue } from '@aio/schema';
 import { trueAzimuth } from './antennaFormat';
 
 /** The columns of the antenna inventory CSV, in order. */
@@ -20,12 +20,15 @@ export const CSV_COLUMNS: readonly string[] = [
   'elevationDeg',
   'diameterM',
   'widthM',
+  'widthBasis',
   'heightM',
+  'heightBasis',
   'depthM',
   'depthBasis',
   'centreE',
   'centreN',
   'altitudeM',
+  'altitudeBasis',
   'residualMm',
   'support',
   'model',
@@ -52,8 +55,21 @@ function field(text: string): string {
 const typed = (text: string | undefined): string =>
   field(text !== undefined && /^[=+\-@\t\r]/.test(text) ? `'${text}` : (text ?? ''));
 
+/** The value as measured: the unit's own unless a person typed it, else the one it replaced. */
+function measuredValue(u: AntennaUnit, key: keyof AntennaMeasured): AntennaValue | undefined {
+  const v = u[key];
+  return v && v.basis !== 'user' ? v : u.measured?.[key];
+}
+
+/** Whether the geometry measured the unit's box (a flagged unit with too few points did not). */
+const boxMeasured = (u: AntennaUnit): boolean =>
+  u.origin !== 'flagged' || measuredValue(u, 'widthM') !== undefined;
+
 function row(u: AntennaUnit): string {
-  const residual = (u.azimuthGridDeg ?? u.widthM)?.quality.residualM;
+  // the fit residual is the measurement's: a typed value does not empty it
+  const residual = (measuredValue(u, 'azimuthGridDeg') ?? measuredValue(u, 'widthM'))?.quality
+    .residualM;
+  const altitudeBasis = u.centreHeightM?.basis ?? (boxMeasured(u) ? 'measured' : '');
   const photo = u.photos[0];
   const cells = [
     field(u.id),
@@ -75,12 +91,15 @@ function row(u: AntennaUnit): string {
     deg(u.elevationDeg),
     num(u.diameterM?.value, 3),
     num(u.widthM?.value, 3),
+    basis(u.widthM),
     num(u.heightM?.value, 3),
+    basis(u.heightM),
     num(u.depthM?.value, 3),
     basis(u.depthM),
     num(u.box.centre[0], 3),
     num(u.box.centre[1], 3),
     num(u.box.centre[2], 3),
+    altitudeBasis,
     num(residual === undefined ? undefined : residual * 1000, 1),
     String(u.support),
     typed(u.user.model),
