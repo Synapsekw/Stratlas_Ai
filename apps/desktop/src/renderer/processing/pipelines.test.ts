@@ -98,6 +98,11 @@ describe('detector job titles', () => {
     );
   });
 
+  it('one photo reads 1 photo', () => {
+    expect(jobTitleFor(job([det('Rust')], many(1)))).toBe('Finding rust in 1 photo');
+    expect(jobTitleFor(job([det('A'), det('B')], many(1)))).toBe('Running 2 detectors on 1 photo');
+  });
+
   it('several: Running 3 detectors on 240 photos', () => {
     expect(jobTitleFor(job([det('A'), det('B'), det('C')], many(240)))).toBe(
       'Running 3 detectors on 240 photos',

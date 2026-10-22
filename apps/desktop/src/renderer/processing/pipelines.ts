@@ -4,7 +4,7 @@
  * and descriptions are the frozen contract of `@aio/schema`; the plain words live here.
  */
 import { PIPELINES, type JobRecord, type PipelineName } from '@aio/schema';
-import { formatCount, t, type MessageKey } from '@aio/ui';
+import { t, type MessageKey } from '@aio/ui';
 
 // ---------------------------------------------------------------- pipelines by area
 
@@ -161,11 +161,11 @@ export function jobTitleFor(job: Pick<JobRecord, 'pipeline' | 'params'>): string
   const count = Array.isArray(p?.photos) ? p.photos.length : 0;
   if (detectors.length === 0 || count === 0) return jobTitle(job.pipeline);
   if (detectors.length > 1) {
-    return t('detect.preset.job.many', { n: detectors.length, count: formatCount(count) });
+    return t('detect.preset.job.many', { n: detectors.length, count });
   }
   const name = (detectors[0] as { detector?: { name?: unknown } } | null)?.detector?.name;
   if (typeof name !== 'string' || name === '') return jobTitle(job.pipeline);
-  return t('detect.preset.job.one', { name: name.toLowerCase(), count: formatCount(count) });
+  return t('detect.preset.job.one', { name: name.toLowerCase(), count });
 }
 
 // ---------------------------------------------------------------- the kind of a job

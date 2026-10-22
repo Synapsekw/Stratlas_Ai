@@ -2,7 +2,7 @@
 import type { JobRecord } from '@aio/schema';
 import { Icon, t } from '@aio/ui';
 import { Bar, clock, duration, StatusChip } from './JobParts';
-import { jobKind, jobTitle, KIND_LABEL } from './pipelines';
+import { jobKind, jobTitleFor, KIND_LABEL } from './pipelines';
 import './processing.css';
 
 export function JobRow({
@@ -34,7 +34,7 @@ export function JobRow({
       onClick={onPick}
     >
       <span className="jr-top">
-        <b>{jobTitle(job.pipeline)}</b>
+        <b>{jobTitleFor(job)}</b>
         <StatusChip status={job.status} />
       </span>
       <span className="jr-sub">

@@ -86,6 +86,13 @@ describe('DetectorQueue', () => {
     expect(h.calls).toContainEqual({ channel: 'detect:queueCancel', req: { run: 'run-a' } });
   });
 
+  it('says 1 photo for a single photo', async () => {
+    h.items = [queued('run-a', ['Rust'], 1)];
+    await show();
+    expect(host.textContent).toContain('Rust, 1 photo');
+    expect(host.textContent).not.toContain('1 photos');
+  });
+
   it('follows the detect:queue event', async () => {
     await show();
     expect(host.textContent).toBe('');

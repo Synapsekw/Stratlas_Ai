@@ -1,5 +1,5 @@
 import type { AioBridge, DetectQueued } from '@aio/schema';
-import { Button, formatCount, useT } from '@aio/ui';
+import { Button, useT } from '@aio/ui';
 import { useEffect, useState, type ReactElement } from 'react';
 import { bridge } from '../../shell';
 
@@ -35,7 +35,7 @@ export function DetectorQueueView({
           <span>
             {t('detect.preset.queue.row', {
               names: q.detectors.join(', '),
-              count: formatCount(q.photos),
+              count: q.photos,
             })}
           </span>
           <Button

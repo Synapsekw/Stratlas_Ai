@@ -30,7 +30,7 @@ import {
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
-import { jobTitle } from './processing/pipelines';
+import { jobTitleFor } from './processing/pipelines';
 import { PipelineDialog } from './processing/PipelineDialog';
 import { ProcessingDrawer } from './processing/ProcessingDrawer';
 import { startFarWatch } from './builder/farSession';
@@ -485,7 +485,7 @@ export function App() {
     // a job that ends is said aloud wherever the person is
     const stopJobAnnounce = watchJobEnds(jobs, ({ job, ok }) => {
       announce(
-        t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: jobTitle(job.pipeline) }),
+        t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: jobTitleFor(job) }),
         ok ? 'polite' : 'assertive',
       );
     });

@@ -1,7 +1,7 @@
 /** The small parts every list and detail of jobs shares: status, progress, times. */
 import type { JobRecord } from '@aio/schema';
 import { useEffect, useState } from 'react';
-import { jobTitle } from './pipelines';
+import { jobTitleFor } from './pipelines';
 
 export const STATUS: Record<JobRecord['status'], { label: string; tone: string }> = {
   starting: { label: 'Starting', tone: 'run' },
@@ -68,7 +68,7 @@ export function Bar({ job }: { job: JobRecord }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(job.progress * 100)}
-      aria-label={`${jobTitle(job.pipeline)} progress`}
+      aria-label={`${jobTitleFor(job)} progress`}
     >
       <i style={{ width: pct(job.progress) }} />
     </span>
