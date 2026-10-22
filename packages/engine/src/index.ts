@@ -103,6 +103,7 @@ export {
   type PointSelection,
   type SelectShape,
 } from './tools/pcselect';
+export { PolygonClickTool } from './tools/pcpolygon';
 export { PALETTE } from './palette';
 export { reducedMotion } from './motion';
 export { layerBox } from './stage/layerBox';

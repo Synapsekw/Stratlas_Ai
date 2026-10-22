@@ -51,7 +51,7 @@ export {
   type CleanupUniforms,
   type PointMaterial,
 } from './material';
-export { countDrawn } from './cleanup/count';
+export { collectDrawn, countDrawn } from './cleanup/count';
 export { CHANGE_STOPS, changeColour, changeGradient, isNeutral, isWarm } from './changeRamp';
 export {
   ChangeLegend,
