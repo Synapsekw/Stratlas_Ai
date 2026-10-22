@@ -6235,6 +6235,8 @@ export const en = {
   'detect.preset.library.imported': 'Detector "{id}" was added to My library.',
   'detect.preset.library.export': 'Export',
   'detect.preset.library.leaveOut': 'Leave out sample photos (client-confidential)',
+  'detect.preset.library.samplesWarn':
+    'Sample photos may show client sites. Share this file only with people allowed to see them.',
   'detect.preset.library.exportGo': 'Export to file',
   'detect.preset.library.exported': 'Exported to {file}.',
   'detect.preset.library.remove': 'Remove',
@@ -6269,6 +6271,10 @@ export const en = {
   'detect.preset.run.estimate_other': 'About {min} min for {count} photos',
   'detect.preset.run.start': 'Start',
   'detect.preset.run.ok': 'OK',
+  'detect.preset.hiddenByBar_one': '· {count} hidden by the bar',
+  'detect.preset.hiddenByBar_other': '· {count} hidden by the bar',
+  'detect.preset.run.loading':
+    'Loading the detector model on the graphics card. This can take a minute or two.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

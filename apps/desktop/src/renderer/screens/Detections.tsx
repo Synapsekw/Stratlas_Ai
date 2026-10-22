@@ -9,6 +9,7 @@ import {
   clampGeom,
   currentOf,
   detectorThreshold,
+  inQueue,
   queueOf,
   REVIEW_PASS,
   sourceCounts,
@@ -130,11 +131,20 @@ export function DetectionsScreen() {
   // `classes` is a dependency so the counts follow a class added while working.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const plan = useMemo(() => planFor(queue), [queue, classes]);
+  // A draft under the confidence bar or its pass's detector bar is neither counted nor drawn.
+  const { minConfidence, passThreshold } = review;
+  const visible = useMemo(() => {
+    const all = review.detections;
+    const shown = all.filter(
+      (d) => d.status !== 'draft' || inQueue(d, 'draft', minConfidence, passThreshold, all),
+    );
+    return { list: shown, ids: new Set(shown.map((d) => d.id)), hidden: all.length - shown.length };
+  }, [review.detections, minConfidence, passThreshold]);
   const counts = useMemo(() => {
     const c = { draft: 0, accepted: 0, rejected: 0 };
-    for (const d of review.detections) c[d.status] += 1;
+    for (const d of visible.list) c[d.status] += 1;
     return c;
-  }, [review.detections]);
+  }, [visible]);
 
   // One row per local-detector run: its bar, and what the bar shows and hides.
   const detectorRows = useMemo(
@@ -150,9 +160,9 @@ export function DetectionsScreen() {
 
   // The sheet: every photo, then the video frames that have detections.
   const items = useMemo<SheetItem[]>(() => {
-    const perSource = new Map(sourceCounts(review.detections).map((c) => [c.key, c]));
+    const perSource = new Map(sourceCounts(visible.list).map((c) => [c.key, c]));
     const outlines = new Map<string, SheetItem['outlines']>();
-    for (const d of review.detections) {
+    for (const d of visible.list) {
       if (d.status === 'rejected' && review.filter !== 'rejected') continue;
       const k = sourceKey(d.source);
       const list = outlines.get(k) ?? [];
@@ -210,6 +220,7 @@ export function DetectionsScreen() {
     return out;
   }, [
     review.detections,
+    visible,
     review.filter,
     photoSets,
     layers,
@@ -230,13 +241,14 @@ export function DetectionsScreen() {
     const k = sourceKey(shownSource);
     return review.detections
       .filter((d) => sourceKey(d.source) === k)
+      .filter((d) => visible.ids.has(d.id) || d.id === review.currentId)
       .filter(
         (d) => d.status !== 'rejected' || d.id === review.currentId || review.filter === 'rejected',
       )
       .map((d) => {
         return { detection: d, ...detectionLook(d, classById.get(d.classId)) };
       });
-  }, [shownSource, review.detections, review.currentId, review.filter, classById]);
+  }, [shownSource, review.detections, visible, review.currentId, review.filter, classById]);
 
   if (!project)
     return (
@@ -437,6 +449,7 @@ export function DetectionsScreen() {
             accepted: formatCount(counts.accepted),
             rejected: formatCount(counts.rejected),
           })}
+          {visible.hidden > 0 && ` ${t('detect.preset.hiddenByBar', { count: visible.hidden })}`}
         </span>
         <div className="seg" role="group" aria-label={t('det.filter')}>
           {FILTERS.map((f) => (

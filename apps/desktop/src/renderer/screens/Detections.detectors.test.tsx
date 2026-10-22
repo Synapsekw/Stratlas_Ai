@@ -25,7 +25,11 @@ const draft = {
   },
 } as unknown as Detection;
 
-const h = vi.hoisted(() => ({ dispatch: vi.fn(), state: null as object | null }));
+const h = vi.hoisted(() => ({
+  dispatch: vi.fn(),
+  state: null as object | null,
+  shapes: [] as { detection: { id: string } }[],
+}));
 
 vi.mock('../detections/store', () => ({
   dispatch: h.dispatch,
@@ -61,7 +65,12 @@ vi.mock('../shell/PageHeader', () => ({ PageHeader: () => null }));
 vi.mock('./NoProject', () => ({ NoProject: () => null }));
 vi.mock('../detections/AiDetectDialog', () => ({ AiDetectDialog: () => null }));
 vi.mock('../detections/ContactSheet', () => ({ ContactSheet: () => null }));
-vi.mock('../detections/Editor', () => ({ ReviewEditor: () => null }));
+vi.mock('../detections/Editor', () => ({
+  ReviewEditor: (p: { shapes: { detection: { id: string } }[] }) => {
+    h.shapes = p.shapes;
+    return null;
+  },
+}));
 vi.mock('../detections/Inspector', () => ({ Inspector: () => null }));
 vi.mock('./mediaFindings', () => ({
   findingsIndex: () => new Map(),
@@ -128,6 +137,26 @@ describe('Detections screen with a local detector pass', () => {
       key(slider, 'x');
     }
     expect(h.dispatch).not.toHaveBeenCalled();
+    root.unmount();
+  });
+  it('raising the bar lowers the counts and takes the hidden draft out of the editor', () => {
+    const lower = { ...draft, id: 'm2', confidence: 0.7, geom: { ...draft.geom, y: 50 } };
+    let review = reviewReducer(initialReview(), { type: 'load', detections: [draft, lower] });
+    h.state = { ...h.state, review };
+    const root = createRoot(host);
+    act(() => {
+      root.render(<DetectionsScreen />);
+    });
+    const counts = () => host.querySelector('[data-testid="det-counts"]')?.textContent ?? '';
+    expect(counts()).toBe('2 waiting · 0 accepted · 0 rejected');
+    expect(h.shapes.map((x) => x.detection.id)).toEqual(['m1', 'm2']);
+    review = reviewReducer(review, { type: 'passThreshold', pass: 'vlm-run-a.json', value: 0.8 });
+    h.state = { ...h.state, review };
+    act(() => {
+      root.render(<DetectionsScreen />);
+    });
+    expect(counts()).toBe('1 waiting · 0 accepted · 0 rejected · 1 hidden by the bar');
+    expect(h.shapes.map((x) => x.detection.id)).toEqual(['m1']);
     root.unmount();
   });
 });
