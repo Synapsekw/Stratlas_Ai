@@ -6,7 +6,7 @@ vi.mock('../../shell', () => ({ bridge: { call } }));
 const cropJpeg = vi.hoisted(() => vi.fn());
 vi.mock('./crop', () => ({ cropJpeg }));
 
-import { logMiss, logReview, type MissPass } from './ledgerLog';
+import { logMiss, logReview, missPassesFrom, type MissPass } from './ledgerLog';
 
 const SHA = 'a'.repeat(64);
 const ctx = { projectId: 'p1', layer: 'photos', photoUrl: 'aio-asset://p1/photos/p001.jpg' };
@@ -173,5 +173,51 @@ describe('logMiss', () => {
     await logMiss(human(), [pass({ name: 'ai-1.json' })], ctx);
     await logMiss(draft(), [pass()], ctx);
     expect(call).not.toHaveBeenCalled();
+  });
+});
+
+describe('missPassesFrom', () => {
+  const header = {
+    assessed: ['p001'],
+    detectors: [
+      { id: 'chimney', version: 3, classId: 'chimney', name: 'Chimney', threshold: 0.6 },
+      { id: 'bolt', version: 1, classId: 'bolt', name: 'Bolt', threshold: 0.5 },
+    ],
+  };
+
+  it('a detector with zero candidates in the pass still gets a miss line', async () => {
+    // only the chimney detector found anything; the bolt detector asked and found nothing
+    const found = draft();
+    const passes = missPassesFrom([found], new Map([['vlm-1.json', header]]));
+    const drawn = {
+      ...draft({ classId: 'bolt' }),
+      id: 'h',
+      pass: 'review.json',
+      status: 'draft' as const,
+      origin: { kind: 'human' as const, author: 'me' },
+    };
+    await logMiss(drawn, passes, ctx);
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(payload().entry).toMatchObject({
+      detectorId: 'bolt',
+      detectorVersion: 1,
+      modelSha256: SHA,
+      verdict: 'miss',
+    });
+  });
+
+  it('falls back to the detectors of the candidates when the pass lists none', () => {
+    const passes = missPassesFrom([draft()], new Map([['vlm-1.json', { assessed: ['p001'] }]]));
+    expect(passes).toEqual([
+      {
+        name: 'vlm-1.json',
+        assessed: ['p001'],
+        detectors: [{ id: 'chimney', version: 3, modelSha256: SHA, classId: 'chimney' }],
+      },
+    ]);
+  });
+
+  it('ignores passes that are not local-detector passes', () => {
+    expect(missPassesFrom([], new Map([['ai-1.json', header]]))).toEqual([]);
   });
 });

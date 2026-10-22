@@ -5,7 +5,7 @@
  * so a failure here is logged and never reaches the review.
  */
 import { boundsOf, type Detection } from '@aio/annotate/detections';
-import type { LedgerEntry } from '@aio/schema';
+import type { DetectionsFile, LedgerEntry } from '@aio/schema';
 import { bridge } from '../../shell';
 import { cropJpeg } from './crop';
 
@@ -21,6 +21,48 @@ export interface MissPass {
   name: string;
   assessed: readonly string[];
   detectors: readonly { id: string; version: number; modelSha256: string; classId: string }[];
+}
+
+/**
+ * The local-detector passes among `list`'s passes. A pass lists the detectors its run asked about
+ * in its header (`detectors`, even those that found nothing); an older pass has none, so the
+ * detectors of its candidates stand in. The model's hash comes from a candidate of the pass, so a
+ * pass without any candidate cannot be credited with a miss.
+ */
+export function missPassesFrom(
+  list: readonly Detection[],
+  headers: ReadonlyMap<string, Pick<DetectionsFile, 'assessed' | 'detectors'>>,
+): MissPass[] {
+  const out: MissPass[] = [];
+  const names = new Set([...headers.keys(), ...list.map((d) => d.pass)]);
+  for (const name of names) {
+    if (!name.startsWith('vlm-')) continue;
+    const header = headers.get(name) ?? {};
+    const mine = list.flatMap((d) =>
+      d.pass === name && d.origin.kind === 'model' && d.origin.detector ? [d] : [],
+    );
+    const sha = mine[0]?.origin.kind === 'model' ? mine[0].origin.detector?.modelSha256 : undefined;
+    const detectors: MissPass['detectors'][number][] = [];
+    for (const h of header.detectors ?? [])
+      if (sha)
+        detectors.push({ id: h.id, version: h.version, modelSha256: sha, classId: h.classId });
+    for (const d of mine) {
+      const det = d.origin.kind === 'model' ? d.origin.detector : undefined;
+      if (det && !detectors.some((x) => x.id === det.id))
+        detectors.push({
+          id: det.id,
+          version: det.version,
+          modelSha256: det.modelSha256,
+          classId: d.classId,
+        });
+    }
+    out.push({
+      name,
+      assessed: Array.isArray(header.assessed) ? header.assessed : [],
+      detectors,
+    });
+  }
+  return out;
 }
 
 async function append(entry: LedgerEntry, box: LedgerEntry['box'], ctx: LedgerCtx): Promise<void> {

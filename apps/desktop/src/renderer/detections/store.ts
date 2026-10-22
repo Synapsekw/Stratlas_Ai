@@ -36,7 +36,13 @@ import { beforeJobStart } from '../bridge';
 import { offerPlacement } from '../placement';
 import { bridge } from '../shell';
 import { acceptLabel, planBatch, rejectLabel, undoStep, type BatchPlan } from './batch';
-import { logMiss, logReview, type LedgerCtx, type MissPass } from './detectors/ledgerLog';
+import {
+  logMiss,
+  logReview,
+  missPassesFrom,
+  type LedgerCtx,
+  type MissPass,
+} from './detectors/ledgerLog';
 
 export type DetectionSaveState = 'saved' | 'pending' | 'saving' | 'error';
 
@@ -280,27 +286,10 @@ function ledgerCtx(projectId: string, d: Detection): LedgerCtx {
 
 /** The local-detector passes (`vlm-*`) of the review, with the photos and detectors of each. */
 function missPasses(review: ReviewState): MissPass[] {
-  const out = new Map<string, MissPass>();
-  for (const d of review.detections) {
-    const det = d.origin.kind === 'model' ? d.origin.detector : undefined;
-    if (!det || !d.pass.startsWith('vlm-')) continue;
-    const assessed = passes.get(d.pass)?.header.assessed;
-    const pass = out.get(d.pass) ?? {
-      name: d.pass,
-      assessed: Array.isArray(assessed) ? assessed : [],
-      detectors: [],
-    };
-    // the detector's class is the class its candidates carry
-    if (!pass.detectors.some((x) => x.id === det.id && x.classId === d.classId))
-      (pass.detectors as MissPass['detectors'][number][]).push({
-        id: det.id,
-        version: det.version,
-        modelSha256: det.modelSha256,
-        classId: d.classId,
-      });
-    out.set(d.pass, pass);
-  }
-  return [...out.values()];
+  return missPassesFrom(
+    review.detections,
+    new Map([...passes].map(([name, rec]) => [name, rec.header])),
+  );
 }
 
 /** Decisions on local-detector drafts, and hand-drawn findings, go to the detector ledger. */

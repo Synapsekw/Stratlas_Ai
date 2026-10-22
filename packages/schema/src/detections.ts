@@ -197,6 +197,20 @@ export const DetectionsFile = z.object({
   assessed: z.union([z.literal('all'), z.array(Id)]).optional(),
   /** The run that produced this pass (AI and model passes). */
   run: DetectionRun.optional(),
+  /** Detectors a local detector run asked about, including those that found nothing. */
+  detectors: z
+    .array(
+      z
+        .object({
+          id: z.string(),
+          version: z.number().int(),
+          classId: z.string(),
+          name: z.string(),
+          threshold: z.number().min(0).max(1),
+        })
+        .strict(),
+    )
+    .optional(),
   detections: z.array(Detection),
 });
 

@@ -27,7 +27,11 @@ const logMiss = vi.hoisted(() =>
     ) => Promise<void>
   >(() => Promise.resolve()),
 );
-vi.mock('./detectors/ledgerLog', () => ({ logReview, logMiss }));
+vi.mock('./detectors/ledgerLog', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  logReview,
+  logMiss,
+}));
 
 import { detections, dispatch, rejectAll } from './store';
 

@@ -416,3 +416,24 @@ def test_prepare_output_without_class_ids_keeps_the_class(tmp_path):
     dets = pass_of(root)["detections"]
     assert dets
     assert all(d["class"] == "rust" and "suggestedNew" not in d for d in dets)
+
+
+def test_pass_lists_every_detector_of_the_run_with_its_class_as_given(tmp_path):
+    root = make_project(tmp_path / "p", classes=("bolt",))
+    dets = [
+        {"where": "project", "detector": detector("loose-bolt", "bolt"), "threshold": 0.5},
+        {
+            "where": "project",
+            "detector": detector("corrosion-metal", class_id="corrosion", name="Corrosion on metal"),
+            "threshold": 0.8,
+        },
+    ]
+    with FakeVlm(scoring([0.9])) as vlm:
+        run_job(pipeline(), root, params(state_file(root, vlm.url), photos=("p1",), detectors=dets))
+    listed = pass_of(root)["detectors"]
+    assert [(d["id"], d["classId"], d["threshold"]) for d in listed] == [
+        ("loose-bolt", "bolt", 0.5),
+        # the class as the detector names it, not the suggested-new rewrite
+        ("corrosion-metal", "corrosion", 0.8),
+    ]
+    assert listed[1]["name"] == "Corrosion on metal" and listed[0]["version"] == 2

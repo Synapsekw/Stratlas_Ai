@@ -332,6 +332,16 @@ class DetectVlm:
                 "producer": f"{model} (local)",
                 "layer": params["layer"],
                 "assessed": assessed,
+                "detectors": [
+                    {
+                        "id": e["detector"]["id"],
+                        "version": e["detector"]["version"],
+                        "classId": e["detector"]["classId"],
+                        "name": e["detector"]["name"],
+                        "threshold": e["threshold"],
+                    }
+                    for e in detectors
+                ],
                 "createdAt": created,
                 "run": {
                     "id": run_id,
