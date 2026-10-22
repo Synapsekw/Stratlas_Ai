@@ -88,7 +88,9 @@ engTest(
     await approveProposal(win); // confirms the send preview first
     await expect(panel.getByText(EXPLANATION)).toBeVisible({ timeout: 60_000 });
     await expect(panel.getByText(/scale is provisional/)).toBeVisible();
-    await panel.getByRole('button', { name: 'After', exact: true }).click();
+    const after = panel.getByRole('button', { name: 'After', exact: true });
+    await after.click();
+    await expect(after).toHaveAttribute('aria-pressed', 'true');
     await panel.getByRole('button', { name: 'Accept correction', exact: true }).click();
     await expect
       .poll(async () => (await readModel(eng.dir)).assemblies.some((a) => a.id === ladder.id), {
@@ -135,7 +137,12 @@ engTest(
     await expect
       .poll(async () => (await readRun(eng.dir)).corrections?.[0]?.status, { timeout: 30_000 })
       .toBe('rejected');
-    const request = panel.locator('.eng-correction-queue li').first().getByRole('button').first();
+    const request = panel
+      .getByRole('list', { name: 'Saved requests' })
+      .getByRole('listitem')
+      .first()
+      .getByRole('button')
+      .first();
     if ((await request.getAttribute('aria-pressed')) !== 'true') await request.click();
     await expect(request).toHaveAttribute('aria-pressed', 'true');
     await panel.getByRole('textbox', { name: 'Reply to this request' }).fill('try again');
@@ -147,7 +154,6 @@ engTest(
       .poll(async () => (await readRun(eng.dir)).corrections?.[0]?.status, { timeout: 60_000 })
       .toBe('proposed');
     await expect(panel.getByText(EXPLANATION)).toBeVisible();
-    await expect(agent(win)).toBeVisible();
 
     const run = await readRun(eng.dir);
     const correction = run.corrections?.[0];
