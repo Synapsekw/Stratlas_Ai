@@ -10,10 +10,10 @@
  * (`detect:queue`), and a photo job may not start while a detector run holds the card.
  */
 import {
+  DetectQueued,
   DetectorWhere,
   GPU_PIPELINES,
   VLM_SERVER_STATE,
-  type DetectQueued,
   type HardwareCheck,
   type IpcEvent,
   type IpcRequest,
@@ -130,6 +130,8 @@ export async function detectJobGate(req: StartRequest, d: GateDeps): Promise<Gat
     if (!hw.ok) return { refuse: hw.reason };
     gpuIndex = hw.gpuIndex;
   }
+  // a photo job may have taken the card while the checks above ran
+  if (d.running()) return { queue: true };
   const up = await d.server.ensure(pack, gpuIndex);
   if (!up.ok) {
     // a missing program is a sentence of its own: "did not start: ..." would say it twice
@@ -219,7 +221,9 @@ export function detectLane(d: {
   const gpuAtWork = () => atWork((p) => GPU_PIPELINES.has(p));
   const detectAtWork = () => atWork((p) => p === 'detect.vlm');
 
-  const list = (): DetectQueued[] => waiting.map((w) => w.item);
+  /** What `detect:queue` shows: an item its schema refuses is left out, not the whole event. */
+  const list = (): DetectQueued[] =>
+    waiting.flatMap((w) => (DetectQueued.safeParse(w.item).success ? [w.item] : []));
 
   function changed(failed?: { run: string; error: string }): void {
     const e: DetectQueueEvent = failed ? { items: list(), failed } : { items: list() };
@@ -246,7 +250,7 @@ export function detectLane(d: {
   /** Wait at the back of the queue, once per run. */
   function enqueue(req: StartRequest): void {
     const item = itemOf(req);
-    if (waiting.some((w) => w.item.run === item.run)) return;
+    if (item.run && waiting.some((w) => w.item.run === item.run)) return;
     waiting.push({ req, item });
     changed();
   }
@@ -258,9 +262,11 @@ export function detectLane(d: {
       const a = await d.gate(req, () => gpuAtWork() || passing > 1);
       if ('refuse' in a) return { ok: false, error: a.refuse };
       if ('queue' in a) {
-        // a run taken from the queue goes back to the front as it was: no change to send
-        if (from) waiting.unshift(from);
-        else enqueue(req);
+        // a run taken from the queue goes back to the front as it was
+        if (from) {
+          waiting.unshift(from);
+          changed();
+        } else enqueue(req);
         return { ok: false, error: DETECT_QUEUED };
       }
       return await d.start(a.req);
@@ -277,16 +283,15 @@ export function detectLane(d: {
       while (waiting.length > 0 && passing === 0 && !gpuAtWork()) {
         const next = waiting.shift();
         if (!next) break;
+        // passing the gate now: no longer waiting, so it can no longer be cancelled here
+        changed();
         let r: StartResponse;
         try {
           r = await pass(next.req, next);
         } catch (e) {
           r = { ok: false, error: message(e) };
         }
-        if (r.ok) {
-          changed();
-          continue;
-        }
+        if (r.ok) continue;
         if (r.error === DETECT_QUEUED) break;
         d.log(`A waiting detector run did not start: ${r.error}`);
         changed({ run: next.item.run, error: r.error });

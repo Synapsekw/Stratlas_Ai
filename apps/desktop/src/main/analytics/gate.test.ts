@@ -2,6 +2,7 @@ import {
   ANALYTICS_PACK_SCHEMA,
   GPU_PIPELINES,
   VLM_DETECTOR_SCHEMA,
+  ipcEvents,
   type AnalyticsPackManifest,
   type HardwareCheck,
   type JobRecord,
@@ -11,7 +12,14 @@ import {
 import { en } from '@aio/ui/i18n/en';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { DETECT_QUEUED, detectJobGate, detectLane, type GateDeps, type StartRequest } from './gate';
+import {
+  DETECT_QUEUED,
+  detectJobGate,
+  detectLane,
+  type GateAnswer,
+  type GateDeps,
+  type StartRequest,
+} from './gate';
 import type { AnalyticsPack } from './pack';
 
 const SHA = 'd'.repeat(64);
@@ -253,6 +261,14 @@ describe('detectJobGate', () => {
     });
   });
 
+  it('queues when a photo job takes the card while the checks run', async () => {
+    const running = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+    const { d, server, hardware } = deps({ running });
+    expect(await detectJobGate(newRequest(), d)).toEqual({ queue: true });
+    expect(hardware).toHaveBeenCalled();
+    expect(server.ensure).not.toHaveBeenCalled();
+  });
+
   it('a request without detectors refuses', async () => {
     const { d } = deps();
     const req = newRequest();
@@ -419,5 +435,72 @@ describe('detectLane', () => {
     await t.l.start(newRequest('run-a'));
     expect(t.l.list()).toHaveLength(1);
     expect(t.l.gpuBusy('photo.products')).toBeNull();
+  });
+
+  it('a run taken off the queue is announced at once, and again if it goes back', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.align', 'running'));
+    await t.l.start(newRequest('run-a'));
+    let open: (a: GateAnswer) => void = () => undefined;
+    t.gate.mockImplementationOnce(() => new Promise<GateAnswer>((r) => (open = r)) as never);
+    const ended = t.end('photo');
+    await vi.waitFor(() => {
+      expect(t.gate).toHaveBeenCalledTimes(2);
+    });
+    expect(t.changed).toHaveBeenLastCalledWith({ items: [] });
+    expect(t.l.cancel('run-a')).toMatchObject({ ok: false });
+    open({ queue: true });
+    await ended;
+    expect(t.l.list().map((i) => i.run)).toEqual(['run-a']);
+    expect(t.changed).toHaveBeenLastCalledWith({ items: t.l.list() });
+  });
+
+  it.each([
+    [
+      'refuses',
+      (open: (a: GateAnswer) => void) => {
+        open({ refuse: 'No.' });
+      },
+    ],
+    [
+      'throws',
+      (_o: unknown, fail: (e: Error) => void) => {
+        fail(new Error('Broken.'));
+      },
+    ],
+  ] as const)(
+    'a photo job waits while a detector start passes the gate, then not when it %s',
+    async (_n, finish) => {
+      const t = lane();
+      let open: (a: GateAnswer) => void = () => undefined;
+      let fail: (e: Error) => void = () => undefined;
+      t.gate.mockImplementationOnce(
+        () =>
+          new Promise<GateAnswer>((res, rej) => {
+            open = res;
+            fail = rej;
+          }) as never,
+      );
+      const started = t.l.start(newRequest()).catch((e: unknown) => e);
+      await vi.waitFor(() => {
+        expect(t.gate).toHaveBeenCalledTimes(1);
+      });
+      expect(t.l.gpuBusy('photo.align')).toBe(en['detect.preset.gpuBusy']);
+      finish(open, fail);
+      await started;
+      expect(t.l.gpuBusy('photo.align')).toBeNull();
+    },
+  );
+
+  it('a waiting item the queue schema refuses is left out of the list and events', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.align', 'running'));
+    const odd = newRequest('run-odd');
+    if ('params' in odd) odd.params.layer = '';
+    await t.l.start(odd);
+    await t.l.start(newRequest('run-b'));
+    expect(t.l.waiting()).toHaveLength(2);
+    expect(t.l.list().map((i) => i.run)).toEqual(['run-b']);
+    expect(ipcEvents['detect:queue'].safeParse(t.changed.mock.lastCall?.[0]).success).toBe(true);
   });
 });
