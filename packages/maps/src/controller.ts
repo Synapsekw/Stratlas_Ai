@@ -683,10 +683,21 @@ export function createMapController(
     session.onMove?.(local);
   }
 
+  /** The draw preview on the map, as JSON: an unchanged one is not sent again. */
+  let drawDrawn = EMPTY_KEY;
   function updateDraw(): void {
     const d = draw?.() ?? null;
     const on = d?.mode != null || picking !== null || session !== null;
-    if (map.getSource(SRC.draw)) setData(SRC.draw, drawPreview(d?.mode ?? null, d?.vertices ?? []));
+    if (map.getSource(SRC.draw)) {
+      // the stage hands a new seam on every render (during playback several times a second): a
+      // preview sent again re-tiles its source in the worker and redraws the map, also hidden
+      const preview = drawPreview(d?.mode ?? null, d?.vertices ?? []);
+      const key = JSON.stringify(preview);
+      if (key !== drawDrawn) {
+        drawDrawn = key;
+        setData(SRC.draw, preview);
+      }
+    }
     map.getCanvas().style.cursor = on ? 'crosshair' : '';
     if (on) map.doubleClickZoom.disable();
     else map.doubleClickZoom.enable();
@@ -900,6 +911,7 @@ export function createMapController(
     flights.clear();
     for (const id of Object.values(SRC)) setData(id, EMPTY);
     droneDrawn = EMPTY_KEY;
+    drawDrawn = EMPTY_KEY;
   }
 
   // ----- flights -----

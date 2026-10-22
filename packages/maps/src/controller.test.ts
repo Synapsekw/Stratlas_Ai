@@ -3,6 +3,7 @@ import { setActiveScene, type SceneHandle } from '@aio/engine';
 import { createWorkspace } from '@aio/workspace';
 import { PerspectiveCamera } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MapDrawSeam } from './draw';
 
 type Handler = (e: unknown) => void;
 
@@ -894,6 +895,47 @@ describe('the drone overlay during playback', () => {
       vi.useRealTimers();
       ctl.dispose();
     }
+  });
+});
+
+describe('the draw preview', () => {
+  it('is sent to the map only when it changes (the stage hands a new seam on every render)', () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const at = (mode: MapDrawSeam['mode'], vertices: MapDrawSeam['vertices']): MapDrawSeam => ({
+      mode,
+      vertices,
+      onClick: () => undefined,
+      onFinish: () => undefined,
+    });
+    let seam = at(null, []);
+    const ctl = createMapController(el, {
+      packs: [],
+      store: createWorkspace(),
+      showFlights: true,
+      draw: () => seam,
+    });
+    const map = FakeMap.last;
+    if (!map) throw new Error('no map');
+    map.fire('load');
+    const sent = () => map.sets.get('aio-draw') ?? 0;
+    const start0 = sent();
+    for (let i = 0; i < 10; i++) {
+      seam = at(null, []);
+      ctl.updateDraw();
+    }
+    expect(sent()).toBe(start0);
+    seam = at('polygon', [
+      [15, 36],
+      [15.001, 36],
+    ]);
+    ctl.updateDraw();
+    ctl.updateDraw();
+    expect(sent()).toBe(start0 + 1);
+    seam = at(null, []);
+    ctl.updateDraw();
+    expect(sent()).toBe(start0 + 2);
+    ctl.dispose();
   });
 });
 
