@@ -324,6 +324,33 @@ describe('AntennaCard', () => {
     expect(value('diameter')).toBe('0.60 m');
   });
 
+  it('shows Not measured for the values a flagged unit has none of', () => {
+    const rest: AntennaUnit = { ...unit('f1') };
+    delete rest.azimuthGridDeg;
+    delete rest.downtiltDeg;
+    delete rest.plumbDeg;
+    delete rest.widthM;
+    delete rest.heightM;
+    delete rest.depthM;
+    load([{ ...rest, origin: 'flagged' }]);
+    show();
+    expect(value('azimuth')).toBe('Not measured');
+    expect(value('downtilt')).toBe('Not measured');
+    expect(value('size')).toBe('Not measured');
+    expect(value('altitude')).toBe('29.1 m');
+  });
+
+  it('shows a typed centre elevation as yours in the altitude row', () => {
+    load([
+      unit('c1', {
+        centreHeightM: { value: 31.25, basis: 'user', quality: { basis: 'user' } },
+      }),
+    ]);
+    show();
+    expect(value('altitude')).toBe('31.3 m');
+    expect(stage.querySelector('[data-value="altitude"]')?.getAttribute('data-basis')).toBe('user');
+  });
+
   it('shows a dash for a value not measured', () => {
     load([unit('o1', { kind: 'other', azimuthGridDeg: undefined, plumbDeg: undefined })]);
     show();

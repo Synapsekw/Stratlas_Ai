@@ -24,6 +24,7 @@ import { thumbUrl } from '../thumbs/Thumb';
 import { AntennaUserFields } from './AntennaUserFields';
 import { TONE, formatDeg, qualityTip, trueAzimuth } from './antennaFormat';
 import { KIND_COLOURS } from './antennaScene';
+import { isNotMeasured } from './antennaTyped';
 import {
   decideAntenna,
   filteredUnits,
@@ -430,11 +431,25 @@ const GRID: CSSProperties = {
 
 function Values({ unit }: { unit: AntennaUnit }): ReactElement {
   const dish = unit.kind === 'dish';
-  const size = `${metres(unit.widthM)} × ${metres(unit.heightM)} × ${metres(unit.depthM)} m`;
+  // a flagged unit with too few points has nothing measured: say so instead of a dash
+  const none = isNotMeasured(unit);
+  const missing = none ? t('telecom.antennas.notMeasured') : DASH;
+  const missingTip = none ? t('telecom.antennas.notMeasured.tip') : undefined;
+  const sizes = [unit.widthM, unit.heightM, unit.depthM];
+  const size =
+    none && sizes.every((v) => v === undefined)
+      ? missing
+      : `${metres(unit.widthM)} × ${metres(unit.heightM)} × ${metres(unit.depthM)} m`;
   return (
     <dl style={GRID}>
-      <Value name="azimuth" label={t('telecom.antennas.value.azimuth')} v={unit.azimuthGridDeg} big>
-        {azimuthText(unit)}
+      <Value
+        name="azimuth"
+        label={t('telecom.antennas.value.azimuth')}
+        v={unit.azimuthGridDeg}
+        tip={unit.azimuthGridDeg ? undefined : missingTip}
+        big
+      >
+        {unit.azimuthGridDeg ? azimuthText(unit) : missing}
       </Value>
       {dish ? (
         <>
@@ -442,17 +457,19 @@ function Values({ unit }: { unit: AntennaUnit }): ReactElement {
             name="elevation"
             label={t('telecom.antennas.value.elevation')}
             v={unit.elevationDeg}
+            tip={unit.elevationDeg ? undefined : missingTip}
             big
           >
-            {deg(unit.elevationDeg, true)}
+            {unit.elevationDeg ? deg(unit.elevationDeg, true) : missing}
           </Value>
           <Value
             name="diameter"
             label={t('telecom.antennas.value.diameter')}
             v={unit.diameterM}
+            tip={unit.diameterM ? undefined : missingTip}
             big
           >
-            {unit.diameterM ? `${unit.diameterM.value.toFixed(2)} m` : DASH}
+            {unit.diameterM ? `${unit.diameterM.value.toFixed(2)} m` : missing}
           </Value>
         </>
       ) : (
@@ -461,6 +478,7 @@ function Values({ unit }: { unit: AntennaUnit }): ReactElement {
             name="downtilt"
             label={t('telecom.antennas.value.downtilt')}
             v={unit.downtiltDeg}
+            tip={unit.downtiltDeg ? undefined : missingTip}
             big
             note={
               unit.downtiltDeg
@@ -471,15 +489,21 @@ function Values({ unit }: { unit: AntennaUnit }): ReactElement {
                 : undefined
             }
           >
-            {deg(unit.downtiltDeg)}
+            {unit.downtiltDeg ? deg(unit.downtiltDeg) : missing}
           </Value>
-          <Value name="plumb" label={t('telecom.antennas.value.plumb')} v={unit.plumbDeg} big>
-            {deg(unit.plumbDeg, true)}
+          <Value
+            name="plumb"
+            label={t('telecom.antennas.value.plumb')}
+            v={unit.plumbDeg}
+            tip={unit.plumbDeg ? undefined : missingTip}
+            big
+          >
+            {unit.plumbDeg ? deg(unit.plumbDeg, true) : missing}
           </Value>
         </>
       )}
-      <Value name="altitude" label={t('telecom.antennas.card.altitude')}>
-        {`${unit.box.centre[2].toFixed(1)} m`}
+      <Value name="altitude" label={t('telecom.antennas.card.altitude')} v={unit.centreHeightM}>
+        {`${(unit.centreHeightM?.value ?? unit.box.centre[2]).toFixed(1)} m`}
       </Value>
       <Value name="points" label={t('telecom.antennas.card.points')}>
         {unit.support.toLocaleString()}
@@ -488,7 +512,11 @@ function Values({ unit }: { unit: AntennaUnit }): ReactElement {
         name="size"
         label={t('telecom.antennas.card.size')}
         wide
-        tip={[unit.widthM, unit.heightM, unit.depthM].map((v) => basisTip(v)).join(' / ')}
+        tip={
+          sizes.every((v) => v === undefined)
+            ? missingTip
+            : sizes.map((v) => (v ? basisTip(v) : DASH)).join(' / ')
+        }
       >
         {size}
       </Value>

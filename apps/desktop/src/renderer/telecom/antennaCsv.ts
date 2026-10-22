@@ -8,6 +8,7 @@ export const CSV_COLUMNS: readonly string[] = [
   'kind',
   'kindBasis',
   'status',
+  'origin',
   'azimuthTrueDeg',
   'azimuthGridDeg',
   'convergenceDeg',
@@ -52,7 +53,7 @@ const typed = (text: string | undefined): string =>
   field(text !== undefined && /^[=+\-@\t\r]/.test(text) ? `'${text}` : (text ?? ''));
 
 function row(u: AntennaUnit): string {
-  const residual = (u.azimuthGridDeg ?? u.widthM).quality.residualM;
+  const residual = (u.azimuthGridDeg ?? u.widthM)?.quality.residualM;
   const photo = u.photos[0];
   const cells = [
     field(u.id),
@@ -60,6 +61,7 @@ function row(u: AntennaUnit): string {
     u.kind,
     u.kindBasis,
     u.status,
+    u.origin ?? 'detected',
     u.azimuthGridDeg && u.convergenceDeg !== null
       ? num(trueAzimuth(u.azimuthGridDeg.value, u.convergenceDeg), 2)
       : '',
@@ -72,9 +74,9 @@ function row(u: AntennaUnit): string {
     basis(u.plumbDeg),
     deg(u.elevationDeg),
     num(u.diameterM?.value, 3),
-    num(u.widthM.value, 3),
-    num(u.heightM.value, 3),
-    num(u.depthM.value, 3),
+    num(u.widthM?.value, 3),
+    num(u.heightM?.value, 3),
+    num(u.depthM?.value, 3),
     basis(u.depthM),
     num(u.box.centre[0], 3),
     num(u.box.centre[1], 3),

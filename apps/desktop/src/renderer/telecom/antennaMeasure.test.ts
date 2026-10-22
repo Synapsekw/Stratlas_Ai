@@ -171,4 +171,27 @@ describe('antennaMeasure', () => {
       expect(s.at[2] - (a.spots[i]?.at[2] ?? 0)).toBeCloseTo(1, 9);
     });
   });
+
+  describe('a not-measured unit', () => {
+    const bare = (): AntennaUnit => {
+      const rest: AntennaUnit = { ...upright };
+      delete rest.azimuthGridDeg;
+      delete rest.downtiltDeg;
+      delete rest.widthM;
+      delete rest.heightM;
+      delete rest.depthM;
+      return { ...rest, name: 'A12', origin: 'flagged' };
+    };
+
+    it('has no dimension lines', () => {
+      const m = antennaMeasure(bare(), frame, null);
+      expect(m.segments).toEqual([]);
+      expect(m.spots.filter((s) => s.kind === 'dim')).toEqual([]);
+    });
+
+    it('labels it Not measured', () => {
+      const m = antennaMeasure(bare(), frame, null);
+      expect(m.spots.map((s) => s.text)).toEqual(['A12 · Not measured']);
+    });
+  });
 });

@@ -415,4 +415,21 @@ describe('antenna review drawing', () => {
     expect(listeners).toBe(0);
     expect(scene.getObjectByName('aio-telecom-antennas')).toBeUndefined();
   });
+
+  it('draws a not-measured unit dashed without an arrow', () => {
+    const base = unit('ant-nm', 'panel', 'accepted', [1003, 2004, 60], 90);
+    const rest: AntennaUnit = { ...base };
+    delete rest.azimuthGridDeg;
+    delete rest.widthM;
+    delete rest.heightM;
+    delete rest.depthM;
+    const nm: AntennaUnit = { ...rest, origin: 'flagged' };
+    const g = buildAntennaGroup(state({ file: file([nm]) }), frame);
+    expect(outline(g, 'ant-nm').material).toBeInstanceOf(LineDashedMaterial);
+    expect(named(g, 'antenna-facing:ant-nm')).toBeUndefined();
+    const sel = buildAntennaGroup(state({ file: file([nm]), selected: 'ant-nm' }), frame);
+    expect((sel.getObjectByName('antenna-outline:ant-nm') as LineSegments2).material.dashed).toBe(
+      true,
+    );
+  });
 });

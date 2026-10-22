@@ -66,13 +66,15 @@ const buttonNamed = (scope: HTMLElement, text: RegExp): HTMLButtonElement => {
   return b;
 };
 
+const MEASURED = { value: 0, basis: 'measured' as const, quality: { basis: 'measured' as const } };
+
 /** A panel with the given face; AAU-like when 0.5 m wide and 0.2 m deep. */
 function panel(id: string, az: number, name: string, face: 'aau' | 'panel' = 'aau'): AntennaUnit {
   const u = unit(id, az, { name });
   return {
     ...u,
-    widthM: { ...u.widthM, value: face === 'aau' ? 0.5 : 0.3 },
-    depthM: { ...u.depthM, value: face === 'aau' ? 0.2 : 0.1 },
+    widthM: { ...MEASURED, value: face === 'aau' ? 0.5 : 0.3 },
+    depthM: { ...MEASURED, value: face === 'aau' ? 0.2 : 0.1 },
   };
 }
 

@@ -8,6 +8,7 @@ import { shiftEN, type AntennaUnit, type DateShift, type Vec3 } from '@aio/schem
 import { t } from '@aio/ui';
 import type { Frame } from '../survey/measureScene';
 import { formatDeg, trueAzimuth } from './antennaFormat';
+import { isNotMeasured } from './antennaTyped';
 import type { AntennaLabelSpot } from './antennaVisibility';
 
 /** How far a dimension line sits off its box edge, metres. */
@@ -61,9 +62,9 @@ export function antennaCorners(unit: AntennaUnit, frame: Frame, shift: DateShift
  * azimuth in the horizontal plane, clamp(height, 0.5, 5) m long. Null without an azimuth.
  */
 export function facingTip(unit: AntennaUnit, centre: Vec3): Vec3 | null {
-  if (!unit.azimuthGridDeg) return null;
+  if (!unit.azimuthGridDeg || isNotMeasured(unit)) return null;
   const az = (unit.azimuthGridDeg.value * Math.PI) / 180;
-  const length = Math.max(0.5, Math.min(unit.heightM.value, 5));
+  const length = Math.max(0.5, Math.min(unit.heightM?.value ?? unit.box.extents[1], 5));
   return [centre[0] + Math.sin(az) * length, centre[1], centre[2] - Math.cos(az) * length];
 }
 
@@ -107,6 +108,25 @@ export function antennaMeasure(
   shift: DateShift | null,
 ): { segments: [Vec3, Vec3][]; spots: AntennaLabelSpot[] } {
   const centre = antennaCentre(unit, frame, shift);
+  if (isNotMeasured(unit)) {
+    // no sizes to draw: only the name, with what is missing said plainly
+    return {
+      segments: [],
+      spots: [
+        {
+          key: `${unit.id}:name`,
+          text: t('telecom.antennas.label.name', {
+            name: unit.name,
+            height: t('telecom.antennas.notMeasured'),
+          }),
+          at: nameAnchor(unit, frame, shift),
+          kind: 'name',
+          selected: true,
+          align: 'above',
+        },
+      ],
+    };
+  }
   const across = axisToLocal(unit.box.axes[0]);
   const out = axisToLocal(unit.box.axes[2]);
   const up = axisToLocal(unit.box.axes[1]);
@@ -121,10 +141,22 @@ export function antennaMeasure(
       from: at([-1, 1, 1]),
       to: at([1, 1, 1]),
       push: pushUpOut,
-      value: unit.widthM.value,
+      value: unit.widthM?.value ?? unit.box.extents[0],
     },
-    { key: 'h', from: at([1, -1, 1]), to: at([1, 1, 1]), push: out, value: unit.heightM.value },
-    { key: 'd', from: at([1, -1, -1]), to: at([1, -1, 1]), push: across, value: unit.depthM.value },
+    {
+      key: 'h',
+      from: at([1, -1, 1]),
+      to: at([1, 1, 1]),
+      push: out,
+      value: unit.heightM?.value ?? unit.box.extents[1],
+    },
+    {
+      key: 'd',
+      from: at([1, -1, -1]),
+      to: at([1, -1, 1]),
+      push: across,
+      value: unit.depthM?.value ?? unit.box.extents[2],
+    },
   ];
 
   const main: [Vec3, Vec3][] = [];
@@ -154,7 +186,10 @@ export function antennaMeasure(
 
   spots.push({
     key: `${unit.id}:name`,
-    text: t('telecom.antennas.label.name', { name: unit.name, height: metres(unit.heightM.value) }),
+    text: t('telecom.antennas.label.name', {
+      name: unit.name,
+      height: metres(unit.heightM?.value ?? unit.box.extents[1]),
+    }),
     at: nameAnchor(unit, frame, shift),
     kind: 'name',
     selected: true,

@@ -1078,6 +1078,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'pointcloud.clean': [],
   // started from the antenna inventory panel only
   'telecom.antennas': [],
+  // started from the antenna flagging tool only
+  'telecom.flag': [],
   // empty on purpose: the RF tab launches rf.coverage in a later task, never from a form
   'rf.coverage': [],
   // started by the thermal bench, never from a form

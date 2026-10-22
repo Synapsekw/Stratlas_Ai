@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { AntennasFile } from '@aio/schema';
+import { AntennasFile, type AntennaUnit } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { antennasToCsv, CSV_COLUMNS } from './antennaCsv';
 
@@ -78,5 +78,38 @@ describe('antennasToCsv', () => {
     expect(csv).toContain('"A ""big"", one"');
     // a typed value that starts with = must not run as a formula
     expect(csv).toContain(",'=1+1,");
+  });
+
+  it('writes the origin column after status', () => {
+    expect(CSV_COLUMNS.indexOf('origin')).toBe(CSV_COLUMNS.indexOf('status') + 1);
+    const f = sample();
+    const [a, b] = f.units;
+    if (!a || !b) throw new Error('fixture has too few units');
+    const csv = antennasToCsv(
+      { ...f, units: [a, { ...b, status: 'accepted', origin: 'flagged' }] },
+      { includeDrafts: false },
+    );
+    expect(cell(csv, 1, 'origin')).toBe('detected');
+    expect(cell(csv, 2, 'origin')).toBe('flagged');
+  });
+
+  it('leaves the size cells of a not-measured unit empty', () => {
+    const f = sample();
+    const first = f.units[0];
+    if (!first) throw new Error('fixture has no unit');
+    const rest: AntennaUnit = { ...first };
+    delete rest.azimuthGridDeg;
+    delete rest.downtiltDeg;
+    delete rest.plumbDeg;
+    delete rest.widthM;
+    delete rest.heightM;
+    delete rest.depthM;
+    const csv = antennasToCsv(
+      { ...f, units: [{ ...rest, status: 'accepted', origin: 'flagged', support: 0 }] },
+      { includeDrafts: false },
+    );
+    for (const c of ['widthM', 'heightM', 'depthM', 'depthBasis', 'azimuthGridDeg', 'residualMm'])
+      expect(cell(csv, 1, c)).toBe('');
+    expect(cell(csv, 1, 'origin')).toBe('flagged');
   });
 });

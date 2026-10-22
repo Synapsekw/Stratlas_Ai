@@ -49,6 +49,7 @@ import {
   facingTip,
   nameAnchor,
 } from './antennaMeasure';
+import { isNotMeasured } from './antennaTyped';
 import { isAntennaDrawn, type AntennaLabelMode, type AntennaLabelSpot } from './antennaVisibility';
 
 export const KIND_COLOURS: Record<AntennaKind, string> = {
@@ -127,9 +128,9 @@ function orientation(box: AntennaUnit['box']): Quaternion {
 /** Status by line style: solid accepted, dashed draft, short faint dashes rejected. */
 function outlineOf(unit: AntennaUnit, edges: EdgesGeometry, colour: string): LineSegments {
   let material: LineBasicMaterial;
-  if (unit.status === 'accepted') {
+  if (unit.status === 'accepted' && !isNotMeasured(unit)) {
     material = new LineBasicMaterial({ color: colour });
-  } else if (unit.status === 'draft') {
+  } else if (unit.status !== 'rejected') {
     material = new LineDashedMaterial({ color: colour, dashSize: 0.08, gapSize: 0.05 });
   } else {
     material = new LineDashedMaterial({
@@ -141,7 +142,7 @@ function outlineOf(unit: AntennaUnit, edges: EdgesGeometry, colour: string): Lin
     });
   }
   const line = new LineSegments(edges.clone(), material);
-  if (unit.status !== 'accepted') line.computeLineDistances();
+  if (material instanceof LineDashedMaterial) line.computeLineDistances();
   line.raycast = () => undefined;
   return line;
 }
@@ -151,7 +152,7 @@ function facingOf(unit: AntennaUnit, centre: Vec3, colour: string): LineSegments
   const tip = facingTip(unit, centre);
   if (!tip || !unit.azimuthGridDeg) return null;
   const az = (unit.azimuthGridDeg.value * Math.PI) / 180;
-  const length = Math.max(0.5, Math.min(unit.heightM.value, 5));
+  const length = Math.max(0.5, Math.min(unit.heightM?.value ?? unit.box.extents[1], 5));
   const dx = Math.sin(az);
   const dz = -Math.cos(az);
   // perpendicular to the direction in the horizontal plane
@@ -184,7 +185,7 @@ function facingOf(unit: AntennaUnit, centre: Vec3, colour: string): LineSegments
 
 /** The selected unit's edges: thick screen-space lines, dashed by status as `outlineOf`. */
 function selectedOutlineOf(unit: AntennaUnit, edges: EdgesGeometry, colour: string): LineSegments2 {
-  const dashed = unit.status !== 'accepted';
+  const dashed = unit.status !== 'accepted' || isNotMeasured(unit);
   const rejected = unit.status === 'rejected';
   const material = new LineMaterial({
     color: colour,

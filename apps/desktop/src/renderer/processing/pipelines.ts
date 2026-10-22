@@ -74,6 +74,7 @@ export const PIPELINE_GROUP: Record<PipelineName, PipelineGroupId> = {
   'pointcloud.to_copc': 'import',
   'pointcloud.clean': 'import',
   'telecom.antennas': 'survey',
+  'telecom.flag': 'survey',
   'rf.coverage': 'rf',
   'thermal.decode': 'survey',
   'detect.vlm': 'inspection',
@@ -139,6 +140,7 @@ const PLAIN_TITLES: Partial<Record<PipelineName, string>> = {
 /** Pipelines whose job title is a catalogue string. */
 const TITLE_KEYS: Partial<Record<PipelineName, MessageKey>> = {
   'telecom.antennas': 'jobs.telecom.antennas',
+  'telecom.flag': 'jobs.telecom.flag',
   'detect.vlm': 'jobs.detect.vlm',
 };
 
@@ -225,6 +227,7 @@ export const JOB_KIND: Record<PipelineName, JobKind> = {
   'pointcloud.to_copc': 'files',
   'pointcloud.clean': 'files',
   'telecom.antennas': 'survey',
+  'telecom.flag': 'survey',
   'rf.coverage': 'survey',
   'thermal.decode': 'survey',
   'detect.vlm': 'ai',
