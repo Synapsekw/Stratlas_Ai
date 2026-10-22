@@ -212,7 +212,7 @@ import { registerDetectorsIpc } from './analytics/detectorsIpc';
 import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
 import { registerLedgerIpc } from './analytics/ledgerIpc';
-import { detectPackRefusal } from './analytics/detectPack';
+import { DETECT_PACK_FEATURE, detectPackRefusal } from './analytics/detectPack';
 import { findAnalyticsPack, unusablePacks } from './analytics/pack';
 import { registerAnalyticsPackIpc } from './analytics/packIpc';
 import { nodeVlmServerDeps, VlmServer } from './analytics/server';
@@ -2294,6 +2294,7 @@ function registerIpc(): void {
             RF_PACK_FEATURE,
             CLEAN_PACK_FEATURE,
             THERMAL_PACK_FEATURE,
+            DETECT_PACK_FEATURE,
           ],
     places: () =>
       packArchivePlaces({

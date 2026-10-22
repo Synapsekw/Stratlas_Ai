@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DETECT_MIN_PACK, detectPackRefusal } from './detectPack';
+import { DETECT_MIN_PACK, DETECT_PACK_FEATURE, detectPackRefusal } from './detectPack';
 
 describe('pack gate for detect.vlm', () => {
   it('detect.vlm needs processing tools 0.23.0', () => {
     expect(DETECT_MIN_PACK).toBe('0.23.0');
+    expect(DETECT_PACK_FEATURE).toEqual({ label: 'Detectors', minVersion: '0.23.0' });
     expect(detectPackRefusal('detect.vlm', '0.22.0')).toBe(
       'Detectors need processing tools 0.23.0 or later (these are 0.22.0). Update them in Settings, Processing tools.',
     );

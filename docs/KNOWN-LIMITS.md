@@ -169,13 +169,17 @@ These limits were seen on the founder's own real projects in the data folder (no
 
 ### Local vision-model detectors (Analytics pack)
 
-- Detectors run only on Windows with an NVIDIA graphics card that has at least 8 GB of video memory in total and 6.5 GB free when the run starts. There is no CPU fallback and no Mac version.
-- The Analytics pack is about 6.2 GB archived and 6.8 GB unpacked, and it is a separate install from the pipeline pack. Until the Settings section arrives (the next merge), it is installed through IPC or by pointing `QUADRION_ANALYTICS_PACK` at an unpacked pack folder. A pack built with `--no-model` is for testing only and cannot be installed.
-- A detector run waits while photo processing (align, georef, products) or another detector run is using the graphics card. The model server stops as soon as nothing is running or queued, so each run pays the start-up time.
+- Detectors run only on Windows with an NVIDIA graphics card from the RTX 20 series or newer (compute capability 7.5), a driver of version 580 or later, at least 8 GB of video memory in total and 6.5 GB free when the run starts. There is no CPU fallback and no Mac version.
+- The Analytics pack is about 6.2 GB archived and 6.8 GB unpacked, and it is a separate install from the pipeline pack (**Settings**, **Processing tools**, **Analytics pack**). A pack built with `--no-model` is for testing only and cannot be installed. Until the publisher key exists, every Analytics pack is unsigned and the app asks before installing it.
+- A detector run waits while photo processing (align, georef, products) or another detector run is using the graphics card, and photo processing waits while a detector run uses it. The model server stops as soon as nothing is running or queued, so each run pays the start-up time (seconds when the model files are in the disk cache, up to two minutes from a cold disk).
 - Detectors find what their written prompt describes, one class per detector. Open-ended detection ("find anything unusual") stays with the cloud model; the local route does not replace it.
-- Scores are the model's own confidence and are not calibrated. Results are drafts for review, never accepted automatically.
-- One detector ships so far (corrosion on metal, experimental). The run dialog, the review controls and the detector library have no screen yet.
-- Detector runs add Python code, so the release needs a new pipeline pack version.
+- Scores are the model's own confidence and are not calibrated. Results are drafts for review, never accepted automatically. A run keeps every candidate, so lowering a run's bar in the review shows the weaker ones without running again.
+- One detector ships so far (corrosion on metal, experimental). Building your own detector, sharing detectors beyond import and export in Settings, learning suggestions and dataset export are not in the app yet.
+- Detector runs need processing tools 0.23.0 or later; an older pack is refused with a message to update it.
+- The review history (hit rate, misses, suggested threshold) stays on this computer. A miss is recorded when a person draws a box of a detector's class on a photo that detector looked at. A box drawn and then deleted, or relabelled to another class, keeps its miss. When a class is created from a detector's suggestion, its id differs from the detector's class, so later hand-drawn boxes of that class are not counted as that detector's misses.
+- A run's date in the review strip is the UTC date, so a run just after local midnight east of UTC shows the day before.
+- If several layers start and some are refused, the refused ones are listed but cannot be retried on their own: start them again from the dialog. Opening the dialog again while the model is still loading and pressing **Start** can start the same photos twice.
+- Import and export of detectors take the file path from the app window; main does not yet check that a retried import is the file it read first.
 
 ### Local AI agent
 

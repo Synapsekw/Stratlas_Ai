@@ -6,6 +6,9 @@ import { compareVersions } from '../jobs/pack';
 
 export const DETECT_MIN_PACK = '0.23.0';
 
+/** What the processing tools must be for `detect.vlm` (Settings, Processing tools lists it). */
+export const DETECT_PACK_FEATURE = { label: 'Detectors', minVersion: DETECT_MIN_PACK };
+
 /**
  * Why `jobs:start` refuses `detect.vlm` on the installed processing tools, or null. A development
  * pack (`dev`) and no pack (the job runner says so itself) pass.
@@ -13,5 +16,5 @@ export const DETECT_MIN_PACK = '0.23.0';
 export function detectPackRefusal(pipeline: string, packVersion: string | null): string | null {
   if (pipeline !== 'detect.vlm' || packVersion === null || packVersion === 'dev') return null;
   if (compareVersions(packVersion, DETECT_MIN_PACK) >= 0) return null;
-  return `Detectors need processing tools ${DETECT_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
+  return `${DETECT_PACK_FEATURE.label} need processing tools ${DETECT_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
 }
