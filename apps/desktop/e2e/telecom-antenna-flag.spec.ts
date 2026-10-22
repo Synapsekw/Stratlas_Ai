@@ -1,11 +1,14 @@
 /**
- * Antenna flagging in the real app: on the synthetic monopole (2500 points per m2, an inventory
- * with no units yet) the person outlines the radio unit `radio-180` on the cloud, the real
- * `telecom.flag` job measures it, a typed azimuth is set on it (an "other" unit has no measured
- * azimuth), and a detection
- * re-run (which finds the radio too, so it must not add a twin) and a reload keep both. At the
- * 1500 points per m2 of `telecom-antennas.spec.ts` the radio's faces are too thin to measure,
- * flagged or detected.
+ * Antenna flagging in the real app: on the synthetic monopole (an inventory with no units yet)
+ * the person outlines the radio unit `radio-180` on the cloud, the real `telecom.flag` job
+ * measures it, a typed azimuth is set on it, and a detection re-run and a reload keep both.
+ * The cloud has 2500 points per m2 because at the 1500 of `telecom-antennas.spec.ts` the radio's
+ * faces are too thin to measure, flagged or detected; at 2500 detection finds it too, so this
+ * spec cannot tell a re-run that absorbed the radio from one that missed it. Both paths are
+ * pinned in python (`test_flagged_absorbs_a_new_unit_of_another_kind` and
+ * `test_flagged_unmatched_is_not_flagged_missing` in `test_telecom_merge.py`,
+ * `test_rerun_keeps_flagged_and_typed` in `test_telecom_flag_pipeline.py`). Reset to measured is
+ * checked on the centre height, because an "other" unit has no measured azimuth.
  */
 import type { EngineStage } from '@aio/engine';
 import { AntennasFile, type AntennaUnit } from '@aio/schema';
