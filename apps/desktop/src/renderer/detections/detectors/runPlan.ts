@@ -10,6 +10,8 @@ import type { DetectItem } from '../convert';
 export const VLM_SECONDS_PER_PHOTO = 7;
 /** At most this many photos in one job (`DetectVlmParams.photos`). */
 export const MAX_RUN_PHOTOS = 5000;
+/** At most this many detectors in one run (`DetectVlmParams.detectors`). */
+export const MAX_RUN_DETECTORS = 10;
 
 /** A detector picked for the run, with the bar it runs at. */
 export interface Chosen {

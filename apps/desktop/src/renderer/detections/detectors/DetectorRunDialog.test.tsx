@@ -204,6 +204,16 @@ describe('DetectorRunDialog', () => {
     expect(text('det-vlm-blocker')).toBe('Analytics pack 0.9.0 does not work here.');
   });
 
+  it('a failed pack status read says why and can be tried again', async () => {
+    h.answers.delete('analyticsPack:status');
+    await open();
+    expect(text('det-vlm-blocker')).toBe('no analyticsPack:status');
+    h.answers.set('analyticsPack:status', () => INSTALLED);
+    await click('det-vlm-pack-retry');
+    expect(text('det-vlm-blocker')).toBe('Choose at least one detector.');
+    expect(q('det-vlm-pack-retry')).toBeNull();
+  });
+
   it('Start is disabled on a hardware refusal except too busy', async () => {
     const busy = 'Only 3.1 GB of graphics memory is free; detectors need about 6.5 GB.';
     h.answers.set('analytics:hardware', () => ({ ok: false, code: 'tooBusy', reason: busy }));
@@ -246,6 +256,16 @@ describe('DetectorRunDialog', () => {
     );
   });
 
+  it('names a selection of video frames as frames, not as photos', async () => {
+    await open([
+      { kind: 'frame', layer: 'v1', t: 1 },
+      { kind: 'frame', layer: 'v1', t: 3 },
+    ]);
+    expect(q('det-vlm-scope-selected')?.parentElement?.textContent).toBe(
+      'The 2 selected video frames',
+    );
+  });
+
   it('says that video frames in a mixed selection are skipped', async () => {
     await open([...photos(2), { kind: 'frame', layer: 'v1', t: 1 }]);
     expect(text('det-vlm-frames-skipped')).toBe(
@@ -260,6 +280,17 @@ describe('DetectorRunDialog', () => {
     await click('det-vlm-det-rust');
     expect(q('det-vlm-det-rust')?.getAttribute('aria-pressed')).toBe('true');
     expect(startDisabled()).toBe(false);
+  });
+
+  it('more than ten detectors disables Start', async () => {
+    const ids = Array.from({ length: 11 }, (_, n) => `d${String(n)}`);
+    h.answers.set('detectors:list', () => ({ items: ids.map((id) => item('library', det(id))) }));
+    await open();
+    for (const id of ids.slice(0, 10)) await click(`det-vlm-det-${id}`);
+    expect(startDisabled()).toBe(false);
+    await click('det-vlm-det-d10');
+    expect(startDisabled()).toBe(true);
+    expect(text('det-vlm-blocker')).toBe('Choose at most 10 detectors for one run.');
   });
 
   it('the blocker reason is visible next to Start', async () => {
@@ -304,11 +335,37 @@ describe('DetectorRunDialog', () => {
     expect(text('det-vlm-suggested-rust')).toContain('Suggested 0.65');
     await click('det-vlm-use-rust');
     expect(slider()?.value).toBe('0.65');
+    // applied: the suggestion stays as a note, without Use
+    expect(text('det-vlm-suggested-rust')).toContain('Suggested 0.65');
+    expect(q('det-vlm-use-rust')).toBeNull();
     await click('det-vlm-start');
     const req = h.start.mock.calls[0]?.[0] as {
       params: { detectors: { threshold: number }[] };
     };
     expect(req.params.detectors[0]?.threshold).toBe(0.65);
+  });
+
+  it('snaps a suggested threshold to the slider and hides Use when it is the value', async () => {
+    const stats: Record<string, number> = { rust: 0.63, tower: 0.42 };
+    h.answers.set('ledger:stats', (req) => ({
+      ...NONE,
+      suggestedThreshold: stats[(req as { detectorId: string }).detectorId] ?? null,
+    }));
+    await open();
+    await click('det-vlm-det-rust');
+    await click('det-vlm-det-tower');
+    expect(text('det-vlm-suggested-rust')).toContain('Suggested 0.65');
+    expect(text('det-vlm-suggested-tower')).toContain('Suggested 0.50');
+    stats.rust = 0.79;
+    act(() => {
+      root.unmount();
+    });
+    root = createRoot(host);
+    await open();
+    await click('det-vlm-det-rust');
+    // 0.79 snaps to 0.80, the detector's own value: nothing to use
+    expect(text('det-vlm-suggested-rust')).toContain('Suggested 0.80');
+    expect(q('det-vlm-use-rust')).toBeNull();
   });
 
   it('shows the estimate', async () => {
@@ -364,6 +421,60 @@ describe('DetectorRunDialog', () => {
     expect(onClose).not.toHaveBeenCalled();
     await click('det-vlm-ok');
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('the queued message counts as queued when the queue no longer lists the run', async () => {
+    h.start.mockResolvedValue(
+      'Another detector or processing run is using the graphics card. This one starts when it finishes.',
+    );
+    await open(photos(2));
+    await click('det-vlm-det-rust');
+    await click('det-vlm-start');
+    expect(q('det-vlm-queued')).not.toBeNull();
+    expect(q('det-vlm-error')).toBeNull();
+  });
+
+  it('Escape closes the dialog, but not while starting', async () => {
+    const press = () => {
+      act(() => {
+        q('det-ai-dialog')?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+        );
+      });
+    };
+    await open(photos(2));
+    press();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    onClose.mockClear();
+    let answer: (v: string | null) => void = () => undefined;
+    h.start.mockReturnValue(
+      new Promise<string | null>((r) => {
+        answer = r;
+      }),
+    );
+    await click('det-vlm-det-rust');
+    await click('det-vlm-start');
+    press();
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => {
+      answer(null);
+      await Promise.resolve();
+    });
+    await flush();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('a double click on Start starts once', async () => {
+    await open(photos(2));
+    await click('det-vlm-det-rust');
+    await act(async () => {
+      q('det-vlm-start')?.click();
+      q('det-vlm-start')?.click();
+      await Promise.resolve();
+    });
+    await flush();
+    expect(h.start).toHaveBeenCalledTimes(1);
   });
 
   it('a refused start shows why and stays open', async () => {

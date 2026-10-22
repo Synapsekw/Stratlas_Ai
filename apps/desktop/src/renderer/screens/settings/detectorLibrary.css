@@ -16,15 +16,6 @@
   flex-wrap: wrap;
   gap: 4px 8px;
 }
-.dl-section .dl-mismatch {
-  display: inline-flex;
-  color: var(--warn-ink);
-  border-radius: var(--r-4);
-}
-.dl-section .dl-mismatch:focus-visible {
-  outline: 2px solid var(--acc);
-  outline-offset: 2px;
-}
 .dl-section .dl-stats {
   color: var(--fg-1);
   font-variant-numeric: tabular-nums;

@@ -37,15 +37,6 @@
   gap: 6px;
   color: var(--fg-2);
 }
-.det-vlm-run .det-vlm-mismatch {
-  display: inline-flex;
-  color: var(--warn-ink);
-  border-radius: var(--r-4);
-}
-.det-vlm-run .det-vlm-mismatch:focus-visible {
-  outline: 2px solid var(--acc);
-  outline-offset: 2px;
-}
 .det-vlm-run .det-vlm-hw {
   display: flex;
   align-items: center;

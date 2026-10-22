@@ -11,6 +11,7 @@ import { Chip, Icon, t, Tip, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnalyticsPack } from '../../analyticsPack';
+import { ModelMismatchMark } from '../../detections/detectors/ModelMismatchMark';
 import type { Res } from '../../bridge';
 import { bridge } from '../../shell';
 import './detectorLibrary.css';
@@ -195,19 +196,7 @@ function DetectorRow({ item, stats, projectId, onRemoved, onCleared, onNote, onE
                 {t('detect.preset.library.experimental')}
               </Chip>
             )}
-            {item.modelMismatch && (
-              <Tip content={t('detect.preset.modelMismatch')} repeatsName>
-                <span
-                  className="dl-mismatch"
-                  role="img"
-                  tabIndex={0}
-                  aria-label={t('detect.preset.modelMismatch')}
-                  data-testid={`dl-mismatch-${d.id}`}
-                >
-                  <Icon name="warn" size={14} />
-                </span>
-              </Tip>
-            )}
+            {item.modelMismatch && <ModelMismatchMark testId={`dl-mismatch-${d.id}`} />}
           </div>
         </td>
         <td className="dl-stats" data-testid={`dl-stats-${d.id}`}>

@@ -9,7 +9,7 @@
  * run the gate queued says it starts when the card is free.
  */
 import type { IpcResponse } from '@aio/schema';
-import { Button, Chip, Icon, t, Tip, useFocusTrap } from '@aio/ui';
+import { Button, Chip, Icon, t, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { analyticsPack, useAnalyticsPack } from '../../analyticsPack';
@@ -18,12 +18,14 @@ import type { DetectItem } from '../convert';
 import { ModeSwitch, type DetectMode } from '../LocalDetect';
 import {
   estimateMinutes,
+  MAX_RUN_DETECTORS,
   newRunId,
   orderForProject,
   planRuns,
   runRequest,
   type Chosen,
 } from './runPlan';
+import { ModelMismatchMark } from './ModelMismatchMark';
 import { ThresholdSlider } from './ThresholdSlider';
 import './detectorRun.css';
 
@@ -35,7 +37,9 @@ const MIN_THRESHOLD = 0.5;
 const MAX_THRESHOLD = 0.95;
 
 const keyOf = (i: Item) => `${i.where}:${i.detector.id}`;
-const clampThreshold = (v: number) => Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, v));
+/** On the slider's 0.05 grid, within its range. */
+const snapThreshold = (v: number) =>
+  Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, Math.round(v * 20) / 20));
 
 /** What the dialog ends on after Start: runs waiting for the card, or why a start failed. */
 interface Outcome {
@@ -63,6 +67,7 @@ export function DetectorRunDialog({
   const hardware = useAnalyticsPack((s) => s.hardware);
   const hardwareError = useAnalyticsPack((s) => s.hardwareError);
   const checking = useAnalyticsPack((s) => s.checking);
+  const packError = useAnalyticsPack((s) => s.error);
   const dlg = useRef<HTMLDivElement>(null);
   useFocusTrap(dlg, true);
 
@@ -76,6 +81,13 @@ export function DetectorRunDialog({
     selected.length > 0 ? 'selected' : current ? 'current' : 'unreviewed',
   );
   const items = lists[scope];
+  // a selection of video frames only is named as frames, not as "0 selected photos"
+  const scopeLabel = (s: Scope) => {
+    const n = photoCount(lists[s]);
+    return s === 'selected' && n === 0 && lists[s].length > 0
+      ? t('detect.preset.run.selectedFrames', { count: lists[s].length })
+      : t(`det.ai.scope.${s}`, { count: n });
+  };
 
   const [list, setList] = useState<Item[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -85,6 +97,8 @@ export function DetectorRunDialog({
   const [busy, setBusy] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  /** Set at once on Start, so a second click before the busy render starts nothing. */
+  const starting = useRef(false);
 
   useEffect(() => {
     void analyticsPack.getState().load();
@@ -133,9 +147,11 @@ export function DetectorRunDialog({
 
   const refused = hardware && !hardware.ok ? hardware : null;
   const tooBusy = refused?.code === 'tooBusy';
+  // the status read failed: say why (with Try again), not "Checking" for ever
+  const statusFailed = status === null && packError !== null;
   const blocker =
     status === null || (hardware === null && hardwareError === null)
-      ? t('detect.preset.run.checking')
+      ? (packError ?? t('detect.preset.run.checking'))
       : !status.installed
         ? (status.unusable[0]?.reason ?? t('detect.preset.pack.missing'))
         : hardwareError !== null
@@ -148,7 +164,9 @@ export function DetectorRunDialog({
                 : t('detect.preset.run.noPhotos')
               : picks.length === 0
                 ? t('detect.preset.run.noDetector')
-                : null;
+                : picks.length > MAX_RUN_DETECTORS
+                  ? t('detect.preset.run.tooMany', { max: MAX_RUN_DETECTORS })
+                  : null;
   const canRecheck =
     !checking && refused?.code !== 'mac' && (refused !== null || hardwareError !== null);
 
@@ -156,12 +174,13 @@ export function DetectorRunDialog({
     setChosen((c) => {
       const k = keyOf(i);
       if (k in c) return Object.fromEntries(Object.entries(c).filter(([x]) => x !== k));
-      return { ...c, [k]: clampThreshold(i.detector.threshold) };
+      return { ...c, [k]: snapThreshold(i.detector.threshold) };
     });
   };
 
   const start = async () => {
-    if (blocker !== null || busy || !project) return;
+    if (blocker !== null || starting.current || !project) return;
+    starting.current = true;
     setBusy(true);
     setStartError(null);
     const errors: string[] = [];
@@ -175,10 +194,13 @@ export function DetectorRunDialog({
         continue;
       }
       // the gate answers a run it queued with an error: the queue says whether it waits
+      // (or by its message, when the run already left the queue or the read failed)
       const q = await bridge.call('detect:queue', {});
-      if (q.ok && q.value.items.some((w) => w.run === runId)) queued++;
+      const waits = q.ok && q.value.items.some((w) => w.run === runId);
+      if (waits || error === t('detect.preset.queued')) queued++;
       else errors.push(error);
     }
+    starting.current = false;
     setBusy(false);
     if (errors.length === 0 && queued === 0) {
       onClose();
@@ -199,7 +221,8 @@ export function DetectorRunDialog({
     const k = keyOf(i);
     const d = i.detector;
     const th = chosen[k];
-    const hint = suggested[d.id];
+    const raw = suggested[d.id];
+    const hint = typeof raw === 'number' ? snapThreshold(raw) : null;
     return (
       <li key={k} className="det-vlm-det">
         <div className="det-vlm-det-h">
@@ -219,19 +242,7 @@ export function DetectorRunDialog({
               </Chip>
             </span>
           )}
-          {i.modelMismatch && (
-            <Tip content={t('detect.preset.modelMismatch')} repeatsName>
-              <span
-                className="det-vlm-mismatch"
-                role="img"
-                tabIndex={0}
-                aria-label={t('detect.preset.modelMismatch')}
-                data-testid={`det-vlm-mismatch-${d.id}`}
-              >
-                <Icon name="warn" size={14} />
-              </span>
-            </Tip>
-          )}
+          {i.modelMismatch && <ModelMismatchMark testId={`det-vlm-mismatch-${d.id}`} />}
         </div>
         {th !== undefined && (
           <div className="det-vlm-det-b">
@@ -248,18 +259,20 @@ export function DetectorRunDialog({
               />
               <span className="mono">{th.toFixed(2)}</span>
             </span>
-            {typeof hint === 'number' && Math.abs(hint - th) > 1e-9 && (
+            {hint !== null && (
               <span className="det-vlm-suggested" data-testid={`det-vlm-suggested-${d.id}`}>
                 {t('detect.preset.run.suggested', { value: hint.toFixed(2) })}
-                <Button
-                  variant="quiet"
-                  data-testid={`det-vlm-use-${d.id}`}
-                  onClick={() => {
-                    setChosen((c) => ({ ...c, [k]: clampThreshold(hint) }));
-                  }}
-                >
-                  {t('detect.preset.run.use')}
-                </Button>
+                {Math.abs(hint - th) > 1e-9 && (
+                  <Button
+                    variant="quiet"
+                    data-testid={`det-vlm-use-${d.id}`}
+                    onClick={() => {
+                      setChosen((c) => ({ ...c, [k]: hint }));
+                    }}
+                  >
+                    {t('detect.preset.run.use')}
+                  </Button>
+                )}
               </span>
             )}
             {!classIds.has(d.classId) && (
@@ -332,6 +345,15 @@ export function DetectorRunDialog({
                   {refused.reason}
                 </p>
               )}
+              {statusFailed && (
+                <Button
+                  variant="quiet"
+                  data-testid="det-vlm-pack-retry"
+                  onClick={() => void analyticsPack.getState().load()}
+                >
+                  {t('detect.preset.run.retry')}
+                </Button>
+              )}
               {canRecheck && (
                 <Button
                   variant="quiet"
@@ -358,7 +380,7 @@ export function DetectorRunDialog({
                         setScope(s);
                       }}
                     />
-                    {t(`det.ai.scope.${s}`, { count: photoCount(lists[s]) })}
+                    {scopeLabel(s)}
                   </label>
                 ))}
               </div>
