@@ -14,6 +14,8 @@ import { rmSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { basename, dirname, resolve } from 'node:path';
+import { programPath, systemProgram } from '@aio/project/fs';
+import { jobBaseEnv } from '../jobs/runner';
 import { killTree } from '../odm/system';
 import type { AnalyticsPack } from './pack';
 
@@ -353,7 +355,8 @@ export class VlmServer {
 /** The executable of a running process (`tasklist` on Windows, `ps` elsewhere); null when none. */
 export function processImage(pid: number): Promise<string | null> {
   const win = process.platform === 'win32';
-  const file = win ? 'tasklist' : 'ps';
+  // by full path: a bare name would be looked up in the current folder and on the PATH first
+  const file = win ? systemProgram('tasklist') : programPath('ps');
   const args = win
     ? ['/FI', `PID eq ${String(pid)}`, '/FO', 'CSV', '/NH']
     : ['-p', String(pid), '-o', 'comm='];
@@ -383,7 +386,8 @@ export function nodeVlmServerDeps(statePath: () => string): ServerDeps {
     spawn: (exe, args, env) => {
       const c = nodeSpawn(exe, args, {
         cwd: dirname(exe),
-        env: { ...process.env, ...env },
+        // the job runtimes' environment (no app secrets or dev switches), plus the server's own
+        env: { ...jobBaseEnv(process.env), ...env },
         windowsHide: true,
         stdio: 'ignore',
       });

@@ -1,6 +1,7 @@
 import { VLM_MIN_FREE_VRAM_MB, VLM_MIN_VRAM_MB, type HardwareCheck } from '@aio/schema';
 import { en } from '@aio/ui/i18n/en';
 import { execFile } from 'node:child_process';
+import { programPath, systemProgram } from '@aio/project/fs';
 import { join } from 'node:path';
 
 export interface Gpu {
@@ -51,11 +52,17 @@ const noGpu = (): HardwareCheck => ({ ok: false, reason: t('noGpu') });
 /** Whether this computer can run the detector model now: an NVIDIA card with enough total and free memory. */
 export async function checkHardware(d: HardwareDeps): Promise<HardwareCheck> {
   if (d.platform === 'darwin') return { ok: false, reason: t('mac') };
-  const programFiles = process.env.ProgramFiles ?? 'C:/Program Files';
-  const candidates = [
-    'nvidia-smi',
-    join(programFiles, 'NVIDIA Corporation', 'NVSMI', 'nvidia-smi.exe'),
-  ];
+  // full paths only, so a nvidia-smi planted in the current folder is never run; the driver puts
+  // it in System32 (newer) or Program Files (older), and only a drive-letter ProgramFiles counts
+  const pf = process.env.ProgramFiles ?? '';
+  const programFiles = /^[A-Za-z]:[\\/]/.test(pf) && !pf.includes('\0') ? pf : 'C:/Program Files';
+  const candidates =
+    d.platform === 'win32'
+      ? [
+          systemProgram('nvidia-smi'),
+          join(programFiles, 'NVIDIA Corporation', 'NVSMI', 'nvidia-smi.exe'),
+        ]
+      : [programPath('nvidia-smi')];
   let gpus: Gpu[] = [];
   for (const file of candidates) {
     try {
