@@ -206,6 +206,7 @@ export const DetectionsFile = z.object({
           version: z.number().int(),
           classId: z.string(),
           name: z.string(),
+          modelSha256: z.string(),
           threshold: z.number().min(0).max(1),
         })
         .strict(),

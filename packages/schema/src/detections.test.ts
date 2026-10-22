@@ -26,7 +26,14 @@ const file = {
 describe('aio.detections/1', () => {
   it('keeps the detectors a local run asked about, with those that found nothing', () => {
     const detectors = [
-      { id: 'chimney', version: 2, classId: 'chimney', name: 'Chimney', threshold: 0.6 },
+      {
+        id: 'chimney',
+        version: 2,
+        classId: 'chimney',
+        name: 'Chimney',
+        modelSha256: 'a'.repeat(64),
+        threshold: 0.6,
+      },
     ];
     const r = DetectionsFile.parse({ ...file, detectors });
     expect(r.detectors).toEqual(detectors);

@@ -180,8 +180,15 @@ describe('missPassesFrom', () => {
   const header = {
     assessed: ['p001'],
     detectors: [
-      { id: 'chimney', version: 3, classId: 'chimney', name: 'Chimney', threshold: 0.6 },
-      { id: 'bolt', version: 1, classId: 'bolt', name: 'Bolt', threshold: 0.5 },
+      {
+        id: 'chimney',
+        version: 3,
+        classId: 'chimney',
+        name: 'Chimney',
+        modelSha256: SHA,
+        threshold: 0.6,
+      },
+      { id: 'bolt', version: 1, classId: 'bolt', name: 'Bolt', modelSha256: SHA, threshold: 0.5 },
     ],
   };
 
@@ -219,5 +226,23 @@ describe('missPassesFrom', () => {
 
   it('ignores passes that are not local-detector passes', () => {
     expect(missPassesFrom([], new Map([['ai-1.json', header]]))).toEqual([]);
+  });
+
+  it('a run where every detector found nothing still logs a miss', async () => {
+    const passes = missPassesFrom([], new Map([['vlm-1.json', header]]));
+    expect(passes[0]?.detectors).toHaveLength(2);
+    const drawn = {
+      ...draft({ classId: 'bolt' }),
+      id: 'h',
+      pass: 'review.json',
+      status: 'draft' as const,
+      origin: { kind: 'human' as const, author: 'me' },
+    };
+    await logMiss(drawn, passes, ctx);
+    expect(payload().entry).toMatchObject({
+      detectorId: 'bolt',
+      modelSha256: SHA,
+      verdict: 'miss',
+    });
   });
 });

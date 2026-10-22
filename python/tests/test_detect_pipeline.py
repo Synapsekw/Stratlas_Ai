@@ -436,4 +436,5 @@ def test_pass_lists_every_detector_of_the_run_with_its_class_as_given(tmp_path):
         # the class as the detector names it, not the suggested-new rewrite
         ("corrosion-metal", "corrosion", 0.8),
     ]
+    assert {d["modelSha256"] for d in listed} == {SHA}
     assert listed[1]["name"] == "Corrosion on metal" and listed[0]["version"] == 2

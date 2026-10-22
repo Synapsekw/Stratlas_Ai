@@ -26,8 +26,8 @@ export interface MissPass {
 /**
  * The local-detector passes among `list`'s passes. A pass lists the detectors its run asked about
  * in its header (`detectors`, even those that found nothing); an older pass has none, so the
- * detectors of its candidates stand in. The model's hash comes from a candidate of the pass, so a
- * pass without any candidate cannot be credited with a miss.
+ * detectors of its candidates stand in. Each listed detector carries the model's hash; an older
+ * list without it takes the hash from a candidate of the pass.
  */
 export function missPassesFrom(
   list: readonly Detection[],
@@ -41,11 +41,14 @@ export function missPassesFrom(
     const mine = list.flatMap((d) =>
       d.pass === name && d.origin.kind === 'model' && d.origin.detector ? [d] : [],
     );
-    const sha = mine[0]?.origin.kind === 'model' ? mine[0].origin.detector?.modelSha256 : undefined;
+    const fallback =
+      mine[0]?.origin.kind === 'model' ? mine[0].origin.detector?.modelSha256 : undefined;
     const detectors: MissPass['detectors'][number][] = [];
-    for (const h of header.detectors ?? [])
+    for (const h of header.detectors ?? []) {
+      const sha = h.modelSha256 || fallback;
       if (sha)
         detectors.push({ id: h.id, version: h.version, modelSha256: sha, classId: h.classId });
+    }
     for (const d of mine) {
       const det = d.origin.kind === 'model' ? d.origin.detector : undefined;
       if (det && !detectors.some((x) => x.id === det.id))

@@ -338,6 +338,7 @@ class DetectVlm:
                         "version": e["detector"]["version"],
                         "classId": e["detector"]["classId"],
                         "name": e["detector"]["name"],
+                        "modelSha256": params["modelSha256"],
                         "threshold": e["threshold"],
                     }
                     for e in detectors
