@@ -7,7 +7,15 @@ import json
 import re
 from pathlib import Path
 
-from aio_pipelines.telecom.merge import MATCH_RADIUS_M, date_frame_delta, in_capture_frame, merge_runs
+from aio_pipelines.telecom.merge import (
+    MATCH_RADIUS_M,
+    date_frame_delta,
+    in_capture_frame,
+    merge_runs,
+    merge_with_sources,
+    next_name,
+    person_owned,
+)
 
 CONTRACT = Path(__file__).resolve().parents[2] / "packages/schema/src/__fixtures__/antennas-contract.json"
 Q = {"basis": "measured", "residualM": 0.004, "support": 900, "coverage": 0.8}
@@ -218,3 +226,91 @@ def test_previous_units_move_into_the_new_date_frame():
     assert prev["units"][0]["box"]["centre"] == [10.0, 20.0, 30.0]  # the caller's copy is untouched
     assert moved["units"][0]["box"]["axes"] == prev["units"][0]["box"]["axes"]
     assert in_capture_frame(prev, (0.0, 0.0)) is prev
+
+
+def test_flagged_absorbs_a_new_unit_of_another_kind():
+    flagged = old(
+        "ant-old-1",
+        "A1",
+        (0.0, 0.0, 30.0),
+        "accepted",
+        kind="other",
+        kindBasis="user",
+        origin="flagged",
+        support=10,
+        centreHeightM={"value": 30.0, "basis": "user"},
+    )
+    new = unit((0.1, 0.0, 30.0), kind="panel", support=5000)
+    out = merge_with_sources(prev(flagged), [new], "run-new")
+    assert len(out) == 1
+    u, src = out[0]
+    assert src == 0
+    assert u["kind"] == "other"
+    assert u["box"] == flagged["box"]
+    assert u["centreHeightM"] == flagged["centreHeightM"]
+    assert u["origin"] == "flagged"
+
+
+def test_typed_value_survives_a_better_supported_match():
+    typed = {"value": 6.0, "basis": "user", "quality": dict(Q)}
+    o = old("ant-old-1", "A1", (100.0, 200.0, 30.0), "accepted", support=1000, downtiltDeg=typed)
+    new = unit((100.1, 200.0, 30.0), support=5000)
+    (u,) = merge_runs(prev(o), [new], "run-new")
+    assert u["downtiltDeg"] == typed
+    assert u["box"] == o["box"]
+    assert u["support"] == 1000
+
+
+def test_typed_draft_is_kept_unmatched():
+    typed = {"value": 6.0, "basis": "user"}
+    o = old("ant-old-1", "A1", (0.0, 0.0, 30.0), "draft", downtiltDeg=typed)
+    out = merge_runs(prev(o), [], "run-new")
+    assert [u["id"] for u in out] == ["ant-old-1"]
+    assert "notFoundInLatest" not in out[0]
+
+
+def test_rejected_flagged_is_kept_unmatched():
+    o = old("ant-old-1", "A1", (0.0, 0.0, 30.0), "rejected", origin="flagged", notFoundInLatest=True)
+    out = merge_runs(prev(o), [], "run-new")
+    assert len(out) == 1
+    assert out[0]["status"] == "rejected"
+    assert "notFoundInLatest" not in out[0]
+
+
+def test_flagged_unmatched_is_not_flagged_missing():
+    o = old("ant-old-1", "A1", (0.0, 0.0, 30.0), "accepted", origin="flagged")
+    (u,) = merge_runs(prev(o), [], "run-new")
+    assert "notFoundInLatest" not in u
+
+
+def test_typed_accepted_unmatched_is_flagged_missing_and_untyped_draft_dropped():
+    typed = {"value": 6.0, "basis": "user"}
+    a = old("ant-old-1", "A1", (0.0, 0.0, 30.0), "accepted", downtiltDeg=typed)
+    d = old("ant-old-2", "A2", (50.0, 0.0, 30.0), "draft")
+    out = merge_runs(prev(a, d), [], "run-new")
+    assert [u["id"] for u in out] == ["ant-old-1"]
+    assert out[0]["notFoundInLatest"] is True
+
+
+def test_person_owned_and_measured_passthrough():
+    assert person_owned({"origin": "flagged"})
+    assert person_owned({"centreHeightM": {"value": 3.0, "basis": "user"}})
+    assert not person_owned({"downtiltDeg": val(2.0)})
+    measured = {"downtiltDeg": val(2.0)}
+    o = old(
+        "ant-old-1",
+        "A1",
+        (0.0, 0.0, 30.0),
+        "accepted",
+        downtiltDeg={"value": 6.0, "basis": "user"},
+        measured=measured,
+        notFoundInLatest=True,
+    )
+    (u,) = merge_runs(prev(o), [unit((0.0, 0.0, 30.0))], "run-new")
+    assert u["measured"] == measured
+    assert "notFoundInLatest" not in u
+
+
+def test_next_name_after_highest():
+    assert next_name([{"name": "A2"}, {"name": "A9"}, {"name": "X"}]) == "A10"
+    assert next_name([]) == "A1"

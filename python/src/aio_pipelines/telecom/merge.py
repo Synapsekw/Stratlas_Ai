@@ -5,12 +5,18 @@ and either the kinds are equal or the old kind came from AI or a person (`kindBa
 "user": a relabelled unit matches whatever the geometry calls it now). Pairs are taken nearest
 first, each unit at most once.
 
+- A person-owned unit is one a person flagged (`origin` "flagged") or one with a typed geometry
+  value (`basis` "user"; see `person_owned`). It matches whatever kind the new unit has. Matched,
+  in any status, it is kept unchanged (the new unit is absorbed) except `photos` and `crop`, which
+  refresh, and `notFoundInLatest`, which goes. Unmatched, in any status, it is kept: a flagged one
+  is never marked not found; a detected accepted one is marked as below; a detected draft or
+  rejected one stays unmarked.
 - Matched accepted: keeps its id, name, status, user fields and a non-geometry kind; takes the new
   geometry only when the new fit has more support.
 - Matched rejected: kept unchanged.
 - Matched draft: new geometry, old id, name, user fields and non-geometry kind.
 - Unmatched old accepted: kept, flagged `notFoundInLatest`. Unmatched old drafts and rejected
-  units are dropped (a rejected unit that is not found again has nothing left to reject).
+  units that are not person-owned are dropped (a rejected unit that is not found again has nothing left to reject).
 - New units are drafts named `A<n>` after the highest number in use, numbered clockwise from north
   around the units' middle, with ids `ant-<run>-<k>`.
 
@@ -40,6 +46,19 @@ GEOMETRY = (
     "heightM",
     "depthM",
     "convergenceDeg",
+    "centreHeightM",
+)
+#: The measured values a person can type over (and a flagged unit can carry).
+GEOMETRY_VALUES = (
+    "azimuthGridDeg",
+    "downtiltDeg",
+    "plumbDeg",
+    "elevationDeg",
+    "diameterM",
+    "widthM",
+    "heightM",
+    "depthM",
+    "centreHeightM",
 )
 ID_MAX = 60  # characters after "ant-" (the unit id pattern ^ant-[a-z0-9-]{1,60}$)
 _NAME = re.compile(r"^A(\d+)$")
@@ -86,6 +105,19 @@ def _relabelled(u: dict) -> bool:
     return u.get("kindBasis") in ("ai", "user")
 
 
+def person_owned(u: dict) -> bool:
+    """A unit a person flagged, or one with a value a person typed: a re-run never overwrites it."""
+    if u.get("origin") == "flagged":
+        return True
+    return any(isinstance(u.get(k), dict) and u[k].get("basis") == "user" for k in GEOMETRY_VALUES)
+
+
+def next_name(units: list[dict]) -> str:
+    """`A<n+1>` after the highest `A<n>` among the units' names (`A1` when none)."""
+    top = max((int(m.group(1)) for u in units if (m := _NAME.match(str(u.get("name", ""))))), default=0)
+    return f"A{top + 1}"
+
+
 def _with_geometry(old: dict, new: dict) -> dict:
     """`old` with every geometry field of `new` (fields `new` lacks are removed)."""
     out = {k: v for k, v in old.items() if k not in GEOMETRY}
@@ -112,7 +144,7 @@ def _pairs(old: list[dict], new: list[dict]) -> dict[int, int]:
     for i, n in enumerate(new):
         for j, o in enumerate(old):
             d = _distance(n, o)
-            if d <= MATCH_RADIUS_M and (o.get("kind") == n.get("kind") or _relabelled(o)):
+            if d <= MATCH_RADIUS_M and (o.get("kind") == n.get("kind") or _relabelled(o) or person_owned(o)):
                 cand.append((d, i, j))
     cand.sort()
     taken_new: set[int] = set()
@@ -155,12 +187,27 @@ def merge_with_sources(
     by_old = {j: i for i, j in pairs.items()}
     for j, o in enumerate(old):
         status = o.get("status")
+        owned = person_owned(o)
         if j not in matched_old:
-            if status == "accepted":
+            if owned and o.get("origin") == "flagged":
+                u = dict(o)
+                u.pop("notFoundInLatest", None)
+                out.append((u, None))
+            elif status == "accepted":
                 out.append(({**o, "notFoundInLatest": True}, None))
+            elif owned:
+                u = dict(o)
+                u.pop("notFoundInLatest", None)
+                out.append((u, None))
             continue
         i = by_old[j]
         n = units[i]
+        if owned:
+            u = dict(o)
+            u.pop("notFoundInLatest", None)
+            _take_photos(u, n)
+            out.append((u, i))
+            continue
         if status == "rejected":
             u = dict(o)
             u.pop("notFoundInLatest", None)
@@ -175,7 +222,7 @@ def merge_with_sources(
         out.append((u, i))
     # new units: drafts, numbered clockwise
     used_ids = {u["id"] for u, _ in out}
-    top = max((int(m.group(1)) for u, _ in out if (m := _NAME.match(str(u.get("name", ""))))), default=0)
+    top = int(next_name([u for u, _ in out])[1:]) - 1
     fresh = [i for i in range(len(units)) if i not in pairs]
     order = _clockwise([units[i] for i in fresh])
     stem = run_id[4:] if run_id.startswith("run-") else run_id
