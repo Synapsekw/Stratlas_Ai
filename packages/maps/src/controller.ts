@@ -19,6 +19,7 @@ import {
   issuesOnScreen,
   shiftKey,
   layerDisplay,
+  nowOf,
   sameItems,
   type createWorkspace,
   type Workspace,
@@ -971,7 +972,9 @@ export function createMapController(
         : clipKeys(s.orientation, f.layer.id),
       shiftOf(f.layer.id),
     );
-    const flightMs = s.nowMs - f.layer.flight.startUtcMs;
+    // the full-rate clock: while playing the workspace's `nowMs` trails it by up to a commit
+    // (COMMIT_MS), and a throttled redraw should land where the video is, not where it was
+    const flightMs = nowOf(store) - f.layer.flight.startUtcMs;
     const cam = clipPoseAt(f.samples, flightMs, clipCamera(f.layer, keys));
     const pose: PoseSample = { t: flightMs, pos: cam.log.pos, q: cam.log.q };
     const height = Math.max(1, pose.pos[1]);

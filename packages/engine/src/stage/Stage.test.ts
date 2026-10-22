@@ -459,8 +459,13 @@ describe('Stage', () => {
       store.getState().select({ kind: 'asset', id: 'flue-1', layer: 'chimney' });
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
       expect(store.getState().selection).toMatchObject({ id: 'flue-1' });
+      // what draws once per video frame (the video rig) asks for frames: none is drawn parked
+      const frames = vi.fn();
+      const offFrame = stage.onFrame(frames);
+      stage.requestRender();
       stage.renderNow();
       expect(calls.render).toBe(before);
+      expect(frames).not.toHaveBeenCalled();
       // back on screen, in another container: the layer it had, the selection made meanwhile
       const next = document.createElement('div');
       document.body.appendChild(next);
@@ -471,6 +476,11 @@ describe('Stage', () => {
       expect(next.contains(marker)).toBe(true);
       expect(stage.selected?.component?.name).toBe('Flue 1');
       expect(stage.layerLoaded('chimney')).toBe(true);
+      // and draws again, its frame callbacks with it (the rig poses the drone for the clock now)
+      stage.renderNow();
+      expect(calls.render).toBeGreaterThan(before);
+      expect(frames).toHaveBeenCalled();
+      offFrame();
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
       expect(store.getState().selection).toBeNull();
       stage.dispose();

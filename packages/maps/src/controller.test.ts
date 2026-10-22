@@ -846,6 +846,55 @@ describe('the drone overlay during playback', () => {
       ctl.dispose();
     }
   });
+  it('draws where the full-rate clock is, and lands on the exact time on pause', async () => {
+    const samples = [0, 10_000].map((t) => ({ t, pos: [t / 100, 30, 0], q: [0, 0, 0, 1] }));
+    const { map, ctl, store } = await startWithFlight(samples);
+    const lonAt = (x: number) =>
+      geo.frameProjection({ epsg: 32633 }, [500_000, 4_000_000, 0])?.toLonLat([x, 30, 0])[0] ?? 0;
+    const droneLon = () => {
+      const drone = map.specs.get('aio-drone')?.data as GeoJSON.FeatureCollection;
+      const pt = drone.features.find((f) => f.geometry.type === 'Point')?.geometry;
+      if (pt?.type !== 'Point') throw new Error('no drone point');
+      return pt.coordinates[0] ?? 0;
+    };
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) =>
+        setTimeout(() => {
+          cb(performance.now());
+        }, 7),
+      );
+      vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+        clearTimeout(id);
+      });
+      store.setState({ activeClip: 'v1' });
+      store.getState().play();
+      vi.advanceTimersByTime(200);
+      // playback frames: the workspace's nowMs follows only every COMMIT_MS of clip time
+      for (let i = 1; i <= 98; i++) {
+        store.getState().tick(i * 7);
+        vi.advanceTimersByTime(7);
+      }
+      vi.advanceTimersByTime(200);
+      const committed = store.getState().nowMs;
+      expect(committed).toBeLessThan(686);
+      // the last redraw read the clock: ahead of what the workspace last committed
+      expect(droneLon()).toBeGreaterThan(lonAt(committed / 100) + 1e-7);
+      expect(droneLon()).toBeLessThanOrEqual(lonAt(6.86) + 1e-9);
+      store.getState().tick(703);
+      store.getState().pause();
+      vi.advanceTimersByTime(200);
+      expect(store.getState().nowMs).toBe(703);
+      expect(droneLon()).toBeCloseTo(lonAt(7.03), 6);
+      // a seek while paused lands exactly too
+      store.getState().setTime(4321);
+      vi.advanceTimersByTime(200);
+      expect(droneLon()).toBeCloseTo(lonAt(43.21), 6);
+    } finally {
+      vi.useRealTimers();
+      ctl.dispose();
+    }
+  });
 });
 
 describe('vector layer overlays on a layer toggle', () => {
