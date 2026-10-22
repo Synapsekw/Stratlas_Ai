@@ -392,6 +392,8 @@ These limits were seen on the founder's own real projects in the data folder (no
 - Photo occlusion is not checked when the best photos are chosen.
 - Point clouds packed as PNG or as kit packs are read whole.
 - The engineering model's antennas are still approximate and separate from this inventory; the engineering model does not read the inventory yet.
+- Flagging an antenna, like detection, applies only the line-up shift of a survey date and not a line-up turn.
+- The flag job selects again the points inside the outline's kept bounds and the outline itself, without the nearest-surface cut the 3D view makes, so a mount pipe right behind a unit can enter its measurement.
 
 ## Point cloud cleanup
 

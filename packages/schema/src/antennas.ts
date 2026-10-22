@@ -126,7 +126,10 @@ export const AntennaUnit = z
     plumbDeg: AntennaValue.optional(),
     elevationDeg: AntennaValue.optional(),
     diameterM: AntennaValue.optional(),
-    /** Box centre elevation a person typed, project vertical datum. */
+    /**
+     * Box centre elevation, project vertical datum: one a person typed (basis `user`), or after
+     * Reset to measured the measured box centre Z it went back to.
+     */
     centreHeightM: AntennaValue.optional(),
     /** Required unless the unit was flagged and could not be measured. */
     widthM: AntennaValue.optional(),

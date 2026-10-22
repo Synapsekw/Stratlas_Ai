@@ -66,7 +66,7 @@ Open a unit's details to correct it.
 - **Reset to measured** sits beside each typed value. It clears your value, so the measured one shows again, and the box is rebuilt. It is hidden when nothing was measured, as on a **Not measured** unit.
 - **Delete** removes a unit. It is offered on flagged units only. To drop a detected unit, use **Reject**.
 
-Running detection again keeps what you flagged and typed. A flagged unit stays once, with its own box and values, and the matching detected unit is not added beside it.
+Running detection again keeps what you flagged and typed. A flagged unit stays once, with its own box and values, and the matching detected unit is not added beside it. Once you type any value on a detected unit, later runs keep its whole box as it is; use **Redraw outline** to measure it again.
 
 ## Label with AI
 
