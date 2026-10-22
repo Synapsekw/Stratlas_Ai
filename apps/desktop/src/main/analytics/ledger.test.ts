@@ -73,9 +73,12 @@ describe('ledger', () => {
     expect(read[0]?.detectionId).toBe('d1');
   });
 
-  it('a crop name sent by the caller is replaced by the one written', async () => {
-    await appendLedger(dir, entry('accepted', 0.9, { crop: '../../x.jpg' }), jpeg);
+  it('a crop name sent by the caller is replaced, and a path is refused', async () => {
+    await appendLedger(dir, entry('accepted', 0.9, { crop: '9.jpg' }), jpeg);
     expect((await readLedger(dir, 'chimney'))[0]?.crop).toBe('1.jpg');
+    await expect(
+      appendLedger(dir, entry('accepted', 0.9, { crop: '../../x.jpg' }), jpeg),
+    ).rejects.toThrow();
   });
 
   it('stats count the latest line per detection', () => {

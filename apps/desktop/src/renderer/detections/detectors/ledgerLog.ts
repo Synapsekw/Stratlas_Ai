@@ -26,8 +26,7 @@ export interface MissPass {
 /**
  * The local-detector passes among `list`'s passes. A pass lists the detectors its run asked about
  * in its header (`detectors`, even those that found nothing); an older pass has none, so the
- * detectors of its candidates stand in. Each listed detector carries the model's hash; an older
- * list without it takes the hash from a candidate of the pass.
+ * detectors of its candidates stand in. Each listed detector carries the model's hash.
  */
 export function missPassesFrom(
   list: readonly Detection[],
@@ -41,14 +40,14 @@ export function missPassesFrom(
     const mine = list.flatMap((d) =>
       d.pass === name && d.origin.kind === 'model' && d.origin.detector ? [d] : [],
     );
-    const fallback =
-      mine[0]?.origin.kind === 'model' ? mine[0].origin.detector?.modelSha256 : undefined;
     const detectors: MissPass['detectors'][number][] = [];
-    for (const h of header.detectors ?? []) {
-      const sha = h.modelSha256 || fallback;
-      if (sha)
-        detectors.push({ id: h.id, version: h.version, modelSha256: sha, classId: h.classId });
-    }
+    for (const h of header.detectors ?? [])
+      detectors.push({
+        id: h.id,
+        version: h.version,
+        modelSha256: h.modelSha256,
+        classId: h.classId,
+      });
     for (const d of mine) {
       const det = d.origin.kind === 'model' ? d.origin.detector : undefined;
       if (det && !detectors.some((x) => x.id === det.id))
@@ -68,10 +67,15 @@ export function missPassesFrom(
   return out;
 }
 
-async function append(entry: LedgerEntry, box: LedgerEntry['box'], ctx: LedgerCtx): Promise<void> {
+async function append(
+  entry: LedgerEntry,
+  box: LedgerEntry['box'],
+  ctx: LedgerCtx,
+  grid: readonly [number, number],
+): Promise<void> {
   try {
     if (!ctx.photoUrl) throw new Error('The photo is not available for a crop.');
-    const cropJpegBase64 = await cropJpeg(ctx.photoUrl, box);
+    const cropJpegBase64 = await cropJpeg(ctx.photoUrl, box, 512, 0.15, { grid });
     const r = await bridge.call('ledger:append', { entry, cropJpegBase64 });
     const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
     if (error) throw new Error(error);
@@ -108,6 +112,7 @@ export async function logReview(
     },
     box,
     ctx,
+    d.size,
   );
 }
 
@@ -120,7 +125,7 @@ export async function logMiss(
   passes: readonly MissPass[],
   ctx: LedgerCtx,
 ): Promise<void> {
-  if (d.origin.kind !== 'human' || d.source.kind !== 'photo') return;
+  if (d.origin.kind !== 'human' || d.source.kind !== 'photo' || d.classId === '') return;
   const { layer, photo } = d.source;
   const box = boundsOf(d.geom);
   const hits = passes
@@ -144,6 +149,7 @@ export async function logMiss(
       },
       box,
       ctx,
+      d.size,
     );
   }
 }

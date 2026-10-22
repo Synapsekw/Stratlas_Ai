@@ -296,7 +296,7 @@ function missPasses(review: ReviewState): MissPass[] {
 function logDecisions(action: ReviewAction, before: ReviewState, after: ReviewState): void {
   const projectId = detections.getState().projectId;
   if (!projectId) return;
-  const wasDraft = new Set(before.detections.filter((d) => d.status === 'draft').map((d) => d.id));
+  const was = new Map(before.detections.map((d) => [d.id, d]));
   const now = new Map(after.detections.map((d) => [d.id, d]));
   const verdicts: [string, 'accepted' | 'rejected'][] = [];
   switch (action.type) {
@@ -320,12 +320,24 @@ function logDecisions(action: ReviewAction, before: ReviewState, after: ReviewSt
       }
       return;
     }
+    case 'edit': {
+      // relabelled to another class, a hand-drawn finding may be one a detector missed
+      const edited = now.get(action.id);
+      if (
+        action.patch.classId !== undefined &&
+        edited &&
+        was.get(action.id)?.classId !== edited.classId
+      )
+        void logMiss(edited, missPasses(after), ledgerCtx(projectId, edited));
+      return;
+    }
     default:
       return;
   }
   for (const [id, verdict] of verdicts) {
     const d = now.get(id);
-    if (d?.status === verdict && wasDraft.has(id))
+    // a rejected draft can be accepted from the inspector: the status changing to the verdict counts
+    if (d?.status === verdict && was.get(id)?.status !== verdict)
       void logReview(d, verdict, ledgerCtx(projectId, d));
   }
 }

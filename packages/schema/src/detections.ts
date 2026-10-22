@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Box, Point2, Polygon, RotBox } from './annotation';
-import { RejectReason } from './analytics';
+import { DetectorId, RejectReason, Sha256 } from './analytics';
 import { Id, IsoTime } from './common';
 
 /**
@@ -202,11 +202,11 @@ export const DetectionsFile = z.object({
     .array(
       z
         .object({
-          id: z.string(),
+          id: DetectorId,
           version: z.number().int(),
           classId: z.string(),
           name: z.string(),
-          modelSha256: z.string(),
+          modelSha256: Sha256,
           threshold: z.number().min(0).max(1),
         })
         .strict(),

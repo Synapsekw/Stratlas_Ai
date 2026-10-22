@@ -143,4 +143,54 @@ describe('review decisions into the ledger', () => {
     dispatch({ type: 'reject', id: 'a', by: 'u', now: NOW });
     expect(logReview).not.toHaveBeenCalled();
   });
+
+  it('a rejected draft accepted later logs the acceptance', () => {
+    review([cand('a', { status: 'rejected' })]);
+    dispatch({ type: 'accepted', id: 'a', issueId: 'I1', by: 'u', now: NOW });
+    expect(logReview).toHaveBeenCalledTimes(1);
+    expect(logReview.mock.calls[0]?.[1]).toBe('accepted');
+  });
+
+  it('accept all logs each detector draft it changed', () => {
+    review([cand('a'), cand('b'), cand('c', { status: 'accepted', issueId: 'I9' })]);
+    dispatch({
+      type: 'acceptedMany',
+      items: [
+        { id: 'a', issueId: 'I1' },
+        { id: 'b', issueId: 'I2' },
+        { id: 'c', issueId: 'I9' },
+      ],
+      label: 'Accept all',
+      by: 'u',
+      now: NOW,
+    });
+    expect(logReview.mock.calls.map((c) => c[0].id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('undo and redo log nothing', () => {
+    review([cand('a')]);
+    dispatch({ type: 'reject', id: 'a', by: 'u', now: NOW });
+    logReview.mockClear();
+    dispatch({ type: 'undo' });
+    dispatch({ type: 'redo' });
+    expect(logReview).not.toHaveBeenCalled();
+    expect(logMiss).not.toHaveBeenCalled();
+  });
+
+  it('a drawing relabelled to another class is logged again under its new class', () => {
+    review([cand('a')]);
+    const drawn = cand('h1', {
+      pass: 'review.json',
+      classId: 'crack',
+      origin: { kind: 'human', author: 'u' },
+    });
+    dispatch({ type: 'add', detections: [drawn], label: 'Draw' });
+    expect(logMiss).toHaveBeenCalledTimes(1);
+    // an edit that leaves the class alone is not a new finding
+    dispatch({ type: 'edit', id: 'h1', patch: { note: 'x' }, now: NOW });
+    expect(logMiss).toHaveBeenCalledTimes(1);
+    dispatch({ type: 'edit', id: 'h1', patch: { classId: 'chimney' }, now: NOW });
+    expect(logMiss).toHaveBeenCalledTimes(2);
+    expect(logMiss.mock.calls[1]?.[0]).toMatchObject({ id: 'h1', classId: 'chimney' });
+  });
 });

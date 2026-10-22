@@ -44,23 +44,69 @@ const browser: CropIo = {
   },
 };
 
-/** `box` is `[x1, y1, x2, y2]` in the pixels of the photo at `photoUrl`. */
-export async function cropJpeg(
+const MAX_PARALLEL = 2;
+let active = 0;
+const waiting: (() => void)[] = [];
+/** Photos loaded while the queue is busy: candidates on one photo share one decode. */
+let loaded = new Map<string, Promise<{ width: number; height: number; source: unknown }>>();
+
+async function slot<T>(run: () => Promise<T>): Promise<T> {
+  if (active >= MAX_PARALLEL) await new Promise<void>((go) => waiting.push(go));
+  else active++;
+  try {
+    return await run();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else {
+      active--;
+      if (active === 0) loaded = new Map();
+    }
+  }
+}
+
+export interface CropOptions {
+  io?: CropIo;
+  /**
+   * The pixel grid `box` is in (width, height), when it is not the photo's own: the box is scaled
+   * to the photo's natural size.
+   */
+  grid?: readonly [number, number];
+}
+
+/**
+ * `box` is `[x1, y1, x2, y2]` in the pixels of the photo at `photoUrl` (or of `grid`). At most two
+ * crops run at once, so Accept all on many candidates does not decode them all together.
+ */
+export function cropJpeg(
   photoUrl: string,
   box: Box4,
   maxSide = 512,
   pad = 0.15,
-  io: CropIo = browser,
+  opts: CropOptions = {},
 ): Promise<string> {
-  const img = await io.load(photoUrl);
-  const px = (box[2] - box[0]) * pad;
-  const py = (box[3] - box[1]) * pad;
-  const x1 = Math.max(0, box[0] - px);
-  const y1 = Math.max(0, box[1] - py);
-  const x2 = Math.min(img.width, box[2] + px);
-  const y2 = Math.min(img.height, box[3] + py);
-  const sw = x2 - x1;
-  const sh = y2 - y1;
-  const k = Math.min(1, maxSide / Math.max(sw, sh));
-  return io.render(img.source, x1, y1, sw, sh, sw * k, sh * k);
+  const io = opts.io ?? browser;
+  return slot(async () => {
+    let img = loaded.get(photoUrl);
+    if (!img) {
+      img = io.load(photoUrl);
+      loaded.set(photoUrl, img);
+      // a failed load is not kept for the next candidate
+      img.catch(() => loaded.delete(photoUrl));
+    }
+    const photo = await img;
+    const kx = opts.grid ? photo.width / opts.grid[0] : 1;
+    const ky = opts.grid ? photo.height / opts.grid[1] : 1;
+    const b = [box[0] * kx, box[1] * ky, box[2] * kx, box[3] * ky] as const;
+    const px = (b[2] - b[0]) * pad;
+    const py = (b[3] - b[1]) * pad;
+    const x1 = Math.max(0, b[0] - px);
+    const y1 = Math.max(0, b[1] - py);
+    const x2 = Math.min(photo.width, b[2] + px);
+    const y2 = Math.min(photo.height, b[3] + py);
+    const sw = x2 - x1;
+    const sh = y2 - y1;
+    const k = Math.min(1, maxSide / Math.max(sw, sh));
+    return io.render(photo.source, x1, y1, sw, sh, sw * k, sh * k);
+  });
 }

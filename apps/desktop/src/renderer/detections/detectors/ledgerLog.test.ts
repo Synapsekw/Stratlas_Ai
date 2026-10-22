@@ -1,4 +1,5 @@
 import { type Detection } from '@aio/annotate/detections';
+import { DetectionsFile } from '@aio/schema';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const call = vi.hoisted(() => vi.fn());
@@ -62,7 +63,10 @@ describe('logReview', () => {
       detectionId: 'vlm-1.json#0',
     });
     expect(payload().entry.corrected).toBeUndefined();
-    expect(cropJpeg).toHaveBeenCalledWith(ctx.photoUrl, [100, 200, 150, 240]);
+    // the box is in the grid of the review image; the crop scales it to the photo
+    expect(cropJpeg).toHaveBeenCalledWith(ctx.photoUrl, [100, 200, 150, 240], 512, 0.15, {
+      grid: [4000, 3000],
+    });
   });
 
   it('rejecting with a reason sends reason and note', async () => {
@@ -231,6 +235,45 @@ describe('missPassesFrom', () => {
   it('a run where every detector found nothing still logs a miss', async () => {
     const passes = missPassesFrom([], new Map([['vlm-1.json', header]]));
     expect(passes[0]?.detectors).toHaveLength(2);
+    const drawn = {
+      ...draft({ classId: 'bolt' }),
+      id: 'h',
+      pass: 'review.json',
+      status: 'draft' as const,
+      origin: { kind: 'human' as const, author: 'me' },
+    };
+    await logMiss(drawn, passes, ctx);
+    expect(payload().entry).toMatchObject({
+      detectorId: 'bolt',
+      modelSha256: SHA,
+      verdict: 'miss',
+    });
+  });
+
+  it('a drawing with no class logs nothing', async () => {
+    const passes = missPassesFrom([draft()], new Map([['vlm-1.json', header]]));
+    const none = {
+      ...draft({ classId: '' }),
+      id: 'h',
+      pass: 'review.json',
+      status: 'draft' as const,
+      origin: { kind: 'human' as const, author: 'me' },
+    };
+    await logMiss(none, passes, ctx);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('reads the detectors from a pass header as the schema parses it', async () => {
+    const parsed = DetectionsFile.parse({
+      schema: 'aio.detections/1',
+      source: 'model',
+      assessed: ['p001'],
+      detectors: [
+        { id: 'bolt', version: 1, classId: 'bolt', name: 'Bolt', modelSha256: SHA, threshold: 0.5 },
+      ],
+      detections: [],
+    });
+    const passes = missPassesFrom([], new Map([['vlm-9.json', parsed]]));
     const drawn = {
       ...draft({ classId: 'bolt' }),
       id: 'h',

@@ -51,7 +51,9 @@ export type RejectReason = z.infer<typeof RejectReason>;
 export const DetectorWhere = z.enum(['shipped', 'project', 'library']);
 export type DetectorWhere = z.infer<typeof DetectorWhere>;
 
-const Sha256 = z.string().regex(/^[a-f0-9]{64}$/);
+export const Sha256 = z.string().regex(/^[a-f0-9]{64}$/);
+/** A detector's id, also its folder name. */
+export const DetectorId = z.string().regex(/^[a-z0-9][a-z0-9-]{1,60}$/);
 const SideMultiple28 = z
   .number()
   .int()
@@ -76,7 +78,7 @@ const DetectorFile = z.string().regex(/^(samples|examples)\/[A-Za-z0-9._-]{1,100
 export const VlmDetector = z
   .object({
     schema: z.literal(VLM_DETECTOR_SCHEMA),
-    id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,60}$/),
+    id: DetectorId,
     name: z.string().min(1).max(80),
     version: z.number().int().min(1),
     classId: z.string().min(1).max(120),
@@ -221,7 +223,10 @@ export const LedgerEntry = z
     /** The review's id for the candidate: when it has several lines, the latest one counts. */
     detectionId: z.string().max(300).optional(),
     /** The crop file in `crops/<detectorId>/`, set by the app when it writes the line. */
-    crop: z.string().max(40).optional(),
+    crop: z
+      .string()
+      .regex(/^\d+\.jpg$/)
+      .optional(),
   })
   .strict();
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
