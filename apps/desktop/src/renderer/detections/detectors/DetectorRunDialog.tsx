@@ -99,6 +99,17 @@ export function DetectorRunDialog({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   /** Set at once on Start, so a second click before the busy render starts nothing. */
   const starting = useRef(false);
+  /**
+   * False once the dialog is gone. Closing while a start waits for the model to load leaves the
+   * start running (its job shows in the jobs list); the dialog then sets no state.
+   */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     void analyticsPack.getState().load();
@@ -152,21 +163,23 @@ export function DetectorRunDialog({
   const blocker =
     status === null || (hardware === null && hardwareError === null)
       ? (packError ?? t('detect.preset.run.checking'))
-      : !status.installed
-        ? (status.unusable[0]?.reason ?? t('detect.preset.pack.missing'))
-        : hardwareError !== null
-          ? t('detect.preset.settings.hw.failed')
-          : refused && !tooBusy
-            ? refused.reason
-            : photos === 0
-              ? plan.skippedFrames > 0
-                ? t('detect.preset.run.onlyFrames')
-                : t('detect.preset.run.noPhotos')
-              : picks.length === 0
-                ? t('detect.preset.run.noDetector')
-                : picks.length > MAX_RUN_DETECTORS
-                  ? t('detect.preset.run.tooMany', { max: MAX_RUN_DETECTORS })
-                  : null;
+      : refused?.code === 'mac'
+        ? refused.reason
+        : !status.installed
+          ? (status.unusable[0]?.reason ?? t('detect.preset.pack.missing'))
+          : hardwareError !== null
+            ? t('detect.preset.settings.hw.failed')
+            : refused && !tooBusy
+              ? refused.reason
+              : photos === 0
+                ? plan.skippedFrames > 0
+                  ? t('detect.preset.run.onlyFrames')
+                  : t('detect.preset.run.noPhotos')
+                : picks.length === 0
+                  ? t('detect.preset.run.noDetector')
+                  : picks.length > MAX_RUN_DETECTORS
+                    ? t('detect.preset.run.tooMany', { max: MAX_RUN_DETECTORS })
+                    : null;
   const canRecheck =
     !checking && refused?.code !== 'mac' && (refused !== null || hardwareError !== null);
 
@@ -201,6 +214,8 @@ export function DetectorRunDialog({
       else errors.push(error);
     }
     starting.current = false;
+    // closed while the model loaded: the runs carry on in the jobs list
+    if (!mounted.current) return;
     setBusy(false);
     if (errors.length === 0 && queued === 0) {
       onClose();
@@ -213,8 +228,9 @@ export function DetectorRunDialog({
     setOutcome({ queued: queued > 0, errors });
   };
 
+  // while a start waits for the model, closing hides the dialog and lets the start carry on
   const close = () => {
-    if (!busy) onClose();
+    onClose();
   };
 
   const detectorRow = (i: Item) => {
@@ -277,7 +293,7 @@ export function DetectorRunDialog({
             )}
             {!classIds.has(d.classId) && (
               <p className="ann-faint" data-testid={`det-vlm-class-missing-${d.id}`}>
-                {t('detect.preset.run.classMissing', { class: d.classId })}
+                {t('detect.preset.run.classMissing', { class: d.name })}
               </p>
             )}
           </div>
@@ -312,7 +328,6 @@ export function DetectorRunDialog({
             type="button"
             className="btn ghost icon sm"
             aria-label={t('det.close')}
-            disabled={busy}
             onClick={close}
           >
             <Icon name="x" size={14} />
@@ -422,6 +437,11 @@ export function DetectorRunDialog({
                   })}
                 </p>
               </section>
+            )}
+            {busy && (
+              <p className="ann-faint" role="status" data-testid="det-vlm-loading">
+                {t('detect.preset.run.loading')}
+              </p>
             )}
             {startError !== null && (
               <p className="ann-error" role="alert" data-testid="det-vlm-error">

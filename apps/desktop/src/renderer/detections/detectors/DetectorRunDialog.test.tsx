@@ -214,6 +214,17 @@ describe('DetectorRunDialog', () => {
     expect(q('det-vlm-pack-retry')).toBeNull();
   });
 
+  it('on a Mac the Mac refusal is the reason, not the missing pack', async () => {
+    const reason = 'Detectors need a Windows computer with an NVIDIA graphics card.';
+    h.answers.set('analyticsPack:status', () => ({ installed: null, offer: null, unusable: [] }));
+    h.answers.set('analytics:hardware', () => ({ ok: false, code: 'mac', reason }));
+    await open();
+    await click('det-vlm-det-rust');
+    expect(startDisabled()).toBe(true);
+    expect(text('det-vlm-blocker')).toBe(reason);
+    expect(q('det-vlm-hw-recheck')).toBeNull();
+  });
+
   it('Start is disabled on a hardware refusal except too busy', async () => {
     const busy = 'Only 3.1 GB of graphics memory is free; detectors need about 6.5 GB.';
     h.answers.set('analytics:hardware', () => ({ ok: false, code: 'tooBusy', reason: busy }));
@@ -434,7 +445,7 @@ describe('DetectorRunDialog', () => {
     expect(q('det-vlm-error')).toBeNull();
   });
 
-  it('Escape closes the dialog, but not while starting', async () => {
+  it('Escape closes the dialog; while the model loads it closes without cancelling the start', async () => {
     const press = () => {
       act(() => {
         q('det-ai-dialog')?.dispatchEvent(
@@ -454,14 +465,36 @@ describe('DetectorRunDialog', () => {
       }),
     );
     await click('det-vlm-det-rust');
+    expect(q('det-vlm-loading')).toBeNull();
     await click('det-vlm-start');
+    expect(text('det-vlm-loading')).toBe(
+      'Loading the detector model on the graphics card. This can take a minute or two.',
+    );
     press();
-    expect(onClose).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // the app unmounts the closed dialog; the start keeps running and finishes later
+    act(() => {
+      root.unmount();
+    });
     await act(async () => {
       answer(null);
       await Promise.resolve();
     });
     await flush();
+    expect(h.start).toHaveBeenCalledTimes(1);
+    // the finished start does not close (or touch) the dialog a second time
+    expect(onClose).toHaveBeenCalledTimes(1);
+    root = createRoot(host);
+  });
+
+  it('the close button works while the model loads', async () => {
+    h.start.mockReturnValue(new Promise<string | null>(() => undefined));
+    await open(photos(2));
+    await click('det-vlm-det-rust');
+    await click('det-vlm-start');
+    const x = host.querySelector<HTMLButtonElement>('.dlg-h button');
+    expect(x?.disabled).toBe(false);
+    act(() => x?.click());
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -493,8 +526,9 @@ describe('DetectorRunDialog', () => {
     }));
     await open();
     await click('det-vlm-det-rust');
+    // the suggested class is named after the detector
     expect(text('det-vlm-class-missing-rust')).toBe(
-      "corrosion isn't a class in this project yet. Its findings will offer to add it.",
+      "Detector rust isn't a class in this project yet. Its findings will offer to add it.",
     );
   });
 });
