@@ -30,7 +30,13 @@ vi.mock('../../shell', () => ({
   jobs: { getState: () => ({ start: h.start }) },
 }));
 
+vi.mock('../../exports/exports', async () => {
+  const { createToastStore } = await import('../../exports/exportModel');
+  return { toasts: createToastStore() };
+});
+
 import { analyticsPack } from '../../analyticsPack';
+import { toasts } from '../../exports/exports';
 import { readMode } from '../LocalDetect';
 import { DetectorRunDialog } from './DetectorRunDialog';
 
@@ -110,6 +116,7 @@ beforeEach(() => {
       id: 'proj',
       root: 'D:\\projects\\site',
       manifest: {
+        layers: [],
         classCatalogues: [
           {
             id: 'c1',
@@ -126,6 +133,7 @@ beforeEach(() => {
   root = createRoot(host);
   onClose = vi.fn<() => void>();
   window.localStorage.clear();
+  toasts.setState({ toasts: [] });
   canRun();
 });
 afterEach(() => {
@@ -485,6 +493,87 @@ describe('DetectorRunDialog', () => {
     // the finished start does not close (or touch) the dialog a second time
     expect(onClose).toHaveBeenCalledTimes(1);
     root = createRoot(host);
+  });
+
+  /** Start, close while the model loads, unmount as the app does, then answer each start. */
+  async function closeThenAnswer(selected: readonly DetectItem[], answers: (string | null)[]) {
+    const pending: ((v: string | null) => void)[] = [];
+    h.start.mockImplementation(
+      () =>
+        new Promise<string | null>((r) => {
+          pending.push(r);
+        }),
+    );
+    await open(selected);
+    await click('det-vlm-det-rust');
+    await click('det-vlm-start');
+    act(() => {
+      q('det-ai-dialog')?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    act(() => {
+      root.unmount();
+    });
+    for (const a of answers) {
+      await act(async () => {
+        pending.shift()?.(a);
+        await Promise.resolve();
+      });
+      await flush();
+    }
+    root = createRoot(host);
+  }
+
+  it('a start that fails after the dialog closed shows an error notice', async () => {
+    await closeThenAnswer(photos(2), ['The detector model did not start: no exe']);
+    expect(toasts.getState().toasts).toMatchObject([
+      {
+        title: 'A detector run did not start',
+        state: 'error',
+        message: 'The detector model did not start: no exe',
+      },
+    ]);
+  });
+
+  it('with several runs the notice names the layer that did not start', async () => {
+    workspace.setState({
+      project: {
+        ...workspace.getState().project,
+        manifest: {
+          ...workspace.getState().project?.manifest,
+          layers: [
+            { id: 'd1', name: 'Photos 3 May' },
+            { id: 'd2', name: 'Photos 9 June' },
+          ],
+        },
+      } as unknown as OpenProject,
+    });
+    await closeThenAnswer([...photos(1, 'd1'), ...photos(1, 'd2')], [null, 'Out of memory.']);
+    expect(h.start).toHaveBeenCalledTimes(2);
+    expect(toasts.getState().toasts).toMatchObject([
+      { state: 'error', message: 'Photos 9 June: Out of memory.' },
+    ]);
+  });
+
+  it('a run queued after the dialog closed shows no notice', async () => {
+    h.answers.set('detect:queue', () => {
+      const req = h.start.mock.calls[0]?.[0] as { params: { run: string } };
+      return {
+        items: [
+          {
+            run: req.params.run,
+            layer: 'd1',
+            photos: 2,
+            detectors: ['Detector rust'],
+            queuedAt: '2026-10-22T10:00:00.000Z',
+          },
+        ],
+      };
+    });
+    await closeThenAnswer(photos(2), ['Another run is using the graphics card.']);
+    expect(h.calls.some((c) => c.channel === 'detect:queue')).toBe(true);
+    expect(toasts.getState().toasts).toEqual([]);
   });
 
   it('the close button works while the model loads', async () => {

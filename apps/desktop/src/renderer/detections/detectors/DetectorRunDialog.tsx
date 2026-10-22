@@ -13,6 +13,7 @@ import { Button, Chip, Icon, t, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { analyticsPack, useAnalyticsPack } from '../../analyticsPack';
+import { toasts } from '../../exports/exports';
 import { bridge, jobs } from '../../shell';
 import type { DetectItem } from '../convert';
 import { ModeSwitch, type DetectMode } from '../LocalDetect';
@@ -197,6 +198,8 @@ export function DetectorRunDialog({
     setBusy(true);
     setStartError(null);
     const errors: string[] = [];
+    /** The errors with the layer they belong to, for a notice once the dialog is gone. */
+    const failures: { layer: string; error: string }[] = [];
     let started = 0;
     let queued = 0;
     for (const run of plan.runs) {
@@ -211,11 +214,33 @@ export function DetectorRunDialog({
       const q = await bridge.call('detect:queue', {});
       const waits = q.ok && q.value.items.some((w) => w.run === runId);
       if (waits || error === t('detect.preset.queued')) queued++;
-      else errors.push(error);
+      else {
+        errors.push(error);
+        failures.push({ layer: run.layer, error });
+      }
     }
     starting.current = false;
-    // closed while the model loaded: the runs carry on in the jobs list
-    if (!mounted.current) return;
+    // closed while the model loaded: the runs carry on in the jobs list, and a run that did not
+    // start says so in a notice (bottom right), naming its layer when several runs started
+    if (!mounted.current) {
+      if (failures.length > 0) {
+        const names = new Map(project.manifest.layers.map((l) => [l.id, l.name]));
+        const message = failures
+          .map((f) =>
+            plan.runs.length > 1
+              ? t('detect.preset.run.failedLayer', {
+                  layer: names.get(f.layer) ?? f.layer,
+                  error: f.error,
+                })
+              : f.error,
+          )
+          .join(' ');
+        const id = `detect-start-${newRunId()}`;
+        toasts.getState().start(id, t('detect.preset.run.failedTitle'));
+        toasts.getState().finish(id, 'error', message);
+      }
+      return;
+    }
     setBusy(false);
     if (errors.length === 0 && queued === 0) {
       onClose();

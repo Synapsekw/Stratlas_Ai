@@ -6273,6 +6273,8 @@ export const en = {
   'detect.preset.run.ok': 'OK',
   'detect.preset.hiddenByBar_one': '· {count} hidden by the bar',
   'detect.preset.hiddenByBar_other': '· {count} hidden by the bar',
+  'detect.preset.run.failedTitle': 'A detector run did not start',
+  'detect.preset.run.failedLayer': '{layer}: {error}',
   'detect.preset.run.loading':
     'Loading the detector model on the graphics card. This can take a minute or two.',
 } as const satisfies Record<string, string>;
