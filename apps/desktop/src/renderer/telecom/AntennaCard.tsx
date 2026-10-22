@@ -4,7 +4,7 @@
  * it was put for the session (until `resetCardDrag`). A, R, the arrows and Esc work while it shows
  * a unit (`useAntennaKeys`).
  */
-import type { AntennaStatus, AntennaUnit, AntennaValue, Layer } from '@aio/schema';
+import type { AntennaKind, AntennaStatus, AntennaUnit, AntennaValue, Layer } from '@aio/schema';
 import { Button, Chip, IconButton, Kbd, Tip, t } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import {
@@ -21,15 +21,19 @@ import {
 import { createPortal } from 'react-dom';
 import { openPhoto } from '../builder/photoOpen';
 import { thumbUrl } from '../thumbs/Thumb';
+import { AntennaTypedValues } from './AntennaTypedValues';
 import { AntennaUserFields } from './AntennaUserFields';
 import { TONE, formatDeg, qualityTip, trueAzimuth } from './antennaFormat';
 import { KIND_COLOURS } from './antennaScene';
 import { isNotMeasured } from './antennaTyped';
 import {
+  beginFlag,
   decideAntenna,
+  deleteFlaggedUnit,
   filteredUnits,
   patchUnitUser,
   selectAntenna,
+  setUnitKind,
   stepAntenna,
   useAntennas,
 } from './antennaStore';
@@ -566,7 +570,16 @@ const BODY_INNER: CSSProperties = {
   gap: 'var(--sp-5)',
   padding: 'var(--sp-5)',
 };
-/** Accept and Reject stay in view below the scrolling middle. */
+/** The kinds a person can pick, in the order of the inventory's groups. */
+const KINDS: readonly AntennaKind[] = ['panel', 'short', 'dish', 'other'];
+const KIND_ROW: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 'var(--sp-3)',
+  minWidth: 0,
+};
+
+/** Accept and Reject stay in view below the scrolling middle; Redraw and Delete under them. */
 const FOOT: CSSProperties = {
   flex: 'none',
   display: 'grid',
@@ -650,7 +663,8 @@ function CardBody(props: BodyProps): ReactElement {
   );
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || (e.target as Element).closest('button')) return;
+    // a control in the header (the arrows, the kind picker) is used, not dragged
+    if (e.button !== 0 || (e.target as Element).closest('button, select, input')) return;
     const hb = host.getBoundingClientRect();
     grab.current = { dx: e.clientX - hb.left - at.x, dy: e.clientY - hb.top - at.y };
     try {
@@ -805,21 +819,42 @@ function CardBody(props: BodyProps): ReactElement {
               }}
             />
           </div>
-          {/* the kind and how it was found, whole: they wrap rather than get cut */}
-          <Tip content={`${kindWord} · ${kindBasis}`} placement="top" repeatsName>
-            <span
-              data-testid="antenna-card-kind"
-              tabIndex={0}
-              style={{ ...MUTED, lineHeight: 1.3, overflowWrap: 'anywhere' }}
+          <div style={KIND_ROW}>
+            {/* the kind and how it was found, whole: they wrap rather than get cut */}
+            <Tip content={`${kindWord} · ${kindBasis}`} placement="top" repeatsName>
+              <span
+                data-testid="antenna-card-kind"
+                tabIndex={0}
+                style={{ ...MUTED, flex: '1 1 auto', lineHeight: 1.3, overflowWrap: 'anywhere' }}
+              >
+                {kindWord} · <span data-testid="antenna-card-kind-basis">{kindBasis}</span>
+              </span>
+            </Tip>
+            <select
+              className="input sm"
+              data-testid="antenna-card-kind-pick"
+              aria-label={t('telecom.antennas.card.kind')}
+              title={readOnly ? t('telecom.antennas.readOnly') : undefined}
+              value={unit.kind}
+              disabled={readOnly}
+              style={{ flex: 'none' }}
+              onChange={(e) => {
+                void setUnitKind(unit.id, e.target.value as AntennaKind);
+              }}
             >
-              {kindWord} · <span data-testid="antenna-card-kind-basis">{kindBasis}</span>
-            </span>
-          </Tip>
+              {KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {t(`telecom.antennas.card.kind.${k}`)}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div ref={body} data-testid="antenna-card-body" style={BODY}>
           <div style={BODY_INNER}>
             <PhotoStrip key={unit.id} entries={entries} />
             <Values unit={unit} />
+            <AntennaTypedValues key={unit.id} unit={unit} readOnly={readOnly} />
             <details>
               <summary style={{ cursor: 'pointer', color: 'var(--fg-2)' }}>
                 {t('telecom.antennas.card.more')}
@@ -863,6 +898,30 @@ function CardBody(props: BodyProps): ReactElement {
           >
             {t('telecom.antennas.reject')} <Kbd>R</Kbd>
           </Button>
+          <Button
+            variant="quiet"
+            icon="polygon"
+            data-testid="antenna-card-redraw"
+            {...reason}
+            onClick={() => {
+              beginFlag(unit.id);
+            }}
+          >
+            {t('telecom.antennas.card.redraw')}
+          </Button>
+          {unit.origin === 'flagged' ? (
+            <Button
+              variant="quiet"
+              icon="trash"
+              data-testid="antenna-card-delete"
+              {...reason}
+              onClick={() => {
+                void deleteFlaggedUnit(unit.id);
+              }}
+            >
+              {t('telecom.antennas.card.delete')}
+            </Button>
+          ) : null}
         </div>
       </div>
     </>

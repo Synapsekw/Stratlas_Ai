@@ -694,3 +694,97 @@ describe('AntennaCard keys', () => {
     expect(antennaStore.getState().selected).toBeNull();
   });
 });
+
+describe('AntennaCard editing', () => {
+  beforeEach(() => {
+    antennaStore.setState({ flagging: null, running: false, flagJob: null });
+  });
+  const flagged = (id: string) => unit(id, { origin: 'flagged', kindBasis: 'user' });
+
+  it('shows the typed values under the values', () => {
+    load(three());
+    show();
+    const typed = q('antenna-typed')!;
+    expect(q('antenna-card-body')!.contains(typed)).toBe(true);
+    expect(q('antenna-typed-azimuthGridDeg')).not.toBeNull();
+  });
+
+  it('Delete shows for flagged units only', async () => {
+    load([unit('a1'), flagged('f1')], { filter: 'all' });
+    show();
+    expect(q('antenna-card-redraw')).not.toBeNull();
+    expect(q('antenna-card-delete')).toBeNull();
+    act(() => {
+      selectAntenna('f1');
+    });
+    expect(q('antenna-card-delete')).not.toBeNull();
+    click('antenna-card-delete');
+    await settle();
+    expect(antennaStore.getState().file!.units.map((u) => u.id)).toEqual(['a1']);
+    expect(antennaStore.getState().selected).toBeNull();
+  });
+
+  it('Redraw outline starts the tool for this unit', () => {
+    load(three());
+    show();
+    click('antenna-card-redraw');
+    expect(antennaStore.getState().flagging).toEqual({ unit: 'a1' });
+  });
+
+  it('picking a kind marks it as yours', async () => {
+    load([unit('a1', { ai: { kind: 'panel', provider: 'x' } as unknown as AntennaUnit['ai'] })]);
+    show();
+    const pick = q('antenna-card-kind-pick') as HTMLSelectElement;
+    expect(pick.value).toBe('panel');
+    expect(pick.getAttribute('aria-label')).toBe('Kind');
+    act(() => {
+      pick.value = 'dish';
+      pick.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await settle();
+    const u = antennaStore.getState().file!.units[0]!;
+    expect(u.kind).toBe('dish');
+    expect(u.kindBasis).toBe('user');
+    expect(u.ai).toBeUndefined();
+    expect(q('antenna-card-kind-basis')!.textContent).toBe('set by you');
+  });
+
+  it('picking a kind does not start a header drag', () => {
+    load(three());
+    show();
+    const pick = q('antenna-card-kind-pick')!;
+    const e = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+    act(() => {
+      pick.dispatchEvent(e);
+    });
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('read-only: kind, redraw and delete change nothing', async () => {
+    load([flagged('f1')], { filter: 'all', readOnly: true });
+    show();
+    expect((q('antenna-card-kind-pick') as HTMLSelectElement).disabled).toBe(true);
+    expect(q('antenna-card-redraw')!.getAttribute('aria-disabled')).toBe('true');
+    expect(q('antenna-card-delete')!.getAttribute('aria-disabled')).toBe('true');
+    click('antenna-card-redraw');
+    click('antenna-card-delete');
+    await settle();
+    expect(antennaStore.getState().flagging).toBeNull();
+    expect(antennaStore.getState().file!.units).toHaveLength(1);
+    expect(h.writes).toBe(0);
+  });
+
+  it('Reset to measured on the card puts the measured value back', async () => {
+    load([
+      unit('a1', {
+        azimuthGridDeg: { value: 175, basis: 'user', quality: { basis: 'user' } },
+        measured: { azimuthGridDeg: measured(168) },
+      }),
+    ]);
+    show();
+    click('antenna-typed-reset-azimuthGridDeg');
+    await settle();
+    expect(antennaStore.getState().file!.units[0]!.azimuthGridDeg).toEqual(measured(168));
+    expect(value('azimuth')).toBe('169.1°');
+  });
+});
