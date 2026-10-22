@@ -28,7 +28,7 @@
 - `packInstall.ts`: both pack kinds go through a signature / unsigned-confirm gate.
 - the hardware and server code: `nvidia-smi`, `tasklist` and `ps` run by full path, and `llama-server` starts with `jobBaseEnv`.
 
-Tasks 1, 4 and 5 build on that version. First check that `LLAMA_API_KEY`, `CUDA_VISIBLE_DEVICES` and `CUDA_DEVICE_ORDER` still reach the server (`server.test.ts`). Then read the "typed model corrections" spec from `docs/ai-corrections-design` (aio-software-52, landing after #215) before Task 7. If it defines reject reasons or correction records for model drafts, align Task 7 and Task 8 with it and record a ruling.
+Tasks 1, 4 and 5 build on that version. First check that `LLAMA_API_KEY`, `CUDA_VISIBLE_DEVICES` and `CUDA_DEVICE_ORDER` still reach the server (`server.test.ts`). The "typed model corrections" and antenna flagging specs (#216) were checked on 22 Oct: they have no overlap with detector reject reasons or the ledger.
 
 **Deviations from the spec's wording (reported to the founder):**
 
@@ -460,6 +460,7 @@ Tasks 1, 4 and 5 build on that version. First check that `LLAMA_API_KEY`, `CUDA_
     - `a detector whose class is missing says it will suggest the class`: verbatim "{class} isn't a class in this project yet. Its findings will offer to add it."
 - [ ] **Step 2: Run** them. Expected: FAIL.
 - [ ] **Step 3: Implement.**
+  - Any reason that keeps Start disabled is also shown as a line next to Start (testid `det-vlm-blocker`), not only in the `disabledReason` tip. The founder could not see why a Send button was greyed out in the model corrections flow (`2026-10-22-engineering-model-typed-corrections-design.md`); Start must never look dead with no reason on screen. Add the test `the blocker reason is visible next to Start`.
   - Dialog chrome as `LocalDetectDialog` (`.dlg-scrim > .dlg.wide.det-ai`, `useFocusTrap`).
   - Detector toggles are `Button pressed` in two groups: the project's asset type, then "All detectors".
   - A `ThresholdSlider` (Task 9) per chosen detector, min 0.5.
