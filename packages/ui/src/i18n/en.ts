@@ -3896,7 +3896,6 @@ export const en = {
   'eng.correction.pinPlace': 'Place pin',
   'eng.correction.pinCancel': 'Cancel picking',
   'eng.correction.showTarget': 'Show target in scene',
-  'eng.correction.comment': 'Describe the discrepancy',
   'eng.correction.commentPlaceholder': "For example: remove the ladder, there isn't one",
   'eng.correction.evidenceSelected': 'Source evidence ({count} selected)',
   'eng.correction.evidenceOptional': 'Source evidence (optional)',

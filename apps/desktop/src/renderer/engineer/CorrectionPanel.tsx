@@ -178,6 +178,16 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
         : badRadius
           ? t('eng.correction.radiusHint')
           : undefined);
+  // Saving needs no AI, so a blocker never stops it; only the box and the lock do.
+  const saveReason = canSave
+    ? undefined
+    : ((lockReason !== p.blocker?.message ? lockReason : undefined) ??
+      (!typed
+        ? t('eng.correction.typeFirst')
+        : tooLong
+          ? t('eng.correction.tooLong', { limit: formatCount(TEXT_LIMIT) })
+          : t('eng.correction.radiusHint')));
+  const saveReasonId = saveReason === sendReason ? `${id}-send-reason` : `${id}-save-reason`;
   const resendable = selected?.status === 'rejected' || selected?.status === 'proposed';
   const resendReason =
     lockReason ??
@@ -186,9 +196,9 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
       : undefined);
   const showFix = !!p.blocker?.fix && lockReason === p.blocker.message;
 
-  async function perform(
-    action: () => void | Promise<void>,
-    success: () => void = () => undefined,
+  async function perform<R>(
+    action: () => R | Promise<R>,
+    success: (result: R) => void = () => undefined,
     kind: 'saving' | 'sending' = 'saving',
   ) {
     if (locked || pendingRef.current) return;
@@ -197,8 +207,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
     setActionError('');
     setNotice(null);
     try {
-      await action();
-      success();
+      success(await action());
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t('eng.correction.error.save'));
     } finally {
@@ -213,6 +222,16 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
     p.onPinModeChange(mode === 'pin' && !validPin);
   }
 
+  /** The request was saved; say it was sent, or why sending failed. */
+  function settleSend(result: unknown, done: MessageKey) {
+    const sendError =
+      typeof result === 'object' && result !== null && 'sendError' in result
+        ? String(result.sendError)
+        : '';
+    if (sendError) setActionError(sendError);
+    else setNotice(done);
+  }
+
   /** Saves the typed text, and with `send` hands it and the waiting requests to the AI. */
   function submit(send: boolean) {
     if (!typed || tooLong || badRadius) return;
@@ -224,10 +243,10 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
           evidenceIds: selectedEvidence,
           send,
         }),
-      () => {
+      (result) => {
         setComment('');
         setEvidenceIds([]);
-        setNotice(send ? 'eng.correction.sent' : 'eng.correction.saved');
+        settleSend(result, send ? 'eng.correction.sent' : 'eng.correction.saved');
       },
       send ? 'sending' : 'saving',
     );
@@ -258,13 +277,13 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
         open={!selected}
       >
         <summary>
-          <h3>{t('eng.correction.request')}</h3>
+          <h3 id={`${id}-request`}>{t('eng.correction.request')}</h3>
         </summary>
         <div className="eng-correction-section">
           <textarea
             id={`${id}-comment`}
             className="input eng-correction-box"
-            aria-label={t('eng.correction.comment')}
+            aria-labelledby={`${id}-request`}
             rows={3}
             value={comment}
             maxLength={TEXT_LIMIT}
@@ -467,6 +486,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
             </Button>
             <Button
               disabled={!canSave}
+              {...(saveReason ? { 'aria-describedby': saveReasonId } : {})}
               onClick={() => {
                 submit(false);
               }}
@@ -488,6 +508,7 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
             text={sendReason}
             fix={showFix ? p.blocker?.fix : undefined}
           />
+          {saveReason !== sendReason && <Reason id={`${id}-save-reason`} text={saveReason} />}
         </div>
       </details>
 
@@ -697,9 +718,9 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                 onClick={() =>
                   void perform(
                     () => p.onResend(selected.id, reply.trim() || undefined),
-                    () => {
+                    (result) => {
                       setReplies({ ...replies, [selected.id]: '' });
-                      setNotice('eng.correction.sent');
+                      settleSend(result, 'eng.correction.sent');
                     },
                     'sending',
                   )

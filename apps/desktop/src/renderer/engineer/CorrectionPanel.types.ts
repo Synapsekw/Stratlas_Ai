@@ -35,6 +35,14 @@ export interface CorrectionProposalView {
 }
 
 type Action = void | Promise<void>;
+/**
+ * A submit or resend that saved the request but could not hand it to the AI resolves with
+ * `sendError`; rejecting means nothing was saved.
+ */
+export interface SendFailure {
+  sendError: string;
+}
+type SendAction = Action | SendFailure | Promise<SendFailure | undefined>;
 
 export interface CorrectionComposerDraft {
   targetMode: 'part' | 'pin';
@@ -86,7 +94,7 @@ export interface CorrectionPanelProps {
     comment: string;
     evidenceIds: string[];
     send: boolean;
-  }) => Action;
+  }) => SendAction;
   onSelectRequest: (id: string) => void;
   onSend: (ids: string[]) => Action;
   onViewChange: (view: 'before' | 'after') => void;
@@ -95,5 +103,5 @@ export interface CorrectionPanelProps {
   onReject: (proposalId: string) => Action;
   onReply: (requestId: string, text: string) => Action;
   /** Sends a rejected or proposed request back to the AI, with an optional new reply. */
-  onResend: (requestId: string, reply?: string) => Action;
+  onResend: (requestId: string, reply?: string) => SendAction;
 }

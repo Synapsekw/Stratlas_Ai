@@ -71,8 +71,10 @@ function button(label: string) {
   return result;
 }
 function comment() {
-  const result = host.querySelector<HTMLTextAreaElement>(
-    'textarea[aria-label="Describe the discrepancy"]',
+  const result = [...host.querySelectorAll('textarea')].find(
+    (a) =>
+      document.getElementById(a.getAttribute('aria-labelledby') ?? '')?.textContent ===
+      "Tell the AI what's wrong",
   );
   if (!result) throw new Error('Missing comment');
   return result;

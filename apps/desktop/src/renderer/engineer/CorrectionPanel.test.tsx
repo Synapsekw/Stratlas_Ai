@@ -57,8 +57,18 @@ function button(text: string) {
   if (!found) throw new Error(`Missing button: ${text}`);
   return found;
 }
+/** The accessible name: aria-labelledby text, else aria-label. */
+function accessibleName(element: Element) {
+  const ids = element.getAttribute('aria-labelledby');
+  if (ids)
+    return ids
+      .split(/\s+/)
+      .map((ref) => document.getElementById(ref)?.textContent.trim() ?? '')
+      .join(' ');
+  return element.getAttribute('aria-label') ?? '';
+}
 function area(name: string) {
-  const found = host.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${name}"]`);
+  const found = [...host.querySelectorAll('textarea')].find((a) => accessibleName(a) === name);
   if (!found) throw new Error(`Missing field: ${name}`);
   return found;
 }
@@ -77,6 +87,7 @@ async function click(text: string) {
     await Promise.resolve();
   });
 }
+const BOX = "Tell the AI what's wrong";
 const request = {
   id: 'r1',
   target: { kind: 'part' as const, partId: 'part-a', label: 'Upper radio' },
@@ -105,7 +116,7 @@ it('updates correction controls, statuses and plural counts when the language ch
     setLocale('fr', {
       'eng.correction.label': 'Corrections du modèle',
       'eng.correction.source.show': 'Afficher le nuage source',
-      'eng.correction.comment': 'Décrire la différence',
+      'eng.correction.request': 'Dites à l’IA ce qui ne va pas',
       'eng.correction.commentPlaceholder': 'Que faut-il modifier ?',
       'eng.correction.status.open': 'En attente',
       'eng.correction.send_one': 'Envoyer {count} demande',
@@ -114,7 +125,7 @@ it('updates correction controls, statuses and plural counts when the language ch
   });
   expect(host.querySelector('section')?.getAttribute('aria-label')).toBe('Corrections du modèle');
   expect(button('Afficher le nuage source')).toBeDefined();
-  expect(area('Décrire la différence').placeholder).toBe('Que faut-il modifier ?');
+  expect(area('Dites à l’IA ce qui ne va pas').placeholder).toBe('Que faut-il modifier ?');
   expect(host.textContent).toContain('En attente');
   expect(button('Envoyer 2 demandes')).toBeDefined();
   render(props({ requests: [request] }));
@@ -146,7 +157,7 @@ it('saves a selected-part request and explicit evidence only after a useful comm
   const p = props();
   render(p);
   expect(button('Save without sending').disabled).toBe(true);
-  write(area('Describe the discrepancy'), '  Raise this radio to its mount.  ');
+  write(area(BOX), '  Raise this radio to its mount.  ');
   const evidence = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
   expect(evidence).not.toBeNull();
   act(() => evidence?.click());
@@ -157,7 +168,7 @@ it('saves a selected-part request and explicit evidence only after a useful comm
     evidenceIds: ['img-12'],
     send: false,
   });
-  expect(area('Describe the discrepancy').value).toBe('');
+  expect(area(BOX).value).toBe('');
   expect(p.onSend).not.toHaveBeenCalled();
 });
 
@@ -166,9 +177,9 @@ it('retains the correction text and displays a failed-save error for retry', asy
     onSubmit: vi.fn().mockRejectedValue(new Error('Project could not be saved.')),
   });
   render(p);
-  write(area('Describe the discrepancy'), request.comment);
+  write(area(BOX), request.comment);
   await click('Save without sending');
-  expect(area('Describe the discrepancy').value).toBe(request.comment);
+  expect(area(BOX).value).toBe(request.comment);
   expect(host.querySelector('[role="alert"]')?.textContent).toContain(
     'Project could not be saved.',
   );
@@ -188,7 +199,7 @@ it('offers location picking and sends the exact pin coordinates without rounding
     layerId: 'cloud-a',
   };
   render({ ...p, pin, pinMode: false });
-  write(area('Describe the discrepancy'), 'Add the missing radio at this point.');
+  write(area(BOX), 'Add the missing radio at this point.');
   expect(host.textContent).toContain('X 102.123, Y 31.250, Z -400.457');
   expect(host.textContent).not.toContain('102.123456');
   await click('Save without sending');
@@ -236,7 +247,7 @@ it('shows and enforces the permitted correction radius around a location pin', a
   });
   expect(onPinRadiusChange).toHaveBeenCalledWith(0.5);
   render({ ...p, pinRadiusM: 0.5 });
-  write(area('Describe the discrepancy'), request.comment);
+  write(area(BOX), request.comment);
   await click('Save without sending');
   expect(p.onSubmit).toHaveBeenCalledWith({
     target: { kind: 'pin', position: [100, 30, -20], radiusM: 0.5 },
@@ -245,7 +256,7 @@ it('shows and enforces the permitted correction radius around a location pin', a
     send: false,
   });
   render({ ...p, pinRadiusM: 6 });
-  write(area('Describe the discrepancy'), request.comment);
+  write(area(BOX), request.comment);
   expect(button('Save without sending').disabled).toBe(true);
 });
 
@@ -345,7 +356,7 @@ it('keeps inspection available but locks mutations on an accepted model', () => 
   });
   render(p);
   expect(button('Save without sending').disabled).toBe(true);
-  expect(area('Describe the discrepancy').disabled).toBe(true);
+  expect(area(BOX).disabled).toBe(true);
   expect(button('Accept correction').disabled).toBe(true);
   expect(button('After').disabled).toBe(false);
   expect(host.textContent).toContain('read-only');
@@ -360,17 +371,17 @@ it('submits once and keeps the draft visible until persistence completes', async
       }),
   );
   render(props({ onSubmit }));
-  write(area('Describe the discrepancy'), request.comment);
+  write(area(BOX), request.comment);
   await click('Save without sending');
   await click('Save without sending');
   expect(onSubmit).toHaveBeenCalledTimes(1);
-  expect(area('Describe the discrepancy').value).toBe(request.comment);
+  expect(area(BOX).value).toBe(request.comment);
   expect(button('Save without sending').disabled).toBe(true);
   await act(async () => {
     resolveSave?.();
     await Promise.resolve();
   });
-  expect(area('Describe the discrepancy').value).toBe('');
+  expect(area(BOX).value).toBe('');
 });
 
 it('keeps reply drafts attached to their own request when selection changes', async () => {
@@ -405,7 +416,7 @@ it('drops a non-finite pin to a model-wide request and enforces the storage limi
   render(p);
   await click('Location pin');
   render({ ...p, pin: { position: [NaN, 30, 20] } });
-  write(area('Describe the discrepancy'), request.comment);
+  write(area(BOX), request.comment);
   expect(host.textContent).not.toContain('NaN');
   await click('Save without sending');
   expect(p.onSubmit).toHaveBeenLastCalledWith({
@@ -414,7 +425,7 @@ it('drops a non-finite pin to a model-wide request and enforces the storage limi
     send: false,
   });
   render({ ...p, pin: { position: [0, 30, 20] } });
-  write(area('Describe the discrepancy'), 'x'.repeat(4001));
+  write(area(BOX), 'x'.repeat(4001));
   expect(button('Save without sending').disabled).toBe(true);
   expect(button('Send').disabled).toBe(true);
   expect(p.onSubmit).toHaveBeenCalledTimes(1);
@@ -437,7 +448,7 @@ it('enables Send with text and no target, and submits a model-wide request that 
   const p = modelWide();
   render(p);
   expect(host.textContent).toContain("Tell the AI what's wrong");
-  write(area('Describe the discrepancy'), 'remove the ladder');
+  write(area(BOX), 'remove the ladder');
   expect(button('Send').disabled).toBe(false);
   await click('Send');
   expect(p.onSubmit).toHaveBeenCalledWith({
@@ -447,7 +458,7 @@ it('enables Send with text and no target, and submits a model-wide request that 
   });
   const [submitted] = vi.mocked(p.onSubmit).mock.calls[0] ?? [];
   expect(submitted?.target).toBeUndefined();
-  expect(area('Describe the discrepancy').value).toBe('');
+  expect(area(BOX).value).toBe('');
   expect(host.textContent).toContain(
     'Sent. The proposal appears here for Before and After review.',
   );
@@ -479,12 +490,21 @@ it.each([
     'Checking the AI connection…',
   ],
   ['empty', {}, 'Type a correction to send.'],
+  [
+    'blocker with an empty box',
+    { blocker: { message: 'Checking the AI connection…' } },
+    'Checking the AI connection…',
+  ],
 ] as const)('a disabled Send names its reason on screen: %s', (kind, over, reason) => {
   render(modelWide(over));
-  if (kind === 'blocker') write(area('Describe the discrepancy'), 'remove the ladder');
+  if (kind === 'blocker') write(area(BOX), 'remove the ladder');
   const send = button('Send');
   expect(send.disabled).toBe(true);
   expect(description(send)).toBe(reason);
+  const save = button('Save without sending');
+  if (save.disabled) expect(description(save)).not.toBe('');
+  if (kind === 'blocker with an empty box')
+    expect(description(save)).toBe('Type a correction to send.');
   expect(host.textContent).toContain(reason);
 });
 
@@ -517,7 +537,7 @@ it('does not count rejected or proposed requests as waiting', () => {
 
 it('counts typed text together with the waiting requests', () => {
   render(modelWide({ requests: [request] }));
-  write(area('Describe the discrepancy'), 'remove the ladder');
+  write(area(BOX), 'remove the ladder');
   expect(button('Send 2 requests to AI').disabled).toBe(false);
 });
 
@@ -565,10 +585,40 @@ it('keeps the text when submit fails', async () => {
     onSubmit: vi.fn().mockRejectedValue(new Error('The AI could not be reached.')),
   });
   render(p);
-  write(area('Describe the discrepancy'), 'remove the ladder');
+  write(area(BOX), 'remove the ladder');
   await click('Send');
-  expect(area('Describe the discrepancy').value).toBe('remove the ladder');
+  expect(area(BOX).value).toBe('remove the ladder');
   expect(host.querySelector('[role="alert"]')?.textContent).toContain(
     'The AI could not be reached.',
   );
+});
+
+it('clears the box and shows the error when the request is saved but sending fails', async () => {
+  const p = modelWide({
+    onSubmit: vi.fn().mockResolvedValue({ sendError: 'The AI did not answer in time…' }),
+  });
+  render(p);
+  write(area(BOX), 'remove the ladder');
+  await click('Send');
+  expect(area(BOX).value).toBe('');
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+    'The AI did not answer in time…',
+  );
+  expect(host.textContent).not.toContain('Sent. The proposal appears here');
+});
+
+it('clears the reply and shows the error when a resend is saved but not sent', async () => {
+  const p = props({
+    requests: [{ ...request, id: 'fix-1', status: 'rejected' }],
+    selectedRequestId: 'fix-1',
+    onResend: vi.fn().mockResolvedValue({ sendError: 'The AI did not answer in time…' }),
+  });
+  render(p);
+  write(area('Reply to this request'), 'try the other ladder');
+  await click('Send again');
+  expect(area('Reply to this request').value).toBe('');
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+    'The AI did not answer in time…',
+  );
+  expect(host.textContent).not.toContain('Sent. The proposal appears here');
 });
