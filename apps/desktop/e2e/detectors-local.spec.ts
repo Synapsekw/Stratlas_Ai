@@ -10,8 +10,18 @@
  * per photo at or above the threshold and one flagged `belowThreshold`. The Detections review
  * lists them as waiting drafts. The zero-network guard lets through only the fake's origin, and
  * the fake saw only authorised requests. A tampered `.aiodet` is refused with its reason.
+ *
+ * The UI test drives the same run from the Detect dialog the way a person does: Detections, two
+ * photos picked, Detect, "Detectors (on this computer)", the detector toggled on, Start. Two stand-ins
+ * make that possible on CI: a stub Analytics pack (`stubPack`, a few bytes per file, pointed at by
+ * `QUADRION_ANALYTICS_PACK`) so the dialog sees the pack installed, and an `analytics:hardware`
+ * handler replaced in main (`fakeCard`) so the graphics card check passes on a machine with no
+ * NVIDIA card. The fake server still does the detecting. The demo has no `patch` class, so the
+ * drafts come back as a suggested new class (Create class in the inspector). The test then checks
+ * the pass strip and its bar, and that a reject with a reason reaches the detector ledger.
  */
 import { create } from 'tar';
+import type { HardwareCheck } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -311,7 +321,7 @@ async function stubPack(base: string): Promise<string> {
 async function fakeCard(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('analytics:hardware');
-    ipcMain.handle('analytics:hardware', () => ({
+    ipcMain.handle('analytics:hardware', (): HardwareCheck => ({
       ok: true,
       gpu: 'NVIDIA GeForce RTX 5070 Ti',
       gpuIndex: 0,
@@ -400,6 +410,8 @@ test('runs a detector from the Detect dialog and reviews its drafts', async () =
     await tiles.first().click();
     const score = win.getByTestId('det-vlm-score');
     await expect(score).toHaveText(VLM_HIGH.toFixed(2));
+    // the demo has no "patch" class: the draft offers the detector's name as a new class
+    await expect(win.getByTestId('det-create-class')).toBeVisible();
 
     // 5. the bar: lowered under LOW every draft shows, with both scores of the fake; raised to
     // its top (0.95, HIGH itself) only the HIGH drafts stay; lowered again they return

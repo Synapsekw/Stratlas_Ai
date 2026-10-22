@@ -89,6 +89,31 @@ afterEach(() => {
   host.remove();
 });
 
+describe('Inspector on a suggested class', () => {
+  it('a detector draft whose class the project lacks offers Create class', async () => {
+    const root = createRoot(host);
+    const d = {
+      ...det('v1', 'Spalling'),
+      suggestedNew: true,
+      confidence: 0.8,
+      origin: {
+        kind: 'model',
+        producer: 'qwen',
+        detector: { id: 'spalling', version: 1, modelSha256: 'a'.repeat(64), threshold: 0.6 },
+      },
+    } as unknown as Detection;
+    await act(async () => {
+      await Promise.resolve();
+      root.render(<Inspector {...props(d, () => undefined)} />);
+    });
+    expect(host.querySelector('[data-testid="det-unknown-class"]')?.textContent).toContain(
+      'Spalling',
+    );
+    expect(host.querySelector('[data-testid="det-create-class"]')).not.toBeNull();
+    root.unmount();
+  });
+});
+
 describe('Inspector new class state', () => {
   it('closes the row and drops the error when the detection changes', async () => {
     const root = createRoot(host);

@@ -92,4 +92,45 @@ describe('suggested new classes in pass files', () => {
     );
     expect(r.detections[0]?.classId).toBe('crack');
   });
+  it('a detector pass naming a class the project lacks reads as a suggested new class', () => {
+    // detect.vlm keeps the detector's class id in `class` and writes label + suggestedNew
+    const r = readPasses(
+      [
+        {
+          name: 'vlm-run-a.json',
+          file: {
+            schema: 'aio.detections/1',
+            source: 'model',
+            producer: 'detect.vlm',
+            detections: [
+              {
+                id: 'v1',
+                photo: 'p1',
+                class: 'spalling',
+                label: 'Spalling',
+                suggestedNew: true,
+                bbox: [0, 0, 10, 10],
+                status: 'draft',
+                confidence: 0.8,
+                origin: {
+                  model: 'qwen',
+                  detectorId: 'spalling',
+                  detectorVersion: 1,
+                  modelSha256: 'a'.repeat(64),
+                  threshold: 0.6,
+                },
+              },
+            ],
+          },
+        },
+      ],
+      ctx,
+    );
+    expect(r.detections[0]).toMatchObject({
+      classId: '',
+      label: 'Spalling',
+      suggestedNew: true,
+      origin: { kind: 'model', detector: { id: 'spalling' } },
+    });
+  });
 });
