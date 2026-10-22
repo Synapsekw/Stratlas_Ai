@@ -909,7 +909,8 @@ export function Stage() {
                 showMap ? `pane pane-map${placingOnMap ? ' walk-placing' : ''}` : 'pane is-hidden'
               }
               data-side={at('map')}
-              aria-hidden={!showMap}
+              // off screen, its canvas and controls leave the tab order too
+              inert={!showMap}
             >
               {showMap && <PlaceWalkHere at={MAP_SURFACE} />}
               <div className="fill">
