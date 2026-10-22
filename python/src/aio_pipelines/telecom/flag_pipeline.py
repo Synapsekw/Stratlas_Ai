@@ -9,7 +9,9 @@ Steps (each resumable):
    (`flag.measure_selection`), else a "not measured" placeholder at the anchor.
 3. photos: the best photos of the one unit and the crop of the best one.
 4. commit: reads `telecom/antennas.json` again (the person may have reviewed meanwhile), adds the
-   flagged unit or replaces the redrawn one, and writes the crop first and the file last.
+   flagged unit or replaces the redrawn one, and writes the crop first and the file last. A new
+   detection run since the select step (its id differs) is refused: the points are in the old
+   run's frame.
 
 Flagging needs an inventory: the axis comes from its run. The job never uses the network.
 """
@@ -41,6 +43,7 @@ READ_POINTS = 400_000
 NO_INVENTORY = "Run antenna detection first: flagging needs the tower found by a detection run."
 UNIT_GONE = "The antenna to redraw is no longer in the inventory."
 UNIT_TAKEN = "An antenna with this id is already in the inventory."
+RUN_CHANGED = "The antenna inventory changed while measuring. Flag the unit again."
 TEMP_ID = "flag"
 #: Measured keys a typed value can replace (the schema's `AntennaMeasured`).
 MEASURED_KEYS = ("azimuthGridDeg", "downtiltDeg", "centreHeightM", "widthM", "heightM", "depthM")
@@ -222,7 +225,8 @@ class TelecomFlag:
             anchor = np.asarray(sel["anchor"], dtype=np.float64) - move
             _save_npz(ctx.stage("selection.npz"), points=points, anchor=anchor)
             ctx.log(f"{len(points):,} of {int(info['read']):,} points in the bounds are inside the outline.")
-            return {"points": len(points)}
+            # the run the points were moved into the frame of: a new run before the commit refuses
+            return {"points": len(points), "runId": str(run.get("id", ""))}
 
         def measure_step(ctx: StepContext) -> dict[str, Any]:
             from .flag import measure_selection, not_measured
@@ -234,6 +238,9 @@ class TelecomFlag:
             run = (previous or {}).get("run")
             if not isinstance(run, dict) or not isinstance(run.get("axis"), dict):
                 raise JobError(NO_INVENTORY)
+            run_id = ctx.outputs("select").get("runId")
+            if run_id is not None and str(run.get("id", "")) != run_id:
+                raise JobError(RUN_CHANGED)
             origin = _origin(manifest)
             point = from_project(np.asarray(run["axis"]["point"], dtype=float), origin)
             e, n, z = (float(v) for v in run["axis"]["dir"])
@@ -248,7 +255,7 @@ class TelecomFlag:
                 ctx.log(f"{len(xyz):,} points: too few or no flat face, so the unit is not measured.", "warn")
             else:
                 ctx.log(f"{len(xyz):,} points measured as one unit.")
-            return {"unit": m, "measured": "widthM" in m, "runId": str(run.get("id", ""))}
+            return {"unit": m, "measured": "widthM" in m, "runId": run_id or str(run.get("id", ""))}
 
         def photos_step(ctx: StepContext) -> dict[str, Any]:
             from .photos import best_photos, posed_photos, write_crop
@@ -275,6 +282,10 @@ class TelecomFlag:
             if doc is None:
                 raise JobError(NO_INVENTORY)
             measured = ctx.outputs("measure")
+            # a detection run (another date, another frame) committed since select: refuse
+            run_id = measured.get("runId")
+            if run_id and str((doc.get("run") or {}).get("id", "")) != run_id:
+                raise JobError(RUN_CHANGED)
             m = dict(measured["unit"])
             shot = ctx.outputs("photos")
             photos = shot.get("photos") or []
@@ -298,7 +309,7 @@ class TelecomFlag:
                     "kind": "other",
                     "photos": photos,
                     "user": {},
-                    "runId": measured.get("runId") or str((doc.get("run") or {}).get("id", "")),
+                    "runId": run_id or str((doc.get("run") or {}).get("id", "")),
                     "createdAt": shot.get("createdAt") or now_iso(),
                 }
             rel = f"{CROPS_DIR}/{unit_id}.jpg"

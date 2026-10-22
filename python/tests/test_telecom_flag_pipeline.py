@@ -295,6 +295,32 @@ def test_commit_keeps_edits_made_during_the_job(project):
     assert any(u["id"] == "ant-flag-4" for u in after["units"])
 
 
+def test_commit_refuses_when_a_new_detection_run_landed_during_the_job(project):
+    # a detection on another date that commits between select and commit changes the frame: the
+    # unit would land in the wrong frame under the wrong run id
+    root, truth = project
+    rec = Recorder()
+
+    def emit(method, p):
+        rec(method, p)
+        if method == "progress" and p.get("step") == "commit" and p.get("state") == "start":
+            d = read_file(root)
+            d["run"]["id"] = "run-other"
+            write_file(root, d)
+
+    job = Job(
+        "jf",
+        flag(),
+        root,
+        params("ant-flag-8", selection(truth_unit(truth, "radio-180"))),
+        emit,
+        threading.Event(),
+    )
+    with pytest.raises(JobError, match="inventory changed while measuring"):
+        job.run()
+    assert not any(u["id"] == "ant-flag-8" for u in read_file(root)["units"])
+
+
 def test_rerun_keeps_flagged_and_typed(project):
     root, truth = project
     run_job(flag(), root, params("ant-flag-5", selection(truth_unit(truth, "radio-180"))), job_id="jf")
