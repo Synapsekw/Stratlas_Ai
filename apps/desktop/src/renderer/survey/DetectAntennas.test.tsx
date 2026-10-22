@@ -217,6 +217,21 @@ describe('DetectAntennas', () => {
     });
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(button.textContent).toContain('Antenna detection is already running.');
+
+    // a flag job measures in the frame of the run it started on: no new run meanwhile
+    act(() => {
+      antennaStore.setState({ running: false, flagJob: { id: 'jf', unit: 'ant-f1' } });
+    });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.textContent).toContain('Wait for the flagged antenna to be measured.');
+    act(() => {
+      antennaStore.setState({ flagJob: null, flagStarting: true });
+    });
+    expect(button.textContent).toContain('Wait for the flagged antenna to be measured.');
+    act(() => {
+      antennaStore.setState({ flagStarting: false });
+    });
+    expect(button.getAttribute('aria-disabled')).toBeNull();
   });
 
   it('starts detection on click', async () => {

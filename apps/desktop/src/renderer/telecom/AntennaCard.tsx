@@ -610,6 +610,8 @@ function sameRect(a: Rect | null, b: Rect | null): boolean {
 
 function CardBody(props: BodyProps): ReactElement {
   const { unit, stageHost: host, boxRect, readOnly } = props;
+  const running = useAntennas((s) => s.running);
+  const flagBusy = useAntennas((s) => s.flagStarting || s.flagJob !== null);
   const card = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const grab = useRef<{ dx: number; dy: number } | null>(null);
@@ -701,6 +703,14 @@ function CardBody(props: BodyProps): ReactElement {
     void decideAntenna(status);
   };
   const reason = readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {};
+  // Redraw outline starts the flag tool, refused while a detection or a flag job runs
+  const redrawWhy = readOnly
+    ? t('telecom.antennas.readOnly')
+    : running
+      ? t('telecom.antennas.running')
+      : flagBusy
+        ? t('telecom.antennas.flag.busy')
+        : null;
   const kindWord = t(`telecom.antennas.card.kind.${unit.kind}`);
   const provider = unit.kindBasis === 'ai' ? unit.ai?.provider : undefined;
   const kindBasis = provider
@@ -911,7 +921,7 @@ function CardBody(props: BodyProps): ReactElement {
             variant="quiet"
             icon="polygon"
             data-testid="antenna-card-redraw"
-            {...reason}
+            {...(redrawWhy ? { disabledReason: redrawWhy } : {})}
             onClick={() => {
               beginFlag(unit.id);
             }}

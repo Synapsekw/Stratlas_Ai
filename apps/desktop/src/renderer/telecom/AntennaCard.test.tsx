@@ -731,6 +731,27 @@ describe('AntennaCard editing', () => {
     expect(antennaStore.getState().flagging).toEqual({ unit: 'a1' });
   });
 
+  it('Redraw outline is disabled with a reason while a detection or a flag job runs', () => {
+    load(three());
+    antennaStore.setState({ running: true, flagging: null });
+    show();
+    const redraw = () => q('antenna-card-redraw')!;
+    const reason = () =>
+      stage.querySelector(`[id="${redraw().getAttribute('aria-describedby') ?? ''}"]`)?.textContent;
+    expect(redraw().getAttribute('aria-disabled')).toBe('true');
+    expect(reason()).toBe('Antenna detection is already running.');
+    act(() => {
+      antennaStore.setState({ running: false, flagJob: { id: 'jf', unit: 'a2' } });
+    });
+    expect(reason()).toBe('Wait for the flagged antenna to be measured.');
+    click('antenna-card-redraw');
+    expect(antennaStore.getState().flagging).toBeNull();
+    act(() => {
+      antennaStore.setState({ flagJob: null });
+    });
+    expect(redraw().getAttribute('aria-disabled')).toBeNull();
+  });
+
   it('picking a kind marks it as yours', async () => {
     load([unit('a1', { ai: { kind: 'panel', provider: 'x' } as unknown as AntennaUnit['ai'] })]);
     show();

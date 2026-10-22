@@ -269,6 +269,16 @@ describe('the antenna inventory in the Measure workbench', () => {
     expect(host.querySelectorAll('[data-testid="detect-antennas"]')).toHaveLength(1);
   });
 
+  it('with no inventory yet, shows Flag antenna disabled with its reason', async () => {
+    h.disk = null;
+    await mount();
+    expect(section()).not.toBeNull();
+    const flag = q('[data-testid="antenna-flag"]')!;
+    expect(flag.getAttribute('aria-disabled')).toBe('true');
+    const id = flag.getAttribute('aria-describedby') ?? '';
+    expect(host.querySelector(`[id="${id}"]`)?.textContent).toBe('Run antenna detection first');
+  });
+
   it('exports the CSV through the save dialog', async () => {
     h.replies['dialog:saveFile'] = { ok: true, value: { path: 'C:/out/antenna-inventory.csv' } };
     await mount();

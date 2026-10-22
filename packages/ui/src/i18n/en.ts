@@ -4877,6 +4877,9 @@ export const en = {
   'telecom.antennas.flag.tip':
     'Draw an outline around a unit the detection missed, then measure it from the points inside.',
   'telecom.antennas.flag.needsRun': 'Run antenna detection first',
+  'telecom.antennas.flag.busy': 'Wait for the flagged antenna to be measured.',
+  'telecom.antennas.flag.dropped':
+    'Antenna detection started, so the outline was not measured. Draw it again when it ends.',
   'telecom.antennas.flag.drawing':
     'Click around the unit to outline it. Enter or double-click closes the outline, Backspace removes the last point, Escape cancels.',
   'telecom.antennas.flag.kept': '{count} points kept, nearest the camera.',

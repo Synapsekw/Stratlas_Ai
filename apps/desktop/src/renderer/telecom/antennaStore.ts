@@ -58,6 +58,8 @@ export interface AntennaState {
   flagging: { unit: string | null } | null;
   /** The `telecom.flag` job going, and the unit it adds or redraws. */
   flagJob: { id: string; unit: string } | null;
+  /** A `telecom.flag` start waiting for its job id: detection and a second flag are refused. */
+  flagStarting: boolean;
 }
 
 export interface AiPreview {
@@ -88,6 +90,7 @@ const initial = (): AntennaState => ({
   labelMode: 'all',
   flagging: null,
   flagJob: null,
+  flagStarting: false,
 });
 
 export const antennaStore = createStore<AntennaState>()(initial);
@@ -107,8 +110,6 @@ let loadSeq = 0;
 let offerAfterLoad: { projectId: string; before: string | null } | null = null;
 /** A finished flag job's follow-up (select, box, AI offer), made once the read after it is in. */
 let flagAfterLoad: { projectId: string; unit: string; redraw: boolean } | null = null;
-/** A `telecom.flag` start waiting for its job id: a second start is refused meanwhile. */
-let flagStarting = false;
 /** Whether the flag job going redraws a unit that exists (one flag job at a time). */
 let flagRedraw = false;
 /** Writes run one after the other so a quick second click builds on the first. */
@@ -157,7 +158,8 @@ export async function loadAntennas(projectId: string, root: string): Promise<voi
     status: 'ready',
     file,
     readOnly: r.value.readOnly,
-    message: null,
+    // a message on screen (a refused write, a failed run) stays; a read error's goes
+    message: same && get().status !== 'error' ? get().message : null,
     selected: selected && ids.has(selected) ? selected : null,
     hidden: Object.fromEntries(
       Object.keys(hidden)
@@ -233,7 +235,7 @@ function onFlagJob(list: readonly JobRecord[]): void {
   switch (job.status) {
     case 'done': {
       const { projectId, root } = get();
-      set({ flagJob: null, message: null });
+      set({ flagJob: null });
       if (projectId && root) {
         flagAfterLoad = { projectId, unit: flagJob.unit, redraw: flagRedraw };
         void loadAntennas(projectId, root);
@@ -255,10 +257,13 @@ function onFlagJob(list: readonly JobRecord[]): void {
 const newRunId = (): string =>
   `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-/** Start `telecom.antennas`; a second call while a run is going is ignored. */
+/**
+ * Start `telecom.antennas`; a second call while a run is going is ignored, and so is a call while
+ * a flag job starts or runs (its unit is measured in the frame of the run it started on).
+ */
 export async function runDetection(opts?: { towerHint?: [number, number] }): Promise<void> {
   const s = get();
-  if (s.running || s.readOnly || !s.root) return;
+  if (s.running || s.readOnly || !s.root || flagBusy()) return;
   watchJobs();
   const params: Record<string, unknown> = { run: newRunId() };
   if (s.cloudLayer) params.cloud = { layer: s.cloudLayer };
@@ -285,7 +290,9 @@ export async function runDetection(opts?: { towerHint?: [number, number] }): Pro
 // ---------------------------------------------------------------- flagging
 
 /** Whether a flag job is going or starting. */
-const flagBusy = (): boolean => flagStarting || get().flagJob !== null;
+function flagBusy(): boolean {
+  return get().flagStarting || get().flagJob !== null;
+}
 
 /**
  * Turn the flag tool on: for a new unit, or with `unitId` to redraw that unit's outline. Refused
@@ -316,13 +323,16 @@ export async function startFlag(o: {
   const s = get();
   const tool = s.flagging;
   set({ flagging: null });
-  if (!tool || s.running || s.readOnly || !s.file || !s.root || flagBusy()) return;
+  if (tool && s.running) {
+    set({ message: t('telecom.antennas.flag.dropped') });
+    return;
+  }
+  if (!tool || s.readOnly || !s.file || !s.root || flagBusy()) return;
   watchJobs();
   const redraw = tool.unit !== null;
   const unit = tool.unit ?? newFlagId();
   const root = s.root;
-  flagStarting = true;
-  set({ message: null });
+  set({ message: null, flagStarting: true });
   const r = await bridge
     .call('jobs:start', {
       pipeline: 'telecom.flag',
@@ -337,7 +347,7 @@ export async function startFlag(o: {
       }),
     })
     .finally(() => {
-      flagStarting = false;
+      set({ flagStarting: false });
     });
   if (get().root !== root) return;
   if (!r.ok || !r.value.ok) {
@@ -362,13 +372,17 @@ const TYPED_KEYS: readonly TypedKey[] = [
 ];
 
 /**
- * After a finished flag job's read: select and reveal the unit; after a redraw that kept typed
+ * After a finished flag job's read: select and reveal the unit (the filter goes to all when it
+ * would hide it); after a redraw that kept typed
  * values, rebuild its box from them once (the job measured a new box, the typed values win); then
  * offer AI labels for that unit alone when the project has them on.
  */
 async function afterFlag(projectId: string, id: string, redraw: boolean): Promise<void> {
   const found = get().file?.units.find((u) => u.id === id);
   if (!found) return;
+  // a filter that would hide the new unit shows every unit, so its row is listed
+  const { filter } = get();
+  if (filter !== 'all' && found.status !== filter) set({ filter: 'all' });
   revealAntenna(id);
   if (redraw && TYPED_KEYS.some((k) => found[k]?.basis === 'user'))
     await change((file) => ({

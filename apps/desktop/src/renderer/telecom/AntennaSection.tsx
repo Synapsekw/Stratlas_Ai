@@ -97,14 +97,15 @@ export function AntennaSection({ query = '' }: { query?: string }): ReactElement
   }, [seq]);
 
   const file = s.file;
-  if (!projectId || !hasCloud || (file === null && !s.running)) return null;
+  // with no inventory yet (read in), the section shows Flag antenna disabled with its reason
+  if (!projectId || !hasCloud || (file === null && !s.running && s.status !== 'ready')) return null;
   if (!antennaSectionMatches(query)) return null;
   const searching = query.trim() !== '';
 
   const flagReason = s.running
     ? t('telecom.antennas.running')
-    : s.flagJob
-      ? t('jobs.telecom.flag')
+    : s.flagStarting || s.flagJob
+      ? t('telecom.antennas.flag.busy')
       : null;
 
   const listed = file?.units.filter((u) => u.status !== 'rejected').length ?? 0;

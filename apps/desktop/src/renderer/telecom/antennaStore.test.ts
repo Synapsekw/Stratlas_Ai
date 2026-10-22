@@ -181,6 +181,7 @@ beforeEach(() => {
     aiNote: null,
     flagging: null,
     flagJob: null,
+    flagStarting: false,
   });
   localStorage.clear();
 });
@@ -984,8 +985,8 @@ describe('flagging', () => {
     beginFlag();
     await startFlag(flagSel);
     expect(state().flagJob?.id).toBe('j1');
-    await runDetection();
-    expect(state().jobId).toBe('j2');
+    // detection is refused meanwhile; a run already going (another window) is watched apart
+    antennaStore.setState({ running: true, jobId: 'j2' });
     jobsStore.setState({
       jobs: [
         { id: 'j1', status: 'running' },
@@ -996,6 +997,33 @@ describe('flagging', () => {
     expect(state().flagJob?.id).toBe('j1');
     jobsStore.setState({ jobs: [{ id: 'j1', status: 'cancelled' }] });
     expect(state().flagJob).toBeNull();
+  });
+
+  it('detection is refused while a flag job starts or runs', async () => {
+    beginFlag();
+    const starting = startFlag(flagSel);
+    expect(state().flagStarting).toBe(true);
+    await runDetection();
+    expect(starts().map(([, r]) => r.pipeline)).toEqual(['telecom.flag']);
+    await starting;
+    expect(state().flagStarting).toBe(false);
+    await runDetection();
+    expect(starts()).toHaveLength(1);
+    expect(state().running).toBe(false);
+    emitJob({ id: 'j1', status: 'cancelled' });
+    await runDetection();
+    expect(lastStart()).toMatchObject({ pipeline: 'telecom.antennas' });
+  });
+
+  it('an outline closed after detection started says why it was not measured', async () => {
+    beginFlag();
+    antennaStore.setState({ running: true });
+    await startFlag(flagSel);
+    expect(starts()).toHaveLength(0);
+    expect(state().flagging).toBeNull();
+    expect(state().message).toBe(
+      'Antenna detection started, so the outline was not measured. Draw it again when it ends.',
+    );
   });
 
   it('a failed flag job shows its error', async () => {
@@ -1019,6 +1047,45 @@ describe('flagging', () => {
     expect(state().flagJob).toBeNull();
     expect(previews()).toHaveLength(0);
     expect(writes()).toHaveLength(0);
+  });
+
+  it('a finished flag job keeps a message on screen', async () => {
+    beginFlag();
+    await startFlag(flagSel);
+    const id = need(state().flagJob).unit;
+    antennaStore.setState({ message: 'The antenna file changed on disk. It was loaded again.' });
+    h.disk.file = withFlagged(id);
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(state().selected).toBe(id);
+    });
+    expect(state().message).toBe('The antenna file changed on disk. It was loaded again.');
+  });
+
+  it('a finished flag job shows every unit when the filter would hide the new one', async () => {
+    expect(state().filter).toBe('draft');
+    beginFlag();
+    await startFlag(flagSel);
+    const id = need(state().flagJob).unit;
+    h.disk.file = withFlagged(id);
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(state().selected).toBe(id);
+    });
+    expect(state().filter).toBe('all');
+  });
+
+  it('a finished flag job keeps a filter that lists the new unit', async () => {
+    setAntennaFilter('accepted');
+    beginFlag();
+    await startFlag(flagSel);
+    const id = need(state().flagJob).unit;
+    h.disk.file = withFlagged(id);
+    emitJob({ id: 'j1', status: 'done' });
+    await vi.waitFor(() => {
+      expect(state().selected).toBe(id);
+    });
+    expect(state().filter).toBe('accepted');
   });
 
   it('a finished flag job offers AI labels for that unit only when the preference is on', async () => {

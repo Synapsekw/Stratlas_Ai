@@ -54,9 +54,11 @@ export function DetectAntennas(): ReactElement | null {
   const loading = stage !== null && watched.some((l) => !stage.layerLoaded(l.id));
   const reason = s.running
     ? t('telecom.antennas.running')
-    : loading
-      ? t('telecom.antennas.loading')
-      : undefined;
+    : s.flagStarting || s.flagJob
+      ? t('telecom.antennas.flag.busy')
+      : loading
+        ? t('telecom.antennas.loading')
+        : undefined;
 
   return (
     <>
