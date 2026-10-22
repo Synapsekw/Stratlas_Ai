@@ -59,7 +59,34 @@ function evidenceKindLabel(kind: string, t: ReturnType<typeof useT>): string {
   return key ? t(key) : kind;
 }
 function targetLabel(target: CorrectionTargetView, t: ReturnType<typeof useT>): string {
+  if (target.kind === 'model') return t('eng.correction.wholeModel');
   return target.kind === 'part' ? target.label : t('eng.correction.pin');
+}
+/** The visible reason a Send button is off, which the button names through aria-describedby. */
+function Reason({
+  id,
+  text,
+  fix,
+}: {
+  id: string;
+  text: string | undefined;
+  fix?: { label: string; onClick: () => void } | undefined;
+}) {
+  if (!text) return null;
+  return (
+    <>
+      <p id={id} role="status" className="eng-correction-hint">
+        {text}
+      </p>
+      {fix && (
+        <ActionRow className="eng-correction-blocker">
+          <Button variant="quiet" onClick={fix.onClick}>
+            {fix.label}
+          </Button>
+        </ActionRow>
+      )}
+    </>
+  );
 }
 function Position({ position }: { position: [number, number, number] }) {
   const t = useT();
@@ -101,11 +128,11 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
   const setReplies = (replies: Record<string, string>) => {
     changeDraft({ replies });
   };
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<'saving' | 'sending' | false>(false);
   const pendingRef = useRef(false);
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState<MessageKey | null>(null);
-  const locked = !!p.busy || !!p.readOnly || pending;
+  const locked = !!p.busy || !!p.readOnly || !!pending;
   const selectedPart = p.parts.find((part) => part.id === p.selectedPartId);
   const validPin = p.pin?.position.every(Number.isFinite) ? p.pin : undefined;
   const radiusM = p.pinRadiusM ?? 2;
@@ -122,21 +149,51 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
   const proposal = p.proposal?.requestId === selected?.id ? p.proposal : undefined;
   const activeProposal = !!proposal && selected?.status === 'proposed';
   const stale = !!proposal?.stale || selected?.status === 'stale';
-  const queued = p.requests.filter(
-    (request) => request.status === 'open' || request.status === 'failed',
-  );
+  const queued = p.requests.filter((request) => request.status === 'open');
   const selectedEvidence = evidenceIds.filter((evidenceId) =>
     p.evidenceOptions.some((item) => item.id === evidenceId),
   );
   const reply = selected ? (replies[selected.id] ?? '') : '';
+  const typed = comment.trim() !== '';
+  const tooLong = comment.length > TEXT_LIMIT;
+  // A placed pin with an out-of-range radius is a target the user meant but cannot send.
+  const badRadius = targetMode === 'pin' && !!validPin && !validRadius;
+  const sendCount = (typed ? 1 : 0) + queued.length;
+  const canSave = !locked && typed && !tooLong && !badRadius;
+
+  /** The first reason the AI cannot be asked, shown on screen beside the Send buttons. */
+  const lockReason: string | undefined = pending
+    ? t(`eng.correction.busy.${pending}`)
+    : p.busy
+      ? t(p.busyReason ? `eng.correction.busy.${p.busyReason}` : 'eng.correction.busy')
+      : p.readOnly
+        ? t('eng.correction.readOnly')
+        : p.blocker?.message;
+  const sendReason =
+    lockReason ??
+    (sendCount === 0
+      ? t('eng.correction.typeFirst')
+      : tooLong
+        ? t('eng.correction.tooLong', { limit: formatCount(TEXT_LIMIT) })
+        : badRadius
+          ? t('eng.correction.radiusHint')
+          : undefined);
+  const resendable = selected?.status === 'rejected' || selected?.status === 'proposed';
+  const resendReason =
+    lockReason ??
+    (reply.length > TEXT_LIMIT
+      ? t('eng.correction.tooLong', { limit: formatCount(TEXT_LIMIT) })
+      : undefined);
+  const showFix = !!p.blocker?.fix && lockReason === p.blocker.message;
 
   async function perform(
     action: () => void | Promise<void>,
     success: () => void = () => undefined,
+    kind: 'saving' | 'sending' = 'saving',
   ) {
     if (locked || pendingRef.current) return;
     pendingRef.current = true;
-    setPending(true);
+    setPending(kind);
     setActionError('');
     setNotice(null);
     try {
@@ -156,11 +213,31 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
     p.onPinModeChange(mode === 'pin' && !validPin);
   }
 
+  /** Saves the typed text, and with `send` hands it and the waiting requests to the AI. */
+  function submit(send: boolean) {
+    if (!typed || tooLong || badRadius) return;
+    void perform(
+      () =>
+        p.onSubmit({
+          ...(target ? { target } : {}),
+          comment: comment.trim(),
+          evidenceIds: selectedEvidence,
+          send,
+        }),
+      () => {
+        setComment('');
+        setEvidenceIds([]);
+        setNotice(send ? 'eng.correction.sent' : 'eng.correction.saved');
+      },
+      send ? 'sending' : 'saving',
+    );
+  }
+
   return (
     <section
       className="eng-corrections"
       aria-label={t('eng.correction.label')}
-      aria-busy={!!p.busy || pending}
+      aria-busy={!!p.busy || !!pending}
     >
       {p.onSourceVisibleChange && (
         <ActionRow>
@@ -184,147 +261,145 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
           <h3>{t('eng.correction.request')}</h3>
         </summary>
         <div className="eng-correction-section">
-          <p className="eng-correction-hint">{t('eng.correction.requestHint')}</p>
-          {p.readOnly && (
-            <p role="status" className="eng-correction-hint">
-              {t('eng.correction.readOnly')}
-            </p>
-          )}
-          <ViewSwitch
-            label={t('eng.correction.target')}
-            value={targetMode}
-            onChange={changeMode}
-            items={[
-              { value: 'part', label: t('eng.correction.selectedPart'), disabled: locked },
-              { value: 'pin', label: t('eng.correction.pin'), disabled: locked },
-            ]}
+          <textarea
+            id={`${id}-comment`}
+            className="input eng-correction-box"
+            aria-label={t('eng.correction.comment')}
+            rows={3}
+            value={comment}
+            maxLength={TEXT_LIMIT}
+            disabled={locked}
+            placeholder={t('eng.correction.commentPlaceholder')}
+            onChange={(e) => {
+              setComment(e.target.value);
+            }}
           />
-          {targetMode === 'part' ? (
-            <label className="eng-correction-field">
-              {t('eng.correction.part')}
-              <select
-                className="input"
-                aria-label={t('eng.correction.part')}
-                value={p.selectedPartId ?? ''}
-                disabled={locked || p.parts.length === 0}
-                onChange={(e) => {
-                  p.onSelectPart(e.target.value);
-                }}
-              >
-                <option value="">{t('eng.correction.selectPart')}</option>
-                {p.parts.map((part) => (
-                  <option key={part.id} value={part.id}>
-                    {part.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div className="eng-correction-field">
-              {validPin ? (
-                <>
-                  <Position position={validPin.position} />
-                  <label className="eng-correction-field">
-                    {t('eng.correction.radius')}
-                    <input
-                      type="number"
-                      className="input"
-                      aria-label={t('eng.correction.radius')}
-                      min={0.1}
-                      max={5}
-                      step={0.1}
-                      value={Number.isFinite(radiusM) ? radiusM : ''}
-                      disabled={locked || !p.onPinRadiusChange}
-                      aria-invalid={!validRadius}
-                      onChange={(e) => {
-                        p.onPinRadiusChange?.(e.target.valueAsNumber);
-                      }}
-                    />
-                  </label>
-                  <p className="eng-correction-hint">{t('eng.correction.radiusHint')}</p>
-                  <ActionRow>
+          <details className="eng-correction-target" open={targetMode === 'pin' || !!selectedPart}>
+            <summary>
+              {target
+                ? `${t('eng.correction.pointAt')}: ${targetLabel(target, t)}`
+                : t('eng.correction.pointAt')}
+            </summary>
+            <div className="eng-correction-section">
+              <p className="eng-correction-hint">{t('eng.correction.requestHint')}</p>
+              <ViewSwitch
+                label={t('eng.correction.target')}
+                value={targetMode}
+                onChange={changeMode}
+                items={[
+                  { value: 'part', label: t('eng.correction.selectedPart'), disabled: locked },
+                  { value: 'pin', label: t('eng.correction.pin'), disabled: locked },
+                ]}
+              />
+              {targetMode === 'part' ? (
+                <label className="eng-correction-field">
+                  {t('eng.correction.part')}
+                  <select
+                    className="input"
+                    aria-label={t('eng.correction.part')}
+                    value={p.selectedPartId ?? ''}
+                    disabled={locked || p.parts.length === 0}
+                    onChange={(e) => {
+                      p.onSelectPart(e.target.value);
+                    }}
+                  >
+                    <option value="">{t('eng.correction.wholeModel')}</option>
+                    {p.parts.map((part) => (
+                      <option key={part.id} value={part.id}>
+                        {part.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="eng-correction-field">
+                  {validPin ? (
+                    <>
+                      <Position position={validPin.position} />
+                      <label className="eng-correction-field">
+                        {t('eng.correction.radius')}
+                        <input
+                          type="number"
+                          className="input"
+                          aria-label={t('eng.correction.radius')}
+                          min={0.1}
+                          max={5}
+                          step={0.1}
+                          value={Number.isFinite(radiusM) ? radiusM : ''}
+                          disabled={locked || !p.onPinRadiusChange}
+                          aria-invalid={!validRadius}
+                          onChange={(e) => {
+                            p.onPinRadiusChange?.(e.target.valueAsNumber);
+                          }}
+                        />
+                      </label>
+                      <p className="eng-correction-hint">{t('eng.correction.radiusHint')}</p>
+                      <ActionRow>
+                        <Button
+                          disabled={locked}
+                          onClick={() => {
+                            p.onClearPin();
+                            p.onPinModeChange(true);
+                          }}
+                        >
+                          {t('eng.correction.pinMove')}
+                        </Button>
+                        <Button
+                          disabled={!!p.busy || !!pending}
+                          onClick={() => {
+                            p.onClearPin();
+                            p.onPinModeChange(false);
+                            setTargetMode('part');
+                          }}
+                        >
+                          {t('eng.correction.pinRemove')}
+                        </Button>
+                      </ActionRow>
+                    </>
+                  ) : (
+                    <>
+                      <p role="status" className="eng-correction-hint">
+                        {t(p.pinMode ? 'eng.correction.pinPicking' : 'eng.correction.pinHint')}
+                      </p>
+                      {!p.pinMode && (
+                        <Button
+                          disabled={locked}
+                          onClick={() => {
+                            p.onPinModeChange(true);
+                          }}
+                        >
+                          {t('eng.correction.pinPlace')}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  {p.pinMode && (
                     <Button
-                      disabled={locked}
+                      disabled={!!p.busy || !!pending}
                       onClick={() => {
-                        p.onClearPin();
-                        p.onPinModeChange(true);
-                      }}
-                    >
-                      {t('eng.correction.pinMove')}
-                    </Button>
-                    <Button
-                      disabled={!!p.busy || pending}
-                      onClick={() => {
-                        p.onClearPin();
                         p.onPinModeChange(false);
                         setTargetMode('part');
                       }}
                     >
-                      {t('eng.correction.pinRemove')}
-                    </Button>
-                  </ActionRow>
-                </>
-              ) : (
-                <>
-                  <p role="status" className="eng-correction-hint">
-                    {t(p.pinMode ? 'eng.correction.pinPicking' : 'eng.correction.pinHint')}
-                  </p>
-                  {!p.pinMode && (
-                    <Button
-                      disabled={locked}
-                      onClick={() => {
-                        p.onPinModeChange(true);
-                      }}
-                    >
-                      {t('eng.correction.pinPlace')}
+                      {t('eng.correction.pinCancel')}
                     </Button>
                   )}
-                </>
+                  {p.pinNote && <p className="eng-correction-hint">{p.pinNote}</p>}
+                </div>
               )}
-              {p.pinMode && (
+              {target && (
                 <Button
-                  disabled={!!p.busy || pending}
+                  variant="quiet"
+                  disabled={!!p.busy}
                   onClick={() => {
-                    p.onPinModeChange(false);
-                    setTargetMode('part');
+                    p.onFocusTarget(target);
                   }}
                 >
-                  {t('eng.correction.pinCancel')}
+                  {t('eng.correction.showTarget')}
                 </Button>
               )}
             </div>
-          )}
-          {target && (
-            <Button
-              variant="quiet"
-              disabled={!!p.busy}
-              onClick={() => {
-                p.onFocusTarget(target);
-              }}
-            >
-              {t('eng.correction.showTarget')}
-            </Button>
-          )}
-          <label className="eng-correction-field" htmlFor={`${id}-comment`}>
-            {t('eng.correction.comment')}
-            <textarea
-              id={`${id}-comment`}
-              className="input"
-              aria-label={t('eng.correction.comment')}
-              rows={3}
-              aria-describedby={`${id}-comment-help`}
-              value={comment}
-              maxLength={TEXT_LIMIT}
-              disabled={locked}
-              placeholder={t('eng.correction.commentPlaceholder')}
-              onChange={(e) => {
-                setComment(e.target.value);
-              }}
-            />
-          </label>
-          <p id={`${id}-comment-help`} className="eng-correction-hint">
-            {t('eng.correction.commentHint')}
-          </p>
+          </details>
           {p.evidenceOptions.length > 0 && (
             <details className="eng-correction-evidence">
               <summary>
@@ -367,25 +442,36 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
           )}
           <ActionRow>
             <Button
-              disabled={locked || !target || !comment.trim() || comment.length > TEXT_LIMIT}
+              variant="primary"
+              disabled={!!sendReason}
+              {...(sendReason ? { 'aria-describedby': `${id}-send-reason` } : {})}
               onClick={() => {
-                if (target)
+                if (!typed) {
                   void perform(
-                    () =>
-                      p.onCreate({
-                        target,
-                        comment: comment.trim(),
-                        evidenceIds: selectedEvidence,
-                      }),
+                    () => p.onSend(queued.map((request) => request.id)),
                     () => {
-                      setComment('');
-                      setEvidenceIds([]);
-                      setNotice('eng.correction.saved');
+                      setNotice('eng.correction.sent');
                     },
+                    'sending',
                   );
+                  return;
+                }
+                submit(true);
               }}
             >
-              {t('eng.correction.save')}
+              {typed && queued.length === 0
+                ? t('eng.correction.sendNow')
+                : sendCount
+                  ? t('eng.correction.send', { count: sendCount })
+                  : t('eng.correction.sendNow')}
+            </Button>
+            <Button
+              disabled={!canSave}
+              onClick={() => {
+                submit(false);
+              }}
+            >
+              {t('eng.correction.saveOnly')}
             </Button>
             {p.onDiscardDraft && (
               <Button
@@ -397,6 +483,11 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
               </Button>
             )}
           </ActionRow>
+          <Reason
+            id={`${id}-send-reason`}
+            text={sendReason}
+            fix={showFix ? p.blocker?.fix : undefined}
+          />
         </div>
       </details>
 
@@ -405,9 +496,9 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
           {actionError ? actionError : p.error}
         </p>
       )}
-      {(notice !== null || !!p.busy || pending) && (
+      {notice !== null && (
         <p role="status" className="eng-correction-hint">
-          {p.busy || pending ? t('eng.correction.busy') : notice && t(notice)}
+          {t(notice)}
         </p>
       )}
 
@@ -439,14 +530,6 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                 </li>
               ))}
             </ul>
-            <Button
-              disabled={locked || queued.length === 0}
-              onClick={() => void perform(() => p.onSend(queued.map((request) => request.id)))}
-            >
-              {queued.length
-                ? t('eng.correction.send', { count: queued.length })
-                : t('eng.correction.noneToSend')}
-            </Button>
             <p className="eng-correction-hint">{t('eng.correction.sendHint')}</p>
           </>
         )}
@@ -505,6 +588,9 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
                   },
                 ]}
               />
+              {p.scaleProvisional && (
+                <p className="eng-correction-hint">{t('eng.correction.scaleProvisional')}</p>
+              )}
               <p className="eng-correction-hint">
                 {t(p.view === 'before' ? 'eng.correction.beforeHint' : 'eng.correction.afterHint')}
               </p>
@@ -602,20 +688,49 @@ export function CorrectionPanel(p: CorrectionPanelProps) {
               }}
             />
           </label>
-          <Button
-            disabled={locked || !reply.trim() || reply.length > TEXT_LIMIT}
-            onClick={() =>
-              void perform(
-                () => p.onReply(selected.id, reply.trim()),
-                () => {
-                  setReplies({ ...replies, [selected.id]: '' });
-                  setNotice('eng.correction.replySaved');
-                },
-              )
-            }
-          >
-            {t('eng.correction.replySave')}
-          </Button>
+          <ActionRow>
+            {resendable && (
+              <Button
+                variant={activeProposal ? 'secondary' : 'primary'}
+                disabled={!!resendReason}
+                {...(resendReason ? { 'aria-describedby': `${id}-resend-reason` } : {})}
+                onClick={() =>
+                  void perform(
+                    () => p.onResend(selected.id, reply.trim() || undefined),
+                    () => {
+                      setReplies({ ...replies, [selected.id]: '' });
+                      setNotice('eng.correction.sent');
+                    },
+                    'sending',
+                  )
+                }
+              >
+                {t('eng.correction.resend')}
+              </Button>
+            )}
+            <Button
+              variant="quiet"
+              disabled={locked || !reply.trim() || reply.length > TEXT_LIMIT}
+              onClick={() =>
+                void perform(
+                  () => p.onReply(selected.id, reply.trim()),
+                  () => {
+                    setReplies({ ...replies, [selected.id]: '' });
+                    setNotice('eng.correction.replySaved');
+                  },
+                )
+              }
+            >
+              {t('eng.correction.replySave')}
+            </Button>
+          </ActionRow>
+          {resendable && (
+            <Reason
+              id={`${id}-resend-reason`}
+              text={resendReason}
+              fix={showFix ? p.blocker?.fix : undefined}
+            />
+          )}
         </div>
       )}
     </section>

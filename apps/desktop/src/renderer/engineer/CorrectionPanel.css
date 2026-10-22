@@ -65,14 +65,17 @@
   color: var(--danger-ink);
   overflow-wrap: anywhere;
 }
-.eng-correction-field .input {
+.eng-correction-field .input,
+.eng-correction-box {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }
-.eng-correction-field textarea {
+.eng-correction-field textarea,
+textarea.eng-correction-box {
   resize: vertical;
 }
+.eng-correction-target > summary,
 .eng-correction-evidence summary {
   cursor: pointer;
   color: var(--fg-1);
@@ -87,8 +90,13 @@
   margin: 0;
   padding: 0;
 }
-.eng-correction-evidence-list {
+.eng-correction-evidence-list,
+.eng-correction-target > .eng-correction-section {
   padding-block: var(--correction-gap);
+}
+/* The fix for a blocked Send sits right under the reason it answers. */
+.eng-correction-blocker {
+  margin-top: calc(var(--correction-gap-small) - var(--correction-gap));
 }
 .eng-correction-evidence-item {
   display: flex;

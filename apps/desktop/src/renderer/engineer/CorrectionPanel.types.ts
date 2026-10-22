@@ -1,7 +1,8 @@
 /** Presentation contract. Coordinates displayed here are project-local metres. */
 export type CorrectionTargetView =
   | { kind: 'part'; partId: string; label: string }
-  | { kind: 'pin'; position: [number, number, number]; layerId?: string; radiusM?: number };
+  | { kind: 'pin'; position: [number, number, number]; layerId?: string; radiusM?: number }
+  | { kind: 'model' };
 
 export interface CorrectionEvidenceView {
   id: string;
@@ -15,7 +16,7 @@ export interface CorrectionRequestView {
   target: CorrectionTargetView;
   comment: string;
   evidenceIds: string[];
-  status: 'open' | 'submitted' | 'proposed' | 'accepted' | 'rejected' | 'stale' | 'failed';
+  status: 'open' | 'submitted' | 'proposed' | 'accepted' | 'rejected' | 'stale';
   replies?: { id: string; text: string; author?: string }[];
   error?: string;
 }
@@ -60,7 +61,15 @@ export interface CorrectionPanelProps {
   sourceVisible?: boolean;
   onSourceVisibleChange?: (visible: boolean) => void;
   busy?: boolean;
+  /** Why the panel is busy, shown as the reason Send is off. */
+  busyReason?: 'saving' | 'modelling' | 'sending';
   readOnly?: boolean;
+  /** Why the AI cannot be asked right now (already translated), with an optional fix. */
+  blocker?: { message: string; fix?: { label: string; onClick: () => void } };
+  /** Shown under the pin picker when a pin will only be kept as a view hint. */
+  pinNote?: string;
+  /** The model has no measured scale yet, so the review notes sizes are model units. */
+  scaleProvisional?: boolean;
   /** Set false while the proposed geometry has not finished loading in the scene. */
   proposalReady?: boolean;
   error?: string;
@@ -68,10 +77,15 @@ export interface CorrectionPanelProps {
   onPinModeChange: (enabled: boolean) => void;
   onPinRadiusChange?: (radiusM: number) => void;
   onClearPin: () => void;
-  onCreate: (request: {
-    target: CorrectionTargetView;
+  /**
+   * Saves the typed correction; with `send` the parent also hands it, together with every
+   * waiting (`open`) request, to the AI. No target means the whole model.
+   */
+  onSubmit: (request: {
+    target?: CorrectionTargetView;
     comment: string;
     evidenceIds: string[];
+    send: boolean;
   }) => Action;
   onSelectRequest: (id: string) => void;
   onSend: (ids: string[]) => Action;
@@ -80,4 +94,6 @@ export interface CorrectionPanelProps {
   onAccept: (proposalId: string) => Action;
   onReject: (proposalId: string) => Action;
   onReply: (requestId: string, text: string) => Action;
+  /** Sends a rejected or proposed request back to the AI, with an optional new reply. */
+  onResend: (requestId: string, reply?: string) => Action;
 }

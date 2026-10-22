@@ -35,7 +35,7 @@ function Harness({ context = key }: { context?: string | null }) {
       onClearPin={() => {
         draft.setPin(undefined);
       }}
-      onCreate={async () => {
+      onSubmit={async () => {
         if (!draft.begin()) return;
         try {
           await save();
@@ -51,6 +51,7 @@ function Harness({ context = key }: { context?: string | null }) {
       onAccept={vi.fn()}
       onReject={vi.fn()}
       onReply={vi.fn()}
+      onResend={vi.fn()}
     />
   );
 }
@@ -155,13 +156,13 @@ it('keeps the in-flight save locked across remount and clears the saved draft on
   render();
   write('Move the radio to its measured mount.');
   act(() => {
-    button('Save request').click();
+    button('Save without sending').click();
   });
   away();
   render();
-  expect(button('Save request').disabled).toBe(true);
+  expect(button('Save without sending').disabled).toBe(true);
   act(() => {
-    button('Save request').click();
+    button('Save without sending').click();
   });
   expect(save).toHaveBeenCalledTimes(1);
   await act(async () => {
@@ -185,7 +186,7 @@ it('clears drafts on a project/run change and ignores old async completions even
   render();
   write('Old project comment');
   act(() => {
-    button('Save request').click();
+    button('Save without sending').click();
   });
   away();
   setCorrectionDraftKey(correctionDraftKey('project-b', 'run-a'));

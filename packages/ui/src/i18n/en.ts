@@ -3875,7 +3875,7 @@ export const en = {
   'eng.correction.source.show': 'Show source cloud',
   'eng.correction.source.hide': 'Hide source cloud',
   'eng.correction.new': 'New correction request',
-  'eng.correction.request': 'Request a correction',
+  'eng.correction.request': "Tell the AI what's wrong",
   'eng.correction.requestHint':
     'Choose a part or mark a missing item in the scene. The model stays visible while you review.',
   'eng.correction.readOnly':
@@ -3885,7 +3885,6 @@ export const en = {
   'eng.correction.pin': 'Location pin',
   'eng.correction.position': 'Project-local metres: X {x}, Y {y}, Z {z}',
   'eng.correction.part': 'Part to correct',
-  'eng.correction.selectPart': 'Select a part in the model',
   'eng.correction.radius': 'Correction radius (m)',
   'eng.correction.radiusHint':
     'Changes must stay within this distance of the pin. Choose 0.1 to 5 metres.',
@@ -3898,14 +3897,33 @@ export const en = {
   'eng.correction.pinCancel': 'Cancel picking',
   'eng.correction.showTarget': 'Show target in scene',
   'eng.correction.comment': 'Describe the discrepancy',
-  'eng.correction.commentPlaceholder': 'What is wrong, and what should change?',
-  'eng.correction.commentHint':
-    'Be specific about the visible difference. Saving keeps this request in the project; sending to AI is a separate action.',
+  'eng.correction.commentPlaceholder': "For example: remove the ladder, there isn't one",
   'eng.correction.evidenceSelected': 'Source evidence ({count} selected)',
   'eng.correction.evidenceOptional': 'Source evidence (optional)',
   'eng.correction.evidenceHint': 'Attach the source photos or views that show the discrepancy.',
   'eng.correction.saved': 'Request saved. Send it to AI when the review is ready.',
-  'eng.correction.save': 'Save request',
+  'eng.correction.pointAt': 'Point at something (optional)',
+  'eng.correction.wholeModel': 'Whole model',
+  'eng.correction.sendNow': 'Send',
+  'eng.correction.saveOnly': 'Save without sending',
+  'eng.correction.typeFirst': 'Type a correction to send.',
+  'eng.correction.tooLong': 'Shorten the text to {limit} characters or fewer.',
+  'eng.correction.busy.saving': 'Saving the correction…',
+  'eng.correction.busy.modelling':
+    'The model is being built or saved. Send is available when it finishes.',
+  'eng.correction.busy.sending': 'Handing the request to the AI…',
+  'eng.correction.blocker.checking': 'Checking the AI connection…',
+  'eng.correction.blocker.conversation': 'Finish or cancel the current AI conversation first.',
+  'eng.correction.blocker.permission':
+    'This project keeps {kinds} on this computer. Allow cloud AI for them in project settings, or choose a local model.',
+  'eng.correction.blocker.openSettings': 'Open AI settings',
+  'eng.correction.blocker.openProject': 'Open project settings',
+  'eng.correction.pinHintOnly':
+    'This model has no known scale or placement yet: the pin is kept as a view hint and the request goes to the whole model.',
+  'eng.correction.scaleProvisional':
+    'The scale is provisional: sizes in this proposal are model units, not measured metres. Set a reference height to fix the scale.',
+  'eng.correction.resend': 'Send again',
+  'eng.correction.sent': 'Sent. The proposal appears here for Before and After review.',
   'eng.correction.discard': 'Discard draft',
   'eng.correction.busy': 'Saving or preparing the correction…',
   'eng.correction.requests': 'Saved requests',
@@ -3917,10 +3935,8 @@ export const en = {
   'eng.correction.status.accepted': 'Accepted',
   'eng.correction.status.rejected': 'Rejected',
   'eng.correction.status.stale': 'Needs a new proposal',
-  'eng.correction.status.failed': 'Needs attention',
   'eng.correction.send_one': 'Send {count} request to AI',
   'eng.correction.send_other': 'Send {count} requests to AI',
-  'eng.correction.noneToSend': 'No requests waiting to send',
   'eng.correction.sendHint':
     'AI proposes changes for review. Sending requests does not accept a correction.',
   'eng.correction.selectedRequest': 'Selected correction request',
