@@ -249,7 +249,12 @@ describe('Settings, detector library', () => {
       'Leave out sample photos (client-confidential)',
     );
     expect(box?.checked).toBe(false);
+    // sample photos go into the file: a faint line says who may see it
+    expect(q('dl-export-warn')?.textContent).toBe(
+      'Sample photos may show client sites. Share this file only with people allowed to see them.',
+    );
     act(() => box?.click());
+    expect(q('dl-export-warn')).toBeNull();
     await click(q('dl-export-go'));
     expect(callsOf('detectors:export')[0]?.req).toEqual({
       where: 'library',

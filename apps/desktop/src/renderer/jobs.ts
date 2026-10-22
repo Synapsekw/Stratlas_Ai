@@ -224,6 +224,8 @@ export function finishedIssuesJob(
   );
 }
 
+const PASS_WRITERS: ReadonlySet<string> = new Set(['detect.vlm']);
+
 /**
  * True when a local detector run (`detect.vlm`) on the project at `root` has just finished: it
  * wrote a pass file, so an open Detections review should read the passes again.
@@ -233,13 +235,7 @@ export function finishedPassJob(
   next: readonly JobRecord[],
   root: string,
 ): boolean {
-  return next.some(
-    (j) =>
-      j.status === 'done' &&
-      j.pipeline === 'detect.vlm' &&
-      sameFolder(j.project, root) &&
-      prev.find((p) => p.id === j.id)?.status !== 'done',
-  );
+  return justFinished(prev, next, root, PASS_WRITERS);
 }
 
 /**

@@ -100,6 +100,11 @@ describe('detector job titles', () => {
 
   it('one photo reads 1 photo', () => {
     expect(jobTitleFor(job([det('Rust')], many(1)))).toBe('Finding rust in 1 photo');
+    // only the first letter is lowered: acronyms stay
+    expect(jobTitleFor(job([det('Rust on PV frames')], many(2)))).toBe(
+      'Finding rust on PV frames in 2 photos',
+    );
+    expect(jobTitleFor(job([det('UV damage')], many(2)))).toBe('Finding UV damage in 2 photos');
     expect(jobTitleFor(job([det('A'), det('B')], many(1)))).toBe('Running 2 detectors on 1 photo');
   });
 

@@ -165,7 +165,20 @@ export function jobTitleFor(job: Pick<JobRecord, 'pipeline' | 'params'>): string
   }
   const name = (detectors[0] as { detector?: { name?: unknown } } | null)?.detector?.name;
   if (typeof name !== 'string' || name === '') return jobTitle(job.pipeline);
-  return t('detect.preset.job.one', { name: name.toLowerCase(), count });
+  return t('detect.preset.job.one', { name: inSentence(name), count });
+}
+
+/**
+ * A detector name inside a sentence: only its first letter is lowered, so acronyms later in the
+ * name stay ("Rust on PV frames" reads "rust on PV frames"), and a name that opens with an
+ * acronym keeps it ("UV damage").
+ */
+function inSentence(name: string): string {
+  const first = name.split(/\s/, 1)[0] ?? '';
+  if (first.length > 1 && first === first.toUpperCase() && first !== first.toLowerCase()) {
+    return name;
+  }
+  return name.charAt(0).toLowerCase() + name.slice(1);
 }
 
 // ---------------------------------------------------------------- the kind of a job

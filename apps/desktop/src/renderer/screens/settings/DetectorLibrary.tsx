@@ -266,6 +266,11 @@ function DetectorRow({ item, stats, projectId, onRemoved, onCleared, onNote, onE
                 />
                 {t('detect.preset.library.leaveOut')}
               </label>
+              {!leaveOut && (
+                <p className="dl-warn" data-testid="dl-export-warn">
+                  {t('detect.preset.library.samplesWarn')}
+                </p>
+              )}
               <span className="dl-acts">
                 <button
                   type="button"

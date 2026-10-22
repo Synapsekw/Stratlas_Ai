@@ -35,6 +35,12 @@
   gap: 6px;
   color: var(--fg-1);
 }
+/* the faint line under "Leave out sample photos" while the photos go into the file */
+.dl-section .dl-warn {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--fg-2);
+}
 .dl-section .dl-acts {
   display: flex;
   gap: 6px;
