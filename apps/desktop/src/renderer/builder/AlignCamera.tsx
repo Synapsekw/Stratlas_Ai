@@ -3,7 +3,7 @@ import { frameProjection } from '@aio/maps';
 import { shiftLocal, type DirectionFill } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { getPlayer, setFramePlane } from '@aio/video';
-import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
+import { dateShiftOf, useClock, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Vector3 } from 'three';
@@ -59,7 +59,7 @@ export function AlignCamera() {
   const opacity = useAlign((s) => s.opacity);
   const say = useAlign((s) => s.say);
   const project = useWorkspace((s) => s.project);
-  const nowMs = useWorkspace((s) => s.nowMs);
+  const nowMs = useClock((s) => s.nowMs);
   const { flights } = useMedia(project);
   const scene = useScene();
   const map = useMap();

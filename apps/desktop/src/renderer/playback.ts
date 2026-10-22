@@ -1,5 +1,5 @@
 import type { ClipBar } from '@aio/ui';
-import type { Workspace } from '@aio/workspace';
+import { nowOf, type Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
 
 /** Longest step one frame may take, so a throttled or hidden window does not jump ahead. */
@@ -44,8 +44,9 @@ export function startPlaybackLoop(
       return;
     }
     if (last !== null && !videoClock()) {
-      const r = advance(s.nowMs, t - last, s.rate, clipEnd());
-      s.setTime(r.nowMs);
+      const r = advance(nowOf(ws), t - last, s.rate, clipEnd());
+      if (r.stop) s.setTime(r.nowMs);
+      else s.tick(r.nowMs);
       if (r.stop) {
         s.pause();
         last = null;

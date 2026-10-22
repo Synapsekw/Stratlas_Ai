@@ -2,6 +2,7 @@
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createClock } from '@aio/workspace';
 import type { TimelineModel } from './model';
 import { dragKeyframe } from './testPointer';
 import { tickLabel } from './parts';
@@ -60,7 +61,7 @@ const model: TimelineModel = {
 };
 const props = (over: Partial<TimelineProps> = {}): TimelineProps => ({
   model,
-  nowMs: T0,
+  clock: createClock(T0),
   playing: false,
   rate: 1,
   activeClip: 'a',
@@ -124,6 +125,51 @@ describe('Timeline', () => {
     render(props({ model: { ...model, clips: [], groups: [], range: null } }));
     expect(host.querySelector('.tl-empty')).not.toBeNull();
     expect(host.querySelector('[data-testid="timecode"]')?.textContent).toBe('--:--:--');
+  });
+});
+
+describe('Timeline clock', () => {
+  it('a tick moves the playhead and the timecode without rendering the tracks', () => {
+    const clock = createClock(T0);
+    let reads = 0;
+    const counted = { ...model };
+    Object.defineProperty(counted, 'clips', {
+      get() {
+        reads += 1;
+        return model.clips;
+      },
+    });
+    render(props({ model: counted, clock }));
+    const head = host.querySelector<HTMLElement>('[data-testid="playhead"]');
+    const before = head?.style.transform;
+    const rendered = reads;
+    act(() => {
+      clock.setState({ nowMs: T0 + 40_000 });
+    });
+    expect(host.querySelector('[data-testid="timecode"]')?.textContent).toBe('07:00:40.00');
+    expect(head?.style.transform).not.toBe(before);
+    expect(head?.style.transform).toMatch(/^translateX\(\d+\.\d{3}%\)$/);
+    expect(reads).toBe(rendered);
+  });
+  it('keeps the playhead in view while playing', () => {
+    const clock = createClock(T0);
+    render(props({ clock, playing: true }));
+    act(() => {
+      clock.setState({ nowMs: T0 + 10 * 3_600_000 });
+    });
+    // the view jumped so the head sits a tenth of the way in
+    expect(host.querySelector<HTMLElement>('[data-testid="playhead"]')?.style.transform).toBe(
+      'translateX(10.000%)',
+    );
+  });
+  it('does not follow while paused', () => {
+    const clock = createClock(T0);
+    render(props({ clock }));
+    act(() => {
+      clock.setState({ nowMs: T0 + 10 * 3_600_000 });
+    });
+    const tf = host.querySelector<HTMLElement>('[data-testid="playhead"]')?.style.transform ?? '';
+    expect(Number(/translateX\((.*)%\)/.exec(tf)?.[1])).toBeGreaterThan(100);
   });
 });
 

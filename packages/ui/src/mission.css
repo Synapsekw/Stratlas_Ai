@@ -788,6 +788,12 @@ select.input option {
   border-inline-start: 1px dashed var(--acc-a40);
   pointer-events: none;
 }
+/* the playhead and ghost lines span the tracks and move by transform (no layout per frame) */
+.ph-rail {
+  inset-inline-start: 0;
+  width: 100%;
+  will-change: transform;
+}
 
 /* ---------- dataset tree ---------- */
 .tree-h {

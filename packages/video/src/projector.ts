@@ -242,6 +242,14 @@ export class Projector {
   private depthValid = false;
   private depthOk = true;
   private readonly distanceUniforms = { uPos: { value: new Vector3() } };
+  /** The pose the distance map was last asked for (`setPose`), NaN before the first. */
+  private readonly posePos = new Vector3(Number.NaN, Number.NaN, Number.NaN);
+  private readonly poseQ = new Vector4(Number.NaN, Number.NaN, Number.NaN, Number.NaN);
+  private readonly rot = new Matrix4();
+  /** The receivers and their world matrices as last attached. */
+  private receivers: { mesh: Mesh; matrix: Matrix4 }[] = [];
+  /** Distance maps drawn so far (a 2048² pass each): for tests and the performance probe. */
+  depthRenders = 0;
 
   constructor(options: Partial<ProjectorOptions> = {}) {
     this.options = { ...DEFAULT_PROJECTOR, ...options };
@@ -359,8 +367,14 @@ export class Projector {
 
   /** Projector pose: camera position and three.js camera quaternion (looks down -Z). */
   setPose(pos: Vector3, q: Quaternion) {
+    // the same pose (a paused clip while the view orbits) keeps the distance map
+    const pq = this.poseQ;
+    if (pos.equals(this.posePos) && pq.x === q.x && pq.y === q.y && pq.z === q.z && pq.w === q.w)
+      return;
+    this.posePos.copy(pos);
+    pq.set(q.x, q.y, q.z, q.w);
     this.uniforms.aioProjPos.value.copy(pos);
-    const inv = new Matrix4().makeRotationFromQuaternion(q).invert();
+    const inv = this.rot.makeRotationFromQuaternion(q).invert();
     this.uniforms.aioProjRot.value.setFromMatrix4(inv);
     this.depthCam.position.copy(pos);
     this.depthCam.quaternion.copy(q);
@@ -370,6 +384,11 @@ export class Projector {
 
   /** Patches the materials of these meshes (idempotent; new materials are picked up). */
   attach(meshes: readonly Mesh[]) {
+    // another set of receivers, or one moved, needs a new distance map
+    if (this.receiversChanged(meshes)) {
+      this.receivers = meshes.map((mesh) => ({ mesh, matrix: mesh.matrixWorld.clone() }));
+      this.depthValid = false;
+    }
     for (const mesh of meshes) {
       if (!this.layered.has(mesh)) {
         if (!mesh.layers.isEnabled(PROJECTOR_DEPTH_LAYER)) {
@@ -381,6 +400,15 @@ export class Projector {
       const mats: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) this.patch(m);
     }
+  }
+
+  private receiversChanged(meshes: readonly Mesh[]): boolean {
+    const was = this.receivers;
+    if (was.length !== meshes.length) return true;
+    return meshes.some((m, i) => {
+      const w = was[i];
+      return w?.mesh !== m || !w.matrix.equals(m.matrixWorld);
+    });
   }
 
   private patch(mat: Material) {
@@ -413,6 +441,8 @@ export class Projector {
     this.patched.clear();
     for (const mesh of this.layered) mesh.layers.disable(PROJECTOR_DEPTH_LAYER);
     this.layered.clear();
+    this.receivers = [];
+    this.depthValid = false;
   }
 
   get patchedCount(): number {
@@ -441,6 +471,7 @@ export class Projector {
     renderer.autoClear = true;
     renderer.clear(true, true, false);
     renderer.render(scene, this.depthCam);
+    this.depthRenders += 1;
     renderer.setRenderTarget(prevTarget);
     renderer.setClearColor(prevClear, prevAlpha);
     renderer.autoClear = prevAutoClear;

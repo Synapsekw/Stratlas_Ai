@@ -1,3 +1,4 @@
+import type { ClockStore } from '@aio/workspace';
 import {
   useCallback,
   useEffect,
@@ -5,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type RefObject,
 } from 'react';
@@ -43,17 +45,17 @@ export interface TimeAxis {
   zoom: (factor: number, anchor: number) => void;
   /** Back to the whole range. */
   fit: () => void;
+  /** Bring a time that left the view back into it (the playhead while playing). */
+  follow: (t: number) => void;
 }
 
 /**
  * The visible span of a time axis drawn in `tracksRef`: fits `range` until the user zooms or pans
- * (Ctrl + wheel zooms at the cursor, wheel pans), and keeps `followMs` in view while `playing`.
+ * (Ctrl + wheel zooms at the cursor, wheel pans); `follow` keeps the playhead in view.
  */
 export function useTimeAxis(
   tracksRef: RefObject<HTMLDivElement | null>,
   range: [number, number] | null,
-  followMs: number,
-  playing: boolean,
 ): TimeAxis {
   const [width, setWidth] = useState(800);
   const hasTime = range !== null;
@@ -67,11 +69,15 @@ export function useTimeAxis(
     },
     [rangeKey],
   );
-  // Keep the playhead in view while playing (state adjusted during render, no effect needed).
-  if (playing && view && (followMs > view[1] || followMs < view[0])) {
-    const s = view[1] - view[0];
-    setManual({ key: rangeKey, view: [followMs - s * 0.1, followMs + s * 0.9] });
-  }
+  // Keep the playhead in view while playing: called by the playhead as the clock moves.
+  const follow = useCallback(
+    (t: number) => {
+      if (!view || (t <= view[1] && t >= view[0])) return;
+      const s = view[1] - view[0];
+      setManual({ key: rangeKey, view: [t - s * 0.1, t + s * 0.9] });
+    },
+    [view, rangeKey],
+  );
 
   useLayoutEffect(() => {
     const el = tracksRef.current;
@@ -146,7 +152,52 @@ export function useTimeAxis(
     fit: () => {
       setView(range);
     },
+    follow,
   };
+}
+
+/** A value of the clock, read again on every tick; renders only when the value changes. */
+function useClockValue<T>(clock: ClockStore, select: (nowMs: number) => T): T {
+  return useSyncExternalStore(clock.subscribe, () => select(clock.getState().nowMs));
+}
+
+export interface PlayheadProps {
+  clock: ClockStore;
+  axis: TimeAxis;
+  /** Where the clock draws on the axis (null: nowhere). Keep it stable (useCallback). */
+  at: (nowMs: number) => number | null;
+  /** Keep the line in view (the playhead while playing). */
+  follow: boolean;
+  className: string;
+  testId: string;
+}
+
+/**
+ * The line at the clock. It follows the clock on its own, with a transform written straight to
+ * the element: a playback frame neither renders the timeline nor lays it out again.
+ */
+export function Playhead(p: PlayheadProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { clock, at, follow: keep } = p;
+  const { x, follow } = p.axis;
+  useLayoutEffect(() => {
+    const place = () => {
+      const el = ref.current;
+      if (!el) return;
+      const t = at(clock.getState().nowMs);
+      if (t === null) {
+        el.style.visibility = 'hidden';
+        return;
+      }
+      el.style.visibility = '';
+      // the element spans the tracks, so a translate in % of its own width is % of the tracks
+      el.style.transform = `translateX(${x(t).toFixed(3)}%)`;
+      if (keep) follow(t);
+    };
+    place();
+    return clock.subscribe(place);
+  }, [clock, at, x, follow, keep]);
+  return <div ref={ref} className={`${p.className} ph-rail`} data-testid={p.testId} />;
 }
 
 export function Ruler({ axis }: { axis: TimeAxis }) {
@@ -170,8 +221,10 @@ export interface TransportProps {
   canStep: boolean;
   canPlay: boolean;
   playing: boolean;
-  /** The time the timecode shows (null: nothing carries time). */
-  clockMs: number | null;
+  /** The clock the timecode shows (null: nothing carries time). */
+  clock: ClockStore | null;
+  /** Added to the clock for the timecode (a site time zone). */
+  shiftMs?: number;
   rate: number;
   activeName?: string | undefined;
   onStep: (dir: 1 | -1) => void;
@@ -181,10 +234,6 @@ export interface TransportProps {
 
 /** Previous / play / next, the timecode, the rate and the active clip tag. */
 export function Transport(p: TransportProps) {
-  const frames =
-    p.clockMs === null
-      ? ''
-      : String(Math.floor(((((p.clockMs % 1000) + 1000) % 1000) / 1000) * 30)).padStart(2, '0');
   const nextRate = () => {
     const i = RATES.findIndex((r) => r === p.rate);
     p.onRate(RATES[(i + 1) % RATES.length] ?? 1);
@@ -228,14 +277,7 @@ export function Transport(p: TransportProps) {
         </button>
       </div>
       <div className="tc" data-testid="timecode">
-        {p.clockMs !== null ? (
-          <>
-            {formatClock(p.clockMs)}
-            <small>.{frames}</small>
-          </>
-        ) : (
-          '--:--:--'
-        )}
+        {p.clock !== null ? <Timecode clock={p.clock} shiftMs={p.shiftMs ?? 0} /> : '--:--:--'}
       </div>
       <button
         className="rate"
@@ -256,8 +298,24 @@ export function Transport(p: TransportProps) {
   );
 }
 
-/** Zoom out, fit, zoom in; the buttons zoom around `anchor` (the playhead). */
-export function ZoomControls({ axis, anchor }: { axis: TimeAxis; anchor: number }) {
+/** The clock as hh:mm:ss.ff (30 frames a second); renders once per frame shown, not per tick. */
+function Timecode({ clock, shiftMs }: { clock: ClockStore; shiftMs: number }) {
+  const text = useClockValue(clock, (nowMs) => {
+    const ms = nowMs + shiftMs;
+    const frames = String(Math.floor(((((ms % 1000) + 1000) % 1000) / 1000) * 30)).padStart(2, '0');
+    return `${formatClock(ms)}.${frames}`;
+  });
+  const dot = text.lastIndexOf('.');
+  return (
+    <>
+      {text.slice(0, dot)}
+      <small>{text.slice(dot)}</small>
+    </>
+  );
+}
+
+/** Zoom out, fit, zoom in; the buttons zoom around `anchor()` (the playhead). */
+export function ZoomControls({ axis, anchor }: { axis: TimeAxis; anchor: () => number }) {
   return (
     <div className="seg icons" role="group" aria-label="Timeline zoom">
       <button
@@ -265,7 +323,7 @@ export function ZoomControls({ axis, anchor }: { axis: TimeAxis; anchor: number 
         aria-label="Zoom out"
         title={`Zoom out (${platformKeys('Ctrl')} + wheel)`}
         onClick={() => {
-          axis.zoom(1.6, anchor);
+          axis.zoom(1.6, anchor());
         }}
       >
         <Icon name="minus" size={14} />
@@ -278,7 +336,7 @@ export function ZoomControls({ axis, anchor }: { axis: TimeAxis; anchor: number 
         aria-label="Zoom in"
         title={`Zoom in (${platformKeys('Ctrl')} + wheel)`}
         onClick={() => {
-          axis.zoom(0.625, anchor);
+          axis.zoom(0.625, anchor());
         }}
       >
         <Icon name="plus" size={14} />

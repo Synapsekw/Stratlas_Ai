@@ -1,5 +1,5 @@
 import type { FrameGeom, ImageGeom, Sighting } from '@aio/schema';
-import { issuesOnScreen, useWorkspace, workspace } from '@aio/workspace';
+import { issuesOnScreen, useClock, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fitView, type Point, type Size, type ViewTransform } from '../image/geometry';
 import {
@@ -44,7 +44,8 @@ const isFrameGeom = (g: ImageGeom): g is FrameGeom => g.type === 'box' || g.type
  */
 export function VideoAnnotator({ layerId, frameSize }: { layerId: string; frameSize?: Size }) {
   const project = useWorkspace((s) => s.project);
-  const nowMs = useWorkspace((s) => s.nowMs);
+  // the boxes follow the video frame by frame: the full-rate clock
+  const nowMs = useClock((s) => s.nowMs);
   const allIssues = useWorkspace((s) => s.issues);
   const dates = useWorkspace((s) => s.dates);
   const hidden = useWorkspace((s) => s.hidden);

@@ -14,7 +14,7 @@ import {
   type Quat,
   type Vec3,
 } from '@aio/schema';
-import { shiftKey } from '@aio/workspace';
+import { clockOf, nowOf, shiftKey } from '@aio/workspace';
 import {
   Box3,
   BufferAttribute,
@@ -223,7 +223,7 @@ export class VideoRig {
   private saved: { pos: Vector3; quat: Quaternion; up: Vector3; fov: number; near: number } | null =
     null;
   private lastPos: Vector3 | null = null;
-  private hold: (() => void) | null = null;
+  private readonly followStep = new Vector3();
   private playerOff: (() => void) | null = null;
   private readonly offs: (() => void)[] = [];
   private readonly pose = { pos: new Vector3(), q: new Quaternion(), valid: false };
@@ -301,11 +301,16 @@ export class VideoRig {
     this.offs.push(handle.onFrame(this.frame));
     // the flights frame the view while there is no model or cloud (a video-first project)
     this.offs.push(handle.addContentBounds(() => this.flightBounds()));
+    // the clock moves every playback frame (and every scrub step): draw once per move
+    this.offs.push(
+      clockOf(videoStore()).subscribe(() => {
+        handle.requestRender();
+      }),
+    );
     this.offs.push(
       videoStore().subscribe((s, p) => {
         if (s.activeClip !== p.activeClip) this.syncActive();
         if (
-          s.nowMs !== p.nowMs ||
           s.activeClip !== p.activeClip ||
           s.hidden !== p.hidden ||
           s.directionDraft !== p.directionDraft ||
@@ -619,8 +624,6 @@ export class VideoRig {
       this.playerOff = null;
       releasePlayer(this.activeId);
       this.player = null;
-      this.hold?.();
-      this.hold = null;
     }
     this.activeId = want;
     this.stylePaths();
@@ -648,26 +651,22 @@ export class VideoRig {
       this.projector.setOptions({ maxDistance: Math.min(5000, Math.max(30, top * 8)) });
     }
     this.applyLens(this.lensOverride ?? entry.layer.lens);
-    const onPlay = () => {
-      this.hold ??= this.handle.holdContinuous('video playback');
-    };
-    const onStop = () => {
-      this.hold?.();
-      this.hold = null;
+    // one draw per presented video frame (not one per display refresh): a 30 fps clip on a
+    // 144 Hz screen draws 30 times a second, and the camera still draws on demand
+    const redraw = () => {
       this.handle.requestRender();
     };
+    const offFrame = player.onVideoFrame(redraw);
     const v = player.video;
-    v.addEventListener('play', onPlay);
-    v.addEventListener('pause', onStop);
-    v.addEventListener('seeked', onStop);
-    v.addEventListener('loadeddata', onStop);
+    v.addEventListener('pause', redraw);
+    v.addEventListener('seeked', redraw);
+    v.addEventListener('loadeddata', redraw);
     this.playerOff = () => {
-      v.removeEventListener('play', onPlay);
-      v.removeEventListener('pause', onStop);
-      v.removeEventListener('seeked', onStop);
-      v.removeEventListener('loadeddata', onStop);
+      offFrame();
+      v.removeEventListener('pause', redraw);
+      v.removeEventListener('seeked', redraw);
+      v.removeEventListener('loadeddata', redraw);
     };
-    if (player.playing) onPlay();
   }
 
   private readonly frame = () => {
@@ -692,7 +691,8 @@ export class VideoRig {
       return;
     }
     const layerVisible = entry.visible && !s.hidden[entry.layer.id];
-    const flightMs = s.nowMs - flight.startUtcMs;
+    const nowMs = nowOf(videoStore());
+    const flightMs = nowMs - flight.startUtcMs;
     // a trial offset is the clip's own (stored) one: it moves with the date like the saved one
     const off = this.positionOverride
       ? shiftLocal(this.positionOverride, entry.shift)
@@ -719,8 +719,8 @@ export class VideoRig {
     const win = this.player.window;
     const covered =
       this.player.status !== 'error' &&
-      s.nowMs >= win.startMs &&
-      (Number.isFinite(this.player.video.duration) ? s.nowMs <= win.endMs : true) &&
+      nowMs >= win.startMs &&
+      (Number.isFinite(this.player.video.duration) ? nowMs <= win.endMs : true) &&
       this.player.video.readyState >= 2;
 
     const cam = this.handle.camera;
@@ -782,11 +782,11 @@ export class VideoRig {
     const controls = controlsOf(this.handle);
     if (this.mode === 'follow') {
       if (this.lastPos) {
-        const d = this.pose.pos.clone().sub(this.lastPos);
+        const d = this.followStep.copy(this.pose.pos).sub(this.lastPos);
         cam.position.add(d);
         controls?.target.add(d);
       }
-      this.lastPos = this.pose.pos.clone();
+      this.lastPos = (this.lastPos ?? new Vector3()).copy(this.pose.pos);
     } else if (drone && this.lens) {
       cam.position.copy(this.pose.pos);
       cam.quaternion.copy(this.pose.q);
@@ -874,7 +874,6 @@ export class VideoRig {
     this.offs.length = 0;
     this.playerOff?.();
     if (this.activeId) releasePlayer(this.activeId);
-    this.hold?.();
     this.texture?.dispose();
     this.beacon?.material.map?.dispose();
     this.beacon?.material.dispose();

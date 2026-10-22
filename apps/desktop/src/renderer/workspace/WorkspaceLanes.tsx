@@ -1,6 +1,6 @@
 import { buildLaneModel, LaneTimeline, laneNeighbour, offsetLabel } from '@aio/ui';
-import { dateTags, workspace } from '@aio/workspace';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { clock, dateTags, useWorkspace, workspace } from '@aio/workspace';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DatePicker } from './DatePicker';
 import { followLaneFocus, type LaneView } from './laneFocus';
 import { siteOffset } from './lanes';
@@ -25,7 +25,10 @@ const SHUT = { earlier: false, later: false };
  * shown or folded to the date row (`followLaneFocus`). Draws nothing.
  */
 export function LaneFocusFollow() {
-  const { project, nowMs, model: base, index, focus, offset } = useLaneSource();
+  const { project, model: base, index, focus, offset } = useLaneSource();
+  // the workspace's clock (exact after a seek or pause, a few times a second while playing): the
+  // time of day the user saw, without a render per playback frame
+  const nowMs = useWorkspace((s) => s.nowMs);
   const lanes = useMemo(
     () => (base && index ? buildLaneModel(base, index, focus, offset ?? 0, SHUT).lanes : null),
     [base, index, focus, offset],
@@ -43,7 +46,6 @@ export function LaneFocusFollow() {
 export function WorkspaceLanes() {
   const {
     project,
-    nowMs,
     playing,
     rate,
     activeClip,
@@ -67,39 +69,54 @@ export function WorkspaceLanes() {
     const tags = index ? dateTags(index.captures) : {};
     return Object.fromEntries(Object.entries(tags).map(([id, tag]) => [id, tag.colour]));
   }, [index]);
+  const focusedLane = model?.lanes.find((l) => l.captureId === model.focus);
+  // stable callbacks: the memoized lanes then render only when something they show changes
+  const onFocusLane = useCallback((id: string) => {
+    timeline.getState().focusSurvey(id);
+  }, []);
+  const onExpand = useCallback(
+    (side: 'earlier' | 'later') => {
+      setOpened({ project: projectId, earlier, later, [side]: true });
+    },
+    [projectId, earlier, later],
+  );
+  const onClip = useCallback(
+    (id: string, atMs?: number) => {
+      // A clip bar selects its clip and seeks; Space or Play plays.
+      const clip = model?.lanes.flatMap((l) => l.clips).find((c) => c.layerId === id);
+      pickClip(id, atMs, clip);
+    },
+    [model],
+  );
+  const onStep = useCallback(
+    (dir: 1 | -1) => {
+      if (!focusedLane) return;
+      const c = laneNeighbour(focusedLane, workspace.getState().activeClip, dir);
+      if (!c) return;
+      selectClip(c.layerId);
+      workspace.getState().setTime(c.startMs);
+    },
+    [focusedLane],
+  );
+  const dateSlot = useMemo(() => <DatePicker up />, []);
   if (!model) return null;
-  const focusedLane = model.lanes.find((l) => l.captureId === model.focus);
 
   return (
     <LaneTimeline
       {...timelineActions}
       model={model}
-      nowMs={nowMs}
+      clock={clock}
       playing={playing}
       rate={rate}
       activeClip={activeClip}
       selectedIssue={selectedIssue}
       colours={colours}
-      dateSlot={<DatePicker up />}
+      dateSlot={dateSlot}
       clockLabel={offsetLabel(offset)}
-      onFocusLane={(id) => {
-        timeline.getState().focusSurvey(id);
-      }}
-      onExpand={(side) => {
-        setOpened({ project: projectId, earlier, later, [side]: true });
-      }}
-      onClip={(id, atMs) => {
-        // A clip bar selects its clip and seeks; Space or Play plays.
-        const clip = model.lanes.flatMap((l) => l.clips).find((c) => c.layerId === id);
-        pickClip(id, atMs, clip);
-      }}
-      onStep={(dir) => {
-        if (!focusedLane) return;
-        const c = laneNeighbour(focusedLane, workspace.getState().activeClip, dir);
-        if (!c) return;
-        selectClip(c.layerId);
-        workspace.getState().setTime(c.startMs);
-      }}
+      onFocusLane={onFocusLane}
+      onExpand={onExpand}
+      onClip={onClip}
+      onStep={onStep}
     />
   );
 }

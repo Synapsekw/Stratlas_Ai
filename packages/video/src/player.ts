@@ -5,6 +5,7 @@ import {
   type ClipTiming,
   type SyncAction,
 } from './clock';
+import { clockOf, nowOf } from '@aio/workspace';
 import { findVideoLayer, resolveAsset, videoStore, type VideoLayer } from './runtime';
 
 export type PlayerStatus = 'loading' | 'ready' | 'no-footage' | 'error';
@@ -25,6 +26,7 @@ export class ClipPlayer {
   private lastWrittenMs: number | null = null;
   private lastMediaTime = -1;
   private readonly listeners = new Set<() => void>();
+  private readonly frameListeners = new Set<() => void>();
   private readonly unsub: () => void;
   private disposed = false;
   private rvfcId = 0;
@@ -46,7 +48,16 @@ export class ClipPlayer {
     v.addEventListener('seeked', this.emit);
     v.addEventListener('play', this.emit);
     v.addEventListener('pause', this.emit);
-    this.unsub = videoStore().subscribe(this.apply);
+    // the clock moves every frame; of the rest of the workspace only these steer the sync
+    const offClock = clockOf(videoStore()).subscribe(this.apply);
+    const offWs = videoStore().subscribe((s, p) => {
+      if (s.playing !== p.playing || s.rate !== p.rate || s.activeClip !== p.activeClip)
+        this.apply();
+    });
+    this.unsub = () => {
+      offClock();
+      offWs();
+    };
     this.scheduleFrame();
     this.apply();
   }
@@ -72,6 +83,17 @@ export class ClipPlayer {
     this.listeners.add(cb);
     return () => {
       this.listeners.delete(cb);
+    };
+  }
+
+  /**
+   * Called once per frame the video presents (requestVideoFrameCallback; each animation frame
+   * without it), e.g. to draw a view that shows the video once per new frame.
+   */
+  onVideoFrame(cb: () => void): () => void {
+    this.frameListeners.add(cb);
+    return () => {
+      this.frameListeners.delete(cb);
     };
   }
 
@@ -135,6 +157,7 @@ export class ClipPlayer {
       });
     } else {
       requestAnimationFrame(() => {
+        if (this.disposed) return;
         this.onFrame((v as HTMLVideoElement).currentTime);
         this.scheduleFrame();
       });
@@ -143,6 +166,7 @@ export class ClipPlayer {
 
   /** A new frame is on screen: the master writes the clock from it (frame accurate). */
   private onFrame(mediaTime: number) {
+    const fresh = mediaTime !== this.lastMediaTime;
     const dt = mediaTime - this.lastMediaTime;
     if (dt > 0.005 && dt < 0.1 && this.playing) {
       const est = 1 / dt;
@@ -155,8 +179,9 @@ export class ClipPlayer {
     if (this.lastAction?.kind === 'drive' && this.playing) {
       const t = clockForVideoTime(this.timing, mediaTime);
       this.lastWrittenMs = t;
-      videoStore().getState().setTime(t);
+      videoStore().getState().tick(t);
     }
+    if (fresh) for (const l of this.frameListeners) l();
   }
 
   /** Applies the sync decision for the current workspace state. */
@@ -167,7 +192,7 @@ export class ClipPlayer {
     const master = s.activeClip === this.layer.id;
     const action = syncDecision({
       timing: this.timing,
-      nowMs: s.nowMs,
+      nowMs: nowOf(videoStore()),
       playing: s.playing,
       master,
       videoTimeS: v.currentTime,
@@ -217,6 +242,7 @@ export class ClipPlayer {
     v.load();
     v.remove();
     this.listeners.clear();
+    this.frameListeners.clear();
   }
 }
 

@@ -837,7 +837,8 @@ workspace.subscribe((s) => {
 
 // the walk being placed was removed (any way it goes): its session and its pins go with it; a
 // path written (or gone) since it opened is read again
-workspace.subscribe(() => {
+workspace.subscribe((s, prev) => {
+  if (s.project === prev.project) return;
   placeFlow.dropIfGone();
   void placeFlow.pathChanged();
 });

@@ -1,4 +1,4 @@
-import { createWorkspace } from '@aio/workspace';
+import { createWorkspace, nowOf } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import { advance, nextClipInFlight, startPlaybackLoop } from './playback';
 
@@ -33,10 +33,13 @@ describe('startPlaybackLoop', () => {
     ws.getState().play();
     frames.shift()?.(100); // first frame only sets the reference time
     frames.shift()?.(150);
-    expect(ws.getState().nowMs).toBe(1_100);
+    expect(nowOf(ws)).toBe(1_100);
+    // the workspace store lags while playing and is exact once paused
+    expect(ws.getState().nowMs).toBe(1_000);
     ws.getState().pause();
-    frames.shift()?.(200);
     expect(ws.getState().nowMs).toBe(1_100);
+    frames.shift()?.(200);
+    expect(nowOf(ws)).toBe(1_100);
     stop();
   });
 
@@ -53,7 +56,7 @@ describe('startPlaybackLoop', () => {
     ws.getState().play();
     frames.shift()?.(0);
     frames.shift()?.(50);
-    expect(ws.getState().nowMs).toBe(1_000);
+    expect(nowOf(ws)).toBe(1_000);
     expect(ws.getState().playing).toBe(false);
     stop();
   });
@@ -73,11 +76,11 @@ describe('startPlaybackLoop', () => {
     ws.getState().play();
     frames.shift()?.(0);
     frames.shift()?.(50);
-    expect(ws.getState().nowMs).toBe(1_000);
+    expect(nowOf(ws)).toBe(1_000);
     ws.getState().setTime(1_040); // the video writes its frame time
     video = false; // between clips the loop drives again, from the latest frame reference
     frames.shift()?.(60);
-    expect(ws.getState().nowMs).toBe(1_050);
+    expect(nowOf(ws)).toBe(1_050);
     stop();
   });
 });

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { createClock } from '@aio/workspace';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LaneTimeline, type LaneTimelineProps } from './LaneTimeline';
 import { buildLaneModel, siteMidnightUtc, type LaneIndex } from './lanes';
@@ -64,7 +65,7 @@ const index: LaneIndex = {
 const model = buildLaneModel(tm, index, 'd6', OFF);
 const props = (over: Partial<LaneTimelineProps> = {}): LaneTimelineProps => ({
   model,
-  nowMs: at(d6, 9, 6),
+  clock: createClock(at(d6, 9, 6)),
   playing: false,
   rate: 1,
   activeClip: 'f1',
@@ -143,6 +144,20 @@ describe('LaneTimeline', () => {
     expect(q('lane-d6')?.querySelector('[data-testid="playhead"]')).not.toBeNull();
     expect(qa('[data-testid="playhead"]')).toHaveLength(1);
     expect(qa('[data-testid="ghost-line"]')).toHaveLength(2);
+  });
+  it('a tick moves the playhead and the ghost lines together, and the timecode', () => {
+    const clock = createClock(at(d6, 9, 6));
+    render(props({ clock }));
+    const head = qa('[data-testid="playhead"]')[0];
+    const ghost = qa('[data-testid="ghost-line"]')[0];
+    const before = head?.style.transform;
+    expect(ghost?.style.transform).toBe(before);
+    act(() => {
+      clock.setState({ nowMs: at(d6, 9, 7) });
+    });
+    expect(head?.style.transform).not.toBe(before);
+    expect(ghost?.style.transform).toBe(head?.style.transform);
+    expect(q('timecode')?.textContent).toBe('09:07:00.00');
   });
   it('draws issues only on the focused lane, and an issue click seeks and selects', () => {
     const p = props({ onIssue: vi.fn() });

@@ -1,4 +1,4 @@
-import { useWorkspace } from '@aio/workspace';
+import { nowOf, useWorkspace } from '@aio/workspace';
 import {
   useEffect,
   useRef,
@@ -39,7 +39,7 @@ const chip: CSSProperties = {
 function stepFrame(player: ClipPlayer, dir: 1 | -1) {
   const s = videoStore().getState();
   s.pause();
-  s.setTime(s.nowMs + (dir * 1000) / player.fps);
+  s.setTime(nowOf(videoStore()) + (dir * 1000) / player.fps);
 }
 
 /**
@@ -122,7 +122,7 @@ export function VideoWindow({ layerId, className, children }: VideoWindowProps) 
       if (s.playing && s.rate > 1) s.setRate(s.rate / 2);
       else {
         s.pause();
-        s.setTime(s.nowMs - 1000);
+        s.setTime(nowOf(videoStore()) - 1000);
       }
     } else if (k === ',' || k === 'arrowleft') stepFrame(player, -1);
     else if (k === '.' || k === 'arrowright') stepFrame(player, 1);

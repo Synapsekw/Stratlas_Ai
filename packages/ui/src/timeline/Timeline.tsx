@@ -1,14 +1,30 @@
-import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import type { ClockStore } from '@aio/workspace';
+import {
+  memo,
+  useCallback,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { formatCount } from '../format';
 import { Icon } from '../icons/Icon';
 import type { TimelineModel } from './model';
-import { HideButton, KeyframeDiamond, Ruler, Transport, ZoomControls, useTimeAxis } from './parts';
+import {
+  HideButton,
+  KeyframeDiamond,
+  Playhead,
+  Ruler,
+  Transport,
+  ZoomControls,
+  useTimeAxis,
+} from './parts';
 
 export { RATES } from './parts';
 
 export interface TimelineProps {
   model: TimelineModel;
-  nowMs: number;
+  /** The project clock; the playhead and the timecode follow it without rendering the rest. */
+  clock: ClockStore;
   playing: boolean;
   rate: number;
   activeClip: string | null;
@@ -34,18 +50,22 @@ export interface TimelineProps {
 /** Below this average clip width (px) a flight's clips draw as one bar. */
 const GROUP_BELOW_PX = 28;
 
+const same = (t: number) => t;
+
 /**
  * Mission timeline: transport, ruler, a clips track, issue diamonds, timed photos and captures,
- * and a playhead. Purely presentational; bind it to a store with props.
+ * and a playhead. Purely presentational; bind it to a store with props. A clock tick moves only
+ * the playhead and the timecode; give it stable callbacks so the tracks render only on change.
  */
-export function Timeline(props: TimelineProps) {
-  const { model, nowMs, playing, rate, activeClip, selectedIssue } = props;
+export const Timeline = memo(function Timeline(props: TimelineProps) {
+  const { model, clock, playing, rate, activeClip, selectedIssue } = props;
   const { onSeek, onTogglePlay, onRate, onClip, onIssue, onStep } = props;
   const { onKeyframe, onKeyframeMove } = props;
   const tracksRef = useRef<HTMLDivElement>(null);
   const hasTime = model.range !== null;
-  const axis = useTimeAxis(tracksRef, model.range, nowMs, playing);
+  const axis = useTimeAxis(tracksRef, model.range);
   const { x, pct, timeAt, width } = axis;
+  const anchor = useCallback(() => clock.getState().nowMs, [clock]);
 
   const scrubbing = useRef(false);
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -78,7 +98,7 @@ export function Timeline(props: TimelineProps) {
           canStep={model.clips.length > 0}
           canPlay={hasTime}
           playing={playing}
-          clockMs={hasTime ? nowMs : null}
+          clock={hasTime ? clock : null}
           rate={rate}
           activeName={active?.name}
           onStep={onStep}
@@ -87,7 +107,7 @@ export function Timeline(props: TimelineProps) {
         />
         <span className="sp" />
         {props.context && <span className="ctx">{props.context}</span>}
-        <ZoomControls axis={axis} anchor={nowMs} />
+        <ZoomControls axis={axis} anchor={anchor} />
         {props.onHide && <HideButton onHide={props.onHide} />}
       </div>
       {hasTime ? (
@@ -273,7 +293,14 @@ export function Timeline(props: TimelineProps) {
                 <i key={c.id} className="cap" style={{ left: pct(c.tMs) }} title={c.label} />
               ))}
             </div>
-            <div className="playhead" style={{ left: pct(nowMs) }} data-testid="playhead" />
+            <Playhead
+              clock={clock}
+              axis={axis}
+              at={same}
+              follow={playing}
+              className="playhead"
+              testId="playhead"
+            />
           </div>
         </div>
       ) : (
@@ -284,4 +311,4 @@ export function Timeline(props: TimelineProps) {
       )}
     </div>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { clipStartMs, workspace } from '@aio/workspace';
+import { clipStartMs, nowOf, workspace } from '@aio/workspace';
 
 /** Select a video clip and make it the active one; the clock moves to its start if before it. */
 export function selectClip(layerId: string) {
@@ -8,7 +8,7 @@ export function selectClip(layerId: string) {
   ws.setActiveClip(layerId);
   if (layer?.kind === 'video') {
     const start = clipStartMs(layer);
-    if (ws.nowMs < start) ws.setTime(start);
+    if (nowOf(workspace) < start) ws.setTime(start);
   }
 }
 
@@ -25,6 +25,8 @@ export function pickClip(
   selectClip(layerId);
   const ws = workspace.getState();
   if (atMs !== undefined) ws.setTime(atMs);
-  else if (clip && (ws.nowMs < clip.startMs || ws.nowMs >= clip.endMs - 250))
-    ws.setTime(clip.startMs);
+  else if (clip) {
+    const now = nowOf(workspace);
+    if (now < clip.startMs || now >= clip.endMs - 250) ws.setTime(clip.startMs);
+  }
 }

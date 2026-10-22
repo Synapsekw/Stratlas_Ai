@@ -10,6 +10,7 @@ import type {
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { CaptureIndex } from './captures';
+import { bindClock, clockOf, createClock, shouldCommit, type ClockState } from './clock';
 import { clipStartMs } from './timeline';
 
 export type SelectionKind = 'asset' | 'issue' | 'clip' | 'photo' | 'layer' | 'pano';
@@ -67,7 +68,10 @@ export interface WorkspaceState {
    */
   openSeq: number;
   issues: Issue[];
-  /** Project clock, UTC milliseconds. */
+  /**
+   * Project clock, UTC milliseconds: exact after every seek and pause, written about COMMIT_HZ
+   * times a second while playing. What must follow every frame reads `clockOf(store)` (`useClock`).
+   */
   nowMs: number;
   playing: boolean;
   rate: number;
@@ -117,7 +121,13 @@ export interface WorkspaceActions {
    * visibility stay; new layers saved as hidden start hidden.
    */
   replaceManifest(manifest: ProjectManifest): void;
+  /** Seek: the clock and the workspace's `nowMs` move at once. */
   setTime(nowMs: number): void;
+  /**
+   * A playback frame: the clock moves, the workspace's `nowMs` follows about COMMIT_HZ times a
+   * second (at once when not playing).
+   */
+  tick(nowMs: number): void;
   play(): void;
   pause(): void;
   setRate(rate: number): void;
@@ -172,7 +182,11 @@ const initial: WorkspaceState = {
 export function createWorkspace(): StoreApi<Workspace> {
   let seq = 0;
   let panoSeq = 0;
-  return createStore<Workspace>()((set, get) => ({
+  const clock = createClock(initial.nowMs);
+  const moveClock = (nowMs: number) => {
+    if (clock.getState().nowMs !== nowMs) clock.setState({ nowMs });
+  };
+  const store = createStore<Workspace>()((set, get) => ({
     ...initial,
     openProject: (project, issues = []) => {
       const firstClip = project.manifest.layers.find((l) => l.kind === 'video');
@@ -208,13 +222,19 @@ export function createWorkspace(): StoreApi<Workspace> {
       set({ ...initial, openSeq: get().openSeq });
     },
     setTime: (nowMs) => {
+      moveClock(nowMs);
       set({ nowMs });
     },
+    tick: (nowMs) => {
+      moveClock(nowMs);
+      const s = get();
+      if (s.nowMs !== nowMs && shouldCommit(s.nowMs, nowMs, s.playing, s.rate)) set({ nowMs });
+    },
     play: () => {
-      set({ playing: true });
+      set({ playing: true, nowMs: clock.getState().nowMs });
     },
     pause: () => {
-      set({ playing: false });
+      set({ playing: false, nowMs: clock.getState().nowMs });
     },
     setRate: (rate) => {
       if (!(rate > 0 && rate <= 16))
@@ -286,6 +306,13 @@ export function createWorkspace(): StoreApi<Workspace> {
       set({ orientation, orientationLoaded });
     },
   }));
+  // first listener: a `nowMs` written any other way (openProject, setState) moves the clock
+  // before any other subscriber of the store runs
+  store.subscribe((s, prev) => {
+    if (s.nowMs !== prev.nowMs) moveClock(s.nowMs);
+  });
+  bindClock(store, clock);
+  return store;
 }
 
 /** The app-wide workspace store. Tests create their own with createWorkspace(). */
@@ -294,6 +321,25 @@ export const workspace = createWorkspace();
 export function useWorkspace<T>(selector: (s: Workspace) => T): T {
   return useStore(workspace, selector);
 }
+
+/** The app workspace's full-rate clock. */
+export const clock = clockOf(workspace);
+
+/** Follows the app's full-rate clock: for what moves with every playback frame (the playhead). */
+export function useClock<T>(selector: (s: ClockState) => T): T {
+  return useStore(clock, selector);
+}
+
+export {
+  COMMIT_HZ,
+  COMMIT_MS,
+  clockOf,
+  createClock,
+  nowOf,
+  shouldCommit,
+  type ClockState,
+  type ClockStore,
+} from './clock';
 
 /** aio:// URL for a project asset. Paths are relative to the project root. */
 export function assetUrl(projectId: string, ref: AssetRef): string {

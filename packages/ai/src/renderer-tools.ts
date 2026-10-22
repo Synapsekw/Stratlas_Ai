@@ -14,7 +14,7 @@ import {
   type Vec3,
   type WindowKind,
 } from '@aio/schema';
-import { assetUrl, dateShiftOf, workspace, type Selection } from '@aio/workspace';
+import { assetUrl, dateShiftOf, nowOf, workspace, type Selection } from '@aio/workspace';
 import './analysis-tools';
 import { assetIndex, describeIssue } from './asset-index';
 import './camera-tools';
@@ -221,7 +221,7 @@ define('set_time', (input, ctx) => {
   else if (input.utcMs !== undefined) t = input.utcMs;
   else t = clipStartUtcMs(clip(ctx, input.clipId ?? '')) + (input.clipSeconds ?? 0) * 1000;
   project(ctx);
-  const before = ws.nowMs;
+  const before = nowOf(ctx.workspace);
   ws.setTime(t);
   return {
     result: { nowUtc: iso(t) },
@@ -235,7 +235,7 @@ define('set_time', (input, ctx) => {
 define('play_clip', ({ clipId, fromSeconds }, ctx) => {
   const c = clip(ctx, clipId);
   const ws = ctx.workspace.getState();
-  const before = { clip: ws.activeClip, now: ws.nowMs, playing: ws.playing };
+  const before = { clip: ws.activeClip, now: nowOf(ctx.workspace), playing: ws.playing };
   const t = clipStartUtcMs(c) + (fromSeconds ?? 0) * 1000;
   ws.setActiveClip(c.id);
   ws.setTime(t);
@@ -394,7 +394,7 @@ define('capture_frame', async (_input, ctx) => {
     throw new ToolError('This window cannot be captured right now.');
   }
   if (!image) throw new ToolError('Nothing to capture in this window yet.');
-  const nowMs = ctx.workspace.getState().nowMs;
+  const nowMs = nowOf(ctx.workspace);
   return {
     result: { image, window: ctx.window, atUtc: iso(nowMs) },
     summary: `Frame at ${iso(nowMs).slice(11, 19)}`,

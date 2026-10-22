@@ -8,11 +8,12 @@ import { toggleTimeline } from './timelinePref';
 /**
  * What both bottom timelines (the single track and the date lanes) read from the workspace: the
  * playback state, the selection and the timeline model of the open project (null without one).
+ * Not the clock: the timelines' playhead follows it on its own (`clock`), so a playback frame does
+ * not render them.
  */
 export function useTimelineBinding() {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
-  const nowMs = useWorkspace((s) => s.nowMs);
   const playing = useWorkspace((s) => s.playing);
   const rate = useWorkspace((s) => s.rate);
   const activeClip = useWorkspace((s) => s.activeClip);
@@ -34,7 +35,7 @@ export function useTimelineBinding() {
         : null,
     [project, issues, durations, orientation, directionDraft],
   );
-  return { project, nowMs, playing, rate, activeClip, selectedIssue, model };
+  return { project, playing, rate, activeClip, selectedIssue, model };
 }
 
 /** The workspace actions both bottom timelines share. */

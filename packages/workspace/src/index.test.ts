@@ -1,6 +1,7 @@
 import type { Issue, ProjectManifest } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { assetUrl, createWorkspace } from './index';
+import { createStore } from 'zustand/vanilla';
+import { assetUrl, clockOf, COMMIT_HZ, COMMIT_MS, createWorkspace, nowOf } from './index';
 
 const manifest: ProjectManifest = {
   schema: 'aio.project/1',
@@ -206,5 +207,86 @@ describe('assetUrl', () => {
 
   it('refuses paths that leave the project', () => {
     expect(() => assetUrl('p', { path: '../secret.txt' })).toThrow('may not leave the project');
+  });
+});
+
+describe('clock', () => {
+  it('a seek moves the clock and the workspace at once', () => {
+    const ws = createWorkspace();
+    const seen: number[] = [];
+    clockOf(ws).subscribe((c) => seen.push(c.nowMs));
+    ws.getState().setTime(5_000);
+    expect(nowOf(ws)).toBe(5_000);
+    expect(ws.getState().nowMs).toBe(5_000);
+    expect(seen).toEqual([5_000]);
+  });
+
+  it('a playing tick moves the clock every frame and the workspace about COMMIT_HZ a second', () => {
+    const ws = createWorkspace();
+    ws.getState().setTime(0);
+    ws.getState().play();
+    let wsWrites = 0;
+    let clockWrites = 0;
+    ws.subscribe(() => (wsWrites += 1));
+    clockOf(ws).subscribe(() => (clockWrites += 1));
+    // one second at 144 Hz
+    for (let i = 1; i <= 144; i++) ws.getState().tick((i * 1000) / 144);
+    expect(clockWrites).toBe(144);
+    expect(nowOf(ws)).toBeCloseTo(1000);
+    expect(wsWrites).toBeGreaterThanOrEqual(COMMIT_HZ - 2);
+    expect(wsWrites).toBeLessThanOrEqual(COMMIT_HZ);
+    expect(1000 - ws.getState().nowMs).toBeLessThan(COMMIT_MS);
+  });
+
+  it('commits at the same wall rate when playing faster', () => {
+    const ws = createWorkspace();
+    ws.getState().setRate(8);
+    ws.getState().play();
+    let wsWrites = 0;
+    ws.subscribe(() => (wsWrites += 1));
+    for (let i = 1; i <= 60; i++) ws.getState().tick((i * 8000) / 60);
+    expect(wsWrites).toBeLessThanOrEqual(COMMIT_HZ);
+  });
+
+  it('pause writes the exact clock into the workspace', () => {
+    const ws = createWorkspace();
+    ws.getState().play();
+    ws.getState().tick(10);
+    ws.getState().tick(20);
+    expect(ws.getState().nowMs).toBe(0);
+    ws.getState().pause();
+    expect(ws.getState().nowMs).toBe(20);
+    expect(ws.getState().playing).toBe(false);
+  });
+
+  it('a tick while paused is a seek', () => {
+    const ws = createWorkspace();
+    ws.getState().tick(42);
+    expect(ws.getState().nowMs).toBe(42);
+  });
+
+  it('opening a project or writing nowMs directly moves the clock first', () => {
+    const ws = createWorkspace();
+    let atNotify: number | null = null;
+    ws.subscribe(() => (atNotify = nowOf(ws)));
+    ws.getState().openProject({ id: 'hcl', root: 'R', manifest });
+    expect(atNotify).toBe(1_700_000_000_250);
+    ws.setState({ nowMs: 7 });
+    expect(nowOf(ws)).toBe(7);
+  });
+
+  it('other workspace changes while playing leave the clock alone', () => {
+    const ws = createWorkspace();
+    ws.getState().play();
+    ws.getState().tick(30);
+    ws.getState().select({ kind: 'layer', id: 'x' });
+    expect(nowOf(ws)).toBe(30);
+  });
+
+  it('follows a store not made by createWorkspace', () => {
+    const fake = createStore<{ nowMs: number }>()(() => ({ nowMs: 3 }));
+    expect(nowOf(fake)).toBe(3);
+    fake.setState({ nowMs: 9 });
+    expect(nowOf(fake)).toBe(9);
   });
 });

@@ -23,6 +23,7 @@ import {
   dateShiftOf,
   useWorkspace,
   workspace,
+  nowOf,
 } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
@@ -69,7 +70,7 @@ export function openSameView(source: FramesSource): void {
     if (layer?.kind === 'video') {
       ws.setActiveClip(layer.id);
       const start = layer.flight.startUtcMs + layer.offsetMs;
-      if (ws.nowMs < start) ws.setTime(start);
+      if (nowOf(workspace) < start) ws.setTime(start);
     }
   }
   dropEvidence();

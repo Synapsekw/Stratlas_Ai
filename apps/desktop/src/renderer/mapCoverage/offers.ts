@@ -156,6 +156,8 @@ export function startProjectMapOffers(): void {
       projectMapOffer.setState({ offer: null });
     if (project) void evaluate(project.id, project.manifest);
   };
-  workspace.subscribe(check);
+  workspace.subscribe((s, prev) => {
+    if (s.project !== prev.project) check();
+  });
   check();
 }

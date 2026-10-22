@@ -276,7 +276,10 @@ export function followBackfill(): () => void {
       check();
     }),
     compareStore.subscribe(check),
-    workspace.subscribe(check),
+    // it reads only the open project from the workspace
+    workspace.subscribe((s, prev) => {
+      if (s.project !== prev.project) check();
+    }),
   ];
   check();
   return () => {

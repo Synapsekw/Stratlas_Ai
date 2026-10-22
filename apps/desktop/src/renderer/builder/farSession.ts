@@ -49,5 +49,8 @@ export function startFarWatch(): () => void {
     void farNotice.getState().check(p.id, next.fresh);
   };
   look();
-  return workspace.subscribe(look);
+  // only the open project matters: a clock or selection change returns at once
+  return workspace.subscribe((s, prev) => {
+    if (s.project !== prev.project) look();
+  });
 }

@@ -19,7 +19,7 @@ import {
   issuesInView,
   setIssueView,
 } from '@aio/annotate';
-import { workspace, type OpenProject } from '@aio/workspace';
+import { nowOf, workspace, type OpenProject } from '@aio/workspace';
 import { createClass } from '../classes/store';
 import { detections, loadDetections } from '../detections/store';
 import { closeEvidence, evidence, openEvidence } from '../issueCard/evidence';
@@ -126,7 +126,8 @@ function showIssues(filter: IssueViewFilter): { shown: number } {
  * open (or none) the view it remembered is gone, and it does nothing.
  */
 function captureView(): () => void {
-  const { project, activeClip, nowMs } = workspace.getState();
+  const { project, activeClip } = workspace.getState();
+  const nowMs = nowOf(workspace);
   const projectId = project?.id ?? null;
   const {
     screen: screenBefore,

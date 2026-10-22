@@ -6,7 +6,7 @@
  */
 import { Button, flightGroups, Icon, IconButton, Row, Switch, useT } from '@aio/ui';
 import { telemetryAt } from '@aio/video';
-import { assetUrl, clipStartMs, useWorkspace, workspace } from '@aio/workspace';
+import { assetUrl, clipStartMs, nowOf, useWorkspace, workspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useMedia } from '../../../media';
 import { shell, useShell } from '../../../shell';
@@ -154,7 +154,8 @@ function ClipList() {
                   selectClip(c.id);
                   const ws = workspace.getState();
                   const begin = clipStartMs(c);
-                  if (ws.nowMs < begin || (length !== undefined && ws.nowMs > begin + length))
+                  const now = nowOf(workspace);
+                  if (now < begin || (length !== undefined && now > begin + length))
                     ws.setTime(begin);
                 }}
               />

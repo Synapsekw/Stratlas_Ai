@@ -1,4 +1,7 @@
+import type { ClockStore } from '@aio/workspace';
 import {
+  memo,
+  useCallback,
   useRef,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
@@ -9,11 +12,20 @@ import { formatDate } from '../format';
 import { t } from '../i18n';
 import { Icon } from '../icons/Icon';
 import { laneTodOf, utcAt, type Lane, type LaneClip, type LaneModel } from './lanes';
-import { HideButton, KeyframeDiamond, Ruler, Transport, ZoomControls, useTimeAxis } from './parts';
+import {
+  HideButton,
+  KeyframeDiamond,
+  Playhead,
+  Ruler,
+  Transport,
+  ZoomControls,
+  useTimeAxis,
+} from './parts';
 
 export interface LaneTimelineProps {
   model: LaneModel;
-  nowMs: number;
+  /** The project clock; the playhead, ghost lines and timecode follow it on their own. */
+  clock: ClockStore;
   playing: boolean;
   rate: number;
   activeClip: string | null;
@@ -51,15 +63,23 @@ const utcIn = (c: LaneClip, tod: number) => c.startMs + (tod - c.startTod);
  * One lane per survey date on a shared site time-of-day axis: the focused date full height with
  * names, issues, photos and keyframes and the real playhead; the other visible dates dimmed with
  * their clips (photos and issues too when they have no video) and a ghost line at the same time of
- * day. Purely presentational.
+ * day. Purely presentational; a clock tick moves only the lines and the timecode.
  */
-export function LaneTimeline(props: LaneTimelineProps) {
-  const { model, nowMs, playing, rate, activeClip, selectedIssue } = props;
+export const LaneTimeline = memo(function LaneTimeline(props: LaneTimelineProps) {
+  const { model, clock, playing, rate, activeClip, selectedIssue } = props;
   const tracksRef = useRef<HTMLDivElement>(null);
   const focused = model.visible.find((l) => l.captureId === model.focus);
-  const headTod = focused ? laneTodOf(focused, nowMs, model.offsetMin) : null;
-  const axis = useTimeAxis(tracksRef, model.range, headTod ?? 0, playing && headTod !== null);
+  const { offsetMin } = model;
+  const headAt = useCallback(
+    (nowMs: number) => (focused ? laneTodOf(focused, nowMs, offsetMin) : null),
+    [focused, offsetMin],
+  );
+  const axis = useTimeAxis(tracksRef, model.range);
   const { x, pct, timeAt, width } = axis;
+  const anchor = useCallback(
+    () => headAt(clock.getState().nowMs) ?? (model.range[0] + model.range[1]) / 2,
+    [headAt, clock, model.range],
+  );
   const active = model.lanes.flatMap((l) => l.clips).find((c) => c.layerId === activeClip);
   const hasClips = model.lanes.some((l) => l.clips.length > 0);
 
@@ -194,12 +214,16 @@ export function LaneTimeline(props: LaneTimelineProps) {
               }}
             />
           ))}
-        {headTod !== null &&
-          (on ? (
-            <div className="playhead" style={{ left: pct(headTod) }} data-testid="playhead" />
-          ) : (
-            <div className="lt-ghost" style={{ left: pct(headTod) }} data-testid="ghost-line" />
-          ))}
+        {focused && (
+          <Playhead
+            clock={clock}
+            axis={axis}
+            at={headAt}
+            follow={on && playing}
+            className={on ? 'playhead' : 'lt-ghost'}
+            testId={on ? 'playhead' : 'ghost-line'}
+          />
+        )}
       </div>
     );
   };
@@ -212,7 +236,8 @@ export function LaneTimeline(props: LaneTimelineProps) {
           canStep={(focused?.clips.length ?? 0) > 0}
           canPlay={hasClips}
           playing={playing}
-          clockMs={nowMs + model.offsetMin * 60_000}
+          clock={clock}
+          shiftMs={model.offsetMin * 60_000}
           rate={rate}
           activeName={active?.name}
           onStep={props.onStep}
@@ -223,7 +248,7 @@ export function LaneTimeline(props: LaneTimelineProps) {
         <span className="ctx lt-clock" data-testid="lane-clock" title={props.clockLabel}>
           {props.clockLabel}
         </span>
-        <ZoomControls axis={axis} anchor={headTod ?? (model.range[0] + model.range[1]) / 2} />
+        <ZoomControls axis={axis} anchor={anchor} />
         {props.onHide && <HideButton onHide={props.onHide} />}
       </div>
       <div className="tl-body lt-body">
@@ -275,4 +300,4 @@ export function LaneTimeline(props: LaneTimelineProps) {
       </div>
     </div>
   );
-}
+});

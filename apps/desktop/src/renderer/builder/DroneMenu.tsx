@@ -3,7 +3,7 @@ import { frameProjection } from '@aio/maps';
 import { shiftLocal, type Layer } from '@aio/schema';
 import { arrowFocus, Icon, useFocusTrap, useT, type IconName } from '@aio/ui';
 import { setCameraMode, videoRig } from '@aio/video';
-import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
+import { dateShiftOf, nowOf, useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { getMedia, loadFlight } from '../media';
@@ -60,7 +60,7 @@ function positionText(layerId: string): string | null {
   const p = shiftLocal(
     clipPoseAt(
       samples,
-      workspace.getState().nowMs - clip.flight.startUtcMs,
+      nowOf(workspace) - clip.flight.startUtcMs,
       clipCamera(clip, clipKeys(workspace.getState().orientation, clip.id)),
     ).pos,
     dateShiftOf(project.manifest, clip.id),

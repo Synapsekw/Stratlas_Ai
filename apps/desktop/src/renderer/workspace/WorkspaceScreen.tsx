@@ -1,5 +1,6 @@
 import { formatDate, neighbourClip, Timeline, type TimelineModel, useT } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { clock, useWorkspace, workspace } from '@aio/workspace';
+import { useCallback } from 'react';
 import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
 import { CaptionBacking } from '../shell/RightHeader';
 import { shell, useShell } from '../shell';
@@ -27,43 +28,44 @@ const EMPTY_MODEL: TimelineModel = {
 };
 
 function WorkspaceTimeline() {
-  const {
-    project,
-    nowMs,
-    playing,
-    rate,
-    activeClip,
-    selectedIssue,
-    model: built,
-  } = useTimelineBinding();
+  const { project, playing, rate, activeClip, selectedIssue, model: built } = useTimelineBinding();
   const model = built ?? EMPTY_MODEL;
   const capture = project?.manifest.captures.at(-1);
+  // stable while the model is: the memoized timeline then renders only when something it shows changes
+  const onClip = useCallback(
+    (id: string, atMs?: number) => {
+      // A clip bar selects its clip and seeks; Space or Play plays.
+      pickClip(
+        id,
+        atMs,
+        model.clips.find((c) => c.layerId === id),
+      );
+    },
+    [model],
+  );
+  const onStep = useCallback(
+    (dir: 1 | -1) => {
+      const c = neighbourClip(model, workspace.getState().activeClip, dir);
+      if (!c) return;
+      selectClip(c.layerId);
+      workspace.getState().setTime(c.startMs);
+    },
+    [model],
+  );
 
   return (
     <Timeline
       {...timelineActions}
       className="ws-tl"
       model={model}
-      nowMs={nowMs}
+      clock={clock}
       playing={playing}
       rate={rate}
       activeClip={activeClip}
       selectedIssue={selectedIssue}
       context={`${capture ? `${formatDate(capture.date)} · ` : ''}UTC`}
-      onClip={(id, atMs) => {
-        // A clip bar selects its clip and seeks; Space or Play plays.
-        pickClip(
-          id,
-          atMs,
-          model.clips.find((c) => c.layerId === id),
-        );
-      }}
-      onStep={(dir) => {
-        const c = neighbourClip(model, workspace.getState().activeClip, dir);
-        if (!c) return;
-        selectClip(c.layerId);
-        workspace.getState().setTime(c.startMs);
-      }}
+      onClip={onClip}
+      onStep={onStep}
     />
   );
 }

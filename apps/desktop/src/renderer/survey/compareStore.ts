@@ -833,7 +833,8 @@ export function followMeasurements(): () => void {
   });
   // a line-up changes the fingerprints: hand the engine the new shifts, then check again
   let shiftsKey = shiftsKeyOf(workspace.getState().project?.manifest);
-  const offShifts = workspace.subscribe((ws) => {
+  const offShifts = workspace.subscribe((ws, prev) => {
+    if (ws.project === prev.project) return;
     const key = shiftsKeyOf(ws.project?.manifest);
     if (key === shiftsKey) return;
     shiftsKey = key;

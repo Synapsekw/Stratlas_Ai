@@ -14,7 +14,7 @@ import {
   type Vec3,
 } from '@aio/schema';
 import { t } from '@aio/ui';
-import { dateShiftOf, type Workspace } from '@aio/workspace';
+import { clockOf, dateShiftOf, nowOf, type Workspace } from '@aio/workspace';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
   clipTimeMs,
@@ -133,7 +133,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
       const l = ws.getState().project?.manifest.layers.find((x) => x.id === id);
       return l?.kind === 'video' ? l : null;
     };
-    const nowClipMs = (clip: VideoLayer) => clipTimeMs(clip, ws.getState().nowMs);
+    const nowClipMs = (clip: VideoLayer) => clipTimeMs(clip, nowOf(ws));
     /** The clip's saved keyframes (orientation.json). */
     const savedKeys = (id: string) => clipKeys(ws.getState().orientation, id) ?? [];
     /**
@@ -199,7 +199,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         w.pause();
         if (w.activeClip !== layerId) {
           w.setActiveClip(layerId);
-          const ms = clipTimeMs(clip, w.nowMs);
+          const ms = clipTimeMs(clip, nowOf(ws));
           if (ms < 0 || ms > durationOf(clip)) w.setTime(projectTimeMs(clip, 0));
         }
         deps.showBoth();
@@ -217,7 +217,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
           say: { text: t('align.direction.help') },
         });
         // a turn not set as a keyframe goes when the playhead leaves it
-        unwatch = ws.subscribe((now, prev) => {
+        unwatch = clockOf(ws).subscribe((now, prev) => {
           if (now.nowMs === prev.nowMs) return;
           const cur = get().session;
           const c = cur ? clipOf(cur.layerId) : null;
@@ -345,7 +345,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         patch({ keys: setFill(s.keys, i, 'lookAt', target), history: push(s), picking: false });
         const pos = clipPoseAt(
           deps.flight(clip.id) ?? [],
-          ws.getState().nowMs - clip.flight.startUtcMs,
+          nowOf(ws) - clip.flight.startUtcMs,
           clipCamera(clip, savedKeys(clip.id)),
         ).pos;
         const d = Math.hypot(target[0] - pos[0], target[1] - pos[1], target[2] - pos[2]);

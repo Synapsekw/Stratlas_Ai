@@ -12,6 +12,7 @@ import {
   type CaptureIndex,
   type DatePref,
   type Workspace,
+  nowOf,
 } from '@aio/workspace';
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
@@ -147,7 +148,7 @@ export function createTimelineStore(
       return l?.kind === 'video' ? l : undefined;
     };
     const to = video(next);
-    if (to) w.setTime(clockInClip(video(prev), to, w.nowMs, durationOf(to.id)));
+    if (to) w.setTime(clockInClip(video(prev), to, nowOf(ws), durationOf(to.id)));
   };
 
   /** The active clip of the date left behind, played on `next` instead. */

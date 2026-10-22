@@ -27,7 +27,7 @@ import {
   type LensPair,
   type PoseLookup,
 } from '@aio/video';
-import { assetUrl, dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
+import { assetUrl, dateShiftOf, nowOf, useClock, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { clipVideoTime, parseCoordinate } from './model';
@@ -118,7 +118,8 @@ function grabFrame(v: HTMLVideoElement, width: number, aspect: number) {
 export function CalibrateVideo({ layerId }: { layerId: string }) {
   const t = useT();
   const project = useWorkspace((s) => s.project);
-  const nowMs = useWorkspace((s) => s.nowMs);
+  // its own video follows the clock frame by frame
+  const nowMs = useClock((s) => s.nowMs);
   const clips = useMemo(
     () => (project?.manifest.layers ?? []).filter((l): l is VideoLayer => l.kind === 'video'),
     [project],
@@ -427,11 +428,7 @@ export function CalibrateVideo({ layerId }: { layerId: string }) {
                 if (e.currentTarget.videoWidth) setVideoWidth(e.currentTarget.videoWidth);
               }}
               onLoadedData={(e) => {
-                e.currentTarget.currentTime = clipVideoTime(
-                  clip,
-                  workspace.getState().nowMs,
-                  offsetMs,
-                );
+                e.currentTarget.currentTime = clipVideoTime(clip, nowOf(workspace), offsetMs);
               }}
             />
             <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
