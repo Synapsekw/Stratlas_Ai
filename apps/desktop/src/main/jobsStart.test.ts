@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
+import { detectPackRefusal } from './analytics/detectPack';
 import { evidenceJobPackRefusal, evidencePackRefusal } from './evidencePack';
 import { thermalPackRefusal } from './thermalPack';
 
@@ -39,6 +40,7 @@ function jobsStart(
   visit(source);
   if (!callback) throw new Error('jobs:start handler is not registered.');
   const start = vi.fn(() => Promise.resolve({ ok: true }));
+  const detectStart = vi.fn(() => Promise.resolve({ ok: true }));
   const findPack = vi.fn(() => Promise.resolve({ pack: { version } }));
   const compiled = ts.transpileModule(`(${callback.getText(source)})`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
@@ -70,9 +72,11 @@ function jobsStart(
     rfPackRefusal: () => null,
     thermalPackRefusal,
     evidenceJobPackRefusal,
+    detectPackRefusal,
+    detectQueue: { start: detectStart },
     laneSphere: () => null,
   }) as (req: IpcRequest<'jobs:start'>) => Promise<{ ok: boolean; error?: string }>;
-  return { handle, start, findPack };
+  return { handle, start, detectStart, findPack };
 }
 
 describe('jobs:start resume feature gate', () => {
@@ -128,6 +132,19 @@ describe('jobs:start resume feature gate', () => {
     expect(old.start).not.toHaveBeenCalled();
     const current = jobsStart('0.22.0', 'failed');
     expect(await current.handle(req)).toEqual({ ok: true });
+  });
+
+  it('refuses detect.vlm on processing tools below 0.23.0 before the detector queue', async () => {
+    const req = { pipeline: 'detect.vlm' as const, project: 'synthetic', params: {} };
+    const old = jobsStart('0.22.0', 'failed');
+    expect(await old.handle(req)).toEqual({
+      ok: false,
+      error: detectPackRefusal('detect.vlm', '0.22.0'),
+    });
+    expect(old.detectStart).not.toHaveBeenCalled();
+    const current = jobsStart('0.23.0', 'failed');
+    expect(await current.handle(req)).toEqual({ ok: true });
+    expect(current.detectStart).toHaveBeenCalledWith(req);
   });
 
   it('allows new component evidence on the component-processing pack', async () => {

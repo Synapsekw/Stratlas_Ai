@@ -110,6 +110,8 @@ export interface PackKind {
   parse(raw: unknown): { ok: true; m: PackManifestCore } | { ok: false; error: string };
   /** A file that must exist after unpacking (python executable | llama-server executable). */
   required(m: unknown): string;
+  /** Files an installed folder needs besides `required` to count as valid (the model files). */
+  installedNeeds?(m: unknown): string[];
   /** Does a manifest's `platform` name this computer (`win32-x64`)? */
   fitsPlatform(manifestPlatform: string, platform: string): boolean;
   /** Why this app may not use a pack with this `appRange`, or null. */
@@ -199,6 +201,10 @@ export const ANALYTICS_PACK: PackKind = {
     return r.success ? { ok: true, m: r.data } : { ok: false, error: r.error.message };
   },
   required: (m) => (m as AnalyticsPackManifest).runtime.executable,
+  installedNeeds: (m) => [
+    (m as AnalyticsPackManifest).model.gguf,
+    (m as AnalyticsPackManifest).model.mmproj,
+  ],
   fitsPlatform: (manifestPlatform, platform) =>
     manifestPlatform === platform ||
     (ARCHIVE_LABELS[platform] ?? []).includes(manifestPlatform.toLowerCase()),
@@ -211,6 +217,16 @@ export const ANALYTICS_PACK: PackKind = {
   trailerWraps: true,
   tempTag: 'analytics',
 };
+
+/** Why a pack made for `manifestPlatform` cannot run on this computer (`platform`), or null. */
+export function platformRefusal(
+  k: PackKind,
+  manifestPlatform: string,
+  platform: string,
+): string | null {
+  if (k.fitsPlatform(manifestPlatform, platform)) return null;
+  return `${k.plural ? 'These' : 'This'} ${k.label} ${be(k)} for ${platformName(manifestPlatform)}, and this computer is ${platformName(platform)}. Pick the file made for this computer.`;
+}
 
 /** "a" or "an" before `word`. */
 const an = (word: string) => (/^[aeiou]/i.test(word) ? 'an' : 'a');
@@ -729,11 +745,8 @@ async function checkUnpacked(
       `This file's folder (${shown(u.top)}) and its manifest (version ${shown(m.version)}) disagree. It was not installed.`,
     );
   }
-  if (!k.fitsPlatform(m.platform, o.platform)) {
-    throw refused(
-      `${k.plural ? 'These' : 'This'} ${k.label} ${be(k)} for ${platformName(m.platform)}, and this computer is ${platformName(o.platform)}. Pick the file made for this computer.`,
-    );
-  }
+  const elsewhere = platformRefusal(k, m.platform, o.platform);
+  if (elsewhere) throw refused(elsewhere);
   const range = k.rangeRefusal(m.appRange, o.app);
   if (range) throw refused(range);
 
@@ -1089,8 +1102,9 @@ async function folderBytes(dir: string, cap = 300_000): Promise<number> {
 }
 
 /**
- * Read one installed pack folder of `kind`: its manifest must parse and its required file must be
- * there; null otherwise. The pipeline pack is read by `readPack`, as it always was.
+ * Read one installed pack folder of `kind`: its manifest must parse and its required files (for
+ * the Analytics pack, the model and its projector too) must be there; null otherwise. The
+ * pipeline pack is read by `readPack`, as it always was.
  */
 export async function readKindPack(
   dir: string,
@@ -1102,9 +1116,13 @@ export async function readKindPack(
   }
   const parsed = kind.parse(await readJson(join(dir, 'manifest.json')).catch(() => null));
   if (!parsed.ok) return null;
-  const exe = archiveSegments(kind.required(parsed.m), false);
-  const st = exe.ok ? await stat(join(dir, ...exe.segments)).catch(() => null) : null;
-  return st?.isFile() ? { version: parsed.m.version, manifest: parsed.m } : null;
+  const needed = [kind.required(parsed.m), ...(kind.installedNeeds?.(parsed.m) ?? [])];
+  for (const file of needed) {
+    const rel = archiveSegments(file, false);
+    const st = rel.ok ? await stat(join(dir, ...rel.segments)).catch(() => null) : null;
+    if (!st?.isFile()) return null;
+  }
+  return { version: parsed.m.version, manifest: parsed.m };
 }
 
 /** Every `<prefix>-<version>` folder of `kind` in `<data folder>/runtime/`, newest first. */

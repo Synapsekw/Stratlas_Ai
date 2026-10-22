@@ -4167,12 +4167,16 @@ export const ipc = {
     response: z.object({ ok: z.boolean() }),
   },
   // ---------------------------------------------------------------- local detectors (Analytics pack)
-  /** What is installed, and an archive found in a place the app looks (Downloads). */
+  /**
+   * What is installed, an archive found in a place the app looks (Downloads), and the pack
+   * folders that cannot be used (another app version or computer, or a file missing) with why.
+   */
   'analyticsPack:status': {
     request: Empty,
     response: z.object({
       installed: z.object({ version: z.string(), dir: z.string() }).nullable(),
       offer: z.object({ path: z.string(), version: z.string() }).nullable(),
+      unusable: z.array(z.object({ version: z.string(), reason: z.string() })),
     }),
   },
   'analyticsPack:find': {

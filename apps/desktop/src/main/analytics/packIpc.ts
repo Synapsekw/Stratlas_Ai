@@ -17,7 +17,7 @@ import {
   type ArchivePlace,
   type PipelinePackIpcDeps,
 } from '../jobs/packInstall';
-import { findAnalyticsPack } from './pack';
+import { findAnalyticsPack, unusablePacks, type PackPlace } from './pack';
 import { VLM_PACK_IN_USE } from './server';
 
 export interface AnalyticsPackIpcDeps extends PipelinePackIpcDeps {
@@ -37,18 +37,28 @@ export function registerAnalyticsPackIpc(d: AnalyticsPackIpcDeps): void {
   ];
   const archives = () =>
     findPackArchives({ places: places(), platform: d.platform, app: d.app, kind: ANALYTICS_PACK });
+  const here = (): PackPlace => ({
+    dataRoot: d.dataRoot(),
+    env: d.env,
+    app: d.app,
+    platform: d.platform,
+  });
   const installed = async () => {
-    const pack = await findAnalyticsPack({ dataRoot: d.dataRoot(), env: d.env });
+    const pack = await findAnalyticsPack(here());
     return pack ? { version: pack.version, dir: pack.dir } : null;
   };
   const status = async (): Promise<IpcResponse<'analyticsPack:status'>> => {
-    const [have, found] = await Promise.all([installed(), archives()]);
+    const [have, found, unusable] = await Promise.all([
+      installed(),
+      archives(),
+      unusablePacks(here()),
+    ]);
     const newest = found[0];
     const offer =
       newest && (have === null || compareVersions(newest.version, have.version) > 0)
         ? { path: newest.path, version: newest.version }
         : null;
-    return { installed: have, offer };
+    return { installed: have, offer, unusable };
   };
 
   d.handle('analyticsPack:status', status);

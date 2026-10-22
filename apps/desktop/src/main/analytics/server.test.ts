@@ -1,10 +1,15 @@
 import { ANALYTICS_PACK_SCHEMA, VlmServerState, type AnalyticsPackManifest } from '@aio/schema';
+import { en } from '@aio/ui/i18n/en';
 import { EventEmitter } from 'node:events';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalyticsPack } from './pack';
 import {
   parseProcessImage,
   VLM_HEALTH_TIMEOUT_MS,
+  nodeVlmServerDeps,
   VlmServer,
   type ChildLike,
   type ServerDeps,
@@ -217,6 +222,66 @@ describe('VlmServer', () => {
     expect(await p).toEqual({ ok: false, error: expect.stringContaining('3') as string });
   });
 
+  it('a server that exits before ready reports its last output', async () => {
+    const h = harness(() => 503);
+    const p = h.server.ensure(pack(), 0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const child = at(h.children, 0);
+    child.emit('output', 'load_model: loading\n\n');
+    child.emit('output', 'ggml_cuda_init: failed\nCUDA error: no kernel ');
+    child.emit('output', 'image\n');
+    child.emit('exit', 1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await p).toEqual({
+      ok: false,
+      error: 'load_model: loading | ggml_cuda_init: failed | CUDA error: no kernel image',
+    });
+    expect(h.server.lastOutput()).toEqual([
+      'load_model: loading',
+      '',
+      'ggml_cuda_init: failed',
+      'CUDA error: no kernel image',
+    ]);
+    // at most 300 characters, the end kept
+    const h2 = harness(() => 503);
+    const p2 = h2.server.ensure(pack(), 0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    at(h2.children, 0).emit('output', `${'x'.repeat(400)}\nno kernel image\n`);
+    at(h2.children, 0).emit('exit', 1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const r2 = await p2;
+    expect(!r2.ok && r2.error.length).toBe(300);
+    expect(!r2.ok && r2.error).toMatch(/no kernel image$/);
+  });
+
+  it('keeps the last 20 lines of the latest launch', async () => {
+    const h = harness();
+    expect(h.server.lastOutput()).toEqual([]);
+    await h.server.ensure(pack(), 0);
+    at(h.children, 0).emit(
+      'output',
+      Array.from({ length: 25 }, (_, i) => `line ${String(i)}`).join('\n'),
+    );
+    expect(h.server.lastOutput()).toHaveLength(20);
+    expect(h.server.lastOutput()[0]).toBe('line 5');
+    expect(h.server.lastOutput().at(-1)).toBe('line 24');
+    // another pack: a new launch starts a new record
+    await h.server.ensure(pack('D:/data/runtime/analytics-pack-2.0.0'), 0);
+    expect(h.server.lastOutput()).toEqual([]);
+  });
+
+  it('a missing executable says so', async () => {
+    const h = harness(() => 503);
+    const p = h.server.ensure(pack(), 0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    at(h.children, 0).emit(
+      'error',
+      Object.assign(new Error('spawn llama-server.exe ENOENT'), { code: 'ENOENT' }),
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await p).toEqual({ ok: false, error: en['detect.preset.server.noExe'] });
+  });
+
   it('idle stops at once and deletes state', async () => {
     const h = harness();
     await h.server.ensure(pack(), 0);
@@ -403,5 +468,59 @@ describe('VlmServer', () => {
     expect(VlmServerState.parse(s)).toMatchObject({ url: 'http://127.0.0.1:40000', apiKey: KEY });
     expect(h.states.at(-1)).toEqual(s);
     expect(h.spawned).toEqual([]);
+  });
+});
+
+describe('nodeVlmServerDeps', () => {
+  let dir: string;
+  beforeEach(async () => {
+    vi.useRealTimers();
+    dir = await mkdtemp(join(tmpdir(), 'aio-vlm-server-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  /** Run `script` in node as the server would be run; its output events and exit code. */
+  function run(logFile: string, script: string, exe = process.execPath) {
+    const child = nodeVlmServerDeps(() => join(dir, 'state.json'), logFile).spawn(
+      exe,
+      ['-e', script],
+      {},
+    );
+    const output: string[] = [];
+    child.on('output', (text) => output.push(text));
+    return new Promise<{ output: string; code: number | null; error?: string | undefined }>(
+      (ok) => {
+        child.on('exit', (code) => {
+          ok({ output: output.join(''), code });
+        });
+        child.on('error', (e) => {
+          ok({ output: output.join(''), code: null, error: e.code });
+        });
+      },
+    );
+  }
+
+  it('writes stdout and stderr to the log file, new at each launch', async () => {
+    const log = join(dir, 'analytics-server.log');
+    const first = await run(log, 'console.log("first out"); console.error("first err")');
+    expect(first.code).toBe(0);
+    expect(first.output).toContain('first out');
+    expect(first.output).toContain('first err');
+    await vi.waitFor(async () => {
+      expect(await readFile(log, 'utf8')).toMatch(
+        /first out[\s\S]*first err|first err[\s\S]*first out/,
+      );
+    });
+    await run(log, 'console.error("second")');
+    await vi.waitFor(async () => {
+      expect((await readFile(log, 'utf8')).trim()).toBe('second');
+    });
+  });
+
+  it('reports a missing executable as ENOENT', async () => {
+    const r = await run(join(dir, 'analytics-server.log'), '', join(dir, 'no-llama-server.exe'));
+    expect(r.error).toBe('ENOENT');
   });
 });

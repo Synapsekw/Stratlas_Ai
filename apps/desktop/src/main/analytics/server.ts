@@ -5,12 +5,15 @@
  * detector run is running or waiting (founder, 21 Oct): `idle()` stops it at once, and it is
  * killed as the app quits (`stopSync`). The key goes to llama-server in `LLAMA_API_KEY`, never on
  * its command line (other local users can read command lines). A server left behind by a crashed
- * app is found through its state file at the next start and killed (`sweep`).
+ * app is found through its state file at the next start and killed (`sweep`). What the server
+ * prints goes to `analytics-server.log` beside `main.log` (new at each launch), and its last
+ * lines are kept so a start that fails can say why.
  */
 import type { VlmServerState } from '@aio/schema';
 import { execFile, spawn as nodeSpawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { createWriteStream, rmSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { basename, dirname, resolve } from 'node:path';
@@ -18,6 +21,7 @@ import { programPath, systemProgram } from '@aio/project/fs';
 import { jobBaseEnv } from '../jobs/runner';
 import { killTree } from '../odm/system';
 import type { AnalyticsPack } from './pack';
+import { presetText } from './text';
 
 /** How long the model may take to load before the start counts as failed. */
 export const VLM_HEALTH_TIMEOUT_MS = 120_000;
@@ -30,6 +34,11 @@ export const VLM_PACK_IN_USE =
   'The Analytics pack is in use by a detector run. Wait for it to finish, then try again.';
 const PACK_CHANGING = 'The Analytics pack is being changed. Try again when that has finished.';
 
+/** Lines of server output kept in memory, and how many (at most how long) a failed start shows. */
+const OUTPUT_LINES = 20;
+const REASON_LINES = 3;
+const REASON_CHARS = 300;
+
 /** The executable of llama-server, whatever folder it runs from. */
 const LLAMA_SERVER_IMAGE = /^llama-server(\.exe)?$/i;
 
@@ -37,7 +46,12 @@ const LLAMA_SERVER_IMAGE = /^llama-server(\.exe)?$/i;
 export interface ChildLike {
   pid?: number | undefined;
   kill(): void;
+  /** The process ended, its output read to the end. */
   on(event: 'exit', fn: (code: number | null) => void): unknown;
+  /** It could not be started (`code` `ENOENT`: no such executable); no exit follows. */
+  on(event: 'error', fn: (e: NodeJS.ErrnoException) => void): unknown;
+  /** Some of what it wrote to stdout or stderr. */
+  on(event: 'output', fn: (text: string) => void): unknown;
 }
 
 export interface ServerDeps {
@@ -71,7 +85,12 @@ interface Live {
   dir: string;
   exited: boolean;
   code: number | null;
+  /** It could not be started because the executable is not there. */
+  noExe: boolean;
   state: VlmServerState | null;
+  /** Its last lines of output, and the start of a line not yet ended. */
+  lines: string[];
+  partial: string;
 }
 
 /** A pack folder as compared here: absolute, and in one case on Windows. */
@@ -82,6 +101,8 @@ const LOOPBACK = /^http:\/\/127\.0\.0\.1:\d{1,5}$/;
 
 export class VlmServer {
   private live: Live | null = null;
+  /** The current or most recent launch, for `lastOutput`. */
+  private latest: Live | null = null;
   private starting: { dir: string; done: Promise<EnsureResult> } | null = null;
   /** Pack folders being removed or replaced; `'*'` holds every pack. */
   private readonly holds = new Map<string, number>();
@@ -147,6 +168,13 @@ export class VlmServer {
     } finally {
       if (this.starting === s) this.starting = null;
     }
+  }
+
+  /** The last lines the current or most recent launch printed (up to 20). */
+  lastOutput(): string[] {
+    const l = this.latest;
+    if (!l) return [];
+    return l.partial ? [...l.lines, l.partial].slice(-OUTPUT_LINES) : [...l.lines];
   }
 
   /** Whether the server runs (or is starting) from the pack in `dir`. */
@@ -266,6 +294,8 @@ export class VlmServer {
     try {
       child = this.d.spawn(pack.server, args, env);
     } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT')
+        return { ok: false, error: presetText('detect.preset.server.noExe') };
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
     const live: Live = {
@@ -274,9 +304,25 @@ export class VlmServer {
       dir: folder(pack.dir),
       exited: false,
       code: null,
+      noExe: false,
       state: null,
+      lines: [],
+      partial: '',
     };
     this.live = live;
+    this.latest = live;
+    child.on('output', (text) => {
+      const parts = (live.partial + text).split(/\r?\n/);
+      live.partial = parts.pop() ?? '';
+      live.lines.push(...parts);
+      if (live.lines.length > OUTPUT_LINES) live.lines.splice(0, live.lines.length - OUTPUT_LINES);
+    });
+    child.on('error', (e) => {
+      if (live.exited) return;
+      live.exited = true;
+      live.noExe = e.code === 'ENOENT';
+      if (this.live === live) this.live = null;
+    });
     child.on('exit', (code) => {
       if (live.exited) return;
       live.exited = true;
@@ -322,7 +368,12 @@ export class VlmServer {
   private async waitHealthy(url: string, apiKey: string, live: Live): Promise<true | string> {
     const until = this.d.now() + VLM_HEALTH_TIMEOUT_MS;
     for (;;) {
-      if (live.exited) return `it stopped (exit code ${String(live.code)}) before it was ready.`;
+      if (live.noExe) return presetText('detect.preset.server.noExe');
+      if (live.exited) {
+        return (
+          lastWords(live) ?? `it stopped (exit code ${String(live.code)}) before it was ready.`
+        );
+      }
       if (this.live !== live) return 'it was stopped before it was ready.';
       if (await this.askHealth(url, apiKey)) return true;
       if (this.d.now() >= until)
@@ -350,6 +401,17 @@ export class VlmServer {
       timer.clear();
     }
   }
+}
+
+/** The last non-empty lines a launch printed, on one line of at most 300 characters; null for none. */
+function lastWords(live: Live): string | null {
+  const said = [...live.lines, live.partial]
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+    .slice(-REASON_LINES)
+    .join(' | ');
+  if (said === '') return null;
+  return said.length > REASON_CHARS ? `...${said.slice(-(REASON_CHARS - 3))}` : said;
 }
 
 /** The executable of a running process (`tasklist` on Windows, `ps` elsewhere); null when none. */
@@ -380,8 +442,11 @@ export function parseProcessImage(stdout: string, pid: number, win: boolean): st
   return m?.[1] !== undefined && m[2] === String(pid) ? m[1] : null;
 }
 
-/** Production deps: the state file at `statePath()`, the process tree killed as ODM's is. */
-export function nodeVlmServerDeps(statePath: () => string): ServerDeps {
+/**
+ * Production deps: the state file at `statePath()`, the process tree killed as ODM's is, and what
+ * the server prints written to `logFile` (`<logs>/analytics-server.log`), emptied at each launch.
+ */
+export function nodeVlmServerDeps(statePath: () => string, logFile: string): ServerDeps {
   return {
     spawn: (exe, args, env) => {
       const c = nodeSpawn(exe, args, {
@@ -389,21 +454,31 @@ export function nodeVlmServerDeps(statePath: () => string): ServerDeps {
         // the job runtimes' environment (no app secrets or dev switches), plus the server's own
         env: { ...jobBaseEnv(process.env), ...env },
         windowsHide: true,
-        stdio: 'ignore',
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
-      return {
-        pid: c.pid,
-        kill: () => c.kill(),
-        on: (_event, fn) => {
-          c.once('exit', (code) => {
-            fn(code);
-          });
-          // a missing or blocked executable
-          c.once('error', () => {
-            fn(null);
-          });
-        },
-      };
+      const log = createWriteStream(logFile, { flags: 'w' });
+      // a log that cannot be written never stops the server
+      log.on('error', () => undefined);
+      const child = Object.assign(new EventEmitter(), { pid: c.pid, kill: () => c.kill() });
+      for (const stream of [c.stdout, c.stderr]) {
+        // decoded across chunks, so a character split between two is not garbled
+        stream.setEncoding('utf8');
+        stream.on('data', (text: string) => {
+          log.write(text);
+          child.emit('output', text);
+        });
+      }
+      // once both outputs are read to the end, so the last lines are in
+      c.once('close', (code) => {
+        log.end();
+        child.emit('exit', code);
+      });
+      // a missing or blocked executable: no exit follows
+      c.once('error', (e) => {
+        log.end();
+        if (child.listenerCount('error') > 0) child.emit('error', e);
+      });
+      return child;
     },
     fetch: (input, init) => fetch(input, init),
     freePort: () =>

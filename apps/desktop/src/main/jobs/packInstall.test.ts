@@ -21,9 +21,12 @@ import { validated } from '../ipc';
 import { findPack } from './pack';
 import { selectManagedKit, readManagedSelection } from '../update/managedKits';
 import {
+  FAKE_ANALYTICS_GGUF,
+  FAKE_ANALYTICS_MMPROJ,
   FAKE_ANALYTICS_SERVER,
   fakeAnalyticsPackArchive,
   fakeAnalyticsPackEntries,
+  fakeAnalyticsPackFiles,
   fakePackArchive,
   fakePackEntries,
   fakePackFiles,
@@ -1418,6 +1421,23 @@ describe('the Analytics pack', () => {
         'This Analytics pack is for macos-arm64, and this computer is Windows (x64). Pick the file made for this computer.',
     });
     expect(await readdir(runtime)).toEqual(['pipeline-pack-0.2.0']);
+  });
+
+  it('analytics listPacks marks a pack without its gguf invalid', async () => {
+    for (const version of ['0.1.0', '0.2.0', '0.3.0']) {
+      const dir = join(runtime, `analytics-pack-${version}`);
+      for (const [name, data] of Object.entries(fakeAnalyticsPackFiles(version))) {
+        await mkdir(join(dir, ...name.split('/').slice(0, -1)), { recursive: true });
+        await writeFile(join(dir, ...name.split('/')), data);
+      }
+    }
+    await rm(join(runtime, 'analytics-pack-0.2.0', ...FAKE_ANALYTICS_GGUF.split('/')));
+    await rm(join(runtime, 'analytics-pack-0.3.0', ...FAKE_ANALYTICS_MMPROJ.split('/')));
+    expect((await listPacks(dataRoot, ANALYTICS_PACK)).map((p) => [p.name, p.valid])).toEqual([
+      ['analytics-pack-0.3.0', false],
+      ['analytics-pack-0.2.0', false],
+      ['analytics-pack-0.1.0', true],
+    ]);
   });
 
   it('each kind clears only its own temporary folders, so the two kinds can install at once', async () => {

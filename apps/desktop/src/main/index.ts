@@ -212,6 +212,7 @@ import { registerDetectorsIpc } from './analytics/detectorsIpc';
 import { detectJobGate, detectLane } from './analytics/gate';
 import { checkHardware, execNvidiaSmi } from './analytics/hardware';
 import { registerLedgerIpc } from './analytics/ledgerIpc';
+import { detectPackRefusal } from './analytics/detectPack';
 import { findAnalyticsPack } from './analytics/pack';
 import { registerAnalyticsPackIpc } from './analytics/packIpc';
 import { nodeVlmServerDeps, VlmServer } from './analytics/server';
@@ -476,6 +477,8 @@ const vaultEntry = useTestVault(process.env)
 const keys = createKeyVault(keyService, vaultEntry);
 /** The app as pipeline packs see it: a pack declaring an app range without this version is refused. */
 const packApp = { version: app.getVersion(), name: brand.productName };
+/** This computer as pack manifests name it (`win32-x64`). */
+const packPlatform = `${process.platform}-${process.arch}`;
 const appStamp = { name: brand.productName, version: app.getVersion() };
 // One device key per profile (M9 integration): T2's identity service, vault account
 // `device-signing` under the profile's service, in the same vault as the API keys.
@@ -986,7 +989,10 @@ const panoLane = stitchLane({
 });
 /** The detector model server (`llama-server` from the Analytics pack), only while a run needs it. */
 const vlmServer = new VlmServer(
-  nodeVlmServerDeps(() => join(settings.current().dataRoot, VLM_SERVER_STATE)),
+  nodeVlmServerDeps(
+    () => join(settings.current().dataRoot, VLM_SERVER_STATE),
+    join(logsDir, 'analytics-server.log'),
+  ),
 );
 /** `detect.vlm` starts: one at a time, never beside a GPU pipeline job; the others wait in line. */
 const detectQueue = detectLane({
@@ -996,7 +1002,7 @@ const detectQueue = detectLane({
       dataRoot: settings.current().dataRoot,
       projectDir: 'project' in req ? req.project : (jobs.get(req.resume)?.project ?? ''),
       userData: app.getPath('userData'),
-      findPack: findAnalyticsPack,
+      findPack: (o) => findAnalyticsPack({ ...o, app: packApp, platform: packPlatform }),
       hardware: () => checkHardware({ platform: process.platform, exec: execNvidiaSmi }),
       server: vlmServer,
       resolve: resolveDetectors,
@@ -1620,7 +1626,8 @@ function registerIpc(): void {
       pipeline === 'pointcloud.clean' ||
       pipeline === 'telecom.antennas' ||
       pipeline === 'rf.coverage' ||
-      pipeline === 'thermal.decode'
+      pipeline === 'thermal.decode' ||
+      pipeline === 'detect.vlm'
     ) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
@@ -1639,7 +1646,8 @@ function registerIpc(): void {
         antennaPackRefusal(pipeline, version) ??
         rfPackRefusal(pipeline, version) ??
         thermalPackRefusal(pipeline, version) ??
-        cleanPackRefusal(pipeline, version);
+        cleanPackRefusal(pipeline, version) ??
+        detectPackRefusal(pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
     // a detector run: the Analytics pack, the graphics card and the model server first, and it
@@ -2309,7 +2317,7 @@ function registerIpc(): void {
     dataRoot: () => settings.current().dataRoot,
     env: process.env,
     app: packApp,
-    platform: `${process.platform}-${process.arch}`,
+    platform: packPlatform,
     features: [],
     places: () =>
       packArchivePlaces({
@@ -2341,7 +2349,13 @@ function registerIpc(): void {
   );
   registerDetectorsIpc({
     handle,
-    pack: () => findAnalyticsPack({ dataRoot: settings.current().dataRoot, env: process.env }),
+    pack: () =>
+      findAnalyticsPack({
+        dataRoot: settings.current().dataRoot,
+        env: process.env,
+        app: packApp,
+        platform: packPlatform,
+      }),
     userData: () => app.getPath('userData'),
     projectDir: (projectId) => registry.root(projectId) ?? null,
     chooseOpen: async () => {

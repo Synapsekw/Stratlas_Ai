@@ -6129,9 +6129,18 @@ export const en = {
   'detect.preset.hw.tooBusy':
     'Only {free} GB of graphics memory is free; detectors need about 6.5 GB. Close the 3D view or other programs that use the graphics card and run again.',
   'detect.preset.hw.mac': 'Not available on this computer yet.',
+  'detect.preset.hw.oldGpu':
+    'This graphics card ({gpu}) is too old for detectors. They need an NVIDIA card from the RTX 20 series or newer.',
+  'detect.preset.hw.oldDriver':
+    'The NVIDIA driver is version {version}; detectors need 580 or later. Update the driver from nvidia.com and check again.',
   'detect.preset.pack.missing': 'Install the Analytics pack in Settings to run detectors.',
+  'detect.preset.pack.outOfRange':
+    'Analytics pack {version} does not work with this version of AIO ({range}).',
+  'detect.preset.pack.damaged': 'Analytics pack {version} is missing {file}. Install it again.',
   'detect.preset.server.stopped': 'The detector model stopped. Run the remaining photos again.',
   'detect.preset.server.failed': 'The detector model did not start: {reason}',
+  'detect.preset.server.noExe':
+    'The detector model program is missing from the Analytics pack. Install the pack again.',
   'detect.preset.queued':
     'Another detector or processing run is using the graphics card. This one starts when it finishes.',
   'detect.preset.modelMismatch':

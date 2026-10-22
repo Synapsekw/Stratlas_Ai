@@ -24,7 +24,7 @@ import { en } from '@aio/ui/i18n/en';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { resolveDetectors } from './detectors';
-import type { findAnalyticsPack } from './pack';
+import type { AnalyticsPack } from './pack';
 import type { VlmServer } from './server';
 
 export type StartRequest = IpcRequest<'jobs:start'>;
@@ -41,7 +41,11 @@ export interface GateDeps {
   projectDir: string;
   /** The user data folder: the detector library is `<userData>/detectors`. */
   userData: string;
-  findPack: typeof findAnalyticsPack;
+  /** `findAnalyticsPack` for this app and computer. */
+  findPack: (o: {
+    dataRoot: string;
+    env: Record<string, string | undefined>;
+  }) => Promise<AnalyticsPack | null>;
   /** The `checkHardware` result for this start. */
   hardware: () => Promise<HardwareCheck>;
   server: Pick<VlmServer, 'ensure' | 'attach' | 'serves'>;

@@ -188,6 +188,20 @@ export const VlmServerState = z
   .strict();
 export type VlmServerState = z.infer<typeof VlmServerState>;
 
+/**
+ * Why the hardware check refused, for the renderer: `tooBusy` can pass on a later try (Start
+ * stays enabled), the others need another computer, card or driver.
+ */
+export const HardwareRefusal = z.enum([
+  'mac',
+  'noGpu',
+  'tooSmall',
+  'tooBusy',
+  'oldGpu',
+  'oldDriver',
+]);
+export type HardwareRefusal = z.infer<typeof HardwareRefusal>;
+
 export const HardwareCheck = z.discriminatedUnion('ok', [
   z
     .object({
@@ -199,7 +213,7 @@ export const HardwareCheck = z.discriminatedUnion('ok', [
       freeMb: z.number().int().nonnegative(),
     })
     .strict(),
-  z.object({ ok: z.literal(false), reason: z.string() }).strict(),
+  z.object({ ok: z.literal(false), reason: z.string(), code: HardwareRefusal.optional() }).strict(),
 ]);
 export type HardwareCheck = z.infer<typeof HardwareCheck>;
 
