@@ -3,7 +3,12 @@ import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CorrectionPanel } from './CorrectionPanel';
-import { correctionDraftKey, setCorrectionDraftKey, useCorrectionDraft } from './correctionDraft';
+import {
+  correctionDraftKey,
+  correctionDrafts,
+  setCorrectionDraftKey,
+  useCorrectionDraft,
+} from './correctionDraft';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -36,12 +41,13 @@ function Harness({ context = key }: { context?: string | null }) {
         draft.setPin(undefined);
       }}
       onSubmit={async () => {
-        if (!draft.begin()) return;
+        const token = draft.begin('saving');
+        if (token === false) return;
         try {
           await save();
           draft.setPin(undefined);
         } finally {
-          draft.setWorking(false);
+          draft.end(token);
         }
       }}
       onSelectRequest={vi.fn()}
@@ -205,4 +211,74 @@ it('clears drafts on a project/run change and ignores old async completions even
   away();
   render(correctionDraftKey('project-a', 'run-b'));
   expect(comment().value).toBe('');
+});
+
+it('working clears after an action that throws', async () => {
+  save = vi.fn(() => Promise.reject(new Error('disk full')));
+  render();
+  write('Move the radio.');
+  await act(async () => {
+    button('Save without sending').click();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(api.working).toBe(false);
+});
+
+it('a stale token cannot clear a newer action', () => {
+  render();
+  let first: number | false = false;
+  let second: number | false = false;
+  act(() => {
+    first = api.begin('saving');
+  });
+  expect(first).not.toBe(false);
+  act(() => {
+    api.end(first as number);
+  });
+  act(() => {
+    second = api.begin('sending');
+  });
+  expect(second).not.toBe(false);
+  expect(second).not.toBe(first);
+  act(() => {
+    api.end(first as number);
+  });
+  expect(api.working).toBe(true);
+  expect(api.busyReason).toBe('sending');
+  act(() => {
+    api.end(second as number);
+  });
+  expect(api.working).toBe(false);
+});
+
+it('a remount clears working left by a settled action', () => {
+  render();
+  // a working flag whose action is no longer in flight (the old code's leftover lock)
+  act(() => {
+    correctionDrafts.setState({ working: true, token: 4242, busyReason: 'sending' });
+  });
+  expect(api.working).toBe(true);
+  away();
+  render();
+  expect(api.working).toBe(false);
+  write('Move the radio.');
+  expect(button('Save without sending').disabled).toBe(false);
+});
+
+it('working is false after send returns at a preview', async () => {
+  // AgentSession.send resolves as soon as it stops at the send preview
+  const agentSend = vi.fn(() => Promise.resolve());
+  render();
+  await act(async () => {
+    const token = api.begin('sending');
+    if (token === false) throw new Error('begin refused');
+    try {
+      await agentSend();
+    } finally {
+      api.end(token);
+    }
+  });
+  expect(agentSend).toHaveBeenCalledTimes(1);
+  expect(api.working).toBe(false);
 });

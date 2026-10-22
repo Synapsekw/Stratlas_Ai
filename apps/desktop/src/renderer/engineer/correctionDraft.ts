@@ -18,7 +18,12 @@ interface DraftState {
   view: 'before' | 'after';
   error: string | undefined;
   working: boolean;
+  /** The token of the action that holds `working`, so only that action can clear it. */
+  token: number | null;
+  /** What the running action does, shown as the reason Send is off. */
+  busyReason: CorrectionActionKind | undefined;
 }
+export type CorrectionActionKind = 'saving' | 'sending';
 const empty = (key: string | null, generation: number): DraftState => ({
   key,
   generation,
@@ -29,10 +34,24 @@ const empty = (key: string | null, generation: number): DraftState => ({
   view: 'before',
   error: undefined,
   working: false,
+  token: null,
+  busyReason: undefined,
 });
 /** Ephemeral, one run only. No localStorage, project file or cross-project draft cache. */
 const drafts = createStore<DraftState>(() => empty(null, 0));
 const blank = empty(null, 0);
+/** Exported for tests only: the one draft store. */
+export const correctionDrafts = drafts;
+/** Tokens of actions that have begun and not yet ended. */
+const inFlight = new Set<number>();
+let lastToken = 0;
+
+/** A mount drops a `working` flag whose action has settled, so a remount never inherits a lock. */
+function releaseSettled(key: string | null): void {
+  const s = drafts.getState();
+  if (s.key === key && s.working && (s.token === null || !inFlight.has(s.token)))
+    drafts.setState({ working: false, token: null, busyReason: undefined });
+}
 
 export function correctionDraftKey(projectId?: string, runId?: string): string | null {
   return projectId && runId ? JSON.stringify([projectId, runId]) : null;
@@ -47,6 +66,7 @@ export function useCorrectionDraft(key: string | null) {
   const current = useStore(drafts);
   useEffect(() => {
     setCorrectionDraftKey(key);
+    releaseSettled(key);
   }, [key]);
   const state = current.key === key ? current : blank;
   const generation = state.generation;
@@ -74,9 +94,6 @@ export function useCorrectionDraft(key: string | null) {
       setError: (error: string | undefined) => {
         patch({ error });
       },
-      setWorking: (working: boolean) => {
-        patch({ working });
-      },
       setComposer: (values: Partial<CorrectionComposerDraft>) => {
         if (owns()) patch({ composer: { ...drafts.getState().composer, ...values } });
       },
@@ -84,10 +101,19 @@ export function useCorrectionDraft(key: string | null) {
         if (owns() && !drafts.getState().working)
           patch({ composer: emptyCorrectionComposer(), pin: undefined, pinRadiusM: 2 });
       },
-      begin: () => {
+      /** Starts an action: a token for `end`, or false while another action runs. */
+      begin: (kind: CorrectionActionKind = 'saving'): number | false => {
         if (!owns() || drafts.getState().working) return false;
-        patch({ working: true, error: undefined });
-        return true;
+        const token = ++lastToken;
+        inFlight.add(token);
+        patch({ working: true, token, busyReason: kind, error: undefined });
+        return token;
+      },
+      /** Ends the action of this token; a stale token cannot clear a newer action. */
+      end: (token: number) => {
+        inFlight.delete(token);
+        if (owns() && drafts.getState().token === token)
+          patch({ working: false, token: null, busyReason: undefined });
       },
     };
   }, [key, generation]);
