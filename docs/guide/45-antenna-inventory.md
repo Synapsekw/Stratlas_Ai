@@ -46,6 +46,28 @@ Every unit starts as a **Draft**. Status is shown by outline style and a text ch
 - Running detection again keeps your review. A unit you accepted or edited that the new run no longer finds stays in the list as **Not found in latest run**, so nothing you decided is lost silently.
 - **Best photos** shows up to three photos that see the front of the unit. If none does, it says **No photo sees this unit.** Whether something stands in the way of the view is not checked.
 
+## Flag a missed unit
+
+When detection misses an antenna, outline it yourself. **Flag antenna** is in the antenna inventory header. It is disabled, with the message **Run antenna detection first**, until detection has run on the project, because the outline is measured against that run's tower axis.
+
+1. Turn the 3D view to the unit and click **Flag antenna**.
+2. Click once on each corner of the unit on the point cloud. Press Enter (or double-click) to close the outline. Escape cancels.
+3. The points kept light up in orange and the bar says how many. Only the near side is kept, so the far side of the tower is left out.
+4. Click **Measure**. The jobs indicator shows the job. The unit joins the list as **Accepted**, marked **Flagged by you**, with its measured box.
+
+Flagging works on the point cloud and survey date shown in the tower view, and it runs on this computer with no network. If the outline holds too few points to measure, such as a small radio unit, a small box is added at the outline's centre and marked **Not measured**. It has no made-up numbers, so type the values yourself.
+
+## Correct a unit
+
+Open a unit's details to correct it.
+
+- **Redraw outline** draws the outline again and measures the unit again from the new points. It keeps the unit's name, status and the values you typed. A detected unit you redraw becomes a flagged one, so later runs keep your outline.
+- **Your values** lets you type the azimuth, downtilt, centre height and size. Press Enter and the box turns or resizes to match. A value you type is marked **Entered by you** and wins over the measured one. The typed azimuth is in true north when the project has a place on the Earth, so the app knows the grid convergence, and in project north otherwise.
+- **Reset to measured** sits beside each typed value. It clears your value, so the measured one shows again, and the box is rebuilt. It is hidden when nothing was measured, as on a **Not measured** unit.
+- **Delete** removes a unit. It is offered on flagged units only. To drop a detected unit, use **Reject**.
+
+Running detection again keeps what you flagged and typed. A flagged unit stays once, with its own box and values, and the matching detected unit is not added beside it.
+
 ## Label with AI
 
 By default the type comes from the geometry, and everything works offline. **Label with AI** is off until you switch it on, and it needs AI settings that allow a vision model and the project's photo consent.
