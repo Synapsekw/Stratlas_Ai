@@ -16,6 +16,12 @@ import type {
   ProcModel,
 } from '@aio/schema';
 
+/** The grown model box, named here so the session's inferred type stays portable. */
+export interface ModelBounds {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
 export interface CorrectionContext {
   projectId: string;
   run: EngineerRun;
