@@ -135,6 +135,17 @@ describe('detectJobGate', () => {
     });
   });
 
+  it('a missing model program is its own sentence, not inside server.failed', async () => {
+    const { d, server } = deps();
+    server.ensure.mockResolvedValueOnce({
+      ok: false,
+      error: en['detect.preset.server.noExe'],
+    } as never);
+    expect(await detectJobGate(newRequest(), d)).toEqual({
+      refuse: en['detect.preset.server.noExe'],
+    });
+  });
+
   it('skips the hardware check when the server already runs from this pack', async () => {
     const { d, server, hardware } = deps();
     server.serves.mockReturnValue(true);

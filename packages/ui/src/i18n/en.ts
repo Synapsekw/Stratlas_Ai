@@ -6137,6 +6137,8 @@ export const en = {
   'detect.preset.pack.outOfRange':
     'Analytics pack {version} does not work with this version of AIO ({range}).',
   'detect.preset.pack.damaged': 'Analytics pack {version} is missing {file}. Install it again.',
+  'detect.preset.pack.otherPlatform':
+    'Analytics pack {version} is built for another kind of computer ({platform}). Install the one for this computer.',
   'detect.preset.server.stopped': 'The detector model stopped. Run the remaining photos again.',
   'detect.preset.server.failed': 'The detector model did not start: {reason}',
   'detect.preset.server.noExe':

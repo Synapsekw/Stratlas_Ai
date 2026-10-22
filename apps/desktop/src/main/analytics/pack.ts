@@ -11,7 +11,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { readJson } from '../fsutil';
 import { compareVersions, type PackApp } from '../jobs/pack';
-import { ANALYTICS_PACK, platformRefusal } from '../jobs/packInstall';
+import { ANALYTICS_PACK } from '../jobs/packInstall';
 import { presetText } from './text';
 
 export interface AnalyticsPack {
@@ -68,8 +68,15 @@ async function checkAnalyticsPack(
   }
   const manifest = parsed.data;
   const version = manifest.version;
-  const elsewhere = platformRefusal(ANALYTICS_PACK, manifest.platform, o.platform);
-  if (elsewhere) return { version, reason: elsewhere };
+  if (!ANALYTICS_PACK.fitsPlatform(manifest.platform, o.platform)) {
+    return {
+      version,
+      reason: presetText('detect.preset.pack.otherPlatform', {
+        version,
+        platform: manifest.platform,
+      }),
+    };
+  }
   if (ANALYTICS_PACK.rangeRefusal(manifest.appRange, o.app) !== null) {
     return {
       version,

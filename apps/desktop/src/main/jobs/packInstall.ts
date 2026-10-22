@@ -218,16 +218,6 @@ export const ANALYTICS_PACK: PackKind = {
   tempTag: 'analytics',
 };
 
-/** Why a pack made for `manifestPlatform` cannot run on this computer (`platform`), or null. */
-export function platformRefusal(
-  k: PackKind,
-  manifestPlatform: string,
-  platform: string,
-): string | null {
-  if (k.fitsPlatform(manifestPlatform, platform)) return null;
-  return `${k.plural ? 'These' : 'This'} ${k.label} ${be(k)} for ${platformName(manifestPlatform)}, and this computer is ${platformName(platform)}. Pick the file made for this computer.`;
-}
-
 /** "a" or "an" before `word`. */
 const an = (word: string) => (/^[aeiou]/i.test(word) ? 'an' : 'a');
 /** The verbs that go with a kind's `label`. */
@@ -745,8 +735,11 @@ async function checkUnpacked(
       `This file's folder (${shown(u.top)}) and its manifest (version ${shown(m.version)}) disagree. It was not installed.`,
     );
   }
-  const elsewhere = platformRefusal(k, m.platform, o.platform);
-  if (elsewhere) throw refused(elsewhere);
+  if (!k.fitsPlatform(m.platform, o.platform)) {
+    throw refused(
+      `${k.plural ? 'These' : 'This'} ${k.label} ${be(k)} for ${platformName(m.platform)}, and this computer is ${platformName(o.platform)}. Pick the file made for this computer.`,
+    );
+  }
   const range = k.rangeRefusal(m.appRange, o.app);
   if (range) throw refused(range);
 

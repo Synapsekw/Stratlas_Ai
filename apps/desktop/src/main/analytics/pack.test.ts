@@ -134,7 +134,7 @@ describe('findAnalyticsPack', () => {
     ]);
   });
 
-  it('a pack for another computer or without a manifest is unusable, named as the installer does', async () => {
+  it('a pack for another computer or without a manifest is unusable, each with why', async () => {
     await writeAnalyticsPack('0.2.0', { platform: 'macos-arm64' });
     await mkdir(join(runtime, 'analytics-pack-0.3.0'));
     expect(await findAnalyticsPack({ dataRoot, env: {}, ...HERE })).toBeNull();
@@ -148,8 +148,10 @@ describe('findAnalyticsPack', () => {
       },
       {
         version: '0.2.0',
-        reason:
-          'This Analytics pack is for macos-arm64, and this computer is Windows (x64). Pick the file made for this computer.',
+        reason: fill(en['detect.preset.pack.otherPlatform'], {
+          version: '0.2.0',
+          platform: 'macos-arm64',
+        }),
       },
     ]);
     // the folder QUADRION_ANALYTICS_PACK names is checked the same way

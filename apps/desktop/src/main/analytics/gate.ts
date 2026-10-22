@@ -118,7 +118,13 @@ export async function detectJobGate(req: StartRequest, d: GateDeps): Promise<Gat
     gpuIndex = hw.gpuIndex;
   }
   const up = await d.server.ensure(pack, gpuIndex);
-  if (!up.ok) return { refuse: en['detect.preset.server.failed'].replace('{reason}', up.error) };
+  if (!up.ok) {
+    // a missing program is a sentence of its own: "did not start: ..." would say it twice
+    const missing = up.error === en['detect.preset.server.noExe'];
+    return {
+      refuse: missing ? up.error : en['detect.preset.server.failed'].replace('{reason}', up.error),
+    };
+  }
 
   if (!isNew || !refs?.success) return { req };
   return {
