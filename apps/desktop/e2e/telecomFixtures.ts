@@ -1,5 +1,5 @@
 /** Synthetic telecom geometry: a vertical antenna face (mesh or cloud) and a tower with a crown. */
-import { ProjectManifest } from '@aio/schema';
+import { ANTENNAS_SCHEMA, AntennasFile, ProjectManifest } from '@aio/schema';
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -101,15 +101,35 @@ export async function writeTelecomFace(dir: string, kind: 'mesh' | 'cloud'): Pro
   await writeFile(join(dir, 'manifest.json'), JSON.stringify(ProjectManifest.parse(manifest)));
 }
 
+/** One unit of the synth's truth (`_spec` in `antenna_synth.py`), in the local frame (y up). */
+export interface TowerTruthUnit {
+  name: string;
+  kind: 'panel' | 'short' | 'dish' | 'other';
+  centre: [number, number, number];
+  azimuthDeg: number;
+  downtiltDeg?: number;
+  plumbDeg?: number;
+  widthM: number;
+  heightM: number;
+  depthM: number;
+}
+
+/** What `antenna_synth.py` writes next to the cloud (`<out>.json`). */
+export interface TowerTruth {
+  units: TowerTruthUnit[];
+}
+
 const SYNTH = join(import.meta.dirname, '..', '..', '..', 'python', 'tests', 'antenna_synth.py');
 
 /**
  * The tiny project with one cloud instead of its quad: the synthetic monopole of
  * `python/tests/antenna_synth.py` (seed 3, 1500 points per m2, a crown of panels, a dish and an
  * other unit about 26 to 29 m up) as the png-packed layer `tower-cloud`, in a local grid without
- * a place on the Earth (every azimuth reads project north).
+ * a place on the Earth (every azimuth reads project north). Returns the synth's truth.
+ * `pointsPerM2` makes the cloud denser: at 2500 the detection finds the radio unit too, and a
+ * flagged outline round it measures (at 1500 its faces are too thin for either).
  */
-export async function writeTelecomTower(dir: string): Promise<void> {
+export async function writeTelecomTower(dir: string, pointsPerM2 = 1500): Promise<TowerTruth> {
   const tmp = await mkdtemp(join(tmpdir(), 'aio-tower-'));
   try {
     const out = join(tmp, 'tower.f32');
@@ -120,11 +140,12 @@ export async function writeTelecomTower(dir: string): Promise<void> {
       '--seed',
       '3',
       '--points-per-m2',
-      '1500',
+      String(pointsPerM2),
       '--out',
       out,
     ]);
     const raw = await readFile(out);
+    const truth = JSON.parse(await readFile(`${out}.json`, 'utf8')) as TowerTruth;
     const xyz = new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4);
     const count = await packPngCloud(dir, 'tower', xyz, [170, 178, 186], 0.03);
     const manifest = tinyManifest();
@@ -142,7 +163,33 @@ export async function writeTelecomTower(dir: string): Promise<void> {
       },
     ];
     await writeFile(join(dir, 'manifest.json'), JSON.stringify(ProjectManifest.parse(manifest)));
+    return truth;
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
+}
+
+/**
+ * The tower fixture's inventory before any unit is found: a detection run on `tower-cloud` round
+ * the axis at the origin (crown 25 to 30 m up, 3 m radius, project north) and no units, so a test
+ * can flag a unit without running detection first. Writes `telecom/antennas.json`.
+ */
+export async function writeAntennaInventory(dir: string): Promise<void> {
+  const file = AntennasFile.parse({
+    schema: ANTENNAS_SCHEMA,
+    run: {
+      id: 'run-e2e-empty',
+      at: '2026-10-22T09:00:00Z',
+      params: { run: 'run-e2e-empty' },
+      cloudLayer: 'tower-cloud',
+      axis: { point: [0, 0, 0], dir: [0, 0, 1], source: 'auto' },
+      crown: { floorZ: 25, topZ: 30, radiusM: 3 },
+      north: 'project',
+      warnings: [],
+      counts: { panel: 0, short: 0, dish: 0, other: 0 },
+    },
+    units: [],
+  });
+  await mkdir(join(dir, 'telecom'), { recursive: true });
+  await writeFile(join(dir, 'telecom', 'antennas.json'), JSON.stringify(file));
 }
