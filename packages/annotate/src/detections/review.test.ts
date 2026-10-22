@@ -265,6 +265,12 @@ describe('detector drafts and per-pass thresholds', () => {
     expect(queueOf(s).map((d) => d.id)).toEqual(['u']);
   });
 
+  it('unscored drafts are not hidden by the general minimum confidence either', () => {
+    let s = loaded([vlm('u', { unscored: true, confidence: 0.1 })]);
+    s = run(s, { type: 'minConfidence', value: 0.9 });
+    expect(queueOf(s).map((d) => d.id)).toEqual(['u']);
+  });
+
   it('human and cloud AI drafts ignore pass thresholds', () => {
     const human = det('h', { origin: { kind: 'human', author: 'me' }, confidence: 0.1 });
     const cloud = det('c', { confidence: 0.1 });

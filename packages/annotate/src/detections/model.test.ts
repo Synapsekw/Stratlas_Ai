@@ -33,6 +33,7 @@ const vlmRunA: DetectionsFile = {
       belowThreshold: true,
       rejectReason: 'wrong-class',
       rejectNote: 'it is paint',
+      proposedBox: [12, 22, 58, 78],
     },
     {
       id: 'v2',
@@ -59,6 +60,7 @@ describe('detector fields in the model', () => {
       belowThreshold: true,
       rejectReason: 'wrong-class',
       rejectNote: 'it is paint',
+      proposedBox: [12, 22, 58, 78],
     });
     expect(d2?.unscored).toBe(true);
 
@@ -73,6 +75,7 @@ describe('detector fields in the model', () => {
       expect(written.unscored).toBe(was?.unscored);
       expect(written.rejectReason).toBe(was?.rejectReason);
       expect(written.rejectNote).toBe(was?.rejectNote);
+      expect(written.proposedBox).toEqual(was?.proposedBox);
     }
   });
 });

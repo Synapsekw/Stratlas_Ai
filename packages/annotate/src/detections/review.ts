@@ -192,7 +192,12 @@ export function inQueue(
   passThreshold: ReviewState['passThreshold'] = {},
 ): boolean {
   if (filter !== 'all' && d.status !== filter) return false;
-  if (d.origin.kind !== 'human' && d.confidence !== undefined && d.confidence < minConfidence) {
+  if (
+    d.origin.kind !== 'human' &&
+    !d.unscored &&
+    d.confidence !== undefined &&
+    d.confidence < minConfidence
+  ) {
     return false;
   }
   if (isDetectorDraft(d) && !d.unscored && d.confidence !== undefined) {
