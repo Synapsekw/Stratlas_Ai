@@ -272,7 +272,9 @@ class DetectVlm:
         def commit_step(ctx: StepContext) -> dict[str, Any]:
             ctx.progress(0.0, "Saving the detections")
             photos: list[dict[str, Any]] = ctx.outputs("prepare")["photos"]
-            class_ids = set(ctx.outputs("prepare")["classIds"])
+            # a job prepared before classIds existed has none: keep the detector's class as it was
+            known = ctx.outputs("prepare").get("classIds")
+            class_ids = None if known is None else set(known)
             model = params["model"]
             created = now_iso()
             assessed: list[str] = []
@@ -296,7 +298,7 @@ class DetectVlm:
                             "class": det["classId"],
                             "severity": "uncertain",
                         }
-                        if det["classId"] not in class_ids:
+                        if class_ids is not None and det["classId"] not in class_ids:
                             # the project lacks the class: offer the detector's name as a new one
                             d["class"] = ""
                             d["label"] = det["name"]

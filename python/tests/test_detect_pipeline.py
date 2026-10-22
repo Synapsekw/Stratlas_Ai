@@ -386,3 +386,33 @@ def test_class_in_project_is_kept(tmp_path):
     assert dets
     for d in dets:
         assert d["class"] == "corrosion" and "suggestedNew" not in d and "label" not in d
+
+
+def test_prepare_output_without_class_ids_keeps_the_class(tmp_path):
+    """A job prepared before classIds existed, then resumed: the detector's class stays as it was."""
+    from dataclasses import replace
+
+    root = make_project(tmp_path / "p", classes=("bolt",))
+    real = pipeline()
+
+    class OldPrepare:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        def plan(self, prm):
+            def strip(step):
+                def run(ctx):
+                    out = step.run(ctx)
+                    out.pop("classIds")
+                    return out
+
+                return replace(step, run=run)
+
+            steps = real.plan(prm)
+            return [strip(steps[0]), *steps[1:]]
+
+    with FakeVlm(scoring([0.9])) as vlm:
+        run_job(OldPrepare(), root, params(state_file(root, vlm.url), photos=("p1",)))
+    dets = pass_of(root)["detections"]
+    assert dets
+    assert all(d["class"] == "rust" and "suggestedNew" not in d for d in dets)

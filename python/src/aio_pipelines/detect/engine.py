@@ -83,6 +83,7 @@ class VlmUnavailable(Exception):
 class VlmClient:
     """Minimal client for llama-server's chat completions endpoint."""
 
+    # ``timeout`` is only the fallback: the engine passes DETECT_TIMEOUT_S / CHECK_TIMEOUT_S per call.
     def __init__(self, url: str, api_key: str | None = None, timeout: float = 300.0):
         self.url = url.rstrip("/")
         self.api_key = api_key
