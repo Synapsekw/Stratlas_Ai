@@ -73,7 +73,7 @@ Each is our call (builder check, 22 Oct).
 
 1. **What a model-wide request may change.** The AI may add, remove or replace any components, capped at 20 operations per proposal. Additions must sit inside the model's bounding box expanded by 10%. The Before/After review is the main guard: it highlights every changed part and lists the operations.
 2. **Metres on a provisional-scale model.** A change such as "the top section is 3 m" applies in model units only. The review shows a note that the scale is provisional and points to setting a reference height. Setting the scale from a correction is out of scope.
-3. **Resend.** Resending reopens the same request record, re-based on the current model fingerprint. Its history appends a new round and keeps the earlier rounds. No parent link between requests.
+3. **Resend.** Resending reopens the same request record, re-based on the current model fingerprint. Its history appends a new round and keeps the most recent 8 rounds; past 8 the oldest round is dropped and the resend is never refused (founder, 22 Oct). Older builds (0.21 to 0.24) refusing a run file with a model-wide request is accepted (founder, 22 Oct). No parent link between requests.
 
 ## Left to the builder
 
