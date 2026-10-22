@@ -102,8 +102,9 @@ export async function logReview(
       modelSha256: det.modelSha256,
       score: d.unscored || d.confidence === undefined ? null : d.confidence,
       verdict,
-      ...(d.rejectReason ? { reason: d.rejectReason } : {}),
-      ...(d.rejectNote ? { note: d.rejectNote } : {}),
+      // a reason and note belong to a rejection only, never to an acceptance
+      ...(verdict === 'rejected' && d.rejectReason ? { reason: d.rejectReason } : {}),
+      ...(verdict === 'rejected' && d.rejectNote ? { note: d.rejectNote } : {}),
       box,
       ...(d.proposedBox ? { corrected: now } : {}),
       photo: { project: ctx.projectId, layer: d.source.layer, id: d.source.photo },

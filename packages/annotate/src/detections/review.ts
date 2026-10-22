@@ -176,20 +176,61 @@ export function isDetectorDraft(d: Detection): boolean {
   return d.status === 'draft' && d.origin.kind === 'model' && d.origin.detector !== undefined;
 }
 
-/** The bar for a detector's draft: the pass value, else the one the detector ran with, else null. */
+/** The ends of a pass's bar (the threshold slider's range). */
+export const PASS_BAR_MIN = 0.3;
+export const PASS_BAR_MAX = 0.95;
+
+const clampBar = (v: number) => Math.min(PASS_BAR_MAX, Math.max(PASS_BAR_MIN, v));
+
+const defaultBars = new WeakMap<readonly Detection[], ReadonlyMap<string, number>>();
+
+/**
+ * Per pass, the bar used until the reviewer sets one: the lowest threshold its detectors ran
+ * with, kept within the slider's ends. The pass row shows this same value, so "Show boxes scored
+ * at least X" never hides a draft scored X or more. Cached per list.
+ */
+export function passDefaultBars(detections: readonly Detection[]): ReadonlyMap<string, number> {
+  let bars = defaultBars.get(detections);
+  if (!bars) {
+    const lowest = new Map<string, number>();
+    for (const d of detections) {
+      if (d.origin.kind !== 'model' || !d.origin.detector) continue;
+      const t = d.origin.detector.threshold;
+      const was = lowest.get(d.pass);
+      if (was === undefined || t < was) lowest.set(d.pass, t);
+    }
+    bars = new Map([...lowest].map(([pass, t]) => [pass, clampBar(t)]));
+    defaultBars.set(detections, bars);
+  }
+  return bars;
+}
+
+/**
+ * The bar for a detector's draft: the pass value, else the pass's default bar
+ * (`passDefaultBars` over `detections`), else null for drafts no local detector made.
+ */
 export function detectorThreshold(
-  state: Pick<ReviewState, 'passThreshold'>,
+  state: Pick<ReviewState, 'passThreshold' | 'detections'>,
   d: Detection,
 ): number | null {
   if (d.origin.kind !== 'model' || !d.origin.detector) return null;
-  return state.passThreshold[d.pass] ?? d.origin.detector.threshold;
+  return (
+    state.passThreshold[d.pass] ??
+    passDefaultBars(state.detections).get(d.pass) ??
+    clampBar(d.origin.detector.threshold)
+  );
 }
 
+/**
+ * Whether `d` shows under `filter`. `detections` is the list `d` belongs to: a detector draft's
+ * default bar is the lowest of its pass (`passDefaultBars`), so pass the whole list.
+ */
 export function inQueue(
   d: Detection,
   filter: QueueFilter,
   minConfidence: number,
   passThreshold: ReviewState['passThreshold'] = {},
+  detections: readonly Detection[] = [d],
 ): boolean {
   if (filter !== 'all' && d.status !== filter) return false;
   if (
@@ -201,7 +242,7 @@ export function inQueue(
     return false;
   }
   if (isDetectorDraft(d) && !d.unscored && d.confidence !== undefined) {
-    const bar = detectorThreshold({ passThreshold }, d);
+    const bar = detectorThreshold({ passThreshold, detections }, d);
     if (bar !== null && d.confidence < bar) return false;
   }
   return true;
@@ -224,7 +265,7 @@ export function queueOf(
   state: Pick<ReviewState, 'detections' | 'filter' | 'minConfidence' | 'passThreshold'>,
 ): Detection[] {
   return ordered(state.detections).filter((d) =>
-    inQueue(d, state.filter, state.minConfidence, state.passThreshold),
+    inQueue(d, state.filter, state.minConfidence, state.passThreshold, state.detections),
   );
 }
 
@@ -381,6 +422,17 @@ function changeOne(
   return commit(state, change, opts.keepCursor ? state.currentId : undefined);
 }
 
+/** The longest reject note kept (the note field in the reject menu has the same limit). */
+export const REJECT_NOTE_MAX = 200;
+
+/** A detection without the reason and note of an earlier rejection. */
+function withoutRejection(d: Detection): Detection {
+  const next = { ...d };
+  delete next.rejectReason;
+  delete next.rejectNote;
+  return next;
+}
+
 export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewState {
   switch (action.type) {
     case 'load': {
@@ -487,15 +539,20 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
       return changeOne(state, action.id, 'Reject detection', (d) => {
         if (d.status === 'accepted') return 'accepted' as const;
         if (d.status === 'rejected') return d;
-        return {
+        const next: Detection = {
           ...d,
           status: 'rejected',
-          ...(action.reason ? { rejectReason: action.reason } : {}),
-          ...(action.note ? { rejectNote: action.note } : {}),
           reviewedBy: action.by,
           reviewedAt: action.now,
           updatedAt: action.now,
         };
+        // a reason or note from an earlier rejection must not outlive a reopen
+        delete next.rejectReason;
+        delete next.rejectNote;
+        if (action.reason) next.rejectReason = action.reason;
+        const note = action.note?.slice(0, REJECT_NOTE_MAX);
+        if (note) next.rejectNote = note;
+        return next;
       });
     case 'reopen':
       return changeOne(state, action.id, 'Reopen detection', (d) => {
@@ -505,6 +562,8 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         delete next.reviewedBy;
         delete next.reviewedAt;
         delete next.issueId;
+        delete next.rejectReason;
+        delete next.rejectNote;
         return next;
       });
     case 'accepted':
@@ -514,14 +573,14 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         'Accept detection',
         (d) => {
           if (d.status === 'accepted') return 'accepted' as const;
-          return {
+          return withoutRejection({
             ...d,
             status: 'accepted',
             issueId: action.issueId,
             reviewedBy: action.by,
             reviewedAt: action.now,
             updatedAt: action.now,
-          };
+          });
         },
         { final: true },
       );
@@ -533,14 +592,14 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         const d = byId.get(it.id);
         if (!d || d.status === 'accepted') continue;
         before[d.id] = d;
-        after[d.id] = {
+        after[d.id] = withoutRejection({
           ...d,
           status: 'accepted',
           issueId: it.issueId,
           reviewedBy: action.by,
           reviewedAt: action.now,
           updatedAt: action.now,
-        };
+        });
       }
       if (Object.keys(after).length === 0) return state;
       return commit(state, { label: action.label, before, after, issues: true });
@@ -552,13 +611,13 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
       for (const d of state.detections) {
         if (!wanted.has(d.id) || d.status !== 'draft') continue;
         before[d.id] = d;
-        after[d.id] = {
+        after[d.id] = withoutRejection({
           ...d,
           status: 'rejected',
           reviewedBy: action.by,
           reviewedAt: action.now,
           updatedAt: action.now,
-        };
+        });
       }
       if (Object.keys(after).length === 0) return state;
       return commit(state, { label: action.label, before, after });

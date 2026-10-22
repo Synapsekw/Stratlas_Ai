@@ -85,6 +85,12 @@ describe('RejectReasonMenu', () => {
     expect(onPick).toHaveBeenCalledWith('looks-like-but-is-not', 'a painted band');
   });
 
+  it('limits the note to 200 characters', () => {
+    show();
+    act(() => item('Looks like it but is not…')?.click());
+    expect(document.body.querySelector<HTMLInputElement>('input')?.maxLength).toBe(200);
+  });
+
   it('closes on Escape and gives focus back to the opener', async () => {
     function H() {
       const opener = useRef<HTMLButtonElement>(null);

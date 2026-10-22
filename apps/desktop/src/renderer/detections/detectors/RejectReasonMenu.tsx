@@ -1,3 +1,4 @@
+import { REJECT_NOTE_MAX } from '@aio/annotate/detections';
 import type { RejectReason } from '@aio/schema';
 import { Popover, useT, type MessageKey } from '@aio/ui';
 import {
@@ -86,6 +87,7 @@ export function RejectReasonMenu({
             className="ann-input det-vlm-note"
             ref={noteRef}
             value={text}
+            maxLength={REJECT_NOTE_MAX}
             placeholder={t('detect.preset.reject.notePlaceholder')}
             aria-label={t('detect.preset.reject.notePlaceholder')}
             onChange={(e) => {

@@ -6,8 +6,11 @@ import {
   currentOf,
   detectorThreshold,
   initialReview,
+  inQueue,
   isDetectorDraft,
+  passDefaultBars,
   queueOf,
+  REJECT_NOTE_MAX,
   reviewReducer,
   sourceCounts,
   type ReviewAction,
@@ -319,5 +322,80 @@ describe('detector drafts and per-pass thresholds', () => {
     });
     const plain = run(loaded([vlm('a')]), { type: 'reject', id: 'a', by: 'me', now: NOW });
     expect(plain.detections[0]?.rejectReason).toBeUndefined();
+  });
+  it('a reopen drops the reason and note; a later reject without them keeps none', () => {
+    const reject = (over: Partial<Extract<ReviewAction, { type: 'reject' }>> = {}) =>
+      ({ type: 'reject', id: 'a', by: 'me', now: NOW, ...over }) as ReviewAction;
+    let s = run(loaded([vlm('a')]), reject({ reason: 'wrong-class', note: 'paint' }));
+    s = run(s, { type: 'reopen', id: 'a', now: NOW });
+    expect(s.detections[0]?.rejectReason).toBeUndefined();
+    expect(s.detections[0]?.rejectNote).toBeUndefined();
+    s = run(s, reject());
+    expect(s.detections[0]?.status).toBe('rejected');
+    expect(s.detections[0]).not.toHaveProperty('rejectReason');
+    expect(s.detections[0]).not.toHaveProperty('rejectNote');
+  });
+
+  it('accepting a rejected detection drops its reason and note', () => {
+    let s = run(loaded([vlm('a'), vlm('b')]), {
+      type: 'reject',
+      id: 'a',
+      by: 'me',
+      now: NOW,
+      reason: 'box-wrong',
+      note: 'twice',
+    });
+    s = run(s, { type: 'accepted', id: 'a', issueId: 'i1', by: 'me', now: NOW });
+    expect(s.detections.find((d) => d.id === 'a')).not.toHaveProperty('rejectReason');
+    expect(s.detections.find((d) => d.id === 'a')).not.toHaveProperty('rejectNote');
+    const many = run(
+      loaded([vlm('b', { status: 'rejected', rejectReason: 'box-wrong', rejectNote: 'x' })]),
+      {
+        type: 'acceptedMany',
+        items: [{ id: 'b', issueId: 'i2' }],
+        label: 'all',
+        by: 'me',
+        now: NOW,
+      },
+    );
+    expect(many.detections[0]).not.toHaveProperty('rejectReason');
+    expect(many.detections[0]).not.toHaveProperty('rejectNote');
+  });
+
+  it('a reject note is cut to 200 characters', () => {
+    const s = run(loaded([vlm('a')]), {
+      type: 'reject',
+      id: 'a',
+      by: 'me',
+      now: NOW,
+      note: 'x'.repeat(250),
+    });
+    expect(REJECT_NOTE_MAX).toBe(200);
+    expect(s.detections[0]?.rejectNote).toHaveLength(200);
+  });
+
+  it('without a slider value a pass uses its lowest detector bar, the value its row shows', () => {
+    const other = { ...detector, id: 'rust-streak', threshold: 0.8 };
+    const low = vlm('low', { confidence: 0.7 });
+    const high = vlm('high', {
+      confidence: 0.7,
+      origin: { kind: 'model', producer: 'qwen', detector: other },
+    });
+    const s = loaded([low, high]);
+    expect(passDefaultBars(s.detections).get('vlm-run-a.json')).toBe(0.6);
+    // the 0.8 detector's draft scored 0.7 is not hidden by a bar the row shows as 0.6
+    expect(detectorThreshold(s, high)).toBe(0.6);
+    expect(
+      queueOf(s)
+        .map((d) => d.id)
+        .sort(),
+    ).toEqual(['high', 'low']);
+    expect(inQueue(high, 'draft', 0, {}, s.detections)).toBe(true);
+    // a bar outside the slider's ends is held at the nearest end, as the row shows it
+    const steep = vlm('s', {
+      confidence: 0.96,
+      origin: { kind: 'model', producer: 'qwen', detector: { ...detector, threshold: 0.99 } },
+    });
+    expect(queueOf(loaded([steep])).map((d) => d.id)).toEqual(['s']);
   });
 });

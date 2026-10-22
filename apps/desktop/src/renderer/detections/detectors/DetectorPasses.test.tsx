@@ -132,7 +132,10 @@ describe('detectorPassRows', () => {
     const list = [model('a', 'vlm-1.json', 0.9, 0.7)];
     const [a] = detectorPassRows(list, new Map([['vlm-1.json', header]]), {});
     expect(a?.detectorName).toBe('Rust, Crack');
-    expect(a?.threshold).toBe(0.55);
+    // the bar the queue uses: the lowest its boxes ran with (Crack found nothing here)
+    expect(a?.threshold).toBe(0.7);
+    // a pass with no boxes fills the slider from the header
+    expect(detectorPassRows([], new Map([['vlm-1.json', header]]), {})[0]?.threshold).toBe(0.55);
     expect(a?.runAt).toBe('2026-10-20T09:00:00Z');
     const [b] = detectorPassRows(list, new Map(), {});
     expect(b?.detectorName).toBe('det-vlm-1.json');
@@ -142,6 +145,14 @@ describe('detectorPassRows', () => {
     const low = [model('a', 'vlm-1.json', 0.9, 0.1)];
     expect(detectorPassRows(low, new Map(), {})[0]?.threshold).toBe(0.3);
     expect(detectorPassRows(low, new Map(), { 'vlm-1.json': 0.99 })[0]?.threshold).toBe(0.95);
+  });
+
+  it('never hides a draft scored at or over the bar its row shows', () => {
+    // two detectors in one pass, bars 0.5 and 0.8: the row shows 0.5, so a 0.6 draft is shown
+    const list = [model('a', 'vlm-1.json', 0.6, 0.8), model('b', 'vlm-1.json', 0.4, 0.5)];
+    const [r] = detectorPassRows(list, new Map(), {});
+    expect(r?.threshold).toBe(0.5);
+    expect(r).toMatchObject({ shown: 1, hidden: 1 });
   });
 
   it('leaves out passes that are not local-detector passes', () => {

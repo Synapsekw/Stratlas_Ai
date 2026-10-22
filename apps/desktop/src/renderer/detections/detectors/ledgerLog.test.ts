@@ -69,6 +69,17 @@ describe('logReview', () => {
     });
   });
 
+  it('an acceptance carries no reason or note, even from an earlier rejection', async () => {
+    await logReview(
+      draft({ rejectReason: 'not-a-defect', rejectNote: 'a shadow' }),
+      'accepted',
+      ctx,
+    );
+    expect(payload().entry.verdict).toBe('accepted');
+    expect(payload().entry).not.toHaveProperty('reason');
+    expect(payload().entry).not.toHaveProperty('note');
+  });
+
   it('rejecting with a reason sends reason and note', async () => {
     await logReview(
       draft({ status: 'rejected', rejectReason: 'not-a-defect', rejectNote: 'a shadow' }),

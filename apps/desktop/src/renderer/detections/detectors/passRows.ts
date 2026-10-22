@@ -1,4 +1,11 @@
-import { detectorThreshold, isDetectorDraft, type Detection } from '@aio/annotate/detections';
+import {
+  PASS_BAR_MAX,
+  PASS_BAR_MIN,
+  detectorThreshold,
+  isDetectorDraft,
+  passDefaultBars,
+  type Detection,
+} from '@aio/annotate/detections';
 import type { DetectionsFile } from '@aio/schema';
 
 export interface DetectorPassRow {
@@ -7,7 +14,10 @@ export interface DetectorPassRow {
   detectorName: string;
   /** When the run was made (ISO), or null when the pass does not say. */
   runAt: string | null;
-  /** The slider's value: the pass's own bar, else the lowest bar a detector ran with. */
+  /**
+   * The slider's value: the pass's own bar, else its default bar (`passDefaultBars`, the value
+   * the queue uses), else the lowest bar the header lists.
+   */
   threshold: number;
   /** Waiting drafts at or over their bar (unscored drafts always count here). */
   shown: number;
@@ -16,10 +26,6 @@ export interface DetectorPassRow {
 }
 
 type Header = Pick<DetectionsFile, 'detectors' | 'run' | 'createdAt'>;
-
-/** The slider's ends: a bar outside them is shown at the nearest end, as the slider does. */
-const FLOOR = 0.3;
-const CEIL = 0.95;
 
 /**
  * One row per local-detector pass (`vlm-*`): the detectors it ran, when, the bar and how many
@@ -41,12 +47,15 @@ export function detectorPassRows(
     );
     const listed = header?.detectors ?? [];
     const names = listed.length > 0 ? listed.map((x) => x.name) : ran.map((x) => x.id);
-    const bars = [...listed.map((x) => x.threshold), ...ran.map((x) => x.threshold)];
+    // a pass with no detector boxes has nothing to hide: the header's bars only fill the slider
+    const fallback =
+      passDefaultBars(list).get(pass) ??
+      (listed.length > 0 ? Math.min(...listed.map((x) => x.threshold)) : PASS_BAR_MIN);
     let shown = 0;
     let hidden = 0;
     for (const d of mine) {
       if (!isDetectorDraft(d)) continue;
-      const bar = detectorThreshold({ passThreshold }, d);
+      const bar = detectorThreshold({ passThreshold, detections: list }, d);
       if (d.unscored || d.confidence === undefined || bar === null || d.confidence >= bar) shown++;
       else hidden++;
     }
@@ -54,10 +63,7 @@ export function detectorPassRows(
       pass,
       detectorName: [...new Set(names)].join(', '),
       runAt: header?.run?.at ?? header?.createdAt ?? null,
-      threshold: Math.min(
-        CEIL,
-        Math.max(FLOOR, passThreshold[pass] ?? (bars.length > 0 ? Math.min(...bars) : FLOOR)),
-      ),
+      threshold: Math.min(PASS_BAR_MAX, Math.max(PASS_BAR_MIN, passThreshold[pass] ?? fallback)),
       shown,
       hidden,
     });
