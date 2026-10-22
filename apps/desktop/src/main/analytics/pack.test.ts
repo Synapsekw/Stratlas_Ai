@@ -1,4 +1,5 @@
 import type { IpcChannel } from '@aio/schema';
+import { generateKeyPairSync } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -294,6 +295,42 @@ describe('Analytics pack IPC', () => {
     expect(phases.length).toBeGreaterThan(1);
     expect(phases.at(-1)).toBe('done');
     expect(new Set(phases)).toContain('unpack');
+  });
+
+  it('with a publisher key, an unsigned pack is refused', async () => {
+    const pair = generateKeyPairSync('ed25519');
+    const packKey = Buffer.from(
+      (pair.publicKey.export({ format: 'jwk' }) as { x: string }).x,
+      'base64url',
+    ).toString('base64');
+    const confirmUnsigned = vi.fn(() => Promise.resolve(true));
+    const { call } = setup({ packKey, confirmUnsigned });
+    const path = join(root, 'analytics-pack-0.1.0-win-x64.tar.gz');
+    await writeFile(path, fakeAnalyticsPackArchive('0.1.0'));
+    expect(await call('analyticsPack:install', { path })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/not signed/) as unknown,
+    });
+    expect(confirmUnsigned).not.toHaveBeenCalled();
+    expect(await call('analyticsPack:status')).toMatchObject({ installed: null });
+  });
+
+  it('without a key, asks before installing an unsigned pack and stops on no', async () => {
+    const asked: string[] = [];
+    const { call } = setup({
+      confirmUnsigned: (version) => {
+        asked.push(version);
+        return Promise.resolve(false);
+      },
+    });
+    const path = join(root, 'analytics-pack-0.1.0-win-x64.tar.gz');
+    await writeFile(path, fakeAnalyticsPackArchive('0.1.0'));
+    expect(await call('analyticsPack:install', { path })).toMatchObject({
+      ok: false,
+      code: 'cancelled',
+    });
+    expect(asked).toEqual(['0.1.0']);
+    expect(await call('analyticsPack:status')).toMatchObject({ installed: null });
   });
 
   it('refuses under the real-data guard, for installing and for removing', async () => {

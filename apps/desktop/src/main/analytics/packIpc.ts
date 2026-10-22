@@ -96,6 +96,9 @@ export function registerAnalyticsPackIpc(d: AnalyticsPackIpcDeps): void {
         ...(replace === true ? { beforeActivate: holdAll } : {}),
         ...(d.assertWritable ? { assertWritable: d.assertWritable } : {}),
         ...(d.freeBytes ? { freeBytes: d.freeBytes } : {}),
+        // the one publisher key: only signed packs install; without it, the person confirms
+        ...(d.packKey ? { packKey: d.packKey } : {}),
+        ...(d.confirmUnsigned ? { confirmUnsigned: d.confirmUnsigned } : {}),
       });
       return r.ok ? { ok: true, version: r.version } : r;
     } finally {

@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AnalyticsPackManifest } from '../../packages/schema/src/analytics.ts';
+import { keygen, verifyBytes } from '../release/ed25519.mjs';
 import { APP_RANGE, buildAnalyticsPack, pinnedDownload } from './build.mjs';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -93,6 +94,8 @@ const build = (o = {}) =>
     unzip,
     archive: false,
     createdAt: '2026-10-21T00:00:00.000Z',
+    // never the key of whoever runs the tests
+    signingKey: null,
     ...o,
   });
 
@@ -141,6 +144,20 @@ describe('analytics pack build', () => {
       sha256: sha(BODIES['m.gguf']),
     });
     expect(manifest.files['llama/llama-server.exe'].sha256).toBe(sha('bin'));
+  });
+
+  it('signs the manifest with the publisher key, and leaves it unsigned without one', async () => {
+    const { privatePem, publicKey } = keygen();
+    const keyFile = join(root, 'pack-key.pem');
+    writeFileSync(keyFile, privatePem);
+    const { packDir } = await build({ signingKey: keyFile });
+    const sig = readFileSync(join(packDir, 'manifest.sig'), 'utf8').trim();
+    expect(verifyBytes(publicKey, readFileSync(join(packDir, 'manifest.json')), sig)).toBe(true);
+    const manifest = JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'));
+    expect(manifest.files['manifest.sig']).toBeUndefined();
+
+    const unsigned = await build();
+    expect(existsSync(join(unsigned.packDir, 'manifest.sig'))).toBe(false);
   });
 
   it('the pack carries both licence texts', async () => {

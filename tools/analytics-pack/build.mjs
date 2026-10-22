@@ -6,6 +6,7 @@
 //   node tools/analytics-pack/build.mjs --out <dir> [--cache <dir>] [--no-model]
 //
 // Writes <out>/analytics-pack-<version>/{llama/, model/, licences/, detectors/<assetType>/<id>/, manifest.json}
+// (and manifest.sig when QUADRION_PACK_SIGNING_KEY names the publisher's private key)
 // and <out>/analytics-pack-<version>-win-x64.tar.gz (manifest.json is the first entry). --no-model
 // leaves model/ out and writes manifest.model.sha256 as "none": a local check build, not for install.
 import { spawnSync } from 'node:child_process';
@@ -29,6 +30,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
 import { BuildError, tarCommand } from '../pipeline-pack/build.mjs';
+import { signBytes } from '../release/ed25519.mjs';
 
 const here = import.meta.dirname;
 export const APP_RANGE = '>=0.25.0 <2.0.0';
@@ -146,6 +148,8 @@ export async function buildAnalyticsPack({
   unzip = unzipWithTar,
   archive = true,
   createdAt = new Date().toISOString(),
+  /** The publisher's private key (a PEM file kept offline); null: an unsigned pack. */
+  signingKey = process.env.QUADRION_PACK_SIGNING_KEY ?? null,
   log = () => undefined,
 }) {
   const name = `${PACK_PREFIX}-${version}`;
@@ -214,6 +218,16 @@ export async function buildAnalyticsPack({
     files,
   };
   writeFileSync(join(packDir, 'manifest.json'), `${JSON.stringify(manifest, null, 1)}\n`);
+  // With the publisher's key (QUADRION_PACK_SIGNING_KEY), sign the manifest: the app checks
+  // manifest.sig against signing.pipelinePackKey in brand.json, as for the pipeline pack
+  if (signingKey) {
+    const sig = signBytes(
+      readFileSync(signingKey, 'utf8'),
+      readFileSync(join(packDir, 'manifest.json')),
+    );
+    writeFileSync(join(packDir, 'manifest.sig'), `${sig}\n`);
+    log('  manifest signed (manifest.sig)');
+  }
 
   let tgz;
   if (archive) {

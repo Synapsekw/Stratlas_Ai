@@ -2250,6 +2250,30 @@ function registerIpc(): void {
       loadRuntime: loadOnnxRuntime,
     }),
   });
+  /**
+   * The main-side "this pack is unsigned code" question, asked before an unsigned pack is
+   * activated when no publisher key is pinned (the pipeline pack and the Analytics pack).
+   */
+  const confirmUnsignedPack = async (message: string, detail: string): Promise<boolean> => {
+    // the e2e suite runs the unpackaged build and installs fake packs (QUADRION_E2E is dropped
+    // from a packaged build, packagedEnv.ts)
+    if (!app.isPackaged && e2eRun) return true;
+    const options = {
+      type: 'warning' as const,
+      title: brand.productName,
+      message,
+      detail,
+      buttons: ['Install', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    };
+    const win = targetWindow();
+    const r = win
+      ? await dialog.showMessageBox(win, options)
+      : await dialog.showMessageBox(options);
+    return r.response === 0;
+  };
   // Settings, Processing tools: install or update the pipeline pack from a file, no network
   registerPipelinePackIpc({
     handle,
@@ -2298,27 +2322,11 @@ function registerIpc(): void {
     // A pinned publisher key: only signed packs install. Without one (until the founder makes the
     // key) a pack is unsigned code, so the person confirms it here, in main, before it is used.
     packKey: brand.signing?.pipelinePackKey,
-    confirmUnsigned: async (version) => {
-      // the e2e suite runs the unpackaged build and installs fake packs (QUADRION_E2E is dropped
-      // from a packaged build, packagedEnv.ts)
-      if (!app.isPackaged && e2eRun) return true;
-      const options = {
-        type: 'warning' as const,
-        title: brand.productName,
-        message: `Install processing tools ${version}? They are not signed.`,
-        detail:
-          'Processing tools are programs that run on this computer with your permissions. This file carries no publisher signature, so the app cannot tell where it came from. Install it only if you got it from the publisher yourself.',
-        buttons: ['Install', 'Cancel'],
-        defaultId: 1,
-        cancelId: 1,
-        noLink: true,
-      };
-      const win = targetWindow();
-      const r = win
-        ? await dialog.showMessageBox(win, options)
-        : await dialog.showMessageBox(options);
-      return r.response === 0;
-    },
+    confirmUnsigned: (version) =>
+      confirmUnsignedPack(
+        `Install processing tools ${version}? They are not signed.`,
+        'Processing tools are programs that run on this computer with your permissions. This file carries no publisher signature, so the app cannot tell where it came from. Install it only if you got it from the publisher yourself.',
+      ),
   });
 
   // Local detectors (Analytics pack): the pack, the hardware check, the detector library, the
@@ -2355,6 +2363,13 @@ function registerIpc(): void {
     },
     assertWritable,
     hold: (dir) => vlmServer.hold(dir),
+    // the one publisher key, as for the processing tools: signed packs only, or a confirmed one
+    packKey: brand.signing?.pipelinePackKey,
+    confirmUnsigned: (version) =>
+      confirmUnsignedPack(
+        `Install the Analytics pack ${version}? It is not signed.`,
+        'The Analytics pack holds a program that runs on this computer with your permissions. This file carries no publisher signature, so the app cannot tell where it came from. Install it only if you got it from the publisher yourself.',
+      ),
   });
   handle('analytics:hardware', () =>
     checkHardware({ platform: process.platform, exec: execNvidiaSmi }),
