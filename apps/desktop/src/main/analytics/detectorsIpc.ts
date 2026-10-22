@@ -73,7 +73,7 @@ export function registerDetectorsIpc(d: DetectorsIpcDeps): void {
     try {
       const o = await options(projectId, where === 'project');
       const dest = path ?? (await d.chooseSave(`${id}${DETECTOR_FILE_EXTENSION}`));
-      if (dest === null) return { ok: false, error: 'Export cancelled.' };
+      if (dest === null) return { ok: false, error: 'Export cancelled.', cancelled: true };
       d.assertWritable?.(dest, 'detector export');
       await exportDetector(o, where, id, dest, includeSamples);
       return { ok: true, path: dest };
@@ -85,7 +85,7 @@ export function registerDetectorsIpc(d: DetectorsIpcDeps): void {
     try {
       const o = await options(projectId, where === 'project');
       const file = path ?? (await d.chooseOpen());
-      if (file === null) return { ok: false, error: 'Import cancelled.' };
+      if (file === null) return { ok: false, error: 'Import cancelled.', cancelled: true };
       const root = where === 'project' ? o.projectDir : o.userData;
       if (root) d.assertWritable?.(root, 'detector import');
       const r = await importDetector(o, file, where, onConflict);
@@ -94,6 +94,7 @@ export function registerDetectorsIpc(d: DetectorsIpcDeps): void {
           ok: false,
           error: `A detector "${r.conflict.id}" is already here.`,
           conflict: r.conflict,
+          path: file,
         };
       }
       return { ok: true, id: r.id };

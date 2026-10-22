@@ -6,6 +6,7 @@ import {
   type LedgerEntry,
   type VlmDetector,
 } from '@aio/schema';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -117,5 +118,25 @@ describe('ledger ipc', () => {
 
     expect(await call('ledger:stats', { detectorId: 'chimney' })).toEqual(stats);
     expect(await readdir(join(ledgerDir(userData), 'crops', 'chimney'))).toEqual(['1.jpg']);
+  });
+
+  it('ledger:clear refuses a bad id and clears a good one', async () => {
+    const crop = Buffer.from([1, 2]).toString('base64');
+    await call('ledger:append', { entry, cropJpegBase64: crop });
+    await call('ledger:append', { entry: { ...entry, detectorId: 'flue' }, cropJpegBase64: crop });
+
+    const bad = await call('ledger:clear', { detectorId: '../chimney' });
+    expect(bad.ok).toBe(false);
+    expect((await call('ledger:stats', { detectorId: 'chimney' })).accepted).toBe(1);
+
+    expect(await call('ledger:clear', { detectorId: 'chimney' })).toEqual({ ok: true });
+    expect(await call('ledger:stats', { detectorId: 'chimney' })).toEqual({
+      accepted: 0,
+      rejected: 0,
+      misses: 0,
+      suggestedThreshold: null,
+    });
+    expect(existsSync(join(ledgerDir(userData), 'crops', 'chimney'))).toBe(false);
+    expect((await call('ledger:stats', { detectorId: 'flue' })).accepted).toBe(1);
   });
 });

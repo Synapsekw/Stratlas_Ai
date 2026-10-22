@@ -4242,7 +4242,11 @@ export const ipc = {
         path: z.string().optional(),
       })
       .strict(),
-    response: z.union([z.object({ ok: z.literal(true), path: z.string() }), DetectorFailure]),
+    response: z.union([
+      z.object({ ok: z.literal(true), path: z.string() }),
+      /** `cancelled`: the save dialog was closed, nothing to say. */
+      DetectorFailure.extend({ cancelled: z.literal(true).optional() }),
+    ]),
   },
   'detectors:import': {
     request: z
@@ -4259,6 +4263,10 @@ export const ipc = {
         ok: z.literal(false),
         error: z.string(),
         conflict: z.object({ id: z.string(), have: z.number(), incoming: z.number() }).optional(),
+        /** With `conflict`: the file read, so the retry with `onConflict` does not ask again. */
+        path: z.string().optional(),
+        /** The open dialog was closed, nothing to say. */
+        cancelled: z.literal(true).optional(),
       }),
     ]),
   },
@@ -4275,6 +4283,11 @@ export const ipc = {
       misses: z.number(),
       suggestedThreshold: z.number().nullable(),
     }),
+  },
+  /** Forget a detector's review history: its ledger lines and crops. */
+  'ledger:clear': {
+    request: z.object({ detectorId: z.string().min(1) }).strict(),
+    response: z.union([Ok, DetectorFailure]),
   },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 

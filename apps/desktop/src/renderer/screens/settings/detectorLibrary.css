@@ -1,0 +1,58 @@
+/* Settings, Processing tools, Detector library. */
+.dl-section .dl-group + .dl-group {
+  margin-block-start: 14px;
+}
+.dl-section .dl-group > h3 {
+  margin-block: 0 6px;
+  color: var(--fg-2);
+  font: 500 var(--t-11) / 1 var(--f-cond);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.dl-section .dl-empty {
+  margin-block: 0;
+}
+.dl-section .dl-name {
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.dl-section .dl-mismatch {
+  display: inline-flex;
+  color: var(--warn-ink);
+  border-radius: var(--r-4);
+}
+.dl-section .dl-mismatch:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.dl-section .dl-stats {
+  color: var(--fg-1);
+  font-variant-numeric: tabular-nums;
+}
+.dl-section .dl-sub td {
+  background: var(--bg-1);
+}
+.dl-section .dl-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.dl-section .dl-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-1);
+}
+.dl-section .dl-acts {
+  display: flex;
+  gap: 6px;
+  margin-inline-start: auto;
+  flex: none;
+}
+.dl-section .notice {
+  margin-block-end: 10px;
+}
+.dl-section .notice .btn {
+  flex: none;
+}

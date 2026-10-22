@@ -6,7 +6,14 @@
 import type { IpcChannel } from '@aio/schema';
 import { join } from 'node:path';
 import type { Handler } from '../ipc';
-import { appendLedger, isLedgerId, ledgerStats, readLedger, suggestThreshold } from './ledger';
+import {
+  appendLedger,
+  clearLedger,
+  isLedgerId,
+  ledgerStats,
+  readLedger,
+  suggestThreshold,
+} from './ledger';
 
 /** 2 MB of bytes is about 2.8 M base64 characters; refuse before decoding. */
 const MAX_CROP_BASE64 = 2_800_000;
@@ -38,5 +45,14 @@ export function registerLedgerIpc(d: LedgerIpcDeps): void {
       return { accepted: 0, rejected: 0, misses: 0, suggestedThreshold: null };
     const entries = await readLedger(dir, detectorId);
     return { ...ledgerStats(entries), suggestedThreshold: suggestThreshold(entries) };
+  });
+  d.handle('ledger:clear', async ({ detectorId }) => {
+    if (!isLedgerId(detectorId)) return { ok: false, error: 'That detector id is not valid.' };
+    try {
+      await clearLedger(dir, detectorId);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
   });
 }

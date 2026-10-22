@@ -15,6 +15,7 @@ import { AdvancedPipelines } from '../../processing/AdvancedPipelines';
 import { processingTools, resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { useShell } from '../../shell';
 import { AnalyticsPack } from './AnalyticsPack';
+import { DetectorLibrary } from './DetectorLibrary';
 import { progressText } from './packProgress';
 import { ProcessingEngine } from './ProcessingEngine';
 import './processingTools.css';
@@ -339,6 +340,7 @@ export function ProcessingTools() {
         <Install />
       </div>
       <AnalyticsPack />
+      <DetectorLibrary />
       {/* a development pack is not ours to manage: its folders are left alone */}
       {status && status.state !== 'dev' && (
         <OtherPacks packs={status.others} disabled={installing} />
