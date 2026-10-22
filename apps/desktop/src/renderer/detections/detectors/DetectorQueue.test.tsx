@@ -7,15 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   items: [] as unknown[],
   calls: [] as { channel: string; req: unknown }[],
+  /** When set, every bridge answer waits for it. */
+  gate: null as Promise<void> | null,
 }));
 
 vi.mock('../../shell', () => ({
   bridge: {
     call: (channel: string, req: unknown) => {
       h.calls.push({ channel, req });
-      if (channel === 'detect:queue')
-        return Promise.resolve({ ok: true, value: { items: h.items } });
-      return Promise.resolve({ ok: true, value: { ok: true } });
+      const value = channel === 'detect:queue' ? { items: h.items } : { ok: true };
+      return (h.gate ?? Promise.resolve()).then(() => ({ ok: true, value }));
     },
   },
 }));
@@ -40,6 +41,7 @@ const queued = (run: string, names: string[], photos: number): DetectQueued => (
 beforeEach(() => {
   h.items = [];
   h.calls = [];
+  h.gate = null;
   listener = undefined;
   (window as unknown as { aio: unknown }).aio = {
     on: (channel: string, fn: Listener) => {
@@ -91,6 +93,46 @@ describe('DetectorQueue', () => {
     await show();
     expect(host.textContent).toContain('Rust, 1 photo');
     expect(host.textContent).not.toContain('1 photos');
+  });
+
+  it('disables Cancel while the request is in flight, so a double click sends one call', async () => {
+    h.items = [queued('run-a', ['Rust'], 2)];
+    await show();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    h.gate = gate;
+    await act(() => {
+      button('Cancel')?.click();
+      button('Cancel')?.click();
+      return Promise.resolve();
+    });
+    expect(h.calls.filter((c) => c.channel === 'detect:queueCancel')).toHaveLength(1);
+    expect(button('Cancel')?.disabled).toBe(true);
+    await act(async () => {
+      release();
+      await gate;
+    });
+    expect(button('Cancel')?.disabled).toBe(false);
+  });
+
+  it('an event that arrives before a stale answer is not overwritten by it', async () => {
+    h.items = [queued('run-old', ['Old'], 5)];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    h.gate = gate;
+    await show();
+    act(() => {
+      listener?.({ items: [] });
+    });
+    await act(async () => {
+      release();
+      await gate;
+    });
+    expect(host.innerHTML).toBe('');
   });
 
   it('follows the detect:queue event', async () => {

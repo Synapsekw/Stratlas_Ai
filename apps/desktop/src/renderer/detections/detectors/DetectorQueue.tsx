@@ -1,12 +1,14 @@
 import type { AioBridge, DetectQueued } from '@aio/schema';
 import { Button, useT } from '@aio/ui';
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { bridge } from '../../shell';
 
 export interface DetectorQueueViewProps {
   items: readonly DetectQueued[];
   /** A waiting run that did not start when its turn came, and why. */
   failed: { run: string; error: string } | null;
+  /** Runs whose Cancel is in flight. */
+  cancelling: ReadonlySet<string>;
   onCancel: (run: string) => void;
   onDismiss: () => void;
 }
@@ -15,6 +17,7 @@ export interface DetectorQueueViewProps {
 export function DetectorQueueView({
   items,
   failed,
+  cancelling,
   onCancel,
   onDismiss,
 }: DetectorQueueViewProps): ReactElement | null {
@@ -40,6 +43,7 @@ export function DetectorQueueView({
           </span>
           <Button
             variant="quiet"
+            disabled={cancelling.has(q.run)}
             onClick={() => {
               onCancel(q.run);
             }}
@@ -57,15 +61,25 @@ export function DetectorQueue(): ReactElement | null {
   const [items, setItems] = useState<readonly DetectQueued[]>([]);
   const [failed, setFailed] = useState<{ run: string; error: string } | null>(null);
 
+  const [cancelling, setCancelling] = useState<ReadonlySet<string>>(new Set());
+  const evented = useRef(false);
+  const inFlight = useRef(new Set<string>());
+
   useEffect(() => {
     let live = true;
-    void bridge.call('detect:queue', {}).then((r) => {
-      // an event that arrived first is newer than this answer
-      if (live && r.ok) setItems((cur) => (cur.length > 0 ? cur : r.value.items));
-    });
+    void bridge
+      .call('detect:queue', {})
+      .then((r) => {
+        // an event that arrived first is newer than this answer
+        if (live && r.ok && !evented.current) setItems(r.value.items);
+      })
+      .catch(() => undefined);
     const aio = window.aio as AioBridge | undefined;
     const off = aio?.on('detect:queue', (e) => {
+      evented.current = true;
       setItems(e.items);
+      inFlight.current.clear();
+      setCancelling(new Set());
       if (e.failed) setFailed(e.failed);
     });
     return () => {
@@ -78,9 +92,21 @@ export function DetectorQueue(): ReactElement | null {
     <DetectorQueueView
       items={items}
       failed={failed}
+      cancelling={cancelling}
       onCancel={(run) => {
+        if (inFlight.current.has(run)) return;
+        inFlight.current.add(run);
+        setCancelling((cur) => new Set(cur).add(run));
         // a run that already left the queue answers not-waiting; the next event sets the list
-        void bridge.call('detect:queueCancel', { run });
+        const settled = () => {
+          inFlight.current.delete(run);
+          setCancelling((cur) => {
+            const next = new Set(cur);
+            next.delete(run);
+            return next;
+          });
+        };
+        bridge.call('detect:queueCancel', { run }).then(settled, settled);
       }}
       onDismiss={() => {
         setFailed(null);
