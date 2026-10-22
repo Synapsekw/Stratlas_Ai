@@ -121,6 +121,28 @@ describe('explicit correction submission and evidence scope', () => {
     setCorrectionSession(null);
     await expect(run('list_model_corrections')).rejects.toThrow(/Open/);
   });
+  it('keeps a multi-request send usable after the first request is proposed', async () => {
+    cloud = false;
+    for (const id of ['flue-1', 'flue-2'])
+      await session.create({
+        id: `fix-${id}`,
+        target: { kind: 'part', partId: id },
+        comment: `Remove ${id}.`,
+      });
+    await prepareCorrectionSubmission(['fix-flue-1', 'fix-flue-2']);
+    await run('propose_model_correction', {
+      requestId: 'fix-flue-1',
+      proposal: { explanation: 'Remove', patch: [{ op: 'remove', id: 'flue-1' }] },
+    });
+    expect(saved.corrections?.find((r) => r.id === 'fix-flue-1')?.status).toBe('proposed');
+    await expect(run('list_model_corrections')).resolves.toBeTruthy();
+    await run('propose_model_correction', {
+      requestId: 'fix-flue-2',
+      proposal: { explanation: 'Remove too', patch: [{ op: 'remove', id: 'flue-2' }] },
+    });
+    expect(saved.corrections?.find((r) => r.id === 'fix-flue-2')?.status).toBe('proposed');
+    await expect(prepareCorrectionSubmission(['fix-flue-1'])).rejects.toThrow(/open/);
+  });
   it('permits a local route without cloud flags and exposes useful scoped proposal failures', async () => {
     cloud = false;
     await prepareCorrectionSubmission(['fix-one']);

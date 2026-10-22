@@ -91,12 +91,18 @@ export function createCorrectionSession(
     );
   };
   return {
-    submission(ids: readonly string[]) {
+    /**
+     * The scope of a send. A new send (`fresh`) takes open requests only; the AI tools re-check
+     * a send in progress with `fresh: false`, where a request already proposed still belongs.
+     */
+    submission(ids: readonly string[], { fresh = true }: { fresh?: boolean } = {}) {
       const { projectId, model, run } = current();
       if (!ids.length || ids.length > 10)
         throw new Error('Choose between one and ten correction requests.');
       const requests = [...new Set(ids)].map((id) => find(current(), id));
-      if (!requests.every((r) => isSendable(r.status)))
+      const inScope = (status: ModelCorrection['status']) =>
+        fresh ? isSendable(status) : status === 'open' || status === 'proposed';
+      if (!requests.every((r) => inScope(r.status)))
         throw new Error('Only open correction requests can be sent.');
       const selected = new Set(
         requests.flatMap((r) => (r.target.kind === 'part' ? [r.target.partId] : [])),

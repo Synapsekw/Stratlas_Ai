@@ -62,7 +62,7 @@ async function checked(requestId?: string) {
     throw new ToolError('A person must select correction requests and press Send to AI first.');
   if (requestId && !s.ids.includes(requestId))
     throw new ToolError('This correction request was not submitted.');
-  const now = host.session.submission(s.ids);
+  const now = host.session.submission(s.ids, { fresh: false });
   if (
     now.projectId !== s.scope.projectId ||
     now.runId !== s.scope.runId ||
@@ -73,7 +73,7 @@ async function checked(requestId?: string) {
   await permitted(host, now);
   if (host !== active || s !== submitted)
     throw new ToolError('The open project changed. Submit again.');
-  const latest = host.session.submission(s.ids);
+  const latest = host.session.submission(s.ids, { fresh: false });
   if (
     latest.model !== s.scope.model ||
     latest.projectId !== s.scope.projectId ||
