@@ -4,7 +4,9 @@ import {
   canRedo,
   canUndo,
   currentOf,
+  detectorThreshold,
   initialReview,
+  isDetectorDraft,
   queueOf,
   reviewReducer,
   sourceCounts,
@@ -225,5 +227,91 @@ describe('review decisions', () => {
     const a = r.detections.find((d) => d.id === 'a');
     expect(a?.status).toBe('draft');
     expect(a?.issueId).toBeUndefined();
+  });
+});
+
+describe('detector drafts and per-pass thresholds', () => {
+  const detector = {
+    id: 'corrosion-spike',
+    version: 2,
+    modelSha256: 'a'.repeat(64),
+    threshold: 0.6,
+  };
+  const vlm = (id: string, over: Partial<Detection> = {}) =>
+    det(id, {
+      pass: 'vlm-run-a.json',
+      origin: { kind: 'model', producer: 'qwen', detector },
+      ...over,
+    });
+  const setBar = (value: number): ReviewAction => ({
+    type: 'passThreshold',
+    pass: 'vlm-run-a.json',
+    value,
+  });
+
+  it('a draft under the pass threshold is hidden and shown when the threshold drops', () => {
+    let s = loaded([vlm('a', { confidence: 0.5 }), vlm('b', { confidence: 0.9 })]);
+    // the origin threshold (0.6) holds until the reviewer sets one for the pass
+    expect(queueOf(s).map((d) => d.id)).toEqual(['b']);
+    s = run(s, setBar(0.95));
+    expect(queueOf(s)).toEqual([]);
+    s = run(s, setBar(0.3));
+    expect(queueOf(s).map((d) => d.id)).toEqual(['a', 'b']);
+    expect(detectorThreshold(s, vlm('a'))).toBe(0.3);
+  });
+
+  it('unscored drafts are never hidden by a pass threshold', () => {
+    const s = run(loaded([vlm('u', { unscored: true, confidence: 0.1 })]), setBar(1));
+    expect(queueOf(s).map((d) => d.id)).toEqual(['u']);
+  });
+
+  it('human and cloud AI drafts ignore pass thresholds', () => {
+    const human = det('h', { origin: { kind: 'human', author: 'me' }, confidence: 0.1 });
+    const cloud = det('c', { confidence: 0.1 });
+    const s = run(loaded([human, cloud]), {
+      type: 'passThreshold',
+      pass: 'ai-r1.json',
+      value: 0.9,
+    });
+    expect(queueOf(s).map((d) => d.id)).toEqual(['c', 'h']);
+    expect(detectorThreshold(s, cloud)).toBeNull();
+    expect(isDetectorDraft(cloud)).toBe(false);
+    expect(isDetectorDraft(vlm('a'))).toBe(true);
+  });
+
+  it('the first edit of a detector draft keeps the proposed box; later edits do not move it', () => {
+    const move = (x: number, w: number): ReviewAction => ({
+      type: 'edit',
+      id: 'a',
+      now: NOW,
+      patch: { geom: { type: 'box', x, y: 10, w, h: 40 } },
+    });
+    let s = run(loaded([vlm('a')]), move(20, 50));
+    expect(s.detections[0]?.proposedBox).toEqual([10, 10, 60, 50]);
+    s = run(s, move(30, 10));
+    expect(s.detections[0]?.proposedBox).toEqual([10, 10, 60, 50]);
+    // a note edit moves no box; other origins record nothing
+    const note = run(loaded([vlm('a')]), { type: 'edit', id: 'a', now: NOW, patch: { note: 'x' } });
+    expect(note.detections[0]?.proposedBox).toBeUndefined();
+    const cloud = run(loaded([det('a')]), move(20, 50));
+    expect(cloud.detections[0]?.proposedBox).toBeUndefined();
+  });
+
+  it('reject keeps the reason and note', () => {
+    const s = run(loaded([vlm('a')]), {
+      type: 'reject',
+      id: 'a',
+      by: 'me',
+      now: NOW,
+      reason: 'wrong-class',
+      note: 'looks like paint',
+    });
+    expect(s.detections[0]).toMatchObject({
+      status: 'rejected',
+      rejectReason: 'wrong-class',
+      rejectNote: 'looks like paint',
+    });
+    const plain = run(loaded([vlm('a')]), { type: 'reject', id: 'a', by: 'me', now: NOW });
+    expect(plain.detections[0]?.rejectReason).toBeUndefined();
   });
 });

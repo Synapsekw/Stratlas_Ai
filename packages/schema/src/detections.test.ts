@@ -149,3 +149,19 @@ describe('detector origin', () => {
     expect(DetectionOrigin.safeParse({ detectorId: 'x', colour: 'red' }).success).toBe(false);
   });
 });
+
+describe('proposedBox', () => {
+  const parse = (proposedBox: unknown) =>
+    DetectionsFile.safeParse({
+      schema: DETECTIONS_SCHEMA,
+      source: 'model',
+      detections: [{ photo: 'p001', class: 'corrosion', bbox: [1, 1, 5, 5], proposedBox }],
+    });
+  it('proposedBox accepts four finite numbers', () => {
+    expect(parse([10, 20, 60, 80]).success).toBe(true);
+  });
+  it('refuses anything else', () => {
+    expect(parse([10, 20, 60]).success).toBe(false);
+    expect(parse([10, 20, 60, Infinity]).success).toBe(false);
+  });
+});

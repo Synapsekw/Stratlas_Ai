@@ -116,6 +116,16 @@ export const Detection = z
     /** Why a reviewer rejected it (feeds the detector ledger). */
     rejectReason: RejectReason.optional(),
     rejectNote: z.string().max(200).optional(),
+    /**
+     * The box a local detector proposed (source px), written on the first box edit of a detector
+     * draft so the reviewer's correction can be compared with it.
+     */
+    proposedBox: z
+      .tuple([z.number(), z.number(), z.number(), z.number()])
+      .refine((b) => b.every(Number.isFinite), {
+        message: 'A proposed box holds four finite numbers.',
+      })
+      .optional(),
     origin: DetectionOrigin.optional(),
     /**
      * The issue a person made from (or added) this detection in the review. The pipeline does not

@@ -1,7 +1,13 @@
-import type { ImageGeom, SeverityModel } from '@aio/schema';
+import type { ImageGeom, RejectReason, SeverityModel } from '@aio/schema';
 import { compareCodes } from '../model/query';
 import { mapSeverity } from '../model/severityMap';
-import { sourceKey, type Detection, type DetectionRun, type DetectionSource } from './model';
+import {
+  boundsOf,
+  sourceKey,
+  type Detection,
+  type DetectionRun,
+  type DetectionSource,
+} from './model';
 
 /*
  * The review state machine (BLD-5). Pure: a reducer over the project's detections with a queue
@@ -39,6 +45,11 @@ export interface ReviewState {
   filter: QueueFilter;
   /** Proposals (AI, pipeline) under this confidence are hidden; a person's are always shown. */
   minConfidence: number;
+  /**
+   * Per pass, the bar a local detector's drafts must reach to show in the queue (the slider);
+   * a pass without an entry uses the threshold its detector ran with.
+   */
+  passThreshold: Readonly<Record<string, number>>;
   currentId: string | null;
   past: readonly ReviewChange[];
   future: readonly ReviewChange[];
@@ -51,6 +62,7 @@ export type ReviewAction =
   | { type: 'load'; detections: readonly Detection[]; runs?: readonly DetectionRun[] }
   | { type: 'filter'; filter: QueueFilter }
   | { type: 'minConfidence'; value: number }
+  | { type: 'passThreshold'; pass: string; value: number }
   | { type: 'select'; id: string | null }
   | { type: 'next' }
   | { type: 'prev' }
@@ -60,7 +72,14 @@ export type ReviewAction =
   | { type: 'add'; detections: readonly Detection[]; label: string; run?: DetectionRun }
   | { type: 'edit'; id: string; patch: DetectionPatch; now: string }
   | { type: 'remove'; id: string }
-  | { type: 'reject'; id: string; by: string; now: string }
+  | {
+      type: 'reject';
+      id: string;
+      by: string;
+      now: string;
+      reason?: RejectReason;
+      note?: string;
+    }
   /**
    * Back to draft. An accepted detection reopens only when its issue no longer exists
    * (`issueGone`: the issue was deleted or its creation undone in the register).
@@ -103,6 +122,7 @@ export function initialReview(): ReviewState {
     runs: [],
     filter: 'draft',
     minConfidence: 0,
+    passThreshold: {},
     currentId: null,
     past: [],
     future: [],
@@ -151,10 +171,33 @@ export function compareDetections(a: Detection, b: Detection): number {
   return ay - by || ax - bx || a.id.localeCompare(b.id);
 }
 
-export function inQueue(d: Detection, filter: QueueFilter, minConfidence: number): boolean {
+/** A draft a local detector proposed (its origin carries the detector). */
+export function isDetectorDraft(d: Detection): boolean {
+  return d.status === 'draft' && d.origin.kind === 'model' && d.origin.detector !== undefined;
+}
+
+/** The bar for a detector's draft: the pass value, else the one the detector ran with, else null. */
+export function detectorThreshold(
+  state: Pick<ReviewState, 'passThreshold'>,
+  d: Detection,
+): number | null {
+  if (d.origin.kind !== 'model' || !d.origin.detector) return null;
+  return state.passThreshold[d.pass] ?? d.origin.detector.threshold;
+}
+
+export function inQueue(
+  d: Detection,
+  filter: QueueFilter,
+  minConfidence: number,
+  passThreshold: ReviewState['passThreshold'] = {},
+): boolean {
   if (filter !== 'all' && d.status !== filter) return false;
   if (d.origin.kind !== 'human' && d.confidence !== undefined && d.confidence < minConfidence) {
     return false;
+  }
+  if (isDetectorDraft(d) && !d.unscored && d.confidence !== undefined) {
+    const bar = detectorThreshold({ passThreshold }, d);
+    if (bar !== null && d.confidence < bar) return false;
   }
   return true;
 }
@@ -173,9 +216,11 @@ export function ordered(detections: readonly Detection[]): readonly Detection[] 
 
 /** The detections the reviewer steps through, in order. */
 export function queueOf(
-  state: Pick<ReviewState, 'detections' | 'filter' | 'minConfidence'>,
+  state: Pick<ReviewState, 'detections' | 'filter' | 'minConfidence' | 'passThreshold'>,
 ): Detection[] {
-  return ordered(state.detections).filter((d) => inQueue(d, state.filter, state.minConfidence));
+  return ordered(state.detections).filter((d) =>
+    inQueue(d, state.filter, state.minConfidence, state.passThreshold),
+  );
 }
 
 export function currentOf(state: ReviewState): Detection | null {
@@ -338,6 +383,7 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         ...initialReview(),
         filter: state.filter,
         minConfidence: state.minConfidence,
+        passThreshold: state.passThreshold,
         detections: [...action.detections],
         runs: [...(action.runs ?? [])],
       };
@@ -356,6 +402,18 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
     }
     case 'minConfidence': {
       const next = { ...state, minConfidence: Math.min(1, Math.max(0, action.value)) };
+      const q = queueOf(next);
+      return {
+        ...next,
+        currentId: q.some((d) => d.id === state.currentId) ? state.currentId : (q[0]?.id ?? null),
+      };
+    }
+    case 'passThreshold': {
+      const passThreshold = {
+        ...state.passThreshold,
+        [action.pass]: Math.min(1, Math.max(0, action.value)),
+      };
+      const next = { ...state, passThreshold };
       const q = queueOf(next);
       return {
         ...next,
@@ -401,6 +459,10 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         (d) => {
           if (d.status === 'accepted') return 'accepted' as const;
           const next: Detection = { ...d, ...action.patch, updatedAt: action.now };
+          // the first correction of a detector's box keeps what it proposed
+          if (action.patch.geom && isDetectorDraft(d) && !d.proposedBox) {
+            next.proposedBox = boundsOf(d.geom);
+          }
           return next;
         },
         { keepCursor: true },
@@ -423,6 +485,8 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         return {
           ...d,
           status: 'rejected',
+          ...(action.reason ? { rejectReason: action.reason } : {}),
+          ...(action.note ? { rejectNote: action.note } : {}),
           reviewedBy: action.by,
           reviewedAt: action.now,
           updatedAt: action.now,

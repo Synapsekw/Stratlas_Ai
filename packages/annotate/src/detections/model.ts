@@ -1,5 +1,6 @@
 import type {
   DetectionGeom,
+  RejectReason,
   Detection as PassDetection,
   DetectionRun as PassRun,
   DetectionsFile,
@@ -39,7 +40,13 @@ export type DetectionSource =
 export type DetectionOrigin =
   | { kind: 'human'; author: string }
   | { kind: 'ai'; provider: string; model: string; promptVersion: string; runId: string }
-  | { kind: 'model' | 'import'; producer: string };
+  | {
+      kind: 'model';
+      producer: string;
+      /** A local vision-model detector (`detect.vlm`): which one, and the bar it used. */
+      detector?: { id: string; version: number; modelSha256: string; threshold: number };
+    }
+  | { kind: 'import'; producer: string };
 
 export interface Detection {
   /** The file's id, or `<pass>#<index>` for a detection the file gives none (not written back). */
@@ -62,6 +69,15 @@ export interface Detection {
   note: string;
   /** 0 to 1, from the model. */
   confidence?: number;
+  /** A local detector kept it but scored it under its threshold. */
+  belowThreshold?: boolean;
+  /** A local detector could not score it. */
+  unscored?: boolean;
+  /** Why a reviewer rejected it. */
+  rejectReason?: RejectReason;
+  rejectNote?: string;
+  /** The box the detector proposed (source px), kept on the first box edit of its draft. */
+  proposedBox?: [number, number, number, number];
   /**
    * `accepted` without `issueId`: counted by the inspection pipeline, which makes the issue.
    * `accepted` with `issueId`: an issue already (made in the review, or by the pipeline).
@@ -137,7 +153,23 @@ function originOf(raw: PassDetection, file: DetectionsFile): DetectionOrigin {
       runId: o.runId ?? file.run?.id ?? '',
     };
   }
-  return { kind, producer: o.model ?? file.producer ?? kind };
+  const producer = o.model ?? file.producer ?? kind;
+  if (
+    kind === 'model' &&
+    o.detectorId !== undefined &&
+    o.detectorVersion !== undefined &&
+    o.modelSha256 !== undefined &&
+    o.threshold !== undefined
+  ) {
+    const detector = {
+      id: o.detectorId,
+      version: o.detectorVersion,
+      modelSha256: o.modelSha256,
+      threshold: o.threshold,
+    };
+    return { kind, producer, detector };
+  }
+  return { kind, producer };
 }
 
 /** One raw detection as the review's model, or null when the review cannot show it. */
@@ -182,6 +214,11 @@ function fromPass(
   if (label) d.label = label;
   if (raw.suggestedNew && classId === '') d.suggestedNew = true;
   if (raw.confidence !== undefined) d.confidence = raw.confidence;
+  if (raw.belowThreshold !== undefined) d.belowThreshold = raw.belowThreshold;
+  if (raw.unscored !== undefined) d.unscored = raw.unscored;
+  if (raw.rejectReason) d.rejectReason = raw.rejectReason;
+  if (raw.rejectNote) d.rejectNote = raw.rejectNote;
+  if (raw.proposedBox) d.proposedBox = raw.proposedBox;
   if (raw.issueId) d.issueId = raw.issueId;
   if (raw.component) d.component = raw.component;
   for (const k of ['createdAt', 'updatedAt', 'reviewedBy', 'reviewedAt'] as const) {
@@ -297,6 +334,11 @@ export function toPassDetection(
   if (d.severity !== null) out.severity = d.severity;
   if (d.uncertain) out.uncertain = true;
   if (d.confidence !== undefined) out.confidence = d.confidence;
+  if (d.belowThreshold !== undefined) out.belowThreshold = d.belowThreshold;
+  if (d.unscored !== undefined) out.unscored = d.unscored;
+  if (d.rejectReason) out.rejectReason = d.rejectReason;
+  if (d.rejectNote) out.rejectNote = d.rejectNote;
+  if (d.proposedBox) out.proposedBox = d.proposedBox;
   if (d.note) out.note = d.note;
   out.status = d.status;
   const kind = d.origin.kind;
@@ -307,6 +349,15 @@ export function toPassDetection(
       model: d.origin.model,
       promptVersion: d.origin.promptVersion,
       runId: d.origin.runId,
+    };
+  } else if (d.origin.kind === 'model' && d.origin.detector) {
+    const { id, version, modelSha256, threshold } = d.origin.detector;
+    out.origin = {
+      ...raw?.origin,
+      detectorId: id,
+      detectorVersion: version,
+      modelSha256,
+      threshold,
     };
   } else if (d.origin.kind === 'human' && d.origin.author) {
     out.origin = { author: d.origin.author };
