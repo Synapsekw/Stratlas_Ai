@@ -7,6 +7,7 @@ import {
   canResume,
   createJobsStore,
   finishedIssuesJob,
+  finishedPassJob,
   finishedChangeJob,
   finishedManifestJob,
   finishedProjectJob,
@@ -270,6 +271,15 @@ describe('inspection jobs', () => {
     expect(finishedIssuesJob([running], [done], 'e:/data/p')).toBe(true);
     expect(finishedIssuesJob([done], [done], 'e:/data/p')).toBe(false);
     expect(finishedManifestJob([running], [done], 'e:/data/p')).toBe(false);
+  });
+
+  it('reads the passes again once a detector run finishes on the open project', () => {
+    const running = job({ id: 'v1', pipeline: 'detect.vlm', project: 'E:/data/p/' });
+    const done = { ...running, status: 'done' as const };
+    expect(finishedPassJob([running], [done], 'e:/data/p')).toBe(true);
+    expect(finishedPassJob([done], [done], 'e:/data/p')).toBe(false);
+    expect(finishedPassJob([running], [done], 'e:/data/other')).toBe(false);
+    expect(finishedIssuesJob([running], [done], 'e:/data/p')).toBe(false);
   });
 
   it('keeps edits made in the app while the job ran', () => {

@@ -13,7 +13,8 @@ Steps (each resumable):
 
 Every candidate is kept; one scored under its detector's threshold carries ``belowThreshold``, one
 the model could not score carries ``unscored`` and no ``confidence``. A detector whose class is not
-in the project's catalogues writes ``class: ""``, ``label`` (its name) and ``suggestedNew``.
+in the project's catalogues keeps its class id in ``class`` and adds ``label`` (its name) and
+``suggestedNew``.
 """
 
 from __future__ import annotations
@@ -299,8 +300,9 @@ class DetectVlm:
                             "severity": "uncertain",
                         }
                         if class_ids is not None and det["classId"] not in class_ids:
-                            # the project lacks the class: offer the detector's name as a new one
-                            d["class"] = ""
+                            # the project lacks the class: offer the detector's name as a new one.
+                            # `class` keeps the detector's class id (aio.detections/1 needs a
+                            # non-empty class; the review reads an unknown one as no class yet)
                             d["label"] = det["name"]
                             d["suggestedNew"] = True
                         if score is not None:

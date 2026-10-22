@@ -12,9 +12,11 @@
  * the fake saw only authorised requests. A tampered `.aiodet` is refused with its reason.
  */
 import { create } from 'tar';
-import type { Page } from '@playwright/test';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fakeAnalyticsPackFiles } from '../src/main/jobs/packArchive.fakes';
 import { startFakeLlm, VLM_BOXES, VLM_HIGH, VLM_LOW, type FakeLlm } from './fake-llm';
 import {
   changeDemoTruth,
@@ -67,6 +69,7 @@ const detector = (id: string, over: Record<string, unknown> = {}) => ({
 });
 
 interface Run {
+  app: ElectronApplication;
   data: DataRoot;
   fake: FakeLlm;
   network: NetworkGuard;
@@ -75,7 +78,7 @@ interface Run {
 }
 
 /** The app with the bundled demos and the fake's origin the only one the guard lets through. */
-async function start(): Promise<Run> {
+async function start(env: Record<string, string> = {}): Promise<Run> {
   const fake = await startFakeLlm({ kind: 'openai-compatible', models: [] });
   const data = await createDataRoot();
   const app = await launchApp(data, {
@@ -83,12 +86,14 @@ async function start(): Promise<Run> {
     AIO_NETWORK_GUARD_ALLOW: fake.origin,
     QUADRION_VLM_SERVER_URL: fake.origin,
     QUADRION_DEMO: DEMO_FOLDER,
+    ...env,
   });
   const network = new NetworkGuard([fake.origin]);
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
   return {
+    app,
     data,
     fake,
     network,
@@ -280,5 +285,169 @@ test('detect.vlm: a tampered .aiodet is refused with its reason', async () => {
     expect(listed.items.some((i) => i.detector.id === DETECTOR_ID)).toBe(false);
   } finally {
     await run.stop();
+  }
+});
+
+/** A stub Analytics pack (a few bytes per file) for "installed": the fake server does the work. */
+async function stubPack(base: string): Promise<string> {
+  const dir = join(base, 'analytics-pack-0.1.0');
+  // any app version: an unpackaged e2e app may report Electron's own version
+  const files = fakeAnalyticsPackFiles('0.1.0', {
+    platform: `${process.platform}-${process.arch}`,
+    appRange: '>=0.0.1',
+  });
+  for (const [name, body] of Object.entries(files)) {
+    const parts = name.split('/');
+    await mkdir(join(dir, ...parts.slice(0, -1)), { recursive: true });
+    await writeFile(join(dir, ...parts), body);
+  }
+  return dir;
+}
+
+/**
+ * The graphics card check, answered in main by a fixed card: CI has no NVIDIA card, and the Detect
+ * dialog keeps Start disabled until the check passes (the gate itself skips it under the seam).
+ */
+async function fakeCard(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('analytics:hardware');
+    ipcMain.handle('analytics:hardware', () => ({
+      ok: true,
+      gpu: 'NVIDIA GeForce RTX 5070 Ti',
+      gpuIndex: 0,
+      totalMb: 16384,
+      freeMb: 13517,
+    }));
+  });
+}
+
+/** Set a native range input (Playwright's fill sets it and fires input, which React takes). */
+async function setRange(win: Page, label: string, value: number): Promise<void> {
+  await win.getByRole('slider', { name: label }).fill(String(value));
+}
+
+interface LedgerLine {
+  detectorId: string;
+  detectionId?: string;
+  verdict: string;
+  reason?: string;
+}
+
+test('runs a detector from the Detect dialog and reviews its drafts', async () => {
+  const testInfo = test.info();
+  const packBase = await mkdtemp(join(tmpdir(), 'aio-e2e-analytics-pack-'));
+  const run = await start({ QUADRION_ANALYTICS_PACK: await stubPack(packBase) });
+  const shot = async (name: string) => {
+    const path = testInfo.outputPath(`${name}.png`);
+    await run.win.screenshot({ path });
+    await testInfo.attach(name, { path, contentType: 'image/png' });
+  };
+  try {
+    const { app, win } = run;
+    await fakeCard(app);
+    await openChangeDemo(win);
+
+    // 1. the detector goes to the library
+    const saved = await win.evaluate(
+      (d) => window.aio.invoke('detectors:save', { where: 'library', detector: d }),
+      detector(DETECTOR_ID) as never,
+    );
+    expect(saved).toMatchObject({ ok: true, version: 1 });
+
+    // 2. Detections: two photos picked, Detect, Detectors (on this computer)
+    await win.locator('.nav-item', { hasText: 'Detections' }).click();
+    const sheet = win.getByTestId('det-sheet');
+    const tiles = sheet.locator('.det-tile');
+    await expect(tiles.first()).toBeVisible();
+    await tiles.nth(0).click({ modifiers: ['ControlOrMeta'] });
+    await tiles.nth(1).click({ modifiers: ['ControlOrMeta'] });
+    await expect(sheet.locator('.det-tile.picked')).toHaveCount(PHOTOS.length);
+    await win.getByTestId('det-ai-open').click();
+    await win.getByTestId('det-mode-detectors').check();
+    const dialog = win.getByTestId('det-ai-dialog');
+    await expect(dialog).toBeVisible();
+
+    // 3. the detector toggled on: no blocker, an estimate, Start
+    const toggle = win.getByTestId(`det-vlm-det-${DETECTOR_ID}`);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(win.getByTestId(`det-vlm-threshold-${DETECTOR_ID}`)).toContainText('0.80');
+    await expect(win.getByTestId('det-vlm-blocker')).toHaveCount(0);
+    await expect(win.getByTestId('det-vlm-estimate')).toContainText(`${PHOTOS.length} photos`);
+    await shot('detect-dialog-detectors');
+    await win.getByTestId('det-vlm-start').click();
+    await expect(dialog).toHaveCount(0);
+
+    // the job ends done
+    await expect
+      .poll(
+        async () => {
+          const { jobs } = await win.evaluate(() => window.aio.invoke('jobs:list', {}));
+          const job = jobs.find((j) => j.pipeline === 'detect.vlm');
+          if (job?.status === 'failed') throw new Error(`detect.vlm failed: ${job.error ?? ''}`);
+          return job?.status;
+        },
+        { timeout: 180_000, intervals: [1000] },
+      )
+      .toBe('done');
+
+    // 4. the review: one pass in the strip, its drafts scored by the fake
+    const pass = win.getByTestId('det-vlm-pass');
+    await expect(pass).toHaveCount(1, { timeout: 30_000 });
+    await expect(pass).toContainText('Dark patch');
+    const counts = win.getByTestId('det-vlm-counts');
+    await expect(counts).toHaveText('2 shown, 2 hidden');
+    await tiles.first().click();
+    const score = win.getByTestId('det-vlm-score');
+    await expect(score).toHaveText(VLM_HIGH.toFixed(2));
+
+    // 5. the bar: lowered under LOW every draft shows, with both scores of the fake; raised to
+    // its top (0.95, HIGH itself) only the HIGH drafts stay; lowered again they return
+    const barLabel = 'Score bar for Dark patch';
+    await setRange(win, barLabel, 0.5);
+    await expect(counts).toHaveText('4 shown, 0 hidden');
+    await expect(pass).toContainText('0.50');
+    await tiles.first().click();
+    const scores = new Set<string>();
+    for (let i = 0; i < 4; i++) {
+      scores.add((await score.textContent()) ?? '');
+      await win.getByRole('button', { name: 'Next detection (J)' }).click();
+    }
+    expect([...scores].sort()).toEqual([VLM_LOW.toFixed(2), VLM_HIGH.toFixed(2)]);
+    await setRange(win, barLabel, 0.95);
+    await expect(counts).toHaveText('2 shown, 2 hidden');
+    await setRange(win, barLabel, 0.5);
+    await expect(counts).toHaveText('4 shown, 0 hidden');
+    await setRange(win, barLabel, 0.8);
+    await expect(counts).toHaveText('2 shown, 2 hidden');
+    await shot('review-threshold-strip');
+
+    // 6. reject one draft with "Not a defect": the ledger gains the line
+    const userData = await app.evaluate(({ app: a }) => a.getPath('userData'));
+    const ledgerFile = join(userData, 'detector-ledger', `${DETECTOR_ID}.jsonl`);
+    const ledger = async (): Promise<LedgerLine[]> =>
+      (await readFile(ledgerFile, 'utf8').catch(() => ''))
+        .split('\n')
+        .filter((l) => l.trim() !== '')
+        .map((l) => JSON.parse(l) as LedgerLine);
+    const before = (await ledger()).length;
+    await tiles.first().click();
+    await win.getByTestId('det-reject').click();
+    const menu = win.getByRole('menu', { name: 'Why is it rejected?' });
+    await expect(menu).toBeVisible();
+    await shot('review-reject-reasons');
+    await menu.getByRole('menuitem', { name: 'Not a defect' }).click();
+    await expect(win.getByTestId('det-counts')).toContainText('1 rejected');
+    await expect.poll(async () => (await ledger()).length, { timeout: 15_000 }).toBe(before + 1);
+    const last = (await ledger()).at(-1);
+    expect(last).toMatchObject({
+      detectorId: DETECTOR_ID,
+      verdict: 'rejected',
+      reason: 'not-a-defect',
+    });
+    expect(last?.detectionId).toBeTruthy();
+  } finally {
+    await run.stop();
+    await rm(packBase, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

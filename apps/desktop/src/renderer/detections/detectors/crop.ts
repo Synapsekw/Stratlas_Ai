@@ -24,6 +24,8 @@ const browser: CropIo = {
   load: (url) =>
     new Promise((resolve, reject) => {
       const img = new Image();
+      // aio:// answers with CORS headers: asked for anonymously, the canvas stays readable
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         resolve({ width: img.naturalWidth, height: img.naturalHeight, source: img });
       };

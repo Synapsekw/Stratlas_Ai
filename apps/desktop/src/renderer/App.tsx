@@ -52,6 +52,7 @@ import { isTypingTarget, spaceIsPlayPause } from './keys';
 import {
   finishedChangeJob,
   finishedIssuesJob,
+  finishedPassJob,
   finishedManifestJob,
   finishedProjectJob,
   watchJobEnds,
@@ -482,6 +483,13 @@ export function App() {
         if (detections.getState().projectId === project.id) void loadDetections(project.id, true);
       });
     });
+    // a local detector run wrote a pass: an open review reads the passes again, so a person who
+    // started it from Detections sees its drafts without leaving the screen
+    const stopPassReload = jobs.subscribe((s, prev) => {
+      const project = workspace.getState().project;
+      if (!project || !finishedPassJob(prev.jobs, s.jobs, project.root)) return;
+      if (detections.getState().projectId === project.id) void loadDetections(project.id, true);
+    });
     // a job that ends is said aloud wherever the person is
     const stopJobAnnounce = watchJobEnds(jobs, ({ job, ok }) => {
       announce(
@@ -578,6 +586,7 @@ export function App() {
       stopLineUp();
       stopChangeReload();
       stopIssueReload();
+      stopPassReload();
       stopKitConvert();
       stopRoad();
       stopRoadMode();

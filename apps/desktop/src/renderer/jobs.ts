@@ -225,6 +225,24 @@ export function finishedIssuesJob(
 }
 
 /**
+ * True when a local detector run (`detect.vlm`) on the project at `root` has just finished: it
+ * wrote a pass file, so an open Detections review should read the passes again.
+ */
+export function finishedPassJob(
+  prev: readonly JobRecord[],
+  next: readonly JobRecord[],
+  root: string,
+): boolean {
+  return next.some(
+    (j) =>
+      j.status === 'done' &&
+      j.pipeline === 'detect.vlm' &&
+      sameFolder(j.project, root) &&
+      prev.find((p) => p.id === j.id)?.status !== 'done',
+  );
+}
+
+/**
  * The open project's issues after a pipeline merged issues.json on disk: the disk list, except
  * where the person changed an issue in the app since (newer `updatedAt`) or made one that is not
  * saved yet. Returns the list and whether it holds unsaved work to write back.

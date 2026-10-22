@@ -366,7 +366,8 @@ def test_class_missing_from_project_suggests_new(tmp_path):
     dets = pass_of(root)["detections"]
     assert dets
     for d in dets:
-        assert d["class"] == "" and d["label"] == "Corrosion on metal" and d["suggestedNew"] is True
+        assert d["class"] == "corrosion"
+        assert d["label"] == "Corrosion on metal" and d["suggestedNew"] is True
 
 
 def test_class_in_project_is_kept(tmp_path):
