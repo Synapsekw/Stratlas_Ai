@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { setActiveScene, type SceneHandle } from '@aio/engine';
 import { createWorkspace } from '@aio/workspace';
+import { PerspectiveCamera } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 type Handler = (e: unknown) => void;
@@ -21,6 +22,8 @@ class FakeMap {
     this.handlers.clear();
   });
   sourceReads = 0;
+  /** How many times each source's data was set. */
+  readonly sets = new Map<string, number>();
   private readonly layers = new Set<string>();
   private readonly sources = new Set<string>();
   constructor() {
@@ -54,6 +57,7 @@ class FakeMap {
     return this.sources.has(id)
       ? {
           setData: (d: unknown) => {
+            this.sets.set(id, (this.sets.get(id) ?? 0) + 1);
             const spec = this.specs.get(id);
             if (spec) spec.data = d;
             return Promise.resolve();
@@ -64,15 +68,15 @@ class FakeMap {
   removeSource(id: string): void {
     this.sources.delete(id);
   }
-  addLayer(l: { id: string }): void {
+  readonly addLayer = vi.fn((l: { id: string }): void => {
     this.layers.add(l.id);
-  }
+  });
   getLayer(id: string) {
     return this.layers.has(id) ? { id } : undefined;
   }
-  removeLayer(id: string): void {
+  readonly removeLayer = vi.fn((id: string): void => {
     this.layers.delete(id);
-  }
+  });
   setPaintProperty(): void {
     /* style only */
   }
@@ -714,6 +718,172 @@ describe('lined-up dates on the map', () => {
     store.setState({ hidden: {} });
     await flush();
     expect(quadStart(map, 'moved').east - quadStart(map, 'still').east).toBeCloseTo(2, 3);
+    ctl.dispose();
+  });
+});
+
+const flushTask = () => new Promise((r) => setTimeout(r, 0));
+const VIDEO = {
+  kind: 'video',
+  id: 'v1',
+  name: 'v1',
+  visible: true,
+  lens: { model: 'pinhole', hfovDeg: 70, aspect: 1.7778 },
+  flight: { src: { path: 'v1.json' }, startUtcMs: 0 },
+};
+/** A map with a project of one flight (its samples served by a stubbed fetch). */
+async function startWithFlight(samples: { t: number; pos: number[]; q: number[] }[]) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ samples }) })),
+  );
+  const started = start();
+  started.store.setState({
+    project: {
+      id: 'p1',
+      manifest: {
+        crs: { epsg: 32633 },
+        origin: [500_000, 4_000_000, 0],
+        captures: [],
+        layers: [VIDEO],
+      },
+    } as unknown as ReturnType<typeof started.store.getState>['project'],
+  });
+  await flushTask();
+  await flushTask();
+  return started;
+}
+
+describe('a map kept alive while hidden (the stage shows only its 3D view)', () => {
+  const samples = [0, 1000, 2000].map((t) => ({ t, pos: [t / 100, 30, 0], q: [0, 0, 0, 1] }));
+
+  it('does not follow the workspace while hidden and catches up when shown', async () => {
+    const { map, ctl, store } = await startWithFlight(samples);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((cb: FrameRequestCallback) => frames.push(cb)),
+    );
+    ctl.setHidden(true);
+    const reads = map.sourceReads;
+    store.setState({ activeClip: 'v1', nowMs: 1000, selection: null, issues: [] });
+    await flushTask();
+    expect(frames).toHaveLength(0);
+    expect(map.sourceReads).toBe(reads);
+
+    ctl.setHidden(false);
+    await new Promise((r) => setTimeout(r, 100));
+    for (const f of frames.splice(0)) f(performance.now());
+    const drone = map.specs.get('aio-drone')?.data as GeoJSON.FeatureCollection;
+    expect(drone.features.some((f) => f.geometry.type === 'Point')).toBe(true);
+    ctl.dispose();
+  });
+
+  it('stops the 3D view wedge while hidden and redraws it when shown', () => {
+    const ticks: (() => void)[] = [];
+    const scene = {
+      onFrame: (fn: () => void) => {
+        ticks.push(fn);
+        return () => undefined;
+      },
+      camera: new PerspectiveCamera(),
+    } as unknown as SceneHandle;
+    setActiveScene(scene);
+    const { map, ctl } = start();
+    ctl.setHidden(true);
+    const before = map.sets.get('aio-view3d') ?? 0;
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1e9);
+    for (const t of ticks) t();
+    expect(map.sets.get('aio-view3d') ?? 0).toBe(before);
+    ctl.setHidden(false);
+    expect(map.sets.get('aio-view3d') ?? 0).toBe(before + 1);
+    now.mockRestore();
+    ctl.dispose();
+  });
+});
+
+describe('the drone overlay during playback', () => {
+  it('redraws at most about 15 times a second, and not when nothing moved', async () => {
+    const samples = [0, 10_000].map((t) => ({ t, pos: [t / 100, 30, 0], q: [0, 0, 0, 1] }));
+    const { map, ctl, store } = await startWithFlight(samples);
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) =>
+        setTimeout(() => {
+          cb(performance.now());
+        }, 7),
+      );
+      vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+        clearTimeout(id);
+      });
+      store.setState({ activeClip: 'v1' });
+      vi.advanceTimersByTime(200);
+      const start0 = map.sets.get('aio-drone') ?? 0;
+      // one second of playback at 144 Hz
+      for (let i = 1; i <= 144; i++) {
+        store.setState({ nowMs: i * 7 });
+        vi.advanceTimersByTime(7);
+      }
+      vi.advanceTimersByTime(200);
+      const played = (map.sets.get('aio-drone') ?? 0) - start0;
+      expect(played).toBeGreaterThan(5);
+      expect(played).toBeLessThanOrEqual(17);
+      // the last position is drawn
+      const drone = map.specs.get('aio-drone')?.data as GeoJSON.FeatureCollection;
+      const pt = drone.features.find((f) => f.geometry.type === 'Point')?.geometry;
+      if (pt?.type !== 'Point') throw new Error('no drone point');
+      const last = geo
+        .frameProjection({ epsg: 32633 }, [500_000, 4_000_000, 0])
+        ?.toLonLat([10.08, 30, 0]);
+      expect(pt.coordinates[0]).toBeCloseTo(last?.[0] ?? 0, 6);
+      // a state change that does not move the drone does not redraw it
+      const settled = map.sets.get('aio-drone') ?? 0;
+      store.setState({ hidden: {} });
+      vi.advanceTimersByTime(200);
+      expect(map.sets.get('aio-drone') ?? 0).toBe(settled);
+    } finally {
+      vi.useRealTimers();
+      ctl.dispose();
+    }
+  });
+});
+
+describe('vector layer overlays on a layer toggle', () => {
+  it('switches visibility in place instead of removing and adding the layers again', async () => {
+    const { map, ctl, store } = start();
+    store.setState({
+      project: {
+        id: 'p1',
+        manifest: {
+          crs: { epsg: 32633 },
+          origin: [500_000, 4_000_000, 0],
+          captures: [],
+          layers: [
+            {
+              kind: 'vector',
+              id: 'roads',
+              name: 'roads',
+              visible: true,
+              src: { path: 'roads.geojson' },
+              format: 'geojson',
+              style: { line: { color: '#fff', width: 2 } },
+            },
+          ],
+        },
+      } as unknown as ReturnType<typeof store.getState>['project'],
+    });
+    await flushTask();
+    expect(map.getLayer('aio-ov-layer-roads-line')).toBeTruthy();
+    map.addLayer.mockClear();
+    map.removeLayer.mockClear();
+    const sets = map.sets.get('aio-ov-layer-roads') ?? 0;
+    store.setState({ hidden: { roads: true } });
+    expect(map.layout.get('aio-ov-layer-roads-line')?.visibility).toBe('none');
+    store.setState({ hidden: {} });
+    expect(map.layout.get('aio-ov-layer-roads-line')?.visibility).toBe('visible');
+    expect(map.removeLayer).not.toHaveBeenCalled();
+    expect(map.addLayer).not.toHaveBeenCalled();
+    expect(map.sets.get('aio-ov-layer-roads') ?? 0).toBe(sets);
     ctl.dispose();
   });
 });

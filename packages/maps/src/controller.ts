@@ -54,7 +54,13 @@ import {
 import { shiftedGeoJson } from './shiftGeoJson';
 import { bboxOf, orderPacks, type MapPack } from './packs';
 import { pyramidView, type PyramidIndex } from './pyramid';
-import { issueFeatures, issueShapeBounds, styleLayers, type MapOverlay } from './vector';
+import {
+  issueFeatures,
+  issueShapeBounds,
+  styleLayers,
+  type MapOverlay,
+  type OverlayLayer,
+} from './vector';
 import { MAP_INK } from './ink';
 import { MapMediaMarkers } from './mediaMarkers';
 import { addPhotoPins, PHOTO_SOURCE, photoPinData, photoPoints } from './photoPins';
@@ -73,6 +79,12 @@ export type IssueColorBy = 'severity' | 'class';
 type Collection = FeatureCollection;
 
 const EMPTY: Collection = { type: 'FeatureCollection', features: [] };
+const EMPTY_KEY = JSON.stringify(EMPTY);
+/**
+ * The drone overlay redraws at most this often during playback (about 15 times a second): every
+ * `setData` re-tiles the source in MapLibre's worker, and the video already shows the motion.
+ */
+const DRONE_MS = 66;
 
 /** Issue shapes (map polygons) draw from this zoom; below it they are points. */
 const SHAPE_ZOOM = 17;
@@ -150,6 +162,12 @@ export interface MapController {
    * at a time). Needs a project with a map projection; events are ignored until there is one.
    */
   pointerSession(s: MapPointerSession): () => void;
+  /**
+   * Keep the map alive but off screen (the stage shows only its 3D view): it stops following the
+   * workspace and the 3D camera, so it does no drawing work, and catches up when shown again.
+   * Making a new MapLibre map on every return to Map cost a WebGL context and its shader programs.
+   */
+  setHidden(hidden: boolean): void;
   dispose(): void;
 }
 
@@ -170,6 +188,14 @@ export interface MapPointerSession {
 /** Metres per screen pixel at a latitude and MapLibre zoom (512 px tiles). */
 export function metresPerPx(lat: number, zoom: number): number {
   return (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
+}
+
+/**
+ * Two overlay styles that draw the same: vector layers rebuild theirs on every layer switch
+ * (`styleLayers`), and re-adding the layers for that cost a style rebuild per toggle.
+ */
+function sameLayers(a: readonly OverlayLayer[], b: readonly OverlayLayer[]): boolean {
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
 }
 
 function fc(features: Feature[]): Collection {
@@ -530,6 +556,10 @@ export function createMapController(
   // ----- drawing (map sightings) -----
   let lastClick: { x: number; y: number; t: number } | null = null;
   let ready = false;
+  /** Kept alive but not on screen (`setHidden`): the workspace and the 3D view are not followed. */
+  let offScreen = false;
+  /** Brings a map that was hidden up to the workspace (set once the map has loaded). */
+  let catchUp: (() => void) | null = null;
   // ----- a one-shot point pick -----
   let picking: { onPick: (local: Vec3) => void; onCancel: (() => void) | undefined } | null = null;
   function onPickKey(e: KeyboardEvent): void {
@@ -868,6 +898,7 @@ export function createMapController(
     shiftedVectors.clear();
     flights.clear();
     for (const id of Object.values(SRC)) setData(id, EMPTY);
+    droneDrawn = EMPTY_KEY;
   }
 
   // ----- flights -----
@@ -912,14 +943,23 @@ export function createMapController(
     setData(SRC.flights, fc(features));
   }
 
+  /** What the drone overlay shows now, as JSON: an unchanged drone is not sent again. */
+  let droneDrawn = EMPTY_KEY;
+  function setDrone(data: Collection): void {
+    const key = data === EMPTY ? EMPTY_KEY : JSON.stringify(data);
+    if (key === droneDrawn) return;
+    droneDrawn = key;
+    setData(SRC.drone, data);
+  }
+
   function renderDrone(s: Workspace): void {
     const f = s.activeClip ? flights.get(s.activeClip) : undefined;
     if (!proj || !f || s.hidden[f.layer.id]) {
-      setData(SRC.drone, EMPTY);
+      setDrone(EMPTY);
       return;
     }
     if (!f.samples.length) {
-      setData(SRC.drone, EMPTY);
+      setDrone(EMPTY);
       return;
     }
     // the camera as every view draws it: direction keyframes (an unsaved draft first), else the
@@ -942,8 +982,7 @@ export function createMapController(
     const first = ring[0];
     // which way the camera looks: an arrow from the drone, longer as it flies higher
     const head = headingLine(biased, Math.min(80, Math.max(12, height * 0.6)));
-    setData(
-      SRC.drone,
+    setDrone(
       fc([
         ...(head
           ? [
@@ -1087,7 +1126,7 @@ export function createMapController(
         continue;
       }
       if (m.overlay.data !== o.data) void map.getSource<GeoJSONSource>(sid)?.setData(o.data);
-      if (m.overlay.layers !== o.layers) {
+      if (m.overlay.layers !== o.layers && !sameLayers(m.overlay.layers, o.layers)) {
         for (const l of m.layerIds) if (map.getLayer(l)) map.removeLayer(l);
         m.layerIds = mountLayers(o);
       } else if ((m.overlay.visible !== false) !== (o.visible !== false)) {
@@ -1563,53 +1602,75 @@ export function createMapController(
     let prev = store.getState();
     void openProject(prev);
     let frame = 0;
+    let droneTimer: ReturnType<typeof setTimeout> | undefined;
+    let droneAt = -Infinity;
+    const drawDrone = () => {
+      frame = 0;
+      droneAt = performance.now();
+      renderDrone(store.getState());
+    };
+    /** The next drone redraw: on the next frame, but not sooner than `DRONE_MS` after the last. */
+    const queueDrone = () => {
+      if (frame || droneTimer !== undefined) return;
+      const wait = droneAt + DRONE_MS - performance.now();
+      if (wait <= 0) {
+        frame = requestAnimationFrame(drawDrone);
+        return;
+      }
+      droneTimer = setTimeout(() => {
+        droneTimer = undefined;
+        if (!disposed && !offScreen) frame = requestAnimationFrame(drawDrone);
+      }, wait);
+    };
     cleanups.push(layerDisplay.subscribe(applyRasterDisplay));
-    cleanups.push(
-      store.subscribe((s) => {
-        const last = prev;
-        prev = s;
-        if (s.project !== last.project) {
-          paintClusters(s);
-          void openProject(s);
-          return;
-        }
-        if (s.issues !== last.issues || s.selection !== last.selection) renderIssues(s);
-        // a layer switch redraws the issues only when it puts a date's issues on or off screen
-        else if (
-          (s.hidden !== last.hidden || s.dates !== last.dates) &&
-          !sameItems(issuesOnScreen(s.issues, s.dates, s.hidden), drawnIssues ?? s.issues)
-        )
-          renderIssues(s);
-        if (
-          s.selection !== last.selection ||
-          s.hidden !== last.hidden ||
-          s.orientation !== last.orientation
-        )
-          renderPhotos(s);
-        if (
-          s.activeClip !== last.activeClip ||
-          s.selection !== last.selection ||
-          s.hidden !== last.hidden
-        )
-          renderFlights(s);
-        if (s.hidden !== last.hidden) applyVisibility(s);
-        if (s.selection !== last.selection) focusSelection(s);
-        if (s.lastCamera !== last.lastCamera) followCamera(s);
-        if (
-          s.nowMs !== last.nowMs ||
-          s.activeClip !== last.activeClip ||
-          s.hidden !== last.hidden ||
-          s.directionDraft !== last.directionDraft ||
-          s.orientation !== last.orientation
-        ) {
-          if (!frame)
-            frame = requestAnimationFrame(() => {
-              frame = 0;
-              renderDrone(store.getState());
-            });
-        }
-      }),
-    );
+    const follow = (s: Workspace) => {
+      // hidden, the map lets the workspace run on; it catches up from `prev` when shown
+      if (offScreen) return;
+      const last = prev;
+      prev = s;
+      if (s.project !== last.project) {
+        paintClusters(s);
+        void openProject(s);
+        return;
+      }
+      if (s.issues !== last.issues || s.selection !== last.selection) renderIssues(s);
+      // a layer switch redraws the issues only when it puts a date's issues on or off screen
+      else if (
+        (s.hidden !== last.hidden || s.dates !== last.dates) &&
+        !sameItems(issuesOnScreen(s.issues, s.dates, s.hidden), drawnIssues ?? s.issues)
+      )
+        renderIssues(s);
+      if (
+        s.selection !== last.selection ||
+        s.hidden !== last.hidden ||
+        s.orientation !== last.orientation
+      )
+        renderPhotos(s);
+      if (
+        s.activeClip !== last.activeClip ||
+        s.selection !== last.selection ||
+        s.hidden !== last.hidden
+      )
+        renderFlights(s);
+      if (s.hidden !== last.hidden) applyVisibility(s);
+      if (s.selection !== last.selection) focusSelection(s);
+      if (s.lastCamera !== last.lastCamera) followCamera(s);
+      if (
+        s.nowMs !== last.nowMs ||
+        s.activeClip !== last.activeClip ||
+        s.hidden !== last.hidden ||
+        s.directionDraft !== last.directionDraft ||
+        s.orientation !== last.orientation
+      )
+        queueDrone();
+    };
+    cleanups.push(store.subscribe(follow));
+    catchUp = () => {
+      follow(store.getState());
+      renderView(getActiveScene());
+      // a drone redraw that waited out the hidden time
+      queueDrone();
+    };
 
     // Mirror the 3D camera as a view wedge, at most 10 times a second.
     let unFrame: (() => void) | null = null;
@@ -1620,6 +1681,7 @@ export function createMapController(
       if (!scene) return;
       let last = 0;
       unFrame = scene.onFrame(() => {
+        if (offScreen) return;
         const t = performance.now();
         if (t - last < 100) return;
         last = t;
@@ -1633,6 +1695,7 @@ export function createMapController(
       () => unFrame?.(),
       () => {
         if (frame) cancelAnimationFrame(frame);
+        clearTimeout(droneTimer);
       },
     );
   });
@@ -1663,6 +1726,11 @@ export function createMapController(
     setCameraWedge: (on) => {
       wedge = on;
       applyWedge();
+    },
+    setHidden: (on) => {
+      if (offScreen === on) return;
+      offScreen = on;
+      if (!on && !disposed) catchUp?.();
     },
     pickPoint,
     pointerSession,

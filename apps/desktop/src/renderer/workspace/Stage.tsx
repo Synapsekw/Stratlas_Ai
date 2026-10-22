@@ -593,6 +593,12 @@ export function Stage() {
   const sidesMap = splitting ? sidesOf(sides, 'map') : [];
   const show3d = mode === '3d' || sides3d.length > 0;
   const showMap = mode === 'map' || sidesMap.length > 0;
+  // Once shown, the main map stays alive while the stage shows only 3D (hidden, like the 3D view
+  // under the map): a new MapLibre map on every return cost a WebGL context and its shader
+  // programs. Another project starts a new one.
+  const [mapKeptFor, setMapKeptFor] = useState<string | null>(null);
+  if (showMap && projectId !== null && mapKeptFor !== projectId) setMapKeptFor(projectId);
+  const mountMap = showMap || (projectId !== null && mapKeptFor === projectId);
   const videoPane = splitting && sideOf(sides, 'video') !== undefined;
   const at = (kind: '3d' | 'map') => (kind === '3d' ? sides3d[0] : sidesMap[0]);
   const chooser = (kind: '3d' | 'map') => {
@@ -895,16 +901,21 @@ export function Stage() {
               corner={<PaneHeader side={secondMap} split={split} />}
             />
           )}
-          {showMap && (
+          {mountMap && (
             <FocusZone
               kind="map"
-              className={`pane pane-map${placingOnMap ? ' walk-placing' : ''}`}
+              // hidden, it is not `.pane-map`: what looks for the map on screen does not find it
+              className={
+                showMap ? `pane pane-map${placingOnMap ? ' walk-placing' : ''}` : 'pane is-hidden'
+              }
               data-side={at('map')}
+              aria-hidden={!showMap}
             >
-              <PlaceWalkHere at={MAP_SURFACE} />
+              {showMap && <PlaceWalkHere at={MAP_SURFACE} />}
               <div className="fill">
                 <MapView
                   className="scene-fill"
+                  hidden={!showMap}
                   draw={seam}
                   issues={mapIssues}
                   store={primaryMap}
@@ -919,9 +930,9 @@ export function Stage() {
                     : {})}
                 />
               </div>
-              {roadMap && <RoadLegend />}
-              <ChangeLegends />
-              {roadMap && <PciUnitCard />}
+              {showMap && roadMap && <RoadLegend />}
+              {showMap && <ChangeLegends />}
+              {showMap && roadMap && <PciUnitCard />}
               {chooser('map')}
             </FocusZone>
           )}

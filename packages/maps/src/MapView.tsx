@@ -45,6 +45,11 @@ export interface MapViewProps {
    * stable: a new object starts a new session.
    */
   pointer?: MapPointerSession | null;
+  /**
+   * Kept alive off screen (the stage shows only its 3D view): the map stops following the
+   * workspace, and it is not the active map nor reported to `onController` until shown again.
+   */
+  hidden?: boolean;
 }
 
 type Status = 'loading' | 'ready' | 'error';
@@ -83,6 +88,7 @@ export function MapView({
   onController,
   pick = null,
   pointer = null,
+  hidden = false,
 }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   // read when the map starts; later changes do not restart it
@@ -128,6 +134,21 @@ export function MapView({
     if (!pointer || !ctl) return;
     return ctl.pointerSession(pointer);
   }, [pointer, started]);
+  // The map on screen is the active one (frame capture, the agent, tools drawing on it); a hidden
+  // map gives way as a closed one did, and is published again when shown.
+  const published = useRef<MapController | null>(null);
+  useEffect(() => {
+    const ctl = ctlRef.current;
+    if (!ctl) return;
+    ctl.setHidden(hidden);
+    const shown = hidden ? null : ctl;
+    if (published.current === shown) return;
+    published.current = shown;
+    if (shown) shown.resize();
+    const cfg = init.current;
+    if (cfg.primary) setActiveMap(shown);
+    cfg.onController?.(shown);
+  }, [hidden, started]);
 
   useEffect(() => {
     const el = ref.current;
@@ -161,8 +182,7 @@ export function MapView({
         });
         life.ctl = ctl;
         ctlRef.current = ctl;
-        if (cfg.primary) setActiveMap(ctl);
-        cfg.onController?.(ctl);
+        // published (active map, onController) by the effect above once started
         setStarted((n) => n + 1);
         life.observer = new ResizeObserver(() => {
           ctl.resize();
@@ -177,7 +197,8 @@ export function MapView({
     return () => {
       life.disposed = true;
       ctlRef.current = null;
-      if (life.ctl) {
+      if (life.ctl && published.current === life.ctl) {
+        published.current = null;
         cfg.onController?.(null);
         if (cfg.primary) setActiveMap(null);
       }

@@ -1893,7 +1893,8 @@ button.chip-status:hover {
 .pane + .pane {
   border-inline-start: 1px solid var(--line);
 }
-.pane-3d.is-hidden {
+/* a pane kept alive off screen (the 3D view under the map, the map under the 3D view) */
+.pane.is-hidden {
   position: absolute;
   inset: 0;
   visibility: hidden;
