@@ -235,6 +235,37 @@ def test_flag_on_a_lined_up_date_is_stored_in_the_inventory_frame(project):
     assert u["box"]["centre"] == pytest.approx(to_enz(radio["centre"]), abs=0.15)
 
 
+@pytest.mark.parametrize("run_shift", [None, (-1.0, 1.5)])
+def test_flag_on_another_date_than_the_inventory_takes_off_the_run_dates_shift(project, run_shift):
+    # the flagged layer is on CAPTURE (drawn 3 m east, 2 m south); the inventory's run is on the
+    # other date, without a line-up or lined up by its own shift: only the run date's shift goes
+    root, truth = project
+    line_up(root, 3.0, -2.0)
+    other = "capture-2026-01-01"
+    if run_shift is not None:
+        p = root / "manifest.json"
+        m = json.loads(p.read_text("utf-8"))
+        for c in m["captures"]:
+            if c["id"] == other:
+                c["lineUp"] = {
+                    "eastM": run_shift[0],
+                    "northM": run_shift[1],
+                    "with": CAPTURE,
+                    "at": "2026-10-17T00:00:00Z",
+                }
+        p.write_text(json.dumps(m, indent=1), encoding="utf-8")
+    doc = read_file(root)
+    doc["run"]["captureId"] = other
+    write_file(root, doc)
+    radio = truth_unit(truth, "radio-180")
+    sel = selection(radio, shift_local=(3.0, 2.0))
+    run_job(flag(), root, params("ant-flag-7", sel), job_id="jf")
+    u = next(x for x in read_file(root)["units"] if x["id"] == "ant-flag-7")
+    drawn = to_enz(sel["anchor"])
+    se, sn = run_shift or (0.0, 0.0)
+    assert u["box"]["centre"][:2] == pytest.approx([drawn[0] - se, drawn[1] - sn], abs=0.15)
+
+
 def test_commit_keeps_edits_made_during_the_job(project):
     root, truth = project
     doc = read_file(root)
