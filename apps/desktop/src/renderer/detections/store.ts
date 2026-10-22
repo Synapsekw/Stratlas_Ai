@@ -284,6 +284,11 @@ function ledgerCtx(projectId: string, d: Detection): LedgerCtx {
   return { projectId, layer, photoUrl };
 }
 
+/** The headers of the passes as last read or written (the run, the detectors, when). */
+export function passHeaders(): ReadonlyMap<string, PassRecord['header']> {
+  return new Map([...passes].map(([name, rec]) => [name, rec.header]));
+}
+
 /** The local-detector passes (`vlm-*`) of the review, with the photos and detectors of each. */
 function missPasses(review: ReviewState): MissPass[] {
   return missPassesFrom(

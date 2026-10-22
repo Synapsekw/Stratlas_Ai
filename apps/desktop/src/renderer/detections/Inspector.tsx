@@ -13,12 +13,15 @@ import {
   acceptProblem,
   linkCandidates,
   type AcceptProblem,
+  isDetectorDraft,
   type Detection,
 } from '@aio/annotate/detections';
-import type { Issue } from '@aio/schema';
+import type { Issue, RejectReason } from '@aio/schema';
 import { Icon, useFocusTrap, useT, type MessageKey } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClassFromLabel } from './createFromLabel';
+import { RejectReasonMenu } from './detectors/RejectReasonMenu';
+import { ScoreBadge } from './detectors/ScoreBadge';
 
 export const PROBLEM_KEY: Record<AcceptProblem, MessageKey> = {
   'no-class': 'det.problem.noClass',
@@ -40,12 +43,15 @@ export interface InspectorProps {
   linking: boolean;
   noteFocus: number;
   maskAssist: boolean;
+  /** The bar a local detector's draft is held to (its pass's slider); null when none applies. */
+  threshold?: number | null;
   onPatch: (patch: Partial<Pick<Detection, 'classId' | 'severity' | 'uncertain' | 'note'>>) => void;
   onAccept: () => void;
   onLinkStart: () => void;
   onLinkCancel: () => void;
   onLink: (issueId: string) => void;
-  onReject: () => void;
+  /** A reason comes only from a local detector's draft, through the reason menu. */
+  onReject: (reason?: RejectReason, note?: string) => void;
   onReopen: (issueGone: boolean) => void;
   onDelete: () => void;
   onOpenIssue: (issueId: string) => void;
@@ -173,6 +179,8 @@ export function Inspector(p: InspectorProps) {
   const [newOpen, setNewOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const rejectBtn = useRef<HTMLButtonElement>(null);
   // the detection on screen now, so a create that finishes after a move does not land on the next one
   const shownId = useRef<string | null>(d?.id ?? null);
   useEffect(() => {
@@ -184,6 +192,7 @@ export function Inspector(p: InspectorProps) {
     setNewOpen(false);
     setCreating(false);
     setCreateError(null);
+    setRejectOpen(false);
   }
   const noteRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -210,6 +219,7 @@ export function Inspector(p: InspectorProps) {
     catalogues: [{ id: 'all', name: '', assetType: '', classes: [...classes] }],
   };
   const missing = d.status === 'draft' || d.status === 'rejected' ? acceptProblem(d, ctx) : null;
+  const detector = isDetectorDraft(d);
   const shownProblem = p.problem ?? null;
   const commitNote = () => {
     if (note !== d.note) p.onPatch({ note });
@@ -257,6 +267,13 @@ export function Inspector(p: InspectorProps) {
           {d.uncertain && <span className="det-chip unc">{t('det.uncertain')}</span>}
         </div>
         <OriginLine d={d} />
+        {isDetectorDraft(d) && (
+          <ScoreBadge
+            score={d.confidence}
+            threshold={p.threshold ?? null}
+            unscored={d.unscored === true}
+          />
+        )}
         {d.label && d.classId === '' && (
           <div className="det-newclass" data-testid="det-unknown-class">
             <p className="ann-faint">
@@ -483,16 +500,37 @@ export function Inspector(p: InspectorProps) {
                   <kbd>⇧R</kbd>
                 </button>
               ) : (
-                <button
-                  type="button"
-                  className="ann-btn danger"
-                  data-testid="det-reject"
-                  onClick={p.onReject}
-                >
-                  <Icon name="x" size={12} />
-                  {t('det.reject')}
-                  <kbd>X</kbd>
-                </button>
+                <>
+                  <button
+                    ref={rejectBtn}
+                    type="button"
+                    className="ann-btn danger"
+                    data-testid="det-reject"
+                    aria-haspopup={detector ? 'menu' : undefined}
+                    aria-expanded={detector ? rejectOpen : undefined}
+                    onClick={() => {
+                      if (detector) setRejectOpen((o) => !o);
+                      else p.onReject();
+                    }}
+                  >
+                    <Icon name="x" size={12} />
+                    {t('det.reject')}
+                    <kbd>X</kbd>
+                  </button>
+                  {detector && (
+                    <RejectReasonMenu
+                      open={rejectOpen}
+                      opener={rejectBtn}
+                      onClose={() => {
+                        setRejectOpen(false);
+                      }}
+                      onPick={(reason, note) => {
+                        if (reason === null) p.onReject();
+                        else p.onReject(reason, note);
+                      }}
+                    />
+                  )}
+                </>
               )}
               {d.origin.kind === 'human' && (
                 <button type="button" className="ann-btn ghost danger" onClick={p.onDelete}>

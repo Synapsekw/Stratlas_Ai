@@ -6147,6 +6147,21 @@ export const en = {
     'Another detector or processing run is using the graphics card. This one starts when it finishes.',
   'detect.preset.modelMismatch':
     'This detector was tuned on a different model, so its results may differ.',
+  'detect.preset.score.none': 'No score',
+  'detect.preset.score.noneTip': 'The model gave no clear yes or no for this box.',
+  'detect.preset.score.under': '{score} · under threshold',
+  'detect.preset.passes': 'Detector runs',
+  'detect.preset.pass.bar': 'Show boxes scored',
+  'detect.preset.pass.barLabel': 'Score bar for {name}',
+  'detect.preset.pass.counts': '{shown} shown, {hidden} hidden',
+  'detect.preset.reject.title': 'Why is it rejected?',
+  'detect.preset.reject.looksLike': 'Looks like it but is not…',
+  'detect.preset.reject.notDefect': 'Not a defect',
+  'detect.preset.reject.wrongClass': 'Wrong class',
+  'detect.preset.reject.boxWrong': 'Box is wrong',
+  'detect.preset.reject.other': 'Other reason',
+  'detect.preset.reject.none': 'Reject without a reason',
+  'detect.preset.reject.notePlaceholder': 'What is it? For example, a painted band',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

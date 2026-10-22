@@ -1,0 +1,50 @@
+/* Local detector review: score badge, the pass strip with its bar, the reject reason menu. */
+.det-vlm-score {
+  display: inline-flex;
+  align-items: center;
+}
+.det-vlm-focus {
+  display: inline-flex;
+  border-radius: var(--r-4);
+}
+.det-vlm-passes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-block: 6px;
+  padding-inline: 16px;
+  border-block-end: 1px solid var(--line);
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.det-vlm-pass {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+.det-vlm-name {
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.det-vlm-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.det-vlm-slider {
+  inline-size: 140px;
+  accent-color: var(--acc);
+}
+.det-vlm-menu {
+  min-inline-size: 240px;
+  padding: 4px;
+}
+.det-vlm-menu .row {
+  inline-size: 100%;
+  text-align: start;
+}
+.det-vlm-note {
+  inline-size: calc(100% - 16px);
+  margin: 4px 8px;
+}

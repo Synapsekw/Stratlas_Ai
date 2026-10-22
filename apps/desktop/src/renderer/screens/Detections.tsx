@@ -8,6 +8,7 @@ import { useTaxonomy, type ImageTool } from '@aio/annotate';
 import {
   clampGeom,
   currentOf,
+  detectorThreshold,
   queueOf,
   REVIEW_PASS,
   sourceCounts,
@@ -29,6 +30,8 @@ import { ContactSheet, type SheetItem } from '../detections/ContactSheet';
 import { hasDetectable, itemKey, type DetectItem } from '../detections/convert';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
 import { frameLayerSrc } from '../detections/frameMedia';
+import { DetectorPasses } from '../detections/detectors/DetectorPasses';
+import { detectorPassRows } from '../detections/detectors/passRows';
 import { Inspector } from '../detections/Inspector';
 import { detectionLook } from '../detections/look';
 import { reviewCommand, typingIn } from '../detections/keys';
@@ -38,6 +41,7 @@ import {
   acceptCurrent,
   dispatch,
   loadDetections,
+  passHeaders,
   planFor,
   redoReview,
   rejectAll,
@@ -45,6 +49,7 @@ import {
   useDetections,
 } from '../detections/store';
 import '../detections/detections.css';
+import '../detections/detectors/detectors.css';
 import { FocusZone } from '../FocusZone';
 import { useMedia } from '../media';
 import { bridge, shell, useCall } from '../shell';
@@ -129,6 +134,12 @@ export function DetectionsScreen() {
     for (const d of review.detections) c[d.status] += 1;
     return c;
   }, [review.detections]);
+
+  // One row per local-detector run: its bar, and what the bar shows and hides.
+  const detectorRows = useMemo(
+    () => detectorPassRows(review.detections, passHeaders(), review.passThreshold),
+    [review.detections, review.passThreshold],
+  );
 
   // Issues already marked on each photo (the same index as the Media screen, issues only).
   const issueMarks = useMemo(
@@ -616,6 +627,15 @@ export function DetectionsScreen() {
         <span className="det-keys faint">{t('det.keys')}</span>
       </div>
 
+      {detectorRows.length > 0 && (
+        <DetectorPasses
+          passes={detectorRows}
+          onThreshold={(pass, value) => {
+            dispatch({ type: 'passThreshold', pass, value });
+          }}
+        />
+      )}
+
       {loadError && (
         <p className="det-banner error" role="alert">
           {loadError}
@@ -705,6 +725,7 @@ export function DetectionsScreen() {
           linking={linking}
           noteFocus={noteFocus}
           maskAssist={maskAvailable}
+          threshold={current ? detectorThreshold(review, current) : null}
           onPatch={patch}
           onAccept={accept}
           onLinkStart={() => {
@@ -717,8 +738,16 @@ export function DetectionsScreen() {
             const r = acceptCurrent({ kind: 'link', issueId });
             if (r.ok) setLinking(false);
           }}
-          onReject={() => {
-            if (current) dispatch({ type: 'reject', id: current.id, by: by(), now: now() });
+          onReject={(reason, note) => {
+            if (current)
+              dispatch({
+                type: 'reject',
+                id: current.id,
+                by: by(),
+                now: now(),
+                ...(reason ? { reason } : {}),
+                ...(note ? { note } : {}),
+              });
           }}
           onReopen={(issueGone) => {
             if (current) dispatch({ type: 'reopen', id: current.id, now: now(), issueGone });
