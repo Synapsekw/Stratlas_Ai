@@ -790,9 +790,7 @@ async function checkSignature(
 ): Promise<void> {
   const sig = u.files.get(PACK_SIGNATURE);
   if (!sig || sig.size > 4096) {
-    throw refused(
-      `This ${k.label} file is not signed by the publisher. It was not installed.`,
-    );
+    throw refused(`This ${k.label} file is not signed by the publisher. It was not installed.`);
   }
   const [manifest, signature] = await Promise.all([
     readFile(join(tmp, 'manifest.json')),
