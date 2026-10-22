@@ -707,6 +707,26 @@ function CardBody(props: BodyProps): ReactElement {
     ? t('telecom.antennas.kindBasis.aiBy', { provider })
     : t(`telecom.antennas.kindBasis.${unit.kindBasis}`);
 
+  const kindPick = (
+    <select
+      className="input sm"
+      data-testid="antenna-card-kind-pick"
+      aria-label={t('telecom.antennas.card.kind')}
+      value={unit.kind}
+      disabled={readOnly}
+      style={{ flex: 'none' }}
+      onChange={(e) => {
+        void setUnitKind(unit.id, e.target.value as AntennaKind);
+      }}
+    >
+      {KINDS.map((k) => (
+        <option key={k} value={k}>
+          {t(`telecom.antennas.card.kind.${k}`)}
+        </option>
+      ))}
+    </select>
+  );
+
   return (
     <>
       {leader ? (
@@ -830,24 +850,13 @@ function CardBody(props: BodyProps): ReactElement {
                 {kindWord} · <span data-testid="antenna-card-kind-basis">{kindBasis}</span>
               </span>
             </Tip>
-            <select
-              className="input sm"
-              data-testid="antenna-card-kind-pick"
-              aria-label={t('telecom.antennas.card.kind')}
-              title={readOnly ? t('telecom.antennas.readOnly') : undefined}
-              value={unit.kind}
-              disabled={readOnly}
-              style={{ flex: 'none' }}
-              onChange={(e) => {
-                void setUnitKind(unit.id, e.target.value as AntennaKind);
-              }}
-            >
-              {KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {t(`telecom.antennas.card.kind.${k}`)}
-                </option>
-              ))}
-            </select>
+            {readOnly ? (
+              <Tip content={t('telecom.antennas.readOnly')} placement="top">
+                {kindPick}
+              </Tip>
+            ) : (
+              kindPick
+            )}
           </div>
         </div>
         <div ref={body} data-testid="antenna-card-body" style={BODY}>
