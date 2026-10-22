@@ -44,6 +44,8 @@ const CHANNELS = {
   'analyticsPack:cancel': true,
   'analyticsPack:remove': true,
   'analytics:hardware': true,
+  'detect:queue': true,
+  'detect:queueCancel': true,
   'detectors:list': true,
   'detectors:save': true,
   'detectors:remove': true,
@@ -346,6 +348,7 @@ const EVENTS = {
   'sync:notice': true,
   'pipelinePack:progress': true,
   'odm:progress': true,
+  'detect:queue': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

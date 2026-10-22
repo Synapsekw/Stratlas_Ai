@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { en } from '@aio/ui/i18n/en';
 import { describe, expect, it, vi } from 'vitest';
 import { detectPackRefusal } from './analytics/detectPack';
 import { evidenceJobPackRefusal, evidencePackRefusal } from './evidencePack';
@@ -18,6 +19,7 @@ function jobsStart(
     params: {},
     packVersion: '0.13.1',
   },
+  gpuBusy: (pipeline: string) => string | null = () => null,
 ) {
   const source = ts.createSourceFile(
     'index.ts',
@@ -73,7 +75,7 @@ function jobsStart(
     thermalPackRefusal,
     evidenceJobPackRefusal,
     detectPackRefusal,
-    detectQueue: { start: detectStart },
+    detectQueue: { start: detectStart, gpuBusy },
     laneSphere: () => null,
   }) as (req: IpcRequest<'jobs:start'>) => Promise<{ ok: boolean; error?: string }>;
   return { handle, start, detectStart, findPack };
@@ -145,6 +147,16 @@ describe('jobs:start resume feature gate', () => {
     const current = jobsStart('0.23.0', 'failed');
     expect(await current.handle(req)).toEqual({ ok: true });
     expect(current.detectStart).toHaveBeenCalledWith(req);
+  });
+
+  it('refuses a photo job while a detector run holds the graphics card', async () => {
+    const busy = (p: string) => (p === 'photo.align' ? en['detect.preset.gpuBusy'] : null);
+    const t = jobsStart('0.23.0', 'failed', undefined, busy);
+    const req = { pipeline: 'photo.align' as const, project: 'synthetic', params: {} };
+    expect(await t.handle(req)).toEqual({ ok: false, error: en['detect.preset.gpuBusy'] });
+    expect(t.start).not.toHaveBeenCalled();
+    const other = { pipeline: 'walk.process' as const, project: 'synthetic', params: {} };
+    expect(await t.handle(other)).toEqual({ ok: true });
   });
 
   it('allows new component evidence on the component-processing pack', async () => {

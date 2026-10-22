@@ -175,6 +175,21 @@ export const DetectVlmParams = z
   .strict();
 export type DetectVlmParams = z.infer<typeof DetectVlmParams>;
 
+/**
+ * A `detect.vlm` run waiting for the graphics card (`detect:queue`). `detectors` are the
+ * detectors' names; the queue lives in main's memory only.
+ */
+export const DetectQueued = z
+  .object({
+    run: z.string().min(1),
+    layer: Id,
+    photos: z.number().int().nonnegative(),
+    detectors: z.array(z.string()),
+    queuedAt: IsoTime,
+  })
+  .strict();
+export type DetectQueued = z.infer<typeof DetectQueued>;
+
 /** What main writes to `VLM_SERVER_STATE` once the server answers. */
 export const VlmServerState = z
   .object({

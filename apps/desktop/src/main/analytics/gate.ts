@@ -6,13 +6,16 @@
  * stored copy of each detector (a renderer cannot slip its own prompt text in under a known id).
  * The queue (`detectLane`) runs one detector run at a time, never beside a GPU pipeline job
  * (`GPU_PIPELINES`), first in first out, as the panorama stitch lane does; when nothing is left
- * running or waiting the server stops.
+ * running or waiting the server stops. The waiting runs can be listed and cancelled
+ * (`detect:queue`), and a photo job may not start while a detector run holds the card.
  */
 import {
   DetectorWhere,
   GPU_PIPELINES,
   VLM_SERVER_STATE,
+  type DetectQueued,
   type HardwareCheck,
+  type IpcEvent,
   type IpcRequest,
   type IpcResponse,
   type JobEvent,
@@ -175,10 +178,24 @@ function withServer(
 const AT_WORK: ReadonlySet<string> = new Set(['starting', 'running', 'cancelling']);
 const ENDED: ReadonlySet<string> = new Set(['done', 'failed', 'cancelled', 'interrupted']);
 
+/** The photo jobs a detector run on the card holds back (`GPU_PIPELINES` but `detect.vlm`). */
+const PHOTO_GPU: ReadonlySet<string> = new Set(
+  [...GPU_PIPELINES].filter((p) => p !== 'detect.vlm'),
+);
+
+export type DetectQueueEvent = IpcEvent<'detect:queue'>;
+
+/** A waiting start and what `detect:queue` shows of it. */
+interface Waiting {
+  req: StartRequest;
+  item: DetectQueued;
+}
+
 /**
  * Detector runs one at a time and never beside a GPU pipeline job: a start that finds the card
  * taken waits here, first in first out, and goes through the gate again when a GPU job ends.
- * When nothing runs or waits, the server stops. The queue lives in memory only.
+ * When nothing runs or waits, the server stops. The queue lives in memory only; a run waits once
+ * (keyed by `params.run`), and every change goes to the `onChange` listeners.
  */
 export function detectLane(d: {
   /** `detectJobGate` with these `running`. */
@@ -186,10 +203,13 @@ export function detectLane(d: {
   /** The job runner's start. */
   start: (req: StartRequest) => Promise<StartResponse>;
   jobs: () => readonly Pick<JobRecord, 'id' | 'pipeline' | 'status'>[];
+  /** The stored job of a resume: its params name the run. */
+  job?: (id: string) => Pick<JobRecord, 'params'> | undefined;
   server: Pick<VlmServer, 'idle'>;
   log: (line: string) => void;
 }) {
-  const waiting: StartRequest[] = [];
+  const waiting: Waiting[] = [];
+  const listeners: ((e: DetectQueueEvent) => void)[] = [];
   /** Starts passing the gate now. */
   let passing = 0;
   let draining = false;
@@ -199,18 +219,48 @@ export function detectLane(d: {
   const gpuAtWork = () => atWork((p) => GPU_PIPELINES.has(p));
   const detectAtWork = () => atWork((p) => p === 'detect.vlm');
 
-  const same = (a: StartRequest, b: StartRequest) =>
-    'resume' in a && 'resume' in b && a.resume === b.resume;
+  const list = (): DetectQueued[] => waiting.map((w) => w.item);
+
+  function changed(failed?: { run: string; error: string }): void {
+    const e: DetectQueueEvent = failed ? { items: list(), failed } : { items: list() };
+    for (const cb of listeners) cb(e);
+  }
+
+  /** What the queue shows of a start: its own params, or the stored job's for a resume. */
+  function itemOf(req: StartRequest): DetectQueued {
+    const params: Record<string, unknown> =
+      'params' in req ? req.params : (d.job?.(req.resume)?.params ?? {});
+    const detectors: unknown[] = Array.isArray(params.detectors) ? params.detectors : [];
+    return {
+      run: typeof params.run === 'string' ? params.run : 'resume' in req ? req.resume : '',
+      layer: typeof params.layer === 'string' ? params.layer : '',
+      photos: Array.isArray(params.photos) ? params.photos.length : 0,
+      detectors: detectors.flatMap((x) => {
+        const name = (x as { detector?: { name?: unknown } } | null)?.detector?.name;
+        return typeof name === 'string' ? [name] : [];
+      }),
+      queuedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Wait at the back of the queue, once per run. */
+  function enqueue(req: StartRequest): void {
+    const item = itemOf(req);
+    if (waiting.some((w) => w.item.run === item.run)) return;
+    waiting.push({ req, item });
+    changed();
+  }
 
   /** One trip through the gate and, when it lets the request on, the runner. */
-  async function pass(req: StartRequest, fromQueue: boolean): Promise<StartResponse> {
+  async function pass(req: StartRequest, from?: Waiting): Promise<StartResponse> {
     passing += 1;
     try {
       const a = await d.gate(req, () => gpuAtWork() || passing > 1);
       if ('refuse' in a) return { ok: false, error: a.refuse };
       if ('queue' in a) {
-        if (fromQueue) waiting.unshift(req);
-        else if (!waiting.some((w) => same(w, req))) waiting.push(req);
+        // a run taken from the queue goes back to the front as it was: no change to send
+        if (from) waiting.unshift(from);
+        else enqueue(req);
         return { ok: false, error: DETECT_QUEUED };
       }
       return await d.start(a.req);
@@ -225,17 +275,21 @@ export function detectLane(d: {
     draining = true;
     try {
       while (waiting.length > 0 && passing === 0 && !gpuAtWork()) {
-        const req = waiting.shift();
-        if (!req) break;
+        const next = waiting.shift();
+        if (!next) break;
         let r: StartResponse;
         try {
-          r = await pass(req, true);
+          r = await pass(next.req, next);
         } catch (e) {
           r = { ok: false, error: message(e) };
         }
-        if (r.ok) continue;
+        if (r.ok) {
+          changed();
+          continue;
+        }
         if (r.error === DETECT_QUEUED) break;
         d.log(`A waiting detector run did not start: ${r.error}`);
+        changed({ run: next.item.run, error: r.error });
       }
     } finally {
       draining = false;
@@ -247,12 +301,12 @@ export function detectLane(d: {
     /** `jobs:start` of a `detect.vlm` job, new or a resume. */
     async start(req: StartRequest): Promise<StartResponse> {
       if (waiting.length > 0) {
-        if (!waiting.some((w) => same(w, req))) waiting.push(req);
+        enqueue(req);
         return { ok: false, error: DETECT_QUEUED };
       }
       let r: StartResponse;
       try {
-        r = await pass(req, false);
+        r = await pass(req);
       } finally {
         await settle();
       }
@@ -266,7 +320,30 @@ export function detectLane(d: {
     },
     /** Waiting requests, oldest first (tests, diagnostics). */
     waiting(): readonly StartRequest[] {
-      return [...waiting];
+      return waiting.map((w) => w.req);
+    },
+    /** `detect:queue`: the waiting runs, oldest first. */
+    list,
+    /** `detect:queueCancel`: take a waiting run out; one already passing the gate is not waiting. */
+    cancel(run: string): { ok: boolean; error?: string } {
+      const i = waiting.findIndex((w) => w.item.run === run);
+      if (i < 0) return { ok: false, error: en['detect.preset.queue.notWaiting'] };
+      waiting.splice(i, 1);
+      changed();
+      return { ok: true };
+    },
+    /** Every change of the waiting runs; main sends it as the `detect:queue` event. */
+    onChange(cb: (e: DetectQueueEvent) => void): void {
+      listeners.push(cb);
+    },
+    /**
+     * Why a photo job may not start now, else null: a detector run holds the card while its job
+     * is at work or its start is passing the gate (loading the model). Waiting runs hold nothing.
+     */
+    gpuBusy(pipeline: string): string | null {
+      return PHOTO_GPU.has(pipeline) && (detectAtWork() || passing > 0)
+        ? en['detect.preset.gpuBusy']
+        : null;
     },
   };
 }

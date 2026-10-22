@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DetectVlmParams, VlmDetector, vlmPassName } from './index';
+import { DetectQueued, DetectVlmParams, VlmDetector, ipc, ipcEvents, vlmPassName } from './index';
 
 const sha = 'a'.repeat(64);
 
@@ -55,5 +55,20 @@ describe('analytics contracts', () => {
       DetectVlmParams.safeParse({ ...params, serverFile: 'C:/data/runtime/analytics-server.json' })
         .success,
     ).toBe(true);
+  });
+  it('DetectQueued lists a waiting run and the queue event may carry a failed start', () => {
+    const item = {
+      run: 'run-1',
+      layer: 'photos-1',
+      photos: 12,
+      detectors: ['Corrosion'],
+      queuedAt: '2026-10-22T08:00:00.000Z',
+    };
+    expect(DetectQueued.parse(item)).toEqual(item);
+    expect(DetectQueued.safeParse({ ...item, photos: -1 }).success).toBe(false);
+    expect(ipc['detect:queue'].response.parse({ items: [item] })).toEqual({ items: [item] });
+    expect(ipc['detect:queueCancel'].request.safeParse({ run: '' }).success).toBe(false);
+    const failed = { items: [], failed: { run: 'run-1', error: 'No pack.' } };
+    expect(ipcEvents['detect:queue'].parse(failed)).toEqual(failed);
   });
 });

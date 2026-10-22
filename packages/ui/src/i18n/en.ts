@@ -6145,6 +6145,9 @@ export const en = {
     'The detector model program is missing from the Analytics pack. Install the pack again.',
   'detect.preset.queued':
     'Another detector or processing run is using the graphics card. This one starts when it finishes.',
+  'detect.preset.gpuBusy':
+    'A detector run is using the graphics card. Start this when it finishes, or cancel the detector run.',
+  'detect.preset.queue.notWaiting': 'This detector run is no longer waiting.',
   'detect.preset.modelMismatch':
     'This detector was tuned on a different model, so its results may differ.',
   'detect.preset.score.none': 'No score',

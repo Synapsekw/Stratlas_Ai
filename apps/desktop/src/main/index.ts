@@ -540,7 +540,8 @@ function broadcast<
     | 'update:progress'
     | 'websiteUpdate:status'
     | 'pipelinePack:progress'
-    | 'odm:progress',
+    | 'odm:progress'
+    | 'detect:queue',
 >(event: E, payload: IpcEvent<E>): void {
   const parsed = ipcEvents[event].safeParse(payload);
   if (!parsed.success) return;
@@ -1011,10 +1012,14 @@ const detectQueue = detectLane({
     }),
   start: (req) => jobs.start(req),
   jobs: () => jobStore.all(),
+  job: (id) => jobs.get(id),
   server: vlmServer,
   log: (line) => {
     appLog.write('warn', [line]);
   },
+});
+detectQueue.onChange((e) => {
+  broadcast('detect:queue', e);
 });
 
 /** Folders main's folder dialog returned; a data folder change must name one (`dataRoot.ts`). */
@@ -1615,7 +1620,11 @@ function registerIpc(): void {
     const pipeline = 'pipeline' in req ? req.pipeline : jobs.get(req.resume)?.pipeline;
     if (pipeline) {
       const others = jobStore.all().filter((j) => !('resume' in req) || j.id !== req.resume);
-      const busy = photoBusyRefusal(pipeline, others) ?? odmGuard.busy(pipeline);
+      // and none while a detector run holds the graphics card (a waiting one holds nothing)
+      const busy =
+        photoBusyRefusal(pipeline, others) ??
+        detectQueue.gpuBusy(pipeline) ??
+        odmGuard.busy(pipeline);
       if (busy) return { ok: false, error: busy };
     }
     // Check feature minimums for new jobs and the resolved pipeline of resumed jobs alike.
@@ -2348,6 +2357,8 @@ function registerIpc(): void {
   handle('analytics:hardware', () =>
     checkHardware({ platform: process.platform, exec: execNvidiaSmi }),
   );
+  handle('detect:queue', () => ({ items: detectQueue.list() }));
+  handle('detect:queueCancel', ({ run }) => detectQueue.cancel(run));
   registerDetectorsIpc({
     handle,
     pack: () =>

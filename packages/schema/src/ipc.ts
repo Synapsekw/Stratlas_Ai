@@ -130,7 +130,7 @@ import {
   RasterPackInfo,
   TerrainImportRequest,
 } from './globe';
-import { DetectorWhere, HardwareCheck, LedgerEntry, VlmDetector } from './analytics';
+import { DetectQueued, DetectorWhere, HardwareCheck, LedgerEntry, VlmDetector } from './analytics';
 import { TilesetEntry, TilesetsFile } from './tilesets';
 import { WalkFile } from './walks';
 import { WalkProcessSummary } from './walkProcess';
@@ -4197,6 +4197,13 @@ export const ipc = {
     response: z.union([Ok, DetectorFailure]),
   },
   'analytics:hardware': { request: Empty, response: HardwareCheck },
+  /** Detector runs waiting for the graphics card, oldest first. */
+  'detect:queue': { request: Empty, response: z.object({ items: z.array(DetectQueued) }) },
+  /** Take a waiting detector run out of the queue; a run that is not waiting is `{ok:false}`. */
+  'detect:queueCancel': {
+    request: z.object({ run: z.string().min(1) }).strict(),
+    response: Ok,
+  },
   'detectors:list': {
     request: z.object({ projectId: z.string().optional() }).strict(),
     response: z.object({
@@ -4433,6 +4440,14 @@ export const ipcEvents = {
   'pipelinePack:progress': PackInstallProgress,
   /** Progress of `odm:install` (Settings, Processing tools). */
   'odm:progress': OdmInstallProgress,
+  /**
+   * The detector runs waiting for the graphics card, sent on every change; `failed` names a
+   * waiting run that did not start when its turn came, and why.
+   */
+  'detect:queue': z.object({
+    items: z.array(DetectQueued),
+    failed: z.object({ run: z.string(), error: z.string() }).optional(),
+  }),
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;

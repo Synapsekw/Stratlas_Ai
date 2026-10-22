@@ -67,11 +67,11 @@ const STATE: VlmServerState = {
   startedAt: '2026-10-21T00:00:00.000Z',
 };
 
-const newRequest = (): StartRequest => ({
+const newRequest = (run = 'run-abc'): StartRequest => ({
   pipeline: 'detect.vlm',
   project: 'D:/projects/site',
   params: {
-    run: 'run-abc',
+    run,
     layer: 'photos',
     photos: ['p1'],
     detectors: [
@@ -282,6 +282,8 @@ function lane() {
     return Promise.resolve({ ok: true as const, job: j });
   });
   const l = detectLane({ gate, start, jobs: () => jobs, server, log });
+  const changed = vi.fn();
+  l.onChange(changed);
   const end = async (id: string, status = 'done') => {
     const i = jobs.findIndex((j) => j.id === id);
     const was = jobs[i];
@@ -290,7 +292,7 @@ function lane() {
     jobs[i] = now;
     await l.settled({ type: 'update', job: now });
   };
-  return { l, jobs, server, gate, start, end, log };
+  return { l, jobs, server, gate, start, end, log, changed };
 }
 
 describe('detectLane', () => {
@@ -321,8 +323,8 @@ describe('detectLane', () => {
   it('a queued request the gate refuses is logged and the next one goes', async () => {
     const t = lane();
     t.jobs.push(job('photo', 'photo.products', 'running'));
-    await t.l.start(newRequest());
-    await t.l.start(newRequest());
+    await t.l.start(newRequest('run-a'));
+    await t.l.start(newRequest('run-b'));
     t.gate.mockResolvedValueOnce({ refuse: 'No pack.' } as never);
     await t.end('photo');
     expect(t.log).toHaveBeenCalledWith(expect.stringContaining('No pack.'));
@@ -349,5 +351,73 @@ describe('detectLane', () => {
     expect((await t.l.start(newRequest())).ok).toBe(true);
     await t.end('walk');
     expect(t.server.idle).not.toHaveBeenCalled();
+  });
+
+  it('a queued run is listed and can be cancelled', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.align', 'running'));
+    await t.l.start(newRequest('run-a'));
+    await t.l.start(newRequest('run-b'));
+    expect(t.l.waiting()).toHaveLength(2);
+    const [a, b] = t.l.list();
+    expect(a).toMatchObject({
+      run: 'run-a',
+      layer: 'photos',
+      photos: 1,
+      detectors: ['Detector rust', 'Detector crack'],
+    });
+    expect(Number.isNaN(Date.parse(a?.queuedAt ?? ''))).toBe(false);
+    expect(b?.run).toBe('run-b');
+    expect(t.changed).toHaveBeenLastCalledWith({ items: [a, b] });
+
+    expect(t.l.cancel('run-a')).toEqual({ ok: true });
+    expect(t.changed).toHaveBeenLastCalledWith({ items: [b] });
+    expect(t.l.cancel('run-a')).toEqual({
+      ok: false,
+      error: en['detect.preset.queue.notWaiting'],
+    });
+
+    await t.end('photo');
+    expect(t.start).toHaveBeenCalledTimes(1);
+    expect(t.start.mock.calls[0]?.[0]).toMatchObject({ params: { run: 'run-b' } });
+    expect(t.changed).toHaveBeenLastCalledWith({ items: [] });
+  });
+
+  it('a queued start of the same run is not queued twice', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.align', 'running'));
+    await t.l.start(newRequest('run-a'));
+    expect(await t.l.start(newRequest('run-a'))).toEqual({ ok: false, error: DETECT_QUEUED });
+    expect(t.l.list().map((i) => i.run)).toEqual(['run-a']);
+  });
+
+  it('a waiting run that fails to start is reported', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.georef', 'running'));
+    await t.l.start(newRequest('run-a'));
+    t.gate.mockResolvedValueOnce({ refuse: 'No pack.' } as never);
+    await t.end('photo');
+    expect(t.changed).toHaveBeenLastCalledWith({
+      items: [],
+      failed: { run: 'run-a', error: 'No pack.' },
+    });
+  });
+
+  it('a photo job is refused while a detector run uses the card', async () => {
+    const t = lane();
+    expect((await t.l.start(newRequest())).ok).toBe(true);
+    for (const p of ['photo.align', 'photo.georef', 'photo.products'])
+      expect(t.l.gpuBusy(p)).toBe(en['detect.preset.gpuBusy']);
+    expect(t.l.gpuBusy('walk.process')).toBeNull();
+    await t.end('job-1');
+    expect(t.l.gpuBusy('photo.align')).toBeNull();
+  });
+
+  it('a photo job may start while detector runs only wait', async () => {
+    const t = lane();
+    t.jobs.push(job('photo', 'photo.align', 'running'));
+    await t.l.start(newRequest('run-a'));
+    expect(t.l.list()).toHaveLength(1);
+    expect(t.l.gpuBusy('photo.products')).toBeNull();
   });
 });
