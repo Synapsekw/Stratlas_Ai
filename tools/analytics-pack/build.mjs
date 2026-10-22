@@ -5,7 +5,7 @@
 //
 //   node tools/analytics-pack/build.mjs --out <dir> [--cache <dir>] [--no-model]
 //
-// Writes <out>/analytics-pack-<version>/{llama/, model/, detectors/<assetType>/<id>/, manifest.json}
+// Writes <out>/analytics-pack-<version>/{llama/, model/, licences/, detectors/<assetType>/<id>/, manifest.json}
 // and <out>/analytics-pack-<version>-win-x64.tar.gz (manifest.json is the first entry). --no-model
 // leaves model/ out and writes manifest.model.sha256 as "none": a local check build, not for install.
 import { spawnSync } from 'node:child_process';
@@ -169,6 +169,13 @@ export async function buildAnalyticsPack({
       mkdirSync(dirname(join(packDir, f.file)), { recursive: true });
       copyFileSync(src, join(packDir, f.file));
     }
+  }
+
+  // Licence texts of the two components, pinned like the rest (also in a --no-model build).
+  for (const f of lock.licences) {
+    const src = await pinnedDownload({ pin: f, cache: cacheDir, fetchTo, log });
+    mkdirSync(dirname(join(packDir, f.file)), { recursive: true });
+    copyFileSync(src, join(packDir, f.file));
   }
 
   const detectors = listDetectors(detectorsDir);

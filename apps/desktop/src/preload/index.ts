@@ -347,6 +347,7 @@ const EVENTS = {
   'blobs:progress': true,
   'sync:notice': true,
   'pipelinePack:progress': true,
+  'analyticsPack:progress': true,
   'odm:progress': true,
   'detect:queue': true,
 } as const satisfies Record<IpcEventName, true>;

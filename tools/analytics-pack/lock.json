@@ -31,5 +31,19 @@
       "size": 1354162912,
       "file": "model/mmproj-qwen2.5-vl-7b-instruct-f16.gguf"
     }
-  }
+  },
+  "licences": [
+    {
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b11489/LICENSE",
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+      "size": 1078,
+      "file": "licences/llama.cpp-LICENSE.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/QwenLM/Qwen2.5-VL/96588727e44c78b25ba03ea03b8e12f7e64fd0da/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "size": 11357,
+      "file": "licences/Qwen2.5-VL-7B-Instruct-LICENSE.txt"
+    }
+  ]
 }

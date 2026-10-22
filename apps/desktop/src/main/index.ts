@@ -540,6 +540,7 @@ function broadcast<
     | 'update:progress'
     | 'websiteUpdate:status'
     | 'pipelinePack:progress'
+    | 'analyticsPack:progress'
     | 'odm:progress'
     | 'detect:queue',
 >(event: E, payload: IpcEvent<E>): void {
@@ -2349,8 +2350,9 @@ function registerIpc(): void {
       return r.canceled ? null : (r.filePaths[0] ?? null);
     },
     trash: (dir) => shell.trashItem(dir),
-    // no progress channel for this pack yet
-    emit: () => undefined,
+    emit: (p) => {
+      broadcast('analyticsPack:progress', p);
+    },
     assertWritable,
     hold: (dir) => vlmServer.hold(dir),
   });

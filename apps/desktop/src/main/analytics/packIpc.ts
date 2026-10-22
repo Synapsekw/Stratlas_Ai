@@ -1,8 +1,8 @@
 /**
  * The six `analyticsPack:*` channels: what is installed, archives worth offering, the file dialog,
  * install, cancel and remove. Modelled on `registerPipelinePackIpc` (jobs/packInstall.ts) and
- * served by the same installer with `ANALYTICS_PACK`. There is no progress channel for this pack
- * yet, so an install reports no progress.
+ * served by the same installer with `ANALYTICS_PACK`. An install reports its progress through
+ * `d.emit` (`analyticsPack:progress`, the same `PackInstallProgress`).
  */
 import type { IpcResponse } from '@aio/schema';
 import { lstat } from 'node:fs/promises';
@@ -91,6 +91,7 @@ export function registerAnalyticsPackIpc(d: AnalyticsPackIpcDeps): void {
         platform: d.platform,
         ...(replace === true ? { replace } : {}),
         signal: running.signal,
+        onProgress: d.emit,
         // replacing the installed version: not under a running server
         ...(replace === true ? { beforeActivate: holdAll } : {}),
         ...(d.assertWritable ? { assertWritable: d.assertWritable } : {}),

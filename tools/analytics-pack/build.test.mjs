@@ -21,6 +21,8 @@ const BODIES = {
   'cu.zip': 'cudart-zip',
   'm.gguf': 'model-gguf',
   'p.gguf': 'mmproj-gguf',
+  'rt-LICENSE': 'llama licence text',
+  'qw-LICENSE': 'qwen licence text',
 };
 const pin = (name, extra = {}) => ({
   url: `https://example.test/${name}`,
@@ -41,6 +43,10 @@ const LOCK = {
     gguf: pin('m.gguf', { file: 'model/m.gguf' }),
     mmproj: pin('p.gguf', { file: 'model/p.gguf' }),
   },
+  licences: [
+    pin('rt-LICENSE', { file: 'licences/llama.cpp-LICENSE.txt' }),
+    pin('qw-LICENSE', { file: 'licences/Qwen2.5-VL-7B-Instruct-LICENSE.txt' }),
+  ],
 };
 
 let root;
@@ -135,6 +141,23 @@ describe('analytics pack build', () => {
       sha256: sha(BODIES['m.gguf']),
     });
     expect(manifest.files['llama/llama-server.exe'].sha256).toBe(sha('bin'));
+  });
+
+  it('the pack carries both licence texts', async () => {
+    const { packDir } = await build();
+    const manifest = JSON.parse(readFileSync(join(packDir, 'manifest.json'), 'utf8'));
+    for (const [file, body] of [
+      ['licences/llama.cpp-LICENSE.txt', BODIES['rt-LICENSE']],
+      ['licences/Qwen2.5-VL-7B-Instruct-LICENSE.txt', BODIES['qw-LICENSE']],
+    ]) {
+      expect(readFileSync(join(packDir, file), 'utf8')).toBe(body);
+      expect(manifest.files[file]).toEqual({ size: body.length, sha256: sha(body) });
+    }
+  });
+
+  it('--no-model still carries the licence texts', async () => {
+    const { packDir } = await build({ noModel: true });
+    expect(existsSync(join(packDir, 'licences', 'llama.cpp-LICENSE.txt'))).toBe(true);
   });
 
   it('detectors folder copied and listed in manifest.detectors', async () => {

@@ -202,9 +202,7 @@ describe('Analytics pack IPC', () => {
         trashed.push(dir);
         await rm(dir, { recursive: true });
       },
-      emit: () => {
-        throw new Error('the pipeline pack progress channel is not the Analytics pack one');
-      },
+      emit: () => undefined,
       ...over,
     });
     const call = <T>(channel: IpcChannel, request: unknown = {}) => {
@@ -284,6 +282,18 @@ describe('Analytics pack IPC', () => {
     expect(await call('analyticsPack:remove', { version: '0.1.0' })).toEqual({ ok: true });
     expect(trashed).toEqual([dir]);
     expect(await readdir(runtime)).toEqual([]);
+  });
+
+  it('install sends analyticsPack:progress phases that end in done', async () => {
+    const emit = vi.fn();
+    const { call } = setup({ emit });
+    const path = join(root, 'analytics-pack-0.1.0-win-x64.tar.gz');
+    await writeFile(path, fakeAnalyticsPackArchive('0.1.0'));
+    expect(await call('analyticsPack:install', { path })).toEqual({ ok: true, version: '0.1.0' });
+    const phases = emit.mock.calls.map(([p]) => (p as { phase: string }).phase);
+    expect(phases.length).toBeGreaterThan(1);
+    expect(phases.at(-1)).toBe('done');
+    expect(new Set(phases)).toContain('unpack');
   });
 
   it('refuses under the real-data guard, for installing and for removing', async () => {

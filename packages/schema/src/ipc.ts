@@ -4438,6 +4438,8 @@ export const ipcEvents = {
   }),
   /** Progress of `pipelinePack:install` (Settings, Processing tools). */
   'pipelinePack:progress': PackInstallProgress,
+  /** Progress of `analyticsPack:install` (Settings, Analytics). */
+  'analyticsPack:progress': PackInstallProgress,
   /** Progress of `odm:install` (Settings, Processing tools). */
   'odm:progress': OdmInstallProgress,
   /**
