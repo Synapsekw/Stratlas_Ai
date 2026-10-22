@@ -296,4 +296,91 @@ describe('Settings, detector library', () => {
     expect(q('dl-stats-chimney')?.textContent).toBe('No reviews yet');
     expect(q('dl-clear-chimney')).toBeNull();
   });
+
+  it('a list read for the previous project does not land after a switch', async () => {
+    openProject();
+    const pending = new Map<string, (v: unknown) => void>();
+    h.answers.set('ledger:stats', () => NONE);
+    h.answers.set(
+      'detectors:list',
+      (req) => new Promise((r) => pending.set((req as { projectId?: string }).projectId ?? '', r)),
+    );
+    root = createRoot(host);
+    act(() => root?.render(<DetectorLibrary />));
+    await flush();
+    pending.get('p1')?.({ items: [item('project', det('crack'))] });
+    await flush();
+    expect(q('dl-row-project-crack')).not.toBeNull();
+    // a remove in p1 reads the list again; that read is still out when p2 opens
+    h.answers.set('detectors:remove', () => ({ ok: true }));
+    await click(q('dl-remove-crack'));
+    await click(q('dl-remove-yes-crack'));
+    expect(callsOf('detectors:list')).toHaveLength(2);
+
+    // the rows of p1 go as soon as p2 opens, before its list is read
+    act(() => {
+      workspace.setState({ project: { id: 'p2' } as OpenProject });
+    });
+    expect(q('dl-row-project-crack')).toBeNull();
+    // the reload started for p1 answers after the switch: dropped
+    const late = pending.get('p1');
+    pending.get('p2')?.({ items: [item('project', det('flue'))] });
+    await flush();
+    late?.({ items: [item('project', det('crack'))] });
+    await flush();
+    expect(q('dl-row-project-flue')).not.toBeNull();
+    expect(q('dl-row-project-crack')).toBeNull();
+  });
+
+  it('reads stats at most four at a time', async () => {
+    let running = 0;
+    let most = 0;
+    const ids = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'];
+    h.answers.set('detectors:list', () => ({ items: ids.map((id) => item('library', det(id))) }));
+    h.answers.set('ledger:stats', async () => {
+      running++;
+      most = Math.max(most, running);
+      await new Promise((r) => setTimeout(r, 0));
+      running--;
+      return NONE;
+    });
+    root = createRoot(host);
+    act(() => root?.render(<DetectorLibrary />));
+    for (let n = 0; n < 4; n++) await flush();
+    expect(callsOf('ledger:stats')).toHaveLength(7);
+    expect(most).toBe(4);
+    expect(q('dl-stats-a7')?.textContent).toBe('No reviews yet');
+  });
+
+  it('stats that cannot be read say so', async () => {
+    h.answers.set('detectors:list', () => ({ items: [item('library', det('chimney'))] }));
+    root = createRoot(host);
+    act(() => root?.render(<DetectorLibrary />));
+    await flush();
+    expect(q('dl-stats-chimney')?.textContent).toBe('Reviews could not be read');
+  });
+
+  it('a failed clear shows its error', async () => {
+    await show([item('library', det('chimney'))], {
+      chimney: { accepted: 1, rejected: 0, misses: 0, suggestedThreshold: null },
+    });
+    h.answers.set('ledger:clear', () => ({ ok: false, error: 'The ledger is locked.' }));
+    await click(q('dl-clear-chimney'));
+    await click(q('dl-clear-yes-chimney'));
+    expect(q('dl-error')?.textContent).toBe('The ledger is locked.');
+    expect(q('dl-stats-chimney')?.textContent).toContain('1 reviewed');
+  });
+
+  it('a failed remove shows its error, or a fallback when it has none', async () => {
+    await show([item('library', det('chimney'))]);
+    h.answers.set('detectors:remove', () => ({ ok: false, error: 'The folder is in use.' }));
+    await click(q('dl-remove-chimney'));
+    await click(q('dl-remove-yes-chimney'));
+    expect(q('dl-error')?.textContent).toBe('The folder is in use.');
+    h.answers.set('detectors:remove', () => ({ ok: false }));
+    await click(q('dl-remove-chimney'));
+    await click(q('dl-remove-yes-chimney'));
+    expect(q('dl-error')?.textContent).toBe('That did not work. Try again.');
+    expect(q('dl-row-library-chimney')).not.toBeNull();
+  });
 });

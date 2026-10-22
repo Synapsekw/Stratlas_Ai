@@ -9,8 +9,9 @@
 import type { DetectorWhere, IpcRequest, IpcResponse } from '@aio/schema';
 import { Chip, Icon, t, Tip, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnalyticsPack } from '../../analyticsPack';
+import type { Res } from '../../bridge';
 import { bridge } from '../../shell';
 import './detectorLibrary.css';
 
@@ -61,15 +62,46 @@ async function readStats(detectorId: string): Promise<Stats | null> {
   return r.ok ? r.value : null;
 }
 
-type Library = { items: Item[]; stats: ReadonlyMap<string, Stats | null> } | { error: string };
+/** At most this many `ledger:stats` reads at once. */
+const STATS_AT_ONCE = 4;
+
+async function readAllStats(ids: string[]): Promise<Map<string, Stats | null>> {
+  const out = new Map<string, Stats | null>();
+  let next = 0;
+  const worker = async () => {
+    for (let id = ids[next++]; id !== undefined; id = ids[next++]) {
+      out.set(id, await readStats(id));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(STATS_AT_ONCE, ids.length) }, worker));
+  return out;
+}
+
+/** What the section shows, for the project it was read with. */
+interface Library {
+  projectId: string | null;
+  items: Item[];
+  stats: ReadonlyMap<string, Stats | null>;
+}
+
+interface Failed {
+  projectId: string | null;
+  error: string;
+}
 
 /** The detectors (the project's too when one is open) and each one's review stats. */
-async function readLibrary(projectId: string | null): Promise<Library> {
+async function readLibrary(projectId: string | null): Promise<Library | Failed> {
   const r = await bridge.call('detectors:list', projectId === null ? {} : { projectId });
-  if (!r.ok) return { error: r.error };
-  const ids = [...new Set(r.value.items.map((i) => i.detector.id))];
-  const read = await Promise.all(ids.map(async (id) => [id, await readStats(id)] as const));
-  return { items: r.value.items, stats: new Map(read) };
+  if (!r.ok) return { projectId, error: r.error };
+  const stats = await readAllStats([...new Set(r.value.items.map((i) => i.detector.id))]);
+  return { projectId, items: r.value.items, stats };
+}
+
+/** The error of an `Ok`-shaped answer, null when it worked. */
+function failure(r: Res<{ ok: boolean; error?: string | undefined }>): string | null {
+  if (r.ok && r.value.ok) return null;
+  const error = r.ok ? r.value.error : r.error;
+  return error === undefined || error.trim() === '' ? t('detect.preset.library.failed') : error;
 }
 
 /** The project id is sent only for a project detector. */
@@ -115,14 +147,14 @@ function DetectorRow({ item, stats, projectId, onRemoved, onCleared, onNote, onE
     run(async () => {
       if (where === 'shipped') return;
       const r = await bridge.call('detectors:remove', { where, ...at(where, projectId), id: d.id });
-      const error = !r.ok ? r.error : r.value.ok ? null : (r.value.error ?? '');
+      const error = failure(r);
       if (error !== null) onError(error);
       else await onRemoved();
     });
   const clear = () =>
     run(async () => {
       const r = await bridge.call('ledger:clear', { detectorId: d.id });
-      const error = !r.ok ? r.error : r.value.ok ? null : (r.value.error ?? '');
+      const error = failure(r);
       if (error !== null) onError(error);
       else await onCleared(d.id);
     });
@@ -179,7 +211,7 @@ function DetectorRow({ item, stats, projectId, onRemoved, onCleared, onNote, onE
           </div>
         </td>
         <td className="dl-stats" data-testid={`dl-stats-${d.id}`}>
-          {stats && statsText(stats)}
+          {stats ? statsText(stats) : t('detect.preset.library.statsFailed')}
         </td>
         <td className="nowrap pack-acts">
           {open === 'remove' &&
@@ -189,11 +221,7 @@ function DetectorRow({ item, stats, projectId, onRemoved, onCleared, onNote, onE
               remove,
             )}
           {open === 'clear' &&
-            confirm(
-              t('detect.preset.library.clearConfirm', { name: d.name }),
-              `dl-clear-yes-${d.id}`,
-              clear,
-            )}
+            confirm(t('detect.preset.library.clearConfirm'), `dl-clear-yes-${d.id}`, clear)}
           {open !== 'remove' && open !== 'clear' && (
             <>
               {stats && hasReviews(stats) && (
@@ -282,23 +310,34 @@ export function DetectorLibrary() {
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   // shipped detectors come with the pack: none without it
   const packVersion = useAnalyticsPack((s) => s.status?.installed?.version ?? null);
-  const [items, setItems] = useState<Item[] | null>(null);
-  const [stats, setStats] = useState<ReadonlyMap<string, Stats | null>>(new Map());
+  const [library, setLibrary] = useState<Library | null>(null);
+  // rows read for another project are never shown, so they cannot act with this project's id
+  const shown = library?.projectId === projectId ? library : null;
+  /** The project open now: an answer read for another one is dropped. */
+  const current = useRef(projectId);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
-  const apply = useCallback((r: Library) => {
+  const apply = useCallback((r: Library | Failed) => {
+    if (r.projectId !== current.current) return;
     if ('error' in r) {
       setError(r.error);
       return;
     }
-    setItems(r.items);
-    setStats(r.stats);
+    setError(null);
+    setLibrary(r);
   }, []);
   const reload = () => readLibrary(projectId).then(apply);
+  const cleared = async (id: string) => {
+    const read = projectId;
+    const s = await readStats(id);
+    if (read !== current.current) return;
+    setLibrary((l) => (l?.projectId === read ? { ...l, stats: new Map(l.stats).set(id, s) } : l));
+  };
   useEffect(() => {
+    current.current = projectId;
     let live = true;
     void readLibrary(projectId).then((r) => {
       if (live) apply(r);
@@ -418,9 +457,9 @@ export function DetectorLibrary() {
           <span>{note}</span>
         </div>
       )}
-      {items &&
+      {shown &&
         groups.map((g) => {
-          const rows = items.filter((i) => i.where === g.where);
+          const rows = shown.items.filter((i) => i.where === g.where);
           return (
             <section className="dl-group" key={g.where} data-testid={`dl-group-${g.where}`}>
               <h3>{t(g.label)}</h3>
@@ -440,13 +479,10 @@ export function DetectorLibrary() {
                       <DetectorRow
                         key={i.detector.id}
                         item={i}
-                        stats={stats.get(i.detector.id)}
+                        stats={shown.stats.get(i.detector.id)}
                         projectId={projectId}
                         onRemoved={reload}
-                        onCleared={async (id) => {
-                          const s = await readStats(id);
-                          setStats((m) => new Map(m).set(id, s));
-                        }}
+                        onCleared={cleared}
                         onNote={say}
                         onError={fail}
                       />
