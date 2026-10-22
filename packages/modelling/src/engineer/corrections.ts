@@ -3,6 +3,7 @@ import {
   CorrectionProposalInput,
   ModelCorrection,
   ModelCorrectionInput,
+  MODEL_WIDE_PATCH_LIMIT,
   ProcModel,
   type Assembly,
   type CorrectionPatch,
@@ -56,22 +57,17 @@ function hasMatrixValues(matrix: readonly number[]): matrix is Matrix16 {
   return matrix.length === 16 && Array.from(matrix).every(Number.isFinite);
 }
 
-function validateTarget(model: ProcModel, target: CorrectionTarget): void {
-  if (target.kind === 'part') {
-    if (!model.assemblies.some((a) => a.id === target.partId))
-      throw new Error('The correction target is not an engineering component in this model.');
-    return;
-  }
+/** Why a location pin cannot be placed on this model, or null when it can. */
+export function pinTargetRefusal(model: ProcModel): string | null {
   const frame = model.georef;
   if (!frame || frame.horizontal.status === 'unplaced')
-    throw new Error('A location pin needs a known model placement and coordinate frame.');
+    return 'A location pin needs a known model placement and coordinate frame.';
   if (!model.scale || model.scale.status === 'provisional' || frame.scale.status === 'provisional')
-    throw new Error('A location pin needs a known model scale.');
+    return 'A location pin needs a known model scale.';
   // An unknown absolute height datum does not make source-aligned local coordinates unknown.
   // Keep that datum explicitly unknown; only require a usable, invertible affine local frame.
   const m = frame.modelToCrs;
-  if (!hasMatrixValues(m))
-    throw new Error('A location pin needs sixteen finite model transform values.');
+  if (!hasMatrixValues(m)) return 'A location pin needs sixteen finite model transform values.';
   const determinant =
     m[0] * (m[5] * m[10] - m[9] * m[6]) -
     m[4] * (m[1] * m[10] - m[9] * m[2]) +
@@ -84,7 +80,92 @@ function validateTarget(model: ProcModel, target: CorrectionTarget): void {
     Math.abs(m[11]) > 1e-9 ||
     Math.abs(m[15] - 1) > 1e-9
   )
-    throw new Error('A location pin needs an invertible affine model coordinate frame.');
+    return 'A location pin needs an invertible affine model coordinate frame.';
+  return null;
+}
+
+function validateTarget(model: ProcModel, target: CorrectionTarget): void {
+  if (target.kind === 'model') return;
+  if (target.kind === 'part') {
+    if (!model.assemblies.some((a) => a.id === target.partId))
+      throw new Error('The correction target is not an engineering component in this model.');
+    return;
+  }
+  const refusal = pinTargetRefusal(model);
+  if (refusal) throw new Error(refusal);
+}
+
+type Vec3Tuple = [number, number, number];
+export interface CorrectionBounds {
+  min: Vec3Tuple;
+  max: Vec3Tuple;
+}
+
+/**
+ * Grow a box about its centre: each half-extent by 10%, each floored at 5% of the longest
+ * half-extent, so a flat model still leaves room for additions.
+ */
+export function growCorrectionBox(
+  [x0, y0, z0]: readonly [number, number, number],
+  [x1, y1, z1]: readonly [number, number, number],
+): CorrectionBounds {
+  const longest = Math.max(x1 - x0, y1 - y0, z1 - z0) / 2;
+  const grow = (lo: number, hi: number): [number, number] => {
+    const centre = (lo + hi) / 2;
+    const half = Math.max(((hi - lo) / 2) * 1.1, longest * 0.05);
+    return [centre - half, centre + half];
+  };
+  const [gx0, gx1] = grow(x0, x1);
+  const [gy0, gy1] = grow(y0, y1);
+  const [gz0, gz1] = grow(z0, z1);
+  return { min: [gx0, gy0, gz0], max: [gx1, gy1, gz1] };
+}
+
+/** Built vertices of `assemblies` at standard detail, in model-local metres. */
+function* builtVertices(model: ProcModel, assemblies: readonly Assembly[]): Generator<Vec3Tuple> {
+  const sink = new MeshSink(SEGMENTS.standard);
+  const ctx = ctxFor(model);
+  for (const a of assemblies) buildAssembly(sink, a, ctx);
+  for (const prim of sink.out())
+    for (let i = 0; i < prim.positions.length; i += 3)
+      yield [prim.positions[i] ?? NaN, prim.positions[i + 1] ?? NaN, prim.positions[i + 2] ?? NaN];
+}
+
+/** The box a model-wide addition must fit in: the base model's built geometry, grown (or null). */
+export function modelCorrectionBounds(model: ProcModel): CorrectionBounds | null {
+  let min: Vec3Tuple = [Infinity, Infinity, Infinity];
+  let max: Vec3Tuple = [-Infinity, -Infinity, -Infinity];
+  let vertices = 0;
+  for (const [x, y, z] of builtVertices(
+    model,
+    model.assemblies.filter((a) => a.status !== 'rejected'),
+  )) {
+    if (!Number.isFinite(x + y + z)) continue;
+    min = [Math.min(min[0], x), Math.min(min[1], y), Math.min(min[2], z)];
+    max = [Math.max(max[0], x), Math.max(max[1], y), Math.max(max[2], z)];
+    vertices++;
+  }
+  return vertices === 0 ? null : growCorrectionBox(min, max);
+}
+
+/** Verify every generated vertex of a model-wide addition lies inside the grown model box. */
+function checkWithinBounds(model: ProcModel, a: Assembly, { min, max }: CorrectionBounds): void {
+  const tol = 1e-6;
+  let vertices = 0;
+  for (const [x, y, z] of builtVertices(model, [a])) {
+    if (
+      !Number.isFinite(x + y + z) ||
+      x < min[0] - tol ||
+      y < min[1] - tol ||
+      z < min[2] - tol ||
+      x > max[0] + tol ||
+      y > max[1] + tol ||
+      z > max[2] + tol
+    )
+      throw new Error('Added geometry lies outside the model bounds.');
+    vertices++;
+  }
+  if (vertices === 0) throw new Error('The correction must produce visible geometry.');
 }
 
 export async function createModelCorrection(
@@ -253,11 +334,17 @@ function applyPatch(
   const replacement = new Map<string, Assembly>();
   const removed = new Set<string>();
   const added: Assembly[] = [];
+  if (request.target.kind === 'model' && patch.length > MODEL_WIDE_PATCH_LIMIT)
+    throw new Error(
+      `A model-wide correction may change at most ${MODEL_WIDE_PATCH_LIMIT} components.`,
+    );
   for (const edit of patch) {
     const id = edit.op === 'remove' ? edit.id : edit.assembly.id;
     if (seen.has(id)) throw new Error('A correction may change each component only once.');
     seen.add(id);
-    if (request.target.kind === 'part') {
+    if (request.target.kind === 'model') {
+      // A model-wide request may remove, replace or add anywhere; additions are bounded below.
+    } else if (request.target.kind === 'part') {
       if (edit.op === 'add' || id !== request.target.partId)
         throw new Error('The proposal is outside the selected component target scope.');
     } else if (edit.op !== 'add') {
@@ -300,6 +387,11 @@ function applyPatch(
   });
   if (request.target.kind === 'pin')
     for (const a of added) checkPinnedGeometry(candidate, a, request.target);
+  if (request.target.kind === 'model' && added.length > 0) {
+    const bounds = modelCorrectionBounds(model);
+    if (!bounds) throw new Error('A model-wide addition needs a model with visible geometry.');
+    for (const a of added) checkWithinBounds(candidate, a, bounds);
+  }
   return { candidate, before };
 }
 
@@ -400,13 +492,62 @@ export async function rebaseModelCorrection(
   request: ModelCorrection,
   now: string,
 ): Promise<ModelCorrection> {
+  return ModelCorrection.parse(await rebasedRecord(model, ModelCorrection.parse(request), now));
+}
+
+const HISTORY_LIMIT = 8;
+const REPLY_LIMIT = 32;
+const RECORD_LIMIT = 256_000;
+
+/**
+ * Reopen in one step: add the reply (when given), then rebase as `rebaseModelCorrection`. Never
+ * refused for the caps: the oldest round and the oldest reply make room, and if the record
+ * would still exceed its size limit the oldest rounds, then the oldest replies, are dropped.
+ */
+export async function resendModelCorrection(
+  model: ProcModel,
+  request: ModelCorrection,
+  reply: string | undefined,
+  now: string,
+): Promise<ModelCorrection> {
   const checked = ModelCorrection.parse(request);
+  if (checked.status === 'accepted')
+    throw new Error('Create a new request to change an accepted correction.');
+  const trimmed: ModelCorrection = {
+    ...checked,
+    history:
+      checked.proposal && checked.history.length >= HISTORY_LIMIT
+        ? checked.history.slice(checked.history.length - HISTORY_LIMIT + 1)
+        : checked.history,
+    replies:
+      reply !== undefined
+        ? [
+            ...checked.replies.slice(Math.max(0, checked.replies.length - REPLY_LIMIT + 1)),
+            { comment: reply, createdAt: now },
+          ]
+        : checked.replies,
+  };
+  const record = await rebasedRecord(model, trimmed, now);
+  while (JSON.stringify(record).length > RECORD_LIMIT) {
+    if (record.history.length > 0) record.history = record.history.slice(1);
+    else if (record.replies.length > 0) record.replies = record.replies.slice(1);
+    else break;
+  }
+  return ModelCorrection.parse(record);
+}
+
+/** The rebased record, not yet parsed, so a caller can trim it to fit before validation. */
+async function rebasedRecord(
+  model: ProcModel,
+  checked: ModelCorrection,
+  now: string,
+): Promise<ModelCorrection> {
   if (checked.status === 'accepted')
     throw new Error('Create a new request to change an accepted correction.');
   if (model.id !== checked.modelId) throw new Error('The correction belongs to another model.');
   validateTarget(ProcModel.parse(model), checked.target);
   const { proposal, ...rest } = checked;
-  return ModelCorrection.parse({
+  return {
     ...rest,
     updatedAt: now,
     status: 'open',
@@ -421,5 +562,5 @@ export async function rebaseModelCorrection(
           },
         ]
       : checked.history,
-  });
+  };
 }

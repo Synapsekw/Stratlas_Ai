@@ -147,4 +147,7 @@ export {
   rejectModelCorrection,
   replyToModelCorrection,
   rebaseModelCorrection,
+  resendModelCorrection,
+  pinTargetRefusal,
+  modelCorrectionBounds,
 } from './engineer/corrections';

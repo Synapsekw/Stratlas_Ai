@@ -5,11 +5,15 @@ import {
   acceptModelCorrection,
   buildCorrectionCandidate,
   createModelCorrection,
+  growCorrectionBox,
+  modelCorrectionBounds,
   modelCorrectionFingerprint,
+  pinTargetRefusal,
   proposeModelCorrection,
   rebaseModelCorrection,
   rejectModelCorrection,
   replyToModelCorrection,
+  resendModelCorrection,
 } from './corrections';
 
 const NOW = '2026-10-17T00:00:00.000Z';
@@ -67,6 +71,28 @@ const pinRequest = (m: ProcModel) =>
     },
     NOW,
   );
+const modelRequest = (m: ProcModel) =>
+  createModelCorrection(
+    m,
+    { id: 'fix-m', target: { kind: 'model' }, comment: 'remove the radio' },
+    NOW,
+  );
+const small = (id: string, centre: [number, number, number]): Assembly =>
+  component('antenna', id, 'Radio', {
+    kind: 'rru',
+    centre,
+    azimuthDeg: 0,
+    tiltDeg: 0,
+    size: [0.1, 0.1, 0.1],
+  });
+const rod = (id: string, centre: [number, number, number]): Assembly =>
+  component('antenna', id, 'Antenna', {
+    kind: 'omni',
+    centre,
+    azimuthDeg: 0,
+    tiltDeg: 0,
+    size: [0.02, 2, 0.02],
+  });
 const changed = (): Assembly => {
   const a = radio();
   if (a.kind === 'antenna') a.params.azimuthDeg = 50;
@@ -481,6 +507,257 @@ describe('model correction transactions', () => {
     expect(addition.candidate.assemblies[2]?.quality.centre).not.toHaveProperty('residualM');
     expect(Object.keys(addition.candidate.assemblies[2]?.quality ?? {})).toEqual(
       Object.keys(added.params),
+    );
+  });
+
+  it('saves a model-wide request on a provisional, unplaced model', async () => {
+    const m = model();
+    m.scale = { status: 'provisional' };
+    if (m.georef) m.georef.horizontal = { status: 'unplaced' };
+    const request = await modelRequest(m);
+    expect(request.status).toBe('open');
+    expect(request.target).toEqual({ kind: 'model' });
+    const message = 'A location pin needs a known model placement and coordinate frame.';
+    await expect(pinRequest(m)).rejects.toThrow(message);
+    expect(pinTargetRefusal(m)).toBe(message);
+    expect(pinTargetRefusal(model())).toBeNull();
+  });
+
+  it('lets a model-wide proposal remove, replace and add anywhere inside the grown box', async () => {
+    const m = model();
+    const other = radio('radio-2', 102);
+    if (other.kind === 'antenna') other.params.azimuthDeg = 60;
+    const inside = small('radio-3', [101.5, 28, -201]);
+    const proposed = await proposeModelCorrection(
+      m,
+      await modelRequest(m),
+      {
+        explanation: 'Remove one radio, turn the other, add a third.',
+        patch: [
+          { op: 'remove', id: 'radio-1' },
+          { op: 'replace', assembly: other },
+          { op: 'add', assembly: inside },
+        ],
+      },
+      NOW,
+    );
+    expect(proposed.request.status).toBe('proposed');
+    expect(proposed.candidate.assemblies.map((a) => a.id)).toEqual(['radio-2', 'radio-3']);
+    const turned = proposed.candidate.assemblies[0];
+    expect(turned?.kind === 'antenna' && turned.params.azimuthDeg).toBe(60);
+    expect(proposed.request.proposal?.before).toEqual([radio(), radio('radio-2', 102)]);
+    expect(await buildCorrectionCandidate(m, proposed.request)).toEqual(proposed.candidate);
+  });
+
+  it('refuses more than 20 model-wide operations', async () => {
+    const m = model();
+    const patch = Array.from({ length: 21 }, (_, i) => ({
+      op: 'add' as const,
+      assembly: small(`radio-x${i}`, [101.5, 28, -201]),
+    }));
+    await expect(
+      proposeModelCorrection(m, await modelRequest(m), { explanation: 'Many.', patch }, NOW),
+    ).rejects.toThrow('at most 20');
+  });
+
+  it('refuses a model-wide addition outside the bounding box grown by 10%', async () => {
+    const m = model();
+    const b = modelCorrectionBounds(m);
+    if (!b) throw new Error('Expected bounds.');
+    const request = await modelRequest(m);
+    const centre: [number, number, number] = [
+      (b.min[0] + b.max[0]) / 2,
+      (b.min[1] + b.max[1]) / 2,
+      (b.min[2] + b.max[2]) / 2,
+    ];
+    await expect(
+      proposeModelCorrection(
+        m,
+        request,
+        {
+          explanation: 'Outside.',
+          patch: [
+            { op: 'add', assembly: small('radio-3', [b.max[0] + 0.01, centre[1], centre[2]]) },
+          ],
+        },
+        NOW,
+      ),
+    ).rejects.toThrow('Added geometry lies outside the model bounds.');
+    const proposed = await proposeModelCorrection(
+      m,
+      request,
+      { explanation: 'Inside.', patch: [{ op: 'add', assembly: small('radio-3', centre) }] },
+      NOW,
+    );
+    expect(proposed.candidate.assemblies.map((a) => a.id)).toContain('radio-3');
+    const empty = model();
+    empty.assemblies = [];
+    expect(modelCorrectionBounds(empty)).toBeNull();
+    await expect(
+      proposeModelCorrection(
+        empty,
+        await modelRequest(empty),
+        { explanation: 'Add.', patch: [{ op: 'add', assembly: small('radio-3', centre) }] },
+        NOW,
+      ),
+    ).rejects.toThrow('A model-wide addition needs a model with visible geometry.');
+  });
+
+  it('grows each half-extent by 10% with a 5% floor of the longest', () => {
+    const half = (b: { min: readonly number[]; max: readonly number[] }) =>
+      b.max.map((v, i) => (v - (b.min[i] ?? 0)) / 2);
+    const grown = growCorrectionBox([-1, 0, -1], [1, 10, 1]);
+    half(grown).forEach((h, i) => {
+      expect(h).toBeCloseTo([1.1, 5.5, 1.1][i] ?? NaN, 9);
+    });
+    expect(grown.min[1] + grown.max[1]).toBeCloseTo(10, 9);
+    const flat = growCorrectionBox([-5, 2, -1], [5, 2, 1]);
+    expect(half(flat)[1]).toBeCloseTo(0.25, 9);
+    expect(half(flat)[0]).toBeCloseTo(5.5, 9);
+    // The same rule on built geometry: two thin rods spanning [-1, 0, -1] to [1, 10, 1].
+    const m = model();
+    m.assemblies = [rod('rod-1', [-0.99, 1, -0.99]), rod('rod-2', [0.99, 9, 0.99])];
+    const b = modelCorrectionBounds(m);
+    if (!b) throw new Error('Expected bounds.');
+    half(b).forEach((h, i) => {
+      expect(h).toBeCloseTo([1.1, 5.5, 1.1][i] ?? NaN, 6);
+    });
+    m.assemblies.push({ ...rod('rod-3', [50, 5, 0]), status: 'rejected' });
+    expect(modelCorrectionBounds(m)?.max[0]).toBeCloseTo(1.1, 6);
+  });
+
+  it('a model-wide proposal on a changed model is stale', async () => {
+    const m = model();
+    const request = await modelRequest(m);
+    const moved = structuredClone(m);
+    moved.assemblies[1] = radio('radio-2', 105);
+    await expect(
+      proposeModelCorrection(
+        moved,
+        request,
+        { explanation: 'Remove.', patch: [{ op: 'remove', id: 'radio-1' }] },
+        NOW,
+      ),
+    ).rejects.toThrow(/stale/i);
+  });
+
+  it('resend reopens a rejected request with a reply and keeps every round', async () => {
+    const m = model();
+    const first = await proposeModelCorrection(
+      m,
+      await modelRequest(m),
+      { explanation: 'Remove.', patch: [{ op: 'remove', id: 'radio-1' }] },
+      NOW,
+    );
+    const rejected = rejectModelCorrection(first.request, LATER);
+    const resent = await resendModelCorrection(m, rejected, 'try the other ladder', LATER);
+    expect(resent.status).toBe('open');
+    expect(resent.proposal).toBeUndefined();
+    expect(resent.history).toHaveLength(1);
+    expect(resent.history[0]?.disposition).toBe('rejected');
+    expect(resent.replies.at(-1)?.comment).toBe('try the other ladder');
+    expect(resent.baseFingerprint).toBe(await modelCorrectionFingerprint(m));
+    const second = await proposeModelCorrection(
+      m,
+      resent,
+      { explanation: 'Remove the other.', patch: [{ op: 'remove', id: 'radio-2' }] },
+      LATER,
+    );
+    const again = await resendModelCorrection(m, second.request, undefined, LATER);
+    expect(again.history).toHaveLength(2);
+    expect(again.history[1]?.disposition).toBe('superseded');
+    expect(again.replies).toHaveLength(1);
+  });
+
+  it('resend past eight rounds keeps the most recent eight', async () => {
+    const m = model();
+    let request = await modelRequest(m);
+    for (let round = 1; round <= 8; round++) {
+      const proposed = await proposeModelCorrection(
+        m,
+        request,
+        { explanation: `Round ${round}.`, patch: [{ op: 'remove', id: 'radio-1' }] },
+        NOW,
+      );
+      request = await rebaseModelCorrection(m, proposed.request, NOW);
+    }
+    expect(request.history).toHaveLength(8);
+    const ninth = await proposeModelCorrection(
+      m,
+      request,
+      { explanation: 'Round 9.', patch: [{ op: 'remove', id: 'radio-1' }] },
+      NOW,
+    );
+    const resent = await resendModelCorrection(m, ninth.request, undefined, LATER);
+    expect(resent.history).toHaveLength(8);
+    expect(resent.history.map((h) => h.proposal.explanation)).toEqual(
+      Array.from({ length: 8 }, (_, i) => `Round ${i + 2}.`),
+    );
+
+    let replied = resent;
+    for (let i = 1; i <= 32; i++) replied = replyToModelCorrection(replied, `Reply ${i}.`, NOW);
+    expect(replied.replies).toHaveLength(32);
+    const more = await resendModelCorrection(m, replied, 'Reply 33.', LATER);
+    expect(more.replies).toHaveLength(32);
+    expect(more.replies[0]?.comment).toBe('Reply 2.');
+    expect(more.replies.at(-1)?.comment).toBe('Reply 33.');
+    expect(more.history).toHaveLength(8);
+  });
+
+  it('resend drops the oldest rounds, then replies, until the record fits its size limit', async () => {
+    const m = model();
+    const long = (label: string) => `${label} ${'x'.repeat(3980)}`;
+    const bigPatch = () =>
+      Array.from({ length: 20 }, (_, i) => ({
+        op: 'add' as const,
+        assembly: { ...small(`radio-x${i}`, [101.5, 28, -201]), description: 'd'.repeat(300) },
+      }));
+    let request = await modelRequest(m);
+    for (let round = 1; round <= 6; round++) {
+      const proposed = await proposeModelCorrection(
+        m,
+        request,
+        { explanation: long(`Round ${round}.`), patch: bigPatch() },
+        NOW,
+      );
+      request = await rebaseModelCorrection(m, proposed.request, NOW);
+    }
+    request = (
+      await proposeModelCorrection(
+        m,
+        request,
+        { explanation: long('Round 7.'), patch: bigPatch() },
+        NOW,
+      )
+    ).request;
+    // Fill with replies until the record sits just under its 256,000-character limit.
+    const size = () => JSON.stringify(request).length;
+    while (size() + 4200 < 256_000)
+      request = replyToModelCorrection(request, long(`Reply ${request.replies.length + 1}.`), NOW);
+    request = replyToModelCorrection(request, 'p'.repeat(255_800 - size() - 60), NOW);
+    expect(request.replies.length).toBeLessThan(32);
+    expect(size()).toBeGreaterThan(255_000);
+    const replies = request.replies.length;
+    const resent = await resendModelCorrection(m, request, long('Last reply.'), LATER);
+    expect(JSON.stringify(resent).length).toBeLessThanOrEqual(256_000);
+    expect(resent.history.map((h) => h.proposal.explanation)).toEqual(
+      [2, 3, 4, 5, 6, 7].map((n) => long(`Round ${n}.`)),
+    );
+    expect(resent.replies).toHaveLength(replies + 1);
+    expect(resent.replies.at(-1)?.comment).toBe(long('Last reply.'));
+  });
+
+  it('refuses resend on accepted requests', async () => {
+    const m = model();
+    const proposed = await proposeModelCorrection(
+      m,
+      await modelRequest(m),
+      { explanation: 'Remove.', patch: [{ op: 'remove', id: 'radio-1' }] },
+      NOW,
+    );
+    const accepted = await acceptModelCorrection(m, proposed.request, LATER);
+    await expect(resendModelCorrection(m, accepted.request, 'again', LATER)).rejects.toThrow(
+      'Create a new request to change an accepted correction.',
     );
   });
 });
