@@ -21,7 +21,14 @@ import { walkPlayback } from '../walks/walkPlayback';
 import { sampleTimes, type DetectItem } from './convert';
 import { loadDetections } from './store';
 
-export type DetectMode = 'cloud' | 'local';
+export type DetectMode = 'cloud' | 'local' | 'detectors';
+
+const MODES: readonly DetectMode[] = ['cloud', 'local', 'detectors'];
+const MODE_LABEL = {
+  cloud: 'infer.dlg.cloud',
+  local: 'infer.dlg.local',
+  detectors: 'detect.preset.run.mode',
+} as const;
 
 const MODE_KEY = 'stratlas.detect.mode';
 const MODEL_KEY = 'stratlas.detect.model';
@@ -70,9 +77,12 @@ export function mapModelClass(projectId: string, raw: string, classId: string): 
   }
 }
 
-export const readMode = (): DetectMode => (readStore(MODE_KEY) === 'local' ? 'local' : 'cloud');
+export const readMode = (): DetectMode => {
+  const stored = readStore(MODE_KEY);
+  return MODES.find((m) => m === stored) ?? 'cloud';
+};
 
-/** Cloud vision or Local model, at the top of the Detect dialog. */
+/** Cloud vision, Local model or Detectors (on this computer), at the top of the Detect dialog. */
 export function ModeSwitch({
   mode,
   disabled,
@@ -84,7 +94,7 @@ export function ModeSwitch({
 }) {
   return (
     <div className="det-scope infer-row" role="radiogroup" aria-label={t('infer.dlg.source')}>
-      {(['cloud', 'local'] as const).map((m) => (
+      {MODES.map((m) => (
         <label key={m} className="ann-check">
           <input
             type="radio"
@@ -97,7 +107,7 @@ export function ModeSwitch({
               onChange(m);
             }}
           />
-          {t(m === 'cloud' ? 'infer.dlg.cloud' : 'infer.dlg.local')}
+          {t(MODE_LABEL[m])}
         </label>
       ))}
     </div>

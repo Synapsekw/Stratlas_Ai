@@ -6232,6 +6232,28 @@ export const en = {
   'detect.preset.library.clearConfirm': 'Clear history',
   'detect.preset.library.keep': 'Keep',
   'detect.preset.library.cancel': 'Cancel',
+  'detect.preset.run.mode': 'Detectors (on this computer)',
+  'detect.preset.run.checking': 'Checking the Analytics pack and the graphics card',
+  'detect.preset.run.detectors': 'Detectors',
+  'detect.preset.run.forProject': 'For this project ({types})',
+  'detect.preset.run.all': 'All detectors',
+  'detect.preset.run.none': 'No detectors yet. Add one in Settings, Detector library.',
+  'detect.preset.run.listFailed': 'The detectors could not be read: {error}',
+  'detect.preset.run.threshold': 'Threshold for {name}',
+  'detect.preset.run.suggested': 'Suggested {value}',
+  'detect.preset.run.use': 'Use',
+  'detect.preset.run.classMissing':
+    "{class} isn't a class in this project yet. Its findings will offer to add it.",
+  'detect.preset.run.onlyFrames': 'Detectors run on photos. Select photos, not video frames.',
+  'detect.preset.run.noPhotos': 'Select photos to run detectors on.',
+  'detect.preset.run.framesSkipped_one': '{count} video frame is skipped: detectors run on photos.',
+  'detect.preset.run.framesSkipped_other':
+    '{count} video frames are skipped: detectors run on photos.',
+  'detect.preset.run.noDetector': 'Choose at least one detector.',
+  'detect.preset.run.estimate_one': 'About {min} min for {count} photo',
+  'detect.preset.run.estimate_other': 'About {min} min for {count} photos',
+  'detect.preset.run.start': 'Start',
+  'detect.preset.run.ok': 'OK',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

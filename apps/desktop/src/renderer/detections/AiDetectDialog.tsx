@@ -3,6 +3,8 @@
  * estimate and exactly what will be sent (AI-6), then send in batches. Results land as draft
  * detections for the review; a provider error stops the run with the provider's own message.
  * Local model (BLD-10, `LocalDetect.tsx`): an imported ONNX detector on this computer.
+ * Detectors (on this computer) (`detectors/DetectorRunDialog.tsx`): the Analytics pack's
+ * vision-model detectors as `detect.vlm` jobs.
  */
 import {
   DEFAULT_BATCH,
@@ -29,6 +31,7 @@ import {
   type DetectItem,
 } from './convert';
 import { frameThumb, prepareItem } from './prepare';
+import { DetectorRunDialog } from './detectors/DetectorRunDialog';
 import { LocalDetectDialog, ModeSwitch, readMode, type DetectMode } from './LocalDetect';
 import { startDetectRun, type DetectRunner, type RunProgress } from './runner';
 import { detections, dispatch, noteAssessed } from './store';
@@ -241,6 +244,18 @@ export function AiDetectDialog({
     if (running) return;
     onClose();
   };
+
+  if (mode === 'detectors')
+    return (
+      <DetectorRunDialog
+        projectId={projectId}
+        selected={allSelected}
+        current={anyCurrent}
+        unreviewed={allUnreviewed}
+        onMode={setMode}
+        onClose={onClose}
+      />
+    );
 
   if (mode === 'local')
     return (
