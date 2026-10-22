@@ -106,6 +106,7 @@ describe('pipeline params', () => {
       'model.evidence',
       'pointcloud.clean',
       'telecom.antennas',
+      'telecom.flag',
       'rf.coverage',
       'thermal.decode',
       'detect.vlm',

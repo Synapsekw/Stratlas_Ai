@@ -5,13 +5,15 @@ import {
   AntennaUnit,
   AntennaValue,
   AntennasFile,
+  TelecomFlagParams,
+  TELECOM_FLAG_MIN_PACK,
   ANTENNAS_FILE,
   ANTENNAS_SCHEMA,
   TELECOM_ANTENNAS_MIN_PACK,
   TOWER_HINT_NEEDED,
 } from './antennas';
 import { ipc } from './ipc';
-import { pipelineParams } from './jobs';
+import { PipelineName, pipelineParams } from './jobs';
 import { SCHEMA_REGISTRY } from './versions';
 
 const contract = JSON.parse(
@@ -20,9 +22,14 @@ const contract = JSON.parse(
   towerHintMessage: string;
   matchRadiusM: number;
   example: { units: Record<string, unknown>[] };
+  flagged: Record<string, unknown>;
+  notMeasured: Record<string, unknown>;
 };
 
 const [panel, dish] = contract.example.units as [Record<string, unknown>, Record<string, unknown>];
+
+const without = (o: Record<string, unknown>, ...keys: string[]) =>
+  Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
 
 describe('antennas contract', () => {
   it('parses the contract example and round-trips it', () => {
@@ -197,5 +204,70 @@ describe('antennas channels and versions', () => {
       where: 'telecom/antennas.json',
       since: '0.20',
     });
+  });
+});
+
+describe('flagged antennas', () => {
+  it('parses the flagged and not-measured contract units', () => {
+    expect(AntennaUnit.parse(contract.flagged).origin).toBe('flagged');
+    const nm = AntennaUnit.parse(contract.notMeasured);
+    expect(nm.widthM).toBeUndefined();
+    expect(nm.box.extents).toEqual([0.2, 0.2, 0.2]);
+  });
+  it('still needs the sizes and values of a detected unit', () => {
+    const noWidth = without(panel, 'widthM');
+    expect(AntennaUnit.safeParse(noWidth).success).toBe(false);
+    const noTilt = without(panel, 'downtiltDeg');
+    expect(AntennaUnit.safeParse(noTilt).success).toBe(false);
+    expect(AntennaUnit.safeParse({ ...noTilt, origin: 'detected' }).success).toBe(false);
+  });
+  it('lets a flagged unit go without values and with any kind', () => {
+    const bare = without(panel, 'downtiltDeg', 'widthM');
+    expect(AntennaUnit.safeParse({ ...bare, origin: 'flagged' }).success).toBe(true);
+  });
+  it('refuses a user value whose quality basis is not user', () => {
+    const bad = {
+      ...contract.flagged,
+      centreHeightM: { value: 31, basis: 'user', quality: { basis: 'measured' } },
+    };
+    expect(AntennaUnit.safeParse(bad).success).toBe(false);
+  });
+  it('keeps the replaced measured values and refuses a user value among them', () => {
+    const m = { value: 12, basis: 'measured', quality: { basis: 'measured' } };
+    expect(
+      AntennaUnit.safeParse({ ...contract.flagged, measured: { azimuthGridDeg: m } }).success,
+    ).toBe(true);
+    const u = { value: 12, basis: 'user', quality: { basis: 'user' } };
+    expect(
+      AntennaUnit.safeParse({ ...contract.flagged, measured: { azimuthGridDeg: u } }).success,
+    ).toBe(false);
+    expect(AntennaUnit.safeParse({ ...contract.flagged, measured: { plumbDeg: m } }).success).toBe(
+      false,
+    );
+  });
+  it('validates telecom.flag params', () => {
+    const ok = {
+      unit: 'ant-f-abc',
+      cloud: { layer: 'tower-cloud' },
+      selection: {
+        polygon: [
+          [0, 0],
+          [0.1, 0],
+          [0.1, 0.1],
+        ],
+        viewProj: Array(16).fill(0),
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        anchor: [0.5, 0.5, 0.5],
+      },
+    };
+    expect(TelecomFlagParams.safeParse(ok).success).toBe(true);
+    expect(TelecomFlagParams.safeParse({ ...ok, unit: 'x' }).success).toBe(false);
+    expect(
+      TelecomFlagParams.safeParse({ ...ok, selection: { ...ok.selection, polygon: [[0, 0]] } })
+        .success,
+    ).toBe(false);
+    expect(pipelineParams('telecom.flag')).toBe(TelecomFlagParams);
+    expect(PipelineName.options).toContain('telecom.flag');
+    expect(TELECOM_FLAG_MIN_PACK).toBe('0.23.0');
   });
 });

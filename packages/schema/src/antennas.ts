@@ -16,14 +16,24 @@ export const ANTENNA_CROPS_DIR = 'telecom/crops';
 /** The first pipeline pack that has `telecom.antennas`. */
 export const TELECOM_ANTENNAS_MIN_PACK = '0.14.0';
 export const TELECOM_ANTENNAS_FEATURE = 'Antenna detection';
+/** The first pipeline pack that has `telecom.flag` (and merges around person-owned units). */
+export const TELECOM_FLAG_MIN_PACK = '0.23.0';
+export const TELECOM_FLAG_FEATURE = 'Antenna flagging';
+/** Most vertices of an outline a person draws (the engine's lasso limit). */
+const FLAG_MAX_POLYGON_VERTICES = 256;
 /** Shared with python through `__fixtures__/antennas-contract.json`. */
 export const TOWER_HINT_NEEDED =
   'Could not tell which structure is the tower. Click the tower once in the 3D view and run again.';
+
+const ANTENNA_ID = /^ant-[a-z0-9-]{1,60}$/;
 
 export const AntennaKind = z.enum(['panel', 'short', 'dish', 'other']);
 export type AntennaKind = z.infer<typeof AntennaKind>;
 export const AntennaKindBasis = z.enum(['geometry', 'ai', 'user']);
 export type AntennaKindBasis = z.infer<typeof AntennaKindBasis>;
+/** Found by the detector, or flagged by a person who drew an outline round it. */
+export const AntennaOrigin = z.enum(['detected', 'flagged']);
+export type AntennaOrigin = z.infer<typeof AntennaOrigin>;
 export const AntennaStatus = z.enum(['draft', 'accepted', 'rejected']);
 export type AntennaStatus = z.infer<typeof AntennaStatus>;
 
@@ -47,6 +57,25 @@ export const AntennaValue = z
     path: ['quality', 'basis'],
   });
 export type AntennaValue = z.infer<typeof AntennaValue>;
+
+/** A number a person typed: its quality basis is `user` too. */
+const MeasuredValue = AntennaValue.refine((v) => v.basis !== 'user', {
+  message: 'A measured value is not a user value.',
+  path: ['basis'],
+});
+
+/** The measured values that typed ones replaced, kept for Reset to measured. */
+export const AntennaMeasured = z
+  .object({
+    azimuthGridDeg: MeasuredValue.optional(),
+    downtiltDeg: MeasuredValue.optional(),
+    centreHeightM: MeasuredValue.optional(),
+    widthM: MeasuredValue.optional(),
+    heightM: MeasuredValue.optional(),
+    depthM: MeasuredValue.optional(),
+  })
+  .strict();
+export type AntennaMeasured = z.infer<typeof AntennaMeasured>;
 
 /** Oriented box in project ENZ: centre, unit axes (across, up, outward) and extents (w, h, d). */
 export const AntennaBox = z
@@ -80,10 +109,12 @@ export type AntennaUserFields = z.infer<typeof AntennaUserFields>;
 
 export const AntennaUnit = z
   .object({
-    id: z.string().regex(/^ant-[a-z0-9-]{1,60}$/),
+    id: z.string().regex(ANTENNA_ID),
     name: z.string().min(1).max(40),
     kind: AntennaKind,
     kindBasis: AntennaKindBasis,
+    /** Absent means detected. */
+    origin: AntennaOrigin.optional(),
     ai: DetectionOrigin.extend({ reason: z.string().max(200).optional() }).optional(),
     status: AntennaStatus,
     notFoundInLatest: z.literal(true).optional(),
@@ -95,9 +126,13 @@ export const AntennaUnit = z
     plumbDeg: AntennaValue.optional(),
     elevationDeg: AntennaValue.optional(),
     diameterM: AntennaValue.optional(),
-    widthM: AntennaValue,
-    heightM: AntennaValue,
-    depthM: AntennaValue,
+    /** Box centre elevation a person typed, project vertical datum. */
+    centreHeightM: AntennaValue.optional(),
+    /** Required unless the unit was flagged and could not be measured. */
+    widthM: AntennaValue.optional(),
+    heightM: AntennaValue.optional(),
+    depthM: AntennaValue.optional(),
+    measured: AntennaMeasured.optional(),
     convergenceDeg: z.number().nullable(),
     photos: z.array(AntennaPhoto).max(3),
     /** Project-relative path of the crop. */
@@ -108,8 +143,13 @@ export const AntennaUnit = z
   })
   .strict()
   .superRefine((u, ctx) => {
-    // Units relabelled by AI or a person keep whatever the geometry measured.
-    if (u.kindBasis !== 'geometry') return;
+    if (u.origin !== 'flagged')
+      for (const k of ['widthM', 'heightM', 'depthM'] as const)
+        if (u[k] === undefined)
+          ctx.addIssue({ code: 'custom', message: `A ${u.kind} needs ${k}.`, path: [k] });
+    // Units relabelled by AI or a person keep whatever the geometry measured; flagged ones may
+    // have any kind and no values.
+    if (u.kindBasis !== 'geometry' || u.origin === 'flagged') return;
     const need = (keys: readonly (keyof typeof u)[]) => {
       for (const k of keys)
         if (u[k] === undefined)
@@ -144,6 +184,31 @@ export const TelecomAntennasParams = z
   })
   .strict();
 export type TelecomAntennasParams = z.infer<typeof TelecomAntennasParams>;
+
+/** Job params of `telecom.flag` (python `aio_pipelines/telecom`). */
+export const TelecomFlagParams = z
+  .object({
+    unit: z.string().regex(ANTENNA_ID),
+    /** Draw again for a unit that exists. */
+    redraw: z.literal(true).optional(),
+    cloud: z.object({ layer: z.string().min(1).max(128) }).strict(),
+    selection: z
+      .object({
+        /** Outline in normalised device coordinates. */
+        polygon: z
+          .array(z.tuple([z.number().min(-100).max(100), z.number().min(-100).max(100)]))
+          .min(3)
+          .max(FLAG_MAX_POLYGON_VERTICES),
+        /** Stage local (lined up, as drawn) to clip, column-major. */
+        viewProj: z.array(z.number()).length(16),
+        /** Stage local. */
+        bounds: z.object({ min: Vec3, max: Vec3 }).strict(),
+        anchor: Vec3,
+      })
+      .strict(),
+  })
+  .strict();
+export type TelecomFlagParams = z.infer<typeof TelecomFlagParams>;
 
 export const AntennaRun = z
   .object({

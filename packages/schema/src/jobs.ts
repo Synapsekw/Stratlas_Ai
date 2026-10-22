@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TelecomAntennasParams } from './antennas';
+import { TelecomAntennasParams, TelecomFlagParams } from './antennas';
 import { ThermalDecodeParams } from './thermal';
 import { DetectVlmParams } from './analytics';
 import { ChangeScope, FrameRef, LonLatRing } from './change';
@@ -99,6 +99,8 @@ export const PipelineName = z.enum([
   'pointcloud.clean',
   // Telecom antenna inventory (pipeline pack TELECOM_ANTENNAS_MIN_PACK)
   'telecom.antennas',
+  // Antenna flagging (pipeline pack TELECOM_FLAG_MIN_PACK)
+  'telecom.flag',
   // RF coverage prediction (pipeline pack RF_COVERAGE_MIN_PACK)
   'rf.coverage',
   // Thermal analysis (pipeline pack THERMAL_MIN_PACK)
@@ -368,6 +370,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Detect antennas',
     description:
       'Finds and measures the antennas, dishes and other equipment on a tower crown from a point cloud: type, azimuth, downtilt, plumb and size, with a fit quality for each.',
+  },
+  {
+    name: 'telecom.flag',
+    title: 'Measure a flagged antenna',
+    description:
+      'Measures one antenna, dish or other unit from the cloud points inside an outline a person drew, and adds it to the antenna inventory.',
   },
   {
     name: 'rf.coverage',
@@ -1322,6 +1330,7 @@ const PARAMS = {
   'model.evidence': ModelEvidenceParams,
   'pointcloud.clean': PointcloudCleanParams,
   'telecom.antennas': TelecomAntennasParams,
+  'telecom.flag': TelecomFlagParams,
   'rf.coverage': RfCoverageParams,
   'thermal.decode': ThermalDecodeParams,
   'detect.vlm': DetectVlmParams,
