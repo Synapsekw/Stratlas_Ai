@@ -7,15 +7,17 @@ How the desktop app is packaged, signed and checked. Owner: stream S11 (QA and r
 ```bash
 pnpm install
 pnpm -F @aio/desktop dist:win
+pnpm -F @aio/desktop dist:win:store
 ```
 
 Output in `apps/desktop/dist/`:
 
-| File                                       | What                                                                 |
-| ------------------------------------------ | -------------------------------------------------------------------- |
-| `<Product>-<version>-win-x64-setup.exe`    | Offline NSIS installer: per-user, no admin rights, choose the folder |
-| `<Product>-<version>-win-x64-portable.exe` | Portable build, runs without installing                              |
-| `win-unpacked/`                            | The unpacked app, handy for quick checks                             |
+| File                                       | What                                                                        |
+| ------------------------------------------ | --------------------------------------------------------------------------- |
+| `<Product>-<version>-win-x64-setup.exe`    | Offline NSIS installer: per-user, no admin rights, choose the folder        |
+| `<Product>-<version>-win-x64-portable.exe` | Portable build, runs without installing                                     |
+| `win-unpacked/`                            | The unpacked app, handy for quick checks                                    |
+| `<Product>-<version>-win-x64-store.msix`   | Microsoft Store package, same version, rebuilt with every handed-over build |
 
 Region downloads (Settings, Offline maps) need no external tool: the app extracts PMTiles itself (`apps/desktop/src/main/packs/extract.ts`). The go-pmtiles CLI is only used by `tools/maps/build-packs.mjs` to build the starter packs and is not packaged. The demo projects (synthetic, no client data) ship next to the app (`resources/demo/`) and the first-start welcome opens them. `dist` builds them into `apps/desktop/demo/` with `tools/demo/build-demo.mjs` when they are missing or stale (needs ffmpeg with libx264 and the pipeline Python, `uv sync` in `python/`) and fails when `tools/demo/check-no-client-data.mjs` finds client names, places near a real project, camera metadata or build-machine paths. `pnpm demo:build` and `pnpm demo:check` run the two by hand.
 
@@ -28,6 +30,7 @@ Every installer build given to the founder or a tester gets its own version numb
 - **The app:** `version` in `apps/desktop/package.json`. The installer file names, About, the update feed and the release notes read it.
 - **The pipeline pack:** `version` in `python/pyproject.toml`, then `uv lock` in `python/`. The pack's folder, archive name and manifest read it, and **Settings**, **Processing tools** offers a pack file that is newer than the one in use.
 - **The two rules between them stay as they are** unless one side really needs the other: `APP_RANGE` in `python/src/aio_pipelines/__init__.py` (the apps a pack works with) and `PHOTO_PACK` in `apps/desktop/src/main/photogrammetry.ts` (the oldest pack the app's photo processing takes). `apps/desktop/src/main/jobs/packVersions.test.ts` checks that this repository's app and pack accept each other.
+- **The Store package:** the `.msix` (`dist:win:store`) is rebuilt with every version bump, so `apps/desktop/dist` holds it in the same version as the setup exe and it never lags the installer (founder, 23 Oct 2026).
 
 No `v*` tag and no GitHub Release while testing is internal.
 
@@ -148,10 +151,10 @@ The pipeline pack (the Python processing tools, about 400 MB archived and 1.1 GB
 The Analytics pack carries what local detectors need and the installer cannot: llama.cpp's `llama-server` (CUDA build, MIT) and the Qwen2.5-VL-7B-Instruct model (Q4_K_M weights plus the f16 `mmproj`, Apache-2.0). It is `analytics-pack-<version>-win-x64.tar.gz`, Windows x64 only, version 0.1.0, `appRange` `>=0.25.0 <2.0.0`. The exact releases and SHA-256 values are pinned in `tools/analytics-pack/lock.json` (llama.cpp b11489 with CUDA 13.4 and its cudart, never a floating "latest"). Measured size: 6.21 GB archived, 6.78 GB unpacked, against a budget of 7 GB and 8 GB.
 
 - **Build it:** `pnpm analytics-pack --out <dir> [--cache <dir>]` (`tools/analytics-pack/build.mjs`, see the README there). `--no-model` builds a small pack for testing; it cannot be installed. The manual workflow `.github/workflows/analytics-pack.yml` does the same in CI. Then run `tools/analytics-pack/smoke.py` against the result.
-- **Hand it over like the pipeline pack:** beside the installer, with a note that names the file. It installs with the same installer code (`packInstall.ts`), as a side-by-side version under `<data folder>/runtime/`, and the free-space check copes with archives over 4 GiB (the gzip size field wraps). The Settings section to install it comes in the next merge; until then use the IPC call or set `QUADRION_ANALYTICS_PACK` to a pack folder.
+- **Hand it over like the pipeline pack:** beside the installer in `apps/desktop/dist`, with a note that names the file. It is also in the team kit zip, which holds `READ ME FIRST.txt`, the setup exe, the pipeline pack archive, the Analytics pack archive and the user guide (founder, 23 Oct 2026). The kit is then over 4 GiB, so write it as ZIP64, for example with `tar.exe -a -cf <kit>.zip ...` (bsdtar) or 7-Zip, not PowerShell's `Compress-Archive`. It installs with the same installer code (`packInstall.ts`), as a side-by-side version under `<data folder>/runtime/`, and the free-space check copes with archives over 4 GiB (the gzip size field wraps). The Settings section to install it comes in the next merge; until then use the IPC call or set `QUADRION_ANALYTICS_PACK` to a pack folder.
 - **Not signed**, as for the pipeline pack: hand the archive over the same trusted way as the installer.
 - **Runtime:** main starts `llama-server` on `127.0.0.1` with a per-launch key in the environment (`LLAMA_API_KEY`, never on the command line) and stops it when no detector run is running or queued. A server left by a crash is stopped at the next start. Nothing leaves the computer.
-- **Pipeline pack:** `detect.vlm` changed `python/`, so the release needs a pipeline pack version bump (none on the feature branch).
+- **Pipeline pack:** detector runs (`detect.vlm`) need pipeline pack 0.23.0 or later.
 - **Build fix:** `apps/desktop/src/build/esmShim.ts` places electron-vite's CommonJS shim correctly; without it the build fails on an empty main chunk.
 - **Detector bench:** `tools/detectors/bench.py` (README there) scores a detector against labelled photos. Reference projects are passed on the command line and are never named or copied into the repository.
 
