@@ -12,27 +12,34 @@
   --isl-fill: var(--isl-bg);
   --isl-r: 14px;
   --isl-shoulder: 14px;
+  /* the wrap is the room the notch has (the stage less the toggle's room at both ends, and less
+     the drawer or the docked video at its end: styles.css), and its container: the narrow-stage
+     rules below follow that room. The notch centres in it. */
   position: absolute;
   top: 0;
-  inset-inline: 0;
-  margin-inline: auto;
-  inline-size: fit-content;
-  max-inline-size: calc(100% - var(--sp-6) - 2 * var(--isl-shoulder));
+  inset-inline: var(--isl-toggle-room);
+  container-type: inline-size;
   z-index: var(--z-stage-ui);
   display: flex;
+  justify-content: center;
   align-items: flex-start;
-  gap: var(--sp-4);
   pointer-events: none;
   outline: none;
 }
-.island-wrap:focus-visible > .island {
+.island-wrap:focus-visible .island {
   outline: 1.5px solid var(--acc);
   outline-offset: -2px;
 }
+/* the notch and what hangs beside it */
+.isl-notch {
+  position: relative;
+  display: flex;
+  max-inline-size: 100%;
+}
 /* the shoulders: a square just outside each top corner, filled but for a quarter circle, so the
    notch flows into the stage's top edge */
-.island-wrap::before,
-.island-wrap::after {
+.isl-notch::before,
+.isl-notch::after {
   content: '';
   position: absolute;
   top: 0;
@@ -40,7 +47,7 @@
   block-size: var(--isl-shoulder);
   pointer-events: none;
 }
-.island-wrap::before {
+.isl-notch::before {
   left: calc(var(--isl-shoulder) * -1);
   background: radial-gradient(
     circle at 0 100%,
@@ -48,7 +55,7 @@
     var(--isl-fill) var(--isl-shoulder)
   );
 }
-.island-wrap::after {
+.isl-notch::after {
   right: calc(var(--isl-shoulder) * -1);
   background: radial-gradient(
     circle at 100% 100%,
@@ -400,9 +407,10 @@
   flex-direction: column;
   gap: var(--sp-4);
   padding: var(--sp-4);
-  /* room for five tiles a row, whatever the tab row's width (the tiles wrap under it) */
-  min-inline-size: min(calc(100cqi - var(--sp-6) * 2), 460px);
-  max-inline-size: calc(100cqi - var(--sp-6) * 2);
+  /* room for five tiles a row, whatever the tab row's width (the tiles wrap under it); 100cqi is
+     the wrap's room */
+  min-inline-size: min(100cqi, 460px);
+  max-inline-size: 100cqi;
 }
 /* open, the line is the first row: the tools' own padding is its room */
 .isl-tools > .isl-line {
@@ -558,8 +566,9 @@
   white-space: nowrap;
 }
 
-/* narrow stages: the group tabs drop their names, the shown one keeps it (D6) */
-@container (max-width: 760px) {
+/* narrow stages: the group tabs drop their names, the shown one keeps it (D6); the view switch
+   its names. (The widths are the wrap's room: open, the stage less 32 px; at rest less 104.) */
+@container (max-width: 728px) {
   /* out of sight, still the tab's name */
   .seg.isl-groups button:not([aria-selected='true']) .isl-gl {
     position: absolute;
@@ -600,7 +609,7 @@
 }
 /* narrower still (1100 px wide with a 470 px Volumes or Changes tab, ruling I-R27): the row
    tightens its padding and gaps so the tabs keep fitting before they would scroll */
-@container (max-width: 640px) {
+@container (max-width: 608px) {
   .isl-tools {
     padding: var(--sp-3);
   }
@@ -698,9 +707,10 @@
 }
 
 /* The line keeps clear of the right panel's toggle at the stage's top end (T21 concern 2, T22
-   concern 2): the island centres on the views (styles.css), so the line is at most their width
-   less the toggle's room at both sides, and less what hangs beside the capsule (--isl-aside-w,
-   Island.tsx). A long live name is cut to fit. Open, the tools hide the toggle (above). */
+   concern 2): the wrap, the notch's room, leaves the toggle's room at both ends of the views
+   (styles.css), so the notch stays centred; at rest the line is less what hangs beside the capsule
+   too (--isl-aside-w, Island.tsx). A long live name is cut to fit. Open, the tools hide the
+   toggle (above), so the room is the views less a margin. */
 .island-wrap {
   --isl-toggle-room: calc(var(--sp-5) + 34px + var(--sp-3));
 }
@@ -711,35 +721,27 @@
       var(--sp-3)
   );
 }
+.island-wrap[data-state='tools'] {
+  --isl-toggle-room: var(--sp-6);
+}
 /* Folded, the open tools and the calendar keep clear of the window's own buttons too (I-R57).
    The buttons reach into the stage past the folded strip at its end, and past a rail at its start
-   (right to left, I-R23). The open island takes the room between, the same at both sides so it
-   stays centred: the wrap is that wide and is the island's container, so the narrow-stage rules
-   above (names to icons, then scrolling tabs) follow the room it has, not the whole stage. Under
-   the buttons there is nothing to click. */
+   (right to left, I-R23). The open notch takes the room between, the same at both ends so it
+   stays centred, and the narrow-stage rules above (names to icons, then scrolling tabs) follow
+   that room. Under the buttons there is nothing to click. */
 .ws.right-off .island-wrap:is([data-state='tools'], [data-state='date']) {
   --isl-cap: max(
     var(--caption-inline-start, 0px) - var(--sb-col, 0px),
     var(--caption-inline-end, 0px) - var(--vdock-w, 0px) - var(--rp-col, 0px)
   );
-  inline-size: calc(100cqi - 2 * max(var(--sp-6), var(--isl-cap) + var(--sp-3)));
-  justify-content: center;
-  container-type: inline-size;
+  --isl-toggle-room: max(var(--sp-6), var(--isl-cap) + var(--sp-3));
 }
-/* inside it, 100cqi is the room itself; the layer too, which is max-content wide and gives the
-   capsule its size (Island.tsx) */
-.ws.right-off .island-wrap:is([data-state='tools'], [data-state='date']) :is(.isl-layer, .isl-cal) {
-  max-inline-size: 100cqi;
-}
-.ws.right-off .island-wrap[data-state='tools'] .isl-tools {
-  min-inline-size: min(100cqi, 460px);
+/* the layer is max-content wide and gives the capsule its size (Island.tsx): at most the room */
+.island-wrap :is(.isl-layer, .isl-cal) {
   max-inline-size: 100cqi;
 }
 .island-wrap[data-state='rest'] .isl-layer {
-  max-inline-size: calc(
-    100cqi - max(var(--drawer-inline, 0px), var(--vdock-w, 0px)) - 2 *
-      (var(--isl-toggle-room) + var(--isl-aside-w, 0px) + var(--isl-shoulder))
-  );
+  max-inline-size: calc(100cqi - 2 * (var(--isl-aside-w, 0px) + var(--isl-shoulder) + var(--sp-2)));
 }
 .isl-line > .isl-live-open,
 .isl-line > .isl-live,
@@ -758,7 +760,7 @@
 }
 /* on a narrow stage the live name comes first: the date drops its count, a playing clip its bar
    and telemetry (the view switch is down to its icons already, above) */
-@container (max-width: 560px) {
+@container (max-width: 456px) {
   .isl-line .isl-count,
   .isl-line [data-live='playback'] > :is(.isl-bar, .isl-value) {
     display: none;
@@ -766,8 +768,18 @@
 }
 /* narrower still (Volumes in front at 1100 px): the date keeps its pill, which opens the calendar,
    and leaves its steps */
-@container (max-width: 420px) {
+@container (max-width: 316px) {
   .isl-line .isl-arrow {
     display: none;
+  }
+}
+/* the last of the room: the line closes up */
+@container (max-width: 260px) {
+  .isl-line {
+    gap: 0;
+    padding-inline: var(--sp-2);
+  }
+  .isl-line .isl-sep {
+    margin-inline: var(--sp-2);
   }
 }

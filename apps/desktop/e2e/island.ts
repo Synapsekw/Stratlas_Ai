@@ -217,7 +217,9 @@ export async function islandCutOff(win: Page): Promise<string[]> {
   return win.evaluate(() => {
     const capsule = document.querySelector('.island')?.getBoundingClientRect();
     if (!capsule) return ['no island'];
+    // (one the narrow-stage rules leave out on purpose, the date's steps, is not drawn at all)
     const cut = [...document.querySelectorAll('.isl-tools > .isl-line button, .isl-tabs button')]
+      .filter((b) => b.getClientRects().length > 0)
       .filter((b) => {
         const r = b.getBoundingClientRect();
         return r.width === 0 || r.left < capsule.left - 0.5 || r.right > capsule.right + 0.5;

@@ -98,9 +98,16 @@ const tab = (name: string) =>
   [...host.querySelectorAll<HTMLElement>('[role="tab"]')].find((t) => t.textContent === name);
 const notch = () => host.querySelector<HTMLElement>('.island');
 /** The pointer onto the notch (`buttons`: held down, as in a drag) or off it. */
+let pointerX = 0;
 const pointer = (to: 'enter' | 'leave', buttons = 0) => {
   act(() => {
     notch()?.dispatchEvent(new MouseEvent(`pointer${to}`, { buttons }));
+    // moving onto it: a move to a new place (the notch growing under a still pointer is not one)
+    pointerX += 3;
+    if (to === 'enter')
+      notch()?.dispatchEvent(
+        new MouseEvent('pointermove', { bubbles: true, buttons, clientX: pointerX, clientY: 5 }),
+      );
   });
 };
 const wait = (ms: number) => {
@@ -169,6 +176,16 @@ describe('Island', () => {
 
   it('opens when the pointer rests on the notch, not when it passes over or drags across', async () => {
     await render();
+    // the notch appearing under a pointer that stays put is not a move onto it
+    act(() => {
+      const at = { bubbles: true, clientX: 500, clientY: 5 };
+      document.body.dispatchEvent(new MouseEvent('pointermove', at));
+      notch()?.dispatchEvent(new MouseEvent('pointerenter'));
+      notch()?.dispatchEvent(new MouseEvent('pointermove', at));
+    });
+    wait(200);
+    expect(island()?.dataset.state).toBe('rest');
+    pointer('leave');
     pointer('enter');
     wait(100);
     pointer('leave');

@@ -67,8 +67,9 @@ test.describe('the island on a project with two dates', () => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
     const bar = island(win);
     await expect(bar).toHaveAttribute('data-state', 'rest');
-    // the latest date, short: the year is in its name
-    await expect(islandDate(win).getByTestId('date-bar-open')).toHaveText('13 Apr');
+    // the latest date, short (the year is in its name), and where it stands in the dates
+    await expect(islandDate(win).locator('.isl-day')).toHaveText('13 Apr');
+    await expect(islandDate(win).getByTestId('date-bar-count')).toHaveText('2 of 2');
     await expect(islandDate(win).getByTestId('date-bar-open')).toHaveAccessibleName(/13 Apr 2026/);
 
     await win.locator('[data-scene-view] canvas').first().focus();
@@ -78,7 +79,7 @@ test.describe('the island on a project with two dates', () => {
     await expect(bar.getByRole('group', { name: 'Stage view' })).toBeVisible();
     await win.keyboard.press('Escape');
     await expect(bar).not.toHaveAttribute('data-state', 'tools');
-    await expect(islandDate(win).getByTestId('date-bar-open')).toHaveText('13 Apr');
+    await expect(islandDate(win).locator('.isl-day')).toHaveText('13 Apr');
   });
 
   test('the pointer resting on the notch opens it; kept open, a press outside and a pick leave it open', async ({
@@ -329,12 +330,13 @@ async function openLayout(win: Page) {
       capsule: box(capsule),
       // the line's and the tab row's controls: the view switch, the date, Keep open and Close,
       // the tabs and Jobs
-      controls: [
-        ...document.querySelectorAll('.isl-tools > .isl-line button, .isl-tabs button'),
-      ].map((b) => ({
-        name: b.getAttribute('aria-label') ?? b.textContent.trim(),
-        box: box(b),
-      })),
+      controls: [...document.querySelectorAll('.isl-tools > .isl-line button, .isl-tabs button')]
+        // (those the narrow-stage rules leave out on purpose, the date's steps, are not drawn)
+        .filter((b) => b.getClientRects().length > 0)
+        .map((b) => ({
+          name: b.getAttribute('aria-label') ?? b.textContent.trim(),
+          box: box(b),
+        })),
       tabsScroll: (() => {
         const tabs = document.querySelector('.isl-tabs [role="tablist"]');
         return tabs ? tabs.scrollWidth - tabs.clientWidth : -1;

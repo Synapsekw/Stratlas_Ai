@@ -2360,7 +2360,10 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 /* the island centres on the views beside a docked video, and on the stage the workbench drawer
    leaves uncovered (I-R42: the drawer sets --drawer-inline on the stage while it is open) */
 .ws > .stage > .island-wrap {
-  inset-inline-end: max(var(--drawer-inline, 0px), var(--vdock-w, 0px));
+  /* (the wrap is the notch's room, less the toggle's room at both ends: island.css) */
+  inset-inline-end: calc(
+    max(var(--drawer-inline, 0px), var(--vdock-w, 0px)) + var(--isl-toggle-room, 0px)
+  );
   transition: inset-inline-end var(--d-3) var(--ease);
 }
 /* the status chips: annotation tools, the cut-away state and the compare notice (no playing

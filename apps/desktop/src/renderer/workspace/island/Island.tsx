@@ -289,17 +289,14 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     },
     [],
   );
-  // what hangs beside the capsule (the bubble, a comparison's controls) and its gap: the line
-  // leaves room for it before the right panel's toggle (--isl-aside-w, island.css)
+  // what hangs beside the capsule (the bubble, a comparison's controls): the line leaves room for
+  // it, past the shoulder, before the right panel's toggle (--isl-aside-w, island.css)
   useEffect(() => {
     const aside = asideRef.current;
     const wrap = root.current;
     if (!aside || !wrap || typeof ResizeObserver === 'undefined') return;
     const write = () => {
-      const w = aside.offsetWidth;
-      // the aside stands the wrap's gap away from the capsule
-      const gap = Number.parseFloat(getComputedStyle(wrap).columnGap) || 0;
-      wrap.style.setProperty('--isl-aside-w', `${String(w > 0 ? w + gap : 0)}px`);
+      wrap.style.setProperty('--isl-aside-w', `${String(aside.offsetWidth)}px`);
     };
     write();
     const ro = new ResizeObserver(write);
@@ -347,32 +344,51 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         if (!stay()) dispatch({ type: 'leave' });
       }, LEAVE_MS);
     };
-    const onEnter = (e: PointerEvent) => {
+    // where the pointer last was: the notch growing or appearing under a pointer that stays put
+    // (the browser says it entered) is not the person moving onto it
+    let at: { x: number; y: number } | null = null;
+    let armed = false;
+    const onWindowMove = (e: PointerEvent) => {
+      at = { x: e.clientX, y: e.clientY };
+    };
+    const onEnter = () => {
       hovered.current = true;
       clearTimeout(leaveTimer);
-      // a drag across it (orbiting the view) is not a rest on it
-      if (state.current.open !== 'rest' || e.buttons) return;
-      clearTimeout(openTimer);
+    };
+    // (the notch's listener runs before the window's: `at` is still where the pointer was)
+    const onMove = (e: PointerEvent) => {
+      const still = at !== null && at.x === e.clientX && at.y === e.clientY;
+      // a drag across it (orbiting the view) is not a rest on it either
+      if (armed || state.current.open !== 'rest' || e.buttons || still) return;
+      armed = true;
       openTimer = setTimeout(() => {
+        armed = false;
         if (hovered.current) dispatch({ type: 'hover' });
       }, HOVER_MS);
     };
     const onLeave = () => {
       hovered.current = false;
+      armed = false;
       clearTimeout(openTimer);
       if (state.current.open === 'tools') leaveSoon.current();
     };
     // a press on the line at rest (a view, a date step) uses it as it is: no opening after it
+    // until the pointer has left and come back
     const onPress = () => {
       clearTimeout(openTimer);
+      armed = true;
     };
     el.addEventListener('pointerenter', onEnter);
     el.addEventListener('pointerleave', onLeave);
+    el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerdown', onPress);
+    window.addEventListener('pointermove', onWindowMove);
     return () => {
       el.removeEventListener('pointerenter', onEnter);
       el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerdown', onPress);
+      window.removeEventListener('pointermove', onWindowMove);
       clearTimeout(openTimer);
       clearTimeout(leaveTimer);
     };
@@ -595,21 +611,41 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         }
       }}
     >
-      <div
-        ref={capsule}
-        className="island"
-        onClick={(e) => {
-          // the notch's own buttons (the live reading brings its tab back, D10) do their own thing
-          if (open || (e.target as Element).closest('button')) return;
-          // with the sidebar folded the drawer took this click (Drawer.tsx, in the capture
-          // phase): one gesture opens one surface, so the tools stay shut (I-R64)
-          if (drawerStore.getState().opened !== null) return;
-          // a click on the notch itself (not one of its buttons) opens the tools
-          dispatch({ type: 'toggleTools' });
-        }}
-      >
-        <div ref={layer} className="isl-layer" key={view}>
-          {content}
+      <div className="isl-notch">
+        <div
+          ref={capsule}
+          className="island"
+          onClick={(e) => {
+            // the notch's own buttons (the live reading brings its tab back, D10) do their own thing
+            if (open || (e.target as Element).closest('button')) return;
+            // with the sidebar folded the drawer took this click (Drawer.tsx, in the capture
+            // phase): one gesture opens one surface, so the tools stay shut (I-R64)
+            if (drawerStore.getState().opened !== null) return;
+            // a click on the notch itself (not one of its buttons) opens the tools
+            dispatch({ type: 'toggleTools' });
+          }}
+        >
+          <div ref={layer} className="isl-layer" key={view}>
+            {content}
+          </div>
+        </div>
+        {/* beside the capsule, outside the centring: the bubble and a comparison's controls */}
+        <div ref={asideRef} className="isl-aside">
+          {secondary && !open && (
+            <Button
+              variant="quiet"
+              className="isl-bubble"
+              aria-label={t('island.swap')}
+              tip={liveText(secondary)}
+              onClick={() => {
+                dispatch({ type: 'swap' });
+              }}
+            >
+              <LiveGlyph item={secondary} />
+            </Button>
+          )}
+          {/* Compare dates itself is the View tile; while comparing, Leave and its tools show here */}
+          <CompareButton split={split} whileComparing />
         </div>
       </div>
       {notice && (
@@ -617,24 +653,6 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
           {t('island.tNotice')}
         </p>
       )}
-      {/* beside the capsule, outside the centring: the bubble and a comparison's controls */}
-      <div ref={asideRef} className="isl-aside">
-        {secondary && !open && (
-          <Button
-            variant="quiet"
-            className="isl-bubble"
-            aria-label={t('island.swap')}
-            tip={liveText(secondary)}
-            onClick={() => {
-              dispatch({ type: 'swap' });
-            }}
-          >
-            <LiveGlyph item={secondary} />
-          </Button>
-        )}
-        {/* Compare dates itself is the View tile; while comparing, Leave and its tools show here */}
-        <CompareButton split={split} whileComparing />
-      </div>
     </div>
   );
 }
