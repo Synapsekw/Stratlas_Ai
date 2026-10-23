@@ -45,29 +45,30 @@ describe('pack gate for telecom.antennas', () => {
 });
 
 describe('pack gate for telecom.flag', () => {
-  it('requires 0.23.0 for telecom.flag', () => {
+  it('requires 0.24.0 for telecom.flag', () => {
     expect(antennaPackRefusal('telecom.flag', '0.22.0')).toBe(
-      'Antenna flagging needs processing tools 0.23.0 or later (these are 0.22.0). Update them in Settings, Processing tools.',
+      'Antenna flagging needs processing tools 0.24.0 or later (these are 0.22.0). Update them in Settings, Processing tools.',
     );
-    expect(antennaPackRefusal('telecom.flag', '0.23.0')).toBeNull();
+    expect(antennaPackRefusal('telecom.flag', '0.23.0')).toContain('0.24.0');
+    expect(antennaPackRefusal('telecom.flag', '0.24.0')).toBeNull();
     expect(antennaPackRefusal('telecom.flag', 'dev')).toBeNull();
     expect(antennaPackRefusal('telecom.flag', null)).toBeNull();
   });
   it('lists the feature', () => {
-    expect(ANTENNA_FLAG_PACK_FEATURE).toEqual({ label: 'Antenna flagging', minVersion: '0.23.0' });
+    expect(ANTENNA_FLAG_PACK_FEATURE).toEqual({ label: 'Antenna flagging', minVersion: '0.24.0' });
   });
-  it('refuses telecom.antennas below 0.23.0 only when a person owns something in the file', () => {
+  it('refuses telecom.antennas below 0.24.0 only when a person owns something in the file', () => {
     const msg =
-      'Antenna flagging needs processing tools 0.23.0 or later (these are 0.22.0). Update them in Settings, Processing tools.';
+      'Antenna flagging needs processing tools 0.24.0 or later (these are 0.22.0). Update them in Settings, Processing tools.';
     expect(antennaPackRefusal('telecom.antennas', '0.22.0', withFlagged())).toBe(msg);
     expect(antennaPackRefusal('telecom.antennas', '0.22.0', detectedOnly())).toBeNull();
     expect(antennaPackRefusal('telecom.antennas', '0.22.0', null)).toBeNull();
-    expect(antennaPackRefusal('telecom.antennas', '0.23.0', withFlagged())).toBeNull();
+    expect(antennaPackRefusal('telecom.antennas', '0.24.0', withFlagged())).toBeNull();
     expect(antennaPackRefusal('telecom.antennas', 'dev', withFlagged())).toBeNull();
   });
-  it('refuses telecom.antennas below 0.23.0 when the file is there but cannot be read', () => {
-    expect(antennaPackRefusal('telecom.antennas', '0.22.0', 'unreadable')).toContain('0.23.0');
-    expect(antennaPackRefusal('telecom.antennas', '0.23.0', 'unreadable')).toBeNull();
+  it('refuses telecom.antennas below 0.24.0 when the file is there but cannot be read', () => {
+    expect(antennaPackRefusal('telecom.antennas', '0.22.0', 'unreadable')).toContain('0.24.0');
+    expect(antennaPackRefusal('telecom.antennas', '0.24.0', 'unreadable')).toBeNull();
   });
   it('knows person-owned units', () => {
     expect(hasPersonOwned(detectedOnly())).toBe(false);

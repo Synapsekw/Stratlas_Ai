@@ -268,6 +268,6 @@ describe('flagged antennas', () => {
     ).toBe(false);
     expect(pipelineParams('telecom.flag')).toBe(TelecomFlagParams);
     expect(PipelineName.options).toContain('telecom.flag');
-    expect(TELECOM_FLAG_MIN_PACK).toBe('0.23.0');
+    expect(TELECOM_FLAG_MIN_PACK).toBe('0.24.0');
   });
 });

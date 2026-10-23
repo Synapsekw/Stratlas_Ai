@@ -17,7 +17,7 @@ export const ANTENNA_CROPS_DIR = 'telecom/crops';
 export const TELECOM_ANTENNAS_MIN_PACK = '0.14.0';
 export const TELECOM_ANTENNAS_FEATURE = 'Antenna detection';
 /** The first pipeline pack that has `telecom.flag` (and merges around person-owned units). */
-export const TELECOM_FLAG_MIN_PACK = '0.23.0';
+export const TELECOM_FLAG_MIN_PACK = '0.24.0';
 export const TELECOM_FLAG_FEATURE = 'Antenna flagging';
 /** Most vertices of an outline a person draws (the engine's lasso limit). */
 const FLAG_MAX_POLYGON_VERTICES = 256;

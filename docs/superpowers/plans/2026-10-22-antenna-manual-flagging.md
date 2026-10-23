@@ -21,7 +21,7 @@
 - Units are stored in the inventory's survey date frame (`run.captureId`), without its line-up shift; the 3D view draws them shifted.
 - Every value keeps its basis: typed values are `{ value, basis: 'user', quality: { basis: 'user' } }`; a not-measured unit has no `widthM`, `heightM`, `depthM`, `azimuthGridDeg`, `downtiltDeg`, `plumbDeg`, `elevationDeg` or `diameterM` unless the person typed one.
 - Founder answers (22 Oct, in the spec): flagging needs a prior detection run, and without an inventory the Flag antenna tool is disabled with "Run antenna detection first"; each typed value has a **Reset to measured** control, hidden when there is no measured value to go back to.
-- `aio.antennas/1` stays version 1 (additive optional fields, as the 17 Oct `groundZ` and `captureId` additions). Pack bump to `0.23.0` (next free minor; if `main` has taken 0.23.0 by merge time, take the next one and update every place Task 4 lists).
+- `aio.antennas/1` stays version 1 (additive optional fields, as the 17 Oct `groundZ` and `captureId` additions). Pack bump to `0.24.0` (next free minor; if `main` has taken 0.24.0 by merge time, take the next one and update every place Task 4 lists).
 - New file paths in main go through `@aio/project/fs` (`fileInside`/`requireInside`). No new environment variable reaches Python (the `jobBaseEnv` allowlist in `apps/desktop/src/main/jobs/runner.ts` stays as it is). Job params carry no file paths.
 - All new user-facing strings live in `packages/ui/src/i18n/en.ts` and are added by Task 9 only. No em or en dashes in user-facing text.
 - Python in this worktree: the main checkout's venv read-only with the worktree sources first. From `python/`: `PYTHONPATH="src;tests" PYTHONDONTWRITEBYTECODE=1 "E:/Dev/AIO Software/python/.venv/Scripts/python.exe" -m pytest <tests> -q`. Check once that `python -c "import aio_pipelines; print(aio_pipelines.__file__)"` under that `PYTHONPATH` names the worktree. Run `ruff format` and `ruff check` on changed Python yourself.
@@ -48,7 +48,7 @@
 | `python/src/aio_pipelines/telecom/flag.py` (new)                                             | Pure: select points in polygon and bounds, measure a selection, the not-measured unit                                                 |
 | `python/src/aio_pipelines/telecom/boxes.py`                                                  | `_group_unit` exposed as `unit_from_faces` (the old name stays an alias)                                                              |
 | `python/src/aio_pipelines/telecom/flag_pipeline.py` (new)                                    | The `telecom.flag` job: select, measure, photos, commit                                                                               |
-| `python/src/aio_pipelines/pipelines.py`, `python/pyproject.toml`, `python/uv.lock`           | Register the job; pack 0.23.0                                                                                                         |
+| `python/src/aio_pipelines/pipelines.py`, `python/pyproject.toml`, `python/uv.lock`           | Register the job; pack 0.24.0                                                                                                         |
 | `apps/desktop/src/main/telecomPack.ts`, `apps/desktop/src/main/index.ts`                     | Pack refusal for `telecom.flag`, and for `telecom.antennas` on an inventory with person-owned units                                   |
 | `packages/engine/src/tools/pcpolygon.ts` (new), `packages/engine/src/index.ts`               | Click-by-click polygon tool with SVG outline                                                                                          |
 | `packages/pointcloud/src/cleanup/count.ts`, `packages/pointcloud/src/index.ts`               | `collectDrawn`: the loaded, drawn points passing a test, as local xyz                                                                 |
@@ -81,9 +81,9 @@ Owned by Task 1. Row for `docs/architecture/contract-changes.md`:
 
 | Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Why                                                                         | Streams affected                                   | Approved by                                               |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| 2026-10-22 | `AntennaUnit` gains optional `origin` (`'detected' \| 'flagged'`, absent = detected) and optional `centreHeightM` (`AntennaValue`, the box centre elevation a person typed) and optional `measured` (strict map of `azimuthGridDeg`, `downtiltDeg`, `centreHeightM`, `widthM`, `heightM`, `depthM` to the non-`user` `AntennaValue` a typed value replaced, for Reset to measured). `widthM`, `heightM` and `depthM` become optional in the object; the refinement still requires them unless `origin` is `flagged`, and skips the per-kind value rule for flagged units. New pipeline `telecom.flag` with `TelecomFlagParams` (`unit`, optional `redraw`, `cloud.layer`, `selection` of NDC `polygon`, local `viewProj`, local `bounds` and `anchor`), min pack `TELECOM_FLAG_MIN_PACK` 0.23.0; `telecom.antennas` on an inventory with person-owned units also needs 0.23.0. `aio.antennas/1` stays version 1; older readers do not read the new fields (strict objects), so forward compatibility is not claimed. | Manual antenna flagging and correction spec, section 3 and decisions 1 to 6 | @aio/schema, python pack, desktop (main, renderer) | Founder go-ahead on the manual flagging spec, 22 Oct 2026 |
+| 2026-10-22 | `AntennaUnit` gains optional `origin` (`'detected' \| 'flagged'`, absent = detected) and optional `centreHeightM` (`AntennaValue`, the box centre elevation a person typed) and optional `measured` (strict map of `azimuthGridDeg`, `downtiltDeg`, `centreHeightM`, `widthM`, `heightM`, `depthM` to the non-`user` `AntennaValue` a typed value replaced, for Reset to measured). `widthM`, `heightM` and `depthM` become optional in the object; the refinement still requires them unless `origin` is `flagged`, and skips the per-kind value rule for flagged units. New pipeline `telecom.flag` with `TelecomFlagParams` (`unit`, optional `redraw`, `cloud.layer`, `selection` of NDC `polygon`, local `viewProj`, local `bounds` and `anchor`), min pack `TELECOM_FLAG_MIN_PACK` 0.24.0; `telecom.antennas` on an inventory with person-owned units also needs 0.24.0. `aio.antennas/1` stays version 1; older readers do not read the new fields (strict objects), so forward compatibility is not claimed. | Manual antenna flagging and correction spec, section 3 and decisions 1 to 6 | @aio/schema, python pack, desktop (main, renderer) | Founder go-ahead on the manual flagging spec, 22 Oct 2026 |
 
-Pack bump: yes, minor, `0.22.0` → `0.23.0` (new job plus a merge rule change), the way `82c00e93c` moved thermal to 0.22.0: `python/pyproject.toml`, `python/uv.lock`, the constant and the tests that pin it. `APP_RANGE` stays `>=0.22.0 <2.0.0` (an older app never sends `telecom.flag`). No new IPC channel: the renderer uses `jobs:start`, `telecom:readAntennas` and `telecom:writeAntennas`.
+Pack bump: yes, minor, `0.22.0` → `0.24.0` (new job plus a merge rule change), the way `82c00e93c` moved thermal to 0.22.0: `python/pyproject.toml`, `python/uv.lock`, the constant and the tests that pin it. `APP_RANGE` stays `>=0.22.0 <2.0.0` (an older app never sends `telecom.flag`). No new IPC channel: the renderer uses `jobs:start`, `telecom:readAntennas` and `telecom:writeAntennas`.
 
 ## Execution DAG
 
@@ -92,7 +92,7 @@ Pack bump: yes, minor, `0.22.0` → `0.23.0` (new job plus a merge rule change),
 | 1    | Schema contract                         | none         | `@aio/schema`, docs                      |
 | 2    | Merge keeps person-owned units          | none         | python pack                              |
 | 3    | Measure a point selection               | none         | python pack                              |
-| 4    | The `telecom.flag` job and pack 0.23.0  | 1, 2, 3      | python pack, `@aio/schema` (version pin) |
+| 4    | The `telecom.flag` job and pack 0.24.0  | 1, 2, 3      | python pack, `@aio/schema` (version pin) |
 | 5    | Pack refusals in main                   | 1            | `@aio/desktop` (main)                    |
 | 6    | Polygon tool and drawn-point collection | none         | `@aio/engine`, `@aio/pointcloud`         |
 | 7    | Pure renderer helpers                   | 1            | `@aio/desktop` (renderer)                |
@@ -133,7 +133,7 @@ Shared-file notes: `antennas-contract.json` is written by Task 1 and only read b
 - Produces:
   - `AntennaOrigin = z.enum(['detected', 'flagged'])`; `AntennaUnit.origin?: AntennaOrigin`; `AntennaUnit.centreHeightM?: AntennaValue`; `widthM`, `heightM`, `depthM` optional in the type.
   - `AntennaMeasured` (strict object, keys `azimuthGridDeg`, `downtiltDeg`, `centreHeightM`, `widthM`, `heightM`, `depthM`, each optional, each an `AntennaValue` whose basis is not `user`); `AntennaUnit.measured?: AntennaMeasured` (the measured value a typed one replaced; read by Reset to measured).
-  - `TELECOM_FLAG_MIN_PACK = '0.23.0'`, `TELECOM_FLAG_FEATURE = 'Antenna flagging'`.
+  - `TELECOM_FLAG_MIN_PACK = '0.24.0'`, `TELECOM_FLAG_FEATURE = 'Antenna flagging'`.
   - `TelecomFlagParams` (strict): `{ unit: AntennaUnit['id'] regex, redraw?: true, cloud: { layer: string 1..128 }, selection: { polygon: [x, y][] 3..MAX_LASSO_VERTICES (each in -100..100), viewProj: number[16], bounds: { min: Vec3, max: Vec3 }, anchor: Vec3 } }`. `viewProj` is stage local (lined up, as drawn) to clip, column-major; `bounds` and `anchor` are stage local.
   - `PipelineName` gains `'telecom.flag'` (descriptor title `Measure a flagged antenna`, description `Measures one antenna, dish or other unit from the cloud points inside an outline a person drew, and adds it to the antenna inventory.`).
   - Contract fixture keys `flagged` (a measured flagged panel with a typed `azimuthGridDeg` of basis `user` and a `centreHeightM`) and `notMeasured` (flagged, kind `other`, `support` 12, placeholder box extents `[0.2, 0.2, 0.2]`, no sizes).
@@ -201,7 +201,7 @@ it('validates telecom.flag params', () => {
   ).toBe(false);
   expect(pipelineParams('telecom.flag')).toBe(TelecomFlagParams);
   expect(PipelineName.options).toContain('telecom.flag');
-  expect(TELECOM_FLAG_MIN_PACK).toBe('0.23.0');
+  expect(TELECOM_FLAG_MIN_PACK).toBe('0.24.0');
 });
 ```
 
@@ -270,12 +270,12 @@ Rules (module docstring updated to say them):
 
 ---
 
-### Task 4: The `telecom.flag` job and pack 0.23.0
+### Task 4: The `telecom.flag` job and pack 0.24.0
 
 **Files:**
 
 - Create: `python/src/aio_pipelines/telecom/flag_pipeline.py`
-- Modify: `python/src/aio_pipelines/pipelines.py:45, 108`, `python/pyproject.toml:3`, `python/uv.lock` (the `aio-pipelines` version line), `python/src/aio_pipelines/__init__.py` (one clause in the `APP_RANGE` comment: pack 0.23.0 adds `telecom.flag`, keeps the floor)
+- Modify: `python/src/aio_pipelines/pipelines.py:45, 108`, `python/pyproject.toml:3`, `python/uv.lock` (the `aio-pipelines` version line), `python/src/aio_pipelines/__init__.py` (one clause in the `APP_RANGE` comment: pack 0.24.0 adds `telecom.flag`, keeps the floor)
 - Test: `python/tests/test_telecom_flag_pipeline.py` (new)
 
 **Interfaces:**
@@ -300,9 +300,9 @@ Steps:
   - `test_rerun_keeps_flagged_and_typed`: flag, type `azimuthGridDeg` (basis `user`) into the file, run `telecom.antennas` again: the flagged unit is there once with the typed azimuth.
   - `test_never_uses_the_network`: run with `socket.socket` patched to raise; the job completes.
 - [ ] **Step 2: Run** `tests/test_telecom_flag_pipeline.py -q`. Expected: FAIL.
-- [ ] **Step 3: Implement** the job and register it; bump the pack to 0.23.0.
+- [ ] **Step 3: Implement** the job and register it; bump the pack to 0.24.0.
 - [ ] **Step 4: Run** `tests/test_telecom_flag_pipeline.py tests/test_telecom_pipeline.py tests/test_app_range.py -q` and `ruff format --check src tests && ruff check src tests`. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(pipelines): telecom.flag measures an outlined antenna into the inventory` and `chore(pack): antenna flagging takes pipeline pack 0.23.0` (two commits).
+- [ ] **Step 5: Commit** `feat(pipelines): telecom.flag measures an outlined antenna into the inventory` and `chore(pack): antenna flagging takes pipeline pack 0.24.0` (two commits).
 
 ---
 
@@ -316,14 +316,14 @@ Steps:
 **Interfaces:**
 
 - Produces: `antennaPackRefusal(pipeline: string, packVersion: string | null, inventory?: AntennasFile | null): string | null`; `hasPersonOwned(file: AntennasFile): boolean` (any unit with `origin === 'flagged'` or a value of basis `user`); `ANTENNA_FLAG_PACK_FEATURE = { label: TELECOM_FLAG_FEATURE, minVersion: TELECOM_FLAG_MIN_PACK }`.
-- Rules: `telecom.flag` below 0.23.0 → `Antenna flagging needs processing tools 0.23.0 or later (these are X). Update them in Settings, Processing tools.`; `telecom.antennas` below 0.23.0 with `hasPersonOwned(inventory)` → the same sentence. `dev` and `null` pass, as today.
+- Rules: `telecom.flag` below 0.24.0 → `Antenna flagging needs processing tools 0.24.0 or later (these are X). Update them in Settings, Processing tools.`; `telecom.antennas` below 0.24.0 with `hasPersonOwned(inventory)` → the same sentence. `dev` and `null` pass, as today.
 - In `index.ts`, for those two pipelines only, read the inventory with `fileInside(req.project, ANTENNAS_FILE)` from `@aio/project/fs`, `AntennasFile.safeParse` the JSON, and pass it (null on any failure).
 
-- [ ] **Step 1: Write the failing tests** in `telecomPack.test.ts`: refuses `telecom.flag` on `'0.22.0'`, passes `'0.23.0'` and `'dev'`; refuses `telecom.antennas` on `'0.22.0'` with the contract `flagged` unit in the file; passes it with only detected units; `hasPersonOwned` true for a detected unit with one `user` value.
+- [ ] **Step 1: Write the failing tests** in `telecomPack.test.ts`: refuses `telecom.flag` on `'0.22.0'`, passes `'0.24.0'` and `'dev'`; refuses `telecom.antennas` on `'0.22.0'` with the contract `flagged` unit in the file; passes it with only detected units; `hasPersonOwned` true for a detected unit with one `user` value.
 - [ ] **Step 2: Run** `pnpm --filter @aio/desktop exec vitest run src/main/telecomPack.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** the same and `pnpm --filter @aio/desktop exec vitest run src/main/jobsStart.test.ts`. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(desktop): ask for pack 0.23.0 before flagging antennas`.
+- [ ] **Step 5: Commit** `feat(desktop): ask for pack 0.24.0 before flagging antennas`.
 
 ---
 

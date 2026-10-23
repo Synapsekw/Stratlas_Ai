@@ -85,7 +85,7 @@ export function hasPersonOwned(file: AntennasFile): boolean {
 /**
  * Why `jobs:start` refuses `telecom.antennas` or `telecom.flag` on the installed pack, or null. A
  * development pack (`dev`) and no pack (the job runner says so itself) pass. A re-detect below
- * 0.23.0 is refused only when the file holds something a person owns (`inventory`), or when it is
+ * 0.24.0 is refused only when the file holds something a person owns (`inventory`), or when it is
  * there but unreadable (it may).
  */
 export function antennaPackRefusal(
