@@ -1,13 +1,16 @@
 /**
- * The stage island (D1 to D10): one capsule at the top centre of the stage. At rest the survey
- * date; near the pointer the date's arrows, the view and Tools; a live reading beside the date;
- * a second live item as a bubble that swaps with it; open, the view switch, the group tabs and a
- * group's quick row. Its size morphs between the states (instant under reduced motion). A group's
- * full set is its workbench in the right sidebar; the island goes back to rest when it opens one.
+ * The stage notch (the island, D1 to D10): hung from the top centre of the stage. At rest its one
+ * line: the 3D / Map / Split switch, the survey date with its arrows, the live reading and the
+ * chevron that opens the tools; a second live item as a bubble beside it that swaps with it. The
+ * pointer resting on it, a click on it, the chevron or T opens it: the line gains Keep open and
+ * Close, the group tabs and Jobs come under it, and a group's quick row under them. Unpinned it
+ * closes when the pointer leaves, on Esc or a press outside, and once a group's workbench (its
+ * full set, in the right sidebar) opens; kept open (pinned, on this computer) none of those
+ * close it. Its size morphs between the states (instant under reduced motion).
  */
 import { annotateUi } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
-import { announce, Button, Icon, matchShortcut, shortcutHint, useFocusTrap, useT } from '@aio/ui';
+import { announce, Button, Icon, matchShortcut, useFocusTrap, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
 import {
@@ -27,30 +30,31 @@ import type { StageMode } from '../../store';
 import { CompareButton, useCompareDates } from '../CompareControls';
 import { focusedSide, type Side } from '../splitModel';
 import { paneCapture, type SplitModel } from '../SplitPanes';
-import { takeTNotice } from '../stagePrefs';
+import { readIslandPin, takeTNotice, writeIslandPin } from '../stagePrefs';
 import { useTimeline } from '../timeline';
 import type { TabId } from '../workbench/tabsModel';
-import { MODES, type GroupCtx } from './groups';
+import type { GroupCtx } from './groups';
 import { drawerStore } from '../workbench/drawerStore';
 import { liveTab, useHasVolumeMeasurements } from '../workbench/view';
 import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
-import { IslandTools } from './IslandTools';
+import { IslandModes, IslandTools } from './IslandTools';
 import {
   islandGroups,
+  islandInitial,
   islandReducer,
   islandRest,
   pickLive,
   type GroupId,
-  type IslandState,
 } from './islandModel';
 import { livePairKey, useIslandLive } from './useIslandLive';
 import './island.css';
 
-const INITIAL: IslandState = { open: 'rest', group: 'view', preview: null, swapped: false };
-/** The pointer within this many px of the stage's top edge wakes the island. */
-const NEAR_PX = 88;
+/** The pointer resting this long on the notch opens it (leaving sooner does not). */
+const HOVER_MS = 150;
+/** Unpinned, the notch closes this long after the pointer leaves it (unless it comes back). */
+const LEAVE_MS = 300;
 /** The one-time T notice stays this long at most. */
 const NOTICE_MS = 8000;
 /** Live readings are said at most once a second, and only when what is said changes. */
@@ -89,6 +93,19 @@ function useSayLive(text: string): void {
   }, [text]);
 }
 
+/** Keyboard focus in `box` (or in a popover one of its controls opened): it keeps the notch open. */
+function keyboardIn(box: HTMLElement | null): boolean {
+  const at = document.activeElement;
+  if (!(at instanceof HTMLElement)) return false;
+  if (!box?.contains(at) && !at.closest('.surface-pop')) return false;
+  try {
+    // a click leaves focus on the button it pressed: that is the pointer's, not the keyboard's
+    return at.matches(':focus-visible');
+  } catch {
+    return true;
+  }
+}
+
 export interface IslandProps {
   stage: EngineStage | null;
   /** The stage view (3D, map or split). */
@@ -103,7 +120,7 @@ export interface IslandProps {
 
 export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const t = useT();
-  const [s, dispatch] = useReducer(islandReducer, INITIAL);
+  const [s, dispatch] = useReducer(islandReducer, false, () => islandInitial(readIslandPin()));
   const [side, setSide] = useState<Side>('left');
   // the first T on this computer says the timeline moved to View
   const [notice, setNotice] = useState(false);
@@ -189,39 +206,30 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   useSayLive(primary ? liveSay(primary) : '');
 
   const open = s.open === 'tools' || s.open === 'date';
-  const expanded = s.open === 'ready';
   const view = `${s.open}:${primary?.kind ?? ''}`;
 
-  // focus handed back on close does not wake the island again
-  const returning = useRef(false);
-  // Shift+Tab woke the island from a control of the line at rest (onFocus): focus its end
-  const wakeToEnd = useRef(false);
-  // when Shift+Tab was last pressed: focus it moves is the person's, not a program's
-  const shiftTabAt = useRef(-Infinity);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Tab' && e.shiftKey) shiftTabAt.current = performance.now();
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('keydown', onKey, true);
-    };
-  }, []);
+  // the latest state, for the listeners below
+  const state = useRef(s);
   useLayoutEffect(() => {
-    if (!wakeToEnd.current || s.open !== 'ready') return;
-    wakeToEnd.current = false;
-    const all = layer.current?.querySelectorAll<HTMLElement>('button:not([disabled])');
-    all?.[all.length - 1]?.focus();
-  }, [s.open]);
+    state.current = s;
+  });
+  // kept open on this computer
+  useEffect(() => {
+    writeIslandPin(s.pinned);
+  }, [s.pinned]);
+
+  // opened from the keyboard (T, Enter on the notch, the chevron by key), focus goes to the picked
+  // tab; opened by the pointer it stays where it is
+  const focusOnOpen = useRef(false);
   const close = useCallback(() => {
     dispatch({ type: 'escape' });
-    returning.current = true;
     root.current?.focus();
-    returning.current = false;
   }, []);
-  // the island goes back to rest once a tile has opened its panel in the sidebar (D4), focus
-  // back on the island rather than lost with the tile
-  const done = close;
+  // a tile has opened its panel in the sidebar (D4): unpinned, the notch goes back to rest, focus
+  // on it rather than lost with the tile; pinned, it stays as it is
+  const done = useCallback(() => {
+    if (!state.current.pinned) close();
+  }, [close]);
   const showBench = useCallback(
     (tab: TabId) => {
       openBenchFromIsland(tab);
@@ -301,43 +309,87 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     };
   }, []);
 
-  // the pointer near the top of the stage wakes the island
+  // the last focused pane of a split, for the date (D7)
   useEffect(() => {
     const stageEl = root.current?.parentElement;
     if (!stageEl) return;
-    const onMove = (e: PointerEvent) => {
-      if (root.current?.contains(e.target as Node)) return;
-      const top = stageEl.getBoundingClientRect().top;
-      if (e.clientY - top < NEAR_PX) dispatch({ type: 'near' });
-      // keyboard focus on a control of the open line keeps it
-      else if (!layer.current?.contains(document.activeElement)) dispatch({ type: 'leave' });
-    };
-    const onLeave = () => {
-      if (!layer.current?.contains(document.activeElement)) dispatch({ type: 'leave' });
-    };
-    // the last focused pane of a split, for the date (D7)
     const onPane = (e: Event) => {
       const pane = e.target instanceof Element ? e.target.closest('[data-side]') : null;
       const at = pane?.getAttribute('data-side');
       if (at === 'left' || at === 'right') setSide(at);
     };
-    stageEl.addEventListener('pointermove', onMove);
-    stageEl.addEventListener('pointerleave', onLeave);
     stageEl.addEventListener('pointerdown', onPane, true);
     stageEl.addEventListener('focusin', onPane);
     return () => {
-      stageEl.removeEventListener('pointermove', onMove);
-      stageEl.removeEventListener('pointerleave', onLeave);
       stageEl.removeEventListener('pointerdown', onPane, true);
       stageEl.removeEventListener('focusin', onPane);
     };
   }, []);
 
+  // hover intent: the pointer resting on the notch opens it; leaving it closes it after a grace,
+  // so a pointer on its way to a row or a popover does not flicker it (unpinned, and not while
+  // keyboard focus is in it)
+  const hovered = useRef(false);
+  const leaveSoon = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const el = capsule.current;
+    if (!el) return;
+    let openTimer: ReturnType<typeof setTimeout> | undefined;
+    let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+    const stay = () =>
+      hovered.current ||
+      state.current.pinned ||
+      keyboardIn(layer.current) ||
+      document.querySelector('.surface-pop:hover') !== null;
+    leaveSoon.current = () => {
+      clearTimeout(leaveTimer);
+      leaveTimer = setTimeout(() => {
+        if (!stay()) dispatch({ type: 'leave' });
+      }, LEAVE_MS);
+    };
+    const onEnter = (e: PointerEvent) => {
+      hovered.current = true;
+      clearTimeout(leaveTimer);
+      // a drag across it (orbiting the view) is not a rest on it
+      if (state.current.open !== 'rest' || e.buttons) return;
+      clearTimeout(openTimer);
+      openTimer = setTimeout(() => {
+        if (hovered.current) dispatch({ type: 'hover' });
+      }, HOVER_MS);
+    };
+    const onLeave = () => {
+      hovered.current = false;
+      clearTimeout(openTimer);
+      if (state.current.open === 'tools') leaveSoon.current();
+    };
+    // a press on the line at rest (a view, a date step) uses it as it is: no opening after it
+    const onPress = () => {
+      clearTimeout(openTimer);
+    };
+    el.addEventListener('pointerenter', onEnter);
+    el.addEventListener('pointerleave', onLeave);
+    el.addEventListener('pointerdown', onPress);
+    return () => {
+      el.removeEventListener('pointerenter', onEnter);
+      el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('pointerdown', onPress);
+      clearTimeout(openTimer);
+      clearTimeout(leaveTimer);
+    };
+  }, []);
+
+  // Keep open; unpinned, the notch closes once the pointer is gone (not while keyboard focus is in it)
+  const setPinned = (on: boolean) => {
+    dispatch({ type: 'pin', on });
+    if (!on && !hovered.current) leaveSoon.current();
+  };
+  // Close says it outright: the notch rests, no longer kept open
+  const closeOut = () => {
+    dispatch({ type: 'close' });
+    root.current?.focus();
+  };
+
   // T opens the tools (D9); the video annotator and a pending annotation keep their keys
-  const state = useRef(s.open);
-  useLayoutEffect(() => {
-    state.current = s.open;
-  });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
@@ -345,7 +397,12 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       if (e.target instanceof Element && e.target.closest('.vwin')) return;
       if (matchShortcut('scene', e) !== 'scene.tools') return;
       e.preventDefault();
-      const opening = state.current !== 'tools';
+      const now = state.current;
+      const opening = now.open !== 'tools';
+      // kept open, T takes focus to the picked tab
+      if (!opening && now.pinned)
+        root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+      focusOnOpen.current = opening;
       dispatch({ type: 'toggleTools' });
       // said on a T that opens the tools, where it can be read
       if (opening && takeTNotice()) setNotice(true);
@@ -355,6 +412,20 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       window.removeEventListener('keydown', onKey);
     };
   }, []);
+  // Esc with the pointer on the open notch closes it, wherever focus is (focus in it: onKeyDown)
+  useEffect(() => {
+    if (s.open !== 'tools' || s.pinned) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || !hovered.current) return;
+      if (root.current?.contains(document.activeElement)) return;
+      e.preventDefault();
+      dispatch({ type: 'escape' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [s.open, s.pinned]);
 
   // the notice goes with the tools, or after a while
   if (notice && s.open !== 'tools') setNotice(false);
@@ -368,13 +439,14 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     };
   }, [notice]);
 
-  // open: focus goes to the picked tab; a press outside closes
+  // opened from the keyboard: focus goes to the picked tab; unpinned, a press outside closes
   useEffect(() => {
-    if (s.open === 'tools')
-      root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    if (s.open !== 'tools' || !focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
   }, [s.open]);
   useEffect(() => {
-    if (!open) return;
+    if (!open || s.pinned) return;
     const away = (e: PointerEvent) => {
       const el = e.target instanceof Element ? e.target : null;
       if (!el || root.current?.contains(el) || el.closest('.surface-pop')) return;
@@ -384,25 +456,109 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     return () => {
       window.removeEventListener('pointerdown', away);
     };
-  }, [open]);
+  }, [open, s.pinned]);
   // the calendar keeps Tab inside and gives focus back to the island
   useFocusTrap(dateBox, s.open === 'date', { onEscape: close });
 
-  const modeInfo = MODES.find((m) => m.mode === mode) ?? MODES[0];
-  const steps = open || expanded;
+  const tooling = s.open === 'tools';
+  const line = (
+    <div className="isl-line" data-isl-row={tooling ? '' : undefined}>
+      <IslandModes mode={mode} />
+      {dates && rest !== 'dots' && (
+        <>
+          <span className="isl-sep" aria-hidden="true" />
+          <IslandDate
+            dates={dates}
+            steps={rest === 'dateSteps'}
+            onOpen={() => {
+              dispatch({ type: 'openDate' });
+            }}
+          />
+        </>
+      )}
+      {primary && (
+        <>
+          <span className="isl-sep" aria-hidden="true" />
+          {primaryTab ? (
+            // a button, so Enter and Space bring the tab back as a click does (D10, I-R44)
+            <button
+              type="button"
+              className="isl-live-open"
+              aria-label={t('island.liveOpen', { item: liveText(primary) })}
+              onClick={() => {
+                openBenchFromIsland(primaryTab);
+              }}
+              onKeyDown={(e) => {
+                // Space on a plain button is the app's play and pause (keys.ts): this one opens
+                if (e.key !== ' ') return;
+                e.preventDefault();
+                e.stopPropagation();
+                openBenchFromIsland(primaryTab);
+              }}
+            >
+              <IslandLive item={primary} />
+            </button>
+          ) : (
+            <IslandLive item={primary} />
+          )}
+        </>
+      )}
+      {tooling ? (
+        <span className="isl-end">
+          <Button
+            variant="quiet"
+            className="isl-pin"
+            pressed={s.pinned}
+            aria-label={t('island.pin')}
+            tip={t(s.pinned ? 'island.unpin' : 'island.pin')}
+            onClick={() => {
+              setPinned(!s.pinned);
+            }}
+          >
+            <Icon name="pin" size={14} />
+          </Button>
+          <Button
+            variant="quiet"
+            className="isl-x"
+            aria-label={t('dialog.close')}
+            tip={t('dialog.close')}
+            onClick={closeOut}
+          >
+            <span className="kbd">Esc</span>
+            <Icon name="chevup" size={14} />
+          </Button>
+        </span>
+      ) : (
+        <Button
+          variant="quiet"
+          className="isl-open"
+          aria-label={t('island.tools')}
+          tip={t('island.tools')}
+          shortcut="scene.tools"
+          aria-expanded={false}
+          onClick={(e) => {
+            // by key (no pointer press: detail 0) focus goes on to the tabs
+            focusOnOpen.current = e.detail === 0;
+            dispatch({ type: 'toggleTools' });
+          }}
+        >
+          <Icon name="chevdown" size={14} />
+        </Button>
+      )}
+    </div>
+  );
 
   let content: ReactNode;
-  if (s.open === 'tools') {
+  if (tooling) {
     content = (
       <IslandTools
-        mode={mode}
+        line={line}
         groups={groups}
         group={group}
         preview={s.preview}
         ctx={ctx}
         dispatch={dispatch}
         onPick={pickGroup}
-        onClose={close}
       />
     );
   } else if (s.open === 'date' && dates) {
@@ -411,80 +567,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         <IslandCalendar dates={dates} onDone={close} onCompare={onCompare} />
       </div>
     );
-  } else {
-    content = (
-      <div className={`isl-line${expanded ? ' ready' : ''}`}>
-        {dates && rest !== 'dots' ? (
-          <IslandDate
-            dates={dates}
-            steps={steps && rest === 'dateSteps'}
-            onOpen={() => {
-              dispatch({ type: 'openDate' });
-            }}
-          />
-        ) : (
-          !primary && (
-            <span className="isl-dots" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-          )
-        )}
-        {primary && (
-          <>
-            {dates && rest !== 'dots' && <span className="isl-sep" aria-hidden="true" />}
-            {primaryTab ? (
-              // a button, so Enter and Space bring the tab back as a click does (D10, I-R44)
-              <button
-                type="button"
-                className="isl-live-open"
-                aria-label={t('island.liveOpen', { item: liveText(primary) })}
-                onClick={() => {
-                  openBenchFromIsland(primaryTab);
-                }}
-                onKeyDown={(e) => {
-                  // Space on a plain button is the app's play and pause (keys.ts): this one opens
-                  if (e.key !== ' ') return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  openBenchFromIsland(primaryTab);
-                }}
-              >
-                <IslandLive item={primary} />
-              </button>
-            ) : (
-              <IslandLive item={primary} />
-            )}
-          </>
-        )}
-        {expanded && (
-          <>
-            <span className="isl-sep" aria-hidden="true" />
-            <Button
-              variant="quiet"
-              className="isl-open"
-              aria-label={t('island.tools')}
-              tip={t('island.tools')}
-              shortcut="scene.tools"
-              aria-expanded={false}
-              onClick={() => {
-                dispatch({ type: 'toggleTools' });
-              }}
-            >
-              <Icon name={modeInfo?.icon ?? 'scene'} size={14} className="isl-acc" />
-              <span className="isl-mode">{modeInfo && t(modeInfo.label)}</span>
-              <span className="isl-name">{t('island.tools')}</span>
-              <Icon name="chevdown" size={12} />
-              <span className="kbd" aria-hidden="true">
-                {shortcutHint('scene.tools')}
-              </span>
-            </Button>
-          </>
-        )}
-      </div>
-    );
-  }
+  } else content = line;
 
   const isLinked = linked && !open && primary !== null && primary.kind !== 'connection';
   return (
@@ -495,39 +578,10 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       aria-label={t('island.label')}
       data-surface="dark"
       data-state={s.open}
+      data-pinned={s.pinned ? '' : undefined}
       data-linked={isLinked ? '' : undefined}
       data-motion={motion ? 'reduce' : undefined}
       tabIndex={open ? -1 : 0}
-      onPointerMove={() => {
-        dispatch({ type: 'near' });
-      }}
-      onFocus={(e) => {
-        if (returning.current) return;
-        if (layer.current?.contains(e.target)) {
-          // focus that lands straight on a control of the line at rest (the live reading, the
-          // date) keeps it: waking would draw the line again without that control (I-R44).
-          // Shift+Tab from after the island lands there too: it wakes, and focus goes on to the
-          // woken line's last control, as Shift+Tab would reach it (T20 M7)
-          const from = e.relatedTarget;
-          const back = performance.now() - shiftTabAt.current < 500;
-          if (
-            back &&
-            s.open === 'rest' &&
-            from instanceof Node &&
-            !e.currentTarget.contains(from)
-          ) {
-            wakeToEnd.current = true;
-            dispatch({ type: 'near' });
-          }
-          return;
-        }
-        dispatch({ type: 'near' });
-      }}
-      onBlur={(e) => {
-        // the line at rest leaving for the woken one takes its focused control with it
-        if (wakeToEnd.current) return;
-        if (!e.currentTarget.contains(e.relatedTarget)) dispatch({ type: 'leave' });
-      }}
       onKeyDown={(e) => {
         if (e.key === 'Escape' && s.open === 'tools') {
           e.preventDefault();
@@ -536,6 +590,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         }
         if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault();
+          focusOnOpen.current = true;
           dispatch({ type: 'toggleTools' });
         }
       }}
@@ -544,12 +599,12 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         ref={capsule}
         className="island"
         onClick={(e) => {
-          // the live reading is a button of its own: it brings its tab back (D10)
+          // the notch's own buttons (the live reading brings its tab back, D10) do their own thing
           if (open || (e.target as Element).closest('button')) return;
           // with the sidebar folded the drawer took this click (Drawer.tsx, in the capture
           // phase): one gesture opens one surface, so the tools stay shut (I-R64)
           if (drawerStore.getState().opened !== null) return;
-          // a click on the capsule itself (not one of its buttons) opens the tools
+          // a click on the notch itself (not one of its buttons) opens the tools
           dispatch({ type: 'toggleTools' });
         }}
       >

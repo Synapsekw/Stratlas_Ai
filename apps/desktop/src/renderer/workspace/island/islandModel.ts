@@ -1,4 +1,4 @@
-/** Pure state of the stage island: live priority, rest content, tool groups, open state. */
+/** Pure state of the stage notch: live priority, rest content, tool groups, open and pinned. */
 import type { StageMode } from '../../store';
 
 export type GroupId =
@@ -65,44 +65,63 @@ export function islandGroups(input: {
 }
 
 export interface IslandState {
-  open: 'rest' | 'ready' | 'tools' | 'date';
+  /** At rest the notch's one line; `tools` adds the group tabs and a quick row; `date` the calendar. */
+  open: 'rest' | 'tools' | 'date';
   group: GroupId;
   preview: GroupId | null;
   swapped: boolean;
+  /** Kept open (on this computer): leaving, a press outside, Esc and a pick leave it open. */
+  pinned: boolean;
+}
+
+/** At rest, or open with its tools when it was left pinned. */
+export function islandInitial(pinned: boolean): IslandState {
+  return { open: pinned ? 'tools' : 'rest', group: 'view', preview: null, swapped: false, pinned };
 }
 
 export type IslandEvent =
-  | { type: 'near' }
+  | { type: 'hover' }
   | { type: 'leave' }
   | { type: 'toggleTools' }
   | { type: 'openDate' }
   | { type: 'hoverGroup'; group: GroupId }
   | { type: 'pickGroup'; group: GroupId }
+  | { type: 'pin'; on: boolean }
   | { type: 'swap' }
   | { type: 'liveChanged' }
-  | { type: 'escape' };
+  | { type: 'escape' }
+  | { type: 'close' };
 
 export function islandReducer(s: IslandState, e: IslandEvent): IslandState {
   switch (e.type) {
-    case 'near':
-      return s.open === 'rest' ? { ...s, open: 'ready' } : s;
-    // leave only closes the ready state: tools and date stay until chosen or escaped
+    // the pointer resting on the notch opens its tools
+    case 'hover':
+      return s.open === 'rest' ? { ...s, open: 'tools' } : s;
+    // the pointer gone closes the tools, not the calendar; pinned, nothing
     case 'leave':
-      return s.open === 'ready' ? { ...s, open: 'rest', preview: null } : s;
+      return s.open === 'tools' && !s.pinned ? { ...s, open: 'rest', preview: null } : s;
     case 'toggleTools':
+      if (s.pinned) return { ...s, open: 'tools' };
       return { ...s, open: s.open === 'tools' ? 'rest' : 'tools', preview: null };
     case 'openDate':
       return { ...s, open: 'date', preview: null };
     case 'hoverGroup':
       return { ...s, preview: e.group };
-    // picked, the group's workbench opens and the island rests (Island.tsx); View's row stays
+    // picked, the group's workbench opens and the notch rests unless pinned (Island.tsx)
     case 'pickGroup':
       return { ...s, group: e.group, preview: null };
+    // pinned it opens; unpinned it stays until the pointer leaves (Island.tsx)
+    case 'pin':
+      return e.on ? { ...s, pinned: true, open: 'tools' } : { ...s, pinned: false };
     case 'swap':
       return { ...s, swapped: !s.swapped };
     case 'liveChanged':
       return s.swapped ? { ...s, swapped: false } : s;
+    // pinned, Esc leaves the calendar for the tools and keeps them
     case 'escape':
-      return { ...s, open: 'rest', preview: null };
+      return { ...s, open: s.pinned ? 'tools' : 'rest', preview: null };
+    // Close says it outright: the notch rests and is no longer kept open
+    case 'close':
+      return { ...s, open: 'rest', preview: null, pinned: false };
   }
 }

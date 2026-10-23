@@ -121,3 +121,25 @@ export function takeTNotice(storage: Storage | null = browserStorage()): boolean
   tNoticeShown = true;
   return true;
 }
+
+/** The stage notch kept open (pinned): on this computer. */
+const ISLAND_PIN_KEY = 'stratlas.islandPinned';
+
+/** Whether the notch was left pinned on this computer (blocked storage: not). */
+export function readIslandPin(storage: Storage | null = browserStorage()): boolean {
+  try {
+    return storage?.getItem(ISLAND_PIN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Remember the notch pinned or not; blocked storage just does not remember it. */
+export function writeIslandPin(on: boolean, storage: Storage | null = browserStorage()): void {
+  try {
+    if (on) storage?.setItem(ISLAND_PIN_KEY, '1');
+    else storage?.removeItem(ISLAND_PIN_KEY);
+  } catch {
+    // private window or blocked storage
+  }
+}

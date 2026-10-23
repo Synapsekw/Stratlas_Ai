@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   islandGroups,
+  islandInitial,
   islandReducer,
   islandRest,
   pickLive,
@@ -84,7 +85,12 @@ describe('islandGroups', () => {
 });
 
 describe('islandReducer', () => {
-  const rest: IslandState = { open: 'rest', group: 'view', preview: null, swapped: false };
+  const rest: IslandState = islandInitial(false);
+  const pinned: IslandState = islandInitial(true);
+  it('starts at rest, or open when it was left pinned', () => {
+    expect(rest).toMatchObject({ open: 'rest', pinned: false });
+    expect(pinned).toMatchObject({ open: 'tools', pinned: true });
+  });
   it('toggles tools and escapes', () => {
     const t = islandReducer(rest, { type: 'toggleTools' });
     expect(t.open).toBe('tools');
@@ -100,12 +106,32 @@ describe('islandReducer', () => {
       open: 'tools',
     });
   });
-  it('leave closes ready but not tools', () => {
-    const near = islandReducer(rest, { type: 'near' });
-    expect(near.open).toBe('ready');
-    expect(islandReducer(near, { type: 'leave' }).open).toBe('rest');
-    const tools = { ...rest, open: 'tools' as const };
-    expect(islandReducer(tools, { type: 'leave' }).open).toBe('tools');
+  it('opens on hover intent and closes when the pointer leaves', () => {
+    const open = islandReducer(rest, { type: 'hover' });
+    expect(open.open).toBe('tools');
+    expect(islandReducer(open, { type: 'leave' })).toMatchObject({ open: 'rest', preview: null });
+    // the calendar stays until a date is picked or it is escaped
+    const date = islandReducer(rest, { type: 'openDate' });
+    expect(islandReducer(date, { type: 'hover' }).open).toBe('date');
+    expect(islandReducer(date, { type: 'leave' }).open).toBe('date');
+  });
+  it('pinned, stays open through leave, Esc and T; Esc leaves the calendar for the tools', () => {
+    expect(islandReducer(pinned, { type: 'leave' }).open).toBe('tools');
+    expect(islandReducer(pinned, { type: 'escape' }).open).toBe('tools');
+    expect(islandReducer(pinned, { type: 'toggleTools' }).open).toBe('tools');
+    const date = islandReducer(pinned, { type: 'openDate' });
+    expect(date.open).toBe('date');
+    expect(islandReducer(date, { type: 'escape' }).open).toBe('tools');
+  });
+  it('pins open, unpins without closing, and Close rests and unpins', () => {
+    expect(islandReducer(rest, { type: 'pin', on: true })).toMatchObject({
+      open: 'tools',
+      pinned: true,
+    });
+    const off = islandReducer(pinned, { type: 'pin', on: false });
+    expect(off).toMatchObject({ open: 'tools', pinned: false });
+    expect(islandReducer(off, { type: 'leave' }).open).toBe('rest');
+    expect(islandReducer(pinned, { type: 'close' })).toMatchObject({ open: 'rest', pinned: false });
   });
   it('swaps back and clears the swap when the live pair changes', () => {
     const sw = islandReducer(rest, { type: 'swap' });
@@ -113,17 +139,11 @@ describe('islandReducer', () => {
     expect(islandReducer(sw, { type: 'liveChanged' }).swapped).toBe(false);
     expect(islandReducer(sw, { type: 'pickGroup', group: 'view' }).swapped).toBe(true);
   });
-  it('clears the preview on leave and escape, and escapes the date', () => {
-    const hov = { ...rest, open: 'ready' as const, preview: 'display' as const };
-    expect(islandReducer(hov, { type: 'leave' }).preview).toBeNull();
-    expect(islandReducer({ ...hov, open: 'tools' }, { type: 'escape' })).toMatchObject({
-      open: 'rest',
-      preview: null,
-    });
+  it('clears the preview on escape, and escapes the date', () => {
+    const hov = { ...rest, open: 'tools' as const, preview: 'display' as const };
+    expect(islandReducer(hov, { type: 'escape' })).toMatchObject({ open: 'rest', preview: null });
     const date = islandReducer(rest, { type: 'openDate' });
-    expect(islandReducer(date, { type: 'leave' }).open).toBe('date');
     expect(islandReducer(date, { type: 'escape' }).open).toBe('rest');
-    expect(islandReducer({ ...rest, open: 'tools' }, { type: 'near' }).open).toBe('tools');
   });
   it('opens the date and swaps', () => {
     expect(islandReducer(rest, { type: 'openDate' }).open).toBe('date');

@@ -1,6 +1,7 @@
 /**
- * The stage island (stage-island D1 to D10) in the real app: the date at rest, T and Esc, the
- * group tabs, a live Distance beside the date, one survey date or none, and, in the window CI
+ * The stage island, a notch (stage-island D1 to D10) in the real app: the view switch and the date
+ * at rest, hover intent, Keep open, T and Esc, the group tabs, a live Distance beside the date, one
+ * survey date or none, and, in the window CI
  * runs (1100 x 720), the open island fits the stage, keeps clear of what sits under it and never
  * takes a click meant for the middle of the view. Right to left, it stays centred.
  *
@@ -78,6 +79,42 @@ test.describe('the island on a project with two dates', () => {
     await win.keyboard.press('Escape');
     await expect(bar).not.toHaveAttribute('data-state', 'tools');
     await expect(islandDate(win).getByTestId('date-bar-open')).toHaveText('13 Apr');
+  });
+
+  test('the pointer resting on the notch opens it; kept open, a press outside and a pick leave it open', async ({
+    twoDateProject,
+    win,
+  }) => {
+    await openCard(win, 'E2E two dates', twoDateProject.id);
+    const bar = island(win);
+    // at rest: the view switch and the date's steps, nothing to wake first
+    await expect(bar).toHaveAttribute('data-state', 'rest');
+    await expect(bar.getByRole('group', { name: 'Stage view' })).toBeVisible();
+    await expect(bar.getByTestId('date-bar-prev')).toBeVisible();
+    const canvas = await win.locator('[data-scene-view] canvas').first().boundingBox();
+    if (!canvas) throw new Error('no 3D view');
+    const away = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height * 0.75 };
+    await win.locator('.island').hover({ position: { x: 4, y: 4 } });
+    await expect(bar).toHaveAttribute('data-state', 'tools');
+    await win.mouse.move(away.x, away.y);
+    await expect(bar).toHaveAttribute('data-state', 'rest');
+
+    await openIslandTools(win);
+    const pin = bar.getByRole('button', { name: 'Keep open', exact: true });
+    await pin.click();
+    await expect(pin).toHaveAttribute('aria-pressed', 'true');
+    await expect(bar).toHaveAttribute('data-pinned', '');
+    await win.mouse.click(away.x, away.y);
+    await expect(bar).toHaveAttribute('data-state', 'tools');
+    await bar.getByRole('tab', { name: 'Measure', exact: true }).click();
+    await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+    await expect(bar).toHaveAttribute('data-state', 'tools');
+    await expect(bar.getByRole('tabpanel')).toHaveAccessibleName('Measure');
+    // let go, it closes once the pointer leaves
+    await pin.click();
+    await expect(pin).toHaveAttribute('aria-pressed', 'false');
+    await win.mouse.move(away.x, away.y);
+    await expect(bar).toHaveAttribute('data-state', 'rest');
   });
 
   test('a click on a group tab picks it and opens its workbench in the right panel', async ({
@@ -229,14 +266,14 @@ test.describe('the island with one survey date, and with none', () => {
     await openCard(win, 'E2E tiny project', TINY_PROJECT_ID);
     const date = islandDate(win);
     await expect(date.getByTestId('date-bar-open')).toHaveText('1 Jan');
-    // near the pointer, and open, still no arrows and no count
-    const stage = await win.locator('.ws > .stage').boundingBox();
-    if (!stage) throw new Error('no stage');
-    await win.mouse.move(stage.x + stage.width / 2 - 60, stage.y + 20);
-    await expect(island(win)).toHaveAttribute('data-state', 'ready');
-    await expect(date.getByTestId('date-bar-prev')).toHaveCount(0);
-    await expect(date.getByTestId('date-bar-next')).toHaveCount(0);
-    await expect(date.getByTestId('date-bar-count')).toHaveCount(0);
+    // at rest, and open, no arrows and no count
+    for (const open of [false, true]) {
+      if (open) await openIslandTools(win);
+      await expect(date.getByTestId('date-bar-prev')).toHaveCount(0);
+      await expect(date.getByTestId('date-bar-next')).toHaveCount(0);
+      await expect(date.getByTestId('date-bar-count')).toHaveCount(0);
+    }
+    await closeIslandTools(win);
 
     await win.locator('[data-scene-view] canvas').first().focus();
     const errors: string[] = [];
@@ -249,7 +286,7 @@ test.describe('the island with one survey date, and with none', () => {
     expect(errors).toEqual([]);
   });
 
-  test('no date: three dots, the tools still open, Alt+Left / Alt+Right do nothing', async ({
+  test('no date: the view switch alone, the tools still open, Alt+Left / Alt+Right do nothing', async ({
     dataRoot,
     win,
   }) => {
@@ -261,18 +298,19 @@ test.describe('the island with one survey date, and with none', () => {
 
     await openCard(win, 'E2E tiny project', TINY_PROJECT_ID);
     const bar = island(win);
-    await expect(bar.locator('.isl-dots')).toBeVisible();
+    const modes = bar.getByRole('group', { name: 'Stage view' });
+    await expect(modes).toBeVisible();
     await expect(islandDate(win)).toHaveCount(0);
     await win.locator('[data-scene-view] canvas').first().focus();
     const errors: string[] = [];
     win.on('pageerror', (e) => errors.push(e.message));
     await win.keyboard.press('Alt+ArrowLeft');
     await win.keyboard.press('Alt+ArrowRight');
-    await expect(bar.locator('.isl-dots')).toBeVisible();
+    await expect(islandDate(win)).toHaveCount(0);
     expect(errors).toEqual([]);
     await openIslandTools(win);
     await closeIslandTools(win);
-    await expect(bar.locator('.isl-dots')).toBeVisible();
+    await expect(modes).toBeVisible();
   });
 });
 
@@ -286,17 +324,19 @@ async function openLayout(win: Page) {
         : null;
     };
     const capsule = document.querySelector('.island');
-    const row = document.querySelector('.isl-r1');
     return {
       stage: box(document.querySelector('.ws > .stage')),
       capsule: box(capsule),
-      // the first row's controls: the view switch, the tabs and Close
-      controls: [...(row?.querySelectorAll('button') ?? [])].map((b) => ({
+      // the line's and the tab row's controls: the view switch, the date, Keep open and Close,
+      // the tabs and Jobs
+      controls: [
+        ...document.querySelectorAll('.isl-tools > .isl-line button, .isl-tabs button'),
+      ].map((b) => ({
         name: b.getAttribute('aria-label') ?? b.textContent.trim(),
         box: box(b),
       })),
       tabsScroll: (() => {
-        const tabs = row?.querySelector('[role="tablist"]');
+        const tabs = document.querySelector('.isl-tabs [role="tablist"]');
         return tabs ? tabs.scrollWidth - tabs.clientWidth : -1;
       })(),
       notice: box(document.querySelector('[data-testid="t-notice"]')),
@@ -352,7 +392,7 @@ test.describe('in the window CI runs, 1100 x 720', () => {
     const { capsule, stage } = open;
     expect(capsule.left).toBeGreaterThanOrEqual(stage.left);
     expect(capsule.right).toBeLessThanOrEqual(stage.right);
-    // every control of the first row lies inside the capsule: none is cut off at its right edge
+    // every control of the first two rows lies inside the capsule: none is cut off at its edge
     expect(open.controls.length).toBeGreaterThan(8);
     const cut = open.controls.filter(
       (c) => !c.box || c.box.left < capsule.left || c.box.right > capsule.right,
@@ -548,7 +588,7 @@ test.describe('right to left', () => {
     });
     expect(inside, 'the open content lies inside the capsule').toBe(true);
     // the tabs run from the right in their own order: View rightmost, then Measure to its left;
-    // the view switch is at the start (right) and Close at the end (left)
+    // on the line above, the view switch is at the start (right) and Close at the end (left)
     const x = async (name: string, role: 'tab' | 'button') => {
       const b = await bar.getByRole(role, { name, exact: true }).boundingBox();
       return b ? b.x : Number.NaN;
@@ -558,8 +598,8 @@ test.describe('right to left', () => {
     const threeD = await x('3D', 'button');
     const close = await x('Close', 'button');
     expect(measure, 'Measure lies left of View').toBeLessThan(view);
-    expect(threeD, 'the view switch is right of the tabs').toBeGreaterThan(view);
-    expect(close, 'Close is left of the tabs').toBeLessThan(measure);
+    expect(threeD, 'the view switch is right of the tabs after View').toBeGreaterThan(measure);
+    expect(close, 'Close is left of the view switch').toBeLessThan(threeD);
     await closeIslandTools(win);
   });
 });

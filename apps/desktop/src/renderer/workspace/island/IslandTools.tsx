@@ -1,11 +1,12 @@
 /**
- * The open island: the 3D / Map / Split switch and the group tabs on top, the shown group's quick
- * row under them. Hovering or focusing a tab previews its row; clicking it picks the group and
- * opens its workbench in the right sidebar (D4). Left and Right move along a row (mirrored right
- * to left, as the foundation's Tabs do), Up and Down (and Tab) between the rows.
+ * The open notch: its line on top (the view switch, the date, the live reading, Keep open and
+ * Close), the group tabs and Jobs under it, the shown group's quick row last. Hovering or focusing
+ * a tab previews its row; clicking it picks the group and opens its workbench in the right sidebar
+ * (D4). Left and Right move along a row (mirrored right to left, as the foundation's Tabs do), Up
+ * and Down (and Tab) between the rows.
  */
 import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
-import { useId, type Dispatch, type KeyboardEvent } from 'react';
+import { useId, type Dispatch, type KeyboardEvent, type ReactNode } from 'react';
 import { shell } from '../../shell';
 import type { StageMode } from '../../store';
 import { GROUP_ICON, GROUP_NAME, MODES, quickRow, type GroupCtx } from './groups';
@@ -16,6 +17,31 @@ const MODE_KEY: Record<StageMode, ShortcutId> = {
   map: 'scene.modeMap',
   split: 'scene.modeSplit',
 };
+
+/** The 3D / Map / Split switch: always on the notch's line. */
+export function IslandModes({ mode }: { mode: StageMode }) {
+  const t = useT();
+  return (
+    <div className="seg isl-modes" role="group" aria-label={t('island.stageView')}>
+      {MODES.map((m) => (
+        <Tip key={m.mode} content={t(m.label)} shortcut={MODE_KEY[m.mode]} repeatsName>
+          <button
+            type="button"
+            aria-pressed={mode === m.mode}
+            aria-keyshortcuts={m.keys}
+            aria-label={t(m.label)}
+            onClick={() => {
+              shell.getState().setStageMode(m.mode);
+            }}
+          >
+            <Icon name={m.icon} size={14} />
+            <span className="isl-ml">{t(m.label)}</span>
+          </button>
+        </Tip>
+      ))}
+    </div>
+  );
+}
 
 /** Arrow and Tab keys in the open island; true when used. */
 function moveFocus(root: HTMLElement, e: KeyboardEvent): boolean {
@@ -67,16 +93,16 @@ function moveFocus(root: HTMLElement, e: KeyboardEvent): boolean {
 }
 
 export function IslandTools({
-  mode,
+  line,
   groups,
   group,
   preview,
   ctx,
   dispatch,
   onPick,
-  onClose,
 }: {
-  mode: StageMode;
+  /** The notch's line, the first row (it carries `data-isl-row`). */
+  line: ReactNode;
   groups: readonly GroupId[];
   /** The picked group (the selected tab). */
   group: GroupId;
@@ -86,8 +112,6 @@ export function IslandTools({
   dispatch: Dispatch<IslandEvent>;
   /** A group's tab clicked: the group is picked and its workbench opens. */
   onPick: (g: GroupId) => void;
-  /** Close the tools and give focus back to the island. */
-  onClose: () => void;
 }) {
   const t = useT();
   const id = useId();
@@ -100,26 +124,8 @@ export function IslandTools({
         if (moveFocus(e.currentTarget, e)) e.preventDefault();
       }}
     >
-      <div className="isl-r1" data-isl-row="">
-        <div className="seg isl-modes" role="group" aria-label={t('island.stageView')}>
-          {MODES.map((m) => (
-            <Tip key={m.mode} content={t(m.label)} shortcut={MODE_KEY[m.mode]} repeatsName>
-              <button
-                type="button"
-                aria-pressed={mode === m.mode}
-                aria-keyshortcuts={m.keys}
-                aria-label={t(m.label)}
-                onClick={() => {
-                  shell.getState().setStageMode(m.mode);
-                }}
-              >
-                <Icon name={m.icon} size={14} />
-                <span className="isl-ml">{t(m.label)}</span>
-              </button>
-            </Tip>
-          ))}
-        </div>
-        <span className="isl-vsep" aria-hidden="true" />
+      {line}
+      <div className="isl-tabs" data-isl-row="">
         <div className="seg isl-groups" role="tablist" aria-label={t('island.tools')}>
           {groups.map((g) => (
             <button
@@ -158,16 +164,6 @@ export function IslandTools({
           }}
         >
           <Icon name="clock" size={14} />
-        </Button>
-        <Button
-          variant="quiet"
-          className="isl-x"
-          aria-label={t('dialog.close')}
-          tip={t('dialog.close')}
-          onClick={onClose}
-        >
-          <span className="kbd">Esc</span>
-          <Icon name="chevup" size={14} />
         </Button>
       </div>
       <div

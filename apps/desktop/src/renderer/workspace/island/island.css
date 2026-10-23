@@ -1,17 +1,23 @@
-/* The stage island (D1, D8): one capsule at the top centre of the stage, a pill at rest and
-   16 px rounded open. Its size morphs between the states; its content crossfades. The stage is
-   dark in every theme, so the island reads the dark tokens (data-surface="dark"). */
+/* The stage notch (the island, D1, D8): hung flush from the top centre of the stage, square on
+   top, its bottom corners rounded, and a concave shoulder at each top corner where it meets the
+   stage's edge. Its size morphs between the states; its content crossfades. Kept open (pinned) a
+   2 px accent line runs along its bottom edge. The stage is dark in every theme, so the notch
+   reads the dark tokens (data-surface="dark"). */
 
 .island-wrap {
   --d-island: 400ms;
   --ease-island: cubic-bezier(0.32, 0.72, 0, 1);
   --isl-bg: color-mix(in oklch, var(--bg-1) 94%, transparent);
+  /* the notch's and its shoulders' fill: see-through at rest, solid open */
+  --isl-fill: var(--isl-bg);
+  --isl-r: 14px;
+  --isl-shoulder: 14px;
   position: absolute;
-  top: var(--sp-4);
+  top: 0;
   inset-inline: 0;
   margin-inline: auto;
   inline-size: fit-content;
-  max-inline-size: calc(100% - var(--sp-6));
+  max-inline-size: calc(100% - var(--sp-6) - 2 * var(--isl-shoulder));
   z-index: var(--z-stage-ui);
   display: flex;
   align-items: flex-start;
@@ -21,7 +27,34 @@
 }
 .island-wrap:focus-visible > .island {
   outline: 1.5px solid var(--acc);
-  outline-offset: 2px;
+  outline-offset: -2px;
+}
+/* the shoulders: a square just outside each top corner, filled but for a quarter circle, so the
+   notch flows into the stage's top edge */
+.island-wrap::before,
+.island-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  inline-size: var(--isl-shoulder);
+  block-size: var(--isl-shoulder);
+  pointer-events: none;
+}
+.island-wrap::before {
+  left: calc(var(--isl-shoulder) * -1);
+  background: radial-gradient(
+    circle at 0 100%,
+    transparent calc(var(--isl-shoulder) - 0.5px),
+    var(--isl-fill) var(--isl-shoulder)
+  );
+}
+.island-wrap::after {
+  right: calc(var(--isl-shoulder) * -1);
+  background: radial-gradient(
+    circle at 100% 100%,
+    transparent calc(var(--isl-shoulder) - 0.5px),
+    var(--isl-fill) var(--isl-shoulder)
+  );
 }
 
 .island {
@@ -29,49 +62,42 @@
   pointer-events: auto;
   /* clip, not hidden: focusing a tab never scrolls the content inside the capsule */
   overflow: clip;
-  background: var(--isl-bg);
-  border: 1px solid var(--line);
+  background: var(--isl-fill);
+  border-radius: 0 0 var(--isl-r) var(--isl-r);
   box-shadow: var(--el-2);
-  /* a pill while it is one line, 16 px when open */
-  border-radius: min(calc(var(--isl-h, 24px) / 2), 16px);
   cursor: pointer;
   transition:
     width var(--d-island) var(--ease-island),
     height var(--d-island) var(--ease-island),
     border-radius var(--d-island) var(--ease-island),
-    border-color var(--d-2) var(--ease),
     box-shadow var(--d-2) var(--ease);
-}
-.island:hover {
-  border-color: var(--line-strong);
 }
 .island-wrap[data-state='tools'] .island,
 .island-wrap[data-state='date'] .island {
   cursor: default;
 }
-.island-wrap[data-state='tools'] .island:hover,
-.island-wrap[data-state='date'] .island:hover {
-  border-color: var(--line);
-}
-/* open, the island is solid and above every stage overlay (I-R18): nothing reads through it */
+/* open, the notch is solid and above every stage overlay (I-R18): nothing reads through it */
 .island-wrap[data-state='tools'],
 .island-wrap[data-state='date'] {
+  --isl-fill: var(--bg-1);
+  --isl-r: 18px;
   z-index: var(--z-panel);
 }
-.island-wrap[data-state='tools'] .island,
-.island-wrap[data-state='date'] .island {
-  background: var(--bg-1);
+/* kept open: the accent line along its bottom edge */
+.island-wrap[data-pinned] .island {
+  box-shadow:
+    var(--el-2),
+    inset 0 -2px 0 var(--acc);
 }
 /* the island's View tile toggles the right panel while its tools are open */
 .stage:has(> .island-wrap[data-state='tools']) > .stage-rp {
   visibility: hidden;
 }
 /* the sidebar's front tab shows the island's live item (D10) */
-.island-wrap[data-linked] .island,
-.island-wrap[data-linked] .island:hover {
-  border-color: var(--acc);
+.island-wrap[data-linked] .island {
   box-shadow:
     var(--el-2),
+    inset 0 0 0 1px var(--acc),
     0 0 0 3px var(--acc-a12);
 }
 
@@ -99,21 +125,18 @@
 
 /* ---------------------------------------------------------------- the one line */
 
+/* the view switch, the date, the live reading and the chevron (open: Keep open and Close) */
 .isl-line {
   display: flex;
   align-items: center;
-  gap: var(--sp-5);
-  block-size: 32px;
-  padding-inline: var(--sp-5);
+  gap: var(--sp-2);
+  block-size: 34px;
+  padding-inline: var(--sp-3);
   white-space: nowrap;
   font-size: var(--t-12);
   color: var(--fg-2);
 }
-.isl-line.ready {
-  gap: var(--sp-2);
-  padding-inline: var(--sp-3);
-}
-.isl-line.ready .isl-sep {
+.isl-line .isl-sep {
   margin-inline: var(--sp-2);
 }
 .isl-sep {
@@ -122,27 +145,20 @@
   background: var(--line);
   flex: none;
 }
-.isl-dots {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  inline-size: 34px;
-  block-size: 20px;
-  margin-inline: calc(var(--sp-5) * -1);
-}
-.isl-dots i {
-  inline-size: 4px;
-  block-size: 4px;
-  border-radius: 50%;
-  background: var(--fg-3);
-}
-.isl-line:has(> .isl-dots:only-child) {
-  block-size: 20px;
+.isl-vsep {
+  align-self: stretch;
+  inline-size: 1px;
+  margin: var(--sp-3) var(--sp-2);
+  background: var(--line);
+  flex: none;
 }
 .isl-acc {
   color: var(--acc);
   flex: none;
+}
+/* the view switch sits lighter on the notch than the app's framed one */
+.isl-line .seg.isl-modes button {
+  block-size: 24px;
 }
 .isl-name {
   color: var(--fg-0);
@@ -169,12 +185,6 @@
 }
 .isl-pill:hover {
   background: var(--bg-3);
-}
-.isl-line:not(.ready) .isl-pill {
-  padding-inline: 0;
-}
-.isl-line:not(.ready) .isl-pill:hover {
-  background: none;
 }
 .isl-swatch {
   inline-size: 8px;
@@ -209,21 +219,38 @@
   transform: scaleX(-1);
 }
 
-/* Tools, while the island is open */
+/* the chevron that opens the tools, at rest */
 .island .btn.isl-open {
   block-size: 24px;
-  gap: 7px;
-  padding-inline: 7px;
+  inline-size: 24px;
+  padding: 0;
   border-radius: var(--r-pill);
-  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.island .btn.isl-open:hover {
+  background: var(--bg-3);
   color: var(--fg-0);
 }
-.isl-mode {
-  color: var(--fg-2);
+
+/* open, Keep open and Close at the line's end */
+.isl-end {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-inline-start: auto;
+  padding-inline-start: var(--sp-3);
+  flex: none;
 }
-.isl-open .kbd {
-  font-size: var(--t-11);
-  padding: 1px var(--sp-2);
+.island .btn.isl-pin {
+  block-size: 26px;
+  inline-size: 26px;
+  padding: 0;
+  color: var(--fg-3);
+}
+.island .btn.isl-pin[aria-pressed='true'] {
+  background: var(--acc-a12);
+  border-color: transparent;
+  color: var(--acc);
 }
 
 /* a live reading; with a tab to bring back it is a button (I-R44), drawn as the reading */
@@ -336,8 +363,9 @@
 /* the bubble and a comparison's controls hang beside the capsule, outside its centring (D2) */
 .isl-aside {
   position: absolute;
-  top: 0;
-  inset-inline-start: calc(100% + var(--sp-4));
+  top: var(--sp-2);
+  /* past the shoulder */
+  inset-inline-start: calc(100% + var(--isl-shoulder) + var(--sp-2));
   display: flex;
   align-items: flex-start;
   gap: var(--sp-4);
@@ -376,17 +404,17 @@
   min-inline-size: min(calc(100cqi - var(--sp-6) * 2), 460px);
   max-inline-size: calc(100cqi - var(--sp-6) * 2);
 }
-.isl-r1 {
+/* open, the line is the first row: the tools' own padding is its room */
+.isl-tools > .isl-line {
+  block-size: 28px;
+  padding-inline: 0;
+}
+.isl-tabs {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-}
-.isl-vsep {
-  align-self: stretch;
-  inline-size: 1px;
-  margin: var(--sp-3) var(--sp-2);
-  background: var(--line);
-  flex: none;
+  padding-block-start: var(--sp-4);
+  border-block-start: 1px solid var(--line-soft);
 }
 /* the group tabs: segmented look without the frame */
 .seg.isl-groups {
@@ -410,7 +438,6 @@
   color: var(--acc);
 }
 .island .btn.isl-x {
-  margin-inline-start: auto;
   block-size: 26px;
   padding-inline: var(--sp-3);
   gap: var(--sp-3);
@@ -420,15 +447,12 @@
   font-size: var(--t-11);
   padding: 1px var(--sp-2);
 }
-/* Jobs (I-R47) sits at the row's end beside Close, which then needs no push of its own */
+/* Jobs (I-R47) sits at the tab row's end */
 .island .btn.isl-jobs {
   margin-inline-start: auto;
   block-size: 26px;
   padding-inline: var(--sp-1);
   color: var(--fg-3);
-}
-.island .btn.isl-jobs + .btn.isl-x {
-  margin-inline-start: 0;
 }
 
 .isl-r2 {
@@ -554,14 +578,14 @@
   .seg.isl-groups button {
     padding-inline: 6px;
   }
-  .isl-r1 {
+  .isl-tabs {
     gap: 0;
   }
   /* Close keeps its chevron and its name; the Esc hint goes */
   .isl-x .kbd {
     display: none;
   }
-  /* the last resort, when even the icons do not fit: the tabs scroll and Close stays in view
+  /* the last resort, when even the icons do not fit: the tabs scroll and Jobs stays in view
      (the padding keeps a focused tab's ring inside the scroller, the margin takes it back) */
   .seg.isl-groups {
     min-inline-size: 0;
@@ -570,7 +594,7 @@
     padding: 3px;
     margin: -3px;
   }
-  .isl-r1 > :not(.isl-groups) {
+  .isl-tabs > :not(.isl-groups) {
     flex: none;
   }
 }
@@ -585,9 +609,6 @@
   }
   .seg.isl-groups {
     gap: 0;
-  }
-  .isl-vsep {
-    margin-inline: var(--sp-1);
   }
   .island .btn.isl-x {
     padding-inline: var(--sp-2);
@@ -714,10 +735,10 @@
   min-inline-size: min(100cqi, 460px);
   max-inline-size: 100cqi;
 }
-.island-wrap:is([data-state='rest'], [data-state='ready']) .isl-layer {
+.island-wrap[data-state='rest'] .isl-layer {
   max-inline-size: calc(
     100cqi - max(var(--drawer-inline, 0px), var(--vdock-w, 0px)) - 2 *
-      (var(--isl-toggle-room) + var(--isl-aside-w, 0px)) - 2px
+      (var(--isl-toggle-room) + var(--isl-aside-w, 0px) + var(--isl-shoulder))
   );
 }
 .isl-line > .isl-live-open,
@@ -735,11 +756,9 @@
 .isl-live > :not(.isl-name) {
   flex: none;
 }
-/* on a narrow stage the live name comes first: the Tools button leaves the view's name to its
-   icon and drops its key, the date its count, a playing clip its bar and telemetry */
+/* on a narrow stage the live name comes first: the date drops its count, a playing clip its bar
+   and telemetry (the view switch is down to its icons already, above) */
 @container (max-width: 560px) {
-  .isl-line .isl-open .isl-mode,
-  .isl-line .isl-open .kbd,
   .isl-line .isl-count,
   .isl-line [data-live='playback'] > :is(.isl-bar, .isl-value) {
     display: none;

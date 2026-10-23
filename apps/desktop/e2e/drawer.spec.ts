@@ -93,9 +93,7 @@ test.describe('the drawer', () => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
     await foldRight(win);
     await expect(island(win)).not.toHaveAttribute('data-state', /tools|date/);
-    // woken by the pointer first, as a person's click on it is
-    await win.locator('.island').hover({ position: { x: 4, y: 4 } });
-    await expect(island(win)).toHaveAttribute('data-state', 'ready');
+    // a click straight on the notch at rest (a press cancels its hover intent)
     await win.locator('.island').click({ position: { x: 4, y: 4 } });
     await expect(drawer(win)).toHaveAttribute('data-open', '');
     // one gesture, one surface: the island's tools stay shut behind the drawer (I-R64)

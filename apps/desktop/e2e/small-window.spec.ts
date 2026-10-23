@@ -580,16 +580,16 @@ test.describe('with Volumes in front', () => {
     }
   });
 
-  test('the island, grown by what is live and the pointer near, keeps clear of the panel toggle', async ({
+  test('the notch, grown by what is live, keeps clear of the panel toggle', async ({
     win,
   }, info) => {
     await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
     await openBench(win, 'volumes');
     await stageMode(win, '3D');
     await closeIslandTools(win);
+    // its line at rest is all of it at once: the view switch, the date's steps, the live reading
     const near = async () => {
-      await island(win).locator('.island').hover();
-      await expect(island(win)).toHaveAttribute('data-state', 'ready');
+      await expect(island(win)).toHaveAttribute('data-state', 'rest');
       await islandSettled(win);
     };
     // the clip plays: the island carries its reading, on the narrowest stage (Volumes in front)

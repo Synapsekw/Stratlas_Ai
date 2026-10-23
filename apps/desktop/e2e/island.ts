@@ -155,9 +155,10 @@ export async function islandTool(win: Page, g: GroupId, name: string | RegExp): 
   return full.getByRole('button', { name, exact: typeof name === 'string' });
 }
 
-/** The island's 3D, Map or Split switch (the tools open, so it shows). */
+/** The notch's 3D, Map or Split switch, on its line at rest and open. */
 export async function stageModeButton(win: Page, m: '3D' | 'Map' | 'Split'): Promise<Locator> {
-  const bar = await openIslandTools(win);
+  const bar = island(win);
+  await expect(bar).toBeVisible();
   return bar
     .getByRole('group', { name: 'Stage view' })
     .getByRole('button', { name: m, exact: true });
@@ -175,11 +176,13 @@ export async function stageMode(win: Page, m: '3D' | 'Map' | 'Split'): Promise<v
   await closeIslandTools(win);
 }
 
-/** Wake the island at rest, as the pointer near it does: the date's arrows and Tools show. */
+/**
+ * The notch with its date showing: at rest its line has the date's arrows already (the notch
+ * needs no waking any more), open its line keeps them.
+ */
 export async function wakeIsland(win: Page): Promise<Locator> {
   const bar = island(win);
-  if ((await bar.getAttribute('data-state')) === 'rest') await win.locator('.island').hover();
-  await expect(bar).not.toHaveAttribute('data-state', 'rest');
+  await expect(bar.getByTestId('date-row')).toBeVisible();
   return bar;
 }
 
@@ -190,10 +193,7 @@ export async function islandDateStep(win: Page, dir: 'prev' | 'next'): Promise<v
   await bar.getByTestId(`date-bar-${dir}`).click();
 }
 
-/**
- * Open the island's calendar from its date pill, as a person does: the pointer near the island
- * wakes it first (the line grows its arrows), then the pill is clicked.
- */
+/** Open the island's calendar from its date pill, as a person does. */
 export async function openIslandCalendar(win: Page): Promise<Locator> {
   const bar = await wakeIsland(win);
   await islandSettled(win);
@@ -207,8 +207,9 @@ export async function openIslandCalendar(win: Page): Promise<Locator> {
 export const islandDate = (win: Page): Locator => island(win).getByTestId('date-row');
 
 /**
- * The open island's first row (the view switch, the group tabs and Close): the names of those
- * that lie outside the capsule, cut off at its edge. Empty when every one is in view.
+ * The open notch's line and tab row (the view switch, the date, Keep open and Close; the group
+ * tabs and Jobs): the names of those that lie outside the capsule, cut off at its edge. Empty when
+ * every one is in view.
  */
 export async function islandCutOff(win: Page): Promise<string[]> {
   await openIslandTools(win);
@@ -216,14 +217,14 @@ export async function islandCutOff(win: Page): Promise<string[]> {
   return win.evaluate(() => {
     const capsule = document.querySelector('.island')?.getBoundingClientRect();
     if (!capsule) return ['no island'];
-    const cut = [...document.querySelectorAll('.isl-r1 button')]
+    const cut = [...document.querySelectorAll('.isl-tools > .isl-line button, .isl-tabs button')]
       .filter((b) => {
         const r = b.getBoundingClientRect();
         return r.width === 0 || r.left < capsule.left - 0.5 || r.right > capsule.right + 0.5;
       })
       .map((b) => b.getAttribute('aria-label') ?? b.textContent.trim());
     // a tab scrolled out of sight in the tablist (its last resort) is cut off too
-    const tabs = document.querySelector('.isl-r1 [role="tablist"]');
+    const tabs = document.querySelector('.isl-tabs [role="tablist"]');
     if (tabs && tabs.scrollWidth > tabs.clientWidth + 0.5) cut.push('the tabs scroll');
     return cut;
   });

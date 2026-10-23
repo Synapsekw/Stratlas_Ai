@@ -96,9 +96,16 @@ const button = (name: string) =>
   host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`);
 const tab = (name: string) =>
   [...host.querySelectorAll<HTMLElement>('[role="tab"]')].find((t) => t.textContent === name);
-const near = () => {
+const notch = () => host.querySelector<HTMLElement>('.island');
+/** The pointer onto the notch (`buttons`: held down, as in a drag) or off it. */
+const pointer = (to: 'enter' | 'leave', buttons = 0) => {
   act(() => {
-    island()?.dispatchEvent(new MouseEvent('pointermove', { bubbles: true }));
+    notch()?.dispatchEvent(new MouseEvent(`pointer${to}`, { buttons }));
+  });
+};
+const wait = (ms: number) => {
+  act(() => {
+    vi.advanceTimersByTime(ms);
   });
 };
 const key = (k: string, target: Element | null = document.activeElement) => {
@@ -107,8 +114,12 @@ const key = (k: string, target: Element | null = document.activeElement) => {
   });
 };
 const openTools = () => {
-  near();
   act(() => button('Tools')?.click());
+};
+const pressOutside = () => {
+  act(() => {
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+  });
 };
 /** Just enough of a 3D stage for the quick rows' tiles that need one. */
 const fakeStage = () =>
@@ -117,7 +128,7 @@ const front = () => workbench.getState().front;
 const benchTab = (id: string) => workbench.getState().tabs.find((t) => t.id === id);
 
 describe('Island', () => {
-  it('rests as the date pill in the survey colour, with no tiles', async () => {
+  it('rests as its line: the view switch, the date pill in the survey colour, the chevron', async () => {
     await render();
     const el = island();
     expect(el?.getAttribute('aria-label')).toBe('Stage tools');
@@ -127,24 +138,108 @@ describe('Island', () => {
     expect(row?.textContent).toContain('6 Nov');
     expect(row?.querySelector('.isl-swatch')).not.toBeNull();
     expect(host.querySelector('.isl-tile')).toBeNull();
-    expect(button('Previous survey')).toBeNull();
+    expect(host.querySelector('[role="tab"]')).toBeNull();
+    expect(button('Tools')?.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('grows when the pointer is near: arrows, count, view and Tools', async () => {
+  it('shows the view switch at rest, and switches the view from it', async () => {
     await render();
-    near();
-    expect(island()?.dataset.state).toBe('ready');
+    const modes = host.querySelector('[role="group"][aria-label="Stage view"]');
+    expect(modes?.closest('.isl-line')).not.toBeNull();
+    expect(button('3D')?.getAttribute('aria-pressed')).toBe('true');
+    expect(button('Map')?.getAttribute('aria-pressed')).toBe('false');
+    expect(button('Split')).not.toBeNull();
+    act(() => button('Map')?.click());
+    expect(shell.getState().stageMode).toBe('map');
+    expect(island()?.dataset.state).toBe('rest');
+    act(() => {
+      shell.getState().setStageMode('3d');
+    });
+  });
+
+  it('shows the date arrows and count at rest', async () => {
+    await render();
     expect(button('Previous survey')?.getAttribute('aria-keyshortcuts')).toBe('Alt+ArrowLeft');
     expect(button('Next survey')).not.toBeNull();
     expect(host.querySelector('[data-testid="date-bar-count"]')?.textContent).toBe('3 of 3');
-    expect(button('Tools')?.textContent).toContain('3D');
     act(() => button('Previous survey')?.click());
     expect(timeline.getState().focus).toBe('oct');
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
+  it('opens when the pointer rests on the notch, not when it passes over or drags across', async () => {
+    await render();
+    pointer('enter');
+    wait(100);
+    pointer('leave');
+    wait(200);
+    expect(island()?.dataset.state).toBe('rest');
+    pointer('enter', 1);
+    wait(300);
+    expect(island()?.dataset.state).toBe('rest');
+    pointer('leave');
+    // a press on the line uses it as it is (a view, a date step): no opening after it
+    pointer('enter');
+    act(() => {
+      button('Next survey')?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    });
+    wait(200);
+    expect(island()?.dataset.state).toBe('rest');
+    pointer('leave');
+    pointer('enter');
+    wait(160);
+    expect(island()?.dataset.state).toBe('tools');
+    // opened by the pointer, focus stays where it was
+    expect(document.activeElement?.getAttribute('role')).not.toBe('tab');
+  });
+
+  it('closes a while after the pointer leaves, unless it comes back', async () => {
+    await render();
+    pointer('enter');
+    wait(160);
+    pointer('leave');
+    wait(150);
+    pointer('enter');
+    wait(400);
+    expect(island()?.dataset.state).toBe('tools');
+    pointer('leave');
+    wait(310);
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
+  it('stays open after the pointer leaves while keyboard focus is in it', async () => {
+    // jsdom has no keyboard modality: focus that lands by key is focus-visible, as in Chromium
+    vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, sel) {
+      return sel === ':focus-visible'
+        ? this === document.activeElement
+        : this.closest(sel) === this;
+    });
+    await render();
+    key('t', document.body);
+    expect(document.activeElement?.getAttribute('role')).toBe('tab');
+    pointer('enter');
+    pointer('leave');
+    wait(400);
+    expect(island()?.dataset.state).toBe('tools');
+  });
+
+  it('closes on Esc with the pointer on it, focus elsewhere', async () => {
+    await render();
+    pointer('enter');
+    wait(160);
+    key('Escape', document.body);
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
+  it('closes on a press outside', async () => {
+    await render();
+    openTools();
+    pressOutside();
+    expect(island()?.dataset.state).toBe('rest');
   });
 
   it('keeps the date bar test ids on the island date (I-R15)', async () => {
     await render();
-    near();
     const bar = host.querySelector('[data-testid="date-bar"]');
     expect(bar?.closest('[data-testid="date-row"]')).not.toBeNull();
     expect(bar?.querySelector('[data-testid="date-bar-open"]')).not.toBeNull();
@@ -165,7 +260,6 @@ describe('Island', () => {
 
   it('opens the tools from a click on the capsule itself', async () => {
     await render();
-    near();
     act(() => host.querySelector<HTMLElement>('.island')?.click());
     expect(island()?.dataset.state).toBe('tools');
   });
@@ -178,7 +272,6 @@ describe('Island', () => {
     };
     document.addEventListener('click', take, true);
     try {
-      near();
       act(() => host.querySelector<HTMLElement>('.island')?.click());
       expect(drawerStore.getState().opened).toBe('click');
       expect(island()?.dataset.state).not.toBe('tools');
@@ -391,18 +484,18 @@ describe('Island', () => {
     expect(island()?.dataset.motion).toBe('reduce');
   });
 
-  it('rests as three dots in a project without survey dates', async () => {
+  it('rests as the view switch alone in a project without survey dates', async () => {
     timeline.getState().attach('p3', null);
     await render();
-    expect(host.querySelector('.isl-dots')).not.toBeNull();
     expect(host.querySelector('[data-testid="date-row"]')).toBeNull();
+    expect(button('3D')).not.toBeNull();
+    expect(button('Tools')).not.toBeNull();
   });
 
   it('shows one date without arrows', async () => {
     const one = { ...threeDates, captures: threeDates.captures.slice(0, 1) };
     timeline.getState().attach('p3', captureIndex(one));
     await render();
-    near();
     expect(host.querySelector('[data-testid="date-row"]')?.textContent).toContain('4 Sep');
     expect(button('Previous survey')).toBeNull();
   });
@@ -669,7 +762,7 @@ describe('Island: the groups open their workbench', () => {
     expect(document.activeElement).toBe(reading);
   });
 
-  it('wakes when Shift+Tab comes back into it from after it, focus on its last control (T20 M7)', async () => {
+  it('keeps focus on the live reading at rest, the line not drawn again (I-R44)', async () => {
     live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }];
     await render();
     const after = document.createElement('button');
@@ -677,27 +770,12 @@ describe('Island: the groups open their workbench', () => {
     act(() => {
       after.focus();
     });
-    // a program's focus from there keeps the line at rest (I-R44)
     const reading = host.querySelector<HTMLButtonElement>('button.isl-live-open');
     act(() => {
       reading?.focus();
     });
     expect(island()?.dataset.state).toBe('rest');
-    act(() => {
-      after.focus();
-    });
-    // Shift+Tab from the control after the island lands on the line's last control at rest
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }));
-    });
-    act(() => {
-      host.querySelector<HTMLButtonElement>('button.isl-live-open')?.focus();
-    });
-    expect(island()?.dataset.state).toBe('ready');
-    const buttons = [...host.querySelectorAll<HTMLElement>('.isl-layer button')];
-    expect(buttons.length).toBeGreaterThan(0);
-    expect(document.activeElement).toBe(buttons[buttons.length - 1]);
-    expect(document.activeElement?.closest('.island-wrap')).not.toBeNull();
+    expect(document.activeElement).toBe(reading);
     after.remove();
   });
 
@@ -714,6 +792,105 @@ describe('Island: the groups open their workbench', () => {
     act(() => host.querySelector<HTMLElement>('.island')?.click());
     expect(island()?.dataset.state).toBe('tools');
     expect(front()).toBe('selection');
+  });
+});
+
+describe('Island: kept open (pinned)', () => {
+  const pin = () => button('Keep open');
+
+  it('has Keep open and Close at the end of its line, open', async () => {
+    await render();
+    expect(pin()).toBeNull();
+    openTools();
+    const line = host.querySelector('.isl-line');
+    expect(line?.contains(pin())).toBe(true);
+    expect(line?.contains(button('Close'))).toBe(true);
+    expect(line?.contains(button('3D'))).toBe(true);
+    // the view switch is on the line only, not again in the tools
+    expect(host.querySelectorAll('[role="group"][aria-label="Stage view"]')).toHaveLength(1);
+    expect(pin()?.getAttribute('aria-pressed')).toBe('false');
+    expect(island()?.hasAttribute('data-pinned')).toBe(false);
+  });
+
+  it('stays open through a press outside, Esc, the pointer leaving and a group pick', async () => {
+    await render();
+    openTools();
+    act(() => pin()?.click());
+    expect(pin()?.getAttribute('aria-pressed')).toBe('true');
+    expect(island()?.hasAttribute('data-pinned')).toBe(true);
+    pressOutside();
+    expect(island()?.dataset.state).toBe('tools');
+    key('Escape', host.querySelector('[role="tab"]'));
+    expect(island()?.dataset.state).toBe('tools');
+    pointer('enter');
+    pointer('leave');
+    wait(400);
+    expect(island()?.dataset.state).toBe('tools');
+    act(() => tab('Measure')?.click());
+    expect(front()).toBe('measure');
+    expect(island()?.dataset.state).toBe('tools');
+    expect(tab('Measure')?.getAttribute('aria-selected')).toBe('true');
+    expect(host.querySelector('[role="tabpanel"]')?.getAttribute('aria-label')).toBe('Measure');
+    // a tile that opens its panel leaves it open too
+    act(() => button('Measure: All tools')?.click());
+    expect(island()?.dataset.state).toBe('tools');
+    key('t', document.body);
+    expect(island()?.dataset.state).toBe('tools');
+  });
+
+  it('is remembered on this computer: the next notch starts open', async () => {
+    await render();
+    openTools();
+    act(() => pin()?.click());
+    act(() => root?.unmount());
+    root = undefined;
+    await render();
+    expect(island()?.dataset.state).toBe('tools');
+    expect(pin()?.getAttribute('aria-pressed')).toBe('true');
+    // started open, it takes no focus
+    expect(host.contains(document.activeElement)).toBe(false);
+  });
+
+  it('returns from the calendar to its open tools', async () => {
+    await render();
+    openTools();
+    act(() => pin()?.click());
+    act(() => host.querySelector<HTMLButtonElement>('[data-testid="date-bar-open"]')?.click());
+    expect(island()?.dataset.state).toBe('date');
+    key('Escape');
+    expect(island()?.dataset.state).toBe('tools');
+  });
+
+  it('unpinned again, closes as before: the pointer leaving, a pick', async () => {
+    await render();
+    openTools();
+    act(() => pin()?.click());
+    pointer('enter');
+    act(() => pin()?.click());
+    expect(pin()?.getAttribute('aria-pressed')).toBe('false');
+    expect(island()?.dataset.state).toBe('tools');
+    // (the pointer's: no keyboard focus left in it)
+    act(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+    pointer('leave');
+    wait(310);
+    expect(island()?.dataset.state).toBe('rest');
+    // forgotten too
+    act(() => root?.unmount());
+    root = undefined;
+    await render();
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
+  it('Close rests it and stops keeping it open', async () => {
+    await render();
+    openTools();
+    act(() => pin()?.click());
+    act(() => button('Close')?.click());
+    expect(island()?.dataset.state).toBe('rest');
+    expect(island()?.hasAttribute('data-pinned')).toBe(false);
+    expect(document.activeElement).toBe(island());
   });
 });
 

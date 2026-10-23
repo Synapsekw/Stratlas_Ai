@@ -4625,6 +4625,8 @@ export const en = {
   'island.reconnecting': 'Reconnecting…',
   'island.backOnline': 'Back online',
   'island.tNotice': 'T now opens the tools; the timeline is in View',
+  'island.pin': 'Keep open',
+  'island.unpin': 'Stop keeping open',
   'island.timeline': 'Timeline',
   'island.askAgent': 'Ask the agent',
   'island.label': 'Stage tools',
