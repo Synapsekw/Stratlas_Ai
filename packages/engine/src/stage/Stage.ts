@@ -292,6 +292,8 @@ export class Stage implements EngineStage {
   private warming = 1;
   /** Content came, went or changed visibility: what is drawn may need new programs. */
   private contentDirty = false;
+  /** A frame has been drawn (the first one waits for its programs, `warmFirst`). */
+  private drawnOnce = false;
 
   constructor(private readonly opts: StageOptions) {
     this.getAdapter = opts.getAdapter ?? registryAdapter;
@@ -942,8 +944,15 @@ export class Stage implements EngineStage {
   /** Render immediately (also used by resize so the canvas is never left blank). */
   renderNow(dtMs = 0, now = performance.now()): void {
     if (this.disposed || this.parkedAt || this.width < 1 || this.height < 1) return;
-    // the programs of what would be drawn are being made: the last frame stays meanwhile
-    if (this.warming > 0) return;
+    // The programs of what would be drawn are being made: the last frame stays meanwhile. Before
+    // the first frame there is none to stay in step with: the frame callbacks run, so what places
+    // itself through the camera (measurement labels, markers) follows it while the content is
+    // framed and is in place for that frame, as when the first frame drew at once. Else a label
+    // placed before the framing stays where the camera stood until the programs are made.
+    if (this.warming > 0) {
+      if (!this.drawnOnce) for (const cb of this.frameCbs) cb(dtMs);
+      return;
+    }
     for (const cb of this.frameCbs) cb(dtMs);
     // a receiver's material asks for another program (the video projector's patch), or content
     // came: its programs are made before a frame draws it (not while a section switch waits)
@@ -972,6 +981,7 @@ export class Stage implements EngineStage {
     } finally {
       if (asked) this.swapSection(asked, this._section.enabled);
     }
+    this.drawnOnce = true;
     this.noteReceivers();
     this.lastRenderMs = performance.now() - t;
     this.overlay.update(

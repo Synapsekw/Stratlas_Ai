@@ -1299,6 +1299,28 @@ describe('Stage', () => {
       stage.dispose();
     });
 
+    it('runs the frame callbacks while its first frame waits, the camera as framed', async () => {
+      const { stage, calls, tick, compiled } = makeCold();
+      const framed: number[] = [];
+      stage.onFrame(() => {
+        // where an overlay places itself through the camera (a label, a marker)
+        framed.push(stage.camera.matrixWorld.elements[14]);
+      });
+      // the content is framed before any frame drew
+      stage.camera.position.set(3, 4, 37);
+      stage.requestRender();
+      tick();
+      expect(calls.render).toBe(0);
+      // the overlays were placed for the camera the coming frame draws with
+      expect(framed).toHaveLength(1);
+      expect(framed[0]).toBeCloseTo(37);
+      await compiled();
+      tick();
+      expect(calls.render).toBe(1);
+      expect(framed).toHaveLength(2);
+      stage.dispose();
+    });
+
     it('makes the programs of a layer that loads before a frame draws it', async () => {
       const tank = new MeshStandardMaterial({ name: 'tank' });
       const adapter: LayerAdapter = {
