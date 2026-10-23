@@ -62,13 +62,16 @@ interface MapEl extends Element {
   };
 }
 
-/** Look straight down on the pin's ground from 40 m, so 5 m around it is on screen. */
-async function lookDown(win: Page): Promise<void> {
-  await win.evaluate(() => {
+/**
+ * Look straight down from 40 m on the pin's ground (or on the ground at `at`, x and z), so 5 m
+ * around it is on screen.
+ */
+async function lookDown(win: Page, at: [number, number] = [0, 0]): Promise<void> {
+  await win.evaluate(([x, z]) => {
     (window as unknown as Probe).__stratlas
       .stage()
-      ?.restoreView({ position: [0, 40, 0.1], target: [0, 0, 0] }, false);
-  });
+      ?.restoreView({ position: [x, 40, z + 0.1], target: [x, 0, z] }, false);
+  }, at);
   // the view has settled when the camera stands 40 m up
   await expect
     .poll(
@@ -371,6 +374,9 @@ test.describe('pinned media on the map', () => {
     await win.reload();
     await openPinProject(win);
     await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 30_000 });
+    // the GPS photo stands off the model, outside the 3D view's first framing: look down on it, so
+    // its 3D marker is on screen (centred, it stays so in the narrower Split pane)
+    await lookDown(win, [PH3_POS[0], PH3_POS[2]]);
     await stageMode(win, 'Split');
     const map = win.locator('.maplibregl-map').first();
     await expect(map).toBeVisible({ timeout: 30_000 });
@@ -381,7 +387,7 @@ test.describe('pinned media on the map', () => {
     const plate = (l: Locator) =>
       l.locator('.aio-mk-p').evaluate((e) => getComputedStyle(e).backgroundColor);
     const scenePhoto = win.locator('.pane-3d .aio-mk[data-kind="photo"]').first();
-    await expect(scenePhoto).toHaveCount(1, { timeout: 30_000 });
+    await expect(scenePhoto).toBeVisible({ timeout: 30_000 });
     expect(await plate(mapPhoto)).toBe(await plate(scenePhoto));
 
     // it previews on hover with its thumbnail, and opens beside the map on click
