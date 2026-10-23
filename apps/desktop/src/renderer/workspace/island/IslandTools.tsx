@@ -1,9 +1,9 @@
 /**
- * The open notch: its line on top (the view switch, the date, the live reading, Keep open and
- * Close), the group tabs and Jobs under it, the shown group's quick row last. Hovering or focusing
- * a tab previews its row; clicking it picks the group and opens its workbench in the right sidebar
+ * The open notch under its line (Island.tsx, which draws the line once so it never moves): the
+ * group tabs, Jobs, Keep open and Close, then the shown group's quick row. Hovering or focusing a
+ * tab previews its row; clicking it picks the group and opens its workbench in the right sidebar
  * (D4). Left and Right move along a row (mirrored right to left, as the foundation's Tabs do), Up
- * and Down (and Tab) between the rows.
+ * and Down (and Tab) between the rows, the line's among them (`moveFocus`).
  */
 import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
 import { useId, type Dispatch, type KeyboardEvent, type ReactNode } from 'react';
@@ -43,8 +43,8 @@ export function IslandModes({ mode }: { mode: StageMode }) {
   );
 }
 
-/** Arrow and Tab keys in the open island; true when used. */
-function moveFocus(root: HTMLElement, e: KeyboardEvent): boolean {
+/** Arrow and Tab keys in the open notch (its rows: `data-isl-row`, the line first); true when used. */
+export function moveFocus(root: HTMLElement, e: KeyboardEvent): boolean {
   const rows = [...root.querySelectorAll<HTMLElement>('[data-isl-row]')];
   const at = document.activeElement as HTMLElement | null;
   const r = rows.findIndex((row) => at && row.contains(at));
@@ -93,16 +93,14 @@ function moveFocus(root: HTMLElement, e: KeyboardEvent): boolean {
 }
 
 export function IslandTools({
-  line,
   groups,
   group,
   preview,
   ctx,
   dispatch,
   onPick,
+  end,
 }: {
-  /** The notch's line, the first row (it carries `data-isl-row`). */
-  line: ReactNode;
   groups: readonly GroupId[];
   /** The picked group (the selected tab). */
   group: GroupId;
@@ -112,19 +110,14 @@ export function IslandTools({
   dispatch: Dispatch<IslandEvent>;
   /** A group's tab clicked: the group is picked and its workbench opens. */
   onPick: (g: GroupId) => void;
+  /** After Jobs at the tab row's end: Keep open and Close. */
+  end: ReactNode;
 }) {
   const t = useT();
   const id = useId();
   const shown = preview && groups.includes(preview) ? preview : group;
   return (
-    <div
-      className="isl-tools"
-      onKeyDown={(e) => {
-        if (e.target instanceof HTMLElement && e.target.closest('.surface-pop')) return;
-        if (moveFocus(e.currentTarget, e)) e.preventDefault();
-      }}
-    >
-      {line}
+    <div className="isl-tools">
       <div className="isl-tabs" data-isl-row="">
         <div className="seg isl-groups" role="tablist" aria-label={t('island.tools')}>
           {groups.map((g) => (
@@ -165,6 +158,7 @@ export function IslandTools({
         >
           <Icon name="clock" size={14} />
         </Button>
+        {end}
       </div>
       <div
         className="isl-r2"

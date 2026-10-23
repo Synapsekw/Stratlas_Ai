@@ -2364,7 +2364,10 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
   inset-inline-end: calc(
     max(var(--drawer-inline, 0px), var(--vdock-w, 0px)) + var(--isl-toggle-room, 0px)
   );
-  transition: inset-inline-end var(--d-3) var(--ease);
+  /* both ends together, so the notch does not swing sideways as its room changes */
+  transition:
+    inset-inline-start var(--d-3) var(--ease),
+    inset-inline-end var(--d-3) var(--ease);
 }
 /* the status chips: annotation tools, the cut-away state and the compare notice (no playing
    or paused chip: playback is the island's live item, D30) */

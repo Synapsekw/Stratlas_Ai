@@ -328,9 +328,9 @@ async function openLayout(win: Page) {
     return {
       stage: box(document.querySelector('.ws > .stage')),
       capsule: box(capsule),
-      // the line's and the tab row's controls: the view switch, the date, Keep open and Close,
-      // the tabs and Jobs
-      controls: [...document.querySelectorAll('.isl-tools > .isl-line button, .isl-tabs button')]
+      // the line's and the tab row's controls: the view switch and the date; the tabs, Jobs,
+      // Keep open and Close
+      controls: [...document.querySelectorAll('.isl-layer > .isl-line button, .isl-tabs button')]
         // (those the narrow-stage rules leave out on purpose, the date's steps, are not drawn)
         .filter((b) => b.getClientRects().length > 0)
         .map((b) => ({
@@ -554,6 +554,54 @@ test.describe('the right panel folded', () => {
   });
 });
 
+// opening under the pointer must not move what the pointer is on (a click would land on a
+// neighbour): the line's view switch and date keep their boxes from rest to open
+for (const size of ['1400x900', '1100x720'] as const) {
+  test.describe(`the line keeps its place as the notch opens, ${size}`, () => {
+    test.use({ appEnv: { QUADRION_WINDOW_SIZE: size } });
+
+    test('the view switch and the date stay put, to the pixel', async ({
+      twoDateProject,
+      win,
+    }, info) => {
+      await openCard(win, 'E2E two dates', twoDateProject.id);
+      const bar = island(win);
+      await expect(bar).toHaveAttribute('data-state', 'rest');
+      await islandSettled(win);
+      const boxes = () =>
+        win.evaluate(() =>
+          [
+            ...document.querySelectorAll(
+              '.isl-layer > .isl-line :is(.isl-modes button, [data-testid^="date-bar-"])',
+            ),
+          ]
+            .filter((b) => b.getClientRects().length > 0)
+            .map((b) => {
+              const r = b.getBoundingClientRect();
+              const name = b.getAttribute('data-testid') ?? b.getAttribute('aria-label') ?? '';
+              return { name, x: r.x, y: r.y, w: r.width, h: r.height };
+            }),
+        );
+      const rest = await boxes();
+      expect(rest.map((b) => b.name)).toEqual(expect.arrayContaining(['3D', 'Map', 'Split']));
+      await shot(win, info, `notch-rest-${size}.png`);
+      // the pointer rests on the notch's own edge, off its buttons
+      await win.locator('.island').hover({ position: { x: 4, y: 4 } });
+      await expect(bar).toHaveAttribute('data-state', 'tools');
+      await islandSettled(win);
+      await shot(win, info, `notch-open-${size}.png`);
+      const open = await boxes();
+      expect(open.map((b) => b.name)).toEqual(rest.map((b) => b.name));
+      for (const [i, was] of rest.entries()) {
+        const now = open[i];
+        if (!now) continue;
+        for (const k of ['x', 'y', 'w', 'h'] as const)
+          expect(Math.abs(now[k] - was[k]), `${was.name} ${k}`).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+}
+
 test.describe('right to left', () => {
   test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720' } });
 
@@ -590,7 +638,8 @@ test.describe('right to left', () => {
     });
     expect(inside, 'the open content lies inside the capsule').toBe(true);
     // the tabs run from the right in their own order: View rightmost, then Measure to its left;
-    // on the line above, the view switch is at the start (right) and Close at the end (left)
+    // the line above reads from the right too (3D first, the date after it), and Close ends the
+    // tab row at its left
     const x = async (name: string, role: 'tab' | 'button') => {
       const b = await bar.getByRole(role, { name, exact: true }).boundingBox();
       return b ? b.x : Number.NaN;
@@ -598,10 +647,13 @@ test.describe('right to left', () => {
     const view = await x('View', 'tab');
     const measure = await x('Measure', 'tab');
     const threeD = await x('3D', 'button');
+    const split = await x('Split', 'button');
     const close = await x('Close', 'button');
+    const date = (await islandDate(win).boundingBox())?.x ?? Number.NaN;
     expect(measure, 'Measure lies left of View').toBeLessThan(view);
-    expect(threeD, 'the view switch is right of the tabs after View').toBeGreaterThan(measure);
-    expect(close, 'Close is left of the view switch').toBeLessThan(threeD);
+    expect(split, 'Split lies left of 3D').toBeLessThan(threeD);
+    expect(date, 'the date lies left of the view switch').toBeLessThan(split);
+    expect(close, 'Close is left of the tabs').toBeLessThan(measure);
     await closeIslandTools(win);
   });
 });

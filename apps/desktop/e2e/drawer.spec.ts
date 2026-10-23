@@ -93,10 +93,16 @@ test.describe('the drawer', () => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
     await foldRight(win);
     await expect(island(win)).not.toHaveAttribute('data-state', /tools|date/);
-    // a click straight on the notch at rest (a press cancels its hover intent)
+    // a click on the notch at rest (sooner than its hover intent opens the tools; a press holds
+    // them shut until the pointer leaves)
     await win.locator('.island').click({ position: { x: 4, y: 4 } });
     await expect(drawer(win)).toHaveAttribute('data-open', '');
-    // one gesture, one surface: the island's tools stay shut behind the drawer (I-R64)
+    // one gesture, one surface: the island's tools stay shut behind the drawer (I-R64), and a
+    // pointer resting on the notch does not open them over it either (D20)
+    await expect(island(win)).not.toHaveAttribute('data-state', /tools|date/);
+    await win.mouse.move(1, 1);
+    await win.locator('.island').hover({ position: { x: 6, y: 6 } });
+    await win.waitForTimeout(400);
     await expect(island(win)).not.toHaveAttribute('data-state', /tools|date/);
     await expect
       .poll(() =>

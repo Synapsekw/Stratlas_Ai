@@ -207,8 +207,8 @@ export async function openIslandCalendar(win: Page): Promise<Locator> {
 export const islandDate = (win: Page): Locator => island(win).getByTestId('date-row');
 
 /**
- * The open notch's line and tab row (the view switch, the date, Keep open and Close; the group
- * tabs and Jobs): the names of those that lie outside the capsule, cut off at its edge. Empty when
+ * The open notch's line and tab row (the view switch and the date; the group tabs, Jobs, Keep
+ * open and Close): the names of those that lie outside the capsule, cut off at its edge. Empty when
  * every one is in view.
  */
 export async function islandCutOff(win: Page): Promise<string[]> {
@@ -218,7 +218,7 @@ export async function islandCutOff(win: Page): Promise<string[]> {
     const capsule = document.querySelector('.island')?.getBoundingClientRect();
     if (!capsule) return ['no island'];
     // (one the narrow-stage rules leave out on purpose, the date's steps, is not drawn at all)
-    const cut = [...document.querySelectorAll('.isl-tools > .isl-line button, .isl-tabs button')]
+    const cut = [...document.querySelectorAll('.isl-layer > .isl-line button, .isl-tabs button')]
       .filter((b) => b.getClientRects().length > 0)
       .filter((b) => {
         const r = b.getBoundingClientRect();

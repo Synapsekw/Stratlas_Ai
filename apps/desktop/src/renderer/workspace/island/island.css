@@ -34,7 +34,8 @@
 .isl-notch {
   position: relative;
   display: flex;
-  max-inline-size: 100%;
+  flex: none;
+  max-inline-size: calc(100% + 2 * var(--isl-spill));
 }
 /* the shoulders: a square just outside each top corner, filled but for a quarter circle, so the
    notch flows into the stage's top edge */
@@ -96,8 +97,9 @@
     var(--el-2),
     inset 0 -2px 0 var(--acc);
 }
-/* the island's View tile toggles the right panel while its tools are open */
-.stage:has(> .island-wrap[data-state='tools']) > .stage-rp {
+/* the island's View tile toggles the right panel while its tools are open; kept open, the notch
+   keeps to its room and the toggle stays */
+.stage:has(> .island-wrap[data-state='tools']:not([data-pinned])) > .stage-rp {
   visibility: hidden;
 }
 /* the sidebar's front tab shows the island's live item (D10) */
@@ -108,10 +110,19 @@
     0 0 0 3px var(--acc-a12);
 }
 
-/* the content: measured, then laid over the capsule so the capsule can morph around it */
+/* the content: measured, then laid over the capsule so the capsule can morph around it. The line
+   is centred in it, so it stays where it is at every size; what comes under it fades in */
 .isl-layer {
   inline-size: max-content;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.isl-body {
   animation: isl-in var(--d-3) var(--ease) 70ms both;
+}
+.isl-body > [role='dialog'] {
+  border-block-start: 1px solid var(--line-soft);
 }
 .island[data-sized] > .isl-layer {
   position: absolute;
@@ -239,15 +250,14 @@
   color: var(--fg-0);
 }
 
-/* open, Keep open and Close at the line's end */
-.isl-end {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  margin-inline-start: auto;
-  padding-inline-start: var(--sp-3);
-  flex: none;
+/* open, the chevron's place is kept, empty: the line does not move */
+.isl-open-held {
+  display: inline-block;
+  inline-size: 24px;
+  block-size: 24px;
 }
+
+/* open, Keep open and Close at the tab row's end, after Jobs */
 .island .btn.isl-pin {
   block-size: 26px;
   inline-size: 26px;
@@ -406,16 +416,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
-  padding: var(--sp-4);
+  /* under the line, which keeps its own padding (it does not move as the notch opens) */
+  padding: 0 var(--sp-4) var(--sp-4);
   /* room for five tiles a row, whatever the tab row's width (the tiles wrap under it); 100cqi is
-     the wrap's room */
-  min-inline-size: min(100cqi, 460px);
-  max-inline-size: 100cqi;
-}
-/* open, the line is the first row: the tools' own padding is its room */
-.isl-tools > .isl-line {
-  block-size: 28px;
-  padding-inline: 0;
+     the wrap's room, and unpinned the open tools reach past it over the toggle (--isl-spill) */
+  min-inline-size: min(calc(100cqi + 2 * var(--isl-spill)), 460px);
+  max-inline-size: calc(100cqi + 2 * var(--isl-spill));
 }
 .isl-tabs {
   display: flex;
@@ -567,8 +573,9 @@
 }
 
 /* narrow stages: the group tabs drop their names, the shown one keeps it (D6); the view switch
-   its names. (The widths are the wrap's room: open, the stage less 32 px; at rest less 104.) */
-@container (max-width: 728px) {
+   its names. (The widths are the wrap's room, the same at rest and open so the line never
+   changes as the notch opens: the stage less 104 px.) */
+@container (max-width: 656px) {
   /* out of sight, still the tab's name */
   .seg.isl-groups button:not([aria-selected='true']) .isl-gl {
     position: absolute;
@@ -609,9 +616,9 @@
 }
 /* narrower still (1100 px wide with a 470 px Volumes or Changes tab, ruling I-R27): the row
    tightens its padding and gaps so the tabs keep fitting before they would scroll */
-@container (max-width: 608px) {
+@container (max-width: 536px) {
   .isl-tools {
-    padding: var(--sp-3);
+    padding: 0 var(--sp-3) var(--sp-3);
   }
   .seg.isl-groups button {
     padding-inline: var(--sp-2);
@@ -709,10 +716,12 @@
 /* The line keeps clear of the right panel's toggle at the stage's top end (T21 concern 2, T22
    concern 2): the wrap, the notch's room, leaves the toggle's room at both ends of the views
    (styles.css), so the notch stays centred; at rest the line is less what hangs beside the capsule
-   too (--isl-aside-w, Island.tsx). A long live name is cut to fit. Open, the tools hide the
-   toggle (above), so the room is the views less a margin. */
+   too (--isl-aside-w, Island.tsx). A long live name is cut to fit. The room is the same in every
+   state, so the line never changes as the notch opens. Open and not kept open, the tools hide the
+   toggle (above) and reach past the room over it, by --isl-spill at each end. */
 .island-wrap {
   --isl-toggle-room: calc(var(--sp-5) + 34px + var(--sp-3));
+  --isl-spill: 0px;
 }
 /* the right panel folded, the toggle stands left of the window's own buttons (styles.css) */
 .ws.right-off .island-wrap {
@@ -721,24 +730,23 @@
       var(--sp-3)
   );
 }
-.island-wrap[data-state='tools'] {
-  --isl-toggle-room: var(--sp-6);
+.island-wrap[data-state='tools']:not([data-pinned]) {
+  --isl-spill: calc(var(--isl-toggle-room) - var(--sp-6));
 }
-/* Folded, the open tools and the calendar keep clear of the window's own buttons too (I-R57).
-   The buttons reach into the stage past the folded strip at its end, and past a rail at its start
-   (right to left, I-R23). The open notch takes the room between, the same at both ends so it
-   stays centred, and the narrow-stage rules above (names to icons, then scrolling tabs) follow
-   that room. Under the buttons there is nothing to click. */
-.ws.right-off .island-wrap:is([data-state='tools'], [data-state='date']) {
+/* Folded, the open tools keep clear of the window's own buttons too (I-R57). The buttons reach
+   into the stage past the folded strip at its end, and past a rail at its start (right to left,
+   I-R23). The open notch reaches no nearer them than that, the same at both ends so it stays
+   centred. Under the buttons there is nothing to click. */
+.ws.right-off .island-wrap[data-state='tools']:not([data-pinned]) {
   --isl-cap: max(
     var(--caption-inline-start, 0px) - var(--sb-col, 0px),
     var(--caption-inline-end, 0px) - var(--vdock-w, 0px) - var(--rp-col, 0px)
   );
-  --isl-toggle-room: max(var(--sp-6), var(--isl-cap) + var(--sp-3));
+  --isl-spill: max(0px, var(--isl-toggle-room) - max(var(--sp-6), var(--isl-cap) + var(--sp-3)));
 }
 /* the layer is max-content wide and gives the capsule its size (Island.tsx): at most the room */
 .island-wrap :is(.isl-layer, .isl-cal) {
-  max-inline-size: 100cqi;
+  max-inline-size: calc(100cqi + 2 * var(--isl-spill));
 }
 .island-wrap[data-state='rest'] .isl-layer {
   max-inline-size: calc(100cqi - 2 * (var(--isl-aside-w, 0px) + var(--isl-shoulder) + var(--sp-2)));

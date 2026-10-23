@@ -2,8 +2,9 @@
  * The stage notch (the island, D1 to D10): hung from the top centre of the stage. At rest its one
  * line: the 3D / Map / Split switch, the survey date with its arrows, the live reading and the
  * chevron that opens the tools; a second live item as a bubble beside it that swaps with it. The
- * pointer resting on it, a click on it, the chevron or T opens it: the line gains Keep open and
- * Close, the group tabs and Jobs come under it, and a group's quick row under them. Unpinned it
+ * pointer resting on it, a click on it, the chevron or T opens it: the line stays exactly where it
+ * was (drawn once, never again), and under it come the group tabs with Jobs, Keep open and Close,
+ * then a group's quick row (or the date's calendar). Unpinned it
  * closes when the pointer leaves, on Esc or a press outside, and once a group's workbench (its
  * full set, in the right sidebar) opens; kept open (pinned, on this computer) none of those
  * close it. Its size morphs between the states (instant under reduced motion).
@@ -39,7 +40,7 @@ import { liveTab, useHasVolumeMeasurements } from '../workbench/view';
 import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
-import { IslandModes, IslandTools } from './IslandTools';
+import { IslandModes, IslandTools, moveFocus } from './IslandTools';
 import {
   islandGroups,
   islandInitial,
@@ -206,7 +207,12 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   useSayLive(primary ? liveSay(primary) : '');
 
   const open = s.open === 'tools' || s.open === 'date';
-  const view = `${s.open}:${primary?.kind ?? ''}`;
+  // a tool live keeps its own Esc (the window's Esc below leaves it to the tool)
+  const toolLive = items.some((i) => i.kind === 'tool');
+  const toolLiveRef = useRef(toolLive);
+  useLayoutEffect(() => {
+    toolLiveRef.current = toolLive;
+  });
 
   // the latest state, for the listeners below
   const state = useRef(s);
@@ -282,7 +288,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     return () => {
       ro.disconnect();
     };
-  }, [view, open, notice]);
+  }, [s.open, open, notice]);
   useEffect(
     () => () => {
       root.current?.parentElement?.style.removeProperty('--isl-open-b');
@@ -327,7 +333,14 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   // so a pointer on its way to a row or a popover does not flicker it (unpinned, and not while
   // keyboard focus is in it)
   const hovered = useRef(false);
+  // the pointer's rest on the notch is spent (a timer runs, or a press or a close used it): no
+  // new opening until it leaves and comes back
+  const held = useRef(false);
   const leaveSoon = useRef<() => void>(() => undefined);
+  // closed under the pointer (Esc, Close, a pick, T): a nudge does not open it again
+  useLayoutEffect(() => {
+    if (s.open === 'rest' && hovered.current) held.current = true;
+  }, [s.open]);
   useEffect(() => {
     const el = capsule.current;
     if (!el) return;
@@ -347,7 +360,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     // where the pointer last was: the notch growing or appearing under a pointer that stays put
     // (the browser says it entered) is not the person moving onto it
     let at: { x: number; y: number } | null = null;
-    let armed = false;
+    const armed = held;
     const onWindowMove = (e: PointerEvent) => {
       at = { x: e.clientX, y: e.clientY };
     };
@@ -359,16 +372,18 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     const onMove = (e: PointerEvent) => {
       const still = at !== null && at.x === e.clientX && at.y === e.clientY;
       // a drag across it (orbiting the view) is not a rest on it either
-      if (armed || state.current.open !== 'rest' || e.buttons || still) return;
-      armed = true;
+      if (armed.current || state.current.open !== 'rest' || e.buttons || still) return;
+      armed.current = true;
       openTimer = setTimeout(() => {
-        armed = false;
-        if (hovered.current) dispatch({ type: 'hover' });
+        armed.current = false;
+        // with the sidebar folded the drawer has the stage's attention: the tools stay shut, as
+        // for a click (I-R64, D20)
+        if (hovered.current && drawerStore.getState().opened === null) dispatch({ type: 'hover' });
       }, HOVER_MS);
     };
     const onLeave = () => {
       hovered.current = false;
-      armed = false;
+      armed.current = false;
       clearTimeout(openTimer);
       if (state.current.open === 'tools') leaveSoon.current();
     };
@@ -376,7 +391,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     // until the pointer has left and come back
     const onPress = () => {
       clearTimeout(openTimer);
-      armed = true;
+      armed.current = true;
     };
     el.addEventListener('pointerenter', onEnter);
     el.addEventListener('pointerleave', onLeave);
@@ -420,8 +435,9 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
       focusOnOpen.current = opening;
       dispatch({ type: 'toggleTools' });
-      // said on a T that opens the tools, where it can be read
-      if (opening && takeTNotice()) setNotice(true);
+      // said on a T that opens the tools, or that finds them kept open, where it can be read
+      // (once on this computer: takeTNotice)
+      if ((opening || now.pinned) && takeTNotice()) setNotice(true);
     };
     window.addEventListener('keydown', onKey);
     return () => {
@@ -434,6 +450,8 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || !hovered.current) return;
       if (root.current?.contains(document.activeElement)) return;
+      // a live tool's Esc, and an open popover's, are theirs
+      if (toolLiveRef.current || document.querySelector('.surface-pop')) return;
       e.preventDefault();
       dispatch({ type: 'escape' });
     };
@@ -455,14 +473,15 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     };
   }, [notice]);
 
-  // opened from the keyboard: focus goes to the picked tab; unpinned, a press outside closes
+  // opened from the keyboard: focus goes to the picked tab; a press outside closes (kept open,
+  // only the calendar, back to the tools)
   useEffect(() => {
     if (s.open !== 'tools' || !focusOnOpen.current) return;
     focusOnOpen.current = false;
     root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
   }, [s.open]);
   useEffect(() => {
-    if (!open || s.pinned) return;
+    if (!open || (s.pinned && s.open !== 'date')) return;
     const away = (e: PointerEvent) => {
       const el = e.target instanceof Element ? e.target : null;
       if (!el || root.current?.contains(el) || el.closest('.surface-pop')) return;
@@ -472,7 +491,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     return () => {
       window.removeEventListener('pointerdown', away);
     };
-  }, [open, s.pinned]);
+  }, [open, s.pinned, s.open]);
   // the calendar keeps Tab inside and gives focus back to the island
   useFocusTrap(dateBox, s.open === 'date', { onEscape: close });
 
@@ -519,31 +538,10 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
           )}
         </>
       )}
-      {tooling ? (
-        <span className="isl-end">
-          <Button
-            variant="quiet"
-            className="isl-pin"
-            pressed={s.pinned}
-            aria-label={t('island.pin')}
-            tip={t(s.pinned ? 'island.unpin' : 'island.pin')}
-            onClick={() => {
-              setPinned(!s.pinned);
-            }}
-          >
-            <Icon name="pin" size={14} />
-          </Button>
-          <Button
-            variant="quiet"
-            className="isl-x"
-            aria-label={t('dialog.close')}
-            tip={t('dialog.close')}
-            onClick={closeOut}
-          >
-            <span className="kbd">Esc</span>
-            <Icon name="chevup" size={14} />
-          </Button>
-        </span>
+      {/* open, the chevron keeps its place (the line must not move under the pointer) but is
+          out of sight: Keep open and Close are at the end of the tab row */}
+      {open ? (
+        <span className="isl-open isl-open-held" aria-hidden="true" />
       ) : (
         <Button
           variant="quiet"
@@ -563,27 +561,57 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       )}
     </div>
   );
+  // the end of the tab row: Keep open, and Close unless kept open (the lit pin lets go)
+  const end = (
+    <>
+      <Button
+        variant="quiet"
+        className="isl-pin"
+        pressed={s.pinned}
+        aria-label={t('island.pin')}
+        tip={t(s.pinned ? 'island.unpin' : 'island.pin')}
+        onClick={() => {
+          setPinned(!s.pinned);
+        }}
+      >
+        <Icon name="pin" size={14} />
+      </Button>
+      {!s.pinned && (
+        <Button
+          variant="quiet"
+          className="isl-x"
+          aria-label={t('dialog.close')}
+          tip={t('dialog.close')}
+          onClick={closeOut}
+        >
+          <span className="kbd">Esc</span>
+          <Icon name="chevup" size={14} />
+        </Button>
+      )}
+    </>
+  );
 
-  let content: ReactNode;
+  // under the line, which is drawn once and never again (it keeps its place and its focus)
+  let body: ReactNode = null;
   if (tooling) {
-    content = (
+    body = (
       <IslandTools
-        line={line}
         groups={groups}
         group={group}
         preview={s.preview}
         ctx={ctx}
         dispatch={dispatch}
         onPick={pickGroup}
+        end={end}
       />
     );
   } else if (s.open === 'date' && dates) {
-    content = (
+    body = (
       <div ref={dateBox} role="dialog" aria-label={t('datebar.label')}>
         <IslandCalendar dates={dates} onDone={close} onCompare={onCompare} />
       </div>
     );
-  } else content = line;
+  }
 
   const isLinked = linked && !open && primary !== null && primary.kind !== 'connection';
   return (
@@ -625,8 +653,22 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
             dispatch({ type: 'toggleTools' });
           }}
         >
-          <div ref={layer} className="isl-layer" key={view}>
-            {content}
+          <div
+            ref={layer}
+            className="isl-layer"
+            onKeyDown={(e) => {
+              // arrows and Tab move along and between the line and the open rows
+              if (!tooling) return;
+              if (e.target instanceof HTMLElement && e.target.closest('.surface-pop')) return;
+              if (moveFocus(e.currentTarget, e)) e.preventDefault();
+            }}
+          >
+            {line}
+            {body && (
+              <div className="isl-body" key={s.open}>
+                {body}
+              </div>
+            )}
           </div>
         </div>
         {/* beside the capsule, outside the centring: the bubble and a comparison's controls */}

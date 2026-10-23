@@ -815,18 +815,60 @@ describe('Island: the groups open their workbench', () => {
 describe('Island: kept open (pinned)', () => {
   const pin = () => button('Keep open');
 
-  it('has Keep open and Close at the end of its line, open', async () => {
+  it('has Keep open and Close at the end of the tab row, after Jobs', async () => {
     await render();
     expect(pin()).toBeNull();
     openTools();
-    const line = host.querySelector('.isl-line');
-    expect(line?.contains(pin())).toBe(true);
-    expect(line?.contains(button('Close'))).toBe(true);
-    expect(line?.contains(button('3D'))).toBe(true);
+    const row = [...(host.querySelector('.isl-tabs')?.querySelectorAll('button') ?? [])];
+    const names = row.map((b) => b.getAttribute('aria-label'));
+    expect(names.slice(-3)).toEqual(['Show the jobs', 'Keep open', 'Close']);
+    expect(host.querySelector('.isl-line')?.contains(pin())).toBe(false);
     // the view switch is on the line only, not again in the tools
     expect(host.querySelectorAll('[role="group"][aria-label="Stage view"]')).toHaveLength(1);
     expect(pin()?.getAttribute('aria-pressed')).toBe('false');
     expect(island()?.hasAttribute('data-pinned')).toBe(false);
+  });
+
+  it('hides Close while kept open: the lit pin lets go', async () => {
+    await render();
+    openTools();
+    act(() => pin()?.click());
+    expect(button('Close')).toBeNull();
+    act(() => pin()?.click());
+    expect(button('Close')).not.toBeNull();
+  });
+
+  it('closes the calendar on a press outside, back to the kept open tools', async () => {
+    await render();
+    openTools();
+    act(() => pin()?.click());
+    act(() => host.querySelector<HTMLButtonElement>('[data-testid="date-bar-open"]')?.click());
+    expect(island()?.dataset.state).toBe('date');
+    pressOutside();
+    expect(island()?.dataset.state).toBe('tools');
+    pressOutside();
+    expect(island()?.dataset.state).toBe('tools');
+  });
+
+  it('keeps focus on a tile when a live item comes', async () => {
+    await render(false, fakeStage());
+    openTools();
+    act(() => pin()?.click());
+    const tile = button('Whole site');
+    act(() => tile?.focus());
+    live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }];
+    await render(false, fakeStage());
+    expect(tile?.isConnected).toBe(true);
+    expect(document.activeElement).toBe(tile);
+  });
+
+  it('shows the one-time T notice on a T that finds it kept open, once', async () => {
+    await render();
+    openTools();
+    act(() => pin()?.click());
+    key('t', document.body);
+    expect(host.querySelector('[data-testid="t-notice"]')).not.toBeNull();
+    expect(localStorage.getItem('stratlas.tNoticeSeen')).toBe('1');
   });
 
   it('stays open through a press outside, Esc, the pointer leaving and a group pick', async () => {
@@ -899,15 +941,95 @@ describe('Island: kept open (pinned)', () => {
     await render();
     expect(island()?.dataset.state).toBe('rest');
   });
+});
 
-  it('Close rests it and stops keeping it open', async () => {
+describe('Island: the line keeps its place', () => {
+  it('is one and the same line at rest, open and in the calendar', async () => {
+    await render();
+    const line = host.querySelector('.isl-line');
+    expect(line).not.toBeNull();
+    openTools();
+    expect(host.querySelector('.isl-line')).toBe(line);
+    key('Escape');
+    expect(island()?.dataset.state).toBe('rest');
+    expect(host.querySelector('.isl-line')).toBe(line);
+    act(() => host.querySelector<HTMLButtonElement>('[data-testid="date-bar-open"]')?.click());
+    expect(island()?.dataset.state).toBe('date');
+    expect(host.querySelector('.isl-line')).toBe(line);
+  });
+
+  it('keeps its chevron place open, out of sight', async () => {
     await render();
     openTools();
-    act(() => pin()?.click());
-    act(() => button('Close')?.click());
+    const held = host.querySelector('.isl-line > .isl-open');
+    expect(held?.getAttribute('aria-hidden')).toBe('true');
+    expect(button('Tools')).toBeNull();
+  });
+});
+
+describe('Island: hover intent, the edges', () => {
+  it('does not open while the drawer is open (I-R64, D20)', async () => {
+    await render();
+    act(() => {
+      drawerStore.getState().open('click');
+    });
+    pointer('enter');
+    wait(200);
     expect(island()?.dataset.state).toBe('rest');
-    expect(island()?.hasAttribute('data-pinned')).toBe(false);
-    expect(document.activeElement).toBe(island());
+    act(() => {
+      drawerStore.getState().close();
+    });
+  });
+
+  it('closed with Esc under the pointer, a nudge does not open it again until it leaves', async () => {
+    await render();
+    pointer('enter');
+    wait(160);
+    expect(island()?.dataset.state).toBe('tools');
+    key('Escape', document.body);
+    expect(island()?.dataset.state).toBe('rest');
+    act(() => {
+      notch()?.dispatchEvent(
+        new MouseEvent('pointermove', { bubbles: true, clientX: 999, clientY: 6 }),
+      );
+    });
+    wait(200);
+    expect(island()?.dataset.state).toBe('rest');
+    pointer('leave');
+    pointer('enter');
+    wait(160);
+    expect(island()?.dataset.state).toBe('tools');
+  });
+
+  it("leaves the window's Esc to a live tool and to an open popover", async () => {
+    live = [{ kind: 'tool', label: 'Distance', reading: null }];
+    await render();
+    pointer('enter');
+    wait(160);
+    key('Escape', document.body);
+    expect(island()?.dataset.state).toBe('tools');
+    live = [];
+    await render();
+    const pop = document.createElement('div');
+    pop.className = 'surface-pop';
+    document.body.append(pop);
+    key('Escape', document.body);
+    expect(island()?.dataset.state).toBe('tools');
+    pop.remove();
+    key('Escape', document.body);
+    expect(island()?.dataset.state).toBe('rest');
+  });
+
+  it('closes when the pointer leaves with focus left by a click (not focus-visible)', async () => {
+    await render();
+    pointer('enter');
+    wait(160);
+    // a pointer's click leaves focus on its button; jsdom matches no :focus-visible, as Chromium
+    // after a click
+    act(() => tab('Measure')?.focus());
+    pointer('leave');
+    wait(310);
+    expect(island()?.dataset.state).toBe('rest');
   });
 });
 
