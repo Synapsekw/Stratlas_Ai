@@ -2845,6 +2845,14 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 .tl-wrap[data-switch] .tl-h {
   padding-inline-start: calc(var(--tl-switch-w) + 2 * var(--sp-4));
 }
+/* the switch takes room from the footage bar: at the CI window its time readout gives way too
+   (after the clip tag and the clock label), so the controls keep one row inside the bar */
+.tl-wrap[data-switch] .lt .tl-h > .tc {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* right panel */
 .right {

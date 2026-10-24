@@ -109,8 +109,36 @@
 }
 @container (max-width: 560px) {
   .ds-bar .ds-opt,
-  .ds-bar .ds-speed {
+  .ds-bar .ds-speed,
+  .ds-bar .vsep {
     display: none;
+  }
+  /* the bar keeps every control in reach at the CI window (a stage of about 380 px between the
+     sidebars): tighter gaps and modes, and a selected pile's chip keeps its x, its name cut short */
+  .ds-bar.tl-h {
+    gap: var(--sp-2);
+    padding-inline: var(--sp-2);
+  }
+  .ds-bar .seg button {
+    padding-inline: var(--sp-3);
+  }
+  .ds-bar > .ds-key:has(.ds-pile) {
+    flex: 1 1 0;
+    min-inline-size: 40px;
+  }
+  .ds-pile.pc-chip {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+  .ds-pile .pc-chip-main {
+    min-inline-size: 0;
+    overflow: hidden;
+    padding-inline: var(--sp-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ds-pile .pc-chip-x {
+    flex: none;
   }
 }
 
