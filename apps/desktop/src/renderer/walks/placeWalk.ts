@@ -73,6 +73,7 @@ import {
   type WalkNow,
 } from './walkOverlay';
 import { comparedWalks, walkCompare } from './walkCompare';
+import { walkGround, type GroundAt } from './walkGround';
 import { walkViews, type WalkViewNow } from './walkView';
 import { jobForWalk, splitWithWalk } from './walkModel';
 import {
@@ -611,12 +612,15 @@ export function setPlacedMapOverlays(overlays: readonly MapOverlay[]): void {
  * Keep the main map in step with a walk placed on the map: its path, stills and pins once placed
  * (an inactive pin says why on hover), the current position apart, the hover preview while Start
  * or End waits, and one pointer session (hover, clicks, the Start and End handles) for as long as
- * the session is on the map. Returns the unsubscribe.
+ * the session is on the map. A pin picked or dragged on the map stands on the ground the 3D view
+ * draws there (`ground`, the shared walk ground), so the walk and its pose do not float above
+ * the ortho; where nothing is drawn it keeps the map's height. Returns the unsubscribe.
  */
 export function followMap(
   session: StoreApi<PlaceState>,
   ui: StoreApi<PlaceUi>,
   project: () => OpenProject | null,
+  ground: GroundAt = (x, z) => walkGround.ground(x, z),
 ): () => void {
   let pathFor: {
     fit: WalkFit | null;
@@ -634,6 +638,8 @@ export function followMap(
     const p = unshiftLocal(local, sessionShift(session.getState().layerId));
     return [p[0], p[2]];
   };
+  /** The height of a pin picked at `local`: the ground under it in the scene, else the map's. */
+  const pickedY = (local: Vec3): number => ground(local[0], local[2]) ?? local[1];
   // one object for the life of the session: the map cancels a drag when its session is replaced
   const pointer: MapPointerSession = {
     // the map shows the walk where its date lies: a pick is saved without the shift, a handle
@@ -644,7 +650,7 @@ export function followMap(
     },
     onClick: (local) => {
       if (wantsSurfaceClick(session.getState()))
-        session.getState().click(pickedAt(local), local[1]);
+        session.getState().click(pickedAt(local), pickedY(local));
     },
     handles: () => {
       const shift = sessionShift(session.getState().layerId);
@@ -655,7 +661,7 @@ export function followMap(
     },
     onDrag: (id, local) => {
       if (id === 'start' || id === 'end')
-        session.getState().dragHandle(id, pickedAt(local), local[1]);
+        session.getState().dragHandle(id, pickedAt(local), pickedY(local));
     },
     onDragEnd: () => {
       session.getState().endDrag();

@@ -741,6 +741,36 @@ describe('the walk on the map while it is placed there', () => {
     stop();
   });
 
+  it('pins picked on the map stand on the ground the 3D view draws, else at the pick', async () => {
+    const project = lined();
+    const { flow, session, ui } = flowFor(project);
+    const asked: [number, number][] = [];
+    // the ortho sits 4 m below the map's ground, except east of x 30 where nothing is drawn
+    const ground = (x: number, z: number) => {
+      asked.push([x, z]);
+      return x < 30 ? -4 : null;
+    };
+    const stop = followMap(session, ui, () => project.current, ground);
+    await flow.begin('walk-a');
+    flow.placeAnyway();
+    flow.chooseSurface({ kind: 'map' });
+    const pointer = walkMap.getState().pointer;
+    pointer?.onClick?.([12, 0.5, 7]);
+    pointer?.onClick?.([42, 0, 7]);
+    // the ground is asked where the map shows the pick (the walk's date lined up), not unshifted
+    expect(asked).toEqual([
+      [12, 7],
+      [42, 7],
+    ]);
+    expect(session.getState().pins.map((p) => p.y)).toEqual([-4, 0]);
+    // a dragged handle takes the ground where it is dropped
+    pointer?.onDrag?.('end', [20, 0, 9]);
+    expect(session.getState().pins[1]?.y).toBe(-4);
+    pointer?.onDragEnd?.('end', [20, 0, 9]);
+    flow.discard();
+    stop();
+  });
+
   it('draws the path once placed; a time tick keeps the same path overlay', async () => {
     const project = { current: projectWith([plan, walkLayer()]) };
     const { flow, session, ui } = flowFor(project);
