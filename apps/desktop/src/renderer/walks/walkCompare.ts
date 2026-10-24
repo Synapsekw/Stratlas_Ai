@@ -7,6 +7,7 @@ import { shell } from '../shell';
 import { wrapDeg } from '../workspace/spot/spotGeom';
 import type { Side, SplitPref } from '../workspace/splitModel';
 import { stagePrefs } from '../workspace/stagePrefs';
+import { shiftBearingDeg } from './walkView';
 import { walks } from './walks';
 
 /*
@@ -507,12 +508,42 @@ export function placeRate(leadRate: number, leadSpeed: number, followSpeed: numb
 
 // ---------------------------------------------------------------- link look
 
-/** The compass bearing a pane looks at: its walk's heading bearing turned by the view's yaw. */
-export function lookBearingDeg(headingBearingDeg: number, yawDeg: number): number {
-  return wrapDeg(headingBearingDeg + yawDeg);
+/** The world bearing of the bearing `deg` in the own frame of a walk whose date undoes `shift`. */
+const unshiftBearingDeg = (deg: number, shift: DateShift | null) =>
+  wrapDeg(deg - shiftBearingDeg(0, shift));
+
+/**
+ * The compass bearing a pane looks at in the world: its walk's heading bearing turned by the view's
+ * yaw, then by its date's line-up turn (`shift`), as the map and the 3D view draw it.
+ */
+export function lookBearingDeg(
+  headingBearingDeg: number,
+  yawDeg: number,
+  shift: DateShift | null = null,
+): number {
+  return shiftBearingDeg(wrapDeg(headingBearingDeg + yawDeg), shift);
 }
 
-/** The yaw that makes a pane whose walk heads `headingBearingDeg` look at `lookDeg`. */
-export function linkedYawDeg(lookDeg: number, headingBearingDeg: number): number {
-  return wrapDeg(lookDeg - headingBearingDeg);
+/**
+ * The yaw that makes a pane whose walk heads `headingBearingDeg` (on a date lined up by `shift`)
+ * look at the world bearing `lookDeg`.
+ */
+export function linkedYawDeg(
+  lookDeg: number,
+  headingBearingDeg: number,
+  shift: DateShift | null = null,
+): number {
+  return wrapDeg(unshiftBearingDeg(lookDeg, shift) - headingBearingDeg);
+}
+
+/**
+ * A pane's look (a bearing in its walk's own frame, as `WalkViewNow.lookDeg` holds it) in the frame
+ * of a walk lined up by `toShift`: the bearing that looks at the same world bearing there.
+ */
+export function relookDeg(
+  lookDeg: number,
+  fromShift: DateShift | null,
+  toShift: DateShift | null,
+): number {
+  return unshiftBearingDeg(shiftBearingDeg(lookDeg, fromShift), toShift);
 }

@@ -25,6 +25,7 @@ import {
   lookBearingDeg,
   nearestOnTrack,
   pairFollower,
+  relookDeg,
   speedAt,
   type TrackPt,
 } from './walkCompare';
@@ -259,6 +260,30 @@ describe('link look', () => {
     expect(linkedYawDeg(look, 200)).toBe(280);
     expect(lookBearingDeg(200, linkedYawDeg(look, 200))).toBe(120);
     expect(lookBearingDeg(350, 20)).toBe(10);
+  });
+
+  // a date lined up by a 30 degree turn draws every direction 30 degrees anticlockwise
+  const turned = {
+    eastM: 0,
+    northM: 0,
+    turn: { rotationDeg: 30, scale: 1, pivotE: 0, pivotN: 0, pivotX: 0, pivotZ: 0 },
+  };
+
+  it("looks at the world bearing each date's line-up turn draws", () => {
+    // heading 90 looking 30 right is 120 in the walk's own frame, 90 once its date turns 30
+    expect(lookBearingDeg(90, 30, turned)).toBe(90);
+    // to look at world 120 on the turned date, it looks at 150 in its own frame
+    expect(linkedYawDeg(120, 90, turned)).toBe(60);
+    expect(lookBearingDeg(90, linkedYawDeg(120, 90, turned), turned)).toBe(120);
+    expect(linkedYawDeg(120, 90, null)).toBe(30);
+  });
+
+  it("carries a pane's look into the other date's frame", () => {
+    // the turned driver looks at 150 in its own frame: world 120; the plain walk looks at 120
+    expect(relookDeg(150, turned, null)).toBe(120);
+    expect(relookDeg(120, null, turned)).toBe(150);
+    expect(relookDeg(45, turned, turned)).toBe(45);
+    expect(relookDeg(45, null, null)).toBe(45);
   });
 });
 

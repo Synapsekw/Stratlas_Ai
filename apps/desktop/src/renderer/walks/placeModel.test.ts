@@ -193,6 +193,23 @@ describe('the 360 view: a click as a direction, north on the top edge', () => {
     // straight behind is never in view
     expect(northTick(look, Math.PI, 200, 100).edge).not.toBe('in');
   });
+  it("north turns with the date's line-up rotation", () => {
+    // the walk's own frame looks north, but its date is turned 0.2 rad: world north is off centre
+    const turned = {
+      eastM: 0,
+      northM: 0,
+      turn: {
+        rotationDeg: (0.2 * 180) / Math.PI,
+        scale: 1,
+        pivotE: 0,
+        pivotN: 0,
+        pivotX: 0,
+        pivotZ: 0,
+      },
+    };
+    expect(northTick(look, 0, 200, 100, turned)).toEqual(northTick(look, 0.2, 200, 100));
+    expect(northTick(look, 0, 200, 100, null)).toEqual({ x: 0.5, edge: 'in' });
+  });
 });
 
 const raw = WalkRawPath.parse(

@@ -1,7 +1,15 @@
 import { surfaceFrameFromCorners, type SurfaceFrame, type WalkSurfaces } from '@aio/geo';
 import { MODEL_SURFACE } from '@aio/schema';
-import type { Capture, JobRecord, ProjectManifest, WalkLayer, WalkRawPath } from '@aio/schema';
+import type {
+  Capture,
+  DateShift,
+  JobRecord,
+  ProjectManifest,
+  WalkLayer,
+  WalkRawPath,
+} from '@aio/schema';
 import { captureIndex } from '@aio/workspace';
+import { shiftHeadingRad } from './walkView';
 
 /*
  * Placing a walk (design "Placing a walk: the flow"): the pure choices of the Place walk strip.
@@ -216,16 +224,18 @@ function wrapRad(a: number): number {
 /**
  * Where north sits across the top edge of a `w` x `h` 360 view whose camera heads `headingRad`
  * (the model `Ry` angle of the picture centre, yaw offset included): `x` from 0 (left) to 1
- * (right), `edge` 'left' or 'right' when north is out of the view on that side.
+ * (right), `edge` 'left' or 'right' when north is out of the view on that side. A date lined up
+ * with a turn (`shift`) turns the heading with it, so the tick shows the north the map draws.
  */
 export function northTick(
   look: ViewLook,
   headingRad: number,
   w: number,
   h: number,
+  shift: DateShift | null = null,
 ): { x: number; edge: 'in' | 'left' | 'right' } {
   // north's azimuth in the picture (clockwise from the centre) is the heading itself
-  const da = wrapRad(headingRad - look.yawDeg * RAD);
+  const da = wrapRad(shiftHeadingRad(headingRad, shift) - look.yawDeg * RAD);
   const tv = Math.tan((look.fovDeg * RAD) / 2);
   const th = tv * (h > 0 ? w / h : 1);
   // a point on the horizon at da: x = tan(da) / cos(pitch) on the image plane (looking up or down

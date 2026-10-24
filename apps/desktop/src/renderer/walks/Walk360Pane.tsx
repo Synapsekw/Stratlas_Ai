@@ -1,9 +1,9 @@
 import { useTaxonomy } from '@aio/annotate';
 import { PANO_FOV, dragLook, zoomLook, type PanoLook } from '@aio/engine';
-import type { AssetRef, WalkFile, WalkLayer } from '@aio/schema';
+import type { AssetRef, DateShift, WalkFile, WalkLayer } from '@aio/schema';
 import { Icon, Tip, useT } from '@aio/ui';
 import { createPanoVideoView, type PanoVideoView } from '@aio/video';
-import { assetUrl, useWorkspace } from '@aio/workspace';
+import { assetUrl, dateShiftOf, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { useStore } from 'zustand';
 import { detectionLook } from '../detections/look';
@@ -40,6 +40,7 @@ import {
   otherSide,
   pairFollower,
   placeRate,
+  relookDeg,
   speedAt,
   trackOf,
   useWalkCompare,
@@ -55,6 +56,8 @@ import {
   headingFromBearingDeg,
   horizontalFov,
   setWalkView,
+  shiftBearingDeg,
+  shiftHeadingRad,
   walkViewPublisher,
   useWalkView,
 } from './walkView';
@@ -158,6 +161,9 @@ function WalkPlayer({
   const seekReq = useStore(placeUi, (s) => (s.layerId === walk.id ? s.seek : null));
   const headingAt = useWalkViewHeadingAt(walk);
   const heading = headingAt(time);
+  // the line-up of this walk's date and the other's: a turned date turns the look and north
+  const ownShift = useDateShift(walk.id);
+  const otherShift = useDateShift(compare?.other.id ?? null);
   const audio = record?.video.audio ?? false;
   // a seek asked while the video still seeks waits for it (a follower may seek again)
   const pendingSeek = useRef<number | null>(null);
@@ -444,12 +450,17 @@ function WalkPlayer({
     walkCompare.getState().rejoin(soloSide, playing);
   }, [solo, bands, soloSide, time, playing]);
 
-  // Link look: this pane looks where the steering pane does, turned by this walk's own heading
+  // Link look: this pane looks at the world bearing the steering pane does, turned by this walk's
+  // own heading and by both dates' line-up turns
   const driverView = useWalkView(compare?.linkLook && !compare.driver ? compare.other.id : null);
   const driverLook = driverView?.lookDeg ?? null;
   useEffect(() => {
     if (driverView === undefined || driverLook === null || heading === null) return;
-    const yaw = linkedYawDeg(driverLook, bearingFromHeadingRad(heading));
+    const yaw = linkedYawDeg(
+      shiftBearingDeg(driverLook, otherShift),
+      bearingFromHeadingRad(heading),
+      ownShift,
+    );
     const cur = look.current;
     const dy = Math.abs(wrapDeg(yaw - cur.yawDeg + 180) - 180);
     if (
@@ -459,7 +470,7 @@ function WalkPlayer({
     )
       return;
     setLook({ yawDeg: yaw, pitchDeg: driverView.pitchDeg, fovDeg: driverView.fovDeg });
-  }, [driverView, driverLook, heading]);
+  }, [driverView, driverLook, heading, ownShift, otherShift]);
   const pairDist = following ? dist : null;
   const apart = pairDist !== null && pairDist >= APART_M;
   // a following walk's play button shows (and works) the lead's playback
@@ -585,7 +596,7 @@ function WalkPlayer({
   };
   const north =
     heading !== null && status === 'ready' && box.w > 0 && box.h > 0
-      ? northTick(shown, heading, box.w, box.h)
+      ? northTick(shown, heading, box.w, box.h, ownShift)
       : null;
 
   const message =
@@ -825,6 +836,15 @@ function compareWalks(
   return { left, right };
 }
 
+/** The line-up shift of walk `layerId`'s survey date (null without one, or with no walk). */
+function useDateShift(layerId: string | null): DateShift | null {
+  const manifest = useWorkspace((s) => s.project?.manifest);
+  return useMemo(
+    () => (manifest && layerId !== null ? dateShiftOf(manifest, layerId) : null),
+    [manifest, layerId],
+  );
+}
+
 /** A placed walk's track in the scene (empty while it is not placed), one sample every 0.25 s. */
 function useTrack(layerId: string | null): readonly TrackPt[] {
   const placed = usePlacedWalk(layerId);
@@ -913,7 +933,7 @@ function CompareInset({
             ? null
             : fanPoints(
                 [p[0], p[2]],
-                headingFromBearingDeg(v.lookDeg),
+                shiftHeadingRad(headingFromBearingDeg(v.lookDeg), w.shift),
                 (Math.min(170, v.hfovDeg) * Math.PI) / 360,
                 span * 0.16,
               );
@@ -1066,20 +1086,35 @@ function GhostFollower({ lead, follow }: { lead: WalkLayer; follow: WalkLayer })
   const mode = useWalkCompare((s) => s.mode);
   const linkLook = useWalkCompare((s) => s.linkLook);
   const headingAt = useWalkViewHeadingAt(follow);
+  const leadShift = useDateShift(lead.id);
+  const followShift = useDateShift(follow.id);
   const prev = useRef<number | null>(null);
   useEffect(() => {
     if (!leadView) return;
     const p = pairFollower(leadTrack, followTrack, leadView.t, mode, prev.current);
     prev.current = p.t;
     const h = headingAt(p.t);
+    // linked, it looks at the lead's world bearing (each date's line-up turn undone)
+    const linked =
+      leadView.lookDeg === null ? null : relookDeg(leadView.lookDeg, leadShift, followShift);
     setWalkView(follow.id, {
       t: p.t,
-      lookDeg: linkLook ? leadView.lookDeg : h === null ? null : bearingFromHeadingRad(h),
+      lookDeg: linkLook ? linked : h === null ? null : bearingFromHeadingRad(h),
       pitchDeg: leadView.pitchDeg,
       fovDeg: leadView.fovDeg,
       hfovDeg: leadView.hfovDeg,
     });
-  }, [leadView, leadTrack, followTrack, mode, linkLook, headingAt, follow.id]);
+  }, [
+    leadView,
+    leadTrack,
+    followTrack,
+    mode,
+    linkLook,
+    headingAt,
+    follow.id,
+    leadShift,
+    followShift,
+  ]);
   useEffect(
     () => () => {
       clearWalkView(follow.id);
