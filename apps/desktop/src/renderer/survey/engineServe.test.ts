@@ -223,6 +223,26 @@ describe('the survey engine worker', () => {
       expect(s.grid?.cellM).toBe(1);
       expect(s.grid?.nx).toBe(20);
       expect(s.grid?.x0).toBe(302000);
+      expect(s.heat).toBeUndefined();
+    } finally {
+      close();
+    }
+  });
+
+  it('the whole site also gives a heat grid with the To heights when asked (Show, Cut & fill)', async () => {
+    const { client, close } = engine();
+    try {
+      const s = await client.site({
+        from: { kind: 'survey', surface: 'flat' },
+        to: { kind: 'survey', surface: 'cone' },
+        cellM: 1,
+        heat: 10,
+      });
+      expect(s.heat?.item).toBe('site');
+      expect(s.heat?.nx).toBe(10);
+      expect(s.heat?.cellM).toBe(2);
+      expect([...(s.heat?.z ?? [])].some(Number.isFinite)).toBe(true);
+      expect([...(s.heat?.dz ?? [])].some(Number.isFinite)).toBe(true);
     } finally {
       close();
     }

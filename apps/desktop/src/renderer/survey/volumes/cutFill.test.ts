@@ -13,10 +13,13 @@ import {
   readCutFillPrefs,
   shortPileLabel,
   siteCellM,
+  SITE_HEAT_CELLS,
   wholeSiteCutFill,
+  wholeSiteHeat,
   writeCutFillPrefs,
   type PileRun,
 } from './cutFill';
+import type { HeatGrid } from '../engineProtocol';
 
 const pile = (id: string, label: string, over: Partial<SurveyMeasurement> = {}) =>
   ({
@@ -201,14 +204,32 @@ describe('the shared answers', () => {
     await wholeSiteCutFill(PAIR, 0.3, 0.5, site, { pair: key });
     expect(site).toHaveBeenCalledTimes(2);
   });
+
+  it('the stage heat map and the figures share one whole-site run', async () => {
+    const heat = { item: 'site', x0: 0, y0: 0, cellM: 1, nx: 1, ny: 1 } as unknown as HeatGrid;
+    const site = vi.fn(() => Promise.resolve({ result: result(9, 1), grid: null, heat }));
+    const fig = await wholeSiteCutFill(PAIR, 0.1, 0.5, site, { pair: key });
+    const grid = await wholeSiteHeat(PAIR, 0.1, 0.5, site, { pair: key });
+    expect(site).toHaveBeenCalledTimes(1);
+    expect(fig.cutM3).toBe(9);
+    expect(grid).toBe(heat);
+  });
+
+  it('a refused whole site draws no heat map', async () => {
+    const heat = { item: 'site' } as unknown as HeatGrid;
+    const site = vi.fn(() =>
+      Promise.resolve({ result: result(0, 0, { status: 'refused' }), grid: null, heat }),
+    );
+    expect(await wholeSiteHeat(PAIR, 0.1, 0.5, site)).toBeNull();
+  });
 });
 
 describe('whole site', () => {
-  it('whole site passes deadbandM to the engine', async () => {
+  it('whole site passes deadbandM to the engine and asks for the heat grid', async () => {
     const site = vi.fn(() => Promise.resolve({ result: result(24297.1, 2098.8), grid: null }));
     const out = await wholeSiteCutFill({ from: FROM, to: TO }, 0.1, 0.5, site);
     expect(site).toHaveBeenCalledWith(
-      { from: FROM, to: TO, cellM: 0.5, deadbandM: 0.1 },
+      { from: FROM, to: TO, cellM: 0.5, deadbandM: 0.1, heat: SITE_HEAT_CELLS },
       'cutfill-site',
     );
     expect(out.cutM3).toBe(24297.1);

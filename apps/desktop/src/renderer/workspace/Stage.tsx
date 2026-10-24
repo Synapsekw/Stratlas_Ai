@@ -73,6 +73,7 @@ import { useFlightPathModel } from './pathModel';
 import { useEngineStage } from './StageTools';
 import { StageHint, useStageHintShown } from './StageHint';
 import { StageShow, useStageShowShown } from './StageShow';
+import { StageCutFillLegend, useSiteCutFill } from './stageCutFill';
 import { timelapseStore, useTimelapsePlaying } from './dates/timelapse';
 import { TimelapseBlend, TimelapseTotals } from './dates/TimelapseFloats';
 import { useStageKeys } from './stageKeys';
@@ -378,6 +379,9 @@ export function useStageCorners(o: StageCornersInput): {
   const prepShown = preparing !== null;
   // the one Show control, top-left while the Volumes tab is open (board 1)
   const show = useStageShowShown();
+  // Show, Cut & fill in a survey project: the whole site's heat map, its legend bottom-left (board 4)
+  const cutFill = useSiteCutFill();
+  const cfLegend = cutFill !== null && (o.show3d || o.showMap);
   // playing through the dates (board 6): the blend bottom-left, the site totals bottom-right
   const playing = useTimelapsePlaying() && !o.splitting;
   const status = o.roadMeasure || cutaway || notice !== null;
@@ -392,6 +396,7 @@ export function useStageCorners(o: StageCornersInput): {
       { id: 'tlTotals', want: playing ? ['br', 'tr'] : [] },
       { id: 'show', want: show ? ['tl'] : [] },
       { id: 'status', want: status ? ['tl', 'bl'] : [] },
+      { id: 'cfLegend', want: cfLegend ? ['bl', 'br'] : [] },
       { id: 'basemap', want: basemap ? basemapAt : [] },
       {
         id: 'preparing',
@@ -416,6 +421,7 @@ export function useStageCorners(o: StageCornersInput): {
     playing,
     show,
     status,
+    cfLegend,
     basemap,
     basemapAt,
     prepShown,
@@ -458,6 +464,7 @@ export function useStageCorners(o: StageCornersInput): {
         {at('tlBlend', <TimelapseBlend />)}
         {at('tlTotals', <TimelapseTotals />)}
         {at('show', <StageShow />)}
+        {cutFill && at('cfLegend', <StageCutFillLegend {...cutFill} />)}
         {at(
           'status',
           <div className="stage-under">

@@ -237,8 +237,13 @@ export class EngineSession {
     const g = out[0];
     if (!g) return { result, grid: null };
     const { dz, nx, ny } = fullWindow(g);
+    const heat =
+      req.heat && result.status !== 'refused'
+        ? await heatGrid(item, g, req.heat, resolve, signal)
+        : undefined;
     return {
       result,
+      ...(heat ? { heat } : {}),
       grid: {
         dz: Float32Array.from(dz),
         nx,

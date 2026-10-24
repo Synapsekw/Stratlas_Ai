@@ -18,7 +18,7 @@ import { surfaceOfCapture } from '@aio/survey';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import type { SiteReply } from '../engineClient';
-import type { SiteRequest } from '../engineProtocol';
+import type { HeatGrid, SiteRequest } from '../engineProtocol';
 import { countedFigureOn, type IsCounted } from './inventory';
 
 /** "Ignore under" default, metres (spec: 0.10 m). */
@@ -273,6 +273,56 @@ export function siteCellM(surfaces: readonly Pick<HeightTiles, 'cellM' | 'bounds
 }
 
 /**
+ * The whole-site heat grid's size, cells a side: Show, Cut & fill drapes it on the 3D terrain and
+ * the map. Every whole-site cut and fill asks for it, so the Cut & fill pane, the strip's bars and
+ * the stage share one run (`answers`).
+ */
+export const SITE_HEAT_CELLS = 384;
+
+/** The engine's whole-site answer for the pair and threshold, kept and shared with `opts.pair`. */
+function siteReply(
+  pair: CutFillPair,
+  thresholdM: number,
+  cellM: number,
+  site: SiteRun,
+  opts: { pair?: string; signal?: AbortSignal },
+): Promise<SiteReply> {
+  const key =
+    opts.pair !== undefined ? JSON.stringify(['site', opts.pair, thresholdM, cellM]) : undefined;
+  return shared(
+    key,
+    () =>
+      site(
+        {
+          from: pair.from,
+          to: pair.to,
+          cellM,
+          deadbandM: Math.max(0, thresholdM),
+          heat: SITE_HEAT_CELLS,
+        },
+        'cutfill-site',
+      ),
+    opts.signal,
+  );
+}
+
+/**
+ * The whole site's difference between the pair as a heat grid (the To surface's heights under
+ * it), from the same run as `wholeSiteCutFill`; null when the engine drew none (refused, stale or
+ * no overlap).
+ */
+export async function wholeSiteHeat(
+  pair: CutFillPair,
+  thresholdM: number,
+  cellM: number,
+  site: SiteRun,
+  opts: { pair?: string; signal?: AbortSignal } = {},
+): Promise<HeatGrid | null> {
+  const r = await siteReply(pair, thresholdM, cellM, site, opts);
+  return r.result.status === 'refused' || r.result.status === 'stale' ? null : (r.heat ?? null);
+}
+
+/**
  * The whole site between the pair, with the threshold as deadband. With `opts.pair` (the pair's
  * `pairKey`) the answer is kept and shared (see `answers`).
  */
@@ -283,17 +333,7 @@ export async function wholeSiteCutFill(
   site: SiteRun,
   opts: { pair?: string; signal?: AbortSignal } = {},
 ): Promise<Omit<CutFillTotals, 'counted'> & { status: ComparisonResult['status'] }> {
-  const key =
-    opts.pair !== undefined ? JSON.stringify(['site', opts.pair, thresholdM, cellM]) : undefined;
-  const r = await shared(
-    key,
-    () =>
-      site(
-        { from: pair.from, to: pair.to, cellM, deadbandM: Math.max(0, thresholdM) },
-        'cutfill-site',
-      ),
-    opts.signal,
-  );
+  const r = await siteReply(pair, thresholdM, cellM, site, opts);
   return {
     cutM3: r.result.cutM3,
     fillM3: r.result.fillM3,

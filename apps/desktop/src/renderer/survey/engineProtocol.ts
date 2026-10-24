@@ -79,6 +79,11 @@ export interface SiteRequest {
    * "Ignore under"); absent or 0 counts every cell.
    */
   deadbandM?: number;
+  /**
+   * Also return the difference as a heat grid of at most this many cells a side, with the To
+   * surface's heights under it (Show, Cut & fill on the stage); absent or 0: none.
+   */
+  heat?: number;
 }
 
 /**

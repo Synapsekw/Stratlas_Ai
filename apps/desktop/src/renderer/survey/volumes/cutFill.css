@@ -332,3 +332,9 @@
     transition: none;
   }
 }
+
+/* the legend in a stage corner slot (Show, Cut & fill): the slot places it */
+.stage-slot > .cf-legend {
+  position: static;
+  inline-size: min(300px, 100%);
+}

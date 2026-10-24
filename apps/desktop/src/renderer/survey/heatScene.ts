@@ -28,11 +28,18 @@ import type { Frame } from './measureScene';
 
 const LIFT_M = 0.04;
 
-/** The heat grid to draw now (the focused polygon's chosen item), or null. */
+/**
+ * The heat grid to draw now: the focused polygon's chosen item, else the whole site's cut and fill
+ * between the compare pair while Show, Cut & fill asks for it (`siteHeat`), else null.
+ */
 export function activeHeat(
-  c: Pick<CompareState, 'computed' | 'heat'>,
+  c: Pick<CompareState, 'computed' | 'heat'> & { siteHeat?: HeatGrid | null },
   s: MeasureState,
 ): HeatGrid | null {
+  return focusHeat(c, s) ?? c.siteHeat ?? null;
+}
+
+function focusHeat(c: Pick<CompareState, 'computed' | 'heat'>, s: MeasureState): HeatGrid | null {
   if (!s.focus) return null;
   const done = c.computed[s.focus];
   if (!done || done.heat.length === 0) return null;

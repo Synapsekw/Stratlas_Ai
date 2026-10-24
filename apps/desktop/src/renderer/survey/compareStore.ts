@@ -119,6 +119,11 @@ export interface CompareState {
   running: Record<string, boolean>;
   problems: Record<string, string>;
   heat: HeatView;
+  /**
+   * The whole site's cut and fill between the compare pair, drawn when no focused measurement has
+   * a heat map of its own (Show, Cut & fill in a survey project: workspace/stageCutFill.ts).
+   */
+  siteHeat: HeatGrid | null;
   dialog: CompareDialog;
   /** A tonnage typed into a measurement's weight calculator (display only, never stored). */
   tonnes: Record<string, number>;
@@ -153,6 +158,7 @@ const initial = (): Omit<CompareState, 'heat' | 'dialog'> => ({
   tonnes: {},
   preparing: null,
   site: null,
+  siteHeat: null,
   showDrafts: true,
   seriesCurrent: {},
   seriesInputs: {},

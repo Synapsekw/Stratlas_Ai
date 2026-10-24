@@ -10,6 +10,7 @@ import type {
   EnginePort,
   EngineReply,
   EngineRequest,
+  HeatGrid,
   RunReply,
   RunRequest,
   SeriesRequest,
@@ -49,6 +50,8 @@ export interface SiteReply {
     y0: number;
     cellM: number;
   } | null;
+  /** The difference as a heat grid, when the request asked for one (`SiteRequest.heat`). */
+  heat?: HeatGrid;
 }
 
 export interface EngineClient {

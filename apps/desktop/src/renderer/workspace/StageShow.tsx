@@ -8,7 +8,8 @@
  *
  * The surface writes the stockpile kit's `surface` in a kit project. Elsewhere (a survey project's
  * piles) Photo and Elevation swap each shown survey date's ortho for its surface raster and back,
- * and Cut & fill turns the survey comparison's heat map on (Photo and Elevation turn it off).
+ * and Cut & fill turns the survey comparison's heat map on (Photo and Elevation turn it off): the
+ * focused pile's, else the whole site's between the compare pair with its legend (stageCutFill.tsx).
  *
  * Which pane is up lives in one store (`volumesPane`, survey/volumes/volumesPane.ts): `pane` here
  * follows it and `setPane` writes it, so the Volumes tab's segments, this control, the sidebar and
