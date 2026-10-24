@@ -9,6 +9,7 @@ import {
   type ReactElement,
   type RefObject,
 } from 'react';
+import './detectors.css';
 
 export interface RejectReasonMenuProps {
   open: boolean;

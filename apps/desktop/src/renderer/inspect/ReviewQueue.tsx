@@ -439,7 +439,7 @@ export function ReviewQueue(p: {
       )}
       {skipped > 0 && (
         <p className="queue-note" role="status" data-testid="queue-skipped">
-          {t('det.acceptAll.skip', { count: skipped })}
+          {t('queue.skipped', { count: skipped })}
         </p>
       )}
 

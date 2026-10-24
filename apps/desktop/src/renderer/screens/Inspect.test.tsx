@@ -238,6 +238,18 @@ describe('InspectScreen', () => {
     expect(you?.dataset.selected).toBe('true');
   });
 
+  it('keeps the photo column in place when a photo opens', () => {
+    mount();
+    const column = host.querySelector('[data-testid="column"]');
+    const aside = host.querySelector('[data-testid="inspect-photos"]');
+    expect(column).not.toBeNull();
+    select({ kind: 'photo', id: 'a', layer: 'photos' });
+    expect(viewer()?.dataset.photo).toBe('photos/a');
+    // the same elements, not remounted: its scroll and its loaded tiles stay
+    expect(host.querySelector('[data-testid="column"]')).toBe(column);
+    expect(host.querySelector('[data-testid="inspect-photos"]')).toBe(aside);
+  });
+
   it('A accepts the selected suggestion and the list shows it as yours', async () => {
     mount();
     select({ kind: 'photo', id: 'a', layer: 'photos' });

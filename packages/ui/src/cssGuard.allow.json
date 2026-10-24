@@ -39,16 +39,9 @@
   "apps/desktop/src/renderer/change/SurveyDate.tsx": {
     "title": 1
   },
-  "apps/desktop/src/renderer/detections/ContactSheet.tsx": {
-    "title": 2
-  },
   "apps/desktop/src/renderer/detections/detections.css": {
-    "fontPx": 3,
-    "shadow": 3,
+    "shadow": 1,
     "zIndex": 1
-  },
-  "apps/desktop/src/renderer/detections/Inspector.tsx": {
-    "title": 7
   },
   "apps/desktop/src/renderer/diagnostics/diagnostics.css": {
     "colour": 1,
@@ -197,17 +190,11 @@
   "apps/desktop/src/renderer/road/RoadSetup.tsx": {
     "title": 1
   },
-  "apps/desktop/src/renderer/screens/Detections.tsx": {
-    "title": 4
-  },
   "apps/desktop/src/renderer/screens/libraryFolders.css": {
     "shadow": 1
   },
   "apps/desktop/src/renderer/screens/LibraryFolders.tsx": {
     "title": 1
-  },
-  "apps/desktop/src/renderer/screens/Media.tsx": {
-    "title": 3
   },
   "apps/desktop/src/renderer/screens/Projects.tsx": {
     "title": 3

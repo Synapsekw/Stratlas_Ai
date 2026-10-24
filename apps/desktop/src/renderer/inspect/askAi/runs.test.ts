@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { IpcRequest, JobRecord, ProjectManifest, VlmDetector } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StoreApi } from 'zustand/vanilla';
@@ -373,5 +374,121 @@ describe('Ask AI runs', () => {
     });
     await flush();
     expect(askAiRun.getState().run?.phase).toBe('queued');
+  });
+  const localModel = {
+    id: 'yolo',
+    card: {
+      name: 'Yolo',
+      classes: ['rust'],
+      minConfidence: 0.3,
+      input: { width: 640, height: 640 },
+    },
+  };
+  const frames = (n: number): DetectItem[] =>
+    Array.from({ length: n }, (_, i) => ({ kind: 'frame', layer: 'w1', t: 1 + i * 2 }));
+  const localFrames = (items: DetectItem[]) =>
+    startAskRun({
+      projectId: 'p',
+      projectRoot: '/projects/p',
+      manifest: MANIFEST,
+      items,
+      check: { kind: 'everything' },
+      what: 'Frames',
+      backend: { kind: 'local', model: localModel as never },
+      prefs: readPrefs(),
+    });
+
+  it('sends walk frames to the local model as layer and time, counted as frames', async () => {
+    void localFrames(frames(5));
+    await flush();
+    const req = h.calls.find((c) => c.channel === 'inference:run')
+      ?.req as IpcRequest<'inference:run'>;
+    expect(req.items).toEqual([1, 3, 5, 7, 9].map((time) => ({ layer: 'w1', t: time })));
+    expect('tile' in req).toBe(false);
+    expect(askAiRun.getState().run).toMatchObject({ frames: true, total: 5, phase: 'running' });
+  });
+
+  it('keeps the frames that could not be read as the ones left to try again', async () => {
+    void localFrames(frames(5));
+    await flush();
+    const req = h.calls.find((c) => c.channel === 'inference:run')
+      ?.req as IpcRequest<'inference:run'>;
+    h.progress.forEach((f) => {
+      f({ runId: req.runId, done: 5, total: 5, found: 0, skipped: 2 });
+    });
+    h.inference?.resolve({
+      ok: true,
+      value: { ok: true, file: 'f.json', count: 0, skipped: 2, reason: "the codec can't be read" },
+    });
+    await flush();
+    // the frames not read are not assessed: the same run tries them again
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'done', done: 5 });
+    expect(askAiRun.getState().run?.remaining).toEqual(frames(5).slice(3));
+  });
+
+  it('fails with the reason, not done, when no frame could be read', async () => {
+    void localFrames(frames(5));
+    await flush();
+    const error = 'None of the 5 frames could be read: ffmpeg could not be started';
+    h.inference?.resolve({ ok: true, value: { ok: false, error } });
+    await flush();
+    expect(askAiRun.getState().run).toMatchObject({ phase: 'failed', error });
+    expect(askAiRun.getState().run?.remaining).toHaveLength(5);
+  });
+
+  const detectorRun = (items: DetectItem[]) =>
+    startAskRun({
+      projectId: 'p',
+      projectRoot: '/projects/p',
+      manifest: MANIFEST,
+      items,
+      check: { kind: 'everything' },
+      what: 'All photos',
+      backend: {
+        kind: 'detectors',
+        chosen: [
+          {
+            where: 'library',
+            detector: {
+              id: 'rust-v1',
+              name: 'Rust',
+              classId: 'corrosion',
+            } as unknown as VlmDetector,
+            threshold: 0.8,
+          },
+        ],
+      },
+      prefs: readPrefs(),
+    });
+
+  it('fails with the reason and keeps the photos when the detector run is refused', async () => {
+    h.startAnswer = 'The detector model did not start: no exe';
+    await detectorRun(photos(2));
+    await flush();
+    expect(askAiRun.getState().run).toMatchObject({
+      phase: 'failed',
+      error: 'The detector model did not start: no exe',
+    });
+    expect(askAiRun.getState().run?.remaining).toHaveLength(2);
+  });
+
+  it('counts the queue message as queued even when the queue no longer lists the run', async () => {
+    h.startAnswer = t('detect.preset.queued');
+    await detectorRun(photos(2));
+    await flush();
+    expect(askAiRun.getState().run?.phase).toBe('queued');
+    expect(askAiRun.getState().run?.error).toBeUndefined();
+  });
+
+  it('joins the reasons when every run of several is refused', async () => {
+    h.startAnswer = 'Out of memory.';
+    await detectorRun([...photos(1), ...photos(1, 'ph2')]);
+    await flush();
+    expect(h.started).toHaveLength(2);
+    expect(askAiRun.getState().run).toMatchObject({
+      phase: 'failed',
+      error: 'Out of memory. Out of memory.',
+    });
+    expect(askAiRun.getState().run?.remaining).toHaveLength(2);
   });
 });

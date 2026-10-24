@@ -214,4 +214,33 @@ describe('ChangePicker', () => {
     await click(byId('det-create-class'));
     expect(createClassFromLabel).toHaveBeenCalledWith('Spalling');
   });
+  it('shows why creating the class failed and keeps the form', async () => {
+    vi.mocked(createClassFromLabel).mockResolvedValueOnce('Classes not saved: disk full');
+    await render({ detection: det({ classId: '', label: 'Spalling', suggestedNew: true }) });
+    await click(byId('det-create-class'));
+    expect(host.querySelector('.form-error')?.textContent).toBe('Classes not saved: disk full');
+    expect(byId('form')).not.toBeNull();
+  });
+
+  it('does nothing with a class create that finishes after the picker closed', async () => {
+    let finish: (e: string | null) => void = () => undefined;
+    vi.mocked(createClassFromLabel).mockReturnValueOnce(
+      new Promise((r) => {
+        finish = r;
+      }),
+    );
+    await render({ detection: det({ classId: '', label: 'Spalling', suggestedNew: true }) });
+    await click(byId('det-create-class'));
+    expect(byId('det-create-class')?.hasAttribute('disabled')).toBe(true);
+    act(() => {
+      root.unmount();
+    });
+    // the late answer neither throws nor sets state on the gone picker
+    await act(async () => {
+      finish('Classes not saved: disk full');
+      await Promise.resolve();
+    });
+    root = createRoot(host);
+    expect(host.querySelector('.form-error')).toBeNull();
+  });
 });

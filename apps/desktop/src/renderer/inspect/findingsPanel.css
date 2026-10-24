@@ -124,31 +124,6 @@
   gap: 6px;
   padding: 8px;
 }
-.inspect-change-link .det-link-list {
-  margin: 0;
-  padding: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  list-style: none;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-4);
-}
-.inspect-change-link .det-link-list button {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 0;
-  background: none;
-  color: var(--fg-1);
-  text-align: start;
-  font-size: var(--t-12);
-  cursor: pointer;
-}
-.inspect-change-link .det-link-list button[aria-selected='true'],
-.inspect-change-link .det-link-list button:hover {
-  background: var(--bg-3);
-}
 
 .inspect-draw {
   align-self: flex-start;

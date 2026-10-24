@@ -28,6 +28,7 @@ vi.mock('../detections/prepare', () => ({
 import { detections } from '../detections/store';
 import { toasts } from '../exports/exports';
 import { setAskAiPrefs } from './askAi/prefs';
+import { visibleDetections } from './findings';
 import { inspectUi, openQueue } from './inspectUi';
 import { queueCommand, ReviewQueue } from './ReviewQueue';
 
@@ -242,7 +243,7 @@ describe('ReviewQueue', () => {
     await click('det-batch-ok');
     expect(find('d1')?.status).toBe('accepted');
     expect(find('d5')?.status).toBe('draft');
-    expect(text('queue-skipped')).toContain('1');
+    expect(text('queue-skipped')).toContain('1 was skipped');
   });
 
   it('rejects all of one class after the confirm', async () => {
@@ -382,6 +383,76 @@ describe('ReviewQueue', () => {
     expect(text('queue-progress')).toBe('2 of 3');
     await click('queue-class-crack');
     expect(text('queue-progress')).toBe('1 of 1');
+  });
+
+  /** A local detector's draft: it carries a score and its detector. */
+  const detectorDraft = (id: string, over: Partial<Detection> = {}) =>
+    det(id, {
+      pass: 'vlm-run-a.json',
+      origin: {
+        kind: 'model',
+        producer: 'local',
+        detector: { id: 'rust', version: 1, modelSha256: 'a'.repeat(64), threshold: 0.6 },
+      },
+      ...over,
+    });
+
+  it('the caret on a detector draft asks why before it dismisses', async () => {
+    load([detectorDraft('m1')]);
+    await mount();
+    expect(byId('queue-reject-reason')?.getAttribute('aria-haspopup')).toBe('menu');
+    await click('queue-reject-reason');
+    const menu = document.body.querySelector('[role="menu"]');
+    expect(menu).not.toBeNull();
+    const item = [...(menu?.querySelectorAll('button') ?? [])].find(
+      (b) => b.textContent === 'Wrong class',
+    );
+    await act(async () => {
+      item?.click();
+      await Promise.resolve();
+    });
+    expect(find('m1')?.status).toBe('rejected');
+    expect(find('m1')?.rejectReason).toBe('wrong-class');
+  });
+
+  it('D or X on a detector draft dismisses it at once, with no menu', async () => {
+    load([detectorDraft('m1')]);
+    await mount();
+    await act(async () => {
+      expect(queueCommand('dismiss')).toBe(true);
+      await Promise.resolve();
+    });
+    expect(find('m1')?.status).toBe('rejected');
+    expect(find('m1')?.rejectReason).toBe('not-a-defect');
+    expect(document.body.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('arrow keys on the slider do not step the queue', async () => {
+    await mount();
+    const seen = vi.fn();
+    document.body.addEventListener('keydown', seen);
+    const slider = byId('queue-threshold');
+    await act(async () => {
+      for (const key of ['ArrowRight', 'j', 'x']) {
+        slider?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      }
+      await Promise.resolve();
+    });
+    document.body.removeEventListener('keydown', seen);
+    expect(seen).not.toHaveBeenCalled();
+    expect(text('queue-progress')).toBe('1 of 3');
+    expect(['d1', 'd2', 'd3'].map((id) => find(id)?.status)).toEqual(['draft', 'draft', 'draft']);
+  });
+
+  it('raising the slider takes the hidden draft out of the viewer', async () => {
+    load([det('m1', { confidence: 0.9 }), det('m2', { confidence: 0.7, source: src('p002') })]);
+    await mount();
+    const shown = () => visibleDetections(detections.getState().review).map((d) => d.id);
+    expect(text('det-counts')).toContain('2 waiting');
+    expect(shown()).toEqual(['m1', 'm2']);
+    await slide(0.8);
+    expect(text('det-counts')).toContain('1 waiting');
+    expect(shown()).toEqual(['m1']);
   });
 
   it('runs no command when no queue is open', () => {

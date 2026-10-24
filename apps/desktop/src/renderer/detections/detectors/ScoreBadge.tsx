@@ -1,5 +1,6 @@
 import { Chip, Tip, useT } from '@aio/ui';
 import type { ReactElement } from 'react';
+import './detectors.css';
 
 export interface ScoreBadgeProps {
   /** The model's score for the box, 0 to 1 (absent when it gave none). */
