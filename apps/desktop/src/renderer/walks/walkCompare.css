@@ -59,7 +59,8 @@
   white-space: nowrap;
 }
 .walk-dist-chip.apart {
-  box-shadow: inset 0 0 0 1px var(--warn-line);
+  outline: 1px solid var(--warn-line);
+  outline-offset: -1px;
 }
 .walk-dist-dot {
   width: 6px;

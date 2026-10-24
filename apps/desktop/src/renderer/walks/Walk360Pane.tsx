@@ -1,7 +1,7 @@
 import { useTaxonomy } from '@aio/annotate';
 import { PANO_FOV, dragLook, zoomLook, type PanoLook } from '@aio/engine';
 import type { AssetRef, WalkFile, WalkLayer } from '@aio/schema';
-import { Icon, useT } from '@aio/ui';
+import { Icon, Tip, useT } from '@aio/ui';
 import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
@@ -972,17 +972,19 @@ function CompareBar({
         />
         {date}
       </span>
-      <span
-        className={lead ? 'walk-role lead' : 'walk-role'}
-        data-testid="walk-compare-role"
-        title={solo ? t('walk.compare.soloTip', { date: otherDate }) : undefined}
-      >
-        {lead
-          ? t('walk.compare.lead')
-          : solo
-            ? t('walk.compare.solo')
+      {solo ? (
+        <Tip content={t('walk.compare.soloTip', { date: otherDate })}>
+          <span className="walk-role" data-testid="walk-compare-role" tabIndex={0}>
+            {t('walk.compare.solo')}
+          </span>
+        </Tip>
+      ) : (
+        <span className={lead ? 'walk-role lead' : 'walk-role'} data-testid="walk-compare-role">
+          {lead
+            ? t('walk.compare.lead')
             : t(mode === 'place' ? 'walk.compare.followsPlace' : 'walk.compare.followsTime')}
-      </span>
+        </span>
+      )}
       {ghost && (
         <span className="walk-role" data-testid="walk-compare-solo">
           {t('walk.compare.onMap', { date: otherDate })}
@@ -1007,43 +1009,46 @@ function CompareBar({
               </button>
             ))}
           </span>
-          <button
-            type="button"
-            className="btn sm ghost"
-            aria-pressed={linkLook}
-            data-testid="walk-compare-link"
-            title={t('walk.compare.linkTip')}
-            onClick={() => {
-              walkCompare.setState({ linkLook: !linkLook, driver: side });
-            }}
-          >
-            <Icon name="link" size={14} />
-            {t('walk.compare.link')}
-          </button>
-          {!ghost && (
+          <Tip content={t('walk.compare.linkTip')}>
             <button
               type="button"
               className="btn sm ghost"
-              data-testid="walk-compare-swap"
-              title={t('walk.compare.swapTip')}
+              aria-pressed={linkLook}
+              data-testid="walk-compare-link"
               onClick={() => {
-                walkCompare.getState().swapLead();
+                walkCompare.setState({ linkLook: !linkLook, driver: side });
               }}
             >
-              <Icon name="loop" size={14} />
-              {t('walk.compare.swap')}
+              <Icon name="link" size={14} />
+              {t('walk.compare.link')}
             </button>
+          </Tip>
+          {!ghost && (
+            <Tip content={t('walk.compare.swapTip')}>
+              <button
+                type="button"
+                className="btn sm ghost"
+                data-testid="walk-compare-swap"
+                onClick={() => {
+                  walkCompare.getState().swapLead();
+                }}
+              >
+                <Icon name="loop" size={14} />
+                {t('walk.compare.swap')}
+              </button>
+            </Tip>
           )}
-          <button
-            type="button"
-            className="btn icon sm ghost"
-            data-testid="walk-compare-end"
-            aria-label={t('walk.compare.end')}
-            title={t('walk.compare.end')}
-            onClick={endWalkCompare}
-          >
-            <Icon name="x" size={14} />
-          </button>
+          <Tip content={t('walk.compare.end')} repeatsName>
+            <button
+              type="button"
+              className="btn icon sm ghost"
+              data-testid="walk-compare-end"
+              aria-label={t('walk.compare.end')}
+              onClick={endWalkCompare}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          </Tip>
         </>
       )}
     </div>
