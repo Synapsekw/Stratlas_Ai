@@ -4,10 +4,11 @@
  * on a synthetic walk whose playback copy is a small equirectangular video with magenta and cyan
  * markers at known places and times, one magenta marker cut in two by the 0/360 degree seam.
  *
- * Covers: Settings, Detection models, import; Detections, Detect with AI, Local model, 360 video
- * frames, one frame every 2 s (3 frames), run; one pass on the walk layer with frame drafts in
- * the playback copy's pixels, the seam marker ONE detection whose box wraps (x1 past the width),
- * shown in two parts on its tile; the review counts; then the walk in the 360 pane at a frame
+ * Covers: Settings, Detection models, import; Settings, Ask AI, Local model; Inspect, Ask AI on
+ * the walk's frames, one frame every 2 s (3 frames), run; one pass on the walk layer with frame
+ * drafts in the playback copy's pixels, the seam marker ONE detection whose box wraps (x1 past
+ * the width), shown in two parts on its frame in the review queue; the review counts; then the
+ * walk in the 360 pane at a frame
  * with markers, the look turned to the seam: the overlay draws the seam box, and Show detections
  * hides the overlay. The project is written into the test's own data root (`walkFixture.ts`);
  * the zero-network guard of the fixture stays on. Skipped without ffmpeg and libx264.
@@ -22,12 +23,12 @@ import {
 } from '../src/main/inference/fixtures/markerDetector';
 import { writeMarkerVideo } from '../src/main/inference/fixtures/walkVideo';
 import { expect, test } from './fixtures';
+import { openInspect } from './inspect';
 import {
   createWalkProject,
   ffmpegReady,
   openWalkProject,
   WALK_LAYER,
-  WALK_NAME,
   walkRow,
 } from './walkFixture';
 
@@ -192,21 +193,30 @@ test.describe('local detection on 360 video', () => {
       'Imported Marker test detector.',
     );
 
-    // Detections: no photos, a walk; Detect with AI, Local model, 360 video frames every 2 s
-    await win.locator('.nav-item', { hasText: 'Detections' }).click();
-    await win.getByTestId('det-ai-open').click();
-    await win.getByTestId('det-mode-local').check();
-    await win.getByTestId('det-local-scope-walk').check();
-    await expect(win.getByTestId('det-local-walk')).toHaveValue(WALK_LAYER);
-    await win.getByTestId('det-local-every-2').click();
-    await expect(win.getByTestId('det-local-frames-count')).toHaveText('3 frames');
-    const run = win.getByTestId('det-local-run');
-    await expect(run).toContainText('Run on 3 frames');
+    // Settings, Ask AI: the local model answers
+    const panel = win.getByTestId('ask-ai-settings-panel');
+    await panel.scrollIntoViewIfNeeded();
+    await win.getByTestId('ask-ai-backend-local').check();
+    await expect(win.getByTestId('ask-ai-backend-local')).toBeChecked();
+
+    // Inspect: no photos, a walk; Ask AI on Frames, the walk, one frame every 2 s
+    await openInspect(win);
+    await win.getByTestId('ask-ai-scope-frames').click();
+    await expect(win.getByTestId('ask-ai-frames-source')).toHaveValue(WALK_LAYER);
+    await win.getByTestId('ask-ai-frames-every-2').click();
+    await expect(win.getByTestId('ask-ai-frames-count')).toHaveText('3 frames');
+    const run = win.getByTestId('ask-ai');
+    await expect(run).toBeEnabled();
     await run.click();
-    const progress = win.getByTestId('det-local-progress');
-    await expect(progress).toContainText('Done', { timeout: 120_000 });
-    await expect(progress).toContainText(`3 of 3 frames checked, ${String(EXPECTED.length)} found`);
-    await win.getByTestId('det-local-close').click();
+    // a run on this computer asks nothing first
+    await expect(win.getByTestId('cloud-confirm-line')).toHaveCount(0);
+    const progress = win.getByTestId('ask-ai-run');
+    await expect(progress).toContainText(
+      `AI checked 3 photos and found ${String(EXPECTED.length)}.`,
+      {
+        timeout: 120_000,
+      },
+    );
 
     // one pass on the walk layer: frame drafts in the playback copy's pixels
     const all = await passes(dir);
@@ -242,17 +252,25 @@ test.describe('local detection on 360 video', () => {
     if (!seam) throw new Error('no seam detection');
     expect(seam.bbox[2] ?? 0).toBeGreaterThan(W);
 
-    // the review: every draft waits, one tile per frame, the seam box drawn on both edges
+    // the review queue: every draft waits, one step per detection in time order, the seam box
+    // drawn in two parts on its frame
+    await win.getByTestId('ask-ai-review').click();
+    await expect(win.getByTestId('inspect-queue')).toBeVisible();
     await expect(win.getByTestId('det-counts')).toContainText(`${String(EXPECTED.length)} waiting`);
-    const tiles = win.getByTestId('det-sheet').locator('.det-tile');
-    await expect(tiles).toHaveCount(3);
-    for (const t of ['1.0', '3.0', '5.0'])
-      await expect(
-        win.getByTestId('det-sheet').locator(`.det-tile[title="${WALK_NAME} ${t} s"]`),
-      ).toHaveCount(1);
-    const first = win.getByTestId('det-sheet').locator(`.det-tile[title="${WALK_NAME} 1.0 s"]`);
+    await expect(win.getByTestId('queue-progress')).toHaveText(`1 of ${String(EXPECTED.length)}`);
+    const editor = win.getByTestId('det-editor');
+    await expect(editor).toBeVisible();
+    await expect(win.getByTestId('photo-viewer')).toHaveCount(0);
+    await expect(win.locator('.insp-name')).toHaveText(`frame:${WALK_LAYER}:1000`);
     // two detections on that frame, three outlines: the seam box in two parts
-    await expect(first.locator('rect.det-ol')).toHaveCount(3);
+    await expect(editor.locator('.shape')).toHaveCount(3);
+    // J steps to the next detection: the frame at 1 s again (the second one), then 3 s and 5 s
+    await win.keyboard.press('j');
+    await win.keyboard.press('j');
+    await expect(win.locator('.insp-name')).toHaveText(`frame:${WALK_LAYER}:3000`);
+    await win.keyboard.press('j');
+    await expect(win.locator('.insp-name')).toHaveText(`frame:${WALK_LAYER}:5000`);
+    await win.getByTestId('queue-leave').click();
 
     // the 360 pane: at 1 s, the look turned to the seam (yaw 180), the seam box is drawn
     await win.locator('.nav-item', { hasText: 'Scene' }).click();

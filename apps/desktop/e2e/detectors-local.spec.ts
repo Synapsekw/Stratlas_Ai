@@ -7,18 +7,19 @@
  * A detector is saved to the library (`detectors:save`), then `jobs:start` runs it on two photos
  * of the first date with threshold 0.8. The fake finds two boxes per photo and scores one 0.95
  * and the other 0.6, so the pass file `detections/vlm-<run>.json` holds four drafts, exactly one
- * per photo at or above the threshold and one flagged `belowThreshold`. The Detections review
- * lists them as waiting drafts. The zero-network guard lets through only the fake's origin, and
- * the fake saw only authorised requests. A tampered `.aiodet` is refused with its reason.
+ * per photo at or above the threshold and one flagged `belowThreshold`. The review queue
+ * queue lists them as waiting drafts. The zero-network guard lets through only the fake's origin,
+ * and the fake saw only authorised requests. A tampered `.aiodet` is refused with its reason.
  *
- * The UI test drives the same run from the Detect dialog the way a person does: Detections, two
- * photos picked, Detect, "Detectors (on this computer)", the detector toggled on, Start. Two stand-ins
+ * The UI test drives the same run from Ask AI the way a person does: Inspect, two photos picked,
+ * the check menu's local detector, Ask AI. Two stand-ins
  * make that possible on CI: a stub Analytics pack (`stubPack`, a few bytes per file, pointed at by
  * `QUADRION_ANALYTICS_PACK`) so the dialog sees the pack installed, and an `analytics:hardware`
  * handler replaced in main (`fakeCard`) so the graphics card check passes on a machine with no
  * NVIDIA card. The fake server still does the detecting. The demo has no `patch` class, so the
- * drafts come back as a suggested new class (Create class in the inspector). The test then checks
- * the pass strip and its bar, and that a reject with a reason reaches the detector ledger.
+ * drafts come back as a suggested new class (Add as a class in the change picker). The test then
+ * checks the run strip, the review queue and its bar, and that a dismissal with a reason reaches
+ * the detector ledger.
  */
 import { create } from 'tar';
 import type { HardwareCheck } from '@aio/schema';
@@ -43,6 +44,7 @@ import {
   test,
   type DataRoot,
 } from './fixtures';
+import { openInspect, photoTiles } from './inspect';
 
 test.setTimeout(240_000);
 test.skip(!hasChangeDemo(), `no change demo in ${DEMO_FOLDER}: run pnpm demo:change --quick`);
@@ -134,7 +136,7 @@ interface Draft {
   origin: Record<string, unknown>;
 }
 
-test('detect.vlm on the demo: drafts in the Detections review, one per photo above 0.8', async () => {
+test('detect.vlm on the demo: drafts in the review queue, one per photo above 0.8', async () => {
   const testInfo = test.info();
   const run = await start();
   try {
@@ -232,8 +234,9 @@ test('detect.vlm on the demo: drafts in the Detections review, one per photo abo
     }
     expect(pass.detections.filter((d) => !d.belowThreshold)).toHaveLength(PHOTOS.length);
 
-    // 4. the existing review lists the drafts: all four, or only those at or above 0.8
-    await win.locator('.nav-item', { hasText: 'Detections' }).click();
+    // 4. the review queue lists the drafts: all four, or only those at or above 0.8
+    await openInspect(win);
+    await win.getByTestId('inspect-review').click();
     const counts = win.getByTestId('det-counts');
     await expect(counts).toContainText(/\b[24] waiting\b/);
     const shot = testInfo.outputPath('detections-review.png');
@@ -331,11 +334,6 @@ async function fakeCard(app: ElectronApplication): Promise<void> {
   });
 }
 
-/** Set a native range input (Playwright's fill sets it and fires input, which React takes). */
-async function setRange(win: Page, label: string, value: number): Promise<void> {
-  await win.getByRole('slider', { name: label }).fill(String(value));
-}
-
 interface LedgerLine {
   detectorId: string;
   detectionId?: string;
@@ -343,7 +341,7 @@ interface LedgerLine {
   reason?: string;
 }
 
-test('runs a detector from the Detect dialog and reviews its drafts', async () => {
+test('runs a detector from Ask AI and reviews its drafts', async () => {
   const testInfo = test.info();
   const packBase = await mkdtemp(join(tmpdir(), 'aio-e2e-analytics-pack-'));
   const run = await start({ QUADRION_ANALYTICS_PACK: await stubPack(packBase) });
@@ -364,29 +362,29 @@ test('runs a detector from the Detect dialog and reviews its drafts', async () =
     );
     expect(saved).toMatchObject({ ok: true, version: 1 });
 
-    // 2. Detections: two photos picked, Detect, Detectors (on this computer)
-    await win.locator('.nav-item', { hasText: 'Detections' }).click();
-    const sheet = win.getByTestId('det-sheet');
-    const tiles = sheet.locator('.det-tile');
+    // 2. Inspect: two photos picked, the check menu's local detector
+    await openInspect(win);
+    const tiles = photoTiles(win);
     await expect(tiles.first()).toBeVisible();
     await tiles.nth(0).click({ modifiers: ['ControlOrMeta'] });
     await tiles.nth(1).click({ modifiers: ['ControlOrMeta'] });
-    await expect(sheet.locator('.det-tile.picked')).toHaveCount(PHOTOS.length);
-    await win.getByTestId('det-ai-open').click();
-    await win.getByTestId('det-mode-detectors').check();
-    const dialog = win.getByTestId('det-ai-dialog');
-    await expect(dialog).toBeVisible();
+    await expect(win.locator('[data-testid="inspect-photos"] [data-picked="true"]')).toHaveCount(
+      PHOTOS.length,
+    );
+    await expect(win.getByTestId('ask-ai-scope-selected')).toContainText(
+      `Selected (${String(PHOTOS.length)})`,
+    );
+    await win.getByTestId('ask-ai-checks').click();
+    await win.getByRole('menuitemradio', { name: 'Dark patch (local detector)' }).click();
 
-    // 3. the detector toggled on: no blocker, an estimate, Start
-    const toggle = win.getByTestId(`det-vlm-det-${DETECTOR_ID}`);
-    await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    await expect(win.getByTestId(`det-vlm-threshold-${DETECTOR_ID}`)).toContainText('0.80');
-    await expect(win.getByTestId('det-vlm-blocker')).toHaveCount(0);
-    await expect(win.getByTestId('det-vlm-estimate')).toContainText(`${PHOTOS.length} photos`);
-    await shot('detect-dialog-detectors');
-    await win.getByTestId('det-vlm-start').click();
-    await expect(dialog).toHaveCount(0);
+    // 3. no blocker, Ask AI starts at once (it runs on this computer: no confirm)
+    await expect(win.getByTestId('ask-ai-blocked')).toHaveCount(0);
+    await expect(win.getByTestId('ask-ai')).toBeEnabled();
+    await shot('ask-ai-detector');
+    await win.getByTestId('ask-ai').click();
+    await expect(win.getByTestId('cloud-confirm-line')).toHaveCount(0);
+    const strip = win.getByTestId('ask-ai-run');
+    await expect(strip).toBeVisible();
 
     // the job ends done
     await expect
@@ -401,40 +399,29 @@ test('runs a detector from the Detect dialog and reviews its drafts', async () =
       )
       .toBe('done');
 
-    // 4. the review: one pass in the strip, its drafts scored by the fake
-    const pass = win.getByTestId('det-vlm-pass');
-    await expect(pass).toHaveCount(1, { timeout: 30_000 });
-    await expect(pass).toContainText('Dark patch');
-    const counts = win.getByTestId('det-vlm-counts');
-    await expect(counts).toHaveText('2 shown, 2 hidden');
-    await tiles.first().click();
-    const score = win.getByTestId('det-vlm-score');
-    await expect(score).toHaveText(VLM_HIGH.toFixed(2));
-    // the demo has no "patch" class: the draft offers the detector's name as a new class
+    // 4. the run strip says it is done; the queue holds the drafts at or above the detector's bar
+    await expect(strip).toContainText(`AI checked ${String(PHOTOS.length)} photos`, {
+      timeout: 30_000,
+    });
+    await win.getByTestId('ask-ai-review').click();
+    await expect(win.getByTestId('queue-progress')).toHaveText('1 of 2');
+    // the drafts under 0.8 stay out of the queue whatever the confidence slider says
+    await win.getByTestId('queue-threshold').fill('0.5');
+    await expect(win.getByTestId('queue-progress')).toHaveText('1 of 2');
+    // the score of the draft in view, as a percentage
+    await expect(win.locator('.queue-step .mono')).toHaveText(
+      `${String(Math.round(VLM_HIGH * 100))}%`,
+    );
+    // the demo has no "patch" class: Accept opens the change picker, which offers the
+    // detector's name as a new class
+    await win.getByTestId('queue-accept').click();
+    await expect(win.getByTestId('inspect-change-picker')).toBeVisible();
     await expect(win.getByTestId('det-create-class')).toBeVisible();
-
-    // 5. the bar: lowered under LOW every draft shows, with both scores of the fake; raised to
-    // its top (0.95, HIGH itself) only the HIGH drafts stay; lowered again they return
-    const barLabel = 'Score bar for Dark patch';
-    await setRange(win, barLabel, 0.5);
-    await expect(counts).toHaveText('4 shown, 0 hidden');
-    await expect(pass).toContainText('0.50');
-    await tiles.first().click();
-    const scores = new Set<string>();
-    for (let i = 0; i < 4; i++) {
-      scores.add((await score.textContent()) ?? '');
-      await win.getByRole('button', { name: 'Next detection (J)' }).click();
-    }
-    expect([...scores].sort()).toEqual([VLM_LOW.toFixed(2), VLM_HIGH.toFixed(2)]);
-    await setRange(win, barLabel, 0.95);
-    await expect(counts).toHaveText('2 shown, 2 hidden');
-    await setRange(win, barLabel, 0.5);
-    await expect(counts).toHaveText('4 shown, 0 hidden');
-    await setRange(win, barLabel, 0.8);
-    await expect(counts).toHaveText('2 shown, 2 hidden');
+    await win.keyboard.press('Escape');
+    await expect(win.getByTestId('inspect-change-picker')).toHaveCount(0);
     await shot('review-threshold-strip');
 
-    // 6. reject one draft with "Not a defect": the ledger gains the line
+    // 6. dismiss one draft with the reason "Not a defect": the ledger gains the line
     const userData = await app.evaluate(({ app: a }) => a.getPath('userData'));
     const ledgerFile = join(userData, 'detector-ledger', `${DETECTOR_ID}.jsonl`);
     const ledger = async (): Promise<LedgerLine[]> =>
@@ -443,8 +430,7 @@ test('runs a detector from the Detect dialog and reviews its drafts', async () =
         .filter((l) => l.trim() !== '')
         .map((l) => JSON.parse(l) as LedgerLine);
     const before = (await ledger()).length;
-    await tiles.first().click();
-    await win.getByTestId('det-reject').click();
+    await win.getByTestId('queue-reject-reason').click();
     const menu = win.getByRole('menu', { name: 'Why is it rejected?' });
     await expect(menu).toBeVisible();
     await shot('review-reject-reasons');

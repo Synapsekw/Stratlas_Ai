@@ -4,11 +4,12 @@
  * the demo photos of both dates, checked against `truth.json` (`detector`, `markers.photos`).
  *
  * Covers: Settings, Detection models (runtime, import with the licence confirmed, card and licence
- * shown, a corrupt model refused with the exact error while the app stays up); Detections, all
- * photos of both dates selected, Detect with AI, Local model (free, nothing sent); one draft per
- * marker box of every photo (its centre inside the box, the box inside the marker box widened by
- * 3 px), the counts per date, one pass per date; accepting two with the keyboard; Stop keeping
- * the photos done and "Run the remaining" finishing the run. The zero-network guard of the
+ * shown, a corrupt model refused with the exact error while the app stays up); Settings, Ask AI,
+ * Local model chosen; Inspect, all photos of both dates picked, Ask AI (on this computer, nothing
+ * sent, no confirm); one draft per marker box of every photo (its centre inside the box, the box
+ * inside the marker box widened by 3 px), the counts per date, one pass per date; accepting two
+ * in the review queue with the keyboard; Stop keeping the photos done and "Try the n left again"
+ * finishing the run. The zero-network guard of the
  * fixture stays on throughout. The demo opens as a working copy, so the bundled demo is never
  * written.
  */
@@ -17,6 +18,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test, type ChangeDemoTruth } from './fixtures';
+import { openInspect, photoTiles } from './inspect';
 
 /** Make the next native open dialog return this file (Electron main process). */
 async function nextOpenDialog(app: ElectronApplication, path: string) {
@@ -67,18 +69,31 @@ async function importDetector(app: ElectronApplication, win: Page, root: string,
   await expect(win.getByTestId('infer-model')).toHaveCount(1);
 }
 
-/** Detections, All photos, every photo of both dates selected; returns the photo count. */
+/** Settings, Ask AI: the local model answers (not the Auto default, which may go to the cloud). */
+async function chooseLocalBackend(win: Page) {
+  // the Ask AI panel lists the models once, when it opens: leave Settings so it reads the import
+  await win.locator('.sb-nav .nav-item', { hasText: 'Inspect' }).first().click();
+  await win.locator('.nav-item', { hasText: 'Settings' }).click();
+  const panel = win.getByTestId('ask-ai-settings-panel');
+  await panel.scrollIntoViewIfNeeded();
+  await win.getByTestId('ask-ai-backend-local').check();
+  await expect(win.getByTestId('ask-ai-backend-local')).toBeChecked();
+}
+
+/** Inspect, every photo of both dates picked (Ctrl-click the first, Shift-click the last). */
 async function selectAllPhotos(win: Page, truth: Truth) {
-  await win.locator('.nav-item', { hasText: 'Detections' }).click();
-  await win.getByRole('button', { name: 'All photos' }).click();
+  await openInspect(win);
   const photos = truth.counts.photos.d1 + truth.counts.photos.d2;
-  const tiles = win.getByTestId('det-sheet').locator('.det-tile');
+  const tiles = photoTiles(win);
   await expect(tiles).toHaveCount(photos);
   // Cmd on macOS, where Ctrl click is the secondary click and fires no click event
   await tiles.first().click({ modifiers: ['ControlOrMeta'] });
+  await tiles.last().scrollIntoViewIfNeeded();
   await tiles.last().click({ modifiers: ['Shift'] });
-  await expect(win.getByTestId('det-sheet').locator('.det-tile.picked')).toHaveCount(photos);
-  await expect(win.getByTestId('det-ai-open')).toContainText(`Detect with AI (${photos} photos)`);
+  await expect(win.locator('[data-testid="inspect-photos"] [data-picked="true"]')).toHaveCount(
+    photos,
+  );
+  await expect(win.getByTestId('ask-ai-scope-selected')).toContainText(`Selected (${photos})`);
   return photos;
 }
 
@@ -192,27 +207,23 @@ test('local detection: import the demo detector, find the markers of both dates,
   await expect(win.getByTestId('infer-licence')).toContainText('Licence: MIT');
   await expect(win.getByTestId('infer-licence')).toContainText('Quadrion AI test fixture');
 
-  // Detections: every photo of both dates, Detect with AI, Local model.
+  // Settings, Ask AI: the local model; the model picked is the imported detector.
+  await chooseLocalBackend(win);
+  await expect(win.getByTestId('ask-ai-model')).toHaveValue('marker-test-detector-1.0.0');
+
+  // Inspect: every photo of both dates picked, Ask AI. A run on this computer asks nothing.
   const photos = await selectAllPhotos(win, truth);
-  await win.getByTestId('det-ai-open').click();
-  await win.getByTestId('det-mode-local').check();
-  await expect(win.getByTestId('det-local-free')).toContainText(
-    'Runs on this computer with CPU. Nothing leaves this computer. Free.',
-  );
-  await expect(win.getByTestId('det-local-model')).toHaveValue('marker-test-detector-1.0.0');
-  await expect(win.getByTestId('det-local-run')).toContainText(`Run on ${photos} photos`);
-  await win.getByTestId('det-local-run').click();
+  await expect(win.getByTestId('ask-ai')).toBeEnabled();
+  await win.getByTestId('ask-ai').click();
+  await expect(win.getByTestId('cloud-confirm-line')).toHaveCount(0);
   const markers = Object.entries(markerBoxes(truth)).reduce(
     (n, [layer, byPhoto]) => n + markersOn(truth, layer, Object.keys(byPhoto)),
     0,
   );
-  const progress = win.getByTestId('det-local-progress');
-  await expect(progress).toContainText('Done');
-  await expect(progress).toContainText(
-    `${photos} of ${photos} photos checked, ${markers} proposals`,
-  );
-  await expect(progress).toContainText('Cost: free');
-  await win.getByTestId('det-local-close').click();
+  const progress = win.getByTestId('ask-ai-run');
+  await expect(progress).toContainText(`AI checked ${photos} photos and found ${markers}.`, {
+    timeout: 120_000,
+  });
 
   // One pass per date, each naming its photos layer, every marker found as a draft.
   const byLayer = await passes(root);
@@ -231,14 +242,13 @@ test('local detection: import the demo detector, find the markers of both dates,
     checkAgainstTruth(byLayer[layer], layer, truth);
   }
 
-  // The drafts wait in the review; accept two with the keyboard (severity, then A).
+  // The drafts wait in the review queue; accept two with the keyboard (severity, then A).
+  await win.getByTestId('ask-ai-review').click();
+  await expect(win.getByTestId('inspect-queue')).toBeVisible();
   const counts = win.getByTestId('det-counts');
   await expect(counts).toContainText(`${markers} waiting`);
   const accepted = Number(/(\d+) accepted/.exec((await counts.textContent()) ?? '')?.[1] ?? NaN);
   const issuesBefore = await win.evaluate(issueCount);
-  const inspector = win.getByTestId('det-inspector');
-  await win.getByTestId('det-sheet').locator('.det-tile').first().click();
-  await expect(inspector).toBeVisible();
   for (let i = 1; i <= 2; i++) {
     await expect(win.getByTestId('det-class')).toHaveValue('marker');
     await win.keyboard.press('2');
@@ -255,36 +265,38 @@ test('local detection: stop keeps the photos done, then the rest runs', async ({
   await prepare(app, win);
   await importDetector(app, win, root, truth);
 
+  await chooseLocalBackend(win);
   const photos = await selectAllPhotos(win, truth);
-  await win.getByTestId('det-ai-open').click();
-  await win.getByTestId('det-mode-local').check();
   // A person presses Stop once the first photo is done: the click comes from the page as the
   // first progress event lands, so the run cannot finish all photos first.
   await win.evaluate(() => {
     const off = window.aio.on('inference:progress', (e: { done: number }) => {
       if (e.done < 1) return;
       off();
-      document.querySelector<HTMLButtonElement>('[data-testid="det-local-stop"]')?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="ask-ai-stop"]')?.click();
     });
   });
-  await win.getByTestId('det-local-run').click();
-  const progress = win.getByTestId('det-local-progress');
-  await expect(progress).toContainText('Stopped');
-  const rest = win.getByTestId('det-local-rest');
+  await win.getByTestId('ask-ai').click();
+  const progress = win.getByTestId('ask-ai-run');
+  await expect(progress).toContainText('Stopped after');
+  const rest = win.getByTestId('ask-ai-retry');
   await expect(rest).toBeVisible();
 
-  // the photos done are kept, with exactly their markers
+  // the photos done are kept, with exactly their markers (the pass lands as the run winds down,
+  // after the strip says Stopped)
+  const countDone = async () =>
+    Object.values(await passes(root)).reduce((n, p) => n + (p.assessed?.length ?? 0), 0);
+  await expect.poll(countDone, { timeout: 30_000 }).toBeGreaterThan(0);
   const stopped = await passes(root);
   const done = Object.values(stopped).reduce((n, p) => n + (p.assessed?.length ?? 0), 0);
   expect(done).toBeGreaterThan(0);
   expect(done).toBeLessThan(photos);
-  await expect(rest).toContainText(`Run the remaining ${photos - done}`);
+  await expect(rest).toHaveText(`Try the ${photos - done} left again`);
   for (const [layer, pass] of Object.entries(stopped))
     expect(pass.detections, layer).toHaveLength(markersOn(truth, layer, pass.assessed ?? []));
 
   await rest.click();
-  await expect(progress).toContainText('Done');
-  await expect(progress).toContainText(`${photos} of ${photos} photos checked`);
+  await expect(progress).toContainText(`AI checked ${photos} photos`, { timeout: 120_000 });
   const all = await passes(root);
   const layers = Object.keys(markerBoxes(truth));
   expect(Object.keys(all).sort()).toEqual([...layers].sort());
