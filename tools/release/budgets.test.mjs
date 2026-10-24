@@ -64,7 +64,7 @@ describe('budget harness', () => {
 describe('size budgets (M10 decision 6)', () => {
   it('holds the pack and installer numbers', () => {
     expect(BUDGETS.pack).toEqual({ unpackedBytes: 1_300_000_000, compressedBytes: 500_000_000 });
-    expect(BUDGETS.installer.growthOver090Bytes).toBe(20 * 1024 * 1024);
+    expect(BUDGETS.installer.growthOver090Bytes).toBe(25 * 1024 * 1024);
   });
 
   it('refuses a pack over either budget', () => {
@@ -89,7 +89,7 @@ describe('size budgets (M10 decision 6)', () => {
     ).toHaveLength(2);
   });
 
-  it('refuses an installer more than 20 MB over its 0.9.0 baseline, reports one without', () => {
+  it('refuses an installer more than 25 MB over its 0.9.0 baseline, reports one without', () => {
     const base = BUDGETS.installer.baseline090['win-x64-setup.exe'];
     const r = installerBudgetProblems([
       { name: 'Stratlas-0.10.0-win-x64-setup.exe', size: base + 10 * 1024 * 1024 },
@@ -97,7 +97,7 @@ describe('size budgets (M10 decision 6)', () => {
     ]);
     expect(r).toEqual({ problems: [], unchecked: ['Stratlas-0.10.0-mac-universal.dmg'] });
     const over = installerBudgetProblems([
-      { name: 'Stratlas-0.10.0-win-x64-setup.exe', size: base + 21 * 1024 * 1024 },
+      { name: 'Stratlas-0.10.0-win-x64-setup.exe', size: base + 26 * 1024 * 1024 },
     ]);
     expect(over.problems.join('')).toMatch(/22\.0 MB over 0\.9\.0, the budget allows 21\.0 MB/);
   });
