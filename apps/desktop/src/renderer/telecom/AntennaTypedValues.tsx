@@ -134,7 +134,10 @@ function TypedField(props: {
       onKeyDown={(e) => {
         if (e.key === 'Enter') commit();
         else if (e.key === 'Escape') {
-          // back to the value shown before typing; nothing is written
+          // back to the value shown before typing; nothing is written, and the key is the
+          // field's (no window-level Esc also clears the selection)
+          e.preventDefault();
+          e.stopPropagation();
           setBad(false);
           setText(start);
         }

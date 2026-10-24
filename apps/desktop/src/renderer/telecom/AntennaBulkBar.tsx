@@ -1,19 +1,24 @@
 /**
  * The bulk bar under the antenna rows while any row is ticked: "N selected · Accept · Reject ·
- * Delete · ✕". Accept and Reject set every ticked unit and clear the ticks; Delete asks once for
- * all of them (the dialog's yes deletes, and the ticks of deleted units go with them).
+ * Delete · ✕". Only the ticked rows the filter shows count. Accept and Reject set each of them and
+ * clear the ticks; Delete asks once for all of them (the dialog's yes deletes, and the ticks of
+ * deleted units go with them).
  */
 import { Button, IconButton, t } from '@aio/ui';
 import type { ReactElement } from 'react';
 import { askDeleteAntennas } from './antennaDelete';
-import { clearTicked, setUnitStatus, useAntennas } from './antennaStore';
+import { clearTicked, filteredUnits, setUnitStatus, useAntennas } from './antennaStore';
 
 export function AntennaBulkBar(): ReactElement | null {
   const file = useAntennas((s) => s.file);
+  const filter = useAntennas((s) => s.filter);
   const ticked = useAntennas((s) => s.ticked);
   const readOnly = useAntennas((s) => s.readOnly);
-  // in the file's order; a tick whose unit has gone does not count
-  const ids = (file?.units ?? []).filter((u) => ticked[u.id] === true).map((u) => u.id);
+  // the ticked rows on screen, in their order: a tick whose unit has gone, or that the filter
+  // hides, neither counts nor is acted on
+  const ids = filteredUnits(file, filter)
+    .filter((u) => ticked[u.id] === true)
+    .map((u) => u.id);
   if (ids.length === 0) return null;
   const reason = readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {};
   const decide = (status: 'accepted' | 'rejected') => {
@@ -49,7 +54,7 @@ export function AntennaBulkBar(): ReactElement | null {
       </Button>
       <Button
         size="sm"
-        variant="quiet"
+        variant="danger"
         icon="trash"
         data-testid="antenna-bulk-delete"
         {...reason}

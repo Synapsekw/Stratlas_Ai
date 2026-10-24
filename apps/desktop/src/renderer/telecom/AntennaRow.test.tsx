@@ -233,5 +233,32 @@ describe('AntennaRow', () => {
       );
     });
     expect(host.querySelector('[data-row-id="a1"]')!.contains(q('under'))).toBe(true);
+    const group = q('under')!.parentElement!;
+    expect(group.getAttribute('role')).toBe('group');
+    expect(group.getAttribute('aria-label')).toBe('P1');
+  });
+
+  it('adds no group when nothing is under the row', () => {
+    show();
+    expect(host.querySelector('[role="group"]')).toBeNull();
+  });
+
+  it('Esc in a field is the field’s: window listeners do not see it', () => {
+    const onWindow = vi.fn();
+    window.addEventListener('keydown', onWindow);
+    try {
+      show();
+      const az = q('antenna-row-az') as HTMLInputElement;
+      type(az, '7');
+      const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      act(() => {
+        az.dispatchEvent(e);
+      });
+      expect(e.defaultPrevented).toBe(true);
+      expect(onWindow).not.toHaveBeenCalled();
+      expect(az.value).toBe('120');
+    } finally {
+      window.removeEventListener('keydown', onWindow);
+    }
   });
 });

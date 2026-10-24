@@ -359,6 +359,36 @@ describe('the bulk bar', () => {
     expect(antennaDeleteStore.getState().ask?.ids).toEqual(['p1', 'p4']);
   });
 
+  it('counts and acts on the ticked rows the filter shows only', async () => {
+    load(four());
+    show();
+    // ticked under All: a draft, an accepted and the other draft
+    tick('p1');
+    tick('p2');
+    tick('p4');
+    expect(q('antenna-bulk')!.textContent).toContain('3 selected');
+    click(q('antenna-filter-draft'));
+    expect(q('antenna-bulk')!.textContent).toContain('2 selected');
+    click(q('antenna-bulk-delete'));
+    expect(antennaDeleteStore.getState().ask?.ids).toEqual(['p1', 'p4']);
+    antennaDeleteStore.setState({ ask: null });
+    click(q('antenna-bulk-reject'));
+    await settle();
+    expect(status('p1')).toBe('rejected');
+    expect(status('p4')).toBe('rejected');
+    // the accepted unit the filter hid is left as it was
+    expect(status('p2')).toBe('accepted');
+    // nothing ticked on screen: no bar
+    load(four(), { filter: 'rejected', ticked: { p1: true } });
+    expect(q('antenna-bulk')).toBeNull();
+  });
+
+  it('Delete is the app’s danger button', () => {
+    load(four(), { ticked: { p1: true } });
+    show();
+    expect(q('antenna-bulk-delete')!.className).toContain('danger');
+  });
+
   it('clears with the cross', () => {
     load(four());
     show();

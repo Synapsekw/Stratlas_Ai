@@ -149,7 +149,13 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
           }}
         />
       </div>
-      {props.children}
+      {props.children ? (
+        // the details belong to this item's row: a group named by the unit, so the tree holds
+        // tree items and groups only
+        <div role="group" aria-label={name}>
+          {props.children}
+        </div>
+      ) : null}
     </li>
   );
 }

@@ -379,10 +379,17 @@ describe('AntennaTypedField compact (a row cell)', () => {
     load(unit());
     showCell('downtiltDeg');
     type(cell(), '9');
+    const onWindow = vi.fn();
+    window.addEventListener('keydown', onWindow);
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
     act(() => {
-      cell().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      cell().dispatchEvent(esc);
     });
+    window.removeEventListener('keydown', onWindow);
     expect(cell().value).toBe('2');
+    // the key is claimed: a window-level Esc (clear the selection) does not also act
+    expect(esc.defaultPrevented).toBe(true);
+    expect(onWindow).not.toHaveBeenCalled();
     blur(cell());
     await settle();
     expect(h.writes).toBe(0);

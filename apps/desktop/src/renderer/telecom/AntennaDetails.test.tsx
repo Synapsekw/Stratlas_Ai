@@ -175,8 +175,11 @@ describe('AntennaDetails', () => {
     expect(details).toHaveLength(1);
     const item = host.querySelector('[data-row-id="a2"]')!;
     expect(item.contains(details[0]!)).toBe(true);
-    // directly under its own row
-    expect(item.querySelector('[data-testid="antenna-row"]')!.nextElementSibling).toBe(details[0]);
+    // directly under its own row, in a group named by the unit
+    const group = item.querySelector('[data-testid="antenna-row"]')!.nextElementSibling!;
+    expect(group.getAttribute('role')).toBe('group');
+    expect(group.getAttribute('aria-label')).toBe('A2');
+    expect(group.firstElementChild).toBe(details[0]);
     act(() => {
       antennaStore.setState({ selected: null });
     });
