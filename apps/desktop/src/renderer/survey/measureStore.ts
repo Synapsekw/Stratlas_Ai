@@ -46,7 +46,9 @@ import {
   measurementFrom,
   MIN_POINTS,
   missingRoles,
+  needsHeightRepair,
   primaryRow,
+  repairKitHeights,
   seriesKeyOf,
   removeTemplate,
   templateLibrary,
@@ -61,6 +63,7 @@ import {
   type EditEvent,
   type EditState,
   type HeightSampler,
+  type KitHeightAt,
   type RolePicks,
   type SnapSettings,
   type SnapSource,
@@ -72,6 +75,16 @@ import { bridge } from '../shell';
 import { timeline } from '../workspace/timeline';
 import { rowText } from './card/cardModel';
 import { designs, loadDesigns } from './designsStore';
+import {
+  captureOfEpoch,
+  dsmOnly,
+  epochOfPile,
+  fetchKitText,
+  kitDsmHeightAt,
+  kitEpochs,
+  kitRepairHeights,
+  wantsKitHeights,
+} from './kitHeights';
 import { drawnPoints, scopeShift, storedPoints } from './measureDates';
 import { alignPicks, creationDating, realignPickedOn, type VertexPick } from './measureSource';
 import {
@@ -360,27 +373,40 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   if (hidden.length < remembered.length) visibilityMemory.save(projectId, hidden);
   const readOnly = m.value.readOnly;
   const materials = s.ok && s.value.ok ? s.value.settings.materials : [];
+  const read = v.ok && v.value.ok ? v.value : null;
+  const manifest = manifestOf(projectId);
+  // the kit's DSMs, read only when a pile is to convert or still lies at Z 0
+  const heightAt =
+    read?.volumes && manifest && wantsKitHeights(m.value.file, read.volumes, manifest.origin[2])
+      ? await kitDsmHeightAt(projectId, kitEpochs(read.volumes), fetchKitText)
+      : undefined;
+  if (loadEpoch !== epoch) return;
   // old stockpile kit piles open as volume measurements with their figures (W3): a conversion,
   // not an edit, so the baseline takes it too and nothing shows as unsaved
-  const file = openedWithKitPiles(
-    m.value.file,
-    v.ok && v.value.ok ? v.value : null,
-    manifestOf(projectId),
-    materials,
-    readOnly,
-  );
-  const converted = file !== m.value.file;
+  const opened = openedWithKitPiles(m.value.file, read, manifest, materials, readOnly, heightAt);
+  const converted = opened !== m.value.file;
+  // piles converted at Z 0 before heights take them once (a migration, like the conversion); the
+  // prepared surfaces are not read yet: `repairKitHeightsNow` asks them once they exist
+  const { file, repaired } =
+    heightAt && manifest && read?.volumes
+      ? repairKitHeights(
+          opened,
+          await kitRepairHeights(opened, manifest, dsmOnly(read.volumes, heightAt)),
+        )
+      : { file: opened, repaired: [] };
+  if (loadEpoch !== epoch) return;
   // only old kit data is converted on disk at once; a mark alone stays in memory
-  const kitRead = v.ok && v.value.ok && v.value.volumes !== null;
+  const kitRead = read?.volumes != null;
   if (converted && !readOnly && !kitRead) markUnwritten.add(projectId);
   else markUnwritten.delete(projectId);
+  const write = !readOnly && ((converted && kitRead) || repaired.length > 0);
   const patch: Partial<MeasureState> = {
     status: 'ready',
     file,
     savedText: text(file),
     readOnly,
     hiddenMeasurements: hidden,
-    ...(converted && !readOnly && kitRead ? { resultsUnwritten: true } : {}),
+    ...(write ? { resultsUnwritten: true } : {}),
   };
   if (t.ok && t.value.ok) patch.templates = { project: t.value.project, user: t.value.user };
   // site settings are G1's; until they exist the defaults hold (metres)
@@ -389,10 +415,10 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     patch.settingsExist = s.value.exists;
   }
   // a kit pile weighs by the kit's density unless the person picked a site material (`pileMaterial`)
-  patch.kitDensity = kitDensity(v.ok && v.value.ok ? v.value.volumes : null);
+  patch.kitDensity = kitDensity(read?.volumes ?? null);
   set(patch);
   // a writable project keeps the conversion on disk at once; a package keeps it in memory only
-  if (converted && !readOnly && kitRead) await writeConversion(projectId, file, epoch);
+  if (write) await writeConversion(projectId, file, epoch);
 }
 
 const folderKey = (root: string) => root.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
@@ -445,11 +471,17 @@ function manifestOf(projectId: string): ProjectManifest | null {
 }
 
 /** How kit piles are placed and named in this project (`@aio/survey` `KitOpenOptions`). */
-const kitOptions = (origin: readonly number[], materials: readonly SiteMaterial[]) => ({
+const kitOptions = (
+  origin: readonly number[],
+  materials: readonly SiteMaterial[],
+  heightAt?: KitHeightAt,
+) => ({
   origin,
   materials,
   now: now(),
   newId: newMeasurementId,
+  // converted outlines are draped on the kit's DSM of their date
+  ...(heightAt ? { heightAt } : {}),
 });
 
 /**
@@ -464,11 +496,12 @@ function openedWithKitPiles(
   manifest: ProjectManifest | null,
   materials: readonly SiteMaterial[],
   readOnly: boolean,
+  heightAt?: KitHeightAt,
 ): MeasurementsFile {
   if (!read) return file;
   if (read.volumes && !manifest) return file;
   return openWithKitPiles(file, read, {
-    ...kitOptions(manifest?.origin ?? [0, 0, 0], materials),
+    ...kitOptions(manifest?.origin ?? [0, 0, 0], materials, heightAt),
     readOnly,
   });
 }
@@ -519,6 +552,10 @@ export async function convertAfterJob(projectId: string): Promise<void> {
   if (!manifest) return;
   const epoch = loadEpoch;
   const r = await bridge.call('project:readVolumes', { projectId });
+  const built = r.ok && r.value.ok ? r.value.volumes : null;
+  const heightAt = built
+    ? await kitDsmHeightAt(projectId, kitEpochs(built), fetchKitText)
+    : undefined;
   // a save in flight lands first, and the conversion goes on the baseline it leaves
   if (!(await writesSettled(projectId))) return;
   const s = get();
@@ -526,7 +563,7 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     return;
   if (!r.ok || !r.value.ok || !r.value.volumes) return;
   const c = kitConversion(s.file, r.value.volumes, r.value.edits, false, {
-    ...kitOptions(manifest.origin, s.settings.materials),
+    ...kitOptions(manifest.origin, s.settings.materials, heightAt),
     rebuilt: true,
   });
   if (!changesFile(c) && s.file.kitPilesConverted !== undefined) return;
@@ -539,6 +576,70 @@ export async function convertAfterJob(projectId: string): Promise<void> {
     kitDensity: kitDensity(r.value.volumes),
   });
   await writeConversion(projectId, baseline, epoch);
+}
+
+/**
+ * The heights of a repair kept only for the measurements in `file` that still need one and still
+ * have the outline the heights were found for (in `from`): a pile edited meanwhile is left alone.
+ */
+function heightsStillFor(
+  file: MeasurementsFile,
+  from: MeasurementsFile,
+  heights: ReadonlyMap<string, number[]>,
+  originH: number,
+): Map<string, number[]> {
+  const was = new Map(from.measurements.map((m) => [m.id, JSON.stringify(m.points)]));
+  const out = new Map<string, number[]>();
+  for (const m of file.measurements) {
+    const z = heights.get(m.id);
+    if (!z || !needsHeightRepair(m, file, originH)) continue;
+    if (was.get(m.id) === JSON.stringify(m.points)) out.set(m.id, z);
+  }
+  return out;
+}
+
+/**
+ * Give the open project's converted piles that still lie at Z 0 their real heights: the kit's
+ * DSM of their date, else that date's prepared surface (so it is worth asking again once surfaces
+ * are prepared). A migration like the conversion: written quietly with the file as last saved in a
+ * writable project (the person's unsaved edits stay unsaved), in memory only in a read-only one,
+ * never shown as unsaved. Returns the ids repaired.
+ */
+export async function repairKitHeightsNow(projectId: string): Promise<string[]> {
+  const s0 = get();
+  const manifest = manifestOf(projectId);
+  if (s0.projectId !== projectId || s0.status !== 'ready' || !manifest) return [];
+  const originH = manifest.origin[2];
+  if (!s0.file.measurements.some((m) => needsHeightRepair(m, s0.file, originH))) return [];
+  const epoch = loadEpoch;
+  const r = await bridge.call('project:readVolumes', { projectId });
+  const volumes = r.ok && r.value.ok ? r.value.volumes : null;
+  const dsm = await kitDsmHeightAt(projectId, volumes ? kitEpochs(volumes) : [], fetchKitText);
+  // loaded when asked: the prepared surfaces' module reads the compare store, which reads this one
+  const { groundAt } = await import('./dateSurfaces');
+  const heights = await kitRepairHeights(s0.file, manifest, {
+    dsm,
+    groundAt,
+    captureOfEpoch: captureOfEpoch(volumes),
+    epochOfPile: epochOfPile(volumes),
+  });
+  if (heights.size === 0) return [];
+  // a save in flight lands first, and the repair goes on the baseline it leaves
+  if (!(await writesSettled(projectId))) return [];
+  const s = get();
+  if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready') return [];
+  const current = repairKitHeights(s.file, heightsStillFor(s.file, s0.file, heights, originH));
+  if (current.repaired.length === 0) return [];
+  const saved = JSON.parse(s.savedText) as MeasurementsFile;
+  const baseline = repairKitHeights(saved, heightsStillFor(saved, s0.file, heights, originH));
+  set({
+    file: current.file,
+    savedText: text(baseline.file),
+    ...(s.readOnly ? {} : { resultsUnwritten: true }),
+  });
+  if (!s.readOnly && baseline.repaired.length > 0)
+    await writeConversion(projectId, baseline.file, epoch);
+  return current.repaired;
 }
 
 /** Write the file, chained after the project's writes in flight (a load waits for them). */

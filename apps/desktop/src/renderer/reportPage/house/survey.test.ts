@@ -31,6 +31,7 @@ import { withSurface } from '../../survey/card/pointHistory';
 import { drawnPoints } from '../../survey/measureDates';
 import { formatQuantity } from '@aio/geo';
 import { Blob as NodeBlob } from 'node:buffer';
+import { deflateSync } from 'node:zlib';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Pager } from './pager';
 import { SECTION_LAYOUTS, type HouseContext } from './sections';
@@ -594,6 +595,27 @@ describe('the survey data', () => {
     expect(pile?.results[0]?.carried?.base).toBe('tin');
     expect(pile?.series?.map((r) => r.netM3)).toEqual([150, 175]);
   });
+
+  it("an old project's kit piles sit on the kit DSM of their date", async () => {
+    const read = await readSurveyFiles(kitReader(kitDsm('e3', 103)), manifest, []);
+    expect(read?.measurements[0]?.points.map((p) => p[2])).toEqual([103, 103, 103, 103]);
+  });
+
+  it('kit piles converted at Z 0 before heights are repaired in memory', async () => {
+    const first = await readSurveyFiles(kitReader(), manifest, []);
+    const pile = first?.measurements[0];
+    if (!pile) throw new Error('no kit pile');
+    expect(pile.points.map((p) => p[2])).toEqual([0, 0, 0, 0]);
+    const saved: MeasurementsFile = {
+      schema: 'aio.measurements/1',
+      measurements: [pile],
+      kitPilesConverted: ['K1'],
+    };
+    const read = await readSurveyFiles(kitReader(kitDsm('e3', 103), saved), manifest, []);
+    expect(read?.measurements[0]?.points.map((p) => p[2])).toEqual([103, 103, 103, 103]);
+    // the figures stay the ones saved
+    expect(read?.measurements[0]?.series).toEqual(pile.series);
+  });
 });
 
 // ---------------------------------------------------------------- an old project
@@ -644,14 +666,48 @@ const KIT: VolumesFile = {
   siteChange: { fill: 25, cut: 0, net: 25 },
 };
 
-const kitReader = () => ({
+const kitReader = (
+  dsm: { epoch: string; text: string } | null = null,
+  file?: MeasurementsFile,
+) => ({
   json: (path: string) =>
     Promise.resolve(
-      path === 'volumes.json' ? KIT : path === 'survey/settings.json' ? settings : null,
+      path === 'volumes.json'
+        ? KIT
+        : path === 'survey/settings.json'
+          ? settings
+          : path === 'survey/measurements.json'
+            ? (file ?? null)
+            : null,
     ),
-  text: () => Promise.resolve(null),
+  text: (path: string) =>
+    Promise.resolve(dsm && path === `legacy/data/dsm_${dsm.epoch}.js` ? dsm.text : null),
   bytes: () => Promise.resolve(null),
 });
+
+/** A kit `data/dsm_<epoch>.js` of one height (m) over the kit pile (E0..E0+30, N0..N0+30, 1 m). */
+function kitDsm(epoch: string, heightM: number): { epoch: string; text: string } {
+  const w = 30;
+  const h = 30;
+  // row-wise deltas: the first cell of each row holds the value, the rest 0
+  const d = new Int16Array(w * h);
+  for (let y = 0; y < h; y++) d[y * w] = Math.round((heightM - 100) * 100);
+  const b64 = (u: Uint8Array) => deflateSync(Buffer.from(u.buffer)).toString('base64');
+  const grid = {
+    res: 1,
+    w,
+    h,
+    x0: E0,
+    y1: N0 + 30,
+    zoff: 100,
+    z: b64(new Uint8Array(d.buffer)),
+    valid: b64(new Uint8Array(Math.ceil((w * h) / 8)).fill(255)),
+  };
+  return {
+    epoch,
+    text: `window.VS_DSM=window.VS_DSM||{};window.VS_DSM["${epoch}"]=${JSON.stringify(grid)};`,
+  };
+}
 
 // ---------------------------------------------------------------- the sections
 

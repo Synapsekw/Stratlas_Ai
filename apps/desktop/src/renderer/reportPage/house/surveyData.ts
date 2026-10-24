@@ -75,7 +75,9 @@ import {
   kitDensity,
   openWithKitPiles,
   pileMaterial,
+  repairKitHeights,
   type KitDensity,
+  type KitHeightAt,
   pileSeries,
   resolveSection,
   ringShifts,
@@ -100,6 +102,14 @@ import { DEFAULT_ANGLES } from '@aio/schema';
 import { t, type MessageKey } from '@aio/ui';
 import { baseName, kitBaseName } from '../../survey/card/baseNames';
 import { cardModel, type CardModel } from '../../survey/card/cardModel';
+import {
+  dsmHeightAt,
+  dsmOnly,
+  kitDsmPath,
+  kitEpochs,
+  kitRepairHeights,
+  wantsKitHeights,
+} from '../../survey/kitHeights';
 import { measurementHasChart } from '../../survey/card/chartRule';
 import { presample, readsSurface } from '../../survey/card/terrain';
 import type { EngineContext } from '../../survey/engineProtocol';
@@ -156,7 +166,8 @@ function parsed<T>(schema: { safeParse(v: unknown): { success: boolean; data?: T
  * measure store and the assistant use too), in memory only: the kit piles not converted yet added
  * as volume measurements, their kit figures carried ("From an earlier version") only when the
  * file was never converted (`kitPilesConverted` absent: an old project, or no measurements file at
- * all). Null when there is neither a file nor a kit pile.
+ * all). With `heightAt` (the kit's DSMs) the outlines are draped on the ground of their date.
+ * Null when there is neither a file nor a kit pile.
  */
 export function withKitPiles(
   file: MeasurementsFile | null,
@@ -164,6 +175,7 @@ export function withKitPiles(
   edits: BoundaryEditsFile | null,
   manifest: ProjectManifest,
   materials: readonly SiteMaterial[],
+  heightAt?: KitHeightAt,
 ): MeasurementsFile | null {
   if (!volumes) return file;
   let n = 0;
@@ -175,10 +187,33 @@ export function withKitPiles(
       materials,
       now: new Date().toISOString(),
       newId: () => `kit-report-${String(++n)}`,
+      ...(heightAt ? { heightAt } : {}),
       // nothing is written from the report: no file is marked converted
       readOnly: true,
     },
   );
+}
+
+/**
+ * The kit's piles as the app opens them, with their heights: draped on the kit's DSM of their
+ * date when converted here, and piles converted at Z 0 before heights repaired, in memory only.
+ */
+async function withKitPileHeights(
+  read: SurveyReader,
+  file: MeasurementsFile | null,
+  volumes: VolumesFile | null,
+  edits: BoundaryEditsFile | null,
+  manifest: ProjectManifest,
+  materials: readonly SiteMaterial[],
+): Promise<MeasurementsFile | null> {
+  const asIs = file ?? { schema: 'aio.measurements/1' as const, measurements: [] };
+  if (!volumes || !wantsKitHeights(asIs, volumes, manifest.origin[2]))
+    return withKitPiles(file, volumes, edits, manifest, materials);
+  const heightAt = await dsmHeightAt(kitEpochs(volumes), (epoch) => read.text(kitDsmPath(epoch)));
+  const opened = withKitPiles(file, volumes, edits, manifest, materials, heightAt);
+  if (!opened) return opened;
+  const heights = await kitRepairHeights(opened, manifest, dsmOnly(volumes, heightAt));
+  return repairKitHeights(opened, heights).file;
 }
 
 /**
@@ -198,7 +233,8 @@ export async function readSurveyFiles(
   ]);
   const settings = parsed<SurveySettings>(SurveySettings, settingsRaw) ?? defaultSurveySettings();
   const kit = parsed<VolumesFile>(VolumesFile, kitRaw);
-  const file = withKitPiles(
+  const file = await withKitPileHeights(
+    read,
     parsed<MeasurementsFile>(MeasurementsFile, fileRaw),
     kit,
     parsed<BoundaryEditsFile>(BoundaryEditsFile, editsRaw),

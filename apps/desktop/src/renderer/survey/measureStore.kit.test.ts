@@ -9,6 +9,8 @@ import {
 import { workspace } from '@aio/workspace';
 import { pileMaterial } from '@aio/survey';
 import { pileFigures } from '../workspace/pileFigures';
+import type * as DateSurfaces from './dateSurfaces';
+import { deflateSync } from 'node:zlib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   convertAfterJob,
@@ -20,6 +22,7 @@ import {
   markForStockpileBuild,
   measureStore,
   patchMeasurement,
+  repairKitHeightsNow,
   replaceWithStandard,
   saveMeasurements,
   setSeries,
@@ -36,7 +39,48 @@ const io = vi.hoisted(() => {
     gate: null as Promise<void> | null,
     /** While set, a write is refused. */
     writeFails: false,
+    /** The kit DSMs on disk: one height (m) per epoch. */
+    dsm: new Map<string, number>(),
+    /** The prepared surface's height under every point (null: no surface). */
+    ground: null as number | null,
   };
+});
+
+vi.mock('./dateSurfaces', async (importOriginal) => ({
+  ...(await importOriginal<typeof DateSurfaces>()),
+  groundAt: (_capture: string, drawn: readonly unknown[]) =>
+    Promise.resolve(new Float64Array(drawn.length).fill(io.ground ?? Number.NaN)),
+}));
+
+/** A kit `data/dsm_<epoch>.js` of one height (m) over E 990..1020, N 1980..2010 at 1 m. */
+function dsmScript(epoch: string, heightM: number): string {
+  const w = 30;
+  const h = 30;
+  // row-wise deltas: the first cell of each row holds the value, the rest 0
+  const d = new Int16Array(w * h);
+  for (let y = 0; y < h; y++) d[y * w] = Math.round((heightM - 50) * 100);
+  const b64 = (u: Uint8Array) => deflateSync(Buffer.from(u.buffer)).toString('base64');
+  return `window.VS_DSM=window.VS_DSM||{};window.VS_DSM["${epoch}"]=${JSON.stringify({
+    res: 1,
+    w,
+    h,
+    x0: 990,
+    y1: 2010,
+    zoff: 50,
+    z: b64(new Uint8Array(d.buffer)),
+    valid: b64(new Uint8Array(Math.ceil((w * h) / 8)).fill(255)),
+  })};`;
+}
+
+const DSM_URL = /^aio:\/\/project\/p1\/legacy\/data\/dsm_(\w+)\.js$/;
+const dsmFetch = vi.fn((url: string) => {
+  const epoch = DSM_URL.exec(url)?.[1] ?? '';
+  const height = io.dsm.get(epoch);
+  return Promise.resolve(
+    height === undefined
+      ? new Response(null, { status: 404 })
+      : new Response(dsmScript(epoch, height)),
+  );
 });
 
 function answer(channel: string, payload: { file?: unknown }): unknown {
@@ -154,6 +198,10 @@ beforeEach(() => {
   io.volumes = null;
   io.gate = null;
   io.writeFails = false;
+  io.dsm = new Map();
+  io.ground = null;
+  dsmFetch.mockClear();
+  vi.stubGlobal('fetch', dsmFetch);
   forgetMeasureWrites();
   measureStore.setState({ autosave: false });
 });
@@ -295,6 +343,139 @@ describe('kit piles on load', () => {
     expect(kitMeasurements()[0]?.results).toEqual([]);
     expect(io.saved.measurements).toHaveLength(1);
     expect(io.saved.kitPilesConverted).toEqual(['P01']);
+  });
+});
+
+const zs = (m: SurveyMeasurement | undefined) => m?.points.map((p) => p[2]);
+
+describe('kit pile heights', () => {
+  it('a writable open converts with real heights and writes once', async () => {
+    io.volumes = volumes();
+    io.dsm = new Map([
+      ['e1', 51],
+      ['e2', 52],
+    ]);
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const [m] = kitMeasurements();
+    // the outline is the e2 toe line, draped on the e2 DSM
+    expect(zs(m)).toEqual([52, 52, 52]);
+    expect(io.writes).toBe(1);
+    expect(zs(io.saved.measurements[0])).toEqual([52, 52, 52]);
+    // a conversion with heights is not a repair
+    expect(io.saved.kitHeightsRepaired).toBeUndefined();
+    expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  it('an earlier conversion with Z 0 is repaired once and listed; a reopen writes nothing', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [drawn] });
+    const [before] = kitMeasurements();
+    expect(zs(before)).toEqual([0, 0, 0]);
+    expect(io.writes).toBe(1);
+    // the build's DSMs are there now
+    io.dsm = new Map([
+      ['e1', 51],
+      ['e2', 52],
+    ]);
+    await open(io.saved);
+    const [after] = kitMeasurements();
+    expect(zs(after)).toEqual([52, 52, 52]);
+    expect(io.writes).toBe(2);
+    expect(io.saved.kitHeightsRepaired).toEqual([before?.id]);
+    expect(zs(io.saved.measurements.find((x) => x.id === before?.id))).toEqual([52, 52, 52]);
+    // a migration, not an edit: the figures and their dates stay as they were
+    expect(after?.results).toEqual(before?.results);
+    expect(after?.series).toEqual(before?.series);
+    expect(after?.updatedAt).toBe(before?.updatedAt);
+    expect(isDirty(measureStore.getState())).toBe(false);
+    await open(io.saved);
+    expect(io.writes).toBe(2);
+  });
+
+  it('a pile a person edited is never re-heighted', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const [m] = kitMeasurements();
+    const points = (m?.points ?? []).map((p, i): [number, number, number] =>
+      i === 0 ? [p[0], p[1], 49] : p,
+    );
+    patchMeasurement(m?.id ?? '', { points });
+    expect(await saveMeasurements()).toBe(true);
+    const writes = io.writes;
+    io.dsm = new Map([['e2', 52]]);
+    await open(io.saved);
+    expect(zs(kitMeasurements()[0])).toEqual([49, 0, 0]);
+    expect(io.writes).toBe(writes);
+    expect(io.saved.kitHeightsRepaired).toBeUndefined();
+  });
+
+  it('a read-only open repairs in memory only', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const writes = io.writes;
+    io.readOnly = true;
+    io.dsm = new Map([['e2', 52]]);
+    await open(io.saved);
+    expect(zs(kitMeasurements()[0])).toEqual([52, 52, 52]);
+    expect(io.writes).toBe(writes);
+    expect(io.saved.kitHeightsRepaired).toBeUndefined();
+    expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  it('a project without kit data reads no DSM', async () => {
+    await open({ schema: 'aio.measurements/1', measurements: [drawn] });
+    expect(dsmFetch).not.toHaveBeenCalled();
+  });
+
+  it('convertAfterJob drapes the new piles', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    io.dsm = new Map([['e2', 52]]);
+    const east = ring.map(([x, z]) => [x + 10, z] as [number, number]);
+    io.volumes = volumes([
+      pile('P01', { e1: ep('c1', 100), e2: ep('c2', 50) }),
+      pile('P03', { e2: { ...ep('c2', 7), ring: east } }),
+    ]);
+    await convertAfterJob('p1');
+    const added = kitMeasurements().find((m) => m.origin?.pile === 'P03');
+    expect(zs(added)).toEqual([52, 52, 52]);
+    expect(zs(io.saved.measurements.find((m) => m.id === added?.id))).toEqual([52, 52, 52]);
+    expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  it('a repair never marks the project unsaved', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [drawn] });
+    patchMeasurement('mine', { label: 'Renamed' });
+    // no kit DSM: the prepared surface of the pile's date, once surfaces exist
+    io.ground = 53;
+    const id = kitMeasurements()[0]?.id;
+    expect(await repairKitHeightsNow('p1')).toEqual([id]);
+    const s = measureStore.getState();
+    expect(zs(kitMeasurements()[0])).toEqual([53, 53, 53]);
+    expect(io.saved.kitHeightsRepaired).toEqual([id]);
+    expect(zs(io.saved.measurements.find((m) => m.id === id))).toEqual([53, 53, 53]);
+    // the person's edit stays theirs: unsaved, and off the disk
+    expect(io.saved.measurements.find((m) => m.id === 'mine')?.label).toBe('Mine');
+    expect(s.file.measurements.find((m) => m.id === 'mine')?.label).toBe('Renamed');
+    expect(isDirty(s)).toBe(true);
+    expect(await saveMeasurements()).toBe(true);
+    expect(isDirty(measureStore.getState())).toBe(false);
+    // once only
+    expect(await repairKitHeightsNow('p1')).toEqual([]);
+  });
+
+  it('repairKitHeightsNow in a read-only project repairs in memory only', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const writes = io.writes;
+    io.readOnly = true;
+    await open(io.saved);
+    io.ground = 53;
+    expect(await repairKitHeightsNow('p1')).toHaveLength(1);
+    expect(zs(kitMeasurements()[0])).toEqual([53, 53, 53]);
+    expect(io.writes).toBe(writes);
+    expect(isDirty(measureStore.getState())).toBe(false);
   });
 });
 
