@@ -39,7 +39,13 @@ const job = (id: string, status: JobRecord['status'], params: object = {}): JobR
   }) as JobRecord;
 
 function setup(
-  opts: { python?: boolean; setting?: boolean; writable?: boolean; have?: HeightTiles[] } = {},
+  opts: {
+    python?: boolean;
+    setting?: boolean;
+    writable?: boolean;
+    have?: HeightTiles[];
+    kitDates?: string[];
+  } = {},
 ) {
   const workspace = createWorkspace();
   const jobs = createStore<{ jobs: JobRecord[] }>()(() => ({ jobs: [] }));
@@ -56,6 +62,19 @@ function setup(
   const readSurfaces = vi.fn(() => Promise.resolve(have.surfaces));
   const refresh = vi.fn(() => Promise.resolve());
   const ready: (() => void)[] = [];
+  const kitSeen: string[][] = [];
+  const kitDates = vi.fn(() => Promise.resolve(opts.kitDates ?? []));
+  const prepareKit = vi.fn((_id: string, _surfaces: HeightTiles[], dates: readonly string[]) => {
+    kitSeen.push([...prepared.getState().kitPreparing]);
+    have.surfaces = [
+      ...have.surfaces,
+      ...dates.map(
+        (d) =>
+          ({ id: `kit-${d}`, capture: d, source: { kind: 'kit-dsm', epoch: d } }) as HeightTiles,
+      ),
+    ];
+    return Promise.resolve();
+  });
   const stop = connectSurfacesWatch({
     workspace,
     jobs,
@@ -70,6 +89,8 @@ function setup(
     readSurfaces,
     start,
     refresh,
+    kitDates,
+    prepareKit,
     wait: () => Promise.resolve(),
   });
   const open = (manifest = three()) => {
@@ -93,6 +114,8 @@ function setup(
     have,
     flags,
     ready,
+    prepareKit,
+    kitSeen,
   };
 }
 
@@ -137,7 +160,7 @@ describe('connectSurfacesWatch', () => {
       ],
     });
     // the prepared surfaces are published for the chips
-    expect(w.prepared.getState()).toEqual({ projectId: 'p', surfaces: have });
+    expect(w.prepared.getState()).toMatchObject({ projectId: 'p', surfaces: have, kitDates: [] });
     // a manifest change while it runs starts nothing more
     w.open(three());
     await flush();
@@ -212,6 +235,38 @@ describe('connectSurfacesWatch', () => {
       x.open();
       await flush();
       expect(x.start).not.toHaveBeenCalled();
+      x.stop();
+    }
+  });
+
+  it('makes the kit DSM surfaces of a kit project without a DSM or cloud layer, with no Python', async () => {
+    const kitProject = lineUpManifest({
+      captures: [
+        { id: 'k1', label: 'Survey 31 December 2020', date: '2020-12-31' },
+        { id: 'k2', label: 'Survey 10 January 2021', date: '2021-01-10' },
+      ],
+      layers: [ortho('o1', 'k1')],
+    });
+    const w = setup({ python: false, kitDates: ['k1', 'k2'] });
+    w.open(kitProject);
+    await flush();
+    expect(w.prepareKit).toHaveBeenCalledTimes(1);
+    expect(w.prepareKit.mock.calls[0]?.[2]).toEqual(['k1', 'k2']);
+    // the dates read as preparing while it runs, and are published as kit dates
+    expect(w.kitSeen).toEqual([['k1', 'k2']]);
+    expect(w.prepared.getState().kitPreparing).toEqual([]);
+    expect(w.prepared.getState().kitDates).toEqual(['k1', 'k2']);
+    expect(w.refresh).toHaveBeenCalled();
+    expect(w.prepared.getState().surfaces.map((s) => s.capture)).toEqual(['k1', 'k2']);
+    expect(w.start).not.toHaveBeenCalled();
+    w.stop();
+
+    for (const o of [{ setting: false }, { writable: false }]) {
+      const x = setup({ ...o, kitDates: ['k1', 'k2'] });
+      x.open(kitProject);
+      await flush();
+      expect(x.prepareKit).not.toHaveBeenCalled();
+      expect(x.prepared.getState().kitDates).toEqual(['k1', 'k2']);
       x.stop();
     }
   });

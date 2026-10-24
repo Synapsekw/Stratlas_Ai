@@ -11,6 +11,11 @@
  * Nothing starts with the setting off, for a read-only project or package, or without the
  * pipeline Python.
  *
+ * A project imported from the old stockpile kit, whose dates have the kit's DSM grids but no DSM
+ * raster or point cloud, gets those dates' surfaces made by the app itself (`kitSurface.ts`, no
+ * Python needed), under the same setting and with the same once-per-open rule; its dates read as
+ * preparing meanwhile.
+ *
  * Whenever a `survey.prepare` job on the open project ends, however it was started, the prepared
  * surfaces are read again and published (`preparedSurfaces`), and the comparison and QA stores
  * are refreshed.
@@ -59,6 +64,14 @@ export interface SurfacesWatchDeps {
   }): Promise<{ jobId: string } | { error: string }>;
   /** Read the comparison and QA stores' surfaces again. */
   refresh(): Promise<void> | void;
+  /** The dates of the project a kit DSM grid can make a surface for (`kitSurfaceDates`). */
+  kitDates?: (projectId: string) => Promise<string[]>;
+  /** Make the kit DSM surfaces of `dates` that lack one (`prepareKitSurfaces`). */
+  prepareKit?: (
+    projectId: string,
+    surfaces: HeightTiles[],
+    dates: readonly string[],
+  ) => Promise<void>;
   /** Wait `ms` (tests pass one that does not). */
   wait?: (ms: number) => Promise<void>;
 }
@@ -79,6 +92,7 @@ export function connectSurfacesWatch(deps: SurfacesWatchDeps): () => void {
     cancelled: boolean;
     tried: Set<string>;
     ours: string | null;
+    kitDates?: string[];
   } | null = null;
 
   const current = () => deps.workspace.getState().project;
@@ -104,9 +118,45 @@ export function connectSurfacesWatch(deps: SurfacesWatchDeps): () => void {
       await wait(SETTLE_MS);
       if (!still()) return;
     }
-    const surfaces = await deps.readSurfaces(mine.id);
+    let surfaces = await deps.readSurfaces(mine.id);
     if (!still()) return;
     publish(mine.id, surfaces);
+    if (deps.kitDates && mine.kitDates === undefined) {
+      let dates: string[] = [];
+      try {
+        dates = await deps.kitDates(mine.id);
+      } catch {
+        // no kit dates
+      }
+      if (!still()) return;
+      mine.kitDates = dates;
+      deps.prepared.setState({ kitDates: dates });
+    }
+    const have = new Set((surfaces ?? []).flatMap((s) => (s.capture ? [s.capture] : [])));
+    const kit = (mine.kitDates ?? []).filter((d) => !have.has(d) && !mine.tried.has(d));
+    if (
+      deps.prepareKit &&
+      surfaces &&
+      kit.length > 0 &&
+      deps.setting() &&
+      deps.writable() &&
+      !mine.cancelled
+    ) {
+      for (const d of kit) mine.tried.add(d);
+      deps.prepared.setState({ kitPreparing: kit });
+      try {
+        await deps.prepareKit(mine.id, surfaces, kit);
+      } catch {
+        // the dates stay without a surface
+      } finally {
+        deps.prepared.setState({ kitPreparing: [] });
+      }
+      if (!still()) return;
+      await deps.refresh();
+      surfaces = await deps.readSurfaces(mine.id);
+      if (!still()) return;
+      publish(mine.id, surfaces);
+    }
     const now = current();
     if (!now || !surfaces || prepareRunning(now.root)) return;
     const dates = now.manifest.captures.map((c) => c.id).filter((d) => !mine.tried.has(d));
@@ -153,7 +203,10 @@ export function connectSurfacesWatch(deps: SurfacesWatchDeps): () => void {
       open = s.project
         ? { id: s.project.id, settled: false, cancelled: false, tried: new Set(), ours: null }
         : null;
-      if (!s.project) deps.prepared.setState({ projectId: null, surfaces: [] });
+      if (!s.project)
+        deps.prepared.setState({ projectId: null, surfaces: [], kitDates: [], kitPreparing: [] });
+      else if (s.project.id !== prev.project?.id)
+        deps.prepared.setState({ kitDates: [], kitPreparing: [] });
     }
     if (!s.project) return;
     if (s.project.id !== prev.project?.id || s.project.manifest !== prev.project.manifest)

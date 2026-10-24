@@ -276,8 +276,18 @@ async function expectNorthCarried(win: Page, readOnly = false): Promise<void> {
   await expect(rows.nth(1)).toHaveAttribute('aria-current', 'date');
 }
 
-test.beforeEach(async ({ dataRoot }) => {
+/** The one test that lets the app make the kit DSM surfaces on open. */
+const MAKES_SURFACES = 'gets a surface per date from its kit DSMs';
+
+test.beforeEach(async ({ dataRoot }, testInfo) => {
   await writeOldProject(dataRoot.projectDir);
+  // the others read the kit figures as carried, before any surface exists: no background
+  // preparation, so the kit DSMs are not made into surfaces (and the figures not recomputed)
+  if (!testInfo.title.includes(MAKES_SURFACES))
+    await writeFile(
+      join(dataRoot.userData, 'settings.json'),
+      JSON.stringify({ autoPrepareSurfaces: false }),
+    );
 });
 
 test('an old stockpile project opens with its kit figures labelled and no unsaved mark', async ({
@@ -569,4 +579,39 @@ test('the Volumes view lists the kit piles; picking one opens its pile panel wit
   await panel.getByTestId('pile-back').click();
   await expect(view.getByTestId('pile-panel')).toHaveCount(0);
   await expect(view.getByTestId('volumes-pile')).toHaveCount(2);
+});
+
+test('a kit project without a DSM or cloud layer gets a surface per date from its kit DSMs: the pile Profile charts both dates', async ({
+  win,
+}) => {
+  test.setTimeout(180_000);
+  await openTiny(win);
+  // made quietly on open, with no pipeline Python: one kit-dsm surface per survey date
+  const kitDates = () =>
+    win.evaluate(async () => {
+      const w = window as unknown as {
+        aio: { invoke(c: string, r: unknown): Promise<unknown> };
+      };
+      const r = (await w.aio.invoke('survey:surfaces', { projectId: 'e2e-tiny' })) as {
+        surfaces?: { capture?: string; source: { kind: string } }[];
+      };
+      return (r.surfaces ?? [])
+        .filter((s) => s.source.kind === 'kit-dsm')
+        .map((s) => s.capture ?? '')
+        .sort();
+    });
+  await expect.poll(kitDates, { timeout: 60_000 }).toEqual(['capture-1', 'capture-2']);
+  const view = await volumesView(win);
+  await view
+    .getByTestId('volumes-pile')
+    .filter({ hasText: 'Pile North' })
+    .click({ timeout: 15_000 });
+  const panel = view.getByTestId('pile-panel');
+  await expect(panel).toBeVisible();
+  await panel.getByTestId('pile-tab-profile').click();
+  const profile = panel.getByTestId('pile-profile');
+  await expect(profile.getByTestId('pile-chips').locator('[data-chip]')).toHaveCount(2, {
+    timeout: 60_000,
+  });
+  await expect(profile.getByTestId('pile-profile-chart')).toBeVisible({ timeout: 60_000 });
 });

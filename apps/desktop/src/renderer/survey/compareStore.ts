@@ -34,7 +34,10 @@ import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } fro
 import { designs as designsStore } from './designsStore';
 import type { EnginePort, HeatGrid, ItemShare, RunReply } from './engineProtocol';
 import { storedPoints } from './measureDates';
+import { fetchKitText } from './kitHeights';
+import { prepareKitSurfaces } from './kitSurface';
 import { refreshQa, sourceOfCapture } from './qaStore';
+import { preparedSurfaces } from './surfaceStates';
 import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from './seriesRule';
 import {
   acceptKitQuietly,
@@ -998,6 +1001,64 @@ export function prepareParams(
 }
 
 /**
+ * Make the kit DSM surfaces (`kitSurface.ts`) of the dates in `only` (every kit date when absent)
+ * that lack a prepared surface, written through `survey:writeSurface`. The dates being made are
+ * not published here (the caller does). An error sentence, or null.
+ */
+export async function makeKitSurfaces(
+  projectId: string,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'crs'>,
+  prepared: readonly HeightTiles[],
+  only?: readonly string[],
+  onPreparing?: (captures: readonly string[]) => void,
+): Promise<{ made: string[]; error: string | null }> {
+  const base = `aio://project/${encodeURIComponent(projectId)}/`;
+  return prepareKitSurfaces(
+    manifest,
+    prepared,
+    {
+      readVolumes: async () => {
+        const r = await bridge.call('project:readVolumes', { projectId });
+        if (!r.ok) throw new Error(r.error);
+        if (!r.value.ok) throw new Error(r.value.error);
+        return r.value.volumes;
+      },
+      readText: (path) => fetchKitText(`${base}${path}`),
+      write: async (tiles, files) => {
+        const r = await bridge.call('survey:writeSurface', { projectId, tiles, files });
+        if (!r.ok) return r.error;
+        return r.value.ok ? null : r.value.error;
+      },
+      ...(onPreparing ? { onPreparing } : {}),
+    },
+    only,
+  );
+}
+
+/**
+ * The kit DSM surfaces of `only` made, the dates shown as preparing meanwhile, and the surfaces
+ * read again and published when any was made (no job ends to do it). An error sentence, or null.
+ */
+async function prepareKitDates(
+  projectId: string,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'crs'>,
+  prepared: readonly HeightTiles[],
+  only?: readonly string[],
+): Promise<string | null> {
+  const r = await makeKitSurfaces(projectId, manifest, prepared, only, (captures) => {
+    if (preparedSurfaces.getState().projectId === projectId)
+      preparedSurfaces.setState({ kitPreparing: [...captures] });
+  });
+  if (r.made.length > 0) {
+    const s = await bridge.call('survey:surfaces', { projectId });
+    if (s.ok && s.value.ok && preparedSurfaces.getState().projectId === projectId)
+      preparedSurfaces.setState({ surfaces: s.value.surfaces });
+    await refreshSurfaces();
+  }
+  return r.error;
+}
+
+/**
  * Start one `survey.prepare` job for the dates `captures` names that have no prepared surface yet
  * (a chip's Prepare). The surfaces are read again when it ends (`surfacesWatch`). An error
  * sentence, or null.
@@ -1008,8 +1069,9 @@ export async function prepareDates(captures: readonly string[]): Promise<string 
   const s = await bridge.call('survey:surfaces', { projectId: project.id });
   if (!s.ok) return s.error;
   if (!s.value.ok) return s.value.error;
+  const kitError = await prepareKitDates(project.id, project.manifest, s.value.surfaces, captures);
   const params = prepareParams(project.manifest, s.value.surfaces, captures);
-  if (!params) return null;
+  if (!params) return kitError;
   const r = await bridge.call('jobs:start', {
     pipeline: 'survey.prepare',
     project: project.root,
@@ -1021,12 +1083,13 @@ export async function prepareDates(captures: readonly string[]): Promise<string 
 
 /** Start `survey.prepare` for the DSMs not prepared yet; the surfaces are read again when done. */
 export async function prepareSurfaces(
-  manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'crs'>,
 ): Promise<string | null> {
-  const { root, surfaces } = get();
+  const { root, surfaces, projectId } = get();
   if (!root) return 'No project is open.';
-  const params = prepareParams(manifest, surfaces);
-  if (!params) return 'Every survey surface is prepared.';
+  const kitError = projectId ? await prepareKitDates(projectId, manifest, surfaces) : null;
+  const params = prepareParams(manifest, get().surfaces);
+  if (!params) return kitError ?? 'Every survey surface is prepared.';
   const r = await bridge.call('jobs:start', { pipeline: 'survey.prepare', project: root, params });
   if (!r.ok) return r.error;
   if (!r.value.ok) return r.value.error;

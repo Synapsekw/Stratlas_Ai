@@ -22,10 +22,24 @@ export type SurfaceState =
 export interface PreparedSurfaces {
   projectId: string | null;
   surfaces: HeightTiles[];
+  /** Dates a kit DSM grid can make a surface for (`kitSurface.ts`), and those being made now. */
+  kitDates: string[];
+  kitPreparing: string[];
 }
 
 export function createPreparedSurfaces(): StoreApi<PreparedSurfaces> {
-  return createStore<PreparedSurfaces>()(() => ({ projectId: null, surfaces: [] }));
+  return createStore<PreparedSurfaces>()(() => ({
+    projectId: null,
+    surfaces: [],
+    kitDates: [],
+    kitPreparing: [],
+  }));
+}
+
+/** The kit DSM dates of the open project, and those being converted now. */
+export interface KitDates {
+  dates: readonly string[];
+  preparing: readonly string[];
 }
 
 export const preparedSurfaces = createPreparedSurfaces();
@@ -49,12 +63,14 @@ function datesOf(job: JobRecord, layerDate: ReadonlyMap<string, string>): string
 
 /**
  * Each survey date's surface state, by capture id. `running` may hold any jobs: only the
- * `survey.prepare` jobs still at work count.
+ * `survey.prepare` jobs still at work count. A date with a kit DSM grid (`kit`) can be prepared
+ * too, and reads as preparing while the app converts it.
  */
 export function surfaceStates(
   manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
   prepared: readonly HeightTiles[],
   running: readonly JobRecord[],
+  kit?: KitDates,
 ): ReadonlyMap<string, SurfaceState> {
   const layerDate = new Map<string, string>();
   const hasSource = new Set<string>();
@@ -64,6 +80,7 @@ export function surfaceStates(
     if ((l.kind === 'raster' && l.role === 'dsm') || l.kind === 'pointcloud')
       hasSource.add(l.capture);
   }
+  for (const d of kit?.dates ?? []) hasSource.add(d);
   const ready = new Set<string>();
   for (const p of prepared) {
     const d = p.capture ?? ('layer' in p.source ? layerDate.get(p.source.layer) : undefined);
@@ -75,6 +92,7 @@ export function surfaceStates(
     const pct = Math.max(0, Math.min(100, Math.round(j.progress * 100)));
     for (const d of datesOf(j, layerDate)) preparing.set(d, pct);
   }
+  for (const d of kit?.preparing ?? []) if (!preparing.has(d)) preparing.set(d, 0);
   const out = new Map<string, SurfaceState>();
   for (const c of manifest.captures) {
     const pct = preparing.get(c.id);
@@ -87,6 +105,7 @@ export function surfaceStates(
 }
 
 const EMPTY_SURFACES: HeightTiles[] = [];
+const EMPTY_DATES: string[] = [];
 const EMPTY_STATES: ReadonlyMap<string, SurfaceState> = new Map();
 
 const isPrepare = (j: JobRecord, root: string) =>
@@ -110,12 +129,19 @@ function usePrepareJobs(): readonly JobRecord[] {
 export function useSurfaceStates(): ReadonlyMap<string, SurfaceState> {
   const project = useStore(workspace, (s) => s.project);
   const running = usePrepareJobs();
-  const prepared = useStore(preparedSurfaces, (s) =>
-    s.projectId !== null && s.projectId === project?.id ? s.surfaces : EMPTY_SURFACES,
-  );
+  const mine = (s: PreparedSurfaces) => s.projectId !== null && s.projectId === project?.id;
+  const prepared = useStore(preparedSurfaces, (s) => (mine(s) ? s.surfaces : EMPTY_SURFACES));
+  const kitDates = useStore(preparedSurfaces, (s) => (mine(s) ? s.kitDates : EMPTY_DATES));
+  const kitPreparing = useStore(preparedSurfaces, (s) => (mine(s) ? s.kitPreparing : EMPTY_DATES));
   return useMemo(
-    () => (project ? surfaceStates(project.manifest, prepared, running) : EMPTY_STATES),
-    [project, running, prepared],
+    () =>
+      project
+        ? surfaceStates(project.manifest, prepared, running, {
+            dates: kitDates,
+            preparing: kitPreparing,
+          })
+        : EMPTY_STATES,
+    [project, running, prepared, kitDates, kitPreparing],
   );
 }
 

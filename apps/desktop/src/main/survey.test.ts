@@ -6,6 +6,7 @@ import { signerFromKey } from '@aio/journal';
 import {
   defaultSurveySettings,
   emptySurveyTemplates,
+  type HeightTiles,
   type MeasurementsFile,
   type SurveyMeasurement,
   type SurveyTemplatesFile,
@@ -84,6 +85,7 @@ describe('survey IPC (G0 stubs without deps)', () => {
       'survey:writeDesigns',
       'survey:writeMeasurements',
       'survey:writeSettings',
+      'survey:writeSurface',
       'survey:writeTemplates',
     ]);
   });
@@ -376,5 +378,76 @@ describe('survey:surfaces (G2)', () => {
     };
     const r = await listSurfaces({ archive });
     expect(r.ok && r.surfaces.map((s) => s.id)).toEqual(['s1']);
+  });
+});
+
+describe('survey surfaces the app writes (kit DSM)', () => {
+  const tiles = (id: string, keys: string[]) =>
+    ({
+      schema: 'aio.height-tiles/1',
+      id,
+      name: 'A kit DSM',
+      source: { kind: 'kit-dsm', epoch: 'e1' },
+      capture: 'survey-a',
+      crs: { epsg: 32639 },
+      cellM: 0.4,
+      tileSize: 256,
+      originE: 1000,
+      originN: 2000,
+      cols: 2,
+      rows: 1,
+      levels: 2,
+      bounds: [1000, 2000, 50, 1200, 2100, 60],
+      tiles: keys,
+      fingerprint: 'kit-dsm:1:e1:x',
+      preparedAt: '2026-10-24T00:00:00.000Z',
+    }) as HeightTiles;
+  const bin = (n: number) => new Uint8Array([n, n, n]);
+
+  it('writes the tiles and tiles.json, lists the surface, and replaces it whole', async () => {
+    const { root, ipc } = setup();
+    const first = await ipc.call('survey:writeSurface', {
+      projectId: 'p',
+      tiles: tiles('kit-dsm-e1', ['0_0', '1_0']),
+      files: [
+        { path: '0/0_0.bin', data: bin(1) },
+        { path: '0/1_0.bin', data: bin(2) },
+        { path: '1/0_0.bin', data: bin(3) },
+      ],
+    });
+    expect(first).toEqual({ ok: true });
+    const dir = join(root, 'survey', 'surfaces', 'kit-dsm-e1');
+    expect([...readFileSync(join(dir, '0', '1_0.bin'))]).toEqual([2, 2, 2]);
+    const listed = await listSurfaces({ root });
+    expect(listed.ok && listed.surfaces.map((s) => [s.id, s.source, s.capture])).toEqual([
+      ['kit-dsm-e1', { kind: 'kit-dsm', epoch: 'e1' }, 'survey-a'],
+    ]);
+    expect(
+      await ipc.call('survey:writeSurface', {
+        projectId: 'p',
+        tiles: tiles('kit-dsm-e1', ['0_0']),
+        files: [{ path: '0/0_0.bin', data: bin(4) }],
+      }),
+    ).toEqual({ ok: true });
+    expect(existsSync(join(dir, '0', '1_0.bin'))).toBe(false);
+    expect([...readFileSync(join(dir, '0', '0_0.bin'))]).toEqual([4, 4, 4]);
+  });
+
+  it('refuses a package, and a surface a prepare job makes', async () => {
+    const { ipc } = setup();
+    expect(
+      await ipc.call('survey:writeSurface', {
+        projectId: 'pkg',
+        tiles: tiles('kit-dsm-e1', ['0_0']),
+        files: [],
+      }),
+    ).toMatchObject({ ok: false, code: 'read-only' });
+    const dsm: HeightTiles = {
+      ...tiles('dsm-a', ['0_0']),
+      source: { kind: 'dsm', layer: 'dsm-a' },
+    };
+    expect(
+      await ipc.call('survey:writeSurface', { projectId: 'p', tiles: dsm, files: [] }),
+    ).toMatchObject({ ok: false });
   });
 });

@@ -19,9 +19,10 @@ import {
   SurveyTemplatesFile,
   emptyMeasurements,
   emptySurveyTemplates,
+  type IpcRequest,
   type IpcResponse,
 } from '@aio/schema';
-import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { z } from 'zod';
 import { isChangedOnDisk, readJsonSeen, writeJsonSeen } from './fsutil';
@@ -273,7 +274,7 @@ export async function listSurfaces(
       let names: string[] = [];
       try {
         names = (await readdir(dir, { withFileTypes: true }))
-          .filter((d) => d.isDirectory())
+          .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
           .map((d) => d.name);
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
@@ -306,6 +307,59 @@ export async function listSurfaces(
   }
   surfaces.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { ok: true, surfaces };
+}
+
+const READ_ONLY_SURFACES =
+  'This project is a read-only package. Its survey surfaces cannot be prepared.';
+
+/**
+ * Write a prepared surface the app made itself (only a kit DSM grid, `kit-dsm`): the tiles into
+ * a staging folder beside it, `tiles.json` last, then the staging folder takes the place of
+ * `survey/surfaces/<id>/`, so a reader never sees half a surface.
+ */
+export async function writeSurface(
+  projects: SurveyProjects,
+  req: IpcRequest<'survey:writeSurface'>,
+): Promise<IpcResponse<'survey:writeSurface'>> {
+  const { projectId, files } = req;
+  if (projects.package(projectId))
+    return { ok: false, error: READ_ONLY_SURFACES, code: 'read-only' };
+  const root = projects.root(projectId);
+  if (root === undefined) return { ok: false, error: `Project "${projectId}" is not open.` };
+  const tiles = HeightTiles.parse(req.tiles);
+  if (tiles.source.kind !== 'kit-dsm')
+    return { ok: false, error: 'Only a kit DSM surface is written here; run Prepare surfaces.' };
+  const parent = join(root, ...SURFACES_DIR.split('/'));
+  const dest = join(parent, tiles.id);
+  const staging = join(parent, `.${tiles.id}.writing`);
+  const old = join(parent, `.${tiles.id}.old`);
+  try {
+    await rm(staging, { recursive: true, force: true });
+    for (const f of files) {
+      const path = join(staging, ...f.path.split('/'));
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, f.data);
+    }
+    await mkdir(staging, { recursive: true });
+    await writeFile(
+      join(staging, 'tiles.json'),
+      `${JSON.stringify(tiles, null, 2)}
+`,
+      'utf8',
+    );
+    await rm(old, { recursive: true, force: true });
+    try {
+      await rename(dest, old);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    }
+    await rename(staging, dest);
+    await rm(old, { recursive: true, force: true });
+    return { ok: true };
+  } catch (e) {
+    await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    return { ok: false, error: `The surface "${tiles.name}" was not saved: ${why(e)}` };
+  }
 }
 
 export function registerSurveyIpc({ handle, userData, journal, ...deps }: SurveyIpcDeps): void {
@@ -347,6 +401,7 @@ export function registerSurveyIpc({ handle, userData, journal, ...deps }: Survey
       return { ok: false, error: `Project "${projectId}" is not open. Open it, then try again.` };
     return writeDesigns(root, file);
   });
+  handle('survey:writeSurface', (req) => (projects ? writeSurface(projects, req) : unavailable()));
   handle('survey:surfaces', ({ projectId }) => {
     if (!projects) return unavailable();
     const root = projects.root(projectId);

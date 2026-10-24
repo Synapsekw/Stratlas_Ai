@@ -383,6 +383,12 @@ export const PreparedSurfaceSource = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('design'), design: DesignId, layer: DesignId }).strict(),
   /** A derived surface (cleanup or crop) of another prepared surface. */
   z.object({ kind: z.literal('derived'), of: SurveyId, edits: z.array(SurveyId) }).strict(),
+  /**
+   * The old stockpile kit's DSM grid of one survey (`volumes.json` epoch), converted by the app
+   * (no `survey.prepare` job; never in `SurveyPrepareParams`): heights as the kit's volumes read
+   * them, absolute in the project CRS.
+   */
+  z.object({ kind: z.literal('kit-dsm'), epoch: Id }).strict(),
 ]);
 
 /**

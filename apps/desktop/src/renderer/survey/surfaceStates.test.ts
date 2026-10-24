@@ -77,4 +77,18 @@ describe('surfaceStates', () => {
     ]);
     expect(s.get('d2')).toEqual({ kind: 'missing' });
   });
+
+  it('reads a date with a kit DSM grid as missing, then preparing while the app converts it', () => {
+    const s = surfaceStates(manifest, prepared, [], { dates: ['d4'], preparing: [] });
+    expect(s.get('d4')).toEqual({ kind: 'missing' });
+    const p = surfaceStates(manifest, prepared, [], { dates: ['d4'], preparing: ['d4'] });
+    expect(p.get('d4')).toEqual({ kind: 'preparing', pct: 0 });
+    // ready wins once its surface is listed
+    const kit = { id: 'kit-dsm-e4', capture: 'd4', source: { kind: 'kit-dsm', epoch: 'e4' } };
+    const r = surfaceStates(manifest, [...prepared, kit] as unknown as HeightTiles[], [], {
+      dates: ['d4'],
+      preparing: ['d4'],
+    });
+    expect(r.get('d4')).toEqual({ kind: 'ready' });
+  });
 });

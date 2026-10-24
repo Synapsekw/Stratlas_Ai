@@ -35,10 +35,11 @@ import { PipelineDialog } from './processing/PipelineDialog';
 import { ProcessingDrawer } from './processing/ProcessingDrawer';
 import { startFarWatch } from './builder/farSession';
 import { startLineUpSession } from './lineup/lineUpStart';
-import { refreshSurfaces } from './survey/compareStore';
+import { makeKitSurfaces, refreshSurfaces } from './survey/compareStore';
 import { preparedSurfaces } from './survey/surfaceStates';
 import { connectSurfacesWatch } from './survey/surfacesWatch';
 import { connectKitReady } from './survey/kitAccept';
+import { kitSurfaceDates } from './survey/kitSurface';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -459,6 +460,17 @@ export function App() {
       },
       start: (req) => jobs.getState().startQuiet(req),
       refresh: refreshSurfaces,
+      // a kit project without a DSM or cloud layer: its dates' surfaces from the kit DSM grids
+      kitDates: async (projectId) => {
+        const manifest = workspace.getState().project?.manifest;
+        const r = await bridge.call('project:readVolumes', { projectId });
+        if (!manifest || !r.ok || !r.value.ok) return [];
+        return kitSurfaceDates(manifest, r.value.volumes);
+      },
+      prepareKit: async (projectId, surfaces, dates) => {
+        const manifest = workspace.getState().project?.manifest;
+        if (manifest) await makeKitSurfaces(projectId, manifest, surfaces, dates);
+      },
     });
     // converted kit piles take the standard-base figure once their dates' surfaces are ready
     // (ADR 0013 point 4): heights repaired, then accepted once per pile, in writable projects

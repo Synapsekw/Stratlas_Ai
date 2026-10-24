@@ -3671,6 +3671,30 @@ export const ipc = {
     response: OkOrFailure,
   },
   /**
+   * Write one prepared surface the app made itself (a kit DSM grid, `kit-dsm`) as
+   * `survey/surfaces/<id>/`: its tiles (`<level>/<col>_<row>.bin`) first, `tiles.json` last,
+   * replacing the folder. Refused (`read-only`) for packages.
+   */
+  'survey:writeSurface': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        tiles: HeightTiles,
+        files: z
+          .array(
+            z
+              .object({
+                path: z.string().regex(/^\d{1,2}\/\d{1,5}_\d{1,5}[.]bin$/),
+                data: z.instanceof(Uint8Array),
+              })
+              .strict(),
+          )
+          .max(200_000),
+      })
+      .strict(),
+    response: OkOrFailure,
+  },
+  /**
    * Every cleanup recipe of a project (`edits/pointcloud/<layer>.json`, `aio.pccleanup/1`); with
    * `noiseRun`, also the record a `pointcloud.clean` noise job wrote beside its working copy
    * (null when it is missing). `readOnly` for a package.

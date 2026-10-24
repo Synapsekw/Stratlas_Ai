@@ -295,6 +295,7 @@ const CHANNELS = {
   'survey:writeDesigns': true,
   'survey:probeDesign': true,
   'survey:surfaces': true,
+  'survey:writeSurface': true,
   'survey:readQa': true,
   'survey:releaseHold': true,
   'survey:readTerrainEdits': true,
