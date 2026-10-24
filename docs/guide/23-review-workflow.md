@@ -4,6 +4,10 @@ In a shared project the team assigns findings, discusses them and approves them.
 
 A project that is not shared works as before: you move an issue's status with the status buttons. Approvals start once the project is shared (see [Identity and team](21-identity-and-team.md)).
 
+## AI suggestions come first
+
+The AI's suggestions in **Inspect** are not findings and need no approval: they wait as dashed orange boxes until a person accepts or dismisses them (see [Review the AI's suggestions](05-annotation-and-issues.md#review-the-ais-suggestions)). Accepting one makes a draft issue. From there it follows the review below, with the same assigning, comments and approvals as an issue you drew yourself.
+
 ## The review area of an issue
 
 Pick an issue and open **Edit issue** at the bottom of its card. The **Review** area holds:

@@ -36,7 +36,7 @@ In **Swipe** and **Blend**, **Line up the ground** turns the other frame so the 
 
 1. Open the **Changes** tab (see [Show changes](14-changes.md#show-changes)) and pick the two dates.
 2. Click **Find changes in matched frames**. It pairs the photos of the two dates by camera position and compares the pairs in a job.
-3. When it finishes, the changes it found are draft detections on the later date's photos, labelled "change". They are also listed in the **Changes** tab under **Frames**.
-4. Review them on **Detections** like any other detection (see [Review detections](08-building-projects.md#review-detections)).
+3. When it finishes, the changes it found are AI suggestions on the later date's photos, labelled "change". They are also listed in the **Changes** tab under **Frames**.
+4. Review them in **Inspect** like any other AI suggestion: the photo shows them as dashed orange boxes and **To review** lists them (see [Review the AI's suggestions](05-annotation-and-issues.md#review-the-ais-suggestions)).
 
 It needs photos with camera positions on both dates ("Both dates need photos with camera positions."). Video frames are not compared.

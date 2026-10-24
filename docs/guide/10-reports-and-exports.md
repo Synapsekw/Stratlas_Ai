@@ -48,7 +48,7 @@ On **Issues**, **Export** saves:
 
 - **Issues CSV**: one row per issue, for spreadsheets.
 - **GeoJSON**: issues on the map, for GIS.
-- **COCO JSON**, **Kit JSON** and **Masks ZIP**: detections and masks for other tools.
+- **COCO JSON**, **Kit JSON** and **Masks ZIP**: detections and masks for other tools. The register and its reports hold only the findings you confirmed in **Inspect**; AI suggestions you have not accepted stay out.
 - **Issue register report (PDF)** and **Project report (PDF)**.
 - **3D view snapshot (PNG)**, with or without **Legend on the 3D snapshot**.
 

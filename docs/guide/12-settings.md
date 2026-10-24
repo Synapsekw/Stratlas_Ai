@@ -2,13 +2,25 @@
 
 Click **Settings** at the bottom of the sidebar. The pages are grouped:
 
-- **Intelligence**: **AI providers**, **Usage and cost**, **Privacy and cloud** (see [AI agent](07-ai-agent.md)). **AI providers** also holds the **Local model** (see [Set up a local model](20-local-model.md)) and the **Detection models** (see [Local detection with ONNX models](19-local-detection.md)).
+- **Intelligence**: **AI providers**, **Usage and cost**, **Privacy and cloud** (see [AI agent](07-ai-agent.md)). **AI providers** also holds the **Local model** (see [Set up a local model](20-local-model.md)), the **Detection models** (see [Local detection with ONNX models](19-local-detection.md)) and **AI for Ask AI**, which decides which AI the **Ask AI** button in **Inspect** uses (see [AI for Ask AI](#ai-for-ask-ai)).
 - **Data**: **Identity and team** (see [Identity and team](21-identity-and-team.md)), **Data folder**, **Processing tools**, **Offline maps** (see [Maps](06-maps.md)), **Map sources** (online maps and their keys, see [Online maps](06-maps.md#online-maps)), **Severity models**, **Report branding** (see [Reports](10-reports-and-exports.md#report-branding)).
 - **App**: **Graphics quality**, **Appearance**, **Keyboard** (see [Keyboard shortcuts](#keyboard-shortcuts)), **About and updates**.
 
 The **?** at the top right of each page opens its section of this guide.
 
 Two chips in the status row at the foot of the left sidebar open a page directly: the mode chip (**Online** or **Offline only**) has **Download maps**, which opens **Offline maps**, and the cloud AI chip opens **Privacy and cloud**. See [Online or offline only](01-install.md#online-or-offline-only).
+
+## AI for Ask AI
+
+**Settings**, **AI providers**, **AI for Ask AI** holds what the **Ask AI** button in **Inspect** needs, so the button itself never asks about a model (see [Ask AI](05-annotation-and-issues.md#ask-ai)).
+
+- **Which AI looks**: **Automatic** (a local detector for the check you chose, then the local model, then cloud AI if the project allows it), **Local only** or **Cloud**.
+- **Local model**, **Lowest confidence the local model keeps**, **Look at large photos in tiles** with **Tile size (px)** and **Tile overlap (px)**: what the old dialog asked on every run, now set once.
+- **Local model classes in** the open project: map each class of the model to a class of the project, or **Keep the name**. Mappings you made before carry over. Without an open project the page asks you to open one.
+- **Photos per cloud request** sets how many photos go in one request once a cloud run is confirmed.
+- **Review queue: lowest confidence shown at first** sets where the confidence slider of the review queue starts.
+
+Cloud AI still needs its key and the switch (see [Switch cloud AI on](07-ai-agent.md#switch-cloud-ai-on)); choosing **Cloud** here does not turn it on.
 
 ## Data folder
 
@@ -245,33 +257,35 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | +, -       | Zoom in or out     |
 | Esc        | Leave the panorama |
 
-### Detections review
+### Inspect and review
 
-| Keys                                 | Does                      |
-| ------------------------------------ | ------------------------- |
-| J, →, ↓                              | Next detection            |
-| K, ←, ↑                              | Previous detection        |
-| Shift J, Shift →, Shift ↓, Page Down | Next photo or frame       |
-| Shift K, Shift ←, Shift ↑, Page Up   | Previous photo or frame   |
-| A, Enter                             | Accept                    |
-| L                                    | Link to an existing issue |
-| X                                    | Reject                    |
-| Shift R                              | Reopen                    |
-| Delete                               | Delete                    |
-| U                                    | Mark as uncertain         |
-| C                                    | Next class                |
-| Shift C                              | Previous class            |
-| N                                    | Write a note              |
-| 0, 1, 2, 3, 4, 5, 6, 7, 8, 9         | Set the severity          |
-| V                                    | Select tool               |
-| B                                    | Box tool                  |
-| R                                    | Rotated box tool          |
-| P                                    | Polygon tool              |
-| O                                    | Point tool                |
-| M                                    | Mask on or off            |
-| F                                    | Fit to the window         |
-| Ctrl Z                               | Undo                      |
-| Ctrl Y, Ctrl Shift Z                 | Redo                      |
+| Keys                                 | Does                                |
+| ------------------------------------ | ----------------------------------- |
+| J, →, ↓                              | Next detection                      |
+| K, ←, ↑                              | Previous detection                  |
+| Shift J, Shift →, Shift ↓, Page Down | Next photo or frame                 |
+| Shift K, Shift ←, Shift ↑, Page Up   | Previous photo or frame             |
+| A, Enter                             | Accept                              |
+| L                                    | Link to an existing issue           |
+| D, X                                 | Dismiss (not a fault)               |
+| Shift R                              | Reopen                              |
+| Delete                               | Delete                              |
+| U                                    | Mark as uncertain                   |
+| C                                    | Next class                          |
+| Shift C                              | Previous class                      |
+| N                                    | Write a note                        |
+| 0, 1, 2, 3, 4, 5, 6, 7, 8, 9         | Set the severity                    |
+| V                                    | Select tool                         |
+| B                                    | Box tool                            |
+| R                                    | Rotated box tool                    |
+| P                                    | Polygon tool                        |
+| O                                    | Point tool                          |
+| M                                    | Mask on or off                      |
+| Shift F                              | Fit to the window                   |
+| F                                    | Fix: redraw or relabel, then accept |
+| Esc                                  | Leave the review queue              |
+| Ctrl Z                               | Undo                                |
+| Ctrl Y, Ctrl Shift Z                 | Redo                                |
 
 ### PDF report
 

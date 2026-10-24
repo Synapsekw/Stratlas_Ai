@@ -79,7 +79,7 @@ When an import brings data that lies more than 10 km from the project origin, a 
 
 - **Re-centre project here** moves the project origin to that data. Everything already in the project shifts with it, so nothing moves on the ground, and the project opens again. The notice then says where the origin is now; the previous `manifest.json` is kept as `manifest.json.bak`. A re-centre cannot be undone.
 - **Keep** leaves the project as it is.
-- When only photos lie far from survey data that is already in place, the camera's GPS is the likely culprit (a handheld camera's GPS can be kilometres out). The notice then offers **Ignore their GPS** instead: the photos stay in **Media** without a place on the map.
+- When only photos lie far from survey data that is already in place, the camera's GPS is the likely culprit (a handheld camera's GPS can be kilometres out). The notice then offers **Ignore their GPS** instead: the photos stay in **Inspect** without a place on the map.
 
 Re-centring is not offered when the project holds things that cannot move with it, such as issues, flights, walks, panoramas, drawings, photo processing runs, procedural models or a job that has not finished; the notice names them. **Ctrl K**, **Check where layers lie against the project origin** runs the same check at any time.
 
@@ -192,12 +192,12 @@ Projects without video, and road surveys, have the single timeline, and their da
 - Photos show as small rounded squares with a camera; panoramas as circles. Photos taken within 1.5 m share one marker with a count.
 - Hover a marker for the count and the time span. Click it to open the photo; click a merged marker for a list with thumbnails.
 - A panorama opens in an immersive view. The arrow keys look around; **Esc** or **Back to 3D** leaves.
-- **Media** lists every flight, clip, photo set and panorama set. See [Media and findings](05-annotation-and-issues.md#media-and-findings).
+- **Inspect** lists every flight, clip, photo set and panorama set. See [Inspect](05-annotation-and-issues.md#inspect).
 - On the map, photos and 360s show as the same markers as in 3D. Hover one for its thumbnail. Click a photo to open it beside the map, or click a 360 to enter it with the 3D view beside the map.
 
 ## Photos and 360s without GPS
 
-A ground photo or a 360 taken without GPS still comes in. Its Media tile says **Not placed** until you pin it on the site.
+A ground photo or a 360 taken without GPS still comes in. Its Inspect tile says **Not placed** until you pin it on the site.
 
 ### Import
 
@@ -206,7 +206,7 @@ A ground photo or a 360 taken without GPS still comes in. Its Media tile says **
 
 ### Place on site
 
-1. Right-click the photo or 360 (its Media tile, its row, or its marker) and choose **Place on site**. A click on an unplaced 360's Media tile does the same. A strip at the bottom of the scene says what to click next.
+1. Right-click the photo or 360 (its Inspect tile, its row, or its marker) and choose **Place on site**. A click on an unplaced 360's Inspect tile does the same. A strip at the bottom of the scene says what to click next.
 2. Click where it was taken: on the model, the point cloud or the map. The pin sits on the surface you clicked, and the camera sits **Eye height** above it (1.6 m unless you change it on the strip). On the map with no model under the point, the strip says the height is unknown and the pin sits at 0 m.
 3. For a 360, line it up with landmarks. The 360 opens beside the view. Click a landmark in the 360, then the same landmark in the 3D view or on the map. One pair lines it up. A second pair refines it (the two are averaged). If the two pairs disagree by a lot, the first one is kept and the strip says so.
 4. For a photo, click the direction it looks, or press **Done** to leave it without one. In 3D you can also drag the pin's arrow to turn it.
@@ -230,9 +230,9 @@ A photo whose image is twice as wide as it is high shows **Looks like a 360** on
 
 A photo that came in at the wrong place or height (a drone whose altitude reading is off, for example) can be moved by typing where it should be. The photo file and its imported position are never changed: the edit is kept beside them, the photo shows **Edited**, and **Reset to original** puts it back.
 
-1. Right-click a photo (its Media tile, its marker in 3D or on the map) and choose **Edit position**. The panel shows **X east**, **Y north** (site metres from the project origin) and **Z height** (in the project's height system), and the original values under them.
+1. Right-click a photo (its Inspect tile, its marker in 3D or on the map) and choose **Edit position**. The panel shows **X east**, **Y north** (site metres from the project origin) and **Z height** (in the project's height system), and the original values under them.
 2. Type the new values and press **Save** (or **Enter**). The marker on the map and the camera in 3D move, and the tile shows **Edited**. **Esc** or **Cancel** leaves the photo as it was.
-3. To move many photos together, pick them in Media first: **Ctrl**-click adds or removes a photo, **Shift**-click adds the range up to it. Right-click one of the picked photos and choose **Edit position**. The panel says "Shift N photos": the values you type are added to every picked photo, so they keep their spacing. Type only the axis you need (for example Z 46 to raise them all 46 m); an empty field counts as 0.
+3. To move many photos together, pick them in Inspect first: **Ctrl**-click adds or removes a photo, **Shift**-click adds the range up to it. Right-click one of the picked photos and choose **Edit position**. The panel says "Shift N photos": the values you type are added to every picked photo, so they keep their spacing. Type only the axis you need (for example Z 46 to raise them all 46 m); an empty field counts as 0.
 4. The notice after a save has **Undo** (and then **Redo**); **Ctrl+Z** and **Ctrl+Y** work while it shows.
 5. **Reset to original** (on the photo's menu, or on the panel of an edited photo) puts it back where it was imported. A direction set with **Align photo to map** stays.
 

@@ -29,7 +29,7 @@ Pins and outlines of the changes show on both views. On the earlier view, an ite
 
 ## Find changes
 
-Click **Find changes**. It compares the issues, the detections and the map layers of the two dates. While it runs the panel reads "Finding changes" with the step; **Cancel** stops it.
+Click **Find changes**. It compares the issues, the AI suggestions and the map layers of the two dates. While it runs the panel reads "Finding changes" with the step; **Cancel** stops it.
 
 The other buttons compare the data itself. Each runs in the background (see [Processing](08-building-projects.md#processing)) and adds its results to the list when it finishes:
 

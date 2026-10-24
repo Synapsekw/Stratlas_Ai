@@ -49,36 +49,31 @@ The demo change site has a small test detector in its `sources/marker-detector` 
 
 ## Detect with a local model
 
-1. Click **Detections** in the sidebar. **Ctrl**+click a few photos, or select none.
-2. Click **Detect with AI**.
-3. Under **Detect with**, pick **Local model**. {product} remembers the choice. The dialog reads, for example, "Runs on this computer with DirectML (graphics card). Nothing leaves this computer. Free."
-4. Pick the **Photos to check**: the selected photos, the photo in the editor, or all photos without detections.
-5. Pick the **Model** and set the **Lowest confidence**.
-6. For large photos, keep **Split large photos into tiles** on and set the **Tile size** and **Overlap** in pixels.
-7. Under **Classes**, map each model class to a class of this project, or **Keep the model's name**.
-8. Click **Run on** N **photos**.
+1. Click **Inspect** in the sidebar. **Ctrl**+click a few photos, or select none.
+2. Click **Ask AI** and pick **This photo**, **Selected** or **All**. With **Automatic** (the default in **Settings**, **AI providers**, **AI for Ask AI**), a local detector for your check runs first, then the local model. Choose **Local only** there to be sure nothing leaves this computer. Nothing is asked and nothing is sent: local runs start at once.
+3. The strip at the top counts "k done" as each photo finishes. **Stop** finishes the photo in hand. **Try the n left again** checks the photos that were not reached.
 
-The dialog counts "x of N photos checked" with the proposals found, and "Cost: free, on this computer". **Stop** finishes the photo in hand ("Stopping after this photo"). **Run the remaining** N checks the photos that were not reached.
+The model, the **Lowest confidence the local model keeps**, **Look at large photos in tiles** with **Tile size (px)** and **Tile overlap (px)**, and the **Local model classes** (each model class mapped to a class of this project, or **Keep the name**) are set once in **Settings**, **AI providers**, **AI for Ask AI**. The photos are not asked about on each run.
 
-When it is **Done**, click **Review the results**. The proposals are waiting detections from the model, with their confidence. Accept or reject them as usual (see [Review detections](08-building-projects.md#review-detections)). Nothing counts until you accept it.
+When it is done, click **Review n suggestions**. The proposals are AI suggestions with their confidence. Accept or dismiss them as usual (see [Review the AI's suggestions](05-annotation-and-issues.md#review-the-ais-suggestions)). Nothing counts until you accept it.
 
 ## Detect on 360 video
 
 A local model also checks frames of a 360 video (a walk under **360 walks** in **Datasets**).
 
-1. Click **Detections** in the sidebar, then **Detect with AI**, and pick **Local model**.
-2. Under **What to check**, pick **360 video frames**, then the **360 video**.
+1. Click **Inspect** in the sidebar, then **Ask AI**, and pick **Frames...**.
+2. Pick the **Clip or walk**: the **360 video**.
 3. Pick **One frame every** 1, 2, 5 or 10 seconds. The dialog shows how many frames that makes, for example "30 frames". A run takes at most 2000 frames; pick a longer interval to cover a longer video. Or pick **Current frame**: the frame the **360 video** pane shows now. It is offered while that pane plays the same video.
-4. Pick the **Model**, the **Lowest confidence** and the **Classes** as for photos, then click **Run on** N **frames**.
+4. The model, the lowest confidence and the classes are the ones set in **Settings**, **AI for Ask AI**. Walk frames need the local model. Start the run.
 
 The model looks at the whole 360 frame as it is, the equirectangular picture of the 360 video, not at cut-out views. That keeps one detection per object: a cut-out view would cut objects at its edges and see others twice where views overlap.
 
 - **Tiles across the 360 frame (for small, distant people)** is off by default. On, the model also checks the frame in tiles, so small objects far away are found. The tiles run on across the left and right edge of the frame. It is slower: the model checks every tile of each frame.
 - The left and right edges of a 360 frame are the same place behind the camera. An object cut by that seam is found as two halves; {product} joins them into one detection whose box runs across the seam.
 
-The dialog counts "x of N frames checked" with the detections found. **Stop** finishes the frame in hand, and **Run the remaining** N checks the frames that were not reached.
+The strip counts the frames checked. **Stop** finishes the frame in hand, and **Try the n left again** checks the frames that were not reached.
 
-The detections wait in the review like those on photos, one tile per frame, named after the video and the time, for example "Ground floor walk 12.0 s". A box across the seam shows in two parts, at both edges of the frame. Accept or reject them as usual; nothing counts until you accept it.
+The suggestions wait in the review queue like those on photos, one per frame, named after the video and the time, for example "Ground floor walk 12.0 s". A box across the seam shows in two parts, at both edges of the frame. Accept or dismiss them as usual; nothing counts until you accept it.
 
 The **360 video** pane draws the detections of the frame nearest to the time you watch, within a second of it, as boxes in the view. Turn to look at them; **Show detections** hides and shows them. The boxes are drawn on the video as it was recorded. While **Level horizon** is on, the pane plays the levelled copy and draws no boxes; a note says to turn **Level horizon** off to see them.
 
@@ -86,4 +81,4 @@ Ordinary video clips (drone or phone video that is not 360) are not checked by l
 
 ## Not available
 
-"Local detection is not available: ..." says why. Use cloud vision instead (see [Detect with AI](08-building-projects.md#detect-with-ai)).
+"Local detection is not available: ..." says why. In **Inspect**, **Ask AI** then reads "No AI can look at this" with the reason and **Open AI settings**. Use cloud vision instead if the project allows it: pick **Cloud** in **AI for Ask AI** (see [Ask AI](05-annotation-and-issues.md#ask-ai)).

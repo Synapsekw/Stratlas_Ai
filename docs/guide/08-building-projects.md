@@ -127,7 +127,7 @@ Click it to open the drawer:
 
 Click a line to see its steps and progress. **Cancel** stops it. After a failure, a cancel or an interruption (quitting {product} while it ran), **Resume** carries on from the next step. **Open output** and **Log file** show what it wrote. **Settings used** and **Log** are folded away until you open them. **Back** returns to the list.
 
-Everything else starts where the work is: compare dates and survey tools on the **Scene**, imports from **Import files**, the AI inspection from **Detections**, a road survey from its setup panel.
+Everything else starts where the work is: compare dates and survey tools on the **Scene**, imports from **Import files**, the AI inspection from **Inspect**, a road survey from its setup panel.
 
 Processing writes into the open project, always with a backup, and never drops your own issues.
 
@@ -137,38 +137,17 @@ The processing tools themselves are installed and updated in **Settings**, **Pro
 
 ## Review detections
 
-Detections are boxes or outlines on photos and video frames, from you, a model or cloud AI. Every pass is a file in `detections` in the project folder.
+AI suggestions are boxes or outlines on photos and video frames, from a model or cloud AI. Every pass is a file in `detections` in the project folder. They are reviewed in **Inspect**: **To review** lists the photos with suggestions waiting, and the review queue goes through them one by one. Nothing counts until you accept it. See [Review the AI's suggestions](05-annotation-and-issues.md#review-the-ais-suggestions).
 
-1. Click **Detections** in the sidebar. The top reads, for example, "9 waiting · 8 accepted · 0 rejected".
-2. **Photos shown**: **With detections** or **All photos**. Pick a photo on the contact sheet.
-3. For each box:
-   - **Accept** (**A** or **Enter**): it becomes a draft issue. **Open in Issues** shows it.
-   - **Link** (**L**): find an issue by code or title; the box becomes another sighting of it.
-   - **Reject** (**X**) a false alarm. **Reopen** takes the decision back.
-4. Set **Class** (**C**), **Severity** (number keys), **Uncertain (U)** and **Note (N)** in the inspector.
-5. When the detector named something the project has no class for, the inspector shows what it said and **Create class 'name'**. One click makes the class; every detection with that word takes it.
-6. **Accept all (N)**, with N the waiting detections in the list you are looking at that have a class and a severity, turns each of them into a draft issue (filter and minimum confidence applied), after a question that also says how many are skipped for lack of a class or severity. **Reject all (N)** rejects every waiting detection in the list. Each is one step: **Ctrl+Z** in the review undoes the whole batch.
-7. **J** and **K** step through the detections. The confidence slider hides proposals under "Confidence N% and up".
-
-**Ctrl Z** and **Ctrl Y** undo and redo. **Ctrl**+click selects several tiles; **Clear selection** empties it. The state reads **Saved** once your decisions are written into the detection file.
-
-On an inspection project, **Turn detections into issues** on the **Detections** screen places the accepted detections on the model and groups them into issues. It asks only for the inspection's own options, then runs for the open project; the **Processing** drawer opens on it. **Turn detections into issues** never makes a second issue for the same box.
+On an inspection project, **Turn detections into issues** in **Inspect** places the accepted findings on the model and groups them into issues. It asks only for the inspection's own options, then runs for the open project; the **Processing** drawer opens on it. **Turn detections into issues** never makes a second issue for the same box.
 
 ## Detect with AI
 
-Needs cloud AI on and a key with a vision model (see [AI agent](07-ai-agent.md)).
+The **Ask AI** button in **Inspect** replaces the old **Detect with AI** dialog. Pick **This photo**, **Selected** or **All**, and it starts. A cloud run asks first ("Send 12 photos to Anthropic, about $0.40?") and shows the exact images on request; a local run starts at once. See [Ask AI](05-annotation-and-issues.md#ask-ai).
 
-1. On **Detections**, **Ctrl**+click a few photos, then **Detect with AI**.
-2. **What to send**: the selected photos, the photo in the editor, all photos without detections, or **Video frames** (a **Clip** and **One frame every** N **seconds**). Set **Images per request** and, optionally, **What to look for**.
-3. Read the **Estimate** of tokens and cost.
-4. **What leaves this workstation** shows thumbnails of exactly the images that go out; **Instructions and request text** shows the full request.
-5. Click **Send**. **Stop** stops it. When it is **Done** you see the tokens and the cost.
+When none of the project's classes fits, the model may suggest a new one. The picker offers **Add "name" as a class**; nothing is created until you click it. The assistant can suggest a class too; it asks for your approval first.
 
-Results arrive as **Waiting** detections ("Proposed by" the model, with a confidence). Nothing counts until you accept it.
-
-When none of the project's classes fits, the model may suggest a new one. The inspector shows **Suggested class: name** with **Create class**; nothing is created until you click it. The assistant can suggest a class too; it asks for your approval first.
-
-To find defects with a model on this computer instead, with nothing sent and no cost, pick **Local model** under **Detect with**. See [Local detection with ONNX models](19-local-detection.md).
+To find defects with a model on this computer, with nothing sent and no cost, see [Local detection with ONNX models](19-local-detection.md).
 
 ## Calibrate video
 

@@ -46,7 +46,7 @@ The right pane shows the panorama of the other date nearest to the one on the le
 - Step with **Previous panorama** and **Next panorama** (or Page Up and Page Down) in the left pane. The right pane follows to the nearest panorama of its date. It has no stepper of its own.
 - A **Panoramas** pane on one side only (the other side shows 3D or a map, for example) has the stepper itself and steps through the panoramas of its date. So does the right pane when the left date has no panoramas.
 - The island's date moves the pane you used last to another date and keeps it at the same spot.
-- Pick a panorama somewhere else (a marker in 3D, or the Media screen) and it goes to the left pane, and the right pane pairs again.
+- Pick a panorama somewhere else (a marker in 3D, or the Inspect screen) and it goes to the left pane, and the right pane pairs again.
 
 ## What changed
 
@@ -94,12 +94,12 @@ On a stockpile project, **Swipe**, in the island's **Volumes** row or the **Volu
 
 Pick any placed photo, drone photo, 360, walk frame or video frame and see the same spot on every other survey date, without leaving the screen you are on. The project needs two or more survey dates.
 
-1. Click the image. In **Media**, a strip under the photo shows one slot per survey date, oldest on the left, each in its date colour.
+1. Click the image. In **Inspect**, a strip under the photo shows one slot per survey date, oldest on the left, each in its date colour.
 2. Click **Other dates** (the clock-arrow button). A viewer opens on the image you clicked.
 
 The **Other dates** button is in:
 
-- the photo panel of **Media**, with the strip under the photo;
+- the photo viewer of **Inspect**, with the strip under the photo;
 - the photo pane of the **Split**;
 - the **Selection** card of a photo or a 360;
 - the **Frames** pane, for the frame on screen;

@@ -41,7 +41,7 @@ Every card has three dots in its top corner. Click them, or right-click the card
 ## Switch and close projects
 
 - The project switcher at the top of the sidebar lists the projects, then **All projects** and **Close project**.
-- Screens that need a project (Scene, Issues, Media, Reports) say "Open a project to see its ..." with your recent projects and **Go to the library**.
+- Screens that need a project (Scene, Issues, Inspect, Reports) say "Open a project to see its ..." with your recent projects and **Go to the library**.
 
 ## Find anything: the command palette
 
@@ -56,7 +56,7 @@ The palette also has the screens (**Go to Issues**, **Go to Settings**, ...) and
 
 ## The sidebar
 
-- **Projects**, **Scene**, **Issues**, **Media**, **Detections** and **Reports**.
+- **Projects**, **Scene**, **Issues**, **Inspect** and **Reports**. **Inspect** holds the photos, the drawing tools and Ask AI (see [Inspect](05-annotation-and-issues.md#inspect)).
 - **Datasets** lists the layers of the open project with an eye to show or hide each one.
 - The small tab on the sidebar's right edge, halfway down, folds the sidebar to a rail of icons and brings it back. **Ctrl B** and **Collapse** at the bottom do the same. The arrow on the tab points the way the edge will move.
 
