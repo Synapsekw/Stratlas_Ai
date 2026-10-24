@@ -63,6 +63,7 @@ import { useWalkMapOverlays, useWalkMapPointer } from '../walks/walkMapStore';
 import { PlaceWalkHere } from '../walks/PlaceWalkStrip';
 import { usePlacedWalksOnMap, usePlacingOn } from '../walks/placeWalk';
 import { MAP_SURFACE, SCENE_SURFACE } from '../walks/placeModel';
+import { useCompareFollowsStage } from '../walks/walkCompare';
 import { WalkSceneMount } from '../walks/WalkSceneMount';
 import { useTimeline } from './timeline';
 import { hiddenPathClips } from './flightPaths';
@@ -619,6 +620,8 @@ export function Stage() {
   const split = useSplit();
   const splitting = mode === 'split';
   const sides = split.sides;
+  // a walk compare the stage no longer shows ends: its walks keep to their own eyes again
+  const walkComparing = useCompareFollowsStage(splitting ? sides : null);
   // Comparing dates: the 3D view and the map at most once per date, so maybe on both sides.
   const sides3d = splitting ? sidesOf(sides, '3d') : [];
   const sidesMap = splitting ? sidesOf(sides, 'map') : [];
@@ -885,6 +888,7 @@ export function Stage() {
       className="stage"
       ref={stageRef}
       data-mode={mode}
+      data-walk-compare={walkComparing ? 'on' : undefined}
       data-pop-bounds
       data-isl-clear={islandReach.clear.length ? islandReach.clear.join(' ') : undefined}
     >

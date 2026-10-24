@@ -1,14 +1,16 @@
 import type { WalkFit } from '@aio/geo';
 import { shiftLocal, type DateShift } from '@aio/schema';
-import { workspace } from '@aio/workspace';
+import { useWorkspace, workspace } from '@aio/workspace';
+import { useEffect, useRef } from 'react';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { shell } from '../shell';
 import { wrapDeg } from '../workspace/spot/spotGeom';
 import type { Side, SplitPref } from '../workspace/splitModel';
 import { stagePrefs } from '../workspace/stagePrefs';
+import { pickWalk } from './walkModel';
 import { shiftBearingDeg } from './walkView';
-import { walks } from './walks';
+import { useWalks, walks } from './walks';
 
 /*
  * Two walks side by side in the two 360 panes of the split. One leads and plays; the other
@@ -140,6 +142,82 @@ export function useWalkCompare<T>(selector: (s: WalkCompareState) => T): T {
 /** The walks a running compare shows on the map and in 3D, whatever their visibility. */
 export function comparedWalks(s: Pick<WalkCompareState, 'active' | 'left' | 'right'>): string[] {
   return s.active && s.left !== null && s.right !== null ? [s.left, s.right] : [];
+}
+
+/** What each side of the split shows, or null while the stage shows 3D or the map alone. */
+export type StageSides = Readonly<Pick<SplitPref, 'left' | 'right'>> | null;
+
+/**
+ * Whether the stage still shows the running compare (true when none runs): two 360 panes, or one
+ * 360 pane beside another view showing a compared walk (`shownWalk`, the walk a single 360 pane
+ * shows); the other walk then follows it on the map and in 3D.
+ */
+export function compareOnScreen(
+  c: Pick<WalkCompareState, 'active' | 'left' | 'right'>,
+  sides: StageSides,
+  shownWalk: string | null,
+): boolean {
+  const walks = comparedWalks(c);
+  if (walks.length === 0) return true;
+  if (!sides) return false;
+  const panes = Number(sides.left === 'walk360') + Number(sides.right === 'walk360');
+  if (panes === 2) return true;
+  return panes === 1 && shownWalk !== null && walks.includes(shownWalk);
+}
+
+/** A walk of `compared` was switched off just now (one already off before does not count). */
+export function eyedOff(
+  compared: readonly string[],
+  prevHidden: Readonly<Record<string, true>>,
+  hidden: Readonly<Record<string, true>>,
+): boolean {
+  return compared.some((id) => hidden[id] === true && prevHidden[id] !== true);
+}
+
+/**
+ * End a running compare that nothing shows any more, or one of whose walks was switched off (the
+ * eye wins over the compare's showing them): the store only, the split stays as it is.
+ */
+export function settleCompare(
+  store: StoreApi<WalkCompareState>,
+  at: {
+    sides: StageSides;
+    shownWalk: string | null;
+    prevHidden: Readonly<Record<string, true>>;
+    hidden: Readonly<Record<string, true>>;
+  },
+): void {
+  const s = store.getState();
+  if (!s.active) return;
+  if (
+    !compareOnScreen(s, at.sides, at.shownWalk) ||
+    eyedOff(comparedWalks(s), at.prevHidden, at.hidden)
+  )
+    s.end();
+}
+
+/**
+ * The stage ends the compare it no longer shows (`settleCompare`): mounted with the stage, given
+ * its split sides (null while it shows 3D or the map alone). True while a compare runs.
+ */
+export function useCompareFollowsStage(sides: StageSides): boolean {
+  const hidden = useWorkspace((s) => s.hidden);
+  const shownWalk = useWalks((s) => pickWalk(s.walks, s.selected)?.id ?? null);
+  const active = useWalkCompare((s) => s.active);
+  const prevHidden = useRef(hidden);
+  const left = sides?.left;
+  const right = sides?.right;
+  useEffect(() => {
+    const prev = prevHidden.current;
+    prevHidden.current = hidden;
+    settleCompare(walkCompare, {
+      sides: left !== undefined && right !== undefined ? { left, right } : null,
+      shownWalk,
+      prevHidden: prev,
+      hidden,
+    });
+  }, [left, right, shownWalk, hidden, active]);
+  return active;
 }
 
 const bothWalks = (p: SplitPref | undefined) => p?.left === 'walk360' && p.right === 'walk360';

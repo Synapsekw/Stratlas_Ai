@@ -11,8 +11,11 @@ vi.mock('./walks', () => ({ walks: { getState: () => ({ select: vi.fn() }) } }))
 
 import {
   APART_M,
+  compareOnScreen,
   comparedWalks,
   createWalkCompareStore,
+  eyedOff,
+  settleCompare,
   detourBands,
   followerSeek,
   followStep,
@@ -404,5 +407,53 @@ describe('the compare store', () => {
     s.getState().goSolo('right');
     s.getState().rejoin('right', false);
     expect(s.getState()).toMatchObject({ solo: null, lead: 'right' });
+  });
+});
+
+describe('a compare ends when nothing shows it', () => {
+  const fakeWorkspace = () =>
+    createStore<{ project: { id: string } | null }>()(() => ({ project: { id: 'p1' } }));
+  const both = { left: 'walk360', right: 'walk360' } as const;
+  const one = { left: 'map', right: 'walk360' } as const;
+  const run = { active: true, left: 'a', right: 'b' };
+
+  it('is on screen in two 360 panes, or in one that shows a compared walk', () => {
+    expect(compareOnScreen(run, both, null)).toBe(true);
+    expect(compareOnScreen(run, one, 'b')).toBe(true);
+    expect(compareOnScreen(run, one, 'c')).toBe(false);
+    expect(compareOnScreen(run, { left: '3d', right: 'map' }, 'a')).toBe(false);
+    // the stage shows 3D or the map alone: no split
+    expect(compareOnScreen(run, null, 'a')).toBe(false);
+    // no compare running: nothing to end
+    expect(compareOnScreen({ active: false, left: null, right: null }, null, null)).toBe(true);
+  });
+
+  it('a compared walk switched off is an eye-off; one hidden before the compare is not', () => {
+    expect(eyedOff(['a', 'b'], {}, { b: true })).toBe(true);
+    expect(eyedOff(['a', 'b'], { b: true }, { b: true })).toBe(false);
+    expect(eyedOff(['a', 'b'], {}, { c: true })).toBe(false);
+    expect(eyedOff([], {}, { a: true })).toBe(false);
+  });
+
+  it('ends without touching the split when the stage leaves it or its eye goes off', () => {
+    const s = createWalkCompareStore(fakeWorkspace());
+    s.getState().begin('a', 'b');
+    settleCompare(s, { sides: both, shownWalk: null, prevHidden: {}, hidden: {} });
+    expect(s.getState().active).toBe(true);
+    settleCompare(s, { sides: null, shownWalk: 'a', prevHidden: {}, hidden: {} });
+    expect(s.getState()).toMatchObject({ active: false, left: null, right: null });
+    s.getState().begin('a', 'b');
+    settleCompare(s, { sides: both, shownWalk: null, prevHidden: {}, hidden: { a: true } });
+    expect(s.getState().active).toBe(false);
+  });
+
+  it('an ended compare does not come back when the project opens again', () => {
+    const ws = fakeWorkspace();
+    const s = createWalkCompareStore(ws);
+    s.getState().begin('a', 'b');
+    settleCompare(s, { sides: null, shownWalk: null, prevHidden: {}, hidden: {} });
+    ws.setState({ project: { id: 'p2' } });
+    ws.setState({ project: { id: 'p1' } });
+    expect(s.getState().active).toBe(false);
   });
 });

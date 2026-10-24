@@ -5,11 +5,13 @@
  * "Compare with walk" on a walk's right-click menu plays both side by side, the follower paired by
  * place with the distance chip; zoomed all the way out, Link look shows the same zoom in both panes
  * (one size, the same horizontal field of view), also with the divider moved; Swap lead while playing keeps both playing; the detour is shaded
- * on the scrubber and seeking into it while playing plays that walk alone. Skipped when ffmpeg with
+ * on the scrubber and seeking into it while playing plays that walk alone. The 3D view alone ends
+ * the compare: the walks' eyes hide them again, and reopening the project does not bring it back. Skipped when ffmpeg with
  * libx264 is missing (CI installs it).
  */
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { stageMode } from './island';
 import {
   createWalkCompareProject,
   DETOUR_S,
@@ -296,5 +298,23 @@ test.describe('comparing two walks', () => {
     await expect(follow.getByTestId('walk-view')).toHaveAttribute('data-compare-solo', 'true');
     await expect.poll(() => timeOf(follow), { timeout: 15_000 }).toBeGreaterThan(mid + 1);
     await expect(follow.getByTestId('walk-view')).toHaveAttribute('data-compare-solo', 'true');
+
+    // the 3D view alone shows no 360 pane: the compare ends there, so each walk's eye works again,
+    // and it does not come back when the project opens again
+    const stage = win.locator('.stage');
+    await expect(stage).toHaveAttribute('data-walk-compare', 'on');
+    await stageMode(win, '3D');
+    await expect(stage).not.toHaveAttribute('data-walk-compare', 'on');
+    for (const layer of [WALK_LAYER, WALK2_LAYER]) {
+      // the row's own eye (the others are its actions)
+      const eye = (await walkRow(win, layer)).locator('.eye:not(.tact)');
+      if (!/\boff\b/.test((await eye.getAttribute('class')) ?? '')) await eye.click();
+      await expect(eye).toHaveClass(/\boff\b/);
+    }
+    await expect.poll(async () => (await trackHeights(win))?.n ?? 0).toBe(0);
+    await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
+    await openWalkProject(win);
+    await expect(win.locator('.stage')).toBeVisible();
+    await expect(win.locator('.stage')).not.toHaveAttribute('data-walk-compare', 'on');
   });
 });
