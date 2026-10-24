@@ -9,10 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { workbench } from '../../workspace/workbench/workbenchStore';
 import { frameOf } from '../measureScene';
 import { measureStore } from '../measureStore';
+import type { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import {
   attachPileAxis3d,
   attachPileAxisMap,
   axisDrag,
+  axisNudge,
   PILE_AXIS_LAYER,
   stagePile,
 } from './pileAxisScene';
@@ -50,7 +52,21 @@ const PILE: SurveyMeasurement = {
 const close = (a: readonly number[], b: readonly number[], eps = 1e-6) =>
   a.every((x, i) => Math.abs(x - (b[i] ?? NaN)) < eps);
 
+/** Animation frames run when a test says so (`flush`). */
+let frames: FrameRequestCallback[] = [];
+const flush = () => {
+  const run = frames;
+  frames = [];
+  for (const f of run) f(0);
+};
+
 beforeEach(() => {
+  frames = [];
+  vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => {
+    frames.push(f);
+    return frames.length;
+  });
+  vi.stubGlobal('cancelAnimationFrame', () => undefined);
   measureStore.setState({
     file: { ...emptyMeasurements(), measurements: [PILE] },
     focus: '02',
@@ -66,6 +82,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   document.body.innerHTML = '';
+  vi.unstubAllGlobals();
 });
 
 describe('axisDrag', () => {
@@ -94,6 +111,25 @@ describe('axisDrag', () => {
     // and back the other way past east wraps into [0, 180)
     const back = drag.move([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
     expect(back.angleDeg).toBeCloseTo(165, 6);
+  });
+});
+
+describe('axisNudge', () => {
+  it('moves an end 0.5 m per arrow key, ten times that with Shift', () => {
+    const start = pileAxis(RING);
+    expect(axisNudge(start, RING, 'a', 'ArrowLeft', false)?.a).toEqual([
+      start.a[0] - 0.5,
+      start.a[1],
+    ]);
+    expect(axisNudge(start, RING, 'a', 'ArrowDown', true)?.a).toEqual([start.a[0], start.a[1] - 5]);
+    expect(axisNudge(start, RING, 'a', 'Enter', false)).toBeNull();
+  });
+
+  it('turns 5° per arrow key, 50° with Shift', () => {
+    const start = pileAxis(RING);
+    expect(axisNudge(start, RING, 'turn', 'ArrowRight', false)?.angleDeg).toBeCloseTo(5, 6);
+    expect(axisNudge(start, RING, 'turn', 'ArrowLeft', false)?.angleDeg).toBeCloseTo(175, 6);
+    expect(axisNudge(start, RING, 'turn', 'ArrowRight', true)?.angleDeg).toBeCloseTo(50, 6);
   });
 });
 
@@ -128,7 +164,7 @@ function fakeStage() {
     renderer: { domElement: canvas },
     controls: { enabled: true },
     requestRender: vi.fn(),
-    raycastRay: () => null,
+    raycastRay: vi.fn(() => null),
     onFrame: () => () => undefined,
   };
   const screenOf = (p: SitePoint): [number, number] => {
@@ -174,6 +210,58 @@ describe('3D', () => {
     // released: later moves do nothing
     window.dispatchEvent(pointer('pointermove', 0, 0));
     expect(pileView.getState().axis.get('02')).toBe(kept);
+    s.detach();
+  });
+
+  it('a drag moves the line once a frame, keeps its material and drapes in full on release', () => {
+    const s = fakeStage();
+    const start = pileAxis(RING);
+    const line = () => s.stage.scene.getObjectByName('pile-axis-line') as Line2;
+    const material = line().material;
+    const handle = s.host.querySelector<HTMLElement>('[data-testid="pile-axis-b"]');
+    const [bx, by] = s.screenOf([start.b[0], start.b[1], 5]);
+    handle?.dispatchEvent(pointer('pointerdown', bx, by));
+    const setAxis = vi.spyOn(pileView.getState(), 'setAxis');
+    s.stage.raycastRay.mockClear();
+    const [t1x, t1y] = s.screenOf([42, 7, 5]);
+    const [t2x, t2y] = s.screenOf([44, 9, 5]);
+    window.dispatchEvent(pointer('pointermove', t1x, t1y));
+    window.dispatchEvent(pointer('pointermove', t2x, t2y));
+    expect(setAxis).not.toHaveBeenCalled();
+    flush();
+    expect(setAxis).toHaveBeenCalledTimes(1);
+    expect(close(pileView.getState().axis.get('02')?.b ?? [], [44, 9], 1e-3)).toBe(true);
+    // a few rays while the line moves, not one per draped sample
+    expect(s.stage.raycastRay.mock.calls.length).toBeLessThanOrEqual(4);
+    expect(line().material).toBe(material);
+    s.stage.raycastRay.mockClear();
+    window.dispatchEvent(pointer('pointerup', t2x, t2y));
+    expect(s.stage.raycastRay.mock.calls.length).toBeGreaterThan(20);
+    expect(line().material).toBe(material);
+    setAxis.mockRestore();
+    s.detach();
+  });
+
+  it('the handles are buttons named for what they do, moved and turned with the arrow keys', () => {
+    const s = fakeStage();
+    const start = pileAxis(RING);
+    const b = s.host.querySelector<HTMLButtonElement>('[data-testid="pile-axis-b"]');
+    expect(b?.tagName).toBe('BUTTON');
+    expect(b?.getAttribute('aria-label')).toMatch(/end B/);
+    expect(b?.closest('[aria-hidden="true"]')).toBeNull();
+    const key = (el: Element | null, k: string, shiftKey = false) =>
+      el?.dispatchEvent(new KeyboardEvent('keydown', { key: k, shiftKey, bubbles: true }));
+    key(b, 'ArrowRight');
+    let kept = pileView.getState().axis.get('02');
+    expect(close(kept?.b ?? [], [start.b[0] + 0.5, start.b[1]])).toBe(true);
+    key(b, 'ArrowUp', true);
+    kept = pileView.getState().axis.get('02');
+    expect(close(kept?.b ?? [], [start.b[0] + 0.5, start.b[1] + 5])).toBe(true);
+    expect(kept?.a).toEqual(start.a);
+    const turn = s.host.querySelector<HTMLButtonElement>('[data-testid="pile-axis-turn"]');
+    pileView.setState({ axis: new Map() });
+    key(turn, 'ArrowRight');
+    expect(pileView.getState().axis.get('02')?.angleDeg).toBeCloseTo(5, 6);
     s.detach();
   });
 });

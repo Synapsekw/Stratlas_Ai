@@ -6,13 +6,18 @@
  * its linked hover follow at once.
  *
  * The line shows while a pile is open in the Volumes tab on its Profile (`stagePile`). The handles
- * are elements over the view, so a drag on one never reaches the orbit or the map's pan.
+ * are buttons over the view, so a drag on one never reaches the orbit or the map's pan; focused,
+ * the arrow keys move an end 0.5 m or turn the line 5° (Shift: ten times that).
+ *
+ * A drag moves the line once a frame. While it lasts the 3D line drapes on a few points; on the
+ * release it drapes in full again.
  */
 import type { EngineStage } from '@aio/engine';
 import { fromWgs84, toWgs84 } from '@aio/geo';
 import type { MapController } from '@aio/maps';
 import type { SitePoint, SurveyMeasurement } from '@aio/schema';
 import { moveAxisEnd, pileAxis, rotateAxis, type PileAxis } from '@aio/survey';
+import { t, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { Group, Plane, Raycaster, Vector2, Vector3 } from 'three';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
@@ -32,8 +37,12 @@ export type AxisHandle = 'a' | 'b' | 'turn';
 const DEG = Math.PI / 180;
 /** The line's colour in WebGL and on the map (a plain colour: the views take no tokens). */
 const LINE_COLOUR = '#ffffff';
-/** Draped samples along the line in 3D. */
+/** Draped samples along the line in 3D; fewer while a drag moves it. */
 const SAMPLES = 24;
+const DRAG_SAMPLES = 2;
+/** What an arrow key moves an end by, and turns the line by (Shift: ten times). */
+const NUDGE_M = 0.5;
+const NUDGE_DEG = 5;
 
 /** The pile open on the stage: its measurement, outline, current line and whether it shows. */
 export interface StagePile {
@@ -87,17 +96,73 @@ export function axisDrag(
   };
 }
 
-/** The A, B and ↻ handles over a view, each a grab target; positions are set per frame. */
+/**
+ * The line after an arrow key on a handle: an end moves 0.5 m along east (left, right) or north
+ * (up, down), ↻ turns 5° clockwise (right, down) or back (left, up); Shift does ten times that.
+ * Null for any other key.
+ */
+export function axisNudge(
+  axis: PileAxis,
+  ring: readonly SitePoint[],
+  handle: AxisHandle,
+  key: string,
+  shift: boolean,
+): PileAxis | null {
+  const k = shift ? 10 : 1;
+  if (handle === 'turn') {
+    const turn = TURN_KEYS[key];
+    return turn === undefined ? null : rotateAxis(axis, ring, turn * NUDGE_DEG * k);
+  }
+  const step = MOVE_KEYS[key];
+  if (!step) return null;
+  const end = handle === 'a' ? axis.a : axis.b;
+  const d = NUDGE_M * k;
+  return moveAxisEnd(axis, handle, [end[0] + step[0] * d, end[1] + step[1] * d]);
+}
+const TURN_KEYS: Partial<Record<string, number>> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+};
+const MOVE_KEYS: Partial<Record<string, EN>> = {
+  ArrowRight: [1, 0],
+  ArrowLeft: [-1, 0],
+  ArrowUp: [0, 1],
+  ArrowDown: [0, -1],
+};
+
+/** Move or turn the open pile's line from the keyboard; true when the key was taken. */
+function nudgeOpen(handle: AxisHandle, e: KeyboardEvent): boolean {
+  const open = stagePile();
+  if (!open?.profile) return false;
+  const next = axisNudge(open.axis, open.ring, handle, e.key, e.shiftKey);
+  if (!next) return false;
+  pileView.getState().setAxis(open.m.id, next);
+  return true;
+}
+
+const HANDLE_LABEL: Record<AxisHandle, MessageKey> = {
+  a: 'pile.axis.a',
+  b: 'pile.axis.b',
+  turn: 'pile.axis.turn',
+};
+
+/**
+ * The A, B and ↻ handles over a view: buttons a pointer grabs and the keyboard moves (the arrow
+ * keys, `axisNudge`); positions are set per frame.
+ */
 function handles(host: HTMLElement, onDown: (h: AxisHandle, e: PointerEvent) => void) {
   const root = document.createElement('div');
   root.className = 'pa-handles';
   root.dataset.surface = 'dark';
-  root.setAttribute('aria-hidden', 'true');
   const make = (h: AxisHandle, text: string) => {
-    const el = document.createElement('span');
+    const el = document.createElement('button');
+    el.type = 'button';
     el.className = 'pa-handle';
     el.dataset.handle = h;
     el.setAttribute('data-testid', `pile-axis-${h}`);
+    el.setAttribute('aria-label', t(HANDLE_LABEL[h]));
     el.textContent = text;
     el.hidden = true;
     el.addEventListener('pointerdown', (e) => {
@@ -106,10 +171,16 @@ function handles(host: HTMLElement, onDown: (h: AxisHandle, e: PointerEvent) => 
       e.stopPropagation();
       onDown(h, e);
     });
+    el.addEventListener('keydown', (e) => {
+      // the arrows are the handle's, not the orbit's or the map's pan
+      if (!nudgeOpen(h, e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    });
     root.append(el);
     return el;
   };
-  const els: Record<AxisHandle, HTMLSpanElement> = {
+  const els: Record<AxisHandle, HTMLButtonElement> = {
     a: make('a', 'A'),
     b: make('b', 'B'),
     turn: make('turn', '↻'),
@@ -131,12 +202,17 @@ function handles(host: HTMLElement, onDown: (h: AxisHandle, e: PointerEvent) => 
 
 /**
  * The drag both views share: a handle pressed starts it, the window's pointer moves carry it (a
- * screen point turned into site E, N by the view), the release ends it.
+ * screen point turned into site E, N by the view) once a frame, the last move of the frame
+ * winning; the release applies the move still waiting, ends it and tells `onEnd`.
  */
-function dragInput(toSite: (x: number, y: number, h: AxisHandle) => EN | null) {
+function dragInput(
+  toSite: (x: number, y: number, h: AxisHandle) => EN | null,
+  onEnd: () => void = () => undefined,
+) {
   let off: (() => void) | null = null;
   const end = () => {
-    off?.();
+    if (!off) return;
+    off();
     off = null;
   };
   const down = (h: AxisHandle, e: PointerEvent) => {
@@ -147,20 +223,50 @@ function dragInput(toSite: (x: number, y: number, h: AxisHandle) => EN | null) {
     const drag = axisDrag(open.axis, open.ring, h, open.axis.lengthM * 0.05);
     const at = toSite(e.clientX, e.clientY, h);
     if (at) drag.move(at);
+    let pending: { x: number; y: number } | null = null;
+    let raf = 0;
+    /** The waiting move onto the line; false when nothing changed. */
+    const apply = (): boolean => {
+      const q = pending;
+      pending = null;
+      const p = q ? toSite(q.x, q.y, h) : null;
+      if (!p) return false;
+      const before = pileView.getState().axis;
+      pileView.getState().setAxis(id, drag.move(p));
+      return pileView.getState().axis !== before;
+    };
     const move = (ev: PointerEvent) => {
-      const p = toSite(ev.clientX, ev.clientY, h);
-      if (p) pileView.getState().setAxis(id, drag.move(p));
+      pending = { x: ev.clientX, y: ev.clientY };
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        apply();
+      });
+    };
+    const release = (ev: PointerEvent) => {
+      const last = { x: ev.clientX, y: ev.clientY };
+      end();
+      // the last move lands (drawn as the ended drag's full line), else the line is drawn again
+      pending = last;
+      if (!apply()) onEnd();
+    };
+    const cancel = () => {
+      end();
+      onEnd();
     };
     window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', cancel);
     off = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      pending = null;
       window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', end);
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', cancel);
     };
   };
-  return { down, end };
+  return { down, end, active: () => off !== null };
 }
 
 /** Run `fn` when the open pile or its line may have changed. */
@@ -221,17 +327,27 @@ export function attachPileAxis3d(stage: EngineStage, frame: Frame): () => void {
   let levels: Record<AxisHandle, number> = { a: 0, b: 0, turn: 0 };
   let shown: PileAxis | null = null;
 
-  const clear = () => {
-    for (const c of [...group.children]) {
-      group.remove(c);
-      const o = c as Line2;
-      o.geometry.dispose();
-      o.material.dispose();
-    }
-  };
+  // one line and one material, the geometry replaced as the line moves: a drag never builds a
+  // new program
+  const line = new Line2(
+    new LineGeometry(),
+    new LineMaterial({
+      color: LINE_COLOUR,
+      linewidth: 2,
+      dashed: true,
+      dashSize: 1,
+      gapSize: 0.7,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+    }),
+  );
+  line.name = 'pile-axis-line';
+  line.renderOrder = 49;
+  line.frustumCulled = false;
+  line.raycast = () => undefined;
   const sizeLine = () => {
-    const line = group.getObjectByName('pile-axis-line') as Line2 | undefined;
-    line?.material.resolution.set(canvas.clientWidth, canvas.clientHeight);
+    line.material.resolution.set(canvas.clientWidth, canvas.clientHeight);
   };
   const place = () => {
     const a = shown;
@@ -246,46 +362,42 @@ export function attachPileAxis3d(stage: EngineStage, frame: Frame): () => void {
     );
   };
   const rebuild = () => {
-    clear();
     const open = stagePile();
     shown = open?.profile ? open.axis : null;
     if (open && shown) {
       const zs = open.ring.map((p) => p[2]).filter((z) => Number.isFinite(z));
       const mean = zs.length > 0 ? zs.reduce((s, z) => s + z, 0) / zs.length : 0;
       const ax = shown;
+      // while a drag moves it (once a frame) the line drapes on a few points and the handles
+      // keep the levels the drag started on; the release drapes it in full
+      const dragging = input.active();
+      const samples = dragging ? DRAG_SAMPLES : SAMPLES;
       const pts: number[] = [];
-      for (let i = 0; i <= SAMPLES; i++) {
-        const f = i / SAMPLES;
+      const heights: number[] = [];
+      for (let i = 0; i <= samples; i++) {
+        const f = i / samples;
         const e = ax.a[0] + (ax.b[0] - ax.a[0]) * f;
         const n = ax.a[1] + (ax.b[1] - ax.a[1]) * f;
-        pts.push(...frame.toLocal([e, n, groundZ(e, n, mean)]));
+        const z = groundZ(e, n, mean);
+        heights.push(z);
+        pts.push(...frame.toLocal([e, n, z]));
       }
-      levels = {
-        a: groundZ(ax.a[0], ax.a[1], mean),
-        b: groundZ(ax.b[0], ax.b[1], mean),
-        turn: groundZ(ax.centre[0], ax.centre[1], mean),
-      };
+      if (!dragging)
+        levels = {
+          a: heights[0] ?? mean,
+          b: heights.at(-1) ?? mean,
+          turn: groundZ(ax.centre[0], ax.centre[1], mean),
+        };
       const g = new LineGeometry();
       g.setPositions(pts);
+      line.geometry.dispose();
+      line.geometry = g;
       const dash = Math.max(0.2, ax.lengthM / 60);
-      const mat = new LineMaterial({
-        color: LINE_COLOUR,
-        linewidth: 2,
-        dashed: true,
-        dashSize: dash,
-        gapSize: dash * 0.7,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-      });
-      const line = new Line2(g, mat);
+      line.material.dashSize = dash;
+      line.material.gapSize = dash * 0.7;
       line.computeLineDistances();
-      line.name = 'pile-axis-line';
-      line.renderOrder = 49;
-      line.frustumCulled = false;
-      line.raycast = () => undefined;
-      group.add(line);
-    }
+      if (line.parent !== group) group.add(line);
+    } else if (line.parent === group) group.remove(line);
     sizeLine();
     place();
     stage.requestRender();
@@ -303,7 +415,7 @@ export function attachPileAxis3d(stage: EngineStage, frame: Frame): () => void {
     const s = frame.toSite([hit.x, hit.y, hit.z]);
     return [s[0], s[1]];
   };
-  const input = dragInput(toSite);
+  const input = dragInput(toSite, rebuild);
   const pads = handles(host, input.down);
 
   const offFrame = stage.onFrame(() => {
@@ -317,7 +429,9 @@ export function attachPileAxis3d(stage: EngineStage, frame: Frame): () => void {
     offStores();
     offFrame();
     input.end();
-    clear();
+    group.remove(line);
+    line.geometry.dispose();
+    line.material.dispose();
     stage.scene.remove(group);
     pads.root.remove();
     stage.requestRender();
