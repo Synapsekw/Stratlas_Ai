@@ -12,6 +12,7 @@ import {
   acceptMany,
   currentOf,
   initialReview,
+  isDetectorDraft,
   newIssueInput,
   readPasses,
   REVIEW_PASS,
@@ -347,9 +348,32 @@ function logDecisions(action: ReviewAction, before: ReviewState, after: ReviewSt
   }
 }
 
+/**
+ * Inspect's queue slider is the only bar: every detector pass is held at the slider's value, so a
+ * draft under the threshold its run used (a `belowThreshold` candidate) shows once the slider is
+ * at or under its score, and a pass loaded or added later follows the slider too. Set per pass in
+ * the state, not passed to the readers, so the review's own steps (J/K, the move after a
+ * decision) walk the same queue the list shows. The reducer holds a set bar within 0..1 only; the
+ * 0.3 floor of a run's default bar no longer applies.
+ */
+function sliderBars(review: ReviewState): ReviewState {
+  let out = review;
+  const done = new Set<string>();
+  for (const d of review.detections) {
+    if (done.has(d.pass) || !isDetectorDraft(d)) continue;
+    done.add(d.pass);
+    if (out.passThreshold[d.pass] !== out.minConfidence)
+      out = reviewReducer(out, { type: 'passThreshold', pass: d.pass, value: out.minConfidence });
+  }
+  return out;
+}
+
+const reduce = (review: ReviewState, action: ReviewAction) =>
+  sliderBars(reviewReducer(review, action));
+
 export function dispatch(action: ReviewAction): void {
   const s = detections.getState();
-  const review = reviewReducer(s.review, action);
+  const review = reduce(s.review, action);
   if (review === s.review) return;
   if (!s.readOnly) logDecisions(action, s.review, review);
   const changed = review.revision !== s.review.revision;
@@ -457,7 +481,7 @@ export async function loadDetections(projectId: string, force = false): Promise<
     if (p.header.run) savedRuns.add(p.name);
   }
   for (const d of read.detections) saved.set(d.id, d);
-  const review = reviewReducer(detections.getState().review, {
+  const review = reduce(detections.getState().review, {
     type: 'load',
     detections: read.detections,
     runs: read.runs,

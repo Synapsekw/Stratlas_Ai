@@ -5,7 +5,7 @@
  * (rejected, or ids the review does not have) come back as skipped.
  */
 import { issueEditor, setAnnotateReadOnly } from '@aio/annotate';
-import { initialReview, reviewReducer, type Detection } from '@aio/annotate/detections';
+import { initialReview, queueOf, reviewReducer, type Detection } from '@aio/annotate/detections';
 import type { ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,7 +18,8 @@ vi.hoisted(() => {
   };
 });
 
-import { acceptByIds, detections, sampledTimes } from './store';
+import { visibleDetections } from '../inspect/findings';
+import { acceptByIds, detections, dispatch, sampledTimes } from './store';
 
 const NOW = '2026-10-15T10:00:00.000Z';
 
@@ -140,5 +141,42 @@ describe('sampledTimes', () => {
         header({ layer: 'x', assessed: 'all' }),
       ]),
     ).toEqual({ w: [0, 1, 1.5, 2], v: [0.5] });
+  });
+});
+
+describe('the queue slider', () => {
+  const detector = { id: 'rust', version: 1, modelSha256: 'a'.repeat(64), threshold: 0.6 };
+  const fromRun = (id: string, confidence: number, pass = 'vlm-run-a.json') =>
+    det(id, {
+      pass,
+      confidence,
+      ...(confidence < 0.6 ? { belowThreshold: true } : {}),
+      origin: { kind: 'model', producer: 'qwen', detector },
+    });
+  const shown = () => visibleDetections(detections.getState().review).map((d) => d.id);
+  const queued = () => queueOf(detections.getState().review).map((d) => d.id);
+
+  it('is the only bar: a draft under its run threshold shows at or above the slider', () => {
+    review([]);
+    dispatch({ type: 'load', detections: [fromRun('low', 0.4), fromRun('lower', 0.2)] });
+    dispatch({ type: 'minConfidence', value: 0.3 });
+    expect(shown()).toEqual(['low']);
+    expect(queued()).toEqual(['low']);
+    // J reaches it too: the review steps through the same queue
+    dispatch({ type: 'select', id: null });
+    dispatch({ type: 'next' });
+    expect(detections.getState().review.currentId).toBe('low');
+    dispatch({ type: 'minConfidence', value: 0.5 });
+    expect(shown()).toEqual([]);
+    // under the old 0.3 floor of a run's bar
+    dispatch({ type: 'minConfidence', value: 0.1 });
+    expect(shown().sort()).toEqual(['low', 'lower']);
+  });
+
+  it('holds for a run that arrives after the slider moved', () => {
+    review([]);
+    dispatch({ type: 'minConfidence', value: 0.3 });
+    dispatch({ type: 'add', detections: [fromRun('new', 0.4, 'vlm-run-b.json')], label: 'Ask AI' });
+    expect(shown()).toEqual(['new']);
   });
 });
