@@ -5153,7 +5153,7 @@ export const en = {
   'vol.bodies.off': 'Hidden',
   'vol.bodies.offHint': 'Terrain and toe lines only',
   'vol.surveyDate': 'Survey date',
-  'section.addPinHint': 'Click the chart to add a pin.',
+  'section.addPinHint': 'Point at the chart, then press Add pin here.',
   'vol.swipeTip': 'Swipe between the first and last survey',
   // RF coverage (rf-coverage T9): the RF workbench tab, the catalogue picker and the CSV import
   'wb.tab.rf': 'Coverage',
