@@ -50,6 +50,13 @@ export const fetchBytes: FetchBytes = async (url) => {
 const joinUrl = (base: string, path: string) =>
   `${base.endsWith('/') ? base : `${base}/`}${path.split('/').map(encodeURIComponent).join('/')}`;
 
+/** A whole-site run's deadband: on with the threshold when one above zero is asked for. */
+function siteDeadband(m: number | undefined): Pick<ComparisonItem, 'useDeadband' | 'deadbandM'> {
+  return m !== undefined && Number.isFinite(m) && m > 0
+    ? { useDeadband: true, deadbandM: m }
+    : { useDeadband: false };
+}
+
 /** One project's engine: resolvers per viewed capture over one tile cache. */
 export class EngineSession {
   private cache = new TileCache();
@@ -216,7 +223,7 @@ export class EngineSession {
       id: 'site',
       from: req.from,
       to: req.to,
-      useDeadband: false,
+      ...siteDeadband(req.deadbandM),
       cellM: req.cellM,
     };
     const out: GridOut[] = [];

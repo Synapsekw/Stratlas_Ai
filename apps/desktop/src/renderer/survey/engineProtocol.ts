@@ -74,6 +74,11 @@ export interface SiteRequest {
   to: SurfaceRef;
   cellM: number;
   ring?: [number, number][];
+  /**
+   * Leave out cells whose height change is smaller than this, metres (the Cut & fill tab's
+   * "Ignore under"); absent or 0 counts every cell.
+   */
+  deadbandM?: number;
 }
 
 /**

@@ -228,6 +228,30 @@ describe('the survey engine worker', () => {
     }
   });
 
+  it('the whole-site difference leaves out changes under the deadband it is given', async () => {
+    const { client, close } = engine();
+    try {
+      const req = {
+        from: { kind: 'reference' as const, mode: 'level' as const, levelM: 100 },
+        to: { kind: 'survey' as const, surface: 'cone' },
+        cellM: 1,
+        ring,
+      };
+      const all = await client.site(req);
+      const some = await client.site({ ...req, deadbandM: 1 });
+      const none = await client.site({ ...req, deadbandM: 0 });
+      expect(all.result.usedDeadband).toBe(false);
+      expect(some.result.usedDeadband).toBe(true);
+      expect(some.result.deadbandM).toBe(1);
+      expect(some.result.fillM3 + some.result.cutM3).toBeLessThan(
+        all.result.fillM3 + all.result.cutM3,
+      );
+      expect(none.result.fillM3).toBe(all.result.fillM3);
+    } finally {
+      close();
+    }
+  });
+
   it('answers with the problem when its answer cannot be sent, so the request does not wait', async () => {
     // a port that refuses the first good answer (as postMessage does for a buffer it cannot move)
     const replies: { id: number; ok: boolean; error?: string }[] = [];
