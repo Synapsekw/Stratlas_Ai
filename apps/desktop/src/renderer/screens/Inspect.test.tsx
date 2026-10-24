@@ -227,6 +227,11 @@ afterEach(() => {
 });
 
 describe('InspectScreen', () => {
+  it('has a screen heading for assistive technology, as the other screens do', () => {
+    mount();
+    expect(section().querySelector('h1.sr-only')?.textContent).toBe('Inspect');
+  });
+
   it('opens the photo of an issue selected in Issues with that finding selected', () => {
     mount();
     select({ kind: 'photo', id: 'a', layer: 'photos' });

@@ -593,6 +593,7 @@ function InspectBody(): ReactElement | null {
       tabIndex={-1}
       onKeyDownCapture={onKeyDownCapture}
     >
+      <h1 className="sr-only">{t('nav.inspect')}</h1>
       <AnnotateStyles />
       <FocusZone kind="photo" className="insp-zone">
         <RunStrip />
