@@ -13,7 +13,7 @@ import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
 import { measureTree, volumesView } from './island';
 import { focusMeasure, volumeSettled } from './measureCard';
-import { openDemo } from './surveyJobs';
+import { openDemo, setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), 'needs the development pipeline Python (uv sync in python/)');
@@ -43,8 +43,13 @@ function near(got: number, want: number): void {
   );
 }
 
-/** Open the quarry, prepare every survey's surface from the first pile's card, and wait. */
+/**
+ * Open the quarry, prepare every survey's surface from the first pile's card, and wait. Preparing
+ * on open is switched off first: Prepare here is the one job (a background one already at work
+ * would keep Prepare waiting, or have prepared the surfaces and taken it away, before the click).
+ */
 async function prepared(win: Page, name: string, id: string): Promise<Locator> {
+  await setAutoPrepare(win, false);
   await openDemo(win, name, id);
   await measureTree(win);
   const card = await focusMeasure(win, 'Stockpile SP1');

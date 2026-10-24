@@ -16,6 +16,7 @@ import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fi
 import type { SurveyDemoProject } from './surveyFixtures';
 import { measureControl, measureSaved, measureTree } from './island';
 import { focusMeasure, volumeSettled } from './measureCard';
+import { setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -42,6 +43,9 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   test.skip(!hasPipelinePython(), 'needs the development pipeline Python (uv sync in python/)');
   test.setTimeout(300_000);
   const dir = landfillProject.dir;
+  // the lift's surveys are prepared below through Prepare: none quietly on open, which would
+  // take Prepare away from under the click once it had made them
+  await setAutoPrepare(win, false);
   await open(win, landfillProject);
 
   // the site list: one material from the demo, the CSV replaces it and adds one
@@ -74,11 +78,9 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
 
   // the lift: prepare the surveys, then compute previous to current
   await measureTree(win);
-  // a pile: its full volume card is the Measure tab's (focusMeasure brings it forward); the
-  // surveys may be preparing quietly already (on open), else Prepare starts it
+  // a pile: its full volume card is the Measure tab's (focusMeasure brings it forward)
   const panel = await focusMeasure(win, 'Cell 1');
-  const prepare = panel.getByTestId('survey-prepare');
-  if (await prepare.isVisible()) await prepare.click();
+  await panel.getByTestId('survey-prepare').click();
   await expect(panel.getByTestId('survey-prepare')).toHaveCount(0, { timeout: 240_000 });
   const lift = panel.getByTestId('survey-cmp-item').first();
   await expect(lift.getByTestId('survey-cmp-result')).toBeVisible({ timeout: 60_000 });

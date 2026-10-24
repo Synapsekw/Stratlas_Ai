@@ -14,8 +14,9 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { measureSaved, measureTree, selectMeasure, siteDataButton } from './island';
-import { volumeSettled } from './measureCard';
+import { measureSaved, measureTree, siteDataButton } from './island';
+import { focusMeasure, volumeSettled } from './measureCard';
+import { setAutoPrepare } from './surveyJobs';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -82,13 +83,12 @@ test('compliance presets compute cut/fill and remaining to the pad design, with 
   test.skip(!hasPipelinePython(), 'needs the development pipeline Python (uv sync in python/)');
   test.setTimeout(480_000);
   const dir = earthworksProject.dir;
+  // the surveys are prepared below through Prepare: none quietly on open
+  await setAutoPrepare(win, false);
   await open(win, earthworksProject);
   await measureTree(win);
-  await selectMeasure(win, 'Pad to design');
-  const panel = win.getByTestId('survey-panel');
-  await expect(panel.getByRole('textbox', { name: 'Rename', exact: true })).toHaveValue(
-    'Pad to design',
-  );
+  // a pile opens in the Volumes tab; its full volume card is the Measure tab's
+  const panel = await focusMeasure(win, 'Pad to design');
   // the surveys as height tiles, through the real survey.prepare job
   await panel.getByTestId('survey-prepare').click();
   await expect(panel.getByTestId('survey-prepare')).toHaveCount(0, { timeout: 300_000 });
