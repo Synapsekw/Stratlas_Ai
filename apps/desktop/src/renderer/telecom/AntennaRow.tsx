@@ -173,9 +173,9 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
         />
       </div>
       {props.children ? (
-        // the details are a tree item of their own, named by the unit: a tree may hold only tree items,
-        // and the controls in the details are the item's content (axe: aria-required-children)
-        <div role="treeitem" aria-selected={selected} aria-label={name}>
+        // the details are a tree item of their own (a tree may hold only tree items; axe), named
+        // by the unit and not selected itself: the row above carries the selection
+        <div role="treeitem" aria-label={`${name} · ${t('telecom.antennas.typed.title')}`}>
           {props.children}
         </div>
       ) : null}

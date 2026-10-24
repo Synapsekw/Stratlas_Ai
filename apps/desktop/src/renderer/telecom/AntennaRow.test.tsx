@@ -235,7 +235,8 @@ describe('AntennaRow', () => {
     expect(host.querySelector('[data-row-id="a1"]')!.contains(q('under'))).toBe(true);
     const group = q('under')!.parentElement!;
     expect(group.getAttribute('role')).toBe('treeitem');
-    expect(group.getAttribute('aria-label')).toBe('P1');
+    expect(group.getAttribute('aria-label')).toBe('P1 · Your values');
+    expect(group.hasAttribute('aria-selected')).toBe(false);
   });
 
   it('adds no details item when nothing is under the row', () => {

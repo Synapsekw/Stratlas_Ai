@@ -213,6 +213,20 @@ test.describe('project list: the Antennas group', () => {
         (window as unknown as Inspect).__stratlas.workbench.getState().open('rf');
       });
       await expect(tab('rf')).toHaveAttribute('aria-selected', 'true');
+      // the fly from the first pick must have settled: the box holds its place for two reads
+      let last = '';
+      await expect
+        .poll(
+          async () => {
+            const b = await boxOnScreen(win, 'ant-p1');
+            const now = `${String(Math.round(b.x))} ${String(Math.round(b.y))}`;
+            const same = now === last;
+            last = now;
+            return same;
+          },
+          { intervals: [300], timeout: 15_000 },
+        )
+        .toBe(true);
       const p1 = await boxOnScreen(win, 'ant-p1');
       expect(p1.free, 'nothing but the 3D view lies on the box').toBe(true);
       await win.mouse.click(p1.x, p1.y);

@@ -178,7 +178,7 @@ describe('AntennaDetails', () => {
     // directly under its own row, in a tree item named by the unit
     const group = item.querySelector('[data-testid="antenna-row"]')!.nextElementSibling!;
     expect(group.getAttribute('role')).toBe('treeitem');
-    expect(group.getAttribute('aria-label')).toBe('A2');
+    expect(group.getAttribute('aria-label')).toBe('A2 · Your values');
     expect(group.firstElementChild).toBe(details[0]);
     act(() => {
       antennaStore.setState({ selected: null });
