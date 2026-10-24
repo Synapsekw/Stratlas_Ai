@@ -30,8 +30,12 @@ vi.mock('../../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card<
 vi.mock('../../SelectionCard', () => ({ SelectionCard: () => <p>selection</p> }));
 vi.mock('../../../road/RoadPanel', () => ({ RoadPanel: () => <p>road panel</p> }));
 vi.mock('../../../road/RoadSetup', () => ({ RoadSetupCard: () => null }));
-vi.mock('../../../survey/VolumesView', () => ({
-  VolumesView: () => <p data-testid="inventory">inventory</p>,
+vi.mock('../../../survey/volumes/InventoryPane', () => ({
+  useSeriesRun: () => undefined,
+  useInventoryModel: () => null,
+  inventoryOrder: () => [],
+  VolumesEmpty: () => <p data-testid="inventory">inventory</p>,
+  InventoryPane: () => <p data-testid="inventory">inventory</p>,
 }));
 vi.mock('@aio/annotate', async (importOriginal) => ({
   ...(await importOriginal<typeof AnnotateModule>()),

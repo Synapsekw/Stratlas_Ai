@@ -9,8 +9,10 @@
  * piles) Photo and Elevation swap each shown survey date's ortho for its surface raster and back,
  * and Cut & fill turns the survey comparison's heat map on (Photo and Elevation turn it off).
  *
- * The Volumes bench says which pane is up (`stageShow.setPane`); the pile drawing reads the
- * Outlines, Labels and colour choices from `stageShow`.
+ * Which pane is up lives in one store (`volumesPane`, survey/volumes/volumesPane.ts): `pane` here
+ * follows it and `setPane` writes it, so the Volumes tab's segments, this control, the sidebar and
+ * `openMaterialsPane` always agree. The pile drawing reads the Outlines, Labels and colour choices
+ * from `stageShow`.
  */
 import type { Layer } from '@aio/schema';
 import { useT, type MessageKey } from '@aio/ui';
@@ -19,6 +21,7 @@ import { canCompare, useWorkspace, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { compareStore, setHeat, useCompare } from '../survey/compareStore';
+import { volumesPane, type VolumesPane } from '../survey/volumes/volumesPane';
 import { useShell } from '../shell';
 import { useCaptureIndex } from './compare';
 import { useKitVolumes, useWorkbenchView } from './workbench/view';
@@ -26,8 +29,7 @@ import './stageShow.css';
 
 /** How piles are coloured on the Materials pane. */
 export type ColourBy = 'material' | 'change' | 'none';
-/** The Volumes tab's panes (its segment). */
-export type VolumesPane = 'inventory' | 'cutFill' | 'materials';
+export type { VolumesPane };
 
 export interface StageShowState {
   /** The pile outlines are drawn. */
@@ -35,7 +37,7 @@ export interface StageShowState {
   /** The pile labels are drawn. */
   labels: boolean;
   colourBy: ColourBy;
-  /** The Volumes tab's pane in front. */
+  /** The Volumes tab's pane in front: a read of `volumesPane`, kept in step with it. */
   pane: VolumesPane;
   /** The surface of a project without the kit (the kit keeps its own in `volumetric`). */
   surface: SurfaceMode;
@@ -51,12 +53,12 @@ const INITIAL = {
   outlines: true,
   labels: true,
   colourBy: 'material',
-  pane: 'inventory',
   surface: 'photo',
 } as const;
 
 export const stageShow = createStore<StageShowState>()((set) => ({
   ...INITIAL,
+  pane: volumesPane.getState().pane,
   setOutlines: (outlines) => {
     set({ outlines });
   },
@@ -67,15 +69,22 @@ export const stageShow = createStore<StageShowState>()((set) => ({
     set({ colourBy });
   },
   setPane: (pane) => {
-    set({ pane });
+    // written to the one store; `pane` here follows it (below)
+    volumesPane.getState().setPane(pane);
   },
   setSurface: (surface) => {
     set({ surface });
   },
   reset: () => {
     set({ ...INITIAL });
+    volumesPane.getState().setPane('inventory');
   },
 }));
+
+// `pane` follows the one store, whoever writes it (the segments, openMaterialsPane, setPane)
+volumesPane.subscribe((s) => {
+  if (stageShow.getState().pane !== s.pane) stageShow.setState({ pane: s.pane });
+});
 
 export function useStageShow<T>(selector: (s: StageShowState) => T): T {
   return useStore(stageShow, selector);

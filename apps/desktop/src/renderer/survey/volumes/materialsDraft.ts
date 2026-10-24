@@ -26,23 +26,12 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { showBench } from '../../workspace/workbench/followTool';
 import { workbench, type WorkbenchState } from '../../workspace/workbench/workbenchStore';
 import { measureStore, replaceMeasurements, saveSiteSettings } from '../measureStore';
+import { volumesPane } from './volumesPane';
 
 // ------------------------------------------------------------------ the Volumes tab's pane
 
-export type VolumesPane = 'inventory' | 'cutFill' | 'materials';
-
-export interface VolumesPaneState {
-  pane: VolumesPane;
-  setPane(pane: VolumesPane): void;
-}
-
-/** Which pane the Volumes tab shows (Inventory, Cut & fill, Materials). */
-export const volumesPane = createStore<VolumesPaneState>()((set) => ({
-  pane: 'inventory',
-  setPane: (pane) => {
-    set({ pane });
-  },
-}));
+// the one store for it (volumesPane.ts), which the stage's Show control and the sidebar read too
+export { volumesPane, type VolumesPane, type VolumesPaneState } from './volumesPane';
 
 /** Bring the Volumes tab forward on its Materials pane (the Measure tab's Site materials). */
 export function openMaterialsPane(bench: StoreApi<WorkbenchState> = workbench): void {

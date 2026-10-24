@@ -376,9 +376,6 @@
   "apps/desktop/src/renderer/workspace/tools/video.tsx": {
     "title": 1
   },
-  "apps/desktop/src/renderer/workspace/VolumeTools.tsx": {
-    "title": 3
-  },
   "packages/ui/src/actions/ContextMenu.tsx": {
     "title": 3
   },

@@ -1,17 +1,78 @@
 // @vitest-environment jsdom
-import { volumetric } from '@aio/volumetric';
+import type { SurveyMeasurement } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WIDE_TAB_PX, workbench } from '../workbenchStore';
-import { VolumesBench } from './VolumesBench';
-
-// the volumes view has its own tests: here only that it sits under the controls
-vi.mock('../../../survey/VolumesView', () => ({
-  VolumesView: () => <p data-testid="inventory">inventory</p>,
-}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const m = vi.hoisted(() => ({
+  measure: { file: { measurements: [] as SurveyMeasurement[] }, focus: null as string | null },
+  openPile: vi.fn(),
+}));
+vi.mock('../../../survey/measureStore', () => ({
+  useMeasure: (sel: (x: unknown) => unknown) => sel(m.measure),
+}));
+vi.mock('../../../survey/pile/openPile', () => ({ openPile: m.openPile }));
+// each pane has its own tests: here only which one shows, and what it is given
+vi.mock('../../../survey/volumes/InventoryPane', () => ({
+  useSeriesRun: () => undefined,
+  useInventoryModel: () => null,
+  inventoryOrder: (_m: unknown, piles: readonly SurveyMeasurement[]) => piles.map((p) => p.id),
+  VolumesEmpty: () => <p data-testid="volumes-empty" />,
+  InventoryPane: ({ onPile }: { onPile: (id: string) => void }) => (
+    <button
+      type="button"
+      data-testid="inventory-pane"
+      onClick={() => {
+        onPile('p1');
+      }}
+    />
+  ),
+}));
+vi.mock('../../../survey/volumes/VolumesHeader', () => ({
+  VolumesHeader: () => <header data-testid="volumes-header" />,
+}));
+vi.mock('../../../survey/volumes/CutFillPane', () => ({
+  CutFillPane: ({ onPile }: { onPile?: (id: string) => void }) => (
+    <button
+      type="button"
+      data-testid="cutfill-pane"
+      onClick={() => {
+        onPile?.('p2');
+      }}
+    />
+  ),
+}));
+vi.mock('../../../survey/volumes/MaterialsPane', () => ({
+  MaterialsPane: () => <div data-testid="materials-pane" />,
+}));
+vi.mock('../../../survey/pile/PilePanel', () => ({
+  PilePanel: ({ id, order }: { id: string; order?: readonly string[] }) => (
+    <div data-testid="pile-panel" data-id={id} data-order={(order ?? []).join(',')} />
+  ),
+}));
+
+const { VolumesBench } = await import('./VolumesBench');
+const { volumesPane } = await import('../../../survey/volumes/volumesPane');
+const { stageShow } = await import('../../StageShow');
+
+const pile = (id: string): SurveyMeasurement => ({
+  id,
+  family: 'polygon',
+  tool: 'volume',
+  label: id,
+  scope: { kind: 'site' },
+  points: [
+    [0, 0, 0],
+    [10, 0, 0],
+    [10, 10, 0],
+  ],
+  items: [],
+  results: [],
+  createdAt: '2026-10-09T00:00:00Z',
+});
 
 let host: HTMLDivElement;
 let root: Root | undefined;
@@ -21,9 +82,10 @@ const render = () => {
     root?.render(<VolumesBench />);
   });
 };
-const button = (name: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent === name);
-const click = (el: Element | undefined) => {
+const q = (sel: string) => host.querySelector(sel);
+const segment = (name: string) =>
+  [...host.querySelectorAll('[data-testid="volumes-segment"]')].find((b) => b.textContent === name);
+const click = (el: Element | null | undefined) => {
   if (!el) throw new Error('not found');
   act(() => {
     el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -31,19 +93,9 @@ const click = (el: Element | undefined) => {
 };
 
 beforeEach(() => {
-  volumetric.setState({
-    status: 'ready',
-    epoch: 'e1',
-    surface: 'photo',
-    swipe: false,
-    body: 'lift',
-    file: {
-      captures: [
-        { epoch: 'e1', date: '2026-01-12', label: '12 Jan 2026' },
-        { epoch: 'e2', date: '2026-02-09', label: '9 Feb 2026' },
-      ],
-    } as never,
-  });
+  m.measure = { file: { measurements: [pile('p1'), pile('p2')] }, focus: null };
+  m.openPile.mockClear();
+  volumesPane.setState({ pane: 'inventory' });
   workbench.getState().reset();
   host = document.createElement('div');
   document.body.append(host);
@@ -52,49 +104,80 @@ afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   host.remove();
-  volumetric.setState({ status: 'idle', file: null });
+  stageShow.getState().reset();
 });
 
 describe('VolumesBench', () => {
-  it('keeps the switches and their names above the inventory', () => {
+  it('Inventory: the header, the segments, then the inventory', () => {
     render();
-    const names = (label: string) =>
-      [
-        ...(host
-          .querySelector(`[role="group"][aria-label="${label}"]`)
-          ?.querySelectorAll('button') ?? []),
-      ].map((b) => b.textContent);
-    expect(names('Survey date')).toEqual(['12 Jan', '9 Feb', 'Swipe']);
-    expect(names('Surface colours')).toEqual(['Photo', 'Elevation', 'Cut / fill']);
-    expect(names('Volume bodies')).toEqual(['Lifted', 'In place', 'Hidden']);
-    expect(button('Section line between the surveys')).toBeDefined();
-    // the controls come before the inventory
-    const controls = host.querySelector('.vol-bench-controls');
-    const inventory = host.querySelector('[data-testid="inventory"]');
-    expect(controls?.compareDocumentPosition(inventory as Node)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
+    const header = q('[data-testid="volumes-header"]');
+    const seg = q('[role="group"][aria-label="Volumes"]');
+    const pane = q('[data-testid="inventory-pane"]');
+    expect(header?.compareDocumentPosition(seg as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(seg?.compareDocumentPosition(pane as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(segment('Inventory')?.getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('Cut / fill sets the change surface; a date puts the photo back', () => {
+  it('the segment switches to Cut & fill and Materials, and the Show control follows', () => {
     render();
-    click(button('Cut / fill'));
-    expect(volumetric.getState().surface).toBe('change');
-    expect(button('Cut / fill')?.getAttribute('aria-pressed')).toBe('true');
-    click(button('9 Feb'));
-    expect(volumetric.getState().surface).toBe('photo');
-    expect(volumetric.getState().epoch).toBe('e2');
+    click(segment('Cut & fill'));
+    expect(q('[data-testid="cutfill-pane"]')).not.toBeNull();
+    // the header is Inventory's
+    expect(q('[data-testid="volumes-header"]')).toBeNull();
+    expect(stageShow.getState().pane).toBe('cutFill');
+    click(segment('Materials'));
+    expect(q('[data-testid="materials-pane"]')).not.toBeNull();
+    expect(segment('Materials')?.getAttribute('aria-pressed')).toBe('true');
+    expect(stageShow.getState().pane).toBe('materials');
+    click(segment('Inventory'));
+    expect(q('[data-testid="inventory-pane"]')).not.toBeNull();
   });
 
-  it('sets the bodies and starts the section line', () => {
+  it('follows the pane set elsewhere (openMaterialsPane, the Show control)', () => {
     render();
-    click(button('Hidden'));
-    expect(volumetric.getState().body).toBe('off');
-    click(button('Section line between the surveys'));
-    expect(volumetric.getState().section.mode).toBe('picking');
-    expect(button('Section line between the surveys')?.getAttribute('aria-pressed')).toBe('true');
-    click(button('Section line between the surveys'));
-    expect(volumetric.getState().section.mode).toBe('idle');
+    act(() => {
+      stageShow.getState().setPane('materials');
+    });
+    expect(q('[data-testid="materials-pane"]')).not.toBeNull();
+  });
+
+  it('a row opens the pile panel, from Inventory and from Cut & fill', () => {
+    render();
+    click(q('[data-testid="inventory-pane"]'));
+    expect(m.openPile).toHaveBeenLastCalledWith('p1');
+    click(segment('Cut & fill'));
+    click(q('[data-testid="cutfill-pane"]'));
+    expect(m.openPile).toHaveBeenLastCalledWith('p2');
+  });
+
+  it('a focused pile opens the pile panel in place of everything; ‹ Inventory comes back', () => {
+    m.measure.focus = 'p2';
+    render();
+    expect(q('[data-testid="pile-panel"]')?.getAttribute('data-id')).toBe('p2');
+    expect(q('[data-testid="pile-panel"]')?.getAttribute('data-order')).toBe('p1,p2');
+    expect(q('[data-testid="volumes-segment"]')).toBeNull();
+    expect(q('[data-testid="volumes-header"]')).toBeNull();
+    // the panel's back link clears the focus
+    m.measure.focus = null;
+    render();
+    expect(q('[data-testid="pile-panel"]')).toBeNull();
+    expect(q('[data-testid="inventory-pane"]')).not.toBeNull();
+  });
+
+  it('no pile: Inventory says so, the header waits, the segments stay', () => {
+    m.measure.file.measurements = [];
+    render();
+    expect(q('[data-testid="volumes-empty"]')).not.toBeNull();
+    expect(q('[data-testid="volumes-header"]')).toBeNull();
+    expect(segment('Materials')).toBeDefined();
+  });
+
+  it('no kit controls above the inventory', () => {
+    render();
+    expect(q('.vol-bench-controls')).toBeNull();
+    expect(q('[role="group"][aria-label="Survey date"]')).toBeNull();
+    expect(q('[role="group"][aria-label="Surface colours"]')).toBeNull();
+    expect(q('[role="group"][aria-label="Volume bodies"]')).toBeNull();
   });
 
   it('is the fixed Volumes tab, which opens at least 470 px wide', () => {

@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SiteReply } from '../survey/engineClient';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { connectVolumeChange, VolumeDateSwipe, VolumeSurfaces } from './VolumeTools';
+import { connectVolumeChange, VolumeChangePicks } from './VolumeTools';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -18,7 +18,13 @@ let root: Root | undefined;
 const render = () => {
   root ??= createRoot(host);
   act(() => {
-    root?.render(<VolumeSurfaces />);
+    root?.render(<VolumeChangePicks />);
+  });
+};
+/** Cut / fill turned on (the stage's Show control or the notch row does it in the app). */
+const showCutFill = () => {
+  act(() => {
+    volumetric.getState().setSurface('change');
   });
 };
 const button = (name: string, within: ParentNode = host) =>
@@ -77,7 +83,7 @@ describe('Volume tools: Cut / fill', () => {
   it('default pick is previous to current', () => {
     render();
     expect(host.querySelector('[data-testid="vol-change-from"]')).toBeNull();
-    click(button('Cut / fill'));
+    showCutFill();
     expect(volumetric.getState().change).toEqual({ from: 'e2', to: 'e3' });
     expect(pressed('from')).toEqual(['9 Feb']);
     expect(pressed('to')).toEqual(['9 Mar']);
@@ -99,7 +105,7 @@ describe('Volume tools: Cut / fill', () => {
     });
     try {
       render();
-      click(button('Cut / fill'));
+      showCutFill();
       click(button('12 Jan', side('from')));
       expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e3' });
       click(button('9 Feb', side('to')));
@@ -136,7 +142,7 @@ describe('Volume tools: Cut / fill', () => {
     const off = connectVolumeChange(volumetric, { site, surfaces: () => [surface('h3', 'c3')] });
     try {
       render();
-      click(button('Cut / fill'));
+      showCutFill();
       await Promise.resolve();
       expect(site).not.toHaveBeenCalled();
       expect(volumetric.getState().changeGrid).toBeNull();
@@ -162,7 +168,7 @@ describe('Volume tools: Cut / fill', () => {
     });
     try {
       render();
-      click(button('Cut / fill'));
+      showCutFill();
       expect(site).not.toHaveBeenCalled();
       surfaces = [surface('h2', 'c2'), surface('h3', 'c3')];
       for (const l of listeners) l();
@@ -174,7 +180,7 @@ describe('Volume tools: Cut / fill', () => {
 
   it('a To picked before From swaps them: the earlier survey is From', () => {
     render();
-    click(button('Cut / fill'));
+    showCutFill();
     click(button('12 Jan', side('to')));
     expect(volumetric.getState().change).toEqual({ from: 'e1', to: 'e2' });
   });
@@ -208,13 +214,5 @@ describe('the volume tools strings', () => {
       expect(src).not.toContain("'Swipe'");
       expect(src).not.toContain('Section line between');
     }
-  });
-
-  it('names the Swipe button from vol.swipe', () => {
-    root ??= createRoot(host);
-    act(() => {
-      root?.render(<VolumeDateSwipe />);
-    });
-    expect(button('Swipe')).toBeDefined();
   });
 });

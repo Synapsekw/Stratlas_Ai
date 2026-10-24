@@ -1,0 +1,267 @@
+/* The Volumes tab (volumetrics redesign, board 1): the header with its three tiles, the segments
+   and the Inventory table grouped by material. The pile panel (pile.css) and the Cut & fill and
+   Materials panes (cutFill.css, materials.css) style themselves. */
+
+/* every row its content height: in the bench's fixed height the view scrolls, never a row */
+.vb-view {
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: var(--sp-5);
+  padding: var(--sp-6) var(--sp-6) var(--sp-7);
+  min-width: 0;
+}
+.vb-view.vb-open {
+  padding: 0;
+}
+.vb-view > .empty-state {
+  margin-block-start: var(--sp-6);
+}
+.vb-seg {
+  display: flex;
+}
+.vb-seg button {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+/* ---------- header ---------- */
+.vh {
+  display: grid;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.vh-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.vh-titles {
+  min-width: 0;
+}
+.vh-cap,
+.vh-tcap {
+  margin: 0;
+  font-family: var(--f-cond);
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: var(--caps-ls);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.vh-date {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--t-14);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.vh-src {
+  font-size: var(--t-12);
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+/* Volume, Tonnes, the change: one strip of three, hairlines between */
+.vh-kpi {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-6);
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.vh-tile {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--bg-2);
+}
+.vh-tile dd {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  min-width: 0;
+}
+.vh-tile b {
+  margin-block-start: var(--sp-1);
+  overflow: hidden;
+  font-family: var(--f-mono);
+  font-size: var(--t-16);
+  font-weight: 500;
+  color: var(--fg-0);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.vh-tile b small {
+  font-size: var(--t-11);
+  font-weight: 400;
+  color: var(--fg-3);
+}
+.vh-tile em {
+  font-style: normal;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.vh-tile dd[data-sign='loss'] b,
+.vh-tile dd[data-sign='loss'] em {
+  color: var(--cut);
+}
+.vh-tile dd[data-sign='gain'] b,
+.vh-tile dd[data-sign='gain'] em {
+  color: var(--fill);
+}
+.vh-status {
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.vh-status p {
+  margin: 0;
+}
+.vh-status b {
+  font-weight: 500;
+  color: var(--fg-1);
+}
+
+/* ---------- Inventory ---------- */
+.vi {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.vi-cap {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.vi-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+}
+.vi-table th,
+.vi-table td {
+  padding: var(--sp-2) var(--sp-3);
+  text-align: end;
+  white-space: nowrap;
+  border-block-end: 1px solid var(--line-soft);
+}
+.vi-table thead th {
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--fg-3);
+}
+.vi-table th:first-child,
+.vi-table td:first-child {
+  text-align: start;
+}
+.vi-table td {
+  font-family: var(--f-mono);
+  color: var(--fg-1);
+}
+.vi-table td[data-sign='loss'] {
+  color: var(--cut);
+}
+.vi-table td[data-sign='gain'] {
+  color: var(--fill);
+}
+.vi-name {
+  font-weight: 400;
+  color: var(--fg-1);
+}
+.vi-group th,
+.vi-group td {
+  background: var(--bg-2);
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.vi-group .vi-name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.vi-sq {
+  flex: none;
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: var(--r-2);
+}
+.vi-dens {
+  font-size: var(--t-11);
+  font-weight: 400;
+  color: var(--fg-3);
+}
+.vi-pile {
+  cursor: pointer;
+  transition: background-color var(--d-1) var(--ease);
+}
+.vi-pile .vi-name {
+  padding-inline-start: calc(var(--sp-3) + 9px + var(--sp-3));
+}
+.vi-pile:hover th,
+.vi-pile:hover td {
+  background: var(--acc-a12);
+}
+.vi-pile:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: -1px;
+}
+.vi-why {
+  font-family: inherit;
+  text-align: start;
+  white-space: normal;
+  color: var(--fg-3);
+}
+.vi-left .vi-name {
+  color: var(--fg-2);
+}
+.vi-more td {
+  padding-block: var(--sp-1);
+}
+.vi-more-btn {
+  padding: var(--sp-1) 0;
+  padding-inline-start: calc(9px + var(--sp-3));
+  border: 0;
+  background: none;
+  color: var(--fg-3);
+  font: inherit;
+  font-family: var(--f-ui);
+  cursor: pointer;
+}
+.vi-more-btn:hover {
+  color: var(--fg-1);
+}
+.vi-more-btn:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 2px;
+}
+.vi-total th,
+.vi-total td {
+  border-block-end: 0;
+  font-weight: 600;
+  color: var(--fg-0);
+}
+/* a figure partly outside the survey: marked, the header names the piles */
+.vi-partial {
+  text-decoration: underline dotted var(--fg-3);
+  text-underline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vi-pile {
+    transition: none;
+  }
+}
+.vi-why::first-letter {
+  text-transform: uppercase;
+}

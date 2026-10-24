@@ -3,9 +3,10 @@ import { volumetric } from '@aio/volumetric';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it } from 'vitest';
+import { volumesPane } from '../../../survey/volumes/volumesPane';
 import { VolumesBench } from './VolumesBench';
 
-// the bench with the real volumes view under its switches (VolumesBench.test.tsx stubs it)
+// the bench with its real panes and stores (VolumesBench.test.tsx stubs them), on a kit project
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: HTMLDivElement;
@@ -27,6 +28,7 @@ beforeEach(() => {
       pileChange: { cut: 0, fill: 0, net: 0 },
     } as never,
   });
+  volumesPane.setState({ pane: 'inventory' });
   host = document.createElement('div');
   document.body.append(host);
 });
@@ -37,12 +39,19 @@ afterEach(() => {
   volumetric.setState({ status: 'idle', file: null });
 });
 
-it('shows one Survey date switch: the inventory below has none of its own', () => {
+it('has no kit switches of its own: the Show control and the notch carry them', () => {
   root = createRoot(host);
   act(() => {
     root?.render(<VolumesBench />);
   });
-  // the volumes view (here with no pile yet) sits under the switches, with no date switch of its own
   expect(host.querySelector('[data-testid="volumes-view"]')).not.toBeNull();
-  expect(host.querySelectorAll('[role="group"][aria-label="Survey date"]')).toHaveLength(1);
+  for (const label of ['Survey date', 'Surface colours', 'Volume bodies'])
+    expect(host.querySelector(`[role="group"][aria-label="${label}"]`)).toBeNull();
+  const names = [...host.querySelectorAll('button')].map((b) => b.textContent);
+  expect(names).not.toContain('Section line between the surveys');
+  expect(names).not.toContain('Swipe');
+  // the three panes are there
+  expect(
+    [...host.querySelectorAll('[data-testid="volumes-segment"]')].map((b) => b.textContent),
+  ).toEqual(['Inventory', 'Cut & fill', 'Materials']);
 });
