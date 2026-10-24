@@ -18,6 +18,8 @@ import { providerLabel } from '../screens/settings/DetectionModels';
 import '../screens/settings/detectionModels.css';
 import { bridge, useCall } from '../shell';
 import { walkViews } from '../walks/walkView';
+import { defaultClass, readClassMap, writeClassMap } from '../inspect/askAi/classMap';
+import { MAX_WALK_FRAMES, WALK_EVERY, walkItems } from '../inspect/askAi/frames';
 import { sampleTimes, type DetectItem } from './convert';
 import { loadDetections } from './store';
 
@@ -32,8 +34,6 @@ const MODE_LABEL = {
 
 const MODE_KEY = 'stratlas.detect.mode';
 const MODEL_KEY = 'stratlas.detect.model';
-const classMapKey = (projectId: string, model: string) =>
-  `stratlas.detect.classMap.${projectId}.${model}`;
 
 function readStore(key: string): string | null {
   try {
@@ -47,33 +47,6 @@ function writeStore(key: string, value: string): void {
     window.localStorage.setItem(key, value);
   } catch {
     // a remembered choice is a convenience only
-  }
-}
-
-/**
- * A class was made from a model's word (Create class in the review): every local model of this
- * project that keeps that word as it is ("keep the name") now maps it to the new class. A word
- * mapped to a class on purpose is left alone.
- */
-export function mapModelClass(projectId: string, raw: string, classId: string): void {
-  const prefix = `stratlas.detect.classMap.${projectId}.`;
-  let keys: string[];
-  try {
-    keys = Object.keys(window.localStorage).filter((k) => k.startsWith(prefix));
-  } catch {
-    return;
-  }
-  const word = raw.trim().toLowerCase();
-  for (const key of keys) {
-    let map: Record<string, string>;
-    try {
-      map = JSON.parse(readStore(key) ?? '{}') as Record<string, string>;
-    } catch {
-      continue;
-    }
-    const hit = Object.keys(map).find((k) => k.trim().toLowerCase() === word);
-    if (hit === undefined || map[hit]) continue;
-    writeStore(key, JSON.stringify({ ...map, [hit]: classId }));
   }
 }
 
@@ -117,26 +90,6 @@ export function ModeSwitch({
 type Scope = 'selected' | 'current' | 'unreviewed' | 'walk';
 type WalkLayer = Extract<Layer, { kind: 'walk' }>;
 
-/** Intervals offered for walk frames, in seconds. */
-export const WALK_EVERY = [1, 2, 5, 10] as const;
-/**
- * At most this many walk frames per run. A local run costs nothing, so the cap is higher than the
- * cloud's 500: it covers a 33 minute walk at one frame a second, while one run stays a bounded
- * job (a few hundred ms a frame: minutes, not hours) and a bounded list of items over IPC.
- */
-export const MAX_WALK_FRAMES = 2000;
-
-/** Frames of a walk to check: one every `everyS` seconds, or only the time `at`. */
-export function walkItems(
-  walk: { id: string; durationS: number },
-  pick: { everyS: number } | { at: number },
-): DetectItem[] {
-  const times =
-    'at' in pick
-      ? [Math.round(pick.at * 1000) / 1000]
-      : sampleTimes(walk.durationS, pick.everyS, MAX_WALK_FRAMES);
-  return times.map((t) => ({ kind: 'frame', layer: walk.id, t }));
-}
 type Phase = 'running' | 'done' | 'stopped' | 'failed';
 
 interface Progress {
@@ -152,14 +105,6 @@ interface Progress {
   skipped?: number | undefined;
   reason?: string | undefined;
   error?: string;
-}
-
-/** The project class a model class maps to by default: same id or label, else none. */
-function defaultClass(name: string, classes: readonly { id: string; label: string }[]): string {
-  const n = name.trim().toLowerCase();
-  return (
-    classes.find((c) => c.id.toLowerCase() === n || c.label.trim().toLowerCase() === n)?.id ?? ''
-  );
 }
 
 function runStamp(): string {
@@ -260,15 +205,7 @@ export function LocalDetectDialog({
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const classMap = useMemo<Record<string, string>>(() => {
     if (!model) return {};
-    let stored: Record<string, string> = {};
-    try {
-      stored = JSON.parse(readStore(classMapKey(projectId, model.id)) ?? '{}') as Record<
-        string,
-        string
-      >;
-    } catch {
-      stored = {};
-    }
+    const stored = readClassMap(projectId, model.id);
     const mine = edits[model.id] ?? {};
     return Object.fromEntries(
       model.card.classes.map((c) => [c, mine[c] ?? stored[c] ?? defaultClass(c, projectClasses)]),
@@ -317,7 +254,7 @@ export function LocalDetectDialog({
     const r = resume && run.current ? run.current : { id: runStamp(), items };
     run.current = r;
     writeStore(MODEL_KEY, model.id);
-    writeStore(classMapKey(projectId, model.id), JSON.stringify(classMap));
+    writeClassMap(projectId, model.id, classMap);
     const frames = r.items[0]?.kind === 'frame';
     setProgress({ phase: 'running', done: 0, total: r.items.length, found: 0, frames });
     const res = await bridge.call('inference:run', {

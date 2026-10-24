@@ -1,6 +1,6 @@
 import { workspace } from '@aio/workspace';
 import { createClass } from '../classes/store';
-import { mapModelClass } from './LocalDetect';
+import { mapModelClass } from '../inspect/askAi/classMap';
 import { loadDetections } from './store';
 
 /**
