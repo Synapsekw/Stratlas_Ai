@@ -554,16 +554,24 @@ test.describe('inspection pipeline', () => {
         }),
       );
 
-      // review: X rejects the false alarm, A accepts the first view, L links the second to it
-      // review in the queue (the slider at 0 so the 40 % false alarm is in it): D rejects the
-      // false alarm (X works too), A accepts the first view, L links the second to it
+      // review in the queue: D rejects the false alarm (X works too), A accepts the first view,
+      // L links the second to it. The queue opens at the 50 % start on the 90 % view; the slider
+      // at 0 brings in the 40 % false alarm ahead of it (review order: photo, then top to bottom)
+      // and the queue keeps its place, so K steps back to it.
       await openInspect(win);
       await expect(win.getByTestId('inspect-chip-review-count')).toHaveText('2'); // photos
       await win.getByTestId('inspect-review').click();
+      const queue = win.getByTestId('inspect-queue');
+      const progress = win.getByTestId('queue-progress');
+      await expect(progress).toHaveText('1 of 2');
+      await expect(queue).toContainText('90%');
       await win.getByTestId('queue-threshold').fill('0');
       const counts = win.getByTestId('det-counts');
       await expect(counts).toContainText('3 waiting · 1 accepted · 0 rejected');
-      const queue = win.getByTestId('inspect-queue');
+      await expect(progress).toHaveText('2 of 3');
+      await expect(queue).toContainText('90%');
+      await win.keyboard.press('k');
+      await expect(progress).toHaveText('1 of 3');
       await expect(queue).toContainText('40%');
       await win.keyboard.press('d');
       await expect(queue).toContainText('90%');
