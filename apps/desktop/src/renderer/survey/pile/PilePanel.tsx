@@ -22,6 +22,7 @@ import {
   pileMaterial,
   pileSeries,
   volumeRows,
+  type CaptureDateOf,
   type TimeRow,
 } from '@aio/survey';
 import { Tabs, useT } from '@aio/ui';
@@ -33,7 +34,9 @@ import { isStale, seriesStale, useCompare } from '../compareStore';
 import { drawnPoints } from '../measureDates';
 import { select, useMeasure } from '../measureStore';
 import { escapeStage } from '../stageEscape';
+import { captureDateOf, datedCaptures, weighRows } from '../volumes/surveyDates';
 import { pickInVolumesView } from '../volumesPick';
+import { useTimeline } from '../../workspace/timeline';
 import { PileHeader } from './PileHeader';
 import { PileHistory } from './PileHistory';
 import { PileOverview } from './PileOverview';
@@ -56,6 +59,12 @@ export interface PileData {
   stored: ComparisonResult | undefined;
   /** Its one status line (the volume card's). */
   line: StatusLine;
+  /** The project's survey dates (`densityOn` reads a material's density on each). */
+  dateOf: CaptureDateOf;
+  /** The dated survey a density edit applies from: the date in focus, else the figure's. */
+  densityFrom: string | null;
+  /** The earliest dated survey (`withDensityFrom` keeps an earlier density from it). */
+  earliest: string | null;
 }
 
 /** The pile's figures, as the volume card and the inventory work them out. */
@@ -67,6 +76,8 @@ function usePileData(m: SurveyMeasurement | null): PileData | null {
   const captures = useCompare((s) => s.captures);
   const current = useCompare((s) => s.current);
   const running = useCompare((s) => (m ? s.running[m.id] === true : false));
+  const manifestCaptures = useWorkspace((s) => s.project?.manifest.captures);
+  const focus = useTimeline((s) => s.focus);
   return useMemo(() => {
     if (!m) return null;
     const units = effectiveUnits(settings.units, m.units);
@@ -78,14 +89,20 @@ function usePileData(m: SurveyMeasurement | null): PileData | null {
     const storedStale =
       storedRow !== undefined &&
       (storedRow.status === 'stale' || isStale({ current }, m, storedRow));
+    const surveys = manifestCaptures ?? [];
+    const dateOf = captureDateOf(surveys);
+    const dated = datedCaptures(surveys);
+    // each date's tonnes at the material's density on that date (`densityOn`)
     const rows = first
-      ? volumeRows(over.series, captures, {
-          ...(material?.densityTPerM3 !== undefined
-            ? { densityTPerM3: material.densityTPerM3 }
-            : {}),
-          isStale: (r) => (r === storedRow ? storedStale : seriesStale(m, r)),
-        })
+      ? weighRows(
+          volumeRows(over.series, captures, {
+            isStale: (r) => (r === storedRow ? storedStale : seriesStale(m, r)),
+          }),
+          material,
+          dateOf,
+        )
       : [];
+    const figures = pileFigures(rows);
     const stored = first ? m.results.find((r) => r.item === first.id) : undefined;
     const carriedSeries = (m.series ?? []).some((r) => r.carried !== undefined);
     const line = volumeStatusLine(stored, {
@@ -102,11 +119,29 @@ function usePileData(m: SurveyMeasurement | null): PileData | null {
       readOnly: fileReadOnly || lookOnly,
       material,
       rows,
-      figures: pileFigures(rows),
+      figures,
       stored,
       line,
+      dateOf,
+      // only a dated survey: an undated one cannot order a density history
+      densityFrom:
+        [focus, figures.current?.capture, dated.at(-1)?.id].find(
+          (c): c is string => c != null && dateOf(c) !== null,
+        ) ?? null,
+      earliest: dated[0]?.id ?? null,
     };
-  }, [m, settings, kit, fileReadOnly, lookOnly, captures, current, running]);
+  }, [
+    m,
+    settings,
+    kit,
+    fileReadOnly,
+    lookOnly,
+    captures,
+    current,
+    running,
+    manifestCaptures,
+    focus,
+  ]);
 }
 
 /** Open a pile from the panel: the view's own pick (the Measure tab does not follow it). */

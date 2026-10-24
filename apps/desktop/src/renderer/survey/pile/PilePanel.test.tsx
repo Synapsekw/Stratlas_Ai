@@ -22,6 +22,8 @@ const s = vi.hoisted(() => ({
     file: { measurements: SurveyMeasurement[] };
   },
   dates: [] as { capture: string; label: string; date: string; state: SurfaceState }[],
+  surveys: [] as { id: string; date: string; label: string }[],
+  focus: null as string | null,
 }));
 const calls = vi.hoisted(() => ({
   select: vi.fn(),
@@ -75,7 +77,10 @@ vi.mock('../surfaceStates', () => ({
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => false }));
 vi.mock('@aio/workspace', () => ({
   useWorkspace: (sel: (x: unknown) => unknown) =>
-    sel({ project: { id: 'p1', manifest: { captures: [], layers: [] } } }),
+    sel({ project: { id: 'p1', manifest: { captures: s.surveys, layers: [] } } }),
+}));
+vi.mock('../../workspace/timeline', () => ({
+  useTimeline: (sel: (x: unknown) => unknown) => sel({ focus: s.focus }),
 }));
 
 const { PilePanel } = await import('./PilePanel');
@@ -160,6 +165,8 @@ const click = (el: Element | null | undefined) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  s.surveys = [];
+  s.focus = null;
   pileView.setState({ tab: 'overview', axis: new Map(), fitted: new Map(), historyUnit: 'm3' });
   s.compare = {
     status: 'ready',
@@ -342,6 +349,77 @@ describe('PilePanel', () => {
     expect(calls.saveSettings).toHaveBeenCalledTimes(1);
     const saved = calls.saveSettings.mock.calls[0]?.[0];
     expect(saved?.materials).toEqual([{ id: 'agg', name: 'Aggregate 20 mm', densityTPerM3: 1.75 }]);
+  });
+
+  it('density reads and writes are dated (review finding 2)', async () => {
+    s.surveys = CAPTURES;
+    s.focus = 'c1';
+    s.measure.settings = {
+      ...settings,
+      materials: [
+        {
+          id: 'agg',
+          name: 'Aggregate 20 mm',
+          densityTPerM3: 1.6,
+          densityHistory: [
+            { fromCapture: 'c1', tPerM3: 1.5 },
+            { fromCapture: 'c2', tPerM3: 1.6 },
+          ],
+        },
+      ] as never,
+    };
+    render();
+    const input = q('[data-testid="pile-density"]') as HTMLInputElement;
+    // the field reads the density on the date in focus, the tonnes tile on the figure's date
+    expect(input.value).toBe('1.50');
+    expect(text('[data-testid="pile-kpi-tonnes"]')).toContain('at 1.60 t/m³');
+    act(() => {
+      Reflect.set(HTMLInputElement.prototype, 'value', '1.55', input);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      await Promise.resolve();
+    });
+    const saved = calls.saveSettings.mock.calls[0]?.[0];
+    expect(saved?.materials).toEqual([
+      {
+        id: 'agg',
+        name: 'Aggregate 20 mm',
+        densityTPerM3: 1.6,
+        densityHistory: [
+          { fromCapture: 'c1', tPerM3: 1.55 },
+          { fromCapture: 'c2', tPerM3: 1.6 },
+        ],
+      },
+    ]);
+  });
+
+  it('a first density edit from a later date keeps the earlier dates at the old density', async () => {
+    s.surveys = CAPTURES;
+    s.focus = 'c2';
+    render();
+    const input = q('[data-testid="pile-density"]') as HTMLInputElement;
+    act(() => {
+      Reflect.set(HTMLInputElement.prototype, 'value', '1.75', input);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      await Promise.resolve();
+    });
+    const saved = calls.saveSettings.mock.calls[0]?.[0];
+    expect(saved?.materials).toEqual([
+      {
+        id: 'agg',
+        name: 'Aggregate 20 mm',
+        densityTPerM3: 1.75,
+        densityHistory: [
+          { fromCapture: 'c1', tPerM3: 1.6 },
+          { fromCapture: 'c2', tPerM3: 1.75 },
+        ],
+      },
+    ]);
   });
 
   it('the density field writes and reads numbers in the locale', async () => {

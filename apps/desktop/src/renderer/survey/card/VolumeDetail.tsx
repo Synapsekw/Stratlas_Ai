@@ -48,6 +48,7 @@ import type { ItemShare } from '../engineProtocol';
 import { updateMeasurement, useMeasure } from '../measureStore';
 import { usePrepareRunning, usePreparingSoon, useSurfaceStates } from '../surfaceStates';
 import { setSeriesFailed, useSeriesFailed } from '../useInventory';
+import { captureDateOf, weighRows } from '../volumes/surveyDates';
 import { emptyReason } from './pointHistory';
 import {
   BaseFields,
@@ -277,11 +278,16 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   // the stored figure's row is stale exactly when its figures are
   const storedStale =
     storedRow !== undefined && (storedRow.status === 'stale' || isStale({ current }, m, storedRow));
+  // each date weighs at the material's density on that date (`densityOn`)
+  const dateOf = captureDateOf(manifest?.captures ?? []);
   const rows = first
-    ? volumeRows(over.series, captures, {
-        ...(density !== undefined ? { densityTPerM3: density } : {}),
-        isStale: (r) => (r === storedRow ? storedStale : seriesStale(m, r)),
-      })
+    ? weighRows(
+        volumeRows(over.series, captures, {
+          isStale: (r) => (r === storedRow ? storedStale : seriesStale(m, r)),
+        }),
+        material,
+        dateOf,
+      )
     : [];
   // null outside the spread bases and while the item is carried (`spreadItem`, R16)
   const spreadValue = spread !== null && spread !== 'computing' ? spread : null;

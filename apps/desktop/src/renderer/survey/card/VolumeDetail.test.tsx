@@ -25,6 +25,7 @@ const s = vi.hoisted(() => ({
     string,
     { kind: 'ready' } | { kind: 'preparing'; pct: number } | { kind: 'none' }
   >(),
+  surveys: [] as { id: string; date: string }[],
 }));
 const calls = vi.hoisted(() => ({
   compute: vi.fn(() => Promise.resolve(null)),
@@ -59,7 +60,7 @@ vi.mock('../BaseEditor', () => ({ BaseEditor: () => <div data-testid="base-edito
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => false }));
 vi.mock('@aio/workspace', () => ({
   useWorkspace: (sel: (x: unknown) => unknown) =>
-    sel({ project: { manifest: { captures: [], layers: [] } } }),
+    sel({ project: { manifest: { captures: s.surveys, layers: [] } } }),
 }));
 
 const { VolumeDetail, volumeStatusLine } = await import('./VolumeDetail');
@@ -122,6 +123,7 @@ const v = (x: number) => formatQuantity(x, 'volume', settings().units, settings(
 
 beforeEach(() => {
   s.prepareRunning = false;
+  s.surveys = [];
   s.compare = {
     status: 'ready',
     error: null,
@@ -377,6 +379,35 @@ describe('VolumeDetail', () => {
     show(pile({ series }));
     const heads = [...host.querySelectorAll('[data-testid="vol-time-table"] th[scope="col"]')];
     expect(heads.map((x) => x.textContent)).toEqual(['Date', 'Volume', 'Change']);
+  });
+
+  it('each date weighs at the density on that date (review finding 2)', () => {
+    s.surveys = [
+      { id: 'c1', date: '2026-09-05' },
+      { id: 'c2', date: '2026-10-05' },
+    ];
+    s.measure.settings = {
+      ...settings(),
+      materials: [
+        {
+          id: 'mat1',
+          name: '20 mm aggregate',
+          densityTPerM3: 1.7,
+          densityHistory: [
+            { fromCapture: 'c1', tPerM3: 1.5 },
+            { fromCapture: 'c2', tPerM3: 1.7 },
+          ],
+        },
+      ],
+    };
+    const series = [
+      result({ toCapture: 'c1', netM3: 3070, totalM3: 3070, fingerprint: 'f1' }),
+      result({ toCapture: 'c2', netM3: 3482, totalM3: 3482, fingerprint: 'f2' }),
+    ];
+    show(pile({ material: 'mat1', series }));
+    const rows = [...host.querySelectorAll('[data-testid="vol-time-table"] tbody tr')];
+    expect(rows[0]?.querySelectorAll('td')[2]?.textContent).toBe('4 605.0 t');
+    expect(rows[1]?.querySelectorAll('td')[2]?.textContent).toBe('5 919.4 t');
   });
 
   it('tonnage is volume times density in tonnes, metric and imperial', () => {

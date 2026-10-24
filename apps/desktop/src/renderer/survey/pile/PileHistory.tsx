@@ -7,7 +7,7 @@
 import { formatNumber, fromSI, unitLabel } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
 import type { ComparisonResult } from '@aio/schema';
-import { pileSeries, seriesDate, type TimeRow } from '@aio/survey';
+import { densityOn, pileSeries, seriesDate, type TimeRow } from '@aio/survey';
 import { Button, useT } from '@aio/ui';
 import { useMemo, useState, type ReactElement } from 'react';
 import { TimeChart, type TimeValueOf } from '../../charts/TimeChart';
@@ -32,6 +32,9 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
   const vol = (x: number) => volumeParts(x, units, decimals, locale).num;
   const mass = (x: number) => massParts(x, units, locale).num;
   const density = material?.densityTPerM3;
+  // each date's density (`densityOn`: an edit from a later date leaves earlier dates alone)
+  const densityAt = (capture: string) =>
+    material ? (densityOn(material, capture, data.dateOf) ?? undefined) : undefined;
   const was = wasFigure(m);
   const firstWithValue = rows.find((r) => r.valueM3 !== null);
   const shownRows = [...rows].reverse();
@@ -175,8 +178,8 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
                 )}
               </td>
               <td>
-                {density !== undefined && r.valueM3 !== null
-                  ? formatNumber(density, DENSITY_DECIMALS, locale)
+                {densityAt(r.capture) !== undefined && r.valueM3 !== null
+                  ? formatNumber(densityAt(r.capture) ?? 0, DENSITY_DECIMALS, locale)
                   : ''}
               </td>
               <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>
@@ -192,10 +195,10 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
         </tbody>
       </table>
 
-      {material && firstWithValue && density !== undefined && (
+      {material && firstWithValue && densityAt(firstWithValue.capture) !== undefined && (
         <p className="pp-note" data-testid="pile-history-note">
           {t('pile.history.note', {
-            density: formatNumber(density, DENSITY_DECIMALS, locale),
+            density: formatNumber(densityAt(firstWithValue.capture) ?? 0, DENSITY_DECIMALS, locale),
             material: material.name,
             date: firstWithValue.label,
           })}

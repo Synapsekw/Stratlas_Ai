@@ -25,9 +25,11 @@ import {
   seriesDate,
 } from '@aio/survey';
 import { t } from '@aio/ui';
+import { workspace } from '@aio/workspace';
 import { setKitDisplay, type PileFigure, type PileFigures, type Volumetric } from '@aio/volumetric';
 import type { StoreApi } from 'zustand/vanilla';
 import { rowText, templateItems } from '../survey/card/cardModel';
+import { captureDateOf, type DatedCapture } from '../survey/volumes/surveyDates';
 
 /** Whether a figure is stale: `stored` for the measurement's stored result (the card's rule). */
 export type PileStale = (m: SurveyMeasurement, r: ComparisonResult, stored: boolean) => boolean;
@@ -62,7 +64,11 @@ export function pileFigures(
   measurements: readonly SurveyMeasurement[],
   settings: SurveySettings,
   templates: readonly SurveyTemplate[],
-  opts: { isStale?: PileStale } = {},
+  opts: {
+    isStale?: PileStale;
+    /** The project's surveys (the manifest's captures): a density history dates by them. */
+    captures?: readonly DatedCapture[];
+  } = {},
 ): PileFigures {
   if (!volumes) return {};
   // a kit pile weighs by the kit's density unless the person picked a site material
@@ -71,11 +77,11 @@ export function pileFigures(
       ? kitDensity({ densityTPerM3: volumes.densityTPerM3, piles: volumes.piles ?? [] })
       : null;
   const out: Record<string, Record<string, PileFigure>> = {};
-  const times = new Map(volumes.captures.map((c) => [c.captureId, Date.parse(c.date)]));
-  const dateOf = (capture: string): number | null => {
-    const ms = times.get(capture);
-    return ms !== undefined && Number.isFinite(ms) ? ms : null;
-  };
+  // the project's survey dates (a density history names any survey, not only the kit's); the
+  // kit's own dates stand in for a capture the manifest does not list
+  const project = captureDateOf(opts.captures ?? []);
+  const kitDates = captureDateOf(volumes.captures.map((c) => ({ id: c.captureId, date: c.date })));
+  const dateOf = (capture: string): number | null => project(capture) ?? kitDates(capture);
   for (const m of measurements) {
     if (m.origin?.kind !== 'kit-pile') continue;
     const per: Record<string, PileFigure> = {};
@@ -117,12 +123,16 @@ export interface PileFigureDeps {
   templates(): readonly SurveyTemplate[];
   /** Whether a figure is stale (the card's predicate); without it only a marked one is. */
   isStale?: PileStale;
+  /** The project's surveys; the open project's manifest captures by default. */
+  captures?(): readonly DatedCapture[];
   /** Hear a change to the measurements, the settings, the templates or what is stale. */
   subscribe(listener: () => void): () => void;
 }
 
 /** Keep the volumetric store's pile figures in step with the measurements. */
 export function connectPileFigures(store: StoreApi<Volumetric>, deps: PileFigureDeps): () => void {
+  const own = deps.captures?.bind(deps);
+  const captures = own ?? (() => workspace.getState().project?.manifest.captures ?? []);
   let last = '';
   let shownSettings: SurveySettings | null = null;
   const sync = () => {
@@ -145,6 +155,7 @@ export function connectPileFigures(store: StoreApi<Volumetric>, deps: PileFigure
     const file = s.status === 'ready' ? s.file : null;
     const figures = pileFigures(file, deps.measurements(), deps.settings(), deps.templates(), {
       ...(deps.isStale ? { isStale: deps.isStale } : {}),
+      captures: captures(),
     });
     const text = JSON.stringify(figures);
     if (text === last && text === JSON.stringify(s.pileFigures)) return;
@@ -156,8 +167,15 @@ export function connectPileFigures(store: StoreApi<Volumetric>, deps: PileFigure
     if (s.file !== p.file || s.status !== p.status) sync();
   });
   const offDeps = deps.subscribe(sync);
+  // a survey's date, or the project, changed: the densities date again
+  const offProject = own
+    ? () => undefined
+    : workspace.subscribe((s, p) => {
+        if (s.project?.manifest.captures !== p.project?.manifest.captures) sync();
+      });
   return () => {
     offStore();
     offDeps();
+    offProject();
   };
 }

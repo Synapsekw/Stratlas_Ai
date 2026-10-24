@@ -192,19 +192,45 @@ export function materialsFromCsv(text: string): MaterialsImport {
   return { materials, problems };
 }
 
+/** Where a merged density applies from (the date in focus) and the survey dates. */
+export interface MergeDensityAt {
+  fromCapture: string;
+  earliestCapture: string;
+  dateOf: CaptureDateOf;
+}
+
 /**
- * Merge imported materials into a site's list: an imported id replaces the material with that id,
- * new ids are added at the end (up to the limit).
+ * Merge imported materials into a site's list: an imported id is merged onto the material with
+ * that id (its colour and density history kept, the imported fields over the rest), new ids are
+ * added at the end (up to the limit). An imported density that differs from the material's
+ * newest one applies from `at.fromCapture` on (`withDensityFrom`), earlier dates keep theirs.
  */
 export function mergeMaterials(
   site: readonly SiteMaterial[],
   incoming: readonly SiteMaterial[],
+  at?: MergeDensityAt,
 ): SiteMaterial[] {
   const byId = new Map(incoming.map((m) => [m.id, m]));
-  const out = site.map((m) => byId.get(m.id) ?? m);
+  const out = site.map((m) => {
+    const got = byId.get(m.id);
+    return got ? mergeOne(m, got, at) : m;
+  });
   const have = new Set(site.map((m) => m.id));
   for (const m of incoming) if (!have.has(m.id) && out.length < MAX_MATERIALS) out.push(m);
   return out;
+}
+
+function mergeOne(site: SiteMaterial, got: SiteMaterial, at?: MergeDensityAt): SiteMaterial {
+  const density = got.densityTPerM3;
+  const fields: SiteMaterial = { ...got };
+  delete fields.densityTPerM3;
+  delete fields.densityHistory;
+  const merged: SiteMaterial = { ...site, ...fields };
+  if (density === undefined) return merged;
+  const newest = at ? newestDensity(site, at.dateOf) : (site.densityTPerM3 ?? null);
+  if (newest === density) return merged;
+  if (!at) return { ...merged, densityTPerM3: density };
+  return withDensityFrom(merged, at.fromCapture, density, at.earliestCapture, at.dateOf);
 }
 
 /** A file-name-safe material id from a name ("Crushed 20 mm" to "crushed-20-mm"). */
@@ -226,20 +252,52 @@ export function materialIdFrom(name: string, taken: ReadonlySet<string>): string
 /** A capture's date as a number to order by (any monotonic clock), or null when it has none. */
 export type CaptureDateOf = (capture: string) => number | null;
 
+/**
+ * A material's density entries as they stand: its `densityHistory`, with a `densityTPerM3` that
+ * differs from the newest dated entry read as an edit from that entry's date on (a density saved
+ * alone, by the pile panel of an older build, is never lost behind the history).
+ */
+function effectiveHistory(
+  m: SiteMaterial,
+  dateOf: CaptureDateOf,
+): { fromCapture: string; tPerM3: number }[] {
+  const history = [...(m.densityHistory ?? [])];
+  const single = m.densityTPerM3;
+  if (single === undefined) return history;
+  let newest = -1;
+  let newestAt = Number.NEGATIVE_INFINITY;
+  history.forEach((e, i) => {
+    const at = dateOf(e.fromCapture);
+    if (at !== null && Number.isFinite(at) && at >= newestAt) {
+      newest = i;
+      newestAt = at;
+    }
+  });
+  const entry = history[newest];
+  if (entry && entry.tPerM3 !== single) history[newest] = { ...entry, tPerM3: single };
+  return history;
+}
+
 /** The history entries whose capture has a date, oldest first (undated ones are skipped). */
 function datedHistory(m: SiteMaterial, dateOf: CaptureDateOf) {
   const out: { fromCapture: string; tPerM3: number; at: number }[] = [];
-  for (const e of m.densityHistory ?? []) {
+  for (const e of effectiveHistory(m, dateOf)) {
     const at = dateOf(e.fromCapture);
     if (at !== null && Number.isFinite(at)) out.push({ ...e, at });
   }
   return out.sort((a, b) => a.at - b.at);
 }
 
+/** A material's newest density: its newest dated entry's, else `densityTPerM3` (null: none). */
+export function newestDensity(material: SiteMaterial, dateOf: CaptureDateOf): number | null {
+  return datedHistory(material, dateOf).at(-1)?.tPerM3 ?? material.densityTPerM3 ?? null;
+}
+
 /**
  * A material's density on a survey date: the latest `densityHistory` entry from that date or
  * before; before the first entry, the first entry. Without a history, or for a capture with no
- * date, the material's `densityTPerM3` (null when it has none).
+ * date, the material's `densityTPerM3` (null when it has none). A `densityTPerM3` unlike the
+ * newest entry counts from that entry's date on (`effectiveHistory`).
  */
 export function densityOn(
   material: SiteMaterial,
@@ -268,7 +326,7 @@ export function withDensityFrom(
   earliestCapture: string,
   dateOf: CaptureDateOf,
 ): SiteMaterial {
-  let history = [...(material.densityHistory ?? [])];
+  let history = effectiveHistory(material, dateOf);
   if (
     history.length === 0 &&
     material.densityTPerM3 !== undefined &&

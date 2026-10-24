@@ -8,10 +8,19 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatQuantity, toSI, unitLabel } from '@aio/geo';
 import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
-import { DENSITY_DECIMALS, effectiveUnits, materialReadout, pileMaterial } from '@aio/survey';
+import {
+  DENSITY_DECIMALS,
+  densityOn,
+  effectiveUnits,
+  materialReadout,
+  pileMaterial,
+  seriesDate,
+} from '@aio/survey';
+import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { openCompareDialog, setTonnes, useCompare } from './compareStore';
 import { updateMeasurement, useMeasure } from './measureStore';
+import { captureDateOf } from './volumes/surveyDates';
 
 type Basis = 'net' | 'fill' | 'cut';
 
@@ -27,15 +36,20 @@ export function Calculators({ m }: { m: SurveyMeasurement }) {
   const [itemId, setItemId] = useState<string | null>(null);
   const [basis, setBasis] = useState<Basis>('net');
   const [text, setText] = useState(typed === null ? '' : String(typed));
+  const surveys = useWorkspace((s) => s.project?.manifest.captures);
   if (m.family !== 'polygon') return null;
   // material, swell and weighed tonnage are for volumes: an area shows them once it is compared
   // to a date or a design (it then has a volume), never on its own
   if (m.tool !== 'volume' && m.items.length === 0) return null;
   const units = effectiveUnits(settings.units, m.units);
-  const material = pileMaterial(m, settings.materials, kit);
+  const site = pileMaterial(m, settings.materials, kit);
   const item = m.items.find((x) => x.id === itemId) ?? m.items[0];
   const r = item ? m.results.find((x) => x.item === item.id) : undefined;
   const usable = r && r.status !== 'refused' ? r : null;
+  // the material's density on the figure's own date (`densityOn`)
+  const onDate =
+    site && usable ? densityOn(site, seriesDate(usable), captureDateOf(surveys ?? [])) : null;
+  const material = site && onDate !== null ? { ...site, densityTPerM3: onDate } : site;
   const bank = usable ? volumeOf(usable, basis) : null;
   const tonnesTyped = typed;
   const out = bank !== null ? materialReadout(bank, material, tonnesTyped) : null;

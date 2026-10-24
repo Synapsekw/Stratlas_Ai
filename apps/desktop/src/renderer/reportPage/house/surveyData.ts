@@ -116,6 +116,7 @@ import type { EngineContext } from '../../survey/engineProtocol';
 import { EngineSession } from '../../survey/engineServe';
 import { drawnShifts, onDrawnPoints } from '../../survey/dateReadout';
 import { drawnPoints } from '../../survey/measureDates';
+import { captureDateOf, weighRows } from '../../survey/volumes/surveyDates';
 import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from '../../survey/seriesRule';
 
 type Key = Parameters<typeof t>[0];
@@ -711,11 +712,11 @@ async function volumesOverTime(
       return it !== undefined && seriesPrints.get(m.id)?.[`${it.id} ${capture}`] !== undefined;
     },
   });
+  const dateOf = captureDateOf(captures);
   return {
     inventory,
     piles: filled.map((m) => {
       const { series, stored } = pileSeries(m);
-      const density = info.material(m)?.densityTPerM3;
       const carried = series.find((r) => r.carried)?.carried;
       const it = m.items[0];
       return {
@@ -726,10 +727,12 @@ async function volumesOverTime(
         material: info.material(m),
         base: it ? standardBaseName(it.from) : '',
         carried: carried ? tk('vol.status.carried', { base: kitBaseName(carried.base, tk) }) : null,
-        rows: volumeRows(series, captures, {
-          isStale: (r) => isStale(m, r, r === stored),
-          ...(density !== undefined ? { densityTPerM3: density } : {}),
-        }),
+        // each date weighs at the material's density on that date (`densityOn`)
+        rows: weighRows(
+          volumeRows(series, captures, { isStale: (r) => isStale(m, r, r === stored) }),
+          info.material(m),
+          dateOf,
+        ),
         outline: info.outline(m),
       };
     }),

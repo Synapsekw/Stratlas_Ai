@@ -7,7 +7,7 @@
  */
 import { formatNumber, formatQuantity, fromSI, unitLabel, type NumberLocale } from '@aio/geo';
 import type { BaseSpec, ComparisonItem, SurfaceRef, SurveyUnits } from '@aio/schema';
-import { sideOptions } from '@aio/survey';
+import { densityOn, sideOptions, withDensityFrom } from '@aio/survey';
 import { Button, Tip, useT } from '@aio/ui';
 import { useId, useMemo, useState, type ReactElement } from 'react';
 import { BasePicker, DEFAULT_BASE } from '../card/BasePicker';
@@ -92,7 +92,10 @@ export function PileHeader({
   const pos = pilePosition(order, m.id);
   const v = (x: number) => volumeParts(x, units, settings.precision.volume, locale);
   const { current, previous } = figures;
-  const density = material?.densityTPerM3;
+  // the density on the figure's date (`densityOn`: a later edit leaves earlier dates alone)
+  const density =
+    (material && current ? densityOn(material, current.capture, data.dateOf) : null) ??
+    material?.densityTPerM3;
   const tonnes =
     current?.valueM3 != null && density !== undefined ? current.valueM3 * density : null;
 
@@ -320,13 +323,15 @@ function MaterialChip({ data }: { data: PileData }): ReactElement {
 function DensityField({ data }: { data: PileData }): ReactElement {
   const t = useT();
   const whyId = useId();
-  const { m, settings, readOnly, material, locale } = data;
+  const { m, settings, readOnly, material, locale, dateOf, densityFrom, earliest } = data;
   const own = m.material ? settings.materials.find((x) => x.id === m.material) : undefined;
+  // the density on the date an edit applies from (the date in focus)
+  const at =
+    material && densityFrom !== null
+      ? densityOn(material, densityFrom, dateOf)
+      : (material?.densityTPerM3 ?? null);
   // written as the tonnes tile writes it ("1.60"), and read back the same way
-  const shown =
-    material?.densityTPerM3 !== undefined
-      ? formatNumber(material.densityTPerM3, DENSITY_DECIMALS, locale)
-      : '';
+  const shown = at !== null ? formatNumber(at, DENSITY_DECIMALS, locale) : '';
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const disabled = readOnly || !own;
@@ -334,10 +339,13 @@ function DensityField({ data }: { data: PileData }): ReactElement {
     if (text === null || !own) return;
     const value = parseDecimal(text, locale);
     setText(null);
-    if (value === null || value <= 0 || value === own.densityTPerM3) return;
-    const materials = settings.materials.map((x) =>
-      x.id === own.id ? { ...x, densityTPerM3: value } : x,
-    );
+    if (value === null || value <= 0 || value === at) return;
+    // dated from the date in focus: that date and later ones take it, earlier ones keep theirs
+    const next =
+      densityFrom !== null
+        ? withDensityFrom(own, densityFrom, value, earliest ?? densityFrom, dateOf)
+        : { ...own, densityTPerM3: value };
+    const materials = settings.materials.map((x) => (x.id === own.id ? next : x));
     void saveSiteSettings({ ...settings, materials }).then(setError);
   };
   const field = (

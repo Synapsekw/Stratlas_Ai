@@ -175,3 +175,55 @@ describe('material colours', () => {
     expect(materialColour({ id: 'a', name: 'A' }, 9)).toBe('var(--mat-2)');
   });
 });
+
+describe('a density saved outside the history (review findings 2 and 3)', () => {
+  const DAYS: Record<string, number> = { d1: 10, d2: 20, d3: 30 };
+  const dateOf = (c: string): number | null => DAYS[c] ?? null;
+  const dated = {
+    id: 'agg',
+    name: 'Aggregate',
+    colour: '#112233',
+    densityTPerM3: 1.62,
+    densityHistory: [
+      { fromCapture: 'd1', tPerM3: 1.6 },
+      { fromCapture: 'd2', tPerM3: 1.62 },
+    ],
+  };
+
+  it('densityOn reads a densityTPerM3 unlike the newest entry as an edit from that date on', () => {
+    // an older build wrote densityTPerM3 alone
+    const old = { ...dated, densityTPerM3: 1.9 };
+    expect(densityOn(old, 'd1', dateOf)).toBe(1.6);
+    expect(densityOn(old, 'd2', dateOf)).toBe(1.9);
+    expect(densityOn(old, 'd3', dateOf)).toBe(1.9);
+    expect(densityOn(dated, 'd3', dateOf)).toBe(1.62);
+  });
+
+  it('withDensityFrom keeps such an edit as the newest entry', () => {
+    const old = { ...dated, densityTPerM3: 1.9 };
+    const next = withDensityFrom(old, 'd3', 2, 'd1', dateOf);
+    expect(next.densityHistory).toEqual([
+      { fromCapture: 'd1', tPerM3: 1.6 },
+      { fromCapture: 'd2', tPerM3: 1.9 },
+      { fromCapture: 'd3', tPerM3: 2 },
+    ]);
+  });
+
+  it('a CSV import merges onto the material, keeping its colour and history', () => {
+    const at = { fromCapture: 'd3', earliestCapture: 'd1', dateOf };
+    const same = mergeMaterials([dated], [{ id: 'agg', name: 'Agg 20', densityTPerM3: 1.62 }], at);
+    expect(same[0]).toEqual({ ...dated, name: 'Agg 20' });
+    const changed = mergeMaterials([dated], [{ id: 'agg', name: 'Agg', densityTPerM3: 1.7 }], at);
+    expect(changed[0]?.colour).toBe('#112233');
+    expect(changed[0]?.densityHistory).toEqual([
+      { fromCapture: 'd1', tPerM3: 1.6 },
+      { fromCapture: 'd2', tPerM3: 1.62 },
+      { fromCapture: 'd3', tPerM3: 1.7 },
+    ]);
+    expect(changed[0]?.densityTPerM3).toBe(1.7);
+    // a row without a density leaves the density alone
+    const none = mergeMaterials([dated], [{ id: 'agg', name: 'Agg' }], at);
+    expect(none[0]?.densityHistory).toEqual(dated.densityHistory);
+    expect(none[0]?.densityTPerM3).toBe(1.62);
+  });
+});

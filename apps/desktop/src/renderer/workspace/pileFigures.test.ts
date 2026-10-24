@@ -172,6 +172,33 @@ describe('pile figures from the volume measurements', () => {
     expect(figures([plain])).toEqual({});
   });
 
+  it("dates a density by the project's surveys, not only the kit's (review finding 18)", () => {
+    // the density history starts on a survey the kit has no figures for
+    const dated: SurveySettings = {
+      ...settings,
+      materials: [
+        {
+          id: 'sand',
+          name: 'Sand',
+          densityTPerM3: 2,
+          densityHistory: [
+            { fromCapture: 'c0', tPerM3: 1.5 },
+            { fromCapture: 'c2', tPerM3: 2 },
+          ],
+        },
+      ],
+    };
+    const captures = [
+      { id: 'c0', date: '2025-12-01' },
+      { id: 'c1', date: '2026-01-12' },
+      { id: 'c2', date: '2026-02-09' },
+    ];
+    const f = pileFigures({ captures: CAPTURES }, [pile()], dated, [], { captures });
+    // 800 m³ at 1.5 t/m³ (from c0 on) on the first kit date, not the c2 entry's 2 t/m³
+    expect(f.P01?.e1?.tonnes).toMatch(/^1\D?200/);
+    expect(f.P01?.e2?.tonnes).toMatch(/^2\D?400/);
+  });
+
   it('keeps the volumetric store in step as the measurements change', async () => {
     const ws = createWorkspace();
     ws.getState().openProject({

@@ -103,6 +103,9 @@ function dataOf(over: Partial<SurveyMeasurement> = {}): PileData {
     figures: pileFigures(rows),
     stored: m.results[0],
     line: { tone: 'ok', text: 'Up to date' },
+    dateOf: () => null,
+    densityFrom: null,
+    earliest: null,
   };
 }
 
