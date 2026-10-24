@@ -96,7 +96,7 @@ Click **Issues** in the sidebar.
 
 At about 1100 pixels wide, the right column becomes a drawer opened by **Findings (n)**, so the photo keeps the room. Packages opened read-only let you look, filter and step through photos, but not draw, ask the AI or accept: the screen says so.
 
-**J** and **K** step to the next and previous photo. Opening an issue's photo from **Issues**, a marker in the scene or the map brings you to **Inspect** on that photo with the finding picked.
+On the photo list, **J** and **K** step to the next and previous photo. In the review queue they step through the suggestions, and **Shift J** and **Shift K** move to the next and previous photo or frame (the full list is in [Inspect and review](12-settings.md#inspect-and-review)). Opening an issue's photo from **Issues**, a marker in the scene or the map brings you to **Inspect** on that photo with the finding picked.
 
 ### Draw a finding
 
