@@ -207,6 +207,7 @@ beforeEach(() => {
       manifest: {
         crs: { kind: 'local' },
         origin: [0, 0, 0],
+        captures: [],
         layers: [{ kind: 'pointcloud', id: 'cloud-1', name: 'Cloud', visible: true }],
       },
     },
