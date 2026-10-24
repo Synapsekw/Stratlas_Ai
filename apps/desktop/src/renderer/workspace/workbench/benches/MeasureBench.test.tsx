@@ -12,7 +12,9 @@ import { shell } from '../../../shell';
 import { drawEvent, measureStore, startTool, stopTool } from '../../../survey/measureStore';
 import { useStageKeys } from '../../stageKeys';
 import { sectionStore } from '../sectionState';
-import { createWorkbenchStore } from '../workbenchStore';
+import { createWorkbenchStore, workbench } from '../workbenchStore';
+import { compareStore } from '../../../survey/compareStore';
+import { volumesPane } from '../../../survey/volumes/materialsDraft';
 import { followMeasureTool, followRecent } from '../measureFollow';
 import { createFavouritesStore } from '../../../survey/measureCatalogue';
 import { MeasureBench } from './MeasureBench';
@@ -443,6 +445,18 @@ describe('search reaches every section (D16)', () => {
     expect(shownSections()).toEqual(['aids']);
     type(search(), 'templates');
     expect(shownSections()).toEqual(['templates']);
+  });
+
+  it('Site materials opens the Volumes tab on its Materials pane', () => {
+    volumesPane.setState({ pane: 'inventory' });
+    render();
+    type(search(), 'materials');
+    act(() => {
+      (q('survey-materials-tool') as HTMLElement | null)?.click();
+    });
+    expect(volumesPane.getState().pane).toBe('materials');
+    expect(workbench.getState().front).toBe('volumes');
+    expect(compareStore.getState().dialog).not.toBe('materials');
   });
 
   it('clearing the search restores the sections as the person left them', () => {

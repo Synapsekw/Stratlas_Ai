@@ -1,0 +1,281 @@
+/* The Volumes tab's Materials pane (volumetrics redesign, spec section 6, board 5). Tokens only;
+   the material colours are the --mat-* palette (with fallbacks set where they are used). */
+
+.mp {
+  display: grid;
+  grid-auto-rows: max-content;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.mp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.mp-title {
+  margin: 0;
+  font-size: var(--t-14);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+
+/* ---------- the table ---------- */
+.mp-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-12);
+}
+.mp-table thead th {
+  padding: var(--sp-2) var(--sp-2);
+  border-block-end: 1px solid var(--line-soft);
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--fg-3);
+  text-align: end;
+  white-space: nowrap;
+}
+.mp-table thead th:first-child,
+.mp-table tbody th {
+  text-align: start;
+}
+.mp-table td,
+.mp-table tbody th {
+  padding: var(--sp-2) var(--sp-2);
+  border-block-end: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+.mp-table td {
+  font-family: var(--f-mono);
+  color: var(--fg-1);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.mp-table tbody th {
+  font-weight: 400;
+  color: var(--fg-0);
+}
+.mp-table tr[data-on] > * {
+  background: var(--acc-a12);
+}
+.mp-table .mp-total > * {
+  border-block-end: none;
+  color: var(--fg-0);
+  font-weight: 600;
+}
+
+.mp-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-inline-size: 18ch;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.mp-pick:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 2px;
+}
+.mp-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mp-swatch {
+  flex: none;
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: var(--r-2);
+}
+
+.mp-num {
+  inline-size: 6ch;
+  text-align: end;
+  font-family: var(--f-mono);
+}
+.mp-num[aria-invalid] {
+  border-color: var(--danger-line);
+}
+
+/* ---------- the editor under the table ---------- */
+.mp-editor {
+  display: grid;
+  gap: var(--sp-5);
+  padding: var(--sp-5);
+  border: 1px solid var(--acc);
+  border-radius: var(--r-6);
+  background: var(--bg-2);
+}
+.mp-ed-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.mp-colour {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border-radius: var(--r-4);
+  cursor: pointer;
+}
+.mp-colour:focus-within {
+  outline: 1px solid var(--acc);
+}
+.mp-colour .mp-swatch {
+  inline-size: 11px;
+  block-size: 11px;
+}
+.mp-ed-name {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-4);
+  background: transparent;
+  color: var(--fg-0);
+  font: inherit;
+  font-weight: 600;
+}
+.mp-ed-name:hover:not(:read-only),
+.mp-ed-name:focus {
+  border-color: var(--line-strong);
+  outline: none;
+}
+.mp-flag {
+  margin-inline-start: auto;
+  font-size: var(--t-11);
+  color: var(--warn-ink);
+  white-space: nowrap;
+}
+.mp-nocolour {
+  justify-self: start;
+}
+
+.mp-density {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-4);
+  font-size: var(--t-12);
+}
+.mp-old {
+  font-family: var(--f-mono);
+  color: var(--fg-3);
+}
+.mp-from {
+  inline-size: auto;
+}
+
+.mp-cap {
+  font-family: var(--f-cond);
+  font-size: var(--t-11);
+  font-weight: 600;
+  letter-spacing: var(--caps-ls);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.mp-history {
+  display: grid;
+  gap: var(--sp-2);
+  font-size: var(--t-12);
+}
+.mp-history ul {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fg-2);
+}
+.mp-history li[data-new] {
+  color: var(--fg-0);
+}
+
+.mp-impact {
+  margin: 0;
+  font-size: var(--t-12);
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.mp-piles {
+  display: grid;
+  gap: var(--sp-3);
+}
+.mp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.mp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--bg-1);
+  font-size: var(--t-12);
+  color: var(--fg-0);
+}
+.mp-chip button {
+  display: inline-grid;
+  place-items: center;
+  padding: var(--sp-1);
+  border: none;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+.mp-chip button:hover {
+  color: var(--fg-0);
+}
+.mp-assign {
+  border-style: dashed;
+}
+.mp-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12ch, 1fr));
+  gap: var(--sp-2) var(--sp-4);
+  max-block-size: 180px;
+  margin: 0;
+  padding: var(--sp-4);
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  font-size: var(--t-12);
+}
+.mp-checklist label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.mp-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+.mp-unsaved {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.mp-unsaved .mp-foot {
+  margin-inline-start: auto;
+}
+.mp-csv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}

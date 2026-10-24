@@ -47,6 +47,7 @@ import { ExportTool } from '../../../survey/ExportDialog';
 import { HaulRoadTool } from '../../../survey/HaulRoad';
 import { HydroTool } from '../../../survey/Hydro';
 import { MagicPolygon } from '../../../survey/MagicPolygon';
+import { openMaterialsPane } from '../../../survey/volumes/materialsDraft';
 import { PendingNote, usePending } from '../../../survey/PendingNote';
 import {
   entryOf,
@@ -532,7 +533,7 @@ function SiteData({ items }: { items: readonly SiteItem[] }) {
           <Button
             data-testid="survey-materials-tool"
             onClick={() => {
-              openCompareDialog('materials');
+              openMaterialsPane();
             }}
           >
             {t('measureBench.siteMaterials')}
