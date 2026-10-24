@@ -262,6 +262,12 @@
     transition: none;
   }
 }
+/* during playback: the figures are the last survey passed's (board 6) */
+.vi-note {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
 .vi-why::first-letter {
   text-transform: uppercase;
 }

@@ -353,6 +353,26 @@ describe('Inventory', () => {
     expect(total()).toEqual(['Site total', num(615), '1 020', '']);
   });
 
+  it('says during playback that the figures are the last survey passed', async () => {
+    const { datesPlayer } = await import('../../workspace/dates/datesPlayer');
+    s.measure.file.measurements = [pile('a', { results: [result(10, 'c2')] })];
+    render();
+    expect(q('[data-testid="volumes-playback-note"]')).toBeNull();
+    act(() => {
+      datesPlayer.setState({
+        playing: true,
+        t: 1,
+        frame: { t: 1, passed: 0, next: 2, f: 0.5, ended: false },
+      });
+    });
+    expect(q('[data-testid="volumes-playback-note"]')?.textContent).toBe(
+      'During playback the panel shows the last survey the playhead passed. Nothing is interpolated between surveys.',
+    );
+    act(() => {
+      datesPlayer.setState({ playing: false, frame: null, t: null });
+    });
+  });
+
   it('shows each pile on the date in focus with its change since the previous survey', () => {
     s.measure.settings = { ...settings, materials: MATERIALS };
     s.measure.file.measurements = [

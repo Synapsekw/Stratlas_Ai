@@ -15,6 +15,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { useStore } from 'zustand';
 import { CloudChangeLegend } from '../change/producers/CloudChangeLegend';
 import { useStageEnvironment } from '../environment/EnvironmentTool';
 import { FocusZone } from '../FocusZone';
@@ -72,6 +73,8 @@ import { useFlightPathModel } from './pathModel';
 import { useEngineStage } from './StageTools';
 import { StageHint, useStageHintShown } from './StageHint';
 import { StageShow, useStageShowShown } from './StageShow';
+import { timelapseStore, useTimelapsePlaying } from './dates/timelapse';
+import { TimelapseBlend, TimelapseTotals } from './dates/TimelapseFloats';
 import { useStageKeys } from './stageKeys';
 import {
   insideView,
@@ -375,6 +378,8 @@ export function useStageCorners(o: StageCornersInput): {
   const prepShown = preparing !== null;
   // the one Show control, top-left while the Volumes tab is open (board 1)
   const show = useStageShowShown();
+  // playing through the dates (board 6): the blend bottom-left, the site totals bottom-right
+  const playing = useTimelapsePlaying() && !o.splitting;
   const status = o.roadMeasure || cutaway || notice !== null;
   const basemapAt = o.basemapAt ?? END;
   const topTaken = o.topTaken ?? NO_CORNERS;
@@ -383,6 +388,8 @@ export function useStageCorners(o: StageCornersInput): {
       ...o.video.map((c) => ({ id: `video-${c}`, want: [c] })),
       // the top corners the open island reaches across and past the middle
       ...topTaken.map((c) => ({ id: `island-${c}`, want: [c] })),
+      { id: 'tlBlend', want: playing ? ['bl', 'tl'] : [] },
+      { id: 'tlTotals', want: playing ? ['br', 'tr'] : [] },
       { id: 'show', want: show ? ['tl'] : [] },
       { id: 'status', want: status ? ['tl', 'bl'] : [] },
       { id: 'basemap', want: basemap ? basemapAt : [] },
@@ -406,6 +413,7 @@ export function useStageCorners(o: StageCornersInput): {
     o.video,
     o.cursor,
     o.splitting,
+    playing,
     show,
     status,
     basemap,
@@ -447,6 +455,8 @@ export function useStageCorners(o: StageCornersInput): {
       ![...slots.values()].includes(o.cursor === 'bl' ? 'br' : 'bl'),
     corners: (
       <>
+        {at('tlBlend', <TimelapseBlend />)}
+        {at('tlTotals', <TimelapseTotals />)}
         {at('show', <StageShow />)}
         {at(
           'status',
@@ -659,7 +669,13 @@ export function Stage() {
   // the main 3D view and map show their side's date (null: as the layer tree says)
   const side3d = sides3d[0];
   const sideMap = sidesMap[0];
-  const sceneCapture = side3d ? paneCapture(split, side3d) : undefined;
+  // playing through the dates, the 3D view may show the next survey before the focus reaches it
+  const timelapseScene = useStore(timelapseStore, (s) => s.scene);
+  const sceneCapture = side3d
+    ? paneCapture(split, side3d)
+    : splitting
+      ? undefined
+      : (timelapseScene ?? undefined);
   const mapCapture = sideMap ? paneCapture(split, sideMap) : undefined;
   useEffect(() => {
     primaryScene.setScope(

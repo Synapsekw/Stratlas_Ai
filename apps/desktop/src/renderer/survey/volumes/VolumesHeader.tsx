@@ -16,6 +16,7 @@ import { notCountedList } from '../BulkTotals';
 import { isStale, seriesStale, useCompare } from '../compareStore';
 import { fileBase } from '../exportHelpers';
 import { useMeasure } from '../measureStore';
+import { useTimelapseSurveys } from '../../workspace/dates/timelapse';
 import { massParts, pctText, volumeParts } from '../pile/PileHeader';
 import { minusSigned } from '../pile/pileView';
 import type { InventoryModel } from './inventory';
@@ -34,6 +35,8 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
   const captures = useCompare((s) => s.captures);
   const current = useCompare((s) => s.current);
   const [csvError, setCsvError] = useState<string | null>(null);
+  // playing through the dates: the figures are the last survey passed's, never between surveys
+  const playing = useTimelapseSurveys();
   const units = effectiveUnits(settings.units);
   const locale = settings.locale ?? localeOf(units.distance);
   const vol = (m3: number) => volumeParts(m3, units, settings.precision.volume, locale);
@@ -81,6 +84,19 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
   const changeParts = change ? vol(change.m3) : null;
   const sign = change && change.m3 < 0 ? 'loss' : change && change.m3 > 0 ? 'gain' : undefined;
 
+  // the Next survey tile while playing: the change the next survey brings (both counted)
+  const nextDay = playing?.next ?? null;
+  const nextM3 = nextDay?.volumeM3 ?? null;
+  const passedM3 = playing?.passed.volumeM3 ?? null;
+  const nextChange = nextM3 !== null && passedM3 !== null ? nextM3 - passedM3 : null;
+  const nextParts = nextChange !== null ? vol(nextChange) : null;
+  const nextSign =
+    nextChange !== null && nextChange < 0
+      ? 'loss'
+      : nextChange && nextChange > 0
+        ? 'gain'
+        : undefined;
+
   const names = new Map(piles.map((m) => [m.id, m.label]));
   const left = model?.notCounted ?? [];
   const partial = model?.partial ?? [];
@@ -92,7 +108,9 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
           <h3 className="vh-cap">{t('volumes.title')}</h3>
           {on && (
             <p className="vh-date" data-testid="volumes-date">
-              {source ? (
+              {playing ? (
+                t('timelapse.lastPassed', { date: day })
+              ) : source ? (
                 <>
                   {day} <span className="vh-src">· {source}</span>
                 </>
@@ -151,28 +169,40 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
               <em>{t('volumes.byMaterial')}</em>
             </dd>
           </div>
-          <div className="vh-tile">
-            <dt className="vh-tcap">
-              {model.previous
-                ? t('volumes.vs', { date: formatDate(model.previous.date, { year: false }) })
-                : t('vol.change')}
-            </dt>
-            <dd data-sign={sign}>
-              <b data-testid="volumes-kpi-change">
-                {change && changeParts ? minusSigned(changeParts.num, change.m3) : '-'}
-              </b>
-              <em>
-                {change && changeParts
-                  ? [
-                      changeParts.unit,
-                      ...(change.pct !== null ? [pctText(change.pct, locale)] : []),
-                    ].join(' · ')
-                  : model.previous
-                    ? ''
-                    : t('pile.first')}
-              </em>
-            </dd>
-          </div>
+          {nextDay ? (
+            <div className="vh-tile" data-testid="volumes-kpi-next">
+              <dt className="vh-tcap">{t('strip.next')}</dt>
+              <dd data-sign={nextSign}>
+                <b>
+                  {nextChange !== null && nextParts ? minusSigned(nextParts.num, nextChange) : '-'}
+                </b>
+                <em>{[...(nextParts ? [nextParts.unit] : []), nextDay.short].join(' · ')}</em>
+              </dd>
+            </div>
+          ) : (
+            <div className="vh-tile">
+              <dt className="vh-tcap">
+                {model.previous
+                  ? t('volumes.vs', { date: formatDate(model.previous.date, { year: false }) })
+                  : t('vol.change')}
+              </dt>
+              <dd data-sign={sign}>
+                <b data-testid="volumes-kpi-change">
+                  {change && changeParts ? minusSigned(changeParts.num, change.m3) : '-'}
+                </b>
+                <em>
+                  {change && changeParts
+                    ? [
+                        changeParts.unit,
+                        ...(change.pct !== null ? [pctText(change.pct, locale)] : []),
+                      ].join(' · ')
+                    : model.previous
+                      ? ''
+                      : t('pile.first')}
+                </em>
+              </dd>
+            </div>
+          )}
         </dl>
       )}
 

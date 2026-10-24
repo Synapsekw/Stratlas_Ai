@@ -35,6 +35,8 @@ vi.mock('../../shell', () => ({
 }));
 
 const { VolumesHeader } = await import('./VolumesHeader');
+const { datesPlayer } = await import('../../workspace/dates/datesPlayer');
+const { timelapseStore } = await import('../../workspace/dates/timelapse');
 
 const settings = defaultSurveySettings();
 const CAPTURES = [
@@ -197,5 +199,48 @@ describe('VolumesHeader', () => {
     const lines = s.saveFile.mock.calls.at(-1)?.[1].data.split(/\r?\n/) ?? [];
     expect(lines.find((l) => l.includes('2021-01-10'))).toMatch(/,stale,/);
     expect(lines.find((l) => l.includes('2020-12-31'))).toMatch(/,ok,/);
+  });
+});
+
+describe('VolumesHeader during playback', () => {
+  const T0 = Date.parse('2020-12-31T00:00:00Z');
+  const T1 = Date.parse('2021-01-10T00:00:00Z');
+  afterEach(() => {
+    datesPlayer.setState({ playing: false, frame: null, t: null });
+    timelapseStore.setState({ days: [] });
+  });
+
+  it('the panel shows the last survey passed and never a value between surveys', () => {
+    const day = (capture: string, t: number, label: string, short: string, v: number) => ({
+      capture,
+      t,
+      label,
+      short,
+      colour: 'var(--date-1)',
+      volumeM3: v,
+    });
+    timelapseStore.setState({
+      days: [
+        day('c1', T0, '31 Dec 2020', '31 Dec', 76199.4),
+        day('c2', T1, '10 Jan 2021', '10 Jan', 63402.4),
+      ],
+    });
+    const mid = T0 + (T1 - T0) * 0.55;
+    datesPlayer.setState({
+      playing: true,
+      t: mid,
+      frame: { t: mid, passed: T0, next: T1, f: 0.55, ended: false },
+    });
+    render(
+      model({
+        on: { capture: 'c1', date: '2020-12-31', label: '31 Dec 2020' },
+        previous: null,
+        volumeM3: 76199.4,
+        change: null,
+      }),
+    );
+    expect(text('volumes-date')).toBe('31 Dec 2020 · last survey passed');
+    expect(text('volumes-kpi-volume')).toBe('76 199.4 m³');
+    expect(text('volumes-kpi-next')).toBe('Next survey−12 797.0m³ · 10 Jan');
   });
 });

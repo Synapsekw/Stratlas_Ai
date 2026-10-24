@@ -28,6 +28,7 @@ import {
 } from 'react';
 import { processing } from '../../processing/store';
 import { useShell } from '../../shell';
+import { useTimelapsePlaying } from '../../workspace/dates/timelapse';
 import { useTimeline } from '../../workspace/timeline';
 import { notCountedReason } from '../BulkTotals';
 import { BASES, baseIdOf } from '../card/baseNames';
@@ -232,6 +233,8 @@ export function InventoryPane({ model, piles, onPile }: InventoryPaneProps): Rea
   const units = effectiveUnits(settings.units);
   const locale = settings.locale ?? localeOf(units.distance);
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  // playing through the dates: the figures are the last survey passed's (the note says so)
+  const playing = useTimelapsePlaying();
 
   const vol = (m3: number) => volumeParts(m3, units, settings.precision.volume, locale).num;
   const mass = (tn: number | null) => (tn === null ? '-' : massParts(tn, units, locale).num);
@@ -386,6 +389,11 @@ export function InventoryPane({ model, piles, onPile }: InventoryPaneProps): Rea
           )}
         </tbody>
       </table>
+      {playing && (
+        <p className="vi-note" role="note" data-testid="volumes-playback-note">
+          {t('timelapse.playbackNote')}
+        </p>
+      )}
     </section>
   );
 }

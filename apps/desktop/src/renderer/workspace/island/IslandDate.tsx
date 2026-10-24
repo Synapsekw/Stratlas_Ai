@@ -15,6 +15,8 @@ import { toastHost } from '../../shell/actions/toastHost';
 import { useCalendarDays } from '../DatePicker';
 import { chooseCapture, type Side } from '../splitModel';
 import { paneCapture, type SplitModel } from '../SplitPanes';
+import { datesPlayer } from '../dates/datesPlayer';
+import { playheadDay } from '../dates/timelapse';
 import { timeline } from '../timeline';
 
 /** "13 Apr": the pill's date, its year in the pill's name. */
@@ -87,9 +89,13 @@ export function IslandDate({
 }) {
   const t = useT();
   const { colour } = useCalendarDays(dates.index);
+  // playing through the dates: the playhead's calendar day, no arrows (board 6)
+  const playingDay = useStore(datesPlayer, (s) =>
+    s.playing && s.frame ? playheadDay(s.frame.t) : null,
+  );
   const current = dates.index.captures.find((c) => c.id === dates.focus);
   const at = dates.order.indexOf(dates.focus);
-  const many = dates.order.length > 1;
+  const many = dates.order.length > 1 && playingDay === null;
   if (!current) return null;
   return (
     <span className="isl-date" data-testid="date-row">
@@ -122,7 +128,11 @@ export function IslandDate({
             style={{ background: colour(current.id) ?? 'var(--acc)' }}
             aria-hidden="true"
           />
-          <span className="isl-day">{shortDate(current.date)}</span>
+          <span className="isl-day">
+            {playingDay
+              ? t('timelapse.playing', { date: formatDate(playingDay) })
+              : shortDate(current.date)}
+          </span>
           {steps && many && (
             <span className="isl-count" data-testid="date-bar-count">
               {t('island.dateCount', { n: at + 1, total: dates.order.length })}

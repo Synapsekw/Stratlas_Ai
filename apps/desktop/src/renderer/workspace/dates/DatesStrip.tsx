@@ -40,6 +40,8 @@ import { datesCollapsed } from '../timelinePref';
 import { compareDates, defaultPair } from './compareDates';
 import { datesPlayer, type PlayerSpeed } from './datesPlayer';
 import { useStripCutFill, type StripCutFill } from './stripCutFill';
+import { timelapseStore } from './timelapse';
+import { useTimelapseConnection } from './TimelapseFloats';
 import {
   changeBetween,
   consecutivePairs,
@@ -1093,6 +1095,26 @@ export function DatesStrip(): ReactElement | null {
     [captures, piles, materials, tags],
   );
   const times = useMemo(() => days.map((d) => d.t), [days]);
+  // the timelapse's floats and the Volumes tab name the surveys in play from these
+  useEffect(() => {
+    timelapseStore.setState({
+      days: days.map((d) => ({
+        capture: d.capture,
+        t: d.t,
+        label: d.label,
+        short: d.short,
+        colour: d.colour,
+        volumeM3: d.volumeM3,
+      })),
+    });
+  }, [days]);
+  useEffect(
+    () => () => {
+      timelapseStore.setState({ days: [] });
+    },
+    [],
+  );
+  useTimelapseConnection();
 
   const pileM = measureFocus === null ? undefined : piles.find((m) => m.id === measureFocus);
   const pile: StripPile | null = useMemo(() => {

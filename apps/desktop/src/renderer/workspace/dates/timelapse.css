@@ -1,0 +1,72 @@
+/* The timelapse floats (board 6): the blend and the between-surveys choice, the site totals. */
+.tlx {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  max-inline-size: 260px;
+}
+.tlx-cap {
+  font: 600 var(--t-11) var(--f-cond);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.tlx-blend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  inline-size: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.tlx-bar {
+  display: block;
+  block-size: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.tlx-bar > i {
+  display: block;
+  block-size: 100%;
+  background: var(--acc);
+}
+.tlx .tlx-seg {
+  background: var(--bg-0);
+  border-color: var(--line-soft);
+}
+.tlx-rows {
+  margin: 0;
+  display: grid;
+  gap: var(--sp-1);
+  inline-size: 100%;
+}
+.tlx-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.tlx-row dt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.tlx-row dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  color: var(--fg-0);
+}
+.tlx-dot {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.tlx-note {
+  margin: 0;
+  color: var(--fg-3);
+}
