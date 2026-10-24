@@ -96,7 +96,9 @@ describe('existing files 0.10 writes stay readable by 0.9', () => {
     // `processing` (the ODM engine, 14 Oct 2026) is additive: the older schema drops it on read
     expect(
       Object.keys(current.Settings.shape)
-        .filter((k) => k !== 'processing' && k !== 'websiteAutoUpdate')
+        .filter(
+          (k) => k !== 'processing' && k !== 'websiteAutoUpdate' && k !== 'autoPrepareSurfaces',
+        )
         .sort(),
     ).toEqual(Object.keys(v09.Settings.shape).sort());
     expect(v09.Settings.safeParse(settings).success).toBe(true);
