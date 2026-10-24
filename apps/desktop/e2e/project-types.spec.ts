@@ -1,5 +1,5 @@
 /**
- * Project types in the new project wizard (11 Oct 2026): six cards, each written as the manifest's
+ * Project types in the new project wizard (11 Oct 2026): seven cards, each written as the manifest's
  * `purpose` beside the older `type` it maps to, and an empty project that says which data to add
  * first for its type. Projects from before the purpose existed, and one whose purpose a later
  * build wrote, open as before and show what their `type` says.
@@ -16,6 +16,7 @@ const CARDS = [
   'Confined space inspection',
   'Data fusion',
   'Road',
+  'Telecom towers',
 ];
 
 /** Projects written by hand, as an older build, a later build and the kit import leave them. */
@@ -92,7 +93,7 @@ async function open(win: Page, name: string) {
   await expect(hint(win)).toBeVisible({ timeout: 30_000 });
 }
 
-test('the wizard offers six types, and the project keeps the one picked', async ({
+test('the wizard offers seven types, and the project keeps the one picked', async ({
   win,
   dataRoot,
 }, info) => {

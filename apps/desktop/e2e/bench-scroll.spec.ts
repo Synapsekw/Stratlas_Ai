@@ -23,6 +23,7 @@ interface Hooks {
 }
 
 /** The benches whose content is always taller than the smallest pane. */
+// ('measure' is the Project tab: the "In this project" list above the tools, one scroller)
 const LONG = ['display', 'clouds', 'video', 'annotate', 'measure', 'cleanup'] as const;
 /** Short panel tabs: they only have to be the scroller. */
 const SHORT = ['environment', 'cutaway'] as const;
@@ -128,6 +129,8 @@ test('every workbench tab scrolls its own body with the mouse wheel', async ({ w
     .toBe(false);
   for (const id of LONG) {
     await openBench(win, id);
+    // the Project tab's list leads, and the tools below it are the end of the same scroller
+    if (id === 'measure') await expect(win.getByTestId('project-list')).toHaveCount(1);
     const before = await measure(win);
     expect(before?.overflowY, `${id}: the bench scrolls`).toBe('auto');
     expect(before?.bounded, `${id}: the bench ends inside its tab`).toBe(true);

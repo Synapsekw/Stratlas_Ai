@@ -71,6 +71,8 @@ test.describe('following (D14)', () => {
     win,
   }) => {
     await openCard(win, twoDateProject.id);
+    // the Project tab is a fixed tab from the start; a fresh project still opens on Selection
+    await expect(tab(win, 'measure')).toHaveText(/Project/);
     await expect(tab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
 
     // nothing edited: Measure opens live, in front
@@ -78,10 +80,11 @@ test.describe('following (D14)', () => {
     await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
     await expect(liveDot(win, 'measure')).toBeVisible();
     await expect(win.getByTestId('survey-drawbar')).toBeVisible();
-    // stopped, the tab it opened closes and Selection is in front again (D13)
+    // stopped, the Project tab is a fixed tab: it stays, in front, without its live dot
     await pressM(win);
-    await expect(tab(win, 'measure')).toHaveCount(0);
-    await expect(tab(win, 'selection')).toHaveAttribute('aria-selected', 'true');
+    await expect(liveDot(win, 'measure')).toHaveCount(0);
+    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
+    await openBench(win, 'selection');
 
     // an issue's edit form open in Selection
     const issueId = await win.evaluate(() => {
@@ -107,13 +110,14 @@ test.describe('following (D14)', () => {
 
     // the sidebar says so, and "Show it" brings it forward when they want it (I-R52)
     const showIt = win.locator('.right').getByTestId('wb-show-it');
-    await expect(showIt).toContainText('Measure');
+    await expect(showIt).toContainText('Project');
     await showIt.getByRole('button', { name: 'Show it', exact: true }).click();
     await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
     await expect(showIt).toHaveCount(0);
     await expect(win.locator('.right #wb-panel-measure')).toBeVisible();
     await pressM(win);
-    await expect(tab(win, 'measure')).toHaveCount(0);
+    await expect(liveDot(win, 'measure')).toHaveCount(0);
+    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
   });
 });
 
@@ -143,20 +147,15 @@ test.describe('pins (D15)', () => {
     await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
     await expect.poll(() => openTabs(win)).not.toContain('environment');
     expect(await openTabs(win)).toContain('display pinned');
-    // the row has no room for it: the More tabs menu lists it, ticked as pinned
-    await expect(tab(win, 'display')).toHaveCount(0);
-    const more = win.locator('.right').getByRole('button', { name: 'More tabs', exact: true });
-    await more.click();
-    const menu = win.getByRole('menu', { name: 'More tabs' });
-    await expect(menu.getByRole('menuitemcheckbox', { name: 'Display' })).toBeChecked();
+    // the Project tab was in the row already, so the tool takes no new place: the pinned tab
+    // keeps its own
+    await expect(tab(win, 'display')).toHaveCount(1);
     await shot(win, 'workbench-pin-survives-tool.png');
-    // (closed by its button: Esc would also put the live tool away)
-    await more.click();
-    await expect(menu).toHaveCount(0);
 
-    // and when it stops, the pinned tab is still there
+    // and when it stops, the pinned tab is still there beside the Project tab
     await pressM(win);
-    await expect(tab(win, 'measure')).toHaveCount(0);
+    await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
+    await expect(tab(win, 'display')).toHaveCount(1);
     expect(await openTabs(win)).toContain('display pinned');
   });
 });

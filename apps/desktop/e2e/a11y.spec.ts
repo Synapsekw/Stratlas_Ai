@@ -36,6 +36,7 @@ import {
   openIslandTools,
   stageMode,
   stageModeButton,
+  openBench,
 } from './island';
 
 /**
@@ -376,7 +377,8 @@ test.describe('a synthetic project', () => {
     }, size);
 
     // the issue card from the register, its photo full size, and back
-    await win.getByRole('tab', { name: /Issues/ }).click();
+    // (the Project tab takes a place in the row: Issues may be under More tabs)
+    await openBench(win, 'issues');
     await win.locator('.ann-list').getByText('F01').first().click();
     await expect(win.getByTestId('issue-card')).toBeVisible();
     await expectAccessible(win, 'Scene, issue card');

@@ -38,69 +38,33 @@ async function evidence(win: Page, name: string): Promise<void> {
   await win.screenshot({ path: join(EVIDENCE, `${name}.png`) });
 }
 
-/**
- * The selected unit's labels that the card covers (by key), and whether its name label and its
- * width label overlap. Only labels in view count.
- */
-async function labelClashes(win: Page): Promise<{ card: string[]; nameWidth: boolean }> {
+/** Whether the selected unit's name label and its width label overlap. Only labels in view count. */
+async function nameClashesWidth(win: Page): Promise<boolean> {
   return win.evaluate(() => {
     const hit = (a: DOMRect, b: DOMRect) =>
       a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
     const shown = [
       ...document.querySelectorAll<HTMLElement>('.antenna-labels .sv-label.sel'),
     ].filter((el) => el.style.display !== 'none');
-    const cardEl = document.querySelector('[data-testid="antenna-card"]');
-    const cardRect = cardEl?.getBoundingClientRect();
-    const card = cardRect
-      ? shown
-          .filter((el) => hit(el.getBoundingClientRect(), cardRect))
-          .map((el) => el.dataset.key ?? '')
-      : [];
     const name = shown.find((el) => el.dataset.key?.endsWith(':name'));
     const width = shown.find((el) => el.dataset.key?.endsWith(':dim:w'));
-    const nameWidth =
+    return (
       name !== undefined &&
       width !== undefined &&
-      hit(name.getBoundingClientRect(), width.getBoundingClientRect());
-    return { card, nameWidth };
-  });
-}
-
-/**
- * Whether the card covers the selected box (its `data-unit-box`, host px) or the name label, and
- * the stage's width.
- */
-async function cardCover(win: Page): Promise<{ box: boolean; name: boolean; stageW: number }> {
-  return win.evaluate(() => {
-    const hit = (a: DOMRect, b: DOMRect) =>
-      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-    const card = document.querySelector<HTMLElement>('[data-testid="antenna-card"]');
-    const host = card?.parentElement;
-    if (!card || !host) return { box: false, name: false, stageW: 0 };
-    const c = card.getBoundingClientRect();
-    const hr = host.getBoundingClientRect();
-    const [x = 0, y = 0, w = 0, h = 0] = (card.dataset.unitBox ?? '').split(' ').map(Number);
-    const box = card.dataset.unitBox ? hit(c, new DOMRect(hr.left + x, hr.top + y, w, h)) : false;
-    const name = [...document.querySelectorAll<HTMLElement>('.antenna-labels .sv-label.sel')].find(
-      (el) => el.style.display !== 'none' && el.dataset.key?.endsWith(':name'),
+      hit(name.getBoundingClientRect(), width.getBoundingClientRect())
     );
-    return {
-      box,
-      name: name !== undefined && hit(c, name.getBoundingClientRect()),
-      stageW: host.clientWidth,
-    };
   });
 }
 
-/** Waits until the card has held its place for 500 ms: the fly to the unit has settled. */
-async function cardSettled(win: Page): Promise<void> {
-  const card = win.getByTestId('antenna-card');
+/** Waits until the selected unit's name label has held its place for 500 ms: the fly has settled. */
+async function labelSettled(win: Page): Promise<void> {
+  const label = win.locator('.antenna-labels .sv-label.sel[data-key$=":name"]').first();
   let last = '';
   let since = Date.now();
   await expect
     .poll(
       async () => {
-        const b = await card.boundingBox();
+        const b = await label.boundingBox();
         const now = b ? `${b.x} ${b.y}` : '';
         if (now !== last) {
           last = now;
@@ -154,16 +118,23 @@ const detectInView = (win: Page) =>
   });
 
 /**
- * Whether a row's status chip shows its whole text: not cut inside itself and not cut by the row
- * label around it.
+ * Whether a row's status chip shows its whole text: not cut inside itself, not cut by its column,
+ * and the column within the row.
  */
 const chipWhole = (row: Locator) =>
-  row.getByTestId('antenna-status').evaluate((chip) => {
-    const label = chip.closest('.row-label');
-    if (!label) return false;
+  row.getByTestId('antenna-status').evaluate((cell) => {
+    const chip = cell.firstElementChild;
+    const line = cell.closest('[data-testid="antenna-row"]');
+    if (!chip || !line) return false;
     const c = chip.getBoundingClientRect();
-    const l = label.getBoundingClientRect();
-    return chip.scrollWidth <= chip.clientWidth && c.left >= l.left && c.right <= l.right + 0.5;
+    const k = cell.getBoundingClientRect();
+    const r = line.getBoundingClientRect();
+    return (
+      chip.scrollWidth <= chip.clientWidth &&
+      c.left >= k.left - 0.5 &&
+      c.right <= k.right + 0.5 &&
+      k.right <= r.right + 0.5
+    );
   });
 
 const savedFile = async (dir: string) =>
@@ -210,14 +181,15 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   // seed 3 has 9 truth units: 4 panels, 3 short antennas, 1 dish and 1 "other" box. The run finds
   // the 8 antennas, all of them, and does not report the other box (fixed seed, same every run).
   await expect.poll(() => rows.count(), { timeout: 180_000 }).toBe(8);
-  await expect(panel.getByTestId('antenna-summary')).toHaveText(
-    '8 antennas · 8 need review · Project north azimuths',
-  );
-  await expect(panel).toContainText('Project north');
+  // the Project tab's Antennas group counts the units (none rejected); north is the Az column's tip
+  await expect(
+    win.getByTestId('wb-section-project-antennas').locator('.wb-section-count'),
+  ).toHaveText('8');
+  await expect(rows.first()).toHaveAttribute('data-north', 'project');
   await expect(detect).toBeEnabled();
   await viewCrown(win);
-  // the run lists the units and opens no card: nothing is selected until the person picks
-  const card = win.getByTestId('antenna-card');
+  // the run lists the units and opens no details: nothing is selected until the person picks
+  const card = win.getByTestId('antenna-details');
   await expect(card).toHaveCount(0);
   await expect(panel.locator('[aria-selected="true"][data-testid="antenna-row"]')).toHaveCount(0);
   await panel.getByTestId('antenna-filter-all').click();
@@ -232,29 +204,32 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await expect(first).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => sceneHas(win, 'antenna-highlight')).toBe(true);
   await expect(card).toBeVisible();
-  // the header shows the whole name, as the row does
-  const head = card.getByTestId('antenna-card-name');
+  // the row shows the whole name
+  const head = first.locator('.antenna-name');
   const name = await win.evaluate(() => {
     const a = (window as unknown as Inspect).__stratlas.antennas.getState();
     return a.file?.units.find((u) => u.id === a.selected)?.name ?? '';
   });
   expect(name.length).toBeGreaterThan(0);
   await expect(head).toHaveText(name);
-  await expect(first).toContainText(name);
   expect(
     await head.evaluate((el) => el.scrollWidth <= el.clientWidth),
-    'the card header name is not cut',
+    'the row name is not cut',
   ).toBe(true);
-  // the run leaves the filter on To review, so the card walks the 8 drafts, in the list's order
-  await expect(card.getByTestId('antenna-card-position')).toHaveText('1 / 8');
+  // the run leaves the filter on To review, so the details walk the 8 drafts, in the list's order
+  await expect(card.getByTestId('antenna-details-position')).toHaveText('1 / 8');
   await evidence(win, 'e-card-selected');
   // at the CI size the tools scroll up and down inside the aside, never sideways
   await expect.poll(() => horizontalOverflow(win)).toBeLessThanOrEqual(0);
+  expect(
+    await panel.evaluate((el) => el.scrollWidth - el.clientWidth),
+    'the group',
+  ).toBeLessThanOrEqual(0);
 
-  // accept with the key: the unit leaves To review and the card moves on
+  // accept with the key: the unit leaves To review and the details move on
   await win.keyboard.press('a');
   await expect(rows).toHaveCount(7);
-  await expect(card.getByTestId('antenna-card-position')).toHaveText('1 / 7');
+  await expect(card.getByTestId('antenna-details-position')).toHaveText('1 / 7');
   await panel.getByTestId('antenna-filter-all').click();
   await expect(rows).toHaveCount(8);
   const accepted = panel.locator('[data-testid="antenna-row"][data-status="accepted"]');
@@ -267,40 +242,45 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
     'draft chip is whole',
   ).toBe(true);
   await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
-  await expectAccessible(win, 'Antenna card', { include: '[data-testid="antenna-card"]' });
+  await expectAccessible(win, 'Antenna details', { include: '[data-testid="antenna-details"]' });
 
-  // a clicked row keeps the review keys: the arrow steps the card, Escape closes it
+  // a clicked row keeps the review keys: the arrow steps the details, Escape closes them
   await panel.getByTestId('antenna-filter-draft').click();
-  await rows.nth(0).click();
+  await rows.nth(0).locator('.antenna-name').click();
   await expect(rows.nth(0)).toHaveAttribute('aria-selected', 'true');
   await win.keyboard.press('ArrowRight');
   await expect(rows.nth(1)).toHaveAttribute('aria-selected', 'true');
-  await expect(card.getByTestId('antenna-card-position')).toHaveText('2 / 7');
+  await expect(card.getByTestId('antenna-details-position')).toHaveText('2 / 7');
   await evidence(win, 'i-row-click-arrow-step');
   await win.keyboard.press('Escape');
   await expect(card).toHaveCount(0);
-  await rows.nth(0).click();
+  await rows.nth(0).locator('.antenna-name').click();
   await expect(card).toBeVisible();
 
   // Hide all: only the selected unit stays drawn, and the walk moves it with the selection
-  await panel.getByTestId('antenna-hide-all').click();
+  await win.getByTestId('antenna-hide-all').click();
   await expect.poll(() => boxNames(win)).toHaveLength(1);
   const [before] = await boxNames(win);
   await win.keyboard.press('ArrowRight');
   await expect.poll(async () => (await boxNames(win)).join()).not.toBe(before);
   expect(await boxNames(win)).toHaveLength(1);
   await evidence(win, 'g-hide-all-walk');
-  await panel.getByTestId('antenna-show-all').click();
+  await win.getByTestId('antenna-show-all').click();
   await expect.poll(() => boxNames(win)).toHaveLength(8);
   await evidence(win, 'h-show-all');
 
-  // the panel group's eye hides the panels' boxes
-  await panel.getByTestId('antenna-filter-all').click();
-  await panel.getByTestId('antenna-group-eye-panel').click();
+  // right-click "Show only this kind" (the old group solo) draws only that kind's boxes
+  await rows.first().locator('.antenna-name').click({ button: 'right' });
+  const menu = win.getByTestId('antenna-menu');
+  await expect(menu).toBeVisible();
+  await menu.getByRole('menuitem', { name: 'Show only this kind' }).click();
   await expect.poll(async () => (await boxNames(win)).length).toBeLessThan(8);
-  const left = await boxNames(win);
-  expect(left.length).toBeGreaterThanOrEqual(1);
-  await panel.getByTestId('antenna-group-eye-panel').click();
+  expect((await boxNames(win)).length).toBeGreaterThanOrEqual(1);
+  await rows.first().locator('.antenna-name').click({ button: 'right' });
+  await win
+    .getByTestId('antenna-menu')
+    .getByRole('menuitem', { name: 'Show only this kind' })
+    .click();
   await expect.poll(() => boxNames(win)).toHaveLength(8);
 
   // numbered pins: a click on another unit's pin selects it, as a box pick does
@@ -308,7 +288,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   const pins = win.locator('.antenna-label--pin');
   await expect.poll(() => pins.count()).toBe(7);
   const target = await pins.evaluateAll((els) => {
-    // the first pin that is on top where it is drawn (not under the card or another pin)
+    // the first pin that is on top where it is drawn (not under another pin)
     for (const el of els as HTMLElement[]) {
       const r = el.getBoundingClientRect();
       if (r.width === 0) continue;
@@ -332,27 +312,17 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await pin.hover();
   await evidence(win, 'j-pins');
   await pin.click();
-  await expect(card.getByTestId('antenna-card-name')).toHaveText(targetName);
-  // once the fly to the unit has settled, the card keeps off the selected box and its name at
-  // every size, and the name clears the width label. On a stage 700 px wide or less (CI's
-  // 1100 x 720 window leaves about 490 px) the 320 px card cannot clear the box and all its
-  // labels as well, so it may cover the cheap ones (sizes, angle); a wider stage has room for
-  // the card to clear every selected label.
-  await cardSettled(win);
-  const cover = await cardCover(win);
-  expect({ box: cover.box, name: cover.name }).toEqual({ box: false, name: false });
-  const clashes = await labelClashes(win);
-  expect(clashes.nameWidth).toBe(false);
-  if (cover.stageW > 700) expect(clashes.card).toEqual([]);
-  // a card capped to the room beside the unit keeps Accept whole in view, without scrolling
-  const accept = card.getByTestId('antenna-card-accept');
+  // the picked unit's row is the selected one, its details open under it
+  const targetRow = rows.filter({ hasText: targetName }).first();
+  await expect(targetRow).toHaveAttribute('aria-selected', 'true');
+  await expect(card).toHaveCount(1);
+  // once the fly to the unit has settled, its name label clears the width label
+  await labelSettled(win);
+  expect(await nameClashesWidth(win)).toBe(false);
+  // the reveal keeps Accept whole in view inside the list, without scrolling by hand
+  await evidence(win, 'j1-pick-details');
+  const accept = card.getByTestId('antenna-details-accept');
   await expect(accept).toBeInViewport({ ratio: 1 });
-  const unclipped = await accept.evaluate((el) => {
-    const a = el.getBoundingClientRect();
-    const c = el.closest('[data-testid="antenna-card"]')?.getBoundingClientRect();
-    return c !== undefined && a.top >= c.top && a.bottom <= c.bottom && a.height > 0;
-  });
-  expect(unclipped, 'Accept lies wholly inside the card').toBe(true);
   await evidence(win, 'j2-pins');
   await expect(pin).toHaveCount(0);
   await expect(pins).toHaveCount(7);
@@ -360,7 +330,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   await expectAccessible(win, 'Labels control', {
     include: '[data-testid="antenna-labels-control"]',
   });
-  // Labels Off: no pins, the selected unit keeps its card and its own labels
+  // Labels Off: no pins, the selected unit keeps its details and its own labels
   await control.getByRole('button', { name: 'Off' }).click();
   await expect(control.getByRole('button', { name: 'Off' })).toHaveAttribute(
     'aria-pressed',
@@ -438,9 +408,9 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
   if (await win.getByTestId('project-card').first().isVisible()) await openTiny(win);
   else await openTelecom(win);
   // a fresh open selects nothing, and neither does a filter click
-  await expect(win.getByTestId('antenna-card')).toHaveCount(0);
+  await expect(win.getByTestId('antenna-details')).toHaveCount(0);
   await win.getByTestId('antenna-panel').getByTestId('antenna-filter-all').click();
-  await expect(win.getByTestId('antenna-card')).toHaveCount(0);
+  await expect(win.getByTestId('antenna-details')).toHaveCount(0);
   await expect(
     win.getByTestId('antenna-panel').locator('[aria-selected="true"][data-testid="antenna-row"]'),
   ).toHaveCount(0);

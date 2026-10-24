@@ -208,7 +208,7 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
 
   // the job measures it into the inventory: one row, flagged by you
   const rows = panel.getByTestId('antenna-row');
-  await expect(rows.getByTestId('antenna-origin')).toHaveCount(1, { timeout: 180_000 });
+  await expect(rows).toHaveCount(1, { timeout: 180_000 });
   await expect.poll(() => flaggedUnit(dir).then((u) => u?.status)).toBe('accepted');
   const flagged = await flaggedUnit(dir);
   if (!flagged) throw new Error('no flagged unit on disk');
@@ -220,11 +220,13 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
   expect(flagged.widthM?.basis).toBe('measured');
   expect(flagged.kind).toBe('other');
 
-  // type the azimuth on its card
-  const row = rows.filter({ has: win.getByTestId('antenna-origin') });
-  const card = win.getByTestId('antenna-card');
-  if (!(await card.isVisible())) await row.click();
+  // type the azimuth in its details: they hold the "Flagged by you" tag
+  const flaggedRow = (id: string) =>
+    panel.locator(`[data-row-id="${id}"] [data-testid="antenna-row"]`);
+  const card = win.getByTestId('antenna-details');
+  if (!(await card.isVisible())) await flaggedRow(flagged.id).locator('.antenna-name').click();
   await expect(card).toBeVisible();
+  await expect(card.getByTestId('antenna-origin')).toHaveCount(1);
   const typed = card.getByTestId('antenna-typed');
   if ((await typed.getAttribute('open')) === null) await typed.locator('summary').click();
   const azInput = card.getByTestId('antenna-typed-azimuthGridDeg');
@@ -235,8 +237,8 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
   await expect
     .poll(() => flaggedUnit(dir).then((u) => u?.azimuthGridDeg))
     .toMatchObject({ value: 271, basis: 'user' });
-  await evidence(win, 'c-flag-card');
-  await expectAccessible(win, 'Antenna card', { include: '[data-testid="antenna-card"]' });
+  await evidence(win, 'c-flag-details');
+  await expectAccessible(win, 'Antenna details', { include: '[data-testid="antenna-details"]' });
   await expectAccessible(win, 'Antenna inventory', { include: '[data-testid="antenna-panel"]' });
 
   // a detection re-run finds the 8 others and the radio again: the flagged unit stays, no twin
@@ -246,7 +248,7 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
     .not.toBe('run-e2e-empty');
   await panel.getByTestId('antenna-filter-all').click();
   await expect(rows).toHaveCount(9, { timeout: 60_000 });
-  await expect(rows.getByTestId('antenna-origin')).toHaveCount(1);
+  await expect(win.getByTestId('antenna-origin')).toHaveCount(1);
   const after = await savedFile(dir);
   expect(after.units).toHaveLength(9);
   const kept1 = after.units.find((u) => u.origin === 'flagged');
@@ -269,10 +271,11 @@ test('flags an antenna on the cloud, types its values and keeps them through a r
   await panel2.getByTestId('antenna-filter-all').click();
   const rows2 = panel2.getByTestId('antenna-row');
   await expect(rows2).toHaveCount(9);
-  const row2 = rows2.filter({ has: win.getByTestId('antenna-origin') });
+  const row2 = panel2.locator(`[data-row-id="${flagged.id}"] [data-testid="antenna-row"]`);
   await expect(row2).toHaveCount(1);
-  await row2.click();
-  const card2 = win.getByTestId('antenna-card');
+  await row2.locator('.antenna-name').click();
+  const card2 = win.getByTestId('antenna-details');
+  await expect(card2.getByTestId('antenna-origin')).toHaveCount(1);
   await expect(card2).toBeVisible();
   await expect(card2.locator('[data-value="azimuth"]')).toHaveAttribute('data-basis', 'user');
 

@@ -10,7 +10,7 @@
  *   and one with an entry the catalogue lacks. The review shows that row at low confidence with
  *   why; Apply only leaves the changes unsaved; step 2 tags the rows `ai` and `ai-low`.
  * - No accepted antenna: Auto-plan stops at "Review antennas first", and Review antennas opens
- *   the Measure bench.
+ *   the Project tab (Antennas group).
  *
  * The rules flow starts from the coverage card's ✦ Auto-plan in the stage's legend corner (the
  * chip, `CoverageChip.tsx`), the other two from the panel's AI card; the card's state is checked
@@ -324,7 +324,7 @@ test('Auto-plan with a local model: AI picks, a low-confidence row, Apply only',
   }
 });
 
-test('no accepted antennas: Auto-plan asks for a review, Review antennas opens Measure', async ({
+test('no accepted antennas: Auto-plan asks for a review, Review antennas opens Project', async ({
   win,
   dataRoot,
 }) => {
@@ -351,12 +351,12 @@ test('no accepted antennas: Auto-plan asks for a review, Review antennas opens M
   await expect(dlg).toBeHidden();
   await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
   await expect(win.locator('[role="tabpanel"][data-front="measure"]')).toBeVisible();
-  await evidence(win, 'review-first-measure');
+  await evidence(win, 'review-first-project');
   // nothing was planned or written
   expect(await readRfSectors(dataRoot.projectDir)).toBeNull();
 });
 
-test('drafts with the inventory drawn: Review antennas opens Measure on the first draft', async ({
+test('drafts with the inventory drawn: Review antennas opens Project on the first draft', async ({
   win,
   dataRoot,
 }) => {
@@ -369,7 +369,7 @@ test('drafts with the inventory drawn: Review antennas opens Measure on the firs
   const chip = stageChip(win);
   await expect(chip).toHaveAttribute('data-state', 'review-first');
   await chip.getByTestId('rf-chip-review').click();
-  // the Measure bench comes forward, the Coverage tab kept, the first draft's card shown
+  // the Project tab comes forward, the Coverage tab kept, the first draft's details shown
   await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
   await expect(win.locator('[role="tabpanel"][data-front="measure"]')).toBeVisible();
   // (kept and pinned; a narrow panel may list it under More tabs)
@@ -386,7 +386,10 @@ test('drafts with the inventory drawn: Review antennas opens Measure on the firs
         .tabs.find((x) => x.id === 'rf') ?? null,
   );
   expect(rfTab?.pinned).toBe(true);
-  await expect(win.getByTestId('antenna-card')).toBeVisible();
-  await expect(win.getByTestId('antenna-card-name')).toHaveText('P1');
-  await evidence(win, 'review-ready-measure');
+  await expect(win.getByTestId('wb-section-project-antennas')).toHaveAttribute('data-open', 'true');
+  await expect(win.getByTestId('antenna-details')).toBeVisible();
+  const open = win.locator('[data-testid="antenna-row"][aria-selected="true"]');
+  await expect(open).toHaveCount(1);
+  await expect(open.locator('.antenna-name')).toHaveText('P1');
+  await evidence(win, 'review-ready-project');
 });
