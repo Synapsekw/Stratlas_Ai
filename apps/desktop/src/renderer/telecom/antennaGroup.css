@@ -1,0 +1,142 @@
+/* The Antennas group (AntennasGroup.tsx): the rows as the sidebar's tree rows (.row, kind tree,
+   26px) laid out on one grid with the column header, the selected unit's details framed under its
+   row, and the bulk bar. Built on the bench tokens only. */
+.antenna-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-block-end: var(--sp-3);
+  container-type: inline-size;
+}
+/* tick, kind colour, name, kind, azimuth, downtilt, height, status, trash */
+.antenna-cols,
+.antenna-row.row[data-kind] {
+  display: grid;
+  grid-template-columns: 14px 8px minmax(28px, 1fr) minmax(0, 1fr) 50px 44px 36px 66px 24px;
+  align-items: center;
+  gap: 4px;
+  padding-inline: var(--sp-2);
+}
+.antenna-cols {
+  padding-block: var(--sp-1);
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  white-space: nowrap;
+}
+.antenna-cols > :nth-child(n + 5):nth-child(-n + 7) {
+  text-align: end;
+}
+/* a narrow aside: the kind column goes (the kind colour and the details still say it) */
+@container (max-width: 330px) {
+  .antenna-cols,
+  .antenna-row.row[data-kind] {
+    grid-template-columns: 14px 8px minmax(28px, 1fr) 50px 44px 36px 66px 24px;
+  }
+  .antenna-cols > :nth-child(4),
+  .antenna-kind {
+    display: none;
+  }
+}
+/* the open details count beside the eight rows (project/rowList.css), never as rows */
+.pl-rows.antenna-rows {
+  max-height: calc(8 * var(--pl-row-h) + var(--pl-details-h, 0px));
+}
+.antenna-tick {
+  margin: 0;
+}
+.antenna-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.antenna-name,
+.antenna-kind {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.antenna-name {
+  font-weight: var(--fw-title);
+  color: var(--fg-0);
+}
+.antenna-kind {
+  color: var(--fg-3);
+}
+.antenna-cell {
+  min-width: 0;
+}
+/* a row's azimuth and downtilt: the app's input, compact to the row's height */
+.antenna-cell-input.input {
+  width: 100%;
+  height: 20px;
+  padding: 0 4px;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.antenna-cell-input.input[aria-invalid='true'] {
+  border-color: var(--danger-line);
+}
+.antenna-dash,
+.antenna-height {
+  display: block;
+  text-align: end;
+  color: var(--fg-2);
+}
+.antenna-status {
+  display: inline-flex;
+  min-width: 0;
+}
+/* the app's outlined status chip with its dot, at the row's height */
+.antenna-status .chip-status {
+  height: 20px;
+  gap: 4px;
+  padding: 0 6px;
+  font-size: var(--t-11);
+}
+.antenna-trash {
+  color: var(--fg-3);
+}
+.antenna-row:hover .antenna-trash,
+.antenna-row[data-selected] .antenna-trash {
+  color: var(--fg-1);
+}
+/* the selected unit's details, under its row */
+.antenna-details {
+  display: grid;
+  gap: var(--sp-5);
+  margin-block: var(--sp-2) var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.antenna-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.antenna-warnings {
+  margin-inline: var(--sp-4);
+  color: var(--fg-2);
+}
+.antenna-warnings ul {
+  margin: var(--sp-1) 0 0;
+  padding-inline-start: var(--sp-5);
+}
+/* "N selected · Accept · Reject · Delete · ✕" */
+.antenna-bulk {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+}
+.antenna-bulk-count {
+  color: var(--fg-0);
+  white-space: nowrap;
+}

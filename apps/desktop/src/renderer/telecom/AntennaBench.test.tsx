@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /* eslint-disable @typescript-eslint/no-non-null-assertion -- DOM lookups that fail the test when missing */
 /**
- * The antenna inventory in the real Measure workbench, with the runner the stage mounts beside it:
- * its section, its CSV tool next to Export survey data, search, the live strip, a 3D pick, and the
- * AI send preview, a dialog under <body> that a run opens whatever is on screen.
+ * The antenna inventory in the real Project tab (the Measure workbench), with the runner the stage
+ * mounts beside it: its Antennas group in the "In this project" list, its CSV tool next to Export
+ * survey data, a tools search, the live strip, a 3D pick, and the AI send preview, a dialog under
+ * <body> that a run opens whatever is on screen. The group's reveal hold is AntennasGroup.test's.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -170,7 +171,7 @@ async function mount(where: 'sidebar' | 'inert' | 'none' = 'sidebar') {
   await flush();
 }
 const q = (sel: string) => host.querySelector<HTMLElement>(sel);
-const section = () => q('[data-testid="wb-section-telecom-antennas"]');
+const section = () => q('[data-testid="wb-section-project-antennas"]');
 const head = () => section()?.querySelector<HTMLButtonElement>('.wb-section-head') ?? null;
 const channels = (name: string) => h.calls.filter(([c]) => c === name);
 const search = (value: string) => {
@@ -248,10 +249,17 @@ afterEach(() => {
 });
 
 describe('the antenna inventory in the Measure workbench', () => {
-  it('is a section of the bench, with its CSV tool next to Export survey data', async () => {
+  it('is the Antennas group of the list, with its CSV tool next to Export survey data', async () => {
     await mount();
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
-    expect(head()?.textContent).toContain('Antenna inventory');
+    expect(head()?.textContent).toContain('Antennas');
+    // in the "In this project" list, above the TOOLS caption
+    const list = q('[data-testid="project-list"]')!;
+    expect(list.contains(section())).toBe(true);
+    const tools = q('[data-testid="project-tools-caption"]')!;
+    expect(
+      section()!.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     // the review filter starts on the drafts; the All tab lists every unit
     expect(section()?.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(2);
     expect(q('[data-testid="antenna-filter-all"]')?.textContent).toBe('All 3');
@@ -296,21 +304,18 @@ describe('the antenna inventory in the Measure workbench', () => {
     expect(host.textContent).toContain('Exported to C:/out/antenna-inventory.csv.');
   });
 
-  it('steps aside for a search unless its title matches', async () => {
+  it('stays as it is while the tools are searched (a search filters only the tools)', async () => {
     await mount();
     search('zzz');
-    expect(section()).toBeNull();
-    expect(q('.empty-state')).not.toBeNull();
-    search('antenna inv');
+    expect(section()).not.toBeNull();
     expect(head()?.getAttribute('aria-expanded')).toBe('true');
-    expect(q('.empty-state')).toBeNull();
-    // a fold the person chose comes back when the search is cleared
-    search('');
+    expect(section()?.querySelectorAll('[data-testid="antenna-row"]')).toHaveLength(2);
+    // a fold the person chose stays through a search
     act(() => {
       head()!.click();
     });
     search('antenna');
-    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    expect(head()?.getAttribute('aria-expanded')).toBe('false');
     search('');
     expect(head()?.getAttribute('aria-expanded')).toBe('false');
   });
@@ -335,125 +340,30 @@ describe('the antenna inventory in the Measure workbench', () => {
     expect(host.querySelectorAll('[data-testid="detect-antennas"]')).toHaveLength(1);
   });
 
-  it('reveals a unit picked in 3D without changing the person’s fold', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  it('a unit picked in 3D opens its details under its row, never scrolling the window', async () => {
     await mount();
-    act(() => {
-      head()!.click();
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('false');
-    const saved = JSON.stringify(sectionStore.getState().byBench);
     act(() => {
       h.layerPick!('ant-d1');
     });
     expect(antennaStore.getState().selected).toBe('ant-d1');
-    expect(head()?.getAttribute('aria-expanded')).toBe('true');
-    expect(JSON.stringify(sectionStore.getState().byBench)).toBe(saved);
-    // the row scrolls once the fold has opened, not in the commit that opens it
-    const scroll = scrollSpy;
-    expect(scroll).not.toHaveBeenCalled();
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
-    // the same unit picked again scrolls again; a click elsewhere ends the hold
-    scroll.mockClear();
-    act(() => {
-      h.layerPick!('ant-d1');
-    });
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-    expect(scroll).toHaveBeenCalledTimes(1);
-    act(() => {
-      antennaStore.setState({ selected: null });
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('false');
-  });
-
-  it('a header click ends the hold of a pick and folds the section', async () => {
-    await mount();
-    // open as the person left it (the default): the pick holds it, the header folds it
-    act(() => {
-      h.layerPick!('ant-d1');
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('true');
-    act(() => {
-      head()!.click();
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('false');
-    expect(antennaStore.getState().selected).toBe('ant-d1');
-    // folded by the person before the pick: the click ends the hold, the saved fold stays
-    act(() => {
-      h.layerPick!('ant-d1');
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('true');
-    const saved = JSON.stringify(sectionStore.getState().byBench);
-    act(() => {
-      head()!.click();
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('false');
-    expect(JSON.stringify(sectionStore.getState().byBench)).toBe(saved);
-    // and the next click opens it as usual
-    act(() => {
-      head()!.click();
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('true');
+    const item = section()!.querySelector('[data-row-id="ant-d1"]')!;
+    expect(item.contains(q('[data-testid="antenna-details"]'))).toBe(true);
+    expect(scrollSpy).not.toHaveBeenCalled();
   });
 });
 
 describe('openAntennaReview (another tool asks for the review)', () => {
-  it('opens a folded section on the first draft and scrolls its row into view', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  it('selects the first draft under To review, its details under its row', async () => {
     await mount();
-    act(() => {
-      head()!.click();
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('false');
     const s = antennaStore.getState();
     const first = filteredUnits(s.file, 'draft')[0]!.id;
     act(() => {
       openAntennaReview();
     });
     expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: first });
-    expect(head()?.getAttribute('aria-expanded')).toBe('true');
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
-  });
-
-  it('with no draft, opens the section with nothing selected until the header folds it', async () => {
-    const f = sample();
-    h.disk = { ...f, units: f.units.map((u) => ({ ...u, status: 'accepted' as const })) };
-    await mount();
-    act(() => {
-      head()!.click();
-    });
-    act(() => {
-      openAntennaReview();
-    });
-    expect(antennaStore.getState().selected).toBeNull();
-    expect(head()?.getAttribute('aria-expanded')).toBe('true');
     expect(q('[data-testid="antenna-filter-draft"]')?.getAttribute('aria-selected')).toBe('true');
-    act(() => {
-      head()!.click();
-    });
-    expect(head()?.getAttribute('aria-expanded')).toBe('false');
-  });
-
-  it('opens the section when it mounts after the call (another tab was in front)', async () => {
-    await mount();
-    act(() => {
-      head()!.click();
-    });
-    await mount('none');
-    act(() => {
-      openAntennaReview();
-    });
-    await mount();
-    expect(head()?.getAttribute('aria-expanded')).toBe('true');
-    expect(antennaStore.getState().selected).not.toBeNull();
+    const item = section()!.querySelector(`[data-row-id="${first}"]`)!;
+    expect(item.contains(q('[data-testid="antenna-details"]'))).toBe(true);
   });
 });
 
@@ -535,14 +445,12 @@ describe('AI labelling after a run', () => {
     expect(antennaStore.getState().aiPreview).not.toBeNull();
   });
 
-  it('says why it was skipped above the inventory, which a fold does not hide', async () => {
+  it('says why it was skipped in the Antennas group, above the rows', async () => {
     h.replies['ai:antennaLabelPreview'] = { ok: true, value: { ok: false, error: 'offline' } };
     await runAndFinish('sidebar');
-    act(() => {
-      head()!.click();
-    });
     const note = q('[data-testid="antenna-ai-note"]')!;
     expect(note.textContent).toBe('AI labelling skipped: offline');
+    expect(section()!.contains(note)).toBe(true);
     expect(note.closest('[inert]')).toBeNull();
     expect(dialog()).toBeNull();
   });

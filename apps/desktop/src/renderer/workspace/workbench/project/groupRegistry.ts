@@ -3,6 +3,7 @@
 // render in registry order, so the list is static), its body and its header actions.
 import type { MessageKey } from '@aio/ui';
 import type { ComponentType } from 'react';
+import { antennasGroup } from '../../../telecom/AntennasGroup';
 import type { GroupId } from './projectGroups';
 
 export interface ProjectGroupDef {
@@ -20,7 +21,7 @@ export interface ProjectGroupDef {
 }
 
 /** Every registered group, in no particular order (`useOrderedGroups` orders them). */
-export const PROJECT_GROUPS: readonly ProjectGroupDef[] = [];
+export const PROJECT_GROUPS: readonly ProjectGroupDef[] = [antennasGroup];
 
 /** The groups that apply to the open project, in the order the list shows them. */
 export function useOrderedGroups(

@@ -57,7 +57,7 @@ afterEach(() => {
 describe('ProjectList', () => {
   it('shows the caption and the TOOLS caption', () => {
     render();
-    expect(PROJECT_GROUPS).toEqual([]);
+    expect(PROJECT_GROUPS.map((g) => g.id)).toContain('antennas');
     expect(q('project-caption')?.textContent).toBe('In this project');
     expect(q('project-caption')?.tagName).toBe('BUTTON');
     expect(q('project-tools-caption')?.tagName).toBe('H3');

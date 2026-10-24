@@ -4,7 +4,7 @@ import type { AntennasFile, AntennaUnit, AntennaValue } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AntennaTypedValues } from './AntennaTypedValues';
+import { AntennaTypedField, AntennaTypedValues } from './AntennaTypedValues';
 import { antennaStore, useAntennas } from './antennaStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -335,6 +335,68 @@ describe('AntennaTypedValues', () => {
     });
     await settle();
     expect(stored().azimuthGridDeg).toEqual(typed(170));
+    expect(h.writes).toBe(0);
+  });
+});
+
+describe('AntennaTypedField compact (a row cell)', () => {
+  function Cell({ k }: { k: 'azimuthGridDeg' | 'downtiltDeg' }) {
+    const u = useAntennas((s) => s.file?.units[0]);
+    return u ? (
+      <AntennaTypedField unit={u} fieldKey={k} readOnly={false} compact testId="cell" />
+    ) : null;
+  }
+  const cell = () => q('cell') as HTMLInputElement;
+  const showCell = (k: 'azimuthGridDeg' | 'downtiltDeg' = 'azimuthGridDeg') => {
+    act(() => {
+      root.render(<Cell k={k} />);
+    });
+  };
+
+  it('is one input named by its label, with no visible label or reset', () => {
+    load(unit({ azimuthGridDeg: typed(170), measured: { azimuthGridDeg: measured(168) } }));
+    showCell();
+    expect(cell().tagName).toBe('INPUT');
+    expect(cell().getAttribute('aria-label')).toBe('Azimuth, project north (°)');
+    expect(cell().value).toBe('170');
+    expect(mount.querySelector('label')).toBeNull();
+    expect(mount.querySelector('[data-testid^="antenna-typed-reset-"]')).toBeNull();
+  });
+
+  it('saves on Enter and blur once, as the fold does', async () => {
+    load(unit());
+    showCell();
+    type(cell(), '172.5');
+    enter(cell());
+    blur(cell());
+    await settle();
+    expect(stored().azimuthGridDeg).toEqual(typed(172.5));
+    expect(h.writes).toBe(1);
+    expect(cell().value).toBe('172.5');
+  });
+
+  it('Esc puts the shown value back and writes nothing', async () => {
+    load(unit());
+    showCell('downtiltDeg');
+    type(cell(), '9');
+    act(() => {
+      cell().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(cell().value).toBe('2');
+    blur(cell());
+    await settle();
+    expect(h.writes).toBe(0);
+  });
+
+  it('an out-of-range entry marks the cell and says the range to a screen reader', async () => {
+    load(unit());
+    showCell('downtiltDeg');
+    type(cell(), '120');
+    enter(cell());
+    await settle();
+    expect(cell().getAttribute('aria-invalid')).toBe('true');
+    const msg = mount.querySelector(`[id="${cell().getAttribute('aria-describedby') ?? ''}"]`)!;
+    expect(msg.textContent).toContain('Enter a number from');
     expect(h.writes).toBe(0);
   });
 });

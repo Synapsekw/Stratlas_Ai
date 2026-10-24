@@ -596,17 +596,14 @@ describe('AntennaCard keys', () => {
           <AntennaInventory
             file={st.file}
             selected={st.selected}
+            ticked={{}}
             hidden={{}}
             solo={null}
             filter={st.filter}
             readOnly={false}
             onSelect={selectAntenna}
-            onToggleVisible={() => undefined}
-            onToggleGroup={() => undefined}
-            onSolo={() => undefined}
+            onTick={() => undefined}
             onFilter={() => undefined}
-            onHideAll={() => undefined}
-            onShowAll={() => undefined}
           />,
         );
       });
