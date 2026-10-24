@@ -5812,6 +5812,7 @@ export const en = {
   'mcard.stale': 'Stale, recompute',
   'mcard.noData': 'No survey data',
   'mcard.surfacePreparing': 'Surface preparing',
+  'mcard.notPrepared': 'Not prepared yet',
   'mcard.noElevation': 'No elevation for this date',
   'mcard.notMeasured': 'Not measured on this date',
   'surface.state.ready': 'ready',

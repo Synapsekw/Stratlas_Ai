@@ -29,17 +29,28 @@ vi.mock('./pointHistory', async (orig) => ({
     Promise.resolve(ground.at[tiles.id]?.(e, n) ?? null),
 }));
 /** Each date's surface state, as `useSurfaceStates` gives it (A5). */
-const states = vi.hoisted((): { map: Map<string, unknown> } => ({ map: new Map() }));
+const states = vi.hoisted((): { map: Map<string, unknown>; running: boolean; soon: boolean } => ({
+  map: new Map(),
+  running: false,
+  soon: true,
+}));
 vi.mock('../surfaceStates', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useSurfaceStates: () => states.map,
+  usePrepareRunning: () => states.running,
+  usePreparingSoon: () => states.soon,
 }));
-const prepared = vi.hoisted(() => ({ dates: [] as (readonly string[])[] }));
+const prepared = vi.hoisted(
+  (): { dates: (readonly string[])[]; answer: () => Promise<string | null> } => ({
+    dates: [],
+    answer: () => Promise.resolve(null),
+  }),
+);
 vi.mock('../compareStore', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   prepareDates: (captures: readonly string[]) => {
     prepared.dates.push(captures);
-    return Promise.resolve(null);
+    return prepared.answer();
   },
 }));
 const section = vi.hoisted(() => ({ opened: [] as unknown[], window: false }));
@@ -288,7 +299,10 @@ afterEach(() => {
   workspace.getState().closeProject();
   ground.at = {};
   states.map = new Map();
+  states.running = false;
+  states.soon = true;
   prepared.dates = [];
+  prepared.answer = () => Promise.resolve(null);
 });
 
 describe('lines on the card', () => {
@@ -479,6 +493,77 @@ describe('every survey date with its surface state', () => {
       chipAt('sep')?.querySelector<HTMLButtonElement>('[data-testid="chip-prepare"]')?.click();
     });
     expect(prepared.dates).toEqual([['sep']]);
+  });
+
+  it('a second Prepare while the first is on its way starts nothing more', async () => {
+    threeDates();
+    let finish: (v: string | null) => void = () => undefined;
+    prepared.answer = () =>
+      new Promise((r) => {
+        finish = r;
+      });
+    act(() => {
+      cardViews.setState({
+        distance: { shown: ['jan', 'sep'], off: [], shadeVs: null, vs: null },
+      });
+    });
+    await render(slotsFor(line(), 'detail').chips);
+    const button = chipAt('sep')?.querySelector<HTMLButtonElement>('[data-testid="chip-prepare"]');
+    act(() => {
+      button?.click();
+      button?.click();
+    });
+    expect(prepared.dates).toEqual([['sep']]);
+    await act(async () => {
+      finish(null);
+      await Promise.resolve();
+    });
+  });
+
+  it('no Prepare while a prepare job runs on the project', async () => {
+    threeDates();
+    states.running = true;
+    act(() => {
+      cardViews.setState({
+        distance: { shown: ['jan', 'sep'], off: [], shadeVs: null, vs: null },
+      });
+    });
+    await render(slotsFor(line(), 'detail').chips);
+    expect(chipAt('sep')?.querySelector('[data-testid="chip-prepare"]')).toBeNull();
+  });
+
+  it('a Prepare that could not start says why on the card', async () => {
+    threeDates();
+    prepared.answer = () => Promise.resolve('The pipeline Python is not installed.');
+    act(() => {
+      cardViews.setState({
+        distance: { shown: ['jan', 'sep'], off: [], shadeVs: null, vs: null },
+      });
+    });
+    await render(slotsFor(line(), 'detail').chips);
+    await act(async () => {
+      chipAt('sep')?.querySelector<HTMLButtonElement>('[data-testid="chip-prepare"]')?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[data-testid="prepare-error"]')?.textContent).toBe(
+      'The pipeline Python is not installed.',
+    );
+  });
+
+  it('a date no job will prepare reads "Not prepared yet", one a job will "Surface preparing"', async () => {
+    threeDates();
+    qaStore.setState({ surfaces: [] });
+    states.map = new Map<string, unknown>([['jan', { kind: 'missing' }]]);
+    states.soon = false;
+    const point = of('elevation', [[5, 5, 3]]);
+    await render(slotsFor(point, 'detail').chart);
+    expect(host.textContent).toContain('Not prepared yet');
+    expect(host.textContent).not.toContain('Surface preparing');
+    states.soon = true;
+    act(() => root?.unmount());
+    root = undefined;
+    await render(slotsFor(point, 'detail').chart);
+    expect(host.textContent).toContain('Surface preparing');
   });
 
   it('a date without elevation is a disabled chip with "No elevation for this date"', async () => {

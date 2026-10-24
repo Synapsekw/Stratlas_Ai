@@ -72,7 +72,12 @@ import { measureStore, updateMeasurement, useMeasure } from '../measureStore';
 import { useFocusCapture } from '../qaHelpers';
 import { surfaceOfCapture, useQa } from '../qaStore';
 import { openSection, setWindow } from '../sectionStore';
-import { useSurfaceStates, type SurfaceState } from '../surfaceStates';
+import {
+  usePrepareRunning,
+  usePreparingSoon,
+  useSurfaceStates,
+  type SurfaceState,
+} from '../surfaceStates';
 import { measurementHasChart } from './chartRule';
 import type { CardSlots, CardVariant } from './MeasureCard';
 import {
@@ -322,6 +327,34 @@ function useCanPrepare(): boolean {
   const readOnly = useMeasure((s) => s.readOnly);
   const lookOnly = useAnnotateReadOnly();
   return !readOnly && !lookOnly;
+}
+
+/** A chip's Prepare on its way to `jobs:start` (shared by every card: one ask at a time). */
+const prepareAsking = createStore<{ busy: boolean }>()(() => ({ busy: false }));
+
+/**
+ * A chip's Prepare: null while it may not start one (read-only, a prepare job already at work on
+ * the project, the background one included, or an ask on its way), else the start. What could
+ * not start says why on the card (`error`).
+ */
+function usePrepare(): { start: ((captures: string[]) => void) | null; error: string | null } {
+  const canPrepare = useCanPrepare();
+  const running = usePrepareRunning();
+  const asking = useStore(prepareAsking, (s) => s.busy);
+  const [error, setError] = useState<string | null>(null);
+  const start = (captures: string[]) => {
+    if (prepareAsking.getState().busy) return;
+    prepareAsking.setState({ busy: true });
+    setError(null);
+    prepareDates(captures)
+      .then(setError, (e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        prepareAsking.setState({ busy: false });
+      });
+  };
+  return { start: canPrepare && !running && !asking ? start : null, error };
 }
 
 /** The prepared design surfaces, by name. */
@@ -612,14 +645,20 @@ function ElevationOverTime({ m }: { m: SurveyMeasurement }): ReactElement {
       : null,
     () => pointHistory(dated, e ?? 0, n ?? 0, (s) => surfaceTiles(project ?? '', s)),
   );
-  const reason = t(emptyReason(dated.map((d) => d.state)));
+  const soon = usePreparingSoon();
+  const reason = t(
+    emptyReason(
+      dated.map((d) => d.state),
+      soon,
+    ),
+  );
   const note = useLoadNote(rows, 'elevation-time', reason);
   if (note) return note;
   if (rows.status !== 'ready' || !rows.value.some((r) => r.z !== null))
     return <Note text={reason} testId="elevation-time-none" />;
   // a date with no height says why: its surface still to come, no elevation, or not measured here
   const stateOf = new Map(dated.map((d) => [d.capture, d.state]));
-  const gapReason = (capture: string) => t(emptyReason([stateOf.get(capture) ?? NONE]));
+  const gapReason = (capture: string) => t(emptyReason([stateOf.get(capture) ?? NONE], soon));
   const references: TimeReference[] = [];
   if (option?.group === 'design' && surfaceZ.status === 'ready' && surfaceZ.value !== null)
     references.push({ key: option.key, label: option.label, z: surfaceZ.value, kind: 'design' });
@@ -711,7 +750,10 @@ function useLine(m: SurveyMeasurement) {
   );
   // why a chart or a length has nothing to show: the shown dates' states, else every date's
   const shownStates = dated.filter((d) => shown.includes(d.capture)).map((d) => d.state);
-  const reason = t(emptyReason(shownStates.length > 0 ? shownStates : dated.map((d) => d.state)));
+  const soon = usePreparingSoon();
+  const reason = t(
+    emptyReason(shownStates.length > 0 ? shownStates : dated.map((d) => d.state), soon),
+  );
   const series = useLoaded<ChartSeries[]>(
     project && pts.length >= 2 && picked.length > 0
       ? `line|${project}|${JSON.stringify(pts)}|${surfacesKey(picked.map((o) => ({ key: `${o.key}/${o.kind}`, tiles: tilesOf(o.key) })))}`
@@ -762,9 +804,9 @@ function useLine(m: SurveyMeasurement) {
 /** The surfaces on the line's profile, as the chart's chips (surveys, designs, the base). */
 function LineChips({ m }: { m: SurveyMeasurement }): ReactElement | null {
   const { options, shown, off, view, any } = useLine(m);
-  const canPrepare = useCanPrepare();
+  const prepare = usePrepare();
   if (!any) return null;
-  return (
+  const chips = (
     <SurfaceChips
       shown={shown.flatMap((k) => options.filter((o) => o.key === k))}
       off={off}
@@ -785,15 +827,22 @@ function LineChips({ m }: { m: SurveyMeasurement }): ReactElement | null {
           shadeVs: view.shadeVs === key ? null : view.shadeVs,
         });
       }}
-      {...(canPrepare
+      {...(prepare.start
         ? {
             onPrepare: (key: string) => {
-              void prepareDates([key]);
+              prepare.start?.([key]);
             },
           }
         : {})}
       testId="line-chips"
     />
+  );
+  if (!prepare.error) return chips;
+  return (
+    <>
+      {chips}
+      <Note text={prepare.error} testId="prepare-error" />
+    </>
   );
 }
 
@@ -1020,7 +1069,8 @@ function AreaDates({ m }: { m: SurveyMeasurement }): ReactElement | null {
   const all = useSurveyDates();
   const dated = useMemo(() => all.filter(isReady), [all]);
   const focus = useFocusCapture();
-  const canPrepare = useCanPrepare();
+  const prepare = usePrepare();
+  const soon = usePreparingSoon();
   const { settings, units, locale } = useFormat(m);
   const areas = useLoaded<Record<string, number | null>>(
     project && ring.length >= 3 && dated.length > 0
@@ -1047,21 +1097,23 @@ function AreaDates({ m }: { m: SurveyMeasurement }): ReactElement | null {
     const st = d.state;
     if (st.kind === 'preparing') return t('surface.state.preparing', { pct: String(st.pct) });
     if (st.kind === 'none') return t('surface.state.none');
-    if (st.kind === 'missing')
-      return canPrepare ? (
+    if (st.kind === 'missing') {
+      const start = prepare.start;
+      return start ? (
         <button
           type="button"
           className="pc-chip-prepare"
           data-testid="chip-prepare"
           onClick={() => {
-            void prepareDates([d.capture]);
+            start([d.capture]);
           }}
         >
           {t('surface.state.prepare')}
         </button>
       ) : (
-        t(emptyReason([st]))
+        t(emptyReason([st], soon))
       );
+    }
     const a = areas.status === 'ready' ? areas.value[d.capture] : undefined;
     if (areas.status === 'error') return t('mcard.loadFailed');
     if (areas.status !== 'ready') return t('mcard.computing');
@@ -1069,7 +1121,7 @@ function AreaDates({ m }: { m: SurveyMeasurement }): ReactElement | null {
       ? t('mcard.notMeasured')
       : formatQuantity(a, 'area', units, settings.precision, locale);
   };
-  return (
+  const list = (
     <ul className="pc-chips mc-dates" data-testid="area-dates" aria-label={t('chart.date')}>
       {all.map((d) => (
         <li
@@ -1084,6 +1136,13 @@ function AreaDates({ m }: { m: SurveyMeasurement }): ReactElement | null {
         </li>
       ))}
     </ul>
+  );
+  if (!prepare.error) return list;
+  return (
+    <>
+      {list}
+      <Note text={prepare.error} testId="prepare-error" />
+    </>
   );
 }
 

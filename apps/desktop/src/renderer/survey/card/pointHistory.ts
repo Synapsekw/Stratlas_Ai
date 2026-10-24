@@ -87,15 +87,19 @@ export interface DatedSurface {
 }
 
 /** The reason in place of "No survey data" (spec section 2), by the i18n key that says it. */
-export type EmptyReason = 'mcard.surfacePreparing' | 'mcard.noElevation' | 'mcard.notMeasured';
+export type EmptyReason =
+  'mcard.surfacePreparing' | 'mcard.notPrepared' | 'mcard.noElevation' | 'mcard.notMeasured';
 
 /**
- * Why there is no height to show for these dates: a surface still to come (preparing, or
- * waiting for Prepare), no elevation at all, else nothing measured there on the dates that have one.
+ * Why there is no height to show for these dates: a surface preparing (or missing while `soon`: a
+ * prepare job runs or the background preparation will start one), a surface not prepared yet (no
+ * job will come on its own: auto-prepare off, a package, no pipeline Python, a cancelled or failed
+ * job), no elevation at all, else nothing measured there on the dates that have one.
  */
-export function emptyReason(states: readonly SurfaceState[]): EmptyReason {
-  if (states.some((s) => s.kind === 'preparing' || s.kind === 'missing'))
-    return 'mcard.surfacePreparing';
+export function emptyReason(states: readonly SurfaceState[], soon = false): EmptyReason {
+  if (states.some((s) => s.kind === 'preparing')) return 'mcard.surfacePreparing';
+  if (states.some((s) => s.kind === 'missing'))
+    return soon ? 'mcard.surfacePreparing' : 'mcard.notPrepared';
   if (states.every((s) => s.kind === 'none')) return 'mcard.noElevation';
   return 'mcard.notMeasured';
 }

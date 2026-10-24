@@ -84,7 +84,14 @@ describe('pointHistory', () => {
 describe('emptyReason', () => {
   it('names a surface still to come, no elevation, else not measured', () => {
     expect(emptyReason([READY, { kind: 'preparing', pct: 62 }])).toBe('mcard.surfacePreparing');
-    expect(emptyReason([{ kind: 'missing' }])).toBe('mcard.surfacePreparing');
+    // a missing surface is preparing only when a job runs or auto-prepare will start one
+    expect(emptyReason([{ kind: 'missing' }], true)).toBe('mcard.surfacePreparing');
+    expect(emptyReason([{ kind: 'missing' }])).toBe('mcard.notPrepared');
+    expect(emptyReason([READY, { kind: 'missing' }], false)).toBe('mcard.notPrepared');
+    // a date preparing is preparing whatever comes next
+    expect(emptyReason([{ kind: 'preparing', pct: 5 }, { kind: 'missing' }], false)).toBe(
+      'mcard.surfacePreparing',
+    );
     expect(emptyReason([{ kind: 'none' }, { kind: 'none' }])).toBe('mcard.noElevation');
     expect(emptyReason([READY, { kind: 'none' }])).toBe('mcard.notMeasured');
   });
