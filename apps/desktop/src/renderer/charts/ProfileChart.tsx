@@ -27,7 +27,7 @@ import {
   type ChartSeries,
   type Pin,
 } from '@aio/survey';
-import { useT } from '@aio/ui';
+import { Icon, useT } from '@aio/ui';
 import {
   useId,
   useLayoutEffect,
@@ -60,6 +60,18 @@ export interface ProfileChartProps {
   testId?: string;
   /** The export and "Add to report" buttons, set at the end of the line under the chart. */
   actions?: ReactNode;
+  /** The crosshair's chainage from outside (linked hover); controlled when not `undefined`. */
+  hoverAt?: number | null;
+  /** The chainage under the pointer or the keyboard, null when it leaves. */
+  onHover?(chainageM: number | null): void;
+  /** The pinned point from outside; controlled when not `undefined`. */
+  pinnedAt?: number | null;
+  /** Given: a click pins the point (a click on the pin clears it) instead of calling `onPin`. */
+  onPinAt?(chainageM: number | null): void;
+  /** A double-click: fly the camera and the map there. */
+  onFly?(chainageM: number): void;
+  /** Set at the end of the readout (the line cards' "Add pin here"). */
+  readoutAction?: ReactNode;
 }
 
 /** Room for the elevation labels on the left and the chainage labels and captions below. */
@@ -75,6 +87,10 @@ export const DEFAULT_PLOT = {
 const Z_MARGIN = 0.08;
 /** Readout offset from the crosshair. */
 const READOUT_GAP = 12;
+/** A click this close to the pinned point (px) clears the pin. */
+const PIN_HIT_PX = 6;
+/** Two dates closer than this (m) draw no dashed gap between their dots. */
+const GAP_MIN_M = 0.05;
 
 type Run = [number, number][];
 
@@ -205,11 +221,45 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
 
   // the crosshair: a chainage under the pointer, or a sample index from the keyboard
   const stations = (current ?? ordered.at(-1))?.chainage ?? [];
-  const [at, setAt] = useState<number | null>(null);
+  // the hover and the pin are the chart's own unless the caller drives them (linked hover)
+  const [ownAt, setOwnAt] = useState<number | null>(null);
+  const [ownPin, setOwnPin] = useState<number | null>(null);
+  const at = p.hoverAt !== undefined ? p.hoverAt : ownAt;
+  const pin = interactive ? (p.pinnedAt !== undefined ? p.pinnedAt : ownPin) : null;
   // blur leaves the crosshair alone while the pointer is still over the plot
   const hovering = useRef(false);
-  const live = interactive && at !== null;
-  const readout = live ? hoverAt(ordered, at, target ? target.key : null) : null;
+  const setAt = (c: number | null) => {
+    setOwnAt(c);
+    p.onHover?.(c);
+  };
+  const setPin = (c: number | null) => {
+    setOwnPin(c);
+    p.onPinAt?.(c);
+  };
+  /** The point pins, or a click on the pin clears it (the chart's pin; else a section pin). */
+  const pinAt = (c: number) => {
+    if (p.onPinAt) setPin(pin !== null && Math.abs(sc.sx * (c - pin)) <= PIN_HIT_PX ? null : c);
+    else p.onPin?.(c);
+  };
+  // the readout follows the pointer, and stays on the pin when the pointer has gone
+  const shownAt = at ?? pin;
+  const live = interactive && shownAt !== null;
+  const readout = live ? hoverAt(ordered, shownAt, target ? target.key : null) : null;
+  // the newest dated surface against the one before it: Δ cut or fill, and the dashed gap
+  const dated = readout
+    ? ordered
+        .filter((s) => s.date)
+        .map((s) => ({
+          key: s.key,
+          date: s.date ?? '',
+          z: readout.rows.find((r) => r.key === s.key)?.z ?? null,
+        }))
+        .filter((d): d is { key: string; date: string; z: number } => d.z !== null)
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    : [];
+  const newest = dated.at(-1);
+  const before = dated.at(-2);
+  const dz = newest && before ? newest.z - before.z : null;
 
   const chainageAt = (e: ReactMouseEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -232,14 +282,15 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
     else if (e.key === 'ArrowLeft') next = at === null ? 0 : Math.max(0, i - 1);
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = last;
-    else if ((e.key === 'Enter' || e.key === ' ') && at !== null && p.onPin) {
+    else if ((e.key === 'Enter' || e.key === ' ') && at !== null && (p.onPinAt ?? p.onPin)) {
       e.preventDefault();
-      p.onPin(at);
+      pinAt(at);
       return;
     } else if (e.key === 'Escape') {
-      // the crosshair goes; the panel or dialog around the chart stays open
+      // the pin goes first, then the crosshair; the panel or dialog around the chart stays open
       e.stopPropagation();
-      setAt(null);
+      if (pin !== null) setPin(null);
+      else setAt(null);
       return;
     }
     if (next === null) return;
@@ -268,14 +319,27 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
         },
         onClick: (e: ReactMouseEvent<SVGSVGElement>) => {
           const c = chainageAt(e);
-          if (c !== null) p.onPin?.(c);
+          if (c !== null) pinAt(c);
+        },
+        onDoubleClick: (e: ReactMouseEvent<SVGSVGElement>) => {
+          const c = chainageAt(e);
+          if (c !== null) p.onFly?.(c);
         },
       }
     : {};
 
   const readoutId = `${clipId}-readout`;
-  const cx = at === null ? 0 : x(at);
+  const cx = shownAt === null ? 0 : x(shownAt);
   const flip = cx > PAD.left + plotW / 2;
+  const px = pin === null ? 0 : x(pin);
+  // signed with the Unicode minus, no sign on a value that rounds to zero
+  const dzMag = dz === null ? '' : dist(Math.abs(dz));
+  const dzText =
+    dz === null
+      ? null
+      : t(dz < 0 ? 'chart.deltaCut' : 'chart.deltaFill', {
+          value: `${dzMag === dist(0) ? '' : dz < 0 ? '−' : '+'}${dzMag}`,
+        });
   const delta = readout?.deltaM ?? null;
   // signed, with no "+" on a value that rounds to zero
   const diffText =
@@ -303,7 +367,7 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
         onBlur={
           interactive
             ? () => {
-                if (!hovering.current) setAt(null);
+                if (!hovering.current && at !== null) setAt(null);
               }
             : undefined
         }
@@ -395,9 +459,29 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
                 )}
               </g>
             ))}
+            {pin !== null && (
+              <line
+                data-testid="chart-pin-mark"
+                className="pc-pin-mark"
+                x1={px}
+                x2={px}
+                y1={top}
+                y2={bottom}
+              />
+            )}
             {readout && (
               <g data-testid="chart-crosshair" className="pc-crosshair">
                 <line x1={cx} x2={cx} y1={top} y2={bottom} />
+                {newest && before && Math.abs(newest.z - before.z) > GAP_MIN_M && (
+                  <line
+                    data-testid="chart-gap"
+                    className="pc-gap"
+                    x1={cx}
+                    x2={cx}
+                    y1={y(newest.z)}
+                    y2={y(before.z)}
+                  />
+                )}
                 {readout.rows.map((r) =>
                   r.z === null ? null : (
                     <circle
@@ -424,7 +508,9 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
                 : { insetInlineStart: cx + READOUT_GAP, insetBlockStart: top }
             }
           >
-            <div className="pc-ro-head">{dist(readout.chainage)}</div>
+            <div className="pc-ro-head">
+              {t('chart.chainageAt', { value: dist(readout.chainage) })}
+            </div>
             <dl className="pc-ro-rows">
               {readout.rows.map((r) => {
                 const st = strokeOf.get(r.key);
@@ -441,6 +527,17 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
                   </div>
                 );
               })}
+            </dl>
+            {dzText !== null && dz !== null && (
+              <p
+                className="pc-ro-delta"
+                data-testid="chart-delta"
+                data-kind={dz < 0 ? 'cut' : 'fill'}
+              >
+                {dzText}
+              </p>
+            )}
+            <dl className="pc-ro-rows">
               {target && (
                 <div className="pc-ro-row pc-ro-sep" data-row="diff">
                   <dt>{t('chart.diff')}</dt>
@@ -465,6 +562,17 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
                 </dd>
               </div>
             </dl>
+            {p.readoutAction !== undefined && <div className="pc-ro-action">{p.readoutAction}</div>}
+          </div>
+        )}
+        {pin !== null && (
+          <div
+            className="pc-pin-badge"
+            data-testid="chart-pin-badge"
+            style={{ insetInlineStart: px, insetBlockStart: 0 }}
+          >
+            <Icon name="pin" size={12} />
+            {t('hover.pinned', { chainage: dist(pin) })}
           </div>
         )}
         {interactive && (

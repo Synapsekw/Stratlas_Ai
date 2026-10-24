@@ -234,6 +234,53 @@
   stroke-width: 1;
   shape-rendering: crispEdges;
 }
+/* the dashed gap between the two dates' dots (linked hover, board 8) */
+.pc-crosshair .pc-gap {
+  stroke: var(--fg-2);
+  stroke-dasharray: 3 3;
+}
+/* the pinned point: a solid accent line with its badge above the plot (board 10) */
+.pc-pin-mark {
+  stroke: var(--acc);
+  stroke-width: 1.5;
+  shape-rendering: crispEdges;
+}
+.pc-pin-badge {
+  position: absolute;
+  z-index: var(--z-stage-ui);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-4);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-11);
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.pc-ro-delta {
+  margin: var(--sp-2) 0 0;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pc-ro-delta[data-kind='cut'] {
+  color: var(--cut);
+}
+.pc-ro-delta[data-kind='fill'] {
+  color: var(--fill);
+}
+.pc-ro-action {
+  margin-block-start: var(--sp-2);
+  padding-block-start: var(--sp-2);
+  border-block-start: 1px solid var(--line-soft);
+  pointer-events: auto;
+}
 
 /* the hover readout: one floating surface beside the crosshair */
 .pc-readout {

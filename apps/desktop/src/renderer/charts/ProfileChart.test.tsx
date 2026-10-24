@@ -260,15 +260,15 @@ describe('ProfileChart', () => {
       });
     };
     key('ArrowRight');
-    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('10.00 m');
+    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 10.00 m');
     key('ArrowRight');
-    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('20.00 m');
+    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 20.00 m');
     key('ArrowLeft');
-    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('10.00 m');
+    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 10.00 m');
     key('End');
-    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('40.00 m');
+    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 40.00 m');
     key('ArrowRight'); // stays at the last sample
-    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('40.00 m');
+    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 40.00 m');
   });
 
   it('click pins at the chainage under the pointer', () => {
@@ -299,6 +299,143 @@ describe('ProfileChart', () => {
       plot?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
     expect(onPin).toHaveBeenLastCalledWith(0);
+  });
+
+  it('controlled hoverAt draws the crosshair without a pointer', () => {
+    let h = render({ hoverAt: 20 });
+    expect(h.querySelector('[data-testid="chart-crosshair"]')).not.toBeNull();
+    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 20.00 m');
+    act(() => root?.unmount());
+    root = undefined;
+    host.remove();
+    // controlled null: a pointer move asks, but the chart waits for the owner
+    const onHover = vi.fn();
+    h = render({ hoverAt: null, onHover });
+    expect(h.querySelector('[data-testid="chart-crosshair"]')).toBeNull();
+    move(h, sampleX(h, 2));
+    expect(onHover).toHaveBeenCalledTimes(1);
+    expect(h.querySelector('[data-testid="chart-crosshair"]')).toBeNull();
+  });
+
+  it('pointer move calls onHover with the chainage', () => {
+    const onHover = vi.fn();
+    const h = render({ onHover });
+    move(h, sampleX(h, 2));
+    expect(onHover).toHaveBeenCalledTimes(1);
+    expect(onHover.mock.calls[0]?.[0]).toBeCloseTo(20, 6);
+    act(() => {
+      svgOf(h).dispatchEvent(
+        new MouseEvent('pointerout', { bubbles: true, relatedTarget: document.body }),
+      );
+    });
+    expect(onHover).toHaveBeenLastCalledWith(null);
+  });
+
+  it('click calls onPinAt, a second click on the pin clears it', () => {
+    const onPinAt = vi.fn();
+    const onPin = vi.fn();
+    const h = render({ onPinAt, onPin });
+    const click = (x: number) => {
+      act(() => {
+        svgOf(h).dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: 50 }));
+      });
+    };
+    click(sampleX(h, 2));
+    expect(onPinAt).toHaveBeenCalledTimes(1);
+    expect(onPinAt.mock.calls[0]?.[0]).toBeCloseTo(20, 6);
+    // pinned: a solid accent crosshair with a pin badge, held while the pointer moves away
+    expect(h.querySelector('[data-testid="chart-pin-mark"]')).not.toBeNull();
+    expect(h.querySelector('[data-testid="chart-pin-badge"]')?.textContent).toBe(
+      '20.00 m · pinned',
+    );
+    move(h, sampleX(h, 4));
+    expect(h.querySelector('[data-testid="chart-pin-mark"]')).not.toBeNull();
+    click(sampleX(h, 2) + 2);
+    expect(onPinAt).toHaveBeenLastCalledWith(null);
+    expect(h.querySelector('[data-testid="chart-pin-mark"]')).toBeNull();
+    // section pins are no longer made by a click when the chart pins its point
+    expect(onPin).not.toHaveBeenCalled();
+  });
+
+  it('a controlled pinnedAt shows the pin and the readout without a pointer', () => {
+    const h = render({ pinnedAt: 30, onPinAt: vi.fn() });
+    expect(h.querySelector('[data-testid="chart-pin-badge"]')?.textContent).toBe(
+      '30.00 m · pinned',
+    );
+    expect(readout(h)?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 30.00 m');
+  });
+
+  it('double-click calls onFly', () => {
+    const onFly = vi.fn();
+    const h = render({ onFly });
+    act(() => {
+      svgOf(h).dispatchEvent(
+        new MouseEvent('dblclick', { bubbles: true, clientX: sampleX(h, 3), clientY: 50 }),
+      );
+    });
+    expect(onFly).toHaveBeenCalledTimes(1);
+    expect(onFly.mock.calls[0]?.[0]).toBeCloseTo(30, 6);
+  });
+
+  it('the readout shows chainage, both elevations and Δ cut', () => {
+    const before: ChartSeries = { ...earlier, z: [100, 103, 105, 103, 100] };
+    const h = render({ series: [before, current], hoverAt: 20 });
+    const r = readout(h);
+    expect(r?.querySelector('.pc-ro-head')?.textContent).toBe('Chainage 20.00 m');
+    expect(r?.querySelector('[data-row="cap-2"]')?.textContent).toBe('05 Oct104.00 m');
+    expect(r?.querySelector('[data-row="cap-1"]')?.textContent).toBe('01 Sep105.00 m');
+    const d = h.querySelector('[data-testid="chart-delta"]');
+    expect(d?.textContent).toBe('Δ −1.00 m cut');
+    expect(d?.getAttribute('data-kind')).toBe('cut');
+    // the two dots joined by a dashed gap
+    expect(h.querySelector('[data-testid="chart-gap"]')).not.toBeNull();
+    act(() => root?.unmount());
+    root = undefined;
+    host.remove();
+    // later higher is fill
+    const h2 = render({ series: [earlier, current], hoverAt: 20 });
+    expect(h2.querySelector('[data-testid="chart-delta"]')?.textContent).toBe('Δ +3.00 m fill');
+  });
+
+  it('a 0.02 m difference draws no gap line', () => {
+    const near: ChartSeries = { ...earlier, z: current.z.map((z) => (z ?? 0) - 0.02) };
+    const h = render({ series: [near, current], hoverAt: 20 });
+    expect(h.querySelectorAll('[data-testid="chart-crosshair"] circle').length).toBe(2);
+    expect(h.querySelector('[data-testid="chart-gap"]')).toBeNull();
+    expect(h.querySelector('[data-testid="chart-delta"]')?.textContent).toBe('Δ +0.02 m fill');
+    act(() => root?.unmount());
+    root = undefined;
+    host.remove();
+    // one survey: no delta at all
+    const one = render({ series: [current], hoverAt: 20 });
+    expect(one.querySelector('[data-testid="chart-delta"]')).toBeNull();
+    expect(one.querySelector('[data-testid="chart-gap"]')).toBeNull();
+  });
+
+  it('Esc clears the pin and then the hover', () => {
+    const onPinAt = vi.fn();
+    const onHover = vi.fn();
+    const h = render({ onPinAt, onHover });
+    const plot = h.querySelector<HTMLElement>('[data-testid="chart-plot"]');
+    move(h, sampleX(h, 2));
+    act(() => {
+      svgOf(h).dispatchEvent(
+        new MouseEvent('click', { bubbles: true, clientX: sampleX(h, 2), clientY: 50 }),
+      );
+    });
+    expect(h.querySelector('[data-testid="chart-pin-mark"]')).not.toBeNull();
+    const esc = () => {
+      act(() => {
+        plot?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      });
+    };
+    esc();
+    expect(onPinAt).toHaveBeenLastCalledWith(null);
+    expect(h.querySelector('[data-testid="chart-pin-mark"]')).toBeNull();
+    expect(readout(h)).not.toBeNull();
+    esc();
+    expect(onHover).toHaveBeenLastCalledWith(null);
+    expect(readout(h)).toBeNull();
   });
 
   it('static render (width given, interactive false) has no crosshair and no listeners', () => {
