@@ -3,7 +3,8 @@
  * (the second later, faster and with a detour), both placed on the model above an ortho that lies
  * 6 m lower. The placed tracks lie on the ortho in 3D; the map's Beam turns with the 360 look;
  * "Compare with walk" on a walk's right-click menu plays both side by side, the follower paired by
- * place with the distance chip; Swap lead while playing keeps both playing; the detour is shaded
+ * place with the distance chip; zoomed all the way out, Link look shows the same zoom in both panes
+ * (one size, the same horizontal field of view), also with the divider moved; Swap lead while playing keeps both playing; the detour is shaded
  * on the scrubber and seeking into it while playing plays that walk alone. Skipped when ffmpeg with
  * libx264 is missing (CI installs it).
  */
@@ -89,6 +90,20 @@ async function dragView(win: Page, view: Locator, dx: number): Promise<void> {
   await win.mouse.move(x + dx / 2, y, { steps: 4 });
   await win.mouse.move(x + dx, y, { steps: 4 });
   await win.mouse.up();
+}
+
+/** Zoom the 360 view all the way out with the wheel, the pointer over it. */
+async function zoomOut(win: Page, view: Locator): Promise<void> {
+  const b = await view.boundingBox();
+  if (!b) throw new Error('no 360 view');
+  await win.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  for (let i = 0; i < 8; i++) await win.mouse.wheel(0, 400);
+}
+
+/** How far apart the two views' horizontal fields of view are, degrees. */
+async function hfovGap(a: Locator, b: Locator): Promise<number> {
+  const [ha, hb] = await Promise.all([a.getAttribute('data-hfov'), b.getAttribute('data-hfov')]);
+  return Math.abs(Number(ha) - Number(hb));
 }
 
 /** The 360 pane (view and bar) whose view has compare role `role`. */
@@ -185,6 +200,52 @@ test.describe('comparing two walks', () => {
     await expect(
       win.locator('[data-testid="scene-map-button"], [data-testid="basemap-button"]'),
     ).toHaveCount(0);
+
+    // zoomed all the way out in one pane, Link look shows the same zoom in both: their 360 views
+    // are one size and see as wide (the horizontal field of view), also with the divider moved
+    const leadView = lead.getByTestId('walk-view');
+    const followView = follow.getByTestId('walk-view');
+    await zoomOut(win, followView);
+    await expect(follow.getByTestId('walk-zoom')).toHaveText(/^Zoom \d+°$/);
+    await expect(lead.getByTestId('walk-zoom')).toHaveCount(0);
+    const [lb, fb] = await Promise.all([leadView.boundingBox(), followView.boundingBox()]);
+    expect(Math.abs((lb?.width ?? 0) - (fb?.width ?? -9))).toBeLessThanOrEqual(1);
+    expect(Math.abs((lb?.height ?? 0) - (fb?.height ?? -9))).toBeLessThanOrEqual(1);
+    await expect.poll(() => hfovGap(leadView, followView)).toBeLessThanOrEqual(0.5);
+    await expect(followView).toHaveAttribute('data-fov', '100.0');
+    // the compare bars keep to one row: in a narrow pane the lead's controls drop their names
+    // rather than wrap or be cut off
+    for (const bar of await win.locator('.walk-compare-bar').all()) {
+      const fit = await bar.evaluate((el) => ({
+        over: el.scrollWidth - el.clientWidth,
+        h: el.getBoundingClientRect().height,
+      }));
+      expect(fit.over).toBeLessThanOrEqual(0);
+      expect(fit.h).toBeLessThanOrEqual(37);
+    }
+    const divider = win.getByRole('separator', { name: 'Resize the two sides' });
+    const leftView = win.locator(
+      '[data-testid="walk-360"][data-side="left"] [data-testid="walk-view"]',
+    );
+    const rightView = win.locator(
+      '[data-testid="walk-360"][data-side="right"] [data-testid="walk-view"]',
+    );
+    await divider.focus();
+    for (let i = 0; i < 4; i++) await win.keyboard.press('ArrowRight');
+    await expect
+      .poll(
+        async () =>
+          ((await leftView.boundingBox())?.width ?? 0) -
+          ((await rightView.boundingBox())?.width ?? 0),
+      )
+      .toBeGreaterThan(60);
+    // the wider pane stops where the narrower one does, all the way out
+    await zoomOut(win, leftView);
+    await expect.poll(() => hfovGap(leftView, rightView)).toBeLessThanOrEqual(0.5);
+    await zoomOut(win, rightView);
+    await expect.poll(() => hfovGap(leftView, rightView)).toBeLessThanOrEqual(0.5);
+    await expect(rightView).toHaveAttribute('data-fov', '100.0');
+    await divider.dblclick();
 
     // the follower goes to where the lead is, not to the same second: the April walk started 8 s
     // later. Pairing keeps to the pass it is on, so it may stop up to a few metres short of the
