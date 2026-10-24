@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {
   emptyMeasurements,
+  type ComparisonResult,
   type HeightTiles,
   type JobRecord,
   ProjectManifest,
@@ -8,8 +9,11 @@ import {
   type SitePoint,
   type SurveyMeasurement,
 } from '@aio/schema';
+import { formatDate } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
+import { stageShow } from '../workspace/StageShow';
+import { timeline } from '../workspace/timeline';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -718,6 +722,106 @@ describe('Datasets: measurements under survey dates', () => {
     seed([onDate('a', 'c1'), onDate('b', 'c2')]);
     render(dated);
     expect(needsGroup()).toBeNull();
+  });
+
+  // ---------------------------------------- Stockpiles (volumetrics redesign C3, spec section 5)
+
+  const figure = (net: number, capture: string): ComparisonResult => ({
+    item: 'i1',
+    status: 'ok',
+    cutM3: 0,
+    fillM3: net,
+    netM3: net,
+    totalM3: net,
+    areaM2: 100,
+    areaCutM2: 0,
+    areaFillM2: 0,
+    areaUnchangedM2: 0,
+    uncoveredM2: 0,
+    fromLabel: 'Triangulated toe',
+    toLabel: capture,
+    toCapture: capture,
+    deadbandM: 0,
+    usedDeadband: false,
+    cellM: 0.1,
+    engine: 'ts',
+    fingerprint: 'engine',
+    computedAt: '2026-10-20T00:00:00.000Z',
+  });
+  /** A converted kit pile: site-scoped, its figure on both dates. */
+  const kitPile = (n: number, c1: number, c2: number): SurveyMeasurement => ({
+    ...measurement(`p${String(n)}`),
+    family: 'polygon',
+    tool: 'volume',
+    label: `Pile ${String(n).padStart(2, '0')}`,
+    points: [
+      [0, 0, 0],
+      [10, 0, 0],
+      [10, 10, 0],
+    ],
+    items: [{ id: 'i1', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+    results: [figure(c2, 'c2')],
+    series: [figure(c1, 'c1'), figure(c2, 'c2')],
+    origin: { kind: 'kit-pile', pile: `P${String(n)}` },
+  });
+  const nineteen = () =>
+    Array.from({ length: 19 }, (_, i) => kitPile(i + 1, 1000 - i * 10, 100 + i * 10));
+  const stockGroup = () => q('[data-testid="tree-group-stockpiles"]');
+  const stockpilesTree = () => stockGroup()?.closest('[role="treeitem"]') ?? null;
+  const rowsOfStockpiles = () =>
+    [...(stockpilesTree()?.querySelectorAll<HTMLElement>('[data-testid="measure-row"]') ?? [])].map(
+      (r) => ({ id: r.dataset.id, meta: r.querySelector('.tm')?.textContent ?? '' }),
+    );
+
+  afterEach(() => {
+    timeline.setState({ focus: null });
+    stageShow.getState().reset();
+  });
+
+  it('kit piles are no longer under Needs a date and sit in Stockpiles with "19 · 14 Oct 2026"', () => {
+    seed([...nineteen(), measurement('c')]);
+    render(dated);
+    expect(rowsIn(needsGroup()?.closest('[role="treeitem"]') ?? null)).toEqual(['c']);
+    expect(stockGroup()?.querySelector('.glbl')?.textContent).toBe('Stockpiles');
+    expect(stockGroup()?.querySelector('.gcount')?.textContent).toBe(
+      `19 · ${formatDate('2026-10-14')}`,
+    );
+  });
+
+  it('rows sort by the date’s volume, ten shown then "9 more"', () => {
+    seed(nineteen());
+    render(dated);
+    const rows = rowsOfStockpiles();
+    expect(rows).toHaveLength(10);
+    expect(rows[0]?.id).toBe('p19');
+    expect(rows[0]?.meta).toMatch(/^280/);
+    expect(stockpilesTree()?.querySelector('.titem.more')?.textContent).toBe('9 more');
+  });
+
+  it('the same pile shows another figure when the date in focus changes', () => {
+    seed(nineteen());
+    render(dated);
+    act(() => {
+      timeline.setState({ focus: 'c1' });
+    });
+    const rows = rowsOfStockpiles();
+    expect(rows[0]?.id).toBe('p1');
+    expect(rows[0]?.meta).toMatch(/^1\D?000/);
+    expect(stockGroup()?.querySelector('.gcount')?.textContent).toBe(
+      `19 · ${formatDate('2026-10-12')}`,
+    );
+  });
+
+  it('net mode (Cut & fill in front) sorts by loss and says net change', () => {
+    seed([kitPile(1, 100, 150), kitPile(2, 500, 100), kitPile(3, 50, 40)]);
+    render(dated);
+    act(() => {
+      stageShow.getState().setPane('cutFill');
+    });
+    expect(stockGroup()?.querySelector('.gcount')?.textContent).toBe('3 · net change');
+    const rows = rowsOfStockpiles();
+    expect(rows.map((r) => r.id)).toEqual(['p2', 'p3', 'p1']);
+    expect(rows[0]?.meta).toMatch(/^−400/);
   });
 
   it('a measurement on a date the project no longer has is under Needs a date', () => {

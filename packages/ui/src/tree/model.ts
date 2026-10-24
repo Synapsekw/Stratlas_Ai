@@ -60,6 +60,12 @@ export interface TreeGroup {
   measureIds?: readonly string[];
   /** The Measurements group under a filter: how many measurements match (`items` hold them). */
   matched?: number;
+  /** Tells apart two groups of one kind (the Stockpiles group): its key and test ids. */
+  id?: string;
+  /** The header's count as text ("19 · 10 Jan"), in place of `count`. */
+  countText?: string;
+  /** How many loose rows show before "more" (the tree's default otherwise). */
+  rowLimit?: number;
 }
 
 const GROUPS: { kind: TreeGroupKind; label: string; icon: IconName }[] = [

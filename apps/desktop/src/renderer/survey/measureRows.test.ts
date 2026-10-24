@@ -1,6 +1,7 @@
 import {
   defaultSurveySettings,
   emptySurveyTemplates,
+  type ComparisonResult,
   type ProjectManifest,
   type SurveyMeasurement,
 } from '@aio/schema';
@@ -9,7 +10,15 @@ import { captureIndex } from '@aio/workspace';
 import { measurementFrom, TOOL_FAMILY, type MeasurementTool } from '@aio/survey';
 import { describe, expect, it, vi } from 'vitest';
 import { primaryText } from './card/cardModel';
-import { buildMeasureItems, measureFoldersOf, needsDate } from './measureRows';
+import {
+  buildMeasureItems,
+  captureInFocus,
+  isStockpile,
+  measureFoldersOf,
+  needsDate,
+  stockpileHeader,
+  stockpileItems,
+} from './measureRows';
 import { labelText } from './measureScene';
 
 vi.mock('../shell', () => ({ bridge: { call: () => Promise.resolve({ ok: false }) }, jobs: {} }));
@@ -304,5 +313,176 @@ describe('rows per survey date', () => {
     expect(measureFoldersOf(s.file, 'oct', manifest)).toEqual(['alpha', 'Piles']);
     expect(measureFoldersOf(s.file, 'sep', manifest)).toEqual(['Zed']);
     expect(measureFoldersOf(s.file, undefined)).toEqual(['alpha', 'Piles', 'Zed']);
+  });
+});
+
+// ------------------------------------------- figures follow the date (volumetrics redesign C3)
+
+const vol = (net: number, capture: string): ComparisonResult => ({
+  item: 'i1',
+  status: 'ok',
+  cutM3: 0,
+  fillM3: net,
+  netM3: net,
+  totalM3: net,
+  areaM2: 100,
+  areaCutM2: 0,
+  areaFillM2: 0,
+  areaUnchangedM2: 0,
+  uncoveredM2: 0,
+  fromLabel: 'Triangulated toe',
+  toLabel: capture,
+  toCapture: capture,
+  deadbandM: 0,
+  usedDeadband: false,
+  cellM: 0.1,
+  engine: 'ts',
+  fingerprint: 'engine',
+  computedAt: '2026-10-20T00:00:00.000Z',
+});
+
+/** A site-scoped pile (as a converted kit pile is) with its figure on each date given. */
+const pileOf = (
+  id: string,
+  label: string,
+  sep: number | null,
+  oct: number | null,
+  over: Partial<SurveyMeasurement> = {},
+): SurveyMeasurement => {
+  const series = [
+    ...(sep !== null ? [vol(sep, 'sep')] : []),
+    ...(oct !== null ? [vol(oct, 'oct')] : []),
+  ];
+  return base(id, label, {
+    family: 'polygon',
+    tool: 'volume',
+    points: [
+      [0, 0, 0],
+      [10, 0, 0],
+      [10, 10, 0],
+    ],
+    items: [{ id: 'i1', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+    results: series.slice(-1),
+    series,
+    ...over,
+  });
+};
+
+describe('captureInFocus', () => {
+  it('is the focus when the project has it, else the latest survey date', () => {
+    expect(captureInFocus('sep', manifest)).toBe('sep');
+    expect(captureInFocus(null, manifest)).toBe('oct');
+    expect(captureInFocus('gone', manifest)).toBe('oct');
+    expect(captureInFocus(null, null)).toBeNull();
+  });
+});
+
+describe('stockpiles leave "Needs a date"', () => {
+  it('a site-scoped pile needs no date; other site-wide measurements still do', () => {
+    expect(needsDate(pileOf('p', 'Pile 01', 10, 20), manifest)).toBe(false);
+    expect(needsDate(m('a', 'Line'), manifest)).toBe(true);
+    expect(isStockpile(pileOf('p', 'Pile 01', 10, 20))).toBe(true);
+    const dated = pileOf('q', 'Pile 02', 10, 20, { scope: { kind: 'survey', capture: 'oct' } });
+    expect(isStockpile(dated)).toBe(false);
+  });
+
+  it('kit piles are no longer under Needs a date', () => {
+    const s = stateWith([pileOf('p', 'Pile 01', 10, 20), m('a', 'Line')]);
+    expect(buildMeasureItems(s, manifest, ws, '', null).map((i) => i.id)).toEqual(['measure:a']);
+  });
+});
+
+describe('figures follow the date in focus', () => {
+  it('the same pile shows different figures on two dates in the row and the scene label', () => {
+    const p = pileOf('p', 'Pile 01', 800, 1200);
+    const s = stateWith([p]);
+    const sepRow = buildMeasureItems(s, manifest, ws, '', undefined, 'sep')[0]?.meta ?? '';
+    const octRow = buildMeasureItems(s, manifest, ws, '', undefined, 'oct')[0]?.meta ?? '';
+    expect(sepRow).toMatch(/^800/);
+    expect(octRow).toMatch(/^1\D?200/);
+    expect(labelText(p, s.settings, [], 'project north', 'sep')).toBe(`Pile 01 · ${sepRow}`);
+    expect(labelText(p, s.settings, [], 'project north', 'oct')).toBe(`Pile 01 · ${octRow}`);
+  });
+
+  it('a row under a date folder reads that date', () => {
+    const p = pileOf('p', 'Pile 01', 800, 1200, { scope: { kind: 'survey', capture: 'sep' } });
+    const rows = buildMeasureItems(stateWith([p]), manifest, ws, '', 'sep', 'oct');
+    expect(rows[0]?.meta).toMatch(/^800/);
+  });
+});
+
+describe('stockpileItems', () => {
+  const ctx = { settings, templates: [] };
+  const many = Array.from({ length: 19 }, (_, i) =>
+    pileOf(`p${String(i)}`, `Pile ${String(i + 1).padStart(2, '0')}`, 1000 - i * 10, 100 + i * 10),
+  );
+
+  it("holds only site-scoped piles, sorted by the date's volume, largest first", () => {
+    const items = stockpileItems([...many, m('a', 'Line')], 'oct', 'volume', ctx);
+    expect(items).toHaveLength(19);
+    expect(items[0]?.name).toBe('Pile 19');
+    expect(items[0]?.meta).toMatch(/^280/);
+    expect(items.at(-1)?.name).toBe('Pile 01');
+    const sep = stockpileItems(many, 'sep', 'volume', ctx);
+    expect(sep[0]?.name).toBe('Pile 01');
+    expect(sep[0]?.meta).toMatch(/^1\D?000/);
+  });
+
+  it('a pile with no figure on the date goes last and says so', () => {
+    const a = pileOf('a', 'A', 5, null);
+    const items = stockpileItems([a, pileOf('b', 'B', 1, 3)], 'oct', 'volume', ctx);
+    expect(items.map((i) => i.name)).toEqual(['B', 'A']);
+    expect(items[1]?.meta).toBe(primaryText(a, { ...ctx, capture: 'oct' }));
+  });
+
+  it('net mode sorts by loss, most lost first, with the Unicode minus', () => {
+    const items = stockpileItems(
+      [pileOf('a', 'A', 100, 150), pileOf('b', 'B', 500, 100), pileOf('c', 'C', 50, 40)],
+      'oct',
+      'net',
+      { ...ctx, previous: 'sep' },
+    );
+    expect(items.map((i) => i.name)).toEqual(['B', 'C', 'A']);
+    expect(items[0]?.meta).toMatch(/^−400/);
+    expect(items[2]?.meta).toMatch(/^\+50/);
+  });
+
+  it('material mode gives one row per material with its pile count, No material last', () => {
+    const mats = {
+      ...settings,
+      materials: [
+        { id: 'sand', name: 'Sand', densityTPerM3: 1.5 },
+        { id: 'grit', name: 'Grit', densityTPerM3: 1.6 },
+      ],
+    };
+    const items = stockpileItems(
+      [
+        pileOf('a', 'A', 1, 10, { material: 'sand' }),
+        pileOf('b', 'B', 1, 500, { material: 'grit' }),
+        pileOf('c', 'C', 1, 20, { material: 'sand' }),
+        pileOf('d', 'D', 1, 900),
+      ],
+      'oct',
+      'material',
+      { settings: mats, templates: [] },
+    );
+    expect(items.map((i) => i.name)).toEqual(['Grit', 'Sand', 'No material']);
+    expect(items[1]?.children?.map((c) => c.name)).toEqual(['C', 'A']);
+    expect(items[1]?.meta).toBe('2');
+  });
+
+  it('the header says how many and the date, or net change', () => {
+    expect(stockpileHeader(19, 'volume', '10 Jan')).toEqual({
+      label: 'Stockpiles',
+      countText: '19 · 10 Jan',
+    });
+    expect(stockpileHeader(19, 'net', '10 Jan')).toEqual({
+      label: 'Stockpiles',
+      countText: '19 · net change',
+    });
+    expect(stockpileHeader(19, 'material', '10 Jan')).toEqual({
+      label: 'Stockpiles by material 10 Jan',
+      countText: '19',
+    });
   });
 });

@@ -13,7 +13,7 @@ import {
   type Object3D,
   type Line,
 } from 'three';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MapController } from '@aio/maps';
 import { defaultSurveySettings } from '@aio/schema';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
@@ -24,6 +24,9 @@ import {
 } from './measureColours';
 import { toWgs84 } from '@aio/geo';
 import { workspace } from '@aio/workspace';
+import type { ComparisonResult } from '@aio/schema';
+import { stageShow } from '../workspace/StageShow';
+import { timeline } from '../workspace/timeline';
 import type { MapHeights } from './mapHeights';
 import { attach3d, attachMap, frameOf, hitPick, labelText, snapProviders } from './measureScene';
 import {
@@ -689,4 +692,88 @@ it('with nothing cached it takes the previous vertex, then the origin height, ne
   const pts = measureStore.getState().draw?.points ?? [];
   expect(pts.map((p) => p[2])).toEqual([51, 60, 60]);
   m.detach();
+});
+
+// ------------------------------------------ the date in focus and Show (volumetrics redesign C3)
+
+const figure = (net: number, capture: string): ComparisonResult => ({
+  item: 'i1',
+  status: 'ok',
+  cutM3: 0,
+  fillM3: net,
+  netM3: net,
+  totalM3: net,
+  areaM2: 100,
+  areaCutM2: 0,
+  areaFillM2: 0,
+  areaUnchangedM2: 0,
+  uncoveredM2: 0,
+  fromLabel: 'Triangulated toe',
+  toLabel: capture,
+  toCapture: capture,
+  deadbandM: 0,
+  usedDeadband: false,
+  cellM: 0.1,
+  engine: 'ts',
+  fingerprint: 'engine',
+  computedAt: '2026-10-20T00:00:00.000Z',
+});
+
+const stockpile = (): SurveyMeasurement =>
+  pad({
+    id: 'pile',
+    tool: 'volume',
+    label: 'Pile 01',
+    items: [{ id: 'i1', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+    results: [figure(1200, 'c2')],
+    series: [figure(800, 'c1'), figure(1200, 'c2')],
+  });
+
+describe('piles follow the date in focus and the Show control', () => {
+  afterEach(() => {
+    timeline.setState({ focus: null });
+    stageShow.getState().reset();
+  });
+
+  it('a map label reads the figure on the date in focus, and follows it', () => {
+    timeline.setState({ focus: 'c1' });
+    const m = mapOf(stockpile());
+    const label = () => m.features().find((f) => f.properties.kind === 'label')?.properties.label;
+    expect(label()).toMatch(/^Pile 01 · 800/);
+    timeline.setState({ focus: 'c2' });
+    expect(label()).toMatch(/^Pile 01 · 1\D?200/);
+    m.detach();
+  });
+
+  it('Outlines off hides the pile outline on the map, its label stays; Labels off hides it', () => {
+    const m = mapOf(stockpile(), pad());
+    const of = (id: string, type: string) =>
+      m.features().filter((f) => f.properties.id === id && f.geometry.type === type);
+    stageShow.getState().setOutlines(false);
+    expect(of('pile', 'Polygon')).toHaveLength(0);
+    expect(of('pile', 'Point')).toHaveLength(1);
+    // a measurement that is not a pile keeps its outline
+    expect(of('pad', 'Polygon')).toHaveLength(1);
+    stageShow.getState().setLabels(false);
+    expect(of('pile', 'Point')).toHaveLength(0);
+    expect(of('pad', 'Point')).toHaveLength(1);
+    stageShow.getState().setOutlines(true);
+    expect(of('pile', 'Polygon')).toHaveLength(1);
+    m.detach();
+  });
+
+  it('Outlines and Labels off hide the pile in 3D, not other measurements', () => {
+    const s = scene();
+    measureStore.setState({
+      file: { schema: 'aio.measurements/1', measurements: [stockpile(), pad()] },
+    });
+    expect(s.stage.scene.getObjectByName('measure:pile')).toBeDefined();
+    stageShow.getState().setOutlines(false);
+    expect(s.stage.scene.getObjectByName('measure:pile')).toBeUndefined();
+    expect(s.stage.scene.getObjectByName('measure:pad')).toBeDefined();
+    expect(document.querySelectorAll('.sv-label')).toHaveLength(2);
+    stageShow.getState().setLabels(false);
+    expect(document.querySelectorAll('.sv-label')).toHaveLength(1);
+    s.detach();
+  });
 });

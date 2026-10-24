@@ -464,16 +464,18 @@ export function DateTree(props: DateTreeProps) {
           </div>
         </div>
       )}
-      {after && after.length > 0 && (
+      {/* each its own tree ("Needs a date", Stockpiles): its own fold, "more" and reveal */}
+      {after?.map((g) => (
         <DatasetTree
+          key={g.id ?? g.kind}
           {...rest}
           measures={measuresFor('needs-date')}
           hidden={hidden}
-          groups={after}
+          groups={[g]}
           collapsed={false}
           nested
         />
-      )}
+      ))}
     </div>
   );
 }

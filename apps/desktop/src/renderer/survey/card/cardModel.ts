@@ -83,6 +83,8 @@ export interface CardContext {
   terrainPending?: boolean;
   /** Reading the surface failed: its rows read "Could not read the surface". */
   terrainError?: boolean;
+  /** The survey date a volume reads its figure on (the date in focus); none: the stored one. */
+  capture?: string | undefined;
 }
 
 /**
@@ -150,7 +152,10 @@ export function cardModel(m: SurveyMeasurement, ctx: CardContext): CardModel {
       m,
       ctx.settings,
     );
-  const readout: ReadoutContext = ctx.surface ? { surface: ctx.surface } : {};
+  const readout: ReadoutContext = {
+    ...(ctx.surface ? { surface: ctx.surface } : {}),
+    ...(ctx.capture !== undefined ? { capture: ctx.capture } : {}),
+  };
   const items = templateItems(m, ctx.templates);
   const primary = primaryRow(m, readout, items);
   const scope = m.scope;

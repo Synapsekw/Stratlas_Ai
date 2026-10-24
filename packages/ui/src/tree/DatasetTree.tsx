@@ -260,9 +260,10 @@ function capRows(
   items: readonly TreeItem[],
   all: boolean,
   keep: (it: TreeItem) => boolean,
+  limit = ROW_LIMIT,
 ): { rows: readonly TreeItem[]; behind: number } {
-  if (all || items.length <= ROW_LIMIT + 1) return { rows: items, behind: 0 };
-  const rows = items.filter((it, i) => i < ROW_LIMIT || keep(it));
+  if (all || items.length <= limit + 1) return { rows: items, behind: 0 };
+  const rows = items.filter((it, i) => i < limit || keep(it));
   return { rows, behind: items.length - rows.length };
 }
 
@@ -443,8 +444,14 @@ export function DatasetTree(props: DatasetTreeProps) {
   };
 
   /** A "more" row under capped rows, and "Show fewer" once they all show. */
-  const moreRow = (behind: number, showingAll: boolean, count: number, toggle: () => void) =>
-    behind > 0 || (showingAll && count > ROW_LIMIT + 1) ? (
+  const moreRow = (
+    behind: number,
+    showingAll: boolean,
+    count: number,
+    toggle: () => void,
+    limit = ROW_LIMIT,
+  ) =>
+    behind > 0 || (showingAll && count > limit + 1) ? (
       <button type="button" className="titem more" onClick={toggle}>
         <span className="tn">
           {behind > 0 ? t('tree.row.more', { count: behind }) : t('tree.row.fewer')}
@@ -1206,6 +1213,7 @@ export function DatasetTree(props: DatasetTreeProps) {
                 it.id === selectedId ||
                 it.layerId === activeClip ||
                 it.children?.some((c) => c.layerId === activeClip || c.id === selectedId) === true,
+          g.rowLimit,
         );
         // a header carries its whole group, the rows behind "more" too; never in rail mode
         const carried = collapsed ? [] : (props.dragGroupIds?.(g) ?? []);
@@ -1230,10 +1238,10 @@ export function DatasetTree(props: DatasetTreeProps) {
           },
         };
         return (
-          <div key={g.kind} role="treeitem" aria-expanded={expanded} aria-selected={false}>
+          <div key={g.id ?? g.kind} role="treeitem" aria-expanded={expanded} aria-selected={false}>
             <div
               className={`tgroup-row${headCls}`}
-              data-testid={`tree-group-${g.kind}`}
+              data-testid={`tree-group-${g.id ?? g.kind}`}
               ref={mg ? measureHead : undefined}
               {...headDrop}
               {...(groupDrag
@@ -1272,7 +1280,7 @@ export function DatasetTree(props: DatasetTreeProps) {
                 type="button"
                 className="tgroup-btn"
                 aria-expanded={expanded}
-                data-testid={`tree-group-toggle-${g.kind}`}
+                data-testid={`tree-group-toggle-${g.id ?? g.kind}`}
                 onClick={() => {
                   if (collapsed) {
                     setOpen((o) => ({ ...o, [g.kind]: true }));
@@ -1286,10 +1294,10 @@ export function DatasetTree(props: DatasetTreeProps) {
                 <span className="gcount">
                   {filtering
                     ? t('tree.measure.filterCount', { shown: g.matched ?? 0, total: g.count })
-                    : g.count}
+                    : (g.countText ?? g.count)}
                 </span>
                 <span className="tip">
-                  {g.label} · {g.count}
+                  {g.label} · {g.countText ?? g.count}
                 </span>
               </button>
               {action && (
@@ -1354,9 +1362,15 @@ export function DatasetTree(props: DatasetTreeProps) {
                   rows.map((it) => (it.children ? flightRow(it, it.children) : row(it, false)))
                 )}
                 {!filtering &&
-                  moreRow(behind, showingAll, capped.length, () => {
-                    setShowAll((s) => ({ ...s, [g.kind]: !s[g.kind] }));
-                  })}
+                  moreRow(
+                    behind,
+                    showingAll,
+                    capped.length,
+                    () => {
+                      setShowAll((s) => ({ ...s, [g.kind]: !s[g.kind] }));
+                    },
+                    g.rowLimit,
+                  )}
               </div>
             )}
           </div>

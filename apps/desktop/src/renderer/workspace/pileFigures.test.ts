@@ -4,7 +4,14 @@ import {
   type SurveyMeasurement,
   type SurveySettings,
 } from '@aio/schema';
-import { createVolumetricStore, type VolumetricDeps } from '@aio/volumetric';
+import {
+  createVolumetricStore,
+  kitDisplay,
+  setKitDisplay,
+  type Volumetric,
+  type VolumetricDeps,
+} from '@aio/volumetric';
+import { createStore, type StoreApi } from 'zustand/vanilla';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import { connectPileFigures, pileFigures } from './pileFigures';
@@ -74,6 +81,27 @@ describe('pile figures from the volume measurements', () => {
     expect(f.P01?.e2?.value).toMatch(/^1\D?200/);
     expect(f.P01?.e2?.tonnes).toMatch(/^1\D?800/);
     expect(f.P01?.e1?.value).toMatch(/800/);
+  });
+
+  it("weighs each date's figure at the material's density on that date", () => {
+    const dated: SurveySettings = {
+      ...settings,
+      materials: [
+        {
+          id: 'sand',
+          name: 'Sand',
+          densityTPerM3: 2,
+          densityHistory: [
+            { fromCapture: 'c1', tPerM3: 1.5 },
+            { fromCapture: 'c2', tPerM3: 2 },
+          ],
+        },
+      ],
+    };
+    const f = pileFigures({ captures: CAPTURES }, [pile()], dated, []);
+    // 800 m³ at 1.5 t/m³ on the first date, 1 200 m³ at 2 t/m³ on the second
+    expect(f.P01?.e1?.tonnes).toMatch(/^1\D?200/);
+    expect(f.P01?.e2?.tonnes).toMatch(/^2\D?400/);
   });
 
   it('shows the new figure after Recompute replaces the carried one', () => {
@@ -201,5 +229,44 @@ describe('pile figures from the volume measurements', () => {
     for (const l of listeners) l();
     expect(v.getState().pileFigures.P01?.e2?.value).toMatch(/^1\D?200/);
     off();
+  });
+
+  it("gives the kit's 3D layer the site's units, precision, locale and heat map", () => {
+    const fake = createStore(() => ({
+      status: 'idle',
+      file: null,
+      pileFigures: {},
+      setPileFigures: () => undefined,
+    })) as unknown as StoreApi<Volumetric>;
+    const feet: SurveySettings = {
+      ...settings,
+      units: { ...settings.units, distance: 'ft' },
+      locale: 'imperial',
+      heatmap: { ...settings.heatmap, stepped: true },
+    };
+    let site = feet;
+    const listeners = new Set<() => void>();
+    const off = connectPileFigures(fake, {
+      measurements: () => [],
+      settings: () => site,
+      templates: () => [],
+      subscribe: (l) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+    });
+    // once on connect
+    expect(kitDisplay.get()).toMatchObject({
+      units: { distance: 'ft' },
+      precision: feet.precision,
+      locale: 'imperial',
+      heatmap: { stepped: true },
+    });
+    // and again when the settings change
+    site = { ...feet, units: { ...feet.units, distance: 'm' } };
+    for (const l of listeners) l();
+    expect(kitDisplay.get().units.distance).toBe('m');
+    off();
+    setKitDisplay(null);
   });
 });

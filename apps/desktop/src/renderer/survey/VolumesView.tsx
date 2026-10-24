@@ -28,6 +28,8 @@ import { BulkTotals, notCountedList } from './BulkTotals';
 import { cardModel, MeasureCard } from './card';
 import { computeSeries, isStale, seriesStale, useCompare } from './compareStore';
 import { fileBase } from './exportHelpers';
+import { useTimeline } from '../workspace/timeline';
+import { captureInFocus } from './measureRows';
 import { knownTemplates, measureFolders, select, startTool, useMeasure } from './measureStore';
 import { PilePanel } from './pile/PilePanel';
 import { setSeriesFailed, useInventory } from './useInventory';
@@ -74,6 +76,10 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const shown = folder !== ALL && folders.includes(folder) ? folder : ALL;
   const piles = useMemo(() => inventoryPiles(allPiles, shown), [allPiles, shown]);
   const stack = useInventory(piles);
+  // the date in focus (the notch's), else the latest: the cards and the total read it
+  const timelineFocus = useTimeline((st) => st.focus);
+  const inFocus = captureInFocus(timelineFocus, { captures });
+  const shownRow = stack.find((r) => r.capture === inFocus) ?? stack.at(-1);
   const names = useMemo(() => new Map(piles.map((m) => [m.id, m.label])), [piles]);
   // a pile opened from anywhere (3D, the map, the sidebar) opens here even when the folder filter
   // hides it: the filter goes back to every pile, so the inventory behind it holds it too
@@ -195,7 +201,13 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         <PilePanel id={focused.id} order={(outside ? allPiles : piles).map((m) => m.id)} />
       </div>
     );
-  const ctx = { settings, templates: knownTemplates({ templates, settings }), captures };
+  // the cards read each pile's figure on the date in focus, as the sidebar and the labels do
+  const ctx = {
+    settings,
+    templates: knownTemplates({ templates, settings }),
+    captures,
+    capture: inFocus ?? undefined,
+  };
   const units = settings.units;
   const locale = settings.locale ?? localeOf(units.distance);
   const v = (x: number) => formatQuantity(x, 'volume', units, settings.precision, locale);
@@ -281,8 +293,8 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         ))}
       </ul>
 
-      {/* the latest survey date's row, the same the table marks latest */}
-      <BulkTotals inventory={{ piles, row: stack.at(-1), names }} />
+      {/* the date in focus's row (the latest without one), the same the table marks current */}
+      <BulkTotals inventory={{ piles, row: shownRow, names }} />
 
       {stack.length > 0 && (
         <section className="vd-time vv-inventory" data-testid="volumes-inventory">
@@ -296,7 +308,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
               testId="volumes-inventory-chart"
             />
           )}
-          <InventoryTable rows={stack} names={names} v={v} />
+          <InventoryTable rows={stack} current={shownRow} names={names} v={v} />
         </section>
       )}
     </div>
@@ -340,15 +352,18 @@ function PileRow({
  */
 function InventoryTable({
   rows,
+  current,
   names,
   v,
 }: {
   rows: readonly StackRow[];
+  /** The row the total above shows (the date in focus): marked current. */
+  current: StackRow | undefined;
   names: ReadonlyMap<string, string>;
   v: (x: number) => string;
 }) {
   const t = useT();
-  // the latest survey date, the same row the total above shows (counted piles or not)
+  // the latest survey date (counted piles or not)
   const latest = rows.at(-1);
   const nameList = (ids: readonly string[]) => ids.map((id) => names.get(id) ?? id).join(', ');
   return (
@@ -375,7 +390,7 @@ function InventoryTable({
               data-capture={r.capture}
               data-latest={r === latest ? '' : undefined}
               data-partial={partial.length > 0 ? '' : undefined}
-              aria-current={r === latest ? 'date' : undefined}
+              aria-current={r === current ? 'date' : undefined}
             >
               <th scope="row">{r.label}</th>
               <td data-testid="volumes-inventory-value">

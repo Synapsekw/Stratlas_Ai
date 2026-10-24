@@ -1,7 +1,9 @@
 /**
  * The kit piles' 3D callouts read their volume measurements (volumetric parity W3): for each pile
  * converted to a measurement (`origin: { kind: 'kit-pile', pile }`), its figure on every survey of
- * the volumes, formatted as the card formats its primary value, with the tonnage of its material.
+ * the volumes, formatted as the card formats its primary value, with the tonnage of its material
+ * at its density on that date (`densityOn`: a density edited from a later date leaves the earlier
+ * dates' tonnes alone).
  * The kit's own stored figures are never shown from the kit layer; a carried figure reaches the
  * callout only as the measurement's carried result, and a recompute or an edit shows at once.
  */
@@ -14,6 +16,7 @@ import type {
   VolumesFile,
 } from '@aio/schema';
 import {
+  densityOn,
   effectiveUnits,
   kitDensity,
   pileMaterial,
@@ -22,7 +25,7 @@ import {
   seriesDate,
 } from '@aio/survey';
 import { t } from '@aio/ui';
-import type { PileFigure, PileFigures, Volumetric } from '@aio/volumetric';
+import { setKitDisplay, type PileFigure, type PileFigures, type Volumetric } from '@aio/volumetric';
 import type { StoreApi } from 'zustand/vanilla';
 import { rowText, templateItems } from '../survey/card/cardModel';
 
@@ -68,17 +71,26 @@ export function pileFigures(
       ? kitDensity({ densityTPerM3: volumes.densityTPerM3, piles: volumes.piles ?? [] })
       : null;
   const out: Record<string, Record<string, PileFigure>> = {};
+  const times = new Map(volumes.captures.map((c) => [c.captureId, Date.parse(c.date)]));
+  const dateOf = (capture: string): number | null => {
+    const ms = times.get(capture);
+    return ms !== undefined && Number.isFinite(ms) ? ms : null;
+  };
   for (const m of measurements) {
     if (m.origin?.kind !== 'kit-pile') continue;
     const per: Record<string, PileFigure> = {};
     const items = templateItems(m, templates);
     const units = effectiveUnits(settings.units, m.units);
     const locale = settings.locale ?? localeOf(units.distance);
-    const density = pileMaterial(m, settings.materials, kit)?.densityTPerM3;
+    const material = pileMaterial(m, settings.materials, kit);
     const on = resultsOn(m, volumes.captures);
     for (const c of volumes.captures) {
       const hit = on.get(c.captureId);
       if (!hit) continue;
+      // the material's density on this date (a dated density keeps earlier dates' tonnes)
+      const density = material
+        ? (densityOn(material, c.captureId, dateOf) ?? undefined)
+        : undefined;
       const { r, stored } = hit;
       const row = primaryRow({ ...m, results: [r] }, {}, items);
       if (row?.value == null) continue;
@@ -112,7 +124,23 @@ export interface PileFigureDeps {
 /** Keep the volumetric store's pile figures in step with the measurements. */
 export function connectPileFigures(store: StoreApi<Volumetric>, deps: PileFigureDeps): () => void {
   let last = '';
+  let shownSettings: SurveySettings | null = null;
   const sync = () => {
+    // the kit's 3D layer writes heights and the change colours in the site's units and heat map
+    const site = deps.settings();
+    if (site !== shownSettings) {
+      shownSettings = site;
+      setKitDisplay({
+        units: site.units,
+        precision: site.precision,
+        ...(site.locale !== undefined ? { locale: site.locale } : {}),
+        heatmap: {
+          stops: site.heatmap.stops,
+          stepped: site.heatmap.stepped,
+          ...(site.heatmap.inverted !== undefined ? { inverted: site.heatmap.inverted } : {}),
+        },
+      });
+    }
     const s = store.getState();
     const file = s.status === 'ready' ? s.file : null;
     const figures = pileFigures(file, deps.measurements(), deps.settings(), deps.templates(), {

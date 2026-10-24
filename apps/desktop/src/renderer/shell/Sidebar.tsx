@@ -55,14 +55,26 @@ import { pickAndScanPanos } from '../panos/panos';
 import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
 import { useSurfacePrepareStatus } from '../survey/PreparingCard';
-import { filterTerms } from '../survey/measureFilter';
+import { filterTerms, matchingMeasurements } from '../survey/measureFilter';
 import { openMeasurement } from '../survey/pile/openPile';
 import { prepareSurfaces } from '../survey/compareStore';
 import { moveMeasurementsToDate } from '../survey/measureMoveRun';
-import { buildMeasureItems, needsDate } from '../survey/measureRows';
+import {
+  buildMeasureItems,
+  captureInFocus,
+  isStockpile,
+  needsDate,
+  stockpileHeader,
+  stockpileItems,
+  type StockpileMode,
+} from '../survey/measureRows';
+import { compareDates, defaultPair } from '../workspace/dates/compareDates';
+import { useStageShow, type VolumesPane } from '../workspace/StageShow';
+import { useStore } from 'zustand';
 import {
   deleteMeasurements,
   endNewFolder,
+  knownTemplates,
   measureStore,
   renameMeasurement,
   revealMeasurement,
@@ -147,6 +159,13 @@ function withoutGoneMeasures(m: Marks, present: readonly { id: string }[]): Mark
 
 /** What `prepareSurfaces` says when every surface is prepared already: no failure. */
 const ALL_PREPARED = 'Every survey surface is prepared.';
+
+/** What the Stockpiles group shows for the Volumes tab's pane in front. */
+const STOCKPILE_MODE: Record<VolumesPane, StockpileMode> = {
+  inventory: 'volume',
+  cutFill: 'net',
+  materials: 'material',
+};
 
 /** The measurement ids among marks (a measurement row marks `measure:<id>`). */
 function measureIdsOf(marks: Iterable<string>): string[] {
@@ -252,11 +271,25 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     () => ({ file: measureFile, settings: measureSettings, templates: measureTemplates }),
     [measureFile, measureSettings, measureTemplates],
   );
+  // the survey date whose figures the rows show: the date in focus, else the latest
+  const timelineFocus = useTimeline((s) => s.focus);
+  const focusCapture = useMemo(
+    () => captureInFocus(timelineFocus, manifest),
+    [timelineFocus, manifest],
+  );
   // every measurement's rows: the one group with survey dates off, and what the filter and the
   // marks read either way
   const measureItems = useMemo(
-    () => buildMeasureItems(measureState, manifest, { dates, hidden }, measureQuery),
-    [measureState, manifest, dates, hidden, measureQuery],
+    () =>
+      buildMeasureItems(
+        measureState,
+        manifest,
+        { dates, hidden },
+        measureQuery,
+        undefined,
+        focusCapture,
+      ),
+    [measureState, manifest, dates, hidden, measureQuery, focusCapture],
   );
   // under a filter the group still counts, and its eye covers, every measurement
   const measureIds = useMemo(
@@ -383,6 +416,63 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     const g = measurementsGroup(items, ids, t('tree.measure.needsDate'));
     return g ? [g] : [];
   }, [datesOn, manifest, measureState, dates, hidden, measureQuery, filteringMeasures, t]);
+  // the project-level Stockpiles group after the survey dates (volumetrics redesign, spec section
+  // 5): the site's piles on the date in focus; in Cut & fill their net change over the compare
+  // pair, in Materials by material
+  const volumesPane = useStageShow((s) => s.pane);
+  const comparePair = useStore(compareDates, (s) =>
+    s.from !== null && s.to !== null ? `${s.from}|${s.to}` : null,
+  );
+  const stockpiles = useMemo(() => {
+    if (!datesOn || !manifest) return null;
+    const all = measureState.file.measurements.filter(isStockpile);
+    if (all.length === 0) return null;
+    const mode = STOCKPILE_MODE[volumesPane];
+    const timeOf = (c: { date: string }) => {
+      const ms = Date.parse(c.date);
+      return Number.isFinite(ms) ? ms : null;
+    };
+    const [from, to] = comparePair?.split('|') ?? [];
+    const pair =
+      from !== undefined && to !== undefined
+        ? { from, to }
+        : defaultPair(
+            focusCapture,
+            manifest.captures.map((c) => ({ capture: c.id, t: timeOf(c) })),
+          );
+    const capture = mode === 'net' ? (pair?.to ?? focusCapture) : focusCapture;
+    const shown = filteringMeasures
+      ? matchingMeasurements(all, measureQuery, knownTemplates(measureState))
+      : all;
+    const items = stockpileItems(shown, capture, mode, {
+      settings: measureState.settings,
+      templates: knownTemplates(measureState),
+      previous: mode === 'net' ? (pair?.from ?? null) : null,
+    });
+    const dated = manifest.captures.find((c) => c.id === focusCapture);
+    const header = stockpileHeader(all.length, mode, dated ? formatDate(dated.date) : '');
+    const g = measurementsGroup(
+      items,
+      filteringMeasures ? all.map((m) => m.id) : undefined,
+      header.label,
+    );
+    return g
+      ? { ...g, id: 'stockpiles', icon: 'pile' as const, countText: header.countText, rowLimit: 10 }
+      : null;
+  }, [
+    datesOn,
+    manifest,
+    measureState,
+    volumesPane,
+    comparePair,
+    focusCapture,
+    filteringMeasures,
+    measureQuery,
+  ]);
+  const afterGroups = useMemo(
+    () => (stockpiles ? [...after, stockpiles] : after),
+    [after, stockpiles],
+  );
   // filing datasets under dates and naming the folders edits the manifest: not in a package,
   // and not for a reviewer who may only look
   const lookOnly = useAnnotateReadOnly();
@@ -1140,7 +1230,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           {...layerRenameProps}
           defaultOpen={OPEN_GROUPS}
           measures={measures}
-          after={after}
+          after={afterGroups}
         />
       ) : (
         <DatasetTree

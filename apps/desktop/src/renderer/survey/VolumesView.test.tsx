@@ -98,6 +98,11 @@ vi.mock('../processing/store', () => ({
   processing: { getState: () => ({ openDialog: calls.openDialog }) },
 }));
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => false }));
+// the date in focus (the notch's): null is the latest survey date
+const focusDate = vi.hoisted(() => ({ capture: null as string | null }));
+vi.mock('../workspace/timeline', () => ({
+  useTimeline: (sel: (x: unknown) => unknown) => sel({ focus: focusDate.capture }),
+}));
 vi.mock('@aio/workspace', () => ({
   useWorkspace: (sel: (x: unknown) => unknown) =>
     sel({ project: { id: 'p1', root: 'C:/p', manifest: { captures: [], layers: [] } } }),
@@ -202,6 +207,7 @@ beforeEach(() => {
   stale.stored.clear();
   stale.series.clear();
   job.exists = true;
+  focusDate.capture = null;
   calls.computeSeries.mockImplementation(() => Promise.resolve(false));
   s.compare = {
     status: 'ready',
@@ -303,6 +309,37 @@ describe('VolumesView', () => {
     // the inventory's latest total is the same sum
     const latest = q('[data-testid="volumes-inventory-table"] tr[data-latest] td');
     expect(latest?.textContent).toBe(v(150.5));
+  });
+
+  it('the same pile shows the figure of the date in focus on its card', () => {
+    s.measure.file.measurements = [
+      pile('a', { series: [result(100, 'c1')], results: [result(120, 'c2')] }),
+    ];
+    const primary = () =>
+      q('[data-testid="volumes-pile"] [data-testid="card-primary"]')?.textContent ?? '';
+    render();
+    expect(primary()).toContain(v(120).split(' ')[0]);
+    focusDate.capture = 'c1';
+    render();
+    expect(primary()).toContain(v(100).split(' ')[0]);
+    expect(primary()).not.toContain(v(120).split(' ')[0]);
+  });
+
+  it('totals use the date in focus, not the latest', () => {
+    s.measure.file.measurements = [
+      pile('a', { series: [result(100, 'c1')], results: [result(120, 'c2')] }),
+      pile('b', { series: [result(7, 'c1')], results: [result(30, 'c2')] }),
+    ];
+    focusDate.capture = 'c1';
+    render();
+    expect(q('[data-testid="survey-bulk"] h2')?.textContent).toBe('Total on 10 Jan');
+    expect(q('[data-testid="survey-bulk-net"]')?.textContent).toBe(v(107));
+    // the table marks the row the total shows
+    expect(
+      q('[data-testid="volumes-inventory-table"] tr[aria-current="date"]')?.getAttribute(
+        'data-capture',
+      ),
+    ).toBe('c1');
   });
 
   it('folder filter narrows the stack', () => {

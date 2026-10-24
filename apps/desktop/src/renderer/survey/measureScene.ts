@@ -54,7 +54,10 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { StoreApi } from 'zustand/vanilla';
+import { stageShow } from '../workspace/StageShow';
+import { timeline } from '../workspace/timeline';
 import { invalidPicks, primaryText, rowText, templateItems } from './card/cardModel';
+import { captureInFocus } from './measureRows';
 import {
   DEFAULT_BORDER_WIDTH,
   DEFAULT_FILL_OPACITY,
@@ -103,9 +106,19 @@ interface Shape {
   fillOpacity: number | undefined;
   borderWidth: number | undefined;
   selected: boolean;
+  /** Its line and fill are drawn (a pile's not, with the Show control's Outlines off). */
+  outline: boolean;
   label: string | null;
   labelSize: number;
   tool: SurveyMeasurement['tool'];
+}
+
+/** What a view draws the shapes for: the date in focus and the Show control's pile overlays. */
+export interface ShapeOptions {
+  /** The survey date whose figures the labels read (`captureInFocus`); none: the stored one. */
+  capture?: string | null;
+  /** The Show control's Outlines and Labels (both on when left out). */
+  show?: { outlines: boolean; labels: boolean };
 }
 
 /** How one view draws the measurements when it is not the only view (a split). */
@@ -146,16 +159,30 @@ export function shapesOf(
   ws: DatesOnScreen,
   manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'origin'> | null,
   north: 'project north' | 'grid north',
+  opts: ShapeOptions = {},
 ): Shape[] {
   const templates = knownTemplates(s);
-  return drawn(s, ws).map((m) => {
+  const capture = opts.capture ?? undefined;
+  const outlines = opts.show?.outlines ?? true;
+  const labels = opts.show?.labels ?? true;
+  return drawn(s, ws).flatMap((m) => {
     const selected = s.selected.includes(m.id);
     const live = s.editing && m.id === s.focus ? s.editing.points : null;
+    // the Show control's Outlines and Labels hide the piles' (never the one being edited)
+    const pile = live === null && isPile(m);
+    const outline = !pile || outlines;
+    const labelled = !pile || labels;
+    if (!outline && !labelled) return [];
     // drawn points, and the label reads them out: positions are where the person sees them
     const points = live ?? drawnPoints(m, manifest);
     const style = m.style;
     const only = style?.labelOnlyWhenSelected === true;
+    const label =
+      !labelled || (only && !selected)
+        ? null
+        : labelText({ ...m, points }, s.settings, templates, north, capture);
     return {
+      outline,
       id: m.id,
       tool: m.tool,
       points,
@@ -166,10 +193,36 @@ export function shapesOf(
       fillOpacity: style?.fillOpacity,
       borderWidth: style?.borderWidth,
       selected,
-      label: only && !selected ? null : labelText({ ...m, points }, s.settings, templates, north),
+      label,
       labelSize: style?.labelSize ?? 12,
     };
   });
+}
+
+/** A stockpile as the Show control's Outlines and Labels see it: a volume polygon. */
+const isPile = (m: SurveyMeasurement) => m.tool === 'volume' && m.family === 'polygon';
+
+/** The date in focus and the Show control's pile overlays, as a view draws them now. */
+export function viewShapeOptions(): ShapeOptions {
+  const { outlines, labels } = stageShow.getState();
+  return {
+    capture: captureInFocus(timeline.getState().focus, openManifest()),
+    show: { outlines, labels },
+  };
+}
+
+/** Redraw when the date in focus or the Show control's Outlines or Labels change. */
+function onShowChange(redraw: () => void): () => void {
+  const offTimeline = timeline.subscribe((s, p) => {
+    if (s.focus !== p.focus) redraw();
+  });
+  const offShow = stageShow.subscribe((s, p) => {
+    if (s.outlines !== p.outlines || s.labels !== p.labels) redraw();
+  });
+  return () => {
+    offTimeline();
+    offShow();
+  };
 }
 
 /**
@@ -181,6 +234,7 @@ export function labelText(
   settings: SurveySettings,
   templates: readonly SurveyTemplate[],
   north: 'project north' | 'grid north' = 'project north',
+  capture?: string,
 ): string {
   if (isTelecomTool(m.tool)) {
     if (invalidPicks(m))
@@ -197,11 +251,14 @@ export function labelText(
           : value;
     return [m.label, said].filter(Boolean).join(' · ');
   }
+  // a volume reads its figure on the date in focus (volumetrics redesign C3), as the tree does
   const row =
-    m.style?.showPropertyName === true ? primaryRow(m, {}, templateItems(m, templates)) : null;
+    m.style?.showPropertyName === true
+      ? primaryRow(m, capture !== undefined ? { capture } : {}, templateItems(m, templates))
+      : null;
   const named = row
     ? `${row.label}: ${rowText(row, m, settings)}`
-    : primaryText(m, { settings, templates });
+    : primaryText(m, { settings, templates, capture });
   return [m.label, named].filter(Boolean).join(' · ');
 }
 
@@ -504,10 +561,12 @@ export function attach3d(
       dates.getState(),
       openManifest(),
       frame.epsg === null ? 'project north' : 'grid north',
+      viewShapeOptions(),
     );
     for (const sh of shapes) {
       // named after the measurement: which view draws which is read from the scene (tests)
       const name = `measure:${sh.id}`;
+      if (!sh.outline) continue;
       if (sh.filled)
         addFill(
           sh.points,
@@ -747,11 +806,13 @@ export function attach3d(
     if (drawing && stage.tool !== 'select') stage.setTool('select');
   });
   const offDates = onDatesChange(dates, rebuild);
+  const offShow = onShowChange(rebuild);
   rebuild();
 
   return () => {
     offStore();
     offDates();
+    offShow();
     offFrame();
     offClaim?.();
     if (!display) {
@@ -866,6 +927,7 @@ export function attachMap(
       dates.getState(),
       openManifest(),
       frame.epsg === null ? 'project north' : 'grid north',
+      viewShapeOptions(),
     )) {
       const coords = sh.points.map(toLngLat);
       const props = {
@@ -882,6 +944,7 @@ export function attachMap(
           properties: { kind: 'label', id: sh.id, label: sh.label, size: sh.labelSize },
           geometry: { type: 'Point', coordinates: toLngLat(anchor) },
         });
+      if (!sh.outline) continue;
       if (coords.length === 1)
         features.push({
           type: 'Feature',
@@ -1067,10 +1130,12 @@ export function attachMap(
     if (!display) canvas.style.cursor = s.draw ? 'crosshair' : '';
   });
   const offDates = onDatesChange(dates, draw);
+  const offShow = onShowChange(draw);
   draw();
   return () => {
     offStore();
     offDates();
+    offShow();
     if (!display) {
       map.off('mousemove', onMove as never);
       map.off('click', onClick as never);
