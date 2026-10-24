@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { coordinatorLine, readCoordinator } from './merge-coordinator.mjs';
 
 export const NORTH_STAR = 'docs/NORTH-STAR.md';
 export const SESSIONS_DIR = 'docs/sessions';
@@ -212,6 +213,9 @@ function buildContext() {
     const worktrees = parseWorktrees(git(['worktree', 'list', '--porcelain'], root) ?? '');
     out.push(`Worktrees (${worktrees.length}):`);
     out.push(...formatWorktrees(worktrees, root));
+
+    const commonDir = git(['rev-parse', '--path-format=absolute', '--git-common-dir'], root);
+    out.push(coordinatorLine(commonDir ? readCoordinator(commonDir) : null));
   } else {
     out.push(`Not inside a git repository (${root}).`);
   }
@@ -240,8 +244,8 @@ function buildContext() {
   }
 
   out.push(
-    'Rules: CLAUDE.md. Build in your own worktree; hand branches to the Orchestrator; ' +
-      'end a working block with /wrapup.',
+    'Rules: CLAUDE.md. Build in your own worktree; hand branches to the merge coordinator; end ' +
+      'a working block with /wrapup.',
   );
   out.push('Full context: node tools/agent/wrapup-context.mjs');
   return out.join('\n') + '\n';

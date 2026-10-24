@@ -9,7 +9,7 @@
 // Nested, not a sibling folder: a worktree inside the project is inside the subagent sandbox, so a
 // session that re-roots with EnterWorktree({ path: '.claude/worktrees/<name>' }) can hand work to
 // subagents. Finish with `node tools/agent/finish-task.mjs`, which readies the branch for the
-// orchestrator.
+// merge coordinator.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

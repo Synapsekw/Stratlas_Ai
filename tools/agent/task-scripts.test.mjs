@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { parseArgs as parseStart } from './start-task.mjs';
-import { contractWarning, handoffMessage, parseArgs as parseFinish } from './finish-task.mjs';
+import {
+  baseRef,
+  contractWarning,
+  handoffMessage,
+  parseArgs as parseFinish,
+} from './finish-task.mjs';
 import { parseArgs as parseWatch, summariseChecks } from './watch-ci.mjs';
 import { findNames, forbiddenWords } from './check-public-text.mjs';
 
@@ -65,6 +70,15 @@ describe('finish-task', () => {
     expect(text).toContain('Checks: pnpm check green');
     expect(text).toContain('Contract changes: none');
     expect(text).toMatch(/^E2E: /m);
+    expect(text).toContain('rebased onto origin/main');
+    expect(
+      handoffMessage({ branch: 'b', sha: 's', subjects: [], checks: 'c', base: 'main' }),
+    ).toContain('rebased onto main.');
+  });
+
+  it('rebases onto the local main while a merge batch is open', () => {
+    expect(baseRef({ name: 'aio-software-f2', since: 'x', raw: '' })).toBe('main');
+    expect(baseRef(null)).toBe('origin/main');
   });
 });
 

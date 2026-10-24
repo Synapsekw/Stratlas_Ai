@@ -1,16 +1,19 @@
 /* eslint-disable no-console -- CLI output */
-// Readies a worktree branch for the orchestrator, or cleans it up after it landed (CLAUDE.md, "The
-// orchestrator merges, one branch at a time"). Sessions never merge into main themselves.
+// Readies a worktree branch for the merge coordinator, or cleans it up after the batch is pushed
+// (CLAUDE.md, "Branches land in a local merge queue, one push per batch"). Sessions never merge
+// into main themselves.
 //
 //   node tools/agent/finish-task.mjs [--docs] [--no-rebase]   (from inside your worktree)
 //     1. refuses on main and in the main checkout
 //     2. requires a clean, committed tree
-//     3. rebases the branch onto the latest origin/main, so the checks see what will land
+//     3. rebases the branch onto the base, so the checks see what will land: the LOCAL main while
+//        a coordinator holds the merge lock (the batch lands there first), else the latest
+//        origin/main. --no-rebase skips this step.
 //     4. runs `pnpm check` (`pnpm format:check` with --docs) under a machine-wide lock
-//     5. checks the commit messages for client and site names (check-public-text.mjs)
-//     6. prints the hand-off message to SendMessage to the Orchestrator session
+//     5. checks the commit messages since the base for client and site names (check-public-text.mjs)
+//     6. prints the hand-off message to SendMessage to the coordinator (merge-coordinator.mjs)
 //
-//   node tools/agent/finish-task.mjs --cleanup <branch>   (once the orchestrator confirms it landed)
+//   node tools/agent/finish-task.mjs --cleanup <branch>   (once the batch is on origin/main)
 //     removes the branch's worktree (with the Windows long-path fallback) and deletes the branch
 //
 // The lock: two worktrees running `pnpm check` at once starve each other of CPU and fail flakily, so
@@ -19,6 +22,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { coordinatorHint, readCoordinator } from './merge-coordinator.mjs';
 
 export function parseArgs(argv) {
   const args = { docs: false, rebase: true, cleanup: '' };
@@ -44,12 +48,17 @@ export function contractWarning(changedFiles) {
     : '';
 }
 
-export function handoffMessage({ branch, sha, subjects, checks, contract }) {
+/** The branch to rebase onto and compare against: the local main while a batch is open. */
+export function baseRef(coordinator) {
+  return coordinator ? 'main' : 'origin/main';
+}
+
+export function handoffMessage({ branch, sha, subjects, checks, contract, base = 'origin/main' }) {
   const lines = [
-    `Ready to merge: ${branch} at ${sha}.`,
+    `Ready to land: ${branch} at ${sha}.`,
     `Summary: <one line: what this branch does>`,
     `Commits (${subjects.length}): ${subjects.slice(0, 8).join('; ')}${subjects.length > 8 ? '; ...' : ''}`,
-    `Checks: ${checks} green on the branch rebased onto origin/main.`,
+    `Checks: ${checks} green on the branch rebased onto ${base}.`,
     'E2E: <specs run CI-like (1100x720 at scale 1, WARP, demos built) and their result, or "none touched">',
     `Contract changes: ${contract ? 'yes, see docs/architecture/contract-changes.md' : 'none'}`,
     'Merge order: <none, or what must land first>',
@@ -151,8 +160,8 @@ function cleanup(branch) {
   tryGit(['-C', root, 'fetch', 'origin', 'main']);
   if (!tryGit(['-C', root, 'merge-base', '--is-ancestor', branch, 'origin/main']).ok) {
     fail(
-      `error: ${branch} is not in origin/main yet. Wait for the orchestrator to confirm it landed.`,
-      '       (If the orchestrator rebased or squashed it, check by hand and use git branch -D.)',
+      `error: ${branch} is not in origin/main yet. Wait for the coordinator to push the batch.`,
+      '       (If the coordinator rebased or squashed it, check by hand and use git branch -D.)',
     );
   }
   const list = git(['-C', root, 'worktree', 'list', '--porcelain']).split(/\r?\n\r?\n/);
@@ -185,22 +194,28 @@ async function ready({ docs, rebase }) {
   if (dirty) fail('error: uncommitted changes; commit them first.', dirty);
 
   const commonDir = resolve(git(['rev-parse', '--path-format=absolute', '--git-common-dir']));
+  const coordinator = readCoordinator(commonDir);
+  const base = baseRef(coordinator);
   console.log('-> waiting for the machine-wide check lock');
   const release = await acquireLock(join(commonDir, 'finish-task-check.lock'));
   process.on('exit', release);
 
   if (rebase) {
-    console.log('-> rebasing onto the latest origin/main');
-    tryGit(['fetch', 'origin', 'main']);
+    if (coordinator) {
+      console.log(`-> rebasing onto the local main (batch open, coordinator ${coordinator.name})`);
+    } else {
+      console.log('-> rebasing onto the latest origin/main');
+      tryGit(['fetch', 'origin', 'main']);
+    }
     const before = git(['rev-parse', 'HEAD:pnpm-lock.yaml']);
-    if (!tryGit(['rebase', 'origin/main']).ok) {
+    if (!tryGit(['rebase', base]).ok) {
       const conflicts = tryGit(['diff', '--name-only', '--diff-filter=U'])
         .out.split(/\r?\n/)
         .join(' ');
       tryGit(['rebase', '--abort']);
       fail(
-        `error: the rebase onto origin/main hit conflicts: ${conflicts || '(see git output)'}`,
-        '       it was aborted; your branch is unchanged. Resolve with `git rebase origin/main`,',
+        `error: the rebase onto ${base} hit conflicts: ${conflicts || '(see git output)'}`,
+        `       it was aborted; your branch is unchanged. Resolve with \`git rebase ${base}\`,`,
         '       then run finish-task again.',
       );
     }
@@ -217,23 +232,32 @@ async function ready({ docs, rebase }) {
     fail(`error: ${checks} is red. Fix it on the branch; never hand off a red branch.`);
   }
 
-  const changed = git(['diff', '--name-only', 'origin/main...HEAD']).split(/\r?\n/).filter(Boolean);
-  const subjects = git(['log', '--format=%s', 'origin/main..HEAD']).split(/\r?\n/).filter(Boolean);
+  const changed = git(['diff', '--name-only', `${base}...HEAD`])
+    .split(/\r?\n/)
+    .filter(Boolean);
+  const subjects = git(['log', '--format=%s', `${base}..HEAD`])
+    .split(/\r?\n/)
+    .filter(Boolean);
   const warning = contractWarning(changed);
   if (warning) console.log(`\nWARNING: ${warning}`);
 
   const names = spawnSync(
     process.execPath,
-    [join(top, 'tools', 'agent', 'check-public-text.mjs'), '--commits', 'origin/main..HEAD'],
+    [join(top, 'tools', 'agent', 'check-public-text.mjs'), '--commits', `${base}..HEAD`],
     { cwd: top, stdio: 'inherit' },
   );
   if (names.status !== 0) {
     fail('error: a commit message names a client or site; reword it before handing off.');
   }
 
-  console.log(
-    '\nReady for the orchestrator. Fill in the <...> parts and SendMessage this to "Orchestrator":',
-  );
+  if (coordinator) {
+    console.log(
+      `\nReady for the merge coordinator. Fill in the <...> parts and SendMessage this to "${coordinator.name}":`,
+    );
+  } else {
+    console.log(`\n${coordinatorHint(null)}`);
+    console.log('Once a coordinator runs, fill in the <...> parts and SendMessage this to it:');
+  }
   console.log('--------------------------------------------------------------------------------');
   console.log(
     handoffMessage({
@@ -242,6 +266,7 @@ async function ready({ docs, rebase }) {
       subjects,
       checks,
       contract: changed.includes('docs/architecture/contract-changes.md'),
+      base,
     }),
   );
   console.log('--------------------------------------------------------------------------------');
@@ -249,7 +274,7 @@ async function ready({ docs, rebase }) {
     'Before sending: no tester or person names in the commits either (no list catches those).',
   );
   console.log(
-    `After it lands: node tools/agent/finish-task.mjs --cleanup ${branch}  (from the main checkout)`,
+    `After the batch is pushed: node tools/agent/finish-task.mjs --cleanup ${branch}  (from the main checkout)`,
   );
 }
 
