@@ -9,7 +9,7 @@
  * Fix edit is scaled back before it is saved. The loaded photo's size is noted for the review
  * store too, so an accept scales a normalized suggestion with it.
  */
-import { imageSizeOf, PhotoViewer, useTaxonomy, type PhotoViewerHandle } from '@aio/annotate';
+import { PhotoViewer, useTaxonomy, type PhotoViewerHandle } from '@aio/annotate';
 import {
   geomBounds,
   sourceKey,
@@ -18,13 +18,13 @@ import {
 } from '@aio/annotate/detections';
 import type { DetectionGeom, ImageGeom, Layer } from '@aio/schema';
 import { Icon, useT, type PhotoPick } from '@aio/ui';
-import { useCallback, useMemo, type ReactElement, type Ref } from 'react';
+import { useCallback, useMemo, useRef, type ReactElement, type Ref } from 'react';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
 import { detectionLook } from '../detections/look';
 import { noteImageSize } from '../detections/store';
 import { AI_COLOR, draftIdOf, draftOnPhoto, photoToDraft, suggestionShapes } from './viewerShapes';
 
-interface Natural {
+export interface Natural {
   width: number;
   height: number;
 }
@@ -50,6 +50,8 @@ export interface InspectViewerProps {
   onEdit: (id: string, geom: DetectionGeom) => void;
   onAccept: (id: string) => void;
   onDismiss: (id: string) => void;
+  /** The size the photo is drawn at, as it loads (`photo:<layer>:<photo>` key). */
+  onSize?: (key: string, size: Natural) => void;
 }
 
 export function InspectViewer(p: InspectViewerProps): ReactElement | null {
@@ -62,19 +64,27 @@ export function InspectViewer(p: InspectViewerProps): ReactElement | null {
   const photoId = p.photo?.photoId ?? null;
   const photoKey =
     layerId && photoId ? sourceKey({ kind: 'photo', layer: layerId, photo: photoId }) : null;
-  // the loaded photo's size: the viewer remembers it as the photo comes in, before it draws
-  const natural = useCallback((): Natural | null => {
-    const s = layerId && photoId ? imageSizeOf(layerId, photoId) : null;
-    return s ? { width: s[0], height: s[1] } : null;
-  }, [layerId, photoId]);
+  // the size the photo is drawn at: the one PhotoViewer hands to `extraShapes` once the photo is
+  // in (the image as the browser shows it, EXIF turn applied). The chips and a Fix edit use the
+  // same size, never the library's (read from the file header, it may be the other way round).
+  const drawn = useRef<{ key: string; size: Natural } | null>(null);
+  const onSize = p.onSize;
+  const natural = useCallback(
+    (): Natural | null => (drawn.current?.key === photoKey ? drawn.current.size : null),
+    [photoKey],
+  );
 
   // one array per change, as PhotoViewer keeps its shapes by the callback's identity
   const extraShapes = useCallback(
     (size: Natural) => {
-      if (photoKey) noteImageSize(photoKey, [size.width, size.height]);
+      if (photoKey) {
+        drawn.current = { key: photoKey, size };
+        noteImageSize(photoKey, [size.width, size.height]);
+        onSize?.(photoKey, size);
+      }
       return suggestionShapes(waiting, size, { currentId, fixing, classLabel });
     },
-    [photoKey, waiting, currentId, fixing, classLabel],
+    [photoKey, waiting, currentId, fixing, classLabel, onSize],
   );
 
   const onExtraSelect = useCallback(

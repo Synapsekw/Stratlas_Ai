@@ -11,6 +11,7 @@
 import {
   annotateUi,
   AnnotateStyles,
+  imageSizeOf,
   useAnnotateReadOnly,
   useTaxonomy,
   type PhotoViewerHandle,
@@ -65,7 +66,8 @@ import {
 import { FindingsPanel } from '../inspect/FindingsPanel';
 import { inspectAction, type InspectAction } from '../inspect/inspectKeys';
 import { inspectUi, leaveQueue, openPhoto, openQueue, useInspectUi } from '../inspect/inspectUi';
-import { InspectViewer } from '../inspect/InspectViewer';
+import { InspectViewer, type Natural } from '../inspect/InspectViewer';
+import { draftOnPhoto, photoToDraft } from '../inspect/viewerShapes';
 import '../inspect/inspect.css';
 import { trackDrawingChoice } from '../inspect/lastChoice';
 import { PhotoColumn } from '../inspect/PhotoColumn';
@@ -151,6 +153,8 @@ function InspectBody(): ReactElement | null {
   const [note, setNote] = useState<string | null>(null);
   const [, setThermalSeen] = useState(0);
   const viewer = useRef<PhotoViewerHandle>(null);
+  /** The size the open photo is drawn at (InspectViewer reports it as the photo loads). */
+  const drawnSize = useRef<{ key: string; size: Natural } | null>(null);
   const section = useRef<HTMLElement>(null);
   const accepting = useRef(false);
 
@@ -334,6 +338,15 @@ function InspectBody(): ReactElement | null {
     },
     [projectId],
   );
+  const noteDrawnSize = useCallback((key: string, size: Natural) => {
+    drawnSize.current = { key, size };
+  }, []);
+  /** The photo's size as drawn; the library's (its file header) when it is not open. */
+  const sizeOf = (key: string, layerId: string, photoId: string): Natural | null => {
+    if (drawnSize.current?.key === key) return drawnSize.current.size;
+    const s = imageSizeOf(layerId, photoId);
+    return s ? { width: s[0], height: s[1] } : null;
+  };
   const dismissDraft = useCallback((id: string) => {
     setNote(null);
     dismissSuggestion(id);
@@ -356,14 +369,22 @@ function InspectBody(): ReactElement | null {
     workspace.getState().select({ kind: 'photo', id: to.photoId, layer: to.layerId });
   };
 
+  // M: the mask model outlines the current box suggestion. It works in the photo's pixels, the
+  // suggestion keeps its own grid: the box is scaled to the photo as it is drawn, and the outline
+  // back to the suggestion's grid.
   const runMask = async () => {
     if (current?.source.kind !== 'photo' || current.geom.type !== 'box') return;
+    const d = current;
     const src = current.source;
     const layer = layers.find((l) => l.id === src.layer);
     const item = layer?.kind === 'photos' ? layer.items.find((p) => p.id === src.photo) : undefined;
     if (!item || !('path' in item.src)) return;
-    const g = current.geom;
-    const id = current.id;
+    const size = sizeOf(sourceKey(src), src.layer, src.photo);
+    const g = size ? draftOnPhoto(d, size) : null;
+    if (!size || g?.type !== 'box') {
+      setNote(t('card.photoFailed'));
+      return;
+    }
     const r = await bridge.call('detections:maskAssist', {
       projectId: project.id,
       path: item.src.path,
@@ -374,13 +395,10 @@ function InspectBody(): ReactElement | null {
       setNote(res.error);
       return;
     }
+    const geom = photoToDraft({ type: 'polygon', points: res.points }, d, size);
+    if (!geom) return;
     setNote(null);
-    dispatch({
-      type: 'edit',
-      id,
-      patch: { geom: { type: 'polygon', points: res.points } },
-      now: new Date().toISOString(),
-    });
+    dispatch({ type: 'edit', id: d.id, patch: { geom }, now: new Date().toISOString() });
   };
 
   // severity digit, C / Shift+C, U and Delete on the current draft
@@ -719,6 +737,7 @@ function InspectBody(): ReactElement | null {
                     onEdit={editDraft}
                     onAccept={acceptDraft}
                     onDismiss={dismissDraft}
+                    onSize={noteDrawnSize}
                   />
                 ) : (
                   <div className="side-empty">

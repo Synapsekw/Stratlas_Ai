@@ -17,21 +17,32 @@ import type * as Store from '../detections/store';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// the app's bridge binds to window.aio when its module loads: writes succeed, mask assist is off
-vi.hoisted(() => {
+// the app's bridge binds to window.aio when its module loads: writes succeed, mask assist is
+// installed and outlines a box with a triangle in photo pixels (the calls are kept)
+const h = vi.hoisted(() => {
+  const calls: { channel: string; args: unknown }[] = [];
   (globalThis as { aio?: unknown }).aio = {
-    invoke: (channel: string) =>
-      Promise.resolve(
-        channel === 'detections:maskAssistStatus'
-          ? { ok: true, value: { available: false } }
-          : { ok: true },
-      ),
+    invoke: (channel: string, args: unknown) => {
+      calls.push({ channel, args });
+      if (channel === 'detections:maskAssistStatus') return Promise.resolve({ available: true });
+      if (channel === 'detections:maskAssist')
+        return Promise.resolve({
+          ok: true,
+          points: [
+            [1000, 1500],
+            [1400, 1500],
+            [1400, 2100],
+          ],
+        });
+      return Promise.resolve({ ok: true });
+    },
     on: () => () => undefined,
   };
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
     observe = () => undefined;
     disconnect = () => undefined;
   };
+  return { calls };
 });
 
 vi.mock('../detections/store', async (importOriginal) => ({
@@ -39,14 +50,22 @@ vi.mock('../detections/store', async (importOriginal) => ({
   // the test sets the review itself: no read from disk
   loadDetections: vi.fn(() => Promise.resolve()),
 }));
+// the viewer stand-in draws photo a at 4000 x 3000, as the real one reports its size on load
 vi.mock('../inspect/InspectViewer', () => ({
-  InspectViewer: (p: { photo: PhotoPick | null; currentId: string | null }) => (
-    <div
-      data-testid="viewer"
-      data-photo={p.photo ? `${p.photo.layerId}/${p.photo.photoId}` : ''}
-      data-current={p.currentId ?? ''}
-    />
-  ),
+  InspectViewer: (p: {
+    photo: PhotoPick | null;
+    currentId: string | null;
+    onSize?: (key: string, size: { width: number; height: number }) => void;
+  }) => {
+    if (p.photo?.photoId === 'a') p.onSize?.('photo:photos:a', { width: 4000, height: 3000 });
+    return (
+      <div
+        data-testid="viewer"
+        data-photo={p.photo ? `${p.photo.layerId}/${p.photo.photoId}` : ''}
+        data-current={p.currentId ?? ''}
+      />
+    );
+  },
 }));
 vi.mock('../inspect/PhotoColumn', () => ({ PhotoColumn: () => <div data-testid="column" /> }));
 vi.mock('../inspect/askAi/AskAiBar', () => ({ AskAiBar: () => null }));
@@ -182,6 +201,7 @@ const press = (el: Element, key: string) => {
 };
 
 beforeEach(() => {
+  h.calls.length = 0;
   setAnnotateReadOnly(false);
   localStorage.clear();
   workspace.getState().openProject({ id: 'p1', root: 'E:/p1', manifest }, [ON_B, IN_3D]);
@@ -287,6 +307,39 @@ describe('InspectScreen', () => {
     // the photo and its suggestion stay in view
     expect(viewer()?.dataset.photo).toBe('photos/a');
     expect(rows().map((r) => r.dataset.kind)).toEqual(['ai']);
+  });
+
+  it('M outlines a normalized box suggestion in the photo pixels and keeps it in its own grid', async () => {
+    const norm: Detection = {
+      ...draft('d-norm', 'a'),
+      size: [1, 1],
+      geom: { type: 'box', x: 0.25, y: 0.5, w: 0.1, h: 0.2 },
+    };
+    detections.setState({
+      review: reviewReducer(initialReview(), { type: 'load', detections: [norm] }),
+    });
+    mount();
+    select({ kind: 'photo', id: 'a', layer: 'photos' });
+    act(() => {
+      dispatch({ type: 'select', id: 'd-norm' });
+    });
+    await flush();
+    press(section(), 'm');
+    await flush();
+    const sent = h.calls.find((c) => c.channel === 'detections:maskAssist')?.args;
+    expect(sent).toMatchObject({ path: 'photos/a.jpg', box: [1000, 1500, 400, 600] });
+    const geom = detections.getState().review.detections.find((d) => d.id === 'd-norm')?.geom;
+    if (geom?.type !== 'polygon') throw new Error('no outline saved');
+    const want = [
+      [0.25, 0.5],
+      [0.35, 0.5],
+      [0.35, 0.7],
+    ];
+    expect(geom.points).toHaveLength(3);
+    geom.points.forEach(([x, y], i) => {
+      expect(x).toBeCloseTo(want[i]?.[0] ?? NaN, 9);
+      expect(y).toBeCloseTo(want[i]?.[1] ?? NaN, 9);
+    });
   });
 
   it('D dismisses the selected suggestion', () => {
