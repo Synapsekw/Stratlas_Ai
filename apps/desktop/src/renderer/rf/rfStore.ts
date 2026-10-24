@@ -545,6 +545,18 @@ export function renameSector(sectorId: string, name: string): void {
   }));
 }
 
+/**
+ * Rename a saved sector from outside Coverage (the Project tab's Sectors group). A plan with no
+ * edits is renamed and saved; one with unsaved edits gets the new name in its working copy only
+ * (it stays dirty), so nothing typed in Coverage is written behind the person's back.
+ */
+export async function renameSavedSector(sectorId: string, name: string): Promise<void> {
+  const { hasFile, readOnly, dirty } = get();
+  if (!hasFile || readOnly || !name.trim()) return;
+  renameSector(sectorId, name);
+  if (!dirty) await saveRf();
+}
+
 /** Put a unit in a sector (it leaves its old one); null takes it out of every sector. */
 export function moveUnit(antennaId: string, sectorId: string | null): void {
   edit((f) => ({

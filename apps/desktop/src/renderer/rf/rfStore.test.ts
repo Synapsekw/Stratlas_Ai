@@ -25,6 +25,7 @@ import {
   reassignOrphanEntry,
   removeAntennasFromPlan,
   removeOrphanEntry,
+  renameSavedSector,
   renameSector,
   resetRf,
   rfStore,
@@ -268,6 +269,26 @@ describe('sectors', () => {
     expect(row('ant-c').sectorId).toBe('sec-s4');
     moveUnit('ant-c', null);
     expect(row('ant-c').sectorId).toBeNull();
+  });
+});
+
+describe('renameSavedSector', () => {
+  it('renames and saves a plan with no edits', async () => {
+    site();
+    await loadRf('p1');
+    await renameSavedSector('sec-s1', ' North ');
+    expect(s().dirty).toBe(false);
+    expect(h.sectors?.sectors[0]?.name).toBe('North');
+  });
+
+  it('renames a plan with unsaved edits in the working copy only', async () => {
+    site();
+    await loadRf('p1');
+    moveUnit('ant-b', 'sec-s1');
+    await renameSavedSector('sec-s2', 'East');
+    expect(s().sectors.sectors[1]?.name).toBe('East');
+    expect(s().dirty).toBe(true);
+    expect(h.sectors?.sectors[1]?.name).not.toBe('East');
   });
 });
 
