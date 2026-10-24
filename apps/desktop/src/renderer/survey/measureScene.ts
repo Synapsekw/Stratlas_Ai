@@ -9,6 +9,7 @@ import { fromWgs84, localToProject, projectToLocal, toWgs84 } from '@aio/geo';
 import type { MapController } from '@aio/maps';
 import type {
   ProjectManifest,
+  SiteMaterial,
   SitePoint,
   SurveyMeasurement,
   SurveySettings,
@@ -16,7 +17,9 @@ import type {
   Vec3,
 } from '@aio/schema';
 import {
+  figureOn,
   findSnap,
+  materialColour,
   hitMidpoint,
   hitVertex,
   isClosed,
@@ -54,7 +57,7 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { StoreApi } from 'zustand/vanilla';
-import { stageShow } from '../workspace/StageShow';
+import { stageShow, type ColourBy } from '../workspace/StageShow';
 import { timeline } from '../workspace/timeline';
 import { invalidPicks, primaryText, rowText, templateItems } from './card/cardModel';
 import { captureInFocus } from './measureRows';
@@ -73,6 +76,7 @@ import {
 } from './measureStore';
 import { fallbackZ, type MapHeights } from './mapHeights';
 import { mapPickLayer, type VertexPick } from './measureSource';
+import { materialOf, materialsDraft } from './volumes/materialsDraft';
 
 const DRAFT_COLOR = '#4cc9f0';
 const SNAP_COLOR = '#ff5ccd';
@@ -119,6 +123,8 @@ export interface ShapeOptions {
   capture?: string | null;
   /** The Show control's Outlines and Labels (both on when left out). */
   show?: { outlines: boolean; labels: boolean };
+  /** "Colour piles by": a pile's line and fill colour (a plain colour); none: its own. */
+  pileColour?: (m: SurveyMeasurement) => string;
 }
 
 /** How one view draws the measurements when it is not the only view (a split). */
@@ -176,6 +182,7 @@ export function shapesOf(
     // drawn points, and the label reads them out: positions are where the person sees them
     const points = live ?? drawnPoints(m, manifest);
     const style = m.style;
+    const recolour = pile && opts.pileColour ? opts.pileColour(m) : null;
     const only = style?.labelOnlyWhenSelected === true;
     const label =
       !labelled || (only && !selected)
@@ -188,8 +195,8 @@ export function shapesOf(
       points,
       closed: m.tool === 'azimuth' || isClosed(m.family),
       filled: isClosed(m.family),
-      color: style?.color ?? DEFAULT_MEASURE_COLOUR,
-      fill: style?.fill,
+      color: recolour ?? style?.color ?? DEFAULT_MEASURE_COLOUR,
+      fill: recolour ?? style?.fill,
       fillOpacity: style?.fillOpacity,
       borderWidth: style?.borderWidth,
       selected,
@@ -202,26 +209,161 @@ export function shapesOf(
 /** A stockpile as the Show control's Outlines and Labels see it: a volume polygon. */
 const isPile = (m: SurveyMeasurement) => m.tool === 'volume' && m.family === 'polygon';
 
-/** The date in focus and the Show control's pile overlays, as a view draws them now. */
-export function viewShapeOptions(): ShapeOptions {
-  const { outlines, labels } = stageShow.getState();
-  return {
-    capture: captureInFocus(timeline.getState().focus, openManifest()),
-    show: { outlines, labels },
-  };
+/**
+ * The cut and fill colours as plain values for WebGL and the map, when the tokens (`--cut`,
+ * `--fill`, dark theme) cannot be read from the page.
+ */
+export const CHANGE_COLOURS = { cut: '#f9786a', fill: '#5eaceb' } as const;
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/**
+ * A CSS colour (`#rrggbb`, `var(--mat-3)`, a `color-mix`) as `#rrggbb` for WebGL and the map: the
+ * page computes it and a one-pixel canvas reads it back. `fallback` when the page cannot (tests,
+ * no DOM).
+ */
+export function cssColourHex(css: string, fallback: string): string {
+  if (HEX.test(css)) return css.toLowerCase();
+  if (typeof document === 'undefined' || typeof OffscreenCanvas === 'undefined') return fallback;
+  try {
+    const probe = document.createElement('span');
+    probe.style.color = css;
+    probe.style.display = 'none';
+    document.body.appendChild(probe);
+    const computed = getComputedStyle(probe).color;
+    probe.remove();
+    if (!computed || computed.includes('var(')) return fallback;
+    const ctx = new OffscreenCanvas(1, 1).getContext('2d');
+    if (!ctx) return fallback;
+    ctx.fillStyle = computed;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r = 0, g = 0, b = 0] = ctx.getImageData(0, 0, 1, 1).data;
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+  } catch {
+    return fallback;
+  }
 }
 
-/** Redraw when the date in focus or the Show control's Outlines or Labels change. */
+/** The survey dated just before `capture` in the project; null for the first or an unknown one. */
+export function previousCapture(
+  capture: string | null,
+  captures: readonly { id: string; date: string }[],
+): string | null {
+  const at = captures.find((c) => c.id === capture);
+  if (!at) return null;
+  const t = Date.parse(at.date);
+  if (!Number.isFinite(t)) return null;
+  let best: { id: string; t: number } | null = null;
+  for (const c of captures) {
+    const ct = Date.parse(c.date);
+    if (Number.isFinite(ct) && ct < t && (best === null || ct > best.t)) best = { id: c.id, t: ct };
+  }
+  return best?.id ?? null;
+}
+
+export interface PileColouring {
+  /** The site's materials in their list order (their palette colour goes by it). */
+  materials: readonly SiteMaterial[];
+  /** A pile's material id (with the Materials pane's unsaved assignments). */
+  materialOf(m: SurveyMeasurement): string | undefined;
+  /** The date in focus and the survey before it: a pile's change between them. */
+  capture: string | null;
+  previous: string | null;
+  /** A CSS colour as a plain one (`cssColourHex`). */
+  hex(css: string, fallback: string): string;
+}
+
+const countedNet = (f: ReturnType<typeof figureOn>): number | null =>
+  f !== null && f.status !== 'stale' && f.status !== 'refused' ? f.netM3 : null;
+
+/**
+ * "Colour piles by" (Materials pane): Material, each pile in its material's colour; Change, a pile
+ * that grew since the survey before in the fill colour and one that shrank in the cut colour;
+ * None, the default measurement colour. A pile without a material or a change takes the default.
+ */
+export function pileColourer(by: ColourBy, c: PileColouring): (m: SurveyMeasurement) => string {
+  if (by === 'material') {
+    const colours = new Map<string, string>();
+    c.materials.forEach((mat, i) => {
+      colours.set(mat.id, c.hex(materialColour(mat, i), DEFAULT_MEASURE_COLOUR));
+    });
+    return (m) => {
+      const id = c.materialOf(m);
+      return (id !== undefined ? colours.get(id) : undefined) ?? DEFAULT_MEASURE_COLOUR;
+    };
+  }
+  if (by === 'change') {
+    const cut = c.hex('var(--cut)', CHANGE_COLOURS.cut);
+    const fill = c.hex('var(--fill)', CHANGE_COLOURS.fill);
+    return (m) => {
+      if (c.capture === null || c.previous === null) return DEFAULT_MEASURE_COLOUR;
+      const now = countedNet(figureOn(m, c.capture));
+      const before = countedNet(figureOn(m, c.previous));
+      if (now === null || before === null || now === before) return DEFAULT_MEASURE_COLOUR;
+      return now > before ? fill : cut;
+    };
+  }
+  return () => DEFAULT_MEASURE_COLOUR;
+}
+
+/**
+ * The date in focus and the Show control's pile overlays and colouring, as a view draws them now.
+ * The overlays and colouring apply only while the control is up (the Volumes tab), the colouring
+ * only on the Materials pane where it is chosen.
+ */
+export function viewShapeOptions(): ShapeOptions {
+  const manifest = openManifest();
+  const capture = captureInFocus(timeline.getState().focus, manifest);
+  const show = stageShow.getState();
+  if (!show.active) return { capture };
+  const opts: ShapeOptions = { capture, show: { outlines: show.outlines, labels: show.labels } };
+  if (show.pane !== 'materials') return opts;
+  const draft = materialsDraft.getState();
+  const cache = new Map<string, string>();
+  opts.pileColour = pileColourer(show.colourBy, {
+    materials: draft.materials(),
+    materialOf: (m) => materialOf(m, draft.assignments),
+    capture,
+    previous: previousCapture(capture, manifest?.captures ?? []),
+    hex: (css, fallback) => {
+      let v = cache.get(css);
+      if (v === undefined) {
+        v = cssColourHex(css, fallback);
+        cache.set(css, v);
+      }
+      return v;
+    },
+  });
+  return opts;
+}
+
+/**
+ * Redraw when the date in focus, the Show control (up or not, its overlays, the pane and the
+ * colouring) or, while piles are coloured by material, the Materials pane's edits change.
+ */
 function onShowChange(redraw: () => void): () => void {
   const offTimeline = timeline.subscribe((s, p) => {
     if (s.focus !== p.focus) redraw();
   });
   const offShow = stageShow.subscribe((s, p) => {
-    if (s.outlines !== p.outlines || s.labels !== p.labels) redraw();
+    if (
+      s.active !== p.active ||
+      s.outlines !== p.outlines ||
+      s.labels !== p.labels ||
+      s.pane !== p.pane ||
+      s.colourBy !== p.colourBy
+    )
+      redraw();
+  });
+  const offDraft = materialsDraft.subscribe((s, p) => {
+    const show = stageShow.getState();
+    if (!show.active || show.pane !== 'materials' || show.colourBy !== 'material') return;
+    if (s.draft !== p.draft || s.assignments !== p.assignments) redraw();
   });
   return () => {
     offTimeline();
     offShow();
+    offDraft();
   };
 }
 

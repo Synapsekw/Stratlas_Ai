@@ -174,6 +174,34 @@ describe('the Show control (board 1)', () => {
     expect(stageShow.getState().colourBy).toBe('none');
   });
 
+  it('offers Outlines and Labels on the Materials pane too', () => {
+    act(() => {
+      stageShow.getState().setPane('materials');
+    });
+    render();
+    click(button('Outlines'));
+    expect(stageShow.getState().outlines).toBe(false);
+    click(button('Labels'));
+    expect(stageShow.getState().labels).toBe(false);
+  });
+
+  it('a project change puts the surface, overlays and colouring back', () => {
+    workspace.getState().openProject({ id: 'p', root: '/p', manifest: surveyManifest });
+    act(() => {
+      stageShow.getState().setOutlines(false);
+      stageShow.getState().setLabels(false);
+      stageShow.getState().setColourBy('none');
+      stageShow.getState().setSurface('elev');
+    });
+    workspace.getState().openProject({ id: 'q', root: '/q', manifest: surveyManifest });
+    expect(stageShow.getState()).toMatchObject({
+      outlines: true,
+      labels: true,
+      colourBy: 'material',
+      surface: 'photo',
+    });
+  });
+
   it('does not cover the view: it keeps to a corner box at most 260 x 80 px', () => {
     render();
     expect(SHOW_BOX.width).toBeLessThanOrEqual(260);
@@ -206,6 +234,29 @@ describe('when the Show control shows', () => {
     });
     expect(shown()).toBe('false');
     shell.setState({ rightCollapsed: false });
+  });
+
+  it('publishes whether it shows, so the pile drawing applies the overlays only then', () => {
+    workspace.getState().openProject({ id: 'p', root: '/p', manifest: surveyManifest });
+    volumetric.setState({ status: 'ready' });
+    shell.setState({ rightCollapsed: false });
+    workbench.getState().show('selection');
+    render(<Probe />);
+    expect(stageShow.getState().active).toBe(false);
+    act(() => {
+      workbench.getState().show('volumes');
+    });
+    expect(stageShow.getState().active).toBe(true);
+    act(() => {
+      workbench.getState().show('selection');
+    });
+    expect(stageShow.getState().active).toBe(false);
+    act(() => {
+      workbench.getState().show('volumes');
+    });
+    act(() => root?.unmount());
+    root = undefined;
+    expect(stageShow.getState().active).toBe(false);
   });
 });
 

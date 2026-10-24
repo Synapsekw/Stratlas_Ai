@@ -3,7 +3,8 @@
  * is open, a caption "Show", the surface (Photo | Elevation | Cut & fill) and the pile overlays
  * (Outlines | Labels, each on its own). It replaces the surface colours that the Volumes bench and
  * the notch's Volumes row used to carry. On the Materials pane it reads "Colour piles by" Material
- * | Change | None instead.
+ * | Change | None in place of the surface, with the overlays under it. The overlays and the
+ * colouring apply only while the control is up (`active`), and a project change puts them back.
  *
  * The surface writes the stockpile kit's `surface` in a kit project. Elsewhere (a survey project's
  * piles) Photo and Elevation swap each shown survey date's ortho for its surface raster and back,
@@ -18,6 +19,7 @@ import type { Layer } from '@aio/schema';
 import { useT, type MessageKey } from '@aio/ui';
 import { useVolumetric, volumetric, type SurfaceMode } from '@aio/volumetric';
 import { canCompare, useWorkspace, workspace } from '@aio/workspace';
+import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { compareStore, setHeat, useCompare } from '../survey/compareStore';
@@ -41,6 +43,13 @@ export interface StageShowState {
   pane: VolumesPane;
   /** The surface of a project without the kit (the kit keeps its own in `volumetric`). */
   surface: SurfaceMode;
+  /**
+   * The control is up (the Volumes tab in front of an open right panel): only then do Outlines,
+   * Labels and "Colour piles by" apply to the pile drawing, so nothing stays hidden or recoloured
+   * without a control on screen to bring it back.
+   */
+  active: boolean;
+  setActive(on: boolean): void;
   setOutlines(on: boolean): void;
   setLabels(on: boolean): void;
   setColourBy(by: ColourBy): void;
@@ -56,9 +65,13 @@ const INITIAL = {
   surface: 'photo',
 } as const;
 
-export const stageShow = createStore<StageShowState>()((set) => ({
+export const stageShow = createStore<StageShowState>()((set, get) => ({
   ...INITIAL,
   pane: volumesPane.getState().pane,
+  active: false,
+  setActive: (active) => {
+    if (get().active !== active) set({ active });
+  },
   setOutlines: (outlines) => {
     set({ outlines });
   },
@@ -86,6 +99,11 @@ volumesPane.subscribe((s) => {
   if (stageShow.getState().pane !== s.pane) stageShow.setState({ pane: s.pane });
 });
 
+// another project (or none) starts from the default surface, overlays and colouring
+workspace.subscribe((s, p) => {
+  if ((s.project?.id ?? null) !== (p.project?.id ?? null)) stageShow.setState({ ...INITIAL });
+});
+
 export function useStageShow<T>(selector: (s: StageShowState) => T): T {
   return useStore(stageShow, selector);
 }
@@ -96,11 +114,24 @@ export function useStageShow<T>(selector: (s: StageShowState) => T): T {
  */
 export const SHOW_BOX = { width: 260, height: 80 } as const;
 
-/** The Show control is up: the Volumes tab is in front of an open right panel. */
+/**
+ * The Show control is up: the Volumes tab is in front of an open right panel. Published as
+ * `stageShow.active` for the pile drawing (the stage calls this once).
+ */
 export function useStageShowShown(): boolean {
   const { front } = useWorkbenchView();
   const collapsed = useShell((s) => s.rightCollapsed);
-  return front.id === 'volumes' && !collapsed;
+  const shown = front.id === 'volumes' && !collapsed;
+  useEffect(() => {
+    stageShow.getState().setActive(shown);
+  }, [shown]);
+  useEffect(
+    () => () => {
+      stageShow.getState().setActive(false);
+    },
+    [],
+  );
+  return shown;
 }
 
 type RasterRole = 'ortho' | 'dsm';
@@ -296,6 +327,8 @@ export function StageShow() {
             stageShow.getState().setColourBy(by);
           }}
         />
+        {/* Outlines and Labels stay reachable on every pane, so a pile is never left hidden */}
+        <Overlays />
       </div>
     );
   }

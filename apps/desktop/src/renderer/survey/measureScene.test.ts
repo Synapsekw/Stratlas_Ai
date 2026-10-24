@@ -28,7 +28,15 @@ import type { ComparisonResult } from '@aio/schema';
 import { stageShow } from '../workspace/StageShow';
 import { timeline } from '../workspace/timeline';
 import type { MapHeights } from './mapHeights';
-import { attach3d, attachMap, frameOf, hitPick, labelText, snapProviders } from './measureScene';
+import {
+  attach3d,
+  attachMap,
+  CHANGE_COLOURS,
+  frameOf,
+  hitPick,
+  labelText,
+  snapProviders,
+} from './measureScene';
 import {
   editEvent,
   flipAzimuth,
@@ -730,9 +738,85 @@ const stockpile = (): SurveyMeasurement =>
   });
 
 describe('piles follow the date in focus and the Show control', () => {
+  beforeEach(() => {
+    // the Volumes tab is up: its Show control applies
+    stageShow.getState().setActive(true);
+  });
   afterEach(() => {
     timeline.setState({ focus: null });
     stageShow.getState().reset();
+    stageShow.getState().setActive(false);
+    measureStore.setState({ settings: defaultSurveySettings() });
+    workspace.setState({ project: null } as unknown as Parameters<typeof workspace.setState>[0]);
+  });
+
+  const polyOf = (m: ReturnType<typeof mapOf>, id: string) =>
+    m.features().find((f) => f.properties.id === id && f.geometry.type === 'Polygon')?.properties;
+
+  it('with the Volumes tab closed the overlays do not apply: the piles are all drawn', () => {
+    stageShow.getState().setOutlines(false);
+    stageShow.getState().setLabels(false);
+    const m = mapOf(stockpile());
+    stageShow.getState().setActive(false);
+    expect(polyOf(m, 'pile')).toBeDefined();
+    expect(m.features().some((f) => f.properties.kind === 'label')).toBe(true);
+    stageShow.getState().setActive(true);
+    expect(polyOf(m, 'pile')).toBeUndefined();
+    m.detach();
+  });
+
+  it('Colour piles by Material draws the pile in its material colour on the Materials pane', () => {
+    measureStore.setState({
+      settings: {
+        ...defaultSurveySettings(),
+        materials: [{ id: 'sand', name: 'Sand', colour: '#c8a04b' }],
+      },
+    });
+    const m = mapOf({ ...stockpile(), material: 'sand' }, pad());
+    // on the other panes the pile keeps its own colour
+    expect(polyOf(m, 'pile')).toMatchObject({ color: DEFAULT_MEASURE_COLOUR });
+    stageShow.getState().setPane('materials');
+    expect(polyOf(m, 'pile')).toMatchObject({ color: '#c8a04b', fill: '#c8a04b' });
+    // a measurement that is not a pile keeps its colour
+    expect(polyOf(m, 'pad')).toMatchObject({ color: DEFAULT_MEASURE_COLOUR });
+    stageShow.getState().setColourBy('none');
+    expect(polyOf(m, 'pile')).toMatchObject({ color: DEFAULT_MEASURE_COLOUR });
+    stageShow.getState().setPane('inventory');
+    m.detach();
+  });
+
+  it('Colour piles by Change draws a pile that grew in the fill colour, one that shrank in cut', () => {
+    workspace.setState({
+      project: {
+        id: 'p',
+        manifest: {
+          origin: [0, 0, 0],
+          crs: { epsg: 32640 },
+          captures: [
+            { id: 'c1', date: '2020-01-01' },
+            { id: 'c2', date: '2020-02-01' },
+          ],
+          layers: [],
+        },
+      },
+    } as unknown as Parameters<typeof workspace.setState>[0]);
+    timeline.setState({ focus: 'c2' });
+    const shrank: SurveyMeasurement = {
+      ...stockpile(),
+      id: 'shrank',
+      results: [figure(300, 'c2')],
+      series: [figure(900, 'c1'), figure(300, 'c2')],
+    };
+    const m = mapOf(stockpile(), shrank);
+    stageShow.getState().setPane('materials');
+    stageShow.getState().setColourBy('change');
+    expect(polyOf(m, 'pile')?.color).toBe(CHANGE_COLOURS.fill);
+    expect(polyOf(m, 'shrank')?.color).toBe(CHANGE_COLOURS.cut);
+    // the first survey has nothing before it: no change, the default colour
+    timeline.setState({ focus: 'c1' });
+    expect(polyOf(m, 'pile')?.color).toBe(DEFAULT_MEASURE_COLOUR);
+    stageShow.getState().setPane('inventory');
+    m.detach();
   });
 
   it('a map label reads the figure on the date in focus, and follows it', () => {
