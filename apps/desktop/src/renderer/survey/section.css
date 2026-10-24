@@ -70,6 +70,8 @@
 /* the larger window: a panel over the lower 55 % of the stage, no scrim, so the linked hover
    marker on the line stays in sight above it and the views stay usable */
 .sec-window {
+  /* laid out by its own width: the stage narrows as the sidebars open */
+  container-type: inline-size;
   position: absolute;
   inset-inline: var(--sp-4);
   inset-block-end: var(--sp-4);
@@ -81,6 +83,21 @@
 .sec-window.is-floating {
   position: fixed;
   block-size: 55vh;
+}
+/* a narrower window: the pins go under the controls and the chart, then the controls stack
+   above a chart of the full width, so the chart never runs past the window's edge */
+@container (max-width: 960px) {
+  .sec-body.big {
+    grid-template-columns: minmax(160px, 200px) minmax(0, 1fr);
+  }
+  .sec-body.big .sec-pins {
+    grid-column: 1 / -1;
+  }
+}
+@container (max-width: 640px) {
+  .sec-body.big {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* the overlays panel */
