@@ -431,7 +431,7 @@ describe('pile panel and linked hover strings', () => {
 
   it('has every key with its placeholders and no em or en dashes', () => {
     for (const [k, ph] of Object.entries(expected)) {
-      const v = (en as Record<string, string>)[k];
+      const v = (en as Record<string, string>)[k] ?? '';
       expect(v, k).toBeTruthy();
       expect(v, k).not.toMatch(/[–—]/);
       expect([...placeholders(v)].sort(), k).toEqual(ph);
