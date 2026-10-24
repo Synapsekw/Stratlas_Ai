@@ -99,7 +99,7 @@ describe('size budgets (M10 decision 6)', () => {
     const over = installerBudgetProblems([
       { name: 'Stratlas-0.10.0-win-x64-setup.exe', size: base + 26 * 1024 * 1024 },
     ]);
-    expect(over.problems.join('')).toMatch(/22\.0 MB over 0\.9\.0, the budget allows 21\.0 MB/);
+    expect(over.problems.join('')).toMatch(/27\.3 MB over 0\.9\.0, the budget allows 26\.2 MB/);
   });
 
   it('adds up a folder', () => {
