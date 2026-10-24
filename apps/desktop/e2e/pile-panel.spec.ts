@@ -392,7 +392,29 @@ test('a distance line across a pile: the line picks the line, the body beside it
   await expect(win.getByTestId('pile-panel')).toHaveCount(0);
 
   // the pile's body, at its centre (20 m off the line): the pile panel
+  // zoomed in on the pile first: at the whole-site view on a stage shortened by the dates strip,
+  // its centre lies within the line's snap (a click there pins the line's point); close up, the
+  // 20 m between them are many pixels
+  const far = await labelAnchor3d(win, SP1_ID);
+  await win.mouse.move(far.x, far.y);
+  for (let i = 0; i < 4; i += 1) await win.mouse.wheel(0, -400);
+  let last = '';
+  await expect
+    .poll(
+      async () => {
+        const now = JSON.stringify(await labelAnchor3d(win, SP1_ID));
+        const still = now === last;
+        last = now;
+        return still;
+      },
+      { intervals: [400], timeout: 30_000 },
+    )
+    .toBe(true);
   const body = await labelAnchor3d(win, SP1_ID);
+  const lineEnd = await labelAnchor3d(win, 'line-sp1');
+  expect(Math.hypot(lineEnd.x - body.x, lineEnd.y - body.y)).toBeGreaterThan(
+    Math.hypot(end.x - far.x, end.y - far.y),
+  );
   await win.mouse.click(body.x, body.y);
   await expect(view.getByTestId('pile-panel')).toHaveAttribute('data-id', SP1_ID);
 
