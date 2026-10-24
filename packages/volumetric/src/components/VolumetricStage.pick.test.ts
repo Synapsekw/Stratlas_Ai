@@ -9,8 +9,8 @@ import {
   OrthographicCamera,
   DoubleSide,
 } from 'three';
-import { describe, expect, it } from 'vitest';
-import { pilePickAt } from './VolumetricStage';
+import { describe, expect, it, vi } from 'vitest';
+import { claimLast, pilePickAt, reselectPile } from './VolumetricStage';
 
 /*
  * A camera straight down on a 1000 x 1000 px view, 1 px a metre: local (x, z) is on screen at
@@ -92,5 +92,67 @@ describe('pilePickAt', () => {
     for (const c of root.children) c.visible = false;
     expect(pilePickAt(root, camera, rect, 550, 550)).toBeNull();
     expect(pilePickAt(scene(), camera, rect, 900, 900)).toBeNull();
+  });
+});
+
+/** A stage's click claims as the engine keeps them: in order of registration, first taker wins. */
+function fakeStage() {
+  const claims = new Set<(e: PointerEvent) => boolean>();
+  return {
+    claimClicks(h: (e: PointerEvent) => boolean) {
+      claims.add(h);
+      return () => {
+        claims.delete(h);
+      };
+    },
+    click(): boolean {
+      const e = {} as PointerEvent;
+      for (const c of claims) if (c(e)) return true;
+      return false;
+    },
+    size: () => claims.size,
+  };
+}
+
+describe('claimLast', () => {
+  it('a claim made later (a measurement over a pile) wins over the pile pick after a press', () => {
+    const stage = fakeStage();
+    const target = new EventTarget();
+    const pile = vi.fn(() => true);
+    const off = claimLast(stage, target, pile);
+    let measureHit = true;
+    const measure = vi.fn(() => measureHit);
+    stage.claimClicks(measure);
+    target.dispatchEvent(new Event('pointerdown'));
+    expect(stage.click()).toBe(true);
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(pile).not.toHaveBeenCalled();
+    // nothing else under the click: the pile takes it
+    measureHit = false;
+    target.dispatchEvent(new Event('pointerdown'));
+    expect(stage.click()).toBe(true);
+    expect(pile).toHaveBeenCalledTimes(1);
+    off();
+    expect(stage.size()).toBe(1);
+    // released: a press no longer registers it again
+    target.dispatchEvent(new Event('pointerdown'));
+    expect(stage.size()).toBe(1);
+  });
+});
+
+describe('reselectPile', () => {
+  it('a click on the selected pile selects it again, so a listener sees the pick', () => {
+    const seen: (string | null)[] = [];
+    const s = {
+      selected: 'P1' as string | null,
+      select(p: string | null) {
+        s.selected = p;
+        seen.push(p);
+      },
+    };
+    reselectPile({ getState: () => s }, 'P1');
+    expect(seen).toEqual([null, 'P1']);
+    reselectPile({ getState: () => s }, 'P2');
+    expect(seen).toEqual([null, 'P1', 'P2']);
   });
 });

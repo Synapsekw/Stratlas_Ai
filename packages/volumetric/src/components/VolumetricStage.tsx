@@ -95,6 +95,42 @@ export function pilePickAt(
   return best?.pile ?? null;
 }
 
+/**
+ * Claim the stage's clicks after every other claimer: the claim is made again on each press, so
+ * whatever registered since (pins, markers, a measurement drawn over a pile) is asked first and
+ * keeps its click; a pile body only takes what nothing else wants. Returns the release.
+ */
+export function claimLast(
+  stage: Pick<EngineStage, 'claimClicks'>,
+  target: EventTarget,
+  handler: (e: PointerEvent) => boolean,
+): () => void {
+  let release = stage.claimClicks(handler);
+  const again = () => {
+    release();
+    release = stage.claimClicks(handler);
+  };
+  target.addEventListener('pointerdown', again, { capture: true });
+  return () => {
+    target.removeEventListener('pointerdown', again, { capture: true });
+    release();
+  };
+}
+
+/**
+ * Select a clicked pile. A click on the pile already selected selects it again (through none), so
+ * a listener to the selection (the app opening the pile's panel) sees every click, not only a
+ * change.
+ */
+export function reselectPile(
+  store: { getState(): { selected: string | null; select(pile: string | null): void } },
+  pile: string,
+): void {
+  const s = store.getState();
+  if (s.selected === pile) s.select(null);
+  store.getState().select(pile);
+}
+
 /** Ground point (E, N, H) under the pointer, from the stage's own picking. */
 function pickGround(
   stage: EngineStage,
@@ -526,16 +562,20 @@ export function VolumetricStage({
     const canvas = stage.renderer.domElement;
     const host = canvas.parentElement;
     if (!host) return;
-    const release = stage.claimClicks((e) => {
+    // section points while picking: asked in the order the claim was made
+    const releaseSection = stage.claimClicks((e) => {
       if (stage.tool !== 'select') return false;
       const s = volumetric.getState();
       // a view that only draws takes no section point: it selects a pile
-      if (display && s.section.mode === 'picking') return false;
-      if (s.section.mode === 'picking') {
-        const p = pickGround(stage, e.clientX, e.clientY);
-        if (p) void s.addSectionPoint([p[0], p[1]]);
-        return true;
-      }
+      if (display || s.section.mode !== 'picking') return false;
+      const p = pickGround(stage, e.clientX, e.clientY);
+      if (p) void s.addSectionPoint([p[0], p[1]]);
+      return true;
+    });
+    // a pile's body or toe line: asked last, so a measurement over the pile keeps its click
+    const releasePile = claimLast(stage, window, (e) => {
+      if (stage.tool !== 'select') return false;
+      if (volumetric.getState().section.mode === 'picking') return false;
       const pile = pilePickAt(
         scene.group,
         stage.camera,
@@ -544,7 +584,7 @@ export function VolumetricStage({
         e.clientY,
       );
       if (!pile) return false;
-      s.select(pile);
+      reselectPile(volumetric, pile);
       return true;
     });
     // callout plates select on click: not while picking section points
@@ -554,7 +594,8 @@ export function VolumetricStage({
     };
     host.addEventListener('click', onClick, true);
     return () => {
-      release();
+      releaseSection();
+      releasePile();
       host.removeEventListener('click', onClick, true);
     };
   }, [stage, scene, display]);

@@ -2,15 +2,17 @@
 import type { SurveyMeasurement } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { followMeasureTool } from '../../workspace/workbench/measureFollow';
+import { drawerStore } from '../../workspace/workbench/drawerStore';
 import { createWorkbenchStore } from '../../workspace/workbench/workbenchStore';
 import { measureStore } from '../measureStore';
 import { isPile, openMeasurement, openPile } from './openPile';
 
+const shellState = vi.hoisted(() => ({ rightCollapsed: false }));
 vi.mock('../../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false }) },
   jobs: {},
   useShell: () => null,
-  shell: { getState: () => ({}) },
+  shell: { getState: () => shellState },
 }));
 vi.mock('../../issueCard/state', () => ({ isIssueEditing: () => false }));
 
@@ -38,6 +40,8 @@ let bench: ReturnType<typeof createWorkbenchStore>;
 let off: () => void;
 
 beforeEach(() => {
+  shellState.rightCollapsed = false;
+  drawerStore.getState().close();
   bench = createWorkbenchStore(null);
   measureStore.setState({
     tool: null,
@@ -71,6 +75,21 @@ describe('openPile', () => {
     expect(measureStore.getState().selected).toEqual(['pile1']);
     expect(bench.getState().front).toBe('volumes');
     expect(bench.getState().tabs.some((t) => t.id === 'measure')).toBe(false);
+    // the sidebar is open: the tab comes forward, no drawer pops
+    expect(drawerStore.getState().opened).toBeNull();
+  });
+
+  it('a folded sidebar brings the drawer out with the Volumes tab', () => {
+    shellState.rightCollapsed = true;
+    openPile('pile1', bench);
+    expect(bench.getState().front).toBe('volumes');
+    expect(drawerStore.getState().opened).toBe('click');
+  });
+
+  it('a sidebar pile row with the sidebar folded brings the drawer out too', () => {
+    shellState.rightCollapsed = true;
+    openMeasurement('pile1', bench);
+    expect(drawerStore.getState().opened).toBe('click');
   });
 });
 

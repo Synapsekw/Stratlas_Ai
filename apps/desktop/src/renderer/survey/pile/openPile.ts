@@ -6,7 +6,7 @@
 import type { SurveyMeasurement } from '@aio/schema';
 import type { StoreApi } from 'zustand/vanilla';
 import { isIssueEditing } from '../../issueCard/state';
-import { revealTab } from '../../workspace/workbench/measureFollow';
+import { showBench } from '../../workspace/workbench/followTool';
 import { workbench, type WorkbenchState } from '../../workspace/workbench/workbenchStore';
 import { measureStore, select } from '../measureStore';
 import { pickInVolumesView } from '../volumesPick';
@@ -17,13 +17,15 @@ export function isPile(m: Pick<SurveyMeasurement, 'tool' | 'family'>): boolean {
 }
 
 /**
- * Open a pile: select it and bring the Volumes tab forward (unless an issue is being edited, as
- * the Measure tab waits then). The pick is noted first so the Measure tab does not follow it.
+ * Open a pile: select it and bring the Volumes tab forward so its panel shows (unless an issue is
+ * being edited, as the Measure tab waits then). With the sidebar folded the workbench drawer comes
+ * out with it, and a maximised agent steps back (`showBench`); an open sidebar only changes tab.
+ * The pick is noted first so the Measure tab does not follow it.
  */
 export function openPile(id: string, bench: StoreApi<WorkbenchState> = workbench): void {
   pickInVolumesView(id);
   select([id], id);
-  if (!isIssueEditing()) revealTab('volumes', bench);
+  if (!isIssueEditing()) showBench('volumes', bench);
 }
 
 /** A measurement row picked: a pile opens in the Volumes tab, anything else is selected. */

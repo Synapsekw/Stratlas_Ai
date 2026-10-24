@@ -31,7 +31,7 @@ const PANEL_TABS: readonly TabId[] = ['qa', 'overlays', 'hydro'];
 /**
  * Bring a tab to the front, opening it when it is not there; the drawer of a folded sidebar is
  * left alone (a pick follows, it is not an ask). The Measure tab follows a picked measurement this
- * way, and the Volumes tab a picked pile (`openPile`).
+ * way; a picked pile opens the Volumes tab with `showBench` instead (`openPile`), drawer included.
  */
 export function revealTab(id: TabId, bench: StoreApi<WorkbenchState> = workbench): void {
   const b = bench.getState();
