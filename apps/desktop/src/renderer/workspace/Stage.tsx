@@ -69,7 +69,7 @@ import { hiddenPathClips } from './flightPaths';
 import { telemetryLabels, useTelemetryOn } from './telemetryPref';
 import { useFlightPathModel } from './pathModel';
 import { useEngineStage } from './StageTools';
-import { StageHint, useStageHint } from './StageHint';
+import { StageHint, useStageHintShown } from './StageHint';
 import { useStageKeys } from './stageKeys';
 import {
   insideView,
@@ -350,7 +350,7 @@ export function useStageCorners(o: StageCornersInput): {
   const dates = useDatesShown() && !o.splitting;
   const volHint = useVolumeHint() && o.show3d;
   // what the pointer and Esc do now (the linked hover, an open pile): the foot of the stage
-  const stageHint = useStageHint() !== null;
+  const stageHint = useStageHintShown();
   // survey surfaces preparing (board 7): the foot of the stage, the corner away from the readout
   const preparing = usePreparingCard();
   const prepShown = preparing !== null;
@@ -697,7 +697,7 @@ export function Stage() {
     if (!root) return [];
     return [
       ...root.querySelectorAll(
-        '.island, .isl-notice, .stage-rp, .stage-slot > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-head > *, .vol-legend',
+        '.island, .isl-notice, .stage-rp, .stage-slot > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-head > *, .vol-legend, .sec-window',
       ),
     ].map((e) => e.getBoundingClientRect());
   }, []);

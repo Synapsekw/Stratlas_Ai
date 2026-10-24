@@ -8,7 +8,9 @@
  * 4. a pile open in the Volumes tab: its profile line's handles (on the Profile) and Esc;
  * 5. else nothing.
  *
- * It only reads: a click on it reaches the view under it.
+ * It only reads: a click on it reaches the view under it. Assistive technology hears the kind of
+ * message as it changes ("Pointer on the line"), not every chainage the pointer passes: the
+ * text on screen is hidden from it and a live region carries `live`.
  */
 import { useT } from '@aio/ui';
 import type { ReactElement } from 'react';
@@ -23,6 +25,8 @@ export interface StageHintText {
   kind: 'pinned' | 'following' | 'snapped' | 'pile';
   title: string;
   sub?: string;
+  /** What the live region says: it changes with the kind, not with the pointer's chainage. */
+  live: string;
 }
 
 type T = ReturnType<typeof useT>;
@@ -40,7 +44,10 @@ export function stageHintOf(
     pile: { profile: boolean } | null;
   },
 ): StageHintText | null {
-  if (s.pin && s.lines.has(s.pin.key)) return { kind: 'pinned', title: t('hover.pinnedHint') };
+  if (s.pin && s.lines.has(s.pin.key)) {
+    const title = t('hover.pinnedHint');
+    return { kind: 'pinned', title, live: title };
+  }
   const line = s.hover ? s.lines.get(s.hover.key) : undefined;
   if (s.hover && line) {
     const labels = newestFirst(line);
@@ -49,6 +56,7 @@ export function stageHintOf(
       return {
         kind: 'following',
         title: t('hover.following'),
+        live: t('hover.following'),
         ...(date !== undefined && earlier !== undefined
           ? { sub: t('hover.legend', { date, earlier }) }
           : {}),
@@ -57,14 +65,41 @@ export function stageHintOf(
     return {
       kind: 'snapped',
       title: t('hover.snapped', { chainage: tagFormat().chainage(s.hover.chainageM) }),
+      live: t('hover.onLine'),
       ...(labels.length > 0 ? { sub: t('hover.follows', { dates: labels.join(' · ') }) } : {}),
     };
   }
   if (s.pile)
     return s.pile.profile
-      ? { kind: 'pile', title: t('pile.lineHint'), sub: t('pile.escHint') }
-      : { kind: 'pile', title: t('pile.escHint') };
+      ? {
+          kind: 'pile',
+          title: t('pile.lineHint'),
+          sub: t('pile.escHint'),
+          live: `${t('pile.lineHint')}. ${t('pile.escHint')}`,
+        }
+      : { kind: 'pile', title: t('pile.escHint'), live: t('pile.escHint') };
   return null;
+}
+
+/** A line the linked hover shows a point of: pinned, or hovered (the order above). */
+const onLinkedLine = (s: {
+  pin: HoverPoint | null;
+  hover: HoverPoint | null;
+  lines: ReadonlyMap<string, HoverLine>;
+}): boolean =>
+  (s.pin !== null && s.lines.has(s.pin.key)) || (s.hover !== null && s.lines.has(s.hover.key));
+
+/**
+ * Whether a hint shows, for the stage's corner slots: a boolean, so the stage does not render
+ * again on every hover move (only `StageHint` reads the text).
+ */
+export function useStageHintShown(): boolean {
+  const linked = useLinkedHover(onLinkedLine);
+  // what the open pile depends on: read again when any of it changes
+  useMeasure((s) => s.focus);
+  useMeasure((s) => s.file);
+  useWorkbench((s) => s.front);
+  return linked || stagePile() !== null;
 }
 
 /** The stage hint for the state now, or null. */
@@ -89,13 +124,19 @@ export function StageHint(): ReactElement | null {
   return (
     <div
       className="vol-legend overlay-box stage-hint"
-      role="status"
       data-testid="stage-hint"
       data-kind={hint.kind}
       style={{ pointerEvents: 'none' }}
     >
-      <span>{hint.title}</span>
-      {hint.sub && <span className="faint">{hint.sub}</span>}
+      <span className="sr-only" role="status">
+        {hint.live}
+      </span>
+      <span aria-hidden="true">{hint.title}</span>
+      {hint.sub && (
+        <span className="faint" aria-hidden="true">
+          {hint.sub}
+        </span>
+      )}
     </div>
   );
 }

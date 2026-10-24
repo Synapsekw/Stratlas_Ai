@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { linkedHover, type HoverLine } from '../survey/linkedHover';
 import { measureStore } from '../survey/measureStore';
 import { pileView } from '../survey/pile/pileView';
-import { StageHint } from './StageHint';
+import { StageHint, useStageHintShown } from './StageHint';
 import { workbench } from './workbench/workbenchStore';
 
 vi.mock('../shell', () => ({
@@ -81,6 +81,12 @@ afterEach(() => {
 });
 
 const hint = () => host.querySelector<HTMLElement>('[data-testid="stage-hint"]');
+/** What the hint shows on screen (the live region aside). */
+const shown = () =>
+  [...(hint()?.querySelectorAll<HTMLElement>('[aria-hidden="true"]') ?? [])]
+    .map((e) => e.textContent)
+    .join('');
+const live = () => host.querySelector<HTMLElement>('[role="status"]');
 
 describe('StageHint', () => {
   it('the hint follows the state in that order', () => {
@@ -91,13 +97,13 @@ describe('StageHint', () => {
       measureStore.setState({ focus: '02', selected: ['02'] });
     });
     expect(hint()?.dataset.kind).toBe('pile');
-    expect(hint()?.textContent).toBe(
+    expect(shown()).toBe(
       'Profile line · Drag A or B to move it · drag ↻ to turn it about the pileEsc clears the selection',
     );
     act(() => {
       pileView.getState().setTab('history');
     });
-    expect(hint()?.textContent).toBe('Esc clears the selection');
+    expect(shown()).toBe('Esc clears the selection');
 
     // the pointer on the line beats the open pile
     act(() => {
@@ -105,7 +111,7 @@ describe('StageHint', () => {
       linkedHover.getState().setHover({ key: 'pile:02', chainageM: 64, source: '3d' });
     });
     expect(hint()?.dataset.kind).toBe('snapped');
-    expect(hint()?.textContent).toBe(
+    expect(shown()).toBe(
       'Pointer on the line · snapped to 64.0 m10 Jan · 31 Dec · the chart follows on the right',
     );
 
@@ -114,16 +120,14 @@ describe('StageHint', () => {
       linkedHover.getState().setHover({ key: 'pile:02', chainageM: 42.3, source: 'chart' });
     });
     expect(hint()?.dataset.kind).toBe('following');
-    expect(hint()?.textContent).toBe(
-      'Following the chart10 Jan surface · where 31 Dec was · A to here',
-    );
+    expect(shown()).toBe('Following the chart10 Jan surface · where 31 Dec was · A to here');
 
     // a pin beats them all
     act(() => {
       linkedHover.getState().setPin({ key: 'pile:02', chainageM: 71, source: 'chart' });
     });
     expect(hint()?.dataset.kind).toBe('pinned');
-    expect(hint()?.textContent).toBe('Esc clears the pin · double-click to fly there');
+    expect(shown()).toBe('Esc clears the pin · double-click to fly there');
 
     // a pin on a line no longer registered says nothing; the hover's own line still does
     act(() => {
@@ -144,7 +148,7 @@ describe('StageHint', () => {
       measureStore.setState({ focus: '02', selected: ['02'] });
     });
     expect(hint()?.style.pointerEvents).toBe('none');
-    expect(hint()?.getAttribute('role')).toBe('status');
+    expect(live()?.closest('[data-testid="stage-hint"]')).toBe(hint());
   });
 
   it('a pile open behind another tab gives no hint', () => {
@@ -154,5 +158,64 @@ describe('StageHint', () => {
       workbench.getState().show('measure');
     });
     expect(hint()).toBeNull();
+  });
+
+  it('the live region says the kind, not every chainage the pointer passes', () => {
+    act(() => {
+      linkedHover.getState().register(LINE);
+      linkedHover.getState().setHover({ key: 'pile:02', chainageM: 64, source: '3d' });
+    });
+    const region = live();
+    expect(region?.textContent).toBe('Pointer on the line');
+    act(() => {
+      linkedHover.getState().setHover({ key: 'pile:02', chainageM: 65.5, source: 'map' });
+    });
+    // the chainage moves on screen only
+    expect(shown()).toContain('65.5 m');
+    expect(live()).toBe(region);
+    expect(live()?.textContent).toBe('Pointer on the line');
+    act(() => {
+      linkedHover.getState().setPin({ key: 'pile:02', chainageM: 71, source: 'chart' });
+    });
+    expect(live()?.textContent).toBe('Esc clears the pin · double-click to fly there');
+  });
+});
+
+describe('useStageHintShown', () => {
+  it('re-renders the stage when a hint comes or goes, not on every hover move', () => {
+    let renders = 0;
+    let last = false;
+    function Probe() {
+      renders++;
+      last = useStageHintShown();
+      return null;
+    }
+    act(() => {
+      root.render(<Probe />);
+    });
+    expect(last).toBe(false);
+    act(() => {
+      linkedHover.getState().register(LINE);
+    });
+    const before = renders;
+    act(() => {
+      linkedHover.getState().setHover({ key: 'pile:02', chainageM: 10, source: '3d' });
+    });
+    expect(last).toBe(true);
+    expect(renders).toBe(before + 1);
+    for (const c of [11, 12, 13])
+      act(() => {
+        linkedHover.getState().setHover({ key: 'pile:02', chainageM: c, source: '3d' });
+      });
+    expect(renders).toBe(before + 1);
+    act(() => {
+      linkedHover.getState().setHover(null);
+    });
+    expect(last).toBe(false);
+    // a pile open in the Volumes tab shows one too
+    act(() => {
+      measureStore.setState({ focus: '02', selected: ['02'] });
+    });
+    expect(last).toBe(true);
   });
 });
