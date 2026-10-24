@@ -38,6 +38,7 @@ export * from './tools';
 export * from './templates';
 export * from './calc';
 export * from './section';
+export { moveAxisEnd, pileAxis, rotateAxis, type PileAxis } from './section/pileAxis';
 
 // designs/ (G6): design TINs, alignments and compliance to design
 // the design `Tin` record is exported as `DesignTin`: the engine already exports its `Tin` class
