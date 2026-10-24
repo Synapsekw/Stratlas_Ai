@@ -6,14 +6,21 @@
  * there, its deltas against Shade vs the earlier survey and its grades; the exaggeration goes to
  * 4:1; the large window opens over the lower stage, not modal (volumetrics redesign B6), and Esc
  * or Close returns it; **DXF…** writes a DXF (2D XZ) through `survey.section` and the save dialog.
- * Off-screen, zero network, pipeline Python needed.
+ * A section opened from its card after the surfaces were prepared in the background (the project
+ * opened unprepared) shows its chart in the window. Off-screen, zero network, pipeline Python needed.
  */
 import type { MeasurementsFile } from '@aio/schema';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
-import { openDemo, prepareJobs, prepareSurveys, preparesSettled } from './surveyJobs';
+import {
+  openDemo,
+  prepareJobs,
+  prepareSurveys,
+  preparesSettled,
+  setAutoPrepare,
+} from './surveyJobs';
 import { measureControl, measureTree, selectMeasure } from './island';
 import { focusMeasure } from './measureCard';
 
@@ -82,6 +89,9 @@ test('a section across the pad: two surveys and the design, a pin, 4:1, the wind
 }) => {
   test.setTimeout(420_000);
   const root = earthworksProject.dir;
+  // the two surveys prepared here are all there is: the third date is not prepared on open (it
+  // would join the chart as the current survey once ready)
+  await setAutoPrepare(win, false);
   await prepareSurveys(win, root);
 
   // a Cross-section measurement across the pad (E 551140 to 551260 at N 2331400), filed under the
