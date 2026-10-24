@@ -71,6 +71,7 @@ import { telemetryLabels, useTelemetryOn } from './telemetryPref';
 import { useFlightPathModel } from './pathModel';
 import { useEngineStage } from './StageTools';
 import { StageHint, useStageHintShown } from './StageHint';
+import { StageShow, useStageShowShown } from './StageShow';
 import { useStageKeys } from './stageKeys';
 import {
   insideView,
@@ -372,6 +373,8 @@ export function useStageCorners(o: StageCornersInput): {
   // survey surfaces preparing (board 7): the foot of the stage, the corner away from the readout
   const preparing = usePreparingCard();
   const prepShown = preparing !== null;
+  // the one Show control, top-left while the Volumes tab is open (board 1)
+  const show = useStageShowShown();
   const status = o.roadMeasure || cutaway || notice !== null;
   const basemapAt = o.basemapAt ?? END;
   const topTaken = o.topTaken ?? NO_CORNERS;
@@ -380,6 +383,7 @@ export function useStageCorners(o: StageCornersInput): {
       ...o.video.map((c) => ({ id: `video-${c}`, want: [c] })),
       // the top corners the open island reaches across and past the middle
       ...topTaken.map((c) => ({ id: `island-${c}`, want: [c] })),
+      { id: 'show', want: show ? ['tl'] : [] },
       { id: 'status', want: status ? ['tl', 'bl'] : [] },
       { id: 'basemap', want: basemap ? basemapAt : [] },
       {
@@ -402,6 +406,7 @@ export function useStageCorners(o: StageCornersInput): {
     o.video,
     o.cursor,
     o.splitting,
+    show,
     status,
     basemap,
     basemapAt,
@@ -442,6 +447,7 @@ export function useStageCorners(o: StageCornersInput): {
       ![...slots.values()].includes(o.cursor === 'bl' ? 'br' : 'bl'),
     corners: (
       <>
+        {at('show', <StageShow />)}
         {at(
           'status',
           <div className="stage-under">

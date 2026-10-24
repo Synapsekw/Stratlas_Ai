@@ -22,7 +22,7 @@ import {
   type ShortcutId,
 } from '@aio/ui';
 import { setCameraMode, videoRig, type CameraMode, type FlightPathMode } from '@aio/video';
-import { useVolumetric, volumetric, type BodyMode, type SurfaceMode } from '@aio/volumetric';
+import { useVolumetric, volumetric, type BodyMode } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useReducer, type ReactNode } from 'react';
 import { openCleanupPanel } from '../../pointcloud/cleanupActions';
@@ -37,14 +37,13 @@ import { startTool, stopTool, useMeasure } from '../../survey/measureStore';
 import type { CompareDates } from '../CompareControls';
 import { PATH_MODES, setPathMode } from '../flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../pathModel';
-import { surveyDateLabel } from '../surveyDateLabel';
 import { siteBasemap, streetMapTool } from '../siteBasemap';
 import { useStreetMap3d } from '../streetMap3d';
 import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
 import { toggleTimeline, useTimelineShown } from '../timelinePref';
 import { LABEL_MODES } from '../tools/display';
 import { toggleMeasure, toggleSection } from '../tools/measure';
-import { VolumeChangePicks } from '../VolumeTools';
+import { toggleVolumeSection, VolumeChangePicks } from '../VolumeTools';
 import {
   annotateStage,
   useAnnotateStage,
@@ -557,18 +556,11 @@ function CloudRow({ ctx }: { ctx: GroupCtx }) {
   );
 }
 
-const SURFACES: readonly { value: SurfaceMode; label: MessageKey }[] = [
-  { value: 'photo', label: 'island.tile.photo' },
-  { value: 'elev', label: 'island.tile.elevation' },
-  { value: 'change', label: 'island.tile.cutFill' },
-];
 const BODIES: readonly { value: BodyMode; label: MessageKey }[] = [
   { value: 'lift', label: 'island.tile.lifted' },
   { value: 'place', label: 'island.tile.inPlace' },
   { value: 'off', label: 'island.tile.hidden' },
 ];
-
-const NO_CAPTURES: readonly { epoch: string; date: string; label: string }[] = [];
 
 function VolumeRow({ ctx }: { ctx: GroupCtx }) {
   const kit = useVolumetric((s) => s.status === 'ready');
@@ -576,47 +568,31 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
   return kit ? <KitVolumeRow ctx={ctx} /> : <AllTools g="volumes" ctx={ctx} />;
 }
 
-/** The stockpile kit's tiles: its survey date and Swipe, the surface colours and the bodies. */
+/**
+ * The stockpile kit's tiles: Swipe, the two surveys Cut & fill compares while it shows, the bodies
+ * and the section line. The date is the notch's own and the surface the stage's Show control
+ * (StageShow.tsx), so neither is here.
+ */
 function KitVolumeRow({ ctx }: { ctx: GroupCtx }) {
   const t = useT();
-  // a stable empty list: a fresh one on every read would re-render without end
-  const captures = useVolumetric((s) => s.file?.captures ?? NO_CAPTURES);
-  const epoch = useVolumetric((s) => s.epoch);
+  const dates = useVolumetric((s) => s.file?.captures.length ?? 0);
   const swipe = useVolumetric((s) => s.swipe);
   const surface = useVolumetric((s) => s.surface);
   const body = useVolumetric((s) => s.body);
+  const picking = useVolumetric((s) => s.section.mode !== 'idle');
   const v = volumetric.getState();
-  const SWIPE = '\u0000swipe';
   return (
     <>
-      <Choice
-        label={t('island.tile.surveyDate')}
-        options={[
-          ...captures.map((c) => ({ value: c.epoch, label: surveyDateLabel(c) })),
-          { value: SWIPE, label: t('island.tile.swipe'), disabled: captures.length < 2 },
-        ]}
-        value={swipe ? SWIPE : surface === 'change' ? null : epoch}
-        onPick={(e) => {
+      <Tile
+        icon="split"
+        label={t('vol.swipe')}
+        name={t('vol.swipeBetween')}
+        pressed={swipe}
+        disabled={dates < 2}
+        onClick={() => {
+          // a swipe shows the two surveys' photos
           if (surface === 'change') v.setSurface('photo');
-          if (e === SWIPE) {
-            v.setSwipe(!swipe);
-            return;
-          }
-          if (swipe) v.setSwipe(false);
-          v.setEpoch(e);
-        }}
-      />
-      <Choice
-        label={t('island.tile.surface')}
-        options={SURFACES.map((s) => ({
-          value: s.value,
-          label: t(s.label),
-          disabled: s.value === 'change' && captures.length < 2,
-        }))}
-        value={surface}
-        onPick={(s) => {
-          if (swipe) v.setSwipe(false);
-          v.setSurface(s);
+          v.setSwipe(!swipe);
         }}
       />
       {/* the two surveys Cut / fill compares, and where its colours come from */}
@@ -628,6 +604,13 @@ function KitVolumeRow({ ctx }: { ctx: GroupCtx }) {
         onPick={(b) => {
           v.setBody(b);
         }}
+      />
+      <Tile
+        icon="section"
+        label={t('island.tile.section')}
+        name={t('vol.sectionLine')}
+        pressed={picking}
+        onClick={toggleVolumeSection}
       />
       <AllTools g="volumes" ctx={ctx} />
     </>

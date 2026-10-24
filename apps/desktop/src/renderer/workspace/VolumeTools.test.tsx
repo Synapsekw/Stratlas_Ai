@@ -7,7 +7,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SiteReply } from '../survey/engineClient';
-import { connectVolumeChange, VolumeSurfaces } from './VolumeTools';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { connectVolumeChange, VolumeDateSwipe, VolumeSurfaces } from './VolumeTools';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -195,5 +197,24 @@ describe('the volumetric package', () => {
       'ProfileChart',
     ])
       expect(names).not.toContain(gone);
+  });
+});
+
+describe('the volume tools strings', () => {
+  it('come from the catalogue: no Swipe or section line literal', () => {
+    for (const file of ['VolumeTools.tsx', 'island/groups.tsx']) {
+      const src = readFileSync(join(__dirname, file), 'utf8');
+      expect(src).not.toMatch(/>\s*Swipe\s*</);
+      expect(src).not.toContain("'Swipe'");
+      expect(src).not.toContain('Section line between');
+    }
+  });
+
+  it('names the Swipe button from vol.swipe', () => {
+    root ??= createRoot(host);
+    act(() => {
+      root?.render(<VolumeDateSwipe />);
+    });
+    expect(button('Swipe')).toBeDefined();
   });
 });

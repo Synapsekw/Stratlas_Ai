@@ -18,6 +18,7 @@ import { compareNotice } from './compare';
 import { basemapCorners, readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
 import { stagePrefs } from './stagePrefs';
 import { timeline } from './timeline';
+import { workbench } from './workbench/workbenchStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.ResizeObserver = class {
@@ -145,6 +146,26 @@ describe('the stage corners', () => {
     expect(slotOf('dates-on-screen')).toBe('tl');
     render({ video: ['tl'] });
     expect(slotOf('dates-on-screen')).toBe('bl');
+  });
+
+  it('puts the Show control top-left only while the Volumes tab is open (board 1)', () => {
+    volumetric.setState({ status: 'ready' });
+    shell.setState({ rightCollapsed: false } as never);
+    workbench.getState().show('selection');
+    render();
+    expect(slotOf('stage-show')).toBeUndefined();
+    act(() => {
+      workbench.getState().show('volumes');
+    });
+    expect(slotOf('stage-show')).toBe('tl');
+    // the dates give the corner up
+    expect(slotOf('dates-on-screen')).not.toBe('tl');
+    act(() => {
+      shell.setState({ rightCollapsed: true } as never);
+    });
+    expect(slotOf('stage-show')).toBeUndefined();
+    shell.setState({ rightCollapsed: false } as never);
+    workbench.getState().show('selection');
   });
 
   it('shows one Map menu chip on the stage, the map one while a map shows', () => {

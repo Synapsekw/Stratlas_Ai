@@ -1,0 +1,34 @@
+/* The Show control (StageShow.tsx, board 1): a caption over two segmented rows on the stage scrim,
+   placed by its corner slot. */
+.stage-show {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  overflow: hidden;
+}
+.stage-show-cap {
+  font: 600 var(--t-11) var(--f-cond);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.stage-show .stage-show-seg {
+  background: var(--scrim);
+  border-color: var(--line-soft);
+}
+.stage-show-seg button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.stage-show-seg button:disabled:hover {
+  color: var(--fg-2);
+}
+/* the outlines' swatch: the colour the outlines draw in */
+.stage-show-sq {
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 2px;
+  flex: none;
+  background: var(--acc);
+}

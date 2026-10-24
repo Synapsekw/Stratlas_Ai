@@ -29,7 +29,10 @@ const BODIES: { v: BodyMode; t: MessageKey; d: MessageKey }[] = [
 
 const NO_CAPTURES: readonly { epoch: string; date: string; label: string }[] = [];
 
-/** The survey dates and Swipe, one switch. */
+/**
+ * The survey dates and Swipe, one switch.
+ * Retiring: the notch carries the date and Swipe; kept only until the Volumes bench stops using it.
+ */
 export function VolumeDateSwipe() {
   const captures = useVolumetric((s) => s.file?.captures ?? NO_CAPTURES);
   const epoch = useVolumetric((s) => s.epoch);
@@ -63,7 +66,7 @@ export function VolumeDateSwipe() {
           v.setSwipe(!swipe);
         }}
       >
-        Swipe
+        {t('vol.swipe')}
       </button>
     </div>
   );
@@ -128,7 +131,11 @@ export function VolumeChangePicks() {
   );
 }
 
-/** The surface colours: photo, elevation, cut and fill (with its two surveys while it shows). */
+/**
+ * The surface colours: photo, elevation, cut and fill (with its two surveys while it shows).
+ * Retiring: the stage's Show control (StageShow.tsx) is the one surface switch; kept only until
+ * the Volumes bench stops using it.
+ */
 export function VolumeSurfaces() {
   const swipe = useVolumetric((s) => s.swipe);
   const surface = useVolumetric((s) => s.surface);
@@ -206,7 +213,12 @@ export function toggleVolumeSection(): void {
   else s.startSection();
 }
 
-export const SECTION_LINE_LABEL = 'Section line between the surveys';
+/**
+ * The section line's name (`vol.sectionLine`).
+ * Retiring: the section line is the notch row's tile (island/groups.tsx); kept only until the
+ * Volumes bench stops reading it.
+ */
+export const SECTION_LINE_LABEL = t('vol.sectionLine');
 
 /** At most this many cells in a Cut / fill difference grid (as the whole-site comparison). */
 const MAX_CHANGE_CELLS = 1_000_000;

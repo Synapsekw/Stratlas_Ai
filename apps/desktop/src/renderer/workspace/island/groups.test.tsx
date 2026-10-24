@@ -140,6 +140,53 @@ describe('the Volumes quick row', () => {
     expect(button('Volumes: All tools')).not.toBeNull();
   });
 
+  it('has no date or Surface choice: Swipe, the bodies and the section line stay', () => {
+    volumetric.setState({
+      status: 'ready',
+      epoch: 'e2',
+      surface: 'change',
+      swipe: false,
+      change: { from: 'e1', to: 'e2' },
+      changeGrid: null,
+      section: { mode: 'idle', points: [] } as never,
+      file: {
+        captures: [
+          { epoch: 'e1', captureId: 'c1', date: '2026-01-12', label: '12 Jan 2026' },
+          { epoch: 'e2', captureId: 'c2', date: '2026-02-09', label: '9 Feb 2026' },
+        ],
+      } as never,
+    });
+    render('volumes');
+    expect(choice('Survey date')).toBeNull();
+    expect(choice('Surface')).toBeNull();
+    expect(options('Bodies')).toEqual(['Lifted', 'In place', 'Hidden']);
+    const swipe = button('Swipe between surveys');
+    expect(swipe?.getAttribute('aria-pressed')).toBe('false');
+    act(() => swipe?.click());
+    expect(volumetric.getState().swipe).toBe(true);
+    // a swipe shows the photos: Cut / fill gives way
+    expect(volumetric.getState().surface).toBe('photo');
+    const section = button('Section line between the surveys');
+    expect(section).not.toBeNull();
+    act(() => section?.click());
+    expect(volumetric.getState().section.mode).not.toBe('idle');
+    volumetric.getState().clearSection();
+  });
+
+  it('keeps Swipe off with one survey date', () => {
+    volumetric.setState({
+      status: 'ready',
+      epoch: 'e1',
+      surface: 'photo',
+      swipe: false,
+      file: {
+        captures: [{ epoch: 'e1', captureId: 'c1', date: '2026-01-12', label: '12 Jan 2026' }],
+      } as never,
+    });
+    render('volumes');
+    expect(button('Swipe between surveys')?.disabled).toBe(true);
+  });
+
   it('shows the two surveys Cut / fill compares, and picks them', () => {
     volumetric.setState({
       status: 'ready',
