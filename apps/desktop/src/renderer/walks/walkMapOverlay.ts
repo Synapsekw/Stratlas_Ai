@@ -2,6 +2,7 @@ import { walkPathPoints, type XZ } from '@aio/geo';
 import { MAP_INK, oklchHex, type MapOverlay, type OverlayLayer } from '@aio/maps';
 import { shiftLocal, type DateShift, type Vec3, type WalkLayer } from '@aio/schema';
 import type { Feature, FeatureCollection } from 'geojson';
+import { bearingFromHeadingRad } from '../workspace/spot/spotWalk';
 import { walkPinPoints, walkShown, type SheetWalk, type WalkDrawOptions } from './walkOverlay';
 import {
   BEAM_FADE,
@@ -273,12 +274,6 @@ export interface BeamMarker {
   colour: string;
 }
 
-/** The compass bearing (degrees, clockwise from north, 0 to 360) of a model heading (radians). */
-const bearingOf = (headingRad: number): number => {
-  const d = (-headingRad * 180) / Math.PI;
-  return (((d % 360) + 360) % 360) + 0;
-};
-
 /** The Beam of walk `walk` at the view's time, or null when the walk has no spot then. */
 export function walkBeamMarker(
   walk: SheetWalk,
@@ -296,7 +291,7 @@ export function walkBeamMarker(
     lonLat: onMap(proj, shift)(a.xz),
     lookDeg: view.lookDeg === null ? null : shiftBearingDeg(view.lookDeg, shift),
     hfovDeg: view.hfovDeg,
-    walkDeg: bearingOf(shiftHeadingRad(a.headingRad, shift)),
+    walkDeg: bearingFromHeadingRad(shiftHeadingRad(a.headingRad, shift)),
     colour,
   };
 }

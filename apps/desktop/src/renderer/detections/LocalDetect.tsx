@@ -17,7 +17,7 @@ import { useStore } from 'zustand';
 import { providerLabel } from '../screens/settings/DetectionModels';
 import '../screens/settings/detectionModels.css';
 import { bridge, useCall } from '../shell';
-import { walkPlayback } from '../walks/walkPlayback';
+import { walkViews } from '../walks/walkView';
 import { sampleTimes, type DetectItem } from './convert';
 import { loadDetections } from './store';
 
@@ -206,9 +206,9 @@ export function LocalDetectDialog({
   const walk = walks.find((w) => w.id === walkId) ?? walks[0];
   const [everyS, setEveryS] = useState<number>(2);
   const [atNow, setAtNow] = useState(false);
-  const playing = useStore(walkPlayback);
-  // the current frame is offered only while the 360 pane plays the chosen walk
-  const nowT = playing.layerId !== null && playing.layerId === walk?.id ? playing.t : null;
+  // the current frame is offered only while a 360 pane shows the chosen walk (each pane has its
+  // own time: two walks play at once while comparing)
+  const nowT = useStore(walkViews, (s) => (walk ? (s[walk.id]?.t ?? null) : null));
   const useNow = atNow && nowT !== null;
   const walkFrames = useMemo(
     () => (walk ? walkItems(walk, nowT !== null && atNow ? { at: nowT } : { everyS }) : []),

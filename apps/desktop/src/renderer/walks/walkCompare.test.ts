@@ -19,6 +19,7 @@ import {
   inBand,
   leadClock,
   moveLeadTo,
+  leadClockOf,
   leadTimeAt,
   placeRate,
   linkedYawDeg,
@@ -53,6 +54,17 @@ describe('pairing by place', () => {
     const n = nearestOnTrack(track, 40, 3, {});
     expect(n?.t).toBeCloseTo(40, 1);
     expect(n?.dist).toBeCloseTo(3, 5);
+  });
+
+  it('lies between two samples: the spot projected onto the nearest stretch of the track', () => {
+    // samples every 0.25 m: a spot 0.1 m past one pairs 0.1 s later, not on the sample
+    const track = line([0, 0], [100, 0], 0, 100);
+    const n = nearestOnTrack(track, 40.1, 3, {});
+    expect(n?.t).toBeCloseTo(40.1, 6);
+    expect(n?.dist).toBeCloseTo(3, 9);
+    // past either end the end itself
+    expect(nearestOnTrack(track, -4, 0, {})?.t).toBe(0);
+    expect(nearestOnTrack(track, 104, 0, {})?.t).toBe(100);
   });
 
   it('has no moment on an empty track', () => {
@@ -221,6 +233,26 @@ describe('a smooth follower', () => {
     expect(leadTimeAt({ ...c, playing: false }, 1500)).toBe(10);
   });
 
+  it('runs the lead clock on half a second at most: a lead that stalls is not run past', () => {
+    const c = { walk: 'a', t: 10, atMs: 1000, playing: true, rate: 2 };
+    expect(leadTimeAt(c, 4000)).toBe(11);
+  });
+
+  it("reads the lead's clock off its video: waiting for data or seeking, it does not play", () => {
+    const v = { currentTime: 4, paused: false, ended: false, seeking: false, playbackRate: 1.5 };
+    expect(leadClockOf(v, 'a', 100, false)).toEqual({
+      walk: 'a',
+      t: 4,
+      atMs: 100,
+      playing: true,
+      rate: 1.5,
+    });
+    expect(leadClockOf(v, 'a', 100, true).playing).toBe(false);
+    expect(leadClockOf({ ...v, seeking: true }, 'a', 100, false).playing).toBe(false);
+    expect(leadClockOf({ ...v, paused: true }, 'a', 100, false).playing).toBe(false);
+    expect(leadClockOf({ ...v, ended: true }, 'a', 100, false).playing).toBe(false);
+  });
+
   it('clamps the rate', () => {
     expect(followStep({ targetT: 5, currentT: 5, desiredRate: 40, leadPlaying: true }).rate).toBe(
       4,
@@ -237,6 +269,14 @@ describe('a smooth follower', () => {
     const s = followStep({ targetT: 10, currentT: 10.1, desiredRate: 0, leadPlaying: true });
     expect(s.play).toBe(false);
     expect(s.seekTo).toBeNull();
+  });
+
+  it('holding still, it still goes to its frame when it is off by more than a quarter second', () => {
+    expect(followStep({ targetT: 10, currentT: 10.6, desiredRate: 0, leadPlaying: true })).toEqual({
+      play: false,
+      rate: null,
+      seekTo: 10,
+    });
   });
 
   it('pauses with the lead, on the paired frame', () => {

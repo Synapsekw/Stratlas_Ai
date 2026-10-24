@@ -3,7 +3,7 @@ import type { Layer } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearWalkPlayback, setWalkPlayback } from '../walks/walkPlayback';
+import { clearWalkView, setWalkView } from '../walks/walkView';
 import type { DetectItem } from './convert';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -56,6 +56,9 @@ const walk = (id: string, durationS: number) =>
 
 const photo: DetectItem = { kind: 'photo', layer: 'p', photo: 'a' };
 
+/** A 360 pane at `t` seconds into its walk. */
+const view = (t: number) => ({ t, lookDeg: null, pitchDeg: 0, fovDeg: 90, hfovDeg: 120 });
+
 let host: HTMLDivElement;
 let root: Root;
 /** The dialog's `inference:progress` listener. */
@@ -80,8 +83,8 @@ afterEach(() => {
     root.unmount();
   });
   host.remove();
-  clearWalkPlayback('w1');
-  clearWalkPlayback('w2');
+  clearWalkView('w1');
+  clearWalkView('w2');
 });
 
 const q = (id: string) => host.querySelector<HTMLInputElement>(`[data-testid="${id}"]`);
@@ -135,12 +138,12 @@ describe('LocalDetectDialog, 360 video frames', () => {
     expect(q('det-local-run')?.textContent).toBe('Run on 2 frames');
   });
 
-  it('runs on the current frame only while that walk plays', async () => {
-    setWalkPlayback('w2', 3);
+  it('runs on the current frame only while a 360 pane shows that walk', async () => {
+    setWalkView('w2', view(3));
     open([walk('w1', 10), walk('w2', 20)]);
     expect(q('det-local-current-frame')?.disabled).toBe(true);
     act(() => {
-      setWalkPlayback('w1', 4.25);
+      setWalkView('w1', view(4.25));
     });
     const cur = q('det-local-current-frame');
     expect(cur?.disabled).toBe(false);

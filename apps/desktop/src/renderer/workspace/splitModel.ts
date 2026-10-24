@@ -44,10 +44,16 @@ export function twinAllowed(kind: PaneKind, dates: SplitDates | undefined): bool
 
 /**
  * Whether both sides may show `kind`: two survey dates of one view (`twinAllowed`), or two walks
- * in the two 360 panes (walks/walkCompare.ts), which is not a date compare.
+ * in the two 360 panes (walks/walkCompare.ts), which is not a date compare: only with `walks`, the
+ * project's walk count, two or more (absent: not known here, allowed).
  */
-export function twiceAllowed(kind: PaneKind, dates: SplitDates | undefined): boolean {
-  return kind === 'walk360' || twinAllowed(kind, dates);
+export function twiceAllowed(
+  kind: PaneKind,
+  dates: SplitDates | undefined,
+  walks?: number,
+): boolean {
+  if (kind === 'walk360') return walks === undefined || walks >= 2;
+  return twinAllowed(kind, dates);
 }
 
 const captureKey = (side: Side) => (side === 'left' ? 'leftCapture' : 'rightCapture');
@@ -153,9 +159,14 @@ export function sidesOf(pref: SplitPref, kind: PaneKind): Side[] {
 }
 
 /** The pane the other side shows when this side may not pick it too, else null. */
-export function blockedFor(pref: SplitPref, side: Side, dates?: SplitDates): PaneKind | null {
+export function blockedFor(
+  pref: SplitPref,
+  side: Side,
+  dates?: SplitDates,
+  walks?: number,
+): PaneKind | null {
   const other = takenBy(pref, side);
-  return twiceAllowed(other, dates) ? null : other;
+  return twiceAllowed(other, dates, walks) ? null : other;
 }
 
 export const PANE_KINDS: readonly PaneKind[] = [
@@ -211,19 +222,21 @@ export function paneOptions(
 /**
  * The sides to draw: the remembered choice where the project still offers it, else the default.
  * The two sides show the same pane only to compare two survey dates (3D, map or ortho, one date
- * each; `dates`) or two walks (360 video); otherwise a clash keeps the left and gives the right the first other option
- * (one video player, and the 3D view at most once per date).
+ * each; `dates`) or two walks (360 video, with `walks` two or more); otherwise a clash keeps the
+ * left and gives the right the first other option (one video player, and the 3D view at most once
+ * per date).
  */
 export function resolveSplit(
   pref: SplitPref | undefined,
   options: readonly PaneKind[],
   dates?: SplitDates,
+  walks?: number,
 ): SplitPref {
   const want = pref ?? DEFAULT_SPLIT;
   const pick = (k: PaneKind, fallback: PaneKind) => (options.includes(k) ? k : fallback);
   const left = pick(want.left, DEFAULT_SPLIT.left);
   let right = pick(want.right, DEFAULT_SPLIT.right);
-  if (right === left && !twiceAllowed(left, dates))
+  if (right === left && !twiceAllowed(left, dates, walks))
     right = options.find((o) => o !== left) ?? right;
   return withCaptures({ ...want, left, right }, dates);
 }
@@ -237,9 +250,10 @@ export function chooseSide(
   side: Side,
   kind: PaneKind,
   dates?: SplitDates,
+  walks?: number,
 ): SplitPref {
   const other = side === 'left' ? pref.right : pref.left;
-  if (kind === other && !twiceAllowed(kind, dates)) return pref;
+  if (kind === other && !twiceAllowed(kind, dates, walks)) return pref;
   return withCaptures({ ...pref, [side]: kind }, dates);
 }
 
@@ -262,8 +276,9 @@ export function chooseAt(
   kind: PaneKind,
   capture: string | null,
   dates?: SplitDates,
+  walks?: number,
 ): SplitPref {
-  const next = chooseSide(pref, side, kind, dates);
+  const next = chooseSide(pref, side, kind, dates, walks);
   return capture ? chooseCapture(next, side, capture, dates) : next;
 }
 
@@ -307,8 +322,9 @@ export function paneGroups(
   options: readonly PaneKind[],
   dates: SplitDates | undefined,
   has: (kind: PaneKind, capture: string) => boolean,
+  walks?: number,
 ): PaneGroup[] {
-  const blocked = blockedFor(pref, side, dates);
+  const blocked = blockedFor(pref, side, dates, walks);
   const undated = (kind: PaneKind): PaneOption => ({
     value: paneValue(kind, null),
     kind,

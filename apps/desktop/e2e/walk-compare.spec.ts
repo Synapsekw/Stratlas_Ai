@@ -3,8 +3,9 @@
  * (the second later, faster and with a detour), both placed on the model above an ortho that lies
  * 6 m lower. The placed tracks lie on the ortho in 3D; the map's Beam turns with the 360 look;
  * "Compare with walk" on a walk's right-click menu plays both side by side, the follower paired by
- * place with the distance chip; the detour is shaded on the scrubber and seeking into it plays
- * that walk alone. Skipped when ffmpeg with libx264 is missing (CI installs it).
+ * place with the distance chip; Swap lead while playing keeps both playing; the detour is shaded
+ * on the scrubber and seeking into it while playing plays that walk alone. Skipped when ffmpeg with
+ * libx264 is missing (CI installs it).
  */
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
@@ -44,12 +45,15 @@ interface SceneNode {
 }
 
 /**
- * The world heights of the placed walks' tracks in the 3D view (every shown line of the walks'
- * group): lowest, highest and how many points. Null before the group is there.
+ * The world heights of the placed walks' tracks in the 3D view (every shown line of the placed
+ * walks' group, `WALK_PLACED_GROUP` in walkScene.ts; the Beams' stems are not in it): lowest,
+ * highest and how many points. Null before the group is there.
  */
 async function trackHeights(win: Page): Promise<{ min: number; max: number; n: number } | null> {
   return win.evaluate(() => {
-    const g = (window as unknown as Probe).__stratlas.stage()?.scene.getObjectByName('aio-walks');
+    const g = (window as unknown as Probe).__stratlas
+      .stage()
+      ?.scene.getObjectByName('aio-walks-placed');
     if (!g) return null;
     let min = Infinity;
     let max = -Infinity;
@@ -59,7 +63,7 @@ async function trackHeights(win: Page): Promise<{ min: number; max: number; n: n
       for (let p: SceneNode | null = o; p; p = p.parent) if (!p.visible) return;
       const pos = o.geometry?.getAttribute(o.isLine2 ? 'instanceStart' : 'position');
       if (!pos) return;
-      // the walks' group is not moved or scaled: a point's height is its y plus the translation
+      // the group is not moved or scaled: a point's height is its y plus the translation
       const e = o.matrixWorld.elements;
       for (let i = 0; i < pos.count; i++) {
         const y = pos.getY(i) + (e[13] ?? 0);
@@ -96,6 +100,12 @@ function comparePane(win: Page, role: 'lead' | 'follow'): Locator {
 
 const timeOf = async (pane: Locator): Promise<number> =>
   Number(await pane.getByTestId('walk-bar').getAttribute('data-time'));
+
+/** The pane's walk plays: its time moves on by more than half a second. */
+async function expectPlaying(pane: Locator): Promise<void> {
+  const from = await timeOf(pane);
+  await expect.poll(() => timeOf(pane), { timeout: 15_000 }).toBeGreaterThan(from + 0.5);
+}
 
 test.describe('comparing two walks', () => {
   test.skip(!ffmpegReady(), 'needs ffmpeg with libx264 on the PATH');
@@ -202,14 +212,28 @@ test.describe('comparing two walks', () => {
     expect(fromT).toBeGreaterThan(DETOUR_S.from - 1);
     expect(toT).toBeLessThan(DETOUR_S.to + 1);
 
-    // seeking into it plays that walk on its own: the lead stays where it was
-    const leadAt = await timeOf(lead);
+    // the lead plays: both walks play
+    await lead.getByTestId('walk-play').click();
+    await expectPlaying(lead);
+    await expectPlaying(follow);
+
+    // Swap lead while playing: the April walk leads, and both walks go on playing
+    await lead.getByTestId('walk-compare-swap').click();
+    await expect(lead).toHaveAttribute('data-walk', 'w2');
+    await expectPlaying(lead);
+    await expectPlaying(follow);
+    // and back, still playing
+    await lead.getByTestId('walk-compare-swap').click();
+    await expect(lead).toHaveAttribute('data-walk', 'w1');
+    await expectPlaying(lead);
+    await expectPlaying(follow);
+
+    // seeking the follower into its detour while playing plays that walk on its own: it goes on
+    // playing without a press of Play
     const mid = (fromT + toT) / 2;
     await follow.getByTestId('walk-scrub').fill(mid.toFixed(2));
     await expect(follow.getByTestId('walk-view')).toHaveAttribute('data-compare-solo', 'true');
-    await follow.getByTestId('walk-play').click();
     await expect.poll(() => timeOf(follow), { timeout: 15_000 }).toBeGreaterThan(mid + 1);
-    await follow.getByTestId('walk-play').click();
-    expect(Math.abs((await timeOf(lead)) - leadAt)).toBeLessThan(0.05);
+    await expect(follow.getByTestId('walk-view')).toHaveAttribute('data-compare-solo', 'true');
   });
 });

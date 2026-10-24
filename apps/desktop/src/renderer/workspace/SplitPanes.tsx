@@ -109,6 +109,8 @@ export interface SplitModel {
   index: CaptureIndex | null;
   /** Survey dates the split can compare (absent: fewer than two dated captures). */
   dates?: SplitDates | undefined;
+  /** How many walks the project has (360 video shows on both sides only with two or more). */
+  walks?: number;
 }
 
 /** The open project's split: which panes it offers and what each side shows (remembered). */
@@ -129,13 +131,17 @@ export function useSplit(): SplitModel {
       }),
     [project, reports, dates, walkCount],
   );
-  const sides = useMemo(() => resolveSplit(saved, options, dates), [saved, options, dates]);
+  const sides = useMemo(
+    () => resolveSplit(saved, options, dates, walkCount),
+    [saved, options, dates, walkCount],
+  );
   return {
     options,
     sides,
     reports,
     index,
     dates,
+    walks: walkCount,
     set: (next) => {
       if (id) stagePrefs.getState().update(id, { split: next });
     },
@@ -187,7 +193,7 @@ export function PaneHeader({
     if (kind === 'pano') return panosOf(layers ?? [], index, c).length > 0;
     return true;
   };
-  const groups = paneGroups(split.sides, side, split.options, split.dates, has);
+  const groups = paneGroups(split.sides, side, split.options, split.dates, has, split.walks);
   const options = (g: (typeof groups)[number]) =>
     g.options.map((o) => (
       <option key={o.value} value={o.value} disabled={o.disabled}>
@@ -226,7 +232,9 @@ export function PaneHeader({
               const picked = parsePaneValue(e.target.value);
               if (!picked) return;
               dropEvidence();
-              split.set(chooseAt(split.sides, side, picked.kind, picked.capture, split.dates));
+              split.set(
+                chooseAt(split.sides, side, picked.kind, picked.capture, split.dates, split.walks),
+              );
             }}
           >
             {groups.length < 2

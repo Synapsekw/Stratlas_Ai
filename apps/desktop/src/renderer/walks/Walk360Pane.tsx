@@ -1,6 +1,12 @@
 import { useTaxonomy } from '@aio/annotate';
 import { PANO_FOV, dragLook, zoomLook, type PanoLook } from '@aio/engine';
-import type { AssetRef, DateShift, WalkFile, WalkLayer } from '@aio/schema';
+import {
+  shiftLocal,
+  type AssetRef,
+  type DateShift,
+  type WalkFile,
+  type WalkLayer,
+} from '@aio/schema';
 import { Icon, Tip, useT } from '@aio/ui';
 import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, dateShiftOf, useWorkspace } from '@aio/workspace';
@@ -11,7 +17,6 @@ import { loadDetections, useDetections } from '../detections/store';
 import { SpotHistoryButton } from '../workspace/spot/SpotHistoryEntry';
 import { wrapDeg } from '../workspace/spot/spotGeom';
 import { bearingFromHeadingRad } from '../workspace/spot/spotWalk';
-import { shiftLocal } from '@aio/schema';
 import { captureLabel, useCaptureIndex } from '../workspace/compare';
 import type { SplitModel } from '../workspace/SplitPanes';
 import type { Side } from '../workspace/splitModel';
@@ -34,8 +39,10 @@ import {
   followStep,
   inBand,
   leadClock,
+  leadClockOf,
   leadTimeAt,
   linkedYawDeg,
+  lookBearingDeg,
   moveLeadTo,
   otherSide,
   pairFollower,
@@ -51,6 +58,7 @@ import {
 } from './walkCompare';
 import './walkCompare.css';
 import {
+  beamHalfRad,
   clearWalkView,
   fanPoints,
   headingFromBearingDeg,
@@ -69,7 +77,6 @@ import {
   walkKeyAction,
   walkUnstabilised,
 } from './walkModel';
-import { publishWalkPlayback } from './walkPlayback';
 import { WalkDetOverlay, type OverlayBox } from './WalkDetOverlay';
 import { useWalks, walks } from './walks';
 import { walkFolderId, walkRecordKey } from './walkStore';
@@ -171,8 +178,10 @@ function WalkPlayer({
   const toggleRef = useRef<(play: boolean) => void>(() => undefined);
   // the pane under the pointer (or the one dragged, zoomed) leads the linked look
   const userLook = useRef<() => void>(() => undefined);
-  // the lead tells the follower where it is on every change of its video's clock
+  // the lead tells the follower where it is on every change of its video's clock; a video waiting
+  // for data (a stall) does not play, so the follower holds with it
   const isLead = useRef(false);
+  const waiting = useRef(false);
   useEffect(() => {
     isLead.current = compare?.role === 'lead';
     userLook.current = () => {
@@ -219,6 +228,7 @@ function WalkPlayer({
     v.disablePictureInPicture = true;
     v.src = url;
     video.current = v;
+    waiting.current = false;
     // the player is made per walk: another copy of the same walk keeps where the person looks
 
     let pano: PanoVideoView | null = null;
@@ -242,15 +252,7 @@ function WalkPlayer({
     };
     const publishClock = () => {
       if (!isLead.current) return;
-      leadClock.setState({
-        now: {
-          walk: walk.id,
-          t: v.currentTime,
-          atMs: performance.now(),
-          playing: !v.paused && !v.ended && !v.seeking,
-          rate: v.playbackRate,
-        },
-      });
+      leadClock.setState({ now: leadClockOf(v, walk.id, performance.now(), waiting.current) });
     };
     const onTime = () => {
       setTime(v.currentTime);
@@ -274,6 +276,14 @@ function WalkPlayer({
       setRate(v.playbackRate);
       publishClock();
     };
+    const onWaiting = () => {
+      waiting.current = true;
+      publishClock();
+    };
+    const onPlaying = () => {
+      waiting.current = false;
+      publishClock();
+    };
     v.addEventListener('loadeddata', onReady);
     v.addEventListener('durationchange', onReady);
     v.addEventListener('timeupdate', onTime);
@@ -284,9 +294,9 @@ function WalkPlayer({
     v.addEventListener('pause', onPlay);
     v.addEventListener('ended', onPlay);
     v.addEventListener('ratechange', onRate);
+    v.addEventListener('waiting', onWaiting);
+    v.addEventListener('playing', onPlaying);
     v.addEventListener('error', onError);
-    // the map and the drawings show where this walk is, from the moment it has loaded
-    const stopPublish = publishWalkPlayback(v, walk.id);
 
     // the wheel zooms the view and must not scroll the page behind it
     const onWheel = (e: WheelEvent) => {
@@ -320,8 +330,9 @@ function WalkPlayer({
       v.removeEventListener('pause', onPlay);
       v.removeEventListener('ended', onPlay);
       v.removeEventListener('ratechange', onRate);
+      v.removeEventListener('waiting', onWaiting);
+      v.removeEventListener('playing', onPlaying);
       v.removeEventListener('error', onError);
-      stopPublish();
       resume.current = { time: v.currentTime, play: !v.paused && !v.ended };
       pano?.dispose();
       view.current = null;
@@ -333,8 +344,12 @@ function WalkPlayer({
   }, [url, walk.id]);
 
   // where this walk is and where it looks, for its Beam on the map, the drawings and in 3D (once
-  // a frame at most while it is dragged)
-  const lookDeg = heading === null ? null : wrapDeg(bearingFromHeadingRad(heading) + shown.yawDeg);
+  // a frame at most while it is dragged): in the walk's own frame, which they turn by its date's
+  // line-up (`worldLookDeg` is the compass bearing on screen)
+  const headingDeg = heading === null ? null : bearingFromHeadingRad(heading);
+  const lookDeg = headingDeg === null ? null : lookBearingDeg(headingDeg, shown.yawDeg);
+  const worldLookDeg =
+    headingDeg === null ? null : lookBearingDeg(headingDeg, shown.yawDeg, ownShift);
   const publisher = useRef<ReturnType<typeof walkViewPublisher> | null>(null);
   useEffect(() => {
     const pub = walkViewPublisher(walk.id);
@@ -359,15 +374,7 @@ function WalkPlayer({
   useEffect(() => {
     const v = video.current;
     if (role !== 'lead' || status !== 'ready' || !v) return;
-    leadClock.setState({
-      now: {
-        walk: walk.id,
-        t: v.currentTime,
-        atMs: performance.now(),
-        playing: !v.paused && !v.ended,
-        rate: v.playbackRate,
-      },
-    });
+    leadClock.setState({ now: leadClockOf(v, walk.id, performance.now(), waiting.current) });
   }, [role, status, walk.id]);
   // the follower's play button plays and pauses the lead
   const leadPlay = useWalkCompare((s) => (role === 'lead' ? s.leadPlay : null));
@@ -391,7 +398,8 @@ function WalkPlayer({
 
   // the follower keeps pace with the lead: the moment nearest the lead's spot (or its second),
   // reached by playing at a matched rate; it seeks only when it drifts too far, and pauses and
-  // seeks with the lead
+  // seeks with the lead. It stops following when it takes the lead (Swap lead) or plays on its own
+  // in a detour: then it goes on as it is, at its own rate
   const following = role === 'follow' && compare !== undefined && !compare.solo;
   const own = compare?.own;
   const otherTrack = compare?.otherTrack;
@@ -436,10 +444,17 @@ function WalkPlayer({
     const timer = window.setInterval(tick, FOLLOW_MS);
     return () => {
       window.clearInterval(timer);
-      v.pause();
       v.playbackRate = 1;
     };
   }, [following, status, own, otherTrack, otherId, mode, duration]);
+  // the compare ends: a walk that followed stops where it is (the lead plays on)
+  const inCompare = role !== undefined;
+  useEffect(() => {
+    if (!inCompare) return;
+    return () => {
+      if (!isLead.current) video.current?.pause();
+    };
+  }, [inCompare]);
 
   // a walk playing on its own in a detour joins the compare again where the routes meet
   const solo = compare?.solo === true;
@@ -455,12 +470,8 @@ function WalkPlayer({
   const driverView = useWalkView(compare?.linkLook && !compare.driver ? compare.other.id : null);
   const driverLook = driverView?.lookDeg ?? null;
   useEffect(() => {
-    if (driverView === undefined || driverLook === null || heading === null) return;
-    const yaw = linkedYawDeg(
-      shiftBearingDeg(driverLook, otherShift),
-      bearingFromHeadingRad(heading),
-      ownShift,
-    );
+    if (driverView === undefined || driverLook === null || headingDeg === null) return;
+    const yaw = linkedYawDeg(shiftBearingDeg(driverLook, otherShift), headingDeg, ownShift);
     const cur = look.current;
     const dy = Math.abs(wrapDeg(yaw - cur.yawDeg + 180) - 180);
     if (
@@ -470,7 +481,7 @@ function WalkPlayer({
     )
       return;
     setLook({ yawDeg: yaw, pitchDeg: driverView.pitchDeg, fovDeg: driverView.fovDeg });
-  }, [driverView, driverLook, heading, ownShift, otherShift]);
+  }, [driverView, driverLook, headingDeg, ownShift, otherShift]);
   const pairDist = following ? dist : null;
   const apart = pairDist !== null && pairDist >= APART_M;
   // a following walk's play button shows (and works) the lead's playback
@@ -801,10 +812,9 @@ function WalkPlayer({
         <SpotHistoryButton
           open={{
             item: { kind: 'walk', layer: walk.id, t: time },
-            // the compass bearing of the look; none while the walk is not placed
-            ...(heading !== null
-              ? { lookDeg: wrapDeg(bearingFromHeadingRad(heading) + shown.yawDeg) }
-              : {}),
+            // the compass bearing of the look, as the lined-up date draws it; none while the walk
+            // is not placed
+            ...(worldLookDeg !== null ? { lookDeg: worldLookDeg } : {}),
           }}
         />
         <button
@@ -832,7 +842,11 @@ function compareWalks(
 ): { left: WalkLayer | undefined; right: WalkLayer | undefined } {
   const byId = (id: string | null) => (id === null ? undefined : list.find((w) => w.id === id));
   const left = byId(cmp.left) ?? pickWalk(list, selected);
-  const right = byId(cmp.right) ?? list.find((w) => w.id !== left?.id) ?? left;
+  // never one walk on both sides while there is another
+  const right =
+    (cmp.right !== left?.id ? byId(cmp.right) : undefined) ??
+    list.find((w) => w.id !== left?.id) ??
+    left;
   return { left, right };
 }
 
@@ -845,12 +859,28 @@ function useDateShift(layerId: string | null): DateShift | null {
   );
 }
 
-/** A placed walk's track in the scene (empty while it is not placed), one sample every 0.25 s. */
+const NO_TRACK: readonly TrackPt[] = [];
+
+/** The detours of track `own` from `other` (none while either is not placed), made once per pair. */
+function useDetours(own: readonly TrackPt[], other: readonly TrackPt[]): readonly Band[] {
+  return useMemo(
+    () => (own.length === 0 || other.length === 0 ? NO_BANDS : detourBands(own, other)),
+    [own, other],
+  );
+}
+
+/**
+ * A placed walk's track in the scene (empty while it is not placed), one sample every 0.25 s: the
+ * same track while its fit is (an edit elsewhere in the project does not jolt the follower).
+ */
 function useTrack(layerId: string | null): readonly TrackPt[] {
   const placed = usePlacedWalk(layerId);
+  const fit = placed?.fit;
+  const durationS = placed?.layer.durationS;
+  const shift = placed?.shift ?? null;
   return useMemo(
-    () => (placed ? trackOf(placed.fit, placed.layer.durationS, placed.shift ?? null) : []),
-    [placed],
+    () => (fit && durationS !== undefined ? trackOf(fit, durationS, shift) : NO_TRACK),
+    [fit, durationS, shift],
   );
 }
 
@@ -934,7 +964,7 @@ function CompareInset({
             : fanPoints(
                 [p[0], p[2]],
                 shiftHeadingRad(headingFromBearingDeg(v.lookDeg), w.shift),
-                (Math.min(170, v.hfovDeg) * Math.PI) / 360,
+                beamHalfRad(v.hfovDeg),
                 span * 0.16,
               );
         return (
@@ -1156,7 +1186,7 @@ export function Walk360Pane({ side, split }: { side?: Side; split?: SplitModel }
   }, [side, leftId, rightId]);
   const own = useTrack(otherId === null ? null : (walk?.id ?? null));
   const otherTrack = useTrack(otherId);
-  const bands = otherId === null ? NO_BANDS : detourBands(own, otherTrack);
+  const bands = useDetours(own, otherTrack);
   const processed = useWalks((s) => (walk ? s.processed[walkFolderId(walk)] : undefined));
   const level = useWalks((s) => (walk ? levelOn(s.level, walk.id) : true));
   if (!projectId || !walk) return <p className="pane-empty">{t('walk.none')}</p>;
@@ -1204,8 +1234,18 @@ export function Walk360Pane({ side, split }: { side?: Side; split?: SplitModel }
             data-testid="walk-which"
             value={walk.id}
             onChange={(e) => {
-              if (comparing) walkCompare.setState({ [side]: e.target.value, solo: null });
-              else walks.getState().select(e.target.value);
+              const id = e.target.value;
+              if (!comparing) {
+                walks.getState().select(id);
+                return;
+              }
+              // the walk the other pane shows: the two swap sides (one walk never shows twice)
+              const swap = other?.id === id && other.id !== walk.id;
+              walkCompare.setState({
+                [side]: id,
+                ...(swap ? { [otherSide(side)]: walk.id } : {}),
+                solo: null,
+              });
             }}
           >
             {list.map((w) => (

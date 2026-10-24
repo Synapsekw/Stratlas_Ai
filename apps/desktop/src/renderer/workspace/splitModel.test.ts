@@ -112,6 +112,16 @@ describe('two walks in the two 360 panes', () => {
     expect(blockedFor({ left: 'walk360', right: 'map' }, 'right')).toBeNull();
     expect(parseSplitPref(walkSplit)).toEqual(walkSplit);
   });
+
+  it('shows 360 video on one side only while the project has a single walk', () => {
+    expect(twiceAllowed('walk360', undefined, 1)).toBe(false);
+    expect(twiceAllowed('walk360', dates, 2)).toBe(true);
+    const one = paneOptions([{ kind: 'mesh' }], 0, 0, { walks: 1 });
+    expect(resolveSplit(walkSplit, one, undefined, 1)).toEqual({ left: 'walk360', right: '3d' });
+    const pref = { left: 'walk360', right: 'map' } as const;
+    expect(chooseSide(pref, 'right', 'walk360', undefined, 1)).toEqual(pref);
+    expect(blockedFor(pref, 'right', undefined, 1)).toBe('walk360');
+  });
 });
 
 describe('comparing two survey dates in the split', () => {

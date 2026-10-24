@@ -203,9 +203,44 @@ export interface LeadClock {
 
 export const leadClock = createStore<{ now: LeadClock | null }>()(() => ({ now: null }));
 
+/**
+ * The lead's clock is run on this long past its last reading at most (seconds): a lead whose
+ * video stalls without saying so is not run on past where it can be.
+ */
+const RUN_ON_S = 0.5;
+
 /** The lead's time now: the last reading run on at its rate while it plays. */
 export function leadTimeAt(c: LeadClock, nowMs: number): number {
-  return c.playing ? c.t + (Math.max(0, nowMs - c.atMs) / 1000) * c.rate : c.t;
+  if (!c.playing) return c.t;
+  return c.t + Math.min(RUN_ON_S, Math.max(0, nowMs - c.atMs) / 1000) * c.rate;
+}
+
+/** The video fields the lead's clock is read from. */
+export interface ClockVideo {
+  currentTime: number;
+  paused: boolean;
+  ended: boolean;
+  seeking: boolean;
+  playbackRate: number;
+}
+
+/**
+ * The lead's clock read off its video at `atMs`: it plays only while the video runs, not while it
+ * seeks or `waiting` for data (a stall), so the follower holds with it.
+ */
+export function leadClockOf(
+  v: ClockVideo,
+  walk: string,
+  atMs: number,
+  waiting: boolean,
+): LeadClock {
+  return {
+    walk,
+    t: v.currentTime,
+    atMs,
+    playing: !v.paused && !v.ended && !v.seeking && !waiting,
+    rate: v.playbackRate,
+  };
 }
 
 // ---------------------------------------------------------------- tracks
@@ -292,6 +327,8 @@ const KEEP_S = 3;
  * The moment of `track` nearest the scene spot `x`/`z`, and how far it is. A walk that passes the
  * spot more than once keeps to the pass it is on (within a few seconds of `prevT`: no jumping
  * between passes while playing), else takes the pass going the way `dir` goes, else the nearest.
+ * The moment lies between samples: the spot projected onto the track either side of the pass's
+ * nearest sample (no steps of the sampling in the follower's pace).
  */
 export function nearestOnTrack(
   track: readonly TrackPt[],
@@ -328,7 +365,20 @@ export function nearestOnTrack(
       })
     : [];
   const pick = nearest(kept.length ? kept : sameWay.length ? sameWay : passes);
-  return { t: tOf(pick.at), dist: d[pick.at] ?? best };
+  let out = { t: tOf(pick.at), dist: d[pick.at] ?? best };
+  const at = track[pick.at];
+  for (const n of [pick.at - 1, pick.at + 1]) {
+    const q = track[n];
+    if (!at || !q) continue;
+    const ex = q.x - at.x;
+    const ez = q.z - at.z;
+    const len2 = ex * ex + ez * ez;
+    if (!(len2 > 0)) continue;
+    const f = Math.min(1, Math.max(0, ((x - at.x) * ex + (z - at.z) * ez) / len2));
+    const dist = Math.hypot(at.x + f * ex - x, at.z + f * ez - z);
+    if (dist < out.dist) out = { t: at.t + f * (q.t - at.t), dist };
+  }
+  return out;
 }
 
 /**
@@ -473,13 +523,16 @@ export const RESYNC_S = 1.5;
 const GAIN = 0.5;
 /** A paused follower this close to its moment stays (no seek for a frame's difference). */
 const STILL_S = 0.04;
+/** A follower holding still while the lead stands goes to its moment past this drift (seconds). */
+const HOLD_SEEK_S = 0.25;
 
 const clampRate = (r: number) => Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, r)) * 20) / 20;
 
 /**
  * What the follower's video does this tick: play at `rate` (the lead's rate scaled by the two
  * walks' speeds, nudged to close a small drift), hold still, or seek once when the drift is too
- * large. A paused lead pauses the follower on the paired frame.
+ * large. A paused lead pauses the follower on the paired frame; a lead standing still holds it on
+ * its frame (going there when it is off by more than a quarter second).
  */
 export function followStep(o: {
   targetT: number;
@@ -492,7 +545,8 @@ export function followStep(o: {
     return { play: false, rate: null, seekTo: Math.abs(drift) > STILL_S ? o.targetT : null };
   if (Math.abs(drift) > RESYNC_S)
     return { play: true, rate: clampRate(o.desiredRate), seekTo: o.targetT };
-  if (o.desiredRate < HOLD_RATE) return { play: false, rate: null, seekTo: null };
+  if (o.desiredRate < HOLD_RATE)
+    return { play: false, rate: null, seekTo: Math.abs(drift) > HOLD_SEEK_S ? o.targetT : null };
   return { play: true, rate: clampRate(o.desiredRate + drift * GAIN), seekTo: null };
 }
 
