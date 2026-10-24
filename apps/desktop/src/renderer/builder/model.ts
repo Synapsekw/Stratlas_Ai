@@ -126,7 +126,7 @@ const STARTERS: Record<ProjectKind, readonly string[]> = {
   ],
   'vertical-asset': ASSET_STARTER,
   'confined-space': [
-    'Photos from inside (JPG); without GPS they are listed in Media, not placed',
+    'Photos from inside (JPG); without GPS they are listed in Inspect, not placed',
     'A model or scan of the space (GLB, OBJ, LAS, LAZ, E57 or PLY)',
     'Video only with its DJI SRT log beside it (MP4 or MOV)',
   ],

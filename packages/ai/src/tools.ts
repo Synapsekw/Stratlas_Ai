@@ -672,7 +672,7 @@ export const COMPACT_TOOLS: Readonly<Record<string, string>> = {
   // the show tools
   show_issue:
     'Show a finding: select it, fly to it, open its photo. No issue given: the most severe.',
-  show_photos: 'Open Media filtered by severity, asset or finding.',
+  show_photos: 'Open Inspect filtered by severity, asset or finding.',
   show_issues: 'Open Issues filtered and sorted.',
   // M10: the Globe and maps from photos
   list_sites: 'List the sites of the project library on the Globe.',

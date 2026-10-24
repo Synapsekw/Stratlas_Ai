@@ -133,7 +133,7 @@ export interface FarNoticeState {
   } | null;
   check(projectId: string, fresh: ReadonlySet<string> | 'all'): Promise<void>;
   recentre(): Promise<void>;
-  /** Clear the GPS places of `photoLayers`; the photos stay in Media. */
+  /** Clear the GPS places of `photoLayers`; the photos stay in Inspect. */
   ignorePhotoGps(): Promise<void>;
   dismiss(): void;
 }
@@ -142,9 +142,9 @@ const km = (m: number) => `${(m / 1000).toFixed(1)} km`;
 const away = (m: number) => (m < 1000 ? `${String(Math.round(m))} m` : km(m));
 const PHOTOS_FAR =
   "These photos are far from the survey data: a camera's GPS can be kilometres out. Ignore their" +
-  ' GPS to keep them in Media without a place.';
+  ' GPS to keep them in Inspect without a place.';
 const PHOTOS_OFF =
-  'A phone GPS fix is often off. Align the photos onto the project, or ignore their GPS to keep them in Media without a place.';
+  'A phone GPS fix is often off. Align the photos onto the project, or ignore their GPS to keep them in Inspect without a place.';
 const PHOTOS_ONLY =
   ' Only photos placed this project so far; survey data is the better place for the origin.';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -411,7 +411,7 @@ export function createFarNotice(deps: {
           busy: false,
           done: true,
           photoLayers: [],
-          text: 'GPS places of the photos were cleared; they stay in Media.',
+          text: 'GPS places of the photos were cleared; they stay in Inspect.',
         },
       });
     },

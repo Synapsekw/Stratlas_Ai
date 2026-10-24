@@ -254,7 +254,7 @@ export const LayerPatch = z.union([
   z.object({ name: z.string().trim().min(1).max(120) }).strict(),
   /** The placement of a `walk` layer (its pins and corrections); `null` clears it. */
   z.object({ walk: WalkCalibration.nullable() }).strict(),
-  /** Forget the GPS places of a photos layer (a camera whose GPS is wrong): they stay in Media. */
+  /** Forget the GPS places of a photos layer (a camera whose GPS is wrong): they stay in Inspect. */
   z.object({ photoPositions: z.literal('clear') }).strict(),
   /**
    * Pin a photo or a 360 of a photos or panoramas layer on the site; `null` puts its GPS place

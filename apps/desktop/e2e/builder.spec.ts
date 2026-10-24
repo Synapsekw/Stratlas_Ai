@@ -475,7 +475,7 @@ test('camera photos far from the survey data can drop their GPS', async ({
   await expect(notice).toContainText("a camera's GPS can be kilometres out", { timeout: 30_000 });
   await expect(notice.getByRole('button', { name: 'Re-centre project here' })).toHaveCount(0);
   await notice.getByRole('button', { name: 'Ignore their GPS' }).click();
-  await expect(notice).toContainText('stay in Media');
+  await expect(notice).toContainText('stay in Inspect');
   const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
     origin: number[];
     layers: { kind: string; items?: { pos?: number[] }[] }[];

@@ -757,7 +757,7 @@ export const en = {
   'stage.pane.photo': 'Photos',
   'stage.pane.raster': 'Ortho and plans',
   'stage.pane.report': 'Report',
-  'stage.pane.noClip': 'No clip is active. Pick one on the timeline or in Media.',
+  'stage.pane.noClip': 'No clip is active. Pick one on the timeline or in Inspect.',
   'stage.pane.noPhoto': 'This project has no photos.',
   'stage.pane.prevPhoto': 'Previous photo',
   'stage.pane.nextPhoto': 'Next photo',

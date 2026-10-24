@@ -258,6 +258,7 @@ describe('handheld camera GPS', () => {
     expect(s.getState().notice?.canRecentre).toBe(false);
     expect(s.getState().notice?.photoLayers).toEqual(['photos']);
     expect(s.getState().notice?.text).toContain("a camera's GPS can be kilometres out");
+    expect(s.getState().notice?.text).toContain('keep them in Inspect without a place');
     await s.getState().ignorePhotoGps();
     expect(d.call).toHaveBeenCalledWith('builder:updateLayers', {
       projectId: 'p',
@@ -266,7 +267,7 @@ describe('handheld camera GPS', () => {
     });
     expect(d.reopen).toHaveBeenCalled();
     expect(s.getState().notice?.done).toBe(true);
-    expect(s.getState().notice?.text).toContain('they stay in Media');
+    expect(s.getState().notice?.text).toContain('they stay in Inspect');
   });
 
   it('a far survey layer when only photos placed the origin says survey data is better', async () => {

@@ -46,7 +46,7 @@ export function welcomeTips(manifest: ProjectManifest, issueCount: number): stri
       `Open the register of ${plural(issueCount, 'issue')}; pick one to fly to it and see its photos.`,
     );
   }
-  if (photos > 0) tips.push(`Browse ${plural(photos, 'inspection photo')} in Media.`);
+  if (photos > 0) tips.push(`Browse ${plural(photos, 'inspection photo')} in Inspect.`);
   tips.push(`Press ${shortcutHint('global.palette')} to search layers, issues and commands.`);
   return tips;
 }

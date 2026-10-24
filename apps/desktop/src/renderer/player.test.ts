@@ -145,9 +145,24 @@ describe('player helpers', () => {
   });
 
   it('suggests what to try from the layers and issues of the project', () => {
-    const tips = welcomeTips(manifest, 3);
+    const withPhotos = {
+      ...manifest,
+      layers: [
+        ...manifest.layers,
+        {
+          kind: 'photos',
+          id: 'ph',
+          name: 'Photos',
+          visible: true,
+          items: [{ id: 'p1', src: { path: 'photos/p1.jpg' } }],
+        },
+      ],
+    } as ProjectManifest;
+    const tips = welcomeTips(withPhotos, 3);
     expect(tips.some((t) => t.includes('3D'))).toBe(true);
     expect(tips.some((t) => t.includes('3 issues'))).toBe(true);
+    // photos are looked at in Inspect, which replaced the Media screen
+    expect(tips).toContain('Browse 1 inspection photo in Inspect.');
     expect(tips.every((t) => !/[\u2013\u2014]/.test(t))).toBe(true);
   });
 

@@ -582,7 +582,7 @@ export async function importRawFiles(
             ? ref.q
               ? []
               : ['Placed by GPS; no gimbal angles, so the view direction is unknown.']
-            : ['No GPS position: listed in Media, not placed in the scene.']),
+            : ['No GPS position: listed in Inspect, not placed in the scene.']),
           ...offRule(heightSource),
         ].join(' ');
         const row: ImportItem = {
