@@ -1,5 +1,5 @@
 /**
- * The Flag antenna tool, mounted by `AntennaSection` while the store's `flagging` is set: the
+ * The Flag antenna tool, mounted by `AntennasGroup` while the store's `flagging` is set: the
  * person clicks an outline round a unit the detection missed on the active 3D stage
  * (`PolygonClickTool`); on close the drawn points of the cloud layer detection works on (the one
  * picked for it, else the newest visible cloud) inside the outline are cut to the surface nearest

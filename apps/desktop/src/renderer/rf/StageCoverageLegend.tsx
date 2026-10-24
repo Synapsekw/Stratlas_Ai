@@ -7,12 +7,9 @@
 import { useT } from '@aio/ui';
 import { useVolumeHint } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo } from 'react';
-import { createStore, useStore } from 'zustand';
+import { useMemo } from 'react';
 import { useRoad } from '../road/store';
 import { useShell } from '../shell';
-import { useAntennaClouds } from '../telecom/AntennaRunner';
-import { useAntennas } from '../telecom/antennaStore';
 import { useCompareNotice } from '../workspace/compare';
 import { datesOnScreen } from '../workspace/DatesOnScreen';
 import { isTwin, useSplit } from '../workspace/SplitPanes';
@@ -127,101 +124,12 @@ function useCornersCrowded(panes: ReturnType<typeof useStagePanes>): boolean {
   );
 }
 
-// ---------------------------------------------------------------- beside the antenna card
-
-/**
- * The selected unit's floating card (telecom/AntennaCard): it stands beside its box wherever the
- * box is on screen and keeps clear of the antennas' Labels control only, so the coverage card
- * keeps clear of it. Read from the page: the card is drawn in the 3D view's own box.
- */
-const ANTENNA_CARD = '[data-testid="antenna-card"]';
-/** The room kept between the coverage card and the antenna card, px. */
-const CLEAR_PX = 4;
-
-interface Box {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
-
-const boxOf = (el: Element): Box | null => {
-  const r = el.getBoundingClientRect();
-  return r.width > 0 && r.height > 0 ? r : null;
-};
-
-const hits = (a: Box, b: Box) =>
-  a.left < b.right + CLEAR_PX &&
-  b.left < a.right + CLEAR_PX &&
-  a.top < b.bottom + CLEAR_PX &&
-  b.top < a.bottom + CLEAR_PX;
-
-/**
- * The coverage card's box as last drawn (kept while the card is off the stage, where it would
- * stand), and whether the antenna card is over it now (`useAntennaCardWatch`).
- */
-const cardSpot: { el: HTMLElement | null; box: Box | null } = { el: null, box: null };
-const clashStore = createStore<{ clash: boolean }>()(() => ({ clash: false }));
-
-/** The coverage card's root element: measured where it stands. */
-function spotRef(el: HTMLElement | null): void {
-  cardSpot.el = el;
-  if (el) cardSpot.box = boxOf(el) ?? cardSpot.box;
-}
-
-/** Whether a selected unit's card is up: the antennas drawn in a 3D view on screen (AntennaRunner). */
-function useAntennaCardUp(): boolean {
-  const selected = useAntennas((a) => a.selected !== null && a.file !== null);
-  const clouds = useAntennaClouds().length > 0;
-  const onScene = useShell((s) => s.screen === 'scene' && s.stageMode !== 'map');
-  return selected && clouds && onScene;
-}
-
-/**
- * While a unit's card is up, follows it frame by frame (it moves with the camera) and tells
- * whether it is over the coverage card, or over where the card stood before it stepped aside.
- */
-function useAntennaCardWatch(): boolean {
-  const up = useAntennaCardUp();
-  const clash = useStore(clashStore, (s) => s.clash);
-  useEffect(() => {
-    const set = (v: boolean) => {
-      if (clashStore.getState().clash !== v) clashStore.setState({ clash: v });
-    };
-    if (!up) {
-      set(false);
-      return;
-    }
-    let frame = 0;
-    const tick = () => {
-      if (cardSpot.el?.isConnected) cardSpot.box = boxOf(cardSpot.el) ?? cardSpot.box;
-      const card = document.querySelector(ANTENNA_CARD);
-      const at = card ? boxOf(card) : null;
-      set(at !== null && cardSpot.box !== null && hits(cardSpot.box, at));
-      frame = requestAnimationFrame(tick);
-    };
-    tick();
-    // the stage resized while the card was off it: where it stood is no longer known, so it
-    // comes back and is measured afresh (and steps aside again if the card is still over it)
-    const onResize = () => {
-      if (!cardSpot.el?.isConnected) cardSpot.box = null;
-    };
-    window.addEventListener('resize', onResize);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('resize', onResize);
-    };
-  }, [up]);
-  return up && clash;
-}
-
 /**
  * Whether the stage gives the coverage card a corner. After a run (the layer is on and draws
- * something) the legend keeps its place before the dates and the readout; a selected antenna's
- * card over it hides it in place (`StageCoverageLegend`). Before one, the card is the chip alone
+ * something) the legend keeps its place before the dates and the readout. Before one, the card is the chip alone
  * (the project has antennas, spec F1 revised), and it shows only where it costs the dates pill
- * and the readout nothing (`useCornersCrowded`) and where a selected antenna's card is not over
- * it: the prompt gives its corner up to the antenna review. Never while two dates are compared:
+ * and the readout nothing (`useCornersCrowded`) and the antenna list lives in the side panel, so
+ * a selected antenna never moves it. Never while two dates are compared:
  * the comparison has the stage.
  */
 export function useCoverageLegendShown(): boolean {
@@ -229,37 +137,22 @@ export function useCoverageLegendShown(): boolean {
   const drawn = useCoverageLegendProps() !== null;
   const panes = useStagePanes();
   const crowded = useCornersCrowded(panes);
-  const underCard = useAntennaCardWatch();
   if (panes.compared) return false;
-  return drawn || (chip && !crowded && !underCard);
+  return drawn || (chip && !crowded);
 }
 
 /**
  * The coverage card in its stage corner: the Coverage chip as its header, and under it the legend
- * while the layer draws something. While dates are compared the stage gives it no corner. A
- * selected antenna's card over the legend hides it in place, the corner kept.
+ * while the layer draws something. While dates are compared the stage gives it no corner.
  */
 export function StageCoverageLegend() {
   const t = useT();
   const p = useCoverageLegendProps();
   const chip = useChipState().kind !== 'hidden';
-  const clash = useStore(clashStore, (s) => s.clash);
-  const up = useAntennaCardUp();
-  // as the watcher reads it: only while a unit's card can be up
-  const covered = up && clash;
-  if (p)
-    return (
-      <CoverageLegend
-        {...p}
-        header={chip ? <CoverageChip /> : null}
-        boxRef={spotRef}
-        covered={covered}
-      />
-    );
+  if (p) return <CoverageLegend {...p} header={chip ? <CoverageChip /> : null} />;
   if (!chip) return null;
   return (
     <section
-      ref={spotRef}
       className="rf-card overlay-box"
       data-surface="dark"
       aria-label={t('rf.chip.label')}

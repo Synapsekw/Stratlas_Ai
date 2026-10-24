@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The runner's stage wiring: the scene state it hands the layer, the camera framing a newly
- * selected unit, the floating card while the 3D view shows, and the card's drag reset per project.
+ * selected unit or a fly request, no floating card, the review keys and the delete dialog.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,27 +11,20 @@ import { AntennasFile } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { PerspectiveCamera } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ShellModule from '../shell';
-import type * as CardModule from './AntennaCard';
 import type * as SceneModule from './antennaScene';
 import { shell } from '../shell';
-import {
-  AntennaRunner,
-  LABEL_GAP,
-  LABEL_PAD_X,
-  LABEL_PAD_Y,
-  drawnLabelsRect,
-  screenRectOf,
-  selectedAreas,
-  withDrawnLabels,
-  withLabels,
-} from './AntennaRunner';
-import { resetCardDrag } from './AntennaCard';
-import { AVOID_WEIGHT } from './cardPlacement';
+import { AntennaRunner } from './AntennaRunner';
+import { antennaDeleteStore } from './antennaDelete';
 import type { AntennaSceneState } from './antennaScene';
-import { antennaStore, revealAntenna, selectAntenna, setAntennaSolo } from './antennaStore';
+import {
+  antennaStore,
+  requestFly,
+  revealAntenna,
+  selectAntenna,
+  setAntennaSolo,
+} from './antennaStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -101,10 +94,6 @@ vi.mock('./antennaLabels', () => ({
     };
   },
 }));
-vi.mock('./AntennaCard', async (importOriginal) => ({
-  ...(await importOriginal<typeof CardModule>()),
-  resetCardDrag: vi.fn(),
-}));
 vi.mock('../builder/photoOpen', () => ({ openPhoto: () => undefined }));
 
 const contract = JSON.parse(
@@ -132,7 +121,7 @@ const project = (id: string) =>
 let host: HTMLElement;
 let root: Root;
 const flyTo = vi.fn();
-/** The stage's canvas parent, where the card is drawn. */
+/** The stage's canvas parent, where the Labels control is drawn. */
 const stageHost = () => getActiveStage()?.renderer.domElement.parentElement ?? null;
 const card = () => stageHost()?.querySelector('[data-testid="antenna-card"]') ?? null;
 
@@ -141,7 +130,7 @@ beforeEach(() => {
   document.body.append(host);
   root = createRoot(host);
   flyTo.mockReset();
-  vi.mocked(resetCardDrag).mockClear();
+  antennaDeleteStore.setState({ ask: null, busy: false });
   shell.setState({ pkg: null, screen: 'scene', stageMode: '3d' });
   workspace.setState({ project: project('p1'), flyTo });
   antennaStore.setState({
@@ -194,30 +183,35 @@ describe('AntennaRunner', () => {
     expect(flyTo).toHaveBeenCalledTimes(3);
   });
 
-  it('shows the card for a selected unit while the 3D view is on screen', () => {
-    expect(card()).toBeNull();
+  it('draws no floating card when a unit is selected', () => {
     act(() => {
       selectAntenna('ant-a3');
     });
-    expect(card()).not.toBeNull();
-    // the canvas parent was static: it is made a positioned box for the card
-    expect(stageHost()?.style.position).toBe('relative');
-    act(() => {
-      shell.setState({ screen: 'projects' });
-    });
     expect(card()).toBeNull();
+    expect(document.querySelector('[data-testid="antenna-card"]')).toBeNull();
+  });
+
+  it('flies to every unit of a fly request, and not twice for the same request', () => {
     act(() => {
-      shell.setState({ screen: 'scene', stageMode: 'map' });
+      requestFly(['ant-a3', 'ant-d1']);
     });
-    expect(card()).toBeNull();
-    act(() => {
-      shell.setState({ stageMode: '3d' });
-    });
-    expect(card()).not.toBeNull();
+    expect(flyTo).toHaveBeenCalledTimes(1);
+    expect(flyTo.mock.calls[0]?.[0]).toMatchObject({ kind: 'box' });
     act(() => {
       selectAntenna(null);
     });
-    expect(card()).toBeNull();
+    expect(flyTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('Delete asks to delete the selected unit, and mounts the confirmation', () => {
+    act(() => {
+      selectAntenna('ant-a3');
+    });
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    });
+    expect(antennaDeleteStore.getState().ask?.ids).toEqual(['ant-a3']);
+    expect(document.querySelector('[data-testid="antenna-delete-confirm"]')).not.toBeNull();
   });
 
   it('shows the Labels control while the antennas are drawn, and Off sets the mode', () => {
@@ -255,131 +249,5 @@ describe('AntennaRunner', () => {
     });
     expect(antennaStore.getState().reveal).toBe(reveal + 1);
     expect(flyTo).toHaveBeenCalledTimes(1);
-  });
-
-  it('resets the card drag when the project changes', () => {
-    expect(resetCardDrag).not.toHaveBeenCalled();
-    act(() => {
-      workspace.setState({ project: project('p2') });
-    });
-    expect(resetCardDrag).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('screenRectOf', () => {
-  const camera = new PerspectiveCamera(90, 1, 0.1, 100);
-  camera.position.set(0, 0, 10);
-  camera.lookAt(0, 0, 0);
-  camera.updateMatrixWorld(true);
-  const el = (w: number, hgt: number) => {
-    const d = document.createElement('div');
-    d.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, width: w, height: hgt, right: w, bottom: hgt }) as DOMRect;
-    return d;
-  };
-  const canvas = el(200, 200);
-  const host = el(200, 200);
-
-  it('bounds the projected points in host pixels', () => {
-    const r = screenRectOf(
-      [
-        [-1, -1, 0],
-        [1, 1, 0],
-      ],
-      camera,
-      canvas,
-      host,
-    );
-    expect([r?.x, r?.y, r?.w, r?.h].map((v) => Math.round(v ?? NaN))).toEqual([90, 90, 20, 20]);
-  });
-
-  it('is null behind the camera or wholly outside the host', () => {
-    expect(screenRectOf([[0, 0, 20]], camera, canvas, host)).toBeNull();
-    expect(screenRectOf([[30, 0, 0]], camera, canvas, host)).toBeNull();
-  });
-});
-
-describe('withLabels', () => {
-  const box = { x: 100, y: 100, w: 20, h: 40 };
-
-  it('is the box when no label is on screen', () => {
-    expect(withLabels(box, null)).toEqual(box);
-  });
-
-  it('grows the box over the label anchors and the room their text takes', () => {
-    // a dimension label right of the box, the name label above it
-    const anchors = { x: 110, y: 90, w: 30, h: 50 };
-    expect(withLabels(box, anchors)).toEqual({
-      x: 110 - LABEL_PAD_X,
-      y: 90 - LABEL_PAD_Y,
-      w: 140 + LABEL_PAD_X - (110 - LABEL_PAD_X),
-      h: 140 + LABEL_PAD_Y - (90 - LABEL_PAD_Y),
-    });
-  });
-});
-
-describe('drawnLabelsRect and withDrawnLabels', () => {
-  const box = { x: 100, y: 100, w: 20, h: 40 };
-  const span = (cls: string, r: DOMRect, display = '') => {
-    const el = document.createElement('span');
-    el.className = cls;
-    el.style.display = display;
-    el.getBoundingClientRect = () => r;
-    return el;
-  };
-
-  it('bounds the selected labels as drawn, host-relative, and the card keeps a gap round them', () => {
-    const host = document.createElement('div');
-    host.getBoundingClientRect = () => new DOMRect(50, 20, 800, 600);
-    const layer = document.createElement('div');
-    layer.className = 'sv-labels antenna-labels';
-    layer.append(
-      // a 130 px wide angle label right of the box
-      span('sv-label antenna-label--angle sel', new DOMRect(50 + 112, 20 + 120, 130, 18)),
-      // the name above it
-      span('sv-label antenna-label--name sel', new DOMRect(50 + 80, 20 + 70, 90, 18)),
-      // a label out of view and a pin do not count
-      span('sv-label antenna-label--dim sel', new DOMRect(0, 0, 500, 500), 'none'),
-      span('sv-label antenna-label--pin', new DOMRect(0, 0, 500, 500)),
-    );
-    host.append(layer);
-    const drawn = drawnLabelsRect(host);
-    expect(drawn).toEqual({ x: 80, y: 70, w: 112 + 130 - 80, h: 120 + 18 - 70 });
-    const grown = withDrawnLabels(box, drawn, null);
-    expect(grown.x + grown.w).toBe(112 + 130 + LABEL_GAP);
-    expect(grown).toEqual({
-      x: 80 - LABEL_GAP,
-      y: 70 - LABEL_GAP,
-      w: 112 + 130 - 80 + 2 * LABEL_GAP,
-      h: 140 - 70 + 2 * LABEL_GAP,
-    });
-  });
-
-  it('weighs the box and each drawn label by its kind', () => {
-    const host = document.createElement('div');
-    host.getBoundingClientRect = () => new DOMRect(50, 20, 800, 600);
-    const layer = document.createElement('div');
-    layer.className = 'sv-labels antenna-labels';
-    layer.append(
-      span('sv-label antenna-label--name sel', new DOMRect(50 + 80, 20 + 70, 90, 18)),
-      span('sv-label antenna-label--angle sel', new DOMRect(50 + 112, 20 + 120, 130, 18)),
-      span('sv-label antenna-label--dim sel', new DOMRect(50 + 100, 20 + 145, 55, 18)),
-      span('sv-label antenna-label--dim sel', new DOMRect(0, 0, 500, 500), 'none'),
-      span('sv-label antenna-label--pin', new DOMRect(0, 0, 500, 500)),
-    );
-    host.append(layer);
-    expect(selectedAreas(host, box)).toEqual([
-      { rect: box, weight: AVOID_WEIGHT.box },
-      { rect: { x: 80, y: 70, w: 90, h: 18 }, weight: AVOID_WEIGHT.name },
-      { rect: { x: 112, y: 120, w: 130, h: 18 }, weight: AVOID_WEIGHT.angle },
-      { rect: { x: 100, y: 145, w: 55, h: 18 }, weight: AVOID_WEIGHT.dim },
-    ]);
-  });
-
-  it('falls back to the anchor pad before the labels are drawn', () => {
-    const host = document.createElement('div');
-    expect(drawnLabelsRect(host)).toBeNull();
-    const anchors = { x: 110, y: 90, w: 30, h: 50 };
-    expect(withDrawnLabels(box, null, anchors)).toEqual(withLabels(box, anchors));
   });
 });

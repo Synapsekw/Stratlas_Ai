@@ -1,11 +1,14 @@
 /**
- * Review keys for the floating antenna card: A accepts, R rejects, the arrows step through the
- * filtered list and Esc closes. Keys typed into a field, held with a modifier, already handled or
- * pressed while a modal dialog is open are left alone.
+ * Review keys for the selected antenna (its row and details in the Project list): A accepts, R
+ * rejects, the arrows step through the filtered list, Esc clears the selection and Delete asks to
+ * delete the unit. Keys typed into a field, held with a modifier, already handled or pressed while
+ * a modal dialog is open are left alone, and so are the keys of a widget that owns them: Delete
+ * in the Datasets tree belongs to the tree (it removes what is marked there).
  */
 import { useEffect } from 'react';
 import { isTypingTarget } from '../keys';
-import { decideAntenna, selectAntenna, stepAntenna } from './antennaStore';
+import { askDeleteAntennas } from './antennaDelete';
+import { antennaStore, decideAntenna, selectAntenna, stepAntenna } from './antennaStore';
 
 function ignored(e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return true;
@@ -13,7 +16,7 @@ function ignored(e: KeyboardEvent): boolean {
   return document.querySelector('[aria-modal="true"]') !== null;
 }
 
-/** The action for a key, or null when the card does not handle it. */
+/** The action for a key, or null when the list does not handle it. */
 function actionOf(key: string): (() => void) | null {
   switch (key) {
     case 'a':
@@ -36,6 +39,11 @@ function actionOf(key: string): (() => void) | null {
       return () => {
         selectAntenna(null);
       };
+    case 'Delete':
+      return () => {
+        const id = antennaStore.getState().selected;
+        if (id) askDeleteAntennas([id]);
+      };
     default:
       return null;
   }
@@ -43,7 +51,7 @@ function actionOf(key: string): (() => void) | null {
 
 /**
  * Widgets that own the arrows and Escape themselves. The antenna inventory's tree is not one: its
- * rows take only Enter and Space, so the arrows step the card from a clicked row.
+ * rows take only Enter and Space, so the arrows step the selection from a clicked row.
  */
 const OWNS_KEYS =
   '[role="tablist"], [role="menu"], [role="listbox"], [role="slider"], [role="tree"]';
@@ -55,7 +63,7 @@ function ownedElsewhere(target: EventTarget | null): boolean {
 }
 
 /**
- * Listens on `window` while `enabled` (the card shows a unit). A and R collide with the stage's
+ * Listens on `window` while `enabled` (a unit is selected). A and R collide with the stage's
  * own keys, so they are taken in the capture phase; the arrows and Esc are taken on the way back
  * up, only when nothing has handled them and the focus is not in a widget that owns them.
  */
@@ -67,7 +75,7 @@ export function useAntennaKeys(enabled: boolean): void {
       const act = actionOf(e.key);
       if (!act) return;
       e.preventDefault();
-      // the card's keys win over the stage's (A is annotate there)
+      // the review keys win over the stage's (A is annotate there)
       e.stopImmediatePropagation();
       act();
     };

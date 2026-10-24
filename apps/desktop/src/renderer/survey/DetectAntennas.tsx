@@ -1,7 +1,7 @@
 /**
  * The "Detect antennas" button in the Measure workbench's Telecom family, with its options (the
  * cloud, AI labelling), the "click the tower" hint when the tower is not found, and why a run
- * failed. The inventory is its own section (`telecom/AntennaSection.tsx`);
+ * failed. The inventory is its own section (`telecom/AntennasGroup.tsx`);
  * progress shows in the jobs chip.
  */
 import { getActiveStage, onActiveScene } from '@aio/engine';

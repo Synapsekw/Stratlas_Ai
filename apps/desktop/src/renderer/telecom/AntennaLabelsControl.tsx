@@ -2,7 +2,7 @@
  * The Labels control at the bottom left of the 3D stage while the antennas are drawn: Off,
  * Selected or All. It keeps out of the top band, where the pointer wakes the stage island and the
  * island's open line would cover it on a narrow stage; it sits under the bottom-left corner slot
- * (40 px up), and the floating card keeps clear of it (`LABELS_CONTROL_SELECTOR`). It sets the
+ * (40 px up). It sets the
  * session's labels mode; the selected unit's own labels show in every mode.
  */
 import { t } from '@aio/ui';
@@ -11,9 +11,6 @@ import { createPortal } from 'react-dom';
 import { setLabelMode, useAntennas, type AntennaLabelMode } from './antennaStore';
 
 const MODES: readonly AntennaLabelMode[] = ['off', 'selected', 'all'];
-
-/** Marks the control so the floating card can keep clear of it (AntennaCard). */
-export const LABELS_CONTROL_SELECTOR = '[data-antenna-labels-control]';
 
 const BAR: CSSProperties = {
   position: 'absolute',
