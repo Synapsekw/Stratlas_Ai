@@ -92,8 +92,12 @@ export class PolygonClickTool {
     window.addEventListener('pointermove', move);
     canvas.addEventListener('dblclick', dbl);
     window.addEventListener('keydown', key, { capture: true });
+    // a crosshair while armed, as every pick shows (passive pointer features keep off it)
+    const cursor = canvas.style.cursor;
+    canvas.style.cursor = 'crosshair';
     return () => {
       unclaim();
+      if (canvas.style.cursor === 'crosshair') canvas.style.cursor = cursor;
       window.removeEventListener('pointermove', move);
       canvas.removeEventListener('dblclick', dbl);
       window.removeEventListener('keydown', key, { capture: true });

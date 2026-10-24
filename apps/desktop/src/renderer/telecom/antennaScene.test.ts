@@ -18,6 +18,7 @@ import {
   antennaLabelSpots,
   labelSpotsCache,
   antennaShift,
+  armTowerPick,
   attachAntennaLayer,
   buildAntennaGroup,
   KIND_COLOURS,
@@ -431,5 +432,27 @@ describe('antenna review drawing', () => {
     expect((sel.getObjectByName('antenna-outline:ant-nm') as LineSegments2).material.dashed).toBe(
       true,
     );
+  });
+});
+
+describe('armTowerPick', () => {
+  it('shows a crosshair while armed and gives the cursor back when disarmed', () => {
+    const canvas = document.createElement('canvas');
+    let claims = 0;
+    const stage = {
+      renderer: { domElement: canvas },
+      claimClicks: () => {
+        claims++;
+        return () => {
+          claims--;
+        };
+      },
+    };
+    const off = armTowerPick(stage as never, () => undefined);
+    expect(claims).toBe(1);
+    expect(canvas.style.cursor).toBe('crosshair');
+    off();
+    expect(claims).toBe(0);
+    expect(canvas.style.cursor).toBe('');
   });
 });

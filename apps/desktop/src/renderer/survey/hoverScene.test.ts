@@ -44,9 +44,26 @@ const DEC = series('dec', 'earlier', '2025-12-31', [10, 10, 10]);
 const JAN = series('jan', 'current', '2026-01-10', [8.37, 8.37, 8.37]);
 const TWO = [DEC, JAN];
 
+/** Animation frames run when a test says so (`flush`). */
+let frames: FrameRequestCallback[] = [];
+const flush = () => {
+  const run = frames;
+  frames = [];
+  for (const f of run) f(0);
+};
+
 beforeEach(() => {
   linkedHover.setState({ lines: new Map(), hover: null, pin: null, fly: null });
   measureStore.setState({ file: emptyMeasurements(), tool: null, draw: null, editing: null });
+  frames = [];
+  vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => {
+    frames.push(f);
+    return frames.length;
+  });
+  vi.stubGlobal('cancelAnimationFrame', () => undefined);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 const frame = frameOf({ origin: [0, 0, 0], crs: { wkt: 'LOCAL_CS["Synthetic"]' } });
@@ -58,7 +75,8 @@ function fakeStage() {
   const canvas = document.createElement('canvas');
   host.append(canvas);
   document.body.append(host);
-  canvas.getBoundingClientRect = () => RECT as DOMRect;
+  const rects = vi.fn(() => RECT as DOMRect);
+  canvas.getBoundingClientRect = rects;
   host.getBoundingClientRect = () => RECT as DOMRect;
   const camera = new PerspectiveCamera(50, 400 / 300, 0.1, 5000);
   camera.position.set(50, 80, 60);
@@ -69,8 +87,9 @@ function fakeStage() {
     camera,
     renderer: { domElement: canvas },
     controls: { enabled: true },
+    tool: 'select' as string,
     requestRender: vi.fn(),
-    raycastRay: () => null,
+    raycastRay: vi.fn(() => null),
     onFrame: (fn: () => void) => {
       frameCb = fn;
       return () => undefined;
@@ -92,9 +111,16 @@ function fakeStage() {
     stage,
     canvas,
     host,
+    rects,
     screenOf,
     named: (name: string) => group()?.children.filter((c) => c.name === name) ?? [],
-    move: (x: number, y: number) =>
+    /** A pointer move, then the frame that handles it. */
+    move: (x: number, y: number) => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: y }));
+      flush();
+    },
+    /** A pointer move without its frame. */
+    moveOnly: (x: number, y: number) =>
       canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: y })),
     click: (x: number, y: number) => claim({ clientX: x, clientY: y } as PointerEvent),
     dbl: (x: number, y: number) =>
@@ -214,6 +240,112 @@ describe('3D', () => {
     offFly();
     fly.mockRestore();
   });
+
+  it('another tool armed later keeps its clicks and the pointer: no snap, no pin', () => {
+    const s = fakeStage();
+    linkedHover.getState().register(line(TWO));
+    const [x, y] = s.screenOf([60, 0, 8.37]);
+    const busy: [string, () => void, () => void][] = [
+      ['the stage tool', () => (s.stage.tool = 'section'), () => (s.stage.tool = 'select')],
+      [
+        'a measure tool armed',
+        () => {
+          measureStore.setState({ tool: 'distance' as never });
+        },
+        () => {
+          measureStore.setState({ tool: null });
+        },
+      ],
+      [
+        'a pick on the pane',
+        () => (s.host.dataset.picking = 'true'),
+        () => delete s.host.dataset.picking,
+      ],
+      [
+        'a crosshair (walk, correction, section pick, lasso)',
+        () => (s.canvas.style.cursor = 'crosshair'),
+        () => (s.canvas.style.cursor = ''),
+      ],
+    ];
+    for (const [why, arm, disarm] of busy) {
+      arm();
+      expect(s.click(x, y), why).toBe(false);
+      s.move(x, y);
+      expect(linkedHover.getState().hover, why).toBeNull();
+      expect(linkedHover.getState().pin, why).toBeNull();
+      disarm();
+    }
+    expect(s.click(x, y)).toBe(true);
+    s.detach();
+  });
+
+  it('a click on the pin badge clears the pin, the badge standing at the top dot', () => {
+    // the newest survey (the line's surface) above a design that comes last in order
+    const HIGH = series('jan', 'current', '2026-01-10', [10, 10, 10]);
+    const LOW = series('design', 'design', '', [0, 0, 0]);
+    const s = fakeStage();
+    linkedHover.getState().register(line([HIGH, LOW]));
+    const [x, y] = s.screenOf([60, 0, 10]);
+    expect(s.click(x, y)).toBe(true);
+    expect(linkedHover.getState().pin).not.toBeNull();
+    s.render();
+    const badge = s.pin()?.style.transform ?? '';
+    expect(badge).toBe(`translate(${String(Math.round(x))}px, ${String(Math.round(y))}px)`);
+    // a later click there (not a double-click) clears it
+    vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 1000);
+    expect(s.click(x, y)).toBe(true);
+    expect(linkedHover.getState().pin).toBeNull();
+    vi.restoreAllMocks();
+    s.detach();
+  });
+
+  it('pointer moves are handled once a frame, the canvas box read once and lines kept', () => {
+    const s = fakeStage();
+    linkedHover.getState().register(line(TWO));
+    const [x, y] = s.screenOf([30, 0, 8.37]);
+    const set = vi.spyOn(linkedHover.getState(), 'setHover');
+    s.moveOnly(x, y + 9);
+    s.moveOnly(x, y + 8);
+    expect(set).not.toHaveBeenCalled();
+    s.rects.mockClear();
+    flush();
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(s.rects).toHaveBeenCalledTimes(1);
+    // the camera did not move: the same point again projects nothing and tells nobody
+    const project = vi.spyOn(Vector3.prototype, 'project');
+    s.move(x, y + 8);
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(project).not.toHaveBeenCalled();
+    // the camera moved: projected again
+    s.stage.camera.position.x += 1;
+    s.stage.camera.updateMatrixWorld();
+    s.move(x + 2, y + 8);
+    expect(project).toHaveBeenCalled();
+    project.mockRestore();
+    set.mockRestore();
+    s.detach();
+  });
+
+  it('a hover change updates the drawn objects, it does not make new ones', () => {
+    const s = fakeStage();
+    linkedHover.getState().register(line(TWO));
+    linkedHover.getState().setHover({ key: 'measure:m', chainageM: 42.3, source: 'chart' });
+    const before = ['link-trace', 'link-gap', 'link-ground', 'link-dot', 'link-dot-core'].map((n) =>
+      s.named(n).map((o) => (o as Points).material),
+    );
+    linkedHover.getState().setHover({ key: 'measure:m', chainageM: 61, source: 'chart' });
+    const after = ['link-trace', 'link-gap', 'link-ground', 'link-dot', 'link-dot-core'].map((n) =>
+      s.named(n).map((o) => (o as Points).material),
+    );
+    expect(after).toEqual(before);
+    after.flat().forEach((m, i) => {
+      expect(m).toBe(before.flat()[i]);
+    });
+    // the ground ring moved with the point
+    const ring = s.named('link-ground')[0];
+    expect(ring?.position.x).toBeCloseTo(61, 3);
+    s.detach();
+  });
 });
 
 // ---------------------------------------------------------------- map
@@ -228,15 +360,16 @@ function fakeMap() {
   document.body.append(container);
   canvas.getBoundingClientRect = () => RECT as DOMRect;
   container.getBoundingClientRect = () => RECT as DOMRect;
+  const handlers = new Map<string, () => void>();
   // a plain projection around the first vertex: 1 px a metre or so
   const [lng0, lat0] = toWgs84([500_000, 2_700_000, 0], 32640);
   const map = {
     getCanvas: () => canvas,
     getContainer: () => container,
-    project: (ll: [number, number]) => ({
+    project: vi.fn((ll: [number, number]) => ({
       x: 50 + (ll[0] - lng0) * 100_000,
       y: 150 - (ll[1] - lat0) * 100_000,
-    }),
+    })),
     isStyleLoaded: () => true,
     getSource: (id: string) =>
       id === 'aio-link' && added
@@ -256,12 +389,15 @@ function fakeMap() {
     getLayer: (id: string) => layers.get(id),
     addLayer: (l: { id: string; type: string }) => layers.set(l.id, l),
     removeLayer: (id: string) => layers.delete(id),
-    on: () => undefined,
+    on: (ev: string, fn: () => void) => handlers.set(ev, fn),
     off: () => undefined,
     once: () => undefined,
   };
   return {
     ctl: { map } as unknown as MapController,
+    map,
+    canvas,
+    emit: (ev: string) => handlers.get(ev)?.(),
     container,
     layers,
     source: () => added,
@@ -306,11 +442,71 @@ describe('map', () => {
     const detach = attachHoverMap(m.ctl, mapFrame);
     linkedHover.getState().register(mapLine);
     // 30 m along is about 30 px right of the first vertex at (50, 150)
-    m.container.dispatchEvent(new MouseEvent('pointermove', { clientX: 80, clientY: 156 }));
+    m.canvas.dispatchEvent(
+      new MouseEvent('pointermove', { clientX: 80, clientY: 156, bubbles: true }),
+    );
+    flush();
     expect(linkedHover.getState().hover?.source).toBe('map');
     const click = new MouseEvent('click', { clientX: 80, clientY: 150, bubbles: true });
-    m.container.dispatchEvent(click);
+    m.canvas.dispatchEvent(click);
     expect(linkedHover.getState().pin?.source).toBe('map');
+    detach();
+  });
+  it('a click off the map canvas (a control, a marker, a line handle) is not taken', () => {
+    const m = fakeMap();
+    const detach = attachHoverMap(m.ctl, mapFrame);
+    linkedHover.getState().register(mapLine);
+    const handle = document.createElement('button');
+    handle.className = 'pa-handle';
+    m.container.append(handle);
+    const reached = vi.fn();
+    handle.addEventListener('click', reached);
+    handle.dispatchEvent(new MouseEvent('click', { clientX: 80, clientY: 150, bubbles: true }));
+    expect(reached).toHaveBeenCalledTimes(1);
+    expect(linkedHover.getState().pin).toBeNull();
+    detach();
+  });
+
+  it('a map drawing or pick (crosshair) keeps its clicks', () => {
+    const m = fakeMap();
+    const detach = attachHoverMap(m.ctl, mapFrame);
+    linkedHover.getState().register(mapLine);
+    m.canvas.style.cursor = 'crosshair';
+    const click = new MouseEvent('click', { clientX: 80, clientY: 150, bubbles: true });
+    const reached = vi.fn();
+    m.container.addEventListener('click', reached);
+    m.canvas.dispatchEvent(click);
+    expect(linkedHover.getState().pin).toBeNull();
+    expect(reached).toHaveBeenCalledTimes(1);
+    detach();
+  });
+
+  it('the map snaps on the line vertices, projected again only when the map moves', () => {
+    const m = fakeMap();
+    const detach = attachHoverMap(m.ctl, mapFrame);
+    linkedHover.getState().register(mapLine);
+    m.map.project.mockClear();
+    m.canvas.dispatchEvent(
+      new MouseEvent('pointermove', { clientX: 80, clientY: 156, bubbles: true }),
+    );
+    flush();
+    // two vertices, plus the tag of the hover it set
+    expect(m.map.project.mock.calls.length).toBeLessThanOrEqual(4);
+    m.map.project.mockClear();
+    m.canvas.dispatchEvent(
+      new MouseEvent('pointermove', { clientX: 81, clientY: 156, bubbles: true }),
+    );
+    flush();
+    // the same view: the line is not projected again (only the tag)
+    expect(m.map.project.mock.calls.length).toBeLessThanOrEqual(2);
+    m.emit('move');
+    m.map.project.mockClear();
+    m.canvas.dispatchEvent(
+      new MouseEvent('pointermove', { clientX: 82, clientY: 156, bubbles: true }),
+    );
+    flush();
+    expect(m.map.project.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(linkedHover.getState().hover?.chainageM).toBeCloseTo(32, 0);
     detach();
   });
 });

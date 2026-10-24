@@ -35,6 +35,7 @@ import { linkedHover, type HoverLine, type HoverPoint, type LinkedHoverState } f
 import { markerAt, pointAt, snapScreen, tagText, type TagFormat } from './linkedHoverGeom';
 import type { Frame } from './measureScene';
 import { measureStore } from './measureStore';
+import { pointerBusy } from './pointerBusy';
 
 type Pt = readonly [number, number];
 
@@ -182,41 +183,55 @@ export function linkView(line: HoverLine, chainageM: number, fmt: TagFormat): Li
   };
 }
 
+type Project = (e: number, n: number, z: number | null) => Pt | null;
+interface ScreenLine {
+  screen: Pt[];
+  cumul: number[];
+}
+
 /**
  * A line on screen for snapping: its samples at the newest surface (else its vertices at
  * `fallbackZ`), projected, with each sample's chainage. Points off screen are left out.
  */
-export function screenLine(
-  line: HoverLine,
-  project: (e: number, n: number, z: number | null) => Pt | null,
-): { screen: Pt[]; cumul: number[] } {
+export function screenLine(line: HoverLine, project: Project): ScreenLine {
   const newest = line.series.find((s) => s.key === newestKey(line.series));
   const samples = samplesOf(newest);
+  if (samples.length <= 1) return vertexLine(line, project);
   const screen: Pt[] = [];
   const cumul: number[] = [];
-  const add = (c: number, z: number | null) => {
-    const [e, n] = pointAt(line.polyline, c);
-    const p = project(e, n, z);
-    if (!p) return;
+  for (const s of samples) {
+    const [e, n] = pointAt(line.polyline, s.c);
+    const p = project(e, n, s.z);
+    if (!p) continue;
     screen.push(p);
-    cumul.push(c);
-  };
-  if (samples.length > 1) for (const s of samples) add(s.c, s.z);
-  else {
-    let base = 0;
-    line.polyline.forEach((p, i) => {
-      const prev = line.polyline[i - 1];
-      if (prev) base += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
-      add(base, null);
-    });
+    cumul.push(s.c);
   }
+  return { screen, cumul };
+}
+
+/**
+ * A line's vertices on screen with their chainage: what a flat view (the map) snaps on, where
+ * the heights do not move the line and a straight stretch stays straight.
+ */
+export function vertexLine(line: HoverLine, project: Project): ScreenLine {
+  const screen: Pt[] = [];
+  const cumul: number[] = [];
+  let base = 0;
+  line.polyline.forEach((p, i) => {
+    const prev = line.polyline[i - 1];
+    if (prev) base += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+    const at = project(p[0], p[1], null);
+    if (!at) return;
+    screen.push(at);
+    cumul.push(base);
+  });
   return { screen, cumul };
 }
 
 /** The registered line a screen point snaps to: the one hovered now first, then in order. */
 function snapAt(
   s: LinkedHoverState,
-  project: (e: number, n: number, z: number | null) => Pt | null,
+  screenOf: (line: HoverLine) => ScreenLine,
   x: number,
   y: number,
 ): { key: string; chainageM: number } | null {
@@ -224,18 +239,12 @@ function snapAt(
   const first = s.hover?.key ?? s.pin?.key;
   lines.sort((a, b) => Number(b.key === first) - Number(a.key === first));
   for (const line of lines) {
-    const { screen, cumul } = screenLine(line, project);
+    const { screen, cumul } = screenOf(line);
     const c = snapScreen(screen, cumul, x, y);
     if (c !== null) return { key: line.key, chainageM: c };
   }
   return null;
 }
-
-/** The measurement tools own the pointer while they draw or edit. */
-const measuring = () => {
-  const m = measureStore.getState();
-  return m.draw !== null || m.editing !== null;
-};
 
 /** The point a view shows: the hover, else the pin. */
 function shown(s: LinkedHoverState): HoverPoint | null {
@@ -243,30 +252,98 @@ function shown(s: LinkedHoverState): HoverPoint | null {
   return p && s.lines.has(p.key) ? p : null;
 }
 
-/** The input both views share: snap on move, pin on click, fly on double-click. */
-function pointerInput(
-  view: '3d' | 'map',
-  project: (e: number, n: number, z: number | null) => Pt | null,
-) {
+/** The highest dot of a point: where the tag and the pin badge stand. */
+const topOf = (zs: readonly number[]): number | null => (zs.length > 0 ? Math.max(...zs) : null);
+const topZ = (v: LinkView): number | null => topOf(v.dots.map((d) => d.z));
+
+/** What a view gives the shared input: its projection now and when the pointer is not its. */
+interface InputView {
+  /**
+   * The projection for this frame (the view's box read once) and a key of the view: the lines
+   * on screen are kept while the key holds.
+   */
+  frame(): { project: Project; key: string };
+  /** How a line is put on screen for snapping. */
+  screen(line: HoverLine, project: Project): ScreenLine;
+  /** Another tool owns the pointer now. */
+  busy(): boolean;
+}
+
+/**
+ * The input both views share: snap on move (once a frame), pin on click, fly on double-click.
+ * The lines on screen are kept per view key and registered set, so a pointer move only projects
+ * again after the camera or the map moved.
+ */
+function pointerInput(source: '3d' | 'map', view: InputView) {
   let mine: HoverPoint | null = null;
   let lastClick: { x: number; y: number; t: number } | null = null;
+  let pending: { x: number; y: number } | null = null;
+  let raf = 0;
+  let kept: {
+    key: string;
+    lines: LinkedHoverState['lines'];
+    screens: Map<string, ScreenLine>;
+  } | null = null;
   const clearMine = () => {
     if (mine && linkedHover.getState().hover === mine) linkedHover.getState().setHover(null);
     mine = null;
   };
-  const snap = (x: number, y: number) =>
-    measuring() ? null : snapAt(linkedHover.getState(), project, x, y);
-  return {
-    move(x: number, y: number) {
-      const hit = snap(x, y);
-      if (!hit) {
-        clearMine();
-        return;
+  const onScreen = () => {
+    const f = view.frame();
+    const lines = linkedHover.getState().lines;
+    if (kept?.key !== f.key || kept.lines !== lines)
+      kept = { key: f.key, lines, screens: new Map() };
+    const screens = kept.screens;
+    const screenOf = (line: HoverLine): ScreenLine => {
+      let sl = screens.get(line.key);
+      if (!sl) {
+        sl = view.screen(line, f.project);
+        screens.set(line.key, sl);
       }
-      mine = { key: hit.key, chainageM: hit.chainageM, source: view };
-      linkedHover.getState().setHover(mine);
+      return sl;
+    };
+    return { project: f.project, screenOf };
+  };
+  const snap = (x: number, y: number) => {
+    if (view.busy()) return null;
+    const s = linkedHover.getState();
+    if (s.lines.size === 0) return null;
+    const { screenOf } = onScreen();
+    return snapAt(s, screenOf, x, y);
+  };
+  const moveNow = (x: number, y: number) => {
+    const hit = snap(x, y);
+    if (!hit) {
+      clearMine();
+      return;
+    }
+    const now = linkedHover.getState().hover;
+    // the same point again: nothing to tell the chart
+    if (mine && now === mine && mine.key === hit.key && mine.chainageM === hit.chainageM) return;
+    mine = { key: hit.key, chainageM: hit.chainageM, source };
+    linkedHover.getState().setHover(mine);
+  };
+  const cancel = () => {
+    pending = null;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  };
+  return {
+    /** A pointer move: handled on the next frame, the last move of the frame wins. */
+    move(x: number, y: number) {
+      pending = { x, y };
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const p = pending;
+        pending = null;
+        if (p) moveNow(p.x, p.y);
+      });
     },
-    leave: clearMine,
+    leave() {
+      cancel();
+      clearMine();
+    },
     /** True when the click was on a line and is taken. */
     click(x: number, y: number): boolean {
       const hit = snap(x, y);
@@ -283,15 +360,15 @@ function pointerInput(
       const pin = s.pin;
       const pinLine = pin ? s.lines.get(pin.key) : undefined;
       if (pin && pinLine && pin.key === hit.key) {
-        const [e, n] = pointAt(pinLine.polyline, pin.chainageM);
-        const z = markerAt(pinLine, pin.chainageM).dots.at(-1)?.z ?? null;
-        const at = project(e, n, z);
+        // on the badge: it stands at the point's top dot (`topZ`), as the views draw it
+        const m = markerAt(pinLine, pin.chainageM);
+        const at = onScreen().project(m.e, m.n, topOf(m.dots.map((d) => d.z)));
         if (at && Math.hypot(at[0] - x, at[1] - y) <= ON_PIN_PX) {
           s.setPin(null);
           return true;
         }
       }
-      s.setPin({ key: hit.key, chainageM: hit.chainageM, source: view });
+      s.setPin({ key: hit.key, chainageM: hit.chainageM, source });
       return true;
     },
     /** True when the double-click was on a line and asked for the fly. */
@@ -301,7 +378,27 @@ function pointerInput(
       linkedHover.getState().flyTo(hit.key, hit.chainageM);
       return true;
     },
-    detach: clearMine,
+    detach() {
+      cancel();
+      clearMine();
+    },
+  };
+}
+
+/**
+ * An element's box, read at most once a frame: the snap, the tag and the badge of one frame
+ * share it.
+ */
+function frameRect(el: HTMLElement): () => DOMRect {
+  let rect: DOMRect | null = null;
+  return () => {
+    if (!rect) {
+      rect = el.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        rect = null;
+      });
+    }
+    return rect;
   };
 }
 
@@ -356,10 +453,13 @@ function views(s: LinkedHoverState, fmt: TagFormat) {
   return { view, pinView, pinned: p !== null && p === s.pin };
 }
 
-const topZ = (v: LinkView): number | null =>
-  v.dots.length > 0 ? Math.max(...v.dots.map((d) => d.z)) : null;
-
 // ---------------------------------------------------------------- 3D
+
+/** A dot's two layers: a ring is a dot with a dark middle, a filled dot has a white edge. */
+interface DotPair {
+  outer: Points<BufferGeometry, PointsMaterial>;
+  core: Points<BufferGeometry, PointsMaterial>;
+}
 
 /** Draw the linked hover in a 3D view and let its line drive the chart. Returns the detach. */
 export function attachHover3d(stage: EngineStage, frame: Frame): () => void {
@@ -372,127 +472,177 @@ export function attachHover3d(stage: EngineStage, frame: Frame): () => void {
   const host = canvas.parentElement ?? canvas;
   const tags = overlay(host, 'sv-labels link-labels');
   const tmp = new Vector3();
+  const canvasRect = frameRect(canvas);
+  const hostRect = frameRect(host);
   const clamp = (e: number, n: number): number => {
     const top = stage.camera.position.y + 10_000;
     const l = frame.toLocal([e, n, 0]);
     const hit = stage.raycastRay(new Vector3(l[0], top, l[2]), new Vector3(0, -1, 0));
     return hit ? frame.toSite([hit.point.x, hit.point.y, hit.point.z])[2] : 0;
   };
-  /** Site point to client pixels, null behind the camera. */
-  const toClient = (e: number, n: number, z: number | null): Pt | null => {
-    const l = frame.toLocal([e, n, z ?? clamp(e, n)]);
-    tmp.set(l[0], l[1], l[2]).project(stage.camera);
-    if (tmp.z > 1) return null;
-    const r = canvas.getBoundingClientRect();
-    return [r.left + ((tmp.x + 1) / 2) * r.width, r.top + ((1 - tmp.y) / 2) * r.height];
-  };
+  /** Site point to client pixels in the box `r`, null behind the camera. */
+  const projectIn =
+    (r: DOMRect): Project =>
+    (e, n, z) => {
+      const l = frame.toLocal([e, n, z ?? clamp(e, n)]);
+      tmp.set(l[0], l[1], l[2]).project(stage.camera);
+      if (tmp.z > 1) return null;
+      return [r.left + ((tmp.x + 1) / 2) * r.width, r.top + ((1 - tmp.y) / 2) * r.height];
+    };
   const toHost = (p: Pt | null): Pt | null => {
     if (!p) return null;
-    const hr = host.getBoundingClientRect();
+    const hr = hostRect();
     return [p[0] - hr.left, p[1] - hr.top];
   };
 
-  const clear = () => {
-    for (const c of [...group.children]) {
-      group.remove(c);
-      const o = c as Mesh;
-      o.geometry.dispose();
-      (o.material as Material).dispose();
-    }
-  };
+  // the drawn objects are made once and updated: a hover move changes positions and colours,
+  // never programs
   const onTop = <T extends Line | Line2 | Points | Mesh>(o: T, name: string): T => {
     o.name = name;
     o.renderOrder = 50;
     o.frustumCulled = false;
     o.raycast = () => undefined;
-    group.add(o);
     return o;
   };
+  const shownIn = (o: Line | Line2 | Points | Mesh, on: boolean) => {
+    if (on && o.parent !== group) group.add(o);
+    else if (!on && o.parent === group) group.remove(o);
+  };
+  const trace = onTop(
+    new Line2(
+      new LineGeometry(),
+      new LineMaterial({
+        color: LINK_COLOURS.accent,
+        linewidth: 3,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+      }),
+    ),
+    'link-trace',
+  );
+  const gapGeometry = new BufferGeometry();
+  gapGeometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(6), 3));
+  const gap = onTop(
+    new Line(
+      gapGeometry,
+      new LineDashedMaterial({
+        color: '#ffffff',
+        dashSize: 0.25,
+        gapSize: 0.15,
+        depthTest: false,
+        transparent: true,
+      }),
+    ),
+    'link-gap',
+  );
+  const ringGeometry = new RingGeometry(0.6, 1, 40);
+  ringGeometry.rotateX(-Math.PI / 2);
+  const ring = onTop(
+    new Mesh(
+      ringGeometry,
+      new MeshBasicMaterial({
+        color: LINK_COLOURS.accent,
+        transparent: true,
+        opacity: 0.35,
+        side: DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    ),
+    'link-ground',
+  );
+  const dotPool: DotPair[] = [];
+  const point = (name: string) => {
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(new Float32Array(3), 3));
+    const mat = new PointsMaterial({
+      sizeAttenuation: false,
+      depthTest: false,
+      transparent: true,
+    });
+    return onTop(new Points(g, mat), name);
+  };
+  const dotPair = (i: number): DotPair => {
+    let pair = dotPool[i];
+    if (!pair) {
+      pair = { outer: point('link-dot'), core: point('link-dot-core') };
+      dotPool.push(pair);
+    }
+    return pair;
+  };
+  const setPoint = (
+    p: Points<BufferGeometry, PointsMaterial>,
+    at: readonly number[],
+    size: number,
+    colour: string,
+  ) => {
+    const pos = p.geometry.getAttribute('position') as Float32BufferAttribute;
+    pos.setXYZ(0, at[0] ?? 0, at[1] ?? 0, at[2] ?? 0);
+    pos.needsUpdate = true;
+    p.material.size = size;
+    p.material.color.set(colour);
+  };
+  const all = () => [trace, gap, ring, ...dotPool.flatMap((d) => [d.outer, d.core])];
+
   const local = (e: number, n: number, z: number) => frame.toLocal([e, n, z] as SitePoint);
   const ringScale = () => {
-    const ring = group.getObjectByName('link-ground');
-    if (!ring) return;
+    if (ring.parent !== group) return;
     const r = Math.max(0.3, stage.camera.position.distanceTo(ring.position) * 0.015);
     ring.scale.set(r, r, r);
   };
   const sizeTrace = () => {
-    const trace = group.getObjectByName('link-trace') as Line2 | undefined;
-    if (trace?.material instanceof LineMaterial)
-      trace.material.resolution.set(canvas.clientWidth, canvas.clientHeight);
+    trace.material.resolution.set(canvas.clientWidth, canvas.clientHeight);
   };
 
   let current: ReturnType<typeof views> = { view: null, pinView: null, pinned: false };
   const rebuild = () => {
-    clear();
     current = views(linkedHover.getState(), tagFormat());
     const v = current.view;
-    if (v) {
-      const traceZ = (z: number | null, e: number, n: number) => z ?? v.groundZ ?? clamp(e, n);
-      const pts = v.trace.map(([e, n, z]) => local(e, n, traceZ(z, e, n)));
-      if (pts.length > 1) {
-        const g = new LineGeometry();
-        g.setPositions(pts.flat());
-        const mat = new LineMaterial({
-          color: LINK_COLOURS.accent,
-          linewidth: 3,
-          depthTest: false,
-          depthWrite: false,
-          transparent: true,
-        });
-        onTop(new Line2(g, mat), 'link-trace');
-      }
-      if (v.gap) {
-        const g = new BufferGeometry();
-        g.setAttribute(
-          'position',
-          new Float32BufferAttribute(
-            [...local(v.e, v.n, v.gap[0]), ...local(v.e, v.n, v.gap[1])],
-            3,
-          ),
-        );
-        const mat = new LineDashedMaterial({
-          color: '#ffffff',
-          dashSize: 0.25,
-          gapSize: 0.15,
-          depthTest: false,
-          transparent: true,
-        });
-        onTop(new Line(g, mat), 'link-gap').computeLineDistances();
-      }
-      if (v.groundZ !== null) {
-        const g = new RingGeometry(0.6, 1, 40);
-        g.rotateX(-Math.PI / 2);
-        const mat = new MeshBasicMaterial({
-          color: LINK_COLOURS.accent,
-          transparent: true,
-          opacity: 0.35,
-          side: DoubleSide,
-          depthTest: false,
-          depthWrite: false,
-        });
-        const ring = onTop(new Mesh(g, mat), 'link-ground');
-        const [x, y, z] = local(v.e, v.n, v.groundZ);
-        ring.position.set(x, y, z);
-      }
-      for (const d of v.dots) {
-        const dot = (size: number, colour: string, name: string) => {
-          const g = new BufferGeometry();
-          g.setAttribute('position', new Float32BufferAttribute(local(v.e, v.n, d.z), 3));
-          const mat = new PointsMaterial({
-            color: colour,
-            size,
-            sizeAttenuation: false,
-            depthTest: false,
-            transparent: true,
-          });
-          const p = onTop(new Points(g, mat), name);
-          p.userData = { key: d.key, filled: d.filled };
-          return p;
-        };
-        // a ring is a dot with a dark middle; a filled dot has a white edge
-        dot(d.filled ? 13 : 12, d.filled ? '#ffffff' : d.colour, 'link-dot');
-        dot(d.filled ? 10 : 7, d.filled ? d.colour : '#1b1f24', 'link-dot-core');
-      }
+    // the trace
+    const pts = v ? v.trace.map(([e, n, z]) => local(e, n, z ?? v.groundZ ?? clamp(e, n))) : [];
+    if (pts.length > 1) {
+      const g = new LineGeometry();
+      g.setPositions(pts.flat());
+      trace.geometry.dispose();
+      trace.geometry = g;
+    }
+    shownIn(trace, pts.length > 1);
+    // the gap between the surveys' dots
+    if (v?.gap) {
+      const pos = gap.geometry.getAttribute('position') as Float32BufferAttribute;
+      const lo = local(v.e, v.n, v.gap[0]);
+      const hi = local(v.e, v.n, v.gap[1]);
+      pos.setXYZ(0, lo[0], lo[1], lo[2]);
+      pos.setXYZ(1, hi[0], hi[1], hi[2]);
+      pos.needsUpdate = true;
+      gap.geometry.computeBoundingSphere();
+      gap.computeLineDistances();
+    }
+    shownIn(gap, Boolean(v?.gap));
+    // the soft ring on the ground
+    if (v && v.groundZ !== null) {
+      const [x, y, z] = local(v.e, v.n, v.groundZ);
+      ring.position.set(x, y, z);
+    }
+    shownIn(ring, v !== null && v.groundZ !== null);
+    // one dot per survey
+    const dots = v?.dots ?? [];
+    dots.forEach((d, i) => {
+      const pair = dotPair(i);
+      const at = local(v?.e ?? 0, v?.n ?? 0, d.z);
+      setPoint(pair.outer, at, d.filled ? 13 : 12, d.filled ? '#ffffff' : d.colour);
+      setPoint(pair.core, at, d.filled ? 10 : 7, d.filled ? d.colour : '#1b1f24');
+      pair.outer.userData = { key: d.key, filled: d.filled };
+      pair.core.userData = { key: d.key, filled: d.filled };
+      shownIn(pair.outer, true);
+      shownIn(pair.core, true);
+    });
+    for (let i = dots.length; i < dotPool.length; i++) {
+      const pair = dotPool[i];
+      if (!pair) continue;
+      shownIn(pair.outer, false);
+      shownIn(pair.core, false);
     }
     sizeTrace();
     ringScale();
@@ -500,11 +650,11 @@ export function attachHover3d(stage: EngineStage, frame: Frame): () => void {
     stage.requestRender();
   };
   const place = () => {
+    const project = projectIn(canvasRect());
     const v = current.view;
-    const z = v ? topZ(v) : null;
-    const at = v ? toHost(toClient(v.e, v.n, z)) : null;
+    const at = v ? toHost(project(v.e, v.n, topZ(v))) : null;
     const pv = current.pinView;
-    const pinAt = pv ? toHost(toClient(pv.e, pv.n, topZ(pv))) : null;
+    const pinAt = pv ? toHost(project(pv.e, pv.n, topZ(pv))) : null;
     tags.show(v, at, current.pinned, pinAt);
   };
   const offFrame = stage.onFrame(() => {
@@ -516,7 +666,16 @@ export function attachHover3d(stage: EngineStage, frame: Frame): () => void {
     if (s.hover !== prev.hover || s.pin !== prev.pin || s.lines !== prev.lines) rebuild();
   });
 
-  const input = pointerInput('3d', toClient);
+  const input = pointerInput('3d', {
+    frame: () => {
+      const r = canvasRect();
+      const cam = stage.camera;
+      const key = `${String(r.left)},${String(r.top)},${String(r.width)},${String(r.height)} ${cam.matrixWorld.elements.join(',')} ${cam.projectionMatrix.elements.join(',')}`;
+      return { project: projectIn(r), key };
+    },
+    screen: screenLine,
+    busy: () => pointerBusy(canvas, stage),
+  });
   const onMove = (e: PointerEvent) => {
     // an orbit drag is not a hover
     if (e.buttons !== 0) return;
@@ -542,7 +701,11 @@ export function attachHover3d(stage: EngineStage, frame: Frame): () => void {
     canvas.removeEventListener('pointerleave', onLeave);
     canvas.removeEventListener('dblclick', onDbl);
     input.detach();
-    clear();
+    for (const o of all()) {
+      group.remove(o);
+      o.geometry.dispose();
+      (o.material as Material).dispose();
+    }
     stage.scene.remove(group);
     tags.root.remove();
     stage.requestRender();
@@ -563,21 +726,26 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
   const canvas = map.getCanvas();
   const container = map.getContainer();
   const tags = overlay(container, 'link-labels link-labels-map');
+  const canvasRect = frameRect(canvas);
+  const containerRect = frameRect(container);
   const lngLat = (e: number, n: number): [number, number] => {
     const ll = toWgs84([e, n, 0], epsg);
     return [ll[0], ll[1]];
   };
-  /** Site point to client pixels. */
-  const toClient = (e: number, n: number): Pt | null => {
-    const px = map.project(lngLat(e, n));
-    const r = canvas.getBoundingClientRect();
-    return [r.left + px.x, r.top + px.y];
-  };
+  /** Site point to client pixels in the canvas box `r`. */
+  const projectIn =
+    (r: DOMRect): Project =>
+    (e, n) => {
+      const px = map.project(lngLat(e, n));
+      return [r.left + px.x, r.top + px.y];
+    };
   const toHost = (p: Pt | null): Pt | null => {
     if (!p) return null;
-    const hr = container.getBoundingClientRect();
+    const hr = containerRect();
     return [p[0] - hr.left, p[1] - hr.top];
   };
+  /** Bumped as the map moves or resizes: the lines on screen are projected again. */
+  let viewSeq = 0;
 
   let current: ReturnType<typeof views> = { view: null, pinView: null, pinned: false };
   const data = () => {
@@ -671,13 +839,14 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
     }
   };
   const place = () => {
+    const project = projectIn(canvasRect());
     const v = current.view;
     const pv = current.pinView;
     tags.show(
       v,
-      v ? toHost(toClient(v.e, v.n)) : null,
+      v ? toHost(project(v.e, v.n, null)) : null,
       current.pinned,
-      pv ? toHost(toClient(pv.e, pv.n)) : null,
+      pv ? toHost(project(pv.e, pv.n, null)) : null,
     );
   };
   const rebuild = () => {
@@ -689,9 +858,25 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
     if (s.hover !== prev.hover || s.pin !== prev.pin || s.lines !== prev.lines) rebuild();
   });
 
-  const input = pointerInput('map', (e, n) => toClient(e, n));
+  const input = pointerInput('map', {
+    frame: () => {
+      const r = canvasRect();
+      const key = `${String(viewSeq)} ${String(r.left)},${String(r.top)},${String(r.width)},${String(r.height)}`;
+      return { project: projectIn(r), key };
+    },
+    // on a flat map the heights do not move the line: its vertices are enough
+    screen: vertexLine,
+    busy: () => pointerBusy(canvas),
+  });
+  // only the map's own surface: controls, DOM markers and the pile line's handles over it keep
+  // their pointer
+  const onMap = (e: Event) => e.target === canvas;
   const onMove = (e: PointerEvent) => {
     if (e.buttons !== 0) return;
+    if (!onMap(e)) {
+      input.leave();
+      return;
+    }
     input.move(e.clientX, e.clientY);
   };
   const onLeave = () => {
@@ -700,16 +885,20 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
   // capture on the container: a click or double-click on the line is the hover's, not the
   // map's pick or zoom underneath it
   const onClick = (e: MouseEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !onMap(e)) return;
     if (input.click(e.clientX, e.clientY)) e.stopPropagation();
   };
   const onDbl = (e: MouseEvent) => {
-    if (!input.dbl(e.clientX, e.clientY)) return;
+    if (!onMap(e) || !input.dbl(e.clientX, e.clientY)) return;
     e.preventDefault();
     e.stopPropagation();
   };
   const onRender = () => {
+    viewSeq++;
     place();
+  };
+  const onResize = () => {
+    viewSeq++;
   };
   const onStyle = () => {
     draw();
@@ -719,6 +908,7 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
   container.addEventListener('click', onClick, { capture: true });
   container.addEventListener('dblclick', onDbl, { capture: true });
   map.on('move', onRender);
+  map.on('resize', onResize);
   map.on('styledata', onStyle);
   rebuild();
 
@@ -729,6 +919,7 @@ export function attachHoverMap(ctl: MapController, frame: Frame): () => void {
     container.removeEventListener('click', onClick, { capture: true });
     container.removeEventListener('dblclick', onDbl, { capture: true });
     map.off('move', onRender);
+    map.off('resize', onResize);
     map.off('styledata', onStyle);
     map.off('idle', whenIdle);
     input.detach();

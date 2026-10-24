@@ -170,4 +170,13 @@ describe('PolygonClickTool', () => {
     key('Escape');
     expect(events).toEqual([]);
   });
+
+  it('shows a crosshair while armed and gives the cursor back on detach', () => {
+    const { tool, canvas } = setup();
+    canvas.style.cursor = 'grab';
+    const off = tool.attach();
+    expect(canvas.style.cursor).toBe('crosshair');
+    off();
+    expect(canvas.style.cursor).toBe('grab');
+  });
 });

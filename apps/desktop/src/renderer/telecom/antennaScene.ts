@@ -504,7 +504,10 @@ export function armTowerPick(
   onPoint: (local: [number, number, number]) => void,
 ): () => void {
   const canvas = stage.renderer.domElement;
-  return stage.claimClicks((e) => {
+  // a crosshair while armed, as every pick shows: the linked hover keeps off these clicks
+  const cursor = canvas.style.cursor;
+  canvas.style.cursor = 'crosshair';
+  const release = stage.claimClicks((e) => {
     const r = canvas.getBoundingClientRect();
     const hit = stage.raycast(
       ((e.clientX - r.left) / r.width) * 2 - 1,
@@ -514,4 +517,8 @@ export function armTowerPick(
     onPoint([hit.point.x, hit.point.y, hit.point.z]);
     return true;
   });
+  return () => {
+    release();
+    if (canvas.style.cursor === 'crosshair') canvas.style.cursor = cursor;
+  };
 }
