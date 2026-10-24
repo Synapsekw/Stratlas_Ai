@@ -602,9 +602,9 @@ export function setShowProject(fn: ShowProject): void {
  * - none, a pick in the 3D view: the tab comes forward unless a tool is in front (a pick never
  *   takes Coverage or a live tool away; the list updates behind it) and a folded sidebar stays
  *   folded, since the 3D labels still show the pick (`show` alone never pops the drawer);
- * - `review`, a review link: the same, but the person asked for the list, so a folded drawer opens;
- * - `edit`, an edit from the menu: always forward, also over Coverage, drawer opened, as the person
- *   asked to type in the row.
+ * - `review`, a review link (it sits in the Coverage tab itself), and `edit`, an edit from the
+ *   menu: explicit asks, so the tab always comes forward, also over Coverage or a live tool, and a
+ *   folded drawer opens.
  */
 export function revealAntenna(
   id: string | null,
@@ -616,11 +616,9 @@ export function revealAntenna(
   set({ selected: id, reveal: get().reveal + 1 });
   revealInList('antennas', id);
   const { tabs, front } = bench.getState();
-  if (ask === 'edit') showProject(bench);
-  else if (!toolInFront({ tabs, front, issueEditing: isIssueEditing() })) {
-    if (ask === 'review') showProject(bench);
-    else bench.getState().show('measure');
-  }
+  if (ask) showProject(bench);
+  else if (!toolInFront({ tabs, front, issueEditing: isIssueEditing() }))
+    bench.getState().show('measure');
 }
 
 /** Edit azimuth / Edit downtilt: show the row and focus the field (the one path for both menus). */

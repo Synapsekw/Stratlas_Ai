@@ -72,6 +72,15 @@ describe('followAntennaPick', () => {
 });
 
 describe('openAntennaReview', () => {
+  it('brings Project forward over Coverage, an explicit ask', () => {
+    const bench = createWorkbenchStore(null);
+    bench.getState().open('rf');
+    bench.getState().show('rf');
+    openAntennaReview(bench);
+    expect(bench.getState().front).toBe('measure');
+    expect(antennaStore.getState()).toMatchObject({ filter: 'draft', selected: 'ant-d1' });
+  });
+
   it('asks the list for the first draft and brings Project forward', () => {
     const bench = createWorkbenchStore(null);
     bench.getState().show('selection');

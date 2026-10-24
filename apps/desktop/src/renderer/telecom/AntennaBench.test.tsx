@@ -441,14 +441,14 @@ describe('openAntennaReview (another tool asks for the review)', () => {
     expect(scrollSpy).not.toHaveBeenCalled();
   });
 
-  it('brings the Project tab forward unless a tool is in front', async () => {
+  it('brings the Project tab forward, also from the Coverage tab the link sits in', async () => {
     await mount();
     workbench.getState().open('rf');
     workbench.getState().show('rf');
     act(() => {
       openAntennaReview();
     });
-    expect(workbench.getState().front).toBe('rf');
+    expect(workbench.getState().front).toBe('measure');
     workbench.getState().show('selection');
     act(() => {
       openAntennaReview();
