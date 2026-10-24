@@ -56,6 +56,7 @@ import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
 import { useSurfacePrepareStatus } from '../survey/PreparingCard';
 import { filterTerms } from '../survey/measureFilter';
+import { openMeasurement } from '../survey/pile/openPile';
 import { prepareSurfaces } from '../survey/compareStore';
 import { moveMeasurementsToDate } from '../survey/measureMoveRun';
 import { buildMeasureItems, needsDate } from '../survey/measureRows';
@@ -874,9 +875,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       setMeasurementsHidden(ids, !visible);
     },
     onSelect: (id) => {
-      // a plain click selects one row and lets go of the marks
+      // a plain click selects one row and lets go of the marks; a pile opens in the Volumes tab
       setMarks(NO_MARKS);
-      select([id], id);
+      openMeasurement(id);
     },
     onMenu: openMeasure,
     renaming: canMeasureEdit ? measureRenaming : null,

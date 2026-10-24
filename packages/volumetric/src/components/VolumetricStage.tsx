@@ -11,7 +11,7 @@ import {
   useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Raycaster, Vector2, type Object3D } from 'three';
+import { Raycaster, Vector2, Vector3, type Camera, type Line, type Object3D } from 'three';
 import { CHANGE_RAMP, RAMP_IDS, rampCss } from '../model/dsm';
 import { VolumetricScene } from '../scene/controller';
 import { useVolumetric, volumetric } from '../store';
@@ -19,6 +19,80 @@ import { useVolumetric, volumetric } from '../store';
 function ndcOf(stage: EngineStage, clientX: number, clientY: number): [number, number] {
   const r = stage.renderer.domElement.getBoundingClientRect();
   return [((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1];
+}
+
+/** How near a toe line, in screen pixels, a click is on it. */
+const TOE_PX = 6;
+
+/** The pile an object of the volumetric scene draws (its `vol:<id>` group's id). */
+function pileOf(o: Object3D | null): string | null {
+  for (let p = o; p; p = p.parent) {
+    const id: unknown = p.userData.pile;
+    if (typeof id === 'string') return id;
+  }
+  return null;
+}
+
+/** Distance in pixels from (x, y) to the segment a-b. */
+function segmentPx(x: number, y: number, a: Vector2, b: Vector2): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len2));
+  return Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy));
+}
+
+/**
+ * The pile under a click on the volumetric scene: a body top in any body mode (lifted or in
+ * place), else the nearest toe line within a few pixels (the outline left when bodies are hidden).
+ * Hidden piles are not picked. `rect` is the canvas's client rectangle.
+ */
+export function pilePickAt(
+  group: Object3D,
+  camera: Camera,
+  rect: { left: number; top: number; width: number; height: number },
+  x: number,
+  y: number,
+): string | null {
+  const tops: Object3D[] = [];
+  const toes: Line[] = [];
+  group.traverseVisible((o) => {
+    if (o.name === 'body-top') tops.push(o);
+    // the toe lines are `LineLoop`s with a position attribute (`drawBodies`)
+    else if (o.name === 'toe' || o.name === 'toe-selected') toes.push(o as Line);
+  });
+  const ray = new Raycaster();
+  ray.setFromCamera(
+    new Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1),
+    camera,
+  );
+  const top = pileOf(ray.intersectObjects(tops, false)[0]?.object ?? null);
+  if (top) return top;
+  const v = new Vector3();
+  const onScreen = (o: Line, i: number): Vector2 | null => {
+    const pos = o.geometry.getAttribute('position');
+    v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).project(camera);
+    if (v.z > 1) return null;
+    return new Vector2(
+      rect.left + ((v.x + 1) / 2) * rect.width,
+      rect.top + ((1 - v.y) / 2) * rect.height,
+    );
+  };
+  let best: { pile: string; px: number } | null = null;
+  for (const o of toes) {
+    const n = o.geometry.getAttribute('position').count;
+    const pile = pileOf(o);
+    if (!pile || n < 2) continue;
+    const pts = Array.from({ length: n }, (_, i) => onScreen(o, i));
+    for (let i = 0; i < n; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % n];
+      if (!a || !b) continue;
+      const px = segmentPx(x, y, a, b);
+      if (px <= TOE_PX && (!best || px < best.px)) best = { pile, px };
+    }
+  }
+  return best?.pile ?? null;
 }
 
 /** Ground point (E, N, H) under the pointer, from the stage's own picking. */
@@ -443,7 +517,8 @@ export function VolumetricStage({
     };
   }, [scene]);
 
-  // Clicks on the stage: section points while picking, and lifted volume bodies select their pile.
+  // Clicks on the stage: section points while picking, and a pile's body (any body mode) or toe
+  // line selects it.
   // Claimed through the stage, never by stopping the pointer events: the orbit controls must see
   // every release, or they keep turning the camera with the mouse after the first section point.
   useEffect(() => {
@@ -451,7 +526,6 @@ export function VolumetricStage({
     const canvas = stage.renderer.domElement;
     const host = canvas.parentElement;
     if (!host) return;
-    const ray = new Raycaster();
     const release = stage.claimClicks((e) => {
       if (stage.tool !== 'select') return false;
       const s = volumetric.getState();
@@ -462,14 +536,13 @@ export function VolumetricStage({
         if (p) void s.addSectionPoint([p[0], p[1]]);
         return true;
       }
-      if (s.body !== 'lift') return false;
-      ray.setFromCamera(new Vector2(...ndcOf(stage, e.clientX, e.clientY)), stage.camera);
-      const tops: Object3D[] = [];
-      scene.group.traverse((o) => {
-        if (o.name === 'body-top' && o.visible) tops.push(o);
-      });
-      const pile = ray.intersectObjects(tops, false)[0]?.object.parent?.userData.pile as
-        string | undefined;
+      const pile = pilePickAt(
+        scene.group,
+        stage.camera,
+        canvas.getBoundingClientRect(),
+        e.clientX,
+        e.clientY,
+      );
       if (!pile) return false;
       s.select(pile);
       return true;

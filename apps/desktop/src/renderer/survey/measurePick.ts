@@ -23,6 +23,7 @@ import type { DatesOnScreen } from './measureDates';
 import { measureAt, type HitShape } from './measureHits';
 import { shapesOf, type Frame } from './measureScene';
 import { measureStore, revealMeasurement, select, type MeasureState } from './measureStore';
+import { isPile, openPile } from './pile/openPile';
 
 /** A measure tool is drawing or a measurement's vertices are being edited: no pick, no menu. */
 export function pickBlocked(s: Pick<MeasureState, 'tool' | 'draw' | 'editing'>): boolean {
@@ -102,7 +103,7 @@ function attachRightClick(
 
 /**
  * A left click's pick: a measurement under the cursor is selected and its row shown (the
- * sidebar stays as it is); a click beside every measurement clears the measurement selection
+ * sidebar stays as it is), a pile opened in the Volumes tab; a click beside every measurement clears the measurement selection
  * and is left to the view. Returns whether the click was taken.
  */
 function pickClick(
@@ -115,7 +116,10 @@ function pickClick(
   if (pickBlocked(s) || pointTarget(x, y)) return false;
   const id = hit(x, y);
   if (id) {
-    select([id], id);
+    // a pile opens in the Volumes tab, any other measurement is selected for the Measure tab
+    const m = s.file.measurements.find((r) => r.id === id);
+    if (m && isPile(m)) openPile(id);
+    else select([id], id);
     revealMeasurement(id, { openSidebar: false });
     return true;
   }

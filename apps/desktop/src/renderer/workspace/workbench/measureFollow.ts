@@ -28,12 +28,16 @@ const PANEL_TABS: readonly TabId[] = ['qa', 'overlays', 'hydro'];
 
 // ---------------------------------------------------------------- following the tools
 
-/** Bring the Measure tab to the front, opening it when it is not there. */
-function reveal(bench: StoreApi<WorkbenchState>): void {
+/**
+ * Bring a tab to the front, opening it when it is not there; the drawer of a folded sidebar is
+ * left alone (a pick follows, it is not an ask). The Measure tab follows a picked measurement this
+ * way, and the Volumes tab a picked pile (`openPile`).
+ */
+export function revealTab(id: TabId, bench: StoreApi<WorkbenchState> = workbench): void {
   const b = bench.getState();
-  if (b.front === BENCH) return;
-  if (b.tabs.some((t) => t.id === BENCH)) b.show(BENCH);
-  else b.open(BENCH);
+  if (b.front === id) return;
+  if (b.tabs.some((t) => t.id === id)) b.show(id);
+  else b.open(id);
 }
 
 /**
@@ -49,7 +53,8 @@ export function showMeasureBench(bench: StoreApi<WorkbenchState> = workbench): v
  * front unless an issue is being edited); stopping one that opened the tab closes it again. A
  * drawing for another panel (a one-shot shape, or one started from a survey panel's tab) leaves
  * that panel in front. Opening the measurements list, or picking a measurement while no tool
- * draws, brings the Measure tab forward (not a pile picked in the Volumes view's list, which shows it). Closing the live tab with its X stops the drawing
+ * draws, brings the Measure tab forward (not a pile: `openPile` notes its pick, and the Volumes tab
+ * shows it). Closing the live tab with its X stops the drawing
  * (`linkLiveTab`). Returns unsubscribe.
  */
 export function followMeasureTool(
@@ -59,7 +64,7 @@ export function followMeasureTool(
   let started = false;
   let focusAtStart: string | null = null;
   const follow = () => {
-    if (!isIssueEditing()) reveal(bench);
+    if (!isIssueEditing()) revealTab(BENCH, bench);
   };
   const offTab = linkLiveTab(BENCH, () => measure.getState().tool !== null, stopTool, bench);
   const offTool = measure.subscribe((s, prev) => {

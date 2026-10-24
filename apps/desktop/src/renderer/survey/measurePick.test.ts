@@ -19,6 +19,7 @@ import {
   type MeasureMenuAt,
 } from './measurePick';
 import { measureStore, setMeasurementsHidden } from './measureStore';
+import { workbench } from '../workspace/workbench/workbenchStore';
 
 vi.mock('../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false }) },
@@ -26,6 +27,7 @@ vi.mock('../shell', () => ({
   useShell: () => null,
   shell: { getState: () => ({}) },
 }));
+vi.mock('../issueCard/state', () => ({ isIssueEditing: () => false }));
 vi.mock('../builder/PhotoMenu', () => ({ CLICK_PX: 5, photosAt3d: vi.fn(() => null) }));
 vi.mock('../builder/droneHits', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -99,6 +101,7 @@ const line = (
  */
 const at = (e: number, n: number) => ({ x: 500 + e, y: 500 - n });
 const onShape = at(50, 0); // on m1, from (0, 0) to (100, 0)
+const onPile = at(-200, -150); // on the pile v1's west edge
 const empty = at(-300, -300);
 
 let claim: (e: PointerEvent) => boolean;
@@ -134,9 +137,20 @@ beforeEach(() => {
           ],
           { kind: 'survey', capture: 'jun' },
         ),
+        {
+          ...line('v1', [
+            [-200, -200, 0],
+            [-100, -200, 0],
+            [-100, -100, 0],
+            [-200, -100, 0],
+          ]),
+          family: 'polygon',
+          tool: 'volume',
+        },
       ],
     },
   });
+  workbench.getState().show('selection');
   canvas = document.body.appendChild(document.createElement('canvas'));
   canvas.getBoundingClientRect = () =>
     ({ left: 0, top: 0, width: 1000, height: 1000, right: 1000, bottom: 1000 }) as DOMRect;
@@ -238,6 +252,18 @@ describe('measurement pick in 3D', () => {
     expect(claim(leftClickAt(empty))).toBe(false);
     expect(measureStore.getState().focus).toBeNull();
     expect(measureStore.getState().selected).toEqual([]);
+  });
+
+  it('a click on a pile in 3D opens the Volumes tab, not Measure', () => {
+    expect(claim(leftClickAt(onPile))).toBe(true);
+    expect(measureStore.getState().focus).toBe('v1');
+    expect(measureStore.getState().reveal).toMatchObject({ id: 'v1', openSidebar: false });
+    expect(workbench.getState().front).toBe('volumes');
+  });
+
+  it('a non-pile measurement does not bring the Volumes tab', () => {
+    expect(claim(leftClickAt(onShape))).toBe(true);
+    expect(workbench.getState().front).not.toBe('volumes');
   });
 
   it('empty ground clears a selection the sidebar marks left without a focus', () => {
@@ -345,6 +371,12 @@ describe('measurement pick on the map', () => {
     expect(measureStore.getState().reveal).toMatchObject({ id: 'm1', openSidebar: false });
     mapLeftClick(empty);
     expect(measureStore.getState().focus).toBeNull();
+  });
+
+  it('a click on a pile on the map opens the Volumes tab', () => {
+    mapLeftClick(onPile);
+    expect(measureStore.getState().focus).toBe('v1');
+    expect(workbench.getState().front).toBe('volumes');
   });
 
   it('a photo pin, a map pick in progress or a measure tool keep the click', () => {
