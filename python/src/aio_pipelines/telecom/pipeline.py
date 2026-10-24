@@ -34,6 +34,8 @@ from ..runtime import AtomicPath, JobError, Step, StepContext, atomic_write_json
 
 ANTENNAS_SCHEMA = "aio.antennas/1"
 ANTENNAS_FILE = "telecom/antennas.json"
+DELETIONS_SCHEMA = "aio.antenna-deletions/1"
+DELETIONS_FILE = "telecom/antenna-deletions.json"
 CROPS_DIR = "telecom/crops"
 RUN_ID = re.compile(r"^run-[a-z0-9-]{1,60}$")
 UNIT_ID = re.compile(r"^ant-[a-z0-9-]{1,60}$")
@@ -161,6 +163,30 @@ def _read_previous(project: Path) -> dict | None:
     if not isinstance(doc, dict) or doc.get("schema") != ANTENNAS_SCHEMA:
         raise JobError(f"{ANTENNAS_FILE} is not an antenna inventory ({ANTENNAS_SCHEMA}).")
     return doc
+
+
+def _read_deletions(project: Path) -> list[dict]:
+    """The deletion records the person made (`telecom/antenna-deletions.json`); none when the file
+    is missing. Entries without a box centre are skipped."""
+    p = project / DELETIONS_FILE
+    if not p.is_file():
+        return []
+    try:
+        doc = json.loads(p.read_text("utf-8"))
+    except (OSError, ValueError) as e:
+        raise JobError(
+            f"The deleted-antenna record {DELETIONS_FILE} cannot be read ({type(e).__name__}); "
+            "fix or move it and run again."
+        ) from e
+    if not isinstance(doc, dict) or doc.get("schema") != DELETIONS_SCHEMA:
+        raise JobError(f"{DELETIONS_FILE} is not a deleted-antenna record ({DELETIONS_SCHEMA}).")
+    out = []
+    for d in doc.get("deletions") or []:
+        box = d.get("box") if isinstance(d, dict) else None
+        c = box.get("centre") if isinstance(box, dict) else None
+        if isinstance(c, list) and len(c) == 3 and all(isinstance(v, (int, float)) for v in c):
+            out.append(d)
+    return out
 
 
 GROUND_R_MIN_M = 0.5
@@ -365,7 +391,8 @@ class TelecomAntennas:
             units = _run_units(measured, photos, run_id, created)
             # final ids first (the merge), so each crop is named by the id it will have
             framed = _in_run_frame(manifest, _read_previous(ctx.project), ctx.outputs("crown"))
-            merged = merge_with_sources(framed, units, run_id)
+            deletions = _deletions_in_run_frame(manifest, _read_deletions(ctx.project), ctx.outputs("crown"))
+            merged = merge_with_sources(framed, units, run_id, deletions)
             crops: dict[str, str] = {}
             n = max(1, len(merged))
             for j, (u, src) in enumerate(merged):
@@ -392,7 +419,8 @@ class TelecomAntennas:
             units = new_units(ctx)
             staged_crops: dict[str, str] = ctx.outputs("photos").get("crops") or {}
             previous = _read_previous(ctx.project)
-            merged = merge_with_sources(_in_run_frame(manifest, previous, crown), units, run_id)
+            deletions = _deletions_in_run_frame(manifest, _read_deletions(ctx.project), crown)
+            merged = merge_with_sources(_in_run_frame(manifest, previous, crown), units, run_id, deletions)
             moves: list[tuple[str, str]] = []
             final: list[dict[str, Any]] = []
             for u, src in merged:
@@ -492,6 +520,30 @@ def _in_run_frame(manifest: dict, previous: dict | None, crown: dict) -> dict | 
         capture_shift(manifest, now) if now else zero,
     )
     return in_capture_frame(previous, delta)
+
+
+def _deletions_in_run_frame(manifest: dict, deletions: list[dict], crown: dict) -> list[dict]:
+    """The deletion records in this run's survey date frame: each record's box centre is in the frame
+    of its own `captureId` (none: no line-up), moved like `_in_run_frame` moves the old units."""
+    from ..captures import capture_shift
+    from .merge import date_frame_delta, in_capture_frame
+
+    now = str(crown["captureId"]) if crown.get("captureId") else None
+    zero = (0.0, 0.0)
+    out = []
+    for d in deletions:
+        before = d.get("captureId")
+        before = before if isinstance(before, str) and before else None
+        if before == now:
+            out.append(d)
+            continue
+        delta = date_frame_delta(
+            capture_shift(manifest, before) if before else zero,
+            capture_shift(manifest, now) if now else zero,
+        )
+        moved = in_capture_frame({"units": [d]}, delta)
+        out.append(moved["units"][0] if moved else d)
+    return out
 
 
 def _run_units(measured: list[dict], photos: list[list[dict]], run_id: str, created: str) -> list[dict]:

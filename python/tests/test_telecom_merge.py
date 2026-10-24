@@ -16,8 +16,12 @@ from aio_pipelines.telecom.merge import (
     next_name,
     person_owned,
 )
+from aio_pipelines.telecom.pipeline import DELETIONS_SCHEMA
 
 CONTRACT = Path(__file__).resolve().parents[2] / "packages/schema/src/__fixtures__/antennas-contract.json"
+DELETIONS_CONTRACT = (
+    Path(__file__).resolve().parents[2] / "packages/schema/src/__fixtures__/antenna-deletions-contract.json"
+)
 Q = {"basis": "measured", "residualM": 0.004, "support": 900, "coverage": 0.8}
 
 
@@ -314,3 +318,49 @@ def test_person_owned_and_measured_passthrough():
 def test_next_name_after_highest():
     assert next_name([{"name": "A2"}, {"name": "A9"}, {"name": "X"}]) == "A10"
     assert next_name([]) == "A1"
+
+
+def deletion(centre, kind="panel"):
+    return {
+        "unitId": "ant-gone",
+        "name": "A9",
+        "kind": kind,
+        "box": unit(centre)["box"],
+        "deletedAt": "2026-10-24T09:00:00.000Z",
+    }
+
+
+def test_contract_deletions_schema():
+    c = json.loads(DELETIONS_CONTRACT.read_text("utf-8"))
+    assert c["schema"] == DELETIONS_SCHEMA
+    assert c["matchRadiusM"] == MATCH_RADIUS_M
+
+
+def test_merge_drops_a_new_find_at_a_deleted_spot():
+    merged = merge_runs(None, [unit((0, 0, 10))], "run-new", [deletion((0.1, 0, 10))])
+    assert merged == []
+
+
+def test_merge_deleted_spot_matches_any_kind():
+    merged = merge_runs(None, [unit((0, 0, 10), kind="panel")], "run-new", [deletion((0, 0, 10), "dish")])
+    assert merged == []
+
+
+def test_merge_find_beyond_the_radius_is_new():
+    merged = merge_runs(None, [unit((0, 0, 10))], "run-new", [deletion((0.31, 0, 10))])
+    assert [u["name"] for u in merged] == ["A1"] and merged[0]["status"] == "draft"
+
+
+def test_merge_old_unit_wins_over_a_deletion():
+    accepted = old("ant-old-1", "A1", (0, 0, 10), "accepted")
+    merged = merge_runs(prev(accepted), [unit((0, 0, 10))], "run-new", [deletion((0, 0, 10))])
+    assert [u["id"] for u in merged] == ["ant-old-1"]
+
+
+def test_merge_without_deletions_is_unchanged():
+    accepted = old("ant-old-1", "A1", (0, 0, 10), "accepted")
+    draft = old("ant-old-2", "A2", (5, 0, 10), "draft")
+    found = [unit((0, 0, 10)), unit((5, 0, 10)), unit((9, 9, 10))]
+    assert merge_runs(prev(accepted, draft), found, "run-new") == merge_runs(
+        prev(accepted, draft), found, "run-new", ()
+    )

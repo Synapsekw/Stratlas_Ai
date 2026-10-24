@@ -17,6 +17,9 @@ first, each unit at most once.
 - Matched draft: new geometry, old id, name, user fields and non-geometry kind.
 - Unmatched old accepted: kept, flagged `notFoundInLatest`. Unmatched old drafts and rejected
   units that are not person-owned are dropped (a rejected unit that is not found again has nothing left to reject).
+- Deleted antennas: a new find whose box centre lies within `MATCH_RADIUS_M` of a deletion record's box
+  centre (any kind) is dropped, so a unit the person deleted does not come back as a draft. Old units
+  win: a find an old unit absorbs is never tested against the records.
 - New units are drafts named `A<n>` after the highest number in use, numbered clockwise from north
   around the units' middle, with ids `ant-<run>-<k>`.
 
@@ -29,6 +32,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Sequence
 
 from ..captures import local_delta
 
@@ -175,7 +179,7 @@ def _clockwise(units: list[dict]) -> list[int]:
 
 
 def merge_with_sources(
-    previous: dict | None, units: list[dict], run_id: str
+    previous: dict | None, units: list[dict], run_id: str, deletions: Sequence[dict] = ()
 ) -> list[tuple[dict, int | None]]:
     """Like `merge_runs`, each unit with the index of the new unit it came from (None for an old
     unit that took nothing from this run: kept unmatched, or matched while rejected)."""
@@ -223,7 +227,11 @@ def merge_with_sources(
     # new units: drafts, numbered clockwise
     used_ids = {u["id"] for u, _ in out}
     top = int(next_name([u for u, _ in out])[1:]) - 1
-    fresh = [i for i in range(len(units)) if i not in pairs]
+    fresh = [
+        i
+        for i in range(len(units))
+        if i not in pairs and not any(_distance(units[i], d) <= MATCH_RADIUS_M for d in deletions)
+    ]
     order = _clockwise([units[i] for i in fresh])
     stem = run_id[4:] if run_id.startswith("run-") else run_id
     k = 0
@@ -242,7 +250,10 @@ def merge_with_sources(
     return out
 
 
-def merge_runs(previous: dict | None, units: list[dict], run_id: str) -> list[dict]:
+def merge_runs(
+    previous: dict | None, units: list[dict], run_id: str, deletions: Sequence[dict] = ()
+) -> list[dict]:
     """The inventory after a run: `previous` (the antennas file, or None) merged with `units` (the
-    new run's units, with every field but `id`, `name` and `status`). See the module docstring."""
-    return [u for u, _ in merge_with_sources(previous, units, run_id)]
+    new run's units, with every field but `id`, `name` and `status`). `deletions` are the records
+    of antennas the person deleted (each with a `box`). See the module docstring."""
+    return [u for u, _ in merge_with_sources(previous, units, run_id, deletions)]

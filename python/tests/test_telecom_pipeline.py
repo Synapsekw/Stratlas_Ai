@@ -428,3 +428,73 @@ def test_rerun_on_another_date_moves_the_inventory_into_its_frame(tmp_path, mono
         if u["id"] != kept["id"] and math.dist(u["box"]["centre"], same[0]["box"]["centre"]) < 0.3
     ]
     assert near == []
+
+
+def _write_deletion(root: Path, gone: dict, capture_id: str | None) -> None:
+    rec = {
+        "unitId": gone["id"],
+        "name": gone["name"],
+        "kind": gone["kind"],
+        "box": gone["box"],
+        "deletedAt": "2026-10-24T09:00:00.000Z",
+    }
+    if capture_id:
+        rec["captureId"] = capture_id
+    (root / "telecom" / "antenna-deletions.json").write_text(
+        json.dumps({"schema": "aio.antenna-deletions/1", "deletions": [rec]}), encoding="utf-8"
+    )
+
+
+def test_rerun_does_not_bring_back_a_deleted_detection(tmp_path, monopole):
+    xyz, _ = monopole
+    root = make_tower_project(tmp_path / "p", xyz)
+    assert run_job(pipeline(), root, {"run": "run-a"})[0]["status"] == "done"
+    first = read_file(root)
+    gone = first["units"][0]
+    first["units"] = first["units"][1:]
+    (root / "telecom" / "antennas.json").write_text(json.dumps(first), encoding="utf-8")
+    _write_deletion(root, gone, first["run"].get("captureId"))
+    assert run_job(pipeline(), root, {"run": "run-b"}, job_id="jb")[0]["status"] == "done"
+    second = read_file(root)
+    assert len(second["units"]) == len(first["units"])
+    assert not [u for u in second["units"] if math.dist(u["box"]["centre"], gone["box"]["centre"]) <= 0.3]
+
+
+def test_deletions_from_another_date_move_into_the_run_frame(tmp_path, monopole):
+    xyz, _ = monopole
+    a, b = "capture-2026-02-01", "capture-2026-06-01"
+    shifts = {a: (3.0, -2.0), b: (-1.0, 1.5)}
+    de, dn = 4.0, -3.5
+    root = make_tower_project(tmp_path / "p", xyz)
+    _dated(root, a, shifts)
+    assert run_job(pipeline(), root, {"run": "run-a"})[0]["status"] == "done"
+    first = read_file(root)
+    assert first["run"]["captureId"] == a
+    gone = first["units"][0]
+    first["units"] = first["units"][1:]
+    (root / "telecom" / "antennas.json").write_text(json.dumps(first), encoding="utf-8")
+    _write_deletion(root, gone, a)
+
+    moved = np.array(xyz, dtype=np.float64)
+    moved[:, 0] += de
+    moved[:, 2] -= dn
+    make_tower_project(tmp_path / "b", moved)
+    (root / "clouds" / "tower.las").write_bytes((tmp_path / "b" / "clouds" / "tower.las").read_bytes())
+    _dated(root, b, shifts)
+    assert run_job(pipeline(), root, {"run": "run-b"}, job_id="jb")[0]["status"] == "done"
+    second = read_file(root)
+    assert second["run"]["captureId"] == b
+    want = [gone["box"]["centre"][0] + de, gone["box"]["centre"][1] + dn, gone["box"]["centre"][2]]
+    assert not [u for u in second["units"] if math.dist(u["box"]["centre"], want) <= 0.3]
+    assert len(second["units"]) == len(first["units"])
+
+
+def test_unreadable_deletions_fail_the_job(tmp_path, monopole):
+    xyz, _ = monopole
+    root = make_tower_project(tmp_path / "p", xyz)
+    (root / "telecom").mkdir(exist_ok=True)
+    (root / "telecom" / "antenna-deletions.json").write_text("{", encoding="utf-8")
+    rec = Recorder()
+    with pytest.raises(JobError) as e:
+        Job("jd", pipeline(), root, {"run": "run-a"}, rec, threading.Event()).run()
+    assert "antenna-deletions.json" in str(e.value)
