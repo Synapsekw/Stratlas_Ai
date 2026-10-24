@@ -68,6 +68,7 @@ import {
   measureStore,
   type MeasureState,
 } from './measureStore';
+import { fallbackZ, type MapHeights } from './mapHeights';
 import { mapPickLayer, type VertexPick } from './measureSource';
 
 const DRAFT_COLOR = '#4cc9f0';
@@ -817,7 +818,10 @@ export function attachMap(
   ctl: MapController,
   frame: Frame,
   clampZ: (e: number, n: number) => number | null,
-  opts: MeasureViewOptions = {},
+  opts: MeasureViewOptions & {
+    /** The date in view's surface heights, read where the stage has nothing under a pick. */
+    heights?: MapHeights;
+  } = {},
 ): () => void {
   const epsg = frame.epsg;
   if (epsg === null) return () => undefined;
@@ -834,18 +838,24 @@ export function attachMap(
     const r = canvas.getBoundingClientRect();
     return { x: r.left + px.x, y: r.top + px.y };
   };
+  // the stage first, then the date in view's prepared surface (cached tiles only)
+  const heights = opts.heights;
+  const surfaceZ = (e: number, n: number): number | null =>
+    clampZ(e, n) ?? heights?.at(e, n) ?? null;
   const env = (): DrawEnv => {
     const s = measureStore.getState();
     return {
       view: 'map',
       snap: (screen) => findSnap(screen, snapProviders(s, dates.getState()), toScreen, s.snap),
-      clampZ,
+      clampZ: surfaceZ,
       distanceUnit: effectiveUnits(s.settings.units).distance,
     };
   };
+  // never 0: with no surface under it a point takes the previous vertex's height, then the origin's
   const site = (lng: number, lat: number): SitePoint => {
     const [e, n] = fromWgs84([lng, lat, 0], epsg);
-    return [e, n, clampZ(e, n) ?? 0];
+    const prev = measureStore.getState().draw?.points.at(-1) ?? null;
+    return [e, n, fallbackZ(surfaceZ(e, n), prev, openManifest()?.origin[2] ?? 0)];
   };
 
   const data = () => {

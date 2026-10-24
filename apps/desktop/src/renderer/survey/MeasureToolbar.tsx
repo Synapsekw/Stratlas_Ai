@@ -6,6 +6,7 @@
  * D18); Survey QA, Terrain overlays and Hydrology are sidebar tabs of their own.
  */
 import type { EngineStage } from '@aio/engine';
+import { fromWgs84 } from '@aio/geo';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import { isTelecomTool } from '@aio/survey';
 import { useWorkspace } from '@aio/workspace';
@@ -21,7 +22,10 @@ import { useMagicController } from './MagicPolygon';
 import { MeasureMenu } from './MeasureMenu';
 import { attachMeasurePick3d, attachMeasurePickMap, type MeasureMenuAt } from './measurePick';
 import { PendingNote, usePending } from './PendingNote';
+import { createMapHeights, type EnBox } from './mapHeights';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
+import { useFocusCapture } from './qaHelpers';
+import { surfaceOfCapture, useQa } from './qaStore';
 import { loadMeasurements, setSurface, stopTool, stopEditing, useMeasure } from './measureStore';
 import { TemplateEditor } from './TemplateEditor';
 import { useOverlaysLoad } from './Overlays';
@@ -91,11 +95,51 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     };
   }, [stage, frame]);
 
+  // where the stage has nothing under a map pick, the focused date's prepared surface gives the
+  // height (tiles around the map's view, loaded ahead), so a map point never falls to 0
+  const heights = useMemo(() => (projectId ? createMapHeights(projectId) : null), [projectId]);
+  const focusCapture = useFocusCapture();
+  const surfaces = useQa((s) => s.surfaces);
+  const focusTiles = useMemo(
+    () => (focusCapture ? surfaceOfCapture(surfaces, focusCapture) : null),
+    [surfaces, focusCapture],
+  );
+  useEffect(() => {
+    if (!heights) return;
+    const epsg = frame?.epsg ?? null;
+    const warm = () => {
+      let around: EnBox | undefined;
+      if (map && epsg !== null) {
+        const b = map.map.getBounds();
+        const sw = fromWgs84([b.getWest(), b.getSouth(), 0], epsg);
+        const ne = fromWgs84([b.getEast(), b.getNorth(), 0], epsg);
+        around = {
+          minE: Math.min(sw[0], ne[0]),
+          minN: Math.min(sw[1], ne[1]),
+          maxE: Math.max(sw[0], ne[0]),
+          maxN: Math.max(sw[1], ne[1]),
+        };
+      }
+      void heights.warm(focusTiles, around);
+    };
+    warm();
+    if (!map) return;
+    map.map.on('moveend', warm);
+    return () => {
+      map.map.off('moveend', warm);
+    };
+  }, [heights, focusTiles, map, frame]);
+
   useEffect(() => {
     if (!map || !frame) return;
     const clampZ = stage ? stageClamp(stage, frame) : () => null;
     const detach = [
-      attachMap(map, frame, clampZ, { dates: primaryMap }),
+      attachMap(
+        map,
+        frame,
+        clampZ,
+        heights ? { dates: primaryMap, heights } : { dates: primaryMap },
+      ),
       attachSectionMap(map, frame.epsg),
       attachOverlaysMap(map, frame.epsg),
       attachMeasurePickMap(map, frame, setMenuAt),
@@ -103,7 +147,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     return () => {
       for (const d of detach) d();
     };
-  }, [map, frame, stage]);
+  }, [map, frame, stage, heights]);
 
   // a project switch ends any drawing
   useEffect(() => {

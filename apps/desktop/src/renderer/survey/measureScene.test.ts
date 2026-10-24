@@ -22,6 +22,9 @@ import {
   DEFAULT_FILL_OPACITY,
   DEFAULT_MEASURE_COLOUR,
 } from './measureColours';
+import { toWgs84 } from '@aio/geo';
+import { workspace } from '@aio/workspace';
+import type { MapHeights } from './mapHeights';
 import { attach3d, attachMap, frameOf, hitPick, labelText, snapProviders } from './measureScene';
 import {
   editEvent,
@@ -622,4 +625,68 @@ it('label is name and primary value', () => {
   expect(
     labelText(pad({ style: { color: '#ef476f', showPropertyName: true } }), settings, []),
   ).toMatch(/^Pad · .+: 100\.00 m²$/);
+});
+
+// ---------------------------------------------------------------- map picks off the stage
+
+/** A drawing map whose stage has nothing under a pick; `click(e, n)` clicks at that place. */
+function drawingMap(heights: MapHeights) {
+  const fm = fakeMap();
+  const handlers = new Map<string, (e: unknown) => void>();
+  const map = (fm.ctl as unknown as { map: Record<string, unknown> }).map;
+  map.on = (type: string, fn: (e: unknown) => void) => {
+    handlers.set(type, fn);
+  };
+  workspace.setState({
+    project: {
+      id: 'p',
+      manifest: { origin: [0, 0, 51], crs: { epsg: 32640 }, captures: [], layers: [] },
+    },
+  } as unknown as Parameters<typeof workspace.setState>[0]);
+  const detach = attachMap(
+    fm.ctl,
+    frameOf({ origin: [0, 0, 51], crs: { epsg: 32640 } }),
+    () => null,
+    { heights },
+  );
+  let x = 0;
+  const click = (e: number, n: number) => {
+    const ll = toWgs84([e, n, 0], 32640);
+    x += 50;
+    handlers.get('click')?.({
+      lngLat: { lng: ll[0], lat: ll[1] },
+      point: { x, y: 0 },
+      originalEvent: new MouseEvent('click'),
+      preventDefault: () => undefined,
+    });
+  };
+  return {
+    click,
+    detach: () => {
+      detach();
+      workspace.setState({ project: null } as unknown as Parameters<typeof workspace.setState>[0]);
+    },
+  };
+}
+
+it('a map pick that misses the stage takes the cached surface height', () => {
+  const m = drawingMap({ warm: () => Promise.resolve(), at: () => 77.5 });
+  startTool('distance');
+  m.click(500_000, 2_700_000);
+  expect(measureStore.getState().draw?.points[0]?.[2]).toBe(77.5);
+  m.detach();
+});
+
+it('with nothing cached it takes the previous vertex, then the origin height, never 0', () => {
+  let surface: number | null = null;
+  const m = drawingMap({ warm: () => Promise.resolve(), at: () => surface });
+  startTool('distance');
+  m.click(500_000, 2_700_000);
+  surface = 60;
+  m.click(500_010, 2_700_000);
+  surface = null;
+  m.click(500_020, 2_700_000);
+  const pts = measureStore.getState().draw?.points ?? [];
+  expect(pts.map((p) => p[2])).toEqual([51, 60, 60]);
+  m.detach();
 });
