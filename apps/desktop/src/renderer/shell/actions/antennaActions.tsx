@@ -4,9 +4,10 @@ import { askDeleteAntennas } from '../../telecom/antennaDelete';
 import {
   antennaStore,
   beginFlag,
+  deleteBlockedReason,
   requestFly,
   setAntennaSolo,
-  setUnitStatus,
+  setUnitsStatus,
   showAntennaField,
   toggleAntennaHidden,
 } from '../../telecom/antennaStore';
@@ -51,7 +52,10 @@ const isHidden = (id: string): boolean => antennaStore.getState().hidden[id] ===
 function decide(tg: Target, status: Exclude<AntennaStatus, 'draft'>): void {
   const units = unitsOf(tg);
   const next: AntennaStatus = units.every((u) => u.status === status) ? 'draft' : status;
-  for (const u of units) void setUnitStatus(u.id, next);
+  void setUnitsStatus(
+    units.map((u) => u.id),
+    next,
+  );
 }
 
 function focusField(tg: Target, key: 'azimuthGridDeg' | 'downtiltDeg'): void {
@@ -166,7 +170,7 @@ const actions: readonly Action[] = [
     section: 'danger',
     targets: ['antennas'],
     multi: true,
-    disabled: blocked,
+    disabled: () => deleteBlockedReason(),
     run: (tg) => {
       askDeleteAntennas(tg.ids);
     },

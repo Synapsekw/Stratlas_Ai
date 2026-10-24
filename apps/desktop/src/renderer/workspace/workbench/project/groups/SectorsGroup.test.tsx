@@ -138,6 +138,50 @@ describe('Sectors group', () => {
     expect(h.rename).not.toHaveBeenCalled();
   });
 
+  it('Enter then blur renames once; Escape then blur never renames', () => {
+    plan();
+    mount();
+    const open = () => {
+      act(() => {
+        host.querySelector<HTMLButtonElement>('li button[aria-label="Rename"]')!.click();
+      });
+      return host.querySelector<HTMLInputElement>('input.pl-rename')!;
+    };
+    const input = open();
+    const setValue = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )!.set!.bind(input);
+    act(() => {
+      setValue('North');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    });
+    expect(h.rename).toHaveBeenCalledTimes(1);
+    h.rename.mockClear();
+    const again = open();
+    act(() => {
+      again.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      again.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    });
+    expect(h.rename).not.toHaveBeenCalled();
+  });
+
+  it('never shows a bearing of 360 degrees', () => {
+    rfStore.setState({
+      hasFile: true,
+      antennas: antennasFile([unit('ant-z', 359.6, { convergenceDeg: 0 })]),
+      sectors: sectorsFile([{ id: 'sec-s1', antennaIds: ['ant-z'] }], []),
+    });
+    mount();
+    const row = host.querySelector('li[data-row-id]')!;
+    expect(row.textContent).toContain('0°');
+    expect(row.textContent).not.toContain('360');
+  });
+
   it('Fly to asks to fly to the sector antennas', () => {
     plan();
     mount();

@@ -400,6 +400,24 @@ describe('the bulk bar', () => {
     expect(q('antenna-bulk')).toBeNull();
   });
 
+  it('accepts the ticked units in one write', async () => {
+    load(four());
+    show();
+    tick('p1');
+    tick('p3');
+    click(q('antenna-bulk-accept'));
+    await settle();
+    expect(h.writes).toHaveLength(1);
+  });
+
+  it('delete is greyed and asks nothing while a detection runs', () => {
+    load(four(), { running: true, ticked: { p1: true } });
+    show();
+    expect(q('antenna-bulk-delete')!.getAttribute('aria-disabled')).toBe('true');
+    click(q('antenna-bulk-delete'));
+    expect(antennaDeleteStore.getState().ask).toBeNull();
+  });
+
   it('read-only: the bar changes nothing', async () => {
     load(four(), { readOnly: true, ticked: { p1: true } });
     show();

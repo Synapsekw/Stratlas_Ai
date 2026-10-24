@@ -460,6 +460,16 @@ export function setUnitStatus(id: string, status: AntennaStatus): Promise<void> 
   );
 }
 
+/** Set the status of several units in one write (one backup, one undo step). */
+export function setUnitsStatus(ids: readonly string[], status: AntennaStatus): Promise<void> {
+  const which = new Set(ids);
+  return change((file) =>
+    file.units.some((u) => which.has(u.id))
+      ? { ...file, units: file.units.map((u) => (which.has(u.id) ? { ...u, status } : u)) }
+      : null,
+  );
+}
+
 /** Set the typed fields; an explicitly undefined field is cleared. */
 export function patchUnitUser(id: string, fields: AntennaUserFields): Promise<void> {
   return change((file) => {
@@ -537,10 +547,40 @@ export function deleteUnits(
       result = { ok: true };
       return;
     }
-    result = { ok: false, error: !r.ok ? r.error : r.value.ok ? '' : r.value.error };
+    const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
+    // a refusal means the file on disk moved on: read it again, as `change` does
+    await loadAntennas(projectId, root);
+    result = {
+      ok: false,
+      error:
+        error.trim() || t('project.antennas.deleteFailed', { reason: 'the antenna file changed.' }),
+    };
   });
   queue = next.catch(() => undefined);
   return next.then(() => result);
+}
+
+/**
+ * The ticked rows the filter shows, in the panel's order: a tick whose unit has gone, or that the
+ * filter hides, is not among them. The bulk bar and the right-click menu both act on these.
+ */
+export function visibleTickedIds(s: Pick<AntennaState, 'file' | 'filter' | 'ticked'>): string[] {
+  return filteredUnits(s.file, s.filter)
+    .filter((u) => s.ticked[u.id] === true)
+    .map((u) => u.id);
+}
+
+/**
+ * Why a delete is refused right now, or false: read-only, or a detection or flag job going (its
+ * write would bring a deleted unit back).
+ */
+export function deleteBlockedReason(
+  s: Pick<AntennaState, 'readOnly' | 'running' | 'flagStarting' | 'flagJob'> = get(),
+): string | false {
+  if (s.readOnly) return t('telecom.antennas.readOnly');
+  if (s.running) return t('telecom.antennas.running');
+  if (s.flagStarting || s.flagJob !== null) return t('telecom.antennas.flag.busy');
+  return false;
 }
 
 /** Tick or untick a row for a bulk action. */

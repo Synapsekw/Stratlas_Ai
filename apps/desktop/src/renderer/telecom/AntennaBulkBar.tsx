@@ -7,23 +7,32 @@
 import { Button, IconButton, t } from '@aio/ui';
 import type { ReactElement } from 'react';
 import { askDeleteAntennas } from './antennaDelete';
-import { clearTicked, filteredUnits, setUnitStatus, useAntennas } from './antennaStore';
+import {
+  clearTicked,
+  deleteBlockedReason,
+  setUnitsStatus,
+  useAntennas,
+  visibleTickedIds,
+} from './antennaStore';
 
 export function AntennaBulkBar(): ReactElement | null {
   const file = useAntennas((s) => s.file);
   const filter = useAntennas((s) => s.filter);
   const ticked = useAntennas((s) => s.ticked);
   const readOnly = useAntennas((s) => s.readOnly);
+  const running = useAntennas((s) => s.running);
+  const flagStarting = useAntennas((s) => s.flagStarting);
+  const flagJob = useAntennas((s) => s.flagJob);
   // the ticked rows on screen, in their order: a tick whose unit has gone, or that the filter
   // hides, neither counts nor is acted on
-  const ids = filteredUnits(file, filter)
-    .filter((u) => ticked[u.id] === true)
-    .map((u) => u.id);
+  const ids = visibleTickedIds({ file, filter, ticked });
   if (ids.length === 0) return null;
   const reason = readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {};
+  const deleteWhy = deleteBlockedReason({ readOnly, running, flagStarting, flagJob });
+  const deleteReason = deleteWhy ? { disabledReason: deleteWhy } : {};
   const decide = (status: 'accepted' | 'rejected') => {
     if (readOnly) return;
-    for (const id of ids) void setUnitStatus(id, status);
+    void setUnitsStatus(ids, status);
     clearTicked();
   };
   const count = t('project.antennas.bulk.count', { count: ids.length });
@@ -57,7 +66,7 @@ export function AntennaBulkBar(): ReactElement | null {
         variant="danger"
         icon="trash"
         data-testid="antenna-bulk-delete"
-        {...reason}
+        {...deleteReason}
         onClick={() => {
           askDeleteAntennas(ids);
         }}

@@ -15,7 +15,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
-import { openAntennaMenu, useAntennas } from './antennaStore';
+import { deleteBlockedReason, openAntennaMenu, useAntennas } from './antennaStore';
 import { askDeleteAntennas } from './antennaDelete';
 import { DASH } from './AntennaDetails';
 import { TONE } from './antennaFormat';
@@ -67,6 +67,10 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
   const name = unit.name;
   const dish = unit.kind === 'dish';
   const ref = useRef<HTMLDivElement>(null);
+  const running = useAntennas((a) => a.running);
+  const flagStarting = useAntennas((a) => a.flagStarting);
+  const flagJob = useAntennas((a) => a.flagJob);
+  const deleteWhy = deleteBlockedReason({ readOnly, running, flagStarting, flagJob });
   const want = useAntennas((a) => (a.focusField?.id === unit.id ? a.focusField : null));
   // the menu's Edit azimuth / Edit downtilt: the field's text is focused and selected, once
   useEffect(() => {
@@ -165,7 +169,7 @@ export function AntennaRow(props: AntennaRowProps): ReactElement {
           className="antenna-trash"
           label={t('project.antennas.deleteRow', { name })}
           data-testid="antenna-row-delete"
-          {...(readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {})}
+          {...(deleteWhy ? { disabledReason: deleteWhy } : {})}
           onClick={(e) => {
             e.stopPropagation();
             askDeleteAntennas([unit.id]);

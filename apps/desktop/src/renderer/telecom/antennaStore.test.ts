@@ -17,6 +17,9 @@ import {
   beginFlag,
   cancelHint,
   deleteUnits,
+  deleteBlockedReason,
+  setUnitsStatus,
+  visibleTickedIds,
   toggleTicked,
   endFlag,
   resetTypedValue,
@@ -1249,5 +1252,69 @@ describe('typed values and kinds', () => {
     expect(r.ok).toBe(false);
     expect(h.calls.some(([c]) => c === 'telecom:deleteAntennas')).toBe(false);
     expect(file().units).toHaveLength(3);
+  });
+});
+
+describe('antenna bulk helpers', () => {
+  beforeEach(async () => {
+    h.disk.file = sampleFile();
+    await loadAntennas('p1', '/p');
+  });
+
+  it('setUnitsStatus changes several units in one write', async () => {
+    const ids = [unit(0).id, unit(1).id];
+    await setUnitsStatus(ids, 'accepted');
+    expect(writes()).toHaveLength(1);
+    expect(
+      file()
+        .units.filter((u) => u.status === 'accepted')
+        .map((u) => u.id),
+    ).toEqual(ids);
+    expect(unit(2).status).toBe('draft');
+  });
+
+  it('setUnitsStatus writes nothing for ids that are not in the file', async () => {
+    await setUnitsStatus(['nope'], 'accepted');
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('visibleTickedIds counts only the ticked rows the filter shows', () => {
+    const [a, b] = [unit(0).id, unit(1).id];
+    antennaStore.setState({
+      file: {
+        ...file(),
+        units: file().units.map((u) => (u.id === b ? { ...u, status: 'accepted' as const } : u)),
+      },
+      filter: 'all',
+      ticked: { [a]: true, [b]: true, gone: true },
+    });
+    expect(visibleTickedIds(state()).sort()).toEqual([a, b].sort());
+    setAntennaFilter('draft');
+    expect(visibleTickedIds(state())).toEqual([a]);
+  });
+
+  it('deleteBlockedReason names a read-only file, a detection and a flag job', () => {
+    expect(deleteBlockedReason()).toBe(false);
+    expect(deleteBlockedReason({ ...state(), readOnly: true })).toBeTruthy();
+    expect(deleteBlockedReason({ ...state(), running: true })).toBe(
+      'Antenna detection is already running.',
+    );
+    expect(deleteBlockedReason({ ...state(), flagStarting: true })).toBeTruthy();
+    expect(deleteBlockedReason({ ...state(), flagJob: { id: 'j', unit: 'u' } })).toBeTruthy();
+  });
+
+  it('deleteUnits reloads the inventory after a refusal', async () => {
+    h.refuseDelete = 'Newer on disk.';
+    const reads = () => h.calls.filter(([c]) => c === 'telecom:readAntennas').length;
+    const before = reads();
+    expect(await deleteUnits([unit(0).id])).toEqual({ ok: false, error: 'Newer on disk.' });
+    expect(reads()).toBe(before + 1);
+  });
+
+  it('a refusal with no text still says something', async () => {
+    h.refuseDelete = ' ';
+    const r = await deleteUnits([unit(0).id]);
+    expect(r.ok).toBe(false);
+    expect(r.ok ? '' : r.error.length).toBeGreaterThan(5);
   });
 });

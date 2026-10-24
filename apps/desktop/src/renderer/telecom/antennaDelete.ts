@@ -3,10 +3,9 @@
  * yes (delete from the inventory, then take them out of the coverage plan). The dialog
  * (`AntennaDeleteDialog`) shows `useAntennaDelete`.
  */
-import { t } from '@aio/ui';
 import { createStore, useStore } from 'zustand';
 import { removeAntennasFromPlan, rfStore } from '../rf/rfStore';
-import { antennaStore, deleteUnits } from './antennaStore';
+import { antennaStore, deleteBlockedReason, deleteUnits } from './antennaStore';
 
 export interface SectorHold {
   unitId: string;
@@ -53,8 +52,8 @@ export function sectorsHolding(ids: readonly string[]): SectorHold[] {
 
 /** Ask whether to delete these units; nothing changes until `confirmDeleteAntennas`. */
 export function askDeleteAntennas(ids: readonly string[]): void {
-  const { file, readOnly } = antennaStore.getState();
-  if (readOnly || !file || ids.length === 0) return;
+  const { file } = antennaStore.getState();
+  if (deleteBlockedReason() || !file || ids.length === 0) return;
   const units = ids.flatMap((id) => file.units.filter((u) => u.id === id));
   if (units.length === 0) return;
   const held = sectorsHolding(units.map((u) => u.id));
@@ -82,9 +81,8 @@ export async function confirmDeleteAntennas(): Promise<void> {
   const r = await deleteUnits(ask.ids);
   if (!r.ok) {
     antennaDeleteStore.setState({ busy: false, ask: null });
-    antennaStore.setState({
-      message: t('project.antennas.deleteFailed', { reason: r.error }),
-    });
+    // main's text is a whole sentence; an empty one is a guard (no file, project switched)
+    if (r.error) antennaStore.setState({ message: r.error });
     return;
   }
   try {

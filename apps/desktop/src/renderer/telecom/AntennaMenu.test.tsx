@@ -17,6 +17,7 @@ vi.mock('../shell', async (importOriginal) => {
 
 const { AntennaMenu } = await import('./AntennaMenu');
 const { antennaStore } = await import('./antennaStore');
+const { antennaDeleteStore } = await import('./antennaDelete');
 const { shell } = await import('../shell');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -50,7 +51,13 @@ beforeEach(() => {
     readOnly: false,
     ticked: {},
     hidden: {},
-    file: { units: [unit('a'), unit('b'), unit('c')] } as unknown as AntennasFile,
+    filter: 'all',
+    running: false,
+    flagStarting: false,
+    flagJob: null,
+    file: {
+      units: [unit('a'), { ...unit('b'), status: 'accepted' }, unit('c')],
+    } as unknown as AntennasFile,
   });
   host = document.body.appendChild(document.createElement('div'));
   root = createRoot(host);
@@ -80,6 +87,25 @@ describe('AntennaMenu', () => {
     antennaStore.setState({ ticked: { a: true, b: true } });
     show(at('c'));
     expect(q('[data-testid="antenna-menu"]')?.textContent).toContain('Unit c');
+  });
+
+  it('leaves out a ticked unit the filter hides, so Delete targets the visible one only', () => {
+    antennaStore.setState({ ticked: { a: true, b: true }, filter: 'draft' });
+    show(at('a'));
+    expect(q('[data-testid="antenna-menu"]')?.textContent).toContain('Unit a');
+    expect(q('[data-testid="antenna-menu"]')?.textContent).not.toContain('2 antennas');
+    act(() => {
+      q('[data-testid="ctx-item-antenna.delete"]')?.click();
+    });
+    expect(antennaDeleteStore.getState().ask?.ids).toEqual(['a']);
+  });
+
+  it('greys Delete while a detection runs', () => {
+    antennaStore.setState({ running: true });
+    show(at('a'));
+    expect(q('[data-testid="ctx-item-antenna.delete"]')?.getAttribute('aria-disabled')).toBe(
+      'true',
+    );
   });
 
   it('draws nothing for a unit that is gone or another project', () => {

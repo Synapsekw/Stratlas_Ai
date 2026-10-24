@@ -9,7 +9,7 @@ import { useShell } from '../shell';
 import { registerSidebarActions } from '../shell/actions';
 import { toastHost } from '../shell/actions/toastHost';
 import { timeline } from '../workspace/timeline';
-import { useAntennas } from './antennaStore';
+import { useAntennas, visibleTickedIds } from './antennaStore';
 
 export interface AntennaMenuAt {
   x: number;
@@ -24,11 +24,14 @@ export function AntennaMenu({ at, onClose }: { at: AntennaMenuAt | null; onClose
   const hidden = useWorkspace((s) => s.hidden);
   const pkg = useShell((s) => s.pkg);
   const ticked = useAntennas((s) => s.ticked);
+  const file = useAntennas((s) => s.file);
+  const filter = useAntennas((s) => s.filter);
   const unit = useAntennas((s) => (at ? s.file?.units.find((u) => u.id === at.id) : undefined));
   if (!at || !unit || project?.id !== at.projectId) return null;
   registerSidebarActions();
-  const tickedIds = Object.keys(ticked);
-  const ids = tickedIds.length > 1 && ticked[at.id] ? tickedIds : [at.id];
+  // only the ticked rows the filter shows, as the bulk bar counts them
+  const tickedIds = visibleTickedIds({ file, filter, ticked });
+  const ids = tickedIds.length > 1 && tickedIds.includes(at.id) ? tickedIds : [at.id];
   const label = t('actions.header.antennas', { count: ids.length });
   const title = ids.length > 1 ? label : unit.name;
   const items = actionsFor(

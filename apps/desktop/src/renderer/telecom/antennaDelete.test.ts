@@ -119,7 +119,8 @@ describe('antennaDelete', () => {
     askDeleteAntennas(['ant-a']);
     await confirmDeleteAntennas();
     expect(antennaStore.getState().message).toContain('Newer on disk.');
-    expect(h.calls.map(([c]) => c)).toEqual(['telecom:deleteAntennas']);
+    // a refusal reads the inventory again, as an ordinary edit does
+    expect(h.calls.map(([c]) => c)).toEqual(['telecom:deleteAntennas', 'telecom:readAntennas']);
     expect(antennaDeleteStore.getState().ask).toBeNull();
   });
 
@@ -130,5 +131,48 @@ describe('antennaDelete', () => {
     expect(antennaDeleteStore.getState().ask).toBeNull();
     expect(h.calls).toEqual([]);
     expect(antennaStore.getState().file?.units).toHaveLength(3);
+  });
+});
+
+describe('antennaDelete while a job runs', () => {
+  it.each([
+    ['a detection', { running: true }],
+    ['a flag start', { flagStarting: true }],
+    ['a flag job', { flagJob: { id: 'j1', unit: 'ant-a' } }],
+  ])('refuses to ask during %s', (_name, busy) => {
+    setUp();
+    antennaStore.setState(busy);
+    askDeleteAntennas(['ant-a']);
+    expect(antennaDeleteStore.getState().ask).toBeNull();
+    antennaStore.setState({ running: false, flagStarting: false, flagJob: null });
+    askDeleteAntennas(['ant-a']);
+    expect(antennaDeleteStore.getState().ask).not.toBeNull();
+  });
+
+  it('shows main text as it is, once', async () => {
+    setUp();
+    h.fail = 'The antennas were not deleted: the file is newer.';
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    expect(antennaStore.getState().message).toBe(
+      'The antennas were not deleted: the file is newer.',
+    );
+  });
+
+  it('shows a fallback sentence when main gave no text', async () => {
+    setUp();
+    h.fail = ' ';
+    askDeleteAntennas(['ant-a']);
+    await confirmDeleteAntennas();
+    expect(antennaStore.getState().message).toMatch(/^The antennas were not deleted: .+/);
+  });
+
+  it('says nothing when the project changed under the question', async () => {
+    setUp();
+    antennaStore.setState({ message: null });
+    askDeleteAntennas(['ant-a']);
+    antennaStore.setState({ file: null });
+    await confirmDeleteAntennas();
+    expect(antennaStore.getState().message).toBeNull();
   });
 });

@@ -7,7 +7,7 @@
  */
 import type { RfSector } from '@aio/schema';
 import { IconButton, Row, useT } from '@aio/ui';
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { sectorBearing } from '../../../../rf/rfFields';
 import { renameSavedSector, useRf } from '../../../../rf/rfStore';
 import { openRfTab } from '../../../../rf/rfTab';
@@ -27,6 +27,13 @@ function RenameField(props: {
   onDone(name: string | null): void;
 }): ReactElement {
   const [value, setValue] = useState(props.name);
+  // Enter or Escape ends the edit, and the blur that follows must not end it again
+  const finished = useRef(false);
+  const finish = (name: string | null): void => {
+    if (finished.current) return;
+    finished.current = true;
+    props.onDone(name);
+  };
   return (
     <input
       type="text"
@@ -42,11 +49,11 @@ function RenameField(props: {
         e.currentTarget.select();
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') props.onDone(value);
-        else if (e.key === 'Escape') props.onDone(null);
+        if (e.key === 'Enter') finish(value);
+        else if (e.key === 'Escape') finish(null);
       }}
       onBlur={() => {
-        props.onDone(value);
+        finish(value);
       }}
     />
   );
@@ -80,7 +87,9 @@ function SectorRow(props: {
         ) : (
           <>
             {props.name}{' '}
-            <span className="mono">{bearing === null ? '—' : `${bearing.toFixed(0)}°`}</span>
+            <span className="mono">
+              {bearing === null ? '—' : `${String(Math.round(bearing) % 360)}°`}
+            </span>
           </>
         )
       }

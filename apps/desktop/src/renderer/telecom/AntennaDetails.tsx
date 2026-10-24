@@ -23,6 +23,7 @@ import { formatDeg, qualityTip, trueAzimuth } from './antennaFormat';
 import {
   beginFlag,
   decideAntenna,
+  deleteBlockedReason,
   patchUnitUser,
   setUnitKind,
   stepAntenna,
@@ -573,6 +574,9 @@ export function AntennaDetails({
     void decideAntenna(status);
   };
   const reason = readOnly ? { disabledReason: t('telecom.antennas.readOnly') } : {};
+  const flagStarting = useAntennas((s) => s.flagStarting);
+  const flagJob = useAntennas((s) => s.flagJob);
+  const deleteWhy = deleteBlockedReason({ readOnly, running, flagStarting, flagJob });
   // Redraw outline starts the flag tool, refused while a detection or a flag job runs
   const redrawWhy = readOnly
     ? t('telecom.antennas.readOnly')
@@ -691,7 +695,7 @@ export function AntennaDetails({
           icon="trash"
           label={t('project.antennas.deleteRow', { name: unit.name })}
           data-testid="antenna-details-delete"
-          {...reason}
+          {...(deleteWhy ? { disabledReason: deleteWhy } : {})}
           onClick={() => {
             askDeleteAntennas([unit.id]);
           }}
