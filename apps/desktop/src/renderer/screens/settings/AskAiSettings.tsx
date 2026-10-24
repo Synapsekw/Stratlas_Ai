@@ -9,7 +9,7 @@ import { MAX_BATCH } from '@aio/ai';
 import type { DetectorModelInfo } from '@aio/schema';
 import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { type ReactElement, useMemo, useState } from 'react';
+import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { classMapFor, writeClassMap } from '../../inspect/askAi/classMap';
 import { type AskBackendPref, setAskAiPrefs, useAskAiPrefs } from '../../inspect/askAi/prefs';
 import { useCall } from '../../shell';
@@ -41,19 +41,32 @@ function NumberField({
   disabled?: boolean;
   onCommit: (v: number) => void;
 }) {
+  const [draft, setDraft] = useState(String(value));
+  const focused = useRef(false);
+  // follow the stored or default value while the person is not typing in the field
+  useEffect(() => {
+    if (!focused.current) setDraft(String(value));
+  }, [value]);
   return (
     <label className="aas-field">
       <span>{label}</span>
       <input
-        key={value}
         type="number"
         data-testid={testId}
-        defaultValue={value}
+        value={draft}
         min={min}
         max={max}
         step={step}
         disabled={disabled}
+        onFocus={() => {
+          focused.current = true;
+        }}
+        onBlur={() => {
+          focused.current = false;
+          setDraft(String(value));
+        }}
         onChange={(e) => {
+          setDraft(e.currentTarget.value);
           const v = e.currentTarget.valueAsNumber;
           if (Number.isFinite(v) && v >= min && v <= max) onCommit(v);
         }}

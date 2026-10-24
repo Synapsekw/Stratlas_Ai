@@ -125,6 +125,31 @@ describe('AskAiSettings', () => {
     ).toMatchObject({ rust: '' });
   });
 
+  it('keeps the same field and the typed text while a value is typed in two steps', () => {
+    mount();
+    const el = byId('ask-ai-tile-size') as HTMLInputElement | null;
+    const type = (v: string) => {
+      if (!el) throw new Error('field');
+      act(() => {
+        el.focus();
+        // React tracks the value, so set it through the native setter
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, v);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    act(() => {
+      byId('ask-ai-tile')?.click();
+    });
+    type('6');
+    type('64');
+    expect(byId('ask-ai-tile-size')).toBe(el);
+    expect(el?.value).toBe('64');
+    type('640');
+    expect(byId('ask-ai-tile-size')).toBe(el);
+    expect(el?.value).toBe('640');
+    expect(askAiPrefs.getState().tile.size).toBe(640);
+  });
+
   it('defaults the confidence and tile size to the model card', () => {
     mount();
     expect((byId('ask-ai-min-confidence') as HTMLInputElement | null)?.value).toBe('0.4');
