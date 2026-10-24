@@ -73,6 +73,34 @@ describe('volumetric parity contracts', () => {
     expect(parsed.kitPilesConverted).toBeUndefined();
   });
 
+  it('kitHeightsRepaired round-trips and is optional', () => {
+    const file = {
+      schema: 'aio.measurements/1',
+      kitPilesConverted: ['Pile 1'],
+      kitHeightsRepaired: ['m-1'],
+      measurements: [measurement],
+    };
+    const parsed = MeasurementsFile.parse(file);
+    expect(parsed.kitHeightsRepaired).toEqual(['m-1']);
+    expect(parsed).toEqual(file);
+    const without = MeasurementsFile.parse({ schema: 'aio.measurements/1', measurements: [] });
+    expect(without.kitHeightsRepaired).toBeUndefined();
+    expect(
+      MeasurementsFile.safeParse({
+        schema: 'aio.measurements/1',
+        measurements: [],
+        kitHeightsRepaired: 'm-1',
+      }).success,
+    ).toBe(false);
+    expect(
+      MeasurementsFile.safeParse({
+        schema: 'aio.measurements/1',
+        measurements: [],
+        kitHeightsRepaired: Array.from({ length: 5001 }, (_, i) => `m-${i}`),
+      }).success,
+    ).toBe(false);
+  });
+
   it('a result with carried kit figures parses and keeps carried.base', () => {
     const carried = { from: 'kit', base: 'plane', pile: 'Pile 1', epoch: 'e1' };
     const r = ComparisonResult.parse({

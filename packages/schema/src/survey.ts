@@ -568,6 +568,11 @@ const MeasurementsFileStrict = z
     measurements: z.array(SurveyMeasurement).max(20_000),
     /** Ids of the kit piles already converted, so none converts twice. Absent on every older file. */
     kitPilesConverted: z.array(Id).max(5000).optional(),
+    /**
+     * Ids of converted kit piles whose all-zero heights were set from the kit DSM or the prepared
+     * surface, so the one-time repair never runs twice. Absent on every older file.
+     */
+    kitHeightsRepaired: z.array(Id).max(5000).optional(),
   })
   .superRefine((f, ctx) => {
     const seen = new Set<string>();

@@ -537,6 +537,8 @@ export const Settings = z.object({
   team: TeamSettings.optional(),
   /** Settings, Processing tools: the photogrammetry engine (ODM). Absent: GPU auto. */
   processing: ProcessingSettings.optional(),
+  /** Prepare survey surfaces in the background when a project opens. Absent: on. */
+  autoPrepareSurfaces: z.boolean().optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
