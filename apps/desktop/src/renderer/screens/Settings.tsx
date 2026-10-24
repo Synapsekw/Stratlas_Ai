@@ -34,6 +34,7 @@ const engineeringUi = (): boolean => ENGINEERING_MODEL_UI;
 import { HelpLink } from '../help/HelpPanel';
 import { SETTINGS_HELP } from '../help/store';
 import { About } from './settings/About';
+import { AskAiSettings } from './settings/AskAiSettings';
 import { DetectionModels } from './settings/DetectionModels';
 import { IdentitySettings } from './settings/Identity';
 import { Appearance } from './settings/Appearance';
@@ -906,6 +907,7 @@ export function SettingsScreen() {
             </>
           )}
           {page === 'ai' && <DetectionModels />}
+          {page === 'ai' && <AskAiSettings />}
           {page === 'usage' && <Usage />}
           {page === 'privacy' && <Privacy />}
           {page === 'identity' && <IdentitySettings />}

@@ -1,0 +1,50 @@
+/* Settings, AI providers, AI for Ask AI. */
+.ask-ai-settings {
+  display: grid;
+  gap: 10px;
+}
+.ask-ai-settings .aas-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ask-ai-settings .aas-group legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+.ask-ai-settings .aas-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ask-ai-settings .aas-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ask-ai-settings .aas-field input[type='number'] {
+  width: 90px;
+}
+.ask-ai-settings .aas-row {
+  display: grid;
+  gap: 10px;
+}
+.ask-ai-settings .aas-sub {
+  margin: 6px 0 0;
+}
+.ask-ai-settings .aas-map {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ask-ai-settings .aas-map li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
