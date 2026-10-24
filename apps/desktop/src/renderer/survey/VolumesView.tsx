@@ -75,6 +75,12 @@ export function VolumesView({ className }: { className?: string }): ReactElement
   const piles = useMemo(() => inventoryPiles(allPiles, shown), [allPiles, shown]);
   const stack = useInventory(piles);
   const names = useMemo(() => new Map(piles.map((m) => [m.id, m.label])), [piles]);
+  // a pile opened from anywhere (3D, the map, the sidebar) opens here even when the folder filter
+  // hides it: the filter goes back to every pile, so the inventory behind it holds it too
+  const focused = allPiles.find((m) => m.id === focus) ?? null;
+  const outside = focused !== null && !piles.some((m) => m.id === focused.id);
+  // (set while rendering, React's way to follow a prop: no effect, no frame of the old filter)
+  if (outside && folder !== ALL) setFolder(ALL);
 
   // each pile's volume per survey date, worked out when shown (carried piles keep the kit's);
   // only the piles changed since their last run are run again, every pile once the dates or the
@@ -179,7 +185,6 @@ export function VolumesView({ className }: { className?: string }): ReactElement
     );
   }
 
-  const focused = piles.find((m) => m.id === focus) ?? null;
   // the focused pile opens in the pile panel, stepping through the piles in this view's order
   if (focused)
     return (
@@ -187,7 +192,7 @@ export function VolumesView({ className }: { className?: string }): ReactElement
         className={['vv', 'vv-open', className].filter(Boolean).join(' ')}
         data-testid="volumes-view"
       >
-        <PilePanel id={focused.id} order={piles.map((m) => m.id)} />
+        <PilePanel id={focused.id} order={(outside ? allPiles : piles).map((m) => m.id)} />
       </div>
     );
   const ctx = { settings, templates: knownTemplates({ templates, settings }), captures };

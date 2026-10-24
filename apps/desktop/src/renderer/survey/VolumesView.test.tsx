@@ -557,6 +557,33 @@ describe('VolumesView', () => {
     expect(q('[data-testid="volumes-inventory"]')).toBeNull();
   });
 
+  it('a pile opened from outside the folder filter opens its panel and lifts the filter', () => {
+    s.measure.file.measurements = [
+      pile('a', { folder: 'North' }),
+      pile('b', { folder: 'South' }),
+      pile('c', { folder: 'North' }),
+    ];
+    render();
+    const filter = q('[data-testid="volumes-folder"]') as HTMLSelectElement;
+    act(() => {
+      filter.value = 'North';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(qa('[data-testid="volumes-pile"]')).toHaveLength(2);
+    // picked in 3D (or the sidebar) from the other folder
+    s.measure.focus = 'b';
+    s.measure.selected = ['b'];
+    render();
+    const panel = q('[data-testid="pile-panel"]');
+    expect(panel?.getAttribute('data-id')).toBe('b');
+    expect(panel?.getAttribute('data-order')).toBe('a,b,c');
+    // back to the inventory: every pile, the opened one among them
+    s.measure.focus = null;
+    s.measure.selected = [];
+    render();
+    expect(qa('[data-testid="volumes-pile"]')).toHaveLength(3);
+  });
+
   it('a focus on something other than a pile keeps the list', () => {
     s.measure.file.measurements = [pile('a')];
     s.measure.focus = 'not-a-pile';
