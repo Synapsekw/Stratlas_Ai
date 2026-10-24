@@ -173,6 +173,34 @@ describe('sceneMarkers', () => {
     expect(bare[0]?.at[1]).toBeCloseTo(0, 9);
   });
 
+  it('a walk of a turned date turns its look and its way with its track', () => {
+    const turned = {
+      eastM: 0,
+      northM: 0,
+      turn: { rotationDeg: 90, scale: 1, pivotE: 0, pivotN: 0, pivotX: 0, pivotZ: 0 },
+    };
+    const [plain] = sceneMarkers(
+      [walk('walk-a')],
+      { 'walk-a': view(5, 90) },
+      new Set(),
+      null,
+      () => '#fff',
+      ground,
+    );
+    const [m] = sceneMarkers(
+      [{ ...walk('walk-a'), shift: turned }],
+      { 'walk-a': view(5, 90) },
+      new Set(),
+      null,
+      () => '#fff',
+      ground,
+    );
+    // a quarter turn anticlockwise: a look east now looks north, the track east now runs north
+    expect(m?.lookHeadingRad).toBeCloseTo(0, 9);
+    expect(m?.walkHeadingRad).toBeCloseTo((plain?.walkHeadingRad ?? NaN) + Math.PI / 2, 9);
+    expect(m?.at[2]).toBeCloseTo(-5, 6);
+  });
+
   it('none for a hidden walk, a switched off one, the walk being edited or one without a pane', () => {
     const fits = [walk('walk-a'), walk('walk-c', false)];
     const views = { 'walk-a': view(5, 0), 'walk-c': view(5, 0), 'walk-z': view(5, 0) };

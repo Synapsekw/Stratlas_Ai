@@ -12,7 +12,6 @@ import {
   resolveCssColour,
   walkMapOverlays,
   walkPreviewMapOverlay,
-  walkNowMapOverlay,
 } from './walkMapOverlay';
 import { MAP_INK } from '@aio/maps';
 import { BEAM_PX, beamFanPath, beamHalfRad, type WalkViewNow } from './walkView';
@@ -82,14 +81,7 @@ describe('a walk of a lined-up date', () => {
       { placingId: null },
     );
     expect(first(plain, 'line')).toEqual([0, 0]);
-    // its position and the shape being placed take the same shift
-    const now = walkNowMapOverlay(
-      { layer: layer('walk-a'), fit: fit(), raw: null, shift },
-      proj,
-      colour,
-      3,
-    );
-    expect(first(now, 'now')).toEqual([5, 7]);
+    // the shape being placed takes the same shift (the Beam's is in its own test)
     const preview = walkPreviewMapOverlay(
       'walk-a',
       [
@@ -169,20 +161,11 @@ describe('the map redraws only what changed', () => {
     expect(a[0]?.layers).toBe(b[0]?.layers);
   });
 
-  it('the position is its own overlay: a new time leaves the path overlay alone', () => {
+  it('the path has no position in it: the Beam shows where the walk is', () => {
     const walks = [{ layer: layer('walk-a'), fit: fit(), raw: null }];
     const path = walkMapOverlays(walks, proj, colour, { placingId: 'walk-a' });
-    const w = walks[0];
-    if (!w) throw new Error('no walk');
-    const at2 = walkNowMapOverlay(w, proj, colour, 2);
-    const at3 = walkNowMapOverlay(w, proj, colour, 3);
-    expect(at2?.id).toBe('walk-walk-a-now');
-    expect(at3?.layers).toBe(at2?.layers);
-    const point = features(at3?.data ?? '').find((f) => f.properties?.kind === 'now')?.geometry;
-    expect(point?.type === 'Point' ? point.coordinates : null).toEqual([3, 6]);
-    // the path has no position in it, so it never needs a rebuild for the time
+    expect(path.map((o) => o.id)).toEqual(['walk-walk-a']);
     expect(features(path[0]?.data ?? '').some((f) => f.properties?.kind === 'now')).toBe(false);
-    expect(walkNowMapOverlay(w, proj, colour, null)).toBeNull();
   });
 });
 
@@ -277,6 +260,22 @@ describe('the Beam marker on the map', () => {
       view(),
     );
     expect(shifted?.lonLat).toEqual([6, 9]);
+    // a turned date turns the look and the walk's way with the track
+    const turned = walkBeamMarker(
+      {
+        ...walk,
+        shift: {
+          eastM: 0,
+          northM: 0,
+          turn: { rotationDeg: 90, scale: 1, pivotE: 0, pivotN: 0, pivotX: 0, pivotZ: 0 },
+        },
+      },
+      proj,
+      '#000',
+      view({ lookDeg: 100 }),
+    );
+    expect(turned?.lookDeg).toBeCloseTo(10, 9);
+    expect(turned?.walkDeg).toBeCloseTo(((((m?.walkDeg ?? 0) - 90) % 360) + 360) % 360, 9);
     expect(walkBeamMarker(walk, proj, '#000', view({ t: NaN }))).toBeNull();
   });
 

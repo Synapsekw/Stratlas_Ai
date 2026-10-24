@@ -1,8 +1,13 @@
+import { shiftLocal, type DateShift } from '@aio/schema';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   beamFanPath,
+  along,
   beamHalfRad,
   clearWalkView,
+  headingFromBearingDeg,
+  shiftBearingDeg,
+  shiftHeadingRad,
   horizontalFov,
   setWalkView,
   walkViewPublisher,
@@ -116,5 +121,37 @@ describe('the Beam cone', () => {
     expect(beamFanPath(10, Math.PI / 4)).toBe('M0 0L7.071 -7.071A10 10 0 0 1 7.071 7.071Z');
     // past a half circle the arc takes the long way round
     expect(beamFanPath(10, (100 * Math.PI) / 180)).toContain('A10 10 0 1 1');
+  });
+});
+
+describe('a heading on a turned date', () => {
+  const turned: DateShift = {
+    eastM: 4,
+    northM: -2,
+    turn: { rotationDeg: 30, scale: 1.01, pivotE: 10, pivotN: -5, pivotX: 10, pivotZ: 5 },
+  };
+
+  it('turns with the points the date moves', () => {
+    for (const h of [0, 1, -2.5]) {
+      const a = shiftLocal([3, 0, 7], turned);
+      const tipXZ = along([3, 7], h, 10);
+      const b = shiftLocal([tipXZ[0], 0, tipXZ[1]], turned);
+      const t = shiftHeadingRad(h, turned);
+      const dx = b[0] - a[0];
+      const dz = b[2] - a[2];
+      const len = Math.hypot(dx, dz);
+      expect(dx / len).toBeCloseTo(-Math.sin(t), 9);
+      expect(dz / len).toBeCloseTo(-Math.cos(t), 9);
+    }
+  });
+
+  it('as a bearing, and unchanged without a turn', () => {
+    expect(headingFromBearingDeg(shiftBearingDeg(100, turned))).toBeCloseTo(
+      shiftHeadingRad(headingFromBearingDeg(100), turned),
+      9,
+    );
+    expect(shiftBearingDeg(10, turned)).toBeCloseTo(340, 9);
+    expect(shiftHeadingRad(1.2, { eastM: 4, northM: 1 })).toBe(1.2);
+    expect(shiftBearingDeg(45, null)).toBe(45);
   });
 });

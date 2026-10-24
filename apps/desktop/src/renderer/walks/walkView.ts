@@ -1,4 +1,5 @@
 import type { XZ } from '@aio/geo';
+import { hasTurn, type DateShift } from '@aio/schema';
 import { useCallback, useRef } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -184,6 +185,24 @@ export function beamFanPath(reach: number, halfRad: number): string {
 
 /** Model heading (radians, as the walk fit's `headingRad`) of a compass bearing in degrees. */
 export const headingFromBearingDeg = (deg: number): number => (-deg * Math.PI) / 180;
+
+/**
+ * A model heading (radians) of a walk as its lined-up date draws it: a turn of the date turns every
+ * direction by its rotation (as `shiftLocal` turns points; the scale and the move leave directions
+ * alone). The same heading without a turn.
+ */
+export function shiftHeadingRad(headingRad: number, shift: DateShift | null | undefined): number {
+  const turn = shift?.turn;
+  return turn && hasTurn(turn) ? headingRad + (turn.rotationDeg * Math.PI) / 180 : headingRad;
+}
+
+/** A compass bearing (degrees, 0 to 360) of a walk as its lined-up date draws it. */
+export function shiftBearingDeg(deg: number, shift: DateShift | null | undefined): number {
+  const turn = shift?.turn;
+  if (!turn || !hasTurn(turn)) return deg;
+  const d = deg - turn.rotationDeg;
+  return ((d % 360) + 360) % 360;
+}
 
 /** A model x/z point `dist` metres from `from` along model heading `headingRad`. */
 export function along(from: XZ, headingRad: number, dist: number): XZ {

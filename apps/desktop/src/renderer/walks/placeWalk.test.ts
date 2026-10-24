@@ -33,6 +33,7 @@ import {
   placedBeamMarkers,
   placedNowOnSheet,
   placedWalkFits,
+  sessionBeamMarker,
   sessionHandles,
   surfaceLayout,
   walkBeingEdited,
@@ -784,7 +785,8 @@ describe('the walk on the map while it is placed there', () => {
     pointer?.onClick?.([40, 0, 3]);
     expect(session.getState().step).toBe('placed');
     const ids = walkMap.getState().overlays.map((o) => o.id);
-    expect(ids).toEqual(['walk-walk-a', 'walk-walk-a-now']);
+    // where the walk is now is its Beam (sessionBeamMarker), not a dot of its own
+    expect(ids).toEqual(['walk-walk-a']);
     const path = walkMap.getState().overlays[0];
     expect(path?.tooltip?.({ kind: 'pin', active: false })).toBe('The drawing it was on is gone');
     session.getState().setTime(10);
@@ -1041,6 +1043,33 @@ describe('placed walks on every surface', () => {
     const views = { 'walk-a': viewAt(5) };
     expect(placedBeamMarkers(m, fits, new Set(['walk-a']), null, views)).toEqual([]);
     expect(placedBeamMarkers(m, fits, new Set(), 'walk-a', views)).toEqual([]);
+  });
+
+  it('a walk being placed on the map shows the same Beam, from the session', () => {
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const fit = placedWalkFits(m, pinsOnly, lookup)[0]?.fit;
+    const toLonLat = localToLonLat(m);
+    if (!fit || !toLonLat) throw new Error('fixture');
+    const s = { layerId: 'walk-a', surface: { kind: 'map' } as const, fit, timeS: 5 };
+    const where = (t: number) => {
+      const a = fit.at(t);
+      if (!a) throw new Error('fixture');
+      return toLonLat([a.xz[0], 0, a.xz[1]]);
+    };
+    // no 360 pane yet: at the session's time, no cone
+    const bare = sessionBeamMarker(m, s, {});
+    expect(bare?.layerId).toBe('walk-a');
+    expect(bare?.lookDeg).toBeNull();
+    expect(bare?.lonLat[0]).toBeCloseTo(where(5)[0], 9);
+    // the fine-tune pane shows it: the pane's time and look
+    const viewed = sessionBeamMarker(m, s, { 'walk-a': viewAt(50, 120) });
+    expect(viewed?.lookDeg).toBe(120);
+    expect(viewed?.hfovDeg).toBe(80);
+    expect(viewed?.lonLat[0]).toBeCloseTo(where(50)[0], 9);
+    // off the map, not placed yet or no session: none
+    expect(sessionBeamMarker(m, { ...s, surface: { kind: '3d' } }, {})).toBeNull();
+    expect(sessionBeamMarker(m, { ...s, fit: null }, {})).toBeNull();
+    expect(sessionBeamMarker(m, { ...s, layerId: null }, {})).toBeNull();
   });
 
   it('on a drawing: a Beam for each walk a 360 pane shows, read per walk', () => {

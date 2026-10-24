@@ -60,7 +60,6 @@ import {
   resolveCssColour,
   walkBeamMarker,
   walkMapOverlays,
-  walkNowMapOverlay,
   walkPreviewMapOverlay,
   type BeamMarker,
 } from './walkMapOverlay';
@@ -610,7 +609,7 @@ export function setPlacedMapOverlays(overlays: readonly MapOverlay[]): void {
 
 /**
  * Keep the main map in step with a walk placed on the map: its path, stills and pins once placed
- * (an inactive pin says why on hover), the current position apart, the hover preview while Start
+ * (an inactive pin says why on hover; where the walk is now is its Beam, `sessionBeamMarker`), the hover preview while Start
  * or End waits, and one pointer session (hover, clicks, the Start and End handles) for as long as
  * the session is on the map. A pin picked or dragged on the map stands on the ground the 3D view
  * draws there (`ground`, the shared walk ground), so the walk and its pose do not float above
@@ -715,7 +714,6 @@ export function followMap(
           : null,
       };
     }
-    const now = walkNowMapOverlay({ layer, fit: s.fit, raw, shift }, proj, colour, s.timeS);
     const preview = s.preview
       ? walkPreviewMapOverlay(
           layer.id,
@@ -727,7 +725,7 @@ export function followMap(
           shift,
         )
       : null;
-    sessionMap = [pathFor.overlay, now, preview].filter((o): o is MapOverlay => o !== null);
+    sessionMap = [pathFor.overlay, preview].filter((o): o is MapOverlay => o !== null);
     publishMap();
     shown = true;
     setWalkMapPointer(pointer);
@@ -1026,6 +1024,25 @@ export function placedBeamMarkers(
 }
 
 /**
+ * The Beam of the walk a session places on the map, so it shows the same marker as a placed walk:
+ * at the time and look of the 360 pane that shows it (fine-tune), else at the session's time with
+ * no cone. Null off the map, before the walk is placed or without a coordinate system.
+ */
+export function sessionBeamMarker(
+  m: ProjectManifest,
+  s: Pick<PlaceState, 'layerId' | 'surface' | 'fit' | 'timeS'>,
+  views: Readonly<Record<string, WalkViewNow>>,
+): BeamMarker | null {
+  if (s.layerId === null || s.surface?.kind !== 'map' || !s.fit) return null;
+  const layer = m.layers.find((l): l is WalkLayer => l.kind === 'walk' && l.id === s.layerId);
+  const toLonLat = localToLonLat(m);
+  if (!layer || !toLonLat) return null;
+  const view = views[layer.id] ?? { t: s.timeS, lookDeg: null, pitchDeg: 0, fovDeg: 0, hfovDeg: 0 };
+  const walk: SheetWalk = { layer, fit: s.fit, raw: null, shift: dateShiftOf(m, layer.id) };
+  return walkBeamMarker(walk, { toLonLat }, resolveCssColour(walkColour(m, layer)), view);
+}
+
+/**
  * Where each shown placed walk a 360 pane shows is now on the drawing `sheetId`, with its Beam
  * (both walks while comparing; each read from its own pane, so two panes never flicker between
  * them). Empty when the drawing has no frame.
@@ -1149,13 +1166,19 @@ export function usePlacedWalksOnMap(): void {
   useEffect(() => {
     if (!map || !manifest) return;
     const beams = new MapBeamMarkers(map);
+    // the walk a session places on the map shows the same Beam, from the session's fit
     const draw = () => {
-      beams.set(placedBeamMarkers(manifest, fits, hidden, except, walkViews.getState()));
+      const views = walkViews.getState();
+      const own = sessionBeamMarker(manifest, placeSession.getState(), views);
+      const placed = placedBeamMarkers(manifest, fits, hidden, except, views);
+      beams.set(own ? [...placed, own] : placed);
     };
     draw();
     const off = walkViews.subscribe(draw);
+    const offSession = placeSession.subscribe(draw);
     return () => {
       off();
+      offSession();
       beams.dispose();
     };
   }, [map, manifest, fits, hidden, except]);

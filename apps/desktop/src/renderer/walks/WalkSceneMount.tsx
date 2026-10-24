@@ -29,7 +29,13 @@ import {
   type WalkSceneView,
   type WalkSceneWalk,
 } from './walkScene';
-import { beamHalfRad, headingFromBearingDeg, walkViews, type WalkViewNow } from './walkView';
+import {
+  beamHalfRad,
+  headingFromBearingDeg,
+  shiftHeadingRad,
+  walkViews,
+  type WalkViewNow,
+} from './walkView';
 
 /*
  * The walks in the 3D view: every visible placed walk draped on the ground the view draws
@@ -215,14 +221,17 @@ export function sceneMarkers(
     if (!w || !w.layer.visible || hidden.has(id) || id === editing) continue;
     const a = w.fit.at(now.t);
     if (!a) continue;
-    const p = shiftLocal([a.xz[0], a.groundY, a.xz[1]], w.shift ?? null);
+    const shift = w.shift ?? null;
+    const p = shiftLocal([a.xz[0], a.groundY, a.xz[1]], shift);
+    // a turned date turns the look and the walk's way with its track
     out.push({
       id,
       colour: colourOf(w),
       at: [p[0], ground(p[0], p[2]) ?? p[1], p[2]],
-      lookHeadingRad: now.lookDeg === null ? null : headingFromBearingDeg(now.lookDeg),
+      lookHeadingRad:
+        now.lookDeg === null ? null : shiftHeadingRad(headingFromBearingDeg(now.lookDeg), shift),
       halfRad: beamHalfRad(now.hfovDeg),
-      walkHeadingRad: a.headingRad,
+      walkHeadingRad: shiftHeadingRad(a.headingRad, shift),
       ground,
     });
   }
