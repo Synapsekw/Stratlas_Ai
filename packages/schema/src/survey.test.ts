@@ -4,6 +4,7 @@ import {
   ComparisonResult,
   DEFAULT_ANGLES,
   MeasurementsFile,
+  SiteMaterial,
   SurveySettings,
   defaultSurveySettings,
 } from './index';
@@ -163,5 +164,62 @@ describe('volumetric parity contracts', () => {
       Capture.parse({ ...base, verticalAccuracy: { sigmaM: 0.04, source: 'rtk' } })
         .verticalAccuracy,
     ).toEqual({ sigmaM: 0.04, source: 'rtk' });
+  });
+});
+
+describe('site material colour and dated density', () => {
+  const material = { id: 'mat-1', name: 'Aggregate', densityTPerM3: 1.6 };
+
+  it('colour accepts #rrggbb only', () => {
+    expect(SiteMaterial.safeParse({ ...material, colour: '#a1B2c3' }).success).toBe(true);
+    for (const colour of ['#abc', 'a1b2c3', '#a1b2c3d4', 'red', '#g1b2c3', '']) {
+      expect(SiteMaterial.safeParse({ ...material, colour }).success).toBe(false);
+    }
+  });
+
+  it('densityHistory rejects a repeated capture', () => {
+    const ok = SiteMaterial.safeParse({
+      ...material,
+      densityHistory: [
+        { fromCapture: 'cap-1', tPerM3: 1.5 },
+        { fromCapture: 'cap-2', tPerM3: 1.6 },
+      ],
+    });
+    expect(ok.success).toBe(true);
+    const repeated = SiteMaterial.safeParse({
+      ...material,
+      densityHistory: [
+        { fromCapture: 'cap-1', tPerM3: 1.5 },
+        { fromCapture: 'cap-1', tPerM3: 1.6 },
+      ],
+    });
+    expect(repeated.success).toBe(false);
+  });
+
+  it('densityHistory bounds each density and the entry count', () => {
+    const one = (tPerM3: number) =>
+      SiteMaterial.safeParse({ ...material, densityHistory: [{ fromCapture: 'cap-1', tPerM3 }] })
+        .success;
+    expect(one(30)).toBe(true);
+    expect(one(0)).toBe(false);
+    expect(one(-1)).toBe(false);
+    expect(one(30.1)).toBe(false);
+    const many = (n: number) =>
+      SiteMaterial.safeParse({
+        ...material,
+        densityHistory: Array.from({ length: n }, (_, i) => ({
+          fromCapture: `cap-${i}`,
+          tPerM3: 1.5,
+        })),
+      }).success;
+    expect(many(100)).toBe(true);
+    expect(many(101)).toBe(false);
+  });
+
+  it('a material without the new fields still parses', () => {
+    const parsed = SiteMaterial.parse(material);
+    expect(parsed).toEqual(material);
+    expect(parsed.colour).toBeUndefined();
+    expect(parsed.densityHistory).toBeUndefined();
   });
 });

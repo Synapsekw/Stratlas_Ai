@@ -88,12 +88,33 @@ export const CoordinateOrder = z.enum(['NEZ', 'ENZ']);
 
 export const IndustrySet = z.enum(['construction', 'mining', 'landfill']);
 
+/** A density that applies from one survey date until the next entry's date. */
+export const MaterialDensityEntry = z.looseObject({
+  fromCapture: SurveyId,
+  tPerM3: z.number().positive().max(30),
+});
+export type MaterialDensityEntry = z.infer<typeof MaterialDensityEntry>;
+
 /** A site material (G4): density and swell factors used by the calculators at display time. */
 export const SiteMaterial = z.looseObject({
   id: SurveyId,
   name: z.string().min(1).max(120),
   code: z.string().max(40).optional(),
+  /**
+   * The current density. With a `densityHistory` it is written as the newest entry's value, so
+   * older builds show the current density for every date.
+   */
   densityTPerM3: z.number().positive().max(30).optional(),
+  /** `#rrggbb`; absent: the palette colour for the material's place in the list. */
+  colour: HexColor.optional(),
+  /** Densities by survey date: each applies from its capture until the next entry. */
+  densityHistory: z
+    .array(MaterialDensityEntry)
+    .max(100)
+    .refine((entries) => new Set(entries.map((e) => e.fromCapture)).size === entries.length, {
+      message: 'Each survey date has one density.',
+    })
+    .optional(),
   /** Volume factors relative to bank (in situ) volume. */
   swell: z
     .looseObject({
