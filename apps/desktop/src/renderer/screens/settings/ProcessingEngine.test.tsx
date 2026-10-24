@@ -11,7 +11,10 @@ const h = vi.hoisted(() => ({
   focus: null as string | null,
   clearSettingsFocus: undefined as unknown as () => void,
   resumeAfterTools: undefined as unknown as () => void,
+  autoPrepare: undefined as boolean | undefined,
+  updateSettings: undefined as unknown as (patch: object) => Promise<string | null>,
 }));
+h.updateSettings = vi.fn(() => Promise.resolve(null));
 h.clearSettingsFocus = vi.fn(() => {
   h.focus = null;
 });
@@ -39,9 +42,20 @@ vi.mock('../../processingTools', () => ({
   },
 }));
 vi.mock('../../shell', () => ({
-  shell: { getState: () => ({ clearSettingsFocus: h.clearSettingsFocus }) },
+  shell: {
+    getState: () => ({
+      clearSettingsFocus: h.clearSettingsFocus,
+      updateSettings: h.updateSettings,
+    }),
+  },
   useShell: (sel: (s: object) => unknown) =>
-    sel({ settings: { dataRoot: 'D:\\data' }, settingsFocus: h.focus }),
+    sel({
+      settings: {
+        dataRoot: 'D:\\data',
+        ...(h.autoPrepare === undefined ? {} : { autoPrepareSurfaces: h.autoPrepare }),
+      },
+      settingsFocus: h.focus,
+    }),
 }));
 
 import { odm } from '../../odm';
@@ -68,6 +82,8 @@ beforeEach(() => {
   h.answers.clear();
   h.resume = null;
   h.focus = null;
+  h.autoPrepare = undefined;
+  vi.mocked(h.updateSettings).mockClear();
   odm.setState({
     status: null,
     progress: null,
@@ -278,5 +294,28 @@ describe('the Processing engine card', () => {
     await mount(status());
     expect(document.activeElement).toBe(q('engine-install'));
     expect(h.clearSettingsFocus).toHaveBeenCalled();
+  });
+
+  it('the auto-prepare switch is on by default and writes autoPrepareSurfaces: false', async () => {
+    await mount(INSTALLED);
+    const sw = q('auto-prepare');
+    expect(sw?.getAttribute('role')).toBe('switch');
+    expect(sw?.getAttribute('aria-checked')).toBe('true');
+    expect(q('auto-prepare-row')?.textContent).toContain(
+      'Prepare survey surfaces when a project opens',
+    );
+    expect(q('auto-prepare-row')?.textContent).toContain(
+      'Runs in the background and shows in Jobs. You can cancel it.',
+    );
+    click('auto-prepare');
+    expect(h.updateSettings).toHaveBeenCalledWith({ autoPrepareSurfaces: false });
+  });
+
+  it('the auto-prepare switch shows off when the setting is off, and turns it on', async () => {
+    h.autoPrepare = false;
+    await mount(INSTALLED);
+    expect(q('auto-prepare')?.getAttribute('aria-checked')).toBe('false');
+    click('auto-prepare');
+    expect(h.updateSettings).toHaveBeenCalledWith({ autoPrepareSurfaces: true });
   });
 });

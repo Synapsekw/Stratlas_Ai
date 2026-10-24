@@ -203,6 +203,10 @@ describe('redactSettings', () => {
     });
   });
 
+  it('keeps the auto-prepare setting', () => {
+    expect(redactSettings({ autoPrepareSurfaces: false }).autoPrepareSurfaces).toBe(false);
+  });
+
   it('gives the team sync preferences and nothing a later field might carry (M9)', () => {
     const out = redactSettings({
       team: { autoSync: true, intervalMin: 15, blobCacheGb: 50, inviteCode: 'K7-ABCD-1234' },

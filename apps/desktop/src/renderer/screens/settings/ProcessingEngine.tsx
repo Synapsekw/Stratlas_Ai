@@ -5,6 +5,9 @@
  * would replace, the graphics card switch, and remove.
  *
  * Other screens get here with `openProcessingEngine()` (renderer/odm.ts).
+ *
+ * Below it, the switch for preparing survey surfaces in the background when a project opens
+ * (`Settings.autoPrepareSurfaces`, absent means on; `survey/surfacesWatch.ts`).
  */
 import { Icon, t, type IconName } from '@aio/ui';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -22,6 +25,33 @@ const STATE_ICON: Record<'ok' | 'warn' | 'plain', IconName | null> = {
   warn: 'warn',
   plain: null,
 };
+
+/** "Prepare survey surfaces when a project opens": on unless the setting says `false`. */
+function AutoPrepareSurfaces() {
+  const on = useShell((s) => s.settings.autoPrepareSurfaces !== false);
+  return (
+    <section className="opt-card" data-testid="auto-prepare-row" aria-labelledby="auto-prepare-l">
+      <div className="pe-gpu">
+        <div className="pe-gpu-t">
+          <span id="auto-prepare-l">{t('settings.autoPrepare.label')}</span>
+          <span className="faint" id="auto-prepare-h">
+            {t('settings.autoPrepare.hint')}
+          </span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          className="switch"
+          data-testid="auto-prepare"
+          aria-checked={on}
+          aria-labelledby="auto-prepare-l"
+          aria-describedby="auto-prepare-h"
+          onClick={() => void shell.getState().updateSettings({ autoPrepareSurfaces: !on })}
+        />
+      </div>
+    </section>
+  );
+}
 
 export function ProcessingEngine() {
   const dataRoot = useShell((s) => s.settings.dataRoot);
@@ -118,259 +148,262 @@ export function ProcessingEngine() {
   };
 
   return (
-    <section
-      ref={card}
-      className="opt-card processing-engine"
-      data-testid="engine"
-      aria-labelledby="engine-title"
-      onClickCapture={() => {
-        touched.current = true;
-      }}
-    >
-      <div className="oc-head">
-        <div>
-          <h2 id="engine-title" className="pe-title">
-            {t('engine.title')}
-          </h2>
-          <span
-            className={`pe-state ${view.tone}`}
-            data-testid="engine-state"
-            data-state={view.state}
-          >
-            {icon && <Icon name={icon} size={14} />}
-            {t(view.title)}
-          </span>
-        </div>
-        <span className="pe-acts">
-          {has('cancel') && (
-            <button
-              type="button"
-              className="btn sm ghost"
-              data-testid="engine-cancel"
-              onClick={() => void odm.getState().cancel()}
+    <>
+      <section
+        ref={card}
+        className="opt-card processing-engine"
+        data-testid="engine"
+        aria-labelledby="engine-title"
+        onClickCapture={() => {
+          touched.current = true;
+        }}
+      >
+        <div className="oc-head">
+          <div>
+            <h2 id="engine-title" className="pe-title">
+              {t('engine.title')}
+            </h2>
+            <span
+              className={`pe-state ${view.tone}`}
+              data-testid="engine-state"
+              data-state={view.state}
             >
-              {t('engine.cancel')}
-            </button>
-          )}
-          {has('install') && (
-            <button
-              type="button"
-              className="btn sm primary"
-              data-testid="engine-install"
-              onClick={() => {
-                install();
-              }}
-            >
-              <Icon name="download" size={14} />
-              {t('engine.install')}
-            </button>
-          )}
-          {has('update') && (
-            <button
-              type="button"
-              className="btn sm primary"
-              data-testid="engine-update"
-              onClick={() => {
-                install();
-              }}
-            >
-              {t('engine.update')}
-            </button>
-          )}
-          {has('reinstall') && (
-            <button
-              type="button"
-              className="btn sm"
-              data-testid="engine-reinstall"
-              onClick={() => {
-                install();
-              }}
-            >
-              {t('engine.reinstall')}
-            </button>
-          )}
-          {has('retry') && (
-            <button
-              type="button"
-              className="btn sm primary"
-              data-testid="engine-retry"
-              onClick={() => {
-                // main sees the unverified install and reruns only its start check
-                install();
-              }}
-            >
-              {t('engine.retry')}
-            </button>
-          )}
-          {has('remove') &&
-            (confirm ? (
-              <>
-                <button
-                  type="button"
-                  className="btn sm danger"
-                  ref={confirmBtn}
-                  data-testid="engine-remove-confirm"
-                  disabled={busy}
-                  onClick={() => void remove()}
-                >
-                  {t('engine.remove.confirm')}
-                </button>
-                <button
-                  type="button"
-                  className="btn sm ghost"
-                  data-testid="engine-remove-keep"
-                  disabled={busy}
-                  onClick={() => {
-                    setConfirm(false);
-                  }}
-                >
-                  {t('engine.remove.keep')}
-                </button>
-              </>
-            ) : (
+              {icon && <Icon name={icon} size={14} />}
+              {t(view.title)}
+            </span>
+          </div>
+          <span className="pe-acts">
+            {has('cancel') && (
               <button
                 type="button"
                 className="btn sm ghost"
-                ref={removeBtn}
-                data-testid="engine-remove"
+                data-testid="engine-cancel"
+                onClick={() => void odm.getState().cancel()}
+              >
+                {t('engine.cancel')}
+              </button>
+            )}
+            {has('install') && (
+              <button
+                type="button"
+                className="btn sm primary"
+                data-testid="engine-install"
                 onClick={() => {
-                  setConfirm(true);
+                  install();
                 }}
               >
-                {t('engine.remove')}
+                <Icon name="download" size={14} />
+                {t('engine.install')}
               </button>
-            ))}
-        </span>
-      </div>
-
-      <p className="help pe-about" data-testid="engine-about">
-        {t('engine.about')}{' '}
-        <a href={LICENCE_URL} target="_blank" rel="noreferrer">
-          {t('engine.licence')}
-        </a>
-        {', '}
-        <a href={SITE_URL} target="_blank" rel="noreferrer">
-          {t('engine.site')}
-        </a>
-        .
-      </p>
-
-      {view.warning && (
-        <div className="notice warn" role="status" data-testid="engine-warning">
-          <Icon name="warn" size={14} />
-          <span>{view.warning}</span>
+            )}
+            {has('update') && (
+              <button
+                type="button"
+                className="btn sm primary"
+                data-testid="engine-update"
+                onClick={() => {
+                  install();
+                }}
+              >
+                {t('engine.update')}
+              </button>
+            )}
+            {has('reinstall') && (
+              <button
+                type="button"
+                className="btn sm"
+                data-testid="engine-reinstall"
+                onClick={() => {
+                  install();
+                }}
+              >
+                {t('engine.reinstall')}
+              </button>
+            )}
+            {has('retry') && (
+              <button
+                type="button"
+                className="btn sm primary"
+                data-testid="engine-retry"
+                onClick={() => {
+                  // main sees the unverified install and reruns only its start check
+                  install();
+                }}
+              >
+                {t('engine.retry')}
+              </button>
+            )}
+            {has('remove') &&
+              (confirm ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn sm danger"
+                    ref={confirmBtn}
+                    data-testid="engine-remove-confirm"
+                    disabled={busy}
+                    onClick={() => void remove()}
+                  >
+                    {t('engine.remove.confirm')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn sm ghost"
+                    data-testid="engine-remove-keep"
+                    disabled={busy}
+                    onClick={() => {
+                      setConfirm(false);
+                    }}
+                  >
+                    {t('engine.remove.keep')}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn sm ghost"
+                  ref={removeBtn}
+                  data-testid="engine-remove"
+                  onClick={() => {
+                    setConfirm(true);
+                  }}
+                >
+                  {t('engine.remove')}
+                </button>
+              ))}
+          </span>
         </div>
-      )}
 
-      {view.detail && (
-        <p className="help pe-detail" data-testid="engine-detail">
-          {view.detail}
+        <p className="help pe-about" data-testid="engine-about">
+          {t('engine.about')}{' '}
+          <a href={LICENCE_URL} target="_blank" rel="noreferrer">
+            {t('engine.licence')}
+          </a>
+          {', '}
+          <a href={SITE_URL} target="_blank" rel="noreferrer">
+            {t('engine.site')}
+          </a>
+          .
         </p>
-      )}
 
-      {status?.version !== undefined && status.dir !== undefined && (
-        <p className="mono pe-version" data-testid="engine-version" title={status.dir}>
-          {t('engine.version', { version: status.version, dir: status.dir })}
-        </p>
-      )}
-
-      {status?.dev && <p className="help">{t('engine.dev')}</p>}
-
-      {status && (
-        <div className="pe-gpu" data-testid="engine-hardware-row">
-          <div className="pe-gpu-t">
-            <span id="engine-gpu-l" data-testid="engine-hardware">
-              {view.hardware}
-            </span>
-            <span className="faint">{t('engine.gpu.help')}</span>
+        {view.warning && (
+          <div className="notice warn" role="status" data-testid="engine-warning">
+            <Icon name="warn" size={14} />
+            <span>{view.warning}</span>
           </div>
-          <button
-            type="button"
-            role="switch"
-            className="switch"
-            data-testid="engine-gpu"
-            aria-checked={view.gpuOn}
-            aria-label={t('engine.gpu.switch')}
-            aria-describedby="engine-gpu-l"
-            disabled={view.gpuDisabled || !installed || gpuBusy}
-            onClick={() => void switchGpu()}
-          />
-        </div>
-      )}
+        )}
 
-      {status?.mayAskAdmin && !installed && !installing && (
-        <p className="help" data-testid="engine-admin">
-          {t('engine.admin')}
-        </p>
-      )}
+        {view.detail && (
+          <p className="help pe-detail" data-testid="engine-detail">
+            {view.detail}
+          </p>
+        )}
 
-      {view.progress && (
-        <div className="pe-progress" data-testid="engine-progress">
-          <span>{view.progress.label}</span>
-          <div
-            className={`toast-bar${view.progress.pct === null ? ' busy' : ''}`}
-            role="progressbar"
-            aria-label={phase ?? ''}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            {...(view.progress.pct === null ? {} : { 'aria-valuenow': view.progress.pct })}
-          >
-            <i style={{ '--p': (view.progress.pct ?? 100) / 100 } as CSSProperties} />
-          </div>
-        </div>
-      )}
+        {status?.version !== undefined && status.dir !== undefined && (
+          <p className="mono pe-version" data-testid="engine-version" title={status.dir}>
+            {t('engine.version', { version: status.version, dir: status.dir })}
+          </p>
+        )}
 
-      {askReplace && (
-        <div className="notice warn" role="alert" data-testid="engine-replace">
-          <Icon name="warn" size={14} />
-          <span>{t('engine.other', { dir: status?.other?.dir ?? '' })}</span>
-          <span className="pe-acts">
+        {status?.dev && <p className="help">{t('engine.dev')}</p>}
+
+        {status && (
+          <div className="pe-gpu" data-testid="engine-hardware-row">
+            <div className="pe-gpu-t">
+              <span id="engine-gpu-l" data-testid="engine-hardware">
+                {view.hardware}
+              </span>
+              <span className="faint">{t('engine.gpu.help')}</span>
+            </div>
             <button
               type="button"
-              className="btn sm ghost"
-              data-testid="engine-replace-no"
-              onClick={() => {
-                odm.getState().keep();
-              }}
+              role="switch"
+              className="switch"
+              data-testid="engine-gpu"
+              aria-checked={view.gpuOn}
+              aria-label={t('engine.gpu.switch')}
+              aria-describedby="engine-gpu-l"
+              disabled={view.gpuDisabled || !installed || gpuBusy}
+              onClick={() => void switchGpu()}
+            />
+          </div>
+        )}
+
+        {status?.mayAskAdmin && !installed && !installing && (
+          <p className="help" data-testid="engine-admin">
+            {t('engine.admin')}
+          </p>
+        )}
+
+        {view.progress && (
+          <div className="pe-progress" data-testid="engine-progress">
+            <span>{view.progress.label}</span>
+            <div
+              className={`toast-bar${view.progress.pct === null ? ' busy' : ''}`}
+              role="progressbar"
+              aria-label={phase ?? ''}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              {...(view.progress.pct === null ? {} : { 'aria-valuenow': view.progress.pct })}
             >
-              {t('engine.other.no')}
-            </button>
+              <i style={{ '--p': (view.progress.pct ?? 100) / 100 } as CSSProperties} />
+            </div>
+          </div>
+        )}
+
+        {askReplace && (
+          <div className="notice warn" role="alert" data-testid="engine-replace">
+            <Icon name="warn" size={14} />
+            <span>{t('engine.other', { dir: status?.other?.dir ?? '' })}</span>
+            <span className="pe-acts">
+              <button
+                type="button"
+                className="btn sm ghost"
+                data-testid="engine-replace-no"
+                onClick={() => {
+                  odm.getState().keep();
+                }}
+              >
+                {t('engine.other.no')}
+              </button>
+              <button
+                type="button"
+                className="btn sm primary"
+                ref={replaceYes}
+                data-testid="engine-replace-yes"
+                onClick={() => {
+                  install(true);
+                }}
+              >
+                {t('engine.other.yes')}
+              </button>
+            </span>
+          </div>
+        )}
+
+        {error && (
+          <p className="prov-err" role="alert" data-testid="engine-error">
+            {error}
+          </p>
+        )}
+
+        {status?.state === 'installed' && resume === 'create-maps' && (
+          <div className="pe-back">
             <button
               type="button"
               className="btn sm primary"
-              ref={replaceYes}
-              data-testid="engine-replace-yes"
-              onClick={() => {
-                install(true);
-              }}
+              data-testid="engine-back"
+              onClick={resumeAfterTools}
             >
-              {t('engine.other.yes')}
+              {t('engine.back')}
             </button>
-          </span>
+          </div>
+        )}
+        <div className="sr-only" role="status" data-testid="engine-live">
+          {live}
         </div>
-      )}
-
-      {error && (
-        <p className="prov-err" role="alert" data-testid="engine-error">
-          {error}
-        </p>
-      )}
-
-      {status?.state === 'installed' && resume === 'create-maps' && (
-        <div className="pe-back">
-          <button
-            type="button"
-            className="btn sm primary"
-            data-testid="engine-back"
-            onClick={resumeAfterTools}
-          >
-            {t('engine.back')}
-          </button>
-        </div>
-      )}
-      <div className="sr-only" role="status" data-testid="engine-live">
-        {live}
-      </div>
-    </section>
+      </section>
+      <AutoPrepareSurfaces />
+    </>
   );
 }

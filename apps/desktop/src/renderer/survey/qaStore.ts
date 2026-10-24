@@ -190,7 +190,7 @@ export function surfaceOfCapture(
 
 /** The surface source of a survey's own data: its DSM raster, else its point cloud. */
 export function sourceOfCapture(
-  manifest: ProjectManifest,
+  manifest: Pick<ProjectManifest, 'layers'>,
   capture: string,
 ): { kind: 'dsm' | 'cloud'; layer: string } | null {
   const dsm = manifest.layers.find(

@@ -77,4 +77,46 @@ describe('preparing surfaces', () => {
       ]),
     ).toBeNull();
   });
+
+  it('prepareParams falls back to the cloud and sets capture', () => {
+    const m = {
+      captures: [
+        ...manifest.captures,
+        { id: 'd3', label: 'Survey 4 May 2026', date: '2026-05-04' },
+        { id: 'd4', label: 'Survey 1 June 2026', date: '2026-06-01' },
+      ],
+      layers: [
+        ...manifest.layers,
+        { kind: 'pointcloud', id: 'pc-d3', capture: 'd3', name: 'Cloud 3' },
+        // a date with a DSM and a cloud prepares its DSM only
+        { kind: 'pointcloud', id: 'pc-d2', capture: 'd2', name: 'Cloud 2' },
+      ],
+    } as unknown as Pick<ProjectManifest, 'captures' | 'layers'>;
+    const done = [
+      { capture: 'd1', source: { kind: 'dsm', layer: 'dsm-d1' } },
+    ] as unknown as HeightTiles[];
+    expect(prepareParams(m, done)?.surfaces).toEqual([
+      {
+        id: 'dsm-d2',
+        name: 'Survey 6 April 2026 DSM',
+        source: { kind: 'dsm', layer: 'dsm-d2' },
+        capture: 'd2',
+      },
+      {
+        id: 'pc-d3',
+        name: 'Survey 4 May 2026 cloud',
+        source: { kind: 'cloud', layer: 'pc-d3' },
+        capture: 'd3',
+      },
+    ]);
+    // only the dates asked for
+    expect(prepareParams(m, done, ['d3'])?.surfaces.map((s) => s.id)).toEqual(['pc-d3']);
+    expect(prepareParams(m, done, ['d1'])).toBeNull();
+    // a date whose surface was prepared from its cloud is not prepared again
+    const fromCloud = [
+      ...done,
+      { capture: 'd3', source: { kind: 'cloud', layer: 'pc-d3' } },
+    ] as unknown as HeightTiles[];
+    expect(prepareParams(m, fromCloud)?.surfaces.map((s) => s.id)).toEqual(['dsm-d2']);
+  });
 });

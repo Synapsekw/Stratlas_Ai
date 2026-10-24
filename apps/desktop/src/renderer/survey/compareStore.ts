@@ -34,6 +34,7 @@ import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } fro
 import { designs as designsStore } from './designsStore';
 import type { EnginePort, HeatGrid, ItemShare, RunReply } from './engineProtocol';
 import { storedPoints } from './measureDates';
+import { refreshQa, sourceOfCapture } from './qaStore';
 import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from './seriesRule';
 import {
   measureStore,
@@ -223,8 +224,12 @@ export async function loadCompare(
   await refreshSurfaces();
 }
 
-/** Read `survey:surfaces` and `survey:readDesigns` again (after a prepare job). */
+/**
+ * Read `survey:surfaces` and `survey:readDesigns` again (after a prepare job). The QA store's
+ * surfaces (the cards' dates) are read again with them.
+ */
 export async function refreshSurfaces(): Promise<void> {
+  void refreshQa();
   const projectId = get().projectId;
   if (!projectId) return;
   const [s, d] = await Promise.all([
@@ -907,25 +912,62 @@ const safeId = (s: string) =>
     .replace(/^[^A-Za-z0-9]+/, '')
     .slice(0, 80) || 'surface';
 
-/** `survey.prepare` parameters for every capture's DSM raster that is not prepared yet. */
+/**
+ * `survey.prepare` parameters for every survey date without a prepared surface: its DSM raster,
+ * else its point cloud (as the QA checks prepare one), each with its `capture`. A DSM with no date
+ * is prepared too, unless `only` names the dates to cover.
+ */
 export function prepareParams(
   manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
   prepared: readonly HeightTiles[],
+  only?: readonly string[],
 ): SurveyPrepareParams | null {
-  const have = new Set(prepared.flatMap((p) => (p.source.kind === 'dsm' ? [p.source.layer] : [])));
+  const haveLayer = new Set(prepared.flatMap((p) => ('layer' in p.source ? [p.source.layer] : [])));
+  const haveDate = new Set(prepared.flatMap((p) => (p.capture ? [p.capture] : [])));
   const label = new Map(manifest.captures.map((c) => [c.id, c.label]));
+  const wanted = only ? new Set(only) : null;
   const surfaces: SurveyPrepareParams['surfaces'] = [];
+  const taken = new Set<string>();
   for (const l of manifest.layers) {
-    if (l.kind !== 'raster' || l.role !== 'dsm' || have.has(l.id)) continue;
-    const capture = l.capture;
+    if (l.kind !== 'raster' || l.role !== 'dsm' || l.capture || wanted || haveLayer.has(l.id))
+      continue;
+    surfaces.push({ id: safeId(l.id), name: l.name, source: { kind: 'dsm', layer: l.id } });
+  }
+  for (const c of manifest.captures) {
+    if ((wanted && !wanted.has(c.id)) || haveDate.has(c.id) || taken.has(c.id)) continue;
+    const source = sourceOfCapture(manifest, c.id);
+    if (!source || haveLayer.has(source.layer)) continue;
+    taken.add(c.id);
     surfaces.push({
-      id: safeId(l.id),
-      name: capture ? `${label.get(capture) ?? capture} DSM` : l.name,
-      source: { kind: 'dsm', layer: l.id },
-      ...(capture ? { capture } : {}),
+      id: safeId(source.layer),
+      name: `${label.get(c.id) ?? c.id} ${source.kind === 'dsm' ? 'DSM' : 'cloud'}`,
+      source,
+      capture: c.id,
     });
   }
   return surfaces.length ? { surfaces: surfaces.slice(0, 50) } : null;
+}
+
+/**
+ * Start one `survey.prepare` job for the dates `captures` names that have no prepared surface yet
+ * (a chip's Prepare). The surfaces are read again when it ends (`surfacesWatch`). An error
+ * sentence, or null.
+ */
+export async function prepareDates(captures: readonly string[]): Promise<string | null> {
+  const project = workspace.getState().project;
+  if (!project) return t('lineUp.read.noProject');
+  const s = await bridge.call('survey:surfaces', { projectId: project.id });
+  if (!s.ok) return s.error;
+  if (!s.value.ok) return s.value.error;
+  const params = prepareParams(project.manifest, s.value.surfaces, captures);
+  if (!params) return null;
+  const r = await bridge.call('jobs:start', {
+    pipeline: 'survey.prepare',
+    project: project.root,
+    params,
+  });
+  if (!r.ok) return r.error;
+  return r.value.ok ? null : r.value.error;
 }
 
 /** Start `survey.prepare` for the DSMs not prepared yet; the surfaces are read again when done. */

@@ -35,6 +35,9 @@ import { PipelineDialog } from './processing/PipelineDialog';
 import { ProcessingDrawer } from './processing/ProcessingDrawer';
 import { startFarWatch } from './builder/farSession';
 import { startLineUpSession } from './lineup/lineUpStart';
+import { refreshSurfaces } from './survey/compareStore';
+import { preparedSurfaces } from './survey/surfaceStates';
+import { connectSurfacesWatch } from './survey/surfacesWatch';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -434,6 +437,25 @@ export function App() {
     const stopFarWatch = startFarWatch();
     // line up dates: the step, its notice and the background check
     const stopLineUp = startLineUpSession();
+    // survey surfaces prepared in the background when a project opens: a quiet job in Jobs
+    const stopSurfaces = connectSurfacesWatch({
+      workspace,
+      jobs,
+      prepared: preparedSurfaces,
+      setting: () => shell.getState().settings.autoPrepareSurfaces !== false,
+      writable: () => shell.getState().pkg === null,
+      hasPython: () => jobs.getState().runtime?.found === true,
+      onReady: (cb) =>
+        jobs.subscribe((s, prev) => {
+          if (s.runtime?.found === true && prev.runtime?.found !== true) cb();
+        }),
+      readSurfaces: async (projectId) => {
+        const r = await bridge.call('survey:surfaces', { projectId });
+        return r.ok && r.value.ok ? r.value.surfaces : null;
+      },
+      start: (req) => jobs.getState().startQuiet(req),
+      refresh: refreshSurfaces,
+    });
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
       if (!project || !finishedManifestJob(prev.jobs, s.jobs, project.root)) return;
@@ -584,6 +606,7 @@ export function App() {
       stopJobReload();
       stopFarWatch();
       stopLineUp();
+      stopSurfaces();
       stopChangeReload();
       stopIssueReload();
       stopPassReload();
