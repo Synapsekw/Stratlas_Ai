@@ -3,6 +3,16 @@ import { MAP_INK, oklchHex, type MapOverlay, type OverlayLayer } from '@aio/maps
 import { shiftLocal, type DateShift, type Vec3, type WalkLayer } from '@aio/schema';
 import type { Feature, FeatureCollection } from 'geojson';
 import { walkPinPoints, walkShown, type SheetWalk, type WalkDrawOptions } from './walkOverlay';
+import {
+  along,
+  arrowPoints,
+  fanPoints,
+  headingFromBearingDeg,
+  MARKER_M,
+  ringPoints,
+  type WalkMarkerStyle,
+  type WalkViewNow,
+} from './walkView';
 
 /*
  * The walk on the map (design "What the surface shows"): one GeoJSON overlay per shown walk,
@@ -321,4 +331,143 @@ export function walkPreviewMapOverlay(
     ],
   };
   return { id: walkPreviewOverlayId(layerId), data, layers: previewStyle(colour, ghost, tooClose) };
+}
+
+// ---------------------------------------------------------------- SPIKE: the view cone marker
+
+/** The map overlay id of a walk's position marker with its view cone. */
+export const walkMarkerOverlayId = (layerId: string): string => `walk-${layerId}-marker`;
+
+const markerStyles = new Map<string, OverlayLayer[]>();
+
+/** The style layers of a marker, one array per colour and design (data-driven opacities). */
+function markerStyle(colour: string, style: WalkMarkerStyle, dim: boolean): OverlayLayer[] {
+  const key = `${colour}|${style}|${String(dim)}`;
+  let out = markerStyles.get(key);
+  if (out) return out;
+  const k = dim ? 0.45 : 1;
+  const is = (part: string): unknown[] => ['==', ['get', 'part'], part];
+  out = [
+    {
+      id: 'fill',
+      type: 'fill',
+      filter: is('fill'),
+      paint: {
+        'fill-color': ['coalesce', ['get', 'colour'], colour],
+        'fill-opacity': ['*', ['get', 'op'], k],
+      },
+      above: true,
+    },
+    {
+      id: 'edge',
+      type: 'line',
+      filter: is('edge'),
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': ['coalesce', ['get', 'colour'], colour],
+        'line-width': ['get', 'w'],
+        'line-opacity': k,
+      },
+      above: true,
+    },
+    {
+      id: 'dot',
+      type: 'circle',
+      filter: is('dot'),
+      paint: {
+        'circle-radius': style === 'compass' ? 6 : 7,
+        'circle-color': colour,
+        'circle-stroke-color': MAP_INK.fg0,
+        'circle-stroke-width': 2.5,
+        'circle-opacity': k,
+        'circle-stroke-opacity': k,
+      },
+      above: true,
+    },
+    {
+      id: 'tick',
+      type: 'circle',
+      filter: is('tick'),
+      paint: { 'circle-radius': 2.4, 'circle-color': MAP_INK.fg0, 'circle-opacity': k },
+      above: true,
+    },
+  ];
+  markerStyles.set(key, out);
+  return out;
+}
+
+type LonLatOf = (xz: XZ) => [number, number];
+const poly = (pts: readonly XZ[], ll: LonLatOf): Feature['geometry'] => ({
+  type: 'Polygon',
+  coordinates: [[...pts.map(ll), ll(pts[0] ?? [0, 0])]],
+});
+const lineOf = (pts: readonly XZ[], ll: LonLatOf): Feature['geometry'] => ({
+  type: 'LineString',
+  coordinates: pts.map(ll),
+});
+
+/**
+ * Where walk `walk` is at `view.t` with a view cone along its look (`view.lookDeg`, `view.hfovDeg`
+ * wide) in design `style`, as its own small overlay; the walk direction is a small tick. Without
+ * a look (the walk not placed yet) the cone is left out. Null when the walk has no spot then.
+ */
+export function walkMarkerMapOverlay(
+  walk: SheetWalk,
+  proj: { toLonLat(v: Vec3): [number, number] },
+  colour: string,
+  view: WalkViewNow,
+  style: WalkMarkerStyle,
+  opts: { dim?: boolean } = {},
+): MapOverlay | null {
+  if (!Number.isFinite(view.t)) return null;
+  const a = walk.fit.at(view.t);
+  if (!a) return null;
+  const ll = onMap(proj, walk.shift ?? null);
+  const half = (Math.min(170, Math.max(5, view.hfovDeg)) * Math.PI) / 360;
+  const look = view.lookDeg === null ? null : headingFromBearingDeg(view.lookDeg);
+  const features: Feature[] = [];
+  const f = (part: string, geometry: Feature['geometry'], props: Record<string, unknown> = {}) => {
+    features.push({ type: 'Feature', properties: { part, ...props }, geometry });
+  };
+  const tick = (dist: number) => {
+    f('tick', { type: 'Point', coordinates: ll(along(a.xz, a.headingRad, dist)) });
+  };
+  if (style === 'beam') {
+    // a radial fade: four nested fans, the overlap darkest at the apex
+    if (look !== null)
+      for (const r of [1, 0.83, 0.67, 0.5, 0.33, 0.17])
+        f('fill', poly(fanPoints(a.xz, look, half, MARKER_M.beam * r), ll), { op: 0.15 });
+    tick(MARKER_M.tick);
+  } else if (style === 'compass') {
+    f('fill', poly(ringPoints(a.xz, MARKER_M.compassRing), ll), { op: 0.45, colour: '#0b0f14' });
+    f('edge', lineOf(ringPoints(a.xz, MARKER_M.compassRing), ll), { w: 2 });
+    if (look !== null) {
+      const fan = fanPoints(a.xz, look, half, MARKER_M.compassFan);
+      f('fill', poly(fan, ll), { op: 0.35 });
+      f('edge', lineOf([...fan, a.xz], ll), { w: 1.5 });
+    }
+    // the walk direction: a chevron on the ring
+    const tip = along(a.xz, a.headingRad, MARKER_M.compassRing + 0.6);
+    const back = along(a.xz, a.headingRad, MARKER_M.compassRing - 0.9);
+    const side = (s: number): XZ => along(back, a.headingRad + (s * Math.PI) / 2, 1.1);
+    f('edge', lineOf([side(1), tip, side(-1)], ll), { w: 2.5, colour: MAP_INK.fg0 });
+  } else {
+    if (look !== null) {
+      const fan = fanPoints(a.xz, look, half, MARKER_M.rays);
+      f('fill', poly(fan, ll), { op: 0.1 });
+      f('edge', lineOf([fan[1] ?? a.xz, a.xz, fan.at(-1) ?? a.xz], ll), { w: 1.5 });
+      // the arrowhead turned to the look
+      const [nose, l, notch, r] = arrowPoints(a.xz, look);
+      f('fill', poly([nose, l, notch, r], ll), { op: 1 });
+      f('edge', lineOf([nose, l, notch, r, nose], ll), { w: 2, colour: MAP_INK.fg0 });
+    }
+    tick(MARKER_M.tick);
+  }
+  // the rays design's arrowhead is the position; the others draw a dot
+  if (style !== 'rays' || look === null) f('dot', { type: 'Point', coordinates: ll(a.xz) });
+  return {
+    id: walkMarkerOverlayId(walk.layer.id),
+    data: { type: 'FeatureCollection', features },
+    layers: markerStyle(colour, style, opts.dim === true),
+  };
 }

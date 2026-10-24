@@ -4,6 +4,7 @@ import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef } from 'react';
 import { Box3, Vector3 } from 'three';
 import { useStore } from 'zustand';
+import { useTimeline } from '../workspace/timeline';
 import type { PlaceState } from './placeStore';
 import {
   placeSession,
@@ -16,15 +17,19 @@ import {
 } from './placeWalk';
 import { resolveCssColour } from './walkMapOverlay';
 import type { SheetWalk } from './walkOverlay';
+import { walkCompare } from './walkCompare';
 import {
   attachWalkScene,
+  DRAPE_LIFT_M,
   previewPoints,
   sceneRuns,
   type WalkSceneInput,
+  type WalkSceneMarker,
   type WalkScenePlacing,
   type WalkSceneView,
   type WalkSceneWalk,
 } from './walkScene';
+import { headingFromBearingDeg, walkMarkerStyle, walkViews } from './walkView';
 
 /*
  * The walks in the 3D view: every visible placed walk faintly, and the walk being placed on the
@@ -190,6 +195,86 @@ function pushPlacing(
   stage.setReach(REACH_PLACING, p ? walkReach(placingPoints(p), centre, reach) : null);
 }
 
+// ---------------------------------------------------------------- SPIKE: the walk on the ground
+
+/** Draped points sit this far over the ground (the lines also pull towards the camera). */
+const LIFT_PLACED = DRAPE_LIFT_M;
+/** The ground is asked about every this many metres along a walk, heights between interpolated. */
+const DRAPE_STEP_M = 1;
+
+/**
+ * The ground the 3D view draws under scene x/z, or null where nothing is drawn: the DSM straight
+ * down first, then the ground imagery (ortho, street map drape), then the top of the visible
+ * models and clouds. Only visible layers count (the stage skips hidden ones).
+ */
+export function sceneGround(
+  stage: Pick<EngineStage, 'raycastRay'>,
+  m: Pick<ProjectManifest, 'layers'>,
+): (x: number, z: number) => number | null {
+  const tiers: string[][] = [[], [], []];
+  for (const l of m.layers) {
+    if (l.kind === 'raster') (l.role === 'dsm' ? tiers[0] : tiers[1])?.push(l.id);
+    else if (l.kind === 'basemap') tiers[1]?.push(l.id);
+    else if (l.kind === 'mesh' || l.kind === 'pointcloud') tiers[2]?.push(l.id);
+  }
+  const from = new Vector3();
+  const down = new Vector3(0, -1, 0);
+  return (x, z) => {
+    for (const ids of tiers) {
+      let top: number | null = null;
+      for (const id of ids) {
+        const hit = stage.raycastRay(from.set(x, 20_000, z), down, { layer: id });
+        if (hit && (top === null || hit.point.y > top)) top = hit.point.y;
+      }
+      if (top !== null) return top;
+    }
+    return null;
+  };
+}
+
+/**
+ * A run of walk points (y: the walk's stored ground plus `lift`) moved onto `ground`, asked every
+ * `DRAPE_STEP_M` along the run and interpolated between; where the ground answers nothing the
+ * stored height stays.
+ */
+export function drapePoints(
+  pts: readonly [number, number, number][],
+  ground: (x: number, z: number) => number | null,
+  lift: number,
+): [number, number, number][] {
+  const n = pts.length;
+  if (n === 0) return [];
+  const stored = pts.map((p) => p[1] - LIFT_M_STORED);
+  // stations: indices where the ground is asked (the first, every step, the last)
+  const at: { i: number; y: number }[] = [];
+  let run = Infinity;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    const q = pts[i - 1];
+    if (!p) continue;
+    if (q) run += Math.hypot(p[0] - q[0], p[2] - q[2]);
+    if (run >= DRAPE_STEP_M || i === n - 1) {
+      at.push({ i, y: ground(p[0], p[2]) ?? stored[i] ?? 0 });
+      run = 0;
+    }
+  }
+  const out: [number, number, number][] = [];
+  let k = 0;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    if (!p) continue;
+    while (k < at.length - 1 && (at[k + 1]?.i ?? n) < i) k++;
+    const a = at[k];
+    const b = at[k + 1] ?? a;
+    let y = a?.y ?? stored[i] ?? 0;
+    if (a && b && b.i > a.i && i >= a.i) y = a.y + ((b.y - a.y) * (i - a.i)) / (b.i - a.i);
+    out.push([p[0], y + lift, p[2]]);
+  }
+  return out;
+}
+/** The lift `sceneRuns` put on the stored heights (taken off again before draping). */
+const LIFT_M_STORED = 0.1;
+
 export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
   const view = useRef<WalkSceneView | null>(null);
   const shown = useRef(false);
@@ -232,9 +317,78 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
         : [],
     [fits, hidden, manifest, editing],
   );
+  // SPIKE: the placed walks follow the ground drawn under them (DSM, then the imagery, then
+  // models and clouds), asked again as layers load or the date on screen changes
+  const focus = useTimeline((s) => s.focus);
   useEffect(() => {
-    view.current?.setPlaced(placed);
-  }, [placed, stage]);
+    const v = view.current;
+    if (!v || !stage) return;
+    const drape = () => {
+      const m = workspace.getState().project?.manifest;
+      const ground = m ? sceneGround(stage, m) : () => null;
+      v.setPlaced(
+        placed.map((w) => ({
+          ...w,
+          runs: w.runs.map((r) => ({ ...r, pts: drapePoints(r.pts, ground, LIFT_PLACED) })),
+        })),
+      );
+    };
+    drape();
+    // visibility follows the date a moment later: look again once it has settled
+    const again = window.setTimeout(drape, 400);
+    let pending = 0;
+    const off = stage.onLayerLoaded(() => {
+      window.clearTimeout(pending);
+      pending = window.setTimeout(drape, 150);
+    });
+    return () => {
+      off();
+      window.clearTimeout(again);
+      window.clearTimeout(pending);
+    };
+  }, [placed, stage, focus]);
+
+  // SPIKE: a marker with its view cone for every walk a 360 pane shows (two while comparing)
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !stage || !manifest) return;
+    const draw = () => {
+      const style = walkMarkerStyle.getState().style;
+      const far = walkCompare.getState().far;
+      const ground = sceneGround(stage, manifest);
+      const out: WalkSceneMarker[] = [];
+      for (const [id, now] of Object.entries(walkViews.getState())) {
+        const w = fits.find((f) => f.layer.id === id);
+        if (!w || !w.layer.visible || hidden.has(id) || id === editing) continue;
+        const a = w.fit.at(now.t);
+        if (!a) continue;
+        const p = shiftLocal([a.xz[0], a.groundY, a.xz[1]], w.shift ?? null);
+        out.push({
+          id,
+          colour: resolveCssColour(walkColour(manifest, w.layer)),
+          at: [p[0], ground(p[0], p[2]) ?? p[1], p[2]],
+          lookHeadingRad: now.lookDeg === null ? null : headingFromBearingDeg(now.lookDeg),
+          halfRad: (Math.min(170, Math.max(5, now.hfovDeg)) * Math.PI) / 360,
+          walkHeadingRad: a.headingRad,
+          style,
+          dim: far === id,
+        });
+      }
+      v.setMarkers(out);
+    };
+    draw();
+    const offViews = walkViews.subscribe(draw);
+    const offStyle = walkMarkerStyle.subscribe(draw);
+    const offCompare = walkCompare.subscribe(draw);
+    const offLoaded = stage.onLayerLoaded(draw);
+    return () => {
+      offViews();
+      offStyle();
+      offCompare();
+      offLoaded();
+      v.setMarkers([]);
+    };
+  }, [fits, hidden, manifest, editing, stage, focus]);
   useEffect(() => {
     stage?.setReach(REACH_PLACED, placedReach(placed, placingIn3d));
   }, [placed, placingIn3d, stage]);

@@ -2,18 +2,33 @@ import type { EngineStage } from '@aio/engine';
 import type { WalkFit } from '@aio/geo';
 import {
   BufferGeometry,
+  CanvasTexture,
   Color,
+  DoubleSide,
   Float32BufferAttribute,
   Group,
   Line,
   LineBasicMaterial,
   LineDashedMaterial,
-  type Material,
+  Mesh,
+  MeshBasicMaterial,
+  type Object3D,
   Points,
   PointsMaterial,
   Vector2,
   Vector3,
 } from 'three';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import {
+  along,
+  arrowPoints,
+  fanPoints,
+  MARKER_M,
+  ringPoints,
+  type WalkMarkerStyle,
+} from './walkView';
 
 /*
  * The walk in the 3D view (design "Walk placing by start and end", unit 6): the path as a line
@@ -46,17 +61,36 @@ export interface WalkSceneInput {
   drag(handle: 'start' | 'end', at: [number, number], y: number): void;
   endDrag(): void;
 }
+/** SPIKE: where a walk a 360 pane shows is, and where it looks, on the ground of the 3D view. */
+export interface WalkSceneMarker {
+  id: string;
+  colour: string;
+  /** The ground under the spot, scene coordinates. */
+  at: [number, number, number];
+  /** Model heading of the look (null: no look, the walk not placed), and half the cone's width. */
+  lookHeadingRad: number | null;
+  halfRad: number;
+  /** Model heading of the walk itself (the small direction tick). */
+  walkHeadingRad: number;
+  style: WalkMarkerStyle;
+  dim?: boolean;
+}
 export interface WalkSceneView {
   /** Placed walks drawn faintly (not the one being placed). */
   setPlaced(walks: readonly WalkSceneWalk[]): void;
   setPlacing(p: WalkScenePlacing | null, input: WalkSceneInput | null): void;
+  /** SPIKE: the markers of the walks the 360 panes show. */
+  setMarkers(markers: readonly WalkSceneMarker[]): void;
   dispose(): void;
 }
 /** Lines sit this far above the ground, metres, so the ground does not hide them. */
 const LIFT_M = 0.1;
+/** SPIKE: placed walks are draped on the ground and depth tested, lifted this much. */
+export const DRAPE_LIFT_M = 0.15;
+/** SPIKE: the marker's stem, metres, with its dot on top. */
+const STEM_M = 1.8;
 /** A press this close to a handle (screen px) grabs it. */
 const HANDLE_PX = 10;
-const FAINT = 0.6;
 const GHOST = 0.45;
 
 export function sceneRuns(
@@ -104,6 +138,22 @@ export function previewPoints(
   });
 }
 
+let dotTexture: CanvasTexture | null | undefined;
+/** A round dot for points (they draw squares otherwise); null where there is no canvas. */
+function roundDot(): CanvasTexture | null {
+  if (dotTexture !== undefined) return dotTexture;
+  const c = typeof document === 'undefined' ? null : document.createElement('canvas');
+  const g = c?.getContext('2d') ?? null;
+  if (!c || !g) return (dotTexture = null);
+  c.width = c.height = 64;
+  g.fillStyle = '#ffffff';
+  g.beginPath();
+  g.arc(32, 32, 30, 0, Math.PI * 2);
+  g.fill();
+  dotTexture = new CanvasTexture(c);
+  return dotTexture;
+}
+
 export function attachWalkScene(stage: EngineStage): WalkSceneView {
   const group = new Group();
   group.name = WALK_SCENE_GROUP;
@@ -111,7 +161,8 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
   stage.scene.add(group);
   const placedGroup = new Group();
   const placingGroup = new Group();
-  group.add(placedGroup, placingGroup);
+  const markerGroup = new Group();
+  group.add(placedGroup, placingGroup, markerGroup);
   const canvas = stage.renderer.domElement;
 
   let placing: WalkScenePlacing | null = null;
@@ -144,20 +195,252 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
     l.renderOrder = 45;
     return l;
   };
+  const size = new Vector2();
+  /**
+   * SPIKE: a line a few pixels wide that the ground and models in front hide (depth tested,
+   * pulled a little towards the camera so the surface it lies on does not cover it).
+   */
+  const fatLine = (
+    pts: readonly (readonly [number, number, number])[],
+    colour: string,
+    opacity: number,
+    width: number,
+    opts: { dashed?: boolean; depth?: boolean; order?: number } = {},
+  ): Line2 => {
+    const g = new LineGeometry();
+    g.setPositions(pts.flatMap((p) => [p[0], p[1], p[2]]));
+    const mat = new LineMaterial({
+      color: new Color(colour).getHex(),
+      linewidth: width,
+      transparent: true,
+      opacity,
+      depthTest: opts.depth !== false,
+      depthWrite: false,
+      dashed: opts.dashed === true,
+      dashSize: 0.6,
+      gapSize: 0.4,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    mat.fog = false;
+    const l = new Line2(g, mat);
+    if (opts.dashed) l.computeLineDistances();
+    l.renderOrder = opts.order ?? 45;
+    l.frustumCulled = false;
+    l.raycast = () => undefined;
+    // fat lines take their width in pixels of the canvas they are drawn on
+    l.onBeforeRender = (renderer) => {
+      renderer.getSize(size);
+      mat.resolution.set(size.x, size.y);
+    };
+    return l;
+  };
+  const disposeTree = (o: Object3D) => {
+    o.traverse((c) => {
+      const m = c as Partial<Mesh>;
+      m.geometry?.dispose();
+      const mat = m.material;
+      if (mat) for (const x of Array.isArray(mat) ? mat : [mat]) x.dispose();
+    });
+  };
   const clear = (g: Group) => {
     for (const c of [...g.children]) {
       g.remove(c);
-      if (c instanceof Line || c instanceof Points) {
-        const o = c as unknown as { geometry: BufferGeometry; material: Material | Material[] };
-        o.geometry.dispose();
-        (Array.isArray(o.material) ? o.material : [o.material]).forEach((x) => {
-          x.dispose();
-        });
-      }
+      disposeTree(c);
     }
   };
   const drawWalk = (g: Group, w: WalkSceneWalk, opacity: number) => {
     for (const r of w.runs) g.add(line(r.pts, w.colour, opacity, r.dashed));
+  };
+  /** SPIKE: a placed walk draped on the ground: a dark halo under its date colour, depth tested. */
+  const drawDraped = (g: Group, w: WalkSceneWalk) => {
+    for (const r of w.runs) {
+      g.add(fatLine(r.pts, '#0b0f14', 0.45, 6, { dashed: r.dashed }));
+      g.add(fatLine(r.pts, w.colour, 0.95, 3, { dashed: r.dashed, order: 46 }));
+    }
+  };
+
+  /** A flat fan or polygon on the ground: `pts` in x/z about the marker, `alpha` per point. */
+  const flat = (
+    pts: readonly (readonly [number, number])[],
+    y: number,
+    colour: string,
+    alpha: readonly number[] | number,
+    fan = true,
+  ): Mesh => {
+    const g = new BufferGeometry();
+    g.setAttribute(
+      'position',
+      new Float32BufferAttribute(
+        pts.flatMap((p) => [p[0], y, p[1]]),
+        3,
+      ),
+    );
+    const c = new Color(colour);
+    g.setAttribute(
+      'color',
+      new Float32BufferAttribute(
+        pts.flatMap((_, i) => [c.r, c.g, c.b, typeof alpha === 'number' ? alpha : (alpha[i] ?? 0)]),
+        4,
+      ),
+    );
+    const idx: number[] = [];
+    // a fan about point 0 (the apex or, for a ring's fill, a first point on it)
+    for (let i = 1; i < pts.length - 1; i++) idx.push(0, i, i + 1);
+    if (!fan && pts.length > 2) idx.push(0, pts.length - 1, 1);
+    g.setIndex(idx);
+    const m = new Mesh(
+      g,
+      new MeshBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        side: DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+        fog: false,
+      }),
+    );
+    m.renderOrder = 47;
+    m.raycast = () => undefined;
+    return m;
+  };
+
+  /** SPIKE: one marker: the design's cone on the ground, a stem and a dot on top. */
+  const drawMarker = (mk: WalkSceneMarker): Group => {
+    const g = new Group();
+    g.name = `aio-walk-marker-${mk.id}`;
+    g.position.set(mk.at[0], mk.at[1], mk.at[2]);
+    const k = mk.dim ? 0.45 : 1;
+    const y = 0.08;
+    const o: [number, number] = [0, 0];
+    const xyz = (p: readonly [number, number], h = y): [number, number, number] => [p[0], h, p[1]];
+    const look = mk.lookHeadingRad;
+    const half = mk.halfRad;
+    const tickDot = () => {
+      const p = along(o, mk.walkHeadingRad, MARKER_M.tick);
+      g.add(flat(ringPoints(p, 0.22, 12), y + 0.01, '#f0f2f4', 0.95 * k, false));
+    };
+    if (mk.style === 'beam') {
+      if (look !== null) {
+        // the apex strong, the rim gone: a beam of light along the look (two fans: a quick
+        // fall-off near the spot, a long faint reach)
+        const fan = fanPoints(o, look, half, MARKER_M.beam, 24);
+        const near = fanPoints(o, look, half, MARKER_M.beam * 0.5, 24);
+        g.add(flat(fan, y, mk.colour, [0.7 * k, ...fan.slice(1).map(() => 0.05 * k)]));
+        g.add(flat(near, y + 0.005, mk.colour, [0.6 * k, ...near.slice(1).map(() => 0)]));
+      }
+      g.add(flat(ringPoints(o, 0.45, 16), y + 0.012, mk.colour, k, false));
+      tickDot();
+    } else if (mk.style === 'compass') {
+      const ring = ringPoints(o, MARKER_M.compassRing, 40);
+      g.add(flat(ring, y - 0.01, '#0b0f14', 0.45 * k, false));
+      g.add(
+        fatLine(
+          ring.map((p) => xyz(p)),
+          mk.colour,
+          k,
+          2,
+          { order: 48 },
+        ),
+      );
+      if (look !== null) {
+        const fan = fanPoints(o, look, half, MARKER_M.compassFan, 24);
+        g.add(flat(fan, y + 0.01, mk.colour, 0.35 * k));
+        g.add(
+          fatLine(
+            [...fan, o].map((p) => xyz(p)),
+            mk.colour,
+            k,
+            1.5,
+            { order: 48 },
+          ),
+        );
+      }
+      const tip = along(o, mk.walkHeadingRad, MARKER_M.compassRing + 0.6);
+      const back = along(o, mk.walkHeadingRad, MARKER_M.compassRing - 0.9);
+      const side = (s: number) => along(back, mk.walkHeadingRad + (s * Math.PI) / 2, 1.1);
+      g.add(
+        fatLine(
+          [side(1), tip, side(-1)].map((p) => xyz(p, y + 0.02)),
+          '#f0f2f4',
+          k,
+          2.5,
+          {
+            order: 49,
+          },
+        ),
+      );
+    } else {
+      if (look !== null) {
+        const fan = fanPoints(o, look, half, MARKER_M.rays, 24);
+        g.add(flat(fan, y, mk.colour, 0.1 * k));
+        g.add(
+          fatLine(
+            [fan[1] ?? o, o, fan.at(-1) ?? o].map((p) => xyz(p)),
+            mk.colour,
+            k,
+            1.5,
+            {
+              order: 48,
+            },
+          ),
+        );
+        const [nose, l, notch, r] = arrowPoints(o, look);
+        g.add(flat([notch, r, nose, l], y + 0.02, mk.colour, k));
+        g.add(
+          fatLine(
+            [nose, l, notch, r, nose].map((p) => xyz(p, y + 0.03)),
+            '#f0f2f4',
+            k,
+            2,
+            {
+              order: 49,
+            },
+          ),
+        );
+      }
+      tickDot();
+    }
+    // a stem up from the spot and a dot on top: it reads in 3D from any side, over the model
+    g.add(
+      fatLine(
+        [
+          [0, 0, 0],
+          [0, STEM_M, 0],
+        ],
+        '#f0f2f4',
+        0.9 * k,
+        2,
+        { order: 49 },
+      ),
+    );
+    const dot = (px: number, colour: string, order: number) => {
+      const pg = new BufferGeometry();
+      pg.setAttribute('position', new Float32BufferAttribute([0, STEM_M, 0], 3));
+      const map = roundDot();
+      const p = new Points(
+        pg,
+        new PointsMaterial({
+          color: new Color(colour),
+          size: px,
+          sizeAttenuation: false,
+          depthTest: false,
+          fog: false,
+          transparent: true,
+          opacity: k,
+          ...(map ? { map, alphaTest: 0.5 } : {}),
+        }),
+      );
+      p.renderOrder = order;
+      p.raycast = () => undefined;
+      g.add(p);
+    };
+    dot(17, '#f0f2f4', 50);
+    dot(12, mk.colour, 51);
+    return g;
   };
 
   const redraw = () => {
@@ -290,7 +573,13 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
   return {
     setPlaced: (walks) => {
       clear(placedGroup);
-      for (const w of walks) drawWalk(placedGroup, w, FAINT);
+      // SPIKE: draped and depth tested (was: faint 1 px lines over everything)
+      for (const w of walks) drawDraped(placedGroup, w);
+      stage.requestRender();
+    },
+    setMarkers: (markers) => {
+      clear(markerGroup);
+      for (const m of markers) markerGroup.add(drawMarker(m));
       stage.requestRender();
     },
     setPlacing: (p, i) => {
@@ -310,6 +599,7 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
       window.removeEventListener('pointerup', onUp);
       clear(placedGroup);
       clear(placingGroup);
+      clear(markerGroup);
       stage.scene.remove(group);
       stage.requestRender();
     },

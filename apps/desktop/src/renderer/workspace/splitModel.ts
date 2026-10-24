@@ -38,6 +38,8 @@ export interface SplitDates {
 
 /** Whether both sides may show `kind`, one survey date each. */
 export function twinAllowed(kind: PaneKind, dates: SplitDates | undefined): boolean {
+  // SPIKE (walk compare): two 360 panes, one walk each (walks/walkCompare.ts picks them)
+  if (kind === 'walk360') return true;
   if (!dates || dates.captures.length < 2 || !PER_CAPTURE.includes(kind)) return false;
   return kind !== '3d' || dates.twin3d !== false;
 }
@@ -351,6 +353,7 @@ export function parseSplitPref(v: unknown): SplitPref | null {
   // the same pane twice only for two different survey dates
   if (
     left === right &&
+    left !== 'walk360' &&
     !(
       PER_CAPTURE.includes(left) &&
       typeof leftCapture === 'string' &&

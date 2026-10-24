@@ -57,6 +57,7 @@ import { walkMap, setWalkMapOverlays, setWalkMapPointer } from './walkMapStore';
 import {
   resolveCssColour,
   walkMapOverlays,
+  walkMarkerMapOverlay,
   walkNowMapOverlay,
   walkPreviewMapOverlay,
 } from './walkMapOverlay';
@@ -68,7 +69,9 @@ import {
   type WalkDrawing,
   type WalkNow,
 } from './walkOverlay';
-import { watchWalkPlayback, type WalkPlaybackState } from './walkPlayback';
+import { walkCompare } from './walkCompare';
+import type { WalkPlaybackState } from './walkPlayback';
+import { walkMarkerStyle, walkViews } from './walkView';
 import { jobForWalk, splitWithWalk } from './walkModel';
 import {
   locateOriginal,
@@ -591,12 +594,24 @@ export function sessionHandles(
  */
 let placedMap: readonly MapOverlay[] = [];
 let placedNow: MapOverlay | null = null;
+// SPIKE: the markers with a view cone of every walk a 360 pane shows (two in compare)
+let placedMarkers: readonly MapOverlay[] = [];
 let sessionMap: readonly MapOverlay[] = [];
 const publishMap = (): void => {
-  setWalkMapOverlays(
-    placedNow ? [...placedMap, placedNow, ...sessionMap] : [...placedMap, ...sessionMap],
-  );
+  setWalkMapOverlays([
+    ...placedMap,
+    ...(placedNow ? [placedNow] : []),
+    ...placedMarkers,
+    ...sessionMap,
+  ]);
 };
+
+/** SPIKE: the position markers with their view cones (`walkMarkerMapOverlay`). */
+export function setPlacedMarkerOverlays(overlays: readonly MapOverlay[]): void {
+  if (overlays.length === 0 && placedMarkers.length === 0) return;
+  placedMarkers = overlays;
+  publishMap();
+}
 
 /** The placed walks' map overlays (every visible, placed walk at 60 %). */
 export function setPlacedMapOverlays(overlays: readonly MapOverlay[]): void {
@@ -1017,6 +1032,39 @@ export function placedNowMapOverlay(
   return walkNowMapOverlay(p.walk, { toLonLat }, (l) => resolveCssColour(walkColour(m, l)), p.t);
 }
 
+/**
+ * SPIKE: a marker with its view cone for every shown placed walk a 360 pane shows now (both
+ * walks while comparing), in the design `stratlas.walkMarkerStyle` picks; the follower dims
+ * while it is far from the lead's spot.
+ */
+export function placedMarkerOverlays(
+  m: ProjectManifest,
+  placed: readonly SheetWalk[],
+  hidden: ReadonlySet<string>,
+  except: string | null,
+): MapOverlay[] {
+  const toLonLat = localToLonLat(m);
+  if (!toLonLat) return [];
+  const style = walkMarkerStyle.getState().style;
+  const far = walkCompare.getState().far;
+  const out: MapOverlay[] = [];
+  for (const [id, view] of Object.entries(walkViews.getState())) {
+    if (id === except) continue;
+    const walk = placed.find((w) => w.layer.id === id);
+    if (!walk || !walkShown(walk.layer, { placingId: null, hidden })) continue;
+    const ov = walkMarkerMapOverlay(
+      walk,
+      { toLonLat },
+      resolveCssColour(walkColour(m, walk.layer)),
+      view,
+      style,
+      { dim: far === id },
+    );
+    if (ov) out.push(ov);
+  }
+  return out;
+}
+
 /** Where the placed walk the 360 pane plays is now, on the drawing `sheetId` (null: not there). */
 export function placedNowOnSheet(
   m: ProjectManifest,
@@ -1119,23 +1167,31 @@ export function usePlacedWalksOnMap(): void {
   useEffect(() => {
     setPlacedMapOverlays(manifest ? placedMapOverlays(manifest, fits, hidden, except) : []);
   }, [manifest, fits, hidden, except]);
-  // the dot of the walk the 360 pane plays goes apart, outside React: a time tick neither
-  // rebuilds the paths nor renders the stage, and other walks' ticks do nothing
+  // SPIKE: every walk a 360 pane shows gets a marker with its view cone (two while comparing),
+  // outside React: a time tick or a drag neither rebuilds the paths nor renders the stage
   useEffect(() => {
     if (!manifest) {
-      setPlacedNowMapOverlay(null);
+      setPlacedMarkerOverlays([]);
       return;
     }
-    const shown = (id: string) =>
-      id !== except && !hidden.has(id) && fits.some((w) => w.layer.id === id);
-    return watchWalkPlayback(shown, (playing) => {
-      setPlacedNowMapOverlay(placedNowMapOverlay(manifest, fits, hidden, except, playing));
-    });
+    const draw = () => {
+      setPlacedMarkerOverlays(placedMarkerOverlays(manifest, fits, hidden, except));
+    };
+    draw();
+    const offViews = walkViews.subscribe(draw);
+    const offStyle = walkMarkerStyle.subscribe(draw);
+    const offCompare = walkCompare.subscribe(draw);
+    return () => {
+      offViews();
+      offStyle();
+      offCompare();
+    };
   }, [manifest, fits, hidden, except]);
   useEffect(
     () => () => {
       setPlacedMapOverlays([]);
       setPlacedNowMapOverlay(null);
+      setPlacedMarkerOverlays([]);
     },
     [],
   );
@@ -1147,6 +1203,11 @@ export function usePlacedWalksOnMap(): void {
  * placement. Null while the walk is not placed.
  */
 export function useWalkViewHeading(walk: WalkLayer, time: number): number | null {
+  return useWalkViewHeadingAt(walk)(time);
+}
+
+/** SPIKE: `useWalkViewHeading` as a function of time (compare pairs two walks' moments). */
+export function useWalkViewHeadingAt(walk: WalkLayer): (time: number) => number | null {
   const sessionOn = useStore(placeSession, (s) => s.layerId === walk.id);
   const sessionFit = useStore(placeSession, (s) => (s.layerId === walk.id ? s.fit : null));
   const sessionYaw = useStore(placeSession, (s) => s.yawOffsetDeg);
@@ -1154,14 +1215,16 @@ export function useWalkViewHeading(walk: WalkLayer, time: number): number | null
     s.layerId === walk.id ? s.inputs.orientation : null,
   );
   const { fits, inputsOf } = usePlacedWalkFits();
-  if (sessionOn) return viewHeading(sessionFit, sessionOrient, sessionYaw, time);
   const saved = fits.find((w) => w.layer.id === walk.id);
-  return saved?.layer.place
-    ? viewHeading(
-        saved.fit,
-        inputsOf(walk.id)?.orientation ?? null,
-        saved.layer.place.yawOffsetDeg,
-        time,
-      )
-    : null;
+  const orientation = inputsOf(walk.id)?.orientation ?? null;
+  if (sessionOn) return (time) => viewHeading(sessionFit, sessionOrient, sessionYaw, time);
+  const place = saved?.layer.place;
+  if (!saved || !place) return () => null;
+  return (time) => viewHeading(saved.fit, orientation, place.yawOffsetDeg, time);
+}
+
+/** SPIKE: the placed walk's live fit and date shift (the compare pairs spots in the scene). */
+export function usePlacedWalk(layerId: string | null): SheetWalk | null {
+  const { fits } = usePlacedWalkFits();
+  return layerId === null ? null : (fits.find((w) => w.layer.id === layerId) ?? null);
 }

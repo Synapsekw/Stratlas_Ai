@@ -17,7 +17,7 @@ EXTRA_PANES.walk360 = {
   label: 'walk.pane',
   icon: 'pano',
   zone: 'video',
-  render: () => <Walk360Pane />,
+  render: ({ split, side }) => <Walk360Pane split={split} side={side} />,
 };
 
 followPlaceBasemap(placeSession, rasterPacks, () => {

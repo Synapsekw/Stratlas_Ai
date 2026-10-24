@@ -144,7 +144,12 @@ export function useSplit(): SplitModel {
 
 /** Both sides show one kind of pane, one survey date each. */
 export function isTwin(split: SplitModel): boolean {
-  return split.sides.left === split.sides.right && twinAllowed(split.sides.left, split.dates);
+  // SPIKE: two 360 panes compare two walks, not two survey dates of one view
+  return (
+    split.sides.left === split.sides.right &&
+    split.sides.left !== 'walk360' &&
+    twinAllowed(split.sides.left, split.dates)
+  );
 }
 
 /** The survey date a side shows, when its pane is drawn per date and the project has two. */

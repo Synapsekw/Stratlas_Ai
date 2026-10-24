@@ -33,6 +33,7 @@ import { jobForPano, panoStatus } from '../../panos/panoModel';
 import { shapeOf } from '../../panos/PanoSphereRows';
 import { photoUi } from '../../photogrammetry/store';
 import { jobs, shell } from '../../shell';
+import { startWalkCompare } from '../../walks/walkCompare';
 import { openWalk, placeWalk } from '../../walks/walks';
 import { flightPathShown, toggleFlightPath } from '../../workspace/flightPaths';
 import { flightPathModel, updateFlightPaths } from '../../workspace/pathModel';
@@ -350,6 +351,43 @@ const actions: readonly Action[] = [
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) openWalk(l.id);
+    },
+  }),
+  // SPIKE (walk compare): the two walks side by side in the two 360 panes, this one leading
+  defineAction({
+    id: 'walk.compareWith',
+    label: 'actions.walk.compareWith',
+    section: 'open',
+    targets: ['layers'],
+    present: 'submenu',
+    testId: 'menu-walk-compareWith',
+    appliesTo: (tg, ctx) => oneOf(tg, ctx, 'walk') !== null,
+    disabled: (tg, ctx) => {
+      const w = oneOf(tg, ctx, 'walk');
+      return ctx.manifest.layers.some((l) => l.kind === 'walk' && l.id !== w?.id)
+        ? false
+        : t('actions.walk.compareNone');
+    },
+    submenuTitle: (tg, ctx) =>
+      t('actions.walk.compareTitle', { name: oneOf(tg, ctx, 'walk')?.name ?? '' }),
+    submenu: (tg, ctx) => {
+      const w = oneOf(tg, ctx, 'walk');
+      const dates = new Map(ctx.manifest.captures.map((c) => [c.id, c]));
+      return ctx.manifest.layers
+        .filter((l): l is Walk => l.kind === 'walk' && l.id !== w?.id)
+        .map((l) => {
+          const c = dates.get(captureOf(ctx, l.id) ?? '');
+          return {
+            id: l.id,
+            label: l.name,
+            group: c ? dateLabel(c) : t('actions.noDate'),
+            testId: `compare-with-${l.id}`,
+          };
+        });
+    },
+    run: (tg, ctx, sub) => {
+      const l = only(tg, ctx);
+      if (l && sub !== undefined) startWalkCompare(l.id, sub);
     },
   }),
   defineAction({
