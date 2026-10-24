@@ -17,13 +17,15 @@
   fill: none;
   stroke-linecap: round;
 }
-.walk-now line {
+/* the Beam: a dot in the date colour with a light ring, a light tick for the way it walks */
+.walk-now-dot {
+  stroke: var(--fg-0);
   stroke-width: 2px;
-  stroke-linecap: round;
 }
-.walk-now circle {
+.walk-now-tick circle {
+  fill: var(--fg-0);
   stroke: var(--bg-0);
-  stroke-width: 2px;
+  stroke-width: 1px;
 }
 /* numbered pins, styled as the drawing's place marks: date colour, a ring of the page */
 .walk-pin circle {

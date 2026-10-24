@@ -1,5 +1,6 @@
 import { walkPathPoints, type SurfaceFrame, type WalkFit, type XZ } from '@aio/geo';
 import type { DateShift, WalkLayer, WalkRawPath } from '@aio/schema';
+import { beamHalfRad, headingFromBearingDeg, type WalkViewNow } from './walkView';
 
 /*
  * The walk on a drawing (design "What the surface shows"): its path line, kept stills, pins and
@@ -57,6 +58,12 @@ export interface WalkNow {
   colour: string;
   at: SheetPx;
   headingRad: number;
+  /**
+   * Where the walk's 360 pane looks, for the Beam's cone: the compass bearing (`deg`), its
+   * direction on the sheet (`rad`, as `headingRad`) and half the cone's angle there. Null
+   * without a look (no pane shows the walk, or it is not placed).
+   */
+  look: { deg: number; rad: number; halfRad: number } | null;
 }
 
 /** One walk with its live fit and raw path (null for a pins-only walk). */
@@ -135,9 +142,31 @@ function onSheet(p: SheetPx, s: SheetSize): boolean {
   );
 }
 
+/** The angle `a` in (-pi, pi]. */
+const wrapRad = (a: number): number => a - 2 * Math.PI * Math.ceil((a - Math.PI) / (2 * Math.PI));
+
+/** A look (compass bearing, horizontal field of view) as the Beam's cone on the sheet. */
+function lookOnSheet(
+  sheet: SurfaceFrame,
+  view: Pick<WalkViewNow, 'lookDeg' | 'hfovDeg'>,
+): WalkNow['look'] {
+  if (view.lookDeg === null || !Number.isFinite(view.lookDeg)) return null;
+  const h = headingFromBearingDeg(view.lookDeg);
+  const half = beamHalfRad(view.hfovDeg);
+  // the edges as the drawing shows them: a stretched or mirrored sheet keeps the cone honest
+  const left = sheetHeading(sheet, h + half);
+  const right = sheetHeading(sheet, h - half);
+  return {
+    deg: view.lookDeg,
+    rad: sheetHeading(sheet, h),
+    halfRad: Math.abs(wrapRad(left - right)) / 2,
+  };
+}
+
 /**
- * The current position of a walk on one drawing at time `nowT` (seconds), or null when the walk
- * is not placed there yet or the point is far off the sheet. Cheap: one fit lookup.
+ * The current position of a walk on one drawing at time `nowT` (seconds), with the Beam's cone
+ * along `view`'s look when one is given, or null when the walk is not placed there yet or the
+ * point is far off the sheet. Cheap: one fit lookup.
  */
 export function walkNowOnSheet(
   walk: SheetWalk,
@@ -145,6 +174,7 @@ export function walkNowOnSheet(
   colourOf: (l: WalkLayer) => string,
   nowT: number | null,
   size?: { width: number; height: number },
+  view?: Pick<WalkViewNow, 'lookDeg' | 'hfovDeg'> | null,
 ): WalkNow | null {
   if (nowT === null || !Number.isFinite(nowT)) return null;
   const a = walk.fit.at(nowT);
@@ -156,6 +186,7 @@ export function walkNowOnSheet(
     colour: colourOf(walk.layer),
     at,
     headingRad: sheetHeading(sheet, a.headingRad),
+    look: view ? lookOnSheet(sheet, view) : null,
   };
 }
 

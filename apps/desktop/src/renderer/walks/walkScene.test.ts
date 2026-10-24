@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { fitWalk } from '@aio/geo';
 import type { EngineStage } from '@aio/engine';
-import { PerspectiveCamera, Scene, Vector3 } from 'three';
+import { type Mesh, type Object3D, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
+import { BEAM_M } from './walkView';
 import {
   attachWalkScene,
+  BEAM_LIFT_M,
   PLACED_PX,
+  WALK_BEAM_CONE,
   previewPoints,
   sceneRuns,
   WALK_PREVIEW_NAME,
@@ -339,6 +342,75 @@ describe('walk in the 3D view', () => {
       .getObjectByName(WALK_SCENE_GROUP)
       ?.traverse((o) => (o as unknown as Fat).isLine2 && left.push(o));
     expect(left).toEqual([]);
+    view.dispose();
+  });
+});
+
+describe('the Beam in the 3D view', () => {
+  /** The y of every vertex of the marker's cone meshes, with its x/z about the spot. */
+  const coneVertices = (g: Object3D) => {
+    const out: [number, number, number][] = [];
+    g.traverse((o) => {
+      if (o.name !== WALK_BEAM_CONE) return;
+      const pos = (o as Mesh).geometry.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) out.push([pos.getX(i), pos.getY(i), pos.getZ(i)]);
+    });
+    return out;
+  };
+  // the ground climbs 0.1 m a metre to the east of the spot at x 10, y 5
+  const ground = (x: number) => 5 + (x - 10) * 0.1;
+
+  it('stands on the ground under the spot, its cone draped on the ground along the look', () => {
+    const { stage } = fakeStage(null);
+    const view = attachWalkScene(stage);
+    view.setMarkers([
+      {
+        id: 'walk-a',
+        colour: '#ff0000',
+        at: [10, 5, 20],
+        // looking east (model heading -pi/2), 90 degrees wide
+        lookHeadingRad: -Math.PI / 2,
+        halfRad: Math.PI / 4,
+        walkHeadingRad: 0,
+        ground: (x) => ground(x),
+      },
+    ]);
+    const g = stage.scene.getObjectByName('aio-walk-marker-walk-a');
+    expect(g?.position.toArray()).toEqual([10, 5, 20]);
+    if (!g) throw new Error('no marker');
+    const verts = coneVertices(g);
+    expect(verts.length).toBeGreaterThan(10);
+    // every vertex lies a little above the ground under it, the far rim higher up the slope
+    for (const [x, y] of verts) expect(y).toBeCloseTo(x * 0.1 + BEAM_LIFT_M, 6);
+    const rim = Math.max(...verts.map(([x]) => x));
+    expect(rim).toBeCloseTo(BEAM_M.reach, 6);
+    // the cone points along the look: east, nothing behind the spot
+    expect(Math.min(...verts.map(([x]) => x))).toBeGreaterThanOrEqual(-1e-9);
+    view.dispose();
+  });
+
+  it('a walk without a look stands as a dot and stem, without a cone; markers go when cleared', () => {
+    const { stage } = fakeStage(null);
+    const view = attachWalkScene(stage);
+    const mk = {
+      id: 'walk-b',
+      colour: '#00ff00',
+      at: [0, 2, 0] as [number, number, number],
+      lookHeadingRad: null,
+      halfRad: Math.PI / 4,
+      walkHeadingRad: 0,
+    };
+    view.setMarkers([mk]);
+    const g = stage.scene.getObjectByName('aio-walk-marker-walk-b');
+    if (!g) throw new Error('no marker');
+    expect(coneVertices(g)).toEqual([]);
+    // without a ground sampler the cone lies flat at the spot's height
+    view.setMarkers([{ ...mk, lookHeadingRad: 0 }]);
+    const flat = stage.scene.getObjectByName('aio-walk-marker-walk-b');
+    if (!flat) throw new Error('no marker');
+    expect(coneVertices(flat).every(([, y]) => Math.abs(y - BEAM_LIFT_M) < 1e-6)).toBe(true);
+    view.setMarkers([]);
+    expect(stage.scene.getObjectByName('aio-walk-marker-walk-b')).toBeUndefined();
     view.dispose();
   });
 });

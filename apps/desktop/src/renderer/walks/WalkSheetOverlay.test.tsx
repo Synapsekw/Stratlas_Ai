@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WalkDrawing, WalkNow } from './walkOverlay';
+import { BEAM_PX, beamFanPath } from './walkView';
 import { WalkSheetOverlay } from './WalkSheetOverlay';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -73,11 +74,54 @@ function pointer(el: Element, type: string, x: number, y: number) {
   });
 }
 
-const now: WalkNow = { id: 'walk-a', colour: 'var(--date-2)', at: [5, 0], headingRad: Math.PI / 2 };
+const now: WalkNow = {
+  id: 'walk-a',
+  colour: 'var(--date-2)',
+  at: [5, 0],
+  headingRad: Math.PI / 2,
+  look: null,
+};
+
+describe('the Beam on a drawing', () => {
+  it('draws one marker per walk a pane shows, its cone along the look and as wide', () => {
+    const b: WalkNow = {
+      id: 'walk-b',
+      colour: 'var(--date-3)',
+      at: [40, 20],
+      headingRad: 0,
+      look: { deg: 123.4, rad: -Math.PI / 2, halfRad: Math.PI / 4 },
+    };
+    render(<WalkSheetOverlay drawings={[]} scale={4} nows={[now, b]} />);
+    const marks = [...host.querySelectorAll<SVGGElement>('[data-testid="walk-now"]')];
+    expect(marks.map((m) => m.dataset.walk)).toEqual(['walk-a', 'walk-b']);
+    // the same size on screen at every zoom: scaled by one over the zoom
+    expect(marks[1]?.getAttribute('transform')).toBe('translate(40 20) scale(0.25)');
+    expect(marks[1]?.dataset.lookDeg).toBe('123');
+    const cone = marks[1]?.querySelector('[data-part="cone"]');
+    expect(cone?.getAttribute('transform')).toBe('rotate(-90)');
+    const fan = cone?.querySelector('path');
+    expect(fan?.getAttribute('d')).toBe(beamFanPath(BEAM_PX.reach, Math.PI / 4));
+    // one smooth radial fade in the walk's colour, no stacked shapes
+    const id = /^url\(#(.+)\)$/.exec(fan?.getAttribute('fill') ?? '')?.[1] ?? '';
+    const grad = host.querySelector(`radialGradient[id="${id}"]`);
+    expect(grad?.querySelectorAll('stop').length).toBeGreaterThan(2);
+    expect(grad?.querySelector('stop')?.getAttribute('stop-color')).toBe('var(--date-3)');
+    // the walk-direction tick and the dot
+    expect(marks[1]?.querySelector('[data-part="tick"]')?.getAttribute('transform')).toBe(
+      'rotate(0)',
+    );
+    expect(marks[1]?.querySelector('[data-part="dot"]')?.getAttribute('fill')).toBe(
+      'var(--date-3)',
+    );
+    // a walk without a look: a dot and its tick, no cone
+    expect(marks[0]?.dataset.lookDeg).toBeUndefined();
+    expect(marks[0]?.querySelector('[data-part="cone"]')).toBeNull();
+  });
+});
 
 describe('WalkSheetOverlay', () => {
   it('draws the line runs, stills, numbered pins and the position', () => {
-    render(<WalkSheetOverlay drawings={[drawing()]} scale={2} now={now} />);
+    render(<WalkSheetOverlay drawings={[drawing()]} scale={2} nows={[now]} />);
     const runs = host.querySelectorAll('[data-testid="walk-line"]');
     expect(runs).toHaveLength(2);
     // non-scaling strokes: 2 px and a 6/4 dash on screen whatever the zoom
@@ -96,7 +140,10 @@ describe('WalkSheetOverlay', () => {
     expect(pins[1]?.classList.contains('inactive')).toBe(true);
     expect(pins[1]?.querySelector('title')?.textContent).toBe('The drawing it was on is gone');
     const marker = host.querySelector('[data-testid="walk-now"]');
-    expect(marker?.getAttribute('transform')).toBe('translate(5 0) rotate(90) scale(0.5)');
+    expect(marker?.getAttribute('transform')).toBe('translate(5 0) scale(0.5)');
+    expect(marker?.querySelector('[data-part="tick"]')?.getAttribute('transform')).toBe(
+      'rotate(90)',
+    );
   });
 
   it('a zoom leaves the path strings alone and moves only the pins', () => {

@@ -30,11 +30,13 @@ import {
   detourBands,
   endWalkCompare,
   ensureWalkCompare,
+  followerSeek,
   followStep,
   inBand,
   leadClock,
   leadTimeAt,
   linkedYawDeg,
+  moveLeadTo,
   otherSide,
   pairFollower,
   placeRate,
@@ -53,6 +55,7 @@ import {
   headingFromBearingDeg,
   horizontalFov,
   setWalkView,
+  walkViewPublisher,
   useWalkView,
 } from './walkView';
 import {
@@ -323,29 +326,27 @@ function WalkPlayer({
     };
   }, [url, walk.id]);
 
-  // where this walk is and where it looks, for the markers on the map and in 3D (once a frame
-  // at most while it is dragged)
+  // where this walk is and where it looks, for its Beam on the map, the drawings and in 3D (once
+  // a frame at most while it is dragged)
   const lookDeg = heading === null ? null : wrapDeg(bearingFromHeadingRad(heading) + shown.yawDeg);
+  const publisher = useRef<ReturnType<typeof walkViewPublisher> | null>(null);
   useEffect(() => {
-    const raf = requestAnimationFrame(() => {
-      setWalkView(walk.id, {
-        t: time,
-        lookDeg,
-        pitchDeg: shown.pitchDeg,
-        fovDeg: shown.fovDeg,
-        hfovDeg: horizontalFov(shown.fovDeg, box.w, box.h),
-      });
-    });
+    const pub = walkViewPublisher(walk.id);
+    publisher.current = pub;
     return () => {
-      cancelAnimationFrame(raf);
+      publisher.current = null;
+      pub.stop();
     };
+  }, [walk.id]);
+  useEffect(() => {
+    publisher.current?.publish({
+      t: time,
+      lookDeg,
+      pitchDeg: shown.pitchDeg,
+      fovDeg: shown.fovDeg,
+      hfovDeg: horizontalFov(shown.fovDeg, box.w, box.h),
+    });
   }, [walk.id, time, lookDeg, shown, box]);
-  useEffect(
-    () => () => {
-      clearWalkView(walk.id);
-    },
-    [walk.id],
-  );
 
   // the lead: its clock for the follower, from the moment it leads
   const role = compare?.role;
@@ -370,6 +371,17 @@ function WalkPlayer({
     walkCompare.setState({ leadPlay: null });
     toggleRef.current(leadPlay.play);
   }, [leadPlay]);
+  // the follower was scrubbed outside a detour: the lead goes to the place nearest its new spot
+  const leadSeek = useWalkCompare((s) => (role === 'lead' ? s.leadSeek : null));
+  useEffect(() => {
+    const v = video.current;
+    if (!leadSeek) return;
+    walkCompare.setState({ leadSeek: null });
+    if (!v) return;
+    const end = Number.isFinite(v.duration) ? v.duration : leadSeek.t;
+    v.currentTime = Math.max(0, Math.min(end, leadSeek.t));
+    setTime(v.currentTime);
+  }, [leadSeek]);
 
   // the follower keeps pace with the lead: the moment nearest the lead's spot (or its second),
   // reached by playing at a matched rate; it seeks only when it drifts too far, and pauses and
@@ -496,10 +508,27 @@ function WalkPlayer({
     const end = Number.isFinite(v.duration) ? v.duration : duration;
     v.currentTime = Math.max(0, Math.min(end, seconds));
     setTime(v.currentTime);
-    // a following walk seeked into a detour plays on its own there; out of it, it follows again
+    // a following walk seeked into a detour plays on its own there; anywhere else the lead goes
+    // to the place nearest the follower's new spot, so scrubbing either pane moves both
     if (compare?.role !== 'follow') return;
-    if (inBand(compare.bands, v.currentTime)) walkCompare.getState().goSolo(compare.side);
-    else if (compare.solo) walkCompare.getState().rejoin(compare.side, !v.paused);
+    const c = leadClock.getState().now;
+    const r = followerSeek({
+      followT: v.currentTime,
+      bands: compare.bands,
+      solo: compare.solo,
+      playing: !v.paused && !v.ended,
+      leadTrack: compare.otherTrack,
+      followTrack: compare.own,
+      mode: compare.mode,
+      leadT: c?.walk === compare.other.id ? leadTimeAt(c, performance.now()) : null,
+    });
+    const cmp = walkCompare.getState();
+    if (r.kind === 'solo') cmp.goSolo(compare.side);
+    else if (r.kind === 'rejoin') cmp.rejoin(compare.side, true);
+    else {
+      if (compare.solo) cmp.rejoin(compare.side, false);
+      moveLeadTo(walkCompare, r.leadT);
+    }
   };
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {

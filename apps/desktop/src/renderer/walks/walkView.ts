@@ -1,12 +1,14 @@
 import type { XZ } from '@aio/geo';
+import { useCallback, useRef } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
 /*
- * SPIKE (walk view cone, draped track, walk compare): where each open 360 pane is in its walk and
- * where it looks, keyed by walk layer, so two walks can play at once and the map and the 3D view
- * can draw a marker with a view cone for each. The pane writes its time on every tick and its look
- * once per animation frame while it is dragged or zoomed.
+ * Where each open 360 pane is in its walk and where it looks, keyed by walk layer, so two walks can
+ * play at once (compare) and the map, the drawings and the 3D view draw the Beam marker of each
+ * (design "The marker shows where you look"): a dot in the walk's date colour, a soft fan along
+ * the look as wide as the pane's horizontal field of view, and a tick for the way the walk moves.
+ * A pane publishes through `walkViewPublisher`, at most once an animation frame.
  */
 
 export interface WalkViewNow {
@@ -44,8 +46,81 @@ export function clearWalkView(layerId: string): void {
   walkViews.setState(Object.fromEntries(Object.entries(s).filter(([k]) => k !== layerId)), true);
 }
 
+/** Ask for `cb` before the next paint (`requestAnimationFrame`); a test steps its own. */
+export interface FrameClock {
+  request(cb: () => void): number;
+  cancel(id: number): void;
+}
+
+const rafClock: FrameClock = {
+  request: (cb) => requestAnimationFrame(cb),
+  cancel: (id) => {
+    cancelAnimationFrame(id);
+  },
+};
+
+/**
+ * Publish the views of walk `layerId` at most once a frame (a drag moves the look on every pointer
+ * move): the last view asked for in a frame is the one written. `stop` drops a waiting write and
+ * clears the walk (the pane closed or switched walk).
+ */
+export function walkViewPublisher(
+  layerId: string,
+  clock: FrameClock = rafClock,
+): { publish(v: WalkViewNow): void; stop(): void } {
+  let pending: WalkViewNow | null = null;
+  let frame: number | null = null;
+  return {
+    publish: (v) => {
+      pending = v;
+      if (frame !== null) return;
+      frame = clock.request(() => {
+        frame = null;
+        const next = pending;
+        pending = null;
+        if (next) setWalkView(layerId, next);
+      });
+    },
+    stop: () => {
+      if (frame !== null) clock.cancel(frame);
+      frame = null;
+      pending = null;
+      clearWalkView(layerId);
+    },
+  };
+}
+
 export function useWalkView(layerId: string | null): WalkViewNow | undefined {
   return useStore(walkViews, (s) => (layerId === null ? undefined : s[layerId]));
+}
+
+/**
+ * The views of the walks in `ids` (a stable object while none of theirs changes): a drawing
+ * renders again for the walks it shows only, never for another walk's tick.
+ */
+export function useWalkViewsAmong(ids: ReadonlySet<string>): Readonly<Record<string, WalkViewNow>> {
+  const last = useRef<Readonly<Record<string, WalkViewNow>>>({});
+  const select = useCallback(
+    (s: Readonly<Record<string, WalkViewNow>>) => {
+      const next = viewsAmong(s, ids);
+      const prev = last.current;
+      const keys = Object.keys(next);
+      if (keys.length === Object.keys(prev).length && keys.every((k) => prev[k] === next[k]))
+        return prev;
+      last.current = next;
+      return next;
+    },
+    [ids],
+  );
+  return useStore(walkViews, select);
+}
+
+/** The views of the walks in `ids` only. */
+export function viewsAmong(
+  s: Readonly<Record<string, WalkViewNow>>,
+  ids: ReadonlySet<string>,
+): Readonly<Record<string, WalkViewNow>> {
+  return Object.fromEntries(Object.entries(s).filter(([k]) => ids.has(k)));
 }
 
 /** The horizontal field of view of a view `w` x `h` px at vertical field of view `fovDeg`. */
@@ -55,72 +130,57 @@ export function horizontalFov(fovDeg: number, w: number, h: number): number {
   return Math.min(179, (2 * Math.atan(Math.tan(v / 2) * (w / h)) * 180) / Math.PI);
 }
 
-// ---------------------------------------------------------------- marker style (temporary)
-
-/** The three marker designs the founder picks between (mock-up A Beam, B Compass, C Rays). */
-export type WalkMarkerStyle = 'beam' | 'compass' | 'rays';
-export const MARKER_STYLES: readonly WalkMarkerStyle[] = ['beam', 'compass', 'rays'];
-/** TEMPORARY: the marker design, set by hand in DevTools or cycled with Ctrl+Alt+M. */
-export const MARKER_STYLE_KEY = 'stratlas.walkMarkerStyle';
-
-function readStyle(): WalkMarkerStyle {
-  try {
-    const v = globalThis.localStorage.getItem(MARKER_STYLE_KEY);
-    return MARKER_STYLES.find((s) => s === v) ?? 'beam';
-  } catch {
-    return 'beam';
-  }
-}
-
-export const walkMarkerStyle = createStore<{ style: WalkMarkerStyle }>()(() => ({
-  style: readStyle(),
-}));
-
-export function setWalkMarkerStyle(style: WalkMarkerStyle): void {
-  try {
-    globalThis.localStorage.setItem(MARKER_STYLE_KEY, style);
-  } catch {
-    // the choice still holds for this run
-  }
-  walkMarkerStyle.setState({ style });
-}
-
-/** Ctrl+Alt+M steps to the next design (temporary, for judging the spike). */
-export function cycleWalkMarkerStyle(): WalkMarkerStyle {
-  const cur = walkMarkerStyle.getState().style;
-  const next = MARKER_STYLES[(MARKER_STYLES.indexOf(cur) + 1) % MARKER_STYLES.length] ?? 'beam';
-  setWalkMarkerStyle(next);
-  return next;
-}
-
-if (typeof window !== 'undefined') {
-  // another window (or DevTools) changed the key: pick it up
-  window.addEventListener('storage', (e) => {
-    if (e.key === MARKER_STYLE_KEY) walkMarkerStyle.setState({ style: readStyle() });
-  });
-  window.addEventListener(
-    'keydown',
-    (e) => {
-      if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key === 'm' || e.key === 'M')) {
-        e.preventDefault();
-        cycleWalkMarkerStyle();
-      }
-    },
-    { capture: true },
-  );
-}
-
 // ---------------------------------------------------------------- geometry (model x/z)
 
-/** Metres on the ground of the marker's parts, per design (about the mock-up's size at zoom 18). */
-export const MARKER_M = {
-  beam: 14,
-  compassRing: 4,
-  compassFan: 7.5,
-  rays: 14,
-  /** The walk-direction tick, this far ahead of the spot. */
-  tick: 2.5,
+/** The Beam's parts on screen (map, drawings), px: the same size at every zoom. */
+export const BEAM_PX = {
+  /** How far the fan reaches from the spot. */
+  reach: 64,
+  dot: 6,
+  /** The light ring round the dot. */
+  ring: 2,
+  /** The walk-direction tick, this far ahead of the spot, and its radius. */
+  tick: 13,
+  tickR: 2.25,
 } as const;
+
+/** The Beam's parts in the 3D view, metres on the ground (about its map size at zoom 18). */
+export const BEAM_M = {
+  reach: 14,
+  dot: 0.45,
+  tick: 2.5,
+  /** The stem up from the spot, its dot on top: it reads from any side. */
+  stem: 1.8,
+} as const;
+
+/** The fan's fade along its reach (offset 0..1, opacity): strong at the spot, gone at the rim. */
+export const BEAM_FADE: readonly (readonly [number, number])[] = [
+  [0, 0.6],
+  [0.25, 0.38],
+  [0.55, 0.16],
+  [0.8, 0.05],
+  [1, 0],
+];
+
+/** Half the fan's angle, radians, for a horizontal field of view in degrees (5 to 170 wide). */
+export function beamHalfRad(hfovDeg: number): number {
+  const w = Number.isFinite(hfovDeg) ? Math.min(170, Math.max(5, hfovDeg)) : 90;
+  return (w * Math.PI) / 360;
+}
+
+const n3 = (v: number): string => String(Math.round(v * 1000) / 1000 || 0);
+
+/**
+ * The fan as an SVG path in screen px: the apex at 0,0, the centre line along +x (rotate it to the
+ * look), the edges `halfRad` either side, `reach` px out.
+ */
+export function beamFanPath(reach: number, halfRad: number): string {
+  const x = reach * Math.cos(halfRad);
+  const y = reach * Math.sin(halfRad);
+  const large = 2 * halfRad > Math.PI ? 1 : 0;
+  const r = n3(reach);
+  return `M0 0L${n3(x)} ${n3(-y)}A${r} ${r} 0 ${String(large)} 1 ${n3(x)} ${n3(y)}Z`;
+}
 
 /** Model heading (radians, as the walk fit's `headingRad`) of a compass bearing in degrees. */
 export const headingFromBearingDeg = (deg: number): number => (-deg * Math.PI) / 180;
@@ -155,17 +215,4 @@ export function ringPoints(c: XZ, radius: number, steps = 32): XZ[] {
   const out: XZ[] = [];
   for (let i = 0; i <= steps; i++) out.push(along(c, (2 * Math.PI * i) / steps, radius));
   return out;
-}
-
-/**
- * The rays design's arrowhead about `c`, turned to the look (model heading): nose, left wing,
- * notch, right wing (a slim dart about 5 m long, so its point reads at a glance).
- */
-export function arrowPoints(c: XZ, lookHeadingRad: number): [XZ, XZ, XZ, XZ] {
-  return [
-    along(c, lookHeadingRad, 3.4),
-    along(c, lookHeadingRad + 2.55, 2.2),
-    along(c, lookHeadingRad + Math.PI, 0.9),
-    along(c, lookHeadingRad - 2.55, 2.2),
-  ];
 }

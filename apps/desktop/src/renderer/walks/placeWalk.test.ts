@@ -4,8 +4,11 @@ import { join } from 'node:path';
 import { fitWalk } from '@aio/geo';
 import { ProjectManifest, WalkRawPath, type JobRecord, type WalkLayer } from '@aio/schema';
 import { t } from '@aio/ui';
-import type { MapOverlay } from '@aio/maps';
-import type { OpenProject } from '@aio/workspace';
+import type { WalkViewNow } from './walkView';
+import { workspace, type OpenProject } from '@aio/workspace';
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { walkCompare } from './walkCompare';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../shell', () => ({
@@ -27,7 +30,7 @@ import {
   loadWalkInputs,
   orientationDataRef,
   placedMapOverlays,
-  placedNowMapOverlay,
+  placedBeamMarkers,
   placedNowOnSheet,
   placedWalkFits,
   sessionHandles,
@@ -37,10 +40,10 @@ import {
   walkColour,
   walksOnSheet,
   wantsSurfaceClick,
+  useHiddenLayers,
   type PlaceWalkDeps,
 } from './placeWalk';
 import { setWalkMapOverlays, setWalkMapPointer, walkMap } from './walkMapStore';
-import { clearWalkPlayback, setWalkPlayback, watchWalkPlayback } from './walkPlayback';
 import { localToLonLat } from '../change/draw';
 
 const fixtures = join(import.meta.dirname, '../../../../../packages/schema/src/__fixtures__/walk');
@@ -975,72 +978,96 @@ describe('placed walks on every surface', () => {
     expect(placedMapOverlays(local, fits, new Set(), null)).toEqual([]);
   });
 
-  it('on the map: the walk the 360 pane plays gets a dot at its time, apart from its path', () => {
+  const viewAt = (t: number, lookDeg: number | null = 30): WalkViewNow => ({
+    t,
+    lookDeg,
+    pitchDeg: 0,
+    fovDeg: 60,
+    hfovDeg: 80,
+  });
+
+  it('on the map: a Beam for each walk a 360 pane shows, at its time, with its look', () => {
     const m = projectWith([plan, other, placedOnOwn()]).manifest;
     const fits = placedWalkFits(m, pinsOnly, lookup);
     const fit = fits[0]?.fit;
     const toLonLat = localToLonLat(m);
     if (!fit || !toLonLat) throw new Error('fixture');
-    const dotAt = (t: number) => {
-      const ov = placedNowMapOverlay(m, fits, new Set(), null, { layerId: 'walk-a', t });
-      expect(ov?.id).toBe('walk-walk-a-now');
-      if (!ov || typeof ov.data === 'string') throw new Error('no dot');
-      const f = ov.data.features.find((x) => x.properties?.kind === 'now');
-      return f?.geometry.type === 'Point' ? f.geometry.coordinates : null;
-    };
     const want = (t: number) => {
       const a = fit.at(t);
       if (!a) throw new Error('fixture');
       return toLonLat([a.xz[0], 0, a.xz[1]]);
     };
-    const early = dotAt(5);
-    const late = dotAt(50);
-    expect(early?.[0]).toBeCloseTo(want(5)[0], 9);
-    expect(early?.[1]).toBeCloseTo(want(5)[1], 9);
-    expect(late?.[0]).toBeCloseTo(want(50)[0], 9);
-    expect(late).not.toEqual(early);
-    // nothing plays, another walk plays, the walk is hidden or a session edits it: no dot
-    expect(placedNowMapOverlay(m, fits, new Set(), null, { layerId: null, t: null })).toBeNull();
-    expect(placedNowMapOverlay(m, fits, new Set(), null, { layerId: 'walk-z', t: 5 })).toBeNull();
-    const playing = { layerId: 'walk-a', t: 5 };
-    expect(placedNowMapOverlay(m, fits, new Set(['walk-a']), null, playing)).toBeNull();
-    expect(placedNowMapOverlay(m, fits, new Set(), 'walk-a', playing)).toBeNull();
+    const [early] = placedBeamMarkers(m, fits, new Set(), null, { 'walk-a': viewAt(5) });
+    expect(early?.layerId).toBe('walk-a');
+    expect(early?.lookDeg).toBe(30);
+    expect(early?.hfovDeg).toBe(80);
+    expect(early?.lonLat[0]).toBeCloseTo(want(5)[0], 9);
+    expect(early?.lonLat[1]).toBeCloseTo(want(5)[1], 9);
+    const [late] = placedBeamMarkers(m, fits, new Set(), null, { 'walk-a': viewAt(50) });
+    expect(late?.lonLat).not.toEqual(early?.lonLat);
+    // no pane, a walk that is not placed, the walk hidden or a session editing it: no Beam
+    expect(placedBeamMarkers(m, fits, new Set(), null, {})).toEqual([]);
+    expect(placedBeamMarkers(m, fits, new Set(), null, { 'walk-z': viewAt(5) })).toEqual([]);
+    const views = { 'walk-a': viewAt(5) };
+    expect(placedBeamMarkers(m, fits, new Set(['walk-a']), null, views)).toEqual([]);
+    expect(placedBeamMarkers(m, fits, new Set(), 'walk-a', views)).toEqual([]);
   });
 
-  it('on the map: the dot follows the pane and goes when the pane clears', () => {
-    const m = projectWith([plan, other, placedOnOwn()]).manifest;
-    const fits = placedWalkFits(m, pinsOnly, lookup);
-    const drawn: (MapOverlay | null)[] = [];
-    const stop = watchWalkPlayback(
-      (id) => fits.some((w) => w.layer.id === id),
-      (playing) => drawn.push(placedNowMapOverlay(m, fits, new Set(), null, playing)),
-    );
-    setWalkPlayback('walk-a', 5);
-    expect(drawn.at(-1)?.id).toBe('walk-walk-a-now');
-    clearWalkPlayback('walk-a');
-    expect(drawn.at(-1)).toBeNull();
-    stop();
-  });
-
-  it('on a drawing: the walk the 360 pane plays gets a dot at its time', () => {
+  it('on a drawing: a Beam for each walk a 360 pane shows, read per walk', () => {
     const m = projectWith([plan, other, placedOnOwn()]).manifest;
     const fits = placedWalkFits(m, pinsOnly, lookup);
     const at = (t: number) =>
-      placedNowOnSheet(m, 'sheet-own', fits, lookup, { layerId: 'walk-a', t })?.at;
+      placedNowOnSheet(m, 'sheet-own', fits, lookup, { 'walk-a': viewAt(t) })[0]?.at;
     expect(at(5)).toBeDefined();
     expect(at(50)).not.toEqual(at(5));
-    expect(placedNowOnSheet(m, 'sheet-own', fits, lookup, { layerId: null, t: null })).toBeNull();
+    const [now] = placedNowOnSheet(m, 'sheet-own', fits, lookup, { 'walk-a': viewAt(5, 90) });
+    expect(now?.look?.deg).toBe(90);
+    expect(placedNowOnSheet(m, 'sheet-own', fits, lookup, {})).toEqual([]);
     expect(
       placedNowOnSheet(
         m,
         'sheet-own',
         fits,
         lookup,
-        { layerId: 'walk-a', t: 5 },
+        { 'walk-a': viewAt(5) },
         {
           hidden: new Set(['walk-a']),
         },
       ),
-    ).toBeNull();
+    ).toEqual([]);
+  });
+});
+
+describe('useHiddenLayers', () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+  it('a running compare shows both walks without changing what the project hides', () => {
+    const before = workspace.getState().hidden;
+    const hidden = { 'walk-a': true, 'walk-b': true, ortho: true } as const;
+    workspace.setState({ hidden });
+    const seen: string[][] = [];
+    function Probe() {
+      seen.push([...useHiddenLayers()].sort());
+      return null;
+    }
+    const root = createRoot(document.createElement('div'));
+    act(() => {
+      root.render(createElement(Probe));
+    });
+    expect(seen.at(-1)).toEqual(['ortho', 'walk-a', 'walk-b']);
+    act(() => {
+      walkCompare.getState().begin('walk-a', 'walk-b');
+    });
+    expect(seen.at(-1)).toEqual(['ortho']);
+    // the project's visibility is as it was: nothing written
+    expect(workspace.getState().hidden).toBe(hidden);
+    act(() => {
+      walkCompare.getState().end();
+    });
+    expect(seen.at(-1)).toEqual(['ortho', 'walk-a', 'walk-b']);
+    act(() => {
+      root.unmount();
+    });
+    workspace.setState({ hidden: before });
   });
 });

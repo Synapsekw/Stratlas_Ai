@@ -27,6 +27,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, type StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { useMap } from '../builder/activeViews';
 import { builder } from '../builder/state';
 import { newSurveyDate, setLayersCapture } from '../change/SurveyDate';
 import { localToLonLat } from '../change/draw';
@@ -55,11 +56,13 @@ import {
 import { createPlaceStore, handlePins, type PlaceHandle, type PlaceState } from './placeStore';
 import { walkMap, setWalkMapOverlays, setWalkMapPointer } from './walkMapStore';
 import {
+  MapBeamMarkers,
   resolveCssColour,
+  walkBeamMarker,
   walkMapOverlays,
-  walkMarkerMapOverlay,
   walkNowMapOverlay,
   walkPreviewMapOverlay,
+  type BeamMarker,
 } from './walkMapOverlay';
 import {
   walkDrawingsForSheet,
@@ -70,8 +73,7 @@ import {
   type WalkNow,
 } from './walkOverlay';
 import { comparedWalks, walkCompare } from './walkCompare';
-import type { WalkPlaybackState } from './walkPlayback';
-import { walkMarkerStyle, walkViews } from './walkView';
+import { walkViews, type WalkViewNow } from './walkView';
 import { jobForWalk, splitWithWalk } from './walkModel';
 import {
   locateOriginal,
@@ -593,37 +595,15 @@ export function sessionHandles(
  * the stage) and the session placing a walk on the map (`followMap`). Both go out together.
  */
 let placedMap: readonly MapOverlay[] = [];
-let placedNow: MapOverlay | null = null;
-// SPIKE: the markers with a view cone of every walk a 360 pane shows (two in compare)
-let placedMarkers: readonly MapOverlay[] = [];
 let sessionMap: readonly MapOverlay[] = [];
 const publishMap = (): void => {
-  setWalkMapOverlays([
-    ...placedMap,
-    ...(placedNow ? [placedNow] : []),
-    ...placedMarkers,
-    ...sessionMap,
-  ]);
+  setWalkMapOverlays([...placedMap, ...sessionMap]);
 };
-
-/** SPIKE: the position markers with their view cones (`walkMarkerMapOverlay`). */
-export function setPlacedMarkerOverlays(overlays: readonly MapOverlay[]): void {
-  if (overlays.length === 0 && placedMarkers.length === 0) return;
-  placedMarkers = overlays;
-  publishMap();
-}
 
 /** The placed walks' map overlays (every visible, placed walk at 60 %). */
 export function setPlacedMapOverlays(overlays: readonly MapOverlay[]): void {
   if (overlays.length === 0 && placedMap.length === 0) return;
   placedMap = overlays;
-  publishMap();
-}
-
-/** Where the placed walk the 360 pane plays is now (`placedNowMapOverlay`), or null. */
-export function setPlacedNowMapOverlay(overlay: MapOverlay | null): void {
-  if (overlay === null && placedNow === null) return;
-  placedNow = overlay;
   publishMap();
 }
 
@@ -999,87 +979,73 @@ export function placedMapOverlays(
   );
 }
 
-/** The placed walk the 360 pane is playing, when it is shown (null: none to mark). */
-function playingPlaced(
+/** The shown placed walks a 360 pane shows now, each with its view (two while comparing). */
+function viewedPlaced(
   placed: readonly SheetWalk[],
-  playing: WalkPlaybackState,
+  views: Readonly<Record<string, WalkViewNow>>,
   hidden: ReadonlySet<string> | undefined,
   except: string | null,
-): { walk: SheetWalk; t: number } | null {
-  const { layerId, t: nowT } = playing;
-  if (layerId === null || nowT === null || layerId === except) return null;
-  const walk = placed.find((w) => w.layer.id === layerId);
-  if (!walk || !walkShown(walk.layer, { placingId: null, ...(hidden ? { hidden } : {}) }))
-    return null;
-  return { walk, t: nowT };
-}
-
-/**
- * Where the placed walk the 360 pane plays is now, on the map (`walk-<id>-now`): its own small
- * overlay so a time tick does not rebuild the paths. Null when no shown placed walk plays, or a
- * session edits it (the session draws its own).
- */
-export function placedNowMapOverlay(
-  m: ProjectManifest,
-  placed: readonly SheetWalk[],
-  hidden: ReadonlySet<string>,
-  except: string | null,
-  playing: WalkPlaybackState,
-): MapOverlay | null {
-  const toLonLat = localToLonLat(m);
-  const p = playingPlaced(placed, playing, hidden, except);
-  if (!toLonLat || !p) return null;
-  return walkNowMapOverlay(p.walk, { toLonLat }, (l) => resolveCssColour(walkColour(m, l)), p.t);
-}
-
-/**
- * SPIKE: a marker with its view cone for every shown placed walk a 360 pane shows now (both
- * walks while comparing), in the design `stratlas.walkMarkerStyle` picks.
- */
-export function placedMarkerOverlays(
-  m: ProjectManifest,
-  placed: readonly SheetWalk[],
-  hidden: ReadonlySet<string>,
-  except: string | null,
-): MapOverlay[] {
-  const toLonLat = localToLonLat(m);
-  if (!toLonLat) return [];
-  const style = walkMarkerStyle.getState().style;
-  const out: MapOverlay[] = [];
-  for (const [id, view] of Object.entries(walkViews.getState())) {
+): { walk: SheetWalk; view: WalkViewNow }[] {
+  const out: { walk: SheetWalk; view: WalkViewNow }[] = [];
+  for (const [id, view] of Object.entries(views)) {
     if (id === except) continue;
     const walk = placed.find((w) => w.layer.id === id);
-    if (!walk || !walkShown(walk.layer, { placingId: null, hidden })) continue;
-    const ov = walkMarkerMapOverlay(
-      walk,
-      { toLonLat },
-      resolveCssColour(walkColour(m, walk.layer)),
-      view,
-      style,
-    );
-    if (ov) out.push(ov);
+    if (!walk || !walkShown(walk.layer, { placingId: null, ...(hidden ? { hidden } : {}) }))
+      continue;
+    out.push({ walk, view });
   }
   return out;
 }
 
-/** Where the placed walk the 360 pane plays is now, on the drawing `sheetId` (null: not there). */
+/**
+ * The Beam of every shown placed walk a 360 pane shows now (both walks while comparing), for the
+ * map: where it is at the pane's time and where the pane looks. None for the walk a session edits
+ * (the session draws its own) or without a coordinate system.
+ */
+export function placedBeamMarkers(
+  m: ProjectManifest,
+  placed: readonly SheetWalk[],
+  hidden: ReadonlySet<string>,
+  except: string | null,
+  views: Readonly<Record<string, WalkViewNow>>,
+): BeamMarker[] {
+  const toLonLat = localToLonLat(m);
+  if (!toLonLat) return [];
+  const out: BeamMarker[] = [];
+  for (const { walk, view } of viewedPlaced(placed, views, hidden, except)) {
+    const b = walkBeamMarker(walk, { toLonLat }, resolveCssColour(walkColour(m, walk.layer)), view);
+    if (b) out.push(b);
+  }
+  return out;
+}
+
+/**
+ * Where each shown placed walk a 360 pane shows is now on the drawing `sheetId`, with its Beam
+ * (both walks while comparing; each read from its own pane, so two panes never flicker between
+ * them). Empty when the drawing has no frame.
+ */
 export function placedNowOnSheet(
   m: ProjectManifest,
   sheetId: string,
   placed: readonly SheetWalk[],
   lookup: DrawingLookup,
-  playing: WalkPlaybackState,
+  views: Readonly<Record<string, WalkViewNow>>,
   opts: {
     except?: string | null;
     hidden?: ReadonlySet<string>;
     size?: { width: number; height: number } | undefined;
   } = {},
-): WalkNow | null {
-  const p = playingPlaced(placed, playing, opts.hidden, opts.except ?? null);
-  if (!p) return null;
+): WalkNow[] {
+  const shown = viewedPlaced(placed, views, opts.hidden, opts.except ?? null);
+  if (shown.length === 0) return [];
   const frame = surfaceFramesOf(m, lookup).drawing(sheetId);
-  if (!frame) return null;
-  return walkNowOnSheet(p.walk, frame, (l) => walkColour(m, l), p.t, opts.size);
+  if (!frame) return [];
+  const out: WalkNow[] = [];
+  for (const { walk, view } of shown) {
+    const now = walkNowOnSheet(walk, frame, (l) => walkColour(m, l), view.t, opts.size, view);
+    if (now) out.push(now);
+  }
+  return out;
 }
 
 /**
@@ -1171,31 +1137,25 @@ export function usePlacedWalksOnMap(): void {
   useEffect(() => {
     setPlacedMapOverlays(manifest ? placedMapOverlays(manifest, fits, hidden, except) : []);
   }, [manifest, fits, hidden, except]);
-  // SPIKE: every walk a 360 pane shows gets a marker with its view cone (two while comparing),
-  // outside React: a time tick or a drag neither rebuilds the paths nor renders the stage
+  // every walk a 360 pane shows gets its Beam (two while comparing), outside React: a time tick
+  // or a drag neither rebuilds the paths nor renders the stage
+  const map = useMap()?.map ?? null;
   useEffect(() => {
-    if (!manifest) {
-      setPlacedMarkerOverlays([]);
-      return;
-    }
+    if (!map || !manifest) return;
+    const beams = new MapBeamMarkers(map);
     const draw = () => {
-      setPlacedMarkerOverlays(placedMarkerOverlays(manifest, fits, hidden, except));
+      beams.set(placedBeamMarkers(manifest, fits, hidden, except, walkViews.getState()));
     };
     draw();
-    const offViews = walkViews.subscribe(draw);
-    const offStyle = walkMarkerStyle.subscribe(draw);
-    const offCompare = walkCompare.subscribe(draw);
+    const off = walkViews.subscribe(draw);
     return () => {
-      offViews();
-      offStyle();
-      offCompare();
+      off();
+      beams.dispose();
     };
-  }, [manifest, fits, hidden, except]);
+  }, [map, manifest, fits, hidden, except]);
   useEffect(
     () => () => {
       setPlacedMapOverlays([]);
-      setPlacedNowMapOverlay(null);
-      setPlacedMarkerOverlays([]);
     },
     [],
   );
@@ -1210,7 +1170,7 @@ export function useWalkViewHeading(walk: WalkLayer, time: number): number | null
   return useWalkViewHeadingAt(walk)(time);
 }
 
-/** SPIKE: `useWalkViewHeading` as a function of time (compare pairs two walks' moments). */
+/** `useWalkViewHeading` as a function of time (compare pairs two walks' moments). */
 export function useWalkViewHeadingAt(walk: WalkLayer): (time: number) => number | null {
   const sessionOn = useStore(placeSession, (s) => s.layerId === walk.id);
   const sessionFit = useStore(placeSession, (s) => (s.layerId === walk.id ? s.fit : null));
@@ -1227,7 +1187,7 @@ export function useWalkViewHeadingAt(walk: WalkLayer): (time: number) => number 
   return (time) => viewHeading(saved.fit, orientation, place.yawOffsetDeg, time);
 }
 
-/** SPIKE: the placed walk's live fit and date shift (the compare pairs spots in the scene). */
+/** The placed walk's live fit and date shift (the compare pairs spots in the scene). */
 export function usePlacedWalk(layerId: string | null): SheetWalk | null {
   const { fits } = usePlacedWalkFits();
   return layerId === null ? null : (fits.find((w) => w.layer.id === layerId) ?? null);

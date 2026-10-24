@@ -41,7 +41,7 @@ import {
 } from './placeWalk';
 import { packOffersWalkProcess } from './walkModel';
 import { previewOnSheet, walkNowOnSheet } from './walkOverlay';
-import { useWalkPlaybackAmong } from './walkPlayback';
+import { useWalkView, useWalkViewsAmong } from './walkView';
 import { WalkSheetOverlay } from './WalkSheetOverlay';
 import './placeWalk.css';
 
@@ -696,23 +696,46 @@ export function useWalksOnDrawing(
     () => (on && manifest ? surfaceFramesOf(manifest, (id) => placed[id]).drawing(layerId) : null),
     [on, manifest, placed, layerId],
   );
-  // a placed walk the 360 pane plays shows where it is now, as the walk being placed does; only
-  // the shown placed walks' ticks render the drawing again
+  // every placed walk a 360 pane shows has its Beam here (two while comparing), as the walk being
+  // placed does; each reads its own pane, and only the shown walks' views render the drawing again
   const shownIds = useMemo(
     () => new Set(fits.map((w) => w.layer.id).filter((id) => id !== placingId && !hidden.has(id))),
     [fits, placingId, hidden],
   );
-  const playing = useWalkPlaybackAmong(shownIds);
-  const now =
-    placing && frame && manifest
-      ? walkNowOnSheet(placing, frame, (l) => walkColour(manifest, l), time, size)
-      : manifest
-        ? placedNowOnSheet(manifest, layerId, fits, (id) => placed[id], playing, {
-            except: placingId,
-            hidden,
-            size,
-          })
-        : null;
+  const views = useWalkViewsAmong(shownIds);
+  const placingView = useWalkView(on ? placingId : null);
+  const nows = useMemo(() => {
+    if (!manifest) return [];
+    if (placing && frame) {
+      const now = walkNowOnSheet(
+        placing,
+        frame,
+        (l) => walkColour(manifest, l),
+        time,
+        size,
+        placingView,
+      );
+      return now ? [now] : [];
+    }
+    return placedNowOnSheet(manifest, layerId, fits, (id) => placed[id], views, {
+      except: placingId,
+      hidden,
+      size,
+    });
+  }, [
+    manifest,
+    placing,
+    frame,
+    time,
+    size,
+    placingView,
+    layerId,
+    fits,
+    placed,
+    views,
+    placingId,
+    hidden,
+  ]);
   const shape = useMemo(
     () =>
       frame && preview ? previewOnSheet(preview.xz, frame, preview.ghost, preview.tooClose) : null,
@@ -739,7 +762,7 @@ export function useWalksOnDrawing(
           <WalkSheetOverlay
             drawings={sheet}
             scale={ctx.scale}
-            now={now}
+            nows={nows}
             preview={on ? shape : null}
             size={ctx.size}
             toImage={ctx.toImage}

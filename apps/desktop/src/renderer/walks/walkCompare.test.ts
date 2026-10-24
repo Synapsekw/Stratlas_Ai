@@ -14,8 +14,11 @@ import {
   comparedWalks,
   createWalkCompareStore,
   detourBands,
+  followerSeek,
   followStep,
   inBand,
+  leadClock,
+  moveLeadTo,
   leadTimeAt,
   placeRate,
   linkedYawDeg,
@@ -125,6 +128,63 @@ describe('detours', () => {
     const own = line([0, 0], [100, 0], 0, 100, 0.5);
     expect(detourBands(own, line([0, 2], [100, 2], 0, 60, 0.5))).toEqual([]);
     expect(detourBands(own, [])).toEqual([]);
+  });
+});
+
+describe('scrubbing the follower', () => {
+  // the lead walks east along z 0; the follower walks the same way 1 m north, twice as slow
+  const lead = line([0, 0], [40, 0], 0, 40);
+  const follow = line([0, -1], [40, -1], 0, 80);
+  const base = { leadTrack: lead, followTrack: follow, mode: 'place' as const, leadT: 5 };
+
+  it('outside a detour the lead moves to the place nearest the follower’s new spot', () => {
+    // the follower dragged to 50 s (25 m along): the lead goes to its 25 m, 25 s
+    const r = followerSeek({ ...base, followT: 50, bands: [], solo: false, playing: false });
+    expect(r.kind).toBe('lead');
+    if (r.kind !== 'lead') throw new Error('kind');
+    expect(r.leadT).toBeCloseTo(25, 6);
+  });
+
+  it('by time the lead goes to the same second', () => {
+    const r = followerSeek({
+      ...base,
+      mode: 'time',
+      followT: 12,
+      bands: [],
+      solo: false,
+      playing: false,
+    });
+    expect(r).toEqual({ kind: 'lead', leadT: 12 });
+  });
+
+  it('inside a detour band the follower plays on its own; the lead stays', () => {
+    const bands = [{ fromT: 40, toT: 60 }];
+    expect(followerSeek({ ...base, followT: 50, bands, solo: false, playing: false })).toEqual({
+      kind: 'solo',
+    });
+  });
+
+  it('a solo walk dragged out of its detour while playing takes the lead, else moves it', () => {
+    const bands = [{ fromT: 40, toT: 60 }];
+    expect(followerSeek({ ...base, followT: 70, bands, solo: true, playing: true })).toEqual({
+      kind: 'rejoin',
+    });
+    expect(followerSeek({ ...base, followT: 70, bands, solo: true, playing: false }).kind).toBe(
+      'lead',
+    );
+  });
+
+  it('walks not placed: the lead takes the same second', () => {
+    const r = followerSeek({
+      ...base,
+      leadTrack: [],
+      followTrack: [],
+      followT: 7,
+      bands: [],
+      solo: false,
+      playing: false,
+    });
+    expect(r).toEqual({ kind: 'lead', leadT: 7 });
   });
 });
 
@@ -253,6 +313,21 @@ describe('the compare store', () => {
     expect(s.getState().solo).toBe('right');
     s.getState().leadPlays();
     expect(s.getState().solo).toBeNull();
+  });
+
+  it('a seek asked of the lead is new each time, and runs the lead clock there at once', () => {
+    const s = createWalkCompareStore(fakeWorkspace());
+    s.getState().begin('a', 'b');
+    s.getState().requestLeadSeek(4);
+    const first = s.getState().leadSeek;
+    expect(first?.t).toBe(4);
+    s.getState().requestLeadSeek(4);
+    expect(s.getState().leadSeek?.seq).toBe((first?.seq ?? 0) + 1);
+    leadClock.setState({ now: { walk: 'a', t: 1, atMs: 0, playing: false, rate: 1 } });
+    moveLeadTo(s, 9, 500);
+    // the follower's next tick pairs with where the lead is going, not where it was
+    expect(leadClock.getState().now).toMatchObject({ walk: 'a', t: 9, atMs: 500 });
+    expect(s.getState().leadSeek?.t).toBe(9);
   });
 
   it('a solo follower that rejoins while playing takes the lead (no jump back)', () => {

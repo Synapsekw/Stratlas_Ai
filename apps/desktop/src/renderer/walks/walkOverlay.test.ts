@@ -17,6 +17,7 @@ import {
   walkPinPoints,
   type SheetWalk,
 } from './walkOverlay';
+import { beamHalfRad, headingFromBearingDeg } from './walkView';
 
 /** A drawing 1000 x 800 px at 0.05 m per px, turned a little and mirrored in y (y down = +z). */
 const sheet: SurfaceFrame = {
@@ -225,6 +226,20 @@ describe('walkDrawingsForSheet', () => {
     // the fit is not placed yet
     const unplaced = { ...w, fit: { ...w.fit, at: () => null } };
     expect(walkNowOnSheet(unplaced, sheet, colour, 3, size)).toBeNull();
+    // no view of the walk: a dot without a cone
+    expect(now?.look).toBeNull();
+  });
+
+  it('turns the cone to the look on the drawing, as wide as the view', () => {
+    const w = walk('walk-a');
+    const now = walkNowOnSheet(w, sheet, colour, 3, size, { lookDeg: 40, hfovDeg: 90 });
+    expect(now?.look?.deg).toBe(40);
+    expect(now?.look?.rad).toBeCloseTo(sheetHeading(sheet, headingFromBearingDeg(40)), 9);
+    // the drawing keeps angles (turned and scaled): the cone is as wide as on the ground
+    expect(now?.look?.halfRad).toBeCloseTo(beamHalfRad(90), 9);
+    expect(
+      walkNowOnSheet(w, sheet, colour, 3, size, { lookDeg: null, hfovDeg: 90 })?.look,
+    ).toBeNull();
   });
 });
 

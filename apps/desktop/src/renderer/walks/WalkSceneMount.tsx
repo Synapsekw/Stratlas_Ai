@@ -17,8 +17,7 @@ import {
 } from './placeWalk';
 import { resolveCssColour } from './walkMapOverlay';
 import type { SheetWalk } from './walkOverlay';
-import { walkCompare } from './walkCompare';
-import { drapeRunsInFrames, walkGround } from './walkGround';
+import { drapeRunsInFrames, walkGround, type GroundAt } from './walkGround';
 import {
   attachWalkScene,
   DRAPE_LIFT_M,
@@ -30,7 +29,7 @@ import {
   type WalkSceneView,
   type WalkSceneWalk,
 } from './walkScene';
-import { headingFromBearingDeg, walkMarkerStyle, walkViews } from './walkView';
+import { beamHalfRad, headingFromBearingDeg, walkViews, type WalkViewNow } from './walkView';
 
 /*
  * The walks in the 3D view: every visible placed walk draped on the ground the view draws
@@ -197,6 +196,39 @@ const placingPoints = (p: WalkScenePlacing): [number, number, number][] => [
   ...p.handles.map((h) => h.at),
 ];
 
+/**
+ * The Beam of every visible placed walk a 360 pane shows (`views`), but the walk being edited:
+ * standing on the ground the view draws under its spot (`ground`, else the stored pin height),
+ * its cone along the pane's look and as wide as the pane's view, draped on that ground.
+ */
+export function sceneMarkers(
+  fits: readonly SheetWalk[],
+  views: Readonly<Record<string, WalkViewNow>>,
+  hidden: ReadonlySet<string>,
+  editing: string | null,
+  colourOf: (w: SheetWalk) => string,
+  ground: GroundAt,
+): WalkSceneMarker[] {
+  const out: WalkSceneMarker[] = [];
+  for (const [id, now] of Object.entries(views)) {
+    const w = fits.find((f) => f.layer.id === id);
+    if (!w || !w.layer.visible || hidden.has(id) || id === editing) continue;
+    const a = w.fit.at(now.t);
+    if (!a) continue;
+    const p = shiftLocal([a.xz[0], a.groundY, a.xz[1]], w.shift ?? null);
+    out.push({
+      id,
+      colour: colourOf(w),
+      at: [p[0], ground(p[0], p[2]) ?? p[1], p[2]],
+      lookHeadingRad: now.lookDeg === null ? null : headingFromBearingDeg(now.lookDeg),
+      halfRad: beamHalfRad(now.hfovDeg),
+      walkHeadingRad: a.headingRad,
+      ground,
+    });
+  }
+  return out;
+}
+
 /** The placing the view shows now: pushed only when it changes from or to something. */
 function pushPlacing(
   stage: EngineStage,
@@ -306,41 +338,22 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
     });
   }, [placed, stage, groundVersion]);
 
-  // SPIKE: a marker with its view cone for every walk a 360 pane shows (two while comparing)
+  // the Beam of every walk a 360 pane shows (two while comparing), on the ground the view draws;
+  // outside React, so a time tick or a drag renders nothing else
   useEffect(() => {
     const v = view.current;
     if (!v || !stage || !manifest) return;
+    const colourOf = (w: SheetWalk) => resolveCssColour(walkColour(manifest, w.layer));
     const draw = () => {
-      const style = walkMarkerStyle.getState().style;
-      const ground = walkGround.ground;
-      const out: WalkSceneMarker[] = [];
-      for (const [id, now] of Object.entries(walkViews.getState())) {
-        const w = fits.find((f) => f.layer.id === id);
-        if (!w || !w.layer.visible || hidden.has(id) || id === editing) continue;
-        const a = w.fit.at(now.t);
-        if (!a) continue;
-        const p = shiftLocal([a.xz[0], a.groundY, a.xz[1]], w.shift ?? null);
-        out.push({
-          id,
-          colour: resolveCssColour(walkColour(manifest, w.layer)),
-          at: [p[0], ground(p[0], p[2]) ?? p[1], p[2]],
-          lookHeadingRad: now.lookDeg === null ? null : headingFromBearingDeg(now.lookDeg),
-          halfRad: (Math.min(170, Math.max(5, now.hfovDeg)) * Math.PI) / 360,
-          walkHeadingRad: a.headingRad,
-          style,
-        });
-      }
-      v.setMarkers(out);
+      v.setMarkers(
+        sceneMarkers(fits, walkViews.getState(), hidden, editing, colourOf, walkGround.ground),
+      );
     };
     draw();
     const offViews = walkViews.subscribe(draw);
-    const offStyle = walkMarkerStyle.subscribe(draw);
-    const offCompare = walkCompare.subscribe(draw);
     const offLoaded = stage.onLayerLoaded(draw);
     return () => {
       offViews();
-      offStyle();
-      offCompare();
       offLoaded();
       v.setMarkers([]);
     };

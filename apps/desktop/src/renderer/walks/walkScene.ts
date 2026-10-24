@@ -21,14 +21,8 @@ import {
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-import {
-  along,
-  arrowPoints,
-  fanPoints,
-  MARKER_M,
-  ringPoints,
-  type WalkMarkerStyle,
-} from './walkView';
+import type { GroundAt } from './walkGround';
+import { along, BEAM_FADE, BEAM_M, fanPoints, ringPoints } from './walkView';
 
 /*
  * The walk in the 3D view (design "Walk placing by start and end", unit 6): the path as a line
@@ -63,7 +57,10 @@ export interface WalkSceneInput {
   drag(handle: 'start' | 'end', at: [number, number], y: number): void;
   endDrag(): void;
 }
-/** SPIKE: where a walk a 360 pane shows is, and where it looks, on the ground of the 3D view. */
+/**
+ * The Beam of a walk a 360 pane shows, in the 3D view: where it is and where the pane looks, lying
+ * on the ground the view draws.
+ */
 export interface WalkSceneMarker {
   id: string;
   colour: string;
@@ -74,14 +71,14 @@ export interface WalkSceneMarker {
   halfRad: number;
   /** Model heading of the walk itself (the small direction tick). */
   walkHeadingRad: number;
-  style: WalkMarkerStyle;
-  dim?: boolean;
+  /** The ground in scene x/z (`walkGround`): the cone drapes on it; without it, flat at `at`. */
+  ground?: GroundAt;
 }
 export interface WalkSceneView {
   /** Placed walks, draped on the ground (not the one being placed). */
   setPlaced(walks: readonly WalkSceneWalk[]): void;
   setPlacing(p: WalkScenePlacing | null, input: WalkSceneInput | null): void;
-  /** SPIKE: the markers of the walks the 360 panes show. */
+  /** The Beams of the walks the 360 panes show (two while comparing). */
   setMarkers(markers: readonly WalkSceneMarker[]): void;
   dispose(): void;
 }
@@ -89,8 +86,12 @@ export interface WalkSceneView {
 const LIFT_M = 0.1;
 /** Placed walks are draped on the ground and depth tested, lifted this much, metres. */
 export const DRAPE_LIFT_M = 0.15;
-/** SPIKE: the marker's stem, metres, with its dot on top. */
-const STEM_M = 1.8;
+/** The Beam's cone lies this far above the ground under it, metres. */
+export const BEAM_LIFT_M = 0.08;
+/** The name of a Beam's cone meshes. */
+export const WALK_BEAM_CONE = 'aio-walk-beam-cone';
+/** The Beam's light parts: the ring, the tick and the stem. */
+const BEAM_LIGHT = '#f0f2f4';
 /** A placed walk's line, screen px, over a dark halo 3 px wider. */
 export const PLACED_PX = 3;
 const HALO = '#0b0f14';
@@ -267,10 +268,13 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
     }
   };
 
-  /** A flat fan or polygon on the ground: `pts` in x/z about the marker, `alpha` per point. */
+  /**
+   * A fan or polygon on the ground: `pts` in x/z about the marker, at height `y` (one for all, or
+   * per point), `alpha` per point.
+   */
   const flat = (
     pts: readonly (readonly [number, number])[],
-    y: number,
+    y: number | ((p: readonly [number, number]) => number),
     colour: string,
     alpha: readonly number[] | number,
     fan = true,
@@ -279,7 +283,7 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
     g.setAttribute(
       'position',
       new Float32BufferAttribute(
-        pts.flatMap((p) => [p[0], y, p[1]]),
+        pts.flatMap((p) => [p[0], typeof y === 'number' ? y : y(p), p[1]]),
         3,
       ),
     );
@@ -314,118 +318,101 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
     return m;
   };
 
-  /** SPIKE: one marker: the design's cone on the ground, a stem and a dot on top. */
+  /**
+   * The Beam's cone: the apex, then rings of `steps + 1` points each from the spot outwards, with
+   * a height and an alpha per point; the first ring fans from the apex, the others join as quads.
+   */
+  const cone = (
+    pts: readonly (readonly [number, number])[],
+    steps: number,
+    y: number | ((p: readonly [number, number]) => number),
+    colour: string,
+    alpha: readonly number[],
+  ): Mesh => {
+    const m = flat(pts, y, colour, alpha);
+    const n = steps + 1;
+    const rings = (pts.length - 1) / n;
+    const idx: number[] = [];
+    for (let i = 0; i < steps; i++) idx.push(0, 1 + i, 2 + i);
+    for (let r = 1; r < rings; r++)
+      for (let i = 0; i < steps; i++) {
+        const a = 1 + (r - 1) * n + i;
+        const b = a + n;
+        idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    m.geometry.setIndex(idx);
+    m.name = WALK_BEAM_CONE;
+    return m;
+  };
+
+  /**
+   * One Beam: a soft cone along the look lying on the ground (draped on `ground`, its vertices
+   * fading out from the spot), a dot in the date colour with a light ring, a light tick for the
+   * way the walk moves, and a stem with a dot on top so it reads from any side, over the model.
+   */
   const drawMarker = (mk: WalkSceneMarker): Group => {
     const g = new Group();
     g.name = `aio-walk-marker-${mk.id}`;
     g.position.set(mk.at[0], mk.at[1], mk.at[2]);
-    const k = mk.dim ? 0.45 : 1;
-    const y = 0.08;
     const o: [number, number] = [0, 0];
-    const xyz = (p: readonly [number, number], h = y): [number, number, number] => [p[0], h, p[1]];
+    const [ax, ay, az] = mk.at;
+    const ground = mk.ground;
+    // the height above the spot of the ground under a point of the marker, lifted a little
+    const onGround = (lift: number) =>
+      ground
+        ? (p: readonly [number, number]) => (ground(ax + p[0], az + p[1]) ?? ay) - ay + lift
+        : lift;
     const look = mk.lookHeadingRad;
-    const half = mk.halfRad;
-    const tickDot = () => {
-      const p = along(o, mk.walkHeadingRad, MARKER_M.tick);
-      g.add(flat(ringPoints(p, 0.22, 12), y + 0.01, '#f0f2f4', 0.95 * k, false));
-    };
-    if (mk.style === 'beam') {
-      if (look !== null) {
-        // the apex strong, the rim gone: a beam of light along the look (two fans: a quick
-        // fall-off near the spot, a long faint reach)
-        const fan = fanPoints(o, look, half, MARKER_M.beam, 24);
-        const near = fanPoints(o, look, half, MARKER_M.beam * 0.5, 24);
-        g.add(flat(fan, y, mk.colour, [0.7 * k, ...fan.slice(1).map(() => 0.05 * k)]));
-        g.add(flat(near, y + 0.005, mk.colour, [0.6 * k, ...near.slice(1).map(() => 0)]));
+    if (look !== null) {
+      // one fan per ring of the fade: the apex strong, each ring fainter, the rim gone
+      const fade = (r: number) => {
+        for (let i = 1; i < BEAM_FADE.length; i++) {
+          const [a0, o0] = BEAM_FADE[i - 1] ?? [0, 0];
+          const [a1, o1] = BEAM_FADE[i] ?? [1, 0];
+          if (r <= a1) return o0 + ((o1 - o0) * (r - a0)) / (a1 - a0 || 1);
+        }
+        return 0;
+      };
+      const steps = 24;
+      const rings = BEAM_FADE.map(([at]) => at).filter((at) => at > 0);
+      // the cone as quads between rings, each ring's vertices at its own fade
+      const pts: [number, number][] = [o];
+      const alpha: number[] = [fade(0)];
+      for (const r of rings) {
+        const arc = fanPoints(o, look, mk.halfRad, BEAM_M.reach * r, steps).slice(1);
+        pts.push(...arc);
+        alpha.push(...arc.map(() => fade(r)));
       }
-      g.add(flat(ringPoints(o, 0.45, 16), y + 0.012, mk.colour, k, false));
-      tickDot();
-    } else if (mk.style === 'compass') {
-      const ring = ringPoints(o, MARKER_M.compassRing, 40);
-      g.add(flat(ring, y - 0.01, '#0b0f14', 0.45 * k, false));
-      g.add(
-        fatLine(
-          ring.map((p) => xyz(p)),
-          mk.colour,
-          k,
-          2,
-          { order: 48 },
-        ),
-      );
-      if (look !== null) {
-        const fan = fanPoints(o, look, half, MARKER_M.compassFan, 24);
-        g.add(flat(fan, y + 0.01, mk.colour, 0.35 * k));
-        g.add(
-          fatLine(
-            [...fan, o].map((p) => xyz(p)),
-            mk.colour,
-            k,
-            1.5,
-            { order: 48 },
-          ),
-        );
-      }
-      const tip = along(o, mk.walkHeadingRad, MARKER_M.compassRing + 0.6);
-      const back = along(o, mk.walkHeadingRad, MARKER_M.compassRing - 0.9);
-      const side = (s: number) => along(back, mk.walkHeadingRad + (s * Math.PI) / 2, 1.1);
-      g.add(
-        fatLine(
-          [side(1), tip, side(-1)].map((p) => xyz(p, y + 0.02)),
-          '#f0f2f4',
-          k,
-          2.5,
-          {
-            order: 49,
-          },
-        ),
-      );
-    } else {
-      if (look !== null) {
-        const fan = fanPoints(o, look, half, MARKER_M.rays, 24);
-        g.add(flat(fan, y, mk.colour, 0.1 * k));
-        g.add(
-          fatLine(
-            [fan[1] ?? o, o, fan.at(-1) ?? o].map((p) => xyz(p)),
-            mk.colour,
-            k,
-            1.5,
-            {
-              order: 48,
-            },
-          ),
-        );
-        const [nose, l, notch, r] = arrowPoints(o, look);
-        g.add(flat([notch, r, nose, l], y + 0.02, mk.colour, k));
-        g.add(
-          fatLine(
-            [nose, l, notch, r, nose].map((p) => xyz(p, y + 0.03)),
-            '#f0f2f4',
-            k,
-            2,
-            {
-              order: 49,
-            },
-          ),
-        );
-      }
-      tickDot();
+      g.add(cone(pts, steps, onGround(BEAM_LIFT_M), mk.colour, alpha));
     }
+    g.add(
+      flat(
+        ringPoints(o, BEAM_M.dot + 0.12, 20),
+        onGround(BEAM_LIFT_M + 0.01),
+        BEAM_LIGHT,
+        1,
+        false,
+      ),
+    );
+    g.add(flat(ringPoints(o, BEAM_M.dot, 20), onGround(BEAM_LIFT_M + 0.012), mk.colour, 1, false));
+    const tick = along(o, mk.walkHeadingRad, BEAM_M.tick);
+    g.add(flat(ringPoints(tick, 0.22, 12), onGround(BEAM_LIFT_M + 0.01), BEAM_LIGHT, 0.95, false));
     // a stem up from the spot and a dot on top: it reads in 3D from any side, over the model
     g.add(
       fatLine(
         [
           [0, 0, 0],
-          [0, STEM_M, 0],
+          [0, BEAM_M.stem, 0],
         ],
-        '#f0f2f4',
-        0.9 * k,
+        BEAM_LIGHT,
+        0.9,
         2,
         { order: 49 },
       ),
     );
     const dot = (px: number, colour: string, order: number) => {
       const pg = new BufferGeometry();
-      pg.setAttribute('position', new Float32BufferAttribute([0, STEM_M, 0], 3));
+      pg.setAttribute('position', new Float32BufferAttribute([0, BEAM_M.stem, 0], 3));
       const map = roundDot();
       const p = new Points(
         pg,
@@ -436,7 +423,6 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
           depthTest: false,
           fog: false,
           transparent: true,
-          opacity: k,
           ...(map ? { map, alphaTest: 0.5 } : {}),
         }),
       );
@@ -444,7 +430,7 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
       p.raycast = () => undefined;
       g.add(p);
     };
-    dot(17, '#f0f2f4', 50);
+    dot(17, BEAM_LIGHT, 50);
     dot(12, mk.colour, 51);
     return g;
   };

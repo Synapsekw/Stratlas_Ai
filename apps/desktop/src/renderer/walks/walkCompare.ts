@@ -38,13 +38,10 @@ export interface WalkCompareState extends Remembered {
   driver: Side;
   /** The walk seeked into one of its detours plays on its own until the routes rejoin. */
   solo: Side | null;
-  /**
-   * Always null: the dimmed far state is gone (routes may part, nothing dims). Kept only while
-   * the 3D marker code still reads it; remove with that read.
-   */
-  far: null;
   /** The follower's play button asks the lead to play or pause (`seq` makes a repeat new). */
   leadPlay: { seq: number; play: boolean } | null;
+  /** The follower was scrubbed outside a detour: the lead goes to `t` (`seq` makes a repeat new). */
+  leadSeek: { seq: number; t: number } | null;
   /** Compare walk `left` (leading) with walk `right`. */
   begin(left: string, right: string): void;
   end(): void;
@@ -59,6 +56,7 @@ export interface WalkCompareState extends Remembered {
   /** The lead plays: a solo walk follows again. */
   leadPlays(): void;
   requestLeadPlay(play: boolean): void;
+  requestLeadSeek(t: number): void;
 }
 
 const DEFAULTS: Remembered = {
@@ -91,11 +89,10 @@ export function createWalkCompareStore(ws: ProjectSource): StoreApi<WalkCompareS
   const memory = new Map<string, Remembered>();
   const fresh = (projectId: string | null) => {
     const r = (projectId === null ? undefined : memory.get(projectId)) ?? DEFAULTS;
-    return { ...r, projectId, driver: r.lead, solo: null, leadPlay: null };
+    return { ...r, projectId, driver: r.lead, solo: null, leadPlay: null, leadSeek: null };
   };
   const store = createStore<WalkCompareState>()((set, get) => ({
     ...fresh(ws.getState().project?.id ?? null),
-    far: null,
     begin: (left, right) => {
       set({ active: true, left, right, lead: 'left', driver: 'left', solo: null });
     },
@@ -118,6 +115,9 @@ export function createWalkCompareStore(ws: ProjectSource): StoreApi<WalkCompareS
     },
     requestLeadPlay: (play) => {
       set({ leadPlay: { seq: (get().leadPlay?.seq ?? 0) + 1, play } });
+    },
+    requestLeadSeek: (t) => {
+      set({ leadSeek: { seq: (get().leadSeek?.seq ?? 0) + 1, t } });
     },
   }));
   store.subscribe((s) => {
@@ -408,6 +408,56 @@ export function detourBands(
 
 export function inBand(bands: readonly Band[], t: number): boolean {
   return bands.some((b) => t >= b.fromT && t <= b.toT);
+}
+
+// ---------------------------------------------------------------- scrubbing the follower
+
+/**
+ * What scrubbing the follower to `followT` does. Inside one of its detour bands it plays on its
+ * own there (`solo`); a solo walk dragged out while playing takes the lead (`rejoin`, no jump
+ * back); otherwise both move together: the lead goes to the place nearest the follower's new
+ * spot (by place, keeping to the pass it is on near `leadT`, the pass going the same way
+ * preferred) or to the same second (by time, or while a walk is not placed).
+ */
+export function followerSeek(o: {
+  followT: number;
+  bands: readonly Band[];
+  solo: boolean;
+  playing: boolean;
+  leadTrack: readonly TrackPt[];
+  followTrack: readonly TrackPt[];
+  mode: CompareMode;
+  /** Where the lead is now. */
+  leadT: number | null;
+}): { kind: 'solo' } | { kind: 'rejoin' } | { kind: 'lead'; leadT: number } {
+  if (inBand(o.bands, o.followT)) return { kind: 'solo' };
+  if (o.solo && o.playing) return { kind: 'rejoin' };
+  if (o.mode === 'place') {
+    const spot = spotAt(o.followTrack, o.followT);
+    const n = spot
+      ? nearestOnTrack(o.leadTrack, spot[0], spot[1], {
+          prevT: o.leadT,
+          dir: dirAt(o.followTrack, o.followT),
+        })
+      : null;
+    if (n) return { kind: 'lead', leadT: n.t };
+  }
+  return { kind: 'lead', leadT: o.followT };
+}
+
+/**
+ * Send the lead of compare `store` to `t`: its pane seeks there, and the lead clock reads `t` at
+ * once, so the follower's next tick pairs with where the lead is going instead of pulling the
+ * follower back to where it was.
+ */
+export function moveLeadTo(
+  store: StoreApi<WalkCompareState>,
+  t: number,
+  nowMs: number = performance.now(),
+): void {
+  const c = leadClock.getState().now;
+  if (c) leadClock.setState({ now: { ...c, t, atMs: nowMs } });
+  store.getState().requestLeadSeek(t);
 }
 
 // ---------------------------------------------------------------- a smooth follower

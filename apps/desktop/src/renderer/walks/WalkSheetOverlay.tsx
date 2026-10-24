@@ -1,6 +1,7 @@
 import { useT } from '@aio/ui';
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { PinRole, SheetPreview, SheetPx, WalkDrawing, WalkNow } from './walkOverlay';
+import { BEAM_FADE, BEAM_PX, beamFanPath } from './walkView';
 import './walkOverlay.css';
 
 /** Line width, dash and still dot diameter on screen, px (non-scaling strokes). */
@@ -23,11 +24,58 @@ const dotsOf = (pts: readonly SheetPx[]): string =>
 
 type Px = [number, number];
 
+const NO_NOWS: readonly WalkNow[] = [];
+const deg = (rad: number): string => num((rad * 180) / Math.PI);
+
+/**
+ * The Beam of one walk on the drawing (design "The marker shows where you look"): a soft fan along
+ * the look, as wide as the 360 pane's view and fading out (one radial gradient), the walk's
+ * direction as a small light tick, and a dot in the date colour with a light ring. Drawn in screen
+ * px under `scale(k)`, so it keeps its size at every zoom.
+ */
+function SheetBeam({ now, k, gradId }: { now: WalkNow; k: number; gradId: string }) {
+  const look = now.look;
+  return (
+    <g
+      className="walk-now"
+      data-testid="walk-now"
+      data-walk={now.id}
+      data-look-deg={look ? String(Math.round(((look.deg % 360) + 360) % 360) % 360) : undefined}
+      transform={`translate(${num(now.at[0])} ${num(now.at[1])}) scale(${num(k)})`}
+    >
+      {look && (
+        <>
+          <defs>
+            <radialGradient
+              id={gradId}
+              gradientUnits="userSpaceOnUse"
+              cx="0"
+              cy="0"
+              r={BEAM_PX.reach}
+            >
+              {BEAM_FADE.map(([at, op]) => (
+                <stop key={at} offset={at} stopColor={now.colour} stopOpacity={op} />
+              ))}
+            </radialGradient>
+          </defs>
+          <g data-part="cone" transform={`rotate(${deg(look.rad)})`}>
+            <path d={beamFanPath(BEAM_PX.reach, look.halfRad)} fill={`url(#${gradId})`} />
+          </g>
+        </>
+      )}
+      <g data-part="tick" className="walk-now-tick" transform={`rotate(${deg(now.headingRad)})`}>
+        <circle cx={BEAM_PX.tick} r={BEAM_PX.tickR} />
+      </g>
+      <circle data-part="dot" className="walk-now-dot" r={BEAM_PX.dot} fill={now.colour} />
+    </g>
+  );
+}
+
 /**
  * The walks on a drawing (design "What the surface shows"), as SVG in the picture's pixels inside
  * `RasterView`'s overlay. The path line in the date colour (dashed across a stretch without a pin)
  * and the still dots use non-scaling strokes, so they are built once per `drawings` and a zoom
- * redraws nothing of them; only the numbered pins and the current position (`now`, apart so a
+ * redraws nothing of them; only the numbered pins and the Beams of the walks shown (`nows`, apart so a
  * time tick does not touch the path) follow `1 / scale`.
  *
  * Pins of the walk being placed can be dragged when `onPinDrag` and `toImage` (from the overlay
@@ -38,7 +86,7 @@ type Px = [number, number];
 export function WalkSheetOverlay({
   drawings,
   scale,
-  now = null,
+  nows = NO_NOWS,
   preview = null,
   size,
   onPinDrag,
@@ -47,7 +95,8 @@ export function WalkSheetOverlay({
 }: {
   drawings: readonly WalkDrawing[];
   scale: number;
-  now?: WalkNow | null;
+  /** Where each walk a 360 pane shows is now, with its Beam (two while comparing). */
+  nows?: readonly WalkNow[];
   /** The shape being placed under the pointer (ghost, live line, or a spot too close). */
   preview?: SheetPreview | null;
   /** The picture's size: dragged pins stay on it. */
@@ -57,6 +106,7 @@ export function WalkSheetOverlay({
   toImage?: ((clientX: number, clientY: number, from: Element) => Px) | undefined;
 }) {
   const t = useT();
+  const gradBase = `walk-beam${useId().replace(/[^\w-]/g, '')}`;
   const k = 1 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
   const [hover, setHover] = useState<string | null>(null);
   const drag = useRef<{
@@ -159,17 +209,9 @@ export function WalkSheetOverlay({
           {...(preview.ghost || preview.tooClose ? { strokeDasharray: DASH } : {})}
         />
       )}
-      {now && (
-        <g
-          className="walk-now"
-          data-testid="walk-now"
-          data-walk={now.id}
-          transform={`translate(${num(now.at[0])} ${num(now.at[1])}) rotate(${num((now.headingRad * 180) / Math.PI)}) scale(${num(k)})`}
-        >
-          <line x1="0" y1="0" x2="14" y2="0" stroke={now.colour} />
-          <circle r="5" fill={now.colour} />
-        </g>
-      )}
+      {nows.map((n) => (
+        <SheetBeam key={n.id} now={n} k={k} gradId={`${gradBase}-${n.id}`} />
+      ))}
       {drawings.map((d) => {
         if (d.pins.length === 0) return null;
         // the pin under the pointer is drawn last, above the others

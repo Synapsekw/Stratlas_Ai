@@ -15,7 +15,7 @@ vi.mock('../builder/state', () => ({
   builder: { getState: () => ({ saveLayers: vi.fn() }), subscribe: () => () => undefined },
 }));
 
-const { drapePlaced, placedReach, scenePlacedWalks, scenePlacing, walkReach } =
+const { drapePlaced, placedReach, sceneMarkers, scenePlacedWalks, scenePlacing, walkReach } =
   await import('./WalkSceneMount');
 const { DRAPE_LIFT_M } = await import('./walkScene');
 
@@ -119,6 +119,65 @@ describe('scenePlacedWalks', () => {
       'walk-b',
       'walk-d',
     ]);
+  });
+});
+
+describe('sceneMarkers', () => {
+  const pins: WalkPin[] = [
+    { t: 0, surface: '@model', at: [0, 0], y: 0 },
+    { t: 10, surface: '@model', at: [10, 0], y: 0 },
+  ];
+  const fit = fitWalk(null, { pins, yawOffsetDeg: 0 }, { drawing: () => null }, 10);
+  const walk = (id: string, visible = true): SheetWalk => ({
+    layer: { id, visible, durationS: 10 } as unknown as WalkLayer,
+    fit,
+    raw: null,
+  });
+  const view = (t: number, lookDeg: number | null) => ({
+    t,
+    lookDeg,
+    pitchDeg: 0,
+    fovDeg: 60,
+    hfovDeg: 90,
+  });
+  // the ortho sits 3 m below the stored pins
+  const ground = () => -3;
+
+  it('one Beam per walk a pane shows, on the ground the view draws, turned to the look', () => {
+    const out = sceneMarkers(
+      [walk('walk-a'), walk('walk-b')],
+      { 'walk-a': view(5, 90), 'walk-b': view(2, null) },
+      new Set(),
+      null,
+      () => '#abcdef',
+      ground,
+    );
+    expect(out.map((m) => m.id)).toEqual(['walk-a', 'walk-b']);
+    const [a, b] = out;
+    expect(a?.at[0]).toBeCloseTo(5, 6);
+    expect(a?.at[1]).toBe(-3);
+    expect(a?.lookHeadingRad).toBeCloseTo(-Math.PI / 2, 9);
+    expect(a?.halfRad).toBeCloseTo(Math.PI / 4, 9);
+    expect(a?.ground).toBe(ground);
+    expect(a?.colour).toBe('#abcdef');
+    expect(b?.lookHeadingRad).toBeNull();
+    // nothing drawn below: the stored pin height
+    const bare = sceneMarkers(
+      [walk('walk-a')],
+      { 'walk-a': view(5, 0) },
+      new Set(),
+      null,
+      () => '#fff',
+      () => null,
+    );
+    expect(bare[0]?.at[1]).toBeCloseTo(0, 9);
+  });
+
+  it('none for a hidden walk, a switched off one, the walk being edited or one without a pane', () => {
+    const fits = [walk('walk-a'), walk('walk-c', false)];
+    const views = { 'walk-a': view(5, 0), 'walk-c': view(5, 0), 'walk-z': view(5, 0) };
+    expect(sceneMarkers(fits, views, new Set(['walk-a']), null, () => '#fff', ground)).toEqual([]);
+    expect(sceneMarkers(fits, views, new Set(), 'walk-a', () => '#fff', ground)).toEqual([]);
   });
 });
 

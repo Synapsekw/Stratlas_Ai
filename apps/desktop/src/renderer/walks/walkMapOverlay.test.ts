@@ -1,9 +1,13 @@
+// @vitest-environment jsdom
 import type { FitPin, WalkFit, WalkFitSample, XZ } from '@aio/geo';
 import type { Vec3, WalkLayer } from '@aio/schema';
 import type { Feature, FeatureCollection } from 'geojson';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  beamConeTransform,
+  MapBeamMarkers,
   mapColour,
+  walkBeamMarker,
   pathStyle,
   resolveCssColour,
   walkMapOverlays,
@@ -11,6 +15,7 @@ import {
   walkNowMapOverlay,
 } from './walkMapOverlay';
 import { MAP_INK } from '@aio/maps';
+import { BEAM_PX, beamFanPath, beamHalfRad, type WalkViewNow } from './walkView';
 
 const pos = (t: number): XZ => [t, 2 * t];
 function fit(): WalkFit {
@@ -240,5 +245,137 @@ describe('the placing preview and pin roles', () => {
       .map((f): unknown => f.properties?.role);
     expect(roles[0]).toBe('start');
     expect(roles.at(-1)).toBe('end');
+  });
+});
+
+describe('the Beam marker on the map', () => {
+  const view = (over: Partial<WalkViewNow> = {}): WalkViewNow => ({
+    t: 4,
+    lookDeg: 33.6,
+    pitchDeg: 0,
+    fovDeg: 60,
+    hfovDeg: 90,
+    ...over,
+  });
+  const walk = { layer: layer('walk-a'), fit: fit(), raw: null };
+
+  it('sits where the walk is at the view time, with its look, width and way of travel', () => {
+    const m = walkBeamMarker(walk, proj, '#3a7bd5', view());
+    expect(m).toEqual({
+      layerId: 'walk-a',
+      lonLat: [4, 8],
+      lookDeg: 33.6,
+      hfovDeg: 90,
+      walkDeg: 0,
+      colour: '#3a7bd5',
+    });
+    // a walk of a lined-up date sits where its date lies
+    const shifted = walkBeamMarker(
+      { ...walk, shift: { eastM: 2, northM: -1 } },
+      proj,
+      '#000',
+      view(),
+    );
+    expect(shifted?.lonLat).toEqual([6, 9]);
+    expect(walkBeamMarker(walk, proj, '#000', view({ t: NaN }))).toBeNull();
+  });
+
+  it('turns the cone to the look bearing less the map bearing, flattened by the pitch', () => {
+    // the fan is drawn along +x (east on a north-up map): a look north turns it a quarter back
+    expect(beamConeTransform(0, 0, 0)).toBe('scale(1 1) rotate(-90)');
+    expect(beamConeTransform(90, 0, 0)).toBe('scale(1 1) rotate(0)');
+    expect(beamConeTransform(90, 30, 0)).toBe('scale(1 1) rotate(-30)');
+    expect(beamConeTransform(90, 0, 60)).toBe('scale(1 0.5) rotate(0)');
+  });
+
+  /** The slice of a MapLibre map the markers use: 1 px a "degree" times `zoom`. */
+  function fakeMap() {
+    const container = document.createElement('div');
+    const handlers = new Map<string, Set<() => void>>();
+    const cam = { zoom: 1, bearing: 0, pitch: 0 };
+    return {
+      cam,
+      container,
+      handlers,
+      map: {
+        getContainer: () => container,
+        project: (ll: [number, number]) => ({ x: ll[0] * cam.zoom, y: -ll[1] * cam.zoom }),
+        getBearing: () => cam.bearing,
+        getPitch: () => cam.pitch,
+        on: (type: string, fn: () => void) => {
+          const set = handlers.get(type) ?? new Set();
+          set.add(fn);
+          handlers.set(type, set);
+        },
+        off: (type: string, fn: () => void) => {
+          handlers.get(type)?.delete(fn);
+        },
+      },
+      fire: (type: string) => {
+        for (const fn of handlers.get(type) ?? []) fn();
+      },
+    };
+  }
+
+  it('draws one marker per playing walk, named for e2e, the cone as wide as the view', () => {
+    const f = fakeMap();
+    const markers = new MapBeamMarkers(f.map);
+    const a = walkBeamMarker(walk, proj, '#3a7bd5', view());
+    const b = walkBeamMarker(
+      { ...walk, layer: layer('walk-b') },
+      proj,
+      '#d5843a',
+      view({ lookDeg: null }),
+    );
+    if (!a || !b) throw new Error('fixture');
+    markers.set([a, b]);
+    const els = [...f.container.querySelectorAll<HTMLElement>('[data-testid="walk-beam"]')];
+    expect(els.map((e) => e.dataset.layerId)).toEqual(['walk-a', 'walk-b']);
+    expect(els[0]?.dataset.lookDeg).toBe('34');
+    // a walk not placed yet has no look: a dot without a cone
+    expect(els[1]?.dataset.lookDeg).toBeUndefined();
+    expect(els[1]?.querySelector('[data-part="cone"]')).toBeNull();
+    const fan = els[0]?.querySelector('[data-part="cone"] path');
+    expect(fan?.getAttribute('d')).toBe(beamFanPath(BEAM_PX.reach, beamHalfRad(90)));
+    expect(fan?.getAttribute('fill')).toMatch(/^url\(#walk-beam-/);
+    expect(els[0]?.querySelector('circle[data-part="dot"]')?.getAttribute('fill')).toBe('#3a7bd5');
+    // a narrower view narrows the cone
+    markers.set([{ ...a, hfovDeg: 40 }]);
+    expect(f.container.querySelectorAll('[data-testid="walk-beam"]')).toHaveLength(1);
+    expect(f.container.querySelector('[data-part="cone"] path')?.getAttribute('d')).toBe(
+      beamFanPath(BEAM_PX.reach, beamHalfRad(40)),
+    );
+    markers.dispose();
+  });
+
+  it('keeps its size on screen at every zoom and turns with the map', () => {
+    const f = fakeMap();
+    const markers = new MapBeamMarkers(f.map);
+    const a = walkBeamMarker(walk, proj, '#3a7bd5', view({ lookDeg: 90 }));
+    if (!a) throw new Error('fixture');
+    markers.set([a]);
+    const el = f.container.querySelector<HTMLElement>('[data-testid="walk-beam"]');
+    const svg = el?.querySelector('svg');
+    const size = () => [svg?.getAttribute('width'), svg?.getAttribute('height')];
+    const before = size();
+    expect(before).toEqual([String(2 * BEAM_PX.reach), String(2 * BEAM_PX.reach)]);
+    expect(el?.style.transform).toBe('translate(4px, -8px)');
+    // zoomed in eight times: the spot moves, the marker stays the same size
+    f.cam.zoom = 8;
+    f.fire('move');
+    expect(el?.style.transform).toBe('translate(32px, -64px)');
+    expect(size()).toEqual(before);
+    expect(el?.querySelector('[data-part="cone"]')?.getAttribute('transform')).toBe(
+      'scale(1 1) rotate(0)',
+    );
+    f.cam.bearing = 45;
+    f.cam.pitch = 60;
+    f.fire('move');
+    expect(el?.querySelector('[data-part="cone"]')?.getAttribute('transform')).toBe(
+      'scale(1 0.5) rotate(-45)',
+    );
+    markers.dispose();
+    expect(f.container.querySelector('[data-testid="walk-beam"]')).toBeNull();
+    expect([...f.handlers.values()].every((h) => h.size === 0)).toBe(true);
   });
 });
