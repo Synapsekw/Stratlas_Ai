@@ -25,7 +25,8 @@ class FakeMap {
   sourceReads = 0;
   /** How many times each source's data was set. */
   readonly sets = new Map<string, number>();
-  private readonly layers = new Set<string>();
+  /** Each layer added, with its metadata (rasters carry their project layer id). */
+  private readonly layers = new Map<string, unknown>();
   private readonly sources = new Set<string>();
   constructor() {
     FakeMap.last = this;
@@ -69,17 +70,30 @@ class FakeMap {
   removeSource(id: string): void {
     this.sources.delete(id);
   }
-  readonly addLayer = vi.fn((l: { id: string }): void => {
-    this.layers.add(l.id);
+  readonly addLayer = vi.fn((l: { id: string; metadata?: unknown }): void => {
+    this.layers.set(l.id, l.metadata);
   });
   getLayer(id: string) {
-    return this.layers.has(id) ? { id } : undefined;
+    return this.layers.has(id) ? { id, metadata: this.layers.get(id) } : undefined;
   }
   readonly removeLayer = vi.fn((id: string): void => {
     this.layers.delete(id);
   });
-  setPaintProperty(): void {
-    /* style only */
+  /** The paint properties set after a layer was added, per layer (`raster-opacity` and the like). */
+  readonly paint = new Map<string, Record<string, unknown>>();
+  setPaintProperty(id: string, name: string, value: unknown): void {
+    this.paint.set(id, { ...this.paint.get(id), [name]: value });
+  }
+  /** The view's lon/lat box, as the pyramid loader reads it. */
+  bounds = { west: -180, south: -85, east: 180, north: 85 };
+  getBounds() {
+    const b = this.bounds;
+    return {
+      getWest: () => b.west,
+      getEast: () => b.east,
+      getNorth: () => b.north,
+      getSouth: () => b.south,
+    };
   }
   /** The layout properties set, per layer (`visibility` and the like). */
   readonly layout = new Map<string, Record<string, unknown>>();
@@ -975,6 +989,128 @@ describe('vector layer overlays on a layer toggle', () => {
     expect(map.removeLayer).not.toHaveBeenCalled();
     expect(map.addLayer).not.toHaveBeenCalled();
     expect(map.sets.get('aio-ov-layer-roads') ?? 0).toBe(sets);
+    ctl.dispose();
+  });
+});
+
+describe('raster blend (the timelapse crossfade between two dated orthos)', () => {
+  const ORIGIN: [number, number, number] = [500_000, 4_000_000, 0];
+  const corners = { tl: [0, 0, 0], tr: [100, 0, 0], bl: [0, 0, 100] };
+  const ortho = (id: string, capture: string, format: 'image' | 'kit-pyramid' = 'image') => ({
+    kind: 'raster',
+    id,
+    name: id,
+    visible: true,
+    src: { path: format === 'image' ? `${id}.png` : `${id}/tiles.json` },
+    format,
+    role: 'ortho',
+    corners,
+    capture,
+  });
+  const open = (layers: unknown[], hidden: Record<string, true>) => {
+    const started = start();
+    started.store.setState({
+      hidden,
+      project: {
+        id: 'p1',
+        manifest: {
+          crs: { epsg: 32633 },
+          origin: ORIGIN,
+          captures: [
+            { id: 'd1', label: 'First', date: '2026-01-10' },
+            { id: 'd2', label: 'Second', date: '2026-02-10' },
+          ],
+          layers,
+        },
+      } as unknown as ReturnType<typeof started.store.getState>['project'],
+    });
+    return started;
+  };
+  /** The opacity a map layer draws at: the last one set, else the one it was added with. */
+  const opacity = (map: FakeMap, sid: string): unknown => {
+    const set = map.paint.get(sid)?.['raster-opacity'];
+    if (set !== undefined) return set;
+    const added = map.addLayer.mock.calls.find(([l]) => l.id === sid)?.[0] as
+      { paint?: Record<string, unknown> } | undefined;
+    return added?.paint?.['raster-opacity'];
+  };
+  const visibility = (map: FakeMap, sid: string) => map.layout.get(sid)?.visibility;
+
+  it('blend shows a hidden layer with the given opacity', async () => {
+    const { map, store, ctl } = open([ortho('a', 'd1'), ortho('b', 'd2')], { b: true });
+    await flushTask();
+    expect(visibility(map, 'aio-raster-b-0')).toBe('none');
+    ctl.setRasterBlend([
+      { layerId: 'a', opacity: 0.45 },
+      { layerId: 'b', opacity: 0.55 },
+    ]);
+    expect(visibility(map, 'aio-raster-a-0')).toBe('visible');
+    expect(visibility(map, 'aio-raster-b-0')).toBe('visible');
+    expect(opacity(map, 'aio-raster-a-0')).toBe(0.45);
+    expect(opacity(map, 'aio-raster-b-0')).toBe(0.55);
+    // a later step of the blend only moves the opacities
+    ctl.setRasterBlend([
+      { layerId: 'a', opacity: 0.2 },
+      { layerId: 'b', opacity: 0.8 },
+    ]);
+    expect(opacity(map, 'aio-raster-b-0')).toBe(0.8);
+    // a workspace change while blending keeps the blended layer shown
+    store.setState({ hidden: { b: true, other: true } });
+    expect(visibility(map, 'aio-raster-b-0')).toBe('visible');
+    ctl.dispose();
+  });
+
+  it('null restores visibility and opacity', async () => {
+    const { map, ctl } = open([ortho('a', 'd1'), ortho('b', 'd2')], { b: true });
+    await flushTask();
+    ctl.setRasterBlend([
+      { layerId: 'a', opacity: 0.3 },
+      { layerId: 'b', opacity: 0.7 },
+    ]);
+    ctl.setRasterBlend(null);
+    expect(visibility(map, 'aio-raster-a-0')).toBe('visible');
+    expect(visibility(map, 'aio-raster-b-0')).toBe('none');
+    expect(opacity(map, 'aio-raster-a-0')).toBe(0.95);
+    expect(opacity(map, 'aio-raster-b-0')).toBe(0.95);
+    ctl.dispose();
+  });
+
+  it('a blended hidden layer loads its pyramid tiles', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              levels: [
+                { z: 0, tileSize: 256, cols: 1, rows: 1, pattern: 'b/{z}/{x}/{y}.png' },
+                { z: 1, tileSize: 256, cols: 8, rows: 8, pattern: 'b/{z}/{x}/{y}.png' },
+              ],
+            }),
+        }),
+      ),
+    );
+    const proj = geo.frameProjection({ epsg: 32633 }, ORIGIN);
+    if (!proj) throw new Error('projection');
+    const { map, ctl } = open([ortho('b', 'd2', 'kit-pyramid')], { b: true });
+    await flushTask();
+    await flushTask();
+    // a close view over the middle of the survey: the fine level's tiles are wanted
+    const [west, north] = proj.toLonLat([40, 0, 40]);
+    const [east, south] = proj.toLonLat([60, 0, 60]);
+    map.bounds = { west, south, east, north };
+    map.center = { lng: (west + east) / 2, lat: (north + south) / 2 };
+    map.zoom = 20;
+    map.fire('moveend');
+    const fineTiles = () =>
+      [...map.specs.keys()].filter((k) => k.startsWith('aio-pyr-b-1-') && map.getSource(k));
+    expect(fineTiles()).toEqual([]);
+    ctl.setRasterBlend([{ layerId: 'b', opacity: 0.6 }]);
+    expect(fineTiles().length).toBeGreaterThan(0);
+    for (const sid of fineTiles()) expect(opacity(map, sid)).toBe(0.6);
+    ctl.setRasterBlend(null);
+    expect(fineTiles()).toEqual([]);
     ctl.dispose();
   });
 });

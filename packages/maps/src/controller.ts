@@ -169,8 +169,18 @@ export interface MapController {
    * Making a new MapLibre map on every return to Map cost a WebGL context and its shader programs.
    */
   setHidden(hidden: boolean): void;
+  /**
+   * Blend raster layers (the timelapse crossfade between two dated orthos): while set, each listed
+   * layer is drawn, also when the workspace hides it (its pyramid tiles load), at the given
+   * `raster-opacity` instead of its usual one. Layers not listed keep their normal display. A new
+   * blend replaces the last; `null` restores the normal display.
+   */
+  setRasterBlend(blend: RasterBlend | null): void;
   dispose(): void;
 }
+
+/** Raster layers and the opacity each is drawn at while blended (`setRasterBlend`). */
+export type RasterBlend = readonly { layerId: string; opacity: number }[];
 
 /** A live pointer session on the map (placing a walk): hover, clicks and draggable handles. */
 export interface MapPointerSession {
@@ -756,6 +766,22 @@ export function createMapController(
   /** Hidden drawings whose picture the map has not fetched: added when they are first shown. */
   const waitingRasters = new Map<string, RasterLayer>();
 
+  /** The blended layers and their opacities (`setRasterBlend`); null: the normal display. */
+  let blend: ReadonlyMap<string, number> | null = null;
+
+  /** Whether a raster layer is off on the map: hidden in the workspace and not blended. */
+  function rasterHidden(layerId: string, s: Workspace): boolean {
+    return s.hidden[layerId] === true && !blend?.has(layerId);
+  }
+
+  /** The opacity a raster picture or tile draws at: the blend's, else the usual one. */
+  function rasterAlpha(layer: RasterLayer, fine = false): number {
+    return (
+      blend?.get(layer.id) ??
+      rasterOpacity(layer.role, layerDisplay.getState().byLayer[layer.id], fine)
+    );
+  }
+
   function addRasterImages(
     layer: RasterLayer,
     images: readonly { url: string; quad: [LonLat, LonLat, LonLat, LonLat] }[],
@@ -772,7 +798,7 @@ export function createMapController(
           source: sid,
           metadata: { layerId: layer.id },
           paint: {
-            'raster-opacity': rasterOpacity(layer.role, layerDisplay.getState().byLayer[layer.id]),
+            'raster-opacity': rasterAlpha(layer),
             'raster-fade-duration': 0,
           },
         },
@@ -786,7 +812,7 @@ export function createMapController(
     const all: LonLat[] = [];
     for (const layer of layers) {
       // a hidden drawing is only placed in the bounds; its picture waits for its first show
-      if (!loadsWithProject(layer, store.getState().hidden[layer.id] === true) && layer.corners) {
+      if (!loadsWithProject(layer, rasterHidden(layer.id, store.getState())) && layer.corners) {
         waitingRasters.set(layer.id, layer);
         all.push(...rasterQuad(shiftCorners(layer.corners, shiftOf(layer.id)), p));
         continue;
@@ -808,7 +834,7 @@ export function createMapController(
   function showWaitingRasters(s: Workspace): void {
     if (!proj || !projectId) return;
     for (const [id, layer] of waitingRasters) {
-      if (s.hidden[id] === true || !layer.corners) continue;
+      if (rasterHidden(id, s) || !layer.corners) continue;
       waitingRasters.delete(id);
       addRasterImages(layer, [
         {
@@ -855,7 +881,7 @@ export function createMapController(
     for (const { layer, index } of pyramids) {
       const coarse = Math.max(...index.levels.filter((l) => l.cols * l.rows <= 16).map((l) => l.z));
       const v = pyramidView(index, view, mpp);
-      const hidden = store.getState().hidden[layer.id] === true;
+      const hidden = rasterHidden(layer.id, store.getState());
       for (const t of v && v.z > coarse && !hidden ? v.tiles : []) {
         const key = `${layer.id}/${t.key}`;
         keep.add(key);
@@ -873,11 +899,7 @@ export function createMapController(
             source: sid,
             metadata: { layerId: layer.id },
             paint: {
-              'raster-opacity': rasterOpacity(
-                layer.role,
-                layerDisplay.getState().byLayer[layer.id],
-                true,
-              ),
+              'raster-opacity': rasterAlpha(layer, true),
               'raster-fade-duration': 0,
             },
           },
@@ -1272,30 +1294,32 @@ export function createMapController(
       if (map.getLayer(id)) map.setPaintProperty(id, 'circle-color', color);
   }
 
-  /** Drawings follow the opacity the person chose (`layerDisplay`). */
+  /** Drawings follow the opacity the person chose (`layerDisplay`), blended layers the blend's. */
   function applyRasterDisplay(): void {
     const layers = store.getState().project?.manifest.layers ?? [];
     const set = (sid: string, fine: boolean) => {
       const layerId = (map.getLayer(sid)?.metadata as { layerId?: string } | undefined)?.layerId;
       const layer = layers.find((l) => l.id === layerId);
       if (layer?.kind !== 'raster') return;
-      map.setPaintProperty(
-        sid,
-        'raster-opacity',
-        rasterOpacity(layer.role, layerDisplay.getState().byLayer[layer.id], fine),
-      );
+      map.setPaintProperty(sid, 'raster-opacity', rasterAlpha(layer, fine));
     };
     for (const sid of rasterIds) set(sid, false);
     for (const t of pyrTiles.values()) set(t.sid, true);
   }
 
-  function applyVisibility(s: Workspace): void {
+  /** Rasters on or off (workspace `hidden`, unless blended); waiting drawings and tiles follow. */
+  function applyRasterVisibility(s: Workspace): void {
     showWaitingRasters(s);
     for (const sid of rasterIds) {
       const layerId = (map.getLayer(sid)?.metadata as { layerId?: string } | undefined)?.layerId;
-      if (layerId) map.setLayoutProperty(sid, 'visibility', s.hidden[layerId] ? 'none' : 'visible');
+      if (layerId)
+        map.setLayoutProperty(sid, 'visibility', rasterHidden(layerId, s) ? 'none' : 'visible');
     }
     updatePyramids();
+  }
+
+  function applyVisibility(s: Workspace): void {
+    applyRasterVisibility(s);
     const project = s.project;
     if (project) {
       vectorOverlays = vectorOverlaysFor(project.manifest.layers, project.id, s);
@@ -1746,6 +1770,17 @@ export function createMapController(
       if (offScreen === on) return;
       offScreen = on;
       if (!on && !disposed) catchUp?.();
+    },
+    setRasterBlend: (next) => {
+      if (disposed) return;
+      const was = blend;
+      blend = next ? new Map(next.map((b) => [b.layerId, b.opacity])) : null;
+      // a new set of layers shows or hides pictures; a step of the same blend moves opacities only
+      const sameSet =
+        (was?.size ?? 0) === (blend?.size ?? 0) &&
+        [...(blend?.keys() ?? [])].every((id) => was?.has(id));
+      if (!sameSet && ready) applyRasterVisibility(store.getState());
+      applyRasterDisplay();
     },
     pickPoint,
     pointerSession,
