@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { materialIdFrom, materialsFromCsv, materialsToCsv, mergeMaterials } from './materials';
+import {
+  densityOn,
+  MATERIAL_PALETTE,
+  materialColour,
+  materialIdFrom,
+  materialsFromCsv,
+  materialsToCsv,
+  mergeMaterials,
+  withDensityFrom,
+} from './materials';
 
 const BOM = String.fromCharCode(0xfeff);
 
@@ -73,5 +82,96 @@ describe('site materials as CSV', () => {
     ]);
     expect(materialIdFrom('Crushed 20 mm', new Set(['crushed-20-mm']))).toBe('crushed-20-mm-2');
     expect(materialIdFrom('  ', new Set())).toBe('material');
+  });
+});
+
+describe('densities on a survey date', () => {
+  // three surveys; d0 has no date (Review Focus 3)
+  const DAYS: Record<string, number> = { d1: 10, d2: 20, d3: 30 };
+  const dateOf = (c: string): number | null => DAYS[c] ?? null;
+  const dated = {
+    id: 'agg',
+    name: 'Aggregate',
+    densityTPerM3: 1.7,
+    densityHistory: [
+      { fromCapture: 'd3', tPerM3: 1.7 },
+      { fromCapture: 'd2', tPerM3: 1.62 },
+    ],
+  };
+
+  it('takes the latest entry on or before the date, the first before any', () => {
+    expect(densityOn(dated, 'd1', dateOf)).toBe(1.62);
+    expect(densityOn(dated, 'd2', dateOf)).toBe(1.62);
+    expect(densityOn(dated, 'd3', dateOf)).toBe(1.7);
+  });
+
+  it('falls back to densityTPerM3 for an undated capture or without a history', () => {
+    expect(densityOn(dated, 'd0', dateOf)).toBe(1.7);
+    expect(densityOn({ id: 's', name: 'Sand', densityTPerM3: 1.5 }, 'd2', dateOf)).toBe(1.5);
+    expect(densityOn({ id: 's', name: 'Sand' }, 'd2', dateOf)).toBeNull();
+  });
+
+  it('skips history entries whose capture has no date without throwing', () => {
+    const odd = {
+      id: 'x',
+      name: 'X',
+      densityTPerM3: 2,
+      densityHistory: [
+        { fromCapture: 'd0', tPerM3: 9 },
+        { fromCapture: 'd2', tPerM3: 2 },
+      ],
+    };
+    expect(densityOn(odd, 'd1', dateOf)).toBe(2);
+    expect(densityOn(odd, 'd3', dateOf)).toBe(2);
+  });
+
+  it('withDensityFrom seeds the earlier density from the earliest survey and keeps densityTPerM3 at the newest', () => {
+    // Review Focus 4: three surveys, edit from the second
+    const before = { id: 'agg', name: 'Aggregate', densityTPerM3: 1.6 };
+    const after = withDensityFrom(before, 'd2', 1.62, 'd1', dateOf);
+    expect(after.densityHistory).toEqual([
+      { fromCapture: 'd1', tPerM3: 1.6 },
+      { fromCapture: 'd2', tPerM3: 1.62 },
+    ]);
+    expect(after.densityTPerM3).toBe(1.62);
+    expect(densityOn(after, 'd1', dateOf)).toBe(1.6);
+    expect(densityOn(after, 'd2', dateOf)).toBe(1.62);
+    expect(densityOn(after, 'd3', dateOf)).toBe(1.62);
+    expect(before).toEqual({ id: 'agg', name: 'Aggregate', densityTPerM3: 1.6 });
+  });
+
+  it('withDensityFrom replaces an entry of the same date and sorts by date', () => {
+    const one = withDensityFrom(
+      { id: 'agg', name: 'Aggregate', densityTPerM3: 1.6 },
+      'd3',
+      1.8,
+      'd1',
+      dateOf,
+    );
+    const two = withDensityFrom(one, 'd2', 1.7, 'd1', dateOf);
+    expect(two.densityHistory?.map((e) => e.fromCapture)).toEqual(['d1', 'd2', 'd3']);
+    expect(two.densityTPerM3).toBe(1.8);
+    const three = withDensityFrom(two, 'd3', 1.75, 'd1', dateOf);
+    expect(three.densityHistory).toHaveLength(3);
+    expect(three.densityTPerM3).toBe(1.75);
+  });
+
+  it('withDensityFrom on a material without a density seeds nothing', () => {
+    const m = withDensityFrom({ id: 'c', name: 'Clay' }, 'd2', 1.9, 'd1', dateOf);
+    expect(m.densityHistory).toEqual([{ fromCapture: 'd2', tPerM3: 1.9 }]);
+    expect(m.densityTPerM3).toBe(1.9);
+    // an edit from the earliest date replaces the single density without a seed entry
+    const e = withDensityFrom({ id: 's', name: 'S', densityTPerM3: 1.5 }, 'd1', 1.4, 'd1', dateOf);
+    expect(e.densityHistory).toEqual([{ fromCapture: 'd1', tPerM3: 1.4 }]);
+  });
+});
+
+describe('material colours', () => {
+  it('a material colour wins, else the palette by place', () => {
+    expect(MATERIAL_PALETTE).toHaveLength(8);
+    expect(MATERIAL_PALETTE[0]).toBe('--mat-1');
+    expect(materialColour({ id: 'a', name: 'A', colour: '#abcdef' }, 0)).toBe('#abcdef');
+    expect(materialColour({ id: 'a', name: 'A' }, 2)).toBe('var(--mat-3)');
+    expect(materialColour({ id: 'a', name: 'A' }, 9)).toBe('var(--mat-2)');
   });
 });

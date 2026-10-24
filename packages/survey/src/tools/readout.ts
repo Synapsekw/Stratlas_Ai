@@ -14,6 +14,7 @@ import { formatNumber, formatQuantity, localeOf, type NumberLocale, type Quantit
 import { sampleProfile, type HeightSampler } from './geometry';
 import { bermCheck, components, elevationDifference, lineMetrics, polygonAreas } from './measure';
 import { antennaAzimuth, antennaTilt, clearance, isTelecomTool } from './telecom';
+import { figureStatus, resultOn, type PileFigureStatus } from '../calc/figures';
 
 /**
  * What each tool shows: readout rows in SI, ordered by the template's `items` when it names them.
@@ -30,6 +31,8 @@ export interface ReadoutRow {
   kind: ReadoutKind;
   /** Why the value is missing, or a qualifier ("68 % covered"). */
   note?: string;
+  /** A volume row's figure status (cut, fill, net, total), when there is a figure. */
+  status?: PileFigureStatus;
 }
 
 /** Which family each tool belongs to. */
@@ -145,6 +148,11 @@ export interface ReadoutContext {
   surface?: HeightSampler | undefined;
   /** Sample step, metres (default 0.25 for lines, 0.5 for areas). */
   stepM?: number | undefined;
+  /**
+   * The survey date whose volume figures to show (`resultOn`): the stored result when it is that
+   * date's, else the per-date row. Without it, the stored result whatever its date.
+   */
+  capture?: string | undefined;
 }
 
 /**
@@ -189,7 +197,7 @@ export const SECONDARY_KEYS: Record<MeasurementTool, readonly string[]> = {
 };
 
 type Geometry = Pick<SurveyMeasurement, 'tool' | 'points'> &
-  Partial<Pick<SurveyMeasurement, 'results' | 'items'>>;
+  Partial<Pick<SurveyMeasurement, 'results' | 'items' | 'series'>>;
 
 const row = (key: string, value: number | null, kind: ReadoutKind, note?: string): ReadoutRow => ({
   key,
@@ -277,15 +285,47 @@ export function allRows(m: Geometry, ctx: ReadoutContext = {}): ReadoutRow[] {
     );
     out.push(row('slope-area', a.slopeM2, 'area'));
     out.push(row('perimeter', a.perimeterM, 'distance'));
-    const r = m.results?.[0];
-    const stale = r?.status === 'stale' ? 'Stale, recompute' : undefined;
-    out.push(row('cut', r ? r.cutM3 : null, 'volume', r ? stale : 'Not computed yet'));
-    out.push(row('fill', r ? r.fillM3 : null, 'volume', r ? stale : 'Not computed yet'));
-    out.push(row('net', r ? r.netM3 : null, 'volume', r ? stale : 'Not computed yet'));
-    out.push(row('total', r ? r.totalM3 : null, 'volume', r ? stale : 'Not computed yet'));
-    if (r) out.push(row('uncovered', r.uncoveredM2, 'area'));
+    out.push(...volumeRows(m, ctx.capture));
   }
   return out;
+}
+
+const VOLUME_KEYS = new Set(['cut', 'fill', 'net', 'total']);
+
+/**
+ * The volume rows (cut, fill, net, total, uncovered) of the stored result, or of the figure on
+ * `capture`. A figure never shows without its status: a stale one says so on every row, a refused
+ * one shows its refusal instead of numbers, and the headline (net) of a carried or partial one
+ * names it.
+ */
+function volumeRows(m: Geometry, capture: string | undefined): ReadoutRow[] {
+  const r = capture !== undefined ? resultOn(m, capture) : (m.results?.[0] ?? null);
+  if (!r) {
+    const why = capture !== undefined ? 'No figure for this date' : 'Not computed yet';
+    return ['cut', 'fill', 'net', 'total'].map((k) => row(k, null, 'volume', why));
+  }
+  const status = figureStatus(r);
+  const withStatus = (x: ReadoutRow): ReadoutRow => ({ ...x, status });
+  if (status === 'refused') {
+    const why = `Not computed: ${r.reason ?? 'the survey does not cover it'}`;
+    return ['cut', 'fill', 'net', 'total'].map((k) => withStatus(row(k, null, 'volume', why)));
+  }
+  const all = status === 'stale' ? 'Stale, recompute' : undefined;
+  const headline =
+    status === 'carried'
+      ? 'From an earlier version'
+      : status === 'partial'
+        ? r.reason
+          ? `Partly outside the survey: ${r.reason}`
+          : 'Partly outside the survey'
+        : all;
+  return [
+    withStatus(row('cut', r.cutM3, 'volume', all)),
+    withStatus(row('fill', r.fillM3, 'volume', all)),
+    withStatus(row('net', r.netM3, 'volume', headline)),
+    withStatus(row('total', r.totalM3, 'volume', all)),
+    row('uncovered', r.uncoveredM2, 'area'),
+  ];
 }
 
 /** The vertices' own heights as a profile (a berm drawn by clicking on the crest and toes). */
@@ -329,6 +369,10 @@ export function primaryRow(
   if (!items || items.length === 0 || items.includes(key)) {
     const r = rows.find((x) => x.key === key);
     if (r && r.value !== null) return r;
+    // a refused figure, or no figure on the date asked for, is the headline: never another row
+    // standing in for the volume
+    if (r && VOLUME_KEYS.has(key) && (r.status === 'refused' || ctx.capture !== undefined))
+      return r;
   }
   for (const k of order) {
     const r = rows.find((x) => x.key === k);

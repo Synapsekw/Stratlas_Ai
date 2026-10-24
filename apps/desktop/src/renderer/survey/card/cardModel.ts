@@ -115,13 +115,17 @@ export function templateItems(
 /**
  * The one primary value (R1): `primaryRow` with the template's items, formatted by `rowText`.
  * A telecom pick whose primary row has no value reads "Invalid picks"; any other measurement
- * with no value reads "".
+ * with no value reads "". With a `capture` a volume shows its figure on that survey date
+ * (`figureOn`), with the figure's status.
  */
 export function primaryText(
   m: SurveyMeasurement,
-  ctx: Pick<CardContext, 'settings' | 'templates' | 'surface'>,
+  ctx: Pick<CardContext, 'settings' | 'templates' | 'surface'> & { capture?: string | undefined },
 ): string {
-  const readout: ReadoutContext = ctx.surface ? { surface: ctx.surface } : {};
+  const readout: ReadoutContext = {
+    ...(ctx.surface ? { surface: ctx.surface } : {}),
+    ...(ctx.capture !== undefined ? { capture: ctx.capture } : {}),
+  };
   if (isTelecomTool(m.tool) && invalidPicks(m)) return t('tree.measure.invalid');
   const row = primaryRow(m, readout, templateItems(m, ctx.templates));
   return row ? rowText(row, m, ctx.settings) : '';

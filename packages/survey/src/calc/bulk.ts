@@ -151,7 +151,7 @@ const rowDate = (r: ComparisonResult): string | undefined => seriesDate(r) || un
  * The item is the first comparison unless named.
  */
 export function pileSeries(
-  m: SurveyMeasurement,
+  m: Pick<SurveyMeasurement, 'items' | 'results' | 'series'>,
   item: string | undefined = m.items[0]?.id,
 ): { series: ComparisonResult[]; stored: ComparisonResult | undefined } {
   if (item === undefined) return { series: [], stored: undefined };

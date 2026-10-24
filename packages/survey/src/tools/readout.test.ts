@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ANGLES, MeasurementTool, type SitePoint } from '@aio/schema';
+import {
+  DEFAULT_ANGLES,
+  MeasurementTool,
+  type ComparisonResult,
+  type SitePoint,
+} from '@aio/schema';
 import {
   PRIMARY_KEY,
   SECONDARY_KEYS,
@@ -59,6 +64,103 @@ describe('primary readout', () => {
     ]);
     for (const tool of MeasurementTool.options)
       expect(SECONDARY_KEYS[tool].length, tool).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('the headline on a survey date', () => {
+  const res = (to: string, net: number, extra: Partial<ComparisonResult> = {}) =>
+    ({
+      item: 'pile',
+      status: 'ok',
+      cutM3: 0,
+      fillM3: net,
+      netM3: net,
+      totalM3: net,
+      areaM2: 100,
+      areaCutM2: 0,
+      areaFillM2: 0,
+      areaUnchangedM2: 0,
+      uncoveredM2: 0,
+      fromLabel: 'base',
+      toLabel: to,
+      toCapture: to,
+      deadbandM: 0,
+      usedDeadband: false,
+      cellM: 0.5,
+      engine: 'ts',
+      fingerprint: 'sha256:x',
+      computedAt: '2026-10-09T00:00:00Z',
+      ...extra,
+    }) satisfies ComparisonResult;
+  const items = [
+    {
+      id: 'pile',
+      from: { kind: 'smart' as const },
+      to: { kind: 'current' as const },
+      useDeadband: false,
+    },
+  ];
+  const vol = (results: ComparisonResult[], series: ComparisonResult[] = []) => ({
+    tool: 'volume' as const,
+    points: pts,
+    items,
+    results,
+    series,
+  });
+  const carried = { from: 'kit' as const, base: 'tin', pile: 'p', epoch: 'e2' };
+
+  it('primaryText with a capture shows that date figure', () => {
+    const m = vol([res('d2', 200)], [res('d1', 100)]);
+    expect(primaryRow(m)?.value).toBe(200);
+    expect(primaryRow(m, { capture: 'd1' })?.value).toBe(100);
+    expect(primaryRow(m, { capture: 'd2' })?.value).toBe(200);
+    expect(allRows(m, { capture: 'd1' }).find((r) => r.key === 'total')?.value).toBe(100);
+  });
+
+  it('a date without a figure says so and never shows another date figure', () => {
+    const m = vol([res('d2', 200)]);
+    const net = allRows(m, { capture: 'd9' }).find((r) => r.key === 'net');
+    expect(net?.value).toBeNull();
+    expect(net?.note).toBe('No figure for this date');
+  });
+
+  it('a carried headline says it is from an earlier version', () => {
+    const m = vol([res('d2', 63_827, { carried })]);
+    const r = primaryRow(m);
+    expect(r?.key).toBe('net');
+    expect(r?.value).toBe(63_827);
+    expect(r?.note).toBe('From an earlier version');
+    expect(r && formatRow(r, units, { volume: 1 } as never)).toMatch(
+      / \(From an earlier version\)$/,
+    );
+    // the compact line does not repeat it
+    expect(allRows(m).find((x) => x.key === 'cut')?.note).toBeUndefined();
+  });
+
+  it('a partial headline says so, with the reason when there is one', () => {
+    expect(primaryRow(vol([res('d1', 5, { status: 'partial' })]))?.note).toBe(
+      'Partly outside the survey',
+    );
+    expect(
+      primaryRow(vol([res('d1', 5, { status: 'partial', reason: '23% outside the survey' })]))
+        ?.note,
+    ).toBe('Partly outside the survey: 23% outside the survey');
+  });
+
+  it('a refused headline shows the refusal, not a number', () => {
+    const r = primaryRow(vol([res('d1', 0, { status: 'refused', reason: 'no overlap' })]));
+    expect(r?.key).toBe('net');
+    expect(r?.value).toBeNull();
+    expect(r?.note).toBe('Not computed: no overlap');
+    expect(primaryRow(vol([res('d1', 0, { status: 'refused' })]))?.note).toBe(
+      'Not computed: the survey does not cover it',
+    );
+  });
+
+  it('a stale headline still says stale', () => {
+    expect(primaryRow(vol([res('d1', 5, { status: 'stale', carried })]))?.note).toBe(
+      'Stale, recompute',
+    );
   });
 });
 

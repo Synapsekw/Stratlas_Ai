@@ -220,3 +220,95 @@ export function materialIdFrom(name: string, taken: ReadonlySet<string>): string
   for (let n = 2; taken.has(id); n++) id = `${base}-${String(n)}`;
   return id;
 }
+
+// ------------------------------------------------- densities by survey date and colours (Stage C)
+
+/** A capture's date as a number to order by (any monotonic clock), or null when it has none. */
+export type CaptureDateOf = (capture: string) => number | null;
+
+/** The history entries whose capture has a date, oldest first (undated ones are skipped). */
+function datedHistory(m: SiteMaterial, dateOf: CaptureDateOf) {
+  const out: { fromCapture: string; tPerM3: number; at: number }[] = [];
+  for (const e of m.densityHistory ?? []) {
+    const at = dateOf(e.fromCapture);
+    if (at !== null && Number.isFinite(at)) out.push({ ...e, at });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * A material's density on a survey date: the latest `densityHistory` entry from that date or
+ * before; before the first entry, the first entry. Without a history, or for a capture with no
+ * date, the material's `densityTPerM3` (null when it has none).
+ */
+export function densityOn(
+  material: SiteMaterial,
+  capture: string,
+  dateOf: CaptureDateOf,
+): number | null {
+  const fallback = material.densityTPerM3 ?? null;
+  const at = dateOf(capture);
+  const history = datedHistory(material, dateOf);
+  if (at === null || !Number.isFinite(at) || history.length === 0) return fallback;
+  let found = history[0]?.tPerM3 ?? fallback;
+  for (const e of history) if (e.at <= at) found = e.tPerM3;
+  return found;
+}
+
+/**
+ * A material with a density from `fromCapture` on (that date and every later one until the next
+ * entry). The first edit of a material that had one density keeps it as the entry from
+ * `earliestCapture`, so earlier dates keep their tonnes. An entry of the same date is replaced;
+ * entries are sorted by date (undated last) and `densityTPerM3` is the newest entry's value.
+ */
+export function withDensityFrom(
+  material: SiteMaterial,
+  fromCapture: string,
+  tPerM3: number,
+  earliestCapture: string,
+  dateOf: CaptureDateOf,
+): SiteMaterial {
+  let history = [...(material.densityHistory ?? [])];
+  if (
+    history.length === 0 &&
+    material.densityTPerM3 !== undefined &&
+    earliestCapture !== fromCapture
+  )
+    history.push({ fromCapture: earliestCapture, tPerM3: material.densityTPerM3 });
+  history = history.filter((e) => e.fromCapture !== fromCapture);
+  history.push({ fromCapture, tPerM3 });
+  const key = (c: string) => dateOf(c) ?? Number.POSITIVE_INFINITY;
+  history = history
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => key(a.e.fromCapture) - key(b.e.fromCapture) || a.i - b.i)
+    .map(({ e }) => e);
+  const dated = history.filter((e) => dateOf(e.fromCapture) !== null);
+  const newest = dated.at(-1)?.tPerM3 ?? tPerM3;
+  return { ...material, densityHistory: history, densityTPerM3: newest };
+}
+
+/**
+ * The categorical palette a material without its own colour takes, by its place in the site's
+ * list: eight design tokens (CSS custom property names, defined by the renderer's styles).
+ */
+export const MATERIAL_PALETTE: readonly string[] = [
+  '--mat-1',
+  '--mat-2',
+  '--mat-3',
+  '--mat-4',
+  '--mat-5',
+  '--mat-6',
+  '--mat-7',
+  '--mat-8',
+];
+
+/**
+ * A material's colour as a CSS colour: its own `#rrggbb`, else `var(--mat-n)` for its place
+ * `index` in the site's list (the palette repeats after eight).
+ */
+export function materialColour(m: SiteMaterial, index: number): string {
+  if (m.colour) return m.colour;
+  const n = MATERIAL_PALETTE.length;
+  const k = ((Math.trunc(index) % n) + n) % n;
+  return `var(${MATERIAL_PALETTE[k] ?? '--mat-1'})`;
+}
