@@ -16,6 +16,8 @@ export interface ClassSeverityFormProps {
    * picker's Add to the selected issue; Inspect's Same as an existing finding).
    */
   footer?: ReactNode;
+  /** Rows under the lists, above the button row (Inspect's Same as and Add as a class). */
+  rows?: ReactNode;
   /**
    * A key the form is about to read as a class hotkey or a grade: return true to take it instead
    * (the sighting picker's `a`, add to the selected issue). Keys typed in a field never get here.
@@ -40,6 +42,7 @@ export function ClassSeverityForm({
   onConfirm,
   onCancel,
   footer,
+  rows,
   onKey,
   error: hostError = null,
 }: ClassSeverityFormProps) {
@@ -218,6 +221,7 @@ export function ClassSeverityForm({
         </div>
       </div>
       {(error ?? hostError) && <div className="ann-error ann-pop-error">{error ?? hostError}</div>}
+      {rows != null && <div className="ann-pop-rows">{rows}</div>}
       <div className="ann-pop-foot">
         <button type="button" className="ann-btn ghost" onClick={onCancel}>
           Cancel

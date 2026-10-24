@@ -127,4 +127,20 @@ describe('ClassSeverityForm', () => {
       'Change',
     ]);
   });
+
+  it('puts rows between the lists and the button row', () => {
+    render({ rows: <p className="extra-row">Same as an existing finding</p> });
+    expect([...host.children].map((c) => c.className)).toEqual([
+      'ann-pop-body',
+      'ann-pop-rows',
+      'ann-pop-foot',
+    ]);
+    expect(host.querySelector('.ann-pop-rows .extra-row')).not.toBeNull();
+  });
+
+  it('keeps the Lightbox markup when there are no rows', () => {
+    render();
+    expect([...host.children].map((c) => c.className)).toEqual(['ann-pop-body', 'ann-pop-foot']);
+    expect(host.querySelector('.ann-pop-rows')).toBeNull();
+  });
 });

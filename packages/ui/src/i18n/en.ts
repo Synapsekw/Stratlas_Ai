@@ -6504,6 +6504,7 @@ export const en = {
   'inspect.change.title': 'Class and severity',
   'inspect.change.same': 'Same as an existing finding…',
   'inspect.change.accept': 'Accept',
+  'inspect.change.addClass': 'Add "{label}" as a class',
   'inspect.acceptPick': 'Pick a class and a severity first',
   'inspect.readOnly': 'This package is read only.',
 

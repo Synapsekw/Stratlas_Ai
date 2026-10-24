@@ -1,0 +1,164 @@
+/* Inspect: findings on this photo, one list of confirmed findings and AI suggestions */
+.inspect-findings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.inspect-panel-h {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.inspect-panel-h h3 {
+  margin: 0;
+  font: 600 var(--t-13) / 1.2 var(--f-ui);
+  color: var(--fg-0);
+}
+.inspect-panel-h .sub {
+  color: var(--fg-3);
+}
+.inspect-none,
+.inspect-readonly {
+  margin: 0;
+}
+.inspect-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* confirmed: solid, in the severity colour; AI: dashed warn */
+.inspect-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--sev, var(--line-strong));
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+}
+.inspect-row[data-kind='ai'] {
+  border: 1px dashed var(--warn);
+}
+.inspect-row[data-selected] {
+  background: var(--bg-3);
+}
+.inspect-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.inspect-row-class {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspect-tag {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font: 600 10.5px / 1.4 var(--f-mono);
+}
+.inspect-tag.you {
+  border: 1px solid var(--line-strong);
+  color: var(--fg-2);
+}
+.inspect-tag.ai {
+  border: 1px dashed var(--warn);
+  color: var(--warn);
+}
+.inspect-row-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.inspect-row .ann-error {
+  margin: 0;
+}
+
+/* the Change picker sits in the row, not floating over the viewer */
+.ann-pop.inspect-change-picker {
+  position: static;
+  width: auto;
+  max-height: none;
+  box-shadow: none;
+  animation: none;
+}
+.inspect-change-picker .ann-pop-body {
+  min-height: 0;
+}
+.inspect-change-picker .classes {
+  max-height: 180px;
+}
+.inspect-change-picker .ann-pop-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.inspect-change-link {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+.inspect-change-link .det-link-list {
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+}
+.inspect-change-link .det-link-list button {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  color: var(--fg-1);
+  text-align: start;
+  font-size: var(--t-12);
+  cursor: pointer;
+}
+.inspect-change-link .det-link-list button[aria-selected='true'],
+.inspect-change-link .det-link-list button:hover {
+  background: var(--bg-3);
+}
+
+.inspect-draw {
+  align-self: flex-start;
+}
+.inspect-panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
