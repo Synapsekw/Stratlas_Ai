@@ -59,23 +59,18 @@ async function mapZoom(win: Page): Promise<number> {
   });
 }
 
-/** Lon/lat of the playing walk's dot on the main map (`walk-<id>-now`), or null while none. */
-async function nowDot(win: Page): Promise<[number, number] | null> {
-  return win.evaluate(async (id) => {
-    interface MapEl extends Element {
-      __aioMap: { getSource(id: string): { getData(): Promise<unknown> } | undefined };
-    }
-    const el = [...document.querySelectorAll('*')].find(
-      (e) => '__aioMap' in e && e.getBoundingClientRect().width > 0,
-    ) as MapEl | undefined;
-    const data = (await el?.__aioMap.getSource(id)?.getData()) as
-      | {
-          features: { properties: { kind?: string }; geometry: { coordinates: unknown } }[];
-        }
-      | undefined;
-    const dot = data?.features.find((f) => f.properties.kind === 'now');
-    return dot ? (dot.geometry.coordinates as [number, number]) : null;
-  }, `aio-ov-walk-${WALK_LAYER}-now`);
+/**
+ * Where the walk's Beam (`data-testid="walk-beam"`) stands on the main map, page pixels, or null
+ * while it has none.
+ */
+async function beamAt(win: Page): Promise<[number, number] | null> {
+  return win.evaluate((id) => {
+    const el = document.querySelector<HTMLElement>(
+      `[data-testid="walk-beam"][data-layer-id="${id}"]`,
+    );
+    const m = el ? /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(el.style.transform) : null;
+    return m ? [Number(m[1]), Number(m[2])] : null;
+  }, WALK_LAYER);
 }
 
 test.describe('placing a walk on the map', () => {
@@ -132,6 +127,8 @@ test.describe('placing a walk on the map', () => {
     const e = await mapPoint(win, WALK_END);
     await win.mouse.click(e.x, e.y);
     await expect(strip).toHaveAttribute('data-step', 'placed');
+    // the walk being placed shows the same Beam as a placed walk
+    await expect.poll(() => beamAt(win)).not.toBeNull();
 
     // drag End 5 m south
     const to = await mapPoint(win, [WALK_END[0], WALK_END[1] + 5]);
@@ -154,29 +151,29 @@ test.describe('placing a walk on the map', () => {
     // the End pin moved south with the drag (z grows southward)
     expect(layer?.place?.pins[1]?.at[1]).toBeGreaterThan(-28);
 
-    // the placed walk plays in the 360 pane: its dot on the map follows the video
+    // the placed walk plays in the 360 pane: its Beam on the map follows the video
     await rowAction(win, 'open');
     await expect(win.getByTestId('walk-view')).toHaveAttribute('data-status', 'ready', {
       timeout: 30_000,
     });
     // Save put the 3D view back on the left: show the map beside the 360 video
     await win.getByRole('combobox', { name: 'Left side shows' }).selectOption({ label: 'Map' });
-    // opened paused, the walk shows its dot before it plays or seeks
-    await expect.poll(() => nowDot(win), { timeout: 15_000 }).not.toBeNull();
+    // opened paused, the walk shows its Beam before it plays or seeks
+    await expect.poll(() => beamAt(win), { timeout: 15_000 }).not.toBeNull();
     const scrub = win.getByTestId('walk-scrub');
     await scrub.fill('2');
-    const first = await nowDot(win);
+    const first = await beamAt(win);
     await scrub.fill(String(VIDEO_S - 4));
     await expect
       .poll(async () => {
-        const at = await nowDot(win);
+        const at = await beamAt(win);
         return at && first ? Math.hypot(at[0] - first[0], at[1] - first[1]) : 0;
       })
-      .toBeGreaterThan(1e-4);
+      .toBeGreaterThan(5);
 
-    // the 360 pane closes: the dot goes with it
+    // the 360 pane closes: the Beam goes with it
     await win.getByRole('combobox', { name: 'Right side shows' }).selectOption('3d');
     await expect(win.getByTestId('walk-view')).toHaveCount(0);
-    await expect.poll(() => nowDot(win), { timeout: 15_000 }).toBeNull();
+    await expect.poll(() => beamAt(win), { timeout: 15_000 }).toBeNull();
   });
 });
