@@ -11,12 +11,69 @@
 import type { SiteMaterial, SurveyMeasurement } from '@aio/schema';
 import {
   densityOn,
+  figureOn,
   inventoryByMaterial,
   type CaptureDateOf,
+  type FigureSource,
   type MaterialGroup,
   type NotCounted,
+  type PileFigure,
   type StackRow,
 } from '@aio/survey';
+
+// ---------------------------------------------------------------- the one counting rule
+
+/**
+ * Whether pile `pile`'s figure on `capture` is added to totals: the site inventory's rule
+ * (`useInventory`: stale by the fingerprints or the series check, refused, failed and missing
+ * figures are left out). Every total, list and change reads this, never a figure's status alone.
+ */
+export type IsCounted = (pile: string, capture: string) => boolean;
+
+/** The counting rule as a lookup, from the site inventory's rows (`useInventory`, `useCounted`). */
+export function countedBy(rows: readonly StackRow[]): IsCounted {
+  const on = new Map(rows.map((r) => [r.capture, new Set(r.parts.map((p) => p.id))]));
+  return (pile, capture) => on.get(capture)?.has(pile) ?? false;
+}
+
+/** A pile's figure on a capture when the rule counts it, else null. */
+export function countedFigureOn(
+  m: FigureSource & { id: string },
+  capture: string,
+  isCounted: IsCounted,
+): PileFigure | null {
+  return isCounted(m.id, capture) ? figureOn(m, capture) : null;
+}
+
+/**
+ * The inventory by material on `capture` by the rule: only counted piles, each pile's change over
+ * `previous` only when it is counted there too (null otherwise), the groups' changes summed from
+ * those. `previous` is the nearest earlier date with counted piles (the caller finds it).
+ */
+export function countedGroups(
+  piles: readonly SurveyMeasurement[],
+  capture: string,
+  previous: string | null,
+  materials: readonly SiteMaterial[],
+  dateOf: CaptureDateOf,
+  isCounted: IsCounted,
+): MaterialGroup[] {
+  const here = piles.filter((m) => isCounted(m.id, capture));
+  const byId = new Map(here.map((m) => [m.id, m]));
+  return inventoryByMaterial(here, capture, previous, materials, dateOf).map((g) => {
+    const ps = g.piles.map((p) => {
+      const m = byId.get(p.id);
+      const was = m && previous !== null ? countedFigureOn(m, previous, isCounted) : null;
+      return { ...p, deltaM3: was ? p.volumeM3 - was.netM3 : null };
+    });
+    const deltas = ps.flatMap((p) => (p.deltaM3 === null ? [] : [p.deltaM3]));
+    return {
+      ...g,
+      piles: ps,
+      deltaM3: deltas.length > 0 ? deltas.reduce((a, b) => a + b, 0) : null,
+    };
+  });
+}
 
 /** A survey date as the header names it. */
 export interface InventoryDate {

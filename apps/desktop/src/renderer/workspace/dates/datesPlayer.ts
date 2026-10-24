@@ -26,8 +26,22 @@ export interface PlayerFrame {
   ended: boolean;
 }
 
-const sorted = (dates: readonly number[]): number[] =>
-  dates.filter((d) => Number.isFinite(d)).sort((a, b) => a - b);
+const DAY_MS = 86_400_000;
+
+/**
+ * The stops the playhead plays through, in order: a gap shorter than a day is never played (two
+ * surveys at the same time, or on the same day, would spend a whole gap's time on nothing), so a
+ * survey with a later one on its day is passed over for it.
+ */
+export function playStops(dates: readonly number[]): number[] {
+  const ds = [...new Set(dates.filter((d) => Number.isFinite(d)))].sort((a, b) => a - b);
+  return ds.filter((d, i) => {
+    const next = ds[i + 1];
+    return next === undefined || Math.floor(next / DAY_MS) !== Math.floor(d / DAY_MS);
+  });
+}
+
+const sorted = playStops;
 
 /** Position in gaps: 0 on the first survey, n - 1 on the last. */
 function positionOf(t: number, ds: readonly number[]): number {

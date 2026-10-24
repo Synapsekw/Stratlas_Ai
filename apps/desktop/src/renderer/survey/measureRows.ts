@@ -28,6 +28,7 @@ import { filterTerms, matchingMeasurements } from './measureFilter';
 import { primaryText } from './card/cardModel';
 import { DEFAULT_MEASURE_COLOUR } from './measureColours';
 import { knownTemplates, type MeasureState } from './measureStore';
+import { countedFigureOn, type IsCounted } from './volumes/inventory';
 
 /**
  * A stockpile of the whole site (volumetrics redesign, spec section 5): a site-scoped volume
@@ -180,11 +181,27 @@ export interface StockpileContext {
   templates: readonly SurveyTemplate[];
   /** The earlier date of the net change (net mode); without it no change shows. */
   previous?: string | null;
+  /**
+   * The site inventory's counting rule (`useCounted`): a figure it leaves out (stale by the
+   * fingerprints or the series check, a failed run) is not read as a volume. Without it only the
+   * figure's own status is checked.
+   */
+  isCounted?: IsCounted;
 }
 
 /** A figure that is read as a volume: stale and refused ones never are (they sort last). */
 const counted = (f: PileFigure | null): f is PileFigure =>
   f !== null && f.status !== 'stale' && f.status !== 'refused';
+
+/** A pile's figure on a date when it is read as a volume, by the rule when there is one. */
+const figureRead = (
+  m: SurveyMeasurement,
+  capture: string,
+  isCounted: IsCounted | undefined,
+): PileFigure | null => {
+  const f = isCounted ? countedFigureOn(m, capture, isCounted) : figureOn(m, capture);
+  return counted(f) ? f : null;
+};
 
 const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare;
 
@@ -230,8 +247,7 @@ export function stockpileItems(
   const piles = measurements.filter(isStockpile);
   const figure = (m: SurveyMeasurement): number | null => {
     if (capture === null) return null;
-    const f = figureOn(m, capture);
-    return counted(f) ? f.netM3 : null;
+    return figureRead(m, capture, ctx.isCounted)?.netM3 ?? null;
   };
   const text = (m: SurveyMeasurement) =>
     primaryText(m, {
@@ -243,8 +259,8 @@ export function stockpileItems(
     const previous = ctx.previous ?? null;
     const rows = piles.map((m) => {
       const now = figure(m);
-      const before = previous !== null ? figureOn(m, previous) : null;
-      const change = now !== null && counted(before) ? now - before.netM3 : null;
+      const before = previous !== null ? figureRead(m, previous, ctx.isCounted) : null;
+      const change = now !== null && before ? now - before.netM3 : null;
       // most lost first: the largest loss is the most negative change
       return { m, change, v: change === null ? null : -change };
     });

@@ -24,6 +24,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent,
   type PointerEvent,
   type ReactElement,
@@ -31,6 +32,7 @@ import {
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useMeasure, select } from '../../survey/measureStore';
+import { useCounted } from '../../survey/useInventory';
 import { useFocusCapture } from '../../survey/qaHelpers';
 import { useSurfaceStates, type SurfaceState } from '../../survey/surfaceStates';
 import { cutFillPrefs } from '../../survey/volumes/cutFill';
@@ -110,11 +112,13 @@ export interface DatesStripViewProps {
     playing: boolean;
     speed: PlayerSpeed;
     loop: boolean;
-    /** The playhead's time while playing. */
-    t: number | null;
+    /** A fixed playhead time while playing, when there is no `playhead` source (tests). */
+    t?: number | null;
     /** The last survey passed while playing. */
     passed: string | null;
   };
+  /** The player's moving time; only the playhead subscribes to it. */
+  playhead?: PlayheadSource;
   onPlay: () => void;
   onPause: () => void;
   onSpeed: (speed: PlayerSpeed) => void;
@@ -125,6 +129,32 @@ export interface DatesStripViewProps {
   onCollapse: (collapsed: boolean) => void;
   /** Width given: no ResizeObserver (tests). */
   width?: number;
+}
+
+/** The player's time as it moves (read by the playhead alone, each frame of playback). */
+export interface PlayheadSource {
+  get: () => number | null;
+  subscribe: (cb: () => void) => () => void;
+}
+
+const NO_SOURCE: PlayheadSource = { get: () => null, subscribe: () => () => undefined };
+
+/**
+ * The playhead's marks: at the player's time while it plays (subscribed here, so only these
+ * re-render each frame), else at `restT` (the date in focus, or where it is dragged).
+ */
+function AtPlayhead(p: {
+  follow: boolean;
+  source: PlayheadSource | undefined;
+  /** A fixed time while playing, when no source is given (tests). */
+  fixedT: number | null;
+  restT: number;
+  render: (t: number) => ReactElement;
+}): ReactElement {
+  const src = p.source ?? NO_SOURCE;
+  const live = useSyncExternalStore(src.subscribe, src.get);
+  const t = p.follow ? ((p.source ? live : p.fixedT) ?? p.restT) : p.restT;
+  return p.render(t);
 }
 
 /** Pointer capture where the platform has it (jsdom has none). */
@@ -203,13 +233,16 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
   const num = (v: number, d = 0) => formatNumber(v, d, locale);
   const bareVol = (m3: number) => num(fromSI(m3, 'volume', units.volume));
   const volText = (m3: number) => `${bareVol(m3)} ${vUnit}`;
-  const tonText = (tn: number) => `${num(tn)} t`;
+  // tonnes in the site's mass unit, as the Volumes header writes them (`massParts`)
+  const mUnit = unitLabel(units.mass);
+  const bareMass = (tn: number) => num(fromSI(tn * 1000, 'mass', units.mass));
+  const tonText = (tn: number) => `${bareMass(tn)} ${mUnit}`;
   const signed = (s: string, v: number) =>
     /[1-9]/.test(s) ? `${v < 0 ? MINUS : '+'}${s}` : s.replace(/^-/, '');
   const quantText = (v: number, withSign: boolean) => {
-    const bare = mode === 'tonnes' ? num(Math.abs(v)) : bareVol(Math.abs(v));
+    const bare = mode === 'tonnes' ? bareMass(Math.abs(v)) : bareVol(Math.abs(v));
     const s = withSign ? signed(bare, v) : bare;
-    return `${s} ${mode === 'tonnes' ? 't' : vUnit}`;
+    return `${s} ${mode === 'tonnes' ? mUnit : vUnit}`;
   };
 
   // ---------------------------------------------------------------- the x scale
@@ -222,7 +255,9 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
   const plotH = bottom - top;
   // playback always shows every survey
   const view = p.player.playing ? null : fit;
-  const sc = stripScale(view ?? days.map((d) => d.t), plotW);
+  // the scale, the month ticks, the stack and the legend change with the surveys, the width and
+  // the mode, never with the playhead (they are not worked out again each frame of playback)
+  const sc = useMemo(() => stripScale(view ?? days.map((d) => d.t), plotW), [view, days, plotW]);
   const X = (time: number) => left + sc.x(time);
   const inView = (x: number) => x >= left - 0.5 && x <= right + 0.5;
   const timeOf = (capture: string) => days.find((d) => d.capture === capture)?.t ?? null;
@@ -230,35 +265,51 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
     capture === null ? undefined : days.find((d) => d.capture === capture);
 
   // month gridlines, thinned to every 2, 3, 6 or 12 months when they would crowd
-  const perMonth = (plotW * 30.4 * DAY_MS) / Math.max(1, sc.t1 - sc.t0);
-  const every = [1, 2, 3, 6, 12, 24].find((k) => k * perMonth >= MIN_MONTH_PX) ?? 24;
-  const months = monthTicks(sc.t0, sc.t1).filter((m) => {
-    const d = new Date(m.t);
-    return (d.getUTCFullYear() * 12 + d.getUTCMonth()) % every === 0;
-  });
+  const months = useMemo(() => {
+    const perMonth = (plotW * 30.4 * DAY_MS) / Math.max(1, sc.t1 - sc.t0);
+    const every = [1, 2, 3, 6, 12, 24].find((k) => k * perMonth >= MIN_MONTH_PX) ?? 24;
+    return monthTicks(sc.t0, sc.t1).filter((m) => {
+      const d = new Date(m.t);
+      return (d.getUTCFullYear() * 12 + d.getUTCMonth()) % every === 0;
+    });
+  }, [sc, plotW]);
 
   // ---------------------------------------------------------------- the y scale and the marks
-  const qf = mode === 'tonnes' ? 1 : volF;
-  const stack = mode === 'cutFill' || pile ? null : stackSeries(stripDates(days), mode);
+  // the axis in the site's units: tonnes in its mass unit
+  const qf = mode === 'tonnes' ? unitFactor('mass', units.mass) / 1000 : volF;
+  const stacked = mode !== 'cutFill' && !pile;
+  const stack = useMemo(
+    () => (stacked ? stackSeries(stripDates(days), mode) : null),
+    [stacked, days, mode],
+  );
   const pileVals = pile && mode !== 'cutFill' ? days.map((d) => valueOn(d, mode, pile.id)) : null;
   const siteVals = pile && mode !== 'cutFill' ? days.map((d) => valueOn(d, mode, null)) : null;
-  const maxOf = (vs: readonly (number | null)[]) =>
-    Math.max(0, ...vs.flatMap((v) => (v === null ? [] : [v])));
+  const known = (vs: readonly (number | null)[]) => vs.flatMap((v) => (v === null ? [] : [v]));
   const bars = mode === 'cutFill' ? cutFillBars(p.cutFill?.bars ?? [], sc, timeOf) : [];
   const yMax =
     mode === 'cutFill'
       ? Math.max(0, ...bars.flatMap((b) => [b.cutM3, b.fillM3]))
       : pileVals
-        ? maxOf(pileVals)
+        ? Math.max(0, ...known(pileVals))
         : (stack?.max ?? 0);
-  const hasData = yMax > 0;
-  const ticks = yTicks(yMax / qf);
-  const extent = (ticks[2] ?? 1) * qf;
+  // a negative figure is drawn below zero, never clamped to it
+  const yMin =
+    mode === 'cutFill' ? 0 : pileVals ? Math.min(0, ...known(pileVals)) : (stack?.min ?? 0);
+  const hasData = yMax > 0 || yMin < 0;
+  /** A value scale from zero (or below it, for a negative figure) to a round top. */
+  const valueScale = (max: number, min: number) => {
+    const ticks = yTicks(Math.max(max, 0) / qf);
+    const step = (ticks[1] ?? 1) * qf;
+    const hi = (ticks[2] ?? 1) * qf;
+    const lo = min < 0 ? -Math.ceil(-min / step) * step : 0;
+    return { ticks, hi, lo, y: (v: number) => bottom - ((v - lo) / (hi - lo)) * plotH };
+  };
+  const ys = valueScale(yMax, yMin);
+  const extent = ys.hi;
   const mid = (top + bottom) / 2;
-  const Y = (v: number) =>
-    mode === 'cutFill' ? mid - (v / extent) * (plotH / 2) : bottom - (v / extent) * plotH;
-  const siteExtent = siteVals ? (yTicks(maxOf(siteVals) / qf)[2] ?? 1) * qf : 1;
-  const Ysite = (v: number) => bottom - (v / siteExtent) * plotH;
+  const Y = (v: number) => (mode === 'cutFill' ? mid - (v / extent) * (plotH / 2) : ys.y(v));
+  const siteVs = siteVals ? known(siteVals) : [];
+  const Ysite = valueScale(Math.max(0, ...siteVs), Math.min(0, ...siteVs)).y;
   const tickRows =
     mode === 'cutFill'
       ? [
@@ -266,10 +317,15 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
           { v: 0, label: '0' },
           { v: -extent, label: `${MINUS}${yTickLabel(extent / qf)}` },
         ]
-      : ticks.map((v) => ({ v: v * qf, label: yTickLabel(v) }));
+      : [
+          ...(ys.lo < 0 ? [{ v: ys.lo, label: `${MINUS}${yTickLabel(-ys.lo / qf)}` }] : []),
+          ...ys.ticks.map((v) => ({ v: v * qf, label: yTickLabel(v) })),
+        ];
   const yTitle =
     mode === 'tonnes'
-      ? t('strip.axis.tonnes')
+      ? units.mass === 't'
+        ? t('strip.axis.tonnes')
+        : `${t('strip.mode.tonnes')} (${mUnit})`
       : mode === 'cutFill'
         ? t('strip.axis.change', { unit: vUnit })
         : t('strip.axis.volume', { unit: vUnit });
@@ -300,8 +356,21 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
   // ---------------------------------------------------------------- the playhead
   const focusDay = dayOf(p.focus) ?? days[days.length - 1];
   const [drag, setDrag] = useState<number | null>(null);
-  const playheadT = drag ?? (p.player.playing && p.player.t !== null ? p.player.t : focusDay?.t);
-  const playheadX = playheadT === undefined ? null : X(playheadT);
+  // while playing, only the playhead follows the player's time (`AtPlayhead`); the rest of the
+  // strip stays as it is between surveys
+  const followPlayer = p.player.playing && drag === null;
+  const restT = drag ?? focusDay?.t ?? null;
+  const playheadX = restT === null ? null : X(restT);
+  const atPlayhead = (render: (x: number) => ReactElement) =>
+    restT === null ? null : (
+      <AtPlayhead
+        follow={followPlayer}
+        source={p.playhead}
+        fixedT={p.player.t ?? null}
+        restT={restT}
+        render={(tm) => render(X(tm))}
+      />
+    );
   const [hover, setHover] = useState<string | null>(null);
   const focusIndex = focusDay ? days.indexOf(focusDay) : -1;
 
@@ -421,28 +490,37 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
 
   // ---------------------------------------------------------------- the survey labels
   // the date in focus keeps its label; the others take theirs where there is room
-  const labelled = new Set<string>();
-  {
+  const labelled = useMemo(() => {
+    const out = new Set<string>();
     const keep: { x: number; half: number }[] = [];
     const room = (x: number, half: number) =>
-      inView(x) && keep.every((k) => Math.abs(k.x - x) >= k.half + half + LABEL_GAP);
+      x >= left - 0.5 &&
+      x <= right + 0.5 &&
+      keep.every((k) => Math.abs(k.x - x) >= k.half + half + LABEL_GAP);
     const order = focusDay ? [focusDay, ...days.filter((d) => d !== focusDay)] : [...days];
     for (const d of order) {
-      const x = X(d.t);
+      const x = left + sc.x(d.t);
       const half = (d.label.length * CHAR_W) / 2;
       if (room(x, half)) {
         keep.push({ x, half });
-        labelled.add(d.capture);
+        out.add(d.capture);
       }
     }
-  }
+    return out;
+  }, [days, focusDay, sc, left, right]);
 
   // ---------------------------------------------------------------- the readout
   const passedDay = p.player.playing ? dayOf(p.player.passed) : undefined;
   const dragDay = drag !== null ? nearestDay(days, drag) : null;
   const readDay = dayOf(hover) ?? dragDay ?? passedDay ?? focusDay;
   const ro = readDay ? readoutOf(days, readDay.capture, mode, pile?.id ?? null, stateOf) : null;
-  const roX = hover !== null && readDay ? X(readDay.t) : (playheadX ?? 0);
+  // while playing the card stands at the last survey passed (it changes only there)
+  const roX =
+    hover !== null && readDay
+      ? X(readDay.t)
+      : followPlayer && passedDay
+        ? X(passedDay.t)
+        : (playheadX ?? 0);
   const roFlip = roX > left + plotW / 2;
   const deltaText = (v: number, pct: number | null) => {
     const pctText = pct === null ? '' : `${signed(num(Math.abs(pct), 1), pct)} %`;
@@ -450,7 +528,7 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
   };
 
   // ---------------------------------------------------------------- the bar
-  const legend = legendOf(days);
+  const legend = useMemo(() => legendOf(days), [days]);
   const nextSpeed = SPEEDS[(SPEEDS.indexOf(p.player.speed) + 1) % SPEEDS.length] ?? 1;
   const speedText = `${num(p.player.speed, p.player.speed < 1 ? 1 : 0)}×`;
   const atStart = focusIndex <= 0;
@@ -705,28 +783,41 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
                 />
               )}
 
-              {/* Volume and Tonnes: the stack by material, straight between surveys */}
+              {/* Volume and Tonnes: the stack by material, straight between surveys; a material
+                  or a date without a figure breaks the area (a gap, never a zero) */}
               {stack && (
                 <g className="ds-stack">
                   {stack.layers.map((layer) => {
-                    const topPts = layer.points.map((q): [number, number] => [X(q.t), Y(q.y1)]);
-                    const basePts = layer.points
-                      .map((q): [number, number] => [X(q.t), Y(q.y0)])
-                      .reverse();
-                    if (topPts.length === 0) return null;
-                    const d = `M${line(topPts).replaceAll(' ', ' L')} L${line(basePts).replaceAll(' ', ' L')}Z`;
+                    if (layer.points.length === 0) return null;
                     return (
                       <g key={layer.key || 'none'} data-stack={layer.key || 'none'}>
-                        <path className="ds-layer" d={d} fill={layer.colour} />
+                        {layer.runs.map((run) => {
+                          const topPts = run.map((q): [number, number] => [X(q.t), Y(q.y1)]);
+                          const basePts = run
+                            .map((q): [number, number] => [X(q.t), Y(q.y0)])
+                            .reverse();
+                          const d = `M${line(topPts).replaceAll(' ', ' L')} L${line(basePts).replaceAll(' ', ' L')}Z`;
+                          return (
+                            <path
+                              key={run[0]?.capture}
+                              className="ds-layer"
+                              d={d}
+                              fill={layer.colour}
+                            />
+                          );
+                        })}
                       </g>
                     );
                   })}
-                  {stack.totals.length > 1 && (
-                    <polyline
-                      className="ds-total"
-                      points={line(stack.totals.map((q): [number, number] => [X(q.t), Y(q.value)]))}
-                    />
-                  )}
+                  {stack.totalRuns
+                    .filter((run) => run.length > 1)
+                    .map((run) => (
+                      <polyline
+                        key={run[0]?.capture}
+                        className="ds-total"
+                        points={line(run.map((q): [number, number] => [X(q.t), Y(q.value)]))}
+                      />
+                    ))}
                   {stack.totals.map((q) => (
                     <circle
                       key={q.capture}
@@ -744,7 +835,7 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
               {pileVals && siteVals && (
                 <g className="ds-pile-plot" data-testid="strip-pile-line">
                   {runs(siteVals, Ysite).map((r) => (
-                    <path key={`s${line(r)}`} className="ds-site-faded" d={area(r, bottom)} />
+                    <path key={`s${line(r)}`} className="ds-site-faded" d={area(r, Ysite(0))} />
                   ))}
                   {(() => {
                     const lastSite = runs(siteVals, Ysite).at(-1)?.at(-1);
@@ -763,7 +854,7 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
                     <g key={`p${line(r)}`}>
                       <path
                         className="ds-pile-area"
-                        d={area(r, bottom)}
+                        d={area(r, Y(0))}
                         fill={`color-mix(in oklab, ${pileColour} 22%, transparent)`}
                       />
                       {r.length > 1 && (
@@ -913,12 +1004,12 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
                 </g>
               )}
 
-              {playheadX !== null && (
+              {atPlayhead((x) => (
                 <g className="ds-ph" data-testid="strip-playhead-line">
-                  <line x1={playheadX} x2={playheadX} y1={4} y2={bottom + 4} />
-                  <rect x={playheadX - 6} y={0} width={12} height={9} rx={2} />
+                  <line x1={x} x2={x} y1={4} y2={bottom + 4} />
+                  <rect x={x - 6} y={0} width={12} height={9} rx={2} />
                 </g>
-              )}
+              ))}
             </g>
 
             <line className="ds-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
@@ -979,28 +1070,29 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
           )}
 
           {/* the playhead: drag it to another survey, or use the arrow keys */}
-          {playheadX !== null && focusDay && (
-            <div
-              className="ds-playhead"
-              role="slider"
-              tabIndex={0}
-              aria-label={t('strip.playhead')}
-              aria-valuemin={0}
-              aria-valuemax={Math.max(0, days.length - 1)}
-              aria-valuenow={Math.max(0, focusIndex)}
-              aria-valuetext={focusDay.label}
-              data-testid="strip-playhead"
-              data-dragging={drag !== null ? '' : undefined}
-              style={{ left: playheadX, height: bottom + 4 }}
-              onPointerDown={onPlayheadDown}
-              onPointerMove={onPlayheadMove}
-              onPointerUp={onPlayheadUp}
-              onPointerCancel={() => {
-                setDrag(null);
-              }}
-              onKeyDown={onPlayheadKey}
-            />
-          )}
+          {focusDay &&
+            atPlayhead((x) => (
+              <div
+                className="ds-playhead"
+                role="slider"
+                tabIndex={0}
+                aria-label={t('strip.playhead')}
+                aria-valuemin={0}
+                aria-valuemax={Math.max(0, days.length - 1)}
+                aria-valuenow={Math.max(0, focusIndex)}
+                aria-valuetext={focusDay.label}
+                data-testid="strip-playhead"
+                data-dragging={drag !== null ? '' : undefined}
+                style={{ left: x, height: bottom + 4 }}
+                onPointerDown={onPlayheadDown}
+                onPointerMove={onPlayheadMove}
+                onPointerUp={onPlayheadUp}
+                onPointerCancel={() => {
+                  setDrag(null);
+                }}
+                onKeyDown={onPlayheadKey}
+              />
+            ))}
 
           {ro && (
             <div
@@ -1049,6 +1141,12 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
 
 const NO_CAPTURES: readonly { id: string; date: string }[] = [];
 
+/** The app player's time, for the playhead alone. */
+const PLAYER_TIME: PlayheadSource = {
+  get: () => datesPlayer.getState().t,
+  subscribe: (cb) => datesPlayer.subscribe(cb),
+};
+
 /** The open project's dates strip: its surveys, piles, materials, player and compare pair. */
 export function DatesStrip(): ReactElement | null {
   const project = useWorkspace((s) => s.project);
@@ -1067,7 +1165,7 @@ export function DatesStrip(): ReactElement | null {
       playing: s.playing,
       speed: s.speed,
       loop: s.loop,
-      t: s.t,
+      // the time itself moves every frame: only the playhead reads it (`playheadSource`)
       passedT: s.frame?.passed ?? null,
     })),
   );
@@ -1084,15 +1182,15 @@ export function DatesStrip(): ReactElement | null {
     cutFillPrefs.getState().load(projectId);
   }, [projectId]);
 
-  const piles = useMemo(
-    () => withAssignments(inventoryPiles(measurements), assignments),
-    [measurements, assignments],
-  );
+  const stockpiles = useMemo(() => inventoryPiles(measurements), [measurements]);
+  const piles = useMemo(() => withAssignments(stockpiles, assignments), [stockpiles, assignments]);
+  // the Volumes tab's one counting rule: the strip adds exactly what the inventory counts
+  const isCounted = useCounted(stockpiles);
   const materials = draft ?? settings.materials;
   const tags = useMemo(() => dateTags(captures), [captures]);
   const days = useMemo(
-    () => stripDays(captures, piles, materials, (id) => tags[id]),
-    [captures, piles, materials, tags],
+    () => stripDays(captures, piles, materials, (id) => tags[id], isCounted),
+    [captures, piles, materials, tags, isCounted],
   );
   const times = useMemo(() => days.map((d) => d.t), [days]);
   // the timelapse's floats and the Volumes tab name the surveys in play from these
@@ -1201,9 +1299,9 @@ export function DatesStrip(): ReactElement | null {
         playing: player.playing,
         speed: player.speed,
         loop: player.loop,
-        t: player.t,
         passed: passed?.capture ?? null,
       }}
+      playhead={PLAYER_TIME}
       onPlay={() => {
         const s = datesPlayer.getState();
         if (focusT !== undefined) s.seek(focusT);

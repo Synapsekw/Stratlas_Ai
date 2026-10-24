@@ -21,7 +21,8 @@ const s = vi.hoisted(() => ({
   >(() => Promise.resolve({ ok: true, value: { path: 'x.csv' } })),
 }));
 vi.mock('../compareStore', () => ({
-  useCompare: (sel: (x: unknown) => unknown) => sel({ captures: s.captures, current: {} }),
+  useCompare: (sel: (x: unknown) => unknown) =>
+    sel({ captures: s.captures, current: {}, seriesCurrent: {}, seriesInputs: {} }),
   isStale: (_s: unknown, m: { id: string }) => s.stale.has(m.id),
   seriesStale: () => false,
 }));
@@ -231,6 +232,12 @@ describe('VolumesHeader during playback', () => {
       t: mid,
       frame: { t: mid, passed: T0, next: T1, f: 0.55, ended: false },
     });
+    // a is on both dates (70 000 then 60 000), b only on 31 Dec: the change the next survey
+    // brings is over the piles on both, never the totals' difference
+    const piles = [
+      pile('a', { results: [result(60000, 'c2')], series: [result(70000, 'c1')] }),
+      pile('b', { results: [result(6199.4, 'c1')] }),
+    ];
     render(
       model({
         on: { capture: 'c1', date: '2020-12-31', label: '31 Dec 2020' },
@@ -238,9 +245,10 @@ describe('VolumesHeader during playback', () => {
         volumeM3: 76199.4,
         change: null,
       }),
+      piles,
     );
     expect(text('volumes-date')).toBe('31 Dec 2020 · last survey passed');
     expect(text('volumes-kpi-volume')).toBe('76 199.4 m³');
-    expect(text('volumes-kpi-next')).toBe('Next survey−12 797.0m³ · 10 Jan');
+    expect(text('volumes-kpi-next')).toBe('Next survey−10 000.0m³ · 10 Jan');
   });
 });

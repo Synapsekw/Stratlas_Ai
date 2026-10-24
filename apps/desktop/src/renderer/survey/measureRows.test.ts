@@ -447,6 +447,17 @@ describe('stockpileItems', () => {
     expect(items[2]?.meta).toMatch(/^\+50/);
   });
 
+  it("counts by the inventory's rule: a figure it leaves out sorts last and has no change", () => {
+    const piles = [pileOf('a', 'A', 100, 150), pileOf('b', 'B', 500, 100)];
+    // the inventory leaves A out on oct (stale by the fingerprints, say), B out on sep
+    const isCounted = (id: string, c: string) => !(id === 'a' && c === 'oct') && id + c !== 'bsep';
+    const vol = stockpileItems(piles, 'oct', 'volume', { ...ctx, isCounted });
+    expect(vol.map((i) => i.name)).toEqual(['B', 'A']);
+    const net = stockpileItems(piles, 'oct', 'net', { ...ctx, previous: 'sep', isCounted });
+    // neither has a figure on both dates: no change shows
+    expect(net.every((i) => !/^[−+]/.test(i.meta ?? ''))).toBe(true);
+  });
+
   it('material mode gives one row per material with its pile count, No material last', () => {
     const mats = {
       ...settings,

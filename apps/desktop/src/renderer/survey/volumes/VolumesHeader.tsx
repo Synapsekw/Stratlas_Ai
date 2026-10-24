@@ -16,6 +16,7 @@ import { notCountedList } from '../BulkTotals';
 import { isStale, seriesStale, useCompare } from '../compareStore';
 import { fileBase } from '../exportHelpers';
 import { useMeasure } from '../measureStore';
+import { useInventory } from '../useInventory';
 import { useTimelapseSurveys } from '../../workspace/dates/timelapse';
 import { massParts, pctText, volumeParts } from '../pile/PileHeader';
 import { minusSigned } from '../pile/pileView';
@@ -37,6 +38,7 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
   const [csvError, setCsvError] = useState<string | null>(null);
   // playing through the dates: the figures are the last survey passed's, never between surveys
   const playing = useTimelapseSurveys();
+  const rows = useInventory(piles);
   const units = effectiveUnits(settings.units);
   const locale = settings.locale ?? localeOf(units.distance);
   const vol = (m3: number) => volumeParts(m3, units, settings.precision.volume, locale);
@@ -84,11 +86,12 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
   const changeParts = change ? vol(change.m3) : null;
   const sign = change && change.m3 < 0 ? 'loss' : change && change.m3 > 0 ? 'gain' : undefined;
 
-  // the Next survey tile while playing: the change the next survey brings (both counted)
+  // the Next survey tile while playing: the change the next survey brings, by the inventory's
+  // rule (since the nearest earlier date with counted piles, over the piles counted on both)
   const nextDay = playing?.next ?? null;
-  const nextM3 = nextDay?.volumeM3 ?? null;
-  const passedM3 = playing?.passed.volumeM3 ?? null;
-  const nextChange = nextM3 !== null && passedM3 !== null ? nextM3 - passedM3 : null;
+  const nextChange = nextDay
+    ? (rows.find((r) => r.capture === nextDay.capture)?.change?.m3 ?? null)
+    : null;
   const nextParts = nextChange !== null ? vol(nextChange) : null;
   const nextSign =
     nextChange !== null && nextChange < 0

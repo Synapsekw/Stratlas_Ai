@@ -68,6 +68,11 @@ describe('monthTicks', () => {
     expect(ticks[0]?.t).toBe(d('2021-01-01'));
   });
 
+  it("labels the months in the app's language", () => {
+    expect(monthTicks(d('2021-01-01'), d('2021-01-20'), 'fr')[0]?.label).toMatch(/janv/);
+    expect(monthTicks(d('2021-09-01'), d('2021-09-20'), 'en')[0]?.label).toBe('Sep 2021');
+  });
+
   it('is empty for a reversed or NaN range', () => {
     expect(monthTicks(d('2021-02-01'), d('2021-01-01'))).toEqual([]);
     expect(monthTicks(Number.NaN, 0)).toEqual([]);
@@ -116,23 +121,77 @@ describe('stackSeries', () => {
       { capture: 'a', t: d('2020-12-31'), y0: 0, y1: 50 },
       { capture: 'b', t: d('2021-01-10'), y0: 0, y1: 40 },
     ]);
-    expect(s.layers[1]?.points[0]).toEqual({ capture: 'a', t: d('2020-12-31'), y0: 50, y1: 50 });
     expect(s.layers[2]?.points[0]).toEqual({ capture: 'a', t: d('2020-12-31'), y0: 50, y1: 55 });
     expect(s.max).toBe(55);
+    expect(s.min).toBe(0);
     expect(s.totals).toEqual([
       { capture: 'a', t: d('2020-12-31'), value: 55 },
       { capture: 'b', t: d('2021-01-10'), value: 50 },
     ]);
   });
 
-  it('stacks tonnes, a material without density adding nothing', () => {
+  it('breaks a layer on a date its material has no figure, never drawing it as zero', () => {
+    const s = stackSeries(dates, 'volume');
+    // sand only on b, No material only on a: one point each, no zero-height point
+    expect(s.layers[1]?.points).toEqual([{ capture: 'b', t: d('2021-01-10'), y0: 40, y1: 50 }]);
+    expect(s.layers[2]?.points.map((p) => p.capture)).toEqual(['a']);
+    expect(s.layers[2]?.runs).toHaveLength(1);
+  });
+
+  it('keeps the top of the stack at the total with a negative figure', () => {
+    const s = stackSeries(
+      [
+        {
+          capture: 'a',
+          t: d('2021-01-01'),
+          groups: [
+            { key: 'gravel', colour: 'c', volumeM3: 30, tonnes: null },
+            { key: '', colour: 'n', volumeM3: -10, tonnes: null },
+          ],
+        },
+      ],
+      'volume',
+    );
+    expect(s.totals[0]?.value).toBe(20);
+    expect(s.layers.at(-1)?.points[0]?.y1).toBe(20);
+    expect(s.max).toBe(30);
+    const neg = stackSeries(
+      [{ capture: 'a', t: 0, groups: [{ key: 'x', colour: 'c', volumeM3: -5, tonnes: null }] }],
+      'volume',
+    );
+    expect(neg.min).toBe(-5);
+    expect(neg.totals[0]?.value).toBe(-5);
+  });
+
+  it('leaves a gap for a date without a figure: the layers and the total break there', () => {
+    const s = stackSeries(
+      [
+        { capture: 'a', t: 1, groups: [{ key: 'g', colour: 'c', volumeM3: 10, tonnes: null }] },
+        { capture: 'b', t: 2, groups: [] },
+        { capture: 'c', t: 3, groups: [{ key: 'g', colour: 'c', volumeM3: 12, tonnes: null }] },
+      ],
+      'volume',
+    );
+    expect(s.totals.map((x) => x.capture)).toEqual(['a', 'c']);
+    expect(s.totalRuns.map((r) => r.map((x) => x.capture))).toEqual([['a'], ['c']]);
+    expect(s.layers[0]?.runs.map((r) => r.map((x) => x.capture))).toEqual([['a'], ['c']]);
+  });
+
+  it('stacks tonnes, a material without density leaving its layer out', () => {
     const s = stackSeries(dates, 'tonnes');
     expect(s.totals.map((x) => x.value)).toEqual([80, 79]);
     expect(s.max).toBe(80);
+    expect(s.layers[2]?.points).toEqual([]);
   });
 
   it('is empty in cut and fill mode', () => {
-    expect(stackSeries(dates, 'cutFill')).toEqual({ layers: [], totals: [], max: 0 });
+    expect(stackSeries(dates, 'cutFill')).toEqual({
+      layers: [],
+      totals: [],
+      totalRuns: [],
+      max: 0,
+      min: 0,
+    });
   });
 });
 

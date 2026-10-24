@@ -12,6 +12,8 @@ import {
   valueOn,
   withAssignments,
 } from './stripData';
+import { inventorySeries } from '@aio/survey';
+import { countedBy, type IsCounted } from '../../survey/volumes/inventory';
 import { stackSeries } from './stripModel';
 
 const result = (to: string, net: number): ComparisonResult => ({
@@ -69,6 +71,8 @@ const MATERIALS: SiteMaterial[] = [
 // out of order, and one without a date (Review Focus 3)
 const CAPTURES = [{ id: 'c2', date: '2021-01-10' }, { id: 'cx' }, { id: 'c1', date: '2020-12-31' }];
 const tag = (c: string) => ({ long: `long ${c}`, short: `short ${c}`, colour: `var(--${c})` });
+/** Every figure with a counted status (the inventory's rule with nothing stale or failed). */
+const all: IsCounted = () => true;
 
 describe('stripDays', () => {
   const piles = [
@@ -76,7 +80,7 @@ describe('stripDays', () => {
     pile('p2', { c1: 50, c2: 60 }, 'sand'),
     pile('p3', { c2: 10 }),
   ];
-  const days = stripDays(CAPTURES, piles, MATERIALS, tag);
+  const days = stripDays(CAPTURES, piles, MATERIALS, tag, all);
 
   it('lists the dated surveys oldest first and skips an undated one', () => {
     expect(days.map((d) => d.capture)).toEqual(['c1', 'c2']);
@@ -103,9 +107,9 @@ describe('stripDays', () => {
   });
 
   it('gives a date without a counted figure no value, never zero', () => {
-    const d = stripDays(CAPTURES, [pile('p1', { c2: 5 })], [], tag);
+    const d = stripDays(CAPTURES, [pile('p1', { c2: 5 })], [], tag, all);
     expect(d[0]?.volumeM3).toBeNull();
-    expect(stripDates(d).map((x) => x.capture)).toEqual(['c2']);
+    expect(stackSeries(stripDates(d), 'volume').totals.map((x) => x.capture)).toEqual(['c2']);
   });
 
   it('applies the draft assignments', () => {
@@ -126,7 +130,7 @@ describe('stripDays', () => {
 });
 
 describe('readoutOf', () => {
-  const days = stripDays(CAPTURES, [pile('p1', { c1: 100, c2: 80 }, 'agg')], MATERIALS, tag);
+  const days = stripDays(CAPTURES, [pile('p1', { c1: 100, c2: 80 }, 'agg')], MATERIALS, tag, all);
 
   it('gives the figures and the change since the survey before', () => {
     const r = readoutOf(days, 'c2', 'volume', null);
@@ -139,7 +143,7 @@ describe('readoutOf', () => {
   });
 
   it('waits for a survey before that is still preparing', () => {
-    const d = stripDays(CAPTURES, [pile('p1', { c2: 80 })], [], tag);
+    const d = stripDays(CAPTURES, [pile('p1', { c2: 80 })], [], tag, all);
     const r = readoutOf(d, 'c2', 'volume', null, (c) => (c === 'c1' ? 'preparing' : 'ready'));
     expect(r?.delta).toBeNull();
     expect(r?.waiting?.capture).toBe('c1');
@@ -154,5 +158,62 @@ describe('readoutOf', () => {
     expect(stepDay(days, 'c2', 1)?.capture).toBe('c2');
     expect(stepDay(days, 'c2', -1)?.capture).toBe('c1');
     expect(stepDay(days, null, 1)?.capture).toBe('c1');
+  });
+});
+
+describe('one counting rule with the Volumes tab', () => {
+  const DATED = [
+    { id: 'c1', date: '2020-12-31', label: '31 Dec' },
+    { id: 'c2', date: '2021-01-10', label: '10 Jan' },
+    { id: 'c3', date: '2021-02-01', label: '1 Feb' },
+  ];
+  const piles = [pile('p1', { c1: 100, c2: 80, c3: 70 }), pile('p2', { c1: 40, c3: 50 })];
+  // the inventory leaves p2 out on c1 (stale by the fingerprints, say)
+  const rows = inventorySeries(piles, DATED, {
+    isStale: (m, r) => m.id === 'p2' && r.toCapture === 'c1',
+  });
+  const days = stripDays(DATED, piles, [], tag, countedBy(rows));
+
+  it('adds only the figures the inventory counts, so the totals match its rows', () => {
+    expect(days.map((d) => d.volumeM3)).toEqual(rows.map((r) => r.totalM3));
+    expect(days[0]?.piles.has('p2')).toBe(false);
+  });
+
+  it('measures the change as the header does: over the piles counted on both dates', () => {
+    const r = readoutOf(days, 'c3', 'volume', null);
+    expect(r?.vs?.capture).toBe('c2');
+    // only p1 is on both c2 and c3: 70 - 80, never the totals' 120 - 80
+    expect(r?.delta?.value).toBe(-10);
+    expect(r?.delta?.value).toBe(rows[2]?.change?.m3);
+    expect(r?.delta?.pct).toBeCloseTo(-12.5);
+    expect(changeBetween(days, 'c1', 'c3', 'volume', null)).toBe(-30);
+  });
+
+  it('skips back to the nearest earlier date with counted piles', () => {
+    const one = [pile('p1', { c1: 100, c3: 70 })];
+    const gap = stripDays(DATED, one, [], tag, countedBy(inventorySeries(one, DATED)));
+    expect(gap[1]?.volumeM3).toBeNull();
+    const r = readoutOf(gap, 'c3', 'volume', null, () => 'ready');
+    expect(r?.vs?.capture).toBe('c1');
+    expect(r?.delta?.value).toBe(-30);
+  });
+});
+
+describe('two surveys on the same day', () => {
+  const SAME = [
+    { id: 'b', date: '2021-01-10' },
+    { id: 'a', date: '2021-01-10' },
+    { id: 'z', date: '2021-01-01' },
+  ];
+  const days = stripDays(SAME, [pile('p1', { z: 1, a: 2, b: 3 })], [], tag, all);
+
+  it('keeps each survey with its own time, in a stable order', () => {
+    expect(days.map((d) => d.capture)).toEqual(['z', 'a', 'b']);
+    const [, a, b] = days;
+    expect(a && b && b.t > a.t).toBe(true);
+    expect(b && b.t - Date.parse('2021-01-10') < 86_400_000).toBe(true);
+    expect(nearestDay(days, b?.t ?? 0)?.capture).toBe('b');
+    expect(stepDay(days, 'a', 1)?.capture).toBe('b');
+    expect(readoutOf(days, 'b', 'volume', null)?.vs?.capture).toBe('a');
   });
 });

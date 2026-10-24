@@ -325,6 +325,52 @@ describe('DatesStripView', () => {
     expect(props.onSpeed).toHaveBeenCalledWith(0.5);
   });
 
+  it('writes tonnes in the site mass unit, as the Volumes header does', () => {
+    const units = { ...defaultSurveySettings().units, mass: 'kg' as const };
+    render({ mode: 'tonnes', units });
+    expect(q('.pc-axis-title').textContent).toBe('Tonnes (kg)');
+    const ro = q('[data-testid="strip-readout"]').textContent;
+    // 50 000 m³ of aggregate at 1.6 t/m³ on 10 Jan: 80 000 t, 80 000 000 kg
+    expect(ro).toContain('80 000 000 kg');
+    expect(ro).not.toMatch(/\d t\b/);
+  });
+
+  it('only the playhead follows the player time while playing', () => {
+    let now: number | null = DAYS[0]?.t ?? 0;
+    const subs = new Set<() => void>();
+    const playhead = {
+      get: () => now,
+      subscribe: (cb: () => void) => {
+        subs.add(cb);
+        return () => subs.delete(cb);
+      },
+    };
+    render({ player: { playing: true, speed: 1, loop: false, passed: 'c1' }, playhead });
+    const before = q('[data-testid="strip-playhead"]').style.left;
+    const readout = q('[data-testid="strip-readout"]').getAttribute('style');
+    act(() => {
+      now = Date.parse('2021-01-05');
+      for (const cb of subs) cb();
+    });
+    expect(q('[data-testid="strip-playhead"]').style.left).not.toBe(before);
+    expect(parseFloat(q('[data-testid="strip-playhead"]').style.left)).toBeCloseTo(
+      xOf('2021-01-05'),
+      0,
+    );
+    // the readout stays at the last survey passed
+    expect(q('[data-testid="strip-readout"]').getAttribute('style')).toBe(readout);
+  });
+
+  it('draws a gap for a date without a counted figure, never a zero', () => {
+    const [first, middle, last] = DAYS;
+    if (!first || !middle || !last) throw new Error('three days');
+    const empty: Day = { ...middle, groups: [], volumeM3: null, tonnes: null, piles: new Map() };
+    render({ days: [first, empty, last] });
+    expect(all('.ds-total')).toHaveLength(0);
+    expect(all('.ds-dot').map((d) => d.getAttribute('data-point'))).toEqual(['c1', 'c3']);
+    expect(all('[data-stack="agg"] .ds-layer')).toHaveLength(2);
+  });
+
   it('collapses to the bar alone', () => {
     render();
     act(() => {

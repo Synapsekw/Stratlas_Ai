@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GAP_MS_AT_1X, advance, createDatesPlayer } from './datesPlayer';
+import { GAP_MS_AT_1X, advance, createDatesPlayer, playStops } from './datesPlayer';
 
 const DAY = 86_400_000;
 // gaps of 10 days and 50 days: each still takes 2 s at 1x
@@ -13,6 +13,18 @@ describe('advance', () => {
     const b = advance(10 * DAY, dates, 2000, 1, false);
     expect(b.t).toBe(60 * DAY);
     expect(b.ended).toBe(true);
+  });
+
+  it('skips zero-length and same-day gaps: two surveys on one day never take a gap', () => {
+    expect(playStops([10 * DAY, 0, 10 * DAY + DAY / 2, 10 * DAY, 60 * DAY])).toEqual([
+      0,
+      10 * DAY + DAY / 2,
+      60 * DAY,
+    ]);
+    const same = [0, 10 * DAY, 10 * DAY + DAY / 2, 60 * DAY];
+    const a = advance(0, same, 2000, 1, false);
+    expect(a.passed).toBe(10 * DAY + DAY / 2);
+    expect(a.next).toBe(60 * DAY);
   });
 
   it('takes 1 s per gap at 2x', () => {

@@ -1,4 +1,4 @@
-import { formatCompact } from '@aio/ui';
+import { formatCompact, getLocale } from '@aio/ui';
 
 /**
  * The dates strip's geometry: a true-time x scale, month gridlines, survey snapping, the stacked
@@ -53,14 +53,29 @@ export function stripScale(dates: readonly number[], widthPx: number, pad = 0.04
   };
 }
 
-const MONTH_LABEL = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  year: 'numeric',
-  timeZone: 'UTC',
-});
+const monthFormats = new Map<string, Intl.DateTimeFormat>();
 
-/** The first of each month in [t0, t1] (UTC), labelled "Dec 2020". */
-export function monthTicks(t0: number, t1: number): { t: number; label: string }[] {
+/** The month label format of a locale ("Dec 2020" in English), made once per locale. */
+function monthFormat(locale: string): Intl.DateTimeFormat {
+  let f = monthFormats.get(locale);
+  if (!f) {
+    try {
+      f = new Intl.DateTimeFormat(locale, { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    } catch {
+      f = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    }
+    monthFormats.set(locale, f);
+  }
+  return f;
+}
+
+/** The first of each month in [t0, t1] (UTC), labelled in the app's language ("Dec 2020"). */
+export function monthTicks(
+  t0: number,
+  t1: number,
+  locale: string = getLocale(),
+): { t: number; label: string }[] {
+  const MONTH_LABEL = monthFormat(locale);
   if (!Number.isFinite(t0) || !Number.isFinite(t1) || t1 < t0) return [];
   const start = new Date(t0);
   let y = start.getUTCFullYear();
@@ -128,20 +143,38 @@ export interface StackPoint {
 export interface StackLayer {
   key: string;
   colour: string;
+  /** The dates the material has a figure on, in date order. */
   points: StackPoint[];
+  /** The same points split where the material has no figure (a gap breaks the area). */
+  runs: StackPoint[][];
+}
+
+export interface StackTotal {
+  capture: string;
+  t: number;
+  value: number;
 }
 
 export interface StackSeries {
   /** Bottom to top, in the order the materials first appear, "No material" ('') on top. */
   layers: StackLayer[];
-  /** The stacked total per survey, in date order. */
-  totals: { capture: string; t: number; value: number }[];
+  /** The stacked total per survey with a figure, in date order (the readout's total). */
+  totals: StackTotal[];
+  /** The totals split where a survey has no figure (a gap, never a zero). */
+  totalRuns: StackTotal[][];
+  /** The highest and lowest point drawn (min is 0 unless a figure is negative). */
   max: number;
+  min: number;
 }
 
-/** Volume or Tonnes stacked by material, one point per dated survey in date order. */
+/**
+ * Volume or Tonnes stacked by material in date order. Nothing is drawn that is not there: a
+ * material without a figure on a date (or, for Tonnes, without a density) breaks its layer
+ * there, and a date with no figure at all breaks the total. A negative figure is stacked as it is
+ * (its layer runs down), so the top of the stack is always the date's total.
+ */
 export function stackSeries(dates: readonly StripDate[], mode: StripMode): StackSeries {
-  if (mode === 'cutFill') return { layers: [], totals: [], max: 0 };
+  if (mode === 'cutFill') return { layers: [], totals: [], totalRuns: [], max: 0, min: 0 };
   const dated = dates
     .filter((d): d is StripDate & { t: number } => d.t !== null && Number.isFinite(d.t))
     .sort((a, b) => a.t - b.t);
@@ -153,22 +186,51 @@ export function stackSeries(dates: readonly StripDate[], mode: StripMode): Stack
   }
   // "No material" stacks on top, as it comes last in the inventory
   order.sort((a, b) => Number(a.key === '') - Number(b.key === ''));
-  const layers: StackLayer[] = order.map((o) => ({ ...o, points: [] }));
-  const totals: StackSeries['totals'] = [];
+  const layers: StackLayer[] = order.map((o) => ({ ...o, points: [], runs: [] }));
+  const open: (StackPoint[] | null)[] = order.map(() => null);
+  const totals: StackTotal[] = [];
+  const totalRuns: StackTotal[][] = [];
+  let run: StackTotal[] | null = null;
   let max = 0;
+  let min = 0;
   for (const d of dated) {
     let y = 0;
-    order.forEach((o, i) => {
+    let any = false;
+    for (const [i, o] of order.entries()) {
+      const layer = layers[i];
       const g = d.groups.find((x) => x.key === o.key);
-      const raw = g ? (mode === 'volume' ? g.volumeM3 : (g.tonnes ?? 0)) : 0;
-      const v = Number.isFinite(raw) ? Math.max(0, raw) : 0;
-      layers[i]?.points.push({ capture: d.capture, t: d.t, y0: y, y1: y + v });
+      const v = g ? (mode === 'volume' ? g.volumeM3 : g.tonnes) : null;
+      if (!layer || v === null || !Number.isFinite(v)) {
+        open[i] = null;
+        continue;
+      }
+      const p = { capture: d.capture, t: d.t, y0: y, y1: y + v };
+      layer.points.push(p);
+      let r = open[i];
+      if (!r) {
+        r = [];
+        open[i] = r;
+        layer.runs.push(r);
+      }
+      r.push(p);
+      max = Math.max(max, p.y0, p.y1);
+      min = Math.min(min, p.y0, p.y1);
       y += v;
-    });
-    totals.push({ capture: d.capture, t: d.t, value: y });
-    max = Math.max(max, y);
+      any = true;
+    }
+    if (!any) {
+      run = null;
+      continue;
+    }
+    const total = { capture: d.capture, t: d.t, value: y };
+    totals.push(total);
+    if (!run) {
+      run = [];
+      totalRuns.push(run);
+    }
+    run.push(total);
   }
-  return { layers, totals, max };
+  return { layers, totals, totalRuns, max, min };
 }
 
 export interface CutFillPair {
