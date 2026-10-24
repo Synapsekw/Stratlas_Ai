@@ -6,7 +6,7 @@
  * clicked; a tools-scroll request (`requestToolsScroll`, the island's Measure group) scrolls the
  * bench so the TOOLS caption is at the top, also when it was made before the list mounted.
  */
-import { Icon, useT } from '@aio/ui';
+import { Icon, Tip, useT } from '@aio/ui';
 import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
 import { Section } from '../Section';
 import { useSections } from '../sectionState';
@@ -30,7 +30,8 @@ function GroupSection({ def }: { def: ProjectGroupDef }): ReactElement {
   const count = def.useCount();
   // a static per group (the registry never changes), so the hook order holds
   const selected = def.useSelected ? def.useSelected() : null;
-  const { host, forceOpen, release } = useRevealRow(def.id, selected);
+  const defaultOpen = def.defaultOpen ?? GROUP_DEFAULT_OPEN;
+  const { host, forceOpen, release } = useRevealRow(def.id, selected, defaultOpen);
   const { Body, Actions } = def;
   return (
     <div className="pl-group" onClickCapture={release}>
@@ -39,7 +40,7 @@ function GroupSection({ def }: { def: ProjectGroupDef }): ReactElement {
         id={groupSectionId(def.id)}
         title={t(def.title)}
         count={count}
-        defaultOpen={GROUP_DEFAULT_OPEN}
+        defaultOpen={defaultOpen}
         forceOpen={forceOpen}
         actions={Actions ? <Actions /> : undefined}
       >
@@ -98,26 +99,27 @@ export function ProjectList({
   return (
     <div className="pl" data-testid="project-list">
       <section className="wb-section pl-contents" data-open={open}>
-        <button
-          type="button"
-          className="wb-section-head pl-caption"
-          data-testid="project-caption"
-          aria-expanded={open}
-          aria-controls={bodyId}
-          title={t(open ? 'project.caption.fold' : 'project.caption.unfold')}
-          onClick={() => {
-            if (held) {
-              // the hold ends and the list folds as the caption asks; a saved fold is kept
-              setHeld(false);
-              if (saved) sections.toggle(CONTENTS_SECTION, true);
-              return;
-            }
-            sections.toggle(CONTENTS_SECTION, true);
-          }}
-        >
-          <Icon name="chev-r" size={12} />
-          <span className="caps">{t('project.caption')}</span>
-        </button>
+        <Tip content={t(open ? 'project.caption.fold' : 'project.caption.unfold')}>
+          <button
+            type="button"
+            className="wb-section-head pl-caption"
+            data-testid="project-caption"
+            aria-expanded={open}
+            aria-controls={bodyId}
+            onClick={() => {
+              if (held) {
+                // the hold ends and the list folds as the caption asks; a saved fold is kept
+                setHeld(false);
+                if (saved) sections.toggle(CONTENTS_SECTION, true);
+                return;
+              }
+              sections.toggle(CONTENTS_SECTION, true);
+            }}
+          >
+            <Icon name="chev-r" size={12} />
+            <span className="caps">{t('project.caption')}</span>
+          </button>
+        </Tip>
         <div className="wb-section-body" id={bodyId} inert={!open}>
           <div className="wb-section-inner pl-groups">
             {ordered.map((def) => (

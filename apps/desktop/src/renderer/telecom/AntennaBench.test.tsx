@@ -206,6 +206,7 @@ beforeEach(() => {
       id: 'p1',
       root: 'C:/proj',
       manifest: {
+        purpose: 'telecom',
         crs: { kind: 'local' },
         origin: [0, 0, 0],
         captures: [],

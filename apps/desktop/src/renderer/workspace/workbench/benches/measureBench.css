@@ -146,11 +146,6 @@
 .wb-body .ov-panel {
   box-shadow: none;
 }
-.meb-selected .sv-card {
-  border: 0;
-  padding: 0;
-  background: transparent;
-}
 .meb .sv-saved {
   display: flex;
   flex-direction: column;

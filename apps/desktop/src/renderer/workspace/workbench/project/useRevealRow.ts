@@ -48,7 +48,12 @@ export interface RevealRow {
   release: (e: MouseEvent) => void;
 }
 
-export function useRevealRow(group: GroupId, selected: string | null): RevealRow {
+export function useRevealRow(
+  group: GroupId,
+  selected: string | null,
+  /** The group's fold when the person never changed it (the list's first group starts open). */
+  defaultOpen: boolean = GROUP_DEFAULT_OPEN,
+): RevealRow {
   const reveal = useProjectList((s) => (s.reveal?.group === group ? s.reveal : null));
   const host = useRef<HTMLDivElement>(null);
   const sections = useSections('measure');
@@ -117,9 +122,9 @@ export function useRevealRow(group: GroupId, selected: string | null): RevealRow
       e.stopPropagation();
       setHold(null);
       const id = groupSectionId(group);
-      if (sections.isOpen(id, GROUP_DEFAULT_OPEN)) sections.toggle(id, GROUP_DEFAULT_OPEN);
+      if (sections.isOpen(id, defaultOpen)) sections.toggle(id, defaultOpen);
     },
-    [holding, group, sections],
+    [holding, group, sections, defaultOpen],
   );
 
   return { host, forceOpen: holding ? true : undefined, release };

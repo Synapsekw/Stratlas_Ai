@@ -5,11 +5,13 @@
  * is held open without changing the person's fold, the row scrolls inside the group's own
  * scroller once the fold has opened, a header click ends the hold and folds.
  */
+import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { threeDates } from '../../__fixtures__/threeDates';
 import { sectionStore } from '../sectionState';
 import type { ProjectGroupDef } from './groupRegistry';
 import { ProjectList } from './ProjectList';
@@ -95,6 +97,10 @@ beforeEach(() => {
   localStorage.clear();
   sectionStore.setState({ byBench: {} });
   sel.setState({ id: null });
+  // a telecom project lists Antennas first, which is the group that starts open
+  workspace
+    .getState()
+    .openProject({ id: 'p', root: '/p', manifest: { ...threeDates, purpose: 'telecom' } });
   host = document.createElement('div');
   document.body.append(host);
 });
@@ -104,6 +110,7 @@ afterEach(() => {
   });
   root = undefined;
   host.remove();
+  workspace.getState().closeProject();
   vi.useRealTimers();
 });
 

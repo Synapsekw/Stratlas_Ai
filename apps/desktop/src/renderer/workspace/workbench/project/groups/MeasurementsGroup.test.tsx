@@ -94,7 +94,6 @@ describe('measurementsGroup', () => {
       rows()[0]!.click();
     });
     expect(measureStore.getState().focus).toBe('a');
-    expect(measurementsGroup.useSelected).toBeDefined();
   });
 
   it('shows the measurement panel inline under the focused row', () => {

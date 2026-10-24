@@ -4,7 +4,7 @@
 .pl-rows.pl-measure-rows {
   max-height: calc(8 * var(--pl-row-h) + var(--pl-details-h, 0px));
 }
-.pl-sub {
+.pl-row-sub {
   margin-inline-start: var(--sp-3);
   color: var(--fg-3);
   font-size: var(--t-11);

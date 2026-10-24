@@ -432,7 +432,8 @@ describe('search reaches every section (D16)', () => {
         .map((b) => b.getAttribute('aria-label') ?? b.textContent)
         .filter((n) => n !== 'Site data');
       expect(names).toContain(button);
-      expect(host.querySelector('.empty-state')).toBeNull();
+      // the tools' no-match state (the project list above has empty states of its own)
+      expect(host.querySelector('.empty-state:not([data-testid="project-list"] *)')).toBeNull();
       expect(q('survey-saved')).toBeNull();
     }
     type(search(), '');

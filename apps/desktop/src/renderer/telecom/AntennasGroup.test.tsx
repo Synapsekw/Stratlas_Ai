@@ -107,7 +107,7 @@ beforeEach(() => {
   sectionStore.setState({ byBench: {} });
   antennaDeleteStore.setState({ ask: null, busy: false });
   workspace.setState({
-    project: { id: 'p1', root: '/p', manifest: { layers: [] } },
+    project: { id: 'p1', root: '/p', manifest: { purpose: 'telecom', layers: [] } },
   } as unknown as Parameters<typeof workspace.setState>[0]);
   host = document.createElement('div');
   document.body.append(host);

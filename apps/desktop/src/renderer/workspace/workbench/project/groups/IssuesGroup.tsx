@@ -48,7 +48,7 @@ function Body(): ReactElement {
               label={
                 <>
                   {`${i.code} ${i.title}`}
-                  <span className="pl-sub">
+                  <span className="pl-row-sub">
                     {[sev, t(STATUS_KEYS[i.status])].filter((x) => x !== '').join(', ')}
                   </span>
                 </>

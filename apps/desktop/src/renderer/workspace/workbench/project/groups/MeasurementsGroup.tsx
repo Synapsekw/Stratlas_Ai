@@ -90,7 +90,7 @@ function Body(): ReactElement {
               label={
                 <>
                   {m.label}
-                  <span className="pl-sub">{TOOL_LABELS[m.tool]}</span>
+                  <span className="pl-row-sub">{TOOL_LABELS[m.tool]}</span>
                 </>
               }
               {...(value(m) ? { count: value(m) } : {})}
