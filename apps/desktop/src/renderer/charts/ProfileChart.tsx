@@ -318,12 +318,17 @@ export function ProfileChart(p: ProfileChartProps): ReactElement {
           setAt(null);
         },
         onClick: (e: ReactMouseEvent<SVGSVGElement>) => {
+          // the second click of a double-click leaves the pin the first one made
+          if (e.detail >= 2) return;
           const c = chainageAt(e);
           if (c !== null) pinAt(c);
         },
         onDoubleClick: (e: ReactMouseEvent<SVGSVGElement>) => {
+          // click pins, double-click flies: the point stays pinned where the camera goes
           const c = chainageAt(e);
-          if (c !== null) p.onFly?.(c);
+          if (c === null) return;
+          if (p.onPinAt) setPin(c);
+          p.onFly?.(c);
         },
       }
     : {};

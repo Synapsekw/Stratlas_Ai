@@ -377,6 +377,31 @@ describe('ProfileChart', () => {
     expect(onFly.mock.calls[0]?.[0]).toBeCloseTo(30, 6);
   });
 
+  it('a double-click leaves the point pinned there and flies', () => {
+    const onPinAt = vi.fn();
+    const onFly = vi.fn();
+    const h = render({ onPinAt, onFly });
+    const x = sampleX(h, 3);
+    // the browser's order: click (detail 1), click (detail 2), dblclick
+    for (const [type, detail] of [
+      ['click', 1],
+      ['click', 2],
+      ['dblclick', 2],
+    ] as const)
+      act(() => {
+        svgOf(h).dispatchEvent(
+          new MouseEvent(type, { bubbles: true, clientX: x, clientY: 50, detail }),
+        );
+      });
+    expect(onFly).toHaveBeenCalledTimes(1);
+    expect(onFly.mock.calls[0]?.[0]).toBeCloseTo(30, 6);
+    expect(onPinAt).not.toHaveBeenCalledWith(null);
+    expect(onPinAt.mock.lastCall?.[0]).toBeCloseTo(30, 6);
+    expect(h.querySelector('[data-testid="chart-pin-badge"]')?.textContent).toBe(
+      '30.00 m · pinned',
+    );
+  });
+
   it('the readout shows chainage, both elevations and Δ cut', () => {
     const before: ChartSeries = { ...earlier, z: [100, 103, 105, 103, 100] };
     const h = render({ series: [before, current], hoverAt: 20 });
