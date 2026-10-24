@@ -6336,6 +6336,7 @@ export const en = {
   'pile.next': 'Next pile',
   'pile.density': 'Density',
   'pile.densityAria': 'Density in tonnes per cubic metre',
+  'pile.densityUnit': 't/m³',
   'pile.noMaterial': 'No material',
   'pile.pickMaterial': 'Pick a material first',
   'pile.volume': 'Volume',

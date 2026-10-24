@@ -26,6 +26,8 @@ vi.mock('../compareStore', () => ({
   useCompare: (sel: (x: unknown) => unknown) => sel({ captures: CAPTURES }),
 }));
 vi.mock('../../shell', () => ({ bridge: { call: calls.saveFile } }));
+// the head's "⋯" menu reads the shell; it has its own tests
+vi.mock('../card/CardActions', () => ({ CardMenu: () => null }));
 vi.mock('../../report/templateStore', () => ({ addToReport: calls.addToReport }));
 
 const { PileHistory } = await import('./PileHistory');
@@ -150,6 +152,13 @@ describe('PileHistory', () => {
     expect(q('[data-testid="pile-history-note"]')?.textContent).toBe(
       'Density 1.60 t/m³ for Aggregate 20 mm applies from 31 Dec 2020. A new density takes effect from the date you choose in Materials; earlier dates keep the tonnes they had.',
     );
+  });
+
+  it('writes the density in the locale, as the tonnes figure does', () => {
+    const data = dataOf();
+    render({ ...data, material: { ...data.material, densityTPerM3: 1234.5 } as never });
+    expect(cells()[0]?.[2]).toBe('1 234.50');
+    expect(q('[data-testid="pile-history-note"]')?.textContent).toContain('Density 1 234.50 t/m³');
   });
 
   it('shows the kit figure a standard-base figure replaced as was, on its date', () => {

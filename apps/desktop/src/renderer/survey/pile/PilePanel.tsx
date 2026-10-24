@@ -25,10 +25,12 @@ import {
   type TimeRow,
 } from '@aio/survey';
 import { Tabs, useT } from '@aio/ui';
-import { useId, useMemo, type KeyboardEvent, type ReactElement } from 'react';
+import { useWorkspace } from '@aio/workspace';
+import { useEffect, useId, useMemo, type KeyboardEvent, type ReactElement } from 'react';
 import { volumeStatusLine, type StatusLine } from '../card/VolumeDetail';
 import { useSurveyDates } from '../card/slots';
 import { isStale, seriesStale, useCompare } from '../compareStore';
+import { drawnPoints } from '../measureDates';
 import { select, useMeasure } from '../measureStore';
 import { escapeStage } from '../stageEscape';
 import { pickInVolumesView } from '../volumesPick';
@@ -36,7 +38,7 @@ import { PileHeader } from './PileHeader';
 import { PileHistory } from './PileHistory';
 import { PileOverview } from './PileOverview';
 import { PileProfile } from './PileProfile';
-import { pileFigures, usePileView, type PileFigures, type PileTab } from './pileView';
+import { pileFigures, pileView, usePileView, type PileFigures, type PileTab } from './pileView';
 import './pile.css';
 
 /** What every part of the panel reads about the pile, worked out once. */
@@ -138,6 +140,12 @@ export function PilePanel({
   const setTab = usePileView((s) => s.setTab);
   const data = usePileData(m);
   const dates = useSurveyDates();
+  // a line moved or turned for the pile is fitted again once its outline is edited
+  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
+  const pts = useMemo(() => (m ? drawnPoints(m, manifest) : null), [m, manifest]);
+  useEffect(() => {
+    if (pts) pileView.getState().fitAxisTo(id, JSON.stringify(pts), pts);
+  }, [id, pts]);
   if (!data) return null;
 
   const onKey = (e: KeyboardEvent<HTMLElement>) => {

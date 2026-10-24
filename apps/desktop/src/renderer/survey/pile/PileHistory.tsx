@@ -176,7 +176,7 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
               </td>
               <td>
                 {density !== undefined && r.valueM3 !== null
-                  ? density.toFixed(DENSITY_DECIMALS)
+                  ? formatNumber(density, DENSITY_DECIMALS, locale)
                   : ''}
               </td>
               <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>
@@ -195,7 +195,7 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
       {material && firstWithValue && density !== undefined && (
         <p className="pp-note" data-testid="pile-history-note">
           {t('pile.history.note', {
-            density: density.toFixed(DENSITY_DECIMALS),
+            density: formatNumber(density, DENSITY_DECIMALS, locale),
             material: material.name,
             date: firstWithValue.label,
           })}

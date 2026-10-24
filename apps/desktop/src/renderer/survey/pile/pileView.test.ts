@@ -1,11 +1,12 @@
 import type { SitePoint } from '@aio/schema';
-import type { ChartSeries, PileAxis, TimeRow } from '@aio/survey';
+import { pileAxis, rotateAxis, type ChartSeries, type PileAxis, type TimeRow } from '@aio/survey';
 import { describe, expect, it } from 'vitest';
 import {
   createPileView,
   footprintM2,
   largestDrop,
   minusSigned,
+  parseDecimal,
   pileFigures,
   pilePosition,
   wasFigure,
@@ -148,5 +149,65 @@ describe('wasFigure', () => {
         ],
       }),
     ).toBeNull();
+  });
+});
+
+describe('fitAxisTo', () => {
+  const ring: SitePoint[] = [
+    [0, 0, 0],
+    [40, 0, 0],
+    [40, 20, 0],
+    [0, 20, 0],
+  ];
+  const moved: SitePoint[] = [
+    [100, 0, 0],
+    [180, 0, 0],
+    [180, 20, 0],
+    [100, 20, 0],
+  ];
+  const key = (r: SitePoint[]) => JSON.stringify(r);
+
+  it('refits a kept line when the outline changes, keeping its angle', () => {
+    const s = createPileView();
+    s.getState().fitAxisTo('p', key(ring), ring);
+    const turned = rotateAxis(pileAxis(ring), ring, 30);
+    s.getState().setAxis('p', turned);
+    // the same outline again: the kept line stays as the person left it
+    s.getState().fitAxisTo('p', key(ring), ring);
+    expect(s.getState().axis.get('p')).toBe(turned);
+    s.getState().fitAxisTo('p', key(moved), moved);
+    const refit = s.getState().axis.get('p');
+    expect(refit).toEqual(pileAxis(moved, { angleDeg: turned.angleDeg }));
+    expect(refit?.centre[0]).toBeCloseTo(140, 6);
+  });
+
+  it('a pile without a kept line only notes the outline', () => {
+    const s = createPileView();
+    s.getState().fitAxisTo('p', key(ring), ring);
+    s.getState().fitAxisTo('p', key(moved), moved);
+    expect(s.getState().axis.has('p')).toBe(false);
+  });
+
+  it('a line kept before the outline was first seen is refitted once it changes', () => {
+    const s = createPileView();
+    const turned = pileAxis(ring, { angleDeg: 10 });
+    s.getState().setAxis('p', turned);
+    s.getState().fitAxisTo('p', key(ring), ring);
+    expect(s.getState().axis.get('p')).toBe(turned);
+    s.getState().fitAxisTo('p', key(moved), moved);
+    expect(s.getState().axis.get('p')?.angleDeg).toBeCloseTo(10, 6);
+    expect(s.getState().axis.get('p')?.centre[0]).toBeCloseTo(140, 6);
+  });
+});
+
+describe('parseDecimal', () => {
+  it('reads what the locale writes back, and a decimal comma in metric', () => {
+    expect(parseDecimal('1.60', 'metric')).toBe(1.6);
+    expect(parseDecimal('1 234.50', 'metric')).toBe(1234.5);
+    expect(parseDecimal('1,6', 'metric')).toBe(1.6);
+    expect(parseDecimal('1,234.50', 'imperial')).toBe(1234.5);
+    expect(parseDecimal(' 2 ', 'imperial')).toBe(2);
+    expect(parseDecimal('abc', 'metric')).toBeNull();
+    expect(parseDecimal('', 'metric')).toBeNull();
   });
 });

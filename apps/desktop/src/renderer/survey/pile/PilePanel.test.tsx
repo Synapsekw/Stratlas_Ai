@@ -48,6 +48,12 @@ vi.mock('../measureStore', () => ({
   saveSiteSettings: calls.saveSettings,
 }));
 vi.mock('../card/slots', () => ({ useSurveyDates: () => s.dates }));
+// the card's "⋯" menu has its own tests (the registry's actions)
+vi.mock('../card/CardActions', () => ({
+  CardMenu: ({ id }: { id: string }) => (
+    <button type="button" data-testid="card-menu" data-id={id} aria-label={`Actions for ${id}`} />
+  ),
+}));
 vi.mock('../card/BasePicker', () => ({
   BasePicker: () => <div data-testid="base-picker">Triangulated toe</div>,
   DEFAULT_BASE: { kind: 'smart' },
@@ -148,7 +154,7 @@ const click = (el: Element | null | undefined) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  pileView.setState({ tab: 'overview', axis: new Map(), historyUnit: 'm3' });
+  pileView.setState({ tab: 'overview', axis: new Map(), fitted: new Map(), historyUnit: 'm3' });
   s.compare = {
     status: 'ready',
     captures: CAPTURES,
@@ -309,6 +315,12 @@ describe('PilePanel', () => {
     expect(q('[data-testid="pile-history"]')).not.toBeNull();
   });
 
+  it('the head carries the measurement "⋯" menu (rename, colour, fly to, …)', () => {
+    render();
+    const menu = q('.pp-head [data-testid="card-menu"]');
+    expect(menu?.getAttribute('data-id')).toBe('02');
+  });
+
   it('density edit writes the material', async () => {
     render();
     const input = q('[data-testid="pile-density"]') as HTMLInputElement;
@@ -324,6 +336,62 @@ describe('PilePanel', () => {
     expect(calls.saveSettings).toHaveBeenCalledTimes(1);
     const saved = calls.saveSettings.mock.calls[0]?.[0];
     expect(saved?.materials).toEqual([{ id: 'agg', name: 'Aggregate 20 mm', densityTPerM3: 1.75 }]);
+  });
+
+  it('the density field writes and reads numbers in the locale', async () => {
+    s.measure.settings = {
+      ...settings,
+      locale: 'imperial',
+      materials: [{ id: 'agg', name: 'Aggregate 20 mm', densityTPerM3: 1234.5 }] as never,
+    };
+    render();
+    const input = q('[data-testid="pile-density"]') as HTMLInputElement;
+    expect(input.value).toBe('1,234.50');
+    expect(text('[data-testid="pile-kpi-tonnes"]')).toContain('at 1,234.50 t/m³');
+    act(() => {
+      Reflect.set(HTMLInputElement.prototype, 'value', '1,500.25', input);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      await Promise.resolve();
+    });
+    const saved = calls.saveSettings.mock.calls[0]?.[0];
+    expect(saved?.materials).toEqual([
+      { id: 'agg', name: 'Aggregate 20 mm', densityTPerM3: 1500.25 },
+    ]);
+  });
+
+  it('a pile line kept for the pile is fitted again when its outline is edited', () => {
+    render();
+    const turned = { a: [0, 0], b: [1, 1], centre: [0.5, 0.5], angleDeg: 30, lengthM: 1.4 };
+    act(() => {
+      pileView.getState().setAxis('02', turned as never);
+    });
+    expect(pileView.getState().axis.get('02')).toBe(turned);
+    s.measure = {
+      ...s.measure,
+      file: {
+        measurements: s.measure.file.measurements.map((x) =>
+          x.id === '02'
+            ? {
+                ...x,
+                points: [
+                  [100, 0, 10],
+                  [180, 0, 10],
+                  [180, 20, 10],
+                  [100, 20, 10],
+                ],
+              }
+            : x,
+        ),
+      },
+    };
+    render();
+    const now = pileView.getState().axis.get('02');
+    expect(now).not.toBe(turned);
+    expect(now?.angleDeg).toBeCloseTo(30, 6);
+    expect(now?.centre[0]).toBeCloseTo(140, 6);
   });
 
   it('without a material the density is disabled with why, and the chip offers the materials', () => {

@@ -11,11 +11,12 @@ import { sideOptions } from '@aio/survey';
 import { Button, Tip, useT } from '@aio/ui';
 import { useId, useMemo, useState, type ReactElement } from 'react';
 import { BasePicker, DEFAULT_BASE } from '../card/BasePicker';
+import { CardMenu } from '../card/CardActions';
 import type { DatedSurface } from '../card/pointHistory';
 import { useCompare } from '../compareStore';
 import { saveSiteSettings, updateMeasurement } from '../measureStore';
 import type { PileData } from './PilePanel';
-import { footprintM2, minusSigned, pilePosition } from './pileView';
+import { footprintM2, minusSigned, parseDecimal, pilePosition } from './pileView';
 import '../compare.css';
 
 /** Density decimals as the boards write it ("1.60"). */
@@ -191,6 +192,10 @@ export function PileHeader({
         </h2>
         <MaterialChip data={data} />
         <DensityField data={data} />
+        {/* the card's "⋯": the measurement's right-click actions (rename, colour, fly to, …) */}
+        <span className="pp-menu" style={{ marginInlineStart: 'auto' }}>
+          <CardMenu id={m.id} />
+        </span>
       </div>
 
       <div className="pp-kpi" data-testid="pile-kpi">
@@ -315,19 +320,21 @@ function MaterialChip({ data }: { data: PileData }): ReactElement {
 function DensityField({ data }: { data: PileData }): ReactElement {
   const t = useT();
   const whyId = useId();
-  const { m, settings, readOnly, material } = data;
+  const { m, settings, readOnly, material, locale } = data;
   const own = m.material ? settings.materials.find((x) => x.id === m.material) : undefined;
-  // a plain decimal the field reads back ("1.60")
+  // written as the tonnes tile writes it ("1.60"), and read back the same way
   const shown =
-    material?.densityTPerM3 !== undefined ? material.densityTPerM3.toFixed(DENSITY_DECIMALS) : '';
+    material?.densityTPerM3 !== undefined
+      ? formatNumber(material.densityTPerM3, DENSITY_DECIMALS, locale)
+      : '';
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const disabled = readOnly || !own;
   const commit = () => {
     if (text === null || !own) return;
-    const value = Number(text.replace(',', '.'));
+    const value = parseDecimal(text, locale);
     setText(null);
-    if (!Number.isFinite(value) || value <= 0 || value === own.densityTPerM3) return;
+    if (value === null || value <= 0 || value === own.densityTPerM3) return;
     const materials = settings.materials.map((x) =>
       x.id === own.id ? { ...x, densityTPerM3: value } : x,
     );
@@ -356,7 +363,7 @@ function DensityField({ data }: { data: PileData }): ReactElement {
           }
         }}
       />
-      <span className="pp-unit">t/m³</span>
+      <span className="pp-unit">{t('pile.densityUnit')}</span>
       {!own && (
         <span id={whyId} className="sr-only" data-testid="pile-density-why">
           {t('pile.pickMaterial')}

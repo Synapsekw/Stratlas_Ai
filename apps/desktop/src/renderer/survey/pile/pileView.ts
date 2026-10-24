@@ -6,7 +6,8 @@
  * along the profile, the footprint and the kit figure a standard-base figure replaced).
  */
 import type { PreviousResult, SitePoint, SurveyMeasurement } from '@aio/schema';
-import { seriesDate, type ChartSeries, type PileAxis, type TimeRow } from '@aio/survey';
+import type { NumberLocale } from '@aio/geo';
+import { pileAxis, seriesDate, type ChartSeries, type PileAxis, type TimeRow } from '@aio/survey';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -18,7 +19,14 @@ export interface PileViewState {
   /** Each pile's profile line, by measurement id; absent: its long axis. */
   axis: ReadonlyMap<string, PileAxis>;
   historyUnit: HistoryUnit;
+  /** The outline each pile's line was last fitted to (`fitAxisTo`), by measurement id. */
+  fitted: ReadonlyMap<string, string>;
   setAxis: (id: string, axis: PileAxis) => void;
+  /**
+   * The pile's outline is `ringKey` (`ring`): a line kept for an earlier outline is fitted to it
+   * again, through its new centre at the angle the person left it (their turn is kept).
+   */
+  fitAxisTo: (id: string, ringKey: string, ring: readonly SitePoint[]) => void;
   setTab: (tab: PileTab) => void;
   setHistoryUnit: (u: HistoryUnit) => void;
 }
@@ -28,8 +36,20 @@ export function createPileView(): StoreApi<PileViewState> {
     tab: 'overview',
     axis: new Map(),
     historyUnit: 'm3',
+    fitted: new Map(),
     setAxis: (id, axis) => {
       set((s) => ({ axis: new Map(s.axis).set(id, axis) }));
+    },
+    fitAxisTo: (id, ringKey, ring) => {
+      set((s) => {
+        const was = s.fitted.get(id);
+        if (was === ringKey) return s;
+        const fitted = new Map(s.fitted).set(id, ringKey);
+        const kept = s.axis.get(id);
+        if (was === undefined || !kept || ring.length < 3) return { fitted };
+        const axis = new Map(s.axis).set(id, pileAxis(ring, { angleDeg: kept.angleDeg }));
+        return { fitted, axis };
+      });
     },
     setTab: (tab) => {
       set({ tab });
@@ -133,6 +153,18 @@ export function footprintM2(ring: readonly SitePoint[]): number {
     a2 += (p[0] - o[0]) * (q[1] - o[1]) - (q[0] - o[0]) * (p[1] - o[1]);
   }
   return Math.abs(a2) / 2;
+}
+
+/**
+ * A number typed in a field, read as the locale writes it (`formatNumber`): metric groups with
+ * spaces (and a decimal comma is taken as a point), imperial with commas. Null when not a number.
+ */
+export function parseDecimal(text: string, locale: NumberLocale): number | null {
+  let t = text.replace(/\s/g, '');
+  t = locale === 'imperial' ? t.replace(/,/g, '') : t.replace(',', '.');
+  if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t)) return null;
+  const v = Number(t);
+  return Number.isFinite(v) ? v : null;
 }
 
 /** A formatted number with its sign as the boards write it: "−3 308.0", "+19.6", "0.0". */
