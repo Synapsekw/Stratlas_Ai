@@ -28,7 +28,7 @@ import { startDetectRun } from '../../detections/runner';
 import { detections, dispatch, loadDetections, noteAssessed } from '../../detections/store';
 import { isActive } from '../../jobs';
 import { bridge, jobs } from '../../shell';
-import { cloudHint, type ResolvedBackend } from './backend';
+import { cloudHint, providerLabelOf, type ResolvedBackend } from './backend';
 import type { AskCheck } from './checks';
 import { classMapFor, writeClassMap } from './classMap';
 import { cloudConfirmSkipped, rememberCheck, type AskAiPrefs } from './prefs';
@@ -37,6 +37,8 @@ export interface AskRun {
   runIds: string[];
   projectId: string;
   backend: 'detectors' | 'local' | 'cloud';
+  /** A cloud run's provider, by the name people know it ("Anthropic"): Try again's tip names it. */
+  provider?: string;
   /** What was looked at, as the strip says it ("All photos"). */
   what: string;
   /** The run looks at video frames, so the strip counts frames. */
@@ -132,6 +134,7 @@ async function begin(i: AskRunInput, localRunId?: string): Promise<void> {
       runIds: [],
       projectId: i.projectId,
       backend: i.backend.kind,
+      ...(i.backend.kind === 'cloud' ? { provider: providerLabelOf(i.backend.provider) } : {}),
       what: i.what,
       frames: i.items.some((x) => x.kind === 'frame'),
       total: i.items.length,
@@ -448,14 +451,29 @@ export function stopAskRun(): void {
   if (going(askAiRun.getState().run)) active?.stop();
 }
 
-/** Try again: the same backend on the items left (a local run continues under its own id). */
-export async function retryAskRun(): Promise<void> {
+/**
+ * Try again: the same backend on the items left (a local run continues under its own id). The
+ * items left were part of what the person confirmed, but `ai:detect` sends to whatever the
+ * settings route vision to now: a cloud run tries again only while that is still the provider
+ * and model confirmed, and ready. Otherwise nothing is sent and the answer says to press Ask AI
+ * again, so the confirm shows.
+ */
+export async function retryAskRun(): Promise<{ refused: string } | undefined> {
   const run = askAiRun.getState().run;
   const a = active;
-  if (!run || !a || busy(run) || run.remaining.length === 0) return;
-  // the items left were part of what the person confirmed
-  if (a.input.backend.kind === 'local') await begin(a.input, a.localRunId);
+  if (!run || !a || busy(run) || run.remaining.length === 0) return undefined;
+  const b = a.input.backend;
+  if (b.kind === 'cloud') {
+    const status = await bridge.call('ai:status', { projectId: a.input.projectId, task: 'vision' });
+    const route = status.ok && status.value.ready ? status.value.route : undefined;
+    // the run may have changed while the status was read (a project change, Close)
+    if (active !== a || askAiRun.getState().run !== run) return undefined;
+    if (route?.provider !== b.provider || route.model !== b.model)
+      return { refused: t('askAi.run.retryConfirm') };
+  }
+  if (b.kind === 'local') await begin(a.input, a.localRunId);
   else await begin({ ...a.input, items: run.remaining });
+  return undefined;
 }
 
 export function clearAskRun(): void {

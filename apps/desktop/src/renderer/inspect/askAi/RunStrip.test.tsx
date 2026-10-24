@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { TIP_DELAY_MS } from '@aio/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AskRun } from './runs';
 
@@ -80,6 +81,21 @@ const set = (r: AskRun | null) => {
     askAiRun.setState({ run: r });
   });
 };
+/** Focuses a control from the keyboard and returns the text of the tip it opens. */
+function tipOf(el: HTMLElement | null): string | undefined {
+  vi.useFakeTimers();
+  try {
+    act(() => {
+      el?.focus();
+    });
+    act(() => {
+      vi.advanceTimersByTime(TIP_DELAY_MS);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+  return document.querySelector('[role="tooltip"]')?.textContent ?? undefined;
+}
 const click = (id: string) => {
   act(() => {
     q(id)?.click();
@@ -120,6 +136,28 @@ describe('RunStrip', () => {
     expect(q('ask-ai-retry')?.textContent).toBe('Try the 6 left again');
     click('ask-ai-retry');
     expect(h.retry).toHaveBeenCalled();
+  });
+
+  it('says on Try again where a cloud run sends the photos left', () => {
+    act(() => {
+      root.render(<RunStrip />);
+    });
+    const left = [{ kind: 'photo' as const, layer: 'photos', photo: 'p9' }];
+    set(run({ phase: 'failed', provider: 'Anthropic', remaining: [...left, ...left] }));
+    expect(tipOf(q('ask-ai-retry'))).toBe('Sends the 2 left to Anthropic again.');
+  });
+
+  it('says to press Ask AI again when a cloud retry is refused', async () => {
+    h.retry.mockResolvedValue({ refused: 'Press Ask AI again.' });
+    act(() => {
+      root.render(<RunStrip />);
+    });
+    set(run({ phase: 'failed', remaining: [{ kind: 'photo', layer: 'photos', photo: 'p9' }] }));
+    await act(async () => {
+      q('ask-ai-retry')?.click();
+      await Promise.resolve();
+    });
+    expect(q('ask-ai-run-error')?.textContent).toBe('Press Ask AI again.');
   });
 
   it('says why a retry failed', async () => {

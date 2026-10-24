@@ -1,7 +1,8 @@
 /**
  * The Ask AI run strip: what the AI is checking and how far it got, Stop while it runs, and when
  * it ended what happened, "Try the n left again" (it sends only the items not looked at, on the
- * same backend and without a new confirm), "Review n suggestions" (the review queue) and Close.
+ * same backend and without a new confirm; a cloud run only while the settings still send to the
+ * provider and model confirmed, else it says to press Ask AI again), "Review n suggestions" (the review queue) and Close.
  * Stop says "Stopping" until the run has ended. Under it, the detector runs waiting for the
  * graphics card, each with Cancel, whether or not an Ask AI run shows.
  */
@@ -50,7 +51,7 @@ function RunLine(): ReactElement | null {
   const t = useT();
   const readOnly = useAnnotateReadOnly();
   const run = useAskAiRun((s) => s.run);
-  // a retry that cannot start or ends in an error says so here
+  // a retry that cannot start, is refused or ends in an error says so here
   const [error, setError] = useState<string | null>(null);
   if (!run) return null;
   const busy = run.phase === 'running' || run.phase === 'queued';
@@ -66,9 +67,14 @@ function RunLine(): ReactElement | null {
       onClick={() => {
         if (readOnly) return;
         setError(null);
-        retryAskRun().catch((e: unknown) => {
-          setError(e instanceof Error ? e.message : String(e));
-        });
+        retryAskRun().then(
+          (r) => {
+            if (r) setError(r.refused);
+          },
+          (e: unknown) => {
+            setError(t('askAi.run.failed', { error: e instanceof Error ? e.message : String(e) }));
+          },
+        );
       }}
     >
       {t('askAi.run.retry', { count: run.remaining.length })}
@@ -96,7 +102,20 @@ function RunLine(): ReactElement | null {
         ) : stopping ? null : (
           <>
             {run.remaining.length > 0 &&
-              (readOnly ? <Tip content={t('inspect.readOnly')}>{retry}</Tip> : retry)}
+              (readOnly ? (
+                <Tip content={t('inspect.readOnly')}>{retry}</Tip>
+              ) : run.provider !== undefined ? (
+                <Tip
+                  content={t('askAi.run.retryTip', {
+                    count: run.remaining.length,
+                    provider: run.provider,
+                  })}
+                >
+                  {retry}
+                </Tip>
+              ) : (
+                retry
+              ))}
             {run.found > 0 && (
               <button
                 type="button"
@@ -133,7 +152,7 @@ function RunLine(): ReactElement | null {
       </div>
       {error !== null && (
         <p className="ask-note err" role="alert" data-testid="ask-ai-run-error">
-          {t('askAi.run.failed', { error })}
+          {error}
         </p>
       )}
     </div>

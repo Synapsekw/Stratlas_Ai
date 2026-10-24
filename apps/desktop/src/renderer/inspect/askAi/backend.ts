@@ -170,6 +170,13 @@ export interface CloudConfirm {
   userText: string;
 }
 
+/** A cloud provider's name as people know it ("Anthropic"), else its id. */
+export function providerLabelOf(provider: string): string {
+  return provider in PROVIDER_LABELS
+    ? PROVIDER_LABELS[provider as keyof typeof PROVIDER_LABELS]
+    : provider;
+}
+
 /** What the cloud confirm shows before a cloud run: nothing is sent until the person says yes. */
 export function cloudConfirm(i: {
   backend: { provider: string; model: string };
@@ -185,10 +192,7 @@ export function cloudConfirm(i: {
   const photos = i.items.filter((x) => x.kind === 'photo').length;
   return {
     provider,
-    providerLabel:
-      provider in PROVIDER_LABELS
-        ? PROVIDER_LABELS[provider as keyof typeof PROVIDER_LABELS]
-        : provider,
+    providerLabel: providerLabelOf(provider),
     model,
     photos,
     frames: i.items.length - photos,

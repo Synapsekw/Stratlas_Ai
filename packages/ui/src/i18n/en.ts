@@ -6358,6 +6358,10 @@ export const en = {
   'askAi.run.stop': 'Stop',
   'askAi.run.retry_one': 'Try the {count} left again',
   'askAi.run.retry_other': 'Try the {count} left again',
+  'askAi.run.retryTip_one': 'Sends the {count} left to {provider} again.',
+  'askAi.run.retryTip_other': 'Sends the {count} left to {provider} again.',
+  'askAi.run.retryConfirm':
+    'The AI settings have changed since you said yes to this run. Press Ask AI again to see what is sent and where.',
   'askAi.run.review_one': 'Review {count} suggestion',
   'askAi.run.review_other': 'Review {count} suggestions',
   'askAi.run.close': 'Close',

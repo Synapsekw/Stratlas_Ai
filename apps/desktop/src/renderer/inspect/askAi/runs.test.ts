@@ -28,6 +28,8 @@ const h = vi.hoisted(() => ({
   progress: [] as ((e: unknown) => void)[],
   /** The review cannot be read again (a reload that throws). */
   readFails: false,
+  /** What `ai:status` says of the vision route now. */
+  status: {},
 }));
 
 vi.mock('../../shell', async () => {
@@ -54,6 +56,7 @@ vi.mock('../../shell', async () => {
           h.inference = deferred<unknown>();
           return h.inference.promise;
         }
+        if (channel === 'ai:status') return Promise.resolve({ ok: true, value: h.status });
         if (channel === 'detections:read' && h.readFails)
           return Promise.reject(new Error('The review could not be read.'));
         if (channel === 'detect:queue')
@@ -92,6 +95,7 @@ const MANIFEST = {
   severityModels: [],
   classCatalogues: [{ assetType: 'tank', classes: [{ id: 'corrosion', label: 'Corrosion' }] }],
 } as unknown as ProjectManifest;
+const VISION = { task: 'vision', provider: 'anthropic', model: 'claude-x' };
 const PROJECT = { id: 'p', root: '/projects/p', manifest: MANIFEST };
 const OTHER = { id: 'q', root: '/projects/q', manifest: MANIFEST };
 
@@ -148,6 +152,7 @@ beforeEach(() => {
   h.startAnswer = null;
   h.progress = [];
   h.readFails = false;
+  h.status = { ready: true, cloud: true, route: VISION };
   window.localStorage.clear();
   (window as unknown as { aio: unknown }).aio = {
     on: (channel: string, cb: (e: unknown) => void) => {
@@ -221,12 +226,40 @@ describe('Ask AI runs', () => {
     expect(detections.getState().review.detections).toHaveLength(2);
     expect(askAiRun.getState().run?.remaining).toHaveLength(2);
 
-    // Try again sends the two left, without a new confirm
+    // Try again sends the two left, without a new confirm, once the route is still the confirmed one
     void retryAskRun();
     await flush();
+    expect(h.calls.filter((c) => c.channel === 'ai:status').at(-1)?.req).toEqual({
+      projectId: 'p',
+      task: 'vision',
+    });
     expect(h.detect).toHaveLength(3);
     expect(h.detect[2]?.req.images.map((i) => i.key)).toHaveLength(2);
     expect(askAiRun.getState().run).toMatchObject({ total: 2, phase: 'running' });
+  });
+
+  it('does not try a cloud run again on a provider or model the person did not confirm', async () => {
+    const failed = async () => {
+      clearAskRun();
+      h.detect = [];
+      void cloud(photos(2));
+      await flush();
+      h.detect[0]?.answer.resolve({ ok: true, value: { ok: false, error: 'rate limited' } });
+      await flush();
+      expect(askAiRun.getState().run?.phase).toBe('failed');
+    };
+    const refused = t('askAi.run.retryConfirm');
+    for (const status of [
+      { ready: true, cloud: true, route: { ...VISION, provider: 'openai' } },
+      { ready: true, cloud: true, route: { ...VISION, model: 'claude-y' } },
+      { ready: false, cloud: true, reason: 'offline-only', route: VISION },
+    ]) {
+      await failed();
+      h.status = status;
+      await expect(retryAskRun()).resolves.toEqual({ refused });
+      expect(h.detect).toHaveLength(1);
+      expect(askAiRun.getState().run).toMatchObject({ phase: 'failed', total: 2 });
+    }
   });
 
   it('says stopping until a stopped cloud run ends, and keeps a late batch', async () => {
