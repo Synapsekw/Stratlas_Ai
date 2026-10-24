@@ -1,0 +1,160 @@
+/* Inspect's review queue: one AI suggestion at a time (ReviewQueue.tsx, Crop.tsx). */
+
+.inspect-queue {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-1);
+}
+.queue-h {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.queue-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.queue-row .grow {
+  flex: 1;
+}
+.queue-h h2 {
+  margin: 0;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.queue-progress {
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.queue-counts {
+  font-size: var(--t-11);
+}
+.queue-h .flip,
+.queue-step .flip {
+  transform: scaleX(-1);
+}
+.queue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  cursor: pointer;
+}
+.queue-chip[aria-pressed='true'] {
+  border-color: var(--acc);
+  color: var(--fg-0);
+}
+.queue-chip .mono {
+  color: var(--fg-2);
+}
+.queue-threshold {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.queue-threshold input {
+  width: 110px;
+  accent-color: var(--warn);
+}
+.queue-error,
+.queue-note {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: var(--t-12);
+  border-bottom: 1px solid var(--line-soft);
+}
+.queue-error {
+  color: var(--danger);
+}
+.queue-note {
+  color: var(--fg-1);
+}
+.queue-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.queue-crop {
+  position: relative;
+  align-self: center;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background-color: var(--bg-0);
+  background-repeat: no-repeat;
+}
+.queue-crop-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed var(--warn);
+  pointer-events: none;
+}
+.queue-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: var(--t-12);
+}
+.queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.queue-big {
+  flex: 1;
+  justify-content: center;
+  min-height: 34px;
+  gap: 6px;
+}
+.queue-big kbd {
+  font-size: var(--t-11);
+  opacity: 0.7;
+}
+.queue-dismiss {
+  display: inline-flex;
+  flex: 1;
+  gap: 2px;
+}
+.queue-empty {
+  margin: 0;
+  padding: 24px 12px;
+  text-align: center;
+  font-size: var(--t-12);
+}
+.queue-f {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.queue-f .det-batch-confirm {
+  top: auto;
+  bottom: 100%;
+  right: 12px;
+}
