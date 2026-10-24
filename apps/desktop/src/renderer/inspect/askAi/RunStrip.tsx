@@ -5,7 +5,7 @@
  */
 import { useAnnotateReadOnly } from '@aio/annotate';
 import { useT } from '@aio/ui';
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { openQueue } from '../inspectUi';
 import { clearAskRun, retryAskRun, stopAskRun, useAskAiRun, type AskRun } from './runs';
 import './askAi.css';
@@ -33,6 +33,8 @@ export function RunStrip(): ReactElement | null {
   const t = useT();
   const readOnly = useAnnotateReadOnly();
   const run = useAskAiRun((s) => s.run);
+  // a retry that cannot start or ends in an error says so here
+  const [error, setError] = useState<string | null>(null);
   if (!run) return null;
   const busy = run.phase === 'running' || run.phase === 'queued';
   const pct = run.total > 0 ? Math.min(100, (run.done / run.total) * 100) : 0;
@@ -65,7 +67,10 @@ export function RunStrip(): ReactElement | null {
                 disabled={readOnly}
                 title={readOnly ? t('inspect.readOnly') : undefined}
                 onClick={() => {
-                  retryAskRun().catch(() => undefined);
+                  setError(null);
+                  retryAskRun().catch((e: unknown) => {
+                    setError(e instanceof Error ? e.message : String(e));
+                  });
                 }}
               >
                 {t('askAi.run.retry', { count: run.remaining.length })}
@@ -105,6 +110,11 @@ export function RunStrip(): ReactElement | null {
       >
         <span style={{ width: `${String(pct)}%` }} />
       </div>
+      {error !== null && (
+        <p className="ask-note err" role="alert" data-testid="ask-ai-run-error">
+          {t('askAi.run.failed', { error })}
+        </p>
+      )}
     </div>
   );
 }

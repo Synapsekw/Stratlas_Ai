@@ -113,6 +113,22 @@ describe('RunStrip', () => {
     expect(h.retry).toHaveBeenCalled();
   });
 
+  it('says why a retry failed', async () => {
+    h.retry.mockRejectedValue(new Error('The review could not be read.'));
+    act(() => {
+      root.render(<RunStrip />);
+    });
+    set(run({ phase: 'failed', remaining: [{ kind: 'photo', layer: 'photos', photo: 'p9' }] }));
+    expect(q('ask-ai-run-error')).toBeNull();
+    await act(async () => {
+      q('ask-ai-retry')?.click();
+      await Promise.resolve();
+    });
+    expect(q('ask-ai-run-error')?.textContent).toBe(
+      'The AI run stopped: The review could not be read.',
+    );
+  });
+
   it('says where a stopped run ended', () => {
     act(() => {
       root.render(<RunStrip />);
