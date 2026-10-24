@@ -48,6 +48,7 @@ vi.mock('../measureStore', () => ({
   saveSiteSettings: calls.saveSettings,
 }));
 vi.mock('../card/slots', () => ({ useSurveyDates: () => s.dates }));
+vi.mock('../surfaceStates', () => ({ usePrepareRunning: () => false }));
 // the card's "⋯" menu has its own tests (the registry's actions)
 vi.mock('../card/CardActions', () => ({
   CardMenu: ({ id }: { id: string }) => (

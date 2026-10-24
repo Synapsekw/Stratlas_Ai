@@ -19,7 +19,10 @@ const call = vi.fn((channel: string) =>
       : { ok: false, error: 'not in this test' },
   ),
 );
-vi.mock('../shell', () => ({ bridge: { call } }));
+const jobsState = vi.hoisted(() => ({
+  jobs: [] as { id: string; pipeline: string; project: string; status: string }[],
+}));
+vi.mock('../shell', () => ({ bridge: { call }, jobs: { getState: () => jobsState } }));
 vi.mock('../author', () => ({ authorName: () => '' }));
 
 const {
@@ -35,6 +38,7 @@ const {
   isStale,
   keepsCarried,
   acceptCarriedQuietly,
+  prepareSurfaces,
   recomputeCarried,
   recomputeStandard,
   refreshSurfaces,
@@ -889,5 +893,40 @@ describe('results over time and the spread across bases', () => {
     expect(m?.results[0]?.carried).toBeUndefined();
     expect(m?.previousResults).toHaveLength(1);
     expect(carriedIds(['m1'])).toEqual([]);
+  });
+});
+
+describe('prepareSurfaces', () => {
+  const manifest = {
+    crs: 'EPSG:32640',
+    captures: [{ id: 'c1', label: 'Survey 1', date: '2026-09-05' }],
+    layers: [{ id: 'dsm-c1', name: 'DSM', kind: 'raster', role: 'dsm', capture: 'c1' }],
+  } as unknown as Pick<ProjectManifest, 'captures' | 'layers' | 'crs'>;
+  const started = () => call.mock.calls.filter(([channel]) => channel === 'jobs:start').length;
+
+  afterEach(() => {
+    jobsState.jobs = [];
+    call.mockClear();
+  });
+
+  it('starts none beside a prepare job already at work on the project, the background one', async () => {
+    compareStore.setState({ projectId: null, root: 'D:/p', surfaces: [], preparing: null });
+    jobsState.jobs = [
+      { id: 'j1', pipeline: 'survey.prepare', project: 'D:\\p\\', status: 'running' },
+    ];
+    expect(await prepareSurfaces(manifest)).toBeNull();
+    expect(started()).toBe(0);
+    expect(compareStore.getState().preparing).toBeNull();
+  });
+
+  it('starts one when no prepare job is at work there (another pipeline or folder aside)', async () => {
+    compareStore.setState({ projectId: null, root: 'D:/p', surfaces: [], preparing: null });
+    jobsState.jobs = [
+      { id: 'j1', pipeline: 'survey.prepare', project: 'D:/p', status: 'done' },
+      { id: 'j2', pipeline: 'survey.prepare', project: 'D:/other', status: 'running' },
+      { id: 'j3', pipeline: 'photo.align', project: 'D:/p', status: 'running' },
+    ];
+    await prepareSurfaces(manifest);
+    expect(started()).toBe(1);
   });
 });

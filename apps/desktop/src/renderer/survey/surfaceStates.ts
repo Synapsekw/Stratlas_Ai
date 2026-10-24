@@ -111,6 +111,11 @@ const EMPTY_STATES: ReadonlyMap<string, SurfaceState> = new Map();
 const isPrepare = (j: JobRecord, root: string) =>
   j.pipeline === 'survey.prepare' && sameFolder(j.project, root);
 
+/** A `survey.prepare` job is at work on the project in `root` (the background one included). */
+export function prepareRunningOn(list: readonly JobRecord[], root: string): boolean {
+  return list.some((j) => isPrepare(j, root) && isActive(j));
+}
+
 /**
  * The `survey.prepare` jobs at work on the open project. Shallow-compared, so a tick of any other
  * job (an ODM run's progress) re-renders nothing; a prepare job's own tick does.
@@ -148,10 +153,7 @@ export function useSurfaceStates(): ReadonlyMap<string, SurfaceState> {
 /** A `survey.prepare` job is at work on the open project. */
 export function usePrepareRunning(): boolean {
   const root = useStore(workspace, (s) => s.project?.root ?? null);
-  return useStore(
-    jobs,
-    (s) => root !== null && s.jobs.some((j) => isPrepare(j, root) && isActive(j)),
-  );
+  return useStore(jobs, (s) => root !== null && prepareRunningOn(s.jobs, root));
 }
 
 /**

@@ -20,6 +20,7 @@ const s = vi.hoisted(() => ({
   compare: Object.create(null) as Record<string, unknown>,
   measure: {} as { settings: SurveySettings; readOnly: boolean; file: { measurements: unknown[] } },
   spread: null as { pct: number; nets: never[] } | null | 'computing',
+  prepareRunning: false,
 }));
 const calls = vi.hoisted(() => ({
   compute: vi.fn(() => Promise.resolve(null)),
@@ -45,6 +46,7 @@ vi.mock('../measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(s.measure),
   updateMeasurement: calls.updateMeasurement,
 }));
+vi.mock('../surfaceStates', () => ({ usePrepareRunning: () => s.prepareRunning }));
 vi.mock('../BaseEditor', () => ({ BaseEditor: () => <div data-testid="base-editor" /> }));
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => false }));
 vi.mock('@aio/workspace', () => ({
@@ -111,6 +113,7 @@ const settings = (): SurveySettings => ({
 const v = (x: number) => formatQuantity(x, 'volume', settings().units, settings().precision);
 
 beforeEach(() => {
+  s.prepareRunning = false;
   s.compare = {
     status: 'ready',
     error: null,
@@ -504,6 +507,16 @@ describe('VolumeDetail', () => {
       setSeriesFailed(m.id, null);
     });
     expect(byTestId('survey-cmp-status')[0]?.textContent ?? '').not.toContain('could not');
+  });
+
+  it('Prepare waits while a prepare job, the background one included, is at work', () => {
+    s.compare.surfaces = [];
+    s.prepareRunning = true;
+    show(pile({ results: [] }));
+    const button = byTestId('survey-prepare')[0];
+    expect(button?.getAttribute('aria-busy')).toBe('true');
+    click(button);
+    expect(calls.prepareSurfaces).not.toHaveBeenCalled();
   });
 
   it('without surfaces a carried pile reaches Prepare surfaces from its status row', () => {

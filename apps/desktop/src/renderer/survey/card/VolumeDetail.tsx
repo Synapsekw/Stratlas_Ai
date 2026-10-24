@@ -46,6 +46,7 @@ import {
 } from '../compareStore';
 import type { ItemShare } from '../engineProtocol';
 import { updateMeasurement, useMeasure } from '../measureStore';
+import { usePrepareRunning } from '../surfaceStates';
 import { setSeriesFailed, useSeriesFailed } from '../useInventory';
 import {
   BaseFields,
@@ -139,6 +140,8 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const engineProblem = useCompare((s) => s.problems[m.id]);
   const current = useCompare((s) => s.current);
   const preparing = useCompare((s) => s.preparing);
+  // a prepare job at work on the project, the background one included: Prepare waits for it
+  const prepareRunning = usePrepareRunning();
   const engineError = useCompare((s) => s.error);
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const spread = useSpread(m.id);
@@ -314,7 +317,7 @@ export function VolumeDetail({ m }: { m: SurveyMeasurement }): ReactElement {
   const prepareButton = (
     <Button
       variant="secondary"
-      busy={preparing !== null}
+      busy={preparing !== null || prepareRunning}
       data-testid="survey-prepare"
       onClick={() => {
         if (!manifest) return;

@@ -29,7 +29,7 @@ import type {
 import { t } from '@aio/ui';
 import { createStore, useStore } from 'zustand';
 import { captureShift, shiftKey, workspace } from '@aio/workspace';
-import { bridge } from '../shell';
+import { bridge, jobs } from '../shell';
 import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } from './engineClient';
 import { designs as designsStore } from './designsStore';
 import type { EnginePort, HeatGrid, ItemShare, RunReply } from './engineProtocol';
@@ -37,7 +37,7 @@ import { storedPoints } from './measureDates';
 import { fetchKitText } from './kitHeights';
 import { prepareKitSurfaces } from './kitSurface';
 import { refreshQa, sourceOfCapture } from './qaStore';
-import { preparedSurfaces } from './surfaceStates';
+import { prepareRunningOn, preparedSurfaces } from './surfaceStates';
 import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from './seriesRule';
 import {
   acceptKitQuietly,
@@ -1081,12 +1081,18 @@ export async function prepareDates(captures: readonly string[]): Promise<string 
   return r.value.ok ? null : r.value.error;
 }
 
-/** Start `survey.prepare` for the DSMs not prepared yet; the surfaces are read again when done. */
+/**
+ * Start `survey.prepare` for the DSMs not prepared yet; the surfaces are read again when done. A
+ * prepare job already at work on the project (the one started in the background when it opened,
+ * or one asked for before) is preparing them: none is started beside it, which would write the
+ * same surfaces twice at once.
+ */
 export async function prepareSurfaces(
   manifest: Pick<ProjectManifest, 'captures' | 'layers' | 'crs'>,
 ): Promise<string | null> {
   const { root, surfaces, projectId } = get();
   if (!root) return 'No project is open.';
+  if (prepareRunningOn(jobs.getState().jobs, root)) return null;
   const kitError = projectId ? await prepareKitDates(projectId, manifest, surfaces) : null;
   const params = prepareParams(manifest, get().surfaces);
   if (!params) return kitError ?? 'Every survey surface is prepared.';
