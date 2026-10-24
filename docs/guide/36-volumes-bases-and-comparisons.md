@@ -33,7 +33,7 @@ Stops either side of zero make a deadband: small changes inside it are left clea
 
 ## Materials and calculators
 
-**Materials**, under **Site data** in the **Measure** workbench, opens **Site materials**: each material's name, code, density in t/m³ and its loose and compacted factors, with **Import CSV** and **Export CSV**.
+**Materials**, under **Site data** in the **Measure** workbench, opens the **Volumes** tab on its **Materials** pane: each material's name, density in t/m³ (from a survey date, with its history), its loose factor, its piles and tonnes, with **Import CSV** and **Export CSV** (see [The Volumes view](09-volumes-and-roads.md#the-volumes-view)).
 
 In a polygon's **Material and calculators**, pick the material and which volume to use (net, fill or cut). The panel shows the volume as bank, loose and compacted, and the weight. Type a **Weighed tonnage (t)** to get the **Achieved density**: 63,000 t over 70,104 m³ is 0.899 t/m³. Calculators are for display only; the stored volume never changes.
 
@@ -68,9 +68,9 @@ The volume, its volume over time and the totals follow. Next to a pile's volume,
 A volume measurement with **Current survey** on one side has a volume on every survey date: the same comparison, worked out against each survey in turn. It shows in four places, with the same figures:
 
 - **The card**: **Volume over time**, a chart and a table with the volume, the change since the previous date and, with a material, the tonnage. A date without survey data is left blank, never 0; a stale figure is drawn hollow and marked.
-- **The Volumes view**: **Site inventory over time** stacks the piles per date (see [Volumes and roads](09-volumes-and-roads.md#the-volumes-view)).
+- **The dates strip**: the site's volume or tonnes stacked by material on every survey date, under the stage (see [The dates strip](09-volumes-and-roads.md#the-dates-strip)).
 - **The report**: the **Volume over time** section prints each pile's dates and the totals.
-- **The CSV**: **CSV** in the Volumes view saves one row per pile and date, in the site's units, with its status ("ok", "stale", "partial", "refused" or "missing") and whether the figure came from an earlier version.
+- **The CSV**: **Export** in the Volumes tab saves one row per pile and date, in the site's units, with its status ("ok", "stale", "partial", "refused" or "missing") and whether the figure came from an earlier version.
 
 A total adds current figures only: a stale, refused or missing figure is named, never added. A pile whose figures were carried from an earlier version keeps them on their own dates until **Recompute with the standard base**.
 

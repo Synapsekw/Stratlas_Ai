@@ -72,7 +72,7 @@ With two maps or two orthos of different dates, a bar at the top of the views of
 
 Both sides show the same things, each for its own date:
 
-- On a stockpile project: the surface colours (**Photo**, **Elevation**, **Cut / fill**), the pile bodies, the toe lines and the callouts. One switch, in the island's **Volumes** row or the **Volumes** tab, sets both sides. The legend on the left sets the elevation ramp and range for both sides; the right view shows the same legend without the controls.
+- On a stockpile project: the surface colours (**Photo**, **Elevation**, **Cut & fill**), the pile bodies, the toe lines and the callouts. One switch, the stage's **Show** control while the **Volumes** tab is open, sets both sides. The legend on the left sets the elevation ramp and range for both sides; the right view shows the same legend without the controls.
 - The point cloud legends (elevation, classification, change), on each side that shows the colouring.
 - Saved survey measurements. A measurement of the whole site is drawn on both sides, a measurement of one survey date on the side that shows that date. This also holds for two maps.
 
@@ -88,7 +88,7 @@ Two 3D views need more graphics memory than the **Low** tier allows. On Low, **C
 
 ## Swipe between dates (stockpiles)
 
-On a stockpile project, **Swipe**, in the island's **Volumes** row or the **Volumes** tab, slides between the first and the last survey in one 3D view. Drag the divider, or use the Left and Right keys. See [Volumes](09-volumes-and-roads.md#volumes-stockpiles).
+On a stockpile project, **Swipe between surveys**, in the island's **Volumes** row, slides between the first and the last survey in one 3D view. Drag the divider, or use the Left and Right keys. See [Volumes](09-volumes-and-roads.md#volumes-stockpiles).
 
 ## Other dates of one spot
 
