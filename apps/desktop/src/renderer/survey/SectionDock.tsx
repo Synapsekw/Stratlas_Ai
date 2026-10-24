@@ -12,6 +12,7 @@ import { cutawayPlane } from '@aio/survey';
 import { Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect } from 'react';
+import { useCompare } from './compareStore';
 import { measureStore } from './measureStore';
 import { SectionBody } from './SectionBody';
 import {
@@ -85,12 +86,16 @@ export function SectionDock({ stage }: { stage: EngineStage | null }) {
   const label = useSection((s) => s.source?.label ?? 'Section');
   const busy = useSection((s) => s.busy);
   const windowOpen = useSection((s) => s.window);
+  // the site's surfaces are prepared in the background after the project opens: read the
+  // section's sources again whenever they change, so a section opened before they were ready
+  // draws its chart once they are
+  const surfaces = useCompare((s) => s.surfaces);
   useFollowMeasurement();
   useCutaway(stage);
   useEffect(() => {
     if (projectId) void loadSectionSources(projectId);
     else sectionStore.setState({ line: null, source: null, projectId: null });
-  }, [projectId]);
+  }, [projectId, surfaces]);
   if (!shown) return null;
   // the larger window takes the dock's place over the stage; Esc or Close brings the dock back
   if (windowOpen) return <SectionWindow />;

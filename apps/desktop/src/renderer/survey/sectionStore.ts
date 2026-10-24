@@ -319,16 +319,23 @@ function choicesOf(
   return out.slice(0, 20);
 }
 
-/** Read the site's prepared surfaces and designs and hand them to the section worker. */
+let loads = 0;
+
+/**
+ * Read the site's prepared surfaces and designs and hand them to the section worker. Safe to run
+ * again (the surfaces were prepared after the project opened): the chips still there are kept and
+ * the current survey joins the chart; only the latest of overlapping reads is applied.
+ */
 export async function loadSectionSources(projectId: string): Promise<void> {
   const project = workspace.getState().project;
   if (project?.id !== projectId) return;
   if (get().projectId !== projectId) set({ ...initial(), projectId });
+  const my = ++loads;
   const [sf, df] = await Promise.all([
     bridge.call('survey:surfaces', { projectId }),
     bridge.call('survey:readDesigns', { projectId }),
   ]);
-  if (get().projectId !== projectId) return;
+  if (get().projectId !== projectId || my !== loads) return;
   if (!sf.ok || !sf.value.ok) {
     set({ sourcesError: !sf.ok ? sf.error : sf.value.ok ? null : sf.value.error });
     return;
@@ -346,6 +353,7 @@ export async function loadSectionSources(projectId: string): Promise<void> {
     designs: dfile?.designs ?? [],
     captures,
   });
+  if (get().projectId !== projectId || my !== loads) return;
   const s = get();
   const keep = s.selected.filter((k) => choices.some((c) => c.key === k));
   // the current survey is on the chart by default; the others are added as chips
