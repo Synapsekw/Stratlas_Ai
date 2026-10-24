@@ -322,7 +322,8 @@
   border: 1px solid currentColor;
   border-radius: var(--r-pill);
   font-family: var(--f-mono);
-  font-size: 9px;
+  font-size: var(--t-11);
+  line-height: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

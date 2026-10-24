@@ -67,6 +67,11 @@ vi.mock('../Calculators', () => ({
   Calculators: () => <div data-testid="survey-calculators">Loose Compacted Weighed tonnage</div>,
 }));
 vi.mock('../Comparison', () => ({ HeatControls: () => <fieldset data-testid="survey-heat" /> }));
+// the card's over-time gap reasons read the surface states, whose store pulls in the shell
+vi.mock('../surfaceStates', () => ({
+  useSurfaceStates: () => new Map(),
+  usePreparingSoon: () => false,
+}));
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => false }));
 vi.mock('@aio/workspace', () => ({
   useWorkspace: (sel: (x: unknown) => unknown) =>
