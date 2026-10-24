@@ -159,3 +159,10 @@ describe('the Datasets list keys', () => {
     expect(shortcutConflicts()).toEqual([]);
   });
 });
+
+describe('review shortcuts for Inspect', () => {
+  it('lists Fix and Leave in the review scope', () => {
+    expect(SHORTCUTS.find((s) => s.id === 'review.fix')?.keys).toEqual(['F']);
+    expect(SHORTCUTS.find((s) => s.id === 'review.leave')?.keys).toEqual(['Esc']);
+  });
+});

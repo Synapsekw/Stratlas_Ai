@@ -37,4 +37,12 @@ describe('review keys', () => {
     expect(reviewCommand(key('a', { altKey: true }))).toBeNull();
     expect(reviewCommand(key('q'))).toBeNull();
   });
+
+  it('D and X dismiss, F fixes, Shift+F fits, Esc leaves', () => {
+    expect(reviewCommand(key('d'))).toEqual({ kind: 'reject' });
+    expect(reviewCommand(key('x'))).toEqual({ kind: 'reject' });
+    expect(reviewCommand(key('f'))).toEqual({ kind: 'fix' });
+    expect(reviewCommand(key('F', { shiftKey: true }))).toEqual({ kind: 'fit' });
+    expect(reviewCommand(key('Escape'))).toEqual({ kind: 'leave' });
+  });
 });

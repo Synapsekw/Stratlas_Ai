@@ -174,7 +174,7 @@ export function Lightbox() {
             <button
               type="button"
               className="btn sm ghost"
-              title={t('lightbox.openInMediaTip')}
+              title={t('lightbox.openInInspectTip')}
               onClick={() => {
                 lightboxDispatch({ type: 'close' });
                 workspace.getState().select({ kind: 'photo', id: ev.photo, layer: ev.layer });
@@ -182,7 +182,7 @@ export function Lightbox() {
               }}
             >
               <Icon name="media" size={14} />
-              {t('lightbox.openInMedia')}
+              {t('lightbox.openInInspect')}
             </button>
             <span className="lb-sep" />
             <button

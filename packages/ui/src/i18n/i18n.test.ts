@@ -447,3 +447,18 @@ describe('pile panel and linked hover strings', () => {
     expect(t('pile.addDate')).toBe('+ Date or design');
   });
 });
+
+describe('Inspect strings', () => {
+  it('has the Inspect strings', () => {
+    expect(t('nav.inspect')).toBe('Inspect');
+    expect(t('inspect.left', { count: 1 })).toBe('1 photo still has AI suggestions to check');
+    expect(t('askAi.cloud.confirm', { count: 3, provider: 'Anthropic', cost: '$0.04' })).toBe(
+      'Send 3 photos to Anthropic, about $0.04?',
+    );
+    expect(t('queue.acceptAbove', { class: 'Corrosion', pct: 80, count: 5 })).toBe(
+      'Accept all Corrosion above 80% (5)',
+    );
+    expect(t('lightbox.openInInspect')).toBe('Open in Inspect');
+    expect(t('askAi.reason.walkLocal')).toBe('Walk frames need the local model.');
+  });
+});

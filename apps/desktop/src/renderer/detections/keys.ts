@@ -22,6 +22,8 @@ export type ReviewCommand =
   | { kind: 'tool'; tool: 'select' | 'box' | 'polygon' | 'rotbox' | 'point' }
   | { kind: 'mask' }
   | { kind: 'fit' }
+  | { kind: 'fix' }
+  | { kind: 'leave' }
   | { kind: 'undo' }
   | { kind: 'redo' };
 
@@ -49,6 +51,8 @@ const COMMANDS: Partial<Record<ShortcutId, ReviewCommand>> = {
   'review.point': { kind: 'tool', tool: 'point' },
   'review.mask': { kind: 'mask' },
   'review.fit': { kind: 'fit' },
+  'review.fix': { kind: 'fix' },
+  'review.leave': { kind: 'leave' },
   'review.undo': { kind: 'undo' },
   'review.redo': { kind: 'redo' },
 };
