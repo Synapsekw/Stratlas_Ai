@@ -462,6 +462,23 @@ describe('the volume over time CSV', () => {
     );
   });
 
+  it('weighs each date at the density it had then', () => {
+    const a = sm('a', [at(10, 'c1'), at(10, 'c2')]);
+    const asked: string[] = [];
+    const out = rowsOf(
+      volumeSeriesCsv([a], caps, units, precision, {
+        densityOf: (_m, capture) => {
+          asked.push(capture);
+          return capture === 'c1' ? 1.5 : 2;
+        },
+      }),
+    );
+    expect(asked).toEqual(expect.arrayContaining(['c1', 'c2']));
+    const tonnes = (c: string) => out.find((r) => r[3] === caps.find((x) => x.id === c)?.label);
+    expect(tonnes('c1')?.[6]).toBe('15');
+    expect(tonnes('c2')?.[6]).toBe('20');
+  });
+
   it('a stale row says stale, not ok', () => {
     const a = sm('a', [at(100, 'c1'), at(130, 'c2', { fingerprint: 'old' })]);
     const out = rowsOf(

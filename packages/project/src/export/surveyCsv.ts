@@ -691,7 +691,7 @@ export function stockpileCsv(data: SurveyReportData): string {
  * Volume over time: one row per measurement and survey date, in the site's display units. The row
  * logic mirrors `volumeRows` in `@aio/survey` (this package cannot depend on it; a test pins the two
  * to the same answers): net volume per date, the change since the previous date with a value, and
- * tonnes when `opts.densityOf` gives a density. A refused or missing date has an empty volume and
+ * tonnes when `opts.densityOf` gives a density on that date. A refused or missing date has an empty volume and
  * says why in Status; a stale one (`opts.isStale`, the card's rule) says "stale" with its figure;
  * a figure carried over from an earlier version says yes in the last column. Tonnage is rounded
  * to the mass precision (the volume's, as the cards format it).
@@ -702,7 +702,11 @@ export function volumeSeriesCsv(
   units: SurveyUnits,
   precision: SurveyPrecision,
   opts: {
-    densityOf?(m: SurveyMeasurement): number | null;
+    /**
+     * A measurement's density on a survey date (the caller's `densityOn`: a material weighs each
+     * date at the density it had then).
+     */
+    densityOf?(m: SurveyMeasurement, capture: string): number | null;
     /** Whether a row's figure is not current (the card's and the inventory's rule). */
     isStale?(m: SurveyMeasurement, r: ComparisonResult): boolean;
   } = {},
@@ -731,12 +735,12 @@ export function volumeSeriesCsv(
     return r.reason ? `${status}: ${r.reason}` : status;
   };
   for (const m of ms) {
-    const density = opts.densityOf?.(m) ?? null;
     let prev: number | null = null;
     for (const c of sorted) {
       const r = m.series?.find((x) => x.toCapture === c.id);
       const si = r !== undefined && r.status !== 'refused' ? r.netM3 : null;
       const change = si !== null && prev !== null ? si - prev : null;
+      const density = si === null ? null : (opts.densityOf?.(m, c.id) ?? null);
       rows.push([
         m.label,
         m.folder ?? '',

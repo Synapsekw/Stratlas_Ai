@@ -8,7 +8,7 @@
 import { localeOf } from '@aio/geo';
 import { volumeSeriesCsv } from '@aio/project/export';
 import type { ComparisonResult, SurveyMeasurement } from '@aio/schema';
-import { effectiveUnits, pileMaterial, pileSeries } from '@aio/survey';
+import { densityOn, effectiveUnits, pileMaterial, pileSeries } from '@aio/survey';
 import { Button, formatDate, useT } from '@aio/ui';
 import { useState, type ReactElement } from 'react';
 import { bridge } from '../../shell';
@@ -17,6 +17,7 @@ import { isStale, seriesStale, useCompare } from '../compareStore';
 import { fileBase } from '../exportHelpers';
 import { useMeasure } from '../measureStore';
 import { useInventory } from '../useInventory';
+import { captureDateOf } from './surveyDates';
 import { useTimelapseSurveys } from '../../workspace/dates/timelapse';
 import { massParts, pctText, volumeParts } from '../pile/PileHeader';
 import { minusSigned } from '../pile/pileView';
@@ -52,8 +53,12 @@ export function VolumesHeader({ model, piles }: VolumesHeaderProps): ReactElemen
       stored.set(m.id, over.stored);
       return { ...m, series: over.series };
     });
-    const density = (m: SurveyMeasurement) =>
-      pileMaterial(m, settings.materials, kitDensityOf)?.densityTPerM3 ?? null;
+    // each date at the density its material had then
+    const dateOf = captureDateOf(captures);
+    const density = (m: SurveyMeasurement, capture: string) => {
+      const material = pileMaterial(m, settings.materials, kitDensityOf);
+      return material ? densityOn(material, capture, dateOf) : null;
+    };
     // the card's stale rule: the stored figure by the fingerprints, a dated one by the series
     const staleRow = (m: SurveyMeasurement, r: ComparisonResult) =>
       r.status === 'stale' ||

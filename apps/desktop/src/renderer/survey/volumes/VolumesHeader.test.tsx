@@ -188,6 +188,35 @@ describe('VolumesHeader', () => {
     expect(lines.find((l) => l.includes('2021-01-10'))).toMatch(/,20(\.0+)?,/);
   });
 
+  it('Export weighs each date at the density its material had then', async () => {
+    s.settings = {
+      ...settings,
+      materials: [
+        {
+          id: 'm1',
+          name: 'Gravel',
+          densityTPerM3: 2,
+          densityHistory: [
+            { tPerM3: 1.5, fromCapture: 'c1' },
+            { tPerM3: 2, fromCapture: 'c2' },
+          ],
+        },
+      ],
+    };
+    render(model(), [
+      pile('a', { material: 'm1', results: [result(10, 'c2')], series: [result(10, 'c1')] }),
+    ]);
+    await act(async () => {
+      host
+        .querySelector('[data-testid="volumes-csv"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    const lines = s.saveFile.mock.calls[0]?.[1].data.split(/\r?\n/) ?? [];
+    expect(lines.find((l) => l.includes('2020-12-31'))).toMatch(/,15(\.0+)?,/);
+    expect(lines.find((l) => l.includes('2021-01-10'))).toMatch(/,20(\.0+)?,/);
+  });
+
   it('the CSV says stale for a stale figure, as the totals do', async () => {
     s.stale.add('a');
     render(model(), [pile('a', { series: [result(8, 'c1')], results: [result(10, 'c2')] })]);
