@@ -184,6 +184,18 @@ describe('DatesStripView', () => {
     expect(props.onFocus).toHaveBeenCalledTimes(2);
   });
 
+  it('the readout follows a drag, not the survey hovered before it', () => {
+    render();
+    const ph = q('[data-testid="strip-playhead"]');
+    // the pointer comes over the plot onto the playhead: the hovered survey reads out
+    const head = () => q('[data-testid="strip-readout"] .pc-ro-head').textContent;
+    pointer(q('[data-testid="strip-chart"]'), 'pointermove', xOf('2020-12-31'));
+    expect(head()).toBe('2020-12-31 long');
+    pointer(ph, 'pointerdown', xOf('2021-01-10'));
+    pointer(ph, 'pointermove', xOf('2021-02-25'));
+    expect(head()).toBe('2021-03-02 long');
+  });
+
   it('the arrow keys step the playhead through the surveys', () => {
     render();
     const ph = q('[data-testid="strip-playhead"]');

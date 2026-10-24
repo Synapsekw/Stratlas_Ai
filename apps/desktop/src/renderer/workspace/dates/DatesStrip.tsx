@@ -386,6 +386,8 @@ export function DatesStripView(p: DatesStripViewProps): ReactElement {
     capture(e.currentTarget, e.pointerId, true);
     if (p.player.playing) p.onPause();
     lastDragFocus.current = p.focus;
+    // the readout follows the drag, not the survey hovered on the way to the playhead
+    setHover(null);
     setDrag(pointerTime(e.clientX));
   };
   const onPlayheadMove = (e: PointerEvent<HTMLDivElement>) => {
