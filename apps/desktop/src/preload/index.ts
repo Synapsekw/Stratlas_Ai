@@ -186,6 +186,7 @@ const CHANNELS = {
   'ai:engineer': true,
   'telecom:readAntennas': true,
   'telecom:writeAntennas': true,
+  'telecom:deleteAntennas': true,
   'thermal:probe': true,
   'thermal:read': true,
   'thermal:write': true,

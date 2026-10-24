@@ -1032,6 +1032,31 @@ export function createJournalService(deps: JournalServiceDeps) {
         return r as IpcResponse<C>;
       };
     }
+    if (channel === 'telecom:deleteAntennas') {
+      // the inventory after a delete is known only once the handler has run: one record.external op
+      return async (req) => {
+        const r = await handler(req);
+        const { projectId } = req as IpcRequest<'telecom:deleteAntennas'>;
+        const root = deps.projects.root(projectId);
+        if (
+          (r as { ok: boolean; deleted?: string[] }).ok &&
+          ((r as { deleted?: string[] }).deleted?.length ?? 0) > 0 &&
+          root !== undefined &&
+          !deps.projects.package(projectId)
+        ) {
+          try {
+            const st = await load(root);
+            if (st.meta.journal === 'on')
+              await serial(st, () => reconcileWhole(st, ANTENNAS_FILE, 'Antennas deleted'));
+          } catch (e) {
+            console.warn(
+              `Journal: could not record telecom:deleteAntennas in ${root} (${String(e)}).`,
+            );
+          }
+        }
+        return r;
+      };
+    }
     if (channel === 'builder:recentre') {
       return async (req) => {
         const r = await handler(req);

@@ -8,6 +8,7 @@ import {
   ANTENNA_PACK_FEATURE,
   antennaPackRefusal,
   hasPersonOwned,
+  readAntennaDeletions,
   readAntennaInventory,
 } from './telecomPack';
 
@@ -125,5 +126,83 @@ describe('reading the inventory for the gate', () => {
     const root = project();
     mkdirSync(join(root, 'telecom', 'antennas.json'), { recursive: true });
     expect(await readAntennaInventory('telecom.antennas', root)).toBe('unreadable');
+  });
+});
+
+describe('pack gate for deleted antennas', () => {
+  const msg = (v: string) =>
+    `Deleted antennas stay deleted needs processing tools 0.25.0 or later (these are ${v}). Update them in Settings, Processing tools.`;
+  it('refuses a re-detect below 0.25.0 when deletions exist', () => {
+    expect(antennaPackRefusal('telecom.antennas', '0.24.0', null, true)).toBe(msg('0.24.0'));
+    expect(antennaPackRefusal('telecom.antennas', '0.24.0', detectedOnly(), true)).toBe(
+      msg('0.24.0'),
+    );
+  });
+  it('allows 0.25.0 with deletions', () => {
+    expect(antennaPackRefusal('telecom.antennas', '0.25.0', null, true)).toBeNull();
+    expect(antennaPackRefusal('telecom.antennas', 'dev', null, true)).toBeNull();
+    expect(antennaPackRefusal('telecom.antennas', null, null, true)).toBeNull();
+  });
+  it('ignores an empty sidecar', () => {
+    expect(antennaPackRefusal('telecom.antennas', '0.24.0', null, false)).toBeNull();
+    expect(antennaPackRefusal('telecom.antennas', '0.24.0', null)).toBeNull();
+  });
+  it('refuses below 0.25.0 when the sidecar is unreadable', () => {
+    expect(antennaPackRefusal('telecom.antennas', '0.24.0', null, 'unreadable')).toBe(
+      msg('0.24.0'),
+    );
+    expect(antennaPackRefusal('telecom.antennas', '0.25.0', null, 'unreadable')).toBeNull();
+  });
+  it('leaves telecom.flag alone', () => {
+    expect(antennaPackRefusal('telecom.flag', '0.24.0', null, true)).toBeNull();
+  });
+});
+
+describe('reading the deletions sidecar for the gate', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const project = (text?: string): string => {
+    const d = mkdtempSync(join(tmpdir(), 'antenna-del-'));
+    dirs.push(d);
+    if (text !== undefined) {
+      mkdirSync(join(d, 'telecom'));
+      writeFileSync(join(d, 'telecom', 'antenna-deletions.json'), text);
+    }
+    return d;
+  };
+  const record = {
+    unitId: 'ant-a3',
+    name: 'A3',
+    kind: 'panel',
+    box: {
+      centre: [0, 0, 0],
+      axes: [
+        [1, 0, 0],
+        [0, 0, 1],
+        [0, 1, 0],
+      ],
+      extents: [1, 1, 1],
+    },
+    deletedAt: '2026-10-24T10:00:00Z',
+  };
+  const file = (deletions: unknown[]) =>
+    JSON.stringify({ schema: 'aio.antenna-deletions/1', deletions });
+
+  it('is false with no file, for other jobs and no project', async () => {
+    expect(await readAntennaDeletions('telecom.antennas', project())).toBe(false);
+    expect(await readAntennaDeletions('telecom.flag', project('{ nope'))).toBe(false);
+    expect(await readAntennaDeletions('telecom.antennas', undefined)).toBe(false);
+  });
+  it('is true only when the file holds a record', async () => {
+    expect(await readAntennaDeletions('telecom.antennas', project(file([record])))).toBe(true);
+    expect(await readAntennaDeletions('telecom.antennas', project(file([])))).toBe(false);
+  });
+  it('is unreadable when it is not JSON or not a deletions file', async () => {
+    expect(await readAntennaDeletions('telecom.antennas', project('{ nope'))).toBe('unreadable');
+    expect(await readAntennaDeletions('telecom.antennas', project('{"deletions": 3}'))).toBe(
+      'unreadable',
+    );
   });
 });

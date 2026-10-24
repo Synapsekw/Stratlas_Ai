@@ -7,9 +7,13 @@ import { join } from 'node:path';
 import { resolveInside } from '@aio/project/fs';
 import {
   ANTENNAS_FILE,
+  ANTENNA_DELETIONS_FILE,
+  AntennaDeletionsFile,
   AntennasFile,
   TELECOM_ANTENNAS_FEATURE,
   TELECOM_ANTENNAS_MIN_PACK,
+  TELECOM_DELETE_FEATURE,
+  TELECOM_DELETE_MIN_PACK,
   TELECOM_FLAG_FEATURE,
   TELECOM_FLAG_MIN_PACK,
 } from '@aio/schema';
@@ -36,6 +40,29 @@ export async function readAntennaInventory(
     }
     const r = AntennasFile.safeParse(JSON.parse(await readFile(at.path, 'utf8')));
     return r.success ? r.data : 'unreadable';
+  } catch {
+    return 'unreadable';
+  }
+}
+
+/**
+ * Whether the project's deletions sidecar holds at least one record, for the pack gate of
+ * `telecom.antennas`: false when there is none (or no record), `unreadable` when it is there but
+ * cannot be read or is not a deletions file (it may hold records an older pack would not honour).
+ */
+export async function readAntennaDeletions(
+  pipeline: string,
+  project: string | undefined,
+): Promise<boolean | 'unreadable'> {
+  if (!project || pipeline !== 'telecom.antennas') return false;
+  try {
+    const at = await resolveInside(project, ANTENNA_DELETIONS_FILE);
+    if (!at.ok) {
+      if (at.status !== 404) return 'unreadable';
+      return (await isAbsent(join(project, ANTENNA_DELETIONS_FILE))) ? false : 'unreadable';
+    }
+    const r = AntennaDeletionsFile.safeParse(JSON.parse(await readFile(at.path, 'utf8')));
+    return r.success ? r.data.deletions.length > 0 : 'unreadable';
   } catch {
     return 'unreadable';
   }
@@ -86,12 +113,14 @@ export function hasPersonOwned(file: AntennasFile): boolean {
  * Why `jobs:start` refuses `telecom.antennas` or `telecom.flag` on the installed pack, or null. A
  * development pack (`dev`) and no pack (the job runner says so itself) pass. A re-detect below
  * 0.24.0 is refused only when the file holds something a person owns (`inventory`), or when it is
- * there but unreadable (it may).
+ * there but unreadable (it may). A re-detect below 0.25.0 is refused when the deletions sidecar
+ * holds a record or is unreadable (`deletions`): an older pack would bring the deleted units back.
  */
 export function antennaPackRefusal(
   pipeline: string,
   packVersion: string | null,
   inventory?: GateInventory,
+  deletions?: boolean | 'unreadable',
 ): string | null {
   if (packVersion === null || packVersion === 'dev') return null;
   if (pipeline === 'telecom.flag') {
@@ -102,6 +131,8 @@ export function antennaPackRefusal(
   if (inventory === 'unreadable' || (inventory && hasPersonOwned(inventory))) {
     if (compareVersions(packVersion, TELECOM_FLAG_MIN_PACK) < 0) return flagMessage(packVersion);
   }
+  if (deletions && compareVersions(packVersion, TELECOM_DELETE_MIN_PACK) < 0)
+    return `${TELECOM_DELETE_FEATURE} needs processing tools ${TELECOM_DELETE_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
   if (compareVersions(packVersion, TELECOM_ANTENNAS_MIN_PACK) >= 0) return null;
   return `${TELECOM_ANTENNAS_FEATURE} needs processing tools ${TELECOM_ANTENNAS_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
 }

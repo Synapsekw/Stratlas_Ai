@@ -183,7 +183,7 @@ import { geoidJobEnv, packGeoidDirsOf, registerGeoidPacksIpc } from './packs/geo
 import { registerSurveyIpc } from './survey';
 import { registerTelecomIpc } from './telecom';
 import { telecomLabelHost } from './telecomAi';
-import { antennaPackRefusal, readAntennaInventory } from './telecomPack';
+import { antennaPackRefusal, readAntennaDeletions, readAntennaInventory } from './telecomPack';
 import { registerThermalIpc } from './thermal';
 import { THERMAL_PACK_FEATURE, thermalPackRefusal } from './thermalPack';
 import { RF_PACK_FEATURE, rfPackRefusal } from './rfPack';
@@ -1659,6 +1659,10 @@ function registerIpc(): void {
           pipeline,
           version,
           await readAntennaInventory(
+            pipeline,
+            'project' in req ? req.project : jobs.get(req.resume)?.project,
+          ),
+          await readAntennaDeletions(
             pipeline,
             'project' in req ? req.project : jobs.get(req.resume)?.project,
           ),

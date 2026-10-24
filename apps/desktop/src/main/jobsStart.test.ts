@@ -72,6 +72,7 @@ function jobsStart(
     cleanPackRefusal: () => null,
     antennaPackRefusal: () => null,
     readAntennaInventory: () => Promise.resolve(null),
+    readAntennaDeletions: () => Promise.resolve(false),
     rfPackRefusal: () => null,
     thermalPackRefusal,
     evidenceJobPackRefusal,

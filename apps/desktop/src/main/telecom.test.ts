@@ -1,11 +1,17 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AntennasFile } from '@aio/schema';
+import { AntennaDeletionsFile, AntennasFile } from '@aio/schema';
 import { afterEach, describe, expect, it } from 'vitest';
 import { collectHandlers } from './notYet';
 import type { SurveyArchive } from './survey';
-import { readAntennaCrop, readAntennas, registerTelecomIpc, writeAntennas } from './telecom';
+import {
+  deleteAntennas,
+  readAntennaCrop,
+  readAntennas,
+  registerTelecomIpc,
+  writeAntennas,
+} from './telecom';
 
 const contract = JSON.parse(
   readFileSync(
@@ -144,5 +150,148 @@ describe('antenna inventory files', () => {
     expect(await ipc.call('telecom:writeAntennas', { projectId: 'p', file: sample() })).toEqual({
       ok: true,
     });
+  });
+});
+
+describe('deleting antennas', () => {
+  const sidecarPath = (root: string) => join(root, 'telecom', 'antenna-deletions.json');
+  const sidecar = (root: string) =>
+    AntennaDeletionsFile.parse(JSON.parse(readFileSync(sidecarPath(root), 'utf8')));
+  const crop = (root: string, id: string) => join(root, 'telecom', 'crops', `${id}.jpg`);
+  const NOW = '2026-10-24T10:00:00Z';
+  const now = () => NOW;
+
+  async function seeded(file: AntennasFile = sample()) {
+    const s = setup();
+    expect(await writeAntennas(s.projects, 'p', file)).toEqual({ ok: true });
+    mkdirSync(join(s.root, 'telecom', 'crops'), { recursive: true });
+    for (const u of file.units) writeFileSync(crop(s.root, u.id), Buffer.from([1]));
+    await readAntennas(s.projects, 'p');
+    return s;
+  }
+  const flaggedSample = (): AntennasFile => {
+    const f = sample();
+    const u = f.units[0];
+    if (!u) throw new Error('no unit');
+    return { ...f, units: [{ ...u, id: 'ant-f1', name: 'F1', origin: 'flagged' }, ...f.units] };
+  };
+
+  it('deletes a detected unit, records it and removes its crop', async () => {
+    const { root, projects } = await seeded();
+    const before = sample();
+    const unit = before.units[0];
+    if (!unit) throw new Error('no unit');
+    const r = await deleteAntennas(projects, 'p', [unit.id], now);
+    expect(r).toMatchObject({ ok: true, deleted: [unit.id] });
+    const onDisk = AntennasFile.parse(JSON.parse(readFileSync(antPath(root), 'utf8')));
+    expect(onDisk.units.map((u) => u.id)).not.toContain(unit.id);
+    expect(onDisk.units).toHaveLength(before.units.length - 1);
+    if (r.ok) expect(r.file).toEqual(onDisk);
+    expect(sidecar(root).deletions).toEqual([
+      {
+        unitId: unit.id,
+        name: unit.name,
+        kind: unit.kind,
+        box: unit.box,
+        ...(before.run.captureId ? { captureId: before.run.captureId } : {}),
+        deletedAt: NOW,
+      },
+    ]);
+    expect(existsSync(crop(root, unit.id))).toBe(false);
+    expect(existsSync(`${antPath(root)}.bak`)).toBe(true);
+  });
+
+  it('deletes a flagged unit without a record', async () => {
+    const { root, projects } = await seeded(flaggedSample());
+    expect(await deleteAntennas(projects, 'p', ['ant-f1'], now)).toMatchObject({
+      ok: true,
+      deleted: ['ant-f1'],
+    });
+    expect(existsSync(sidecarPath(root))).toBe(false);
+    expect(existsSync(crop(root, 'ant-f1'))).toBe(false);
+  });
+
+  it('appends to an existing sidecar and never duplicates a unit id', async () => {
+    const { root, projects } = await seeded();
+    const [a, b] = sample().units;
+    if (!a || !b) throw new Error('need two units');
+    await deleteAntennas(projects, 'p', [a.id], now);
+    // the unit comes back (an older build restored the file); deleting it again adds no second record
+    await writeAntennas(projects, 'p', sample());
+    await readAntennas(projects, 'p');
+    await deleteAntennas(projects, 'p', [a.id, b.id], now);
+    const ids = sidecar(root).deletions.map((d) => d.unitId);
+    expect(ids).toEqual([a.id, b.id]);
+  });
+
+  it('ignores unknown ids and writes nothing when none is known', async () => {
+    const { root, projects } = await seeded();
+    const text = readFileSync(antPath(root), 'utf8');
+    const r = await deleteAntennas(projects, 'p', ['ant-nope'], now);
+    expect(r).toMatchObject({ ok: true, deleted: [] });
+    expect(readFileSync(antPath(root), 'utf8')).toBe(text);
+    expect(existsSync(sidecarPath(root))).toBe(false);
+    expect(existsSync(`${antPath(root)}.bak`)).toBe(false);
+  });
+
+  it('refuses a package, an unknown project and a missing file', async () => {
+    const { projects } = setup({ 'telecom/antennas.json': sample() });
+    expect(await deleteAntennas(projects, 'pkg', ['ant-a3'])).toMatchObject({
+      ok: false,
+      code: 'read-only',
+    });
+    expect(await deleteAntennas(projects, 'nope', ['ant-a3'])).toMatchObject({ ok: false });
+    expect(await deleteAntennas(projects, 'p', ['ant-a3'])).toMatchObject({ ok: false });
+  });
+
+  it('refuses when the sidecar is newer or unreadable, changing nothing', async () => {
+    const { root, projects } = await seeded();
+    const text = readFileSync(antPath(root), 'utf8');
+    const newer = JSON.stringify({ schema: 'aio.antenna-deletions/2', deletions: [] });
+    writeFileSync(sidecarPath(root), newer);
+    const r = await deleteAntennas(projects, 'p', ['ant-a3'], now);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/newer version/i);
+    expect(readFileSync(sidecarPath(root), 'utf8')).toBe(newer);
+    writeFileSync(sidecarPath(root), '{ not json');
+    expect((await deleteAntennas(projects, 'p', ['ant-a3'], now)).ok).toBe(false);
+    expect(readFileSync(sidecarPath(root), 'utf8')).toBe('{ not json');
+    expect(readFileSync(antPath(root), 'utf8')).toBe(text);
+    expect(existsSync(crop(root, 'ant-a3'))).toBe(true);
+  });
+
+  it('refuses when the inventory is newer or changed since it was read', async () => {
+    const { root, projects } = await seeded();
+    writeFileSync(antPath(root), readFileSync(antPath(root), 'utf8') + ' ');
+    const changed = readFileSync(antPath(root), 'utf8');
+    expect((await deleteAntennas(projects, 'p', ['ant-a3'], now)).ok).toBe(false);
+    expect(readFileSync(antPath(root), 'utf8')).toBe(changed);
+    const newer = JSON.stringify({ schema: 'aio.antennas/2', units: [] });
+    writeFileSync(antPath(root), newer);
+    const r = await deleteAntennas(projects, 'p', ['ant-a3'], now);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/newer version/i);
+  });
+
+  it('writes the sidecar before the inventory', async () => {
+    const { root, projects } = await seeded();
+    // the file changes after the read: the inventory write is refused, the sidecar is already there
+    const changed = readFileSync(antPath(root), 'utf8') + ' ';
+    writeFileSync(antPath(root), changed);
+    const r = await deleteAntennas(projects, 'p', ['ant-a3'], now);
+    expect(r.ok).toBe(false);
+    expect(sidecar(root).deletions.map((d) => d.unitId)).toEqual(['ant-a3']);
+    expect(readFileSync(antPath(root), 'utf8')).toBe(changed);
+    expect(existsSync(crop(root, 'ant-a3'))).toBe(true);
+  });
+
+  it('registers the channel', async () => {
+    const { projects } = await seeded();
+    const ipc = collectHandlers((handle) => {
+      registerTelecomIpc({ handle, projects });
+    });
+    expect(
+      await ipc.call('telecom:deleteAntennas', { projectId: 'p', ids: ['ant-a3'] }),
+    ).toMatchObject({ ok: true, deleted: ['ant-a3'] });
   });
 });
