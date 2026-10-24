@@ -245,6 +245,8 @@ test('local detection: import the demo detector, find the markers of both dates,
   // The drafts wait in the review queue; accept two with the keyboard (severity, then A).
   await win.getByTestId('ask-ai-review').click();
   await expect(win.getByTestId('inspect-queue')).toBeVisible();
+  // the slider starts at 50 %; at 0 every marker found waits, the faint ones too
+  await win.getByTestId('queue-threshold').fill('0');
   const counts = win.getByTestId('det-counts');
   await expect(counts).toContainText(`${markers} waiting`);
   const accepted = Number(/(\d+) accepted/.exec((await counts.textContent()) ?? '')?.[1] ?? NaN);

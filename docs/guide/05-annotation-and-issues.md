@@ -136,7 +136,7 @@ After a bigger run, click **To review**, then **Review n suggestions**. The righ
 - a zoomed crop of the suggestion, with its class and severity pickers;
 - **Accept** (**A**), **Fix** (**F**: redraw or relabel, then accept) and **Not a fault** (**D**);
 - **Accept all** Corrosion **above** 80% and **Reject all** for the class, for the class you filtered to;
-- **Lowest confidence shown**, a slider. Suggestions under it are hidden and not counted in **To review**. It starts at the value in **Settings**, **AI for Ask AI**;
+- **Lowest confidence shown**, a slider. Suggestions under it are hidden and not counted in **To review**. It is the only bar: a local detector's suggestions scored under its own threshold show once the slider is under their score. It starts at 50%, or at the value in **Settings**, **AI for Ask AI**;
 - **Ctrl Z** and **Ctrl Y** undo and redo, a whole batch at a time, and the **Accepted** and **Rejected** filters show what you have decided.
 
 **Esc**, or finishing the queue ("Every suggestion here is checked."), takes you back to the photos. The state reads **Saved** once your decisions are in the project. The keys are in [Inspect and review](12-settings.md#inspect-and-review).

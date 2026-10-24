@@ -26,7 +26,7 @@ describe('Ask AI preferences', () => {
       minConfidence: null,
       tile: { on: false, size: null, overlap: null },
       cloudBatch: DEFAULT_BATCH,
-      queueThreshold: 0,
+      queueThreshold: 0.5,
     });
   });
 

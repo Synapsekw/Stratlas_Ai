@@ -22,7 +22,7 @@ export interface AskAiPrefs {
   /** null: the card's input width, and size / 5. */
   tile: { on: boolean; size: number | null; overlap: number | null };
   cloudBatch: number;
-  /** The review queue's lowest confidence shown at first. */
+  /** The review queue's lowest confidence shown at first (50 % until set). */
   queueThreshold: number;
 }
 
@@ -38,7 +38,7 @@ const DEFAULTS: AskAiPrefs = {
   minConfidence: null,
   tile: { on: false, size: null, overlap: null },
   cloudBatch: DEFAULT_BATCH,
-  queueThreshold: 0,
+  queueThreshold: 0.5,
 };
 
 function readStore(key: string): string | null {
@@ -78,7 +78,7 @@ function fromStored(v: Record<string, unknown>): AskAiPrefs {
       v.cloudBatch <= MAX_BATCH
         ? v.cloudBatch
         : DEFAULT_BATCH,
-    queueThreshold: unit(v.queueThreshold) ?? 0,
+    queueThreshold: unit(v.queueThreshold) ?? DEFAULTS.queueThreshold,
   };
 }
 

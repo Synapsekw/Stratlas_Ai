@@ -18,7 +18,7 @@ Two chips in the status row at the foot of the left sidebar open a page directly
 - **Local model**, **Lowest confidence the local model keeps**, **Look at large photos in tiles** with **Tile size (px)** and **Tile overlap (px)**: what the old dialog asked on every run, now set once.
 - **Local model classes in** the open project: map each class of the model to a class of the project, or **Keep the name**. Mappings you made before carry over. Without an open project the page asks you to open one.
 - **Photos per cloud request** sets how many photos go in one request once a cloud run is confirmed.
-- **Review queue: lowest confidence shown at first** sets where the confidence slider of the review queue starts.
+- **Review queue: lowest confidence shown at first** sets where the confidence slider of the review queue starts (50 % until you change it). Suggestions under the slider are hidden, the ones a local detector scored under its own threshold too.
 
 Cloud AI still needs its key and the switch (see [Switch cloud AI on](07-ai-agent.md#switch-cloud-ai-on)); choosing **Cloud** here does not turn it on.
 

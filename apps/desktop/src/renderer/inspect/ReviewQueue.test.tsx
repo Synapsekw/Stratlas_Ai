@@ -28,7 +28,7 @@ vi.mock('../detections/prepare', () => ({
 
 import { detections } from '../detections/store';
 import { toasts } from '../exports/exports';
-import { setAskAiPrefs } from './askAi/prefs';
+import { askAiPrefs, readPrefs, setAskAiPrefs } from './askAi/prefs';
 import { visibleDetections } from './findings';
 import { inspectUi, openQueue } from './inspectUi';
 import { queueCommand, ReviewQueue } from './ReviewQueue';
@@ -228,6 +228,17 @@ describe('ReviewQueue', () => {
     expect(find('d1')?.status).toBe('accepted');
     expect(text('queue-progress')).toBe('1 of 2');
     expect(detections.getState().review.currentId).toBe('d2');
+  });
+
+  it('starts the slider at 50 % in a fresh project: a 0.4 suggestion is hidden, a 0.6 one shows', async () => {
+    // nothing set by the person or in the Ask AI settings
+    localStorage.clear();
+    askAiPrefs.setState(readPrefs());
+    load([det('low', { confidence: 0.4 }), det('mid', { confidence: 0.6, source: src('p002') })]);
+    await mount();
+    expect((byId('queue-threshold') as HTMLInputElement).value).toBe('0.5');
+    expect(text('queue-progress')).toBe('1 of 1');
+    expect(detections.getState().review.currentId).toBe('mid');
   });
 
   it('starts the slider at the Ask AI queue threshold', async () => {
