@@ -8,10 +8,11 @@ import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { closeProcessing, expect, launchApp, openPipelineForm, test } from './fixtures';
+import { findingRows, openFindings, openInspect, openPhotoInInspect } from './inspect';
 import { copyRealData, hasRealProject, missingRealProject, realProjectDir } from './realData';
 
 /**
- * The inspection pipeline (Asset Inspection Kit) run from Detections against the real pipeline
+ * The inspection pipeline (Asset Inspection Kit) run from Inspect against the real pipeline
  * runtime: on a project built in the app from raw photos and a model, and on a temporary copy of
  * the HCl project. Needs the development venv (`uv sync` in python/) or QUADRION_E2E_PYTHON.
  */
@@ -202,12 +203,12 @@ const workspaceIssues = (win: Page) =>
 
 /**
  * Start the inspection pipeline and wait for it to finish; the job's id. On an inspection
- * project, the way a person does it: Detections, **Turn detections into issues**. Otherwise from
+ * project, the way a person does it: Inspect, **Turn detections into issues**. Otherwise from
  * Settings, Advanced.
  */
 async function runInspection(win: Page, inspectionProject: boolean): Promise<string> {
   if (inspectionProject) {
-    await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
+    await openInspect(win);
     await win.getByTestId('det-to-issues').click();
     const dialog = win.getByTestId('pipeline-dialog');
     await expect(dialog.getByRole('heading', { level: 2 })).toHaveText(
@@ -227,7 +228,7 @@ async function runInspection(win: Page, inspectionProject: boolean): Promise<str
     await expect(win.getByLabel('Detections', { exact: true })).toBeVisible();
     await win.getByTestId('job-start').click();
   }
-  // the drawer (from Detections) or the Advanced section shows the job that was started
+  // the drawer (from Inspect) or the Advanced section shows the job that was started
   const detail = win.locator('.job-detail');
   await expect(detail.locator('.jd-h h2')).toHaveText('Inspection: detections to issues');
   await expect(detail.locator('.jd-h .job-state')).toHaveText('Done', { timeout: 180_000 });
@@ -348,7 +349,7 @@ async function buildTower(
 test.describe('inspection pipeline', () => {
   test.skip(!hasPython, `no Python with aio_pipelines at ${venvPython}`);
 
-  test('a project built in the app runs the kit from Detections; issues land where the boxes are', async ({
+  test('a project built in the app runs the kit from Inspect; issues land where the boxes are', async ({
     dataRoot,
     network,
   }) => {
@@ -440,7 +441,7 @@ test.describe('inspection pipeline', () => {
       );
       expect(w.ok).toBe(true);
 
-      // 4. Detections offers Turn detections into issues for an inspection project
+      // 4. Inspect offers Turn detections into issues for an inspection project
       const jobId = await runInspection(win, true);
       const log = await readFile(join(root, 'jobs', jobId, 'job.log'), 'utf8');
       expect(log).toContain('1 draft, not reviewed');
@@ -554,21 +555,25 @@ test.describe('inspection pipeline', () => {
       );
 
       // review: X rejects the false alarm, A accepts the first view, L links the second to it
-      await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
+      // review in the queue (the slider at 0 so the 40 % false alarm is in it): D rejects the
+      // false alarm (X works too), A accepts the first view, L links the second to it
+      await openInspect(win);
+      await expect(win.getByTestId('inspect-chip-review-count')).toHaveText('2'); // photos
+      await win.getByTestId('inspect-review').click();
+      await win.getByTestId('queue-threshold').fill('0');
       const counts = win.getByTestId('det-counts');
       await expect(counts).toContainText('3 waiting · 1 accepted · 0 rejected');
-      const inspector = win.getByTestId('det-inspector');
-      await expect(inspector).toContainText('Confidence 40%');
-      await win.getByTestId('det-sheet').locator('.det-tile').first().click();
-      await win.keyboard.press('x');
-      await expect(inspector).toContainText('Confidence 90%');
+      const queue = win.getByTestId('inspect-queue');
+      await expect(queue).toContainText('40%');
+      await win.keyboard.press('d');
+      await expect(queue).toContainText('90%');
       await win.keyboard.press('a');
       await expect(counts).toContainText('1 waiting · 2 accepted · 1 rejected');
-      await expect(inspector).toContainText('Confidence 80%');
+      await expect(win.getByTestId('det-save')).toHaveText('Saved');
+      await expect(queue).toContainText('80%');
       await win.keyboard.press('l');
       await win.getByPlaceholder('Find an issue by code or title').press('Enter');
-      await expect(counts).toContainText('0 waiting · 3 accepted · 1 rejected');
-      await expect(win.getByTestId('det-save')).toHaveText('Saved');
+      await expect(win.getByTestId('inspect-chip-review-count')).toHaveText('0');
 
       // on disk: both views name the review's issue; the false alarm is rejected
       const pass = async () =>
@@ -610,17 +615,14 @@ test.describe('inspection pipeline', () => {
       expect(issues.filter((i) => i.classId === 'corrosion')).toHaveLength(1);
 
       // the review shows the pipeline's issue and offers nothing to accept twice
-      await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
-      await win.getByRole('button', { name: 'All', exact: true }).click();
-      await expect(counts).toContainText('0 waiting · 3 accepted · 1 rejected');
-      const crackTile = win
-        .getByTestId('det-sheet')
-        .locator('.det-tile', { hasText: p3?.id ?? '' });
-      await crackTile.click();
-      await expect(win.getByTestId('det-accepted-as')).toHaveText(
-        'The inspection pipeline made issue D01 from it.',
-      );
-      await expect(win.getByTestId('det-accept')).toHaveCount(0);
+      // Inspect shows the pipeline's issue as a finding of the photo and offers nothing to accept
+      await openInspect(win);
+      await expect(win.getByTestId('inspect-chip-review-count')).toHaveText('0');
+      await openPhotoInInspect(win, p3?.id ?? '');
+      await openFindings(win);
+      await expect(findingRows(win)).toHaveCount(1);
+      await expect(findingRows(win).and(win.locator('[data-kind="you"]'))).toContainText('D01');
+      await expect(win.getByTestId('inspect-accept')).toHaveCount(0);
       expect(await network.outbound()).toEqual([]);
     } finally {
       await app.close();

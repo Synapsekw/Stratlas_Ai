@@ -3,11 +3,11 @@
  * one severity model, classes Crack and Corrosion, two Corrosion issues and four waiting detections
  * from a local model, one of them with a word the project has no class for.
  *
- * Covers: Create class from an unknown detection word; "+ New class..." in the inspector's class
- * picker; Accept all on the filtered list (confirmed with the Enter key, header buttons off while
- * the question is open) and its one-step undo with Ctrl+Z; rename in Settings, Classes; deleting a
- * used class while moving its issues, and Ctrl+Z bringing it back; saving a class to the library
- * and ticking it in the new-project wizard.
+ * Covers, on the Inspect screen: Add a class from an unknown suggestion word (Change); "New class"
+ * in the Change picker; Accept all of a class in the review queue (confirmed with the Enter key,
+ * the batch buttons off while the question is open) and its one-step undo with Ctrl+Z; rename in
+ * Settings, Classes; deleting a used class while moving its issues, and Ctrl+Z bringing it back;
+ * saving a class to the library and ticking it in the new-project wizard.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -22,6 +22,7 @@ import {
   tinyGlb,
   type DataRoot,
 } from './fixtures';
+import { findingRows, openFindings, openInspect, openPhotoInInspect } from './inspect';
 
 const ID = 'e2e-classes';
 const W = 64;
@@ -169,7 +170,8 @@ async function writeClassesProject(c: DataRoot): Promise<string> {
         detections: [
           det('d1', 'p1', 'crack', 2, [5, 5, 15, 15]),
           det('d2', 'p1', 'crack', 3, [30, 25, 40, 35]),
-          det('d3', 'p2', 'spalling', 2, [5, 5, 15, 15]),
+          // the word the model suggested that the project has no class for
+          { ...det('d3', 'p2', 'spalling', 2, [5, 5, 15, 15]), suggestedNew: true },
           det('d4', 'p2', 'crack', 1, [30, 25, 40, 35]),
         ],
       },
@@ -221,57 +223,76 @@ test('classes on the fly, Accept all with one undo, rename, delete-and-move, lib
     await win.waitForLoadState('domcontentloaded');
     await win.getByTestId('project-card').filter({ hasText: 'E2E classes' }).click();
     await expect(win.locator('.proj-switch')).toContainText('E2E classes');
-    await win.locator('.nav-item', { hasText: 'Detections' }).click();
-    await expect(win.getByTestId('det-counts')).toContainText('4 waiting');
+    await openInspect(win);
+    const waiting = win.getByTestId('inspect-chip-review-count');
+    await expect(waiting).toHaveText('2'); // photos with a suggestion
 
-    // Step to the detection whose word has no class (review order: p1 then p2, top-left first).
-    const inspector = win.getByTestId('det-inspector');
-    await win.locator('.det-screen').focus();
-    await win.keyboard.press('j');
-    await win.keyboard.press('j');
-    await expect(inspector.getByTestId('det-unknown-class')).toContainText('spalling');
+    // The suggestion whose word has no class is on p2 (the other suggestion there is a crack).
+    await openPhotoInInspect(win, 'p2');
+    await openFindings(win);
+    const unknown = findingRows(win).filter({ hasText: 'spalling' });
+    await expect(unknown).toHaveCount(1);
+    await unknown.getByTestId('inspect-change').click();
+    const picker = win.getByTestId('inspect-change-picker');
+    const classList = picker.getByRole('listbox', { name: 'Class' });
 
-    // 1. Create class from an unknown detection.
-    await inspector.getByTestId('det-create-class').click();
-    await expect(inspector.getByTestId('det-class')).toHaveValue('spalling');
+    // 1. Add the word as a class, from Change.
+    await expect(picker.getByTestId('det-create-class')).toHaveText('Add "spalling" as a class');
+    await picker.getByTestId('det-create-class').click();
+    await expect(classList.getByRole('button', { name: /spalling/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await expect(win.getByTestId('class-notice')).toContainText('Class spalling created.');
     await expect.poll(() => classIds(dir)).toEqual(['crack', 'corrosion', 'spalling']);
+    await expect(picker.getByTestId('det-create-class')).toHaveCount(0);
 
-    // 2. "+ New class..." in the inspector's class picker.
-    await win.locator('.det-screen').focus();
-    await win.keyboard.press('j');
-    await inspector.getByTestId('det-class').selectOption({ label: '+ New class...' });
-    const field = inspector.getByTestId('det-new-class').getByRole('textbox');
+    // 2. "New class" in the picker: the class is made and picked in the form.
+    await picker.getByTestId('picker-new-class').click();
+    const field = picker.getByLabel('New class name');
     await field.fill('Hairline crack');
     await field.press('Enter');
-    await expect(inspector.getByTestId('det-class')).toHaveValue('hairline-crack');
+    await expect(classList.getByRole('button', { name: /Hairline crack/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await expect.poll(() => classIds(dir)).toContain('hairline-crack');
+    await picker.getByRole('button', { name: 'Cancel' }).click();
+    await expect(picker).toHaveCount(0);
 
-    // 3. Accept all on the filtered list, confirmed with the Enter key, then one Ctrl+Z.
+    // 3. Accept all of a class in the review queue, confirmed with the Enter key, then one Ctrl+Z.
+    const queue = win.getByTestId('inspect-queue');
+    await win.getByTestId('inspect-review').click();
+    await expect(queue).toBeVisible();
+    await win.getByTestId('queue-class-crack').click();
     const acceptAll = win.getByTestId('det-accept-all');
     const rejectAll = win.getByTestId('det-reject-all');
-    await expect(acceptAll).toHaveText('Accept all (4)');
+    await expect(acceptAll).toContainText('Accept all Crack above');
+    await expect(acceptAll).toContainText('(3)');
     await acceptAll.click();
     const confirm = win.getByTestId('det-batch-confirm');
-    await expect(confirm).toContainText('Accept 4 detections as issues?');
+    await expect(confirm).toContainText('Accept 3 detections as issues?');
     await expect(acceptAll).toBeDisabled();
     await expect(rejectAll).toBeDisabled();
     await expect(win.getByTestId('det-batch-ok')).toBeFocused();
     await win.keyboard.press('Enter');
     await expect(confirm).toHaveCount(0);
-    await expect(win.getByTestId('det-counts')).toContainText('0 waiting');
-    await expect(win.getByTestId('det-counts')).toContainText('4 accepted');
-    expect(await issueCount(win)).toBe(6);
+    await expect(waiting).toHaveText('1');
+    expect(await issueCount(win)).toBe(5);
     // codes continue the sequence without repeats
     await expect
       .poll(async () => (await issuesOnDisk(dir)).map((i) => i.code).sort())
-      .toEqual(['F01', 'F02', 'F03', 'F04', 'F05', 'F06']);
-    await win.locator('.det-screen').focus();
+      .toEqual(['F01', 'F02', 'F03', 'F04', 'F05']);
+    // the last crack is decided: the queue closed itself, the spalling is still waiting
+    if ((await queue.count()) === 0) await win.getByTestId('inspect-review').click();
+    await expect(queue).toBeVisible();
+    await win.locator('section[aria-label="Inspect"]').focus();
     await win.keyboard.press('Control+z');
     await expect(win.getByTestId('det-counts')).toContainText('4 waiting');
     await expect(win.getByTestId('det-counts')).toContainText('0 accepted');
     expect(await issueCount(win)).toBe(2);
     await expect.poll(async () => (await issuesOnDisk(dir)).length).toBe(2);
+    await win.getByTestId('queue-leave').click();
 
     // 4. Rename in Settings, Classes.
     await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();

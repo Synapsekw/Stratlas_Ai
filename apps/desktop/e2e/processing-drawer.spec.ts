@@ -20,6 +20,7 @@ import {
   processingChip,
   test,
 } from './fixtures';
+import { openInspect } from './inspect';
 
 /** Screenshots for a person to look at: only with QUADRION_E2E_SHOTS set to a folder. */
 const SHOTS = process.env.QUADRION_E2E_SHOTS;
@@ -228,8 +229,8 @@ test('folded to the rail, the sidebar still shows a job that needs attention', a
 
 test('a project that is not an inspection has no Turn detections into issues', async ({ win }) => {
   await openTiny(win);
-  await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
-  await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Detections');
+  await openInspect(win);
+  await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Inspect');
   await expect(win.getByTestId('det-to-issues')).toHaveCount(0);
 });
 

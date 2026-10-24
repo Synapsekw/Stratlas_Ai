@@ -20,6 +20,7 @@ import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { closeProcessing, expect, launchApp, openPipelineForm, test } from './fixtures';
+import { openInspect } from './inspect';
 import { volumesView } from './island';
 import { realProjectDir } from './realData';
 
@@ -216,26 +217,25 @@ test('@realdata inspection-hcl-mini: photos and model imported, the AI pass plac
     await run();
     expect((await readJson<{ issues: Issue[] }>(join(root, 'issues.json'))).issues).toEqual(issues);
 
-    // review: the Detections screen counts the pass; X rejects the false alarm (41%), A accepts
-    // every other waiting box (each becomes a draft issue)
-    await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
-    const counts = win.getByTestId('det-counts');
+    // review: Inspect counts the pass; X rejects the false alarm (41%), A accepts every other
+    // waiting box (each becomes a draft issue). The review queue, with the slider at 0 so the
+    // false alarm is in it, steps through them.
+    await openInspect(win);
     const { draft, accepted } = s.detections;
+    await win.getByTestId('inspect-review').click();
+    await win.getByTestId('queue-threshold').fill('0');
+    const counts = win.getByTestId('det-counts');
     await expect(counts).toContainText(
       `${String(draft)} waiting · ${String(accepted)} accepted · 0 rejected`,
     );
-    const inspector = win.getByTestId('det-inspector');
-    await win.getByTestId('det-sheet').locator('.det-tile').first().click();
+    const step = win.locator('.queue-step');
     for (let left = draft; left > 0; left--) {
-      await expect(inspector).toContainText('Confidence');
-      await win.keyboard.press(
-        (await inspector.textContent())?.includes('Confidence 41%') ? 'x' : 'a',
-      );
-      await expect(counts).toContainText(`${String(left - 1)} waiting`);
+      await expect(step).toContainText('%');
+      await win.keyboard.press((await step.textContent())?.includes('41%') ? 'x' : 'a');
+      // the last decision closes the queue, so its counts are gone
+      if (left > 1) await expect(counts).toContainText(`${String(left - 1)} waiting`);
     }
-    await expect(counts).toContainText(
-      `0 waiting · ${String(accepted + draft - 1)} accepted · 1 rejected`,
-    );
+    await expect(win.getByTestId('inspect-chip-review-count')).toHaveText('0');
     // the review writes back into the pass file
     await expect
       .poll(
@@ -249,7 +249,6 @@ test('@realdata inspection-hcl-mini: photos and model imported, the AI pass plac
             .filter((x) => x === 'draft').length,
       )
       .toBe(0);
-    await expect(win.getByTestId('det-save')).toHaveText('Saved');
     // "Saved" is the pass file. The issues have their own saver: it starts 0.6 s after the last
     // accepted box and writes issues.json once per accepted box, one after another, so the file
     // read at once holds only some of them. Wait for the write that holds them all.

@@ -5,16 +5,18 @@
  * The real project is only read, through realData.ts (@realdata). Skipped where the EBSM project
  * is not on this machine.
  *
- * Covers: the AI-6 preview and estimate before sending, results landing as waiting detections with
- * model, prompt version and confidence, reject and accept with the keyboard, the accepted one
- * becoming a draft issue on disk, the exact error when the model answers in another format, and
- * the cloud switch blocking the send.
+ * Covers, on the Inspect screen: the AI-6 one-line confirm and preview before sending, results
+ * landing as waiting suggestions with their confidence, dismiss and accept with the keyboard in
+ * the review queue, the accepted one becoming a draft issue on disk (model, prompt version and
+ * confidence in its note and the pass file), the exact error when the model answers in another
+ * format, and the cloud switch blocking Ask AI.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, launchApp, NetworkGuard, test } from './fixtures';
+import { askAi, openInspect, openPhotoInInspect, photoTiles } from './inspect';
 import {
   copyRealProjects,
   hasRealProject,
@@ -31,6 +33,27 @@ const PHOTOS = 12;
 test.skip(!hasRealProject('ebsm'), missingRealProject('ebsm'));
 
 type Copy = RealDataCopy;
+
+type Catalogues = {
+  classes: { id: string; label: string; color: string; severityModel: string }[];
+}[];
+
+function withGarbageClass(catalogues: unknown): Catalogues {
+  const list = (catalogues ?? []) as Catalogues;
+  const first = list[0];
+  const model = first?.classes[0]?.severityModel;
+  if (!first || !model) throw new Error('the EBSM copy has no class to base a test class on');
+  return [
+    {
+      ...first,
+      classes: [
+        ...first.classes,
+        { id: 'garbage', label: 'Garbage please', color: '#888888', severityModel: model },
+      ],
+    },
+    ...list.slice(1),
+  ];
+}
 
 /** `<tmp>/data/projects/ebsm-review/`: the first photos, the severity model and classes, no issues. */
 async function copyEbsm(): Promise<Copy> {
@@ -50,6 +73,9 @@ async function copyEbsm(): Promise<Copy> {
       id: 'ebsm-review',
       name: 'EBSM review copy',
       layers: photos ? [{ ...photos, items }] : [],
+      // a last class whose name makes the scripted model answer in another format (a class check
+      // sends the class label as its hint); the first class stays "light"
+      classCatalogues: withGarbageClass(m.classCatalogues),
     }),
   });
   await writeFile(
@@ -101,56 +127,59 @@ test('@realdata detection review: AI drafts, reject and accept with the keyboard
     await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
     await win.getByTestId('project-card').filter({ hasText: 'EBSM review copy' }).click();
     await expect(win.locator('.proj-switch')).toContainText('EBSM review copy');
-    await win.locator('.nav-item', { hasText: 'Detections' }).click();
+    await openInspect(win);
 
-    // Nothing to review yet: the sheet shows every photo.
-    const sheet = win.getByTestId('det-sheet');
-    await expect(sheet.locator('.det-tile')).toHaveCount(PHOTOS);
-    await expect(win.getByTestId('det-counts')).toContainText('0 waiting');
+    // Nothing to review yet: the photo column shows every photo.
+    await expect(photoTiles(win)).toHaveCount(PHOTOS);
+    const waiting = win.getByTestId('inspect-chip-review-count');
+    await expect(waiting).toHaveText('0');
 
     // Pick four photos and ask the model.
-    const tiles = sheet.locator('.det-tile');
-    for (let i = 0; i < 4; i++) await tiles.nth(i).click({ modifiers: ['ControlOrMeta'] });
-    await win.getByTestId('det-ai-open').click();
-    const dialog = win.getByTestId('det-ai-dialog');
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('The 4 selected photos');
-    // AI-6: route, estimate and exactly what is sent, before anything is sent.
-    await expect(dialog).toContainText('Anthropic · Claude Opus 5.5');
-    await expect(win.getByTestId('det-ai-estimate')).toContainText('4 images in one request');
-    await expect(win.getByTestId('det-ai-estimate')).toContainText('about $');
-    const preview = win.getByTestId('det-ai-preview');
+    for (let i = 0; i < 4; i++)
+      await photoTiles(win)
+        .nth(i)
+        .click({ modifiers: ['ControlOrMeta'] });
+    await askAi(win, 'selected');
+    // AI-6: provider, cost and exactly what is sent, before anything is sent.
+    await expect(win.getByTestId('cloud-confirm')).toBeVisible();
+    const line = win.getByTestId('cloud-confirm-line');
+    await expect(line).toContainText('Send 4 photos to Anthropic');
+    await expect(line).toContainText('about $');
+    await win.getByTestId('cloud-confirm-preview-open').click();
+    const preview = win.getByTestId('cloud-confirm-preview');
     await expect(preview.locator('figure')).toHaveCount(4);
     await expect(preview).toContainText('These images go to Anthropic');
-    await preview.getByText('Instructions and request text').click();
+    await expect(preview).toContainText('Claude Opus 5.5');
     await expect(preview).toContainText('"id":"light"');
     await shot(win, 'ai-preview');
 
-    await win.getByTestId('det-ai-send').click();
-    const progress = win.getByTestId('det-ai-progress');
-    await expect(progress).toContainText('Done');
-    await expect(progress).toContainText('4 of 4 images sent, 4 proposals');
-    await win.getByTestId('det-ai-close').click();
+    await win.getByTestId('cloud-confirm-send').click();
+    await expect(win.getByTestId('ask-ai-run')).toContainText('AI checked 4 photos and found 4.');
+    await win.getByTestId('ask-ai-run-close').click();
 
-    // The proposals wait for review, with model, prompt version and confidence.
+    // The suggestions wait for review, with their confidence, in the review queue.
+    await expect(waiting).toHaveText('4');
+    await win.getByTestId('inspect-chip-review').click();
+    await expect(photoTiles(win)).toHaveCount(4);
+    await win.getByTestId('inspect-review').click();
+    const queue = win.getByTestId('inspect-queue');
+    await expect(queue).toBeVisible();
     await expect(win.getByTestId('det-counts')).toContainText('4 waiting');
-    await expect(sheet.locator('.det-tile')).toHaveCount(4);
-    const inspector = win.getByTestId('det-inspector');
-    await expect(inspector).toContainText('Proposed by claude-opus-5-5, prompt detect-v2.');
-    await expect(inspector).toContainText('Confidence 90%');
+    await expect(win.getByTestId('queue-progress')).toHaveText('1 of 4');
+    await expect(queue).toContainText('90%');
     await expect(win.getByTestId('det-class')).toHaveValue('light');
-    await expect(win.getByTestId('det-editor').locator('svg .shape')).toHaveCount(1);
+    await expect(win.getByTestId('photo-viewer').locator('svg .shape.ai')).toHaveCount(1);
     expect(await win.evaluate(issueCount)).toBe(0);
     await shot(win, 'sheet-drafts');
 
-    // Keyboard: X rejects the first, A accepts the next as a draft issue.
-    await sheet.locator('.det-tile').first().click();
+    // Keyboard: X (D does the same) dismisses the first, A accepts the next as a draft issue.
     await win.keyboard.press('x');
     await expect(win.getByTestId('det-counts')).toContainText(
       '3 waiting · 0 accepted · 1 rejected',
     );
-    // the rejected one left the waiting queue: the next is first of three
-    await expect(inspector).toContainText('1 of 3');
+    // the dismissed one left the waiting queue: the next is first of three
+    await expect(win.getByTestId('queue-progress')).toHaveText('1 of 3');
+    await expect(queue).toContainText('80%');
     await win.keyboard.press('3');
     await win.keyboard.press('a');
     await expect(win.getByTestId('det-counts')).toContainText(
@@ -227,26 +256,31 @@ test('@realdata detection review: AI drafts, reject and accept with the keyboard
     expect(existsSync(join(c.projectDir, 'detections.json'))).toBe(false);
 
     // A model answer that is not the detection format: the exact reason, nothing added.
-    await win.getByTestId('det-ai-open').click();
-    await dialog.getByLabel('The photo or frame in the editor').check();
-    await dialog.getByPlaceholder(/What to look for/).fill('garbage please');
-    await win.getByTestId('det-ai-send').click();
-    await expect(win.getByTestId('det-ai-error')).toContainText(
+    await win.getByTestId('queue-leave').click();
+    await win.getByTestId('inspect-chip-all').click();
+    await openPhotoInInspect(win, 'p001');
+    await win.getByTestId('ask-ai-checks').click();
+    await win.locator('[data-testid^="ask-ai-check-"]', { hasText: 'Garbage please' }).click();
+    await askAi(win, 'photo');
+    await win.getByTestId('cloud-confirm-send').click();
+    await expect(
+      win.locator('[data-testid="ask-ai-run"], [data-testid="ask-ai-error"]').first(),
+    ).toContainText(
       'Scripted test model, claude-opus-5-5: The model did not answer in the detection format: "I could not do that."',
     );
     await shot(win, 'ai-error');
-    await win.getByTestId('det-ai-close').click();
-    await expect(win.getByTestId('det-counts')).toContainText(
-      '2 waiting · 1 accepted · 1 rejected',
-    );
+    if ((await win.getByTestId('ask-ai-run-close').count()) > 0)
+      await win.getByTestId('ask-ai-run-close').click();
+    await expect(waiting).toHaveText('2');
 
-    // Cloud AI off: the dialog says so and nothing can be sent.
+    // Cloud AI off: Ask AI says so and nothing can be sent.
     await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: false }));
-    await win.getByTestId('det-ai-open').click();
-    await expect(win.getByTestId('det-ai-blocked')).toContainText('Cloud AI is off.');
-    await expect(win.getByTestId('det-ai-send')).toBeDisabled();
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(dialog).toBeHidden();
+    // the bar asks what can look when Inspect opens: leave and come back
+    await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
+    await openInspect(win);
+    await expect(win.getByTestId('ask-ai-blocked')).toContainText('Cloud AI is off.');
+    await expect(win.getByTestId('ask-ai')).toBeDisabled();
+    await expect(win.getByTestId('cloud-confirm')).toHaveCount(0);
 
     await finish(app, network);
     opened = null;

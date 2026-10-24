@@ -12,6 +12,7 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { openInspect } from './inspect';
 
 interface S {
   on: string;
@@ -167,10 +168,14 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
   // 1. accept both in the review: the offer to connect them appears, and Place there takes the
   // app to the 3D view with the later finding's outline on the later mesh (undone after, so the
   // steps below start from the accepted findings as they were)
-  await win.locator('.nav-item', { hasText: 'Detections' }).click();
-  await expect(win.getByTestId('det-counts')).toContainText('2 waiting', { timeout: 60_000 });
-  await win.getByTestId('det-accept-all').click();
-  await win.getByTestId('det-batch-ok').click();
+  await openInspect(win);
+  await expect(win.getByTestId('inspect-chip-review-count')).toHaveText('2', { timeout: 60_000 });
+  await win.getByTestId('inspect-review').click();
+  await expect(win.getByTestId('det-counts')).toContainText('2 waiting');
+  // the two drafts carry no confidence, so Accept all above a bar leaves them: Accept on each
+  await win.getByTestId('queue-accept').click();
+  await expect(win.getByTestId('det-counts')).toContainText('1 waiting');
+  await win.getByTestId('queue-accept').click();
   await expect(win.getByTestId('place-offer')).toContainText('Connect 2 findings to a model?');
   const fresh = (await issues(win)).filter((i) => !before.has(i.id));
   const later = fresh.find((i) => i.sightings.some((s) => s.layer === 'photos-d2'));
