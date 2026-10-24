@@ -194,6 +194,33 @@ describe('resolveBackend', () => {
     });
   });
 
+  it('keeps clip frames off the local model, which cannot read them', () => {
+    expect(resolve({ items: CLIP_FRAMES })).toMatchObject({ kind: 'cloud' });
+    expect(resolve({ items: [...PHOTOS, ...CLIP_FRAMES], check: CORROSION })).toMatchObject({
+      kind: 'cloud',
+    });
+    expect(resolve({ pref: 'local', items: CLIP_FRAMES })).toMatchObject({
+      kind: 'none',
+      reason: 'no-backend',
+    });
+    expect(resolve({ items: [...WALK_FRAMES, ...CLIP_FRAMES] })).toMatchObject({
+      kind: 'none',
+      reason: 'walk-local',
+    });
+  });
+
+  it('runs the project detectors for everything before the local model and the cloud', () => {
+    const avail: Availability = { detectors: [RUST], local: OFF, cloud: CLOUD };
+    expect(resolve({ avail, assetTypes: ['tank'] })).toMatchObject({
+      kind: 'detectors',
+      chosen: [{ detector: { id: 'rust-v1' } }],
+    });
+    expect(resolve({ assetTypes: ['tank'] })).toMatchObject({ kind: 'detectors' });
+    expect(resolve({ pref: 'local', assetTypes: ['tank'] })).toMatchObject({ kind: 'detectors' });
+    // not this project's asset type: the local model
+    expect(resolve({ assetTypes: ['pipe'] })).toMatchObject({ kind: 'local' });
+  });
+
   it('says nothing can run with the cloud refusal as the reason', () => {
     expect(
       resolve({ avail: { ...NONE, cloud: { ready: false, message: 'Cloud AI is off.' } } }),

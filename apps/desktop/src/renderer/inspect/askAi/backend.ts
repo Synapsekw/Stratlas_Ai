@@ -1,7 +1,7 @@
 /**
  * Which AI answers an Ask AI request. The person never picks it in the flow: the Settings default
  * (Auto, Local only, Cloud) and what is installed decide, so one button does the right thing. Auto
- * prefers what runs on this computer (the class's own detector, then the local model) over the
+ * prefers what runs on this computer (the project's detectors, then the local model) over the
  * cloud; walk frames go to the local model only, local detectors read photos only. When nothing
  * can run, the answer says why. A cloud run also needs the person's yes first: `cloudConfirm` is
  * what that confirm shows (where it goes, how many, about what it costs, what is sent).
@@ -88,8 +88,10 @@ export function resolveBackend(i: {
       ? (avail.local.models.find((m) => m.id === i.localModel) ?? avail.local.models[0])
       : undefined;
   const walkIds = new Set(i.layers.filter((l) => l.kind === 'walk').map((l) => l.id));
+  // the local model reads photos and walk frames; main refuses ordinary clip frames
+  const localFits = items.every((x) => x.kind === 'photo' || walkIds.has(x.layer));
   if (items.some((x) => x.kind === 'frame' && walkIds.has(x.layer)))
-    return model ? { kind: 'local', model } : none('walk-local');
+    return model && localFits ? { kind: 'local', model } : none('walk-local');
 
   const cloud = avail.cloud;
   const cloudFits =
@@ -105,16 +107,28 @@ export function resolveBackend(i: {
 
   if (pref === 'cloud') return cloudFits ? toCloud() : none('no-backend', cloud.message);
 
-  if (check.kind === 'class' && allPhotos) {
-    const own = avail.detectors.find((d) => d.detector.classId === check.classId);
-    if (own)
+  // on this computer first: the detectors (photos only), then the local model, then the cloud
+  if (allPhotos) {
+    const chosen =
+      check.kind === 'class'
+        ? avail.detectors.filter((d) => d.detector.classId === check.classId).slice(0, 1)
+        : orderForProject(avail.detectors, i.assetTypes ?? []).forProject.slice(
+            0,
+            MAX_RUN_DETECTORS,
+          );
+    if (chosen.length > 0)
       return {
         kind: 'detectors',
-        chosen: [{ where: own.where, detector: own.detector, threshold: own.detector.threshold }],
+        chosen: chosen.map((d) => ({
+          where: d.where,
+          detector: d.detector,
+          threshold: d.detector.threshold,
+        })),
       };
   }
   if (
     model &&
+    localFits &&
     (check.kind === 'everything' ||
       Object.entries(i.classMapOf(model.id)).some(
         ([raw, to]) => model.card.classes.includes(raw) && to === check.classId,
@@ -122,18 +136,6 @@ export function resolveBackend(i: {
   )
     return { kind: 'local', model };
   if (pref === 'auto' && cloudFits) return toCloud();
-  if (check.kind === 'everything' && allPhotos) {
-    const mine = orderForProject(avail.detectors, i.assetTypes ?? []).forProject;
-    if (mine.length > 0)
-      return {
-        kind: 'detectors',
-        chosen: mine.slice(0, MAX_RUN_DETECTORS).map((d) => ({
-          where: d.where,
-          detector: d.detector,
-          threshold: d.detector.threshold,
-        })),
-      };
-  }
   return none(
     'no-backend',
     pref === 'local' ? avail.local.problem : (cloud.message ?? avail.local.problem),
