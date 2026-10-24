@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { DEFAULT_STOPS } from '@aio/survey';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { DsmGrid } from './kitdata';
 import {
   changeColour,
+  changeLegend,
+  KIT_DEFAULT_STOPS,
+  kitDisplay,
+  setKitDisplay,
   changeGridRaster,
   changeRaster,
   heightStats,
@@ -74,12 +79,57 @@ describe('sectionProfile', () => {
 });
 
 describe('change colours', () => {
+  afterEach(() => {
+    setKitDisplay(null);
+  });
+
   it('greys changes inside the deadband and ramps cut to red, fill to blue', () => {
     expect(changeColour(0.05, 0.1)).toEqual([138, 138, 138]);
     const cut = changeColour(-3, 0.1);
     const fill = changeColour(3, 0.1);
     expect(cut[0]).toBeGreaterThan(cut[2]);
     expect(fill[2]).toBeGreaterThan(fill[0]);
+  });
+
+  it('the kit change ramp follows the survey heat map settings', () => {
+    // by default the survey's default stops: -1 m and beyond is the far cut colour
+    expect(KIT_DEFAULT_STOPS).toEqual(DEFAULT_STOPS);
+    expect(changeColour(-3, 0.1)).toEqual([0xb2, 0x18, 0x2b]);
+    expect(changeColour(3, 0.1)).toEqual([0x21, 0x66, 0xac]);
+    // the project's stops, inverted as the survey heat map inverts them
+    const stops = [
+      { value: -2, color: '#000000' },
+      { value: 2, color: '#ffffff' },
+    ];
+    expect(changeColour(-2, 0.1, { stops })).toEqual([0, 0, 0]);
+    expect(changeColour(2, 0.1, { stops, inverted: true })).toEqual([0, 0, 0]);
+    // the host's settings are what the drape and the legend take when none is given
+    setKitDisplay({ heatmap: { stops, stepped: false } });
+    expect(changeColour(2, 0.1)).toEqual([255, 255, 255]);
+    expect(changeLegend().stops.map((s) => s.color)).toEqual(['#000000', '#ffffff']);
+    expect(changeLegend().cutM).toBe(-2);
+    expect(changeLegend().fillM).toBe(2);
+    // never a colour between the deadband and the stops' own band: the near colour of its side
+    expect(changeColour(0.15, 0.1)).not.toEqual([138, 138, 138]);
+  });
+
+  it('the legend gradient uses the stops, grey across the deadband', () => {
+    const g = changeLegend().gradient;
+    expect(g.startsWith('linear-gradient(90deg')).toBe(true);
+    expect(g).toContain('#b2182b');
+    expect(g).toContain('#2166ac');
+    expect(g).toContain('rgb(138,138,138)');
+  });
+
+  it('the legend uses the project units', () => {
+    expect(kitDisplay.get().units.distance).toBe('m');
+    setKitDisplay({ units: { ...kitDisplay.get().units, distance: 'ft' } });
+    expect(kitDisplay.get().units.distance).toBe('ft');
+    const heard: string[] = [];
+    const off = kitDisplay.subscribe(() => heard.push(kitDisplay.get().units.distance));
+    setKitDisplay(null);
+    off();
+    expect(heard).toEqual(['m']);
   });
 
   it('paints a north-up RGBA raster, transparent where either survey has no data', () => {

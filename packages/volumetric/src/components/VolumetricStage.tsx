@@ -1,5 +1,4 @@
 import type { EngineStage } from '@aio/engine';
-import { defaultSurveySettings } from '@aio/schema';
 import { formatRow } from '@aio/survey';
 import { Icon, isShortcut, t, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
@@ -12,7 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Raycaster, Vector2, Vector3, type Camera, type Line, type Object3D } from 'three';
-import { CHANGE_RAMP, RAMP_IDS, rampCss } from '../model/dsm';
+import { changeLegend, kitDisplay, RAMP_IDS, rampCss } from '../model/dsm';
 import { VolumetricScene } from '../scene/controller';
 import { useVolumetric, volumetric } from '../store';
 
@@ -175,7 +174,7 @@ function SwipeDivider() {
         className="vol-swipe"
         style={{ left: `${(x * 100).toFixed(2)}%` }}
         role="slider"
-        aria-label="Swipe between surveys"
+        aria-label={t('vol.swipeBetween')}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(x * 100)}
@@ -198,17 +197,34 @@ function SwipeDivider() {
   );
 }
 
+/** The project's units and heat map as the host gave them (`setKitDisplay`). */
+const useKitDisplay = () =>
+  useSyncExternalStore(
+    (l) => kitDisplay.subscribe(l),
+    () => kitDisplay.get(),
+  );
+
 /**
- * A height or height change in metres, one decimal, through the app's formatter. The 3D layer has
- * no site settings of its own: the kit's grids are metric.
+ * A height or height change (metres in) in the project's distance unit, one decimal, through the
+ * app's formatter, as the cards write it.
  */
-const SITE = defaultSurveySettings();
-const PRECISION = { ...SITE.precision, distance: 1 };
-const m1 = (v: number) =>
-  formatRow({ key: 'height', label: '', value: v, kind: 'distance' }, SITE.units, PRECISION);
+function useHeightText(): (v: number) => string {
+  const d = useKitDisplay();
+  return useCallback(
+    (v: number) =>
+      formatRow(
+        { key: 'height', label: '', value: v, kind: 'distance' },
+        d.units,
+        { ...d.precision, distance: 1 },
+        ...(d.locale !== undefined ? [d.locale] : []),
+      ),
+    [d],
+  );
+}
 
 /** Ramp, range (metres) and hillshade of the Elevation surface, with its legend. */
 function ElevationControls() {
+  const m1 = useHeightText();
   const elevation = useVolumetric((s) => s.elevation);
   const relief = useVolumetric((s) => s.relief);
   const v = volumetric.getState();
@@ -310,6 +326,7 @@ function ElevationControls() {
 
 /** The Elevation surface's ramp and range as the second view of a comparison shows them. */
 function ElevationKey() {
+  const m1 = useHeightText();
   const elevation = useVolumetric((s) => s.elevation);
   const relief = useVolumetric((s) => s.relief);
   const range = elevation.range ?? relief?.auto;
@@ -383,12 +400,14 @@ function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boo
   const swipe = useVolumetric((s) => s.swipe);
   const sectionOpen = useVolumetric((s) => s.section.mode !== 'idle');
   const anyShown = useVolumetric((s) => s.selected !== null || s.shown.length > 0);
+  const m1 = useHeightText();
+  // the survey heat map's colours, the project's units
+  const display = useKitDisplay();
+  const ramp = useMemo(() => changeLegend(display.heatmap), [display.heatmap]);
   // the swipe runs in the main view only; the section panel takes the legend's corner there
   if ((swipe || sectionOpen) && !view) return null;
   // a view left uncoloured shows the photo, whatever the switch says
   const surface = view?.refused ? 'photo' : chosen;
-  const R = CHANGE_RAMP;
-  const rgb = (c: readonly number[]) => `rgb(${c.join(',')})`;
   if (surface === 'photo' && !anyShown) {
     if (view?.refused)
       return (
@@ -412,14 +431,13 @@ function Legend({ view, hint = true }: { view?: { refused: boolean }; hint?: boo
           <b>{t('vol.legend.change')}</b>
           <div
             className="ramp"
-            style={{
-              background: `linear-gradient(90deg, ${rgb(R.cutFar)}, ${rgb(R.cutNear)} 45%, ${rgb(R.grey)} 45% 55%, ${rgb(R.fillNear)} 55%, ${rgb(R.fillFar)})`,
-            }}
+            data-testid="vol-change-ramp"
+            style={{ background: ramp.gradient }}
           />
-          <div className="ends">
-            <span>{t('vol.legend.cutEnd', { value: m1(-R.rangeM) })}</span>
+          <div className="ends" data-testid="vol-change-ends">
+            <span>{t('vol.legend.cutEnd', { value: m1(ramp.cutM) })}</span>
             <span>{t('vol.legend.deadband', { value: m1(deadband) })}</span>
-            <span>{t('vol.legend.fillEnd', { value: m1(R.rangeM) })}</span>
+            <span>{t('vol.legend.fillEnd', { value: m1(ramp.fillM) })}</span>
           </div>
         </>
       )}

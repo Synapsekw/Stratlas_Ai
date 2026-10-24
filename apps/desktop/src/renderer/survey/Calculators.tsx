@@ -28,6 +28,9 @@ export function Calculators({ m }: { m: SurveyMeasurement }) {
   const [basis, setBasis] = useState<Basis>('net');
   const [text, setText] = useState(typed === null ? '' : String(typed));
   if (m.family !== 'polygon') return null;
+  // material, swell and weighed tonnage are for volumes: an area shows them once it is compared
+  // to a date or a design (it then has a volume), never on its own
+  if (m.tool !== 'volume' && m.items.length === 0) return null;
   const units = effectiveUnits(settings.units, m.units);
   const material = pileMaterial(m, settings.materials, kit);
   const item = m.items.find((x) => x.id === itemId) ?? m.items[0];

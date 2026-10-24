@@ -46,8 +46,9 @@ import {
 } from '../compareStore';
 import type { ItemShare } from '../engineProtocol';
 import { updateMeasurement, useMeasure } from '../measureStore';
-import { usePrepareRunning } from '../surfaceStates';
+import { usePrepareRunning, usePreparingSoon, useSurfaceStates } from '../surfaceStates';
 import { setSeriesFailed, useSeriesFailed } from '../useInventory';
+import { emptyReason } from './pointHistory';
 import {
   BaseFields,
   BasePicker,
@@ -745,7 +746,8 @@ function Figures({
               ? t('vol.card.unchanged', { area: a(result.areaUnchangedM2) })
               : null,
           )}
-          {row('total', t('vol.card.total'), result.totalM3, a(result.areaM2))}
+          {/* fill plus cut: "Total" is a sum of nets everywhere else (BulkTotals) */}
+          {row('total', t('mcard.cutPlusFill'), result.totalM3, a(result.areaM2))}
           {result.uncoveredM2 > 0 && (
             <tr data-key="uncovered">
               <th scope="row">{t('mcard.notMeasured')}</th>
@@ -862,6 +864,11 @@ function OverTime({
   // tonnes in, the formatter's mass is SI kilograms (as Calculators and the CSV)
   const mass = (tonnes: number) =>
     formatQuantity(tonnes * 1000, 'mass', units, settings.precision, locale);
+  // a date without a figure says why: its surface still to come, no elevation, or not measured
+  const states = useSurfaceStates();
+  const soon = usePreparingSoon();
+  const gapReason = (capture: string) =>
+    t(emptyReason([states.get(capture) ?? { kind: 'ready' }], soon));
   return (
     <section className="vd-time" aria-label={t('vol.overTime')}>
       <h3 className="vd-sub">{t('vol.overTime')}</h3>
@@ -870,6 +877,7 @@ function OverTime({
         units={units}
         precision={settings.precision}
         locale={locale}
+        gapReason={gapReason}
       />
       <table className="vd-time-table" data-testid="vol-time-table">
         <caption className="sr-only">{t('vol.card.overTimeTable')}</caption>
@@ -890,7 +898,7 @@ function OverTime({
               aria-current={r.latest ? 'date' : undefined}
             >
               <th scope="row">{r.label}</th>
-              <td>{r.valueM3 !== null ? v(r.valueM3) : t('mcard.notMeasured')}</td>
+              <td>{r.valueM3 !== null ? v(r.valueM3) : gapReason(r.capture)}</td>
               <td>{r.changeM3 !== null ? signed(r.changeM3) : ''}</td>
               {tonnage && <td>{r.tonnes !== null ? mass(r.tonnes) : ''}</td>}
             </tr>

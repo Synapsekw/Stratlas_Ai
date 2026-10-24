@@ -84,7 +84,8 @@ export function MeasureCard(p: {
           {model.secondary}
         </p>
       )}
-      {slots.status && variant !== 'live' && <div className="mc-status">{slots.status}</div>}
+      {/* a figure never shows without its status: the live card too */}
+      {slots.status && <div className="mc-status">{slots.status}</div>}
       {detail && model.more.length > 0 && <More rows={model.more} />}
       {detail && slots.chips && <div className="mc-chips">{slots.chips}</div>}
       {(detail || report) && slots.chart && <div className="mc-chart">{slots.chart}</div>}
@@ -96,14 +97,29 @@ export function MeasureCard(p: {
 
 function Primary({ primary }: { primary: CardModel['primary'] }) {
   if (!primary) return null;
-  const { value, unit } = splitValue(primary.text);
+  const { figure, status } = splitStatus(primary.text);
+  const { value, unit } = splitValue(figure);
   return (
     <p className="mc-primary" data-testid="card-primary">
       <span className="mc-value">{value}</span>
       {unit && <span className="mc-unit">{unit}</span>}
       <span className="mc-what">{primary.label}</span>
+      {status && (
+        <span className="mc-figure-status" data-testid="card-status">
+          <Chip kind="status">{status}</Chip>
+        </span>
+      )}
     </p>
   );
+}
+
+/**
+ * A figure and its status ("3 482.0 m³ (Stale, recompute)": the readout's note on the headline,
+ * carried, stale, partial), so the status shows as a chip on every card, the live one too.
+ */
+function splitStatus(text: string): { figure: string; status: string | null } {
+  const at = /^(.*\d.*?)\s+\(([^()]+)\)$/.exec(text);
+  return at ? { figure: at[1] ?? text, status: at[2] ?? null } : { figure: text, status: null };
 }
 
 function Swatch({ colour, name }: { colour: string; name: string }) {

@@ -1,3 +1,4 @@
+import type { HeatmapStop, SurveyPrecision, SurveySettings, SurveyUnits } from '@aio/schema';
 import type { DsmGrid } from './kitdata';
 
 export type RGB = [number, number, number];
@@ -77,21 +78,135 @@ const mix = (a: RGB, b: RGB, t: number): RGB => [
   Math.round(a[2] + (b[2] - a[2]) * t),
 ];
 
-/** The kit's change ramp: -3 m cut (dark red) to +3 m fill (dark blue), grey in the deadband. */
-export const CHANGE_RAMP = {
-  rangeM: 3,
-  grey: hex('#8a8a8a'),
-  cutNear: hex('#f0997b'),
-  cutFar: hex('#99220f'),
-  fillNear: hex('#85b7eb'),
-  fillFar: hex('#0c447c'),
+/**
+ * The survey heat map's stops, as `@aio/survey`'s `DEFAULT_STOPS` (a test keeps them equal): this
+ * module stays free of runtime imports, since the volumes worker loads it.
+ */
+export const KIT_DEFAULT_STOPS: readonly HeatmapStop[] = [
+  { value: -1, color: '#b2182b' },
+  { value: -0.1, color: '#f4a582' },
+  { value: 0.1, color: '#92c5de' },
+  { value: 1, color: '#2166ac' },
+];
+
+/** A change ramp: the survey heat map's stops (metres, `#rrggbb`), smooth or stepped, inverted. */
+export interface ChangeStyle {
+  stops: readonly HeatmapStop[];
+  stepped?: boolean;
+  inverted?: boolean;
+}
+
+/**
+ * What the 3D layer writes heights and colours changes in: the project's units, precision and
+ * number locale, and its survey heat map. The host feeds it (`setKitDisplay`); until then, the
+ * app's defaults (metres, the default heat map).
+ */
+export interface KitDisplay {
+  units: SurveyUnits;
+  precision: SurveyPrecision;
+  locale?: SurveySettings['locale'];
+  heatmap: ChangeStyle;
+}
+
+const METRIC: SurveyUnits = {
+  distance: 'm',
+  area: 'm2',
+  volume: 'm3',
+  density: 't/m3',
+  mass: 't',
+  grade: 'percent',
+};
+const DISPLAY_DEFAULT: KitDisplay = {
+  units: METRIC,
+  precision: { coordinate: 3, distance: 2, area: 1, volume: 1, grade: 1 },
+  heatmap: { stops: KIT_DEFAULT_STOPS, stepped: false },
+};
+let display = DISPLAY_DEFAULT;
+const listeners = new Set<() => void>();
+
+/** The 3D layer's display settings, as an external store (`useSyncExternalStore`). */
+export const kitDisplay = {
+  get: (): KitDisplay => display,
+  subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
 };
 
-export function changeColour(d: number, deadband: number): RGB {
-  const R = CHANGE_RAMP;
-  if (Math.abs(d) <= deadband) return [...R.grey];
-  const t = Math.min(1, (Math.abs(d) - deadband) / (R.rangeM - deadband));
-  return d < 0 ? mix(R.cutNear, R.cutFar, t) : mix(R.fillNear, R.fillFar, t);
+/** Give the 3D layer the project's units and heat map; null puts the defaults back. */
+export function setKitDisplay(patch: Partial<KitDisplay> | null): void {
+  display = patch === null ? DISPLAY_DEFAULT : { ...display, ...patch };
+  for (const l of listeners) l();
+}
+
+/** The neutral grey of a change inside the kit's deadband. */
+export const CHANGE_GREY: RGB = [138, 138, 138];
+
+/** The stops in drawing order, their colours swapped end for end when inverted (as the survey). */
+function drawnStops(style: ChangeStyle): HeatmapStop[] {
+  const s = [...style.stops].sort((a, b) => a.value - b.value);
+  const colours = s.map((x) => x.color);
+  if (style.inverted) colours.reverse();
+  return s.map((x, i) => ({ value: x.value, color: colours[i] ?? x.color }));
+}
+
+/**
+ * The colour of a height change `d` (metres): grey inside the kit's `deadband`, else the survey
+ * heat map's colour (`style`, by default the host's), smooth or stepped as the survey draws it. A
+ * change the stops leave clear (between the deadband and the innermost stops) takes the nearest
+ * stop's colour on its side, so nothing outside the deadband is ever grey.
+ */
+export function changeColour(
+  d: number,
+  deadband: number,
+  style: ChangeStyle = display.heatmap,
+): RGB {
+  if (Math.abs(d) <= deadband) return [...CHANGE_GREY];
+  const s = drawnStops(style);
+  const first = s[0];
+  const last = s.at(-1);
+  if (!first || !last) return [...CHANGE_GREY];
+  if (d <= first.value) return hex(first.color);
+  if (d >= last.value) return hex(last.color);
+  let k = 0;
+  while (k < s.length - 2 && d > (s[k + 1]?.value ?? 0)) k++;
+  const a = s[k] ?? first;
+  const b = s[k + 1] ?? last;
+  // inside the stops' own band (between the innermost negative and positive stops): the near
+  // colour of the change's side
+  if (a.value < 0 && b.value > 0) return hex(d < 0 ? a.color : b.color);
+  // stepped: the band takes the colour of the stop nearer zero on its side of zero
+  if (style.stepped)
+    return hex(d >= 0 ? (d >= b.value ? b.color : a.color) : d <= a.value ? a.color : b.color);
+  const t = b.value === a.value ? 0 : (d - a.value) / (b.value - a.value);
+  return mix(hex(a.color), hex(b.color), t);
+}
+
+/** The change legend: its gradient (stops, grey across the deadband) and the far ends, metres. */
+export function changeLegend(style: ChangeStyle = display.heatmap): {
+  gradient: string;
+  stops: HeatmapStop[];
+  cutM: number;
+  fillM: number;
+} {
+  const s = drawnStops(style);
+  const cutM = s[0]?.value ?? 0;
+  const fillM = s.at(-1)?.value ?? 0;
+  const span = fillM - cutM || 1;
+  const at = (v: number) => `${String(Math.round(((v - cutM) / span) * 1000) / 10)}%`;
+  const grey = `rgb(${CHANGE_GREY.join(',')})`;
+  const parts: string[] = [];
+  for (const x of s) {
+    // the grey band sits between the last negative stop and the first positive one
+    if (x.value > 0 && !parts.some((p) => p.startsWith(grey))) {
+      const lastNeg = s.findLast((y) => y.value < 0);
+      if (lastNeg) parts.push(`${grey} ${at(lastNeg.value)} ${at(x.value)}`);
+    }
+    parts.push(`${x.color} ${at(x.value)}`);
+  }
+  return { gradient: `linear-gradient(90deg, ${parts.join(', ')})`, stops: s, cutM, fillM };
 }
 
 /** Colour ramps for the elevation surface, low to high. */

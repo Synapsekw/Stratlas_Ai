@@ -34,7 +34,13 @@ export type TimeChartData =
       kind: 'elevation';
       rows: readonly { capture: string; date: string; label: string; z: number | null }[];
     }
-  | { kind: 'stack'; rows: readonly StackRow[]; names: ReadonlyMap<string, string> };
+  | {
+      kind: 'stack';
+      rows: readonly StackRow[];
+      names: ReadonlyMap<string, string>;
+      /** Each part's colour (its material's, `materialColour`); a part without one takes a shade. */
+      colours?: ReadonlyMap<string, string>;
+    };
 
 /**
  * A level drawn across an elevation chart: a design's height at the point (dashed, as designs
@@ -59,7 +65,7 @@ export interface TimeChartProps {
   width?: number; // width given → no ResizeObserver (static render for the report)
   height?: number;
   interactive?: boolean; // false: no crosshair, no tips (report)
-  /** Why a date has no value (its gap's tip and the readout); absent: "No survey data". */
+  /** Why a date has no value (its gap's tip and the readout); absent: "Not measured on this date". */
   gapReason?: (capture: string) => string;
   testId?: string;
   /** Volume only: one bar per date from zero, its value above it and the change in % (pile History). */
@@ -79,7 +85,16 @@ export interface TimeValueOf {
   format(v: number): string;
 }
 
-const PAD = { left: 60, right: 14, top: 22, bottom: 40 };
+/** The frame around the plot; the left grows to the widest tick label (`leftPad`). */
+const PAD = { left: 40, right: 14, top: 22, bottom: 40 };
+/** One character of the axis font (11 px monospace), to size the padding and space the labels. */
+const CHAR_W = 6.6;
+const TICK_GAP = 6; // between a tick label and the plot
+const TITLE_X = 4; // the value axis title, above the axis, from the frame's left
+/** Date labels are never closer than this, centre to centre, nor closer than their own width. */
+const MIN_LABEL_GAP = 56;
+const LABEL_SPACE = 8;
+const textW = (s: string) => s.length * CHAR_W;
 const DEFAULT_WIDTH = 600;
 const DEFAULT_HEIGHT = 220;
 /** Space kept before the first and after the last date, so the end bars stay inside the plot. */
@@ -95,7 +110,6 @@ const STACK_MIN_SHARE = 40;
 const STACK_MIN_STEP = 12;
 const STACK_SHADES = 6; // beyond this the shades repeat; the legend and hover carry the names
 const READOUT_GAP = 12;
-const LABEL_W = 64;
 
 /** One column of the chart, whatever the kind. */
 interface Col {
@@ -184,8 +198,9 @@ export function TimeChart(p: TimeChartProps): ReactElement {
     if (!el || typeof ResizeObserver === 'undefined') return;
     const measure = () => {
       const r = el.getBoundingClientRect();
+      // floor, never round up: an svg a fraction wider than its box scrolls it sideways
       if (r.width > 0 && r.height > 0)
-        setMeasured({ w: Math.round(r.width), h: Math.round(r.height) });
+        setMeasured({ w: Math.floor(r.width), h: Math.floor(r.height) });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -217,29 +232,9 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const bare = (v: number) =>
     valueOf ? valueOf.format(v) : formatNumber(v / factor, p.precision.volume, locale);
 
-  const plotW = Math.max(1, w - PAD.left - PAD.right);
   const plotH = Math.max(1, h - PAD.top - PAD.bottom);
-  const left = PAD.left;
-  const right = w - PAD.right;
   const top = PAD.top;
   const bottom = h - PAD.bottom;
-
-  // x by date
-  const t0 = cols[0]?.t ?? 0;
-  const t1 = cols.at(-1)?.t ?? 0;
-  const span = t1 - t0;
-  const inner = Math.max(1, plotW - 2 * EDGE);
-  const x = (time: number) => left + (span > 0 ? EDGE + ((time - t0) / span) * inner : plotW / 2);
-  const gapPx = useMemo(() => {
-    let min = Infinity;
-    for (let i = 1; i < cols.length; i++) {
-      const d = (cols[i]?.t ?? 0) - (cols[i - 1]?.t ?? 0);
-      if (d > 0 && d < min) min = d;
-    }
-    return Number.isFinite(min) && span > 0 ? (min / span) * inner : null;
-  }, [cols, span, inner]);
-  const barW = Math.max(MIN_BAR, Math.min(MAX_BAR, (gapPx ?? MAX_BAR) * 0.6));
-  const columnW = Math.max(MIN_BAR, Math.min(MAX_COLUMN, (gapPx ?? MAX_COLUMN) * 0.35));
 
   // y by value: the stack grows from zero; the lines span their own range
   const refs = useMemo(
@@ -265,20 +260,49 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const yTicks = ticks(yLo, yHi, factor, yStep);
   const tick = (v: number) => formatNumber(v / factor, stepDecimals(yStep), locale);
 
-  // date labels, left to right, skipping any that would overlap the last one drawn
+  // the left padding fits the widest tick label, so no number runs off the frame
+  const left = Math.max(
+    PAD.left,
+    Math.ceil(TITLE_X + TICK_GAP + Math.max(0, ...yTicks.map((v) => textW(tick(v))))),
+  );
+  const plotW = Math.max(1, w - left - PAD.right);
+  const right = w - PAD.right;
+
+  // x by date
+  const t0 = cols[0]?.t ?? 0;
+  const t1 = cols.at(-1)?.t ?? 0;
+  const span = t1 - t0;
+  const inner = Math.max(1, plotW - 2 * EDGE);
+  const x = (time: number) => left + (span > 0 ? EDGE + ((time - t0) / span) * inner : plotW / 2);
+  const gapPx = useMemo(() => {
+    let min = Infinity;
+    for (let i = 1; i < cols.length; i++) {
+      const d = (cols[i]?.t ?? 0) - (cols[i - 1]?.t ?? 0);
+      if (d > 0 && d < min) min = d;
+    }
+    return Number.isFinite(min) && span > 0 ? (min / span) * inner : null;
+  }, [cols, span, inner]);
+  const barW = Math.max(MIN_BAR, Math.min(MAX_BAR, (gapPx ?? MAX_BAR) * 0.6));
+  const columnW = Math.max(MIN_BAR, Math.min(MAX_COLUMN, (gapPx ?? MAX_COLUMN) * 0.35));
+
+  // date labels, left to right, at least their own width (and 56 px) apart, the end ones pulled
+  // inside the frame; a label that would come too close to the last one drawn is skipped
   const dateLabels = useMemo(() => {
-    const keep: Col[] = [];
+    const widest = Math.max(0, ...cols.map((c) => textW(c.label)));
+    const gap = Math.max(MIN_LABEL_GAP, widest + LABEL_SPACE);
+    const keep: { c: Col; lx: number }[] = [];
     let last = -Infinity;
     for (const c of cols) {
-      const cx = x(c.t);
-      if (cx - last >= LABEL_W) {
-        keep.push(c);
-        last = cx;
+      const half = textW(c.label) / 2;
+      const lx = Math.min(w - half, Math.max(half, x(c.t)));
+      if (lx - last >= gap) {
+        keep.push({ c, lx });
+        last = lx;
       }
     }
     return keep;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- x is derived from cols, w and span
-  }, [cols, w, span]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- x is derived from cols, w, left and span
+  }, [cols, w, left, span]);
 
   const stackIds = useMemo(() => {
     const ids: string[] = [];
@@ -289,6 +313,8 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   }, [data]);
   const nameOf = (id: string) => (data.kind === 'stack' ? data.names.get(id) : undefined) ?? id;
   const partFill = (id: string) => {
+    const own = data.kind === 'stack' ? data.colours?.get(id) : undefined;
+    if (own) return own;
     const n = Math.min(stackIds.length, STACK_SHADES);
     const i = stackIds.indexOf(id) % STACK_SHADES;
     const step = Math.max(STACK_MIN_STEP, (STACK_MAX_SHARE - STACK_MIN_SHARE) / Math.max(1, n - 1));
@@ -300,7 +326,7 @@ export function TimeChart(p: TimeChartProps): ReactElement {
   const [at, setAt] = useState<number | null>(null);
   const hovering = useRef(false);
   const live = interactive && at !== null ? (cols[at] ?? null) : null;
-  const gapOf = (capture: string): string => p.gapReason?.(capture) ?? t('mcard.noData');
+  const gapOf = (capture: string): string => p.gapReason?.(capture) ?? t('mcard.notMeasured');
   const nearest = (clientX: number, svg: SVGSVGElement) => {
     const px = clientX - svg.getBoundingClientRect().left;
     let best = -1;
@@ -490,20 +516,21 @@ export function TimeChart(p: TimeChartProps): ReactElement {
             {yTicks.map((v) => (
               <g key={`y${String(v)}`}>
                 <line x1={left} x2={right} y1={y(v)} y2={y(v)} />
-                <text x={left - 6} y={y(v)} textAnchor="end" dominantBaseline="middle">
+                <text x={left - TICK_GAP} y={y(v)} textAnchor="end" dominantBaseline="middle">
                   {tick(v)}
                 </text>
               </g>
             ))}
           </g>
           <g className="pc-grid" data-axis="t">
-            {dateLabels.map((c) => (
-              <text key={c.capture} x={x(c.t)} y={bottom + 14} textAnchor="middle">
+            {dateLabels.map(({ c, lx }) => (
+              <text key={c.capture} x={lx} y={bottom + 14} textAnchor="middle">
                 {c.label}
               </text>
             ))}
           </g>
-          <text className="pc-axis-title" x={left - 6} y={top - 9} textAnchor="end">
+          {/* above the axis, from the frame's left: a long title never runs off the chart */}
+          <text className="pc-axis-title" x={TITLE_X} y={top - 9} textAnchor="start">
             {yTitle}
           </text>
           <text className="pc-axis-title" x={left} y={h - 6}>

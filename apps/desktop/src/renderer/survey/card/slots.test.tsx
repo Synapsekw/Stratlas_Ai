@@ -496,6 +496,30 @@ describe('an area on the card', () => {
     });
     expect(measureStore.getState().file.measurements[0]?.items).toHaveLength(1);
   });
+
+  it('an area card without volume items shows no material, swell or weighed tonnage', async () => {
+    const m = of('area');
+    measureStore.setState({
+      readOnly: false,
+      file: { ...emptyMeasurements(), measurements: [m] },
+    });
+    await render(slotsFor(m, 'detail').detail);
+    expect(host.querySelector('[data-testid="survey-calculators"]')).toBeNull();
+    expect(host.querySelector('[data-testid="survey-material"]')).toBeNull();
+  });
+
+  it('an area compared to a date is a volume: its material and calculators show', async () => {
+    const m: SurveyMeasurement = {
+      ...of('area'),
+      items: [{ id: 'a', from: { kind: 'smart' }, to: { kind: 'current' }, useDeadband: false }],
+    };
+    measureStore.setState({
+      readOnly: false,
+      file: { ...emptyMeasurements(), measurements: [m] },
+    });
+    await render(slotsFor(m, 'detail').detail);
+    expect(host.querySelector('[data-testid="survey-calculators"]')).not.toBeNull();
+  });
 });
 
 describe('every survey date with its surface state', () => {

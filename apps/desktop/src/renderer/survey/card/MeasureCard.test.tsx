@@ -82,6 +82,34 @@ describe('MeasureCard', () => {
       expect(q(gone), gone).toBeNull();
   });
 
+  it('a live card shows the status chip of a stale or carried figure', () => {
+    const stale: CardModel = {
+      ...MODEL,
+      primary: { label: 'Net', text: '3 482.0 m³ (Stale, recompute)' },
+    };
+    mount(<MeasureCard model={stale} variant="live" />);
+    expect(q('card-primary')?.querySelector('.mc-value')?.textContent).toBe('3 482.0');
+    expect(q('card-primary')?.querySelector('.mc-unit')?.textContent).toBe('m³');
+    expect(q('card-status')?.textContent).toBe('Stale, recompute');
+    act(() => root?.unmount());
+    host.remove();
+    // the caller's status line shows on a live card too
+    mount(
+      <MeasureCard
+        model={MODEL}
+        variant="live"
+        slots={{ status: <span data-testid="slot-status">From an earlier version</span> }}
+      />,
+    );
+    expect(q('slot-status')).not.toBeNull();
+  });
+
+  it('a figure without a status has no status chip', () => {
+    mount(<MeasureCard model={MODEL} variant="live" />);
+    expect(q('card-status')).toBeNull();
+    expect(q('card-primary')?.querySelector('.mc-unit')?.textContent).toBe('m');
+  });
+
   it('a live card is no landmark (it sits in a pile row, beside its detail card of one name)', () => {
     mount(<MeasureCard model={MODEL} variant="live" />);
     const live = q('measure-card');

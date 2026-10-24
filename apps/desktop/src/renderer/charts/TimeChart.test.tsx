@@ -119,7 +119,9 @@ describe('TimeChart', () => {
       ],
     });
     expect(dot(h, 'b')).toBeNull();
-    expect(h.querySelector('[data-gap="b"]')?.textContent).toContain('No survey data');
+    // without a reason from outside the gap says what it knows, never "No survey data"
+    expect(h.querySelector('[data-gap="b"]')?.textContent).toContain('Not measured on this date');
+    expect(h.textContent).not.toContain('No survey data');
   });
 
   it('TimeChart gap tip uses gapReason', () => {
@@ -363,7 +365,7 @@ describe('TimeChart', () => {
     expect(live()).toContain('Partly outside');
     expect(readout()).toContain('Partly outside');
     press('ArrowLeft');
-    expect(live()).toContain('No survey data');
+    expect(live()).toContain('Not measured on this date');
     press('ArrowLeft');
     expect(live()).toContain('Stale, recompute');
     expect(readout()).toContain('Stale, recompute');
@@ -391,7 +393,10 @@ describe('TimeChart', () => {
     const h = render({ kind: 'volume', rows: [row('a', '2026-09-01', 100, { latest: true })] });
     expect(h.querySelectorAll('circle[data-dot]').length).toBe(1);
     expect(h.querySelectorAll('polyline.tc-line').length).toBe(0);
-    expect(Number(dot(h, 'a')?.getAttribute('data-cx'))).toBeCloseTo(60 + (600 - 60 - 14) / 2, 0);
+    // the plot's left follows the widest tick label: centred between the grid lines' ends
+    const grid = h.querySelector('[data-axis="z"] line');
+    const mid = (Number(grid?.getAttribute('x1')) + Number(grid?.getAttribute('x2'))) / 2;
+    expect(Number(dot(h, 'a')?.getAttribute('data-cx'))).toBeCloseTo(mid, 0);
   });
 });
 
@@ -439,5 +444,104 @@ describe('TimeChart bars (the pile History)', () => {
     expect(h.textContent).toContain('Tonnes (t)');
     expect(h.querySelector('[data-bar-value="a"]')?.textContent).toBe('23499');
     expect(h.querySelector('[data-bar-value="b"]')?.textContent).toBe('18206');
+  });
+});
+
+describe('TimeChart fits its frame (folded fixes)', () => {
+  const CHAR = 6.6; // the axis font: 11 px monospace
+  function renderSized(data: TimeChartData, width: number, yTitle?: string) {
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <TimeChart
+          data={data}
+          units={METRIC}
+          precision={PRECISION}
+          width={width}
+          height={220}
+          {...(yTitle ? { yTitle } : {})}
+        />,
+      ),
+    );
+    return host;
+  }
+
+  it('the y title stays inside the chart', () => {
+    const h = renderSized(
+      {
+        kind: 'volume',
+        rows: [row('a', '2026-09-01', 1_234_567), row('b', '2026-09-20', 1_300_000)],
+      },
+      360,
+      'Volume of every pile on the site (m³)',
+    );
+    const title = h.querySelector('.pc-axis-title');
+    expect(title?.textContent).toBe('Volume of every pile on the site (m³)');
+    expect(Number(title?.getAttribute('x'))).toBeGreaterThanOrEqual(0);
+    expect(title?.getAttribute('text-anchor')).toBe('start');
+    // the padding fits the widest tick label: none starts left of the frame
+    const ticks = [...h.querySelectorAll('[data-axis="z"] text')];
+    expect(ticks.length).toBeGreaterThan(0);
+    for (const tk of ticks) {
+      const x = Number(tk.getAttribute('x'));
+      expect(x - tk.textContent.length * CHAR).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('x labels are at least 56 px apart and never overlap', () => {
+    const dates = Array.from(
+      { length: 14 },
+      (_, i) => `2020-12-${String(18 + i).padStart(2, '0')}`,
+    );
+    const rows = dates.map((d, i) =>
+      row(`c${String(i)}`, d, 100 + i, { label: `${d.slice(8)} Dec 2020` }),
+    );
+    const width = 420;
+    const h = renderSized({ kind: 'volume', rows }, width);
+    const labels = [...h.querySelectorAll('[data-axis="t"] text')];
+    expect(labels.length).toBeGreaterThan(1);
+    const xs = labels.map((l) => Number(l.getAttribute('x')));
+    for (let i = 1; i < xs.length; i++) {
+      const gap = (xs[i] ?? 0) - (xs[i - 1] ?? 0);
+      expect(gap).toBeGreaterThanOrEqual(56);
+      expect(gap).toBeGreaterThanOrEqual('31 Dec 2020'.length * CHAR);
+    }
+    // the end labels stay inside the frame
+    const half = ('31 Dec 2020'.length * CHAR) / 2;
+    expect((xs[0] ?? 0) - half).toBeGreaterThanOrEqual(0);
+    expect((xs.at(-1) ?? 0) + half).toBeLessThanOrEqual(width);
+  });
+
+  it('stack parts take material colours', () => {
+    const rows: StackRow[] = [
+      {
+        capture: 'a',
+        date: '2026-09-01',
+        label: '01 Sep',
+        totalM3: 300,
+        parts: [
+          { id: 'p1', valueM3: 100 },
+          { id: 'p2', valueM3: 200 },
+        ],
+        missing: [],
+      },
+    ];
+    const colours = new Map([
+      ['p1', 'var(--mat-1)'],
+      ['p2', '#aa5500'],
+    ]);
+    const names = new Map([
+      ['p1', 'North'],
+      ['p2', 'East'],
+    ]);
+    const h = renderSized({ kind: 'stack', rows, names, colours }, 600);
+    expect(h.querySelector('[data-part="p1"]')?.getAttribute('fill')).toBe('var(--mat-1)');
+    expect(h.querySelector('[data-part="p2"]')?.getAttribute('fill')).toBe('#aa5500');
+    const keys = [...h.querySelectorAll('[data-testid="time-legend"] i')].map(
+      (i) => (i as HTMLElement).style.background,
+    );
+    expect(keys).toEqual(['var(--mat-1)', 'rgb(170, 85, 0)']);
   });
 });

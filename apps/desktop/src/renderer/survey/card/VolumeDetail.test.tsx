@@ -21,6 +21,10 @@ const s = vi.hoisted(() => ({
   measure: {} as { settings: SurveySettings; readOnly: boolean; file: { measurements: unknown[] } },
   spread: null as { pct: number; nets: never[] } | null | 'computing',
   prepareRunning: false,
+  states: new Map<
+    string,
+    { kind: 'ready' } | { kind: 'preparing'; pct: number } | { kind: 'none' }
+  >(),
 }));
 const calls = vi.hoisted(() => ({
   compute: vi.fn(() => Promise.resolve(null)),
@@ -46,7 +50,11 @@ vi.mock('../measureStore', () => ({
   useMeasure: (sel: (x: unknown) => unknown) => sel(s.measure),
   updateMeasurement: calls.updateMeasurement,
 }));
-vi.mock('../surfaceStates', () => ({ usePrepareRunning: () => s.prepareRunning }));
+vi.mock('../surfaceStates', () => ({
+  usePrepareRunning: () => s.prepareRunning,
+  useSurfaceStates: () => s.states,
+  usePreparingSoon: () => false,
+}));
 vi.mock('../BaseEditor', () => ({ BaseEditor: () => <div data-testid="base-editor" /> }));
 vi.mock('@aio/annotate', () => ({ useAnnotateReadOnly: () => false }));
 vi.mock('@aio/workspace', () => ({
@@ -131,6 +139,7 @@ beforeEach(() => {
   };
   s.measure = { settings: settings(), readOnly: false, file: { measurements: [] } };
   s.spread = null;
+  s.states = new Map();
   for (const f of Object.values(calls)) f.mockClear();
 });
 
@@ -192,7 +201,7 @@ describe('VolumeDetail', () => {
     const m = pile({ results: [carried] });
     show(m);
     expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
-      'From an earlier version (kit, Triangulated)',
+      'From an earlier version (kit, Triangulated toe)',
     );
     expect(buttonNamed('Recompute with the standard base')).toBeDefined();
     // no cut/fill area split and no method line for a carried figure
@@ -206,7 +215,7 @@ describe('VolumeDetail', () => {
     s.compare.surfaces = [];
     show(m);
     expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
-      'From an earlier version (kit, Triangulated)',
+      'From an earlier version (kit, Triangulated toe)',
     );
     expect(buttonNamed('Recompute with the standard base')).toBeUndefined();
 
@@ -312,6 +321,26 @@ describe('VolumeDetail', () => {
     const sub = host.querySelector('.vd-sub');
     expect(sub?.textContent).toBe('Volume over time');
     expect(sub?.tagName).toBe('H3');
+  });
+
+  it('a date without a figure says why, never "No survey data"', () => {
+    s.compare.captures = [
+      { id: 'c0', label: '05 Aug', date: '2026-08-05' },
+      { id: 'c1', label: '05 Sep', date: '2026-09-05' },
+      { id: 'c2', label: '05 Oct', date: '2026-10-05' },
+    ];
+    s.states = new Map([
+      ['c0', { kind: 'preparing', pct: 40 }],
+      ['c1', { kind: 'ready' }],
+      ['c2', { kind: 'ready' }],
+    ]);
+    const series = [result({ toCapture: 'c2', netM3: 3482, totalM3: 3482, fingerprint: 'f2' })];
+    show(pile({ series }));
+    expect(host.querySelector('[data-gap="c0"]')?.textContent).toBe('Surface preparing');
+    expect(host.querySelector('[data-gap="c1"]')?.textContent).toBe('Not measured on this date');
+    const rows = [...host.querySelectorAll('[data-testid="vol-time-table"] tbody tr')];
+    expect(rows[0]?.querySelector('td')?.textContent).toBe('Surface preparing');
+    expect(host.textContent).not.toContain('No survey data');
   });
 
   it('over-time table shows change and tonnage', () => {
@@ -575,7 +604,7 @@ describe('VolumeDetail', () => {
     s.compare.status = 'ready';
     act(() => root?.render(<VolumeDetail m={m} />));
     expect(byTestId('survey-cmp-status')[0]?.textContent).toBe(
-      'From an earlier version (kit, Triangulated)',
+      'From an earlier version (kit, Triangulated toe)',
     );
 
     s.compare.error = 'The surfaces could not be prepared.';
@@ -656,6 +685,15 @@ describe('VolumeDetail', () => {
       }),
     );
     expect(byTestId('base-editor')).toHaveLength(1);
+  });
+
+  it('the card row reads "Cut + fill", never "Total" (a total is a sum of nets)', () => {
+    show(pile({ results: [result({ cutM3: 120, fillM3: 3602, netM3: 3482, totalM3: 3722 })] }));
+    const row = host.querySelector('[data-testid="survey-cmp-result"] tr[data-key="total"]');
+    expect(row?.querySelector('th')?.textContent).toBe('Cut + fill');
+    expect(row?.querySelector('td')?.textContent).toBe(v(3722));
+    const heads = [...host.querySelectorAll('[data-testid="survey-cmp-result"] th')];
+    expect(heads.map((x) => x.textContent)).not.toContain('Total');
   });
 
   it('a stale stored figure still owns its date: one number, marked stale', () => {
