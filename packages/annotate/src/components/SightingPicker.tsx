@@ -1,4 +1,4 @@
-import type { Issue, Sighting } from '@aio/schema';
+import type { Sighting } from '@aio/schema';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -8,8 +8,7 @@ import {
   issueEditor,
   useAnnotateUi,
 } from '../runtime';
-import { ClassComposer, SeverityList } from './ClassComposer';
-import { useNewClass, useNewSeverity } from './NewClassRow';
+import { ClassSeverityForm } from './ClassSeverityForm';
 import { AnnotateStyles } from './styles';
 import { useTaxonomy } from './common';
 
@@ -30,14 +29,8 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
   const selectedIssue = useWorkspace((s) =>
     selection?.kind === 'issue' ? s.issues.find((i) => i.id === selection.id) : undefined,
   );
-  const { classes, models } = useTaxonomy();
-  const { create, disabledReason } = useNewClass();
-  const { create: createModel } = useNewSeverity();
-  const [classId, setClassId] = useState<string | null>(null);
-  const [severity, setSeverity] = useState<Issue['severity'] | null>(null);
-  const [query, setQuery] = useState('');
-  const [composing, setComposing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { classes } = useTaxonomy();
+  const [attachError, setAttachError] = useState<string | null>(null);
   const open = pending !== null && kinds.includes(pending.sighting.on);
   const box = useRef<HTMLDivElement | null>(null);
 
@@ -63,85 +56,21 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
     };
   }, [open]);
 
-  // Reset the form for each new shape (derived during render, not in an effect).
+  // A fresh form for each new shape (derived during render, not in an effect).
   const [pendingSeen, setPendingSeen] = useState(pending);
+  const [shapeSeq, setShapeSeq] = useState(0);
   if (pendingSeen !== pending) {
     setPendingSeen(pending);
-    setClassId(lastClassId ?? classes[0]?.id ?? null);
-    setSeverity(lastSeverity);
-    setQuery('');
-    setComposing(false);
-    setError(null);
+    setShapeSeq((n) => n + 1);
+    setAttachError(null);
   }
 
-  const cls = classes.find((c) => c.id === classId);
-  const model = models.find((m) => m.id === cls?.severityModel) ?? null;
-  const levels: Issue['severity'][] = [
-    ...(model?.levels.map((l) => l.value) ?? []),
-    ...(model?.uncertain ? (['uncertain'] as const) : []),
-  ];
-  const q = query.trim().toLowerCase();
-  const shown = q ? classes.filter((c) => c.label.toLowerCase().includes(q)) : classes;
-
-  const pickClass = (id: string) => {
-    setClassId(id);
-    const next = classes.find((c) => c.id === id);
-    const nextModel = models.find((m) => m.id === next?.severityModel);
-    const values = new Set<Issue['severity']>([
-      ...(nextModel?.levels.map((l) => l.value) ?? []),
-      ...(nextModel?.uncertain ? (['uncertain'] as const) : []),
-    ]);
-    if (severity !== null && !values.has(severity)) setSeverity(null);
-    setError(null);
-  };
-
-  const confirm = () => {
-    if (!classId || severity === null) {
-      setError('Pick a class and a severity');
-      return;
-    }
-    const e = confirmSighting(classId, severity);
-    setError(e);
-  };
   const attach = () => {
     if (!pending || !selectedIssue) return;
     const r = issueEditor.addSighting(selectedIssue.id, pending.sighting);
     if (r.ok) annotateUi.setState({ pending: null });
-    else setError(r.error);
+    else setAttachError(r.error);
   };
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const typing =
-        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-      if (typing) return;
-      const k = e.key.toLowerCase();
-      if (composing) {
-        if (k === 'escape') setComposing(false);
-        else return;
-      } else if (k === 'escape') {
-        cancelSighting();
-      } else if (k === 'enter') {
-        confirm();
-      } else if (k === 'a' && selectedIssue) {
-        attach();
-      } else {
-        const hit = classes.find((c) => c.hotkey?.toLowerCase() === k);
-        if (hit) pickClass(hit.id);
-        else if (k === 'u' && model?.uncertain) setSeverity('uncertain');
-        else if (/^\d$/.test(k) && levels.includes(Number(k))) setSeverity(Number(k));
-        else return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('keydown', onKey, true);
-    };
-  });
 
   if (!open) return null;
   const at = pending.at ?? { x: window.innerWidth / 2 - 320, y: window.innerHeight / 5 };
@@ -166,127 +95,32 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
           Pick a class, then a severity. A letter picks the class, a digit picks the grade.
         </span>
       </div>
-      {composing && create ? (
-        <ClassComposer
-          classes={classes}
-          models={models}
-          onCreateClass={create}
-          onCreateModel={createModel}
-          onCancel={() => {
-            setComposing(false);
-            setError(null);
-          }}
-          onCreated={(created) => {
-            setClassId(created.id);
-            setSeverity(null);
-            setQuery('');
-            setComposing(false);
-            setError(null);
-          }}
-        />
-      ) : (
-        <>
-          <div className="ann-pop-body">
-            <div className="ann-pop-col">
-              <input
-                className="ann-input ann-pop-search"
-                aria-label="Find a class"
-                placeholder="Find a class"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                }}
-              />
-              <div className="classes" role="listbox" aria-label="Class">
-                {classes.length === 0 && (
-                  <div className="ann-faint ann-pop-pad">
-                    {create && !disabledReason
-                      ? 'No classes yet. Create one below.'
-                      : 'This project has no class catalogue yet.'}
-                  </div>
-                )}
-                {classes.length > 0 && shown.length === 0 && (
-                  <div className="ann-faint ann-pop-pad">No class matches.</div>
-                )}
-                {shown.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="cls"
-                    aria-pressed={c.id === classId}
-                    onClick={() => {
-                      pickClass(c.id);
-                    }}
-                  >
-                    <span className="ann-dot" style={{ ['--sev' as string]: c.color }} />
-                    <span className="cls-text">
-                      <span className="cls-name">{c.label}</span>
-                      {models.length > 1 && (
-                        <span className="cls-meta">
-                          {models.find((m) => m.id === c.severityModel)?.name ?? ''}
-                        </span>
-                      )}
-                    </span>
-                    {c.hotkey && <kbd>{c.hotkey}</kbd>}
-                  </button>
-                ))}
-              </div>
-              {create && (
-                <button
-                  type="button"
-                  className="ann-btn ghost new-class"
-                  data-testid="picker-new-class"
-                  disabled={disabledReason !== null}
-                  title={disabledReason ?? 'Create a class, and a severity scale if you need one'}
-                  onClick={() => {
-                    setComposing(true);
-                    setError(null);
-                  }}
-                >
-                  New class
-                </button>
-              )}
-            </div>
-            <div className="ann-pop-col">
-              <div className="ann-pop-col-h">
-                <b>{cls?.label ?? 'Severity'}</b>
-                {model && <span className="ann-faint">{model.name}</span>}
-              </div>
-              {cls ? (
-                <SeverityList
-                  model={model}
-                  severity={severity}
-                  onPick={(v) => {
-                    setSeverity(v);
-                    setError(null);
-                  }}
-                />
-              ) : (
-                <div className="ann-faint ann-pop-pad">Pick a class to see its grades.</div>
-              )}
-            </div>
-          </div>
-          {error && <div className="ann-error ann-pop-error">{error}</div>}
-          <div className="ann-pop-foot">
-            <button type="button" className="ann-btn ghost" onClick={cancelSighting}>
-              Cancel
+      <ClassSeverityForm
+        key={shapeSeq}
+        initialClassId={lastClassId ?? classes[0]?.id ?? null}
+        initialSeverity={lastSeverity}
+        confirmLabel="Create issue"
+        onConfirm={confirmSighting}
+        onCancel={cancelSighting}
+        error={attachError}
+        onKey={(k) => {
+          if (k !== 'a' || !selectedIssue) return false;
+          attach();
+          return true;
+        }}
+        footer={
+          selectedIssue && (
+            <button
+              type="button"
+              className="ann-btn"
+              title={`Add this shape to ${selectedIssue.code} (a)`}
+              onClick={attach}
+            >
+              Add to {selectedIssue.code}
             </button>
-            {selectedIssue && (
-              <button
-                type="button"
-                className="ann-btn"
-                title={`Add this shape to ${selectedIssue.code} (a)`}
-                onClick={attach}
-              >
-                Add to {selectedIssue.code}
-              </button>
-            )}
-            <button type="button" className="ann-btn primary" onClick={confirm}>
-              Create issue
-            </button>
-          </div>
-        </>
-      )}
+          )
+        }
+      />
     </div>
   );
 }

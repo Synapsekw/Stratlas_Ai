@@ -211,6 +211,14 @@ describe('the drawing layer in the detections look', () => {
     });
   });
 
+  it('marks a dashed shape as an AI suggestion, in either look', () => {
+    draw([box('a', 10), box('b', 200, { dashed: true })]);
+    expect(host.querySelectorAll('.shape.ai')).toHaveLength(1);
+    expect(host.querySelector('.shape.ai')?.closest('g')?.textContent).toBe('b 80%');
+    draw([box('b', 200, { dashed: true, selected: true })], 'detections');
+    expect(host.querySelector('.shape.ai')?.classList.contains('sel')).toBe(true);
+  });
+
   it('keeps the plain look for the other viewers', () => {
     draw([box('a', 10)]);
     expect(host.querySelector('.halo')).toBeNull();

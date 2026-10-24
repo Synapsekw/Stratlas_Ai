@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
   type Ref,
 } from 'react';
 import { worldToPixel } from '../crossview/lens';
@@ -72,6 +73,12 @@ export function PhotoViewer({
   marks = true,
   projected = true,
   handle,
+  extraShapes,
+  onExtraSelect,
+  onExtraEdit,
+  overlay,
+  toolbarExtra,
+  look = 'plain',
 }: {
   layerId: string;
   photoId: string;
@@ -89,6 +96,22 @@ export function PhotoViewer({
   /** Issues marked only in 3D drawn where this posed photo sees them (default true). */
   projected?: boolean;
   handle?: Ref<PhotoViewerHandle>;
+  /**
+   * More shapes, in photo pixels of the loaded photo (`natural`), drawn after the issue shapes
+   * (Inspect: the AI's suggestions, `dashed`). Their keys are the caller's and must not look like
+   * an issue shape's (`<issueId>:<n>`, `proj:<issueId>`).
+   */
+  extraShapes?: (natural: { width: number; height: number }) => readonly ShapeItem[];
+  /** A click on an extra shape (its key); the issue selection is left alone. */
+  onExtraSelect?: (key: string) => void;
+  /** Handle edits of an extra shape marked editable (Fix: redraw), in photo pixels. */
+  onExtraEdit?: (key: string, geom: ImageGeom) => void;
+  /** HTML over the photo, placed with image pixel to stage pixel coordinates. */
+  overlay?: (toStage: (p: { x: number; y: number }) => { x: number; y: number }) => ReactNode;
+  /** Controls at the end of the floating toolbar. */
+  toolbarExtra?: ReactNode;
+  /** The drawing layer's look (default `plain`; see `DrawLayer`). */
+  look?: 'plain' | 'detections';
 }) {
   const project = useWorkspace((s) => s.project);
   const openSeq = useWorkspace((s) => s.openSeq);
@@ -282,7 +305,25 @@ export function PhotoViewer({
     beginSighting(s, at);
   };
 
+  const extras = useMemo(
+    () => (natural && extraShapes ? extraShapes(natural) : []),
+    [natural, extraShapes],
+  );
+  const extraKeys = useMemo(() => new Set(extras.map((s) => s.key)), [extras]);
+  const drawn = useMemo(() => [...(marks ? shapes : []), ...extras], [extras, marks, shapes]);
+  const toStage = useCallback(
+    (p: { x: number; y: number }) => ({
+      x: p.x * view.scale + view.x,
+      y: p.y * view.scale + view.y,
+    }),
+    [view],
+  );
+
   const onEdit = (key: string, geom: ImageGeom) => {
+    if (extraKeys.has(key)) {
+      onExtraEdit?.(key, geom);
+      return;
+    }
     const [issueId, idx] = key.split(':');
     if (!issueId || idx === undefined) return;
     issueEditor.replaceSighting(issueId, Number(idx), {
@@ -421,10 +462,15 @@ export function PhotoViewer({
           view={view}
           size={natural}
           tool={tool}
-          shapes={marks ? shapes : []}
+          shapes={drawn}
+          look={look}
           onCreate={onCreate}
           onEdit={onEdit}
           onSelect={(key) => {
+            if (key !== null && extraKeys.has(key)) {
+              onExtraSelect?.(key);
+              return;
+            }
             if (viewOnly) return;
             const id = key?.replace(/^proj:/, '').split(':')[0];
             workspace.getState().select(id ? { kind: 'issue', id } : null);
@@ -434,7 +480,8 @@ export function PhotoViewer({
           }}
         />
       )}
-      {(!viewOnly || !readOnly) && (
+      {natural && overlay?.(toStage)}
+      {(!viewOnly || !readOnly || toolbarExtra) && (
         <div className="ann-toolbar" role="toolbar" aria-label="Photo annotation tools">
           {!viewOnly &&
             !readOnly &&
@@ -500,6 +547,8 @@ export function PhotoViewer({
             </button>
           )}
           {rotateNote && <span>{rotateNote}</span>}
+          {toolbarExtra && (!viewOnly || !readOnly) && <span className="sep" />}
+          {toolbarExtra}
         </div>
       )}
       <div className="ann-zoom">{Math.round(view.scale * 100)}%</div>

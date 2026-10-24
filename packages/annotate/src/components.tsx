@@ -9,6 +9,7 @@ export { PhotoViewer, type PhotoViewerHandle } from './components/PhotoViewer';
 export { VideoAnnotator } from './components/VideoAnnotator';
 export { AnnotationToolbar, useIssueOverlay } from './components/AnnotationToolbar';
 export { SightingPicker } from './components/SightingPicker';
+export { ClassSeverityForm, type ClassSeverityFormProps } from './components/ClassSeverityForm';
 export {
   NEW_CLASS_OPTION,
   NewClassRow,

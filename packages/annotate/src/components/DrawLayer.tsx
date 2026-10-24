@@ -37,6 +37,8 @@ export interface ShapeItem {
   title?: string;
   /** Shapes drawn as parts of one (a box across a 360 seam) share hover by this key. */
   group?: string;
+  /** An AI suggestion not yet accepted: drawn dashed, with a lighter fill. */
+  dashed?: boolean;
 }
 
 export interface DrawLayerProps {
@@ -374,7 +376,7 @@ export function DrawLayer(props: DrawLayerProps) {
         const g = shapeFor(s);
         const style = { ['--c' as string]: s.color };
         const hov = det && groupOf(s) === hoverGroup;
-        const cls = `shape${s.selected ? ' sel' : ''}${hov ? ' hov' : ''}`;
+        const cls = `shape${s.dashed ? ' ai' : ''}${s.selected ? ' sel' : ''}${hov ? ' hov' : ''}`;
         const outline = geomOutline(g);
         const top = outline.reduce<Point | null>((a, p) => (!a || p.y < a.y ? p : a), null);
         const labelAt = top ? toDisplay(top, view) : null;

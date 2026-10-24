@@ -105,6 +105,7 @@ span.ann-tick[data-on='true']::after { content: ''; position: absolute; left: 3.
 .ann-stage svg.det-look .chip { pointer-events: none; transition: opacity .12s var(--ease-x); }
 .ann-stage svg.det-look .chip rect { stroke: oklch(0.13 0.01 250 / 0.55); stroke-width: 1; }
 .ann-stage svg.det-look .chip text { font: 600 12px/1 var(--f-ui); dominant-baseline: central; }
+.ann-stage svg .shape.ai, .ann-stage svg.det-look .shape.ai { stroke-dasharray: 6 4; fill: color-mix(in oklch, var(--c) 8%, transparent); }
 @media (prefers-reduced-motion: reduce) { .ann-stage svg.det-look .halo, .ann-stage svg.det-look .shape, .ann-stage svg.det-look .chip { transition: none; } }
 .ann-toolbar { position: absolute; top: 8px; left: 8px; display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r-6); background: var(--scrim); backdrop-filter: blur(6px); z-index: 2; align-items: center; }
 .ann-toolbar .sep { width: 1px; height: 16px; background: var(--line); margin: 0 3px; }
