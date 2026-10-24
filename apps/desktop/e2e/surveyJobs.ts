@@ -85,6 +85,50 @@ export async function setAutoPrepare(win: Page, on: boolean): Promise<void> {
   await expect(sw).toHaveAttribute('aria-checked', String(on));
 }
 
+export interface PrepareJob {
+  id: string;
+  status: string;
+  captures: string[];
+}
+
+/** The `survey.prepare` jobs on the project folder, oldest first, with the dates each covers. */
+export async function prepareJobs(win: Page, dir: string): Promise<PrepareJob[]> {
+  const list = (await win.evaluate(() =>
+    (window as unknown as { aio: { invoke(c: string, r: unknown): Promise<unknown> } }).aio.invoke(
+      'jobs:list',
+      {},
+    ),
+  )) as {
+    jobs: { id: string; pipeline: string; project: string; status: string; params: unknown }[];
+  };
+  const norm = (p: string) => p.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+  return list.jobs
+    .filter((j) => j.pipeline === 'survey.prepare' && norm(j.project) === norm(dir))
+    .reverse()
+    .map((j) => {
+      const surfaces = (j.params as { surfaces?: { capture?: string }[] }).surfaces ?? [];
+      return {
+        id: j.id,
+        status: j.status,
+        captures: surfaces.map((s) => s.capture ?? '').sort(),
+      };
+    });
+}
+
+export const activePrepare = (j: PrepareJob) =>
+  ['starting', 'running', 'cancelling'].includes(j.status);
+
+/** Wait until no prepare job on the project is at work. */
+export async function preparesSettled(win: Page, dir: string): Promise<PrepareJob[]> {
+  await expect
+    .poll(async () => (await prepareJobs(win, dir)).filter(activePrepare).length, {
+      timeout: 240_000,
+      intervals: [500],
+    })
+    .toBe(0);
+  return prepareJobs(win, dir);
+}
+
 export async function openDemo(win: Page, name: string, id: string): Promise<void> {
   await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).first().click();
   await win.getByTestId('project-card').filter({ hasText: name }).first().click();

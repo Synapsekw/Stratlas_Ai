@@ -13,24 +13,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
-import { openDemo, prepareSurveys } from './surveyJobs';
+import { openDemo, prepareJobs, prepareSurveys, preparesSettled } from './surveyJobs';
 import { measureControl, measureTree, selectMeasure } from './island';
+import { focusMeasure } from './measureCard';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
 
-test('a section across the pad: two surveys and the design, a pin, 4:1, the window, a DXF', async ({
-  earthworksProject,
-  app,
-  win,
-  dataRoot,
-}) => {
-  test.setTimeout(420_000);
-  const root = earthworksProject.dir;
-  await prepareSurveys(win, root);
-
-  // a Cross-section measurement across the pad (E 551140 to 551260 at N 2331400), filed under the
-  // newest survey (an undated one whose heights match no survey would wait under Needs a date)
+/** A Cross-section measurement across the pad, filed under the newest survey. */
+async function seedSection(root: string): Promise<void> {
   const mfile = join(root, 'survey', 'measurements.json');
   const m = JSON.parse(await readFile(mfile, 'utf8')) as MeasurementsFile;
   m.measurements.push({
@@ -48,6 +39,54 @@ test('a section across the pad: two surveys and the design, a pin, 4:1, the wind
     createdAt: '2026-10-09T00:00:00Z',
   });
   await writeFile(mfile, JSON.stringify(m, null, 1));
+}
+
+test('surfaces prepared after the project opened: the card opens the section window on its chart', async ({
+  earthworksProject,
+  win,
+}) => {
+  test.setTimeout(360_000);
+  const root = earthworksProject.dir;
+  await seedSection(root);
+  // nothing prepared yet: opening the project prepares every date in the background
+  await openDemo(win, earthworksProject.name, earthworksProject.id);
+  await expect
+    .poll(async () => (await prepareJobs(win, root)).length, { timeout: 60_000 })
+    .toBeGreaterThan(0);
+  const jobs = await preparesSettled(win, root);
+  expect(jobs.map((j) => j.status)).toEqual(['done']);
+
+  await measureTree(win, 'd3');
+  const card = await focusMeasure(win, 'Section across the pad');
+  await card.getByTestId('card-open-section').click();
+  const big = win.getByTestId('section-window');
+  await expect(big).toBeVisible();
+  const svg = big.getByTestId('section-window-chart').locator('svg.pc-svg').first();
+  await expect(svg).toBeVisible({ timeout: 60_000 });
+  // the current survey's line is drawn (the chart's lines are polylines)
+  await expect(svg.locator('polyline[data-kind="current"]').first()).toBeAttached({
+    timeout: 60_000,
+  });
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('no chart');
+  expect(box.width).toBeGreaterThan(100);
+  expect(box.height).toBeGreaterThan(100);
+  await expect(big.locator('.sec-empty')).toHaveCount(0);
+});
+
+test('a section across the pad: two surveys and the design, a pin, 4:1, the window, a DXF', async ({
+  earthworksProject,
+  app,
+  win,
+  dataRoot,
+}) => {
+  test.setTimeout(420_000);
+  const root = earthworksProject.dir;
+  await prepareSurveys(win, root);
+
+  // a Cross-section measurement across the pad (E 551140 to 551260 at N 2331400), filed under the
+  // newest survey (an undated one whose heights match no survey would wait under Needs a date)
+  await seedSection(root);
 
   // the tool is on the toolbar
   await openDemo(win, earthworksProject.name, earthworksProject.id);

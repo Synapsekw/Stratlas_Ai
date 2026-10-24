@@ -21,7 +21,13 @@ import {
 } from './fixtures';
 import { measureTree } from './island';
 import { focusMeasure } from './measureCard';
-import { openDemo, setAutoPrepare } from './surveyJobs';
+import {
+  activePrepare as active,
+  openDemo,
+  prepareJobs,
+  preparesSettled as settled,
+  setAutoPrepare,
+} from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
 
 test.use({ appEnv: PIPELINE_ENV });
@@ -29,38 +35,6 @@ test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`
 
 const DATES = ['d1', 'd2', 'd3'];
 const LINE = 'Line across the pad';
-
-interface PrepareJob {
-  id: string;
-  status: string;
-  captures: string[];
-}
-
-/** The `survey.prepare` jobs on the project folder, oldest first, with the dates each covers. */
-async function prepareJobs(win: Page, dir: string): Promise<PrepareJob[]> {
-  const list = (await win.evaluate(() =>
-    (window as unknown as { aio: { invoke(c: string, r: unknown): Promise<unknown> } }).aio.invoke(
-      'jobs:list',
-      {},
-    ),
-  )) as {
-    jobs: { id: string; pipeline: string; project: string; status: string; params: unknown }[];
-  };
-  const norm = (p: string) => p.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
-  return list.jobs
-    .filter((j) => j.pipeline === 'survey.prepare' && norm(j.project) === norm(dir))
-    .reverse()
-    .map((j) => {
-      const surfaces = (j.params as { surfaces?: { capture?: string }[] }).surfaces ?? [];
-      return {
-        id: j.id,
-        status: j.status,
-        captures: surfaces.map((s) => s.capture ?? '').sort(),
-      };
-    });
-}
-
-const active = (j: PrepareJob) => ['starting', 'running', 'cancelling'].includes(j.status);
 
 /** A distance line across the pad, filed under the second survey. */
 async function seedLine(p: SurveyDemoProject): Promise<void> {
@@ -120,17 +94,6 @@ const chipStates = (win: Page) =>
   win.evaluate(
     () => (window as unknown as { __chipStates?: Record<string, string[]> }).__chipStates ?? {},
   );
-
-/** Wait until no prepare job on the project is at work. */
-async function settled(win: Page, dir: string): Promise<PrepareJob[]> {
-  await expect
-    .poll(async () => (await prepareJobs(win, dir)).filter(active).length, {
-      timeout: 240_000,
-      intervals: [500],
-    })
-    .toBe(0);
-  return prepareJobs(win, dir);
-}
 
 test('opening a project with unprepared dates starts one quiet prepare job; the distance card lists both dates, preparing then ready', async ({
   earthworksProject: p,
