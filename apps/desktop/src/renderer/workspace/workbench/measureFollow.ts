@@ -99,6 +99,7 @@ export function followMeasureTool(
 /**
  * Keep a survey panel's sidebar tab open exactly while the panel is (D18): the panel opening
  * opens its tab, closing it closes the tab, and the tab closed (or replaced) closes the panel.
+ * With `which`, another of the tab's panels picked while the tab is open brings the tab forward.
  * Returns unsubscribe.
  */
 export function linkPanelTab<S>(
@@ -107,6 +108,7 @@ export function linkPanelTab<S>(
   isOpen: (s: S) => boolean,
   close: () => void,
   bench: StoreApi<WorkbenchState> = workbench,
+  which?: (s: S) => unknown,
 ): () => void {
   const has = () => bench.getState().tabs.some((t) => t.id === id);
   const sync = () => {
@@ -117,6 +119,9 @@ export function linkPanelTab<S>(
   sync();
   const offStore = store.subscribe((s, prev) => {
     if (isOpen(s) !== isOpen(prev)) sync();
+    // another of the tab's panels picked while the tab is open (perhaps behind another one):
+    // the pick is an ask, so the tab comes forward
+    else if (which && isOpen(s) && which(s) !== which(prev)) revealTab(id, bench);
   });
   const offBench = bench.subscribe((s, prev) => {
     const had = prev.tabs.some((t) => t.id === id);
@@ -195,6 +200,8 @@ export function useMeasureFollow(): void {
         () => {
           openQaPanel(null);
         },
+        workbench,
+        (s) => s.panel,
       ),
       linkPanelTab(
         'hydro',

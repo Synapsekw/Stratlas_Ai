@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { pickInVolumesView } from '../../survey/volumesPick';
-import { followMeasureTool, followRoadMeasure } from './measureFollow';
+import { followMeasureTool, followRoadMeasure, linkPanelTab } from './measureFollow';
 import { projectListStore } from './project/projectListStore';
 import { personToolLive } from './tabsModel';
 import { createWorkbenchStore } from './workbenchStore';
@@ -108,6 +108,35 @@ describe('followMeasureTool', () => {
     const off = followMeasureTool(store as never, bench);
     store.setState({ focus: 'm7' });
     expect(projectListStore.getState().reveal).toMatchObject({ group: 'measurements', id: 'm7' });
+    off();
+  });
+});
+
+describe('linkPanelTab', () => {
+  it('another panel of the same tab picked while it is behind brings the tab forward', () => {
+    const bench = createWorkbenchStore(null);
+    const qa = createStore<{ panel: string | null }>()(() => ({ panel: null }));
+    const off = linkPanelTab(
+      'qa',
+      qa,
+      (s) => s.panel !== null,
+      () => {
+        qa.setState({ panel: null });
+      },
+      bench,
+      (s) => s.panel,
+    );
+    qa.setState({ panel: 'surveys' });
+    expect(bench.getState().front).toBe('qa');
+    // a pick elsewhere puts another tab in front; the Survey QA tab stays open behind it
+    bench.getState().show('selection');
+    expect(bench.getState().front).toBe('selection');
+    qa.setState({ panel: 'cleanup' });
+    expect(bench.getState().front).toBe('qa');
+    // the same panel again moves nothing
+    bench.getState().show('selection');
+    qa.setState({ panel: 'cleanup' });
+    expect(bench.getState().front).toBe('selection');
     off();
   });
 });
