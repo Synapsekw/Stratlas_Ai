@@ -5,7 +5,7 @@
  * Site data, Drawing aids and Templates.
  * While a tool is live it morphs in place: the live card on top (the shared measurement card in
  * its live variant, then the points, Undo, Stop and Save with their keys) and the catalogue
- * shrinks to a strip of tool buttons. A picked measurement shows its detail card.
+ * shrinks to a strip of tool buttons. A picked measurement shows its detail card inline in the list.
  * How the sidebar follows the tools is `workbench/measureFollow.ts`.
  */
 import type { EngineStage } from '@aio/engine';
@@ -59,7 +59,6 @@ import {
   type CatalogueTool,
   type Family,
 } from '../../../survey/measureCatalogue';
-import { MeasurementPanel } from '../../../survey/MeasurementPanel';
 import {
   drawEvent,
   measureStore,
@@ -837,9 +836,9 @@ function Catalogue({
 }
 
 /**
- * The picked measurement's panel. A telecom one shows in its family, except when the family is
- * not shown (a read-only package offers no telecom tools; a search hides it): then its reading
- * is here.
+ * The picked telecom measurement's reading, only when its family is not shown (a read-only package
+ * offers no telecom tools; a search hides it). Any other measurement's panel is inline in the
+ * Measurements group (`project/groups/MeasurementsGroup.tsx`).
  */
 function SelectedCard({ searching }: { searching: boolean }) {
   const t = useT();
@@ -854,13 +853,8 @@ function SelectedCard({ searching }: { searching: boolean }) {
       </Section>
     );
   }
-  return (
-    <Section bench={BENCH} id="selected" title={t('measureBench.selected')} defaultOpen>
-      <div className="meb-selected" data-testid="survey-side">
-        <MeasurementPanel />
-      </div>
-    </Section>
-  );
+  // any other measurement is shown inline in the Measurements group of the list above
+  return null;
 }
 
 /**

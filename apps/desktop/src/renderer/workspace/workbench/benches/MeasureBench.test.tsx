@@ -498,6 +498,12 @@ describe('the Saved footer', () => {
 });
 
 describe('a picked measurement', () => {
+  it('has no Selected card for a survey measurement', () => {
+    measureStore.setState({ focus: 'm1', selected: ['m1'] });
+    render();
+    expect(q('wb-section-selected')).toBeNull();
+  });
+
   it('a read-only package shows a saved telecom measurement and its reading', () => {
     shell.setState({ pkg: {} as unknown as PackageInfo });
     const azimuth = {

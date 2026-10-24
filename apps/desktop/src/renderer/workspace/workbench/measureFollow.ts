@@ -18,6 +18,7 @@ import { overlays, setOverlaysOpen } from '../../survey/overlaysStore';
 import { takeVolumesPick } from '../../survey/volumesPick';
 import { openQaPanel, qaStore } from '../../survey/qaStore';
 import { followTool, showBench } from './followTool';
+import { revealInList } from './project/projectListStore';
 import type { TabId } from './tabsModel';
 import { linkLiveTab, workbench, type WorkbenchState } from './workbenchStore';
 
@@ -65,6 +66,9 @@ export function followMeasureTool(
   let focusAtStart: string | null = null;
   const follow = () => {
     if (!isIssueEditing()) revealTab(BENCH, bench);
+    // the Measurements group holds itself open and scrolls to the picked row
+    const focus = measure.getState().focus;
+    if (focus) revealInList('measurements', focus);
   };
   const offTab = linkLiveTab(BENCH, () => measure.getState().tool !== null, stopTool, bench);
   const offTool = measure.subscribe((s, prev) => {

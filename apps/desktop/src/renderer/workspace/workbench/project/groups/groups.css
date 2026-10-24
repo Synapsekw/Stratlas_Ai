@@ -1,0 +1,21 @@
+/* The Measurements and Issues groups (MeasurementsGroup.tsx, IssuesGroup.tsx): the rows are the
+   sidebar's tree rows (rowList.css, 26px); the focused measurement's panel opens inside its list
+   item and counts beside the eight rows, never as rows. Bench tokens only. */
+.pl-rows.pl-measure-rows {
+  max-height: calc(8 * var(--pl-row-h) + var(--pl-details-h, 0px));
+}
+.pl-sub {
+  margin-inline-start: var(--sp-3);
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.pl-measure-panel {
+  margin-block: var(--sp-2) var(--sp-3);
+}
+/* the panel's card sits in the column as the bench's Selected card did */
+.pl-measure-panel .sv-card {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}

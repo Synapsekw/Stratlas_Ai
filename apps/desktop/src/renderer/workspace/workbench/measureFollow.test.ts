@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { pickInVolumesView } from '../../survey/volumesPick';
 import { followMeasureTool, followRoadMeasure } from './measureFollow';
+import { projectListStore } from './project/projectListStore';
 import { personToolLive } from './tabsModel';
 import { createWorkbenchStore } from './workbenchStore';
 
@@ -98,6 +99,15 @@ describe('followMeasureTool', () => {
     // another pile picked in the tree: the Measure tab comes forward, as before
     store.setState({ focus: 'p2' });
     expect(bench.getState().front).toBe('measure');
+    off();
+  });
+
+  it('reveals a picked measurement in the list', () => {
+    const bench = createWorkbenchStore(null);
+    const store = measure();
+    const off = followMeasureTool(store as never, bench);
+    store.setState({ focus: 'm7' });
+    expect(projectListStore.getState().reveal).toMatchObject({ group: 'measurements', id: 'm7' });
     off();
   });
 });
