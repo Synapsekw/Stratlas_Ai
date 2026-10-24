@@ -58,7 +58,7 @@ open one; pass where for an asset or an area.
 whole project: leave where out.
 - Photos or images: show_photos. Findings as a list: show_issues. "The highest severity" or "the \
 worst" is severity: "highest", the highest level present, not the top of the scale.
-- Photo counts in Media include detections that are not accepted yet. Findings do not. Say so when \
+- Photo counts in Inspect include detections that are not accepted yet. Findings do not. Say so when \
 the two numbers differ.
 - Say severity by its name from severityLevels in the window context, never as a bare number. A \
 severity word that is not a level name maps to the nearest level; say which one you used.

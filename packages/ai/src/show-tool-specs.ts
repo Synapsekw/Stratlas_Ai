@@ -61,7 +61,7 @@ export const showToolInputs = {
     })
     .strict(),
   open_screen: z
-    .object({ screen: z.enum(['scene', 'issues', 'media', 'detections', 'reports']) })
+    .object({ screen: z.enum(['scene', 'issues', 'inspect', 'media', 'detections', 'reports']) })
     .strict(),
   list_assets: z
     .object({
@@ -95,7 +95,7 @@ export const SHOW_TOOL_SPECS: ToolSpec[] = [
     meta: {
       name: 'show_photos',
       description:
-        'Open Media filtered: photos with findings of one severity level (or the highest present), on an asset or in an area, of one finding or of one class, worst first. Returns how many photos it shows.',
+        'Open Inspect filtered: photos with findings of one severity level (or the highest present), on an asset or in an area, of one finding or of one class, worst first. Returns how many photos it shows.',
       scope: 'app',
       risk: 'navigate',
     },
@@ -116,7 +116,8 @@ export const SHOW_TOOL_SPECS: ToolSpec[] = [
   {
     meta: {
       name: 'open_screen',
-      description: 'Open a screen of the project: scene, issues, media, detections or reports.',
+      description:
+        'Open a screen of the project: scene, issues, inspect (photos, drawing and AI review) or reports. The old names media and detections open Inspect.',
       scope: 'app',
       risk: 'navigate',
     },

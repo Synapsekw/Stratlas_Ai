@@ -317,7 +317,7 @@ describe('show_issue', () => {
   });
 
   it('from another screen opens Scene before it selects', async () => {
-    const { c, log, app } = ctx({ screen: 'media' });
+    const { c, log, app } = ctx({ screen: 'inspect' });
     await runRendererTool('show_issue', {}, c);
     expect(app.openScreen).toHaveBeenCalledTimes(1);
     expect(app.openScreen).toHaveBeenCalledWith('scene');
@@ -462,7 +462,7 @@ describe('show_issue', () => {
     // an old camera request of the agent: not where the camera is when Scene opens again
     ws.getState().flyTo({ kind: 'point', p: [1, 2, 3], distance: 10, dir: [0, 0, 1] });
     const stage = fakeStage(ws);
-    const host = recordingApp({ screen: 'media' });
+    const host = recordingApp({ screen: 'inspect' });
     let mounted = false;
     const app: AppHooks = {
       ...host.app,
@@ -471,7 +471,7 @@ describe('show_issue', () => {
         mounted = mounted || s === 'scene';
       },
     };
-    // the 3D view is not mounted on Media: it appears once Scene is opened
+    // the 3D view is not mounted on Inspect: it appears once Scene is opened
     const c: RendererToolContext = {
       ...ctx({ ws, app, stage: false }).c,
       scene: () => (mounted ? stage : null),
@@ -486,13 +486,13 @@ describe('show_issue', () => {
 
   it('remembers the view of the app before it opens anything', async () => {
     const order: string[] = [];
-    const host = recordingApp({ screen: 'media' });
+    const host = recordingApp({ screen: 'inspect' });
     const app: AppHooks = {
       ...host.app,
       openScreen: () => {
         order.push('open');
       },
-      screen: () => 'media',
+      screen: () => 'inspect',
       captureView: () => {
         order.push('capture');
         return () => undefined;
@@ -510,7 +510,7 @@ describe('show_issue', () => {
 });
 
 describe('show_photos', () => {
-  it('passes "highest" to the app, reports the level it used, then opens Media', async () => {
+  it('passes "highest" to the app, reports the level it used, then opens Inspect', async () => {
     const { c, app, log } = ctx();
     const r = await runRendererTool('show_photos', { severity: 'highest' }, c);
     expect(app.showPhotos).toHaveBeenCalledWith({
@@ -521,7 +521,7 @@ describe('show_photos', () => {
     });
     expect(r.result).toEqual({ shown: 3, total: 12, severity: 'S4', scope: null });
     expect(r.summary).toBe('3 photos');
-    expect(log).toEqual(['showPhotos', 'open:media']);
+    expect(log).toEqual(['showPhotos', 'open:inspect']);
   });
 
   it('with nothing asked shows every photo', async () => {
@@ -549,14 +549,14 @@ describe('show_photos', () => {
     expect(r.summary).toBe('1 photo');
   });
 
-  it('a scope without photos still opens Media, showing none', async () => {
+  it('a scope without photos still opens Inspect, showing none', async () => {
     const { c, app, log } = ctx();
     const r = await runRendererTool('show_photos', { where: '20-T-0003' }, c);
     expect(app.showPhotos).toHaveBeenCalledWith(
       expect.objectContaining({ scope: { label: 'On 20-T-0003', ids: [] } }),
     );
     expect(r.result).toMatchObject({ shown: 0, scope: 'On 20-T-0003' });
-    expect(log).toEqual(['showPhotos', 'open:media']);
+    expect(log).toEqual(['showPhotos', 'open:inspect']);
   });
 
   it('of one finding, of one class, and of both at once', async () => {
@@ -769,7 +769,17 @@ describe('open_screen', () => {
     expect(restore).toHaveBeenCalledTimes(1);
   });
 
-  it('knows the five screens only', async () => {
+  it('opens Inspect for the old media and detections names', async () => {
+    for (const screen of ['media', 'detections', 'inspect'] as const) {
+      const { c, app } = ctx();
+      const r = await runRendererTool('open_screen', { screen }, c);
+      expect(app.openScreen).toHaveBeenLastCalledWith('inspect');
+      expect(r.result).toEqual({ screen: 'inspect' });
+      expect(r.summary).toBe('Inspect');
+    }
+  });
+
+  it('knows the four screens and the two old names only', async () => {
     await expect(runRendererTool('open_screen', { screen: 'globe' }, ctx().c)).rejects.toThrow(
       /^Invalid input at screen/,
     );
@@ -777,7 +787,7 @@ describe('open_screen', () => {
 
   it('a missing hook fails with the fixed message', async () => {
     const { c } = ctx({ app: {} });
-    const failed = runRendererTool('open_screen', { screen: 'media' }, c);
+    const failed = runRendererTool('open_screen', { screen: 'inspect' }, c);
     await expect(failed).rejects.toBeInstanceOf(ToolError);
     await expect(failed).rejects.toThrow(NO_HOOK);
   });

@@ -122,6 +122,14 @@ afterEach(() => {
 });
 
 describe('Sidebar layout', () => {
+  it('lists Inspect once and no Media or Detections', () => {
+    render(null);
+    const names = [...document.body.querySelectorAll('.nav-item .lbl')].map((b) => b.textContent);
+    expect(names.filter((n) => n === 'Inspect')).toHaveLength(1);
+    expect(names).not.toContain('Media');
+    expect(names).not.toContain('Detections');
+  });
+
   it('shows the dataset tree only on the Scene', () => {
     render(null);
     expect(q('tree-row-walk-a')).not.toBeNull();

@@ -5,7 +5,7 @@ import type { Screen } from '../store';
  * The screens with the agent column on their right edge. The Scene is not one of them: it has the
  * agent in its own right panel.
  */
-export const DOCK_SCREENS = ['issues', 'media', 'detections', 'reports'] as const;
+export const DOCK_SCREENS = ['issues', 'inspect', 'reports'] as const;
 export type DockScreen = (typeof DOCK_SCREENS)[number];
 
 export function isDockScreen(screen: Screen): screen is DockScreen {
@@ -14,8 +14,7 @@ export function isDockScreen(screen: Screen): screen is DockScreen {
 
 const DOCK_WINDOW: Record<DockScreen, WindowKind> = {
   issues: 'issues',
-  media: 'photo',
-  detections: 'photo',
+  inspect: 'photo',
   reports: 'report',
 };
 

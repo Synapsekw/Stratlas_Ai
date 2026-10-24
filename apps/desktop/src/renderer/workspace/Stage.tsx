@@ -820,13 +820,13 @@ export function Stage() {
     setDroneTelemetry(engine, { on: telemetry, labels: telemetryLabels(), hud: false });
   }, [engine, telemetry, tr]);
 
-  // A photo picked from an issue's sightings opens in the Media photo viewer. A click on the
+  // A photo picked from an issue's sightings opens in the Inspect photo viewer. A click on the
   // photo itself opens it in the split view first (photoOpen), and then stays on the scene.
   useEffect(
     () =>
       workspace.subscribe((s, prev) => {
         if (s.selection !== prev.selection && s.selection?.kind === 'photo' && !photoSplitIsOpen())
-          shell.getState().go('media');
+          shell.getState().go('inspect');
       }),
     [],
   );

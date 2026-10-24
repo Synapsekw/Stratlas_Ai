@@ -26,7 +26,7 @@ afterEach(() => {
 describe('openPhoto', () => {
   it('puts the map on the left and the photo on the right, and stays on the scene', () => {
     open();
-    shell.setState({ screen: 'media', stageMode: 'map', stageAuto: true });
+    shell.setState({ screen: 'inspect', stageMode: 'map', stageAuto: true });
     openPhoto('photos', 'p1', 'map');
     expect(shell.getState()).toMatchObject({ screen: 'scene', stageMode: 'split' });
     expect(stagePrefs.getState().byProject[id]?.split).toMatchObject({

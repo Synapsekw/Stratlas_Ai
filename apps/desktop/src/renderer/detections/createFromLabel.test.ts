@@ -19,7 +19,7 @@ vi.mock('./store', () => ({
 vi.mock('../shell', () => ({ bridge: { call: vi.fn() }, useCall: vi.fn() }));
 
 const { createClassFromLabel } = await import('./createFromLabel');
-const { mapModelClass } = await import('./LocalDetect');
+const { mapModelClass } = await import('../inspect/askAi/classMap');
 
 beforeEach(() => {
   h.reloads = [];

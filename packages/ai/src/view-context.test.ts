@@ -38,9 +38,9 @@ const onTank3 = (p: Vec3) => [
 
 describe('the view context', () => {
   it('reports the screen and the filters that are on', () => {
-    const c = ctx({ screen: () => 'media', viewFilters: () => FILTERS });
+    const c = ctx({ screen: () => 'inspect', viewFilters: () => FILTERS });
     expect(viewContext(c)).toEqual({
-      screen: 'media',
+      screen: 'inspect',
       filters: {
         photos: FILTERS.photos,
         issues: {

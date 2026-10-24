@@ -127,8 +127,7 @@ function levelLabel(ctx: RendererToolContext, level: SeverityLevel): string {
 const SCREEN_NAME: Record<AppScreen, string> = {
   scene: 'Scene',
   issues: 'Issues',
-  media: 'Media',
-  detections: 'Detections',
+  inspect: 'Inspect',
   reports: 'Reports',
 };
 
@@ -284,7 +283,7 @@ define('show_photos', (input, ctx) => {
     labels.push(cls.label);
   }
   const label = labels.join(', ');
-  // a scope without photos is still a scope: Media shows its empty state with the chip
+  // a scope without photos is still a scope: Inspect shows its empty state with the chip
   const scope: ViewScope | null = found ? { label, ids: photoKeys(found) } : null;
 
   const restoreView = app.captureView?.();
@@ -294,7 +293,7 @@ define('show_photos', (input, ctx) => {
     severity: input.severity ?? null,
     scope,
   });
-  app.openScreen('media');
+  app.openScreen('inspect');
   return {
     result: {
       shown: view.shown,
@@ -371,10 +370,12 @@ define('open_screen', ({ screen }, ctx) => {
   project(ctx);
   const app = host(ctx, 'openScreen');
   const restoreView = app.captureView?.();
-  app.openScreen(screen);
+  // Media and Detections became one screen; the old names still open it
+  const to: AppScreen = screen === 'media' || screen === 'detections' ? 'inspect' : screen;
+  app.openScreen(to);
   return {
-    result: { screen },
-    summary: SCREEN_NAME[screen],
+    result: { screen: to },
+    summary: SCREEN_NAME[to],
     ...(restoreView ? { undo: restoreView } : {}),
   };
 });

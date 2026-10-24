@@ -9,24 +9,22 @@ const SCREENS: Record<Screen, boolean> = {
   // the Scene keeps the agent in its own right panel
   scene: false,
   issues: true,
-  media: true,
-  detections: true,
+  inspect: true,
   reports: true,
   settings: false,
   globe: false,
 };
 
 describe('the screens with the agent column', () => {
-  it('are Issues, Media, Detections and Reports, and no other', () => {
+  it('are Issues, Inspect and Reports, and no other', () => {
     for (const [screen, docked] of Object.entries(SCREENS) as [Screen, boolean][])
       expect(isDockScreen(screen), screen).toBe(docked);
-    expect([...DOCK_SCREENS]).toEqual(['issues', 'media', 'detections', 'reports']);
+    expect([...DOCK_SCREENS]).toEqual(['issues', 'inspect', 'reports']);
   });
 
   it('bind the agent to the window each of them shows', () => {
     expect(dockWindow('issues')).toBe('issues');
-    expect(dockWindow('media')).toBe('photo');
-    expect(dockWindow('detections')).toBe('photo');
+    expect(dockWindow('inspect')).toBe('photo');
     expect(dockWindow('reports')).toBe('report');
   });
 });

@@ -46,7 +46,7 @@ export interface SaveResult {
 }
 
 /** Screens of an open project the agent can open and be docked on. */
-export type AppScreen = 'scene' | 'issues' | 'media' | 'detections' | 'reports';
+export type AppScreen = 'scene' | 'issues' | 'inspect' | 'reports';
 export type SeverityLevel = number | 'uncertain';
 
 /** A set chosen by the agent, shown on the screen as a chip the person can clear. */

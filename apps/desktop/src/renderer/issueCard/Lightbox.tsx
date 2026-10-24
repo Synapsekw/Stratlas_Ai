@@ -178,7 +178,7 @@ export function Lightbox() {
               onClick={() => {
                 lightboxDispatch({ type: 'close' });
                 workspace.getState().select({ kind: 'photo', id: ev.photo, layer: ev.layer });
-                shell.getState().go('media');
+                shell.getState().go('inspect');
               }}
             >
               <Icon name="media" size={14} />

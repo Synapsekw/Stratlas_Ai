@@ -244,7 +244,7 @@ describe('shell store', () => {
     expect(isSidebarFolded(s.getState())).toBe(true);
     s.setState({ screen: 'settings' });
     expect(isSidebarFolded(s.getState())).toBe(false);
-    s.setState({ screen: 'media' });
+    s.setState({ screen: 'inspect' });
     s.getState().setWindowWidth(1440);
     expect(isSidebarFolded(s.getState())).toBe(false);
   });

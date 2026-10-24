@@ -105,14 +105,14 @@ const mark = () => host.querySelector<HTMLElement>('[data-testid="frame"]')?.dat
 
 describe('AgentDock', () => {
   it('is not there without a project', async () => {
-    await show('media', false);
+    await show('inspect', false);
     expect(dock()).toBeNull();
     expect(toggle()).toBeNull();
     expect(mark()).toBeUndefined();
   });
 
   it('is folded away until asked for, out of the tab order and unseen by a screen reader', async () => {
-    await show('media');
+    await show('inspect');
     const el = dock();
     expect(el?.tagName).toBe('ASIDE');
     expect(el?.className).toBe('agent-dock');
@@ -123,7 +123,7 @@ describe('AgentDock', () => {
   });
 
   it('shows the agent panel when unfolded, and folds again', async () => {
-    await show('media');
+    await show('inspect');
     act(() => {
       shell.getState().setAgentDock(false);
     });
@@ -140,7 +140,7 @@ describe('AgentDock', () => {
   });
 
   it('has a handle on its inner edge while open, and none while folded', async () => {
-    await show('media');
+    await show('inspect');
     const handle = () => dock()?.querySelector<HTMLElement>('[role="separator"]') ?? null;
     expect(handle()).toBeNull();
     act(() => {
@@ -158,10 +158,10 @@ describe('AgentDock', () => {
     expect(handle()).toBeNull();
   });
 
-  it('is on Issues, Media, Detections and Reports only', async () => {
+  it('is on Issues, Inspect and Reports only', async () => {
     shell.getState().setAgentDock(false);
     await show('issues');
-    for (const screen of ['issues', 'media', 'detections', 'reports'] as const) {
+    for (const screen of ['issues', 'inspect', 'reports'] as const) {
       act(() => {
         shell.setState({ screen });
       });
@@ -194,7 +194,7 @@ describe('AgentDock', () => {
 
   it('keeps the conversation when the person leaves the screen and comes back', async () => {
     shell.getState().setAgentDock(false);
-    await show('media');
+    await show('inspect');
     await act(() => appAgentSession().send('Show the worst finding'));
     expect(dock()?.querySelector('.ag-msg.user')?.textContent).toContain('Show the worst finding');
     act(() => {
@@ -212,7 +212,7 @@ describe('AgentDock', () => {
   it('says why there is no agent in a package that does not allow cloud AI', async () => {
     shell.getState().setAgentDock(false);
     shell.setState({ pkg: pkg('forbid') });
-    await show('media');
+    await show('inspect');
     const blocked = dock()?.querySelector('[data-testid="agent-blocked"]');
     expect(blocked?.textContent).toBe(
       'This package does not allow cloud AI. Nothing from it is sent to any provider.',
@@ -228,7 +228,7 @@ describe('AgentDock', () => {
 
 describe('AgentToggle', () => {
   it('is a header button that names the column and says whether it is open', async () => {
-    await show('media');
+    await show('inspect');
     const button = toggle();
     expect(button?.tagName).toBe('BUTTON');
     expect(button?.type).toBe('button');

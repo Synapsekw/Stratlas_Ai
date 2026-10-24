@@ -200,11 +200,11 @@ describe('agent session availability', () => {
 
 describe('agent session conversation', () => {
   it('sends the screen that is showing and the severity level names', async () => {
-    const t = setup({}, { screen: () => 'media' });
+    const t = setup({}, { screen: () => 'inspect' });
     await t.session.send('Open the worst photos');
     const req = t.sent('ai:send')[0]?.req as IpcRequest<'ai:send'>;
     expect(req.context).toMatchObject({
-      screen: 'media',
+      screen: 'inspect',
       severityLevels: [
         { model: 'sev', levels: expect.arrayContaining([{ value: 1, label: 'S1' }]) as unknown },
       ],

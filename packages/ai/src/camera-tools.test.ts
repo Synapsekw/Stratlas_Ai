@@ -415,14 +415,14 @@ describe('camera tools', () => {
 });
 
 describe('a camera move asked for on another screen', () => {
-  const host = (screen: 'scene' | 'media') => {
+  const host = (screen: 'scene' | 'inspect') => {
     const openScreen = vi.fn();
     const app: AppHooks = { screen: () => screen, openScreen };
     return { app, openScreen };
   };
 
-  it('fly_to from Media opens Scene first, then flies', async () => {
-    const { app, openScreen } = host('media');
+  it('fly_to from Inspect opens Scene first, then flies', async () => {
+    const { app, openScreen } = host('inspect');
     const c = ctx({ app });
     await runRendererTool('fly_to', { target: { kind: 'place', name: 'tank 1' } }, c);
     expect(openScreen).toHaveBeenCalledTimes(1);
@@ -439,7 +439,7 @@ describe('a camera move asked for on another screen', () => {
       ['frame_all', {}],
     ];
     for (const [tool, input] of moves) {
-      const away = host('media');
+      const away = host('inspect');
       await runRendererTool(tool, input, ctx({ app: away.app }));
       expect(away.openScreen, tool).toHaveBeenCalledWith('scene');
       const there = host('scene');
@@ -449,7 +449,7 @@ describe('a camera move asked for on another screen', () => {
   });
 
   it('waits for the 3D view to mount', async () => {
-    const base = ctx({ app: host('media').app });
+    const base = ctx({ app: host('inspect').app });
     let asked = 0;
     const c: RendererToolContext = { ...base, scene: () => (++asked > 2 ? base.stage : null) };
     await ensureScene(c);
@@ -457,7 +457,7 @@ describe('a camera move asked for on another screen', () => {
   });
 
   it('gives up at the deadline and lets the move go on, by the clock or by the count', async () => {
-    const { app } = host('media');
+    const { app } = host('inspect');
     // the clock of the tests stands still: the number of polls ends the wait
     const frozen = ctx({ stage: false, app });
     const scene = vi.spyOn(frozen, 'scene');

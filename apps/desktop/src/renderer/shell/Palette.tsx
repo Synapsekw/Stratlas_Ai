@@ -73,8 +73,7 @@ const SCREENS: { screen: Screen; title: string; icon: IconName }[] = [
   { screen: 'projects', title: 'Projects', icon: 'projects' },
   { screen: 'scene', title: 'Scene', icon: 'scene' },
   { screen: 'issues', title: 'Issues', icon: 'issues' },
-  { screen: 'media', title: 'Media', icon: 'media' },
-  { screen: 'detections', title: t('nav.detections'), icon: 'target' },
+  { screen: 'inspect', title: t('nav.inspect'), icon: 'media' },
   { screen: 'reports', title: 'Reports', icon: 'report' },
   { screen: 'settings', title: 'Settings', icon: 'settings' },
 ];

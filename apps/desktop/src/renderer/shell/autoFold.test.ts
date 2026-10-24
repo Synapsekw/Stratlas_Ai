@@ -25,7 +25,7 @@ describe('the sidebar folds to its rail on its own', () => {
   });
 
   it('folds on the data screens, not on Settings or the projects', () => {
-    for (const screen of ['issues', 'media', 'detections', 'reports'])
+    for (const screen of ['issues', 'inspect', 'reports'])
       expect(sidebarFolded({ ...SCENE, screen })).toBe(true);
     for (const screen of ['settings', 'projects', 'welcome', 'globe'])
       expect(sidebarFolded({ ...SCENE, screen })).toBe(false);

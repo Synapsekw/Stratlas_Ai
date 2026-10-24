@@ -282,7 +282,7 @@ describe('the review detections', () => {
 
 describe('the screen', () => {
   it('is the project screen that shows, and "other" anywhere else', () => {
-    for (const screen of ['scene', 'issues', 'media', 'detections', 'reports'] as const) {
+    for (const screen of ['scene', 'issues', 'inspect', 'reports'] as const) {
       shell.setState({ screen });
       expect(hook('screen')()).toBe(screen);
     }
@@ -294,8 +294,8 @@ describe('the screen', () => {
   });
 
   it('opens with the agent column unfolded on the screens that have it', () => {
-    hook('openScreen')('media');
-    expect(shell.getState().screen).toBe('media');
+    hook('openScreen')('inspect');
+    expect(shell.getState().screen).toBe('inspect');
     expect(shell.getState().agentDockCollapsed).toBe(false);
   });
 
@@ -312,13 +312,20 @@ describe('the screen', () => {
 });
 
 describe('showing photos', () => {
-  it('resolves "highest" to the highest level present and says what Media shows', () => {
+  it('clears the to-review chip so the filter shows what was asked', () => {
+    setMediaView({ ...DEFAULT_MEDIA_VIEW, toReview: true });
+    hook('showPhotos')({ onlyFindings: true });
+    expect(mediaView.getState().toReview).toBe(false);
+  });
+
+  it('resolves "highest" to the highest level present and says what Inspect shows', () => {
     const view = hook('showPhotos')({ severity: 'highest' });
     expect(mediaView.getState()).toEqual({
       onlyFindings: false,
       order: 'file',
       severity: 3,
       scope: null,
+      toReview: false,
     });
     // p2 and p3 carry a Severe finding; seven photos in the two sets
     expect(view).toEqual({ shown: 2, total: 7, severity: 3, severityLabel: 'Severe' });
@@ -516,8 +523,8 @@ describe('putting the view back', () => {
     const restore = hook('captureView')();
     hook('showPhotos')({ severity: 'highest', scope: { label: 'Some', ids: ['photos/p2'] } });
     hook('showIssues')({ severity: 3, sort: 'severity' });
-    hook('openScreen')('media');
-    expect(shell.getState()).toMatchObject({ screen: 'media', agentDockCollapsed: false });
+    hook('openScreen')('inspect');
+    expect(shell.getState()).toMatchObject({ screen: 'inspect', agentDockCollapsed: false });
     restore();
     expect(shell.getState()).toMatchObject({ screen: 'scene', agentDockCollapsed: true });
     expect(mediaView.getState()).toEqual(DEFAULT_MEDIA_VIEW);
@@ -540,7 +547,7 @@ describe('putting the view back', () => {
   it('goes back to a screen with the column the way the column was, folded', () => {
     shell.setState({ screen: 'issues' });
     const restore = hook('captureView')();
-    hook('openScreen')('media');
+    hook('openScreen')('inspect');
     expect(shell.getState().agentDockCollapsed).toBe(false);
     restore();
     // going back is not the agent opening Issues: the column the person had folded stays folded
@@ -563,7 +570,7 @@ describe('putting the view back', () => {
     const split = stagePrefs.getState().byProject.p1?.split;
     const restore = hook('captureView')();
     hook('showEvidence')('1');
-    hook('openScreen')('media');
+    hook('openScreen')('inspect');
     expect(evidence.getState().open?.issueId).toBe('1');
     restore();
     expect(evidence.getState().open).toEqual(before);
@@ -632,14 +639,14 @@ describe('putting the view back', () => {
   });
 
   it('changes nothing when nothing changed', () => {
-    shell.setState({ screen: 'media', stageAuto: true });
+    shell.setState({ screen: 'inspect', stageAuto: true });
     const prefs = stagePrefs.getState().byProject;
     const media = mediaView.getState();
     const issues = issueView.getState();
     const { activeClip, nowMs } = workspace.getState();
     hook('captureView')()();
     expect(shell.getState()).toMatchObject({
-      screen: 'media',
+      screen: 'inspect',
       stageMode: '3d',
       stageAuto: true,
       agentDockCollapsed: true,
@@ -658,11 +665,11 @@ describe('putting the view back', () => {
     hook('showPhotos')({ severity: 2, scope });
     hook('showIssues')({ severity: 2 });
     hook('showEvidence')('4');
-    hook('openScreen')('media');
+    hook('openScreen')('inspect');
     const open = evidence.getState().open;
     restore();
     expect(shell.getState()).toMatchObject({
-      screen: 'media',
+      screen: 'inspect',
       stageMode: 'split',
       agentDockCollapsed: false,
     });
@@ -687,7 +694,7 @@ describe('putting the view back', () => {
 
   it('does nothing once the project is closed', () => {
     const restore = hook('captureView')();
-    hook('openScreen')('media');
+    hook('openScreen')('inspect');
     workspace.getState().closeProject();
     shell.setState({ screen: 'projects' });
     restore();

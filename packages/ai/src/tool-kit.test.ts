@@ -79,12 +79,12 @@ describe('issue classes', () => {
 
 describe('registerAppHooks', () => {
   it('registers the screen hook, removes it on unregister and merges later hooks', () => {
-    const off = registerAppHooks({ screen: () => 'media' });
-    expect(appHooks.screen?.()).toBe('media');
+    const off = registerAppHooks({ screen: () => 'inspect' });
+    expect(appHooks.screen?.()).toBe('inspect');
 
     const openScreen = (): void => undefined;
     const offOpen = registerAppHooks({ openScreen });
-    expect(appHooks.screen?.()).toBe('media');
+    expect(appHooks.screen?.()).toBe('inspect');
     expect(appHooks.openScreen).toBe(openScreen);
 
     off();

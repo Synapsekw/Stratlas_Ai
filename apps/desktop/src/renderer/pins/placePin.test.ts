@@ -284,7 +284,7 @@ describe('openPanoBeside', () => {
       } as unknown as ProjectManifest,
     });
     stagePrefs.getState().update(id, { split: { left: '3d', right: 'map', rightCapture: 'c1' } });
-    shell.setState({ screen: 'media', stageMode: '3d', stageAuto: true });
+    shell.setState({ screen: 'inspect', stageMode: '3d', stageAuto: true });
     openPanoBeside('panos-1', 'p1');
     expect(shell.getState()).toMatchObject({ screen: 'scene', stageMode: 'split' });
     expect(stagePrefs.getState().byProject[id]?.split).toEqual({

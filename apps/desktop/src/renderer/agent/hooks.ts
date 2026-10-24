@@ -38,7 +38,7 @@ import { measureStore } from '../survey/measureStore';
 import { stagePrefs } from '../workspace/stagePrefs';
 import { isDockScreen } from './dockScreens';
 
-const APP_SCREENS: readonly AppScreen[] = ['scene', 'issues', 'media', 'detections', 'reports'];
+const APP_SCREENS: readonly AppScreen[] = ['scene', 'issues', 'inspect', 'reports'];
 
 function screen(): AppScreen | 'other' {
   const now = shell.getState().screen;
@@ -78,6 +78,7 @@ function showPhotos(filter: PhotoViewFilter): PhotoViewResult {
     order: filter.order ?? 'file',
     severity,
     scope,
+    toReview: false,
   });
   // the photos sit below the videos on Media: what the person asked to see is brought into view,
   // once, after the filter is set (the screen may only mount when the tool opens it)

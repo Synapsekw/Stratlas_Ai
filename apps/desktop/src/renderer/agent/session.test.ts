@@ -129,7 +129,7 @@ describe('the one agent session of the app', () => {
 
   it('lets a reply run on while the screen changes to one that shows the agent', async () => {
     await talking();
-    for (const screen of ['media', 'issues', 'detections', 'reports', 'scene'] as const) {
+    for (const screen of ['inspect', 'issues', 'reports', 'scene'] as const) {
       shell.getState().go(screen);
       expect(b.sent('ai:cancel'), screen).toHaveLength(0);
       expect(session.getState().busy, screen).toBe(true);
@@ -141,7 +141,7 @@ describe('the one agent session of the app', () => {
     // from Scene and from a screen with the agent column alike
     const leaving = [
       ['scene', 'settings'],
-      ['media', 'globe'],
+      ['inspect', 'globe'],
       ['issues', 'projects'],
       ['reports', 'welcome'],
     ] as const;

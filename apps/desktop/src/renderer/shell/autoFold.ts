@@ -10,16 +10,10 @@
 export const AUTO_FOLD_BELOW = 1280;
 
 // `string & {}`: any screen name, with the data screens still offered by the editor
-export type FoldScreen = 'scene' | 'issues' | 'media' | 'detections' | 'reports' | (string & {});
+export type FoldScreen = 'scene' | 'issues' | 'inspect' | 'reports' | (string & {});
 
 /** The screens whose data gets the sidebar's room in a narrow window. */
-const DATA_SCREENS: ReadonlySet<string> = new Set([
-  'scene',
-  'issues',
-  'media',
-  'detections',
-  'reports',
-]);
+const DATA_SCREENS: ReadonlySet<string> = new Set(['scene', 'issues', 'inspect', 'reports']);
 
 /** Whether the left sidebar shows as its rail. */
 export function sidebarFolded(i: {

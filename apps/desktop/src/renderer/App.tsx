@@ -40,8 +40,7 @@ import { preparedSurfaces } from './survey/surfaceStates';
 import { connectSurfacesWatch } from './survey/surfacesWatch';
 import { connectKitReady } from './survey/kitAccept';
 import { kitSurfaceDates } from './survey/kitSurface';
-import { MediaScreen } from './screens/Media';
-import { DetectionsScreen } from './screens/Detections';
+import { InspectScreen } from './screens/Inspect';
 import { ProjectsScreen } from './screens/Projects';
 import { ReportsScreen } from './screens/Reports';
 import { SettingsScreen } from './screens/Settings';
@@ -255,10 +254,8 @@ function Screen() {
       return <WorkspaceScreen />;
     case 'issues':
       return <IssuesScreen />;
-    case 'media':
-      return <MediaScreen />;
-    case 'detections':
-      return <DetectionsScreen />;
+    case 'inspect':
+      return <InspectScreen />;
     case 'reports':
       return <ReportsScreen />;
     case 'globe':

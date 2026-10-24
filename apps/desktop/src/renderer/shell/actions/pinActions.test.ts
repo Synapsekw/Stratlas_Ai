@@ -131,7 +131,7 @@ describe('pin actions', () => {
 
   it('starts the placing session on Place on site, in the scene', () => {
     const go = vi.fn();
-    shell.setState({ screen: 'media', go } as never);
+    shell.setState({ screen: 'inspect', go } as never);
     actionsFor(pano('free'), ctx)
       .find((i) => i.id === 'media.place')
       ?.run();

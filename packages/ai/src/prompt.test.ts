@@ -24,7 +24,7 @@ describe('the system prompt', () => {
   it('says why a photo count and a finding count can differ', () => {
     const p = systemPrompt('photo');
     const line =
-      '- Photo counts in Media include detections that are not accepted yet. Findings do not. Say so when the two numbers differ.';
+      '- Photo counts in Inspect include detections that are not accepted yet. Findings do not. Say so when the two numbers differ.';
     expect(p.split('\n')).toContain(line);
     // inside the block on showing things
     expect(p.indexOf('Showing things:')).toBeLessThan(p.indexOf(line));
