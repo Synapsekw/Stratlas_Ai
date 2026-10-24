@@ -57,6 +57,7 @@ import { shell, useShell } from '../shell';
 import { useSurfacePrepareStatus } from '../survey/PreparingCard';
 import { filterTerms, matchingMeasurements } from '../survey/measureFilter';
 import { openMeasurement } from '../survey/pile/openPile';
+import { useCounted } from '../survey/useInventory';
 import { prepareSurfaces } from '../survey/compareStore';
 import { moveMeasurementsToDate } from '../survey/measureMoveRun';
 import {
@@ -426,9 +427,15 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const comparePair = useStore(compareDates, (s) =>
     s.from !== null && s.to !== null ? `${s.from}|${s.to}` : null,
   );
+  // the inventory's own counting rule, so the rows count the piles the Volumes totals count
+  const allStockpiles = useMemo(
+    () => measureState.file.measurements.filter(isStockpile),
+    [measureState.file.measurements],
+  );
+  const isCounted = useCounted(allStockpiles);
   const stockpiles = useMemo(() => {
     if (!datesOn || !manifest) return null;
-    const all = measureState.file.measurements.filter(isStockpile);
+    const all = allStockpiles;
     if (all.length === 0) return null;
     const mode = STOCKPILE_MODE[volumesPane];
     const timeOf = (c: { date: string }) => {
@@ -450,6 +457,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       settings: measureState.settings,
       templates: knownTemplates(measureState),
       previous: mode === 'net' ? (pair?.from ?? null) : null,
+      isCounted,
     });
     const dated = manifest.captures.find((c) => c.id === focusCapture);
     const header = stockpileHeader(all.length, mode, dated ? formatDate(dated.date) : '');
@@ -465,6 +473,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     datesOn,
     manifest,
     measureState,
+    allStockpiles,
+    isCounted,
     volumesPane,
     comparePair,
     focusCapture,

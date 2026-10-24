@@ -25,6 +25,12 @@ vi.mock('../survey/compareStore', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   prepareSurfaces: () => prepare.fn(),
 }));
+// the fixture's piles carry their figures but no prepared surfaces, so the inventory's own rule
+// would count none of them; these tests are about the rows, so every figure counts here
+vi.mock('../survey/useInventory', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  useCounted: () => () => true,
+}));
 vi.mock('@aio/annotate', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useAnnotateReadOnly: () => lookOnly.on,

@@ -88,7 +88,7 @@ export function PileHistory({ data }: { data: PileData }): ReactElement {
       units,
       settings.precision,
       {
-        densityOf: () => density ?? null,
+        densityOf: (_m, capture) => densityAt(capture) ?? null,
         isStale: (_m, r: ComparisonResult) =>
           r.status === 'stale' || staleOf.get(seriesDate(r)) === true,
       },
