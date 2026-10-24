@@ -1,0 +1,219 @@
+/* Ask AI: the bar (button, checks menu, scope), the one-line cloud confirm and the run strip.
+   AI accents are var(--warn), the colour of AI suggestions on the photo. */
+
+.ask-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.ask-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.ask-btn-group {
+  position: relative;
+  display: inline-flex;
+}
+.ask-btn-group > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.ask-btn-group > .ask-caret {
+  margin-left: -1px;
+  padding-inline: var(--sp-3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.ask-btn {
+  gap: var(--sp-3);
+}
+.ask-btn .ask-spark {
+  color: var(--warn);
+}
+.ask-btn:disabled .ask-spark {
+  color: var(--fg-4);
+}
+
+.ask-menu,
+.ask-frames {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  left: 0;
+  z-index: 30;
+  min-width: 220px;
+  max-width: min(360px, 90vw);
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.ask-menu-head {
+  padding: var(--sp-2) var(--sp-4);
+  color: var(--fg-3);
+}
+.ask-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  border-radius: var(--r-4);
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ask-menu-item:hover,
+.ask-menu-item:focus-visible {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.ask-menu-item .ask-tick {
+  flex: none;
+  width: 12px;
+  color: var(--warn);
+}
+.ask-menu-item[aria-checked='false'] .ask-tick {
+  visibility: hidden;
+}
+
+.ask-scope {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.ask-frames {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+}
+.ask-frames label {
+  display: grid;
+  gap: var(--sp-2);
+  color: var(--fg-2);
+}
+.ask-frames-every {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  color: var(--fg-2);
+}
+
+.ask-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-4);
+  margin: 0;
+  color: var(--fg-2);
+}
+.ask-note.err {
+  color: var(--danger-ink);
+}
+
+/* the cloud confirm: one line under the bar */
+.ask-confirm {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--warn-line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-4);
+  background: var(--bg-2);
+}
+.ask-confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.ask-confirm-line {
+  color: var(--fg-0);
+}
+.ask-confirm-row .grow {
+  flex: 1;
+}
+.ask-confirm-preview p {
+  margin: 0 0 var(--sp-4);
+  color: var(--fg-2);
+}
+.ask-confirm-preview h3 {
+  margin: var(--sp-5) 0 0;
+}
+.ask-prev-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: var(--sp-3);
+}
+.ask-prev-grid figure {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+}
+.ask-prev-grid figcaption {
+  padding: 3px 5px;
+  overflow: hidden;
+  color: var(--fg-3);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ask-pre {
+  max-height: 180px;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-4);
+  overflow: auto;
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  font: 400 var(--t-11) / 1.45 var(--f-mono);
+  white-space: pre-wrap;
+}
+
+/* the run strip */
+.ask-run {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-left: 3px solid var(--warn);
+  background: var(--bg-1);
+}
+.ask-run-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.ask-run-line {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-1);
+}
+.ask-run.failed .ask-run-line {
+  color: var(--danger-ink);
+}
+.ask-run-bar {
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+}
+.ask-run-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--warn);
+  transition: width 0.2s var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-run-bar > span {
+    transition: none;
+  }
+}
