@@ -93,6 +93,54 @@ describe('openPile', () => {
   });
 });
 
+describe('openPile on a kit pile', () => {
+  const vol = () => {
+    const state = {
+      selected: null as string | null,
+      select: vi.fn((pile: string | null) => {
+        state.selected = pile;
+      }),
+    };
+    return { getState: () => state, state };
+  };
+
+  beforeEach(() => {
+    const kit: SurveyMeasurement = {
+      ...m('kit1', 'volume', 'polygon'),
+      origin: { kind: 'kit-pile', pile: 'P01' },
+    };
+    measureStore.setState({
+      file: {
+        ...measureStore.getState().file,
+        measurements: [...measureStore.getState().file.measurements, kit],
+      },
+    });
+  });
+
+  it('selects the kit pile in the volumetric view too, without flying', () => {
+    const v = vol();
+    openPile('kit1', bench, v);
+    expect(v.state.selected).toBe('P01');
+    expect(v.state.select).toHaveBeenCalledWith('P01', { fly: false });
+    expect(measureStore.getState().focus).toBe('kit1');
+    expect(bench.getState().front).toBe('volumes');
+  });
+
+  it('leaves a kit pile already selected alone', () => {
+    const v = vol();
+    v.state.selected = 'P01';
+    openPile('kit1', bench, v);
+    expect(v.state.select).not.toHaveBeenCalled();
+  });
+
+  it('a pile drawn by hand leaves the volumetric selection as it is', () => {
+    const v = vol();
+    openPile('pile1', bench, v);
+    expect(v.state.select).not.toHaveBeenCalled();
+    expect(v.state.selected).toBeNull();
+  });
+});
+
 describe('openMeasurement (a sidebar row)', () => {
   it('a pile row opens the pile in the Volumes tab', () => {
     openMeasurement('pile1', bench);
