@@ -414,16 +414,13 @@ export function kitEpochOf(m: SurveyMeasurement): string | null {
 
 /**
  * Whether a converted kit pile still lies at height 0 from a conversion made before heights
- * (every vertex Z exactly 0) in a project whose origin is not at 0, and has not been repaired
- * yet. A pile with any vertex off 0 was edited by a person and is never re-heighted.
+ * (every vertex Z exactly 0) and has not been repaired yet. A pile with any vertex off 0 was
+ * edited by a person and is never re-heighted. The project origin's height says nothing here: a
+ * kit import puts it at the lowest DSM height floored, 0 on a site near sea level, where Z 0 is
+ * still wrong; a repair whose ground is 0 everywhere changes nothing (the caller skips it).
  */
-export function needsHeightRepair(
-  m: SurveyMeasurement,
-  file: MeasurementsFile,
-  originH: number,
-): boolean {
+export function needsHeightRepair(m: SurveyMeasurement, file: MeasurementsFile): boolean {
   if (m.origin?.kind !== 'kit-pile') return false;
-  if (originH === 0) return false;
   if (!m.points.every((p) => p[2] === 0)) return false;
   return !(file.kitHeightsRepaired ?? []).includes(m.id);
 }

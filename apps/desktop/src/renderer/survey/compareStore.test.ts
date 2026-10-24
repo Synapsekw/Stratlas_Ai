@@ -37,6 +37,7 @@ const {
   acceptCarriedQuietly,
   recomputeCarried,
   recomputeStandard,
+  refreshSurfaces,
   scheduleCheck,
   seriesStale,
   setEnginePort,
@@ -182,6 +183,26 @@ describe('results the app computes on its own', () => {
     expect(stored()?.results).toHaveLength(1);
     expect(stored()?.updatedAt).not.toBe(UPDATED);
     expect(writes()).toBe(1);
+  });
+});
+
+describe('surfaces read again in the background', () => {
+  it('a failed read keeps the surfaces read before and the store ready', async () => {
+    const surfaces = [{ ...cone, capture: 'c2' }];
+    compareStore.setState({ status: 'ready', surfaces, error: null });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // `call` answers survey:surfaces with a failure here
+    await refreshSurfaces();
+    expect(compareStore.getState().status).toBe('ready');
+    expect(compareStore.getState().surfaces).toBe(surfaces);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('the first read of a project failing fails the store', async () => {
+    compareStore.setState({ status: 'loading', surfaces: [] });
+    await refreshSurfaces();
+    expect(compareStore.getState().status).toBe('error');
   });
 });
 
@@ -836,6 +857,28 @@ describe('results over time and the spread across bases', () => {
     expect(await acceptCarriedQuietly(['m1'])).toEqual([]);
     expect(stored()?.results[0]?.carried).toBeDefined();
     expect(writes()).toBe(0);
+  });
+
+  it('acceptCarriedQuietly leaves a pile carried when its standard figure is refused', async () => {
+    const r = await compute('m1', { live: true });
+    const fresh = must(r?.results[0]);
+    // the pile lies off every prepared surface: the engine refuses it
+    const off = ring.map((p): [number, number, number] => [p[0] + 5000, p[1], p[2]]);
+    put({
+      points: off,
+      results: [kit(fresh, 'e2')],
+      series: [kit({ ...fresh, toCapture: 'c1' }, 'e1')],
+    });
+    const s = measureStore.getState();
+    measureStore.setState({ savedText: JSON.stringify(s.file), resultsUnwritten: false });
+    call.mockClear();
+    expect(await acceptCarriedQuietly(['m1'])).toEqual([]);
+    const m = stored();
+    expect(m?.results[0]?.carried?.epoch).toBe('e2');
+    expect(m?.series?.[0]?.carried?.epoch).toBe('e1');
+    expect(m?.previousResults).toBeUndefined();
+    expect(writes()).toBe(0);
+    expect(carriedIds(['m1'])).toEqual(['m1']);
   });
 
   it('recomputeCarried accepts the standard base for each carried pile, keeping was', async () => {

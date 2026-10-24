@@ -1,9 +1,22 @@
 // Volumetrics redesign A3: converted kit piles take real heights (the kit DSM of their date, else
 // the date's prepared surface).
-import type { MeasurementsFile, ProjectManifest, SitePoint, SurveyMeasurement } from '@aio/schema';
+import type {
+  BoundaryEditsFile,
+  MeasurementsFile,
+  ProjectManifest,
+  SitePoint,
+  SurveyMeasurement,
+  VolumesFile,
+} from '@aio/schema';
 import { deflateSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
-import { kitDsmHeightAt, kitRepairHeights } from './kitHeights';
+import {
+  kitDsmHeightAt,
+  kitDsmPath,
+  kitEpochsWanted,
+  kitRepairHeights,
+  type DsmCache,
+} from './kitHeights';
 
 const manifest: ProjectManifest = {
   schema: 'aio.project/1',
@@ -174,5 +187,143 @@ describe('kitDsmHeightAt', () => {
     expect(at('e1', 1002, 1999)).toBeNull();
     const failing = await kitDsmHeightAt('p1', ['e1'], () => Promise.reject(new Error('offline')));
     expect(failing('e1', 1002, 1999)).toBeNull();
+  });
+});
+
+const zero = { fill: 0, cut: 0, net: 0 };
+const gridVolumes = (dsm?: string): VolumesFile => ({
+  schema: 'aio.volumes/1',
+  densityTPerM3: 1.6,
+  deadbandM: 0.1,
+  defaultBase: 'plane',
+  bases: [{ id: 'plane', label: 'Best-fit toe plane' }],
+  captures: [
+    { epoch: 'e1', captureId: 'c1', date: '2020-12-31', label: 'One' },
+    { epoch: 'e2', captureId: 'c2', date: '2021-01-10', label: 'Two' },
+    { epoch: 'e3', captureId: 'c3', date: '2021-02-10', label: 'Three' },
+  ],
+  ...(dsm ? { grids: { format: 'vs-kit-js', piles: 'volumes/grids/piles/{id}.js', dsm } } : {}),
+  piles: [
+    {
+      id: 'P01',
+      name: 'Pile P01',
+      zoneRing: [],
+      change: { fill: 0, cut: 0, net: 0 },
+      epochs: Object.fromEntries(
+        ['e1', 'e2'].map((e) => [
+          e,
+          {
+            captureId: e === 'e1' ? 'c1' : 'c2',
+            areaM2: 1,
+            topM: 1,
+            heightM: 1,
+            ring: [
+              [0, 0],
+              [4, 0],
+              [4, 3],
+            ],
+            volumes: { tin: zero, plane: zero, avg: zero, low: zero },
+          },
+        ]),
+      ),
+    },
+  ],
+  totals: {},
+  pileChange: { fill: 0, cut: 0, net: 0 },
+  siteChange: { fill: 0, cut: 0, net: 0 },
+});
+
+describe('where the kit DSMs are', () => {
+  it('imports since 11 Oct name them in volumes.grids; older ones use legacy/data', () => {
+    expect(kitDsmPath('e2', gridVolumes('volumes/grids/dsm_{epoch}.js'))).toBe(
+      'volumes/grids/dsm_e2.js',
+    );
+    expect(kitDsmPath('e2', gridVolumes())).toBe('legacy/data/dsm_e2.js');
+    expect(kitDsmPath('e2', null)).toBe('legacy/data/dsm_e2.js');
+  });
+
+  it('kitDsmHeightAt reads a grids DSM', async () => {
+    const fetchText = vi.fn((url: string) =>
+      Promise.resolve(
+        url === 'aio://project/p1/volumes/grids/dsm_e2.js' ? dsmScript('e2', 52) : null,
+      ),
+    );
+    const at = await kitDsmHeightAt('p1', ['e2'], fetchText, {
+      volumes: gridVolumes('volumes/grids/dsm_{epoch}.js'),
+    });
+    expect(at('e2', 1002, 1999)).toBeCloseTo(52, 6);
+  });
+
+  it('a cache keeps decoded grids: an epoch read once is not read again; a missing one is', async () => {
+    const cache: DsmCache = new Map();
+    const fetchText = vi.fn((url: string) =>
+      Promise.resolve(url.endsWith('dsm_e2.js') ? dsmScript('e2', 52) : null),
+    );
+    await kitDsmHeightAt('p1', ['e1', 'e2'], fetchText, { cache });
+    const again = await kitDsmHeightAt('p1', ['e1', 'e2'], fetchText, { cache });
+    // e2 decoded once; e1 (no file) asked again: it may appear after a build
+    expect(fetchText).toHaveBeenCalledTimes(3);
+    expect(again('e2', 1002, 1999)).toBeCloseTo(52, 6);
+  });
+});
+
+describe('the date a pile is draped on', () => {
+  it('the outline date (as the conversion drapes) wins over the carried figure date', async () => {
+    const heights = await kitRepairHeights(fileOf(kitPile('P01', 'e1')), manifest, {
+      dsm: (epoch) => (epoch === 'e2' ? 52 : epoch === 'e1' ? 51 : null),
+      groundAt: none,
+      captureOfEpoch: () => null,
+      epochOfPile: () => 'e2',
+    });
+    expect(heights.get('P01')).toEqual([52, 52, 52]);
+  });
+
+  it('kitEpochsWanted: only the dates of piles to convert or to repair', () => {
+    const volumes = gridVolumes();
+    // nothing converted yet: P01's outline date
+    expect(kitEpochsWanted(fileOf(), volumes, null)).toEqual(['e2']);
+    // converted and repaired: none
+    const done = { ...fileOf(kitPile('P01', 'e1')), kitPilesConverted: ['P01'] };
+    expect(kitEpochsWanted({ ...done, kitHeightsRepaired: ['P01'] }, volumes, null)).toEqual([]);
+    // converted at Z 0: the outline date
+    expect(kitEpochsWanted(done, volumes, null)).toEqual(['e2']);
+    // a hand-drawn toe line on a later date moves the outline there
+    const edits: BoundaryEditsFile = {
+      schema: 'aio.boundary-edits/1',
+      edits: [
+        {
+          pile: 'P01',
+          epoch: 'e3',
+          ring: [
+            [0, 0],
+            [4, 0],
+            [4, 3],
+          ],
+          areaM2: 1,
+          topM: 1,
+          heightM: 1,
+          volumes: {},
+        },
+      ],
+    } as unknown as BoundaryEditsFile;
+    expect(kitEpochsWanted(fileOf(), volumes, edits)).toEqual(['e3']);
+  });
+});
+
+describe('a ground of 0 everywhere', () => {
+  it('is no repair, and a project whose origin is at 0 is repaired too', async () => {
+    const zero = await kitRepairHeights(fileOf(kitPile('P01', 'e2')), manifest, {
+      dsm: () => 0,
+      groundAt: none,
+      captureOfEpoch: () => null,
+    });
+    expect(zero.size).toBe(0);
+    const atSea: ProjectManifest = { ...manifest, origin: [1000, 2000, 0] };
+    const heights = await kitRepairHeights(fileOf(kitPile('P01', 'e2')), atSea, {
+      dsm: () => 3.5,
+      groundAt: none,
+      captureOfEpoch: () => null,
+    });
+    expect(heights.get('P01')).toEqual([3.5, 3.5, 3.5]);
   });
 });

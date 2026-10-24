@@ -601,6 +601,20 @@ describe('the survey data', () => {
     expect(read?.measurements[0]?.points.map((p) => p[2])).toEqual([103, 103, 103, 103]);
   });
 
+  it('an import that names its grids (volumes.grids) has its DSMs read from there', async () => {
+    const kit: VolumesFile = {
+      ...KIT,
+      grids: {
+        format: 'vs-kit-js',
+        piles: 'volumes/grids/piles/{id}.js',
+        dsm: 'volumes/grids/dsm_{epoch}.js',
+      },
+    };
+    const reader = kitReader(kitDsm('e3', 103), undefined, kit, 'volumes/grids');
+    const read = await readSurveyFiles(reader, manifest, []);
+    expect(read?.measurements[0]?.points.map((p) => p[2])).toEqual([103, 103, 103, 103]);
+  });
+
   it('kit piles converted at Z 0 before heights are repaired in memory', async () => {
     const first = await readSurveyFiles(kitReader(), manifest, []);
     const pile = first?.measurements[0];
@@ -669,11 +683,13 @@ const KIT: VolumesFile = {
 const kitReader = (
   dsm: { epoch: string; text: string } | null = null,
   file?: MeasurementsFile,
+  kit: VolumesFile = KIT,
+  dsmDir = 'legacy/data',
 ) => ({
   json: (path: string) =>
     Promise.resolve(
       path === 'volumes.json'
-        ? KIT
+        ? kit
         : path === 'survey/settings.json'
           ? settings
           : path === 'survey/measurements.json'
@@ -681,7 +697,7 @@ const kitReader = (
             : null,
     ),
   text: (path: string) =>
-    Promise.resolve(dsm && path === `legacy/data/dsm_${dsm.epoch}.js` ? dsm.text : null),
+    Promise.resolve(dsm && path === `${dsmDir}/dsm_${dsm.epoch}.js` ? dsm.text : null),
   bytes: () => Promise.resolve(null),
 });
 

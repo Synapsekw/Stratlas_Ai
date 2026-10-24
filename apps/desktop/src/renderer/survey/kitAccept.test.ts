@@ -164,19 +164,40 @@ describe('connectKitReady', () => {
     expect(k.accept).not.toHaveBeenCalled();
   });
 
-  it('each pile is accepted once per open, even when the engine could not', async () => {
+  it('a pile accepted is not accepted again in the same open', async () => {
     const k = setup(true);
     k.setStates(states({ d1: ready }));
-    k.accept.mockResolvedValueOnce(['The survey engine is starting.']);
+    k.accept.mockResolvedValueOnce(['p1']);
     k.open('proj');
     await flush();
+    k.setStates(states({ d1: ready, d2: ready }));
     k.ended('proj');
     await flush();
     expect(k.accept).toHaveBeenCalledTimes(1);
+  });
+
+  it('a pile that could not be accepted is tried again once the ready dates change, not before', async () => {
+    const k = setup(true);
+    k.setStates(states({ d1: ready }));
+    // accepted nothing (refused, partly off a surface, edited meanwhile)
+    k.open('proj');
+    await flush();
+    expect(k.accept).toHaveBeenCalledTimes(1);
+    // the surfaces read again, the same dates ready: no loop
+    k.ended('proj');
+    await flush();
+    expect(k.accept).toHaveBeenCalledTimes(1);
+    // another date's surface ready: tried once more
+    k.setStates(states({ d1: ready, d2: ready }));
+    k.ended('proj');
+    await flush();
+    k.ended('proj');
+    await flush();
+    expect(k.accept).toHaveBeenCalledTimes(2);
     // opened again: tried again
     k.open('proj');
     await flush();
-    expect(k.accept).toHaveBeenCalledTimes(2);
+    expect(k.accept).toHaveBeenCalledTimes(3);
   });
 
   it('acceptance keeps the kit figure as was: it goes through acceptCarriedQuietly', async () => {

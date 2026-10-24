@@ -9,7 +9,9 @@
  * edit: written on the saved baseline, never shown as unsaved, no undo step.
  *
  * Once per pile per open, and only in a writable project: a read-only project or package keeps its
- * carried figures (its height repair stays in memory).
+ * carried figures (its height repair stays in memory). A pile that could not be accepted (a carried
+ * item refused or partly off a surface, or the pile edited meanwhile) is tried again once the dates
+ * with a ready surface change, never twice on the same ones.
  */
 import type { MeasurementsFile } from '@aio/schema';
 import { workspace } from '@aio/workspace';
@@ -94,8 +96,12 @@ export function connectKitReady(deps: KitReadyDeps): () => void {
   const look = deps.look ?? lookNow;
   const accept = deps.accept ?? acceptCarriedQuietly;
   let stopped = false;
-  /** The project last opened and the piles already tried in it. */
-  let open: { id: string; tried: Set<string> } | null = null;
+  /**
+   * The project last opened, the piles accepted in it, and the piles that could not be (refused,
+   * partly off a surface, edited meanwhile) with the surface states they were tried on: tried
+   * again only once those states change, so no loop.
+   */
+  let open: { id: string; tried: Set<string>; failed: Map<string, string> } | null = null;
   let chain: Promise<void> = Promise.resolve();
 
   const step = async (projectId: string): Promise<void> => {
@@ -107,12 +113,20 @@ export function connectKitReady(deps: KitReadyDeps): () => void {
     if (!still()) return;
     const seen = await look(projectId);
     if (!seen || !still()) return;
+    // the dates with a ready surface: a pile that could not be accepted waits for them to change
+    const statesKey = JSON.stringify(
+      [...seen.states].filter(([, st]) => st.kind === 'ready').map(([date]) => date),
+    );
     const ids = kitPilesToAccept(seen.file, seen.states, seen.captureOfEpoch).filter(
-      (id) => !mine.tried.has(id),
+      (id) => !mine.tried.has(id) && mine.failed.get(id) !== statesKey,
     );
     if (ids.length === 0) return;
-    for (const id of ids) mine.tried.add(id);
-    await accept(ids);
+    for (const id of ids) mine.failed.set(id, statesKey);
+    const done = await accept(ids);
+    for (const id of done) {
+      mine.tried.add(id);
+      mine.failed.delete(id);
+    }
   };
 
   // one look at a time, in the order asked
@@ -122,7 +136,7 @@ export function connectKitReady(deps: KitReadyDeps): () => void {
 
   const offOpen = deps.onProjectOpen((projectId) => {
     if (stopped) return;
-    open = { id: projectId, tried: new Set() };
+    open = { id: projectId, tried: new Set(), failed: new Map() };
     run(projectId);
   });
   const offEnded = deps.onJobEnded((projectId) => {

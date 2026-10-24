@@ -82,8 +82,10 @@ import {
   fetchKitText,
   kitDsmHeightAt,
   kitEpochs,
+  kitEpochsWanted,
   kitRepairHeights,
   wantsKitHeights,
+  type DsmCache,
 } from './kitHeights';
 import { drawnPoints, scopeShift, storedPoints } from './measureDates';
 import { alignPicks, creationDating, realignPickedOn, type VertexPick } from './measureSource';
@@ -333,6 +335,25 @@ const markUnwritten = new Set<string>();
 export function forgetMeasureWrites(): void {
   writing.clear();
 }
+/**
+ * The kit DSMs decoded for one project, kept while it is the one opened (a reopen, a repair after
+ * each prepare job decode nothing again); another project's open lets them go.
+ */
+let kitDsms: { projectId: string; cache: DsmCache } | null = null;
+function kitDsmCache(projectId: string): DsmCache {
+  if (kitDsms?.projectId !== projectId) kitDsms = { projectId, cache: new Map() };
+  return kitDsms.cache;
+}
+/** Let go of the decoded kit DSMs (a volumetric build wrote them again; tests). */
+export function forgetKitDsms(): void {
+  kitDsms = null;
+  repairFoundNothing = null;
+}
+/**
+ * The last repair that found no height for any pile still at Z 0: what it looked at (the prepared
+ * surfaces, the piles), so the same look is not made again until one of them changes.
+ */
+let repairFoundNothing: { projectId: string; epoch: number; key: string } | null = null;
 let newFolderSeq = 0;
 /** Seq of undoable replacements and of measurement notes (one counter: each is new). */
 let changeSeq = 0;
@@ -347,6 +368,7 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   if (projectId === get().projectId && get().status !== 'error') return;
   const epoch = ++loadEpoch;
   set({ ...initial(), projectId, status: projectId ? 'loading' : 'idle' });
+  if (kitDsms?.projectId !== projectId) kitDsms = null;
   if (!projectId) return;
   const pending = writing.get(projectId);
   if (pending) {
@@ -375,10 +397,16 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
   const materials = s.ok && s.value.ok ? s.value.settings.materials : [];
   const read = v.ok && v.value.ok ? v.value : null;
   const manifest = manifestOf(projectId);
-  // the kit's DSMs, read only when a pile is to convert or still lies at Z 0
+  // the kit's DSMs, read only when a pile is to convert or still lies at Z 0, and only those of
+  // their dates (decoded once per project, `kitDsmCache`)
   const heightAt =
-    read?.volumes && manifest && wantsKitHeights(m.value.file, read.volumes, manifest.origin[2])
-      ? await kitDsmHeightAt(projectId, kitEpochs(read.volumes), fetchKitText)
+    read?.volumes && manifest && wantsKitHeights(m.value.file, read.volumes)
+      ? await kitDsmHeightAt(
+          projectId,
+          kitEpochsWanted(m.value.file, read.volumes, read.edits),
+          fetchKitText,
+          { volumes: read.volumes, cache: kitDsmCache(projectId) },
+        )
       : undefined;
   if (loadEpoch !== epoch) return;
   // old stockpile kit piles open as volume measurements with their figures (W3): a conversion,
@@ -391,7 +419,7 @@ export async function loadMeasurements(projectId: string | null): Promise<void> 
     heightAt && manifest && read?.volumes
       ? repairKitHeights(
           opened,
-          await kitRepairHeights(opened, manifest, dsmOnly(read.volumes, heightAt)),
+          await kitRepairHeights(opened, manifest, dsmOnly(read.volumes, heightAt, read.edits)),
         )
       : { file: opened, repaired: [] };
   if (loadEpoch !== epoch) return;
@@ -553,8 +581,13 @@ export async function convertAfterJob(projectId: string): Promise<void> {
   const epoch = loadEpoch;
   const r = await bridge.call('project:readVolumes', { projectId });
   const built = r.ok && r.value.ok ? r.value.volumes : null;
+  // the build wrote the kit's DSMs again: none decoded before it holds
+  forgetKitDsms();
   const heightAt = built
-    ? await kitDsmHeightAt(projectId, kitEpochs(built), fetchKitText)
+    ? await kitDsmHeightAt(projectId, kitEpochs(built), fetchKitText, {
+        volumes: built,
+        cache: kitDsmCache(projectId),
+      })
     : undefined;
   // a save in flight lands first, and the conversion goes on the baseline it leaves
   if (!(await writesSettled(projectId))) return;
@@ -586,16 +619,45 @@ function heightsStillFor(
   file: MeasurementsFile,
   from: MeasurementsFile,
   heights: ReadonlyMap<string, number[]>,
-  originH: number,
 ): Map<string, number[]> {
   const was = new Map(from.measurements.map((m) => [m.id, JSON.stringify(m.points)]));
   const out = new Map<string, number[]>();
   for (const m of file.measurements) {
     const z = heights.get(m.id);
-    if (!z || !needsHeightRepair(m, file, originH)) continue;
+    if (!z || !needsHeightRepair(m, file)) continue;
     if (was.get(m.id) === JSON.stringify(m.points)) out.set(m.id, z);
   }
   return out;
+}
+
+/**
+ * A repair outlives Undo: the undoable replacement's measurements as they were (`undoChange`) and
+ * as it left them (`undoAfter`) take the repaired heights too, where they still lie at Z 0 on the
+ * same outline. Else an Undo put Z 0 back while the id stayed listed as repaired, and the repair
+ * itself read as an edit that let go of the undo.
+ */
+function repairedInUndo(
+  s: MeasureState,
+  file: MeasurementsFile,
+  repaired: readonly string[],
+): Partial<MeasureState> {
+  if (!s.undoChange) return {};
+  const ids = new Set(repaired);
+  const fixed = new Map(file.measurements.filter((m) => ids.has(m.id)).map((m) => [m.id, m]));
+  const heighted = (m: SurveyMeasurement): SurveyMeasurement => {
+    const r = fixed.get(m.id);
+    if (r?.points.length !== m.points.length) return m;
+    const same = m.points.every((p, i) => {
+      const q = r.points[i];
+      return q !== undefined && p[2] === 0 && p[0] === q[0] && p[1] === q[1];
+    });
+    return same ? { ...m, points: r.points } : m;
+  };
+  for (const id of ids) {
+    const r = fixed.get(id);
+    if (r && undoAfter.has(id)) undoAfter.set(id, asReplaced(r));
+  }
+  return { undoChange: { ...s.undoChange, before: s.undoChange.before.map(heighted) } };
 }
 
 /**
@@ -609,33 +671,53 @@ export async function repairKitHeightsNow(projectId: string): Promise<string[]> 
   const s0 = get();
   const manifest = manifestOf(projectId);
   if (s0.projectId !== projectId || s0.status !== 'ready' || !manifest) return [];
-  const originH = manifest.origin[2];
-  if (!s0.file.measurements.some((m) => needsHeightRepair(m, s0.file, originH))) return [];
+  const needing = s0.file.measurements
+    .filter((m) => needsHeightRepair(m, s0.file))
+    .map((m) => m.id);
+  if (needing.length === 0) return [];
   const epoch = loadEpoch;
+  // loaded when asked: the prepared surfaces' module reads the compare store, which reads this one
+  const [{ groundAt }, { compareStore }] = await Promise.all([
+    import('./dateSurfaces'),
+    import('./compareStore'),
+  ]);
+  // the same look that found nothing before (each prepare job's end reads the surfaces again,
+  // often unchanged) is not made again
+  const key = JSON.stringify([compareStore.getState().surfaces, needing]);
+  const nothing = repairFoundNothing;
+  if (nothing?.projectId === projectId && nothing.epoch === epoch && nothing.key === key) return [];
   const r = await bridge.call('project:readVolumes', { projectId });
   const volumes = r.ok && r.value.ok ? r.value.volumes : null;
-  const dsm = await kitDsmHeightAt(projectId, volumes ? kitEpochs(volumes) : [], fetchKitText);
-  // loaded when asked: the prepared surfaces' module reads the compare store, which reads this one
-  const { groundAt } = await import('./dateSurfaces');
+  const edits = r.ok && r.value.ok ? r.value.edits : null;
+  const dsm = await kitDsmHeightAt(
+    projectId,
+    volumes ? kitEpochsWanted(s0.file, volumes, edits) : [],
+    fetchKitText,
+    { volumes, cache: kitDsmCache(projectId) },
+  );
   const heights = await kitRepairHeights(s0.file, manifest, {
     dsm,
     groundAt,
     captureOfEpoch: captureOfEpoch(volumes),
-    epochOfPile: epochOfPile(volumes),
+    epochOfPile: epochOfPile(volumes, edits),
   });
-  if (heights.size === 0) return [];
+  if (heights.size === 0) {
+    if (loadEpoch === epoch) repairFoundNothing = { projectId, epoch, key };
+    return [];
+  }
   // a save in flight lands first, and the repair goes on the baseline it leaves
   if (!(await writesSettled(projectId))) return [];
   const s = get();
   if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready') return [];
-  const current = repairKitHeights(s.file, heightsStillFor(s.file, s0.file, heights, originH));
+  const current = repairKitHeights(s.file, heightsStillFor(s.file, s0.file, heights));
   if (current.repaired.length === 0) return [];
   const saved = JSON.parse(s.savedText) as MeasurementsFile;
-  const baseline = repairKitHeights(saved, heightsStillFor(saved, s0.file, heights, originH));
+  const baseline = repairKitHeights(saved, heightsStillFor(saved, s0.file, heights));
   set({
     file: current.file,
     savedText: text(baseline.file),
     ...(s.readOnly ? {} : { resultsUnwritten: true }),
+    ...repairedInUndo(s, current.file, current.repaired),
   });
   if (!s.readOnly && baseline.repaired.length > 0)
     await writeConversion(projectId, baseline.file, epoch);
@@ -657,16 +739,35 @@ function withAccepted(m: SurveyMeasurement, a: SurveyMeasurement): SurveyMeasure
 }
 
 /**
+ * What a measurement's figures are computed from: its items (their labels aside), the survey it is
+ * scoped to and, with `withRing`, its outline. Figures computed for one key belong to no other.
+ */
+export const measureInputsKey = (m: SurveyMeasurement, withRing = true): string =>
+  JSON.stringify([
+    m.items.map((it) => ({ ...it, label: undefined })),
+    m.scope.kind === 'survey' ? m.scope.capture : null,
+    withRing ? m.points.map((p) => [p[0], p[1]]) : null,
+  ]);
+
+/** A pile the app accepted, with the inputs (`measureInputsKey`) its figures were computed from. */
+export interface KitAccepted {
+  m: SurveyMeasurement;
+  key: string;
+}
+
+/**
  * Converted piles the app accepted with the standard base on its own once their surfaces were
  * ready (`acceptCarriedQuietly`, ADR 0013 point 4): a migration like the conversion, not an edit.
  * The figures (with the kit's as was) go on the file and on the baseline as last saved, written
  * quietly with the baseline (a person's unsaved edits stay unsaved and unwritten), never an undo
- * step and never shown as unsaved. Only piles still carried in the file are taken. Nothing in a
- * read-only project. Returns the ids taken.
+ * step and never shown as unsaved. Each version (the file, the baseline) takes them only while it
+ * still holds the carried figure and the inputs they were computed from: a vertex moved and not
+ * saved, or an edit made while the piles were computed one by one, keeps that version as it is.
+ * Nothing in a read-only project. Returns the ids taken in the file.
  */
 export async function acceptKitQuietly(
   projectId: string,
-  accepted: readonly SurveyMeasurement[],
+  accepted: readonly KitAccepted[],
 ): Promise<string[]> {
   if (accepted.length === 0) return [];
   const epoch = loadEpoch;
@@ -675,26 +776,38 @@ export async function acceptKitQuietly(
   const s = get();
   if (loadEpoch !== epoch || s.projectId !== projectId || s.status !== 'ready' || s.readOnly)
     return [];
-  const byId = new Map(accepted.map((m) => [m.id, m]));
+  const byId = new Map(accepted.map((a) => [a.m.id, a]));
+  const takes = (m: SurveyMeasurement): SurveyMeasurement | null => {
+    const a = byId.get(m.id);
+    return a && holdsCarried(m) && measureInputsKey(m) === a.key ? a.m : null;
+  };
   const taken: string[] = [];
   const file: MeasurementsFile = {
     ...s.file,
     measurements: s.file.measurements.map((m) => {
-      const a = byId.get(m.id);
-      if (!a || !holdsCarried(m)) return m;
+      const a = takes(m);
+      if (!a) return m;
       taken.push(m.id);
       return withAccepted(m, a);
     }),
   };
-  if (taken.length === 0) return [];
   const saved = JSON.parse(s.savedText) as MeasurementsFile;
+  let onBaseline = 0;
   const baseline: MeasurementsFile = {
     ...saved,
     measurements: saved.measurements.map((m) => {
-      const a = byId.get(m.id);
-      return a && taken.includes(m.id) && holdsCarried(m) ? withAccepted(m, a) : m;
+      const a = takes(m);
+      if (!a) return m;
+      onBaseline++;
+      return withAccepted(m, a);
     }),
   };
+  if (taken.length === 0 && onBaseline === 0) return [];
+  if (onBaseline === 0) {
+    // only the person's unsaved version took them: written with their next save
+    set({ file });
+    return taken;
+  }
   set({ file, savedText: text(baseline), resultsUnwritten: true });
   await writeConversion(projectId, baseline, epoch);
   return taken;

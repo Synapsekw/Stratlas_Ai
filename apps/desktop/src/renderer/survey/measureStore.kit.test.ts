@@ -2,6 +2,7 @@
 import {
   MeasurementsFile,
   type ComparisonResult,
+  type HeightTiles,
   type ProjectManifest,
   type SurveyMeasurement,
   type VolumesFile,
@@ -13,9 +14,14 @@ import type * as DateSurfaces from './dateSurfaces';
 import { deflateSync } from 'node:zlib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  acceptKitQuietly,
   convertAfterJob,
   deleteMeasurements,
+  forgetKitDsms,
   forgetMeasureWrites,
+  measureInputsKey,
+  replaceMeasurements,
+  undoMeasureChange,
   isDirty,
   loadMeasurements,
   markBeforeBuild,
@@ -41,6 +47,8 @@ const io = vi.hoisted(() => {
     writeFails: false,
     /** The kit DSMs on disk: one height (m) per epoch. */
     dsm: new Map<string, number>(),
+    /** The folder the kit DSMs are in. */
+    dsmDir: 'legacy/data',
     /** The prepared surface's height under every point (null: no surface). */
     ground: null as number | null,
   };
@@ -72,10 +80,10 @@ function dsmScript(epoch: string, heightM: number): string {
   })};`;
 }
 
-const DSM_URL = /^aio:\/\/project\/p1\/legacy\/data\/dsm_(\w+)\.js$/;
+const DSM_URL = /^aio:\/\/project\/p1\/(.+)\/dsm_(\w+)\.js$/;
 const dsmFetch = vi.fn((url: string) => {
-  const epoch = DSM_URL.exec(url)?.[1] ?? '';
-  const height = io.dsm.get(epoch);
+  const [, dir, epoch = ''] = DSM_URL.exec(url) ?? [];
+  const height = dir === io.dsmDir ? io.dsm.get(epoch) : undefined;
   return Promise.resolve(
     height === undefined
       ? new Response(null, { status: 404 })
@@ -199,10 +207,12 @@ beforeEach(() => {
   io.gate = null;
   io.writeFails = false;
   io.dsm = new Map();
+  io.dsmDir = 'legacy/data';
   io.ground = null;
   dsmFetch.mockClear();
   vi.stubGlobal('fetch', dsmFetch);
   forgetMeasureWrites();
+  forgetKitDsms();
   measureStore.setState({ autosave: false });
 });
 
@@ -476,6 +486,131 @@ describe('kit pile heights', () => {
     expect(zs(kitMeasurements()[0])).toEqual([53, 53, 53]);
     expect(io.writes).toBe(writes);
     expect(isDirty(measureStore.getState())).toBe(false);
+  });
+
+  it('an import that names its grids has its DSMs read from there', async () => {
+    io.volumes = {
+      ...volumes(),
+      grids: {
+        format: 'vs-kit-js',
+        piles: 'volumes/grids/piles/{id}.js',
+        dsm: 'volumes/grids/dsm_{epoch}.js',
+      },
+    };
+    io.dsmDir = 'volumes/grids';
+    io.dsm = new Map([['e2', 52]]);
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    expect(zs(kitMeasurements()[0])).toEqual([52, 52, 52]);
+    expect(dsmFetch).toHaveBeenCalledWith('aio://project/p1/volumes/grids/dsm_e2.js');
+  });
+
+  it("only the DSMs of the piles' dates are read, and each is decoded once per project", async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    // the outline is e2's: e1's DSM is never asked for
+    expect(dsmFetch.mock.calls.map(([u]) => u)).toEqual(['aio://project/p1/legacy/data/dsm_e2.js']);
+    io.readOnly = true;
+    io.dsm = new Map([
+      ['e1', 51],
+      ['e2', 52],
+    ]);
+    dsmFetch.mockClear();
+    await open(io.saved);
+    expect(zs(kitMeasurements()[0])).toEqual([52, 52, 52]);
+    expect(dsmFetch).toHaveBeenCalledTimes(1);
+    // opened again (read-only: the repair stays in memory, so it is wanted again): not decoded again
+    await open(io.saved);
+    expect(zs(kitMeasurements()[0])).toEqual([52, 52, 52]);
+    expect(dsmFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a repair that found nothing is not made again until the prepared surfaces change', async () => {
+    const { compareStore } = await import('./compareStore');
+    compareStore.setState({ surfaces: [] });
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    dsmFetch.mockClear();
+    expect(await repairKitHeightsNow('p1')).toEqual([]);
+    expect(dsmFetch).toHaveBeenCalledTimes(1);
+    // the surfaces read again, unchanged (each prepare job's end)
+    compareStore.setState({ surfaces: [] });
+    expect(await repairKitHeightsNow('p1')).toEqual([]);
+    expect(dsmFetch).toHaveBeenCalledTimes(1);
+    // a date's surface prepared: looked at again
+    io.ground = 53;
+    compareStore.setState({
+      surfaces: [{ capture: 'c2' } as unknown as HeightTiles],
+    });
+    expect(await repairKitHeightsNow('p1')).toHaveLength(1);
+    expect(zs(kitMeasurements()[0])).toEqual([53, 53, 53]);
+  });
+
+  it('a repair outlives Undo of an earlier replacement', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [drawn] });
+    const pile = kitMeasurements()[0];
+    if (!pile) throw new Error('no pile');
+    const seq = replaceMeasurements([{ ...pile, label: 'Renamed pile' }], { undoable: true });
+    expect(seq).not.toBeNull();
+    io.ground = 53;
+    expect(await repairKitHeightsNow('p1')).toEqual([pile.id]);
+    // an edit elsewhere does not let go of the undo
+    patchMeasurement('mine', { label: 'Renamed' });
+    expect(undoMeasureChange(seq ?? -1)).toBe(true);
+    const back = kitMeasurements()[0];
+    expect(back?.label).toBe(pile.label);
+    expect(zs(back)).toEqual([53, 53, 53]);
+  });
+});
+
+describe('the app accepting a converted pile on its own', () => {
+  /** The pile accepted: its carried figure replaced by a standard one. */
+  const acceptedOf = (m: SurveyMeasurement): SurveyMeasurement => ({
+    ...m,
+    results: m.results.map((r) => {
+      const next = { ...r, netM3: 99, fingerprint: 'engine' };
+      delete next.carried;
+      return next;
+    }),
+  });
+
+  it('a vertex moved and not saved: the figures for it go on the file only', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const pile = kitMeasurements()[0];
+    if (!pile) throw new Error('no pile');
+    const writes = io.writes;
+    const points = pile.points.map((p, i): [number, number, number] =>
+      i === 0 ? [p[0] + 1, p[1], p[2]] : p,
+    );
+    patchMeasurement(pile.id, { points });
+    const moved = kitMeasurements()[0];
+    if (!moved) throw new Error('no pile');
+    const a = acceptedOf(moved);
+    expect(await acceptKitQuietly('p1', [{ m: a, key: measureInputsKey(moved) }])).toEqual([
+      pile.id,
+    ]);
+    expect(kitMeasurements()[0]?.results[0]?.netM3).toBe(99);
+    // the baseline is the pile as saved, with its outline: the figures are not its own
+    expect(io.writes).toBe(writes);
+    expect(io.saved.measurements[0]?.results[0]?.carried).toBeDefined();
+  });
+
+  it('a pile edited after its figures were computed takes none of them', async () => {
+    io.volumes = volumes();
+    await open({ schema: 'aio.measurements/1', measurements: [] });
+    const pile = kitMeasurements()[0];
+    if (!pile) throw new Error('no pile');
+    const key = measureInputsKey(pile);
+    const points = pile.points.map((p, i): [number, number, number] =>
+      i === 0 ? [p[0] + 1, p[1], p[2]] : p,
+    );
+    patchMeasurement(pile.id, { points });
+    expect(await acceptKitQuietly('p1', [{ m: acceptedOf(pile), key }])).toEqual([]);
+    expect(kitMeasurements()[0]?.results[0]?.carried).toBeDefined();
+    // the saved version still has the outline they were computed for
+    expect(io.saved.measurements[0]?.results[0]?.carried).toBeUndefined();
+    expect(io.saved.measurements[0]?.results[0]?.netM3).toBe(99);
   });
 });
 

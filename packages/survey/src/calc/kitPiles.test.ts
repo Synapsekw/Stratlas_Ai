@@ -701,21 +701,20 @@ describe('kit pile heights: drape at conversion, one-time repair', () => {
     expect(kitEpochOf(plain)).toBeNull();
   });
 
-  it('needsHeightRepair: an all-zero kit pile in a project with a real origin height', () => {
+  it('needsHeightRepair: an all-zero kit pile not repaired yet, whatever the origin height', () => {
     const file = converted();
     const m = must(file.measurements[0]);
-    expect(needsHeightRepair(m, file, 51)).toBe(true);
+    expect(needsHeightRepair(m, file)).toBe(true);
     // a pile a person already edited (one vertex moved) is never re-heighted
     const moved: SurveyMeasurement = {
       ...m,
       points: m.points.map((p, i): SitePoint => (i === 1 ? [p[0], p[1], 52] : p)),
     };
-    expect(needsHeightRepair(moved, file, 51)).toBe(false);
-    expect(needsHeightRepair(m, file, 0)).toBe(false);
-    expect(needsHeightRepair(m, { ...file, kitHeightsRepaired: [m.id] }, 51)).toBe(false);
+    expect(needsHeightRepair(moved, file)).toBe(false);
+    expect(needsHeightRepair(m, { ...file, kitHeightsRepaired: [m.id] })).toBe(false);
     const own = { ...m };
     delete own.origin;
-    expect(needsHeightRepair(own, file, 51)).toBe(false);
+    expect(needsHeightRepair(own, file)).toBe(false);
   });
 
   it('repairKitHeights sets Z, lists the id, and keeps updatedAt, pickedOn, results, series, previousResults', () => {

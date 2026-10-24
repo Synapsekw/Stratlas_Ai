@@ -106,7 +106,7 @@ import {
   dsmHeightAt,
   dsmOnly,
   kitDsmPath,
-  kitEpochs,
+  kitEpochsWanted,
   kitRepairHeights,
   wantsKitHeights,
 } from '../../survey/kitHeights';
@@ -207,12 +207,14 @@ async function withKitPileHeights(
   materials: readonly SiteMaterial[],
 ): Promise<MeasurementsFile | null> {
   const asIs = file ?? { schema: 'aio.measurements/1' as const, measurements: [] };
-  if (!volumes || !wantsKitHeights(asIs, volumes, manifest.origin[2]))
+  if (!volumes || !wantsKitHeights(asIs, volumes))
     return withKitPiles(file, volumes, edits, manifest, materials);
-  const heightAt = await dsmHeightAt(kitEpochs(volumes), (epoch) => read.text(kitDsmPath(epoch)));
+  const heightAt = await dsmHeightAt(kitEpochsWanted(asIs, volumes, edits), (epoch) =>
+    read.text(kitDsmPath(epoch, volumes)),
+  );
   const opened = withKitPiles(file, volumes, edits, manifest, materials, heightAt);
   if (!opened) return opened;
-  const heights = await kitRepairHeights(opened, manifest, dsmOnly(volumes, heightAt));
+  const heights = await kitRepairHeights(opened, manifest, dsmOnly(volumes, heightAt, edits));
   return repairKitHeights(opened, heights).file;
 }
 

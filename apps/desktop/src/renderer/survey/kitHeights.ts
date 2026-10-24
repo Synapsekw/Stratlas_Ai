@@ -4,33 +4,57 @@
 // existed (every vertex at Z 0) are repaired once with the same heights (`@aio/survey`
 // `needsHeightRepair`, `repairKitHeights`).
 import type {
+  BoundaryEditsFile,
   MeasurementsFile,
   ProjectManifest,
   SurveyMeasurement,
   VolumesFile,
 } from '@aio/schema';
-import { drapeZ, kitEpochOf, needsHeightRepair, type KitHeightAt } from '@aio/survey';
+import { applyEdits, drapeZ, kitEpochOf, needsHeightRepair, type KitHeightAt } from '@aio/survey';
 import { decodeDsm, sampleDsm, type DsmGrid } from '@aio/volumetric';
 import type { groundAt } from './dateSurfaces';
 
-/** The kit's DSM of one survey (epoch), as a project path. */
-export const kitDsmPath = (epoch: string): string =>
-  `legacy/data/dsm_${encodeURIComponent(epoch)}.js`;
+/** Where imports before `VolumesFile.grids` existed keep the kit's DSMs. */
+const LEGACY_DSM = 'legacy/data/dsm_{epoch}.js';
 
 /**
- * Heights from the kit's DSMs of the epochs given, each read once (`textOf`). An epoch whose file
- * is missing or will not read has no heights (null), as has a point off its grid.
+ * The kit's DSM of one survey (epoch), as a project path: where `volumes.grids.dsm` names it
+ * (imports since 11 Oct), else the layout of older imports under `legacy/data/` (as
+ * `@aio/volumetric`'s store reads them).
+ */
+export const kitDsmPath = (epoch: string, volumes?: VolumesFile | null): string =>
+  (volumes?.grids?.dsm ?? LEGACY_DSM).replaceAll('{epoch}', encodeURIComponent(epoch));
+
+/**
+ * Decoded kit DSMs by epoch, kept for the session of one project: decoding is the slow part. Only
+ * grids that decoded are kept; a missing file is asked again (a build may write it).
+ */
+export type DsmCache = Map<string, DsmGrid>;
+
+/**
+ * Heights from the kit's DSMs of the epochs given, each read once (`textOf`), or taken from
+ * `cache` when decoded before. An epoch whose file is missing or will not read has no heights
+ * (null), as has a point off its grid.
  */
 export async function dsmHeightAt(
   epochs: readonly string[],
   textOf: (epoch: string) => Promise<string | null>,
+  cache?: DsmCache,
 ): Promise<KitHeightAt> {
   const grids = new Map<string, DsmGrid>();
   await Promise.all(
     [...new Set(epochs)].map(async (epoch) => {
+      const kept = cache?.get(epoch);
+      if (kept) {
+        grids.set(epoch, kept);
+        return;
+      }
       try {
         const text = await textOf(epoch);
-        if (text !== null) grids.set(epoch, await decodeDsm(text));
+        if (text === null) return;
+        const grid = await decodeDsm(text);
+        grids.set(epoch, grid);
+        cache?.set(epoch, grid);
       } catch {
         // no heights for this date
       }
@@ -42,14 +66,19 @@ export async function dsmHeightAt(
   };
 }
 
-/** `dsmHeightAt` over the project's `aio://` files (`legacy/data/dsm_<epoch>.js`). */
+/** `dsmHeightAt` over the project's `aio://` files (`kitDsmPath`). */
 export function kitDsmHeightAt(
   projectId: string,
   epochs: readonly string[],
   fetchText: (url: string) => Promise<string | null>,
+  opts: { volumes?: VolumesFile | null; cache?: DsmCache } = {},
 ): Promise<KitHeightAt> {
   const base = `aio://project/${encodeURIComponent(projectId)}/`;
-  return dsmHeightAt(epochs, (epoch) => fetchText(`${base}${kitDsmPath(epoch)}`));
+  return dsmHeightAt(
+    epochs,
+    (epoch) => fetchText(`${base}${kitDsmPath(epoch, opts.volumes)}`),
+    opts.cache,
+  );
 }
 
 /** A project file's text through the app's `aio://` protocol; null when it is not there. */
@@ -68,34 +97,57 @@ export const captureOfEpoch =
     volumes?.captures.find((c) => c.epoch === epoch)?.captureId ?? null;
 
 /**
- * The epoch of a kit pile's outline: its latest date with a toe line (the one a conversion
- * draws, `convertKitPiles`). For a pile that carries no figure to tell its date.
+ * The epoch of a kit pile's outline: its latest date with a toe line, hand edits applied (the one
+ * a conversion draws and drapes, `convertKitPiles`).
  */
-export const epochOfPile =
-  (volumes: VolumesFile | null) =>
-  (pile: string): string | null => {
-    const p = volumes?.piles.find((x) => x.id === pile);
+export const epochOfPile = (volumes: VolumesFile | null, edits?: BoundaryEditsFile | null) => {
+  const piles = volumes ? applyEdits(volumes, edits?.edits ?? []) : [];
+  return (pile: string): string | null => {
+    const p = piles.find((x) => x.id === pile);
     if (!p || !volumes) return null;
     let found: string | null = null;
     for (const c of volumes.captures)
       if ((p.epochs[c.epoch]?.ring.length ?? 0) > 0) found = c.epoch;
     return found;
   };
+};
 
 /**
  * Whether opening the file with this kit data may need heights: a pile still to convert, or a
  * converted pile still at Z 0. Saves reading the DSMs on every open.
  */
-export function wantsKitHeights(
-  file: MeasurementsFile,
-  volumes: VolumesFile,
-  originH: number,
-): boolean {
+export function wantsKitHeights(file: MeasurementsFile, volumes: VolumesFile): boolean {
   const done = file.kitPilesConverted;
   if (done === undefined) return true;
   const known = new Set(done);
   if (volumes.piles.some((p) => !known.has(p.id))) return true;
-  return file.measurements.some((m) => needsHeightRepair(m, file, originH));
+  return file.measurements.some((m) => needsHeightRepair(m, file));
+}
+
+/**
+ * The kit dates whose DSMs opening the file may drape on: each pile still to convert on its
+ * outline's date, each converted pile still at Z 0 on its own (`epochOf`). Only these are decoded.
+ */
+export function kitEpochsWanted(
+  file: MeasurementsFile,
+  volumes: VolumesFile,
+  edits: BoundaryEditsFile | null,
+): string[] {
+  const outline = epochOfPile(volumes, edits);
+  const done = new Set(file.kitPilesConverted ?? []);
+  const wanted = new Set<string>();
+  for (const p of volumes.piles) {
+    if (done.has(p.id)) continue;
+    const e = outline(p.id);
+    if (e !== null) wanted.add(e);
+  }
+  const deps = { epochOfPile: outline };
+  for (const m of file.measurements) {
+    if (!needsHeightRepair(m, file)) continue;
+    const e = epochOf(m, deps);
+    if (e !== null) wanted.add(e);
+  }
+  return kitEpochs(volumes).filter((e) => wanted.has(e));
 }
 
 export interface KitRepairDeps {
@@ -104,7 +156,7 @@ export interface KitRepairDeps {
   /** The ground under points on a date's prepared surface (`dateSurfaces.ts`), NaN where none. */
   groundAt: typeof groundAt;
   captureOfEpoch: (epoch: string) => string | null;
-  /** The date of a pile that carries no figure (`epochOfPile`); without it such a pile is skipped. */
+  /** The date of a pile's outline (`epochOfPile`); without it the date of its carried figure. */
   epochOfPile?: (pile: string) => string | null;
 }
 
@@ -112,36 +164,42 @@ export interface KitRepairDeps {
  * Heights from the kit's DSM only, with no prepared surface read (opening a project, before its
  * surfaces load; the report).
  */
-export function dsmOnly(volumes: VolumesFile, dsm: KitHeightAt): KitRepairDeps {
+export function dsmOnly(
+  volumes: VolumesFile,
+  dsm: KitHeightAt,
+  edits?: BoundaryEditsFile | null,
+): KitRepairDeps {
   return {
     dsm,
     groundAt: (_capture, drawn) => Promise.resolve(new Float64Array(drawn.length).fill(Number.NaN)),
     captureOfEpoch: captureOfEpoch(volumes),
-    epochOfPile: epochOfPile(volumes),
+    epochOfPile: epochOfPile(volumes, edits),
   };
 }
 
-/** The kit date a converted pile's outline belongs to. */
-function epochOf(m: SurveyMeasurement, deps: KitRepairDeps): string | null {
-  const carried = kitEpochOf(m);
-  if (carried !== null) return carried;
-  return m.origin?.kind === 'kit-pile' ? (deps.epochOfPile?.(m.origin.pile) ?? null) : null;
+/**
+ * The kit date a converted pile's outline belongs to: the date its outline was drawn from (as the
+ * conversion drapes it), else, without the kit's volumes, the date of its carried figure.
+ */
+function epochOf(m: SurveyMeasurement, deps: Pick<KitRepairDeps, 'epochOfPile'>): string | null {
+  const drawn = m.origin?.kind === 'kit-pile' ? (deps.epochOfPile?.(m.origin.pile) ?? null) : null;
+  return drawn ?? kitEpochOf(m);
 }
 
 /**
  * Heights for the converted piles that still lie at Z 0 (`needsHeightRepair`), by measurement
  * id: the kit DSM of the pile's date first, else the prepared surface of that date's capture. A
- * pile with no height anywhere gets no entry (it keeps Z 0 and is not marked repaired).
+ * pile with no height anywhere, or with a ground of 0 everywhere (nothing to change), gets no
+ * entry (it keeps Z 0 and is not marked repaired).
  */
 export async function kitRepairHeights(
   file: MeasurementsFile,
   manifest: ProjectManifest,
   deps: KitRepairDeps,
 ): Promise<ReadonlyMap<string, number[]>> {
-  const originH = manifest.origin[2];
   const out = new Map<string, number[]>();
   for (const m of file.measurements) {
-    if (!needsHeightRepair(m, file, originH)) continue;
+    if (!needsHeightRepair(m, file)) continue;
     const epoch = epochOf(m, deps);
     if (epoch === null) continue;
     let z = drapeZ(m.points, (e, n) => deps.dsm(epoch, e, n));
@@ -157,7 +215,7 @@ export async function kitRepairHeights(
       let i = 0;
       z = drapeZ(m.points, () => ground[i++] ?? null);
     }
-    if (z) out.set(m.id, z);
+    if (z?.some((h) => h !== 0)) out.set(m.id, z);
   }
   return out;
 }

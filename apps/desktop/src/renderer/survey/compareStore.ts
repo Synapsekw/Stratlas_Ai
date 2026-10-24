@@ -38,7 +38,9 @@ import { refreshQa, sourceOfCapture } from './qaStore';
 import { carriedItem, datesToRun, lineUps, seriesDate, seriesKeyOf } from './seriesRule';
 import {
   acceptKitQuietly,
+  measureInputsKey,
   measureStore,
+  type KitAccepted,
   replaceWithStandard,
   setComputedResults,
   setSeries,
@@ -227,7 +229,9 @@ export async function loadCompare(
 
 /**
  * Read `survey:surfaces` and `survey:readDesigns` again (after a prepare job). The QA store's
- * surfaces (the cards' dates) are read again with them.
+ * surfaces (the cards' dates) are read again with them. A read that fails while the surfaces read
+ * before are in place (a refresh in the background) keeps them and the store ready; only the first
+ * read of a project's surfaces fails the store.
  */
 export async function refreshSurfaces(): Promise<void> {
   void refreshQa();
@@ -239,7 +243,12 @@ export async function refreshSurfaces(): Promise<void> {
   ]);
   if (get().projectId !== projectId) return;
   if (!s.ok || !s.value.ok) {
-    set({ status: 'error', error: !s.ok ? s.error : s.value.ok ? '' : s.value.error });
+    const error = !s.ok ? s.error : s.value.ok ? '' : s.value.error;
+    if (get().status === 'ready') {
+      console.warn(`The survey surfaces could not be read again: ${error}`);
+      return;
+    }
+    set({ status: 'error', error });
     return;
   }
   const surfaces = s.value.surfaces;
@@ -346,8 +355,11 @@ export function compute(
     heatOnly?: boolean;
     keepCarried?: boolean;
     points?: readonly SitePoint[];
-    /** The accepted measurement goes here instead of being stored as an edit (`acceptCarriedQuietly`). */
-    onAccepted?: (m: SurveyMeasurement) => void;
+    /**
+     * The accepted measurement, with the inputs it was computed from, goes here instead of being
+     * stored as an edit (`acceptCarriedQuietly`); only when every carried item computed in full.
+     */
+    onAccepted?: (a: KitAccepted) => void;
   } = {},
 ): Promise<RunReply | null> {
   const run = computeNow(id, opts);
@@ -377,8 +389,8 @@ async function computeNow(
     heatOnly?: boolean;
     keepCarried?: boolean;
     points?: readonly SitePoint[];
-    /** The accepted measurement goes here instead of being stored as an edit (`acceptCarriedQuietly`). */
-    onAccepted?: (m: SurveyMeasurement) => void;
+    /** As `compute`'s. */
+    onAccepted?: (a: KitAccepted) => void;
   },
 ): Promise<RunReply | null> {
   const m = measureStore.getState().file.measurements.find((x) => x.id === id);
@@ -417,8 +429,17 @@ async function computeNow(
       set({ running: { ...get().running, [id]: false }, problems });
       return r;
     }
+    // the app's own acceptance takes only figures computed in full for every carried item: one
+    // refused or partial (part of the pile off a surface) keeps the pile as it is, its kit figures
+    // and their dates included, and nothing is stored
+    const quietRefused =
+      opts.onAccepted !== undefined &&
+      !now.items.every(
+        (it) =>
+          !carriedItem(now, it.id) || r.results.some((x) => x.item === it.id && x.status === 'ok'),
+      );
     // a carried item the person has not accepted shows its stored figure, not the engine's
-    const keepCarried = opts.heatOnly === true || (keeping && !accepting);
+    const keepCarried = opts.heatOnly === true || (keeping && !accepting) || quietRefused;
     const shown = keepCarried
       ? r.results.flatMap((x) => {
           if (!carriedItem(now, x.item)) return [x];
@@ -442,7 +463,7 @@ async function computeNow(
       running: { ...get().running, [id]: false },
       problems,
     });
-    if (!live && !measureStore.getState().readOnly) {
+    if (!live && !measureStore.getState().readOnly && !quietRefused) {
       const byItem = new Map(r.results.map((x) => [x.item, x]));
       const merged = (x: SurveyMeasurement, keep: boolean) =>
         x.items.flatMap((it) => {
@@ -457,7 +478,7 @@ async function computeNow(
       else if (opts.onAccepted) {
         // accepted by the app once the surfaces exist: handed back, stored as a migration
         const next = acceptStandard(now, r.results);
-        opts.onAccepted({ ...next, results: merged(next, false) });
+        opts.onAccepted({ m: { ...next, results: merged(next, false) }, key: asked });
       } else
         updateMeasurement(id, (x) => {
           // accepted: the carried kit figures are replaced and kept as "was"
@@ -487,11 +508,7 @@ async function computeNow(
 
 /** What a run computes for: the items (their labels aside) and, unless given, the ring. */
 const inputsKey = (m: SurveyMeasurement, withRing: boolean): string =>
-  JSON.stringify([
-    m.items.map((it) => ({ ...it, label: undefined })),
-    captureOf(m) ?? null,
-    withRing ? ringOf(m.points) : null,
-  ]);
+  measureInputsKey(m, withRing);
 
 /**
  * "Recompute with the standard base" (W3): the person's Recompute of a measurement whose figure
@@ -608,17 +625,19 @@ export async function recomputeCarried(ids: readonly string[]): Promise<string[]
  * The app's own acceptance of the standard base for the given converted piles once their surfaces
  * are ready (ADR 0013 point 4): computed as `recomputeCarried` does, kept with the kit figure as
  * was, but stored as a migration (`acceptKitQuietly`): written on the saved baseline, no edit, no
- * undo step. Nothing in a read-only project or before the engine is ready. The ids accepted.
+ * undo step. A pile whose carried items do not all compute in full (refused, or partly off a
+ * surface) stays carried, as does one edited while it ran. Nothing in a read-only project or
+ * before the engine is ready. The ids accepted.
  */
 export async function acceptCarriedQuietly(ids: readonly string[]): Promise<string[]> {
   const ms = measureStore.getState();
   const projectId = ms.projectId;
   if (!projectId || ms.readOnly || ms.status !== 'ready' || get().status !== 'ready') return [];
-  const done: SurveyMeasurement[] = [];
+  const done: KitAccepted[] = [];
   for (const id of carriedIds(ids)) {
     await compute(id, {
-      onAccepted: (m) => {
-        done.push(m);
+      onAccepted: (a) => {
+        done.push(a);
       },
     });
   }
