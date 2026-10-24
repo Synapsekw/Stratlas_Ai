@@ -1,24 +1,68 @@
 /* two walks compared in the two 360 panes (walks/walkCompare.ts) */
+/* one row of the pane bar's height in both panes, never wrapping: the lead's extra controls must
+   not make its 360 view shorter than the follower's (the linked zoom would differ). A narrow pane
+   drops the button names (still the buttons' names, out of sight), then the role while By place
+   and By time turn to icons, and the date gives way last */
 .pane-bar.walk-compare-bar {
+  container-type: inline-size;
   gap: 8px;
-  flex-wrap: wrap;
-  height: auto;
-  min-height: 34px;
-  padding-block: 4px;
-  row-gap: 4px;
+  overflow: hidden;
 }
 .walk-compare-date {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   font-size: var(--t-12);
   color: var(--fg-1);
   white-space: nowrap;
+}
+.walk-compare-day {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.walk-compare-bar > :not(.walk-compare-date) {
+  flex-shrink: 0;
 }
 .walk-role {
   font-size: var(--t-11);
   color: var(--fg-2);
   white-space: nowrap;
+}
+/* out of sight, still the button's name */
+@container (max-width: 520px) {
+  .walk-cbtn-label:not(.walk-seg-label) {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+/* By place and By time as a pin and a clock */
+.walk-seg-icon {
+  display: none;
+}
+@container (max-width: 340px) {
+  .pane-bar.walk-compare-bar {
+    gap: 6px;
+  }
+  .walk-role.lead {
+    display: none;
+  }
+  .walk-seg-icon {
+    display: inline;
+  }
+  .walk-seg-label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 .walk-role.lead {
   color: var(--fg-0);
@@ -42,6 +86,21 @@
 /* how far the follower's frame is from the lead's spot: a quiet chip on the picture that never
    covers it, amber once the routes have parted. It sits below the north tick (top 0, about 20 px
    tall, anywhere along the top edge) so the two never overlap */
+/* the pane's zoom while the pointer is over it (the horizontal field of view, what Link look
+   matches): the same quiet chip, in the other top corner */
+.walk-zoom-chip {
+  position: absolute;
+  top: 28px;
+  right: 10px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  pointer-events: none;
+  color: var(--ov);
+  background: var(--scrim);
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .walk-dist-chip {
   position: absolute;
   top: 28px;

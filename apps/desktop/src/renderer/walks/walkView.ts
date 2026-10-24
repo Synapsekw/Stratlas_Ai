@@ -131,6 +131,68 @@ export function horizontalFov(fovDeg: number, w: number, h: number): number {
   return Math.min(179, (2 * Math.atan(Math.tan(v / 2) * (w / h)) * 180) / Math.PI);
 }
 
+/** The vertical field of view a view `w` x `h` px takes to see `hfovDeg` across. */
+export function verticalFov(hfovDeg: number, w: number, h: number): number {
+  if (!(w > 0) || !(h > 0)) return hfovDeg;
+  const u = (hfovDeg * Math.PI) / 180;
+  return (2 * Math.atan(Math.tan(u / 2) * (h / w)) * 180) / Math.PI;
+}
+
+/**
+ * A published view's width over height, read from its two fields of view; null when they do not
+ * tell (no size yet, or the horizontal one at its 179 degree cap).
+ */
+export function viewAspect(v: Pick<WalkViewNow, 'fovDeg' | 'hfovDeg'>): number | null {
+  if (!(v.fovDeg > 0) || !(v.hfovDeg > 0) || v.hfovDeg >= 179) return null;
+  const r = Math.tan((v.hfovDeg * Math.PI) / 360) / Math.tan((v.fovDeg * Math.PI) / 360);
+  return Number.isFinite(r) && r > 0 ? r : null;
+}
+
+/** The zoom a 360 pane may take: its vertical field of view, degrees. */
+export interface FovRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * The vertical zoom range of a compared pane of width over height `aspect` whose look is linked to
+ * a pane of `otherAspect` (null: no other pane): the viewer's `limits`, narrowed so the two panes
+ * share one range of horizontal fields of view and stop at the same zoom, all the way out and all
+ * the way in.
+ */
+export function linkedFovRange(
+  aspect: number,
+  otherAspect: number | null,
+  limits: FovRange,
+): FovRange {
+  if (otherAspect === null || !(aspect > 0) || !(otherAspect > 0)) return { ...limits };
+  const ownMin = horizontalFov(limits.min, aspect, 1);
+  const otherMin = horizontalFov(limits.min, otherAspect, 1);
+  const ownMax = horizontalFov(limits.max, aspect, 1);
+  const otherMax = horizontalFov(limits.max, otherAspect, 1);
+  return {
+    min: ownMin >= otherMin ? limits.min : verticalFov(otherMin, aspect, 1),
+    max: ownMax <= otherMax ? limits.max : verticalFov(otherMax, aspect, 1),
+  };
+}
+
+/**
+ * The vertical field of view a linked pane `w` x `h` px takes to see as wide as the steering
+ * pane (`hfovDeg` across), held inside its `range`.
+ */
+export function linkedFov(hfovDeg: number, w: number, h: number, range: FovRange): number {
+  return Math.min(range.max, Math.max(range.min, verticalFov(hfovDeg, w, h)));
+}
+
+/** The width over height of walk `layerId`'s pane (to a thousandth), or null. */
+export function useWalkAspect(layerId: string | null): number | null {
+  return useStore(walkViews, (s) => {
+    const v = layerId === null ? undefined : s[layerId];
+    const a = v ? viewAspect(v) : null;
+    return a === null ? null : Math.round(a * 1000) / 1000;
+  });
+}
+
 // ---------------------------------------------------------------- geometry (model x/z)
 
 /** The Beam's parts on screen (map, drawings), px: the same size at every zoom. */

@@ -63,11 +63,15 @@ import {
   fanPoints,
   headingFromBearingDeg,
   horizontalFov,
+  linkedFov,
+  linkedFovRange,
   setWalkView,
   shiftBearingDeg,
   shiftHeadingRad,
   walkViewPublisher,
+  useWalkAspect,
   useWalkView,
+  type FovRange,
 } from './walkView';
 import {
   formatWalkTime,
@@ -159,6 +163,8 @@ function WalkPlayer({
   const [sound, setSound] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [box, setBox] = useState({ w: 0, h: 0 });
+  // the pointer is over the view: its zoom shows in a corner
+  const [hover, setHover] = useState(false);
   // where the other copy stopped when Level horizon switched copies: the new one goes on there
   const resume = useRef<{ time: number; play: boolean } | null>(null);
   const srcKey = 'path' in src ? src.path : `hash:${src.hash}`;
@@ -178,6 +184,17 @@ function WalkPlayer({
   const toggleRef = useRef<(play: boolean) => void>(() => undefined);
   // the pane under the pointer (or the one dragged, zoomed) leads the linked look
   const userLook = useRef<() => void>(() => undefined);
+  // the zoom this pane may take: with Link look on, the range both panes share by horizontal field
+  // of view, so both stop at the same zoom (walkView.ts, linkedFovRange)
+  const otherAspect = useWalkAspect(compare?.linkLook ? compare.other.id : null);
+  const range = useMemo<FovRange>(
+    () =>
+      compare?.linkLook && box.w > 0 && box.h > 0
+        ? linkedFovRange(box.w / box.h, otherAspect, PANO_FOV)
+        : { min: PANO_FOV.min, max: PANO_FOV.max },
+    [compare?.linkLook, box.w, box.h, otherAspect],
+  );
+  const zoomRange = useRef(range);
   // the lead tells the follower where it is on every change of its video's clock; a video waiting
   // for data (a stall) does not play, so the follower holds with it
   const isLead = useRef(false);
@@ -302,7 +319,9 @@ function WalkPlayer({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       userLook.current();
-      const next = zoomLook(look.current, e.deltaY);
+      const zoomed = zoomLook(look.current, e.deltaY);
+      const { min, max } = zoomRange.current;
+      const next = { ...zoomed, fovDeg: Math.min(max, Math.max(min, zoomed.fovDeg)) };
       look.current = next;
       pano?.setLook(next);
       setShown(next);
@@ -359,15 +378,23 @@ function WalkPlayer({
       pub.stop();
     };
   }, [walk.id]);
+  const hfovDeg = horizontalFov(shown.fovDeg, box.w, box.h);
   useEffect(() => {
     publisher.current?.publish({
       t: time,
       lookDeg,
       pitchDeg: shown.pitchDeg,
       fovDeg: shown.fovDeg,
-      hfovDeg: horizontalFov(shown.fovDeg, box.w, box.h),
+      hfovDeg,
     });
-  }, [walk.id, time, lookDeg, shown, box]);
+  }, [walk.id, time, lookDeg, shown, hfovDeg]);
+  // a pane made narrower or wider (the divider) keeps its zoom inside the shared range
+  useEffect(() => {
+    zoomRange.current = range;
+    const cur = look.current;
+    const fov = Math.min(range.max, Math.max(range.min, cur.fovDeg));
+    if (Math.abs(fov - cur.fovDeg) > 1e-6) setLook({ ...cur, fovDeg: fov });
+  }, [range]);
 
   // the lead: its clock for the follower, from the moment it leads
   const role = compare?.role;
@@ -469,19 +496,24 @@ function WalkPlayer({
   // own heading and by both dates' line-up turns
   const driverView = useWalkView(compare?.linkLook && !compare.driver ? compare.other.id : null);
   const driverLook = driverView?.lookDeg ?? null;
+  // the zoom goes by the horizontal field of view: a pane of another size sees as wide
   useEffect(() => {
     if (driverView === undefined || driverLook === null || headingDeg === null) return;
     const yaw = linkedYawDeg(shiftBearingDeg(driverLook, otherShift), headingDeg, ownShift);
+    const fov =
+      box.w > 0 && box.h > 0
+        ? linkedFov(driverView.hfovDeg, box.w, box.h, range)
+        : driverView.fovDeg;
     const cur = look.current;
     const dy = Math.abs(wrapDeg(yaw - cur.yawDeg + 180) - 180);
     if (
       dy < 0.05 &&
       Math.abs(cur.pitchDeg - driverView.pitchDeg) < 0.05 &&
-      Math.abs(cur.fovDeg - driverView.fovDeg) < 0.05
+      Math.abs(cur.fovDeg - fov) < 0.05
     )
       return;
-    setLook({ yawDeg: yaw, pitchDeg: driverView.pitchDeg, fovDeg: driverView.fovDeg });
-  }, [driverView, driverLook, headingDeg, ownShift, otherShift]);
+    setLook({ yawDeg: yaw, pitchDeg: driverView.pitchDeg, fovDeg: fov });
+  }, [driverView, driverLook, headingDeg, ownShift, otherShift, box.w, box.h, range]);
   const pairDist = following ? dist : null;
   const apart = pairDist !== null && pairDist >= APART_M;
   // a following walk's play button shows (and works) the lead's playback
@@ -646,9 +678,14 @@ function WalkPlayer({
         data-yaw={shown.yawDeg.toFixed(1)}
         data-pitch={shown.pitchDeg.toFixed(1)}
         data-fov={shown.fovDeg.toFixed(1)}
+        data-hfov={hfovDeg.toFixed(1)}
         onKeyDown={onKey}
         onPointerEnter={() => {
           userLook.current();
+          setHover(true);
+        }}
+        onPointerLeave={() => {
+          setHover(false);
         }}
         onPointerDown={onDown}
         onPointerMove={onMove}
@@ -676,6 +713,11 @@ function WalkPlayer({
         {walkDets.length > 0 && showDets && status === 'ready' && onLevelled && (
           <div className="walk-det-note" role="note" data-testid="walk-det-level-note">
             {t('walk.det.levelNote')}
+          </div>
+        )}
+        {hover && status === 'ready' && box.w > 0 && (
+          <div className="walk-zoom-chip" data-testid="walk-zoom">
+            {t('walk.zoom', { deg: Math.round(hfovDeg) })}
           </div>
         )}
         {message && (
@@ -991,7 +1033,11 @@ function CompareInset({
   );
 }
 
-/** The compare row under a 360 pane's header: its role, and the lead's controls. */
+/**
+ * The compare row under a 360 pane's header: its role, and the lead's controls. One row of one
+ * height in both panes, so their 360 views are the same size (a narrow pane drops the button
+ * names, walkCompare.css).
+ */
 function CompareBar({
   side,
   walk,
@@ -1020,7 +1066,7 @@ function CompareBar({
           style={{ background: manifest ? walkColour(manifest, walk) : undefined }}
           aria-hidden="true"
         />
-        {date}
+        <span className="walk-compare-day">{date}</span>
       </span>
       {solo ? (
         <Tip content={t('walk.compare.soloTip', { date: otherDate })}>
@@ -1045,18 +1091,30 @@ function CompareBar({
         <>
           <span className="walk-seg" role="group" aria-label={t('walk.compare.follow')}>
             {(['place', 'time'] as const).map((m) => (
-              <button
+              <Tip
                 key={m}
-                type="button"
-                className="btn sm ghost"
-                aria-pressed={mode === m}
-                data-testid={`walk-compare-${m}`}
-                onClick={() => {
-                  walkCompare.setState({ mode: m });
-                }}
+                content={t(m === 'place' ? 'walk.compare.byPlace' : 'walk.compare.byTime')}
+                repeatsName
               >
-                {t(m === 'place' ? 'walk.compare.byPlace' : 'walk.compare.byTime')}
-              </button>
+                <button
+                  type="button"
+                  className="btn sm ghost"
+                  aria-pressed={mode === m}
+                  data-testid={`walk-compare-${m}`}
+                  onClick={() => {
+                    walkCompare.setState({ mode: m });
+                  }}
+                >
+                  <Icon
+                    name={m === 'place' ? 'pin' : 'clock'}
+                    size={14}
+                    className="walk-seg-icon"
+                  />
+                  <span className="walk-cbtn-label walk-seg-label">
+                    {t(m === 'place' ? 'walk.compare.byPlace' : 'walk.compare.byTime')}
+                  </span>
+                </button>
+              </Tip>
             ))}
           </span>
           <Tip content={t('walk.compare.linkTip')}>
@@ -1070,7 +1128,7 @@ function CompareBar({
               }}
             >
               <Icon name="link" size={14} />
-              {t('walk.compare.link')}
+              <span className="walk-cbtn-label">{t('walk.compare.link')}</span>
             </button>
           </Tip>
           {!ghost && (
@@ -1084,7 +1142,7 @@ function CompareBar({
                 }}
               >
                 <Icon name="loop" size={14} />
-                {t('walk.compare.swap')}
+                <span className="walk-cbtn-label">{t('walk.compare.swap')}</span>
               </button>
             </Tip>
           )}

@@ -2350,6 +2350,7 @@ export const en = {
   'walk.rawHint':
     'Raw 360 camera files play unstabilised. For a steady picture, export the clip from Insta360 Studio with FlowState on and add that MP4 with Add 360 video.',
   'walk.view': '360 view of {name}. Drag to look around, scroll to zoom.',
+  'walk.zoom': 'Zoom {deg}°',
   'walk.play': 'Play',
   'walk.pause': 'Pause',
   'walk.scrub': 'Position in the video',

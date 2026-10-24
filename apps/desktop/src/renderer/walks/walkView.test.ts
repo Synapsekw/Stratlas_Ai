@@ -11,6 +11,10 @@ import {
   shiftBearingDeg,
   shiftHeadingRad,
   horizontalFov,
+  linkedFov,
+  linkedFovRange,
+  verticalFov,
+  viewAspect,
   setWalkView,
   walkViewPublisher,
   walkViews,
@@ -109,6 +113,49 @@ describe('walk views', () => {
     expect(horizontalFov(90, 200, 100)).toBeCloseTo(126.87, 1);
     expect(horizontalFov(60, 100, 100)).toBeCloseTo(60, 6);
     expect(horizontalFov(60, 0, 100)).toBe(60);
+  });
+
+  it('turns a horizontal field of view back into the vertical one for a pane', () => {
+    expect(verticalFov(horizontalFov(70, 640, 655), 640, 655)).toBeCloseTo(70, 9);
+    expect(verticalFov(126.87, 200, 100)).toBeCloseTo(90, 1);
+    expect(verticalFov(60, 0, 100)).toBe(60);
+  });
+
+  it("reads a published view's width over height from its two fields of view", () => {
+    expect(viewAspect({ fovDeg: 90, hfovDeg: horizontalFov(90, 200, 100) })).toBeCloseTo(2, 9);
+    expect(viewAspect({ fovDeg: 0, hfovDeg: 0 })).toBeNull();
+    expect(viewAspect({ fovDeg: 60, hfovDeg: 179 })).toBeNull();
+  });
+
+  it('links the zoom by the horizontal field of view, so a shorter pane sees as wide', () => {
+    const lim = { min: 20, max: 100 };
+    const range = linkedFovRange(640 / 655, 640 / 685, lim);
+    // the driver 640 x 685 at 70 degrees; the follower 640 x 655 sees the same width
+    const h = horizontalFov(70, 640, 685);
+    const v = linkedFov(h, 640, 655, range);
+    expect(horizontalFov(v, 640, 655)).toBeCloseTo(h, 9);
+    expect(v).toBeLessThan(70);
+  });
+
+  it('stops both panes at the same zoom: the shared range of horizontal fields of view', () => {
+    const lim = { min: 20, max: 100 };
+    const wide = 2;
+    const narrow = 1;
+    const rw = linkedFovRange(wide, narrow, lim);
+    const rn = linkedFovRange(narrow, wide, lim);
+    // all the way out: the narrow pane's widest (100 degrees) bounds the wide pane
+    expect(rn.max).toBeCloseTo(100, 9);
+    expect(horizontalFov(rw.max, wide, 1)).toBeCloseTo(horizontalFov(100, narrow, 1), 9);
+    expect(rw.max).toBeLessThan(100);
+    // all the way in: the wide pane's narrowest (20 degrees) bounds the narrow pane
+    expect(rw.min).toBeCloseTo(20, 9);
+    expect(horizontalFov(rn.min, narrow, 1)).toBeCloseTo(horizontalFov(20, wide, 1), 9);
+    // the follower is held inside its range
+    expect(linkedFov(170, narrow, 1, rn)).toBe(rn.max);
+    expect(linkedFov(1, narrow, 1, rn)).toBe(rn.min);
+    // two panes of one size, or no other pane: the viewer's own limits
+    expect(linkedFovRange(1.3, 1.3, lim)).toEqual({ min: 20, max: 100 });
+    expect(linkedFovRange(1.3, null, lim)).toEqual({ min: 20, max: 100 });
   });
 });
 
