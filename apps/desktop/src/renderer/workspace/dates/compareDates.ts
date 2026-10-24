@@ -46,14 +46,56 @@ export function orderPair(
   return a !== null && b !== null && a > b ? { from: to, to: from } : { from, to };
 }
 
+/** True when both ends of the pair are set, differ and are among `captures`. */
+export function pairIn(
+  pair: { from: string | null; to: string | null },
+  captures: readonly string[],
+): pair is ComparePair {
+  return (
+    pair.from !== null &&
+    pair.to !== null &&
+    pair.from !== pair.to &&
+    captures.includes(pair.from) &&
+    captures.includes(pair.to)
+  );
+}
+
+/**
+ * The pair to use with the open project's captures: the chosen one when it belongs to them, else
+ * the default for the focus (a pair left over from another project never applies).
+ */
+export function pairFor(
+  pair: { from: string | null; to: string | null },
+  focus: string | null,
+  captures: readonly DatedCapture[],
+): ComparePair | null {
+  if (
+    pairIn(
+      pair,
+      captures.map((c) => c.capture),
+    )
+  )
+    return { from: pair.from, to: pair.to };
+  return defaultPair(focus, captures);
+}
+
 export interface CompareDatesState {
   on: boolean;
   from: string | null;
   to: string | null;
+  /** The open project's captures (null: not known yet); a pair outside them is not reused. */
+  known: readonly string[] | null;
   /** Sets the pair, swapped into date order when `timeOf` is given. */
   set(from: string, to: string, timeOf?: (capture: string) => number | null): void;
-  /** Turns Compare on or off; turning on without a pair takes `defaults` (see `defaultPair`). */
+  /**
+   * Turns Compare on or off; turning on without a pair, or with one whose captures are not the
+   * open project's, takes `defaults` (see `defaultPair`).
+   */
   toggle(defaults?: ComparePair | null): void;
+  /** Another project: Compare off, the pair forgotten, `captures` the known ones. */
+  reset(captures?: readonly string[] | null): void;
+  /** The open project's captures changed (a survey added or removed). */
+  setKnown(captures: readonly string[] | null): void;
 }
 
 export function createCompareDates(): StoreApi<CompareDatesState> {
@@ -61,6 +103,7 @@ export function createCompareDates(): StoreApi<CompareDatesState> {
     on: false,
     from: null,
     to: null,
+    known: null,
     set(from, to, timeOf) {
       set(timeOf ? orderPair(from, to, timeOf) : { from, to });
     },
@@ -70,11 +113,46 @@ export function createCompareDates(): StoreApi<CompareDatesState> {
         set({ on: false });
         return;
       }
-      const pair = s.from !== null && s.to !== null ? null : (defaults ?? null);
+      const kept = s.from !== null && s.to !== null && (s.known === null || pairIn(s, s.known));
+      const pair = kept ? null : (defaults ?? null);
       set(pair ? { on: true, ...pair } : { on: true });
+    },
+    reset(captures) {
+      set({ on: false, from: null, to: null, known: captures ?? null });
+    },
+    setKnown(captures) {
+      set({ known: captures });
     },
   }));
 }
 
-/** The app's one compare pair. */
+/** The open project as the compare pair follows it (the workspace store's shape). */
+export interface ProjectSource {
+  project: { id: string; manifest: { captures: readonly { id: string }[] } } | null;
+}
+
+/**
+ * Keeps the pair to the open project: a project change (or closing it) resets it, a change of
+ * the same project's captures updates the known ones. Returns the unsubscribe.
+ */
+export function followProject(
+  store: StoreApi<CompareDatesState>,
+  source: Pick<StoreApi<ProjectSource>, 'getState' | 'subscribe'>,
+): () => void {
+  const ids = (s: ProjectSource) => s.project?.manifest.captures.map((c) => c.id) ?? null;
+  store.getState().setKnown(ids(source.getState()));
+  return source.subscribe((s, prev) => {
+    if ((s.project?.id ?? null) !== (prev.project?.id ?? null)) {
+      store.getState().reset(ids(s));
+      return;
+    }
+    if (s.project?.manifest.captures !== prev.project?.manifest.captures)
+      store.getState().setKnown(ids(s));
+  });
+}
+
+/**
+ * The app's one compare pair. The app keeps it to the open project (`followProject` with the
+ * workspace, wired where the shell loads: shell/Sidebar.tsx).
+ */
 export const compareDates = createCompareDates();

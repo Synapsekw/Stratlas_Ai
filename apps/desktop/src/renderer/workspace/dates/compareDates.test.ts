@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { createCompareDates, defaultPair, orderPair, type DatedCapture } from './compareDates';
+import { createStore } from 'zustand/vanilla';
+import {
+  createCompareDates,
+  defaultPair,
+  followProject,
+  orderPair,
+  pairFor,
+  pairIn,
+  type DatedCapture,
+} from './compareDates';
 
 const captures: DatedCapture[] = [
   { capture: 'c', t: 300 },
@@ -65,5 +74,62 @@ describe('compareDates store', () => {
     const s = createCompareDates();
     s.getState().set('c', 'b', timeOf);
     expect(s.getState()).toMatchObject({ from: 'b', to: 'c' });
+  });
+});
+
+describe('pairIn and pairFor', () => {
+  it('a pair is valid only when both captures are among the current ones', () => {
+    expect(pairIn({ from: 'a', to: 'b' }, ['a', 'b', 'c'])).toBe(true);
+    expect(pairIn({ from: 'a', to: 'x' }, ['a', 'b', 'c'])).toBe(false);
+    expect(pairIn({ from: 'a', to: 'a' }, ['a', 'b'])).toBe(false);
+    expect(pairIn({ from: null, to: 'a' }, ['a', 'b'])).toBe(false);
+  });
+
+  it('pairFor keeps a valid pair and falls back to the default for another project', () => {
+    expect(pairFor({ from: 'a', to: 'c' }, 'c', captures)).toEqual({ from: 'a', to: 'c' });
+    expect(pairFor({ from: 'p1', to: 'p2' }, 'c', captures)).toEqual({ from: 'b', to: 'c' });
+    expect(pairFor({ from: null, to: null }, 'b', captures)).toEqual({ from: 'a', to: 'b' });
+  });
+});
+
+describe('compareDates across projects', () => {
+  const project = (id: string, ids: string[]) => ({
+    project: { id, manifest: { captures: ids.map((c) => ({ id: c })) } },
+  });
+
+  it('reset turns Compare off and forgets the pair', () => {
+    const s = createCompareDates();
+    s.getState().set('a', 'c', timeOf);
+    s.getState().toggle();
+    s.getState().reset(['x', 'y']);
+    expect(s.getState()).toMatchObject({ on: false, from: null, to: null });
+  });
+
+  it('toggle replaces a pair whose captures are not among the current ones', () => {
+    const s = createCompareDates();
+    s.getState().set('p1', 'p2');
+    s.getState().setKnown(['a', 'b', 'c']);
+    s.getState().toggle(defaultPair('c', captures));
+    expect(s.getState()).toMatchObject({ on: true, from: 'b', to: 'c' });
+  });
+
+  it('follows the open project: a project change resets the pair', () => {
+    const s = createCompareDates();
+    const ws = createStore<{
+      project: { id: string; manifest: { captures: { id: string }[] } } | null;
+    }>(() => project('one', ['a', 'b', 'c']));
+    const off = followProject(s, ws);
+    s.getState().set('a', 'c', timeOf);
+    s.getState().toggle();
+    ws.setState(project('one', ['a', 'b', 'c', 'd']));
+    expect(s.getState()).toMatchObject({
+      on: true,
+      from: 'a',
+      to: 'c',
+      known: ['a', 'b', 'c', 'd'],
+    });
+    ws.setState(project('two', ['p1', 'p2']));
+    expect(s.getState()).toMatchObject({ on: false, from: null, to: null, known: ['p1', 'p2'] });
+    off();
   });
 });

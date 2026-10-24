@@ -68,7 +68,7 @@ import {
   stockpileItems,
   type StockpileMode,
 } from '../survey/measureRows';
-import { compareDates, defaultPair } from '../workspace/dates/compareDates';
+import { compareDates, followProject, pairFor } from '../workspace/dates/compareDates';
 import { useStageShow, type VolumesPane } from '../workspace/StageShow';
 import { useStore } from 'zustand';
 import {
@@ -119,6 +119,9 @@ interface NavDef {
   label: MessageKey;
   icon: IconName;
 }
+
+// the compare pair follows the open project: another project resets it (the shell loads once)
+followProject(compareDates, workspace);
 
 const NAV: NavDef[] = [
   { screen: 'projects', label: 'nav.projects', icon: 'projects' },
@@ -433,13 +436,12 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       return Number.isFinite(ms) ? ms : null;
     };
     const [from, to] = comparePair?.split('|') ?? [];
-    const pair =
-      from !== undefined && to !== undefined
-        ? { from, to }
-        : defaultPair(
-            focusCapture,
-            manifest.captures.map((c) => ({ capture: c.id, t: timeOf(c) })),
-          );
+    // a pair from another project (or a removed survey) falls back to the default one
+    const pair = pairFor(
+      { from: from ?? null, to: to ?? null },
+      focusCapture,
+      manifest.captures.map((c) => ({ capture: c.id, t: timeOf(c) })),
+    );
     const capture = mode === 'net' ? (pair?.to ?? focusCapture) : focusCapture;
     const shown = filteringMeasures
       ? matchingMeasurements(all, measureQuery, knownTemplates(measureState))
