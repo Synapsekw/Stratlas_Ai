@@ -33,6 +33,7 @@ import {
   placedBeamMarkers,
   placedNowOnSheet,
   placedWalkFits,
+  createFitReuse,
   sessionBeamMarker,
   sessionHandles,
   surfaceLayout,
@@ -951,6 +952,40 @@ describe('placed walks on every surface', () => {
     expect(drawn[0]?.placing).toBe(false);
     expect(drawn[0]?.pins).toHaveLength(0);
     expect(drawn[0]?.line.flatMap((r) => r.pts).length).toBeGreaterThan(1);
+  });
+
+  it('keeps a walk fitted as it was while nothing it is fitted from changes', () => {
+    const inputs = { raw: null, orientation: null };
+    const reuse = createFitReuse();
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const [first] = placedWalkFits(m, () => inputs, lookup, reuse);
+    // another edit of the project (a renamed drawing): the same fit, the same walk
+    const renamed = {
+      ...m,
+      layers: m.layers.map((l) => (l.id === 'sheet-loose' ? { ...l, name: 'Renamed' } : l)),
+    };
+    const [again] = placedWalkFits(renamed, () => inputs, lookup, reuse);
+    expect(again).toBe(first);
+    // the walk's layer itself changed (switched off): its fit stays, the layer is the new one
+    const off = {
+      ...m,
+      layers: m.layers.map((l) => (l.id === 'walk-a' ? { ...l, visible: false } : l)),
+    };
+    const [hidden] = placedWalkFits(off, () => inputs, lookup, reuse);
+    expect(hidden?.fit).toBe(first?.fit);
+    expect(hidden?.layer.visible).toBe(false);
+    // the drawing its pins stand on moved: fitted again
+    const moved = {
+      ...m,
+      layers: m.layers.map((l) =>
+        l.id === 'sheet-own' && l.kind === 'raster' && l.corners
+          ? { ...l, corners: { ...l.corners, tl: [5, 0, 0] as [number, number, number] } }
+          : l,
+      ),
+    };
+    expect(placedWalkFits(moved, () => inputs, lookup, reuse)[0]?.fit).not.toBe(first?.fit);
+    // new inputs (a reprocessed path): fitted again
+    expect(placedWalkFits(m, () => ({ ...inputs }), lookup, reuse)[0]?.fit).not.toBe(first?.fit);
   });
 
   it('an unplaced or switched off walk does not show', () => {

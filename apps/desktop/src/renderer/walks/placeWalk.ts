@@ -1,6 +1,7 @@
 import { fitWalk, walkHeadingAt, type WalkFit, type XZ } from '@aio/geo';
 import type { MapOverlay, MapPointerSession } from '@aio/maps';
 import {
+  MODEL_SURFACE,
   readWalkOrientationData,
   shiftLocal,
   unshiftLocal,
@@ -24,14 +25,14 @@ import {
   workspace,
   type OpenProject,
 } from '@aio/workspace';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useStore, type StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { useMap } from '../builder/activeViews';
 import { builder } from '../builder/state';
 import { newSurveyDate, setLayersCapture } from '../change/SurveyDate';
 import { localToLonLat } from '../change/draw';
-import { drawings } from '../drawings/store';
+import { drawings, type DrawingPlaced } from '../drawings/store';
 import { jobs, shell } from '../shell';
 import type { StageMode } from '../store';
 import {
@@ -892,6 +893,54 @@ export function createInputsCache(
 const inputsCache = createInputsCache((projectId, walk) => loadWalkInputs(projectId, walk));
 const cachedInputs = (projectId: string, walk: WalkLayer) => inputsCache.get(projectId, walk);
 
+/** The read inputs of the open project's placed walks, by layer id, shared by every user. */
+type LoadedInputs = Readonly<Record<string, { key: string; value: WalkInputs }>>;
+const loadedInputs = createStore<LoadedInputs>()(() => ({}));
+
+/**
+ * The placed walks' fits, made once for every `usePlacedWalkFits` (the map, the drawings, the 3D
+ * view and each 360 pane ask for them) and kept per walk while nothing it is fitted from changes.
+ */
+const fitReuse = createFitReuse();
+let lastFits: {
+  m: ProjectManifest;
+  projectId: string;
+  loaded: LoadedInputs;
+  placed: Readonly<Record<string, DrawingPlaced>>;
+  out: SheetWalk[];
+} | null = null;
+
+function sharedFits(
+  m: ProjectManifest,
+  projectId: string,
+  loaded: LoadedInputs,
+  placed: Readonly<Record<string, DrawingPlaced>>,
+): SheetWalk[] {
+  const last = lastFits;
+  if (
+    last?.m === m &&
+    last.projectId === projectId &&
+    last.loaded === loaded &&
+    last.placed === placed
+  )
+    return last.out;
+  const made = placedWalkFits(
+    m,
+    (l) => {
+      const e = loaded[l.id];
+      return e?.key === inputsKey(projectId, l) ? e.value : undefined;
+    },
+    (id) => placed[id],
+    fitReuse,
+  );
+  // the same walks as before: the same list, so nothing drawn from it is made again
+  const same =
+    last !== null && made.length === last.out.length && made.every((w, i) => w === last.out[i]);
+  const out = same ? last.out : made;
+  lastFits = { m, projectId, loaded, placed, out };
+  return out;
+}
+
 // another project (or the same one opened again from another folder): read everything afresh
 let inputsProject: string | null = projectCacheKey(workspace.getState().project);
 workspace.subscribe((s) => {
@@ -899,6 +948,9 @@ workspace.subscribe((s) => {
   if (now === inputsProject) return;
   inputsProject = now;
   inputsCache.clear();
+  loadedInputs.setState({}, true);
+  fitReuse.clear();
+  lastFits = null;
 });
 
 function projectCacheKey(p: OpenProject | null | undefined): string | null {
@@ -913,22 +965,60 @@ export function placedWalks(m: Pick<ProjectManifest, 'layers'>): WalkLayer[] {
   );
 }
 
+/** The fits `placedWalkFits` made last, by walk, kept while nothing they are fitted from changes. */
+export type FitReuse = Map<string, { key: string; inputs: WalkInputs; walk: SheetWalk }>;
+
+export function createFitReuse(): FitReuse {
+  return new Map();
+}
+
 /**
  * The live fits of the placed walks whose inputs are read (`inputsOf` undefined: not yet), from
- * their saved pins and the drawings as they lie now (a moved drawing moves its walks).
+ * their saved pins and the drawings as they lie now (a moved drawing moves its walks). With
+ * `reuse`, a walk whose placement, length, date shift, inputs and pin drawings are as they were
+ * keeps its fit (and its entry, while its layer is the same): another edit of the project fits
+ * nothing again, and what is drawn from a fit is not made again either.
  */
 export function placedWalkFits(
   m: ProjectManifest,
   inputsOf: (layer: WalkLayer) => WalkInputs | undefined,
   lookup: DrawingLookup,
+  reuse?: FitReuse,
 ): SheetWalk[] {
   const frames = surfaceFramesOf(m, lookup);
-  return placedWalks(m).flatMap((layer): SheetWalk[] => {
+  const seen = new Set<string>();
+  const out = placedWalks(m).flatMap((layer): SheetWalk[] => {
     const inputs = inputsOf(layer);
-    if (!inputs || !layer.place) return [];
-    const fit = fitWalk(inputs.raw, layer.place, frames, layer.durationS);
-    return fit.error ? [] : [{ layer, fit, raw: inputs.raw, shift: dateShiftOf(m, layer.id) }];
+    const place = layer.place;
+    if (!inputs || !place) return [];
+    const shift = dateShiftOf(m, layer.id);
+    const sheets = [...new Set(place.pins.map((p) => p.surface))].filter(
+      (id) => id !== MODEL_SURFACE,
+    );
+    const key = JSON.stringify([
+      place,
+      layer.durationS,
+      shift,
+      sheets.map((id) => frames.drawing(id)),
+    ]);
+    const kept = reuse?.get(layer.id);
+    seen.add(layer.id);
+    if (kept?.key === key && kept.inputs === inputs) {
+      const walk = kept.walk.layer === layer ? kept.walk : { ...kept.walk, layer };
+      reuse?.set(layer.id, { ...kept, walk });
+      return [walk];
+    }
+    const fit = fitWalk(inputs.raw, place, frames, layer.durationS);
+    if (fit.error) {
+      reuse?.delete(layer.id);
+      return [];
+    }
+    const walk: SheetWalk = { layer, fit, raw: inputs.raw, shift };
+    reuse?.set(layer.id, { key, inputs, walk });
+    return [walk];
   });
+  if (reuse) for (const id of [...reuse.keys()]) if (!seen.has(id)) reuse.delete(id);
+  return out;
 }
 
 /**
@@ -1084,10 +1174,13 @@ export function useHiddenLayers(): ReadonlySet<string> {
   }, [hidden, comparedKey]);
 }
 
+const NO_FITS: SheetWalk[] = [];
+
 /**
- * The live fits of the open project's placed walks (inputs read once and shared), rebuilt when
- * the manifest or a drawing's placement changes; `inputsOf` gives a walk's read inputs. While
- * `active` is false nothing is read or fitted (no fits, no inputs).
+ * The live fits of the open project's placed walks (inputs read once and shared, the fits made
+ * once for every user: `sharedFits`), rebuilt when the manifest or a drawing's placement changes;
+ * `inputsOf` gives a walk's read inputs. While `active` is false nothing is read or fitted (no
+ * fits, no inputs).
  */
 export function usePlacedWalkFits(active = true): {
   fits: SheetWalk[];
@@ -1095,9 +1188,7 @@ export function usePlacedWalkFits(active = true): {
 } {
   const project = useWorkspace((s) => s.project);
   const placed = useStore(drawings, (s) => s.placed);
-  const [loaded, setLoaded] = useState<
-    Readonly<Record<string, { key: string; value: WalkInputs }>>
-  >({});
+  const loaded = useStore(loadedInputs);
   const projectId = project?.id ?? null;
   const manifest = project?.manifest;
   const wanted = useMemo(
@@ -1113,23 +1204,21 @@ export function usePlacedWalkFits(active = true): {
     for (const { w, key } of wanted)
       void cachedInputs(projectId, w).then((value) => {
         if (!live) return;
-        setLoaded((prev) => (prev[w.id]?.key === key ? prev : { ...prev, [w.id]: { key, value } }));
+        const prev = loadedInputs.getState();
+        if (prev[w.id]?.key !== key)
+          loadedInputs.setState({ ...prev, [w.id]: { key, value } }, true);
       });
     return () => {
       live = false;
     };
   }, [wanted, projectId]);
-  const fits = useMemo(() => {
-    if (!active || !manifest || projectId === null) return [];
-    return placedWalkFits(
-      manifest,
-      (l) => {
-        const e = loaded[l.id];
-        return e?.key === inputsKey(projectId, l) ? e.value : undefined;
-      },
-      (id) => placed[id],
-    );
-  }, [active, manifest, projectId, loaded, placed]);
+  const fits = useMemo(
+    () =>
+      active && manifest && projectId !== null
+        ? sharedFits(manifest, projectId, loaded, placed)
+        : NO_FITS,
+    [active, manifest, projectId, loaded, placed],
+  );
   const inputsOf = useMemo(() => {
     const byId = new Map(wanted.map(({ w, key }) => [w.id, key]));
     return (id: string): WalkInputs | undefined => {
