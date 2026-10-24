@@ -69,6 +69,7 @@ import { hiddenPathClips } from './flightPaths';
 import { telemetryLabels, useTelemetryOn } from './telemetryPref';
 import { useFlightPathModel } from './pathModel';
 import { useEngineStage } from './StageTools';
+import { StageHint, useStageHint } from './StageHint';
 import { useStageKeys } from './stageKeys';
 import {
   insideView,
@@ -348,6 +349,8 @@ export function useStageCorners(o: StageCornersInput): {
   const basemap = useStageBasemap(o.show3d, o.showMap);
   const dates = useDatesShown() && !o.splitting;
   const volHint = useVolumeHint() && o.show3d;
+  // what the pointer and Esc do now (the linked hover, an open pile): the foot of the stage
+  const stageHint = useStageHint() !== null;
   // survey surfaces preparing (board 7): the foot of the stage, the corner away from the readout
   const preparing = usePreparingCard();
   const prepShown = preparing !== null;
@@ -365,6 +368,7 @@ export function useStageCorners(o: StageCornersInput): {
         id: 'preparing',
         want: prepShown ? (o.cursor === 'bl' ? ['br', 'bl'] : ['bl', 'br']) : [],
       },
+      { id: 'stageHint', want: stageHint ? hintCorners(o.cursor, o.splitting) : [] },
       // the volumes hint at the foot, the corner away from the readout first (I-R51); in a split
       // the 3D pane's own foot, the readout giving way while it shows (the other pane's foot is
       // another view's: the map's scale and credits)
@@ -385,6 +389,7 @@ export function useStageCorners(o: StageCornersInput): {
     basemapAt,
     prepShown,
     volHint,
+    stageHint,
     dates,
     topTaken,
     // --- RF coverage legend (rf-ui) ---
@@ -436,6 +441,7 @@ export function useStageCorners(o: StageCornersInput): {
         )}
         {basemap && at('basemap', <StageBasemapChip view={basemap} />)}
         {preparing && at('preparing', <PreparingCardView model={preparing} />)}
+        {at('stageHint', <StageHint />)}
         {at('volHint', <VolumeHint />)}
         {/* // --- RF coverage legend (rf-ui) --- */}
         {at('rfLegend', <StageCoverageLegend />)}

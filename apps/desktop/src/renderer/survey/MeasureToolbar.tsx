@@ -23,6 +23,7 @@ import { useMagicController } from './MagicPolygon';
 import { MeasureMenu } from './MeasureMenu';
 import { attachMeasurePick3d, attachMeasurePickMap, type MeasureMenuAt } from './measurePick';
 import { PendingNote, usePending } from './PendingNote';
+import { attachPileAxis3d, attachPileAxisMap } from './pile/pileAxisScene';
 import { createMapHeights, type EnBox } from './mapHeights';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
 import { useFocusCapture } from './qaHelpers';
@@ -92,7 +93,10 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     // pick, so a click on a line whose chart is open pins its point rather than picking the line
     const detachHover = attachHover3d(stage, frame);
     const detachPick = attachMeasurePick3d(stage, frame, setMenuAt);
+    // the open pile's profile line with its A, B and turn handles (spec section 3, board 2)
+    const detachAxis = attachPileAxis3d(stage, frame);
     return () => {
+      detachAxis();
       detachHover();
       detachPick();
       detach();
@@ -157,6 +161,7 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
       attachOverlaysMap(map, frame.epsg),
       attachMeasurePickMap(map, frame, setMenuAt),
       attachHoverMap(map, frame),
+      attachPileAxisMap(map, frame),
     ];
     return () => {
       for (const d of detach) d();

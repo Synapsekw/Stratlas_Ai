@@ -388,3 +388,43 @@
     transition: none;
   }
 }
+
+/* The profile line's A, B and ↻ handles over the 3D view and the map (pileAxisScene.ts): only
+   the handles take the pointer, the rest of the view stays the view's */
+.pa-handles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.pa-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  inline-size: 22px;
+  block-size: 22px;
+  margin: -11px 0 0 -11px;
+  border: 1px solid var(--fg-0);
+  border-radius: 50%;
+  background: var(--scrim);
+  box-shadow: var(--el-1);
+  color: var(--fg-0);
+  font: 600 var(--t-11) / 1 var(--f-mono);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+.pa-handle:active {
+  cursor: grabbing;
+}
+.pa-handle[data-handle='turn'] {
+  border-color: var(--acc);
+  color: var(--acc);
+  font-size: var(--t-12);
+}
+.pa-handle[hidden] {
+  display: none;
+}
