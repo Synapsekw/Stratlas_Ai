@@ -12,7 +12,7 @@
 .antenna-cols,
 .antenna-row.row[data-kind] {
   display: grid;
-  grid-template-columns: 14px 8px minmax(28px, 1fr) minmax(0, 1fr) 50px 44px 36px 66px 24px;
+  grid-template-columns: 14px 8px minmax(28px, 1fr) minmax(0, 1fr) 50px 44px 36px 74px 24px;
   align-items: center;
   gap: 4px;
   padding-inline: var(--sp-2);
@@ -30,7 +30,7 @@
 @container (max-width: 330px) {
   .antenna-cols,
   .antenna-row.row[data-kind] {
-    grid-template-columns: 14px 8px minmax(28px, 1fr) 50px 44px 36px 66px 24px;
+    grid-template-columns: 14px 8px minmax(28px, 1fr) 50px 44px 36px 74px 24px;
   }
   .antenna-cols > :nth-child(4),
   .antenna-kind {

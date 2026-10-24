@@ -234,13 +234,13 @@ describe('AntennaRow', () => {
     });
     expect(host.querySelector('[data-row-id="a1"]')!.contains(q('under'))).toBe(true);
     const group = q('under')!.parentElement!;
-    expect(group.getAttribute('role')).toBe('group');
+    expect(group.getAttribute('role')).toBe('treeitem');
     expect(group.getAttribute('aria-label')).toBe('P1');
   });
 
-  it('adds no group when nothing is under the row', () => {
+  it('adds no details item when nothing is under the row', () => {
     show();
-    expect(host.querySelector('[role="group"]')).toBeNull();
+    expect(host.querySelector('[role="treeitem"] [data-testid="under"]')).toBeNull();
   });
 
   it('Esc in a field is the field’s: window listeners do not see it', () => {

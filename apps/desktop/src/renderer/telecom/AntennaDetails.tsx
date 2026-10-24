@@ -630,9 +630,9 @@ export function AntennaDetails({
           {unit.notFoundInLatest ? <Chip kind="tag">{t('telecom.antennas.notFound')}</Chip> : null}
         </div>
       ) : null}
-      <PhotoStrip key={unit.id} entries={entries} />
+      <PhotoStrip key={`photos-${unit.id}`} entries={entries} />
       <Values unit={unit} />
-      <AntennaTypedValues key={unit.id} unit={unit} readOnly={readOnly} />
+      <AntennaTypedValues key={`typed-${unit.id}`} unit={unit} readOnly={readOnly} />
       <details>
         <summary style={{ cursor: 'pointer', color: 'var(--fg-2)' }}>
           {t('telecom.antennas.card.more')}
