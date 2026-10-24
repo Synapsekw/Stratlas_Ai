@@ -7,6 +7,44 @@
   --panel-ms: 180ms;
   /* the tab on a side panel's inner edge; the right panel folds to a strip this wide */
   --ph-w: 12px;
+  /* Material colours (volumetrics redesign: the inventory, the dates strip, the map). Eight
+     categorical hues taken from the chart and date palettes so they stay one system: amber,
+     violet, cyan, a muted clay, green, rose, blue and a muted olive, told apart by hue and by
+     lightness or chroma; "No material" is the neutral base grey. Every use also names the
+     material, so colour is never the only cue. */
+  --mat-1: var(--date-3);
+  --mat-2: var(--date-5);
+  --mat-3: var(--date-6);
+  --mat-4: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--date-3), var(--date-4)) 55%,
+    var(--chart-base)
+  );
+  --mat-5: var(--date-7);
+  --mat-6: var(--date-8);
+  --mat-7: var(--date-1);
+  --mat-8: color-mix(in oklab, var(--date-7) 45%, var(--chart-base));
+  --mat-none: var(--chart-base);
+}
+/* On the light panels the hues are darkened a step, so areas and swatches keep their contrast. */
+:root[data-theme='light'] {
+  --mat-1: color-mix(in oklab, var(--date-3) 78%, var(--fg-0));
+  --mat-2: color-mix(in oklab, var(--date-5) 82%, var(--fg-0));
+  --mat-3: color-mix(in oklab, var(--date-6) 78%, var(--fg-0));
+  --mat-4: color-mix(
+    in oklab,
+    color-mix(in oklab, color-mix(in oklab, var(--date-3), var(--date-4)) 55%, var(--chart-base))
+      82%,
+    var(--fg-0)
+  );
+  --mat-5: color-mix(in oklab, var(--date-7) 78%, var(--fg-0));
+  --mat-6: color-mix(in oklab, var(--date-8) 82%, var(--fg-0));
+  --mat-7: color-mix(in oklab, var(--date-1) 82%, var(--fg-0));
+  --mat-8: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--date-7) 45%, var(--chart-base)) 82%,
+    var(--fg-0)
+  );
 }
 
 .app {
@@ -2781,8 +2819,31 @@ html[dir='rtl'] .stage-slot[data-slot='br'] {
 
 /* timeline area */
 .tl-wrap {
+  --tl-switch-w: 132px;
+  position: relative;
   grid-area: tl;
   min-width: 0;
+}
+/* Video and two or more survey dates: the "Dates | Footage" switch sits at the left of whichever
+   bar shows (the dates strip's 30 px bar, the footage timeline's 38 px one), and the bar makes
+   room for it. */
+.tl-switch {
+  position: absolute;
+  inset-block-start: 7px;
+  inset-inline-start: var(--sp-4);
+  z-index: var(--z-stage-ui);
+  display: flex;
+  inline-size: var(--tl-switch-w);
+}
+.tl-switch button {
+  flex: 1;
+  justify-content: center;
+}
+.tl-wrap[data-bottom='dates'] > .tl-switch {
+  inset-block-start: 3px;
+}
+.tl-wrap[data-switch] .tl-h {
+  padding-inline-start: calc(var(--tl-switch-w) + 2 * var(--sp-4));
 }
 
 /* right panel */

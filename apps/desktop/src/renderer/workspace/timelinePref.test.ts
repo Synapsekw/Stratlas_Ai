@@ -3,7 +3,14 @@ import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import { createTimelineStore, TIMELINE_KEY } from './timeline';
 import {
+  BOTTOM_PREF_KEY,
+  bottomSlot,
+  createProjectChoice,
   createTimelinePref,
+  DATES_COLLAPSED_KEY,
+  datedCount,
+  isBottomPref,
+  offersSwitch,
   TIMELINE_SHOWN_KEY,
   timelineByDefault,
   timelineShown,
@@ -115,5 +122,79 @@ describe('timeline visibility', () => {
     toggleTimeline({ id: 'p', manifest: { layers: kinds('mesh') } }, pref);
     const again = createTimelineStore(createWorkspace(), storage, () => undefined);
     expect(again.getState().byProject.p?.focus).toBe('s1');
+  });
+
+  it('shows by default with two or more dated surveys, never counting an undated one', () => {
+    const two = [{ date: '2020-12-31' }, { date: '2021-01-10' }];
+    expect(timelineByDefault(kinds('mesh', 'raster'), two)).toBe(true);
+    expect(timelineByDefault(kinds('mesh'), [{ date: '2020-12-31' }, { date: '' }])).toBe(false);
+    expect(datedCount([{ date: '2020-12-31' }, {}, { date: 'not a date' }])).toBe(1);
+    const p = { id: 'p', manifest: { layers: kinds('mesh'), captures: two } };
+    const store = createTimelinePref(memory());
+    toggleTimeline(p, store);
+    expect(store.getState().byProject).toEqual({ p: false });
+  });
+});
+
+describe('the bottom slot', () => {
+  const base = { hasVideo: false, datedCaptures: 2, hasVolumes: true, pref: null, shown: true };
+  it.each([
+    ['no video and two dates: the dates strip', base, 'dates'],
+    [
+      'no video and one date: nothing by default',
+      { ...base, datedCaptures: 1, shown: false },
+      'none',
+    ],
+    [
+      'no video, one date, shown on request: the footage timeline',
+      { ...base, datedCaptures: 1 },
+      'footage',
+    ],
+    ['hidden: nothing', { ...base, shown: false }, 'none'],
+    ['video and one date: footage', { ...base, hasVideo: true, datedCaptures: 1 }, 'footage'],
+    ['video, two dates, volumes: dates by default', { ...base, hasVideo: true }, 'dates'],
+    [
+      'video, two dates, no volumes: footage by default',
+      { ...base, hasVideo: true, hasVolumes: false },
+      'footage',
+    ],
+    [
+      'video, two dates, the choice wins',
+      { ...base, hasVideo: true, pref: 'footage' as const },
+      'footage',
+    ],
+    [
+      'video, two dates, Dates chosen',
+      { ...base, hasVideo: true, hasVolumes: false, pref: 'dates' as const },
+      'dates',
+    ],
+  ])('%s', (_name, x, want) => {
+    expect(bottomSlot(x)).toBe(want);
+  });
+
+  it('offers the switch only with video and two or more dates', () => {
+    expect(offersSwitch({ hasVideo: true, datedCaptures: 2 })).toBe(true);
+    expect(offersSwitch({ hasVideo: true, datedCaptures: 1 })).toBe(false);
+    expect(offersSwitch({ hasVideo: false, datedCaptures: 3 })).toBe(false);
+  });
+
+  it('remembers the switch and the collapsed strip per project, dropping bad entries', () => {
+    const storage = memory();
+    const pref = createProjectChoice(BOTTOM_PREF_KEY, isBottomPref, storage);
+    pref.getState().set('a', 'footage');
+    expect(
+      createProjectChoice(BOTTOM_PREF_KEY, isBottomPref, storage).getState().byProject,
+    ).toEqual({ a: 'footage' });
+    storage.setItem(BOTTOM_PREF_KEY, '{"a":"dates","b":"video"}');
+    expect(
+      createProjectChoice(BOTTOM_PREF_KEY, isBottomPref, storage).getState().byProject,
+    ).toEqual({ a: 'dates' });
+    const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+    const folded = createProjectChoice(DATES_COLLAPSED_KEY, isBool, storage);
+    folded.getState().set('a', true);
+    expect(JSON.parse(storage.getItem(DATES_COLLAPSED_KEY) ?? '{}')).toEqual({ a: true });
+    expect(createProjectChoice(DATES_COLLAPSED_KEY, isBool, storage).getState().byProject.a).toBe(
+      true,
+    );
   });
 });
