@@ -242,11 +242,22 @@ describe('PileProfile', () => {
     expect(q('[data-testid="pile-profile-chart"]')?.getAttribute('data-series')).toBe('c2:current');
   });
 
-  it('Open larger (Open in section view) opens the section window along the line', async () => {
+  it('Open larger opens the section window along the line', async () => {
+    // an older date not shown yet: the chips offer it
+    s.dates = [
+      {
+        capture: 'c0',
+        label: '01 Dec 2020',
+        date: '2020-12-01',
+        state: { kind: 'ready' },
+        tiles: { id: 's0', fingerprint: 'f0' },
+      },
+      ...s.dates,
+    ];
     await render();
-    const open = [...host.querySelectorAll('button')].find(
-      (b) => b.textContent === 'Open in section view',
-    );
+    const open = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Open larger');
+    expect(open).toBeDefined();
+    expect(q('[data-testid="pile-chips-add"]')?.textContent).toBe('+ Date or design');
     act(() => {
       open?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });

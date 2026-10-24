@@ -38,7 +38,7 @@ const click = (el: Element | null | undefined) => {
 };
 
 /** A stateful host, the way a consumer keeps the shown and off sets. */
-function Harness(p: { onAdd?: (k: string) => void }) {
+function Harness(p: { onAdd?: (k: string) => void; addLabel?: string }) {
   const [shown, setShown] = useState<ChipOption[]>([CURRENT, EARLIER, DESIGN]);
   const [off, setOff] = useState<Set<string>>(new Set());
   return (
@@ -59,6 +59,7 @@ function Harness(p: { onAdd?: (k: string) => void }) {
         setShown((s) => s.filter((o) => o.key !== k));
       }}
       testId="chips"
+      {...(p.addLabel ? { addLabel: p.addLabel } : {})}
     />
   );
 }
@@ -149,6 +150,16 @@ describe('SurfaceChips', () => {
     expect(h.querySelector('[data-chip="cap-2"]')).not.toBeNull();
     // the current survey cannot be removed, only turned off
     expect(h.querySelector('[data-chip="cap-2"] button[aria-label^="Remove"]')).toBeNull();
+  });
+
+  it('the add button can name what it adds', () => {
+    const h = mount(<Harness addLabel="+ Date or design" />);
+    const add = h.querySelector<HTMLButtonElement>('[data-testid="chips-add"]');
+    expect(add?.textContent).toBe('+ Date or design');
+    click(add);
+    expect(document.querySelector('[role="menu"]')?.getAttribute('aria-label')).toBe(
+      '+ Date or design',
+    );
   });
 
   it('add menu groups surveys, designs, base', () => {

@@ -6353,6 +6353,7 @@ export const en = {
   'pile.shadeVs': 'Shade cut & fill vs',
   'pile.lineAxis': 'Line: long axis · {length}',
   'pile.addDate': '+ Date or design',
+  'pile.openLarger': 'Open larger',
   'pile.cutWhole': 'Cut (whole pile)',
   'pile.fill': 'Fill',
   'pile.largestDrop': 'Largest drop {value} at {chainage}',

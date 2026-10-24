@@ -404,6 +404,7 @@ describe('pile panel and linked hover strings', () => {
     'pile.shadeVs': [],
     'pile.lineAxis': ['length'],
     'pile.addDate': [],
+    'pile.openLarger': [],
     'pile.cutWhole': [],
     'pile.fill': [],
     'pile.largestDrop': ['chainage', 'value'],
@@ -442,5 +443,7 @@ describe('pile panel and linked hover strings', () => {
     expect(t('chart.chainageAt', { value: '42.3 m' })).toBe('Chainage 42.3 m');
     expect(t('hover.pinned', { chainage: '71.0 m' })).toBe('71.0 m · pinned');
     expect(t('pile.position', { n: 2, total: 19 })).toBe('Pile 2 of 19');
+    expect(t('pile.openLarger')).toBe('Open larger');
+    expect(t('pile.addDate')).toBe('+ Date or design');
   });
 });

@@ -145,12 +145,15 @@ export function SurfaceChips(p: {
   onRemove(key: string): void;
   /** Start preparing a survey date's surface (a chip whose surface is missing). */
   onPrepare?: (key: string) => void;
+  /** The add button's words; absent: "+ Add survey or design". */
+  addLabel?: string;
   testId?: string;
 }): ReactElement {
   const t = useT();
   const opener = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const testId = p.testId ?? 'surface-chips';
+  const addLabel = p.addLabel ?? t('chart.addSurface');
   // earlier dates shade by age among the chips switched on, which are the lines the chart draws
   const peers = p.shown.filter((o) => !p.off.has(o.key)).map(asSeries);
   const groupLabel: Record<ChipOption['group'], string> = {
@@ -191,7 +194,7 @@ export function SurfaceChips(p: {
               setOpen((v) => !v);
             }}
           >
-            {t('chart.addSurface')}
+            {addLabel}
           </button>
           <Popover
             open={open}
@@ -204,7 +207,7 @@ export function SurfaceChips(p: {
           >
             <div
               role="menu"
-              aria-label={t('chart.addSurface')}
+              aria-label={addLabel}
               className="menu-list pc-add-menu"
               onKeyDown={onMenuKey}
             >

@@ -258,6 +258,7 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
           off: w.off.filter((k) => k !== key),
         }));
       }}
+      addLabel={t('pile.addDate')}
       testId="pile-chips"
     />
   );
@@ -372,7 +373,7 @@ export function PileProfile({ m }: { m: SurveyMeasurement }): ReactElement {
             setWindow(true);
           }}
         >
-          {t('mcard.openSection')}
+          {t('pile.openLarger')}
         </Button>
         <Button
           icon="download"
