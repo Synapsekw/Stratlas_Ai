@@ -1,0 +1,25 @@
+{
+  "schema": "aio.antenna-deletions/1",
+  "matchRadiusM": 0.3,
+  "example": {
+    "schema": "aio.antenna-deletions/1",
+    "deletions": [
+      {
+        "unitId": "ant-a3",
+        "name": "A3",
+        "kind": "panel",
+        "box": {
+          "centre": [10, 20, 31.5],
+          "axes": [
+            [1, 0, 0],
+            [0, 0, 1],
+            [0, 1, 0]
+          ],
+          "extents": [0.3, 1.3, 0.15]
+        },
+        "captureId": "cap-2026-10-01",
+        "deletedAt": "2026-10-24T09:00:00.000Z"
+      }
+    ]
+  }
+}

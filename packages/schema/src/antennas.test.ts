@@ -2,10 +2,16 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   AI_LABEL_KIND,
+  ANTENNA_DELETIONS_FILE,
+  ANTENNA_DELETIONS_SCHEMA,
+  AntennaDeletion,
+  AntennaDeletionsFile,
   AntennaUnit,
   AntennaValue,
   AntennasFile,
   TelecomFlagParams,
+  TELECOM_DELETE_FEATURE,
+  TELECOM_DELETE_MIN_PACK,
   TELECOM_FLAG_MIN_PACK,
   ANTENNAS_FILE,
   ANTENNAS_SCHEMA,
@@ -14,7 +20,7 @@ import {
 } from './antennas';
 import { ipc } from './ipc';
 import { PipelineName, pipelineParams } from './jobs';
-import { SCHEMA_REGISTRY } from './versions';
+import { SCHEMA_REGISTRY, compareVersions } from './versions';
 
 const contract = JSON.parse(
   readFileSync(new URL('./__fixtures__/antennas-contract.json', import.meta.url), 'utf8'),
@@ -269,5 +275,54 @@ describe('flagged antennas', () => {
     expect(pipelineParams('telecom.flag')).toBe(TelecomFlagParams);
     expect(PipelineName.options).toContain('telecom.flag');
     expect(TELECOM_FLAG_MIN_PACK).toBe('0.24.0');
+  });
+});
+
+const deletions = JSON.parse(
+  readFileSync(new URL('./__fixtures__/antenna-deletions-contract.json', import.meta.url), 'utf8'),
+) as { schema: string; matchRadiusM: number; example: { deletions: Record<string, unknown>[] } };
+
+describe('antenna deletions sidecar', () => {
+  it('parses the deletions contract example', () => {
+    expect(deletions.schema).toBe(ANTENNA_DELETIONS_SCHEMA);
+    expect(deletions.matchRadiusM).toBe(contract.matchRadiusM);
+    const f = AntennaDeletionsFile.parse(deletions.example);
+    expect(f.deletions[0]?.captureId).toBeDefined();
+    expect(ANTENNA_DELETIONS_FILE).toBe('telecom/antenna-deletions.json');
+    expect(TELECOM_DELETE_FEATURE).toBe('Deleted antennas stay deleted');
+  });
+
+  it('refuses an unknown key on a deletion', () => {
+    const d = deletions.example.deletions[0] ?? {};
+    expect(AntennaDeletion.safeParse(d).success).toBe(true);
+    expect(AntennaDeletion.safeParse({ ...d, extra: 1 }).success).toBe(false);
+  });
+
+  it('keeps antennas.json strict, so the record cannot live there', () => {
+    expect(AntennasFile.safeParse({ ...contract.example, deletions: [] }).success).toBe(false);
+  });
+
+  it('caps deletions at 2000', () => {
+    const d = deletions.example.deletions[0] ?? {};
+    const at = (n: number) => ({
+      schema: ANTENNA_DELETIONS_SCHEMA,
+      deletions: Array.from({ length: n }, () => d),
+    });
+    expect(AntennaDeletionsFile.safeParse(at(2000)).success).toBe(true);
+    expect(AntennaDeletionsFile.safeParse(at(2001)).success).toBe(false);
+  });
+
+  it('delete pack is after the flag pack', () => {
+    expect(compareVersions(TELECOM_DELETE_MIN_PACK, TELECOM_FLAG_MIN_PACK)).toBeGreaterThan(0);
+  });
+
+  it('declares telecom:deleteAntennas', () => {
+    const { request, response } = ipc['telecom:deleteAntennas'];
+    expect(request.safeParse({ projectId: 'p1', ids: [] }).success).toBe(false);
+    expect(request.safeParse({ projectId: 'p1', ids: ['ant-1'] }).success).toBe(true);
+    expect(request.safeParse({ projectId: 'p1', ids: ['ant-1'], x: 1 }).success).toBe(false);
+    expect(response.safeParse({ ok: false, code: 'read-only', error: 'package' }).success).toBe(
+      true,
+    );
   });
 });

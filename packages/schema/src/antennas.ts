@@ -19,6 +19,12 @@ export const TELECOM_ANTENNAS_FEATURE = 'Antenna detection';
 /** The first pipeline pack that has `telecom.flag` (and merges around person-owned units). */
 export const TELECOM_FLAG_MIN_PACK = '0.24.0';
 export const TELECOM_FLAG_FEATURE = 'Antenna flagging';
+/** The sidecar of deleted detections the re-run merge reads (`telecom.antennas`). */
+export const ANTENNA_DELETIONS_SCHEMA = 'aio.antenna-deletions/1';
+export const ANTENNA_DELETIONS_FILE = 'telecom/antenna-deletions.json';
+/** The first pipeline pack whose `telecom.antennas` reads the deletions sidecar. */
+export const TELECOM_DELETE_MIN_PACK = '0.25.0';
+export const TELECOM_DELETE_FEATURE = 'Deleted antennas stay deleted';
 /** Most vertices of an outline a person draws (the engine's lasso limit). */
 const FLAG_MAX_POLYGON_VERTICES = 256;
 /** Shared with python through `__fixtures__/antennas-contract.json`. */
@@ -259,3 +265,28 @@ export const AntennasFile = z
   })
   .strict();
 export type AntennasFile = z.infer<typeof AntennasFile>;
+
+/**
+ * A deleted detection stays deleted. It lives in a sidecar, not in `antennas.json`, because older
+ * builds strict-parse that file (an unknown key or status would break their whole inventory) and
+ * the pipeline rewrites it with only `schema`, `run` and `units`. Older builds never read this one.
+ */
+export const AntennaDeletion = z
+  .object({
+    unitId: z.string().regex(ANTENNA_ID), // the deleted unit's id
+    name: z.string().min(1).max(40),
+    kind: AntennaKind,
+    box: AntennaBox, // in the frame of `captureId`
+    captureId: z.string().min(1).max(128).optional(), // the file's run.captureId when deleted
+    deletedAt: IsoTime,
+  })
+  .strict();
+export type AntennaDeletion = z.infer<typeof AntennaDeletion>;
+
+export const AntennaDeletionsFile = z
+  .object({
+    schema: z.literal(ANTENNA_DELETIONS_SCHEMA),
+    deletions: z.array(AntennaDeletion).max(2000),
+  })
+  .strict();
+export type AntennaDeletionsFile = z.infer<typeof AntennaDeletionsFile>;

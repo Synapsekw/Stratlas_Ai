@@ -2451,6 +2451,18 @@ export const ipc = {
     request: z.object({ projectId: ProjectId, file: AntennasFile }).strict(),
     response: OkOrFailure,
   },
+  /**
+   * Delete antenna units so they stay deleted. Writes the `telecom/antenna-deletions.json` sidecar
+   * first (detected units only), then `antennas.json`, then removes the crops; journaled. Refused
+   * (`code: 'read-only'`) for a package, and when either file changed since it was read.
+   */
+  'telecom:deleteAntennas': {
+    request: z.object({ projectId: ProjectId, ids: z.array(AntennaId).min(1).max(500) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), deleted: z.array(AntennaId), file: AntennasFile }),
+      Failure,
+    ]),
+  },
   // ---------------------------------------------------------------- thermal analysis
   /** Which photos of a layer are radiometric, and which decoder family would read them. */
   'thermal:probe': {
