@@ -2,7 +2,9 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
+import { defaultSurveySettings } from '@aio/schema';
 import { CutFillHint, HeatLegend } from './heatLegend';
+import { measureStore } from './measureStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -44,6 +46,35 @@ describe('the cut and fill heat legend', () => {
     const el = render(<HeatLegend from="2020-12-31" to="2021-01-10" thresholdM={0} />);
     const ticks = [...el.querySelectorAll('.cf-legend-ticks > span')].map((s) => s.textContent);
     expect(ticks).toEqual(['−2.0 m cut', '', '+2.0 m fill']);
+  });
+
+  it('heights read in the project length unit', () => {
+    const el = render(
+      <HeatLegend
+        from="2020-12-31"
+        to="2021-01-10"
+        thresholdM={0.3048}
+        rangeM={0.6096}
+        unit="ft"
+      />,
+    );
+    const ticks = [...el.querySelectorAll('.cf-legend-ticks > span')].map((s) => s.textContent);
+    expect(ticks).toEqual(['−2.0 ft cut', '±1.00 ft ignored', '+2.0 ft fill']);
+  });
+
+  it('without a unit given it takes the site units', () => {
+    measureStore.setState({
+      settings: {
+        ...defaultSurveySettings(),
+        units: { ...defaultSurveySettings().units, distance: 'us-ft' },
+      },
+    });
+    try {
+      const el = render(<HeatLegend from="2020-12-31" to="2021-01-10" thresholdM={0} />);
+      expect(el.querySelector('.cf-legend-ticks')?.textContent).toContain('US ft cut');
+    } finally {
+      measureStore.setState({ settings: defaultSurveySettings() });
+    }
   });
 
   it('the hint asks for a pile click', () => {

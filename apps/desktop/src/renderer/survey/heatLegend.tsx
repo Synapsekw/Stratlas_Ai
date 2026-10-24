@@ -3,13 +3,14 @@
  * bottom left, "Height change 10 Jan minus 31 Dec", the ramp, and "−2.0 m cut", "±0.10 m ignored",
  * "+2.0 m fill"; and the bottom-right hint "Click a pile to see its change". The ramp takes the
  * site's heat map colours when given (`heatRamp`, so it matches the map), else the cut and fill
- * tokens. Heights are in metres, as the threshold is.
+ * tokens. Heights are given in metres, as the threshold is, and read in the project's length unit.
  */
-import { formatNumber, type NumberLocale } from '@aio/geo';
-import type { HeatmapStyle } from '@aio/schema';
-import { heatRamp } from '@aio/survey';
+import { formatNumber, fromSI, localeOf, unitLabel, type NumberLocale } from '@aio/geo';
+import type { DistanceUnit, HeatmapStyle } from '@aio/schema';
+import { effectiveUnits, heatRamp } from '@aio/survey';
 import { formatDate, useT } from '@aio/ui';
 import { useId, useMemo, type CSSProperties, type ReactElement } from 'react';
+import { useMeasure } from './measureStore';
 import './volumes/cutFill.css';
 
 /** The ramp's half span when none is given, metres (the boards' ±2.0 m). */
@@ -25,6 +26,9 @@ export interface HeatLegendProps {
   rangeM?: number;
   /** The site's heat map style, so the ramp matches the map. */
   style?: Pick<HeatmapStyle, 'stops' | 'stepped' | 'inverted'>;
+  /** The length unit heights are written in; default the site's. */
+  unit?: DistanceUnit;
+  /** Thousands grouping; default the unit's system. */
   locale?: NumberLocale;
   className?: string;
 }
@@ -53,16 +57,23 @@ export function HeatLegend({
   thresholdM,
   rangeM = LEGEND_RANGE_M,
   style,
-  locale = 'metric',
+  unit,
+  locale,
   className,
 }: HeatLegendProps): ReactElement {
   const t = useT();
   const id = useId();
+  const siteUnit = useMeasure((s) => effectiveUnits(s.settings.units).distance);
+  const u = unit ?? siteUnit;
+  const loc = locale ?? localeOf(u);
+  const label = unitLabel(u);
+  const len = (m: number, decimals: number) =>
+    `${formatNumber(fromSI(m, 'distance', u), decimals, loc)} ${label}`;
   const title = t('cutfill.legendTitle', {
     to: formatDate(to, { year: false }),
     from: formatDate(from, { year: false }),
   });
-  const range = formatNumber(rangeM, 1, locale);
+  const range = len(rangeM, 1);
   const ramp = useMemo<CSSProperties | undefined>(
     () =>
       style && style.stops.length >= 2
@@ -81,13 +92,9 @@ export function HeatLegend({
       <span className="cf-legend-title">{title}</span>
       <span className="cf-legend-ramp" style={ramp} aria-hidden="true" />
       <span className="cf-legend-ticks" id={id}>
-        <span>{t('cutfill.legendCut', { value: `−${range} m` })}</span>
-        <span>
-          {thresholdM > 0
-            ? t('cutfill.ignored', { value: `${formatNumber(thresholdM, 2, locale)} m` })
-            : ''}
-        </span>
-        <span>{t('cutfill.legendFill', { value: `${range} m` })}</span>
+        <span>{t('cutfill.legendCut', { value: `−${range}` })}</span>
+        <span>{thresholdM > 0 ? t('cutfill.ignored', { value: len(thresholdM, 2) }) : ''}</span>
+        <span>{t('cutfill.legendFill', { value: range })}</span>
       </span>
     </div>
   );
