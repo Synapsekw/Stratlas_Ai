@@ -93,19 +93,25 @@ async function expectValue(win: Page, key: string, expected: number) {
 
 /**
  * From the focused button of the Measure workbench's live strip, Shift+Tab past the strip
- * buttons before it, out of the strip, and past the save controls (`survey-saved`, between the
- * card and the strip): into the live card above them.
+ * buttons before it, out of the strip, and past everything the Project tab puts between the
+ * card and the strip (the save controls `survey-saved` and the "In this project" list
+ * `project-list`): into the live card above them. It walks the real tab stops, one key at a
+ * time, rather than counting them up front.
  */
 async function shiftTabOutOfStrip(win: Page) {
   const before = await measureStrip(win)
     .locator('button')
     .evaluateAll((all) => all.indexOf(document.activeElement as HTMLButtonElement));
   expect(before, 'the focus is in the strip').toBeGreaterThanOrEqual(0);
-  const saveStops = await win
-    .getByTestId('survey-saved')
-    .locator('input:not([disabled]), button:not([disabled])')
-    .count();
-  for (let i = 0; i <= before + saveStops; i++) await win.keyboard.press('Shift+Tab');
+  const between = () =>
+    win.evaluate(() => {
+      const at = document.activeElement;
+      return Boolean(
+        at?.closest('.meb-strip, [data-testid="survey-saved"], [data-testid="project-list"]'),
+      );
+    });
+  for (let i = 0; i < 200 && (await between()); i++) await win.keyboard.press('Shift+Tab');
+  expect(await between(), 'Shift+Tab leaves the strip, the save controls and the list').toBe(false);
 }
 
 async function saved(dir: string) {
